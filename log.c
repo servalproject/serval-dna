@@ -167,6 +167,10 @@ struct _log_state {
   */
   struct tm last_tm;
 
+  /* Whether the current configuration has been logged in the current file yet.
+  */
+  bool_t config_logged;
+
 };
 
 struct _log_state state_file;
@@ -176,29 +180,58 @@ struct _log_state state_android;
 struct _log_state state_stderr;
 
 typedef struct _log_iterator {
-  int level;
-  struct __sourceloc whence;
+  const struct config_log_format *config;
+  struct _log_state *state;
   struct timeval tv;
   struct tm tm;
   XPRINTF xpf;
-  int _file;
-#ifdef ANDROID
-  int _android;
-#endif
-  int _stderr;
 } _log_iterator;
 
-static void _log_iterator_start(_log_iterator *it, int level, struct __sourceloc whence)
+static void _log_iterator_start(_log_iterator *it)
 {
-  assert(level <= LOG_LEVEL_FATAL);
   memset(it, 0, sizeof *it);
-  it->level = level;
-  it->whence = whence;
   gettimeofday(&it->tv, NULL);
   localtime_r(&it->tv.tv_sec, &it->tm);
 }
 
-static void _log_level_prefix(_log_iterator *it, int level)
+static int _log_iterator_advance(_log_iterator *it)
+{
+  if (it->config == NULL) {
+    it->config = &config.log.file;
+    it->state = &state_file;
+    return 1;
+  }
+  if (it->config == &config.log.file) {
+#ifdef ANDROID
+    it->config = &config.log.android;
+    it->state = &state_android;
+    return 1;
+  }
+  if (it->config == &config.log.android) {
+#endif // ANDROID
+    it->config = &config.log.stderr;
+    it->state = &state_stderr;
+    return 1;
+  }
+  return 0;
+}
+
+static int _log_enabled(_log_iterator *it)
+{
+  if (it->config == &config.log.file) {
+    _open_log_file(); // puts initial INFO message at start of log file
+    if (logfile_file == NO_FILE)
+      return 0;
+  }
+  else if (it->config == &config.log.stderr) {
+    _open_log_stderr();
+    if (logfile_stderr == NULL || logfile_stderr == NO_FILE)
+      return 0;
+  }
+  return 1;
+}
+
+static void _log_prefix_level(_log_iterator *it, int level)
 {
   const char *levelstr = "UNKWN:";
   switch (level) {
@@ -211,37 +244,31 @@ static void _log_level_prefix(_log_iterator *it, int level)
   xprintf(it->xpf, "%-6.6s", levelstr);
 }
 
-static int _log_prefix(const struct config_log_format *cfg, _log_iterator *it, int level)
+static void _log_prefix(_log_iterator *it, int level)
 {
-  if (cfg == &config.log.file) {
-    _open_log_file(); // puts initial INFO message at start of log file
-    if (logfile_file == NO_FILE)
-      return 0;
+  if (it->config == &config.log.file) {
     if (strbuf_is_empty(&logbuf))
       strbuf_init(&logbuf, _log_buf, sizeof _log_buf);
     else if (strbuf_len(&logbuf))
       strbuf_putc(&logbuf, '\n');
     it->xpf = XPRINTF_STRBUF(&logbuf);
-    _log_level_prefix(it, level);
+    _log_prefix_level(it, level);
   }
 #ifdef ANDROID
-  else if (cfg == &config.log.android) {
+  else if (it->config == &config.log.android) {
     strbuf_init(&logbuf_android, _log_buf_android, sizeof _log_buf_android);
     it->xpf = XPRINTF_STRBUF(&logbuf_android);
   }
 #endif // ANDROID
-  else if (cfg == &config.log.stderr) {
-    _open_log_stderr();
-    if (logfile_stderr == NULL || logfile_stderr == NO_FILE)
-      return 0;
+  else if (it->config == &config.log.stderr) {
     it->xpf = XPRINTF_STDIO(logfile_stderr);
-    _log_level_prefix(it, level);
+    _log_prefix_level(it, level);
   }
   else
     abort();
-  if (cfg->show_pid)
+  if (it->config->show_pid)
     xprintf(it->xpf, "[%5u] ", getpid());
-  if (cfg->show_time) {
+  if (it->config->show_time) {
     if (it->tv.tv_sec == 0) {
       xputs("NOTIME______ ", it->xpf);
     } else {
@@ -252,210 +279,243 @@ static int _log_prefix(const struct config_log_format *cfg, _log_iterator *it, i
 	xprintf(it->xpf, "%s.%03u ", buf, it->tv.tv_usec / 1000);
     }
   }
-  return 1;
 }
 
-static void _log_finish(const struct config_log_format *cfg, _log_iterator *it, int level)
+static void _log_prefix_whence(_log_iterator *it, struct __sourceloc whence)
 {
-  if (cfg == &config.log.file) {
-    _flush_log_file();
+  if (whence.file) {
+    xprintf(it->xpf, "%s", _trimbuildpath(whence.file));
+    if (whence.line)
+      xprintf(it->xpf, ":%u", whence.line);
+    if (whence.function)
+      xprintf(it->xpf, ":%s()", whence.function);
+    xputs("  ", it->xpf);
+  } else if (whence.function) {
+    xprintf(it->xpf, "%s()  ", whence.function);
   }
+}
+
+static void _log_end_line(_log_iterator *it, int level)
+{
 #ifdef ANDROID
-  else if (cfg == &config.log.android) {
+  if (it->config == &config.log.android) {
     int alevel = ANDROID_LOG_UNKNOWN;
-    switch (it->level) {
+    switch (level) {
       case LOG_LEVEL_FATAL: alevel = ANDROID_LOG_FATAL; break;
       case LOG_LEVEL_ERROR: alevel = ANDROID_LOG_ERROR; break;
       case LOG_LEVEL_INFO:  alevel = ANDROID_LOG_INFO; break;
       case LOG_LEVEL_WARN:  alevel = ANDROID_LOG_WARN; break;
       case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
-      case LOG_LEVEL_SILENT: return;
       default: abort();
     }
     __android_log_print(alevel, "servald", "%s", strbuf_str(_log_buf_android));
   }
-#endif // ANDROID
-  else if (cfg == &config.log.stderr) {
-    fputc('\n', logfile_stderr);
-    _flush_log_stderr();
-  }
   else
-    abort();
+#endif // ANDROID
+  if (it->config == &config.log.stderr) {
+    fputc('\n', logfile_stderr);
+  }
 }
 
-static int _log_prepare(const struct config_log_format *cfg, struct _log_state *state, _log_iterator *it)
+static void _log_flush(_log_iterator *it)
 {
-  if (it->level < cfg->level)
-    return 0;
-  if ( it->tm.tm_mday != state->last_tm.tm_mday
-    || it->tm.tm_mon != state->last_tm.tm_mon
-    || it->tm.tm_year != state->last_tm.tm_year
-  ) {
-    char buf[50];
-    if (strftime(buf, sizeof buf, "%F %T %z", &it->tm)) {
-      if (!_log_prefix(cfg, it, LOG_LEVEL_INFO))
-	return 0;
-      xputs("Local date/time: ", it->xpf);
-      xputs(buf, it->xpf);
-      state->last_tm = it->tm;
-      _log_finish(cfg, it, LOG_LEVEL_INFO);
+  if (it->config == &config.log.file) {
+    _flush_log_file();
+  }
+  else if (it->config == &config.log.stderr) {
+    _flush_log_stderr();
+  }
+}
+
+static void _log_vprintf_nl(_log_iterator *it, int level, const char *fmt, va_list ap)
+{
+  _log_prefix(it, level);
+  vxprintf(it->xpf, fmt, ap);
+  _log_end_line(it, level);
+}
+
+static void _log_printf_nl(_log_iterator *it, int level, const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  _log_vprintf_nl(it, level, fmt, ap);
+  va_end(ap);
+}
+
+static int _log_current_config(_log_iterator *it, int level)
+{
+  if (!cf_limbo) {
+    struct cf_om_node *root = NULL;
+    int ret = cf_fmt_config_main(&root, &config);
+    if (ret == CFERROR) {
+      _log_printf_nl(it, level, "Cannot dump current configuration: cf_fmt_config_main() returned CFERROR");
+    } else {
+      _log_printf_nl(it, level, "Current configuration:");
+      struct cf_om_iterator oit;
+      int empty = 1;
+      for (cf_om_iter_start(&oit, root); oit.node; cf_om_iter_next(&oit)) {
+	if (oit.node->text && oit.node->line_number) {
+	  empty = 0;
+	  _log_printf_nl(it, level, "   %s=%s", oit.node->fullkey, oit.node->text);
+	}
+      }
+      if (empty)
+	_log_printf_nl(it, level, "   (empty)");
     }
-  }
-  if (!state->version_logged) {
-    if (!_log_prefix(cfg, it, LOG_LEVEL_INFO))
-      return 0;
-    xprintf(it->xpf, "Serval DNA version: %s", version_servald);
-    state->version_logged = 1;
-    _log_finish(cfg, it, LOG_LEVEL_INFO);
-  }
-  if (!_log_prefix(cfg, it, it->level))
-    return 0;
-  if (it->whence.file) {
-    xprintf(it->xpf, "%s", _trimbuildpath(it->whence.file));
-    if (it->whence.line)
-      xprintf(it->xpf, ":%u", it->whence.line);
-    if (it->whence.function)
-      xprintf(it->xpf, ":%s()", it->whence.function);
-    xputs("  ", it->xpf);
-  } else if (it->whence.function) {
-    xprintf(it->xpf, "%s()  ", it->whence.function);
+    cf_om_free_node(&root);
+    it->state->config_logged = 1;
   }
   return 1;
 }
 
-static int _log_iterator_next(_log_iterator *it)
+static void _log_update(_log_iterator *it)
 {
-  if (it->_file == 0) {
-    if (_log_prepare(&config.log.file, &state_file, it)) {
-      it->_file = 1;
-      return 1;
+  if ( it->tm.tm_mday != it->state->last_tm.tm_mday
+    || it->tm.tm_mon != it->state->last_tm.tm_mon
+    || it->tm.tm_year != it->state->last_tm.tm_year
+  ) {
+    char buf[50];
+    if (strftime(buf, sizeof buf, "%F %T %z", &it->tm)) {
+      _log_printf_nl(it, LOG_LEVEL_INFO, "Local date/time: %s", buf);
+      it->state->last_tm = it->tm;
     }
   }
-  else if (it->_file == 1) {
-    _log_finish(&config.log.file, it, it->level);
+  if (!it->state->version_logged) {
+    _log_printf_nl(it, LOG_LEVEL_INFO, "Serval DNA version: %s", version_servald);
+    it->state->version_logged = 1;
   }
-  it->_file = 2;
-#ifdef ANDROID
-  if (it->_android == 0) {
-    if (_log_prepare(&config.log.android, &state_android, it)) {
-      it->_android = 1;
-      return 1;
+  if (it->config->dump_config && !it->state->config_logged) {
+    _log_current_config(it, LOG_LEVEL_INFO);
+  }
+}
+
+static int _log_iterator_next(_log_iterator *it, int level)
+{
+  assert(level >= LOG_LEVEL_SILENT);
+  assert(level <= LOG_LEVEL_FATAL);
+  _log_end_line(it, level);
+  _log_flush(it);
+  while (_log_iterator_advance(it)) {
+    if (_log_enabled(it)) {
+      _log_update(it);
+      if (level >= it->config->level) {
+	_log_prefix(it, level);
+	return 1;
+      }
+      _log_flush(it);
     }
   }
-  else if (it->_android == 1) {
-    _log_finish(&config.log.android, it, it->level);
-  }
-  it->_android = 2;
-#endif // ANDROID
-  if (it->_stderr == 0) {
-    if (_log_prepare(&config.log.stderr, &state_stderr, it)) {
-      it->_stderr = 1;
-      return 1;
-    }
-  }
-  else if (it->_stderr == 1) {
-    _log_finish(&config.log.stderr, it, it->level);
-  }
-  it->_stderr = 2;
   return 0;
 }
 
 void logFlush()
 {
-  _flush_log_file();
-  _flush_log_stderr();
+  _log_iterator it;
+  _log_iterator_start(&it);
+  while (_log_iterator_next(&it, LOG_LEVEL_SILENT))
+    ;
 }
 
 void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv)
 {
-  struct strbuf b;
-  strbuf_init(&b, NULL, 0);
-  strbuf_append_argv(&b, argc, argv);
-  size_t len = strbuf_count(&b);
-  strbuf_init(&b, alloca(len + 1), len + 1);
-  strbuf_append_argv(&b, argc, argv);
-  _log_iterator it;
-  _log_iterator_start(&it, level, whence);
-  while (_log_iterator_next(&it)) {
-    if (label) {
-      xputs(label, it.xpf);
-      xputc(' ', it.xpf);
+  if (level != LOG_LEVEL_SILENT) {
+    struct strbuf b;
+    strbuf_init(&b, NULL, 0);
+    strbuf_append_argv(&b, argc, argv);
+    size_t len = strbuf_count(&b);
+    strbuf_init(&b, alloca(len + 1), len + 1);
+    strbuf_append_argv(&b, argc, argv);
+    _log_iterator it;
+    _log_iterator_start(&it);
+    while (_log_iterator_next(&it, level)) {
+      _log_prefix_whence(&it, whence);
+      if (label) {
+	xputs(label, it.xpf);
+	xputc(' ', it.xpf);
+      }
+      xputs(strbuf_str(&b), it.xpf);
     }
-    xputs(strbuf_str(&b), it.xpf);
   }
 }
 
 void logString(int level, struct __sourceloc whence, const char *str)
 {
-  _log_iterator it;
-  const char *s = str;
-  const char *p;
-  for (p = str; *p; ++p) {
-    if (*p == '\n') {
-      _log_iterator_start(&it, level, whence);
-      while (_log_iterator_next(&it))
-	xprintf(it.xpf, "%.*s", p - s, s);
-      s = p + 1;
+  if (level != LOG_LEVEL_SILENT) {
+    _log_iterator it;
+    const char *s = str;
+    const char *p;
+    for (p = str; *p; ++p) {
+      if (*p == '\n') {
+	_log_iterator_start(&it);
+	while (_log_iterator_next(&it, level)) {
+	  _log_prefix_whence(&it, whence);
+	  xprintf(it.xpf, "%.*s", p - s, s);
+	}
+	s = p + 1;
+      }
     }
-  }
-  if (p > s) {
-    _log_iterator_start(&it, level, whence);
-    while (_log_iterator_next(&it))
-      xprintf(it.xpf, "%.*s", p - s, s);
+    if (p > s) {
+      _log_iterator_start(&it);
+      while (_log_iterator_next(&it, level)) {
+	_log_prefix_whence(&it, whence);
+	xprintf(it.xpf, "%.*s", p - s, s);
+      }
+    }
   }
 }
 
 void logMessage(int level, struct __sourceloc whence, const char *fmt, ...)
 {
-  va_list ap;
-  va_start(ap, fmt);
-  vlogMessage(level, whence, fmt, ap);
-  va_end(ap);
+  if (level != LOG_LEVEL_SILENT) {
+    va_list ap;
+    va_start(ap, fmt);
+    vlogMessage(level, whence, fmt, ap);
+    va_end(ap);
+  }
 }
 
 void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list ap)
 {
-  _log_iterator it;
-  _log_iterator_start(&it, level, whence);
-  while (_log_iterator_next(&it))
-    vxprintf(it.xpf, fmt, ap);
-}
-
-void logCurrentConfig()
-{
-  struct cf_om_node *root = NULL;
-  int ret = cf_fmt_config_main(&root, &config);
-  if (ret == CFERROR) {
-    cf_om_free_node(&root);
-    WHY("cannot log current config");
-  } else {
-    struct cf_om_iterator it;
-    logMessage(LOG_LEVEL_INFO, __NOWHERE__, "Current configuration:");
-    for (cf_om_iter_start(&it, root); it.node; cf_om_iter_next(&it)) {
-      if (it.node->text && it.node->line_number)
-	logMessage(LOG_LEVEL_INFO, __NOWHERE__, "   %s=%s", it.node->fullkey, it.node->text);
+  if (level != LOG_LEVEL_SILENT) {
+    _log_iterator it;
+    _log_iterator_start(&it);
+    while (_log_iterator_next(&it, level)) {
+      _log_prefix_whence(&it, whence);
+      vxprintf(it.xpf, fmt, ap);
     }
   }
 }
 
+void logConfigChanged()
+{
+  state_file.config_logged = 0;
+#ifdef ANDROID
+  state_android.config_logged = 0;
+#endif
+  state_stderr.config_logged = 0;
+  logFlush();
+}
+
 int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len)
 {
-  char buf[100];
-  size_t i;
-  if (name)
-    logMessage(level, whence, "Dump of %s", name);
-  for(i = 0; i < len; i += 16) {
-    strbuf b = strbuf_local(buf, sizeof buf);
-    strbuf_sprintf(b, "  %04x :", i);
-    int j;
-    for (j = 0; j < 16 && i + j < len; j++)
-      strbuf_sprintf(b, " %02x", addr[i + j]);
-    for (; j < 16; j++)
-      strbuf_puts(b, "   ");
-    strbuf_puts(b, "    ");
-    for (j = 0; j < 16 && i + j < len; j++)
-      strbuf_sprintf(b, "%c", addr[i+j] >= ' ' && addr[i+j] < 0x7f ? addr[i+j] : '.');
-    logMessage(level, whence, "%s", strbuf_str(b));
+  if (level != LOG_LEVEL_SILENT) {
+    char buf[100];
+    size_t i;
+    if (name)
+      logMessage(level, whence, "Dump of %s", name);
+    for(i = 0; i < len; i += 16) {
+      strbuf b = strbuf_local(buf, sizeof buf);
+      strbuf_sprintf(b, "  %04x :", i);
+      int j;
+      for (j = 0; j < 16 && i + j < len; j++)
+	strbuf_sprintf(b, " %02x", addr[i + j]);
+      for (; j < 16; j++)
+	strbuf_puts(b, "   ");
+      strbuf_puts(b, "    ");
+      for (j = 0; j < 16 && i + j < len; j++)
+	strbuf_sprintf(b, "%c", addr[i+j] >= ' ' && addr[i+j] < 0x7f ? addr[i+j] : '.');
+      logMessage(level, whence, "%s", strbuf_str(b));
+    }
   }
   return 0;
 }

@@ -230,7 +230,7 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
     else {
       strbuf b = strbuf_alloca(160);
       strbuf_append_argv(b, argc, args);
-      result = WHYF("configuration unavailable, not running command: %s", strbuf_str(b));
+      result = WHYF("configuration defective, not running command: %s", strbuf_str(b));
     }
   } else {
     // Load configuration so that "unsupported command" log message can get out

@@ -227,34 +227,38 @@ ATOM(bool_t, externalblobs,             0, boolean,, "")
 END_STRUCT
 
 STRUCT(log_format)
-ATOM(bool_t,                show_pid,   1, boolean,, "If true, all log lines contain PID of logging process")
-ATOM(bool_t,                show_time,  1, boolean,, "If true, all log lines contain time stamp")
-ATOM(int,                   level,      LOG_LEVEL_DEBUG, log_level,, "Only log messages at and above this level of severity")
+ATOM(bool_t,                show_pid,    1, boolean,, "If true, all log lines contain PID of logging process")
+ATOM(bool_t,                show_time,   1, boolean,, "If true, all log lines contain time stamp")
+ATOM(int,                   level,       LOG_LEVEL_DEBUG, log_level,, "Only log messages at and above this level of severity")
+ATOM(bool_t,                dump_config, 1, boolean,, "If true, current configuration is dumped into start of log")
 END_STRUCT
 
 STRUCT(log)
 STRING(256,                 file_path,      "", str_nonempty,, "Path of log file, either absolute or relative to instance directory")
 SUB_STRUCT(log_format,      file,,   full)
-SUB_STRUCT(log_format,      stderr,, helpful)
+SUB_STRUCT(log_format,      stderr,, important)
 SUB_STRUCT(log_format,      android,, android)
 END_STRUCT
 
-STRUCT_DEFAULT(log_format, helpful)
-ATOM_DEFAULT(show_pid,   0)
-ATOM_DEFAULT(show_time,  0)
-ATOM_DEFAULT(level,      LOG_LEVEL_WARN)
+STRUCT_DEFAULT(log_format, important)
+ATOM_DEFAULT(show_pid,    0)
+ATOM_DEFAULT(show_time,   0)
+ATOM_DEFAULT(level,       LOG_LEVEL_WARN)
+ATOM_DEFAULT(dump_config, 0)
 END_STRUCT_DEFAULT
 
 STRUCT_DEFAULT(log_format, full)
-ATOM_DEFAULT(show_pid,   1)
-ATOM_DEFAULT(show_time,  1)
-ATOM_DEFAULT(level,      LOG_LEVEL_DEBUG)
+ATOM_DEFAULT(show_pid,    1)
+ATOM_DEFAULT(show_time,   1)
+ATOM_DEFAULT(level,       LOG_LEVEL_DEBUG)
+ATOM_DEFAULT(dump_config, 1)
 END_STRUCT_DEFAULT
 
 STRUCT_DEFAULT(log_format, android)
-ATOM_DEFAULT(show_pid,   0)
-ATOM_DEFAULT(show_time,  1)
-ATOM_DEFAULT(level,      LOG_LEVEL_DEBUG)
+ATOM_DEFAULT(show_pid,    0)
+ATOM_DEFAULT(show_time,   1)
+ATOM_DEFAULT(level,       LOG_LEVEL_DEBUG)
+ATOM_DEFAULT(dump_config, 1)
 END_STRUCT_DEFAULT
 
 STRUCT(server)

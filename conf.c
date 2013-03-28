@@ -179,7 +179,7 @@ int cf_init()
   return 0;
 }
 
-static int reload_and_parse(int permissive)
+static int reload_and_parse(int permissive, int strict)
 {
   int result = CFOK;
   if (cf_limbo)
@@ -200,47 +200,64 @@ static int reload_and_parse(int permissive)
 	  if (result == CFOK || result == CFEMPTY) {
 	    result = CFOK;
 	    config = new_config;
-	  } else if (result != CFERROR) {
-	    result &= ~CFEMPTY;
+	  } else if (result != CFERROR && !strict) {
+	    result &= ~CFEMPTY; // don't log "empty" as a problem
 	    config = new_config;
-	    WARN("limping along with incomplete configuration");
 	  }
 	}
       }
     }
   }
-  // Let log messages out.
-  cf_limbo = 0;
-  logFlush();
-  if (result != CFOK) {
+  int ret = 1;
+  if (result == CFOK) {
+    logConfigChanged();
+  } else {
     strbuf b = strbuf_alloca(180);
     strbuf_cf_flag_reason(b, result);
-    if (!permissive)
-      return WHYF("config file %s not loaded -- %s", conffile_path(), strbuf_str(b));
-    WARNF("config file %s loaded despite problems -- %s", conffile_path(), strbuf_str(b));
+    if (strict)
+      ret = WHYF("defective config file %s not loaded -- %s", conffile_path(), strbuf_str(b));
+    else {
+      if (!permissive)
+	ret = WHYF("config file %s loaded despite defects -- %s", conffile_path(), strbuf_str(b));
+      else
+	WARNF("config file %s loaded despite defects -- %s", conffile_path(), strbuf_str(b));
+      logConfigChanged();
+    }
   }
-  logCurrentConfig();
-  return 1;
+  cf_limbo = 0; // let log messages out
+  logFlush();
+  return ret;
 }
 
 int cf_load()
 {
   conffile_meta = config_meta = FILE_META_UNKNOWN;
-  return reload_and_parse(0);
+  return reload_and_parse(0, 0);
+}
+
+int cf_load_strict()
+{
+  conffile_meta = config_meta = FILE_META_UNKNOWN;
+  return reload_and_parse(0, 1);
 }
 
 int cf_load_permissive()
 {
   conffile_meta = config_meta = FILE_META_UNKNOWN;
-  return reload_and_parse(1);
+  return reload_and_parse(1, 0);
 }
 
 int cf_reload()
 {
-  return reload_and_parse(0);
+  return reload_and_parse(0, 0);
+}
+
+int cf_reload_strict()
+{
+  return reload_and_parse(0, 1);
 }
 
 int cf_reload_permissive()
 {
-  return reload_and_parse(1);
+  return reload_and_parse(1, 0);
 }

@@ -647,8 +647,10 @@ extern struct config_main config;
 
 int cf_init();
 int cf_load();
+int cf_load_strict();
 int cf_load_permissive();
 int cf_reload();
+int cf_reload_strict();
 int cf_reload_permissive();
 
 #endif //__SERVALDNA_CONFIG_H
