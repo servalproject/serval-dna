@@ -325,6 +325,9 @@ int rhizome_is_bar_interesting(unsigned char *bar);
 int rhizome_list_manifests(const char *service, const char *name, 
 			   const char *sender_sid, const char *recipient_sid, 
 			   int limit, int offset, char count_rows);
+int rhizome_list_manifests_forMeshMS(const char *service, const char *name, 
+			   const char *sender_sid, const char *recipient_sid, 
+			   int limit, int offset, char count_rows);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m);
 int rhizome_advertise_manifest(rhizome_manifest *m);
 int rhizome_delete_bundle(const char *manifestid);
@@ -399,7 +402,7 @@ struct rhizome_write{
   
   SHA512_CTX sha512_context;
   int64_t blob_rowid;
-  int blob_fd;
+  int blob_fd; 
 };
 
 struct rhizome_read{

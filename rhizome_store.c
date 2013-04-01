@@ -498,9 +498,13 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
   IN();
   int bytes_read = 0;
   if (read_state->blob_fd != -1) {
-    if (lseek(read_state->blob_fd, read_state->offset, SEEK_SET) == -1)
+    //positionne le pointeur
+     if (lseek(read_state->blob_fd, read_state->offset, SEEK_SET) == -1)
       RETURN(WHYF_perror("lseek(%d,%ld,SEEK_SET)", read_state->blob_fd, (long)read_state->offset));
+    
+    // read buffer-lenght char and store in buffer
     bytes_read = read(read_state->blob_fd, buffer, buffer_length);
+    
     if (bytes_read == -1)
       RETURN(WHYF_perror("read(%d,%p,%ld)", read_state->blob_fd, buffer, (long)buffer_length));
   } else if (read_state->blob_rowid != -1) {
@@ -546,7 +550,7 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
       char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
       SHA512_End(&read_state->sha512_context, hash_out);
       if (strcasecmp(read_state->id, hash_out)){
-	WHYF("Expected hash=%s, got %s", read_state->id, hash_out);
+	WHYF("Expected hash=%s, got %s", read_state->id, hash_out); 
       }
       read_state->hash=0;
     }

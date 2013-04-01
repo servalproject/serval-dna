@@ -1470,6 +1470,149 @@ cleanup:
   return status;
 }
 
+int app_meshms_read_messagelog(const struct cli_parsed *parsed, void *context)
+{
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  
+  const char *manifestid , *bskhex ;
+
+  //const char *manifestpath, *filepath, *manifestid, *bskhex;
+ 
+  if (cli_arg(parsed, "manifestid", &manifestid, cli_manifestid, "") == -1 )
+     return -1;
+  //else {
+//	cli_puts(manifestid);
+//	cli_delim("\n");
+//  }
+  
+  //int extract = strcasecmp(parsed->args[1], "extract")==0;
+  
+  // Ensure the Rhizome database exists and is open 
+  if (create_serval_instance_dir() == -1)
+    return -1;
+  if (rhizome_opendb() == -1)
+    return -1;
+  
+  // What does that mean ?
+  if (!(keyring = keyring_open_instance_cli(parsed)))
+    return -1;
+  
+  int ret=0;
+  
+  //manifestid is in hex
+  unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
+  if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
+    return WHY("Invalid manifest ID");
+  
+  char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
+  tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
+
+  //cli_puts("manifestid"); cli_delim(":"); cli_puts(manifestIdUpper); cli_delim("\n");
+  
+  // treat empty string the same as null
+  if (bskhex && !*bskhex)
+    bskhex=NULL;
+  
+  rhizome_bk_t bsk;
+  if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+    return WHYF("invalid bsk: \"%s\"", bskhex);
+
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (m==NULL)
+    return WHY("Out of manifests");
+  
+  ret = rhizome_retrieve_manifest(manifestIdUpper, m);
+  
+  if (ret==0){
+    // ignore errors
+    rhizome_extract_privatekey(m, NULL);
+    const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
+    
+    cli_puts("service");    cli_delim(":"); cli_puts(blob_service); cli_delim("\n");
+    cli_puts("manifestid"); cli_delim(":"); cli_puts(manifestIdUpper); cli_delim("\n");
+    cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version); cli_delim("\n");
+    cli_puts("inserttime"); cli_delim(":"); cli_printf("%lld", m->inserttime); cli_delim("\n");
+    if (m->haveSecret) {
+      cli_puts(".author");  cli_delim(":"); cli_puts(alloca_tohex_sid(m->author)); cli_delim("\n");
+    }
+    cli_puts(".readonly");  cli_delim(":"); cli_printf("%d", m->haveSecret?0:1); cli_delim("\n");
+    cli_puts("filesize");   cli_delim(":"); cli_printf("%lld", (long long) m->fileLength); cli_delim("\n");
+    if (m->fileLength != 0) {
+      cli_puts("filehash"); cli_delim(":"); cli_puts(m->fileHexHash); cli_delim("\n");
+    }
+  }
+  
+  int retfile=0;
+  // ret=0 if retrieve manifest is ok
+  if (ret==0 && m->fileLength != 0 ){   
+    // Rhizome_extract_file 
+    struct rhizome_read read_state;
+    bzero(&read_state, sizeof read_state);
+    int ret = rhizome_open_decrypt_read(m, bskhex?&bsk:NULL, &read_state, 1);
+  if (ret == 0)
+     cli_puts("the file exist, we will read the file"); cli_delim("\n");
+ 
+  int read_byte_version ;
+  unsigned char *buffer_version;
+  int buffer_length_version=100;
+  buffer_version=malloc(100);
+  read_byte_version=rhizome_read(&read_state, buffer_version, buffer_length_version); 
+  int i=0;
+  cli_puts("read_byte_version");cli_delim(":");cli_printf("%d", read_byte_version); cli_delim("\n");
+  hex_dump(buffer_version, buffer_length_version);
+
+
+ 
+    //ret = write_file(&read_state, filepath);
+  rhizome_read_close(&read_state);}
+  //return ret;
+
+  /*if (ret==0 && m->fileLength != 0 && filepath && *filepath){
+    if (extract){
+
+      // Save the file, implicitly decrypting if required.
+      // TODO, this may cause us to search for an author a second time if the above call to rhizome_extract_privatekey failed
+      retfile = rhizome_extract_file(m, filepath, bskhex?&bsk:NULL);
+    }else{
+      // Save the file without attempting to decrypt
+      int64_t length;
+      retfile = rhizome_dump_file(m->fileHexHash, filepath, &length);
+    }
+  }
+  
+  if (ret==0 && manifestpath && *manifestpath){
+    if (strcmp(manifestpath, "-") == 0) {
+      // always extract a manifest to stdout, even if writing the file itself failed.
+      cli_puts("manifest");
+      cli_delim(":");
+      cli_write(m->manifestdata, m->manifest_all_bytes);
+      cli_delim("\n");
+    } else {
+      int append = (strcmp(manifestpath, filepath)==0)?1:0;
+      // don't write out the manifest if we were asked to append it and writing the file failed.
+      if ((!append) || retfile==0){
+	/* If the manifest has been read in from database, the blob is there,
+	 and we can lie and say we are finalised and just want to write it
+	 out.  TODO: really should have a dirty/clean flag, so that write
+	 works if clean but not finalised. 
+	m->finalised=1;
+	if (rhizome_write_manifest_file(m, manifestpath, append) == -1)
+	  ret = -1;
+      }
+    }
+  }
+  if (retfile)
+    ret = retfile == -1 ? -1 : 1;
+  if (m)
+    rhizome_manifest_free(m);
+  return ret; */
+  
+  return ret;
+  
+}
+
+
 int app_rhizome_append_manifest(const struct cli_parsed *parsed, void *context)
 {
   if (config.debug.verbose)
@@ -2358,6 +2501,9 @@ struct cli_schema command_line_options[]={
    "Get specified configuration variable."},
   {app_vomp_console,{"console",NULL},0,
     "Test phone call life-cycle from the console"},
+  {app_meshms_read_messagelog,{"meshms","read", "messagelog" KEYRING_PIN_OPTIONS,
+	"[<manifestid>]",NULL},CLIFLAG_STANDALONE,
+	"List messages between a sender and a recipient"},
   {app_rhizome_append_manifest, {"rhizome", "append", "manifest", "<filepath>", "<manifestpath>", NULL}, CLIFLAG_STANDALONE,
     "Append a manifest to the end of the file it belongs to."},
   {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL},CLIFLAG_STANDALONE,
@@ -2439,3 +2585,61 @@ struct cli_schema command_line_options[]={
 #endif
   {NULL,{NULL}}
 };
+
+
+
+
+void hex_dump(char *data, int size)
+{
+	int i; // index in data...
+	int j; // index in line...
+	char temp[8];
+	char buffer[128];
+	char *ascii;
+
+	memset(buffer, 0, 128);
+
+	printf("---------> Dump <--------- (%d bytes from %p)\n", size, data);
+
+	// Printing the ruler...
+	printf("        +0          +4          +8          +c            0   4   8   c   \n");
+
+	// Hex portion of the line is 8 (the padding) + 3 * 16 = 52 chars long
+	// We add another four bytes padding and place the ASCII version...
+	ascii = buffer + 58;
+	memset(buffer, ' ', 58 + 16);
+	buffer[58 + 16] = '\n';
+	buffer[58 + 17] = '\0';
+	buffer[0] = '+';
+	buffer[1] = '0';
+	buffer[2] = '0';
+	buffer[3] = '0';
+	buffer[4] = '0';
+	for (i = 0, j = 0; i < size; i++, j++)
+	{
+		if (j == 16)
+		{
+			printf("%s", buffer);
+			memset(buffer, ' ', 58 + 16);
+
+			sprintf(temp, "+%04x", i);
+			memcpy(buffer, temp, 5);
+
+			j = 0;
+		}
+
+		sprintf(temp, "%02x", 0xff & data[i]);
+		memcpy(buffer + 8 + (j * 3), temp, 2);
+		if ((data[i] > 31) && (data[i] < 127))
+			ascii[j] = data[i];
+		else
+			ascii[j] = '.';
+	}
+
+	if (j != 0)
+		printf("%s", buffer);
+}
+
+
+
+
