@@ -1,0 +1,133 @@
+#!/bin/bash
+
+# Tests for Serval DNA logging.
+#
+# Copyright 2013 Serval Project, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+
+setup() {
+   setup_servald
+}
+
+doc_LogStderrDefault="By default, only errors and warnings are logged to stderr"
+test_LogStderrDefault() {
+   execute $servald log error 'hoopla'
+   assertExitStatus '==' 0
+   assertStderrGrep --matches=1 '^ERROR:.*hoopla$'
+   executeOk_servald log warn 'buckle'
+   assertStderrGrep --matches=1 '^WARN:.*buckle$'
+   executeOk_servald log info 'lymph'
+   assertStderrGrep --matches=0 'lymph'
+   executeOk_servald log debug 'eccles'
+   assertStderrGrep --matches=0 'eccles'
+}
+
+doc_LogStderrConfigAll="Configure all messages logged to stderr"
+test_LogStderrConfigAll() {
+   executeOk_servald config set log.stderr.level debug
+   execute $servald log error 'hoopla'
+   assertExitStatus '==' 0
+   assertStderrGrep --matches=1 '^ERROR:.*hoopla$'
+   executeOk_servald log warn 'buckle'
+   assertStderrGrep --matches=1 '^WARN:.*buckle$'
+   executeOk_servald log info 'lymph'
+   assertStderrGrep --matches=1 'INFO:.*lymph$'
+   executeOk_servald log debug 'eccles'
+   assertStderrGrep --matches=1 'DEBUG:.*eccles$'
+}
+
+doc_LogStderrConfigNone="Configure no messages logged to stderr"
+test_LogStderrConfigNone() {
+   executeOk_servald config set log.stderr.level none
+   executeOk_servald log error 'hoopla'
+   assertStderrIs ''
+   executeOk_servald log warn 'buckle'
+   assertStderrIs ''
+   executeOk_servald log info 'lymph'
+   assertStderrIs ''
+   executeOk_servald log debug 'eccles'
+   assertStderrIs ''
+}
+
+doc_LogFileDefault="By Default, all messages are appended to a configured file"
+test_LogFileDefault() {
+   executeOk_servald config set log.stderr.level none
+   executeOk_servald config set log.file_path "$PWD/log.txt"
+   executeOk_servald log error 'hoopla'
+   assertGrep --matches=1 log.txt '^ERROR:.*hoopla$'
+   executeOk_servald log warn 'buckle'
+   assertGrep --matches=1 log.txt '^ERROR:.*hoopla$'
+   assertGrep --matches=1 log.txt '^WARN:.*buckle$'
+   executeOk_servald log info 'lymph'
+   assertGrep --matches=1 log.txt '^ERROR:.*hoopla$'
+   assertGrep --matches=1 log.txt '^WARN:.*buckle$'
+   assertGrep --matches=1 log.txt 'INFO:.*lymph$'
+   executeOk_servald log debug 'eccles'
+   assertGrep --matches=1 log.txt '^ERROR:.*hoopla$'
+   assertGrep --matches=1 log.txt '^WARN:.*buckle$'
+   assertGrep --matches=1 log.txt 'INFO:.*lymph$'
+   assertGrep --matches=1 log.txt 'DEBUG:.*eccles$'
+}
+
+doc_LogFileConfigLevel="Configure level of messages appended to a configured file"
+test_LogFileConfigLevel() {
+   executeOk_servald config set log.stderr.level none
+   executeOk_servald config set log.file.level info
+   executeOk_servald config set log.file_path "$PWD/log.txt"
+   executeOk_servald log warn 'buckle'
+   assertGrep --matches=1 log.txt '^WARN:.*buckle$'
+   executeOk_servald log debug 'eccles'
+   assertGrep --matches=1 log.txt '^WARN:.*buckle$'
+   assertGrep --matches=0 log.txt 'DEBUG:.*eccles$'
+   executeOk_servald log error 'hoopla'
+   assertGrep --matches=1 log.txt '^WARN:.*buckle$'
+   assertGrep --matches=0 log.txt 'DEBUG:.*eccles$'
+   assertGrep --matches=1 log.txt '^ERROR:.*hoopla$'
+   executeOk_servald log info 'lymph'
+   assertGrep --matches=1 log.txt '^WARN:.*buckle$'
+   assertGrep --matches=0 log.txt 'DEBUG:.*eccles$'
+   assertGrep --matches=1 log.txt '^ERROR:.*hoopla$'
+   assertGrep --matches=1 log.txt 'INFO:.*lymph$'
+}
+
+doc_LogFileStderrFile="Log messages to stderr and a configured file"
+test_LogFileStderrFile() {
+   executeOk_servald config set log.file_path "$PWD/log.txt"
+   executeOk_servald log info 'lymph'
+   assertGrep --matches=1 log.txt 'INFO:.*lymph$'
+   assertStderrIs ''
+   executeOk_servald log warn 'buckle'
+   assertGrep --matches=1 log.txt 'INFO:.*lymph$'
+   assertGrep --matches=1 log.txt '^WARN:.*buckle$'
+   assertStderrGrep --matches=1 '^WARN:.*buckle$'
+   executeOk_servald log debug 'eccles'
+   assertStderrIs ''
+   assertGrep --matches=1 log.txt 'INFO:.*lymph$'
+   assertGrep --matches=1 log.txt '^WARN:.*buckle$'
+   assertGrep --matches=1 log.txt 'DEBUG:.*eccles$'
+   execute $servald log error 'hoopla'
+   assertExitStatus '==' 0
+   assertStderrGrep --matches=1 '^ERROR:.*hoopla$'
+   assertGrep --matches=1 log.txt 'INFO:.*lymph$'
+   assertGrep --matches=1 log.txt '^WARN:.*buckle$'
+   assertGrep --matches=1 log.txt 'DEBUG:.*eccles$'
+   assertGrep --matches=1 log.txt '^ERROR:.*hoopla$'
+}
+
+runTests "$@"

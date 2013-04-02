@@ -210,7 +210,7 @@ test_InterfacesLegacyInvalidType() {
       config set interfaces '+eth=foo:4111:9M'
    assert_stderr_log \
       --warn-pattern='"interfaces".*invalid' \
-      --error-pattern='config file.*not loaded.*invalid'
+      --error-pattern='config file.*loaded despite defects.*invalid'
 }
 
 doc_InterfacesLegacyInvalidPort="Legacy 'interfaces' config option invalid port"
@@ -219,7 +219,7 @@ test_InterfacesLegacyInvalidPort() {
       config set interfaces '+eth=ethernet:-1000:9M'
    assert_stderr_log \
       --warn-pattern='"interfaces".*invalid' \
-      --error-pattern='config file.*not loaded.*invalid'
+      --error-pattern='config file.*loaded despite defects.*invalid'
 }
 
 doc_InterfacesLegacyInvalidSpeed="Legacy 'interfaces' config option invalid speed is ignored"
@@ -229,7 +229,7 @@ test_InterfacesLegacyInvalidSpeed() {
       config set interfaces '+eth=ethernet:4111:9Moose'
    #assert_stderr_log \
    #   --warn-pattern='"interfaces".*invalid' \
-   #   --error-pattern='config file.*not loaded.*invalid'
+   #   --error-pattern='config file.*loaded despite defects.*invalid'
 }
 
 doc_InterfacesLegacyIncompatible="Legacy 'interfaces' config option incompatible with modern form"
@@ -241,7 +241,7 @@ test_InterfacesLegacyIncompatible() {
    assertExitStatus '==' 2
    assert_stderr_log \
       --warn-pattern='"interfaces.*incompatible' \
-      --error-pattern='config file.*not loaded.*incompatible'
+      --error-pattern='config file.*loaded despite defects.*incompatible'
    tfw_cat --stderr
 }
 
@@ -267,7 +267,7 @@ test_InterfacesModernIncompatible() {
    assertExitStatus '==' 2
    assert_stderr_log \
       --warn-pattern='"interfaces\.0\..*incompatible' \
-      --error-pattern='config file.*not loaded.*incompatible'
+      --error-pattern='config file.*loaded despite defects.*incompatible'
 }
 
 doc_LogFileAbsolute="Absolute log file"

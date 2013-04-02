@@ -46,113 +46,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 int serverMode = 0;
 const struct __sourceloc __whence = __NOWHERE__;
 
-static FILE *logfile_file = NULL;
-static FILE *logfile_stderr = NULL;
 #define NO_FILE ((FILE *)1)
-
-/* The file logbuf is used to accumulate log messages before the log file is open and ready for
- * writing.
- */
-static char _log_buf[8192];
-static struct strbuf logbuf = STRUCT_STRBUF_EMPTY;
-
-#ifdef ANDROID
-
-#include <android/log.h>
-
-/* The Android logbuf is used to accumulate a single log line before printing to Android's
- * logging API.
- */
-static char _log_buf_android[1024];
-static struct strbuf logbuf_android;
-
-#endif // ANDROID
-
-static void _open_log_file()
-{
-  if (!logfile_file) {
-    const char *logpath = getenv("SERVALD_LOG_FILE");
-    if (!logpath) {
-      if (cf_limbo)
-	return;
-      logpath = config.log.file_path;
-    }
-    if (!logpath || !logpath[0]) {
-      logfile_file = NO_FILE;
-      if (serverMode)
-	logMessage(LOG_LEVEL_INFO, __NOWHERE__, "No logfile_file configured");
-    } else {
-      char path[1024];
-      if (!FORM_SERVAL_INSTANCE_PATH(path, logpath)) {
-	logfile_file = NO_FILE;
-	logMessage(LOG_LEVEL_WARN, __NOWHERE__, "Logfile path overrun");
-      } else if ((logfile_file = fopen(path, "a"))) {
-	setlinebuf(logfile_file);
-	if (serverMode)
-	  logMessage(LOG_LEVEL_INFO, __NOWHERE__, "Logging to %s (fd %d)", path, fileno(logfile_file));
-      } else {
-	logfile_file = NO_FILE;
-	WARNF_perror("fopen(%s)", path);
-	logMessage(LOG_LEVEL_WARN, __NOWHERE__, "Cannot append to %s", path);
-      }
-    }
-  }
-}
-
-static void _flush_log_file()
-{
-  if (logfile_file && logfile_file != NO_FILE) {
-    fprintf(logfile_file, "%s%s%s",
-	strbuf_len(&logbuf) ? strbuf_str(&logbuf) : "",
-	strbuf_len(&logbuf) ? "\n" : "",
-	strbuf_overrun(&logbuf) ? "LOG OVERRUN\n" : ""
-      );
-    strbuf_reset(&logbuf);
-  }
-}
-
-void close_log_file()
-{
-  if (logfile_file && logfile_file != NO_FILE)
-    fclose(logfile_file);
-  logfile_file = NULL;
-}
-
-static void _open_log_stderr()
-{
-  if (!logfile_stderr) {
-    logfile_stderr = stderr;
-    setlinebuf(logfile_stderr);
-  }
-}
-
-static void _flush_log_stderr()
-{
-  if (logfile_stderr && logfile_stderr != NO_FILE)
-    fflush(logfile_stderr);
-}
-
-void disable_log_stderr()
-{
-  if (logfile_stderr && logfile_stderr != NO_FILE) {
-    fflush(logfile_stderr);
-    logfile_stderr = NO_FILE;
-  }
-}
-
-static const char *_trimbuildpath(const char *path)
-{
-  /* Remove common path prefix */
-  int lastsep = 0;
-  int i;
-  for (i = 0; __FILE__[i] && path[i]; ++i) {
-    if (i && path[i - 1] == '/')
-      lastsep = i;
-    if (__FILE__[i] != path[i])
-      break;
-  }
-  return &path[lastsep];
-}
 
 struct _log_state {
 
@@ -173,11 +67,36 @@ struct _log_state {
 
 };
 
+/* Static variables for sending log output to a file.
+ *
+ * The logbuf is used to accumulate log messages before the log file is open and ready for
+ * writing.
+ */
+static FILE *logfile_file = NULL;
+static void _open_log_file();
+static void _rotate_log_file();
+static void _flush_log_file();
 struct _log_state state_file;
+static char _log_buf[8192];
+static struct strbuf logbuf = STRUCT_STRBUF_EMPTY;
+
 #ifdef ANDROID
+/* Static variables for sending log output to the Android log.
+ *
+ * The logbuf is used to accumulate a single log line before printing to Android's logging API.
+ */
+#include <android/log.h>
 struct _log_state state_android;
-#endif
+static char _log_buf_android[1024];
+static struct strbuf logbuf_android;
+#endif // ANDROID
+
+/* Static variables for sending log output to standard error.
+ */
+static FILE *logfile_stderr = NULL;
 struct _log_state state_stderr;
+static void _open_log_stderr();
+static void _flush_log_stderr();
 
 typedef struct _log_iterator {
   const struct config_log_format *config;
@@ -194,23 +113,40 @@ static void _log_iterator_start(_log_iterator *it)
   localtime_r(&it->tv.tv_sec, &it->tm);
 }
 
+static void _log_iterator_advance_to_file(_log_iterator *it)
+{
+  it->config = &config.log.file;
+  it->state = &state_file;
+}
+
+#ifdef ANDROID
+static void _log_iterator_advance_to_android(_log_iterator *it)
+{
+  it->config = &config.log.android;
+  it->state = &state_android;
+}
+#endif // ANDROID
+
+static void _log_iterator_advance_to_stderr(_log_iterator *it)
+{
+  it->config = &config.log.stderr;
+  it->state = &state_stderr;
+}
+
 static int _log_iterator_advance(_log_iterator *it)
 {
   if (it->config == NULL) {
-    it->config = &config.log.file;
-    it->state = &state_file;
+    _log_iterator_advance_to_file(it);
     return 1;
   }
   if (it->config == &config.log.file) {
 #ifdef ANDROID
-    it->config = &config.log.android;
-    it->state = &state_android;
+    _log_iterator_advance_to_android(it);
     return 1;
   }
   if (it->config == &config.log.android) {
 #endif // ANDROID
-    it->config = &config.log.stderr;
-    it->state = &state_stderr;
+    _log_iterator_advance_to_stderr(it);
     return 1;
   }
   return 0;
@@ -219,7 +155,7 @@ static int _log_iterator_advance(_log_iterator *it)
 static int _log_enabled(_log_iterator *it)
 {
   if (it->config == &config.log.file) {
-    _open_log_file(); // puts initial INFO message at start of log file
+    _open_log_file(); // puts initial INFO message(s) at head of log file
     if (logfile_file == NO_FILE)
       return 0;
   }
@@ -279,6 +215,20 @@ static void _log_prefix(_log_iterator *it, int level)
 	xprintf(it->xpf, "%s.%03u ", buf, it->tv.tv_usec / 1000);
     }
   }
+}
+
+static const char *_trimbuildpath(const char *path)
+{
+  /* Remove common path prefix */
+  int lastsep = 0;
+  int i;
+  for (i = 0; __FILE__[i] && path[i]; ++i) {
+    if (i && path[i - 1] == '/')
+      lastsep = i;
+    if (__FILE__[i] != path[i])
+      break;
+  }
+  return &path[lastsep];
 }
 
 static void _log_prefix_whence(_log_iterator *it, struct __sourceloc whence)
@@ -342,6 +292,21 @@ static void _log_printf_nl(_log_iterator *it, int level, const char *fmt, ...)
   va_end(ap);
 }
 
+static void _log_current_datetime(_log_iterator *it, int level)
+{
+  char buf[50];
+  if (strftime(buf, sizeof buf, "%F %T %z", &it->tm)) {
+    _log_printf_nl(it, level, "Local date/time: %s", buf);
+    it->state->last_tm = it->tm;
+  }
+}
+
+static void _log_software_version(_log_iterator *it, int level)
+{
+  _log_printf_nl(it, level, "Serval DNA version: %s", version_servald);
+  it->state->version_logged = 1;
+}
+
 static int _log_current_config(_log_iterator *it, int level)
 {
   if (!cf_limbo) {
@@ -373,20 +338,12 @@ static void _log_update(_log_iterator *it)
   if ( it->tm.tm_mday != it->state->last_tm.tm_mday
     || it->tm.tm_mon != it->state->last_tm.tm_mon
     || it->tm.tm_year != it->state->last_tm.tm_year
-  ) {
-    char buf[50];
-    if (strftime(buf, sizeof buf, "%F %T %z", &it->tm)) {
-      _log_printf_nl(it, LOG_LEVEL_INFO, "Local date/time: %s", buf);
-      it->state->last_tm = it->tm;
-    }
-  }
-  if (!it->state->version_logged) {
-    _log_printf_nl(it, LOG_LEVEL_INFO, "Serval DNA version: %s", version_servald);
-    it->state->version_logged = 1;
-  }
-  if (it->config->dump_config && !it->state->config_logged) {
+  )
+    _log_current_datetime(it, LOG_LEVEL_INFO);
+  if (!it->state->version_logged)
+    _log_software_version(it, LOG_LEVEL_INFO);
+  if (it->config->dump_config && !it->state->config_logged)
     _log_current_config(it, LOG_LEVEL_INFO);
-  }
 }
 
 static int _log_iterator_next(_log_iterator *it, int level)
@@ -397,8 +354,8 @@ static int _log_iterator_next(_log_iterator *it, int level)
   _log_flush(it);
   while (_log_iterator_advance(it)) {
     if (_log_enabled(it)) {
-      _log_update(it);
       if (level >= it->config->level) {
+	_log_update(it);
 	_log_prefix(it, level);
 	return 1;
       }
@@ -406,6 +363,106 @@ static int _log_iterator_next(_log_iterator *it, int level)
     }
   }
   return 0;
+}
+
+static void _logs_vprintf_nl(int level, struct __sourceloc whence, const char *fmt, va_list ap)
+{
+  _log_iterator it;
+  _log_iterator_start(&it);
+  while (_log_iterator_next(&it, level)) {
+    _log_prefix_whence(&it, whence);
+    _log_vprintf_nl(&it, level, fmt, ap);
+  }
+}
+
+static void _logs_printf_nl(int level, struct __sourceloc whence, const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  _logs_vprintf_nl(level, whence, fmt, ap);
+  va_end(ap);
+}
+
+static void _open_log_file()
+{
+  if (!logfile_file) {
+    const char *logpath = getenv("SERVALD_LOG_FILE");
+    if (!logpath) {
+      if (cf_limbo)
+	return;
+      logpath = config.log.file_path;
+    }
+    if (!logpath || !logpath[0]) {
+      logfile_file = NO_FILE;
+      if (serverMode)
+	_logs_printf_nl(LOG_LEVEL_INFO, __NOWHERE__, "No logfile_file configured");
+    } else {
+      char path[1024];
+      if (!FORM_SERVAL_INSTANCE_PATH(path, logpath)) {
+	logfile_file = NO_FILE;
+	_logs_printf_nl(LOG_LEVEL_WARN, __NOWHERE__, "Logfile path overrun");
+      } else if ((logfile_file = fopen(path, "a"))) {
+	setlinebuf(logfile_file);
+	memset(&state_file, 0, sizeof state_file);
+	// The first line in every log file must be the starting time stamp.  (After that, it is up
+	// to _log_update() to insert other mandatory messages in any suitable order.)
+	_log_iterator it;
+	_log_iterator_start(&it);
+	_log_iterator_advance_to_file(&it);
+	_log_current_datetime(&it, LOG_LEVEL_INFO);
+	if (serverMode)
+	  _logs_printf_nl(LOG_LEVEL_INFO, __NOWHERE__, "Logging to %s (fd %d)", path, fileno(logfile_file));
+      } else {
+	logfile_file = NO_FILE;
+	_logs_printf_nl(LOG_LEVEL_WARN, __NOWHERE__, "Cannot append to %s - %s [errno=%d]", path, strerror(errno), errno);
+      }
+    }
+  }
+}
+
+static void _rotate_log_file()
+{
+}
+
+static void _flush_log_file()
+{
+  if (logfile_file && logfile_file != NO_FILE) {
+    fprintf(logfile_file, "%s%s%s",
+	strbuf_len(&logbuf) ? strbuf_str(&logbuf) : "",
+	strbuf_len(&logbuf) ? "\n" : "",
+	strbuf_overrun(&logbuf) ? "LOG OVERRUN\n" : ""
+      );
+    strbuf_reset(&logbuf);
+  }
+}
+
+void close_log_file()
+{
+  if (logfile_file && logfile_file != NO_FILE)
+    fclose(logfile_file);
+  logfile_file = NULL;
+}
+
+static void _open_log_stderr()
+{
+  if (!logfile_stderr) {
+    logfile_stderr = stderr;
+    setlinebuf(logfile_stderr);
+  }
+}
+
+static void _flush_log_stderr()
+{
+  if (logfile_stderr && logfile_stderr != NO_FILE)
+    fflush(logfile_stderr);
+}
+
+void disable_log_stderr()
+{
+  if (logfile_stderr && logfile_stderr != NO_FILE) {
+    fflush(logfile_stderr);
+    logfile_stderr = NO_FILE;
+  }
 }
 
 void logFlush()
@@ -425,6 +482,7 @@ void logArgv(int level, struct __sourceloc whence, const char *label, int argc, 
     size_t len = strbuf_count(&b);
     strbuf_init(&b, alloca(len + 1), len + 1);
     strbuf_append_argv(&b, argc, argv);
+    _rotate_log_file();
     _log_iterator it;
     _log_iterator_start(&it);
     while (_log_iterator_next(&it, level)) {
@@ -441,6 +499,7 @@ void logArgv(int level, struct __sourceloc whence, const char *label, int argc, 
 void logString(int level, struct __sourceloc whence, const char *str)
 {
   if (level != LOG_LEVEL_SILENT) {
+    _rotate_log_file();
     _log_iterator it;
     const char *s = str;
     const char *p;
@@ -477,6 +536,7 @@ void logMessage(int level, struct __sourceloc whence, const char *fmt, ...)
 void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list ap)
 {
   if (level != LOG_LEVEL_SILENT) {
+    _rotate_log_file();
     _log_iterator it;
     _log_iterator_start(&it);
     while (_log_iterator_next(&it, level)) {
@@ -488,11 +548,10 @@ void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list 
 
 void logConfigChanged()
 {
-  state_file.config_logged = 0;
-#ifdef ANDROID
-  state_android.config_logged = 0;
-#endif
-  state_stderr.config_logged = 0;
+  _log_iterator it;
+  _log_iterator_start(&it);
+  while (_log_iterator_advance(&it))
+    it.state->config_logged = 0;
   logFlush();
 }
 
@@ -537,7 +596,7 @@ ssize_t get_self_executable_path(char *buf, size_t len)
 int log_backtrace(struct __sourceloc whence)
 {
 #ifndef NO_BACKTRACE
-  _open_log_file();
+  _rotate_log_file();
   char execpath[MAXPATHLEN];
   if (get_self_executable_path(execpath, sizeof execpath) == -1)
     return WHY("cannot log backtrace: own executable path unknown");
@@ -589,7 +648,7 @@ int log_backtrace(struct __sourceloc whence)
   }
   // parent
   close(stdout_fds[1]);
-  logMessage(LOG_LEVEL_DEBUG, whence, "GDB BACKTRACE");
+  _logs_printf_nl(LOG_LEVEL_DEBUG, whence, "GDB BACKTRACE");
   char buf[1024];
   char *const bufe = buf + sizeof buf;
   char *linep = buf;
@@ -601,14 +660,14 @@ int log_backtrace(struct __sourceloc whence)
     for (; p < readp; ++p)
       if (*p == '\n' || *p == '\0') {
 	*p = '\0';
-	logMessage(LOG_LEVEL_DEBUG, __NOWHERE__, "%s", linep);
+	_logs_printf_nl(LOG_LEVEL_DEBUG, __NOWHERE__, "%s", linep);
 	linep = p + 1;
       }
     if (readp >= bufe && linep == buf) {
       // Line does not fit into buffer.
       char t = bufe[-1];
       bufe[-1] = '\0';
-      logMessage(LOG_LEVEL_DEBUG, __NOWHERE__, "%s", buf);
+      _logs_printf_nl(LOG_LEVEL_DEBUG, __NOWHERE__, "%s", buf);
       buf[0] = t;
       readp = buf + 1;
     } else if (readp + 120 >= bufe && linep != buf) {
@@ -624,7 +683,7 @@ int log_backtrace(struct __sourceloc whence)
     WHY_perror("read");
   if (readp > linep) {
     *readp = '\0';
-    logMessage(LOG_LEVEL_DEBUG, __NOWHERE__, "%s", linep);
+    _logs_printf_nl(LOG_LEVEL_DEBUG, __NOWHERE__, "%s", linep);
   }
   close(stdout_fds[0]);
   int status = 0;
@@ -632,8 +691,34 @@ int log_backtrace(struct __sourceloc whence)
     WHY_perror("waitpid");
   strbuf b = strbuf_local(buf, sizeof buf);
   strbuf_append_exit_status(b, status);
-  logMessage(LOG_LEVEL_DEBUG, __NOWHERE__, "gdb %s", buf);
+  _logs_printf_nl(LOG_LEVEL_DEBUG, __NOWHERE__, "gdb %s", buf);
   unlink(tempfile);
 #endif
   return 0;
+}
+
+const char *log_level_as_string(int level)
+{
+  switch (level) {
+    case LOG_LEVEL_SILENT: return "silent";
+    case LOG_LEVEL_DEBUG:  return "debug";
+    case LOG_LEVEL_INFO:   return "info";
+    case LOG_LEVEL_WARN:   return "warn";
+    case LOG_LEVEL_ERROR:  return "error";
+    case LOG_LEVEL_FATAL:  return "fatal";
+    case LOG_LEVEL_NONE:   return "none";
+  }
+  return NULL;
+}
+
+int string_to_log_level(const char *text)
+{
+  if (strcasecmp(text, "none") == 0)   return LOG_LEVEL_NONE;
+  if (strcasecmp(text, "fatal") == 0)  return LOG_LEVEL_FATAL;
+  if (strcasecmp(text, "error") == 0)  return LOG_LEVEL_ERROR;
+  if (strcasecmp(text, "warn") == 0)   return LOG_LEVEL_WARN;
+  if (strcasecmp(text, "info") == 0)   return LOG_LEVEL_INFO;
+  if (strcasecmp(text, "debug") == 0)  return LOG_LEVEL_DEBUG;
+  if (strcasecmp(text, "silent") == 0) return LOG_LEVEL_SILENT;
+  return LOG_LEVEL_INVALID;
 }

@@ -25,13 +25,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/types.h>
 #include <errno.h>
 
-#define LOG_LEVEL_SILENT    (-1)
-#define LOG_LEVEL_DEBUG     (0)
-#define LOG_LEVEL_INFO      (1)
-#define LOG_LEVEL_WARN      (2)
-#define LOG_LEVEL_ERROR     (3)
-#define LOG_LEVEL_FATAL     (4)
+#define LOG_LEVEL_INVALID   (-1)
+#define LOG_LEVEL_SILENT    (0)
+#define LOG_LEVEL_DEBUG     (1)
+#define LOG_LEVEL_INFO      (2)
+#define LOG_LEVEL_WARN      (3)
+#define LOG_LEVEL_ERROR     (4)
+#define LOG_LEVEL_FATAL     (5)
 #define LOG_LEVEL_NONE      (127)
+
+const char *log_level_as_string(int level);
+int string_to_log_level(const char *text);
 
 /*
  * Every log message identifies the location in the source code at which the

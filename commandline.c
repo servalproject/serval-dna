@@ -34,6 +34,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifdef HAVE_JNI_H
 #include <jni.h>
 #endif
+#include <assert.h>
 #include "serval.h"
 #include "conf.h"
 #include "rhizome.h"
@@ -494,6 +495,20 @@ int app_echo(const struct cli_parsed *parsed, void *context)
       cli_puts(arg);
     cli_delim(NULL);
   }
+  return 0;
+}
+
+int app_log(const struct cli_parsed *parsed, void *context)
+{
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  assert(parsed->argc == 3);
+  const char *lvl = parsed->args[1];
+  const char *msg = parsed->args[2];
+  int level = string_to_log_level(lvl);
+  if (level == LOG_LEVEL_INVALID)
+    return WHYF("invalid log level: %s", lvl);
+  logMessage(level, __NOWHERE__, "%s", msg);
   return 0;
 }
 
@@ -2355,12 +2370,18 @@ int app_network_scan(const struct cli_parsed *parsed, void *context)
 */
 #define KEYRING_PIN_OPTIONS ,"[--keyring-pin=<pin>]","[--entry-pin=<pin>]..."
 struct cli_schema command_line_options[]={
-  {app_dna_lookup,{"dna","lookup","<did>","[<timeout>]",NULL},0,
-   "Lookup the SIP/MDP address of the supplied telephone number (DID)."},
   {commandline_usage,{"help","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display command usage."},
-  {app_echo,{"echo","[-e]","[--]","...",NULL},CLIFLAG_STANDALONE,
+  {app_echo,{"echo","[-e]","[--]","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Output the supplied string."},
+  {app_log,{"log","debug","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
+   "Log the supplied message at DEBUG level."},
+  {app_log,{"log","info","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
+   "Log the supplied message at INFO level."},
+  {app_log,{"log","warn","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
+   "Log the supplied message at WARN level."},
+  {app_log,{"log","error","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
+   "Log the supplied message at ERROR level."},
   {app_server_start,{"start",NULL},CLIFLAG_STANDALONE,
    "Start Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
   {app_server_start,{"start","in","<instance path>",NULL},CLIFLAG_STANDALONE,
@@ -2462,8 +2483,10 @@ struct cli_schema command_line_options[]={
    "Return routing information about a SID"},
   {app_count_peers,{"peer","count",NULL},0,
     "Return a count of routable peers on the network"},
+  {app_dna_lookup,{"dna","lookup","<did>","[<timeout>]",NULL},0,
+   "Lookup the subscribers (SID) with the supplied telephone number (DID)."},
   {app_reverse_lookup, {"reverse", "lookup", "<sid>", "[<timeout>]", NULL}, 0,
-    "Lookup the phone number and name of a given subscriber"},
+    "Lookup the phone number (DID) and name of a given subscriber (SID)"},
   {app_monitor_cli,{"monitor",NULL},0,
    "Interactive servald monitor interface."},
   {app_crypt_test,{"test","crypt",NULL},0,
