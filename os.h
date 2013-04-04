@@ -69,8 +69,12 @@ __SERVALDNA_OS_INLINE void bcopy(void *src, void *dst, size_t len) {
 }
 #endif
 
+/* The "e" variants log the error before returning -1.
+ */
 int mkdirs(const char *path, mode_t mode);
+int emkdirs(const char *path, mode_t mode);
 int mkdirsn(const char *path, size_t len, mode_t mode);
+int emkdirsn(const char *path, size_t len, mode_t mode);
 
 void srandomdev();
 int urandombytes(unsigned char *buf, unsigned long long len);

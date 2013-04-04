@@ -53,5 +53,5 @@ int form_serval_instance_path(char *buf, size_t bufsiz, const char *path)
 }
 
 int create_serval_instance_dir() {
-  return mkdirs(serval_instancepath(), 0700);
+  return emkdirs(serval_instancepath(), 0700);
 }

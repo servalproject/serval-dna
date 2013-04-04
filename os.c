@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define __SERVALDNA_OS_INLINE
 #include "os.h"
+#include "str.h"
 #include "log.h"
 
 #include <sys/types.h>
@@ -35,39 +36,56 @@ int mkdirs(const char *path, mode_t mode)
   return mkdirsn(path, strlen(path), mode);
 }
 
+int emkdirs(const char *path, mode_t mode)
+{
+  if (mkdirs(path, mode) == -1)
+    return WHYF_perror("mkdirs(%s,%o)", alloca_str_toprint(path), mode);
+  return 0;
+}
+
+int emkdirsn(const char *path, size_t len, mode_t mode)
+{
+  if (mkdirsn(path, len, mode) == -1)
+    return WHYF_perror("mkdirsn(%s,%lu,%o)", alloca_toprint(-1, path, len), (unsigned long)len, mode);
+  return 0;
+}
+
+/* This variant must not log anything, because it is used by the logging subsystem itself!
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 int mkdirsn(const char *path, size_t len, mode_t mode)
 {
   if (len == 0)
-    return WHY("Bug: empty path");
-  char *pathfrag = alloca(len + 1);
-  strncpy(pathfrag, path, len);
-  pathfrag[len] = '\0';
-  if (mkdir(pathfrag, mode) != -1)
-    return 0;
-  if (errno == EEXIST) {
-    DIR *d = opendir(pathfrag);
-    if (!d) {
-      WHY_perror("opendir");
-      return WHYF("cannot access %s", pathfrag);
-    }
-    closedir(d);
-    return 0;
-  }
-  if (errno == ENOENT) {
-    const char *lastsep = path + len - 1;
-    while (lastsep != path && *--lastsep != '/')
-      ;
-    while (lastsep != path && *--lastsep == '/')
-      ;
-    if (lastsep != path) {
-      if (mkdirsn(path, lastsep - path + 1, mode) == -1)
-	return -1;
-      if (mkdir(pathfrag, mode) != -1)
+    errno = EINVAL;
+  else {
+    char *pathfrag = alloca(len + 1);
+    strncpy(pathfrag, path, len);
+    pathfrag[len] = '\0';
+    if (mkdir(pathfrag, mode) != -1)
+      return 0;
+    if (errno == EEXIST) {
+      DIR *d = opendir(pathfrag);
+      if (d) {
+	closedir(d);
 	return 0;
+      }
+    }
+    else if (errno == ENOENT) {
+      const char *lastsep = path + len - 1;
+      while (lastsep != path && *--lastsep != '/')
+	;
+      while (lastsep != path && *--lastsep == '/')
+	;
+      if (lastsep != path) {
+	if (mkdirsn(path, lastsep - path + 1, mode) == -1)
+	  return -1;
+	if (mkdir(pathfrag, mode) != -1)
+	  return 0;
+      }
     }
   }
-  WHY_perror("mkdir");
-  return WHYF("cannot mkdir %s", pathfrag);
+  return -1;
 }
 
 int urandombytes(unsigned char *buf, unsigned long long len)

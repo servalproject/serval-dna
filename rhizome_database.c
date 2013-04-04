@@ -84,7 +84,7 @@ int form_rhizome_import_path(char * buf, size_t bufsiz, const char *fmt, ...)
 int create_rhizome_datastore_dir()
 {
   if (config.debug.rhizome) DEBUGF("mkdirs(%s, 0700)", rhizome_datastore_path());
-  return mkdirs(rhizome_datastore_path(), 0700);
+  return emkdirs(rhizome_datastore_path(), 0700);
 }
 
 int create_rhizome_import_dir()
@@ -93,7 +93,7 @@ int create_rhizome_import_dir()
   if (!form_rhizome_import_path(dirname, sizeof dirname, NULL))
     return -1;
   if (config.debug.rhizome) DEBUGF("mkdirs(%s, 0700)", dirname);
-  return mkdirs(dirname, 0700);
+  return emkdirs(dirname, 0700);
 }
 
 sqlite3 *rhizome_db=NULL;
