@@ -234,10 +234,12 @@ ATOM(bool_t,                dump_config, 1, boolean,, "If true, current configur
 END_STRUCT
 
 STRUCT(log)
-STRING(256,                 file_path,      "", str_nonempty,, "Path of log file, either absolute or relative to instance directory")
-SUB_STRUCT(log_format,      file,,   full)
-SUB_STRUCT(log_format,      stderr,, important)
-SUB_STRUCT(log_format,      android,, android)
+STRING(256,                 file_directory_path, "log", str_nonempty,, "Path of directory for log files, either absolute or relative to instance directory")
+ATOM(unsigned short,        file_rotate,         12, ushort,, "Number of log files to rotate, zero means no rotation")
+ATOM(uint32_t,              file_duration,       3600, uint32_time_interval,, "Time duration of each log file")
+SUB_STRUCT(log_format,      file,,               full)
+SUB_STRUCT(log_format,      stderr,,             important)
+SUB_STRUCT(log_format,      android,,            android)
 END_STRUCT
 
 STRUCT_DEFAULT(log_format, important)

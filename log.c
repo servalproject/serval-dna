@@ -1,6 +1,6 @@
-/* 
-Serval logging.
-Copyright (C) 2012 Serval Project Inc.
+/*
+Serval DNA logging.
+Copyright 2013 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -32,6 +32,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <libgen.h>
+#include <dirent.h>
 #include <assert.h>
 
 #include "log.h"
@@ -48,47 +50,69 @@ const struct __sourceloc __whence = __NOWHERE__;
 
 #define NO_FILE ((FILE *)1)
 
+/* The _log_state structure records the persistent state associated with a single log output
+ * destination.  The state is only persistent for the lifetime of the process (eg, while the daemon
+ * is running), and is not stored anywhere else.  It is initially zerofilled.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 struct _log_state {
-
-  /* This structure is initially zerofilled. */
-
-  /* Whether the software version has been logged in the current file yet.
-  */
+  /* Whether the software version has been logged in the current file yet.  */
   bool_t version_logged;
-
   /* The time stamp of the last logged message, used to detect when the date advances so that
-  * the date can be logged.
-  */
+  * the date can be logged.  */
   struct tm last_tm;
-
-  /* Whether the current configuration has been logged in the current file yet.
-  */
+  /* Whether the current configuration has been logged in the current file yet.  */
   bool_t config_logged;
-
 };
+
+/* The _log_iterator structure is a transient structure that is used to iterate over all the
+ * supported log output destinations.  Generally, one of these is created (as an auto variable)
+ * every time a log message is generated, and destroyed immediately after the message has been sent
+ * to all the log outputs.
+ *
+ * The log iterator is controlled using various _log_iterator_xxx() functions.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+typedef struct _log_iterator {
+  const struct config_log_format *config;
+  struct _log_state *state;
+  struct timeval tv;
+  struct tm tm;
+  XPRINTF xpf;
+  time_t file_start_time;
+} _log_iterator;
 
 /* Static variables for sending log output to a file.
  *
- * The logbuf is used to accumulate log messages before the log file is open and ready for
+ * The _log_file_strbuf is used to accumulate log messages before the log file is open and ready for
  * writing.
  */
-static FILE *logfile_file = NULL;
-static void _open_log_file();
-static void _rotate_log_file();
+const char *_log_file_path;
+const char *_log_file_symlink_path;
+char _log_file_path_buf[400];
+const char *_log_symlink_path;
+char _log_symlink_path_buf[400];
+static FILE *_log_file = NULL;
+static void _open_log_file(_log_iterator *);
+static void _rotate_log_file(_log_iterator *it);
 static void _flush_log_file();
 struct _log_state state_file;
-static char _log_buf[8192];
-static struct strbuf logbuf = STRUCT_STRBUF_EMPTY;
+time_t _log_file_start_time;
+static char _log_file_buf[8192];
+static struct strbuf _log_file_strbuf = STRUCT_STRBUF_EMPTY;
 
 #ifdef ANDROID
 /* Static variables for sending log output to the Android log.
  *
- * The logbuf is used to accumulate a single log line before printing to Android's logging API.
+ * The _android_strbuf is used to accumulate a single log line before printing to Android's logging
+ * API.
  */
 #include <android/log.h>
 struct _log_state state_android;
-static char _log_buf_android[1024];
-static struct strbuf logbuf_android;
+static char _log_android_buf[1024];
+static struct strbuf _android_strbuf;
 #endif // ANDROID
 
 /* Static variables for sending log output to standard error.
@@ -98,19 +122,20 @@ struct _log_state state_stderr;
 static void _open_log_stderr();
 static void _flush_log_stderr();
 
-typedef struct _log_iterator {
-  const struct config_log_format *config;
-  struct _log_state *state;
-  struct timeval tv;
-  struct tm tm;
-  XPRINTF xpf;
-} _log_iterator;
+/* Primitive operations for _log_iterator structures.
+ */
 
 static void _log_iterator_start(_log_iterator *it)
 {
   memset(it, 0, sizeof *it);
   gettimeofday(&it->tv, NULL);
   localtime_r(&it->tv.tv_sec, &it->tm);
+}
+
+static void _log_iterator_rewind(_log_iterator *it)
+{
+  it->config = NULL;
+  it->state = NULL;
 }
 
 static void _log_iterator_advance_to_file(_log_iterator *it)
@@ -155,8 +180,8 @@ static int _log_iterator_advance(_log_iterator *it)
 static int _log_enabled(_log_iterator *it)
 {
   if (it->config == &config.log.file) {
-    _open_log_file(); // puts initial INFO message(s) at head of log file
-    if (logfile_file == NO_FILE)
+    _open_log_file(it); // puts initial INFO message(s) at head of log file
+    if (_log_file == NO_FILE)
       return 0;
   }
   else if (it->config == &config.log.stderr) {
@@ -183,17 +208,17 @@ static void _log_prefix_level(_log_iterator *it, int level)
 static void _log_prefix(_log_iterator *it, int level)
 {
   if (it->config == &config.log.file) {
-    if (strbuf_is_empty(&logbuf))
-      strbuf_init(&logbuf, _log_buf, sizeof _log_buf);
-    else if (strbuf_len(&logbuf))
-      strbuf_putc(&logbuf, '\n');
-    it->xpf = XPRINTF_STRBUF(&logbuf);
+    if (strbuf_is_empty(&_log_file_strbuf))
+      strbuf_init(&_log_file_strbuf, _log_file_buf, sizeof _log_file_buf);
+    else if (strbuf_len(&_log_file_strbuf))
+      strbuf_putc(&_log_file_strbuf, '\n');
+    it->xpf = XPRINTF_STRBUF(&_log_file_strbuf);
     _log_prefix_level(it, level);
   }
 #ifdef ANDROID
   else if (it->config == &config.log.android) {
-    strbuf_init(&logbuf_android, _log_buf_android, sizeof _log_buf_android);
-    it->xpf = XPRINTF_STRBUF(&logbuf_android);
+    strbuf_init(&_android_strbuf, _log_android_buf, sizeof _log_android_buf);
+    it->xpf = XPRINTF_STRBUF(&_android_strbuf);
   }
 #endif // ANDROID
   else if (it->config == &config.log.stderr) {
@@ -258,7 +283,7 @@ static void _log_end_line(_log_iterator *it, int level)
       case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
       default: abort();
     }
-    __android_log_print(alevel, "servald", "%s", strbuf_str(_log_buf_android));
+    __android_log_print(alevel, "servald", "%s", strbuf_str(_log_android_buf));
   }
   else
 #endif // ANDROID
@@ -353,26 +378,37 @@ static int _log_iterator_next(_log_iterator *it, int level)
   _log_end_line(it, level);
   _log_flush(it);
   while (_log_iterator_advance(it)) {
-    if (_log_enabled(it)) {
-      if (level >= it->config->level) {
-	_log_update(it);
-	_log_prefix(it, level);
-	return 1;
-      }
-      _log_flush(it);
+    if (level >= it->config->level && _log_enabled(it)) {
+      _log_update(it);
+      _log_prefix(it, level);
+      return 1;
     }
   }
   return 0;
+}
+
+static void _log_iterator_vprintf_nl(_log_iterator *it, int level, struct __sourceloc whence, const char *fmt, va_list ap)
+{
+  _log_iterator_rewind(it);
+  while (_log_iterator_next(it, level)) {
+    _log_prefix_whence(it, whence);
+    vxprintf(it->xpf, fmt, ap);
+  }
+}
+
+static void _log_iterator_printf_nl(_log_iterator *it, int level, struct __sourceloc whence, const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  _log_iterator_vprintf_nl(it, level, whence, fmt, ap);
+  va_end(ap);
 }
 
 static void _logs_vprintf_nl(int level, struct __sourceloc whence, const char *fmt, va_list ap)
 {
   _log_iterator it;
   _log_iterator_start(&it);
-  while (_log_iterator_next(&it, level)) {
-    _log_prefix_whence(&it, whence);
-    _log_vprintf_nl(&it, level, fmt, ap);
-  }
+  _log_iterator_vprintf_nl(&it, level, whence, fmt, ap);
 }
 
 static void _logs_printf_nl(int level, struct __sourceloc whence, const char *fmt, ...)
@@ -383,64 +419,179 @@ static void _logs_printf_nl(int level, struct __sourceloc whence, const char *fm
   va_end(ap);
 }
 
-static void _open_log_file()
+const char *log_file_directory_path()
 {
-  if (!logfile_file) {
-    const char *logpath = getenv("SERVALD_LOG_FILE");
-    if (!logpath) {
-      if (cf_limbo)
-	return;
-      logpath = config.log.file_path;
-    }
-    if (!logpath || !logpath[0]) {
-      logfile_file = NO_FILE;
-      if (serverMode)
-	_logs_printf_nl(LOG_LEVEL_INFO, __NOWHERE__, "No logfile_file configured");
-    } else {
-      char path[1024];
-      if (!FORM_SERVAL_INSTANCE_PATH(path, logpath)) {
-	logfile_file = NO_FILE;
-	_logs_printf_nl(LOG_LEVEL_WARN, __NOWHERE__, "Logfile path overrun");
-      } else if ((logfile_file = fopen(path, "a"))) {
-	setlinebuf(logfile_file);
-	memset(&state_file, 0, sizeof state_file);
-	// The first line in every log file must be the starting time stamp.  (After that, it is up
-	// to _log_update() to insert other mandatory messages in any suitable order.)
-	_log_iterator it;
-	_log_iterator_start(&it);
-	_log_iterator_advance_to_file(&it);
-	_log_current_datetime(&it, LOG_LEVEL_INFO);
-	if (serverMode)
-	  _logs_printf_nl(LOG_LEVEL_INFO, __NOWHERE__, "Logging to %s (fd %d)", path, fileno(logfile_file));
+  return config.log.file_directory_path;
+}
+
+static void _compute_file_start_time(_log_iterator *it)
+{
+  if (it->file_start_time == 0) {
+    assert(!cf_limbo);
+    assert(it->tv.tv_sec != 0);
+    it->file_start_time = it->tv.tv_sec;
+    if (config.log.file_duration)
+      it->file_start_time -= it->file_start_time % config.log.file_duration;
+  }
+}
+
+static void _open_log_file(_log_iterator *it)
+{
+  assert(it->state == &state_file);
+  if (_log_file != NO_FILE) {
+    if (_log_file_path == NULL)
+      _log_file_path = getenv("SERVALD_LOG_FILE");
+    if (_log_file_path == NULL && !cf_limbo) {
+      strbuf sbfile = strbuf_local(_log_file_path_buf, sizeof _log_file_path_buf);
+      strbuf_path_join(sbfile, serval_instancepath(), log_file_directory_path(), NULL);
+      _compute_file_start_time(it);
+      struct tm tm;
+      (void)localtime_r(&it->file_start_time, &tm);
+      strbuf_append_strftime(sbfile, "/serval-%Y%m%d%H%M%S.log", &tm);
+      if (strbuf_overrun(sbfile)) {
+	_log_file = NO_FILE;
+	_logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot form log file name - buffer overrun");
+	_log_symlink_path = NULL;
       } else {
-	logfile_file = NO_FILE;
-	_logs_printf_nl(LOG_LEVEL_WARN, __NOWHERE__, "Cannot append to %s - %s [errno=%d]", path, strerror(errno), errno);
+	_log_file_start_time = it->file_start_time;
+	_log_file_path = strbuf_str(sbfile);
+	strbuf sbsymlink = strbuf_local(_log_symlink_path_buf, sizeof _log_symlink_path_buf);
+	strbuf_path_join(sbsymlink, serval_instancepath(), "serval.log", NULL);
+	if (strbuf_overrun(sbsymlink)) {
+	  _logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot form log symlink name - buffer overrun");
+	  _log_symlink_path = NULL;
+	} else {
+	  _log_symlink_path = strbuf_str(sbsymlink);
+	}
+      }
+    }
+    if (!_log_file) {
+      if (_log_file_path == NULL) {
+	if (cf_limbo)
+	  return;
+	_log_file = NO_FILE;
+	_logs_printf_nl(serverMode ? LOG_LEVEL_WARN : LOG_LEVEL_INFO, __NOWHERE__, "No log file configured");
+      } else {
+	// Create the new log file.
+	const char *dir = dirname(strdupa(_log_file_path));
+	if (mkdirs(dir, 0700) != -1 && (_log_file = fopen(_log_file_path, "a"))) {
+	  setlinebuf(_log_file);
+	  memset(it->state, 0, sizeof it->state);
+	  // The first line in every log file must be the starting time stamp.  (After that, it is up
+	  // to _log_update() to insert other mandatory messages in any suitable order.)
+	  _log_current_datetime(it, LOG_LEVEL_INFO);
+	  _logs_printf_nl(LOG_LEVEL_INFO, __NOWHERE__, "Logging to %s (fd %d)", _log_file_path, fileno(_log_file));
+	  // Update the log symlink to point to the latest log file.
+	  const char *f = _log_file_path;
+	  const char *s = _log_symlink_path;
+	  const char *relpath = f;
+	  for (; *f && *f == *s; ++f, ++s)
+	    if (*f == '/')
+	      relpath = f;
+	  while (*relpath == '/')
+	    ++relpath;
+	  while (*s == '/')
+	    ++s;
+	  if (strchr(s, '/'))
+	    relpath = _log_file_path;
+	  if (_log_symlink_path) {
+	    unlink(_log_symlink_path);
+	    if (symlink(relpath, _log_symlink_path) == -1)
+	      _logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot symlink %s to %s - %s [errno=%d]", _log_symlink_path, relpath, strerror(errno), errno);
+	  }
+	  // Expire old log files.
+	  size_t pathsiz = strlen(_log_file_path) + 1;
+	  char path[pathsiz];
+	  while (1) {
+	    strcpy(path, _log_file_path);
+	    const char *base = basename(path); // modifies path[]
+	    DIR *d = opendir(dir);
+	    if (!d) {
+	      _logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot expire log files: opendir(%s) - %s [errno=%d]", dir, strerror(errno), errno);
+	      break;
+	    }
+	    struct dirent oldest;
+	    memset(&oldest, 0, sizeof oldest);
+	    unsigned count = 0;
+	    while (1) {
+	      struct dirent ent;
+	      struct dirent *ep;
+	      int err = readdir_r(d, &ent, &ep);
+	      if (err) {
+		_logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot expire log files: r_readdir(%s) - %s [errno=%d]", dir, strerror(err), err);
+		break;
+	      }
+	      if (!ep)
+		break;
+	      const char *e;
+	      if (   str_startswith(ent.d_name, "serval-", &e)
+		  && isdigit(e[0]) && isdigit(e[1]) && isdigit(e[2]) && isdigit(e[3]) // YYYY
+		  && isdigit(e[4]) && isdigit(e[5]) // MM
+		  && isdigit(e[6]) && isdigit(e[7]) // DD
+		  && isdigit(e[8]) && isdigit(e[9]) // HH
+		  && isdigit(e[10]) && isdigit(e[11]) // MM
+		  && isdigit(e[12]) && isdigit(e[13]) // SS
+		  && strcmp(&e[14], ".log") == 0
+	      ) {
+		++count;
+		if ( strcmp(ent.d_name, base) != 0
+		  && (!oldest.d_name[0] || strcmp(ent.d_name, oldest.d_name) < 0)
+		)
+		  oldest = ent;
+	      }
+	    }
+	    closedir(d);
+	    if (count <= config.log.file_rotate || !oldest.d_name[0])
+	      break;
+	    strbuf b = strbuf_local(path, pathsiz);
+	    strbuf_path_join(b, dir, oldest.d_name, NULL);
+	    assert(!strbuf_overrun(b));
+	    _logs_printf_nl(LOG_LEVEL_INFO, __NOWHERE__, "Unlink %s", path);
+	    unlink(path);
+	  }
+	} else {
+	  _log_file = NO_FILE;
+	  _logs_printf_nl(LOG_LEVEL_WARN, __HERE__, "Cannot create/append %s - %s [errno=%d]", _log_file_path, strerror(errno), errno);
+	}
       }
     }
   }
 }
 
-static void _rotate_log_file()
+static void _rotate_log_file(_log_iterator *it)
 {
+  if (_log_file != NO_FILE && _log_file_path == _log_file_path_buf) {
+    assert(!cf_limbo);
+    if (config.log.file_duration) {
+      _compute_file_start_time(it);
+      if (it->file_start_time != _log_file_start_time) {
+	// Close the current log file, which will cause _open_log_file() to open the next one.
+	if (_log_file)
+	  fclose(_log_file);
+	_log_file = NULL;
+	_log_file_path = NULL;
+      }
+    }
+  }
 }
 
 static void _flush_log_file()
 {
-  if (logfile_file && logfile_file != NO_FILE) {
-    fprintf(logfile_file, "%s%s%s",
-	strbuf_len(&logbuf) ? strbuf_str(&logbuf) : "",
-	strbuf_len(&logbuf) ? "\n" : "",
-	strbuf_overrun(&logbuf) ? "LOG OVERRUN\n" : ""
+  if (_log_file && _log_file != NO_FILE) {
+    fprintf(_log_file, "%s%s%s",
+	strbuf_len(&_log_file_strbuf) ? strbuf_str(&_log_file_strbuf) : "",
+	strbuf_len(&_log_file_strbuf) ? "\n" : "",
+	strbuf_overrun(&_log_file_strbuf) ? "LOG OVERRUN\n" : ""
       );
-    strbuf_reset(&logbuf);
+    strbuf_reset(&_log_file_strbuf);
   }
 }
 
 void close_log_file()
 {
-  if (logfile_file && logfile_file != NO_FILE)
-    fclose(logfile_file);
-  logfile_file = NULL;
+  if (_log_file && _log_file != NO_FILE)
+    fclose(_log_file);
+  _log_file = NULL;
 }
 
 static void _open_log_stderr()
@@ -469,8 +620,8 @@ void logFlush()
 {
   _log_iterator it;
   _log_iterator_start(&it);
-  while (_log_iterator_next(&it, LOG_LEVEL_SILENT))
-    ;
+  while (_log_iterator_advance(&it))
+    _log_flush(&it);
 }
 
 void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv)
@@ -482,9 +633,9 @@ void logArgv(int level, struct __sourceloc whence, const char *label, int argc, 
     size_t len = strbuf_count(&b);
     strbuf_init(&b, alloca(len + 1), len + 1);
     strbuf_append_argv(&b, argc, argv);
-    _rotate_log_file();
     _log_iterator it;
     _log_iterator_start(&it);
+    _rotate_log_file(&it);
     while (_log_iterator_next(&it, level)) {
       _log_prefix_whence(&it, whence);
       if (label) {
@@ -499,13 +650,14 @@ void logArgv(int level, struct __sourceloc whence, const char *label, int argc, 
 void logString(int level, struct __sourceloc whence, const char *str)
 {
   if (level != LOG_LEVEL_SILENT) {
-    _rotate_log_file();
     _log_iterator it;
+    _log_iterator_start(&it);
+    _rotate_log_file(&it);
     const char *s = str;
     const char *p;
     for (p = str; *p; ++p) {
       if (*p == '\n') {
-	_log_iterator_start(&it);
+	_log_iterator_rewind(&it);
 	while (_log_iterator_next(&it, level)) {
 	  _log_prefix_whence(&it, whence);
 	  xprintf(it.xpf, "%.*s", p - s, s);
@@ -514,7 +666,7 @@ void logString(int level, struct __sourceloc whence, const char *str)
       }
     }
     if (p > s) {
-      _log_iterator_start(&it);
+      _log_iterator_rewind(&it);
       while (_log_iterator_next(&it, level)) {
 	_log_prefix_whence(&it, whence);
 	xprintf(it.xpf, "%.*s", p - s, s);
@@ -536,9 +688,9 @@ void logMessage(int level, struct __sourceloc whence, const char *fmt, ...)
 void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list ap)
 {
   if (level != LOG_LEVEL_SILENT) {
-    _rotate_log_file();
     _log_iterator it;
     _log_iterator_start(&it);
+    _rotate_log_file(&it);
     while (_log_iterator_next(&it, level)) {
       _log_prefix_whence(&it, whence);
       vxprintf(it.xpf, fmt, ap);
@@ -596,7 +748,9 @@ ssize_t get_self_executable_path(char *buf, size_t len)
 int log_backtrace(struct __sourceloc whence)
 {
 #ifndef NO_BACKTRACE
-  _rotate_log_file();
+  _log_iterator it;
+  _log_iterator_start(&it);
+  _rotate_log_file(&it);
   char execpath[MAXPATHLEN];
   if (get_self_executable_path(execpath, sizeof execpath) == -1)
     return WHY("cannot log backtrace: own executable path unknown");
@@ -648,7 +802,7 @@ int log_backtrace(struct __sourceloc whence)
   }
   // parent
   close(stdout_fds[1]);
-  _logs_printf_nl(LOG_LEVEL_DEBUG, whence, "GDB BACKTRACE");
+  _log_iterator_printf_nl(&it, LOG_LEVEL_DEBUG, whence, "GDB BACKTRACE");
   char buf[1024];
   char *const bufe = buf + sizeof buf;
   char *linep = buf;
@@ -660,14 +814,14 @@ int log_backtrace(struct __sourceloc whence)
     for (; p < readp; ++p)
       if (*p == '\n' || *p == '\0') {
 	*p = '\0';
-	_logs_printf_nl(LOG_LEVEL_DEBUG, __NOWHERE__, "%s", linep);
+	_log_iterator_printf_nl(&it, LOG_LEVEL_DEBUG, __NOWHERE__, "%s", linep);
 	linep = p + 1;
       }
     if (readp >= bufe && linep == buf) {
       // Line does not fit into buffer.
       char t = bufe[-1];
       bufe[-1] = '\0';
-      _logs_printf_nl(LOG_LEVEL_DEBUG, __NOWHERE__, "%s", buf);
+      _log_iterator_printf_nl(&it, LOG_LEVEL_DEBUG, __NOWHERE__, "%s", buf);
       buf[0] = t;
       readp = buf + 1;
     } else if (readp + 120 >= bufe && linep != buf) {
@@ -683,7 +837,7 @@ int log_backtrace(struct __sourceloc whence)
     WHY_perror("read");
   if (readp > linep) {
     *readp = '\0';
-    _logs_printf_nl(LOG_LEVEL_DEBUG, __NOWHERE__, "%s", linep);
+    _log_iterator_printf_nl(&it, LOG_LEVEL_DEBUG, __NOWHERE__, "%s", linep);
   }
   close(stdout_fds[0]);
   int status = 0;
@@ -691,7 +845,7 @@ int log_backtrace(struct __sourceloc whence)
     WHY_perror("waitpid");
   strbuf b = strbuf_local(buf, sizeof buf);
   strbuf_append_exit_status(b, status);
-  _logs_printf_nl(LOG_LEVEL_DEBUG, __NOWHERE__, "gdb %s", buf);
+  _log_iterator_printf_nl(&it, LOG_LEVEL_DEBUG, __NOWHERE__, "gdb %s", buf);
   unlink(tempfile);
 #endif
   return 0;
