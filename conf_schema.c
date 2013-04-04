@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <stdio.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -321,6 +322,78 @@ int cf_cmp_uint32_nonzero(const uint32_t *a, const uint32_t *b)
   return cf_cmp_uint32(a, b);
 }
 
+int cf_opt_uint32_time_interval(uint32_t *intp, const char *text)
+{
+  const char *t = text;
+  uint32_t seconds = 0;
+  while (*t) {
+    const char *p = t;
+    while (isdigit(*p))
+      ++p;
+    if (*p == '.' && (p != t || isdigit(p[1])))
+      for (++p; isdigit(*p); ++p)
+	;
+    if (p == t)
+      return CFINVALID;
+    const char *end = t;
+    double d = strtod(t, (char**)&end);
+    if (end != p)
+      return CFINVALID;
+    switch (*p) {
+      case 's': case 'S': ++p; break;
+      case 'm': case 'M': d *= 60; ++p; break;
+      case 'h': case 'H': d *= 60 * 60; ++p; break;
+      case 'd': case 'D': d *= 60 * 60 * 24; ++p; break;
+      case 'w': case 'W': d *= 60 * 60 * 24 * 7; ++p; break;
+      case '\0': break;
+      default: return CFINVALID;
+    }
+    if (d != floor(d))
+      return CFINVALID;
+    seconds += d;
+    t = p;
+  }
+  *intp = seconds;
+  return CFOK;
+}
+
+int cf_fmt_uint32_time_interval(const char **textp, const uint32_t *uintp)
+{
+  strbuf b = strbuf_alloca(60);
+  uint32_t seconds = *uintp;
+  if (seconds >= 7 * 24 * 60 * 60) {
+    unsigned weeks = seconds / (7 * 24 * 60 * 60);
+    seconds = seconds - weeks * (7 * 24 * 60 * 60);
+    strbuf_sprintf(b, "%uw", weeks);
+  }
+  if (seconds >= 24 * 60 * 60) {
+    unsigned days = seconds / (24 * 60 * 60);
+    seconds = seconds - days * (24 * 60 * 60);
+    strbuf_sprintf(b, "%ud", days);
+  }
+  if (seconds >= 60 * 60) {
+    unsigned hours = seconds / (60 * 60);
+    seconds = seconds - hours * (60 * 60);
+    strbuf_sprintf(b, "%uh", hours);
+  }
+  if (seconds >= 60) {
+    unsigned minutes = seconds / 60;
+    seconds = seconds - minutes * 60;
+    strbuf_sprintf(b, "%um", minutes);
+  }
+  if (seconds)
+    strbuf_sprintf(b, "%us", seconds);
+  if (strbuf_overrun(b))
+    return CFINVALID;
+  *textp = str_edup(strbuf_str(b));
+  return CFOK;
+}
+
+int cf_cmp_uint32_time_interval(const uint32_t *a, const uint32_t *b)
+{
+  return cf_cmp_uint32(a, b);
+}
+
 int cf_opt_uint64_scaled(uint64_t *intp, const char *text)
 {
   uint64_t result;
@@ -345,12 +418,13 @@ int cf_cmp_uint64_scaled(const uint64_t *a, const uint64_t *b)
   return *a < *b ? -1 : *a > *b ? 1 : 0;
 }
 
-int cf_opt_ushort_nonzero(unsigned short *ushortp, const char *text)
+int cf_opt_ushort(unsigned short *ushortp, const char *text)
 {
-  uint32_t ui;
-  if (cf_opt_uint32_nonzero(&ui, text) != CFOK || ui > 0xffff)
+  const char *end = text;
+  unsigned long value = strtoul(text, (char**)&end, 10);
+  if (end == text || *end || value > 0xffffL)
     return CFINVALID;
-  *ushortp = ui;
+  *ushortp = value;
   return CFOK;
 }
 
@@ -365,6 +439,15 @@ int cf_fmt_ushort(const char **textp, const unsigned short *ushortp)
 int cf_cmp_ushort(const unsigned short *a, const unsigned short *b)
 {
   return *a < *b ? -1 : *a > *b ? 1 : 0;
+}
+
+int cf_opt_ushort_nonzero(unsigned short *ushortp, const char *text)
+{
+  unsigned short value;
+  if (cf_opt_ushort(&value, text) != CFOK || value == 0)
+    return CFINVALID;
+  *ushortp = value;
+  return CFOK;
 }
 
 int cf_fmt_ushort_nonzero(const char **textp, const unsigned short *ushortp)
