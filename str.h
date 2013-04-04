@@ -93,6 +93,35 @@ size_t str_fromprint(unsigned char *dst, const char *src);
  */
 const char *strnchr(const char *s, size_t n, char c);
 
+/* Like strchr(3) and strrchr(3), but returns the index into the string instead of a pointer, or -1
+ * if the character is not found.  The '_dfl' variants take a third argument that gives the default
+ * value to return if the character is not found.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+
+__STR_INLINE ssize_t str_index_dfl(const char *s, char c, ssize_t dfl)
+{
+  const char *r = strchr(s, c);
+  return r ? r - s : dfl;
+}
+
+__STR_INLINE ssize_t str_rindex_dfl(const char *s, char c, ssize_t dfl)
+{
+  const char *r = strrchr(s, c);
+  return r ? r - s : dfl;
+}
+
+__STR_INLINE ssize_t str_index(const char *s, char c)
+{
+  return str_index_dfl(s, c, -1);
+}
+
+__STR_INLINE ssize_t str_rindex(const char *s, char c)
+{
+  return str_rindex_dfl(s, c, -1);
+}
+
 /* Check if a given nul-terminated string 'str' starts with a given nul-terminated sub-string.  If
  * so, return 1 and, if afterp is not NULL, set *afterp to point to the character in 'str'
  * immediately following the substring.  Otherwise return 0.
