@@ -231,8 +231,8 @@ strbuf strbuf_reset(strbuf sb);
  * truncating if necessary to avoid buffer overrun, and terminating with a nul
  * which is not counted in the maximum.  Return a pointer to the strbuf so that
  * concatenations can be chained in a single line: eg,
- * strbuf_ncat(strbuf_ncat(sb, "abc", 1), "bcd", 2) gives a strbuf containing
- * "abc";
+ * strbuf_ncat(strbuf_ncat(sb, "abc", 1), "def", 2) gives a strbuf containing
+ * "ade";
  *
  * After these operations:
  *      n = strbuf_len(sb);
@@ -396,7 +396,8 @@ __STRBUF_INLINE size_t strbuf_is_empty(const_strbuf sb) {
 }
 
 
-/** Return the size of the backing buffer.
+/** Return the size of the backing buffer.  Return -1 if the buffer is of
+ * undefined size.
  *
  * This is the same as the 'size' argument passed to the most recent
  * strbuf_init().
@@ -419,6 +420,17 @@ __STRBUF_INLINE size_t strbuf_len(const_strbuf sb) {
   return strbuf_end(sb) - sb->start;
 }
 
+
+/** Return remaining space in the strbuf, not counting the terminating nul.  Return
+ * the maximum possible size_t value if the strbuf is of undefined size.
+ *
+ * Invariant: strbuf_size(sb) == -1 || strbuf_remaining(sb) == strbuf_size(sb) - strbuf_len(sb)
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+__STRBUF_INLINE size_t strbuf_remaining(const_strbuf sb) {
+  return sb->end ? sb->end - strbuf_end(sb) : ~(size_t)0;
+}
 
 /** Return the number of chars appended to the strbuf so far, not counting the
  * terminating nul.
