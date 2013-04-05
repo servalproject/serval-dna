@@ -37,6 +37,9 @@ teardown() {
 # Called by start_servald_instances for each instance.
 configure_servald_server() {
    executeOk_servald config \
+      set log.console.level debug \
+      set log.console.show_pid on \
+      set log.console.show_time on \
       set debug.rhizome on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
@@ -448,6 +451,8 @@ setup_direct() {
    get_rhizome_server_port PORTA +A
    set_instance +B
    executeOk_servald config \
+      set log.console.level debug \
+      set log.console.show_time on \
       set debug.rhizome on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on

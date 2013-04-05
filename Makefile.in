@@ -23,6 +23,7 @@ MONITORCLIENTSRCS=conf.c \
         conf_schema.c \
 	dataformats.c \
 	log.c \
+        xprintf.c \
 	os.c \
 	mem.c \
 	monitor-client.c \
@@ -40,6 +41,7 @@ MDPCLIENTSRCS=conf.c \
 	os.c \
 	mem.c \
 	log.c \
+        xprintf.c \
 	mdp_client.c \
         instance.c \
 	net.c \

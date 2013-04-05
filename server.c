@@ -140,7 +140,7 @@ int server(char *backing_file)
  */
 void server_config_reload(struct sched_ent *alarm)
 {
-  switch (cf_reload()) {
+  switch (cf_reload_strict()) {
   case -1:
     WARN("server continuing with prior config");
     break;

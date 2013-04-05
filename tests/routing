@@ -39,8 +39,8 @@ start_routing_instance() {
       set server.interface_path "$SERVALD_VAR" \
       set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
       set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
-      set log.show_pid on \
-      set log.show_time on \
+      set log.console.show_pid on \
+      set log.console.show_time on \
       set debug.mdprequests Yes \
       set rhizome.enable no
    start_servald_server

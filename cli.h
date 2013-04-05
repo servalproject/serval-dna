@@ -31,9 +31,7 @@ struct cli_schema {
   int (*function)(const struct cli_parsed *parsed, void *context);
   const char *words[COMMAND_LINE_MAX_LABELS];
   unsigned long long flags;
-#define CLIFLAG_NONOVERLAY          (1<<0) /* Uses a legacy IPv4 DNA call instead of overlay mnetwork */
-#define CLIFLAG_STANDALONE          (1<<1) /* Cannot be issued to a running instance */
-#define CLIFLAG_PERMISSIVE_CONFIG   (1<<2) /* No error on bad configuration file */
+#define CLIFLAG_PERMISSIVE_CONFIG   (1<<0) /* Accept defective configuration file */
   const char *description; // describe this invocation
 };
 

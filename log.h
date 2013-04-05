@@ -25,12 +25,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/types.h>
 #include <errno.h>
 
-#define LOG_LEVEL_SILENT    (-1)
-#define LOG_LEVEL_DEBUG     (0)
-#define LOG_LEVEL_INFO      (1)
-#define LOG_LEVEL_WARN      (2)
-#define LOG_LEVEL_ERROR     (3)
-#define LOG_LEVEL_FATAL     (4)
+#define LOG_LEVEL_INVALID   (-1)
+#define LOG_LEVEL_SILENT    (0)
+#define LOG_LEVEL_DEBUG     (1)
+#define LOG_LEVEL_INFO      (2)
+#define LOG_LEVEL_WARN      (3)
+#define LOG_LEVEL_ERROR     (4)
+#define LOG_LEVEL_FATAL     (5)
+#define LOG_LEVEL_NONE      (127)
+
+const char *log_level_as_string(int level);
+int string_to_log_level(const char *text);
 
 /*
  * Every log message identifies the location in the source code at which the
@@ -86,21 +91,21 @@ extern const struct __sourceloc __whence; // see above
 
 extern int serverMode;
 
-void set_logging(FILE *f);
-FILE *open_logging();
-void close_logging();
+const char *log_file_directory_path();
+int create_log_file_directory();
+
+void close_log_file();
+void disable_log_stderr();
 void logFlush();
 void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv);
 void logString(int level, struct __sourceloc whence, const char *str);
 void logMessage(int level, struct __sourceloc whence, const char *fmt, ...);
 void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list);
-void logVersion();
-void logDebugFlags();
+void logConfigChanged();
 int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len);
 ssize_t get_self_executable_path(char *buf, size_t len);
 int log_backtrace(struct __sourceloc whence);
 struct strbuf;
-void set_log_implementation(void (*log_function)(int level, struct strbuf *buf));
 
 #define __HERE__            ((struct __sourceloc){ .file = __FILE__, .line = __LINE__, .function = __FUNCTION__ })
 #define __NOWHERE__         ((struct __sourceloc){ .file = NULL, .line = 0, .function = NULL })

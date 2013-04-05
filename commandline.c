@@ -34,6 +34,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifdef HAVE_JNI_H
 #include <jni.h>
 #endif
+#include <assert.h>
 #include "serval.h"
 #include "conf.h"
 #include "rhizome.h"
@@ -230,7 +231,7 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
     else {
       strbuf b = strbuf_alloca(160);
       strbuf_append_argv(b, argc, args);
-      result = WHYF("configuration unavailable, not running command: %s", strbuf_str(b));
+      result = WHYF("configuration defective, not running command: %s", strbuf_str(b));
     }
   } else {
     // Load configuration so that "unsupported command" log message can get out
@@ -494,6 +495,20 @@ int app_echo(const struct cli_parsed *parsed, void *context)
       cli_puts(arg);
     cli_delim(NULL);
   }
+  return 0;
+}
+
+int app_log(const struct cli_parsed *parsed, void *context)
+{
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  assert(parsed->argc == 3);
+  const char *lvl = parsed->args[1];
+  const char *msg = parsed->args[2];
+  int level = string_to_log_level(lvl);
+  if (level == LOG_LEVEL_INVALID)
+    return WHYF("invalid log level: %s", lvl);
+  logMessage(level, __NOWHERE__, "%s", msg);
   return 0;
 }
 
@@ -763,10 +778,12 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
 	    exit(WHY_perror("fork"));
 	  case 0: {
 	    /* Grandchild process.  Close logfile (so that it gets re-opened again on demand, with
-	       our own file pointer), disconnect from current directory, disconnect standard I/O
-	       streams, and start a new process session so that if we are being started by an adb
-	       shell session, then we don't receive a SIGHUP when the adb shell process ends.  */
-	    close_logging();
+	       our own file pointer), disable logging to stderr (about to get closed), disconnect
+	       from current directory, disconnect standard I/O streams, and start a new process
+	       session so that if we are being started by an adb shell session on an Android device,
+	       then we don't receive a SIGHUP when the adb shell process ends.  */
+	    close_log_file();
+	    disable_log_stderr();
 	    int fd;
 	    if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
 	      _exit(WHY_perror("open(\"/dev/null\")"));
@@ -789,6 +806,7 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
 	    /* Need the cast on Solaris because it defines NULL as 0L and gcc doesn't see it as a
 	       sentinal. */
 	      execl(execpath, execpath, "start", "foreground", (void *)NULL);
+	      WHYF_perror("execl(%s,\"start\",\"foreground\")", alloca_str_toprint(execpath));
 	      _exit(-1);
 	    }
 	    _exit(server(NULL));
@@ -2333,42 +2351,33 @@ int app_network_scan(const struct cli_parsed *parsed, void *context)
   return mdp.error.error;
 }
 
-/* NULL marks ends of command structure.
-   "<anystring>" marks an arg that can take any value.
-   "[<anystring>]" marks an optional arg that can take any value.
-   All args following the first optional arg are optional, whether marked or not.
-   Only exactly matching prototypes will be used.
-   Together with the description, this makes it easy for us to auto-generate the
-   list of valid command line formats for display to the user if they try an
-   invalid one.  It also means we can do away with getopt() etc.
-
-   The CLIFLAG_STANDALONE means that they cannot be used with a running servald
-   instance, but act as an instance.  In other words, don't call these from the
-   serval frontend, e.g, Java application on Android.  There are various reasons,
-   such as some will try to fork() and exec() (bad for a Java thread to do), while
-   others manipulate files that the running instance may be using.
-
-   Keep this list alphabetically sorted for user convenience.
+/* See cli_parse() for details of command specification syntax.
 */
 #define KEYRING_PIN_OPTIONS ,"[--keyring-pin=<pin>]","[--entry-pin=<pin>]..."
 struct cli_schema command_line_options[]={
-  {app_dna_lookup,{"dna","lookup","<did>","[<timeout>]",NULL},0,
-   "Lookup the SIP/MDP address of the supplied telephone number (DID)."},
   {commandline_usage,{"help","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display command usage."},
-  {app_echo,{"echo","[-e]","[--]","...",NULL},CLIFLAG_STANDALONE,
+  {app_echo,{"echo","[-e]","[--]","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Output the supplied string."},
-  {app_server_start,{"start",NULL},CLIFLAG_STANDALONE,
+  {app_log,{"log","debug","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
+   "Log the supplied message at DEBUG level."},
+  {app_log,{"log","info","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
+   "Log the supplied message at INFO level."},
+  {app_log,{"log","warn","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
+   "Log the supplied message at WARN level."},
+  {app_log,{"log","error","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
+   "Log the supplied message at ERROR level."},
+  {app_server_start,{"start",NULL}, 0,
    "Start Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
-  {app_server_start,{"start","in","<instance path>",NULL},CLIFLAG_STANDALONE,
+  {app_server_start,{"start","in","<instance path>",NULL}, 0,
    "Start Serval Mesh node process with given instance path."},
-  {app_server_start,{"start","exec","<exec path>",NULL},CLIFLAG_STANDALONE,
+  {app_server_start,{"start","exec","<exec path>",NULL}, 0,
    "Start Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
-  {app_server_start,{"start","exec","<exec path>","in","<instance path>",NULL},CLIFLAG_STANDALONE,
+  {app_server_start,{"start","exec","<exec path>","in","<instance path>",NULL}, 0,
    "Start Serval Mesh node process with given instance path."},
-  {app_server_start,{"start","foreground",NULL},CLIFLAG_STANDALONE,
+  {app_server_start,{"start","foreground",NULL}, 0,
    "Start Serval Mesh node process without detatching from foreground."},
-  {app_server_start,{"start","foreground","in","<instance path>",NULL},CLIFLAG_STANDALONE,
+  {app_server_start,{"start","foreground","in","<instance path>",NULL}, 0,
    "Start Serval Mesh node process with given instance path, without detatching from foreground."},
   {app_server_stop,{"stop",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Stop a running Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
@@ -2376,99 +2385,101 @@ struct cli_schema command_line_options[]={
    "Stop a running Serval Mesh node process with given instance path."},
   {app_server_status,{"status",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display information about any running Serval Mesh node."},
-  {app_mdp_ping,{"mdp","ping","<SID|broadcast>","[<count>]",NULL},0,
+  {app_mdp_ping,{"mdp","ping","<SID|broadcast>","[<count>]",NULL}, 0,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
-  {app_trace,{"mdp","trace","<SID>",NULL},0,
+  {app_trace,{"mdp","trace","<SID>",NULL}, 0,
    "Trace through the network to the specified node via MDP."},
-  {app_config_schema,{"config","schema",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
+  {app_config_schema,{"config","schema",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display configuration schema."},
-  {app_config_dump,{"config","dump","[--full]",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
+  {app_config_dump,{"config","dump","[--full]",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Dump configuration settings."},
-  {app_config_set,{"config","set","<variable>","<value>","...",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
+  {app_config_set,{"config","set","<variable>","<value>","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Set and del specified configuration variables."},
-  {app_config_set,{"config","del","<variable>","...",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
+  {app_config_set,{"config","del","<variable>","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Del and set specified configuration variables."},
-  {app_config_get,{"config","get","[<variable>]",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
+  {app_config_get,{"config","get","[<variable>]",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Get specified configuration variable."},
-  {app_vomp_console,{"console",NULL},0,
+  {app_vomp_console,{"console",NULL}, 0,
     "Test phone call life-cycle from the console"},
-  {app_rhizome_append_manifest, {"rhizome", "append", "manifest", "<filepath>", "<manifestpath>", NULL}, CLIFLAG_STANDALONE,
+  {app_rhizome_append_manifest, {"rhizome", "append", "manifest", "<filepath>", "<manifestpath>", NULL}, 0,
     "Append a manifest to the end of the file it belongs to."},
-  {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL}, 0,
    "Compute the Rhizome hash of a file"},
-  {app_rhizome_add_file,{"rhizome","add","file" KEYRING_PIN_OPTIONS,"<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_add_file,{"rhizome","add","file" KEYRING_PIN_OPTIONS,"<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]",NULL}, 0,
    "Add a file to Rhizome and optionally write its manifest to the given path"},
-  {app_rhizome_import_bundle,{"rhizome","import","bundle","<filepath>","<manifestpath>",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_import_bundle,{"rhizome","import","bundle","<filepath>","<manifestpath>",NULL}, 0,
    "Import a payload/manifest pair into Rhizome"},
   {app_rhizome_list,{"rhizome","list" KEYRING_PIN_OPTIONS,
-	"[<service>]","[<name>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
+	"[<service>]","[<name>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL}, 0,
 	"List all manifests and files in Rhizome"},
   {app_rhizome_extract,{"rhizome","export","bundle" KEYRING_PIN_OPTIONS,
-	"<manifestid>","[<manifestpath>]","[<filepath>]",NULL},CLIFLAG_STANDALONE,
+	"<manifestid>","[<manifestpath>]","[<filepath>]",NULL}, 0,
 	"Export a manifest and payload file to the given paths, without decrypting."},
   {app_rhizome_extract,{"rhizome","export","manifest" KEYRING_PIN_OPTIONS,
-	"<manifestid>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
+	"<manifestid>","[<manifestpath>]",NULL}, 0,
 	"Export a manifest from Rhizome and write it to the given path"},
-  {app_rhizome_export_file,{"rhizome","export","file","<fileid>","[<filepath>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_export_file,{"rhizome","export","file","<fileid>","[<filepath>]",NULL}, 0,
 	"Export a file from Rhizome and write it to the given path without attempting decryption"},
   {app_rhizome_extract,{"rhizome","extract","bundle" KEYRING_PIN_OPTIONS,
-	"<manifestid>","[<manifestpath>]","[<filepath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
+	"<manifestid>","[<manifestpath>]","[<filepath>]","[<bsk>]",NULL}, 0,
 	"Extract and decrypt a manifest and file to the given paths."},
   {app_rhizome_extract,{"rhizome","extract","file" KEYRING_PIN_OPTIONS,
-	"<manifestid>","[<filepath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
+	"<manifestid>","[<filepath>]","[<bsk>]",NULL}, 0,
         "Extract and decrypt a file from Rhizome and write it to the given path"},
   {app_rhizome_delete,{"rhizome","delete","\\manifest",
-	"<manifestid>",NULL},CLIFLAG_STANDALONE,
+	"<manifestid>",NULL}, 0,
 	"Remove the manifest for the given bundle from the Rhizome store"},
   {app_rhizome_delete,{"rhizome","delete","\\payload",
-	"<manifestid>",NULL},CLIFLAG_STANDALONE,
+	"<manifestid>",NULL}, 0,
 	"Remove the payload for the given bundle from the Rhizome store"},
   {app_rhizome_delete,{"rhizome","delete","\\bundle",
-	"<manifestid>",NULL},CLIFLAG_STANDALONE,
+	"<manifestid>",NULL}, 0,
 	"Remove the manifest and payload for the given bundle from the Rhizome store"},
   {app_rhizome_delete,{"rhizome","delete","\\file",
-	"<fileid>",NULL},CLIFLAG_STANDALONE,
+	"<fileid>",NULL}, 0,
 	"Remove the file with the given hash from the Rhizome store"},
-  {app_rhizome_direct_sync,{"rhizome","direct","sync","[<url>]",NULL}, CLIFLAG_STANDALONE,
+  {app_rhizome_direct_sync,{"rhizome","direct","sync","[<url>]",NULL}, 0,
 	"Synchronise with the specified Rhizome Direct server. Return when done."},
-  {app_rhizome_direct_sync,{"rhizome","direct","push","[<url>]",NULL}, CLIFLAG_STANDALONE,
+  {app_rhizome_direct_sync,{"rhizome","direct","push","[<url>]",NULL}, 0,
 	"Deliver all new content to the specified Rhizome Direct server. Return when done."},
-  {app_rhizome_direct_sync,{"rhizome","direct","pull","[<url>]",NULL}, CLIFLAG_STANDALONE,
+  {app_rhizome_direct_sync,{"rhizome","direct","pull","[<url>]",NULL}, 0,
 	"Fetch all new content from the specified Rhizome Direct server. Return when done."},
-  {app_rhizome_clean,{"rhizome","clean",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_clean,{"rhizome","clean",NULL}, 0,
 	"Remove stale and orphaned content from the Rhizome store"},
-  {app_keyring_create,{"keyring","create",NULL},0,
+  {app_keyring_create,{"keyring","create",NULL}, 0,
    "Create a new keyring file."},
-  {app_keyring_list,{"keyring","list" KEYRING_PIN_OPTIONS,NULL},CLIFLAG_STANDALONE,
+  {app_keyring_list,{"keyring","list" KEYRING_PIN_OPTIONS,NULL}, 0,
    "List identites in specified key ring that can be accessed using the specified PINs"},
-  {app_keyring_add,{"keyring","add" KEYRING_PIN_OPTIONS,"[<pin>]",NULL},CLIFLAG_STANDALONE,
+  {app_keyring_add,{"keyring","add" KEYRING_PIN_OPTIONS,"[<pin>]",NULL}, 0,
    "Create a new identity in the keyring protected by the provided PIN"},
-  {app_keyring_set_did,{"keyring", "set","did" KEYRING_PIN_OPTIONS,"<sid>","<did>","<name>",NULL},CLIFLAG_STANDALONE,
+  {app_keyring_set_did,{"keyring", "set","did" KEYRING_PIN_OPTIONS,"<sid>","<did>","<name>",NULL}, 0,
    "Set the DID for the specified SID.  Optionally supply PIN to unlock the SID record in the keyring."},
-  {app_id_self,{"id","self",NULL},0,
+  {app_id_self,{"id","self",NULL}, 0,
    "Return my own identity(s) as URIs"},
-  {app_id_self,{"id","peers",NULL},0,
+  {app_id_self,{"id","peers",NULL}, 0,
    "Return identity of known routable peers as URIs"},
-  {app_id_self,{"id","allpeers",NULL},0,
+  {app_id_self,{"id","allpeers",NULL}, 0,
    "Return identity of all known peers as URIs"},
-  {app_route_print, {"route","print",NULL},0,
+  {app_route_print, {"route","print",NULL}, 0,
   "Print the routing table"},
-  {app_network_scan, {"scan","[<address>]",NULL},0,
+  {app_network_scan, {"scan","[<address>]",NULL}, 0,
     "Scan the network for serval peers. If no argument is supplied, all local addresses will be scanned."},
-  {app_node_info,{"node","info","<sid>",NULL},0,
+  {app_node_info,{"node","info","<sid>",NULL}, 0,
    "Return routing information about a SID"},
-  {app_count_peers,{"peer","count",NULL},0,
+  {app_count_peers,{"peer","count",NULL}, 0,
     "Return a count of routable peers on the network"},
+  {app_dna_lookup,{"dna","lookup","<did>","[<timeout>]",NULL}, 0,
+   "Lookup the subscribers (SID) with the supplied telephone number (DID)."},
   {app_reverse_lookup, {"reverse", "lookup", "<sid>", "[<timeout>]", NULL}, 0,
-    "Lookup the phone number and name of a given subscriber"},
-  {app_monitor_cli,{"monitor",NULL},0,
+    "Lookup the phone number (DID) and name of a given subscriber (SID)"},
+  {app_monitor_cli,{"monitor",NULL}, 0,
    "Interactive servald monitor interface."},
-  {app_crypt_test,{"test","crypt",NULL},0,
+  {app_crypt_test,{"test","crypt",NULL}, 0,
    "Run cryptography speed test"},
-  {app_slip_test,{"test","slip",NULL},0,
+  {app_slip_test,{"test","slip",NULL}, 0,
    "Run serial encapsulation test"},
 #ifdef HAVE_VOIPTEST
-  {app_pa_phone,{"phone",NULL},0,
+  {app_pa_phone,{"phone",NULL}, 0,
    "Run phone test application"},
 #endif
   {NULL,{NULL}}
