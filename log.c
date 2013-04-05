@@ -444,6 +444,7 @@ static void _open_log_file(_log_iterator *it)
   if (_log_file != NO_FILE) {
     if (_log_file_path == NULL)
       _log_file_path = getenv("SERVALD_LOG_FILE");
+    _log_symlink_path = NULL;
     if (_log_file_path == NULL && !cf_limbo) {
       strbuf sbfile = strbuf_local(_log_file_path_buf, sizeof _log_file_path_buf);
       strbuf_path_join(sbfile, serval_instancepath(), log_file_directory_path(), NULL);
@@ -454,18 +455,15 @@ static void _open_log_file(_log_iterator *it)
       if (strbuf_overrun(sbfile)) {
 	_log_file = NO_FILE;
 	_logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot form log file name - buffer overrun");
-	_log_symlink_path = NULL;
       } else {
 	_log_file_start_time = it->file_start_time;
 	_log_file_path = strbuf_str(sbfile);
 	strbuf sbsymlink = strbuf_local(_log_symlink_path_buf, sizeof _log_symlink_path_buf);
 	strbuf_path_join(sbsymlink, serval_instancepath(), "serval.log", NULL);
-	if (strbuf_overrun(sbsymlink)) {
+	if (strbuf_overrun(sbsymlink))
 	  _logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot form log symlink name - buffer overrun");
-	  _log_symlink_path = NULL;
-	} else {
+	else
 	  _log_symlink_path = strbuf_str(sbsymlink);
-	}
       }
     }
     if (!_log_file) {
@@ -485,19 +483,19 @@ static void _open_log_file(_log_iterator *it)
 	  _log_current_datetime(it, LOG_LEVEL_INFO);
 	  _logs_printf_nl(LOG_LEVEL_INFO, __NOWHERE__, "Logging to %s (fd %d)", _log_file_path, fileno(_log_file));
 	  // Update the log symlink to point to the latest log file.
-	  const char *f = _log_file_path;
-	  const char *s = _log_symlink_path;
-	  const char *relpath = f;
-	  for (; *f && *f == *s; ++f, ++s)
-	    if (*f == '/')
-	      relpath = f;
-	  while (*relpath == '/')
-	    ++relpath;
-	  while (*s == '/')
-	    ++s;
-	  if (strchr(s, '/'))
-	    relpath = _log_file_path;
 	  if (_log_symlink_path) {
+	    const char *f = _log_file_path;
+	    const char *s = _log_symlink_path;
+	    const char *relpath = f;
+	    for (; *f && *f == *s; ++f, ++s)
+	      if (*f == '/')
+		relpath = f;
+	    while (*relpath == '/')
+	      ++relpath;
+	    while (*s == '/')
+	      ++s;
+	    if (strchr(s, '/'))
+	      relpath = _log_file_path;
 	    unlink(_log_symlink_path);
 	    if (symlink(relpath, _log_symlink_path) == -1)
 	      _logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot symlink %s to %s - %s [errno=%d]", _log_symlink_path, relpath, strerror(errno), errno);
