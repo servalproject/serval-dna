@@ -20,6 +20,7 @@
 
 source "${0%/*}/../testframework.sh"
 
+includeTests logging
 includeTests config
 includeTests keyring
 includeTests server

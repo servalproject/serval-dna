@@ -68,7 +68,7 @@ test_LogStderrConfigNone() {
 doc_LogFileDefault="By Default, all messages are appended to a configured file"
 test_LogFileDefault() {
    executeOk_servald config set log.stderr.level none
-   executeOk_servald config set log.file_path "$PWD/log.txt"
+   executeOk_servald config set log.file.path "$PWD/log.txt"
    executeOk_servald log error 'hoopla'
    assertGrep --matches=1 log.txt '^ERROR:.*hoopla$'
    executeOk_servald log warn 'buckle'
@@ -89,7 +89,7 @@ doc_LogFileConfigLevel="Configure level of messages appended to a configured fil
 test_LogFileConfigLevel() {
    executeOk_servald config set log.stderr.level none
    executeOk_servald config set log.file.level info
-   executeOk_servald config set log.file_path "$PWD/log.txt"
+   executeOk_servald config set log.file.path "$PWD/log.txt"
    executeOk_servald log warn 'buckle'
    assertGrep --matches=1 log.txt '^WARN:.*buckle$'
    executeOk_servald log debug 'eccles'
@@ -108,7 +108,7 @@ test_LogFileConfigLevel() {
 
 doc_LogFileStderrFile="Log messages to stderr and a configured file"
 test_LogFileStderrFile() {
-   executeOk_servald config set log.file_path "$PWD/log.txt"
+   executeOk_servald config set log.file.path "$PWD/log.txt"
    executeOk_servald log info 'lymph'
    assertGrep --matches=1 log.txt 'INFO:.*lymph$'
    assertStderrIs ''
@@ -128,6 +128,73 @@ test_LogFileStderrFile() {
    assertGrep --matches=1 log.txt '^WARN:.*buckle$'
    assertGrep --matches=1 log.txt 'DEBUG:.*eccles$'
    assertGrep --matches=1 log.txt '^ERROR:.*hoopla$'
+}
+
+doc_LogFileRotation="Log file rotation and deletion"
+test_LogFileRotation() {
+   executeOk_servald config \
+      set log.file.directory_path "$PWD" \
+      set log.file.rotate 3 \
+      set log.file.duration 2s
+   assert --message="no log files yet" [ $(ls *.log | wc -l) -eq 0 ]
+   executeOk_servald log info one
+   assert --message="one log file" [ $(ls *.log | wc -l) -eq 1 ]
+   log1=*.log
+   sleep 2.1
+   executeOk_servald log info two
+   assert --message="two log files" [ $(ls *.log | wc -l) -eq 2 ]
+   log2=$(ls *.log | tail -n 1)
+   assert --message="ascending log file name" [ "$log2" != "$log1" ]
+   sleep 2.1
+   executeOk_servald log info three
+   assert --message="three log files" [ $(ls *.log | wc -l) -eq 3 ]
+   log3=$(ls *.log | tail -n 1)
+   assert --message="ascending log file name" [ "$log3" != "$log1" -a "$log3" != "$log2" ]
+   sleep 2.1
+   executeOk_servald log info four
+   assert --message="three log files" [ $(ls *.log | wc -l) -eq 3 ]
+   assert --message="first log file gone" ! [ -e $log1 ]
+   log4=$(ls *.log | tail -n 1)
+   assert --message="ascending log file name" [ "$log4" != "$log2" -a "$log4" != "$log3" -a "$log4" != "$log1" ]
+}
+
+doc_LogFileDirectoryAbsolute="Absolute log file directory path"
+test_LogFileDirectoryAbsolute() {
+   executeOk_servald config \
+      set debug.verbose true \
+      set log.file.directory_path "$PWD/wakawaka"
+   executeOk_servald echo one
+   assert --message="exactly one log file" [ $(ls -d wakawaka/*.log | wc -l) -eq 1 ]
+   assertGrep wakawaka/*.log '^DEBUG:.*echo:argv\[1\]="one"$'
+}
+
+doc_LogFileDirectoryRelative="Relative log file directory path"
+test_LogFileDirectoryRelative() {
+   executeOk_servald config \
+      set debug.verbose true \
+      set log.file.directory_path "blah"
+   executeOk_servald echo one
+   assert --message="exactly one log file" [ $(ls -d  "$SERVALINSTANCE_PATH/blah/"*.log | wc -l) -eq 1 ]
+   assertGrep "$SERVALINSTANCE_PATH/blah/"*.log '^DEBUG:.*echo:argv\[1\]="one"$'
+}
+
+doc_LogFileAbsolute="Absolute log file path"
+test_LogFileAbsolute() {
+   executeOk_servald config \
+      set debug.verbose true \
+      set log.file.path "$PWD/log.txt"
+   executeOk_servald echo one
+   assertGrep log.txt '^DEBUG:.*echo:argv\[1\]="one"$'
+}
+
+doc_LogFileRelative="Relative log file path"
+test_LogFileRelative() {
+   executeOk_servald config \
+      set debug.verbose true \
+      set log.file.directory_path "$PWD" \
+      set log.file.path "log.txt"
+   executeOk_servald echo one
+   assertGrep log.txt '^DEBUG:.*echo:argv\[1\]="one"$'
 }
 
 runTests "$@"

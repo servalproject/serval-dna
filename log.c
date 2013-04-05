@@ -449,9 +449,13 @@ static void _open_log_file(_log_iterator *it)
       strbuf sbfile = strbuf_local(_log_file_path_buf, sizeof _log_file_path_buf);
       strbuf_path_join(sbfile, serval_instancepath(), log_file_directory_path(), NULL);
       _compute_file_start_time(it);
-      struct tm tm;
-      (void)localtime_r(&it->file_start_time, &tm);
-      strbuf_append_strftime(sbfile, "/serval-%Y%m%d%H%M%S.log", &tm);
+      if (config.log.file.path[0]) {
+	strbuf_path_join(sbfile, config.log.file.path, NULL);
+      } else {
+	struct tm tm;
+	(void)localtime_r(&it->file_start_time, &tm);
+	strbuf_append_strftime(sbfile, "/serval-%Y%m%d%H%M%S.log", &tm);
+      }
       if (strbuf_overrun(sbfile)) {
 	_log_file = NO_FILE;
 	_logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot form log file name - buffer overrun");
@@ -563,7 +567,7 @@ static void _rotate_log_file(_log_iterator *it)
 {
   if (_log_file != NO_FILE && _log_file_path == _log_file_path_buf) {
     assert(!cf_limbo);
-    if (config.log.file.duration) {
+    if (!config.log.file.path[0] && config.log.file.duration) {
       _compute_file_start_time(it);
       if (it->file_start_time != _log_file_start_time) {
 	// Close the current log file, which will cause _open_log_file() to open the next one.
