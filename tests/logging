@@ -40,7 +40,7 @@ test_LogStderrDefault() {
 
 doc_LogStderrConfigAll="Configure all messages logged to stderr"
 test_LogStderrConfigAll() {
-   executeOk_servald config set log.stderr.level debug
+   executeOk_servald config set log.console.level debug
    execute $servald log error 'hoopla'
    assertExitStatus '==' 0
    assertStderrGrep --matches=1 '^ERROR:.*hoopla$'
@@ -54,7 +54,7 @@ test_LogStderrConfigAll() {
 
 doc_LogStderrConfigNone="Configure no messages logged to stderr"
 test_LogStderrConfigNone() {
-   executeOk_servald config set log.stderr.level none
+   executeOk_servald config set log.console.level none
    executeOk_servald log error 'hoopla'
    assertStderrIs ''
    executeOk_servald log warn 'buckle'
@@ -67,7 +67,7 @@ test_LogStderrConfigNone() {
 
 doc_LogFileDefault="By Default, all messages are appended to a configured file"
 test_LogFileDefault() {
-   executeOk_servald config set log.stderr.level none
+   executeOk_servald config set log.console.level none
    executeOk_servald config set log.file.path "$PWD/log.txt"
    executeOk_servald log error 'hoopla'
    assertGrep --matches=1 log.txt '^ERROR:.*hoopla$'
@@ -87,7 +87,7 @@ test_LogFileDefault() {
 
 doc_LogFileConfigLevel="Configure level of messages appended to a configured file"
 test_LogFileConfigLevel() {
-   executeOk_servald config set log.stderr.level none
+   executeOk_servald config set log.console.level none
    executeOk_servald config set log.file.level info
    executeOk_servald config set log.file.path "$PWD/log.txt"
    executeOk_servald log warn 'buckle'

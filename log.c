@@ -157,7 +157,7 @@ static void _log_iterator_advance_to_android(_log_iterator *it)
 
 static void _log_iterator_advance_to_stderr(_log_iterator *it)
 {
-  it->config = &config.log.stderr;
+  it->config = &config.log.console;
   it->state = &state_stderr;
 }
 
@@ -187,7 +187,7 @@ static int _log_enabled(_log_iterator *it)
     if (_log_file == NO_FILE)
       return 0;
   }
-  else if (it->config == &config.log.stderr) {
+  else if (it->config == &config.log.console) {
     _open_log_stderr();
     if (logfile_stderr == NULL || logfile_stderr == NO_FILE)
       return 0;
@@ -224,7 +224,7 @@ static void _log_prefix(_log_iterator *it, int level)
     it->xpf = XPRINTF_STRBUF(&_android_strbuf);
   }
 #endif // ANDROID
-  else if (it->config == &config.log.stderr) {
+  else if (it->config == &config.log.console) {
     it->xpf = XPRINTF_STDIO(logfile_stderr);
     _log_prefix_level(it, level);
   }
@@ -286,11 +286,11 @@ static void _log_end_line(_log_iterator *it, int level)
       case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
       default: abort();
     }
-    __android_log_print(alevel, "servald", "%s", strbuf_str(_log_android_buf));
+    __android_log_print(alevel, "servald", "%s", _log_android_buf);
   }
   else
 #endif // ANDROID
-  if (it->config == &config.log.stderr) {
+  if (it->config == &config.log.console) {
     fputc('\n', logfile_stderr);
   }
 }
@@ -300,7 +300,7 @@ static void _log_flush(_log_iterator *it)
   if (it->config == &config_file) {
     _flush_log_file();
   }
-  else if (it->config == &config.log.stderr) {
+  else if (it->config == &config.log.console) {
     _flush_log_stderr();
   }
 }
@@ -478,7 +478,10 @@ static void _open_log_file(_log_iterator *it)
 	_logs_printf_nl(serverMode ? LOG_LEVEL_WARN : LOG_LEVEL_INFO, __NOWHERE__, "No log file configured");
       } else {
 	// Create the new log file.
-	const char *dir = dirname(strdupa(_log_file_path));
+	size_t dirsiz = strlen(_log_file_path) + 1;
+	char _dir[dirsiz];
+	strcpy(_dir, _log_file_path);
+	const char *dir = dirname(_dir); // modifies _dir[]
 	if (mkdirs(dir, 0700) != -1 && (_log_file = fopen(_log_file_path, "a"))) {
 	  setlinebuf(_log_file);
 	  memset(it->state, 0, sizeof it->state);

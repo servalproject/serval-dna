@@ -58,9 +58,9 @@ teardown() {
 
 set_server_vars() {
    executeOk_servald config \
-      set log.stderr.level debug \
-      set log.stderr.show_pid on \
-      set log.stderr.show_time on \
+      set log.console.level debug \
+      set log.console.show_pid on \
+      set log.console.show_time on \
       set mdp.iftype.wifi.tick_ms 100 \
       set rhizome.enable No \
       set debug.overlayinterfaces Yes \

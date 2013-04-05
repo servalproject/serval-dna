@@ -288,7 +288,7 @@ END_STRUCT_ASSIGN
 
 STRUCT(log)
 SUB_STRUCT(log_format_file, file,,)
-SUB_STRUCT(log_format,      stderr,,        important)
+SUB_STRUCT(log_format,      console,,       important)
 SUB_STRUCT(log_format,      android,,       android)
 END_STRUCT
 

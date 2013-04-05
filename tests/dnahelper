@@ -43,9 +43,9 @@ teardown() {
 # process in each instance.
 configure_servald_server() {
    executeOk_servald config \
-      set log.stderr.level debug \
-      set log.stderr.show_pid on \
-      set log.stderr.show_time on \
+      set log.console.level debug \
+      set log.console.show_pid on \
+      set log.console.show_time on \
       set debug.dnahelper on \
       set dna.helper.executable "$dnahelper" \
       set dna.helper.argv.1 "Hello," \
