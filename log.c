@@ -99,6 +99,7 @@ static void _open_log_file(_log_iterator *);
 static void _rotate_log_file(_log_iterator *it);
 static void _flush_log_file();
 struct _log_state state_file;
+struct config_log_format config_file;
 time_t _log_file_start_time;
 static char _log_file_buf[8192];
 static struct strbuf _log_file_strbuf = STRUCT_STRBUF_EMPTY;
@@ -140,7 +141,9 @@ static void _log_iterator_rewind(_log_iterator *it)
 
 static void _log_iterator_advance_to_file(_log_iterator *it)
 {
-  it->config = &config.log.file;
+  cf_dfl_config_log_format(&config_file);
+  cf_cpy_config_log_format(&config_file, &config.log.file);
+  it->config = &config_file;
   it->state = &state_file;
 }
 
@@ -164,7 +167,7 @@ static int _log_iterator_advance(_log_iterator *it)
     _log_iterator_advance_to_file(it);
     return 1;
   }
-  if (it->config == &config.log.file) {
+  if (it->config == &config_file) {
 #ifdef ANDROID
     _log_iterator_advance_to_android(it);
     return 1;
@@ -179,7 +182,7 @@ static int _log_iterator_advance(_log_iterator *it)
 
 static int _log_enabled(_log_iterator *it)
 {
-  if (it->config == &config.log.file) {
+  if (it->config == &config_file) {
     _open_log_file(it); // puts initial INFO message(s) at head of log file
     if (_log_file == NO_FILE)
       return 0;
@@ -207,7 +210,7 @@ static void _log_prefix_level(_log_iterator *it, int level)
 
 static void _log_prefix(_log_iterator *it, int level)
 {
-  if (it->config == &config.log.file) {
+  if (it->config == &config_file) {
     if (strbuf_is_empty(&_log_file_strbuf))
       strbuf_init(&_log_file_strbuf, _log_file_buf, sizeof _log_file_buf);
     else if (strbuf_len(&_log_file_strbuf))
@@ -294,7 +297,7 @@ static void _log_end_line(_log_iterator *it, int level)
 
 static void _log_flush(_log_iterator *it)
 {
-  if (it->config == &config.log.file) {
+  if (it->config == &config_file) {
     _flush_log_file();
   }
   else if (it->config == &config.log.stderr) {
@@ -421,7 +424,7 @@ static void _logs_printf_nl(int level, struct __sourceloc whence, const char *fm
 
 const char *log_file_directory_path()
 {
-  return config.log.file_directory_path;
+  return config.log.file.directory_path;
 }
 
 static void _compute_file_start_time(_log_iterator *it)
@@ -430,8 +433,8 @@ static void _compute_file_start_time(_log_iterator *it)
     assert(!cf_limbo);
     assert(it->tv.tv_sec != 0);
     it->file_start_time = it->tv.tv_sec;
-    if (config.log.file_duration)
-      it->file_start_time -= it->file_start_time % config.log.file_duration;
+    if (config.log.file.duration)
+      it->file_start_time -= it->file_start_time % config.log.file.duration;
   }
 }
 
@@ -541,7 +544,7 @@ static void _open_log_file(_log_iterator *it)
 	      }
 	    }
 	    closedir(d);
-	    if (count <= config.log.file_rotate || !oldest.d_name[0])
+	    if (count <= config.log.file.rotate || !oldest.d_name[0])
 	      break;
 	    strbuf b = strbuf_local(path, pathsiz);
 	    strbuf_path_join(b, dir, oldest.d_name, NULL);
@@ -562,7 +565,7 @@ static void _rotate_log_file(_log_iterator *it)
 {
   if (_log_file != NO_FILE && _log_file_path == _log_file_path_buf) {
     assert(!cf_limbo);
-    if (config.log.file_duration) {
+    if (config.log.file.duration) {
       _compute_file_start_time(it);
       if (it->file_start_time != _log_file_start_time) {
 	// Close the current log file, which will cause _open_log_file() to open the next one.

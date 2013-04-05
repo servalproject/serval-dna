@@ -40,16 +40,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define END_STRUCT \
         return CFOK; \
     }
+#define STRUCT_ASSIGN(__substructname, __structname) \
+    __attribute__((unused)) static void __cf_unused_1_##__substructname(struct config_##__substructname *s) {
+#define END_STRUCT_ASSIGN \
+    }
 #define STRUCT_DEFAULT(__name, __dfllabel) \
-    int cf_dfl_config_##__name##_cf_##__dfllabel(struct config_##__name *s) {
+    int cf_dfl_config_##__name##_cf_##__dfllabel(struct config_##__name *s) { \
+	cf_dfl_config_##__name(s);
 #define ATOM_DEFAULT(__element, __default) \
         s->__element = (__default);
 #define STRING_DEFAULT(__element, __default) \
         s->__element = (__default);
 #define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...) \
 	cf_dfl_config_##__name##_cf_##__dlflabel(&s->__element);
-#define NODE_STRUCT_DEFAULT(__name, __element, __dfllabel...) \
-	SUB_STRUCT_DEFAULT(__name, __element, ##__dfllabel)
 #define END_STRUCT_DEFAULT \
         return CFOK; \
     }
@@ -77,11 +80,70 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
+#undef STRUCT_ASSIGN
+#undef END_STRUCT_ASSIGN
 #undef STRUCT_DEFAULT
 #undef ATOM_DEFAULT
 #undef STRING_DEFAULT
 #undef SUB_STRUCT_DEFAULT
-#undef NODE_STRUCT_DEFAULT
+#undef END_STRUCT_DEFAULT
+#undef ARRAY
+#undef KEY_ATOM
+#undef KEY_STRING
+#undef VALUE_ATOM
+#undef VALUE_STRING
+#undef VALUE_NODE
+#undef VALUE_SUB_STRUCT
+#undef VALUE_NODE_STRUCT
+#undef END_ARRAY
+
+// Generate config assign function definitions, cf_cpy_config_NAME().
+#define STRUCT(__name, __validator...) \
+    __attribute__((unused)) static void __cf_unused_2_##__name(struct config_##__name *dst, const struct config_##__name *src) {
+#define END_STRUCT \
+    }
+#define STRUCT_ASSIGN(__substructname, __structname) \
+    void cf_cpy_config_##__substructname(struct config_##__substructname *dst, const struct config_##__structname *src) {
+#define NODE(__type, __element, __default, __repr, __flags, __comment) \
+        dst->__element = src->__element;
+#define ATOM(__type, __element, __default, __repr, __flags, __comment) \
+        dst->__element = src->__element;
+#define STRING(__size, __element, __default, __repr, __flags, __comment) \
+        strncpy(dst->__element, src->__element, (__size))[(__size)] = '\0';
+#define SUB_STRUCT(__name, __element, __flags, __dlflabel...) \
+        dst->__element = src->__element;
+#define NODE_STRUCT(__name, __element, __repr, __flags, __dfllabel...) \
+        dst->__element = src->__element;
+#define END_STRUCT_ASSIGN \
+    }
+#define STRUCT_DEFAULT(__name, __dfllabel)
+#define ATOM_DEFAULT(__element, __default)
+#define STRING_DEFAULT(__element, __default)
+#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
+#define END_STRUCT_DEFAULT
+#define ARRAY(__name, __flags, __validator...)
+#define KEY_ATOM(__type, __keyrepr)
+#define KEY_STRING(__strsize, __keyrepr)
+#define VALUE_ATOM(__type, __eltrepr)
+#define VALUE_STRING(__strsize, __eltrepr)
+#define VALUE_NODE(__type, __eltrepr)
+#define VALUE_SUB_STRUCT(__structname, __dfllabel...)
+#define VALUE_NODE_STRUCT(__structname, __eltrepr)
+#define END_ARRAY(__size)
+#include "conf_schema.h"
+#undef STRUCT
+#undef NODE
+#undef ATOM
+#undef STRING
+#undef SUB_STRUCT
+#undef NODE_STRUCT
+#undef END_STRUCT
+#undef STRUCT_ASSIGN
+#undef END_STRUCT_ASSIGN
+#undef STRUCT_DEFAULT
+#undef ATOM_DEFAULT
+#undef STRING_DEFAULT
+#undef SUB_STRUCT_DEFAULT
 #undef END_STRUCT_DEFAULT
 #undef ARRAY
 #undef KEY_ATOM
@@ -166,11 +228,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	result = (*validator)(node, strct, result); \
       return result; \
     }
+#define STRUCT_ASSIGN(__substructname, __structname) \
+    __attribute__((unused)) static int __cf_unused_3_##__substructname(struct config_##__substructname *strct, const struct cf_om_node *node) { \
+      int result; \
+      char used[0];
+#define END_STRUCT_ASSIGN \
+      return 0; \
+    }
 #define STRUCT_DEFAULT(__name, __dfllabel)
 #define ATOM_DEFAULT(__element, __default)
 #define STRING_DEFAULT(__element, __default)
-#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel)
-#define NODE_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
 #define END_STRUCT_DEFAULT
 #define ARRAY(__name, __flags, __validator...) \
     int cf_opt_config_##__name(struct config_##__name *array, const struct cf_om_node *node) { \
@@ -258,11 +326,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
+#undef STRUCT_ASSIGN
+#undef END_STRUCT_ASSIGN
 #undef STRUCT_DEFAULT
 #undef ATOM_DEFAULT
 #undef STRING_DEFAULT
 #undef SUB_STRUCT_DEFAULT
-#undef NODE_STRUCT_DEFAULT
 #undef END_STRUCT_DEFAULT
 #undef ARRAY
 #undef KEY_ATOM
@@ -284,11 +353,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define SUB_STRUCT(__name, __element, __flags, __dfllabel...)
 #define NODE_STRUCT(__name, __element, __repr, __flags, __dfllabel...)
 #define END_STRUCT
+#define STRUCT_ASSIGN(__substructname, __structname)
+#define END_STRUCT_ASSIGN
 #define STRUCT_DEFAULT(__name, __dfllabel)
 #define ATOM_DEFAULT(__element, __default)
 #define STRING_DEFAULT(__element, __default)
-#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel)
-#define NODE_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
 #define END_STRUCT_DEFAULT
 #define ARRAY(__name, __flags, __validator...) \
     int config_##__name##__get(const struct config_##__name *array,
@@ -322,11 +392,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
+#undef STRUCT_ASSIGN
+#undef END_STRUCT_ASSIGN
 #undef STRUCT_DEFAULT
 #undef ATOM_DEFAULT
 #undef STRING_DEFAULT
 #undef SUB_STRUCT_DEFAULT
-#undef NODE_STRUCT_DEFAULT
 #undef END_STRUCT_DEFAULT
 #undef ARRAY
 #undef KEY_ATOM
@@ -374,11 +445,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define END_STRUCT \
         return 0; \
     }
+#define STRUCT_ASSIGN(__substructname, __structname) \
+    __attribute__((unused)) static int __cf_unused_4_##__substructname(struct cf_om_node **rootp) { \
+      int i; \
+      struct cf_om_node **childp;
+#define END_STRUCT_ASSIGN \
+      return 0; \
+    }
 #define STRUCT_DEFAULT(__name, __dfllabel)
 #define ATOM_DEFAULT(__element, __default)
 #define STRING_DEFAULT(__element, __default)
-#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel)
-#define NODE_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
 #define END_STRUCT_DEFAULT
 #define ARRAY(__name, __flags, __validator...) \
     int cf_sch_config_##__name(struct cf_om_node **rootp) { \
@@ -416,11 +493,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
+#undef STRUCT_ASSIGN
+#undef END_STRUCT_ASSIGN
 #undef STRUCT_DEFAULT
 #undef ATOM_DEFAULT
 #undef STRING_DEFAULT
 #undef SUB_STRUCT_DEFAULT
-#undef NODE_STRUCT_DEFAULT
 #undef END_STRUCT_DEFAULT
 #undef ARRAY
 #undef KEY_ATOM
@@ -528,11 +606,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	cf_om_free_node(parentp); \
       return result; \
     }
+#define STRUCT_ASSIGN(__substructname, __structname) \
+    __attribute__((unused)) static int __cf_unused_5_##__substructname(struct cf_om_node **parentp, const struct config_##__substructname *strct, const struct config_##__substructname *dflt) { \
+      int result; \
+      int ret;
+#define END_STRUCT_ASSIGN \
+      return 0; \
+    }
 #define STRUCT_DEFAULT(__name, __dfllabel)
 #define ATOM_DEFAULT(__element, __default)
 #define STRING_DEFAULT(__element, __default)
-#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel)
-#define NODE_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
 #define END_STRUCT_DEFAULT
 #define ARRAY(__name, __flags, __validator...) \
     int cf_xfmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *array, const struct config_##__name *dflt) { \
@@ -617,11 +701,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef __FMT_TEXT
 #undef __FMT_NODE_START
 #undef __FMT_NODE_END
+#undef STRUCT_ASSIGN
+#undef END_STRUCT_ASSIGN
 #undef STRUCT_DEFAULT
 #undef ATOM_DEFAULT
 #undef STRING_DEFAULT
 #undef SUB_STRUCT_DEFAULT
-#undef NODE_STRUCT_DEFAULT
 #undef END_STRUCT_DEFAULT
 #undef ARRAY
 #undef KEY_ATOM
@@ -658,11 +743,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define END_STRUCT \
       return 0; \
     }
+#define STRUCT_ASSIGN(__substructname, __structname) \
+    __attribute__((unused)) static int __cf__unused_6_##__substructname(const struct config_##__substructname *a, const struct config_##__substructname *b) { \
+      int c;
+#define END_STRUCT_ASSIGN \
+      return 0; \
+    }
 #define STRUCT_DEFAULT(__name, __dfllabel)
 #define ATOM_DEFAULT(__element, __default)
 #define STRING_DEFAULT(__element, __default)
-#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel)
-#define NODE_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
 #define END_STRUCT_DEFAULT
 #define ARRAY(__name, __flags, __validator...) \
     int cf_cmp_config_##__name(const struct config_##__name *a, const struct config_##__name *b) { \
@@ -702,11 +792,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
+#undef STRUCT_ASSIGN
+#undef END_STRUCT_ASSIGN
 #undef STRUCT_DEFAULT
 #undef ATOM_DEFAULT
 #undef STRING_DEFAULT
 #undef SUB_STRUCT_DEFAULT
-#undef NODE_STRUCT_DEFAULT
 #undef END_STRUCT_DEFAULT
 #undef ARRAY
 #undef KEY_ATOM
