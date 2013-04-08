@@ -65,27 +65,36 @@ struct advertisement_state{
   struct subscriber *next_advertisement;
 };
 
+int advertise(struct advertisement_state *state, struct subscriber *subscriber, char score, char gateways){
+  // never send the full sid in an advertisement
+  subscriber->send_full=0;
+
+  if (overlay_address_append(NULL,state->payload,subscriber) ||
+      ob_append_byte(state->payload,score) ||
+      ob_append_byte(state->payload,gateways)){
+    // stop if we run out of space, remember where we should start next time.
+    state->next_advertisement=subscriber;
+    ob_rewind(state->payload);
+    return 1;
+  }
+  ob_checkpoint(state->payload);
+  return 0;
+}
+
 int add_advertisement(struct subscriber *subscriber, void *context){
   struct advertisement_state *state=context;
   
+  if (subscriber->reachable==REACHABLE_SELF && subscriber != my_subscriber)
+    return advertise(state, subscriber, 255, 1);
+
   if (subscriber->node){
     overlay_node *n=subscriber->node;
     
     if ((subscriber->reachable&REACHABLE) && (!(subscriber->reachable&REACHABLE_ASSUMED)) 
 	&& n->best_link_score>0 && n->observations[n->best_observation].gateways_en_route < 64){
-      // never send the full sid in an advertisement
-      subscriber->send_full=0;
       
-      if (overlay_address_append(NULL,state->payload,subscriber) ||
-	  ob_append_byte(state->payload,n->best_link_score -1) ||
-	  ob_append_byte(state->payload,n->observations[n->best_observation].gateways_en_route +1)){
-	
-	// stop if we run out of space, remember where we should start next time.
-	state->next_advertisement=subscriber;
-	ob_rewind(state->payload);
-	return 1;
-      }
-      ob_checkpoint(state->payload);
+      return advertise(state, subscriber, n->best_link_score -1, 
+             n->observations[n->best_observation].gateways_en_route +1);
     }
   }
   
