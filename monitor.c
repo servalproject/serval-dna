@@ -565,8 +565,7 @@ int monitor_process_command(struct monitor_context *c)
   int argc = parse_argv(c->line, ' ', argv, 16);
   
   struct cli_parsed parsed;
-  int res = cli_parse(argc, (const char *const*)argv, monitor_commands, &parsed);
-  if (res == -1 || cli_invoke(&parsed, c))
+  if (cli_parse(argc, (const char *const*)argv, monitor_commands, &parsed) || cli_invoke(&parsed, c))
     return monitor_write_error(c, "Invalid command");
   return 0;
 }

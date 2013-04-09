@@ -1,6 +1,6 @@
 /*
-Serval Distributed Numbering Architecture (DNA)
-Copyright (C) 2010-2012 Paul Gardner-Stephen
+Serval DNA command-line functions
+Copyright (C) 2010-2013 Serval Project, Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -224,8 +224,9 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
   
   struct cli_parsed parsed;
   int result = cli_parse(argc, args, command_line_options, &parsed);
-  if (result != -1) {
-    // Do not run the command if the configuration does not load ok
+  switch (result) {
+  case 0:
+    // Do not run the command if the configuration does not load ok.
     if (((parsed.commands[parsed.cmdi].flags & CLIFLAG_PERMISSIVE_CONFIG) ? cf_reload_permissive() : cf_reload()) != -1)
       result = cli_invoke(&parsed, NULL);
     else {
@@ -233,9 +234,17 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
       strbuf_append_argv(b, argc, args);
       result = WHYF("configuration defective, not running command: %s", strbuf_str(b));
     }
-  } else {
-    // Load configuration so that "unsupported command" log message can get out
+    break;
+  case 1:
+  case 2:
+    // Load configuration so that log messages can get out.
     cf_reload_permissive();
+    NOWHENCE(HINTF("Run \"%s help\" for more information.", argv0 ? argv0 : "servald"));
+    break;
+  default:
+    // Load configuration so that log error messages can get out.
+    cf_reload_permissive();
+    break;
   }
 
   /* clean up after ourselves */
@@ -1899,7 +1908,7 @@ int app_id_self(const struct cli_parsed *parsed, void *context)
   int count=0;
 
   a.packetTypeAndFlags=MDP_GETADDRS;
-  const char *arg = parsed->argc >= 2 ? parsed->args[1] : "";
+  const char *arg = parsed->labelc ? parsed->labelv[0].text : "";
   if (!strcasecmp(arg,"self"))
     a.addrlist.mode = MDP_ADDRLIST_MODE_SELF; /* get own identities */
   else if (!strcasecmp(arg,"allpeers"))
@@ -2359,14 +2368,8 @@ struct cli_schema command_line_options[]={
    "Display command usage."},
   {app_echo,{"echo","[-e]","[--]","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Output the supplied string."},
-  {app_log,{"log","debug","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Log the supplied message at DEBUG level."},
-  {app_log,{"log","info","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Log the supplied message at INFO level."},
-  {app_log,{"log","warn","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Log the supplied message at WARN level."},
-  {app_log,{"log","error","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Log the supplied message at ERROR level."},
+  {app_log,{"log","error|warn|hint|info|debug","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
+   "Log the supplied message at given level."},
   {app_server_start,{"start",NULL}, 0,
    "Start Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
   {app_server_start,{"start","in","<instance path>",NULL}, 0,
@@ -2426,17 +2429,9 @@ struct cli_schema command_line_options[]={
   {app_rhizome_extract,{"rhizome","extract","file" KEYRING_PIN_OPTIONS,
 	"<manifestid>","[<filepath>]","[<bsk>]",NULL}, 0,
         "Extract and decrypt a file from Rhizome and write it to the given path"},
-  {app_rhizome_delete,{"rhizome","delete","\\manifest",
-	"<manifestid>",NULL}, 0,
-	"Remove the manifest for the given bundle from the Rhizome store"},
-  {app_rhizome_delete,{"rhizome","delete","\\payload",
-	"<manifestid>",NULL}, 0,
-	"Remove the payload for the given bundle from the Rhizome store"},
-  {app_rhizome_delete,{"rhizome","delete","\\bundle",
-	"<manifestid>",NULL}, 0,
-	"Remove the manifest and payload for the given bundle from the Rhizome store"},
-  {app_rhizome_delete,{"rhizome","delete","\\file",
-	"<fileid>",NULL}, 0,
+  {app_rhizome_delete,{"rhizome","delete","manifest|payload|bundle","<manifestid>",NULL}, 0,
+	"Remove the manifest for the given manifest, payload or bundle from the Rhizome store"},
+  {app_rhizome_delete,{"rhizome","delete","file|","<fileid>",NULL}, 0,
 	"Remove the file with the given hash from the Rhizome store"},
   {app_rhizome_direct_sync,{"rhizome","direct","sync","[<url>]",NULL}, 0,
 	"Synchronise with the specified Rhizome Direct server. Return when done."},
@@ -2454,12 +2449,8 @@ struct cli_schema command_line_options[]={
    "Create a new identity in the keyring protected by the provided PIN"},
   {app_keyring_set_did,{"keyring", "set","did" KEYRING_PIN_OPTIONS,"<sid>","<did>","<name>",NULL}, 0,
    "Set the DID for the specified SID.  Optionally supply PIN to unlock the SID record in the keyring."},
-  {app_id_self,{"id","self",NULL}, 0,
-   "Return my own identity(s) as URIs"},
-  {app_id_self,{"id","peers",NULL}, 0,
-   "Return identity of known routable peers as URIs"},
-  {app_id_self,{"id","allpeers",NULL}, 0,
-   "Return identity of all known peers as URIs"},
+  {app_id_self,{"id","self|peers|allpeers",NULL}, 0,
+   "Return identity(s) as URIs of own node, or of known routable peers, or all known peers"},
   {app_route_print, {"route","print",NULL}, 0,
   "Print the routing table"},
   {app_network_scan, {"scan","[<address>]",NULL}, 0,

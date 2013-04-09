@@ -266,12 +266,22 @@ static void console_command(char *line){
   int argc = parse_argv(line, ' ', argv, 16);
   
   struct cli_parsed parsed;
-  int ret = cli_parse(argc, (const char *const*)argv, console_commands, &parsed);
-  if (ret == -1) {
+  switch (cli_parse(argc, (const char *const*)argv, console_commands, &parsed)) {
+  case 0:
+    cli_invoke(&parsed, NULL);
+    break;
+  case 1:
     printf("Unknown command, try help\n");
     fflush(stdout);
-  } else {
-    cli_invoke(&parsed, NULL);
+    break;
+  case 2:
+    printf("Ambiguous command, try help\n");
+    fflush(stdout);
+    break;
+  default:
+    printf("Error\n");
+    fflush(stdout);
+    break;
   }
 }
 
