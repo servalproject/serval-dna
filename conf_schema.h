@@ -288,14 +288,14 @@ END_STRUCT_ASSIGN
 
 STRUCT(log)
 SUB_STRUCT(log_format_file, file,,)
-SUB_STRUCT(log_format,      console,,       important)
+SUB_STRUCT(log_format,      console,,       console)
 SUB_STRUCT(log_format,      android,,       android)
 END_STRUCT
 
-STRUCT_DEFAULT(log_format, important)
+STRUCT_DEFAULT(log_format, console)
 ATOM_DEFAULT(show_pid,    0)
 ATOM_DEFAULT(show_time,   0)
-ATOM_DEFAULT(level,       LOG_LEVEL_WARN)
+ATOM_DEFAULT(level,       LOG_LEVEL_HINT)
 ATOM_DEFAULT(dump_config, 0)
 END_STRUCT_DEFAULT
 

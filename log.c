@@ -202,6 +202,7 @@ static void _log_prefix_level(_log_iterator *it, int level)
     case LOG_LEVEL_FATAL: levelstr = "FATAL:"; break;
     case LOG_LEVEL_ERROR: levelstr = "ERROR:"; break;
     case LOG_LEVEL_WARN:  levelstr = "WARN:"; break;
+    case LOG_LEVEL_HINT:  levelstr = "HINT:"; break;
     case LOG_LEVEL_INFO:  levelstr = "INFO:"; break;
     case LOG_LEVEL_DEBUG: levelstr = "DEBUG:"; break;
   }
@@ -261,14 +262,14 @@ static const char *_trimbuildpath(const char *path)
 
 static void _log_prefix_whence(_log_iterator *it, struct __sourceloc whence)
 {
-  if (whence.file) {
+  if (whence.file && whence.file[0]) {
     xprintf(it->xpf, "%s", _trimbuildpath(whence.file));
     if (whence.line)
       xprintf(it->xpf, ":%u", whence.line);
     if (whence.function)
       xprintf(it->xpf, ":%s()", whence.function);
     xputs("  ", it->xpf);
-  } else if (whence.function) {
+  } else if (whence.function && whence.function[0]) {
     xprintf(it->xpf, "%s()  ", whence.function);
   }
 }
@@ -281,8 +282,9 @@ static void _log_end_line(_log_iterator *it, int level)
     switch (level) {
       case LOG_LEVEL_FATAL: alevel = ANDROID_LOG_FATAL; break;
       case LOG_LEVEL_ERROR: alevel = ANDROID_LOG_ERROR; break;
-      case LOG_LEVEL_INFO:  alevel = ANDROID_LOG_INFO; break;
       case LOG_LEVEL_WARN:  alevel = ANDROID_LOG_WARN; break;
+      case LOG_LEVEL_HINT:
+      case LOG_LEVEL_INFO:  alevel = ANDROID_LOG_INFO; break;
       case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
       default: abort();
     }
@@ -865,6 +867,7 @@ const char *log_level_as_string(int level)
     case LOG_LEVEL_SILENT: return "silent";
     case LOG_LEVEL_DEBUG:  return "debug";
     case LOG_LEVEL_INFO:   return "info";
+    case LOG_LEVEL_HINT:   return "hint";
     case LOG_LEVEL_WARN:   return "warn";
     case LOG_LEVEL_ERROR:  return "error";
     case LOG_LEVEL_FATAL:  return "fatal";
@@ -879,6 +882,7 @@ int string_to_log_level(const char *text)
   if (strcasecmp(text, "fatal") == 0)  return LOG_LEVEL_FATAL;
   if (strcasecmp(text, "error") == 0)  return LOG_LEVEL_ERROR;
   if (strcasecmp(text, "warn") == 0)   return LOG_LEVEL_WARN;
+  if (strcasecmp(text, "hint") == 0)   return LOG_LEVEL_HINT;
   if (strcasecmp(text, "info") == 0)   return LOG_LEVEL_INFO;
   if (strcasecmp(text, "debug") == 0)  return LOG_LEVEL_DEBUG;
   if (strcasecmp(text, "silent") == 0) return LOG_LEVEL_SILENT;

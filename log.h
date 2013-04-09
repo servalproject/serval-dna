@@ -29,9 +29,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define LOG_LEVEL_SILENT    (0)
 #define LOG_LEVEL_DEBUG     (1)
 #define LOG_LEVEL_INFO      (2)
-#define LOG_LEVEL_WARN      (3)
-#define LOG_LEVEL_ERROR     (4)
-#define LOG_LEVEL_FATAL     (5)
+#define LOG_LEVEL_HINT      (3)
+#define LOG_LEVEL_WARN      (4)
+#define LOG_LEVEL_ERROR     (5)
+#define LOG_LEVEL_FATAL     (6)
 #define LOG_LEVEL_NONE      (127)
 
 const char *log_level_as_string(int level);
@@ -109,6 +110,7 @@ struct strbuf;
 
 #define __HERE__            ((struct __sourceloc){ .file = __FILE__, .line = __LINE__, .function = __FUNCTION__ })
 #define __NOWHERE__         ((struct __sourceloc){ .file = NULL, .line = 0, .function = NULL })
+#define __NOWHENCE__        ((struct __sourceloc){ .file = "", .line = 0, .function = NULL })
 
 #define __WHENCE__          (__whence.file ? __whence : __HERE__)
 
@@ -117,6 +119,8 @@ struct strbuf;
 #define LOG_perror(L,X)     LOGF_perror(L, "%s", (X))
 
 #define logMessage_perror(L,whence,F,...) (logMessage(L, whence, F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno))
+
+#define NOWHENCE(LOGSTMT)   do { const struct __sourceloc __whence = __NOWHENCE__; LOGSTMT; } while (0)
 
 #define FATALF(F,...)       do { LOGF(LOG_LEVEL_FATAL, F, ##__VA_ARGS__); abort(); exit(-1); } while (1)
 #define FATAL(X)            FATALF("%s", (X))
@@ -129,12 +133,16 @@ struct strbuf;
 #define WHYNULL(X)          (WHYFNULL("%s", (X)))
 #define WHYF_perror(F,...)  (LOGF_perror(LOG_LEVEL_ERROR, F, ##__VA_ARGS__), -1)
 #define WHY_perror(X)       WHYF_perror("%s", (X))
+#define WHY_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_ERROR, __WHENCE__, (X), (ARGC), (ARGV))
 
 #define WARNF(F,...)        LOGF(LOG_LEVEL_WARN, F, ##__VA_ARGS__)
 #define WARN(X)             WARNF("%s", (X))
 #define WARNF_perror(F,...) LOGF_perror(LOG_LEVEL_WARN, F, ##__VA_ARGS__)
 #define WARN_perror(X)      WARNF_perror("%s", (X))
-#define WHY_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_ERROR, __WHENCE__, (X), (ARGC), (ARGV))
+
+#define HINTF(F,...)        LOGF(LOG_LEVEL_HINT, F, ##__VA_ARGS__)
+#define HINT(X)             HINTF("%s", (X))
+#define HINT_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_HINT, __WHENCE__, (X), (ARGC), (ARGV))
 
 #define INFOF(F,...)        LOGF(LOG_LEVEL_INFO, F, ##__VA_ARGS__)
 #define INFO(X)             INFOF("%s", (X))
