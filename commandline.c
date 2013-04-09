@@ -2364,7 +2364,7 @@ int app_network_scan(const struct cli_parsed *parsed, void *context)
 */
 #define KEYRING_PIN_OPTIONS ,"[--keyring-pin=<pin>]","[--entry-pin=<pin>]..."
 struct cli_schema command_line_options[]={
-  {commandline_usage,{"help","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
+  {commandline_usage,{"help|-h|--help","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display command usage."},
   {app_echo,{"echo","[-e]","[--]","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Output the supplied string."},
