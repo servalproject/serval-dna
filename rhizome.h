@@ -176,6 +176,7 @@ typedef struct rhizome_manifest {
 extern long long rhizome_space;
 extern unsigned short rhizome_http_server_port;
 
+int log2ll(unsigned long long x);
 int rhizome_configure();
 int rhizome_enabled();
 int rhizome_fetch_delay_ms();
@@ -376,8 +377,8 @@ int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len);
 /* one manifest is required per candidate, plus a few spare.
    so MAX_RHIZOME_MANIFESTS must be > MAX_CANDIDATES. 
 */
-#define MAX_RHIZOME_MANIFESTS 24
-#define MAX_CANDIDATES 16
+#define MAX_RHIZOME_MANIFESTS 40
+#define MAX_CANDIDATES 32
 
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE]);
 rhizome_manifest * rhizome_fetch_search(unsigned char *id, int prefix_length);
@@ -656,6 +657,8 @@ enum rhizome_start_fetch_result {
 enum rhizome_start_fetch_result rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip, const unsigned char sid[SID_SIZE],const unsigned char *prefix, size_t prefix_length);
 int rhizome_any_fetch_active();
 int rhizome_any_fetch_queued();
+int rhizome_fetch_queue_bytes();
+int rhizome_fetch_has_queue_space(unsigned char log2_size);
 
 struct http_response_parts {
   int code;

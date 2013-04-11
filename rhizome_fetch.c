@@ -103,28 +103,30 @@ struct rhizome_fetch_queue {
   struct rhizome_fetch_slot active; // must be first element in struct
   int candidate_queue_size;
   struct rhizome_fetch_candidate *candidate_queue;
-  long long size_threshold; // will only hold fetches of fewer than this many bytes
+  unsigned char log_size_threshold; // will only queue payloads smaller than this.
 };
 
 /* Static allocation of the candidate queues.
  */
-struct rhizome_fetch_candidate queue0[5];
-struct rhizome_fetch_candidate queue1[4];
-struct rhizome_fetch_candidate queue2[3];
-struct rhizome_fetch_candidate queue3[2];
-struct rhizome_fetch_candidate queue4[1];
+struct rhizome_fetch_candidate queue0[10];
+struct rhizome_fetch_candidate queue1[8];
+struct rhizome_fetch_candidate queue2[6];
+struct rhizome_fetch_candidate queue3[4];
+struct rhizome_fetch_candidate queue4[2];
+struct rhizome_fetch_candidate queue5[2];
 
 #define NELS(a) (sizeof (a) / sizeof *(a))
 #define slotno(slot) ((struct rhizome_fetch_queue *)(slot) - &rhizome_fetch_queues[0])
 
-/* Static allocation of the queue structures.  Must be in order of ascending size_threshold.
+/* Static allocation of the queue structures.  Must be in order of ascending log_size_threshold.
  */
 struct rhizome_fetch_queue rhizome_fetch_queues[] = {
-  { .candidate_queue_size = NELS(queue0), .candidate_queue = queue0, .size_threshold =     10000, .active = { .state = RHIZOME_FETCH_FREE } },
-  { .candidate_queue_size = NELS(queue1), .candidate_queue = queue1, .size_threshold =    100000, .active = { .state = RHIZOME_FETCH_FREE } },
-  { .candidate_queue_size = NELS(queue2), .candidate_queue = queue2, .size_threshold =   1000000, .active = { .state = RHIZOME_FETCH_FREE } },
-  { .candidate_queue_size = NELS(queue3), .candidate_queue = queue3, .size_threshold =  10000000, .active = { .state = RHIZOME_FETCH_FREE } },
-  { .candidate_queue_size = NELS(queue4), .candidate_queue = queue4, .size_threshold =        -1, .active = { .state = RHIZOME_FETCH_FREE } }
+  { .candidate_queue_size = NELS(queue0), .candidate_queue = queue0, .log_size_threshold =   10, .active = { .state = RHIZOME_FETCH_FREE } },
+  { .candidate_queue_size = NELS(queue1), .candidate_queue = queue1, .log_size_threshold =   13, .active = { .state = RHIZOME_FETCH_FREE } },
+  { .candidate_queue_size = NELS(queue2), .candidate_queue = queue2, .log_size_threshold =   16, .active = { .state = RHIZOME_FETCH_FREE } },
+  { .candidate_queue_size = NELS(queue3), .candidate_queue = queue3, .log_size_threshold =   19, .active = { .state = RHIZOME_FETCH_FREE } },
+  { .candidate_queue_size = NELS(queue4), .candidate_queue = queue4, .log_size_threshold =   22, .active = { .state = RHIZOME_FETCH_FREE } },
+  { .candidate_queue_size = NELS(queue5), .candidate_queue = queue5, .log_size_threshold = 0xFF, .active = { .state = RHIZOME_FETCH_FREE } }
 };
 
 #define NQUEUES	    NELS(rhizome_fetch_queues)
@@ -146,6 +148,21 @@ int rhizome_active_fetch_bytes_received(int q)
   return (int)rhizome_fetch_queues[q].active.write_state.file_offset + rhizome_fetch_queues[q].active.write_state.data_size;
 }
 
+int rhizome_fetch_queue_bytes(){
+  int i,j,bytes=0;
+  for(i=0;i<NQUEUES;i++){
+    if (rhizome_fetch_queues[i].active.state!=RHIZOME_FETCH_FREE){
+      int received=rhizome_fetch_queues[i].active.write_state.file_offset + rhizome_fetch_queues[i].active.write_state.data_size;
+      bytes+=rhizome_fetch_queues[i].active.manifest->fileLength - received;
+    }
+    for (j=0;j<rhizome_fetch_queues[i].candidate_queue_size;j++){
+      if (rhizome_fetch_queues[i].candidate_queue[j].manifest)
+        bytes+=rhizome_fetch_queues[i].candidate_queue[j].manifest->fileLength;
+    }
+  }
+  return bytes;
+}
+
 static struct sched_ent sched_activate = STRUCT_SCHED_ENT_UNUSED;
 static struct profile_total fetch_stats;
 
@@ -157,9 +174,10 @@ static struct profile_total fetch_stats;
 static struct rhizome_fetch_queue *rhizome_find_queue(long long size)
 {
   int i;
+  unsigned char log_size = log2ll(size);
   for (i = 0; i < NQUEUES; ++i) {
     struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
-    if (q->size_threshold < 0 || size < q->size_threshold)
+    if (log_size < q->log_size_threshold)
       return q;
   }
   return NULL;
@@ -174,9 +192,10 @@ static struct rhizome_fetch_queue *rhizome_find_queue(long long size)
 static struct rhizome_fetch_slot *rhizome_find_fetch_slot(long long size)
 {
   int i;
+  unsigned char log_size = log2ll(size);
   for (i = 0; i < NQUEUES; ++i) {
     struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
-    if ((q->size_threshold < 0 || size < q->size_threshold) && q->active.state == RHIZOME_FETCH_FREE)
+    if (log_size < q->log_size_threshold && q->active.state == RHIZOME_FETCH_FREE)
       return &q->active;
   }
   return NULL;
@@ -871,6 +890,23 @@ rhizome_manifest * rhizome_fetch_search(unsigned char *id, int prefix_length){
   }
   
   return NULL;
+}
+
+/* Do we have space to add a fetch candidate of this size? */
+int rhizome_fetch_has_queue_space(unsigned char log2_size){
+  int i;
+  for (i = 0; i < NQUEUES; ++i) {
+    struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
+    if (log2_size < q->log_size_threshold){
+      // is there an empty candidate?
+      int j=0;
+      for (j=0;j < q->candidate_queue_size;j++)
+	if (!q->candidate_queue[j].manifest)
+	  return 1;
+      return 0;
+    }
+  }
+  return 0;
 }
 
 /* Queue a fetch for the payload of the given manifest.  If 'peerip' is not NULL, then it is used as
