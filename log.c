@@ -90,10 +90,7 @@ typedef struct _log_iterator {
  * writing.
  */
 const char *_log_file_path;
-const char *_log_file_symlink_path;
 char _log_file_path_buf[400];
-const char *_log_symlink_path;
-char _log_symlink_path_buf[400];
 static FILE *_log_file = NULL;
 static void _open_log_file(_log_iterator *);
 static void _rotate_log_file(_log_iterator *it);
@@ -446,7 +443,6 @@ static void _open_log_file(_log_iterator *it)
   if (_log_file != NO_FILE) {
     if (_log_file_path == NULL)
       _log_file_path = getenv("SERVALD_LOG_FILE");
-    _log_symlink_path = NULL;
     if (_log_file_path == NULL && !cf_limbo) {
       strbuf sbfile = strbuf_local(_log_file_path_buf, sizeof _log_file_path_buf);
       strbuf_path_join(sbfile, serval_instancepath(), log_file_directory_path(), NULL);
@@ -464,12 +460,6 @@ static void _open_log_file(_log_iterator *it)
       } else {
 	_log_file_start_time = it->file_start_time;
 	_log_file_path = strbuf_str(sbfile);
-	strbuf sbsymlink = strbuf_local(_log_symlink_path_buf, sizeof _log_symlink_path_buf);
-	strbuf_path_join(sbsymlink, serval_instancepath(), "serval.log", NULL);
-	if (strbuf_overrun(sbsymlink))
-	  _logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot form log symlink name - buffer overrun");
-	else
-	  _log_symlink_path = strbuf_str(sbsymlink);
       }
     }
     if (!_log_file) {
@@ -486,15 +476,19 @@ static void _open_log_file(_log_iterator *it)
 	const char *dir = dirname(_dir); // modifies _dir[]
 	if (mkdirs(dir, 0700) != -1 && (_log_file = fopen(_log_file_path, "a"))) {
 	  setlinebuf(_log_file);
-	  memset(it->state, 0, sizeof it->state);
+	  memset(it->state, 0, sizeof *it->state);
 	  // The first line in every log file must be the starting time stamp.  (After that, it is up
 	  // to _log_update() to insert other mandatory messages in any suitable order.)
 	  _log_current_datetime(it, LOG_LEVEL_INFO);
 	  _logs_printf_nl(LOG_LEVEL_INFO, __NOWHERE__, "Logging to %s (fd %d)", _log_file_path, fileno(_log_file));
 	  // Update the log symlink to point to the latest log file.
-	  if (_log_symlink_path) {
+	  strbuf sbsymlink = strbuf_alloca(400);
+	  strbuf_path_join(sbsymlink, serval_instancepath(), "serval.log", NULL);
+	  if (strbuf_overrun(sbsymlink))
+	    _logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot form log symlink name - buffer overrun");
+	  else {
 	    const char *f = _log_file_path;
-	    const char *s = _log_symlink_path;
+	    const char *s = strbuf_str(sbsymlink);
 	    const char *relpath = f;
 	    for (; *f && *f == *s; ++f, ++s)
 	      if (*f == '/')
@@ -505,9 +499,9 @@ static void _open_log_file(_log_iterator *it)
 	      ++s;
 	    if (strchr(s, '/'))
 	      relpath = _log_file_path;
-	    unlink(_log_symlink_path);
-	    if (symlink(relpath, _log_symlink_path) == -1)
-	      _logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot symlink %s to %s - %s [errno=%d]", _log_symlink_path, relpath, strerror(errno), errno);
+	    unlink(strbuf_str(sbsymlink));
+	    if (symlink(relpath, strbuf_str(sbsymlink)) == -1)
+	      _logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot symlink %s to %s - %s [errno=%d]", strbuf_str(sbsymlink), relpath, strerror(errno), errno);
 	  }
 	  // Expire old log files.
 	  size_t pathsiz = strlen(_log_file_path) + 1;
