@@ -1212,9 +1212,9 @@ cleanup:
 
 
 
-/*int rhizome_list_manifests_forMeshMS(const char *service, const char *name, 
+int rhizome_list_manifests_forMeshMS(const char *service, const char *name, 
 			   const char *sender_sid, const char *recipient_sid, 
-			   int limit, int offset, char count_rows)
+			   int limit, int offset, char count_rows, unsigned char *manifest_id)
 {
   IN();
   strbuf b = strbuf_alloca(1024);
@@ -1237,6 +1237,7 @@ cleanup:
   if (strbuf_overrun(b))
     RETURN(WHYF("SQL command too long: ", strbuf_str(b)));
   
+ //Statement is the SQL query and retry is the response from the database
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare(&retry, "%s", strbuf_str(b));
   if (!statement)
@@ -1276,12 +1277,14 @@ cleanup:
     "recipient",
     "name"
   };
-  cli_columns(13,names);
+  //cli_columns(13,names);
   
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     ++rows;
     if (limit>0 && rows>limit)
       break;
+    if (rows>2)
+      break ; // error , there is more than one message log file for one sender and recipient
     if (!(   sqlite3_column_count(statement) == 6
 	  && sqlite3_column_type(statement, 0) == SQLITE_TEXT
 	  && sqlite3_column_type(statement, 1) == SQLITE_BLOB
@@ -1356,7 +1359,16 @@ cleanup:
 	
 	//cli_put_long(rowid, ":");
 	//cli_put_string(blob_service, ":");
-	cli_put_hexvalue(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES, ":");
+	//cli_put_hexvalue(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES, ":");
+        
+        int i=0;
+        int manifest_id_length=strlen(q_manifestid);
+        //cli_printf("%d",manifest_id_length);
+        for (i;i<strlen(q_manifestid);i++)
+        {
+         manifest_id[i] = q_manifestid[i];
+        }
+        //cli_put_string(manifest_id,"\n");
 	//cli_put_long(blob_version, ":");
 	//cli_put_long(blob_date, ":");
 	//cli_put_long(q_inserttime, ":");
@@ -1388,7 +1400,7 @@ cleanup:
   sqlite3_finalize(statement);
   RETURN(ret);
   OUT();
-} */
+} 
 
 
 

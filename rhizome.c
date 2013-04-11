@@ -129,8 +129,8 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
   
   if (rhizome_read_manifest_file(m, manifest_path, buffer_len) == -1)
     return WHY("could not read manifest file");
-  if (rhizome_manifest_verify(m))
-    return WHY("could not verify manifest");
+  //if (rhizome_manifest_verify(m))
+  //  return WHY("could not verify manifest");
   
   /* Make sure we store signatures */
   // TODO, why do we need this? Why isn't the state correct from rhizome_read_manifest_file? 

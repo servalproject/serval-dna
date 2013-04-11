@@ -327,7 +327,7 @@ int rhizome_list_manifests(const char *service, const char *name,
 			   int limit, int offset, char count_rows);
 int rhizome_list_manifests_forMeshMS(const char *service, const char *name, 
 			   const char *sender_sid, const char *recipient_sid, 
-			   int limit, int offset, char count_rows);
+			   int limit, int offset, char count_rows,unsigned char *manifest_id);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m);
 int rhizome_advertise_manifest(rhizome_manifest *m);
 int rhizome_delete_bundle(const char *manifestid);
