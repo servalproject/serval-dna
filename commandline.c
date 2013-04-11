@@ -723,32 +723,21 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
     break;
   }
 #endif
-  const char *execpath, *instancepath;
-  char *tmp;
-  int foregroundP = parsed->argc >= 2 && !strcasecmp(parsed->args[1], "foreground");
-  if (cli_arg(parsed, "instance path", &instancepath, cli_absolute_path, NULL) == -1
-   || cli_arg(parsed, "exec path", &execpath, cli_absolute_path, NULL) == -1)
+  const char *execpath;
+  if (cli_arg(parsed, "exec", &execpath, cli_absolute_path, NULL) == -1)
     RETURN(-1);
-  if (instancepath != NULL)
-    serval_setinstancepath(instancepath);
-  if (execpath == NULL) {
+  int foregroundP = cli_arg(parsed, "foreground", NULL, NULL, NULL) == 0;
 #ifdef HAVE_JNI_H
-    if (jni_env)
-      RETURN(WHY("Must supply <exec path> argument when invoked via JNI"));
+  if (jni_env && execpath == NULL)
+    RETURN(WHY("Must supply \"exec <path>\" arguments when invoked via JNI"));
 #endif
-    if ((tmp = malloc(PATH_MAX)) == NULL)
-      RETURN(WHY("Out of memory"));
-    if (get_self_executable_path(tmp, PATH_MAX) == -1)
-      RETURN(WHY("unable to determine own executable name"));
-    execpath = tmp;
-  }
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     RETURN(-1);
   /* Now that we know our instance path, we can ask for the default set of
      network interfaces that we will take interest in. */
   if (config.interfaces.ac == 0)
-    WARN("No network interfaces configured (empty 'interfaces' config option)");
+    NOWHENCE(WARN("No network interfaces configured (empty 'interfaces' config option)"));
   if (pid == -1)
     pid = server_pid();
   if (pid < 0)
@@ -757,7 +746,7 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
   // If the pidfile identifies this process, it probably means we are re-spawning after a SEGV, so
   // go ahead and do the fork/exec.
   if (pid > 0 && pid != getpid()) {
-    INFOF("Server already running (pid=%d)", pid);
+    WARNF("Server already running (pid=%d)", pid);
     ret = 10;
   } else {
     if (foregroundP)
@@ -868,16 +857,8 @@ int app_server_stop(const struct cli_parsed *parsed, void *context)
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   int			pid, tries, running;
-  const char		*instancepath;
   time_ms_t		timeout;
-  if (cli_arg(parsed, "instance path", &instancepath, cli_absolute_path, NULL) == -1)
-    { 
-      WHY("Unable to determine instance path");
-      return 254;
-    }
-  if (instancepath != NULL)
-    serval_setinstancepath(instancepath);
-  instancepath = serval_instancepath();
+  const char *instancepath = serval_instancepath();
   cli_puts("instancepath");
   cli_delim(":");
   cli_puts(instancepath);
@@ -896,10 +877,8 @@ int app_server_stop(const struct cli_parsed *parsed, void *context)
   running = pid;
   while (running == pid) {
     if (tries >= 5) {
-      WHYF(
-	   "Servald pid=%d for instance '%s' did not stop after %d SIGHUP signals",
-	   pid, instancepath, tries
-	   );
+      WHYF("Servald pid=%d for instance '%s' did not stop after %d SIGHUP signals",
+	   pid, instancepath, tries);
       return 253;
     }
     ++tries;
@@ -935,13 +914,7 @@ int app_server_status(const struct cli_parsed *parsed, void *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  int	pid;
-  const char *instancepath;
-  if (cli_arg(parsed, "instance path", &instancepath, cli_absolute_path, NULL) == -1)
-    return WHY("Unable to determine instance path");
-  if (instancepath != NULL)
-    serval_setinstancepath(instancepath);
-  pid = server_pid();
+  int pid = server_pid();
   cli_puts("instancepath");
   cli_delim(":");
   cli_puts(serval_instancepath());
@@ -2370,24 +2343,12 @@ struct cli_schema command_line_options[]={
    "Output the supplied string."},
   {app_log,{"log","error|warn|hint|info|debug","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Log the supplied message at given level."},
-  {app_server_start,{"start",NULL}, 0,
-   "Start Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
-  {app_server_start,{"start","in","<instance path>",NULL}, 0,
-   "Start Serval Mesh node process with given instance path."},
-  {app_server_start,{"start","exec","<exec path>",NULL}, 0,
-   "Start Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
-  {app_server_start,{"start","exec","<exec path>","in","<instance path>",NULL}, 0,
-   "Start Serval Mesh node process with given instance path."},
-  {app_server_start,{"start","foreground",NULL}, 0,
-   "Start Serval Mesh node process without detatching from foreground."},
-  {app_server_start,{"start","foreground","in","<instance path>",NULL}, 0,
-   "Start Serval Mesh node process with given instance path, without detatching from foreground."},
+  {app_server_start,{"start","[foreground|exec <path>]",NULL}, 0,
+   "Start daemon with instance path from SERVALINSTANCE_PATH environment variable."},
   {app_server_stop,{"stop",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Stop a running Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
-  {app_server_stop,{"stop","in","<instance path>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Stop a running Serval Mesh node process with given instance path."},
+   "Stop a running daemon with instance path from SERVALINSTANCE_PATH environment variable."},
   {app_server_status,{"status",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Display information about any running Serval Mesh node."},
+   "Display information about running daemon."},
   {app_mdp_ping,{"mdp","ping","<SID|broadcast>","[<count>]",NULL}, 0,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
   {app_trace,{"mdp","trace","<SID>",NULL}, 0,
@@ -2430,7 +2391,7 @@ struct cli_schema command_line_options[]={
 	"<manifestid>","[<filepath>]","[<bsk>]",NULL}, 0,
         "Extract and decrypt a file from Rhizome and write it to the given path"},
   {app_rhizome_delete,{"rhizome","delete","manifest|payload|bundle","<manifestid>",NULL}, 0,
-	"Remove the manifest for the given manifest, payload or bundle from the Rhizome store"},
+	"Remove the manifest, or payload, or both for the given Bundle ID from the Rhizome store"},
   {app_rhizome_delete,{"rhizome","delete","file|","<fileid>",NULL}, 0,
 	"Remove the file with the given hash from the Rhizome store"},
   {app_rhizome_direct_sync,{"rhizome","direct","sync","[<url>]",NULL}, 0,
