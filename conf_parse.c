@@ -230,7 +230,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
     }
 #define STRUCT_ASSIGN(__substructname, __structname) \
     __attribute__((unused)) static int __cf_unused_3_##__substructname(struct config_##__substructname *strct, const struct cf_om_node *node) { \
-      int result; \
+      int result = 0; \
       char used[0];
 #define END_STRUCT_ASSIGN \
       return 0; \
@@ -608,7 +608,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
     }
 #define STRUCT_ASSIGN(__substructname, __structname) \
     __attribute__((unused)) static int __cf_unused_5_##__substructname(struct cf_om_node **parentp, const struct config_##__substructname *strct, const struct config_##__substructname *dflt) { \
-      int result; \
+      int result = 0; \
       int ret;
 #define END_STRUCT_ASSIGN \
       return 0; \
