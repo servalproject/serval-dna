@@ -52,7 +52,7 @@ int cli_usage_args(const int argc, const char *const *args, const struct cli_sch
     if (matched) {
       matched_any = 1;
       for (opt = 0; (word = commands[cmd].words[opt]); ++opt) {
-	if (word[0] == '\\')
+	if (word[0] == '|')
 	  ++word;
 	xprintf(xpf, " %s", word);
       }
@@ -116,8 +116,8 @@ int cli_parse(const int argc, const char *const *args, const struct cli_schema *
        * or "wordN", labels it with the matched word (an empty alternative, eg "|word" does not
        * match an empty argument)
        *
-       * (as a result of the above rule, "|word" or "word|" or "|word|" consumes one argument that
-       * exactly matches "word" and labels it "word")
+       * (as a special case of the above rule, "|word" consumes one argument that exactly matches
+       * "word" and labels it "word", but it appears in the help description as "word")
        *
        * "<label>" consumes exactly one argument "ANY", records it with label "label"
        *
@@ -170,16 +170,20 @@ int cli_parse(const int argc, const char *const *args, const struct cli_schema *
 	const char *text = NULL;
 	const char *label = NULL;
 	unsigned labellen = 0;
-	const char *word;
+	const char *word = pattern;
 	unsigned wordlen = 0;
 	char simple = 0;
 	unsigned alt = 0;
-	for (word = pattern; word < &pattern[patlen]; word += wordlen + 1, ++alt) {
+	if (patlen && *word == '|') {
+	  ++alt;
+	  ++word;
+	}
+	if (patlen == 0)
+	  return WHYF("Internal error: commands[%d].word[%d]=\"%s\" - empty words not allowed", cmd, opt, commands[cmd].words[opt]);
+	for (; word < &pattern[patlen]; word += wordlen + 1, ++alt) {
 	  // Skip over empty "||word" alternative (but still count it).
-	  if (*word == '|') {
-	    wordlen = 0;
-	    continue;
-	  }
+	  if (*word == '|')
+	    return WHYF("Internal error: commands[%d].word[%d]=\"%s\" - empty alternatives not allowed", cmd, opt, commands[cmd].words[opt]);
 	  // Find end of "word|" alternative.
 	  wordlen = 1;
 	  while (&word[wordlen] < &pattern[patlen] && word[wordlen] != '|')

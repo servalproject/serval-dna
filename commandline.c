@@ -937,13 +937,13 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   const char *sidhex, *count;
-  if (cli_arg(parsed, "SID|broadcast", &sidhex, str_is_subscriber_id, "broadcast") == -1)
+  if (cli_arg(parsed, "SID", &sidhex, str_is_subscriber_id, "broadcast") == -1)
     return -1;
   if (cli_arg(parsed, "count", &count, NULL, "0") == -1)
     return -1;
   
   // assume we wont hear any responses
-  int ret=-1;
+  int ret=1;
   int icount=atoi(count);
 
   overlay_mdp_frame mdp;
@@ -968,6 +968,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
 
   /* TODO Eventually we should try to resolve SID to phone number and vice versa */
   printf("MDP PING %s (%s): 12 data bytes\n", alloca_tohex_sid_t(ping_sid), alloca_tohex_sid_t(ping_sid));
+  fflush(stdout);
 
   time_ms_t rx_mintime=-1;
   time_ms_t rx_maxtime=-1;
@@ -1028,6 +1029,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
 		     hop_count,
 		     mdp.packetTypeAndFlags&MDP_NOCRYPT?"":" ENCRYPTED",
 		     mdp.packetTypeAndFlags&MDP_NOSIGN?"":" SIGNED");
+	      fflush(stdout);
 	      // TODO Put duplicate pong detection here so that stats work properly.
 	      rx_count++;
 	      ret=0;
@@ -1069,6 +1071,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
     printf("round-trip min/avg/max/stddev%s = %lld/%.3f/%lld/%.3f ms\n",
 	   (samples<rx_count)?" (stddev calculated from last 1024 samples)":"",
 	   rx_mintime,rx_mean,rx_maxtime,rx_stddev);
+    fflush(stdout);
   }
   overlay_mdp_client_done();
   return ret;
@@ -2349,7 +2352,7 @@ struct cli_schema command_line_options[]={
    "Stop a running daemon with instance path from SERVALINSTANCE_PATH environment variable."},
   {app_server_status,{"status",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display information about running daemon."},
-  {app_mdp_ping,{"mdp","ping","<SID|broadcast>","[<count>]",NULL}, 0,
+  {app_mdp_ping,{"mdp","ping","<SID>|broadcast","[<count>]",NULL}, 0,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
   {app_trace,{"mdp","trace","<SID>",NULL}, 0,
    "Trace through the network to the specified node via MDP."},
@@ -2392,7 +2395,7 @@ struct cli_schema command_line_options[]={
         "Extract and decrypt a file from Rhizome and write it to the given path"},
   {app_rhizome_delete,{"rhizome","delete","manifest|payload|bundle","<manifestid>",NULL}, 0,
 	"Remove the manifest, or payload, or both for the given Bundle ID from the Rhizome store"},
-  {app_rhizome_delete,{"rhizome","delete","file|","<fileid>",NULL}, 0,
+  {app_rhizome_delete,{"rhizome","delete","|file","<fileid>",NULL}, 0,
 	"Remove the file with the given hash from the Rhizome store"},
   {app_rhizome_direct_sync,{"rhizome","direct","sync","[<url>]",NULL}, 0,
 	"Synchronise with the specified Rhizome Direct server. Return when done."},
