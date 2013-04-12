@@ -31,14 +31,16 @@ and target platform:
 * on Android `/data/data/org.servalproject/var/serval-node`
 * on other platforms `/var/serval-node`
 
+**servald** will create its instance directory (and all enclosing parent
+directories) if it does not already exist.
+
 Running many daemons
 --------------------
 
 To run more than one **servald** daemon process on the same device, each daemon
 must have its own instance path (and hence its own `serval.conf`).  Set the
 `SERVALINSTANCE_PATH` environment variable to a different directory path before
-starting each daemon.  Each **servald** daemon will create its own instance
-directory (and all enclosing parent directories) if it does not already exist.
+starting each daemon.
 
 Configuration persistence
 -------------------------
@@ -67,17 +69,16 @@ invalid value:
 
  * If a configuration option has an invalid value, then **servald** will log
    a warning and ignore the option, leaving it with the built-in default value.
-  
-In all the above cases, **servald** will usually reject the file and the command
-will fail with an error instead of executing.  The warnings are logged according
-to any valid logging options that were successfully parsed.
 
-The only exceptions to this rule are the `help` and `stop` commands and the
-various `config` commands described below.  Those commands will proceed instead
-of failing by omitting the offending config options and using built-in defaults
-in their place.  This means that despite an invalid `serval.conf`, **servald**
-may still be used to inspect and correct the configuration, and to stop a
-running daemon.
+In all the above cases, most **servald** commands will reject the defective
+file and fail with, logging an error, instead of executing.  The logging is
+done using any options that could be salvaged from the defective file.
+
+Some “permissive” commands, such as `help`, `stop`, and the various `config`
+commands described below, will not fail on a defective configuration file.
+Instead they will log warnings and carry on using the salvaged options from the
+file.  This means that despite a defective `serval.conf`, **servald** may still
+be used to inspect and correct the configuration, and to stop a running daemon.
 
 Invalid configuration of daemons
 --------------------------------
@@ -86,9 +87,9 @@ As described above, an invalid `serval.conf` will prevent the **servald**
 `start` command from starting a daemon process.  Once the daemon is running, it
 periodically checks whether `serval.conf` has changed (by comparing size and
 modification time) and attempts to re-load it if it detects a change.  If the
-re-loaded file is invalid, the daemon rejects it, logs an error, and continues
-execution with unchanged configuration.  However, if the daemon is stopped or
-killed, it cannot be re-started while the invalid `serval.conf` persists.
+re-loaded file is defective, the daemon rejects it, logs an error, and
+continues execution with unchanged configuration.  If the daemon is stopped or
+killed, it cannot be re-started while `serval.conf` remains defective.
 
 Configuration commands
 ----------------------
@@ -110,9 +111,8 @@ To examine an option's current value as defined in the `serval.conf` file
     name.of.option=value
     $
 
-To examine all configuration option settings as defined in the `serval.conf`
-file (even invalid and unsupported options are included, unlike `config dump`
-shown later):
+To examine all option settings defined in the `serval.conf` file, including
+invalid and unsupported options:
 
     $ servald config get
     interfaces=+eth0,+wifi0
@@ -120,7 +120,8 @@ shown later):
     name.of.other_option=value2
     $
 
-To list the names and types of all supported configuration options:
+To list the names and types of all supported configuration options (the
+“configuration schema”):
 
     $ servald config schema
     debug.broadcasts=(boolean)
@@ -132,9 +133,12 @@ To list the names and types of all supported configuration options:
     server.respawn_on_crash=(boolean)
     $
 
-To examine all current *valid* configuration option settings, omitting
-invalid and unsupported options from `serval.conf`, shows exactly the effect
-that the current configuration would have if used:
+The configuration schema, with its default values, is defined in the
+[conf_schema.h](../conf_schema.h) source header file.
+
+To examine all current *valid* configuration option settings, as produced by
+parsing `serval.conf` and omitting invalid and unsupported options.  This shows
+the configuration as seen by permissive commands:
 
     $ servald config dump --full
     debug.broadcasts=false
@@ -158,35 +162,94 @@ to produce the current configuration:
     server.respawn_on_crash=true
     $
 
-The configuration schema, with default values, is defined in the
-[conf_schema.h](../conf_schema.h) source header file.
-
 Logging configuration
 ---------------------
 
 **servald** logging is controlled by the following config options:
 
-    log.file=PATH
-    log.show_pid=BOOLEAN
-    log.show_time=BOOLEAN
+    log.console.level=debug|info|hint|warn|error|none
+    log.console.dump_config=BOOLEAN
+    log.console.show_pid=BOOLEAN
+    log.console.show_time=BOOLEAN
 
-The `log.file` option names a file to which log messages are appended using the
-O\_APPEND option of [open(2)][].  If the file does not exist, **servald** will
-create it.  If the `log.file` PATH is not absolute (ie, does not start with
-`/`) then it is relative to the instance directory.  If `log.file` is not set
-then log messages are sent to standard error.  This will mean that background
-**servald** daemons will not log anything, since the standard input, output and
-error streams of all background daemon processes are closed.
+    log.android.level=debug|info|hint|warn|error|none
+    log.android.dump_config=BOOLEAN
+    log.android.show_pid=BOOLEAN
+    log.android.show_time=BOOLEAN
 
-The `log.show_pid` option, if true, causes all log lines to be prefixed with
-the process ID of the logging process.  This can help distinguish between log
-messages from different daemon processes sharing the same log file, or, more
-commonly, between a daemon process and other **servald** invocations.  The
-`log.show_pid` option is true by default.
+    log.file.level=debug|info|hint|warn|error|none
+    log.file.dump_config=BOOLEAN
+    log.file.show_pid=BOOLEAN
+    log.file.show_time=BOOLEAN
+    log.file.path=PATH
+    log.file.directory_path=PATH
+    log.file.duration=INTERVAL
+    log.file.rotate=UINT
 
-The `log.show_time` option, if true, causes all log lines to be prefixed with
-the date and time, to millisecond resolution if available, of the log message.
-The `log.show_time` option is true by default.
+There are three log output destinations, each of which can be configured
+independently of the others:
+
+  * The *console* log destination is the standard error of the **servald**
+    process, which is only produced by “foreground” command invocations of
+    **servald**.  (The **servald** daemon closes all its standard IO streams
+    when started in background mode.)
+
+  * The *android* log destination only functions for a **servald** executable
+    built for the Android platform, and represents the Android Log buffer that
+    is accessible via the `adb logcat` command.  On non-Android platforms, the
+    `log.android` configuration options are supported but have no effect.
+
+  * The *file* log destination is a log file created and appended directly by
+    the **servald** process.
+
+All log destinations support the following configuration options:
+
+  * `log.DESTINATION.level`  Log messages below this level are not sent to the
+    destination.  The lowest level is `debug`, and the highest is `error`.
+    Setting this option to `none` suppresses all log messages.
+
+  * `log.DESTINATION.dump_config`  If true, then the current configuration is
+    written to the destination (in `servald config dump` format), prior to
+    other messages.
+
+  * `log.DESTINATION.show_pid`  If true, then every line written to this
+    destination is prefixed with the Process ID of the process that produced
+    it.
+
+  * `log.DESTINATION.show_time`  If true, then every line written to this
+    destination is prefixed with the system time in millisecond resolution
+    (if available) in the format `HH:MM:SS.mmm`.
+
+In addition, the *file* destination has these extra configuration options:
+
+  * `log.file.directory_path`  If set, log files are created in this directory,
+    which is created if it does not exist.  This defaults to the `log`
+    directory within the instance directory.
+
+  * `log.file.path`  If set, all log messages are appended directly to the file
+    at the given path.  If the path is not absolute, it is interpreted relative
+    the `log.file.directory_path` option.  If `log.file.path` is not set, then
+    log files have names of the form `serval-YYYYMMDDHHMMSS.log`, using the
+    date/time of creation of the file.
+
+  * `log.file.duration`  If non zero, then a new log file is created every new
+    interval.  Interval boundaries are measured from the Unix epoch, so if the
+    interval is an integral divisor of one day then a new file will always
+    start at midnight.  The interval can be given as a plain number of seconds,
+    but a convenient scaled notation is supported: `[Nw][Nd][Nh][Nm][N[s]]`,
+    eg, `2h40m20s` means two hours plus 40 minutes plis 20 seconds.
+
+  * `log.file.rotate`  If non zero, then old log files are deleted so that no
+    more than this many files exist at one time.
+
+Every log message is written to all destinations according to their
+configuration.
+
+Log messages are appended to log files using the O\_APPEND option of
+[open(2)][] and a single [write(2)][] system call per log line, so concurrent
+**servald** processes will not corrupt each others' log lines.  If a file does
+not exist, **servald** will create it and all its enclosing directories as
+needed.
 
 Network interfaces
 ------------------
@@ -360,8 +423,9 @@ not carry broadcast packets, to simulate the effect of the WiFi drivers on some
 Android devices which filter out broadcast packets.
 
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell
-[open(2)]: http://www.kernel.org/doc/man-pages/online/pages/man2/open.2.html
 [shell wildcard]: http://www.kernel.org/doc/man-pages/online/pages/man7/glob.7.html
+[open(2)]: http://www.kernel.org/doc/man-pages/online/pages/man2/open.2.html
+[write(2)]: http://www.kernel.org/doc/man-pages/online/pages/man2/write.2.html
+[poll(2)]: http://www.kernel.org/doc/man-pages/online/pages/man2/poll.2.html
 [fnmatch(3)]: http://www.kernel.org/doc/man-pages/online/pages/man3/fnmatch.3.html
 [inet_aton(3)]: http://www.manpagez.com/man/3/inet_aton
-[poll(2)]: http://www.kernel.org/doc/man-pages/online/pages/man2/poll.2.html
