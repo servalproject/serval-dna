@@ -622,6 +622,7 @@ typedef struct overlay_mdp_error {
 
 typedef struct overlay_mdp_addrlist {
   int mode;
+#define OVERLAY_MDP_ADDRLIST_MAX_SID_COUNT (~(unsigned int)0)
   unsigned int server_sid_count;
   unsigned int first_sid;
   unsigned int last_sid;
@@ -693,7 +694,7 @@ void cli_put_long(int64_t value, const char *delim);
 void cli_put_string(const char *value, const char *delim);
 void cli_put_hexvalue(const unsigned char *value, int length, const char *delim);
 
-int overlay_mdp_getmyaddr(int index, sid_t *sid);
+int overlay_mdp_getmyaddr(unsigned index, sid_t *sid);
 int overlay_mdp_bind(const sid_t *localaddr, int port) ;
 int overlay_route_node_info(overlay_mdp_nodeinfo *node_info);
 int overlay_interface_register(char *name,

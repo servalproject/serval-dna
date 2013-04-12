@@ -250,7 +250,7 @@ int overlay_mdp_bind(const sid_t *localaddr, int port)
   return 0;
 }
 
-int overlay_mdp_getmyaddr(int index, sid_t *sid)
+int overlay_mdp_getmyaddr(unsigned index, sid_t *sid)
 {
   overlay_mdp_frame a;
   memset(&a, 0, sizeof(a));
@@ -258,7 +258,7 @@ int overlay_mdp_getmyaddr(int index, sid_t *sid)
   a.packetTypeAndFlags=MDP_GETADDRS;
   a.addrlist.mode = MDP_ADDRLIST_MODE_SELF;
   a.addrlist.first_sid=index;
-  a.addrlist.last_sid=0x7fffffff;
+  a.addrlist.last_sid=OVERLAY_MDP_ADDRLIST_MAX_SID_COUNT;
   a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
   int result=overlay_mdp_send(&a,MDP_AWAITREPLY,5000);
   if (result) {

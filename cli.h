@@ -46,7 +46,7 @@ struct cli_parsed {
   unsigned labelc;
   const char *const *args;
   unsigned argc;
-  unsigned varargi;
+  int varargi; // -1 means no var args
 };
 
 void _debug_cli_parsed(struct __sourceloc __whence, const struct cli_parsed *parsed);

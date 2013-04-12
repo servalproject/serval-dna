@@ -794,18 +794,12 @@ static int search_subscribers(struct subscriber *subscriber, void *context){
 
 int overlay_mdp_address_list(overlay_mdp_addrlist *request, overlay_mdp_addrlist *response){
   if (config.debug.mdprequests)
-    DEBUGF("MDP_GETADDRS first_sid=%u mode=%d",
-	   request->first_sid,
-	   request->mode
-	   );
+    DEBUGF("MDP_GETADDRS first_sid=%u mode=%d", request->first_sid, request->mode);
   
   /* Prepare reply packet */
   response->mode = request->mode;
   response->first_sid = request->first_sid;
   response->frame_sid_count = 0;
-  
-  /* ... and constrain list for sanity */
-  if (response->first_sid<0) response->first_sid=0;
   
   /* Populate with SIDs */
   enum_subscribers(NULL, search_subscribers, response);

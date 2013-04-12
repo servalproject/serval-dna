@@ -315,7 +315,7 @@ ATOM(uint32_t,              uid,        0, uint32_nonzero,, "Allowed UID for mon
 END_STRUCT
 
 STRUCT(mdp_iftype)
-ATOM(uint32_t,              tick_ms,         -1, uint32_nonzero,, "Tick interval for this interface type")
+ATOM(int32_t,               tick_ms,         -1, int32_nonneg,, "Tick interval for this interface type")
 ATOM(int32_t,               packet_interval, -1, int32_nonneg,, "Minimum interval between packets in microseconds")
 END_STRUCT
 

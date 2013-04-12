@@ -112,13 +112,13 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
 // duplicate the frame and queue it
 int overlay_forward_payload(struct overlay_frame *f){
   IN();
-  if (f->ttl<=0)
+  if (f->ttl == 0)
     RETURN(0);
   
   if (config.debug.overlayframes)
-    DEBUGF("Forwarding payload for %s, ttl=%d",
+    DEBUGF("Forwarding payload for %s, ttl=%u",
 	  (f->destination?alloca_tohex_sid(f->destination->sid):"broadcast"),
-	  f->ttl);
+	  (unsigned)f->ttl);
 
   /* Queue frame for dispatch.
    Don't forget to put packet in the correct queue based on type.
@@ -212,17 +212,18 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
     frame->ttl = ttl_qos & 0x1F;
     frame->queue = (ttl_qos >> 5) & 3;
   }
-  frame->ttl--;
-  if (frame->ttl<=0){
-    forward=0;
+  if (frame->ttl == 0){
+    forward = 0;
     if (config.debug.overlayframes)
       DEBUGF("Don't forward when TTL expired");
-  }
+  } else
+    --frame->ttl;
   
   if (flags & PAYLOAD_FLAG_LEGACY_TYPE){
-    frame->type=ob_get(buffer);
-    if (frame->type<0)
+    int ftype = ob_get(buffer);
+    if (ftype == -1)
       RETURN(WHY("Unable to read type"));
+    frame->type = ftype;
   }else
     frame->type=OF_TYPE_DATA;
   

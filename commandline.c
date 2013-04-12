@@ -1927,7 +1927,7 @@ int app_count_peers(const struct cli_parsed *parsed, void *context)
   bzero(&a, sizeof(overlay_mdp_frame));
   a.packetTypeAndFlags=MDP_GETADDRS;
   a.addrlist.mode = MDP_ADDRLIST_MODE_ROUTABLE_PEERS;
-  a.addrlist.first_sid=0x7fffffff;
+  a.addrlist.first_sid = OVERLAY_MDP_ADDRLIST_MAX_SID_COUNT;
   if (overlay_mdp_send(&a,MDP_AWAITREPLY,5000)){
     if (a.packetTypeAndFlags==MDP_ERROR)
       return WHYF("  MDP Server error #%d: '%s'",a.error.error,a.error.message);
