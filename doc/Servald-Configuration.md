@@ -11,11 +11,27 @@ the next line.
 Configuration options
 ---------------------
 
-The **servald** configuration is a set of label-value pairs called *options*.
-A label is a sequence of one or more alphanumeric words separated by period
-characters `.`.  A value is a string of characters which is parsed according
-to the option's type, for example a decimal integer, a boolean, or an internet
-address.
+The **servald** configuration is an unordered set of label-value pairs called
+*options*.
+
+An option *label* is a sequence of one or more alphanumeric words separated by
+period characters, eg, `log.file.directory_path`.
+
+An option *value* is a string of characters which is parsed according to the
+option's type, for example:
+
+  * decimal integer `10` `0` `-1000000`
+  * boolean `true` `false` `on` `off` `1` `0` `yes` `no`
+  * internet address (in\_addr) `192.168.1.1`
+  * time interval `12h` `1w3d` `2h15m30s`
+  * absolute path `/var/lib/serval`
+  * relative path `../lib/hostlist`
+  * Serval ID (SID) `EEBF3AC19E7EE58722A0F6D4A4D5894A72F5C71030C3399FE75808DCF6C6254B`
+  * scaled integer: a decimal integer with an optional scale suffix, one of `k`
+    (10^3), `K` (2^10), `m` (10^6), `M` (2^20), `g` (10^9) or `G` (2^30), eg
+    `1.5m` = 1,500,000
+
+If a value does not parse correctly, it is *invalid*.
 
 Instance path
 -------------
@@ -53,12 +69,11 @@ until its `serval.conf` file is altered or removed.
 Invalid configuration
 ---------------------
 
-Although `serval.conf` is usually written and read only by **servald**, in
-fact it is an external file which could be modified by other means, so
-**servald** has no control over its contents.  The semantics of the
-configuration loading anticipate the possibility of encountering a
-syntactically malformed file or an unsupported option or an option with an
-invalid value:
+Although `serval.conf` is usually written and read only by **servald**, in fact
+it is an external file which may be modified, so **servald** has no control
+over its contents.  The semantics of the configuration loading anticipate the
+possibility of encountering a syntactically malformed file or an unsupported
+or invalid option:
 
  * If `serval.conf` is syntactically malformed, then **servald** will log a
    warning, skip the malformed line and continue parsing;
@@ -71,25 +86,28 @@ invalid value:
    a warning and ignore the option, leaving it with the built-in default value.
 
 In all the above cases, most **servald** commands will reject the defective
-file and fail with, logging an error, instead of executing.  The logging is
-done using any options that could be salvaged from the defective file.
+file: they will log an error and exit with error status (255).  The logging is
+done using options salvaged from the defective file (see the `config dump`
+command, described below).
 
 Some “permissive” commands, such as `help`, `stop`, and the various `config`
 commands described below, will not fail on a defective configuration file.
-Instead they will log warnings and carry on using the salvaged options from the
-file.  This means that despite a defective `serval.conf`, **servald** may still
-be used to inspect and correct the configuration, and to stop a running daemon.
+Instead they will log a warning and carry on using options salvaged from the
+defective file.  This means that **servald** may always be used to inspect and
+correct the configuration, and to stop a running daemon, despite a defective
+configuration file.
 
 Invalid configuration of daemons
 --------------------------------
 
-As described above, an invalid `serval.conf` will prevent the **servald**
+As described above, a defective `serval.conf` will prevent the **servald**
 `start` command from starting a daemon process.  Once the daemon is running, it
 periodically checks whether `serval.conf` has changed (by comparing size and
 modification time) and attempts to re-load it if it detects a change.  If the
 re-loaded file is defective, the daemon rejects it, logs an error, and
-continues execution with unchanged configuration.  If the daemon is stopped or
-killed, it cannot be re-started while `serval.conf` remains defective.
+continues execution with its prior configuration unchanged.  If the daemon is
+stopped or killed, it cannot be re-started while `serval.conf` remains
+defective.
 
 Configuration commands
 ----------------------
@@ -137,8 +155,8 @@ The configuration schema, with its default values, is defined in the
 [conf_schema.h](../conf_schema.h) source header file.
 
 To examine all current *valid* configuration option settings, as produced by
-parsing `serval.conf` and omitting invalid and unsupported options.  This shows
-the configuration as seen by permissive commands:
+parsing `serval.conf` and omitting invalid and unsupported options (ie, the
+configuration used by permissive commands and for logging):
 
     $ servald config dump --full
     debug.broadcasts=false
@@ -190,17 +208,21 @@ There are three log output destinations, each of which can be configured
 independently of the others:
 
   * The *console* log destination is the standard error of the **servald**
-    process, which is only produced by “foreground” command invocations of
-    **servald**.  (The **servald** daemon closes all its standard IO streams
-    when started in background mode.)
+    process, which is available in all command invocations of **servald**, but
+    not in the background daemon process (the daemon closes all its standard IO
+    streams when started in background mode).
 
-  * The *android* log destination only functions for a **servald** executable
-    built for the Android platform, and represents the Android Log buffer that
-    is accessible via the `adb logcat` command.  On non-Android platforms, the
+  * The *android* log destination is available in **servald** executables built
+    for the Android platform, and sends to the Android Log buffer that is
+    accessible via the `adb logcat` command.  On non-Android platforms, the
     `log.android` configuration options are supported but have no effect.
 
   * The *file* log destination is a log file created and appended directly by
-    the **servald** process.
+    the **servald** process using the O\_APPEND option of [open(2)][] and a
+    single [write(2)][] system call per log line (so concurrent **servald**
+    processes will not corrupt each others' log lines).  If the file does not
+    exist, **servald** will create it and all its enclosing directories as
+    needed.
 
 All log destinations support the following configuration options:
 
@@ -245,12 +267,6 @@ In addition, the *file* destination has these extra configuration options:
 Every log message is written to all destinations according to their
 configuration.
 
-Log messages are appended to log files using the O\_APPEND option of
-[open(2)][] and a single [write(2)][] system call per log line, so concurrent
-**servald** processes will not corrupt each others' log lines.  If a file does
-not exist, **servald** will create it and all its enclosing directories as
-needed.
-
 Network interfaces
 ------------------
 
@@ -292,58 +308,99 @@ numbered list of *rules* that are applied to all detected system interfaces in
 order of ascending number.  The general form of an interface rule is:
 
     interfaces.UINT.match=PATTERN[, PATTERN ...]
+    interfaces.UINT.file=PATH
     interfaces.UINT.exclude=BOOLEAN
-    interfaces.UINT.type=IFTYPE
+    interfaces.UINT.socket_type=SOCKTYPE
     interfaces.UINT.port=PORT
-    interfaces.UINT.speed=SPEED
-    interfaces.UINT.mdp_tick_ms=UINT_NONZERO
+    interfaces.UINT.encapsulation=ENCAPSULATION
     interfaces.UINT.default_route=BOOLEAN
-    interfaces.UINT.dummy=PATH
-    interfaces.UINT.dummy_address=IN_ADDR
-    interfaces.UINT.dummy_netmask=IN_ADDR
-    interfaces.UINT.dummy_filter_broadcasts=BOOLEAN
+    interfaces.UINT.prefer_unicast=BOOLEAN
+    interfaces.UINT.send_broadcasts=BOOLEAN
+    interfaces.UINT.type=IFTYPE
+    interfaces.UINT.mdp_tick_ms=UINT_NONZERO
+    interfaces.UINT.packet_interval=UINT_NONZERO
 
 where:
 
- * `BOOLEAN` is one of `true`, `false`, `1`, `0`, `yes`, `no`, `on` or `off`
- * `UINT` is an unsigned decimal integer (with no `+` or `-` prefix)
- * `UINT_NONZERO` is an unsigned decimal integer ≥ 1
- * `PATTERN` is a [shell wildcard][] pattern that is matched against the
-   interface name using the [fnmatch(3)][] standard library function
- * `PATH` is an absolute or relative file path
- * `IFTYPE` is one of `wifi`, `ethernet`, `catear` or `other`
+ * `PATTERN` is a [shell wildcard][] pattern
+ * `BOOLEAN` is `true`, `false`, `1`, `0`, `yes`, `no`, `on` or `off`
+ * `SOCKTYPE` is `dgram`, `stream` or `file`
+ * `ENCAPSULATION` is `overlay` or `single`
+ * `IFTYPE` is `wifi`, `ethernet`, `catear` or `other`
  * `PORT` is an unsigned decimal integer in the range 1 to 65535
- * `SPEED` is `UINT[SCALE]`, where `SCALE` is a single-letter multiplying
-   factor, one of `k` (10^3), `K` (2^10), `m` (10^6), `M` (2^20), `g` (10^9) or
-   `G` (2^30)
+ * `UINT` is any unsigned decimal integer (with no `+` or `-` prefix)
+ * `UINT_NONZERO` is an unsigned decimal integer ≥ 1
+ * `PATH` is an absolute or relative file path
  * `IN_ADDR` is an Internet address as accepted by [inet_aton(3)][], ie,
    `N.N.N.N` where `N` is an integer in the range 0 to 255.
 
-The `match` and `dummy` options are mutually incompatible.  If both are
-specified, it is an error; the rule is omitted from the configuration and
-`serval.conf` is treated as invalid (see above).
+The `match` and `file` options are mutually incompatible.  If both are set, it
+is an error; the interface rule is omitted from the configuration and
+`serval.conf` is treated as defective (see above).  If neither are set, it is
+also an error.
 
-If a rule specifies a `match` option, then it is used to match real system
-interfaces, and if any PATTERN matches, the rule is applied and the interface
-is used (or excluded if the rule has a true `exclude` option).
+If a rule specifies a `match` option, then each PATTERN is applied to the names
+of the real system interfaces using the [fnmatch(3)][] standard library
+function.  If any PATTERN matches, then the rule's `exclude` option is checked:
+if true, then the interface is not activated, otherwise a socket on that system
+interface is opened and the interface's `socket_type` is set to `dgram` (it is
+an error to configure it otherwise).
 
-If a rule specifies a `dummy` path, then a dummy interface (see below) is
-created if the given file exists.
+If a rule specifies a `file` path, then an interface is created *if the given
+file exists*.  The interface's `socket_type` determines how the file is written
+and read:
+  * `file` (the default) creates a dummy interface for closed communication
+    with other **servald** daemons on the same host -- see below.  If the file
+    does not exist, a warning is logged and the interface is not activated.
+  * `stream` reads and writes the file as though it were a [character special
+    device][].  If the file does not exist, an error is logged and the
+    interface is not activated.
+  * `dgram` is not valid for a file interface.
 
-If the `type` option is given, it sets the IFTYPE of the interface, which will
-affect the default settings of the other options, such as `speed` and
-`mdp_tick_ms`.  In future it may also change the way the interface behaves, for
-example, an `ethernet` interface may automatically assume that broadcast
-packets will be filtered out, so will start using MDP unicast protocols
-immediately rather than waiting to detect that broadcast packets are not
-acknowledged.
+The `type` option only affects the default settings the `packet_interval` and
+`mdp_tick_ms` options, for convenience.  In future it may also change the way
+the interface behaves, for example, an `ethernet` interface may automatically
+assume that broadcast packets will be filtered out, so will start using MDP
+unicast protocols immediately rather than waiting to detect that broadcast
+packets are not acknowledged.
 
-The `mdp_tick_ms` option, if set, controls the time interval in milliseconds
-between MDB broadcast announcements on the interface.  If set to zero, it
-disables MDP announcements altogether on the interface (called “tickless”
-mode).  If not set, then the value of the `mdp.iftype.IFTYPE.tick_ms` option is
-used.  If that is not set, then **servald** uses a built-in interval that
-depends on the IFTYPE.
+The `packet_interval` option controls the maximum rate at which packets are
+tramsmitted on the interface.  It sets the *average* delay, in milliseconds,
+between individual packets.  Bursts of consecutive packets may be sent with no
+delay up to a built-in maximum burst length that depends on the packet
+interval.
+
+The `mdp_tick_ms` option controls the time interval in milliseconds between
+MDB broadcast announcements on the interface.  If set to zero, it disables MDP
+announcements altogether on the interface (called “tickless” mode).  If not
+set, then the value of the `mdp.iftype.IFTYPE.tick_ms` option is used.  If that
+is not set, then **servald** uses a built-in interval that depends on the
+IFTYPE.
+
+The `encapsulation` option controls how MDP packets are written to the
+interface's socket:
+  * `overlay` (the default) stuffs as many MDP packets as it can into each
+    [UDP][] frame, to avoid wasting bandwidth on conventional [Wi-Fi][]
+    interfaces which have a fixed packet size (the [IEEE 802.11][] [MTU][])
+    over the air;
+  * `single` sends each MDP packet on its own to the socket using [SLIP][]
+    encoding, and is suited to with a variable packet size on the air (eg, a
+    serial connection to a [packet radio][] modem).
+
+The `default_route` option, if true, causes all MDP packets with an unresolved
+recipient address (SID) to be sent to this interface instead of just dropped.
+This will allow the node to use [Serval Infrastructure][] to route its packets.
+Many interfaces may have the `default_route` set to true, but only the first
+one will be used as the default route.
+
+The `prefer_unicast` option, if true, causes the interface to send to unicast
+IP addresses instead of the broadcast IP address if both have been observed to
+reach the destination.
+
+The `send_broadcasts` option, if false, prevents the interface from sending any
+broadcast packets whenever a recipient address (SID) cannot be resolved to an
+interface.  Normally, any MDP packet to an unresolvable recipient gets
+broadcast on all active interfaces.
 
 Network interface “legacy” syntax
 ---------------------------------
@@ -358,7 +415,7 @@ stanza having one of the following forms:
     -
     +PREFIX=IFTYPE
     +PREFIX=IFTYPE:PORT
-    +PREFIX=IFTYPE:PORT:SPEED
+    +PREFIX=IFTYPE:PORT:IGNORED
     -PREFIX
     +>PATH
 
@@ -375,9 +432,9 @@ The rule `-PREFIX` excludes interfaces whose name starts with `PREFIX`.
 The rule `+>PATH` specifies a dummy interface (see below) with no address or
 netmask or broadcast filter.
 
-Interface rules are numbered in the order they appear, and hence applied in
-that order.  For example, an `interfaces` option of `+,-eth0` will not reject
-the *eth0* interface because the leading `+` will match it first, but `-eth0,+`
+Interface rules are numbered in the order they appear, and are applied in that
+order.  For example, an `interfaces` option of `+,-eth0` will not reject the
+*eth0* interface because the leading `+` will match it first, but `-eth0,+`
 will reject *eth0* and accept all others.
 
 The “legacy” format is only provided for backward compatibility and will
@@ -394,13 +451,14 @@ instances on a single machine for testing purposes.  To make this possible,
 
 A dummy interface is simply a regular file to which all instances append their
 network packets.  The file grows without limit.  Each instance advances its own
-read pointer through the file, packet by packet.  This simulates a lossless
-mesh network with 100% connectivity, ie, all nodes are neighbours.
+read pointer through the file, packet by packet, skipping packets which are not
+addressed to it.  A single dummy file simulates a lossless mesh network with
+total connectivity, ie, all nodes that read and write the file are neighbours.
 
 To use a dummy interface, first create an empty file, eg, `/tmp/dummy`, and for
 each servald instance, include the dummy file in its *interfaces* list, eg:
 
-    $ servald config set interfaces.0.dummy '/tmp/dummy'
+    $ servald config set interfaces.0.file '/tmp/dummy'
 
 NOTE: Because dummynets are files, not sockets, the [poll(2)][] system call
 does not work on them.  As a result the **servald** daemon main loop has
@@ -416,12 +474,26 @@ interfaces normally obtain directly from the operating system:
 
     interfaces.UINT.dummy_address=IN_ADDR
     interfaces.UINT.dummy_netmask=IN_ADDR
-    interfaces.UINT.dummy_filter_broadcasts=BOOLEAN
+    interfaces.UINT.drop_unicasts=BOOLEAN
+    interfaces.UINT.drop_broadcasts=BOOLEAN
 
-If the `dummy_filter_broadcasts` option is true, then the dummy interface will
-not carry broadcast packets, to simulate the effect of the WiFi drivers on some
-Android devices which filter out broadcast packets.
+The `dummy_address` option sets the interface's unicast (receive) IP address.
 
+The `dummy_netmask` option sets the interface's unicast (receive) IP network
+mask, which together with `dummy_address` determines the interface's IP
+broadcast address.
+
+The `drop_unicasts`, option, if true, will drop overlay frames addressed to the
+interface's unicast IP address, so that only broadcast packets will be read.
+
+The `drop_broadcasts`, option, if true, will drop overlay frames addressed to
+the interface's broadcast IP address, so that only unicast packets will be
+read.  This can simulate the effects of the Fi-Fi drivers on some Android
+devices that filter out broadcast packets (to prevent the device from waking up
+unless there is traffic explicitly sent to it).
+
+
+[Serval Infrastructure]: ./Serval-Infrastructure.md
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell
 [shell wildcard]: http://www.kernel.org/doc/man-pages/online/pages/man7/glob.7.html
 [open(2)]: http://www.kernel.org/doc/man-pages/online/pages/man2/open.2.html
@@ -429,3 +501,10 @@ Android devices which filter out broadcast packets.
 [poll(2)]: http://www.kernel.org/doc/man-pages/online/pages/man2/poll.2.html
 [fnmatch(3)]: http://www.kernel.org/doc/man-pages/online/pages/man3/fnmatch.3.html
 [inet_aton(3)]: http://www.manpagez.com/man/3/inet_aton
+[Wi-Fi]: http://en.wikipedia.org/wiki/Wi-fi
+[IEEE 802.11]: http://en.wikipedia.org/wiki/IEEE_802.11
+[UDP]: http://en.wikipedia.org/wiki/User_Datagram_Protocol
+[MTU]: http://en.wikipedia.org/wiki/Maximum_transmission_unit
+[SLIP]: http://en.wikipedia.org/wiki/Serial_Line_Internet_Protocol
+[packet radio]: http://en.wikipedia.org/wiki/Packet_radio
+[character special device]: http://en.wikipedia.org/wiki/Device_file#Character_devices
