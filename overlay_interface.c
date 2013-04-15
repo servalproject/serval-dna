@@ -321,12 +321,19 @@ static int re_init_socket(int interface_index){
   return 0;
 }
 
+/* Returns 0 if interface is successfully added.
+ * Returns 1 if interface is not added (eg, dummy file does not exist).
+ * Returns -1 in case of error (misconfiguration or system error).
+ */
 static int
 overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr netmask, struct in_addr broadcast,
 		       const struct config_network_interface *ifconfig)
 {
+  int cleanup_ret = -1;
+
   /* Too many interfaces */
-  if (overlay_interface_count>=OVERLAY_MAX_INTERFACES) return WHY("Too many interfaces -- Increase OVERLAY_MAX_INTERFACES");
+  if (overlay_interface_count >= OVERLAY_MAX_INTERFACES)
+    return WHY("Too many interfaces -- Increase OVERLAY_MAX_INTERFACES");
 
   overlay_interface *const interface = &overlay_interfaces[overlay_interface_count];
 
@@ -402,7 +409,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     INFOF("Interface %s is running tickless", name);
   
   if (tick_ms<0)
-    return WHYF("Invalid tick interval %d specified for interface %s", interface->tick_ms, name);
+    return WHYF("No tick interval %d specified for interface %s", interface->tick_ms, name);
 
   interface->tick_ms = tick_ms;
   
@@ -439,25 +446,32 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
       goto cleanup;
     }
     
-    if ((interface->alarm.poll.fd = open(read_file,O_APPEND|O_RDWR)) < 1) {
-      WHYF_perror("could not open interface file %s", read_file);
+    if ((interface->alarm.poll.fd = open(read_file, O_APPEND|O_RDWR)) == -1) {
+      if (errno == ENOENT && ifconfig->socket_type == SOCK_FILE) {
+	cleanup_ret = 1;
+	WARNF("dummy interface not enabled: %s does not exist", alloca_str_toprint(read_file));
+      } else {
+	cleanup_ret = WHYF_perror("file interface not enabled: open(%s, O_APPEND|O_RDWR)", alloca_str_toprint(read_file));
+      }
       goto cleanup;
     }
     
     if (ifconfig->type==OVERLAY_INTERFACE_PACKETRADIO)
       overlay_packetradio_setup_port(interface);
     
-    if (ifconfig->socket_type==SOCK_STREAM){
+    switch (ifconfig->socket_type) {
+    case SOCK_STREAM:
       interface->slip_decode_state.dst_offset=0;
-      // The encapsulation type should be configurable,
-      // but for now default to the one that should be safe on the RFD900 
-      // radios, and that also allows us to receive RSSI reports inline
+      /* The encapsulation type should be configurable, but for now default to the one that should
+         be safe on the RFD900 radios, and that also allows us to receive RSSI reports inline */
       interface->slip_decode_state.encapsulator=SLIP_FORMAT_UPPER7;
       interface->alarm.poll.events=POLLIN;
       watch(&interface->alarm);
-    }else if(ifconfig->socket_type==SOCK_FILE){
+      break;
+    case SOCK_FILE:
       /* Seek to end of file as initial reading point */
       interface->recv_offset = lseek(interface->alarm.poll.fd,0,SEEK_END);
+      break;
     }
   }
   
@@ -483,7 +497,7 @@ cleanup:
     interface->alarm.poll.fd=-1;
   }
   interface->state=INTERFACE_STATE_DOWN;
-  return -1;
+  return cleanup_ret;
 }
 
 static void interface_read_dgram(struct overlay_interface *interface){
