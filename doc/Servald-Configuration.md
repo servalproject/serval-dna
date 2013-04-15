@@ -275,27 +275,27 @@ interfaces and uses its `interfaces` configuration option to select which to
 ignore and which to use.
 
 For example, the following configuration will use any interface whose name
-starts with `eth` (eg, `eth0`, `eth1`) as a 230 MiB/s Ethernet on port 7333,
-and any interface whose name starts with `wifi` or `wlan` but is not `wifi0` or
-`wlan0` as a 1,000,000 B/s WiFi on the default port number:
+starts with `eth` (eg, `eth0`, `eth1`) on port 7333 and any interface whose
+name starts with `wifi` or `wlan` but is not `wifi0` or `wlan0` as a [Wi-Fi][]
+on the default port number:
 
     $ servald config set interfaces.0.match 'eth*' \
                      set interfaces.0.type ethernet \
                      set interfaces.0.port 7333 \
-                     set interfaces.0.speed 230M \
                      set interfaces.1.match 'wifi0,wlan0' \
                      set interfaces.1.exclude true \
                      set interfaces.2.match 'wifi*,wlan*' \
-                     set interfaces.2.type wifi \
-                     set interfaces.2.speed 1m
+                     set interfaces.2.type wifi
 
 The following configuration is equivalent to the above example, but uses the
 “legacy”, single-option syntax (see below):
 
-    $ servald config set interfaces '+eth=ethernet:7333:230M,-wifi0,-wlan0,+wifi=wifi::1m,+wlan=wifi::1m'
+    $ servald config set interfaces \
+        '+eth=ethernet:7333,-wifi0,-wlan0,+wifi=wifi::1m,+wlan=wifi::1m'
 
-The following two equivalent configurations use all available interfaces,
-treating all as WiFi 1 MB/s (the default type and speed):
+The following two equivalent configurations will use all available interfaces,
+treating all as Wi-Fi (the default type) with a 400 µs inter-packet delay (the
+default packet interval for Wi-Fi):
 
     $ servald config set interfaces.0.match '*'
     $ servald config set interfaces '+'
@@ -365,10 +365,9 @@ unicast protocols immediately rather than waiting to detect that broadcast
 packets are not acknowledged.
 
 The `packet_interval` option controls the maximum rate at which packets are
-tramsmitted on the interface.  It sets the *average* delay, in milliseconds,
-between individual packets.  Bursts of consecutive packets may be sent with no
-delay up to a built-in maximum burst length that depends on the packet
-interval.
+tramsmitted on the interface.  It sets the *average* delay in microseconds
+between individual packets.  This delay is only applied after a 5 ms burst of
+consecutive packets with no delay.
 
 The `mdp_tick_ms` option controls the time interval in milliseconds between
 MDB broadcast announcements on the interface.  If set to zero, it disables MDP
@@ -465,9 +464,8 @@ does not work on them.  As a result the **servald** daemon main loop has
 slightly different behaviour and timing characteristics when a dummynet is in
 use.
 
-If a dummy interface's PATH is not absolute (ie, does not start with `/`) then
-the PATH is relative to the `server.dummy_interface_dir` config option if set,
-otherwise relative to the instance directory.
+If a dummy interface's `file` PATH is not absolute (ie, does not start with
+`/`) then it is interpreted relative to the instance directory.
 
 The following config options adorn a dummy interface with properties that real
 interfaces normally obtain directly from the operating system:
