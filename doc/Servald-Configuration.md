@@ -1,5 +1,6 @@
 Configuring servald
 ===================
+[Serval Project][], April 2013
 
 The examples in this document are [Bourne shell][] commands, using standard
 quoting and variable expansion.  Commands issued by the user are prefixed with
@@ -343,8 +344,9 @@ If a rule specifies a `match` option, then each PATTERN is applied to the names
 of the real system interfaces using the [fnmatch(3)][] standard library
 function.  If any PATTERN matches, then the rule's `exclude` option is checked:
 if true, then the interface is not activated, otherwise a socket on that system
-interface is opened and the interface's `socket_type` is set to `dgram` (it is
-an error to configure it otherwise).
+interface is opened and the interface's `socket_type` is set to `dgram`.  (It
+is invalid to explicitly set `socket_type` to other than `dgram` for a match
+interface.)
 
 If a rule specifies a `file` path, then an interface is created *if the given
 file exists*.  The interface's `socket_type` determines how the file is written
@@ -383,8 +385,8 @@ interface's socket:
     interfaces which have a fixed packet size (the [IEEE 802.11][] [MTU][])
     over the air;
   * `single` sends each MDP packet on its own to the socket using [SLIP][]
-    encoding, and is suited to with a variable packet size on the air (eg, a
-    serial connection to a [packet radio][] modem).
+    encoding, and is suited to data links with a variable packet size on the
+    air (eg, a serial connection to a [packet radio][] modem).
 
 The `default_route` option, if true, causes all MDP packets with an unresolved
 recipient address (SID) to be sent to this interface instead of just dropped.
@@ -491,6 +493,7 @@ devices that filter out broadcast packets (to prevent the device from waking up
 unless there is traffic explicitly sent to it).
 
 
+[Serval Project]: http://www.servalproject.org/
 [Serval Infrastructure]: ./Serval-Infrastructure.md
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell
 [shell wildcard]: http://www.kernel.org/doc/man-pages/online/pages/man7/glob.7.html
