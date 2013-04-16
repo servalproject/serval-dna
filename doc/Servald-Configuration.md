@@ -2,35 +2,40 @@ Configuring servald
 ===================
 [Serval Project][], April 2013
 
-The examples in this document are [Bourne shell][] commands, using standard
-quoting and variable expansion.  Commands issued by the user are prefixed with
-the shell prompt `$` to distinguish them from the output of the command.
-Single and double quotes around arguments are part of the shell syntax, so are
-not seen by the command.  Lines ending in backslash `\` continue the command on
-the next line.
 
 Configuration options
 ---------------------
 
-The **servald** configuration is an unordered set of label-value pairs called
-*options*.
+The **servald** configuration is an unordered set of LABEL=VALUE pairs called
+*options*.  For example:
 
-An option *label* is a sequence of one or more alphanumeric words separated by
-period characters, eg, `log.file.directory_path`.
+    debug.verbose=true
+    interfaces.0.file=/var/tmp/serval/dummy
+    interfaces.0.socket_type=file
+    log.file.directory_path=/var/tmp/serval-logs
+    log.file.duration=20m
+    log.file.rotate=10
+    rhizome.direct.peer.0.host=129.96.12.91
+    server.respawn_on_crash=true
 
-An option *value* is a string of characters which is parsed according to the
-option's type, for example:
+An option *LABEL* is a sequence of one or more [US-ASCII][] alphanumeric words
+separated by period characters, eg, `log.file.directory_path`.
 
-  * decimal integer `10` `0` `-1000000`
-  * boolean `true` `false` `on` `off` `1` `0` `yes` `no`
-  * internet address (in\_addr) `192.168.1.1`
-  * time interval `12h` `1w3d` `2h15m30s`
-  * absolute path `/var/lib/serval`
-  * relative path `../lib/hostlist`
-  * Serval ID (SID) `EEBF3AC19E7EE58722A0F6D4A4D5894A72F5C71030C3399FE75808DCF6C6254B`
-  * scaled integer: a decimal integer with an optional scale suffix, one of `k`
-    (10^3), `K` (2^10), `m` (10^6), `M` (2^20), `g` (10^9) or `G` (2^30), eg
-    `1.5m` = 1,500,000
+An option *VALUE* is a string of [US-ASCII][] characters, excluding newline
+(character 10), which is parsed according to the option's type, for example:
+
+  * decimal integer: `10`, `0`, `-1000000`
+  * boolean: `true`, `false`, `on`, `off`, `1`, `0`, `yes`, `no`
+  * internet address (in\_addr): `192.168.1.1`
+  * time interval: `12h`, `1w3d`, `2h15m30s`
+  * absolute path: `/var/lib/serval`
+  * relative path: `../lib/hostlist`
+  * Serval ID (SID): `EEBF3AC19E7EE58722A0F6D4A4D5894A72F5C71030C3399FE75808DCF6C6254B`
+  * scaled decimal integer with optional suffix `k`
+    (10^3), `K` (2^10), `m` (10^6), `M` (2^20), `g` (10^9) or `G` (2^30):
+    `1M` = 1,048,576
+
+If a label is not recognised, it is *unsupported*.
 
 If a value does not parse correctly, it is *invalid*.
 
@@ -51,21 +56,28 @@ and target platform:
 **servald** will create its instance directory (and all enclosing parent
 directories) if it does not already exist.
 
-Running many daemons
---------------------
-
-To run more than one **servald** daemon process on the same device, each daemon
-must have its own instance path (and hence its own `serval.conf`).  Set the
-`SERVALINSTANCE_PATH` environment variable to a different directory path before
-starting each daemon.
-
 Configuration persistence
 -------------------------
 
 **servald** stores its configuration option settings in a file called
 `serval.conf` in its instance directory, which it reads upon every invocation.
-This means that each instance's own option settings persist until changed or
-until its `serval.conf` file is altered or removed.
+This means that each instance's option settings persist until changed or until
+its `serval.conf` file is altered or removed.
+
+The format of the file is as shown in the example above: each option is
+represented by a single line in the file.  Each line may have one of the forms:
+
+    [ WHITE ] LABEL "=" VALUE "\n"
+    [ WHITE ] "#" COMMENT "\n"
+    [ WHITE ] "\n"
+
+where WHITE is any sequence of zero or more space or tab characters (as
+classified by [isspace(3)][]), COMMENT is any sequence of characters except
+newline, and LABEL and VALUE are as defined above.
+
+Blank lines are ignored, as are lines beginning with the comment character `#`.
+VALUE is parsed very strictly: all spaces are significant.  A leading or
+trailing space in VALUE can cause a numerical option to be invalid.
 
 Invalid configuration
 ---------------------
@@ -98,8 +110,13 @@ defective file.  This means that **servald** may always be used to inspect and
 correct the configuration, and to stop a running daemon, despite a defective
 configuration file.
 
-Invalid configuration of daemons
---------------------------------
+Daemon processes
+----------------
+
+To run more than one **servald** daemon process on the same device, each daemon
+must have its own instance path (and hence its own `serval.conf`).  Set the
+`SERVALINSTANCE_PATH` environment variable to a different directory path before
+starting each daemon.
 
 As described above, a defective `serval.conf` will prevent the **servald**
 `start` command from starting a daemon process.  Once the daemon is running, it
@@ -109,6 +126,16 @@ re-loaded file is defective, the daemon rejects it, logs an error, and
 continues execution with its prior configuration unchanged.  If the daemon is
 stopped or killed, it cannot be re-started while `serval.conf` remains
 defective.
+
+About the examples
+------------------
+
+The examples in this document are [Bourne shell][] commands, using standard
+quoting and variable expansion.  Commands issued by the user are prefixed with
+the shell prompt `$` to distinguish them from the output of the command.
+Single and double quotes around arguments are part of the shell syntax, so are
+not seen by the command.  Lines ending in backslash `\` continue the command on
+the next line.
 
 Configuration commands
 ----------------------
@@ -292,7 +319,7 @@ The following configuration is equivalent to the above example, but uses the
 “legacy”, single-option syntax (see below):
 
     $ servald config set interfaces \
-        '+eth=ethernet:7333,-wifi0,-wlan0,+wifi=wifi::1m,+wlan=wifi::1m'
+        '+eth=ethernet:7333,-wifi0,-wlan0,+wifi=wifi,+wlan=wifi'
 
 The following two equivalent configurations will use all available interfaces,
 treating all as Wi-Fi (the default type) with a 400 µs inter-packet delay (the
@@ -351,12 +378,15 @@ interface.)
 If a rule specifies a `file` path, then an interface is created *if the given
 file exists*.  The interface's `socket_type` determines how the file is written
 and read:
-  * `file` (the default) creates a dummy interface for closed communication
+
+  * `file` (the default) creates a “dummy” interface for closed communication
     with other **servald** daemons on the same host -- see below.  If the file
     does not exist, a warning is logged and the interface is not activated.
+
   * `stream` reads and writes the file as though it were a [character special
     device][].  If the file does not exist, an error is logged and the
     interface is not activated.
+
   * `dgram` is not valid for a file interface.
 
 The `type` option only affects the default settings the `packet_interval` and
@@ -367,11 +397,13 @@ unicast protocols immediately rather than waiting to detect that broadcast
 packets are not acknowledged.
 
 The `packet_interval` option controls the maximum rate at which packets are
-tramsmitted on the interface.  It sets the *average* delay in microseconds
-between individual packets.  This delay is only applied after a 5 ms burst of
-consecutive packets with no delay.
+tramsmitted on the interface.  It sets the *average* interval, in microseconds,
+between individual packets.  If the interval is less than the time it takes to
+transmit a packet, then packets will be sent at maximum speed with no
+intervening delay.  Otherwise, delays are inserted between packets as needed to
+keep to the average.
 
-The `mdp_tick_ms` option controls the time interval in milliseconds between
+The `mdp_tick_ms` option controls the time interval, in milliseconds, between
 MDB broadcast announcements on the interface.  If set to zero, it disables MDP
 announcements altogether on the interface (called “tickless” mode).  If not
 set, then the value of the `mdp.iftype.IFTYPE.tick_ms` option is used.  If that
@@ -495,7 +527,9 @@ unless there is traffic explicitly sent to it).
 
 [Serval Project]: http://www.servalproject.org/
 [Serval Infrastructure]: ./Serval-Infrastructure.md
+[US-ASCII]: http://en.wikipedia.org/wiki/ASCII
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell
+[isspace(3)]: http://linux.die.net/man/3/isspace
 [shell wildcard]: http://www.kernel.org/doc/man-pages/online/pages/man7/glob.7.html
 [open(2)]: http://www.kernel.org/doc/man-pages/online/pages/man2/open.2.html
 [write(2)]: http://www.kernel.org/doc/man-pages/online/pages/man2/write.2.html
