@@ -936,15 +936,17 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  const char *sidhex, *count;
-  if (cli_arg(parsed, "SID", &sidhex, str_is_subscriber_id, "broadcast") == -1)
-    return -1;
-  if (cli_arg(parsed, "count", &count, NULL, "0") == -1)
+  const char *sidhex, *count, *opt_timeout;
+  if (   cli_arg(parsed, "--timeout", &opt_timeout, cli_interval_ms, "1") == -1
+      || cli_arg(parsed, "SID", &sidhex, str_is_subscriber_id, "broadcast") == -1
+      || cli_arg(parsed, "count", &count, cli_uint, "0") == -1)
     return -1;
   
   // assume we wont hear any responses
   int ret=1;
   int icount=atoi(count);
+  time_ms_t timeout_ms = 1000;
+  str_to_uint64_interval_ms(opt_timeout, &timeout_ms, NULL);
 
   overlay_mdp_frame mdp;
   bzero(&mdp, sizeof(overlay_mdp_frame));
@@ -977,8 +979,8 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
   long long rx_count=0,tx_count=0;
 
   if (broadcast)
-    WHY("WARNING: broadcast ping packets will not be encryped.");
-  while(icount==0 || tx_count<icount) {
+    WARN("broadcast ping packets will not be encrypted");
+  for (; icount==0 || tx_count<icount; ++sequence_number) {
     /* Now send the ping packets */
     mdp.packetTypeAndFlags=MDP_TX;
     if (broadcast) mdp.packetTypeAndFlags|=MDP_NOCRYPT;
@@ -995,18 +997,21 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
     
     int res=overlay_mdp_send(&mdp,0,0);
     if (res) {
-      WHYF("ERROR: Could not dispatch PING frame #%d (error %d)", sequence_number - firstSeq, res);
-      if (mdp.packetTypeAndFlags==MDP_ERROR)
-	WHYF("       Error message: %s", mdp.error.message);
-    } else tx_count++;
+      WHYF("could not dispatch PING frame #%d (error %d)%s%s",
+	  sequence_number - firstSeq,
+	  res,
+	  mdp.packetTypeAndFlags == MDP_ERROR ? ": " : "",
+	  mdp.packetTypeAndFlags == MDP_ERROR ? mdp.error.message : ""
+	);
+    } else
+      tx_count++;
 
     /* Now look for replies until one second has passed, and print any replies
        with appropriate information as required */
     time_ms_t now = gettime_ms();
-    time_ms_t timeout = now + 1000;
-
-    while(now<timeout) {
-      time_ms_t timeout_ms = timeout - gettime_ms();
+    time_ms_t finish = now + timeout_ms;
+    for (; !servalShutdown && (timeout_ms == 0 || now < finish); now = gettime_ms()) {
+      time_ms_t timeout_ms = finish - gettime_ms();
       int result = overlay_mdp_client_poll(timeout_ms);
 
       if (result>0) {
@@ -1045,12 +1050,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
 	  }
 	}
       }
-      now=gettime_ms();
-      if (servalShutdown)
-	break;
     }
-    sequence_number++;
-    timeout=now+1000;
   }
 
   {
@@ -1421,12 +1421,25 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, void *context)
 
 int app_slip_test(const struct cli_parsed *parsed, void *context)
 {
-  int len;
-  unsigned char bufin[8192];
-  unsigned char bufout[8192];
-  int count=0;
-  for(count=0;count<50000;count++) {    
-    len=1+random()%1500;
+  const char *seed = NULL;
+  const char *iterations = NULL;
+  const char *duration = NULL;
+  if (   cli_arg(parsed, "--seed", &seed, cli_uint, NULL) == -1
+      || cli_arg(parsed, "--duration", &duration, cli_uint, NULL) == -1
+      || cli_arg(parsed, "--iterations", &iterations, cli_uint, NULL) == -1)
+    return -1;
+  if (seed)
+    srandom(atoi(seed));
+  int maxcount = iterations ? atoi(iterations) : duration ? 0 : 1000;
+  time_ms_t start = duration ? gettime_ms() : 0;
+  time_ms_t end = duration ? start + atoi(duration) * (time_ms_t) 1000 : 0;
+  int count;
+  for (count = 0; maxcount == 0 || count < maxcount; ++count) {    
+    if (end && gettime_ms() >= end)
+      break;
+    unsigned char bufin[8192];
+    unsigned char bufout[8192];
+    int len=1+random()%1500;
     int i;
     for(i=0;i<len;i++) bufin[i]=random()&0xff;
     struct slip_decode_state state;
@@ -1439,11 +1452,10 @@ int app_slip_test(const struct cli_parsed *parsed, void *context)
       dump("input",bufin,len);
       dump("encoded",bufout,outlen);
       dump("decoded",state.dst,state.packet_length);
-      exit(-1);
+      return 1;
     } else { 
-      if (!(count%1000)) {
+      if (!(count%1000))
 	printf("."); fflush(stdout); 
-      }
     }   
   }
   printf("Test passed.\n");
@@ -2352,7 +2364,7 @@ struct cli_schema command_line_options[]={
    "Stop a running daemon with instance path from SERVALINSTANCE_PATH environment variable."},
   {app_server_status,{"status",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display information about running daemon."},
-  {app_mdp_ping,{"mdp","ping","<SID>|broadcast","[<count>]",NULL}, 0,
+  {app_mdp_ping,{"mdp","ping","[--timeout=<seconds>]","<SID>|broadcast","[<count>]",NULL}, 0,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
   {app_trace,{"mdp","trace","<SID>",NULL}, 0,
    "Trace through the network to the specified node via MDP."},
@@ -2431,7 +2443,7 @@ struct cli_schema command_line_options[]={
    "Interactive servald monitor interface."},
   {app_crypt_test,{"test","crypt",NULL}, 0,
    "Run cryptography speed test"},
-  {app_slip_test,{"test","slip",NULL}, 0,
+  {app_slip_test,{"test","slip","[--seed=<N>]","[--duration=<seconds>|--iterations=<N>]",NULL}, 0,
    "Run serial encapsulation test"},
 #ifdef HAVE_VOIPTEST
   {app_pa_phone,{"phone",NULL}, 0,

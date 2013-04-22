@@ -69,6 +69,7 @@ int cli_optional_bundle_key(const char *arg);
 int cli_manifestid(const char *arg);
 int cli_fileid(const char *arg);
 int cli_optional_bundle_crypt_key(const char *arg);
+int cli_interval_ms(const char *arg);
 int cli_uint(const char *arg);
 int cli_optional_did(const char *text);
 

@@ -360,6 +360,11 @@ int cli_uint(const char *arg)
   return s != arg && *s == '\0';
 }
 
+int cli_interval_ms(const char *arg)
+{
+  return str_to_uint64_interval_ms(arg, NULL, NULL);
+}
+
 int cli_optional_did(const char *text)
 {
   return text[0] == '\0' || str_is_did(text);

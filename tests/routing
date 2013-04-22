@@ -74,7 +74,7 @@ test_single_link() {
    foreach_instance +A +B \
       wait_until has_seen_instances +A +B
    set_instance +A
-   executeOk_servald mdp ping $SIDB 1
+   executeOk_servald mdp ping --timeout=15 $SIDB 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
@@ -92,13 +92,13 @@ test_multiple_ids() {
    foreach_instance +A +B \
       wait_until has_seen_instances +A +B
    set_instance +A
-   executeOk_servald mdp ping $SIDB2 1
+   executeOk_servald mdp ping --timeout=15 $SIDB2 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDB1:BROADCAST UNICAST :dummy.*:0*"
    assertStdoutGrep --matches=1 "^$SIDB2:INDIRECT ::$SIDB1"
    set_instance +B
-   executeOk_servald mdp ping $SIDA2 1
+   executeOk_servald mdp ping --timeout=15 $SIDA2 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDA1:BROADCAST UNICAST :dummy.*:0*"
@@ -118,7 +118,7 @@ test_single_mdp() {
    foreach_instance +A +B \
       wait_until has_seen_instances +A +B
    set_instance +A
-   executeOk_servald mdp ping $SIDB 1
+   executeOk_servald mdp ping --timeout=15 $SIDB 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
@@ -137,7 +137,7 @@ test_mismatched_encap() {
    foreach_instance +A +B \
       wait_until has_seen_instances +A +B
    set_instance +A
-   executeOk_servald mdp ping $SIDB 1
+   executeOk_servald mdp ping --timeout=15 $SIDB 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
@@ -149,7 +149,7 @@ setup_slip_encoding() {
    assert_no_servald_processes
 }
 test_slip_encoding() {
-   executeOk_servald test slip
+   executeOk_servald test slip --seed=1 --iterations=2000
 }
 
 doc_multiple_nodes="Multiple nodes on one link"
@@ -164,11 +164,11 @@ test_multiple_nodes() {
    foreach +A +B +C +D \
       wait_until has_seen_instances +A +B +C +D
    set_instance +A
-   executeOk_servald mdp ping $SIDB 1
+   executeOk_servald mdp ping --timeout=15 $SIDB 1
    tfw_cat --stdout --stderr
-   executeOk_servald mdp ping $SIDC 1
+   executeOk_servald mdp ping --timeout=15 $SIDC 1
    tfw_cat --stdout --stderr
-   executeOk_servald mdp ping $SIDD 1
+   executeOk_servald mdp ping --timeout=15 $SIDD 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDB:BROADCAST "
@@ -195,7 +195,7 @@ test_scan() {
    executeOk_servald scan
    wait_until scan_completed
    wait_until has_seen_instances +B
-   executeOk_servald mdp ping $SIDB 1
+   executeOk_servald mdp ping --timeout=15 $SIDB 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDB:UNICAST :"
@@ -220,7 +220,7 @@ test_broadcast_only() {
    foreach_instance +A +B \
       wait_until has_seen_instances +A +B
    set_instance +A
-   executeOk_servald mdp ping $SIDB 1
+   executeOk_servald mdp ping --timeout=15 $SIDB 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDB:BROADCAST :"
@@ -242,7 +242,7 @@ test_prefer_unicast() {
    foreach_instance +A +B \
       wait_until has_seen_instances +A +B
    set_instance +A
-   executeOk_servald mdp ping $SIDB 1
+   executeOk_servald mdp ping --timeout=15 $SIDB 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
@@ -263,7 +263,7 @@ test_multihop_linear() {
    foreach_instance +A +B +C +D \
       wait_until has_seen_instances +A +B +C +D
    set_instance +A
-   executeOk_servald --stdout --stderr mdp ping $SIDD 1
+   executeOk_servald --stdout --stderr mdp ping --timeout=15 $SIDD 1
    tfw_cat --stdout --stderr
    executeOk_servald mdp trace $SIDD
    tfw_cat --stdout --stderr
@@ -293,7 +293,7 @@ test_crowded_mess() {
    foreach_instance +A +H \
       wait_until has_seen_instances +A +H
    set_instance +A
-   executeOk_servald mdp ping $SIDH 1
+   executeOk_servald mdp ping --timeout=15 $SIDH 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDH:INDIRECT :"

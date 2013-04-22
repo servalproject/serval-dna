@@ -207,6 +207,19 @@ uint64_t scale_factor(const char *str, const char **afterp);
  */
 int uint64_scaled_to_str(char *str, size_t len, uint64_t value);
 
+/* Parse a string as a time interval (seconds) in millisecond resolution.  Return the number of
+ * milliseconds.  Valid strings are all unsigned ASCII decimal numbers with up to three digits after
+ * the decimal point.
+ *
+ * Return 1 if a valid interval was parsed, storing the number of milliseconds in *result (unless
+ * result is NULL) and storing a pointer to the immediately succeeding character in *afterp (unless
+ * afterp is NULL, in which case returns 1 only if the immediately succeeding character is a nul
+ * '\0').  Returns 0 otherwise, leaving *result and *afterp unchanged.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_to_uint64_interval_ms(const char *str, int64_t *result, const char **afterp);
+
 /* Return true if the string resembles a nul-terminated URI.
  * Based on RFC-3986 generic syntax, assuming nothing about the hierarchical part.
  *
