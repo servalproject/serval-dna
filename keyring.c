@@ -531,123 +531,142 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot, const char *pin)
 {
   /* Skip salt and MAC */
   int i;
-  unsigned ofs;
   keyring_identity *id = emalloc_zero(sizeof(keyring_identity));
   if (!id) { WHY("malloc of identity failed"); return NULL; }
   if (!slot) { WHY("slot is null"); return NULL; }
-
   id->PKRPin = str_edup(pin);
-
   /* There was a known plain-text opportunity here:
      byte 96 must be 0x01, and some other bytes are likely deducible, e.g., the
      location of the trailing 0x00 byte can probably be guessed with confidence.
      Payload rotation would help here.  So let's do that.  First two bytes is
      rotation in bytes of remainder of block.
   */
-
-  int rotation=(slot[PKR_SALT_BYTES+PKR_MAC_BYTES]<<8)
-    |slot[PKR_SALT_BYTES+PKR_MAC_BYTES+1];
-  ofs=PKR_SALT_BYTES+PKR_MAC_BYTES+2;
-
-  /* Parse block */
-  for(ofs=0;ofs<(KEYRING_PAGE_SIZE-PKR_SALT_BYTES-PKR_MAC_BYTES-2);)
-    {
-      switch(slot_byte(ofs)) {
-      case 0x00:
-	/* End of data, stop looking */
-	ofs=KEYRING_PAGE_SIZE;
-	break;
-      case KEYTYPE_RHIZOME:
-      case KEYTYPE_DID:
-      case KEYTYPE_CRYPTOBOX:
-      case KEYTYPE_CRYPTOSIGN:
-	if (id->keypair_count>=PKR_MAX_KEYPAIRS) {
-	  WHY("Too many key pairs in identity");
-	  keyring_free_identity(id);
-	  return NULL;
-	}
-	keypair *kp=id->keypairs[id->keypair_count] = emalloc_zero(sizeof(keypair));
-	if (!id->keypairs[id->keypair_count]) {
-	  WHY("malloc of key pair structure failed.");
-	  keyring_free_identity(id);
-	  return NULL;
-	}
-	kp->type = slot_byte(ofs++);
-	/* TODO The keyring format is not back-compatible, ie, old software cannot cope with a
-	 * keyring from newer software that stores new key types.  The simple solution to this is to
-	 * encode the length in the type byte, or add an extra length byte, using a representation
-	 * that is not extensible, ie, is not subject to change.  This will allow the software to
-	 * skip unrecognised key types and pick up the ones it recognises.
-	 */
-	switch (kp->type) {
-	case KEYTYPE_CRYPTOBOX:
-	  kp->private_key_len=crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES;
-	  kp->public_key_len=crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES;
-	  break;
-	case KEYTYPE_CRYPTOSIGN:
-	  kp->private_key_len=crypto_sign_edwards25519sha512batch_SECRETKEYBYTES;
-	  kp->public_key_len=crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
-	  break;
-	case KEYTYPE_RHIZOME:
-	  kp->private_key_len=32; kp->public_key_len=0;
-	  break;
-	case KEYTYPE_DID:
-	  kp->private_key_len=32; kp->public_key_len=64;
-	  break;
-	}
-	if (kp->private_key_len && (kp->private_key = emalloc(kp->private_key_len)) == NULL) {
-	  keyring_free_identity(id);
-	  return NULL;
-	}
-	for (i = 0; i < kp->private_key_len; ++i)
-	  kp->private_key[i] = slot_byte(ofs++);
-	if (kp->public_key_len && (kp->public_key = emalloc(kp->public_key_len)) == NULL) {
-	  keyring_free_identity(id);
-	  return NULL;
-	}
-	switch(kp->type) {
-	case KEYTYPE_CRYPTOBOX:
-	  /* Compute public key from private key.
-	     
-	     Public key calculation as below is taken from section 3 of:
-	     http://cr.yp.to/highspeed/naclcrypto-20090310.pdf
-	     
-	     XXX - This can take a while on a mobile phone since it involves a
-	     scalarmult operation, so searching through all slots for a pin could 
-	     take a while (perhaps 1 second per pin:slot cominbation).  
-	     This is both good and bad.  The other option is to store
-	     the public key as well, which would make entering a pin faster, but
-	     would also make trying an incorrect pin faster, thus simplifying some
-	     brute-force attacks.  We need to make a decision between speed/convenience
-	     and security here.
-	  */
-	  crypto_scalarmult_curve25519_base(kp->public_key,kp->private_key);
-	  break;
-	case KEYTYPE_DID:
-	case KEYTYPE_CRYPTOSIGN:
-	  /* While it is possible to compute the public key from the private key,
-	     NaCl currently does not provide a function to do this, so we have to
-	     store it, or else subvert the NaCl API, which I would rather not do.
-	     So we just copy it out.  We use the same code for extracting the
-	     public key for a DID (i.e, subscriber name)
-	  */
-	  for (i = 0; i < kp->public_key_len; ++i)
-	    kp->public_key[i] = slot_byte(ofs++);
-	  break;
-	case KEYTYPE_RHIZOME:
-	  /* no public key value for these, just do nothing */
-	  break;
-	}
-	id->keypair_count++;
-	break;
-      default:
-	/* Invalid data, so invalid record.  Free and return failure.
-	   We don't complain about this, however, as it is the natural
-	   effect of trying a pin on an incorrect keyring slot. */
-	keyring_free_identity(id);
-	return NULL;
-      }
+  int rotation = (slot[PKR_SALT_BYTES+PKR_MAC_BYTES]<<8) | slot[PKR_SALT_BYTES+PKR_MAC_BYTES+1];
+  unsigned ofs = 0;
+  while (ofs < KEYRING_PAGE_SIZE - PKR_SALT_BYTES - PKR_MAC_BYTES - 2) {
+    unsigned char ktype = slot_byte(ofs++);
+    if (ktype == 0x00)
+      break; // End of data, stop looking
+    if (id->keypair_count >= PKR_MAX_KEYPAIRS) {
+      WHY("Too many key pairs in identity");
+      keyring_free_identity(id);
+      return NULL;
     }
+    size_t keypair_len = (slot_byte(ofs) << 8) | slot_byte(ofs + 1);
+    size_t public_key_len = 0;
+    size_t private_key_len = 0;
+    switch (ktype) {
+    case KEYTYPE_CRYPTOBOX:
+      // No length bytes after this key type, for backward compatibility.
+      keypair_len = private_key_len = crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES;
+      public_key_len = crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES;
+      break;
+    case KEYTYPE_CRYPTOSIGN:
+      // No length bytes after this key type, for backward compatibility.
+      private_key_len = crypto_sign_edwards25519sha512batch_SECRETKEYBYTES;
+      public_key_len = crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
+      keypair_len = private_key_len + public_key_len;
+      break;
+    case KEYTYPE_RHIZOME:
+      // No length bytes after this key type, for backward compatibility.
+      keypair_len = private_key_len = 32;
+      public_key_len = 0;
+      break;
+    case KEYTYPE_DID:
+      // No length bytes after this key type, for backward compatibility.
+      private_key_len = 32;
+      public_key_len = 64;
+      keypair_len = private_key_len + public_key_len;
+      break;
+    // ADD NEW KEY TYPES HERE:
+    /*
+    case KEYTYPE_SOMETHING:
+      ofs += 2; // skip length bytes
+      private_key_len = ...
+      public_key_len = ...
+      break;
+    */
+    default:
+      // Unrecognised key type, possibly from a future software version.  Skip the key pair.
+      ofs += 2 + keypair_len;
+      continue;
+    }
+    // This is where the ofs should advance to by the time we have read the whole key pair.
+    unsigned next_ofs = ofs + keypair_len;
+    // Create keyring entries to hold the key pair.
+    keypair *kp = NULL;
+    if (   (kp = id->keypairs[id->keypair_count] = emalloc_zero(sizeof(keypair))) == NULL
+	|| (private_key_len && (kp->private_key = emalloc(private_key_len)) == NULL)
+	|| (public_key_len && (kp->public_key = emalloc(public_key_len)) == NULL)
+    ) {
+      keyring_free_identity(id);
+      return NULL;
+    }
+    kp->type = ktype;
+    kp->private_key_len = private_key_len;
+    kp->public_key_len = public_key_len;
+    // The private key is always stored byte for byte in the keyring.
+    for (i = 0; i < kp->private_key_len; ++i)
+      kp->private_key[i] = slot_byte(ofs++);
+    // How to get the public key depends on the key type.
+    switch (kp->type) {
+    case KEYTYPE_CRYPTOBOX:
+      /* Compute public key from private key.
+       *
+       * Public key calculation as below is taken from section 3 of:
+       * http://cr.yp.to/highspeed/naclcrypto-20090310.pdf
+       *
+       * XXX - This can take a while on a mobile phone since it involves a scalarmult operation,
+       * so searching through all slots for a pin could take a while (perhaps 1 second per
+       * pin:slot cominbation).  This is both good and bad.  The other option is to store the
+       * public key as well, which would make entering a pin faster, but would also make trying an
+       * incorrect pin faster, thus simplifying some brute-force attacks.  We need to make a
+       * decision between speed/convenience and security here.
+       */
+      crypto_scalarmult_curve25519_base(kp->public_key, kp->private_key);
+      break;
+    case KEYTYPE_DID:
+      /* The name is stored as ASCII bytes with a nul terminator in the public key part of the key
+       * pair.
+       */
+      {
+	int gotnul = 0;
+	for (i = 0; i < kp->public_key_len; ++i)
+	  if (!(kp->public_key[i] = slot_byte(ofs++)))
+	    gotnul = 1;
+	if (!gotnul) {
+	  keyring_free_identity(id);
+	  return NULL;
+	}
+      }
+      break;
+    case KEYTYPE_CRYPTOSIGN:
+      /* While it is possible to compute the public key from the private key, the NaCl API currently
+       * does not expose a primitive to do this.  Subverting the NaCl API to invoke an internal NaCl
+       * function risks becoming unsupported in future, so the public key is redundantly stored in
+       * the keyring.
+       */
+      // FALL THROUGH
+    default:
+      /* By default, the public key is stored byte-for-byte in the keyring.
+       */
+      for (i = 0; i < kp->public_key_len; ++i)
+	kp->public_key[i] = slot_byte(ofs++);
+      break;
+    }
+    // Ensure that the correct number of bytes was consumed.
+    if (ofs != next_ofs) {
+      keyring_free_identity(id);
+      return NULL;
+    }
+    // Got a valid key pair!
+    id->keypair_count++;
+  }
+  // If the buffer offset overshot, we got an invalid keypair code and length combination.
+  if (ofs > (KEYRING_PAGE_SIZE - PKR_SALT_BYTES - PKR_MAC_BYTES - 2)) {
+    keyring_free_identity(id);
+    return NULL;
+  }
   return id;
 }
 
