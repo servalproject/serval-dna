@@ -626,9 +626,15 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     frame->destination = find_subscriber(mdp->out.dst.sid, SID_SIZE, 1);
   }
   
-  frame->ttl=mdp->out.ttl;
-  if (frame->ttl==0) 
-    frame->ttl=64; /* default TTL */	
+  frame->ttl = mdp->out.ttl;
+  if (frame->ttl == 0) 
+    frame->ttl = PAYLOAD_TTL_DEFAULT;
+  else if (frame->ttl > PAYLOAD_TTL_MAX) {
+    op_free(frame);
+    RETURN(overlay_mdp_reply_error(mdp_named.poll.fd,
+				    recvaddr,recvaddrlen,9,
+				    "TTL out of range"));
+  }
   
   if (!frame->destination || frame->destination->reachable == REACHABLE_SELF)
     {

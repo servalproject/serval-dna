@@ -143,7 +143,8 @@ int overlay_forward_payload(struct overlay_frame *f){
 // Parse the mdp envelope header
 // may return (HEADER_PROCESS|HEADER_FORWARD) || -1
 int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *frame, 
-			 struct overlay_buffer *buffer, struct subscriber **nexthop){
+			 struct overlay_buffer *buffer, struct subscriber **nexthop)
+{
   IN();
   int process=1;
   int forward=2;
@@ -203,21 +204,22 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
     }
   }
   
-  if (flags & PAYLOAD_FLAG_ONE_HOP){
+  if (flags & PAYLOAD_FLAG_ONE_HOP) {
     frame->ttl=1;
-  }else{
+  } else {
     int ttl_qos = ob_get(buffer);
     if (ttl_qos<0)
       RETURN(WHY("Unable to read ttl"));
     frame->ttl = ttl_qos & 0x1F;
     frame->queue = (ttl_qos >> 5) & 3;
   }
-  if (frame->ttl == 0){
+  if (frame->ttl)
+    --frame->ttl;
+  if (frame->ttl == 0) {
     forward = 0;
     if (config.debug.overlayframes)
       DEBUGF("Don't forward when TTL expired");
-  } else
-    --frame->ttl;
+  }
   
   if (flags & PAYLOAD_FLAG_LEGACY_TYPE){
     int ftype = ob_get(buffer);

@@ -100,6 +100,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define PAYLOAD_FLAG_CIPHERED (1<<4)
 #define PAYLOAD_FLAG_SIGNED (1<<5)
 
+/* Time-to-live is a 'uint5_t'.
+ */
+#define PAYLOAD_TTL_MAX (31)
+#define PAYLOAD_TTL_DEFAULT (31)
+
 // return codes for parsing mdp packet headers
 #define HEADER_PROCESS 1
 #define HEADER_FORWARD 2

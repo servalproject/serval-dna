@@ -26,8 +26,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 int overlay_frame_build_header(struct decode_context *context, struct overlay_buffer *buff, 
 			       int queue, int type, int modifiers, int ttl, 
 			       struct broadcast *broadcast, struct subscriber *next_hop,
-			       struct subscriber *destination, struct subscriber *source){
-  
+			       struct subscriber *destination, struct subscriber *source)
+{
+  if (ttl < 0 || ttl > PAYLOAD_TTL_MAX)
+    return WHYF("invalid ttl=%d", ttl);
+
   int flags = modifiers & (PAYLOAD_FLAG_CIPHERED | PAYLOAD_FLAG_SIGNED);
   
   if (ttl==1 && !broadcast)

@@ -362,7 +362,7 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   frame->destination = destination;
   
   if (destination && (destination->reachable & REACHABLE)){
-    frame->ttl=64;
+    frame->ttl = PAYLOAD_TTL_DEFAULT; // MAX?
   }else{
     frame->ttl=1;// how will this work with olsr??
     overlay_broadcast_generate_address(&frame->broadcast_id);
