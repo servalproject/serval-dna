@@ -2194,12 +2194,13 @@ int app_route_print(const struct cli_parsed *parsed, void *context)
       struct overlay_route_record *p=(struct overlay_route_record *)&rx.out.payload[ofs];
       ofs+=sizeof(struct overlay_route_record);
       
+      if (p->reachable==REACHABLE_NONE)
+	continue;
+
       cli_put_hexvalue(p->sid, SID_SIZE, ":");
       char flags[32];
       strbuf b = strbuf_local(flags, sizeof flags);
       
-      if (p->reachable==REACHABLE_NONE)
-	strbuf_puts(b, "NONE");
       if (p->reachable & REACHABLE_SELF)
 	strbuf_puts(b, "SELF ");
       if (p->reachable & REACHABLE_ASSUMED)

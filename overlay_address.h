@@ -56,8 +56,12 @@ struct subscriber{
   int send_full;
   // sequence number for this unicast or broadcast destination
   int sequence;
+
   // overlay routing information
   struct overlay_node *node;
+
+  // link state routing information
+  struct link_state *link_state;
   
   // result of routing calculations;
   int reachable;
@@ -70,6 +74,7 @@ struct subscriber{
   
   // if reachable&REACHABLE_UNICAST send packets to this address, else use the interface broadcast address
   struct sockaddr_in address;
+
   time_ms_t last_stun_request;
   time_ms_t last_probe;
   time_ms_t last_probe_response;

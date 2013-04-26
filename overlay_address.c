@@ -258,6 +258,9 @@ static int add_explain_response(struct subscriber *subscriber, void *context){
     return 1;
   if (ob_append_bytes(response->please_explain->payload, subscriber->sid, SID_SIZE))
     return 1;
+
+  // let the routing engine know that we had to explain this sid, we probably need to re-send routing info
+  link_explained(subscriber);
   return 0;
 }
 

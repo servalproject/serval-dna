@@ -43,6 +43,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)packetformats.c \
 	$(SERVAL_BASE)performance_timing.c \
 	$(SERVAL_BASE)randombytes.c \
+	$(SERVAL_BASE)route_link.c \
 	$(SERVAL_BASE)rhizome.c \
 	$(SERVAL_BASE)rhizome_bundle.c \
 	$(SERVAL_BASE)rhizome_crypto.c \

@@ -255,11 +255,13 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
   int packet_flags = ob_get(buffer);
   
   int sender_interface = 0;
+  int sender_seq = -1;
+
   if (packet_flags & PACKET_INTERFACE)
     sender_interface = ob_get(buffer);
   
   if (packet_flags & PACKET_SEQ)
-    ob_get(buffer); // sequence number, not implemented yet
+    sender_seq = ob_get(buffer);
   
   if (context->sender){
     // ignore packets that have been reflected back to me
@@ -303,7 +305,8 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
       
       context->sender->last_acked = now;
     }
-    
+
+    link_received_packet(context->sender, sender_interface, sender_seq, packet_flags & PACKET_UNICAST);
   }
   
   if (addr){

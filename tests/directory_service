@@ -26,7 +26,8 @@ configure_servald_server() {
       set log.console.show_pid on \
       set log.console.show_time on \
       set rhizome.enable No \
-      set debug.mdprequests Yes
+      set debug.mdprequests Yes \
+      set debug.overlayframes Yes
 }
 
 teardown() {
@@ -100,7 +101,8 @@ start_routing_instance() {
       set rhizome.enable No \
       set log.console.show_pid on \
       set log.console.show_time on \
-      set debug.mdprequests Yes
+      set debug.mdprequests Yes \
+      set debug.overlayframes Yes
    start_servald_server
    wait_until interface_up
 }

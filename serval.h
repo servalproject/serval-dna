@@ -866,4 +866,9 @@ int rhizome_active_fetch_bytes_received(int q);
 extern long long bundles_available;
 extern char crash_handler_clue[1024];
 
+
+int link_received_packet(struct subscriber *subscriber, int sender_interface, int sender_seq, int unicode);
+int link_receive(overlay_mdp_frame *mdp);
+void link_explained(struct subscriber *subscriber);
+
 #endif // __SERVALD_SERVALD_H
