@@ -262,6 +262,25 @@ int cf_opt_int32_nonneg(int32_t *intp, const char *text)
   return CFOK;
 }
 
+int cf_opt_int32_rs232baudrate(int32_t *intp, const char *text)
+{
+  const char *end = text;
+  long value = strtol(text, (char**)&end, 10);
+  if (end == text || *end || value < 0 || value > 0x7fffffffL)
+    return CFINVALID;
+  switch(value) {
+  case 50: case 75: case 110: case 134: case 150: case 200: case 300:
+  case 600: case 1200: case 1800: case 2400: case 4800: case 7200:
+  case 9600: case 14400: case 28800: case 38400: case 57600: case 115200:
+  case 230400:
+    *intp = value;
+    return CFOK;
+    break;
+  default:
+    return CFINVALID;
+  }
+}
+
 static int cf_fmt_int32(const char **textp, const int32_t *intp)
 {
   char buf[12];

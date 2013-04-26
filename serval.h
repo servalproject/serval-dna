@@ -415,6 +415,8 @@ typedef struct overlay_interface {
    These figures will be refined over time, and we will allow people to set them per-interface.
    */
   unsigned tick_ms; /* milliseconds per tick */
+  unsigned int uartbps; // set serial port speed (which might be different from link speed)
+  int ctsrts; // enabled hardware flow control if non-zero
   
   struct subscriber *next_advert;
   

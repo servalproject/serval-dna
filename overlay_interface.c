@@ -349,6 +349,8 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   interface->default_route = ifconfig->default_route;
   interface->socket_type = ifconfig->socket_type;
   interface->encapsulation = ifconfig->encapsulation;
+  interface->uartbps = ifconfig->uartbps;
+  interface->ctsrts = ifconfig->ctsrts;
 
   /* Pick a reasonable default MTU.
      This will ultimately get tuned by the bandwidth and other properties of the interface */
@@ -360,7 +362,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   // How often do we announce ourselves on this interface?
   int tick_ms=-1;
   int packet_interval=-1;
-  
+
   // hard coded defaults:
   switch (ifconfig->type) {
     case OVERLAY_INTERFACE_PACKETRADIO:

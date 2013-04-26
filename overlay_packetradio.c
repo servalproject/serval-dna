@@ -7,9 +7,8 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   struct termios t;
 
   tcgetattr(interface->alarm.poll.fd, &t);
-  // XXX Speed and options should be configurable
-  cfsetispeed(&t, B57600);
-  cfsetospeed(&t, B57600);
+  cfsetispeed(&t, interface->uartbps);
+  cfsetospeed(&t, interface->uartbps);
   // 8N1
   t.c_cflag &= ~PARENB;
   t.c_cflag &= ~CSTOPB;
@@ -26,11 +25,13 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
    No 8th-bit stripping or parity error handling.
    Disable START/STOP output flow control. */
   
-  // Enable CTS/RTS flow control (for now)
+  // Enable/disable CTS/RTS flow control
 #ifndef CNEW_RTSCTS
-  t.c_cflag |= CRTSCTS;
+  if (interface->ctsrts) t.c_cflag |= CRTSCTS;
+  else t.c_cflag &= ~CRTSCTS;
 #else
-  t.c_cflag |= CNEW_RTSCTS;
+  if (interface->ctsrts) t.c_cflag |= CNEW_RTSCTS;
+  else t.c_cflag &= ~CNEW_RTSCTS;
 #endif
 
   // no output processing
