@@ -42,7 +42,7 @@ fi
 
 if ! git describe "${dirty:+--dirty=$dirty}" 2>/dev/null; then
    original_commit=$(git rev-list --reverse --max-parents=0 --abbrev-commit HEAD 2>/dev/null | head -n 1)
-   if [ -n "$original_commit" ]; then
+   if [ -z "$original_commit" ]; then
       original_commit=$(git rev-list --reverse --abbrev-commit HEAD | head -n 1)
    fi
    if [ -z "$original_commit" ]; then
@@ -50,7 +50,7 @@ if ! git describe "${dirty:+--dirty=$dirty}" 2>/dev/null; then
       exit 1
    fi
    existing_start_tag="$(git rev-list --no-walk START 2>/dev/null | true)"
-   if [ -n "$(git tag --list START)" -a "$existing_start_tag" != "$original_commit" ]; then
+   if [ -n "$(git tag --list START 2>/dev/null)" -a "$existing_start_tag" != "$original_commit" ]; then
       echo "$0: tag 'START' is already in use" >&2
       exit 1
    fi
