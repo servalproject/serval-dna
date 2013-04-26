@@ -281,6 +281,20 @@ int cf_opt_int32_rs232baudrate(int32_t *intp, const char *text)
   }
 }
 
+int cf_fmt_int32_rs232baudrate(const char **textp, const int32_t *intp)
+{
+  char buf[12];
+  sprintf(buf, "%d", *intp);
+  *textp = str_edup(buf);
+  return CFOK;
+}
+
+int cf_cmp_int32_rs232baudrate(const int32_t *a, const int32_t *b)
+{
+  return *a < *b ? -1 : *a > *b ? 1 : 0;
+}
+
+
 static int cf_fmt_int32(const char **textp, const int32_t *intp)
 {
   char buf[12];
