@@ -7,6 +7,7 @@ HDRS=	fifo.h \
 	serval.h \
 	cli.h \
 	str.h \
+	rotbuf.h \
 	mem.h \
 	os.h \
 	strbuf.h \
