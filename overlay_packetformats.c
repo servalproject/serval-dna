@@ -306,7 +306,7 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
       context->sender->last_acked = now;
     }
 
-    link_received_packet(context->sender, sender_interface, sender_seq, packet_flags & PACKET_UNICAST);
+    link_received_packet(context->sender, interface, sender_interface, sender_seq, packet_flags & PACKET_UNICAST);
   }
   
   if (addr){

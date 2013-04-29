@@ -63,6 +63,7 @@ static int mark_subscriber_down(struct subscriber *subscriber, void *context)
 
 static void
 overlay_interface_close(overlay_interface *interface){
+  link_interface_down(interface);
   enum_subscribers(NULL, mark_subscriber_down, interface);
   INFOF("Interface %s addr %s is down", interface->name, inet_ntoa(interface->broadcast_address.sin_addr));
   unschedule(&interface->alarm);

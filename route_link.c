@@ -60,7 +60,7 @@ struct neighbour{
   // when do we assume the link is dead because they can't hear us?
   time_ms_t neighbour_link_timeout;
   // which of our interfaces did they hear us from?
-  int our_interface;
+  struct overlay_interface *interface;
 
   // which of their interfaces have we heard them sending from?
   int neighbour_interface;
@@ -83,6 +83,8 @@ struct link_state{
   struct subscriber *next_hop;
   struct subscriber *transmitter;
   int hop_count;
+  int route_version;
+  char calculating;
 
   // when do we need to send a new link state message.
   time_ms_t next_update;
@@ -99,12 +101,14 @@ static struct sched_ent link_send_alarm={
 };
 
 struct neighbour *neighbours;
-
+int route_version=0;
 
 static struct link_state *get_link_state(struct subscriber *subscriber)
 {
-  if (!subscriber->link_state)
+  if (!subscriber->link_state){
     subscriber->link_state = emalloc_zero(sizeof(struct link_state));
+    subscriber->link_state->route_version = route_version -1;
+  }
   return subscriber->link_state;
 }
 
@@ -138,14 +142,16 @@ static void free_links(struct link *link)
   free(link);
 }
 
-static struct link *find_link(struct neighbour *neighbour, struct subscriber *receiver)
+static struct link *find_link(struct neighbour *neighbour, struct subscriber *receiver, char create)
 {
   struct link **link_ptr=&neighbour->root, *link=neighbour->root;
   while(1){
     if (link==NULL){
-      link = *link_ptr = emalloc_zero(sizeof(struct link));
-      link->receiver = receiver;
-      link->path_version = neighbour->path_version -1;
+      if (create){
+        link = *link_ptr = emalloc_zero(sizeof(struct link));
+        link->receiver = receiver;
+        link->path_version = neighbour->path_version -1;
+      }
       break;
     }
     if (receiver == link->receiver)
@@ -167,7 +173,7 @@ static struct link *get_parent(struct neighbour *neighbour, struct link *link)
     return NULL;
 
   if (!link->parent)
-    link->parent = find_link(neighbour, link->transmitter);
+    link->parent = find_link(neighbour, link->transmitter, 0);
 
   return link->parent;
 }
@@ -182,7 +188,8 @@ static void update_path_score(struct neighbour *neighbour, struct link *link){
   int hop_count = -1;
 
   if (link->transmitter == my_subscriber){
-    hop_count = 1;
+    if (link->receiver==neighbour->subscriber)
+      hop_count = 1;
   }else{
     struct link *parent = get_parent(neighbour, link);
     if (parent && (!parent->calculating)){
@@ -193,45 +200,74 @@ static void update_path_score(struct neighbour *neighbour, struct link *link){
     }
   }
 
+  if (config.debug.verbose && config.debug.linkstate && hop_count != link->hop_count)
+    DEBUGF("LINK STATE; path score to %s via %s version %d = %d",
+	alloca_tohex_sid(link->receiver->sid),
+	alloca_tohex_sid(neighbour->subscriber->sid),
+	neighbour->path_version,
+	hop_count);
+
   link->hop_count = hop_count;
   link->path_version = neighbour->path_version;
   link->calculating = 0;
 }
 
-static int find_best_link(struct subscriber *subscriber, struct neighbour **best_neighbour, struct link **best_link)
+static int find_best_link(struct subscriber *subscriber)
 {
   struct link_state *state = get_link_state(subscriber);
+  if (state->route_version == route_version)
+    return 0;
+
+  if (state->calculating)
+    return -1;
+  state->calculating = 1;
+
   struct neighbour *neighbour = neighbours;
   int best_hop_count = 99;
   struct subscriber *next_hop = NULL, *transmitter=NULL;
   time_ms_t now = gettime_ms();
 
   while (neighbour){
-    struct link *link = find_link(neighbour, subscriber);
-    if (neighbour->neighbour_link_timeout >= now){
-      update_path_score(neighbour, link);
-      if (link->hop_count>0 && link->hop_count < best_hop_count){
-        next_hop = neighbour->subscriber;
-        best_hop_count = link->hop_count;
-	transmitter = link->transmitter;
-	if (best_link)
-	  *best_link = link;
-	if (best_neighbour)
-	  *best_neighbour = neighbour;
-      }
+    if (neighbour->neighbour_link_timeout < now)
+      goto next;
+
+    struct link *link = find_link(neighbour, subscriber, 0);
+    if (!(link && link->transmitter))
+      goto next;
+
+    if (link->transmitter != my_subscriber){
+      struct link_state *parent_state = get_link_state(link->transmitter);
+      find_best_link(link->transmitter);
+      if (parent_state->next_hop != neighbour->subscriber)
+	goto next;
     }
+
+    update_path_score(neighbour, link);
+    if (link->hop_count>0 && link->hop_count < best_hop_count){
+      next_hop = neighbour->subscriber;
+      best_hop_count = link->hop_count;
+      transmitter = link->transmitter;
+    }
+
+next:
     neighbour = neighbour->_next;
   }
 
   if (state->next_hop != next_hop || state->transmitter != transmitter){
     if (config.debug.linkstate)
-      DEBUGF("LINK STATE; next hop for %s is now %s", alloca_tohex_sid(subscriber->sid), next_hop?alloca_tohex_sid(next_hop->sid):"UNREACHABLE");
+      DEBUGF("LINK STATE; next hop for %s is now %d hops, %s via %s", 
+	alloca_tohex_sid(subscriber->sid), 
+	best_hop_count,
+	next_hop?alloca_tohex_sid(next_hop->sid):"UNREACHABLE", 
+	transmitter?alloca_tohex_sid(transmitter->sid):"NONE");
     state->next_update = now;
   }
 
   state->next_hop = next_hop;
   state->transmitter = transmitter;
   state->hop_count = best_hop_count;
+  state->route_version = route_version;
+  state->calculating = 0;
 
   return 0;
 }
@@ -285,8 +321,7 @@ static int append_link(struct subscriber *subscriber, void *context)
 
   time_ms_t now = gettime_ms();
 
-  struct link *link = NULL;
-  find_best_link(subscriber, NULL, &link);
+  find_best_link(subscriber);
 
   if (state->next_update - INCLUDE_ANYWAY <= now){
     if (subscriber->reachable==REACHABLE_SELF){
@@ -297,7 +332,7 @@ static int append_link(struct subscriber *subscriber, void *context)
       }
     } else {
 
-      if (append_link_state(payload, 0, link?link->transmitter:NULL, subscriber, -1, 0)){
+      if (append_link_state(payload, 0, state->transmitter, subscriber, -1, 0)){
         link_send_alarm.alarm = now;
         return 1;
       }
@@ -311,6 +346,17 @@ static int append_link(struct subscriber *subscriber, void *context)
   return 0;
 }
 
+static void free_neighbour(struct neighbour **neighbour_ptr){
+  struct neighbour *n = *neighbour_ptr;
+  if (config.debug.linkstate)
+    DEBUGF("LINK STATE; neighbour connection timed out %s", alloca_tohex_sid(n->subscriber->sid));
+  free_links(n->root);
+  n->root=NULL;
+  *neighbour_ptr = n->_next;
+  free(n);
+  route_version++;
+}
+
 static int link_send_neighbours(struct overlay_buffer *payload){
   struct neighbour **n_ptr = &neighbours;
   time_ms_t now = gettime_ms();
@@ -319,12 +365,7 @@ static int link_send_neighbours(struct overlay_buffer *payload){
     struct neighbour *n = *n_ptr;
     if (n->neighbour_unicast_receive_timeout <now && n->neighbour_broadcast_receive_timeout < now){
       // If we haven't heard any packets from this neighbour, free the struct as we go.
-      if (config.debug.linkstate)
-        DEBUGF("LINK STATE; neighbour connection timed out %s", alloca_tohex_sid(n->subscriber->sid));
-      free_links(n->root);
-      n->root=NULL;
-      *n_ptr = n->_next;
-      free(n);
+      free_neighbour(n_ptr);
     }else{
       char flags=0;
       if (n->neighbour_unicast_receive_timeout >= now)
@@ -365,8 +406,9 @@ static void link_send(struct sched_ent *alarm)
   ob_checkpoint(frame->payload);
   int pos = ob_position(frame->payload);
 
-  if (link_send_neighbours(frame->payload)==0)
+  if (link_send_neighbours(frame->payload)==0){
     enum_subscribers(NULL, append_link, frame->payload);
+  }
 
   ob_rewind(frame->payload);
 
@@ -387,7 +429,7 @@ static void update_alarm(time_ms_t limit){
 }
 
 // track stats for receiving packets from this neighbour
-int link_received_packet(struct subscriber *subscriber, int sender_interface, int sender_seq, int unicast)
+int link_received_packet(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int sender_seq, int unicast)
 {
   struct neighbour *n = get_neighbour(subscriber, 1);
   time_ms_t now = gettime_ms();
@@ -410,6 +452,7 @@ int link_received_packet(struct subscriber *subscriber, int sender_interface, in
   }
   // TODO track each sender interface independently?
   n->neighbour_interface = sender_interface;
+  n->interface = interface;
   return 0;
 }
 
@@ -465,6 +508,7 @@ int link_receive(overlay_mdp_frame *mdp)
     // ignore any links that our neighbour is using to route through us.
     if (receiver == my_subscriber)
       continue;
+
     if (receiver == sender){
       // who can our neighbour hear?
 
@@ -481,10 +525,11 @@ int link_receive(overlay_mdp_frame *mdp)
 	neighbour->neighbour_link_timeout = now + LINK_INTERVAL;
       }else
         continue;
-    }
+    }else if(transmitter == my_subscriber)
+      transmitter = NULL;
 
-    struct link *link = find_link(neighbour, receiver);
-    if (link->transmitter != transmitter || link->link_version != version){
+    struct link *link = find_link(neighbour, receiver, transmitter?1:0);
+    if (link && (link->transmitter != transmitter || link->link_version != version)){
       changed = 1;
       link->transmitter = transmitter;
       link->link_version = version;
@@ -495,6 +540,7 @@ int link_receive(overlay_mdp_frame *mdp)
   send_please_explain(&context, my_subscriber, sender);
 
   if (changed){
+    route_version++;
     neighbour->path_version ++;
     if (link_send_alarm.alarm>now || link_send_alarm.alarm==0){
       unschedule(&link_send_alarm);
@@ -515,3 +561,14 @@ void link_explained(struct subscriber *subscriber)
   update_alarm(now);
 }
 
+void link_interface_down(struct overlay_interface *interface)
+{
+  struct neighbour **n_ptr = &neighbours;
+  while(*n_ptr){
+    if ((*n_ptr)->interface == interface){
+      free_neighbour(n_ptr);
+    }else{
+      n_ptr = &((*n_ptr)->_next);
+    }
+  }
+}
