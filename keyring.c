@@ -433,17 +433,17 @@ static int unpack_private_derive_scalarmult_public(const struct keytype *kt, key
 {
   rotbuf_getbuf(rb, kp->private_key, kt->private_key_size);
   /* Compute public key from private key.
-    *
-    * Public key calculation as below is taken from section 3 of:
-    * http://cr.yp.to/highspeed/naclcrypto-20090310.pdf
-    *
-    * This can take a while on a mobile phone since it involves a scalarmult operation, so searching
-    * through all slots for a pin could take a while (perhaps 1 second per pin:slot cominbation).
-    * This is both good and bad.  The other option is to store the public key as well, which would
-    * make entering a pin faster, but would also make trying an incorrect pin faster, thus
-    * simplifying some brute-force attacks.  We need to make a decision between speed/convenience
-    * and security here.
-    */
+   *
+   * Public key calculation as below is taken from section 3 of:
+   * http://cr.yp.to/highspeed/naclcrypto-20090310.pdf
+   *
+   * This can take a while on a mobile phone since it involves a scalarmult operation, so searching
+   * through all slots for a pin could take a while (perhaps 1 second per pin:slot cominbation).
+   * This is both good and bad.  The other option is to store the public key as well, which would
+   * make entering a pin faster, but would also make trying an incorrect pin faster, thus
+   * simplifying some brute-force attacks.  We need to make a decision between speed/convenience
+   * and security here.
+   */
   if (!rb->wrap)
     crypto_scalarmult_curve25519_base(kp->public_key, kp->private_key);
   return 0;
@@ -564,7 +564,7 @@ static int keyring_pack_identity(keyring_context *c, keyring_identity *id, unsig
     // skip over key pairs with an unrecognised type.  The original four first key types do not
     // store the length, for the sake of backward compatibility with legacy keyring files.  Their
     // entry lengths are hard-coded.
-    struct rotbuf rblen = RBUF_NULL;
+    size_t keypair_len = kt->packed_size;
     switch (ktype) {
     case KEYTYPE_CRYPTOBOX:
     case KEYTYPE_CRYPTOSIGN:
@@ -572,24 +572,19 @@ static int keyring_pack_identity(keyring_context *c, keyring_identity *id, unsig
     case KEYTYPE_DID:
       break;
     default:
-      // These two bytes will be overwritten using rblen.
-      rblen = rbuf;
-      rotbuf_advance(&rbuf, 2);
+      rotbuf_putc(&rbuf, (keypair_len >> 8) & 0xff);
+      rotbuf_putc(&rbuf, keypair_len & 0xff);
       break;
     }
     // The remaining bytes is the key pair in whatever format it uses.
+    struct rotbuf rbstart = rbuf;
     if (kt->packer(kt, id->keypairs[kp], &rbuf) != 0)
       break;
-    // Go back and write the length bytes (if there are any).
-    if (rblen.buf) {
-      unsigned length = rotbuf_delta(&rbuf, &rblen);
-      assert(length >= 2);
-      if (length > 0xffff) {
-	WHYF("keypair entry too long (length = %u)", length);
-	goto scram;
-      }
-      rotbuf_putc(&rblen, (length >> 8) & 0xff);
-      rotbuf_putc(&rblen, length & 0xff);
+    // Ensure the correct number of bytes were written.
+    unsigned packed = rotbuf_delta(&rbstart, &rbuf);
+    if (packed != keypair_len) {
+      WHYF("key type 0x%02x packed wrong length (packed %u, expecting %u)", ktype, packed, keypair_len);
+      goto scram;
     }
   }
   // Final byte is a zero key type code.
