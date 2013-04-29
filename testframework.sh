@@ -298,6 +298,7 @@ runTests() {
             # Environment variables and temporary directories that test cases
             # depend upon.
             export COLUMNS=80 # for ls(1) multi-column output
+            export TFWSOURCE="$testSourceFile"
             export TFWLOG="$_tfw_logdir_test"
             export TFWUNIQUE=$_tfw_unique
             export TFWVAR="$_tfw_tmp/var"
