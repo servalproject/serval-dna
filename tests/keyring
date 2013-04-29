@@ -25,7 +25,9 @@ shopt -s extglob
 
 setup() {
     setup_servald
-    executeOk_servald config set debug.keyring on
+    executeOk_servald config \
+      set log.console.level debug \
+      set debug.keyring on
     executeOk_servald keyring list
     assert_keyring_list 0
 }
