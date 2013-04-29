@@ -105,6 +105,24 @@ test_KeyringPinIdentityPinless() {
     assert_keyring_list 0
 }
 
+doc_KeyringPinIdentityPin="Keyring PIN with identity PINs"
+test_KeyringPinIdentityPin() {
+    executeOk_servald keyring add --keyring-pin=yellow 'duck'
+    executeOk_servald keyring add --keyring-pin=yellow 'chicken'
+    executeOk_servald keyring list
+    assert_keyring_list 0
+    executeOk_servald keyring list --keyring-pin=yellow
+    assert_keyring_list 0
+    executeOk_servald keyring list --keyring-pin=yellow --entry-pin=duck
+    assert_keyring_list 1
+    executeOk_servald keyring list --keyring-pin=yellow --entry-pin=chicken
+    assert_keyring_list 1
+    executeOk_servald keyring list --keyring-pin=yellow --entry-pin=duck --entry-pin=chicken
+    assert_keyring_list 2
+    executeOk_servald keyring list --entry-pin=duck --entry-pin=chicken
+    assert_keyring_list 0
+}
+
 doc_KeyringAutoCreate="Starting a server with no keyring creates a valid identity"
 test_KeyringAutoCreate() {
     start_servald_server
