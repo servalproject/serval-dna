@@ -242,6 +242,10 @@ static int append_link_state(struct overlay_buffer *payload, char flags, struct 
   if (!transmitter)
     flags|=FLAG_NO_PATH;
 
+  int length_pos = ob_position(payload);
+  if (ob_append_byte(payload, 0))
+    return -1;
+
   if (ob_append_byte(payload, flags))
     return -1;
 
@@ -258,6 +262,14 @@ static int append_link_state(struct overlay_buffer *payload, char flags, struct 
   if (interface!=-1)
     if (ob_append_byte(payload, interface))
       return -1;
+
+  // TODO insert future fields here
+
+
+  // patch the record length
+  int end_pos = ob_position(payload);
+  if (ob_set(payload, length_pos, end_pos - length_pos))
+    return -1;
 
   ob_checkpoint(payload);
   return 0;
@@ -419,6 +431,12 @@ int link_receive(overlay_mdp_frame *mdp)
     context.invalid_addresses=0;
 
     struct subscriber *receiver=NULL, *transmitter=NULL;
+
+    int start_pos = ob_position(payload);
+    int length = ob_get(payload);
+    if (length <=0)
+      break;
+
     int flags = ob_get(payload);
     if (flags<0)
       break;
@@ -437,6 +455,9 @@ int link_receive(overlay_mdp_frame *mdp)
       if (interface < 0)
         break;
     }
+
+    // jump to the position of the next record, even if there's more data we don't understand
+    payload->position = start_pos + length;
 
     if (context.invalid_addresses)
       continue;

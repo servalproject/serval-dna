@@ -52,6 +52,7 @@ int ob_rewind(struct overlay_buffer *b);
 int ob_limitsize(struct overlay_buffer *b,int bytes);
 int ob_unlimitsize(struct overlay_buffer *b);
 int ob_makespace(struct overlay_buffer *b,int bytes);
+int ob_set(struct overlay_buffer *b, int ofs, unsigned char byte);
 int ob_append_byte(struct overlay_buffer *b,unsigned char byte);
 int ob_append_bytes(struct overlay_buffer *b,unsigned char *bytes,int count);
 int ob_append_buffer(struct overlay_buffer *b,struct overlay_buffer *s);

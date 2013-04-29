@@ -43,6 +43,7 @@ start_routing_instance() {
       set log.console.show_pid on \
       set log.console.show_time on \
       set debug.mdprequests yes \
+      set debug.linkstate yes \
       set debug.verbose yes \
       set rhizome.enable no
    start_servald_server
