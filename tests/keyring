@@ -120,4 +120,21 @@ teardown_KeyringAutoCreate() {
    report_servald_server
 }
 
+doc_CompatibleBack1="Can read old keyring file (1)"
+setup_CompatibleBack1() {
+    setup_servald
+    executeOk_servald config \
+      set log.console.level debug \
+      set debug.keyring on
+    assert mkdir -p "$SERVALINSTANCE_PATH"
+    assert cp "${TFWSOURCE%/*}/testdata/serval.keyring-1" "$SERVALINSTANCE_PATH/serval.keyring"
+}
+test_CompatibleBack1() {
+    executeOk_servald keyring list
+    assert_keyring_list 3
+    assertStdoutGrep "^EEBF3AC19E7EE58722A0F6D4A4D5894A72F5C71030C3399FE75808DCF6C6254B::$"
+    assertStdoutGrep "^C10C91D24BF210DD6733ED2424B4509E6CC4402D34055B6D29F7A778701AA542:55500000:Smith$"
+    assertStdoutGrep "^6EE9BCA4AE1A264D18F42C18EF910915F98F0C5D9ECD853ECB1547B752119F05:555001234:Jones$"
+}
+
 runTests "$@"
