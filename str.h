@@ -84,7 +84,8 @@ size_t toprint_str_len(const char *srcStr, const char quotes[2]);
 size_t str_fromprint(unsigned char *dst, const char *src);
 
 #define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((const char *)(buf),(len), "``") + 1 : (dstlen)), (dstlen), (const char *)(buf), (len), "``")
-#define alloca_str_toprint(str)  toprint_str((char *)alloca(toprint_str_len(str, "``") + 1), -1, (str), "``")
+#define alloca_str_toprint_quoted(str, quotes)  toprint_str((char *)alloca(toprint_str_len((str), (quotes)) + 1), -1, (str), (quotes))
+#define alloca_str_toprint(str)  alloca_str_toprint_quoted(str, "``")
 
 /* Like strchr(3), but only looks for 'c' in the first 'n' characters of 's', stopping at the first
  * nul char in 's'.
