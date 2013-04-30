@@ -40,6 +40,12 @@ void _serval_debug_free(void *p, struct __sourceloc whence);
  */
 void *_emalloc(struct __sourceloc, size_t bytes);
 
+/* Equivalent to realloc(3), but logs an error before returning NULL.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+void *_erealloc(struct __sourceloc __whence, void *ptr, size_t bytes);
+
 /* Equivalent to malloc(3) followed by memset(3) to zerofill, but logs an error
  * before returning NULL.
  *
@@ -57,9 +63,10 @@ void *_emalloc_zero(struct __sourceloc, size_t bytes);
 char *_str_edup(struct __sourceloc, const char *str);
 char *_strn_edup(struct __sourceloc, const char *str, size_t len);
 
-#define emalloc(bytes)      _emalloc(__HERE__, (bytes))
-#define emalloc_zero(bytes) _emalloc_zero(__HERE__, (bytes))
-#define str_edup(str)       _str_edup(__HERE__, (str))
-#define strn_edup(str, len) _strn_edup(__HERE__, (str), (len))
+#define emalloc(bytes)       _emalloc(__HERE__, (bytes))
+#define erealloc(ptr, bytes) _erealloc(__HERE__, (ptr), (bytes))
+#define emalloc_zero(bytes)  _emalloc_zero(__HERE__, (bytes))
+#define str_edup(str)        _str_edup(__HERE__, (str))
+#define strn_edup(str, len)  _strn_edup(__HERE__, (str), (len))
 
 #endif // __SERVALDNA__MEM_H

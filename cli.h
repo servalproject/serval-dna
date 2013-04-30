@@ -63,6 +63,7 @@ int _cli_arg(struct __sourceloc __whence, const struct cli_parsed *parsed, char 
 #define cli_arg(parsed, label, dst, validator, defaultvalue) _cli_arg(__WHENCE__, parsed, label, dst, validator, defaultvalue)
 
 int cli_lookup_did(const char *text);
+int cli_path_regular(const char *arg);
 int cli_absolute_path(const char *arg);
 int cli_optional_sid(const char *arg);
 int cli_optional_bundle_key(const char *arg);

@@ -31,7 +31,8 @@ MONITORCLIENTSRCS=conf.c \
 	net.c \
 	str.c \
 	strbuf.c \
-	strbuf_helpers.c
+	strbuf_helpers.c \
+	rotbuf.c
 
 MDPCLIENTSRCS=conf.c \
         conf_om.c \
@@ -47,7 +48,8 @@ MDPCLIENTSRCS=conf.c \
 	net.c \
 	str.c \
 	strbuf.c \
-	strbuf_helpers.c
+	strbuf_helpers.c \
+	rotbuf.c
 
 OBJS=	$(SRCS:.c=.o)
 SERVAL_OBJS=	$(SERVAL_SOURCES:.c=.o)
