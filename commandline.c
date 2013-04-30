@@ -649,9 +649,9 @@ int app_dna_lookup(const struct cli_parsed *parsed, void *context)
 			if (!strcmp(uri,uris[i])) break;
 		      if (i==uri_count) {
 			/* Not previously seen, so report it */
-			cli_puts(uri); cli_delim(":");
-			cli_puts(did); cli_delim(":");
-			cli_puts(name); cli_delim("\n");
+			cli_put_string(uri, ":");
+			cli_put_string(did, ":");
+			cli_put_string(name, "\n");
 			
 			if (one_reply){
 			  timeout=now;
@@ -827,14 +827,10 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
       RETURN(WHY("Server process did not start"));
     ret = 0;
   }
-  cli_puts("instancepath");
-  cli_delim(":");
-  cli_puts(serval_instancepath());
-  cli_delim("\n");
-  cli_puts("pid");
-  cli_delim(":");
-  cli_printf("%d", pid);
-  cli_delim("\n");
+  cli_field_name("instancepath", ":");
+  cli_put_string(serval_instancepath(), "\n");
+  cli_field_name("pid", ":");
+  cli_put_long(pid, "\n");
   cli_flush();
   /* Sleep before returning if env var is set.  This is used in testing, to simulate the situation
      on Android phones where the "start" command is invoked via the JNI interface and the calling
@@ -859,20 +855,16 @@ int app_server_stop(const struct cli_parsed *parsed, void *context)
   int			pid, tries, running;
   time_ms_t		timeout;
   const char *instancepath = serval_instancepath();
-  cli_puts("instancepath");
-  cli_delim(":");
-  cli_puts(instancepath);
-  cli_delim("\n");
+  cli_field_name("instancepath", ":");
+  cli_put_string(instancepath, "\n");
   pid = server_pid();
   /* Not running, nothing to stop */
   if (pid <= 0)
     return 1;
   INFOF("Stopping server (pid=%d)", pid);
   /* Set the stop file and signal the process */
-  cli_puts("pid");
-  cli_delim(":");
-  cli_printf("%d", pid);
-  cli_delim("\n");
+  cli_field_name("pid", ":");
+  cli_put_long(pid, "\n");
   tries = 0;
   running = pid;
   while (running == pid) {
@@ -903,10 +895,8 @@ int app_server_stop(const struct cli_parsed *parsed, void *context)
     while ((running = server_pid()) == pid && gettime_ms() < timeout);
   }
   server_remove_stopfile();
-  cli_puts("tries");
-  cli_delim(":");
-  cli_printf("%d", tries);
-  cli_delim("\n");
+  cli_field_name("tries", ":");
+  cli_put_long(tries, "\n");
   return 0;
 }
 
@@ -915,19 +905,13 @@ int app_server_status(const struct cli_parsed *parsed, void *context)
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   int pid = server_pid();
-  cli_puts("instancepath");
-  cli_delim(":");
-  cli_puts(serval_instancepath());
-  cli_delim("\n");
-  cli_puts("status");
-  cli_delim(":");
-  cli_printf("%s", pid > 0 ? "running" : "stopped");
-  cli_delim("\n");
+  cli_field_name("instancepath", ":");
+  cli_put_string(serval_instancepath(), "\n");
+  cli_field_name("status", ":");
+  cli_put_string(pid > 0 ? "running" : "stopped", "\n");
   if (pid > 0) {
-    cli_puts("pid");
-    cli_delim(":");
-    cli_printf("%d", pid);
-    cli_delim("\n");
+    cli_field_name("pid", ":");
+    cli_put_long(pid, "\n");
   }
   return pid > 0 ? 0 : 1;
 }
@@ -969,8 +953,9 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
   int broadcast = is_sid_broadcast(ping_sid.binary);
 
   /* TODO Eventually we should try to resolve SID to phone number and vice versa */
-  printf("MDP PING %s (%s): 12 data bytes\n", alloca_tohex_sid_t(ping_sid), alloca_tohex_sid_t(ping_sid));
-  fflush(stdout);
+  cli_printf("MDP PING %s (%s): 12 data bytes", alloca_tohex_sid_t(ping_sid), alloca_tohex_sid_t(ping_sid));
+  cli_delim("\n");
+  cli_flush();
 
   time_ms_t rx_mintime=-1;
   time_ms_t rx_maxtime=-1;
@@ -1027,14 +1012,15 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
 	      time_ms_t txtime = read_uint64(&mdp.in.payload[4]);
 	      int hop_count = 64 - mdp.in.ttl;
 	      time_ms_t delay = gettime_ms() - txtime;
-	      printf("%s: seq=%d time=%lldms hops=%d %s%s\n",
+	      cli_printf("%s: seq=%d time=%lldms hops=%d %s%s",
 		     alloca_tohex_sid(mdp.in.src.sid),
 		     (*rxseq)-firstSeq+1,
 		     delay,
 		     hop_count,
 		     mdp.packetTypeAndFlags&MDP_NOCRYPT?"":" ENCRYPTED",
 		     mdp.packetTypeAndFlags&MDP_NOSIGN?"":" SIGNED");
-	      fflush(stdout);
+	      cli_delim("\n");
+	      cli_flush();
 	      // TODO Put duplicate pong detection here so that stats work properly.
 	      rx_count++;
 	      ret=0;
@@ -1065,13 +1051,14 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
     rx_stddev=sqrtf(rx_stddev);
 
     /* XXX Report final statistics before going */
-    printf("--- %s ping statistics ---\n", alloca_tohex_sid_t(ping_sid));
-    printf("%lld packets transmitted, %lld packets received, %3.1f%% packet loss\n",
+    cli_printf("--- %s ping statistics ---\n", alloca_tohex_sid_t(ping_sid));
+    cli_printf("%lld packets transmitted, %lld packets received, %3.1f%% packet loss\n",
 	   tx_count,rx_count,tx_count?(tx_count-rx_count)*100.0/tx_count:0);
-    printf("round-trip min/avg/max/stddev%s = %lld/%.3f/%lld/%.3f ms\n",
+    cli_printf("round-trip min/avg/max/stddev%s = %lld/%.3f/%lld/%.3f ms\n",
 	   (samples<rx_count)?" (stddev calculated from last 1024 samples)":"",
 	   rx_mintime,rx_mean,rx_maxtime,rx_stddev);
-    fflush(stdout);
+    cli_delim(NULL);
+    cli_flush();
   }
   overlay_mdp_client_done();
   return ret;
@@ -1112,6 +1099,8 @@ int app_trace(const struct cli_parsed *parsed, void *context){
   cli_printf("Tracing the network path from %s to %s", 
 	 alloca_tohex_sid(srcsid.binary), alloca_tohex_sid(dstsid.binary));
   cli_delim("\n");
+  cli_flush();
+
   int ret=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
   ob_free(b);
   if (ret)
@@ -1153,11 +1142,8 @@ int app_config_schema(const struct cli_parsed *parsed, void *context)
   struct cf_om_iterator it;
   for (cf_om_iter_start(&it, root); it.node; cf_om_iter_next(&it))
     if (it.node->text || it.node->nodc == 0) {
-      cli_puts(it.node->fullkey);
-      cli_delim("=");
-      if (it.node->text)
-	cli_puts(it.node->text);
-      cli_delim("\n");
+      cli_put_string(it.node->fullkey,"=");
+      cli_put_string(it.node->text, "\n");
     }
   cf_om_free_node(&root);
   return 0;
@@ -1179,10 +1165,8 @@ int app_config_dump(const struct cli_parsed *parsed, void *context)
   struct cf_om_iterator it;
   for (cf_om_iter_start(&it, root); it.node; cf_om_iter_next(&it)) {
     if (it.node->text && (full || it.node->line_number)) {
-      cli_puts(it.node->fullkey);
-      cli_delim("=");
-      cli_puts(it.node->text);
-      cli_delim("\n");
+      cli_put_string(it.node->fullkey, "=");
+      cli_put_string(it.node->text, "\n");
     }
   }
   cf_om_free_node(&root);
@@ -1258,10 +1242,8 @@ int app_config_get(const struct cli_parsed *parsed, void *context)
   if (var && is_configvarname(var)) {
     const char *value = cf_om_get(cf_om_root, var);
     if (value) {
-      cli_puts(var);
-      cli_delim("=");
-      cli_puts(value);
-      cli_delim("\n");
+      cli_put_string(var, "=");
+      cli_put_string(value, "\n");
     }
   } else {
     struct cf_om_iterator it;
@@ -1269,10 +1251,8 @@ int app_config_get(const struct cli_parsed *parsed, void *context)
       if (var && cf_om_match(var, it.node) <= 0)
 	continue;
       if (it.node->text) {
-	cli_puts(it.node->fullkey);
-	cli_delim("=");
-	cli_puts(it.node->text);
-	cli_delim("\n");
+	cli_put_string(it.node->fullkey, "=");
+	cli_put_string(it.node->text, "\n");
       }
     }
   }
@@ -1290,8 +1270,7 @@ int app_rhizome_hash_file(const struct cli_parsed *parsed, void *context)
   char hexhash[RHIZOME_FILEHASH_STRLEN + 1];
   if (rhizome_hash_file(NULL,filepath, hexhash))
     return -1;
-  cli_puts(hexhash);
-  cli_delim("\n");
+  cli_put_string(hexhash, "\n");
   return 0;
 }
 
@@ -1374,44 +1353,33 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, void *context)
     ret = WHY("Could not overwrite manifest file.");
   const char *service = rhizome_manifest_get(mout, "service", NULL, 0);
   if (service) {
-    cli_puts("service");
-    cli_delim(":");
-    cli_puts(service);
-    cli_delim("\n");
+    cli_field_name("service", ":");
+    cli_put_string(service, "\n");
   }
   {
     char bid[RHIZOME_MANIFEST_ID_STRLEN + 1];
     rhizome_bytes_to_hex_upper(mout->cryptoSignPublic, bid, RHIZOME_MANIFEST_ID_BYTES);
-    cli_puts("manifestid");
-    cli_delim(":");
-    cli_puts(bid);
-    cli_delim("\n");
+    cli_field_name("manifestid", ":");
+    cli_put_string(bid, "\n");
   }
   {
     char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
     rhizome_bytes_to_hex_upper(mout->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
-    cli_puts("secret");
-    cli_delim(":");
-    cli_puts(secret);
-    cli_delim("\n");
+    cli_field_name("secret", ":");
+    cli_put_string(secret, "\n");
   }
-  cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version);    cli_delim("\n");
-  cli_puts("filesize");
-  cli_delim(":");
-  cli_printf("%lld", mout->fileLength);
-  cli_delim("\n");
+  cli_field_name("version", ":");
+  cli_put_long(m->version, "\n");
+  cli_field_name("filesize", ":");
+  cli_put_long(mout->fileLength, "\n");
   if (mout->fileLength != 0) {
-    cli_puts("filehash");
-    cli_delim(":");
-    cli_puts(mout->fileHexHash);
-    cli_delim("\n");
+    cli_field_name("filehash", ":");
+    cli_put_string(mout->fileHexHash, "\n");
   }
   const char *name = rhizome_manifest_get(mout, "name", NULL, 0);
   if (name) {
-    cli_puts("name");
-    cli_delim(":");
-    cli_puts(name);
-    cli_delim("\n");
+    cli_field_name("name", ":");
+    cli_put_string(name, "\n");
   }
   if (mout != m)
     rhizome_manifest_free(mout);
@@ -1485,31 +1453,25 @@ int app_rhizome_import_bundle(const struct cli_parsed *parsed, void *context)
   
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
   if (service) {
-    cli_puts("service");
-    cli_delim(":");
-    cli_puts(service);
-    cli_delim("\n");
+    cli_field_name("service", ":");
+    cli_put_string(service, "\n");
   }
   {
-    cli_puts("manifestid");
-    cli_delim(":");
-    cli_puts(alloca_tohex(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES));
-    cli_delim("\n");
+    cli_field_name("manifestid", ":");
+    cli_put_string(alloca_tohex(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES), "\n");
   }
-  cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version);    cli_delim("\n");
-  cli_puts("filesize");   cli_delim(":"); cli_printf("%lld", m->fileLength); cli_delim("\n");
+  cli_field_name("version", ":");
+  cli_put_long(m->version, "\n");
+  cli_field_name("filesize", ":");
+  cli_put_long(m->fileLength, "\n");
   if (m->fileLength != 0) {
-    cli_puts("filehash");
-    cli_delim(":");
-    cli_puts(m->fileHexHash);
-    cli_delim("\n");
+    cli_field_name("filehash", ":");
+    cli_put_string(m->fileHexHash, "\n");
   }
   const char *name = rhizome_manifest_get(m, "name", NULL, 0);
   if (name) {
-    cli_puts("name");
-    cli_delim(":");
-    cli_puts(name);
-    cli_delim("\n");
+    cli_field_name("name", ":");
+    cli_put_string(name, "\n");
   }
   
 cleanup:
@@ -1656,17 +1618,17 @@ int app_rhizome_extract(const struct cli_parsed *parsed, void *context)
     rhizome_extract_privatekey(m, NULL);
     const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
     
-    cli_puts("service");    cli_delim(":"); cli_puts(blob_service); cli_delim("\n");
-    cli_puts("manifestid"); cli_delim(":"); cli_puts(manifestIdUpper); cli_delim("\n");
-    cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version); cli_delim("\n");
-    cli_puts("inserttime"); cli_delim(":"); cli_printf("%lld", m->inserttime); cli_delim("\n");
+    cli_field_name("service", ":");    cli_put_string(blob_service, "\n");
+    cli_field_name("manifestid", ":"); cli_put_string(manifestIdUpper, "\n");
+    cli_field_name("version", ":");    cli_put_long(m->version, "\n");
+    cli_field_name("inserttime", ":"); cli_put_long(m->inserttime, "\n");
     if (m->haveSecret) {
-      cli_puts(".author");  cli_delim(":"); cli_puts(alloca_tohex_sid(m->author)); cli_delim("\n");
+      cli_field_name(".author", ":");  cli_put_string(alloca_tohex_sid(m->author), "\n");
     }
-    cli_puts(".readonly");  cli_delim(":"); cli_printf("%d", m->haveSecret?0:1); cli_delim("\n");
-    cli_puts("filesize");   cli_delim(":"); cli_printf("%lld", (long long) m->fileLength); cli_delim("\n");
+    cli_field_name(".readonly", ":");  cli_put_long(m->haveSecret?0:1, "\n");
+    cli_field_name("filesize", ":");   cli_put_long(m->fileLength, "\n");
     if (m->fileLength != 0) {
-      cli_puts("filehash"); cli_delim(":"); cli_puts(m->fileHexHash); cli_delim("\n");
+      cli_field_name("filehash", ":"); cli_put_string(m->fileHexHash, "\n");
     }
   }
   
@@ -1687,8 +1649,7 @@ int app_rhizome_extract(const struct cli_parsed *parsed, void *context)
   if (ret==0 && manifestpath && *manifestpath){
     if (strcmp(manifestpath, "-") == 0) {
       // always extract a manifest to stdout, even if writing the file itself failed.
-      cli_puts("manifest");
-      cli_delim(":");
+      cli_field_name("manifest", ":");
       cli_write(m->manifestdata, m->manifest_all_bytes);
       cli_delim("\n");
     } else {
@@ -1730,10 +1691,10 @@ int app_rhizome_export_file(const struct cli_parsed *parsed, void *context)
   int ret = rhizome_dump_file(fileid, filepath, &length);
   if (ret)
     return ret == -1 ? -1 : 1;
-  cli_puts("filehash"); cli_delim(":");
-  cli_puts(fileid); cli_delim("\n");
-  cli_puts("filesize"); cli_delim(":");
-  cli_printf("%lld", length); cli_delim("\n");
+  cli_field_name("filehash", ":");
+  cli_put_string(fileid, "\n");
+  cli_field_name("filesize", ":");
+  cli_put_long(length, "\n");
   return 0;
 }
 
@@ -1801,13 +1762,10 @@ int app_keyring_list(const struct cli_parsed *parsed, void *context)
       const char *did = NULL;
       const char *name = NULL;
       keyring_identity_extract(k->contexts[cn]->identities[in], &sid, &did, &name);
-      if (sid || did) {	 
-	  if (sid) cli_printf("%s", alloca_tohex_sid(sid));
-	  cli_delim(":");
-	  if (did) cli_puts(did);
-	  cli_delim(":");
-	  if (name) cli_puts(name);
-	  cli_delim("\n");
+      if (sid || did) {
+	cli_put_string(alloca_tohex_sid(sid), ":");
+	cli_put_string(did, ":");
+	cli_put_string(name, "\n");
       }
     }
   return 0;
@@ -2169,7 +2127,7 @@ int app_route_print(const struct cli_parsed *parsed, void *context)
       if (p->reachable==REACHABLE_NONE)
 	continue;
 
-      cli_put_hexvalue(p->sid, SID_SIZE, ":");
+      cli_put_string(alloca_tohex_sid(p->sid), ":");
       char flags[32];
       strbuf b = strbuf_local(flags, sizeof flags);
       
@@ -2185,7 +2143,7 @@ int app_route_print(const struct cli_parsed *parsed, void *context)
 	strbuf_puts(b, "INDIRECT ");
       cli_put_string(strbuf_str(b), ":");
       cli_put_string(p->interface_name, ":");
-      cli_put_hexvalue(p->neighbour, SID_SIZE, "\n");
+      cli_put_string(alloca_tohex_sid(p->neighbour), "\n");
     }
   }
   return 0;
@@ -2274,18 +2232,12 @@ int app_reverse_lookup(const struct cli_parsed *parsed, void *context)
       }
       
       /* Got a good DNA reply, copy it into place and stop polling */
-      cli_puts("sid");
-      cli_delim(":");
-      cli_puts(alloca_tohex_sid_t(dstsid));
-      cli_delim("\n");
-      cli_puts("did");
-      cli_delim(":");
-      cli_puts(did);
-      cli_delim("\n");
-      cli_puts("name");
-      cli_delim(":");
-      cli_puts(name);
-      cli_delim("\n");
+      cli_field_name("sid", ":");
+      cli_put_string(sidhex, ":");
+      cli_field_name("did", ":");
+      cli_put_string(did, "\n");
+      cli_field_name("name", ":");
+      cli_put_string(name, "\n");
       return 0;
     }
   }
@@ -2316,8 +2268,7 @@ int app_network_scan(const struct cli_parsed *parsed, void *context)
   overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
   if (mdp.packetTypeAndFlags!=MDP_ERROR)
     return -1;
-  cli_puts(mdp.error.message);
-  cli_delim("\n");
+  cli_put_string(mdp.error.message, "\n");
   return mdp.error.error;
 }
 
