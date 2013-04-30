@@ -322,6 +322,11 @@ int cli_lookup_did(const char *text)
   return text[0] == '\0' || strcmp(text, "*") == 0 || str_is_did(text);
 }
 
+int cli_path_regular(const char *arg)
+{
+  return arg[0] != '\0' && arg[strlen(arg) - 1] != '/';
+}
+
 int cli_absolute_path(const char *arg)
 {
   return arg[0] == '/' && arg[1] != '\0';

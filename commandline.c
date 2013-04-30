@@ -1767,6 +1767,26 @@ int app_keyring_create(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
+int app_keyring_dump(const struct cli_parsed *parsed, void *context)
+{
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  const char *path;
+  if (cli_arg(parsed, "file", &path, cli_path_regular, NULL) == -1)
+    return -1;
+  int include_secret = 0 == cli_arg(parsed, "--secret", NULL, NULL, NULL);
+  keyring_file *k = keyring_open_instance_cli(parsed);
+  if (!k)
+    return -1;
+  FILE *fp = path ? fopen(path, "w") : stdout;
+  if (fp == NULL)
+    return WHYF_perror("fopen(%s, \"w\")", alloca_str_toprint(path));
+  int ret = keyring_dump(k, XPRINTF_STDIO(fp), include_secret);
+  if (fp != stdout && fclose(fp) == EOF)
+    return WHYF_perror("fclose(%s)", alloca_str_toprint(path));
+  return ret;
+}
+
 int app_keyring_list(const struct cli_parsed *parsed, void *context)
 {
   if (config.debug.verbose)
@@ -2419,12 +2439,14 @@ struct cli_schema command_line_options[]={
 	"Remove stale and orphaned content from the Rhizome store"},
   {app_keyring_create,{"keyring","create",NULL}, 0,
    "Create a new keyring file."},
+  {app_keyring_dump,{"keyring","dump" KEYRING_PIN_OPTIONS,"[--secret]","[<file>]",NULL}, 0,
+   "Dump all keyring identities that can be accessed using the specified PINs"},
   {app_keyring_list,{"keyring","list" KEYRING_PIN_OPTIONS,NULL}, 0,
-   "List identites in specified key ring that can be accessed using the specified PINs"},
+   "List identities that can be accessed using the supplied PINs"},
   {app_keyring_add,{"keyring","add" KEYRING_PIN_OPTIONS,"[<pin>]",NULL}, 0,
-   "Create a new identity in the keyring protected by the provided PIN"},
+   "Create a new identity in the keyring protected by the supplied PIN (empty PIN if not given)"},
   {app_keyring_set_did,{"keyring", "set","did" KEYRING_PIN_OPTIONS,"<sid>","<did>","<name>",NULL}, 0,
-   "Set the DID for the specified SID.  Optionally supply PIN to unlock the SID record in the keyring."},
+   "Set the DID for the specified SID (must supply PIN to unlock the SID record in the keyring)"},
   {app_id_self,{"id","self|peers|allpeers",NULL}, 0,
    "Return identity(s) as URIs of own node, or of known routable peers, or all known peers"},
   {app_route_print, {"route","print",NULL}, 0,

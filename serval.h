@@ -265,7 +265,7 @@ int keyring_identity_mac(keyring_context *c,keyring_identity *id,
 extern keyring_file *keyring;
 
 /* Public calls to keyring management */
-keyring_file *keyring_open(char *file);
+keyring_file *keyring_open(const char *path);
 keyring_file *keyring_open_instance();
 keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed);
 int keyring_enter_pin(keyring_file *k, const char *pin);
@@ -284,6 +284,7 @@ int keyring_commit(keyring_file *k);
 keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, const char *pin);
 int keyring_seed(keyring_file *k);
 void keyring_identity_extract(const keyring_identity *id, const unsigned char **sidp, const char **didp, const char **namep);
+int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret);
 
 /* Make sure we have space to put bytes of the packet as we go along */
 #define CHECK_PACKET_LEN(B) {if (((*packet_len)+(B))>=packet_maxlen) { return WHY("Packet composition ran out of space."); } }
