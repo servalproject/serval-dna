@@ -914,14 +914,6 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	overlay_mdp_releasebindings(recvaddr_un,recvaddrlen);
 	return;
 	  
-      /* Deprecated. We can replace with a more generic dump of the routing table */
-      case MDP_NODEINFO:
-	if (config.debug.mdprequests) DEBUG("MDP_NODEINFO");
-	  
-	if (!overlay_route_node_info(&mdp->nodeinfo))
-	  overlay_mdp_reply(mdp_named.poll.fd,recvaddr_un,recvaddrlen,mdp);
-	return;
-	  
       case MDP_ROUTING_TABLE:
 	{
 	  struct routing_state state={

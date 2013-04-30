@@ -304,9 +304,6 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
       len=(&mdp->error.message[0]-(char *)mdp) + strlen(mdp->error.message)+1;      
       if (mdp->error.error) INFOF("mdp return/error code: %d:%s",mdp->error.error,mdp->error.message);
       break;
-    case MDP_NODEINFO:
-      len=(&mdp->raw[0] - (char *)mdp) + sizeof(overlay_mdp_nodeinfo);
-      break;
     default:
       return WHY("Illegal MDP frame type.");
   }

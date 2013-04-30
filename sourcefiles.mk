@@ -27,7 +27,6 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)monitor-cli.c \
 	$(SERVAL_BASE)net.c \
 	$(SERVAL_BASE)overlay.c \
-	$(SERVAL_BASE)overlay_advertise.c \
 	$(SERVAL_BASE)overlay_address.c \
 	$(SERVAL_BASE)overlay_buffer.c \
 	$(SERVAL_BASE)overlay_interface.c \
@@ -39,7 +38,6 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)overlay_olsr.c \
 	$(SERVAL_BASE)overlay_packetformats.c \
 	$(SERVAL_BASE)overlay_payload.c \
-	$(SERVAL_BASE)overlay_route.c \
 	$(SERVAL_BASE)packetformats.c \
 	$(SERVAL_BASE)performance_timing.c \
 	$(SERVAL_BASE)randombytes.c \

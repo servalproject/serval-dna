@@ -524,19 +524,15 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
   }
   
   if(packet->buffer){
-    if (ob_position(packet->buffer) > packet->header_length){
-    
-      if (config.debug.packetconstruction)
-	ob_dump(packet->buffer,"assembled packet");
+    if (config.debug.packetconstruction)
+      ob_dump(packet->buffer,"assembled packet");
       
-      if (overlay_broadcast_ensemble(packet->interface, &packet->dest, ob_ptr(packet->buffer), ob_position(packet->buffer))){
-	// sendto failed. We probably don't have a valid route
-	if (packet->unicast_subscriber){
-	  set_reachable(packet->unicast_subscriber, REACHABLE_NONE);
-	}
+    if (overlay_broadcast_ensemble(packet->interface, &packet->dest, ob_ptr(packet->buffer), ob_position(packet->buffer))){
+      // sendto failed. We probably don't have a valid route
+      if (packet->unicast_subscriber){
+	set_reachable(packet->unicast_subscriber, REACHABLE_NONE);
       }
-    }else
-      WARN("No payloads were sent?");
+    }
     ob_free(packet->buffer);
     RETURN(1);
   }
@@ -550,4 +546,13 @@ static void overlay_send_packet(struct sched_ent *alarm){
   bzero(&packet, sizeof(struct outgoing_packet));
   
   overlay_fill_send_packet(&packet, gettime_ms());
+}
+
+int overlay_send_tick_packet(struct overlay_interface *interface){
+  struct outgoing_packet packet;
+  bzero(&packet, sizeof(struct outgoing_packet));
+  overlay_init_packet(&packet, NULL, 0, interface, interface->broadcast_address);
+  
+  overlay_fill_send_packet(&packet, gettime_ms());
+  return 0;
 }

@@ -44,6 +44,7 @@ start_routing_instance() {
       set log.console.show_time on \
       set debug.mdprequests yes \
       set debug.linkstate yes \
+      set debug.verbose yes \
       set rhizome.enable no
    start_servald_server
    wait_until interface_up
@@ -330,8 +331,11 @@ test_circle() {
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDC:INDIRECT :"
    stop_servald_server +B
-   foreach_instance +A +C +D +E +F +G +H \
-      wait_until --timeout=20 instance_offline +B
+   foreach_instance +A +C \
+      wait_until --timeout=10 instance_offline +B
+   foreach_instance +A +C \
+      wait_until --timeout=10 has_seen_instances +A +C
+   set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDC 1
    tfw_cat --stdout --stderr
    executeOk_servald route print

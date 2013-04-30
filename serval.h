@@ -418,11 +418,11 @@ typedef struct overlay_interface {
   unsigned tick_ms; /* milliseconds per tick */
   unsigned int uartbps; // set serial port speed (which might be different from link speed)
   int ctsrts; // enabled hardware flow control if non-zero
-  
+
+  // time last packet was sent on this interface
+  time_ms_t last_tx;
+
   struct subscriber *next_advert;
-  
-  /* The time of the last tick on this interface in milli seconds */
-  time_ms_t last_tick_ms;
   
   /* sequence number of last packet sent on this interface.
    Used to allow NACKs that can request retransmission of recent packets.
@@ -535,53 +535,12 @@ int rfs_length(int l);
 int rfs_encode(int l,unsigned char *b);
 int rfs_decode(unsigned char *b,int *offset);
 
-typedef struct overlay_node_observation {
-  unsigned char observed_score; /* serves as validty check also */
-  unsigned char corrected_score;
-  unsigned char gateways_en_route;
-  unsigned char RESERVED; /* for alignment */
-  unsigned char interface;
-  time_ms_t rx_time;
-  struct subscriber *sender;
-} overlay_node_observation;
-
-
-typedef struct overlay_node {
-  struct subscriber *subscriber;
-  int neighbour_id; /* 0=not a neighbour */
-  int most_recent_observation_id;
-  int best_link_score;
-  int best_observation;
-  unsigned int last_first_hand_observation_time_millisec;
-  time_ms_t last_observation_time_ms;
-  /* When did we last advertise this node on each interface, and what score
-     did we advertise? */
-  time_ms_t most_recent_advertisment_ms[OVERLAY_MAX_INTERFACES];
-  unsigned char most_recent_advertised_score[OVERLAY_MAX_INTERFACES];
-  overlay_node_observation observations[OVERLAY_MAX_OBSERVATIONS];
-} overlay_node;
-
-int overlay_route_saw_selfannounce_ack(struct overlay_frame *f, time_ms_t now);
-int overlay_route_ack_selfannounce(overlay_interface *recv_interface,
-				   unsigned int s1,unsigned int s2,
-				   int interface,
-				   struct subscriber *subscriber);
-overlay_node *overlay_route_find_node(const unsigned char *sid,int prefixLen,int createP);
-
 int overlayServerMode();
 int overlay_payload_enqueue(struct overlay_frame *p);
 int overlay_queue_remaining(int queue);
 int overlay_queue_schedule_next(time_ms_t next_allowed_packet);
-int overlay_route_record_link( time_ms_t now, struct subscriber *to,
-			      struct subscriber *via,int sender_interface,
-			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
-int overlay_route_dump();
-int overlay_route_queue_advertisements(overlay_interface *interface);
-int ovleray_route_please_advertise(overlay_node *n);
-
-int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct decode_context *context, time_ms_t now);
+int overlay_send_tick_packet(struct overlay_interface *interface);
 int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f,  time_ms_t now);
-int overlay_route_please_advertise(overlay_node *n);
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_saw_voice_traffic();
 int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now);
@@ -800,7 +759,6 @@ void overlay_packetradio_poll(struct sched_ent *alarm);
 int overlay_packetradio_setup_port(overlay_interface *interface);
 int overlay_packetradio_tx_packet(struct overlay_frame *frame);
 void overlay_dummy_poll(struct sched_ent *alarm);
-void overlay_route_tick(struct sched_ent *alarm);
 void server_config_reload(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_poll(struct sched_ent *alarm);

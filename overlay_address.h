@@ -78,8 +78,6 @@ struct subscriber{
   time_ms_t last_stun_request;
   time_ms_t last_probe;
   time_ms_t last_probe_response;
-  time_ms_t last_rx;
-  time_ms_t last_acked;
   time_ms_t last_tx;
   
   // public signing key details for remote peers

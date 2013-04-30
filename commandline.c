@@ -2137,54 +2137,6 @@ int app_crypt_test(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-int app_node_info(const struct cli_parsed *parsed, void *context)
-{
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
-  const char *sid;
-  cli_arg(parsed, "sid", &sid, NULL, "");
-
-  overlay_mdp_frame mdp;
-  bzero(&mdp,sizeof(mdp));
-
-  mdp.packetTypeAndFlags=MDP_NODEINFO;
-  
-  /* get SID or SID prefix 
-     XXX - Doesn't correctly handle odd-lengthed SID prefixes (ignores last digit).
-     The matching code in overlay_route.c also has a similar problem with the last
-     digit of an odd-length prefix being ignored. */
-  int i;
-  mdp.nodeinfo.sid_prefix_length=0;
-  for(i = 0; (i != SID_SIZE)&&sid[i<<1]&&sid[(i<<1)+1]; i++) {
-    mdp.nodeinfo.sid[mdp.nodeinfo.sid_prefix_length] = hexvalue(sid[i<<1]) << 4;
-    mdp.nodeinfo.sid[mdp.nodeinfo.sid_prefix_length++] |= hexvalue(sid[(i<<1)+1]);
-  }
-  mdp.nodeinfo.sid_prefix_length*=2;
-
-  int result=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
-  if (result) {
-    if (mdp.packetTypeAndFlags==MDP_ERROR)
-      {
-	overlay_mdp_client_done();
-	return WHYF("  MDP Server error #%d: '%s'",mdp.error.error,mdp.error.message);
-      }
-    else {
-      overlay_mdp_client_done();
-      return WHYF("Could not get information about node.");
-    }
-  }
-
-  cli_printf("record"); cli_delim(":");
-  cli_printf("%s",mdp.nodeinfo.foundP?"found":"noresult"); cli_delim(":");
-  cli_printf("%s", alloca_tohex_sid(mdp.nodeinfo.sid)); cli_delim(":");
-  cli_printf("%s",mdp.nodeinfo.localP?"self":"peer"); cli_delim(":");
-  cli_printf("%s",mdp.nodeinfo.neighbourP?"direct":"indirect"); cli_delim(":");
-  cli_printf("%d",mdp.nodeinfo.score); cli_delim(":");
-  cli_printf("%d",mdp.nodeinfo.interface_number); cli_delim("\n");
-
-  return 0;
-}
-
 int app_route_print(const struct cli_parsed *parsed, void *context)
 {
   if (config.debug.verbose)
@@ -2454,8 +2406,6 @@ struct cli_schema command_line_options[]={
   "Print the routing table"},
   {app_network_scan, {"scan","[<address>]",NULL}, 0,
     "Scan the network for serval peers. If no argument is supplied, all local addresses will be scanned."},
-  {app_node_info,{"node","info","<sid>",NULL}, 0,
-   "Return routing information about a SID"},
   {app_count_peers,{"peer","count",NULL}, 0,
     "Return a count of routable peers on the network"},
   {app_dna_lookup,{"dna","lookup","<did>","[<timeout>]",NULL}, 0,

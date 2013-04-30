@@ -225,6 +225,9 @@ static void update_path_score(struct neighbour *neighbour, struct link *link){
 
 static int find_best_link(struct subscriber *subscriber)
 {
+  if (subscriber->reachable==REACHABLE_SELF)
+    return 0;
+
   struct link_state *state = get_link_state(subscriber);
   if (state->route_version == route_version)
     return 0;
@@ -279,6 +282,16 @@ next:
   state->hop_count = best_hop_count;
   state->route_version = route_version;
   state->calculating = 0;
+
+  if (next_hop == NULL){
+    if (!(subscriber->reachable & REACHABLE_ASSUMED))
+      subscriber->reachable = REACHABLE_NONE;
+  } else if (next_hop == subscriber){
+    subscriber->reachable = REACHABLE_BROADCAST | (subscriber->reachable & REACHABLE_UNICAST);
+  } else {
+    subscriber->reachable = REACHABLE_INDIRECT;
+  }
+  subscriber->next_hop = next_hop;
 
   return 0;
 }
@@ -496,6 +509,10 @@ struct neighbour_link * get_neighbour_link(struct neighbour *neighbour, struct o
 // track stats for receiving packets from this neighbour
 int link_received_packet(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int sender_seq, int unicast)
 {
+  // TODO better handling of unicast routes
+  if (unicast)
+    return 0;
+
   struct neighbour *neighbour = get_neighbour(subscriber, 1);
   struct neighbour_link *link=get_neighbour_link(neighbour, interface, sender_interface);
   time_ms_t now = gettime_ms();

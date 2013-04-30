@@ -81,7 +81,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 /* All of these types should be considered deprecated. Processing code should migrate to well known MDP port numbers */
 /* Overlay mesh packet codes */
-#define OF_TYPE_SELFANNOUNCE_ACK 0x20 /* BATMAN style "I saw your announcment" frames */
 #define OF_TYPE_DATA 0x30 /* Ordinary data frame.
 		        Upto MTU bytes of payload.
 			32 bit channel/port indicator for each end. 
@@ -91,7 +90,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 			      1 byte channel/port indicator for each end */
 #define OF_TYPE_RHIZOME_ADVERT 0x50 /* Advertisment of file availability via Rhizome */
 #define OF_TYPE_PLEASEEXPLAIN 0x60 /* Request for resolution of an abbreviated address */
-#define OF_TYPE_NODEANNOUNCE 0x70
 
 #define PAYLOAD_FLAG_SENDER_SAME (1<<0)
 #define PAYLOAD_FLAG_TO_BROADCAST (1<<1)
@@ -160,7 +158,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MDP_GETADDRS 5
 #define MDP_ADDRLIST 6
 #define MDP_ROUTING_TABLE 7
-#define MDP_NODEINFO 8
 #define MDP_GOODBYE 9
 #define MDP_SCAN 10
 

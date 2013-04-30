@@ -357,7 +357,6 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
      This will ultimately get tuned by the bandwidth and other properties of the interface */
   interface->mtu=1200;
   interface->state=INTERFACE_STATE_DOWN;
-  interface->last_tick_ms= -1; // not ticked yet
   interface->alarm.poll.fd=0;
   
   // How often do we announce ourselves on this interface?
@@ -707,11 +706,10 @@ static void overlay_interface_poll(struct sched_ent *alarm)
   if (alarm->poll.revents==0){
     time_ms_t now = gettime_ms();
     
-    if (interface->state==INTERFACE_STATE_UP && interface->tick_ms>0 && now >= interface->last_tick_ms+interface->tick_ms){
-      // tick the interface
-      overlay_route_queue_advertisements(interface);
-      interface->last_tick_ms=now;
-      alarm->alarm=interface->last_tick_ms+interface->tick_ms;
+    if (interface->state==INTERFACE_STATE_UP && interface->tick_ms>0){
+      if (now >= interface->last_tx+interface->tick_ms)
+        overlay_send_tick_packet(interface);
+      alarm->alarm=interface->last_tx+interface->tick_ms;
     }else{
       alarm->alarm=-1;
     }
@@ -766,6 +764,8 @@ overlay_broadcast_ensemble(overlay_interface *interface,
 			   struct sockaddr_in *recipientaddr,
 			   unsigned char *bytes,int len)
 {
+  interface->last_tx = gettime_ms();
+
   if (config.debug.packettx)
     {
       DEBUGF("Sending this packet via interface %s (len=%d)",interface->name,len);

@@ -74,17 +74,6 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
   int id = (interface - overlay_interfaces);
   switch(f->type)
   {
-    case OF_TYPE_SELFANNOUNCE_ACK:
-      if (config.debug.overlayframes)
-	DEBUG("Processing OF_TYPE_SELFANNOUNCE_ACK");
-      overlay_route_saw_selfannounce_ack(f,now);
-      break;
-    case OF_TYPE_NODEANNOUNCE:
-      if (config.debug.overlayframes)
-	DEBUG("Processing OF_TYPE_NODEANNOUNCE");
-      overlay_route_saw_advertisements(id,f,context,now);
-      break;
-      
       // data frames
     case OF_TYPE_RHIZOME_ADVERT:
       if (config.debug.overlayframes)
@@ -103,7 +92,8 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
       process_explain(f);
       break;
     default:
-      RETURN(WHYF("Support for f->type=0x%x not implemented",f->type));
+      if (config.debug.verbose && config.debug.overlayframes)
+	DEBUGF("Overlay type f->type=0x%x not supported", f->type);
   }
   RETURN(0);
   OUT();
@@ -112,8 +102,11 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
 // duplicate the frame and queue it
 int overlay_forward_payload(struct overlay_frame *f){
   IN();
-  if (f->ttl == 0)
+  if (f->ttl == 0){
+    if (config.debug.overlayframes)
+      DEBUGF("NOT FORWARDING, due to ttl=0");
     RETURN(0);
+  }
   
   if (config.debug.overlayframes)
     DEBUGF("Forwarding payload for %s, ttl=%u",
@@ -148,7 +141,6 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
   IN();
   int process=1;
   int forward=2;
-  time_ms_t now = gettime_ms();
   
   int flags = ob_get(buffer);
   if (flags<0)
@@ -218,7 +210,7 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
   if (frame->ttl == 0) {
     forward = 0;
     if (config.debug.overlayframes)
-      DEBUGF("Don't forward when TTL expired");
+      DEBUGF("NOT FORWARDING, due to ttl=0");
   }
   
   if (flags & PAYLOAD_FLAG_LEGACY_TYPE){
@@ -230,9 +222,6 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
     frame->type=OF_TYPE_DATA;
   
   frame->modifiers=flags;
-  
-  if (frame->source)
-    frame->source->last_rx = now;
   
   // if we can't understand one of the addresses, skip processing the payload
   if ((forward||process)&&context->invalid_addresses){
@@ -271,8 +260,6 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
       RETURN(1);
     }
     
-    context->sender->last_rx = now;
-    
     // TODO probe unicast links when we detect an address change.
     
     // if this is a dummy announcement for a node that isn't in our routing table
@@ -298,14 +285,6 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
     if (addr && (context->sender->last_probe==0 || now - context->sender->last_probe > interface->tick_ms*10))
       overlay_send_probe(context->sender, *addr, interface, OQ_MESH_MANAGEMENT);
     
-    if ((!(packet_flags&PACKET_UNICAST)) && context->sender->last_acked + interface->tick_ms <= now){
-      overlay_route_ack_selfannounce(interface,
-				     context->sender->last_acked>now - 3*interface->tick_ms?context->sender->last_acked:now,
-				     now,sender_interface,context->sender);
-      
-      context->sender->last_acked = now;
-    }
-
     link_received_packet(context->sender, interface, sender_interface, sender_seq, packet_flags & PACKET_UNICAST);
   }
   
