@@ -109,6 +109,20 @@ __ROTBUF_INLINE size_t rotbuf_position(struct rotbuf *rb)
   return (rb->cursor - rb->buf) + (rb->ebuf - rb->start);
 }
 
+/* Return the total number of bytes remaining to be advanced to reach the end
+ * of the given rotated buffer.  If the buffer has overrun, this will be zero.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+__ROTBUF_INLINE size_t rotbuf_remain(struct rotbuf *rb)
+{
+  if (rb->wrap)
+    return 0;
+  if (rb->cursor < rb->start)
+    return rb->start - rb->cursor;
+  return (rb->ebuf - rb->cursor) + (rb->start - rb->buf);
+}
+
 /* Return the total number of bytes advanced through the given rotated buffer, including any
  * overrun.
  *
@@ -132,13 +146,17 @@ __ROTBUF_INLINE void rotbuf_advance(struct rotbuf *rb, size_t len)
   if (rb->wrap)
     rb->wrap += len;
   else if (len) {
-    rb->cursor += len;
-    if (rb->cursor >= rb->ebuf) {
-      rb->cursor -= rb->buf - rb->ebuf;
-      if (rb->cursor >= rb->start) {
-	  rb->wrap = 1 + rb->cursor - rb->start;
+    if (rb->cursor >= rb->start) {
+      if ((rb->cursor += len) >= rb->ebuf) {
+	rb->cursor -= rb->ebuf - rb->buf;
+	if (rb->cursor >= rb->start) {
+	  rb->wrap = 1 + (rb->cursor - rb->start);
 	  rb->cursor = rb->start;
+	}
       }
+    } else if ((rb->cursor += len) >= rb->start) {
+      rb->wrap = 1 + (rb->cursor - rb->start);
+      rb->cursor = rb->start;
     }
   }
 }
