@@ -925,8 +925,9 @@ int rhizome_store_bundle(rhizome_manifest *m)
     strncpy(filehash, m->fileHexHash, sizeof filehash);
     str_toupper_inplace(filehash);
 
-    if (!rhizome_exists(filehash))
-      return WHY("File should already be stored by now");
+    if (!rhizome_exists(filehash)) {
+      cli_delim("\n");cli_puts("File should already be stored by now because filehash already exist in add manifest");
+      return WHY("File should already be stored by now");}
   } else {
     filehash[0] = '\0';
   }
@@ -1278,9 +1279,10 @@ int rhizome_list_manifests_forMeshMS(const char *service, const char *name,
     "name"
   };
   //cli_columns(13,names);
-  
+  //cli_printf("%d",rows);
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     ++rows;
+  // cli_printf("%d",rows);
     if (limit>0 && rows>limit)
       break;
     if (rows>2)
@@ -1385,7 +1387,7 @@ int rhizome_list_manifests_forMeshMS(const char *service, const char *name,
 	//cli_put_hexvalue(blob_sender?senderSid:NULL, SID_SIZE, ":");
 	//cli_put_hexvalue(blob_recipient?recipientSid:NULL, SID_SIZE, ":");
 	cli_put_string(blob_name, "\n");
-      }
+      }  
     }
     if (m) rhizome_manifest_free(m);
   }
@@ -1394,7 +1396,9 @@ int rhizome_list_manifests_forMeshMS(const char *service, const char *name,
     while (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
       ++rows;
   }
-  cli_row_count(rows);
+  cli_row_count(rows); 
+  if (rows == 0) {ret = 2;}
+  //cli_printf("%d",ret);
   
 cleanup:
   sqlite3_finalize(statement);

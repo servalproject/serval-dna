@@ -1474,206 +1474,92 @@ cleanup:
   return status;
 }
 
-int app_meshms_write_message(const struct cli_parsed *parsed, void *context)
+
+
+
+int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
 {
- 
  if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-   const char *length, *sender_did, *recipient_did, *send_date, *payload, *manifestpath, *filepath, *bskhex;
-   
-  cli_arg(parsed, "length", &length, cli_uint, "0");
-  cli_arg(parsed, "send_date", &send_date, cli_uint, "0");
-  cli_arg(parsed, "sender_did", &sender_did, cli_optional_did, "");
-  cli_arg(parsed, "recipient_did", &recipient_did, cli_optional_did, "");
-  cli_arg(parsed, "payload", &payload, NULL, "");
-  cli_arg(parsed, "manifestpath", &manifestpath, NULL, "");
-  cli_arg(parsed, "filepath", &filepath, NULL, "");
-  cli_arg(parsed, "bsk", &bskhex, cli_optional_bundle_key, NULL);
-  
-  int ret = 0;
+ //sender_sid = author_sid
+ const char *sender_did, *recipient_did, *payload, *sender_sid, *recipient_sid;
  
+ cli_arg(parsed, "sender_did", &sender_did, cli_optional_did, "");
+ cli_arg(parsed, "recipient_did", &recipient_did, cli_optional_did, "");
+ cli_arg(parsed, "payload", &payload, NULL, "");
+ cli_arg(parsed, "sender_sid", &sender_sid, cli_optional_sid, "");
+ cli_arg(parsed, "recipient_sid", &recipient_sid, cli_optional_sid, "");
 
-  /*---- Serialization ----*/ 
-
-  int offset_buf=0;
-  unsigned int length_int = atoi(length);
-  
-  unsigned long long send_date_ll=atoll(send_date);
-  unsigned char *buffer_serialize;
-  buffer_serialize=malloc(length_int);
-
-  ret = serialize_meshms(buffer_serialize,&offset_buf,length_int,sender_did, recipient_did, send_date_ll, payload);
-	  
- /*---- Retrieve a manifest ID corresponding to a sender_sid and recipient_sid ----*/
-
+ const char *service, *name, *offset, *limit;
+ const char *manifestid; manifestid=malloc(65);
+    
+ service="MeshMS1";
+ cli_arg(parsed, "name", &name, NULL, "");
+ cli_arg(parsed, "offset", &offset, cli_uint, "0");
+ cli_arg(parsed, "limit", &limit, cli_uint, "0");
  
-  const char *service, *name, *sender_sid, *recipient_sid, *offset, *limit;
-  unsigned char *manifestid;
-   
-  service="MeshMS1";
-  manifestid=malloc(65);
-  cli_arg(parsed, "name", &name, NULL, "");
-  cli_arg(parsed, "sender_sid", &sender_sid, cli_optional_sid, "");
-  cli_arg(parsed, "recipient_sid", &recipient_sid, cli_optional_sid, "");
-  cli_arg(parsed, "offset", &offset, cli_uint, "0");
-  cli_arg(parsed, "limit", &limit, cli_uint, "0");
-  /* Create the instance directory if it does not yet exist */
-  if (create_serval_instance_dir() == -1)
-    return -1;
-  if (!(keyring = keyring_open_instance_cli(parsed)))
-    return -1;
-  if (rhizome_opendb() == -1)
-    return -1;
- 
-  // if sender_sid and recipient_sid are not provided, an error occurs
-  if ((strcmp(sender_sid,"") == 0) || (strcmp(recipient_sid,"" ) == 0))
+ int ret = 0;
+
+ if ( (strcmp(sender_did,"") == 0) || (strcmp(recipient_did,"") == 0) || (strcmp(sender_sid,"") == 0) || (strcmp(recipient_sid,"" ) == 0) )
   { 
-     cli_puts("Error, you must provide a sender_sid and recipient_sid"); cli_delim("\n");
-  }   
-  else {
-    ret=rhizome_list_manifests_forMeshMS(service, name, sender_sid, recipient_sid, atoi(offset), atoi(limit), 0, manifestid);
-    cli_puts("Manifest_id:");cli_puts(manifestid);cli_delim("\n");
-    //rhizome_write_messsage(manifestid);
+     cli_puts("Not enough arguments"); cli_delim("\n");
+  } 
+
+ /*------------------------ Serialization -------------------------*/ 
+
+ int offset_buf=0;
+ unsigned int length_int = 1;
+ unsigned long long send_date_ll=gettime_ms();
+ unsigned char *buffer_serialize;
+ buffer_serialize=malloc(strlen(payload)+100); // make sure we have plenty of space
+
+ // encode twice: first to work out the final length, then once more to write it correctly
+ ret = serialize_meshms(buffer_serialize,&offset_buf,length_int,sender_did, recipient_did, send_date_ll, payload, strlen(payload)+1);
+ length_int=offset_buf;
+ offset_buf=0;
+ ret = serialize_meshms(buffer_serialize,&offset_buf,length_int,sender_did, recipient_did, send_date_ll, payload, strlen(payload)+1);
+
+ /*------------------------- Look for an existing manifest -------------------------*/
+
+ int ret_rhizome_list;
+ ret_rhizome_list=rhizome_list_manifests_forMeshMS(service, name, sender_sid, recipient_sid, atoi(offset), atoi(limit), 0, manifestid);
+ if (ret_rhizome_list != 2 ) {
+    cli_delim("\n");cli_puts("Existing ManifestID:");cli_puts(manifestid);cli_delim("\n");cli_delim("\n");
+ } else {
+   cli_delim("\n");cli_puts("No existing ManifestID");cli_delim("\n");
+ } 
+
+
+/*---- Read a manifest from the database and the file associated ----*/
     
-/*---- Read a manifest from the database ----*/
-  
-    unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
-    if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
-    return WHY("Invalid manifest ID");
-  
-    char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
-    tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
-  
-    // treat empty string the same as null
-    if (bskhex && !*bskhex)
-    bskhex=NULL;
-  
-    rhizome_bk_t bsk;
-    if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
-    return WHYF("invalid bsk: \"%s\"", bskhex);
+ if (create_serval_instance_dir() == -1)
+   return -1;
+ if (!(keyring = keyring_open_instance_cli(parsed)))
+   return -1;
+ if (rhizome_opendb() == -1)
+   return -1; 
 
-    rhizome_manifest *m = rhizome_new_manifest();
-    if (m==NULL)
-    return WHY("Out of manifests");
-  
-    ret = rhizome_retrieve_manifest(manifestIdUpper, m);
-  
-    if (ret==0){
-    // ignore errors
-    rhizome_extract_privatekey(m, NULL);
-    const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
-    
-    cli_puts("service");    cli_delim(":"); cli_puts(blob_service); cli_delim("\n");
-    cli_puts("manifestid"); cli_delim(":"); cli_puts(manifestIdUpper); cli_delim("\n");
-    cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version); cli_delim("\n");
-    cli_puts("inserttime"); cli_delim(":"); cli_printf("%lld", m->inserttime); cli_delim("\n");
-    if (m->haveSecret) {
-      cli_puts(".author");  cli_delim(":"); cli_puts(alloca_tohex_sid(m->author)); cli_delim("\n");
-    }
-    cli_puts(".readonly");  cli_delim(":"); cli_printf("%d", m->haveSecret?0:1); cli_delim("\n");
-    cli_puts("filesize");   cli_delim(":"); cli_printf("%lld", (long long) m->fileLength); cli_delim("\n");
-    if (m->fileLength != 0) {
-      cli_puts("filehash"); cli_delim(":"); cli_puts(m->fileHexHash); cli_delim("\n");
-    }
-  }
-  
-   int retfile=0;
-
-  // voir la fonction write file !!!!
-  
- /*  if (ret==0 && m->fileLength != 0 && filepath && *filepath){
-      retfile = rhizome_extract_file(m, filepath, bskhex?&bsk:NULL);
-   }
-  
-  if (ret==0 && manifestpath && *manifestpath){
-    if (strcmp(manifestpath, "-") == 0) {
-      // always extract a manifest to stdout, even if writing the file itself failed.
-      cli_puts("manifest");
-      cli_delim(":");
-      cli_write(m->manifestdata, m->manifest_all_bytes);
-      cli_delim("\n");
-    } else {
-      int append = (strcmp(manifestpath, filepath)==0)?1:0;
-      // don't write out the manifest if we were asked to append it and writing the file failed.
-      if ((!append) || retfile==0){
-	/* If the manifest has been read in from database, the blob is there,
-	 and we can lie and say we are finalised and just want to write it
-	 out.  TODO: really should have a dirty/clean flag, so that write
-	 works if clean but not finalised. 
-	m->finalised=1;
-	if (rhizome_write_manifest_file(m, manifestpath, append) == -1)
-	  ret = -1;
-      }
-    }
-  }
-  if (retfile)
-    ret = retfile == -1 ? -1 : 1;
-  //if (m)
-   // rhizome_manifest_free(m);
-     
-
-
-    FILE *f = fopen(filepath, "ab");
-    //if (f == NULL) { cli_puts("fail open");} 
-    //cli_printf("%d",length_int); 
-    ret = fwrite(buffer_serialize, 1, length_int, f);
-    cli_printf("%d", ret);
-    if (ret == 0) { cli_puts("fail write");}
-    fclose (f);
-    
-   //int rhizome_fill_manifest_for_meshms(m, manifestpath)
-   rhizome_bundle_import_files(m, manifestpath, filepath);
-    
-   
-    
-     
-  }
-
-//  int ret=0; */ }
- return ret;
-}
-
-
-int app_meshms_read_messagelog(const struct cli_parsed *parsed, void *context)
-{
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
-  
-  const char *manifestid , *bskhex ;
-
-  //const char *manifestpath, *filepath, *manifestid, *bskhex;
- 
-  if (cli_arg(parsed, "manifestid", &manifestid, cli_manifestid, "") == -1 )
-     return -1;
-  //else {
-//	cli_puts(manifestid);
-//	cli_delim("\n");
-//  }
-  
-  //int extract = strcasecmp(parsed->args[1], "extract")==0;
-  
-  // Ensure the Rhizome database exists and is open 
-  if (create_serval_instance_dir() == -1)
-    return -1;
-  if (rhizome_opendb() == -1)
-    return -1;
-  
-  // What does that mean ?
+  /*
   if (!(keyring = keyring_open_instance_cli(parsed)))
-    return -1;
+    return -1; */
+   
+  unsigned char *buffer_file;
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (!m)
+   return WHY("Manifest struct could not be allocated -- not added to rhizome"); 
+   
+  ret=0;
+  if (ret_rhizome_list != 2)
+  {  
+   //manifestid is in hex
+   unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
+   if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
+     return WHY("Invalid manifest ID");
   
-  int ret=0;
-  
-  //manifestid is in hex
-  unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
-  if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
-    return WHY("Invalid manifest ID");
-  
-  char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
-  tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
-
-  //cli_puts("manifestid"); cli_delim(":"); cli_puts(manifestIdUpper); cli_delim("\n");
-  
+   char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
+   tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
+ 
+ /*   
   // treat empty string the same as null
   if (bskhex && !*bskhex)
     bskhex=NULL;
@@ -1681,18 +1567,15 @@ int app_meshms_read_messagelog(const struct cli_parsed *parsed, void *context)
   rhizome_bk_t bsk;
   if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
     return WHYF("invalid bsk: \"%s\"", bskhex);
-
-  rhizome_manifest *m = rhizome_new_manifest();
-  if (m==NULL)
-    return WHY("Out of manifests");
+ */ 
   
+    
   ret = rhizome_retrieve_manifest(manifestIdUpper, m);
   
   if (ret==0){
     // ignore errors
     rhizome_extract_privatekey(m, NULL);
     const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
-    
     cli_puts("service");    cli_delim(":"); cli_puts(blob_service); cli_delim("\n");
     cli_puts("manifestid"); cli_delim(":"); cli_puts(manifestIdUpper); cli_delim("\n");
     cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version); cli_delim("\n");
@@ -1706,72 +1589,183 @@ int app_meshms_read_messagelog(const struct cli_parsed *parsed, void *context)
       cli_puts("filehash"); cli_delim(":"); cli_puts(m->fileHexHash); cli_delim("\n");
     }
   }
-  
-  int retfile=0;
-  // ret=0 if retrieve manifest is ok
-  if (ret==0 && m->fileLength != 0 ){   
-    // Rhizome_extract_file 
-    struct rhizome_read read_state;
-    bzero(&read_state, sizeof read_state);
-    int ret = rhizome_open_decrypt_read(m, bskhex?&bsk:NULL, &read_state, 1);
-  if (ret == 0)
-     cli_puts("the file exist, we will read the file"); cli_delim("\n");
- 
-  int read_byte_version ;
-  unsigned char *buffer_version;
-  int buffer_length_version=100;
-  buffer_version=malloc(100);
-  read_byte_version=rhizome_read(&read_state, buffer_version, buffer_length_version); 
-  int i=0;
-  cli_puts("read_byte_version");cli_delim(":");cli_printf("%d", read_byte_version); cli_delim("\n");
-  hex_dump(buffer_version, buffer_length_version);
+    
+   buffer_file=malloc(m->fileLength);   
 
+   ret = meshms_read_message(manifestid,m,buffer_file);
+   
+ }
+   
+
+ /*------------------------- Write the message -------------------------*/
+
+ sid_t authorSid;
+ if (sender_sid[0] && str_to_sid_t(&authorSid, sender_sid) == -1)
+   return WHYF("invalid author_sid: %s", sender_sid);
 
  
-    //ret = write_file(&read_state, filepath);
-  rhizome_read_close(&read_state);}
-  //return ret;
+ rhizome_bk_t bsk;
+ const char *bskhex = NULL ; 
+ // treat empty string the same as null
+ if (bskhex && !*bskhex)
+   bskhex=NULL;
+  
+ if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+    return WHYF("invalid bsk: \"%s\"", bskhex);
 
-  /*if (ret==0 && m->fileLength != 0 && filepath && *filepath){
-    if (extract){
-
-      // Save the file, implicitly decrypting if required.
-      // TODO, this may cause us to search for an author a second time if the above call to rhizome_extract_privatekey failed
-      retfile = rhizome_extract_file(m, filepath, bskhex?&bsk:NULL);
-    }else{
-      // Save the file without attempting to decrypt
-      int64_t length;
-      retfile = rhizome_dump_file(m->fileHexHash, filepath, &length);
-    }
+  
+  m->fileLength += length_int;
+  rhizome_manifest_set_ll(m, "filesize", m->fileLength);
+  
+  if (ret_rhizome_list == 0)
+  {
+    m->version = 0;
+    rhizome_manifest_set_ll(m,"version",m->version);
   }
   
-  if (ret==0 && manifestpath && *manifestpath){
-    if (strcmp(manifestpath, "-") == 0) {
-      // always extract a manifest to stdout, even if writing the file itself failed.
-      cli_puts("manifest");
-      cli_delim(":");
-      cli_write(m->manifestdata, m->manifest_all_bytes);
-      cli_delim("\n");
-    } else {
-      int append = (strcmp(manifestpath, filepath)==0)?1:0;
-      // don't write out the manifest if we were asked to append it and writing the file failed.
-      if ((!append) || retfile==0){
-	/* If the manifest has been read in from database, the blob is there,
-	 and we can lie and say we are finalised and just want to write it
-	 out.  TODO: really should have a dirty/clean flag, so that write
-	 works if clean but not finalised. 
-	m->finalised=1;
-	if (rhizome_write_manifest_file(m, manifestpath, append) == -1)
-	  ret = -1;
-      }
-    }
-  }
-  if (retfile)
-    ret = retfile == -1 ? -1 : 1;
-  if (m)
+  if (rhizome_fill_manifest_forMeshMS(m, *sender_sid?&authorSid:NULL, bskhex?&bsk:NULL, sender_sid, recipient_sid)){
     rhizome_manifest_free(m);
-  return ret; */
+    return -1;
+  } 
   
+   if (ret_rhizome_list == 0){
+     if (rhizome_add_message(m,buffer_serialize,buffer_file,length_int, ret_rhizome_list,manifestid)){ 
+       cli_printf("error dans rhizome_add_message 1");
+       return -1;
+     }
+   } else {
+     if (rhizome_add_message(m,buffer_serialize,NULL,length_int, ret_rhizome_list,NULL)){ 
+       cli_printf("error dans rhizome_add_message 1");
+       return -1;
+     }   
+   }
+    
+  
+   free(buffer_file); 
+   free(buffer_serialize);
+ 
+   rhizome_manifest *mout = NULL;
+   ret=rhizome_manifest_finalise(m,&mout);
+   if (ret<0){
+    cli_printf("Error in manifest finalise");
+    rhizome_manifest_free(m);
+    return -1;
+   } 
+
+   const char *service_manifest = rhizome_manifest_get(mout, "service", NULL, 0);
+   if (service) {
+    cli_puts("service");
+    cli_delim(":");
+    cli_puts(service);
+    cli_delim("\n");
+   }
+  
+   {
+    char bid[RHIZOME_MANIFEST_ID_STRLEN + 1];
+    rhizome_bytes_to_hex_upper(mout->cryptoSignPublic, bid, RHIZOME_MANIFEST_ID_BYTES);
+    cli_puts("manifestid");
+    cli_delim(":");
+    cli_puts(bid);
+    cli_delim("\n");
+   }
+   {
+    char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
+    rhizome_bytes_to_hex_upper(mout->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
+    cli_puts("secret");
+    cli_delim(":");
+    cli_puts(secret);
+    cli_delim("\n");
+   }
+   cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version);    cli_delim("\n");
+   cli_puts("filesize");
+   cli_delim(":");
+   cli_printf("%lld", mout->fileLength);
+   cli_delim("\n");
+   if (mout->fileLength != 0) {
+    cli_puts("filehash");
+    cli_delim(":");
+    cli_puts(mout->fileHexHash);
+    cli_delim("\n");
+   }
+   const char *name_manifest = rhizome_manifest_get(mout, "name", NULL, 0);
+   if (name_manifest) {
+    cli_puts("name");
+    cli_delim(":");
+    cli_puts(name_manifest);
+    cli_delim("\n");
+   }
+   
+
+    if (mout != m)
+    rhizome_manifest_free(mout);
+   rhizome_manifest_free(m); 
+
+  return ret ; 
+}
+
+int app_meshms_read_messagelog(const struct cli_parsed *parsed, void *context)
+{
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  
+  int ret;
+  const char *manifestid , *bskhex ;
+  
+  if (cli_arg(parsed, "manifestid", &manifestid, cli_manifestid, "") == -1 )
+     return -1;
+  
+  if (create_serval_instance_dir() == -1)
+   return -1;
+  if (!(keyring = keyring_open_instance_cli(parsed)))
+   return -1;
+  if (rhizome_opendb() == -1)
+   return -1; 
+  
+  ret=0;
+  
+  unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
+  if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
+    return WHY("Invalid manifest ID");
+  
+  char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
+  tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
+ 
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (!m)
+   return WHY("Manifest struct could not be allocated -- not added to rhizome"); 
+    
+  ret = rhizome_retrieve_manifest(manifestIdUpper, m);
+  
+  if (ret==0){
+    // ignore errors
+    rhizome_extract_privatekey(m, NULL);
+    const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
+    cli_puts("service");    cli_delim(":"); cli_puts(blob_service); cli_delim("\n");
+    cli_puts("manifestid"); cli_delim(":"); cli_puts(manifestIdUpper); cli_delim("\n");
+    cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version); cli_delim("\n");
+    cli_puts("inserttime"); cli_delim(":"); cli_printf("%lld", m->inserttime); cli_delim("\n");
+    if (m->haveSecret) {
+      cli_puts(".author");  cli_delim(":"); cli_puts(alloca_tohex_sid(m->author)); cli_delim("\n");
+    }
+    cli_puts(".readonly");  cli_delim(":"); cli_printf("%d", m->haveSecret?0:1); cli_delim("\n");
+    cli_puts("filesize");   cli_delim(":"); cli_printf("%lld", (long long) m->fileLength); cli_delim("\n");
+    if (m->fileLength != 0) {
+      cli_puts("filehash"); cli_delim(":"); cli_puts(m->fileHexHash); cli_delim("\n");
+    }
+   }
+  
+  unsigned char *buffer_file;
+  buffer_file=malloc(m->fileLength);
+  int buffer_length=m->fileLength;  
+
+  ret = meshms_read_message(manifestid,m,buffer_file);
+  //hex_dump(buffer_file,buffer_length);
+  int offset_buffer = 0;
+  ret = deserialize_meshms(buffer_file,&offset_buffer,buffer_length);
+  
+
+
+  free(buffer_file);
   return ret;
   
 }
@@ -2668,9 +2662,8 @@ struct cli_schema command_line_options[]={
   {app_meshms_read_messagelog,{"meshms","read", "messagelog" KEYRING_PIN_OPTIONS,
 	"[<manifestid>]",NULL},CLIFLAG_STANDALONE,
 	"List messages between a sender and a recipient"},
-  {app_meshms_write_message,{"meshms","write", "message" KEYRING_PIN_OPTIONS,
-	"[<length>]","[<sender_did>]","[<recipient_did>]","[<send_date>]", "[<payload>]","[<sender_sid>]","[<recipient_sid>]","[<manifestpath>]", "[<filepath>]", NULL},CLIFLAG_STANDALONE,
-	"Add a message to the messagelog file"},
+  {app_meshms_add_message,{"meshms","add","message" KEYRING_PIN_OPTIONS, "[<length>]","[<sender_did>]","[<recipient_did>]","[<sender_sid>]","[<recipient_sid>]","[<payload>]",NULL},CLIFLAG_STANDALONE,
+   "Add a file to Rhizome and optionally write its manifest to the given path"},
   {app_rhizome_append_manifest, {"rhizome", "append", "manifest", "<filepath>", "<manifestpath>", NULL}, CLIFLAG_STANDALONE,
     "Append a manifest to the end of the file it belongs to."},
   {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL},CLIFLAG_STANDALONE,
@@ -2752,196 +2745,4 @@ struct cli_schema command_line_options[]={
 #endif
   {NULL,{NULL}}
 };
-
-
-
-
-
-int app_rhizome_extract_for_meshms(const char *manifestid, const char *manifestpath, const char *filepath, const char *bskhex)
-{
-  
-//  int extract = strcasecmp(parsed->args[1], "extract")==0;
-  
-  /* Ensure the Rhizome database exists and is open */
-  if (create_serval_instance_dir() == -1)
-    return -1;
-  if (rhizome_opendb() == -1)
-    return -1;
-  
-  //if (!(keyring = keyring_open_instance_cli(parsed)))
-  //  return -1;
-  
-  int ret=0;
-  
-  unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
-  if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
-    return WHY("Invalid manifest ID");
-  
-  char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
-  tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
-  
-  // treat empty string the same as null
-  if (bskhex && !*bskhex)
-    bskhex=NULL;
-  
-  rhizome_bk_t bsk;
-  if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
-    return WHYF("invalid bsk: \"%s\"", bskhex);
-
-  rhizome_manifest *m = rhizome_new_manifest();
-  if (m==NULL)
-  return WHY("Out of manifests");
-  
-  ret = rhizome_retrieve_manifest(manifestIdUpper, m);
-  
-  if (ret==0){
-    // ignore errors
-    rhizome_extract_privatekey(m, NULL);
-    const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
-    
-    cli_puts("service");    cli_delim(":"); cli_puts(blob_service); cli_delim("\n");
-    cli_puts("manifestid"); cli_delim(":"); cli_puts(manifestIdUpper); cli_delim("\n");
-    cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version); cli_delim("\n");
-    cli_puts("inserttime"); cli_delim(":"); cli_printf("%lld", m->inserttime); cli_delim("\n");
-    if (m->haveSecret) {
-      cli_puts(".author");  cli_delim(":"); cli_puts(alloca_tohex_sid(m->author)); cli_delim("\n");
-    }
-    cli_puts(".readonly");  cli_delim(":"); cli_printf("%d", m->haveSecret?0:1); cli_delim("\n");
-    cli_puts("filesize");   cli_delim(":"); cli_printf("%lld", (long long) m->fileLength); cli_delim("\n");
-    if (m->fileLength != 0) {
-      cli_puts("filehash"); cli_delim(":"); cli_puts(m->fileHexHash); cli_delim("\n");
-    }
-  }
-  
-  int retfile=0;
-  
-  if (ret==0 && m->fileLength != 0 && filepath && *filepath){
-   // if (extract){
-      // Save the file, implicitly decrypting if required.
-      // TODO, this may cause us to search for an author a second time if the above call to rhizome_extract_privatekey failed
-      retfile = rhizome_extract_file(m, filepath, bskhex?&bsk:NULL);
-   // }else{
-      // Save the file without attempting to decrypt
-    //  int64_t length;
-    //  retfile = rhizome_dump_file(m->fileHexHash, filepath, &length);
-   // }
-  }
-  
-  if (ret==0 && manifestpath && *manifestpath){
-    if (strcmp(manifestpath, "-") == 0) {
-      // always extract a manifest to stdout, even if writing the file itself failed.
-      cli_puts("manifest");
-      cli_delim(":");
-      cli_write(m->manifestdata, m->manifest_all_bytes);
-      cli_delim("\n");
-    } else {
-      int append = (strcmp(manifestpath, filepath)==0)?1:0;
-      // don't write out the manifest if we were asked to append it and writing the file failed.
-      if ((!append) || retfile==0){
-	/* If the manifest has been read in from database, the blob is there,
-	 and we can lie and say we are finalised and just want to write it
-	 out.  TODO: really should have a dirty/clean flag, so that write
-	 works if clean but not finalised. */
-	m->finalised=1;
-	if (rhizome_write_manifest_file(m, manifestpath, append) == -1)
-	  ret = -1;
-      }
-    }
-  }
-  if (retfile)
-    ret = retfile == -1 ? -1 : 1;
-  if (m)
-    rhizome_manifest_free(m);
-  return ret;
-}
-
-
-int rhizome_fill_manifest_for_meshms(rhizome_manifest *m, const char *filepath){
-  /* Fill in a few missing manifest fields, to make it easier to use when adding new files:
-   - the default service is FILE
-   - use the current time for "date"
-   - if service is file, then use the payload file's basename for "name"
-   */
-  const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-  if (service == NULL) {
-    rhizome_manifest_set(m, "service", (service = RHIZOME_SERVICE_MESHMS));
-    if (config.debug.rhizome) DEBUGF("missing 'service', set default service=%s", service);
-  } else {
-    if (config.debug.rhizome) DEBUGF("manifest contains service=%s", service);
-  }
-  
-  if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
-    rhizome_manifest_set_ll(m, "date", (long long) gettime_ms());
-    if (config.debug.rhizome) DEBUGF("missing 'date', set default date=%s", rhizome_manifest_get(m, "date", NULL, 0));
-  }
-  
-  if (strcasecmp(RHIZOME_SERVICE_FILE, service) == 0) {
-    const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-    if (name == NULL) {
-      if (filepath && *filepath){
-	name = strrchr(filepath, '/');
-	name = name ? name + 1 : filepath;
-      }else
-	name="";
-      rhizome_manifest_set(m, "name", name);
-      if (config.debug.rhizome) DEBUGF("missing 'name', set default name=\"%s\"", name);
-    } else {
-      if (config.debug.rhizome) DEBUGF("manifest contains name=\"%s\"", name);
-    }
-  }
-  
-  /* If the author was not specified, then the manifest's "sender"
-   field is used, if present. */
-//  if (authorSid){
- //   memcpy(m->author, authorSid, SID_SIZE);
-//  }else{
-    const char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
-    if (sender){
-      if (fromhexstr(m->author, sender, SID_SIZE) == -1)
-	return WHYF("invalid sender: %s", sender);
-    }
-//  }
-
-  /* set version of manifest, either from version variable, or using current time */
-  if (rhizome_manifest_get(m,"version",NULL,0)==NULL)
-  {
-    /* No version set, default to the current time */
-    m->version = gettime_ms();
-    rhizome_manifest_set_ll(m,"version",m->version);
-  }
-  
-  const char *id = rhizome_manifest_get(m, "id", NULL, 0);
-  if (id == NULL) {
-    if (config.debug.rhizome) DEBUG("creating new bundle");
-    if (rhizome_manifest_bind_id(m) == -1) {
-      return WHY("Could not bind manifest to an ID");
-    }
-  } else {
-    if (config.debug.rhizome) DEBUGF("modifying existing bundle bid=%s", id);
-    
-    // Modifying an existing bundle.  Make sure we can find the bundle secret.
- //   if (rhizome_extract_privatekey_required(m, bsk))
-      return -1;
-    
-    // TODO assert that new version > old version?
-  }
-  
-  int crypt = rhizome_manifest_get_ll(m,"crypt"); 
-  if (crypt==-1 && m->fileLength){
-    // no explicit crypt flag, should we encrypt this bundle?
-    char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
-    char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
-    
-    // anything sent from one person to another should be considered private and encrypted by default
-    if (sender && recipient){
-      if (config.debug.rhizome)
-	DEBUGF("Implicitly adding payload encryption due to presense of sender & recipient fields");
-      m->payloadEncryption=1;
-      rhizome_manifest_set_ll(m,"crypt",1); 
-    }
-  }
-  
-  return 0;
-}
-
 

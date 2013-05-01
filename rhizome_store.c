@@ -19,7 +19,9 @@ int rhizome_exists(const char *fileHash){
 int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority){
   if (expectedFileHash){
     if (rhizome_exists(expectedFileHash))
+    { cli_printf("error dans rhizome_exists");
       return 1;
+    }
     strlcpy(write->id, expectedFileHash, SHA512_DIGEST_STRING_LENGTH);
     write->id_known=1;
   }else{
@@ -280,10 +282,13 @@ int rhizome_fail_write(struct rhizome_write *write){
 }
 
 int rhizome_finish_write(struct rhizome_write *write){
+  
+  //cli_puts("\n");cli_puts("--------------je suis dans finish write");cli_puts("\n");
   if (write->data_size>0){
     if (rhizome_flush(write))
       return -1;
   }
+
   if (write->blob_fd)
     close(write->blob_fd);
   if (write->buffer)
@@ -336,10 +341,10 @@ int rhizome_finish_write(struct rhizome_write *write){
 	  WHY_perror("link");
 	  goto failure;
 	}
-	  
+
 	if (unlink(blob_path))
 	  WHY_perror("unlink");
-	
+
       }else{
 	if (sqlite_exec_void_retry(&retry,
 				   "UPDATE FILEBLOBS SET id='%s' WHERE rowid=%lld",
@@ -466,11 +471,13 @@ int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash)
   read->blob_rowid = -1;
   read->blob_fd = -1;
   if (sqlite_exec_int64(&read->blob_rowid, "SELECT FILEBLOBS.rowid FROM FILEBLOBS, FILES WHERE FILEBLOBS.id = FILES.id AND FILES.id = '%s' AND FILES.datavalid != 0", read->id) == -1)
+{   cli_puts("no file found in the database _ rhizome_open_read");
     return -1;
+}
   if (read->blob_rowid != -1) {
     read->length = -1; // discover the length on opening the db BLOB
   } else {
-    // No row in FILEBLOBS, look for an external blob file.
+    //cli_printf("No row in FILEBLOBS, look for an external blob file.");
     char blob_path[1024];
     if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, read->id))
       return -1;
@@ -498,13 +505,9 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
   IN();
   int bytes_read = 0;
   if (read_state->blob_fd != -1) {
-    //positionne le pointeur
-     if (lseek(read_state->blob_fd, read_state->offset, SEEK_SET) == -1)
+    if (lseek(read_state->blob_fd, read_state->offset, SEEK_SET) == -1)
       RETURN(WHYF_perror("lseek(%d,%ld,SEEK_SET)", read_state->blob_fd, (long)read_state->offset));
-    
-    // read buffer-lenght char and store in buffer
     bytes_read = read(read_state->blob_fd, buffer, buffer_length);
-    
     if (bytes_read == -1)
       RETURN(WHYF_perror("read(%d,%p,%ld)", read_state->blob_fd, buffer, (long)buffer_length));
   } else if (read_state->blob_rowid != -1) {
@@ -550,7 +553,7 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
       char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
       SHA512_End(&read_state->sha512_context, hash_out);
       if (strcasecmp(read_state->id, hash_out)){
-	WHYF("Expected hash=%s, got %s", read_state->id, hash_out); 
+	WHYF("Expected hash=%s, got %s", read_state->id, hash_out);
       }
       read_state->hash=0;
     }
@@ -664,46 +667,431 @@ int rhizome_dump_file(const char *id, const char *filepath, int64_t *length)
 }
 
 
-/*int rhizome_write_messsage(const char *manifestid)
-{
-//if (config.debug.verbose)
- //   DEBUG_cli_parsed(parsed);
-  
-  const char *bskhex ;
 
-  //const char *manifestpath, *filepath, *manifestid, *bskhex;
+int rhizome_add_message(rhizome_manifest *m, unsigned char *message, unsigned char *buffer_file, int message_size, int manifest_exist, const char *manifestid)
+{
+  
+  rhizome_bk_t bsk;
+  const char *bskhex = NULL ; 
+  
+  // treat empty string the same as null
+  if (bskhex && !*bskhex)
+    bskhex=NULL;
+  
+  if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+    return WHYF("invalid bsk: \"%s\"", bskhex);
+  
+  int file_size = m->fileLength - message_size;
+  int ret;
+   
+  // Stream the file directly into the database, encrypting & hashing as we go.
+  struct rhizome_write write;
+  bzero(&write, sizeof(write));
+  
+  if ( manifest_exist == 0)
+  {  
+    if (rhizome_open_write_forMeshms_manifest_exist(&write, m->fileHexHash, m->fileLength, RHIZOME_PRIORITY_DEFAULT,manifestid))
+    { 
+      cli_printf("error in rhizome_open_write");
+      return -1;
+    }
+  } else {
+    if (rhizome_open_write_forMeshms(&write, NULL, m->fileLength, RHIZOME_PRIORITY_DEFAULT))
+    { 
+      cli_printf("error in rhizome_open_write");
+      return -1;
+    }
+  } 
+  
+  write.crypt=m->payloadEncryption;
+  if (write.crypt){
+    // if the manifest specifies encryption, make sure we can generate the payload key and encrypt the contents as we go
+    if (rhizome_derive_key(m, NULL))
+    {cli_puts("error in rhizome derive key");
+      return -1; }
+    
+    if (config.debug.rhizome)
+      DEBUGF("Encrypting file contents");
+    
+    bcopy(m->payloadKey, write.key, sizeof(write.key));
+    bcopy(m->payloadNonce, write.nonce, sizeof(write.nonce));
+  }
+   
+  int i = 0;
+  if (file_size != 0)
+  {
+   for (i; i< file_size; i++)
+   {
+     write.buffer[i]=buffer_file[i];
+   }
+  }
+
+  if (file_size == 0) 
+  { i = 0; }
+
+  for (i; i<m->fileLength; i++)
+  {
+    write.buffer[i]=message[i-file_size];
+  }
+  
+  //hex_dump(write.buffer, m->fileLength);
+
+  write.data_size = m->fileLength ;
+  ret = rhizome_flush(&write);
+  
+  if (ret == -1)
+  { cli_puts("erreur dans flush");}
+  
+  if ( manifest_exist == 0) {
+   
+   if (rhizome_finish_write_forMeshms_manifest_exist(&write)){
+    rhizome_fail_write(&write);
+    cli_printf("rhizome_finish_write_failed");
+    return -1;
+   }
+  
+  } else {
+    rhizome_finish_write(&write);
+    if (rhizome_finish_write(&write)){
+     rhizome_fail_write(&write);
+     cli_printf("rhizome_finish_write_failed");
+     return -1;
+    }
+  }
+  
+  strlcpy(m->fileHexHash, write.id, SHA512_DIGEST_STRING_LENGTH);
+  rhizome_manifest_set(m, "filehash", m->fileHexHash); 
+  
+  return 0;
+}
+
+
+
+int rhizome_open_write_forMeshms_manifest_exist(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority, const char *manifestid){
  
-  //if (cli_arg(parsed, "manifestid", &manifestid, cli_manifestid, "") == -1 )
-  //   return -1;
-  //else {
-//	cli_puts(manifestid);
-//	cli_delim("\n");
-//  }
+    if (rhizome_exists(expectedFileHash)){ 
+     //cli_delim("\n");cli_printf("expected filehash is %s",expectedFileHash); 
+     //return 1;
+    }
+     
+    rhizome_delete_payload(manifestid);
+    //if (rhizome_delete_payload(manifestid)==0) {
+      //cli_printf("deletion successful in the database");
+    //} else {
+      //cli_printf("deletion unsuccessful in the database");
+    //}
+ 
+    strlcpy(write->id, expectedFileHash, SHA512_DIGEST_STRING_LENGTH);
+    write->id_known=1;
+    
+    sqlite_retry_state retry_update = SQLITE_RETRY_STATE_DEFAULT;
+    sqlite3_stmt *statement_update = NULL;
+   
+    if (sqlite_exec_void_retry(&retry_update, "BEGIN TRANSACTION;") == -1){
+     return WHY("Failed to begin transaction");
+    }
+   
+    int ret=sqlite_exec_void_retry(&retry_update,
+				 "INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) VALUES('%s',%lld,%d,1,%lld);",
+				 write->id, (long long)file_length, priority, (long long)gettime_ms());
+    if (ret==-1)
+    { cli_printf("insert database fail");
+      goto insert_row_fail;
+    }
+    char blob_path[1024];
   
-  //int extract = strcasecmp(parsed->args[1], "extract")==0;
+    if (config.rhizome.external_blobs) {
+     if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, write->id)){
+       WHY("Invalid path");
+       goto insert_row_fail;
+     }
+    
+     if (config.debug.externalblobs)
+      DEBUGF("Attempting to put blob for %s in %s",
+	     write->id,blob_path);
+    
+     write->blob_fd=open(blob_path, O_CREAT | O_TRUNC | O_WRONLY, 0664);
+     if (write->blob_fd<0)
+      goto insert_row_fail;
+    
+     if (config.debug.externalblobs)
+      DEBUGF("Blob file created (fd=%d)", write->blob_fd);
+    
+   } else {
+      
+     statement_update = NULL;
+     statement_update = sqlite_prepare(&retry_update,"INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES('%s',?)",write->id);
+     if (!statement_update) {
+      WHYF("Failed to insert into fileblobs: %s", sqlite3_errmsg(rhizome_db));
+      goto insert_row_fail;
+     }
+    
+     /* Bind appropriate sized zero-filled blob to data field */
+     if (sqlite3_bind_zeroblob(statement_update, 1, file_length) != SQLITE_OK) {
+      WHYF("sqlite3_bind_zeroblob() failed: %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement_update));
+      goto insert_row_fail;
+     }
+    
+    /* Do actual insert, and abort if it fails */
+     int rowcount = 0;
+     int stepcode;
+     while ((stepcode = _sqlite_step_retry(__WHENCE__, LOG_LEVEL_ERROR, &retry_update, statement_update)) == SQLITE_ROW)
+       ++rowcount;
+     if (rowcount)
+      WARNF("void query unexpectedly returned %d row%s", rowcount, rowcount == 1 ? "" : "s");
+    
+     if (!sqlite_code_ok(stepcode)){
+      insert_row_fail:
+      WHYF("Failed to insert row for fileid=%s", write->id);
+     
+      if (statement_update) sqlite3_finalize(statement_update);
+      sqlite_exec_void_retry(&retry_update, "ROLLBACK;");
+      return -1;
+     }
+    
+     sqlite3_finalize(statement_update);
+     statement_update=NULL;
+    
+    
+     strbuf b = strbuf_alloca(1024);
+     strbuf_sprintf(b, "SELECT rowid FROM FILEBLOBS WHERE id = '%s'",write->id);
+     sqlite_retry_state retry_select = SQLITE_RETRY_STATE_DEFAULT;
+     sqlite3_stmt *statement_select = sqlite_prepare(&retry_select, "%s", strbuf_str(b));
+     if (!statement_select)
+      return(-1);
+     size_t rows = 0;
+     while (sqlite_step_retry(&retry_select, statement_select) == SQLITE_ROW) {
+      ++rows;
+      if (rows>2)
+       { break ; } // error , there is more than one message log file for one sender and recipient
+      write->blob_rowid = sqlite3_column_int64(statement_select, 0);
+      
+     }
+     sqlite3_finalize(statement_select);
+
+   } 
+    
   
-  // Ensure the Rhizome database exists and is open 
-  if (create_serval_instance_dir() == -1)
+   if (sqlite_exec_void_retry(&retry_update, "COMMIT;") == -1){
+    if (write->blob_fd>0){
+      close(write->blob_fd);
+      unlink(blob_path);
+    }
     return -1;
-  if (rhizome_opendb() == -1)
-    return -1;
+   }
   
-  // What does that mean ?
- // if (!(keyring = keyring_open_instance_cli(parsed)))
-  //  return -1;
+   write->file_length = file_length;
+   write->file_offset = 0;
+  
+   SHA512_Init(&write->sha512_context);
+  
+   write->buffer_size=write->file_length;
+  
+   if (write->buffer_size>RHIZOME_BUFFER_MAXIMUM_SIZE)
+     write->buffer_size=RHIZOME_BUFFER_MAXIMUM_SIZE;
+  
+   write->buffer=malloc(write->buffer_size);
+   if (!write->buffer)
+    return WHY("Unable to allocate write buffer");
+  
+  return 0;
+}
+
+
+int rhizome_open_write_forMeshms(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority){
+   
+   snprintf(write->id, sizeof(write->id), "%lld", gettime_ms());
+   write->id_known=0;
+ 
+   sqlite3_stmt *statement = NULL;
+   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+
+   if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1){
+     return WHY("Failed to begin transaction");
+    }
+     
+   int ret=sqlite_exec_void_retry(&retry,
+				 "INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) VALUES('%s',%lld,%d,1,%lld);",
+				 write->id, (long long)file_length, priority, (long long)gettime_ms());
+   if (ret==-1){ 
+    cli_printf("insert database fail");
+    goto insert_row_fail;
+   }
+   
+   char blob_path[1024];
+  
+  if (config.rhizome.external_blobs) {
+    if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, write->id)){
+      WHY("Invalid path");
+      goto insert_row_fail;
+    }
+    
+    if (config.debug.externalblobs)
+      DEBUGF("Attempting to put blob for %s in %s",
+	     write->id,blob_path);
+    
+    write->blob_fd=open(blob_path, O_CREAT | O_TRUNC | O_WRONLY, 0664);
+    if (write->blob_fd<0)
+      goto insert_row_fail;
+    
+    if (config.debug.externalblobs)
+      DEBUGF("Blob file created (fd=%d)", write->blob_fd);
+    
+  } else {
+     
+    statement = NULL;
+    statement = sqlite_prepare(&retry,"INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES('%s',?)",write->id);
+    if (!statement) {
+      WHYF("Failed to insert into fileblobs: %s", sqlite3_errmsg(rhizome_db));
+      goto insert_row_fail;
+    }
+    
+     /* Bind appropriate sized zero-filled blob to data field */ //modification de la taille du blob pour écrire plusieurs messages
+    if (sqlite3_bind_zeroblob(statement, 1, file_length) != SQLITE_OK) {
+     WHYF("sqlite3_bind_zeroblob() failed: %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
+     goto insert_row_fail;
+    }
+    
+    /* Do actual insert, and abort if it fails */
+    int rowcount = 0;
+    int stepcode;
+    while ((stepcode = _sqlite_step_retry(__WHENCE__, LOG_LEVEL_ERROR, &retry, statement)) == SQLITE_ROW)
+      ++rowcount;
+    if (rowcount)
+      WARNF("void query unexpectedly returned %d row%s", rowcount, rowcount == 1 ? "" : "s");
+    
+    if (!sqlite_code_ok(stepcode)){
+    insert_row_fail:
+      WHYF("Failed to insert row for fileid=%s", write->id);
+      if (statement) sqlite3_finalize(statement);
+      sqlite_exec_void_retry(&retry, "ROLLBACK;");
+      return -1;
+     }
+    
+    sqlite3_finalize(statement);
+    statement=NULL;
+    
+    /* Get rowid for inserted row, so that we can modify the blob */
+    write->blob_rowid = sqlite3_last_insert_rowid(rhizome_db);
+    if (config.debug.rhizome_rx)
+      DEBUGF("Got rowid %lld for %s", write->blob_rowid, write->id);
+   } 
+  
+  
+  if (sqlite_exec_void_retry(&retry, "COMMIT;") == -1){
+    if (write->blob_fd>0){
+      close(write->blob_fd);
+      unlink(blob_path);
+    }
+    return -1;
+  }
+  
+  write->file_length = file_length;
+  write->file_offset = 0;
+  
+  SHA512_Init(&write->sha512_context);
+  
+  write->buffer_size=write->file_length;
+  
+  if (write->buffer_size>RHIZOME_BUFFER_MAXIMUM_SIZE)
+    write->buffer_size=RHIZOME_BUFFER_MAXIMUM_SIZE;
+  
+  write->buffer=malloc(write->buffer_size);
+  if (!write->buffer)
+    return WHY("Unable to allocate write buffer");
+  
+  return 0;
+}
+
+
+
+int rhizome_finish_write_forMeshms_manifest_exist(struct rhizome_write *write){
+  
+  
+  if (write->data_size>0){
+    if (rhizome_flush(write))
+      return -1;
+  }
+  
+  if (write->blob_fd)
+    close(write->blob_fd);
+  if (write->buffer)
+    free(write->buffer);
+  write->buffer=NULL;
+  
+  char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
+  SHA512_End(&write->sha512_context, hash_out);
+  
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
+    goto failure;
+  
+  str_toupper_inplace(hash_out);
+    
+  if (rhizome_exists(hash_out)){
+      // ooops, we've already got that file, delete the new copy.
+      rhizome_fail_write(write);
+  }else{
+      // delete any half finished records
+      sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,"DELETE FROM FILEBLOBS WHERE id='%s';",hash_out);
+      sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,"DELETE FROM FILES WHERE id='%s';",hash_out);
+      
+      if (sqlite_exec_void_retry(&retry,
+				 "UPDATE FILES SET id='%s', inserttime=%lld, datavalid=1 WHERE id='%s'",
+				 hash_out, gettime_ms(), write->id) == -1)
+	goto failure;
+      
+      if (config.rhizome.external_blobs){
+	char blob_path[1024];
+	char dest_path[1024];
+	if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, write->id)){
+	  WHYF("Failed to generate file path");
+	  goto failure;
+	}
+	if (!FORM_RHIZOME_DATASTORE_PATH(dest_path, hash_out)){
+	  WHYF("Failed to generate file path");
+	  goto failure;
+	}
+	if (link(blob_path, dest_path)){
+	  WHY_perror("link");
+	  goto failure;
+	}
+
+	if (unlink(blob_path))
+	  WHY_perror("unlink");
+
+      }else{
+	if (sqlite_exec_void_retry(&retry,
+				   "UPDATE FILEBLOBS SET id='%s' WHERE rowid=%lld",
+				   hash_out, write->blob_rowid) == -1){
+	  goto failure;
+	}
+      }
+    }
+    
+    strlcpy(write->id, hash_out, SHA512_DIGEST_STRING_LENGTH);
+  
+   if (sqlite_exec_void_retry(&retry, "COMMIT;") == -1)
+    goto failure;
+   return 0;
+  
+failure:
+  sqlite_exec_void_retry(&retry, "ROLLBACK;");
+  rhizome_fail_write(write);
+  return -1;
+}
+
+int meshms_read_message(const char *manifestid,rhizome_manifest *m, unsigned char *buffer )
+{
+  
+  const char *bskhex = NULL ;
+ 
+  /*
+  if (!(keyring = keyring_open_instance_cli(parsed)))
+    return -1; */
   
   int ret=0;
-  
-  //manifestid is in hex
-  unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
-  if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
-    return WHY("Invalid manifest ID");
-  
-  char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
-  tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
-
-  //cli_puts("manifestid"); cli_delim(":"); cli_puts(manifestIdUpper); cli_delim("\n");
-  
+ 
   // treat empty string the same as null
   if (bskhex && !*bskhex)
     bskhex=NULL;
@@ -711,132 +1099,39 @@ int rhizome_dump_file(const char *id, const char *filepath, int64_t *length)
   rhizome_bk_t bsk;
   if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
     return WHYF("invalid bsk: \"%s\"", bskhex);
-
-  rhizome_manifest *m = rhizome_new_manifest();
-  if (m==NULL)
-    return WHY("Out of manifests");
-  
-  ret = rhizome_retrieve_manifest(manifestIdUpper, m);
-  
-  if (ret==0){
-    // ignore errors
-    rhizome_extract_privatekey(m, NULL);
-    const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
-    
-    cli_puts("service");    cli_delim(":"); cli_puts(blob_service); cli_delim("\n");
-    cli_puts("manifestid"); cli_delim(":"); cli_puts(manifestIdUpper); cli_delim("\n");
-    cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version); cli_delim("\n");
-    cli_puts("inserttime"); cli_delim(":"); cli_printf("%lld", m->inserttime); cli_delim("\n");
-    if (m->haveSecret) {
-      cli_puts(".author");  cli_delim(":"); cli_puts(alloca_tohex_sid(m->author)); cli_delim("\n");
-    }
-    cli_puts(".readonly");  cli_delim(":"); cli_printf("%d", m->haveSecret?0:1); cli_delim("\n");
-    cli_puts("filesize");   cli_delim(":"); cli_printf("%lld", (long long) m->fileLength); cli_delim("\n");
-    if (m->fileLength != 0) {
-      cli_puts("filehash"); cli_delim(":"); cli_puts(m->fileHexHash); cli_delim("\n");
-    }
-  }
   
   int retfile=0;
-
-  // From Rhizome_import_file in rhizome_store.c
-  //if (m->fileLength<=0)
-  //  return 0;
-  
-  // Import the file first, checking the hash as we go 
-  struct rhizome_write write;
-  bzero(&write, sizeof(write));
-  
-  //int ret=rhizome_open_write(&write, m->fileHexHash, m->fileLength, RHIZOME_PRIORITY_DEFAULT);
-  if (ret!=0)
-    return ret;
-  
-  // file payload is not in the store yet
-  if (rhizome_write_file(&write, filepath)){
-    rhizome_fail_write(&write);
-    return -1;
-  }
-  
-  if (rhizome_finish_write(&write)){
-    rhizome_fail_write(&write);
-    return -1;
-  }
-  
-  return 0;
-
-
-  
   // ret=0 if retrieve manifest is ok
   if (ret==0 && m->fileLength != 0 ){   
     // Rhizome_extract_file 
-   
-    // là il faut écire dans un file, utilisation de 
     struct rhizome_read read_state;
     bzero(&read_state, sizeof read_state);
-    int ret = rhizome_open_decrypt_read(m, bskhex?&bsk:NULL, &read_state, 1);
-  if (ret == 0)
-     cli_puts("the file exist, we will read the file"); cli_delim("\n");
+    int ret = rhizome_open_decrypt_read(m, bskhex?&bsk:NULL, &read_state, 0);
+    
+    //if (ret == 0) // No errors
+     //cli_puts("the file exist, we will read the file"); cli_delim("\n");
  
-  int read_byte_version ;
-  unsigned char *buffer_version;
-  int buffer_length_version=100;
-  buffer_version=malloc(100);
-  read_byte_version=rhizome_read(&read_state, buffer_version, buffer_length_version); 
-  int i=0;
-  cli_puts("read_byte_version");cli_delim(":");cli_printf("%d", read_byte_version); cli_delim("\n");
-  hex_dump(buffer_version, buffer_length_version);
-
-
+    int read_byte ;
+    int buffer_length=m->fileLength;
  
-    //ret = write_file(&read_state, filepath);
-  rhizome_read_close(&read_state);}
-  //return ret;
+    read_byte=rhizome_read(&read_state, buffer, buffer_length); 
+    
+    //int offset_buffer = 0;
+    //ret = deserialize_meshms(buffer,&offset_buffer,buffer_length);
 
-  /*if (ret==0 && m->fileLength != 0 && filepath && *filepath){
-    if (extract){
-
-      // Save the file, implicitly decrypting if required.
-      // TODO, this may cause us to search for an author a second time if the above call to rhizome_extract_privatekey failed
-      retfile = rhizome_extract_file(m, filepath, bskhex?&bsk:NULL);
-    }else{
-      // Save the file without attempting to decrypt
-      int64_t length;
-      retfile = rhizome_dump_file(m->fileHexHash, filepath, &length);
-    }
+    rhizome_read_close(&read_state);
   }
-  
-  if (ret==0 && manifestpath && *manifestpath){
-    if (strcmp(manifestpath, "-") == 0) {
-      // always extract a manifest to stdout, even if writing the file itself failed.
-      cli_puts("manifest");
-      cli_delim(":");
-      cli_write(m->manifestdata, m->manifest_all_bytes);
-      cli_delim("\n");
-    } else {
-      int append = (strcmp(manifestpath, filepath)==0)?1:0;
-      // don't write out the manifest if we were asked to append it and writing the file failed.
-      if ((!append) || retfile==0){
-	/* If the manifest has been read in from database, the blob is there,
-	 and we can lie and say we are finalised and just want to write it
-	 out.  TODO: really should have a dirty/clean flag, so that write
-	 works if clean but not finalised. 
-	m->finalised=1;
-	if (rhizome_write_manifest_file(m, manifestpath, append) == -1)
-	  ret = -1;
-      }
-    }
-  }
-  if (retfile)
-    ret = retfile == -1 ? -1 : 1;
-  if (m)
-    rhizome_manifest_free(m);
-  return ret; 
+   
+  //if (m)
+  //  rhizome_manifest_free(m);
   
   return ret;
+  
+}
 
 
 
 
 
 
-} */
+
