@@ -45,6 +45,7 @@ start_routing_instance() {
       set debug.mdprequests yes \
       set debug.linkstate yes \
       set debug.verbose yes \
+      set debug.overlayrouting yes \
       set rhizome.enable no
    start_servald_server
    wait_until interface_up
@@ -318,26 +319,25 @@ setup_multi_interface() {
          set interfaces.1.dummy_address 127.0.1.$instance_number \
          set interfaces.1.dummy_netmask 255.255.255.224 \
          set interfaces.1.type wifi \
-         set interfaces.1.drop_unicasts on \
          set interfaces.2.file dummyeth \
          set interfaces.2.dummy_address 127.0.2.$instance_number \
          set interfaces.2.dummy_netmask 255.255.255.224 \
-         set interfaces.2.type ethernet \
-         set interfaces.2.drop_unicasts on
+         set interfaces.2.type ethernet
    foreach_instance +A +B start_routing_instance
+}
+
+multi_has_link() {
+   executeOk_servald route print
+   grep "^$1:BROADCAST UNICAST :dummyeth" $_tfw_tmp/stdout || return 1
+   return 0
 }
 
 doc_multi_interface="Multiple links of different types to the same neighbour"
 test_multi_interface() {
-   foreach_instance +A +B \
-      wait_until has_seen_instances +A +B
-   sleep 5
    set_instance +A
-   executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST :dummyeth"
+   wait_until multi_has_link $SIDB
    set_instance +B
-   executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDA:BROADCAST :dummyeth"
+   wait_until multi_has_link $SIDA
 }
 
 setup_circle() {

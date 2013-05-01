@@ -303,6 +303,12 @@ next:
     if (!(subscriber->reachable & REACHABLE_ASSUMED))
       reachable = REACHABLE_NONE;
   } else if (next_hop == subscriber){
+    // reset the state of any unicast probe's if the interface has changed
+    if (subscriber->interface != interface){
+      reachable = 0;
+      subscriber->last_probe=0;
+      bzero(&subscriber->address, sizeof subscriber->address);
+    }
     reachable = REACHABLE_BROADCAST | (subscriber->reachable & REACHABLE_UNICAST);
     subscriber->interface = interface;
   } else {

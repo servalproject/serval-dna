@@ -236,6 +236,12 @@ overlay_mdp_service_probe(overlay_mdp_frame *mdp)
   if (probe.addr.sin_family!=AF_INET)
     RETURN(WHY("Unsupported address family"));
   
+  struct overlay_interface *interface = &overlay_interfaces[probe.interface];
+  // if a peer is already reachable, and this probe would change the interface, ignore it
+  // TODO track unicast links better in route_link.c
+  if (peer->reachable & REACHABLE_DIRECT && peer->interface && peer->interface != interface)
+    RETURN(0);
+
   peer->last_probe_response = gettime_ms();
   peer->interface = &overlay_interfaces[probe.interface];
   peer->address.sin_family = AF_INET;
@@ -256,14 +262,18 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
   if (interface->state!=INTERFACE_STATE_UP)
     return WHY("I can't send a probe if the interface is down.");
   
+  // don't send a unicast probe unless its on the same interface that is already known to be reachable
+  if (peer->reachable & REACHABLE_DIRECT && peer->interface && peer->interface != interface)
+    return -1;
+
     if (addr.sin_addr.s_addr==0) {
       if (config.debug.overlayinterfaces) 
-	WHY("I can't send a probe to address 0.0.0.0");
+	DEBUG("I can't send a probe to address 0.0.0.0");
       return -1;
     }
     if (addr.sin_port==0) {
       if (config.debug.overlayinterfaces) 
-	WHY("I can't send a probe to port 0");
+	DEBUG("I can't send a probe to port 0");
       return -1;
     }
   
