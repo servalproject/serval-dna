@@ -34,7 +34,7 @@ struct link{
 
   struct subscriber *transmitter;
   struct link *parent;
-
+  struct overlay_interface *interface;
   struct subscriber *receiver;
 
   // neighbour path version when path scores were last updated
@@ -111,7 +111,7 @@ static struct sched_ent link_send_alarm={
   .stats = &link_send_stats,
 };
 
-struct neighbour *neighbours;
+struct neighbour *neighbours=NULL;
 int route_version=0;
 
 static struct link_state *get_link_state(struct subscriber *subscriber)
@@ -237,6 +237,7 @@ static int find_best_link(struct subscriber *subscriber)
   state->calculating = 1;
 
   struct neighbour *neighbour = neighbours;
+  struct overlay_interface *interface = NULL;
   int best_hop_count = 99;
   struct subscriber *next_hop = NULL, *transmitter=NULL;
   time_ms_t now = gettime_ms();
@@ -261,19 +262,33 @@ static int find_best_link(struct subscriber *subscriber)
       next_hop = neighbour->subscriber;
       best_hop_count = link->hop_count;
       transmitter = link->transmitter;
+      interface = link->interface;
     }
 
 next:
     neighbour = neighbour->_next;
   }
 
-  if (state->next_hop != next_hop || state->transmitter != transmitter){
-    if (config.debug.linkstate)
-      DEBUGF("LINK STATE; next hop for %s is now %d hops, %s via %s", 
-	alloca_tohex_sid(subscriber->sid), 
-	best_hop_count,
-	next_hop?alloca_tohex_sid(next_hop->sid):"UNREACHABLE", 
-	transmitter?alloca_tohex_sid(transmitter->sid):"NONE");
+  int changed =0;
+  if (state->next_hop != next_hop || state->transmitter != transmitter)
+    changed = 1;
+  if (next_hop == subscriber && (interface != subscriber->interface))
+    changed = 1;
+
+  if (changed){
+    if (config.debug.linkstate){
+      if (next_hop == subscriber){
+	DEBUGF("LINK STATE; neighbour %s is reachable on interface %s",
+	  alloca_tohex_sid(subscriber->sid), 
+	  interface->name);
+      } else {
+        DEBUGF("LINK STATE; next hop for %s is now %d hops, %s via %s", 
+	  alloca_tohex_sid(subscriber->sid), 
+	  best_hop_count,
+	  next_hop?alloca_tohex_sid(next_hop->sid):"UNREACHABLE", 
+	  transmitter?alloca_tohex_sid(transmitter->sid):"NONE");
+      }
+    }
     state->next_update = now;
   }
 
@@ -283,15 +298,18 @@ next:
   state->route_version = route_version;
   state->calculating = 0;
 
+  int reachable = subscriber->reachable;
   if (next_hop == NULL){
     if (!(subscriber->reachable & REACHABLE_ASSUMED))
-      subscriber->reachable = REACHABLE_NONE;
+      reachable = REACHABLE_NONE;
   } else if (next_hop == subscriber){
-    subscriber->reachable = REACHABLE_BROADCAST | (subscriber->reachable & REACHABLE_UNICAST);
+    reachable = REACHABLE_BROADCAST | (subscriber->reachable & REACHABLE_UNICAST);
+    subscriber->interface = interface;
   } else {
-    subscriber->reachable = REACHABLE_INDIRECT;
+    reachable = REACHABLE_INDIRECT;
   }
   subscriber->next_hop = next_hop;
+  set_reachable(subscriber, reachable);
 
   return 0;
 }
@@ -372,8 +390,8 @@ static int append_link(struct subscriber *subscriber, void *context)
 
 static void free_neighbour(struct neighbour **neighbour_ptr){
   struct neighbour *n = *neighbour_ptr;
-  if (config.debug.linkstate)
-    DEBUGF("LINK STATE; neighbour connection timed out %s", alloca_tohex_sid(n->subscriber->sid));
+  if (config.debug.linkstate && config.debug.verbose)
+    DEBUGF("LINK STATE; all links from neighbour %s have died", alloca_tohex_sid(n->subscriber->sid));
 
   struct neighbour_link *link = n->links;
   while(link){
@@ -399,6 +417,10 @@ static void clean_neighbours(time_ms_t now)
       struct neighbour_link *link = *list;
       if (link->interface->state!=INTERFACE_STATE_UP ||
 	  (link->neighbour_unicast_receive_timeout < now && link->neighbour_broadcast_receive_timeout < now)){
+        if (config.debug.linkstate && config.debug.verbose)
+          DEBUGF("LINK STATE; link expired from neighbour %s on interface %s", 
+            alloca_tohex_sid(n->subscriber->sid),
+            link->interface->name);
         *list=link->_next;
         free(link);
       }else{
@@ -420,13 +442,26 @@ static int link_send_neighbours(struct overlay_buffer *payload)
   struct neighbour *n = neighbours;
 
   while (n){
-    // TODO actually compare links to find the best...
+    // TODO compare other link stats to find the best...
     struct neighbour_link *best_link=n->links;
+    if (best_link){
+      struct neighbour_link *link=best_link->_next;
+      while(link){
+        if (link->interface != best_link->interface &&
+	  overlay_interface_compare(best_link->interface, link->interface))
+	  best_link = link;
+        link = link->_next;
+      }
+    }
 
     if (n->best_link != best_link){
       n->best_link = best_link;
       n->version ++;
       n->next_neighbour_update = now;
+      if (config.debug.linkstate && config.debug.verbose)
+        DEBUGF("LINK STATE; best link from neighbour %s is now on interface %s", 
+          alloca_tohex_sid(n->subscriber->sid),
+          best_link?best_link->interface->name:"NONE");
     }
 
     char flags=0;
@@ -502,6 +537,11 @@ struct neighbour_link * get_neighbour_link(struct neighbour *neighbour, struct o
   link->interface = interface;
   link->neighbour_interface = sender_interface;
   link->_next = neighbour->links;
+  if (config.debug.linkstate && config.debug.verbose)
+    DEBUGF("LINK STATE; new possible link from neighbour %s on interface %s/%d", 
+      alloca_tohex_sid(neighbour->subscriber->sid),
+      interface->name,
+      sender_interface);
   neighbour->links = link;
   return link;
 }
@@ -555,7 +595,7 @@ int link_receive(overlay_mdp_frame *mdp)
     context.invalid_addresses=0;
 
     struct subscriber *receiver=NULL, *transmitter=NULL;
-
+    struct overlay_interface *interface = NULL;
     int start_pos = ob_position(payload);
     int length = ob_get(payload);
     if (length <=0)
@@ -573,11 +613,13 @@ int link_receive(overlay_mdp_frame *mdp)
       if (overlay_address_parse(&context, payload, &transmitter))
         break;
     }
-    int interface = -1;
+    int interface_id = -1;
     if (flags & FLAG_HAS_INTERFACE){
-      interface = ob_get(payload);
-      if (interface < 0)
+      interface_id = ob_get(payload);
+      if (interface_id < 0)
         break;
+      if (interface_id >= OVERLAY_MAX_INTERFACES)
+	continue;
     }
 
     // jump to the position of the next record, even if there's more data we don't understand
@@ -595,14 +637,15 @@ int link_receive(overlay_mdp_frame *mdp)
 
       // TODO build a map of everyone in our 2 hop neighbourhood to control broadcast flooding?
 
-      if (transmitter == my_subscriber){
+      if (transmitter == my_subscriber && interface_id != -1){
         // they can hear us? we can route through them!
+	interface = &overlay_interfaces[interface_id];
+	if (interface->state != INTERFACE_STATE_UP)
+	  continue;
 
-	if (neighbour->neighbour_link_timeout < now){
-	  if (config.debug.linkstate)
-	    DEBUGF("LINK STATE; neighbour is now routable - %s", alloca_tohex_sid(receiver->sid));
+	if (neighbour->neighbour_link_timeout < now)
 	  changed = 1;
-	}
+
 	neighbour->neighbour_link_timeout = now + LINK_INTERVAL;
       }else
         continue;
@@ -614,6 +657,7 @@ int link_receive(overlay_mdp_frame *mdp)
       changed = 1;
       link->transmitter = transmitter;
       link->link_version = version;
+      link->interface = interface;
       // TODO other link attributes...
     }
   }

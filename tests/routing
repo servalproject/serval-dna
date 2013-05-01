@@ -306,6 +306,40 @@ test_offline() {
       wait_until --timeout=30 instance_offline +C
 }
 
+setup_multi_interface() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   >$SERVALD_VAR/dummywifi
+   >$SERVALD_VAR/dummyeth
+   foreach_instance +A +B \
+      executeOk_servald config \
+         set interfaces.1.file dummywifi \
+         set interfaces.1.dummy_address 127.0.1.$instance_number \
+         set interfaces.1.dummy_netmask 255.255.255.224 \
+         set interfaces.1.type wifi \
+         set interfaces.1.drop_unicasts on \
+         set interfaces.2.file dummyeth \
+         set interfaces.2.dummy_address 127.0.2.$instance_number \
+         set interfaces.2.dummy_netmask 255.255.255.224 \
+         set interfaces.2.type ethernet \
+         set interfaces.2.drop_unicasts on
+   foreach_instance +A +B start_routing_instance
+}
+
+doc_multi_interface="Multiple links of different types to the same neighbour"
+test_multi_interface() {
+   foreach_instance +A +B \
+      wait_until has_seen_instances +A +B
+   sleep 5
+   set_instance +A
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST :dummyeth"
+   set_instance +B
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDA:BROADCAST :dummyeth"
+}
+
 setup_circle() {
    setup_servald
    assert_no_servald_processes

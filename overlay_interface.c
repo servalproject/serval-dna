@@ -137,6 +137,7 @@ error:
   return -1;
 }
 
+// find an interface marked for use as a default internet route
 overlay_interface * overlay_interface_get_default(){
   int i;
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
@@ -146,6 +147,7 @@ overlay_interface * overlay_interface_get_default(){
   return NULL;
 }
 
+// find an interface that can send a packet to this address
 overlay_interface * overlay_interface_find(struct in_addr addr, int return_default){
   int i;
   overlay_interface *ret = NULL;
@@ -165,6 +167,7 @@ overlay_interface * overlay_interface_find(struct in_addr addr, int return_defau
   return ret;
 }
 
+// find an interface by name
 overlay_interface * overlay_interface_find_name(const char *name){
   int i;
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
@@ -174,6 +177,36 @@ overlay_interface * overlay_interface_find_name(const char *name){
       return &overlay_interfaces[i];
   }
   return NULL;
+}
+
+static int interface_type_priority(int type)
+{
+  switch(type){
+    case OVERLAY_INTERFACE_ETHERNET:
+      return 1;
+    case OVERLAY_INTERFACE_WIFI:
+      return 2;
+    case OVERLAY_INTERFACE_PACKETRADIO:
+      return 4;
+  }
+  return 3;
+}
+
+// Which interface is better for routing packets?
+// returns 0 to indicate the first is better, 1 for the second
+int overlay_interface_compare(overlay_interface *one, overlay_interface *two)
+{
+  if (one==two)
+    return 0;
+  int p1 = interface_type_priority(one->type);
+  int p2 = interface_type_priority(two->type);
+  if (p1<p2)
+    return 0;
+  if (p2<p1)
+    return 1;
+  if (two<one)
+    return 1;
+  return 0;
 }
 
 // OSX doesn't recieve broadcast packets on sockets bound to an interface's address

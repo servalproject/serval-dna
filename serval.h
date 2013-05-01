@@ -665,6 +665,7 @@ int overlay_interface_register(char *name,
 overlay_interface * overlay_interface_get_default();
 overlay_interface * overlay_interface_find(struct in_addr addr, int return_default);
 overlay_interface * overlay_interface_find_name(const char *name);
+int overlay_interface_compare(overlay_interface *one, overlay_interface *two);
 int
 overlay_broadcast_ensemble(overlay_interface *interface,
 			   struct sockaddr_in *recipientaddr,
