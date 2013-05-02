@@ -401,6 +401,8 @@ static int monitor_set(const struct cli_parsed *parsed, void *context)
     c->flags|=MONITOR_PEERS;
   else if (strcase_startswith(parsed->args[1],"dnahelper", NULL))
     c->flags|=MONITOR_DNAHELPER;
+  else if (strcase_startswith(parsed->args[1],"links", NULL))
+    c->flags|=MONITOR_LINKS;
   else
     return monitor_write_error(c,"Unknown monitor type");
 
@@ -422,6 +424,8 @@ static int monitor_clear(const struct cli_parsed *parsed, void *context)
     c->flags&=~MONITOR_PEERS;
   else if (strcase_startswith(parsed->args[1],"dnahelper", NULL))
     c->flags&=~MONITOR_DNAHELPER;
+  else if (strcase_startswith(parsed->args[1],"links", NULL))
+    c->flags&=~MONITOR_LINKS;
   else
     return monitor_write_error(c,"Unknown monitor type");
   
@@ -618,6 +622,14 @@ int monitor_announce_peer(const unsigned char *sid)
 int monitor_announce_unreachable_peer(const unsigned char *sid)
 {
   return monitor_tell_formatted(MONITOR_PEERS, "\nOLDPEER:%s\n", alloca_tohex_sid(sid));
+}
+
+int monitor_announce_link(int hop_count, struct subscriber *transmitter, struct subscriber *receiver)
+{
+  return monitor_tell_formatted(MONITOR_LINKS, "\nLINK:%d:%s:%s\n", 
+    hop_count,
+    transmitter?alloca_tohex_sid(transmitter->sid):"",
+    alloca_tohex_sid(receiver->sid));
 }
 
 // test if any monitor clients are interested in a particular type of event

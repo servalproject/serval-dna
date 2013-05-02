@@ -275,23 +275,6 @@ next:
   if (next_hop == subscriber && (interface != subscriber->interface))
     changed = 1;
 
-  if (changed){
-    if (config.debug.linkstate){
-      if (next_hop == subscriber){
-	DEBUGF("LINK STATE; neighbour %s is reachable on interface %s",
-	  alloca_tohex_sid(subscriber->sid), 
-	  interface->name);
-      } else {
-        DEBUGF("LINK STATE; next hop for %s is now %d hops, %s via %s", 
-	  alloca_tohex_sid(subscriber->sid), 
-	  best_hop_count,
-	  next_hop?alloca_tohex_sid(next_hop->sid):"UNREACHABLE", 
-	  transmitter?alloca_tohex_sid(transmitter->sid):"NONE");
-      }
-    }
-    state->next_update = now;
-  }
-
   state->next_hop = next_hop;
   state->transmitter = transmitter;
   state->hop_count = best_hop_count;
@@ -316,6 +299,24 @@ next:
   }
   subscriber->next_hop = next_hop;
   set_reachable(subscriber, reachable);
+
+  if (changed){
+    if (config.debug.linkstate){
+      if (next_hop == subscriber){
+	DEBUGF("LINK STATE; neighbour %s is reachable on interface %s",
+	  alloca_tohex_sid(subscriber->sid), 
+	  interface->name);
+      } else {
+        DEBUGF("LINK STATE; next hop for %s is now %d hops, %s via %s", 
+	  alloca_tohex_sid(subscriber->sid), 
+	  best_hop_count,
+	  next_hop?alloca_tohex_sid(next_hop->sid):"UNREACHABLE", 
+	  transmitter?alloca_tohex_sid(transmitter->sid):"NONE");
+      }
+    }
+    monitor_announce_link(best_hop_count, transmitter, subscriber);
+    state->next_update = now;
+  }
 
   return 0;
 }
