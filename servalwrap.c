@@ -23,7 +23,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 int main(int argc,char **argv)
 {
  void *h = dlopen("/data/data/org.servalproject/lib/libserval.so",RTLD_LAZY);
+ if (!h)
+   return fprintf(stderr, "Failed to load libserval.so");
+
  int (*servalmain)(const char *, int, const char *const *) = dlsym(h,"parseCommandLine");
- if (!servalmain) return fprintf(stderr,"Could not load libserval.so\n");
+ if (!servalmain) 
+   return fprintf(stderr,"Could not load libserval.so\n");
+
  return (*servalmain)(argv[0], argc - 1, (const char*const*)&argv[1]);
 }
