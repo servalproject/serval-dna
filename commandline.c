@@ -1513,9 +1513,11 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
 
  // encode twice: first to work out the final length, then once more to write it correctly
  ret = serialize_meshms(buffer_serialize,&offset_buf,length_int,sender_did, recipient_did, send_date_ll, payload, strlen(payload)+1);
- length_int=offset_buf;
- offset_buf=0;
- ret = serialize_meshms(buffer_serialize,&offset_buf,length_int,sender_did, recipient_did, send_date_ll, payload, strlen(payload)+1);
+ while(length_int!=offset_buf) {
+   length_int=offset_buf;
+   offset_buf=0;
+   ret = serialize_meshms(buffer_serialize,&offset_buf,length_int,sender_did, recipient_did, send_date_ll, payload, strlen(payload)+1);
+ }
 
  /*------------------------- Look for an existing manifest -------------------------*/
 
@@ -1588,7 +1590,7 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
     }
   }
     
-   buffer_file=malloc(m->fileLength);   
+   buffer_file=malloc(m->fileLength);  
 
    ret = meshms_read_message(manifestid,m,buffer_file);
    
@@ -1600,7 +1602,6 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
  sid_t authorSid;
  if (sender_sid[0] && str_to_sid_t(&authorSid, sender_sid) == -1)
    return WHYF("invalid author_sid: %s", sender_sid);
-
  
  rhizome_bk_t bsk;
  const char *bskhex = NULL ; 
