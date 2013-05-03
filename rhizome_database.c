@@ -1265,26 +1265,8 @@ int rhizome_list_manifests_forMeshMS(const char *service, const char *name,
   ret=0;
   size_t rows = 0;
   
-  const char *names[]={
-    "_id",
-    "service",
-    "id",
-    "version",
-    "date",
-    ".inserttime",
-    ".author",
-    ".fromhere",
-    "filesize",
-    "filehash",
-    "sender",
-    "recipient",
-    "name"
-  };
-  //cli_columns(13,names);
-  //cli_printf("%d",rows);
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     ++rows;
-  // cli_printf("%d",rows);
     if (limit>0 && rows>limit)
       break;
     if (rows>2)
@@ -1310,9 +1292,7 @@ int rhizome_list_manifests_forMeshMS(const char *service, const char *name,
     const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
     size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
     long long q_version = sqlite3_column_int64(statement, 2);
-    long long q_inserttime = sqlite3_column_int64(statement, 3);
     const char *q_author = (const char *) sqlite3_column_text(statement, 4);
-    long long rowid = sqlite3_column_int64(statement, 5);
     
     if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize) == -1) {
       WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
@@ -1338,7 +1318,6 @@ int rhizome_list_manifests_forMeshMS(const char *service, const char *name,
       
       if (match) {
 	const char *blob_name = rhizome_manifest_get(m, "name", NULL, 0);
-	long long blob_date = rhizome_manifest_get_ll(m, "date");
 	const char *blob_filehash = rhizome_manifest_get(m, "filehash", NULL, 0);
 	int from_here = 0;
 	unsigned char senderSid[SID_SIZE];
@@ -1366,8 +1345,6 @@ int rhizome_list_manifests_forMeshMS(const char *service, const char *name,
 	//cli_put_hexvalue(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES, ":");
         
         int i=0;
-        int manifest_id_length=strlen(q_manifestid);
-        //cli_printf("%d",manifest_id_length);
         for (i;i<strlen(q_manifestid);i++)
         {
          manifest_id[i] = q_manifestid[i];

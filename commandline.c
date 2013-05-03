@@ -45,8 +45,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_address.h"
 #include "overlay_buffer.h"
 
-#include "serialization_meshms.c"
-
 //unsigned char did_chars[16]="0123456789+#*abX";
 
 extern struct cli_schema command_line_options[];
@@ -1651,9 +1649,7 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
     return -1;
    } 
 
-   // Does this even do anything?  It retrieves the service, but then completely
-   // ignores it.  Should it be checking that service_manifest == service?
-   const char *service_manifest = rhizome_manifest_get(mout, "service", NULL, 0);
+   service = rhizome_manifest_get(mout, "service", NULL, 0);
    if (service) {
     cli_puts("service");
     cli_delim(":");

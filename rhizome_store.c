@@ -697,18 +697,18 @@ int rhizome_add_message(rhizome_manifest *m, unsigned char *message, unsigned ch
     }
   } else {
     if (rhizome_open_write_forMeshms(&write, NULL, m->fileLength, RHIZOME_PRIORITY_DEFAULT))
-    { 
-      cli_printf("error in rhizome_open_write");
-      return -1;
-    }
+      { 
+	cli_printf("error in rhizome_open_write");
+	return -1;
+      }
   } 
   
   write.crypt=m->payloadEncryption;
   if (write.crypt){
     // if the manifest specifies encryption, make sure we can generate the payload key and encrypt the contents as we go
     if (rhizome_derive_key(m, NULL))
-    {cli_puts("error in rhizome derive key");
-      return -1; }
+      {cli_puts("error in rhizome derive key");
+	return -1; }
     
     if (config.debug.rhizome)
       DEBUGF("Encrypting file contents");
@@ -719,20 +719,20 @@ int rhizome_add_message(rhizome_manifest *m, unsigned char *message, unsigned ch
    
   int i = 0;
   if (file_size != 0)
-  {
-   for (i; i< file_size; i++)
-   {
-     write.buffer[i]=buffer_file[i];
-   }
-  }
+    {
+      for (i; i< file_size; i++)
+	{
+	  write.buffer[i]=buffer_file[i];
+	}
+    }
 
   if (file_size == 0) 
-  { i = 0; }
+    { i = 0; }
 
   for (i; i<m->fileLength; i++)
-  {
-    write.buffer[i]=message[i-file_size];
-  }
+    {
+      write.buffer[i]=message[i-file_size];
+    }
   
   //hex_dump(write.buffer, m->fileLength);
 
@@ -740,22 +740,22 @@ int rhizome_add_message(rhizome_manifest *m, unsigned char *message, unsigned ch
   ret = rhizome_flush(&write);
   
   if (ret == -1)
-  { cli_puts("erreur dans flush");}
+    { cli_puts("erreur dans flush");}
   
   if ( manifest_exist == 0) {
    
-   if (rhizome_finish_write_forMeshms_manifest_exist(&write)){
-    rhizome_fail_write(&write);
-    cli_printf("rhizome_finish_write_failed");
-    return -1;
-   }
+    if (rhizome_finish_write_forMeshms_manifest_exist(&write)){
+      rhizome_fail_write(&write);
+      cli_printf("rhizome_finish_write_failed");
+      return -1;
+    }
   
   } else {
     rhizome_finish_write(&write);
     if (rhizome_finish_write(&write)){
-     rhizome_fail_write(&write);
-     cli_printf("rhizome_finish_write_failed");
-     return -1;
+      rhizome_fail_write(&write);
+      cli_printf("rhizome_finish_write_failed");
+      return -1;
     }
   }
   
@@ -1100,7 +1100,6 @@ int meshms_read_message(const char *manifestid,rhizome_manifest *m, unsigned cha
   if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
     return WHYF("invalid bsk: \"%s\"", bskhex);
   
-  int retfile=0;
   // ret=0 if retrieve manifest is ok
   if (ret==0 && m->fileLength != 0 ){   
     // Rhizome_extract_file 

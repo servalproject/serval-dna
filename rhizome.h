@@ -325,11 +325,6 @@ int rhizome_is_bar_interesting(unsigned char *bar);
 int rhizome_list_manifests(const char *service, const char *name, 
 			   const char *sender_sid, const char *recipient_sid, 
 			   int limit, int offset, char count_rows);
-int rhizome_list_manifests_forMeshMS(const char *service, const char *name, 
-				     const char *sender_sid, 
-				     const char *recipient_sid, 
-				     int limit, int offset, char count_rows,
-				     char *manifest_id);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m);
 int rhizome_advertise_manifest(rhizome_manifest *m);
 int rhizome_delete_bundle(const char *manifestid);
@@ -378,7 +373,6 @@ int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len);
 int meshms_read_message(const char *manifestid,rhizome_manifest *m, unsigned char *buffer);
 int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSid, rhizome_bk_t *bsk);
 int rhizome_add_message(rhizome_manifest *m, unsigned char *message, unsigned char *buffer_file, int message_size, int manifest_exist, const char *manifestid);
-int rhizome_fill_manifest_forMeshMS(rhizome_manifest *m, const sid_t *authorSid, rhizome_bk_t *bsk, const char *sender_sid, const char *recipient_sid);
 
 /* one manifest is required per candidate, plus a few spare.
    so MAX_RHIZOME_MANIFESTS must be > MAX_CANDIDATES. 
@@ -697,4 +691,16 @@ int rhizome_dump_file(const char *id, const char *filepath, int64_t *length);
 
 int rhizome_database_filehash_from_id(const char *id, uint64_t version, char hash[SHA512_DIGEST_STRING_LENGTH]);
 
+int serialize_meshms(unsigned char *buffer,int *offset,unsigned int length,const char *sender_did,const char *recipient_did, unsigned long long time, const char *payload, int payload_length);
+int deserialize_meshms(unsigned char *buffer,int *offset, int buffer_size);
+int rhizome_list_manifests_forMeshMS(const char *service, const char *name, 
+				     const char *sender_sid, 
+				     const char *recipient_sid, 
+				     int limit, int offset, char count_rows,
+				     char *manifest_id);
+int rhizome_fill_manifest_forMeshMS(rhizome_manifest *m, const sid_t *authorSid, rhizome_bk_t *bsk, const char *sender_sid, const char *recipient_sid);
+int rhizome_open_write_forMeshms_manifest_exist(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority, const char *manifestid);
+int rhizome_open_write_forMeshms(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority);
+int rhizome_open_write_forMeshms_manifest_exist(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority, const char *manifestid);
+int rhizome_finish_write_forMeshms_manifest_exist(struct rhizome_write *write);
 #endif //__SERVALDNA__RHIZOME_H
