@@ -263,7 +263,7 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
     return WHY("I can't send a probe if the interface is down.");
   
   // don't send a unicast probe unless its on the same interface that is already known to be reachable
-  if (peer->reachable & REACHABLE_DIRECT && peer->interface && peer->interface != interface)
+  if (peer && (peer->reachable & REACHABLE_DIRECT) && peer->interface && peer->interface != interface)
     return -1;
 
     if (addr.sin_addr.s_addr==0) {
