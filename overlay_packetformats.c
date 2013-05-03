@@ -54,7 +54,7 @@ int overlay_packet_init_header(int encapsulation,
     flags |= PACKET_UNICAST;
   if (interface)
     flags |= PACKET_INTERFACE;
-  if (seq)
+  if (seq>=0)
     flags |= PACKET_SEQ;
   
   ob_append_byte(buff,flags);

@@ -239,12 +239,15 @@ overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destinati
   packet->i = (interface - overlay_interfaces);
   packet->dest=addr;
   packet->buffer=ob_new();
+  int seq=-1;
   if (unicast)
     packet->unicast_subscriber = destination;
+  else
+    seq = interface->sequence_number++;
   ob_limitsize(packet->buffer, packet->interface->mtu);
   
   overlay_packet_init_header(ENCAP_OVERLAY, &packet->context, packet->buffer, 
-			     destination, unicast, packet->i, 0);
+			     destination, unicast, packet->i, seq);
   packet->header_length = ob_position(packet->buffer);
 }
 

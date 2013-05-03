@@ -127,8 +127,8 @@ int single_packet_encapsulation(struct overlay_buffer *b, struct overlay_frame *
   
   if (frame->source_full)
     my_subscriber->send_full=1;
-  
-  if (overlay_packet_init_header(ENCAP_SINGLE, &context, b, NULL, 0, interface_number, 0))
+  int seq = interface->sequence_number++;
+  if (overlay_packet_init_header(ENCAP_SINGLE, &context, b, NULL, 0, interface_number, seq))
     return -1;
 
   struct broadcast *broadcast=NULL;

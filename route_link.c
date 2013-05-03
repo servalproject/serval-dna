@@ -60,8 +60,9 @@ struct neighbour_link{
 
   // very simple time based link up/down detection;
   // when will we consider the link broken?
-  time_ms_t neighbour_unicast_receive_timeout;
-  time_ms_t neighbour_broadcast_receive_timeout;
+  time_ms_t link_timeout;
+  char unicast;
+  int sequence;
 };
 
 struct neighbour{
@@ -422,8 +423,7 @@ static void clean_neighbours(time_ms_t now)
     struct neighbour_link **list = &n->links;
     while(*list){
       struct neighbour_link *link = *list;
-      if (link->interface->state!=INTERFACE_STATE_UP ||
-	  (link->neighbour_unicast_receive_timeout < now && link->neighbour_broadcast_receive_timeout < now)){
+      if (link->interface->state!=INTERFACE_STATE_UP || link->link_timeout < now){
         if (config.debug.linkstate && config.debug.verbose)
           DEBUGF("LINK STATE; link expired from neighbour %s on interface %s", 
             alloca_tohex_sid(n->subscriber->sid),
@@ -472,9 +472,9 @@ static int link_send_neighbours(struct overlay_buffer *payload)
     }
 
     char flags=0;
-    if (best_link->neighbour_unicast_receive_timeout >= now)
+    if (best_link->unicast)
       flags|=FLAG_UNICAST;
-    if (best_link->neighbour_broadcast_receive_timeout >= now)
+    else
       flags|=FLAG_BROADCAST;
 
     if (n->next_neighbour_update - INCLUDE_ANYWAY <= now){
@@ -527,22 +527,25 @@ static void link_send(struct sched_ent *alarm)
 static void update_alarm(time_ms_t limit){
   if (link_send_alarm.alarm>limit || link_send_alarm.alarm==0){
     unschedule(&link_send_alarm);
-    link_send_alarm.alarm=limit;
+    link_send_alarm.alarm = limit;
+    link_send_alarm.deadline = limit;
     schedule(&link_send_alarm);
   }
 }
 
-struct neighbour_link * get_neighbour_link(struct neighbour *neighbour, struct overlay_interface *interface, int sender_interface)
+struct neighbour_link * get_neighbour_link(struct neighbour *neighbour, struct overlay_interface *interface, int sender_interface, char unicast)
 {
   struct neighbour_link *link = neighbour->links;
   while(link){
-    if (link->interface == interface && link->neighbour_interface == sender_interface)
+    if (link->interface == interface && link->neighbour_interface == sender_interface && link->unicast == unicast)
       return link;
     link=link->_next;
   }
   link = emalloc_zero(sizeof(struct neighbour_link));
   link->interface = interface;
   link->neighbour_interface = sender_interface;
+  link->unicast = unicast;
+  link->sequence = -1;
   link->_next = neighbour->links;
   if (config.debug.linkstate && config.debug.verbose)
     DEBUGF("LINK STATE; new possible link from neighbour %s on interface %s/%d", 
@@ -561,26 +564,23 @@ int link_received_packet(struct subscriber *subscriber, struct overlay_interface
     return 0;
 
   struct neighbour *neighbour = get_neighbour(subscriber, 1);
-  struct neighbour_link *link=get_neighbour_link(neighbour, interface, sender_interface);
+  struct neighbour_link *link=get_neighbour_link(neighbour, interface, sender_interface, unicast);
   time_ms_t now = gettime_ms();
 
   // for now we'll use a simple time based link up/down flag
   // force an update when we start hearing a new neighbour link
-  if (unicast){
-    if (link->neighbour_unicast_receive_timeout < now){
-      neighbour->next_neighbour_update = now;
-      neighbour->version++;
-      update_alarm(now);
-    }
-    link->neighbour_unicast_receive_timeout = now + LINK_EXPIRY;
-  }else{
-    if (link->neighbour_broadcast_receive_timeout < now){
-      neighbour->next_neighbour_update = now;
-      neighbour->version++;
-      update_alarm(now);
-    }
-    link->neighbour_broadcast_receive_timeout = now + (interface->tick_ms * 3);
+  if (link->link_timeout < now){
+    neighbour->next_neighbour_update = now;
+    neighbour->version++;
+    update_alarm(now);
   }
+  if (sender_seq >=0){
+    if (link->sequence !=-1 && sender_seq != ((link->sequence+1)&0xFF)){
+      DEBUGF("LINK STATE; Sequence jumped from %d to %d", link->sequence, sender_seq);
+    }
+    link->sequence = sender_seq;
+  }
+  link->link_timeout = now + (interface->tick_ms *4);
   return 0;
 }
 
