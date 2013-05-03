@@ -3,106 +3,6 @@
 
 #include "serval.h"
 
-// remove this once you have it in the serval source directory and
-// replace it with #include "serval.h"
-#define uint64_t unsigned long long
-
-int serialize_meshms(unsigned char *buffer,int *offset,unsigned int length,char *sender_did,char *recipient_did, unsigned long long time, char *payload, int payload_length)
-{
-  int ret = 0;
-   
-  encode_length_forwards(buffer,offset,length);
-  pack_did(buffer,offset,sender_did);
-  pack_did(buffer,offset,recipient_did);  
-  pack_time(buffer,offset,time);
-  
-  int i=0;
-  for(i;i<payload_length;i++)
-  {
-   buffer[*offset]=payload[i];
-
-   *offset=*offset+1;
-  } 
-  buffer[*offset]="\0";
-  *offset=*offset+1;
-  
-  encode_length_backwards(buffer,offset,length);
- // hex_dump(buffer,*offset);
-  
-
-  return ret;
-}
-
-
-int deserialize_meshms(unsigned char *buffer,int *offset, int buffer_size)
-{
-  
-  cli_delim("\n");
-  cli_puts("offset|length|sender|recipient|date|message");cli_delim("\n");  
-
-  int ret = 0;
-  int i=0;
-  
-  unsigned int length =0;
-   
-  while (i < buffer_size) {
-  
-    cli_printf("%d",*offset);cli_puts("|");
-   
-   decode_length_forwards(buffer,offset,&length);
-   cli_printf("%d",length);cli_puts("|");
-  
-   char *sender_did_out=malloc(64);
-   unpack_did(buffer,offset,sender_did_out);
-   cli_printf("%s",sender_did_out);cli_puts("|");
-      
-
-   char *recipient_did_out = malloc(64);
-   unpack_did(buffer,offset,recipient_did_out);
-   cli_printf("%s",recipient_did_out);cli_puts("|");  
-   
- 			    
-   unsigned long long time = 0;
-   unpack_time(buffer,offset,&time);    
-   cli_printf("%lld",time);cli_puts("|"); 
-   
- 
-   int j=0;
-   int payload_length;
-  
-   if (length > 254)
-   {
-    payload_length = length - (2*5) - strlen(sender_did_out) - strlen(recipient_did_out) - 8;
-   } else 
-   {
-    payload_length = length - (2*1) - strlen(sender_did_out) - strlen(recipient_did_out) - 8;
-   }
- 
-   //cli_printf("payload length is %d",payload_length);
-  
-   for(j;j<payload_length;j++)
-   {
-    cli_printf("%c", buffer[*offset]);
-    *offset=*offset+1;
-   } 
-   
-   
-   cli_delim("\n");
-   i = i+length;
-   *offset=i;
-   
-   //cli_printf("i est egale à %d",i);cli_puts("|"); cli_printf("offset est egale à %d",*offset);cli_puts("|");cli_delim("\n");
-   free(sender_did_out);
-   free(recipient_did_out);
-
- } 
-  
-  //free(temp_buffer);
-  return ret;
-}
-
-
-
 int encode_length_forwards(unsigned char *buffer,int *offset,
 			   unsigned int length)
 {
@@ -196,7 +96,7 @@ int unpack_did(unsigned char *buffer,int *offset,char *did_out)
   return 0;
 }
 
-int pack_did(unsigned char *buffer,int *offset,char *did)
+int pack_did(unsigned char *buffer,int *offset,const char *did)
 {
    int i;
    int highlow=0;
@@ -218,6 +118,78 @@ int pack_did(unsigned char *buffer,int *offset,char *did)
    return -1; // number too long
 }
 
+int serialize_meshms(unsigned char *buffer,int *offset,unsigned int length,const char *sender_did,const char *recipient_did, unsigned long long time, const char *payload, int payload_length)
+{
+  int ret = 0;
+   
+  encode_length_forwards(buffer,offset,length);
+  pack_did(buffer,offset,sender_did);
+  pack_did(buffer,offset,recipient_did);  
+  pack_time(buffer,offset,time);
+  
+  int i=0;
+  for(i;i<payload_length;i++)
+  {
+   buffer[(*offset)++]=payload[i];
+  }
+  
+  encode_length_backwards(buffer,offset,length);
+ // hex_dump(buffer,*offset);
+  
+
+  return ret;
+}
+
+
+int deserialize_meshms(unsigned char *buffer,int *offset, int buffer_size)
+{
+  
+  cli_delim("\n");
+  cli_puts("offset|length|sender|recipient|date|message");cli_delim("\n");  
+
+  int ret = 0;
+  int i=0;
+  
+  unsigned int length =0;
+
+  while (i < buffer_size) {
+    unsigned int start_offset=*offset;
+  
+    cli_printf("%d",*offset);cli_puts("|");
+   
+    int length_length=*offset;
+    decode_length_forwards(buffer,offset,&length);
+    length_length=(*offset)-length_length;
+    cli_printf("%d",length);cli_puts("|");
+    
+    char sender_did_out[64];
+    unpack_did(buffer,offset,sender_did_out);
+    cli_printf("%s",sender_did_out);cli_puts("|");
+    
+    char recipient_did_out[64];
+    unpack_did(buffer,offset,recipient_did_out);
+    cli_printf("%s",recipient_did_out);cli_puts("|");  
+   			    
+    unsigned long long time = 0;
+    unpack_time(buffer,offset,&time);    
+    cli_printf("%lld",time);cli_puts("|"); 
+    
+    int j=0;
+    int payload_end=start_offset+length-length_length;
+    printf("\nstart_offset=%d, offset=%d, payload_end=%d, length=%d, length_length=%d\n",
+	   start_offset,*offset,payload_end,length,length_length);
+    for(j=*offset;j<payload_end;j++)
+      {
+	cli_printf("%c", buffer[(*offset)++]);
+      } 
+    
+    cli_delim("\n");
+    i = i+length;
+    *offset=i;    
+ } 
+  
+  return ret;
+}
 
 void hex_dump(char *data, int size)
 {

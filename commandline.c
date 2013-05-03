@@ -1491,7 +1491,7 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
  cli_arg(parsed, "recipient_sid", &recipient_sid, cli_optional_sid, "");
 
  const char *service, *name, *offset, *limit;
- const char *manifestid; manifestid=malloc(65);
+ char manifestid[65]; // in hex
     
  service="MeshMS1";
  cli_arg(parsed, "name", &name, NULL, "");
@@ -1524,7 +1524,7 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
  int ret_rhizome_list;
  ret_rhizome_list=rhizome_list_manifests_forMeshMS(service, name, sender_sid, recipient_sid, atoi(offset), atoi(limit), 0, manifestid);
  if (ret_rhizome_list != 2 ) {
-    cli_delim("\n");cli_puts("Existing ManifestID:");cli_puts(manifestid);cli_delim("\n");cli_delim("\n");
+   cli_delim("\n");cli_puts("Existing ManifestID:");cli_puts((const char *)manifestid);cli_delim("\n");cli_delim("\n");
  } else {
    cli_delim("\n");cli_puts("No existing ManifestID");cli_delim("\n");
  } 
@@ -1640,7 +1640,6 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
      }   
    }
     
-  
    free(buffer_file); 
    free(buffer_serialize);
  
@@ -1652,6 +1651,8 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
     return -1;
    } 
 
+   // Does this even do anything?  It retrieves the service, but then completely
+   // ignores it.  Should it be checking that service_manifest == service?
    const char *service_manifest = rhizome_manifest_get(mout, "service", NULL, 0);
    if (service) {
     cli_puts("service");
@@ -1709,7 +1710,7 @@ int app_meshms_read_messagelog(const struct cli_parsed *parsed, void *context)
     DEBUG_cli_parsed(parsed);
   
   int ret;
-  const char *manifestid , *bskhex ;
+  const char *manifestid=NULL;
   
   if (cli_arg(parsed, "manifestid", &manifestid, cli_manifestid, "") == -1 )
      return -1;
@@ -2662,7 +2663,7 @@ struct cli_schema command_line_options[]={
   {app_meshms_read_messagelog,{"meshms","read", "messagelog" KEYRING_PIN_OPTIONS,
 	"[<manifestid>]",NULL},CLIFLAG_STANDALONE,
 	"List messages between a sender and a recipient"},
-  {app_meshms_add_message,{"meshms","add","message" KEYRING_PIN_OPTIONS, "[<length>]","[<sender_did>]","[<recipient_did>]","[<sender_sid>]","[<recipient_sid>]","[<payload>]",NULL},CLIFLAG_STANDALONE,
+  {app_meshms_add_message,{"meshms","add","message" KEYRING_PIN_OPTIONS, "[<sender_did>]","[<recipient_did>]","[<sender_sid>]","[<recipient_sid>]","[<payload>]",NULL},CLIFLAG_STANDALONE,
    "Add a file to Rhizome and optionally write its manifest to the given path"},
   {app_rhizome_append_manifest, {"rhizome", "append", "manifest", "<filepath>", "<manifestpath>", NULL}, CLIFLAG_STANDALONE,
     "Append a manifest to the end of the file it belongs to."},

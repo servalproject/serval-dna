@@ -1214,8 +1214,10 @@ cleanup:
 
 
 int rhizome_list_manifests_forMeshMS(const char *service, const char *name, 
-			   const char *sender_sid, const char *recipient_sid, 
-			   int limit, int offset, char count_rows, unsigned char *manifest_id)
+				     const char *sender_sid, 
+				     const char *recipient_sid, 
+				     int limit, int offset, char count_rows, 
+				     char *manifest_id)
 {
   IN();
   strbuf b = strbuf_alloca(1024);
