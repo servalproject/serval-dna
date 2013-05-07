@@ -535,7 +535,8 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
       char temp[8192];
       char *sidprefix=alloca_tohex_sid(my_subscriber->sid); sidprefix[8]=0;
       snprintf(temp,8192,
-	       ";%d;%d;%d;%d;%s;%d;%d;%d;%d;%d\n",
+	       ";%lld;%d;%d;%d;%d;%s;%d;%d;%d;%d;%d\n",
+	       gettime_ms(),
 	       last_radio_rssi,last_radio_temperature,
 	       (int)bundles_available,
 	       rhizome_active_fetch_count(),
