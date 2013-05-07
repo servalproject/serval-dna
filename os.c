@@ -110,6 +110,7 @@ int urandombytes(unsigned char *buf, unsigned long long len)
     if (i == -1) {
       if (++tries > 4) {
 	WHY_perror("read(/dev/urandom)");
+	if (errno==EBADF) urandomfd=-1;
 	return -1;
       }
       sleep(1);
