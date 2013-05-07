@@ -200,6 +200,9 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
     snprintf(crash_handler_clue,1024,
 	     "upper7_decode() call #%d: state=%d, byte=0x%02x, rssi_len=%d, dst_offset=%d",
 	     u7d_calls,state->state,byte,state->rssi_len,state->dst_offset);
+  if (config.debug.slipbytestream)
+    WHTF("call #%d: state=%d, byte=0x%02x, rssi_len=%d, dst_offset=%d",
+	 u7d_calls,state->state,byte,state->rssi_len,state->dst_offset);
 
   // Parse out inline RSSI reports
   if (byte=='{') {
