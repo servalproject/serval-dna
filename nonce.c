@@ -60,7 +60,7 @@ int app_nonce_test(const struct cli_parsed *parsed, void *context)
 	  exit(-1);
 	}
       for(j=0;j<i;j++) {
-	if (!bcmp(&nonces[i][0],&nonces[j][0],32)) {
+	if (!memcmp(&nonces[i][0],&nonces[j][0],32)) {
 	  printf("Nonce #%d is the same as nonce #%d\n",i,j);
 	  exit(-1);
 	}
