@@ -113,7 +113,6 @@ int urandombytes(unsigned char *buf, unsigned long long len)
 	if (errno==EBADF) urandomfd=-1;
 	return -1;
       }
-      sleep(1);
     } else {
       tries = 0;
       buf += i;

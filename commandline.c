@@ -2367,6 +2367,8 @@ struct cli_schema command_line_options[]={
    "Interactive servald monitor interface."},
   {app_crypt_test,{"test","crypt",NULL}, 0,
    "Run cryptography speed test"},
+  {app_nonce_test,{"test","nonce",NULL}, 0,
+   "Run nonce generation test"},
   {app_slip_test,{"test","slip","[--seed=<N>]","[--duration=<seconds>|--iterations=<N>]",NULL}, 0,
    "Run serial encapsulation test"},
 #ifdef HAVE_VOIPTEST
