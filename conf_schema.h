@@ -434,7 +434,7 @@ STRING(256,                 file,            "", str_nonempty,, "Path of interfa
 ATOM(struct in_addr,        dummy_address,   hton_in_addr(INADDR_LOOPBACK), in_addr,, "Dummy interface address")
 ATOM(struct in_addr,        dummy_netmask,   hton_in_addr(0xFFFFFF00), in_addr,, "Dummy interface netmask")
 ATOM(uint16_t,              port,            PORT_DNA, uint16_nonzero,, "Port number for network interface")
-ATOM(bool_t,                drop_broadcasts, 0, boolean,, "If true, drop all incoming broadcast packets")
+ATOM(uint16_t,              drop_broadcasts, 0, uint16_nonzero,, "Percentage of incoming broadcast packets that should be dropped for testing purposes")
 ATOM(bool_t,                drop_unicasts,   0, boolean,, "If true, drop all incoming unicast packets")
 ATOM(short,                 type,            OVERLAY_INTERFACE_WIFI, interface_type,, "Type of network interface")
 ATOM(int32_t,               packet_interval, -1, int32_nonneg,, "Minimum interval between packets in microseconds")

@@ -189,7 +189,7 @@ setup_scan() {
       set interfaces.1.dummy_address 127.0.1.11
   foreach_instance +A +B \
     executeOk_servald config \
-      set interfaces.1.drop_broadcasts 1
+      set interfaces.1.drop_broadcasts 100
   foreach_instance +A +B start_routing_instance
 }
 test_scan() {
@@ -338,6 +338,35 @@ test_multi_interface() {
    wait_until multi_has_link $SIDB
    set_instance +B
    wait_until multi_has_link $SIDA
+}
+
+doc_unreliable_links="Choose a longer, perfect path over an unreliable link"
+setup_unreliable_links() {
+  setup_servald
+  assert_no_servald_processes
+  foreach_instance +A +B +C create_single_identity
+  foreach_instance +A +B add_interface 1
+  foreach_instance +B +C add_interface 2
+  foreach_instance +A +C add_interface 3
+  set_instance +A
+  executeOk_servald config \
+    set interfaces.3.drop_broadcasts 70
+  set_instance +C
+  executeOk_servald config \
+    set interfaces.3.drop_broadcasts 70
+  foreach_instance +A +B +C start_routing_instance
+}
+test_unreliable_links() {
+   foreach_instance +A +B +C \
+      wait_until has_seen_instances +A +B +C
+   set_instance +A
+   executeOk_servald mdp ping --timeout=3 $SIDC 5
+   tfw_cat --stdout --stderr
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDC:INDIRECT :"
+   set_instance +C
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDA:INDIRECT :"
 }
 
 setup_circle() {

@@ -393,7 +393,7 @@ typedef struct overlay_interface {
   struct slip_decode_state slip_decode_state;
 
   // copy of ifconfig flags
-  char drop_broadcasts;
+  uint16_t drop_broadcasts;
   char drop_unicasts;
   int port;
   int type;
