@@ -576,7 +576,8 @@ int link_received_packet(struct subscriber *subscriber, struct overlay_interface
   }
   if (sender_seq >=0){
     if (link->sequence !=-1 && sender_seq != ((link->sequence+1)&0xFF)){
-      DEBUGF("LINK STATE; Sequence jumped from %d to %d", link->sequence, sender_seq);
+      DEBUGF("LINK STATE %s; Sequence jumped from %d to %d", 
+	     interface->name,link->sequence, sender_seq);
     }
     link->sequence = sender_seq;
   }
