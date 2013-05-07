@@ -675,6 +675,7 @@ int directory_registration();
 int directory_service_init();
 
 struct cli_parsed;
+int app_nonce_test(const struct cli_parsed *parsed, void *context);
 int app_rhizome_direct_sync(const struct cli_parsed *parsed, void *context);
 #ifdef HAVE_VOIPTEST
 int app_pa_phone(const struct cli_parsed *parsed, void *context);
@@ -832,5 +833,7 @@ int link_received_packet(struct subscriber *subscriber, struct overlay_interface
 int link_receive(overlay_mdp_frame *mdp);
 void link_explained(struct subscriber *subscriber);
 void link_interface_down(struct overlay_interface *interface);
+
+int generate_nonce(unsigned char *nonce,int bytes);
 
 #endif // __SERVALD_SERVALD_H
