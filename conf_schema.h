@@ -252,6 +252,7 @@ ATOM(bool_t, packetradio,               0, boolean,, "")
 ATOM(bool_t, rejecteddata,              0, boolean,, "")
 ATOM(bool_t, slip,                      0, boolean,, "")
 ATOM(bool_t, slipdecode,                0, boolean,, "")
+ATOM(bool_t, slipbytestream,            0, boolean,, "")
 ATOM(bool_t, packetconstruction,        0, boolean,, "")
 ATOM(bool_t, rhizome,                   0, boolean,, "")
 ATOM(bool_t, rhizome_tx,                0, boolean,, "")
@@ -442,7 +443,7 @@ ATOM(bool_t,                send_broadcasts, 1, boolean,, "If false, don't send 
 ATOM(bool_t,                default_route,   0, boolean,, "If true, use this interface as a default route")
 ATOM(bool_t,                prefer_unicast,  0, boolean,, "If true, send unicast data as unicast IP packets if available")
 ATOM(bool_t,                ctsrts,  0, boolean,, "If true, enable CTS/RTS hardware handshaking")
-ATOM(int32_t,               uartbps,     -1, int32_rs232baudrate,, "Speed of serial UART link speed (which may be different to serial device link speed)")
+ATOM(int32_t,               uartbps, 57600, int32_rs232baudrate,, "Speed of serial UART link speed (which may be different to serial device link speed)")
 END_STRUCT
 
 ARRAY(interface_list, NO_DUPLICATES)
