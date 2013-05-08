@@ -46,7 +46,7 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   usleep(1200000);
   (void)write_all(interface->alarm.poll.fd,"\rAT&T\rAT&T=RSSI\rATO\r",20);
   if (config.debug.packetradio) {
-    tcgetattr(interface->alarm.poll.fd, TCSANOW, &t);
+    tcgetattr(interface->alarm.poll.fd, &t);
     int in_speed=cfgetispeed(&t);
     int out_speed=cfgetospeed(&t);
 
