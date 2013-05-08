@@ -243,7 +243,7 @@ overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destinati
   if (unicast)
     packet->unicast_subscriber = destination;
   else
-    seq = interface->sequence_number++;
+    seq = interface->sequence_number = (interface->sequence_number + 1)&0xFF;
   ob_limitsize(packet->buffer, packet->interface->mtu);
   
   overlay_packet_init_header(ENCAP_OVERLAY, &packet->context, packet->buffer, 

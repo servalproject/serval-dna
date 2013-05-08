@@ -549,7 +549,9 @@ static int link_send_neighbours(struct overlay_buffer *payload)
 // send link details
 static void link_send(struct sched_ent *alarm)
 {
-  alarm->alarm=gettime_ms() + 10000;
+  time_ms_t now = gettime_ms();
+
+  alarm->alarm=now + 10000;
 
   struct overlay_frame *frame=emalloc_zero(sizeof(struct overlay_frame));
   frame->type=OF_TYPE_DATA;
@@ -582,7 +584,7 @@ static void update_alarm(time_ms_t limit){
   if (link_send_alarm.alarm>limit || link_send_alarm.alarm==0){
     unschedule(&link_send_alarm);
     link_send_alarm.alarm = limit;
-    link_send_alarm.deadline = limit;
+    link_send_alarm.deadline = limit+10;
     schedule(&link_send_alarm);
   }
 }
@@ -629,14 +631,25 @@ int link_received_packet(struct subscriber *subscriber, struct overlay_interface
 
   if (sender_seq >=0){
     if (link->ack_sequence != -1){
-      link->ack_mask = (link->ack_mask << 1) | 1;
-      while(1){
-        link->ack_sequence = (link->ack_sequence+1)&0xFF;
-	if (link->ack_sequence == sender_seq)
-	  break;
-	// missed a packet? send a link state soon
-	link->ack_mask = link->ack_mask << 1;
-	next_update = now+100;
+      int offset = (link->ack_sequence - 1 - sender_seq)&0xFF;
+      if (offset < 32){
+        if (config.debug.verbose && config.debug.linkstate)
+          DEBUGF("LINK STATE; late seq %d from %s on %s", 
+	    link->ack_sequence, alloca_tohex_sid(subscriber->sid), interface->name);
+	link->ack_mask |= (1<<offset);
+      }else{
+        link->ack_mask = (link->ack_mask << 1) | 1;
+        while(1){
+          link->ack_sequence = (link->ack_sequence+1)&0xFF;
+	  if (link->ack_sequence == sender_seq)
+	    break;
+	  // missed a packet? send a link state soon
+          if (config.debug.verbose && config.debug.linkstate)
+            DEBUGF("LINK STATE; missed seq %d from %s on %s", 
+	      link->ack_sequence, alloca_tohex_sid(subscriber->sid), interface->name);
+	  link->ack_mask = link->ack_mask << 1;
+	  next_update = now+100;
+        }
       }
     }else
       link->ack_sequence = sender_seq;
@@ -759,7 +772,7 @@ int link_receive(overlay_mdp_frame *mdp)
     if (link && transmitter == my_subscriber){
       // TODO combine our link stats with theirs
       version = link->link_version;
-      if (drop_rate!=link->drop_rate)
+      if (abs(drop_rate - link->drop_rate)>1)
 	version++;
     }
 
@@ -781,6 +794,8 @@ int link_receive(overlay_mdp_frame *mdp)
     if (link_send_alarm.alarm>now || link_send_alarm.alarm==0){
       unschedule(&link_send_alarm);
       link_send_alarm.alarm=now;
+      // read all incoming packets first
+      link_send_alarm.deadline=now+10;
       schedule(&link_send_alarm);
     }
   }
