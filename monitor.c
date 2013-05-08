@@ -382,6 +382,13 @@ void monitor_get_all_supported_codecs(unsigned char *codecs){
   }
 }
 
+static int monitor_announce_all_peers(struct subscriber *subscriber, void *context)
+{
+  if (subscriber->reachable&REACHABLE)
+    monitor_announce_peer(subscriber->sid);
+  return 0;
+}
+
 static int monitor_set(const struct cli_parsed *parsed, void *context)
 {
   struct monitor_context *c=context;
@@ -397,13 +404,15 @@ static int monitor_set(const struct cli_parsed *parsed, void *context)
     }
   }else if (strcase_startswith(parsed->args[1],"rhizome", NULL))
     c->flags|=MONITOR_RHIZOME;
-  else if (strcase_startswith(parsed->args[1],"peers", NULL))
+  else if (strcase_startswith(parsed->args[1],"peers", NULL)){
     c->flags|=MONITOR_PEERS;
-  else if (strcase_startswith(parsed->args[1],"dnahelper", NULL))
+    enum_subscribers(NULL, monitor_announce_all_peers, NULL);
+  }else if (strcase_startswith(parsed->args[1],"dnahelper", NULL))
     c->flags|=MONITOR_DNAHELPER;
-  else if (strcase_startswith(parsed->args[1],"links", NULL))
+  else if (strcase_startswith(parsed->args[1],"links", NULL)){
     c->flags|=MONITOR_LINKS;
-  else
+    link_state_announce_links();
+  }else
     return monitor_write_error(c,"Unknown monitor type");
 
   char msg[1024];

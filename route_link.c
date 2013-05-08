@@ -353,6 +353,19 @@ next:
   return 0;
 }
 
+static int monitor_announce(struct subscriber *subscriber, void *context){
+  if (subscriber->reachable & REACHABLE){
+    struct link_state *state = get_link_state(subscriber);
+    monitor_announce_link(state->hop_count, state->transmitter, subscriber);
+  }
+  return 0;
+}
+
+int link_state_announce_links(){
+  enum_subscribers(NULL, monitor_announce, NULL);
+  return 0;
+}
+
 static int append_link_state(struct overlay_buffer *payload, char flags, 
                              struct subscriber *transmitter, struct subscriber *receiver, 
                              int interface, int version, int ack_sequence, uint32_t ack_mask, 
@@ -635,7 +648,7 @@ int link_received_packet(struct subscriber *subscriber, struct overlay_interface
       if (offset < 32){
         if (config.debug.verbose && config.debug.linkstate)
           DEBUGF("LINK STATE; late seq %d from %s on %s", 
-	    link->ack_sequence, alloca_tohex_sid(subscriber->sid), interface->name);
+	    sender_seq, alloca_tohex_sid(subscriber->sid), interface->name);
 	link->ack_mask |= (1<<offset);
       }else{
         link->ack_mask = (link->ack_mask << 1) | 1;
@@ -724,6 +737,9 @@ int link_receive(overlay_mdp_frame *mdp)
       ack_mask = ob_get_ui32(payload);
 
       drop_rate = 15 - NumberOfSetBits((ack_mask & 0x7FFF));
+      // we can deal with low packet loss, it's not interesting if it changes, ignore it.
+      if (drop_rate <=2)
+	drop_rate = 0;
     }
 
     if (flags & FLAG_HAS_DROP_RATE){
@@ -772,7 +788,7 @@ int link_receive(overlay_mdp_frame *mdp)
     if (link && transmitter == my_subscriber){
       // TODO combine our link stats with theirs
       version = link->link_version;
-      if (abs(drop_rate - link->drop_rate)>1)
+      if (drop_rate != link->drop_rate)
 	version++;
     }
 
