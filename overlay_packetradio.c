@@ -7,8 +7,8 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   struct termios t;
 
   tcgetattr(interface->alarm.poll.fd, &t);
-  cfsetispeed(&t, interface->uartbps);
-  cfsetospeed(&t, interface->uartbps);
+  cfsetspeed(&t, interface->uartbps);
+
   // 8N1
   t.c_cflag &= ~PARENB;
   t.c_cflag &= ~CSTOPB;
@@ -38,7 +38,7 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   t.c_oflag &= ~OPOST;
 
   tcsetattr(interface->alarm.poll.fd, TCSANOW, &t);
-
+  
   // Ask radio to report RSSI
   (void)write_all(interface->alarm.poll.fd,"\r",1);
   usleep(1200000);
@@ -46,8 +46,13 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   usleep(1200000);
   (void)write_all(interface->alarm.poll.fd,"\rAT&T\rAT&T=RSSI\rATO\r",20);
   if (config.debug.packetradio) {
+    tcgetattr(interface->alarm.poll.fd, TCSANOW, &t);
+    int in_speed=cfgetispeed(&t);
+    int out_speed=cfgetospeed(&t);
+
     DEBUGF("Enabled RSSI reporting for RFD900 radios");
     DEBUGF("Sent ATO to make sure we are in on-line mode");
+    DEBUGF("uart speed reported as %d/%d",in_speed,out_speed);
   }
   
   if (0){
