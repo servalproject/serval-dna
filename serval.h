@@ -393,7 +393,7 @@ typedef struct overlay_interface {
   struct slip_decode_state slip_decode_state;
 
   // copy of ifconfig flags
-  char drop_broadcasts;
+  uint16_t drop_broadcasts;
   char drop_unicasts;
   int port;
   int type;
@@ -833,6 +833,7 @@ int link_received_packet(struct subscriber *subscriber, struct overlay_interface
 int link_receive(overlay_mdp_frame *mdp);
 void link_explained(struct subscriber *subscriber);
 void link_interface_down(struct overlay_interface *interface);
+int link_state_announce_links();
 
 int generate_nonce(unsigned char *nonce,int bytes);
 

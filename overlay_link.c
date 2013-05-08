@@ -239,6 +239,8 @@ overlay_mdp_service_probe(overlay_mdp_frame *mdp)
   struct overlay_interface *interface = &overlay_interfaces[probe.interface];
   // if a peer is already reachable, and this probe would change the interface, ignore it
   // TODO track unicast links better in route_link.c
+  if (peer->reachable & REACHABLE_INDIRECT)
+    RETURN(0);
   if (peer->reachable & REACHABLE_DIRECT && peer->interface && peer->interface != interface)
     RETURN(0);
 
@@ -263,6 +265,8 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
     return WHY("I can't send a probe if the interface is down.");
   
   // don't send a unicast probe unless its on the same interface that is already known to be reachable
+  if (peer && peer->reachable & REACHABLE_INDIRECT)
+    return -1;
   if (peer && (peer->reachable & REACHABLE_DIRECT) && peer->interface && peer->interface != interface)
     return -1;
 

@@ -593,6 +593,21 @@ struct file_packet{
   unsigned char payload[1400];
 };
 
+static int should_drop(struct overlay_interface *interface, struct sockaddr_in addr){
+  if (memcmp(&addr, &interface->address, sizeof(addr))==0){
+    return interface->drop_unicasts;
+  }
+  if (memcmp(&addr, &interface->broadcast_address, sizeof(addr))==0){
+    if (interface->drop_broadcasts == 0)
+      return 0;
+    if (interface->drop_broadcasts >= 100)
+      return 1;
+    if (rand()%100 >= interface->drop_broadcasts)
+      return 0;
+  }
+  return 1;
+}
+
 static void interface_read_file(struct overlay_interface *interface)
 {
   IN();
@@ -630,9 +645,7 @@ static void interface_read_file(struct overlay_interface *interface)
       if (config.debug.packetrx)
 	DEBUG_packet_visualise("Read from dummy interface", packet.payload, packet.payload_length);
       
-      if (((!interface->drop_unicasts) && memcmp(&packet.dst_addr, &interface->address, sizeof(packet.dst_addr))==0) ||
-	  ((!interface->drop_broadcasts) &&
-	   memcmp(&packet.dst_addr, &interface->broadcast_address, sizeof(packet.dst_addr))==0)){
+      if (!should_drop(interface, packet.dst_addr)){
 	    
 	if (packetOkOverlay(interface, packet.payload, packet.payload_length, -1, 
 			    (struct sockaddr*)&packet.src_addr, sizeof(packet.src_addr))<0) {
