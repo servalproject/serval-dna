@@ -23,16 +23,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "log.h"
 #include "conf.h"
 
-int meshms_append_messageblock(const char *sender_sid,
-			       const char *recipient_sid,
-			       const unsigned char *buffer_serialize,
-			       int length_int);
-int decode_length_forwards(unsigned char *buffer,int *offset,int blength,
-			   unsigned int *length);
-int meshms_block_type(unsigned char *buffer,int offset, int blength);
-int deserialize_ack(unsigned char *buffer,int *offset, int buffer_size,
-		    int *ack_address);
-
 rhizome_manifest *meshms_find_or_create_manifestid
 (const char *sender_sid_hex,const char *recipient_sid_hex, int createP)
 {
@@ -392,4 +382,53 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, void *context)
    }
 
  return 0;
+}
+
+int app_meshms_ack_messages(const struct cli_parsed *parsed, void *context)
+{
+ int ret = 0;
+ 
+ if (create_serval_instance_dir() == -1)
+   return -1;
+ if (!(keyring = keyring_open_instance_cli(parsed)))
+   return -1;
+ if (rhizome_opendb() == -1)
+   return -1; 
+
+ if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+ //sender_sid = author_sid
+ const char *sender_sid, *recipient_sid;
+
+ const char *message_offset_str;
+ uint message_offset=0;
+
+ // Parse mandatory arguments
+ cli_arg(parsed, "sender_sid", &sender_sid, cli_optional_sid, "");
+ cli_arg(parsed, "recipient_sid", &recipient_sid, cli_optional_sid, "");
+ cli_arg(parsed, "message_offset", &message_offset_str, NULL, "0");
+ message_offset=atoi(message_offset_str);
+ // Sanity check passed arguments
+ if ( (strcmp(sender_sid,"") == 0) || (strcmp(recipient_sid,"" ) == 0) )
+   { 
+     cli_puts("One or more missing arguments"); cli_delim("\n");
+   } 
+ sid_t aSid;
+ if (sender_sid[0] && str_to_sid_t(&aSid, sender_sid) == -1)
+   return WHYF("invalid sender_sid: %s", sender_sid);
+ if (recipient_sid[0] && str_to_sid_t(&aSid, recipient_sid) == -1)
+   return WHYF("invalid recipient_sid: %s", recipient_sid);
+
+ // Create serialised ack message for appending to the conversation ply
+ unsigned int length_int = 1;
+ int offset_buf=0;
+ unsigned char buffer_serialize[100];
+
+ ret|=serialize_ack(buffer_serialize,&offset_buf,100,message_offset);
+
+ if (!ret)
+   ret|=meshms_append_messageblock(sender_sid,recipient_sid,
+				   buffer_serialize,length_int);
+
+ return ret;
 }

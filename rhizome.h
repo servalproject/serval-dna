@@ -701,7 +701,20 @@ int serialize_meshms(unsigned char *buffer,int *offset,unsigned int length,const
 int deserialize_meshms(int message_number,
 		       unsigned char *buffer,int *offset, int buffer_size,
 		       char *delivery_status);
+int deserialize_ack(unsigned char *buffer,int *offset, int buffer_size,
+		    int *ack_address);
+int serialize_ack(unsigned char *buffer,int *offset, int buffer_size,
+		  int ack_address);
+int decode_length_forwards(unsigned char *buffer,int *offset,
+			   unsigned int buffer_length,
+			   unsigned int *length);
+int meshms_append_messageblock(const char *sender_sid,
+			       const char *recipient_sid,
+			       const unsigned char *buffer_serialize,
+			       int length_int);
+int meshms_block_type(unsigned char *buffer,int offset, int blength);
 int rhizome_meshms_find_conversation(const char *sender_sid, 
 				     const char *recipient_sid, 
 				     char *manifest_id, int offset);
+
 #endif //__SERVALDNA__RHIZOME_H

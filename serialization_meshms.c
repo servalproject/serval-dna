@@ -208,8 +208,10 @@ int pack_did(unsigned char *buffer,int *offset,const char *did)
    return -1; // number too long
 }
 
-int serialize_ack(unsigned char *buffer,int *offset,int ack_address)
+int serialize_ack(unsigned char *buffer,int *offset, int buffer_size,
+		  int ack_address)
 {
+  if ((*offset)+1+1+4+1>=buffer_size) return -1;
   encode_length_forwards(buffer,offset,1+1+4+1);
   buffer[(*offset)++]=RHIZOME_MESHMS_BLOCK_TYPE_MESSAGE;
   pack_int(buffer,offset,ack_address);
