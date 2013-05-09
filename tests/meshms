@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# Tests for Serval DNA configuration operations.
+#
+# Copyright 2012 Serval Project, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+source "${0%/*}/../testdefs_rhizome.sh"
+
+setup() {
+   setup_servald
+   set_instance +A
+   create_identities 2
+   assert [ $SIDA1 != $SIDA2 ]
+   setup_rhizome
+}
+
+setup_createPly() {
+   set_instance +A
+   create_identities 2
+   assert [ $SIDA1 != $SIDA2 ]
+}
+
+doc_createPly="Create thread ply by sending a message"
+setup_createPly() {
+    setup
+}
+test_createPly() {
+   executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA2 "Message-1"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+}
+
+runTests "$@"
