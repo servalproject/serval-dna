@@ -107,12 +107,6 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
  if (recipient_sid[0] && str_to_sid_t(&aSid, recipient_sid) == -1)
    return WHYF("invalid recipient_sid: %s", recipient_sid);
 
- // Parse optional arguments
- const char *name, *offset, *limit;
- cli_arg(parsed, "name", &name, NULL, "");
- cli_arg(parsed, "offset", &offset, cli_uint, "0");
- cli_arg(parsed, "limit", &limit, cli_uint, "0");
-
  // Create serialised meshms message for appending to the conversation ply
  unsigned int length_int = 1;
  int offset_buf=0;
