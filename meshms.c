@@ -75,11 +75,18 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
 {
  int ret = 0;
  
+ if (create_serval_instance_dir() == -1)
+   return -1;
+ if (!(keyring = keyring_open_instance_cli(parsed)))
+   return -1;
+ if (rhizome_opendb() == -1)
+   return -1; 
+
  if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
  //sender_sid = author_sid
  const char *sender_did, *recipient_did, *payload, *sender_sid, *recipient_sid;
- 
+
  // Parse mandatory arguments
  cli_arg(parsed, "sender_sid", &sender_sid, cli_optional_sid, "");
  cli_arg(parsed, "recipient_sid", &recipient_sid, cli_optional_sid, "");
