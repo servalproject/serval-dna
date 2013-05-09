@@ -420,11 +420,10 @@ int app_meshms_ack_messages(const struct cli_parsed *parsed, void *context)
    return WHYF("invalid recipient_sid: %s", recipient_sid);
 
  // Create serialised ack message for appending to the conversation ply
- unsigned int length_int = 1;
- int offset_buf=0;
+ int length_int = 0;
  unsigned char buffer_serialize[100];
 
- ret|=serialize_ack(buffer_serialize,&offset_buf,100,message_offset);
+ ret|=serialize_ack(buffer_serialize,&length_int,100,message_offset);
 
  if (!ret)
    ret|=meshms_append_messageblock(sender_sid,recipient_sid,
