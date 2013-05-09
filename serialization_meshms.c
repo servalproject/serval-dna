@@ -263,12 +263,9 @@ int deserialize_ack(unsigned char *buffer,int *offset, int buffer_size,
   return 0;
 }
 
-int deserialize_meshms(unsigned char *buffer,int *offset, int buffer_size)
+int deserialize_meshms(unsigned char *buffer,int *offset, int buffer_size,
+		       char *delivery_status)
 {
-  
-  cli_delim("\n");
-  cli_puts("offset|length|sender|recipient|date|message");cli_delim("\n");  
-
   int ret = 0;
   int i=0;
   
@@ -276,12 +273,12 @@ int deserialize_meshms(unsigned char *buffer,int *offset, int buffer_size)
 
   unsigned int start_offset=*offset;
   
-  cli_printf("%d",*offset);cli_puts("|");
+  cli_printf("%d",*offset); cli_delim(":");
   
   int length_length=*offset;
   decode_length_forwards(buffer,offset,buffer_size,&length);
   length_length=(*offset)-length_length;
-  cli_printf("%d",length);cli_puts("|");
+  cli_printf("%d",length); cli_delim(":");
   
   unsigned char block_type=buffer[(*offset)++];
   if (block_type!=RHIZOME_MESHMS_BLOCK_TYPE_MESSAGE) {
@@ -292,15 +289,17 @@ int deserialize_meshms(unsigned char *buffer,int *offset, int buffer_size)
   
   char sender_did_out[64];
   unpack_did(buffer,offset,sender_did_out);
-  cli_printf("%s",sender_did_out);cli_puts("|");
+  cli_printf("%s",sender_did_out); cli_delim(":");
   
   char recipient_did_out[64];
   unpack_did(buffer,offset,recipient_did_out);
-  cli_printf("%s",recipient_did_out);cli_puts("|");  
+  cli_printf("%s",recipient_did_out); cli_delim(":");
   
   unsigned long long time = 0;
   unpack_time(buffer,offset,&time);    
-  cli_printf("%lld",time);cli_puts("|"); 
+  cli_printf("%lld",time); cli_delim(":");
+
+  cli_printf("%s",delivery_status); cli_delim(":");
   
   int j=0;
   int payload_end=start_offset+length-length_length;

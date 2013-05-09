@@ -286,7 +286,7 @@ int app_meshms_read_messagelog(const struct cli_parsed *parsed, void *context)
   ret = meshms_read_message(m,buffer_file);
   //hex_dump(buffer_file,buffer_length);
   int offset_buffer = 0;
-  ret = deserialize_meshms(buffer_file,&offset_buffer,buffer_length);
+  ret = deserialize_meshms(buffer_file,&offset_buffer,buffer_length,"unknown");
   
 
 
@@ -433,16 +433,26 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, void *context)
    }
  
  // Display list of messages in reverse order
+  const char *names[]={
+    "offset",
+    "length",
+    "sender",
+    "recipient",
+    "date",
+    "delivery_status",
+    "message"
+  };
+  cli_columns(7, names);
+
  int i;
  for(i=message_count-1;i>=0;i--) 
    {
-     DEBUGF("%s : %s : 0x%08x",
-	    sides[i]?"right":" left",
-	    sides[i]?"Received":((offsets[i]<right_ack_limit)?"Delivered":"Delivery not yet acknowledged"),
-	    offsets[i]);
+     char *delivery_status
+       =sides[i]?"received":
+       ((offsets[i]<right_ack_limit)?"delivered":"unacknowledged");
      int boffset=offsets[i];
      deserialize_meshms(sides[i]?right_messages:left_messages,&boffset,
-			sides[i]?right_len:left_len);
+			sides[i]?right_len:left_len,delivery_status);
    }
 
  return 0;
