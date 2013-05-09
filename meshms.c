@@ -44,7 +44,10 @@ rhizome_manifest *meshms_find_or_create_manifestid
 					0 /* get first matching manifestid */)) {
     // Found manifest, so nothing more to do right now.
     int ret = rhizome_retrieve_manifest(manifestid_hex, m);
-    if (!ret) return m; 
+    if (!ret) {
+      rhizome_find_bundle_author(m);
+      return m; 
+    }
     else {
       WHYF("rhizome_retreive_manifest(%s) failed",manifestid_hex);
       rhizome_manifest_free(m);
