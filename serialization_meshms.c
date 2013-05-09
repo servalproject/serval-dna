@@ -274,48 +274,44 @@ int deserialize_meshms(unsigned char *buffer,int *offset, int buffer_size)
   
   unsigned int length =0;
 
-  while (i < buffer_size) {
-    unsigned int start_offset=*offset;
+  unsigned int start_offset=*offset;
   
-    cli_printf("%d",*offset);cli_puts("|");
-   
-    int length_length=*offset;
-    decode_length_forwards(buffer,offset,buffer_size,&length);
-    length_length=(*offset)-length_length;
-    cli_printf("%d",length);cli_puts("|");
-    
-    unsigned char block_type=buffer[(*offset)++];
-    if (block_type!=RHIZOME_MESHMS_BLOCK_TYPE_MESSAGE) {
-      WHYF("Corrupt meshms message block: type=0x%02x instead of 0x%02x",
-	   block_type,RHIZOME_MESHMS_BLOCK_TYPE_MESSAGE);
-      return -1;
-    }
-
-    char sender_did_out[64];
-    unpack_did(buffer,offset,sender_did_out);
-    cli_printf("%s",sender_did_out);cli_puts("|");
-    
-    char recipient_did_out[64];
-    unpack_did(buffer,offset,recipient_did_out);
-    cli_printf("%s",recipient_did_out);cli_puts("|");  
-   			    
-    unsigned long long time = 0;
-    unpack_time(buffer,offset,&time);    
-    cli_printf("%lld",time);cli_puts("|"); 
-    
-    int j=0;
-    int payload_end=start_offset+length-length_length;
-    printf("\nstart_offset=%d, offset=%d, payload_end=%d, length=%d, length_length=%d\n",
-	   start_offset,*offset,payload_end,length,length_length);
-    for(j=*offset;j<payload_end;j++)
-      {
-	cli_printf("%c", buffer[(*offset)++]);
-      } 
-    
-    cli_delim("\n");
-    i = i+length;
-    *offset=i;    
- } 
+  cli_printf("%d",*offset);cli_puts("|");
+  
+  int length_length=*offset;
+  decode_length_forwards(buffer,offset,buffer_size,&length);
+  length_length=(*offset)-length_length;
+  cli_printf("%d",length);cli_puts("|");
+  
+  unsigned char block_type=buffer[(*offset)++];
+  if (block_type!=RHIZOME_MESHMS_BLOCK_TYPE_MESSAGE) {
+    WHYF("Corrupt meshms message block: type=0x%02x instead of 0x%02x",
+	 block_type,RHIZOME_MESHMS_BLOCK_TYPE_MESSAGE);
+    return -1;
+  }
+  
+  char sender_did_out[64];
+  unpack_did(buffer,offset,sender_did_out);
+  cli_printf("%s",sender_did_out);cli_puts("|");
+  
+  char recipient_did_out[64];
+  unpack_did(buffer,offset,recipient_did_out);
+  cli_printf("%s",recipient_did_out);cli_puts("|");  
+  
+  unsigned long long time = 0;
+  unpack_time(buffer,offset,&time);    
+  cli_printf("%lld",time);cli_puts("|"); 
+  
+  int j=0;
+  int payload_end=start_offset+length-length_length;
+  for(j=*offset;j<payload_end;j++)
+    {
+      cli_printf("%c", buffer[(*offset)++]);
+    } 
+  
+  cli_delim("\n");
+  i = i+length;
+  *offset=i;    
   
   return ret;
 }

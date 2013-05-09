@@ -362,7 +362,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, void *context)
  int left_ack=0, left_offset=0, right_offset=0;
  for(left_offset=0;left_offset<left_len;)
    {
-     for(;right_offset<=left_ack;)
+     for(;right_offset<left_ack;)
        {
 	 unsigned int right_block_len;
 	 int o=right_offset;
@@ -390,7 +390,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, void *context)
 	 switch(block_type) {
 	 case RHIZOME_MESHMS_BLOCK_TYPE_BID_REFERENCE:
 	 case RHIZOME_MESHMS_BLOCK_TYPE_MESSAGE:
-	   offsets[message_count]=right_offset;
+	   offsets[message_count]=left_offset;
 	   sides[message_count++]=0;
 	   break;
 	 case RHIZOME_MESHMS_BLOCK_TYPE_ACK:
@@ -440,6 +440,9 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, void *context)
 	    sides[i]?"right":" left",
 	    sides[i]?"Received":((offsets[i]<right_ack_limit)?"Delivered":"Delivery not yet acknowledged"),
 	    offsets[i]);
+     int boffset=offsets[i];
+     deserialize_meshms(sides[i]?right_messages:left_messages,&boffset,
+			sides[i]?right_len:left_len);
    }
 
  return 0;
