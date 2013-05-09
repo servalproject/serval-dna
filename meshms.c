@@ -23,6 +23,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "log.h"
 #include "conf.h"
 
+int meshms_append_messageblock(const char *sender_sid,
+			       const char *recipient_sid,
+			       const unsigned char *buffer_serialize,
+			       int length_int);
+
 rhizome_manifest *meshms_find_or_create_manifestid
 (const char *sender_sid_hex,const char *recipient_sid_hex)
 {
@@ -121,7 +126,18 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
    offset_buf=0;
    ret = serialize_meshms(buffer_serialize,&offset_buf,length_int,sender_did, recipient_did, send_date_ll, payload, strlen(payload)+1);
  }
- 
+
+ ret=meshms_append_messageblock(sender_sid,recipient_sid,
+				buffer_serialize,length_int);
+ free(buffer_serialize);
+ return ret;
+}
+
+int meshms_append_messageblock(const char *sender_sid,
+			       const char *recipient_sid,
+			       const unsigned char *buffer_serialize,
+			       int length_int)
+{
  // Find the manifest (or create it if it doesn't yet exist)
  rhizome_manifest *m=meshms_find_or_create_manifestid(sender_sid,recipient_sid);
  if (!m) return -1;
@@ -134,7 +150,7 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
    rhizome_manifest_free(m);
    return -1;
  }
- ret = meshms_read_message(m,buffer_file);
+ int ret = meshms_read_message(m,buffer_file);
  if (ret) {
    WHYF("meshms_read_message() failed.");
    rhizome_manifest_free(m);
@@ -150,7 +166,6 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
  rhizome_add_file(m,(char *)buffer_file,1,m->fileLength);
 
  free(buffer_file); 
- free(buffer_serialize);
  
  rhizome_manifest *mout = NULL;
  ret=rhizome_manifest_finalise(m,&mout);
