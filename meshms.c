@@ -350,8 +350,6 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, void *context)
  rhizome_manifest_free(m_left); m_left=NULL;
  rhizome_manifest_free(m_right); m_right=NULL;
 
- DEBUGF("left_len=%d, right_len=%d",left_len,right_len);
-
 #define MAX_MESSAGES_IN_THREAD 16384
  int offsets[MAX_MESSAGES_IN_THREAD];
  int sides[MAX_MESSAGES_IN_THREAD];
@@ -410,7 +408,6 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, void *context)
  // Process any outstanding messages from the right side
  for(;right_offset<=right_len;)
    {
-     DEBUGF("right tail: right_offset=%d, right_len=%d",right_offset,right_len);
      unsigned int right_block_len;
      int o=right_offset;
      if (decode_length_forwards(right_messages,&o,right_len,
@@ -423,7 +420,6 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, void *context)
      case RHIZOME_MESHMS_BLOCK_TYPE_MESSAGE:
        offsets[message_count]=right_offset;
        sides[message_count++]=1;
-       DEBUGF("Appended right tail message");
        break;
      case RHIZOME_MESHMS_BLOCK_TYPE_ACK:
        {
