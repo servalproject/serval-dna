@@ -44,8 +44,34 @@ test_createPly() {
    executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA2 "Message-1"
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
+}
+
+doc_discriminatePlys="List messages doesn't use same bundle for each ply"
+setup_discriminatePlys() {
+    setup
+}
+test_discriminatePlys() {
+   executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA2 "Message-1"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
    executeOk_servald meshms list messages $SIDA1 $SIDA2
-   tfw_cat --stderr --stdout
+   assertStdoutGrep --stdout --stderr --matches=0 '^0:.*:received:meshms:Message-1'
+   assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:unacknowledged:meshms:Message-1'
+   assertStdoutLineCount '==' 3
+}
+
+doc_reflectedPly="Sender == recipient works as expected"
+setup_reflectedPly() {
+    setup
+}
+test_reflectedPly() {
+   executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA1 "Message-1"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
+   executeOk_servald meshms list messages $SIDA1 $SIDA1
+   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-1'
+   assertStdoutGrep --stdout --stderr --matches=1 '^1:.*:unacknowledged:meshms:Message-1'
 }
 
 runTests "$@"

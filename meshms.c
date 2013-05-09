@@ -324,7 +324,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, void *context)
  // Obtain message logs for both sides of the conversation, if available
  rhizome_manifest *m_left=NULL,*m_right=NULL;
  m_left=meshms_find_or_create_manifestid(left_sid,right_sid,0);
- m_right=meshms_find_or_create_manifestid(left_sid,right_sid,0);
+ m_right=meshms_find_or_create_manifestid(right_sid,left_sid,0);
  int left_len=0, right_len=0;
  unsigned char *left_messages=NULL, *right_messages=NULL;
  if (m_left) {
