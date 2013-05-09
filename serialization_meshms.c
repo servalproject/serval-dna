@@ -213,7 +213,7 @@ int serialize_ack(unsigned char *buffer,int *offset, int buffer_size,
 {
   if ((*offset)+1+1+4+1>=buffer_size) return -1;
   encode_length_forwards(buffer,offset,1+1+4+1);
-  buffer[(*offset)++]=RHIZOME_MESHMS_BLOCK_TYPE_MESSAGE;
+  buffer[(*offset)++]=RHIZOME_MESHMS_BLOCK_TYPE_ACK;
   pack_int(buffer,offset,ack_address);
   encode_length_backwards(buffer,offset,1+1+4+1);
   return 0;
