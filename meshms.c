@@ -440,8 +440,10 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, void *context)
  int i;
  for(i=message_count-1;i>=0;i--) 
    {
-     DEBUGF("%s : 0x%08x",
-	    sides[i]?"right":" left",offsets[i]);
+     DEBUGF("%s : %s : 0x%08x",
+	    sides[i]?"right":" left",
+	    sides[i]?"Received":((offsets[i]<right_ack_limit)?"Delivered":"Delivery not yet acknowledged"),
+	    offsets[i]);
    }
 
  return 0;
