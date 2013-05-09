@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "rhizome.h"
 
 void hex_dump(unsigned char *data, int size)
 {
@@ -92,17 +93,24 @@ int encode_length_backwards(unsigned char *buffer,int *offset,
 }
 
 int decode_length_forwards(unsigned char *buffer,int *offset,
-			    unsigned int *length)
+			   unsigned int buffer_length,
+			   unsigned int *length)
 {
   *length=0;
+  if (*offset>=buffer_length) return -1;
   switch(buffer[*offset]) {
   case 0xff:
     (*offset)++;
+    if (*offset>=buffer_length) return -1;
     int i;
-    for(i=0;i<32;i+=8) (*length)|=buffer[(*offset)++]<<i;
+    for(i=0;i<32;i+=8) {
+      (*length)|=buffer[(*offset)++]<<i;
+      if (*offset>=buffer_length) return -1;
+    }
     return 0;
   default:
     *length=buffer[(*offset)++];
+    if (*offset>=buffer_length) return -1;
     return 0;
   }
 }
@@ -112,6 +120,7 @@ int decode_length_backwards(unsigned char *buffer,int offset,
 {
   // it is assumed that offset points to the first byte after the end
   // of the length field.
+  if (offset<=0) return -1;
   offset--;
   *length=0;
   switch(buffer[offset]) {
@@ -126,6 +135,20 @@ int decode_length_backwards(unsigned char *buffer,int offset,
   }
 }
 
+int pack_int(unsigned char *buffer,int *offset,int32_t v)
+{
+  int i;
+  for(i=0;i<32;i+=8) { buffer[(*offset)++]=(v>>i)&0xff; }
+  return 0;
+}
+
+int unpack_int(unsigned char *buffer,int *offset,int32_t *v)
+{
+  int i;
+  *v=0;
+  for(i=0;i<32;i+=8) (*v)|=(((uint32_t)buffer[(*offset)++])<<i);
+  return 0;
+}
 
 int pack_time(unsigned char *buffer,int *offset,uint64_t time)
 {
@@ -141,7 +164,6 @@ int unpack_time(unsigned char *buffer,int *offset,uint64_t *time)
   for(i=0;i<64;i+=8) (*time)|=(((uint64_t)buffer[(*offset)++])<<i);
   return 0;
 }
-
 
 unsigned char did_chars[16]="0123456789+#*abX";
 
@@ -186,11 +208,21 @@ int pack_did(unsigned char *buffer,int *offset,const char *did)
    return -1; // number too long
 }
 
+int serialize_ack(unsigned char *buffer,int *offset,int ack_address)
+{
+  encode_length_forwards(buffer,offset,1+1+4+1);
+  buffer[(*offset)++]=RHIZOME_MESHMS_BLOCK_TYPE_MESSAGE;
+  pack_int(buffer,offset,ack_address);
+  encode_length_backwards(buffer,offset,1+1+4+1);
+  return 0;
+}
+
 int serialize_meshms(unsigned char *buffer,int *offset,unsigned int length,const char *sender_did,const char *recipient_did, unsigned long long time, const char *payload, int payload_length)
 {
   int ret = 0;
    
   encode_length_forwards(buffer,offset,length);
+  buffer[(*offset)++]=RHIZOME_MESHMS_BLOCK_TYPE_MESSAGE;
   pack_did(buffer,offset,sender_did);
   pack_did(buffer,offset,recipient_did);  
   pack_time(buffer,offset,time);
@@ -207,6 +239,29 @@ int serialize_meshms(unsigned char *buffer,int *offset,unsigned int length,const
   return ret;
 }
 
+int meshms_block_type(unsigned char *buffer,int offset, int blength)
+{
+  unsigned int length=0;
+  if (offset>=blength) return -1;
+  decode_length_forwards(buffer,&offset,blength,&length);
+  if (offset>=blength) return -1;
+  unsigned char block_type=buffer[offset];
+  return block_type;
+}
+
+int deserialize_ack(unsigned char *buffer,int *offset, int buffer_size,
+		    int *ack_address)
+{
+  unsigned int length=0;
+  int length_length=*offset;
+  decode_length_forwards(buffer,offset,buffer_size,&length);
+  length_length=(*offset)-length_length;
+  unsigned char block_type=buffer[(*offset)++];
+  if (block_type!=RHIZOME_MESHMS_BLOCK_TYPE_ACK) return -1;
+  unpack_int(buffer,offset,ack_address);
+  (*offset)+=length_length;
+  return 0;
+}
 
 int deserialize_meshms(unsigned char *buffer,int *offset, int buffer_size)
 {
@@ -225,10 +280,17 @@ int deserialize_meshms(unsigned char *buffer,int *offset, int buffer_size)
     cli_printf("%d",*offset);cli_puts("|");
    
     int length_length=*offset;
-    decode_length_forwards(buffer,offset,&length);
+    decode_length_forwards(buffer,offset,buffer_size,&length);
     length_length=(*offset)-length_length;
     cli_printf("%d",length);cli_puts("|");
     
+    unsigned char block_type=buffer[(*offset)++];
+    if (block_type!=RHIZOME_MESHMS_BLOCK_TYPE_MESSAGE) {
+      WHYF("Corrupt meshms message block: type=0x%02x instead of 0x%02x",
+	   block_type,RHIZOME_MESHMS_BLOCK_TYPE_MESSAGE);
+      return -1;
+    }
+
     char sender_did_out[64];
     unpack_did(buffer,offset,sender_did_out);
     cli_printf("%s",sender_did_out);cli_puts("|");
@@ -293,21 +355,21 @@ int main(int argc,char **argv)
   encode_length_backwards(buffer,&offset,123);
   for(i=0;i<offset;i++) printf("%02x\n",buffer[i]);
   unsigned int length;
-  decode_length_backwards(buffer,offset,&length);
+  decode_length_backwards(buffer,offset,buffer_size,&length);
   printf("decoding reverse-encoded length=123 yields %d (offset was %d, should be 1)\n",
 	 length,offset);
 
   offset=0;
   encode_length_backwards(buffer,&offset,0x1234567);
   for(i=0;i<offset;i++) printf("%02x\n",buffer[i]);
-  decode_length_backwards(buffer,offset,&length);
+  decode_length_backwards(buffer,offset,buffer_size,&length);
   printf("decoding reverse-encoded length=0x1234567 yields 0x%x (offset was %d, should be 5)\n",
 	 length,offset);
 
   offset=0;
   encode_length_forwards(buffer,&offset,123);
   for(i=0;i<offset;i++) printf("%02x\n",buffer[i]);
-  decode_length_forwards(buffer,&offset,&length);
+  decode_length_forwards(buffer,&offset,buffer_size,&length);
   offset=0;
   printf("decoding forward-encoded length=123 yields %d (offset is %d, should be 1)\n",
 	 length,offset);
@@ -316,7 +378,7 @@ int main(int argc,char **argv)
   encode_length_forwards(buffer,&offset,0x1234567);
   for(i=0;i<offset;i++) printf("%02x\n",buffer[i]);
   offset=0;
-  decode_length_forwards(buffer,&offset,&length);
+  decode_length_forwards(buffer,&offset,buffer_size,&length);
   printf("decoding reverse-encoded length=0x1234567 yields 0x%x (offset is %d, should be 5)\n",
 	 length,offset);
 

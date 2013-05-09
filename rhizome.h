@@ -51,6 +51,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define RHIZOME_HTTP_PORT 4110
 #define RHIZOME_HTTP_PORT_MAX 4150
 
+#define RHIZOME_MESHMS_BLOCK_TYPE_ACK 0x01
+#define RHIZOME_MESHMS_BLOCK_TYPE_MESSAGE 0x02
+#define RHIZOME_MESHMS_BLOCK_TYPE_BID_REFERENCE 0x03
+
 typedef struct rhizome_bk_binary {
     unsigned char binary[RHIZOME_BUNDLE_KEY_BYTES];
 } rhizome_bk_t;
