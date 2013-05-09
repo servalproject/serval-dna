@@ -29,7 +29,7 @@ int meshms_append_messageblock(const char *sender_sid,
 			       int length_int);
 
 rhizome_manifest *meshms_find_or_create_manifestid
-(const char *sender_sid_hex,const char *recipient_sid_hex)
+(const char *sender_sid_hex,const char *recipient_sid_hex, int createP)
 {
   sid_t authorSid;
   if (str_to_sid_t(&authorSid, sender_sid_hex)==-1)
@@ -58,7 +58,12 @@ rhizome_manifest *meshms_find_or_create_manifestid
       rhizome_manifest_free(m);
       return NULL;
     }
-  } 
+  } else {
+    if (!createP) {
+      rhizome_manifest_free(m);
+      return NULL;
+    }
+  }
 
   // No existing manifest, so create one:
 
@@ -139,7 +144,7 @@ int meshms_append_messageblock(const char *sender_sid,
 			       int length_int)
 {
  // Find the manifest (or create it if it doesn't yet exist)
- rhizome_manifest *m=meshms_find_or_create_manifestid(sender_sid,recipient_sid);
+ rhizome_manifest *m=meshms_find_or_create_manifestid(sender_sid,recipient_sid,1);
  if (!m) return -1;
  
  // Read the bundle file containing the meshms messages
@@ -285,3 +290,60 @@ int app_meshms_read_messagelog(const struct cli_parsed *parsed, void *context)
   
 }
 
+int app_meshms_list(const struct cli_parsed *parsed, void *context)
+{
+ if (create_serval_instance_dir() == -1)
+   return -1;
+ if (!(keyring = keyring_open_instance_cli(parsed)))
+   return -1;
+ if (rhizome_opendb() == -1)
+   return -1; 
+
+ if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+ //sender_sid = author_sid
+ const char *sender_sid, *recipient_sid;
+
+ // Parse mandatory arguments
+ cli_arg(parsed, "sender_sid", &sender_sid, cli_optional_sid, "");
+ cli_arg(parsed, "recipient_sid", &recipient_sid, cli_optional_sid, "");
+ // Sanity check passed arguments
+ if ( (strcmp(sender_sid,"") == 0) || (strcmp(recipient_sid,"" ) == 0) )
+   { 
+     cli_puts("One or more missing arguments"); cli_delim("\n");
+   } 
+ sid_t aSid;
+ if (sender_sid[0] && str_to_sid_t(&aSid, sender_sid) == -1)
+   return WHYF("invalid sender_sid: %s", sender_sid);
+ if (recipient_sid[0] && str_to_sid_t(&aSid, recipient_sid) == -1)
+   return WHYF("invalid recipient_sid: %s", recipient_sid);
+
+ // Obtain message logs for both sides of the conversation, if available
+ rhizome_manifest *m_sender=NULL,*m_recipient=NULL;
+ m_sender=meshms_find_or_create_manifestid(sender_sid,recipient_sid,0);
+ m_recipient=meshms_find_or_create_manifestid(sender_sid,recipient_sid,0);
+ int sender_len=0, recipient_len=0;
+ unsigned char *sender_messages=NULL, *recipient_messages=NULL;
+ if (m_sender) {
+   sender_messages=malloc(m_sender->fileLength);
+   if (!sender_messages) {
+     WHYF("malloc(%d) failed while reading meshms logs",m_sender->fileLength);
+     return -1;
+   }
+   if (!meshms_read_message(m_sender,sender_messages))
+     sender_len=m_sender->fileLength;
+ }
+ if (m_recipient) {
+   recipient_messages=malloc(m_recipient->fileLength);
+   if (!recipient_messages) {
+     WHYF("malloc(%d) failed while reading meshms logs",m_recipient->fileLength);
+     return -1;
+   }
+   if (!meshms_read_message(m_recipient,recipient_messages))
+     recipient_len=m_recipient->fileLength;
+ }
+ rhizome_manifest_free(m_sender); m_sender=NULL;
+ rhizome_manifest_free(m_recipient); m_recipient=NULL;
+
+ return -1;
+}
