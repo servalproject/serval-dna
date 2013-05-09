@@ -300,6 +300,7 @@ int deserialize_meshms(unsigned char *buffer,int *offset, int buffer_size,
   cli_printf("%lld",time); cli_delim(":");
 
   cli_printf("%s",delivery_status); cli_delim(":");
+  cli_printf("%s","meshms"); cli_delim(":");
   
   int j=0;
   int payload_end=start_offset+length-length_length;

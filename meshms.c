@@ -440,9 +440,10 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, void *context)
     "recipient",
     "date",
     "delivery_status",
+    "type",
     "message"
   };
-  cli_columns(7, names);
+  cli_columns(8, names);
 
  int i;
  for(i=message_count-1;i>=0;i--) 
