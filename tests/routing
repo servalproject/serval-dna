@@ -450,6 +450,10 @@ test_circle() {
    stop_servald_server +B
    foreach_instance +A +C \
       wait_until --timeout=10 instance_offline +B
+   set_instance +A
+   wait_until --timeout=10 instance_offline +C
+   set_instance +C
+   wait_until --timeout=10 instance_offline +A
    foreach_instance +A +C \
       wait_until --timeout=10 has_seen_instances +A +C
    set_instance +A

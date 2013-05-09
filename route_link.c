@@ -83,6 +83,7 @@ struct neighbour{
 
   // next link update
   time_ms_t next_neighbour_update;
+  time_ms_t last_update;
   int ack_counter;
 
   // un-balanced tree of known link states
@@ -90,6 +91,9 @@ struct neighbour{
 
   // list of incoming link stats
   struct neighbour_link *links, *best_link;
+
+  // is this neighbour still using selfacks?
+  char legacy_protocol;
 };
 
 // one struct per subscriber, where we track all routing information, allocated on first use
@@ -325,6 +329,7 @@ next:
       bzero(&subscriber->address, sizeof subscriber->address);
     }
     reachable = REACHABLE_BROADCAST | (subscriber->reachable & REACHABLE_UNICAST);
+    next_hop = NULL;
     subscriber->interface = interface;
   } else {
     reachable = REACHABLE_INDIRECT;
@@ -508,6 +513,24 @@ static void clean_neighbours(time_ms_t now)
   }
 }
 
+static int send_legacy_self_announce_ack(struct neighbour *neighbour, struct neighbour_link *link, time_ms_t now){
+  struct overlay_frame *frame=emalloc_zero(sizeof(struct overlay_frame));
+  frame->type = OF_TYPE_SELFANNOUNCE_ACK;
+  frame->ttl = 6;
+  frame->destination = neighbour->subscriber;
+  frame->source = my_subscriber;
+  frame->payload = ob_new();
+  ob_append_ui32(frame->payload, neighbour->last_update);
+  ob_append_ui32(frame->payload, now);
+  ob_append_byte(frame->payload, link->neighbour_interface);
+  frame->queue=OQ_MESH_MANAGEMENT;
+  if (overlay_payload_enqueue(frame)){
+    op_free(frame);
+    return -1;
+  }
+  return 0;
+}
+
 static int link_send_neighbours(struct overlay_buffer *payload)
 {
   time_ms_t now = gettime_ms();
@@ -536,17 +559,23 @@ static int link_send_neighbours(struct overlay_buffer *payload)
           best_link?best_link->interface->name:"NONE");
     }
 
-    char flags=0;
-    if (best_link->unicast)
-      flags|=FLAG_UNICAST;
-    else
-      flags|=FLAG_BROADCAST;
-
     if (n->next_neighbour_update - INCLUDE_ANYWAY <= now){
-      if (append_link_state(payload, flags, n->subscriber, my_subscriber, best_link->neighbour_interface, 1, best_link->ack_sequence, best_link->ack_mask, -1)){
-        link_send_alarm.alarm = now;
-	return 1;
+      if (n->legacy_protocol){
+	// send a self announce ack instead.
+	send_legacy_self_announce_ack(n, best_link, now);
+      } else {
+        char flags=0;
+        if (best_link->unicast)
+          flags|=FLAG_UNICAST;
+        else
+          flags|=FLAG_BROADCAST;
+
+        if (append_link_state(payload, flags, n->subscriber, my_subscriber, best_link->neighbour_interface, 1, best_link->ack_sequence, best_link->ack_mask, -1)){
+          link_send_alarm.alarm = now;
+	  return 1;
+        }
       }
+      n->last_update = now;
       n->next_neighbour_update = now + best_link->interface->tick_ms;
       n->ack_counter = ACK_WINDOW;
     }
@@ -640,7 +669,7 @@ int link_received_packet(struct subscriber *subscriber, struct overlay_interface
 
   neighbour->ack_counter --;
 
-  // for now we'll use a simple time based link up/down flag
+  // for now we'll use a simple time based link up/down flag + dropped packet count
 
   if (sender_seq >=0){
     if (link->ack_sequence != -1){
@@ -730,7 +759,7 @@ int link_receive(overlay_mdp_frame *mdp)
 
     int ack_seq = -1;
     uint32_t ack_mask = 0;
-    int drop_rate = -1;
+    int drop_rate = 0;
 
     if (flags & FLAG_HAS_ACK){
       ack_seq = ob_get(payload);
@@ -753,6 +782,15 @@ int link_receive(overlay_mdp_frame *mdp)
 
     if (context.invalid_addresses)
       continue;
+
+    if (config.debug.verbose && config.debug.linkstate)
+      DEBUGF("LINK STATE; record - %s, %s, %d, %d, %d, %d",
+	receiver?alloca_tohex_sid(receiver->sid):"NULL",
+	transmitter?alloca_tohex_sid(transmitter->sid):"NULL",
+	interface_id,
+	ack_seq,
+	ack_mask,
+	drop_rate);
 
     // ignore any links that our neighbour is using to route through us.
     if (receiver == my_subscriber)
@@ -788,7 +826,7 @@ int link_receive(overlay_mdp_frame *mdp)
     if (link && transmitter == my_subscriber){
       // TODO combine our link stats with theirs
       version = link->link_version;
-      if (drop_rate != link->drop_rate)
+      if (drop_rate != link->drop_rate || transmitter != link->transmitter)
 	version++;
     }
 
@@ -832,3 +870,58 @@ void link_interface_down(struct overlay_interface *interface)
 {
   clean_neighbours(gettime_ms());
 }
+
+/* if an ancient node on the network uses their old protocol to tell us that they can hear us;
+  - send the same format back at them
+  - treat the link as up.
+  - but we aren't going to use this link in either routing protocol
+*/
+int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now)
+{
+  if (frame->payload->sizeLimit<9) 
+    return WHY("selfannounce ack packet too short");
+
+  ob_get_ui32(frame->payload);
+  ob_get_ui32(frame->payload);
+  int iface=ob_get(frame->payload);
+
+  // record that we have a possible link to this neighbour
+  struct neighbour *neighbour = get_neighbour(frame->source, 1);
+  struct link *link = find_link(neighbour, frame->source, 1);
+  int changed = 0;
+
+  if (!neighbour->legacy_protocol){
+    changed = 1;
+    if (config.debug.linkstate)
+      DEBUGF("LINK STATE; new legacy neighbour %s", alloca_tohex_sid(frame->source->sid));
+  }
+  if (neighbour->neighbour_link_timeout < now)
+    changed = 1;
+  if (link->transmitter != my_subscriber)
+    changed = 1;
+
+  link->transmitter = my_subscriber;
+  link->link_version = 1;
+  link->interface = &overlay_interfaces[iface];
+
+  // give this link a high cost, we aren't going to route through it anyway...
+  link->drop_rate = 32;
+
+  neighbour->legacy_protocol = 1;
+  neighbour->neighbour_link_timeout = now + link->interface->tick_ms * 5;
+
+  if (changed){
+    route_version++;
+    neighbour->path_version ++;
+    if (link_send_alarm.alarm>now || link_send_alarm.alarm==0){
+      unschedule(&link_send_alarm);
+      link_send_alarm.alarm=now;
+      // read all incoming packets first
+      link_send_alarm.deadline=now+10;
+      schedule(&link_send_alarm);
+    }
+  }
+
+  return 0;
+}
+
