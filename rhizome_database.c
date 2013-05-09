@@ -1267,7 +1267,7 @@ int rhizome_meshms_find_conversation(const char *sender_sid,
     const char *q_manifestid = (const char *) sqlite3_column_text(statement, 0);
     if (q_manifestid) {
       bcopy(q_manifestid,manifest_id,
-	    min(RHIZOME_MANIFEST_ID_STRLEN,strlen(q_manifestid)));
+	    1+min(RHIZOME_MANIFEST_ID_STRLEN,strlen(q_manifestid)));
       ret=0;
       // fall through to clean up and return
     }
