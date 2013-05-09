@@ -105,6 +105,10 @@ test_twoPly() {
    assertStdoutLineCount '==' 4
    assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-2b'
    assertStdoutGrep --stdout --stderr --matches=1 '^1:.*:unacknowledged:meshms:Message-1a'
+   executeOk_servald meshms list messages $SIDA2 $SIDA1
+   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-1a'
+   assertStdoutGrep --stdout --stderr --matches=1 '^1:.*:unacknowledged:meshms:Message-2b'
 }
 
 runTests "$@"
