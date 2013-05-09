@@ -717,7 +717,6 @@ int app_pa_phone(const struct cli_parsed *parsed, void *context);
 int app_monitor_cli(const struct cli_parsed *parsed, void *context);
 int app_vomp_console(const struct cli_parsed *parsed, void *context);
 
-int app_meshms_read_messagelog(const struct cli_parsed *parsed, void *context);
 int app_meshms_add_message(const struct cli_parsed *parsed, void *context);
 int app_meshms_list_messages(const struct cli_parsed *parsed, void *context);
 
