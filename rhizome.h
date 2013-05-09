@@ -698,7 +698,9 @@ int rhizome_dump_file(const char *id, const char *filepath, int64_t *length);
 int rhizome_database_filehash_from_id(const char *id, uint64_t version, char hash[SHA512_DIGEST_STRING_LENGTH]);
 
 int serialize_meshms(unsigned char *buffer,int *offset,unsigned int length,const char *sender_did,const char *recipient_did, unsigned long long time, const char *payload, int payload_length);
-int deserialize_meshms(unsigned char *buffer,int *offset, int buffer_size,char *delivery_status);
+int deserialize_meshms(int message_number,
+		       unsigned char *buffer,int *offset, int buffer_size,
+		       char *delivery_status);
 int rhizome_meshms_find_conversation(const char *sender_sid, 
 				     const char *recipient_sid, 
 				     char *manifest_id, int offset);

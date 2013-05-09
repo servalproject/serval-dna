@@ -263,7 +263,8 @@ int deserialize_ack(unsigned char *buffer,int *offset, int buffer_size,
   return 0;
 }
 
-int deserialize_meshms(unsigned char *buffer,int *offset, int buffer_size,
+int deserialize_meshms(int message_number,
+		       unsigned char *buffer,int *offset, int buffer_size,
 		       char *delivery_status)
 {
   int ret = 0;
@@ -272,6 +273,8 @@ int deserialize_meshms(unsigned char *buffer,int *offset, int buffer_size,
   unsigned int length =0;
 
   unsigned int start_offset=*offset;
+
+  cli_printf("%d",message_number); cli_delim(":");
   
   cli_printf("%d",*offset); cli_delim(":");
   

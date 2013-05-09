@@ -45,6 +45,7 @@ test_createPly() {
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
    executeOk_servald meshms list messages $SIDA1 $SIDA2
+   tfw_cat --stderr --stdout
 }
 
 runTests "$@"
