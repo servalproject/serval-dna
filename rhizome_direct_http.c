@@ -254,8 +254,10 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	
       // import file contents
       // TODO, stream file into database
+      // rhizome_add_file() now supports reading from a buffer which will make
+      // that easier.
       if (m->fileLength){
-	if (rhizome_add_file(m, filepath)){
+	if (rhizome_add_file(m, filepath,0,0)){
 	  rhizome_manifest_free(m);
 	  rhizome_direct_clear_temporary_files(r);
 	  return rhizome_server_simple_http_response(r,500,"Could not store file");

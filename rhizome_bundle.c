@@ -770,136 +770,15 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
     if (sender && recipient){
       if (config.debug.rhizome)
 	DEBUGF("Implicitly adding payload encryption due to presense of sender & recipient fields");
-      m->payloadEncryption=1;
-      rhizome_manifest_set_ll(m,"crypt",1); 
+    // but disable encryption for things sent to broadcast
+      if (strcmp(recipient, 
+		 "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"))
+	{ m->payloadEncryption=0; rhizome_manifest_set_ll(m,"crypt",0); }
+      else 
+	{ m->payloadEncryption=1; rhizome_manifest_set_ll(m,"crypt",1); }
     }
+
   }
   
   return 0;
 }
-
-
-
-int rhizome_fill_manifest_forMeshMS(rhizome_manifest *m, const sid_t *authorSid, rhizome_bk_t *bsk, const char *sender_sid, const char *recipient_sid){
-  /* Fill in a few missing manifest fields, to make it easier to use when adding new files:
-   - the default service is FILE
-   - use the current time for "date"
-   - if service is file, then use the payload file's basename for "name"
-   */
-
-  // Set the service if doesn't exist
-  const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-  if (service == NULL) {
-    rhizome_manifest_set(m, "service", (service = RHIZOME_SERVICE_MESHMS));
-    if (config.debug.rhizome) DEBUGF("missing 'service', set default service=%s", service);
-  } else {
-    if (config.debug.rhizome) DEBUGF("manifest contains service=%s", service);
-  }
-  
-  // Set the date if doesn't exist
-  if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
-    rhizome_manifest_set_ll(m, "date", (long long) gettime_ms());
-    if (config.debug.rhizome) DEBUGF("missing 'date', set default date=%s", rhizome_manifest_get(m, "date", NULL, 0));
-  }
-  
-  /*
-  if (strcasecmp(RHIZOME_SERVICE_FILE, service) == 0) {
-    const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-    if (name == NULL) {
-      if (filepath && *filepath){
-	name = strrchr(filepath, '/');
-	name = name ? name + 1 : filepath;
-      }else
-	name="";
-      rhizome_manifest_set(m, "name", name);
-      if (config.debug.rhizome) DEBUGF("missing 'name', set default name=\"%s\"", name);
-    } else {
-      if (config.debug.rhizome) DEBUGF("manifest contains name=\"%s\"", name);
-    }
-  }
-*/  
-
-  /* If the author was not specified, then the manifest's "sender"
-   field is used, if present. */
- // Set the author if doesn't exist 
- if (authorSid){
-    memcpy(m->author, authorSid, SID_SIZE);
-  }else{
-    const char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
-    if (sender){
-      if (fromhexstr(m->author, sender, SID_SIZE) == -1)
-	return WHYF("invalid sender: %s", sender);
-    }
-  }
-
-  /* set version of manifest, either from version variable, or using current time */
-  if (rhizome_manifest_get(m,"version",NULL,0)==NULL)
-  {
-    /* No version set, default to the current time */
-    m->version = gettime_ms();
-    rhizome_manifest_set_ll(m,"version",m->version);
-  }
-  
-  if (m->version == 0)
-  {
-    /* No version set, default to the current time */
-    m->version = gettime_ms();
-    rhizome_manifest_set_ll(m,"version",m->version);
-  }
-  
-  // Set the manifestid if doesn't exist
-  const char *id = rhizome_manifest_get(m, "id", NULL, 0);
-  if (id == NULL) {
-    if (config.debug.rhizome) DEBUG("creating new bundle");
-    if (rhizome_manifest_bind_id(m) == -1) {
-      return WHY("Could not bind manifest to an ID");
-    }
-  } else {
-    if (config.debug.rhizome) DEBUGF("modifying existing bundle bid=%s", id);
-   
-   
-    // Modifying an existing bundle.  Make sure we can find the bundle secret.
-    if (rhizome_extract_privatekey_required(m, bsk))
-      return -1;
-    
-    // TODO assert that new version > old version?
-  }
-  
-   if (rhizome_manifest_get(m,"sender",NULL,0)==NULL)
-   {
-    
-    rhizome_manifest_set(m,"sender",sender_sid);
-   }
-
-   if (rhizome_manifest_get(m,"recipient",NULL,0)==NULL)
-   {
-    
-    rhizome_manifest_set(m,"recipient",recipient_sid);
-   }
-
-
-
-  int crypt = rhizome_manifest_get_ll(m,"crypt"); 
-  if (crypt==-1 && m->fileLength){
-    // no explicit crypt flag, should we encrypt this bundle?
-    char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
-    
-    if (strcmp(recipient, "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF") == 0)
-    {
-      m->payloadEncryption=0;
-      rhizome_manifest_set_ll(m,"crypt",0); 
-    }
-    else 
-    {
-    // anything sent from one person to another should be considered private and encrypted by default
-   // if (sender && recipient){
-      if (config.debug.rhizome)
-	DEBUGF("Implicitly adding payload encryption due to presense of sender & recipient fields");
-      m->payloadEncryption=1;
-      rhizome_manifest_set_ll(m,"crypt",1); 
-    }
-  }
-  
-  return 0;
-}
-

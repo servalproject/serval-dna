@@ -370,7 +370,7 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m, const unsigned char *s
 int rhizome_find_bundle_author(rhizome_manifest *m);
 int rhizome_queue_ignore_manifest(unsigned char *bid_prefix, int prefix_len, int timeout);
 int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len);
-int meshms_read_message(const char *manifestid,rhizome_manifest *m, unsigned char *buffer);
+int meshms_read_message(rhizome_manifest *m, unsigned char *buffer );
 int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSid, rhizome_bk_t *bsk);
 int rhizome_add_message(rhizome_manifest *m, unsigned char *message, unsigned char *buffer_file, int message_size, int manifest_exist, const char *manifestid);
 
@@ -677,7 +677,9 @@ int rhizome_fail_write(struct rhizome_write *write);
 int rhizome_finish_write(struct rhizome_write *write);
 int rhizome_import_file(rhizome_manifest *m, const char *filepath);
 int rhizome_stat_file(rhizome_manifest *m, const char *filepath);
-int rhizome_add_file(rhizome_manifest *m, const char *filepath);
+int rhizome_add_file(rhizome_manifest *m, const char *filepath,
+		     int bufferP, int bufferSize);
+
 int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk);
 int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
 			    const unsigned char *key, const unsigned char *nonce);
@@ -693,14 +695,7 @@ int rhizome_database_filehash_from_id(const char *id, uint64_t version, char has
 
 int serialize_meshms(unsigned char *buffer,int *offset,unsigned int length,const char *sender_did,const char *recipient_did, unsigned long long time, const char *payload, int payload_length);
 int deserialize_meshms(unsigned char *buffer,int *offset, int buffer_size);
-int rhizome_list_manifests_forMeshMS(const char *service, const char *name, 
-				     const char *sender_sid, 
+int rhizome_meshms_find_conversation(const char *sender_sid, 
 				     const char *recipient_sid, 
-				     int limit, int offset, char count_rows,
-				     char *manifest_id);
-int rhizome_fill_manifest_forMeshMS(rhizome_manifest *m, const sid_t *authorSid, rhizome_bk_t *bsk, const char *sender_sid, const char *recipient_sid);
-int rhizome_open_write_forMeshms_manifest_exist(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority, const char *manifestid);
-int rhizome_open_write_forMeshms(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority);
-int rhizome_open_write_forMeshms_manifest_exist(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority, const char *manifestid);
-int rhizome_finish_write_forMeshms_manifest_exist(struct rhizome_write *write);
+				     char *manifest_id, int offset);
 #endif //__SERVALDNA__RHIZOME_H
