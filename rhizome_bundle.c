@@ -771,11 +771,11 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
       if (config.debug.rhizome)
 	DEBUGF("Implicitly adding payload encryption due to presense of sender & recipient fields");
     // but disable encryption for things sent to broadcast
-      if (strcmp(recipient, 
-		 "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"))
-	{ m->payloadEncryption=0; rhizome_manifest_set_ll(m,"crypt",0); }
-      else 
+      if (strcasecmp(recipient, 
+		     "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"))
 	{ m->payloadEncryption=1; rhizome_manifest_set_ll(m,"crypt",1); }
+      else 
+	{ m->payloadEncryption=0; rhizome_manifest_set_ll(m,"crypt",0); }
     }
 
   }
