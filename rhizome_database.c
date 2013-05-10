@@ -1343,8 +1343,8 @@ int rhizome_meshms_find_conversations(const char *sid, int offset, int count)
       cli_put_string(left, ":");
       cli_put_string(right, "\n");
     }
-    snprintf(last_left,SID_STRLEN,"%s",left);
-    snprintf(last_right,SID_STRLEN,"%s",right);
+    snprintf(last_left,SID_STRLEN+1,"%s",left);
+    snprintf(last_right,SID_STRLEN+1,"%s",right);
   }
 
 cleanup:
