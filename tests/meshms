@@ -111,6 +111,20 @@ test_twoPly() {
    assertStdoutGrep --stdout --stderr --matches=1 '^1:.*:unacknowledged:meshms:Message-2b'
 }
 
+doc_qsoList="Can list conversations with 'meshms list conversations'"
+setup_qsoList() {
+    setup
+}
+test_qsoList() {
+   executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA2 "Message-1a"
+   executeOk_servald meshms list conversations $SIDA1
+   assertStdoutGrep --stdout --stderr --matches=1 '^'$SIDA1':'$SIDA2'$'
+   assertStdoutGrep --stdout --stderr --matches=0 '^'$SIDA2':'$SIDA1'$'
+   executeOk_servald meshms list conversations $SIDA2
+   assertStdoutGrep --stdout --stderr --matches=0 '^'${SIDA1}':'${SIDA2}'$'
+   assertStdoutGrep --stdout --stderr --matches=1 '^'${SIDA2}':'${SIDA1}'$'
+}
+
 doc_ack="Acking messages works"
 setup_ack() {
     setup

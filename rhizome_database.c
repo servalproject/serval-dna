@@ -1315,9 +1315,12 @@ int rhizome_meshms_find_conversations(const char *sid, int offset, int count)
     goto cleanup;
   }
   
-  ret=-1;
+  ret=0;
   
   int row=0;
+  char last_left[SID_STRLEN+1]="";
+  char last_right[SID_STRLEN+1]="";
+  const char *left, *right;
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     if (!(sqlite3_column_count(statement) == 2
 	  && sqlite3_column_type(statement, 0) == SQLITE_TEXT
@@ -1331,8 +1334,17 @@ int rhizome_meshms_find_conversations(const char *sid, int offset, int count)
     if (row>count) break;
     const char *sida = (const char *) sqlite3_column_text(statement, 0);
     const char *sidb = (const char *) sqlite3_column_text(statement, 1);
-    cli_put_string(sida, ":");
-    cli_put_string(sidb, "\n");
+    if (!strcasecmp(sida,sid)) {
+      left=sida; right=sidb;
+    } else {
+      left=sidb; right=sida;
+    }
+    if (strcasecmp(left,last_left)||strcasecmp(right,last_right)) {
+      cli_put_string(left, ":");
+      cli_put_string(right, "\n");
+    }
+    snprintf(last_left,SID_STRLEN,"%s",left);
+    snprintf(last_right,SID_STRLEN,"%s",right);
   }
 
 cleanup:
