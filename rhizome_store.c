@@ -19,7 +19,7 @@ int rhizome_exists(const char *fileHash){
 int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority){
   if (expectedFileHash){
     if (rhizome_exists(expectedFileHash))
-    { cli_printf("error dans rhizome_exists");
+    { 
       return 1;
     }
     strlcpy(write->id, expectedFileHash, SHA512_DIGEST_STRING_LENGTH);
