@@ -21,6 +21,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)mdp_client.c \
 	$(SERVAL_BASE)os.c \
 	$(SERVAL_BASE)mem.c \
+	$(SERVAL_BASE)meshms.c \
 	$(SERVAL_BASE)instance.c \
 	$(SERVAL_BASE)monitor.c \
 	$(SERVAL_BASE)monitor-client.c \
@@ -54,6 +55,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)rhizome_packetformats.c \
 	$(SERVAL_BASE)rhizome_store.c \
 	$(SERVAL_BASE)rotbuf.c \
+	$(SERVAL_BASE)serialization_meshms.c \
 	$(SERVAL_BASE)serval_packetvisualise.c \
 	$(SERVAL_BASE)server.c \
 	$(SERVAL_BASE)sha2.c \

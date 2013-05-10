@@ -27,6 +27,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "str.h"
 
+int min(int a,int b)
+{
+  if (a<b) return a; else return b;
+}
+
 static char rhizome_thisdatastore_path[256];
 
 const char *rhizome_datastore_path()
@@ -925,8 +930,9 @@ int rhizome_store_bundle(rhizome_manifest *m)
     strncpy(filehash, m->fileHexHash, sizeof filehash);
     str_toupper_inplace(filehash);
 
-    if (!rhizome_exists(filehash))
-      return WHY("File should already be stored by now");
+    if (!rhizome_exists(filehash)) {
+      cli_delim("\n");cli_puts("File should already be stored by now because filehash already exist in add manifest");
+      return WHY("File should already be stored by now");}
   } else {
     filehash[0] = '\0';
   }
@@ -1203,6 +1209,83 @@ cleanup:
   OUT();
 }
 
+/* XXX - The following assumes only one conversation. It is possible that this 
+   will not be true under various pathological situations.  Dealing with this
+   is left as a future exercise.
+   The offset argument can be used to return multiple results as a preliminary
+   mechanism for dealing with this.
+*/
+int rhizome_meshms_find_conversation(const char *sender_sid, 
+				     const char *recipient_sid, 
+				     char *manifest_id, int offset)
+{
+  IN();
+  strbuf b = strbuf_alloca(1024);
+  strbuf_sprintf(b, "SELECT id FROM manifests WHERE 1=1");
+  
+  if (sender_sid && *sender_sid)
+    strbuf_sprintf(b, " AND sender = ?3");
+  if (recipient_sid && *recipient_sid)
+    strbuf_sprintf(b, " AND recipient = ?4");
+  
+  strbuf_sprintf(b, " ORDER BY inserttime DESC");
+  
+  if (offset)
+    strbuf_sprintf(b, " OFFSET %u", offset);
+  
+  if (strbuf_overrun(b))
+    RETURN(WHYF("SQL command too long: ", strbuf_str(b)));
+  
+ //Statement is the SQL query and retry is the response from the database
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  sqlite3_stmt *statement = sqlite_prepare(&retry, "%s", strbuf_str(b));
+  if (!statement)
+    RETURN(-1);
+  
+  int ret = 0;
+  
+  if (ret==SQLITE_OK && sender_sid && *sender_sid)
+    ret = sqlite3_bind_text(statement, 3, sender_sid, -1, SQLITE_STATIC);
+  if (ret==SQLITE_OK && recipient_sid && *recipient_sid)
+    ret = sqlite3_bind_text(statement, 4, recipient_sid, -1, SQLITE_STATIC);
+  
+  if (ret!=SQLITE_OK){
+    ret = WHYF("Failed to bind parameters: %s", sqlite3_errmsg(rhizome_db));
+    goto cleanup;
+  }
+  
+  ret=-1;
+  
+  if (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
+    if (!(sqlite3_column_count(statement) == 1
+	  && sqlite3_column_type(statement, 0) == SQLITE_TEXT
+	  )) { 
+      WHY("Incorrect row structure");
+      ret=-1;
+      goto cleanup;
+    }
+    const char *q_manifestid = (const char *) sqlite3_column_text(statement, 0);
+    if (q_manifestid) {
+      bcopy(q_manifestid,manifest_id,
+	    1+min(RHIZOME_MANIFEST_ID_STRLEN,strlen(q_manifestid)));
+      ret=0;
+      // fall through to clean up and return
+    }
+  }
+  // fall through to clean up and return
+
+cleanup:
+  sqlite3_finalize(statement);
+  RETURN(ret);
+  OUT();
+} 
+
+
+
+
+
+
+
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount)
 {
   (void) tohex(out, in, byteCount);
@@ -1380,7 +1463,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
       }
       
       if ((!inconsistent) && check_author) {
-	// check that we can re-author this manifest
+	// check that we can re-author this manifest 
 	if (rhizome_extract_privatekey(blob_m, NULL))
 	  ++inconsistent;
       }

@@ -51,6 +51,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define RHIZOME_HTTP_PORT 4110
 #define RHIZOME_HTTP_PORT_MAX 4150
 
+#define RHIZOME_MESHMS_BLOCK_TYPE_ACK 0x01
+#define RHIZOME_MESHMS_BLOCK_TYPE_MESSAGE 0x02
+#define RHIZOME_MESHMS_BLOCK_TYPE_BID_REFERENCE 0x03
+
 typedef struct rhizome_bk_binary {
     unsigned char binary[RHIZOME_BUNDLE_KEY_BYTES];
 } rhizome_bk_t;
@@ -373,6 +377,9 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m, const unsigned char *s
 int rhizome_find_bundle_author(rhizome_manifest *m);
 int rhizome_queue_ignore_manifest(unsigned char *bid_prefix, int prefix_len, int timeout);
 int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len);
+int meshms_read_message(rhizome_manifest *m, unsigned char *buffer );
+int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSid, rhizome_bk_t *bsk);
+int rhizome_add_message(rhizome_manifest *m, unsigned char *message, unsigned char *buffer_file, int message_size, int manifest_exist, const char *manifestid);
 
 /* one manifest is required per candidate, plus a few spare.
    so MAX_RHIZOME_MANIFESTS must be > MAX_CANDIDATES. 
@@ -402,7 +409,7 @@ struct rhizome_write{
   
   SHA512_CTX sha512_context;
   int64_t blob_rowid;
-  int blob_fd;
+  int blob_fd; 
 };
 
 struct rhizome_read{
@@ -679,7 +686,9 @@ int rhizome_fail_write(struct rhizome_write *write);
 int rhizome_finish_write(struct rhizome_write *write);
 int rhizome_import_file(rhizome_manifest *m, const char *filepath);
 int rhizome_stat_file(rhizome_manifest *m, const char *filepath);
-int rhizome_add_file(rhizome_manifest *m, const char *filepath);
+int rhizome_add_file(rhizome_manifest *m, const char *filepath,
+		     int bufferP, int bufferSize);
+
 int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk);
 int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
 			    const unsigned char *key, const unsigned char *nonce);
@@ -692,5 +701,25 @@ int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t
 int rhizome_dump_file(const char *id, const char *filepath, int64_t *length);
 
 int rhizome_database_filehash_from_id(const char *id, uint64_t version, char hash[SHA512_DIGEST_STRING_LENGTH]);
+
+int serialize_meshms(unsigned char *buffer,int *offset,unsigned int length,const char *sender_did,const char *recipient_did, unsigned long long time, const char *payload, int payload_length);
+int deserialize_meshms(int message_number,
+		       unsigned char *buffer,int *offset, int buffer_size,
+		       char *delivery_status);
+int deserialize_ack(unsigned char *buffer,int *offset, int buffer_size,
+		    int *ack_address);
+int serialize_ack(unsigned char *buffer,int *offset, int buffer_size,
+		  int ack_address);
+int decode_length_forwards(unsigned char *buffer,int *offset,
+			   unsigned int buffer_length,
+			   unsigned int *length);
+int meshms_append_messageblock(const char *sender_sid,
+			       const char *recipient_sid,
+			       const unsigned char *buffer_serialize,
+			       int length_int);
+int meshms_block_type(unsigned char *buffer,int offset, int blength);
+int rhizome_meshms_find_conversation(const char *sender_sid, 
+				     const char *recipient_sid, 
+				     char *manifest_id, int offset);
 
 #endif //__SERVALDNA__RHIZOME_H

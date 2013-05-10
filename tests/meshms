@@ -1,0 +1,150 @@
+#!/bin/bash
+
+# Tests for Serval DNA configuration operations.
+#
+# Copyright 2012 Serval Project, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+source "${0%/*}/../testdefs_rhizome.sh"
+
+setup() {
+   setup_servald
+   set_instance +A
+   create_identities 2
+   assert [ $SIDA1 != $SIDA2 ]
+   setup_rhizome
+}
+
+setup_createPly() {
+   set_instance +A
+   create_identities 2
+   assert [ $SIDA1 != $SIDA2 ]
+}
+
+doc_createPly="Create thread ply by sending a message"
+setup_createPly() {
+    setup
+}
+test_createPly() {
+   executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA2 "Message-1"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
+}
+
+doc_discriminatePlys="List messages doesn't use same bundle for each ply"
+setup_discriminatePlys() {
+    setup
+}
+test_discriminatePlys() {
+   executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA2 "Message-1"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutGrep --stdout --stderr --matches=0 '^0:.*:received:meshms:Message-1'
+   assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:unacknowledged:meshms:Message-1'
+   assertStdoutLineCount '==' 3
+}
+
+doc_reflectedPly="Sender == recipient works as expected"
+setup_reflectedPly() {
+    setup
+}
+test_reflectedPly() {
+   executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA1 "Message-1"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
+   executeOk_servald meshms list messages $SIDA1 $SIDA1
+   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-1'
+   assertStdoutGrep --stdout --stderr --matches=1 '^1:.*:unacknowledged:meshms:Message-1'
+}
+
+doc_reflectedPly="Sender == recipient works as expected"
+setup_reflectedPly() {
+    setup
+}
+test_reflectedPly() {
+   executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA1 "Message-1"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
+   executeOk_servald meshms list messages $SIDA1 $SIDA1
+   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-1'
+   assertStdoutGrep --stdout --stderr --matches=1 '^1:.*:unacknowledged:meshms:Message-1'
+}
+
+doc_twoPly="Send one message each way, no acks, correct order"
+setup_twoPly() {
+    setup
+}
+test_twoPly() {
+   executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA2 "Message-1a"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
+   executeOk_servald meshms add message 12345 67890 $SIDA2 $SIDA1 "Message-2b"
+   executeOk_servald meshms list messages $SIDA1 $SIDA1
+   assertStdoutLineCount '==' 2
+   executeOk_servald meshms list messages $SIDA2 $SIDA2
+   assertStdoutLineCount '==' 2
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-2b'
+   assertStdoutGrep --stdout --stderr --matches=1 '^1:.*:unacknowledged:meshms:Message-1a'
+   executeOk_servald meshms list messages $SIDA2 $SIDA1
+   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-1a'
+   assertStdoutGrep --stdout --stderr --matches=1 '^1:.*:unacknowledged:meshms:Message-2b'
+}
+
+doc_ack="Acking messages works"
+setup_ack() {
+    setup
+}
+test_ack() {
+   executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA2 "Message-1a"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
+   executeOk_servald meshms add message 12345 67890 $SIDA2 $SIDA1 "Message-2b"
+   executeOk_servald meshms list messages $SIDA1 $SIDA1
+   assertStdoutLineCount '==' 2
+   executeOk_servald meshms list messages $SIDA2 $SIDA2
+   assertStdoutLineCount '==' 2
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-2b'
+   assertStdoutGrep --stdout --stderr --matches=1 '^1:.*:unacknowledged:meshms:Message-1a'
+   executeOk_servald meshms list messages $SIDA2 $SIDA1
+   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-1a'
+   assertStdoutGrep --stdout --stderr --matches=1 '^1:.*:unacknowledged:meshms:Message-2b'
+   executeOk_servald meshms ack messages $SIDA1 $SIDA2 1
+   assertStdoutGrep --stdout --stderr --matches=1 'filesize:35'
+   executeOk_servald meshms ack messages $SIDA1 $SIDA2 1
+   assertStdoutGrep --stdout --stderr --matches=0 'filesize:'
+   executeOk_servald meshms ack messages $SIDA1 $SIDA2 0
+   assertStdoutGrep --stdout --stderr --matches=0 'filesize:'
+   executeOk_servald meshms ack messages $SIDA1 $SIDA2 28
+   assertStdoutGrep --stdout --stderr --matches=1 'filesize:42'
+   executeOk_servald meshms list messages $SIDA2 $SIDA1
+   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-1a'
+   assertStdoutGrep --stdout --stderr --matches=1 '^1:.*:delivered:meshms:Message-2b'
+
+}
+
+runTests "$@"

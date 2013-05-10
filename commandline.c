@@ -46,6 +46,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_address.h"
 #include "overlay_buffer.h"
 
+//unsigned char did_chars[16]="0123456789+#*abX";
+
 extern struct cli_schema command_line_options[];
 
 int commandline_usage(const struct cli_parsed *parsed, void *context)
@@ -1335,7 +1337,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, void *context)
   }
   
   if (m->fileLength){
-    if (rhizome_add_file(m, filepath)){
+    if (rhizome_add_file(m, filepath,0,0)){
       rhizome_manifest_free(m);
       return -1;
     }
@@ -2305,6 +2307,15 @@ struct cli_schema command_line_options[]={
   {app_vomp_console,{"console",NULL}, 0,
     "Test phone call life-cycle from the console"},
   {app_rhizome_append_manifest, {"rhizome", "append", "manifest", "<filepath>", "<manifestpath>", NULL}, 0,
+   "Append contents of file to an existing bundle."
+  },
+   {app_meshms_list_messages,{"meshms","list","messages" KEYRING_PIN_OPTIONS, "<sender_sid>","<recipient_sid>",NULL},0,
+   "List MeshMS messages between <sender_sid> and <recipient_sid>"},
+  {app_meshms_add_message,{"meshms","add","message" KEYRING_PIN_OPTIONS, "[<sender_did>]","[<recipient_did>]","<sender_sid>","<recipient_sid>","<payload>",NULL},0,
+   "Create a MeshMS from <sender_sid> to <recipient_sid>"},
+  {app_meshms_ack_messages,{"meshms","ack","messages" KEYRING_PIN_OPTIONS, "<sender_sid>","<recipient_sid>","<message_offset>",NULL},0,
+   "List MeshMS messages between <sender_sid> and <recipient_sid>"},
+  {app_rhizome_append_manifest, {"rhizome", "append", "manifest", "<filepath>", "<manifestpath>", NULL}, 0,
     "Append a manifest to the end of the file it belongs to."},
   {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL}, 0,
    "Compute the Rhizome hash of a file"},
@@ -2377,3 +2388,4 @@ struct cli_schema command_line_options[]={
 #endif
   {NULL,{NULL}}
 };
+

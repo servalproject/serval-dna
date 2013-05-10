@@ -19,7 +19,9 @@ int rhizome_exists(const char *fileHash){
 int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority){
   if (expectedFileHash){
     if (rhizome_exists(expectedFileHash))
+    { cli_printf("error dans rhizome_exists");
       return 1;
+    }
     strlcpy(write->id, expectedFileHash, SHA512_DIGEST_STRING_LENGTH);
     write->id_known=1;
   }else{
@@ -246,6 +248,31 @@ int rhizome_write_file(struct rhizome_write *write, const char *filename){
   return 0;
 }
 
+int rhizome_write_buffer(struct rhizome_write *write, const char *buffer,
+			 int len){
+  if (!buffer) WHY("buffer==NULL");
+  if (len<0) WHY("len<0");
+
+  int offset=0;
+
+  while(write->file_offset < write->file_length){
+    
+    int size=write->buffer_size - write->data_size;
+    if (write->file_offset + size > write->file_length)
+      size=write->file_length - write->file_offset;
+    
+    bcopy(&buffer[offset],write->buffer,size);
+    offset+=size;
+    write->data_size+=size;
+    
+    if (rhizome_flush(write)){
+      return -1;
+    }
+  }
+  
+  return 0;
+}
+
 int rhizome_store_delete(const char *id){
   char blob_path[1024];
   if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, id))
@@ -280,10 +307,13 @@ int rhizome_fail_write(struct rhizome_write *write){
 }
 
 int rhizome_finish_write(struct rhizome_write *write){
+  
+  //cli_puts("\n");cli_puts("--------------je suis dans finish write");cli_puts("\n");
   if (write->data_size>0){
     if (rhizome_flush(write))
       return -1;
   }
+
   if (write->blob_fd)
     close(write->blob_fd);
   if (write->buffer)
@@ -336,10 +366,10 @@ int rhizome_finish_write(struct rhizome_write *write){
 	  WHY_perror("link");
 	  goto failure;
 	}
-	  
+
 	if (unlink(blob_path))
 	  WHY_perror("unlink");
-	
+
       }else{
 	if (sqlite_exec_void_retry(&retry,
 				   "UPDATE FILEBLOBS SET id='%s' WHERE rowid=%lld",
@@ -419,7 +449,8 @@ int rhizome_stat_file(rhizome_manifest *m, const char *filepath)
 
 // import a file for a new bundle with an unknown file hash
 // update the manifest with the details of the file
-int rhizome_add_file(rhizome_manifest *m, const char *filepath)
+int rhizome_add_file(rhizome_manifest *m, const char *filepath,
+		     int bufferP, int bufferSize)
 {
   // Stream the file directly into the database, encrypting & hashing as we go.
   struct rhizome_write write;
@@ -441,9 +472,16 @@ int rhizome_add_file(rhizome_manifest *m, const char *filepath)
     bcopy(m->payloadNonce, write.nonce, sizeof(write.nonce));
   }
   
-  if (rhizome_write_file(&write, filepath)){
-    rhizome_fail_write(&write);
-    return -1;
+  if (bufferP) {
+    if (rhizome_write_buffer(&write, filepath, bufferSize)){
+      rhizome_fail_write(&write);
+      return -1;
+    }
+  } else {
+    if (rhizome_write_file(&write, filepath)){
+      rhizome_fail_write(&write);
+      return -1;
+    }
   }
 
   if (rhizome_finish_write(&write)){
@@ -466,11 +504,13 @@ int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash)
   read->blob_rowid = -1;
   read->blob_fd = -1;
   if (sqlite_exec_int64(&read->blob_rowid, "SELECT FILEBLOBS.rowid FROM FILEBLOBS, FILES WHERE FILEBLOBS.id = FILES.id AND FILES.id = '%s' AND FILES.datavalid != 0", read->id) == -1)
+{   cli_puts("no file found in the database _ rhizome_open_read");
     return -1;
+}
   if (read->blob_rowid != -1) {
     read->length = -1; // discover the length on opening the db BLOB
   } else {
-    // No row in FILEBLOBS, look for an external blob file.
+    //cli_printf("No row in FILEBLOBS, look for an external blob file.");
     char blob_path[1024];
     if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, read->id))
       return -1;
@@ -658,3 +698,60 @@ int rhizome_dump_file(const char *id, const char *filepath, int64_t *length)
   rhizome_read_close(&read_state);
   return ret;
 }
+
+
+
+
+int meshms_read_message(rhizome_manifest *m, unsigned char *buffer )
+{
+  
+  const char *bskhex = NULL ;
+ 
+  /*
+  if (!(keyring = keyring_open_instance_cli(parsed)))
+    return -1; */
+  
+  int ret=0;
+ 
+  // treat empty string the same as null
+  if (bskhex && !*bskhex)
+    bskhex=NULL;
+  
+  rhizome_bk_t bsk;
+  if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+    return WHYF("invalid bsk: \"%s\"", bskhex);
+  
+  // ret=0 if retrieve manifest is ok
+  if (ret==0 && m->fileLength != 0 ){   
+    // Rhizome_extract_file 
+    struct rhizome_read read_state;
+    bzero(&read_state, sizeof read_state);
+    int ret = rhizome_open_decrypt_read(m, bskhex?&bsk:NULL, &read_state, 0);
+    
+    //if (ret == 0) // No errors
+     //cli_puts("the file exist, we will read the file"); cli_delim("\n");
+ 
+    int read_byte ;
+    int buffer_length=m->fileLength;
+ 
+    read_byte=rhizome_read(&read_state, buffer, buffer_length); 
+    
+    //int offset_buffer = 0;
+    //ret = deserialize_meshms(buffer,&offset_buffer,buffer_length);
+
+    rhizome_read_close(&read_state);
+  }
+   
+  //if (m)
+  //  rhizome_manifest_free(m);
+  
+  return ret;
+  
+}
+
+
+
+
+
+
+
