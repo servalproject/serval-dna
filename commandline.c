@@ -2306,6 +2306,8 @@ struct cli_schema command_line_options[]={
    "Get specified configuration variable."},
   {app_vomp_console,{"console",NULL}, 0,
     "Test phone call life-cycle from the console"},
+  {app_meshms_list_conversations,{"meshms","list","conversations" KEYRING_PIN_OPTIONS, "<sid>","[<offset>]","[<count>]",NULL},0,
+   "List MeshMS threads that include <sid>"},
   {app_meshms_list_messages,{"meshms","list","messages" KEYRING_PIN_OPTIONS, "<sender_sid>","<recipient_sid>",NULL},0,
    "List MeshMS messages between <sender_sid> and <recipient_sid>"},
   {app_meshms_add_message,{"meshms","add","message" KEYRING_PIN_OPTIONS, "[<sender_did>]","[<recipient_did>]","<sender_sid>","<recipient_sid>","<payload>",NULL},0,

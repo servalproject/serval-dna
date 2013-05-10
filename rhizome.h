@@ -721,5 +721,6 @@ int meshms_block_type(unsigned char *buffer,int offset, int blength);
 int rhizome_meshms_find_conversation(const char *sender_sid, 
 				     const char *recipient_sid, 
 				     char *manifest_id, int offset);
+int rhizome_meshms_find_conversations(const char *sid, int offset, int count);
 
 #endif //__SERVALDNA__RHIZOME_H

@@ -686,6 +686,7 @@ int app_vomp_console(const struct cli_parsed *parsed, void *context);
 int app_meshms_add_message(const struct cli_parsed *parsed, void *context);
 int app_meshms_ack_messages(const struct cli_parsed *parsed, void *context);
 int app_meshms_list_messages(const struct cli_parsed *parsed, void *context);
+int app_meshms_list_conversations(const struct cli_parsed *parsed, void *context);
 
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 

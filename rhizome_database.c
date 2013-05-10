@@ -1280,11 +1280,66 @@ cleanup:
   OUT();
 } 
 
+int rhizome_meshms_find_conversations(const char *sid, int offset, int count)
+{
+  IN();
+  strbuf b = strbuf_alloca(1024);
+  strbuf_sprintf(b, "SELECT DISTINCT sender,recipient FROM manifests WHERE 1=1");
+  strbuf_sprintf(b, " AND ( sender = ?3 or recipient = ?3)");
+  strbuf_sprintf(b, " ORDER BY MIN(sender,recipient), MAX(sender,recipient)");
+  
+  const char *names[]={
+    "partya","partyb"
+  };
+  cli_columns(2,names);
 
+  if (offset)
+    strbuf_sprintf(b, " OFFSET %u", offset);
+  
+  if (strbuf_overrun(b))
+    RETURN(WHYF("SQL command too long: ", strbuf_str(b)));
+  
+ //Statement is the SQL query and retry is the response from the database
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  sqlite3_stmt *statement = sqlite_prepare(&retry, "%s", strbuf_str(b));
+  if (!statement)
+    RETURN(-1);
+  
+  int ret = 0;
+  
+  if (ret==SQLITE_OK && sid && *sid)
+    ret = sqlite3_bind_text(statement, 3, sid, -1, SQLITE_STATIC);
+  
+  if (ret!=SQLITE_OK){
+    ret = WHYF("Failed to bind parameters: %s", sqlite3_errmsg(rhizome_db));
+    goto cleanup;
+  }
+  
+  ret=-1;
+  
+  int row=0;
+  while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
+    if (!(sqlite3_column_count(statement) == 2
+	  && sqlite3_column_type(statement, 0) == SQLITE_TEXT
+	  && sqlite3_column_type(statement, 1) == SQLITE_TEXT
+	  )) { 
+      WHY("Incorrect row structure");
+      ret=-1;
+      goto cleanup;
+    }
+    row++;
+    if (row>count) break;
+    const char *sida = (const char *) sqlite3_column_text(statement, 0);
+    const char *sidb = (const char *) sqlite3_column_text(statement, 1);
+    cli_put_string(sida, ":");
+    cli_put_string(sidb, "\n");
+  }
 
-
-
-
+cleanup:
+  sqlite3_finalize(statement);
+  RETURN(ret);
+  OUT();
+} 
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount)
 {

@@ -485,3 +485,34 @@ int app_meshms_ack_messages(const struct cli_parsed *parsed, void *context)
 
  return ret;
 }
+
+int app_meshms_list_conversations(const struct cli_parsed *parsed, void *context)
+{
+  if (create_serval_instance_dir() == -1)
+   return -1;
+ if (!(keyring = keyring_open_instance_cli(parsed)))
+   return -1;
+ if (rhizome_opendb() == -1)
+   return -1; 
+
+ if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+ const char *sid,*offset_str,*count_str;
+
+ // Parse mandatory arguments
+ cli_arg(parsed, "sid", &sid, cli_optional_sid, "");
+ cli_arg(parsed, "offset", &offset_str, NULL, "0");
+ cli_arg(parsed, "count", &count_str, NULL, "9999");
+ int offset=atoi(offset_str);
+ int count=atoi(count_str);
+ // Sanity check passed arguments
+ if ( strcmp(sid,"") == 0  )
+   { 
+     cli_puts("One or more missing arguments"); cli_delim("\n");
+   } 
+ sid_t aSid;
+ if (sid[0] && str_to_sid_t(&aSid, sid) == -1)
+   return WHYF("invalid sid: %s", sid);
+
+ return rhizome_meshms_find_conversations(sid,offset,count);
+}
