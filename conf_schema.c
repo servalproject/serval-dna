@@ -610,6 +610,11 @@ int cf_opt_sid(sid_t *sidp, const char *text)
 {
   if (!str_is_subscriber_id(text))
     return CFINVALID;
+  if (!strcasecmp("broadcast",text)) {
+    int i;
+    for(i=0;i<SID_SIZE;i++) sidp->binary[i]=0xff;
+    return CFOK;
+  }
   size_t n = fromhex(sidp->binary, text, SID_SIZE);
   assert(n == SID_SIZE);
   return CFOK;

@@ -147,4 +147,42 @@ test_ack() {
 
 }
 
+doc_addressedBundleCrypted="MeshMS bundle with sender and non-broadcast recipient gets encrypted"
+setup_addressedBundleCrypted() {
+   setup
+   echo "Message1" >file1
+   echo -e "service=MeshMS1\nsender=$SIDA1\nrecipient=$SIDA2" >file1.manifest
+}
+test_addressedBundleCrypted() {
+   executeOk_servald rhizome add file $SIDA1 file1 file1.manifest
+   assert_stdout_add_file file1
+   assert_manifest_complete file1.manifest
+   extract_manifest_crypt crypt file1.manifest
+   assert [ $crypt = 1 ]
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 file1
+   extract_manifest_id BID file1.manifest
+   executeOk_servald rhizome extract file $BID file1x
+   assert diff file1 file1x
+}
+
+doc_broadcastBundleNotCrypted="MeshMS bundles with broadcast recipient are not encrypted"
+setup_broadcastBundleNotCrypted() {
+   setup
+   echo "Message1" >file1
+   echo -e "service=MeshMS1\nsender=$SIDA1\nrecipient=broadcast" >file1.manifest
+}
+test_broadcastBundleNotCrypted() {
+   executeOk_servald rhizome add file $SIDA1 file1 file1.manifest
+   assert_stdout_add_file file1
+   assert_manifest_complete file1.manifest
+   extract_manifest_crypt crypt file1.manifest
+   assert [ $crypt = 0 ]
+   executeOk_servald rhizome list
+   extract_manifest_id BID file1.manifest
+   executeOk_servald rhizome extract file $BID file1x
+   assert diff file1 file1x
+}
+
+
 runTests "$@"
