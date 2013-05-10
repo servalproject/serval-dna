@@ -1117,9 +1117,8 @@ int app_trace(const struct cli_parsed *parsed, void *context){
     int i=0;
     while(offset<mdp.out.payload_length){
       int len = mdp.out.payload[offset++];
-      cli_printf("%d: ",i);
-      cli_puts(alloca_tohex(&mdp.out.payload[offset], len));
-      cli_delim("\n");
+      cli_put_long(i,":");
+      cli_put_string(alloca_tohex(&mdp.out.payload[offset], len), "\n");
       offset+=len;
       i++;
     }
