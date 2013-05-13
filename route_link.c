@@ -38,6 +38,9 @@ struct link{
   struct overlay_interface *interface;
   struct subscriber *receiver;
 
+  // What's the last ack we've heard so we don't process nacks twice.
+  int last_ack_seq;
+
   // neighbour path version when path scores were last updated
   char path_version;
 
@@ -180,6 +183,7 @@ static struct link *find_link(struct neighbour *neighbour, struct subscriber *re
         link = *link_ptr = emalloc_zero(sizeof(struct link));
         link->receiver = receiver;
         link->path_version = neighbour->path_version -1;
+	link->last_ack_seq = -1;
       }
       break;
     }
@@ -808,41 +812,56 @@ int link_receive(overlay_mdp_frame *mdp)
     if (receiver == my_subscriber)
       continue;
 
+    // ignore other incoming links to our neighbour
+    // TODO build a map of everyone in our 2 hop neighbourhood to control broadcast flooding?
     if (receiver == sender){
-      // who can our neighbour hear?
-
-      // TODO build a map of everyone in our 2 hop neighbourhood to control broadcast flooding?
-
-      if (transmitter == my_subscriber && interface_id != -1){
-	// TODO get matching neighbour link and combine scores
-
-	// TODO use ack_sequence && ack_mask to control (re)sending packets 
-
-        // they can hear us? we can route through them!
-	interface = &overlay_interfaces[interface_id];
-	if (interface->state != INTERFACE_STATE_UP)
-	  continue;
-
-	if (neighbour->neighbour_link_timeout < now)
-	  changed = 1;
-
-	neighbour->neighbour_link_timeout = now + interface->tick_ms * 5;
-
-      }else
+      if (transmitter!=my_subscriber || interface_id==-1)
         continue;
+      interface = &overlay_interfaces[interface_id];
+      if (interface->state != INTERFACE_STATE_UP)
+	continue;
     }else if(transmitter == my_subscriber)
       transmitter = NULL;
 
     struct link *link = find_link(neighbour, receiver, transmitter?1:0);
+    if (!link)
+      continue;
 
-    if (link && transmitter == my_subscriber){
-      // TODO combine our link stats with theirs
+    if (transmitter == my_subscriber && receiver == sender && interface_id != -1){
+      // TODO get matching neighbour link and combine scores
+
+      // they can hear us? we can route through them!
+
+      if (neighbour->neighbour_link_timeout < now)
+	changed = 1;
+
+      neighbour->neighbour_link_timeout = now + interface->tick_ms * 5;
       version = link->link_version;
       if (drop_rate != link->drop_rate || transmitter != link->transmitter)
 	version++;
+
+      // process new nacks
+      if (ack_seq != link->last_ack_seq){
+        int i;
+        for (i=0;i<32;i++){
+	  int nack_seq = (ack_seq -1 -i)&0xFF;
+	  if (nack_seq == link->last_ack_seq)
+	    break;
+
+	  if (!(ack_mask & (1<<i))){
+	    overlay_queue_nack(sender, interface, nack_seq);
+            if (config.debug.verbose && config.debug.linkstate)
+              DEBUGF("LINK STATE; neighbour %s missed seq %d from %s",
+	          alloca_tohex_sid(sender->sid), nack_seq, interface->name);
+	  }
+	}
+      }
+      // process ack
+      overlay_queue_ack(sender, interface, ack_seq);
+      link->last_ack_seq = ack_seq;
     }
 
-    if (link && (link->transmitter != transmitter || link->link_version != version)){
+    if (link->transmitter != transmitter || link->link_version != version){
       changed = 1;
       link->transmitter = transmitter;
       link->link_version = version;

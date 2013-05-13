@@ -564,3 +564,13 @@ int overlay_send_tick_packet(struct overlay_interface *interface){
   overlay_fill_send_packet(&packet, gettime_ms());
   return 0;
 }
+
+int overlay_queue_nack(struct subscriber *neighbour, struct overlay_interface *interface, int sequence)
+{
+  return 0;
+}
+
+int overlay_queue_ack(struct subscriber *neighbour, struct overlay_interface *interface, int sequence)
+{
+  return 0;
+}
