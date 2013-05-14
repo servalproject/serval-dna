@@ -670,13 +670,14 @@ int rhizome_obfuscated_manifest_generate_outgoing_bid
   // BIDprivate =SHA512(”moose”+recipientSID+RS+”anconal”+recipientSID+ ”capital gains tax”)
 
   const unsigned char *rs;
-  int rs_len;
+  int rs_len=0;
   if (rhizome_find_secret(sender_sid,&rs_len,&rs))
     return WHYF("Could not find rhizome secret for: '%s'", 
 		alloca_tohex(sender_sid,SID_SIZE));
-  return -1;
+  
   if (rs_len>256) rs_len=256; // limit to first 2048 bits of rhizome secret
-  if (rs_len<128) return WHYF("Rhizome secret too short");
+  if (rs_len<32) 
+    return WHYF("Rhizome secret too short (length = %d, wanted = 32)",rs_len);
   char *rs_hex=alloca_tohex(rs,rs_len);
   
   char secret[1024];
