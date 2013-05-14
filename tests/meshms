@@ -30,12 +30,6 @@ setup() {
    setup_rhizome
 }
 
-setup_createPly() {
-   set_instance +A
-   create_identities 2
-   assert [ $SIDA1 != $SIDA2 ]
-}
-
 doc_createPly="Create thread ply by sending a message"
 setup_createPly() {
     setup
@@ -52,8 +46,10 @@ setup_discriminatePlys() {
 }
 test_discriminatePlys() {
    executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA2 "Message-1"
+   tfw_cat --stderr --stdout
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDA1 '' --and-others
+   tfw_cat --stderr --stdout
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    assertStdoutGrep --stdout --stderr --matches=0 '^0:.*:received:meshms:Message-1'
    assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:unacknowledged:meshms:Message-1'

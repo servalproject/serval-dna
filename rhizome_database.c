@@ -1229,17 +1229,20 @@ int rhizome_meshms_find_conversation(const char *sender_sid_hex,
   if(keyring_find_sid(keyring,&cn,&in,&kp,authorSid.binary))
     {
       // We are the sender, so the BID is precisely determined
-      rhizome_manifest m;
-      sid_t rxSid;
-      if (str_to_sid_t(&rxSid, recipient_sid_hex)==-1)
-	RETURN(WHYF("invalid recipient_sid: '%s'", recipient_sid_hex)); 
-      if (!rhizome_obfuscated_manifest_generate_outgoing_bid
-	  (&m,authorSid.binary,recipient_sid_hex))
-	{
-	  tohex(manifest_id_hex,m.cryptoSignPublic,
-		crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
-	  RETURN(0);
-	}
+      rhizome_manifest *m=rhizome_new_manifest();
+      if (m) {
+	sid_t rxSid;
+	if (str_to_sid_t(&rxSid, recipient_sid_hex)==-1)
+	  RETURN(WHYF("invalid recipient_sid: '%s'", recipient_sid_hex)); 
+	if (!rhizome_obfuscated_manifest_generate_outgoing_bid
+	    (m,authorSid.binary,recipient_sid_hex))
+	  {
+	    tohex(manifest_id_hex,m->cryptoSignPublic,
+		  crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+	    rhizome_manifest_free(m);
+	    RETURN(0);
+	  }
+      }
     }
 
   strbuf b = strbuf_alloca(1024);

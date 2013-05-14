@@ -75,7 +75,7 @@ rhizome_manifest *meshms_find_or_create_manifestid
     WHY("meshms_generate_outgoing_bid() failed");
     rhizome_manifest_free(m);
     return NULL;
-  }
+  }  
 
   // Populate with the fields we know
   rhizome_manifest_set(m, "service", RHIZOME_SERVICE_MESHMS);
@@ -107,60 +107,60 @@ rhizome_manifest *meshms_find_or_create_manifestid
 // meshms add message <sender SID> <recipient SID> <sender DID> <recipient DID> <message text>
 int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
 {
- int ret = 0;
+  int ret = 0;
  
- if (create_serval_instance_dir() == -1)
-   return -1;
- if (!(keyring = keyring_open_instance_cli(parsed)))
-   return -1;
- if (rhizome_opendb() == -1)
-   return -1; 
+  if (create_serval_instance_dir() == -1)
+    return -1;
+  if (!(keyring = keyring_open_instance_cli(parsed)))
+    return -1;
+  if (rhizome_opendb() == -1)
+    return -1; 
 
- if (config.debug.verbose)
+  if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
- //sender_sid = author_sid
- const char *sender_did, *recipient_did, *payload, *sender_sid, *recipient_sid;
+  //sender_sid = author_sid
+  const char *sender_did, *recipient_did, *payload, *sender_sid, *recipient_sid;
 
- // Parse mandatory arguments
- cli_arg(parsed, "sender_sid", &sender_sid, cli_optional_sid, "");
- cli_arg(parsed, "recipient_sid", &recipient_sid, cli_optional_sid, "");
- cli_arg(parsed, "sender_did", &sender_did, cli_optional_did, "");
- cli_arg(parsed, "recipient_did", &recipient_did, cli_optional_did, "");
- cli_arg(parsed, "payload", &payload, NULL, "");
- // Sanity check passed arguments
- if ( (strcmp(sender_did,"") == 0) || (strcmp(recipient_did,"") == 0) || (strcmp(sender_sid,"") == 0) || (strcmp(recipient_sid,"" ) == 0) )
-   { 
-     cli_puts("One or more missing arguments"); cli_delim("\n");
-   } 
- sid_t aSid;
- if (sender_sid[0] && str_to_sid_t(&aSid, sender_sid) == -1)
-   return WHYF("invalid sender_sid: %s", sender_sid);
- if (recipient_sid[0] && str_to_sid_t(&aSid, recipient_sid) == -1)
-   return WHYF("invalid recipient_sid: %s", recipient_sid);
+  // Parse mandatory arguments
+  cli_arg(parsed, "sender_sid", &sender_sid, cli_optional_sid, "");
+  cli_arg(parsed, "recipient_sid", &recipient_sid, cli_optional_sid, "");
+  cli_arg(parsed, "sender_did", &sender_did, cli_optional_did, "");
+  cli_arg(parsed, "recipient_did", &recipient_did, cli_optional_did, "");
+  cli_arg(parsed, "payload", &payload, NULL, "");
+  // Sanity check passed arguments
+  if ( (strcmp(sender_did,"") == 0) || (strcmp(recipient_did,"") == 0) || (strcmp(sender_sid,"") == 0) || (strcmp(recipient_sid,"" ) == 0) )
+    { 
+      cli_puts("One or more missing arguments"); cli_delim("\n");
+    } 
+  sid_t aSid;
+  if (sender_sid[0] && str_to_sid_t(&aSid, sender_sid) == -1)
+    return WHYF("invalid sender_sid: %s", sender_sid);
+  if (recipient_sid[0] && str_to_sid_t(&aSid, recipient_sid) == -1)
+    return WHYF("invalid recipient_sid: %s", recipient_sid);
 
- // Create serialised meshms message for appending to the conversation ply
- unsigned int length_int = 1;
- int offset_buf=0;
- unsigned long long send_date_ll=gettime_ms();
- unsigned char *buffer_serialize;
- buffer_serialize=malloc(strlen(payload)+100); // make sure we have plenty of space
+  // Create serialised meshms message for appending to the conversation ply
+  unsigned int length_int = 1;
+  int offset_buf=0;
+  unsigned long long send_date_ll=gettime_ms();
+  unsigned char *buffer_serialize;
+  buffer_serialize=malloc(strlen(payload)+100); // make sure we have plenty of space
  
- // encode twice: first to work out the final length, then once more to write it correctly
- ret = serialize_meshms(buffer_serialize,&offset_buf,length_int,sender_did, recipient_did, send_date_ll, payload, strlen(payload)+1);
- while(length_int!=offset_buf) {
-   length_int=offset_buf;
-   offset_buf=0;
-   ret = serialize_meshms(buffer_serialize,&offset_buf,length_int,sender_did, recipient_did, send_date_ll, payload, strlen(payload)+1);
- }
+  // encode twice: first to work out the final length, then once more to write it correctly
+  ret = serialize_meshms(buffer_serialize,&offset_buf,length_int,sender_did, recipient_did, send_date_ll, payload, strlen(payload)+1);
+  while(length_int!=offset_buf) {
+    length_int=offset_buf;
+    offset_buf=0;
+    ret = serialize_meshms(buffer_serialize,&offset_buf,length_int,sender_did, recipient_did, send_date_ll, payload, strlen(payload)+1);
+  }
 
- ret=meshms_append_messageblock(sender_sid,recipient_sid,
-				buffer_serialize,length_int);
- free(buffer_serialize);
- return ret;
+  ret=meshms_append_messageblock(sender_sid,recipient_sid,
+				 buffer_serialize,length_int);
+  free(buffer_serialize);
+  return ret;
 }
 
 int meshms_remember_conversation(const char *sender_sid_hex,
-				  rhizome_manifest *m)
+				 rhizome_manifest *m)
 {
   // Check if the BID:recipient pair exists in the meshms conversation log
   // bundle.
@@ -232,7 +232,7 @@ int meshms_remember_conversation(const char *sender_sid_hex,
     rhizome_manifest_free(l);
     return WHYF("malloc(%d) failed when reading existing conversation index.",
 		l->fileLength);
- }
+  }
   if (l->fileLength) {
     int ret = meshms_read_message(l,buffer_file);
     if (ret) {
@@ -304,10 +304,10 @@ int meshms_append_messageblock(const char *sender_sid_hex,
 			       const unsigned char *buffer_serialize,
 			       int length_int)
 {
- // Find the manifest (or create it if it doesn't yet exist)
- rhizome_manifest *m=meshms_find_or_create_manifestid(sender_sid_hex,
-						      recipient_sid_hex,1);
- if (!m) return -1;
+  // Find the manifest (or create it if it doesn't yet exist)
+  rhizome_manifest *m=meshms_find_or_create_manifestid(sender_sid_hex,
+						       recipient_sid_hex,1);
+  if (!m) return WHYF("Could not read manifest");
  
  // Read the bundle file containing the meshms messages
  // (and keep enough space to append the new message
@@ -339,54 +339,19 @@ int meshms_append_messageblock(const char *sender_sid_hex,
  free(buffer_file); 
  
  rhizome_manifest *mout = NULL;
- ret=rhizome_manifest_finalise(m,&mout);
- if (ret<0){
+ ret|=rhizome_manifest_finalise(m,&mout);
+ if (ret<0){  
    cli_printf("Error in manifest finalise");
    rhizome_manifest_free(m);
    if (mout&&mout!=m) rhizome_manifest_free(mout);
    return -1;
  } 
-  
- {
-   char bid[RHIZOME_MANIFEST_ID_STRLEN + 1];
-   rhizome_bytes_to_hex_upper(mout->cryptoSignPublic, bid, RHIZOME_MANIFEST_ID_BYTES);
-   cli_puts("manifestid");
-   cli_delim(":");
-   cli_puts(bid);
-   cli_delim("\n");
- }
- {
-   char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-   rhizome_bytes_to_hex_upper(mout->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
-   cli_puts("secret");
-   cli_delim(":");
-   cli_puts(secret);
-   cli_delim("\n");
- }
- cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version);    cli_delim("\n");
- cli_puts("filesize");
- cli_delim(":");
- cli_printf("%lld", mout->fileLength);
- cli_delim("\n");
- if (mout->fileLength != 0) {
-   cli_puts("filehash");
-   cli_delim(":");
-   cli_puts(mout->fileHexHash);
-   cli_delim("\n");
- }
- const char *name_manifest = rhizome_manifest_get(mout, "name", NULL, 0);
- if (name_manifest) {
-   cli_puts("name");
-   cli_delim(":");
-   cli_puts(name_manifest);
-   cli_delim("\n");
- }
- 
+   
  if (mout != m)
    rhizome_manifest_free(mout);
  rhizome_manifest_free(m); 
  
-  return ret ; 
+ return ret ; 
 }
 
 int app_meshms_list_messages(const struct cli_parsed *parsed, void *context)

@@ -200,6 +200,8 @@ int rhizome_find_secret(const unsigned char *authorSid, int *rs_len, const unsig
 int rhizome_extract_privatekey(rhizome_manifest *m, rhizome_bk_t *bsk)
 {
   IN();
+  if (m->haveSecret) RETURN(0);
+
   unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
   char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
   int result;
@@ -723,6 +725,9 @@ int rhizome_obfuscated_manifest_generate_outgoing_bid
 	crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
   if (crypto_sign_compute_public_key(m->cryptoSignSecret,m->cryptoSignPublic))
     return WHY("Could not compute BID");
+  m->haveSecret=1;
+
+  rhizome_manifest_set(m,"id",alloca_tohex_bid(m->cryptoSignPublic));
 
   // Clear out sensitive data
   bzero(secret,1024);
