@@ -252,8 +252,17 @@ int rhizome_drop_stored_file(const char *id,int maximum_priority);
 int rhizome_manifest_priority(sqlite_retry_state *retry, const char *id);
 int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bufferPAndSize);
 int rhizome_hash_file(rhizome_manifest *m, const char *filename,char *hash_out);
+
 int rhizome_manifest_set_real_sender(rhizome_manifest *m,
 				     const unsigned char *sid_binary);
+int rhizome_obfuscated_manifest_generate_outgoing_bid
+(rhizome_manifest *m,
+ const unsigned char *sender_sid,
+ const char *recipient_sid_hex);
+int rhizome_manifest_set_obfuscated_sender(rhizome_manifest *m,
+					   const char *sender_sid_to_obfuscate_hex,
+					   const char *recipient_sid_hex);
+
 char *rhizome_manifest_get(const rhizome_manifest *m, const char *var, char *out, int maxlen);
 long long  rhizome_manifest_get_ll(rhizome_manifest *m, const char *var);
 int rhizome_manifest_set_ll(rhizome_manifest *m,char *var,long long value);

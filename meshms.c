@@ -23,190 +23,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "log.h"
 #include "conf.h"
 
-int meshms_generate_outgoing_bid(rhizome_manifest *m,
-				 const unsigned char *sender_sid,
-				 const char *recipient_sid_hex)
-{
-  // BIDprivate =SHA512(”moose”+recipientSID+RS+”anconal”+recipientSID+ ”capital gains tax”)
-
-  const unsigned char *rs;
-  int rs_len;
-  if (rhizome_find_secret(sender_sid,&rs_len,&rs))
-    return WHYF("Could not find rhizome secret for: '%s'", 
-		alloca_tohex(sender_sid,SID_SIZE));
-  return -1;
-  if (rs_len>256) rs_len=256; // limit to first 2048 bits of rhizome secret
-  if (rs_len<128) return WHYF("Rhizome secret too short");
-  char *rs_hex=alloca_tohex(rs,rs_len);
-  
-  char secret[1024];
-  unsigned char hash[crypto_hash_sha512_BYTES];
-  snprintf(secret,1024,"moose%s%sanconal%scapital gains tax",
-	   recipient_sid_hex,rs_hex,recipient_sid_hex);  
-  crypto_hash_sha512(hash, (unsigned char *)secret, strlen(secret));
-
-  // The first 256 bits of the hash will be used as the private key of the BID.
-  bcopy(hash,m->cryptoSignSecret,
-	crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
-  if (crypto_sign_compute_public_key(m->cryptoSignSecret,m->cryptoSignPublic))
-    return WHY("Could not compute BID");
-
-  // Clear out sensitive data
-  bzero(secret,1024);
-  bzero(rs_hex,strlen(rs_hex));
-  bzero(hash,crypto_hash_sha512_BYTES);
-  
-  return 0;
-}
-
-
-int meshms_xor_obfuscated_sid(unsigned char *xor_sid,
-			      const unsigned char *known_sid_secret,
-			      const char *other_sid_hex)
-{
-  sid_t otherSid; 
-  if (str_to_sid_t(&otherSid, other_sid_hex)==-1) 
-    return WHY("Could not parse foreign SID");
-
-  unsigned char nm_bytes[crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES];
-  if (crypto_box_curve25519xsalsa20poly1305_beforenm(nm_bytes,
-						     otherSid.binary,
-						     known_sid_secret))
-    return WHY("crypto_box_beforenm() failed");
-
-  char secret[strlen("Salt String 1")+crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES+strlen("Salt String 1")];
-  unsigned char hash[crypto_hash_sha512_BYTES];
-  int o=0,l;
-  l=strlen("Salt String 1");
-  bcopy("Salt String 1",&secret[o],l); o+=l;
-  l=crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES;
-  bcopy(nm_bytes,&secret[o],l); o+=l;
-  l=strlen("Salt String 2");
-  bcopy("Salt String 2",&secret[o],l); o+=l;
-  
-  // Hash secret to get sender obfuscation XOR string
-  crypto_hash_sha512(hash, (unsigned char *)secret, strlen(secret));
-  
-  int i;
-  for(i=0;i<SID_SIZE;i++) xor_sid[i]^=hash[i];
-  
-  // Clear out sensitive data
-  bzero(hash,crypto_hash_sha512_BYTES);
-  bzero(secret,sizeof(secret));
-  bzero(nm_bytes,sizeof(nm_bytes));
-
-  return 0;
-}
-
-int meshms_set_obfuscated_sender(rhizome_manifest *m,
-				 const char *sender_sid_to_obfuscate_hex,
-				 const char *recipient_sid_hex) {
-
-  // Generate shared secret.
-  // This function assumes it is being called from the sending side, and so
-  // the combination is private key of disposable SID (which we will generate)
-  // and public key of the recipient, as already available from the manifest.
-
-  // sender=Disposable\, SID
-  // SS=SharedSecret(Disposable\, SID\, private\, key,Recipient\, SID\, public\, key)
-  // b=SHA512("Salt\, String\,1"+SS+"Salt\, String\,2")
-  // ssender=b\oplus Sender\, SID
-
-  unsigned char disposable_sid[crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES];
-  unsigned char disposable_sid_secret[crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES];  
-  if (crypto_box_curve25519xsalsa20poly1305_keypair(disposable_sid,
-						    disposable_sid_secret)) 
-    return WHY("Failed to generate disposable SID");
-
-  sid_t obSid;
-  if (str_to_sid_t(&obSid, sender_sid_to_obfuscate_hex)==-1) 
-
-  if (meshms_xor_obfuscated_sid(obSid.binary,disposable_sid_secret,
-				recipient_sid_hex))
-    return WHY("Failed to XOR sender to produce obfuscated SID");
-
-  char *sender_hex=alloca_tohex(disposable_sid,SID_SIZE);
-  char *ssender_hex=alloca_tohex(obSid.binary,SID_SIZE);
-  
-  rhizome_manifest_set(m, "sender", sender_hex);
-  rhizome_manifest_set(m, "ssender", ssender_hex);
-
-  return 0;
-}
-
-int manifest_recover_obfuscated_sender(rhizome_manifest *m)
-{
-  // There are two possiblities here:
-  // 1. We made the manifest, and are the real sender.
-  // 2. We are the named recipient, and can attempt to recover the
-  //    real sender.
-  // The process of attempting to recover the real sender is different for each.
-
-  {
-    // Get recipient
-    char *recipient_hex=rhizome_manifest_get(m, "recipient", NULL, 0); 
-    // For each of our SIDs, see if we can reproduce the manifest ID
-    sid_t recipient_sid;
-    if (cf_opt_sid(&recipient_sid,recipient_hex)!=CFOK)
-      return WHYF("Unable to parse recipient sid from manifest");
-
-    sid_t ssender;
-    char *ssender_hex=rhizome_manifest_get(m, "ssender", NULL, 0);
-    if (!ssender_hex||(!ssender_hex[0])||cf_opt_sid(&ssender,ssender_hex)!=CFOK)
-      // missing or mal-formed ssender field, so cannot extract real sender.
-      // this is normal for non obfuscated sender bundles, so don't report an
-      // error.
-      return -1;
-
-    int cn=0,in=0,kp=0;
-    rhizome_manifest *m2=rhizome_new_manifest();
-    while (keyring_find_sid(keyring,&cn,&in,&kp,recipient_sid.binary))
-      {
-	// SID is in keyring->contexts[cn]->identities[in]
-	//                  ->keypairs[kp]->public_key
-
-	// 2. See if we are the recipient
-	if (!memcmp(recipient_sid.binary,
-		    keyring->contexts[cn]->identities[in]
-		    ->keypairs[kp]->public_key,
-		    crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
-	  {
-	    // We are the recipient -- so we can extract the sender
-	    if (!meshms_xor_obfuscated_sid(ssender.binary,
-					  keyring->contexts[cn]->identities[in]
-					  ->keypairs[kp]->private_key,
-					  recipient_hex))
-	      {
-		return rhizome_manifest_set_real_sender(m,ssender.binary);
-	      }
-
-	  }
-
-	// 1. See if we made the manifest
-	if (meshms_generate_outgoing_bid(m2,
-					 keyring->contexts[cn]->identities[in]
-					 ->keypairs[kp]->public_key,
-					 recipient_hex))
-	  continue;
-
-	if (!memcmp(m->cryptoSignPublic,m2->cryptoSignPublic,
-		    crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
-	  {
-	    // Bingo! We created this.
-	    // Set the real sender in the manifest, and return
-	    rhizome_manifest_free(m2);
-	    return rhizome_manifest_set_real_sender(m,
-						    keyring->contexts[cn]
-						    ->identities[in]
-						    ->keypairs[kp]->public_key);
-	  }
-      }
-    rhizome_manifest_free(m2);
-  }
-  // Not found
-  return -1;
-}
-
 rhizome_manifest *meshms_find_or_create_manifestid
 (const char *sender_sid_hex,const char *recipient_sid_hex, int createP)
 {
@@ -253,7 +69,8 @@ rhizome_manifest *meshms_find_or_create_manifestid
     rhizome_manifest_free(m);
     return NULL;
   }
-  if (meshms_generate_outgoing_bid(m,sender_sid.binary,recipient_sid_hex)) {
+  if (rhizome_obfuscated_manifest_generate_outgoing_bid
+      (m,sender_sid.binary,recipient_sid_hex)) {
     WHY("meshms_generate_outgoing_bid() failed");
     rhizome_manifest_free(m);
     return NULL;
@@ -269,7 +86,7 @@ rhizome_manifest *meshms_find_or_create_manifestid
   // 1. Set sender=<a disposable sid> and 
   // 2. ssender=<mechanism to retrieve real sender if you are the recipient>
   // This is done by the following function
-  if (meshms_set_obfuscated_sender(m,sender_sid_hex,recipient_sid_hex)) {
+  if (rhizome_manifest_set_obfuscated_sender(m,sender_sid_hex,recipient_sid_hex)) {
     WHY("meshms_set_obfuscated_sender() failed");
     rhizome_manifest_free(m);
     return NULL;
