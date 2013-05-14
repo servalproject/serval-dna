@@ -1215,17 +1215,39 @@ cleanup:
    The offset argument can be used to return multiple results as a preliminary
    mechanism for dealing with this.
 */
-int rhizome_meshms_find_conversation(const char *sender_sid, 
-				     const char *recipient_sid, 
-				     char *manifest_id, int offset)
+int rhizome_meshms_find_conversation(const char *sender_sid_hex, 
+				     const char *recipient_sid_hex, 
+				     char *manifest_id_hex, int offset)
 {
   IN();
+
+  int cn=0,in=0,kp=0;
+  sid_t authorSid;
+  if (str_to_sid_t(&authorSid, sender_sid_hex)==-1)
+    RETURN(WHYF("invalid sender_sid: '%s'", sender_sid_hex));
+
+  if(keyring_find_sid(keyring,&cn,&in,&kp,authorSid.binary))
+    {
+      // We are the sender, so the BID is precisely determined
+      rhizome_manifest m;
+      sid_t rxSid;
+      if (str_to_sid_t(&rxSid, recipient_sid_hex)==-1)
+	RETURN(WHYF("invalid recipient_sid: '%s'", recipient_sid_hex)); 
+      if (!rhizome_obfuscated_manifest_generate_outgoing_bid
+	  (&m,authorSid.binary,recipient_sid_hex))
+	{
+	  tohex(manifest_id_hex,m.cryptoSignPublic,
+		crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+	  RETURN(0);
+	}
+    }
+
   strbuf b = strbuf_alloca(1024);
   strbuf_sprintf(b, "SELECT id FROM manifests WHERE 1=1");
   
-  if (sender_sid && *sender_sid)
+  if (sender_sid_hex && *sender_sid_hex)
     strbuf_sprintf(b, " AND sender = ?3");
-  if (recipient_sid && *recipient_sid)
+  if (recipient_sid_hex && *recipient_sid_hex)
     strbuf_sprintf(b, " AND recipient = ?4");
   
   strbuf_sprintf(b, " ORDER BY inserttime DESC");
@@ -1244,10 +1266,10 @@ int rhizome_meshms_find_conversation(const char *sender_sid,
   
   int ret = 0;
   
-  if (ret==SQLITE_OK && sender_sid && *sender_sid)
-    ret = sqlite3_bind_text(statement, 3, sender_sid, -1, SQLITE_STATIC);
-  if (ret==SQLITE_OK && recipient_sid && *recipient_sid)
-    ret = sqlite3_bind_text(statement, 4, recipient_sid, -1, SQLITE_STATIC);
+  if (ret==SQLITE_OK && sender_sid_hex && *sender_sid_hex)
+    ret = sqlite3_bind_text(statement, 3, sender_sid_hex, -1, SQLITE_STATIC);
+  if (ret==SQLITE_OK && recipient_sid_hex && *recipient_sid_hex)
+    ret = sqlite3_bind_text(statement, 4, recipient_sid_hex, -1, SQLITE_STATIC);
   
   if (ret!=SQLITE_OK){
     ret = WHYF("Failed to bind parameters: %s", sqlite3_errmsg(rhizome_db));
@@ -1266,7 +1288,7 @@ int rhizome_meshms_find_conversation(const char *sender_sid,
     }
     const char *q_manifestid = (const char *) sqlite3_column_text(statement, 0);
     if (q_manifestid) {
-      bcopy(q_manifestid,manifest_id,
+      bcopy(q_manifestid,manifest_id_hex,
 	    1+min(RHIZOME_MANIFEST_ID_STRLEN,strlen(q_manifestid)));
       ret=0;
       // fall through to clean up and return

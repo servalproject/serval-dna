@@ -49,9 +49,9 @@ rhizome_manifest *meshms_find_or_create_manifestid
       return m; 
     }
     else {
-      WHYF("rhizome_retreive_manifest(%s) failed",manifestid_hex);
-      rhizome_manifest_free(m);
-      return NULL;
+      // The manifest can't be read. This is normal for outgoing plys of meshms
+      // threads, because we compute the BID deterministically.
+      // So just ignore if this happens.
     }
   } else {
     if (!createP) {
