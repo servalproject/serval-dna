@@ -59,11 +59,76 @@ int meshms_generate_outgoing_bid(rhizome_manifest *m,
   return WHY("Not implemented");
 }
 
-int meshms_set_obfuscated_sender(rhizome_manifest *m,
-				 const char *sender_sid_hex) {
-  return -1;
+
+int meshms_xor_obfuscated_sid(unsigned char *xor_sid,
+			      const unsigned char *known_sid_secret,
+			      const char *other_sid_hex)
+{
+  sid_t otherSid; 
+  if (str_to_sid_t(&otherSid, other_sid_hex)==-1) 
+    return WHY("Could not parse foreign SID");
+
+  unsigned char nm_bytes[crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES];
+  if (crypto_box_curve25519xsalsa20poly1305_beforenm(nm_bytes,
+						     otherSid.binary,
+						     known_sid_secret))
+    return WHY("crypto_box_beforenm() failed");
+
+  char secret[strlen("Salt String 1")+crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES+strlen("Salt String 1")];
+  unsigned char hash[crypto_hash_sha512_BYTES];
+  int o=0,l;
+  l=strlen("Salt String 1");
+  bcopy("Salt String 1",&secret[o],l); o+=l;
+  l=crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES;
+  bcopy(nm_bytes,&secret[o],l); o+=l;
+  l=strlen("Salt String 2");
+  bcopy("Salt String 2",&secret[o],l); o+=l;
+  
+  // Hash secret to get sender obfuscation XOR string
+  crypto_hash_sha512(hash, (unsigned char *)secret, strlen(secret));
+  
+  int i;
+  for(i=0;i<SID_SIZE;i++) xor_sid[i]^=hash[i];
+  
+  // Clear out sensitive data
+  bzero(hash,crypto_hash_sha512_BYTES);
+  bzero(secret,sizeof(secret));
+  bzero(nm_bytes,sizeof(nm_bytes));
+
+  return 0;
 }
 
+int meshms_set_obfuscated_sender(rhizome_manifest *m,
+				 const char *sender_sid_to_obfuscate_hex,
+				 const char *recipient_sid_hex) {
+
+  // Generate shared secret.
+  // This function assumes it is being called from the sending side, and so
+  // the combination is private key of disposable SID (which we will generate)
+  // and public key of the recipient, as already available from the manifest.
+
+  // sender=Disposable\, SID
+  // SS=SharedSecret(Disposable\, SID\, private\, key,Recipient\, SID\, public\, key)
+  // b=SHA512("Salt\, String\,1"+SS+"Salt\, String\,2")
+  // ssender=b\oplus Sender\, SID
+
+  unsigned char disposable_sid[crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES];
+  unsigned char disposable_sid_secret[crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES];  
+  if (crypto_box_curve25519xsalsa20poly1305_keypair(disposable_sid,
+						    disposable_sid_secret)) 
+    return WHY("Failed to generate disposable SID");
+
+  sid_t obSid;
+  if (str_to_sid_t(&obSid, sender_sid_to_obfuscate_hex)==-1) 
+
+  if (meshms_xor_obfuscated_sid(obSid.binary,disposable_sid_secret,
+				recipient_sid_hex))
+    return WHY("Failed to XOR sender to produce obfuscated SID");
+
+  // XXX - Write sender and ssender fields in manifest
+
+  return WHY("Not implmented");
+}
 
 rhizome_manifest *meshms_find_or_create_manifestid
 (const char *sender_sid_hex,const char *recipient_sid_hex, int createP)
@@ -121,7 +186,7 @@ rhizome_manifest *meshms_find_or_create_manifestid
   // 1. Set sender=<a disposable sid> and 
   // 2. ssender=<mechanism to retrieve real sender if you are the recipient>
   // This is done by the following function
-  if (meshms_set_obfuscated_sender(m,sender_sid_hex)) {
+  if (meshms_set_obfuscated_sender(m,sender_sid_hex,recipient_sid_hex)) {
     WHY("meshms_set_obfuscated_sender() failed");
     rhizome_manifest_free(m);
     return NULL;
