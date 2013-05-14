@@ -254,7 +254,8 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 int rhizome_hash_file(rhizome_manifest *m, const char *filename,char *hash_out);
 
 int rhizome_meshms_derive_conversation_log_bid(const char *sender_sid_hex,
-					       char *manifestid_hex);
+					       unsigned char *bid_public,
+					       unsigned char *bid_private);
 int rhizome_manifest_set_real_sender(rhizome_manifest *m,
 				     const unsigned char *sid_binary);
 int rhizome_obfuscated_manifest_generate_outgoing_bid

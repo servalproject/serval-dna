@@ -663,7 +663,8 @@ int rhizome_manifest_set_obfuscated_sender(rhizome_manifest *m,
 }
 
 int rhizome_meshms_derive_conversation_log_bid(const char *sender_sid_hex,
-					       char *manifestid_hex)
+					       unsigned char *bid_public,
+					       unsigned char *bid_secret)
 {
   int cn=0,in=0,kp=0;
   sid_t sender_sid;
@@ -685,10 +686,11 @@ int rhizome_meshms_derive_conversation_log_bid(const char *sender_sid_hex,
   bcopy("concentrativeness",&secret[o],l); o+=l;
   crypto_hash_sha512(hash, (unsigned char *)secret, o);
 
-  tohex(manifestid_hex,hash,RHIZOME_MANIFEST_ID_BYTES);
-
+  bcopy(&hash[0],bid_secret,crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
   bzero(hash,crypto_hash_sha512_BYTES);
   bzero(secret,sizeof(secret));
+
+  if (crypto_sign_compute_public_key(bid_secret,bid_public)) return -1;
   return 0;
 }
 

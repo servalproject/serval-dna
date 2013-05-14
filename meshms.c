@@ -183,30 +183,41 @@ int meshms_remember_conversation(const char *sender_sid_hex,
   }
 
   // Check if there is an existing one, if so, read it and return it.
-  char manifestid_hex[RHIZOME_MANIFEST_ID_STRLEN+1];
-
-  if (rhizome_meshms_derive_conversation_log_bid(sender_sid_hex,manifestid_hex))
+  if (rhizome_meshms_derive_conversation_log_bid(sender_sid_hex,
+						 l->cryptoSignPublic,
+						 l->cryptoSignSecret))
     return WHYF("Could not derive conversation log bid for sid: %s",sender_sid_hex);
-
+  char manifestid_hex[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2+1];
+  tohex(manifestid_hex,l->cryptoSignPublic,
+	crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+  
   int ret = rhizome_retrieve_manifest(manifestid_hex, l);
   if (!ret) {
     // Manifest already exists, nothing to do just yet.
   } else {
     // Create new manifest
+    if (rhizome_meshms_derive_conversation_log_bid(sender_sid_hex,
+						   l->cryptoSignPublic,
+						   l->cryptoSignSecret))
+      return WHYF("Could not derive conversation log bid for sid: %s",sender_sid_hex);
+    
     rhizome_manifest_set(l, "service", RHIZOME_SERVICE_FILE);
     rhizome_manifest_set(l, "crypt", "1");
 
-    // Ask rhizome to prepare the missing parts (this will automatically determine
-    // whether to encrypt based on whether receipient was set to broadcast or not)
-    sid_t authorSid;
-    if (cf_opt_sid(&authorSid,sender_sid_hex)) {
-      rhizome_manifest_free(l);
-      return WHYF("Failed to parse sender SID");
-    }
-    if (rhizome_fill_manifest(l,NULL,&authorSid,NULL)) {
+    // Ask rhizome to prepare the missing parts
+    if (rhizome_fill_manifest(l,NULL,NULL,NULL)) {
       rhizome_manifest_free(l);
       return WHY("rhizome_fill_manifest() failed");
     }
+
+    rhizome_manifest_del(l,"date");
+    rhizome_manifest_del(l,"author");
+    rhizome_manifest_del(l,"sender");
+    rhizome_manifest_del(l,"recipient");
+
+    uint64_t initial_version=0;
+    urandombytes((unsigned char *)&initial_version,sizeof(uint64_t));
+    rhizome_manifest_set_ll(l,"version",initial_version);
   }
 
   // We now have the manifest, so read the associated file, if any,
