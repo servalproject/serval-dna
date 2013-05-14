@@ -842,4 +842,9 @@ int link_state_announce_links();
 
 int generate_nonce(unsigned char *nonce,int bytes);
 
+int _crypto_sign_compute_public_key(struct __sourceloc __whence,
+				    const unsigned char *skin,
+				    const unsigned char *pk);
+#define crypto_sign_compute_public_key(skin,pk) _crypto_sign_compute_public_key(__WHENCE__,skin,pk)
+
 #endif // __SERVALD_SERVALD_H

@@ -1,3 +1,25 @@
+/*
+Serval Distributed Numbering Architecture (DNA)
+Copyright (C) 2010-2013 Paul Gardner-Stephen
+ 
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+ 
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+ 
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
+
+#include "crypto_sign_edwards25519sha512batch.h"
+#include "nacl/src/crypto_sign_edwards25519sha512batch_ref/ge.h"
+
 #include "serval.h"
 #include "overlay_address.h"
 #include "crypto.h"
@@ -94,4 +116,25 @@ int crypto_sign_message(struct subscriber *source, unsigned char *content, int b
   int ret=crypto_create_signature(key, hash, crypto_hash_sha512_BYTES, &content[*content_len], &sig_length);
   *content_len+=sig_length;
   return ret;
+}
+
+int _crypto_sign_compute_public_key(struct __sourceloc __whence,
+				    const unsigned char *skin,
+				    const unsigned char *pk)
+{
+  IN();
+
+  unsigned char h[64];
+  ge_p3 A;
+
+  crypto_hash_sha512(h,skin,32);
+  h[0] &= 248;
+  h[31] &= 63;
+  h[31] |= 64;
+
+  ge_scalarmult_base(&A,h);
+  ge_p3_tobytes((unsigned char *)pk,&A);
+
+  RETURN(0);
+  OUT();
 }
