@@ -210,7 +210,6 @@ int meshms_remember_conversation(const char *sender_sid_hex,
       return WHY("rhizome_fill_manifest() failed");
     }
 
-    rhizome_manifest_del(l,"date");
     rhizome_manifest_del(l,"author");
     rhizome_manifest_del(l,"sender");
     rhizome_manifest_del(l,"recipient");

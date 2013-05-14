@@ -177,7 +177,7 @@ int rhizome_manifest_check_sanity(rhizome_manifest *m_in)
   if (service == NULL || !service[0])
       return WHY("Manifest missing 'service' field");
   if (rhizome_manifest_get_ll(m_in, "date") == -1)
-      return WHY("Manifest missing 'date' field");
+    return WHY("Manifest missing 'date' field");
   
   /* Get manifest version number. */
   m_in->version = rhizome_manifest_get_ll(m_in, "version");
