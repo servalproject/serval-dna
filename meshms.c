@@ -56,7 +56,7 @@ int meshms_generate_outgoing_bid(rhizome_manifest *m,
   bzero(rs_hex,strlen(rs_hex));
   bzero(hash,crypto_hash_sha512_BYTES);
   
-  return WHY("Not implemented");
+  return 0;
 }
 
 
@@ -125,9 +125,12 @@ int meshms_set_obfuscated_sender(rhizome_manifest *m,
 				recipient_sid_hex))
     return WHY("Failed to XOR sender to produce obfuscated SID");
 
-  // XXX - Write sender and ssender fields in manifest
-
-  return WHY("Not implmented");
+  char *sender_hex=alloca_tohex(disposable_sid,SID_SIZE);
+  char *ssender_hex=alloca_tohex(obSid.binary,SID_SIZE);
+  
+  rhizome_manifest_set(m, "sender", sender_hex);
+  rhizome_manifest_set(m, "ssender", ssender_hex);
+  return 0;
 }
 
 rhizome_manifest *meshms_find_or_create_manifestid
