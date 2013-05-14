@@ -23,6 +23,48 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "log.h"
 #include "conf.h"
 
+int meshms_generate_outgoing_bid(rhizome_manifest *m,
+				 const char *sender_sid_hex,
+				 const char *recipient_sid_hex)
+{
+  // BIDprivate =SHA512(”moose”+recipientSID+RS+”anconal”+recipientSID+ ”capital gains tax”)
+
+  const unsigned char *rs;
+  int rs_len;
+  sid_t authorSid;
+  if (str_to_sid_t(&authorSid, sender_sid_hex)==-1)
+    return WHYF("invalid sender_sid: '%s'", sender_sid_hex);
+  if (rhizome_find_secret(authorSid.binary,&rs_len,&rs))
+    return WHYF("Could not find rhizome secret for: '%s'", sender_sid_hex);
+  return -1;
+  if (rs_len>256) rs_len=256; // limit to first 2048 bits of rhizome secret
+  if (rs_len<128) return WHYF("Rhizome secret too short");
+  char *rs_hex=alloca_tohex(rs,rs_len);
+  
+  char secret[1024];
+  unsigned char hash[crypto_hash_sha512_BYTES];
+  snprintf(secret,1024,"moose%s%sanconal%scapital gains tax",
+	   recipient_sid_hex,rs_hex,recipient_sid_hex);  
+  crypto_hash_sha512(hash, (unsigned char *)secret, strlen(secret));
+
+  // The first 256 bits of the hash will be used as the private key of the BID.
+  if (crypto_sign_compute_public_key(m->cryptoSignSecret,m->cryptoSignPublic))
+    return WHY("Could not compute BID");
+
+  // Clear out sensitive data
+  bzero(secret,1024);
+  bzero(rs_hex,strlen(rs_hex));
+  bzero(hash,crypto_hash_sha512_BYTES);
+  
+  return WHY("Not implemented");
+}
+
+int meshms_set_obfuscated_sender(rhizome_manifest *m,
+				 const char *sender_sid_hex) {
+  return -1;
+}
+
+
 rhizome_manifest *meshms_find_or_create_manifestid
 (const char *sender_sid_hex,const char *recipient_sid_hex, int createP)
 {
@@ -62,17 +104,35 @@ rhizome_manifest *meshms_find_or_create_manifestid
 
   // No existing manifest, so create one:
 
+  // Generate the deterministic BID for this sender recipient pair
+  if (meshms_generate_outgoing_bid(m,sender_sid_hex,recipient_sid_hex)) {
+    WHY("meshms_generate_outgoing_bid() failed");
+    rhizome_manifest_free(m);
+    return NULL;
+  }
+
   // Populate with the fields we know
   rhizome_manifest_set(m, "service", RHIZOME_SERVICE_MESHMS);
-  rhizome_manifest_set(m,"sender",sender_sid_hex);
   rhizome_manifest_set(m,"recipient",recipient_sid_hex);
+  // DO NOT put the real sender in, because that would reveal people's social
+  // graph to everyone trivially.  
+  // See github.com/servalproject/serval-docs/securing-meshms/ for more info.
+  // Instead, according to the above scheme, we:
+  // 1. Set sender=<a disposable sid> and 
+  // 2. ssender=<mechanism to retrieve real sender if you are the recipient>
+  // This is done by the following function
+  if (meshms_set_obfuscated_sender(m,sender_sid_hex)) {
+    WHY("meshms_set_obfuscated_sender() failed");
+    rhizome_manifest_free(m);
+    return NULL;
+  }
 
   // Ask rhizome to prepare the missing parts (this will automatically determine
   // whether to encrypt based on whether receipient was set to broadcast or not)
   if (rhizome_fill_manifest(m,NULL,&authorSid,NULL)) {
     WHY("rhizome_fill_manifest() failed");
-      rhizome_manifest_free(m);
-      return NULL;
+    rhizome_manifest_free(m);
+    return NULL;
   }
 
   return m;
