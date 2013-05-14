@@ -49,9 +49,10 @@ rhizome_manifest *meshms_find_or_create_manifestid
       return m; 
     }
     else {
-      // The manifest can't be read. This is normal for outgoing plys of meshms
-      // threads, because we compute the BID deterministically.
-      // So just ignore if this happens.
+      // The manifest can't be read. This is normal for the first message in an
+      // outgoing plys of meshms threads, because we compute the BID
+      // deterministically.
+      // So we can just ignore this.
     }
   } else {
     if (!createP) {
@@ -158,13 +159,58 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
  return ret;
 }
 
-int meshms_append_messageblock(const char *sender_sid,
-			       const char *recipient_sid,
+int meshms_remember_conversation(const char *sender_sid_hex,
+				  rhizome_manifest *m)
+{
+  // Check if the BID:recipient pair exists in the meshms conversation log
+  // bundle.
+
+  rhizome_manifest *l = rhizome_new_manifest();
+  if (!l) {
+    return WHY("Manifest struct could not be allocated -- not added to rhizome"); 
+  }
+
+  // Check if there is an existing one, if so, read it and return it.
+  char manifestid_hex[RHIZOME_MANIFEST_ID_STRLEN+1];
+  int ret = rhizome_retrieve_manifest(manifestid_hex, l);
+  if (!ret) {
+    // Manifest already exists, nothing to do just yet.
+  } else {
+    // Create new manifest
+
+    rhizome_manifest_set(l, "service", RHIZOME_SERVICE_FILE);
+    rhizome_manifest_set(l, "crypt", "1");
+
+    // Ask rhizome to prepare the missing parts (this will automatically determine
+    // whether to encrypt based on whether receipient was set to broadcast or not)
+    sid_t authorSid;
+    if (cf_opt_sid(&authorSid,sender_sid_hex)) {
+      rhizome_manifest_free(l);
+      return WHYF("Failed to parse sender SID");
+    }
+    if (rhizome_fill_manifest(l,NULL,&authorSid,NULL)) {
+      rhizome_manifest_free(l);
+      return WHY("rhizome_fill_manifest() failed");
+    }
+  }
+
+  // We now have the manifest, so read the associated file, if any,
+  // store the new record if necessary, and write back updated bundle if
+  // the record was stored.
+  
+  rhizome_manifest_free(l);
+
+  return 0;
+}
+
+int meshms_append_messageblock(const char *sender_sid_hex,
+			       const char *recipient_sid_hex,
 			       const unsigned char *buffer_serialize,
 			       int length_int)
 {
  // Find the manifest (or create it if it doesn't yet exist)
- rhizome_manifest *m=meshms_find_or_create_manifestid(sender_sid,recipient_sid,1);
+ rhizome_manifest *m=meshms_find_or_create_manifestid(sender_sid_hex,
+						      recipient_sid_hex,1);
  if (!m) return -1;
  
  // Read the bundle file containing the meshms messages
@@ -181,6 +227,10 @@ int meshms_append_messageblock(const char *sender_sid,
    rhizome_manifest_free(m);
    return -1;   
  }
+ // If this is the first message sent, remember the conversation for later
+ // recall.
+ if (!m->fileLength) meshms_remember_conversation(sender_sid_hex,m);
+
  // Append the serialised message, and update file length
  bcopy(buffer_serialize,&buffer_file[m->fileLength],length_int);
  m->fileLength += length_int;
