@@ -41,6 +41,7 @@ int dofile(char *file)
       }
       if (!strncmp(&line[i],"IN()",4)) { inoutActive=1; savedActive=1; }
       if (!strncmp(&line[i],"OUT()",5)) inoutActive=0;
+      if (!strncmp(&line[i],"RETURN(",7)) inoutActive=0;
       if (inoutActive&&
 	  (!strncmp(&line[i],"return",6)))
 	{
