@@ -43,7 +43,7 @@ setup_createPly() {
 test_createPly() {
    executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA2 "Message-1"
    executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 '' --and-others
 }
 
 doc_discriminatePlys="List messages doesn't use same bundle for each ply"
@@ -53,7 +53,7 @@ setup_discriminatePlys() {
 test_discriminatePlys() {
    executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA2 "Message-1"
    executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 '' --and-others
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    assertStdoutGrep --stdout --stderr --matches=0 '^0:.*:received:meshms:Message-1'
    assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:unacknowledged:meshms:Message-1'
@@ -67,7 +67,7 @@ setup_reflectedPly() {
 test_reflectedPly() {
    executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA1 "Message-1"
    executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 '' --and-others
    executeOk_servald meshms list messages $SIDA1 $SIDA1
    assertStdoutLineCount '==' 4
    assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-1'
@@ -81,7 +81,7 @@ setup_reflectedPly() {
 test_reflectedPly() {
    executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA1 "Message-1"
    executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 '' --and-others
    executeOk_servald meshms list messages $SIDA1 $SIDA1
    assertStdoutLineCount '==' 4
    assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-1'
@@ -95,7 +95,7 @@ setup_twoPly() {
 test_twoPly() {
    executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA2 "Message-1a"
    executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 '' --and-others
    executeOk_servald meshms add message 12345 67890 $SIDA2 $SIDA1 "Message-2b"
    executeOk_servald meshms list messages $SIDA1 $SIDA1
    assertStdoutLineCount '==' 2
@@ -153,7 +153,7 @@ setup_ack() {
 test_ack() {
    executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDA2 "Message-1a"
    executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=1 --author=$SIDA1 ''
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 '' --and-others
    executeOk_servald meshms add message 12345 67890 $SIDA2 $SIDA1 "Message-2b"
    executeOk_servald meshms list messages $SIDA1 $SIDA1
    assertStdoutLineCount '==' 2
