@@ -421,6 +421,14 @@ int rhizome_manifest_del(rhizome_manifest *m, const char *var)
   return ret;
 }
 
+int rhizome_manifest_set_real_sender(rhizome_manifest *m,
+				     const unsigned char *sid_binary)
+{
+  m->obfuscatedSenderP=1;
+  bcopy(sid_binary,m->realSender,SID_SIZE);
+  return 0;
+}
+
 int rhizome_manifest_set(rhizome_manifest *m, const char *var, const char *value)
 {
   if (!m)

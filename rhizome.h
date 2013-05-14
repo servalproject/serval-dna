@@ -113,6 +113,12 @@ typedef struct rhizome_manifest {
   unsigned char cryptoSignPublic[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
   unsigned char cryptoSignSecret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
 
+  /* Obfuscated senders are used to conceal the sender of a meshms journal from 
+     all but the intended recipient. This is to prevent trivial discovery of the
+     social graph of all users of a Serval Mesh. */
+  int obfuscatedSenderP;
+  unsigned char realSender[SID_SIZE];
+
   int var_count;
   char *vars[MAX_MANIFEST_VARS];
   char *values[MAX_MANIFEST_VARS];
@@ -246,6 +252,8 @@ int rhizome_drop_stored_file(const char *id,int maximum_priority);
 int rhizome_manifest_priority(sqlite_retry_state *retry, const char *id);
 int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bufferPAndSize);
 int rhizome_hash_file(rhizome_manifest *m, const char *filename,char *hash_out);
+int rhizome_manifest_set_real_sender(rhizome_manifest *m,
+				     const unsigned char *sid_binary);
 char *rhizome_manifest_get(const rhizome_manifest *m, const char *var, char *out, int maxlen);
 long long  rhizome_manifest_get_ll(rhizome_manifest *m, const char *var);
 int rhizome_manifest_set_ll(rhizome_manifest *m,char *var,long long value);

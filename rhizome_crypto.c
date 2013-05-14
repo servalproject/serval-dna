@@ -596,13 +596,21 @@ int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk)
   if (m->payloadEncryption!=1)
     return WHYF("Unsupported encryption scheme %d", m->payloadEncryption);
   
-  char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
+  char *sender = NULL;
+  sid_t sender_sid, recipient_sid;
+  if (m->obfuscatedSenderP) {
+    sender="obfuscated";
+    memcpy(m->realSender,sender_sid.binary,SID_SIZE);
+  }
+  else {
+    sender=rhizome_manifest_get(m, "sender", NULL, 0);
+    if (cf_opt_sid(&sender_sid, sender)!=CFOK)
+      return WHYF("Unable to parse sender sid");
+  }
+
   char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
   
   if (sender && recipient){
-    sid_t sender_sid, recipient_sid;
-    if (cf_opt_sid(&sender_sid, sender)!=CFOK)
-      return WHYF("Unable to parse sender sid");
     if (cf_opt_sid(&recipient_sid, recipient)!=CFOK)
       return WHYF("Unable to parse recipient sid");
     

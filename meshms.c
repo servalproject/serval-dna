@@ -24,18 +24,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 
 int meshms_generate_outgoing_bid(rhizome_manifest *m,
-				 const char *sender_sid_hex,
+				 const unsigned char *sender_sid,
 				 const char *recipient_sid_hex)
 {
   // BIDprivate =SHA512(”moose”+recipientSID+RS+”anconal”+recipientSID+ ”capital gains tax”)
 
   const unsigned char *rs;
   int rs_len;
-  sid_t authorSid;
-  if (str_to_sid_t(&authorSid, sender_sid_hex)==-1)
-    return WHYF("invalid sender_sid: '%s'", sender_sid_hex);
-  if (rhizome_find_secret(authorSid.binary,&rs_len,&rs))
-    return WHYF("Could not find rhizome secret for: '%s'", sender_sid_hex);
+  if (rhizome_find_secret(sender_sid,&rs_len,&rs))
+    return WHYF("Could not find rhizome secret for: '%s'", 
+		alloca_tohex(sender_sid,SID_SIZE));
   return -1;
   if (rs_len>256) rs_len=256; // limit to first 2048 bits of rhizome secret
   if (rs_len<128) return WHYF("Rhizome secret too short");
@@ -48,6 +46,8 @@ int meshms_generate_outgoing_bid(rhizome_manifest *m,
   crypto_hash_sha512(hash, (unsigned char *)secret, strlen(secret));
 
   // The first 256 bits of the hash will be used as the private key of the BID.
+  bcopy(hash,m->cryptoSignSecret,
+	crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
   if (crypto_sign_compute_public_key(m->cryptoSignSecret,m->cryptoSignPublic))
     return WHY("Could not compute BID");
 
@@ -130,7 +130,81 @@ int meshms_set_obfuscated_sender(rhizome_manifest *m,
   
   rhizome_manifest_set(m, "sender", sender_hex);
   rhizome_manifest_set(m, "ssender", ssender_hex);
+
   return 0;
+}
+
+int manifest_recover_obfuscated_sender(rhizome_manifest *m)
+{
+  // There are two possiblities here:
+  // 1. We made the manifest, and are the real sender.
+  // 2. We are the named recipient, and can attempt to recover the
+  //    real sender.
+  // The process of attempting to recover the real sender is different for each.
+
+  {
+    // Get recipient
+    char *recipient_hex=rhizome_manifest_get(m, "recipient", NULL, 0); 
+    // For each of our SIDs, see if we can reproduce the manifest ID
+    sid_t recipient_sid;
+    if (cf_opt_sid(&recipient_sid,recipient_hex)!=CFOK)
+      return WHYF("Unable to parse recipient sid from manifest");
+
+    sid_t ssender;
+    char *ssender_hex=rhizome_manifest_get(m, "ssender", NULL, 0);
+    if (!ssender_hex||(!ssender_hex[0])||cf_opt_sid(&ssender,ssender_hex)!=CFOK)
+      // missing or mal-formed ssender field, so cannot extract real sender.
+      // this is normal for non obfuscated sender bundles, so don't report an
+      // error.
+      return -1;
+
+    int cn=0,in=0,kp=0;
+    rhizome_manifest *m2=rhizome_new_manifest();
+    while (keyring_find_sid(keyring,&cn,&in,&kp,recipient_sid.binary))
+      {
+	// SID is in keyring->contexts[cn]->identities[in]
+	//                  ->keypairs[kp]->public_key
+
+	// 2. See if we are the recipient
+	if (!memcmp(recipient_sid.binary,
+		    keyring->contexts[cn]->identities[in]
+		    ->keypairs[kp]->public_key,
+		    crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
+	  {
+	    // We are the recipient -- so we can extract the sender
+	    if (!meshms_xor_obfuscated_sid(ssender.binary,
+					  keyring->contexts[cn]->identities[in]
+					  ->keypairs[kp]->private_key,
+					  recipient_hex))
+	      {
+		return rhizome_manifest_set_real_sender(m,ssender.binary);
+	      }
+
+	  }
+
+	// 1. See if we made the manifest
+	if (meshms_generate_outgoing_bid(m2,
+					 keyring->contexts[cn]->identities[in]
+					 ->keypairs[kp]->public_key,
+					 recipient_hex))
+	  continue;
+
+	if (!memcmp(m->cryptoSignPublic,m2->cryptoSignPublic,
+		    crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
+	  {
+	    // Bingo! We created this.
+	    // Set the real sender in the manifest, and return
+	    rhizome_manifest_free(m2);
+	    return rhizome_manifest_set_real_sender(m,
+						    keyring->contexts[cn]
+						    ->identities[in]
+						    ->keypairs[kp]->public_key);
+	  }
+      }
+    rhizome_manifest_free(m2);
+  }
+  // Not found
+  return -1;
 }
 
 rhizome_manifest *meshms_find_or_create_manifestid
@@ -173,7 +247,13 @@ rhizome_manifest *meshms_find_or_create_manifestid
   // No existing manifest, so create one:
 
   // Generate the deterministic BID for this sender recipient pair
-  if (meshms_generate_outgoing_bid(m,sender_sid_hex,recipient_sid_hex)) {
+  sid_t sender_sid; 
+  if (cf_opt_sid(&sender_sid,sender_sid_hex)) {
+    WHY("Could not parse sender SID");
+    rhizome_manifest_free(m);
+    return NULL;
+  }
+  if (meshms_generate_outgoing_bid(m,sender_sid.binary,recipient_sid_hex)) {
     WHY("meshms_generate_outgoing_bid() failed");
     rhizome_manifest_free(m);
     return NULL;
