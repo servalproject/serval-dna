@@ -613,7 +613,7 @@ int rhizome_manifest_xor_obfuscated_sid(unsigned char *xor_sid,
   bcopy("Salt String 2",&secret[o],l); o+=l;
   
   // Hash secret to get sender obfuscation XOR string
-  crypto_hash_sha512(hash, (unsigned char *)secret, strlen(secret));
+  crypto_hash_sha512(hash, (unsigned char *)secret, o);
   
   int i;
   for(i=0;i<SID_SIZE;i++) xor_sid[i]^=hash[i];
@@ -659,6 +659,36 @@ int rhizome_manifest_set_obfuscated_sender(rhizome_manifest *m,
   rhizome_manifest_set(m, "sender", sender_hex);
   rhizome_manifest_set(m, "ssender", ssender_hex);
 
+  return 0;
+}
+
+int rhizome_meshms_derive_conversation_log_bid(const char *sender_sid_hex,
+					       char *manifestid_hex)
+{
+  int cn=0,in=0,kp=0;
+  sid_t sender_sid;
+  if (cf_opt_sid(&sender_sid,sender_sid_hex)) 
+    return WHYF("Could not parse SID: %s",sender_sid_hex);
+  if (!keyring_find_sid(keyring,&cn,&in,&kp,sender_sid.binary))
+    return WHYF("Sender SID doesn't seem to be one of mine: %s",sender_sid_hex);
+
+  char secret[1024];
+  unsigned char hash[crypto_hash_sha512_BYTES];
+  int o=0,l;
+  l=strlen("incorrection");
+  bcopy("incorrection",&secret[o],l); o+=l;
+  l=crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES;
+  bcopy(keyring->contexts[cn]->identities[in]
+	->keypairs[kp]->private_key,
+	&secret[o],l); o+=l;
+  l=strlen("concentrativeness");
+  bcopy("concentrativeness",&secret[o],l); o+=l;
+  crypto_hash_sha512(hash, (unsigned char *)secret, o);
+
+  tohex(manifestid_hex,hash,RHIZOME_MANIFEST_ID_BYTES);
+
+  bzero(hash,crypto_hash_sha512_BYTES);
+  bzero(secret,sizeof(secret));
   return 0;
 }
 

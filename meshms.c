@@ -165,6 +165,18 @@ int meshms_remember_conversation(const char *sender_sid_hex,
   // Check if the BID:recipient pair exists in the meshms conversation log
   // bundle.
 
+  char *recipient_hex=rhizome_manifest_get(m,"recipient",NULL,0);
+  sid_t rxSid,txSid;
+  if (!recipient_hex||!recipient_hex[0]
+      ||cf_opt_sid(&rxSid,recipient_hex)||cf_opt_sid(&txSid,sender_sid_hex))
+    return WHY("sender or recipient SID could not be parsed.");
+
+  // Generate conversation row for remembering
+  unsigned char row[SID_SIZE+crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+  bcopy(&rxSid.binary,&row[0],SID_SIZE);
+  bcopy(m->cryptoSignPublic,&row[SID_SIZE],
+	crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+
   rhizome_manifest *l = rhizome_new_manifest();
   if (!l) {
     return WHY("Manifest struct could not be allocated -- not added to rhizome"); 
@@ -172,12 +184,15 @@ int meshms_remember_conversation(const char *sender_sid_hex,
 
   // Check if there is an existing one, if so, read it and return it.
   char manifestid_hex[RHIZOME_MANIFEST_ID_STRLEN+1];
+
+  if (rhizome_meshms_derive_conversation_log_bid(sender_sid_hex,manifestid_hex))
+    return WHYF("Could not derive conversation log bid for sid: %s",sender_sid_hex);
+
   int ret = rhizome_retrieve_manifest(manifestid_hex, l);
   if (!ret) {
     // Manifest already exists, nothing to do just yet.
   } else {
     // Create new manifest
-
     rhizome_manifest_set(l, "service", RHIZOME_SERVICE_FILE);
     rhizome_manifest_set(l, "crypt", "1");
 
@@ -197,6 +212,77 @@ int meshms_remember_conversation(const char *sender_sid_hex,
   // We now have the manifest, so read the associated file, if any,
   // store the new record if necessary, and write back updated bundle if
   // the record was stored.
+
+  // We allow space for 256 more records, because we add a random number of 
+  // empty records onto the end when it fills up, and allocate 256 entries
+  // initially. The idea is to make it harder for an adversary to estimate the
+  // size of your social graph.
+  unsigned char *buffer_file=malloc(l->fileLength+sizeof(row)*256);  
+  if (!buffer_file) {
+    rhizome_manifest_free(l);
+    return WHYF("malloc(%d) failed when reading existing conversation index.",
+		l->fileLength);
+ }
+  if (l->fileLength) {
+    int ret = meshms_read_message(l,buffer_file);
+    if (ret) {
+      rhizome_manifest_free(l);
+      return WHYF("meshms_read_message() failed.");
+    }
+  }
+
+  int i;
+  for(i=0;i<l->fileLength;i+=sizeof(row)) {
+    if (!bcmp(row,&buffer_file[i],sizeof(row))) {
+      // Conversation has already been remembered
+      rhizome_manifest_free(l);
+      return 0;
+    }
+    int j;
+    for(j=0;j<sizeof(row);j++) if (buffer_file[i+j]) break;
+    if (j==sizeof(row)) {
+      // Found an empty row -- we can store it here
+      bcopy(row,&buffer_file[i],sizeof(row));
+      break;
+    }
+  }
+  if (i==l->fileLength) {
+    // There were no empty rows in the file.
+    // Write to next slot, and then decide how many empty slots to add.
+    bcopy(row,&buffer_file[i],sizeof(row));
+
+    // Make large initial allocation so that it is not easy to estimate the size
+    // of someone's social graph.  In particular, we don't want an adversary to 
+    // be able to easily pick people with many contacts from those with few
+    // contacts.
+    // For simplicity we will just add 256 records at a time.
+    l->fileLength+=256*sizeof(row);
+    // zero the unused slots so that we know we can use them later.
+    // XXX - This does create a very big crib. Will have to think about a better
+    // solution later.
+    bzero(&buffer_file[i+sizeof(row)],l->fileLength-i-sizeof(row));
+    rhizome_manifest_set_ll(l, "filesize", l->fileLength);  
+  }
+  // Update the version. Advance by a random amount so that it is not as easy to
+  // guess how many times it has been advanced (this doesn't help greatly, but there
+  // is no point making life easier than necessary for an adversary).
+  unsigned short advance;
+  urandombytes((unsigned char *)&advance,2);
+  uint64_t old_version=rhizome_manifest_get_ll(l,"version");
+  uint64_t new_version=old_version+advance;
+  rhizome_manifest_set_ll(l,"version",new_version);
+
+  rhizome_add_file(l,(char *)buffer_file,1,l->fileLength);
+  free(buffer_file);
+
+  rhizome_manifest *mout = NULL;
+  ret=rhizome_manifest_finalise(l,&mout);
+  if (ret<0){
+    cli_printf("Error in manifest finalise");
+    rhizome_manifest_free(l);
+    if (mout&&mout!=l) rhizome_manifest_free(mout);
+    return -1;
+  }
   
   rhizome_manifest_free(l);
 
