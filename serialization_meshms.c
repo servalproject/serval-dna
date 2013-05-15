@@ -125,7 +125,7 @@ int decode_length_backwards(unsigned char *buffer,int offset,
   *length=0;
   switch(buffer[offset]) {
   case 0xff:
-    offset-=4;
+    offset-=2;
     int i;
     for(i=0;i<16;i+=8) (*length)|=buffer[offset++]<<i;    
     return 0;
