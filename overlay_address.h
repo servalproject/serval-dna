@@ -95,6 +95,7 @@ struct broadcast{
 
 struct decode_context{
   struct overlay_interface *interface;
+  int sender_interface;
   struct sockaddr_in addr;
   int invalid_addresses;
   struct overlay_frame *please_explain;

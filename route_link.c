@@ -744,6 +744,22 @@ int link_state_ack_soon(struct subscriber *subscriber){
   return 0;
 }
 
+// our neighbour is sending a duplicate frame, did we see the original?
+int link_received_duplicate(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int previous_seq, int unicast)
+{
+  // TODO better handling of unicast routes
+  if (unicast)
+    return 0;
+
+  struct neighbour *neighbour = get_neighbour(subscriber, 1);
+  struct neighbour_link *link=get_neighbour_link(neighbour, interface, sender_interface, unicast);
+
+  int offset = (link->ack_sequence - 1 - previous_seq)&0xFF;
+  if (offset < 32)
+    return link->ack_mask & (1<<offset);
+  return 0;
+}
+
 // track stats for receiving packets from this neighbour
 int link_received_packet(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int sender_seq, int unicast)
 {

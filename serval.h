@@ -518,10 +518,6 @@ int overlay_packet_init_header(int encapsulation,
 			       struct decode_context *context, struct overlay_buffer *buff, 
 			       struct subscriber *destination, 
 			       char unicast, char interface, int seq);
-int overlay_frame_build_header(struct decode_context *context, struct overlay_buffer *buff, 
-			       int queue, int type, int modifiers, int ttl, 
-			       struct broadcast *broadcast, struct subscriber *next_hop,
-			       struct subscriber *destination, struct subscriber *source);
 int overlay_interface_args(const char *arg);
 void overlay_rhizome_advertise(struct sched_ent *alarm);
 int overlay_add_local_identity(unsigned char *s);
@@ -829,6 +825,7 @@ extern long long bundles_available;
 extern char crash_handler_clue[1024];
 
 
+int link_received_duplicate(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int previous_seq, int unicast);
 int link_received_packet(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int sender_seq, int unicode);
 int link_receive(overlay_mdp_frame *mdp);
 void link_explained(struct subscriber *subscriber);

@@ -23,8 +23,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
 
-int overlay_frame_build_header(struct decode_context *context, struct overlay_buffer *buff, 
-			       int queue, int type, int modifiers, int ttl, 
+static int overlay_frame_build_header(struct decode_context *context, struct overlay_buffer *buff, 
+			       int queue, int type, int modifiers, int ttl, int previous_seq,
 			       struct broadcast *broadcast, struct subscriber *next_hop,
 			       struct subscriber *destination, struct subscriber *source)
 {
@@ -46,6 +46,8 @@ int overlay_frame_build_header(struct decode_context *context, struct overlay_bu
   
   if (type!=OF_TYPE_DATA)
     flags |= PAYLOAD_FLAG_LEGACY_TYPE;
+  if (previous_seq>=0)
+    flags |= PAYLOAD_FLAG_DUPLICATE;
   
   if (ob_append_byte(buff, flags)) return -1;
   
@@ -70,6 +72,10 @@ int overlay_frame_build_header(struct decode_context *context, struct overlay_bu
   
   if (flags & PAYLOAD_FLAG_LEGACY_TYPE){
     if (ob_append_byte(buff, type)) return -1;
+  }
+
+  if (flags & PAYLOAD_FLAG_DUPLICATE){
+    if (ob_append_byte(buff, previous_seq)) return -1;
   }
   
   return 0;
@@ -99,7 +105,7 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
     broadcast = &p->broadcast_id;
   }
   if (overlay_frame_build_header(context, b,
-			     p->queue, p->type, p->modifiers, p->ttl,
+			     p->queue, p->type, p->modifiers, p->ttl, p->sent_seq,
 			     broadcast, p->next_hop, 
 			     p->destination, p->source))
     goto cleanup;
@@ -137,7 +143,7 @@ int single_packet_encapsulation(struct overlay_buffer *b, struct overlay_frame *
 
   if (overlay_frame_build_header(&context, b,
 				 frame->queue, frame->type, 
-				 frame->modifiers, frame->ttl,
+				 frame->modifiers, frame->ttl, -1,
 				 broadcast, frame->next_hop, 
 				 frame->destination, frame->source))
     return -1;

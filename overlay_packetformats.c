@@ -223,7 +223,18 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
     frame->type = ftype;
   }else
     frame->type=OF_TYPE_DATA;
-  
+
+  if (flags & PAYLOAD_FLAG_DUPLICATE){
+    int previous_seq = ob_get(buffer);
+    if (previous_seq == -1)
+      RETURN(WHY("Unable to read previous seq"));
+    // TODO unicast
+    if (link_received_duplicate(context->sender, context->interface, context->sender_interface, previous_seq, 0)){
+      if (config.debug.overlayframes)
+        DEBUG("Don't process or forward duplicate payloads");
+      forward=process=0;
+    }
+  }
   frame->modifiers=flags;
   
   // if we can't understand one of the addresses, skip processing the payload
@@ -246,11 +257,13 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
   
   int packet_flags = ob_get(buffer);
   
-  int sender_interface = 0;
+  context->sender_interface = 0;
+  context->interface = interface;
+
   int sender_seq = -1;
 
   if (packet_flags & PACKET_INTERFACE)
-    sender_interface = ob_get(buffer);
+    context->sender_interface = ob_get(buffer);
   
   if (packet_flags & PACKET_SEQ)
     sender_seq = ob_get(buffer)&0xFF;
@@ -288,7 +301,7 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
     if (addr && (context->sender->last_probe==0 || now - context->sender->last_probe > interface->tick_ms*10))
       overlay_send_probe(context->sender, *addr, interface, OQ_MESH_MANAGEMENT);
     
-    link_received_packet(context->sender, interface, sender_interface, sender_seq, packet_flags & PACKET_UNICAST);
+    link_received_packet(context->sender, interface, context->sender_interface, sender_seq, packet_flags & PACKET_UNICAST);
   }
   
   if (addr){

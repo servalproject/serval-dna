@@ -363,6 +363,7 @@ test_multi_interface() {
    wait_until multi_has_link $SIDA
 }
 
+# TODO assert that all packets arrive? assert that no duplicates arrive?
 doc_ping_unreliable="Ping over a 1-hop unreliable link"
 setup_ping_unreliable() {
   setup_servald
