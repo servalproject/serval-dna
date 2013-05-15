@@ -186,9 +186,7 @@ int meshms_remember_conversation(const char *sender_sid_hex,
   }
 
   // Check if there is an existing one, if so, read it and return it.
-  if (rhizome_meshms_derive_conversation_log_bid(sender_sid_hex,
-						 l->cryptoSignPublic,
-						 l->cryptoSignSecret))
+  if (rhizome_meshms_derive_conversation_log_bid(sender_sid_hex,l))
     return WHYF("Could not derive conversation log bid for sid: %s",sender_sid_hex);
   char manifestid_hex[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2+1];
   tohex(manifestid_hex,l->cryptoSignPublic,
@@ -199,9 +197,7 @@ int meshms_remember_conversation(const char *sender_sid_hex,
     // Manifest already exists, nothing to do just yet.
   } else {
     // Create new manifest
-    if (rhizome_meshms_derive_conversation_log_bid(sender_sid_hex,
-						   l->cryptoSignPublic,
-						   l->cryptoSignSecret))
+    if (rhizome_meshms_derive_conversation_log_bid(sender_sid_hex,l))
       return WHYF("Could not derive conversation log bid for sid: %s",sender_sid_hex);
     
     rhizome_manifest_set(l, "service", RHIZOME_SERVICE_FILE);
