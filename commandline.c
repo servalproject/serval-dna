@@ -920,8 +920,9 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  const char *sidhex, *count, *opt_timeout;
+  const char *sidhex, *count, *opt_timeout, *opt_interval;
   if (   cli_arg(parsed, "--timeout", &opt_timeout, cli_interval_ms, "1") == -1
+      || cli_arg(parsed, "--interval", &opt_interval, cli_interval_ms, "1") == -1
       || cli_arg(parsed, "SID", &sidhex, str_is_subscriber_id, "broadcast") == -1
       || cli_arg(parsed, "count", &count, cli_uint, "0") == -1)
     return -1;
@@ -931,6 +932,10 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
   int icount=atoi(count);
   time_ms_t timeout_ms = 1000;
   str_to_uint64_interval_ms(opt_timeout, &timeout_ms, NULL);
+  if (timeout_ms == 0)
+    timeout_ms = 60 * 60000; // 1 hour...
+  time_ms_t interval_ms = 1000;
+  str_to_uint64_interval_ms(opt_interval, &interval_ms, NULL);
 
   overlay_mdp_frame mdp;
   bzero(&mdp, sizeof(overlay_mdp_frame));
@@ -994,10 +999,10 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
     /* Now look for replies until one second has passed, and print any replies
        with appropriate information as required */
     time_ms_t now = gettime_ms();
-    time_ms_t finish = now + timeout_ms;
-    for (; !servalShutdown && (timeout_ms == 0 || now < finish); now = gettime_ms()) {
-      time_ms_t timeout_ms = finish - gettime_ms();
-      int result = overlay_mdp_client_poll(timeout_ms);
+    time_ms_t finish = now + (tx_count < icount?interval_ms:timeout_ms);
+    for (; !servalShutdown && now < finish; now = gettime_ms()) {
+      time_ms_t poll_timeout_ms = finish - gettime_ms();
+      int result = overlay_mdp_client_poll(poll_timeout_ms);
 
       if (result>0) {
 	int ttl=-1;
@@ -2287,7 +2292,7 @@ struct cli_schema command_line_options[]={
    "Stop a running daemon with instance path from SERVALINSTANCE_PATH environment variable."},
   {app_server_status,{"status",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display information about running daemon."},
-  {app_mdp_ping,{"mdp","ping","[--timeout=<seconds>]","<SID>|broadcast","[<count>]",NULL}, 0,
+  {app_mdp_ping,{"mdp","ping","[--interval=<ms>]","[--timeout=<seconds>]","<SID>|broadcast","[<count>]",NULL}, 0,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
   {app_trace,{"mdp","trace","<SID>",NULL}, 0,
    "Trace through the network to the specified node via MDP."},
