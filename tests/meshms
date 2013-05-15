@@ -164,13 +164,17 @@ test_ack() {
    assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-1a'
    assertStdoutGrep --stdout --stderr --matches=1 '^1:.*:unacknowledged:meshms:Message-2b'
    executeOk_servald meshms ack messages $SIDA1 $SIDA2 1
-   assertStdoutGrep --stdout --stderr --matches=1 'filesize:35'
+   executeOk_servald rhizome list
+   assertStdoutGrep --stdout --stderr --matches=1 ':35:'
    executeOk_servald meshms ack messages $SIDA1 $SIDA2 1
-   assertStdoutGrep --stdout --stderr --matches=0 'filesize:'
+   executeOk_servald rhizome list
+   assertStdoutGrep --stdout --stderr --matches=1 ':35:'
    executeOk_servald meshms ack messages $SIDA1 $SIDA2 0
-   assertStdoutGrep --stdout --stderr --matches=0 'filesize:'
+   executeOk_servald rhizome list
+   assertStdoutGrep --stdout --stderr --matches=1 ':35:'
    executeOk_servald meshms ack messages $SIDA1 $SIDA2 28
-   assertStdoutGrep --stdout --stderr --matches=1 'filesize:42'
+   executeOk_servald rhizome list
+   assertStdoutGrep --stdout --stderr --matches=1 ':42:'
    executeOk_servald meshms list messages $SIDA2 $SIDA1
    assertStdoutLineCount '==' 4
    assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-1a'

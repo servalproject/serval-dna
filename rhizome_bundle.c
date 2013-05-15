@@ -604,7 +604,7 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m)
  */
 int rhizome_manifest_selfsign(rhizome_manifest *m)
 {
-  if (!m->haveSecret)
+  if (!m->haveSecret) 
     return WHY("Need private key to sign manifest");
   rhizome_signature sig;
   if (rhizome_sign_hash(m, &sig) == -1)
@@ -650,7 +650,7 @@ int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename, char 
   the bundle as a member of that group, then we create the appropriate signature block.
   The group signature blocks, like all signature blocks, will be appended to the
   manifest data during the finalisation process.
- */
+*/
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid)
 {
   return WHY("Not implemented.");
@@ -700,10 +700,10 @@ int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout)
 
 int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSid, rhizome_bk_t *bsk){
   /* Fill in a few missing manifest fields, to make it easier to use when adding new files:
-   - the default service is FILE
-   - use the current time for "date"
-   - if service is file, then use the payload file's basename for "name"
-   */
+     - the default service is FILE
+     - use the current time for "date"
+     - if service is file, then use the payload file's basename for "name"
+  */
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
   if (service == NULL) {
     rhizome_manifest_set(m, "service", (service = RHIZOME_SERVICE_FILE));
@@ -733,7 +733,7 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
   }
   
   /* If the author was not specified, then the manifest's "sender"
-   field is used, if present. */
+     field is used, if present. */
   if (authorSid){
     memcpy(m->author, authorSid, SID_SIZE);
   }else{
@@ -746,11 +746,11 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
 
   /* set version of manifest, either from version variable, or using current time */
   if (rhizome_manifest_get(m,"version",NULL,0)==NULL)
-  {
-    /* No version set, default to the current time */
-    m->version = gettime_ms();
-    rhizome_manifest_set_ll(m,"version",m->version);
-  }
+    {
+      /* No version set, default to the current time */
+      m->version = gettime_ms();
+      rhizome_manifest_set_ll(m,"version",m->version);
+    }
   
   const char *id = rhizome_manifest_get(m, "id", NULL, 0);
   if (id == NULL) {

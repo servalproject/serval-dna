@@ -42,10 +42,13 @@ rhizome_manifest *meshms_find_or_create_manifestid
   if (!rhizome_meshms_find_conversation(sender_sid_hex, recipient_sid_hex, 
 					manifestid_hex,
 					0 /* get first matching manifestid */)) {
-    // Found manifest, so nothing more to do right now.
+    // Found manifest, so read it in, and set secret if we know it, or can work
+    // it out.
     int ret = rhizome_retrieve_manifest(manifestid_hex, m);
     if (!ret) {
-      rhizome_find_bundle_author(m);
+      if (rhizome_obfuscated_manifest_generate_outgoing_bid
+	  (m,authorSid.binary,recipient_sid_hex))   
+	rhizome_find_bundle_author(m);
       return m; 
     }
     else {
