@@ -26,12 +26,42 @@ add_interface() {
    executeOk_servald config \
       set interfaces.$1.file dummy$1 \
       set interfaces.$1.dummy_address 127.0.$1.$instance_number \
-      set interfaces.$1.dummy_netmask 255.255.255.224 
+      set interfaces.$1.dummy_netmask 255.255.255.224
 }
 
 interface_up() {
   grep "Interface .* is up" $instance_servald_log || return 1
   return 0
+}
+
+path_exists() {
+   local dest
+   for dest; do tru; done;
+   local dest_sidvar=SID${dest#+}
+   local next_inst=$1
+   shift
+   local I N
+   for I; do
+      local sidvar=SID${I#+}
+      [ -n "${!sidvar}" ] || break
+      set_instance $next_inst
+      executeOk_servald route print
+      tfw_log "Looking for link from $next_inst to $I"
+      if ! grep "^${!sidvar}:.*BROADCAST.*:dummy.*:0*\$" $_tfw_tmp/stdout; then
+         tfw_log "Link not found"
+         return 1
+      fi
+      [ $I = $dest ] && break;
+      tfw_log "Path from $next_inst to $dest should be via $I"
+      if ! grep "^${!dest_sidvar}:INDIRECT ::${!sidvar}\$" $_tfw_tmp/stdout; then
+         tfw_log "No path found"
+	 tfw_log "^${!dest_sidvar}:INDIRECT ::${!sidvar}\$"
+         tfw_cat --stdout --stderr
+         return 1
+      fi
+      next_inst=$I
+   done
+   return 0
 }
 
 start_routing_instance() {
@@ -73,13 +103,11 @@ setup_single_link() {
    foreach_instance +A +B start_routing_instance
 }
 test_single_link() {
-   foreach_instance +A +B \
-      wait_until has_seen_instances +A +B
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
-   executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
 }
 
 doc_multiple_ids="Route between multiple identities"
@@ -91,8 +119,8 @@ setup_multiple_ids() {
    foreach_instance +A +B start_routing_instance
 }
 test_multiple_ids() {
-   foreach_instance +A +B \
-      wait_until has_seen_instances +A +B
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB2 1
    tfw_cat --stdout --stderr
@@ -117,13 +145,11 @@ setup_single_mdp() {
    foreach_instance +A +B start_routing_instance
 }
 test_single_mdp() {
-   foreach_instance +A +B \
-      wait_until has_seen_instances +A +B
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
-   executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
 }
 
 doc_mismatched_encap="Mismatched MDP packet encapsulation"
@@ -136,13 +162,11 @@ setup_mismatched_encap() {
    foreach_instance +A +B start_routing_instance
 }
 test_mismatched_encap() {
-   foreach_instance +A +B \
-      wait_until has_seen_instances +A +B
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
-   executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
 }
 
 doc_slip_encoding="Test slip encoding and decoding"
@@ -163,8 +187,9 @@ setup_multiple_nodes() {
    foreach_instance +A +B +C +D start_routing_instance
 }
 test_multiple_nodes() {
-   foreach +A +B +C +D \
-      wait_until has_seen_instances +A +B +C +D
+   wait_until path_exists +A +B
+   wait_until path_exists +A +C
+   wait_until path_exists +A +D
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
@@ -172,10 +197,6 @@ test_multiple_nodes() {
    tfw_cat --stdout --stderr
    executeOk_servald mdp ping --timeout=3 $SIDD 1
    tfw_cat --stdout --stderr
-   executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST "
-   assertStdoutGrep --matches=1 "^$SIDC:BROADCAST "
-   assertStdoutGrep --matches=1 "^$SIDD:BROADCAST "
 }
 
 doc_scan="Simulate isolated clients"
@@ -214,8 +235,8 @@ setup_broadcast_only() {
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
    foreach_instance +A +B add_interface 1
-  foreach_instance +A +B \
-    executeOk_servald config set interfaces.1.drop_unicasts 1
+   foreach_instance +A +B \
+      executeOk_servald config set interfaces.1.drop_unicasts 1
    foreach_instance +A +B start_routing_instance
 }
 test_broadcast_only() {
@@ -262,17 +283,19 @@ setup_multihop_linear() {
    foreach_instance +A +B +C +D start_routing_instance
 }
 test_multihop_linear() {
-   foreach_instance +A +B +C +D \
-      wait_until has_seen_instances +A +B +C +D
+   wait_until path_exists +A +B +C +D
+   wait_until path_exists +D +C +B +A
    set_instance +A
    executeOk_servald --stdout --stderr mdp ping --timeout=3 $SIDD 1
    tfw_cat --stdout --stderr
    executeOk_servald mdp trace $SIDD
-   tfw_cat --stdout --stderr
-   executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
-   assertStdoutGrep --matches=1 "^$SIDC:INDIRECT :"
-   assertStdoutGrep --matches=1 "^$SIDD:INDIRECT :"
+   assertStdoutGrep --matches=1 "^0:$SIDA\$"
+   assertStdoutGrep --matches=1 "^1:$SIDB\$"
+   assertStdoutGrep --matches=1 "^2:$SIDC\$"
+   assertStdoutGrep --matches=1 "^3:$SIDD\$"
+   assertStdoutGrep --matches=1 "^4:$SIDC\$"
+   assertStdoutGrep --matches=1 "^5:$SIDB\$"
+   assertStdoutGrep --matches=1 "^6:$SIDA\$"
 }
 
 setup_offline() {
@@ -363,8 +386,8 @@ setup_unreliable_links() {
   foreach_instance +A +B +C start_routing_instance
 }
 test_unreliable_links() {
-   foreach_instance +A +B +C \
-      wait_until has_seen_instances +A +B +C
+   wait_until path_exists +A +B +C
+   wait_until path_exists +C +B +A
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDC 5
    tfw_cat --stdout --stderr
@@ -409,8 +432,8 @@ setup_unreliable_links2() {
   foreach_instance +A +B +C +D start_routing_instance
 }
 test_unreliable_links2() {
-   foreach_instance +A +B +C +D \
-      wait_until has_seen_instances +A +B +C +D
+   wait_until path_exists +A +B +C +D
+   wait_until path_exists +D +C +B +A
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDD 5
    tfw_cat --stdout --stderr
@@ -442,6 +465,8 @@ doc_circle="Circle of nodes with one going offline"
 test_circle() {
    foreach_instance +A +B +C +D +E +F +G +H \
       wait_until has_seen_instances +A +B +C +D +E +F +G +H
+   wait_until path_exists +A +B +C
+   wait_until path_exists +C +B +A
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDC 1
    tfw_cat --stdout --stderr
@@ -450,8 +475,12 @@ test_circle() {
    stop_servald_server +B
    foreach_instance +A +C \
       wait_until --timeout=10 instance_offline +B
-   foreach_instance +A +C \
-      wait_until --timeout=10 has_seen_instances +A +C
+   set_instance +A
+   wait_until --timeout=10 instance_offline +C
+   set_instance +C
+   wait_until --timeout=10 instance_offline +A
+   wait_until path_exists +A +H +G +F +E +D +C
+   wait_until path_exists +C +D +E +F +G +H +A
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDC 1
    tfw_cat --stdout --stderr

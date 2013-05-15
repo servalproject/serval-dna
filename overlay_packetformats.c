@@ -74,6 +74,9 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
   int id = (interface - overlay_interfaces);
   switch(f->type)
   {
+    case OF_TYPE_SELFANNOUNCE_ACK:
+      link_state_legacy_ack(f, now);
+      break;
       // data frames
     case OF_TYPE_RHIZOME_ADVERT:
       if (config.debug.overlayframes)
