@@ -716,10 +716,18 @@ int app_meshms_list_conversations(const struct cli_parsed *parsed, void *context
 	     cli_put_string(recipient_sid_hex, "\n");
 	   }
 	 }
+       if (rhizome_meshms_find_conversations(sid,offset,count,conversation_log,
+					     m->fileLength/sizeof(meshms_conversation_log_row)))
+	 {
+	   free(conversation_log);      
+	   rhizome_manifest_free(m);
+	   return WHYF("rhizome_meshms_find_conversations() failed");
+	 }
        free(conversation_log);      
      }
    rhizome_manifest_free(m);
+   return 0;
  }
-
- return rhizome_meshms_find_conversations(sid,offset,count);
+ else 
+   return rhizome_meshms_find_conversations(sid,offset,count,NULL,0);
 }

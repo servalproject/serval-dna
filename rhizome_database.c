@@ -1305,7 +1305,9 @@ cleanup:
   OUT();
 } 
 
-int rhizome_meshms_find_conversations(const char *sid, int offset, int count)
+int rhizome_meshms_find_conversations(const char *sid, int offset, int count,
+				      meshms_conversation_log_row *qsolist,
+				      int qsolist_size)
 {
   IN();
   strbuf b = strbuf_alloca(1024);
@@ -1368,11 +1370,36 @@ int rhizome_meshms_find_conversations(const char *sid, int offset, int count)
     if (manifest_recover_obfuscated_sender(m)) {
       WARNF("Couldn't get real sender for manifest %s",manifest_id_hex);	
     }
+
+    meshms_conversation_log_row qso;
+    unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
+    size_t n = fromhex(manifest_id, manifest_id_hex,RHIZOME_MANIFEST_ID_BYTES);
+    sid_t recipient_sid;
+    if (cf_opt_sid(&recipient_sid, recipient_sid_hex))
+      continue;
+    if (n<RHIZOME_MANIFEST_ID_BYTES)
+      continue;
+
+    bcopy(recipient_sid.binary,qso.recipient_sid,sizeof(qso.recipient_sid));
+    bcopy(manifest_id,qso.bundle_id,sizeof(qso.bundle_id));
+
+    int i;
+    for(i=0;i<qsolist_size;i++) {
+      if (!bcmp(&qso.recipient_sid,&qsolist[i].recipient_sid,
+		sizeof(qso.recipient_sid)))
+	// Seen this conversation already
+	break;
+      if (!bcmp(m->realSender,&qsolist[i].recipient_sid,
+		sizeof(qso.recipient_sid)))
+	// Seen this conversation already
+	break;
+    }
+    // Don't display conversations we already know about
+    if (i<qsolist_size) continue;
+
     char real_sender_hex[SID_SIZE*2+1];
     real_sender_hex[SID_SIZE*2]=0;
     tohex(real_sender_hex,m->realSender,SID_SIZE);   
-    WARNF("real sender resolved to %s",real_sender_hex);
-    WARNF("apparent sender was %s",sqlite3_column_text(statement,0));
     
     if (!strcasecmp(real_sender_hex,sid)) {
       left=real_sender_hex; right=recipient_sid_hex;
