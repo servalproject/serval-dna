@@ -712,7 +712,7 @@ int app_meshms_list_conversations(const struct cli_parsed *parsed, void *context
 	   if (j<sizeof(conversation_log[i].recipient_sid)) {
 	     tohex(recipient_sid_hex,conversation_log[i].recipient_sid,
 		   sizeof(conversation_log[i].recipient_sid));
-	     cli_put_string(sid, ".");
+	     cli_put_string(sid, ":");
 	     cli_put_string(recipient_sid_hex, "\n");
 	   }
 	 }
