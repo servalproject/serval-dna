@@ -363,7 +363,7 @@ test_multi_interface() {
    wait_until multi_has_link $SIDA
 }
 
-doc_ping_unreliable="Ping over an unreliable link"
+doc_ping_unreliable="Ping over a 1-hop unreliable link"
 setup_ping_unreliable() {
   setup_servald
   assert_no_servald_processes
@@ -380,7 +380,7 @@ test_ping_unreliable() {
    wait_until path_exists +A +B
    wait_until path_exists +B +A
    set_instance +A
-   executeOk_servald mdp ping $SIDB 40
+   executeOk_servald mdp ping --interval=0.020 --timeout=1 $SIDB 500
    tfw_cat --stdout --stderr
 }
 

@@ -253,7 +253,7 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
     sender_interface = ob_get(buffer);
   
   if (packet_flags & PACKET_SEQ)
-    sender_seq = ob_get(buffer);
+    sender_seq = ob_get(buffer)&0xFF;
   
   if (context->sender){
     // ignore packets that have been reflected back to me

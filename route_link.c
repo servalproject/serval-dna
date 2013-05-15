@@ -87,6 +87,7 @@ struct neighbour{
   // next link update
   time_ms_t next_neighbour_update;
   time_ms_t last_update;
+  int last_update_seq;
   time_ms_t rtt;
   int ack_counter;
 
@@ -157,6 +158,7 @@ static struct neighbour *get_neighbour(struct subscriber *subscriber, char creat
     n = emalloc_zero(sizeof(struct neighbour));
     n->subscriber = subscriber;
     n->_next = neighbours;
+    n->last_update_seq = -1;
     // TODO measure min/max rtt
     n->rtt = 120;
     neighbours = n;
@@ -565,7 +567,18 @@ static int neighbour_find_best_link(struct neighbour *n)
   return 0;
 }
 
-static int send_neighbour_link(struct neighbour *n){
+static int neighbour_link_sent(struct overlay_frame *frame, int sequence, void *context)
+{
+  struct subscriber *subscriber = context;
+  struct neighbour *neighbour = get_neighbour(subscriber, 1);
+  neighbour->last_update_seq = sequence;
+  if (config.debug.linkstate && config.debug.verbose)
+    DEBUGF("LINK STATE; ack sent to neighbour %s in seq %d", alloca_tohex_sid(subscriber->sid), sequence);
+  return 0;
+}
+
+static int send_neighbour_link(struct neighbour *n)
+{
   IN();
   if (!n->best_link)
     RETURN(-1);
@@ -582,6 +595,9 @@ static int send_neighbour_link(struct neighbour *n){
     frame->ttl=1;
     frame->queue=OQ_MESH_MANAGEMENT;
     frame->payload = ob_new();
+    frame->send_hook = neighbour_link_sent;
+    frame->send_context = n->subscriber;
+
     if (n->subscriber->reachable & REACHABLE_DIRECT && (!(n->subscriber->reachable&REACHABLE_ASSUMED))){
       frame->destination_resolved = 1;
       frame->interface = n->subscriber->interface;
@@ -907,7 +923,23 @@ int link_receive(overlay_mdp_frame *mdp)
 	version++;
 
       // process acks / nacks
-      overlay_queue_ack(sender, interface, ack_mask, ack_seq);
+      if (ack_seq!=-1){
+        overlay_queue_ack(sender, interface, ack_mask, ack_seq);
+
+        // did they miss our last ack?
+        if (neighbour->last_update_seq!=-1){
+	  int seq_delta = (ack_seq - neighbour->last_update_seq)&0xFF;
+	  if (seq_delta <= 32 && (seq_delta==0 || ack_mask&(1<<(seq_delta-1)))){
+	    neighbour->last_update_seq = -1;
+	  }else if(seq_delta < 128){
+	    // send another ack asap
+	    if (config.debug.linkstate && config.debug.verbose)
+	      DEBUGF("LINK STATE; neighbour %s missed ack %d, queue another", alloca_tohex_sid(sender->sid), neighbour->last_update_seq);
+	    neighbour->next_neighbour_update=now;
+	    update_alarm(neighbour->next_neighbour_update);
+	  }
+        }
+      }
 
       link->last_ack_seq = ack_seq;
     }

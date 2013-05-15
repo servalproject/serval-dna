@@ -287,7 +287,7 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
     // ignore payload alarm if the destination is currently unreachable
     return 0;
   }while(0);
-  
+
   time_ms_t next_allowed_packet=0;
   if (frame->interface){
     // don't include interfaces which are currently transmitting using a serial buffer
@@ -467,12 +467,23 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       if (frame->interface!=packet->interface || memcmp(&packet->dest, &frame->recvaddr, sizeof(packet->dest))!=0){
 	goto skip;
       }
-    }    
+    }
     
+    if (frame->send_hook){
+      // last minute check if we really want to send this frame, or track when we sent it
+      if (frame->send_hook(frame, packet->seq, frame->send_context)){
+        // drop packet
+        frame = overlay_queue_remove(queue, frame);
+        continue;
+      }
+    }
+
     if (overlay_frame_append_payload(&packet->context, packet->interface, frame, packet->buffer)){
       // payload was not queued
       goto skip;
     }
+    if (frame->sent_seq!=-1 && config.debug.overlayframes)
+      DEBUGF("Retransmitted frame from seq %d in seq %d", frame->sent_seq, packet->seq);
     frame->sent_seq = packet->seq;
     
   sent:

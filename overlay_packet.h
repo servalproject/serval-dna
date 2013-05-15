@@ -33,6 +33,8 @@ struct overlay_frame {
   unsigned char ttl;
   unsigned char queue;
   char resend;
+  void *send_context;
+  int (*send_hook)(struct overlay_frame *, int seq, void *context);
   
   /* Mark which interfaces the frame has been sent on,
    so that we can ensure that broadcast frames get sent
