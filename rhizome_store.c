@@ -653,6 +653,7 @@ int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhi
 	rhizome_read_close(read_state);
 	return -1;
       }
+
       if (config.debug.rhizome)
 	DEBUGF("Decrypting file contents");
       bcopy(m->payloadKey, read_state->key, sizeof(read_state->key));

@@ -25,10 +25,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 int meshms_read_bundle(rhizome_manifest *m, unsigned char *buffer )
 {
+  if (rhizome_derive_key(m,NULL)) 
+    return WHYF("rhizome_derive_key() failed");
+
   if (m->fileLength != 0 ){   
     // Rhizome_extract_file 
     struct rhizome_read read_state;
     bzero(&read_state, sizeof read_state);
+
     int ret = rhizome_open_decrypt_read(m, NULL, &read_state, 0);
     if (ret) return WHYF("rhizome_open_decrypt_read() failed");
     int read_byte;
@@ -183,9 +187,6 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
   return ret;
 }
 
-#undef D
-#define D WARNF("here");
-
 int meshms_read_conversation_log(const char *sender_sid_hex,
 				 rhizome_manifest *l,
 				 unsigned char **buffer_file)
@@ -206,13 +207,14 @@ int meshms_read_conversation_log(const char *sender_sid_hex,
       return WHYF("Could not derive conversation log bid for sid: %s",sender_sid_hex);
     
     rhizome_manifest_set(l, "service", RHIZOME_SERVICE_FILE);
-    rhizome_manifest_set(l, "crypt", "1");
 
     // Ask rhizome to prepare the missing parts
     if (rhizome_fill_manifest(l,NULL,NULL,NULL)) {
       return WHY("rhizome_fill_manifest() failed");
     }
 
+    // Things that fill_manifest might clobber
+    rhizome_manifest_set(l, "crypt", "1"); l->payloadEncryption=1;
     rhizome_manifest_del(l,"author");
     rhizome_manifest_del(l,"sender");
     rhizome_manifest_del(l,"recipient");
@@ -225,6 +227,8 @@ int meshms_read_conversation_log(const char *sender_sid_hex,
   // We now have the manifest, so read the associated file, if any,
   // store the new record if necessary, and write back updated bundle if
   // the record was stored.
+
+  l->version=rhizome_manifest_get_ll(l,"version");
 
   // We allow space for 256 more records, because we add a random number of 
   // empty records onto the end when it fills up, and allocate 256 entries
@@ -315,7 +319,11 @@ int meshms_remember_conversation(const char *sender_sid_hex,
   uint64_t old_version=rhizome_manifest_get_ll(l,"version");
   uint64_t new_version=old_version+advance;
   rhizome_manifest_set_ll(l,"version",new_version);
+  l->version=new_version;
 
+  if (rhizome_derive_key(l,NULL)) 
+    return WHYF("rhizome_derive_key() failed");
+  
   rhizome_add_file(l,(char *)buffer_file,1,l->fileLength);
   free(buffer_file);
 

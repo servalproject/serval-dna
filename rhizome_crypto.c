@@ -473,7 +473,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
     RETURN(WHY("NULL pointer passed in as manifest"));
   if (config.debug.rhizome)
     DEBUGF("m->manifest_all_bytes=%d m->manifest_bytes=%d *ofs=%d", m->manifest_all_bytes, m->manifest_bytes, *ofs);
-
+  
   if ((*ofs)>=m->manifest_all_bytes) { RETURN(0); }
 
   int sigType=m->manifestdata[*ofs];
