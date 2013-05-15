@@ -30,5 +30,6 @@ includeTests dnaprotocol
 includeTests rhizomeops
 includeTests rhizomeprotocol
 includeTests directory_service
+includeTests meshms
 
 runTests "$@"
