@@ -116,6 +116,7 @@ test_qsoList() {
    executeOk_servald meshms list conversations $SIDA1
    assertStdoutGrep --stdout --stderr --matches=1 '^'$SIDA1':'$SIDA2'$'
    assertStdoutGrep --stdout --stderr --matches=0 '^'$SIDA2':'$SIDA1'$'
+   tfw_cat --stdout --stderr
    executeOk_servald meshms list conversations $SIDA2
    assertStdoutGrep --stdout --stderr --matches=0 '^'${SIDA1}':'${SIDA2}'$'
    assertStdoutGrep --stdout --stderr --matches=1 '^'${SIDA2}':'${SIDA1}'$'
