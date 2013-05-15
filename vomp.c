@@ -559,9 +559,6 @@ int vomp_received_audio(struct vomp_call_state *call, int audio_codec, int time,
   bcopy(audio,&mdp.out.payload[(*len)],audio_length);
   (*len)+=audio_length;
     
-  // send the payload more than once to add resilience to dropped packets
-  // TODO remove once network links have built in retries
-  mdp.out.send_copies=VOMP_MAX_RECENT_SAMPLES;
   mdp.out.queue=OQ_ISOCHRONOUS_VOICE;
   
   overlay_mdp_dispatch(&mdp,0,NULL,0);

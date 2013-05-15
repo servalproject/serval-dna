@@ -363,6 +363,27 @@ test_multi_interface() {
    wait_until multi_has_link $SIDA
 }
 
+doc_ping_unreliable="Ping over an unreliable link"
+setup_ping_unreliable() {
+  setup_servald
+  assert_no_servald_processes
+  foreach_instance +A +B create_single_identity
+  foreach_instance +A +B add_interface 1
+  foreach_instance +A +B \
+    executeOk_servald config \
+      set interfaces.1.drop_broadcasts 20 \
+      set debug.overlayframes 1 \
+      set debug.rejecteddata 1
+  foreach_instance +A +B start_routing_instance
+}
+test_ping_unreliable() {
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
+   set_instance +A
+   executeOk_servald mdp ping $SIDB 40
+   tfw_cat --stdout --stderr
+}
+
 doc_unreliable_links="Choose a longer, better path over an unreliable link"
 setup_unreliable_links() {
   setup_servald

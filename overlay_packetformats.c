@@ -34,7 +34,7 @@ struct sockaddr_in loopback;
 int overlay_packet_init_header(int encapsulation, 
 			       struct decode_context *context, struct overlay_buffer *buff, 
 			       struct subscriber *destination, 
-			       char unicast, char interface, char seq){
+			       char unicast, char interface, int seq){
   
   if (encapsulation !=ENCAP_OVERLAY && encapsulation !=ENCAP_SINGLE)
     return WHY("Invalid packet encapsulation");
@@ -447,7 +447,9 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       // process payloads that are for me or everyone
       if (header_valid&HEADER_PROCESS)
 	process_incoming_frame(now, interface, &f, &context);
-      
+
+      if (f.next_hop == my_subscriber || f.destination == my_subscriber)
+        link_state_ack_soon(context.sender);
     }
     
     if (f.payload){

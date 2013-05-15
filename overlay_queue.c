@@ -39,6 +39,7 @@ overlay_txqueue overlay_tx[OQ_MAX];
 
 struct outgoing_packet{
   overlay_interface *interface;
+  int seq;
   int i;
   struct subscriber *unicast_subscriber;
   struct sockaddr_in dest;
@@ -169,7 +170,8 @@ int overlay_payload_enqueue(struct overlay_frame *p)
     overlay_send_probe(p->destination, p->destination->address, p->destination->interface, OQ_MESH_MANAGEMENT);
   
   overlay_txqueue *queue = &overlay_tx[p->queue];
-  
+  p->sent_seq =-1;
+
   if (config.debug.packettx)
     DEBUGF("Enqueuing packet for %s* (q[%d]length = %d)",
 	   p->destination?alloca_tohex(p->destination->sid, 7): alloca_tohex(p->broadcast_id.id,BROADCAST_LEN),
@@ -184,13 +186,12 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   if (queue->length>=queue->maxLength) 
     return WHYF("Queue #%d congested (size = %d)",p->queue,queue->maxLength);
   
-  if (p->send_copies<=0)
-    p->send_copies=1;
-  else if(p->send_copies>5)
-    return WHY("Too many copies requested");
-  
   if (!p->destination_resolved){
-    if (!p->destination){
+    if (p->destination){
+      // allow the packet to be resent
+      if (p->resend == 0)
+        p->resend = 3;
+    }else{
       int i;
       int drop=1;
       
@@ -240,15 +241,15 @@ overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destinati
   packet->i = (interface - overlay_interfaces);
   packet->dest=addr;
   packet->buffer=ob_new();
-  int seq=-1;
+  packet->seq=-1;
   if (unicast)
     packet->unicast_subscriber = destination;
   else
-    seq = interface->sequence_number = (interface->sequence_number + 1)&0xFF;
+    packet->seq = interface->sequence_number = (interface->sequence_number + 1)&0xFF;
   ob_limitsize(packet->buffer, packet->interface->mtu);
   
   overlay_packet_init_header(ENCAP_OVERLAY, &packet->context, packet->buffer, 
-			     destination, unicast, packet->i, seq);
+			     destination, unicast, packet->i, packet->seq);
   packet->header_length = ob_position(packet->buffer);
 }
 
@@ -309,6 +310,9 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
       return 0;
   }
   
+  if (next_allowed_packet < frame->dont_send_until)
+    next_allowed_packet = frame->dont_send_until;
+
   overlay_queue_schedule_next(next_allowed_packet);
   
   return 0;
@@ -332,6 +336,10 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
      even if we hear it from somewhere else in the mean time
      */
     
+    // ignore payloads that are waiting for ack / nack resends
+    if (frame->dont_send_until > now)
+      goto skip;
+
     // quickly skip payloads that have no chance of fitting
     if (packet->buffer && ob_limit(frame->payload) > ob_remaining(packet->buffer))
       goto skip;
@@ -378,8 +386,6 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	if(r&REACHABLE_UNICAST){
 	  frame->recvaddr = frame->next_hop->address;
 	  frame->unicast = 1;
-	  // ignore resend logic for unicast packets, where wifi gives better resilience
-	  frame->send_copies=1;
 	}else
 	  frame->recvaddr = frame->interface->broadcast_address;
 	
@@ -467,12 +473,14 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       // payload was not queued
       goto skip;
     }
+    frame->sent_seq = packet->seq;
     
-  sent:    
+  sent:
     if (config.debug.overlayframes){
-      DEBUGF("Sent payload type %x len %d for %s via %s", frame->type, ob_position(frame->payload),
+      DEBUGF("Sent payload type %x len %d for %s via %s, seq %d", frame->type, ob_position(frame->payload),
 	     frame->destination?alloca_tohex_sid(frame->destination->sid):"All",
-	     frame->next_hop?alloca_tohex_sid(frame->next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
+	     frame->next_hop?alloca_tohex_sid(frame->next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN),
+             frame->sent_seq);
     }
     
     if (frame->destination)
@@ -484,9 +492,14 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     int keep_payload = 0;
     
     if (frame->destination_resolved){
-      frame->send_copies --;
-      if (frame->send_copies>0)
-	keep_payload=1;
+      frame->resend --;
+      if (frame->resend>0 && frame->next_hop && packet->seq!=-1 && (!frame->unicast)){
+        frame->dont_send_until = now+200;
+	frame->destination_resolved = 0;
+	keep_payload = 1;
+	if (config.debug.overlayframes)
+	  DEBUGF("Holding onto payload for ack/nack resend in %lldms", frame->dont_send_until - now);
+      }
     }else{
       int i;
       frame->broadcast_sent_via[packet->i]=1;
@@ -565,12 +578,33 @@ int overlay_send_tick_packet(struct overlay_interface *interface){
   return 0;
 }
 
-int overlay_queue_nack(struct subscriber *neighbour, struct overlay_interface *interface, int sequence)
+// de-queue all packets that have been sent to this subscriber & have arrived.
+int overlay_queue_ack(struct subscriber *neighbour, struct overlay_interface *interface, uint32_t ack_mask, int ack_seq)
 {
-  return 0;
-}
+  int i;
+  for (i=0;i<OQ_MAX;i++){
+    struct overlay_frame *frame = overlay_tx[i].first;
 
-int overlay_queue_ack(struct subscriber *neighbour, struct overlay_interface *interface, int sequence)
-{
+    while(frame){
+      if (frame->next_hop == neighbour && frame->interface == interface && frame->sent_seq != -1){
+	int seq_delta = (ack_seq - frame->sent_seq)&0xFF;
+	if (seq_delta <= 32 && (seq_delta==0 || ack_mask&(1<<(seq_delta-1)))){
+	  if (config.debug.overlayframes)
+	    DEBUGF("Dequeing packet to %s sent by seq %d, due to ack of seq %d", alloca_tohex_sid(neighbour->sid), frame->sent_seq, ack_seq);
+          frame = overlay_queue_remove(&overlay_tx[i], frame);
+	  continue;
+	}
+	if (seq_delta < 128){
+	  // resend, and re-resolve destination
+	  if (config.debug.overlayframes)
+	    DEBUGF("Requeue packet to %s sent by seq %d due to ack of seq %d", alloca_tohex_sid(neighbour->sid), frame->sent_seq, ack_seq);
+	  frame->dont_send_until = gettime_ms();
+	  frame->resend ++;
+	  overlay_calc_queue_time(&overlay_tx[i], frame);
+	}
+      }
+      frame = frame->next;
+    }
+  }
   return 0;
 }

@@ -181,10 +181,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MAX_AUDIO_BYTES 1024
 #define MDP_AWAITREPLY 9999
 
-/* max number of recent samples to cram into a VoMP frame as well as the current
-   frame of audio (preemptive audio retransmission) */
-#define VOMP_MAX_RECENT_SAMPLES 2
-
 // codec's with well defined parameters
 #define VOMP_CODEC_16SIGNED 0x01
 #define VOMP_CODEC_ULAW 0x02

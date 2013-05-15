@@ -32,8 +32,7 @@ struct overlay_frame {
   
   unsigned char ttl;
   unsigned char queue;
-  // temporary hack to improve reliability before implementing per-packet nack's
-  int send_copies;
+  char resend;
   
   /* Mark which interfaces the frame has been sent on,
    so that we can ensure that broadcast frames get sent
@@ -53,6 +52,8 @@ struct overlay_frame {
   struct sockaddr_in recvaddr;
   overlay_interface *interface;
   char unicast;
+  int sent_seq;
+  time_ms_t dont_send_until;
   
   /* Actual payload */
   struct overlay_buffer *payload;

@@ -765,8 +765,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   if (frame->queue==0)
     frame->queue = OQ_ORDINARY;
   
-  frame->send_copies = mdp->out.send_copies;
-  
   if (overlay_payload_enqueue(frame))
     op_free(frame);
   RETURN(0);

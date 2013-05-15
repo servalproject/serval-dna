@@ -517,7 +517,7 @@ int single_packet_encapsulation(struct overlay_buffer *b, struct overlay_frame *
 int overlay_packet_init_header(int encapsulation, 
 			       struct decode_context *context, struct overlay_buffer *buff, 
 			       struct subscriber *destination, 
-			       char unicast, char interface, char seq);
+			       char unicast, char interface, int seq);
 int overlay_frame_build_header(struct decode_context *context, struct overlay_buffer *buff, 
 			       int queue, int type, int modifiers, int ttl, 
 			       struct broadcast *broadcast, struct subscriber *next_hop,
@@ -540,8 +540,7 @@ int overlay_payload_enqueue(struct overlay_frame *p);
 int overlay_queue_remaining(int queue);
 int overlay_queue_schedule_next(time_ms_t next_allowed_packet);
 int overlay_send_tick_packet(struct overlay_interface *interface);
-int overlay_queue_nack(struct subscriber *neighbour, struct overlay_interface *interface, int sequence);
-int overlay_queue_ack(struct subscriber *neighbour, struct overlay_interface *interface, int sequence);
+int overlay_queue_ack(struct subscriber *neighbour, struct overlay_interface *interface, uint32_t ack_mask, int ack_seq);
 
 int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f,  time_ms_t now);
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
@@ -573,8 +572,6 @@ typedef struct overlay_mdp_data_frame {
   sockaddr_mdp src;
   sockaddr_mdp dst;
   uint16_t payload_length;
-  // temporary hack to improve reliability before implementing per-packet nack's
-  int send_copies;
   int queue;
   int ttl;
   unsigned char payload[MDP_MTU-100];
@@ -839,6 +836,7 @@ void link_interface_down(struct overlay_interface *interface);
 int link_state_announce_links();
 int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now);
 int link_state_interface_has_neighbour(struct overlay_interface *interface);
+int link_state_ack_soon(struct subscriber *sender);
 
 int generate_nonce(unsigned char *nonce,int bytes);
 
