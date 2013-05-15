@@ -1313,11 +1313,6 @@ int rhizome_meshms_find_conversations(const char *sid, int offset, int count)
   strbuf_sprintf(b, " AND ( sender = ?3 or recipient = ?3)");
   strbuf_sprintf(b, " ORDER BY MIN(sender,recipient), MAX(sender,recipient)");
   
-  const char *names[]={
-    "partya","partyb"
-  };
-  cli_columns(2,names);
-
   if (offset)
     strbuf_sprintf(b, " OFFSET %u", offset);
   

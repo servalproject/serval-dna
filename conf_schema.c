@@ -608,6 +608,7 @@ int cf_cmp_uint16_nonzero(const uint16_t *a, const uint16_t *b)
 
 int cf_opt_sid(sid_t *sidp, const char *text)
 {
+  if (!text) return CFINVALID;
   if (!str_is_subscriber_id(text))
     return CFINVALID;
   if (!strcasecmp("broadcast",text)) {

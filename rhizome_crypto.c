@@ -834,8 +834,12 @@ int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk)
   }
   else {
     sender=rhizome_manifest_get(m, "sender", NULL, 0);
-    if (cf_opt_sid(&sender_sid, sender)!=CFOK)
-      return WHYF("Unable to parse sender sid");
+    if (sender) {
+      if (cf_opt_sid(&sender_sid, sender)!=CFOK)
+	return WHYF("Unable to parse sender sid");
+    } else {
+      bzero(&sender_sid,sizeof(sender_sid));
+    }
   }
 
   char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
@@ -865,10 +869,10 @@ int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk)
     
   }else{
     if(!m->haveSecret){
+      if (!bsk) return -1;
       if (rhizome_extract_privatekey_required(m, bsk))
 	return -1;
     }
-    
     unsigned char raw_key[9+crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]="sasquatch";
     bcopy(m->cryptoSignSecret, &raw_key[9], crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
     
@@ -877,7 +881,6 @@ int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk)
     crypto_hash_sha512(hash, raw_key, sizeof(raw_key));
     bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
   }
-  
   // generate nonce from version#bundle id#version;
   unsigned char raw_nonce[8+8+sizeof(m->cryptoSignPublic)];
   

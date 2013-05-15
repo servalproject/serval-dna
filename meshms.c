@@ -23,6 +23,27 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "log.h"
 #include "conf.h"
 
+int meshms_read_bundle(rhizome_manifest *m, unsigned char *buffer )
+{
+  if (m->fileLength != 0 ){   
+    // Rhizome_extract_file 
+    struct rhizome_read read_state;
+    bzero(&read_state, sizeof read_state);
+    int ret = rhizome_open_decrypt_read(m, NULL, &read_state, 0);
+    if (ret) return WHYF("rhizome_open_decrypt_read() failed");
+    int read_byte;
+
+
+    read_byte=rhizome_read(&read_state, buffer, m->fileLength); 
+
+    if (read_byte!=m->fileLength) 
+      return WHYF("Failed to read whole bundle");
+    
+    rhizome_read_close(&read_state);
+  }
+  return 0;  
+}
+
 rhizome_manifest *meshms_find_or_create_manifestid
 (const char *sender_sid_hex,const char *recipient_sid_hex, int createP)
 {
@@ -162,6 +183,9 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
   return ret;
 }
 
+#undef D
+#define D WARNF("here");
+
 int meshms_read_conversation_log(const char *sender_sid_hex,
 				 rhizome_manifest *l,
 				 unsigned char **buffer_file)
@@ -186,7 +210,6 @@ int meshms_read_conversation_log(const char *sender_sid_hex,
 
     // Ask rhizome to prepare the missing parts
     if (rhizome_fill_manifest(l,NULL,NULL,NULL)) {
-      rhizome_manifest_free(l);
       return WHY("rhizome_fill_manifest() failed");
     }
 
@@ -207,22 +230,19 @@ int meshms_read_conversation_log(const char *sender_sid_hex,
   // empty records onto the end when it fills up, and allocate 256 entries
   // initially. The idea is to make it harder for an adversary to estimate the
   // size of your social graph.
-  *buffer_file=malloc(l->fileLength+(SID_SIZE+crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)*256);  
+  *buffer_file=malloc(l->fileLength+sizeof(meshms_conversation_log_row)*256);  
   if (!*buffer_file) {
-    rhizome_manifest_free(l);
     return WHYF("malloc(%d) failed when reading existing conversation index.",
 		l->fileLength);
   }
   if (l->fileLength) {
-    int ret = meshms_read_message(l,*buffer_file);
-    if (ret) {
-      rhizome_manifest_free(l);
-      return WHYF("meshms_read_message() failed.");
+     int ret = meshms_read_bundle(l,*buffer_file);
+   if (ret) {
+      return WHYF("meshms_read_bundle() failed.");
     }
   }
 return 0;
 }
-
 
 int meshms_remember_conversation(const char *sender_sid_hex,
 				 rhizome_manifest *m)
@@ -237,9 +257,9 @@ int meshms_remember_conversation(const char *sender_sid_hex,
     return WHY("sender or recipient SID could not be parsed.");
 
   // Generate conversation row for remembering
-  unsigned char row[SID_SIZE+crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
-  bcopy(&rxSid.binary,&row[0],SID_SIZE);
-  bcopy(m->cryptoSignPublic,&row[SID_SIZE],
+  meshms_conversation_log_row row;
+  bcopy(&rxSid.binary,row.recipient_sid,SID_SIZE);
+  bcopy(m->cryptoSignPublic,row.bundle_id,
 	crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
 
   rhizome_manifest *l = rhizome_new_manifest();
@@ -257,7 +277,7 @@ int meshms_remember_conversation(const char *sender_sid_hex,
 
   int i;
   for(i=0;i<l->fileLength;i+=sizeof(row)) {
-    if (!bcmp(row,&buffer_file[i],sizeof(row))) {
+    if (!bcmp((unsigned char *)&row,&buffer_file[i],sizeof(row))) {
       // Conversation has already been remembered
       rhizome_manifest_free(l);
       return 0;
@@ -266,14 +286,14 @@ int meshms_remember_conversation(const char *sender_sid_hex,
     for(j=0;j<sizeof(row);j++) if (buffer_file[i+j]) break;
     if (j==sizeof(row)) {
       // Found an empty row -- we can store it here
-      bcopy(row,&buffer_file[i],sizeof(row));
+      bcopy((unsigned char *)&row,&buffer_file[i],sizeof(row));
       break;
     }
   }
   if (i==l->fileLength) {
     // There were no empty rows in the file.
     // Write to next slot, and then decide how many empty slots to add.
-    bcopy(row,&buffer_file[i],sizeof(row));
+    bcopy((unsigned char *)&row,&buffer_file[i],sizeof(row));
 
     // Make large initial allocation so that it is not easy to estimate the size
     // of someone's social graph.  In particular, we don't want an adversary to 
@@ -331,9 +351,9 @@ int meshms_append_messageblock(const char *sender_sid_hex,
    rhizome_manifest_free(m);
    return -1;
  }
- int ret = meshms_read_message(m,buffer_file);
+ int ret = meshms_read_bundle(m,buffer_file);
  if (ret) {
-   WHYF("meshms_read_message() failed.");
+   WHYF("meshms_read_bundle() failed.");
    rhizome_manifest_free(m);
    return -1;   
  }
@@ -408,7 +428,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, void *context)
      WHYF("malloc(%d) failed while reading meshms logs",m_left->fileLength);
      return -1;
    }
-   if (!meshms_read_message(m_left,left_messages))
+   if (!meshms_read_bundle(m_left,left_messages))
      left_len=m_left->fileLength;
  }
  if (m_right) {
@@ -417,7 +437,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, void *context)
      WHYF("malloc(%d) failed while reading meshms logs",m_right->fileLength);
      return -1;
    }
-   if (!meshms_read_message(m_right,right_messages))
+   if (!meshms_read_bundle(m_right,right_messages))
      right_len=m_right->fileLength;
  }
  rhizome_manifest_free(m_left); m_left=NULL;
@@ -548,7 +568,7 @@ int meshms_get_last_ack_offset(const char *left_sid,const char *right_sid)
     WHYF("malloc(%d) failed while reading meshms logs",m_left->fileLength);
     return 0;
   }
-  if (meshms_read_message(m_left,left_messages)) {
+  if (meshms_read_bundle(m_left,left_messages)) {
     DEBUGF("Couldn't read message log for thread ply");
     rhizome_manifest_free(m_left); return 0;
   }
@@ -663,6 +683,35 @@ int app_meshms_list_conversations(const struct cli_parsed *parsed, void *context
  sid_t aSid;
  if (sid[0] && str_to_sid_t(&aSid, sid) == -1)
    return WHYF("invalid sid: %s", sid);
+
+ const char *names[]={
+   "partya","partyb"
+ };
+ cli_columns(2,names);
+
+ rhizome_manifest *m=rhizome_new_manifest();
+ if (m) {
+   meshms_conversation_log_row *conversation_log=NULL;
+   if (!meshms_read_conversation_log(sid,m,(unsigned char **)&conversation_log))
+     {
+       int i;
+       for(i=0;i<m->fileLength/sizeof(meshms_conversation_log_row);i++)
+	 {
+	   int j;
+	   char recipient_sid_hex[sizeof(conversation_log->recipient_sid)*2+1];
+	   for(j=0;j<sizeof(conversation_log[i].recipient_sid);j++)
+	     if (conversation_log[i].recipient_sid[j]) break;
+	   if (j<sizeof(conversation_log[i].recipient_sid)) {
+	     tohex(recipient_sid_hex,conversation_log[i].recipient_sid,
+		   sizeof(conversation_log[i].recipient_sid));
+	     cli_put_string(sid, ":");
+	     cli_put_string(recipient_sid_hex, "\n");
+	   }
+	 }
+       free(conversation_log);      
+     }
+   rhizome_manifest_free(m);
+ }
 
  return rhizome_meshms_find_conversations(sid,offset,count);
 }

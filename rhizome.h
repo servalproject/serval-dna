@@ -217,6 +217,11 @@ struct rhizome_cleanup_report {
     int deleted_orphan_fileblobs;
 };
 
+typedef struct meshms_conversation_log_row {
+  unsigned char recipient_sid[SID_SIZE];
+  unsigned char bundle_id[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+} meshms_conversation_log_row;
+
 int rhizome_cleanup(struct rhizome_cleanup_report *report);
 
 int rhizome_manifest_createid(rhizome_manifest *m);

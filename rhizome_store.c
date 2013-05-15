@@ -642,7 +642,6 @@ static int write_file(struct rhizome_read *read, const char *filepath){
 }
 
 int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state, int hash){
-  
   // for now, always hash the file
   int ret = rhizome_open_read(read_state, m->fileHexHash, hash);
   if (ret == 0) {
@@ -698,60 +697,3 @@ int rhizome_dump_file(const char *id, const char *filepath, int64_t *length)
   rhizome_read_close(&read_state);
   return ret;
 }
-
-
-
-
-int meshms_read_message(rhizome_manifest *m, unsigned char *buffer )
-{
-  
-  const char *bskhex = NULL ;
- 
-  /*
-  if (!(keyring = keyring_open_instance_cli(parsed)))
-    return -1; */
-  
-  int ret=0;
- 
-  // treat empty string the same as null
-  if (bskhex && !*bskhex)
-    bskhex=NULL;
-  
-  rhizome_bk_t bsk;
-  if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
-    return WHYF("invalid bsk: \"%s\"", bskhex);
-  
-  // ret=0 if retrieve manifest is ok
-  if (ret==0 && m->fileLength != 0 ){   
-    // Rhizome_extract_file 
-    struct rhizome_read read_state;
-    bzero(&read_state, sizeof read_state);
-    int ret = rhizome_open_decrypt_read(m, bskhex?&bsk:NULL, &read_state, 0);
-    
-    //if (ret == 0) // No errors
-     //cli_puts("the file exist, we will read the file"); cli_delim("\n");
- 
-    int read_byte ;
-    int buffer_length=m->fileLength;
- 
-    read_byte=rhizome_read(&read_state, buffer, buffer_length); 
-    
-    //int offset_buffer = 0;
-    //ret = deserialize_meshms(buffer,&offset_buffer,buffer_length);
-
-    rhizome_read_close(&read_state);
-  }
-   
-  //if (m)
-  //  rhizome_manifest_free(m);
-  
-  return ret;
-  
-}
-
-
-
-
-
-
-

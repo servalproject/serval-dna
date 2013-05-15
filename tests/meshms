@@ -27,7 +27,6 @@ setup() {
    set_instance +A
    create_identities 2
    assert [ $SIDA1 != $SIDA2 ]
-   setup_rhizome
 }
 
 doc_createPly="Create thread ply by sending a message"
