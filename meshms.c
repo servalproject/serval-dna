@@ -162,29 +162,10 @@ int app_meshms_add_message(const struct cli_parsed *parsed, void *context)
   return ret;
 }
 
-int meshms_remember_conversation(const char *sender_sid_hex,
-				 rhizome_manifest *m)
+int meshms_read_conversation_log(const char *sender_sid_hex,
+				 rhizome_manifest *l,
+				 unsigned char **buffer_file)
 {
-  // Check if the BID:recipient pair exists in the meshms conversation log
-  // bundle.
-
-  char *recipient_hex=rhizome_manifest_get(m,"recipient",NULL,0);
-  sid_t rxSid,txSid;
-  if (!recipient_hex||!recipient_hex[0]
-      ||cf_opt_sid(&rxSid,recipient_hex)||cf_opt_sid(&txSid,sender_sid_hex))
-    return WHY("sender or recipient SID could not be parsed.");
-
-  // Generate conversation row for remembering
-  unsigned char row[SID_SIZE+crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
-  bcopy(&rxSid.binary,&row[0],SID_SIZE);
-  bcopy(m->cryptoSignPublic,&row[SID_SIZE],
-	crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
-
-  rhizome_manifest *l = rhizome_new_manifest();
-  if (!l) {
-    return WHY("Manifest struct could not be allocated -- not added to rhizome"); 
-  }
-
   // Check if there is an existing one, if so, read it and return it.
   if (rhizome_meshms_derive_conversation_log_bid(sender_sid_hex,l))
     return WHYF("Could not derive conversation log bid for sid: %s",sender_sid_hex);
@@ -226,18 +207,52 @@ int meshms_remember_conversation(const char *sender_sid_hex,
   // empty records onto the end when it fills up, and allocate 256 entries
   // initially. The idea is to make it harder for an adversary to estimate the
   // size of your social graph.
-  unsigned char *buffer_file=malloc(l->fileLength+sizeof(row)*256);  
-  if (!buffer_file) {
+  *buffer_file=malloc(l->fileLength+(SID_SIZE+crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)*256);  
+  if (!*buffer_file) {
     rhizome_manifest_free(l);
     return WHYF("malloc(%d) failed when reading existing conversation index.",
 		l->fileLength);
   }
   if (l->fileLength) {
-    int ret = meshms_read_message(l,buffer_file);
+    int ret = meshms_read_message(l,*buffer_file);
     if (ret) {
       rhizome_manifest_free(l);
       return WHYF("meshms_read_message() failed.");
     }
+  }
+return 0;
+}
+
+
+int meshms_remember_conversation(const char *sender_sid_hex,
+				 rhizome_manifest *m)
+{
+  // Check if the BID:recipient pair exists in the meshms conversation log
+  // bundle.
+
+  char *recipient_hex=rhizome_manifest_get(m,"recipient",NULL,0);
+  sid_t rxSid,txSid;
+  if (!recipient_hex||!recipient_hex[0]
+      ||cf_opt_sid(&rxSid,recipient_hex)||cf_opt_sid(&txSid,sender_sid_hex))
+    return WHY("sender or recipient SID could not be parsed.");
+
+  // Generate conversation row for remembering
+  unsigned char row[SID_SIZE+crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+  bcopy(&rxSid.binary,&row[0],SID_SIZE);
+  bcopy(m->cryptoSignPublic,&row[SID_SIZE],
+	crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+
+  rhizome_manifest *l = rhizome_new_manifest();
+  if (!l) {
+    return WHY("Manifest struct could not be allocated -- not added to rhizome"); 
+  }
+
+  unsigned char *buffer_file=NULL;
+  
+  if (meshms_read_conversation_log(sender_sid_hex,l,&buffer_file)) {
+    rhizome_manifest_free(l);
+    if (buffer_file) free(buffer_file);
+    return WHYF("meshms_read_conversation_log() failed");
   }
 
   int i;
@@ -285,7 +300,7 @@ int meshms_remember_conversation(const char *sender_sid_hex,
   free(buffer_file);
 
   rhizome_manifest *mout = NULL;
-  ret=rhizome_manifest_finalise(l,&mout);
+  int ret=rhizome_manifest_finalise(l,&mout);
   if (ret<0){
     cli_printf("Error in manifest finalise");
     rhizome_manifest_free(l);
