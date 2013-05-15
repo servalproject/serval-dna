@@ -52,6 +52,8 @@ int rotbuf_next_chunk(struct rotbuf *rb, unsigned char **bufp, size_t *lenp)
     *bufp = rb->cursor;
     *lenp = rb->ebuf - rb->cursor;
     rb->cursor = rb->buf;
+    if (rb->cursor == rb->start)
+      ++rb->wrap;
     return 1;
   }
   *bufp = rb->cursor;
