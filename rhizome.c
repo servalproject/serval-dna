@@ -188,7 +188,8 @@ int rhizome_manifest_check_sanity(rhizome_manifest *m_in)
     const char *name = rhizome_manifest_get(m_in, "name", NULL, 0);
     if (name == NULL)
       return WHY("Manifest missing 'name' field");
-  } else if (strcasecmp(service, RHIZOME_SERVICE_MESHMS) == 0) {
+  } else if (strcasecmp(service, RHIZOME_SERVICE_MESHMS_OLD) == 0
+	     || strcasecmp(service, RHIZOME_SERVICE_MESHMS) == 0) {
     if (sender == NULL || !sender[0])
       return WHY("MeshMS Manifest missing 'sender' field");
     if (!str_is_subscriber_id(sender))
@@ -197,9 +198,7 @@ int rhizome_manifest_check_sanity(rhizome_manifest *m_in)
       return WHY("MeshMS Manifest missing 'recipient' field");
     if (!str_is_subscriber_id(recipient))
       return WHYF("MeshMS Manifest contains invalid 'recipient' field: %s", recipient);
-  } else {
-    return WHY("Invalid service type");
-  }
+  } 
   if (config.debug.rhizome)
     DEBUGF("sender='%s'", sender ? sender : "(null)");
 

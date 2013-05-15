@@ -181,7 +181,8 @@ typedef struct rhizome_manifest {
  * after it is received by Rhizome.
  */
 #define     RHIZOME_SERVICE_FILE    "file"
-#define     RHIZOME_SERVICE_MESHMS  "MeshMS1"
+#define     RHIZOME_SERVICE_MESHMS_OLD  "MeshMS1"
+#define     RHIZOME_SERVICE_MESHMS  "MeshMS2"
 
 extern long long rhizome_space;
 extern unsigned short rhizome_http_server_port;

@@ -1457,16 +1457,6 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
   const char *recipient = NULL;
   if (service == NULL) {
     return WHY("Manifest has no service");
-  } else if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
-    name = rhizome_manifest_get(m, "name", NULL, 0);
-    if (!name) return WHY("Manifest has no name");
-  } else if (strcasecmp(service, RHIZOME_SERVICE_MESHMS) == 0) {
-    sender = rhizome_manifest_get(m, "sender", NULL, 0);
-    recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
-    if (!sender) return WHY("Manifest has no sender");
-    if (!recipient) return WHY("Manifest has no recipient");
-  } else {
-    return WHYF("Unsupported service '%s'", service);
   }
   char sqlcmd[1024];
   strbuf b = strbuf_local(sqlcmd, sizeof sqlcmd);
@@ -1585,7 +1575,8 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
 	      strbuf_sprintf(b, " name=\"%s\"", blob_name);
 	  }else
 	    ++inconsistent;
-	} else if (strcasecmp(service, RHIZOME_SERVICE_MESHMS) == 0) {
+	} 
+	{
 	  const char *blob_sender = rhizome_manifest_get(blob_m, "sender", NULL, 0);
 	  const char *blob_recipient = rhizome_manifest_get(blob_m, "recipient", NULL, 0);
 	  if (blob_sender && !strcasecmp(blob_sender, sender) && blob_recipient && !strcasecmp(blob_recipient, recipient)) {
