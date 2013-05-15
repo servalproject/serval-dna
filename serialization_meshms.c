@@ -78,7 +78,7 @@ int encode_length_forwards(unsigned char *buffer,int *offset,
   if (length<0xff) { buffer[(*offset)++]=length; return 0; }
   buffer[(*offset)++]=0xff;
   int i;
-  for(i=0;i<32;i+=8) buffer[(*offset)++]=(length>>i)&0xff;
+  for(i=0;i<16;i+=8) buffer[(*offset)++]=(length>>i)&0xff;
   return 0;
 }
 
@@ -87,7 +87,7 @@ int encode_length_backwards(unsigned char *buffer,int *offset,
 {
   if (length<0xff) { buffer[(*offset)++]=length; return 0; }
   int i;
-  for(i=0;i<32;i+=8) buffer[(*offset)++]=(length>>i)&0xff;
+  for(i=0;i<16;i+=8) buffer[(*offset)++]=(length>>i)&0xff;
   buffer[(*offset)++]=0xff;
   return 0;
 }
@@ -103,7 +103,7 @@ int decode_length_forwards(unsigned char *buffer,int *offset,
     (*offset)++;
     if (*offset>=buffer_length) return -1;
     int i;
-    for(i=0;i<32;i+=8) {
+    for(i=0;i<16;i+=8) {
       (*length)|=buffer[(*offset)++]<<i;
       if (*offset>=buffer_length) return -1;
     }
@@ -127,7 +127,7 @@ int decode_length_backwards(unsigned char *buffer,int offset,
   case 0xff:
     offset-=4;
     int i;
-    for(i=0;i<32;i+=8) (*length)|=buffer[offset++]<<i;    
+    for(i=0;i<16;i+=8) (*length)|=buffer[offset++]<<i;    
     return 0;
   default:
     *length=buffer[offset];
