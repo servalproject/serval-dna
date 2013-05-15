@@ -7,7 +7,8 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   struct termios t;
 
   tcgetattr(interface->alarm.poll.fd, &t);
-  cfsetspeed(&t, interface->uartbps);
+  cfsetospeed(&t, interface->uartbps);
+  cfsetispeed(&t, interface->uartbps);
 
   // 8N1
   t.c_cflag &= ~PARENB;
