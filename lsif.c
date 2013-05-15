@@ -51,7 +51,9 @@
 #if __MACH__
 #include <net/if_dl.h>
 #endif
+#ifndef HAVE_LINUX_IF_H
 #include <net/if.h>
+#endif
 
 /* On platforms that have variable length 
    ifreq use the old fixed length interface instead */
