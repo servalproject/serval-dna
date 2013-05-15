@@ -650,7 +650,8 @@ int rhizome_manifest_set_obfuscated_sender(rhizome_manifest *m,
 
   sid_t obSid;
   if (str_to_sid_t(&obSid, sender_sid_to_obfuscate_hex)==-1) 
-
+    return WHY("Failed to parse sender SID");    
+    
   if (rhizome_manifest_xor_obfuscated_sid(obSid.binary,disposable_sid_secret,
 					  recipient_sid_hex))
     return WHY("Failed to XOR sender to produce obfuscated SID");
@@ -764,6 +765,18 @@ int manifest_recover_obfuscated_sender(rhizome_manifest *m)
       // error.
       return -1;
 
+    sid_t sender;
+    char *sender_hex=rhizome_manifest_get(m, "sender", NULL, 0);
+    if (!sender_hex||(!sender_hex[0])||cf_opt_sid(&sender,sender_hex)!=CFOK)
+      // missing or mal-formed ssender field, so cannot extract real sender.
+      // this is normal for non obfuscated sender bundles, so don't report an
+      // error.
+      return -1;
+
+    WARNF("recipient = %s",recipient_hex);
+    WARNF("sender = %s",sender_hex);
+    WARNF("ssender = %s",ssender_hex);
+
     int cn=0,in=0,kp=0;
     rhizome_manifest *m2=rhizome_new_manifest();
     while (keyring_find_sid(keyring,&cn,&in,&kp,recipient_sid.binary))
@@ -781,7 +794,7 @@ int manifest_recover_obfuscated_sender(rhizome_manifest *m)
 	    if (!rhizome_manifest_xor_obfuscated_sid(ssender.binary,
 						     keyring->contexts[cn]->identities[in]
 						     ->keypairs[kp]->private_key,
-						     recipient_hex))
+						     sender_hex))
 	      {
 		return rhizome_manifest_set_real_sender(m,ssender.binary);
 	      }

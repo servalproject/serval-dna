@@ -1309,7 +1309,7 @@ int rhizome_meshms_find_conversations(const char *sid, int offset, int count)
 {
   IN();
   strbuf b = strbuf_alloca(1024);
-  strbuf_sprintf(b, "SELECT DISTINCT sender,recipient FROM manifests WHERE 1=1");
+  strbuf_sprintf(b, "SELECT DISTINCT sender,recipient,id FROM manifests WHERE 1=1");
   strbuf_sprintf(b, " AND ( sender = ?3 or recipient = ?3)");
   strbuf_sprintf(b, " ORDER BY MIN(sender,recipient), MAX(sender,recipient)");
   
@@ -1342,9 +1342,10 @@ int rhizome_meshms_find_conversations(const char *sid, int offset, int count)
   char last_right[SID_STRLEN+1]="";
   const char *left, *right;
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
-    if (!(sqlite3_column_count(statement) == 2
+    if (!(sqlite3_column_count(statement) == 3
 	  && sqlite3_column_type(statement, 0) == SQLITE_TEXT
 	  && sqlite3_column_type(statement, 1) == SQLITE_TEXT
+	  && sqlite3_column_type(statement, 2) == SQLITE_TEXT
 	  )) { 
       WHY("Incorrect row structure");
       ret=-1;
@@ -1352,12 +1353,31 @@ int rhizome_meshms_find_conversations(const char *sid, int offset, int count)
     }
     row++;
     if (row>count) break;
-    const char *sida = (const char *) sqlite3_column_text(statement, 0);
-    const char *sidb = (const char *) sqlite3_column_text(statement, 1);
-    if (!strcasecmp(sida,sid)) {
-      left=sida; right=sidb;
+    const char *recipient_sid_hex
+      = (const char *) sqlite3_column_text(statement, 1);
+    const char *manifest_id_hex
+      = (const char *) sqlite3_column_text(statement, 2);
+    
+    // Read manifest and determine real sender
+    rhizome_manifest *m=rhizome_new_manifest();
+    if (rhizome_retrieve_manifest(manifest_id_hex,m)) {
+      // Couldn't read manifest
+      WARNF("Couldn't read manifest %s",manifest_id_hex);
+      continue;
+    }
+    if (manifest_recover_obfuscated_sender(m)) {
+      WARNF("Couldn't get real sender for manifest %s",manifest_id_hex);	
+    }
+    char real_sender_hex[SID_SIZE*2+1];
+    real_sender_hex[SID_SIZE*2]=0;
+    tohex(real_sender_hex,m->realSender,SID_SIZE);   
+    WARNF("real sender resolved to %s",real_sender_hex);
+    WARNF("apparent sender was %s",sqlite3_column_text(statement,0));
+    
+    if (!strcasecmp(real_sender_hex,sid)) {
+      left=real_sender_hex; right=recipient_sid_hex;
     } else {
-      left=sidb; right=sida;
+      left=recipient_sid_hex; right=real_sender_hex;
     }
     if (strcasecmp(left,last_left)||strcasecmp(right,last_right)) {
       cli_put_string(left, ":");
