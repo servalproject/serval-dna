@@ -1447,6 +1447,20 @@ int rhizome_update_file_priority(const char *fileid)
 
    @author Andrew Bettison <andrew@servalproject.com>
  */
+int field_differs(const rhizome_manifest *a,const rhizome_manifest *b,const char *field)
+{
+  const char *aa = rhizome_manifest_get(a, field, NULL, 0);
+  const char *bb = rhizome_manifest_get(b, field, NULL, 0);
+  
+  if (!aa && !bb) return 0;
+  if (aa && bb && !strcmp(aa,bb)) return 0;
+  if (aa && !*aa && !bb) return 0;
+  if (bb && !*bb && !aa) return 0;
+
+  WARNF("Field '%s' differs",field);
+  return 1;
+}
+
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, int check_author)
 {
   // TODO, add service, name, sender & recipient to manifests table so we can simply query them.
@@ -1570,29 +1584,27 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
 	strbuf b = strbuf_alloca(1024);
 	if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
 	  const char *blob_name = rhizome_manifest_get(blob_m, "name", NULL, 0);
-	  if (blob_name && !strcmp(blob_name, name)) {
-	    if (config.debug.rhizome)
-	      strbuf_sprintf(b, " name=\"%s\"", blob_name);
-	  }else
-	    ++inconsistent;
-	} 
-	{
-	  const char *blob_sender = rhizome_manifest_get(blob_m, "sender", NULL, 0);
-	  const char *blob_recipient = rhizome_manifest_get(blob_m, "recipient", NULL, 0);
-	  if (blob_sender && !strcasecmp(blob_sender, sender) && blob_recipient && !strcasecmp(blob_recipient, recipient)) {
-	    if (config.debug.rhizome)
-	      strbuf_sprintf(b, " sender=%s recipient=%s", blob_sender, blob_recipient);
-	  }else
-	    ++inconsistent;
+	  name = rhizome_manifest_get(m, "name", NULL, 0);
+	  if (field_differs(blob_m,m,"name")) ++inconsistent;
+	  if (field_differs(blob_m,m,"sender")) ++inconsistent;
+	  if (field_differs(blob_m,m,"recipient")) ++inconsistent;
+	  if (inconsistent) WARNF("One or more fields differ");
+	}
+      }
+      if ((!inconsistent) && check_author) {
+	// check that we can re-author this manifest 
+	if (rhizome_extract_privatekey(blob_m, NULL)) {
+	  WARNF("authorship inconsistent");
+	  ++inconsistent;
 	}
       }
       
-      if ((!inconsistent) && check_author) {
-	// check that we can re-author this manifest 
-	if (rhizome_extract_privatekey(blob_m, NULL))
-	  ++inconsistent;
-      }
-      
+      WARNF("bundle: service=%s%s version=%llu hexhash=%s, inconsistent=%d",
+	     blob_service, strbuf_str(b), blob_m->version, blob_m->fileHexHash, 
+	     inconsistent
+	     );
+
+
       if (!inconsistent) {
 	*found = blob_m;
 	if (config.debug.rhizome)
