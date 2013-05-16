@@ -623,18 +623,6 @@ test_AddUpdateAutoVersion() {
    assert_rhizome_list --fromhere=1 file1_2 file2
 }
 
-doc_AddUnsupportedService="Add with unsupported service fails"
-setup_AddUnsupportedService() {
-   setup_servald
-   setup_rhizome
-   echo "Message1" >file1
-   echo -e 'service=Fubar' >file1.manifest
-}
-test_AddUnsupportedService() {
-   execute $servald rhizome add file $SIDB1 file1 file1.manifest
-   assertExitStatus '!=' 0
-}
-
 doc_EncryptedPayload="Add and extract an encrypted payload"
 setup_EncryptedPayload() {
    setup_servald
