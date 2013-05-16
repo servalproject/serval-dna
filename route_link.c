@@ -83,6 +83,9 @@ struct neighbour{
 
   // when do we assume the link is dead because they stopped hearing us or vice versa?
   time_ms_t neighbour_link_timeout;
+  // if a neighbour is telling the world that they are using us as a next hop, we need to send acks & nacks with high priority
+  // otherwise we don't care too much about packet loss.
+  time_ms_t using_us_timeout;
 
   // next link update
   time_ms_t next_neighbour_update;
@@ -570,7 +573,9 @@ static int neighbour_find_best_link(struct neighbour *n)
 static int neighbour_link_sent(struct overlay_frame *frame, int sequence, void *context)
 {
   struct subscriber *subscriber = context;
-  struct neighbour *neighbour = get_neighbour(subscriber, 1);
+  struct neighbour *neighbour = get_neighbour(subscriber, 0);
+  if (!neighbour)
+    return 0;
   neighbour->last_update_seq = sequence;
   if (config.debug.linkstate && config.debug.verbose)
     DEBUGF("LINK STATE; ack sent to neighbour %s in seq %d", alloca_tohex_sid(subscriber->sid), sequence);
@@ -734,9 +739,12 @@ int link_state_interface_has_neighbour(struct overlay_interface *interface)
 // when we receive a packet from a neighbour with ourselves as the next hop, make sure we send an ack soon(ish)
 int link_state_ack_soon(struct subscriber *subscriber){
   IN();
-  struct neighbour *neighbour = get_neighbour(subscriber, 1);
+  struct neighbour *neighbour = get_neighbour(subscriber, 0);
+  if (!neighbour)
+    RETURN(0);
+
   time_ms_t now = gettime_ms();
-  if (neighbour->next_neighbour_update > now + 80){
+  if (neighbour->using_us_timeout > now && neighbour->next_neighbour_update > now + 80){
     neighbour->next_neighbour_update = now + 80;
   }
   update_alarm(neighbour->next_neighbour_update);
@@ -751,7 +759,10 @@ int link_received_duplicate(struct subscriber *subscriber, struct overlay_interf
   if (unicast)
     return 0;
 
-  struct neighbour *neighbour = get_neighbour(subscriber, 1);
+  struct neighbour *neighbour = get_neighbour(subscriber, 0);
+  if (!neighbour)
+    return 0;
+
   struct neighbour_link *link=get_neighbour_link(neighbour, interface, sender_interface, unicast);
 
   int offset = (link->ack_sequence - 1 - previous_seq)&0xFF;
@@ -794,10 +805,15 @@ int link_received_packet(struct subscriber *subscriber, struct overlay_interface
 	      link->ack_sequence, alloca_tohex_sid(subscriber->sid), interface->name);
 	  link->ack_mask = link->ack_mask << 1;
 	  neighbour->ack_counter --;
-	  neighbour->next_neighbour_update = now + 10;
-	  if (neighbour->ack_counter <=0){
-	    neighbour_find_best_link(neighbour);
-            send_neighbour_link(neighbour);
+
+	  // if we need to nack promptly
+	  if (neighbour->using_us_timeout > now){
+	    neighbour->next_neighbour_update = now + 10;
+
+	    if (neighbour->ack_counter <=0){
+	      neighbour_find_best_link(neighbour);
+              send_neighbour_link(neighbour);
+	    }
 	  }
         }
       }
@@ -812,8 +828,8 @@ int link_received_packet(struct subscriber *subscriber, struct overlay_interface
   }
   link->link_timeout = now + (interface->tick_ms *5);
 
-  // force an update soon when we need to ack packets
-  if (neighbour->ack_counter <=0){
+  // force an update soon when we need to promptly ack packets
+  if (neighbour->using_us_timeout > now && neighbour->ack_counter <=0){
     neighbour_find_best_link(neighbour);
     send_neighbour_link(neighbour);
   }
@@ -877,8 +893,9 @@ int link_receive(overlay_mdp_frame *mdp)
       ack_mask = ob_get_ui32(payload);
 
       drop_rate = 15 - NumberOfSetBits((ack_mask & 0x7FFF));
-      // we can deal with low packet loss, it's not interesting if it changes, ignore it.
-      if (drop_rate <=2)
+      // we can deal with low packet loss, and with fast packet transmission rates we're going to see lots of broadcast collisions.
+      // we only want to force a link update when packet loss due to interference is high. Otherwise ignore it.
+      if (drop_rate <=3)
 	drop_rate = 0;
     }
 
@@ -903,9 +920,16 @@ int link_receive(overlay_mdp_frame *mdp)
 	ack_mask,
 	drop_rate);
 
-    // ignore any links that our neighbour is using to route through us.
-    if (receiver == my_subscriber)
+    if (receiver == my_subscriber){
+      // track if our neighbour is using our network link, if they are we need to ack / nack promptly
+      if (transmitter == sender)
+	neighbour->using_us_timeout = now + 500;
+      else
+	neighbour->using_us_timeout = 0;
+
+      // for routing, we can completely ignore any links that our neighbour is using to route through us.
       continue;
+    }
 
     // ignore other incoming links to our neighbour
     // TODO build a map of everyone in our 2 hop neighbourhood to control broadcast flooding?
