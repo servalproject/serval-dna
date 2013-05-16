@@ -4,7 +4,7 @@ Serval DNA Build and Test
 To build
 --------
 
-Run the following commands:
+In the `serval-dna` directory, run the following commands:
 
     autoreconf -f -i
     ./configure
