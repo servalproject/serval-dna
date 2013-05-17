@@ -69,6 +69,12 @@ __SERVALDNA_OS_INLINE void bcopy(void *src, void *dst, size_t len) {
 }
 #endif
 
+#ifndef HAVE_BCMP
+__SERVALDNA_OS_INLINE int bcmp(const void *s1, const void *s2) {
+    return memcmp(s1, s2);
+}
+#endif
+
 /* The "e" variants log the error before returning -1.
  */
 int mkdirs(const char *path, mode_t mode);
