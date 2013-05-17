@@ -281,7 +281,7 @@ int meshms_remember_conversation(const char *sender_sid_hex,
 
   int i;
   for(i=0;i<l->fileLength;i+=sizeof(row)) {
-    if (!bcmp((unsigned char *)&row,&buffer_file[i],sizeof(row))) {
+    if (!memcmp((unsigned char *)&row,&buffer_file[i],sizeof(row))) {
       // Conversation has already been remembered
       rhizome_manifest_free(l);
       return 0;

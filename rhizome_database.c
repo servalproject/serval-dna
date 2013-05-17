@@ -1385,11 +1385,11 @@ int rhizome_meshms_find_conversations(const char *sid, int offset, int count,
 
     int i;
     for(i=0;i<qsolist_size;i++) {
-      if (!bcmp(&qso.recipient_sid,&qsolist[i].recipient_sid,
-		sizeof(qso.recipient_sid)))
+      if (!memcmp(&qso.recipient_sid,&qsolist[i].recipient_sid,
+		  sizeof(qso.recipient_sid)))
 	// Seen this conversation already
 	break;
-      if (!bcmp(m->realSender,&qsolist[i].recipient_sid,
+      if (!memcmp(m->realSender,&qsolist[i].recipient_sid,
 		sizeof(qso.recipient_sid)))
 	// Seen this conversation already
 	break;
