@@ -106,7 +106,7 @@ Instructions for building and testing Serval DNA are in
 [GNU C]: http://gcc.gnu.org/
 [daemon]: http://en.wikipedia.org/wiki/Daemon_(computing)
 [free software]: http://www.gnu.org/philosophy/free-sw.html
-[contributors]: /servalproject/serval-dna/blob/master/CONTRIBUTORS.md
+[contributors]: /servalproject/serval-dna/blob/development/CONTRIBUTORS.md
 [GitHub]: https://github.com/servalproject
 [GPL2]: http://www.gnu.org/licenses/gpl-2.0.html
 [individ]: http://developer.servalproject.org/dokuwiki/lib/exe/fetch.php?media=content:software:developeragreements:serval_project_inc-individual.pdf
