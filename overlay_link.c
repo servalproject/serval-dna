@@ -116,11 +116,17 @@ int set_reachable(struct subscriber *subscriber, int reachable){
       case REACHABLE_BROADCAST:
 	DEBUGF("REACHABLE VIA BROADCAST sid=%s", alloca_tohex_sid(subscriber->sid));
 	break;
+      case REACHABLE_BROADCAST|REACHABLE_UNICAST:
+	DEBUGF("REACHABLE VIA BROADCAST & UNICAST sid=%s", alloca_tohex_sid(subscriber->sid));
+	break;
       case REACHABLE_UNICAST|REACHABLE_ASSUMED:
 	DEBUGF("ASSUMED REACHABLE VIA UNICAST sid=%s", alloca_tohex_sid(subscriber->sid));
 	break;
       case REACHABLE_BROADCAST|REACHABLE_ASSUMED:
 	DEBUGF("ASSUMED REACHABLE VIA BROADCAST sid=%s", alloca_tohex_sid(subscriber->sid));
+	break;
+      case REACHABLE_BROADCAST|REACHABLE_UNICAST|REACHABLE_ASSUMED:
+	DEBUGF("ASSUMED REACHABLE VIA BROADCAST & UNICAST sid=%s", alloca_tohex_sid(subscriber->sid));
 	break;
     }
   }

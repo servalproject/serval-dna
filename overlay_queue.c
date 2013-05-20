@@ -170,7 +170,6 @@ int overlay_payload_enqueue(struct overlay_frame *p)
     overlay_send_probe(p->destination, p->destination->address, p->destination->interface, OQ_MESH_MANAGEMENT);
   
   overlay_txqueue *queue = &overlay_tx[p->queue];
-  p->sent_seq =-1;
 
   if (config.debug.packettx)
     DEBUGF("Enqueuing packet for %s* (q[%d]length = %d)",
@@ -185,15 +184,22 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   
   if (queue->length>=queue->maxLength) 
     return WHYF("Queue #%d congested (size = %d)",p->queue,queue->maxLength);
-  
-  if (!p->destination_resolved){
+  {
+    int i;
+    for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
+      p->interface_sent_sequence[i]=FRAME_DONT_SEND;
+  }
+
+  if (p->destination_resolved){
+    p->interface_sent_sequence[p->interface - overlay_interfaces]=FRAME_NOT_SENT;
+  }else{
     if (p->destination){
       // allow the packet to be resent
       if (p->resend == 0)
         p->resend = 3;
     }else{
       int i;
-      int drop=1;
+      int interface_copies = 0;
       
       // hook to allow for flooding via olsr
       olsr_send(p);
@@ -203,17 +209,20 @@ int overlay_payload_enqueue(struct overlay_frame *p)
 	if (overlay_interfaces[i].state==INTERFACE_STATE_UP
 	    && overlay_interfaces[i].send_broadcasts
 	    && link_state_interface_has_neighbour(&overlay_interfaces[i])){
-	  p->broadcast_sent_via[i]=0;
-	  drop=0;
-	}else
-	  p->broadcast_sent_via[i]=1;
+	  p->interface_sent_sequence[i]=FRAME_NOT_SENT;
+	  interface_copies++;
+	}
       }
       
       // just drop it now
-      if (drop){
+      if (interface_copies == 0){
 	WARN("No broadcast interfaces to send with");
 	return -1;
       }
+
+      // allow the packet to be resent
+      if (p->resend == 0)
+        p->resend = 3 * interface_copies;
     }
   }
   
@@ -230,7 +239,6 @@ int overlay_payload_enqueue(struct overlay_frame *p)
     rhizome_saw_voice_traffic();
   
   overlay_calc_queue_time(queue, p);
-  
   return 0;
 }
 
@@ -289,20 +297,23 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
   }while(0);
 
   time_ms_t next_allowed_packet=0;
-  if (frame->interface){
+  if (frame->destination_resolved && frame->interface){
     // don't include interfaces which are currently transmitting using a serial buffer
     if (frame->interface->tx_bytes_pending>0)
       return 0;
     next_allowed_packet = limit_next_allowed(&frame->interface->transfer_limit);
-  }else{
+  }else if(!frame->destination){
     // check all interfaces
     int i;
     for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
     {
-      if (overlay_interfaces[i].state!=INTERFACE_STATE_UP || 
+      if (overlay_interfaces[i].state!=INTERFACE_STATE_UP ||
+	  frame->interface_sent_sequence[i]==FRAME_DONT_SEND ||
 	  !link_state_interface_has_neighbour(&overlay_interfaces[i]))
 	continue;
       time_ms_t next_packet = limit_next_allowed(&overlay_interfaces[i].transfer_limit);
+      if (next_packet < frame->interface_dont_send_until[i])
+        next_packet = frame->interface_dont_send_until[i];
       if (next_allowed_packet==0||next_packet < next_allowed_packet)
 	next_allowed_packet = next_packet;
     }
@@ -394,9 +405,8 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	
 	if (packet->buffer){
 	  // check if we can stuff into this packet
-	  if (frame->broadcast_sent_via[packet->i]){
+	  if (frame->interface_sent_sequence[packet->i]==FRAME_DONT_SEND || frame->interface_dont_send_until[packet->i] >now)
 	    goto skip;
-	  }
 	  frame->interface = packet->interface;
 	  frame->recvaddr = packet->interface->broadcast_address;
 	  
@@ -407,10 +417,12 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
 	  {
 	    if (overlay_interfaces[i].state!=INTERFACE_STATE_UP || 
-	        frame->broadcast_sent_via[i] ||
+                frame->interface_sent_sequence[i]==FRAME_DONT_SEND ||
 	        !link_state_interface_has_neighbour(&overlay_interfaces[i]))
 	      continue;
 	    keep=1;
+	    if (frame->interface_dont_send_until[i] >now)
+	      continue;
 	    time_ms_t next_allowed = limit_next_allowed(&overlay_interfaces[i].transfer_limit);
 	    if (next_allowed > now)
 	      continue;
@@ -482,16 +494,21 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       // payload was not queued
       goto skip;
     }
-    if (frame->sent_seq!=-1 && config.debug.overlayframes)
-      DEBUGF("Retransmitted frame from seq %d in seq %d", frame->sent_seq, packet->seq);
-    frame->sent_seq = packet->seq;
-    
+
   sent:
+    if (frame->interface_sent_sequence[packet->i]>=0 && config.debug.overlayframes)
+      DEBUGF("Retransmitted frame %p from seq %d in seq %d", frame, frame->interface_sent_sequence[packet->i], packet->seq);
+
+    frame->interface_sent_sequence[packet->i] = packet->seq;
+    frame->interface_dont_send_until[packet->i] = now+200;
+
     if (config.debug.overlayframes){
-      DEBUGF("Sent payload type %x len %d for %s via %s, seq %d", frame->type, ob_position(frame->payload),
+      DEBUGF("Sent payload %p type %x len %d for %s via %s, seq %d", 
+	     frame,
+	     frame->type, ob_position(frame->payload),
 	     frame->destination?alloca_tohex_sid(frame->destination->sid):"All",
 	     frame->next_hop?alloca_tohex_sid(frame->next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN),
-             frame->sent_seq);
+             frame->interface_sent_sequence[packet->i]);
     }
     
     if (frame->destination)
@@ -502,8 +519,8 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     // mark the payload as sent
     int keep_payload = 0;
     
+    frame->resend --;
     if (frame->destination_resolved){
-      frame->resend --;
       if (frame->resend>0 && frame->next_hop && packet->seq!=-1 && (!frame->unicast)){
         frame->dont_send_until = now+200;
 	frame->destination_resolved = 0;
@@ -512,18 +529,17 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  DEBUGF("Holding onto payload for ack/nack resend in %lldms", frame->dont_send_until - now);
       }
     }else{
+      if (frame->resend<=0 || packet->seq==-1 || frame->unicast){
+	// dont retransmit if we aren't sending sequence numbers, or we've run out of allowed resends
+        frame->interface_sent_sequence[packet->i] = FRAME_DONT_SEND;
+      }
       int i;
-      frame->broadcast_sent_via[packet->i]=1;
-      
-      // check if there is still a broadcast to be sent      
-      for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
-      {
+      for(i=0;i<OVERLAY_MAX_INTERFACES;i++){
 	if (overlay_interfaces[i].state==INTERFACE_STATE_UP &&
-	    link_state_interface_has_neighbour(&overlay_interfaces[i])){
-	  if (!frame->broadcast_sent_via[i]){
-	    keep_payload=1;
-	    break;
-	  }
+	    link_state_interface_has_neighbour(&overlay_interfaces[i]) &&
+            frame->interface_sent_sequence[i]!=FRAME_DONT_SEND){
+          keep_payload = 1;
+	  break;
 	}
       }
     }
@@ -592,24 +608,45 @@ int overlay_send_tick_packet(struct overlay_interface *interface){
 // de-queue all packets that have been sent to this subscriber & have arrived.
 int overlay_queue_ack(struct subscriber *neighbour, struct overlay_interface *interface, uint32_t ack_mask, int ack_seq)
 {
+  int interface_id = interface - overlay_interfaces;
   int i;
+  time_ms_t now = gettime_ms();
   for (i=0;i<OQ_MAX;i++){
     struct overlay_frame *frame = overlay_tx[i].first;
 
     while(frame){
-      if (frame->next_hop == neighbour && frame->interface == interface && frame->sent_seq != -1){
-	int seq_delta = (ack_seq - frame->sent_seq)&0xFF;
-	if (seq_delta <= 32 && (seq_delta==0 || ack_mask&(1<<(seq_delta-1)))){
-	  if (config.debug.overlayframes)
-	    DEBUGF("Dequeing packet to %s sent by seq %d, due to ack of seq %d", alloca_tohex_sid(neighbour->sid), frame->sent_seq, ack_seq);
-          frame = overlay_queue_remove(&overlay_tx[i], frame);
-	  continue;
+      int frame_seq = frame->interface_sent_sequence[interface_id];
+      if (frame_seq >=0 && (frame->next_hop == neighbour || !frame->destination)){
+	int seq_delta = (ack_seq - frame_seq)&0xFF;
+	char acked = (seq_delta==0 || (seq_delta <= 32 && ack_mask&(1<<(seq_delta-1))))?1:0;
+
+	if (acked){
+          frame->interface_sent_sequence[interface_id] = FRAME_DONT_SEND;
+	  int discard = 1;
+	  if (!frame->destination){
+            int j;
+            for(j=0;j<OVERLAY_MAX_INTERFACES;j++){
+	      if (overlay_interfaces[j].state==INTERFACE_STATE_UP &&
+                  frame->interface_sent_sequence[j]!=FRAME_DONT_SEND){
+	        discard = 0;
+	        break;
+	      }
+	    }
+	  }
+	  if (discard){
+	    if (config.debug.overlayframes)
+	      DEBUGF("Dequeing packet %p to %s sent by seq %d, due to ack of seq %d", frame, alloca_tohex_sid(neighbour->sid), frame_seq, ack_seq);
+            frame = overlay_queue_remove(&overlay_tx[i], frame);
+	    continue;
+	  }
 	}
-	if (seq_delta < 128){
-	  // resend, and re-resolve destination
+
+	if (seq_delta < 128 && frame->destination && frame->dont_send_until>now){
+	  // resend immediately
 	  if (config.debug.overlayframes)
-	    DEBUGF("Requeue packet to %s sent by seq %d due to ack of seq %d", alloca_tohex_sid(neighbour->sid), frame->sent_seq, ack_seq);
-	  frame->dont_send_until = gettime_ms();
+	    DEBUGF("Requeue packet %p to %s sent by seq %d due to ack of seq %d", frame, alloca_tohex_sid(neighbour->sid), frame_seq, ack_seq);
+	  frame->dont_send_until = now;
+	  // dont count the next retransmission against the time based retries
 	  frame->resend ++;
 	  overlay_calc_queue_time(&overlay_tx[i], frame);
 	}

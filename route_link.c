@@ -85,7 +85,7 @@ struct neighbour{
   time_ms_t neighbour_link_timeout;
   // if a neighbour is telling the world that they are using us as a next hop, we need to send acks & nacks with high priority
   // otherwise we don't care too much about packet loss.
-  time_ms_t using_us_timeout;
+  char using_us;
 
   // next link update
   time_ms_t next_neighbour_update;
@@ -332,7 +332,7 @@ next:
 
   int reachable = subscriber->reachable;
   if (next_hop == NULL){
-    if (!(subscriber->reachable & REACHABLE_ASSUMED))
+    if (subscriber->reachable&REACHABLE_BROADCAST && !(subscriber->reachable & REACHABLE_ASSUMED))
       reachable = REACHABLE_NONE;
   } else if (next_hop == subscriber){
     // reset the state of any unicast probe's if the interface has changed
@@ -744,7 +744,7 @@ int link_state_ack_soon(struct subscriber *subscriber){
     RETURN(0);
 
   time_ms_t now = gettime_ms();
-  if (neighbour->using_us_timeout > now && neighbour->next_neighbour_update > now + 80){
+  if (neighbour->using_us && neighbour->next_neighbour_update > now + 80){
     neighbour->next_neighbour_update = now + 80;
   }
   update_alarm(neighbour->next_neighbour_update);
@@ -807,7 +807,7 @@ int link_received_packet(struct subscriber *subscriber, struct overlay_interface
 	  neighbour->ack_counter --;
 
 	  // if we need to nack promptly
-	  if (neighbour->using_us_timeout > now){
+	  if (neighbour->using_us){
 	    neighbour->next_neighbour_update = now + 10;
 
 	    if (neighbour->ack_counter <=0){
@@ -829,7 +829,7 @@ int link_received_packet(struct subscriber *subscriber, struct overlay_interface
   link->link_timeout = now + (interface->tick_ms *5);
 
   // force an update soon when we need to promptly ack packets
-  if (neighbour->using_us_timeout > now && neighbour->ack_counter <=0){
+  if (neighbour->using_us > now && neighbour->ack_counter <=0){
     neighbour_find_best_link(neighbour);
     send_neighbour_link(neighbour);
   }
@@ -920,27 +920,35 @@ int link_receive(overlay_mdp_frame *mdp)
 	ack_mask,
 	drop_rate);
 
+    if (transmitter == my_subscriber && receiver->reachable!=REACHABLE_SELF){
+      // if I am in your routing graph to reach another node, even if I'm not your immediate neighbour
+      // I *MUST* forward your broadcasts to this node, otherwise I can drop them
+
+    }
+
     if (receiver == my_subscriber){
-      // track if our neighbour is using our network link, if they are we need to ack / nack promptly
-      if (transmitter == sender)
-	neighbour->using_us_timeout = now + 500;
-      else
-	neighbour->using_us_timeout = 0;
+      // track if our neighbour is using us as an immediate neighbour, if they are we need to ack / nack promptly
+      neighbour->using_us = (transmitter==sender?1:0);
 
       // for routing, we can completely ignore any links that our neighbour is using to route through us.
+      // we can always send packets to ourself :)
       continue;
     }
 
-    // ignore other incoming links to our neighbour
-    // TODO build a map of everyone in our 2 hop neighbourhood to control broadcast flooding?
     if (receiver == sender){
+      // ignore other incoming links to our neighbour
+      // TODO build a map of everyone in our 2 hop neighbourhood to control broadcast flooding?
       if (transmitter!=my_subscriber || interface_id==-1)
         continue;
       interface = &overlay_interfaces[interface_id];
+      // ignore any links claiming to be from an interface we aren't using
       if (interface->state != INTERFACE_STATE_UP)
 	continue;
-    }else if(transmitter == my_subscriber)
+
+    // if our neighbour starts using us to reach this receiver, we have to treat the link the same as if it just died.
+    }else if(transmitter == my_subscriber){
       transmitter = NULL;
+    }
 
     struct link *link = find_link(neighbour, receiver, transmitter?1:0);
     if (!link)

@@ -385,6 +385,27 @@ test_ping_unreliable() {
    tfw_cat --stdout --stderr
 }
 
+doc_brping_unreliable="Broadcast ping over a 1-hop unreliable link"
+setup_brping_unreliable() {
+  setup_servald
+  assert_no_servald_processes
+  foreach_instance +A +B create_single_identity
+  foreach_instance +A +B add_interface 1
+  foreach_instance +A +B \
+    executeOk_servald config \
+      set interfaces.1.drop_broadcasts 20 \
+      set debug.overlayframes 1 \
+      set debug.rejecteddata 1
+  foreach_instance +A +B start_routing_instance
+}
+test_brping_unreliable() {
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
+   set_instance +A
+   executeOk_servald mdp ping --interval=0.020 --timeout=2 broadcast 500
+   tfw_cat --stdout --stderr
+}
+
 doc_unreliable_links="Prefer a longer, better path vs an unreliable link"
 setup_unreliable_links() {
   setup_servald
@@ -413,11 +434,8 @@ test_unreliable_links() {
    set_instance +A
    executeOk_servald mdp ping --interval=0.100 --timeout=3 $SIDC 30
    tfw_cat --stdout --stderr
-   executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDC:INDIRECT :"
-   set_instance +C
-   executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDA:INDIRECT :"
+   wait_until path_exists +A +B +C
+   wait_until path_exists +C +B +A
 }
 
 doc_unreliable_links2="Choose the best multihop path with some unreliable links"
