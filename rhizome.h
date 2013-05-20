@@ -748,7 +748,7 @@ int rhizome_meshms_find_conversation(const char *sender_sid,
 				     char *manifest_id, int offset);
 int rhizome_meshms_find_conversations(const char *sid, int offset, int count,
 				      meshms_conversation_log_row *qsolist,
-				      int qsolist_size);
+				      int qsolist_size, int uniqid);
 int manifest_recover_obfuscated_sender(rhizome_manifest *m);
 
 

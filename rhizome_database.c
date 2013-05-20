@@ -1307,7 +1307,7 @@ cleanup:
 
 int rhizome_meshms_find_conversations(const char *sid, int offset, int count,
 				      meshms_conversation_log_row *qsolist,
-				      int qsolist_size)
+				      int qsolist_size,int uniqid)
 {
   IN();
   strbuf b = strbuf_alloca(1024);
@@ -1407,6 +1407,7 @@ int rhizome_meshms_find_conversations(const char *sid, int offset, int count,
       left=recipient_sid_hex; right=real_sender_hex;
     }
     if (strcasecmp(left,last_left)||strcasecmp(right,last_right)) {
+      cli_put_long(uniqid++,":");
       cli_put_string(left, ":");
       cli_put_string(right, "\n");
     }
@@ -1467,8 +1468,6 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
   
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
   const char *name = NULL;
-  const char *sender = NULL;
-  const char *recipient = NULL;
   if (service == NULL) {
     return WHY("Manifest has no service");
   }
@@ -1581,9 +1580,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
 	++inconsistent;
       }
       if (!inconsistent) {
-	strbuf b = strbuf_alloca(1024);
 	if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
-	  const char *blob_name = rhizome_manifest_get(blob_m, "name", NULL, 0);
 	  name = rhizome_manifest_get(m, "name", NULL, 0);
 	  if (field_differs(blob_m,m,"name")) ++inconsistent;
 	  if (field_differs(blob_m,m,"sender")) ++inconsistent;

@@ -693,9 +693,11 @@ int app_meshms_list_conversations(const struct cli_parsed *parsed, void *context
    return WHYF("invalid sid: %s", sid);
 
  const char *names[]={
-   "partya","partyb"
+   "_id","partya","partyb"
  };
- cli_columns(2,names);
+ cli_columns(3,names);
+
+ int id=0;
 
  rhizome_manifest *m=rhizome_new_manifest();
  if (m) {
@@ -712,12 +714,13 @@ int app_meshms_list_conversations(const struct cli_parsed *parsed, void *context
 	   if (j<sizeof(conversation_log[i].recipient_sid)) {
 	     tohex(recipient_sid_hex,conversation_log[i].recipient_sid,
 		   sizeof(conversation_log[i].recipient_sid));
+	     cli_put_long(id++, ":");
 	     cli_put_string(sid, ":");
 	     cli_put_string(recipient_sid_hex, "\n");
 	   }
 	 }
        if (rhizome_meshms_find_conversations(sid,offset,count,conversation_log,
-					     m->fileLength/sizeof(meshms_conversation_log_row)))
+					     m->fileLength/sizeof(meshms_conversation_log_row),id))
 	 {
 	   free(conversation_log);      
 	   rhizome_manifest_free(m);
@@ -729,5 +732,5 @@ int app_meshms_list_conversations(const struct cli_parsed *parsed, void *context
    return 0;
  }
  else 
-   return rhizome_meshms_find_conversations(sid,offset,count,NULL,0);
+   return rhizome_meshms_find_conversations(sid,offset,count,NULL,0,id);
 }
