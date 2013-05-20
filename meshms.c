@@ -535,7 +535,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, void *context)
  
  // Display list of messages in reverse order
   const char *names[]={
-    "number",
+    "_id",
     "offset",
     "length",
     "sender",
