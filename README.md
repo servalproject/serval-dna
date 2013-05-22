@@ -4,7 +4,7 @@ Serval DNA
 This repository contains the source code for the “core” Serval components
 implemented in [GNU C][]:
 
- * The **[Distributed Numbering Architecture (DNA)][]** is the key
+ * The **[Distributed Numbering Architecture (DNA)][DNA]** is the key
    innovation that makes mesh telephony viable in the absence of any
    infrastructure, eg, in the aftermath of a natural disaster or in remote
    locations.  It is a protocol carried over MDP (see below) that allows any
@@ -21,7 +21,7 @@ implemented in [GNU C][]:
    from theft or tampering, and steganography to allow the user to plausibly
    deny the existence of any locked identity.
 
- * The **[Mesh Datagram Protocol (MDP)][]** is Serval's own layer 3 protocol
+ * The **[Mesh Datagram Protocol (MDP)][MDP]** is Serval's own layer 3 protocol
    designed for secure mesh networking.  It is completely independent of
    Internet protocols such as IP and UDP, but for the time being is implemented
    as an “overlay” network based on UDP/IP because that is the interface that
@@ -31,7 +31,7 @@ implemented in [GNU C][]:
    source and destination addresses, and has a 32-bit port number analogous to
    the 16-bit port number used in TCP/IP.
 
- * The **[Voice over Mesh Protocol (VoMP)][]** is Serval's own call negotiation
+ * The **[Voice over Mesh Protocol (VoMP)][VoMP]** is Serval's own call negotiation
    and two-way audio streaming protocol used to implement mesh voice calls.  It
    is analogous to SIP/RTS, which is the dominant protocol used to implement
    Voice over Internet Protocol, but VoMP is designed for the variable and
@@ -121,9 +121,9 @@ Instructions for building and testing Serval DNA are in
 [GPL2]: http://www.gnu.org/licenses/gpl-2.0.html
 [individ]: http://developer.servalproject.org/files/serval_project_inc-individual.pdf
 [entity]: http://developer.servalproject.org/files/serval_project_inc-entity.pdf
-[Distributed Numbering Architecture (DNA)]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:dna
+[DNA]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:dna
 [Serval Keyring]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:keyring
-[Mesh Datagram Protocol (MDP)]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:mdp
+[MDP]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:mdp
 [VoMP]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:vomp
 [Rhizome]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:rhizome
 [MeshMS]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:meshms
