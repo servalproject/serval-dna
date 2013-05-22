@@ -67,7 +67,7 @@ struct neighbour_link{
 
   char unicast;
   int ack_sequence;
-  uint32_t ack_mask;
+  uint64_t ack_mask;
 };
 
 struct neighbour{
@@ -653,6 +653,18 @@ struct neighbour_link * get_neighbour_link(struct neighbour *neighbour, struct o
       sender_interface);
   neighbour->links = link;
   return link;
+}
+
+int link_state_interface_has_neighbour(struct overlay_interface *interface)
+{
+  struct neighbour *neighbour = neighbours;
+  while(neighbour){
+    if (neighbour->best_link && neighbour->best_link->interface == interface)
+      return 1;
+
+    neighbour = neighbour->_next;
+  }
+  return 0;
 }
 
 // track stats for receiving packets from this neighbour

@@ -200,7 +200,8 @@ int overlay_payload_enqueue(struct overlay_frame *p)
       // make sure there is an interface up that allows broadcasts
       for(i=0;i<OVERLAY_MAX_INTERFACES;i++){
 	if (overlay_interfaces[i].state==INTERFACE_STATE_UP
-	    && overlay_interfaces[i].send_broadcasts){
+	    && overlay_interfaces[i].send_broadcasts
+	    && link_state_interface_has_neighbour(&overlay_interfaces[i])){
 	  p->broadcast_sent_via[i]=0;
 	  drop=0;
 	}else
@@ -297,7 +298,8 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
     int i;
     for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
     {
-      if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
+      if (overlay_interfaces[i].state!=INTERFACE_STATE_UP || 
+	  !link_state_interface_has_neighbour(&overlay_interfaces[i]))
 	continue;
       time_ms_t next_packet = limit_next_allowed(&overlay_interfaces[i].transfer_limit);
       if (next_allowed_packet==0||next_packet < next_allowed_packet)
@@ -398,7 +400,9 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  int i, keep=0;
 	  for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
 	  {
-	    if (overlay_interfaces[i].state!=INTERFACE_STATE_UP || frame->broadcast_sent_via[i])
+	    if (overlay_interfaces[i].state!=INTERFACE_STATE_UP || 
+	        frame->broadcast_sent_via[i] ||
+	        !link_state_interface_has_neighbour(&overlay_interfaces[i]))
 	      continue;
 	    keep=1;
 	    time_ms_t next_allowed = limit_next_allowed(&overlay_interfaces[i].transfer_limit);
@@ -490,18 +494,20 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       // check if there is still a broadcast to be sent      
       for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
       {
-	if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
+	if (overlay_interfaces[i].state==INTERFACE_STATE_UP &&
+	    link_state_interface_has_neighbour(&overlay_interfaces[i])){
 	  if (!frame->broadcast_sent_via[i]){
 	    keep_payload=1;
 	    break;
 	  }
+	}
       }
     }
-    
+
     if (!keep_payload){
       frame = overlay_queue_remove(queue, frame);
       continue;
-    } 
+    }
     
   skip:
     // if we can't send the payload now, check when we should try next
@@ -547,7 +553,6 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
 static void overlay_send_packet(struct sched_ent *alarm){
   struct outgoing_packet packet;
   bzero(&packet, sizeof(struct outgoing_packet));
-  
   overlay_fill_send_packet(&packet, gettime_ms());
 }
 

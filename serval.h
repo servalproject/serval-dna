@@ -835,6 +835,7 @@ void link_explained(struct subscriber *subscriber);
 void link_interface_down(struct overlay_interface *interface);
 int link_state_announce_links();
 int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now);
+int link_state_interface_has_neighbour(struct overlay_interface *interface);
 
 int generate_nonce(unsigned char *nonce,int bytes);
 
