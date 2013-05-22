@@ -621,7 +621,8 @@ static int send_neighbour_link(struct neighbour *n)
     if (config.debug.linkstate && config.debug.verbose)
       DEBUGF("LINK STATE; Sending ack to %s for seq %d", alloca_tohex_sid(n->subscriber->sid), n->best_link->ack_sequence);
 
-    append_link_state(frame->payload, flags, n->subscriber, my_subscriber, n->best_link->neighbour_interface, 1, n->best_link->ack_sequence, n->best_link->ack_mask, -1);
+    append_link_state(frame->payload, flags, n->subscriber, my_subscriber, n->best_link->neighbour_interface, 1,
+	              n->best_link->ack_sequence, n->best_link->ack_mask, -1);
     if (overlay_payload_enqueue(frame))
       op_free(frame);
     else
@@ -766,8 +767,16 @@ int link_received_duplicate(struct subscriber *subscriber, struct overlay_interf
   struct neighbour_link *link=get_neighbour_link(neighbour, interface, sender_interface, unicast);
 
   int offset = (link->ack_sequence - 1 - previous_seq)&0xFF;
-  if (offset < 32)
-    return link->ack_mask & (1<<offset);
+  if (offset >= 64 || (link->ack_mask & (1<<offset))){
+    if (config.debug.linkstate && config.debug.verbose)
+      DEBUGF("LINK STATE; dropping duplicate %s, saw previous seq %d",
+	alloca_tohex_sid(subscriber->sid), previous_seq);
+    return 1;
+  }
+
+  if (config.debug.linkstate && config.debug.verbose)
+    DEBUGF("LINK STATE; allowing duplicate %s, didn't see seq %d",
+      alloca_tohex_sid(subscriber->sid), previous_seq);
   return 0;
 }
 
@@ -788,7 +797,7 @@ int link_received_packet(struct subscriber *subscriber, struct overlay_interface
   if (sender_seq >=0){
     if (link->ack_sequence != -1){
       int offset = (link->ack_sequence - 1 - sender_seq)&0xFF;
-      if (offset < 32){
+      if (offset < 64){
         if (config.debug.verbose && config.debug.linkstate)
           DEBUGF("LINK STATE; late seq %d from %s on %s", 
 	    sender_seq, alloca_tohex_sid(subscriber->sid), interface->name);

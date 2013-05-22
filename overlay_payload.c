@@ -105,8 +105,10 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
     broadcast = &p->broadcast_id;
   }
   int i = interface - overlay_interfaces;
+  int previous_seq = p->destination ? p->interface_sent_sequence[i]:-1;
+
   if (overlay_frame_build_header(context, b,
-			     p->queue, p->type, p->modifiers, p->ttl, p->interface_sent_sequence[i],
+			     p->queue, p->type, p->modifiers, p->ttl, previous_seq,
 			     broadcast, p->next_hop, 
 			     p->destination, p->source))
     goto cleanup;
