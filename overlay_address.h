@@ -65,6 +65,9 @@ struct subscriber{
   
   // result of routing calculations;
   int reachable;
+
+  // highest seen packet version
+  int max_packet_version;
   
   // if indirect, who is the next hop?
   struct subscriber *next_hop;
@@ -96,6 +99,8 @@ struct broadcast{
 struct decode_context{
   struct overlay_interface *interface;
   int sender_interface;
+  int packet_version;
+  int encapsulation;
   struct sockaddr_in addr;
   int invalid_addresses;
   struct overlay_frame *please_explain;

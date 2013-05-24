@@ -42,6 +42,7 @@ struct overlay_frame {
   /* What sequence number have we used to send this packet on this interface.
      */
   int interface_sent_sequence[OVERLAY_MAX_INTERFACES];
+  int32_t mdp_sequence;
   time_ms_t interface_dont_send_until[OVERLAY_MAX_INTERFACES];
   struct broadcast broadcast_id;
   
@@ -57,6 +58,7 @@ struct overlay_frame {
   struct sockaddr_in recvaddr;
   overlay_interface *interface;
   char unicast;
+  int packet_version;
   time_ms_t dont_send_until;
   
   /* Actual payload */

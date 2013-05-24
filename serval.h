@@ -514,7 +514,7 @@ time_ms_t overlay_time_until_next_tick();
 int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
 				 struct overlay_frame *p, struct overlay_buffer *b);
 int single_packet_encapsulation(struct overlay_buffer *b, struct overlay_frame *frame);
-int overlay_packet_init_header(int encapsulation, 
+int overlay_packet_init_header(int packet_version, int encapsulation, 
 			       struct decode_context *context, struct overlay_buffer *buff, 
 			       struct subscriber *destination, 
 			       char unicast, char interface, int seq);

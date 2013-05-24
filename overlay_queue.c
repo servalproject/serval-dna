@@ -40,6 +40,7 @@ overlay_txqueue overlay_tx[OQ_MAX];
 struct outgoing_packet{
   overlay_interface *interface;
   int32_t seq;
+  int packet_version;
   int i;
   struct subscriber *unicast_subscriber;
   struct sockaddr_in dest;
@@ -48,6 +49,7 @@ struct outgoing_packet{
   struct decode_context context;
 };
 
+int32_t mdp_sequence=0;
 struct sched_ent next_packet;
 struct profile_total send_packet;
 
@@ -196,7 +198,7 @@ int overlay_payload_enqueue(struct overlay_frame *p)
     if (p->destination){
       // allow the packet to be resent
       if (p->resend == 0)
-        p->resend = 3;
+        p->resend = 1;
     }else{
       int i;
       int interface_copies = 0;
@@ -222,7 +224,7 @@ int overlay_payload_enqueue(struct overlay_frame *p)
 
       // allow the packet to be resent
       if (p->resend == 0)
-        p->resend = 3 * interface_copies;
+        p->resend = 1;
     }
   }
   
@@ -231,7 +233,10 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   p->prev=l;
   p->next=NULL;
   p->enqueued_at=gettime_ms();
-  
+  p->mdp_sequence = -1;
+  // it should be safe to try sending all packets with an mdp sequence
+  if (p->packet_version==0)
+    p->packet_version=1;
   queue->last=p;
   if (!queue->first) queue->first=p;
   queue->length++;
@@ -243,20 +248,22 @@ int overlay_payload_enqueue(struct overlay_frame *p)
 }
 
 static void
-overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destination, int unicast,
+overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destination, 
+		    int unicast, int packet_version,
 		    overlay_interface *interface, struct sockaddr_in addr){
   packet->interface = interface;
   packet->i = (interface - overlay_interfaces);
   packet->dest=addr;
   packet->buffer=ob_new();
   packet->seq=-1;
+  packet->packet_version = packet_version;
   if (unicast)
     packet->unicast_subscriber = destination;
   else
     packet->seq = interface->sequence_number = (interface->sequence_number + 1)&0xFFFF;
   ob_limitsize(packet->buffer, packet->interface->mtu);
   
-  overlay_packet_init_header(ENCAP_OVERLAY, &packet->context, packet->buffer, 
+  overlay_packet_init_header(packet_version, ENCAP_OVERLAY, &packet->context, packet->buffer, 
 			     destination, unicast, packet->i, packet->seq);
   packet->header_length = ob_position(packet->buffer);
 }
@@ -400,7 +407,11 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  frame->unicast = 1;
 	}else
 	  frame->recvaddr = frame->interface->broadcast_address;
-	
+
+	// degrade packet version if required to reach the destination
+	if (frame->packet_version > frame->next_hop->max_packet_version)
+	  frame->packet_version = frame->next_hop->max_packet_version;
+
 	frame->destination_resolved=1;
       }else{
 	
@@ -455,29 +466,17 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       if (limit_is_allowed(&frame->interface->transfer_limit))
 	goto skip;
       
-      if (frame->interface->encapsulation==ENCAP_SINGLE){
-	// send MDP packets without aggregating them together
-	struct overlay_buffer *buff = ob_new();
-	
-	int ret=single_packet_encapsulation(buff, frame);
-	if (!ret){
-	  ret=overlay_broadcast_ensemble(frame->interface, &frame->recvaddr, ob_ptr(buff), ob_position(buff));
-	}
-	
-	ob_free(buff);
-	
-	if (ret)
-	  goto skip;
-	
-	goto sent;
-      }
-      
       if (frame->source_full)
 	my_subscriber->send_full=1;
-      overlay_init_packet(packet, frame->next_hop, frame->unicast, frame->interface, frame->recvaddr);
+
+      if (frame->interface->encapsulation!=ENCAP_SINGLE)
+        overlay_init_packet(packet, frame->next_hop, frame->unicast, frame->packet_version, frame->interface, frame->recvaddr);
+
     }else{
       // is this packet going our way?
-      if (frame->interface!=packet->interface || memcmp(&packet->dest, &frame->recvaddr, sizeof(packet->dest))!=0){
+      if (frame->interface!=packet->interface ||
+	  frame->packet_version==packet->packet_version ||
+	  memcmp(&packet->dest, &frame->recvaddr, sizeof(packet->dest))!=0){
 	goto skip;
       }
     }
@@ -491,21 +490,45 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       }
     }
 
-    if (overlay_frame_append_payload(&packet->context, packet->interface, frame, packet->buffer)){
-      // payload was not queued
-      goto skip;
+    if (frame->mdp_sequence == -1){
+      frame->mdp_sequence = mdp_sequence = (mdp_sequence+1)&0xFFFF;
+    }else if(((mdp_sequence - frame->mdp_sequence)&0xFFFF) >= 64){
+      // too late, we've sent too many packets for the next hop to correctly de-duplicate
+      if (config.debug.overlayframes)
+        DEBUGF("Retransmition of frame %p mdp seq %d, is too late to be de-duplicated", frame, frame->mdp_sequence, frame->interface_sent_sequence[packet->i], packet->seq);
+      frame = overlay_queue_remove(queue, frame);
+      continue;
+    }else{
+      if (config.debug.overlayframes)
+        DEBUGF("Retransmitting frame %p mdp seq %d, from packet seq %d in seq %d", frame, frame->mdp_sequence, frame->interface_sent_sequence[packet->i], packet->seq);
     }
 
-    if (frame->interface_sent_sequence[packet->i]>=0 && config.debug.overlayframes)
-      DEBUGF("Retransmitted frame %p from seq %d in seq %d", frame, frame->interface_sent_sequence[packet->i], packet->seq);
-    frame->interface_sent_sequence[packet->i] = packet->seq;
+    if (frame->interface->encapsulation==ENCAP_SINGLE){
+      // send MDP packets without aggregating them together
+      struct overlay_buffer *buff = ob_new();
 
-  sent:
+      int ret=single_packet_encapsulation(buff, frame);
+      if (!ret){
+	ret=overlay_broadcast_ensemble(frame->interface, &frame->recvaddr, ob_ptr(buff), ob_position(buff));
+      }
+
+      ob_free(buff);
+
+      if (ret)
+	goto skip;
+    }else{
+      if (overlay_frame_append_payload(&packet->context, packet->interface, frame, packet->buffer)){
+        // payload was not queued
+        goto skip;
+      }
+    }
+
+    frame->interface_sent_sequence[packet->i] = packet->seq;
     frame->interface_dont_send_until[packet->i] = now+200;
 
     if (config.debug.overlayframes){
-      DEBUGF("Sent payload %p type %x len %d for %s via %s, seq %d", 
-	     frame,
+      DEBUGF("Sent payload %p, %d type %x len %d for %s via %s, seq %d", 
+	     frame, frame->mdp_sequence,
 	     frame->type, ob_position(frame->payload),
 	     frame->destination?alloca_tohex_sid(frame->destination->sid):"All",
 	     frame->next_hop?alloca_tohex_sid(frame->next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN),
@@ -519,9 +542,8 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     
     // mark the payload as sent
 
-    frame->resend --;
     if (frame->destination_resolved){
-      if (frame->resend>0 && frame->next_hop && packet->seq!=-1 && (!frame->unicast)){
+      if (frame->resend>0 && frame->packet_version>=1 && frame->next_hop && packet->seq !=-1 && (!frame->unicast)){
         frame->dont_send_until = now+200;
 	frame->destination_resolved = 0;
 	if (config.debug.overlayframes)
@@ -529,7 +551,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	goto skip;
       }
     }else{
-      if (frame->resend<=0 || packet->seq==-1 || frame->unicast){
+      if (frame->resend<=0 || frame->packet_version<1 || packet->seq==-1 || frame->unicast){
 	// dont retransmit if we aren't sending sequence numbers, or we've run out of allowed resends
         frame->interface_sent_sequence[packet->i] = FRAME_DONT_SEND;
       }
@@ -598,7 +620,7 @@ int overlay_send_tick_packet(struct overlay_interface *interface){
   struct outgoing_packet packet;
   bzero(&packet, sizeof(struct outgoing_packet));
   packet.seq=-1;
-  overlay_init_packet(&packet, NULL, 0, interface, interface->broadcast_address);
+  overlay_init_packet(&packet, NULL, 0, 0, interface, interface->broadcast_address);
   
   overlay_fill_send_packet(&packet, gettime_ms());
   return 0;
@@ -646,8 +668,6 @@ int overlay_queue_ack(struct subscriber *neighbour, struct overlay_interface *in
 	  if (config.debug.overlayframes)
 	    DEBUGF("Requeue packet %p to %s sent by seq %d due to ack of seq %d", frame, alloca_tohex_sid(neighbour->sid), frame_seq, ack_seq);
 	  frame->dont_send_until = now;
-	  // dont count the next retransmission against the time based retries
-	  frame->resend ++;
 	  overlay_calc_queue_time(&overlay_tx[i], frame);
 	}
       }

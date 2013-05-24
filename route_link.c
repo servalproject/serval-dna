@@ -69,6 +69,7 @@ struct neighbour_link{
   time_ms_t link_timeout;
 
   char unicast;
+
   int ack_sequence;
   uint64_t ack_mask;
 };
@@ -86,6 +87,9 @@ struct neighbour{
   // if a neighbour is telling the world that they are using us as a next hop, we need to send acks & nacks with high priority
   // otherwise we don't care too much about packet loss.
   char using_us;
+
+  int mdp_ack_sequence;
+  uint64_t mdp_ack_mask;
 
   // next link update
   time_ms_t next_neighbour_update;
@@ -162,6 +166,7 @@ static struct neighbour *get_neighbour(struct subscriber *subscriber, char creat
     n->subscriber = subscriber;
     n->_next = neighbours;
     n->last_update_seq = -1;
+    n->mdp_ack_sequence = -1;
     // TODO measure min/max rtt
     n->rtt = 120;
     neighbours = n;
@@ -754,29 +759,31 @@ int link_state_ack_soon(struct subscriber *subscriber){
 }
 
 // our neighbour is sending a duplicate frame, did we see the original?
-int link_received_duplicate(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int previous_seq, int unicast)
+int link_received_duplicate(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int payload_seq, int unicast)
 {
-  // TODO better handling of unicast routes
-  if (unicast)
-    return 0;
-
   struct neighbour *neighbour = get_neighbour(subscriber, 0);
   if (!neighbour)
     return 0;
 
-  struct neighbour_link *link=get_neighbour_link(neighbour, interface, sender_interface, unicast);
+  if (neighbour->mdp_ack_sequence != -1){
+    if (neighbour->mdp_ack_sequence == payload_seq){
+      return 1;
+    }
 
-  int offset = (link->ack_sequence - 1 - previous_seq)&0xFF;
-  if (offset >= 64 || (link->ack_mask & (1<<offset))){
-    if (config.debug.linkstate && config.debug.verbose)
-      DEBUGF("LINK STATE; dropping duplicate %s, saw previous seq %d",
-	alloca_tohex_sid(subscriber->sid), previous_seq);
-    return 1;
-  }
-
-  if (config.debug.linkstate && config.debug.verbose)
-    DEBUGF("LINK STATE; allowing duplicate %s, didn't see seq %d",
-      alloca_tohex_sid(subscriber->sid), previous_seq);
+    int offset = (neighbour->mdp_ack_sequence - 1 - payload_seq)&0xFF;
+    if (offset < 64){
+      if (neighbour->mdp_ack_mask & (1<<offset)){
+	return 1;
+      }
+      neighbour->mdp_ack_mask |= (1<<offset);
+    }else{
+      int offset = (payload_seq - neighbour->mdp_ack_sequence - 1)&0xFF;
+      neighbour->mdp_ack_mask = (neighbour->mdp_ack_mask << 1) | 1;
+      neighbour->mdp_ack_mask = neighbour->mdp_ack_mask << offset;
+      neighbour->mdp_ack_sequence = payload_seq;
+    }
+  }else
+    neighbour->mdp_ack_sequence = payload_seq;
   return 0;
 }
 

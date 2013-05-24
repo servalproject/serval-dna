@@ -31,15 +31,19 @@ struct sockaddr_in loopback;
 #define PACKET_INTERFACE (1<<1)
 #define PACKET_SEQ (1<<2)
 
-int overlay_packet_init_header(int encapsulation, 
+#define SUPPORTED_PACKET_VERSION 1
+
+int overlay_packet_init_header(int packet_version, int encapsulation, 
 			       struct decode_context *context, struct overlay_buffer *buff, 
 			       struct subscriber *destination, 
 			       char unicast, char interface, int seq){
   
+  if (packet_version <0 || packet_version > SUPPORTED_PACKET_VERSION)
+    return WHY("Invalid packet version");
   if (encapsulation !=ENCAP_OVERLAY && encapsulation !=ENCAP_SINGLE)
     return WHY("Invalid packet encapsulation");
   
-  if (ob_append_byte(buff, 0))
+  if (ob_append_byte(buff, packet_version))
     return -1;
   if (ob_append_byte(buff, encapsulation))
     return -1;
@@ -224,18 +228,21 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
   }else
     frame->type=OF_TYPE_DATA;
 
-  if (flags & PAYLOAD_FLAG_DUPLICATE){
-    int previous_seq = ob_get(buffer);
-    if (previous_seq == -1)
-      RETURN(WHY("Unable to read previous seq"));
+  if (context->packet_version >0){
+    int seq = ob_get(buffer);
+    if (seq == -1)
+      RETURN(WHY("Unable to read packet seq"));
     // TODO unicast
-    if (link_received_duplicate(context->sender, context->interface, context->sender_interface, previous_seq, 0)){
-      if (config.debug.overlayframes)
-        DEBUG("Don't process or forward duplicate payloads");
-      forward=process=0;
+    if ((flags & PAYLOAD_FLAG_ONE_HOP) || !(flags & PAYLOAD_FLAG_TO_BROADCAST)){
+      if (link_received_duplicate(context->sender, context->interface, context->sender_interface, seq, 0)){
+        if (config.debug.overlayframes)
+          DEBUG("Don't process or forward duplicate payloads");
+        forward=process=0;
+      }
     }
   }
   frame->modifiers=flags;
+  frame->packet_version = context->packet_version;
   
   // if we can't understand one of the addresses, skip processing the payload
   if ((forward||process)&&context->invalid_addresses){
@@ -251,6 +258,14 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
 			struct sockaddr_in *addr, struct overlay_buffer *buffer){
   IN();
   time_ms_t now = gettime_ms();
+  
+  context->packet_version = ob_get(buffer);
+  if (context->packet_version < 0 || context->packet_version > SUPPORTED_PACKET_VERSION)
+    RETURN(WHY("Packet version not recognised."));
+  
+  context->encapsulation = ob_get(buffer);
+  if (context->encapsulation !=ENCAP_OVERLAY && context->encapsulation !=ENCAP_SINGLE)
+    RETURN(WHY("Invalid packet encapsulation"));
   
   if (overlay_address_parse(context, buffer, &context->sender))
     RETURN(WHY("Unable to parse sender"));
@@ -275,7 +290,10 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
 	DEBUG("Completely ignore packets I sent");
       RETURN(1);
     }
-    
+
+    if (context->sender->max_packet_version < context->packet_version)
+      context->sender->max_packet_version = context->packet_version;
+
     // TODO probe unicast links when we detect an address change.
     
     // if this is a dummy announcement for a node that isn't in our routing table
@@ -390,13 +408,6 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   if (config.debug.overlayframes)
     DEBUG("Received overlay packet");
   
-  if (ob_get(b)!=0)
-    RETURN(WHY("Packet type not recognised."));
-  
-  int encapsulation = ob_get(b);
-  if (encapsulation !=ENCAP_OVERLAY && encapsulation !=ENCAP_SINGLE)
-    RETURN(WHY("Invalid packet encapsulation"));
-  
   int ret=parseEnvelopeHeader(&context, interface, (struct sockaddr_in *)recvaddr, b);
   if (ret){
     ob_free(b);
@@ -414,13 +425,14 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       break;
     }
     
-    // TODO allow for one byte length
+    // TODO allow for one byte length?
     unsigned int payload_len;
     
-    switch (encapsulation){
+    switch (context.encapsulation){
       case ENCAP_SINGLE:
 	payload_len = ob_remaining(b);
 	break;
+      default:
       case ENCAP_OVERLAY:
 	payload_len = ob_get_ui16(b);
 	if (payload_len > ob_remaining(b)){
