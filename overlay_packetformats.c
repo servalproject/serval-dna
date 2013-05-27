@@ -83,19 +83,13 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
       break;
       // data frames
     case OF_TYPE_RHIZOME_ADVERT:
-      if (config.debug.overlayframes)
-	DEBUG("Processing OF_TYPE_RHIZOME_ADVERT");
       overlay_rhizome_saw_advertisements(id,f,now);
       break;
     case OF_TYPE_DATA:
     case OF_TYPE_DATA_VOICE:
-      if (config.debug.overlayframes)
-	DEBUG("Processing OF_TYPE_DATA");
       overlay_saw_mdp_containing_frame(f,now);
       break;
     case OF_TYPE_PLEASEEXPLAIN:
-      if (config.debug.overlayframes)
-	DEBUG("Processing OF_TYPE_PLEASEEXPLAIN");
       process_explain(f);
       break;
     default:
@@ -110,12 +104,12 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
 int overlay_forward_payload(struct overlay_frame *f){
   IN();
   if (f->ttl == 0){
-    if (config.debug.overlayframes)
+    if (config.debug.verbose && config.debug.overlayframes)
       DEBUGF("NOT FORWARDING, due to ttl=0");
     RETURN(0);
   }
   
-  if (config.debug.overlayframes)
+  if (config.debug.verbose && config.debug.overlayframes)
     DEBUGF("Forwarding payload for %s, ttl=%u",
 	  (f->destination?alloca_tohex_sid(f->destination->sid):"broadcast"),
 	  (unsigned)f->ttl);
@@ -163,7 +157,7 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
       RETURN(WHY("Unable to parse payload source"));
     if (!frame->source || frame->source->reachable==REACHABLE_SELF){
       process=forward=0;
-      if (config.debug.overlayframes)
+      if (config.debug.verbose && config.debug.overlayframes)
 	DEBUGF("Ignoring my packet (or unparsable source)");
     }
   }
@@ -174,7 +168,7 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
 	RETURN(WHY("Unable to read broadcast address"));
       if (overlay_broadcast_drop_check(&frame->broadcast_id)){
 	process=forward=0;
-	if (config.debug.overlayframes)
+	if (config.debug.verbose && config.debug.overlayframes)
 	  DEBUGF("Ignoring duplicate broadcast (%s)", alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
       }
     }
@@ -186,7 +180,7 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
     
     if (!frame->destination || frame->destination->reachable!=REACHABLE_SELF){
       process=0;
-      if (config.debug.overlayframes)
+      if (config.debug.verbose && config.debug.overlayframes)
 	DEBUGF("Don't process packet not addressed to me");
     }
     
@@ -197,7 +191,7 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
       
       if (!(*nexthop) || (*nexthop)->reachable!=REACHABLE_SELF){
 	forward=0;
-	if (config.debug.overlayframes)
+	if (config.debug.verbose && config.debug.overlayframes)
 	  DEBUGF("Don't forward packet not addressed to me");
       }
     }
@@ -216,7 +210,7 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
     --frame->ttl;
   if (frame->ttl == 0) {
     forward = 0;
-    if (config.debug.overlayframes)
+    if (config.debug.verbose && config.debug.overlayframes)
       DEBUGF("NOT FORWARDING, due to ttl=0");
   }
   
@@ -235,7 +229,7 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
     // TODO unicast
     if ((flags & PAYLOAD_FLAG_ONE_HOP) || !(flags & PAYLOAD_FLAG_TO_BROADCAST)){
       if (link_received_duplicate(context->sender, context->interface, context->sender_interface, seq, 0)){
-        if (config.debug.overlayframes)
+        if (config.debug.verbose && config.debug.overlayframes)
           DEBUG("Don't process or forward duplicate payloads");
         forward=process=0;
       }
@@ -246,7 +240,7 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
   
   // if we can't understand one of the addresses, skip processing the payload
   if ((forward||process)&&context->invalid_addresses){
-    if (config.debug.overlayframes)
+    if (config.debug.verbose && config.debug.overlayframes)
       DEBUG("Don't process or forward with invalid addresses");
     forward=process=0;
   }
@@ -286,7 +280,7 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
   if (context->sender){
     // ignore packets that have been reflected back to me
     if (context->sender->reachable==REACHABLE_SELF){
-      if (config.debug.overlayframes)
+      if (config.debug.verbose && config.debug.overlayframes)
 	DEBUG("Completely ignore packets I sent");
       RETURN(1);
     }
@@ -405,7 +399,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   else 
     bzero(&f.recvaddr, sizeof f.recvaddr);
   
-  if (config.debug.overlayframes)
+  if (config.debug.verbose && config.debug.overlayframes)
     DEBUG("Received overlay packet");
   
   int ret=parseEnvelopeHeader(&context, interface, (struct sockaddr_in *)recvaddr, b);

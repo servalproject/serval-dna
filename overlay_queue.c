@@ -270,6 +270,10 @@ overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destinati
   overlay_packet_init_header(packet_version, ENCAP_OVERLAY, &packet->context, packet->buffer, 
 			     destination, unicast, packet->i, packet->seq);
   packet->header_length = ob_position(packet->buffer);
+  if (config.debug.overlayframes)
+    DEBUGF("Creating packet for interface %s, seq %d, %s", 
+      interface->name, packet->seq,
+      unicast?"unicast":"broadcast");
 }
 
 int overlay_queue_schedule_next(time_ms_t next_allowed_packet){
