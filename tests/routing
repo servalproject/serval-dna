@@ -383,22 +383,22 @@ test_ping_unreliable() {
    tfw_cat --stdout --stderr
 }
 
-doc_ping_unreliable8="Ping over a 2-hop unreliable link"
-setup_ping_unreliable8() {
+doc_ping_unreliable2="Ping over a 2-hop unreliable link"
+setup_ping_unreliable2() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B +C create_single_identity
   foreach_instance +A +B add_interface 1
   foreach_instance +A +B \
     executeOk_servald config \
-      set interfaces.1.drop_broadcasts 20
+      set interfaces.1.drop_broadcasts 40
   foreach_instance +B +C add_interface 2
   foreach_instance +B +C \
     executeOk_servald config \
-      set interfaces.2.drop_broadcasts 20
+      set interfaces.2.drop_broadcasts 40
   foreach_instance +A +B +C start_routing_instance
 }
-test_ping_unreliable8() {
+test_ping_unreliable2() {
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
    set_instance +A
