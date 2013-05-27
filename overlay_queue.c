@@ -29,7 +29,7 @@ typedef struct overlay_txqueue {
   struct overlay_frame *last;
   int length; /* # frames in queue */
   int maxLength; /* max # frames in queue before we consider ourselves congested */
-  
+  int small_packet_grace_interval;
   /* Latency target in ms for this traffic class.
    Frames older than the latency target will get dropped. */
   int latencyTarget;
@@ -49,6 +49,8 @@ struct outgoing_packet{
   struct decode_context context;
 };
 
+#define SMALL_PACKET_SIZE (400)
+
 int32_t mdp_sequence=0;
 struct sched_ent next_packet;
 struct profile_total send_packet;
@@ -62,12 +64,16 @@ int overlay_queue_init(){
   for(i=0;i<OQ_MAX;i++) {
     overlay_tx[i].maxLength=100;
     overlay_tx[i].latencyTarget=1000; /* Keep packets in queue for 1 second by default */
+    overlay_tx[i].small_packet_grace_interval = 5;
   }
   /* expire voice/video call packets much sooner, as they just aren't any use if late */
   overlay_tx[OQ_ISOCHRONOUS_VOICE].maxLength=20;
   overlay_tx[OQ_ISOCHRONOUS_VOICE].latencyTarget=200;
+
   overlay_tx[OQ_ISOCHRONOUS_VIDEO].latencyTarget=200;
-  return 0;  
+
+  overlay_tx[OQ_OPPORTUNISTIC].small_packet_grace_interval = 20;
+  return 0;
 }
 
 /* remove and free a payload from the queue */
@@ -329,6 +335,10 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
   
   if (next_allowed_packet < frame->dont_send_until)
     next_allowed_packet = frame->dont_send_until;
+
+  if (ob_position(frame->payload)<SMALL_PACKET_SIZE &&
+      next_allowed_packet < frame->enqueued_at + overlay_tx[frame->queue].small_packet_grace_interval)
+    next_allowed_packet = frame->enqueued_at + overlay_tx[frame->queue].small_packet_grace_interval;
 
   overlay_queue_schedule_next(next_allowed_packet);
   
