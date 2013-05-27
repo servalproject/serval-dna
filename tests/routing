@@ -379,7 +379,7 @@ test_ping_unreliable() {
    wait_until path_exists +A +B
    wait_until path_exists +B +A
    set_instance +A
-   executeOk_servald mdp ping --interval=0.020 --timeout=3 $SIDB 500
+   executeOk_servald mdp ping --interval=0.100 --timeout=3 $SIDB 100
    tfw_cat --stdout --stderr
 }
 
@@ -402,7 +402,7 @@ test_ping_unreliable8() {
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
    set_instance +A
-   executeOk_servald mdp ping --interval=0.020 --timeout=3 $SIDC 500
+   executeOk_servald mdp ping --interval=0.100 --timeout=3 $SIDC 100
    tfw_cat --stdout --stderr
 }
 
@@ -421,7 +421,7 @@ test_brping_unreliable() {
    wait_until path_exists +A +B
    wait_until path_exists +B +A
    set_instance +A
-   executeOk_servald mdp ping --interval=0.020 --timeout=2 broadcast 500
+   executeOk_servald mdp ping --interval=0.100 --timeout=2 broadcast 100
    tfw_cat --stdout --stderr
 }
 
