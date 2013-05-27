@@ -217,10 +217,8 @@ int overlay_payload_enqueue(struct overlay_frame *p)
       }
       
       // just drop it now
-      if (interface_copies == 0){
-	WARN("No broadcast interfaces to send with");
+      if (interface_copies == 0)
 	return -1;
-      }
 
       // allow the packet to be resent
       if (p->resend == 0)
