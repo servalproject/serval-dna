@@ -322,10 +322,10 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
     int i;
     for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
     {
-      if (overlay_interfaces[i].state!=INTERFACE_STATE_UP || 
-	  !link_state_interface_has_neighbour(&overlay_interfaces[i]))
+      if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
 	continue;
-      if (frame->interface_sent_sequence[i]==FRAME_DONT_SEND && !frame->destination)
+      if ((!frame->destination) && (frame->interface_sent_sequence[i]==FRAME_DONT_SEND ||
+	  !link_state_interface_has_neighbour(&overlay_interfaces[i])))
 	continue;
       time_ms_t next_packet = limit_next_allowed(&overlay_interfaces[i].transfer_limit);
       if (next_packet < frame->interface_dont_send_until[i])
