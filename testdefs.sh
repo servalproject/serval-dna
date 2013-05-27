@@ -283,6 +283,7 @@ start_servald_server() {
    assert --message="a new servald process is running" --dump-on-fail="$instance_servald_log" [ -n "$new_pids" ]
    assert --message="servald pidfile process is running" --dump-on-fail="$instance_servald_log" $pidfile_running
    assert --message="servald log file $instance_servald_log is present" [ -r "$instance_servald_log" ]
+   wait_until grep -q "Server started" "$instance_servald_log"
    tfw_log "# Started servald server process $instance_name, pid=$servald_pid"
    pop_instance
 }

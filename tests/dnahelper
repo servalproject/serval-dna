@@ -26,7 +26,6 @@ setup() {
    assert_no_servald_processes
    setup_dnahelper
    start_servald_instances +A
-   assert_all_instance_peers_complete +A
 }
 
 finally() {
@@ -229,7 +228,6 @@ setup_ExecError() {
    dnahelper=/non/existent
    assert [ ! -e "$dnahelper" ]
    start_servald_instances +A
-   assert_all_instance_peers_complete +A
 }
 test_ExecError() {
    executeOk_servald dna lookup 12345
@@ -255,7 +253,6 @@ done
 EOF
    chmod 0755 "$dnahelper"
    start_servald_instances +A
-   assert_all_instance_peers_complete +A
 }
 test_ExecArgs() {
    executeOk_servald dna lookup 12345
