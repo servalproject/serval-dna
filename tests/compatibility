@@ -1,0 +1,89 @@
+#!/bin/bash
+
+# Tests for network backwards compatibility
+#
+# Copyright 2012 Serval Project, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+
+teardown() {
+   stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
+
+doc_ping_090_version="Ping version of servald in Serval Mesh 0.90"
+setup_ping_090_version() {
+   setup_servald
+   if ! [ -x "$SERVALD_090" ]; then
+      error "SERVALD_090 must point to a build being tested for compatibility"
+      return 1
+   fi
+   servald_binary=servald_090
+   cp "$SERVALD_090" "$SERVALD_VAR/$servald_binary"
+   export servaldA=$servald_binary
+}
+
+start_servald_090() {
+# servald configuration and log output has changed, and will continue to change in future
+# therefore the operations to start a version 0.90 servald instance are preserved here for future reference
+   executeOk_servald keyring add
+   assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
+   extract_stdout_keyvalue SIDA sid "$rexp_sid"
+   SERVALD_SERVER_CHDIR="$instance_dir" SERVALD_LOG_FILE="$instance_servald_log" executeOk_servald start
+   wait_until grep "[Ii]nterface .* is up" "$instance_servald_log"
+}
+
+test_ping_090_version() {
+   local DUMMYNET="$SERVALD_VAR/dummy"
+   >$DUMMYNET
+   set_instance +A
+   executeOk_servald config \
+      set interfaces.0.dummy "$DUMMYNET" \
+      set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
+      set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
+   start_servald_090
+   set_instance +B
+   executeOk_servald config \
+      set interfaces.1.file "$DUMMYNET" \
+      set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
+      set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
+      set debug.linkstate on \
+      set debug.overlayrouting on
+   create_single_identity
+   start_servald_server
+   wait_until grep "LINK STATE; new legacy neighbour $SIDA" "$instance_servald_log"
+   wait_until grep "REACHABLE VIA BROADCAST sid=$SIDA" "$instance_servald_log"
+   executeOk_servald route print
+   tfw_cat --stdout --stderr
+   assertStdoutGrep --stdout --matches=1 "^${SIDA}:BROADCAST :$DUMMYNET:0*\$"
+   set_instance +A
+   wait_until grep "PEER REACHABLE, sid=$SIDB" "$instance_servald_log"
+   executeOk_servald route print
+   tfw_cat --stdout --stderr
+   assertStdoutGrep --stdout --matches=1 "^${SIDB}:BROADCAST :0*\$"
+   executeOk_servald mdp ping $SIDB 1
+   tfw_cat --stdout --stderr
+   set_instance +B
+   executeOk_servald mdp ping $SIDA 1
+   tfw_cat --stdout --stderr
+}
+
+runTests "$@"
+

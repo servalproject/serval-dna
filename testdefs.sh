@@ -20,7 +20,8 @@ shopt -s extglob
 testdefs_sh=$(abspath "${BASH_SOURCE[0]}")
 servald_source_root="${testdefs_sh%/*}"
 servald_build_root="$servald_source_root"
-servald_build_executable="$servald_build_root/servald"
+servald_basename="servald"
+servald_build_executable="$servald_build_root/$servald_basename"
 export TFW_LOGDIR="${TFW_LOGDIR:-$servald_build_root/testlog}"
 addr_localhost="127.0.0.1"
 
@@ -76,15 +77,14 @@ extract_stdout_keyvalue() {
 #  - set $servald variable (executable under test)
 #  - set the current instance to be "Z"
 setup_servald() {
-   export SERVALD_VAR=$TFWVAR/servald
-   mkdir $SERVALD_VAR
-   servald_basename=servald
-   servald=$SERVALD_VAR/$servald_basename # The servald executable under test
    if ! [ -x "$servald_build_executable" ]; then
       error "servald executable not present: $servald"
       return 1
    fi
-   cp -f "$servald_build_executable" $servald
+   export SERVALD_VAR="$TFWVAR/servald"
+   mkdir "$SERVALD_VAR"
+   servald="$SERVALD_VAR/$servald_basename" # The servald executable under test
+   cp -f "$servald_build_executable" "$servald"
    unset SERVALD_OUTPUT_DELIMITER
    unset SERVALD_SERVER_START_DELAY
    unset SERVALD_SERVER_CHDIR
@@ -154,6 +154,16 @@ set_instance() {
       instance_arg="${1}"
       instance_name="${instance_arg#+}"
       instance_number=$((36#$instance_name - 9))
+      local servald_binary_var=servald${instance_name}
+      if [ -z "${!servald_binary_var}" ]; then
+         servald="$SERVALD_VAR/$servald_basename"
+      else
+         servald="$SERVALD_VAR/${!servald_binary_var}"
+      fi
+      if ! [ -x "$servald" ]; then
+         error "servald executable not present: $servald"
+         return 1
+      fi
       tfw_log "# set instance = $instance_name, number = $instance_number"
       export instance_dir="${servald_instances_dir?:}/$instance_name"
       mkdir -p "$instance_dir"
