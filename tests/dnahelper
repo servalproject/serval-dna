@@ -45,6 +45,7 @@ configure_servald_server() {
       set log.console.level debug \
       set log.console.show_pid on \
       set log.console.show_time on \
+      set rhizome.enable off \
       set debug.dnahelper on \
       set dna.helper.executable "$dnahelper" \
       set dna.helper.argv.1 "Hello," \
