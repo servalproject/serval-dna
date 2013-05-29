@@ -18,6 +18,14 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+#
+# Routing conditions that are known to not be working or covered by tests;
+# - No support for multi-hop paths involving any unicast links
+#   - unicast only links need to be shared in the routing table
+#   - routing table needs to be shared to unicast only peers
+#   - unicast IP information should be shared among unicast peers
+#
+
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
@@ -229,6 +237,26 @@ scan_completed() {
   return 0
 }
 
+doc_single_filter="Single device with a broadcast filter"
+setup_single_filter() {
+  setup_servald
+  assert_no_servald_processes
+  foreach_instance +A +B create_single_identity
+  foreach_instance +A +B add_interface 1
+  set_instance +B
+  executeOk_servald config \
+      set interfaces.1.dummy_address 127.0.1.11 \
+      set interfaces.1.drop_broadcasts 100
+  foreach_instance +A +B start_routing_instance
+}
+test_single_filter() {
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
+   set_instance +A
+   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   tfw_cat --stdout --stderr
+}
+
 doc_broadcast_only="Broadcast packets only"
 setup_broadcast_only() {
    setup_servald
@@ -240,8 +268,8 @@ setup_broadcast_only() {
    foreach_instance +A +B start_routing_instance
 }
 test_broadcast_only() {
-   foreach_instance +A +B \
-      wait_until has_seen_instances +A +B
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
@@ -262,8 +290,8 @@ setup_prefer_unicast() {
    foreach_instance +A +B start_routing_instance
 }
 test_prefer_unicast() {
-   foreach_instance +A +B \
-      wait_until has_seen_instances +A +B
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr

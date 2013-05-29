@@ -319,6 +319,10 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
       overlay_send_probe(context->sender, *addr, interface, OQ_MESH_MANAGEMENT);
     
     link_received_packet(context->sender, interface, context->sender_interface, sender_seq, packet_flags & PACKET_UNICAST);
+  }else{
+    // send a unicast probe, just incase they never hear our broadcasts.
+    if (addr)
+      overlay_send_probe(NULL, *addr, interface, OQ_MESH_MANAGEMENT);
   }
   
   if (addr){
