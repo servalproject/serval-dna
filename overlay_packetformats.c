@@ -171,6 +171,11 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
 	if (config.debug.verbose && config.debug.overlayframes)
 	  DEBUGF("Ignoring duplicate broadcast (%s)", alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
       }
+      if (link_state_should_forward_broadcast(context->sender)==0){
+	forward=0;
+	if (config.debug.verbose && config.debug.overlayframes)
+	  DEBUGF("Not forwarding broadcast (%s), as we aren't a relay in the senders routing table", alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
+      }
     }
     frame->destination=NULL;
   }else{

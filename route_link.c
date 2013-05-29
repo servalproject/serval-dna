@@ -88,6 +88,10 @@ struct neighbour{
   // otherwise we don't care too much about packet loss.
   char using_us;
 
+  // when a neighbour is using us as a next hop *and* they are using us to send packets to one of our neighbours, 
+  // we must forward their broadcasts
+  time_ms_t routing_through_us;
+
   int mdp_ack_sequence;
   uint64_t mdp_ack_mask;
 
@@ -742,6 +746,22 @@ int link_state_interface_has_neighbour(struct overlay_interface *interface)
   return 0;
 }
 
+// do we need to forward any broadcast packets transmitted by this neighbour?
+int link_state_should_forward_broadcast(struct subscriber *transmitter)
+{
+  struct neighbour *neighbour = get_neighbour(transmitter, 0);
+  if (!neighbour)
+    return 1;
+  time_ms_t now = gettime_ms();
+  // it's only safe to drop broadcasts if we know we are in this neighbours routing table,
+  // and we know we are not vital to reach someone else.
+  // if we aren't in their routing table as an immediate neighbour, we may be hearing this broadcast packet over an otherwise unreliable link.
+  // since we're going to process it now and assume that any future copies are duplicates, its better to be safe and forward it.
+  if (neighbour->using_us && neighbour->routing_through_us < now)
+    return 0;
+  return 1;
+}
+
 // when we receive a packet from a neighbour with ourselves as the next hop, make sure we send an ack soon(ish)
 int link_state_ack_soon(struct subscriber *subscriber){
   IN();
@@ -936,17 +956,11 @@ int link_receive(overlay_mdp_frame *mdp)
 	ack_mask,
 	drop_rate);
 
-    if (transmitter == my_subscriber && receiver->reachable!=REACHABLE_SELF){
-      // if I am in your routing graph to reach another node, even if I'm not your immediate neighbour
-      // I *MUST* forward your broadcasts to this node, otherwise I can drop them
-
-    }
-
     if (receiver == my_subscriber){
       // track if our neighbour is using us as an immediate neighbour, if they are we need to ack / nack promptly
       neighbour->using_us = (transmitter==sender?1:0);
 
-      // for routing, we can completely ignore any links that our neighbour is using to route through us.
+      // for routing, we can completely ignore any links that our neighbour is using to route to us.
       // we can always send packets to ourself :)
       continue;
     }
@@ -956,14 +970,20 @@ int link_receive(overlay_mdp_frame *mdp)
       // TODO build a map of everyone in our 2 hop neighbourhood to control broadcast flooding?
       if (transmitter!=my_subscriber || interface_id==-1)
         continue;
+
       interface = &overlay_interfaces[interface_id];
       // ignore any links claiming to be from an interface we aren't using
       if (interface->state != INTERFACE_STATE_UP)
 	continue;
 
-    // if our neighbour starts using us to reach this receiver, we have to treat the link the same as if it just died.
     }else if(transmitter == my_subscriber){
+      // if our neighbour starts using us to reach this receiver, we have to treat the link in our routing table as if it just died.
       transmitter = NULL;
+      if (receiver->reachable != REACHABLE_SELF){
+        // also we should forward this neighbours broadcast packets to ensure they reach this receiver.
+        // since we won't remember this link for routing purposes, we'll just use a simple timer.
+        neighbour->routing_through_us = now + 2500;
+      }
     }
 
     struct link *link = find_link(neighbour, receiver, transmitter?1:0);

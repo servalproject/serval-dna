@@ -214,17 +214,24 @@ int overlay_payload_enqueue(struct overlay_frame *p)
       
       // make sure there is an interface up that allows broadcasts
       for(i=0;i<OVERLAY_MAX_INTERFACES;i++){
-	if (overlay_interfaces[i].state==INTERFACE_STATE_UP
-	    && overlay_interfaces[i].send_broadcasts
-	    && link_state_interface_has_neighbour(&overlay_interfaces[i])){
-	  p->interface_sent_sequence[i]=FRAME_NOT_SENT;
-	  interface_copies++;
+	if (overlay_interfaces[i].state!=INTERFACE_STATE_UP
+	    || !overlay_interfaces[i].send_broadcasts)
+	  continue;
+	if (!link_state_interface_has_neighbour(&overlay_interfaces[i])){
+          if (config.debug.verbose && config.debug.overlayframes)
+	    DEBUGF("Skipping broadcast on interface %s, as we have no neighbours", overlay_interfaces[i].name);
+	  continue;
 	}
+	p->interface_sent_sequence[i]=FRAME_NOT_SENT;
+	interface_copies++;
       }
       
       // just drop it now
-      if (interface_copies == 0)
+      if (interface_copies == 0){
+        if (config.debug.verbose && config.debug.overlayframes)
+	  DEBUGF("Not transmitting broadcast packet, as we have no neighbours on any interface");
 	return -1;
+      }
 
       // allow the packet to be resent
       if (p->resend == 0)
