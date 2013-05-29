@@ -1,5 +1,6 @@
 Serval DNA
 ==========
+[Serval Project][], May 2013
 
 This repository contains the source code for the “core” Serval components
 implemented in [GNU C][]:
@@ -83,8 +84,20 @@ have agreed to the [Serval Project Developer Agreement - Individual][individ],
 and from organisations that have agreed to the [Serval Project Developer
 Agreement - Entity][entity].
 
-servald
--------
+Download, build and test
+------------------------
+
+Instructions for downloading, building and testing Serval DNA are in
+[INSTALL.md](./INSTALL.md).  (If that link is does not work, try
+[INSTALL.md](/servalproject/serval-dna/blob/master/INSTALL.md).)
+
+Configure
+---------
+
+See [doc/Servald-Configuration](./doc/Servald-Configuration.md).
+
+More information
+----------------
 
 The **servald** executable is a multi-purpose program designed to be invoked
 directly from the command line and also via [JNI][] from within a Java program.
@@ -97,15 +110,8 @@ Some operations are self-contained, some start and stop the servald daemon
 process, some communicate with the servald daemon as an MDP client, and others
 via a two-way [pipe][] called the monitor interface.
 
-For more detail on the purpose and usage of the servald command-line, see the
+For more documentation, see the
 [doc](/servalproject/serval-dna/tree/master/doc/) directory.
-
-Build and test
---------------
-
-Instructions for building and testing Serval DNA are in
-[INSTALL.md](./INSTALL.md).  (If that link is does not work, try
-[INSTALL.md](/servalproject/serval-dna/blob/master/INSTALL.md).)
 
 
 [Serval Project]: http://www.servalproject.org/
