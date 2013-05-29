@@ -75,9 +75,9 @@ License version 2][GPL2].  All source code is freely available from the Serval
 Project's [serval-dna][] Git repository on [GitHub][].
 
 The copyright in most of the source code in Serval DNA is held by [Serval
-Project Inc.][SPI], an organisation incorporated in the state of South
-Australia in the Commonwealth of Australia for the purpose of developing the
-Serval mesh software.
+Project Inc.][SPI], a not-for-profit association incorporated in the state of
+South Australia in the Commonwealth of Australia for the purpose of developing
+the Serval mesh software.
 
 The [Serval Project][] will accept contributions from individual developers who
 have agreed to the [Serval Project Developer Agreement - Individual][individ],
@@ -94,7 +94,9 @@ Instructions for downloading, building and testing Serval DNA are in
 Configure
 ---------
 
-See [doc/Servald-Configuration](./doc/Servald-Configuration.md).
+See [doc/Servald-Configuration](./doc/Servald-Configuration.md) (alternative
+link [doc/Servald-Configuration]
+(/servalproject/serval-dna/blob/master/doc/Servald-Configuration.md)).
 
 More information
 ----------------
@@ -104,17 +106,22 @@ directly from the command line and also via [JNI][] from within a Java program.
 The following command will print a summary of all the operations that servald
 offers:
 
-    servald help
+    $ servald help
 
 Some operations are self-contained, some start and stop the servald daemon
 process, some communicate with the servald daemon as an MDP client, and others
-via a two-way [pipe][] called the monitor interface.
+via a two-way [pipe][] called the *monitor interface*.
 
-For more documentation, see the
-[doc](/servalproject/serval-dna/tree/master/doc/) directory.
+For more documentation, see:
 
+ * the [doc/](./doc/) directory
+   (alternative link [doc/](/servalproject/serval-dna/tree/master/doc/))
+
+ * the [Serval DNA][] page in the [Serval Project Wiki][]
 
 [Serval Project]: http://www.servalproject.org/
+[Serval Project Wiki]: http://developer.servalproject.org/
+[Serval DNA]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:servaldna:
 [SPI]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:spi
 [serval-dna]: https://github.com/servalproject/serval-dna
 [batphone]: https://github.com/servalproject/batphone

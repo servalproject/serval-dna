@@ -50,7 +50,7 @@ Optional:
 Build
 -----
 
-In the `serval-dna` directory, run the following commands:
+To compile Serval DNA from source, run the following commands:
 
     $ cd $HOME/src/serval-dna
     $ autoreconf -f -i
@@ -153,7 +153,8 @@ directory, deleting all logs from the previous run.
 Configure
 ---------
 
-See [doc/Servald-Configuration](./doc/Servald-Configuration.md).
+The [doc/Servald-Configuration](./doc/Servald-Configuration.md) document
+describes the configuration of Serval DNA in detail.
 
 Voice call test
 ---------------
