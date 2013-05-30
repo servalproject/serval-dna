@@ -422,6 +422,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     struct subscriber *nexthop=NULL;
     bzero(f.broadcast_id.id, BROADCAST_LEN);
     
+    unsigned char *header_start = ob_ptr(b)+ob_position(b);
     int header_valid = parseMdpPacketHeader(&context, &f, b, &nexthop);
     if (header_valid<0){
       ret = WHY("Header is too short");
@@ -439,6 +440,9 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       case ENCAP_OVERLAY:
 	payload_len = ob_get_ui16(b);
 	if (payload_len > ob_remaining(b)){
+	  unsigned char *current = ob_ptr(b)+ob_position(b);
+
+	  dump("Payload Header", header_start, current - header_start);
 	  ret = WHYF("Invalid payload length (%d)", payload_len);
 	  goto end;
 	}
