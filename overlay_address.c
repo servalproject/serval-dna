@@ -361,7 +361,6 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   if (!context->sender)
     frame->source_full=1;
   
-  frame->source->send_full=1;
   frame->destination = destination;
   
   if (destination && (destination->reachable & REACHABLE)){
@@ -391,7 +390,8 @@ int process_explain(struct overlay_frame *frame){
   
   struct decode_context context;
   bzero(&context, sizeof context);
-  
+  context.sender = frame->source;
+
   while(ob_remaining(b)>0){
     int len = ob_get(b);
     if (len<=0 || len>SID_SIZE)

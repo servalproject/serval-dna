@@ -26,7 +26,6 @@ setup() {
    assert_no_servald_processes
    setup_dnahelper
    start_servald_instances +A
-   assert_all_instance_peers_complete +A
 }
 
 finally() {
@@ -46,6 +45,7 @@ configure_servald_server() {
       set log.console.level debug \
       set log.console.show_pid on \
       set log.console.show_time on \
+      set rhizome.enable off \
       set debug.dnahelper on \
       set dna.helper.executable "$dnahelper" \
       set dna.helper.argv.1 "Hello," \
@@ -229,7 +229,6 @@ setup_ExecError() {
    dnahelper=/non/existent
    assert [ ! -e "$dnahelper" ]
    start_servald_instances +A
-   assert_all_instance_peers_complete +A
 }
 test_ExecError() {
    executeOk_servald dna lookup 12345
@@ -255,7 +254,6 @@ done
 EOF
    chmod 0755 "$dnahelper"
    start_servald_instances +A
-   assert_all_instance_peers_complete +A
 }
 test_ExecArgs() {
    executeOk_servald dna lookup 12345

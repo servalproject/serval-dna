@@ -156,7 +156,9 @@ schedule(&_sched_##X); }
   SCHEDULE(fd_periodicstats, 3000, 500);
 
 #undef SCHEDULE
-  
+
+  // log message used by tests to wait for the server to start
+  INFO("Server started, entering main loop");
   /* Check for activitiy and respond to it */
   while(fd_poll());
 

@@ -514,14 +514,10 @@ time_ms_t overlay_time_until_next_tick();
 int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
 				 struct overlay_frame *p, struct overlay_buffer *b);
 int single_packet_encapsulation(struct overlay_buffer *b, struct overlay_frame *frame);
-int overlay_packet_init_header(int encapsulation, 
+int overlay_packet_init_header(int packet_version, int encapsulation, 
 			       struct decode_context *context, struct overlay_buffer *buff, 
 			       struct subscriber *destination, 
-			       char unicast, char interface, char seq);
-int overlay_frame_build_header(struct decode_context *context, struct overlay_buffer *buff, 
-			       int queue, int type, int modifiers, int ttl, 
-			       struct broadcast *broadcast, struct subscriber *next_hop,
-			       struct subscriber *destination, struct subscriber *source);
+			       char unicast, char interface, int seq);
 int overlay_interface_args(const char *arg);
 void overlay_rhizome_advertise(struct sched_ent *alarm);
 int overlay_add_local_identity(unsigned char *s);
@@ -540,6 +536,8 @@ int overlay_payload_enqueue(struct overlay_frame *p);
 int overlay_queue_remaining(int queue);
 int overlay_queue_schedule_next(time_ms_t next_allowed_packet);
 int overlay_send_tick_packet(struct overlay_interface *interface);
+int overlay_queue_ack(struct subscriber *neighbour, struct overlay_interface *interface, uint32_t ack_mask, int ack_seq);
+
 int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f,  time_ms_t now);
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_saw_voice_traffic();
@@ -570,8 +568,6 @@ typedef struct overlay_mdp_data_frame {
   sockaddr_mdp src;
   sockaddr_mdp dst;
   uint16_t payload_length;
-  // temporary hack to improve reliability before implementing per-packet nack's
-  int send_copies;
   int queue;
   int ttl;
   unsigned char payload[MDP_MTU-100];
@@ -834,12 +830,16 @@ extern long long bundles_available;
 extern char crash_handler_clue[1024];
 
 
+int link_received_duplicate(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int previous_seq, int unicast);
 int link_received_packet(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int sender_seq, int unicode);
 int link_receive(overlay_mdp_frame *mdp);
 void link_explained(struct subscriber *subscriber);
 void link_interface_down(struct overlay_interface *interface);
 int link_state_announce_links();
 int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now);
+int link_state_interface_has_neighbour(struct overlay_interface *interface);
+int link_state_ack_soon(struct subscriber *sender);
+int link_state_should_forward_broadcast(struct subscriber *transmitter);
 
 int generate_nonce(unsigned char *nonce,int bytes);
 

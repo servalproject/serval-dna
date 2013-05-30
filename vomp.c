@@ -559,9 +559,6 @@ int vomp_received_audio(struct vomp_call_state *call, int audio_codec, int time,
   bcopy(audio,&mdp.out.payload[(*len)],audio_length);
   (*len)+=audio_length;
     
-  // send the payload more than once to add resilience to dropped packets
-  // TODO remove once network links have built in retries
-  mdp.out.send_copies=VOMP_MAX_RECENT_SAMPLES;
   mdp.out.queue=OQ_ISOCHRONOUS_VOICE;
   
   overlay_mdp_dispatch(&mdp,0,NULL,0);
@@ -727,20 +724,32 @@ static int vomp_process_audio(struct vomp_call_state *call, overlay_mdp_frame *m
   ofs+=2;
   
   // rebuild absolute time value from short relative time.
-  call->remote_audio_clock=to_absolute_value(time, call->remote_audio_clock);
-  call->remote.sequence=to_absolute_value(sequence, call->remote.sequence);
+  int decoded_time = to_absolute_value(time, call->remote_audio_clock);
+  int decoded_sequence = to_absolute_value(sequence, call->remote.sequence);
   
-  time=call->remote_audio_clock * 20;
+  if (call->remote_audio_clock < decoded_time &&
+    call->remote.sequence < decoded_sequence){
+    call->remote_audio_clock = decoded_time;
+    call->remote.sequence = decoded_sequence;
+  }else if (call->remote_audio_clock < decoded_time ||
+    call->remote.sequence < decoded_sequence){
+    WARNF("Mismatch while decoding sequence and time offset (%d, %d) + (%d, %d) = (%d, %d)",
+	time, sequence,
+	call->remote_audio_clock, call->remote.sequence,
+	decoded_time, decoded_sequence);
+  }
+
+  decoded_time=decoded_time * 20;
   
   int audio_len = mdp->in.payload_length - ofs;
   int delay=0;
   
-  if (store_jitter_sample(&call->jitter, time, now, &delay))
+  if (store_jitter_sample(&call->jitter, decoded_time, now, &delay))
     return 0;
   
   /* Pass audio frame to all registered listeners */
   if (monitor_socket_count)
-    monitor_send_audio(call, codec, time, call->remote.sequence,
+    monitor_send_audio(call, codec, decoded_time, decoded_sequence,
 		       &mdp->in.payload[ofs],
 		       audio_len, delay);
   return 0;

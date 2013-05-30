@@ -18,6 +18,14 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
+#
+# Routing conditions that are known to not be working or covered by tests;
+# - No support for multi-hop paths involving any unicast links
+#   - unicast only links need to be shared in the routing table
+#   - routing table needs to be shared to unicast only peers
+#   - unicast IP information should be shared among unicast peers
+#
+
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
@@ -47,7 +55,7 @@ path_exists() {
       set_instance $next_inst
       executeOk_servald route print
       tfw_log "Looking for link from $next_inst to $I"
-      if ! grep "^${!sidvar}:.*BROADCAST.*:dummy.*:0*\$" $_tfw_tmp/stdout; then
+      if ! grep "^${!sidvar}:\(BROADCAST \|UNICAST \)\{1,\}:dummy.*:0*\$" $_tfw_tmp/stdout; then
          tfw_log "Link not found"
          return 1
       fi
@@ -69,13 +77,13 @@ start_routing_instance() {
       set server.interface_path "$SERVALD_VAR" \
       set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
       set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
-      set log.console.level debug \
-      set log.console.show_pid on \
-      set log.console.show_time on \
       set debug.mdprequests yes \
       set debug.linkstate yes \
       set debug.verbose yes \
       set debug.overlayrouting yes \
+      set log.console.level debug \
+      set log.console.show_pid on \
+      set log.console.show_time on \
       set rhizome.enable no
    start_servald_server
    wait_until interface_up
@@ -229,6 +237,26 @@ scan_completed() {
   return 0
 }
 
+doc_single_filter="Single device with a broadcast filter"
+setup_single_filter() {
+  setup_servald
+  assert_no_servald_processes
+  foreach_instance +A +B create_single_identity
+  foreach_instance +A +B add_interface 1
+  set_instance +B
+  executeOk_servald config \
+      set interfaces.1.dummy_address 127.0.1.11 \
+      set interfaces.1.drop_broadcasts 100
+  foreach_instance +A +B start_routing_instance
+}
+test_single_filter() {
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
+   set_instance +A
+   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   tfw_cat --stdout --stderr
+}
+
 doc_broadcast_only="Broadcast packets only"
 setup_broadcast_only() {
    setup_servald
@@ -240,8 +268,8 @@ setup_broadcast_only() {
    foreach_instance +A +B start_routing_instance
 }
 test_broadcast_only() {
-   foreach_instance +A +B \
-      wait_until has_seen_instances +A +B
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
@@ -262,8 +290,8 @@ setup_prefer_unicast() {
    foreach_instance +A +B start_routing_instance
 }
 test_prefer_unicast() {
-   foreach_instance +A +B \
-      wait_until has_seen_instances +A +B
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
@@ -363,7 +391,69 @@ test_multi_interface() {
    wait_until multi_has_link $SIDA
 }
 
-doc_unreliable_links="Choose a longer, better path over an unreliable link"
+# TODO assert that all packets arrive? assert that no duplicates arrive?
+doc_ping_unreliable="Ping over a 1-hop unreliable link"
+setup_ping_unreliable() {
+  setup_servald
+  assert_no_servald_processes
+  foreach_instance +A +B create_single_identity
+  foreach_instance +A +B add_interface 1
+  foreach_instance +A +B \
+    executeOk_servald config \
+      set interfaces.1.drop_broadcasts 40
+  foreach_instance +A +B start_routing_instance
+}
+test_ping_unreliable() {
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
+   set_instance +A
+   executeOk_servald mdp ping --interval=0.100 --timeout=3 $SIDB 100
+   tfw_cat --stdout --stderr
+}
+
+doc_ping_unreliable2="Ping over a 2-hop unreliable link"
+setup_ping_unreliable2() {
+  setup_servald
+  assert_no_servald_processes
+  foreach_instance +A +B +C create_single_identity
+  foreach_instance +A +B add_interface 1
+  foreach_instance +A +B \
+    executeOk_servald config \
+      set interfaces.1.drop_broadcasts 40
+  foreach_instance +B +C add_interface 2
+  foreach_instance +B +C \
+    executeOk_servald config \
+      set interfaces.2.drop_broadcasts 40
+  foreach_instance +A +B +C start_routing_instance
+}
+test_ping_unreliable2() {
+   wait_until path_exists +A +B +C
+   wait_until path_exists +C +B +A
+   set_instance +A
+   executeOk_servald mdp ping --interval=0.100 --timeout=3 $SIDC 100
+   tfw_cat --stdout --stderr
+}
+
+doc_brping_unreliable="Broadcast ping over a 1-hop unreliable link"
+setup_brping_unreliable() {
+  setup_servald
+  assert_no_servald_processes
+  foreach_instance +A +B create_single_identity
+  foreach_instance +A +B add_interface 1
+  foreach_instance +A +B \
+    executeOk_servald config \
+      set interfaces.1.drop_broadcasts 20
+  foreach_instance +A +B start_routing_instance
+}
+test_brping_unreliable() {
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
+   set_instance +A
+   executeOk_servald mdp ping --interval=0.100 --timeout=2 broadcast 100
+   tfw_cat --stdout --stderr
+}
+
+doc_unreliable_links="Prefer a longer, better path vs an unreliable link"
 setup_unreliable_links() {
   setup_servald
   assert_no_servald_processes
@@ -389,13 +479,10 @@ test_unreliable_links() {
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDC 5
+   executeOk_servald mdp ping --interval=0.100 --timeout=3 $SIDC 30
    tfw_cat --stdout --stderr
-   executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDC:INDIRECT :"
-   set_instance +C
-   executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDA:INDIRECT :"
+   wait_until path_exists +A +B +C
+   wait_until path_exists +C +B +A
 }
 
 doc_unreliable_links2="Choose the best multihop path with some unreliable links"
@@ -437,13 +524,6 @@ test_unreliable_links2() {
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDD 5
    tfw_cat --stdout --stderr
-   executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDC:INDIRECT :"
-   assertStdoutGrep --matches=1 "^$SIDD:INDIRECT :"
-   set_instance +D
-   executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDA:INDIRECT :"
-   assertStdoutGrep --matches=1 "^$SIDB:INDIRECT :"
 }
 
 setup_circle() {
@@ -475,10 +555,6 @@ test_circle() {
    stop_servald_server +B
    foreach_instance +A +C \
       wait_until --timeout=10 instance_offline +B
-   set_instance +A
-   wait_until --timeout=10 instance_offline +C
-   set_instance +C
-   wait_until --timeout=10 instance_offline +A
    wait_until path_exists +A +H +G +F +E +D +C
    wait_until path_exists +C +D +E +F +G +H +A
    set_instance +A

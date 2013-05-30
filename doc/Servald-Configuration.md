@@ -1,5 +1,5 @@
-Configuring servald
-===================
+Configuring Serval DNA
+======================
 [Serval Project][], April 2013
 
 
@@ -18,29 +18,28 @@ The **servald** configuration is an unordered set of LABEL=VALUE pairs called
     rhizome.direct.peer.0.host=129.96.12.91
     server.respawn_on_crash=true
 
-An option *LABEL* is a sequence of one or more [US-ASCII][] alphanumeric words
-separated by period characters, eg, `log.file.directory_path`.
+An option **LABEL** is a sequence of one or more [US-ASCII][] alphanumeric
+words separated by period characters, eg, `log.file.directory_path`.  If a
+LABEL is not recognised, it is *unsupported*.
 
-An option *VALUE* is a string of [US-ASCII][] characters, excluding newline
-(character 10), which is parsed according to the option's type, for example:
+An option **VALUE** is a string of [US-ASCII][] characters, excluding newline
+(character 10), which is parsed according to the option's *type*:
 
-  * decimal integer: `10`, `0`, `-1000000`
-  * boolean: `true`, `false`, `on`, `off`, `1`, `0`, `yes`, `no`
-  * internet address (in\_addr): `192.168.1.1`
-  * time interval: `12h`, `1w3d`, `2h15m30s`
-  * absolute path: `/var/lib/serval`
-  * relative path: `../lib/hostlist`
-  * Serval ID (SID): `EEBF3AC19E7EE58722A0F6D4A4D5894A72F5C71030C3399FE75808DCF6C6254B`
-  * scaled decimal integer with optional suffix `k`
-    (10^3), `K` (2^10), `m` (10^6), `M` (2^20), `g` (10^9) or `G` (2^30):
+  * decimal integer, eg: `10`, `0`, `-1000000`
+  * boolean, eg: `true`, `false`, `on`, `off`, `1`, `0`, `yes`, `no`
+  * internet address (in\_addr), eg: `192.168.1.1`
+  * time interval, eg: `12h`, `1w3d`, `2h15m30s`
+  * absolute path, eg: `/var/lib/serval`
+  * relative path, eg: `../lib/hostlist`
+  * Serval ID (SID), eg: `EEBF3AC19E7EE58722A0F6D4A4D5894A72F5C71030C3399FE75808DCF6C6254B`
+  * scaled decimal integer with optional suffix **k** (10^3), **K** (2^10),
+    **m** (10^6), **M** (2^20), **g** (10^9) or **G** (2^30), eg:
     `1M` = 1,048,576
 
-If a label is not recognised, it is *unsupported*.
+If a VALUE does not parse correctly, it is *invalid*.
 
-If a value does not parse correctly, it is *invalid*.
-
-Instance path
--------------
+Instance directory
+------------------
 
 By default, **servald** stores its configuration, keyring, and other temporary
 files in its *instance directory*.  The instance directory is set at run time
@@ -60,9 +59,9 @@ Configuration persistence
 -------------------------
 
 **servald** stores its configuration option settings in a file called
-`serval.conf` in its instance directory, which it reads upon every invocation.
-This means that each instance's option settings persist until changed or until
-its `serval.conf` file is altered or removed.
+`serval.conf` in its instance directory.  It reads this file upon every
+invocation.  This means that each instance's option settings persist until
+changed or until its `serval.conf` file is altered or removed.
 
 The format of the file is as shown in the example above: each option is
 represented by a single line in the file.  Each line may have one of the forms:
@@ -85,23 +84,29 @@ Invalid configuration
 Although `serval.conf` is usually written and read only by **servald**, in fact
 it is an external file which may be modified, so **servald** has no control
 over its contents.  The semantics of the configuration loading anticipate the
-possibility of encountering a syntactically malformed file or an unsupported
-or invalid option:
+possibility of encountering a *defective* file:
 
  * If `serval.conf` is syntactically malformed, then **servald** will log a
    warning, skip the malformed line and continue parsing;
 
- * If an unsupported configuration option is encountered (which could be a mis-
-   spelling of a proper option), then **servald** will log a warning and
-   ignore the option, leaving it with the built-in default value;
+ * If the same LABEL appears more than once, then **servald** will log a
+   warning and ignore the second and all subsequent lines with the *duplicate*
+   LABEL;
 
- * If a configuration option has an invalid value, then **servald** will log
-   a warning and ignore the option, leaving it with the built-in default value.
+ * If an *unsupported* LABEL is encountered (which could be a mis-spelling of a
+   supported option), then **servald** will log a warning and ignore the line;
+
+ * If a configuration option has an *invalid* VALUE, then **servald** will log
+   a warning and leave the option with its built-in default value;
+
+ * If a logical relation, such as mutually incompatible or mandatory options,
+   is violated, then **servald** will log a warning and ignore the *illogical*
+   options or use default values.
 
 In all the above cases, most **servald** commands will reject the defective
-file: they will log an error and exit with error status (255).  The logging is
-done using options salvaged from the defective file (see the `config dump`
-command, described below).
+file by logging an error and exiting with error status (255).  In this case,
+logging is done using options salvaged from the defective file (see the [config
+dump](#config-dump) command, described below).
 
 Some “permissive” commands, such as `help`, `stop`, and the various `config`
 commands described below, will not fail on a defective configuration file.
@@ -140,31 +145,50 @@ the next line.
 Configuration commands
 ----------------------
 
+### config set
+
 To set a configuration option:
 
     $ servald config set name.of.option 'value'
     $
+
+### config del
 
 To unset (remove) a configuration option, returning it to its default value:
 
     $ servald config del name.of.option
     $
 
-To examine an option's current value as defined in the `serval.conf` file
-(even invalid and unsupported options may be examined):
+### config set del
+
+Several **set** and **del** commands can be chained together in a single
+command:
+
+    $ servald config set debug.verbose 1 \
+                     del debug.dnahelper \
+                     set log.file.path /tmp/log.txt
+    $
+
+### config get
+
+To examine a single option's current value as defined in the `serval.conf` file
+(invalid, unsupported and illogical options may be examined, but not duplicate
+options):
 
     $ servald config get name.of.option
     name.of.option=value
     $
 
 To examine all option settings defined in the `serval.conf` file, including
-invalid and unsupported options:
+invalid, unsupported and illogical options, but not duplicate options:
 
     $ servald config get
     interfaces=+eth0,+wifi0
     name.of.option=value
     name.of.other_option=value2
     $
+
+### config schema
 
 To list the names and types of all supported configuration options (the
 “configuration schema”):
@@ -182,9 +206,12 @@ To list the names and types of all supported configuration options (the
 The configuration schema, with its default values, is defined in the
 [conf_schema.h](../conf_schema.h) source header file.
 
+### config dump
+
 To examine all current *valid* configuration option settings, as produced by
-parsing `serval.conf` and omitting invalid and unsupported options (ie, the
-configuration used by permissive commands and for logging):
+parsing `serval.conf` and omitting invalid, unsupported, duplicate and
+illogical options (ie, the configuration used by permissive commands and for
+logging):
 
     $ servald config dump --full
     debug.broadcasts=false
@@ -350,16 +377,16 @@ order of ascending number.  The general form of an interface rule is:
 
 where:
 
- * `PATTERN` is a [shell wildcard][] pattern
- * `BOOLEAN` is `true`, `false`, `1`, `0`, `yes`, `no`, `on` or `off`
- * `SOCKTYPE` is `dgram`, `stream` or `file`
- * `ENCAPSULATION` is `overlay` or `single`
- * `IFTYPE` is `wifi`, `ethernet`, `catear` or `other`
- * `PORT` is an unsigned decimal integer in the range 1 to 65535
- * `UINT` is any unsigned decimal integer (with no `+` or `-` prefix)
- * `UINT_NONZERO` is an unsigned decimal integer ≥ 1
- * `PATH` is an absolute or relative file path
- * `IN_ADDR` is an Internet address as accepted by [inet_aton(3)][], ie,
+ * PATTERN is a [shell wildcard][] pattern
+ * BOOLEAN is `true`, `false`, `1`, `0`, `yes`, `no`, `on` or `off`
+ * SOCKTYPE is `dgram`, `stream` or `file`
+ * ENCAPSULATION is `overlay` or `single`
+ * IFTYPE is `wifi`, `ethernet`, `catear` or `other`
+ * PORT is an unsigned decimal integer in the range 1 to 65535
+ * UINT is any unsigned decimal integer (with no `+` or `-` prefix)
+ * UINT\_NONZERO is an unsigned decimal integer ≥ 1
+ * PATH is an absolute or relative file path
+ * IN\_ADDR is an Internet address as accepted by [inet_aton(3)][], ie,
    `N.N.N.N` where `N` is an integer in the range 0 to 255.
 
 The `match` and `file` options are mutually incompatible.  If both are set, it

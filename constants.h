@@ -95,9 +95,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define PAYLOAD_FLAG_SENDER_SAME (1<<0)
 #define PAYLOAD_FLAG_TO_BROADCAST (1<<1)
 #define PAYLOAD_FLAG_ONE_HOP (1<<2)
-#define PAYLOAD_FLAG_LONG_PAYLOAD (1<<3)
 #define PAYLOAD_FLAG_CIPHERED (1<<4)
 #define PAYLOAD_FLAG_SIGNED (1<<5)
+#define PAYLOAD_FLAG_DUPLICATE (1<<6)
 
 /* Time-to-live is a 'uint5_t'.
  */
@@ -180,10 +180,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define MAX_AUDIO_BYTES 1024
 #define MDP_AWAITREPLY 9999
-
-/* max number of recent samples to cram into a VoMP frame as well as the current
-   frame of audio (preemptive audio retransmission) */
-#define VOMP_MAX_RECENT_SAMPLES 2
 
 // codec's with well defined parameters
 #define VOMP_CODEC_16SIGNED 0x01

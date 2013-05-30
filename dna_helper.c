@@ -85,12 +85,17 @@ static int dna_helper_stdout = -1;
 static int dna_helper_stderr = -1;
 static int dna_helper_started = 0;
 
-static struct sched_ent sched_requests = STRUCT_SCHED_ENT_UNUSED;
-static struct sched_ent sched_replies = STRUCT_SCHED_ENT_UNUSED;
-static struct sched_ent sched_harvester = STRUCT_SCHED_ENT_UNUSED;
-static struct sched_ent sched_errors = STRUCT_SCHED_ENT_UNUSED;
-static struct sched_ent sched_restart = STRUCT_SCHED_ENT_UNUSED;
-static struct sched_ent sched_timeout = STRUCT_SCHED_ENT_UNUSED;
+#define DECLARE_SCHED_ENT(FUNCTION, VARIABLE) \
+static void FUNCTION(struct sched_ent *alarm); \
+static struct profile_total VARIABLE##_timing={.name="" #FUNCTION "",}; \
+static struct sched_ent VARIABLE = {.function = FUNCTION, .stats = & VARIABLE##_timing, .poll.fd = -1, };
+
+DECLARE_SCHED_ENT(monitor_requests, sched_requests);
+DECLARE_SCHED_ENT(monitor_replies,  sched_replies);
+DECLARE_SCHED_ENT(monitor_errors,   sched_errors);
+DECLARE_SCHED_ENT(harvester,        sched_harvester);
+DECLARE_SCHED_ENT(restart_delayer,  sched_restart);
+DECLARE_SCHED_ENT(reply_timeout,    sched_timeout);
 
 // This buffer must hold "SID|DID|\n\0"
 static char request_buffer[SID_STRLEN + DID_MAXSIZE + 4];
@@ -103,13 +108,6 @@ static int awaiting_reply = 0;
 static int discarding_until_nl = 0;
 static char reply_buffer[2048];
 static char *reply_bufend = NULL;
-
-static void monitor_requests(struct sched_ent *alarm);
-static void monitor_replies(struct sched_ent *alarm);
-static void monitor_errors(struct sched_ent *alarm);
-static void harvester(struct sched_ent *alarm);
-static void restart_delayer(struct sched_ent *alarm);
-static void reply_timeout(struct sched_ent *alarm);
 
 static void
 dna_helper_close_pipes()
@@ -238,26 +236,13 @@ dna_helper_start()
 	alloca_str_toprint(config.dna.helper.executable),
 	strbuf_str(argv_sb)
       );
-    sched_requests.function = monitor_requests;
-    sched_requests.context = NULL;
-    sched_requests.poll.fd = -1;
-    sched_requests.poll.events = POLLOUT;
-    sched_requests.stats = NULL;
-    sched_timeout.function = reply_timeout;
-    sched_timeout.context = NULL;
-    sched_timeout.stats = NULL;
-    sched_replies.function = monitor_replies;
-    sched_replies.context = NULL;
+
     sched_replies.poll.fd = dna_helper_stdout;
     sched_replies.poll.events = POLLIN;
-    sched_replies.stats = NULL;
-    sched_errors.function = monitor_errors;
-    sched_errors.context = NULL;
     sched_errors.poll.fd = dna_helper_stderr;
     sched_errors.poll.events = POLLIN;
-    sched_errors.stats = NULL;
-    sched_harvester.function = harvester;
-    sched_harvester.stats = NULL;
+    sched_requests.poll.fd = -1;
+    sched_requests.poll.events = POLLOUT;
     sched_harvester.alarm = gettime_ms() + 1000;
     sched_harvester.deadline = sched_harvester.alarm + 1000;
     reply_bufend = reply_buffer;
