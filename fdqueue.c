@@ -303,7 +303,12 @@ int fd_poll()
       if (fds[i].revents) {
 	int fd = fds[i].fd;
 	/* Call the alarm callback with the socket in non-blocking mode */
+	errno=0;
 	set_nonblock(fd);
+	// Work around OSX behaviour that doesn't set POLLERR on 
+	// devices that have been deconfigured, e.g., a USB serial adapter
+	// that has been removed.
+	if (errno == ENXIO) fds[i].revents|=POLLERR;
 	call_alarm(fd_callbacks[i], fds[i].revents);
 	/* The alarm may have closed and unwatched the descriptor, make sure this descriptor still matches */
 	if (i<fdcount && fds[i].fd == fd)

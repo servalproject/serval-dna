@@ -378,10 +378,7 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer,int co
       r->field_file=fopen(filename,"w");
       if (!r->field_file) {
 	WHYF_perror("fopen(%s, \"w\")", alloca_str_toprint(filename));
-	rhizome_direct_clear_temporary_files(r);
-	rhizome_server_simple_http_response
-	  (r, 500, "<html><h1>Sorry, couldn't complete your request, reasonable as it was.  Perhaps try again later.</h1></html>\r\n");
-	return -1;
+	goto scram;
       }
       r->source_flags=RD_MIME_STATE_BODY;
     } else {
@@ -414,15 +411,23 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer,int co
   case RD_MIME_STATE_BODY:
     if (boundaryLine) {
       r->source_flags=RD_MIME_STATE_PARTHEADERS;
-
-      /* We will have written an extra CRLF to the end of the file,
-	 so prune that off. */
-      fflush(r->field_file);
-      int fd=fileno(r->field_file);
-      off_t correct_size=ftell(r->field_file)-2;
-      ftruncate(fd,correct_size);
-      fclose(r->field_file);
-      r->field_file=NULL;
+      /* We will have written an extra CRLF to the end of the file, so prune that off. */
+      if (fflush(r->field_file) == EOF) {
+	WHYF_perror("fflush()");
+	goto scram;
+      }
+      int fd = fileno(r->field_file);
+      off_t correct_size = ftell(r->field_file) - 2;
+      if (ftruncate(fd,correct_size) == -1) {
+	WHYF_perror("ftruncate()");
+	goto scram;
+      }
+      if (fclose(r->field_file) == EOF) {
+	WHYF_perror("fclose()");
+	r->field_file = NULL;
+	goto scram;
+      }
+      r->field_file = NULL;
     }
     else {
       int written=fwrite(r->request,count,1,r->field_file);
@@ -443,6 +448,16 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer,int co
     return rhizome_direct_form_received(r);
   }
   return 0;
+
+scram:
+  if (r->field_file) {
+    if (fclose(r->field_file) == EOF)
+      WARNF_perror("fclose()");
+  }
+  rhizome_direct_clear_temporary_files(r);
+  rhizome_server_simple_http_response(r, 500,
+      "<html><h1>Sorry, couldn't complete your request, reasonable as it was.  Perhaps try again later.</h1></html>\r\n");
+  return -1;
 }
 
 int rhizome_direct_process_post_multipart_bytes(rhizome_http_request *r,const char *bytes,int count)

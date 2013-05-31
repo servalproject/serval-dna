@@ -21,28 +21,12 @@
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
-instances_reach_each_other() {
-   local I J
-   for I; do
-      for J; do
-         [ $I = $J ] && continue
-         local logvar=LOG${I#+}
-         local sidvar=SID${J#+}
-         if ! grep "PEER REACHABLE, sid=${!sidvar}" "${!logvar}"; then
-            return 1
-         fi
-      done
-   done
-   return 0
-}
-
 setup() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
    configure_servald_server() { set_server_vars; }
    start_servald_instances +A +B
-   wait_until --sleep=0.25 instances_reach_each_other +A +B
    set_instance +A
 }
 
@@ -58,8 +42,9 @@ teardown() {
 
 set_server_vars() {
    executeOk_servald config \
-      set log.show_pid on \
-      set log.show_time on \
+      set log.console.level debug \
+      set log.console.show_pid on \
+      set log.console.show_time on \
       set mdp.iftype.wifi.tick_ms 100 \
       set rhizome.enable No \
       set debug.overlayinterfaces Yes \
@@ -145,7 +130,6 @@ EOF
          set dna.helper.argv.1 "$instance_name"
    }
    start_servald_instances +A +B +C +D
-   wait_until --sleep=0.25 instances_reach_each_other +A +B +C +D
    set_instance +D
 }
 

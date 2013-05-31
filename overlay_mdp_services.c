@@ -400,6 +400,7 @@ int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp)
 {
   IN();
   switch(mdp->out.dst.port) {
+  case MDP_PORT_LINKSTATE:        RETURN(link_receive(mdp));
   case MDP_PORT_VOMP:             RETURN(vomp_mdp_received(mdp));
   case MDP_PORT_KEYMAPREQUEST:    RETURN(keyring_mapping_request(keyring,mdp));
   case MDP_PORT_DNALOOKUP:        RETURN(overlay_mdp_service_dnalookup(mdp));

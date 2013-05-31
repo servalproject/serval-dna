@@ -1,0 +1,161 @@
+#!/bin/bash
+
+# Tests for Serval rhizome protocol.
+#
+# Copyright 2012 Serval Project, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+source "${0%/*}/../testdefs_rhizome.sh"
+
+shopt -s extglob
+
+finally() {
+   stop_all_servald_servers
+}
+
+teardown() {
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
+
+# Called by start_servald_instances for each instance.
+configure_servald_server() {
+   executeOk_servald config \
+      set log.show_pid on \
+      set log.show_time on \
+      set debug.rhizome on \
+      set debug.rhizome_tx on \
+      set debug.rhizome_rx on \
+      set server.respawn_on_crash off \
+      set mdp.iftype.wifi.tick_ms 500
+}
+
+setup_curl_7() {
+   case "$(curl --version | tr '\n' ' ')" in
+   curl\ @(7|8|9|[1-9][0-1]).*\ Protocols:*\ http\ *) ;;
+   '') fail "curl(1) command is not present";;
+   *) fail "curl(1) version is not adequate (expecting 7 or higher)";;
+   esac
+   unset http_proxy
+   unset HTTP_PROXY
+   unset HTTPS_PROXY
+   unset ALL_PROXY
+}
+
+setup_common() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   set_instance +B
+}
+
+doc_FileTransfer0C="New bundle and update transfer to one node with no channels configured"
+setup_FileTransfer0C() {
+   setup_common
+   set_instance +A
+   rhizome_add_file file1
+   start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
+}
+test_FileTransfer0C() {
+   wait_until bundle_received_by $BID:$VERSION +B
+   set_instance +B
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=0 file1
+   assert_rhizome_received file1
+   set_instance +A
+   rhizome_update_file file1 file2
+   set_instance +B
+   wait_until bundle_received_by $BID:$VERSION +B
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=0 file2
+   assert_rhizome_received file2
+}
+
+doc_ValidChannelConfig="NOT IMPLEMENTED Valid channel configuration is accepted"
+setup_ValidChannelConfig() {
+   assert 0
+}
+test_ValidChannelConfig() {
+   assert 0
+}
+
+doc_InvalidChannelConfig="NOT IMPLEMENTED Invalid channel configuration is rejected"
+setup_InvalidChannelConfig() {
+   assert 0
+}
+test_InvalidChannelConfig() {
+   assert 0
+}
+
+doc_CorrectChannelsApplied="NOT IMPLEMENTED New bundles are correctly labeled with default channels"
+setup_CorrectChannelsApplied() {
+   assert 0
+}
+doc_CorrectChannelsApplied() {
+   assert 0
+}
+
+doc_HeteroChannelLocalXFEROk="NOT IMPLEMENTED Local rhizome transfers still occur between nodes with disjoint channel lists"
+setup_HeteroChannelLocalXFEROk() {
+   assert 0
+}
+test_HeteroChannelLocalXFEROk() {
+   assert 0
+}
+doc_DiscardLowPriorityChannelsFirst="NOT IMPLEMENTED Bundles for higher priority channels displace that of lower priority channels, and not vice versa"
+setup_DiscardLowPriorityChannelsFirst() {
+   assert 0
+}
+test_DiscardLowPriorityChannelsFirst() {
+   assert 0
+}
+
+doc_HeteroChannelRDPushIsNOOP="NOT IMPLEMENTED Rhizome direct push between nodes with disjoint channel lists transfers nothing"
+setup_HeteroChannelRDPushIsNOOP() {
+   assert 0
+}
+test_HeteroChannelRDPushIsNOOP() {
+   assert 0
+}
+doc_HomoChannelRDPushOk="NOT IMPLEMENTED Rhizome direct push between nodes with bundles on shared channels transfers those bundles"
+setup_HomoChannelRDPushOk() {
+   assert 0
+}
+test_HomoChannelRDPushOk() {
+   assert 0
+}
+doc_HeteroChannelRDPullIsNOOP="NOT IMPLEMENTED Rhizome direct pull between nodes with disjoint channel lists transfers nothing"
+setup_HeteroChannelRDPullIsNOOP() {
+   assert 0
+}
+test_HeteroChannelRDPullIsNOOP() {
+   assert 0
+}
+doc_HomoChannelRDPullOk="NOT IMPLEMENTED Rhizome direct pull between nodes with bundles on shared channels transfers those bundles"
+setup_HomoChannelRDPullOk() {
+   assert 0
+}
+test_HomoChannelRDPullOk() {
+   assert 0
+}
+
+
+runTests "$@"

@@ -36,7 +36,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 char *exec_args[EXEC_NARGS + 1];
 int exec_argc = 0;
 
-int serverMode=0;
 int servalShutdown = 0;
 
 static int server_getpid = 0;
@@ -66,9 +65,8 @@ int server_pid()
   FILE *f = NULL;
   if ((f = fopen(filename, "r"))) {
     char buf[20];
-    fgets(buf, sizeof buf, f);
+    int pid = (fgets(buf, sizeof buf, f) != NULL) ? atoi(buf) : -1;
     fclose(f);
-    int pid = atoi(buf);
     if (pid > 0 && kill(pid, 0) != -1)
       return pid;
     INFOF("Unlinking stale pidfile %s", filename);
@@ -142,7 +140,7 @@ int server(char *backing_file)
  */
 void server_config_reload(struct sched_ent *alarm)
 {
-  switch (cf_reload()) {
+  switch (cf_reload_strict()) {
   case -1:
     WARN("server continuing with prior config");
     break;

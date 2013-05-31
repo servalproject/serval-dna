@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdlib.h>
 #include "serval.h"
+#include "str.h"
 #include "os.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
@@ -48,10 +49,13 @@ int form_serval_instance_path(char *buf, size_t bufsiz, const char *path)
   strbuf_path_join(b, serval_instancepath(), path, NULL);
   if (!strbuf_overrun(b))
     return 1;
-  WHYF("Cannot form pathname \"%s/%s\" -- buffer too small (%lu bytes)", serval_instancepath(), path, (unsigned long)bufsiz);
+  WHYF("Cannot form pathname from %s and %s -- buffer too small (%lu bytes)",
+      alloca_str_toprint(serval_instancepath()),
+      alloca_str_toprint(path),
+      (unsigned long)bufsiz);
   return 0;
 }
 
 int create_serval_instance_dir() {
-  return mkdirs(serval_instancepath(), 0700);
+  return emkdirs(serval_instancepath(), 0700);
 }

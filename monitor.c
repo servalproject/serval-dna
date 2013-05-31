@@ -382,6 +382,13 @@ void monitor_get_all_supported_codecs(unsigned char *codecs){
   }
 }
 
+static int monitor_announce_all_peers(struct subscriber *subscriber, void *context)
+{
+  if (subscriber->reachable&REACHABLE)
+    monitor_announce_peer(subscriber->sid);
+  return 0;
+}
+
 static int monitor_set(const struct cli_parsed *parsed, void *context)
 {
   struct monitor_context *c=context;
@@ -397,11 +404,15 @@ static int monitor_set(const struct cli_parsed *parsed, void *context)
     }
   }else if (strcase_startswith(parsed->args[1],"rhizome", NULL))
     c->flags|=MONITOR_RHIZOME;
-  else if (strcase_startswith(parsed->args[1],"peers", NULL))
+  else if (strcase_startswith(parsed->args[1],"peers", NULL)){
     c->flags|=MONITOR_PEERS;
-  else if (strcase_startswith(parsed->args[1],"dnahelper", NULL))
+    enum_subscribers(NULL, monitor_announce_all_peers, NULL);
+  }else if (strcase_startswith(parsed->args[1],"dnahelper", NULL))
     c->flags|=MONITOR_DNAHELPER;
-  else
+  else if (strcase_startswith(parsed->args[1],"links", NULL)){
+    c->flags|=MONITOR_LINKS;
+    link_state_announce_links();
+  }else
     return monitor_write_error(c,"Unknown monitor type");
 
   char msg[1024];
@@ -422,6 +433,8 @@ static int monitor_clear(const struct cli_parsed *parsed, void *context)
     c->flags&=~MONITOR_PEERS;
   else if (strcase_startswith(parsed->args[1],"dnahelper", NULL))
     c->flags&=~MONITOR_DNAHELPER;
+  else if (strcase_startswith(parsed->args[1],"links", NULL))
+    c->flags&=~MONITOR_LINKS;
   else
     return monitor_write_error(c,"Unknown monitor type");
   
@@ -542,7 +555,10 @@ static int monitor_call_dtmf(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-struct cli_schema monitor_options[]={
+static int monitor_help(const struct cli_parsed *parsed, void *context);
+
+struct cli_schema monitor_commands[] = {
+  {monitor_help,{"help",NULL},0,""},
   {monitor_set,{"monitor","vomp","<codec>","...",NULL},0,""},
   {monitor_set,{"monitor","<type>",NULL},0,""},
   {monitor_clear,{"ignore","<type>",NULL},0,""},
@@ -562,9 +578,18 @@ int monitor_process_command(struct monitor_context *c)
   int argc = parse_argv(c->line, ' ', argv, 16);
   
   struct cli_parsed parsed;
-  int res = cli_parse(argc, (const char *const*)argv, monitor_options, &parsed);
-  if (res == -1 || cli_invoke(&parsed, c))
+  if (cli_parse(argc, (const char *const*)argv, monitor_commands, &parsed) || cli_invoke(&parsed, c))
     return monitor_write_error(c, "Invalid command");
+  return 0;
+}
+
+static int monitor_help(const struct cli_parsed *parsed, void *context)
+{
+  struct monitor_context *c=context;
+  strbuf b = strbuf_alloca(16384);
+  strbuf_puts(b, "\nINFO:Usage\n");
+  cli_usage(monitor_commands, XPRINTF_STRBUF(b));
+  (void)write_all(c->alarm.poll.fd, strbuf_str(b), strbuf_len(b));
   return 0;
 }
 
@@ -606,6 +631,14 @@ int monitor_announce_peer(const unsigned char *sid)
 int monitor_announce_unreachable_peer(const unsigned char *sid)
 {
   return monitor_tell_formatted(MONITOR_PEERS, "\nOLDPEER:%s\n", alloca_tohex_sid(sid));
+}
+
+int monitor_announce_link(int hop_count, struct subscriber *transmitter, struct subscriber *receiver)
+{
+  return monitor_tell_formatted(MONITOR_LINKS, "\nLINK:%d:%s:%s\n", 
+    hop_count,
+    transmitter?alloca_tohex_sid(transmitter->sid):"",
+    alloca_tohex_sid(receiver->sid));
 }
 
 // test if any monitor clients are interested in a particular type of event

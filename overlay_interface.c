@@ -63,6 +63,7 @@ static int mark_subscriber_down(struct subscriber *subscriber, void *context)
 
 static void
 overlay_interface_close(overlay_interface *interface){
+  link_interface_down(interface);
   enum_subscribers(NULL, mark_subscriber_down, interface);
   INFOF("Interface %s addr %s is down", interface->name, inet_ntoa(interface->broadcast_address.sin_addr));
   unschedule(&interface->alarm);
@@ -136,6 +137,7 @@ error:
   return -1;
 }
 
+// find an interface marked for use as a default internet route
 overlay_interface * overlay_interface_get_default(){
   int i;
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
@@ -145,6 +147,7 @@ overlay_interface * overlay_interface_get_default(){
   return NULL;
 }
 
+// find an interface that can send a packet to this address
 overlay_interface * overlay_interface_find(struct in_addr addr, int return_default){
   int i;
   overlay_interface *ret = NULL;
@@ -164,6 +167,7 @@ overlay_interface * overlay_interface_find(struct in_addr addr, int return_defau
   return ret;
 }
 
+// find an interface by name
 overlay_interface * overlay_interface_find_name(const char *name){
   int i;
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
@@ -173,6 +177,36 @@ overlay_interface * overlay_interface_find_name(const char *name){
       return &overlay_interfaces[i];
   }
   return NULL;
+}
+
+static int interface_type_priority(int type)
+{
+  switch(type){
+    case OVERLAY_INTERFACE_ETHERNET:
+      return 1;
+    case OVERLAY_INTERFACE_WIFI:
+      return 2;
+    case OVERLAY_INTERFACE_PACKETRADIO:
+      return 4;
+  }
+  return 3;
+}
+
+// Which interface is better for routing packets?
+// returns 0 to indicate the first is better, 1 for the second
+int overlay_interface_compare(overlay_interface *one, overlay_interface *two)
+{
+  if (one==two)
+    return 0;
+  int p1 = interface_type_priority(one->type);
+  int p2 = interface_type_priority(two->type);
+  if (p1<p2)
+    return 0;
+  if (p2<p1)
+    return 1;
+  if (two<one)
+    return 1;
+  return 0;
 }
 
 // OSX doesn't recieve broadcast packets on sockets bound to an interface's address
@@ -321,12 +355,19 @@ static int re_init_socket(int interface_index){
   return 0;
 }
 
+/* Returns 0 if interface is successfully added.
+ * Returns 1 if interface is not added (eg, dummy file does not exist).
+ * Returns -1 in case of error (misconfiguration or system error).
+ */
 static int
 overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr netmask, struct in_addr broadcast,
 		       const struct config_network_interface *ifconfig)
 {
+  int cleanup_ret = -1;
+
   /* Too many interfaces */
-  if (overlay_interface_count>=OVERLAY_MAX_INTERFACES) return WHY("Too many interfaces -- Increase OVERLAY_MAX_INTERFACES");
+  if (overlay_interface_count >= OVERLAY_MAX_INTERFACES)
+    return WHY("Too many interfaces -- Increase OVERLAY_MAX_INTERFACES");
 
   overlay_interface *const interface = &overlay_interfaces[overlay_interface_count];
 
@@ -342,18 +383,19 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   interface->default_route = ifconfig->default_route;
   interface->socket_type = ifconfig->socket_type;
   interface->encapsulation = ifconfig->encapsulation;
+  interface->uartbps = ifconfig->uartbps;
+  interface->ctsrts = ifconfig->ctsrts;
 
   /* Pick a reasonable default MTU.
      This will ultimately get tuned by the bandwidth and other properties of the interface */
   interface->mtu=1200;
   interface->state=INTERFACE_STATE_DOWN;
-  interface->last_tick_ms= -1; // not ticked yet
   interface->alarm.poll.fd=0;
   
   // How often do we announce ourselves on this interface?
   int tick_ms=-1;
   int packet_interval=-1;
-  
+
   // hard coded defaults:
   switch (ifconfig->type) {
     case OVERLAY_INTERFACE_PACKETRADIO:
@@ -402,7 +444,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     INFOF("Interface %s is running tickless", name);
   
   if (tick_ms<0)
-    return WHYF("Invalid tick interval %d specified for interface %s", interface->tick_ms, name);
+    return WHYF("No tick interval %d specified for interface %s", interface->tick_ms, name);
 
   interface->tick_ms = tick_ms;
   
@@ -439,25 +481,32 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
       goto cleanup;
     }
     
-    if ((interface->alarm.poll.fd = open(read_file,O_APPEND|O_RDWR)) < 1) {
-      WHYF_perror("could not open interface file %s", read_file);
+    if ((interface->alarm.poll.fd = open(read_file, O_APPEND|O_RDWR)) == -1) {
+      if (errno == ENOENT && ifconfig->socket_type == SOCK_FILE) {
+	cleanup_ret = 1;
+	WARNF("dummy interface not enabled: %s does not exist", alloca_str_toprint(read_file));
+      } else {
+	cleanup_ret = WHYF_perror("file interface not enabled: open(%s, O_APPEND|O_RDWR)", alloca_str_toprint(read_file));
+      }
       goto cleanup;
     }
     
     if (ifconfig->type==OVERLAY_INTERFACE_PACKETRADIO)
       overlay_packetradio_setup_port(interface);
     
-    if (ifconfig->socket_type==SOCK_STREAM){
+    switch (ifconfig->socket_type) {
+    case SOCK_STREAM:
       interface->slip_decode_state.dst_offset=0;
-      // The encapsulation type should be configurable,
-      // but for now default to the one that should be safe on the RFD900 
-      // radios, and that also allows us to receive RSSI reports inline
+      /* The encapsulation type should be configurable, but for now default to the one that should
+         be safe on the RFD900 radios, and that also allows us to receive RSSI reports inline */
       interface->slip_decode_state.encapsulator=SLIP_FORMAT_UPPER7;
       interface->alarm.poll.events=POLLIN;
       watch(&interface->alarm);
-    }else if(ifconfig->socket_type==SOCK_FILE){
+      break;
+    case SOCK_FILE:
       /* Seek to end of file as initial reading point */
       interface->recv_offset = lseek(interface->alarm.poll.fd,0,SEEK_END);
+      break;
     }
   }
   
@@ -483,7 +532,7 @@ cleanup:
     interface->alarm.poll.fd=-1;
   }
   interface->state=INTERFACE_STATE_DOWN;
-  return -1;
+  return cleanup_ret;
 }
 
 static void interface_read_dgram(struct overlay_interface *interface){
@@ -544,6 +593,21 @@ struct file_packet{
   unsigned char payload[1400];
 };
 
+static int should_drop(struct overlay_interface *interface, struct sockaddr_in addr){
+  if (memcmp(&addr, &interface->address, sizeof(addr))==0){
+    return interface->drop_unicasts;
+  }
+  if (memcmp(&addr, &interface->broadcast_address, sizeof(addr))==0){
+    if (interface->drop_broadcasts == 0)
+      return 0;
+    if (interface->drop_broadcasts >= 100)
+      return 1;
+    if (rand()%100 >= interface->drop_broadcasts)
+      return 0;
+  }
+  return 1;
+}
+
 static void interface_read_file(struct overlay_interface *interface)
 {
   IN();
@@ -581,9 +645,7 @@ static void interface_read_file(struct overlay_interface *interface)
       if (config.debug.packetrx)
 	DEBUG_packet_visualise("Read from dummy interface", packet.payload, packet.payload_length);
       
-      if (((!interface->drop_unicasts) && memcmp(&packet.dst_addr, &interface->address, sizeof(packet.dst_addr))==0) ||
-	  ((!interface->drop_broadcasts) &&
-	   memcmp(&packet.dst_addr, &interface->broadcast_address, sizeof(packet.dst_addr))==0)){
+      if (!should_drop(interface, packet.dst_addr)){
 	    
 	if (packetOkOverlay(interface, packet.payload, packet.payload_length, -1, 
 			    (struct sockaddr*)&packet.src_addr, sizeof(packet.src_addr))<0) {
@@ -690,11 +752,10 @@ static void overlay_interface_poll(struct sched_ent *alarm)
   if (alarm->poll.revents==0){
     time_ms_t now = gettime_ms();
     
-    if (interface->state==INTERFACE_STATE_UP && interface->tick_ms>0 && now >= interface->last_tick_ms+interface->tick_ms){
-      // tick the interface
-      overlay_route_queue_advertisements(interface);
-      interface->last_tick_ms=now;
-      alarm->alarm=interface->last_tick_ms+interface->tick_ms;
+    if (interface->state==INTERFACE_STATE_UP && interface->tick_ms>0){
+      if (now >= interface->last_tx+interface->tick_ms)
+        overlay_send_tick_packet(interface);
+      alarm->alarm=interface->last_tx+interface->tick_ms;
     }else{
       alarm->alarm=-1;
     }
@@ -749,6 +810,8 @@ overlay_broadcast_ensemble(overlay_interface *interface,
 			   struct sockaddr_in *recipientaddr,
 			   unsigned char *bytes,int len)
 {
+  interface->last_tx = gettime_ms();
+
   if (config.debug.packettx)
     {
       DEBUGF("Sending this packet via interface %s (len=%d)",interface->name,len);

@@ -56,6 +56,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 
 #include "os.h"
+#include "log.h"
 #include <fcntl.h>
 #include <stdlib.h>
 #include <time.h>
@@ -63,22 +64,24 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 void
 srandomdev(void)
 {
-        struct timeval tv;
-        unsigned int seed;
+  unsigned int seed;
+  int seeded = 0;
 #ifndef WIN32
-        FILE *fd;
-
-        fd = fopen("/dev/urandom", "r");
-        if (fd >= 0) {
-                fread(&seed, sizeof seed, 1, fd);
-                fclose(fd);
-        } else 
+  FILE *fd;
+  fd = fopen("/dev/urandom", "r");
+  if (fd >= 0) {
+    if (fread(&seed, sizeof seed, 1, fd) != 1)
+      WARNF("fread(\"/dev/urandom\") failed -- falling back to gettimeofday()");
+    else
+      seeded = 1;
+    fclose(fd);
+  }
 #endif
-		{
-
-                gettimeofday(&tv, NULL);
-                seed = (getpid() << 16) ^ tv.tv_sec ^ tv.tv_usec;
-        }
-        srandom(seed);
+  if (!seeded) {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    seed = (getpid() << 16) ^ tv.tv_sec ^ tv.tv_usec;
+  }
+  srandom(seed);
 }
 #endif

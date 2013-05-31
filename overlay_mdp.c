@@ -626,9 +626,15 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     frame->destination = find_subscriber(mdp->out.dst.sid, SID_SIZE, 1);
   }
   
-  frame->ttl=mdp->out.ttl;
-  if (frame->ttl==0) 
-    frame->ttl=64; /* default TTL */	
+  frame->ttl = mdp->out.ttl;
+  if (frame->ttl == 0) 
+    frame->ttl = PAYLOAD_TTL_DEFAULT;
+  else if (frame->ttl > PAYLOAD_TTL_MAX) {
+    op_free(frame);
+    RETURN(overlay_mdp_reply_error(mdp_named.poll.fd,
+				    recvaddr,recvaddrlen,9,
+				    "TTL out of range"));
+  }
   
   if (!frame->destination || frame->destination->reachable == REACHABLE_SELF)
     {
@@ -690,9 +696,9 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       unsigned char *cipher_text = nonce + nb;
       if (!nonce)
 	RETURN(-1);
-      if (urandombytes(nonce,nb)) {
+      if (generate_nonce(nonce,nb)) {
 	op_free(frame);
-	RETURN(WHY("urandombytes() failed to generate nonce"));
+	RETURN(WHY("generate_nonce() failed to generate nonce"));
       }
       // reserve the high bit of the nonce as a flag for transmitting a shorter nonce.
       nonce[0]&=0x7f;
@@ -759,8 +765,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   if (frame->queue==0)
     frame->queue = OQ_ORDINARY;
   
-  frame->send_copies = mdp->out.send_copies;
-  
   if (overlay_payload_enqueue(frame))
     op_free(frame);
   RETURN(0);
@@ -794,18 +798,12 @@ static int search_subscribers(struct subscriber *subscriber, void *context){
 
 int overlay_mdp_address_list(overlay_mdp_addrlist *request, overlay_mdp_addrlist *response){
   if (config.debug.mdprequests)
-    DEBUGF("MDP_GETADDRS first_sid=%u mode=%d",
-	   request->first_sid,
-	   request->mode
-	   );
+    DEBUGF("MDP_GETADDRS first_sid=%u mode=%d", request->first_sid, request->mode);
   
   /* Prepare reply packet */
   response->mode = request->mode;
   response->first_sid = request->first_sid;
   response->frame_sid_count = 0;
-  
-  /* ... and constrain list for sanity */
-  if (response->first_sid<0) response->first_sid=0;
   
   /* Populate with SIDs */
   enum_subscribers(NULL, search_subscribers, response);
@@ -837,7 +835,8 @@ static int routing_table(struct subscriber *subscriber, void *context){
   reply.packetTypeAndFlags=MDP_TX;
   reply.out.payload_length=sizeof(struct overlay_route_record);
   memcpy(r->sid, subscriber->sid, SID_SIZE);
-  r->reachable = subscriber->reachable;
+  r->reachable = subscriber_is_reachable(subscriber);
+  
   if (subscriber->reachable==REACHABLE_INDIRECT && subscriber->next_hop)
     memcpy(r->neighbour, subscriber->next_hop->sid, SID_SIZE);
   if (subscriber->reachable & REACHABLE_DIRECT && subscriber->interface)
@@ -912,14 +911,6 @@ void overlay_mdp_poll(struct sched_ent *alarm)
       case MDP_GOODBYE:
 	if (config.debug.mdprequests) DEBUG("MDP_GOODBYE");
 	overlay_mdp_releasebindings(recvaddr_un,recvaddrlen);
-	return;
-	  
-      /* Deprecated. We can replace with a more generic dump of the routing table */
-      case MDP_NODEINFO:
-	if (config.debug.mdprequests) DEBUG("MDP_NODEINFO");
-	  
-	if (!overlay_route_node_info(&mdp->nodeinfo))
-	  overlay_mdp_reply(mdp_named.poll.fd,recvaddr_un,recvaddrlen,mdp);
 	return;
 	  
       case MDP_ROUTING_TABLE:

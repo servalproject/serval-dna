@@ -30,6 +30,16 @@ void *_emalloc(struct __sourceloc __whence, size_t bytes)
   return new;
 }
 
+void *_erealloc(struct __sourceloc __whence, void *ptr, size_t bytes)
+{
+  char *new = realloc(ptr, bytes);
+  if (!new) {
+    WHYF_perror("realloc(%p, %lu)", ptr, (unsigned long)bytes);
+    return NULL;
+  }
+  return new;
+}
+
 void *_emalloc_zero(struct __sourceloc __whence, size_t bytes)
 {
   char *new = _emalloc(__whence, bytes);

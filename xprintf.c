@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdio.h>
 #include <stdlib.h>
+#include "strbuf.h"
 #include "xprintf.h"
 
 void xprintf(XPRINTF xfp, const char *fmt, ...)
@@ -88,4 +89,9 @@ void _cx_vprintf_mallocbuf(void *context, const char *fmt, va_list ap)
       }
     }
   }
+}
+
+void _cx_vprintf_strbuf(void *context, const char *fmt, va_list ap)
+{
+  strbuf_vsprintf((strbuf)context, fmt, ap);
 }

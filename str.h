@@ -84,7 +84,8 @@ size_t toprint_str_len(const char *srcStr, const char quotes[2]);
 size_t str_fromprint(unsigned char *dst, const char *src);
 
 #define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((const char *)(buf),(len), "``") + 1 : (dstlen)), (dstlen), (const char *)(buf), (len), "``")
-#define alloca_str_toprint(str)  toprint_str((char *)alloca(toprint_str_len(str, "``") + 1), -1, (str), "``")
+#define alloca_str_toprint_quoted(str, quotes)  toprint_str((char *)alloca(toprint_str_len((str), (quotes)) + 1), -1, (str), (quotes))
+#define alloca_str_toprint(str)  alloca_str_toprint_quoted(str, "``")
 
 /* Like strchr(3), but only looks for 'c' in the first 'n' characters of 's', stopping at the first
  * nul char in 's'.
@@ -92,6 +93,35 @@ size_t str_fromprint(unsigned char *dst, const char *src);
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 const char *strnchr(const char *s, size_t n, char c);
+
+/* Like strchr(3) and strrchr(3), but returns the index into the string instead of a pointer, or -1
+ * if the character is not found.  The '_dfl' variants take a third argument that gives the default
+ * value to return if the character is not found.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+
+__STR_INLINE ssize_t str_index_dfl(const char *s, char c, ssize_t dfl)
+{
+  const char *r = strchr(s, c);
+  return r ? r - s : dfl;
+}
+
+__STR_INLINE ssize_t str_rindex_dfl(const char *s, char c, ssize_t dfl)
+{
+  const char *r = strrchr(s, c);
+  return r ? r - s : dfl;
+}
+
+__STR_INLINE ssize_t str_index(const char *s, char c)
+{
+  return str_index_dfl(s, c, -1);
+}
+
+__STR_INLINE ssize_t str_rindex(const char *s, char c)
+{
+  return str_rindex_dfl(s, c, -1);
+}
 
 /* Check if a given nul-terminated string 'str' starts with a given nul-terminated sub-string.  If
  * so, return 1 and, if afterp is not NULL, set *afterp to point to the character in 'str'
@@ -177,6 +207,19 @@ uint64_t scale_factor(const char *str, const char **afterp);
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 int uint64_scaled_to_str(char *str, size_t len, uint64_t value);
+
+/* Parse a string as a time interval (seconds) in millisecond resolution.  Return the number of
+ * milliseconds.  Valid strings are all unsigned ASCII decimal numbers with up to three digits after
+ * the decimal point.
+ *
+ * Return 1 if a valid interval was parsed, storing the number of milliseconds in *result (unless
+ * result is NULL) and storing a pointer to the immediately succeeding character in *afterp (unless
+ * afterp is NULL, in which case returns 1 only if the immediately succeeding character is a nul
+ * '\0').  Returns 0 otherwise, leaving *result and *afterp unchanged.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_to_uint64_interval_ms(const char *str, int64_t *result, const char **afterp);
 
 /* Return true if the string resembles a nul-terminated URI.
  * Based on RFC-3986 generic syntax, assuming nothing about the hierarchical part.

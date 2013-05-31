@@ -23,6 +23,9 @@
 #include "overlay_address.h"
 #include "serval.h"
 
+#define FRAME_NOT_SENT -1
+#define FRAME_DONT_SEND -2
+
 struct overlay_frame {
   struct overlay_frame *prev;
   struct overlay_frame *next;
@@ -32,13 +35,15 @@ struct overlay_frame {
   
   unsigned char ttl;
   unsigned char queue;
-  // temporary hack to improve reliability before implementing per-packet nack's
-  int send_copies;
+  char resend;
+  void *send_context;
+  int (*send_hook)(struct overlay_frame *, int seq, void *context);
   
-  /* Mark which interfaces the frame has been sent on,
-   so that we can ensure that broadcast frames get sent
-   exactly once on each interface */
-  unsigned char broadcast_sent_via[OVERLAY_MAX_INTERFACES];
+  /* What sequence number have we used to send this packet on this interface.
+     */
+  int interface_sent_sequence[OVERLAY_MAX_INTERFACES];
+  int32_t mdp_sequence;
+  time_ms_t interface_dont_send_until[OVERLAY_MAX_INTERFACES];
   struct broadcast broadcast_id;
   
   // null if destination is broadcast
@@ -53,6 +58,8 @@ struct overlay_frame {
   struct sockaddr_in recvaddr;
   overlay_interface *interface;
   char unicast;
+  int packet_version;
+  time_ms_t dont_send_until;
   
   /* Actual payload */
   struct overlay_buffer *payload;

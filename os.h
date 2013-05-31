@@ -69,8 +69,24 @@ __SERVALDNA_OS_INLINE void bcopy(void *src, void *dst, size_t len) {
 }
 #endif
 
+#ifndef HAVE_BCMP
+__SERVALDNA_OS_INLINE int bcmp(const void *s1, const void *s2, size_t n) {
+    // bcmp() is only an equality test, not an order test, so its return value
+    // is not specified as negative or positive, only non-zero.  Hoewver
+    // memcmp() is an order test.  We deliberately discard negative return
+    // values from memcmp(), to avoid misleading developers into assuming that
+    // bcmp() is an ordering operator and writing code that depends on that,
+    // which of course would fail on platforms with a native bcmp() function.
+    return memcmp(s1, s2, n) != 0;
+}
+#endif
+
+/* The "e" variants log the error before returning -1.
+ */
 int mkdirs(const char *path, mode_t mode);
+int emkdirs(const char *path, mode_t mode);
 int mkdirsn(const char *path, size_t len, mode_t mode);
+int emkdirsn(const char *path, size_t len, mode_t mode);
 
 void srandomdev();
 int urandombytes(unsigned char *buf, unsigned long long len);

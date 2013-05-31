@@ -80,19 +80,31 @@ setup_AddNoAuthor() {
    echo "A test file" >file1
 }
 test_AddNoAuthor() {
-   executeOk_servald rhizome add file file1 file1.manifest
+   executeOk_servald rhizome add file '' file1 file1.manifest
    assert_stdout_add_file file1
    assertGrep --matches=0 file1.manifest '^BK='
 }
 
-doc_AddNoAuthor="Add encrypted payload with no author"
-setup_AddNoAuthor() {
+doc_AddInvalidAuthor="Add with invalid author fails"
+setup_AddInvalidAuthor() {
+   setup_servald
+   setup_rhizome
+   echo "A test file" >file1
+}
+test_AddInvalidAuthor() {
+   execute $servald rhizome add file 'not_a_valid_SID' file1
+   assertExitStatus '==' 255
+   assertStderrGrep '^ERROR:.*[Ii]nvalid .*[Ss][Ii][Dd]'
+}
+
+doc_AddNoAuthorEncrypted="Add encrypted payload with no author"
+setup_AddNoAuthorEncrypted() {
    setup_servald
    setup_rhizome
    echo "A test file" >file1
    echo "crypt=1" >file1.manifest
 }
-test_AddNoAuthor() {
+test_AddNoAuthorEncrypted() {
    executeOk_servald rhizome add file '' file1 file1.manifest
    tfw_cat --stdout --stderr
    assert_stdout_add_file file1

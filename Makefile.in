@@ -23,6 +23,7 @@ MONITORCLIENTSRCS=conf.c \
         conf_schema.c \
 	dataformats.c \
 	log.c \
+        xprintf.c \
 	os.c \
 	mem.c \
 	monitor-client.c \
@@ -30,7 +31,8 @@ MONITORCLIENTSRCS=conf.c \
 	net.c \
 	str.c \
 	strbuf.c \
-	strbuf_helpers.c
+	strbuf_helpers.c \
+	rotbuf.c
 
 MDPCLIENTSRCS=conf.c \
         conf_om.c \
@@ -40,12 +42,14 @@ MDPCLIENTSRCS=conf.c \
 	os.c \
 	mem.c \
 	log.c \
+        xprintf.c \
 	mdp_client.c \
         instance.c \
 	net.c \
 	str.c \
 	strbuf.c \
-	strbuf_helpers.c
+	strbuf_helpers.c \
+	rotbuf.c
 
 OBJS=	$(SRCS:.c=.o)
 SERVAL_OBJS=	$(SERVAL_SOURCES:.c=.o)
@@ -82,11 +86,13 @@ $(MDPCLIENTOBJS): $(HDRS)
 
 servald:	$(OBJS)
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ $(OBJS) $(LDFLAGS)
+	@v=`./version_string.sh` \
+            && $(CC) $(CFLAGS) -Wall -o $@ -DSERVALD_VERSION="\"$$v\"" version_servald.c $(OBJS) $(LDFLAGS)
 
 directory_service: $(MDPCLIENTOBJS) directory_service.o
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ $(MDPCLIENTOBJS) directory_service.o $(LDFLAGS) 
+	@v=`./version_string.sh` \
+            && $(CC) $(CFLAGS) -Wall -o $@ -DSERVALD_VERSION="\"$$v\"" version_servald.c $(MDPCLIENTOBJS) directory_service.o $(LDFLAGS)
 
 tfw_createfile: tfw_createfile.o str.o strbuf.o strbuf_helpers.o
 	@echo LINK $@
@@ -96,15 +102,18 @@ tfw_createfile: tfw_createfile.o str.o strbuf.o strbuf_helpers.o
 # DOC 20120615
 libservald.so: $(OBJS)
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(OBJS) $(LDFLAGS)
+	@v=`./version_string.sh` && $(CC) $(CFLAGS) $(DEFS) -DSERVALD_VERSION="\"$$v\"" -Wall -o version_servald.o -c version_servald.c
+	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(OBJS) version_servald.o $(LDFLAGS)
 
 libmonitorclient.so: $(MONITORCLIENTOBJS)
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(MONITORCLIENTOBJS) $(LDFLAGS)
+	@v=`./version_string.sh` && $(CC) $(CFLAGS) $(DEFS) -DSERVALD_VERSION="\"$$v\"" -Wall -o version_libmonitorclient.o -c version_servald.c
+	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(MONITORCLIENTOBJS) version_libmonitorclient.o $(LDFLAGS)
 
 libmonitorclient.a: $(MONITORCLIENTOBJS)
 	@echo AR $@
-	@$(AR) -cr $@ $(MONITORCLIENTOBJS)
+	@v=`./version_string.sh` && $(CC) $(CFLAGS) $(DEFS) -DSERVALD_VERSION="\"$$v\"" -Wall -o version_libmonitorclient.o -c version_servald.c
+	@$(AR) -cr $@ $(MONITORCLIENTOBJS) version_libmonitorclient.o
 
 clean:
-	@rm -f $(OBJS) servald libservald.so libmonitorclient.so libmonitorclient.a
+	@rm -f $(OBJS) servald libservald.so libmonitorclient.so version_libmonitorclient.o libmonitorclient.a

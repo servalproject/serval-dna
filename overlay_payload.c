@@ -23,11 +23,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
 
-int overlay_frame_build_header(struct decode_context *context, struct overlay_buffer *buff, 
-			       int queue, int type, int modifiers, int ttl, 
+static int overlay_frame_build_header(int packet_version, struct decode_context *context, 
+			       struct overlay_buffer *buff, 
+			       int queue, int type, int modifiers, int ttl, int sequence,
 			       struct broadcast *broadcast, struct subscriber *next_hop,
-			       struct subscriber *destination, struct subscriber *source){
-  
+			       struct subscriber *destination, struct subscriber *source)
+{
+  if (ttl < 0 || ttl > PAYLOAD_TTL_MAX)
+    return WHYF("invalid ttl=%d", ttl);
+
   int flags = modifiers & (PAYLOAD_FLAG_CIPHERED | PAYLOAD_FLAG_SIGNED);
   
   if (ttl==1 && !broadcast)
@@ -68,6 +72,10 @@ int overlay_frame_build_header(struct decode_context *context, struct overlay_bu
   if (flags & PAYLOAD_FLAG_LEGACY_TYPE){
     if (ob_append_byte(buff, type)) return -1;
   }
+
+  if (packet_version>0)
+    if (ob_append_byte(buff, sequence))
+      return -1;
   
   return 0;
 }
@@ -95,8 +103,9 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
   if ((!p->destination) && !is_all_matching(p->broadcast_id.id,BROADCAST_LEN,0)){
     broadcast = &p->broadcast_id;
   }
-  if (overlay_frame_build_header(context, b,
-			     p->queue, p->type, p->modifiers, p->ttl,
+
+  if (overlay_frame_build_header(p->packet_version, context, b,
+			     p->queue, p->type, p->modifiers, p->ttl, p->mdp_sequence&0xFF,
 			     broadcast, p->next_hop, 
 			     p->destination, p->source))
     goto cleanup;
@@ -124,23 +133,23 @@ int single_packet_encapsulation(struct overlay_buffer *b, struct overlay_frame *
   
   if (frame->source_full)
     my_subscriber->send_full=1;
-  
-  if (overlay_packet_init_header(ENCAP_SINGLE, &context, b, NULL, 0, interface_number, 0))
-    return -1;
+  int seq = interface->sequence_number++;
+  if (overlay_packet_init_header(frame->packet_version, ENCAP_SINGLE, &context, b, NULL, 0, interface_number, seq))
+    return WHY("Failed to init header");
 
   struct broadcast *broadcast=NULL;
   if ((!frame->destination) && !is_all_matching(frame->broadcast_id.id,BROADCAST_LEN,0))
     broadcast = &frame->broadcast_id;
 
-  if (overlay_frame_build_header(&context, b,
+  if (overlay_frame_build_header(frame->packet_version, &context, b,
 				 frame->queue, frame->type, 
-				 frame->modifiers, frame->ttl,
+				 frame->modifiers, frame->ttl, frame->mdp_sequence & 0xFF,
 				 broadcast, frame->next_hop, 
 				 frame->destination, frame->source))
-    return -1;
+    return WHY("Failed to build header");
   
   if (ob_append_buffer(b, frame->payload))
-    return -1;
+    return WHY("Failed to append payload");
   
   return 0;
 }

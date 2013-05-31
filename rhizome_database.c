@@ -84,7 +84,7 @@ int form_rhizome_import_path(char * buf, size_t bufsiz, const char *fmt, ...)
 int create_rhizome_datastore_dir()
 {
   if (config.debug.rhizome) DEBUGF("mkdirs(%s, 0700)", rhizome_datastore_path());
-  return mkdirs(rhizome_datastore_path(), 0700);
+  return emkdirs(rhizome_datastore_path(), 0700);
 }
 
 int create_rhizome_import_dir()
@@ -93,7 +93,7 @@ int create_rhizome_import_dir()
   if (!form_rhizome_import_path(dirname, sizeof dirname, NULL))
     return -1;
   if (config.debug.rhizome) DEBUGF("mkdirs(%s, 0700)", dirname);
-  return mkdirs(dirname, 0700);
+  return emkdirs(dirname, 0700);
 }
 
 sqlite3 *rhizome_db=NULL;
@@ -1577,6 +1577,7 @@ int rhizome_is_bar_interesting(unsigned char *bar){
   time_ms_t start_time=gettime_ms();
 
   int64_t version = rhizome_bar_version(bar);
+  unsigned char log2_size = bar[RHIZOME_BAR_FILESIZE_OFFSET];
   int ret=1;
   char id_hex[RHIZOME_MANIFEST_ID_STRLEN];
   tohex(id_hex, &bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
@@ -1587,7 +1588,11 @@ int rhizome_is_bar_interesting(unsigned char *bar){
     DEBUGF("Ignoring %s", id_hex);
     RETURN(0);
   }
-  
+
+  // do we have free space in a fetch queue?
+  if (log2_size!=0xFF && rhizome_fetch_has_queue_space(log2_size)!=1)
+    RETURN(0);
+
   // are we already fetching this bundle [or later]?
   rhizome_manifest *m=rhizome_fetch_search(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
   if (m && m->version >= version)

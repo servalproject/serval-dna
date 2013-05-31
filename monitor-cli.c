@@ -67,10 +67,22 @@ int app_monitor_cli(const struct cli_parsed *parsed, void *context)
       
       if (fds[0].revents & POLLIN){
 	char buff[256];
-	int bytes = read(STDIN_FILENO, buff, sizeof(buff));
-	set_block(monitor_client_fd);
-	write(monitor_client_fd, buff, bytes);
-	set_nonblock(monitor_client_fd);
+	ssize_t bytes = read(STDIN_FILENO, buff, sizeof buff);
+	if (bytes == -1)
+	  WHYF_perror("read(%d,%p,%ld)", STDIN_FILENO, buff, (long)sizeof buff);
+	else {
+	  set_block(monitor_client_fd);
+	  size_t to_write = bytes;
+	  size_t written = 0;
+	  while (written < to_write) {
+	    ssize_t n = write(monitor_client_fd, buff + written, to_write - written);
+	    if (n == -1)
+	      WHYF_perror("write(%d,%p,%ld)", monitor_client_fd, buff, (long)bytes);
+	    else
+	      written += n;
+	  }
+	  set_nonblock(monitor_client_fd);
+	}
       }
       
       if (fds[1].revents & POLLIN){

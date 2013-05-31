@@ -53,13 +53,13 @@ test_StartCreateInstanceDir() {
 doc_StartLogfile="Starting server gives no errors"
 setup_StartLogfile() {
    setup
-   executeOk_servald config set log.file "$PWD/log"
+   executeOk_servald config set log.file.directory_path "$PWD/log"
 }
 test_StartLogfile() {
-   executeOk $servald start
+   executeOk_servald start
    sleep 0.1
-   assert [ -s log ]
-   tfw_cat log
+   assert [ -s log/*.log ]
+   tfw_cat log/*.log
 }
 
 doc_StartNoInterfaces="Starting server with no configured interfaces gives warning"

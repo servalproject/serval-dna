@@ -149,9 +149,6 @@ schedule(&_sched_##X); }
   /* Periodically check for new interfaces */
   SCHEDULE(overlay_interface_discover, 1, 100);
 
-  /* Periodically update route table. */
-  SCHEDULE(overlay_route_tick, 100, 100);
-
   /* Periodically advertise bundles */
   SCHEDULE(overlay_rhizome_advertise, 1000, 10000);
   
@@ -159,7 +156,9 @@ schedule(&_sched_##X); }
   SCHEDULE(fd_periodicstats, 3000, 500);
 
 #undef SCHEDULE
-  
+
+  // log message used by tests to wait for the server to start
+  INFO("Server started, entering main loop");
   /* Check for activitiy and respond to it */
   while(fd_poll());
 

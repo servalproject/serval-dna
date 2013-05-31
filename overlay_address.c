@@ -258,6 +258,9 @@ static int add_explain_response(struct subscriber *subscriber, void *context){
     return 1;
   if (ob_append_bytes(response->please_explain->payload, subscriber->sid, SID_SIZE))
     return 1;
+
+  // let the routing engine know that we had to explain this sid, we probably need to re-send routing info
+  link_explained(subscriber);
   return 0;
 }
 
@@ -358,11 +361,10 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   if (!context->sender)
     frame->source_full=1;
   
-  frame->source->send_full=1;
   frame->destination = destination;
   
   if (destination && (destination->reachable & REACHABLE)){
-    frame->ttl=64;
+    frame->ttl = PAYLOAD_TTL_DEFAULT; // MAX?
   }else{
     frame->ttl=1;// how will this work with olsr??
     overlay_broadcast_generate_address(&frame->broadcast_id);
@@ -388,7 +390,8 @@ int process_explain(struct overlay_frame *frame){
   
   struct decode_context context;
   bzero(&context, sizeof context);
-  
+  context.sender = frame->source;
+
   while(ob_remaining(b)>0){
     int len = ob_get(b);
     if (len<=0 || len>SID_SIZE)

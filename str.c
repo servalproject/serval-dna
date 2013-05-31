@@ -236,7 +236,8 @@ int str_to_int64_scaled(const char *str, int base, int64_t *result, const char *
     *afterp = end;
   else if (*end)
     return 0;
-  *result = value;
+  if (result)
+    *result = value;
   return 1;
 }
 
@@ -253,7 +254,8 @@ int str_to_uint64_scaled(const char *str, int base, uint64_t *result, const char
     *afterp = end;
   else if (*end)
     return 0;
-  *result = value;
+  if (result)
+    *result = value;
   return 1;
 }
 
@@ -272,6 +274,30 @@ int uint64_scaled_to_str(char *str, size_t len, uint64_t value)
   if (symbol)
     strbuf_putc(b, symbol);
   return strbuf_overrun(b) ? 0 : 1;
+}
+
+int str_to_uint64_interval_ms(const char *str, int64_t *result, const char **afterp)
+{
+  const unsigned precision = 1000;
+  if (isspace(*str))
+    return 0;
+  const char *end = str;
+  unsigned long long value = strtoull(str, (char**)&end, 10) * precision;
+  if (end == str)
+    return 0;
+  if (end[0] == '.' && isdigit(end[1])) {
+    ++end;
+    unsigned factor;
+    for (factor = precision / 10; isdigit(*end) && factor; factor /= 10)
+      value += (*end++ - '0') * factor;
+  }
+  if (afterp)
+    *afterp = end;
+  else if (*end)
+    return 0;
+  if (result)
+    *result = value;
+  return 1;
 }
 
 /* Format a buffer of data as a printable representation, eg: "Abc\x0b\n\0", for display

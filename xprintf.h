@@ -99,4 +99,10 @@ struct mallocbuf {
 #define XPRINTF_MALLOCBUF(MB)   _XPRINTF(_cx_vprintf_mallocbuf, (MB))
 CONTEXT_VPRINTF _cx_vprintf_mallocbuf;
 
+/* Strbuf adapter.  An XPRINTF constructed with XPRINTF_STRBUF(sb) will write
+ * all its output to the give strbuf using strbuf_sprintf(sb,...).
+ */
+#define XPRINTF_STRBUF(SB)    _XPRINTF(_cx_vprintf_strbuf,(SB))
+CONTEXT_VPRINTF _cx_vprintf_strbuf;
+
 #endif // __SERVALD_XPRINTF_H

@@ -90,7 +90,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * A schema definition is composed from the following STRUCT and ARRAY definitions:
  *
- *      STRUCT(name[, validatorfunc])
+ *      STRUCT(name [, validatorfunc])
  *          element-declaration
  *          element-declaration
  *          ...
@@ -101,14 +101,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *          ATOM(type, element, default, repr, flags, comment)
  *          NODE(type, element, default, repr, flags, comment)
  *          STRING(strlen, element, default, repr, flags, comment)
- *          SUB_STRUCT(structname, element, flags)
- *          NODE_STRUCT(structname, element, repr, flags)
+ *          SUB_STRUCT(structname, element, flags [, default_label])
+ *          NODE_STRUCT(structname, element, repr, flags [, default_label])
  *
- *      ARRAY(name, flags[, validatorfunc])
+ *      ARRAY(name, flags [, validatorfunc])
  *          key-declaration
  *          value-declaration
  *      END_ARRAY(size)
- *  
+ *
  *          where key-declaration is one of:
  *
  *          KEY_ATOM(type, repr)
@@ -121,6 +121,41 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *          VALUE_NODE(type, repr)
  *          VALUE_SUB_STRUCT(structname)
  *          VALUE_NODE_STRUCT(structname, repr)
+ *
+ * For defining alternative STRUCT default settings:
+ *
+ *      STRUCT_DEFAULT(name, default_label)
+ *          default-declaration
+ *          default-declaration
+ *          ...
+ *      END_STRUCT_DEFAULT
+ *
+ *          where each default-declaration is one of:
+ *
+ *          ATOM_DEFAULT(element, default)
+ *          STRING_DEFAULT(element, default)
+ *          SUB_STRUCT_DEFAULT(structname, element [, default_label])
+ *
+ *      Every structure defined by STRUCT has its own, native default values as given by
+ *      the 'default' parameter in each of its element declarations.  The STRUCT_DEFAULT
+ *      declaration defines a variation on the default values that can be used to give the
+ *      structure alternative defaults when included as a SUB_STRUCT (or NODE_STRUCT) from
+ *      within another structure.  Not all the STRUCT's elements have to be defined within
+ *      a STRUCT_DEFAULT definition; any omitted ones take the STRUCT's native default.
+ *
+ * For defining that one STRUCT can be treated as a subset of another:
+ *
+ *      STRUCT_ASSIGN(substruct, superstruct)
+ *          element-declaration
+ *          element-declaration
+ *          ...
+ *      END_STRUCT_ASSIGN
+ *
+ *          where element-declaration is exactly as for STRUCT(...) above.
+ *
+ *      This generates a structure copy function that copies the given elements of 'substruct'
+ *      into the equivalent elements of 'superstruct'; ie, both structures must have the same
+ *      element names and types.
  *
  * The meanings of the parameters are:
  *
@@ -184,6 +219,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      A human-readable string describing the value of the configuration option.  Must be
  *      informative enough to help users diagnose parse errors.  Eg, "An integer" is not enough;
  *      better would be "Integer >= 0, number of seconds since Unix epoch".
+ * 'default_label'
+ *      A label used to qualify an alternative STRUCT default set.  These labels need only be unique
+ *      for each given struct 'name', so different STRUCTs may re-use the same labels.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
@@ -214,6 +252,7 @@ ATOM(bool_t, packetradio,               0, boolean,, "")
 ATOM(bool_t, rejecteddata,              0, boolean,, "")
 ATOM(bool_t, slip,                      0, boolean,, "")
 ATOM(bool_t, slipdecode,                0, boolean,, "")
+ATOM(bool_t, slipbytestream,            0, boolean,, "")
 ATOM(bool_t, packetconstruction,        0, boolean,, "")
 ATOM(bool_t, rhizome,                   0, boolean,, "")
 ATOM(bool_t, rhizome_tx,                0, boolean,, "")
@@ -224,13 +263,47 @@ ATOM(bool_t, vomp,                      0, boolean,, "")
 ATOM(bool_t, trace,                     0, boolean,, "")
 ATOM(bool_t, profiling,                 0, boolean,, "")
 ATOM(bool_t, externalblobs,             0, boolean,, "")
+ATOM(bool_t, linkstate,                 0, boolean,, "")
 END_STRUCT
 
-STRUCT(log)
-STRING(256,                 file,       "", str_nonempty,, "Path of log file, either absolute or relative to instance directory")
-ATOM(bool_t,                show_pid,   1, boolean,, "If true, all log lines contain PID of logging process")
-ATOM(bool_t,                show_time,  1, boolean,, "If true, all log lines contain time stamp")
+#define LOG_FORMAT_OPTIONS \
+ATOM(bool_t,                show_pid,    1, boolean,, "If true, all log lines contain PID of logging process") \
+ATOM(bool_t,                show_time,   1, boolean,, "If true, all log lines contain time stamp") \
+ATOM(int,                   level,       LOG_LEVEL_DEBUG, log_level,, "Only log messages at and above this level of severity") \
+ATOM(bool_t,                dump_config, 1, boolean,, "If true, current configuration is dumped into start of log")
+
+STRUCT(log_format)
+LOG_FORMAT_OPTIONS
 END_STRUCT
+
+STRUCT(log_format_file)
+STRING(256,                 directory_path, "log", str_nonempty,, "Path of directory for log files, either absolute or relative to instance directory")
+STRING(256,                 path,           "", str_nonempty,, "Path of single log file, either absolute or relative to directory_path")
+ATOM(unsigned short,        rotate,         12, ushort,, "Number of log files to rotate, zero means no deletion")
+ATOM(uint32_t,              duration,       3600, uint32_time_interval,, "Time duration of each log file, zero means one file per invocation")
+LOG_FORMAT_OPTIONS
+END_STRUCT
+
+STRUCT_ASSIGN(log_format, log_format_file)
+LOG_FORMAT_OPTIONS
+END_STRUCT_ASSIGN
+
+STRUCT(log)
+SUB_STRUCT(log_format_file, file,,)
+SUB_STRUCT(log_format,      console,,       console)
+SUB_STRUCT(log_format,      android,,       android)
+END_STRUCT
+
+STRUCT_DEFAULT(log_format, console)
+ATOM_DEFAULT(show_pid,    0)
+ATOM_DEFAULT(show_time,   0)
+ATOM_DEFAULT(level,       LOG_LEVEL_HINT)
+ATOM_DEFAULT(dump_config, 0)
+END_STRUCT_DEFAULT
+
+STRUCT_DEFAULT(log_format, android)
+ATOM_DEFAULT(show_pid,    0)
+END_STRUCT_DEFAULT
 
 STRUCT(server)
 STRING(256,                 chdir,      "/", absolute_path,, "Absolute path of chdir(2) for server process")
@@ -244,7 +317,7 @@ ATOM(uint32_t,              uid,        0, uint32_nonzero,, "Allowed UID for mon
 END_STRUCT
 
 STRUCT(mdp_iftype)
-ATOM(uint32_t,              tick_ms,         -1, uint32_nonzero,, "Tick interval for this interface type")
+ATOM(int32_t,               tick_ms,         -1, int32_nonneg,, "Tick interval for this interface type")
 ATOM(int32_t,               packet_interval, -1, int32_nonneg,, "Minimum interval between packets in microseconds")
 END_STRUCT
 
@@ -361,7 +434,7 @@ STRING(256,                 file,            "", str_nonempty,, "Path of interfa
 ATOM(struct in_addr,        dummy_address,   hton_in_addr(INADDR_LOOPBACK), in_addr,, "Dummy interface address")
 ATOM(struct in_addr,        dummy_netmask,   hton_in_addr(0xFFFFFF00), in_addr,, "Dummy interface netmask")
 ATOM(uint16_t,              port,            PORT_DNA, uint16_nonzero,, "Port number for network interface")
-ATOM(bool_t,                drop_broadcasts, 0, boolean,, "If true, drop all incoming broadcast packets")
+ATOM(uint16_t,              drop_broadcasts, 0, uint16_nonzero,, "Percentage of incoming broadcast packets that should be dropped for testing purposes")
 ATOM(bool_t,                drop_unicasts,   0, boolean,, "If true, drop all incoming unicast packets")
 ATOM(short,                 type,            OVERLAY_INTERFACE_WIFI, interface_type,, "Type of network interface")
 ATOM(int32_t,               packet_interval, -1, int32_nonneg,, "Minimum interval between packets in microseconds")
@@ -369,6 +442,8 @@ ATOM(int32_t,               mdp_tick_ms,     -1, int32_nonneg,, "Override MDP ti
 ATOM(bool_t,                send_broadcasts, 1, boolean,, "If false, don't send any broadcast packets")
 ATOM(bool_t,                default_route,   0, boolean,, "If true, use this interface as a default route")
 ATOM(bool_t,                prefer_unicast,  0, boolean,, "If true, send unicast data as unicast IP packets if available")
+ATOM(bool_t,                ctsrts,  0, boolean,, "If true, enable CTS/RTS hardware handshaking")
+ATOM(int32_t,               uartbps, 57600, int32_rs232baudrate,, "Speed of serial UART link speed (which may be different to serial device link speed)")
 END_STRUCT
 
 ARRAY(interface_list, NO_DUPLICATES)

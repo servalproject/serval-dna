@@ -90,13 +90,13 @@ doc_GetAll="Get all config items"
 test_GetAll() {
    executeOk_servald config \
       set debug.verbose true \
-      set log.show_pid true \
+      set log.console.show_pid true \
       set server.chdir /tmp/nothing \
       set rhizome.enable no
    executeOk_servald config get
    assertStdoutLineCount '==' 4
    assertStdoutGrep --stdout --matches=1 '^debug\.verbose=true$'
-   assertStdoutGrep --stdout --matches=1 '^log\.show_pid=true$'
+   assertStdoutGrep --stdout --matches=1 '^log\.console\.show_pid=true$'
    assertStdoutGrep --stdout --matches=1 '^server\.chdir=/tmp/nothing$'
    assertStdoutGrep --stdout --matches=1 '^rhizome\.enable=no$'
 }
@@ -105,19 +105,19 @@ doc_SetDelMixed="Set and del config items in single command"
 test_SetDelMixed() {
    executeOk_servald config \
       set debug.verbose true \
-      set log.show_pid true \
+      set log.file.show_pid true \
       set server.chdir /tmp/nothing \
       set rhizome.enable no
    executeOk_servald config \
       set debug.verbose false \
-      del log.show_pid \
-      set log.show_time 1 \
+      del log.file.show_pid \
+      set log.file.show_time 1 \
       del server.chdir \
       del rhizome.enable
    executeOk_servald config get
    assertStdoutLineCount '==' 2
    assertStdoutGrep --stdout --matches=1 '^debug\.verbose=false$'
-   assertStdoutGrep --stdout --matches=1 '^log\.show_time=1$'
+   assertStdoutGrep --stdout --matches=1 '^log\.file\.show_time=1$'
 }
 
 doc_SetTwice="Set a single config item twice"
@@ -140,7 +140,7 @@ test_DelNull() {
 
 doc_Del="Delete single config item"
 test_Del() {
-   executeOk_servald config set debug.verbose yes set log.show_pid true
+   executeOk_servald config set debug.verbose yes set log.console.show_pid true
    executeOk_servald config get
    assertStdoutLineCount '==' 2
    executeOk_servald config del debug.verbose
@@ -167,6 +167,12 @@ test_OptionNames() {
 }
 
 doc_DebugFlags="Debug config options affect verbosity"
+setup_DebugFlags() {
+   setup
+   executeOk_servald config \
+      set log.console.level debug \
+      set log.console.show_pid true
+}
 test_DebugFlags() {
    executeOk_servald echo one two three
    assertStderrGrep --matches=0 '\<echo:argv\['
@@ -204,7 +210,7 @@ test_InterfacesLegacyInvalidType() {
       config set interfaces '+eth=foo:4111:9M'
    assert_stderr_log \
       --warn-pattern='"interfaces".*invalid' \
-      --error-pattern='config file.*not loaded.*invalid'
+      --error-pattern='config file.*loaded despite defects.*invalid'
 }
 
 doc_InterfacesLegacyInvalidPort="Legacy 'interfaces' config option invalid port"
@@ -213,7 +219,7 @@ test_InterfacesLegacyInvalidPort() {
       config set interfaces '+eth=ethernet:-1000:9M'
    assert_stderr_log \
       --warn-pattern='"interfaces".*invalid' \
-      --error-pattern='config file.*not loaded.*invalid'
+      --error-pattern='config file.*loaded despite defects.*invalid'
 }
 
 doc_InterfacesLegacyInvalidSpeed="Legacy 'interfaces' config option invalid speed is ignored"
@@ -223,7 +229,7 @@ test_InterfacesLegacyInvalidSpeed() {
       config set interfaces '+eth=ethernet:4111:9Moose'
    #assert_stderr_log \
    #   --warn-pattern='"interfaces".*invalid' \
-   #   --error-pattern='config file.*not loaded.*invalid'
+   #   --error-pattern='config file.*loaded despite defects.*invalid'
 }
 
 doc_InterfacesLegacyIncompatible="Legacy 'interfaces' config option incompatible with modern form"
@@ -235,7 +241,7 @@ test_InterfacesLegacyIncompatible() {
    assertExitStatus '==' 2
    assert_stderr_log \
       --warn-pattern='"interfaces.*incompatible' \
-      --error-pattern='config file.*not loaded.*incompatible'
+      --error-pattern='config file.*loaded despite defects.*incompatible'
    tfw_cat --stderr
 }
 
@@ -261,27 +267,7 @@ test_InterfacesModernIncompatible() {
    assertExitStatus '==' 2
    assert_stderr_log \
       --warn-pattern='"interfaces\.0\..*incompatible' \
-      --error-pattern='config file.*not loaded.*incompatible'
-}
-
-doc_LogFileAbsolute="Absolute log file"
-test_LogFileAbsolute() {
-   executeOk_servald config \
-      set debug.verbose true \
-      set log.file "$PWD/log"
-   executeOk_servald echo one
-   assertGrep log '^DEBUG:.*echo:argv\[1\]="one"$'
-   assertGrep --matches=0 --message="log contains no error messages" log '^ERROR:'
-}
-
-doc_LogFileRelative="Relative log file"
-test_LogFileRelative() {
-   executeOk_servald config \
-      set debug.verbose true \
-      set log.file "log"
-   executeOk_servald echo one
-   assertGrep "$SERVALINSTANCE_PATH/log" '^DEBUG:.*echo:argv\[1\]="one"$'
-   assertGrep --matches=0 --message="log contains no error messages" "$SERVALINSTANCE_PATH/log" '^ERROR:'
+      --error-pattern='config file.*loaded despite defects.*incompatible'
 }
 
 runTests "$@"

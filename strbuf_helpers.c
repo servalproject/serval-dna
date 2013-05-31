@@ -21,6 +21,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <poll.h>
 #include <ctype.h>
 #include <string.h>
+#include <time.h>
+#include <assert.h>
 #include <stdarg.h>
 #include <sys/wait.h>
 #ifdef HAVE_NETINET_IN_H
@@ -305,5 +307,30 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr)
     }
     break;
   }
+  return sb;
+}
+
+strbuf strbuf_append_strftime(strbuf sb, const char *format, const struct tm *tm)
+{
+  // First, try calling strftime(3) directly on the buffer in the strbuf, if there is one and it
+  // looks to be long enough.
+  const size_t need = strlen(format); // heuristic, could be better
+  if (strbuf_str(sb)) {
+    size_t avail = strbuf_remaining(sb);
+    if (avail > need) {
+      size_t n = strftime(strbuf_end(sb), avail + 1, format, tm);
+      if (n) {
+	assert(n <= avail);
+	sb->current += n;
+	return sb;
+      }
+    }
+  }
+  // If that didn't work, then call strftime(3) on a temporary buffer and concatenate the result
+  // into the strbuf.
+  const size_t len = 500; // should be enough
+  char *buf = alloca(len + 1);
+  size_t n = strftime(buf, len + 1, format, tm);
+  strbuf_ncat(sb, buf, n);
   return sb;
 }

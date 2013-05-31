@@ -282,7 +282,6 @@ int ob_append_rfs(struct overlay_buffer *b,int l)
 }
 
 
-
 /*
  Functions that read / write data within the existing length limit
  */
@@ -376,6 +375,14 @@ int ob_set_ui16(struct overlay_buffer *b, int offset, uint16_t v)
   
   b->bytes[offset] = (v >> 8) & 0xFF;
   b->bytes[offset+1] = v & 0xFF;
+  return 0;
+}
+
+int ob_set(struct overlay_buffer *b, int ofs, unsigned char byte)
+{
+  if (test_offset(b, ofs, 1))
+    return -1;
+  b->bytes[ofs] = byte;
   return 0;
 }
 

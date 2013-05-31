@@ -312,7 +312,7 @@ int overlay_mdp_bind(int mdp_sockfd, const sid_t *localaddr, int port)
   return 0;
 }
 
-int overlay_mdp_getmyaddr(int mdp_sockfd, int index, sid_t *sid)
+int overlay_mdp_getmyaddr(int mdp_sockfd, unsigned index, sid_t *sid)
 {
   overlay_mdp_frame a;
   memset(&a, 0, sizeof(a));
@@ -320,7 +320,7 @@ int overlay_mdp_getmyaddr(int mdp_sockfd, int index, sid_t *sid)
   a.packetTypeAndFlags=MDP_GETADDRS;
   a.addrlist.mode = MDP_ADDRLIST_MODE_SELF;
   a.addrlist.first_sid=index;
-  a.addrlist.last_sid=0x7fffffff;
+  a.addrlist.last_sid=OVERLAY_MDP_ADDRLIST_MAX_SID_COUNT;
   a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
   int result=overlay_mdp_send(mdp_sockfd,&a,MDP_AWAITREPLY,5000);
   if (result) {
@@ -365,9 +365,6 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
        end of the string, to avoid information leaks */
       len=(&mdp->error.message[0]-(char *)mdp) + strlen(mdp->error.message)+1;      
       if (mdp->error.error) INFOF("mdp return/error code: %d:%s",mdp->error.error,mdp->error.message);
-      break;
-    case MDP_NODEINFO:
-      len=(&mdp->raw[0] - (char *)mdp) + sizeof(overlay_mdp_nodeinfo);
       break;
     default:
       return WHY("Illegal MDP frame type.");

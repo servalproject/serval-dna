@@ -530,6 +530,24 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
     if (strcmp(path, "/favicon.ico") == 0) {
       r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
       rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);
+    } else if (strcmp(path, "/rssi.csv") == 0) {
+      r->request_type = RHIZOME_HTTP_REQUEST_FROMBUFFER;
+      char temp[8192];
+      char *sidprefix=alloca_tohex_sid(my_subscriber->sid); sidprefix[8]=0;
+      snprintf(temp,8192,
+	       ";%lld;%d;%d;%d;%d;%s;%d;%d;%d;%d;%d\n",
+	       gettime_ms(),
+	       last_radio_rssi,last_radio_temperature,
+	       (int)bundles_available,
+	       rhizome_active_fetch_count(),
+	       sidprefix,
+	       rhizome_active_fetch_bytes_received(0),
+	       rhizome_active_fetch_bytes_received(1),
+	       rhizome_active_fetch_bytes_received(2),
+	       rhizome_active_fetch_bytes_received(3),
+	       rhizome_active_fetch_bytes_received(4)
+	       );
+      rhizome_server_simple_http_response(r, 200, temp);
     } else if (strcmp(path, "/rssi") == 0) {
       r->request_type = RHIZOME_HTTP_REQUEST_FROMBUFFER;
       char temp[8192];

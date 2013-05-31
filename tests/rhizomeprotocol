@@ -37,8 +37,9 @@ teardown() {
 # Called by start_servald_instances for each instance.
 configure_servald_server() {
    executeOk_servald config \
-      set log.show_pid on \
-      set log.show_time on \
+      set log.console.level debug \
+      set log.console.show_pid on \
+      set log.console.show_time on \
       set debug.rhizome on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
@@ -450,11 +451,11 @@ setup_direct() {
    get_rhizome_server_port PORTA +A
    set_instance +B
    executeOk_servald config \
-      set log.show_time on \
+      set log.console.level debug \
+      set log.console.show_time on \
       set debug.rhizome on \
       set debug.rhizome_tx on \
-      set debug.rhizome_rx on \
-      set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTA}"
+      set debug.rhizome_rx on
    rhizome_add_file fileB1 2000
    BID_B1=$BID
    VERSION_B1=$VERSION
@@ -466,10 +467,16 @@ setup_direct() {
    VERSION_B3=$VERSION
 }
 
-doc_DirectPush="One way push bundles to unconnected node"
+setup_direct_peer() {
+   executeOk_servald config \
+      set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTA}"
+}
+
+doc_DirectPush="One way direct push bundles to configured peer"
 setup_DirectPush() {
    setup_common
    setup_direct
+   setup_direct_peer
 }
 test_DirectPush() {
    set_instance +B
@@ -487,10 +494,32 @@ test_DirectPush() {
    assert_rhizome_list --fromhere=1 fileB1 fileB2 fileB3
 }
 
-doc_DirectPull="One way pull bundle from unconnected node"
+doc_DirectPushArg="One way direct push bundles to given peer URL"
+setup_DirectPushArg() {
+   setup_common
+   setup_direct
+}
+test_DirectPushArg() {
+   set_instance +B
+   executeOk_servald rhizome direct push "http://${addr_localhost}:${PORTA}"
+   tfw_cat --stdout --stderr
+   assert bundle_received_by $BID_B1:$VERSION_B1 $BID_B2:$VERSION_B2 $BID_B3:$VERSION_B3 +A
+   set_instance +A
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 fileA1 fileA2 fileA3 --fromhere=0 fileB1 fileB2 fileB3
+   assert_rhizome_received fileB1
+   assert_rhizome_received fileB2
+   assert_rhizome_received fileB3
+   set_instance +B
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 fileB1 fileB2 fileB3
+}
+
+doc_DirectPull="One way direct pull bundle from configured peer"
 setup_DirectPull() {
    setup_common
    setup_direct
+   setup_direct_peer
 }
 test_DirectPull() {
    set_instance +B
@@ -508,10 +537,11 @@ test_DirectPull() {
    assert_rhizome_received fileA3
 }
 
-doc_DirectSync="Two-way sync bundles between unconnected nodes"
+doc_DirectSync="Two-way direct sync bundles with configured peer"
 setup_DirectSync() {
    setup_common
    setup_direct
+   setup_direct_peer
 }
 test_DirectSync() {
    set_instance +B

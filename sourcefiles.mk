@@ -27,8 +27,8 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)monitor-client.c \
 	$(SERVAL_BASE)monitor-cli.c \
 	$(SERVAL_BASE)net.c \
+	$(SERVAL_BASE)nonce.c \
 	$(SERVAL_BASE)overlay.c \
-	$(SERVAL_BASE)overlay_advertise.c \
 	$(SERVAL_BASE)overlay_address.c \
 	$(SERVAL_BASE)overlay_buffer.c \
 	$(SERVAL_BASE)overlay_interface.c \
@@ -40,10 +40,10 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)overlay_olsr.c \
 	$(SERVAL_BASE)overlay_packetformats.c \
 	$(SERVAL_BASE)overlay_payload.c \
-	$(SERVAL_BASE)overlay_route.c \
 	$(SERVAL_BASE)packetformats.c \
 	$(SERVAL_BASE)performance_timing.c \
 	$(SERVAL_BASE)randombytes.c \
+	$(SERVAL_BASE)route_link.c \
 	$(SERVAL_BASE)rhizome.c \
 	$(SERVAL_BASE)rhizome_bundle.c \
 	$(SERVAL_BASE)rhizome_crypto.c \
@@ -54,6 +54,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)rhizome_http.c \
 	$(SERVAL_BASE)rhizome_packetformats.c \
 	$(SERVAL_BASE)rhizome_store.c \
+	$(SERVAL_BASE)rotbuf.c \
 	$(SERVAL_BASE)serval_packetvisualise.c \
 	$(SERVAL_BASE)server.c \
 	$(SERVAL_BASE)sha2.c \
