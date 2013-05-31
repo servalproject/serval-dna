@@ -350,7 +350,7 @@ next:
       subscriber->last_probe=0;
       bzero(&subscriber->address, sizeof subscriber->address);
     }
-    reachable = REACHABLE_BROADCAST | (subscriber->reachable & REACHABLE_UNICAST);
+    reachable = REACHABLE_BROADCAST | (reachable & REACHABLE_UNICAST);
     next_hop = NULL;
     subscriber->interface = interface;
   } else {
@@ -505,7 +505,6 @@ static void free_neighbour(struct neighbour **neighbour_ptr){
   n->root=NULL;
   *neighbour_ptr = n->_next;
   free(n);
-  route_version++;
 }
 
 static void clean_neighbours(time_ms_t now)
@@ -527,6 +526,10 @@ static void clean_neighbours(time_ms_t now)
         list = &link->_next;
       }
     }
+    // when all links to a neighbour that we are routing through expire, force a routing calculation update
+    struct link_state *state = get_link_state(n->subscriber);
+    if (state->next_hop == n->subscriber && (n->neighbour_link_timeout < now || !n->links) && state->route_version == route_version)
+      route_version++;
     if (!n->links){
       free_neighbour(n_ptr);
     }else{
@@ -698,7 +701,8 @@ static void link_send(struct sched_ent *alarm)
   if (neighbours){
     alarm->deadline = alarm->alarm;
     schedule(alarm);
-  }
+  }else
+    alarm->alarm=0;
 }
 
 static void update_alarm(time_ms_t limit){

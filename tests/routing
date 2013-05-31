@@ -358,6 +358,26 @@ test_offline() {
       wait_until --timeout=30 instance_offline +C
 }
 
+doc_lose_neighbours="Lose and regain neighbours"
+setup_lose_neighbours() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B +C create_single_identity
+   foreach_instance +A +B add_interface 1
+   foreach_instance +B +C add_interface 2
+   foreach_instance +A +B +C start_routing_instance
+}
+test_lose_neighbours() {
+   wait_until path_exists +A +B +C
+   wait_until path_exists +C +B +A
+   stop_servald_server +B
+   foreach_instance +A +C \
+      wait_until --timeout=30 instance_offline +B
+   start_servald_server +B
+   wait_until path_exists +A +B +C
+   wait_until path_exists +C +B +A
+}
+
 setup_multi_interface() {
    setup_servald
    assert_no_servald_processes
