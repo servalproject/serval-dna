@@ -494,7 +494,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     }else{
       // is this packet going our way?
       if (frame->interface!=packet->interface ||
-	  frame->packet_version==packet->packet_version ||
+	  frame->packet_version!=packet->packet_version ||
 	  memcmp(&packet->dest, &frame->recvaddr, sizeof(packet->dest))!=0){
 	goto skip;
       }
