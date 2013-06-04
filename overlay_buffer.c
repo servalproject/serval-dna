@@ -228,7 +228,7 @@ unsigned char *_ob_append_space(struct __sourceloc __whence, struct overlay_buff
   return r;
 }
 
-int _ob_append_bytes(struct __sourceloc __whence, struct overlay_buffer *b, unsigned char *bytes, int count)
+int _ob_append_bytes(struct __sourceloc __whence, struct overlay_buffer *b, const unsigned char *bytes, int count)
 {
   if (_ob_makespace(__whence, b,count)) return WHY("ob_makespace() failed");
   
@@ -263,7 +263,7 @@ int _ob_append_ui32(struct __sourceloc __whence, struct overlay_buffer *b, uint3
 
 int _ob_append_ui64(struct __sourceloc __whence, struct overlay_buffer *b, uint64_t v)
 {
-  if (ob_makespace(__whence, b, 8)) return WHY("ob_makespace() failed");
+  if (_ob_makespace(__whence, b, 8)) return WHY("ob_makespace() failed");
   b->bytes[b->position] = (v >> 56) & 0xFF;
   b->bytes[b->position+1] = (v >> 48) & 0xFF;
   b->bytes[b->position+2] = (v >> 40) & 0xFF;

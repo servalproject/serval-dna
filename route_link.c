@@ -619,7 +619,7 @@ static int send_neighbour_link(struct neighbour *n)
     if (n->subscriber->reachable & REACHABLE_DIRECT && (!(n->subscriber->reachable&REACHABLE_ASSUMED))){
       frame->destination_resolved = 1;
       frame->interface = n->subscriber->interface;
-      frame->recvaddr = frame->interface->broadcast_address;
+      frame->recvaddr = frame->interface->destination.address;
       frame->resend=-1;
     }
     ob_limitsize(frame->payload, 400);
@@ -641,7 +641,7 @@ static int send_neighbour_link(struct neighbour *n)
 
     n->last_update = now;
   }
-  n->next_neighbour_update = n->last_update + n->best_link->interface->tick_ms;
+  n->next_neighbour_update = n->last_update + n->best_link->interface->destination.tick_ms;
   n->ack_counter = ACK_WINDOW;
   OUT();
   return 0;
@@ -873,7 +873,7 @@ int link_received_packet(struct subscriber *subscriber, struct overlay_interface
     if (neighbour->next_neighbour_update > now + 10);
       neighbour->next_neighbour_update = now + 10;
   }
-  link->link_timeout = now + (interface->tick_ms *5);
+  link->link_timeout = now + (interface->destination.tick_ms *5);
 
   // force an update soon when we need to promptly ack packets
   if (neighbour->using_us > now && neighbour->ack_counter <=0){
@@ -1013,7 +1013,7 @@ int link_receive(overlay_mdp_frame *mdp)
 	version++;
       }
 
-      neighbour->neighbour_link_timeout = now + interface->tick_ms * 5;
+      neighbour->neighbour_link_timeout = now + interface->destination.tick_ms * 5;
       if (drop_rate != link->drop_rate || transmitter != link->transmitter)
 	version++;
 
@@ -1118,10 +1118,10 @@ int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now)
 
   // track the incoming link so we remember to send broadcasts
   struct neighbour_link *nl = get_neighbour_link(neighbour, frame->interface, iface, 0);
-  nl->link_timeout = now + (frame->interface->tick_ms *5);
+  nl->link_timeout = now + (frame->interface->destination.tick_ms *5);
 
   neighbour->legacy_protocol = 1;
-  neighbour->neighbour_link_timeout = now + link->interface->tick_ms * 5;
+  neighbour->neighbour_link_timeout = now + link->interface->destination.tick_ms * 5;
 
   if (changed){
     route_version++;

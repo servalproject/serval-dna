@@ -110,7 +110,7 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
 			     p->destination, p->source))
     goto cleanup;
   
-  if (interface->encapsulation == ENCAP_OVERLAY){
+  if (interface->destination.encapsulation == ENCAP_OVERLAY){
     if (ob_append_ui16(b, ob_position(p->payload)))
       goto cleanup;
   }

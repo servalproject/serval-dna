@@ -381,6 +381,45 @@ struct slip_decode_state{
   int dst_offset;
 };
 
+struct overlay_interface;
+
+struct network_destination {
+  struct overlay_interface *interface;
+  /* Number of milli-seconds per tick for this interface, which is basically related to the     
+   the typical TX range divided by the maximum expected speed of nodes in the network.
+   This means that short-range communications has a higher bandwidth requirement than
+   long-range communications because the tick interval has to be shorter to still allow
+   fast-convergence time to allow for mobility.
+   
+   For wifi (nominal range 100m) it is usually 500ms.
+   For ~100K ISM915MHz (nominal range 1000m) it will probably be about 5000ms.
+   For ~10K ISM915MHz (nominal range ~3000m) it will probably be about 15000ms.
+   These figures will be refined over time, and we will allow people to set them per-interface.
+   */
+  unsigned tick_ms; /* milliseconds per tick */
+
+  // do we aggregate packets, or send one at a time
+  int encapsulation;
+
+  // time last packet was sent
+  time_ms_t last_tx;
+
+  // sequence number of last packet sent to this destination.
+  // Used to allow NACKs that can request retransmission of recent packets.
+  int sequence_number;
+
+  // rate limit for outgoing packets
+  struct limit_state transfer_limit;
+
+  /* Not necessarily the real MTU, but the largest frame size we are willing to TX.
+   For radio links the actual maximum and the maximum that is likely to be delivered reliably are
+   potentially two quite different values. */
+  int mtu;
+
+  // The IPv4 destination address, for an interface this will be the broadcast address.
+  struct sockaddr_in address;
+};
+
 typedef struct overlay_interface {
   struct sched_ent alarm;
   
@@ -398,7 +437,6 @@ typedef struct overlay_interface {
   int port;
   int type;
   int socket_type;
-  int encapsulation;
   char send_broadcasts;
   char prefer_unicast;
   // can we use this interface for routes to addresses in other subnets?
@@ -411,46 +449,14 @@ typedef struct overlay_interface {
   char point_to_point;
   struct subscriber *other_device;
   
-  /* Number of milli-seconds per tick for this interface, which is basically related to the     
-   the typical TX range divided by the maximum expected speed of nodes in the network.
-   This means that short-range communications has a higher bandwidth requirement than
-   long-range communications because the tick interval has to be shorter to still allow
-   fast-convergence time to allow for mobility.
-   
-   For wifi (nominal range 100m) it is usually 500ms.
-   For ~100K ISM915MHz (nominal range 1000m) it will probably be about 5000ms.
-   For ~10K ISM915MHz (nominal range ~3000m) it will probably be about 15000ms.
-   These figures will be refined over time, and we will allow people to set them per-interface.
-   */
-  unsigned tick_ms; /* milliseconds per tick */
   unsigned int uartbps; // set serial port speed (which might be different from link speed)
   int ctsrts; // enabled hardware flow control if non-zero
 
-  // time last packet was sent on this interface
-  time_ms_t last_tx;
+  struct network_destination destination;
 
-  struct subscriber *next_advert;
-  
-  /* sequence number of last packet sent on this interface.
-   Used to allow NACKs that can request retransmission of recent packets.
-   */
-  int sequence_number;
-  /* XXX need recent packet buffers to support the above */
-  
-  struct limit_state transfer_limit;
-  
-  /* We need to make sure that interface name and broadcast address is unique for all interfaces that are UP.
-   We bind a separate socket per interface / broadcast address Broadcast address and netmask, if known
-   We really only case about distinct broadcast addresses on interfaces.
-   Also simplifies aliases on interfaces. */
+  // the actual address of the interface.
   struct sockaddr_in address;
-  struct sockaddr_in broadcast_address;
   struct in_addr netmask;
-  
-  /* Not necessarily the real MTU, but the largest frame size we are willing to TX on this interface.
-   For radio links the actual maximum and the maximum that is likely to be delivered reliably are
-   potentially two quite different values. */
-  int mtu;
   
   /* Use one of the INTERFACE_STATE_* constants to indicate the state of this interface. 
      If the interface stops working or disappears, it will be marked as DOWN and the socket closed.

@@ -282,10 +282,11 @@ overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destinati
   if (unicast)
     packet->unicast_subscriber = destination;
   else
-    packet->seq = interface->sequence_number = (interface->sequence_number + 1)&0xFFFF;
-  ob_limitsize(packet->buffer, packet->interface->mtu);
+    packet->seq = interface->destination.sequence_number = (interface->destination.sequence_number + 1)&0xFFFF;
+  ob_limitsize(packet->buffer, packet->interface->destination.mtu);
   
-  overlay_packet_init_header(packet_version, interface->encapsulation, &packet->context, packet->buffer, 
+  overlay_packet_init_header(packet_version, interface->destination.encapsulation, 
+			     &packet->context, packet->buffer, 
 			     destination, unicast, packet->i, packet->seq);
   packet->header_length = ob_position(packet->buffer);
   if (config.debug.overlayframes)
@@ -334,7 +335,7 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
     // don't include interfaces which are currently transmitting using a serial buffer
     if (frame->interface->tx_bytes_pending>0)
       return 0;
-    next_allowed_packet = limit_next_allowed(&frame->interface->transfer_limit);
+    next_allowed_packet = limit_next_allowed(&frame->interface->destination.transfer_limit);
   }else{
     // check all interfaces
     int i;
@@ -345,7 +346,7 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
       if ((!frame->destination) && (frame->interface_sent_sequence[i]==FRAME_DONT_SEND ||
 	  link_state_interface_oldest_neighbour(&overlay_interfaces[i])<0))
 	continue;
-      time_ms_t next_packet = limit_next_allowed(&overlay_interfaces[i].transfer_limit);
+      time_ms_t next_packet = limit_next_allowed(&overlay_interfaces[i].destination.transfer_limit);
       if (next_packet < frame->interface_dont_send_until[i])
         next_packet = frame->interface_dont_send_until[i];
       if (next_allowed_packet==0||next_packet < next_allowed_packet)
@@ -436,7 +437,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  frame->recvaddr = frame->next_hop->address;
 	  frame->unicast = 1;
 	}else
-	  frame->recvaddr = frame->interface->broadcast_address;
+	  frame->recvaddr = frame->interface->destination.address;
 
 	// degrade packet version if required to reach the destination
 	if (frame->packet_version > frame->next_hop->max_packet_version)
@@ -450,7 +451,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  if (frame->interface_sent_sequence[packet->i]==FRAME_DONT_SEND || frame->interface_dont_send_until[packet->i] >now)
 	    goto skip;
 	  frame->interface = packet->interface;
-	  frame->recvaddr = packet->interface->broadcast_address;
+	  frame->recvaddr = packet->interface->destination.address;
 	  
 	}else{
 	  // find an interface that we haven't broadcast on yet
@@ -465,11 +466,11 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	    keep=1;
 	    if (frame->interface_dont_send_until[i] >now)
 	      continue;
-	    time_ms_t next_allowed = limit_next_allowed(&overlay_interfaces[i].transfer_limit);
+	    time_ms_t next_allowed = limit_next_allowed(&overlay_interfaces[i].destination.transfer_limit);
 	    if (next_allowed > now)
 	      continue;
 	    frame->interface = &overlay_interfaces[i];
-	    frame->recvaddr = overlay_interfaces[i].broadcast_address;
+	    frame->recvaddr = overlay_interfaces[i].destination.address;
 	    break;
 	  }
 	  
@@ -493,7 +494,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       }
       
       // can we send a packet on this interface now?
-      if (limit_is_allowed(&frame->interface->transfer_limit))
+      if (limit_is_allowed(&frame->interface->destination.transfer_limit))
 	goto skip;
       
       if (frame->source_full)
@@ -504,7 +505,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     }else{
       // is this packet going our way?
       if (frame->interface!=packet->interface ||
-	  frame->interface->encapsulation==ENCAP_SINGLE ||
+	  frame->interface->destination.encapsulation==ENCAP_SINGLE ||
 	  frame->packet_version!=packet->packet_version ||
 	  memcmp(&packet->dest, &frame->recvaddr, sizeof(packet->dest))!=0){
 	goto skip;
@@ -636,7 +637,7 @@ int overlay_send_tick_packet(struct overlay_interface *interface){
   struct outgoing_packet packet;
   bzero(&packet, sizeof(struct outgoing_packet));
   packet.seq=-1;
-  overlay_init_packet(&packet, NULL, 0, 0, interface, interface->broadcast_address);
+  overlay_init_packet(&packet, NULL, 0, 0, interface, interface->destination.address);
   
   overlay_fill_send_packet(&packet, gettime_ms());
   return 0;

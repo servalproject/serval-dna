@@ -322,7 +322,7 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
     }
     
     /* Note the probe payload must be queued before any SID/SAS request so we can force the packet to have a full sid */
-    if (addr && (context->sender->last_probe==0 || now - context->sender->last_probe > interface->tick_ms*10))
+    if (addr && (context->sender->last_probe==0 || now - context->sender->last_probe > interface->destination.tick_ms*10))
       overlay_send_probe(context->sender, *addr, interface, OQ_MESH_MANAGEMENT);
     
     link_received_packet(context->sender, interface, context->sender_interface, sender_seq, packet_flags & PACKET_UNICAST);
@@ -336,7 +336,7 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
     if (packet_flags & PACKET_UNICAST)
       context->addr=*addr;
     else
-      context->addr=interface->broadcast_address;
+      context->addr=interface->destination.address;
   }
   RETURN(0);
   OUT();

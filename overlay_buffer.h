@@ -55,7 +55,7 @@ int _ob_makespace(struct __sourceloc whence, struct overlay_buffer *b,int bytes)
 int ob_set(struct overlay_buffer *b, int ofs, unsigned char byte);
 
 int _ob_append_byte(struct __sourceloc whence, struct overlay_buffer *b,unsigned char byte);
-int _ob_append_bytes(struct __sourceloc whence, struct overlay_buffer *b,unsigned char *bytes,int count);
+int _ob_append_bytes(struct __sourceloc whence, struct overlay_buffer *b,const unsigned char *bytes,int count);
 int _ob_append_buffer(struct __sourceloc whence, struct overlay_buffer *b,struct overlay_buffer *s);
 unsigned char *_ob_append_space(struct __sourceloc whence, struct overlay_buffer *b,int count);
 int _ob_append_ui16(struct __sourceloc whence, struct overlay_buffer *b, uint16_t v);

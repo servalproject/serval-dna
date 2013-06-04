@@ -65,7 +65,7 @@ static void
 overlay_interface_close(overlay_interface *interface){
   link_interface_down(interface);
   enum_subscribers(NULL, mark_subscriber_down, interface);
-  INFOF("Interface %s addr %s is down", interface->name, inet_ntoa(interface->broadcast_address.sin_addr));
+  INFOF("Interface %s addr %s is down", interface->name, inet_ntoa(interface->destination.address.sin_addr));
   unschedule(&interface->alarm);
   unwatch(&interface->alarm);
   close(interface->alarm.poll.fd);
@@ -320,7 +320,7 @@ overlay_interface_init_socket(int interface_index)
   
   const struct sockaddr *addr = (const struct sockaddr *)&interface->address;
   
-  interface->alarm.poll.fd = overlay_bind_socket(addr, sizeof(interface->broadcast_address), interface->name);
+  interface->alarm.poll.fd = overlay_bind_socket(addr, sizeof(interface->destination.address), interface->name);
   if (interface->alarm.poll.fd<0){
     interface->state=INTERFACE_STATE_DOWN;
     return WHYF("Failed to bind interface %s", interface->name);
@@ -328,8 +328,8 @@ overlay_interface_init_socket(int interface_index)
   
   if (config.debug.packetrx || config.debug.io) {
     char srctxt[INET_ADDRSTRLEN];
-    if (inet_ntop(AF_INET, (const void *)&interface->broadcast_address.sin_addr, srctxt, INET_ADDRSTRLEN))
-      DEBUGF("Bound to %s:%d", srctxt, ntohs(interface->broadcast_address.sin_port));
+    if (inet_ntop(AF_INET, (const void *)&interface->destination.address.sin_addr, srctxt, INET_ADDRSTRLEN))
+      DEBUGF("Bound to %s:%d", srctxt, ntohs(interface->destination.address.sin_port));
   }
 
   interface->alarm.poll.events=POLLIN;
@@ -382,13 +382,14 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   interface->prefer_unicast = ifconfig->prefer_unicast;
   interface->default_route = ifconfig->default_route;
   interface->socket_type = ifconfig->socket_type;
-  interface->encapsulation = ifconfig->encapsulation;
+  interface->destination.interface = interface;
+  interface->destination.encapsulation = ifconfig->encapsulation;
   interface->uartbps = ifconfig->uartbps;
   interface->ctsrts = ifconfig->ctsrts;
 
   /* Pick a reasonable default MTU.
      This will ultimately get tuned by the bandwidth and other properties of the interface */
-  interface->mtu=1200;
+  interface->destination.mtu=1200;
   interface->state=INTERFACE_STATE_DOWN;
   interface->alarm.poll.fd=0;
   interface->debug = ifconfig->debug;
@@ -446,11 +447,11 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     INFOF("Interface %s is running tickless", name);
   
   if (tick_ms<0)
-    return WHYF("No tick interval %d specified for interface %s", interface->tick_ms, name);
+    return WHYF("No tick interval specified for interface %s", name);
 
-  interface->tick_ms = tick_ms;
+  interface->destination.tick_ms = tick_ms;
   
-  limit_init(&interface->transfer_limit, packet_interval);
+  limit_init(&interface->destination.transfer_limit, packet_interval);
 
   interface->address.sin_family=AF_INET;
   interface->address.sin_port = htons(ifconfig->port);
@@ -458,9 +459,9 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   
   interface->netmask=ifconfig->dummy_netmask;
   
-  interface->broadcast_address.sin_family=AF_INET;
-  interface->broadcast_address.sin_port = htons(ifconfig->port);
-  interface->broadcast_address.sin_addr.s_addr = interface->address.sin_addr.s_addr | ~interface->netmask.s_addr;
+  interface->destination.address.sin_family=AF_INET;
+  interface->destination.address.sin_port = htons(ifconfig->port);
+  interface->destination.address.sin_addr.s_addr = interface->address.sin_addr.s_addr | ~interface->netmask.s_addr;
   
   interface->alarm.function = overlay_interface_poll;
   interface_poll_stats.name="overlay_interface_poll";
@@ -468,7 +469,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   
   if (ifconfig->socket_type==SOCK_DGRAM){
     interface->address.sin_addr = src_addr;
-    interface->broadcast_address.sin_addr = broadcast;
+    interface->destination.address.sin_addr = broadcast;
     interface->netmask = netmask;
     interface->local_echo = 1;
     
@@ -523,7 +524,9 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   
   directory_registration();
   
-  INFOF("Allowing a maximum of %d packets every %lldms", interface->transfer_limit.burst_size, interface->transfer_limit.burst_length);
+  INFOF("Allowing a maximum of %d packets every %lldms",
+        interface->destination.transfer_limit.burst_size,
+        interface->destination.transfer_limit.burst_length);
 
   overlay_interface_count++;
   return 0;
@@ -600,7 +603,7 @@ static int should_drop(struct overlay_interface *interface, struct sockaddr_in a
   if (memcmp(&addr, &interface->address, sizeof(addr))==0){
     return interface->drop_unicasts;
   }
-  if (memcmp(&addr, &interface->broadcast_address, sizeof(addr))==0){
+  if (memcmp(&addr, &interface->destination.address, sizeof(addr))==0){
     if (interface->drop_broadcasts == 0)
       return 0;
     if (interface->drop_broadcasts >= 100)
@@ -757,13 +760,13 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     alarm->alarm=-1;
     
     time_ms_t now = gettime_ms();
-    if (interface->state==INTERFACE_STATE_UP && interface->tick_ms>0){
-      if (now >= interface->last_tx+interface->tick_ms)
+    if (interface->state==INTERFACE_STATE_UP && interface->destination.tick_ms>0){
+      if (now >= interface->destination.last_tx+interface->destination.tick_ms)
         overlay_send_tick_packet(interface);
-      alarm->alarm=interface->last_tx+interface->tick_ms;
-      alarm->deadline=alarm->alarm+interface->tick_ms/2;
+      alarm->alarm=interface->destination.last_tx+interface->destination.tick_ms;
+      alarm->deadline=alarm->alarm+interface->destination.tick_ms/2;
     }
-
+    
     switch(interface->socket_type){
       case SOCK_DGRAM:
       case SOCK_STREAM:
@@ -817,7 +820,7 @@ overlay_broadcast_ensemble(overlay_interface *interface,
 			   struct sockaddr_in *recipientaddr,
 			   unsigned char *bytes,int len)
 {
-  interface->last_tx = gettime_ms();
+  interface->destination.last_tx = gettime_ms();
 
   if (config.debug.packettx)
     {
@@ -969,7 +972,7 @@ overlay_interface_register(char *name,
     int broadcast_match = 0;
     int name_match =0;
     
-    if (overlay_interfaces[i].broadcast_address.sin_addr.s_addr == broadcast.s_addr)
+    if (overlay_interfaces[i].destination.address.sin_addr.s_addr == broadcast.s_addr)
       broadcast_match = 1;
     
     name_match = !strcasecmp(overlay_interfaces[i].name, name);
@@ -998,7 +1001,7 @@ overlay_interface_register(char *name,
   if (found_interface>=0){
     // try to reactivate the existing interface
     overlay_interfaces[found_interface].address.sin_addr = addr;
-    overlay_interfaces[found_interface].broadcast_address.sin_addr = broadcast;
+    overlay_interfaces[found_interface].destination.address.sin_addr = broadcast;
     overlay_interfaces[found_interface].netmask = mask;
     return re_init_socket(found_interface);
   }
