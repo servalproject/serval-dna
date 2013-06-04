@@ -51,19 +51,33 @@ int ob_checkpoint(struct overlay_buffer *b);
 int ob_rewind(struct overlay_buffer *b);
 int ob_limitsize(struct overlay_buffer *b,int bytes);
 int ob_unlimitsize(struct overlay_buffer *b);
-int ob_makespace(struct overlay_buffer *b,int bytes);
+int _ob_makespace(struct __sourceloc whence, struct overlay_buffer *b,int bytes);
 int ob_set(struct overlay_buffer *b, int ofs, unsigned char byte);
-int ob_append_byte(struct overlay_buffer *b,unsigned char byte);
-int ob_append_bytes(struct overlay_buffer *b,const unsigned char *bytes,int count);
-int ob_append_buffer(struct overlay_buffer *b,const struct overlay_buffer *s);
-unsigned char *ob_append_space(struct overlay_buffer *b,int count);
-int ob_append_ui16(struct overlay_buffer *b, uint16_t v);
-int ob_append_ui32(struct overlay_buffer *b, uint32_t v);
-int ob_append_ui64(struct overlay_buffer *b, uint64_t v);
-int ob_append_packed_ui32(struct overlay_buffer *b, uint32_t v);
-int ob_append_packed_ui64(struct overlay_buffer *b, uint64_t v);
+
+int _ob_append_byte(struct __sourceloc whence, struct overlay_buffer *b,unsigned char byte);
+int _ob_append_bytes(struct __sourceloc whence, struct overlay_buffer *b,unsigned char *bytes,int count);
+int _ob_append_buffer(struct __sourceloc whence, struct overlay_buffer *b,struct overlay_buffer *s);
+unsigned char *_ob_append_space(struct __sourceloc whence, struct overlay_buffer *b,int count);
+int _ob_append_ui16(struct __sourceloc whence, struct overlay_buffer *b, uint16_t v);
+int _ob_append_ui32(struct __sourceloc whence, struct overlay_buffer *b, uint32_t v);
+int _ob_append_ui64(struct __sourceloc whence, struct overlay_buffer *b, uint64_t v);
+int _ob_append_packed_ui32(struct __sourceloc whence, struct overlay_buffer *b, uint32_t v);
+int _ob_append_packed_ui64(struct __sourceloc whence, struct overlay_buffer *b, uint64_t v);
+int _ob_append_rfs(struct __sourceloc whence, struct overlay_buffer *b,int l);
+
+#define ob_makespace(b, bytes) _ob_makespace(__WHENCE__, b, bytes)
+#define ob_append_byte(b, byte) _ob_append_byte(__WHENCE__, b, byte)
+#define ob_append_bytes(b, bytes, count) _ob_append_bytes(__WHENCE__, b, bytes, count)
+#define ob_append_buffer(b, s) _ob_append_buffer(__WHENCE__, b, s)
+#define ob_append_space(b, count) _ob_append_space(__WHENCE__, b, count)
+#define ob_append_ui16(b, v) _ob_append_ui16(__WHENCE__, b, v)
+#define ob_append_ui32(b, v) _ob_append_ui32(__WHENCE__, b, v)
+#define ob_append_ui64(b, v) _ob_append_ui64(__WHENCE__, b, v)
+#define ob_append_packed_ui32(b, v) _ob_append_packed_ui32(__WHENCE__, b, v)
+#define ob_append_packed_ui64(b, v) _ob_append_packed_ui64(__WHENCE__, b, v)
+#define ob_append_rfs(b, l) _ob_append_rfs(__WHENCE__, b, l)
+
 int ob_patch_rfs(struct overlay_buffer *b);
-int ob_append_rfs(struct overlay_buffer *b,int l);
 // get one byte, -ve number indicates failure
 int ob_getbyte(struct overlay_buffer *b,int ofs);
 // get one byte from the current position, -ve number indicates failure
