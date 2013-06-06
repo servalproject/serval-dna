@@ -395,9 +395,10 @@ static void _log_iterator_printf_nl(_log_iterator *it, int level, struct __sourc
   _log_iterator_rewind(it);
   while (_log_iterator_next(it, level)) {
     _log_prefix_whence(it, whence);
-    va_start(ap, fmt);
-    vxprintf(it->xpf, fmt, ap);
-    va_end(ap);
+    va_list ap1;
+    va_copy(ap1, ap);
+    vxprintf(it->xpf, fmt, ap1);
+    va_end(ap1);
   }
 }
 
@@ -681,9 +682,10 @@ void logMessage(int level, struct __sourceloc whence, const char *fmt, ...)
     _rotate_log_file(&it);
     while (_log_iterator_next(&it, level)) {
       _log_prefix_whence(&it, whence);
-      va_start(ap, fmt);
-      vxprintf(it.xpf, fmt, ap);
-      va_end(ap);
+      va_list ap1;
+      va_copy(ap1, ap);
+      vxprintf(it.xpf, fmt, ap1);
+      va_end(ap1);
     }
   }
 }
