@@ -394,7 +394,10 @@ static void _log_iterator_vprintf_nl(_log_iterator *it, int level, struct __sour
   _log_iterator_rewind(it);
   while (_log_iterator_next(it, level)) {
     _log_prefix_whence(it, whence);
-    vxprintf(it->xpf, fmt, ap);
+    va_list ap1;
+    va_copy(ap1, ap);
+    vxprintf(it->xpf, fmt, ap1);
+    va_end(ap1);
   }
 }
 
@@ -697,7 +700,10 @@ void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list 
     _rotate_log_file(&it);
     while (_log_iterator_next(&it, level)) {
       _log_prefix_whence(&it, whence);
-      vxprintf(it.xpf, fmt, ap);
+      va_list ap1;
+      va_copy(ap1, ap);
+      vxprintf(it.xpf, fmt, ap1);
+      va_end(ap1);
     }
   }
 }
