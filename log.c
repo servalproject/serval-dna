@@ -389,9 +389,8 @@ static int _log_iterator_next(_log_iterator *it, int level)
   return 0;
 }
 
-static void _log_iterator_printf_nl(_log_iterator *it, int level, struct __sourceloc whence, const char *fmt, ...)
+static void _log_iterator_vprintf_nl(_log_iterator *it, int level, struct __sourceloc whence, const char *fmt, va_list ap)
 {
-  va_list ap;
   _log_iterator_rewind(it);
   while (_log_iterator_next(it, level)) {
     _log_prefix_whence(it, whence);
@@ -402,17 +401,27 @@ static void _log_iterator_printf_nl(_log_iterator *it, int level, struct __sourc
   }
 }
 
+static void _log_iterator_printf_nl(_log_iterator *it, int level, struct __sourceloc whence, const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  _log_iterator_vprintf_nl(it, level, whence, fmt, ap);
+  va_end(ap);
+}
+
+static void _logs_vprintf_nl(int level, struct __sourceloc whence, const char *fmt, va_list ap)
+{
+  _log_iterator it;
+  _log_iterator_start(&it);
+  _log_iterator_vprintf_nl(&it, level, whence, fmt, ap);
+}
+
 static void _logs_printf_nl(int level, struct __sourceloc whence, const char *fmt, ...)
 {
   va_list ap;
-  _log_iterator it;
-  _log_iterator_start(&it);
-  while (_log_iterator_next(&it, level)) {
-    _log_prefix_whence(&it, whence);
-    va_start(ap, fmt);
-    vxprintf(it.xpf, fmt, ap);
-    va_end(ap);
-  }
+  va_start(ap, fmt);
+  _logs_vprintf_nl(level, whence, fmt, ap);
+  va_end(ap);
 }
 
 const char *log_file_directory_path()
@@ -675,7 +684,16 @@ void logString(int level, struct __sourceloc whence, const char *str)
 
 void logMessage(int level, struct __sourceloc whence, const char *fmt, ...)
 {
-  va_list ap;
+  if (level != LOG_LEVEL_SILENT) {
+    va_list ap;
+    va_start(ap, fmt);
+    vlogMessage(level, whence, fmt, ap);
+    va_end(ap);
+  }
+}
+
+void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list ap)
+{
   if (level != LOG_LEVEL_SILENT) {
     _log_iterator it;
     _log_iterator_start(&it);
