@@ -373,6 +373,8 @@ test_lose_neighbours() {
    stop_servald_server +B
    foreach_instance +A +C \
       wait_until --timeout=30 instance_offline +B
+   set_instance +A
+   wait_until --timeout=30 instance_offline +C
    start_servald_server +B
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A

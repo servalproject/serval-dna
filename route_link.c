@@ -274,15 +274,16 @@ static void update_path_score(struct neighbour *neighbour, struct link *link){
 
 static int find_best_link(struct subscriber *subscriber)
 {
+  IN();
   if (subscriber->reachable==REACHABLE_SELF)
-    return 0;
+    RETURN(0);
 
   struct link_state *state = get_link_state(subscriber);
   if (state->route_version == route_version)
-    return 0;
+    RETURN(0);
 
   if (state->calculating)
-    return -1;
+    RETURN(-1);
   state->calculating = 1;
 
   struct neighbour *neighbour = neighbours;
@@ -341,7 +342,7 @@ next:
 
   int reachable = subscriber->reachable;
   if (next_hop == NULL){
-    if (subscriber->reachable&REACHABLE_BROADCAST && !(subscriber->reachable & REACHABLE_ASSUMED))
+    if ((subscriber->reachable&REACHABLE_DIRECT) != REACHABLE_UNICAST)
       reachable = REACHABLE_NONE;
   } else if (next_hop == subscriber){
     // reset the state of any unicast probe's if the interface has changed
@@ -377,7 +378,7 @@ next:
     state->next_update = now;
   }
 
-  return 0;
+  RETURN(0);
 }
 
 static int monitor_announce(struct subscriber *subscriber, void *context){
