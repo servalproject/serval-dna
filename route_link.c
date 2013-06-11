@@ -360,6 +360,12 @@ next:
   subscriber->next_hop = next_hop;
   set_reachable(subscriber, reachable);
 
+  /* check if route is still valid */
+  reachable = subscriber_is_reachable(subscriber);
+  if (reachable != subscriber->reachable) {
+    set_reachable(subscriber, reachable);
+  }
+
   if (changed){
     if (config.debug.linkstate){
       if (reachable & REACHABLE_DIRECT){
