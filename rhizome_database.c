@@ -160,7 +160,7 @@ void sqlite_log(void *ignored, int result, const char *msg){
   WARNF("Sqlite: %d %s", result, msg);
 }
 
-static void verify_bundles(){
+void verify_bundles(){
   // assume that only the manifest itself can be trusted
   // fetch all manifests and reinsert them.
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
@@ -187,7 +187,7 @@ static void verify_bundles(){
     }
     if (ret!=0){
       DEBUGF("Removing invalid manifest entry @%lld", rowid);
-      //sqlite_exec_void_retry(&retry, "DELETE FROM MANIFESTS WHERE ROWID=%lld;", rowid);
+      sqlite_exec_void_retry(&retry, "DELETE FROM MANIFESTS WHERE ROWID=%lld;", rowid);
     }
     rhizome_manifest_free(m);
   }

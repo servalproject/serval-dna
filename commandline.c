@@ -1560,6 +1560,9 @@ int app_rhizome_clean(const struct cli_parsed *parsed, void *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
+  int verify = cli_arg(parsed, "verify", NULL, NULL, NULL) == 0;
+  if (verify)
+    verify_bundles();
   struct rhizome_cleanup_report report;
   if (rhizome_cleanup(&report) == -1)
     return -1;
@@ -2343,7 +2346,7 @@ struct cli_schema command_line_options[]={
 	"Deliver all new content to the specified Rhizome Direct server. Return when done."},
   {app_rhizome_direct_sync,{"rhizome","direct","pull","[<url>]",NULL}, 0,
 	"Fetch all new content from the specified Rhizome Direct server. Return when done."},
-  {app_rhizome_clean,{"rhizome","clean",NULL}, 0,
+  {app_rhizome_clean,{"rhizome","clean","[verify]",NULL}, 0,
 	"Remove stale and orphaned content from the Rhizome store"},
   {app_keyring_create,{"keyring","create",NULL}, 0,
    "Create a new keyring file."},
