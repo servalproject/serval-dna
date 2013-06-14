@@ -238,6 +238,9 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	    /* Force to upper case to avoid case sensitive comparison problems later. */
 	    str_toupper_inplace(m->values[m->var_count]);
 	  }
+	} else if (strcasecmp(var, "ssender") == 0) {
+	  // Nothing to do for ssender -- just don't complain about it being
+	  // an unknown field.
 	} else if (strcasecmp(var, "name") == 0) {
 	  if (value[0] == '\0') {
 	    if (config.debug.rejecteddata)
