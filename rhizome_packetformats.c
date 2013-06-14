@@ -254,6 +254,8 @@ error:
   return -1;
 }
 
+time_ms_t lookup_time=0;
+
 int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long now)
 {
   IN();
@@ -269,7 +271,7 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
   int manifest_length;
   rhizome_manifest *m=NULL;
   char httpaddrtxt[INET_ADDRSTRLEN];
-  
+
   int (*oldfunc)() = sqlite_set_tracefunc(is_debug_rhizome_ads);
 
   if (ad_frame_type & 2){
@@ -388,13 +390,50 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
   mdp.out.payload_length=0;
   
   // parse BAR's
-  while(ob_remaining(f->payload)>0){
-    unsigned char *bar=ob_get_bytes_ptr(f->payload, RHIZOME_BAR_BYTES);
+  unsigned char *bars[50];
+  int bar_count=0;
+  while(ob_remaining(f->payload)>0 && bar_count<50){
+    unsigned char *bar;
+    bars[bar_count]=bar=ob_get_bytes_ptr(f->payload, RHIZOME_BAR_BYTES);
     if (!bar){
       WARNF("Expected whole BAR @%x (only %d bytes remain)", ob_position(f->payload), ob_remaining(f->payload));
       break;
     }
-    if (rhizome_is_bar_interesting(bar)==1){
+
+    // are we ignoring this manifest?
+    if (rhizome_ignore_manifest_check(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES))
+      continue;
+
+    // do we have free space in a fetch queue?
+    unsigned char log2_size = bar[RHIZOME_BAR_FILESIZE_OFFSET];
+    if (log2_size!=0xFF && rhizome_fetch_has_queue_space(log2_size)!=1)
+      continue;
+
+    int64_t version = rhizome_bar_version(bar);
+    // are we already fetching this bundle [or later]?
+    rhizome_manifest *m=rhizome_fetch_search(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
+    if (m && m->version >= version)
+      continue;
+
+    bar_count++;
+  }
+
+  // perform costly database lookups
+  int index;
+  int test_count=0;
+  int max_tests = (lookup_time?(int)(40 / lookup_time):bar_count);
+  if (max_tests<=0)
+    max_tests=2;
+
+  time_ms_t start_time = gettime_ms();
+
+  for (index=0;index<bar_count;index++){
+    if (test_count > max_tests || gettime_ms() - start_time >40)
+      break;
+    if (bar_count > max_tests && random()%bar_count >= max_tests)
+      continue;
+    test_count++;
+    if (rhizome_is_bar_interesting(bars[index])==1){
       // add a request for the manifest
       if (mdp.out.payload_length==0){
 	bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
@@ -409,12 +448,19 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
 	
 	mdp.out.queue=OQ_ORDINARY;
       }
-      DEBUGF("Requesting manifest for BAR %s", alloca_tohex(bar, RHIZOME_BAR_BYTES));
-      bcopy(bar, &mdp.out.payload[mdp.out.payload_length], RHIZOME_BAR_BYTES);
+      DEBUGF("Requesting manifest for BAR %s", alloca_tohex(bars[index], RHIZOME_BAR_BYTES));
+      bcopy(bars[index], &mdp.out.payload[mdp.out.payload_length], RHIZOME_BAR_BYTES);
       mdp.out.payload_length+=RHIZOME_BAR_BYTES;
     }
   }
   
+  time_ms_t end_time=gettime_ms();
+
+  if (test_count)
+    lookup_time=(end_time-start_time)/test_count;
+  else
+    lookup_time = (end_time - start_time);
+
   if (mdp.out.payload_length>0)
     overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
 
@@ -422,3 +468,4 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
   RETURN(0);
   OUT();
 }
+
