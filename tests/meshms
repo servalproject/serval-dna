@@ -220,5 +220,61 @@ test_broadcastBundleNotCrypted() {
    assert diff file1 file1x
 }
 
+doc_multinodetest="MeshMS transfer and acknowledgement between two nodes"
+setup_multinodetest() {
+   setup_servald
+  assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   set_instance +A
+   assert [ $SIDA1 != $SIDB1 ]
+   start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
+}
+test_multinodetest() {
+   set_instance +A
+   executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDB1 "Message-1a"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 '' --and-others
+   set_instance +B
+   executeOk_servald meshms add message 12345 67890 $SIDB1 $SIDA1 "Message-2b"
+   set_instance +A
+   executeOk_servald meshms list messages $SIDA1 $SIDA1
+   assertStdoutLineCount '==' 2
+   set_instance +B
+   executeOk_servald meshms list messages $SIDB1 $SIDB1
+   assertStdoutLineCount '==' 2
+   sleep 5
+   set_instance +A
+   executeOk_servald meshms list messages $SIDA1 $SIDB1
+   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-2b'
+   assertStdoutGrep --stdout --stderr --matches=1 '^1:.*:unacknowledged:meshms:Message-1a'
+   set_instance +B
+   executeOk_servald meshms list messages $SIDB1 $SIDA1
+   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-1a'
+   assertStdoutGrep --stdout --stderr --matches=1 '^1:.*:unacknowledged:meshms:Message-2b'
+   set_instance +A
+   executeOk_servald meshms ack messages $SIDA1 $SIDB1 1
+   executeOk_servald rhizome list
+   assertStdoutGrep --stdout --stderr --matches=1 ':35:'
+   executeOk_servald meshms ack messages $SIDA1 $SIDB1 1
+   executeOk_servald rhizome list
+   assertStdoutGrep --stdout --stderr --matches=1 ':35:'
+   executeOk_servald meshms ack messages $SIDA1 $SIDB1 0
+   executeOk_servald rhizome list
+   assertStdoutGrep --stdout --stderr --matches=1 ':35:'
+   executeOk_servald meshms ack messages $SIDA1 $SIDB1 28
+   executeOk_servald rhizome list
+   assertStdoutGrep --stdout --stderr --matches=1 ':42:'
+   set_instance +B
+   executeOk_servald meshms list messages $SIDB1 $SIDA1
+   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --stderr --matches=1 '^0:.*:received:meshms:Message-1a'
+   assertStdoutGrep --stdout --stderr --matches=1 '^1:.*:delivered:meshms:Message-2b'
+
+}
+
 
 runTests "$@"
