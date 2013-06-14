@@ -274,15 +274,16 @@ static void update_path_score(struct neighbour *neighbour, struct link *link){
 
 static int find_best_link(struct subscriber *subscriber)
 {
+  IN();
   if (subscriber->reachable==REACHABLE_SELF)
-    return 0;
+    RETURN(0);
 
   struct link_state *state = get_link_state(subscriber);
   if (state->route_version == route_version)
-    return 0;
+    RETURN(0);
 
   if (state->calculating)
-    return -1;
+    RETURN(-1);
   state->calculating = 1;
 
   struct neighbour *neighbour = neighbours;
@@ -341,7 +342,7 @@ next:
 
   int reachable = subscriber->reachable;
   if (next_hop == NULL){
-    if (subscriber->reachable&REACHABLE_BROADCAST && !(subscriber->reachable & REACHABLE_ASSUMED))
+    if ((subscriber->reachable&REACHABLE_DIRECT) != REACHABLE_UNICAST)
       reachable = REACHABLE_NONE;
   } else if (next_hop == subscriber){
     // reset the state of any unicast probe's if the interface has changed
@@ -350,7 +351,7 @@ next:
       subscriber->last_probe=0;
       bzero(&subscriber->address, sizeof subscriber->address);
     }
-    reachable = REACHABLE_BROADCAST | (subscriber->reachable & REACHABLE_UNICAST);
+    reachable = REACHABLE_BROADCAST | (reachable & REACHABLE_UNICAST);
     next_hop = NULL;
     subscriber->interface = interface;
   } else {
@@ -377,7 +378,7 @@ next:
     state->next_update = now;
   }
 
-  return 0;
+  RETURN(0);
 }
 
 static int monitor_announce(struct subscriber *subscriber, void *context){
@@ -505,7 +506,6 @@ static void free_neighbour(struct neighbour **neighbour_ptr){
   n->root=NULL;
   *neighbour_ptr = n->_next;
   free(n);
-  route_version++;
 }
 
 static void clean_neighbours(time_ms_t now)
@@ -527,6 +527,10 @@ static void clean_neighbours(time_ms_t now)
         list = &link->_next;
       }
     }
+    // when all links to a neighbour that we are routing through expire, force a routing calculation update
+    struct link_state *state = get_link_state(n->subscriber);
+    if (state->next_hop == n->subscriber && (n->neighbour_link_timeout < now || !n->links) && state->route_version == route_version)
+      route_version++;
     if (!n->links){
       free_neighbour(n_ptr);
     }else{
@@ -698,7 +702,8 @@ static void link_send(struct sched_ent *alarm)
   if (neighbours){
     alarm->deadline = alarm->alarm;
     schedule(alarm);
-  }
+  }else
+    alarm->alarm=0;
 }
 
 static void update_alarm(time_ms_t limit){

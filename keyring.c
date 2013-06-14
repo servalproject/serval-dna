@@ -523,7 +523,8 @@ const struct keytype keytypes[] = {
       .dumper = dump_raw_hex
     },
   [KEYTYPE_RHIZOME] = {
-      /* Only the private key (Rhizome Secret) is stored, because the public key is never used.
+      /* The Rhizome Secret (a large, unguessable number) is stored in the private key field, and
+       * the public key field is not used.
        */
       .private_key_size = 32,
       .public_key_size = 0,

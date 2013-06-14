@@ -251,7 +251,7 @@ overlay_interface_read_any(struct sched_ent *alarm){
 	     inet_ntoa(src),
 	     interface->name);
     
-    if (packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen)) {
+    if (packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen)<0) {
       if (config.debug.rejecteddata) {
 	WHYF("Malformed packet (length = %d)",plen);
 	dump("the malformed packet",packet,plen);
@@ -562,7 +562,7 @@ static void interface_read_dgram(struct overlay_interface *interface){
 	   inet_ntoa(src),
 	   interface->name);
   }
-  if (packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen)) {
+  if (packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen)<0) {
     if (config.debug.rejecteddata) {
       WHYF("Malformed packet (length = %d)",plen);
       dump("the malformed packet",packet,plen);
@@ -703,7 +703,7 @@ static void interface_read_stream(struct overlay_interface *interface){
   while (state->src_offset < state->src_size) {
     int ret = slip_decode(state);
     if (ret==1){
-      if (packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL, -1)) {
+      if (packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL, -1)<0) {
 	if (config.debug.rejecteddata) {
 	  WHYF("Malformed packet (length = %d)",state->packet_length);
 	  dump("the malformed packet",state->dst,state->packet_length);

@@ -108,7 +108,7 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   }
 
   m->manifest_all_bytes=m->manifest_bytes;
-
+  m->var_count=0;
   /* Parse out variables, signature etc */
   int have_service = 0;
   int have_id = 0;

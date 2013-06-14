@@ -227,7 +227,7 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
   }else
     frame->type=OF_TYPE_DATA;
 
-  if (context->packet_version >0){
+  if (context->packet_version >= 1){
     int seq = ob_get(buffer);
     if (seq == -1)
       RETURN(WHY("Unable to read packet seq"));

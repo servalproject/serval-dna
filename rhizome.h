@@ -211,6 +211,7 @@ extern sqlite3 *rhizome_db;
 
 int rhizome_opendb();
 int rhizome_close_db();
+void verify_bundles();
 
 struct rhizome_cleanup_report {
     int deleted_stale_incoming_files;

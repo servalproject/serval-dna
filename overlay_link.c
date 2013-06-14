@@ -255,7 +255,11 @@ overlay_mdp_service_probe(overlay_mdp_frame *mdp)
   peer->address.sin_family = AF_INET;
   peer->address.sin_addr = probe.addr.sin_addr;
   peer->address.sin_port = probe.addr.sin_port;
-  set_reachable(peer, REACHABLE_UNICAST | (peer->reachable & REACHABLE_DIRECT));
+  int r=REACHABLE_UNICAST;
+  // Don't turn assumed|broadcast into unicast|broadcast
+  if (!(peer->reachable & REACHABLE_ASSUMED))
+    r |= (peer->reachable & REACHABLE_DIRECT);
+  set_reachable(peer, r);
   RETURN(0);
   OUT();
 }

@@ -73,7 +73,7 @@ static int overlay_frame_build_header(int packet_version, struct decode_context 
     if (ob_append_byte(buff, type)) return -1;
   }
 
-  if (packet_version>0)
+  if (packet_version >= 1)
     if (ob_append_byte(buff, sequence))
       return -1;
   

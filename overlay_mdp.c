@@ -835,7 +835,7 @@ static int routing_table(struct subscriber *subscriber, void *context){
   reply.packetTypeAndFlags=MDP_TX;
   reply.out.payload_length=sizeof(struct overlay_route_record);
   memcpy(r->sid, subscriber->sid, SID_SIZE);
-  r->reachable = subscriber_is_reachable(subscriber);
+  r->reachable = subscriber->reachable;
   
   if (subscriber->reachable==REACHABLE_INDIRECT && subscriber->next_hop)
     memcpy(r->neighbour, subscriber->next_hop->sid, SID_SIZE);
