@@ -288,19 +288,36 @@ int fd_poll()
     fd_func_exit(__HERE__, &call_stats);
     now=gettime_ms();
   }
-  
-  /* call one alarm function, but only if its deadline time has elapsed OR there is no file activity */
-  if (next_deadline && (next_deadline->deadline <=now || (r==0))){
+
+  // Reading new data takes priority over everything else
+  // Are any handles marked with POLLIN?
+  int in_count=0;
+  if (r>0){
+    for (i=0;i<fdcount;i++)
+      if (fds[i].revents & POLLIN)
+        in_count++;
+  }
+
+  /* call one alarm function, but only if its deadline time has elapsed OR there is no incoming file activity */
+  if (next_deadline && (next_deadline->deadline <=now || (in_count==0))){
     struct sched_ent *alarm = next_deadline;
     unschedule(alarm);
     call_alarm(alarm, 0);
     now=gettime_ms();
+
+    // after running a timed alarm, unless we already know there is data to read we want to check for more incoming IO before we send more outgoing.
+    if (in_count==0)
+      RETURN(1);
   }
   
   /* If file descriptors are ready, then call the appropriate functions */
   if (r>0) {
-    for(i=0;i<fdcount;i++)
+    for(i=0;i<fdcount;i++){
       if (fds[i].revents) {
+        // if any handles have POLLIN set, don't process any other handles
+        if (!(fds[i].revents&POLLIN || in_count==0))
+          continue;
+
 	int fd = fds[i].fd;
 	/* Call the alarm callback with the socket in non-blocking mode */
 	errno=0;
@@ -314,6 +331,7 @@ int fd_poll()
 	if (i<fdcount && fds[i].fd == fd)
 	  set_block(fds[i].fd);
       }
+    }
   }
   RETURN(1);
   OUT();
