@@ -62,8 +62,8 @@ int overlay_mdp_setup_sockets()
     /* XXX The 100 should be replaced with the actual maximum allowed.
        Apparently POSIX requires it to be at least 100, but I would still feel
        more comfortable with using the appropriate constant. */
-    snprintf(&name.sun_path[1],100,
-	     confValueGet("mdp.socket",DEFAULT_MDP_SOCKET_NAME));
+    if (!FORM_SERVAL_INSTANCE_PATH(name.sun_path, "mdp.socket"))
+      return -1;
     len = 1+strlen(&name.sun_path[1]) + sizeof(name.sun_family);
     
     mdp_abstract.poll.fd = socket(AF_UNIX, SOCK_DGRAM, 0);
