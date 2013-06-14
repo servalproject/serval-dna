@@ -29,6 +29,13 @@ setup() {
    assert [ $SIDA1 != $SIDA2 ]
 }
 
+teardown() {
+   stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
+
 doc_createPly="Create thread ply by sending a message"
 setup_createPly() {
     setup
@@ -220,10 +227,28 @@ test_broadcastBundleNotCrypted() {
    assert diff file1 file1x
 }
 
+doc_meshmstransfer="New meshms transfers via rhizome"
+setup_meshmstransfer() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   set_instance +A
+   executeOk_servald meshms add message 12345 67890 $SIDA1 $SIDB1 "Message-1a"
+   start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
+}
+test_meshmstransfer() {
+   sleep 5
+   set_instance +B
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author=$SIDA1 '' --and-others
+}
+
 doc_multinodetest="MeshMS transfer and acknowledgement between two nodes"
 setup_multinodetest() {
    setup_servald
-  assert_no_servald_processes
+   assert_no_servald_processes
    foreach_instance +A +B create_single_identity
    set_instance +A
    assert [ $SIDA1 != $SIDB1 ]
@@ -244,7 +269,7 @@ test_multinodetest() {
    set_instance +B
    executeOk_servald meshms list messages $SIDB1 $SIDB1
    assertStdoutLineCount '==' 2
-   sleep 5
+   sleep 5 # allow time for message log to be transported by rhizome
    set_instance +A
    executeOk_servald meshms list messages $SIDA1 $SIDB1
    assertStdoutLineCount '==' 4
