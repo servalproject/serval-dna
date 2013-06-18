@@ -472,7 +472,7 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
       RETURN(WHY("Failed to pass received MDP frame to client"));
     } else {
       /* No socket is bound, ignore the packet ... except for magic sockets */
-      RETURN(overlay_mdp_try_interal_services(mdp));
+      RETURN(overlay_mdp_try_interal_services(frame, mdp));
     }
     break;
   default:

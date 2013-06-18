@@ -228,7 +228,7 @@ unsigned char *ob_append_space(struct overlay_buffer *b,int count)
   return r;
 }
 
-int ob_append_bytes(struct overlay_buffer *b,unsigned char *bytes,int count)
+int ob_append_bytes(struct overlay_buffer *b, const unsigned char *bytes, int count)
 {
   if (ob_makespace(b,count)) return WHY("ob_makespace() failed");
   
@@ -237,7 +237,7 @@ int ob_append_bytes(struct overlay_buffer *b,unsigned char *bytes,int count)
   return 0;
 }
 
-int ob_append_buffer(struct overlay_buffer *b,struct overlay_buffer *s){
+int ob_append_buffer(struct overlay_buffer *b, const struct overlay_buffer *s){
   return ob_append_bytes(b, s->bytes, s->position);
 }
 
@@ -261,7 +261,34 @@ int ob_append_ui32(struct overlay_buffer *b, uint32_t v)
   return 0;
 }
 
+int ob_append_ui64(struct overlay_buffer *b, uint64_t v)
+{
+  if (ob_makespace(b, 8)) return WHY("ob_makespace() failed");
+  b->bytes[b->position] = (v >> 56) & 0xFF;
+  b->bytes[b->position+1] = (v >> 48) & 0xFF;
+  b->bytes[b->position+2] = (v >> 40) & 0xFF;
+  b->bytes[b->position+3] = (v >> 32) & 0xFF;
+  b->bytes[b->position+4] = (v >> 24) & 0xFF;
+  b->bytes[b->position+5] = (v >> 16) & 0xFF;
+  b->bytes[b->position+6] = (v >> 8) & 0xFF;
+  b->bytes[b->position+7] = v & 0xFF;
+  b->position+=8;
+  return 0;
+}
+
 int ob_append_packed_ui32(struct overlay_buffer *b, uint32_t v)
+{
+  do{
+    
+    if (ob_append_byte(b, (v&0x7f) | (v>0x7f?0x80:0)))
+      return -1;
+    v = v>>7;
+    
+  }while(v!=0);
+  return 0;
+}
+
+int ob_append_packed_ui64(struct overlay_buffer *b, uint64_t v)
 {
   do{
     
@@ -335,6 +362,23 @@ uint32_t ob_get_ui32(struct overlay_buffer *b)
   return ret;
 }
 
+uint64_t ob_get_ui64(struct overlay_buffer *b)
+{
+  if (test_offset(b, b->position, 8))
+    return 0xFFFFFFFF; // ... unsigned
+
+  uint64_t ret = (uint64_t)b->bytes[b->position] << 56
+	| (uint64_t)b->bytes[b->position +1] << 48
+	| (uint64_t)b->bytes[b->position +2] << 40
+	| (uint64_t)b->bytes[b->position +3] << 36
+	| b->bytes[b->position +4] << 24
+	| b->bytes[b->position +5] << 16
+	| b->bytes[b->position +6] << 8
+	| b->bytes[b->position +7];
+  b->position+=8;
+  return ret;
+}
+
 uint16_t ob_get_ui16(struct overlay_buffer *b)
 {
   if (test_offset(b, b->position, 2))
@@ -349,6 +393,21 @@ uint16_t ob_get_ui16(struct overlay_buffer *b)
 uint32_t ob_get_packed_ui32(struct overlay_buffer *b)
 {
   uint32_t ret=0;
+  int shift=0;
+  int byte;
+  do{
+    byte = ob_get(b);
+    if (byte<0)
+      return WHY("Failed to unpack integer");
+    ret |= (byte&0x7f)<<shift;
+    shift+=7;
+  }while(byte & 0x80);
+  return ret;
+}
+
+uint64_t ob_get_packed_ui64(struct overlay_buffer *b)
+{
+  uint64_t ret=0;
   int shift=0;
   int byte;
   do{

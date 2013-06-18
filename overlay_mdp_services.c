@@ -378,25 +378,25 @@ end:
 static int overlay_mdp_service_manifest_response(overlay_mdp_frame *mdp){
   int offset=0;
   char id_hex[RHIZOME_MANIFEST_ID_STRLEN];
-  rhizome_manifest *m = rhizome_new_manifest();
-  if (!m)
-    return WHY("Unable to allocate manifest");
   
   while (offset<mdp->out.payload_length){
     unsigned char *bar=&mdp->out.payload[offset];
     tohex(id_hex, &bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
     strcat(id_hex, "%");
+    rhizome_manifest *m = rhizome_new_manifest();
+    if (!m)
+      return WHY("Unable to allocate manifest");
     if (!rhizome_retrieve_manifest(id_hex, m)){
       rhizome_advertise_manifest(m);
     }
+    rhizome_manifest_free(m);
     offset+=RHIZOME_BAR_BYTES;
   }
   
-  rhizome_manifest_free(m);
   return 0;
 }
 
-int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp)
+int overlay_mdp_try_interal_services(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 {
   IN();
   switch(mdp->out.dst.port) {
@@ -416,6 +416,7 @@ int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp)
     break;
   case MDP_PORT_RHIZOME_RESPONSE: RETURN(overlay_mdp_service_rhizomeresponse(mdp));    
   case MDP_PORT_RHIZOME_MANIFEST_REQUEST: RETURN(overlay_mdp_service_manifest_response(mdp));
+  case MDP_PORT_RHIZOME_SYNC: RETURN(overlay_mdp_service_rhizome_sync(frame, mdp));
   }
    
   /* Unbound socket.  We won't be sending ICMP style connection refused

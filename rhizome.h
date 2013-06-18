@@ -323,7 +323,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
 int rhizome_update_file_priority(const char *fileid);
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, int check_author);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
-int64_t rhizome_bar_version(unsigned char *bar);
+int64_t rhizome_bar_version(const unsigned char *bar);
 unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);
 int rhizome_is_bar_interesting(unsigned char *bar);
 int rhizome_list_manifests(const char *service, const char *name, 
@@ -693,5 +693,10 @@ int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t
 int rhizome_dump_file(const char *id, const char *filepath, int64_t *length);
 
 int rhizome_database_filehash_from_id(const char *id, uint64_t version, char hash[SHA512_DIGEST_STRING_LENGTH]);
+
+
+int overlay_mdp_service_rhizome_sync(struct overlay_frame *frame, overlay_mdp_frame *mdp);
+int rhizome_sync_announce();
+int rhizome_sync_bundle_inserted(const unsigned char *bar);
 
 #endif //__SERVALDNA__RHIZOME_H

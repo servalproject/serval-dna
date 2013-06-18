@@ -114,7 +114,7 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
   OUT();
 }
 
-int64_t rhizome_bar_version(unsigned char *bar)
+int64_t rhizome_bar_version(const unsigned char *bar)
 {
   int64_t version=0;
   int i;
@@ -180,6 +180,9 @@ void overlay_rhizome_advertise(struct sched_ent *alarm){
   if (!is_rhizome_advertise_enabled())
     return;
   
+  // TODO deprecate the below announcement method and move this alarm to rhizome_sync.c
+  rhizome_sync_announce();
+
   int (*oldfunc)() = sqlite_set_tracefunc(is_debug_rhizome_ads);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
@@ -222,7 +225,7 @@ void overlay_rhizome_advertise(struct sched_ent *alarm){
   
   if (overlay_payload_enqueue(frame))
     op_free(frame);
-  
+
 end:
   sqlite_set_tracefunc(oldfunc);
   alarm->alarm = gettime_ms()+config.rhizome.advertise.interval;
@@ -383,7 +386,11 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
       }
     }
   }
-  
+
+  // if we're using the new sync protocol, ignore the rest of the packet
+  if (f->source->sync_state)
+    RETURN(0);
+
   overlay_mdp_frame mdp;
   
   bzero(&mdp,sizeof(mdp));

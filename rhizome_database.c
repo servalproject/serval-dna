@@ -968,6 +968,9 @@ int rhizome_store_bundle(rhizome_manifest *m)
   sqlite3_finalize(stmt);
   stmt = NULL;
 
+//  if (serverMode)
+//    rhizome_sync_bundle_inserted(bar);
+
   // TODO remove old payload?
   
   if (rhizome_manifest_get(m,"isagroup",NULL,0)!=NULL) {
@@ -1571,7 +1574,10 @@ int rhizome_is_bar_interesting(unsigned char *bar){
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare(&retry, 
     "SELECT id, version FROM manifests WHERE id like ? and version >= ?");
-  
+
+  if (!statement)
+    RETURN(-1);
+
   sqlite3_bind_text(statement, 1, id_hex, -1, SQLITE_STATIC);
   sqlite3_bind_int64(statement, 2, version);
   

@@ -63,6 +63,9 @@ struct subscriber{
   // link state routing information
   struct link_state *link_state;
   
+  // rhizome sync state
+  struct rhizome_sync *sync_state;
+
   // result of routing calculations;
   int reachable;
 

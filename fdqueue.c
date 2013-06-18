@@ -211,6 +211,8 @@ int _unwatch(struct __sourceloc __whence, struct sched_ent *alarm)
 static void call_alarm(struct sched_ent *alarm, int revents)
 {
   IN();
+  if (!alarm)
+    FATAL("Attempted to call with no alarm");
   struct call_stats call_stats;
   call_stats.totals = alarm->stats;
   
