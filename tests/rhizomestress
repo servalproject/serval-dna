@@ -37,8 +37,8 @@ teardown() {
 # Called by start_servald_instances for each instance.
 configure_servald_server() {
    executeOk_servald config \
-      set log.show_pid on \
-      set log.show_time on \
+      set log.file.show_pid on \
+      set log.file.show_time on \
       set debug.rhizome off \
       set debug.rhizome_tx off \
       set debug.rhizome_rx off \
@@ -46,7 +46,7 @@ configure_servald_server() {
       set mdp.iftype.wifi.tick_ms 500
 }
 
-doc_StressRhizomeTransfer="Five nodes each sharing 16 bundles from 1KiB to 32MiB"
+doc_StressRhizomeTransfer="Five nodes each sharing 21 bundles from 32B to 32MiB"
 setup_StressRhizomeTransfer() {
    setup_servald
    assert_no_servald_processes
@@ -56,20 +56,36 @@ setup_StressRhizomeTransfer() {
       eval "bundles$i=()"
       set_instance +$i
       let j=0
-      for n in 1 2 3 4 5 6 7 8 9 a b c d e f g
+      for n in 1 2 3 4 5 6 7 8 9 a b c d e f g h i j k l
       do
          local sidvar="SID$instance_name"
-         create_file file-$i-$n $((2 ** (j + 10)))
-         executeOk_servald rhizome add file "${!sidvar}" '' file-$i-$n file-$i-$n.manifest
-         extract_stdout_manifestid BID
-         extract_stdout_version VERSION
+         local size=$((2 ** (j + 5)))
+         tfw_log "Adding file file-$i-$n, size $size"
+         create_file file-$i-$n $size
+         tfw_nolog executeOk_servald rhizome add file "${!sidvar}" file-$i-$n file-$i-$n.manifest
+         tfw_nolog extract_stdout_manifestid BID
+         tfw_nolog extract_stdout_version VERSION
          eval "bundles$i+=(\$BID:\$VERSION)"
          let j=j+1
       done
    done
 }
+
+start_instance() {
+  executeOk_servald config \
+       set server.interface_path "$SERVALD_VAR" \
+       set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
+       set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
+       set interfaces.0.file dummy \
+       set interfaces.0.dummy_address 127.0.0.$instance_number \
+       set interfaces.0.dummy_netmask 255.255.255.224
+  start_servald_server
+}
+
 test_StressRhizomeTransfer() {
-   start_servald_instances +A +B +C +D +E
+   >$SERVALD_VAR/dummy
+   foreach_instance +A +B +C +D +E \
+      start_instance
    wait_until --timeout=600 bundle_received_by \
       ${bundlesA[*]} +B +C +D +E \
       ${bundlesB[*]} +A +C +D +E \
@@ -131,7 +147,7 @@ setup_StressRhizomeDirect() {
    do
       set_instance +$i
       executeOk_servald config \
-         set log.show_time on \
+         set log.file.show_time on \
          set debug.rhizome off \
          set debug.rhizome_tx off \
          set debug.rhizome_rx off \
@@ -140,7 +156,7 @@ setup_StressRhizomeDirect() {
       local sidvar="SID$instance_name"
       for ((n = 0; n < $files_per_instance; ++n)); do
          create_file file-$i-$n 10000
-         tfw_quietly executeOk_servald rhizome add file "${!sidvar}" '' file-$i-$n file-$i-$n.manifest
+         tfw_quietly executeOk_servald rhizome add file "${!sidvar}" file-$i-$n file-$i-$n.manifest
       done
    done
    start_servald_instances dummy1 +A
@@ -151,7 +167,7 @@ setup_StressRhizomeDirect() {
       set_instance +$i
       executeOk_servald config \
          set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTA}" \
-         set log.file "$instance_servald_log"
+         set log.file.path "$instance_servald_log"
 
    done
 }

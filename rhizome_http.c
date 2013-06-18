@@ -180,9 +180,9 @@ success:
 void rhizome_client_poll(struct sched_ent *alarm)
 {
   rhizome_http_request *r = (rhizome_http_request *)alarm;
-  if (alarm->poll.revents == 0){
+  if (alarm->poll.revents == 0 || alarm->poll.revents & (POLLHUP | POLLERR)){
     if (config.debug.rhizome_tx)
-      DEBUG("Closing connection due to timeout");
+      DEBUGF("Closing connection due to timeout or error %d", alarm->poll.revents);
     rhizome_server_free_http_request(r);
     return;
   }
