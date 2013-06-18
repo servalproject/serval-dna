@@ -17,6 +17,7 @@ int rhizome_exists(const char *fileHash){
 }
 
 int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority){
+  write->blob_fd=-1;
   if (expectedFileHash){
     if (rhizome_exists(expectedFileHash))
       return 1;
@@ -65,7 +66,7 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
       goto insert_row_fail;
     
     if (config.debug.externalblobs)
-      DEBUGF("Blob file created (fd=%d)", write->blob_fd);
+      DEBUGF("Writing to new blob file %s (fd=%d)", blob_path, write->blob_fd);
     
   }else{
     statement = sqlite_prepare(&retry,"INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES('%s',?)",write->id);
@@ -107,8 +108,11 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
   }
   
   if (sqlite_exec_void_retry(&retry, "COMMIT;") == -1){
-    if (write->blob_fd>0){
+    if (write->blob_fd>=0){
+      if (config.debug.externalblobs)
+         DEBUGF("Cancel write to fd %d", write->blob_fd);
       close(write->blob_fd);
+      write->blob_fd=-1;
       unlink(blob_path);
     }
     return -1;
@@ -157,7 +161,8 @@ int rhizome_flush(struct rhizome_write *write_state){
       int r=write(write_state->blob_fd, write_state->buffer + ofs, write_state->data_size - ofs);
       if (r<0)
 	RETURN(WHY_perror("write"));
-      DEBUGF("Wrote %d bytes into external blob", r);
+      if (config.debug.externalblobs)
+        DEBUGF("Wrote %d bytes to fd %d", r, write_state->blob_fd);
       ofs+=r;
     }
   }else{
@@ -263,8 +268,11 @@ int rhizome_fail_write(struct rhizome_write *write){
     free(write->buffer);
   write->buffer=NULL;
   
-  if (write->blob_fd){
+  if (write->blob_fd>=0){
+    if (config.debug.externalblobs)
+      DEBUGF("Closing and removing fd %d", write->blob_fd);
     close(write->blob_fd);
+    write->blob_fd=-1;
     rhizome_store_delete(write->id);
   }
   
@@ -284,8 +292,12 @@ int rhizome_finish_write(struct rhizome_write *write){
     if (rhizome_flush(write))
       return -1;
   }
-  if (write->blob_fd)
+  if (write->blob_fd>=0){
+    if (config.debug.externalblobs)
+      DEBUGF("Closing fd %d", write->blob_fd);
     close(write->blob_fd);
+    write->blob_fd=-1;
+  }
   if (write->buffer)
     free(write->buffer);
   write->buffer=NULL;
@@ -482,6 +494,8 @@ int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash)
     }
     if ((read->length = lseek(read->blob_fd, 0, SEEK_END)) == -1)
       return WHYF_perror("lseek(%s,0,SEEK_END)", alloca_str_toprint(blob_path));
+    if (config.debug.externalblobs)
+      DEBUGF("Opened stored file %s as fd %d, len %llx",blob_path, read->blob_fd, read->length);
   }
   read->hash = hash;
   read->offset = 0;
@@ -497,12 +511,14 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
 {
   IN();
   int bytes_read = 0;
-  if (read_state->blob_fd != -1) {
+  if (read_state->blob_fd >= 0) {
     if (lseek(read_state->blob_fd, read_state->offset, SEEK_SET) == -1)
       RETURN(WHYF_perror("lseek(%d,%ld,SEEK_SET)", read_state->blob_fd, (long)read_state->offset));
     bytes_read = read(read_state->blob_fd, buffer, buffer_length);
     if (bytes_read == -1)
       RETURN(WHYF_perror("read(%d,%p,%ld)", read_state->blob_fd, buffer, (long)buffer_length));
+    if (config.debug.externalblobs)
+      DEBUGF("Read %d bytes from fd %d @%llx", bytes_read, read_state->blob_fd, read_state->offset);
   } else if (read_state->blob_rowid != -1) {
     sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
     do{
@@ -563,8 +579,11 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
 
 int rhizome_read_close(struct rhizome_read *read)
 {
-  if (read->blob_fd != -1)
+  if (read->blob_fd >=0){
+    if (config.debug.externalblobs)
+      DEBUGF("Closing store fd %d", read->blob_fd);
     close(read->blob_fd);
+  }
   read->blob_fd = -1;
   return 0;
 }

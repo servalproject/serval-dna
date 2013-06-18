@@ -261,7 +261,7 @@ void rhizome_server_poll(struct sched_ent *alarm)
     struct sockaddr addr;
     unsigned int addr_len = sizeof addr;
     int sock;
-    while ((sock = accept(rhizome_server_socket, &addr, &addr_len)) != -1) {
+    if ((sock = accept(rhizome_server_socket, &addr, &addr_len)) != -1) {
       struct sockaddr_in *peerip=NULL;
       if (addr.sa_family == AF_INET) {
 	peerip = (struct sockaddr_in *)&addr;
@@ -289,6 +289,8 @@ void rhizome_server_poll(struct sched_ent *alarm)
 	/* We are now trying to read the HTTP request */
 	request->request_type=RHIZOME_HTTP_REQUEST_RECEIVING;
 	request->alarm.function = rhizome_client_poll;
+	request->read_state.blob_fd=-1;
+	request->read_state.blob_rowid=-1;
 	connection_stats.name="rhizome_client_poll";
 	request->alarm.stats=&connection_stats;
 	request->alarm.poll.fd=sock;
@@ -754,7 +756,7 @@ int rhizome_server_http_response_header(rhizome_http_request *r, int result, con
 */
 int rhizome_server_http_send_bytes(rhizome_http_request *r)
 {
-  // keep writing until the write would block or we run out of data
+  // keep writing until we've written something or we run out of data
   while(r->request_type){
     
     /* Flush anything out of the buffer if present, before doing any further
@@ -782,10 +784,9 @@ int rhizome_server_http_send_bytes(rhizome_http_request *r)
 	  r->request_type&=~RHIZOME_HTTP_REQUEST_FROMBUFFER;
 	  r->buffer_offset=0; r->buffer_length=0;
 	}
-	
-	// go around the loop again to work out what we should do next
-	continue;
-	
+
+	// wait for another POLLOUT alarm
+	return 1;
       }
 
     switch(r->request_type&(~RHIZOME_HTTP_REQUEST_FROMBUFFER))

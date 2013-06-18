@@ -476,10 +476,8 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     
     strbuf d = strbuf_local(read_file, sizeof read_file);
     strbuf_path_join(d, serval_instancepath(), config.server.interface_path, ifconfig->file, NULL);
-    if (strbuf_overrun(d)){
-      WHYF("interface file name overrun: %s", alloca_str_toprint(strbuf_str(d)));
-      goto cleanup;
-    }
+    if (strbuf_overrun(d))
+      return WHYF("interface file name overrun: %s", alloca_str_toprint(strbuf_str(d)));
     
     if ((interface->alarm.poll.fd = open(read_file, O_APPEND|O_RDWR)) == -1) {
       if (errno == ENOENT && ifconfig->socket_type == SOCK_FILE) {
@@ -673,7 +671,7 @@ static void interface_read_file(struct overlay_interface *interface)
      but don't completely prevent other high priority alarms */
     if (interface->alarm.alarm == -1 || now < interface->alarm.alarm){
       interface->alarm.alarm = now;
-      interface->alarm.deadline = interface->alarm.alarm + 10000;
+      interface->alarm.deadline = interface->alarm.alarm + (new_packets > 10?50:10000);
     }
   }
   OUT();

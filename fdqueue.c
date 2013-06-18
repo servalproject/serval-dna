@@ -328,8 +328,10 @@ int fd_poll()
 	if (errno == ENXIO) fds[i].revents|=POLLERR;
 	call_alarm(fd_callbacks[i], fds[i].revents);
 	/* The alarm may have closed and unwatched the descriptor, make sure this descriptor still matches */
-	if (i<fdcount && fds[i].fd == fd)
-	  set_block(fds[i].fd);
+	if (i<fdcount && fds[i].fd == fd){
+	  if (set_block(fds[i].fd))
+	    FATALF("Alarm %p %s has a bad descriptor that wasn't closed!", fd_callbacks[i], alloca_alarm_name(fd_callbacks[i]));
+	}
       }
     }
   }

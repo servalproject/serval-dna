@@ -247,7 +247,8 @@ setup_FileTransferBigMDPExtBlob() {
    foreach_instance +A +B \
       executeOk_servald config \
          set rhizome.http.enable 0 \
-         set rhizome.external_blobs 1
+         set rhizome.external_blobs 1 \
+	 set debug.externalblobs 1
    setup_bigfile_common
 }
 test_FileTransferBigMDPExtBlob() {
@@ -260,7 +261,8 @@ setup_FileTransferBigHTTPExtBlob() {
    foreach_instance +A +B \
       executeOk_servald config \
          set rhizome.mdp.enable 0 \
-         set rhizome.external_blobs 1
+         set rhizome.external_blobs 1 \
+	 set debug.externalblobs 1
    setup_bigfile_common
 }
 test_FileTransferBigHTTPExtBlob() {
@@ -321,7 +323,8 @@ setup_FileTransferMultiMDPExtBlob() {
    foreach_instance +A +B +C +D +E \
       executeOk_servald config \
          set rhizome.http.enable 0 \
-         set rhizome.external_blobs 1
+         set rhizome.external_blobs 1 \
+	 set debug.externalblobs 1
    setup_multitransfer_common
 }
 test_FileTransferMultiMDPExtBlob() {
@@ -334,7 +337,8 @@ setup_FileTransferMultiHTTPExtBlob() {
    foreach_instance +A +B +C +D +E \
       executeOk_servald config \
          set rhizome.mdp.enable 0 \
-         set rhizome.external_blobs 1
+         set rhizome.external_blobs 1 \
+	 set debug.externalblobs 1
    setup_multitransfer_common
 }
 test_FileTransferMultiHTTPExtBlob() {

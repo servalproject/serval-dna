@@ -124,7 +124,8 @@ int monitor_setup_sockets()
   return 0;
   
   error:
-  close(sock);
+  if (sock>=0)
+    close(sock);
   return -1;
 }
 
