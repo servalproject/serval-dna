@@ -48,6 +48,7 @@ struct rhizome_sync
   // a short list of BAR's we are interested in from the last parsed message
   struct bar_entry bars[CACHE_BARS];
   int bar_count;
+  time_ms_t next_request;
 };
 
 static void rhizome_sync_request(struct subscriber *subscriber, uint64_t token, unsigned char forwards)
@@ -125,14 +126,17 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
   if (state->bar_count >= CACHE_BARS)
     return;
 
-  if (state->sync_end < state->highest_seen){
-    rhizome_sync_request(subscriber, state->sync_end, 1);
-  }else if(state->sync_start >0){
-    rhizome_sync_request(subscriber, state->sync_start, 0);
-  }else if(!state->sync_complete){
-    state->sync_complete = 1;
-    if (config.debug.rhizome)
-      DEBUGF("BAR sync with %s complete", alloca_tohex_sid(subscriber->sid));
+  if (state->next_request<=gettime_ms()){
+    if (state->sync_end < state->highest_seen){
+      rhizome_sync_request(subscriber, state->sync_end, 1);
+    }else if(state->sync_start >0){
+      rhizome_sync_request(subscriber, state->sync_start, 0);
+    }else if(!state->sync_complete){
+      state->sync_complete = 1;
+      if (config.debug.rhizome)
+        DEBUGF("BAR sync with %s complete", alloca_tohex_sid(subscriber->sid));
+    }
+    state->next_request = gettime_ms()+500;
   }
 }
 
@@ -251,6 +255,7 @@ static void sync_process_bar_list(struct subscriber *subscriber, struct rhizome_
       sync_cache_bar(state, bars[i], bar_tokens[i]);
     if (config.debug.rhizome)
       DEBUGF("Synced %llu - %llu with %s", state->sync_start, state->sync_end, alloca_tohex_sid(subscriber->sid));
+    state->next_request = gettime_ms();
   }
 
 }
