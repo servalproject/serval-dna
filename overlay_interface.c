@@ -664,14 +664,14 @@ static void interface_read_file(struct overlay_interface *interface)
   if (interface->recv_offset>=length){
     if (interface->alarm.alarm == -1 || now + 5 < interface->alarm.alarm){
       interface->alarm.alarm = now + 5;
-      interface->alarm.deadline = interface->alarm.alarm + 10000;
+      interface->alarm.deadline = interface->alarm.alarm + 500;
     }
   }else{
     /* keep reading new packets as fast as possible, 
      but don't completely prevent other high priority alarms */
     if (interface->alarm.alarm == -1 || now < interface->alarm.alarm){
       interface->alarm.alarm = now;
-      interface->alarm.deadline = interface->alarm.alarm + (new_packets > 10?50:10000);
+      interface->alarm.deadline = interface->alarm.alarm + 100;
     }
   }
   OUT();
