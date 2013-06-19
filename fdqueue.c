@@ -102,11 +102,21 @@ int _schedule(struct __sourceloc __whence, struct sched_ent *alarm)
   if (!alarm->function)
     return WHY("Can't schedule if you haven't set the function pointer");
   
+  time_ms_t now = gettime_ms();
+
   if (alarm->deadline < alarm->alarm)
     alarm->deadline = alarm->alarm;
   
+  if (now - alarm->deadline > 1000){
+    // 1000ms ago? thats silly, if you keep doing it noone else will get a turn.
+    WHYF("Alarm %s tried to schedule a deadline %lldms ago, from %s() %s:%d",
+	   alloca_alarm_name(alarm),
+           (now - alarm->deadline),
+	   __whence.function,__whence.file,__whence.line);
+  }
+
   // if the alarm has already expired, move straight to the deadline queue
-  if (alarm->alarm <= gettime_ms())
+  if (alarm->alarm <= now)
     return deadline(alarm);
   
   while(node!=NULL){
