@@ -611,7 +611,6 @@ static void interface_read_file(struct overlay_interface *interface)
   IN();
   /* Grab packets, unpackage and dispatch frames to consumers */
   struct file_packet packet;
-  time_ms_t now = gettime_ms();
   
   /* Read from interface file */
   long long length=lseek(interface->alarm.poll.fd,0,SEEK_END);
@@ -661,6 +660,7 @@ static void interface_read_file(struct overlay_interface *interface)
   /* if there's no input, while we want to check for more soon,
    we need to allow all other low priority alarms to fire first,
    otherwise we'll dominate the scheduler without accomplishing anything */
+  time_ms_t now = gettime_ms();
   if (interface->recv_offset>=length){
     if (interface->alarm.alarm == -1 || now + 5 < interface->alarm.alarm){
       interface->alarm.alarm = now + 5;
@@ -748,26 +748,29 @@ static void overlay_interface_poll(struct sched_ent *alarm)
   struct overlay_interface *interface = (overlay_interface *)alarm;
   
   if (alarm->poll.revents==0){
-    time_ms_t now = gettime_ms();
+    alarm->alarm=-1;
     
+    time_ms_t now = gettime_ms();
     if (interface->state==INTERFACE_STATE_UP && interface->tick_ms>0){
       if (now >= interface->last_tx+interface->tick_ms)
         overlay_send_tick_packet(interface);
       alarm->alarm=interface->last_tx+interface->tick_ms;
-    }else{
-      alarm->alarm=-1;
+      alarm->deadline=alarm->alarm+interface->tick_ms/2;
     }
-    alarm->deadline=alarm->alarm+interface->tick_ms/2;
-    
+
     switch(interface->socket_type){
       case SOCK_DGRAM:
       case SOCK_STREAM:
 	break;
       case SOCK_FILE:
 	interface_read_file(interface);
+        now = gettime_ms();
 	break;
     }
+
     if (alarm->alarm!=-1) {
+      if (alarm->alarm < now)
+        alarm->alarm = now;
       schedule(alarm);
     }
   }

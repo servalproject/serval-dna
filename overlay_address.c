@@ -236,6 +236,12 @@ int overlay_address_append(struct decode_context *context, struct overlay_buffer
 
 static int add_explain_response(struct subscriber *subscriber, void *context){
   struct decode_context *response = context;
+  // only explain a SID once every half second.
+  time_ms_t now = gettime_ms();
+  if (now - subscriber->last_explained < 500)
+    return 0;
+  subscriber->last_explained = now;
+
   if (!response->please_explain){
     response->please_explain = calloc(sizeof(struct overlay_frame),1);
     response->please_explain->payload=ob_new();

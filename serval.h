@@ -343,7 +343,7 @@ struct overlay_buffer;
 struct overlay_frame;
 struct broadcast;
 
-#define STRUCT_SCHED_ENT_UNUSED ((struct sched_ent){NULL, NULL, NULL, NULL, {-1, 0, 0}, 0LL, 0LL, NULL, -1})
+#define STRUCT_SCHED_ENT_UNUSED {.poll.fd=-1, ._poll_index=-1,}
 
 extern int overlayMode;
 

@@ -85,6 +85,7 @@ struct subscriber{
   time_ms_t last_probe;
   time_ms_t last_probe_response;
   time_ms_t last_tx;
+  time_ms_t last_explained;
   
   // public signing key details for remote peers
   unsigned char sas_public[SAS_SIZE];
