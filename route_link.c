@@ -638,8 +638,8 @@ static int send_neighbour_link(struct neighbour *n)
 	              n->best_link->ack_sequence, n->best_link->ack_mask, -1);
     if (overlay_payload_enqueue(frame))
       op_free(frame);
-    else
-      n->last_update = now;
+
+    n->last_update = now;
   }
   n->next_neighbour_update = n->last_update + n->best_link->interface->tick_ms;
   n->ack_counter = ACK_WINDOW;
