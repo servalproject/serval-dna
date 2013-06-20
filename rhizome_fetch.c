@@ -1482,12 +1482,16 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 {
   struct rhizome_fetch_slot *slot = (struct rhizome_fetch_slot *) alarm;
 
-  if (alarm->poll.revents & (POLLIN | POLLOUT)) {
+  if (alarm->poll.revents & POLLOUT) {
     switch (slot->state) {
     case RHIZOME_FETCH_CONNECTING:
     case RHIZOME_FETCH_SENDINGHTTPREQUEST:
       rhizome_fetch_write(slot);
       return;
+    }
+  }
+  if (alarm->poll.revents & POLLIN) {
+    switch (slot->state) {
     case RHIZOME_FETCH_RXFILE: {
       /* Keep reading until we have the promised amount of data */
       char buffer[8192];
