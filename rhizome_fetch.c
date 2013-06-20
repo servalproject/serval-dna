@@ -654,8 +654,9 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
 static enum rhizome_start_fetch_result
 rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct sockaddr_in *peerip,unsigned const char *peersid)
 {
+  IN();
   if (slot->state != RHIZOME_FETCH_FREE)
-    return SLOTBUSY;
+    RETURN(SLOTBUSY);
 
   const char *bid = alloca_tohex_bid(m->cryptoSignPublic);
 
@@ -687,18 +688,9 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
     if (config.debug.rhizome_rx)
       DEBUGF("   manifest fetch not started -- nil payload, so importing instead");
     if (rhizome_import_received_bundle(m) == -1)
-      return WHY("bundle import failed");
-    return IMPORTED;
+      RETURN(WHY("bundle import failed"));
+    RETURN(IMPORTED);
   }
-
-  // If we already have this version or newer, do not fetch.
-  if (rhizome_manifest_version_cache_lookup(m)) {
-    if (config.debug.rhizome_rx)
-      DEBUG("   fetch not started -- already have that version or newer");
-    return SUPERSEDED;
-  }
-  if (config.debug.rhizome_rx)
-    DEBUGF("   is new");
 
   /* Don't fetch if already in progress.  If a fetch of an older version is already in progress,
    * then this logic will let it run to completion before the fetch of the newer version is queued.
@@ -713,37 +705,40 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
       if (am->version < m->version) {
 	if (config.debug.rhizome_rx)
 	  DEBUGF("   fetch already in progress -- older version");
-	return OLDERBUNDLE;
+	RETURN(OLDERBUNDLE);
       } else if (am->version > m->version) {
 	if (config.debug.rhizome_rx)
 	  DEBUGF("   fetch already in progress -- newer version");
-	return NEWERBUNDLE;
+	RETURN(NEWERBUNDLE);
       } else {
 	if (config.debug.rhizome_rx)
 	  DEBUGF("   fetch already in progress -- same version");
-	return SAMEBUNDLE;
+	RETURN(SAMEBUNDLE);
       }
     }
+    if (as->state != RHIZOME_FETCH_FREE && strcasecmp(m->fileHexHash, am->fileHexHash) == 0) {
+      if (config.debug.rhizome_rx)
+	DEBUGF("   fetch already in progress, slot=%d filehash=%s", i, m->fileHexHash);
+      RETURN(SAMEPAYLOAD);
+    }
   }
+
+  // If we already have this version or newer, do not fetch.
+  if (rhizome_manifest_version_cache_lookup(m)) {
+    if (config.debug.rhizome_rx)
+      DEBUG("   fetch not started -- already have that version or newer");
+    RETURN(SUPERSEDED);
+  }
+  if (config.debug.rhizome_rx)
+    DEBUGF("   is new");
 
   // If the payload is already available, no need to fetch, so import now.
   if (rhizome_exists(m->fileHexHash)){
     if (config.debug.rhizome_rx)
       DEBUGF("   fetch not started - payload already present, so importing instead");
     if (rhizome_add_manifest(m, m->ttl-1) == -1)
-      return WHY("add manifest failed");
-    return IMPORTED;
-  }
-
-  // Fetch the file, unless already queued.
-  for (i = 0; i < NQUEUES; ++i) {
-    struct rhizome_fetch_slot *s = &rhizome_fetch_queues[i].active;
-    const rhizome_manifest *sm = s->manifest;
-    if (s->state != RHIZOME_FETCH_FREE && strcasecmp(m->fileHexHash, sm->fileHexHash) == 0) {
-      if (config.debug.rhizome_rx)
-	DEBUGF("   fetch already in progress, slot=%d filehash=%s", i, m->fileHexHash);
-      return SAMEPAYLOAD;
-    }
+      RETURN(WHY("add manifest failed"));
+    RETURN(IMPORTED);
   }
 
   // Start the fetch.
@@ -756,7 +751,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   strbuf r = strbuf_local(slot->request, sizeof slot->request);
   strbuf_sprintf(r, "GET /rhizome/file/%s HTTP/1.0\r\n\r\n", m->fileHexHash);
   if (strbuf_overrun(r))
-    return WHY("request overrun");
+    RETURN(WHY("request overrun"));
   slot->request_len = strbuf_len(r);
 
   /* Prepare for fetching via MDP */
@@ -771,12 +766,12 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   m->dataFileUnlinkOnFree = 0;
   slot->manifest = m;
   if (schedule_fetch(slot) == -1)
-    return -1;
+    RETURN(-1);
   if (config.debug.rhizome_rx)
     DEBUGF("   started fetch bid %s version 0x%llx into %s, slot=%d filehash=%s",
 	   alloca_tohex_bid(slot->bid), (long long) slot->bidVersion,
 	   alloca_str_toprint(slot->manifest->dataFileName), slotno(slot), m->fileHexHash);
-  return STARTED;
+  RETURN(STARTED);
 }
 
 /* Returns STARTED (0) if the fetch was started.
