@@ -46,7 +46,7 @@ configure_servald_server() {
       set mdp.iftype.wifi.tick_ms 500
 }
 
-doc_StressRhizomeTransfer="Five nodes each sharing 21 bundles from 32B to 32MiB"
+doc_StressRhizomeTransfer="Five nodes each sharing 26 bundles from 0B to 620K"
 setup_StressRhizomeTransfer() {
    setup_servald
    assert_no_servald_processes
@@ -56,10 +56,10 @@ setup_StressRhizomeTransfer() {
       eval "bundles$i=()"
       set_instance +$i
       let j=0
-      for n in 1 2 3 4 5 6 7 8 9 a b c d e f g h i j k l
+      for n in 1 2 3 4 5 6 7 8 9 a b c d e f g h i j k l m n o p q r s t u v w x y z
       do
          local sidvar="SID$instance_name"
-         local size=$((2 ** (j + 5)))
+         local size=$((16 * (j ** 3)))
          tfw_log "Adding file file-$i-$n, size $size"
          create_file file-$i-$n $size
          tfw_nolog executeOk_servald rhizome add file "${!sidvar}" file-$i-$n file-$i-$n.manifest
