@@ -186,6 +186,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VOMP_CODEC_ULAW 0x02
 #define VOMP_CODEC_ALAW 0x03
 #define VOMP_CODEC_GSM 0x04
+#define VOMP_CODEC_CODEC2_1200 0x05
+#define VOMP_CODEC_CODEC2_3200 0x06
+#define VOMP_CODEC_OPUS 0x07
 
 // other out of band signals, probably shouldn't be codecs
 #define VOMP_CODEC_DTMF 0x20
