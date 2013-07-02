@@ -537,7 +537,8 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	goto skip;
     }else{
       if (overlay_frame_append_payload(&packet->context, packet->interface, frame, packet->buffer)){
-        // payload was not queued
+        // payload was not queued, delay the next attempt slightly
+	frame->dont_send_until = now + 5;
         goto skip;
       }
     }
