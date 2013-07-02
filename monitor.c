@@ -596,31 +596,14 @@ static int monitor_help(const struct cli_parsed *parsed, void *context)
 
 int monitor_announce_bundle(rhizome_manifest *m)
 {
-  int i;
   char msg[1024];
-  const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-  const char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
-  const char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
-  snprintf(msg,1024,"\nBUNDLE:%s:%s:%lld:%lld:%s:%s:%s\n",
-	   /* XXX bit of a hack here, since SIDs and cryptosign public keys have the same length */
-	   alloca_tohex_sid(m->cryptoSignPublic),
-	   service ? service : "",
-	   m->version,
-	   m->fileLength,
-	   sender ? sender : "",
-	   recipient ? recipient : "",
-	   m->dataFileName?m->dataFileName:"");
-  for(i=monitor_socket_count -1;i>=0;i--) {
-    if (monitor_sockets[i].flags & MONITOR_RHIZOME) {
-      if ( set_nonblock(monitor_sockets[i].alarm.poll.fd) == -1
-	|| write_str_nonblock(monitor_sockets[i].alarm.poll.fd, msg) == -1
-	|| set_block(monitor_sockets[i].alarm.poll.fd) == -1
-      ) {
-	INFO("Tearing down monitor client");
-	monitor_close(&monitor_sockets[i]);
-      }
-    }
-  }
+  int len = snprintf(msg,1024,"\n*%d:BUNDLE:%s\n",
+           m->manifest_all_bytes,
+	   alloca_tohex_bid(m->cryptoSignPublic));
+  bcopy(m->manifestdata, &msg[len], m->manifest_all_bytes);
+  len+=m->manifest_all_bytes;
+  msg[len++]='\n';
+  monitor_tell_clients(msg, len, MONITOR_RHIZOME);
   return 0;
 }
 
