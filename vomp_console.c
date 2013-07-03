@@ -186,7 +186,7 @@ struct monitor_command_handler console_handlers[]={
   {.command="MONITORSTATUS", .handler=remote_noop},
 };
 
-static int console_dial(const struct cli_parsed *parsed, void *context)
+static int console_dial(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (call_token!=-1){
     printf("Already in a call\n");
@@ -199,7 +199,7 @@ static int console_dial(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-static int console_answer(const struct cli_parsed *parsed, void *context)
+static int console_answer(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (call_token==-1){
     printf("No active call to answer\n");
@@ -209,7 +209,7 @@ static int console_answer(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-static int console_hangup(const struct cli_parsed *parsed, void *context)
+static int console_hangup(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (call_token==-1){
     printf("No call to hangup\n");
@@ -219,7 +219,7 @@ static int console_hangup(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-static int console_audio(const struct cli_parsed *parsed, void *context)
+static int console_audio(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (call_token==-1){
     printf("No active call\n");
@@ -243,7 +243,7 @@ static int console_audio(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-static int console_usage(const struct cli_parsed *parsed, void *context);
+static int console_usage(const struct cli_parsed *parsed, struct cli_context *context);
 
 struct cli_schema console_commands[]={
   {console_answer,{"answer",NULL},0,"Answer an incoming phone call"},
@@ -254,7 +254,7 @@ struct cli_schema console_commands[]={
   {NULL},
 };
 
-static int console_usage(const struct cli_parsed *parsed, void *context)
+static int console_usage(const struct cli_parsed *parsed, struct cli_context *context)
 {
   cli_usage(console_commands, XPRINTF_STDIO(stdout));
   fflush(stdout);
@@ -322,7 +322,7 @@ static void monitor_read(struct sched_ent *alarm){
   }
 }
 
-int app_vomp_console(const struct cli_parsed *parsed, void *context)
+int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);

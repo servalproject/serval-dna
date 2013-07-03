@@ -390,9 +390,9 @@ static int monitor_announce_all_peers(struct subscriber *subscriber, void *conte
   return 0;
 }
 
-static int monitor_set(const struct cli_parsed *parsed, void *context)
+static int monitor_set(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  struct monitor_context *c=context;
+  struct monitor_context *c=context->context;
   if (strcase_startswith(parsed->args[1],"vomp",NULL)){
     c->flags|=MONITOR_VOMP;
     // store the list of supported codecs against the monitor connection,
@@ -423,9 +423,9 @@ static int monitor_set(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-static int monitor_clear(const struct cli_parsed *parsed, void *context)
+static int monitor_clear(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  struct monitor_context *c=context;
+  struct monitor_context *c=context->context;
   if (strcase_startswith(parsed->args[1],"vomp",NULL))
     c->flags&=~MONITOR_VOMP;
   else if (strcase_startswith(parsed->args[1],"rhizome", NULL))
@@ -446,9 +446,9 @@ static int monitor_clear(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-static int monitor_lookup_match(const struct cli_parsed *parsed, void *context)
+static int monitor_lookup_match(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  struct monitor_context *c = context;
+  struct monitor_context *c = context->context;
   const char *sid = parsed->args[2];
   const char *ext = parsed->args[4];
   const char *name = parsed->argc >= 4 ? parsed->args[5] : "";
@@ -470,9 +470,9 @@ static int monitor_lookup_match(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-static int monitor_call(const struct cli_parsed *parsed, void *context)
+static int monitor_call(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  struct monitor_context *c=context;
+  struct monitor_context *c=context->context;
   unsigned char sid[SID_SIZE];
   if (stowSid(sid, 0, parsed->args[1]) == -1)
     return monitor_write_error(c,"invalid SID, so cannot place call");
@@ -484,7 +484,7 @@ static int monitor_call(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-static int monitor_call_ring(const struct cli_parsed *parsed, void *context)
+static int monitor_call_ring(const struct cli_parsed *parsed, struct cli_context *context)
 {
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
@@ -494,7 +494,7 @@ static int monitor_call_ring(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-static int monitor_call_pickup(const struct cli_parsed *parsed, void *context)
+static int monitor_call_pickup(const struct cli_parsed *parsed, struct cli_context *context)
 {
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
@@ -504,9 +504,9 @@ static int monitor_call_pickup(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-static int monitor_call_audio(const struct cli_parsed *parsed, void *context)
+static int monitor_call_audio(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  struct monitor_context *c=context;
+  struct monitor_context *c=context->context;
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   
   if (!call){
@@ -522,7 +522,7 @@ static int monitor_call_audio(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-static int monitor_call_hangup(const struct cli_parsed *parsed, void *context)
+static int monitor_call_hangup(const struct cli_parsed *parsed, struct cli_context *context)
 {
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
@@ -532,9 +532,9 @@ static int monitor_call_hangup(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-static int monitor_call_dtmf(const struct cli_parsed *parsed, void *context)
+static int monitor_call_dtmf(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  struct monitor_context *c=context;
+  struct monitor_context *c=context->context;
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
     return monitor_write_error(c,"Invalid call token");
@@ -556,7 +556,7 @@ static int monitor_call_dtmf(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-static int monitor_help(const struct cli_parsed *parsed, void *context);
+static int monitor_help(const struct cli_parsed *parsed, struct cli_context *context);
 
 struct cli_schema monitor_commands[] = {
   {monitor_help,{"help",NULL},0,""},
@@ -579,14 +579,15 @@ int monitor_process_command(struct monitor_context *c)
   int argc = parse_argv(c->line, ' ', argv, 16);
   
   struct cli_parsed parsed;
-  if (cli_parse(argc, (const char *const*)argv, monitor_commands, &parsed) || cli_invoke(&parsed, c))
+  struct cli_context context={.context=c};
+  if (cli_parse(argc, (const char *const*)argv, monitor_commands, &parsed) || cli_invoke(&parsed, &context))
     return monitor_write_error(c, "Invalid command");
   return 0;
 }
 
-static int monitor_help(const struct cli_parsed *parsed, void *context)
+static int monitor_help(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  struct monitor_context *c=context;
+  struct monitor_context *c=context->context;
   strbuf b = strbuf_alloca(16384);
   strbuf_puts(b, "\nINFO:Usage\n");
   cli_usage(monitor_commands, XPRINTF_STRBUF(b));

@@ -48,26 +48,22 @@ int generate_nonce(unsigned char *nonce,int bytes)
   return 0;
 }
 
-int app_nonce_test(const struct cli_parsed *parsed, void *context)
+int app_nonce_test(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int i,j;
   unsigned char nonces[0x10001][32];
   for(i=0;i<0x10001;i++)
     {
       if (generate_nonce(&nonces[i][0],32))
-	{
-	  printf("Failed to generate nonce #%d\n",i);
-	  exit(-1);
-	}
+	return WHYF("Failed to generate nonce #%d\n",i);
       for(j=0;j<i;j++) {
-	if (!memcmp(&nonces[i][0],&nonces[j][0],32)) {
-	  printf("Nonce #%d is the same as nonce #%d\n",i,j);
-	  exit(-1);
-	}
+	if (!memcmp(&nonces[i][0],&nonces[j][0],32))
+	  return WHYF("Nonce #%d is the same as nonce #%d\n",i,j);
       }
-      if (!(random()&0xff)) printf("Nonce #%d = %02x%02x%02x%02x...\n",
+      if (!(random()&0xff)) 
+	cli_printf(context, "Nonce #%d = %02x%02x%02x%02x...\n",
 			    i,nonces[i][0],nonces[i][1],nonces[i][2],nonces[i][3]);
     }
-  printf("Test passed\n");
+  cli_printf(context, "Test passed\n");
   return 0;
 }

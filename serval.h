@@ -548,7 +548,7 @@ int serval_packetvisualise(XPRINTF xpf, const char *message, const unsigned char
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_opendb();
 
-int parseCommandLine(const char *argv0, int argc, const char *const *argv);
+int parseCommandLine(struct cli_context *context, const char *argv0, int argc, const char *const *argv);
 
 int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int overlay_mdp_reply_error(int sock,
@@ -641,17 +641,6 @@ int vomp_received_audio(struct vomp_call_state *call, int audio_codec, int time,
 			const unsigned char *audio, int audio_length);
 void monitor_get_all_supported_codecs(unsigned char *codecs);
 
-int cli_putchar(char c);
-int cli_puts(const char *str);
-int cli_printf(const char *fmt, ...);
-int cli_delim(const char *opt);
-void cli_columns(int columns, const char *names[]);
-void cli_row_count(int rows);
-void cli_field_name(const char *name, const char *delim);
-void cli_put_long(int64_t value, const char *delim);
-void cli_put_string(const char *value, const char *delim);
-void cli_put_hexvalue(const unsigned char *value, int length, const char *delim);
-
 int overlay_mdp_getmyaddr(unsigned index, sid_t *sid);
 int overlay_mdp_bind(const sid_t *localaddr, int port) ;
 int overlay_route_node_info(overlay_mdp_nodeinfo *node_info);
@@ -671,13 +660,10 @@ int directory_registration();
 int directory_service_init();
 
 struct cli_parsed;
-int app_nonce_test(const struct cli_parsed *parsed, void *context);
-int app_rhizome_direct_sync(const struct cli_parsed *parsed, void *context);
-#ifdef HAVE_VOIPTEST
-int app_pa_phone(const struct cli_parsed *parsed, void *context);
-#endif
-int app_monitor_cli(const struct cli_parsed *parsed, void *context);
-int app_vomp_console(const struct cli_parsed *parsed, void *context);
+int app_nonce_test(const struct cli_parsed *parsed, struct cli_context *context);
+int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context *context);
+int app_monitor_cli(const struct cli_parsed *parsed, struct cli_context *context);
+int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *context);
 
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 

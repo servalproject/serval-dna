@@ -46,7 +46,7 @@ struct monitor_command_handler monitor_handlers[]={
   {.command="",      .handler=remote_print},
 };
 
-int app_monitor_cli(const struct cli_parsed *parsed, void *context)
+int app_monitor_cli(const struct cli_parsed *parsed, struct cli_context *context)
 {
   struct pollfd fds[2];
   struct monitor_state *state;

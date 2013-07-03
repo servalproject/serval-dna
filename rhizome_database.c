@@ -1004,7 +1004,7 @@ rollback:
   return -1;
 }
 
-int rhizome_list_manifests(const char *service, const char *name, 
+int rhizome_list_manifests(struct cli_context *context, const char *service, const char *name, 
 			   const char *sender_sid, const char *recipient_sid, 
 			   int limit, int offset, char count_rows)
 {
@@ -1068,7 +1068,7 @@ int rhizome_list_manifests(const char *service, const char *name,
     "recipient",
     "name"
   };
-  cli_columns(13,names);
+  cli_columns(context, 13, names);
   
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     ++rows;
@@ -1146,25 +1146,25 @@ int rhizome_list_manifests(const char *service, const char *name,
 	  from_here = keyring_find_sid(keyring, &cn, &in, &kp, senderSid);
 	}
 	
-	cli_put_long(rowid, ":");
-	cli_put_string(blob_service, ":");
-	cli_put_hexvalue(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES, ":");
-	cli_put_long(blob_version, ":");
-	cli_put_long(blob_date, ":");
-	cli_put_long(q_inserttime, ":");
-	cli_put_hexvalue(q_author?m->author:NULL, SID_SIZE, ":");
-	cli_put_long(from_here, ":");
-	cli_put_long(m->fileLength, ":");
+	cli_put_long(context, rowid, ":");
+	cli_put_string(context, blob_service, ":");
+	cli_put_hexvalue(context, m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES, ":");
+	cli_put_long(context, blob_version, ":");
+	cli_put_long(context, blob_date, ":");
+	cli_put_long(context, q_inserttime, ":");
+	cli_put_hexvalue(context, q_author?m->author:NULL, SID_SIZE, ":");
+	cli_put_long(context, from_here, ":");
+	cli_put_long(context, m->fileLength, ":");
 	
 	unsigned char filehash[SHA512_DIGEST_LENGTH];
 	if (m->fileLength)
 	  fromhex(filehash, blob_filehash, SHA512_DIGEST_LENGTH);
 	
-	cli_put_hexvalue(m->fileLength?filehash:NULL, SHA512_DIGEST_LENGTH, ":");
+	cli_put_hexvalue(context, m->fileLength?filehash:NULL, SHA512_DIGEST_LENGTH, ":");
 	
-	cli_put_hexvalue(blob_sender?senderSid:NULL, SID_SIZE, ":");
-	cli_put_hexvalue(blob_recipient?recipientSid:NULL, SID_SIZE, ":");
-	cli_put_string(blob_name, "\n");
+	cli_put_hexvalue(context, blob_sender?senderSid:NULL, SID_SIZE, ":");
+	cli_put_hexvalue(context, blob_recipient?recipientSid:NULL, SID_SIZE, ":");
+	cli_put_string(context, blob_name, "\n");
       }
     }
     if (m) rhizome_manifest_free(m);
@@ -1174,7 +1174,7 @@ int rhizome_list_manifests(const char *service, const char *name,
     while (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
       ++rows;
   }
-  cli_row_count(rows);
+  cli_row_count(context, rows);
   
 cleanup:
   sqlite3_finalize(statement);

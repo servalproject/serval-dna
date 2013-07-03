@@ -323,7 +323,7 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 int64_t rhizome_bar_version(const unsigned char *bar);
 unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);
 int rhizome_is_bar_interesting(unsigned char *bar);
-int rhizome_list_manifests(const char *service, const char *name, 
+int rhizome_list_manifests(struct cli_context *context, const char *service, const char *name, 
 			   const char *sender_sid, const char *recipient_sid, 
 			   int limit, int offset, char count_rows);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m);
