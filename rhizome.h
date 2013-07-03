@@ -187,9 +187,6 @@ const char *rhizome_datastore_path();
 int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...);
 int create_rhizome_datastore_dir();
 
-int form_rhizome_import_path(char * buf, size_t bufsiz, const char *fmt, ...);
-int create_rhizome_import_dir();
-
 /* Handy statement for forming the path of a rhizome store file in a char buffer whose declaration
  * is in scope (so that sizeof(buf) will work).  Evaluates to true if the pathname fitted into
  * the provided buffer, false (0) otherwise (after logging an error).  */

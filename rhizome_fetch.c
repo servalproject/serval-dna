@@ -543,8 +543,6 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
   slot->write_state.blob_fd=-1;
   slot->write_state.blob_rowid=-1;
 
-  if (create_rhizome_import_dir() == -1)
-    RETURN(WHY("Unable to create import directory"));
   if (slot->manifest) {
     if (rhizome_open_write(&slot->write_state, slot->manifest->fileHexHash, slot->manifest->fileLength, RHIZOME_PRIORITY_DEFAULT))
       RETURN(-1);
