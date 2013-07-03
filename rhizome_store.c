@@ -51,7 +51,7 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
   
   char blob_path[1024];
   
-  if (config.rhizome.external_blobs) {
+  if (config.rhizome.external_blobs || file_length > 640*1024) {
     if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, write->id)){
       WHY("Invalid path");
       goto insert_row_fail;
@@ -154,7 +154,7 @@ int rhizome_flush(struct rhizome_write *write_state){
       RETURN(-1);
   }
   
-  if (config.rhizome.external_blobs) {
+  if (write_state->blob_fd>=0) {
     int ofs=0;
     // keep trying until all of the data is written.
     while(ofs < write_state->data_size){
@@ -292,10 +292,11 @@ int rhizome_finish_write(struct rhizome_write *write){
     if (rhizome_flush(write))
       return -1;
   }
-  if (write->blob_fd>=0){
+  int fd = write->blob_fd;
+  if (fd>=0){
     if (config.debug.externalblobs)
-      DEBUGF("Closing fd %d", write->blob_fd);
-    close(write->blob_fd);
+      DEBUGF("Closing fd %d", fd);
+    close(fd);
     write->blob_fd=-1;
   }
   if (write->buffer)
@@ -333,7 +334,7 @@ int rhizome_finish_write(struct rhizome_write *write){
 				 hash_out, gettime_ms(), write->id) == -1)
 	goto failure;
       
-      if (config.rhizome.external_blobs){
+      if (fd>=0){
 	char blob_path[1024];
 	char dest_path[1024];
 	if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, write->id)){
