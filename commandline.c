@@ -196,7 +196,7 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv 
 
   // free any temporary output buffer
   if (context.outv_buffer)
-    free(context.outv_buffer;
+    free(context.outv_buffer);
 
   // Release argv Java string buffers.
   for (i = 0; i < len; ++i) {
