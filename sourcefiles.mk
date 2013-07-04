@@ -1,5 +1,4 @@
-SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
-	$(SERVAL_BASE)audio_reflector.c \
+SERVAL_SOURCES = \
 	$(SERVAL_BASE)cli.c \
 	$(SERVAL_BASE)commandline.c \
 	$(SERVAL_BASE)conf.c \
