@@ -1266,14 +1266,16 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  const char *filepath, *manifestpath, *authorSidHex, *bskhex;
+  const char *filepath, *manifestpath, *manifestid, *authorSidHex, *bskhex;
+
   cli_arg(parsed, "filepath", &filepath, NULL, "");
   if (cli_arg(parsed, "author_sid", &authorSidHex, cli_optional_sid, "") == -1)
     return -1;
   cli_arg(parsed, "manifestpath", &manifestpath, NULL, "");
+  cli_arg(parsed, "manifestid", &manifestid, NULL, "");
   if (cli_arg(parsed, "bsk", &bskhex, cli_optional_bundle_key, NULL) == -1)
     return -1;
-  
+
   sid_t authorSid;
   if (authorSidHex[0] && str_to_sid_t(&authorSid, authorSidHex) == -1)
     return WHYF("invalid author_sid: %s", authorSidHex);
@@ -1286,6 +1288,8 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
     return WHYF("invalid bsk: \"%s\"", bskhex);
   
+  int journal = strcasecmp(parsed->args[1], "journal")==0;
+
   if (create_serval_instance_dir() == -1)
     return -1;
   if (!(keyring = keyring_open_instance_cli(parsed)))
@@ -1299,8 +1303,9 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   if (!m)
     return WHY("Manifest struct could not be allocated -- not added to rhizome");
   
-  if (manifestpath[0] && access(manifestpath, R_OK) == 0) {
-    if (config.debug.rhizome) DEBUGF("reading manifest from %s", manifestpath);
+  if (manifestpath && *manifestpath && access(manifestpath, R_OK) == 0) {
+    if (config.debug.rhizome)
+      DEBUGF("reading manifest from %s", manifestpath);
     /* Don't verify the manifest, because it will fail if it is incomplete.
        This is okay, because we fill in any missing bits and sanity check before
        trying to write it out. */
@@ -1308,24 +1313,39 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
       rhizome_manifest_free(m);
       return WHY("Manifest file could not be loaded -- not added to rhizome");
     }
+  } else if(manifestid && *manifestid) {
+    if (config.debug.rhizome)
+      DEBUGF("Reading manifest from database");
+    if (rhizome_retrieve_manifest(manifestid, m)){
+      rhizome_manifest_free(m);
+      return WHY("Existing manifest could not be loaded -- not added to rhizome");
+    }
   } else {
-    if (config.debug.rhizome) DEBUGF("manifest file %s does not exist -- creating new manifest", manifestpath);
-  }
-  
-  if (rhizome_stat_file(m, filepath)){
-    rhizome_manifest_free(m);
-    return -1;
+    if (config.debug.rhizome)
+      DEBUGF("Creating new manifest");
   }
   
   if (rhizome_fill_manifest(m, filepath, *authorSidHex?&authorSid:NULL, bskhex?&bsk:NULL)){
     rhizome_manifest_free(m);
     return -1;
   }
-  
-  if (m->fileLength){
-    if (rhizome_add_file(m, filepath)){
+
+  if (journal){
+    if (rhizome_append_journal_file(m, bskhex?&bsk:NULL, 0, filepath)){
       rhizome_manifest_free(m);
       return -1;
+    }
+  }else{
+    if (rhizome_stat_file(m, filepath)){
+      rhizome_manifest_free(m);
+      return -1;
+    }
+  
+    if (m->fileLength){
+      if (rhizome_add_file(m, filepath)){
+        rhizome_manifest_free(m);
+        return -1;
+      }
     }
   }
   
@@ -1336,7 +1356,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     return -1;
   }
   
-  if (manifestpath[0] 
+  if (manifestpath && *manifestpath
       && rhizome_write_manifest_file(mout, manifestpath, 0) == -1)
     ret = WHY("Could not overwrite manifest file.");
   const char *service = rhizome_manifest_get(mout, "service", NULL, 0);
@@ -2283,9 +2303,11 @@ struct cli_schema command_line_options[]={
   {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL}, 0,
    "Compute the Rhizome hash of a file"},
   {app_rhizome_add_file,{"rhizome","add","file" KEYRING_PIN_OPTIONS,"<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]",NULL}, 0,
-   "Add a file to Rhizome and optionally write its manifest to the given path"},
+	"Add a file to Rhizome and optionally write its manifest to the given path"},
+  {app_rhizome_add_file, {"rhizome", "journal", "append" KEYRING_PIN_OPTIONS, "<author_sid>", "<manifestid>", "<filepath>", "[<bsk>]", NULL}, 0,
+	"Append content to a journal bundle"},
   {app_rhizome_import_bundle,{"rhizome","import","bundle","<filepath>","<manifestpath>",NULL}, 0,
-   "Import a payload/manifest pair into Rhizome"},
+	"Import a payload/manifest pair into Rhizome"},
   {app_rhizome_list,{"rhizome","list" KEYRING_PIN_OPTIONS,
 	"[<service>]","[<name>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL}, 0,
 	"List all manifests and files in Rhizome"},

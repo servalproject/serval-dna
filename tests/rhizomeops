@@ -26,10 +26,16 @@ shopt -s extglob
 
 setup_rhizome() {
    set_instance +A
-   executeOk_servald config set debug.rhizome on
+   executeOk_servald config \
+      set debug.rhizome on \
+      set debug.verbose on \
+      set log.console.level debug
    create_single_identity
    set_instance +B
-   executeOk_servald config set debug.rhizome on
+   executeOk_servald config \
+      set debug.rhizome on \
+      set debug.verbose on \
+      set log.console.level debug
    create_identities 4
    assert [ $SIDB1 != $SIDA1 ]
    assert [ $SIDB2 != $SIDA1 ]
@@ -656,6 +662,26 @@ test_EncryptedPayload() {
    extract_manifest_filehash filehash file1.manifest
    executeOk_servald rhizome export file $filehash file1y
    assert ! diff file1 file1y
+}
+
+doc_JournalAdd="Create and append to a journal"
+setup_JournalAdd() {
+  setup_servald
+  setup_rhizome
+  echo "Part One" > file1
+  echo "Part Two" > file2
+  cat file1 file2 > file
+}
+test_JournalAdd() {
+   executeOk_servald rhizome journal append $SIDB1 "" file1
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file1
+   extract_stdout_keyvalue BID 'manifestid' '[0-9A-F]\+'
+   executeOk_servald rhizome journal append $SIDB1 $BID file2
+   tfw_cat --stdout --stderr
+   executeOk_servald rhizome extract file $BID filex
+   tfw_cat --stdout --stderr
+   assert diff file filex
 }
 
 doc_MeshMSAddCreate="First add MeshMS creates manifest"

@@ -135,30 +135,27 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
   return 0;
 }
 
-/* Write write_state->buffer into the store
- Note that we don't support random writes as the contents must be hashed in order 
- But we don't enforce linear writes yet. */
-int rhizome_flush(struct rhizome_write *write_state){
+int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffer, int data_size){
   IN();
   /* Make sure we aren't being asked to write more data than we expected */
-  if (write_state->file_offset + write_state->data_size > write_state->file_length)
-    RETURN(WHYF("Too much content supplied, %d + %d > %d", 
-		write_state->file_offset, write_state->data_size, write_state->file_length));
+  if (write_state->file_offset + data_size > write_state->file_length)
+    RETURN(WHYF("Too much content supplied, %lld + %d > %lld", 
+		write_state->file_offset, data_size, write_state->file_length));
   
-  if (write_state->data_size<=0)
+  if (data_size<=0)
     RETURN(WHY("No content supplied"));
   
   if (write_state->crypt){
-    if (rhizome_crypt_xor_block(write_state->buffer, write_state->data_size, 
-				write_state->file_offset, write_state->key, write_state->nonce))
+    if (rhizome_crypt_xor_block(buffer, data_size, write_state->file_offset, write_state->key, write_state->nonce))
       RETURN(-1);
   }
   
   if (write_state->blob_fd>=0) {
     int ofs=0;
     // keep trying until all of the data is written.
-    while(ofs < write_state->data_size){
-      int r=write(write_state->blob_fd, write_state->buffer + ofs, write_state->data_size - ofs);
+    lseek(write_state->blob_fd, write_state->file_offset, SEEK_SET);
+    while(ofs < data_size){
+      int r=write(write_state->blob_fd, buffer + ofs, data_size - ofs);
       if (r<0)
 	RETURN(WHY_perror("write"));
       if (config.debug.externalblobs)
@@ -182,7 +179,7 @@ int rhizome_flush(struct rhizome_write *write_state){
 	RETURN(-1);
       }
       
-      ret=sqlite3_blob_write(blob, write_state->buffer, write_state->data_size, 
+      ret=sqlite3_blob_write(blob, buffer, data_size,
 			     write_state->file_offset);
       
       if (sqlite_code_busy(ret))
@@ -212,13 +209,22 @@ int rhizome_flush(struct rhizome_write *write_state){
     }while(1);
   }
   
-  SHA512_Update(&write_state->sha512_context, write_state->buffer, write_state->data_size);
-  write_state->file_offset+=write_state->data_size;
+  SHA512_Update(&write_state->sha512_context, buffer, data_size);
+  write_state->file_offset+=data_size;
   if (config.debug.rhizome)
     DEBUGF("Written %lld of %lld", write_state->file_offset, write_state->file_length);
-  write_state->data_size=0;
-  RETURN(0);
+  RETURN(data_size);
   OUT();
+}
+
+/* Write write_state->buffer into the store
+ Note that we don't support random writes as the contents must be hashed in order 
+ But we don't enforce linear writes yet. */
+int rhizome_flush(struct rhizome_write *write_state){
+  int wrote = rhizome_write_buffer(write_state, write_state->buffer, write_state->data_size);
+  if (wrote == write_state->data_size)
+    write_state->data_size=0;
+  return wrote>=0?0:-1;
 }
 
 /* Expects file to be at least file_length in size, ignoring anything longer than that */
@@ -240,7 +246,7 @@ int rhizome_write_file(struct rhizome_write *write, const char *filename){
       return -1;
     }
     write->data_size+=r;
-    
+    DEBUGF("Read %d from file", r);
     if (rhizome_flush(write)){
       fclose(f);
       return -1;
@@ -430,6 +436,18 @@ int rhizome_stat_file(rhizome_manifest *m, const char *filepath)
   return 0;
 }
 
+static int rhizome_write_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_write *write)
+{
+  write->crypt=1;
+  // if the manifest specifies encryption, make sure we can generate the payload key and encrypt the contents as we go
+  if (rhizome_derive_key(m, bsk))
+    return -1;
+
+  bcopy(m->payloadKey, write->key, sizeof(write->key));
+  bcopy(m->payloadNonce, write->nonce, sizeof(write->nonce));
+  return 0;
+}
+
 // import a file for a new bundle with an unknown file hash
 // update the manifest with the details of the file
 int rhizome_add_file(rhizome_manifest *m, const char *filepath)
@@ -441,32 +459,27 @@ int rhizome_add_file(rhizome_manifest *m, const char *filepath)
   if (rhizome_open_write(&write, NULL, m->fileLength, RHIZOME_PRIORITY_DEFAULT))
     return -1;
 
-  write.crypt=m->payloadEncryption;
-  if (write.crypt){
-    // if the manifest specifies encryption, make sure we can generate the payload key and encrypt the contents as we go
-    if (rhizome_derive_key(m, NULL))
+  if (m->payloadEncryption){
+    if (rhizome_write_derive_key(m, NULL, &write))
       return -1;
-    
+
     if (config.debug.rhizome)
       DEBUGF("Encrypting file contents");
-    
-    bcopy(m->payloadKey, write.key, sizeof(write.key));
-    bcopy(m->payloadNonce, write.nonce, sizeof(write.nonce));
   }
-  
   if (rhizome_write_file(&write, filepath)){
     rhizome_fail_write(&write);
     return -1;
   }
-
-  if (rhizome_finish_write(&write)){
-    rhizome_fail_write(&write);
-    return -1;
-  }
+  if (rhizome_finish_write(&write))
+    goto failure;
 
   strlcpy(m->fileHexHash, write.id, SHA512_DIGEST_STRING_LENGTH);
   rhizome_manifest_set(m, "filehash", m->fileHexHash);
   return 0;
+
+failure:
+  rhizome_fail_write(&write);
+  return -1;
 }
 
 /* Return -1 on error, 0 if file blob found, 1 if not found.
@@ -678,3 +691,142 @@ int rhizome_dump_file(const char *id, const char *filepath, int64_t *length)
   rhizome_read_close(&read_state);
   return ret;
 }
+
+// pipe data from one payload to another
+static int rhizome_pipe(struct rhizome_read *read, struct rhizome_write *write, uint64_t length)
+{
+  if (length > write->file_length - write->file_offset)
+    return WHY("Unable to pipe that much data");
+
+  while(length>0){
+    int size=write->buffer_size - write->data_size;
+    if (size > length)
+      size=length;
+
+    int r = rhizome_read(read, write->buffer + write->data_size, size);
+    if (r<0)
+      return r;
+
+    write->data_size+=r;
+    length -= r;
+    DEBUGF("Piping %d bytes", r);
+    if (rhizome_flush(write))
+      return -1;
+  }
+
+  return 0;
+}
+
+// open an existing journal bundle, advance the head pointer, duplicate the existing content and get ready to add more.
+int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, uint64_t new_size)
+{
+  int ret = 0;
+  if (advance_by!=0)
+    return WHY("Advancing a journal is not yet supported");
+  if (advance_by > m->fileLength)
+    return WHY("Cannot advance past the existing content");
+
+  uint64_t old_length = m->fileLength;
+  uint64_t copy_length = old_length - advance_by;
+  m->fileLength = m->fileLength + new_size - advance_by;
+  DEBUGF("Before %lld, advance %lld, new %lld = %lld, %lld", old_length, advance_by, new_size, copy_length, m->fileLength);
+  rhizome_manifest_set_ll(m, "filesize", m->fileLength);
+
+  m->version = m->fileLength;
+  rhizome_manifest_set_ll(m,"version",m->version);
+
+  ret = rhizome_open_write(write, NULL, m->fileLength, RHIZOME_PRIORITY_DEFAULT);
+  if (ret)
+    goto failure;
+
+  if (copy_length>0){
+    DEBUGF("Copying %lld", copy_length);
+    struct rhizome_read read_state;
+    bzero(&read_state, sizeof read_state);
+    ret = rhizome_open_decrypt_read(m, bsk, &read_state, 1);
+    if (ret)
+      goto failure;
+
+    read_state.offset = advance_by;
+    ret = rhizome_pipe(&read_state, write, copy_length);
+    rhizome_read_close(&read_state);
+    if (ret)
+      goto failure;
+  }
+
+  if (m->payloadEncryption){
+    ret = rhizome_write_derive_key(m, bsk, write);
+    if (ret)
+      goto failure;
+  }
+
+  return 0;
+
+failure:
+  if (ret)
+    rhizome_fail_write(write);
+  return ret;
+}
+
+int rhizome_append_journal_buffer(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, unsigned char *buffer, int len)
+{
+  struct rhizome_write write;
+  bzero(&write, sizeof write);
+
+  int ret = rhizome_write_open_journal(&write, m, bsk, advance_by, len);
+  if (ret)
+    return -1;
+
+  if (buffer && len){
+    ret = rhizome_write_buffer(&write, buffer, len);
+    if (ret)
+      goto failure;
+  }
+
+  ret = rhizome_finish_write(&write);
+  if (ret)
+    goto failure;
+
+  strlcpy(m->fileHexHash, write.id, SHA512_DIGEST_STRING_LENGTH);
+  rhizome_manifest_set(m, "filehash", m->fileHexHash);
+  return 0;
+
+failure:
+  if (ret)
+    rhizome_fail_write(&write);
+  return ret;
+}
+
+int rhizome_append_journal_file(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, const char *filename)
+{
+  struct stat stat;
+  if (lstat(filename,&stat))
+    return WHYF("Could not stat() payload file '%s'",filename);
+
+  struct rhizome_write write;
+  bzero(&write, sizeof write);
+  int ret = rhizome_write_open_journal(&write, m, bsk, advance_by, stat.st_size);
+  if (ret)
+    return -1;
+
+  if (stat.st_size){
+    ret = rhizome_write_file(&write, filename);
+    if (ret)
+      goto failure;
+  }
+
+  ret = rhizome_finish_write(&write);
+  if (ret)
+    goto failure;
+
+  strlcpy(m->fileHexHash, write.id, SHA512_DIGEST_STRING_LENGTH);
+  rhizome_manifest_set(m, "filehash", m->fileHexHash);
+
+  return 0;
+
+failure:
+  if (ret)
+    rhizome_fail_write(&write);
+  return ret;
+}
+

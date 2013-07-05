@@ -761,7 +761,7 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
   }
   
   int crypt = rhizome_manifest_get_ll(m,"crypt"); 
-  if (crypt==-1 && m->fileLength){
+  if (crypt==-1){
     // no explicit crypt flag, should we encrypt this bundle?
     char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
     char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
