@@ -135,7 +135,9 @@ typedef struct rhizome_manifest {
   /* When finalised, we keep the filehash and maximum priority due to any
      group membership handy */
   long long fileLength;
+  long long journalTail;
   char fileHexHash[SHA512_DIGEST_STRING_LENGTH];
+
   int fileHighestPriority;
   /* Absolute path of the file associated with the manifest */
   char *dataFileName;

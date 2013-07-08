@@ -721,8 +721,7 @@ static int rhizome_pipe(struct rhizome_read *read, struct rhizome_write *write, 
 int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, uint64_t new_size)
 {
   int ret = 0;
-  if (advance_by!=0)
-    return WHY("Advancing a journal is not yet supported");
+
   if (advance_by > m->fileLength)
     return WHY("Cannot advance past the existing content");
 
@@ -731,6 +730,11 @@ int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m,
   m->fileLength = m->fileLength + new_size - advance_by;
   DEBUGF("Before %lld, advance %lld, new %lld = %lld, %lld", old_length, advance_by, new_size, copy_length, m->fileLength);
   rhizome_manifest_set_ll(m, "filesize", m->fileLength);
+
+  if (advance_by>0){
+    m->journalTail += advance_by;
+    rhizome_manifest_set_ll(m,"tail",m->journalTail);
+  }
 
   m->version = m->fileLength;
   rhizome_manifest_set_ll(m,"version",m->version);

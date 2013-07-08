@@ -666,11 +666,11 @@ test_EncryptedPayload() {
 
 doc_JournalAdd="Create and append to a journal"
 setup_JournalAdd() {
-  setup_servald
-  setup_rhizome
-  echo "Part One" > file1
-  echo "Part Two" > file2
-  cat file1 file2 > file
+   setup_servald
+   setup_rhizome
+   echo "Part One" > file1
+   echo "Part Two" > file2
+   cat file1 file2 > file
 }
 test_JournalAdd() {
    executeOk_servald rhizome journal append $SIDB1 "" file1
@@ -682,6 +682,22 @@ test_JournalAdd() {
    executeOk_servald rhizome extract file $BID filex
    tfw_cat --stdout --stderr
    assert diff file filex
+}
+
+doc_AppendFile="Attempting to append to a non-journal fails"
+setup_AppendFile() {
+   setup_servald
+   setup_rhizome
+   echo "Part One" > file1
+   echo "Part Two" > file2
+   executeOk_servald rhizome add file $SIDB1 file1
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file1
+   extract_stdout_keyvalue BID 'manifestid' '[0-9A-F]\+'
+}
+test_AppendFile() {
+   execute --exit-status=255 $servald rhizome journal append $SIDB1 $BID file2
+   tfw_cat --stdout --stderr
 }
 
 doc_MeshMSAddCreate="First add MeshMS creates manifest"

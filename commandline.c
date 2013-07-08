@@ -1323,8 +1323,18 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   } else {
     if (config.debug.rhizome)
       DEBUGF("Creating new manifest");
+    if (journal){
+      m->journalTail = 0;
+      rhizome_manifest_set_ll(m,"tail",m->journalTail);
+    }
   }
-  
+
+  if (journal && m->journalTail==-1)
+    return WHY("Existing manifest is not a journal");
+
+  if ((!journal) && m->journalTail>=0)
+    return WHY("Existing manifest is a journal");
+
   if (rhizome_fill_manifest(m, filepath, *authorSidHex?&authorSid:NULL, bskhex?&bsk:NULL)){
     rhizome_manifest_free(m);
     return -1;

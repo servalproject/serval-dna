@@ -109,6 +109,8 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 
   m->manifest_all_bytes=m->manifest_bytes;
   m->var_count=0;
+  m->journalTail=-1;
+
   /* Parse out variables, signature etc */
   int have_service = 0;
   int have_id = 0;
@@ -252,6 +254,16 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	    m->errors++;
 	  } else {
 	    m->payloadEncryption = atoi(value);
+	  }
+	} else if (strcasecmp(var, "tail") == 0) {
+	  char *ep = value;
+	  long long tail = strtoll(value, &ep, 10);
+	  if (ep == value || *ep || tail < 0) {
+	    if (config.debug.rejecteddata)
+	      WARNF("Invalid tail: %s", value);
+	    m->errors++;
+	  } else {
+	    m->journalTail = tail;
 	  }
 	} else {
 	  INFOF("Unsupported field: %s=%s", var, value);
@@ -512,6 +524,9 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence)
     ;
 
   if (config.debug.manifests) _log_manifest_trace(__whence, __FUNCTION__);
+
+  // Set global defaults for a manifest
+  m->journalTail = -1;
 
   return m;
 }
