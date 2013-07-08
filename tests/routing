@@ -42,6 +42,26 @@ interface_up() {
   return 0
 }
 
+has_link() {
+   set_instance $1
+   executeOk_servald route print
+   tfw_log "Looking for link from $1 to $2 ($4)"
+   if ! grep "^${4}:\(BROADCAST \|UNICAST \)\{1,\}:dummy.*:0*\$" $_tfw_tmp/stdout; then
+      tfw_log "Link not found"
+#      tfw_log "^${4}:\(BROADCAST \|UNICAST \)\{1,\}:dummy.*:0*\$"
+#      tfw_cat --stdout --stderr
+      return 1
+   fi
+   [ $4 = $5 ] && return 0;
+   tfw_log "Path from $1 to $3 should be via $2 ($5, $4)"
+   if ! grep "^${5}:INDIRECT ::${4}\$" $_tfw_tmp/stdout; then
+      tfw_log "No path found"
+#      tfw_log "^${5}:INDIRECT ::${4}\$"
+#      tfw_cat --stdout --stderr
+      return 1
+   fi
+}
+
 path_exists() {
    local dest
    for dest; do tru; done;
@@ -52,21 +72,7 @@ path_exists() {
    for I; do
       local sidvar=SID${I#+}
       [ -n "${!sidvar}" ] || break
-      set_instance $next_inst
-      executeOk_servald route print
-      tfw_log "Looking for link from $next_inst to $I"
-      if ! grep "^${!sidvar}:\(BROADCAST \|UNICAST \)\{1,\}:dummy.*:0*\$" $_tfw_tmp/stdout; then
-         tfw_log "Link not found"
-         return 1
-      fi
-      [ $I = $dest ] && break;
-      tfw_log "Path from $next_inst to $dest should be via $I"
-      if ! grep "^${!dest_sidvar}:INDIRECT ::${!sidvar}\$" $_tfw_tmp/stdout; then
-         tfw_log "No path found"
-	 tfw_log "^${!dest_sidvar}:INDIRECT ::${!sidvar}\$"
-         tfw_cat --stdout --stderr
-         return 1
-      fi
+      has_link $next_inst $I $dest ${!sidvar} ${!dest_sidvar} || return 1
       next_inst=$I
    done
    return 0
@@ -128,7 +134,9 @@ setup_multiple_ids() {
 }
 test_multiple_ids() {
    wait_until path_exists +A +B
+   wait_until has_link +A +B +B $SIDB1 $SIDB2
    wait_until path_exists +B +A
+   wait_until has_link +B +A +A $SIDA1 $SIDA2
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB2 1
    tfw_cat --stdout --stderr
