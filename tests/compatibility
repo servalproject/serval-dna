@@ -28,8 +28,8 @@ teardown() {
    report_all_servald_servers
 }
 
-doc_ping_090_version="Ping version of servald in Serval Mesh 0.90"
-setup_ping_090_version() {
+doc_dna_090_version="Dna lookup of servald in Serval Mesh 0.90"
+setup_dna_090_version() {
    setup_servald
    if ! [ -x "$SERVALD_090" ]; then
       error "SERVALD_090 must point to a build being tested for compatibility"
@@ -46,18 +46,22 @@ start_servald_090() {
    executeOk_servald keyring add
    assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
    extract_stdout_keyvalue SIDA sid "$rexp_sid"
+   DIDA=5550001
+   NAMEA="Agent A. Smith"
+   executeOk_servald set did $SIDA $DIDA "$NAMEA"
    SERVALD_SERVER_CHDIR="$instance_dir" SERVALD_LOG_FILE="$instance_servald_log" executeOk_servald start
    wait_until grep "[Ii]nterface .* is up" "$instance_servald_log"
 }
 
-test_ping_090_version() {
+test_dna_090_version() {
    local DUMMYNET="$SERVALD_VAR/dummy"
    >$DUMMYNET
    set_instance +A
    executeOk_servald config \
       set interfaces.0.dummy "$DUMMYNET" \
       set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
-      set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
+      set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
+      set debug.overlayframes on
    start_servald_090
    set_instance +B
    executeOk_servald config \
@@ -72,7 +76,7 @@ test_ping_090_version() {
    wait_until grep "REACHABLE VIA BROADCAST sid=$SIDA" "$instance_servald_log"
    executeOk_servald route print
    tfw_cat --stdout --stderr
-   assertStdoutGrep --stdout --matches=1 "^${SIDA}:BROADCAST :$DUMMYNET:0*\$"
+   assertStdoutGrep --stdout --matches=1 "^${SIDA}:BROADCAST .*:$DUMMYNET:0*\$"
    set_instance +A
    wait_until grep "PEER REACHABLE, sid=$SIDB" "$instance_servald_log"
    executeOk_servald route print
@@ -82,6 +86,8 @@ test_ping_090_version() {
    tfw_cat --stdout --stderr
    set_instance +B
    executeOk_servald mdp ping $SIDA 1
+   tfw_cat --stdout --stderr
+   executeOk_servald dna lookup $DIDA
    tfw_cat --stdout --stderr
 }
 

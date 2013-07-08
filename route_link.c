@@ -739,16 +739,19 @@ struct neighbour_link * get_neighbour_link(struct neighbour *neighbour, struct o
   return link;
 }
 
-int link_state_interface_has_neighbour(struct overlay_interface *interface)
+int link_state_interface_oldest_neighbour(struct overlay_interface *interface)
 {
   struct neighbour *neighbour = neighbours;
+  int packet_version =-1;
   while(neighbour){
-    if (neighbour->best_link && neighbour->best_link->interface == interface)
-      return 1;
+    if (neighbour->best_link && neighbour->best_link->interface == interface && 
+	(neighbour->subscriber->max_packet_version < packet_version || packet_version == -1)){
+      packet_version = neighbour->subscriber->max_packet_version;
+    }
 
     neighbour = neighbour->_next;
   }
-  return 0;
+  return packet_version;
 }
 
 // do we need to forward any broadcast packets transmitted by this neighbour?
@@ -1109,6 +1112,10 @@ int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now)
 
   // give this link a high cost, we aren't going to route through it anyway...
   link->drop_rate = 32;
+
+  // track the incoming link so we remember to send broadcasts
+  struct neighbour_link *nl = get_neighbour_link(neighbour, frame->interface, iface, 0);
+  nl->link_timeout = now + (frame->interface->tick_ms *5);
 
   neighbour->legacy_protocol = 1;
   neighbour->neighbour_link_timeout = now + link->interface->tick_ms * 5;

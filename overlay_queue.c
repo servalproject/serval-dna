@@ -198,6 +198,10 @@ int overlay_payload_enqueue(struct overlay_frame *p)
       p->interface_sent_sequence[i]=FRAME_DONT_SEND;
   }
 
+  // it should be safe to try sending all packets with an mdp sequence
+  if (p->packet_version<=0)
+    p->packet_version=1;
+
   if (p->destination_resolved){
     p->interface_sent_sequence[p->interface - overlay_interfaces]=FRAME_NOT_SENT;
   }else{
@@ -217,11 +221,15 @@ int overlay_payload_enqueue(struct overlay_frame *p)
 	if (overlay_interfaces[i].state!=INTERFACE_STATE_UP
 	    || !overlay_interfaces[i].send_broadcasts)
 	  continue;
-	if (!link_state_interface_has_neighbour(&overlay_interfaces[i])){
+	int oldest_version = link_state_interface_oldest_neighbour(&overlay_interfaces[i]);
+	if (oldest_version <0){
           if (config.debug.verbose && config.debug.overlayframes)
 	    DEBUGF("Skipping broadcast on interface %s, as we have no neighbours", overlay_interfaces[i].name);
 	  continue;
 	}
+	// make sure all neighbours can hear this packet
+	if (oldest_version < p->packet_version)
+	  p->packet_version = oldest_version;
 	p->interface_sent_sequence[i]=FRAME_NOT_SENT;
 	interface_copies++;
       }
@@ -245,9 +253,6 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   p->next=NULL;
   p->enqueued_at=gettime_ms();
   p->mdp_sequence = -1;
-  // it should be safe to try sending all packets with an mdp sequence
-  if (p->packet_version==0)
-    p->packet_version=1;
   queue->last=p;
   if (!queue->first) queue->first=p;
   queue->length++;
@@ -332,7 +337,7 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
       if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
 	continue;
       if ((!frame->destination) && (frame->interface_sent_sequence[i]==FRAME_DONT_SEND ||
-	  !link_state_interface_has_neighbour(&overlay_interfaces[i])))
+	  link_state_interface_oldest_neighbour(&overlay_interfaces[i])<0))
 	continue;
       time_ms_t next_packet = limit_next_allowed(&overlay_interfaces[i].transfer_limit);
       if (next_packet < frame->interface_dont_send_until[i])
@@ -449,7 +454,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  {
 	    if (overlay_interfaces[i].state!=INTERFACE_STATE_UP ||
                 frame->interface_sent_sequence[i]==FRAME_DONT_SEND ||
-	        !link_state_interface_has_neighbour(&overlay_interfaces[i]))
+	        link_state_interface_oldest_neighbour(&overlay_interfaces[i])<0)
 	      continue;
 	    keep=1;
 	    if (frame->interface_dont_send_until[i] >now)
@@ -578,7 +583,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       int i;
       for(i=0;i<OVERLAY_MAX_INTERFACES;i++){
 	if (overlay_interfaces[i].state==INTERFACE_STATE_UP &&
-	    link_state_interface_has_neighbour(&overlay_interfaces[i]) &&
+	    link_state_interface_oldest_neighbour(&overlay_interfaces[i])>=0 &&
             frame->interface_sent_sequence[i]!=FRAME_DONT_SEND){
 	  goto skip;
 	}
@@ -669,7 +674,7 @@ int overlay_queue_ack(struct subscriber *neighbour, struct overlay_interface *in
             for(j=0;j<OVERLAY_MAX_INTERFACES;j++){
 	      if (overlay_interfaces[j].state==INTERFACE_STATE_UP &&
                   frame->interface_sent_sequence[j]!=FRAME_DONT_SEND &&
-		  link_state_interface_has_neighbour(&overlay_interfaces[j])){
+		  link_state_interface_oldest_neighbour(&overlay_interfaces[j])>=0){
 	        discard = 0;
 	        break;
 	      }
