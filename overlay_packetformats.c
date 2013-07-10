@@ -260,11 +260,11 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
   
   context->packet_version = ob_get(buffer);
   if (context->packet_version < 0 || context->packet_version > SUPPORTED_PACKET_VERSION)
-    RETURN(WHY("Packet version not recognised."));
+    RETURN(WHYF("Packet version %d not recognised.", context->packet_version));
   
   context->encapsulation = ob_get(buffer);
   if (context->encapsulation !=ENCAP_OVERLAY && context->encapsulation !=ENCAP_SINGLE)
-    RETURN(WHY("Invalid packet encapsulation"));
+    RETURN(WHYF("Invalid packet encapsulation, %d", context->encapsulation));
   
   if (overlay_address_parse(context, buffer, &context->sender))
     RETURN(WHY("Unable to parse sender"));
