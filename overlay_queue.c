@@ -198,6 +198,9 @@ int overlay_payload_enqueue(struct overlay_frame *p)
       p->interface_sent_sequence[i]=FRAME_DONT_SEND;
   }
 
+  if (ob_position(p->payload)>=MDP_MTU)
+    FATAL("Queued packet is too big");
+
   // it should be safe to try sending all packets with an mdp sequence
   if (p->packet_version<=0)
     p->packet_version=1;

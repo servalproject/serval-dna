@@ -78,7 +78,7 @@ static void rhizome_sync_request(struct subscriber *subscriber, uint64_t token, 
 
 static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhizome_sync *state)
 {
-  int i;
+  int i, requests=0;
   time_ms_t now = gettime_ms();
 
   // send requests for manifests that we have room to fetch
@@ -118,12 +118,16 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
 
       mdp.out.queue=OQ_OPPORTUNISTIC;
     }
+    if (mdp.out.payload_length + RHIZOME_BAR_BYTES>MDP_MTU)
+      break;
     if (config.debug.rhizome)
       DEBUGF("Requesting manifest for BAR %s", alloca_tohex(state->bars[i].bar, RHIZOME_BAR_BYTES));
     bcopy(state->bars[i].bar, &mdp.out.payload[mdp.out.payload_length], RHIZOME_BAR_BYTES);
     mdp.out.payload_length+=RHIZOME_BAR_BYTES;
-
     state->bars[i].next_request = now+1000;
+    requests++;
+    if (requests>=BARS_PER_RESPONSE)
+      break;
   }
   if (mdp.out.payload_length!=0)
     overlay_mdp_dispatch(&mdp,0,NULL,0);
@@ -264,11 +268,11 @@ static void sync_process_bar_list(struct subscriber *subscriber, struct rhizome_
     // we require the list of BARs to be either ASC or DESC and include BARs for *all* manifests in that range
     // TODO stop if we are taking too much CPU time.
     int added=0;
-    for (i=mid_point; i<bar_count && state->bar_count < BARS_PER_RESPONSE; i++){
+    for (i=mid_point; i<bar_count && state->bar_count < CACHE_BARS; i++){
       if (sync_cache_bar(state, bars[i], bar_tokens[i]))
 	added=1;
     }
-    for (i=mid_point -1; i>=0 && state->bar_count < BARS_PER_RESPONSE; i--){
+    for (i=mid_point -1; i>=0 && state->bar_count < CACHE_BARS; i--){
       if (sync_cache_bar(state, bars[i], bar_tokens[i]))
 	added=1;
     }

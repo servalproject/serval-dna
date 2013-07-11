@@ -562,6 +562,9 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 {
   IN();
 
+  if (mdp->out.payload_length > sizeof(mdp->out.payload))
+    FATAL("Payload length is past the end of the buffer");
+
   /* Prepare the overlay frame for dispatch */
   struct overlay_frame *frame = calloc(1,sizeof(struct overlay_frame));
   if (!frame)
