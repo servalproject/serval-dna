@@ -310,31 +310,28 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
       m = rhizome_new_manifest();
       if (!m) {
 	WHY("Out of manifests");
-	sqlite_set_tracefunc(oldfunc);
-	RETURN(0);
+	goto next;
       }
       
       if (rhizome_read_manifest_file(m, (char *)data, manifest_length) == -1) {
-	WHY("Error importing manifest body");
-	rhizome_manifest_free(m);
-	sqlite_set_tracefunc(oldfunc);
-	RETURN(0);
+	WHY("Error parsing manifest body");
+	goto next;
       }
       
       char manifest_id_prefix[RHIZOME_MANIFEST_ID_STRLEN + 1];
       if (rhizome_manifest_get(m, "id", manifest_id_prefix, sizeof manifest_id_prefix) == NULL) {
 	WHY("Manifest does not contain 'id' field");
-	rhizome_manifest_free(m);
-	sqlite_set_tracefunc(oldfunc);
-	RETURN(0);
+	goto next;
       }
-      /* trim manifest ID to a prefix for ease of debugging 
+
+      /* trim manifest ID to a prefix for ease of debugging
 	 (that is the only use of this */
-      manifest_id_prefix[8]=0; 
       if (config.debug.rhizome_ads){
+        manifest_id_prefix[8]=0;
 	long long version = rhizome_manifest_get_ll(m, "version");
 	DEBUGF("manifest id=%s* version=%lld", manifest_id_prefix, version);
       }
+
       /* Crude signature presence test */
       for(i=m->manifest_all_bytes-1;i>0;i--)
 	if (!m->manifestdata[i]) {
@@ -344,42 +341,46 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
       if (!i) {
 	/* ignore the announcement, but don't ignore other people
 	   offering the same manifest */
-	WARN("Ignoring manifest announcment with no signature");
-	rhizome_manifest_free(m);
-	sqlite_set_tracefunc(oldfunc);
-	RETURN(0);
+	if (config.debug.rhizome_ads)
+	  DEBUG("Ignoring manifest announcment with no signature");
+	goto next;
       }
-      
+
       if (rhizome_ignore_manifest_check(m->cryptoSignPublic,
-					crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
-	{
-	  /* Ignoring manifest that has caused us problems recently */
-	  if (1) WARNF("Ignoring manifest with errors: %s*", manifest_id_prefix);
-	}
-      else if (m->errors == 0)
-	{
-	  /* Manifest is okay, so see if it is worth storing */
-	  if (rhizome_manifest_version_cache_lookup(m)) {
-	    /* We already have this version or newer */
-	    if (config.debug.rhizome_ads)
-	      DEBUG("We already have that manifest or newer.");
-	  } else {
-	    if (config.debug.rhizome_ads)
-	      DEBUG("Not seen before.");
-	    rhizome_suggest_queue_manifest_import(m, &httpaddr,f->source->sid);
-	    // the above function will free the manifest structure, make sure we don't free it again
-	    m=NULL;
-	  }
-	}
-      else
-	{
-	  if (config.debug.rhizome_ads)
-	    DEBUG("Unverified manifest has errors - so not processing any further.");
-	  /* Don't waste any time on this manifest in future attempts for at least
+					crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)){
+	/* Ignoring manifest that has caused us problems recently */
+	if (config.debug.rhizome_ads)
+	  DEBUGF("Ignoring manifest with errors: %s*", manifest_id_prefix);
+	goto next;
+      }
+
+      if (m->errors > 0){
+	if (config.debug.rhizome_ads)
+	  DEBUG("Unverified manifest has errors - so not processing any further.");
+	/* Don't waste any time on this manifest in future attempts for at least
 	     a minute. */
-	  rhizome_queue_ignore_manifest(m->cryptoSignPublic,
+	rhizome_queue_ignore_manifest(m->cryptoSignPublic,
 					crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES, 60000);
-	}
+	goto next;
+      }
+
+      /* Manifest is okay, so see if it is worth storing */
+      if (rhizome_manifest_version_cache_lookup(m)) {
+	/* We already have this version or newer */
+	if (config.debug.rhizome_ads)
+	  DEBUG("We already have that manifest or newer.");
+	goto next;
+      }
+
+      if (config.debug.rhizome_ads)
+	DEBUG("Not seen before.");
+
+      // start the fetch process!
+      rhizome_suggest_queue_manifest_import(m, &httpaddr,f->source->sid);
+      // the above function will free the manifest structure, make sure we don't free it again
+      m=NULL;
+
+next:
       if (m) {
 	rhizome_manifest_free(m);
 	m = NULL;
@@ -389,7 +390,7 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
 
   // if we're using the new sync protocol, ignore the rest of the packet
   if (f->source->sync_state)
-    RETURN(0);
+    goto end;
 
   overlay_mdp_frame mdp;
   
@@ -471,6 +472,7 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
   if (mdp.out.payload_length>0)
     overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
 
+end:
   sqlite_set_tracefunc(oldfunc);
   RETURN(0);
   OUT();
