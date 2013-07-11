@@ -957,9 +957,11 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 {
   IN();
   
-  if (!config.rhizome.fetch)
+  if (!config.rhizome.fetch){
+    rhizome_manifest_free(m);
     RETURN(0);
-  
+  }
+
   const char *bid = alloca_tohex_bid(m->cryptoSignPublic);
   int priority=100; /* normal priority */
 
@@ -989,6 +991,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
       RETURN(-1);
     }
     rhizome_import_received_bundle(m);
+    rhizome_manifest_free(m);
     RETURN(0);
   }
 
