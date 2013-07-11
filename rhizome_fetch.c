@@ -163,6 +163,34 @@ int rhizome_fetch_queue_bytes(){
   return bytes;
 }
 
+int rhizome_fetch_status_html(struct strbuf *b)
+{
+  int i,j;
+  for(i=0;i<NQUEUES;i++){
+    struct rhizome_fetch_queue *q=&rhizome_fetch_queues[i];
+    strbuf_sprintf(b, "<p>Slot %d, ", i);
+    if (q->active.state!=RHIZOME_FETCH_FREE){
+      strbuf_sprintf(b, "%lld[+%d] of %lld",
+	q->active.write_state.file_offset,
+	q->active.write_state.data_size,
+	q->active.manifest->fileLength);
+    }else{
+      strbuf_puts(b, "inactive");
+    }
+    int candidates=0;
+    long long candidate_size=0;
+    for (j=0; j< q->candidate_queue_size;j++){
+      if (q->candidate_queue[j].manifest){
+	candidates++;
+	candidate_size += q->candidate_queue[j].manifest->fileLength;
+      }
+    }
+    if (candidates)
+      strbuf_sprintf(b, ", %d candidates [%lld bytes]", candidates, candidate_size);
+  }
+  return 0;
+}
+
 static struct sched_ent sched_activate = STRUCT_SCHED_ENT_UNUSED;
 static struct profile_total fetch_stats;
 

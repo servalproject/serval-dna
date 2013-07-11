@@ -46,10 +46,13 @@ struct rhizome_sync
   uint64_t sync_end;
   uint64_t highest_seen;
   unsigned char sync_complete;
-  // a short list of BAR's we are interested in from the last parsed message
-  struct bar_entry bars[CACHE_BARS];
   int bar_count;
   time_ms_t next_request;
+  time_ms_t last_extended;
+  time_ms_t last_response;
+  time_ms_t last_new_bundle;
+  // a short list of BAR's we are interested in from the last parsed message
+  struct bar_entry bars[CACHE_BARS];
 };
 
 static void rhizome_sync_request(struct subscriber *subscriber, uint64_t token, unsigned char forwards)
@@ -110,10 +113,6 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
       mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
       bcopy(subscriber->sid,mdp.out.dst.sid,SID_SIZE);
       mdp.out.dst.port=MDP_PORT_RHIZOME_MANIFEST_REQUEST;
-      if (subscriber->reachable&REACHABLE_DIRECT)
-        mdp.out.ttl=1;
-      else
-        mdp.out.ttl=64;
       mdp.packetTypeAndFlags=MDP_TX;
 
       mdp.out.queue=OQ_OPPORTUNISTIC;
@@ -198,10 +197,12 @@ static int sync_cache_bar(struct rhizome_sync *state, unsigned char *bar, uint64
   }
   if (state->sync_end < token){
     state->sync_end = token;
+    state->last_extended = gettime_ms();
     ret=1;
   }
   if (state->sync_start > token){
     state->sync_start = token;
+    state->last_extended = gettime_ms();
     ret=1;
   }
   return ret;
@@ -217,6 +218,8 @@ static void sync_process_bar_list(struct subscriber *subscriber, struct rhizome_
   int has_before=0, has_after=0;
   int mid_point = -1;
 
+  state->last_response = gettime_ms();
+
   while(ob_remaining(b)>0 && bar_count < BARS_PER_RESPONSE){
     bar_tokens[bar_count]=ob_get_packed_ui64(b);
     bars[bar_count]=ob_get_bytes_ptr(b, RHIZOME_BAR_BYTES);
@@ -230,6 +233,7 @@ static void sync_process_bar_list(struct subscriber *subscriber, struct rhizome_
     // track the highest BAR we've seen, even if we can't sync it yet, so we know what BARs to request.
     if (state->highest_seen < bar_tokens[bar_count]){
       state->highest_seen = bar_tokens[bar_count];
+      state->last_new_bundle = gettime_ms();
       state->sync_complete = 0;
     }
 
@@ -321,10 +325,8 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
     mdp.packetTypeAndFlags|=(MDP_NOCRYPT|MDP_NOSIGN);
   }
 
-  if (!dest || dest->reachable&REACHABLE_DIRECT)
+  if (!dest)
     mdp.out.ttl=1;
-  else
-    mdp.out.ttl=64;
 
   struct overlay_buffer *b = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
   ob_append_byte(b, MSG_TYPE_BARS);
