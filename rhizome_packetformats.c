@@ -233,6 +233,9 @@ end:
   schedule(alarm);
 }
 
+#define HAS_PORT (1<<1)
+#define HAS_MANIFESTS (1<<0)
+
 /* Queue an advertisment for a single manifest */
 int rhizome_advertise_manifest(rhizome_manifest *m){
   struct overlay_frame *frame = malloc(sizeof(struct overlay_frame));
@@ -244,7 +247,7 @@ int rhizome_advertise_manifest(rhizome_manifest *m){
   frame->payload = ob_new();
   ob_limitsize(frame->payload, 800);
   
-  if (ob_append_byte(frame->payload, 3)) goto error;
+  if (ob_append_byte(frame->payload, HAS_PORT|HAS_MANIFESTS)) goto error;
   if (ob_append_ui16(frame->payload, is_rhizome_http_enabled()?rhizome_http_server_port:0)) goto error;
   if (ob_append_ui16(frame->payload, m->manifest_all_bytes)) goto error;
   if (ob_append_bytes(frame->payload, m->manifestdata, m->manifest_all_bytes)) goto error;
@@ -273,15 +276,14 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
   httpaddr.sin_port = htons(RHIZOME_HTTP_PORT);
   int manifest_length;
   rhizome_manifest *m=NULL;
-  char httpaddrtxt[INET_ADDRSTRLEN];
 
   int (*oldfunc)() = sqlite_set_tracefunc(is_debug_rhizome_ads);
 
-  if (ad_frame_type & 2){
+  if (ad_frame_type & HAS_PORT){
     httpaddr.sin_port = htons(ob_get_ui16(f->payload));
   }
   
-  if (ad_frame_type & 1){
+  if (ad_frame_type & HAS_MANIFESTS){
     /* Extract whole manifests */
     while(f->payload->position < f->payload->sizeLimit) {
       if (ob_getbyte(f->payload, f->payload->position)==0xff){
@@ -294,7 +296,6 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
       
       unsigned char *data = ob_get_bytes_ptr(f->payload, manifest_length);
       if (!data) {
-	assert(inet_ntop(AF_INET, &httpaddr.sin_addr, httpaddrtxt, sizeof(httpaddrtxt)) != NULL);
 	WHYF("Illegal manifest length field in rhizome advertisement frame %d vs %d.", 
 	     manifest_length, f->payload->sizeLimit - f->payload->position);
 	break;

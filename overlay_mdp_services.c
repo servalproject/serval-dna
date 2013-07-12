@@ -29,24 +29,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "crypto.h"
 #include "log.h"
 
-int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
+
+
+int rhizome_mdp_send_block(struct subscriber *dest, unsigned char *id, uint64_t version, uint64_t fileOffset, uint32_t bitmap, uint16_t blockLength)
 {
   IN();
-
-  uint64_t version=
-    read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]);
-  uint64_t fileOffset=
-    read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8]);
-  uint32_t bitmap=
-    read_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8]);
-  uint16_t blockLength=
-    read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]);
   if (blockLength>1024) RETURN(-1);
 
-  struct subscriber *source = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
-  
+  char *id_str = alloca_tohex_bid(id);
+
   if (config.debug.rhizome_tx)
-    DEBUGF("Requested blocks for %s @%llx", alloca_tohex_bid(&mdp->out.payload[0]), fileOffset);
+    DEBUGF("Requested blocks for %s @%llx", id_str, fileOffset);
 
   /* Find manifest that corresponds to BID and version.
      If we don't have this combination, then do nothing.
@@ -58,7 +51,7 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
   */
   
   char filehash[SHA512_DIGEST_STRING_LENGTH];
-  if (rhizome_database_filehash_from_id(alloca_tohex_bid(mdp->out.payload), version, filehash)<=0)
+  if (rhizome_database_filehash_from_id(id_str, version, filehash)<=0)
     RETURN(-1);
   
   struct rhizome_read read;
@@ -83,10 +76,10 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
     reply.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
     int send_broadcast=1;
     
-    if (source){
-      if (!(source->reachable&REACHABLE_DIRECT))
+    if (dest){
+      if (!(dest->reachable&REACHABLE_DIRECT))
 	send_broadcast=0;
-      if (source->reachable&REACHABLE_UNICAST && source->interface && source->interface->prefer_unicast)
+      if (dest->reachable&REACHABLE_UNICAST && dest->interface && dest->interface->prefer_unicast)
 	send_broadcast=0;
     }
     
@@ -97,18 +90,16 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
       reply.out.ttl=1;
     }else{
       // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
-      bcopy(mdp->out.src.sid,reply.out.dst.sid,SID_SIZE);
-      reply.out.ttl=64;
+      bcopy(dest->sid, reply.out.dst.sid, SID_SIZE);
     }
     
     reply.out.dst.port=MDP_PORT_RHIZOME_RESPONSE;
     reply.out.queue=OQ_OPPORTUNISTIC;
     reply.out.payload[0]='B'; // reply contains blocks
     // include 16 bytes of BID prefix for identification
-    bcopy(&mdp->out.payload[0],&reply.out.payload[1],16);
+    bcopy(id, &reply.out.payload[1], 16);
     // and version of manifest
-    bcopy(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES],
-	  &reply.out.payload[1+16],8);
+    bcopy(&version, &reply.out.payload[1+16], sizeof(uint64_t));
     
     int i;
     for(i=0;i<32;i++){
@@ -147,6 +138,22 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 
   RETURN(ret);
   OUT();
+}
+
+int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
+{
+  uint64_t version=
+    read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]);
+  uint64_t fileOffset=
+    read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8]);
+  uint32_t bitmap=
+    read_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8]);
+  uint16_t blockLength=
+    read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]);
+
+  struct subscriber *source = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
+
+  return rhizome_mdp_send_block(source, &mdp->out.payload[0], version, fileOffset, bitmap, blockLength);
 }
 
 int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
