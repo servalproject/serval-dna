@@ -28,9 +28,7 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   case 38400: baud_rate = B38400; break;
   default:
   case 57600: baud_rate = B57600; break;
-#ifdef B11520
-  case 115200: baud_rate = B11520; break;
-#endif
+  case 115200: baud_rate = B115200; break;
   case 230400: baud_rate = B230400; break;
   }
 
