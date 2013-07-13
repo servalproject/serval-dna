@@ -22,6 +22,7 @@
 
 #include "xprintf.h"
 #include "log.h"
+#include <stdint.h>
 
 #ifdef HAVE_JNI_H
 #include <jni.h>
@@ -45,7 +46,7 @@ struct cli_context{
 struct cli_schema {
   int (*function)(const struct cli_parsed *parsed, struct cli_context *context);
   const char *words[COMMAND_LINE_MAX_LABELS];
-  unsigned long long flags;
+  uint64_t flags;
 #define CLIFLAG_PERMISSIVE_CONFIG   (1<<0) /* Accept defective configuration file */
   const char *description; // describe this invocation
 };

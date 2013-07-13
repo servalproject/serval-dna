@@ -758,7 +758,7 @@ int rhizome_server_simple_http_response(rhizome_http_request *r, int result, con
   return rhizome_server_set_response(r, &hr);
 }
 
-int rhizome_server_http_response_header(rhizome_http_request *r, int result, const char *mime_type, unsigned long long bytes)
+int rhizome_server_http_response_header(rhizome_http_request *r, int result, const char *mime_type, uint64_t bytes)
 {
   struct http_response hr;
   bzero(&hr, sizeof hr);

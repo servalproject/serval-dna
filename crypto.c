@@ -4,8 +4,8 @@
 
 // verify a signature against a public sas key.
 int crypto_verify_signature(unsigned char *sas_key, 
-			    unsigned char *content, unsigned long long content_len, 
-			    unsigned char *signature_block, unsigned long long signature_len)
+			    unsigned char *content, int content_len, 
+			    unsigned char *signature_block, int signature_len)
 {
   IN();
   
@@ -52,8 +52,8 @@ int crypto_verify_message(struct subscriber *subscriber, unsigned char *message,
 
 // generate a signature for this raw content, copy the signature to the address requested.
 int crypto_create_signature(unsigned char *key, 
-			    unsigned char *content, unsigned long long content_len, 
-			    unsigned char *signature, unsigned long long *sig_length)
+			    unsigned char *content, int content_len, 
+			    unsigned char *signature, int *sig_length)
 {
   IN();
   
@@ -89,7 +89,7 @@ int crypto_sign_message(struct subscriber *source, unsigned char *content, int b
   unsigned char hash[crypto_hash_sha512_BYTES];
   crypto_hash_sha512(hash, content, *content_len);
   
-  unsigned long long sig_length = SIGNATURE_BYTES;
+  int sig_length = SIGNATURE_BYTES;
   
   int ret=crypto_create_signature(key, hash, crypto_hash_sha512_BYTES, &content[*content_len], &sig_length);
   *content_len+=sig_length;

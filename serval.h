@@ -806,7 +806,7 @@ extern int last_radio_rssi;
 extern int last_radio_temperature;
 int rhizome_active_fetch_count();
 int rhizome_active_fetch_bytes_received(int q);
-extern long long bundles_available;
+extern int64_t bundles_available;
 extern char crash_handler_clue[1024];
 
 

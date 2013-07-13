@@ -74,7 +74,7 @@ sqlite3 *rhizome_db=NULL;
 /* XXX Requires a messy join that might be slow. */
 int rhizome_manifest_priority(sqlite_retry_state *retry, const char *id)
 {
-  long long result = 0;
+  int64_t result = 0;
   if (sqlite_exec_int64_retry(retry, &result,
 	"select max(grouplist.priorty) from grouplist,manifests,groupmemberships"
 	" where manifests.id='%s'"
@@ -227,7 +227,7 @@ int rhizome_opendb()
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
-  long long version;
+  int64_t version;
   if (sqlite_exec_int64_retry(&retry, &version, "PRAGMA user_version;") == -1)
     RETURN(-1);
   
@@ -573,7 +573,7 @@ int _sqlite_exec_void_retry_loglevel(struct __sourceloc __whence, int log_level,
   return ret;
 }
 
-static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *retry, long long *result, const char *sqlformat, va_list ap)
+static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *retry, int64_t *result, const char *sqlformat, va_list ap)
 {
   strbuf stmt = strbuf_alloca(8192);
   strbuf_vsprintf(stmt, sqlformat, ap);
@@ -610,7 +610,7 @@ static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int _sqlite_exec_int64(struct __sourceloc __whence, long long *result, const char *sqlformat,...)
+int _sqlite_exec_int64(struct __sourceloc __whence, int64_t *result, const char *sqlformat,...)
 {
   va_list ap;
   va_start(ap, sqlformat);
@@ -627,7 +627,7 @@ int _sqlite_exec_int64(struct __sourceloc __whence, long long *result, const cha
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int _sqlite_exec_int64_retry(struct __sourceloc __whence, sqlite_retry_state *retry, long long *result, const char *sqlformat,...)
+int _sqlite_exec_int64_retry(struct __sourceloc __whence, sqlite_retry_state *retry, int64_t *result, const char *sqlformat,...)
 {
   va_list ap;
   va_start(ap, sqlformat);
@@ -686,11 +686,11 @@ int _sqlite_vexec_strbuf_retry(struct __sourceloc __whence, sqlite_retry_state *
   return sqlite_code_ok(stepcode) && ret != -1 ? rowcount : -1;
 }
 
-long long rhizome_database_used_bytes()
+int64_t rhizome_database_used_bytes()
 {
-  long long db_page_size;
-  long long db_page_count;
-  long long db_free_page_count;
+  int64_t db_page_size;
+  int64_t db_page_count;
+  int64_t db_free_page_count;
   if (	sqlite_exec_int64(&db_page_size, "PRAGMA page_size;") == -1LL
     ||  sqlite_exec_int64(&db_page_count, "PRAGMA page_count;") == -1LL
     ||	sqlite_exec_int64(&db_free_page_count, "PRAGMA free_count;") == -1LL
@@ -1190,7 +1190,7 @@ void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCoun
 int rhizome_update_file_priority(const char *fileid)
 {
   /* work out the highest priority of any referrer */
-  long long highestPriority = -1;
+  int64_t highestPriority = -1;
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   if (sqlite_exec_int64_retry(&retry, &highestPriority,
 	"SELECT max(grouplist.priority) FROM MANIFESTS,GROUPMEMBERSHIPS,GROUPLIST"

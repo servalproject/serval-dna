@@ -384,7 +384,7 @@ char *rhizome_manifest_get(const rhizome_manifest *m, const char *var, char *out
   return NULL;
 }
 
-long long rhizome_manifest_get_ll(rhizome_manifest *m, const char *var)
+int64_t rhizome_manifest_get_ll(rhizome_manifest *m, const char *var)
 {
   if (!m)
     return -1;
@@ -454,7 +454,7 @@ int rhizome_manifest_set(rhizome_manifest *m, const char *var, const char *value
   return 0;
 }
 
-int rhizome_manifest_set_ll(rhizome_manifest *m,char *var,long long value)
+int rhizome_manifest_set_ll(rhizome_manifest *m, char *var, int64_t value)
 {
   char svalue[100];
 

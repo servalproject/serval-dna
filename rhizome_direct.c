@@ -745,7 +745,7 @@ void rhizome_direct_bundle_iterator_free(rhizome_direct_bundle_cursor **c)
 */
 int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTES],
 			    unsigned char bid_high[RHIZOME_MANIFEST_ID_BYTES],
-			    long long size_low,long long size_high,
+			    int64_t size_low, int64_t size_high,
 			    const unsigned char bid_max[RHIZOME_MANIFEST_ID_BYTES],
 			    unsigned char *bars_out,
 			    int bars_requested)

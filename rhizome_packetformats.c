@@ -33,7 +33,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 /* Android doesn't have log2(), and we don't really need to do floating point
    math to work out how big a file is.
  */
-int log2ll(unsigned long long x)
+int log2ll(uint64_t x)
 {
   unsigned char lookup[16]={0,1,2,2,3,3,3,3,4,4,4,4,4,4,4,4};
   int v=-1;
@@ -125,16 +125,16 @@ int64_t rhizome_bar_version(const unsigned char *bar)
 
 /* This function only displays the first 8 bytes, and should not be used
    for comparison. */
-unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar)
+uint64_t rhizome_bar_bidprefix_ll(unsigned char *bar)
 {
-  long long bidprefix=0;
+  uint64_t bidprefix=0;
   int i;
   for(i=0;i<8;i++) 
-    bidprefix|=((unsigned long long)bar[RHIZOME_BAR_PREFIX_OFFSET+7-i])<<(8*i);
+    bidprefix|=((uint64_t)bar[RHIZOME_BAR_PREFIX_OFFSET+7-i])<<(8*i);
   return bidprefix;
 }
 
-static int append_bars(struct overlay_buffer *e, sqlite_retry_state *retry, const char *sql, long long *last_rowid){
+static int append_bars(struct overlay_buffer *e, sqlite_retry_state *retry, const char *sql, int64_t *last_rowid){
   int count=0;
   
   sqlite3_stmt *statement=sqlite_prepare(retry, sql, *last_rowid);
@@ -172,7 +172,7 @@ static int append_bars(struct overlay_buffer *e, sqlite_retry_state *retry, cons
 /* Periodically queue BAR advertisements
  Always advertise the most recent 3 manifests in the table, cycle through the rest of the table, adding 17 BAR's at a time
  */
-long long bundles_available=0;
+int64_t bundles_available=0;
 void overlay_rhizome_advertise(struct sched_ent *alarm){
   bundles_available=0;
   static int64_t bundle_last_rowid=INT64_MAX;
@@ -207,7 +207,7 @@ void overlay_rhizome_advertise(struct sched_ent *alarm){
   ob_append_byte(frame->payload, 2);
   ob_append_ui16(frame->payload, rhizome_http_server_port);
   
-  long long rowid=0;
+  int64_t rowid=0;
   int count = append_bars(frame->payload, &retry, 
 			  "SELECT BAR,ROWID FROM MANIFESTS ORDER BY ROWID DESC LIMIT 3", 
 			  &rowid);

@@ -914,11 +914,11 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   // assume we wont hear any responses
   int ret=1;
   int icount=atoi(count);
-  time_ms_t timeout_ms = 1000;
+  int64_t timeout_ms = 1000;
   str_to_uint64_interval_ms(opt_timeout, &timeout_ms, NULL);
   if (timeout_ms == 0)
     timeout_ms = 60 * 60000; // 1 hour...
-  time_ms_t interval_ms = 1000;
+  int64_t interval_ms = 1000;
   str_to_uint64_interval_ms(opt_interval, &interval_ms, NULL);
 
   overlay_mdp_frame mdp;

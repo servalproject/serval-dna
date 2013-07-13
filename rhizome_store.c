@@ -6,7 +6,7 @@
 #define RHIZOME_BUFFER_MAXIMUM_SIZE (1024*1024)
 
 int rhizome_exists(const char *fileHash){
-  long long gotfile = 0;
+  int64_t gotfile = 0;
   
   if (sqlite_exec_int64(&gotfile, 
 	"SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;", 

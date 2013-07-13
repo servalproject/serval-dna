@@ -311,7 +311,7 @@ int rhizome_any_fetch_queued()
 
 struct rhizome_manifest_version_cache_slot {
   unsigned char idprefix[24];
-  long long version;
+  int64_t version;
 };
 
 struct rhizome_manifest_version_cache_slot rhizome_manifest_version_cache[RHIZOME_VERSION_CACHE_SIZE][RHIZOME_VERSION_CACHE_ASSOCIATIVITY];
@@ -364,7 +364,7 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
   // TODO, work out why the cache was failing and fix it, then prove that it is faster than accessing the database.
   
   // skip the cache for now
-  long long dbVersion = -1;
+  int64_t dbVersion = -1;
   if (sqlite_exec_int64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id='%s';", id) == -1)
     return WHY("Select failure");
   if (dbVersion >= m->version) {
@@ -394,7 +394,7 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
 	}
       if (i==24) {
 	/* Entries match -- so check version */
-	long long rev = rhizome_manifest_get_ll(m,"version");
+	int64_t rev = rhizome_manifest_get_ll(m,"version");
 	if (1) DEBUGF("cached version %lld vs manifest version %lld", entry->version,rev);
 	if (rev > entry->version) {
 	  /* If we only have an old version, try refreshing the cache
@@ -446,8 +446,8 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
      and require regular database queries, and that memory allowing, we should use
      a fairly large cache here.
  */
-  long long manifest_version = rhizome_manifest_get_ll(m, "version");
-  long long count;
+  int64_t manifest_version = rhizome_manifest_get_ll(m, "version");
+  int64_t count;
   switch (sqlite_exec_int64(&count, "select count(*) from manifests where id='%s' and version>=%lld", id, manifest_version)) {
     case -1:
       return WHY("database error reading stored manifest version");
@@ -455,7 +455,7 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
       if (count) {
 	/* Okay, we have a stored version which is newer, so update the cache
 	  using a random replacement strategy. */
-	long long stored_version;
+	int64_t stored_version;
 	if (sqlite_exec_int64(&stored_version, "select version from manifests where id='%s'", id) < 1)
 	  return WHY("database error reading stored manifest version"); // database is broken, we can't confirm that it is here
 	DEBUGF("stored version=%lld, manifest_version=%lld (not fetching; remembering in cache)",
@@ -976,7 +976,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   }
 
   if (config.debug.rhizome_rx) {
-    long long stored_version;
+    int64_t stored_version;
     if (sqlite_exec_int64(&stored_version, "select version from manifests where id='%s'", bid) > 0)
       DEBUGF("   is new (have version %lld)", stored_version);
   }

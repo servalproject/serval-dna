@@ -306,7 +306,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
   
   str_toupper_inplace(id);
   /* Discard the new manifest unless it is newer than the most recent known version with the same ID */
-  long long storedversion = -1;
+  int64_t storedversion = -1;
   switch (sqlite_exec_int64(&storedversion, "SELECT version from manifests where id='%s';", id)) {
     case -1:
       return WHY("Select failed");
