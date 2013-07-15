@@ -116,7 +116,7 @@ struct rhizome_fetch_candidate queue4[2];
 struct rhizome_fetch_candidate queue5[2];
 
 #define NELS(a) (sizeof (a) / sizeof *(a))
-#define slotno(slot) ((struct rhizome_fetch_queue *)(slot) - &rhizome_fetch_queues[0])
+#define slotno(slot) (int)((struct rhizome_fetch_queue *)(slot) - &rhizome_fetch_queues[0])
 
 /* Static allocation of the queue structures.  Must be in order of ascending log_size_threshold.
  */
@@ -240,7 +240,7 @@ static struct rhizome_fetch_candidate *rhizome_fetch_insert(struct rhizome_fetch
   struct rhizome_fetch_candidate * const c = &q->candidate_queue[i];
   struct rhizome_fetch_candidate * e = &q->candidate_queue[q->candidate_queue_size - 1];
   if (config.debug.rhizome_rx)
-    DEBUGF("insert queue[%d] candidate[%d]", q - rhizome_fetch_queues, i);
+    DEBUGF("insert queue[%d] candidate[%d]", (int)(q - rhizome_fetch_queues), i);
   assert(i >= 0 && i < q->candidate_queue_size);
   assert(i == 0 || c[-1].manifest);
   if (e->manifest) // queue is full
@@ -266,7 +266,7 @@ static void rhizome_fetch_unqueue(struct rhizome_fetch_queue *q, int i)
   assert(i >= 0 && i < q->candidate_queue_size);
   struct rhizome_fetch_candidate *c = &q->candidate_queue[i];
   if (config.debug.rhizome_rx)
-    DEBUGF("unqueue queue[%d] candidate[%d] manifest=%p", q - rhizome_fetch_queues, i, c->manifest);
+    DEBUGF("unqueue queue[%d] candidate[%d] manifest=%p", (int)(q - rhizome_fetch_queues), i, c->manifest);
   if (c->manifest) {
     rhizome_manifest_free(c->manifest);
     c->manifest = NULL;
@@ -368,7 +368,7 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
   if (sqlite_exec_int64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id='%s';", id) == -1)
     return WHY("Select failure");
   if (dbVersion >= m->version) {
-    if (0) WHYF("We already have %s (%lld vs %lld)", id, dbVersion, m->version);
+    if (0) WHYF("We already have %s (%"PRId64" vs %"PRId64")", id, dbVersion, m->version);
     return -1;
   }
   return 0;
@@ -395,24 +395,24 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
       if (i==24) {
 	/* Entries match -- so check version */
 	int64_t rev = rhizome_manifest_get_ll(m,"version");
-	if (1) DEBUGF("cached version %lld vs manifest version %lld", entry->version,rev);
+	if (1) DEBUGF("cached version %"PRId64" vs manifest version %"PRId64, entry->version,rev);
 	if (rev > entry->version) {
 	  /* If we only have an old version, try refreshing the cache
 	     by querying the database */
 	  if (sqlite_exec_int64(&entry->version, "select version from manifests where id='%s'", id) != 1)
 	    return WHY("failed to select stored manifest version");
-	  DEBUGF("Refreshed stored version from database: entry->version=%lld", entry->version);
+	  DEBUGF("Refreshed stored version from database: entry->version=%"PRId64, entry->version);
 	}
 	if (rev < entry->version) {
 	  /* the presented manifest is older than we have.
 	     This allows the caller to know that they can tell whoever gave them the
 	     manifest it's time to get with the times.  May or not ever be
 	     implemented, but it would be nice. XXX */
-	  WHYF("cached version is NEWER than presented version (%lld is newer than %lld)",
+	  WHYF("cached version is NEWER than presented version (%"PRId64" is newer than %"PRId64")",
 	      entry->version,rev);
 	  return -2;
 	} else if (rev<=entry->version) {
-	  /* the presented manifest is already stored. */	   
+	  /* the presented manifest is already stored. */
 	  if (1) DEBUG("cached version is NEWER/SAME as presented version");
 	  return -1;
 	} else {
@@ -458,7 +458,7 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
 	int64_t stored_version;
 	if (sqlite_exec_int64(&stored_version, "select version from manifests where id='%s'", id) < 1)
 	  return WHY("database error reading stored manifest version"); // database is broken, we can't confirm that it is here
-	DEBUGF("stored version=%lld, manifest_version=%lld (not fetching; remembering in cache)",
+	DEBUGF("stored version=%"PRId64", manifest_version=%"PRId64" (not fetching; remembering in cache)",
 	    stored_version,manifest_version);
 	slot=random()%RHIZOME_VERSION_CACHE_ASSOCIATIVITY;
 	struct rhizome_manifest_version_cache_slot *entry = &rhizome_manifest_version_cache[bin][slot];
@@ -701,7 +701,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   */
 
   if (config.debug.rhizome_rx)
-    DEBUGF("Fetching bundle slot=%d bid=%s version=%lld size=%lld peerip=%s",
+    DEBUGF("Fetching bundle slot=%d bid=%s version=%"PRId64" size=%"PRId64" peerip=%s",
 	   slotno(slot),
 	   bid,
 	   m->version,
@@ -794,8 +794,8 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   if (schedule_fetch(slot) == -1)
     RETURN(-1);
   if (config.debug.rhizome_rx)
-    DEBUGF("   started fetch bid %s version 0x%llx into %s, slot=%d filehash=%s",
-	   alloca_tohex_bid(slot->bid), (long long) slot->bidVersion,
+    DEBUGF("   started fetch bid %s version 0x%"PRIx64" into %s, slot=%d filehash=%s",
+	   alloca_tohex_bid(slot->bid), slot->bidVersion,
 	   alloca_str_toprint(slot->manifest->dataFileName), slotno(slot), m->fileHexHash);
   RETURN(STARTED);
 }
@@ -966,7 +966,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   int priority=100; /* normal priority */
 
   if (config.debug.rhizome_rx)
-    DEBUGF("Considering import bid=%s version=%lld size=%lld priority=%d:", bid, m->version, m->fileLength, priority);
+    DEBUGF("Considering import bid=%s version=%"PRId64" size=%"PRId64" priority=%d:", bid, m->version, m->fileLength, priority);
 
   if (rhizome_manifest_version_cache_lookup(m)) {
     if (config.debug.rhizome_rx)
@@ -978,7 +978,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   if (config.debug.rhizome_rx) {
     int64_t stored_version;
     if (sqlite_exec_int64(&stored_version, "select version from manifests where id='%s'", bid) > 0)
-      DEBUGF("   is new (have version %lld)", stored_version);
+      DEBUGF("   is new (have version %"PRId64")", stored_version);
   }
 
   if (m->fileLength == 0) {
@@ -998,7 +998,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   // Find the proper queue for the payload.  If there is none suitable, it is an error.
   struct rhizome_fetch_queue *qi = rhizome_find_queue(m->fileLength);
   if (!qi) {
-    WHYF("No suitable fetch queue for bundle size=%lld", m->fileLength);
+    WHYF("No suitable fetch queue for bundle size=%"PRId64, m->fileLength);
     rhizome_manifest_free(m);
     RETURN(-1);
   }
@@ -1138,7 +1138,7 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
 
   long long now=gettime_ms();
   if (now-slot->last_write_time>slot->mdpIdleTimeout) {
-    DEBUGF("MDP connection timed out: last RX %lldms ago (read %d of %d bytes)",
+    DEBUGF("MDP connection timed out: last RX %lldms ago (read %"PRId64" of %"PRId64" bytes)",
 	   now-slot->last_write_time,
 	   slot->write_state.file_offset + slot->write_state.data_size,slot->write_state.file_length);
     rhizome_fetch_close(slot);
@@ -1146,7 +1146,7 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
     return;
   }
   if (config.debug.rhizome_rx)
-    DEBUGF("Timeout: Resending request for slot=0x%p (%d of %d received)",
+    DEBUGF("Timeout: Resending request for slot=0x%p (%"PRId64" of %"PRId64" received)",
 	   slot,slot->write_state.file_offset + slot->write_state.data_size,slot->write_state.file_length);
   if (slot->bidP)
     rhizome_fetch_mdp_requestblocks(slot);
@@ -1202,7 +1202,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   write_uint16(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4],slot->mdpRXBlockLength);  
 
   if (config.debug.rhizome_tx)
-    DEBUGF("src sid=%s, dst sid=%s, mdpRXWindowStart=0x%x",
+    DEBUGF("src sid=%s, dst sid=%s, mdpRXWindowStart=0x%"PRIx64,
 	   alloca_tohex_sid(mdp.out.src.sid),alloca_tohex_sid(mdp.out.dst.sid),
 	   slot->write_state.file_offset + slot->write_state.data_size);
 
@@ -1276,7 +1276,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
   }
 
   if (config.debug.rhizome_rx)
-    DEBUGF("Trying to switch to MDP for Rhizome fetch: slot=0x%p (%d bytes)",
+    DEBUGF("Trying to switch to MDP for Rhizome fetch: slot=0x%p (%"PRId64" bytes)",
 	   slot,slot->write_state.file_length);
   
   /* close socket and stop watching it */
@@ -1538,7 +1538,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	return;
       } else {
 	if (config.debug.rhizome_rx)
-	  DEBUGF("Empty read, closing connection: received %lld of %lld bytes",
+	  DEBUGF("Empty read, closing connection: received %"PRId64" of %"PRId64" bytes",
 		slot->write_state.file_offset + slot->write_state.data_size,slot->write_state.file_length);
 	rhizome_fetch_switch_to_mdp(slot);
 	return;
@@ -1590,7 +1590,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	  if (slot->write_state.file_length==-1)
 	    slot->write_state.file_length=parts.content_length;
 	  else if (parts.content_length != slot->write_state.file_length)
-	    WARNF("Expected content length %lld, got %lld", slot->write_state.file_length, parts.content_length);
+	    WARNF("Expected content length %"PRId64", got %"PRId64, slot->write_state.file_length, parts.content_length);
 	  /* We have all we need.  The file is already open, so just write out any initial bytes of
 	     the body we read.
 	  */

@@ -145,7 +145,7 @@ keyring_file *keyring_open(const char *path)
       }
       r = fread(k->contexts[0]->KeyRingSalt, k->contexts[0]->KeyRingSaltLen, 1, k->file);
       if (r!=1) {
-	WHYF_perror("fread(%p, %ld, 1, %s)", k->contexts[0]->KeyRingSalt, k->contexts[0]->KeyRingSaltLen, alloca_str_toprint(path));
+	WHYF_perror("fread(%p, %d, 1, %s)", k->contexts[0]->KeyRingSalt, k->contexts[0]->KeyRingSaltLen, alloca_str_toprint(path));
 	WHYF("Could not read salt from keyring file %s", path);
 	keyring_free(k);
 	return NULL;
@@ -614,7 +614,7 @@ static int keyring_pack_identity(keyring_context *c, keyring_identity *id, unsig
     // Ensure the correct number of bytes were written.
     unsigned packed = rotbuf_delta(&rbstart, &rbuf);
     if (packed != keypair_len) {
-      WHYF("key type 0x%02x packed wrong length (packed %u, expecting %u)", ktype, packed, keypair_len);
+      WHYF("key type 0x%02x packed wrong length (packed %u, expecting %u)", ktype, packed, (int)keypair_len);
       goto scram;
     }
   }
@@ -711,7 +711,7 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
       break;
     if (ktype < NELS(keytypes) && kt->unpacker) {
       if (config.debug.keyring)
-	DEBUGF("unpack key type = 0x%02x at offset %u", ktype, rotbuf_position(&rbo));
+	DEBUGF("unpack key type = 0x%02x at offset %u", ktype, (int)rotbuf_position(&rbo));
       struct rotbuf rbstart = rbuf;
       // Create keyring entries to hold the key pair.
       keypair *kp = NULL;
@@ -738,7 +738,7 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
 	// If the number of bytes unpacked does not match the keypair length, it is probably an
 	// empty slot.
 	if (config.debug.keyring)
-	  DEBUGF("key type 0x%02x unpacked wrong length (unpacked %u, expecting %u)", ktype, unpacked, keypair_len);
+	  DEBUGF("key type 0x%02x unpacked wrong length (unpacked %u, expecting %u)", ktype, (int)unpacked, (int)keypair_len);
 	keyring_free_identity(id);
 	return NULL;
       }
@@ -761,7 +761,7 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
       }
     } else {
       if (config.debug.keyring)
-	DEBUGF("unsupported key type 0x%02x at offset %u, skipping %u bytes", ktype, rotbuf_position(&rbo), keypair_len);
+	DEBUGF("unsupported key type 0x%02x at offset %u, skipping %u bytes", ktype, (int)rotbuf_position(&rbo), (int)keypair_len);
       rotbuf_advance(&rbuf, keypair_len); // skip
     }
   }

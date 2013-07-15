@@ -279,7 +279,7 @@ void rhizome_server_poll(struct sched_ent *alarm)
       }
       rhizome_http_request *request = calloc(sizeof(rhizome_http_request), 1);
       if (request == NULL) {
-	WHYF_perror("calloc(%u, 1)", sizeof(rhizome_http_request));
+	WHYF_perror("calloc(%u, 1)", (int)sizeof(rhizome_http_request));
 	WHY("Cannot respond to request, out of memory");
       } else {
 	request->uuid=rhizome_http_request_uuid_counter++;
@@ -366,7 +366,7 @@ int rhizome_server_sql_query_http_response(rhizome_http_request *r,
   r->buffer[r->buffer_length+1]=0x01; /* version of response */
 
   if (config.debug.rhizome_tx)
-    DEBUGF("Found %lld records",r->source_count);
+    DEBUGF("Found %"PRId64" records",r->source_count);
   /* Number of records we intend to return */
   r->buffer[r->buffer_length+4]=(r->source_count>>0)&0xff;
   r->buffer[r->buffer_length+5]=(r->source_count>>8)&0xff;
@@ -658,7 +658,7 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	  DEBUGF("Row not found");
 	  rhizome_server_simple_http_response(r, 404, "<html><h1>Payload not found</h1></html>\r\n");
 	} else {
-	  DEBUGF("row id = %d",r->rowid);
+	  DEBUGF("row id = %"PRId64,r->rowid);
 	  r->source_index = 0;
 	  r->blob_end = sqlite3_blob_bytes(blob);
 	  rhizome_server_http_response_header(r, 200, "application/binary", r->blob_end - r->source_index);

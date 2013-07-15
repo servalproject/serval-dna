@@ -243,7 +243,7 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	} else if (strcasecmp(var, "name") == 0) {
 	  if (value[0] == '\0') {
 	    if (config.debug.rejecteddata)
-	      WARNF("Empty name", value);
+	      WARN("Empty name");
 	    m->errors++;
 	  }
 	  // TODO: complain if service is not MeshMS
@@ -458,7 +458,7 @@ int rhizome_manifest_set_ll(rhizome_manifest *m, char *var, int64_t value)
 {
   char svalue[100];
 
-  snprintf(svalue,100,"%lld",value);
+  snprintf(svalue,100, "%" PRId64, value);
 
   return rhizome_manifest_set(m,var,svalue);
 }

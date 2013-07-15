@@ -62,13 +62,13 @@ int crypto_create_signature(unsigned char *key,
   
   unsigned char sig[content_len + SIGNATURE_BYTES];
   /* Why does this primitive copy the whole input message? We don't want that message format, it just seems like a waste of effor to me. */
-  unsigned long long length = 0;
+  unsigned long long int length = 0;
   crypto_sign_edwards25519sha512batch(sig,&length,
 				      content,content_len,
 				      key);
   
   if (length != sizeof(sig))
-    RETURN(WHYF("Signing seems to have failed (%d, expected %d)",length,sizeof(sig)));
+    RETURN(WHYF("Signing seems to have failed (%d, expected %d)",(int)length,(int)sizeof(sig)));
   
   bcopy(sig, signature, SIGNATURE_BYTES);
   *sig_length=SIGNATURE_BYTES;

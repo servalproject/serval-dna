@@ -185,10 +185,10 @@ int monitor_client_read(int fd, struct monitor_state *res, struct monitor_comman
 #endif
 	return 0;
     }
-    WHYF_perror("read(%d, %p, %ld)", fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset);
+    WHYF_perror("read(%d, %p, %d)", fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset);
     return -1;
   } else if (bytesRead == 0) {
-    WHYF("read(%d, %p, %ld) returned %d", fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset, bytesRead);
+    WHYF("read(%d, %p, %d) returned %d", fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset, bytesRead);
     return -1;
   }
   res->bufferBytes+=bytesRead;

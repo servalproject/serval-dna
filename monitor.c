@@ -104,13 +104,13 @@ int monitor_setup_sockets()
 
   int reuseP=1;
   if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof reuseP) < 0) {
-    WHYF_perror("setsockopt(%d, SOL_SOCKET, SO_REUSEADDR, &%d, %d)", sock, reuseP, sizeof reuseP);
+    WHYF_perror("setsockopt(%d, SOL_SOCKET, SO_REUSEADDR, &%d, %d)", sock, reuseP, (int)sizeof reuseP);
     WHY("Could not indicate reuse addresses. Not necessarily a problem (yet)");
   }
   
   int send_buffer_size=64*1024;    
   if(setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &send_buffer_size, sizeof send_buffer_size)==-1)
-    WHYF_perror("setsockopt(%d, SOL_SOCKET, SO_RCVBUF, &%d, %d)", sock, send_buffer_size, sizeof send_buffer_size);
+    WHYF_perror("setsockopt(%d, SOL_SOCKET, SO_RCVBUF, &%d, %d)", sock, send_buffer_size, (int)sizeof send_buffer_size);
 
   if (config.debug.io || config.debug.verbose_io)
     DEBUGF("Monitor server socket bound to %s", alloca_toprint(-1, &name, len));
@@ -318,7 +318,7 @@ static void monitor_new_client(int s) {
     goto error;
   }
   if (len < sizeof(ucred)) {
-    WHYF("getsockopt(SO_PEERCRED) returned the wrong size (Got %d expected %d)", len, sizeof(ucred));
+    WHYF("getsockopt(SO_PEERCRED) returned the wrong size (Got %d expected %d)", len, (int)sizeof(ucred));
     goto error;
   }
   otheruid = ucred.uid;

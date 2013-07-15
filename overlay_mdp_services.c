@@ -39,7 +39,7 @@ int rhizome_mdp_send_block(struct subscriber *dest, unsigned char *id, uint64_t 
   char *id_str = alloca_tohex_bid(id);
 
   if (config.debug.rhizome_tx)
-    DEBUGF("Requested blocks for %s @%llx", id_str, fileOffset);
+    DEBUGF("Requested blocks for %s @%"PRIx64, id_str, fileOffset);
 
   /* Find manifest that corresponds to BID and version.
      If we don't have this combination, then do nothing.
@@ -174,7 +174,7 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
       int count=mdp->out.payload_length-(1+16+8+8);
       unsigned char *bytes=&mdp->out.payload[1+16+8+8];
       if (config.debug.rhizome_rx) 
-	DEBUGF("Received %d bytes @ 0x%llx for %s* version 0x%llx",
+	DEBUGF("Received %d bytes @ 0x%"PRIx64" for %s* version 0x%"PRIx64,
 	       count,offset,alloca_tohex(bidprefix,16),version);
 
       /* Now see if there is a slot that matches.  If so, then

@@ -74,7 +74,7 @@ static void rhizome_sync_request(struct subscriber *subscriber, uint64_t token, 
 
   mdp.out.payload_length = ob_position(b);
   if (config.debug.rhizome)
-    DEBUGF("Sending request to %s for BARs from %lld %s", alloca_tohex_sid(subscriber->sid), token, forwards?"forwards":"backwards");
+    DEBUGF("Sending request to %s for BARs from %"PRIu64" %s", alloca_tohex_sid(subscriber->sid), token, forwards?"forwards":"backwards");
   overlay_mdp_dispatch(&mdp,0,NULL,0);
   ob_free(b);
 }
@@ -281,7 +281,7 @@ static void sync_process_bar_list(struct subscriber *subscriber, struct rhizome_
 	added=1;
     }
     if (config.debug.rhizome)
-      DEBUGF("Synced %llu - %llu with %s", state->sync_start, state->sync_end, alloca_tohex_sid(subscriber->sid));
+      DEBUGF("Synced %"PRIu64" - %"PRIu64" with %s", state->sync_start, state->sync_end, alloca_tohex_sid(subscriber->sid));
     if (added)
       state->next_request = gettime_ms();
   }
@@ -404,7 +404,7 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
   if (count){
     mdp.out.payload_length = ob_position(b);
     if (config.debug.rhizome)
-      DEBUGF("Sending %d BARs from %llu to %llu", count, token, last);
+      DEBUGF("Sending %d BARs from %"PRIu64" to %"PRIu64, count, token, last);
     overlay_mdp_dispatch(&mdp,0,NULL,0);
   }
   ob_free(b);

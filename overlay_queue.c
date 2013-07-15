@@ -522,7 +522,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     }else if(((mdp_sequence - frame->mdp_sequence)&0xFFFF) >= 64){
       // too late, we've sent too many packets for the next hop to correctly de-duplicate
       if (config.debug.overlayframes)
-        DEBUGF("Retransmition of frame %p mdp seq %d, is too late to be de-duplicated", frame, frame->mdp_sequence, frame->interface_sent_sequence[packet->i], packet->seq);
+        DEBUGF("Retransmition of frame %p mdp seq %d, is too late to be de-duplicated", frame, frame->mdp_sequence);
       frame = overlay_queue_remove(queue, frame);
       continue;
     }else{

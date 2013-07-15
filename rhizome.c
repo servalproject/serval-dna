@@ -314,7 +314,8 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
       if (config.debug.rhizome) DEBUG("No existing manifest");
       break;
     case 1:
-      if (config.debug.rhizome) DEBUGF("Found existing version=%lld, new version=%lld", storedversion, m_in->version);
+      if (config.debug.rhizome) 
+	DEBUGF("Found existing version=%"PRId64", new version=%"PRId64, storedversion, m_in->version);
       if (m_in->version < storedversion)
 	return WHY("Newer version exists");
       if (m_in->version == storedversion)

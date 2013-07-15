@@ -103,7 +103,7 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
     /* Get rowid for inserted row, so that we can modify the blob */
     write->blob_rowid = sqlite3_last_insert_rowid(rhizome_db);
     if (config.debug.rhizome_rx)
-      DEBUGF("Got rowid %lld for %s", write->blob_rowid, write->id);
+      DEBUGF("Got rowid %"PRId64" for %s", write->blob_rowid, write->id);
     
   }
   
@@ -139,7 +139,7 @@ int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffe
   IN();
   /* Make sure we aren't being asked to write more data than we expected */
   if (write_state->file_offset + data_size > write_state->file_length)
-    RETURN(WHYF("Too much content supplied, %lld + %d > %lld", 
+    RETURN(WHYF("Too much content supplied, %"PRId64" + %d > %"PRId64,
 		write_state->file_offset, data_size, write_state->file_length));
   
   if (data_size<=0)
@@ -212,7 +212,7 @@ int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffe
   SHA512_Update(&write_state->sha512_context, buffer, data_size);
   write_state->file_offset+=data_size;
   if (config.debug.rhizome)
-    DEBUGF("Written %lld of %lld", write_state->file_offset, write_state->file_length);
+    DEBUGF("Written %"PRId64" of %"PRId64, write_state->file_offset, write_state->file_length);
   RETURN(data_size);
   OUT();
 }
@@ -509,7 +509,7 @@ int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash)
     if ((read->length = lseek(read->blob_fd, 0, SEEK_END)) == -1)
       return WHYF_perror("lseek(%s,0,SEEK_END)", alloca_str_toprint(blob_path));
     if (config.debug.externalblobs)
-      DEBUGF("Opened stored file %s as fd %d, len %llx",blob_path, read->blob_fd, read->length);
+      DEBUGF("Opened stored file %s as fd %d, len %"PRIx64,blob_path, read->blob_fd, read->length);
   }
   read->hash = hash;
   read->offset = 0;
@@ -532,7 +532,7 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
     if (bytes_read == -1)
       RETURN(WHYF_perror("read(%d,%p,%ld)", read_state->blob_fd, buffer, (long)buffer_length));
     if (config.debug.externalblobs)
-      DEBUGF("Read %d bytes from fd %d @%llx", bytes_read, read_state->blob_fd, read_state->offset);
+      DEBUGF("Read %d bytes from fd %d @%"PRIx64, bytes_read, read_state->blob_fd, read_state->offset);
   } else if (read_state->blob_rowid != -1) {
     sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
     do{
@@ -728,7 +728,6 @@ int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m,
   uint64_t old_length = m->fileLength;
   uint64_t copy_length = old_length - advance_by;
   m->fileLength = m->fileLength + new_size - advance_by;
-  DEBUGF("Before %lld, advance %lld, new %lld = %lld, %lld", old_length, advance_by, new_size, copy_length, m->fileLength);
   rhizome_manifest_set_ll(m, "filesize", m->fileLength);
 
   if (advance_by>0){
@@ -744,7 +743,6 @@ int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m,
     goto failure;
 
   if (copy_length>0){
-    DEBUGF("Copying %lld", copy_length);
     struct rhizome_read read_state;
     bzero(&read_state, sizeof read_state);
     ret = rhizome_open_decrypt_read(m, bsk, &read_state, 1);

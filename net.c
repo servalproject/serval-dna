@@ -150,7 +150,7 @@ ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl,
     return WHY_perror("recvmsg");
   
   if (0 && config.debug.packetrx) {
-    DEBUGF("recvmsg returned %lld (flags=%d, msg_controllen=%d)", (long long) len, msg.msg_flags, msg.msg_controllen);
+    DEBUGF("recvmsg returned %d (flags=%d, msg_controllen=%d)", (int) len, msg.msg_flags, (int)msg.msg_controllen);
     dump("received data", buffer, len);
   }
   

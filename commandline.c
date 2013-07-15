@@ -390,7 +390,7 @@ void cli_put_long(struct cli_context *context, int64_t value, const char *delim)
     return;
   }
 #endif
-  cli_printf(context, "%lld",value);
+  cli_printf(context, "%" PRId64, value);
   cli_delim(context, delim);
 }
 
@@ -950,7 +950,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   time_ms_t rx_maxtime=-1;
   time_ms_t rx_ms=0;
   time_ms_t rx_times[1024];
-  long long rx_count=0,tx_count=0;
+  int rx_count=0,tx_count=0;
 
   if (broadcast)
     WARN("broadcast ping packets will not be encrypted");
@@ -1004,7 +1004,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
 	      cli_printf(context, "%s: seq=%d time=%lldms hops=%d %s%s",
 		     alloca_tohex_sid(mdp.in.src.sid),
 		     (*rxseq)-firstSeq+1,
-		     delay,
+		     (long long)delay,
 		     hop_count,
 		     mdp.packetTypeAndFlags&MDP_NOCRYPT?"":" ENCRYPTED",
 		     mdp.packetTypeAndFlags&MDP_NOSIGN?"":" SIGNED");
@@ -1041,7 +1041,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
 
     /* XXX Report final statistics before going */
     cli_printf(context, "--- %s ping statistics ---\n", alloca_tohex_sid_t(ping_sid));
-    cli_printf(context, "%lld packets transmitted, %lld packets received, %3.1f%% packet loss\n",
+    cli_printf(context, "%d packets transmitted, %d packets received, %3.1f%% packet loss\n",
 	   tx_count,rx_count,tx_count?(tx_count-rx_count)*100.0/tx_count:0);
     cli_printf(context, "round-trip min/avg/max/stddev%s = %lld/%.3f/%lld/%.3f ms\n",
 	   (samples<rx_count)?" (stddev calculated from last 1024 samples)":"",
@@ -1432,7 +1432,7 @@ int app_slip_test(const struct cli_parsed *parsed, struct cli_context *context)
     bzero(&state,sizeof state);
     int outlen=slip_encode(SLIP_FORMAT_UPPER7,bufin,len,bufout,8192);
     for(i=0;i<outlen;i++) upper7_decode(&state,bufout[i]);
-    unsigned long crc=Crc32_ComputeBuf( 0, state.dst, state.packet_length);
+    uint32_t crc=Crc32_ComputeBuf( 0, state.dst, state.packet_length);
     if (crc!=state.crc) {
       WHYF("CRC error (%08x vs %08x)",crc,state.crc);
       dump("input",bufin,len);

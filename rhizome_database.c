@@ -988,7 +988,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
   if (sqlite_exec_void_retry(&retry, "COMMIT;") != -1){
     // This message used in tests; do not modify or remove.
     const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-    INFOF("RHIZOME ADD MANIFEST service=%s bid=%s version=%lld",
+    INFOF("RHIZOME ADD MANIFEST service=%s bid=%s version=%"PRId64,
 	  service ? service : "NULL",
 	  alloca_tohex_sid(m->cryptoSignPublic),
 	  m->version
@@ -1027,7 +1027,7 @@ int rhizome_list_manifests(struct cli_context *context, const char *service, con
     strbuf_sprintf(b, " OFFSET %u", offset);
   
   if (strbuf_overrun(b))
-    RETURN(WHYF("SQL command too long: ", strbuf_str(b)));
+    RETURN(WHYF("SQL command too long: %s", strbuf_str(b)));
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare(&retry, "%s", strbuf_str(b));
@@ -1253,7 +1253,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
       DEBUGF("filehash=\"%s\"", filehash);
     sqlite3_bind_text(statement, field++, filehash, -1, SQLITE_STATIC);
   }
-  size_t rows = 0;
+  int rows = 0;
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     ++rows;
     if (config.debug.rhizome) DEBUGF("Row %d", rows);
@@ -1279,7 +1279,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
     }
     const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
     size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
-    long long q_version = sqlite3_column_int64(statement, 2);
+    int64_t q_version = sqlite3_column_int64(statement, 2);
     const char *q_author = (const char *) sqlite3_column_text(statement, 3);
     
     rhizome_manifest *blob_m = rhizome_new_manifest();
@@ -1294,11 +1294,11 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
     } else {
       const char *blob_service = rhizome_manifest_get(blob_m, "service", NULL, 0);
       const char *blob_id = rhizome_manifest_get(blob_m, "id", NULL, 0);
-      long long blob_version = rhizome_manifest_get_ll(blob_m, "version");
+      int64_t blob_version = rhizome_manifest_get_ll(blob_m, "version");
       const char *blob_filehash = rhizome_manifest_get(blob_m, "filehash", NULL, 0);
-      long long blob_filesize = rhizome_manifest_get_ll(blob_m, "filesize");
+      int64_t blob_filesize = rhizome_manifest_get_ll(blob_m, "filesize");
       if (config.debug.rhizome)
-	DEBUGF("Consider manifest.service=%s manifest.id=%s manifest.version=%lld", blob_service, q_manifestid, blob_version);
+	DEBUGF("Consider manifest.service=%s manifest.id=%s manifest.version=%"PRId64, blob_service, q_manifestid, blob_version);
       if (q_author) {
 	if (config.debug.rhizome)
 	  strbuf_sprintf(b, " .author=%s", q_author);
@@ -1312,12 +1312,12 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
 	++inconsistent;
       }
       if (blob_version != q_version) {
-	WARNF("MANIFESTS row id=%s has inconsistent blob: manifests.version=%lld, blob.version=%lld -- skipped",
+	WARNF("MANIFESTS row id=%s has inconsistent blob: manifests.version=%"PRId64", blob.version=%"PRId64" -- skipped",
 	      q_manifestid, q_version, blob_version);
 	++inconsistent;
       }
       if (blob_filesize != -1 && blob_filesize != m->fileLength) {
-	WARNF("MANIFESTS row id=%s has inconsistent blob: known file size %lld, blob.filesize=%lld -- skipped",
+	WARNF("MANIFESTS row id=%s has inconsistent blob: known file size %"PRId64", blob.filesize=%"PRId64" -- skipped",
 	      q_manifestid, m->fileLength, blob_filesize);
 	++inconsistent;
       }
@@ -1335,7 +1335,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
 	}
       }
       if (blob_service == NULL) {
-	WARNF("MANIFESTS row id=%s has blob with no 'service' -- skipped", q_manifestid, blob_id);
+	WARNF("MANIFESTS row id=%s has blob with no 'service' -- skipped", q_manifestid);
 	++inconsistent;
       }
       if (!inconsistent) {
@@ -1367,8 +1367,8 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
       if (!inconsistent) {
 	*found = blob_m;
 	if (config.debug.rhizome)
-	  DEBUGF("Found duplicate payload: service=%s%s version=%llu hexhash=%s",
-		blob_service, strbuf_str(b), blob_m->version, blob_m->fileHexHash, q_author ? q_author : ""
+	  DEBUGF("Found duplicate payload: service=%s%s version=%"PRIu64" hexhash=%s",
+		blob_service, strbuf_str(b), blob_m->version, blob_m->fileHexHash
 	      );
 	ret = 1;
 	break;
@@ -1401,8 +1401,8 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m)
   sqlite3_bind_text(statement, 1, manifestid, -1, SQLITE_STATIC);
   if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
     const char *manifestblob = (char *) sqlite3_column_blob(statement, 0);
-    long long q_version = (long long) sqlite3_column_int64(statement, 1);
-    long long q_inserttime = (long long) sqlite3_column_int64(statement, 2);
+    int64_t q_version = sqlite3_column_int64(statement, 1);
+    int64_t q_inserttime = sqlite3_column_int64(statement, 2);
     const char *q_author = (const char *) sqlite3_column_text(statement, 3);
     size_t manifestblobsize = sqlite3_column_bytes(statement, 0); // must call after sqlite3_column_blob()
     
@@ -1417,7 +1417,7 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m)
     }
     
     if (m->version!=q_version)
-      WARNF("Version mismatch, manifest is %lld, database is %lld", m->version, q_version);
+      WARNF("Version mismatch, manifest is %"PRId64", database is %"PRId64, m->version, q_version);
     
     m->inserttime = q_inserttime;
   }else{
@@ -1557,8 +1557,8 @@ int rhizome_is_bar_interesting(unsigned char *bar){
   if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
     if (0){
       const char *q_id = (const char *) sqlite3_column_text(statement, 0);
-      long long q_version = (long long) sqlite3_column_int64(statement, 1);
-      DEBUGF("Already have %s, %lld (vs %s, %lld)", q_id, q_version, id_hex, version);
+      int64_t q_version = sqlite3_column_int64(statement, 1);
+      DEBUGF("Already have %s, %"PRId64" (vs %s, %"PRId64")", q_id, q_version, id_hex, version);
     }
     ret=0;
   }  

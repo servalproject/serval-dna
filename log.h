@@ -100,7 +100,8 @@ void disable_log_stderr();
 void logFlush();
 void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv);
 void logString(int level, struct __sourceloc whence, const char *str);
-void logMessage(int level, struct __sourceloc whence, const char *fmt, ...);
+void logMessage(int level, struct __sourceloc whence, const char *fmt, ...)
+__attribute__ (( format(printf,3,4) ));
 void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list);
 void logConfigChanged();
 int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len);
