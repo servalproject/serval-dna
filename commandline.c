@@ -1860,7 +1860,7 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
     return WHY("Could not write updated keyring record");
 
   cli_field_name(context, "sid", ":");
-  cli_put_hexvalue(context, sid.binary, SID_SIZE, "\n");
+  cli_put_string(context, alloca_tohex_sid(sid.binary), "\n");
   if (did) {
     cli_field_name(context, "did", ":");
     cli_put_string(context, did, "\n");
