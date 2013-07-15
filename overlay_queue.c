@@ -276,13 +276,14 @@ overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destinati
   packet->buffer=ob_new();
   packet->seq=-1;
   packet->packet_version = packet_version;
+
   if (unicast)
     packet->unicast_subscriber = destination;
   else
     packet->seq = interface->sequence_number = (interface->sequence_number + 1)&0xFFFF;
   ob_limitsize(packet->buffer, packet->interface->mtu);
   
-  overlay_packet_init_header(packet_version, ENCAP_OVERLAY, &packet->context, packet->buffer, 
+  overlay_packet_init_header(packet_version, interface->encapsulation, &packet->context, packet->buffer, 
 			     destination, unicast, packet->i, packet->seq);
   packet->header_length = ob_position(packet->buffer);
   if (config.debug.overlayframes)
@@ -496,12 +497,12 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       if (frame->source_full)
 	my_subscriber->send_full=1;
 
-      if (frame->interface->encapsulation!=ENCAP_SINGLE)
-        overlay_init_packet(packet, frame->next_hop, frame->unicast, frame->packet_version, frame->interface, frame->recvaddr);
+      overlay_init_packet(packet, frame->next_hop, frame->unicast, frame->packet_version, frame->interface, frame->recvaddr);
 
     }else{
       // is this packet going our way?
       if (frame->interface!=packet->interface ||
+	  frame->interface->encapsulation==ENCAP_SINGLE ||
 	  frame->packet_version!=packet->packet_version ||
 	  memcmp(&packet->dest, &frame->recvaddr, sizeof(packet->dest))!=0){
 	goto skip;
@@ -530,25 +531,10 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
         DEBUGF("Retransmitting frame %p mdp seq %d, from packet seq %d in seq %d", frame, frame->mdp_sequence, frame->interface_sent_sequence[packet->i], packet->seq);
     }
 
-    if (frame->interface->encapsulation==ENCAP_SINGLE){
-      // send MDP packets without aggregating them together
-      struct overlay_buffer *buff = ob_new();
-
-      int ret=single_packet_encapsulation(buff, frame);
-      if (!ret){
-	ret=overlay_broadcast_ensemble(frame->interface, &frame->recvaddr, ob_ptr(buff), ob_position(buff));
-      }
-
-      ob_free(buff);
-
-      if (ret)
-	goto skip;
-    }else{
-      if (overlay_frame_append_payload(&packet->context, packet->interface, frame, packet->buffer)){
-        // payload was not queued, delay the next attempt slightly
-	frame->dont_send_until = now + 5;
-        goto skip;
-      }
+    if (overlay_frame_append_payload(&packet->context, packet->interface, frame, packet->buffer)){
+      // payload was not queued, delay the next attempt slightly
+      frame->dont_send_until = now + 5;
+      goto skip;
     }
 
     frame->interface_sent_sequence[packet->i] = packet->seq;

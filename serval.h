@@ -403,6 +403,7 @@ typedef struct overlay_interface {
   char prefer_unicast;
   // can we use this interface for routes to addresses in other subnets?
   int default_route;
+  char debug;
   
   /* Number of milli-seconds per tick for this interface, which is basically related to the     
    the typical TX range divided by the maximum expected speed of nodes in the network.
@@ -513,7 +514,6 @@ time_ms_t overlay_time_until_next_tick();
 
 int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
 				 struct overlay_frame *p, struct overlay_buffer *b);
-int single_packet_encapsulation(struct overlay_buffer *b, struct overlay_frame *frame);
 int overlay_packet_init_header(int packet_version, int encapsulation, 
 			       struct decode_context *context, struct overlay_buffer *buff, 
 			       struct subscriber *destination, 
