@@ -442,8 +442,9 @@ ATOM(int32_t,               mdp_tick_ms,     -1, int32_nonneg,, "Override MDP ti
 ATOM(bool_t,                send_broadcasts, 1, boolean,, "If false, don't send any broadcast packets")
 ATOM(bool_t,                default_route,   0, boolean,, "If true, use this interface as a default route")
 ATOM(bool_t,                prefer_unicast,  0, boolean,, "If true, send unicast data as unicast IP packets if available")
-ATOM(bool_t,                ctsrts,  0, boolean,, "If true, enable CTS/RTS hardware handshaking")
-ATOM(int32_t,               uartbps, 57600, int32_rs232baudrate,, "Speed of serial UART link speed (which may be different to serial device link speed)")
+ATOM(bool_t,                debug,           0, boolean,, "If true, log details of every outgoing packet")
+ATOM(bool_t,                ctsrts,          0, boolean,, "If true, enable CTS/RTS hardware handshaking")
+ATOM(int32_t,               uartbps,         57600, int32_rs232baudrate,, "Speed of serial UART link speed (which may be different to serial device link speed)")
 END_STRUCT
 
 ARRAY(interface_list, NO_DUPLICATES)

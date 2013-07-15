@@ -391,7 +391,8 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   interface->mtu=1200;
   interface->state=INTERFACE_STATE_DOWN;
   interface->alarm.poll.fd=0;
-  
+  interface->debug = ifconfig->debug;
+
   // How often do we announce ourselves on this interface?
   int tick_ms=-1;
   int packet_interval=-1;
@@ -821,6 +822,9 @@ overlay_broadcast_ensemble(overlay_interface *interface,
   if (interface->state!=INTERFACE_STATE_UP){
     return WHYF("Cannot send to interface %s as it is down", interface->name);
   }
+
+  if (interface->debug)
+    DEBUGF("Sending on %s, len %d: %s", interface->name, len, alloca_tohex(bytes, len>64?64:len));
 
   switch(interface->socket_type){
     case SOCK_STREAM:

@@ -408,8 +408,8 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   else 
     bzero(&f.recvaddr, sizeof f.recvaddr);
   
-  if (config.debug.verbose && config.debug.overlayframes)
-    DEBUG("Received overlay packet");
+  if (interface->debug)
+    DEBUGF("Received on %s, len %d: %s", interface->name, (int)len, alloca_tohex(packet, len>64?64:len));
   
   int ret=parseEnvelopeHeader(&context, interface, (struct sockaddr_in *)recvaddr, b);
   if (ret){
