@@ -185,6 +185,28 @@ test_mismatched_encap() {
    tfw_cat --stdout --stderr
 }
 
+doc_single_p2p="Start 2 instances on a point to point link"
+setup_single_p2p() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   foreach_instance +A +B add_interface 1
+   foreach_instance +A +B \
+     executeOk_servald config \
+       set interfaces.1.debug 1 \
+       set interfaces.1.encapsulation single \
+       set interfaces.1.point_to_point on
+   foreach_instance +A +B start_routing_instance
+}
+test_single_p2p() {
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
+   assertGrep "$instance_servald_log" 'Established point to point link'
+   set_instance +A
+   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   tfw_cat --stdout --stderr
+}
+
 doc_slip_encoding="Test slip encoding and decoding"
 setup_slip_encoding() {
    setup_servald

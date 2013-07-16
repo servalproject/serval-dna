@@ -47,9 +47,10 @@ int overlay_packet_init_header(int packet_version, int encapsulation,
     return -1;
   if (ob_append_byte(buff, encapsulation))
     return -1;
-
+  context->encoding_header=1;
   if (overlay_address_append(context, buff, my_subscriber))
     return -1;
+  context->encoding_header=0;
   context->sender = my_subscriber;
   
   int flags=0;
@@ -258,7 +259,11 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
   IN();
   time_ms_t now = gettime_ms();
   
+  context->interface = interface;
+  context->sender_interface = 0;
+
   context->packet_version = ob_get(buffer);
+
   if (context->packet_version < 0 || context->packet_version > SUPPORTED_PACKET_VERSION)
     RETURN(WHYF("Packet version %d not recognised.", context->packet_version));
   
@@ -271,9 +276,6 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
   
   int packet_flags = ob_get(buffer);
   
-  context->sender_interface = 0;
-  context->interface = interface;
-
   int sender_seq = -1;
 
   if (packet_flags & PACKET_INTERFACE)
@@ -292,6 +294,11 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
 
     if (context->sender->max_packet_version < context->packet_version)
       context->sender->max_packet_version = context->packet_version;
+
+    if (interface->point_to_point && interface->other_device!=context->sender){
+      INFOF("Established point to point link with %s on %s", alloca_tohex_sid(context->sender->sid), interface->name);
+      context->interface->other_device = context->sender;
+    }
 
     // TODO probe unicast links when we detect an address change.
     

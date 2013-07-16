@@ -271,11 +271,13 @@ overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destinati
 		    int unicast, int packet_version,
 		    overlay_interface *interface, struct sockaddr_in addr){
   packet->interface = interface;
+  packet->context.interface = interface;
   packet->i = (interface - overlay_interfaces);
   packet->dest=addr;
   packet->buffer=ob_new();
   packet->seq=-1;
   packet->packet_version = packet_version;
+  packet->context.packet_version = packet_version;
 
   if (unicast)
     packet->unicast_subscriber = destination;

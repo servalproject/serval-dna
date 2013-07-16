@@ -392,6 +392,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   interface->state=INTERFACE_STATE_DOWN;
   interface->alarm.poll.fd=0;
   interface->debug = ifconfig->debug;
+  interface->point_to_point = ifconfig->point_to_point;
 
   // How often do we announce ourselves on this interface?
   int tick_ms=-1;
@@ -469,12 +470,15 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     interface->address.sin_addr = src_addr;
     interface->broadcast_address.sin_addr = broadcast;
     interface->netmask = netmask;
+    interface->local_echo = 1;
     
     if (overlay_interface_init_socket(overlay_interface_count))
       return WHY("overlay_interface_init_socket() failed");
   }else{
     char read_file[1024];
     
+    interface->local_echo = interface->point_to_point?0:1;
+
     strbuf d = strbuf_local(read_file, sizeof read_file);
     strbuf_path_join(d, serval_instancepath(), config.server.interface_path, ifconfig->file, NULL);
     if (strbuf_overrun(d))
@@ -642,9 +646,12 @@ static void interface_read_file(struct overlay_interface *interface)
       
       if (config.debug.packetrx)
 	DEBUG_packet_visualise("Read from dummy interface", packet.payload, packet.payload_length);
-      
-      if (!should_drop(interface, packet.dst_addr)){
-	    
+
+      if (should_drop(interface, packet.dst_addr) || (packet.pid == getpid() && !interface->local_echo)){
+	if (config.debug.packetrx)
+	  DEBUGF("Ignoring packet from %d, addressed to %s:%d", packet.pid,
+	      inet_ntoa(packet.dst_addr.sin_addr), ntohs(packet.dst_addr.sin_port));
+      }else{
 	if (packetOkOverlay(interface, packet.payload, packet.payload_length, -1, 
 			    (struct sockaddr*)&packet.src_addr, sizeof(packet.src_addr))<0) {
 	  if (config.debug.rejecteddata) {
@@ -653,8 +660,7 @@ static void interface_read_file(struct overlay_interface *interface)
 	    dump("the malformed packet",packet.payload,packet.payload_length);
 	  }
 	}
-      }else if (config.debug.packetrx)
-	DEBUGF("Ignoring packet addressed to %s:%d", inet_ntoa(packet.dst_addr.sin_addr), ntohs(packet.dst_addr.sin_port));
+      }
     }
   }
   

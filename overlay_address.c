@@ -39,6 +39,8 @@ static struct broadcast bpilist[MAX_BPIS];
 
 #define OA_CODE_SELF 0xff
 #define OA_CODE_PREVIOUS 0xfe
+#define OA_CODE_P2P_YOU 0xfd
+#define OA_CODE_P2P_ME 0xfc
 
 // each node has 16 slots based on the next 4 bits of a subscriber id
 // each slot either points to another tree node or a struct subscriber.
@@ -204,22 +206,37 @@ int overlay_address_append(struct decode_context *context, struct overlay_buffer
 {
   if (!subscriber)
     return WHY("No address supplied");
-  
-  if (context && subscriber==context->sender){
+
+  if(context
+      && context->packet_version>=1
+      && context->interface
+      && subscriber == context->interface->other_device
+      && context->interface->point_to_point){
+    if (ob_append_byte(b, OA_CODE_P2P_YOU))
+      return -1;
+  }else if(context
+      && context->packet_version>=1
+      && context->interface
+      && !subscriber->send_full
+      && subscriber == my_subscriber
+      && context->interface->other_device
+      && context->interface->point_to_point
+      && (!context->encoding_header || !context->interface->local_echo)){
+    if (ob_append_byte(b, OA_CODE_P2P_ME))
+      return -1;
+  }else if (context && subscriber==context->sender){
     if (ob_append_byte(b, OA_CODE_SELF))
       return -1;
-    
   }else if(context && subscriber==context->previous){
     if (ob_append_byte(b, OA_CODE_PREVIOUS))
       return -1;
-    
   }else{
     int len=SID_SIZE;
     if (subscriber->send_full){
       subscriber->send_full=0;
     }else{
       len=(subscriber->abbreviate_len+2)/2;
-      if (subscriber->reachable==REACHABLE_SELF)
+      if (context && context->encoding_header)
 	len++;
       if (len>SID_SIZE)
 	len=SID_SIZE;
@@ -328,6 +345,26 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
     return WHY("Buffer too small");
   
   switch(len){
+    case OA_CODE_P2P_YOU:
+      if (context->interface && context->interface->point_to_point){
+        *subscriber=my_subscriber;
+	context->previous=my_subscriber;
+      }else{
+	WHYF("Could not resolve address on %s, this isn't a configured point to point link", context->interface->name);
+	context->invalid_addresses=1;
+      }
+      return 0;
+
+    case OA_CODE_P2P_ME:
+      if (context->interface && context->interface->point_to_point && context->interface->other_device){
+        *subscriber=context->interface->other_device;
+	context->previous=*subscriber;
+      }else{
+	WHYF("Could not resolve address on %s, I don't know who is on the other end of this link!", context->interface->name);
+	context->invalid_addresses=1;
+      }
+      return 0;
+
     case OA_CODE_SELF:
       if (!context->sender){
 	INFO("Could not resolve address, sender has not been set");

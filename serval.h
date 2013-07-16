@@ -403,7 +403,13 @@ typedef struct overlay_interface {
   char prefer_unicast;
   // can we use this interface for routes to addresses in other subnets?
   int default_route;
+  // should we log more debug info on this interace? eg hex dumps of packets
   char debug;
+  char local_echo;
+
+  // can we assume there will only be two devices on this interface?
+  char point_to_point;
+  struct subscriber *other_device;
   
   /* Number of milli-seconds per tick for this interface, which is basically related to the     
    the typical TX range divided by the maximum expected speed of nodes in the network.
