@@ -383,15 +383,18 @@ int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len);
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE]);
 rhizome_manifest * rhizome_fetch_search(unsigned char *id, int prefix_length);
 
-
 /* Rhizome file storage api */
+struct rhizome_write_buffer{
+  struct rhizome_write_buffer *_next;
+  int64_t offset;
+  int buffer_size;
+  int data_size;
+  unsigned char data[0];
+};
+
 struct rhizome_write{
   char id[SHA512_DIGEST_STRING_LENGTH+1];
   char id_known;
-  
-  unsigned char *buffer;
-  int buffer_size;
-  int data_size;
   
   int64_t file_offset;
   int64_t file_length;
@@ -403,6 +406,9 @@ struct rhizome_write{
   SHA512_CTX sha512_context;
   int64_t blob_rowid;
   int blob_fd;
+
+  struct rhizome_write_buffer *out_of_order;
+  int total_data_size;
 };
 
 struct rhizome_read{
@@ -674,7 +680,8 @@ int unpack_http_response(char *response, struct http_response_parts *parts);
 
 int rhizome_exists(const char *fileHash);
 int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority);
-int rhizome_flush(struct rhizome_write *write);
+int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffer, int data_size);
+int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsigned char *buffer, int data_size);
 int rhizome_write_file(struct rhizome_write *write, const char *filename);
 int rhizome_fail_write(struct rhizome_write *write);
 int rhizome_finish_write(struct rhizome_write *write);

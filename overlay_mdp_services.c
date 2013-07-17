@@ -173,9 +173,6 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
       uint64_t offset=read_uint64(&mdp->out.payload[1+16+8]);
       int count=mdp->out.payload_length-(1+16+8+8);
       unsigned char *bytes=&mdp->out.payload[1+16+8+8];
-      if (config.debug.rhizome_rx) 
-	DEBUGF("Received %d bytes @ 0x%"PRIx64" for %s* version 0x%"PRIx64,
-	       count,offset,alloca_tohex(bidprefix,16),version);
 
       /* Now see if there is a slot that matches.  If so, then
 	 see if the bytes are in the window, and write them.

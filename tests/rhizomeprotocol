@@ -176,10 +176,10 @@ test_HTTPTransport() {
 doc_MDPTransport="Rhizome over MDP transport"
 setup_MDPTransport() {
    setup_common
-   set_instance +B
-   executeOk_servald config set rhizome.http.enable 0   
+   foreach_instance +A +B \
+     executeOk_servald config \
+       set rhizome.http.enable 0
    set_instance +A
-   executeOk_servald config set rhizome.http.enable 0   
    rhizome_add_file file1
    start_servald_instances +A +B
    foreach_instance +A assert_peers_are_instances +B
@@ -229,6 +229,21 @@ setup_FileTransferBigMDP() {
 test_FileTransferBigMDP() {
    bigfile_common_test
 }
+
+doc_FileTransferUnreliableBigMDP="Big new bundle over unreliable MDP transport"
+setup_FileTransferUnreliableBigMDP() {
+   setup_common
+   foreach_instance +A +B \
+     executeOk_servald config \
+       set rhizome.http.enable 0 \
+       set interfaces.1.file dummy \
+       set interfaces.1.drop_broadcasts 20
+   setup_bigfile_common
+}
+test_FileTransferUnreliableBigMDP() {
+   bigfile_common_test
+}
+
 
 doc_FileTransferBig="Big new bundle transfers to one node via HTTP"
 setup_FileTransferBig() {
