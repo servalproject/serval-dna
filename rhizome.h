@@ -406,7 +406,8 @@ struct rhizome_write{
   SHA512_CTX sha512_context;
   int64_t blob_rowid;
   int blob_fd;
-
+  sqlite3_blob *sql_blob;
+  
   struct rhizome_write_buffer *out_of_order;
   int total_data_size;
 };

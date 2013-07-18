@@ -126,88 +126,118 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
   return 0;
 }
 
-int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffer, int data_size){
-  IN();
+/* blob_open / close will lock the database, this is bad for other processes that might attempt to 
+ * use it at the same time. However, opening a blob has about O(n^2) performance. 
+ * */
+
+// encrypt and hash data, data buffers must be passed in file order.
+static int prepare_data(struct rhizome_write *write_state, unsigned char *buffer, int data_size){
+  if (data_size<=0)
+    return WHY("No content supplied");
+    
   /* Make sure we aren't being asked to write more data than we expected */
   if (write_state->file_offset + data_size > write_state->file_length)
-    RETURN(WHYF("Too much content supplied, %"PRId64" + %d > %"PRId64,
-		write_state->file_offset, data_size, write_state->file_length));
-  
-  if (data_size<=0)
-    RETURN(WHY("No content supplied"));
-  
+    return WHYF("Too much content supplied, %"PRId64" + %d > %"PRId64,
+		write_state->file_offset, data_size, write_state->file_length);
+
   if (write_state->crypt){
     if (rhizome_crypt_xor_block(buffer, data_size, write_state->file_offset, write_state->key, write_state->nonce))
-      RETURN(-1);
+      return -1;
   }
   
+  SHA512_Update(&write_state->sha512_context, buffer, data_size);
+  write_state->file_offset+=data_size;
+  return 0;
+}
+
+// open database locks
+static int write_get_lock(struct rhizome_write *write_state){
+  if (write_state->blob_fd>=0 || write_state->sql_blob)
+    return 0;
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  while(1){
+    int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", 
+		write_state->blob_rowid, 1 /* read/write */, &write_state->sql_blob);
+    if (ret==SQLITE_OK)
+      return 0;
+    if (!sqlite_code_busy(ret))
+      return WHYF("sqlite3_blob_write() failed: %s", 
+	     sqlite3_errmsg(rhizome_db));
+    if (sqlite_retry(&retry, "sqlite3_blob_open")==0)
+      return -1;
+  }
+}
+
+// write data to disk
+static int write_data(struct rhizome_write *write_state, uint64_t file_offset, unsigned char *buffer, int data_size){
+  if (data_size<=0)
+    return 0;
+    
   if (write_state->blob_fd>=0) {
     int ofs=0;
     // keep trying until all of the data is written.
-    lseek(write_state->blob_fd, write_state->file_offset, SEEK_SET);
+    lseek(write_state->blob_fd, file_offset, SEEK_SET);
     while(ofs < data_size){
       int r=write(write_state->blob_fd, buffer + ofs, data_size - ofs);
       if (r<0)
-	RETURN(WHY_perror("write"));
+	return WHY_perror("write");
       if (config.debug.externalblobs)
         DEBUGF("Wrote %d bytes to fd %d", r, write_state->blob_fd);
       ofs+=r;
     }
   }else{
+    if (!write_state->sql_blob)
+      return WHY("Must call write_get_lock() before write_data()");
     sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-    
-    do{
-      
-      sqlite3_blob *blob=NULL;
-      
-      int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", write_state->blob_rowid, 1 /* read/write */, &blob);
-      if (sqlite_code_busy(ret))
-	goto again;
-      else if (ret!=SQLITE_OK) {
-	WHYF("sqlite3_blob_open() failed: %s", 
-	     sqlite3_errmsg(rhizome_db));
-	if (blob) sqlite3_blob_close(blob);
-	RETURN(-1);
-      }
-      
-      ret=sqlite3_blob_write(blob, buffer, data_size,
-			     write_state->file_offset);
-      
-      if (sqlite_code_busy(ret))
-	goto again;
-      else if (ret!=SQLITE_OK) {
-	WHYF("sqlite3_blob_write() failed: %s", 
-	     sqlite3_errmsg(rhizome_db));
-	if (blob) sqlite3_blob_close(blob);
-	RETURN(-1);
-      }
-      
-      ret = sqlite3_blob_close(blob);
-      blob=NULL;
-      if (sqlite_code_busy(ret))
-	goto again;
-      else if (ret==SQLITE_OK){
+    while(1){
+      int ret=sqlite3_blob_write(write_state->sql_blob, buffer, data_size, file_offset);
+      if (ret==SQLITE_OK)
 	break;
-      }
-      
-      RETURN(WHYF("sqlite3_blob_close() failed: %s", sqlite3_errmsg(rhizome_db)));
-      
-    again:
-      if (blob) sqlite3_blob_close(blob);
+      if (!sqlite_code_busy(ret))
+	return WHYF("sqlite3_blob_write() failed: %s", 
+	     sqlite3_errmsg(rhizome_db));
       if (sqlite_retry(&retry, "sqlite3_blob_write")==0)
-	RETURN(1);
-      
-    }while(1);
+	return -1;
+    }
   }
-  
-  SHA512_Update(&write_state->sha512_context, buffer, data_size);
-  write_state->file_offset+=data_size;
   if (config.debug.rhizome)
-    DEBUGF("Written %"PRId64" of %"PRId64, write_state->file_offset, write_state->file_length);
-  RETURN(0);
+    DEBUGF("Written %"PRId64" of %"PRId64, file_offset, write_state->file_length);
+  return 0;
+}
+
+// hash and write data to disk, assumes database lock has been opened
+static int stream_data(struct rhizome_write *write_state, unsigned char *buffer, int data_size){
+  uint64_t file_offset = write_state->file_offset;
+  if (prepare_data(write_state, buffer, data_size))
+    return -1;
+  return write_data(write_state, file_offset, buffer, data_size);
+}
+
+// close database locks
+static int write_release_lock(struct rhizome_write *write_state){
+  if (write_state->blob_fd>=0)
+    return 0;
+    
+  if (write_state->sql_blob) 
+    sqlite3_blob_close(write_state->sql_blob);
+  write_state->sql_blob=NULL;
+  return 0;
+}
+
+// Write a single buffer in file order
+// Should be avoided or eliminated due to database locking overhead
+int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffer, int data_size){
+  IN();
+  if (write_get_lock(write_state))
+    RETURN(-1);
+  int ret = stream_data(write_state, buffer, data_size);
+  write_release_lock(write_state);
+  RETURN(ret);
   OUT();
 }
 
+// Write data buffers in any order, the data will be cached and streamed into the database in file order. 
+// Though there is an upper bound on the amount of cached data
 int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsigned char *buffer, int data_size){
   // search the out of order buffer list for the insert position
   struct rhizome_write_buffer **ptr = &write_state->out_of_order;
@@ -296,9 +326,10 @@ int rhizome_write_file(struct rhizome_write *write, const char *filename){
 
   unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];
   int ret=0;
+  write_get_lock(write);
   while(write->file_offset < write->file_length){
     
-    int size=RHIZOME_CRYPT_PAGE_SIZE;
+    int size=sizeof(buffer);
     if (write->file_offset + size > write->file_length)
       size=write->file_length - write->file_offset;
     
@@ -308,12 +339,13 @@ int rhizome_write_file(struct rhizome_write *write, const char *filename){
       goto end;
     }
     DEBUGF("Read %d from file", r);
-    if (rhizome_write_buffer(write, buffer, r)){
+    if (stream_data(write, buffer, r)){
       ret=-1;
       goto end;
     }
   }
 end:
+  write_release_lock(write);
   fclose(f);
   return ret;
 }
@@ -338,7 +370,7 @@ int rhizome_fail_write(struct rhizome_write *write){
     write->blob_fd=-1;
     rhizome_store_delete(write->id);
   }
-
+  write_release_lock(write);
   // don't worry too much about sql failures.
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   if (write->blob_rowid>=0){
@@ -360,6 +392,7 @@ int rhizome_finish_write(struct rhizome_write *write){
     close(fd);
     write->blob_fd=-1;
   }
+  write_release_lock(write);
   
   char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
   SHA512_End(&write->sha512_context, hash_out);
@@ -753,7 +786,7 @@ static int rhizome_pipe(struct rhizome_read *read, struct rhizome_write *write, 
 
   unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];
   while(length>0){
-    int size=RHIZOME_CRYPT_PAGE_SIZE;
+    int size=sizeof(buffer);
     if (size > length)
       size=length;
 
