@@ -105,7 +105,7 @@ int slip_encode(int format,
       // Add 32-bit CRC
       // (putting the CRC at the front allows it to be calculated progressively
       // on the receiver side, if we decide to support that)
-      unsigned long crc=Crc32_ComputeBuf( 0, src, src_bytes);
+      uint32_t crc=Crc32_ComputeBuf( 0, src, src_bytes);
       dst[out_len++]=0x80|((crc>>25)&0x7f);
       dst[out_len++]=0x80|((crc>>(25-7))&0x7f);
       dst[out_len++]=0x80|((crc>>(25-7-7))&0x7f);

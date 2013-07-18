@@ -54,12 +54,14 @@ int ob_unlimitsize(struct overlay_buffer *b);
 int ob_makespace(struct overlay_buffer *b,int bytes);
 int ob_set(struct overlay_buffer *b, int ofs, unsigned char byte);
 int ob_append_byte(struct overlay_buffer *b,unsigned char byte);
-int ob_append_bytes(struct overlay_buffer *b,unsigned char *bytes,int count);
-int ob_append_buffer(struct overlay_buffer *b,struct overlay_buffer *s);
+int ob_append_bytes(struct overlay_buffer *b,const unsigned char *bytes,int count);
+int ob_append_buffer(struct overlay_buffer *b,const struct overlay_buffer *s);
 unsigned char *ob_append_space(struct overlay_buffer *b,int count);
 int ob_append_ui16(struct overlay_buffer *b, uint16_t v);
 int ob_append_ui32(struct overlay_buffer *b, uint32_t v);
+int ob_append_ui64(struct overlay_buffer *b, uint64_t v);
 int ob_append_packed_ui32(struct overlay_buffer *b, uint32_t v);
+int ob_append_packed_ui64(struct overlay_buffer *b, uint64_t v);
 int ob_patch_rfs(struct overlay_buffer *b);
 int ob_append_rfs(struct overlay_buffer *b,int l);
 // get one byte, -ve number indicates failure
@@ -68,12 +70,14 @@ int ob_getbyte(struct overlay_buffer *b,int ofs);
 int ob_get(struct overlay_buffer *b);
 int ob_get_bytes(struct overlay_buffer *b, unsigned char *buff, int len);
 unsigned char * ob_get_bytes_ptr(struct overlay_buffer *b, int len);
+uint64_t ob_get_ui64(struct overlay_buffer *b);
 uint32_t ob_get_ui32(struct overlay_buffer *b);
 uint16_t ob_get_ui16(struct overlay_buffer *b);
 int ob_dump(struct overlay_buffer *b,char *desc);
 int ob_set_ui16(struct overlay_buffer *b, int offset, uint16_t v);
 
 uint32_t ob_get_packed_ui32(struct overlay_buffer *b);
+uint64_t ob_get_packed_ui64(struct overlay_buffer *b);
 
 // information routines
 int ob_position(struct overlay_buffer *b);

@@ -377,10 +377,9 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m,
 	m->haveSecret=0;
       RETURN(-1);
     }
-  if (config.debug.rhizome)
-    DEBUGF("We have the private key for this bundle.");
   if (m&&sk==m->cryptoSignSecret&&pkin==m->cryptoSignPublic) {
-    DEBUGF("Set haveSecret=%d in manifest",EXISTING_BUNDLE_ID);
+    if (config.debug.rhizome)
+      DEBUGF("We have the private key for this bundle.");
     m->haveSecret=EXISTING_BUNDLE_ID;
   }
   RETURN(0);

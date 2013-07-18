@@ -42,6 +42,26 @@ interface_up() {
   return 0
 }
 
+has_link() {
+   set_instance $1
+   executeOk_servald route print
+   tfw_log "Looking for link from $1 to $2 ($4)"
+   if ! grep "^${4}:\(BROADCAST \|UNICAST \)\{1,\}:dummy.*:0*\$" $_tfw_tmp/stdout; then
+      tfw_log "Link not found"
+#      tfw_log "^${4}:\(BROADCAST \|UNICAST \)\{1,\}:dummy.*:0*\$"
+#      tfw_cat --stdout --stderr
+      return 1
+   fi
+   [ $4 = $5 ] && return 0;
+   tfw_log "Path from $1 to $3 should be via $2 ($5, $4)"
+   if ! grep "^${5}:INDIRECT ::${4}\$" $_tfw_tmp/stdout; then
+      tfw_log "No path found"
+#      tfw_log "^${5}:INDIRECT ::${4}\$"
+#      tfw_cat --stdout --stderr
+      return 1
+   fi
+}
+
 path_exists() {
    local dest
    for dest; do tru; done;
@@ -52,21 +72,7 @@ path_exists() {
    for I; do
       local sidvar=SID${I#+}
       [ -n "${!sidvar}" ] || break
-      set_instance $next_inst
-      executeOk_servald route print
-      tfw_log "Looking for link from $next_inst to $I"
-      if ! grep "^${!sidvar}:\(BROADCAST \|UNICAST \)\{1,\}:dummy.*:0*\$" $_tfw_tmp/stdout; then
-         tfw_log "Link not found"
-         return 1
-      fi
-      [ $I = $dest ] && break;
-      tfw_log "Path from $next_inst to $dest should be via $I"
-      if ! grep "^${!dest_sidvar}:INDIRECT ::${!sidvar}\$" $_tfw_tmp/stdout; then
-         tfw_log "No path found"
-	 tfw_log "^${!dest_sidvar}:INDIRECT ::${!sidvar}\$"
-         tfw_cat --stdout --stderr
-         return 1
-      fi
+      has_link $next_inst $I $dest ${!sidvar} ${!dest_sidvar} || return 1
       next_inst=$I
    done
    return 0
@@ -128,7 +134,9 @@ setup_multiple_ids() {
 }
 test_multiple_ids() {
    wait_until path_exists +A +B
+   wait_until has_link +A +B +B $SIDB1 $SIDB2
    wait_until path_exists +B +A
+   wait_until has_link +B +A +A $SIDA1 $SIDA2
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB2 1
    tfw_cat --stdout --stderr
@@ -172,6 +180,28 @@ setup_mismatched_encap() {
 test_mismatched_encap() {
    wait_until path_exists +A +B
    wait_until path_exists +B +A
+   set_instance +A
+   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   tfw_cat --stdout --stderr
+}
+
+doc_single_p2p="Start 2 instances on a point to point link"
+setup_single_p2p() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   foreach_instance +A +B add_interface 1
+   foreach_instance +A +B \
+     executeOk_servald config \
+       set interfaces.1.debug 1 \
+       set interfaces.1.encapsulation single \
+       set interfaces.1.point_to_point on
+   foreach_instance +A +B start_routing_instance
+}
+test_single_p2p() {
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
+   assertGrep "$instance_servald_log" 'Established point to point link'
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
@@ -373,6 +403,8 @@ test_lose_neighbours() {
    stop_servald_server +B
    foreach_instance +A +C \
       wait_until --timeout=30 instance_offline +B
+   set_instance +A
+   wait_until --timeout=30 instance_offline +C
    start_servald_server +B
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A

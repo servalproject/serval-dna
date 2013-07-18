@@ -286,7 +286,7 @@ void _debug_cli_parsed(struct __sourceloc __whence, const struct cli_parsed *par
   DEBUGF("parsed%s", strbuf_str(b));
 }
 
-int cli_invoke(const struct cli_parsed *parsed, void *context)
+int cli_invoke(const struct cli_parsed *parsed, struct cli_context *context)
 {
   IN();
   int ret = parsed->commands[parsed->cmdi].function(parsed, context);

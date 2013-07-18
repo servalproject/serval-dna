@@ -1,5 +1,4 @@
-SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
-	$(SERVAL_BASE)audio_reflector.c \
+SERVAL_SOURCES = \
 	$(SERVAL_BASE)cli.c \
 	$(SERVAL_BASE)commandline.c \
 	$(SERVAL_BASE)conf.c \
@@ -54,6 +53,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)rhizome_http.c \
 	$(SERVAL_BASE)rhizome_packetformats.c \
 	$(SERVAL_BASE)rhizome_store.c \
+	$(SERVAL_BASE)rhizome_sync.c \
 	$(SERVAL_BASE)rotbuf.c \
 	$(SERVAL_BASE)serval_packetvisualise.c \
 	$(SERVAL_BASE)server.c \

@@ -180,9 +180,9 @@ success:
 void rhizome_client_poll(struct sched_ent *alarm)
 {
   rhizome_http_request *r = (rhizome_http_request *)alarm;
-  if (alarm->poll.revents == 0){
+  if (alarm->poll.revents == 0 || alarm->poll.revents & (POLLHUP | POLLERR)){
     if (config.debug.rhizome_tx)
-      DEBUG("Closing connection due to timeout");
+      DEBUGF("Closing connection due to timeout or error %d", alarm->poll.revents);
     rhizome_server_free_http_request(r);
     return;
   }
@@ -261,7 +261,7 @@ void rhizome_server_poll(struct sched_ent *alarm)
     struct sockaddr addr;
     unsigned int addr_len = sizeof addr;
     int sock;
-    while ((sock = accept(rhizome_server_socket, &addr, &addr_len)) != -1) {
+    if ((sock = accept(rhizome_server_socket, &addr, &addr_len)) != -1) {
       struct sockaddr_in *peerip=NULL;
       if (addr.sa_family == AF_INET) {
 	peerip = (struct sockaddr_in *)&addr;
@@ -279,7 +279,7 @@ void rhizome_server_poll(struct sched_ent *alarm)
       }
       rhizome_http_request *request = calloc(sizeof(rhizome_http_request), 1);
       if (request == NULL) {
-	WHYF_perror("calloc(%u, 1)", sizeof(rhizome_http_request));
+	WHYF_perror("calloc(%u, 1)", (int)sizeof(rhizome_http_request));
 	WHY("Cannot respond to request, out of memory");
       } else {
 	request->uuid=rhizome_http_request_uuid_counter++;
@@ -289,6 +289,8 @@ void rhizome_server_poll(struct sched_ent *alarm)
 	/* We are now trying to read the HTTP request */
 	request->request_type=RHIZOME_HTTP_REQUEST_RECEIVING;
 	request->alarm.function = rhizome_client_poll;
+	request->read_state.blob_fd=-1;
+	request->read_state.blob_rowid=-1;
 	connection_stats.name="rhizome_client_poll";
 	request->alarm.stats=&connection_stats;
 	request->alarm.poll.fd=sock;
@@ -364,7 +366,7 @@ int rhizome_server_sql_query_http_response(rhizome_http_request *r,
   r->buffer[r->buffer_length+1]=0x01; /* version of response */
 
   if (config.debug.rhizome_tx)
-    DEBUGF("Found %lld records",r->source_count);
+    DEBUGF("Found %"PRId64" records",r->source_count);
   /* Number of records we intend to return */
   r->buffer[r->buffer_length+4]=(r->source_count>>0)&0xff;
   r->buffer[r->buffer_length+5]=(r->source_count>>8)&0xff;
@@ -527,20 +529,32 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
   if (path) {
     char *id = NULL;
     INFOF("RHIZOME HTTP SERVER, GET %s", alloca_toprint(1024, path, pathlen));
-    if (strcmp(path, "/favicon.ico") == 0) {
+    if (strcmp(path, "/")==0) {
+      r->request_type = RHIZOME_HTTP_REQUEST_FROMBUFFER;
+      char temp[8192];
+      snprintf(temp,8192,
+	       "<html><body>"
+	       "<h1>Hello, I'm %s*</h1><br>"
+	       "<a href=\"/rssi\">rssi</a><br>"
+	       "<a href=\"/rhizome/status\">rhizome status</a><br>"
+	       "<a href=\"/rhizome/files\">rhizome files</a><br>"
+	       "<a href=\"/rhizome/bars\">rhizome bars</a><br>"
+	       "</body></html>",
+	       alloca_tohex(my_subscriber->sid, 8));
+      rhizome_server_simple_http_response(r, 200, temp);
+    } else if (strcmp(path, "/favicon.ico") == 0) {
       r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
       rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);
     } else if (strcmp(path, "/rssi.csv") == 0) {
       r->request_type = RHIZOME_HTTP_REQUEST_FROMBUFFER;
       char temp[8192];
-      char *sidprefix=alloca_tohex_sid(my_subscriber->sid); sidprefix[8]=0;
       snprintf(temp,8192,
 	       ";%lld;%d;%d;%d;%d;%s;%d;%d;%d;%d;%d\n",
 	       gettime_ms(),
 	       last_radio_rssi,last_radio_temperature,
 	       (int)bundles_available,
 	       rhizome_active_fetch_count(),
-	       sidprefix,
+	       alloca_tohex(my_subscriber->sid, 8),
 	       rhizome_active_fetch_bytes_received(0),
 	       rhizome_active_fetch_bytes_received(1),
 	       rhizome_active_fetch_bytes_received(2),
@@ -551,17 +565,16 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
     } else if (strcmp(path, "/rssi") == 0) {
       r->request_type = RHIZOME_HTTP_REQUEST_FROMBUFFER;
       char temp[8192];
-      char *sidprefix=alloca_tohex_sid(my_subscriber->sid); sidprefix[8]=0;
       snprintf(temp,8192,
-	       "<head><meta http-equiv=\"refresh\" content=\"5\" >"
-	       "</head><html><h1>Radio link margin = %+ddB<br>"
+	       "<html><head><meta http-equiv=\"refresh\" content=\"5\" >"
+	       "</head><body><h1>Radio link margin = %+ddB<br>"
 	       "Radio temperature = %d&deg;C<br>"
 	       "SID: %s*<br>"
 	       "%d rhizome bundles in database<br>"
 	       "%d rhizome transfers in progress<br>(%d,%d,%d,%d,%d bytes)<br>"
-	       "</h1></html>\n",
+	       "</h1></body></html>\n",
 	       last_radio_rssi,last_radio_temperature,
-	       sidprefix,
+	       alloca_tohex(my_subscriber->sid, 8),
 	       (int)bundles_available,
 	       rhizome_active_fetch_count(),
 	       rhizome_active_fetch_bytes_received(0),
@@ -575,6 +588,14 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
       if (strcmp(path, "/rhizome/groups") == 0) {
 	  /* Return the list of known groups */
 	  rhizome_server_sql_query_http_response(r, "id", "groups", "from groups", 32, 1);
+      } else if (strcmp(path, "/rhizome/status") == 0) {
+	  char buf[32*1024];
+	  struct strbuf b;
+          strbuf_init(&b, buf, sizeof buf);
+	  strbuf_puts(&b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
+	  rhizome_fetch_status_html(&b);
+	  strbuf_puts(&b, "</body></html>");
+          rhizome_server_simple_http_response(r, 200, buf);
       } else if (strcmp(path, "/rhizome/files") == 0) {
 	  /* Return the list of known files */
 	  rhizome_server_sql_query_http_response(r, "id", "files", "from files", 32, 1);
@@ -637,7 +658,7 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	  DEBUGF("Row not found");
 	  rhizome_server_simple_http_response(r, 404, "<html><h1>Payload not found</h1></html>\r\n");
 	} else {
-	  DEBUGF("row id = %d",r->rowid);
+	  DEBUGF("row id = %"PRId64,r->rowid);
 	  r->source_index = 0;
 	  r->blob_end = sqlite3_blob_bytes(blob);
 	  rhizome_server_http_response_header(r, 200, "application/binary", r->blob_end - r->source_index);
@@ -724,6 +745,7 @@ int rhizome_server_set_response(rhizome_http_request *r, const struct http_respo
 int rhizome_server_simple_http_response(rhizome_http_request *r, int result, const char *response)
 {
   struct http_response hr;
+  bzero(&hr, sizeof hr);
   hr.result_code = result;
   hr.content_type = "text/html";
   hr.content_length = strlen(response);
@@ -736,9 +758,10 @@ int rhizome_server_simple_http_response(rhizome_http_request *r, int result, con
   return rhizome_server_set_response(r, &hr);
 }
 
-int rhizome_server_http_response_header(rhizome_http_request *r, int result, const char *mime_type, unsigned long long bytes)
+int rhizome_server_http_response_header(rhizome_http_request *r, int result, const char *mime_type, uint64_t bytes)
 {
   struct http_response hr;
+  bzero(&hr, sizeof hr);
   hr.result_code = result;
   hr.content_type = mime_type;
   hr.content_length = bytes;
@@ -754,7 +777,7 @@ int rhizome_server_http_response_header(rhizome_http_request *r, int result, con
 */
 int rhizome_server_http_send_bytes(rhizome_http_request *r)
 {
-  // keep writing until the write would block or we run out of data
+  // keep writing until we've written something or we run out of data
   while(r->request_type){
     
     /* Flush anything out of the buffer if present, before doing any further
@@ -782,10 +805,9 @@ int rhizome_server_http_send_bytes(rhizome_http_request *r)
 	  r->request_type&=~RHIZOME_HTTP_REQUEST_FROMBUFFER;
 	  r->buffer_offset=0; r->buffer_length=0;
 	}
-	
-	// go around the loop again to work out what we should do next
-	continue;
-	
+
+	// wait for another POLLOUT alarm
+	return 1;
       }
 
     switch(r->request_type&(~RHIZOME_HTTP_REQUEST_FROMBUFFER))

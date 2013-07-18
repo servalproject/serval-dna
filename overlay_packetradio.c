@@ -6,9 +6,36 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
 {
   struct termios t;
 
-  tcgetattr(interface->alarm.poll.fd, &t);
-  cfsetospeed(&t, interface->uartbps);
-  cfsetispeed(&t, interface->uartbps);
+  if (tcgetattr(interface->alarm.poll.fd, &t))
+    WHY_perror("Failed to get terminal parameters");
+  speed_t baud_rate;
+  switch(interface->uartbps){
+  case 0: baud_rate = B0; break;
+  case 50: baud_rate = B50; break;
+  case 75: baud_rate = B75; break;
+  case 110: baud_rate = B110; break;
+  case 134: baud_rate = B134; break;
+  case 150: baud_rate = B150; break;
+  case 200: baud_rate = B200; break;
+  case 300: baud_rate = B300; break;
+  case 600: baud_rate = B600; break;
+  case 1200: baud_rate = B1200; break;
+  case 1800: baud_rate = B1800; break;
+  case 2400: baud_rate = B2400; break;
+  case 4800: baud_rate = B4800; break;
+  case 9600: baud_rate = B9600; break;
+  case 19200: baud_rate = B19200; break;
+  case 38400: baud_rate = B38400; break;
+  default:
+  case 57600: baud_rate = B57600; break;
+  case 115200: baud_rate = B115200; break;
+  case 230400: baud_rate = B230400; break;
+  }
+
+  if (cfsetospeed(&t, baud_rate))
+    WHY_perror("Failed to set output baud rate");
+  if (cfsetispeed(&t, baud_rate))
+    WHY_perror("Failed to set input baud rate");
 
   // 8N1
   t.c_cflag &= ~PARENB;
@@ -38,7 +65,8 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   // no output processing
   t.c_oflag &= ~OPOST;
 
-  tcsetattr(interface->alarm.poll.fd, TCSANOW, &t);
+  if (tcsetattr(interface->alarm.poll.fd, TCSANOW, &t))
+    WHY_perror("Failed to set terminal parameters");
   
   // Ask radio to report RSSI
   (void)write_all(interface->alarm.poll.fd,"\r",1);

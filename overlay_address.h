@@ -63,6 +63,9 @@ struct subscriber{
   // link state routing information
   struct link_state *link_state;
   
+  // rhizome sync state
+  struct rhizome_sync *sync_state;
+
   // result of routing calculations;
   int reachable;
 
@@ -82,6 +85,7 @@ struct subscriber{
   time_ms_t last_probe;
   time_ms_t last_probe_response;
   time_ms_t last_tx;
+  time_ms_t last_explained;
   
   // public signing key details for remote peers
   unsigned char sas_public[SAS_SIZE];
@@ -102,7 +106,12 @@ struct decode_context{
   int packet_version;
   int encapsulation;
   struct sockaddr_in addr;
-  int invalid_addresses;
+  union{
+    // only valid while decoding
+    int invalid_addresses;
+    // only valid while encoding
+    int encoding_header;
+  };
   struct overlay_frame *please_explain;
   struct subscriber *sender;
   struct subscriber *previous;

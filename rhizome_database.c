@@ -63,37 +63,10 @@ int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...)
   return 1;
 }
 
-int form_rhizome_import_path(char * buf, size_t bufsiz, const char *fmt, ...)
-{
-  va_list ap;
-  strbuf b = strbuf_local(buf, bufsiz);
-  strbuf_sprintf(b, "%s/import", rhizome_datastore_path());
-  if (fmt) {
-    va_start(ap, fmt);
-    strbuf_putc(b, '/');
-    strbuf_vsprintf(b, fmt, ap);
-    va_end(ap);
-  }
-  if (strbuf_overrun(b)) {
-      WHY("Path buffer overrun");
-      return 0;
-  }
-  return 1;
-}
-
 int create_rhizome_datastore_dir()
 {
   if (config.debug.rhizome) DEBUGF("mkdirs(%s, 0700)", rhizome_datastore_path());
   return emkdirs(rhizome_datastore_path(), 0700);
-}
-
-int create_rhizome_import_dir()
-{
-  char dirname[1024];
-  if (!form_rhizome_import_path(dirname, sizeof dirname, NULL))
-    return -1;
-  if (config.debug.rhizome) DEBUGF("mkdirs(%s, 0700)", dirname);
-  return emkdirs(dirname, 0700);
 }
 
 sqlite3 *rhizome_db=NULL;
@@ -101,7 +74,7 @@ sqlite3 *rhizome_db=NULL;
 /* XXX Requires a messy join that might be slow. */
 int rhizome_manifest_priority(sqlite_retry_state *retry, const char *id)
 {
-  long long result = 0;
+  int64_t result = 0;
   if (sqlite_exec_int64_retry(retry, &result,
 	"select max(grouplist.priorty) from grouplist,manifests,groupmemberships"
 	" where manifests.id='%s'"
@@ -160,7 +133,7 @@ void sqlite_log(void *ignored, int result, const char *msg){
   WARNF("Sqlite: %d %s", result, msg);
 }
 
-static void verify_bundles(){
+void verify_bundles(){
   // assume that only the manifest itself can be trusted
   // fetch all manifests and reinsert them.
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
@@ -187,7 +160,7 @@ static void verify_bundles(){
     }
     if (ret!=0){
       DEBUGF("Removing invalid manifest entry @%lld", rowid);
-      //sqlite_exec_void_retry(&retry, "DELETE FROM MANIFESTS WHERE ROWID=%lld;", rowid);
+      sqlite_exec_void_retry(&retry, "DELETE FROM MANIFESTS WHERE ROWID=%lld;", rowid);
     }
     rhizome_manifest_free(m);
   }
@@ -254,7 +227,7 @@ int rhizome_opendb()
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
-  long long version;
+  int64_t version;
   if (sqlite_exec_int64_retry(&retry, &version, "PRAGMA user_version;") == -1)
     RETURN(-1);
   
@@ -439,17 +412,18 @@ sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, sqlite_retry_state *r
 
 sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, strbuf stmt)
 {
+  IN();
   sqlite3_stmt *statement = NULL;
   if (strbuf_overrun(stmt)) {
     WHYF("SQL overrun: %s", strbuf_str(stmt));
-    return NULL;
+    RETURN(NULL);
   }
   if (!rhizome_db && rhizome_opendb() == -1)
-    return NULL;
+    RETURN(NULL);
   while (1) {
     switch (sqlite3_prepare_v2(rhizome_db, strbuf_str(stmt), -1, &statement, NULL)) {
       case SQLITE_OK:
-	return statement;
+	RETURN(statement);
       case SQLITE_BUSY:
       case SQLITE_LOCKED:
 	if (retry && _sqlite_retry(__whence, retry, strbuf_str(stmt))) {
@@ -459,13 +433,14 @@ sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc __whence, int log_leve
       default:
 	LOGF(log_level, "query invalid, %s: %s", sqlite3_errmsg(rhizome_db), strbuf_str(stmt));
 	sqlite3_finalize(statement);
-	return NULL;
+	RETURN(NULL);
     }
   }
 }
 
 int _sqlite_step_retry(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
 {
+  IN();
   int ret = -1;
   sqlite_trace_whence = &__whence;
   while (statement) {
@@ -494,6 +469,7 @@ int _sqlite_step_retry(struct __sourceloc __whence, int log_level, sqlite_retry_
     }
   }
   sqlite_trace_whence = NULL;
+  OUT();
   return ret;
 }
 
@@ -597,7 +573,7 @@ int _sqlite_exec_void_retry_loglevel(struct __sourceloc __whence, int log_level,
   return ret;
 }
 
-static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *retry, long long *result, const char *sqlformat, va_list ap)
+static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *retry, int64_t *result, const char *sqlformat, va_list ap)
 {
   strbuf stmt = strbuf_alloca(8192);
   strbuf_vsprintf(stmt, sqlformat, ap);
@@ -634,7 +610,7 @@ static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int _sqlite_exec_int64(struct __sourceloc __whence, long long *result, const char *sqlformat,...)
+int _sqlite_exec_int64(struct __sourceloc __whence, int64_t *result, const char *sqlformat,...)
 {
   va_list ap;
   va_start(ap, sqlformat);
@@ -651,7 +627,7 @@ int _sqlite_exec_int64(struct __sourceloc __whence, long long *result, const cha
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int _sqlite_exec_int64_retry(struct __sourceloc __whence, sqlite_retry_state *retry, long long *result, const char *sqlformat,...)
+int _sqlite_exec_int64_retry(struct __sourceloc __whence, sqlite_retry_state *retry, int64_t *result, const char *sqlformat,...)
 {
   va_list ap;
   va_start(ap, sqlformat);
@@ -710,11 +686,11 @@ int _sqlite_vexec_strbuf_retry(struct __sourceloc __whence, sqlite_retry_state *
   return sqlite_code_ok(stepcode) && ret != -1 ? rowcount : -1;
 }
 
-long long rhizome_database_used_bytes()
+int64_t rhizome_database_used_bytes()
 {
-  long long db_page_size;
-  long long db_page_count;
-  long long db_free_page_count;
+  int64_t db_page_size;
+  int64_t db_page_count;
+  int64_t db_free_page_count;
   if (	sqlite_exec_int64(&db_page_size, "PRAGMA page_size;") == -1LL
     ||  sqlite_exec_int64(&db_page_count, "PRAGMA page_count;") == -1LL
     ||	sqlite_exec_int64(&db_free_page_count, "PRAGMA free_count;") == -1LL
@@ -965,6 +941,9 @@ int rhizome_store_bundle(rhizome_manifest *m)
   sqlite3_finalize(stmt);
   stmt = NULL;
 
+//  if (serverMode)
+//    rhizome_sync_bundle_inserted(bar);
+
   // TODO remove old payload?
   
   if (rhizome_manifest_get(m,"isagroup",NULL,0)!=NULL) {
@@ -1009,7 +988,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
   if (sqlite_exec_void_retry(&retry, "COMMIT;") != -1){
     // This message used in tests; do not modify or remove.
     const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-    INFOF("RHIZOME ADD MANIFEST service=%s bid=%s version=%lld",
+    INFOF("RHIZOME ADD MANIFEST service=%s bid=%s version=%"PRId64,
 	  service ? service : "NULL",
 	  alloca_tohex_sid(m->cryptoSignPublic),
 	  m->version
@@ -1025,7 +1004,7 @@ rollback:
   return -1;
 }
 
-int rhizome_list_manifests(const char *service, const char *name, 
+int rhizome_list_manifests(struct cli_context *context, const char *service, const char *name, 
 			   const char *sender_sid, const char *recipient_sid, 
 			   int limit, int offset, char count_rows)
 {
@@ -1048,7 +1027,7 @@ int rhizome_list_manifests(const char *service, const char *name,
     strbuf_sprintf(b, " OFFSET %u", offset);
   
   if (strbuf_overrun(b))
-    RETURN(WHYF("SQL command too long: ", strbuf_str(b)));
+    RETURN(WHYF("SQL command too long: %s", strbuf_str(b)));
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare(&retry, "%s", strbuf_str(b));
@@ -1089,7 +1068,7 @@ int rhizome_list_manifests(const char *service, const char *name,
     "recipient",
     "name"
   };
-  cli_columns(13,names);
+  cli_columns(context, 13, names);
   
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     ++rows;
@@ -1167,25 +1146,25 @@ int rhizome_list_manifests(const char *service, const char *name,
 	  from_here = keyring_find_sid(keyring, &cn, &in, &kp, senderSid);
 	}
 	
-	cli_put_long(rowid, ":");
-	cli_put_string(blob_service, ":");
-	cli_put_hexvalue(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES, ":");
-	cli_put_long(blob_version, ":");
-	cli_put_long(blob_date, ":");
-	cli_put_long(q_inserttime, ":");
-	cli_put_hexvalue(q_author?m->author:NULL, SID_SIZE, ":");
-	cli_put_long(from_here, ":");
-	cli_put_long(m->fileLength, ":");
+	cli_put_long(context, rowid, ":");
+	cli_put_string(context, blob_service, ":");
+	cli_put_hexvalue(context, m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES, ":");
+	cli_put_long(context, blob_version, ":");
+	cli_put_long(context, blob_date, ":");
+	cli_put_long(context, q_inserttime, ":");
+	cli_put_hexvalue(context, q_author?m->author:NULL, SID_SIZE, ":");
+	cli_put_long(context, from_here, ":");
+	cli_put_long(context, m->fileLength, ":");
 	
 	unsigned char filehash[SHA512_DIGEST_LENGTH];
 	if (m->fileLength)
 	  fromhex(filehash, blob_filehash, SHA512_DIGEST_LENGTH);
 	
-	cli_put_hexvalue(m->fileLength?filehash:NULL, SHA512_DIGEST_LENGTH, ":");
+	cli_put_hexvalue(context, m->fileLength?filehash:NULL, SHA512_DIGEST_LENGTH, ":");
 	
-	cli_put_hexvalue(blob_sender?senderSid:NULL, SID_SIZE, ":");
-	cli_put_hexvalue(blob_recipient?recipientSid:NULL, SID_SIZE, ":");
-	cli_put_string(blob_name, "\n");
+	cli_put_hexvalue(context, blob_sender?senderSid:NULL, SID_SIZE, ":");
+	cli_put_hexvalue(context, blob_recipient?recipientSid:NULL, SID_SIZE, ":");
+	cli_put_string(context, blob_name, "\n");
       }
     }
     if (m) rhizome_manifest_free(m);
@@ -1195,7 +1174,7 @@ int rhizome_list_manifests(const char *service, const char *name,
     while (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
       ++rows;
   }
-  cli_row_count(rows);
+  cli_row_count(context, rows);
   
 cleanup:
   sqlite3_finalize(statement);
@@ -1211,7 +1190,7 @@ void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCoun
 int rhizome_update_file_priority(const char *fileid)
 {
   /* work out the highest priority of any referrer */
-  long long highestPriority = -1;
+  int64_t highestPriority = -1;
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   if (sqlite_exec_int64_retry(&retry, &highestPriority,
 	"SELECT max(grouplist.priority) FROM MANIFESTS,GROUPMEMBERSHIPS,GROUPLIST"
@@ -1274,7 +1253,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
       DEBUGF("filehash=\"%s\"", filehash);
     sqlite3_bind_text(statement, field++, filehash, -1, SQLITE_STATIC);
   }
-  size_t rows = 0;
+  int rows = 0;
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     ++rows;
     if (config.debug.rhizome) DEBUGF("Row %d", rows);
@@ -1300,7 +1279,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
     }
     const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
     size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
-    long long q_version = sqlite3_column_int64(statement, 2);
+    int64_t q_version = sqlite3_column_int64(statement, 2);
     const char *q_author = (const char *) sqlite3_column_text(statement, 3);
     
     rhizome_manifest *blob_m = rhizome_new_manifest();
@@ -1315,11 +1294,11 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
     } else {
       const char *blob_service = rhizome_manifest_get(blob_m, "service", NULL, 0);
       const char *blob_id = rhizome_manifest_get(blob_m, "id", NULL, 0);
-      long long blob_version = rhizome_manifest_get_ll(blob_m, "version");
+      int64_t blob_version = rhizome_manifest_get_ll(blob_m, "version");
       const char *blob_filehash = rhizome_manifest_get(blob_m, "filehash", NULL, 0);
-      long long blob_filesize = rhizome_manifest_get_ll(blob_m, "filesize");
+      int64_t blob_filesize = rhizome_manifest_get_ll(blob_m, "filesize");
       if (config.debug.rhizome)
-	DEBUGF("Consider manifest.service=%s manifest.id=%s manifest.version=%lld", blob_service, q_manifestid, blob_version);
+	DEBUGF("Consider manifest.service=%s manifest.id=%s manifest.version=%"PRId64, blob_service, q_manifestid, blob_version);
       if (q_author) {
 	if (config.debug.rhizome)
 	  strbuf_sprintf(b, " .author=%s", q_author);
@@ -1333,12 +1312,12 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
 	++inconsistent;
       }
       if (blob_version != q_version) {
-	WARNF("MANIFESTS row id=%s has inconsistent blob: manifests.version=%lld, blob.version=%lld -- skipped",
+	WARNF("MANIFESTS row id=%s has inconsistent blob: manifests.version=%"PRId64", blob.version=%"PRId64" -- skipped",
 	      q_manifestid, q_version, blob_version);
 	++inconsistent;
       }
       if (blob_filesize != -1 && blob_filesize != m->fileLength) {
-	WARNF("MANIFESTS row id=%s has inconsistent blob: known file size %lld, blob.filesize=%lld -- skipped",
+	WARNF("MANIFESTS row id=%s has inconsistent blob: known file size %"PRId64", blob.filesize=%"PRId64" -- skipped",
 	      q_manifestid, m->fileLength, blob_filesize);
 	++inconsistent;
       }
@@ -1356,7 +1335,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
 	}
       }
       if (blob_service == NULL) {
-	WARNF("MANIFESTS row id=%s has blob with no 'service' -- skipped", q_manifestid, blob_id);
+	WARNF("MANIFESTS row id=%s has blob with no 'service' -- skipped", q_manifestid);
 	++inconsistent;
       }
       if (!inconsistent) {
@@ -1388,8 +1367,8 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
       if (!inconsistent) {
 	*found = blob_m;
 	if (config.debug.rhizome)
-	  DEBUGF("Found duplicate payload: service=%s%s version=%llu hexhash=%s",
-		blob_service, strbuf_str(b), blob_m->version, blob_m->fileHexHash, q_author ? q_author : ""
+	  DEBUGF("Found duplicate payload: service=%s%s version=%"PRIu64" hexhash=%s",
+		blob_service, strbuf_str(b), blob_m->version, blob_m->fileHexHash
 	      );
 	ret = 1;
 	break;
@@ -1422,8 +1401,8 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m)
   sqlite3_bind_text(statement, 1, manifestid, -1, SQLITE_STATIC);
   if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
     const char *manifestblob = (char *) sqlite3_column_blob(statement, 0);
-    long long q_version = (long long) sqlite3_column_int64(statement, 1);
-    long long q_inserttime = (long long) sqlite3_column_int64(statement, 2);
+    int64_t q_version = sqlite3_column_int64(statement, 1);
+    int64_t q_inserttime = sqlite3_column_int64(statement, 2);
     const char *q_author = (const char *) sqlite3_column_text(statement, 3);
     size_t manifestblobsize = sqlite3_column_bytes(statement, 0); // must call after sqlite3_column_blob()
     
@@ -1438,7 +1417,7 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m)
     }
     
     if (m->version!=q_version)
-      WARNF("Version mismatch, manifest is %lld, database is %lld", m->version, q_version);
+      WARNF("Version mismatch, manifest is %"PRId64", database is %"PRId64, m->version, q_version);
     
     m->inserttime = q_inserttime;
   }else{
@@ -1556,70 +1535,34 @@ int rhizome_delete_file(const char *fileid)
   return rhizome_delete_file_retry(&retry, fileid);
 }
 
-time_ms_t lookup_time=0;
-time_ms_t last_bar_lookup=0;
 int rhizome_is_bar_interesting(unsigned char *bar){
   IN();
-
-  if (last_bar_lookup>(gettime_ms()-1000)) {
-    /* Looking up rhizome bundles by BAR can be slow.
-       If so, then ignore some percentage of BARs. */
-    if (lookup_time>10) {
-      // if >10ms then only check 1 in 8 BARs
-      if (random()&0x7) RETURN(0);    
-    }
-    if (lookup_time>100) {
-      // if >10ms then only check 1 in 32 (1 in 8 of 1 in 4) BARs
-      if (random()&0x3) RETURN(0);   
-    }
-  }
-
-  time_ms_t start_time=gettime_ms();
-
-  int64_t version = rhizome_bar_version(bar);
-  unsigned char log2_size = bar[RHIZOME_BAR_FILESIZE_OFFSET];
   int ret=1;
+  int64_t version = rhizome_bar_version(bar);
   char id_hex[RHIZOME_MANIFEST_ID_STRLEN];
   tohex(id_hex, &bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
   strcat(id_hex, "%");
-  
-  // are we ignoring this manifest?
-  if (rhizome_ignore_manifest_check(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES)){
-    DEBUGF("Ignoring %s", id_hex);
-    RETURN(0);
-  }
 
-  // do we have free space in a fetch queue?
-  if (log2_size!=0xFF && rhizome_fetch_has_queue_space(log2_size)!=1)
-    RETURN(0);
-
-  // are we already fetching this bundle [or later]?
-  rhizome_manifest *m=rhizome_fetch_search(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
-  if (m && m->version >= version)
-    RETURN(0);
-  
   // do we have this bundle [or later]?
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare(&retry, 
     "SELECT id, version FROM manifests WHERE id like ? and version >= ?");
-  
+
+  if (!statement)
+    RETURN(-1);
+
   sqlite3_bind_text(statement, 1, id_hex, -1, SQLITE_STATIC);
   sqlite3_bind_int64(statement, 2, version);
   
   if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
     if (0){
       const char *q_id = (const char *) sqlite3_column_text(statement, 0);
-      long long q_version = (long long) sqlite3_column_int64(statement, 1);
-      DEBUGF("Already have %s, %lld (vs %s, %lld)", q_id, q_version, id_hex, version);
+      int64_t q_version = sqlite3_column_int64(statement, 1);
+      DEBUGF("Already have %s, %"PRId64" (vs %s, %"PRId64")", q_id, q_version, id_hex, version);
     }
     ret=0;
   }  
   sqlite3_finalize(statement);
-
-  time_ms_t end_time=gettime_ms();
-  lookup_time=end_time-start_time;
-  last_bar_lookup=end_time;
-  if (lookup_time>50) WARNF("Looking up a BAR took %lldms",lookup_time);
 
   RETURN(ret);
   OUT();

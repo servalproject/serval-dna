@@ -134,8 +134,10 @@ typedef struct rhizome_manifest {
 
   /* When finalised, we keep the filehash and maximum priority due to any
      group membership handy */
-  long long fileLength;
+  int64_t fileLength;
+  int64_t journalTail;
   char fileHexHash[SHA512_DIGEST_STRING_LENGTH];
+
   int fileHighestPriority;
   /* Absolute path of the file associated with the manifest */
   char *dataFileName;
@@ -154,7 +156,7 @@ typedef struct rhizome_manifest {
   int selfSigned;
 
   /* Version of the manifest.  Typically the number of milliseconds since 1970. */
-  long long version;
+  int64_t version;
   
   int group_count;
   char *groups[MAX_MANIFEST_VARS];
@@ -173,10 +175,10 @@ typedef struct rhizome_manifest {
 #define     RHIZOME_SERVICE_FILE    "file"
 #define     RHIZOME_SERVICE_MESHMS  "MeshMS1"
 
-extern long long rhizome_space;
+extern int64_t rhizome_space;
 extern unsigned short rhizome_http_server_port;
 
-int log2ll(unsigned long long x);
+int log2ll(uint64_t x);
 int rhizome_configure();
 int rhizome_enabled();
 int rhizome_fetch_delay_ms();
@@ -186,9 +188,6 @@ int rhizome_set_datastore_path(const char *path);
 const char *rhizome_datastore_path();
 int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...);
 int create_rhizome_datastore_dir();
-
-int form_rhizome_import_path(char * buf, size_t bufsiz, const char *fmt, ...);
-int create_rhizome_import_dir();
 
 /* Handy statement for forming the path of a rhizome store file in a char buffer whose declaration
  * is in scope (so that sizeof(buf) will work).  Evaluates to true if the pathname fitted into
@@ -200,6 +199,7 @@ extern sqlite3 *rhizome_db;
 
 int rhizome_opendb();
 int rhizome_close_db();
+void verify_bundles();
 
 struct rhizome_cleanup_report {
     int deleted_stale_incoming_files;
@@ -243,11 +243,11 @@ int rhizome_manifest_priority(sqlite_retry_state *retry, const char *id);
 int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bufferPAndSize);
 int rhizome_hash_file(rhizome_manifest *m, const char *filename,char *hash_out);
 char *rhizome_manifest_get(const rhizome_manifest *m, const char *var, char *out, int maxlen);
-long long  rhizome_manifest_get_ll(rhizome_manifest *m, const char *var);
-int rhizome_manifest_set_ll(rhizome_manifest *m,char *var,long long value);
+int64_t  rhizome_manifest_get_ll(rhizome_manifest *m, const char *var);
+int rhizome_manifest_set_ll(rhizome_manifest *m,char *var, int64_t value);
 int rhizome_manifest_set(rhizome_manifest *m, const char *var, const char *value);
 int rhizome_manifest_del(rhizome_manifest *m, const char *var);
-long long rhizome_file_size(char *filename);
+int64_t rhizome_file_size(char *filename);
 void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m);
 #define rhizome_manifest_free(m) _rhizome_manifest_free(__WHENCE__,m)
 rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence);
@@ -296,8 +296,8 @@ int _sqlite_exec_void(struct __sourceloc, const char *sqlformat, ...);
 int _sqlite_exec_void_loglevel(struct __sourceloc, int log_level, const char *sqlformat, ...);
 int _sqlite_exec_void_retry(struct __sourceloc, sqlite_retry_state *retry, const char *sqlformat, ...);
 int _sqlite_exec_void_retry_loglevel(struct __sourceloc, int log_level, sqlite_retry_state *retry, const char *sqlformat, ...);
-int _sqlite_exec_int64(struct __sourceloc, long long *result, const char *sqlformat, ...);
-int _sqlite_exec_int64_retry(struct __sourceloc, sqlite_retry_state *retry, long long *result, const char *sqlformat, ...);
+int _sqlite_exec_int64(struct __sourceloc, int64_t *result, const char *sqlformat, ...);
+int _sqlite_exec_int64_retry(struct __sourceloc, sqlite_retry_state *retry, int64_t *result, const char *sqlformat, ...);
 int _sqlite_exec_strbuf(struct __sourceloc, strbuf sb, const char *sqlformat, ...);
 int _sqlite_exec_strbuf_retry(struct __sourceloc, sqlite_retry_state *retry, strbuf sb, const char *sqlformat, ...);
 int _sqlite_vexec_strbuf_retry(struct __sourceloc, sqlite_retry_state *retry, strbuf sb, const char *sqlformat, va_list ap);
@@ -322,10 +322,10 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
 int rhizome_update_file_priority(const char *fileid);
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, int check_author);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
-int64_t rhizome_bar_version(unsigned char *bar);
-unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);
+int64_t rhizome_bar_version(const unsigned char *bar);
+uint64_t rhizome_bar_bidprefix_ll(unsigned char *bar);
 int rhizome_is_bar_interesting(unsigned char *bar);
-int rhizome_list_manifests(const char *service, const char *name, 
+int rhizome_list_manifests(struct cli_context *context, const char *service, const char *name, 
 			   const char *sender_sid, const char *recipient_sid, 
 			   int limit, int offset, char count_rows);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m);
@@ -383,18 +383,24 @@ int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len);
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE]);
 rhizome_manifest * rhizome_fetch_search(unsigned char *id, int prefix_length);
 
-
 /* Rhizome file storage api */
+struct rhizome_write_buffer{
+  struct rhizome_write_buffer *_next;
+  int64_t offset;
+  int buffer_size;
+  int data_size;
+  unsigned char data[0];
+};
+
 struct rhizome_write{
   char id[SHA512_DIGEST_STRING_LENGTH+1];
   char id_known;
   
-  unsigned char *buffer;
-  int buffer_size;
-  int data_size;
-  
   int64_t file_offset;
+  int64_t written_offset;
   int64_t file_length;
+  struct rhizome_write_buffer *buffer_list;
+  int buffer_size;
   
   int crypt;
   unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
@@ -403,6 +409,7 @@ struct rhizome_write{
   SHA512_CTX sha512_context;
   int64_t blob_rowid;
   int blob_fd;
+  sqlite3_blob *sql_blob;
 };
 
 struct rhizome_read{
@@ -424,7 +431,7 @@ struct rhizome_read{
 
 typedef struct rhizome_http_request {
   struct sched_ent alarm;
-  long long initiate_time; /* time connection was initiated */
+  time_ms_t initiate_time; /* time connection was initiated */
   
   struct sockaddr_in requestor;
 
@@ -498,8 +505,8 @@ typedef struct rhizome_http_request {
   /* The source specification data which are used in different ways by different 
    request types */
   char source[1024];
-  long long source_index;
-  long long source_count;
+  int64_t source_index;
+  int64_t source_count;
   int source_record_size;
   unsigned int source_flags;
   
@@ -507,14 +514,14 @@ typedef struct rhizome_http_request {
   const char *sql_row;
   int64_t rowid;
   /* source_index used for offset in blob */
-  long long blob_end; 
+  int64_t blob_end; 
   
 } rhizome_http_request;
 
 struct http_response {
   unsigned int result_code;
   const char * content_type;
-  unsigned long long content_length;
+  uint64_t content_length;
   const char * body;
 };
 
@@ -528,7 +535,7 @@ int rhizome_server_free_http_request(rhizome_http_request *r);
 int rhizome_server_http_send_bytes(rhizome_http_request *r);
 int rhizome_server_parse_http_request(rhizome_http_request *r);
 int rhizome_server_simple_http_response(rhizome_http_request *r, int result, const char *response);
-int rhizome_server_http_response_header(rhizome_http_request *r, int result, const char *mime_type, unsigned long long bytes);
+int rhizome_server_http_response_header(rhizome_http_request *r, int result, const char *mime_type, uint64_t bytes);
 int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, char *column);
 int rhizome_http_server_start(int (*http_parse_func)(rhizome_http_request *),
 			      const char *http_parse_func_description,
@@ -543,15 +550,15 @@ int is_rhizome_http_server_running();
 
 typedef struct rhizome_direct_bundle_cursor {
   /* Where the current fill started */
-  long long start_size_high;
+  int64_t start_size_high;
   unsigned char start_bid_low[RHIZOME_MANIFEST_ID_BYTES];
 
   /* Limit of where this cursor may traverse */
-  long long limit_size_high;
+  int64_t limit_size_high;
   unsigned char limit_bid_high[RHIZOME_MANIFEST_ID_BYTES];
 
-  long long size_low;
-  long long size_high;
+  int64_t size_low;
+  int64_t size_high;
   unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTES];
   unsigned char bid_high[RHIZOME_MANIFEST_ID_BYTES];
   unsigned char *buffer;
@@ -574,7 +581,7 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,
 void rhizome_direct_bundle_iterator_free(rhizome_direct_bundle_cursor **c);
 int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTES],
 			    unsigned char bid_high[RHIZOME_MANIFEST_ID_BYTES],
-			    long long size_low,long long size_high,
+			    int64_t size_low, int64_t size_high,
 			    const unsigned char bid_max[RHIZOME_MANIFEST_ID_BYTES],
 			    unsigned char *bars_out,
 			    int bars_requested);
@@ -658,12 +665,13 @@ enum rhizome_start_fetch_result rhizome_fetch_request_manifest_by_prefix(const s
 int rhizome_any_fetch_active();
 int rhizome_any_fetch_queued();
 int rhizome_fetch_queue_bytes();
+int rhizome_fetch_status_html(struct strbuf *b);
 int rhizome_fetch_has_queue_space(unsigned char log2_size);
 
 struct http_response_parts {
   int code;
   char *reason;
-  long long content_length;
+  int64_t content_length;
   char *content_start;
 };
 
@@ -673,7 +681,8 @@ int unpack_http_response(char *response, struct http_response_parts *parts);
 
 int rhizome_exists(const char *fileHash);
 int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority);
-int rhizome_flush(struct rhizome_write *write);
+int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffer, int data_size);
+int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsigned char *buffer, int data_size);
 int rhizome_write_file(struct rhizome_write *write, const char *filename);
 int rhizome_fail_write(struct rhizome_write *write);
 int rhizome_finish_write(struct rhizome_write *write);
@@ -681,6 +690,11 @@ int rhizome_import_file(rhizome_manifest *m, const char *filepath);
 int rhizome_stat_file(rhizome_manifest *m, const char *filepath);
 int rhizome_add_file(rhizome_manifest *m, const char *filepath);
 int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk);
+
+int rhizome_open_write_journal(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, uint64_t new_size);
+int rhizome_append_journal_buffer(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, unsigned char *buffer, int len);
+int rhizome_append_journal_file(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, const char *filename);
+
 int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
 			    const unsigned char *key, const unsigned char *nonce);
 int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash);
@@ -692,5 +706,10 @@ int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t
 int rhizome_dump_file(const char *id, const char *filepath, int64_t *length);
 
 int rhizome_database_filehash_from_id(const char *id, uint64_t version, char hash[SHA512_DIGEST_STRING_LENGTH]);
+
+
+int overlay_mdp_service_rhizome_sync(struct overlay_frame *frame, overlay_mdp_frame *mdp);
+int rhizome_sync_announce();
+int rhizome_sync_bundle_inserted(const unsigned char *bar);
 
 #endif //__SERVALDNA__RHIZOME_H

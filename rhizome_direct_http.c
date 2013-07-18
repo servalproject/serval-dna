@@ -685,7 +685,7 @@ static int receive_http_response(int sock, char *buffer, size_t buffer_len, stru
   int count;
   do {
       if ((count = read(sock, &buffer[len], buffer_len - len)) == -1)
-	return WHYF_perror("read(%d, %p, %d)", sock, &buffer[len], buffer_len - len);
+	return WHYF_perror("read(%d, %p, %d)", sock, &buffer[len], (int)buffer_len - len);
       len += count;
   } while (len < buffer_len && count != 0 && !http_header_complete(buffer, len, len));
   if (config.debug.rhizome_rx)
@@ -693,7 +693,7 @@ static int receive_http_response(int sock, char *buffer, size_t buffer_len, stru
   if (unpack_http_response(buffer, parts) == -1)
     return -1;
   if (parts->code != 200 && parts->code != 201) {
-    INFOF("Failed HTTP request: server returned %003u %s", parts->code, parts->reason);
+    INFOF("Failed HTTP request: server returned %03u %s", parts->code, parts->reason);
     return -1;
   }
   if (parts->content_length == -1) {
@@ -701,7 +701,7 @@ static int receive_http_response(int sock, char *buffer, size_t buffer_len, stru
       DEBUGF("Invalid HTTP reply: missing Content-Length header");
     return -1;
   }
-  DEBUGF("content_length=%d", parts->content_length);
+  DEBUGF("content_length=%"PRId64, parts->content_length);
   return len - (parts->content_start - buffer);
 }
 
@@ -717,7 +717,7 @@ static int fill_buffer(int sock, unsigned char *buffer, int len, int buffer_size
 
 void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 {
-  DEBUGF("Dispatch size_high=%lld",r->cursor->size_high);
+  DEBUGF("Dispatch size_high=%"PRId64,r->cursor->size_high);
   rhizome_direct_transport_state_http *state = r->transport_specific_state;
 
   unsigned char zerosid[SID_SIZE]="\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";

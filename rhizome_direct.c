@@ -289,7 +289,7 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
       rhizome_direct_bundle_iterator_free(&c);
       return NULL;
     }
-  DEBUGF("unpickled size_high=%lld, limit_size_high=%lld",
+  DEBUGF("unpickled size_high=%"PRId64", limit_size_high=%"PRId64,
 	 c->size_high,c->limit_size_high);
   DEBUGF("c->buffer_size=%d",c->buffer_size);
 
@@ -338,7 +338,7 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
 	      RHIZOME_BAR_PREFIX_BYTES);
 	c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
 	who=-1;
-	DEBUGF("They have previously unseen bundle %016llx*",
+	DEBUGF("They have previously unseen bundle %016"PRIx64"*",
 	       rhizome_bar_bidprefix_ll(&buffer[10+them*RHIZOME_BAR_BYTES]));
       } else if (relation>0) {
 	/* We have a bundle that they don't have any version of
@@ -350,7 +350,7 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
 	      RHIZOME_BAR_PREFIX_BYTES);
 	c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
 	who=+1;
-	DEBUGF("We have previously unseen bundle %016llx*",
+	DEBUGF("We have previously unseen bundle %016"PRIx64"*",
 	       rhizome_bar_bidprefix_ll(&usbuffer[10+us*RHIZOME_BAR_BYTES]));
       } else {
 	/* We each have a version of this bundle, so see whose is newer */
@@ -365,7 +365,7 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
 		&c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
 		RHIZOME_BAR_PREFIX_BYTES);
 	  c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
-	  DEBUGF("They have newer version of bundle %016llx* (%lld versus %lld)",
+	  DEBUGF("They have newer version of bundle %016"PRIx64"* (%"PRId64" versus %"PRId64")",
 		 rhizome_bar_bidprefix_ll(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
 		 rhizome_bar_version(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
 		 rhizome_bar_version(&buffer[10+them*RHIZOME_BAR_BYTES]));
@@ -376,12 +376,12 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
 		&c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
 		RHIZOME_BAR_PREFIX_BYTES);
 	  c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
-	  DEBUGF("We have newer version of bundle %016llx* (%lld versus %lld)",
+	  DEBUGF("We have newer version of bundle %016"PRIx64"* (%"PRId64" versus %"PRId64")",
 		 rhizome_bar_bidprefix_ll(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
 		 rhizome_bar_version(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
 		 rhizome_bar_version(&buffer[10+them*RHIZOME_BAR_BYTES]));
 	} else {
-	  DEBUGF("We both have the same version of %016llx*",
+	  DEBUGF("We both have the same version of %016"PRIx64"*",
 		 rhizome_bar_bidprefix_ll(&buffer[10+them*RHIZOME_BAR_BYTES]));
 	}
       }
@@ -510,7 +510,7 @@ static int rhizome_sync_with_peers(int mode, int peer_count, const struct config
   return 0;
 }
 
-int app_rhizome_direct_sync(const struct cli_parsed *parsed, void *context)
+int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -601,7 +601,7 @@ int rhizome_direct_bundle_iterator_pickle_range(rhizome_direct_bundle_cursor *r,
   pickled[0]=ltwov;
   for(v=0;v<4;v++) pickled[1+v]=r->start_bid_low[v];
   v=r->size_high;
-  DEBUGF("pickling size_high=%lld",r->size_high);
+  DEBUGF("pickling size_high=%"PRId64,r->size_high);
   ltwov=0;
   while(v>1) { ltwov++; v=v>>1; }
   pickled[1+4]=ltwov;
@@ -661,7 +661,7 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
   if (max_bars==-1)
     max_bars=(c->buffer_size-c->buffer_offset_bytes)/RHIZOME_BAR_BYTES;
 
-  DEBUGF("Iterating cursor size high %lld..%lld, max_bars=%d",
+  DEBUGF("Iterating cursor size high %"PRId64"..%"PRId64", max_bars=%d",
 	 c->size_high,c->limit_size_high,max_bars);
 
   while (bundles_stuffed<max_bars&&c->size_high<=c->limit_size_high) 
@@ -694,7 +694,7 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
 	c->size_low=c->size_high+1;
 	c->size_high*=2;
 	if (c->size_high<=1024) c->size_low=0;
-	DEBUGF("size=%lld..%lld",c->size_low,c->size_high);
+	DEBUGF("size=%"PRId64"..%"PRId64,c->size_low,c->size_high);
 	/* Record that we covered to the end of that size bin */
 	memset(c->bid_high,0xff,RHIZOME_MANIFEST_ID_BYTES);
 	if (c->size_high>c->limit_size_high)
@@ -745,7 +745,7 @@ void rhizome_direct_bundle_iterator_free(rhizome_direct_bundle_cursor **c)
 */
 int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTES],
 			    unsigned char bid_high[RHIZOME_MANIFEST_ID_BYTES],
-			    long long size_low,long long size_high,
+			    int64_t size_low, int64_t size_high,
 			    const unsigned char bid_max[RHIZOME_MANIFEST_ID_BYTES],
 			    unsigned char *bars_out,
 			    int bars_requested)
@@ -756,7 +756,7 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
   snprintf(query,1024,
 	   "SELECT BAR,ROWID,ID,FILESIZE FROM MANIFESTS"
 	   " WHERE"
-	   " FILESIZE BETWEEN %lld AND %lld"
+	   " FILESIZE BETWEEN %" PRId64 " AND %" PRId64
 	   " AND ID>='%s' AND ID<='%s'"
 	   // The following formulation doesn't remove the weird returning of
 	   // bundles with out of range filesize values
@@ -784,7 +784,7 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
 	int ret;
 	int64_t filesize = sqlite3_column_int64(statement, 3);
 	if (filesize<size_low||filesize>size_high) {
-	  DEBUGF("WEIRDNESS ALERT: filesize=%lld, but query was: %s",
+	  DEBUGF("WEIRDNESS ALERT: filesize=%"PRId64", but query was: %s",
 		 filesize,query);
 	  break;
 	} 

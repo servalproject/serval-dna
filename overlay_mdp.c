@@ -472,7 +472,7 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
       RETURN(WHY("Failed to pass received MDP frame to client"));
     } else {
       /* No socket is bound, ignore the packet ... except for magic sockets */
-      RETURN(overlay_mdp_try_interal_services(mdp));
+      RETURN(overlay_mdp_try_interal_services(frame, mdp));
     }
     break;
   default:
@@ -561,6 +561,9 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 			 struct sockaddr_un *recvaddr,int recvaddrlen)
 {
   IN();
+
+  if (mdp->out.payload_length > sizeof(mdp->out.payload))
+    FATAL("Payload length is past the end of the buffer");
 
   /* Prepare the overlay frame for dispatch */
   struct overlay_frame *frame = calloc(1,sizeof(struct overlay_frame));
@@ -835,7 +838,7 @@ static int routing_table(struct subscriber *subscriber, void *context){
   reply.packetTypeAndFlags=MDP_TX;
   reply.out.payload_length=sizeof(struct overlay_route_record);
   memcpy(r->sid, subscriber->sid, SID_SIZE);
-  r->reachable = subscriber_is_reachable(subscriber);
+  r->reachable = subscriber->reachable;
   
   if (subscriber->reachable==REACHABLE_INDIRECT && subscriber->next_hop)
     memcpy(r->neighbour, subscriber->next_hop->sid, SID_SIZE);

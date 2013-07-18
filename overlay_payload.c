@@ -73,7 +73,7 @@ static int overlay_frame_build_header(int packet_version, struct decode_context 
     if (ob_append_byte(buff, type)) return -1;
   }
 
-  if (packet_version>0)
+  if (packet_version >= 1)
     if (ob_append_byte(buff, sequence))
       return -1;
   
@@ -110,9 +110,11 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
 			     p->destination, p->source))
     goto cleanup;
   
-  if (ob_append_ui16(b, ob_position(p->payload)))
+  if (interface->encapsulation == ENCAP_OVERLAY){
+    if (ob_append_ui16(b, ob_position(p->payload)))
       goto cleanup;
-      
+  }
+
   if (ob_append_bytes(b, ob_ptr(p->payload), ob_position(p->payload))) {
     WHY("could not append payload"); 
     goto cleanup;
@@ -123,35 +125,6 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
 cleanup:
   ob_rewind(b);
   return -1;
-}
-
-int single_packet_encapsulation(struct overlay_buffer *b, struct overlay_frame *frame){
-  overlay_interface *interface=frame->interface;
-  int interface_number = interface - overlay_interfaces;
-  struct decode_context context;
-  bzero(&context, sizeof(struct decode_context));
-  
-  if (frame->source_full)
-    my_subscriber->send_full=1;
-  int seq = interface->sequence_number++;
-  if (overlay_packet_init_header(frame->packet_version, ENCAP_SINGLE, &context, b, NULL, 0, interface_number, seq))
-    return WHY("Failed to init header");
-
-  struct broadcast *broadcast=NULL;
-  if ((!frame->destination) && !is_all_matching(frame->broadcast_id.id,BROADCAST_LEN,0))
-    broadcast = &frame->broadcast_id;
-
-  if (overlay_frame_build_header(frame->packet_version, &context, b,
-				 frame->queue, frame->type, 
-				 frame->modifiers, frame->ttl, frame->mdp_sequence & 0xFF,
-				 broadcast, frame->next_hop, 
-				 frame->destination, frame->source))
-    return WHY("Failed to build header");
-  
-  if (ob_append_buffer(b, frame->payload))
-    return WHY("Failed to append payload");
-  
-  return 0;
 }
 
 int op_free(struct overlay_frame *p)

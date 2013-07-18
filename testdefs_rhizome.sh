@@ -334,6 +334,7 @@ bundle_received_by() {
       +[A-Z])
          push_instance
          tfw_nolog set_instance $arg || return $?
+         tfw_nolog assert_servald_server_status running
          for ((i = 0; i < ${#bundles[*]}; ++i)); do
             bundle="${bundles[$i]}"
             rexp="${rexps[$i]}"

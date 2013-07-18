@@ -306,7 +306,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
   
   str_toupper_inplace(id);
   /* Discard the new manifest unless it is newer than the most recent known version with the same ID */
-  long long storedversion = -1;
+  int64_t storedversion = -1;
   switch (sqlite_exec_int64(&storedversion, "SELECT version from manifests where id='%s';", id)) {
     case -1:
       return WHY("Select failed");
@@ -314,7 +314,8 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
       if (config.debug.rhizome) DEBUG("No existing manifest");
       break;
     case 1:
-      if (config.debug.rhizome) DEBUGF("Found existing version=%lld, new version=%lld", storedversion, m_in->version);
+      if (config.debug.rhizome) 
+	DEBUGF("Found existing version=%"PRId64", new version=%"PRId64, storedversion, m_in->version);
       if (m_in->version < storedversion)
 	return WHY("Newer version exists");
       if (m_in->version == storedversion)

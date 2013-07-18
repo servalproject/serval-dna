@@ -108,6 +108,8 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   }
 
   m->manifest_all_bytes=m->manifest_bytes;
+  m->var_count=0;
+  m->journalTail=-1;
 
   /* Parse out variables, signature etc */
   int have_service = 0;
@@ -241,7 +243,7 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	} else if (strcasecmp(var, "name") == 0) {
 	  if (value[0] == '\0') {
 	    if (config.debug.rejecteddata)
-	      WARNF("Empty name", value);
+	      WARN("Empty name");
 	    m->errors++;
 	  }
 	  // TODO: complain if service is not MeshMS
@@ -252,6 +254,16 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	    m->errors++;
 	  } else {
 	    m->payloadEncryption = atoi(value);
+	  }
+	} else if (strcasecmp(var, "tail") == 0) {
+	  char *ep = value;
+	  long long tail = strtoll(value, &ep, 10);
+	  if (ep == value || *ep || tail < 0) {
+	    if (config.debug.rejecteddata)
+	      WARNF("Invalid tail: %s", value);
+	    m->errors++;
+	  } else {
+	    m->journalTail = tail;
 	  }
 	} else {
 	  INFOF("Unsupported field: %s=%s", var, value);
@@ -372,7 +384,7 @@ char *rhizome_manifest_get(const rhizome_manifest *m, const char *var, char *out
   return NULL;
 }
 
-long long rhizome_manifest_get_ll(rhizome_manifest *m, const char *var)
+int64_t rhizome_manifest_get_ll(rhizome_manifest *m, const char *var)
 {
   if (!m)
     return -1;
@@ -442,11 +454,11 @@ int rhizome_manifest_set(rhizome_manifest *m, const char *var, const char *value
   return 0;
 }
 
-int rhizome_manifest_set_ll(rhizome_manifest *m,char *var,long long value)
+int rhizome_manifest_set_ll(rhizome_manifest *m, char *var, int64_t value)
 {
   char svalue[100];
 
-  snprintf(svalue,100,"%lld",value);
+  snprintf(svalue,100, "%" PRId64, value);
 
   return rhizome_manifest_set(m,var,svalue);
 }
@@ -512,6 +524,9 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence)
     ;
 
   if (config.debug.manifests) _log_manifest_trace(__whence, __FUNCTION__);
+
+  // Set global defaults for a manifest
+  m->journalTail = -1;
 
   return m;
 }
@@ -761,7 +776,7 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
   }
   
   int crypt = rhizome_manifest_get_ll(m,"crypt"); 
-  if (crypt==-1 && m->fileLength){
+  if (crypt==-1){
     // no explicit crypt flag, should we encrypt this bundle?
     char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
     char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
