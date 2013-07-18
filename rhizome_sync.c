@@ -29,7 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MSG_TYPE_REQ 1
 
 #define CACHE_BARS 60
-#define BARS_PER_RESPONSE (400/RHIZOME_BAR_BYTES)
+#define BARS_PER_RESPONSE ((int)400/RHIZOME_BAR_BYTES)
 
 #define HEAD_FLAG INT64_MAX
 
@@ -187,7 +187,8 @@ int rhizome_sync_bundle_inserted(const unsigned char *bar)
 static int sync_cache_bar(struct rhizome_sync *state, unsigned char *bar, uint64_t token)
 {
   int ret=0;
-
+  if (state->bar_count>=CACHE_BARS)
+    return 0;
   // check the database before adding the BAR to the list
   if (token!=0 && rhizome_is_bar_interesting(bar)!=0){
     bcopy(bar, state->bars[state->bar_count].bar, RHIZOME_BAR_BYTES);
@@ -272,11 +273,11 @@ static void sync_process_bar_list(struct subscriber *subscriber, struct rhizome_
     // we require the list of BARs to be either ASC or DESC and include BARs for *all* manifests in that range
     // TODO stop if we are taking too much CPU time.
     int added=0;
-    for (i=mid_point; i<bar_count && state->bar_count < CACHE_BARS; i++){
+    for (i=mid_point; i<bar_count; i++){
       if (sync_cache_bar(state, bars[i], bar_tokens[i]))
 	added=1;
     }
-    for (i=mid_point -1; i>=0 && state->bar_count < CACHE_BARS; i--){
+    for (i=mid_point -1; i>=0; i--){
       if (sync_cache_bar(state, bars[i], bar_tokens[i]))
 	added=1;
     }

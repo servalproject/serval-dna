@@ -397,7 +397,10 @@ struct rhizome_write{
   char id_known;
   
   int64_t file_offset;
+  int64_t written_offset;
   int64_t file_length;
+  struct rhizome_write_buffer *buffer_list;
+  int buffer_size;
   
   int crypt;
   unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
@@ -407,9 +410,6 @@ struct rhizome_write{
   int64_t blob_rowid;
   int blob_fd;
   sqlite3_blob *sql_blob;
-  
-  struct rhizome_write_buffer *out_of_order;
-  int total_data_size;
 };
 
 struct rhizome_read{

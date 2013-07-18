@@ -1012,7 +1012,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   uint32_t bitmap=0;
   int requests=32;
   int i;
-  struct rhizome_write_buffer *p = slot->write_state.out_of_order;
+  struct rhizome_write_buffer *p = slot->write_state.buffer_list;
   uint64_t offset = slot->write_state.file_offset;
   for (i=0;i<32;i++){
     while(p && p->offset + p->data_size < offset)
