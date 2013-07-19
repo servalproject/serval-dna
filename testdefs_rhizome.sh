@@ -186,15 +186,6 @@ unpack_manifest_for_grep() {
       re_name=$(escape_grep_basic "$re_name")
       re_sender=$($SED -n -e '/^sender=/s///p' "$filename.manifest")
       re_recipient=$($SED -n -e '/^recipient=/s///p' "$filename.manifest")
-      case "$re_service" in
-      file)
-         re_sender=
-         re_recipient=
-         ;;
-      *)
-         re_name=
-         ;;
-      esac
    fi
 }
 

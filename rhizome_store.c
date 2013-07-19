@@ -151,7 +151,7 @@ static int prepare_data(struct rhizome_write *write_state, unsigned char *buffer
   write_state->file_offset+=data_size;
   
   if (config.debug.rhizome)
-    DEBUGF("Processesd %"PRId64" of %"PRId64, write_state->file_offset, write_state->file_length);
+    DEBUGF("Processed %"PRId64" of %"PRId64, write_state->file_offset, write_state->file_length);
   return 0;
 }
 
@@ -214,14 +214,6 @@ static int write_data(struct rhizome_write *write_state, uint64_t file_offset, u
   if (config.debug.rhizome)
     DEBUGF("Wrote %"PRId64" of %"PRId64, file_offset + data_size, write_state->file_length);
   return 0;
-}
-
-// hash and write data to disk, assumes database lock has been opened
-static int stream_data(struct rhizome_write *write_state, unsigned char *buffer, int data_size){
-  uint64_t file_offset = write_state->file_offset;
-  if (prepare_data(write_state, buffer, data_size))
-    return -1;
-  return write_data(write_state, file_offset, buffer, data_size);
 }
 
 // close database locks
@@ -383,7 +375,7 @@ int rhizome_write_file(struct rhizome_write *write, const char *filename){
       goto end;
     }
     DEBUGF("Read %d from file", r);
-    if (stream_data(write, buffer, r)){
+    if (rhizome_write_buffer(write, buffer, r)){
       ret=-1;
       goto end;
     }

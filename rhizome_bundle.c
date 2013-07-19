@@ -783,10 +783,15 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
     
     // anything sent from one person to another should be considered private and encrypted by default
     if (sender && recipient){
-      if (config.debug.rhizome)
-	DEBUGF("Implicitly adding payload encryption due to presense of sender & recipient fields");
-      m->payloadEncryption=1;
-      rhizome_manifest_set_ll(m,"crypt",1); 
+      sid_t s_sender, s_recipient;
+      if (cf_opt_sid(&s_sender, sender)==CFOK 
+	&& cf_opt_sid(&s_recipient, recipient)==CFOK
+	&& !is_sid_broadcast(s_recipient.binary)){
+	if (config.debug.rhizome)
+	  DEBUGF("Implicitly adding payload encryption due to presense of sender & recipient fields");
+	m->payloadEncryption=1;
+	rhizome_manifest_set_ll(m,"crypt",1); 
+      }
     }
   }
   

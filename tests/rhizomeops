@@ -664,6 +664,48 @@ test_EncryptedPayload() {
    assert ! diff file1 file1y
 }
 
+doc_RecipientIsEncrypted="Sender & recipient triggers encryption by default"
+setup_RecipientIsEncrypted() {
+   setup_servald
+   setup_rhizome
+   echo "Clear Text" >file1
+   echo -e "service=file\nsender=$SIDB1\nrecipient=$SIDB2" >file1.manifest
+}
+test_RecipientIsEncrypted() {
+   executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file1
+   assert_manifest_complete file1.manifest
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 file1
+   extract_manifest_id BID file1.manifest
+   executeOk_servald rhizome extract file $BID file1x
+   tfw_cat --stdout --stderr
+   assert diff file1 file1x
+   extract_manifest_filehash filehash file1.manifest
+   executeOk_servald rhizome export file $filehash file1y
+   assert ! diff file1 file1y
+}
+
+doc_BroadcastNotEncrypted="Broadcast recipients are not encrypted by default"
+setup_BroadcastNotEncrypted() {
+   setup_servald
+   setup_rhizome
+   echo "Clear Text" >file1
+   echo -e "service=file\nsender=$SIDB1\nrecipient=FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF" >file1.manifest
+}
+test_BroadcastNotEncrypted() {
+   executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file1
+   assert_manifest_complete file1.manifest
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 file1
+   extract_manifest_filehash filehash file1.manifest
+   executeOk_servald rhizome export file $filehash file1y
+   assert diff file1 file1y
+}
+
 doc_JournalAdd="Create and append to a journal"
 setup_JournalAdd() {
    setup_servald
