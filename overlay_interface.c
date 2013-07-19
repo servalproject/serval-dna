@@ -891,7 +891,7 @@ overlay_broadcast_ensemble(overlay_interface *interface,
 	if (fsize == -1)
 	  return WHY_perror("lseek");
 	if (config.debug.overlayinterfaces)
-	  DEBUGF("Write to interface %s at offset=%"PRId64, interface->name, fsize);
+	  DEBUGF("Write to interface %s at offset=%"PRId64, interface->name, (long long int)fsize);
       }
       ssize_t nwrite = write(interface->alarm.poll.fd, &packet, sizeof(packet));
       if (nwrite == -1)
@@ -1084,7 +1084,7 @@ logServalPacket(int level, struct __sourceloc __whence, const char *message, con
   if (serval_packetvisualise(XPRINTF_MALLOCBUF(&mb), message, packet, len) == -1)
     WHY("serval_packetvisualise() failed");
   else if (mb.buffer == NULL)
-    WHYF("serval_packetvisualise() output buffer missing, message=%s packet=%p len=%lu", alloca_toprint(-1, message, strlen(message)), packet, len);
+    WHYF("serval_packetvisualise() output buffer missing, message=%s packet=%p len=%lu", alloca_toprint(-1, message, strlen(message)), packet, (long unsigned int)len);
   else
     logString(level, __whence, mb.buffer);
   if (mb.buffer)
