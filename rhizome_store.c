@@ -374,7 +374,6 @@ int rhizome_write_file(struct rhizome_write *write, const char *filename){
       ret = WHY_perror("fread");
       goto end;
     }
-    DEBUGF("Read %d from file", r);
     if (rhizome_write_buffer(write, buffer, r)){
       ret=-1;
       goto end;
@@ -578,11 +577,17 @@ int rhizome_stat_file(rhizome_manifest *m, const char *filepath)
 
 static int rhizome_write_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_write *write)
 {
-  write->crypt=1;
+  if (!m->payloadEncryption)
+    return 0;
+  
   // if the manifest specifies encryption, make sure we can generate the payload key and encrypt the contents as we go
   if (rhizome_derive_key(m, bsk))
     return -1;
 
+  if (config.debug.rhizome)
+    DEBUGF("Encrypting payload contents");
+
+  write->crypt=1;
   bcopy(m->payloadKey, write->key, sizeof(write->key));
   bcopy(m->payloadNonce, write->nonce, sizeof(write->nonce));
   return 0;
@@ -599,13 +604,9 @@ int rhizome_add_file(rhizome_manifest *m, const char *filepath)
   if (rhizome_open_write(&write, NULL, m->fileLength, RHIZOME_PRIORITY_DEFAULT))
     return -1;
 
-  if (m->payloadEncryption){
-    if (rhizome_write_derive_key(m, NULL, &write))
-      return -1;
-
-    if (config.debug.rhizome)
-      DEBUGF("Encrypting file contents");
-  }
+  if (rhizome_write_derive_key(m, NULL, &write))
+    return -1;
+    
   if (rhizome_write_file(&write, filepath)){
     rhizome_fail_write(&write);
     return -1;
@@ -774,25 +775,29 @@ static int write_file(struct rhizome_read *read, const char *filepath){
   return ret;
 }
 
+static int read_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state){
+  read_state->crypt=m->payloadEncryption;
+  if (read_state->crypt){
+    // if the manifest specifies encryption, make sure we can generate the payload key and encrypt
+    // the contents as we go
+    if (rhizome_derive_key(m, bsk)) {
+      rhizome_read_close(read_state);
+      return WHY("Unable to decrypt bundle, valid key not found");
+    }
+    if (config.debug.rhizome)
+      DEBUGF("Decrypting file contents");
+    bcopy(m->payloadKey, read_state->key, sizeof(read_state->key));
+    bcopy(m->payloadNonce, read_state->nonce, sizeof(read_state->nonce));
+  }
+  return 0;
+}
+
 int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state, int hash){
   
   // for now, always hash the file
   int ret = rhizome_open_read(read_state, m->fileHexHash, hash);
-  if (ret == 0) {
-    read_state->crypt=m->payloadEncryption;
-    if (read_state->crypt){
-      // if the manifest specifies encryption, make sure we can generate the payload key and encrypt
-      // the contents as we go
-      if (rhizome_derive_key(m, bsk)) {
-	rhizome_read_close(read_state);
-	return WHY("Unable to decrypt bundle, valid key not found");
-      }
-      if (config.debug.rhizome)
-	DEBUGF("Decrypting file contents");
-      bcopy(m->payloadKey, read_state->key, sizeof(read_state->key));
-      bcopy(m->payloadNonce, read_state->nonce, sizeof(read_state->nonce));
-    }
-  }
+  if (ret == 0)
+    ret = read_derive_key(m, bsk, read_state);
   return ret;
 }
 
@@ -849,7 +854,7 @@ static int rhizome_pipe(struct rhizome_read *read, struct rhizome_write *write, 
       return r;
 
     length -= r;
-    DEBUGF("Piping %d bytes", r);
+    
     if (rhizome_write_buffer(write, buffer, r))
       return -1;
   }
@@ -885,7 +890,8 @@ int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m,
   if (copy_length>0){
     struct rhizome_read read_state;
     bzero(&read_state, sizeof read_state);
-    ret = rhizome_open_decrypt_read(m, bsk, &read_state, 1);
+    // don't bother to decrypt the existing journal payload
+    ret = rhizome_open_read(&read_state, m->fileHexHash, 1);
     if (ret)
       goto failure;
 
@@ -896,11 +902,9 @@ int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m,
       goto failure;
   }
 
-  if (m->payloadEncryption){
-    ret = rhizome_write_derive_key(m, bsk, write);
-    if (ret)
-      goto failure;
-  }
+  ret = rhizome_write_derive_key(m, bsk, write);
+  if (ret)
+    goto failure;
 
   return 0;
 

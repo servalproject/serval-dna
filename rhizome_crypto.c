@@ -585,9 +585,9 @@ int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stre
       size=buffer_size;
     
     unsigned char temp[RHIZOME_CRYPT_PAGE_SIZE];
-    bcopy(temp + padding, buffer, size);
-    crypto_stream_xsalsa20_xor(temp, temp, size, block_nonce, key);
     bcopy(buffer, temp + padding, size);
+    crypto_stream_xsalsa20_xor(temp, temp, size+padding, block_nonce, key);
+    bcopy(temp + padding, buffer, size);
     
     add_nonce(block_nonce, RHIZOME_CRYPT_PAGE_SIZE);
     offset+=size;
@@ -659,12 +659,12 @@ int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk)
     bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
   }
   
-  // generate nonce from version#bundle id#version;
+  // journal bundles must always have the same nonce, regardless of version.
+  // otherwise, generate nonce from version#bundle id#version;
   unsigned char raw_nonce[8+8+sizeof(m->cryptoSignPublic)];
-  
-  write_uint64(&raw_nonce[0], m->version);
+  write_uint64(&raw_nonce[0], m->journalTail>=0?0:m->version);
   bcopy(m->cryptoSignPublic, &raw_nonce[8], sizeof(m->cryptoSignPublic));
-  write_uint64(&raw_nonce[8+sizeof(m->cryptoSignPublic)], m->version);
+  write_uint64(&raw_nonce[8+sizeof(m->cryptoSignPublic)], m->journalTail>=0?0:m->version);
   
   unsigned char hash[crypto_hash_sha512_BYTES];
   
