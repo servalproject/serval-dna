@@ -84,7 +84,7 @@ static int reload(const char *path, int *resultp)
   if (meta.mtime == -1) {
     WARNF("config file %s does not exist -- using all defaults", path);
   } else if (meta.size > CONFIG_FILE_MAX_SIZE) {
-    WHYF("config file %s is too big (%"PRId64" bytes exceeds limit %d)", path, (long long int)meta.size, CONFIG_FILE_MAX_SIZE);
+    WHYF("config file %s is too big (%zu bytes exceeds limit %d)", path, meta.size, CONFIG_FILE_MAX_SIZE);
     return -1;
   } else if (meta.size <= 0) {
     WARNF("config file %s is zero size -- using all defaults", path);

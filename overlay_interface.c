@@ -891,7 +891,7 @@ overlay_broadcast_ensemble(overlay_interface *interface,
 	if (fsize == -1)
 	  return WHY_perror("lseek");
 	if (config.debug.overlayinterfaces)
-	  DEBUGF("Write to interface %s at offset=%"PRId64, interface->name, (long long int)fsize);
+	  DEBUGF("Write to interface %s at offset=%zu", interface->name, fsize);
       }
       ssize_t nwrite = write(interface->alarm.poll.fd, &packet, sizeof(packet));
       if (nwrite == -1)
