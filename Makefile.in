@@ -116,4 +116,4 @@ libmonitorclient.a: $(MONITORCLIENTOBJS)
 	@$(AR) -cr $@ $(MONITORCLIENTOBJS) version_libmonitorclient.o
 
 clean:
-	@rm -f $(OBJS) servald libservald.so libmonitorclient.so version_libmonitorclient.o libmonitorclient.a
+	@rm -f $(OBJS) tfw_createfile.o tfw_createfile servald libservald.so libmonitorclient.so version_libmonitorclient.o libmonitorclient.a
