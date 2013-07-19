@@ -129,7 +129,7 @@ time_ms_t gettime_ms()
   if (gettimeofday(&nowtv, NULL) == -1)
     FATAL_perror("gettimeofday");
   if (nowtv.tv_sec < 0 || nowtv.tv_usec < 0 || nowtv.tv_usec >= 1000000)
-    FATALF("gettimeofday returned tv_sec=%ld tv_usec=%ld", nowtv.tv_sec, nowtv.tv_usec);
+    FATALF("gettimeofday returned tv_sec=%ld tv_usec=%ld", (long)nowtv.tv_sec, (long)nowtv.tv_usec);
   return nowtv.tv_sec * 1000LL + nowtv.tv_usec / 1000;
 }
 
