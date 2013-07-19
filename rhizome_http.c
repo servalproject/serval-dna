@@ -549,9 +549,9 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
       r->request_type = RHIZOME_HTTP_REQUEST_FROMBUFFER;
       char temp[8192];
       snprintf(temp,8192,
-	       ";%lld;%d;%d;%d;%d;%s;%d;%d;%d;%d;%d\n",
+	       ";%lld;%d;%d;%d;%d;%d;%s;%d;%d;%d;%d;%d\n",
 	       gettime_ms(),
-	       last_radio_rssi,last_radio_temperature,
+	       last_radio_rssi,last_radio_temperature,last_radio_rxpackets,
 	       (int)bundles_available,
 	       rhizome_active_fetch_count(),
 	       alloca_tohex(my_subscriber->sid, 8),
@@ -567,13 +567,13 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
       char temp[8192];
       snprintf(temp,8192,
 	       "<html><head><meta http-equiv=\"refresh\" content=\"5\" >"
-	       "</head><body><h1>Radio link margin = %+ddB<br>"
+	       "</head><body><h1>Radio link margin = %+ddB (%d packets received)<br>"
 	       "Radio temperature = %d&deg;C<br>"
 	       "SID: %s*<br>"
 	       "%d rhizome bundles in database<br>"
 	       "%d rhizome transfers in progress<br>(%d,%d,%d,%d,%d bytes)<br>"
 	       "</h1></body></html>\n",
-	       last_radio_rssi,last_radio_temperature,
+	       last_radio_rssi,last_radio_rxpackets,last_radio_temperature,
 	       alloca_tohex(my_subscriber->sid, 8),
 	       (int)bundles_available,
 	       rhizome_active_fetch_count(),

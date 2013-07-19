@@ -152,19 +152,21 @@ int slip_encode(int format,
 unsigned long long last_rssi_time=0;
 int last_radio_rssi=-999;
 int last_radio_temperature=-999;
+int last_radio_rxpackets=0;
 int parse_rfd900_rssi(char *s)
 {
-  int lrssi,rrssi,lnoise,rnoise,temp;
+  int lrssi,rrssi,lnoise,rnoise,rxpackets,temp;
 
   // L/R RSSI: 48/0  L/R noise: 62/0 pkts: 0  txe=0 rxe=0 stx=0 srx=0 ecc=0/0 temp=21 dco=0
-  if (sscanf(s,"L/R RSSI: %d/%d  L/R noise: %d/%d pkts: %*d  txe=%*d rxe=%*d stx=%*d srx=%*d ecc=%*d/%*d temp=%d dco=%*d",
-	     &lrssi,&rrssi,&lnoise,&rnoise,&temp)==5)
+  if (sscanf(s,"L/R RSSI: %d/%d  L/R noise: %d/%d pkts: %d  txe=%*d rxe=%*d stx=%*d srx=%*d ecc=%*d/%*d temp=%d dco=%*d",
+	     &lrssi,&rrssi,&lnoise,&rnoise,&rxpackets, &temp)==5)
     {
       int lmargin=(lrssi-lnoise)/1.9;
       int rmargin=(lrssi-lnoise)/1.9;
       int maxmargin=lmargin; if (rmargin>maxmargin) maxmargin=rmargin;
       last_radio_rssi=maxmargin;
       last_radio_temperature=temp;
+      last_radio_rxpackets=rxpackets;
 
       if (config.debug.packetradio||(gettime_ms()-last_rssi_time>30000)) {
 	INFOF("Link budget = %+ddB, temperature=%dC",maxmargin,temp);
