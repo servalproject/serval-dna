@@ -90,6 +90,8 @@ struct overlay_buffer *ob_dup(struct overlay_buffer *b){
       byteCount = b->allocSize;
     
     ob_append_bytes(ret, b->bytes, byteCount);
+    /* position must be reset after ob_append_bytes */
+    ret->position = b->position;
   }
   return ret;
 }
