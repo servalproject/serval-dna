@@ -254,7 +254,7 @@ Java_org_servalproject_servald_mdp_MeshSocket__1send(JNIEnv * env,
 
   /* Fill mdp structure. */
 
-  mdp.packetTypeAndFlags = MDP_TX | flags & MDP_FLAG_MASK;
+  mdp.packetTypeAndFlags = MDP_TX | (flags & MDP_FLAG_MASK);
   mdp.out.queue = qos;
   mdp.out.src.port = localport;
   if (localsid != NULL) {
@@ -311,7 +311,7 @@ Java_org_servalproject_servald_mdp_MeshSocket__1receive(JNIEnv * env,
   length = (*env)->GetIntField(env, mdppack, f_meshpacket_length);
 
   /* Receive data. */
-  if (res = (overlay_mdp_recv(fd, &mdp, localport, &ttl))) {
+  if ((res = (overlay_mdp_recv(fd, &mdp, localport, &ttl)))) {
     if (res == -2) {
       /* Socket is closed. */
       msg = "Socket closed";
