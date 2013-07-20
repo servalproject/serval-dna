@@ -22,6 +22,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <math.h>
 #include <string.h>
 #include <ctype.h>
+#include <dirent.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #ifdef HAVE_STRINGS_H
 #include <strings.h>
 #endif
@@ -249,7 +252,6 @@ int parseCommandLine(struct cli_context *context, const char *argv0, int argc, c
   }
 
   /* clean up after ourselves */
-  overlay_mdp_client_done();
   rhizome_close_db();
   OUT();
   
@@ -505,7 +507,7 @@ int app_log(const struct cli_parsed *parsed, struct cli_context *context)
   return 0;
 }
 
-void lookup_send_request(const sid_t *srcsid, int srcport, const sid_t *dstsid, const char *did)
+void lookup_send_request(int mdp_sockfd, const sid_t *srcsid, int srcport, const sid_t *dstsid, const char *did)
 {
   int i;
   overlay_mdp_frame mdp;
@@ -534,23 +536,24 @@ void lookup_send_request(const sid_t *srcsid, int srcport, const sid_t *dstsid, 
   bcopy(did,&mdp.out.payload[0],strlen(did)+1);
   mdp.out.payload_length=strlen(did)+1;
   
-  overlay_mdp_send(&mdp,0,0);
+  overlay_mdp_send(mdp_sockfd, &mdp, 0, 0);
   
   /* Also send an encrypted unicast request to a configured directory service */
   if (!dstsid){
     if (!is_sid_any(config.directory.service.binary)) {
       memcpy(mdp.out.dst.sid, config.directory.service.binary, SID_SIZE);
       mdp.packetTypeAndFlags=MDP_TX;
-      overlay_mdp_send(&mdp,0,0);
+      overlay_mdp_send(mdp_sockfd, &mdp, 0, 0);
     }
   }
 }
 
 int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *context)
 {
+  int mdp_sockfd;
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  
+
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -574,12 +577,21 @@ int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *context)
     one_reply=1;
     idelay=-idelay;
   }
-  
+
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+    return WHY("Cannot create MDP socket");
+
   /* Bind to MDP socket and await confirmation */
   sid_t srcsid;
   int port=32768+(random()&32767);
-  if (overlay_mdp_getmyaddr(0, &srcsid)) return WHY("Could not get local address");
-  if (overlay_mdp_bind(&srcsid, port)) return WHY("Could not bind to MDP socket");
+  if (overlay_mdp_getmyaddr(mdp_sockfd, 0, &srcsid)) {
+    overlay_mdp_client_close(mdp_sockfd);
+    return WHY("Could not get local address");
+  }
+  if (overlay_mdp_bind(mdp_sockfd, &srcsid, port)) {
+    overlay_mdp_client_close(mdp_sockfd);
+    return WHY("Could not bind to MDP socket");
+  }
 
   /* use MDP to send the lookup request to MDP_PORT_DNALOOKUP, and wait for
      replies. */
@@ -596,18 +608,18 @@ int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *context)
       if ((last_tx+interval)<now)
 	{
 
-	  lookup_send_request(&srcsid, port, NULL, did);
+	  lookup_send_request(mdp_sockfd, &srcsid, port, NULL, did);
 
 	  last_tx=now;
 	  interval+=interval>>1;
 	}
       time_ms_t short_timeout=125;
       while(short_timeout>0) {
-	if (overlay_mdp_client_poll(short_timeout))
+	if (overlay_mdp_client_poll(mdp_sockfd, short_timeout))
 	  {
 	    overlay_mdp_frame rx;
 	    int ttl;
-	    if (overlay_mdp_recv(&rx, port, &ttl)==0)
+	    if (overlay_mdp_recv(mdp_sockfd, &rx, port, &ttl)==0)
 	      {
 		if (rx.packetTypeAndFlags==MDP_ERROR)
 		  {
@@ -660,8 +672,42 @@ int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *context)
       if (servalShutdown) break;
     }
 
-  overlay_mdp_client_done();
+  overlay_mdp_client_close(mdp_sockfd);
   return 0;
+}
+
+/* Delete all UNIX socket files in instance directory. */
+static void clean_socket_files()
+{
+  const char *instance_path = serval_instancepath();
+  char path[PATH_MAX];
+  DIR *dir;
+  struct dirent *dp;
+  struct stat st;
+
+  /* Open instance_path directory. */
+  if ((dir = opendir(instance_path)) == NULL) {
+    WARNF("Can't open %s\n", instance_path);
+    return;
+  }
+
+  /* Read all files in instance_path directory. */
+  while ((dp = readdir(dir)) != NULL) {
+
+    /* Concatenate dir and name. */
+    sprintf(path, "%s/%s", instance_path, dp->d_name);
+
+    /* Retrieve stat info. */
+    if (stat(path, &st)) {
+      WARNF("Cannot stat %s (errno=%d)\n", path, errno);
+      continue;
+    }
+
+    if (S_ISSOCK(st.st_mode)) {
+      /* The file is a UNIX socket, delete it. */
+      unlink(path);
+    }
+  }
 }
 
 int app_server_start(const struct cli_parsed *parsed, struct cli_context *context)
@@ -718,6 +764,10 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     RETURN(-1);
+
+  /* Clean old socket files from instance directory. */
+  clean_socket_files();
+
   /* Now that we know our instance path, we can ask for the default set of
      network interfaces that we will take interest in. */
   if (config.interfaces.ac == 0)
@@ -902,6 +952,7 @@ int app_server_status(const struct cli_parsed *parsed, struct cli_context *conte
 
 int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
 {
+  int mdp_sockfd;
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   const char *sidhex, *count, *opt_timeout, *opt_interval;
@@ -910,6 +961,13 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
       || cli_arg(parsed, "SID", &sidhex, str_is_subscriber_id, "broadcast") == -1
       || cli_arg(parsed, "count", &count, cli_uint, "0") == -1)
     return -1;
+
+  /* Get SID that we want to ping.
+     TODO - allow lookup of SID prefixes and telephone numbers
+     (that would require MDP lookup of phone numbers, which doesn't yet occur) */
+  sid_t ping_sid;
+  if (str_to_sid_t(&ping_sid, sidhex) == -1)
+    return WHY("str_to_sid_t() failed");
   
   // assume we wont hear any responses
   int ret=1;
@@ -921,24 +979,27 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   int64_t interval_ms = 1000;
   str_to_uint64_interval_ms(opt_interval, &interval_ms, NULL);
 
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+    return WHY("Cannot create MDP socket");
+
   overlay_mdp_frame mdp;
   bzero(&mdp, sizeof(overlay_mdp_frame));
   /* Bind to MDP socket and await confirmation */
   sid_t srcsid;
   int port=32768+(random()&32767);
-  if (overlay_mdp_getmyaddr(0, &srcsid)) return WHY("Could not get local address");
-  if (overlay_mdp_bind(&srcsid, port)) return WHY("Could not bind to MDP socket");
+  if (overlay_mdp_getmyaddr(mdp_sockfd, 0, &srcsid)) {
+    overlay_mdp_client_close(mdp_sockfd);
+    return WHY("Could not get local address");
+  }
+  if (overlay_mdp_bind(mdp_sockfd, &srcsid, port)) {
+    overlay_mdp_client_close(mdp_sockfd);
+    return WHY("Could not bind to MDP socket");
+  }
 
   /* First sequence number in the echo frames */
   unsigned int firstSeq=random();
   unsigned int sequence_number=firstSeq;
 
-  /* Get SID that we want to ping.
-     TODO - allow lookup of SID prefixes and telephone numbers
-     (that would require MDP lookup of phone numbers, which doesn't yet occur) */
-  sid_t ping_sid;
-  if (str_to_sid_t(&ping_sid, sidhex) == -1)
-    return WHY("str_to_sid_t() failed");
   int broadcast = is_sid_broadcast(ping_sid.binary);
 
   /* TODO Eventually we should try to resolve SID to phone number and vice versa */
@@ -969,7 +1030,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
     *seq=sequence_number;
     write_uint64(&mdp.out.payload[4], gettime_ms());
     
-    int res=overlay_mdp_send(&mdp,0,0);
+    int res=overlay_mdp_send(mdp_sockfd, &mdp, 0, 0);
     if (res) {
       WHYF("could not dispatch PING frame #%d (error %d)%s%s",
 	  sequence_number - firstSeq,
@@ -986,11 +1047,11 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
     time_ms_t finish = now + (tx_count < icount?interval_ms:timeout_ms);
     for (; !servalShutdown && now < finish; now = gettime_ms()) {
       time_ms_t poll_timeout_ms = finish - gettime_ms();
-      int result = overlay_mdp_client_poll(poll_timeout_ms);
+      int result = overlay_mdp_client_poll(mdp_sockfd, poll_timeout_ms);
 
       if (result>0) {
 	int ttl=-1;
-	if (overlay_mdp_recv(&mdp, port, &ttl)==0) {
+	if (overlay_mdp_recv(mdp_sockfd, &mdp, port, &ttl)==0) {
 	  switch(mdp.packetTypeAndFlags&MDP_TYPE_MASK) {
 	  case MDP_ERROR:
 	    WHYF("mdpping: overlay_mdp_recv: %s (code %d)", mdp.error.message, mdp.error.error);
@@ -1049,12 +1110,13 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
     cli_delim(context, NULL);
     cli_flush(context);
   }
-  overlay_mdp_client_done();
+  overlay_mdp_client_close(mdp_sockfd);
   return ret;
 }
 
-int app_trace(const struct cli_parsed *parsed, struct cli_context *context){
-  
+int app_trace(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  int mdp_sockfd;
   const char *sidhex;
   if (cli_arg(parsed, "SID", &sidhex, str_is_subscriber_id, NULL) == -1)
     return -1;
@@ -1063,13 +1125,22 @@ int app_trace(const struct cli_parsed *parsed, struct cli_context *context){
   sid_t dstsid;
   if (str_to_sid_t(&dstsid, sidhex) == -1)
     return WHY("str_to_sid_t() failed");
-  
+
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+    return WHY("Cannot create MDP socket");
+
   overlay_mdp_frame mdp;
   bzero(&mdp, sizeof(mdp));
   
   int port=32768+(random()&32767);
-  if (overlay_mdp_getmyaddr(0, &srcsid)) return WHY("Could not get local address");
-  if (overlay_mdp_bind(&srcsid, port)) return WHY("Could not bind to MDP socket");
+  if (overlay_mdp_getmyaddr(mdp_sockfd, 0, &srcsid)) {
+    overlay_mdp_client_close(mdp_sockfd);
+    return WHY("Could not get local address");
+  }
+  if (overlay_mdp_bind(mdp_sockfd, &srcsid, port)) {
+    overlay_mdp_client_close(mdp_sockfd);
+    return WHY("Could not bind to MDP socket");
+  }
   
   bcopy(srcsid.binary, mdp.out.src.sid, SID_SIZE);
   bcopy(srcsid.binary, mdp.out.dst.sid, SID_SIZE);
@@ -1090,7 +1161,7 @@ int app_trace(const struct cli_parsed *parsed, struct cli_context *context){
   cli_delim(context, "\n");
   cli_flush(context);
 
-  int ret=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
+  int ret=overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 5000);
   ob_free(b);
   if (ret)
     DEBUGF("overlay_mdp_send returned %d", ret);
@@ -1112,7 +1183,7 @@ int app_trace(const struct cli_parsed *parsed, struct cli_context *context){
       i++;
     }
   }
-  overlay_mdp_client_done();
+  overlay_mdp_client_close(mdp_sockfd);
   return ret;
 }
 
@@ -1875,6 +1946,7 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
 
 int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
 {
+  int mdp_sockfd;
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   /* List my own identities */
@@ -1895,8 +1967,11 @@ int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
     return WHYF("unsupported arg '%s'", arg);
   a.addrlist.first_sid=0;
 
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+    return WHY("Cannot create MDP socket");
+
   do{
-    result=overlay_mdp_send(&a,MDP_AWAITREPLY,5000);
+    result=overlay_mdp_send(mdp_sockfd, &a, MDP_AWAITREPLY, 5000);
     if (result) {
       if (a.packetTypeAndFlags==MDP_ERROR)
 	{
@@ -1905,10 +1980,13 @@ int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
 	}
       else
 	WHYF("Could not get list of local MDP addresses");
+      overlay_mdp_client_close(mdp_sockfd);
       return WHY("Failed to get local address list");
     }
-    if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST)
+    if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST) {
+      overlay_mdp_client_close(mdp_sockfd);
       return WHY("MDP Server returned something other than an address list");
+    }
     int i;
     for(i=0;i<a.addrlist.frame_sid_count;i++) {
       count++;
@@ -1919,24 +1997,31 @@ int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
     a.addrlist.first_sid=a.addrlist.last_sid+1;
   }while(a.addrlist.frame_sid_count==MDP_MAX_SID_REQUEST);
 
+  overlay_mdp_client_close(mdp_sockfd);
   return 0;
 }
 
 int app_count_peers(const struct cli_parsed *parsed, struct cli_context *context)
 {
+  int mdp_sockfd;
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+    return WHY("Cannot create MDP socket");
+
   overlay_mdp_frame a;
   bzero(&a, sizeof(overlay_mdp_frame));
   a.packetTypeAndFlags=MDP_GETADDRS;
   a.addrlist.mode = MDP_ADDRLIST_MODE_ROUTABLE_PEERS;
   a.addrlist.first_sid = OVERLAY_MDP_ADDRLIST_MAX_SID_COUNT;
-  if (overlay_mdp_send(&a,MDP_AWAITREPLY,5000)){
+  if (overlay_mdp_send(mdp_sockfd, &a, MDP_AWAITREPLY, 5000)) {
+    overlay_mdp_client_close(mdp_sockfd);
     if (a.packetTypeAndFlags==MDP_ERROR)
       return WHYF("  MDP Server error #%d: '%s'",a.error.error,a.error.message);
     return WHYF("Failed to send request");
   }
   cli_put_long(context, a.addrlist.server_sid_count, "\n");
+  overlay_mdp_client_close(mdp_sockfd);
   return 0;
 }
 
@@ -2101,14 +2186,18 @@ int app_crypt_test(const struct cli_parsed *parsed, struct cli_context *context)
 
 int app_route_print(const struct cli_parsed *parsed, struct cli_context *context)
 {
+  int mdp_sockfd;
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+    return WHY("Cannot create MDP socket");
+
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
   
   mdp.packetTypeAndFlags=MDP_ROUTING_TABLE;
-  overlay_mdp_send(&mdp,0,0);
-  
+  overlay_mdp_send(mdp_sockfd, &mdp,0,0);
+
   const char *names[]={
     "Subscriber id",
     "Routing flags",
@@ -2116,13 +2205,13 @@ int app_route_print(const struct cli_parsed *parsed, struct cli_context *context
     "Next hop"
   };
   cli_columns(context, 4, names);
-  
-  while(overlay_mdp_client_poll(200)){
+
+  while(overlay_mdp_client_poll(mdp_sockfd, 200)){
     overlay_mdp_frame rx;
     int ttl;
-    if (overlay_mdp_recv(&rx, 0, &ttl))
+    if (overlay_mdp_recv(mdp_sockfd, &rx, 0, &ttl))
       continue;
-    
+
     int ofs=0;
     while(ofs + sizeof(struct overlay_route_record) <= rx.out.payload_length){
       struct overlay_route_record *p=(struct overlay_route_record *)&rx.out.payload[ofs];
@@ -2155,6 +2244,7 @@ int app_route_print(const struct cli_parsed *parsed, struct cli_context *context
 
 int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *context)
 {
+  int mdp_sockfd;
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   const char *sidhex, *delay;
@@ -2162,6 +2252,9 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
     return -1;
   if (cli_arg(parsed, "timeout", &delay, NULL, "3000") == -1)
     return -1;
+
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+    return WHY("Cannot create MDP socket");
 
   int port=32768+(random()&0xffff);
 
@@ -2171,10 +2264,14 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
   if (str_to_sid_t(&dstsid, sidhex) == -1)
     return WHY("str_to_sid_t() failed");
 
-  if (overlay_mdp_getmyaddr(0, &srcsid))
+  if (overlay_mdp_getmyaddr(mdp_sockfd, 0, &srcsid)) {
+    overlay_mdp_client_close(mdp_sockfd);
     return WHY("Unable to get my address");
-  if (overlay_mdp_bind(&srcsid, port))
+  }
+  if (overlay_mdp_bind(mdp_sockfd, &srcsid, port)) {
+    overlay_mdp_client_close(mdp_sockfd);
     return WHY("Unable to bind port");
+  }
 
   time_ms_t now = gettime_ms();
   time_ms_t timeout = now + atoi(delay);
@@ -2186,17 +2283,17 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
     
     if (now >= next_send){
       /* Send a unicast packet to this node, asking for any did */
-      lookup_send_request(&srcsid, port, &dstsid, "");
+      lookup_send_request(mdp_sockfd, &srcsid, port, &dstsid, "");
       next_send+=125;
       continue;
     }
     
     time_ms_t poll_timeout = (next_send>timeout?timeout:next_send) - now;
-    if (overlay_mdp_client_poll(poll_timeout)<=0)
+    if (overlay_mdp_client_poll(mdp_sockfd, poll_timeout)<=0)
       continue;
     
     int ttl=-1;
-    if (overlay_mdp_recv(&mdp_reply, port, &ttl))
+    if (overlay_mdp_recv(mdp_sockfd, &mdp_reply, port, &ttl))
       continue;
     
     if ((mdp_reply.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR){
@@ -2250,6 +2347,7 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
 
 int app_network_scan(const struct cli_parsed *parsed, struct cli_context *context)
 {
+  int mdp_sockfd;
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   overlay_mdp_frame mdp;
@@ -2269,10 +2367,17 @@ int app_network_scan(const struct cli_parsed *parsed, struct cli_context *contex
   }else
     DEBUGF("Scanning local networks");
   
-  overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
-  if (mdp.packetTypeAndFlags!=MDP_ERROR)
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+   return WHY("Cannot create MDP socket");
+  overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 5000);
+  if (mdp.packetTypeAndFlags!=MDP_ERROR) {
+    overlay_mdp_client_close(mdp_sockfd);
     return -1;
+  }
   cli_put_string(context, mdp.error.message, "\n");
+
+  overlay_mdp_client_close(mdp_sockfd);
+
   return mdp.error.error;
 }
 

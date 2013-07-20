@@ -26,14 +26,75 @@
 #include "overlay_packet.h"
 #include "mdp_client.h"
 
-int mdp_client_socket=-1;
-int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
+/* We randomly generate UNIX socket path names for communicating with servald,
+ * and handle only mdp_sockfd. But when we close the socket, the file is not
+ * deleted. Thus, we need to keep a mapping between mdp_sockfd and sun_path.
+ * Every time a MDP socket is open, we store it with its path_name.
+ * Every time a MDP socket is closed, we remove it from the list and delete the
+ * file.
+ */
+
+/* Item mapping mdp_sockfd and sun_path. */
+struct mdp_sock_node {
+  int mdp_sockfd;
+  char sun_path[108]; /* same size as struct sockaddr_un sun_path */
+  struct mdp_sock_node *next; /* next item for linked-list */
+};
+
+/* Linked-list storing the mapping between mdp_sockfd and sun_path for open MDP
+ * sockets. */
+static struct mdp_sock_node *open_mdp_sock_list;
+
+/* Add the socket to the open MDP socket list. */
+static void mdp_sock_opened(int mdp_sockfd, char *sun_path)
 {
-  int len=4;
-  
-  if (mdp_client_socket==-1) 
-    if (overlay_mdp_client_init() != 0)
-      return -1;
+  struct mdp_sock_node *old_head = open_mdp_sock_list;
+
+  /* The new item becomes the head. */
+  open_mdp_sock_list =
+    (struct mdp_sock_node *) malloc(sizeof(struct mdp_sock_node));
+
+  open_mdp_sock_list->mdp_sockfd = mdp_sockfd;
+  strncpy(open_mdp_sock_list->sun_path, sun_path, 108);
+  open_mdp_sock_list->next = old_head;
+}
+
+/* Remove the socket from the list and delete associated file on filesystem. */
+static void mdp_sock_closed(int mdp_sockfd)
+{
+  struct mdp_sock_node *node = open_mdp_sock_list;
+  struct mdp_sock_node *prev_node = NULL;
+
+  /* Find the node having the same mdp_sockfd. */
+  while (node != NULL && node->mdp_sockfd != mdp_sockfd) {
+    prev_node = node;
+    node = node->next;
+  }
+
+  if (node != NULL) {
+    /* Node found. */
+
+    if (prev_node != NULL) {
+      /* General case. */
+      prev_node->next = node->next;
+    } else {
+      /* Special case for the first item. */
+      open_mdp_sock_list = node->next;
+    }
+    /* Remove socket file. */
+    unlink(node->sun_path);
+    free(node);
+  } else {
+    WARN("Socket to remove not found");
+  }
+}
+
+/* Send an mdp frame and return 0 if everything is OK, -1 otherwise.
+ * Warning: does not return the length of characters sent like sendto().
+ */
+int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp, int flags, int timeout_ms)
+{
+  int len;
   
   /* Minimise frame length to save work and prevent accidental disclosure of
    memory contents. */
@@ -46,10 +107,8 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   if (!FORM_SERVAL_INSTANCE_PATH(name.sun_path, "mdp.socket"))
     return -1;
   
-  set_nonblock(mdp_client_socket);
-  int result=sendto(mdp_client_socket, mdp, len, 0,
+  int result=sendto(mdp_sockfd, mdp, len, 0,
 		    (struct sockaddr *)&name, sizeof(struct sockaddr_un));
-  set_block(mdp_client_socket);
   if (result<0) {
     mdp->packetTypeAndFlags=MDP_ERROR;
     mdp->error.error=1;
@@ -66,9 +125,9 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
       port = mdp->out.src.port;
       
   time_ms_t started = gettime_ms();
-  while(timeout_ms>=0 && overlay_mdp_client_poll(timeout_ms)>0){
+  while(timeout_ms>=0 && overlay_mdp_client_poll(mdp_sockfd, timeout_ms)>0){
     int ttl=-1;
-    if (!overlay_mdp_recv(mdp, port, &ttl)) {
+    if (!overlay_mdp_recv(mdp_sockfd, mdp, port, &ttl)) {
       /* If all is well, examine result and return error code provided */
       if ((mdp->packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR)
 	return mdp->error.error;
@@ -89,80 +148,81 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   return -1; /* WHY("Timeout waiting for server response"); */
 }
 
-char overlay_mdp_client_socket_path[1024];
-int overlay_mdp_client_socket_path_len=-1;
-
-int overlay_mdp_client_init()
+/** Create a new MDP socket and return its descriptor (-1 on error). */
+int overlay_mdp_client_socket(void)
 {
-  if (mdp_client_socket==-1) {
-    /* Open socket to MDP server (thus connection is always local) */
-    if (0) WHY("Use of abstract name space socket for Linux not implemented");
-    
-    mdp_client_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
-    if (mdp_client_socket < 0) {
-      WHY_perror("socket");
-      return WHY("Could not open socket to MDP server");
-    }
-    
-    /* We must bind to a temporary file name */
-    struct sockaddr_un name;
-    unsigned int random_value;
-    if (urandombytes((unsigned char *)&random_value,sizeof(int)))
-      return WHY("urandombytes() failed");
-    name.sun_family = AF_UNIX;
-    if (overlay_mdp_client_socket_path_len==-1) {
-      char fmt[1024];
-      if (!FORM_SERVAL_INSTANCE_PATH(fmt, "mdp-client-%d-%08x.socket"))
-	return WHY("Could not form MDP client socket name");
-      snprintf(overlay_mdp_client_socket_path,1024,fmt,getpid(),random_value);
-      overlay_mdp_client_socket_path_len=strlen(overlay_mdp_client_socket_path)+1;
-      if(config.debug.io) DEBUGF("MDP client socket name='%s'",overlay_mdp_client_socket_path);
-    }
-    if (overlay_mdp_client_socket_path_len > sizeof(name.sun_path) - 1)
-      FATALF("MDP socket path too long (%d > %d)", overlay_mdp_client_socket_path_len, (int)sizeof(name.sun_path) - 1);
-    
-    bcopy(overlay_mdp_client_socket_path,name.sun_path,
-	  overlay_mdp_client_socket_path_len);
-    unlink(name.sun_path);
-    int len = 1 + strlen(name.sun_path) + sizeof(name.sun_family) + 1;
-    int r=bind(mdp_client_socket, (struct sockaddr *)&name, len);
-    if (r) {
-      WHY_perror("bind");
-      return WHY("Could not bind MDP client socket to file name");
-    }
-    
-    int send_buffer_size=128*1024;
-    if (setsockopt(mdp_client_socket, SOL_SOCKET, SO_RCVBUF, 
-		   &send_buffer_size, sizeof(send_buffer_size)) == -1)
-      WARN_perror("setsockopt");
+  int mdp_sockfd;
+  char overlay_mdp_client_socket_path[1024];
+  int overlay_mdp_client_socket_path_len;
+  /* Open socket to MDP server (thus connection is always local) */
+  if (0) WHY("Use of abstract name space socket for Linux not implemented");
+
+  mdp_sockfd = socket(AF_UNIX, SOCK_DGRAM, 0);
+  if (mdp_sockfd < 0) {
+    WHY_perror("socket");
+    return WHY("Could not open socket to MDP server");
   }
-  
-  return 0;
+
+  /* We must bind to a temporary file name */
+  struct sockaddr_un name;
+  unsigned int random_value;
+  if (urandombytes((unsigned char *)&random_value,sizeof(int)))
+    return WHY("urandombytes() failed");
+  name.sun_family = AF_UNIX;
+  char fmt[1024];
+  if (!FORM_SERVAL_INSTANCE_PATH(fmt, "mdp-client-%d-%08x.socket"))
+    return WHY("Could not form MDP client socket name");
+  snprintf(overlay_mdp_client_socket_path,1024,fmt,getpid(),random_value);
+  overlay_mdp_client_socket_path_len=strlen(overlay_mdp_client_socket_path)+1;
+  if(config.debug.io) DEBUGF("MDP client socket name='%s'",overlay_mdp_client_socket_path);
+  if (overlay_mdp_client_socket_path_len > sizeof(name.sun_path) - 1)
+    FATALF("MDP socket path too long (%d > %zu)", overlay_mdp_client_socket_path_len, sizeof(name.sun_path) - 1);
+
+  bcopy(overlay_mdp_client_socket_path,name.sun_path,
+        overlay_mdp_client_socket_path_len);
+
+  /* Store the mapping sockfd/sun_path. */
+  mdp_sock_opened(mdp_sockfd, name.sun_path);
+
+  unlink(name.sun_path);
+  int len = 1 + strlen(name.sun_path) + sizeof(name.sun_family) + 1;
+  int r=bind(mdp_sockfd, (struct sockaddr *)&name, len);
+  if (r) {
+    WHY_perror("bind");
+    return WHY("Could not bind MDP client socket to file name");
+  }
+
+  int send_buffer_size=128*1024;
+  if (setsockopt(mdp_sockfd, SOL_SOCKET, SO_RCVBUF,
+                 &send_buffer_size, sizeof(send_buffer_size)) == -1)
+    WARN_perror("setsockopt");
+
+  return mdp_sockfd;
 }
 
-int overlay_mdp_client_done()
+int overlay_mdp_client_close(int mdp_sockfd)
 {
-  if (mdp_client_socket!=-1) {
-    /* Tell MDP server to release all our bindings */
-    overlay_mdp_frame mdp;
-    mdp.packetTypeAndFlags=MDP_GOODBYE;
-    overlay_mdp_send(&mdp,0,0);
-  }
-  
-  if (overlay_mdp_client_socket_path_len>-1)
-    unlink(overlay_mdp_client_socket_path);
-  if (mdp_client_socket!=-1)
-    close(mdp_client_socket);
-  mdp_client_socket=-1;
-  return 0;
+  /* Tell MDP server to release all our bindings */
+  overlay_mdp_frame mdp;
+  mdp.packetTypeAndFlags=MDP_GOODBYE;
+  overlay_mdp_send(mdp_sockfd, &mdp, 0, 0);
+
+  /* shutdown() makes any blocking recv exit, close() does not. */
+  int res = shutdown(mdp_sockfd, SHUT_RDWR);
+  // int res = close(mdp_sockfd);
+
+  /* Remove the socket file. */
+  mdp_sock_closed(mdp_sockfd);
+
+  return res;
 }
 
-int overlay_mdp_client_poll(time_ms_t timeout_ms)
+int overlay_mdp_client_poll(int mdp_sockfd, time_ms_t timeout_ms)
 {
   fd_set r;
   int ret;
   FD_ZERO(&r);
-  FD_SET(mdp_client_socket,&r);
+  FD_SET(mdp_sockfd, &r);
   if (timeout_ms<0) timeout_ms=0;
   
   struct timeval tv;
@@ -170,14 +230,14 @@ int overlay_mdp_client_poll(time_ms_t timeout_ms)
   if (timeout_ms>=0) {
     tv.tv_sec=timeout_ms/1000;
     tv.tv_usec=(timeout_ms%1000)*1000;
-    ret=select(mdp_client_socket+1,&r,NULL,&r,&tv);
+    ret=select(mdp_sockfd+1,&r,NULL,&r,&tv);
   }
   else
-    ret=select(mdp_client_socket+1,&r,NULL,&r,NULL);
+    ret=select(mdp_sockfd+1,&r,NULL,&r,NULL);
   return ret;
 }
 
-int overlay_mdp_recv(overlay_mdp_frame *mdp, int port, int *ttl) 
+int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, int port, int *ttl)
 {
   char mdp_socket_name[101];
   unsigned char recvaddrbuffer[1024];
@@ -190,9 +250,11 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp, int port, int *ttl)
   mdp->packetTypeAndFlags=0;
   
   /* Check if reply available */
-  set_nonblock(mdp_client_socket);
-  ssize_t len = recvwithttl(mdp_client_socket,(unsigned char *)mdp, sizeof(overlay_mdp_frame),ttl,recvaddr,&recvaddrlen);
-  set_block(mdp_client_socket);
+  ssize_t len = recvwithttl(mdp_sockfd,(unsigned char *)mdp, sizeof(overlay_mdp_frame),ttl,recvaddr,&recvaddrlen);
+  if (len == 0) {
+    /* Socket is closed. */
+    return -2; /* would be better to always return len */
+  }
   
   recvaddr_un=(struct sockaddr_un *)recvaddr;
   /* Null terminate received address so that the stat() call below can succeed */
@@ -232,13 +294,13 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp, int port, int *ttl)
 }
 
 // send a request to servald deamon to add a port binding
-int overlay_mdp_bind(const sid_t *localaddr, int port) 
+int overlay_mdp_bind(int mdp_sockfd, const sid_t *localaddr, int port)
 {
   overlay_mdp_frame mdp;
   mdp.packetTypeAndFlags=MDP_BIND|MDP_FORCE;
   bcopy(localaddr->binary, mdp.bind.sid, SID_SIZE);
   mdp.bind.port=port;
-  int result=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
+  int result=overlay_mdp_send(mdp_sockfd, &mdp,MDP_AWAITREPLY,5000);
   if (result) {
     if (mdp.packetTypeAndFlags==MDP_ERROR)
       WHYF("Could not bind to MDP port %d: error=%d, message='%s'",
@@ -250,7 +312,7 @@ int overlay_mdp_bind(const sid_t *localaddr, int port)
   return 0;
 }
 
-int overlay_mdp_getmyaddr(unsigned index, sid_t *sid)
+int overlay_mdp_getmyaddr(int mdp_sockfd, unsigned index, sid_t *sid)
 {
   overlay_mdp_frame a;
   memset(&a, 0, sizeof(a));
@@ -260,7 +322,7 @@ int overlay_mdp_getmyaddr(unsigned index, sid_t *sid)
   a.addrlist.first_sid=index;
   a.addrlist.last_sid=OVERLAY_MDP_ADDRLIST_MAX_SID_COUNT;
   a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
-  int result=overlay_mdp_send(&a,MDP_AWAITREPLY,5000);
+  int result=overlay_mdp_send(mdp_sockfd,&a,MDP_AWAITREPLY,5000);
   if (result) {
     if (a.packetTypeAndFlags == MDP_ERROR)
       DEBUGF("MDP Server error #%d: '%s'", a.error.error, a.error.message);

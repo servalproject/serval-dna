@@ -647,8 +647,8 @@ int vomp_received_audio(struct vomp_call_state *call, int audio_codec, int time,
 			const unsigned char *audio, int audio_length);
 void monitor_get_all_supported_codecs(unsigned char *codecs);
 
-int overlay_mdp_getmyaddr(unsigned index, sid_t *sid);
-int overlay_mdp_bind(const sid_t *localaddr, int port) ;
+int overlay_mdp_getmyaddr(int mpd_sockfd, unsigned index, sid_t *sid);
+int overlay_mdp_bind(int mdp_sockfd, const sid_t *localaddr, int port);
 int overlay_route_node_info(overlay_mdp_nodeinfo *node_info);
 int overlay_interface_register(char *name,
 			       struct in_addr addr,

@@ -18,6 +18,7 @@ SERVAL_SOURCES = \
 	$(SERVAL_BASE)lsif.c \
 	$(SERVAL_BASE)main.c \
 	$(SERVAL_BASE)mdp_client.c \
+	$(SERVAL_BASE)mdp_jni.c \
 	$(SERVAL_BASE)os.c \
 	$(SERVAL_BASE)mem.c \
 	$(SERVAL_BASE)instance.c \
