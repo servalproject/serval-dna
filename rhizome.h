@@ -396,6 +396,7 @@ struct rhizome_write{
   char id[SHA512_DIGEST_STRING_LENGTH+1];
   char id_known;
   
+  int64_t tail;
   int64_t file_offset;
   int64_t written_offset;
   int64_t file_length;
@@ -425,6 +426,7 @@ struct rhizome_read{
   int64_t blob_rowid;
   int blob_fd;
   
+  int64_t tail;
   int64_t offset;
   int64_t length;
 };

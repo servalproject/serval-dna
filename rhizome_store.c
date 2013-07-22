@@ -143,7 +143,10 @@ static int prepare_data(struct rhizome_write *write_state, unsigned char *buffer
 		write_state->file_offset, data_size, write_state->file_length);
 
   if (write_state->crypt){
-    if (rhizome_crypt_xor_block(buffer, data_size, write_state->file_offset, write_state->key, write_state->nonce))
+    if (rhizome_crypt_xor_block(
+	  buffer, data_size, 
+	  write_state->file_offset + write_state->tail, 
+	  write_state->key, write_state->nonce))
       return -1;
   }
   
@@ -588,6 +591,8 @@ static int rhizome_write_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, stru
     DEBUGF("Encrypting payload contents");
 
   write->crypt=1;
+  write->tail = m->journalTail;
+
   bcopy(m->payloadKey, write->key, sizeof(write->key));
   bcopy(m->payloadNonce, write->nonce, sizeof(write->nonce));
   return 0;
@@ -723,7 +728,10 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
     }
   }
   if (read_state->crypt && buffer && bytes_read>0){
-    if(rhizome_crypt_xor_block(buffer, bytes_read, read_state->offset, read_state->key, read_state->nonce)){
+    if(rhizome_crypt_xor_block(
+	buffer, bytes_read, 
+	read_state->offset + read_state->tail, 
+	read_state->key, read_state->nonce)){
       RETURN(-1);
     }
   }
@@ -786,6 +794,8 @@ static int read_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizom
     }
     if (config.debug.rhizome)
       DEBUGF("Decrypting file contents");
+    
+    read_state->tail = m->journalTail;
     bcopy(m->payloadKey, read_state->key, sizeof(read_state->key));
     bcopy(m->payloadNonce, read_state->nonce, sizeof(read_state->nonce));
   }
@@ -793,7 +803,6 @@ static int read_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizom
 }
 
 int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state, int hash){
-  
   // for now, always hash the file
   int ret = rhizome_open_read(read_state, m->fileHexHash, hash);
   if (ret == 0)
@@ -872,6 +881,7 @@ int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m,
 
   uint64_t old_length = m->fileLength;
   uint64_t copy_length = old_length - advance_by;
+  
   m->fileLength = m->fileLength + new_size - advance_by;
   rhizome_manifest_set_ll(m, "filesize", m->fileLength);
 
@@ -905,7 +915,7 @@ int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m,
   ret = rhizome_write_derive_key(m, bsk, write);
   if (ret)
     goto failure;
-
+  
   return 0;
 
 failure:

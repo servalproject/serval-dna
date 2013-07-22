@@ -266,6 +266,11 @@ int rhizome_opendb()
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=3;");
   }
   
+  if (version<4){
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN tail integer;");
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=4;");
+  }
+  
   // TODO recreate tables with collate nocase on hex columns
   
   /* Future schema updates should be performed here. 
@@ -918,7 +923,24 @@ int rhizome_store_bundle(rhizome_manifest *m)
     return WHY("Failed to begin transaction");
   
   sqlite3_stmt *stmt;
-  if ((stmt = sqlite_prepare(&retry, "INSERT OR REPLACE INTO MANIFESTS(id,manifest,version,inserttime,bar,filesize,filehash,author,service,name,sender,recipient) VALUES(?,?,?,?,?,?,?,?,?,?,?,?);")) == NULL)
+  if ((stmt = sqlite_prepare(&retry, 
+	"INSERT OR REPLACE INTO MANIFESTS("
+	  "id,"
+	  "manifest,"
+	  "version,"
+	  "inserttime,"
+	  "bar,"
+	  "filesize,"
+	  "filehash,"
+	  "author,"
+	  "service,"
+	  "name,"
+	  "sender,"
+	  "recipient,"
+	  "tail"
+	") VALUES("
+	  "?,?,?,?,?,?,?,?,?,?,?,?,?"
+	");")) == NULL)
     goto rollback;
   if (!(   sqlite_code_ok(sqlite3_bind_text(stmt, 1, manifestid, -1, SQLITE_STATIC))
         && sqlite_code_ok(sqlite3_bind_blob(stmt, 2, m->manifestdata, m->manifest_bytes, SQLITE_STATIC))
@@ -932,6 +954,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
 	&& sqlite_code_ok(sqlite3_bind_text(stmt, 10, name, -1, SQLITE_STATIC))
 	&& sqlite_code_ok(sqlite3_bind_text(stmt, 11, sender, -1, SQLITE_STATIC))
 	&& sqlite_code_ok(sqlite3_bind_text(stmt, 12, recipient, -1, SQLITE_STATIC))
+	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 13, m->journalTail))
   )) {
     WHYF("query failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(stmt));
     goto rollback;
