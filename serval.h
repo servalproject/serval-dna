@@ -670,6 +670,9 @@ int app_nonce_test(const struct cli_parsed *parsed, struct cli_context *context)
 int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context *context);
 int app_monitor_cli(const struct cli_parsed *parsed, struct cli_context *context);
 int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *context);
+int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context *context);
+int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context *context);
+int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context *context);
 
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 

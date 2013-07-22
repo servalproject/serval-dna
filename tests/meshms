@@ -1,0 +1,107 @@
+#!/bin/bash
+
+# Tests for MeshMS Messaging
+#
+# Copyright 2012 Serval Project, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+source "${0%/*}/../testdefs_rhizome.sh"
+
+doc_listConversations=""
+setup_listConversations() {
+   setup_servald
+   set_instance +A
+   create_identities 5
+   executeOk_servald config \
+     set debug.rhizome on \
+     set debug.meshms on \
+     set log.console.level debug
+   #cheating, adding fake message logs to the same servald
+   echo "Message1" >file1
+   echo -e "service=MeshMS1\nsender=$SIDA1\nrecipient=$SIDA2" >file1.manifest
+   echo "Message2" >file2
+   echo -e "service=MeshMS1\nsender=$SIDA3\nrecipient=$SIDA1" >file2.manifest
+   echo "Message3" >file3
+   echo -e "service=MeshMS1\nsender=$SIDA1\nrecipient=$SIDA4" >file3.manifest
+   echo "Message4" >file4
+   echo -e "service=MeshMS1\nsender=$SIDA4\nrecipient=$SIDA1" >file4.manifest
+   executeOk_servald rhizome add file '' file1 file1.manifest
+   executeOk_servald rhizome add file '' file2 file2.manifest
+   executeOk_servald rhizome add file '' file3 file3.manifest
+   executeOk_servald rhizome add file '' file4 file4.manifest
+}
+test_listConversations() {
+   executeOk_servald meshms list conversations $SIDA1
+   assertStdoutIs --stderr --line=1 -e '3\n'
+   assertStdoutIs --stderr --line=2 -e 'sid:read:delivered\n'
+   assertStdoutGrep --stderr --matches=1 "^$SIDA2:read:delivered\$"
+   assertStdoutGrep --stderr --matches=1 "^$SIDA3:read:delivered\$"
+   assertStdoutGrep --stderr --matches=1 "^$SIDA4:read:delivered\$"
+   assertStdoutLineCount '==' 5
+   executeOk_servald meshms list conversations $SIDA1 1
+   assertStdoutLineCount '==' 4
+   executeOk_servald meshms list conversations $SIDA1 1 1
+   assertStdoutLineCount '==' 3
+}
+
+doc_AddMessages="Add messages and ack's to a 2 party conversation"
+setup_AddMessages() {
+   setup_servald
+   set_instance +A
+   create_identities 2
+   executeOk_servald config \
+     set debug.rhizome on \
+     set debug.meshms on \
+     set log.console.level debug
+}
+test_AddMessages() {
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutLineCount '==' 2
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Hi"
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutIs --stdout --line=1 -e '5\n'
+   assertStdoutIs --stdout --line=2 -e '_id:offset:sender:status:message\n'
+   assertStdoutGrep --stdout --matches=1 "^0:0:$SIDA1::Hi\$"
+   assertStdoutLineCount '==' 3
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "How are you"
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   tfw_cat --stdout
+   assertStdoutGrep --stdout --matches=1 "^0:16:$SIDA1::How are you\$"
+   assertStdoutGrep --stdout --matches=1 "^1:0:$SIDA1::Hi\$"
+   assertStdoutLineCount '==' 4
+   executeOk_servald meshms list messages $SIDA2 $SIDA1
+   tfw_cat --stdout
+   assertStdoutGrep --stdout --matches=1 "^0:16:$SIDA1:read:How are you\$"
+   assertStdoutGrep --stdout --matches=1 "^1:0:$SIDA1:read:Hi\$"
+   assertStdoutLineCount '==' 4
+   executeOk_servald meshms send message $SIDA2 $SIDA1 "Hello fine"
+   executeOk_servald meshms list messages $SIDA2 $SIDA1
+   tfw_cat --stdout
+   assertStdoutGrep --stdout --matches=1 "^0:21:$SIDA2::Hello fine\$"
+   assertStdoutGrep --stdout --matches=1 "^1:16:$SIDA1:read:How are you\$"
+   assertStdoutGrep --stdout --matches=1 "^2:0:$SIDA1:read:Hi\$"
+   assertStdoutLineCount '==' 5
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutGrep --stdout --matches=1 "^0:21:$SIDA2:read:Hello fine\$"
+   assertStdoutGrep --stdout --matches=1 "^1:16:$SIDA1:delivered:How are you\$"
+   assertStdoutGrep --stdout --matches=1 "^2:0:$SIDA1:delivered:Hi\$"
+   assertStdoutLineCount '==' 5
+   tfw_cat --stdout
+}
+
+runTests "$@"
