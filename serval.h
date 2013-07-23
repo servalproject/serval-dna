@@ -805,6 +805,10 @@ uint64_t read_uint64(unsigned char *o);
 uint32_t read_uint32(unsigned char *o);
 uint16_t read_uint16(unsigned char *o);
 
+int pack_uint(unsigned char *buffer, uint64_t v);
+int measure_packed_uint(uint64_t v);
+int unpack_uint(unsigned char *buffer, int buff_size, uint64_t *v);
+
 int slip_encode(int format,
 		unsigned char *src, int src_bytes, unsigned char *dst, int dst_len);
 int slip_decode(struct slip_decode_state *state);

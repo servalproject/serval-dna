@@ -276,6 +276,40 @@ int ob_append_ui64(struct overlay_buffer *b, uint64_t v)
   return 0;
 }
 
+int measure_packed_uint(uint64_t v){
+  int ret=1;
+  while(v){
+    v>>=7;
+    ret++;
+  }
+  return ret;
+}
+
+int pack_uint(unsigned char *buffer, uint64_t v){
+  int ret=0;
+  do{
+    *buffer++=(v&0x7f) | (v>0x7f?0x80:0);
+    v>>=7;
+    ret++;
+  }while(v);
+  return ret;
+}
+
+int unpack_uint(unsigned char *buffer, int buff_size, uint64_t *v){
+  int i=0;
+  *v=0;
+  while(1){
+    if (i>=buff_size)
+      return -1;
+    char byte = buffer[i];
+    *v |= (byte&0x7f)<<(i*7);
+    i++;
+    if (!(byte&0x80))
+      break;
+  }
+  return i;
+}
+
 int ob_append_packed_ui32(struct overlay_buffer *b, uint32_t v)
 {
   do{

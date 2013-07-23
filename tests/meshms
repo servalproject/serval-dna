@@ -65,43 +65,63 @@ setup_AddMessages() {
    set_instance +A
    create_identities 2
    executeOk_servald config \
-     set debug.rhizome on \
      set debug.meshms on \
      set log.console.level debug
 }
 test_AddMessages() {
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutLineCount '==' 2
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Hi"
+   # 1. empty list
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    assertStdoutIs --stdout --line=1 -e '5\n'
    assertStdoutIs --stdout --line=2 -e '_id:offset:sender:status:message\n'
-   assertStdoutGrep --stdout --matches=1 "^0:0:$SIDA1::Hi\$"
+   assertStdoutLineCount '==' 2
+   # 2. create a manifest with a single message and list it back
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Hi"
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutGrep --stdout --matches=1 "::Hi\$"
    assertStdoutLineCount '==' 3
+   # 3. append a second message and list them both
    executeOk_servald meshms send message $SIDA1 $SIDA2 "How are you"
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    tfw_cat --stdout
-   assertStdoutGrep --stdout --matches=1 "^0:16:$SIDA1::How are you\$"
-   assertStdoutGrep --stdout --matches=1 "^1:0:$SIDA1::Hi\$"
+   assertStdoutGrep --stdout --matches=1 "::How are you\$"
+   assertStdoutGrep --stdout --matches=1 "::Hi\$"
    assertStdoutLineCount '==' 4
+   # 4. list the messages from the receivers point of view (which ACKs them)
    executeOk_servald meshms list messages $SIDA2 $SIDA1
    tfw_cat --stdout
-   assertStdoutGrep --stdout --matches=1 "^0:16:$SIDA1:read:How are you\$"
-   assertStdoutGrep --stdout --matches=1 "^1:0:$SIDA1:read:Hi\$"
+   assertStdoutGrep --stdout --matches=1 ":How are you\$"
+   assertStdoutGrep --stdout --matches=1 ":Hi\$"
    assertStdoutLineCount '==' 4
-   executeOk_servald meshms send message $SIDA2 $SIDA1 "Hello fine"
-   executeOk_servald meshms list messages $SIDA2 $SIDA1
-   tfw_cat --stdout
-   assertStdoutGrep --stdout --matches=1 "^0:21:$SIDA2::Hello fine\$"
-   assertStdoutGrep --stdout --matches=1 "^1:16:$SIDA1:read:How are you\$"
-   assertStdoutGrep --stdout --matches=1 "^2:0:$SIDA1:read:Hi\$"
-   assertStdoutLineCount '==' 5
+   # 5. list messages from the senders point of view after they have been delivered
    executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutGrep --stdout --matches=1 "^0:21:$SIDA2:read:Hello fine\$"
-   assertStdoutGrep --stdout --matches=1 "^1:16:$SIDA1:delivered:How are you\$"
-   assertStdoutGrep --stdout --matches=1 "^2:0:$SIDA1:delivered:Hi\$"
-   assertStdoutLineCount '==' 5
    tfw_cat --stdout
+   assertStdoutGrep --stdout --matches=1 ":delivered:How are you\$"
+   assertStdoutGrep --stdout --matches=1 ":delivered:Hi\$"
+   assertStdoutLineCount '==' 4
+   # 6. both parties add more messages without acking
+   executeOk_servald meshms send message $SIDA2 $SIDA1 "Help Im trapped in a test case factory"
+   executeOk_servald meshms send message $SIDA2 $SIDA1 "Never mind"
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Hello can you hear me"
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Still waiting"
+   # 7. each person see's the final threaded message list in a different order
+   executeOk_servald meshms list messages $SIDA2 $SIDA1
+   tfw_cat --stdout
+   assertStdoutGrep --stdout --matches=1 "^0:43:$SIDA1:read:Still waiting\$"
+   assertStdoutGrep --stdout --matches=1 "^1:19:$SIDA1:read:Hello can you hear me\$"
+   assertStdoutGrep --stdout --matches=1 "^2:44:$SIDA2::Never mind\$"
+   assertStdoutGrep --stdout --matches=1 "^3:3:$SIDA2::Help Im trapped in a test case factory\$"
+   assertStdoutGrep --stdout --matches=1 "^4:5:$SIDA1:read:How are you\$"
+   assertStdoutGrep --stdout --matches=1 "^5:0:$SIDA1:read:Hi\$"
+   assertStdoutLineCount '==' 8
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   tfw_cat --stdout
+   assertStdoutGrep --stdout --matches=1 "^0:44:$SIDA2:read:Never mind\$"
+   assertStdoutGrep --stdout --matches=1 "^1:3:$SIDA2:read:Help Im trapped in a test case factory\$"
+   assertStdoutGrep --stdout --matches=1 "^2:43:$SIDA1:delivered:Still waiting\$"
+   assertStdoutGrep --stdout --matches=1 "^3:19:$SIDA1:delivered:Hello can you hear me\$"
+   assertStdoutGrep --stdout --matches=1 "^4:5:$SIDA1:delivered:How are you\$"
+   assertStdoutGrep --stdout --matches=1 "^5:0:$SIDA1:delivered:Hi\$"
+   assertStdoutLineCount '==' 8
 }
 
 runTests "$@"
