@@ -22,45 +22,14 @@ source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 source "${0%/*}/../testdefs_rhizome.sh"
 
-doc_listConversations=""
-setup_listConversations() {
-   setup_servald
-   set_instance +A
-   create_identities 5
-   executeOk_servald config \
-     set debug.rhizome on \
-     set debug.meshms on \
-     set log.console.level debug
-   #cheating, adding fake message logs to the same servald
-   echo "Message1" >file1
-   echo -e "service=MeshMS1\nsender=$SIDA1\nrecipient=$SIDA2" >file1.manifest
-   echo "Message2" >file2
-   echo -e "service=MeshMS1\nsender=$SIDA3\nrecipient=$SIDA1" >file2.manifest
-   echo "Message3" >file3
-   echo -e "service=MeshMS1\nsender=$SIDA1\nrecipient=$SIDA4" >file3.manifest
-   echo "Message4" >file4
-   echo -e "service=MeshMS1\nsender=$SIDA4\nrecipient=$SIDA1" >file4.manifest
-   executeOk_servald rhizome add file '' file1 file1.manifest
-   executeOk_servald rhizome add file '' file2 file2.manifest
-   executeOk_servald rhizome add file '' file3 file3.manifest
-   executeOk_servald rhizome add file '' file4 file4.manifest
-}
-test_listConversations() {
-   executeOk_servald meshms list conversations $SIDA1
-   assertStdoutIs --stderr --line=1 -e '3\n'
-   assertStdoutIs --stderr --line=2 -e 'sid:read:delivered\n'
-   assertStdoutGrep --stderr --matches=1 "^$SIDA2:read:delivered\$"
-   assertStdoutGrep --stderr --matches=1 "^$SIDA3:read:delivered\$"
-   assertStdoutGrep --stderr --matches=1 "^$SIDA4:read:delivered\$"
-   assertStdoutLineCount '==' 5
-   executeOk_servald meshms list conversations $SIDA1 1
-   assertStdoutLineCount '==' 4
-   executeOk_servald meshms list conversations $SIDA1 1 1
-   assertStdoutLineCount '==' 3
+teardown() {
+   stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
 }
 
-doc_AddMessages="Add messages and ack's to a 2 party conversation"
-setup_AddMessages() {
+doc_MessageDelivery="Send messages and ack them in a 2 party conversation"
+setup_MessageDelivery() {
    setup_servald
    set_instance +A
    create_identities 2
@@ -68,7 +37,7 @@ setup_AddMessages() {
      set debug.meshms on \
      set log.console.level debug
 }
-test_AddMessages() {
+test_MessageDelivery() {
    # 1. empty list
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    assertStdoutIs --stdout --line=1 -e '5\n'
@@ -88,40 +57,84 @@ test_AddMessages() {
    assertStdoutLineCount '==' 4
    # 4. list the messages from the receivers point of view (which ACKs them)
    executeOk_servald meshms list messages $SIDA2 $SIDA1
-   tfw_cat --stdout
+   tfw_cat --stdout --stderr
    assertStdoutGrep --stdout --matches=1 ":How are you\$"
    assertStdoutGrep --stdout --matches=1 ":Hi\$"
    assertStdoutLineCount '==' 4
    # 5. list messages from the senders point of view after they have been delivered
    executeOk_servald meshms list messages $SIDA1 $SIDA2
-   tfw_cat --stdout
+   tfw_cat --stdout --stderr
    assertStdoutGrep --stdout --matches=1 ":delivered:How are you\$"
    assertStdoutGrep --stdout --matches=1 ":delivered:Hi\$"
    assertStdoutLineCount '==' 4
-   # 6. both parties add more messages without acking
-   executeOk_servald meshms send message $SIDA2 $SIDA1 "Help Im trapped in a test case factory"
-   executeOk_servald meshms send message $SIDA2 $SIDA1 "Never mind"
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Hello can you hear me"
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Still waiting"
-   # 7. each person see's the final threaded message list in a different order
-   executeOk_servald meshms list messages $SIDA2 $SIDA1
+}
+
+doc_MessageThreading="Messages sent at the same time, thread differently"
+setup_MessageThreading() {
+   setup_servald
+   foreach_instance +A +B create_single_identity
+   set_instance +A
+   executeOk_servald meshms send message $SIDA $SIDB "Hello can you hear me"
+   executeOk_servald meshms send message $SIDA $SIDB "Still waiting"
+   set_instance +B
+   executeOk_servald meshms send message $SIDB $SIDA "Help Im trapped in a test case factory"
+   executeOk_servald meshms send message $SIDB $SIDA "Never mind"
+   start_servald_instances +A +B
+}
+test_MessageThreading() {
+   #TODO wait for bundle to arrive
+   sleep 3
+
+   set_instance +B
+   executeOk_servald meshms list messages $SIDB $SIDA
    tfw_cat --stdout
-   assertStdoutGrep --stdout --matches=1 "^0:43:$SIDA1:read:Still waiting\$"
-   assertStdoutGrep --stdout --matches=1 "^1:19:$SIDA1:read:Hello can you hear me\$"
-   assertStdoutGrep --stdout --matches=1 "^2:44:$SIDA2::Never mind\$"
-   assertStdoutGrep --stdout --matches=1 "^3:3:$SIDA2::Help Im trapped in a test case factory\$"
-   assertStdoutGrep --stdout --matches=1 "^4:5:$SIDA1:read:How are you\$"
-   assertStdoutGrep --stdout --matches=1 "^5:0:$SIDA1:read:Hi\$"
-   assertStdoutLineCount '==' 8
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutGrep --stdout --matches=1 "^0:24:$SIDA:unread:Still waiting\$"
+   assertStdoutGrep --stdout --matches=1 "^1:0:$SIDA:unread:Hello can you hear me\$"
+   assertStdoutGrep --stdout --matches=1 "^2:41:$SIDB::Never mind\$"
+   assertStdoutGrep --stdout --matches=1 "^3:0:$SIDB::Help Im trapped in a test case factory\$"
+   assertStdoutLineCount '==' 6
+
+   #TODO wait for bundle to arrive
+   sleep 3
+
+   set_instance +A
+   executeOk_servald meshms list messages $SIDA $SIDB
    tfw_cat --stdout
-   assertStdoutGrep --stdout --matches=1 "^0:44:$SIDA2:read:Never mind\$"
-   assertStdoutGrep --stdout --matches=1 "^1:3:$SIDA2:read:Help Im trapped in a test case factory\$"
-   assertStdoutGrep --stdout --matches=1 "^2:43:$SIDA1:delivered:Still waiting\$"
-   assertStdoutGrep --stdout --matches=1 "^3:19:$SIDA1:delivered:Hello can you hear me\$"
-   assertStdoutGrep --stdout --matches=1 "^4:5:$SIDA1:delivered:How are you\$"
-   assertStdoutGrep --stdout --matches=1 "^5:0:$SIDA1:delivered:Hi\$"
-   assertStdoutLineCount '==' 8
+   assertStdoutGrep --stdout --matches=1 "^0:41:$SIDB:unread:Never mind\$"
+   assertStdoutGrep --stdout --matches=1 "^1:0:$SIDB:unread:Help Im trapped in a test case factory\$"
+   assertStdoutGrep --stdout --matches=1 "^2:24:$SIDA:delivered:Still waiting\$"
+   assertStdoutGrep --stdout --matches=1 "^3:0:$SIDA:delivered:Hello can you hear me\$"
+   assertStdoutLineCount '==' 6
+}
+
+doc_listConversations="List multiple conversations, with different numbers of messages"
+setup_listConversations() {
+   setup_servald
+   set_instance +A
+   create_identities 5
+   executeOk_servald config \
+     set debug.rhizome on \
+     set debug.meshms on \
+     set log.console.level debug
+   #cheating, adding fake message logs to the same servald
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
+   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
+   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message3"
+   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message4"
+}
+test_listConversations() {
+   executeOk_servald meshms list conversations $SIDA1
+   tfw_cat --stdout
+   assertStdoutIs --stderr --line=1 -e '3\n'
+   assertStdoutIs --stderr --line=2 -e 'sid:read:delivered\n'
+   assertStdoutGrep --stderr --matches=1 "^$SIDA2::delivered\$"
+   assertStdoutGrep --stderr --matches=1 "^$SIDA3:unread:delivered\$"
+   assertStdoutGrep --stderr --matches=1 "^$SIDA4:unread:delivered\$"
+   assertStdoutLineCount '==' 5
+   executeOk_servald meshms list conversations $SIDA1 1
+   assertStdoutLineCount '==' 4
+   executeOk_servald meshms list conversations $SIDA1 1 1
+   assertStdoutLineCount '==' 3
 }
 
 runTests "$@"
