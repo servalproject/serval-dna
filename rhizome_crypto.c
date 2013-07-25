@@ -45,6 +45,45 @@ int rhizome_manifest_createid(rhizome_manifest *m)
   return 0;
 }
 
+struct signing_key{
+  unsigned char Private[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
+  unsigned char Public[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+};
+
+/* generate a keypair from a given seed string */
+static int generate_keypair(const char *seed, struct signing_key *key)
+{
+  unsigned char hash[crypto_hash_sha512_BYTES];
+  crypto_hash_sha512(hash, (unsigned char *)seed, strlen(seed));
+  
+  // The first 256 bits of the hash will be used as the private key of the BID.
+  bcopy(hash, key->Private, sizeof(key->Private));
+  if (crypto_sign_compute_public_key(key->Private, key->Public))
+    return WHY("Could not generate public key");
+  return 0;
+}
+
+/* Generate a bundle id deterministically from the given seed.
+ * Then either fetch it from the database or initialise a new empty manifest */
+int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed)
+{
+  struct signing_key key;
+  if (generate_keypair(seed, &key))
+    return -1;
+  
+  char *id = alloca_tohex_bid(key.Public);
+  
+  int ret=rhizome_retrieve_manifest(id, m);
+  if (ret<0)
+    return -1;
+  
+  m->haveSecret=(ret==0)?EXISTING_BUNDLE_ID:NEW_BUNDLE_ID;
+  bcopy(key.Public, m->cryptoSignPublic, sizeof(m->cryptoSignPublic));
+  bcopy(key.Private, m->cryptoSignSecret, sizeof(m->cryptoSignSecret));
+  
+  return ret;
+}
+
 /* Given a Rhizome Secret (RS) and bundle ID (BID), XOR a bundle key 'bkin' (private or public) with
  * RS##BID. This derives the first 32-bytes of the secret key.  The BID itself as
  * public key is also the last 32-bytes of the secret key.

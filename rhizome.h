@@ -210,6 +210,7 @@ struct rhizome_cleanup_report {
 int rhizome_cleanup(struct rhizome_cleanup_report *report);
 
 int rhizome_manifest_createid(rhizome_manifest *m);
+int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed);
 int rhizome_strn_is_manifest_id(const char *text);
 int rhizome_str_is_manifest_id(const char *text);
 int rhizome_strn_is_bundle_key(const char *text);
