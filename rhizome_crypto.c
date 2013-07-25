@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "str.h"
 #include "rhizome.h"
+#include "crypto.h"
 #include <stdlib.h>
 #include <ctype.h>
 
@@ -38,9 +39,10 @@ unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m)
 int rhizome_manifest_createid(rhizome_manifest *m)
 {
   m->haveSecret=NEW_BUNDLE_ID;
-  int r=crypto_sign_edwards25519sha512batch_keypair(m->cryptoSignPublic,m->cryptoSignSecret);
-  if (!r) return 0;
-  return WHY("Failed to create keypair for manifest ID.");
+  if (crypto_sign_edwards25519sha512batch_keypair(m->cryptoSignPublic,m->cryptoSignSecret))
+    return WHY("Failed to create keypair for manifest ID.");
+  rhizome_manifest_set(m, "id", alloca_tohex_bid(m->cryptoSignPublic));
+  return 0;
 }
 
 /* Given a Rhizome Secret (RS) and bundle ID (BID), XOR a bundle key 'bkin' (private or public) with
@@ -357,20 +359,9 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m,
 				     const unsigned char *pkin)
 {
   IN();
-
-  unsigned char h[64];
   unsigned char pk[32];
-  ge_p3 A;
   int i;
-
-  crypto_hash_sha512(h,sk,32);
-  h[0] &= 248;
-  h[31] &= 63;
-  h[31] |= 64;
-
-  ge_scalarmult_base(&A,h);
-  ge_p3_tobytes(pk,&A);
-
+  crypto_sign_compute_public_key(sk,pk);
   for (i = 0;i < 32;++i) 
     if (pkin[i] != pk[i]) {
       if (m&&sk==m->cryptoSignSecret&&pkin==m->cryptoSignPublic)

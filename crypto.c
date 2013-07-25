@@ -1,3 +1,5 @@
+#include "crypto_sign_edwards25519sha512batch.h"
+#include "nacl/src/crypto_sign_edwards25519sha512batch_ref/ge.h"
 #include "serval.h"
 #include "overlay_address.h"
 #include "crypto.h"
@@ -94,4 +96,22 @@ int crypto_sign_message(struct subscriber *source, unsigned char *content, int b
   int ret=crypto_create_signature(key, hash, crypto_hash_sha512_BYTES, &content[*content_len], &sig_length);
   *content_len+=sig_length;
   return ret;
+}
+
+int crypto_sign_compute_public_key(const unsigned char *skin, unsigned char *pk)
+{
+  IN();
+  unsigned char h[64];
+  ge_p3 A;
+
+  crypto_hash_sha512(h,skin,32);
+  h[0] &= 248;
+  h[31] &= 63;
+  h[31] |= 64;
+
+  ge_scalarmult_base(&A,h);
+  ge_p3_tobytes(pk,&A);
+
+  RETURN(0);
+  OUT();
 }
