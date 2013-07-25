@@ -413,6 +413,12 @@ struct rhizome_write{
   sqlite3_blob *sql_blob;
 };
 
+struct rhizome_read_buffer{
+  uint64_t offset;
+  unsigned char data[RHIZOME_CRYPT_PAGE_SIZE];
+  int len;
+};
+
 struct rhizome_read{
   char id[SHA512_DIGEST_STRING_LENGTH+1];
   
@@ -685,6 +691,7 @@ int rhizome_exists(const char *fileHash);
 int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority);
 int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffer, int data_size);
 int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsigned char *buffer, int data_size);
+int rhizome_write_open_manifest(struct rhizome_write *write, rhizome_manifest *m);
 int rhizome_write_file(struct rhizome_write *write, const char *filename);
 int rhizome_fail_write(struct rhizome_write *write);
 int rhizome_finish_write(struct rhizome_write *write);
@@ -701,6 +708,7 @@ int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stre
 			    const unsigned char *key, const unsigned char *nonce);
 int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash);
 int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_length);
+int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer *buffer, unsigned char *data, int len);
 int rhizome_read_close(struct rhizome_read *read);
 int rhizome_store_delete(const char *id);
 int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state, int hash);

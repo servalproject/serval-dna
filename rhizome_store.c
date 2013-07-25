@@ -598,6 +598,16 @@ static int rhizome_write_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, stru
   return 0;
 }
 
+int rhizome_write_open_manifest(struct rhizome_write *write, rhizome_manifest *m)
+{
+  if (rhizome_open_write(write, NULL, m->fileLength, RHIZOME_PRIORITY_DEFAULT))
+    return -1;
+
+  if (rhizome_write_derive_key(m, NULL, write))
+    return -1;
+  return 0;
+}
+
 // import a file for a new bundle with an unknown file hash
 // update the manifest with the details of the file
 int rhizome_add_file(rhizome_manifest *m, const char *filepath)
@@ -606,16 +616,10 @@ int rhizome_add_file(rhizome_manifest *m, const char *filepath)
   struct rhizome_write write;
   bzero(&write, sizeof(write));
 
-  if (rhizome_open_write(&write, NULL, m->fileLength, RHIZOME_PRIORITY_DEFAULT))
-    return -1;
-
-  if (rhizome_write_derive_key(m, NULL, &write))
-    return -1;
-    
-  if (rhizome_write_file(&write, filepath)){
-    rhizome_fail_write(&write);
-    return -1;
-  }
+  if (rhizome_write_open_manifest(&write, m))
+    goto failure;
+  if (rhizome_write_file(&write, filepath))
+    goto failure;
   if (rhizome_finish_write(&write))
     goto failure;
 
@@ -738,6 +742,51 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
   read_state->offset+=bytes_read;
   RETURN(bytes_read);
   OUT();
+}
+
+/* Read len bytes from read->offset into data, using *buffer to cache any reads */
+int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer *buffer, unsigned char *data, int len)
+{
+  while (len>0){
+    // if we can supply either the beginning or end of the data from cache, do that first.
+    uint64_t ofs=read->offset - buffer->offset;
+    if (ofs>=0 && ofs<=buffer->len){
+      int size=len;
+      if (size > buffer->len - ofs)
+	size = buffer->len - ofs;
+      if (size>0){
+	// copy into the start of the data buffer
+	bcopy(buffer->data + ofs, data, size);
+	data+=size;
+	len-=size;
+	read->offset+=size;
+	continue;
+      }
+    }
+    
+    ofs = (read->offset+len) - buffer->offset;
+    if (ofs>0 && ofs<=buffer->len){
+      int size=len;
+      if (size > ofs)
+	size = ofs;
+      if (size>0){
+	// copy into the end of the data buffer
+	bcopy(buffer->data + ofs - size, data + len - size, size);
+	len-=size;
+	continue;
+      }
+    }
+    
+    // ok, so we need to read a new buffer to fulfill the request.
+    // remember the requested read offset so we can put it back
+    ofs = read->offset;
+    buffer->offset = read->offset = ofs & ~(RHIZOME_CRYPT_PAGE_SIZE -1);
+    buffer->len = rhizome_read(read, buffer->data, sizeof(buffer->data));
+    read->offset = ofs;
+    if (buffer->len<=0)
+      return buffer->len;
+  }
+  return 0;
 }
 
 int rhizome_read_close(struct rhizome_read *read)
