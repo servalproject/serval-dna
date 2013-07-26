@@ -2314,6 +2314,8 @@ struct cli_schema command_line_options[]={
    "List MeshMS messages between <sender_sid> and <recipient_sid>"},
   {app_meshms_send_message,{"meshms","send","message" KEYRING_PIN_OPTIONS, "<sender_sid>", "<recipient_sid>", "<payload>",NULL},0,
    "Send a MeshMS message from <sender_sid> to <recipient_sid>"},
+  {app_meshms_mark_read,{"meshms","read","messages" KEYRING_PIN_OPTIONS, "<sender_sid>", "[<recipient_sid>]", "[<offset>]",NULL},0,
+   "Mark incoming messages from this recipient as read."},
   {app_rhizome_append_manifest, {"rhizome", "append", "manifest", "<filepath>", "<manifestpath>", NULL}, 0,
     "Append a manifest to the end of the file it belongs to."},
   {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL}, 0,

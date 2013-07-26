@@ -588,7 +588,7 @@ static int rhizome_write_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, stru
     return -1;
 
   if (config.debug.rhizome)
-    DEBUGF("Encrypting payload contents");
+    DEBUGF("Encrypting payload contents for %s, %"PRId64, alloca_tohex_bid(m->cryptoSignPublic), m->version);
 
   write->crypt=1;
   write->tail = m->journalTail;
@@ -747,7 +747,13 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
 /* Read len bytes from read->offset into data, using *buffer to cache any reads */
 int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer *buffer, unsigned char *data, int len)
 {
+  int bytes_copied=0;
+  
   while (len>0){
+    // make sure we only attempt to read data that actually exists
+    if (read->length !=-1 && read->offset + len > read->length)
+      len = read->length - read->offset;
+
     // if we can supply either the beginning or end of the data from cache, do that first.
     uint64_t ofs=read->offset - buffer->offset;
     if (ofs>=0 && ofs<=buffer->len){
@@ -760,6 +766,7 @@ int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer 
 	data+=size;
 	len-=size;
 	read->offset+=size;
+	bytes_copied+=size;
 	continue;
       }
     }
@@ -773,6 +780,7 @@ int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer 
 	// copy into the end of the data buffer
 	bcopy(buffer->data + ofs - size, data + len - size, size);
 	len-=size;
+	bytes_copied+=size;
 	continue;
       }
     }
@@ -786,7 +794,7 @@ int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer 
     if (buffer->len<=0)
       return buffer->len;
   }
-  return 0;
+  return bytes_copied;
 }
 
 int rhizome_read_close(struct rhizome_read *read)
@@ -842,7 +850,7 @@ static int read_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizom
       return WHY("Unable to decrypt bundle, valid key not found");
     }
     if (config.debug.rhizome)
-      DEBUGF("Decrypting file contents");
+      DEBUGF("Decrypting payload contents for %s, %"PRId64, alloca_tohex_bid(m->cryptoSignPublic), m->version);
     
     read_state->tail = m->journalTail;
     bcopy(m->payloadKey, read_state->key, sizeof(read_state->key));

@@ -80,7 +80,8 @@ int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed)
   m->haveSecret=(ret==0)?EXISTING_BUNDLE_ID:NEW_BUNDLE_ID;
   bcopy(key.Public, m->cryptoSignPublic, sizeof(m->cryptoSignPublic));
   bcopy(key.Private, m->cryptoSignSecret, sizeof(m->cryptoSignSecret));
-  
+  if (ret>0)
+    rhizome_manifest_set(m, "id", alloca_tohex_bid(m->cryptoSignPublic));
   return ret;
 }
 

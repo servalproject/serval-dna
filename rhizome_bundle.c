@@ -759,20 +759,22 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
     rhizome_manifest_set_ll(m,"version",m->version);
   }
   
-  const char *id = rhizome_manifest_get(m, "id", NULL, 0);
-  if (id == NULL) {
-    if (config.debug.rhizome) DEBUG("creating new bundle");
-    if (rhizome_manifest_bind_id(m) == -1) {
-      return WHY("Could not bind manifest to an ID");
+  if (!m->haveSecret){
+    const char *id = rhizome_manifest_get(m, "id", NULL, 0);
+    if (id == NULL) {
+      if (config.debug.rhizome) DEBUG("creating new bundle");
+      if (rhizome_manifest_bind_id(m) == -1) {
+	return WHY("Could not bind manifest to an ID");
+      }
+    } else {
+      if (config.debug.rhizome) DEBUGF("modifying existing bundle bid=%s", id);
+      
+      // Modifying an existing bundle.  Make sure we can find the bundle secret.
+      if (rhizome_extract_privatekey_required(m, bsk))
+	return -1;
+      
+      // TODO assert that new version > old version?
     }
-  } else {
-    if (config.debug.rhizome) DEBUGF("modifying existing bundle bid=%s", id);
-    
-    // Modifying an existing bundle.  Make sure we can find the bundle secret.
-    if (rhizome_extract_privatekey_required(m, bsk))
-      return -1;
-    
-    // TODO assert that new version > old version?
   }
   
   int crypt = rhizome_manifest_get_ll(m,"crypt"); 

@@ -3,11 +3,13 @@
 #include "log.h"
 #include "conf.h"
 #include "crypto.h"
+#include "strlcpy.h"
 
 #define MESHMS_BLOCK_TYPE_ACK 0x01
 #define MESHMS_BLOCK_TYPE_MESSAGE 0x02
 #define MESHMS_BLOCK_TYPE_BID_REFERENCE 0x03
 
+// the manifest details for one half of a conversation
 struct ply{
   char bundle_id[RHIZOME_MANIFEST_ID_STRLEN+1];
   uint64_t version;
@@ -16,11 +18,16 @@ struct ply{
 };
 
 struct conversations{
+  // binary tree
   struct conversations *_left;
   struct conversations *_right;
+  
+  // who are we talking to?
   char them[SID_STRLEN+1];
+  
   char found_my_ply;
   struct ply my_ply;
+  
   char found_their_ply;
   struct ply their_ply;
   
@@ -32,13 +39,19 @@ struct conversations{
   uint64_t their_size;
 };
 
+// cursor state for reading one half of a conversation
 struct ply_read{
+  // rhizome payload
   struct rhizome_read read;
+  // block buffer
   struct rhizome_read_buffer buff;
+  
+  // details of the current record
   uint64_t record_end_offset;
   uint16_t record_length;
   int buffer_size;
   char type;
+  // raw record data
   unsigned char *buffer;
 };
 
@@ -74,6 +87,9 @@ static int get_my_conversation_bundle(const char *my_sid, rhizome_manifest *m)
   
   // always consider the content encrypted, we don't need to rely on the manifest itself.
   m->payloadEncryption=1;
+  if (m->haveSecret==NEW_BUNDLE_ID){
+    rhizome_fill_manifest(m, NULL, NULL, NULL);
+  }
   return 0;
 }
 
@@ -231,7 +247,7 @@ static int ply_read_next(struct ply_read *ply){
       DEBUGF("EOF");
     return 1;
   }
-  if (rhizome_read_buffered(&ply->read, &ply->buff, footer, sizeof(footer)))
+  if (rhizome_read_buffered(&ply->read, &ply->buff, footer, sizeof(footer)) < sizeof(footer))
     return -1;
   // (rhizome_read automatically advances the offset by the number of bytes read)
   ply->record_length=read_uint16(footer);
@@ -442,8 +458,11 @@ static int update_conversations(const char *my_sidhex, struct conversations *con
 
 // read our cached conversation list from our rhizome payload
 static int read_known_conversations(rhizome_manifest *m, const char *their_sid_hex, struct conversations **conv){
-  if (m->haveSecret!=EXISTING_BUNDLE_ID)
+  if (m->haveSecret==NEW_BUNDLE_ID){
+    if (config.debug.meshms)
+      DEBUGF("Ignoring new bundle?");
     return 0;
+  }
   
   struct rhizome_read read;
   bzero(&read, sizeof(read));
@@ -453,12 +472,14 @@ static int read_known_conversations(rhizome_manifest *m, const char *their_sid_h
   int ret = rhizome_open_decrypt_read(m, NULL, &read, 0);
   if (ret<0)
     goto end;
-  
+    
   while (1){
     char them[SID_STRLEN+1];
     ret=rhizome_read_buffered(&read, &buff, (unsigned char *)them, sizeof(them));
-    if (ret<=0)
+    if (ret<sizeof(them))
       break;
+    if (config.debug.meshms)
+      DEBUGF("Reading existing conversation for %s", them);
     if (their_sid_hex && strcmp(them, their_sid_hex))
       continue;
     struct conversations *ptr = add_conv(conv, them);
@@ -466,7 +487,7 @@ static int read_known_conversations(rhizome_manifest *m, const char *their_sid_h
       return -1;
     unsigned char details[8*3];
     ret=rhizome_read_buffered(&read, &buff, details, sizeof(details));
-    if (ret<=0)
+    if (ret<sizeof(details))
       break;
     
     ptr->their_last_message = read_uint64(details);
@@ -480,6 +501,8 @@ end:
 
 static int write_conversation(struct rhizome_write *write, struct conversations *conv){
   int len=0;
+  if (!conv)
+    return len;
   {
     unsigned char buffer[SID_STRLEN + 1 + (8*3)];
     if (write)
@@ -494,6 +517,11 @@ static int write_conversation(struct rhizome_write *write, struct conversations 
     if (write)
       write_uint64(&buffer[len], conv->their_size);
     len+=8;
+    if (write){
+      int ret=rhizome_write_buffer(write, buffer, len);
+      if (ret<0)
+	return ret;
+    }
   }
   // write the two child nodes
   int ret=write_conversation(write, conv->_left);
@@ -508,8 +536,6 @@ static int write_conversation(struct rhizome_write *write, struct conversations 
 }
 
 static int write_known_conversations(rhizome_manifest *m, struct conversations *conv){
-  if (m->haveSecret!=EXISTING_BUNDLE_ID)
-    return 0;
   rhizome_manifest *mout=NULL;
   
   struct rhizome_write write;
@@ -524,13 +550,19 @@ static int write_known_conversations(rhizome_manifest *m, struct conversations *
     goto end;
   
   // then write it
+  m->version++;
+  rhizome_manifest_set_ll(m,"version",m->version);
   m->fileLength = len;
+  rhizome_manifest_set_ll(m,"filesize",m->fileLength);
+  
   if (rhizome_write_open_manifest(&write, m))
     goto end;
   if (write_conversation(&write, conv)<0)
     goto end;
   if (rhizome_finish_write(&write))
     goto end;
+  strlcpy(m->fileHexHash, write.id, SHA512_DIGEST_STRING_LENGTH);
+  rhizome_manifest_set(m, "filehash", m->fileHexHash);
   if (rhizome_manifest_finalise(m,&mout))
     goto end;
   
@@ -580,8 +612,7 @@ static int output_conversations(struct cli_context *context, struct conversation
   if (count <0 || output + traverse_count < offset + count){
     if (output + traverse_count >= offset){
       cli_put_string(context, conv->them, ":");
-      cli_put_string(context, conv->read_offset < conv->their_last_message ? "unread":"", ":");
-      cli_put_string(context, "delivered", "\n");// TODO
+      cli_put_string(context, conv->read_offset < conv->their_last_message ? "unread":"", "\n");
     }
     traverse_count++;
   }
@@ -614,10 +645,10 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
     return -1;
   
   const char *names[]={
-    "sid","read","delivered"
+    "sid","read"
   };
 
-  cli_columns(context, 3, names);
+  cli_columns(context, 2, names);
   output_conversations(context, conv, 0, offset, count);
   free_conversations(conv);
   return 0;
@@ -679,6 +710,9 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
 
   cli_columns(context, 5, names);
   
+  rhizome_manifest *m_ours=NULL, *m_theirs=NULL;
+  struct ply_read read_ours, read_theirs;
+  
   // if we've never sent a message, (or acked theirs), there is nothing to show
   if (!conv->found_my_ply){
     ret=0;
@@ -686,13 +720,11 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
   }
   
   // start reading messages from both ply's in reverse order
-  rhizome_manifest *m_ours=NULL, *m_theirs=NULL;
-  struct ply_read read_ours, read_theirs;
   bzero(&read_ours, sizeof(read_ours));
   bzero(&read_theirs, sizeof(read_theirs));
   
   if (conv->found_my_ply){
-    rhizome_manifest *m_ours = rhizome_new_manifest();
+    m_ours = rhizome_new_manifest();
     if (!m_ours)
       goto end;
     if (ply_read_open(&read_ours, conv->my_ply.bundle_id, m_ours))
@@ -717,11 +749,10 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
 	DEBUGF("Found their last ack @%"PRId64, their_last_ack);
     }
   }
-  
   int id=0;
   while(ply_read_next(&read_ours)==0){
     if (config.debug.meshms)
-      DEBUGF("%"PRId64", found %d", read_ours.read.offset, read_ours.type);
+      DEBUGF("Offset %"PRId64", type %d, read_offset %"PRId64, read_ours.read.offset, read_ours.type, conv->read_offset);
     switch(read_ours.type){
       case MESHMS_BLOCK_TYPE_ACK:
 	// read their message list, and insert all messages that are included in the ack range
@@ -746,7 +777,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
 	    if (read_theirs.read.offset < end_range)
 	      break;
 	    cli_put_long(context, id++, ":");
-	    cli_put_long(context, read_theirs.read.offset, ":");
+	    cli_put_long(context, read_theirs.record_end_offset, ":");
 	    cli_put_string(context, their_sidhex, ":");
 	    cli_put_string(context, read_theirs.record_end_offset <= conv->read_offset?"":"unread", ":");
 	    cli_put_string(context, (char *)read_theirs.buffer, "\n");
@@ -756,7 +787,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
       case MESHMS_BLOCK_TYPE_MESSAGE:
 	// TODO new message format here
 	cli_put_long(context, id++, ":");
-	cli_put_long(context, read_ours.read.offset, ":");
+	cli_put_long(context, read_ours.record_end_offset, ":");
 	cli_put_string(context, my_sidhex, ":");
 	cli_put_string(context, their_last_ack >= read_ours.record_end_offset ? "delivered":"", ":");
 	cli_put_string(context, (char *)read_ours.buffer, "\n");
@@ -774,6 +805,86 @@ end:
     rhizome_manifest_free(m_theirs);
     ply_read_close(&read_theirs);
   }
+  free_conversations(conv);
+  return ret;
+}
+
+static int mark_read(struct conversations *conv, const char *their_sid, const char *offset_str){
+  int ret=0;
+  if (conv){
+    int cmp = their_sid?strcmp(conv->them, their_sid):0;
+    if (!their_sid || cmp<0){
+      ret+=mark_read(conv->_left, their_sid, offset_str);
+    }
+    if (!their_sid || cmp==0){
+      // update read offset
+      // - never rewind
+      // - never past their last message
+      uint64_t offset = conv->their_last_message;
+      if (offset_str){
+	uint64_t x = atol(offset_str);
+	if (x<offset)
+	  offset=x;
+      }
+      if (offset > conv->read_offset){
+	if (config.debug.meshms)
+	  DEBUGF("Moving read marker for %s, from %"PRId64" to %"PRId64, conv->them, conv->read_offset, offset);
+	conv->read_offset = offset;
+	ret++;
+      }
+    }
+    if (!their_sid || cmp>0){
+      ret+=mark_read(conv->_right, their_sid, offset_str);
+    }
+  }
+  return ret;
+}
+
+int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *context){
+  const char *my_sidhex, *their_sidhex, *offset_str;
+  if (cli_arg(parsed, "sender_sid", &my_sidhex, str_is_subscriber_id, "") == -1
+    || cli_arg(parsed, "recipient_sid", &their_sidhex, str_is_subscriber_id, NULL) == -1
+    || cli_arg(parsed, "offset", &offset_str, NULL, NULL)==-1)
+   return -1;
+  
+  if (create_serval_instance_dir() == -1)
+    return -1;
+  if (!(keyring = keyring_open_instance_cli(parsed)))
+    return -1;
+  if (rhizome_opendb() == -1)
+    return -1;
+  
+  int ret=-1;
+  struct conversations *conv=NULL;
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (!m)
+    goto end;
+  if (get_my_conversation_bundle(my_sidhex, m))
+    goto end;
+    
+  // read all conversations, so we can write them again
+  if (read_known_conversations(m, NULL, &conv))
+    goto end;
+  
+  // read the full list of conversations from the database too
+  if (get_database_conversations(my_sidhex, my_sidhex, &conv))
+    goto end;
+  
+  // check if any incoming conversations need to be acked or have new messages and update the read offset
+  int changed = update_conversations(my_sidhex, conv);
+  if (mark_read(conv, their_sidhex, offset_str))
+    changed =1;
+  if (changed){
+    // save the conversation list
+    if (write_known_conversations(m, conv))
+      goto end;
+  }
+  
+  ret=0;
+  
+end:
+  if (m)
+    rhizome_manifest_free(m);
   free_conversations(conv);
   return ret;
 }
