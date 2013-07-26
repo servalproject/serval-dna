@@ -106,6 +106,13 @@ has_unread_messages() {
    fi
 }
 
+messages_delivered() {
+   executeOk_servald meshms list messages $1 $2
+   if ! grep ":delivered:" $_tfw_tmp/stdout; then
+     return 1
+   fi
+}
+
 test_MessageThreading() {
    set_instance +B
    wait_until has_unread_messages $SIDB
@@ -119,6 +126,7 @@ test_MessageThreading() {
 
    set_instance +A
    wait_until has_unread_messages $SIDA
+   wait_until messages_delivered $SIDA $SIDB
    executeOk_servald meshms list messages $SIDA $SIDB
    tfw_cat --stdout
    assertStdoutGrep --stdout --matches=1 "^0:54:$SIDB:unread:Never mind\$"
