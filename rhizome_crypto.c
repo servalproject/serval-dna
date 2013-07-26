@@ -602,6 +602,10 @@ static void add_nonce(unsigned char *nonce, int64_t value){
  */
 int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
 			    const unsigned char *key, const unsigned char *nonce){
+  
+  if (stream_offset<0)
+    return WHY("Invalid stream offset");
+  
   int64_t nonce_offset = stream_offset & ~(RHIZOME_CRYPT_PAGE_SIZE -1);
   int offset=0;
   

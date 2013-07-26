@@ -591,7 +591,8 @@ static int rhizome_write_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, stru
     DEBUGF("Encrypting payload contents for %s, %"PRId64, alloca_tohex_bid(m->cryptoSignPublic), m->version);
 
   write->crypt=1;
-  write->tail = m->journalTail;
+  if (m->journalTail>0)
+    write->tail = m->journalTail;
 
   bcopy(m->payloadKey, write->key, sizeof(write->key));
   bcopy(m->payloadNonce, write->nonce, sizeof(write->nonce));
@@ -852,7 +853,8 @@ static int read_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizom
     if (config.debug.rhizome)
       DEBUGF("Decrypting payload contents for %s, %"PRId64, alloca_tohex_bid(m->cryptoSignPublic), m->version);
     
-    read_state->tail = m->journalTail;
+    if (m->journalTail>0)
+      read_state->tail = m->journalTail;
     bcopy(m->payloadKey, read_state->key, sizeof(read_state->key));
     bcopy(m->payloadNonce, read_state->nonce, sizeof(read_state->nonce));
   }
