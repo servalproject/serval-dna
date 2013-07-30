@@ -23,7 +23,7 @@ struct conversations{
   struct conversations *_right;
   
   // who are we talking to?
-  char them[SID_STRLEN+1];
+  sid_t them;
   
   char found_my_ply;
   struct ply my_ply;
@@ -55,7 +55,7 @@ struct ply_read{
   unsigned char *buffer;
 };
 
-static int meshms_conversations_list(const char *my_sid_hex, const char *their_sid_hex, struct conversations **conv);
+static int meshms_conversations_list(const sid_t *my_sid, const sid_t *their_sid, struct conversations **conv);
 
 static void free_conversations(struct conversations *conv){
   if (!conv)
@@ -65,15 +65,12 @@ static void free_conversations(struct conversations *conv){
   free(conv);
 }
 
-static int get_my_conversation_bundle(const char *my_sid, rhizome_manifest *m)
+static int get_my_conversation_bundle(const sid_t *my_sid, rhizome_manifest *m)
 {
   /* Find our private key */
   int cn=0,in=0,kp=0;
-  sid_t sender_sid;
-  if (cf_opt_sid(&sender_sid,my_sid)) 
-    return WHYF("Could not parse SID: %s",my_sid);
-  if (!keyring_find_sid(keyring,&cn,&in,&kp,sender_sid.binary))
-    return WHYF("SID was not found in keyring: %s", my_sid);
+  if (!keyring_find_sid(keyring,&cn,&in,&kp,my_sid->binary))
+    return WHYF("SID was not found in keyring: %s", alloca_tohex_sid(my_sid->binary));
   
   char seed[1024];
   snprintf(seed, sizeof(seed), 
@@ -93,10 +90,10 @@ static int get_my_conversation_bundle(const char *my_sid, rhizome_manifest *m)
   return 0;
 }
 
-static struct conversations *add_conv(struct conversations **conv, const char *them){
+static struct conversations *add_conv(struct conversations **conv, const sid_t *them){
   struct conversations **ptr=conv;
   while(*ptr){
-    int cmp = strcmp((*ptr)->them, them);
+    int cmp = memcmp((*ptr)->them.binary, them, sizeof((*ptr)->them));
     if (cmp==0)
       break;
     if (cmp<0)
@@ -107,14 +104,17 @@ static struct conversations *add_conv(struct conversations **conv, const char *t
   if (!*ptr){
     *ptr = emalloc_zero(sizeof(struct conversations));
     if (*ptr)
-      strncpy((*ptr)->them, them, SID_STRLEN);
+      memcpy((*ptr)->them.binary, them->binary, sizeof((*ptr)->them));
   }
   return *ptr;
 }
 
 // find matching conversations
 // if their_sid_hex == my_sid_hex, return all conversations with any recipient
-static int get_database_conversations(const char *my_sid_hex, const char *their_sid_hex, struct conversations **conv){
+static int get_database_conversations(const sid_t *my_sid, const sid_t *their_sid, struct conversations **conv){
+  const char *my_sid_hex = alloca_tohex_sid(my_sid->binary);
+  const char *their_sid_hex = alloca_tohex_sid(their_sid?their_sid->binary:my_sid->binary);
+  
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare(&retry,
     "SELECT id, version, filesize, tail, sender, recipient "
@@ -128,7 +128,7 @@ static int get_database_conversations(const char *my_sid_hex, const char *their_
   int ret = sqlite3_bind_text(statement, 1, my_sid_hex, -1, SQLITE_STATIC);
   if (ret!=SQLITE_OK)
     goto end;
-
+  
   ret = sqlite3_bind_text(statement, 2, their_sid_hex, -1, SQLITE_STATIC);
   if (ret!=SQLITE_OK)
     goto end;
@@ -148,10 +148,13 @@ static int get_database_conversations(const char *my_sid_hex, const char *their_
     if (strcasecmp(them, my_sid_hex)==0)
       them=sender;
     
+    sid_t their_sid;
+    fromhex(their_sid.binary, them, sizeof(their_sid));
+    
     if (config.debug.meshms)
       DEBUGF("found id %s, sender %s, recipient %s", id, sender, recipient);
     
-    struct conversations *ptr = add_conv(conv, them);
+    struct conversations *ptr = add_conv(conv, &their_sid);
     if (!ptr)
       goto end;
       
@@ -179,29 +182,27 @@ end:
   return (ret==SQLITE_OK)?0:-1;
 }
 
-static struct conversations * find_or_create_conv(const char *my_sid, const char *their_sid){
+static struct conversations * find_or_create_conv(const sid_t *my_sid, const sid_t *their_sid){
   struct conversations *conv=NULL;
   if (meshms_conversations_list(my_sid, their_sid, &conv))
     return NULL;
   if (!conv){
     conv = emalloc_zero(sizeof(struct conversations));
-    strncpy(conv->them, their_sid, SID_STRLEN);
+    bcopy(their_sid->binary, conv->them.binary, sizeof(sid_t));
   }
   return conv;
 }
 
-static int create_ply(const char *my_sidhex, struct conversations *conv, rhizome_manifest *m){
+static int create_ply(const sid_t *my_sid, struct conversations *conv, rhizome_manifest *m){
   m->journalTail = 0;
-  
+  const char *my_sidhex = alloca_tohex_sid(my_sid->binary);
+  const char *their_sidhex = alloca_tohex_sid(conv->them.binary);
   rhizome_manifest_set(m, "service", RHIZOME_SERVICE_MESHMS);
   rhizome_manifest_set(m, "sender", my_sidhex);
-  rhizome_manifest_set(m, "recipient", conv->them);
+  rhizome_manifest_set(m, "recipient", their_sidhex);
   rhizome_manifest_set_ll(m, "tail", m->journalTail);
   
-  sid_t authorSid;
-  if (str_to_sid_t(&authorSid, my_sidhex)==-1)
-    return -1;
-  if (rhizome_fill_manifest(m, NULL, &authorSid, NULL))
+  if (rhizome_fill_manifest(m, NULL, my_sid, NULL))
     return -1;
   
   rhizome_manifest_get(m, "id", conv->my_ply.bundle_id, sizeof(conv->my_ply.bundle_id));
@@ -292,7 +293,7 @@ static int ply_find_next(struct ply_read *ply, char type){
   }
 }
 
-static int append_meshms_buffer(const char *my_sidhex, struct conversations *conv, unsigned char *buffer, int len){
+static int append_meshms_buffer(const sid_t *my_sid, struct conversations *conv, unsigned char *buffer, int len){
   int ret=-1;
   rhizome_manifest *mout = NULL;
   rhizome_manifest *m = rhizome_new_manifest();
@@ -305,14 +306,14 @@ static int append_meshms_buffer(const char *my_sidhex, struct conversations *con
     if (rhizome_find_bundle_author(m))
       goto end;
   }else{
-    if (create_ply(my_sidhex, conv, m))
+    if (create_ply(my_sid, conv, m))
       goto end;
   }
   
   if (rhizome_append_journal_buffer(m, NULL, 0, buffer, len))
     goto end;
   
-  if (rhizome_manifest_finalise(m,&mout))
+  if (rhizome_manifest_finalise(m, &mout))
     goto end;
 
   ret=0;
@@ -327,7 +328,7 @@ end:
 
 // update if any conversations are unread or need to be acked.
 // return -1 for failure, 1 if the conversation index needs to be saved.
-static int update_conversation(const char *my_sidhex, struct conversations *conv){
+static int update_conversation(const sid_t *my_sid, struct conversations *conv){
   if (config.debug.meshms)
     DEBUG("Checking if conversation needs to be acked");
     
@@ -421,7 +422,7 @@ static int update_conversation(const char *my_sidhex, struct conversations *conv
   if (previous_ack)
     ofs+=pack_uint(&buffer[ofs], conv->their_last_message - previous_ack);
   ofs+=append_footer(buffer+ofs, MESHMS_BLOCK_TYPE_ACK, ofs);
-  ret = append_meshms_buffer(my_sidhex, conv, buffer, ofs);
+  ret = append_meshms_buffer(my_sid, conv, buffer, ofs);
   
 end:
   ply_read_close(&ply);
@@ -438,26 +439,26 @@ end:
 }
 
 // update conversations, and return 1 if the conversation index should be saved
-static int update_conversations(const char *my_sidhex, struct conversations *conv){
+static int update_conversations(const sid_t *my_sid, struct conversations *conv){
   if (!conv)
     return 0;
   int ret = 0;
-  if (update_conversations(my_sidhex, conv->_left))
+  if (update_conversations(my_sid, conv->_left))
     ret=1;
     
   if (conv->their_size != conv->their_ply.size){
-    if (update_conversation(my_sidhex, conv)>0)
+    if (update_conversation(my_sid, conv)>0)
       ret=1;
   }
   
-  if (update_conversations(my_sidhex, conv->_right))
+  if (update_conversations(my_sid, conv->_right))
     ret=1;
 
   return ret;
 }
 
 // read our cached conversation list from our rhizome payload
-static int read_known_conversations(rhizome_manifest *m, const char *their_sid_hex, struct conversations **conv){
+static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid, struct conversations **conv){
   if (m->haveSecret==NEW_BUNDLE_ID){
     if (config.debug.meshms)
       DEBUGF("Ignoring new bundle?");
@@ -472,17 +473,17 @@ static int read_known_conversations(rhizome_manifest *m, const char *their_sid_h
   int ret = rhizome_open_decrypt_read(m, NULL, &read, 0);
   if (ret<0)
     goto end;
-    
+  
   while (1){
-    char them[SID_STRLEN+1];
-    ret=rhizome_read_buffered(&read, &buff, (unsigned char *)them, sizeof(them));
-    if (ret<sizeof(them))
+    sid_t sid;
+    ret=rhizome_read_buffered(&read, &buff, sid.binary, sizeof(sid));
+    if (ret<sizeof(sid))
       break;
     if (config.debug.meshms)
-      DEBUGF("Reading existing conversation for %s", them);
-    if (their_sid_hex && strcmp(them, their_sid_hex))
+      DEBUGF("Reading existing conversation for %s", alloca_tohex_sid(sid.binary));
+    if (their_sid && memcmp(sid.binary, their_sid->binary, sizeof(sid)))
       continue;
-    struct conversations *ptr = add_conv(conv, them);
+    struct conversations *ptr = add_conv(conv, &sid);
     if (!ptr)
       return -1;
     unsigned char details[8*3];
@@ -504,9 +505,9 @@ static int write_conversation(struct rhizome_write *write, struct conversations 
   if (!conv)
     return len;
   {
-    unsigned char buffer[SID_STRLEN + 1 + (8*3)];
+    unsigned char buffer[sizeof(conv->them) + (8*3)];
     if (write)
-      bcopy(conv->them, buffer, sizeof(conv->them));
+      bcopy(conv->them.binary, buffer, sizeof(conv->them));
     len+=sizeof(conv->them);
     if (write)
       write_uint64(&buffer[len], conv->their_last_message);
@@ -576,22 +577,22 @@ end:
 }
 
 // read information about existing conversations from a rhizome payload
-static int meshms_conversations_list(const char *my_sid_hex, const char *their_sid_hex, struct conversations **conv){
+static int meshms_conversations_list(const sid_t *my_sid, const sid_t *their_sid, struct conversations **conv){
   int ret=-1;
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     goto end;
-  if (get_my_conversation_bundle(my_sid_hex, m))
+  if (get_my_conversation_bundle(my_sid, m))
     goto end;
     
   // read conversations payload
-  if (read_known_conversations(m, NULL, conv))
+  if (read_known_conversations(m, their_sid, conv))
     goto end;
   
-  if (get_database_conversations(my_sid_hex, their_sid_hex?their_sid_hex:my_sid_hex, conv))
+  if (get_database_conversations(my_sid, their_sid, conv))
     goto end;
     
-  if (update_conversations(my_sid_hex, *conv) && !their_sid_hex){
+  if (update_conversations(my_sid, *conv) && !their_sid){
     if (write_known_conversations(m, *conv))
       goto end;
   }
@@ -611,14 +612,13 @@ static int output_conversations(struct cli_context *context, struct conversation
   int traverse_count = output_conversations(context, conv->_left, output, offset, count);
   if (count <0 || output + traverse_count < offset + count){
     if (output + traverse_count >= offset){
-      cli_put_string(context, conv->them, ":");
+      cli_put_long(context, output + traverse_count, ":");
+      cli_put_hexvalue(context, conv->them.binary, sizeof(conv->them), ":");
       cli_put_string(context, conv->read_offset < conv->their_last_message ? "unread":"", "\n");
     }
     traverse_count++;
   }
-  if (count <0 || output + traverse_count < offset + count){
-    traverse_count += output_conversations(context, conv->_right, output + traverse_count, offset, count);
-  }
+  traverse_count += output_conversations(context, conv->_right, output + traverse_count, offset, count);
   return traverse_count;
 }
 
@@ -630,6 +630,9 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
     || cli_arg(parsed, "count", &count_str, NULL, "-1")==-1)
     return -1;
     
+  sid_t sid;
+  fromhex(sid.binary, sidhex, sizeof(sid.binary));
+  
   int offset=atoi(offset_str);
   int count=atoi(count_str);
 
@@ -641,15 +644,17 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
     return -1;
   
   struct conversations *conv=NULL;
-  if (meshms_conversations_list(sidhex, NULL, &conv))
+  if (meshms_conversations_list(&sid, NULL, &conv))
     return -1;
   
   const char *names[]={
-    "sid","read"
+    "_id","recipient","read"
   };
 
-  cli_columns(context, 2, names);
-  output_conversations(context, conv, 0, offset, count);
+  cli_columns(context, 3, names);
+  int rows = output_conversations(context, conv, 0, offset, count);
+  cli_row_count(context, rows);
+
   free_conversations(conv);
   return 0;
 }
@@ -667,8 +672,11 @@ int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context 
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
-    
-  struct conversations *conv=find_or_create_conv(my_sidhex, their_sidhex);
+  
+  sid_t my_sid, their_sid;
+  fromhex(my_sid.binary, my_sidhex, sizeof(my_sid.binary));
+  fromhex(their_sid.binary, their_sidhex, sizeof(their_sid.binary));
+  struct conversations *conv=find_or_create_conv(&my_sid, &their_sid);
   if (!conv)
     return -1;
   
@@ -679,7 +687,7 @@ int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context 
   unsigned char buffer[message_len+3];
   strcpy((char*)buffer, message);  // message
   message_len+=append_footer(buffer+message_len, MESHMS_BLOCK_TYPE_MESSAGE, message_len);
-  int ret = append_meshms_buffer(my_sidhex, conv, buffer, message_len);
+  int ret = append_meshms_buffer(&my_sid, conv, buffer, message_len);
   
   free_conversations(conv);
   return ret;
@@ -698,7 +706,11 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
   if (rhizome_opendb() == -1)
     return -1;
     
-  struct conversations *conv=find_or_create_conv(my_sidhex, their_sidhex);
+  sid_t my_sid, their_sid;
+  fromhex(my_sid.binary, my_sidhex, sizeof(my_sid.binary));
+  fromhex(their_sid.binary, their_sidhex, sizeof(their_sid.binary));
+  
+  struct conversations *conv=find_or_create_conv(&my_sid, &their_sid);
   if (!conv)
     return -1;
   
@@ -716,6 +728,9 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
   // if we've never sent a message, (or acked theirs), there is nothing to show
   if (!conv->found_my_ply){
     ret=0;
+    cli_row_count(context, 0);
+    if (config.debug.meshms)
+      DEBUGF("Did not find my ply");
     goto end;
   }
   
@@ -723,13 +738,11 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
   bzero(&read_ours, sizeof(read_ours));
   bzero(&read_theirs, sizeof(read_theirs));
   
-  if (conv->found_my_ply){
-    m_ours = rhizome_new_manifest();
-    if (!m_ours)
-      goto end;
-    if (ply_read_open(&read_ours, conv->my_ply.bundle_id, m_ours))
-      goto end;
-  }
+  m_ours = rhizome_new_manifest();
+  if (!m_ours)
+    goto end;
+  if (ply_read_open(&read_ours, conv->my_ply.bundle_id, m_ours))
+    goto end;
   
   uint64_t their_last_ack=0;
   
@@ -778,7 +791,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
 	      break;
 	    cli_put_long(context, id++, ":");
 	    cli_put_long(context, read_theirs.record_end_offset, ":");
-	    cli_put_string(context, their_sidhex, ":");
+	    cli_put_hexvalue(context, their_sid.binary, sizeof(their_sid), ":");
 	    cli_put_string(context, read_theirs.record_end_offset <= conv->read_offset?"":"unread", ":");
 	    cli_put_string(context, (char *)read_theirs.buffer, "\n");
 	  }
@@ -788,12 +801,14 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
 	// TODO new message format here
 	cli_put_long(context, id++, ":");
 	cli_put_long(context, read_ours.record_end_offset, ":");
-	cli_put_string(context, my_sidhex, ":");
+	cli_put_hexvalue(context, my_sid.binary, sizeof(my_sid), ":");
 	cli_put_string(context, their_last_ack >= read_ours.record_end_offset ? "delivered":"", ":");
 	cli_put_string(context, (char *)read_ours.buffer, "\n");
 	break;
     }
   }
+  
+  cli_row_count(context, id);
   ret=0;
   
 end:
@@ -809,10 +824,10 @@ end:
   return ret;
 }
 
-static int mark_read(struct conversations *conv, const char *their_sid, const char *offset_str){
+static int mark_read(struct conversations *conv, const sid_t *their_sid, const char *offset_str){
   int ret=0;
   if (conv){
-    int cmp = their_sid?strcmp(conv->them, their_sid):0;
+    int cmp = their_sid?memcmp(conv->them.binary, their_sid->binary, sizeof(sid_t)):0;
     if (!their_sid || cmp<0){
       ret+=mark_read(conv->_left, their_sid, offset_str);
     }
@@ -828,7 +843,8 @@ static int mark_read(struct conversations *conv, const char *their_sid, const ch
       }
       if (offset > conv->read_offset){
 	if (config.debug.meshms)
-	  DEBUGF("Moving read marker for %s, from %"PRId64" to %"PRId64, conv->them, conv->read_offset, offset);
+	  DEBUGF("Moving read marker for %s, from %"PRId64" to %"PRId64, 
+	    alloca_tohex_sid(conv->them.binary), conv->read_offset, offset);
 	conv->read_offset = offset;
 	ret++;
       }
@@ -854,12 +870,17 @@ int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *co
   if (rhizome_opendb() == -1)
     return -1;
   
+  sid_t my_sid, their_sid;
+  fromhex(my_sid.binary, my_sidhex, sizeof(my_sid.binary));
+  if (their_sidhex)
+    fromhex(their_sid.binary, their_sidhex, sizeof(their_sid.binary));
+  
   int ret=-1;
   struct conversations *conv=NULL;
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     goto end;
-  if (get_my_conversation_bundle(my_sidhex, m))
+  if (get_my_conversation_bundle(&my_sid, m))
     goto end;
     
   // read all conversations, so we can write them again
@@ -867,12 +888,12 @@ int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *co
     goto end;
   
   // read the full list of conversations from the database too
-  if (get_database_conversations(my_sidhex, my_sidhex, &conv))
+  if (get_database_conversations(&my_sid, NULL, &conv))
     goto end;
   
   // check if any incoming conversations need to be acked or have new messages and update the read offset
-  int changed = update_conversations(my_sidhex, conv);
-  if (mark_read(conv, their_sidhex, offset_str))
+  int changed = update_conversations(&my_sid, conv);
+  if (mark_read(conv, their_sidhex?&their_sid:NULL, offset_str))
     changed =1;
   if (changed){
     // save the conversation list
