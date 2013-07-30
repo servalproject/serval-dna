@@ -614,7 +614,9 @@ static int output_conversations(struct cli_context *context, struct conversation
     if (output + traverse_count >= offset){
       cli_put_long(context, output + traverse_count, ":");
       cli_put_hexvalue(context, conv->them.binary, sizeof(conv->them), ":");
-      cli_put_string(context, conv->read_offset < conv->their_last_message ? "unread":"", "\n");
+      cli_put_string(context, conv->read_offset < conv->their_last_message ? "unread":"", ":");
+      cli_put_long(context, conv->their_last_message, ":");
+      cli_put_long(context, conv->read_offset, "\n");
     }
     traverse_count++;
   }
@@ -648,10 +650,10 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
     return -1;
   
   const char *names[]={
-    "_id","recipient","read"
+    "_id","recipient","read", "last_message", "read_offset"
   };
 
-  cli_columns(context, 3, names);
+  cli_columns(context, 5, names);
   int rows = output_conversations(context, conv, 0, offset, count);
   cli_row_count(context, rows);
 
