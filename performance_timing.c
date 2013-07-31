@@ -198,12 +198,12 @@ void fd_periodicstats(struct sched_ent *alarm)
   schedule(alarm);
 }
 
-void dump_stack()
+void dump_stack(int log_level)
 {
   struct call_stats *call = current_call;
   while(call){
     if (call->totals)
-      INFOF("%s",call->totals->name);
+      LOGF(log_level, "%s",call->totals->name);
     call=call->prev;
   }
 }

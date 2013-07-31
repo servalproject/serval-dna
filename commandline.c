@@ -1120,8 +1120,6 @@ int app_config_schema(const struct cli_parsed *parsed, struct cli_context *conte
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  if (create_serval_instance_dir() == -1)
-    return -1;
   struct cf_om_node *root = NULL;
   if (cf_sch_config_main(&root) == -1) {
     cf_om_free_node(&root);

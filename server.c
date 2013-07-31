@@ -357,12 +357,6 @@ static void signame(char *buf, size_t len, int signal)
 
 void signal_handler(int signal)
 {
-  char buf[80];
-  signame(buf, sizeof(buf), signal);
-  INFOF("Caught %s", buf);
- WHYF("The following clue may help: %s",crash_handler_clue); 
-  dump_stack();
-
   switch (signal) {
     case SIGHUP:
     case SIGINT:
@@ -370,10 +364,18 @@ void signal_handler(int signal)
 	 rather than here, so we first try to tell the mainline code to do so.  If, however, this is
 	 not the first time we have been asked to shut down, then we will do it here. */
       server_shutdown_check(NULL);
-      WHY("Asking Serval process to shutdown cleanly");
+      INFO("Attempting clean shutdown");
       servalShutdown = 1;
       return;
   }
+  
+  char buf[80];
+  signame(buf, sizeof(buf), signal);
+  
+  LOGF(LOG_LEVEL_FATAL, "Caught signal %s", buf);
+  LOGF(LOG_LEVEL_FATAL, "The following clue may help: %s",crash_handler_clue); 
+  dump_stack(LOG_LEVEL_FATAL);
+
   serverCleanUp();
   exit(0);
 }
@@ -383,9 +385,10 @@ void crash_handler(int signal)
 {
   char buf[80];
   signame(buf, sizeof(buf), signal);
-  WHYF("Caught %s", buf);
-  WHYF("The following clue may help: %s",crash_handler_clue);
-  dump_stack();
+  LOGF(LOG_LEVEL_FATAL, "Caught signal %s", buf);
+  LOGF(LOG_LEVEL_FATAL, "The following clue may help: %s",crash_handler_clue); 
+  dump_stack(LOG_LEVEL_FATAL);
+  
   BACKTRACE;
   if (config.server.respawn_on_crash) {
     int i;
@@ -411,7 +414,7 @@ void crash_handler(int signal)
   // If that didn't work, then die normally.
   INFOF("exit(%d)", -signal);
   exit(-signal);
-} 
+}
 
 int getKeyring(char *backing_file)
 {

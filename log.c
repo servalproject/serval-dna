@@ -755,7 +755,7 @@ ssize_t get_self_executable_path(char *buf, size_t len)
 #endif
 }
 
-int log_backtrace(struct __sourceloc whence)
+int log_backtrace(int level, struct __sourceloc whence)
 {
 #ifndef NO_BACKTRACE
   _log_iterator it;
@@ -812,7 +812,7 @@ int log_backtrace(struct __sourceloc whence)
   }
   // parent
   close(stdout_fds[1]);
-  _log_iterator_printf_nl(&it, LOG_LEVEL_DEBUG, whence, "GDB BACKTRACE");
+  _log_iterator_printf_nl(&it, level, whence, "GDB BACKTRACE");
   char buf[1024];
   char *const bufe = buf + sizeof buf;
   char *linep = buf;
@@ -824,14 +824,14 @@ int log_backtrace(struct __sourceloc whence)
     for (; p < readp; ++p)
       if (*p == '\n' || *p == '\0') {
 	*p = '\0';
-	_log_iterator_printf_nl(&it, LOG_LEVEL_DEBUG, __NOWHERE__, "%s", linep);
+	_log_iterator_printf_nl(&it, level, __NOWHERE__, "%s", linep);
 	linep = p + 1;
       }
     if (readp >= bufe && linep == buf) {
       // Line does not fit into buffer.
       char t = bufe[-1];
       bufe[-1] = '\0';
-      _log_iterator_printf_nl(&it, LOG_LEVEL_DEBUG, __NOWHERE__, "%s", buf);
+      _log_iterator_printf_nl(&it, level, __NOWHERE__, "%s", buf);
       buf[0] = t;
       readp = buf + 1;
     } else if (readp + 120 >= bufe && linep != buf) {
@@ -847,7 +847,7 @@ int log_backtrace(struct __sourceloc whence)
     WHY_perror("read");
   if (readp > linep) {
     *readp = '\0';
-    _log_iterator_printf_nl(&it, LOG_LEVEL_DEBUG, __NOWHERE__, "%s", linep);
+    _log_iterator_printf_nl(&it, level, __NOWHERE__, "%s", linep);
   }
   close(stdout_fds[0]);
   int status = 0;
@@ -855,7 +855,7 @@ int log_backtrace(struct __sourceloc whence)
     WHY_perror("waitpid");
   strbuf b = strbuf_local(buf, sizeof buf);
   strbuf_append_exit_status(b, status);
-  _log_iterator_printf_nl(&it, LOG_LEVEL_DEBUG, __NOWHERE__, "gdb %s", buf);
+  _log_iterator_printf_nl(&it, level, __NOWHERE__, "gdb %s", buf);
   unlink(tempfile);
 #endif
   return 0;

@@ -106,7 +106,7 @@ void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list)
 void logConfigChanged();
 int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len);
 ssize_t get_self_executable_path(char *buf, size_t len);
-int log_backtrace(struct __sourceloc whence);
+int log_backtrace(int level, struct __sourceloc whence);
 struct strbuf;
 
 #define __HERE__            ((struct __sourceloc){ .file = __FILE__, .line = __LINE__, .function = __FUNCTION__ })
@@ -158,6 +158,6 @@ struct strbuf;
 
 #define dump(X,A,N)         logDump(LOG_LEVEL_DEBUG, __WHENCE__, (X), (const unsigned char *)(A), (size_t)(N))
 
-#define BACKTRACE           log_backtrace(__WHENCE__)
+#define BACKTRACE           log_backtrace(LOG_LEVEL_FATAL, __WHENCE__)
 
 #endif // __SERVALD_LOG_H
