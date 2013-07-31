@@ -159,7 +159,7 @@ int parse_rfd900_rssi(char *s)
 
   // L/R RSSI: 48/0  L/R noise: 62/0 pkts: 0  txe=0 rxe=0 stx=0 srx=0 ecc=0/0 temp=21 dco=0
   if (sscanf(s,"L/R RSSI: %d/%d  L/R noise: %d/%d pkts: %d  txe=%*d rxe=%*d stx=%*d srx=%*d ecc=%*d/%*d temp=%d dco=%*d",
-	     &lrssi,&rrssi,&lnoise,&rnoise,&rxpackets, &temp)==5)
+	     &lrssi,&rrssi,&lnoise,&rnoise,&rxpackets, &temp)==6)
     {
       int lmargin=(lrssi-lnoise)/1.9;
       int rmargin=(lrssi-lnoise)/1.9;
