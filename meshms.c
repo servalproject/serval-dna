@@ -458,12 +458,10 @@ static int update_conversations(const sid_t *my_sid, struct conversations *conv)
 }
 
 // read our cached conversation list from our rhizome payload
+// if we can't load the existing data correctly, just ignore it.
 static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid, struct conversations **conv){
-  if (m->haveSecret==NEW_BUNDLE_ID){
-    if (config.debug.meshms)
-      DEBUGF("Ignoring new bundle?");
+  if (m->haveSecret==NEW_BUNDLE_ID)
     return 0;
-  }
   
   struct rhizome_read read;
   bzero(&read, sizeof(read));
@@ -473,6 +471,13 @@ static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid,
   int ret = rhizome_open_decrypt_read(m, NULL, &read, 0);
   if (ret<0)
     goto end;
+  
+  unsigned char version=0xFF;
+  ret=rhizome_read_buffered(&read, &buff, &version, 1);
+  if (version!=1){
+    WARN("Expected version 1");
+    goto end;
+  }
   
   while (1){
     sid_t sid;
@@ -485,19 +490,32 @@ static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid,
       continue;
     struct conversations *ptr = add_conv(conv, &sid);
     if (!ptr)
-      return -1;
+      goto end;
     unsigned char details[8*3];
-    ret=rhizome_read_buffered(&read, &buff, details, sizeof(details));
-    if (ret<sizeof(details))
+    ret = rhizome_read_buffered(&read, &buff, details, sizeof(details));
+    if (ret<0)
       break;
+    int bytes=ret;
+    int ofs=0;
+    ret=unpack_uint(details, bytes, &ptr->their_last_message);
+    if (ret<0)
+      break;
+    ofs+=ret;
     
-    ptr->their_last_message = read_uint64(details);
-    ptr->read_offset = read_uint64(details+8);
-    ptr->their_size = read_uint64(details+16);
+    ret=unpack_uint(details+ofs,bytes-ofs, &ptr->read_offset);
+    if (ret<0)
+      break;
+    ofs+=ret;
+    
+    ret=unpack_uint(details+ofs,bytes-ofs, &ptr->their_size);
+    if (ret<0)
+      break;
+    ofs+=ret;
+    read.offset += ofs - bytes;
   }
 end:
   rhizome_read_close(&read);
-  return ret;
+  return 0;
 }
 
 static int write_conversation(struct rhizome_write *write, struct conversations *conv){
@@ -509,20 +527,24 @@ static int write_conversation(struct rhizome_write *write, struct conversations 
     if (write)
       bcopy(conv->them.binary, buffer, sizeof(conv->them));
     len+=sizeof(conv->them);
-    if (write)
-      write_uint64(&buffer[len], conv->their_last_message);
-    len+=8;
-    if (write)
-      write_uint64(&buffer[len], conv->read_offset);
-    len+=8;
-    if (write)
-      write_uint64(&buffer[len], conv->their_size);
-    len+=8;
     if (write){
+      len+=pack_uint(&buffer[len], conv->their_last_message);
+      len+=pack_uint(&buffer[len], conv->read_offset);
+      len+=pack_uint(&buffer[len], conv->their_size);
       int ret=rhizome_write_buffer(write, buffer, len);
       if (ret<0)
 	return ret;
+    }else{
+      len+=measure_packed_uint(conv->their_last_message);
+      len+=measure_packed_uint(conv->read_offset);
+      len+=measure_packed_uint(conv->their_size);
     }
+    DEBUGF("len %s, %"PRId64", %"PRId64", %"PRId64" = %d", 
+      alloca_tohex_sid(conv->them.binary),
+      conv->their_last_message,
+      conv->read_offset,
+      conv->their_size,
+      len);
   }
   // write the two child nodes
   int ret=write_conversation(write, conv->_left);
@@ -553,10 +575,13 @@ static int write_known_conversations(rhizome_manifest *m, struct conversations *
   // then write it
   m->version++;
   rhizome_manifest_set_ll(m,"version",m->version);
-  m->fileLength = len;
+  m->fileLength = len+1;
   rhizome_manifest_set_ll(m,"filesize",m->fileLength);
   
   if (rhizome_write_open_manifest(&write, m))
+    goto end;
+  unsigned char version=1;
+  if (rhizome_write_buffer(&write, &version, 1)<0)
     goto end;
   if (write_conversation(&write, conv)<0)
     goto end;

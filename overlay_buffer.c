@@ -277,11 +277,11 @@ int ob_append_ui64(struct overlay_buffer *b, uint64_t v)
 }
 
 int measure_packed_uint(uint64_t v){
-  int ret=1;
-  while(v){
+  int ret=0;
+  do{
     v>>=7;
     ret++;
-  }
+  }while(v);
   return ret;
 }
 
