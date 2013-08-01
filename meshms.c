@@ -119,7 +119,7 @@ static int get_database_conversations(const sid_t *my_sid, const sid_t *their_si
   sqlite3_stmt *statement = sqlite_prepare(&retry,
     "SELECT id, version, filesize, tail, sender, recipient "
     "FROM manifests "
-    "WHERE service = 'MeshMS1' "
+    "WHERE service = '"RHIZOME_SERVICE_MESHMS2"' "
     "AND (sender=?1 or recipient=?1) "
     "AND (sender=?2 or recipient=?2)");
   if (!statement)
@@ -197,7 +197,7 @@ static int create_ply(const sid_t *my_sid, struct conversations *conv, rhizome_m
   m->journalTail = 0;
   const char *my_sidhex = alloca_tohex_sid(my_sid->binary);
   const char *their_sidhex = alloca_tohex_sid(conv->them.binary);
-  rhizome_manifest_set(m, "service", RHIZOME_SERVICE_MESHMS);
+  rhizome_manifest_set(m, "service", RHIZOME_SERVICE_MESHMS2);
   rhizome_manifest_set(m, "sender", my_sidhex);
   rhizome_manifest_set(m, "recipient", their_sidhex);
   rhizome_manifest_set_ll(m, "tail", m->journalTail);

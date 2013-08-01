@@ -137,34 +137,20 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
   // This feels like a hack...
   m->manifest_bytes=m->manifest_all_bytes;
   
+  /* Do we already have this manifest or newer? */
+  int64_t dbVersion = -1;
+  const char *id=rhizome_manifest_get(m, "id", NULL, 0);
+  if (sqlite_exec_int64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id='%s';", id) == -1)
+    return WHY("Select failure");
+
+  if (dbVersion>=m->version)
+    return 2;
+
   int status = rhizome_import_file(m, filepath);
   if (status<0)
     return status;
   
-  status = rhizome_manifest_check_duplicate(m, NULL, 0);
-  if (status)
-    return status;
-    
   return rhizome_add_manifest(m, 1);
-}
-
-/* Import a bundle from a finalised manifest struct.  The dataFileName element must give the path
-   of a readable file containing the payload unless the payload is null (zero length).  The logic is
-   all in rhizome_add_manifest().  This function just wraps that function and manages object buffers
-   and lifetimes.
-*/
-
-int rhizome_bundle_import(rhizome_manifest *m, int ttl)
-{
-  if (config.debug.rhizome)
-    DEBUGF("(m=%p, ttl=%d)", m, ttl);
-  int ret = rhizome_manifest_check_duplicate(m, NULL, 0);
-  if (ret == 0) {
-    ret = rhizome_add_manifest(m, ttl);
-    if (ret == -1)
-      WHY("rhizome_add_manifest() failed");
-  }
-  return ret;
 }
 
 int rhizome_manifest_check_sanity(rhizome_manifest *m_in)
@@ -188,7 +174,8 @@ int rhizome_manifest_check_sanity(rhizome_manifest *m_in)
     const char *name = rhizome_manifest_get(m_in, "name", NULL, 0);
     if (name == NULL)
       return WHY("Manifest missing 'name' field");
-  } else if (strcasecmp(service, RHIZOME_SERVICE_MESHMS) == 0) {
+  } else if (strcasecmp(service, RHIZOME_SERVICE_MESHMS) == 0 
+    || strcasecmp(service, RHIZOME_SERVICE_MESHMS2) == 0) {
     if (sender == NULL || !sender[0])
       return WHY("MeshMS Manifest missing 'sender' field");
     if (!str_is_subscriber_id(sender))
@@ -251,30 +238,6 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in)
       return WHY("Failed to set BK");
     }
   }
-  return 0;
-}
-
-/* Check if a manifest is already stored for the same payload with the same details.
-   This catches the case of "rhizome add file <filename>" on the same file more than once.
-   (Debounce!) */
-int rhizome_manifest_check_duplicate(rhizome_manifest *m_in, rhizome_manifest **m_out, int check_author)
-{
-  if (config.debug.rhizome) DEBUG("Checking for duplicate");
-  if (m_out) *m_out = NULL; 
-  rhizome_manifest *dupm = NULL;
-  if (rhizome_find_duplicate(m_in, &dupm, check_author) == -1)
-    return WHY("Errors encountered searching for duplicate manifest");
-  if (dupm) {
-    /* If the caller wants the duplicate manifest, it must be finalised, otherwise discarded. */
-    if (m_out) {
-      *m_out = dupm;
-    }
-    else
-      rhizome_manifest_free(dupm);
-    if (config.debug.rhizome) DEBUG("Found a duplicate");
-    return 2;
-  }
-  if (config.debug.rhizome) DEBUG("No duplicate found");
   return 0;
 }
 

@@ -108,6 +108,8 @@ typedef struct rhizome_manifest {
      except the creator. */
   unsigned char cryptoSignPublic[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
   unsigned char cryptoSignSecret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
+  /* Whether we have the secret for this manifest on hand */
+  int haveSecret;
 
   int var_count;
   char *vars[MAX_MANIFEST_VARS];
@@ -121,7 +123,13 @@ typedef struct rhizome_manifest {
   */
   unsigned char signatureTypes[MAX_MANIFEST_VARS];
 
-  int errors; /* if non-zero, then manifest should not be trusted */
+  // errors only involve the correctness of fields that are mandatory for 
+  // proper operation of the transport and storage layer
+  int errors;
+  // a warning indicates that the manifest cannot be perfectly understood by this version of rhizome
+  // during add, the manifest should not be finalised and imported
+  // during extract an error should be displayed.
+  int warnings;
   time_ms_t inserttime;
   
   /* Set non-zero after variables have been packed and
@@ -149,8 +157,6 @@ typedef struct rhizome_manifest {
   unsigned char payloadKey[RHIZOME_CRYPT_KEY_BYTES];
   unsigned char payloadNonce[crypto_stream_xsalsa20_NONCEBYTES];
 
-  /* Whether we have the secret for this manifest on hand */
-  int haveSecret;
   /* Whether the manifest contains a signature that corresponds to the 
      manifest id (ie public key) */
   int selfSigned;
@@ -174,6 +180,7 @@ typedef struct rhizome_manifest {
  */
 #define     RHIZOME_SERVICE_FILE    "file"
 #define     RHIZOME_SERVICE_MESHMS  "MeshMS1"
+#define     RHIZOME_SERVICE_MESHMS2  "MeshMS2"
 
 extern int64_t rhizome_space;
 extern unsigned short rhizome_http_server_port;
@@ -259,12 +266,10 @@ int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
 int rhizome_clean_payload(const char *fileidhex);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);
 int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, const char *filepath);
-int rhizome_bundle_import(rhizome_manifest *m, int ttl);
 int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSid, rhizome_bk_t *bsk);
 
 int rhizome_manifest_verify(rhizome_manifest *m);
 int rhizome_manifest_check_sanity(rhizome_manifest *m_in);
-int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m_out, int check_author);
 
 int rhizome_manifest_bind_id(rhizome_manifest *m_in);
 int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout);
@@ -321,7 +326,7 @@ int _sqlite_vexec_strbuf_retry(struct __sourceloc, sqlite_retry_state *retry, st
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
 int rhizome_update_file_priority(const char *fileid);
-int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, int check_author);
+int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 int64_t rhizome_bar_version(const unsigned char *bar);
 uint64_t rhizome_bar_bidprefix_ll(unsigned char *bar);

@@ -84,29 +84,22 @@ int rhizome_manifest_verify(rhizome_manifest *m)
   else return 0;
 }
 
-int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bufferP)
+int read_whole_file(const char *filename, unsigned char *buffer, int buffer_size)
+{
+  FILE *f = fopen(filename, "r");
+  if (f == NULL)
+    return WHYF("Could not open file %s for reading", filename);
+  int ret = fread(buffer, 1, buffer_size, f);
+  if (ret == -1)
+    ret = WHY_perror("fread");
+  if (fclose(f) == EOF)
+    ret = WHY_perror("fclose");
+  return ret;
+}
+
+int rhizome_manifest_parse(rhizome_manifest *m)
 {
   IN();
-  if (bufferP>MAX_MANIFEST_BYTES) RETURN(WHY("Buffer too big"));
-  if (!m) RETURN(WHY("Null manifest"));
-
-  if (bufferP) {
-    m->manifest_bytes=bufferP;
-    memcpy(m->manifestdata, filename, m->manifest_bytes);
-  } else {
-    FILE *f = fopen(filename, "r");
-    if (f == NULL)
-      RETURN(WHYF("Could not open manifest file %s for reading.", filename)); 
-    m->manifest_bytes = fread(m->manifestdata, 1, MAX_MANIFEST_BYTES, f);
-    int ret = 0;
-    if (m->manifest_bytes == -1)
-      ret = WHY_perror("fread");
-    if (fclose(f) == EOF)
-      ret = WHY_perror("fclose");
-    if (ret == -1)
-      RETURN(-1);
-  }
-
   m->manifest_all_bytes=m->manifest_bytes;
   m->var_count=0;
   m->journalTail=-1;
@@ -118,6 +111,7 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   int have_date = 0;
   int have_filesize = 0;
   int have_filehash = 0;
+  
   int ofs = 0;
   while (ofs < m->manifest_bytes && m->manifestdata[ofs]) {
     char line[1024];
@@ -143,9 +137,7 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
     p = strchr(line, '=');
     if (p == NULL || p == line) {
       m->errors++;
-      WARNF(bufferP ? "Malformed manifest line in buffer %p: %s"
-		    : "Malformed manifest line in file %s: %s",
-	  filename, alloca_toprint(80, line, linelen));
+      WARNF("Malformed manifest line: %s", alloca_toprint(80, line, linelen));
     } else {
       *p++ = '\0';
       char *var = line;
@@ -161,6 +153,9 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
       } else {
 	m->vars[m->var_count] = strdup(var);
 	m->values[m->var_count] = strdup(value);
+	
+	// if any of these fields are not well formed, the manifest is invalid and cannot be imported
+	
 	if (strcasecmp(var, "id") == 0) {
 	  have_id = 1;
 	  if (fromhexstr(m->cryptoSignPublic, value, RHIZOME_MANIFEST_ID_BYTES) == -1) {
@@ -182,15 +177,6 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	    str_toupper_inplace(m->values[m->var_count]);
 	    strcpy(m->fileHexHash, m->values[m->var_count]);
 	  }
-	} else if (strcasecmp(var, "BK") == 0) {
-	  if (!rhizome_str_is_bundle_key(value)) {
-	    if (config.debug.rejecteddata)
-	      WARNF("Invalid BK: %s", value);
-	    m->errors++;
-	  } else {
-	    /* Force to upper case to avoid case sensitive comparison problems later. */
-	    str_toupper_inplace(m->values[m->var_count]);
-	  }
 	} else if (strcasecmp(var, "filesize") == 0) {
 	  have_filesize = 1;
 	  char *ep = value;
@@ -201,14 +187,6 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	    m->errors++;
 	  } else {
 	    m->fileLength = filesize;
-	  }
-	} else if (strcasecmp(var, "service") == 0) {
-	  have_service = 1;
-	  if ( strcasecmp(value, RHIZOME_SERVICE_FILE) == 0
-	    || strcasecmp(value, RHIZOME_SERVICE_MESHMS) == 0) {
-	  } else {
-	    INFOF("Unsupported service: %s", value);
-	    // This is not an error... older rhizome nodes must carry newer manifests.
 	  }
 	} else if (strcasecmp(var, "version") == 0) {
 	  have_version = 1;
@@ -221,6 +199,40 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	  } else {
 	    m->version = version;
 	  }
+	  
+	// since rhizome *MUST* be able to carry future manifest versions
+	// if any of these fields are not well formed, the manifest can still be imported and exported
+	// but the bundle should not be added or exported
+ 
+	} else if (strcasecmp(var, "tail") == 0) {
+	  char *ep = value;
+	  long long tail = strtoll(value, &ep, 10);
+	  if (ep == value || *ep || tail < 0) {
+	    if (config.debug.rejecteddata)
+	      WARNF("Invalid tail: %s", value);
+	    m->warnings++;
+	  } else {
+	    m->journalTail = tail;
+	  }
+	} else if (strcasecmp(var, "BK") == 0) {
+	  if (!rhizome_str_is_bundle_key(value)) {
+	    if (config.debug.rejecteddata)
+	      WARNF("Invalid BK: %s", value);
+	    m->warnings++;
+	  } else {
+	    /* Force to upper case to avoid case sensitive comparison problems later. */
+	    str_toupper_inplace(m->values[m->var_count]);
+	  }
+	} else if (strcasecmp(var, "service") == 0) {
+	  have_service = 1;
+	  if ( strcasecmp(value, RHIZOME_SERVICE_FILE) == 0
+	    || strcasecmp(value, RHIZOME_SERVICE_MESHMS) == 0
+	    || strcasecmp(value, RHIZOME_SERVICE_MESHMS2) == 0) {
+	  } else {
+	    if (config.debug.rejecteddata)
+	      WARNF("Unsupported service: %s", value);
+	    m->warnings++;
+	  }
 	} else if (strcasecmp(var, "date") == 0) {
 	  have_date = 1;
 	  char *ep = value;
@@ -228,14 +240,14 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	  if (ep == value || *ep || date < 0) {
 	    if (config.debug.rejecteddata)
 	      WARNF("Invalid date: %s", value);
-	    m->errors++;
+	    m->warnings++;
 	  }
 	  // TODO: store date in manifest struct
 	} else if (strcasecmp(var, "sender") == 0 || strcasecmp(var, "recipient") == 0) {
 	  if (!str_is_subscriber_id(value)) {
 	    if (config.debug.rejecteddata)
 	      WARNF("Invalid %s: %s", var, value);
-	    m->errors++;
+	    m->warnings++;
 	  } else {
 	    /* Force to upper case to avoid case sensitive comparison problems later. */
 	    str_toupper_inplace(m->values[m->var_count]);
@@ -244,30 +256,18 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	  if (value[0] == '\0') {
 	    if (config.debug.rejecteddata)
 	      WARN("Empty name");
-	    m->errors++;
+	    m->warnings++;
 	  }
-	  // TODO: complain if service is not MeshMS
 	} else if (strcasecmp(var, "crypt") == 0) {
 	  if (!(strcmp(value, "0") == 0 || strcmp(value, "1") == 0)) {
 	    if (config.debug.rejecteddata)
 	      WARNF("Invalid crypt: %s", value);
-	    m->errors++;
+	    m->warnings++;
 	  } else {
 	    m->payloadEncryption = atoi(value);
 	  }
-	} else if (strcasecmp(var, "tail") == 0) {
-	  char *ep = value;
-	  long long tail = strtoll(value, &ep, 10);
-	  if (ep == value || *ep || tail < 0) {
-	    if (config.debug.rejecteddata)
-	      WARNF("Invalid tail: %s", value);
-	    m->errors++;
-	  } else {
-	    m->journalTail = tail;
-	  }
 	} else {
-	  INFOF("Unsupported field: %s=%s", var, value);
-	  // This is not an error... older rhizome nodes must carry newer manifests.
+	  // An unknown field is not an error... older rhizome nodes must carry newer manifests.
 	}
 	m->var_count++;
       }
@@ -281,11 +281,7 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   int end_of_text=ofs;
   m->manifest_bytes = end_of_text;
 
-  if (!have_service) {
-    if (config.debug.rejecteddata)
-      WARNF("Missing service field");
-    m->errors++;
-  }
+  // verify that all required fields are consistent.
   if (!have_id) {
     if (config.debug.rejecteddata)
       WARNF("Missing manifest id field");
@@ -294,11 +290,6 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   if (!have_version) {
     if (config.debug.rejecteddata)
       WARNF("Missing version field");
-    m->errors++;
-  }
-  if (!have_date) {
-    if (config.debug.rejecteddata)
-      WARNF("Missing date field");
     m->errors++;
   }
   if (!have_filesize) {
@@ -317,15 +308,45 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
     m->errors++;
   }
 
+  // warn if expected fields are missing
+  if (!have_service) {
+    if (config.debug.rejecteddata)
+      WARNF("Missing service field");
+    m->warnings++;
+  }
+  if (!have_date) {
+    if (config.debug.rejecteddata)
+      WARNF("Missing date field");
+    m->warnings++;
+  }
+  
   // TODO Determine group membership here.
 
-  if (m->errors) {
+  if (m->errors || m->warnings) {
     if (config.debug.rejecteddata)
       dump("manifest body",m->manifestdata,m->manifest_bytes);
   }
 
   RETURN(0);
   OUT();
+}
+
+int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bufferP)
+{
+  if (!m)
+    return WHY("Null manifest");
+  if (bufferP>sizeof(m->manifestdata))
+    return WHY("Buffer too big");
+
+  if (bufferP) {
+    m->manifest_bytes=bufferP;
+    memcpy(m->manifestdata, filename, m->manifest_bytes);
+  } else {
+    m->manifest_bytes = read_whole_file(filename, m->manifestdata, sizeof(m->manifestdata));
+    if (m->manifest_bytes == -1)
+      return -1;
+  }
+  return rhizome_manifest_parse(m);
 }
 
 int rhizome_hash_file(rhizome_manifest *m,const char *filename,char *hash_out)
@@ -680,11 +701,8 @@ int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout)
   // if a manifest was supplied with an ID, don't bother to check for a duplicate.
   // we only want to filter out added files with no existing manifest.
   if (m->haveSecret==NEW_BUNDLE_ID){
-    if (rhizome_manifest_check_duplicate(m, mout, 1) == 2) {
-      /* duplicate found -- verify it so that we can write it out later */
-      rhizome_manifest_verify(*mout);
+    if (rhizome_find_duplicate(m, mout)==1)
       RETURN(2);
-    }
   }
   
   *mout=m;
