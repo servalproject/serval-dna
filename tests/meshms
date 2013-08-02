@@ -41,42 +41,45 @@ setup_MessageDelivery() {
 test_MessageDelivery() {
    # 1. empty list
    executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutIs --stdout --line=1 -e '5\n'
-   assertStdoutIs --stdout --line=2 -e '_id:offset:sender:status:message\n'
+   assertStdoutIs --stdout --line=1 -e '4\n'
+   assertStdoutIs --stdout --line=2 -e '_id:offset:type:message\n'
    assertStdoutLineCount '==' 2
    # 2. create a manifest with a single message and list it back
    executeOk_servald meshms send message $SIDA1 $SIDA2 "Hi"
    executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutGrep --stdout --matches=1 "::Hi\$"
+   assertStdoutGrep --stdout --matches=1 ":>:Hi\$"
    assertStdoutLineCount '==' 3
    # 3. append a second message and list them both
    executeOk_servald meshms send message $SIDA1 $SIDA2 "How are you"
    executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutGrep --stdout --matches=1 "::How are you\$"
-   assertStdoutGrep --stdout --matches=1 "::Hi\$"
+   assertStdoutGrep --stdout --matches=1 ":>:How are you\$"
+   assertStdoutGrep --stdout --matches=1 ":>:Hi\$"
    assertStdoutLineCount '==' 4
    # 4. list the messages from the receivers point of view (which ACKs them)
    executeOk_servald meshms list messages $SIDA2 $SIDA1
-   assertStdoutGrep --stdout --matches=1 "^0:19:$SIDA1:unread:How are you\$"
-   assertStdoutGrep --stdout --matches=1 "^1:5:$SIDA1:unread:Hi\$"
+   assertStdoutGrep --stdout --matches=1 "^0:19:<:How are you\$"
+   assertStdoutGrep --stdout --matches=1 "^1:5:<:Hi\$"
    assertStdoutLineCount '==' 4
    # 5. mark the first message as read
    executeOk_servald meshms read messages $SIDA2 $SIDA1 5
    executeOk_servald meshms list messages $SIDA2 $SIDA1
-   assertStdoutGrep --stdout --matches=1 ":unread:How are you\$"
-   assertStdoutGrep --stdout --matches=1 "::Hi\$"
-   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --matches=1 "^0:19:<:How are you\$"
+   assertStdoutGrep --stdout --matches=1 "^1:5:MARK:read\$"
+   assertStdoutGrep --stdout --matches=1 "^2:5:<:Hi\$"
+   assertStdoutLineCount '==' 5
    # 6. mark all messages as read
    executeOk_servald meshms read messages $SIDA2
    executeOk_servald meshms list messages $SIDA2 $SIDA1
-   assertStdoutGrep --stdout --matches=1 "::How are you\$"
-   assertStdoutGrep --stdout --matches=1 "::Hi\$"
-   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --matches=1 "^0:19:MARK:read\$"
+   assertStdoutGrep --stdout --matches=1 "^1:19:<:How are you\$"
+   assertStdoutGrep --stdout --matches=1 "^2:5:<:Hi\$"
+   assertStdoutLineCount '==' 5
    # 7. list messages from the senders point of view after they have been delivered
    executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutGrep --stdout --matches=1 ":delivered:How are you\$"
-   assertStdoutGrep --stdout --matches=1 ":delivered:Hi\$"
-   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --matches=1 "^0:3:ACK:delivered\$"
+   assertStdoutGrep --stdout --matches=1 "^1:19:>:How are you\$"
+   assertStdoutGrep --stdout --matches=1 "^2:5:>:Hi\$"
+   assertStdoutLineCount '==' 5
 }
 
 doc_MessageThreading="Messages sent at the same time, thread differently"
@@ -101,7 +104,7 @@ has_unread_messages() {
 
 messages_delivered() {
    executeOk_servald meshms list messages $1 $2
-   if ! grep ":delivered:" $_tfw_tmp/stdout; then
+   if ! grep ":ACK:" $_tfw_tmp/stdout; then
      return 1
    fi
 }
@@ -110,21 +113,22 @@ test_MessageThreading() {
    set_instance +B
    wait_until has_unread_messages $SIDB
    executeOk_servald meshms list messages $SIDB $SIDA
-   assertStdoutGrep --stdout --matches=1 "^0:40:$SIDA:unread:Still waiting\$"
-   assertStdoutGrep --stdout --matches=1 "^1:24:$SIDA:unread:Hello can you hear me\$"
-   assertStdoutGrep --stdout --matches=1 "^2:54:$SIDB::Never mind\$"
-   assertStdoutGrep --stdout --matches=1 "^3:41:$SIDB::Help Im trapped in a test case factory\$"
+   assertStdoutGrep --stdout --matches=1 "^0:40:<:Still waiting\$"
+   assertStdoutGrep --stdout --matches=1 "^1:24:<:Hello can you hear me\$"
+   assertStdoutGrep --stdout --matches=1 "^2:54:>:Never mind\$"
+   assertStdoutGrep --stdout --matches=1 "^3:41:>:Help Im trapped in a test case factory\$"
    assertStdoutLineCount '==' 6
 
    set_instance +A
    wait_until has_unread_messages $SIDA
    wait_until messages_delivered $SIDA $SIDB
    executeOk_servald meshms list messages $SIDA $SIDB
-   assertStdoutGrep --stdout --matches=1 "^0:54:$SIDB:unread:Never mind\$"
-   assertStdoutGrep --stdout --matches=1 "^1:41:$SIDB:unread:Help Im trapped in a test case factory\$"
-   assertStdoutGrep --stdout --matches=1 "^2:40:$SIDA:delivered:Still waiting\$"
-   assertStdoutGrep --stdout --matches=1 "^3:24:$SIDA:delivered:Hello can you hear me\$"
-   assertStdoutLineCount '==' 6
+   assertStdoutGrep --stdout --matches=1 "^0:54:<:Never mind\$"
+   assertStdoutGrep --stdout --matches=1 "^1:41:<:Help Im trapped in a test case factory\$"
+   assertStdoutGrep --stdout --matches=1 "^2:57:ACK:delivered\$"
+   assertStdoutGrep --stdout --matches=1 "^3:40:>:Still waiting\$"
+   assertStdoutGrep --stdout --matches=1 "^4:24:>:Hello can you hear me\$"
+   assertStdoutLineCount '==' 7
 }
 
 doc_listConversations="List multiple conversations, with different numbers of messages"

@@ -163,16 +163,23 @@ static int write_get_lock(struct rhizome_write *write_state){
   if (write_state->blob_fd>=0 || write_state->sql_blob)
     return 0;
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  
+  // use an explicit transaction so we can delay I/O failures until COMMIT so they can be retried.
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
+    return -1;
+  
   while(1){
     int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", 
 		write_state->blob_rowid, 1 /* read/write */, &write_state->sql_blob);
-    if (ret==SQLITE_OK)
+    if (ret==SQLITE_OK){
+      sqlite_retry_done(&retry, "sqlite3_blob_open");
       return 0;
+    }
     if (!sqlite_code_busy(ret))
       return WHYF("sqlite3_blob_write() failed: %s", 
 	     sqlite3_errmsg(rhizome_db));
     if (sqlite_retry(&retry, "sqlite3_blob_open")==0)
-      return -1;
+      return WHYF("Giving up");
   }
 }
 
@@ -202,13 +209,15 @@ static int write_data(struct rhizome_write *write_state, uint64_t file_offset, u
     sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
     while(1){
       int ret=sqlite3_blob_write(write_state->sql_blob, buffer, data_size, file_offset);
-      if (ret==SQLITE_OK)
+      if (ret==SQLITE_OK){
+	sqlite_retry_done(&retry, "sqlite3_blob_write");
 	break;
+      }
       if (!sqlite_code_busy(ret))
 	return WHYF("sqlite3_blob_write() failed: %s", 
 	     sqlite3_errmsg(rhizome_db));
       if (sqlite_retry(&retry, "sqlite3_blob_write")==0)
-	return -1;
+	return WHY("Giving up");
     }
   }
   
@@ -221,13 +230,22 @@ static int write_data(struct rhizome_write *write_state, uint64_t file_offset, u
 
 // close database locks
 static int write_release_lock(struct rhizome_write *write_state){
+  int ret=0;
   if (write_state->blob_fd>=0)
     return 0;
     
-  if (write_state->sql_blob) 
-    sqlite3_blob_close(write_state->sql_blob);
+  if (write_state->sql_blob){
+    ret = sqlite3_blob_close(write_state->sql_blob);
+    if (ret)
+      WHYF("sqlite3_blob_close() failed: %s", 
+	     sqlite3_errmsg(rhizome_db));
+    
+    sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+    if (sqlite_exec_void_retry(&retry, "COMMIT;") == -1)
+      ret=-1;
+  }
   write_state->sql_blob=NULL;
-  return 0;
+  return ret;
 }
 
 // Write data buffers in any order, the data will be cached and streamed into the database in file order. 
@@ -349,7 +367,8 @@ int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsi
     last_offset = (*ptr)->offset + (*ptr)->data_size;
     ptr = &((*ptr)->_next);
   }
-  write_release_lock(write_state);
+  if (write_release_lock(write_state))
+    ret=-1;
   return ret;
 }
 
@@ -383,7 +402,8 @@ int rhizome_write_file(struct rhizome_write *write, const char *filename){
     }
   }
 end:
-  write_release_lock(write);
+  if (write_release_lock(write))
+    ret=-1;
   fclose(f);
   return ret;
 }
@@ -448,7 +468,8 @@ int rhizome_finish_write(struct rhizome_write *write){
     close(fd);
     write->blob_fd=-1;
   }
-  write_release_lock(write);
+  if (write_release_lock(write))
+    goto failure;
   
   char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
   SHA512_End(&write->sha512_context, hash_out);
@@ -723,11 +744,12 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
   if (read_state->hash){
     if (buffer && bytes_read>0)
       SHA512_Update(&read_state->sha512_context, buffer, bytes_read);
+      
     if (read_state->offset + bytes_read>=read_state->length){
       char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
       SHA512_End(&read_state->sha512_context, hash_out);
       if (strcasecmp(read_state->id, hash_out)){
-	WHYF("Expected hash=%s, got %s", read_state->id, hash_out);
+	RETURN(WHYF("Expected hash=%s, got %s", read_state->id, hash_out));
       }
       read_state->hash=0;
     }
@@ -960,7 +982,7 @@ int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m,
     struct rhizome_read read_state;
     bzero(&read_state, sizeof read_state);
     // don't bother to decrypt the existing journal payload
-    ret = rhizome_open_read(&read_state, m->fileHexHash, 1);
+    ret = rhizome_open_read(&read_state, m->fileHexHash, advance_by>0?0:1);
     if (ret)
       goto failure;
 

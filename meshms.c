@@ -744,10 +744,10 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
   int ret=-1;
   
   const char *names[]={
-    "_id","offset","sender","status","message"
+    "_id","offset","type","message"
   };
 
-  cli_columns(context, 5, names);
+  cli_columns(context, 4, names);
   
   rhizome_manifest *m_ours=NULL, *m_theirs=NULL;
   struct ply_read read_ours, read_theirs;
@@ -772,6 +772,8 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
     goto end;
   
   uint64_t their_last_ack=0;
+  uint64_t their_ack_offset=0;
+  int64_t unread_mark=conv->read_offset;
   
   if (conv->found_their_ply){
     rhizome_manifest *m_theirs = rhizome_new_manifest();
@@ -785,14 +787,26 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
     if (r==0){
       if (unpack_uint(read_theirs.buffer, read_theirs.record_length, &their_last_ack)<0)
 	their_last_ack=0;
+      else
+	their_ack_offset = read_theirs.record_end_offset;
       if (config.debug.meshms)
 	DEBUGF("Found their last ack @%"PRId64, their_last_ack);
     }
   }
+  
   int id=0;
   while(ply_read_next(&read_ours)==0){
     if (config.debug.meshms)
       DEBUGF("Offset %"PRId64", type %d, read_offset %"PRId64, read_ours.read.offset, read_ours.type, conv->read_offset);
+      
+    if (their_last_ack && their_last_ack >= read_ours.record_end_offset){
+      cli_put_long(context, id++, ":");
+      cli_put_long(context, their_ack_offset, ":");
+      cli_put_string(context, "ACK", ":");
+      cli_put_string(context, "delivered", "\n");
+      their_last_ack = 0;
+    }
+    
     switch(read_ours.type){
       case MESHMS_BLOCK_TYPE_ACK:
 	// read their message list, and insert all messages that are included in the ack range
@@ -811,15 +825,24 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
 	  // just incase we don't have the full bundle anymore
 	  if (read_theirs.read.offset > read_theirs.read.length)
 	    read_theirs.read.offset = read_theirs.read.length;
+	    
 	  if (config.debug.meshms)
 	    DEBUGF("Reading other log from %"PRId64", to %"PRId64, read_theirs.read.offset, end_range);
 	  while(ply_find_next(&read_theirs, MESHMS_BLOCK_TYPE_MESSAGE)==0){
 	    if (read_theirs.read.offset < end_range)
 	      break;
+	      
+	    if (unread_mark >= (int64_t)read_theirs.record_end_offset){
+	      cli_put_long(context, id++, ":");
+	      cli_put_long(context, unread_mark, ":");
+	      cli_put_string(context, "MARK", ":");
+	      cli_put_string(context, "read", "\n");
+	      unread_mark = -1;
+	    }
+	  
 	    cli_put_long(context, id++, ":");
 	    cli_put_long(context, read_theirs.record_end_offset, ":");
-	    cli_put_hexvalue(context, their_sid.binary, sizeof(their_sid), ":");
-	    cli_put_string(context, read_theirs.record_end_offset <= conv->read_offset?"":"unread", ":");
+	    cli_put_string(context, "<", ":");
 	    cli_put_string(context, (char *)read_theirs.buffer, "\n");
 	  }
 	}
@@ -828,8 +851,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
 	// TODO new message format here
 	cli_put_long(context, id++, ":");
 	cli_put_long(context, read_ours.record_end_offset, ":");
-	cli_put_hexvalue(context, my_sid.binary, sizeof(my_sid), ":");
-	cli_put_string(context, their_last_ack >= read_ours.record_end_offset ? "delivered":"", ":");
+	cli_put_string(context, ">", ":");
 	cli_put_string(context, (char *)read_ours.buffer, "\n");
 	break;
     }
