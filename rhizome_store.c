@@ -163,16 +163,23 @@ static int write_get_lock(struct rhizome_write *write_state){
   if (write_state->blob_fd>=0 || write_state->sql_blob)
     return 0;
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  
+  // use an explicit transaction so we can delay I/O failures until COMMIT so they can be retried.
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
+    return -1;
+  
   while(1){
     int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", 
 		write_state->blob_rowid, 1 /* read/write */, &write_state->sql_blob);
-    if (ret==SQLITE_OK)
+    if (ret==SQLITE_OK){
+      sqlite_retry_done(&retry, "sqlite3_blob_open");
       return 0;
+    }
     if (!sqlite_code_busy(ret))
       return WHYF("sqlite3_blob_write() failed: %s", 
 	     sqlite3_errmsg(rhizome_db));
     if (sqlite_retry(&retry, "sqlite3_blob_open")==0)
-      return -1;
+      return WHYF("Giving up");
   }
 }
 
@@ -202,13 +209,15 @@ static int write_data(struct rhizome_write *write_state, uint64_t file_offset, u
     sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
     while(1){
       int ret=sqlite3_blob_write(write_state->sql_blob, buffer, data_size, file_offset);
-      if (ret==SQLITE_OK)
+      if (ret==SQLITE_OK){
+	sqlite_retry_done(&retry, "sqlite3_blob_write");
 	break;
+      }
       if (!sqlite_code_busy(ret))
 	return WHYF("sqlite3_blob_write() failed: %s", 
 	     sqlite3_errmsg(rhizome_db));
       if (sqlite_retry(&retry, "sqlite3_blob_write")==0)
-	return -1;
+	return WHY("Giving up");
     }
   }
   
@@ -221,13 +230,22 @@ static int write_data(struct rhizome_write *write_state, uint64_t file_offset, u
 
 // close database locks
 static int write_release_lock(struct rhizome_write *write_state){
+  int ret=0;
   if (write_state->blob_fd>=0)
     return 0;
     
-  if (write_state->sql_blob) 
-    sqlite3_blob_close(write_state->sql_blob);
+  if (write_state->sql_blob){
+    ret = sqlite3_blob_close(write_state->sql_blob);
+    if (ret)
+      WHYF("sqlite3_blob_close() failed: %s", 
+	     sqlite3_errmsg(rhizome_db));
+    
+    sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+    if (sqlite_exec_void_retry(&retry, "COMMIT;") == -1)
+      ret=-1;
+  }
   write_state->sql_blob=NULL;
-  return 0;
+  return ret;
 }
 
 // Write data buffers in any order, the data will be cached and streamed into the database in file order. 
@@ -349,7 +367,8 @@ int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsi
     last_offset = (*ptr)->offset + (*ptr)->data_size;
     ptr = &((*ptr)->_next);
   }
-  write_release_lock(write_state);
+  if (write_release_lock(write_state))
+    ret=-1;
   return ret;
 }
 
@@ -383,7 +402,8 @@ int rhizome_write_file(struct rhizome_write *write, const char *filename){
     }
   }
 end:
-  write_release_lock(write);
+  if (write_release_lock(write))
+    ret=-1;
   fclose(f);
   return ret;
 }
@@ -448,7 +468,8 @@ int rhizome_finish_write(struct rhizome_write *write){
     close(fd);
     write->blob_fd=-1;
   }
-  write_release_lock(write);
+  if (write_release_lock(write))
+    goto failure;
   
   char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
   SHA512_End(&write->sha512_context, hash_out);
@@ -588,13 +609,24 @@ static int rhizome_write_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, stru
     return -1;
 
   if (config.debug.rhizome)
-    DEBUGF("Encrypting payload contents");
+    DEBUGF("Encrypting payload contents for %s, %"PRId64, alloca_tohex_bid(m->cryptoSignPublic), m->version);
 
   write->crypt=1;
-  write->tail = m->journalTail;
+  if (m->journalTail>0)
+    write->tail = m->journalTail;
 
   bcopy(m->payloadKey, write->key, sizeof(write->key));
   bcopy(m->payloadNonce, write->nonce, sizeof(write->nonce));
+  return 0;
+}
+
+int rhizome_write_open_manifest(struct rhizome_write *write, rhizome_manifest *m)
+{
+  if (rhizome_open_write(write, NULL, m->fileLength, RHIZOME_PRIORITY_DEFAULT))
+    return -1;
+
+  if (rhizome_write_derive_key(m, NULL, write))
+    return -1;
   return 0;
 }
 
@@ -606,16 +638,10 @@ int rhizome_add_file(rhizome_manifest *m, const char *filepath)
   struct rhizome_write write;
   bzero(&write, sizeof(write));
 
-  if (rhizome_open_write(&write, NULL, m->fileLength, RHIZOME_PRIORITY_DEFAULT))
-    return -1;
-
-  if (rhizome_write_derive_key(m, NULL, &write))
-    return -1;
-    
-  if (rhizome_write_file(&write, filepath)){
-    rhizome_fail_write(&write);
-    return -1;
-  }
+  if (rhizome_write_open_manifest(&write, m))
+    goto failure;
+  if (rhizome_write_file(&write, filepath))
+    goto failure;
   if (rhizome_finish_write(&write))
     goto failure;
 
@@ -718,11 +744,12 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
   if (read_state->hash){
     if (buffer && bytes_read>0)
       SHA512_Update(&read_state->sha512_context, buffer, bytes_read);
+      
     if (read_state->offset + bytes_read>=read_state->length){
       char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
       SHA512_End(&read_state->sha512_context, hash_out);
       if (strcasecmp(read_state->id, hash_out)){
-	WHYF("Expected hash=%s, got %s", read_state->id, hash_out);
+	RETURN(WHYF("Expected hash=%s, got %s", read_state->id, hash_out));
       }
       read_state->hash=0;
     }
@@ -738,6 +765,59 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
   read_state->offset+=bytes_read;
   RETURN(bytes_read);
   OUT();
+}
+
+/* Read len bytes from read->offset into data, using *buffer to cache any reads */
+int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer *buffer, unsigned char *data, int len)
+{
+  int bytes_copied=0;
+  
+  while (len>0){
+    // make sure we only attempt to read data that actually exists
+    if (read->length !=-1 && read->offset + len > read->length)
+      len = read->length - read->offset;
+
+    // if we can supply either the beginning or end of the data from cache, do that first.
+    uint64_t ofs=read->offset - buffer->offset;
+    if (ofs>=0 && ofs<=buffer->len){
+      int size=len;
+      if (size > buffer->len - ofs)
+	size = buffer->len - ofs;
+      if (size>0){
+	// copy into the start of the data buffer
+	bcopy(buffer->data + ofs, data, size);
+	data+=size;
+	len-=size;
+	read->offset+=size;
+	bytes_copied+=size;
+	continue;
+      }
+    }
+    
+    ofs = (read->offset+len) - buffer->offset;
+    if (ofs>0 && ofs<=buffer->len){
+      int size=len;
+      if (size > ofs)
+	size = ofs;
+      if (size>0){
+	// copy into the end of the data buffer
+	bcopy(buffer->data + ofs - size, data + len - size, size);
+	len-=size;
+	bytes_copied+=size;
+	continue;
+      }
+    }
+    
+    // ok, so we need to read a new buffer to fulfill the request.
+    // remember the requested read offset so we can put it back
+    ofs = read->offset;
+    buffer->offset = read->offset = ofs & ~(RHIZOME_CRYPT_PAGE_SIZE -1);
+    buffer->len = rhizome_read(read, buffer->data, sizeof(buffer->data));
+    read->offset = ofs;
+    if (buffer->len<=0)
+      return buffer->len;
+  }
+  return bytes_copied;
 }
 
 int rhizome_read_close(struct rhizome_read *read)
@@ -793,9 +873,10 @@ static int read_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizom
       return WHY("Unable to decrypt bundle, valid key not found");
     }
     if (config.debug.rhizome)
-      DEBUGF("Decrypting file contents");
+      DEBUGF("Decrypting payload contents for %s, %"PRId64, alloca_tohex_bid(m->cryptoSignPublic), m->version);
     
-    read_state->tail = m->journalTail;
+    if (m->journalTail>0)
+      read_state->tail = m->journalTail;
     bcopy(m->payloadKey, read_state->key, sizeof(read_state->key));
     bcopy(m->payloadNonce, read_state->nonce, sizeof(read_state->nonce));
   }
@@ -901,7 +982,7 @@ int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m,
     struct rhizome_read read_state;
     bzero(&read_state, sizeof read_state);
     // don't bother to decrypt the existing journal payload
-    ret = rhizome_open_read(&read_state, m->fileHexHash, 1);
+    ret = rhizome_open_read(&read_state, m->fileHexHash, advance_by>0?0:1);
     if (ret)
       goto failure;
 

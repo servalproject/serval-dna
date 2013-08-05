@@ -396,7 +396,7 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
 	   m->manifest_bytes, m->sig_count,(long long)m->fileLength);
     dump("manifest", m->manifestdata, m->manifest_all_bytes);
   }
-  return rhizome_bundle_import(m, m->ttl - 1 /* TTL */);
+  return rhizome_add_manifest(m, m->ttl - 1 /* TTL */);
 }
 
 static int schedule_fetch(struct rhizome_fetch_slot *slot)

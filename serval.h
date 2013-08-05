@@ -670,6 +670,10 @@ int app_nonce_test(const struct cli_parsed *parsed, struct cli_context *context)
 int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context *context);
 int app_monitor_cli(const struct cli_parsed *parsed, struct cli_context *context);
 int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *context);
+int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context *context);
+int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context *context);
+int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context *context);
+int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *context);
 
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 
@@ -801,6 +805,10 @@ void write_uint32(unsigned char *o,uint32_t v);
 uint64_t read_uint64(unsigned char *o);
 uint32_t read_uint32(unsigned char *o);
 uint16_t read_uint16(unsigned char *o);
+
+int pack_uint(unsigned char *buffer, uint64_t v);
+int measure_packed_uint(uint64_t v);
+int unpack_uint(unsigned char *buffer, int buff_size, uint64_t *v);
 
 int slip_encode(int format,
 		unsigned char *src, int src_bytes, unsigned char *dst, int dst_len);

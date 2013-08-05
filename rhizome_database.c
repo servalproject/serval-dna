@@ -1232,171 +1232,96 @@ int rhizome_update_file_priority(const char *fileid)
 
    @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, int check_author)
+int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 {
-  // TODO, add service, name, sender & recipient to manifests table so we can simply query them.
-  
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-  const char *name = NULL;
-  const char *sender = NULL;
-  const char *recipient = NULL;
-  if (service == NULL) {
+  if (service == NULL)
     return WHY("Manifest has no service");
-  } else if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
-    name = rhizome_manifest_get(m, "name", NULL, 0);
-    if (!name) return WHY("Manifest has no name");
-  } else if (strcasecmp(service, RHIZOME_SERVICE_MESHMS) == 0) {
-    sender = rhizome_manifest_get(m, "sender", NULL, 0);
-    recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
-    if (!sender) return WHY("Manifest has no sender");
-    if (!recipient) return WHY("Manifest has no recipient");
-  } else {
-    return WHYF("Unsupported service '%s'", service);
-  }
+  
+  const char *name = rhizome_manifest_get(m, "name", NULL, 0);
+  const char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
+  const char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
+  
   char sqlcmd[1024];
   strbuf b = strbuf_local(sqlcmd, sizeof sqlcmd);
-  strbuf_puts(b, "SELECT id, manifest, version, author FROM manifests WHERE ");
-  if (m->fileLength != 0) {
-    strbuf_puts(b, "filehash = ?");
-  } else
-    strbuf_puts(b, "filesize = 0");
+  strbuf_puts(b, "SELECT id, manifest, author FROM manifests WHERE filesize = ? AND service = ?");
+  
+  if (m->fileLength != 0)
+    strbuf_puts(b, " AND filehash = ?");
+  if (name)
+    strbuf_puts(b, " AND name = ?");
+  if (sender)
+    strbuf_puts(b, " AND sender = ?");
+  if (recipient)
+    strbuf_puts(b, " AND recipient = ?");
+  
   if (strbuf_overrun(b))
     return WHYF("SQL command too long: %s", strbuf_str(b));
+  
   int ret = 0;
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare(&retry, "%s", strbuf_str(b));
   if (!statement)
     return -1;
+  
   int field = 1;
-  char filehash[RHIZOME_FILEHASH_STRLEN + 1];
-  if (m->fileLength != 0) {
-    strncpy(filehash, m->fileHexHash, sizeof filehash);
-    str_toupper_inplace(filehash);
-    if (config.debug.rhizome)
-      DEBUGF("filehash=\"%s\"", filehash);
-    sqlite3_bind_text(statement, field++, filehash, -1, SQLITE_STATIC);
-  }
+  sqlite3_bind_int(statement, field++, m->fileLength);
+  sqlite3_bind_text(statement, field++, service, -1, SQLITE_STATIC);
+  
+  if (m->fileLength != 0)
+    sqlite3_bind_text(statement, field++, m->fileHexHash, -1, SQLITE_STATIC);
+  if (name)
+    sqlite3_bind_text(statement, field++, name, -1, SQLITE_STATIC);
+  if (sender)
+    sqlite3_bind_text(statement, field++, sender, -1, SQLITE_STATIC);
+  if (recipient)
+    sqlite3_bind_text(statement, field++, recipient, -1, SQLITE_STATIC);
+  
   int rows = 0;
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     ++rows;
-    if (config.debug.rhizome) DEBUGF("Row %d", rows);
-    if (!(   sqlite3_column_count(statement) == 4
-	  && sqlite3_column_type(statement, 0) == SQLITE_TEXT
-	  && sqlite3_column_type(statement, 1) == SQLITE_BLOB
-	  && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
-	  && (	sqlite3_column_type(statement, 3) == SQLITE_TEXT
-	     || sqlite3_column_type(statement, 3) == SQLITE_NULL
-	     )
-    )) {
-      ret = WHY("Incorrect statement columns");
-      break;
-    }
-    const char *q_manifestid = (const char *) sqlite3_column_text(statement, 0);
-    size_t manifestidsize = sqlite3_column_bytes(statement, 0); // must call after sqlite3_column_text()
-    unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
-    if (  manifestidsize != crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES * 2
-      ||  fromhexstr(manifest_id, q_manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1
-    ) {
-      ret = WHYF("Malformed manifest.id from query: %s", q_manifestid);
-      break;
-    }
-    const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
-    size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
-    int64_t q_version = sqlite3_column_int64(statement, 2);
-    const char *q_author = (const char *) sqlite3_column_text(statement, 3);
-    
+    if (config.debug.rhizome)
+      DEBUGF("Row %d", rows);
+      
     rhizome_manifest *blob_m = rhizome_new_manifest();
     if (blob_m == NULL) {
       ret = WHY("Out of manifests");
       break;
     }
+    
+    const unsigned char *q_manifestid = sqlite3_column_text(statement, 0);
+    
+    const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
+    size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
     if (rhizome_read_manifest_file(blob_m, manifestblob, manifestblobsize) == -1) {
       WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
-    } else if (rhizome_manifest_verify(blob_m)) {
-      WARNF("MANIFESTS row id=%s fails verification -- skipped", q_manifestid);
-    } else {
-      const char *blob_service = rhizome_manifest_get(blob_m, "service", NULL, 0);
-      const char *blob_id = rhizome_manifest_get(blob_m, "id", NULL, 0);
-      int64_t blob_version = rhizome_manifest_get_ll(blob_m, "version");
-      const char *blob_filehash = rhizome_manifest_get(blob_m, "filehash", NULL, 0);
-      int64_t blob_filesize = rhizome_manifest_get_ll(blob_m, "filesize");
-      if (config.debug.rhizome)
-	DEBUGF("Consider manifest.service=%s manifest.id=%s manifest.version=%"PRId64, blob_service, q_manifestid, blob_version);
-      if (q_author) {
-	if (config.debug.rhizome)
-	  strbuf_sprintf(b, " .author=%s", q_author);
-	stowSid(blob_m->author, 0, q_author);
-      }
-      
-      /* Perform consistency checks, because we're paranoid. */
-      int inconsistent = 0;
-      if (blob_id && strcasecmp(blob_id, q_manifestid)) {
-	WARNF("MANIFESTS row id=%s has inconsistent blob with id=%s -- skipped", q_manifestid, blob_id);
-	++inconsistent;
-      }
-      if (blob_version != q_version) {
-	WARNF("MANIFESTS row id=%s has inconsistent blob: manifests.version=%"PRId64", blob.version=%"PRId64" -- skipped",
-	      q_manifestid, q_version, blob_version);
-	++inconsistent;
-      }
-      if (blob_filesize != -1 && blob_filesize != m->fileLength) {
-	WARNF("MANIFESTS row id=%s has inconsistent blob: known file size %"PRId64", blob.filesize=%"PRId64" -- skipped",
-	      q_manifestid, m->fileLength, blob_filesize);
-	++inconsistent;
-      }
-      if (m->fileLength != 0) {
-	if (!blob_filehash && strcasecmp(blob_filehash, m->fileHexHash)) {
-	  WARNF("MANIFESTS row id=%s has inconsistent blob: manifests.filehash=%s, blob.filehash=%s -- skipped",
-		q_manifestid, m->fileHexHash, blob_filehash);
-	  ++inconsistent;
-	}
-      } else {
-	if (blob_filehash) {
-	  WARNF("MANIFESTS row id=%s has inconsistent blob: blob.filehash should be absent -- skipped",
-		q_manifestid);
-	  ++inconsistent;
-	}
-      }
-      if (blob_service == NULL) {
-	WARNF("MANIFESTS row id=%s has blob with no 'service' -- skipped", q_manifestid);
-	++inconsistent;
-      }
-      if (!inconsistent) {
-	strbuf b = strbuf_alloca(1024);
-	if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
-	  const char *blob_name = rhizome_manifest_get(blob_m, "name", NULL, 0);
-	  if (blob_name && !strcmp(blob_name, name)) {
-	    if (config.debug.rhizome)
-	      strbuf_sprintf(b, " name=\"%s\"", blob_name);
-	  }else
-	    ++inconsistent;
-	} else if (strcasecmp(service, RHIZOME_SERVICE_MESHMS) == 0) {
-	  const char *blob_sender = rhizome_manifest_get(blob_m, "sender", NULL, 0);
-	  const char *blob_recipient = rhizome_manifest_get(blob_m, "recipient", NULL, 0);
-	  if (blob_sender && !strcasecmp(blob_sender, sender) && blob_recipient && !strcasecmp(blob_recipient, recipient)) {
-	    if (config.debug.rhizome)
-	      strbuf_sprintf(b, " sender=%s recipient=%s", blob_sender, blob_recipient);
-	  }else
-	    ++inconsistent;
-	}
-      }
-      
-      if ((!inconsistent) && check_author) {
-	// check that we can re-author this manifest
-	if (rhizome_extract_privatekey(blob_m, NULL))
-	  ++inconsistent;
-      }
-      
-      if (!inconsistent) {
-	*found = blob_m;
-	if (config.debug.rhizome)
-	  DEBUGF("Found duplicate payload: service=%s%s version=%"PRIu64" hexhash=%s",
-		blob_service, strbuf_str(b), blob_m->version, blob_m->fileHexHash
-	      );
-	ret = 1;
-	break;
-      }
+      goto next;
     }
+    
+    if (rhizome_manifest_verify(blob_m)) {
+      WARNF("MANIFESTS row id=%s fails verification -- skipped", q_manifestid);
+      goto next;
+    }
+    
+    const char *q_author = (const char *) sqlite3_column_text(statement, 2);
+    if (q_author) {
+      if (config.debug.rhizome)
+	strbuf_sprintf(b, " .author=%s", q_author);
+      stowSid(blob_m->author, 0, q_author);
+    }
+    
+    // check that we can re-author this manifest
+    if (rhizome_extract_privatekey(blob_m, NULL)){
+      goto next;
+    }
+    
+    *found = blob_m;
+    if (config.debug.rhizome)
+      DEBUGF("Found duplicate payload, %s", q_manifestid);
+    ret = 1;
+    break;
+    
+next:
     if (blob_m)
       rhizome_manifest_free(blob_m);
   }

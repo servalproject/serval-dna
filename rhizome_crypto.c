@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "str.h"
 #include "rhizome.h"
+#include "crypto.h"
 #include <stdlib.h>
 #include <ctype.h>
 
@@ -38,9 +39,50 @@ unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m)
 int rhizome_manifest_createid(rhizome_manifest *m)
 {
   m->haveSecret=NEW_BUNDLE_ID;
-  int r=crypto_sign_edwards25519sha512batch_keypair(m->cryptoSignPublic,m->cryptoSignSecret);
-  if (!r) return 0;
-  return WHY("Failed to create keypair for manifest ID.");
+  if (crypto_sign_edwards25519sha512batch_keypair(m->cryptoSignPublic,m->cryptoSignSecret))
+    return WHY("Failed to create keypair for manifest ID.");
+  rhizome_manifest_set(m, "id", alloca_tohex_bid(m->cryptoSignPublic));
+  return 0;
+}
+
+struct signing_key{
+  unsigned char Private[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
+  unsigned char Public[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+};
+
+/* generate a keypair from a given seed string */
+static int generate_keypair(const char *seed, struct signing_key *key)
+{
+  unsigned char hash[crypto_hash_sha512_BYTES];
+  crypto_hash_sha512(hash, (unsigned char *)seed, strlen(seed));
+  
+  // The first 256 bits of the hash will be used as the private key of the BID.
+  bcopy(hash, key->Private, sizeof(key->Private));
+  if (crypto_sign_compute_public_key(key->Private, key->Public))
+    return WHY("Could not generate public key");
+  return 0;
+}
+
+/* Generate a bundle id deterministically from the given seed.
+ * Then either fetch it from the database or initialise a new empty manifest */
+int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed)
+{
+  struct signing_key key;
+  if (generate_keypair(seed, &key))
+    return -1;
+  
+  char *id = alloca_tohex_bid(key.Public);
+  
+  int ret=rhizome_retrieve_manifest(id, m);
+  if (ret<0)
+    return -1;
+  
+  m->haveSecret=(ret==0)?EXISTING_BUNDLE_ID:NEW_BUNDLE_ID;
+  bcopy(key.Public, m->cryptoSignPublic, sizeof(m->cryptoSignPublic));
+  bcopy(key.Private, m->cryptoSignSecret, sizeof(m->cryptoSignSecret));
+  if (ret>0)
+    rhizome_manifest_set(m, "id", alloca_tohex_bid(m->cryptoSignPublic));
+  return ret;
 }
 
 /* Given a Rhizome Secret (RS) and bundle ID (BID), XOR a bundle key 'bkin' (private or public) with
@@ -357,20 +399,9 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m,
 				     const unsigned char *pkin)
 {
   IN();
-
-  unsigned char h[64];
   unsigned char pk[32];
-  ge_p3 A;
   int i;
-
-  crypto_hash_sha512(h,sk,32);
-  h[0] &= 248;
-  h[31] &= 63;
-  h[31] |= 64;
-
-  ge_scalarmult_base(&A,h);
-  ge_p3_tobytes(pk,&A);
-
+  crypto_sign_compute_public_key(sk,pk);
   for (i = 0;i < 32;++i) 
     if (pkin[i] != pk[i]) {
       if (m&&sk==m->cryptoSignSecret&&pkin==m->cryptoSignPublic)
@@ -571,6 +602,10 @@ static void add_nonce(unsigned char *nonce, int64_t value){
  */
 int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
 			    const unsigned char *key, const unsigned char *nonce){
+  
+  if (stream_offset<0)
+    return WHY("Invalid stream offset");
+  
   int64_t nonce_offset = stream_offset & ~(RHIZOME_CRYPT_PAGE_SIZE -1);
   int offset=0;
   
