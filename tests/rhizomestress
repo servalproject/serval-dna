@@ -207,4 +207,48 @@ reportfiles() {
    sort -t- -k2,2 -k3,3n extrafiles
 }
 
+doc_stressmeshms="Stress test messaging with 4 instances"
+setup_stressmeshms() {
+   setup_servald
+   foreach_instance +A +B +C +D create_single_identity
+   start_servald_instances +A +B +C +D
+}
+message_arrived() {
+   executeOk_servald meshms list messages $1 $2
+   if ! grep ":<:$3\$" $_tfw_tmp/stdout; then
+     return 1
+   fi
+}
+test_stressmeshms() {
+   for i in {1..10}
+   do
+      for instance in A B C D
+      do
+         local sidvar="SID$instance"
+         set_instance +$instance
+         assert_servald_server_status running
+         executeOk_servald meshms list conversations ${!sidvar}
+         for dest in A B C D
+         do
+            [ $instance = $dest ] && continue
+            local destsid="SID$dest"
+            executeOk_servald meshms send message ${!sidvar} ${!destsid} "$instance to $dest, Message $i"
+         done
+      done
+   done
+   for instance in A B C D
+   do
+      local sidvar="SID$instance"
+      set_instance +$instance
+      for dest in A B C D
+      do
+         [ $instance = $dest ] && continue
+         local destsid="SID$dest"
+         wait_until message_arrived ${!sidvar} ${!destsid} "$dest to $instance, Message 10"
+         executeOk_servald meshms list messages ${!sidvar} ${!destsid}
+         tfw_cat --stdout
+      done
+   done
+}
+
 runTests "$@"
