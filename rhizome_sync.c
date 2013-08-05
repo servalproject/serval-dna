@@ -160,7 +160,7 @@ static int sync_bundle_inserted(struct subscriber *subscriber, void *context)
 
   struct rhizome_sync *state = subscriber->sync_state;
   int i;
-  for (i=state->bar_count;i>=0;i--){
+  for (i=state->bar_count -1;i>=0;i--){
     unsigned char *this_bar = state->bars[i].bar;
     unsigned char *this_id = &this_bar[RHIZOME_BAR_PREFIX_OFFSET];
     int64_t this_version = rhizome_bar_version(this_bar);
