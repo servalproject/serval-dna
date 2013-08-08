@@ -54,9 +54,9 @@ struct subscriber{
   
   // should we send the full address once?
   int send_full;
-  // sequence number for this unicast or broadcast destination
-  int sequence;
-
+  
+  int max_packet_version;
+  
   // overlay routing information
   struct overlay_node *node;
 
@@ -69,22 +69,14 @@ struct subscriber{
   // result of routing calculations;
   int reachable;
 
-  // highest seen packet version
-  int max_packet_version;
-  
   // if indirect, who is the next hop?
   struct subscriber *next_hop;
   
   // if direct, or unicast, where do we send packets?
-  struct overlay_interface *interface;
+  struct network_destination *destination;
   
-  // if reachable&REACHABLE_UNICAST send packets to this address, else use the interface broadcast address
-  struct sockaddr_in address;
-
   time_ms_t last_stun_request;
-  time_ms_t last_probe;
   time_ms_t last_probe_response;
-  time_ms_t last_tx;
   time_ms_t last_explained;
   
   // public signing key details for remote peers
@@ -115,6 +107,7 @@ struct decode_context{
   struct overlay_frame *please_explain;
   struct subscriber *sender;
   struct subscriber *previous;
+  struct subscriber *point_to_point_device;
 };
 
 extern struct subscriber *my_subscriber;
@@ -122,9 +115,7 @@ extern struct subscriber *directory_service;
 
 struct subscriber *find_subscriber(const unsigned char *sid, int len, int create);
 void enum_subscribers(struct subscriber *start, int(*callback)(struct subscriber *, void *), void *context);
-int subscriber_is_reachable(struct subscriber *subscriber);
-int set_reachable(struct subscriber *subscriber, int reachable);
-int reachable_unicast(struct subscriber *subscriber, overlay_interface *interface, struct in_addr addr, int port);
+int set_reachable(struct subscriber *subscriber, struct network_destination *destination, struct subscriber *next_hop);
 int load_subscriber_address(struct subscriber *subscriber);
 
 int process_explain(struct overlay_frame *frame);

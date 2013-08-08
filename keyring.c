@@ -242,7 +242,8 @@ void keyring_free_identity(keyring_identity *id)
 
   if (id->subscriber){
     id->subscriber->identity=NULL;
-    set_reachable(id->subscriber, REACHABLE_NONE);
+    if (id->subscriber->reachable == REACHABLE_SELF)
+      id->subscriber->reachable = REACHABLE_NONE;
   }
     
   bzero(id,sizeof(keyring_identity));
@@ -858,7 +859,8 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
     if (id->keypairs[i]->type == KEYTYPE_CRYPTOBOX){
       id->subscriber = find_subscriber(id->keypairs[i]->public_key, SID_SIZE, 1);
       if (id->subscriber){
-	set_reachable(id->subscriber, REACHABLE_SELF);
+	if (id->subscriber->reachable==REACHABLE_NONE)
+	  id->subscriber->reachable=REACHABLE_SELF;
 	id->subscriber->identity = id;
 	if (!my_subscriber)
 	  my_subscriber=id->subscriber;
@@ -1067,7 +1069,8 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, co
   // add new identity to in memory table
   id->subscriber = find_subscriber(id->keypairs[0]->public_key, SID_SIZE, 1);
   if (id->subscriber){
-    set_reachable(id->subscriber, REACHABLE_SELF);
+    if (id->subscriber->reachable==REACHABLE_NONE)
+      id->subscriber->reachable=REACHABLE_SELF;
     id->subscriber->identity = id;
     if (!my_subscriber)
       my_subscriber=id->subscriber;

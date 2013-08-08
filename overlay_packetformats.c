@@ -35,7 +35,6 @@ struct sockaddr_in loopback;
 
 int overlay_packet_init_header(int packet_version, int encapsulation, 
 			       struct decode_context *context, struct overlay_buffer *buff, 
-			       struct subscriber *destination, 
 			       char unicast, char interface, int seq){
   
   if (packet_version <0 || packet_version > SUPPORTED_PACKET_VERSION)
@@ -47,9 +46,17 @@ int overlay_packet_init_header(int packet_version, int encapsulation,
     return -1;
   if (ob_append_byte(buff, encapsulation))
     return -1;
+  
+  if (context->interface->point_to_point 
+    && context->interface->other_device 
+    && packet_version>=1)
+    context->point_to_point_device = context->interface->other_device;
+    
   context->encoding_header=1;
+  
   if (overlay_address_append(context, buff, my_subscriber))
     return -1;
+  
   context->encoding_header=0;
   context->sender = my_subscriber;
   
@@ -84,7 +91,7 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
       break;
       // data frames
     case OF_TYPE_RHIZOME_ADVERT:
-      overlay_rhizome_saw_advertisements(id,f,now);
+      overlay_rhizome_saw_advertisements(id,context,f,now);
       break;
     case OF_TYPE_DATA:
     case OF_TYPE_DATA_VOICE:
@@ -257,9 +264,11 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
 int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface *interface, 
 			struct sockaddr_in *addr, struct overlay_buffer *buffer){
   IN();
-  time_ms_t now = gettime_ms();
   
   context->interface = interface;
+  if (interface->point_to_point && interface->other_device)
+    context->point_to_point_device = interface->other_device;
+  
   context->sender_interface = 0;
 
   context->packet_version = ob_get(buffer);
@@ -284,60 +293,27 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
   if (packet_flags & PACKET_SEQ)
     sender_seq = ob_get(buffer)&0xFF;
   
+  if (addr)
+    context->addr=*addr;
+
   if (context->sender){
-    // ignore packets that have been reflected back to me
     if (context->sender->reachable==REACHABLE_SELF){
       if (config.debug.verbose && config.debug.overlayframes)
 	DEBUG("Completely ignore packets I sent");
       RETURN(1);
     }
-
-    if (context->sender->max_packet_version < context->packet_version)
-      context->sender->max_packet_version = context->packet_version;
-
+    
     if (interface->point_to_point && interface->other_device!=context->sender){
       INFOF("Established point to point link with %s on %s", alloca_tohex_sid(context->sender->sid), interface->name);
-      context->interface->other_device = context->sender;
-    }
-
-    // TODO probe unicast links when we detect an address change.
-    
-    // if this is a dummy announcement for a node that isn't in our routing table
-    if (context->sender->reachable == REACHABLE_NONE) {
-      context->sender->interface = interface;
-      
-      if (addr)
-	context->sender->address = *addr;
-      else
-	bzero(&context->sender->address, sizeof context->sender->address);
-	
-      context->sender->last_probe = 0;
-      
-      // assume for the moment, that we can reply with the same packet type
-      if (packet_flags&PACKET_UNICAST){
-	set_reachable(context->sender, REACHABLE_UNICAST|REACHABLE_ASSUMED);
-      }else{
-	set_reachable(context->sender, REACHABLE_BROADCAST|REACHABLE_ASSUMED);
-      }
+      context->point_to_point_device = context->interface->other_device = context->sender;
     }
     
-    /* Note the probe payload must be queued before any SID/SAS request so we can force the packet to have a full sid */
-    if (addr && (context->sender->last_probe==0 || now - context->sender->last_probe > interface->destination.tick_ms*10))
-      overlay_send_probe(context->sender, *addr, interface, OQ_MESH_MANAGEMENT);
-    
-    link_received_packet(context->sender, interface, context->sender_interface, sender_seq, packet_flags & PACKET_UNICAST);
-  }else{
-    // send a unicast probe, just incase they never hear our broadcasts.
-    if (addr)
-      overlay_send_probe(NULL, *addr, interface, OQ_MESH_MANAGEMENT);
+    DEBUGF("Received packet seq %d from %s on %s", 
+      sender_seq, alloca_tohex_sid(context->sender->sid), interface->name);
   }
   
-  if (addr){
-    if (packet_flags & PACKET_UNICAST)
-      context->addr=*addr;
-    else
-      context->addr=interface->destination.address;
-  }
+  link_received_packet(context, sender_seq, packet_flags & PACKET_UNICAST);
+  
   RETURN(0);
   OUT();
 }
@@ -409,7 +385,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   struct overlay_buffer *b = ob_static(packet, len);
   ob_limitsize(b, len);
   
-  context.interface = f.interface = interface;
+  f.interface = interface;
   if (recvaddr)
     f.recvaddr = *((struct sockaddr_in *)recvaddr); 
   else 
@@ -423,6 +399,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     ob_free(b);
     RETURN(ret);
   }
+  f.sender_interface = context.sender_interface;
   
   while(ob_remaining(b)>0){
     context.invalid_addresses=0;
@@ -436,7 +413,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       break;
     }
     
-    // TODO allow for one byte length?
+    // TODO allow for single byte length?
     unsigned int payload_len;
     
     switch (context.encapsulation){

@@ -208,20 +208,14 @@ int overlay_address_append(struct decode_context *context, struct overlay_buffer
     return WHY("No address supplied");
 
   if(context
-      && context->packet_version>=1
-      && context->interface
-      && subscriber == context->interface->other_device
-      && context->interface->point_to_point){
+      && subscriber == context->point_to_point_device){
     if (ob_append_byte(b, OA_CODE_P2P_YOU))
       return -1;
   }else if(context
-      && context->packet_version>=1
-      && context->interface
       && !subscriber->send_full
       && subscriber == my_subscriber
-      && context->interface->other_device
-      && context->interface->point_to_point
-      && (!context->encoding_header || !context->interface->local_echo)){
+      && context->point_to_point_device
+      && (context->encoding_header==0 || !context->interface->local_echo)){
     if (ob_append_byte(b, OA_CODE_P2P_ME))
       return -1;
   }else if (context && subscriber==context->sender){
@@ -346,7 +340,8 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
   
   switch(len){
     case OA_CODE_P2P_YOU:
-      if (context->interface && context->interface->point_to_point){
+      // if we don't know who they are, we can't assume they mean us.
+      if (context->point_to_point_device){
         *subscriber=my_subscriber;
 	context->previous=my_subscriber;
       }else{
@@ -356,11 +351,11 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
       return 0;
 
     case OA_CODE_P2P_ME:
-      if (context->interface && context->interface->point_to_point && context->interface->other_device){
-        *subscriber=context->interface->other_device;
+      if (context->point_to_point_device){
+        *subscriber=context->point_to_point_device;
 	context->previous=*subscriber;
       }else{
-	WHYF("Could not resolve address on %s, I don't know who is on the other end of this link!", context->interface->name);
+	WHYF("Could not resolve address, I don't know who is on the other end of this link!");
 	context->invalid_addresses=1;
       }
       return 0;
@@ -404,18 +399,23 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   if (!context->sender)
     frame->source_full=1;
   
-  frame->destination = destination;
-  
   if (destination && (destination->reachable & REACHABLE)){
     frame->ttl = PAYLOAD_TTL_DEFAULT; // MAX?
+    frame->destination = destination;
   }else{
+    DEBUGF("Need to send explanation to destination that isn't routable");
+    // send both a broadcast & unicast response out the same interface this packet arrived on.
     frame->ttl=1;// how will this work with olsr??
-    overlay_broadcast_generate_address(&frame->broadcast_id);
     if (context->interface){
-      frame->destination_resolved=1;
-      frame->next_hop = destination;
-      frame->recvaddr = context->addr;
-      frame->interface = context->interface;
+      frame->destination = destination;
+      frame->destinations[frame->destination_count++].destination=add_destination_ref(context->interface->destination);
+      
+      struct network_destination *dest = create_unicast_destination(context->addr, context->interface);
+      if (dest)
+	frame->destinations[frame->destination_count++].destination=dest;
+    
+    }else{
+      FATAL("This context doesn't have an interface?");
     }
   }
   
@@ -434,7 +434,8 @@ int process_explain(struct overlay_frame *frame){
   struct decode_context context;
   bzero(&context, sizeof context);
   context.sender = frame->source;
-
+  context.interface = frame->interface;
+  
   while(ob_remaining(b)>0){
     int len = ob_get(b);
     if (len<=0 || len>SID_SIZE)

@@ -46,17 +46,17 @@ has_link() {
    set_instance $1
    executeOk_servald route print
    tfw_log "Looking for link from $1 to $2 ($4)"
-   if ! grep "^${4}:\(BROADCAST \|UNICAST \)\{1,\}:dummy.*:0*\$" $_tfw_tmp/stdout; then
+   if ! grep "^${4}:\(BROADCAST\|UNICAST\):dummy.*:0*\$" $_tfw_tmp/stdout; then
       tfw_log "Link not found"
-#      tfw_log "^${4}:\(BROADCAST \|UNICAST \)\{1,\}:dummy.*:0*\$"
+#      tfw_log "^${4}:\(BROADCAST\|UNICAST\):dummy.*:0*\$"
 #      tfw_cat --stdout --stderr
       return 1
    fi
    [ $4 = $5 ] && return 0;
    tfw_log "Path from $1 to $3 should be via $2 ($5, $4)"
-   if ! grep "^${5}:INDIRECT ::${4}\$" $_tfw_tmp/stdout; then
+   if ! grep "^${5}:INDIRECT::${4}\$" $_tfw_tmp/stdout; then
       tfw_log "No path found"
-#      tfw_log "^${5}:INDIRECT ::${4}\$"
+#      tfw_log "^${5}:INDIRECT::${4}\$"
 #      tfw_cat --stdout --stderr
       return 1
    fi
@@ -117,8 +117,8 @@ setup_single_link() {
    foreach_instance +A +B start_routing_instance
 }
 test_single_link() {
-   wait_until path_exists +A +B
-   wait_until path_exists +B +A
+   wait_until --timeout=10 path_exists +A +B
+   wait_until --timeout=5 path_exists +B +A
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
@@ -141,14 +141,14 @@ test_multiple_ids() {
    executeOk_servald mdp ping --timeout=3 $SIDB2 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDB1:BROADCAST UNICAST :dummy.*:0*"
-   assertStdoutGrep --matches=1 "^$SIDB2:INDIRECT ::$SIDB1"
+   assertStdoutGrep --matches=1 "^$SIDB1:BROADCAST:dummy.*:0*"
+   assertStdoutGrep --matches=1 "^$SIDB2:INDIRECT::$SIDB1"
    set_instance +B
    executeOk_servald mdp ping --timeout=3 $SIDA2 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDA1:BROADCAST UNICAST :dummy.*:0*"
-   assertStdoutGrep --matches=1 "^$SIDA2:INDIRECT ::$SIDA1"
+   assertStdoutGrep --matches=1 "^$SIDA1:BROADCAST:dummy.*:0*"
+   assertStdoutGrep --matches=1 "^$SIDA2:INDIRECT::$SIDA1"
 }
 
 doc_single_mdp="Use single MDP per packet encapsulation"
@@ -259,7 +259,7 @@ test_scan() {
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDB:UNICAST :"
+   assertStdoutGrep --matches=1 "^$SIDB:UNICAST:"
 }
 
 scan_completed() {
@@ -304,7 +304,7 @@ test_broadcast_only() {
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST :"
+   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST:"
 }
 
 doc_prefer_unicast="Prefer unicast packets"
@@ -326,8 +326,7 @@ test_prefer_unicast() {
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
-   assertGrep "$instance_servald_log" 'Choosing to send via unicast'
+   assertStdoutGrep --matches=1 "^$SIDB:UNICAST:"
 }
 
 doc_multihop_linear="Start 4 instances in a linear arrangement"
@@ -372,7 +371,7 @@ instance_offline() {
       for ((N=1; 1; ++N)); do
          local sidvar=SID${I#+}$N
          [ -n "${!sidvar}" ] || break
-         if ! grep "LINK STATE.*${!sidvar}.*UNREACHABLE" $instance_servald_log; then
+         if ! grep "NOT REACHABLE sid=${!sidvar}" $instance_servald_log; then
             return 1
          fi
       done
@@ -431,7 +430,7 @@ setup_multi_interface() {
 
 multi_has_link() {
    executeOk_servald route print
-   grep "^$1:BROADCAST UNICAST :dummyeth" $_tfw_tmp/stdout || return 1
+   grep "^$1:BROADCAST:dummyeth" $_tfw_tmp/stdout || return 1
    return 0
 }
 
@@ -603,7 +602,7 @@ test_circle() {
    executeOk_servald mdp ping --timeout=3 $SIDC 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDC:INDIRECT :"
+   assertStdoutGrep --matches=1 "^$SIDC:INDIRECT:"
    stop_servald_server +B
    foreach_instance +A +C \
       wait_until --timeout=10 instance_offline +B
@@ -613,7 +612,7 @@ test_circle() {
    executeOk_servald mdp ping --timeout=3 $SIDC 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDC:INDIRECT :"
+   assertStdoutGrep --matches=1 "^$SIDC:INDIRECT:"
 }
 
 setup_crowded_mess() {
@@ -639,7 +638,7 @@ test_crowded_mess() {
    executeOk_servald mdp ping --timeout=3 $SIDH 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDH:INDIRECT :"
+   assertStdoutGrep --matches=1 "^$SIDH:INDIRECT:"
 }
 
 runTests "$@"

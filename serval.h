@@ -383,8 +383,34 @@ struct slip_decode_state{
 
 struct overlay_interface;
 
+// where should packets be sent to?
 struct network_destination {
+  int _ref_count;
+  
+  // which interface are we actually sending packets out of
   struct overlay_interface *interface;
+  
+  // The IPv4 destination address, this may be the interface broadcast address.
+  struct sockaddr_in address;
+  
+  // should outgoing packets be marked as unicast?
+  char unicast;
+  
+  char packet_version;
+  
+  // should we aggregate packets, or send one at a time
+  char encapsulation;
+
+  // time last packet was sent
+  time_ms_t last_tx;
+
+  // sequence number of last packet sent to this destination.
+  // Used to allow NACKs that can request retransmission of recent packets.
+  int sequence_number;
+
+  // rate limit for outgoing packets
+  struct limit_state transfer_limit;
+
   /* Number of milli-seconds per tick for this interface, which is basically related to the     
    the typical TX range divided by the maximum expected speed of nodes in the network.
    This means that short-range communications has a higher bandwidth requirement than
@@ -397,28 +423,13 @@ struct network_destination {
    These figures will be refined over time, and we will allow people to set them per-interface.
    */
   unsigned tick_ms; /* milliseconds per tick */
-
-  // do we aggregate packets, or send one at a time
-  int encapsulation;
-
-  // time last packet was sent
-  time_ms_t last_tx;
-
-  // sequence number of last packet sent to this destination.
-  // Used to allow NACKs that can request retransmission of recent packets.
-  int sequence_number;
-
-  // rate limit for outgoing packets
-  struct limit_state transfer_limit;
-
-  /* Not necessarily the real MTU, but the largest frame size we are willing to TX.
-   For radio links the actual maximum and the maximum that is likely to be delivered reliably are
-   potentially two quite different values. */
-  int mtu;
-
-  // The IPv4 destination address, for an interface this will be the broadcast address.
-  struct sockaddr_in address;
 };
+
+struct network_destination * new_destination(struct overlay_interface *interface, char encapsulation);
+struct network_destination * create_unicast_destination(struct sockaddr_in addr, struct overlay_interface *interface);
+struct network_destination * add_destination_ref(struct network_destination *ref);
+void release_destination_ref(struct network_destination *ref);
+void set_destination_ref(struct network_destination **ptr, struct network_destination *ref);
 
 typedef struct overlay_interface {
   struct sched_ent alarm;
@@ -439,21 +450,25 @@ typedef struct overlay_interface {
   int socket_type;
   char send_broadcasts;
   char prefer_unicast;
+  /* Not necessarily the real MTU, but the largest frame size we are willing to TX.
+   For radio links the actual maximum and the maximum that is likely to be delivered reliably are
+   potentially two quite different values. */
+  int mtu;
   // can we use this interface for routes to addresses in other subnets?
   int default_route;
   // should we log more debug info on this interace? eg hex dumps of packets
   char debug;
   char local_echo;
 
-  // can we assume there will only be two devices on this interface?
-  char point_to_point;
-  struct subscriber *other_device;
-  
   unsigned int uartbps; // set serial port speed (which might be different from link speed)
   int ctsrts; // enabled hardware flow control if non-zero
 
-  struct network_destination destination;
+  struct network_destination *destination;
 
+  // can we assume that we will only receive packets from one device?
+  char point_to_point;
+  struct subscriber *other_device;
+  
   // the actual address of the interface.
   struct sockaddr_in address;
   struct in_addr netmask;
@@ -524,11 +539,10 @@ int overlay_frame_resolve_addresses(struct overlay_frame *f);
 
 time_ms_t overlay_time_until_next_tick();
 
-int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
+int overlay_frame_append_payload(struct decode_context *context, int encapsulation,
 				 struct overlay_frame *p, struct overlay_buffer *b);
 int overlay_packet_init_header(int packet_version, int encapsulation, 
 			       struct decode_context *context, struct overlay_buffer *buff, 
-			       struct subscriber *destination, 
 			       char unicast, char interface, int seq);
 int overlay_interface_args(const char *arg);
 void overlay_rhizome_advertise(struct sched_ent *alarm);
@@ -547,10 +561,10 @@ int overlayServerMode();
 int overlay_payload_enqueue(struct overlay_frame *p);
 int overlay_queue_remaining(int queue);
 int overlay_queue_schedule_next(time_ms_t next_allowed_packet);
-int overlay_send_tick_packet(struct overlay_interface *interface);
-int overlay_queue_ack(struct subscriber *neighbour, struct overlay_interface *interface, uint32_t ack_mask, int ack_seq);
+int overlay_send_tick_packet(struct network_destination *destination);
+int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *destination, uint32_t ack_mask, int ack_seq);
 
-int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f,  time_ms_t now);
+int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, struct overlay_frame *f,  time_ms_t now);
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_saw_voice_traffic();
 int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now);
@@ -663,10 +677,8 @@ overlay_interface * overlay_interface_get_default();
 overlay_interface * overlay_interface_find(struct in_addr addr, int return_default);
 overlay_interface * overlay_interface_find_name(const char *name);
 int overlay_interface_compare(overlay_interface *one, overlay_interface *two);
-int
-overlay_broadcast_ensemble(overlay_interface *interface,
-			   struct sockaddr_in *recipientaddr,
-			   unsigned char *bytes,int len);
+int overlay_broadcast_ensemble(struct network_destination *destination,
+			       unsigned char *bytes,int len);
 
 int directory_registration();
 int directory_service_init();
@@ -764,7 +776,7 @@ void server_config_reload(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_poll(struct sched_ent *alarm);
 int overlay_mdp_try_interal_services(struct overlay_frame *frame, overlay_mdp_frame *mdp);
-int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay_interface *interface, int queue);
+int overlay_send_probe(struct subscriber *peer, struct network_destination *destination, int queue);
 int overlay_send_stun_request(struct subscriber *server, struct subscriber *request);
 void fd_periodicstats(struct sched_ent *alarm);
 void rhizome_check_connections(struct sched_ent *alarm);
@@ -780,7 +792,7 @@ void rhizome_server_poll(struct sched_ent *alarm);
 
 int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp);
 int overlay_mdp_service_stun(overlay_mdp_frame *mdp);
-int overlay_mdp_service_probe(overlay_mdp_frame *mdp);
+int overlay_mdp_service_probe(struct overlay_frame *frame, overlay_mdp_frame *mdp);
 
 time_ms_t limit_next_allowed(struct limit_state *state);
 int limit_is_allowed(struct limit_state *state);
@@ -832,15 +844,16 @@ extern char crash_handler_clue[1024];
 
 
 int link_received_duplicate(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int previous_seq, int unicast);
-int link_received_packet(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int sender_seq, int unicode);
-int link_receive(overlay_mdp_frame *mdp);
+int link_received_packet(struct decode_context *context, int sender_seq, int unicast);
+int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp);
 void link_explained(struct subscriber *subscriber);
 void link_interface_down(struct overlay_interface *interface);
 int link_state_announce_links();
 int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now);
-int link_state_interface_oldest_neighbour(struct overlay_interface *interface);
 int link_state_ack_soon(struct subscriber *sender);
 int link_state_should_forward_broadcast(struct subscriber *transmitter);
+int link_unicast_ack(struct subscriber *subscriber, struct overlay_interface *interface, struct sockaddr_in addr);
+int link_add_broadcast_destinations(struct overlay_frame *frame);
 
 int generate_nonce(unsigned char *nonce,int bytes);
 

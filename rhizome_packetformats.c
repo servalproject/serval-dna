@@ -262,7 +262,7 @@ error:
 
 time_ms_t lookup_time=0;
 
-int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long now)
+int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, struct overlay_frame *f, time_ms_t now)
 {
   IN();
   if (!f)
@@ -272,7 +272,7 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
     RETURN(0);
   
   int ad_frame_type=ob_get(f->payload);
-  struct sockaddr_in httpaddr = f->recvaddr;
+  struct sockaddr_in httpaddr = context->addr;
   httpaddr.sin_port = htons(RHIZOME_HTTP_PORT);
   int manifest_length;
   rhizome_manifest *m=NULL;

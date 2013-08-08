@@ -28,6 +28,8 @@ static void update_limit_state(struct limit_state *state, time_ms_t now){
 /* When should we next allow this thing to occur? */
 time_ms_t limit_next_allowed(struct limit_state *state){
   time_ms_t now = gettime_ms();
+  if (!state->burst_length)
+    return now;
   update_limit_state(state, now);
   
   if (state->sent < state->burst_size)
@@ -38,6 +40,8 @@ time_ms_t limit_next_allowed(struct limit_state *state){
 /* Can we do this now? if so, track it */
 int limit_is_allowed(struct limit_state *state){
   time_ms_t now = gettime_ms();
+  if (!state->burst_length)
+    return 0;
   update_limit_state(state, now);
   if (state->sent >= state->burst_size){
     return -1;
@@ -50,6 +54,7 @@ int limit_is_allowed(struct limit_state *state){
 int limit_init(struct limit_state *state, int rate_micro_seconds){
   if (rate_micro_seconds==0){
     state->burst_size=0;
+    state->burst_length=1;
   }else{
     state->burst_size = (MIN_BURST_LENGTH / rate_micro_seconds)+1;
     state->burst_length = (state->burst_size * rate_micro_seconds) / 1000.0;
@@ -57,76 +62,40 @@ int limit_init(struct limit_state *state, int rate_micro_seconds){
   return 0;
 }
 
-// quick test to make sure the specified route is valid.
-int subscriber_is_reachable(struct subscriber *subscriber){
-  if (!subscriber)
-    return REACHABLE_NONE;
+int set_reachable(struct subscriber *subscriber, 
+  struct network_destination *destination, struct subscriber *next_hop){
   
-  int ret = subscriber->reachable;
+  int reachable = REACHABLE_NONE;
+  if (destination)
+    reachable = destination->unicast?REACHABLE_UNICAST:REACHABLE_BROADCAST;
+  else if(next_hop)
+    reachable = REACHABLE_INDIRECT;
   
-  if (ret==REACHABLE_INDIRECT){
-    if (!subscriber->next_hop)
-      ret = REACHABLE_NONE;
-    
-    // avoid infinite recursion...
-    else if (!(subscriber->next_hop->reachable & REACHABLE_DIRECT))
-      ret = REACHABLE_NONE;
-    else{
-      int r = subscriber_is_reachable(subscriber->next_hop);
-      if (r&REACHABLE_ASSUMED)
-	ret = REACHABLE_NONE;
-      else if (!(r & REACHABLE_DIRECT))
-	ret = REACHABLE_NONE;
-    }
-  }
-  
-  if (ret & REACHABLE_DIRECT){
-    // make sure the interface is still up
-    if (!subscriber->interface)
-      ret=REACHABLE_NONE;
-    else if (subscriber->interface->state!=INTERFACE_STATE_UP)
-      ret=REACHABLE_NONE;
-  }
-  
-  return ret;
-}
-
-int set_reachable(struct subscriber *subscriber, int reachable){
-  if (subscriber->reachable==reachable)
+  if (subscriber->reachable==reachable 
+    && subscriber->next_hop==next_hop 
+    && subscriber->destination == destination)
     return 0;
+  
   int old_value = subscriber->reachable;
-  subscriber->reachable=reachable;
+  subscriber->reachable = reachable;
+  set_destination_ref(&subscriber->destination, destination);
+  subscriber->next_hop = next_hop;
   
   // These log messages are for use in tests.  Changing them may break test scripts.
-  if (config.debug.overlayrouting) {
+  if (config.debug.overlayrouting || config.debug.linkstate) {
     switch (reachable) {
       case REACHABLE_NONE:
 	DEBUGF("NOT REACHABLE sid=%s", alloca_tohex_sid(subscriber->sid));
 	break;
-      case REACHABLE_SELF:
-	break;
       case REACHABLE_INDIRECT:
-	DEBUGF("REACHABLE INDIRECTLY sid=%s", alloca_tohex_sid(subscriber->sid));
-	DEBUGF("(via %s, %d)",subscriber->next_hop?alloca_tohex_sid(subscriber->next_hop->sid):"NOONE!"
-	       ,subscriber->next_hop?subscriber->next_hop->reachable:0);
+	DEBUGF("REACHABLE INDIRECTLY sid=%s, via %s", 
+	  alloca_tohex_sid(subscriber->sid), alloca_tohex_sid(next_hop->sid));
 	break;
       case REACHABLE_UNICAST:
-	DEBUGF("REACHABLE VIA UNICAST sid=%s", alloca_tohex_sid(subscriber->sid));
+	DEBUGF("REACHABLE VIA UNICAST sid=%s, on %s ", alloca_tohex_sid(subscriber->sid), destination->interface->name);
 	break;
       case REACHABLE_BROADCAST:
-	DEBUGF("REACHABLE VIA BROADCAST sid=%s", alloca_tohex_sid(subscriber->sid));
-	break;
-      case REACHABLE_BROADCAST|REACHABLE_UNICAST:
-	DEBUGF("REACHABLE VIA BROADCAST & UNICAST sid=%s", alloca_tohex_sid(subscriber->sid));
-	break;
-      case REACHABLE_UNICAST|REACHABLE_ASSUMED:
-	DEBUGF("ASSUMED REACHABLE VIA UNICAST sid=%s", alloca_tohex_sid(subscriber->sid));
-	break;
-      case REACHABLE_BROADCAST|REACHABLE_ASSUMED:
-	DEBUGF("ASSUMED REACHABLE VIA BROADCAST sid=%s", alloca_tohex_sid(subscriber->sid));
-	break;
-      case REACHABLE_BROADCAST|REACHABLE_UNICAST|REACHABLE_ASSUMED:
-	DEBUGF("ASSUMED REACHABLE VIA BROADCAST & UNICAST sid=%s", alloca_tohex_sid(subscriber->sid));
+	DEBUGF("REACHABLE VIA BROADCAST sid=%s, on %s ", alloca_tohex_sid(subscriber->sid), destination->interface->name);
 	break;
     }
   }
@@ -144,24 +113,7 @@ int set_reachable(struct subscriber *subscriber, int reachable){
   if ((!(old_value & REACHABLE)) && (reachable & REACHABLE))
     monitor_announce_peer(subscriber->sid);
   
-  return 0;
-}
-
-// mark the subscriber as reachable via reply unicast packet
-int reachable_unicast(struct subscriber *subscriber, overlay_interface *interface, struct in_addr addr, int port){
-  if (subscriber->reachable&REACHABLE)
-    return -1;
-  
-  if (subscriber->node)
-    return -1;
-  
-  subscriber->interface = interface;
-  subscriber->address.sin_family = AF_INET;
-  subscriber->address.sin_addr = addr;
-  subscriber->address.sin_port = htons(port);
-  set_reachable(subscriber, REACHABLE_UNICAST);
-  
-  return 0;
+  return 1;
 }
 
 int resolve_name(const char *name, struct in_addr *addr){
@@ -191,7 +143,7 @@ int resolve_name(const char *name, struct in_addr *addr){
 // load a unicast address from configuration
 int load_subscriber_address(struct subscriber *subscriber)
 {
-  if (subscriber_is_reachable(subscriber)&REACHABLE)
+  if (!subscriber || subscriber->reachable&REACHABLE)
     return 0;
   int i = config_host_list__get(&config.hosts, (const sid_t*)subscriber->sid);
   // No unicast configuration? just return.
@@ -220,12 +172,17 @@ int load_subscriber_address(struct subscriber *subscriber)
   }
   if (config.debug.overlayrouting)
     DEBUGF("Loaded address %s:%d for %s", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), alloca_tohex_sid(subscriber->sid));
-  return overlay_send_probe(subscriber, addr, interface, OQ_MESH_MANAGEMENT);
+  struct network_destination *destination = create_unicast_destination(addr, interface);
+  if (!destination)
+    return -1;
+  int ret=overlay_send_probe(subscriber, destination, OQ_MESH_MANAGEMENT);
+  release_destination_ref(destination);
+  return ret;
 }
 
 /* Collection of unicast echo responses to detect working links */
 int
-overlay_mdp_service_probe(overlay_mdp_frame *mdp)
+overlay_mdp_service_probe(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 {
   IN();
   if (mdp->out.src.port!=MDP_PORT_ECHO || mdp->out.payload_length != sizeof(struct probe_contents)){
@@ -233,8 +190,7 @@ overlay_mdp_service_probe(overlay_mdp_frame *mdp)
     RETURN(-1);
   }
   
-  struct subscriber *peer = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
-  if (peer->reachable == REACHABLE_SELF)
+  if (frame->source->reachable == REACHABLE_SELF)
     RETURN(0);
   
   struct probe_contents probe;
@@ -242,63 +198,19 @@ overlay_mdp_service_probe(overlay_mdp_frame *mdp)
   if (probe.addr.sin_family!=AF_INET)
     RETURN(WHY("Unsupported address family"));
   
-  struct overlay_interface *interface = &overlay_interfaces[probe.interface];
-  // if a peer is already reachable, and this probe would change the interface, ignore it
-  // TODO track unicast links better in route_link.c
-  if (peer->reachable & REACHABLE_INDIRECT)
-    RETURN(0);
-  if (peer->reachable & REACHABLE_DIRECT && peer->interface && peer->interface != interface)
-    RETURN(0);
-
-  peer->last_probe_response = gettime_ms();
-  peer->interface = &overlay_interfaces[probe.interface];
-  peer->address.sin_family = AF_INET;
-  peer->address.sin_addr = probe.addr.sin_addr;
-  peer->address.sin_port = probe.addr.sin_port;
-  int r=REACHABLE_UNICAST;
-  // Don't turn assumed|broadcast into unicast|broadcast
-  if (!(peer->reachable & REACHABLE_ASSUMED))
-    r |= (peer->reachable & REACHABLE_DIRECT);
-  set_reachable(peer, r);
-  RETURN(0);
+  RETURN(link_unicast_ack(frame->source, &overlay_interfaces[probe.interface], probe.addr));
   OUT();
 }
 
-int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay_interface *interface, int queue){
-  if (interface==NULL)
-    interface = overlay_interface_find(addr.sin_addr, 1);
-  
-  if (!interface)
-    return WHY("I don't know which interface to use");
-  
-  if (interface->state!=INTERFACE_STATE_UP)
-    return WHY("I can't send a probe if the interface is down.");
-  
-  // don't send a unicast probe unless its on the same interface that is already known to be reachable
-  if (peer && peer->reachable & REACHABLE_INDIRECT)
-    return -1;
-  if (peer && (peer->reachable & REACHABLE_DIRECT) && peer->interface && peer->interface != interface)
-    return -1;
-
-    if (addr.sin_addr.s_addr==0) {
-      if (config.debug.overlayinterfaces) 
-	DEBUG("I can't send a probe to address 0.0.0.0");
-      return -1;
-    }
-    if (addr.sin_port==0) {
-      if (config.debug.overlayinterfaces) 
-	DEBUG("I can't send a probe to port 0");
-      return -1;
-    }
-  
+int overlay_send_probe(struct subscriber *peer, struct network_destination *destination, int queue){
   // never send unicast probes over a stream interface
-  if (interface->socket_type==SOCK_STREAM)
+  if (destination->interface->socket_type==SOCK_STREAM)
     return 0;
   
-  time_ms_t now = gettime_ms();
-  
-  if (peer && peer->last_probe+1000>now)
-    return -1;
+  // XXXTODO throttle probes...
+//  time_ms_t now = gettime_ms();
+//  if (peer && peer->last_probe+1000>now)
+//    return -1;
   
   struct overlay_frame *frame=malloc(sizeof(struct overlay_frame));
   bzero(frame,sizeof(struct overlay_frame));
@@ -307,16 +219,14 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
   frame->next_hop = frame->destination = peer;
   frame->ttl=1;
   frame->queue=queue;
-  frame->destination_resolved=1;
-  frame->recvaddr=addr;
-  frame->unicast=1;
-  frame->interface=interface;
+  frame->destination_count=1;
+  frame->destinations[0].destination=add_destination_ref(destination);
   frame->payload = ob_new();
   frame->source_full = 1;
   // TODO call mdp payload encryption / signing without calling overlay_mdp_dispatch...
-  
-  if (peer)
-    peer->last_probe=gettime_ms();
+  // XXXTODO rate limit
+//  if (peer)
+//    peer->last_probe=gettime_ms();
   
   if (overlay_mdp_encode_ports(frame->payload, MDP_PORT_ECHO, MDP_PORT_PROBE)){
     op_free(frame);
@@ -329,9 +239,9 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
     return -1;
   }
   struct probe_contents probe;
-  probe.addr=addr;
+  probe.addr=destination->address;
   // get interface number
-  probe.interface = interface - overlay_interfaces;
+  probe.interface = destination->interface - overlay_interfaces;
   bcopy(&probe, dst, sizeof(struct probe_contents));
   if (overlay_payload_enqueue(frame)){
     op_free(frame);
@@ -339,13 +249,17 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
   }
   if (config.debug.overlayrouting)
     DEBUGF("Queued probe packet on interface %s to %s:%d for %s", 
-	 interface->name, inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), peer?alloca_tohex_sid(peer->sid):"ANY");
+	 destination->interface->name, 
+	 inet_ntoa(destination->address.sin_addr), ntohs(destination->address.sin_port), 
+	 peer?alloca_tohex_sid(peer->sid):"ANY");
   return 0;
 }
 
 // append the address of a unicast link into a packet buffer
 static int overlay_append_unicast_address(struct subscriber *subscriber, struct overlay_buffer *buff)
 {
+  return -1;
+  /*XXXTODO
   if (subscriber->reachable & REACHABLE_ASSUMED || !(subscriber->reachable & REACHABLE_UNICAST)){
     if (config.debug.overlayrouting)
       DEBUGF("Unable to give address of %s, %d", alloca_tohex_sid(subscriber->sid),subscriber->reachable);
@@ -362,6 +276,7 @@ static int overlay_append_unicast_address(struct subscriber *subscriber, struct 
   if (config.debug.overlayrouting)
     DEBUGF("Added STUN info for %s", alloca_tohex_sid(subscriber->sid));
   return 0;
+  */
 }
 
 // append the address of all neighbour unicast links into a packet buffer
@@ -455,7 +370,11 @@ int overlay_mdp_service_stun(overlay_mdp_frame *mdp)
     if (!subscriber || (subscriber->reachable!=REACHABLE_NONE))
       continue;
     
-    overlay_send_probe(subscriber, addr, NULL, OQ_MESH_MANAGEMENT);
+    struct network_destination *destination = create_unicast_destination(addr, NULL);
+    if (destination){
+      overlay_send_probe(subscriber, destination, OQ_MESH_MANAGEMENT);
+      release_destination_ref(destination);
+    }
   }
   
   ob_free(buff);
@@ -465,11 +384,10 @@ int overlay_mdp_service_stun(overlay_mdp_frame *mdp)
 int overlay_send_stun_request(struct subscriber *server, struct subscriber *request){
   if ((!server) || (!request))
     return -1;
-  if (!(subscriber_is_reachable(server)&REACHABLE))
+  if (!(server->reachable&REACHABLE))
     return -1;
   // don't bother with a stun request if the peer is already reachable directly
-  // TODO link timeouts
-  if (subscriber_is_reachable(request)&REACHABLE_DIRECT)
+  if (request->reachable&REACHABLE_DIRECT)
     return -1;
   
   time_ms_t now = gettime_ms();

@@ -2133,16 +2133,22 @@ int app_route_print(const struct cli_parsed *parsed, struct cli_context *context
       char flags[32];
       strbuf b = strbuf_local(flags, sizeof flags);
       
-      if (p->reachable & REACHABLE_SELF)
-	strbuf_puts(b, "SELF ");
-      if (p->reachable & REACHABLE_ASSUMED)
-	strbuf_puts(b, "ASSUMED ");
-      if (p->reachable & REACHABLE_BROADCAST)
-	strbuf_puts(b, "BROADCAST ");
-      if (p->reachable & REACHABLE_UNICAST)
-	strbuf_puts(b, "UNICAST ");
-      if (p->reachable & REACHABLE_INDIRECT)
-	strbuf_puts(b, "INDIRECT ");
+      switch (p->reachable){
+	case REACHABLE_SELF:
+	  strbuf_puts(b, "SELF");
+	  break;
+	case REACHABLE_BROADCAST:
+	  strbuf_puts(b, "BROADCAST");
+	  break;
+	case REACHABLE_UNICAST:
+	  strbuf_puts(b, "UNICAST");
+	  break;
+	case REACHABLE_INDIRECT:
+	  strbuf_puts(b, "INDIRECT");
+	  break;
+	default:
+	  strbuf_sprintf(b, "%d", p->reachable);
+      }
       cli_put_string(context, strbuf_str(b), ":");
       cli_put_string(context, p->interface_name, ":");
       cli_put_string(context, alloca_tohex_sid(p->neighbour), "\n");
