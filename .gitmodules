@@ -1,0 +1,3 @@
+[submodule "smac"]
+	path = smac
+	url = https://github.com/servalproject/smac

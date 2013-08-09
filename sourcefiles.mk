@@ -68,4 +68,19 @@ SERVAL_SOURCES = \
 	$(SERVAL_BASE)strlcpy.c \
 	$(SERVAL_BASE)vomp.c \
 	$(SERVAL_BASE)vomp_console.c \
-	$(SERVAL_BASE)xprintf.c
+	$(SERVAL_BASE)xprintf.c \
+	$(SERVAL_BASE)smac/arithmetic.c \
+	$(SERVAL_BASE)smac/case.c \
+	$(SERVAL_BASE)smac/charset.c \
+	$(SERVAL_BASE)smac/curve.c \
+	$(SERVAL_BASE)smac/entropyutil.c \
+	$(SERVAL_BASE)smac/gsinterpolative.c \
+	$(SERVAL_BASE)smac/length.c \
+	$(SERVAL_BASE)smac/lowercasealpha.c \
+	$(SERVAL_BASE)smac/nonalpha.c \
+	$(SERVAL_BASE)smac/packed_stats.c \
+	$(SERVAL_BASE)smac/packedascii.c \
+	$(SERVAL_BASE)smac/permutations.c \
+	$(SERVAL_BASE)smac/smac.c \
+	$(SERVAL_BASE)smac/unicode.c
+
