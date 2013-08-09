@@ -46,6 +46,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_address.h"
 #include "overlay_buffer.h"
 
+// SMAC headers
+#include "arithmetic.h"
+#include "charset.h"
+#include "packed_stats.h"
+#include "smac.h"
+#include "unicode.h"
+
+
 extern struct cli_schema command_line_options[];
 
 int commandline_usage(const struct cli_parsed *parsed, struct cli_context *context)
@@ -2274,6 +2282,58 @@ int app_network_scan(const struct cli_parsed *parsed, struct cli_context *contex
   return mdp.error.error;
 }
 
+int app_smac_test(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  /* compute hash of file. We do this without a manifest, so it will necessarily
+     return the hash of the file unencrypted. */
+  const char *dictionary;
+  cli_arg(parsed, "dictionary", &dictionary, NULL, "");
+  const char *message;
+  cli_arg(parsed, "message", &message, NULL, "");
+
+  stats_handle *h=stats_new_handle(dictionary);
+  if (!h) {
+    WHYF("Could not load smac dictionary file '%s'",dictionary);
+    return -1;
+  }
+
+  range_coder *c=range_new_coder(2048);
+  long long now = gettime_ms();
+  stats3_compress_bits(c,(unsigned char *)message,strlen(message),h,NULL);
+  long long duration=gettime_ms()-now;
+
+  WHYF("Compression of message took %lldms",duration);
+  WHYF("Compressed message is %d bits long (%2.1f%% of original size).",
+       c->bits_used,c->bits_used*100.0/(strlen(message)*8));
+
+  {
+    int lenout=0;
+    char mout[1025];
+    range_coder *d=range_coder_dup(c);
+    d->bit_stream_length=d->bits_used;
+    d->bits_used=0;
+    d->low=0; d->high=0xffffffff;
+    
+    now=gettime_ms();
+    range_decode_prefetch(d);
+    stats3_decompress_bits(d,(unsigned char *)mout,&lenout,h,NULL);
+    duration=gettime_ms()-now;
+    WHYF("Decompression of message took %lldms",duration);
+
+    if (strcmp(mout,message)) {
+      WHYF("Verification of compressed message failed.");
+      return -1;
+    }
+    WHYF("Decompression worked fine.");
+    range_coder_free(d);
+  }
+  range_coder_free(c);
+
+  return 0;
+}
+
 /* See cli_parse() for details of command specification syntax.
 */
 #define KEYRING_PIN_OPTIONS ,"[--keyring-pin=<pin>]","[--entry-pin=<pin>]..."
@@ -2381,6 +2441,8 @@ struct cli_schema command_line_options[]={
    "Run cryptography speed test"},
   {app_nonce_test,{"test","nonce",NULL}, 0,
    "Run nonce generation test"},
+  {app_smac_test,{"test","smac","<dictionary>","<message>",NULL}, 0,
+   "Test SMAC short-message compression library"},
   {app_slip_test,{"test","slip","[--seed=<N>]","[--duration=<seconds>|--iterations=<N>]",NULL}, 0,
    "Run serial encapsulation test"},
 #ifdef HAVE_VOIPTEST
