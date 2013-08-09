@@ -429,7 +429,7 @@ struct network_destination * new_destination(struct overlay_interface *interface
 struct network_destination * create_unicast_destination(struct sockaddr_in addr, struct overlay_interface *interface);
 struct network_destination * add_destination_ref(struct network_destination *ref);
 void release_destination_ref(struct network_destination *ref);
-void set_destination_ref(struct network_destination **ptr, struct network_destination *ref);
+int set_destination_ref(struct network_destination **ptr, struct network_destination *ref);
 
 typedef struct overlay_interface {
   struct sched_ent alarm;
@@ -844,7 +844,7 @@ extern char crash_handler_clue[1024];
 
 
 int link_received_duplicate(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int previous_seq, int unicast);
-int link_received_packet(struct decode_context *context, int sender_seq, int unicast);
+int link_received_packet(struct decode_context *context, int sender_seq, char unicast);
 int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp);
 void link_explained(struct subscriber *subscriber);
 void link_interface_down(struct overlay_interface *interface);

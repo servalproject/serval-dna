@@ -246,7 +246,10 @@ overlay_init_packet(struct outgoing_packet *packet, int packet_version,
   packet->packet_version = packet_version;
   packet->context.packet_version = packet_version;
   packet->destination = destination;
-  packet->seq = destination->sequence_number = (destination->sequence_number + 1) & 0xFFFF;
+  if (destination->sequence_number<0)
+    packet->seq=-1;
+  else
+    packet->seq = destination->sequence_number = (destination->sequence_number + 1) & 0xFFFF;
   
   ob_limitsize(packet->buffer, destination->interface->mtu);
   
@@ -549,7 +552,6 @@ static void overlay_send_packet(struct sched_ent *alarm){
 int overlay_send_tick_packet(struct network_destination *destination){
   struct outgoing_packet packet;
   bzero(&packet, sizeof(struct outgoing_packet));
-  packet.seq=-1;
   overlay_init_packet(&packet, 0, destination);
   
   overlay_fill_send_packet(&packet, gettime_ms());

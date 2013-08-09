@@ -237,7 +237,7 @@ test_multiple_nodes() {
    tfw_cat --stdout --stderr
 }
 
-doc_scan="Simulate isolated clients"
+doc_scan="Network scan with isolated clients"
 setup_scan() {
   setup_servald
   assert_no_servald_processes
@@ -280,11 +280,16 @@ setup_single_filter() {
   foreach_instance +A +B start_routing_instance
 }
 test_single_filter() {
-   wait_until path_exists +A +B
-   wait_until path_exists +B +A
+   wait_until --timeout=10 path_exists +A +B
+   wait_until --timeout=5 path_exists +B +A
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDB:UNICAST:"
+   set_instance +B
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDA:BROADCAST:"
 }
 
 doc_broadcast_only="Broadcast packets only"

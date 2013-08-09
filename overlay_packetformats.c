@@ -308,8 +308,10 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
       context->point_to_point_device = context->interface->other_device = context->sender;
     }
     
-    DEBUGF("Received packet seq %d from %s on %s", 
-      sender_seq, alloca_tohex_sid(context->sender->sid), interface->name);
+    if (config.debug.overlayframes)
+      DEBUGF("Received %s packet seq %d from %s on %s", 
+	packet_flags & PACKET_UNICAST?"unicast":"broadcast",
+	sender_seq, alloca_tohex_sid(context->sender->sid), interface->name);
   }
   
   link_received_packet(context, sender_seq, packet_flags & PACKET_UNICAST);
@@ -426,7 +428,8 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	if (payload_len > ob_remaining(b)){
 	  unsigned char *current = ob_ptr(b)+ob_position(b);
 
-	  dump("Payload Header", header_start, current - header_start);
+	  if (config.debug.overlayframes)
+	    dump("Payload Header", header_start, current - header_start);
 	  ret = WHYF("Invalid payload length (%d)", payload_len);
 	  goto end;
 	}
