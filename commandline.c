@@ -2282,6 +2282,12 @@ int app_network_scan(const struct cli_parsed *parsed, struct cli_context *contex
   return mdp.error.error;
 }
 
+int app_mem_test(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  WHYF("Memory usage is %lldkB",memory_footprint());
+  return 0;
+}
+
 int app_smac_test(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
@@ -2292,6 +2298,8 @@ int app_smac_test(const struct cli_parsed *parsed, struct cli_context *context)
   cli_arg(parsed, "dictionary", &dictionary, NULL, "");
   const char *message;
   cli_arg(parsed, "message", &message, NULL, "");
+
+  long long memory_before=memory_footprint();
 
   stats_handle *h=stats_new_handle(dictionary);
   if (!h) {
@@ -2307,6 +2315,12 @@ int app_smac_test(const struct cli_parsed *parsed, struct cli_context *context)
   WHYF("Compression of message took %lldms",duration);
   WHYF("Compressed message is %d bits long (%2.1f%% of original size).",
        c->bits_used,c->bits_used*100.0/(strlen(message)*8));
+
+  long long memory_after=memory_footprint();
+  if (memory_before>-1&&memory_after>=-1)
+    WHYF("Compressing increased baseline VM size by %lldkB",memory_after-memory_before);
+  else
+    WHYF("Couldn't determine memory usage.");
 
   {
     int lenout=0;
@@ -2327,9 +2341,18 @@ int app_smac_test(const struct cli_parsed *parsed, struct cli_context *context)
       return -1;
     }
     WHYF("Decompression worked fine.");
+
+    memory_after=memory_footprint();
+    if (memory_before>-1&&memory_after>=-1)
+      WHYF("Decompressing increased baseline VM size by %lldkB",memory_after-memory_before);
     range_coder_free(d);
   }
   range_coder_free(c);
+
+  memory_after=memory_footprint();
+  if (memory_before>-1&&memory_after>=-1)
+    WHYF("After cleanup, VM size is %lldkB above baseline",
+	 memory_after-memory_before);
 
   return 0;
 }
@@ -2441,6 +2464,8 @@ struct cli_schema command_line_options[]={
    "Run cryptography speed test"},
   {app_nonce_test,{"test","nonce",NULL}, 0,
    "Run nonce generation test"},
+  {app_mem_test,{"test","memory","size",NULL}, 0,
+   "Report minimum memory usage of servald"},
   {app_smac_test,{"test","smac","<dictionary>","<message>",NULL}, 0,
    "Test SMAC short-message compression library"},
   {app_slip_test,{"test","slip","[--seed=<N>]","[--duration=<seconds>|--iterations=<N>]",NULL}, 0,

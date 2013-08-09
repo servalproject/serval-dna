@@ -89,6 +89,7 @@ AC_CHECK_HEADERS(
     linux/ioctl.h \
     linux/netlink.h \
     linux/rtnetlink.h \
+    mach/mach.h \
     net/if.h \
     netinet/in.h \
     ifaddrs.h \

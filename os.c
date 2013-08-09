@@ -30,6 +30,49 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <dirent.h>
 #include <time.h>
 #include <string.h>
+#ifdef HAVE_MACH_MACH_H
+#include <mach/mach.h>
+#endif
+
+#ifdef HAVE_MACH_MACH_H
+
+long long memory_footprint()
+{
+  struct task_basic_info t_info;
+  mach_msg_type_number_t t_info_count = TASK_BASIC_INFO_COUNT;
+  
+  if (KERN_SUCCESS != task_info(mach_task_self(),
+				TASK_BASIC_INFO, (task_info_t)&t_info, 
+				&t_info_count))
+    {
+      return -1;
+    }
+  return t_info.resident_size/1024LL;
+}
+#else
+long long memory_footprint()
+{
+  FILE *f=fopen("/proc/self/status","r");
+  if (f) {
+    long long kb;
+    char line[1024];
+    line[0]=0; fgets(line,1024,f); 
+    while(line[0]) {
+      if (sscanf(line,"VmSize:	    %lld",&kb)==1) {
+	fclose(f);
+	return kb;
+      }
+      line[0]=0; fgets(line,1024,f); 
+    }
+    fclose(f);
+    return -1;
+  } else {
+    // no proc file, so just give up
+    return -1;
+  }
+  
+}
+#endif
 
 int mkdirs(const char *path, mode_t mode)
 {

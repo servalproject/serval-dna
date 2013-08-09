@@ -121,4 +121,9 @@ int urandombytes(unsigned char *buf, unsigned long long len);
  */
 ssize_t read_symlink(const char *path, char *buf, size_t len);
 
+/* Return the current process size (all inclusive VM size, not resident size
+   or data page size) in KB.
+   @author Paul Gardner-Stephen <paul@servalproject.org> */
+long long memory_footprint();
+
 #endif //__SERVALDNA_OS_H
