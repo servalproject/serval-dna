@@ -777,7 +777,7 @@ static int link_send_neighbours()
 
     struct link_out *out = n->out_links;
     while(out){
-      if (out->destination->unicast){
+      if (out->destination->tick_ms>0 && out->destination->unicast){
 	if (out->destination->last_tx + out->destination->tick_ms < now)
 	  overlay_send_tick_packet(out->destination);
 	if (out->destination->last_tx + out->destination->tick_ms < link_send_alarm.alarm)
@@ -871,31 +871,63 @@ struct link_in * get_neighbour_link(struct neighbour *neighbour, struct overlay_
   return link;
 }
 
-int link_add_broadcast_destinations(struct overlay_frame *frame)
+int link_add_destinations(struct overlay_frame *frame)
 {
-  char added_interface[OVERLAY_MAX_INTERFACES];
-  bzero(added_interface, sizeof(added_interface));
-  
-  struct neighbour *neighbour = neighbours;
-  for(;neighbour;neighbour = neighbour->_next){
-    if (neighbour->subscriber->reachable&REACHABLE_DIRECT){
-      struct network_destination *dest = neighbour->subscriber->destination;
-      // TODO set packet version per destination
-      if (frame->packet_version > neighbour->subscriber->max_packet_version)
-	frame->packet_version = neighbour->subscriber->max_packet_version;
-      
-      if (!dest->unicast){
-	// make sure we only add broadcast interfaces once
-	int id = dest->interface - overlay_interfaces;
-	if (added_interface[id]){
-	  continue;
+  if (frame->destination){
+    frame->next_hop = frame->destination;
+    
+    // if the destination is unreachable, but we have a reachable directory service
+    // forward it through the directory service
+    if (frame->next_hop->reachable==REACHABLE_NONE
+      && directory_service 
+      && frame->next_hop!=directory_service
+      && directory_service->reachable&REACHABLE)
+      frame->next_hop = directory_service;
+    
+    if (frame->next_hop->reachable==REACHABLE_NONE){
+      // if the destination is a neighbour, add all probable destinations
+      struct neighbour *n = get_neighbour(frame->destination, 0);
+      if (n){
+	struct link_out *out = n->out_links;
+	while(out){
+	  frame->destinations[frame->destination_count++].destination = add_destination_ref(out->destination);
+	  out = out->_next;
 	}
       }
-      
-      frame->destinations[frame->destination_count++].destination=add_destination_ref(dest);
+    }
+    
+    if ((frame->next_hop->reachable&REACHABLE)==REACHABLE_INDIRECT)
+      frame->next_hop = frame->next_hop->next_hop;
+    
+    if (frame->next_hop->reachable&REACHABLE_DIRECT){
+      if (frame->destination_count < MAX_PACKET_DESTINATIONS)
+	frame->destinations[frame->destination_count++].destination=add_destination_ref(frame->next_hop->destination);
+    }    
+  }else{
+    char added_interface[OVERLAY_MAX_INTERFACES];
+    bzero(added_interface, sizeof(added_interface));
+    
+    struct neighbour *neighbour = neighbours;
+    for(;neighbour;neighbour = neighbour->_next){
+      if (neighbour->subscriber->reachable&REACHABLE_DIRECT){
+	struct network_destination *dest = neighbour->subscriber->destination;
+	// TODO set packet version per destination
+	if (frame->packet_version > neighbour->subscriber->max_packet_version)
+	  frame->packet_version = neighbour->subscriber->max_packet_version;
+	
+	if (!dest->unicast){
+	  // make sure we only add broadcast interfaces once
+	  int id = dest->interface - overlay_interfaces;
+	  if (added_interface[id]){
+	    continue;
+	  }
+	}
+	
+	if (frame->destination_count < MAX_PACKET_DESTINATIONS)
+	  frame->destinations[frame->destination_count++].destination=add_destination_ref(dest);
+      }
     }
   }
-  
   return 0;
 }
 
@@ -977,6 +1009,7 @@ static struct link_out *create_out_link(struct neighbour *neighbour, overlay_int
     else
       ret->destination = add_destination_ref(interface->destination);
     ret->timeout = gettime_ms()+ret->destination->tick_ms*2;
+    update_alarm(gettime_ms()+5);
   }
   return ret;
 }

@@ -51,6 +51,8 @@ struct overlay_frame {
   time_ms_t delay_until;
   struct packet_destination destinations[MAX_PACKET_DESTINATIONS];
   int destination_count;
+  int transmit_count;
+  
   // each payload gets a sequence number that is reused on retransmission
   int32_t mdp_sequence;
   

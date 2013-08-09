@@ -152,19 +152,6 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   
   if (!p) return WHY("Cannot queue NULL");
   
-  do{
-    if (p->destination_count>0)
-      break;
-    if (!p->destination)
-      break;
-    if (p->destination->reachable&REACHABLE)
-      break;
-    if (directory_service&&directory_service->reachable&REACHABLE)
-      break;
-    return WHYF("Cannot send %x packet, destination %s is unreachable", p->type, 
-		alloca_tohex_sid(p->destination->sid));
-  } while(0);
-  
   if (p->queue>=OQ_MAX) 
     return WHY("Invalid queue specified");
   
@@ -199,7 +186,7 @@ int overlay_payload_enqueue(struct overlay_frame *p)
       // hook to allow for flooding via olsr
       olsr_send(p);
       
-      link_add_broadcast_destinations(p);
+      link_add_destinations(p);
 
       // just drop it now
       if (p->destination_count == 0){
@@ -311,14 +298,8 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
       return 0;
     }
   }else{
-    // ignore payload alarm if the destination is currently unreachable
     if (!frame->destination){
       return 0;
-    }
-    if (!(frame->destination->reachable&REACHABLE)){
-      if (!directory_service || !(directory_service->reachable&REACHABLE)){
-	return 0;
-      }
     }
   }
   
@@ -366,38 +347,12 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     if (packet->buffer && ob_limit(frame->payload) > ob_remaining(packet->buffer))
       goto skip;
     
-    if (frame->destination_count==0){
-      frame->next_hop = frame->destination;
+    if (frame->destination_count==0 && frame->destination){
+      link_add_destinations(frame);
       
-      if (frame->next_hop){
-	// Where do we need to route this payload next?
-	int r = frame->next_hop->reachable;
-	
-	// first, should we try to bounce this payload off the directory service?
-	if (r==REACHABLE_NONE && 
-	    directory_service && 
-	    frame->next_hop!=directory_service){
-	  frame->next_hop=directory_service;
-	  r=directory_service->reachable;
-	}
-	
-	// do we need to route via a neighbour?
-	if (r&REACHABLE_INDIRECT){
-	  frame->next_hop = frame->next_hop->next_hop;
-	  r = frame->next_hop->reachable;
-	}
-	
-	if (!(r&REACHABLE_DIRECT)){
-	  goto skip;
-	}
-	
-	frame->destinations[frame->destination_count++].destination=add_destination_ref(frame->next_hop->destination);
-	
-	// degrade packet version if required to reach the destination
-	if (frame->packet_version > frame->next_hop->max_packet_version)
-	  frame->packet_version = frame->next_hop->max_packet_version;
-
-      }
+      // degrade packet version if required to reach the destination
+      if (frame->packet_version > frame->next_hop->max_packet_version)
+	frame->packet_version = frame->next_hop->max_packet_version;
     }
     
     int destination_index=-1;
@@ -485,7 +440,8 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     }
 
     frame->destinations[destination_index].delay_until = now+200;
-
+    frame->transmit_count++;
+    
     if (config.debug.overlayframes){
       DEBUGF("Appended payload %p, %d type %x len %d for %s via %s", 
 	     frame, frame->mdp_sequence,
@@ -495,8 +451,9 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     }
     
     // dont retransmit if we aren't sending sequence numbers, or we've been asked not to
-    if (frame->packet_version<1 || frame->resend<=0 ||
-	frame->enqueued_at + queue->latencyTarget < frame->destinations[destination_index].delay_until){
+    if (frame->packet_version<1 || frame->resend<=0 || packet->seq==-1){
+      if (config.debug.overlayframes)
+	DEBUGF("Not waiting for retransmission (%d, %d, %d)", frame->packet_version, frame->resend, packet->seq);
       remove_destination(frame, destination_index);
       if (frame->destination_count==0){
 	frame = overlay_queue_remove(queue, frame);

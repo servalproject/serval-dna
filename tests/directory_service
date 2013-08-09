@@ -145,13 +145,13 @@ test_routing() {
    wait_until is_published $SIDC
    set_instance +B
    executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDA:UNICAST :"
+   assertStdoutGrep --matches=1 "^$SIDA:UNICAST:"
    executeOk_servald dna lookup "$DIDC"
    assertStdoutLineCount '==' 1
    assertStdoutGrep --matches=1 "^sid://$SIDC/local/$DIDC:$DIDC:$NAMEC\$"
    set_instance +C
    executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDA:UNICAST :"
+   assertStdoutGrep --matches=1 "^$SIDA:UNICAST:"
    executeOk_servald dna lookup "$DIDB"
    assertStdoutLineCount '==' 1
    assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"

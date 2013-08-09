@@ -303,6 +303,9 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
       RETURN(1);
     }
     
+    if (context->packet_version > context->sender->max_packet_version)
+      context->sender->max_packet_version=context->packet_version;
+    
     if (interface->point_to_point && interface->other_device!=context->sender){
       INFOF("Established point to point link with %s on %s", alloca_tohex_sid(context->sender->sid), interface->name);
       context->point_to_point_device = context->interface->other_device = context->sender;

@@ -18,13 +18,6 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-#
-# Routing conditions that are known to not be working or covered by tests;
-# - No support for multi-hop paths involving any unicast links
-#   - unicast only links need to be shared in the routing table
-#   - routing table needs to be shared to unicast only peers
-#   - unicast IP information should be shared among unicast peers
-#
 
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
@@ -241,29 +234,33 @@ doc_scan="Network scan with isolated clients"
 setup_scan() {
   setup_servald
   assert_no_servald_processes
-  foreach_instance +A +B create_single_identity
-  foreach_instance +A +B add_interface 1
-  set_instance +B
-  executeOk_servald config \
-      set interfaces.1.dummy_address 127.0.1.11
-  foreach_instance +A +B \
+  foreach_instance +A +B +C create_single_identity
+  foreach_instance +A +B +C add_interface 1
+  foreach_instance +A +B +C \
     executeOk_servald config \
       set interfaces.1.drop_broadcasts 100
-  foreach_instance +A +B start_routing_instance
+  foreach_instance +A +B +C start_routing_instance
 }
 test_scan() {
    set_instance +A
    executeOk_servald scan
    wait_until scan_completed
-   wait_until has_seen_instances +B
-   executeOk_servald mdp ping --timeout=3 $SIDB 1
-   tfw_cat --stdout --stderr
+   wait_until --timeout=10 has_seen_instances +B +C
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDB:UNICAST:"
+   assertStdoutGrep --matches=1 "^$SIDC:UNICAST:"
+   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   tfw_cat --stdout --stderr
+   set_instance +B
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDA:UNICAST:"
+   assertStdoutGrep --matches=1 "^$SIDC:INDIRECT:"
+   executeOk_servald mdp ping --timeout=3 $SIDC 1
+   tfw_cat --stdout --stderr
 }
 
 scan_completed() {
-  grep "Scan completed" $LOG||return1
+  grep "Scan completed" $instance_servald_log || return 1
   return 0
 }
 
@@ -275,7 +272,6 @@ setup_single_filter() {
   foreach_instance +A +B add_interface 1
   set_instance +B
   executeOk_servald config \
-      set interfaces.1.dummy_address 127.0.1.11 \
       set interfaces.1.drop_broadcasts 100
   foreach_instance +A +B start_routing_instance
 }
@@ -358,6 +354,31 @@ test_multihop_linear() {
    assertStdoutGrep --matches=1 "^4:$SIDC\$"
    assertStdoutGrep --matches=1 "^5:$SIDB\$"
    assertStdoutGrep --matches=1 "^6:$SIDA\$"
+}
+
+doc_unicast_route="Route across unicast links"
+setup_unicast_route() {
+  setup_servald
+  assert_no_servald_processes
+  foreach_instance +A +B +C +D create_single_identity
+  foreach_instance +A +B add_interface 1
+  foreach_instance +B +C add_interface 2
+  foreach_instance +C +D add_interface 3
+  set_instance +A
+  executeOk_servald config \
+      set interfaces.1.drop_broadcasts 100
+  set_instance +C
+  executeOk_servald config \
+      set interfaces.2.drop_broadcasts 100 \
+      set interfaces.3.drop_broadcasts 100
+  foreach_instance +A +B +C +D start_routing_instance
+}
+test_unicast_route() {
+   wait_until --timeout=20 path_exists +A +B +C +D
+   wait_until --timeout=5 path_exists +D +C +B +A
+   set_instance +A
+   executeOk_servald mdp ping --timeout=3 $SIDD 1
+   tfw_cat --stdout --stderr
 }
 
 setup_offline() {
@@ -640,10 +661,10 @@ test_crowded_mess() {
    foreach_instance +A +H \
       wait_until has_seen_instances +A +H
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDH 1
-   tfw_cat --stdout --stderr
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDH:INDIRECT:"
+   executeOk_servald mdp ping --timeout=3 $SIDH 1
+   tfw_cat --stdout --stderr
 }
 
 runTests "$@"

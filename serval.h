@@ -853,7 +853,7 @@ int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now);
 int link_state_ack_soon(struct subscriber *sender);
 int link_state_should_forward_broadcast(struct subscriber *transmitter);
 int link_unicast_ack(struct subscriber *subscriber, struct overlay_interface *interface, struct sockaddr_in addr);
-int link_add_broadcast_destinations(struct overlay_frame *frame);
+int link_add_destinations(struct overlay_frame *frame);
 
 int generate_nonce(unsigned char *nonce,int bytes);
 

@@ -262,11 +262,11 @@ static int add_explain_response(struct subscriber *subscriber, void *context){
   // if one of our identities is unknown, 
   // the header of this packet must include our full sid.
   if (subscriber->reachable==REACHABLE_SELF){
-    subscriber->send_full=1;
     if (subscriber==my_subscriber){
       response->please_explain->source_full=1;
       return 0;
     }
+    subscriber->send_full=1;
   }
   
   // add the whole subscriber id to the payload, stop if we run out of space
@@ -399,11 +399,11 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   if (!context->sender)
     frame->source_full=1;
   
-  if (destination && (destination->reachable & REACHABLE)){
+  if (destination){
     frame->ttl = PAYLOAD_TTL_DEFAULT; // MAX?
     frame->destination = destination;
+    frame->source_full=1;
   }else{
-    DEBUGF("Need to send explanation to destination that isn't routable");
     // send both a broadcast & unicast response out the same interface this packet arrived on.
     frame->ttl=1;// how will this work with olsr??
     if (context->interface){
