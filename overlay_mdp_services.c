@@ -152,18 +152,24 @@ int rhizome_mdp_send_block(unsigned char *unicast_dest_sid,
 
 int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 {
-  uint64_t version=
-    read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]);
-  uint64_t fileOffset=
-    read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8]);
-  uint32_t bitmap=
-    read_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8]);
-  uint16_t blockLength=
-    read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]);
+  struct rmsb_arg *arg = malloc(sizeof(struct rmsb_arg));
+  if (!arg) OUT_OF_MEMORY;
+  arg->version = read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]);
+  arg->file_offset = read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8]);
+  arg->bitmap = read_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8]);
+  arg->block_length = read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]);
 
-  struct subscriber *source = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
-
-  return rhizome_mdp_send_block(source, &mdp->out.payload[0], version, fileOffset, bitmap, blockLength);
+  struct subscriber *sid = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
+  arg->unicast = sid && (!(sid->reachable & REACHABLE_DIRECT)
+                    || ((sid->reachable & REACHABLE_UNICAST)
+                        && sid->interface
+                        && sid->interface->prefer_unicast));
+  if (arg->unicast) {
+    memcpy(arg->unicast_dest_sid, sid->sid, SID_SIZE);
+  }
+  memcpy(arg->bid, &mdp->out.payload[0], RHIZOME_MANIFEST_ID_BYTES);
+  post_runnable(rhizome_mdp_send_block_alarm, arg, &rhizome_fdqueue);
+  return 0;
 }
 
 int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
