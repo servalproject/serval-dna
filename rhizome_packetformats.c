@@ -196,20 +196,14 @@ void overlay_rhizome_advertise(struct sched_ent *alarm){
   if (bundles_available<1)
     goto end;
   
-  struct overlay_frame *frame = malloc(sizeof(struct overlay_frame));
-  bzero(frame,sizeof(struct overlay_frame));
-  frame->type = OF_TYPE_RHIZOME_ADVERT;
-  frame->source = my_subscriber;
-  frame->ttl = 1;
-  frame->queue = OQ_OPPORTUNISTIC;
-  frame->payload = ob_new();
-  ob_limitsize(frame->payload, 800);
-  
-  ob_append_byte(frame->payload, 2);
-  ob_append_ui16(frame->payload, rhizome_http_server_port);
+  struct overlay_buffer *payload = ob_new();
+  if (!payload) OUT_OF_MEMORY;
+  ob_limitsize(payload, 800);
+  ob_append_byte(payload, 2);
+  ob_append_ui16(payload, rhizome_http_server_port);
   
   int64_t rowid=0;
-  int count = append_bars(frame->payload, &retry, 
+  int count = append_bars(payload, &retry,
 			  "SELECT BAR,ROWID FROM MANIFESTS ORDER BY ROWID DESC LIMIT 3", 
 			  &rowid);
   
@@ -217,16 +211,14 @@ void overlay_rhizome_advertise(struct sched_ent *alarm){
     if (bundle_last_rowid>rowid || bundle_last_rowid<=0)
       bundle_last_rowid=rowid;
     
-    count = append_bars(frame->payload, &retry, 
+    count = append_bars(payload, &retry,
 			"SELECT BAR,ROWID FROM MANIFESTS WHERE ROWID < %lld ORDER BY ROWID DESC LIMIT 17", 
 			&bundle_last_rowid);
     if (count<17)
       bundle_last_rowid=INT64_MAX;
   }
   
-  if (overlay_payload_enqueue(frame))
-    op_free(frame);
-
+  post_runnable(overlay_payload_enqueue_alarm, payload, &main_fdqueue);
 end:
   sqlite_set_tracefunc(oldfunc);
   alarm->alarm = gettime_ms()+config.rhizome.advertise.interval;
