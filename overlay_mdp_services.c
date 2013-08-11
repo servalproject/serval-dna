@@ -419,20 +419,27 @@ static void rhizome_retrieve_and_advertise_manifest(const char *id_hex)
   rhizome_manifest *manifest = rhizome_new_manifest();
   if (!manifest) OUT_OF_MEMORY;
   if (!rhizome_retrieve_manifest(id_hex, manifest)) {
-    rhizome_advertise_manifest(manifest);
+    struct ram_arg *arg = malloc(sizeof(struct ram_arg));
+    if (!arg) OUT_OF_MEMORY;
+    arg->manifest_all_bytes = manifest->manifest_all_bytes;
+    memcpy(arg->manifestdata, manifest->manifestdata,
+           manifest->manifest_all_bytes);
+    post_runnable(rhizome_advertise_manifest_alarm, arg, &main_fdqueue);
   }
   rhizome_manifest_free(manifest);
 }
 
 static int overlay_mdp_service_manifest_response(overlay_mdp_frame *mdp){
   int offset=0;
-  char id_hex[RHIZOME_MANIFEST_ID_STRLEN];
-  
+
   while (offset<mdp->out.payload_length){
     unsigned char *bar=&mdp->out.payload[offset];
+    char *id_hex = malloc(RHIZOME_MANIFEST_ID_STRLEN * sizeof(char));
+    if (!id_hex) OUT_OF_MEMORY;
     tohex(id_hex, &bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
     strcat(id_hex, "%");
-    rhizome_retrieve_and_advertise_manifest(id_hex);
+    post_runnable(rhizome_retrieve_and_advertise_manifest_alarm, id_hex,
+                  &rhizome_fdqueue);
     offset+=RHIZOME_BAR_BYTES;
   }
   
