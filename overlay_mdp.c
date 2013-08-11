@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_packet.h"
 #include "mdp_client.h"
 #include "crypto.h"
+#include "parallel.h"
 
 struct profile_total mdp_stats={.name="overlay_mdp_poll"};
 
@@ -551,6 +552,14 @@ int overlay_mdp_encode_ports(struct overlay_buffer *plaintext, int dst_port, int
   return 0;
 }
 
+void overlay_mdp_dispatch_alarm(struct sched_ent *alarm) {
+  ASSERT_THREAD(main_thread);
+  overlay_mdp_frame *mdp = alarm->context;
+  free(alarm);
+  overlay_mdp_dispatch(mdp, 0, NULL, 0);
+  free(mdp);
+}
+
 /* Construct MDP packet frame from overlay_mdp_frame structure
    (need to add return address from bindings list, and copy
    payload etc).
@@ -560,6 +569,7 @@ int overlay_mdp_encode_ports(struct overlay_buffer *plaintext, int dst_port, int
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 			 struct sockaddr_un *recvaddr,int recvaddrlen)
 {
+  ASSERT_THREAD(main_thread);
   IN();
 
   if (mdp->out.payload_length > sizeof(mdp->out.payload))

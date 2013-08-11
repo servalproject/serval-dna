@@ -39,4 +39,9 @@ void *rhizome_run(void *arg);
 /* schedule a function call with the specified arguments on fdq */
 void post_runnable(ALARM_FUNCP function, void *arg, fdqueue *fdq);
 
+/* following structs are used for passing args from one thread to another */
+
+/* *alarm->context is an overlay_mdp_frame */
+void overlay_mdp_dispatch_alarm(struct sched_ent *alarm);
+
 #endif
