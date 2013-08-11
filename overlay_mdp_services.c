@@ -166,12 +166,15 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
   case 'B': /* data block */
   case 'T': /* terminal data block */
     {
-      if (mdp->out.payload_length<(1+16+8+8+1)) RETURN(-1);
-      unsigned char *bidprefix=&mdp->out.payload[1];
-      uint64_t version=read_uint64(&mdp->out.payload[1+16]);
-      uint64_t offset=read_uint64(&mdp->out.payload[1+16+8]);
-      int count=mdp->out.payload_length-(1+16+8+8);
-      unsigned char *bytes=&mdp->out.payload[1+16+8+8];
+      struct rrc_arg *arg = malloc(sizeof(struct rrc_arg));
+      if (!arg) OUT_OF_MEMORY;
+      memcpy(arg->bidprefix, &mdp->out.payload[1], 16);
+      arg->version = read_uint64(&mdp->out.payload[1+16]);
+      arg->offset = read_uint64(&mdp->out.payload[1+16+8]);
+      arg->count = mdp->out.payload_length-(1+16+8+8);
+      arg->bytes = malloc(arg->count * sizeof(char));
+      memcpy(arg->bytes, &mdp->out.payload[1+16+8+8], arg->count);
+      arg->type = type;
 
       /* Now see if there is a slot that matches.  If so, then
 	 see if the bytes are in the window, and write them.
@@ -180,7 +183,8 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
 	 a slot to capture this files as it is being requested
 	 by someone else.
       */
-      rhizome_received_content(bidprefix,version,offset,count,bytes,type);
+
+      post_runnable(rhizome_received_content_alarm, arg, &rhizome_fdqueue);
 
       RETURN(-1);
     }
