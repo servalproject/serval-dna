@@ -56,14 +56,14 @@ struct rhizome_sync
   struct bar_entry bars[CACHE_BARS];
 };
 
-static void rhizome_sync_request(struct subscriber *subscriber, uint64_t token, unsigned char forwards)
+static void rhizome_sync_request(unsigned char *sid, uint64_t token, unsigned char forwards)
 {
   overlay_mdp_frame *mdp = calloc(1, sizeof(overlay_mdp_frame));
   if (!mdp) OUT_OF_MEMORY;
 
   bcopy(my_subscriber->sid, mdp->out.src.sid, SID_SIZE);
   mdp->out.src.port = MDP_PORT_RHIZOME_SYNC;
-  bcopy(subscriber->sid, mdp->out.dst.sid, SID_SIZE);
+  bcopy(sid, mdp->out.dst.sid, SID_SIZE);
   mdp->out.dst.port = MDP_PORT_RHIZOME_SYNC;
   mdp->packetTypeAndFlags = MDP_TX;
   mdp->out.queue = OQ_OPPORTUNISTIC;
@@ -75,14 +75,28 @@ static void rhizome_sync_request(struct subscriber *subscriber, uint64_t token, 
 
   mdp->out.payload_length = ob_position(b);
   if (config.debug.rhizome)
-    DEBUGF("Sending request to %s for BARs from %"PRIu64" %s", alloca_tohex_sid(subscriber->sid), token, forwards?"forwards":"backwards");
+    DEBUGF("Sending request to %s for BARs from %"PRIu64" %s", alloca_tohex_sid(sid), token, forwards?"forwards":"backwards");
 
   post_runnable(overlay_mdp_dispatch_alarm, mdp, &main_fdqueue);
   ob_free(b);
 }
 
-static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhizome_sync *state)
+static void rhizome_sync_send_requests(unsigned char *sid,
+                                       struct rhizome_sync *state);
+
+void rhizome_sync_send_requests_alarm(struct sched_ent *alarm)
 {
+  ASSERT_THREAD(rhizome_thread);
+  struct rssr_arg *arg = alarm->context;
+  free(alarm);
+  rhizome_sync_send_requests(arg->sid, arg->state);
+  free(arg);
+}
+
+static void rhizome_sync_send_requests(unsigned char *sid,
+                                       struct rhizome_sync *state)
+{
+  ASSERT_THREAD(rhizome_thread);
   int i, requests=0;
   time_ms_t now = gettime_ms();
 
@@ -113,7 +127,7 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
     if (mdp->out.payload_length == 0) {
       bcopy(my_subscriber->sid, mdp->out.src.sid, SID_SIZE);
       mdp->out.src.port = MDP_PORT_RHIZOME_RESPONSE;
-      bcopy(subscriber->sid, mdp->out.dst.sid, SID_SIZE);
+      bcopy(sid, mdp->out.dst.sid, SID_SIZE);
       mdp->out.dst.port = MDP_PORT_RHIZOME_MANIFEST_REQUEST;
       mdp->packetTypeAndFlags = MDP_TX;
 
@@ -142,13 +156,13 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
 
   if (state->next_request<=now){
     if (state->sync_end < state->highest_seen){
-      rhizome_sync_request(subscriber, state->sync_end, 1);
+      rhizome_sync_request(sid, state->sync_end, 1);
     }else if(state->sync_start >0){
-      rhizome_sync_request(subscriber, state->sync_start, 0);
+      rhizome_sync_request(sid, state->sync_start, 0);
     }else if(!state->sync_complete){
       state->sync_complete = 1;
       if (config.debug.rhizome)
-        DEBUGF("BAR sync with %s complete", alloca_tohex_sid(subscriber->sid));
+        DEBUGF("BAR sync with %s complete", alloca_tohex_sid(sid));
     }
     state->next_request = now+5000;
   }

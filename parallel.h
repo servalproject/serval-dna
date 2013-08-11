@@ -101,4 +101,13 @@ void rhizome_advertise_manifest_alarm(struct sched_ent *alarm);
 /* *alarm->context is a char * (id_hex) */
 void rhizome_retrieve_and_advertise_manifest_alarm(struct sched_ent *alarm);
 
+/* rhizome_sync_send_requests argument */
+struct rssr_arg {
+  unsigned char sid[SID_SIZE];
+  struct rhizome_sync *state;
+};
+
+/* *alarm->context is a struct rssr_arg */
+void rhizome_sync_send_requests_alarm(struct sched_ent *alarm);
+
 #endif
