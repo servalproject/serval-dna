@@ -315,26 +315,26 @@ static uint64_t max_token=0;
 static void sync_send_response(struct subscriber *dest, int forwards, uint64_t token)
 {
   IN();
-  overlay_mdp_frame mdp;
-  bzero(&mdp,sizeof(mdp));
+  overlay_mdp_frame *mdp = calloc(1, sizeof(overlay_mdp_frame));
+  if (!mdp) OUT_OF_MEMORY;
 
-  bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
-  mdp.out.src.port=MDP_PORT_RHIZOME_SYNC;
-  mdp.out.dst.port=MDP_PORT_RHIZOME_SYNC;
-  mdp.packetTypeAndFlags=MDP_TX;
-  mdp.out.queue=OQ_OPPORTUNISTIC;
+  bcopy(my_subscriber->sid, mdp->out.src.sid, SID_SIZE);
+  mdp->out.src.port = MDP_PORT_RHIZOME_SYNC;
+  mdp->out.dst.port = MDP_PORT_RHIZOME_SYNC;
+  mdp->packetTypeAndFlags = MDP_TX;
+  mdp->out.queue = OQ_OPPORTUNISTIC;
 
   if (dest){
-    bcopy(dest->sid,mdp.out.dst.sid,SID_SIZE);
+    bcopy(dest->sid, mdp->out.dst.sid, SID_SIZE);
   }else{
-    memset(mdp.out.dst.sid, 0xFF, SID_SIZE);
-    mdp.packetTypeAndFlags|=(MDP_NOCRYPT|MDP_NOSIGN);
+    memset(mdp->out.dst.sid, 0xFF, SID_SIZE);
+    mdp->packetTypeAndFlags|=(MDP_NOCRYPT|MDP_NOSIGN);
   }
 
   if (!dest)
-    mdp.out.ttl=1;
+    mdp->out.ttl=1;
 
-  struct overlay_buffer *b = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
+  struct overlay_buffer *b = ob_static(mdp->out.payload, sizeof(mdp->out.payload));
   ob_append_byte(b, MSG_TYPE_BARS);
   ob_checkpoint(b);
 
@@ -408,10 +408,12 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
   sqlite3_finalize(statement);
 
   if (count){
-    mdp.out.payload_length = ob_position(b);
+    mdp->out.payload_length = ob_position(b);
     if (config.debug.rhizome)
       DEBUGF("Sending %d BARs from %"PRIu64" to %"PRIu64, count, token, last);
-    overlay_mdp_dispatch(&mdp,0,NULL,0);
+    post_runnable(overlay_mdp_dispatch_alarm, mdp, &main_fdqueue);
+  } else {
+    free(mdp);
   }
   ob_free(b);
   OUT();
