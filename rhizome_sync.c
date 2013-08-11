@@ -87,8 +87,8 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
   time_ms_t now = gettime_ms();
 
   // send requests for manifests that we have room to fetch
-  overlay_mdp_frame mdp;
-  bzero(&mdp,sizeof(mdp));
+  overlay_mdp_frame *mdp = calloc(1, sizeof(overlay_mdp_frame));
+  if (!mdp) OUT_OF_MEMORY;
 
   for (i=0;i < state->bar_count;i++){
     if (state->bars[i].next_request > now)
@@ -110,28 +110,31 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
     if (m && m->version >= version)
       continue;
 
-    if (mdp.out.payload_length==0){
-      bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
-      mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
-      bcopy(subscriber->sid,mdp.out.dst.sid,SID_SIZE);
-      mdp.out.dst.port=MDP_PORT_RHIZOME_MANIFEST_REQUEST;
-      mdp.packetTypeAndFlags=MDP_TX;
+    if (mdp->out.payload_length == 0) {
+      bcopy(my_subscriber->sid, mdp->out.src.sid, SID_SIZE);
+      mdp->out.src.port = MDP_PORT_RHIZOME_RESPONSE;
+      bcopy(subscriber->sid, mdp->out.dst.sid, SID_SIZE);
+      mdp->out.dst.port = MDP_PORT_RHIZOME_MANIFEST_REQUEST;
+      mdp->packetTypeAndFlags = MDP_TX;
 
-      mdp.out.queue=OQ_OPPORTUNISTIC;
+      mdp->out.queue = OQ_OPPORTUNISTIC;
     }
-    if (mdp.out.payload_length + RHIZOME_BAR_BYTES>MDP_MTU)
+    if (mdp->out.payload_length + RHIZOME_BAR_BYTES>MDP_MTU)
       break;
     if (config.debug.rhizome)
       DEBUGF("Requesting manifest for BAR %s", alloca_tohex(state->bars[i].bar, RHIZOME_BAR_BYTES));
-    bcopy(state->bars[i].bar, &mdp.out.payload[mdp.out.payload_length], RHIZOME_BAR_BYTES);
-    mdp.out.payload_length+=RHIZOME_BAR_BYTES;
+    bcopy(state->bars[i].bar, &mdp->out.payload[mdp->out.payload_length], RHIZOME_BAR_BYTES);
+    mdp->out.payload_length += RHIZOME_BAR_BYTES;
     state->bars[i].next_request = now+1000;
     requests++;
     if (requests>=BARS_PER_RESPONSE)
       break;
   }
-  if (mdp.out.payload_length!=0)
-    overlay_mdp_dispatch(&mdp,0,NULL,0);
+  if (mdp->out.payload_length != 0) {
+    post_runnable(overlay_mdp_dispatch_alarm, mdp, &main_fdqueue);
+  } else {
+    free(mdp);
+  }
 
   // send request for more bars if we have room to cache them
   if (state->bar_count >= CACHE_BARS)
