@@ -30,7 +30,26 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "log.h"
 #include "parallel.h"
 
-int rhizome_mdp_send_block(struct subscriber *dest, unsigned char *id, uint64_t version, uint64_t fileOffset, uint32_t bitmap, uint16_t blockLength)
+int rhizome_mdp_send_block(unsigned char *unicast_dest_sid,
+                           unsigned char *bid, uint64_t version,
+                           uint64_t file_offset, uint32_t bitmap,
+                           uint16_t block_length);
+
+void rhizome_mdp_send_block_alarm(struct sched_ent *alarm)
+{
+  ASSERT_THREAD(rhizome_thread);
+  struct rmsb_arg *arg = alarm->context;
+  free(alarm);
+  rhizome_mdp_send_block(arg->unicast ? arg->unicast_dest_sid : NULL,
+                         arg->bid, arg->version, arg->file_offset,
+                         arg->bitmap, arg->block_length);
+  free(arg);
+}
+
+int rhizome_mdp_send_block(unsigned char *unicast_dest_sid,
+                           unsigned char *id, uint64_t version,
+                           uint64_t fileOffset, uint32_t bitmap,
+                           uint16_t blockLength)
 {
   IN();
   if (blockLength>1024) RETURN(-1);
@@ -73,23 +92,15 @@ int rhizome_mdp_send_block(struct subscriber *dest, unsigned char *id, uint64_t 
     reply.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT|MDP_NOSIGN;
     bcopy(my_subscriber->sid,reply.out.src.sid,SID_SIZE);
     reply.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
-    int send_broadcast=1;
-    
-    if (dest){
-      if (!(dest->reachable&REACHABLE_DIRECT))
-	send_broadcast=0;
-      if (dest->reachable&REACHABLE_UNICAST && dest->interface && dest->interface->prefer_unicast)
-	send_broadcast=0;
-    }
-    
-    if (send_broadcast){
+
+    if (!unicast_dest_sid) {
       // send replies to broadcast so that others can hear blocks and record them
       // (not that preemptive listening is implemented yet).
       memset(reply.out.dst.sid,0xff,SID_SIZE);
       reply.out.ttl=1;
     }else{
       // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
-      bcopy(dest->sid, reply.out.dst.sid, SID_SIZE);
+      bcopy(unicast_dest_sid, reply.out.dst.sid, SID_SIZE);
     }
     
     reply.out.dst.port=MDP_PORT_RHIZOME_RESPONSE;

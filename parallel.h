@@ -22,6 +22,7 @@
 
 #include <pthread.h>
 #include "serval.h"
+#include "rhizome.h"
 
 extern int multithread;
 
@@ -73,5 +74,19 @@ struct rrc_arg {
 
 /* *alarm->context is a struct rrc_arg */
 void rhizome_received_content_alarm(struct sched_ent *alarm);
+
+/* rhizome_mdp_send_block argument */
+struct rmsb_arg {
+  int unicast;
+  unsigned char unicast_dest_sid[SID_SIZE];
+  unsigned char bid[RHIZOME_MANIFEST_ID_BYTES];
+  uint64_t version;
+  uint64_t file_offset;
+  uint32_t bitmap;
+  uint16_t block_length;
+};
+
+/* *alarm->context is a struct rmsb_arg */
+void rhizome_mdp_send_block_alarm(struct sched_ent *alarm);
 
 #endif
