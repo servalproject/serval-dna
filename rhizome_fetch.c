@@ -998,19 +998,18 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   // faster.  Optimising behaviour when there is no packet loss is an
   // outstanding task.
   
-  overlay_mdp_frame mdp;
+  overlay_mdp_frame *mdp = calloc(1, sizeof(overlay_mdp_frame));
+  if (!mdp) OUT_OF_MEMORY;
+  bcopy(my_subscriber->sid, mdp->out.src.sid, SID_SIZE);
+  mdp->out.src.port = MDP_PORT_RHIZOME_RESPONSE;
+  bcopy(slot->peer_sid, mdp->out.dst.sid, SID_SIZE);
+  mdp->out.dst.port = MDP_PORT_RHIZOME_REQUEST;
+  mdp->out.ttl = 1;
+  mdp->packetTypeAndFlags = MDP_TX;
 
-  bzero(&mdp,sizeof(mdp));
-  bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
-  mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
-  bcopy(slot->peer_sid,mdp.out.dst.sid,SID_SIZE);
-  mdp.out.dst.port=MDP_PORT_RHIZOME_REQUEST;
-  mdp.out.ttl=1;
-  mdp.packetTypeAndFlags=MDP_TX;
-
-  mdp.out.queue=OQ_ORDINARY;
-  mdp.out.payload_length=RHIZOME_MANIFEST_ID_BYTES+8+8+4+2;
-  bcopy(slot->bid,&mdp.out.payload[0],RHIZOME_MANIFEST_ID_BYTES);
+  mdp->out.queue = OQ_ORDINARY;
+  mdp->out.payload_length= RHIZOME_MANIFEST_ID_BYTES+8+8+4+2;
+  bcopy(slot->bid, &mdp->out.payload[0], RHIZOME_MANIFEST_ID_BYTES);
 
   uint32_t bitmap=0;
   int requests=32;
@@ -1029,18 +1028,18 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
     offset+=slot->mdpRXBlockLength;
   }
   
-  write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES], slot->bidVersion);  
-  write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8], slot->write_state.file_offset);
-  write_uint32(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8], bitmap);
-  write_uint16(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4], slot->mdpRXBlockLength);  
+  write_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES], slot->bidVersion);
+  write_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8], slot->write_state.file_offset);
+  write_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8], bitmap);
+  write_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4], slot->mdpRXBlockLength);
 
   if (config.debug.rhizome_tx)
     DEBUGF("src sid=%s, dst sid=%s, mdpRXWindowStart=0x%"PRIx64,
-	  alloca_tohex_sid(mdp.out.src.sid),alloca_tohex_sid(mdp.out.dst.sid),
+	  alloca_tohex_sid(mdp->out.src.sid), alloca_tohex_sid(mdp->out.dst.sid),
 	  slot->write_state.file_offset);
 
-  overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
-  
+  post_runnable(overlay_mdp_dispatch_alarm, mdp, &main_fdqueue);
+
   // remember when we sent the request so that we can adjust the inter-request
   // interval based on how fast the packets arrive.
   slot->mdpResponsesOutstanding=requests;
