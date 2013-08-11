@@ -28,10 +28,28 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include "crypto.h"
 #include "log.h"
+#include "parallel.h"
 
+int rhizome_mdp_send_block(unsigned char *unicast_dest_sid,
+                           unsigned char *bid, uint64_t version,
+                           uint64_t file_offset, uint32_t bitmap,
+                           uint16_t block_length);
 
+void rhizome_mdp_send_block_alarm(struct sched_ent *alarm)
+{
+  ASSERT_THREAD(rhizome_thread);
+  struct rmsb_arg *arg = alarm->context;
+  free(alarm);
+  rhizome_mdp_send_block(arg->unicast ? arg->unicast_dest_sid : NULL,
+                         arg->bid, arg->version, arg->file_offset,
+                         arg->bitmap, arg->block_length);
+  free(arg);
+}
 
-int rhizome_mdp_send_block(struct subscriber *dest, unsigned char *id, uint64_t version, uint64_t fileOffset, uint32_t bitmap, uint16_t blockLength)
+int rhizome_mdp_send_block(unsigned char *unicast_dest_sid,
+                           unsigned char *id, uint64_t version,
+                           uint64_t fileOffset, uint32_t bitmap,
+                           uint16_t blockLength)
 {
   IN();
   if (blockLength>1024) RETURN(-1);
@@ -60,78 +78,73 @@ int rhizome_mdp_send_block(struct subscriber *dest, unsigned char *id, uint64_t 
   int ret=rhizome_open_read(&read, filehash, 0);
   
   if (!ret){
-    overlay_mdp_frame reply;
-    bzero(&reply,sizeof(reply));
-    // Reply is broadcast, so we cannot authcrypt, and signing is too time consuming
-    // for low devices.  The result is that an attacker can prevent rhizome transfers
-    // if they want to by injecting fake blocks.  The alternative is to not broadcast
-    // back replies, and then we can authcrypt.
-    // multiple receivers starting at different times, we really need merkle-tree hashing.
-    // so multiple receivers is not realistic for now.  So use non-broadcast unicode
-    // for now would seem the safest.  But that would stop us from allowing multiple
-    // receivers in the special case where additional nodes begin listening in from the
-    // beginning.
-    reply.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT|MDP_NOSIGN;
-    bcopy(my_subscriber->sid,reply.out.src.sid,SID_SIZE);
-    reply.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
-    int send_broadcast=1;
-    
-    if (dest){
-      if (!(dest->reachable&REACHABLE_DIRECT))
-	send_broadcast=0;
-      if (dest->reachable&REACHABLE_UNICAST && dest->interface && dest->interface->prefer_unicast)
-	send_broadcast=0;
-    }
-    
-    if (send_broadcast){
-      // send replies to broadcast so that others can hear blocks and record them
-      // (not that preemptive listening is implemented yet).
-      memset(reply.out.dst.sid,0xff,SID_SIZE);
-      reply.out.ttl=1;
-    }else{
-      // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
-      bcopy(dest->sid, reply.out.dst.sid, SID_SIZE);
-    }
-    
-    reply.out.dst.port=MDP_PORT_RHIZOME_RESPONSE;
-    reply.out.queue=OQ_OPPORTUNISTIC;
-    reply.out.payload[0]='B'; // reply contains blocks
-    // include 16 bytes of BID prefix for identification
-    bcopy(id, &reply.out.payload[1], 16);
-    // and version of manifest
-    bcopy(&version, &reply.out.payload[1+16], sizeof(uint64_t));
-    
     int i;
-    for(i=0;i<32;i++){
-      if (bitmap&(1<<(31-i)))
-	continue;
-      
-      if (overlay_queue_remaining(reply.out.queue) < 10)
-	break;
-      
+    for (i = 0; i < 32; i++) {
+      if (bitmap & (1 << (31 - i)))
+        continue;
+
       // calculate and set offset of block
       read.offset = fileOffset+i*blockLength;
-      
+
       // stop if we passed the length of the file
       // (but we may not know the file length until we attempt a read)
       if (read.length!=-1 && read.offset>read.length)
-	break;
+        break;
+
+      overlay_mdp_frame *reply = calloc(1, sizeof(overlay_mdp_frame));
+      if (!reply) OUT_OF_MEMORY;
+      // Reply is broadcast, so we cannot authcrypt, and signing is too time consuming
+      // for low devices.  The result is that an attacker can prevent rhizome transfers
+      // if they want to by injecting fake blocks.  The alternative is to not broadcast
+      // back replies, and then we can authcrypt.
+      // multiple receivers starting at different times, we really need merkle-tree hashing.
+      // so multiple receivers is not realistic for now.  So use non-broadcast unicode
+      // for now would seem the safest.  But that would stop us from allowing multiple
+      // receivers in the special case where additional nodes begin listening in from the
+      // beginning.
+      reply->packetTypeAndFlags = MDP_TX|MDP_NOCRYPT|MDP_NOSIGN;
+      bcopy(my_subscriber->sid, reply->out.src.sid, SID_SIZE);
+      reply->out.src.port = MDP_PORT_RHIZOME_RESPONSE;
+
+      if (!unicast_dest_sid) {
+        // send replies to broadcast so that others can hear blocks and record them
+        // (not that preemptive listening is implemented yet).
+        memset(reply->out.dst.sid, 0xff, SID_SIZE);
+        reply->out.ttl = 1;
+      }else{
+        // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
+        bcopy(unicast_dest_sid, reply->out.dst.sid, SID_SIZE);
+      }
+
+      reply->out.dst.port = MDP_PORT_RHIZOME_RESPONSE;
+      reply->out.queue = OQ_OPPORTUNISTIC;
+      reply->out.payload[0] = 'B'; // reply contains blocks
+      // include 16 bytes of BID prefix for identification
+      bcopy(id, &reply->out.payload[1], 16);
+      // and version of manifest
+      bcopy(&version, &reply->out.payload[1+16], sizeof(uint64_t));
+
+      /* overlay_queue_remaining cannot be called by a thread other than
+         main_thread */
+      //if (overlay_queue_remaining(reply->out.queue) < 10)
+      //  break;
       
-      write_uint64(&reply.out.payload[1+16+8], read.offset);
+      write_uint64(&reply->out.payload[1+16+8], read.offset);
       
-      int bytes_read = rhizome_read(&read, &reply.out.payload[1+16+8+8], blockLength);
-      if (bytes_read<=0)
-	break;
-      
-      reply.out.payload_length=1+16+8+8+bytes_read;
+      int bytes_read = rhizome_read(&read, &reply->out.payload[1+16+8+8], blockLength);
+      if (bytes_read<=0) {
+        free(reply);
+        break;
+      }
+
+      reply->out.payload_length=1+16+8+8+bytes_read;
       
       // Mark the last block of the file, if required
       if (read.offset >= read.length)
-	reply.out.payload[0]='T';
+        reply->out.payload[0]='T';
       
       // send packet
-      if (overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0))
-	break;
+      post_runnable(overlay_mdp_dispatch_alarm, reply, &main_fdqueue);
     }
   }
   rhizome_read_close(&read);
@@ -142,18 +155,24 @@ int rhizome_mdp_send_block(struct subscriber *dest, unsigned char *id, uint64_t 
 
 int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 {
-  uint64_t version=
-    read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]);
-  uint64_t fileOffset=
-    read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8]);
-  uint32_t bitmap=
-    read_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8]);
-  uint16_t blockLength=
-    read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]);
+  struct rmsb_arg *arg = malloc(sizeof(struct rmsb_arg));
+  if (!arg) OUT_OF_MEMORY;
+  arg->version = read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]);
+  arg->file_offset = read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8]);
+  arg->bitmap = read_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8]);
+  arg->block_length = read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]);
 
-  struct subscriber *source = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
-
-  return rhizome_mdp_send_block(source, &mdp->out.payload[0], version, fileOffset, bitmap, blockLength);
+  struct subscriber *sid = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
+  arg->unicast = sid && (!(sid->reachable & REACHABLE_DIRECT)
+                    || ((sid->reachable & REACHABLE_UNICAST)
+                        && sid->interface
+                        && sid->interface->prefer_unicast));
+  if (arg->unicast) {
+    memcpy(arg->unicast_dest_sid, sid->sid, SID_SIZE);
+  }
+  memcpy(arg->bid, &mdp->out.payload[0], RHIZOME_MANIFEST_ID_BYTES);
+  post_runnable(rhizome_mdp_send_block_alarm, arg, &rhizome_fdqueue);
+  return 0;
 }
 
 int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
@@ -167,12 +186,15 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
   case 'B': /* data block */
   case 'T': /* terminal data block */
     {
-      if (mdp->out.payload_length<(1+16+8+8+1)) RETURN(-1);
-      unsigned char *bidprefix=&mdp->out.payload[1];
-      uint64_t version=read_uint64(&mdp->out.payload[1+16]);
-      uint64_t offset=read_uint64(&mdp->out.payload[1+16+8]);
-      int count=mdp->out.payload_length-(1+16+8+8);
-      unsigned char *bytes=&mdp->out.payload[1+16+8+8];
+      struct rrc_arg *arg = malloc(sizeof(struct rrc_arg));
+      if (!arg) OUT_OF_MEMORY;
+      memcpy(arg->bidprefix, &mdp->out.payload[1], 16);
+      arg->version = read_uint64(&mdp->out.payload[1+16]);
+      arg->offset = read_uint64(&mdp->out.payload[1+16+8]);
+      arg->count = mdp->out.payload_length-(1+16+8+8);
+      arg->bytes = malloc(arg->count * sizeof(char));
+      memcpy(arg->bytes, &mdp->out.payload[1+16+8+8], arg->count);
+      arg->type = type;
 
       /* Now see if there is a slot that matches.  If so, then
 	 see if the bytes are in the window, and write them.
@@ -181,7 +203,8 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
 	 a slot to capture this files as it is being requested
 	 by someone else.
       */
-      rhizome_received_content(bidprefix,version,offset,count,bytes,type);
+
+      post_runnable(rhizome_received_content_alarm, arg, &rhizome_fdqueue);
 
       RETURN(-1);
     }
@@ -379,21 +402,44 @@ end:
   RETURN(ret);
 }
 
+static void rhizome_retrieve_and_advertise_manifest(const char *id_hex);
+
+void rhizome_retrieve_and_advertise_manifest_alarm(struct sched_ent *alarm)
+{
+  ASSERT_THREAD(rhizome_thread);
+  char *id_hex = alarm->context;
+  free(alarm);
+  rhizome_retrieve_and_advertise_manifest(id_hex);
+  free(id_hex);
+}
+
+static void rhizome_retrieve_and_advertise_manifest(const char *id_hex)
+{
+  ASSERT_THREAD(rhizome_thread);
+  rhizome_manifest *manifest = rhizome_new_manifest();
+  if (!manifest) OUT_OF_MEMORY;
+  if (!rhizome_retrieve_manifest(id_hex, manifest)) {
+    struct ram_arg *arg = malloc(sizeof(struct ram_arg));
+    if (!arg) OUT_OF_MEMORY;
+    arg->manifest_all_bytes = manifest->manifest_all_bytes;
+    memcpy(arg->manifestdata, manifest->manifestdata,
+           manifest->manifest_all_bytes);
+    post_runnable(rhizome_advertise_manifest_alarm, arg, &main_fdqueue);
+  }
+  rhizome_manifest_free(manifest);
+}
+
 static int overlay_mdp_service_manifest_response(overlay_mdp_frame *mdp){
   int offset=0;
-  char id_hex[RHIZOME_MANIFEST_ID_STRLEN];
-  
+
   while (offset<mdp->out.payload_length){
     unsigned char *bar=&mdp->out.payload[offset];
+    char *id_hex = malloc(RHIZOME_MANIFEST_ID_STRLEN * sizeof(char));
+    if (!id_hex) OUT_OF_MEMORY;
     tohex(id_hex, &bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
     strcat(id_hex, "%");
-    rhizome_manifest *m = rhizome_new_manifest();
-    if (!m)
-      return WHY("Unable to allocate manifest");
-    if (!rhizome_retrieve_manifest(id_hex, m)){
-      rhizome_advertise_manifest(m);
-    }
-    rhizome_manifest_free(m);
+    post_runnable(rhizome_retrieve_and_advertise_manifest_alarm, id_hex,
+                  &rhizome_fdqueue);
     offset+=RHIZOME_BAR_BYTES;
   }
   

@@ -40,6 +40,7 @@ SERVAL_SOURCES = \
 	$(SERVAL_BASE)overlay_packetformats.c \
 	$(SERVAL_BASE)overlay_payload.c \
 	$(SERVAL_BASE)packetformats.c \
+	$(SERVAL_BASE)parallel.c \
 	$(SERVAL_BASE)performance_timing.c \
 	$(SERVAL_BASE)randombytes.c \
 	$(SERVAL_BASE)route_link.c \

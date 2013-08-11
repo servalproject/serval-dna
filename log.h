@@ -127,6 +127,7 @@ struct strbuf;
 #define FATAL(X)            FATALF("%s", (X))
 #define FATALF_perror(F,...) FATALF(F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
 #define FATAL_perror(X)     FATALF_perror("%s", (X))
+#define OUT_OF_MEMORY       FATAL("Out of memory")
 
 #define WHYF(F,...)         (LOGF(LOG_LEVEL_ERROR, F, ##__VA_ARGS__), -1)
 #define WHY(X)              WHYF("%s", (X))

@@ -22,4 +22,6 @@ HDRS=	fifo.h \
 	constants.h \
 	monitor-client.h \
 	mdp_client.h \
-	sqlite-amalgamation-3070900/sqlite3.h
+	sqlite-amalgamation-3070900/sqlite3.h \
+	fdqueue.h \
+	parallel.h

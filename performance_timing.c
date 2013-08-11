@@ -20,9 +20,6 @@
 #include "serval.h"
 #include "conf.h"
 
-struct profile_total *stats_head=NULL;
-struct call_stats *current_call=NULL;
-
 void fd_clearstat(struct profile_total *s){
   s->max_time = 0;
   s->total_time = 0;
@@ -126,9 +123,9 @@ struct profile_total *sort(struct profile_total *list){
   return left_head;
 }
 
-int fd_clearstats()
+int fd_clearstats(fdqueue *fdq)
 {
-  struct profile_total *stats = stats_head;
+  struct profile_total *stats = fdq->stats_head;
   while(stats!=NULL){
     fd_clearstat(stats);
     stats = stats->_next;
@@ -136,13 +133,13 @@ int fd_clearstats()
   return 0;
 }
 
-int fd_showstats()
+int fd_showstats(fdqueue *fdq)
 {
   struct profile_total total={NULL, 0, "Total", 0,0,0};
   
-  stats_head = sort(stats_head);
+  fdq->stats_head = sort(fdq->stats_head);
   
-  struct profile_total *stats = stats_head;
+  struct profile_total *stats = fdq->stats_head;
   while(stats!=NULL){
     /* Get total time spent doing everything */
     fd_tallystats(&total,stats);
@@ -151,7 +148,7 @@ int fd_showstats()
 
   // Show periodic rhizome transfer information, but only
   // if there are some active rhizome transfers.
-  if (rhizome_active_fetch_count()!=0)
+  if (fdq == &rhizome_fdqueue && rhizome_active_fetch_count()!=0)
     INFOF("Rhizome transfer progress: %d,%d,%d,%d,%d,%d (remaining %d)",
 	  rhizome_active_fetch_bytes_received(0),
 	  rhizome_active_fetch_bytes_received(1),
@@ -164,7 +161,7 @@ int fd_showstats()
   // Report any functions that take too much time
   if (!config.debug.timing)
     {
-      stats = stats_head;
+      stats = fdq->stats_head;
       while(stats!=NULL){
 	/* If a function spends more than 1 second in any 
 	   notionally 3 second period, then dob on it */
@@ -176,7 +173,7 @@ int fd_showstats()
     }
   else {
     INFOF("servald time usage stats:");
-    stats = stats_head;
+    stats = fdq->stats_head;
     while(stats!=NULL){
       /* Get total time spent doing everything */
       if (stats->calls)
@@ -191,16 +188,16 @@ int fd_showstats()
 
 void fd_periodicstats(struct sched_ent *alarm)
 {
-  fd_showstats();
-  fd_clearstats();  
+  fd_showstats(alarm->fdqueue);
+  fd_clearstats(alarm->fdqueue);
   alarm->alarm = gettime_ms()+3000;
   alarm->deadline = alarm->alarm+1000;
   schedule(alarm);
 }
 
-void dump_stack(int log_level)
+void dump_stack(fdqueue *fdq, int log_level)
 {
-  struct call_stats *call = current_call;
+  struct call_stats *call = fdq->current_call;
   while(call){
     if (call->totals)
       LOGF(log_level, "%s",call->totals->name);
@@ -208,7 +205,16 @@ void dump_stack(int log_level)
   }
 }
 
-int fd_func_enter(struct __sourceloc __whence, struct call_stats *this_call)
+void dump_stacks(int log_level)
+{
+  INFOF("Main thread stack:");
+  dump_stack(&main_fdqueue, log_level);
+  INFOF("Rhizome thread stack:");
+  dump_stack(&rhizome_fdqueue, log_level);
+}
+
+int fd_func_enter(struct __sourceloc __whence, fdqueue * fdq,
+                  struct call_stats *this_call)
 {
   if (config.debug.profiling)
     DEBUGF("%s called from %s() %s:%d",
@@ -216,12 +222,13 @@ int fd_func_enter(struct __sourceloc __whence, struct call_stats *this_call)
  
   this_call->enter_time=gettime_ms();
   this_call->child_time=0;
-  this_call->prev = current_call;
-  current_call = this_call;
+  this_call->prev = fdq->current_call;
+  fdq->current_call = this_call;
   return 0;
 }
 
-int fd_func_exit(struct __sourceloc __whence, struct call_stats *this_call)
+int fd_func_exit(struct __sourceloc __whence, fdqueue * fdq,
+                 struct call_stats *this_call)
 {
   // If current_call does not match this_call, then all bets are off as to where it points.  It
   // probably points to somewhere on the stack (see the IN() macro) that has since been overwritten,
@@ -231,22 +238,22 @@ int fd_func_exit(struct __sourceloc __whence, struct call_stats *this_call)
     DEBUGF("%s called from %s() %s:%d",
 	   __FUNCTION__,__whence.function,__whence.file,__whence.line); 
 
-  if (current_call != this_call)
+  if (fdq->current_call != this_call)
     FATAL("performance timing stack trace corrupted");
   
   time_ms_t now = gettime_ms();
   time_ms_t elapsed = now - this_call->enter_time;
-  current_call = this_call->prev;
+  fdq->current_call = this_call->prev;
   
   if (this_call->totals && !this_call->totals->_initialised){
     this_call->totals->_initialised=1;
-    this_call->totals->_next = stats_head;
+    this_call->totals->_next = fdq->stats_head;
     fd_clearstat(this_call->totals);
-    stats_head = this_call->totals;
+    fdq->stats_head = this_call->totals;
   }
   
-  if (current_call)
-    current_call->child_time+=elapsed;
+  if (fdq->current_call)
+    fdq->current_call->child_time+=elapsed;
   
   elapsed-=this_call->child_time;
   

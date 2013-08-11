@@ -374,7 +374,7 @@ void signal_handler(int signal)
   
   LOGF(LOG_LEVEL_FATAL, "Caught signal %s", buf);
   LOGF(LOG_LEVEL_FATAL, "The following clue may help: %s",crash_handler_clue); 
-  dump_stack(LOG_LEVEL_FATAL);
+  dump_stacks(LOG_LEVEL_FATAL);
 
   serverCleanUp();
   exit(0);
@@ -387,8 +387,8 @@ void crash_handler(int signal)
   signame(buf, sizeof(buf), signal);
   LOGF(LOG_LEVEL_FATAL, "Caught signal %s", buf);
   LOGF(LOG_LEVEL_FATAL, "The following clue may help: %s",crash_handler_clue); 
-  dump_stack(LOG_LEVEL_FATAL);
-  
+  dump_stacks(LOG_LEVEL_FATAL);
+
   BACKTRACE;
   if (config.server.respawn_on_crash) {
     int i;

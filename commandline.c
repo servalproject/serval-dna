@@ -220,7 +220,7 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv 
 */
 int parseCommandLine(struct cli_context *context, const char *argv0, int argc, const char *const *args)
 {
-  fd_clearstats();
+  fd_clearstats(current_fdqueue());
   IN();
   
   struct cli_parsed parsed;
@@ -228,9 +228,11 @@ int parseCommandLine(struct cli_context *context, const char *argv0, int argc, c
   switch (result) {
   case 0:
     // Do not run the command if the configuration does not load ok.
-    if (((parsed.commands[parsed.cmdi].flags & CLIFLAG_PERMISSIVE_CONFIG) ? cf_reload_permissive() : cf_reload()) != -1)
+    if (((parsed.commands[parsed.cmdi].flags & CLIFLAG_PERMISSIVE_CONFIG) ? cf_reload_permissive() : cf_reload()) != -1) {
+      fdqueues_init();
       result = cli_invoke(&parsed, context);
-    else {
+      fdqueues_free();
+    } else {
       strbuf b = strbuf_alloca(160);
       strbuf_append_argv(b, argc, args);
       result = WHYF("configuration defective, not running command: %s", strbuf_str(b));
@@ -253,8 +255,12 @@ int parseCommandLine(struct cli_context *context, const char *argv0, int argc, c
   rhizome_close_db();
   OUT();
   
-  if (config.debug.timing)
-    fd_showstats();
+  if (config.debug.timing) {
+    INFO("Main thread stats:");
+    fd_showstats(&main_fdqueue);
+    INFO("Rhizome thread stats:");
+    fd_showstats(&rhizome_fdqueue);
+  }
   return result;
 }
 

@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "mdp_client.h"
 #include "log.h"
 #include "conf.h"
+#include "parallel.h"
 
 #define MSG_TYPE_BARS 0
 #define MSG_TYPE_REQ 1
@@ -55,38 +56,53 @@ struct rhizome_sync
   struct bar_entry bars[CACHE_BARS];
 };
 
-static void rhizome_sync_request(struct subscriber *subscriber, uint64_t token, unsigned char forwards)
+static void rhizome_sync_request(unsigned char *sid, uint64_t token, unsigned char forwards)
 {
-  overlay_mdp_frame mdp;
-  bzero(&mdp,sizeof(mdp));
+  overlay_mdp_frame *mdp = calloc(1, sizeof(overlay_mdp_frame));
+  if (!mdp) OUT_OF_MEMORY;
 
-  bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
-  mdp.out.src.port=MDP_PORT_RHIZOME_SYNC;
-  bcopy(subscriber->sid,mdp.out.dst.sid,SID_SIZE);
-  mdp.out.dst.port=MDP_PORT_RHIZOME_SYNC;
-  mdp.packetTypeAndFlags=MDP_TX;
-  mdp.out.queue=OQ_OPPORTUNISTIC;
+  bcopy(my_subscriber->sid, mdp->out.src.sid, SID_SIZE);
+  mdp->out.src.port = MDP_PORT_RHIZOME_SYNC;
+  bcopy(sid, mdp->out.dst.sid, SID_SIZE);
+  mdp->out.dst.port = MDP_PORT_RHIZOME_SYNC;
+  mdp->packetTypeAndFlags = MDP_TX;
+  mdp->out.queue = OQ_OPPORTUNISTIC;
 
-  struct overlay_buffer *b = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
+  struct overlay_buffer *b = ob_static(mdp->out.payload, sizeof(mdp->out.payload));
   ob_append_byte(b, MSG_TYPE_REQ);
   ob_append_byte(b, forwards);
   ob_append_packed_ui64(b, token);
 
-  mdp.out.payload_length = ob_position(b);
+  mdp->out.payload_length = ob_position(b);
   if (config.debug.rhizome)
-    DEBUGF("Sending request to %s for BARs from %"PRIu64" %s", alloca_tohex_sid(subscriber->sid), token, forwards?"forwards":"backwards");
-  overlay_mdp_dispatch(&mdp,0,NULL,0);
+    DEBUGF("Sending request to %s for BARs from %"PRIu64" %s", alloca_tohex_sid(sid), token, forwards?"forwards":"backwards");
+
+  post_runnable(overlay_mdp_dispatch_alarm, mdp, &main_fdqueue);
   ob_free(b);
 }
 
-static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhizome_sync *state)
+static void rhizome_sync_send_requests(unsigned char *sid,
+                                       struct rhizome_sync *state);
+
+void rhizome_sync_send_requests_alarm(struct sched_ent *alarm)
 {
+  ASSERT_THREAD(rhizome_thread);
+  struct rssr_arg *arg = alarm->context;
+  free(alarm);
+  rhizome_sync_send_requests(arg->sid, arg->state);
+  free(arg);
+}
+
+static void rhizome_sync_send_requests(unsigned char *sid,
+                                       struct rhizome_sync *state)
+{
+  ASSERT_THREAD(rhizome_thread);
   int i, requests=0;
   time_ms_t now = gettime_ms();
 
   // send requests for manifests that we have room to fetch
-  overlay_mdp_frame mdp;
-  bzero(&mdp,sizeof(mdp));
+  overlay_mdp_frame *mdp = calloc(1, sizeof(overlay_mdp_frame));
+  if (!mdp) OUT_OF_MEMORY;
 
   for (i=0;i < state->bar_count;i++){
     if (state->bars[i].next_request > now)
@@ -108,28 +124,31 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
     if (m && m->version >= version)
       continue;
 
-    if (mdp.out.payload_length==0){
-      bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
-      mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
-      bcopy(subscriber->sid,mdp.out.dst.sid,SID_SIZE);
-      mdp.out.dst.port=MDP_PORT_RHIZOME_MANIFEST_REQUEST;
-      mdp.packetTypeAndFlags=MDP_TX;
+    if (mdp->out.payload_length == 0) {
+      bcopy(my_subscriber->sid, mdp->out.src.sid, SID_SIZE);
+      mdp->out.src.port = MDP_PORT_RHIZOME_RESPONSE;
+      bcopy(sid, mdp->out.dst.sid, SID_SIZE);
+      mdp->out.dst.port = MDP_PORT_RHIZOME_MANIFEST_REQUEST;
+      mdp->packetTypeAndFlags = MDP_TX;
 
-      mdp.out.queue=OQ_OPPORTUNISTIC;
+      mdp->out.queue = OQ_OPPORTUNISTIC;
     }
-    if (mdp.out.payload_length + RHIZOME_BAR_BYTES>MDP_MTU)
+    if (mdp->out.payload_length + RHIZOME_BAR_BYTES>MDP_MTU)
       break;
     if (config.debug.rhizome)
       DEBUGF("Requesting manifest for BAR %s", alloca_tohex(state->bars[i].bar, RHIZOME_BAR_BYTES));
-    bcopy(state->bars[i].bar, &mdp.out.payload[mdp.out.payload_length], RHIZOME_BAR_BYTES);
-    mdp.out.payload_length+=RHIZOME_BAR_BYTES;
+    bcopy(state->bars[i].bar, &mdp->out.payload[mdp->out.payload_length], RHIZOME_BAR_BYTES);
+    mdp->out.payload_length += RHIZOME_BAR_BYTES;
     state->bars[i].next_request = now+1000;
     requests++;
     if (requests>=BARS_PER_RESPONSE)
       break;
   }
-  if (mdp.out.payload_length!=0)
-    overlay_mdp_dispatch(&mdp,0,NULL,0);
+  if (mdp->out.payload_length != 0) {
+    post_runnable(overlay_mdp_dispatch_alarm, mdp, &main_fdqueue);
+  } else {
+    free(mdp);
+  }
 
   // send request for more bars if we have room to cache them
   if (state->bar_count >= CACHE_BARS)
@@ -137,13 +156,13 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
 
   if (state->next_request<=now){
     if (state->sync_end < state->highest_seen){
-      rhizome_sync_request(subscriber, state->sync_end, 1);
+      rhizome_sync_request(sid, state->sync_end, 1);
     }else if(state->sync_start >0){
-      rhizome_sync_request(subscriber, state->sync_start, 0);
+      rhizome_sync_request(sid, state->sync_start, 0);
     }else if(!state->sync_complete){
       state->sync_complete = 1;
       if (config.debug.rhizome)
-        DEBUGF("BAR sync with %s complete", alloca_tohex_sid(subscriber->sid));
+        DEBUGF("BAR sync with %s complete", alloca_tohex_sid(sid));
     }
     state->next_request = now+5000;
   }
@@ -310,26 +329,26 @@ static uint64_t max_token=0;
 static void sync_send_response(struct subscriber *dest, int forwards, uint64_t token)
 {
   IN();
-  overlay_mdp_frame mdp;
-  bzero(&mdp,sizeof(mdp));
+  overlay_mdp_frame *mdp = calloc(1, sizeof(overlay_mdp_frame));
+  if (!mdp) OUT_OF_MEMORY;
 
-  bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
-  mdp.out.src.port=MDP_PORT_RHIZOME_SYNC;
-  mdp.out.dst.port=MDP_PORT_RHIZOME_SYNC;
-  mdp.packetTypeAndFlags=MDP_TX;
-  mdp.out.queue=OQ_OPPORTUNISTIC;
+  bcopy(my_subscriber->sid, mdp->out.src.sid, SID_SIZE);
+  mdp->out.src.port = MDP_PORT_RHIZOME_SYNC;
+  mdp->out.dst.port = MDP_PORT_RHIZOME_SYNC;
+  mdp->packetTypeAndFlags = MDP_TX;
+  mdp->out.queue = OQ_OPPORTUNISTIC;
 
   if (dest){
-    bcopy(dest->sid,mdp.out.dst.sid,SID_SIZE);
+    bcopy(dest->sid, mdp->out.dst.sid, SID_SIZE);
   }else{
-    memset(mdp.out.dst.sid, 0xFF, SID_SIZE);
-    mdp.packetTypeAndFlags|=(MDP_NOCRYPT|MDP_NOSIGN);
+    memset(mdp->out.dst.sid, 0xFF, SID_SIZE);
+    mdp->packetTypeAndFlags|=(MDP_NOCRYPT|MDP_NOSIGN);
   }
 
   if (!dest)
-    mdp.out.ttl=1;
+    mdp->out.ttl=1;
 
-  struct overlay_buffer *b = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
+  struct overlay_buffer *b = ob_static(mdp->out.payload, sizeof(mdp->out.payload));
   ob_append_byte(b, MSG_TYPE_BARS);
   ob_checkpoint(b);
 
@@ -403,10 +422,12 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
   sqlite3_finalize(statement);
 
   if (count){
-    mdp.out.payload_length = ob_position(b);
+    mdp->out.payload_length = ob_position(b);
     if (config.debug.rhizome)
       DEBUGF("Sending %d BARs from %"PRIu64" to %"PRIu64, count, token, last);
-    overlay_mdp_dispatch(&mdp,0,NULL,0);
+    post_runnable(overlay_mdp_dispatch_alarm, mdp, &main_fdqueue);
+  } else {
+    free(mdp);
   }
   ob_free(b);
   OUT();
@@ -442,7 +463,11 @@ int overlay_mdp_service_rhizome_sync(struct overlay_frame *frame, overlay_mdp_fr
       break;
   }
   ob_free(b);
-  rhizome_sync_send_requests(frame->source, state);
+  struct rssr_arg *arg = malloc(sizeof(struct rssr_arg));
+  if (!arg) OUT_OF_MEMORY;
+  memcpy(arg->sid, frame->source->sid, SID_SIZE);
+  arg->state = state;
+  post_runnable(rhizome_sync_send_requests_alarm, arg, &rhizome_fdqueue);
   return 0;
 }
 

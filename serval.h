@@ -308,6 +308,12 @@ struct call_stats{
   struct call_stats *prev;
 };
 
+#define MS_TO_TIMESPEC(MS, TS)\
+  (TS)->tv_sec = (MS) / 1000;\
+  (TS)->tv_nsec = ((MS) % 1000) * 1000000;
+
+#include "fdqueue.h"
+
 struct sched_ent;
 
 typedef void (*ALARM_FUNCP) (struct sched_ent *alarm);
@@ -325,6 +331,7 @@ struct sched_ent{
   time_ms_t deadline;
   struct profile_total *stats;
   int _poll_index;
+  fdqueue *fdqueue;
 };
 
 struct limit_state{
@@ -544,7 +551,12 @@ int overlay_queue_schedule_next(time_ms_t next_allowed_packet);
 int overlay_send_tick_packet(struct overlay_interface *interface);
 int overlay_queue_ack(struct subscriber *neighbour, struct overlay_interface *interface, uint32_t ack_mask, int ack_seq);
 
-int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f,  time_ms_t now);
+int overlay_rhizome_saw_advertisements(int i, struct overlay_buffer *payload,
+                                       unsigned char *src_sid,
+                                       int src_reachable,
+                                       int use_new_sync_protocol,
+                                       struct sockaddr_in recvaddr,
+                                       time_ms_t now);
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_saw_voice_traffic();
 int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now);
@@ -747,7 +759,7 @@ int _unwatch(struct __sourceloc whence, struct sched_ent *alarm);
 #define unschedule(alarm) _unschedule(__WHENCE__, alarm)
 #define watch(alarm)      _watch(__WHENCE__, alarm)
 #define unwatch(alarm)    _unwatch(__WHENCE__, alarm)
-int fd_poll();
+int fd_poll(fdqueue *fdqueue, int wait);
 
 void overlay_interface_discover(struct sched_ent *alarm);
 void overlay_packetradio_poll(struct sched_ent *alarm);
@@ -781,18 +793,20 @@ int limit_is_allowed(struct limit_state *state);
 int limit_init(struct limit_state *state, int rate_micro_seconds);
 
 /* function timing routines */
-int fd_clearstats();
-int fd_showstats();
-int fd_checkalarms();
-int fd_func_enter(struct __sourceloc __whence, struct call_stats *this_call);
-int fd_func_exit(struct __sourceloc __whence, struct call_stats *this_call);
-void dump_stack(int log_level);
+int fd_clearstats(fdqueue *fdq);
+int fd_showstats(fdqueue *fdq);
+int fd_func_enter(struct __sourceloc __whence, fdqueue * fdq,
+                  struct call_stats *this_call);
+int fd_func_exit(struct __sourceloc __whence, fdqueue * fdq,
+                 struct call_stats *this_call);
+void dump_stack(fdqueue *fdq, int log_level);
+void dump_stacks(int log_level);
 
 #define IN() static struct profile_total _aggregate_stats={NULL,0,__FUNCTION__,0,0,0}; \
     struct call_stats _this_call={.totals=&_aggregate_stats}; \
-    fd_func_enter(__HERE__, &_this_call);
+    fd_func_enter(__HERE__, current_fdqueue(), &_this_call);
 
-#define OUT() fd_func_exit(__HERE__, &_this_call)
+#define OUT() fd_func_exit(__HERE__, current_fdqueue(), &_this_call)
 #define RETURN(X) do { OUT(); return (X); } while (0);
 #define RETURNNULL do { OUT(); return (NULL); } while (0);
 

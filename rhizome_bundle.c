@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdlib.h>
 #include "serval.h"
 #include "conf.h"
+#include "parallel.h"
 #include "rhizome.h"
 #include "str.h"
 
@@ -502,6 +503,7 @@ static void _log_manifest_trace(struct __sourceloc __whence, const char *operati
 
 rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence)
 {
+  ASSERT_THREAD(rhizome_thread);
   if (manifest_first_free<0) {
     /* Setup structures */
     int i;
@@ -554,6 +556,7 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence)
 
 void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
 {
+  ASSERT_THREAD(rhizome_thread);
   if (!m) return;
   int i;
   int mid=m->manifest_record_number;

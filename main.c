@@ -33,6 +33,13 @@ int main(int argc, char **argv)
   srandomdev();
   server_save_argv(argc, (const char*const*)argv);
   cf_init();
+
+  /* workaround: when running tests, if no trace is logged before
+   * fdqueues_init(), then fd 0 will not be taken for logfile, so it will be
+   * used by a pipe (internal to fdqueues). When starting background server,
+   * fd 0 will be closed, so fdqueues would be broken. */
+  INFO("");
+
   int status = parseCommandLine(NULL, argv[0], argc - 1, (const char*const*)&argv[1]);
 #if defined WIN32
   WSACleanup();

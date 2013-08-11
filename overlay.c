@@ -71,6 +71,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "conf.h"
 #include "rhizome.h"
+#include "parallel.h"
 #include "strbuf.h"
 
 int overlayMode=0;
@@ -84,6 +85,9 @@ int overlayServerMode()
   /* In overlay mode we need to listen to all of our sockets, and also to
      send periodic traffic. This means we need to */
   INFO("Running in overlay mode.");
+
+  multithread = 1;
+  main_fdqueue.thread = main_thread = pthread_self();
 
   /* Get keyring available for use.
      Required for MDP, and very soon as a complete replacement for the
@@ -104,16 +108,19 @@ int overlayServerMode()
      of wifi latency anyway, so we'll live with it.  Larger values will affect voice transport,
      and smaller values would affect CPU and energy use, and make the simulation less realistic. */
 
-#define SCHEDULE(X, Y, D) { \
+#define SCHEDULE_Q(X, Y, D, Q) { \
 static struct profile_total _stats_##X={.name="" #X "",}; \
 static struct sched_ent _sched_##X={\
   .stats = &_stats_##X, \
   .function=X,\
 }; \
-_sched_##X.alarm=(gettime_ms()+Y);\
-_sched_##X.deadline=(gettime_ms()+Y+D);\
+_sched_##X.alarm=(gettime_ms()+(Y));\
+_sched_##X.deadline=(gettime_ms()+(Y)+(D));\
+_sched_##X.fdqueue=(Q);\
 schedule(&_sched_##X); }
-  
+
+#define SCHEDULE(X, Y, D) SCHEDULE_Q(X,Y,D,NULL)
+
   /* Periodically check for server shut down */
   SCHEDULE(server_shutdown_check, 0, 100);
   
@@ -148,17 +155,23 @@ schedule(&_sched_##X); }
   SCHEDULE(overlay_interface_discover, 1, 100);
 
   /* Periodically advertise bundles */
-  SCHEDULE(overlay_rhizome_advertise, 1000, 10000);
+  SCHEDULE_Q(overlay_rhizome_advertise, 1000, 10000, &rhizome_fdqueue);
   
   /* Calculate (and possibly show) CPU usage stats periodically */
   SCHEDULE(fd_periodicstats, 3000, 500);
 
 #undef SCHEDULE
 
+  if (pthread_create(&rhizome_thread, NULL, rhizome_run, NULL)) {
+    FATAL("Cannot create rhizome pthread");
+  }
+
   // log message used by tests to wait for the server to start
   INFO("Server started, entering main loop");
   /* Check for activitiy and respond to it */
-  while(fd_poll());
+  while(fd_poll(&main_fdqueue, 1));
+
+  pthread_join(rhizome_thread, NULL);
 
   RETURN(0);
   OUT();

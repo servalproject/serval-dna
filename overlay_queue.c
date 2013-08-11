@@ -21,6 +21,7 @@
 #include "conf.h"
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
+#include "parallel.h"
 #include "str.h"
 #include "strbuf.h"
 
@@ -59,6 +60,7 @@ static void overlay_send_packet(struct sched_ent *alarm);
 static int overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame);
 
 int overlay_queue_init(){
+  ASSERT_THREAD(main_thread);
   /* Set default congestion levels for queues */
   int i;
   for(i=0;i<OQ_MAX;i++) {
@@ -139,8 +141,25 @@ int overlay_queue_remaining(int queue){
   return overlay_tx[queue].maxLength - overlay_tx[queue].length;
 }
 
+void overlay_payload_enqueue_alarm(struct sched_ent *alarm) {
+  ASSERT_THREAD(main_thread);
+  struct overlay_buffer *payload = alarm->context;
+  free(alarm);
+  struct overlay_frame *frame = calloc(1, sizeof(struct overlay_frame));
+  if (!frame) OUT_OF_MEMORY;
+  frame->type = OF_TYPE_RHIZOME_ADVERT;
+  frame->source = my_subscriber;
+  frame->ttl = 1;
+  frame->queue = OQ_OPPORTUNISTIC;
+  frame->payload = payload;
+  if (overlay_payload_enqueue(frame)) {
+    op_free(frame);
+  }
+}
+
 int overlay_payload_enqueue(struct overlay_frame *p)
 {
+  ASSERT_THREAD(main_thread);
   /* Add payload p to queue q.
    
    Queues get scanned from first to last, so we should append new entries
@@ -270,6 +289,7 @@ static void
 overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destination, 
 		    int unicast, int packet_version,
 		    overlay_interface *interface, struct sockaddr_in addr){
+  ASSERT_THREAD(main_thread);
   packet->interface = interface;
   packet->context.interface = interface;
   packet->i = (interface - overlay_interfaces);
@@ -295,6 +315,7 @@ overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destinati
 }
 
 int overlay_queue_schedule_next(time_ms_t next_allowed_packet){
+  ASSERT_THREAD(main_thread);
   if (next_packet.alarm==0 || next_allowed_packet < next_packet.alarm){
     
     if (!next_packet.function){
@@ -369,6 +390,7 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
 
 static void
 overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, time_ms_t now){
+  ASSERT_THREAD(main_thread);
   struct overlay_frame *frame = queue->first;
   
   // TODO stop when the packet is nearly full?
@@ -594,6 +616,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 // fill a packet from our outgoing queues and send it
 static int
 overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
+  ASSERT_THREAD(main_thread);
   int i;
   IN();
   // while we're looking at queues, work out when to schedule another packet
@@ -626,6 +649,7 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
 
 // when the queue timer elapses, send a packet
 static void overlay_send_packet(struct sched_ent *alarm){
+  ASSERT_THREAD(main_thread);
   struct outgoing_packet packet;
   bzero(&packet, sizeof(struct outgoing_packet));
   packet.seq=-1;
@@ -633,6 +657,7 @@ static void overlay_send_packet(struct sched_ent *alarm){
 }
 
 int overlay_send_tick_packet(struct overlay_interface *interface){
+  ASSERT_THREAD(main_thread);
   struct outgoing_packet packet;
   bzero(&packet, sizeof(struct outgoing_packet));
   packet.seq=-1;
@@ -645,6 +670,7 @@ int overlay_send_tick_packet(struct overlay_interface *interface){
 // de-queue all packets that have been sent to this subscriber & have arrived.
 int overlay_queue_ack(struct subscriber *neighbour, struct overlay_interface *interface, uint32_t ack_mask, int ack_seq)
 {
+  ASSERT_THREAD(main_thread);
   int interface_id = interface - overlay_interfaces;
   int i;
   time_ms_t now = gettime_ms();

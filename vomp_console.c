@@ -358,7 +358,7 @@ int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *contex
   watch(&stdin_state.alarm);
   
   while(monitor_client_fd!=-1){
-    fd_poll();
+    fd_poll(&main_fdqueue, 1);
   }
   
   unwatch(&stdin_state.alarm);
