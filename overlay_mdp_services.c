@@ -402,6 +402,16 @@ end:
   RETURN(ret);
 }
 
+static void rhizome_retrieve_and_advertise_manifest(const char *id_hex)
+{
+  rhizome_manifest *manifest = rhizome_new_manifest();
+  if (!manifest) OUT_OF_MEMORY;
+  if (!rhizome_retrieve_manifest(id_hex, manifest)) {
+    rhizome_advertise_manifest(manifest);
+  }
+  rhizome_manifest_free(manifest);
+}
+
 static int overlay_mdp_service_manifest_response(overlay_mdp_frame *mdp){
   int offset=0;
   char id_hex[RHIZOME_MANIFEST_ID_STRLEN];
@@ -410,13 +420,7 @@ static int overlay_mdp_service_manifest_response(overlay_mdp_frame *mdp){
     unsigned char *bar=&mdp->out.payload[offset];
     tohex(id_hex, &bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
     strcat(id_hex, "%");
-    rhizome_manifest *m = rhizome_new_manifest();
-    if (!m)
-      return WHY("Unable to allocate manifest");
-    if (!rhizome_retrieve_manifest(id_hex, m)){
-      rhizome_advertise_manifest(m);
-    }
-    rhizome_manifest_free(m);
+    rhizome_retrieve_and_advertise_manifest(id_hex);
     offset+=RHIZOME_BAR_BYTES;
   }
   
