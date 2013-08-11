@@ -463,7 +463,11 @@ int overlay_mdp_service_rhizome_sync(struct overlay_frame *frame, overlay_mdp_fr
       break;
   }
   ob_free(b);
-  rhizome_sync_send_requests(frame->source, state);
+  struct rssr_arg *arg = malloc(sizeof(struct rssr_arg));
+  if (!arg) OUT_OF_MEMORY;
+  memcpy(arg->sid, frame->source->sid, SID_SIZE);
+  arg->state = state;
+  post_runnable(rhizome_sync_send_requests_alarm, arg, &rhizome_fdqueue);
   return 0;
 }
 
