@@ -1249,10 +1249,21 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, unsigned char *buffer
   OUT();
 }
 
+void rhizome_received_content_alarm(struct sched_ent *alarm) {
+  ASSERT_THREAD(rhizome_thread);
+  struct rrc_arg *arg = alarm->context;
+  free(alarm);
+  rhizome_received_content(arg->bidprefix, arg->version, arg->offset,
+                           arg->count, arg->bytes, arg->type);
+  free(arg->bytes);
+  free(arg);
+}
+
 int rhizome_received_content(unsigned char *bidprefix,
 			     uint64_t version, uint64_t offset,
 			     int count,unsigned char *bytes,int type)
 {
+  ASSERT_THREAD(rhizome_thread);
   IN();
   int i;
   for(i=0;i<NQUEUES;i++) {

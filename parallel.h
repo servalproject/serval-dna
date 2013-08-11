@@ -61,4 +61,17 @@ void overlay_rhizome_saw_advertisements_alarm(struct sched_ent *alarm);
 /* *alarm->context is a struct overlay_buffer (payload) */
 void overlay_payload_enqueue_alarm(struct sched_ent *alarm);
 
+/* rhizome_received_content argument */
+struct rrc_arg {
+  int type;
+  unsigned char bidprefix[16];
+  uint64_t version;
+  uint64_t offset;
+  int count;
+  unsigned char* bytes;
+};
+
+/* *alarm->context is a struct rrc_arg */
+void rhizome_received_content_alarm(struct sched_ent *alarm);
+
 #endif
