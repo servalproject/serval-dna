@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "mdp_client.h"
 #include "log.h"
 #include "conf.h"
+#include "parallel.h"
 
 #define MSG_TYPE_BARS 0
 #define MSG_TYPE_REQ 1
@@ -57,25 +58,26 @@ struct rhizome_sync
 
 static void rhizome_sync_request(struct subscriber *subscriber, uint64_t token, unsigned char forwards)
 {
-  overlay_mdp_frame mdp;
-  bzero(&mdp,sizeof(mdp));
+  overlay_mdp_frame *mdp = calloc(1, sizeof(overlay_mdp_frame));
+  if (!mdp) OUT_OF_MEMORY;
 
-  bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
-  mdp.out.src.port=MDP_PORT_RHIZOME_SYNC;
-  bcopy(subscriber->sid,mdp.out.dst.sid,SID_SIZE);
-  mdp.out.dst.port=MDP_PORT_RHIZOME_SYNC;
-  mdp.packetTypeAndFlags=MDP_TX;
-  mdp.out.queue=OQ_OPPORTUNISTIC;
+  bcopy(my_subscriber->sid, mdp->out.src.sid, SID_SIZE);
+  mdp->out.src.port = MDP_PORT_RHIZOME_SYNC;
+  bcopy(subscriber->sid, mdp->out.dst.sid, SID_SIZE);
+  mdp->out.dst.port = MDP_PORT_RHIZOME_SYNC;
+  mdp->packetTypeAndFlags = MDP_TX;
+  mdp->out.queue = OQ_OPPORTUNISTIC;
 
-  struct overlay_buffer *b = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
+  struct overlay_buffer *b = ob_static(mdp->out.payload, sizeof(mdp->out.payload));
   ob_append_byte(b, MSG_TYPE_REQ);
   ob_append_byte(b, forwards);
   ob_append_packed_ui64(b, token);
 
-  mdp.out.payload_length = ob_position(b);
+  mdp->out.payload_length = ob_position(b);
   if (config.debug.rhizome)
     DEBUGF("Sending request to %s for BARs from %"PRIu64" %s", alloca_tohex_sid(subscriber->sid), token, forwards?"forwards":"backwards");
-  overlay_mdp_dispatch(&mdp,0,NULL,0);
+
+  post_runnable(overlay_mdp_dispatch_alarm, mdp, &main_fdqueue);
   ob_free(b);
 }
 
