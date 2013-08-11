@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
+#include "parallel.h"
 
 struct sockaddr_in loopback;
 
@@ -84,7 +85,20 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
       break;
       // data frames
     case OF_TYPE_RHIZOME_ADVERT:
-      overlay_rhizome_saw_advertisements(id,f,now);
+      ; // only a statement can follow a label
+      struct orsa_arg *arg = malloc(sizeof(struct orsa_arg));
+      if (!arg) OUT_OF_MEMORY;
+      arg->id = id;
+      arg->payload = ob_dup(f->payload);
+      /* ob_dup() does not do what expected
+       * See https://github.com/servalproject/serval-dna/pull/66 */
+      arg->payload->position = f->payload->position;
+      memcpy(arg->src_sid, f->source->sid, SID_SIZE);
+      arg->src_reachable = f->source->reachable;
+      memcpy(&arg->recvaddr, &f->recvaddr, sizeof(struct sockaddr_in));
+      arg->now = now;
+      post_runnable(overlay_rhizome_saw_advertisements_alarm, arg,
+              &rhizome_fdqueue);
       break;
     case OF_TYPE_DATA:
     case OF_TYPE_DATA_VOICE:
