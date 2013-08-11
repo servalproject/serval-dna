@@ -119,12 +119,12 @@ struct rhizome_fetch_candidate queue5[2];
 /* Static allocation of the queue structures.  Must be in order of ascending log_size_threshold.
  */
 struct rhizome_fetch_queue rhizome_fetch_queues[] = {
-  { .candidate_queue_size = NELS(queue0), .candidate_queue = queue0, .log_size_threshold =   10, .active = { .state = RHIZOME_FETCH_FREE } },
-  { .candidate_queue_size = NELS(queue1), .candidate_queue = queue1, .log_size_threshold =   13, .active = { .state = RHIZOME_FETCH_FREE } },
-  { .candidate_queue_size = NELS(queue2), .candidate_queue = queue2, .log_size_threshold =   16, .active = { .state = RHIZOME_FETCH_FREE } },
-  { .candidate_queue_size = NELS(queue3), .candidate_queue = queue3, .log_size_threshold =   19, .active = { .state = RHIZOME_FETCH_FREE } },
-  { .candidate_queue_size = NELS(queue4), .candidate_queue = queue4, .log_size_threshold =   22, .active = { .state = RHIZOME_FETCH_FREE } },
-  { .candidate_queue_size = NELS(queue5), .candidate_queue = queue5, .log_size_threshold = 0xFF, .active = { .state = RHIZOME_FETCH_FREE } }
+  { .candidate_queue_size = NELS(queue0), .candidate_queue = queue0, .log_size_threshold =   10, .active = { .state = RHIZOME_FETCH_FREE, .alarm = { .fdqueue = &rhizome_fdqueue } } },
+  { .candidate_queue_size = NELS(queue1), .candidate_queue = queue1, .log_size_threshold =   13, .active = { .state = RHIZOME_FETCH_FREE, .alarm = { .fdqueue = &rhizome_fdqueue } } },
+  { .candidate_queue_size = NELS(queue2), .candidate_queue = queue2, .log_size_threshold =   16, .active = { .state = RHIZOME_FETCH_FREE, .alarm = { .fdqueue = &rhizome_fdqueue } } },
+  { .candidate_queue_size = NELS(queue3), .candidate_queue = queue3, .log_size_threshold =   19, .active = { .state = RHIZOME_FETCH_FREE, .alarm = { .fdqueue = &rhizome_fdqueue } } },
+  { .candidate_queue_size = NELS(queue4), .candidate_queue = queue4, .log_size_threshold =   22, .active = { .state = RHIZOME_FETCH_FREE, .alarm = { .fdqueue = &rhizome_fdqueue } } },
+  { .candidate_queue_size = NELS(queue5), .candidate_queue = queue5, .log_size_threshold = 0xFF, .active = { .state = RHIZOME_FETCH_FREE, .alarm = { .fdqueue = &rhizome_fdqueue } } }
 };
 
 #define NQUEUES	    NELS(rhizome_fetch_queues)
@@ -904,11 +904,14 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
     }
   }
 
+  /* no need to synchronize is_schedule() and schedule(): only this thread can
+     schedule sched_activate */
   if (!is_scheduled(&sched_activate)) {
     sched_activate.function = rhizome_start_next_queued_fetches;
     sched_activate.stats = &rsnqf_stats;
     sched_activate.alarm = gettime_ms() + rhizome_fetch_delay_ms();
     sched_activate.deadline = sched_activate.alarm + config.rhizome.idle_timeout;
+    sched_activate.fdqueue = &rhizome_fdqueue;
     schedule(&sched_activate);
   }
 

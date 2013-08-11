@@ -172,6 +172,7 @@ success:
   server_alarm.stats=&server_stats;
   server_alarm.poll.fd = rhizome_server_socket;
   server_alarm.poll.events = POLLIN;
+  server_alarm.fdqueue = &rhizome_fdqueue;
   watch(&server_alarm);
   return 0;
 
@@ -297,6 +298,7 @@ void rhizome_server_poll(struct sched_ent *alarm)
 	request->alarm.poll.events=POLLIN;
 	request->alarm.alarm = gettime_ms()+RHIZOME_IDLE_TIMEOUT;
 	request->alarm.deadline = request->alarm.alarm+RHIZOME_IDLE_TIMEOUT;
+	request->alarm.fdqueue = &rhizome_fdqueue;
 	// watch for the incoming http request
 	watch(&request->alarm);
 	// set an inactivity timeout to close the connection
