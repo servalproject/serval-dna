@@ -308,6 +308,12 @@ struct call_stats{
   struct call_stats *prev;
 };
 
+#define MS_TO_TIMESPEC(MS, TS)\
+  (TS)->tv_sec = (MS) / 1000;\
+  (TS)->tv_nsec = ((MS) % 1000) * 1000000;
+
+#include "fdqueue.h"
+
 struct sched_ent;
 
 typedef void (*ALARM_FUNCP) (struct sched_ent *alarm);
@@ -325,6 +331,7 @@ struct sched_ent{
   time_ms_t deadline;
   struct profile_total *stats;
   int _poll_index;
+  fdqueue *fdqueue;
 };
 
 struct limit_state{
@@ -747,7 +754,7 @@ int _unwatch(struct __sourceloc whence, struct sched_ent *alarm);
 #define unschedule(alarm) _unschedule(__WHENCE__, alarm)
 #define watch(alarm)      _watch(__WHENCE__, alarm)
 #define unwatch(alarm)    _unwatch(__WHENCE__, alarm)
-int fd_poll();
+int fd_poll(fdqueue *fdqueue, int wait);
 
 void overlay_interface_discover(struct sched_ent *alarm);
 void overlay_packetradio_poll(struct sched_ent *alarm);

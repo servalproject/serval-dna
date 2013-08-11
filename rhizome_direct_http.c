@@ -877,7 +877,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	       fetch the file for import is all handled asynchronously, so just
 	       wait for it to finish. */
 	    while (rhizome_any_fetch_active() || rhizome_any_fetch_queued())
-	      fd_poll();
+	      fd_poll(&rhizome_fdqueue, 1);
 	  }
 	
       } else if (type==1&&r->pushP) {

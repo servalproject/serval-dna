@@ -504,7 +504,7 @@ static int rhizome_sync_with_peers(int mode, int peer_count, const struct config
     rhizome_direct_sync_request *s = rhizome_direct_new_sync_request(rhizome_direct_http_dispatch, 65536, 0, mode, state);
     rhizome_direct_start_sync_request(s);
     if (rd_sync_handle_count > 0)
-      while (fd_poll() && rd_sync_handle_count > 0)
+      while (fd_poll(&rhizome_fdqueue, 1) && rd_sync_handle_count > 0)
 	;
   }
   return 0;

@@ -158,7 +158,7 @@ schedule(&_sched_##X); }
   // log message used by tests to wait for the server to start
   INFO("Server started, entering main loop");
   /* Check for activitiy and respond to it */
-  while(fd_poll());
+  while(fd_poll(&main_fdqueue, 1));
 
   RETURN(0);
   OUT();
