@@ -152,6 +152,9 @@ int is_scheduled(const struct sched_ent *alarm)
   if (!fdq) {
     return 0;
   }
+  if (!multithread) {
+    fdq = &main_fdqueue;
+  }
   int res;
 
   add_poll_nonblock(fdq);
@@ -181,7 +184,7 @@ int _schedule(struct __sourceloc __whence, struct sched_ent *alarm)
     return WHY("Can't schedule if you haven't set the function pointer");
 
   fdqueue *fdq = alarm->fdqueue;
-  if (!fdq) {
+  if (!fdq || !multithread) {
     fdq = alarm->fdqueue = &main_fdqueue;
   }
 
@@ -256,6 +259,9 @@ int _unschedule(struct __sourceloc __whence, struct sched_ent *alarm)
     /* was never scheduled */
     return 0;
   }
+  if (!multithread) {
+    fdq = alarm->fdqueue = &main_fdqueue;
+  }
 
   add_poll_nonblock(fdq);
   pthread_mutex_lock(&fdq->mutex);
@@ -298,7 +304,7 @@ int _watch(struct __sourceloc __whence, struct sched_ent *alarm)
     return WHY("Can't watch if you haven't set the function pointer");
 
   fdqueue *fdq = alarm->fdqueue;
-  if (!fdq) {
+  if (!fdq || !multithread) {
     fdq = alarm->fdqueue = &main_fdqueue;
   }
 
@@ -342,6 +348,9 @@ int _unwatch(struct __sourceloc __whence, struct sched_ent *alarm)
     DEBUGF("unwatch(alarm=%s)", alloca_alarm_name(alarm));
 
   fdqueue *fdq = alarm->fdqueue;
+  if (!multithread) {
+    fdq = alarm->fdqueue = &main_fdqueue;
+  }
 
   add_poll_nonblock(fdq);
   pthread_mutex_lock(&fdq->mutex);
@@ -402,6 +411,9 @@ static void call_alarm(struct sched_ent *alarm, int revents)
 int fd_poll(fdqueue *fdq, int wait)
 {
   IN();
+  if (!multithread) {
+    fdq = &main_fdqueue;
+  }
   pthread_mutex_lock(&fdq->mutex);
   int i, r=0;
   int invalidated;

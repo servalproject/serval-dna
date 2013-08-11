@@ -21,6 +21,8 @@
 #include "parallel.h"
 #include "serval.h"
 
+int multithread;
+
 pthread_t main_thread;
 pthread_t rhizome_thread;
 
@@ -32,6 +34,9 @@ void *rhizome_run(void *arg) {
 }
 
 void post_runnable(ALARM_FUNCP function, void *arg, fdqueue *fdq) {
+  if (!multithread) {
+    fdq = &main_fdqueue;
+  }
   time_ms_t now = gettime_ms();
   static struct profile_total stats = { .name = "post_runnable/generic" };
   struct sched_ent *alarm = malloc(sizeof(struct sched_ent));

@@ -23,11 +23,13 @@
 #include <pthread.h>
 #include "serval.h"
 
+extern int multithread;
+
 extern pthread_t main_thread;
 extern pthread_t rhizome_thread;
 
 #define ASSERT_THREAD(P)\
-  if (pthread_self() != (P)) {\
+  if (multithread && pthread_self() != (P)) {\
     FATAL("Not called from the expected thread");\
   }
 
