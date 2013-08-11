@@ -175,6 +175,7 @@ static int append_bars(struct overlay_buffer *e, sqlite_retry_state *retry, cons
  */
 int64_t bundles_available=0;
 void overlay_rhizome_advertise(struct sched_ent *alarm){
+  ASSERT_THREAD(rhizome_thread);
   bundles_available=0;
   static int64_t bundle_last_rowid=INT64_MAX;
   

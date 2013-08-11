@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "strbuf_helpers.h"
 #include "overlay_address.h"
+#include "parallel.h"
 
 /* Represents a queued fetch of a bundle payload, for which the manifest is already known.
  */
@@ -131,6 +132,7 @@ struct rhizome_fetch_queue rhizome_fetch_queues[] = {
 
 int rhizome_active_fetch_count()
 {
+  ASSERT_THREAD(rhizome_thread);
   int i,active=0;
   for(i=0;i<NQUEUES;i++)
     if (rhizome_fetch_queues[i].active.state!=RHIZOME_FETCH_FREE)
@@ -140,12 +142,14 @@ int rhizome_active_fetch_count()
 
 int rhizome_active_fetch_bytes_received(int q)
 {
+  ASSERT_THREAD(rhizome_thread);
   if (q<0 || q>=NQUEUES) return -1;
   if (rhizome_fetch_queues[q].active.state==RHIZOME_FETCH_FREE) return -1;
   return (int)rhizome_fetch_queues[q].active.write_state.file_offset;
 }
 
 int rhizome_fetch_queue_bytes(){
+  ASSERT_THREAD(rhizome_thread);
   int i,j,bytes=0;
   for(i=0;i<NQUEUES;i++){
     if (rhizome_fetch_queues[i].active.state!=RHIZOME_FETCH_FREE){
@@ -162,6 +166,7 @@ int rhizome_fetch_queue_bytes(){
 
 int rhizome_fetch_status_html(struct strbuf *b)
 {
+  ASSERT_THREAD(rhizome_thread);
   int i,j;
   for(i=0;i<NQUEUES;i++){
     struct rhizome_fetch_queue *q=&rhizome_fetch_queues[i];
@@ -197,6 +202,7 @@ static struct profile_total fetch_stats;
  */
 static struct rhizome_fetch_queue *rhizome_find_queue(long long size)
 {
+  ASSERT_THREAD(rhizome_thread);
   int i;
   unsigned char log_size = log2ll(size);
   for (i = 0; i < NQUEUES; ++i) {
@@ -215,6 +221,7 @@ static struct rhizome_fetch_queue *rhizome_find_queue(long long size)
  */
 static struct rhizome_fetch_slot *rhizome_find_fetch_slot(long long size)
 {
+  ASSERT_THREAD(rhizome_thread);
   int i;
   unsigned char log_size = log2ll(size);
   for (i = 0; i < NQUEUES; ++i) {
@@ -233,6 +240,7 @@ static struct rhizome_fetch_slot *rhizome_find_fetch_slot(long long size)
  */
 static struct rhizome_fetch_candidate *rhizome_fetch_insert(struct rhizome_fetch_queue *q, int i)
 {
+  ASSERT_THREAD(rhizome_thread);
   struct rhizome_fetch_candidate * const c = &q->candidate_queue[i];
   struct rhizome_fetch_candidate * e = &q->candidate_queue[q->candidate_queue_size - 1];
   if (config.debug.rhizome_rx)
@@ -259,6 +267,7 @@ static struct rhizome_fetch_candidate *rhizome_fetch_insert(struct rhizome_fetch
  */
 static void rhizome_fetch_unqueue(struct rhizome_fetch_queue *q, int i)
 {
+  ASSERT_THREAD(rhizome_thread);
   assert(i >= 0 && i < q->candidate_queue_size);
   struct rhizome_fetch_candidate *c = &q->candidate_queue[i];
   if (config.debug.rhizome_rx)
@@ -279,6 +288,7 @@ static void rhizome_fetch_unqueue(struct rhizome_fetch_queue *q, int i)
  */
 int rhizome_any_fetch_active()
 {
+  ASSERT_THREAD(rhizome_thread);
   int i;
   for (i = 0; i < NQUEUES; ++i)
     if (rhizome_fetch_queues[i].active.state != RHIZOME_FETCH_FREE)
@@ -292,6 +302,7 @@ int rhizome_any_fetch_active()
  */
 int rhizome_any_fetch_queued()
 {
+  ASSERT_THREAD(rhizome_thread);
   int i;
   for (i = 0; i < NQUEUES; ++i)
     if (rhizome_fetch_queues[i].candidate_queue[0].manifest)
@@ -301,6 +312,7 @@ int rhizome_any_fetch_queued()
 
 int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
 {
+  ASSERT_THREAD(rhizome_thread);
   char id[RHIZOME_MANIFEST_ID_STRLEN + 1];
   if (!rhizome_manifest_get(m, "id", id, sizeof id))
     // dodgy manifest, we don't want to receive it
@@ -341,6 +353,7 @@ ignored_manifest_cache ignored;
 
 int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len)
 {
+  ASSERT_THREAD(rhizome_thread);
   if (prefix_len < RHIZOME_BAR_PREFIX_BYTES)
     FATAL("Prefix length is too short");
   
@@ -363,6 +376,7 @@ int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len)
 
 int rhizome_queue_ignore_manifest(unsigned char *bid_prefix, int prefix_len, int timeout)
 {
+  ASSERT_THREAD(rhizome_thread);
   if (prefix_len < RHIZOME_BAR_PREFIX_BYTES)
     FATAL("Prefix length is too short");
   
@@ -389,6 +403,7 @@ int rhizome_queue_ignore_manifest(unsigned char *bid_prefix, int prefix_len, int
 
 static int rhizome_import_received_bundle(struct rhizome_manifest *m)
 {
+  ASSERT_THREAD(rhizome_thread);
   m->finalised = 1;
   m->manifest_bytes = m->manifest_all_bytes; // store the signatures too
   if (config.debug.rhizome_rx) {
@@ -401,6 +416,7 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
 
 static int schedule_fetch(struct rhizome_fetch_slot *slot)
 {
+  ASSERT_THREAD(rhizome_thread);
   IN();
   int sock = -1;
   /* TODO Don't forget to implement resume */
@@ -539,6 +555,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
 static enum rhizome_start_fetch_result
 rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct sockaddr_in *peerip,unsigned const char *peersid)
 {
+  ASSERT_THREAD(rhizome_thread);
   IN();
   if (slot->state != RHIZOME_FETCH_FREE)
     RETURN(SLOTBUSY);
@@ -645,6 +662,7 @@ rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip,
 					 const unsigned char peersid[SID_SIZE],
 					 const unsigned char *prefix, size_t prefix_length)
 {
+  ASSERT_THREAD(rhizome_thread);
   assert(peerip);
   struct rhizome_fetch_slot *slot = rhizome_find_fetch_slot(MAX_MANIFEST_BYTES);
   if (slot == NULL)
@@ -675,6 +693,7 @@ rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip,
  */
 static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
 {
+  ASSERT_THREAD(rhizome_thread);
   IN();
   struct rhizome_fetch_queue *q;
   for (q = (struct rhizome_fetch_queue *) slot; q >= rhizome_fetch_queues; --q) {
@@ -715,6 +734,7 @@ static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
  */
 static void rhizome_start_next_queued_fetches(struct sched_ent *alarm)
 {
+  ASSERT_THREAD(rhizome_thread);
   IN();
   int i;
   for (i = 0; i < NQUEUES; ++i)
@@ -724,6 +744,7 @@ static void rhizome_start_next_queued_fetches(struct sched_ent *alarm)
 
 /* Search all fetch slots, including active downloads, for a matching manifest */
 rhizome_manifest * rhizome_fetch_search(unsigned char *id, int prefix_length){
+  ASSERT_THREAD(rhizome_thread);
   int i, j;
   for (i = 0; i < NQUEUES; ++i) {
     struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
@@ -744,6 +765,7 @@ rhizome_manifest * rhizome_fetch_search(unsigned char *id, int prefix_length){
 
 /* Do we have space to add a fetch candidate of this size? */
 int rhizome_fetch_has_queue_space(unsigned char log2_size){
+  ASSERT_THREAD(rhizome_thread);
   int i;
   for (i = 0; i < NQUEUES; ++i) {
     struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
@@ -780,6 +802,7 @@ struct profile_total rsnqf_stats={.name="rhizome_start_next_queued_fetches"};
 
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE])
 {
+  ASSERT_THREAD(rhizome_thread);
   IN();
   
   if (!config.rhizome.fetch){
@@ -921,6 +944,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 
 static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
 {
+  ASSERT_THREAD(rhizome_thread);
   if (config.debug.rhizome_rx)
     DEBUGF("close Rhizome fetch slot=%d", slotno(slot));
   assert(slot->state != RHIZOME_FETCH_FREE);
@@ -954,6 +978,7 @@ static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
 
 static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
 {
+  ASSERT_THREAD(rhizome_thread);
   IN();
   struct rhizome_fetch_slot *slot=(struct rhizome_fetch_slot*)alarm;
 
@@ -975,6 +1000,7 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
 
 static int rhizome_fetch_mdp_touch_timeout(struct rhizome_fetch_slot *slot)
 {
+  ASSERT_THREAD(rhizome_thread);
   // 266ms @ 1mbit (WiFi broadcast speed) = 32x1024 byte packets.
   // But on a packet radio interface at perhaps 50kbit, this is clearly
   // a bad policy.  Ideally we should know about the interface speed
@@ -991,6 +1017,7 @@ static int rhizome_fetch_mdp_touch_timeout(struct rhizome_fetch_slot *slot)
 
 static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
 {
+  ASSERT_THREAD(rhizome_thread);
   IN();
   // only issue new requests every 133ms.  
   // we automatically re-issue once we have received all packets in this
@@ -1054,6 +1081,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
 
 static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
 {
+  ASSERT_THREAD(rhizome_thread);
   /* In Rhizome Direct we use the same fetch slot system, but we aren't actually
      a running servald instance, so we cannot fall back to MDP.  This is detected
      by checking if we have a SID for this instance. If not, then we are not a
@@ -1112,6 +1140,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
 
 void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
 {
+  ASSERT_THREAD(rhizome_thread);
   IN();
   if (config.debug.rhizome_rx)
     DEBUGF("write_nonblock(%d, %s)", slot->alarm.poll.fd, alloca_toprint(-1, &slot->request[slot->request_ofs], slot->request_len-slot->request_ofs));
@@ -1144,6 +1173,7 @@ void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
 
 int rhizome_write_complete(struct rhizome_fetch_slot *slot)
 {
+  ASSERT_THREAD(rhizome_thread);
   IN();
 
   if (slot->manifest) {
@@ -1213,6 +1243,7 @@ int rhizome_write_complete(struct rhizome_fetch_slot *slot)
 
 int rhizome_write_content(struct rhizome_fetch_slot *slot, unsigned char *buffer, int bytes)
 {
+  ASSERT_THREAD(rhizome_thread);
   IN();
   
   if (bytes<=0)
@@ -1302,6 +1333,7 @@ int rhizome_received_content(unsigned char *bidprefix,
 
 void rhizome_fetch_poll(struct sched_ent *alarm)
 {
+  ASSERT_THREAD(rhizome_thread);
   struct rhizome_fetch_slot *slot = (struct rhizome_fetch_slot *) alarm;
 
   if (alarm->poll.revents & POLLOUT) {
@@ -1440,6 +1472,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
  */
 int unpack_http_response(char *response, struct http_response_parts *parts)
 {
+  ASSERT_THREAD(rhizome_thread);
   IN();
   parts->code = -1;
   parts->reason = NULL;
