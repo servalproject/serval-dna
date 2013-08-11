@@ -44,6 +44,20 @@ void post_runnable(ALARM_FUNCP function, void *arg, fdqueue *fdq);
 /* *alarm->context is an overlay_mdp_frame */
 void overlay_mdp_dispatch_alarm(struct sched_ent *alarm);
 
+/* overlay_rhizome_saw_advertisements argument */
+struct orsa_arg {
+  int id;
+  struct overlay_buffer *payload;
+  unsigned char src_sid[SID_SIZE];
+  int src_reachable;
+  int use_new_sync_protocol;
+  struct sockaddr_in recvaddr;
+  time_ms_t now;
+};
+
+/* *alarm->context is a struct orsa_arg */
+void overlay_rhizome_saw_advertisements_alarm(struct sched_ent *alarm);
+
 /* *alarm->context is a struct overlay_buffer (payload) */
 void overlay_payload_enqueue_alarm(struct sched_ent *alarm);
 

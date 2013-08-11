@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include "parallel.h"
 
 /* Android doesn't have log2(), and we don't really need to do floating point
    math to work out how big a file is.
@@ -262,17 +263,33 @@ error:
 
 time_ms_t lookup_time=0;
 
-int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long now)
+void overlay_rhizome_saw_advertisements_alarm(struct sched_ent *alarm) {
+  ASSERT_THREAD(rhizome_thread);
+  struct orsa_arg *arg = alarm->context;
+  free(alarm);
+  overlay_rhizome_saw_advertisements(arg->id, arg->payload, arg->src_sid,
+                                     arg->src_reachable,
+                                     arg->use_new_sync_protocol, arg->recvaddr,
+                                     arg->now);
+  free(arg->payload);
+  free(arg);
+}
+
+int overlay_rhizome_saw_advertisements(int i, struct overlay_buffer *payload,
+                                       unsigned char *src_sid,
+                                       int src_reachable,
+                                       int use_new_sync_protocol,
+                                       struct sockaddr_in recvaddr,
+                                       time_ms_t now)
 {
+  ASSERT_THREAD(rhizome_thread);
   IN();
-  if (!f)
-    RETURN(-1);
   
   if (!(rhizome_db && config.rhizome.fetch)) 
     RETURN(0);
   
-  int ad_frame_type=ob_get(f->payload);
-  struct sockaddr_in httpaddr = f->recvaddr;
+  int ad_frame_type = ob_get(payload);
+  struct sockaddr_in httpaddr = recvaddr;
   httpaddr.sin_port = htons(RHIZOME_HTTP_PORT);
   int manifest_length;
   rhizome_manifest *m=NULL;
@@ -280,24 +297,24 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
   int (*oldfunc)() = sqlite_set_tracefunc(is_debug_rhizome_ads);
 
   if (ad_frame_type & HAS_PORT){
-    httpaddr.sin_port = htons(ob_get_ui16(f->payload));
+    httpaddr.sin_port = htons(ob_get_ui16(payload));
   }
   
   if (ad_frame_type & HAS_MANIFESTS){
     /* Extract whole manifests */
-    while(f->payload->position < f->payload->sizeLimit) {
-      if (ob_getbyte(f->payload, f->payload->position)==0xff){
-	f->payload->position++;
-	break;
+    while (payload->position < payload->sizeLimit) {
+      if (ob_getbyte(payload, payload->position) == 0xff) {
+        payload->position++;
+        break;
       }
-	
-      manifest_length=ob_get_ui16(f->payload);
+
+      manifest_length=ob_get_ui16(payload);
       if (manifest_length==0) continue;
       
-      unsigned char *data = ob_get_bytes_ptr(f->payload, manifest_length);
+      unsigned char *data = ob_get_bytes_ptr(payload, manifest_length);
       if (!data) {
 	WHYF("Illegal manifest length field in rhizome advertisement frame %d vs %d.", 
-	     manifest_length, f->payload->sizeLimit - f->payload->position);
+	     manifest_length, payload->sizeLimit - payload->position);
 	break;
       }
 
@@ -377,7 +394,7 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
 	DEBUG("Not seen before.");
 
       // start the fetch process!
-      rhizome_suggest_queue_manifest_import(m, &httpaddr,f->source->sid);
+      rhizome_suggest_queue_manifest_import(m, &httpaddr, src_sid);
       // the above function will free the manifest structure, make sure we don't free it again
       m=NULL;
 
@@ -390,7 +407,7 @@ next:
   }
 
   // if we're using the new sync protocol, ignore the rest of the packet
-  if (f->source->sync_state)
+  if (use_new_sync_protocol)
     goto end;
 
   overlay_mdp_frame mdp;
@@ -401,11 +418,11 @@ next:
   // parse BAR's
   unsigned char *bars[50];
   int bar_count=0;
-  while(ob_remaining(f->payload)>0 && bar_count<50){
+  while(ob_remaining(payload)>0 && bar_count<50){
     unsigned char *bar;
-    bars[bar_count]=bar=ob_get_bytes_ptr(f->payload, RHIZOME_BAR_BYTES);
+    bars[bar_count]=bar=ob_get_bytes_ptr(payload, RHIZOME_BAR_BYTES);
     if (!bar){
-      WARNF("Expected whole BAR @%x (only %d bytes remain)", ob_position(f->payload), ob_remaining(f->payload));
+      WARNF("Expected whole BAR @%x (only %d bytes remain)", ob_position(payload), ob_remaining(payload));
       break;
     }
 
@@ -447,9 +464,9 @@ next:
       if (mdp.out.payload_length==0){
 	bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
 	mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
-	bcopy(f->source->sid,mdp.out.dst.sid,SID_SIZE);
+	bcopy(src_sid,mdp.out.dst.sid,SID_SIZE);
 	mdp.out.dst.port=MDP_PORT_RHIZOME_MANIFEST_REQUEST;
-	if (f->source->reachable&REACHABLE_DIRECT)
+	if (src_reachable & REACHABLE_DIRECT)
 	  mdp.out.ttl=1;
 	else
 	  mdp.out.ttl=64;

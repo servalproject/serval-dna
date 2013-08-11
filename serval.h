@@ -551,7 +551,12 @@ int overlay_queue_schedule_next(time_ms_t next_allowed_packet);
 int overlay_send_tick_packet(struct overlay_interface *interface);
 int overlay_queue_ack(struct subscriber *neighbour, struct overlay_interface *interface, uint32_t ack_mask, int ack_seq);
 
-int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f,  time_ms_t now);
+int overlay_rhizome_saw_advertisements(int i, struct overlay_buffer *payload,
+                                       unsigned char *src_sid,
+                                       int src_reachable,
+                                       int use_new_sync_protocol,
+                                       struct sockaddr_in recvaddr,
+                                       time_ms_t now);
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_saw_voice_traffic();
 int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now);
