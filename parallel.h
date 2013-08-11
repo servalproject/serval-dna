@@ -89,4 +89,13 @@ struct rmsb_arg {
 /* *alarm->context is a struct rmsb_arg */
 void rhizome_mdp_send_block_alarm(struct sched_ent *alarm);
 
+/* rhizome_advertise_manifest_alarm argument */
+struct ram_arg {
+  int manifest_all_bytes;
+  unsigned char manifestdata[MAX_MANIFEST_BYTES];
+};
+
+/* *alarm->context is a struct ram_arg */
+void rhizome_advertise_manifest_alarm(struct sched_ent *alarm);
+
 #endif

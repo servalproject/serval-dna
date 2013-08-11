@@ -229,8 +229,18 @@ end:
 #define HAS_PORT (1<<1)
 #define HAS_MANIFESTS (1<<0)
 
+void rhizome_advertise_manifest_alarm(struct sched_ent *alarm) {
+  ASSERT_THREAD(main_thread);
+  struct ram_arg *arg = alarm->context;
+  free(alarm);
+  rhizome_advertise_manifest(arg->manifest_all_bytes, arg->manifestdata);
+  free(arg);
+}
+
 /* Queue an advertisment for a single manifest */
-int rhizome_advertise_manifest(rhizome_manifest *m){
+int rhizome_advertise_manifest(int manifest_all_bytes,
+                               unsigned char *manifestdata) {
+  ASSERT_THREAD(main_thread);
   struct overlay_frame *frame = malloc(sizeof(struct overlay_frame));
   bzero(frame,sizeof(struct overlay_frame));
   frame->type = OF_TYPE_RHIZOME_ADVERT;
@@ -242,8 +252,8 @@ int rhizome_advertise_manifest(rhizome_manifest *m){
   
   if (ob_append_byte(frame->payload, HAS_PORT|HAS_MANIFESTS)) goto error;
   if (ob_append_ui16(frame->payload, is_rhizome_http_enabled()?rhizome_http_server_port:0)) goto error;
-  if (ob_append_ui16(frame->payload, m->manifest_all_bytes)) goto error;
-  if (ob_append_bytes(frame->payload, m->manifestdata, m->manifest_all_bytes)) goto error;
+  if (ob_append_ui16(frame->payload, manifest_all_bytes)) goto error;
+  if (ob_append_bytes(frame->payload, manifestdata, manifest_all_bytes)) goto error;
   ob_append_byte(frame->payload, 0xFF);
   if (overlay_payload_enqueue(frame)) goto error;
   return 0;

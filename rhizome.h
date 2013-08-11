@@ -335,7 +335,7 @@ int rhizome_list_manifests(struct cli_context *context, const char *service, con
 			   const char *sender_sid, const char *recipient_sid, 
 			   int limit, int offset, char count_rows);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m);
-int rhizome_advertise_manifest(rhizome_manifest *m);
+int rhizome_advertise_manifest(int manifest_all_bytes, unsigned char *manifestdata);
 int rhizome_delete_bundle(const char *manifestid);
 int rhizome_delete_manifest(const char *manifestid);
 int rhizome_delete_payload(const char *manifestid);
