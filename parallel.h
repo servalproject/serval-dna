@@ -98,4 +98,7 @@ struct ram_arg {
 /* *alarm->context is a struct ram_arg */
 void rhizome_advertise_manifest_alarm(struct sched_ent *alarm);
 
+/* *alarm->context is a char * (id_hex) */
+void rhizome_retrieve_and_advertise_manifest_alarm(struct sched_ent *alarm);
+
 #endif

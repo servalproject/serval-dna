@@ -402,8 +402,20 @@ end:
   RETURN(ret);
 }
 
+static void rhizome_retrieve_and_advertise_manifest(const char *id_hex);
+
+void rhizome_retrieve_and_advertise_manifest_alarm(struct sched_ent *alarm)
+{
+  ASSERT_THREAD(rhizome_thread);
+  char *id_hex = alarm->context;
+  free(alarm);
+  rhizome_retrieve_and_advertise_manifest(id_hex);
+  free(id_hex);
+}
+
 static void rhizome_retrieve_and_advertise_manifest(const char *id_hex)
 {
+  ASSERT_THREAD(rhizome_thread);
   rhizome_manifest *manifest = rhizome_new_manifest();
   if (!manifest) OUT_OF_MEMORY;
   if (!rhizome_retrieve_manifest(id_hex, manifest)) {
