@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <poll.h>
 #include <pthread.h>
+#include <unistd.h>
 #include "serval.h"
 #include "conf.h"
 #include "str.h"
@@ -49,12 +50,53 @@ static inline int is_active(fdqueue *fdq) {
   return fdq->next_alarm || fdq->next_deadline || fdq->fdcount > 0;
 }
 
+static void fdqueue_init(fdqueue *fdq) {
+  fdq->fds = fdq->intfds + 1;
+  if (pipe(fdq->pipefd)) {
+    FATAL("pipe failed");
+  }
+  fdq->intfds[0].fd = fdq->pipefd[0];
+  fdq->intfds[0].events = POLLIN;
+}
+
+void fdqueues_init(void) {
+  fdqueue_init(&main_fdqueue);
+  fdqueue_init(&rhizome_fdqueue);
+}
+
+static void fdqueue_free(fdqueue *fdq) {
+  close(fdq->pipefd[0]);
+  close(fdq->pipefd[1]);
+  fdq->intfds[0].fd = 0;
+}
+
+void fdqueues_free(void) {
+  fdqueue_free(&main_fdqueue);
+  fdqueue_free(&rhizome_fdqueue);
+}
+
+/* write 1 char to pipe fd for poll() to always be non-blocking */
+static inline void add_poll_nonblock(fdqueue *fdq) {
+  char c = 0;
+  write(fdq->pipefd[1], &c, 1);
+}
+
+/* read 1 char from pipe fd */
+static inline void remove_poll_nonblock(fdqueue *fdq) {
+  char c;
+  read(fdq->pipefd[0], &c, 1);
+}
+
 #define alloca_alarm_name(alarm) ((alarm)->stats ? alloca_str_toprint((alarm)->stats->name) : "Unnamed")
 
 void list_alarms(fdqueue *fdq)
 {
   DEBUG("Alarms;");
+
+  add_poll_nonblock(fdq);
   pthread_mutex_lock(&fdq->mutex);
+  remove_poll_nonblock(fdq);
+
   time_ms_t now = gettime_ms();
   struct sched_ent *alarm;
   
@@ -103,7 +145,11 @@ int is_scheduled(const struct sched_ent *alarm)
     return 0;
   }
   int res;
+
+  add_poll_nonblock(fdq);
   pthread_mutex_lock(&fdq->mutex);
+  remove_poll_nonblock(fdq);
+
   res = alarm->_next || alarm->_prev || alarm == fdq->next_alarm
     || alarm == fdq->next_deadline;
   pthread_mutex_unlock(&fdq->mutex);
@@ -131,7 +177,10 @@ int _schedule(struct __sourceloc __whence, struct sched_ent *alarm)
     fdq = alarm->fdqueue = &main_fdqueue;
   }
 
+  add_poll_nonblock(fdq);
   pthread_mutex_lock(&fdq->mutex);
+  remove_poll_nonblock(fdq);
+
   struct sched_ent *node = fdq->next_alarm, *last = NULL;
 
   if (is_scheduled(alarm)) {
@@ -200,7 +249,9 @@ int _unschedule(struct __sourceloc __whence, struct sched_ent *alarm)
     return 0;
   }
 
+  add_poll_nonblock(fdq);
   pthread_mutex_lock(&fdq->mutex);
+  remove_poll_nonblock(fdq);
 
   struct sched_ent *prev = alarm->_prev;
   struct sched_ent *next = alarm->_next;
@@ -243,7 +294,9 @@ int _watch(struct __sourceloc __whence, struct sched_ent *alarm)
     fdq = alarm->fdqueue = &main_fdqueue;
   }
 
+  add_poll_nonblock(fdq);
   pthread_mutex_lock(&fdq->mutex);
+  remove_poll_nonblock(fdq);
 
   if (!is_active(fdq)) {
     /* it will become active before releasing the mutex */
@@ -282,7 +335,9 @@ int _unwatch(struct __sourceloc __whence, struct sched_ent *alarm)
 
   fdqueue *fdq = alarm->fdqueue;
 
+  add_poll_nonblock(fdq);
   pthread_mutex_lock(&fdq->mutex);
+  remove_poll_nonblock(fdq);
 
   int index = alarm->_poll_index;
   if (index < 0 || fdq->fds[index].fd != alarm->poll.fd) {
@@ -391,26 +446,33 @@ int fd_poll(fdqueue *fdq, int wait)
       } else {
         /* infinite timeout */
         ms = -1;
-        // TODO for the moment, we don't interrupt poll, so we wait only for
-        // 1 second
-        ms = 1000;
       }
 
       if (config.debug.io) DEBUGF("poll(X,%d,%d)", fdq->fdcount, ms);
-      r = poll(fdq->fds, fdq->fdcount, ms);
 
-      if (config.debug.io) {
-        strbuf b = strbuf_alloca(1024);
-        int i;
-        for (i = 0; i < fdq->fdcount; ++i) {
-          if (i)
-            strbuf_puts(b, ", ");
-          strbuf_sprintf(b, "%d:", fdq->fds[i].fd);
-          strbuf_append_poll_events(b, fdq->fds[i].events);
-          strbuf_putc(b, ':');
-          strbuf_append_poll_events(b, fdq->fds[i].revents);
+      /* poll on fdq->intdfs which contains fds + the interrupt fd */
+      r = poll(fdq->intfds, fdq->fdcount + 1, ms);
+
+      if (fdq->intfds[0].revents) {
+        /* interrupted (another thread wants the mutex) */
+        invalidated = 1;
+        pthread_mutex_unlock(&fdq->mutex);
+        usleep(1000); /* release the lock for 1 ms */
+        pthread_mutex_lock(&fdq->mutex);
+      } else {
+        if (config.debug.io) {
+          strbuf b = strbuf_alloca(1024);
+          int i;
+          for (i = 0; i < fdq->fdcount; ++i) {
+            if (i)
+              strbuf_puts(b, ", ");
+            strbuf_sprintf(b, "%d:", fdq->fds[i].fd);
+            strbuf_append_poll_events(b, fdq->fds[i].events);
+            strbuf_putc(b, ':');
+            strbuf_append_poll_events(b, fdq->fds[i].revents);
+          }
+          DEBUGF("poll(fds=(%s), fdcount=%d, ms=%d) = %d", strbuf_str(b), fdq->fdcount, ms, r);
         }
-        DEBUGF("poll(fds=(%s), fdcount=%d, ms=%d) = %d", strbuf_str(b), fdq->fdcount, ms, r);
       }
     }
     fd_func_exit(__HERE__, &call_stats);

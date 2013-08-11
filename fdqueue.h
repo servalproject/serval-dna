@@ -33,7 +33,11 @@ extern struct fdqueue rhizome_fdqueue;
 
 typedef struct fdqueue {
 
-  struct pollfd fds[MAX_WATCHED_FDS];
+  /* a pipe fd is added at intfds[0] for interrupting poll() */
+  int pipefd[2];
+  struct pollfd intfds[MAX_WATCHED_FDS+1];
+
+  struct pollfd *fds; /* must be initialized to intfds + 1 */
   int fdcount;
   struct sched_ent *fd_callbacks[MAX_WATCHED_FDS];
   struct sched_ent *next_alarm;
@@ -55,5 +59,11 @@ typedef struct fdqueue {
   pthread_cond_t cond_change;
 
 } fdqueue;
+
+void fdqueues_init(void);
+void fdqueues_free(void);
+
+/* return the fdqueue associated to the current thread */
+fdqueue *current_fdqueue();
 
 #endif

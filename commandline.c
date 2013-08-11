@@ -228,9 +228,11 @@ int parseCommandLine(struct cli_context *context, const char *argv0, int argc, c
   switch (result) {
   case 0:
     // Do not run the command if the configuration does not load ok.
-    if (((parsed.commands[parsed.cmdi].flags & CLIFLAG_PERMISSIVE_CONFIG) ? cf_reload_permissive() : cf_reload()) != -1)
+    if (((parsed.commands[parsed.cmdi].flags & CLIFLAG_PERMISSIVE_CONFIG) ? cf_reload_permissive() : cf_reload()) != -1) {
+      fdqueues_init();
       result = cli_invoke(&parsed, context);
-    else {
+      fdqueues_free();
+    } else {
       strbuf b = strbuf_alloca(160);
       strbuf_append_argv(b, argc, args);
       result = WHYF("configuration defective, not running command: %s", strbuf_str(b));
