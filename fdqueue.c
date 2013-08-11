@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "fdqueue.h"
+#include "parallel.h"
 
 #ifndef PTHREAD_RECURSIVE_MUTEX_INITIALIZER
 #define PTHREAD_RECURSIVE_MUTEX_INITIALIZER \
@@ -45,6 +46,13 @@ fdqueue rhizome_fdqueue = {
   .cond_is_active = PTHREAD_COND_INITIALIZER,
   .cond_change = PTHREAD_COND_INITIALIZER
 };
+
+fdqueue *current_fdqueue(void) {
+  if (pthread_self() == rhizome_thread) {
+    return &rhizome_fdqueue;
+  }
+  return &main_fdqueue;
+}
 
 static inline int is_active(fdqueue *fdq) {
   return fdq->next_alarm || fdq->next_deadline || fdq->fdcount > 0;
@@ -376,7 +384,7 @@ static void call_alarm(struct sched_ent *alarm, int revents)
 			      alarm, alloca_alarm_name(alarm));
 
   if (call_stats.totals)
-    fd_func_enter(__HERE__, &call_stats);
+    fd_func_enter(__HERE__, fdq, &call_stats);
   
   alarm->poll.revents = revents;
   pthread_mutex_unlock(&fdq->mutex);
@@ -384,7 +392,7 @@ static void call_alarm(struct sched_ent *alarm, int revents)
   pthread_mutex_lock(&fdq->mutex);
   
   if (call_stats.totals)
-    fd_func_exit(__HERE__, &call_stats);
+    fd_func_exit(__HERE__, fdq, &call_stats);
 
   if (config.debug.io) DEBUGF("Alarm %p returned",alarm);
 
@@ -425,7 +433,7 @@ int fd_poll(fdqueue *fdq, int wait)
     /* check if any file handles have activity */
     struct call_stats call_stats;
     call_stats.totals = &fdq->poll_stats;
-    fd_func_enter(__HERE__, &call_stats);
+    fd_func_enter(__HERE__, fdq, &call_stats);
     if (fdq->fdcount == 0) {
       if (fdq->fdcount == 0 && !fdq->next_deadline) {
         /* wait for the next alarm or the next change */
@@ -475,7 +483,7 @@ int fd_poll(fdqueue *fdq, int wait)
         }
       }
     }
-    fd_func_exit(__HERE__, &call_stats);
+    fd_func_exit(__HERE__, fdq, &call_stats);
     now=gettime_ms();
   } while (invalidated);
 

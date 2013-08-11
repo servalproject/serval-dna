@@ -58,12 +58,16 @@ typedef struct fdqueue {
    * fd is being watched */
   pthread_cond_t cond_change;
 
+  /* for performance_timing.c */
+  struct profile_total *stats_head;
+  struct call_stats *current_call;
+
 } fdqueue;
 
 void fdqueues_init(void);
 void fdqueues_free(void);
 
 /* return the fdqueue associated to the current thread */
-fdqueue *current_fdqueue();
+fdqueue *current_fdqueue(void);
 
 #endif

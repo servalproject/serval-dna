@@ -220,7 +220,7 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv 
 */
 int parseCommandLine(struct cli_context *context, const char *argv0, int argc, const char *const *args)
 {
-  fd_clearstats();
+  fd_clearstats(current_fdqueue());
   IN();
   
   struct cli_parsed parsed;
@@ -255,8 +255,12 @@ int parseCommandLine(struct cli_context *context, const char *argv0, int argc, c
   rhizome_close_db();
   OUT();
   
-  if (config.debug.timing)
-    fd_showstats();
+  if (config.debug.timing) {
+    INFO("Main thread stats:");
+    fd_showstats(&main_fdqueue);
+    INFO("Rhizome thread stats:");
+    fd_showstats(&rhizome_fdqueue);
+  }
   return result;
 }
 
