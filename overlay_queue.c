@@ -21,6 +21,7 @@
 #include "conf.h"
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
+#include "parallel.h"
 #include "str.h"
 #include "strbuf.h"
 
@@ -139,8 +140,25 @@ int overlay_queue_remaining(int queue){
   return overlay_tx[queue].maxLength - overlay_tx[queue].length;
 }
 
+void overlay_payload_enqueue_alarm(struct sched_ent *alarm) {
+  ASSERT_THREAD(main_thread);
+  struct overlay_buffer *payload = alarm->context;
+  free(alarm);
+  struct overlay_frame *frame = calloc(1, sizeof(struct overlay_frame));
+  if (!frame) OUT_OF_MEMORY;
+  frame->type = OF_TYPE_RHIZOME_ADVERT;
+  frame->source = my_subscriber;
+  frame->ttl = 1;
+  frame->queue = OQ_OPPORTUNISTIC;
+  frame->payload = payload;
+  if (overlay_payload_enqueue(frame)) {
+    op_free(frame);
+  }
+}
+
 int overlay_payload_enqueue(struct overlay_frame *p)
 {
+  ASSERT_THREAD(main_thread);
   /* Add payload p to queue q.
    
    Queues get scanned from first to last, so we should append new entries

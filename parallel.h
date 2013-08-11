@@ -44,4 +44,7 @@ void post_runnable(ALARM_FUNCP function, void *arg, fdqueue *fdq);
 /* *alarm->context is an overlay_mdp_frame */
 void overlay_mdp_dispatch_alarm(struct sched_ent *alarm);
 
+/* *alarm->context is a struct overlay_buffer (payload) */
+void overlay_payload_enqueue_alarm(struct sched_ent *alarm);
+
 #endif
