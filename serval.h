@@ -443,7 +443,8 @@ typedef struct overlay_interface {
   struct slip_decode_state slip_decode_state;
 
   // copy of ifconfig flags
-  uint16_t drop_broadcasts;
+  uint16_t drop_packets;
+  char drop_broadcasts;
   char drop_unicasts;
   int port;
   int type;

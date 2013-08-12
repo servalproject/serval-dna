@@ -324,7 +324,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
   // TODO stop when the packet is nearly full?
   while(frame){
     if (frame->enqueued_at + queue->latencyTarget < now){
-      if (config.debug.rejecteddata)
+      if (config.debug.overlayframes)
 	DEBUGF("Dropping frame type %x for %s due to expiry timeout", 
 	       frame->type, frame->destination?alloca_tohex_sid(frame->destination->sid):"All");
       frame = overlay_queue_remove(queue, frame);
@@ -380,7 +380,6 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  // is this packet going our way?
 	  if (dest==packet->destination){
 	    destination_index=i;
-	    frame->destinations[i].sent_sequence = dest->sequence_number;
 	    break;
 	  }
 	}else{
@@ -439,6 +438,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       goto skip;
     }
 
+    frame->destinations[destination_index].sent_sequence = frame->destinations[destination_index].destination->sequence_number;
     frame->destinations[destination_index].delay_until = now+200;
     frame->transmit_count++;
     
@@ -524,34 +524,40 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
     struct overlay_frame *frame = overlay_tx[i].first;
 
     while(frame){
-      for (j=frame->destination_count -1;j>=0;j--){
-	if (frame->destinations[j].destination==destination){
-	  int frame_seq = frame->destinations[j].sent_sequence;
-	  if (frame_seq >=0 && (frame->next_hop == neighbour || !frame->destination)){
-	    int seq_delta = (ack_seq - frame_seq)&0xFF;
-	    char acked = (seq_delta==0 || (seq_delta <= 32 && ack_mask&(1<<(seq_delta-1))))?1:0;
-
-	    if (acked){
-	      if (config.debug.overlayframes)
-		DEBUGF("Packet %p to %s sent by seq %d, acked with seq %d", 
-		  frame, alloca_tohex_sid(neighbour->sid), frame_seq, ack_seq);
-	      remove_destination(frame, j);
-	    }else if (seq_delta < 128 && frame->destination && frame->delay_until>now){
-	      // resend immediately
-	      if (config.debug.overlayframes)
-		DEBUGF("Requeue packet %p to %s sent by seq %d due to ack of seq %d", frame, alloca_tohex_sid(neighbour->sid), frame_seq, ack_seq);
-	      frame->delay_until = now;
-	      overlay_calc_queue_time(&overlay_tx[i], frame);
-	    }
-	  }
+      
+      for (j=frame->destination_count -1;j>=0;j--)
+	if (frame->destinations[j].destination==destination)
 	  break;
+	  
+      if (j>=0){
+	int frame_seq = frame->destinations[j].sent_sequence;
+	if (frame_seq >=0 && (frame->next_hop == neighbour || !frame->destination)){
+	  int seq_delta = (ack_seq - frame_seq)&0xFF;
+	  char acked = (seq_delta==0 || (seq_delta <= 32 && ack_mask&(1<<(seq_delta-1))))?1:0;
+
+	  if (acked){
+	    if (config.debug.overlayframes)
+	      DEBUGF("Packet %p to %s sent by seq %d, acked with seq %d", 
+		frame, alloca_tohex_sid(neighbour->sid), frame_seq, ack_seq);
+		
+	    // drop packets that don't need to be retransmitted
+	    if (frame->destination || frame->destination_count<=1){
+	      frame = overlay_queue_remove(&overlay_tx[i], frame);
+	      continue;
+	    }
+	    remove_destination(frame, j);
+	    
+	  }else if (seq_delta < 128 && frame->destination && frame->delay_until>now){
+	    // retransmit asap
+	    if (config.debug.overlayframes)
+	      DEBUGF("Requeue packet %p to %s sent by seq %d due to ack of seq %d", frame, alloca_tohex_sid(neighbour->sid), frame_seq, ack_seq);
+	    frame->delay_until = now;
+	    overlay_calc_queue_time(&overlay_tx[i], frame);
+	  }
 	}
       }
       
-      if (frame->destination_count==0){
-	frame = overlay_queue_remove(&overlay_tx[i], frame);
-      }else
-	frame = frame->next;
+      frame = frame->next;
     }
   }
   return 0;

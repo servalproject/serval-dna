@@ -37,13 +37,13 @@ teardown() {
 }
 
 is_published() {
-   tfw_log "grep \"PUBLISHED.*$1\" $LOGA"
-   grep "PUBLISHED.*$1" $LOGA || return 1
+   tfw_log "grep \"PUBLISHED.*$1\" $instance_servald_log"
+   grep "PUBLISHED.*$1" $instance_servald_log || return 1
    return 0
 }
 
 sent_directory_request() {
-   grep "Sending directory registration" $1 || return 1
+   grep "Sending directory registration" $instance_servald_log || return 1
    return 0
 }
 
@@ -68,9 +68,9 @@ setup_publish() {
 
 doc_publish="Publish and retrieve a directory entry"
 test_publish() {
-   wait_until sent_directory_request $LOGB
-   wait_until sent_directory_request $LOGC
-   wait_until sent_directory_request $LOGD
+   foreach_instance +B +C +D
+      wait_until sent_directory_request
+   set_instance +A
    wait_until is_published $SIDB
    wait_until is_published $SIDC
    wait_until is_published $SIDD
@@ -115,32 +115,31 @@ setup_routing() {
    foreach_instance +A +B +C \
       executeOk_servald config \
          set interfaces.0.file dummy1 \
-         set interfaces.0.mdp_tick_ms 0 \
+         set interfaces.0.send_broadcasts 0 \
          set interfaces.0.default_route 1 \
-         set interfaces.0.dummy_netmask 255.255.255.0 
+         set interfaces.0.dummy_netmask 255.255.255.0
    set_instance +A
    executeOk_servald config \
       set interfaces.0.dummy_address 10.0.${instance_number}.1 \
       set dna.helper.executable "$servald_build_root/directory_service" \
       set debug.dnahelper on
-   set_instance +B
-   executeOk_servald config \
-      set interfaces.0.dummy_address 10.0.${instance_number}.1 \
-      set directory.service $SIDA \
-      set hosts.$SIDA.address 10.0.1.1
-   set_instance +C
-   executeOk_servald config \
-      set interfaces.0.dummy_address 10.0.${instance_number}.1 \
-      set directory.service $SIDA \
-      set hosts.$SIDA.address 10.0.1.1
+   foreach_instance +B +C \
+      executeOk_servald config \
+         set interfaces.0.dummy_address 10.0.${instance_number}.1 \
+         set directory.service $SIDA \
+         set hosts.$SIDA.address 10.0.1.1
    foreach_instance +A +B +C start_routing_instance
-   wait_until grep "DNAHELPER got STARTED ACK" $LOGA
+   set_instance +A
+   wait_until grep "DNAHELPER got STARTED ACK" $instance_servald_log
 }
 
 doc_routing="Ping via relay node"
 test_routing() {
    foreach_instance +B +C \
-      wait_until sent_directory_request $instance_servald_log
+      executeOk_servald scan 10.0.1.1
+   foreach_instance +B +C \
+      wait_until sent_directory_request
+   set_instance +A
    wait_until is_published $SIDB
    wait_until is_published $SIDC
    set_instance +B

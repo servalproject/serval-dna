@@ -237,7 +237,7 @@ setup_FileTransferUnreliableBigMDP() {
      executeOk_servald config \
        set rhizome.http.enable 0 \
        set interfaces.1.file dummy \
-       set interfaces.1.drop_broadcasts 20
+       set interfaces.1.drop_packets 10
    setup_bigfile_common
 }
 test_FileTransferUnreliableBigMDP() {

@@ -890,7 +890,8 @@ int link_add_destinations(struct overlay_frame *frame)
       if (n){
 	struct link_out *out = n->out_links;
 	while(out){
-	  frame->destinations[frame->destination_count++].destination = add_destination_ref(out->destination);
+	  if (frame->destination_count < MAX_PACKET_DESTINATIONS)
+	    frame->destinations[frame->destination_count++].destination = add_destination_ref(out->destination);
 	  out = out->_next;
 	}
       }

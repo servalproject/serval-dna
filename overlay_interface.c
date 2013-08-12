@@ -367,6 +367,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   // copy ifconfig values
   interface->drop_broadcasts = ifconfig->drop_broadcasts;
   interface->drop_unicasts = ifconfig->drop_unicasts;
+  interface->drop_packets = ifconfig->drop_packets;
   interface->port = ifconfig->port;
   interface->type = ifconfig->type;
   interface->send_broadcasts = ifconfig->send_broadcasts;
@@ -590,17 +591,22 @@ struct file_packet{
 };
 
 static int should_drop(struct overlay_interface *interface, struct sockaddr_in addr){
+  if (interface->drop_packets>=100)
+    return 1;
+  
   if (memcmp(&addr, &interface->address, sizeof(addr))==0){
-    return interface->drop_unicasts;
-  }
-  if (memcmp(&addr, &interface->destination->address, sizeof(addr))==0){
-    if (interface->drop_broadcasts == 0)
-      return 0;
-    if (interface->drop_broadcasts >= 100)
+    if (interface->drop_unicasts)
       return 1;
-    if (rand()%100 >= interface->drop_broadcasts)
-      return 0;
-  }
+  }else if (memcmp(&addr, &interface->destination->address, sizeof(addr))==0){
+    if (interface->drop_broadcasts)
+      return 1;
+  }else
+    return 1;
+  
+  if (interface->drop_packets <= 0)
+    return 0;
+  if (rand()%100 >= interface->drop_packets)
+    return 0;
   return 1;
 }
 
