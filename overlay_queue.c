@@ -232,7 +232,7 @@ overlay_init_packet(struct outgoing_packet *packet, int packet_version,
   packet->buffer=ob_new();
   packet->packet_version = packet_version;
   packet->context.packet_version = packet_version;
-  packet->destination = destination;
+  packet->destination = add_destination_ref(destination);
   if (destination->sequence_number<0)
     packet->seq=-1;
   else
@@ -473,8 +473,9 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 // fill a packet from our outgoing queues and send it
 static int
 overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
-  int i;
   IN();
+  int i;
+  int ret=0;
   // while we're looking at queues, work out when to schedule another packet
   unschedule(&next_packet);
   next_packet.alarm=0;
@@ -492,9 +493,11 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
       
     overlay_broadcast_ensemble(packet->destination, ob_ptr(packet->buffer), ob_position(packet->buffer));
     ob_free(packet->buffer);
-    RETURN(1);
+    ret=1;
   }
-  RETURN(0);
+  if (packet->destination)
+    release_destination_ref(packet->destination);
+  RETURN(ret);
   OUT();
 }
 

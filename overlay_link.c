@@ -207,10 +207,11 @@ int overlay_send_probe(struct subscriber *peer, struct network_destination *dest
   if (destination->interface->socket_type==SOCK_STREAM)
     return 0;
   
-  // XXXTODO throttle probes...
-//  time_ms_t now = gettime_ms();
-//  if (peer && peer->last_probe+1000>now)
-//    return -1;
+  time_ms_t now = gettime_ms();
+  // though unicast probes don't typically use the same network destination, 
+  // we should still try to throttle when we can
+  if (destination->last_tx + destination->tick_ms > now)
+    return -1;
   
   struct overlay_frame *frame=malloc(sizeof(struct overlay_frame));
   bzero(frame,sizeof(struct overlay_frame));
@@ -219,14 +220,10 @@ int overlay_send_probe(struct subscriber *peer, struct network_destination *dest
   frame->next_hop = frame->destination = peer;
   frame->ttl=1;
   frame->queue=queue;
-  frame->destination_count=1;
-  frame->destinations[0].destination=add_destination_ref(destination);
+  frame->destinations[frame->destination_count++].destination=add_destination_ref(destination);
   frame->payload = ob_new();
   frame->source_full = 1;
   // TODO call mdp payload encryption / signing without calling overlay_mdp_dispatch...
-  // XXXTODO rate limit
-//  if (peer)
-//    peer->last_probe=gettime_ms();
   
   if (overlay_mdp_encode_ports(frame->payload, MDP_PORT_ECHO, MDP_PORT_PROBE)){
     op_free(frame);
@@ -258,42 +255,24 @@ int overlay_send_probe(struct subscriber *peer, struct network_destination *dest
 // append the address of a unicast link into a packet buffer
 static int overlay_append_unicast_address(struct subscriber *subscriber, struct overlay_buffer *buff)
 {
-  return -1;
-  /*XXXTODO
-  if (subscriber->reachable & REACHABLE_ASSUMED || !(subscriber->reachable & REACHABLE_UNICAST)){
+  if (subscriber->destination 
+    && subscriber->destination->unicast
+    && subscriber->destination->address.sin_family==AF_INET){
+    if (overlay_address_append(NULL, buff, subscriber))
+      return -1;
+    if (ob_append_ui32(buff, subscriber->destination->address.sin_addr.s_addr))
+      return -1;
+    if (ob_append_ui16(buff, subscriber->destination->address.sin_port))
+      return -1;
+    ob_checkpoint(buff);
+    if (config.debug.overlayrouting)
+      DEBUGF("Added STUN info for %s", alloca_tohex_sid(subscriber->sid));
+  }else{
     if (config.debug.overlayrouting)
       DEBUGF("Unable to give address of %s, %d", alloca_tohex_sid(subscriber->sid),subscriber->reachable);
-    return 0;
   }
-  
-  if (overlay_address_append(NULL, buff, subscriber))
-    return -1;
-  if (ob_append_ui32(buff, subscriber->address.sin_addr.s_addr))
-    return -1;
-  if (ob_append_ui16(buff, subscriber->address.sin_port))
-    return -1;
-  ob_checkpoint(buff);
-  if (config.debug.overlayrouting)
-    DEBUGF("Added STUN info for %s", alloca_tohex_sid(subscriber->sid));
   return 0;
-  */
 }
-
-// append the address of all neighbour unicast links into a packet buffer
-/*
- static int overlay_append_local_unicasts(struct subscriber *subscriber, void *context)
- {
- struct overlay_buffer *buff = context;
- if ((!subscriber->interface) ||
- (!(subscriber->reachable & REACHABLE_UNICAST)) ||
- (subscriber->reachable & REACHABLE_ASSUMED))
- return 0;
- if ((subscriber->address.sin_addr.s_addr & subscriber->interface->netmask.s_addr) !=
- (subscriber->interface->address.sin_addr.s_addr & subscriber->interface->netmask.s_addr))
- return 0;
- return overlay_append_unicast_address(subscriber, buff);
- }
- */
 
 int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp)
 {

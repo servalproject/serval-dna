@@ -72,7 +72,7 @@ struct link_in{
   time_ms_t link_timeout;
 
   // unicast or broadcast?
-  char unicast;
+  int unicast;
   
   int ack_sequence;
   uint64_t ack_mask;
@@ -582,7 +582,7 @@ static void clean_neighbours(time_ms_t now)
     while(*list){
       struct link_in *link = *list;
       if (link->interface->state!=INTERFACE_STATE_UP || link->link_timeout < now){
-        if (config.debug.linkstate && config.debug.verbose)
+        if (config.debug.linkstate)
           DEBUGF("LINK STATE; link expired from neighbour %s on interface %s", 
             alloca_tohex_sid(n->subscriber->sid),
             link->interface->name);
@@ -598,6 +598,11 @@ static void clean_neighbours(time_ms_t now)
       struct link_out *link = *out;
       if (link->destination->interface->state!=INTERFACE_STATE_UP || link->timeout < now){
 	*out = link->_next;
+        if (config.debug.linkstate)
+          DEBUGF("LINK STATE; %s link_out expired for neighbour %s on interface %s", 
+	    link->destination->unicast?"unicast":"broadcast",
+            alloca_tohex_sid(n->subscriber->sid),
+            link->destination->interface->name);
 	release_destination_ref(link->destination);
 	free(link);
       }else{
@@ -663,7 +668,7 @@ static int neighbour_find_best_link(struct neighbour *n)
   if (n->best_link != best_link){
     n->best_link = best_link;
     n->next_neighbour_update = gettime_ms()+5;
-    if (config.debug.linkstate && config.debug.verbose){
+    if (config.debug.linkstate){
       if (best_link){
 	DEBUGF("LINK STATE; best link from neighbour %s is %s on interface %s", 
 	  alloca_tohex_sid(n->subscriber->sid),
@@ -838,7 +843,7 @@ static void update_alarm(time_ms_t limit){
   }
 }
 
-struct link_in * get_neighbour_link(struct neighbour *neighbour, struct overlay_interface *interface, int sender_interface, char unicast)
+struct link_in * get_neighbour_link(struct neighbour *neighbour, struct overlay_interface *interface, int sender_interface, int unicast)
 {
   struct link_in *link = neighbour->links;
   if (unicast){
@@ -861,7 +866,7 @@ struct link_in * get_neighbour_link(struct neighbour *neighbour, struct overlay_
   link->ack_sequence = -1;
   link->ack_mask = 0;
   link->_next = neighbour->links;
-  if (config.debug.linkstate && config.debug.verbose)
+  if (config.debug.linkstate)
     DEBUGF("LINK STATE; new possible %s link from neighbour %s on interface %s/%d", 
       unicast?"unicast":"broadcast",
       alloca_tohex_sid(neighbour->subscriber->sid),
@@ -1011,7 +1016,14 @@ static struct link_out *create_out_link(struct neighbour *neighbour, overlay_int
       ret->destination = create_unicast_destination(addr, interface);
     else
       ret->destination = add_destination_ref(interface->destination);
-    ret->timeout = gettime_ms()+ret->destination->tick_ms*2;
+    
+    if (config.debug.linkstate)
+      DEBUGF("LINK STATE; Create possible %s link_out for neighbour %s on interface %s", 
+	unicast?"unicast":"broadcast",
+	alloca_tohex_sid(neighbour->subscriber->sid),
+	interface->name);
+
+    ret->timeout = gettime_ms()+ret->destination->tick_ms*3;
     update_alarm(gettime_ms()+5);
   }
   return ret;
@@ -1040,20 +1052,17 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
   time_ms_t now = gettime_ms();
 
   if (!neighbour->out_links){
+    
     // if this packet arrived in an IPv4 packet, assume we need to send them unicast packets
-    if (context->addr.sin_family==AF_INET && context->addr.sin_port!=0 && context->addr.sin_addr.s_addr!=0){
-      if (config.debug.linkstate && config.debug.verbose)
-	DEBUGF("Assuming reachable via unicast");
+    if (context->addr.sin_family==AF_INET && context->addr.sin_port!=0 && context->addr.sin_addr.s_addr!=0)
       create_out_link(neighbour, context->interface, context->addr, 1);
-    }
+      
     // if this packet arrived from the same IPv4 subnet, or a different type of network, assume they can hear our broadcasts
     if (context->addr.sin_family!=AF_INET || 
 	(context->addr.sin_addr.s_addr & context->interface->netmask.s_addr) 
-	== (context->interface->address.sin_addr.s_addr& context->interface->netmask.s_addr)){
-      if (config.debug.linkstate && config.debug.verbose)
-	DEBUGF("Assuming reachable via broadcast");
+	== (context->interface->address.sin_addr.s_addr & context->interface->netmask.s_addr))
       create_out_link(neighbour, context->interface, context->addr, 0);
-    }
+      
   }
 
   link->ack_counter --;
