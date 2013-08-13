@@ -917,6 +917,8 @@ int link_add_destinations(struct overlay_frame *frame)
 	  frame->packet_version = neighbour->subscriber->max_packet_version;
 	
 	if (!dest->unicast){
+	  if (!dest->interface->send_broadcasts)
+	    continue;
 	  // make sure we only add broadcast interfaces once
 	  int id = dest->interface - overlay_interfaces;
 	  if (added_interface[id]){

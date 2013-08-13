@@ -107,25 +107,29 @@ start_routing_instance() {
    wait_until interface_up
 }
 
+configure_node() {
+   executeOk_servald config \
+      set interfaces.0.file dummy1 \
+      set interfaces.0.send_broadcasts 0 \
+      set interfaces.0.drop_broadcasts on \
+      set interfaces.0.default_route 1 \
+      set interfaces.0.dummy_address 10.0.${instance_number}.1 \
+      set interfaces.0.dummy_netmask 255.255.255.0
+}
+
 setup_routing() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B +C create_single_identity
    >$SERVALD_VAR/dummy1
    foreach_instance +A +B +C \
-      executeOk_servald config \
-         set interfaces.0.file dummy1 \
-         set interfaces.0.send_broadcasts 0 \
-         set interfaces.0.default_route 1 \
-         set interfaces.0.dummy_netmask 255.255.255.0
+      configure_node
    set_instance +A
    executeOk_servald config \
-      set interfaces.0.dummy_address 10.0.${instance_number}.1 \
       set dna.helper.executable "$servald_build_root/directory_service" \
       set debug.dnahelper on
    foreach_instance +B +C \
       executeOk_servald config \
-         set interfaces.0.dummy_address 10.0.${instance_number}.1 \
          set directory.service $SIDA \
          set hosts.$SIDA.address 10.0.1.1
    foreach_instance +A +B +C start_routing_instance
@@ -135,8 +139,6 @@ setup_routing() {
 
 doc_routing="Ping via relay node"
 test_routing() {
-   foreach_instance +B +C \
-      executeOk_servald scan 10.0.1.1
    foreach_instance +B +C \
       wait_until sent_directory_request
    set_instance +A

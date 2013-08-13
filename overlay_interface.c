@@ -433,8 +433,6 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     tick_ms=0;
   }else if (!interface->send_broadcasts){
     INFOF("Interface %s is not sending any broadcast traffic!", name);
-    // no broadcast traffic implies no ticks
-    tick_ms=0;
   }else if (tick_ms==0)
     INFOF("Interface %s is running tickless", name);
   
@@ -756,7 +754,9 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     alarm->alarm=-1;
     
     time_ms_t now = gettime_ms();
-    if (interface->state==INTERFACE_STATE_UP && interface->destination->tick_ms>0){
+    if (interface->state==INTERFACE_STATE_UP 
+      && interface->destination->tick_ms>0
+      && interface->send_broadcasts){
       if (now >= interface->destination->last_tx+interface->destination->tick_ms)
         overlay_send_tick_packet(interface->destination);
       alarm->alarm=interface->destination->last_tx+interface->destination->tick_ms;
