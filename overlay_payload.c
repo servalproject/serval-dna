@@ -80,7 +80,7 @@ static int overlay_frame_build_header(int packet_version, struct decode_context 
   return 0;
 }
 
-int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
+int overlay_frame_append_payload(struct decode_context *context, int encapsulation,
 				 struct overlay_frame *p, struct overlay_buffer *b)
 {
   /* Convert a payload (frame) structure into a series of bytes.
@@ -110,7 +110,7 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
 			     p->destination, p->source))
     goto cleanup;
   
-  if (interface->encapsulation == ENCAP_OVERLAY){
+  if (encapsulation == ENCAP_OVERLAY){
     if (ob_append_ui16(b, ob_position(p->payload)))
       goto cleanup;
   }

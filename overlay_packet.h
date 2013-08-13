@@ -26,6 +26,15 @@
 #define FRAME_NOT_SENT -1
 #define FRAME_DONT_SEND -2
 
+#define MAX_PACKET_DESTINATIONS OVERLAY_MAX_INTERFACES
+
+struct packet_destination{
+  // if we've sent this packet once, what was the envelope sequence number?
+  int sent_sequence;
+  time_ms_t delay_until;
+  struct network_destination *destination;
+};
+
 struct overlay_frame {
   struct overlay_frame *prev;
   struct overlay_frame *next;
@@ -39,33 +48,33 @@ struct overlay_frame {
   void *send_context;
   int (*send_hook)(struct overlay_frame *, int seq, void *context);
   
-  /* What sequence number have we used to send this packet on this interface.
-     */
-  int interface_sent_sequence[OVERLAY_MAX_INTERFACES];
+  time_ms_t delay_until;
+  struct packet_destination destinations[MAX_PACKET_DESTINATIONS];
+  int destination_count;
+  int transmit_count;
+  
+  // each payload gets a sequence number that is reused on retransmission
   int32_t mdp_sequence;
-  time_ms_t interface_dont_send_until[OVERLAY_MAX_INTERFACES];
-  struct broadcast broadcast_id;
   
   // null if destination is broadcast
   struct subscriber *destination;
+  struct broadcast broadcast_id;
   struct subscriber *next_hop;
-  
+  // should we force the encoding to include the entire source public key?
   int source_full;
   struct subscriber *source;
   
-  /* IPv4 address the frame was received from, or should be sent to */
-  int destination_resolved;
+  /* IPv4 address the frame was received from */
   struct sockaddr_in recvaddr;
   overlay_interface *interface;
   char unicast;
   int packet_version;
-  time_ms_t dont_send_until;
+  int sender_interface;
   
   /* Actual payload */
   struct overlay_buffer *payload;
   
   time_ms_t enqueued_at;
-  
 };
 
 

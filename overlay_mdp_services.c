@@ -74,23 +74,15 @@ int rhizome_mdp_send_block(struct subscriber *dest, unsigned char *id, uint64_t 
     reply.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT|MDP_NOSIGN;
     bcopy(my_subscriber->sid,reply.out.src.sid,SID_SIZE);
     reply.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
-    int send_broadcast=1;
     
-    if (dest){
-      if (!(dest->reachable&REACHABLE_DIRECT))
-	send_broadcast=0;
-      if (dest->reachable&REACHABLE_UNICAST && dest->interface && dest->interface->prefer_unicast)
-	send_broadcast=0;
-    }
-    
-    if (send_broadcast){
+    if (dest && dest->reachable&REACHABLE_UNICAST){
+      // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
+      bcopy(dest->sid, reply.out.dst.sid, SID_SIZE);
+    }else{
       // send replies to broadcast so that others can hear blocks and record them
       // (not that preemptive listening is implemented yet).
       memset(reply.out.dst.sid,0xff,SID_SIZE);
       reply.out.ttl=1;
-    }else{
-      // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
-      bcopy(dest->sid, reply.out.dst.sid, SID_SIZE);
     }
     
     reply.out.dst.port=MDP_PORT_RHIZOME_RESPONSE;
@@ -404,13 +396,13 @@ int overlay_mdp_try_interal_services(struct overlay_frame *frame, overlay_mdp_fr
 {
   IN();
   switch(mdp->out.dst.port) {
-  case MDP_PORT_LINKSTATE:        RETURN(link_receive(mdp));
+  case MDP_PORT_LINKSTATE:        RETURN(link_receive(frame, mdp));
   case MDP_PORT_VOMP:             RETURN(vomp_mdp_received(mdp));
   case MDP_PORT_KEYMAPREQUEST:    RETURN(keyring_mapping_request(keyring,mdp));
   case MDP_PORT_DNALOOKUP:        RETURN(overlay_mdp_service_dnalookup(mdp));
   case MDP_PORT_ECHO:             RETURN(overlay_mdp_service_echo(mdp));
   case MDP_PORT_TRACE:            RETURN(overlay_mdp_service_trace(mdp));
-  case MDP_PORT_PROBE:            RETURN(overlay_mdp_service_probe(mdp));
+  case MDP_PORT_PROBE:            RETURN(overlay_mdp_service_probe(frame, mdp));
   case MDP_PORT_STUNREQ:          RETURN(overlay_mdp_service_stun_req(mdp));
   case MDP_PORT_STUN:             RETURN(overlay_mdp_service_stun(mdp));
   case MDP_PORT_RHIZOME_REQUEST: 

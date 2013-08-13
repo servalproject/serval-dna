@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MSG_TYPE_REQ 1
 
 #define CACHE_BARS 60
+#define MAX_OLD_BARS 40
 #define BARS_PER_RESPONSE ((int)400/RHIZOME_BAR_BYTES)
 
 #define HEAD_FLAG INT64_MAX
@@ -139,7 +140,8 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
     if (state->sync_end < state->highest_seen){
       rhizome_sync_request(subscriber, state->sync_end, 1);
     }else if(state->sync_start >0){
-      rhizome_sync_request(subscriber, state->sync_start, 0);
+      if (state->bar_count < MAX_OLD_BARS)
+	rhizome_sync_request(subscriber, state->sync_start, 0);
     }else if(!state->sync_complete){
       state->sync_complete = 1;
       if (config.debug.rhizome)
@@ -278,6 +280,8 @@ static void sync_process_bar_list(struct subscriber *subscriber, struct rhizome_
 	added=1;
     }
     for (i=mid_point -1; i>=0; i--){
+      if (state->bar_count >= MAX_OLD_BARS)
+	break;
       if (sync_cache_bar(state, bars[i], bar_tokens[i]))
 	added=1;
     }

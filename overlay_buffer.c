@@ -139,7 +139,7 @@ int ob_unlimitsize(struct overlay_buffer *b)
   return 0;
 }
 
-int ob_makespace(struct overlay_buffer *b,int bytes)
+int _ob_makespace(struct __sourceloc __whence, struct overlay_buffer *b,int bytes)
 {
   if (b->sizeLimit!=-1 && b->position+bytes>b->sizeLimit) {
     if (config.debug.packetformats) WHY("Asked to make space beyond size limit");
@@ -209,16 +209,16 @@ int ob_makespace(struct overlay_buffer *b,int bytes)
  Functions that append data and increase the size of the buffer if possible / required
  */
 
-int ob_append_byte(struct overlay_buffer *b,unsigned char byte)
+int _ob_append_byte(struct __sourceloc __whence, struct overlay_buffer *b,unsigned char byte)
 {
-  if (ob_makespace(b,1)) return WHY("ob_makespace() failed");
+  if (_ob_makespace(__whence, b,1)) return WHY("ob_makespace() failed");
   b->bytes[b->position++] = byte;
   return 0;
 }
 
-unsigned char *ob_append_space(struct overlay_buffer *b,int count)
+unsigned char *_ob_append_space(struct __sourceloc __whence, struct overlay_buffer *b,int count)
 {
-  if (ob_makespace(b,count))  {
+  if (_ob_makespace(__whence, b,count))  {
     WHY("ob_makespace() failed");
     return NULL;
   }
@@ -228,31 +228,31 @@ unsigned char *ob_append_space(struct overlay_buffer *b,int count)
   return r;
 }
 
-int ob_append_bytes(struct overlay_buffer *b, const unsigned char *bytes, int count)
+int _ob_append_bytes(struct __sourceloc __whence, struct overlay_buffer *b, const unsigned char *bytes, int count)
 {
-  if (ob_makespace(b,count)) return WHY("ob_makespace() failed");
+  if (_ob_makespace(__whence, b,count)) return WHY("ob_makespace() failed");
   
   bcopy(bytes,&b->bytes[b->position],count);
   b->position+=count;
   return 0;
 }
 
-int ob_append_buffer(struct overlay_buffer *b, const struct overlay_buffer *s){
-  return ob_append_bytes(b, s->bytes, s->position);
+int _ob_append_buffer(struct __sourceloc __whence, struct overlay_buffer *b, struct overlay_buffer *s){
+  return _ob_append_bytes(__whence, b, s->bytes, s->position);
 }
 
-int ob_append_ui16(struct overlay_buffer *b, uint16_t v)
+int _ob_append_ui16(struct __sourceloc __whence, struct overlay_buffer *b, uint16_t v)
 {
-  if (ob_makespace(b, 2)) return WHY("ob_makespace() failed");
+  if (_ob_makespace(__whence, b, 2)) return WHY("ob_makespace() failed");
   b->bytes[b->position] = (v >> 8) & 0xFF;
   b->bytes[b->position+1] = v & 0xFF;
   b->position+=2;
   return 0;
 }
 
-int ob_append_ui32(struct overlay_buffer *b, uint32_t v)
+int _ob_append_ui32(struct __sourceloc __whence, struct overlay_buffer *b, uint32_t v)
 {
-  if (ob_makespace(b, 4)) return WHY("ob_makespace() failed");
+  if (_ob_makespace(__whence, b, 4)) return WHY("ob_makespace() failed");
   b->bytes[b->position] = (v >> 24) & 0xFF;
   b->bytes[b->position+1] = (v >> 16) & 0xFF;
   b->bytes[b->position+2] = (v >> 8) & 0xFF;
@@ -261,9 +261,9 @@ int ob_append_ui32(struct overlay_buffer *b, uint32_t v)
   return 0;
 }
 
-int ob_append_ui64(struct overlay_buffer *b, uint64_t v)
+int _ob_append_ui64(struct __sourceloc __whence, struct overlay_buffer *b, uint64_t v)
 {
-  if (ob_makespace(b, 8)) return WHY("ob_makespace() failed");
+  if (_ob_makespace(__whence, b, 8)) return WHY("ob_makespace() failed");
   b->bytes[b->position] = (v >> 56) & 0xFF;
   b->bytes[b->position+1] = (v >> 48) & 0xFF;
   b->bytes[b->position+2] = (v >> 40) & 0xFF;
@@ -310,7 +310,19 @@ int unpack_uint(unsigned char *buffer, int buff_size, uint64_t *v){
   return i;
 }
 
-int ob_append_packed_ui32(struct overlay_buffer *b, uint32_t v)
+int _ob_append_packed_ui32(struct __sourceloc __whence, struct overlay_buffer *b, uint32_t v)
+{
+  do{
+    
+    if (_ob_append_byte(__whence, b, (v&0x7f) | (v>0x7f?0x80:0)))
+      return -1;
+    v = v>>7;
+    
+  }while(v!=0);
+  return 0;
+}
+
+int _ob_append_packed_ui64(struct __sourceloc __whence, struct overlay_buffer *b, uint64_t v)
 {
   do{
     
@@ -322,24 +334,12 @@ int ob_append_packed_ui32(struct overlay_buffer *b, uint32_t v)
   return 0;
 }
 
-int ob_append_packed_ui64(struct overlay_buffer *b, uint64_t v)
-{
-  do{
-    
-    if (ob_append_byte(b, (v&0x7f) | (v>0x7f?0x80:0)))
-      return -1;
-    v = v>>7;
-    
-  }while(v!=0);
-  return 0;
-}
-
-int ob_append_rfs(struct overlay_buffer *b,int l)
+int _ob_append_rfs(struct __sourceloc __whence, struct overlay_buffer *b, int l)
 {
   if (l<0||l>0xffff) return -1;
   
   b->var_length_offset=b->position;
-  return ob_append_ui16(b,l);
+  return _ob_append_ui16(__whence, b,l);
 }
 
 

@@ -94,7 +94,7 @@ static void directory_update(struct sched_ent *alarm){
   load_directory_config();
   
   if (directory_service){
-    if (subscriber_is_reachable(directory_service) & REACHABLE){
+    if (directory_service->reachable & REACHABLE){
       directory_send_keyring(directory_service);
       
       unschedule(alarm);

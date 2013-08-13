@@ -144,18 +144,9 @@ static void parse_frame(struct overlay_buffer *buff){
     goto end;
   
   // locate the interface we should send outgoing unicast packets to
-  overlay_interface *interface = overlay_interface_find(*addr, 1);
-  if (interface){
-    // always update the IP address we heard them from, even if we don't need to use it right now
-    context.sender->address.sin_family = AF_INET;
-    context.sender->address.sin_addr = *addr;
-    // assume the port number of the other servald matches our local port number configuration
-    context.sender->address.sin_port = htons(interface->port);
-
-    if (context.sender->reachable==REACHABLE_NONE){
-      set_reachable(context.sender, REACHABLE_UNICAST|REACHABLE_ASSUMED);
-      overlay_send_probe(context.sender, context.sender->address, interface, OQ_MESH_MANAGEMENT);
-    }
+  context.interface = overlay_interface_find(*addr, 1);
+  if (context.interface){
+    link_received_packet(&context, -1, 0);
   }
   
   // read subscriber id of payload origin

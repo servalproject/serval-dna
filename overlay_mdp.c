@@ -842,8 +842,10 @@ static int routing_table(struct subscriber *subscriber, void *context){
   
   if (subscriber->reachable==REACHABLE_INDIRECT && subscriber->next_hop)
     memcpy(r->neighbour, subscriber->next_hop->sid, SID_SIZE);
-  if (subscriber->reachable & REACHABLE_DIRECT && subscriber->interface)
-    strcpy(r->interface_name, subscriber->interface->name);
+  if (subscriber->reachable & REACHABLE_DIRECT 
+    && subscriber->destination 
+    && subscriber->destination->interface)
+    strcpy(r->interface_name, subscriber->destination->interface->name);
   else
     r->interface_name[0]=0;
   overlay_mdp_reply(mdp_named.poll.fd, state->recvaddr_un, state->recvaddrlen, &reply);
@@ -872,7 +874,12 @@ static void overlay_mdp_scan(struct sched_ent *alarm)
   while(state->current <= stop){
     addr.sin_addr.s_addr=htonl(state->current);
     if (addr.sin_addr.s_addr != state->interface->address.sin_addr.s_addr){
-      if (overlay_send_probe(NULL, addr, state->interface, OQ_ORDINARY))
+      struct network_destination *destination = create_unicast_destination(addr, state->interface);
+      if (!destination)
+	break;
+      int ret = overlay_send_probe(NULL, destination, OQ_ORDINARY);
+      release_destination_ref(destination);
+      if (ret)
 	break;
     }
     state->current++;
@@ -999,7 +1006,7 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	      
 	      scans[i].interface = interface;
 	      scans[i].current = ntohl(interface->address.sin_addr.s_addr & interface->netmask.s_addr)+1;
-	      scans[i].last = ntohl(interface->broadcast_address.sin_addr.s_addr)-1;
+	      scans[i].last = ntohl(interface->destination->address.sin_addr.s_addr)-1;
 	      if (scans[i].last - scans[i].current>0x10000){
 		INFOF("Skipping scan on interface %s as the address space is too large",interface->name);
 		continue;
