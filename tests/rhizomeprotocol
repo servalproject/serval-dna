@@ -66,16 +66,7 @@ setup_common() {
    set_instance +B
 }
 
-doc_FileTransfer="New bundle and update transfer to one node"
-setup_FileTransfer() {
-   setup_common
-   set_instance +A
-   rhizome_add_file file1
-   start_servald_instances +A +B
-   foreach_instance +A assert_peers_are_instances +B
-   foreach_instance +B assert_peers_are_instances +A
-}
-test_FileTransfer() {
+receive_and_update_bundle() {
    wait_until bundle_received_by $BID:$VERSION +B
    set_instance +B
    executeOk_servald rhizome list
@@ -88,6 +79,19 @@ test_FileTransfer() {
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file2
    assert_rhizome_received file2
+}
+
+doc_FileTransfer="New bundle and update transfer to one node"
+setup_FileTransfer() {
+   setup_common
+   set_instance +A
+   rhizome_add_file file1
+   start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
+}
+test_FileTransfer() {
+   receive_and_update_bundle
 }
 
 doc_EncryptedTransfer="Encrypted payload can be opened by destination"
@@ -159,18 +163,7 @@ setup_HTTPTransport() {
    foreach_instance +B assert_peers_are_instances +A
 }
 test_HTTPTransport() {
-   wait_until bundle_received_by $BID:$VERSION +B
-   set_instance +B
-   executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=0 file1
-   assert_rhizome_received file1
-   set_instance +A
-   rhizome_update_file file1 file2
-   set_instance +B
-   wait_until bundle_received_by $BID:$VERSION +B
-   executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=0 file2
-   assert_rhizome_received file2
+   receive_and_update_bundle
 }
 
 doc_MDPTransport="Rhizome over MDP transport"
@@ -186,19 +179,29 @@ setup_MDPTransport() {
    foreach_instance +B assert_peers_are_instances +A
 }
 test_MDPTransport() {
-   wait_until bundle_received_by $BID:$VERSION +B
-   set_instance +B
-   executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=0 file1
-   assert_rhizome_received file1
-   set_instance +A
-   rhizome_update_file file1 file2
-   set_instance +B
-   wait_until bundle_received_by $BID:$VERSION +B
-   executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=0 file2
-   assert_rhizome_received file2
+   receive_and_update_bundle
 }
+
+doc_UnicastTransfer="Rhizome over unicast MDP link"
+setup_UnicastTransfer() {
+   setup_common
+   foreach_instance +A +B \
+     executeOk_servald config \
+       set rhizome.http.enable 0
+   set_instance +A
+   rhizome_add_file file1
+   set_instance +B
+   executeOk_servald config \
+      set interfaces.1.file foo \
+      set interfaces.1.drop_broadcasts on
+   start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
+}
+test_UnicastTransfer() {
+   receive_and_update_bundle
+}
+
 
 #common setup and test routines for transferring a 1MB file
 setup_bigfile_common() {
@@ -213,7 +216,7 @@ setup_bigfile_common() {
 }
 bigfile_common_test() {
    set_instance +B
-   wait_until bundle_received_by $BID:$VERSION +B
+   wait_until --timeout=120 bundle_received_by $BID:$VERSION +B
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file1
    assert_rhizome_received file1
