@@ -31,50 +31,71 @@
 struct packet_destination{
   // if we've sent this packet once, what was the envelope sequence number?
   int sent_sequence;
+  // delay the next transmission. if we don't get an ack, send it again.
   time_ms_t delay_until;
+  // the actual out going stream for this packet
   struct network_destination *destination;
 };
 
 struct overlay_frame {
+  // packet queue pointers
   struct overlay_frame *prev;
   struct overlay_frame *next;
+  // when did we insert into the queue?
+  time_ms_t enqueued_at;
   
+  // deprecated, all future "types" should just be assigned port numbers
   unsigned int type;
+  // encrypted? signed?
   unsigned int modifiers;
   
   unsigned char ttl;
+  // Which QOS queue?
   unsigned char queue;
+  // Should we keep trying until acked?
   char resend;
+  
+  // callback and context just before packet sending
   void *send_context;
   int (*send_hook)(struct overlay_frame *, int seq, void *context);
   
+  // when should we send it?
   time_ms_t delay_until;
+  // where should we send it?
   struct packet_destination destinations[MAX_PACKET_DESTINATIONS];
   int destination_count;
+  // how often have we sent it?
   int transmit_count;
   
   // each payload gets a sequence number that is reused on retransmission
   int32_t mdp_sequence;
   
-  // null if destination is broadcast
+  // packet addressing;
+  // where did this packet originate?
+  struct subscriber *source;
+  // where is this packet destined for
+  // for broadcast packets, the destination will be null and the broadcast_id will be set if ttl>1
   struct subscriber *destination;
   struct broadcast broadcast_id;
+  // where is this packet going next?
   struct subscriber *next_hop;
-  // should we force the encoding to include the entire source public key?
-  int source_full;
-  struct subscriber *source;
   
-  /* IPv4 address the frame was received from */
-  struct sockaddr_in recvaddr;
+  // should we force the next packet header to include our full public key?
+  int source_full;
+  
+  // how did we receive this packet?
   overlay_interface *interface;
+  struct sockaddr_in recvaddr;
+  // packet envelope header;
+  // Was it a unicast frame
   char unicast;
+  // what encoding version was used / should be used?
   int packet_version;
+  // which interface did the previous hop sent it from? 
   int sender_interface;
   
-  /* Actual payload */
+  // Raw wire format of the payload, probably encrypted or signed.
   struct overlay_buffer *payload;
-  
-  time_ms_t enqueued_at;
 };
 
 
