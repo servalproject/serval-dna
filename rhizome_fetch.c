@@ -62,13 +62,14 @@ struct rhizome_fetch_slot {
   /* Keep track of how much of the file we have read */
   struct rhizome_write write_state;
 
-  int64_t last_write_time;
-  int64_t start_time;
+  time_ms_t last_write_time;
+  time_ms_t start_time;
 
   /* HTTP transport specific elements */
   char request[1024];
   int request_len;
   int request_ofs;
+  rhizome_manifest *previous;
 
   /* HTTP streaming reception of manifests */
   char manifest_buffer[1024];
@@ -399,6 +400,7 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
   return rhizome_add_manifest(m, m->ttl - 1 /* TTL */);
 }
 
+// begin fetching a bundle
 static int schedule_fetch(struct rhizome_fetch_slot *slot)
 {
   IN();
@@ -417,9 +419,29 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
        the database. */
     slot->manifest->dataFileName = NULL;
     slot->manifest->dataFileUnlinkOnFree = 0;
-
+    
     strbuf r = strbuf_local(slot->request, sizeof slot->request);
-    strbuf_sprintf(r, "GET /rhizome/file/%s HTTP/1.0\r\n\r\n", slot->manifest->fileHexHash);
+    strbuf_sprintf(r, "GET /rhizome/file/%s HTTP/1.0\r\n", slot->manifest->fileHexHash);
+    
+    if (slot->manifest->journalTail>=0){
+      // if we're fetching a journal bundle, work out how many bytes we have of a previous version
+      // and therefore what range of bytes we should ask for
+      slot->previous = rhizome_new_manifest();
+      const char *id = rhizome_manifest_get(slot->manifest, "id", NULL, 0);
+      if (rhizome_retrieve_manifest(id, slot->previous)){
+	rhizome_manifest_free(slot->previous);
+	slot->previous=NULL;
+	
+	// check that the new journal is valid and has some overlapping bytes
+      }else if (slot->previous->journalTail > slot->manifest->journalTail
+	  || slot->previous->fileLength + slot->previous->journalTail < slot->manifest->journalTail){
+	rhizome_manifest_free(slot->previous);
+	slot->previous=NULL;
+      }
+    }
+
+    strbuf_puts(r, "\r\n");
+    
     if (strbuf_overrun(r))
       RETURN(WHY("request overrun"));
     slot->request_len = strbuf_len(r);
@@ -935,6 +957,10 @@ static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
     rhizome_manifest_free(slot->manifest);
   slot->manifest = NULL;
 
+  if (slot->previous)
+    rhizome_manifest_free(slot->previous);
+  slot->previous = NULL;
+  
   if (slot->write_state.blob_fd>=0 ||
       slot->write_state.blob_rowid>=0)
     rhizome_fail_write(&slot->write_state);
@@ -1050,6 +1076,34 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   OUT();
 }
 
+static int pipe_journal(struct rhizome_fetch_slot *slot){
+  if (!slot->previous)
+    return 0;
+    
+  /* we need to work out the overlapping range that we can copy from the previous version
+   * then we can start to transfer only the new content in the journal
+   *   old; [  tail  |0                   length]
+   *   new; [  tail         |0                          length]
+   *        [               | written | overlap |  new content]
+   */
+  
+  uint64_t start = slot->manifest->journalTail - slot->previous->journalTail + slot->write_state.file_offset;
+  uint64_t length = slot->previous->fileLength - slot->manifest->journalTail - slot->write_state.file_offset;
+  
+  // of course there might not be any overlap
+  if (start>=0 && start < slot->previous->fileLength && length>0){
+    if (config.debug.rhizome)
+      DEBUGF("Copying %"PRId64" bytes from previous journal", length);
+    rhizome_journal_pipe(&slot->write_state, slot->previous->fileHexHash, 
+      start, length);
+  }
+  
+  // and we don't need to do this again, so drop the manifest
+  rhizome_manifest_free(slot->previous);
+  slot->previous=NULL;
+  return 0;
+}
+
 static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
 {
   /* In Rhizome Direct we use the same fetch slot system, but we aren't actually
@@ -1088,6 +1142,9 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
   slot->state=RHIZOME_FETCH_RXFILEMDP;
 
   slot->last_write_time=gettime_ms();
+  
+  pipe_journal(slot);
+  
     /* We are requesting a file.  The http request may have already received
        some of the file, so take that into account when setting up ring buffer. 
        Then send the request for the next block of data, and set our alarm to

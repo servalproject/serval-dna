@@ -952,6 +952,19 @@ static int rhizome_pipe(struct rhizome_read *read, struct rhizome_write *write, 
   return 0;
 }
 
+int rhizome_journal_pipe(struct rhizome_write *write, const char *fileHash, uint64_t start_offset, uint64_t length)
+{
+  struct rhizome_read read_state;
+  bzero(&read_state, sizeof read_state);
+  if (rhizome_open_read(&read_state, fileHash, start_offset>0?0:1))
+    return -1;
+
+  read_state.offset = start_offset;
+  int ret = rhizome_pipe(&read_state, write, length);
+  rhizome_read_close(&read_state);
+  return ret;
+}
+
 // open an existing journal bundle, advance the head pointer, duplicate the existing content and get ready to add more.
 int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, uint64_t new_size)
 {
@@ -979,16 +992,8 @@ int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m,
     goto failure;
 
   if (copy_length>0){
-    struct rhizome_read read_state;
-    bzero(&read_state, sizeof read_state);
-    // don't bother to decrypt the existing journal payload
-    ret = rhizome_open_read(&read_state, m->fileHexHash, advance_by>0?0:1);
-    if (ret)
-      goto failure;
-
-    read_state.offset = advance_by;
-    ret = rhizome_pipe(&read_state, write, copy_length);
-    rhizome_read_close(&read_state);
+    // note that we don't need to bother decrypting the existing journal payload
+    ret = rhizome_journal_pipe(write, m->fileHexHash, advance_by, copy_length);
     if (ret)
       goto failure;
   }

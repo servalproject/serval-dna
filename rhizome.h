@@ -709,6 +709,7 @@ int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk);
 int rhizome_open_write_journal(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, uint64_t new_size);
 int rhizome_append_journal_buffer(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, unsigned char *buffer, int len);
 int rhizome_append_journal_file(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, const char *filename);
+int rhizome_journal_pipe(struct rhizome_write *write, const char *fileHash, uint64_t start_offset, uint64_t length);
 
 int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
 			    const unsigned char *key, const unsigned char *nonce);

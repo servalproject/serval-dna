@@ -154,9 +154,9 @@ doc_HTTPTransport="Rhizome over HTTP transport"
 setup_HTTPTransport() {
    setup_common
    set_instance +B
-   executeOk_servald config set rhizome.mdp.enable 0   
+   executeOk_servald config set rhizome.mdp.enable 0
    set_instance +A
-   executeOk_servald config set rhizome.mdp.enable 0   
+   executeOk_servald config set rhizome.mdp.enable 0
    rhizome_add_file file1
    start_servald_instances +A +B
    foreach_instance +A assert_peers_are_instances +B
@@ -202,6 +202,31 @@ test_UnicastTransfer() {
    receive_and_update_bundle
 }
 
+doc_journalMDP="Transfer and update a journal bundle via MDP"
+setup_journalMDP() {
+   setup_common
+   foreach_instance +A +B \
+     executeOk_servald config \
+       set rhizome.http.enable 0
+   set_instance +A
+   create_file file1 64
+   create_file file2 64
+   executeOk_servald rhizome journal append $SIDA "" file1
+   extract_stdout_manifestid BID
+   extract_stdout_version VERSION
+   start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
+}
+test_journalMDP() {
+   wait_until bundle_received_by $BID:$VERSION +B
+   set_instance +A
+   executeOk_servald rhizome journal append $SIDA $BID file2
+   extract_stdout_version VERSION2
+   set_instance +B
+   wait_until bundle_received_by $BID:$VERSION2 +B
+   assertGrep $instance_servald_log "Copying [0-9]\+ bytes from previous journal"
+}
 
 #common setup and test routines for transferring a 1MB file
 setup_bigfile_common() {
