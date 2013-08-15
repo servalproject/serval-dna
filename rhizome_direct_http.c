@@ -140,6 +140,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 
 	  /* Write HTTP response header */
 	  struct http_response hr;
+	  bzero(&hr, sizeof hr);
 	  hr.result_code=200;
 	  hr.content_type="binary/octet-stream";
 	  hr.content_length=bytes;
@@ -836,7 +837,11 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 
   /* Allocate a buffer to receive the entire action list */
   content_length = parts.content_length;
-  unsigned char *actionlist=malloc(content_length);
+  unsigned char *actionlist=emalloc(content_length);
+  if (!actionlist){
+    close(sock);
+    goto end;
+  }
   bcopy(parts.content_start, actionlist, len);
   if (fill_buffer(sock, actionlist, len, content_length)==-1){
     free(actionlist);

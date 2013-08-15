@@ -409,6 +409,29 @@ test_FileTransferDelete() {
    assert_rhizome_received file1_2
 }
 
+doc_HttpFetchRange="Fetch a file range using HTTP GET."
+setup_HttpFetchRange() {
+   setup_curl_7
+   setup_common
+   set_instance +A
+   rhizome_add_file file1
+   start_servald_instances +A
+   wait_until rhizome_http_server_started +A
+   get_rhizome_server_port PORTA +A
+}
+test_HttpFetchRange() {
+   executeOk curl \
+         --silent --fail --show-error \
+         --output http.output \
+         --dump-header http.headers \
+         --write-out '%{http_code}\n' \
+	 --continue-at 32 \
+         "http://$addr_localhost:$PORTA/rhizome/file/$FILEHASH"
+   tfw_cat http.headers http.output
+   assertGrep http.headers "Content-range:"
+   assertGrep http.headers "Content-length:"
+}
+
 doc_HttpImport="Import bundle using HTTP POST multi-part form."
 setup_HttpImport() {
    setup_curl_7

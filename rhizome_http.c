@@ -228,9 +228,11 @@ void rhizome_client_poll(struct sched_ent *alarm)
 	unschedule(&r->alarm);
 	schedule(&r->alarm);
 	r->request_length += bytes;
-	if (http_header_complete(r->request, r->request_length, bytes)) {
+	r->header_length = http_header_complete(r->request, r->request_length, bytes);
+	if (r->header_length){
 	  /* We have the request. Now parse it to see if we can respond to it */
-	  if (rhizome_http_parse_func!=NULL) rhizome_http_parse_func(r);
+	  if (rhizome_http_parse_func!=NULL) 
+	    rhizome_http_parse_func(r);
 	}
       } else {
 	if (config.debug.rhizome_tx)
@@ -482,19 +484,25 @@ int http_header_complete(const char *buf, size_t len, size_t read_since_last_cal
 {
   IN();
   const char *bufend = buf + len;
+  const char *p = buf;
   size_t tail = read_since_last_call + 4;
   if (tail < len)
-    buf = bufend - tail;
+    p = bufend - tail;
   int count = 0;
-  for (; count < 2 && buf != bufend; ++buf) {
-    switch (*buf) {
-      case '\n': ++count; break;
-      case '\r': break;
-      case '\0': break; // ignore NUL (telnet inserts them)
-      default: count = 0; break;
+  for (; p != bufend; ++p) {
+    switch (*p) {
+      case '\n': 
+	if (++count==2)
+	  RETURN(p - buf);
+      case '\r': // ignore CR
+      case '\0': // ignore NUL (telnet inserts them)
+	break;
+      default: 
+	count = 0; 
+	break;
     }
   }
-  RETURN(count == 2);
+  RETURN(0);
   OUT();
 }
 
@@ -508,6 +516,8 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
   r->request_type = 0;
   // Parse the HTTP "GET" line.
   char *path = NULL;
+  const char *headers = NULL;
+  int header_length = 0;
   size_t pathlen = 0;
   if (str_startswith(r->request, "POST ", (const char **)&path)) {
     return rhizome_direct_parse_http_request(r);
@@ -520,10 +530,11 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
     pathlen = p - path;
     if ( str_startswith(p, " HTTP/1.", &p)
       && (str_startswith(p, "0", &p) || str_startswith(p, "1", &p))
-      && (str_startswith(p, "\r\n", &p) || str_startswith(p, "\n", &p))
-    )
+      && (str_startswith(p, "\r\n", &headers) || str_startswith(p, "\n", &headers))
+    ){
       path[pathlen] = '\0';
-    else
+      header_length = r->header_length - (headers - r->request);
+    }else
       path = NULL;
   }
   if (path) {
@@ -607,7 +618,6 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	if (!rhizome_str_is_file_hash(id)) {
 	  rhizome_server_simple_http_response(r, 400, "<html><h1>Invalid payload ID</h1></html>\r\n");
 	} else {
-	  // TODO: Check for Range: header and return 206 if returning partial content
 	  str_toupper_inplace(id);
 	  bzero(&r->read_state, sizeof(r->read_state));
 	  if (rhizome_open_read(&r->read_state, id, 1))
@@ -618,9 +628,27 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 		rhizome_server_simple_http_response(r, 404, "<html><h1>Unknown length</h1></html>\r\n");
 	      }
 	    }
+	    
+	    const char *range=str_str((char*)headers,"Range: bytes=",header_length);
 	    r->read_state.offset = r->source_index = 0;
+	    
+	    if (range){
+	      sscanf(range, "Range: bytes=%"PRId64"-", &r->read_state.offset);
+	      DEBUGF("Found range header %"PRId64,r->read_state.offset);
+	      if (r->read_state.offset)
+		r->read_state.hash=0;
+	    }
+	    
 	    if (r->read_state.length - r->read_state.offset>0){
-	      rhizome_server_http_response_header(r, 200, "application/binary", r->read_state.length - r->read_state.offset);
+	      struct http_response hr;
+	      bzero(&hr, sizeof hr);
+	      hr.result_code = 200;
+	      hr.content_type = "application/binary";
+	      hr.content_start = r->read_state.offset;
+	      hr.content_end = r->read_state.length;
+	      hr.content_length = r->read_state.length;
+	      hr.body = NULL;
+	      rhizome_server_set_response(r, &hr);
 	      r->request_type |= RHIZOME_HTTP_REQUEST_STORE;
 	    }
 	  }
@@ -707,7 +735,13 @@ static strbuf strbuf_build_http_response(strbuf sb, const struct http_response *
 {
   strbuf_sprintf(sb, "HTTP/1.0 %03u %s\r\n", h->result_code, httpResultString(h->result_code));
   strbuf_sprintf(sb, "Content-type: %s\r\n", h->content_type);
-  strbuf_sprintf(sb, "Content-length: %llu\r\n", h->content_length);
+  if (h->content_end && h->content_length)
+    strbuf_sprintf(sb, 
+	  "Content-range: %"PRIu64"-%"PRIu64"/%"PRIu64"\r\n"
+	  "Content-length: %"PRIu64"\r\n", 
+      h->content_start, h->content_end, h->content_length, h->content_end - h->content_start);
+  else if (h->content_length)
+    strbuf_sprintf(sb, "Content-length: %"PRIu64"\r\n", h->content_length);
   strbuf_puts(sb, "\r\n");
   if (h->body)
     strbuf_puts(sb, h->body);

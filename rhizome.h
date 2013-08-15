@@ -456,6 +456,7 @@ typedef struct rhizome_http_request {
 
   /* The HTTP request as currently received */
   int request_length;
+  int header_length;
   char request[1024];
   
   /* Nature of the request */
@@ -535,6 +536,8 @@ typedef struct rhizome_http_request {
 struct http_response {
   unsigned int result_code;
   const char * content_type;
+  uint64_t content_start;
+  uint64_t content_end;
   uint64_t content_length;
   const char * body;
 };
