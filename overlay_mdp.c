@@ -551,6 +551,127 @@ int overlay_mdp_encode_ports(struct overlay_buffer *plaintext, int dst_port, int
   return 0;
 }
 
+static struct overlay_buffer * encrypt_payload(
+  struct subscriber *source, 
+  struct subscriber *dest, 
+  const unsigned char *buffer, int cipher_len){
+    
+  int nm=crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES;
+  int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
+  int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
+  int cz=crypto_box_curve25519xsalsa20poly1305_BOXZEROBYTES;
+  
+  // generate plain message with leading zero bytes and get ready to cipher it
+  // TODO, add support for leading zero's in overlay_buffer's, so we don't need to copy the plain text
+  unsigned char plain[zb+cipher_len];
+  
+  /* zero bytes */
+  bzero(&plain[0],zb);
+  bcopy(buffer,&plain[zb],cipher_len);
+  
+  cipher_len+=zb;
+  
+  struct overlay_buffer *ret = ob_new();
+  
+  unsigned char *nonce = ob_append_space(ret, nb+cipher_len);
+  unsigned char *cipher_text = nonce + nb;
+  if (!nonce){
+    ob_free(ret);
+    return NULL;
+  }
+
+  if (generate_nonce(nonce,nb)){
+    ob_free(ret);
+    WHY("generate_nonce() failed to generate nonce");
+    return NULL;
+  }
+  
+  // reserve the high bit of the nonce as a flag for transmitting a shorter nonce.
+  nonce[0]&=0x7f;
+  
+  /* get pre-computed PKxSK bytes (the slow part of auth-cryption that can be
+     retained and reused, and use that to do the encryption quickly. */
+  unsigned char *k=keyring_get_nm_bytes(source->sid, dest->sid);
+  if (!k) {
+    ob_free(ret);
+    WHY("could not compute Curve25519(NxM)");
+    return NULL;
+  }
+  
+  /* Actually authcrypt the payload */
+  if (crypto_box_curve25519xsalsa20poly1305_afternm
+      (cipher_text,plain,cipher_len,nonce,k)){
+    ob_free(ret);
+    WHY("crypto_box_afternm() failed");
+    return NULL;
+  }
+  
+  if (0) {
+    DEBUG("authcrypted mdp frame");
+    dump("nm",k,nm);
+    dump("plain text",plain,sizeof(plain));
+    dump("nonce",nonce,nb);
+    dump("cipher text",cipher_text,cipher_len);
+  }
+  
+  /* now shuffle down to get rid of the temporary space that crypto_box
+   uses. 
+   TODO extend overlay buffer so we don't need this.
+   */
+  bcopy(&cipher_text[cz],&cipher_text[0],cipher_len-cz);
+  ret->position-=cz;
+  if (0){
+    dump("frame", &ret->bytes[0], ret->position);
+  }
+  
+  return ret;
+}
+
+// encrypt or sign the plaintext, then queue the frame for transmission.
+int overlay_send_frame(struct overlay_frame *frame, struct overlay_buffer *plaintext){
+  /* Work out the disposition of the frame->  For now we are only worried
+     about the crypto matters, and not compression that may be applied
+     before encryption (since applying it after is useless as ciphered
+     text should have maximum entropy). */
+  switch(frame->modifiers) {
+  default:
+  case OF_CRYPTO_SIGNED|OF_CRYPTO_CIPHERED:
+    /* crypted and signed (using CryptoBox authcryption primitive) */
+    frame->payload = encrypt_payload(frame->source, frame->destination, ob_ptr(plaintext), ob_position(plaintext));
+    if (!frame->payload){
+      ob_free(plaintext);
+      op_free(frame);
+      return -1;
+    }
+    break;
+      
+  case OF_CRYPTO_SIGNED:
+    // Lets just append some space into the existing payload buffer for the signature, without copying it.
+    frame->payload = plaintext;
+    ob_makespace(frame->payload,SIGNATURE_BYTES);
+    if (crypto_sign_message(frame->source, ob_ptr(frame->payload), frame->payload->allocSize, &frame->payload->position)){
+      op_free(frame);
+      return -1;
+    }
+    break;
+      
+  case 0:
+    /* clear text and no signature */
+    frame->payload = plaintext;
+    break;
+  }
+  
+  if (!frame->destination && frame->ttl>1)
+    overlay_broadcast_generate_address(&frame->broadcast_id);
+  
+  if (overlay_payload_enqueue(frame)){
+    op_free(frame);
+    return -1;
+  }
+  
+  return 0;
+}
+
 /* Construct MDP packet frame from overlay_mdp_frame structure
    (need to add return address from bindings list, and copy
    payload etc).
@@ -565,46 +686,30 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   if (mdp->out.payload_length > sizeof(mdp->out.payload))
     FATAL("Payload length is past the end of the buffer");
 
-  /* Prepare the overlay frame for dispatch */
-  struct overlay_frame *frame = calloc(1,sizeof(struct overlay_frame));
-  if (!frame)
-    FATAL("Couldn't allocate frame buffer");
+  struct subscriber *source=NULL;
+  struct subscriber *destination=NULL;
   
   if (is_sid_any(mdp->out.src.sid)){
     /* set source to ourselves */
-    frame->source = my_subscriber;
-    bcopy(frame->source->sid, mdp->out.src.sid, SID_SIZE);
+    source = my_subscriber;
+    bcopy(source->sid, mdp->out.src.sid, SID_SIZE);
   }else if (is_sid_broadcast(mdp->out.src.sid)){
-    /* This is rather naughty if it happens, since broadcasting a
-     response can lead to all manner of nasty things.
-     Picture a packet with broadcast as the source address, sent
-     to, say, the MDP echo port on another node, and with a source
-     port also of the echo port.  Said echo will get multiplied many,
-     many, many times over before the TTL finally reaches zero.
-     So we just say no to any packet with a broadcast source address. 
-     (Of course we have other layers of protection against such 
-     shenanigens, such as using BPIs to smart-flood broadcasts, but
-     security comes through depth.)
-     */
-    op_free(frame);
+    /* Nope, I'm sorry but we simply can't send packets from 
+     * broadcast addresses. */
     RETURN(WHY("Packet had broadcast address as source address"));
   }else{
     // assume all local identities have already been unlocked and marked as SELF.
-    frame->source = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
-    if (!frame->source){
-      op_free(frame);
+    source = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
+    if (!source){
       RETURN(WHYF("Possible spoofing attempt, tried to send a packet from %s, which is an unknown SID", alloca_tohex_sid(mdp->out.src.sid)));
     }
-    if (frame->source->reachable!=REACHABLE_SELF){
-      op_free(frame);
+    if (source->reachable!=REACHABLE_SELF){
       RETURN(WHYF("Possible spoofing attempt, tried to send a packet from %s", alloca_tohex_sid(mdp->out.src.sid)));
     }
   }
   
-  /* Work out if destination is broadcast or not */
-  if (overlay_mdp_check_binding(frame->source, mdp->out.src.port, userGeneratedFrameP,
+  if (overlay_mdp_check_binding(source, mdp->out.src.port, userGeneratedFrameP,
 				recvaddr, recvaddrlen)){
-    op_free(frame);
     RETURN(overlay_mdp_reply_error
 	   (mdp_named.poll.fd,
 	    (struct sockaddr_un *)recvaddr,
@@ -613,164 +718,97 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 	    " you can send packets"));
   }
   
+  /* Work out if destination is broadcast or not */
   if (is_sid_broadcast(mdp->out.dst.sid)){
     /* broadcast packets cannot be encrypted, so complain if MDP_NOCRYPT
      flag is not set. Also, MDP_NOSIGN must also be applied, until
      NaCl cryptobox keys can be used for signing. */	
-    if (!(mdp->packetTypeAndFlags&MDP_NOCRYPT)){
-      op_free(frame);
+    if (!(mdp->packetTypeAndFlags&MDP_NOCRYPT))
       RETURN(overlay_mdp_reply_error(mdp_named.poll.fd,
 				     recvaddr,recvaddrlen,5,
 				     "Broadcast packets cannot be encrypted "));
-    }
-    overlay_broadcast_generate_address(&frame->broadcast_id);
-    frame->destination = NULL;
   }else{
-    frame->destination = find_subscriber(mdp->out.dst.sid, SID_SIZE, 1);
+    destination = find_subscriber(mdp->out.dst.sid, SID_SIZE, 1);
+    // should we reply with an error if the destination is not currently routable?
   }
   
-  frame->ttl = mdp->out.ttl;
-  if (frame->ttl == 0) 
-    frame->ttl = PAYLOAD_TTL_DEFAULT;
-  else if (frame->ttl > PAYLOAD_TTL_MAX) {
-    op_free(frame);
+  if (mdp->out.ttl == 0) 
+    mdp->out.ttl = PAYLOAD_TTL_DEFAULT;
+  else if (mdp->out.ttl > PAYLOAD_TTL_MAX) {
     RETURN(overlay_mdp_reply_error(mdp_named.poll.fd,
 				    recvaddr,recvaddrlen,9,
 				    "TTL out of range"));
   }
   
-  if (!frame->destination || frame->destination->reachable == REACHABLE_SELF)
-    {
-      /* Packet is addressed such that we should process it. */
-      overlay_saw_mdp_frame(NULL,mdp,gettime_ms());
-      if (frame->destination) {
-	/* Is local, and is not broadcast, so shouldn't get sent out
-	   on the wire. */
-	op_free(frame);
-	RETURN(0);
-      }
+  if (mdp->out.queue == 0)
+    mdp->out.queue = OQ_ORDINARY;
+    
+  if (!destination || destination->reachable == REACHABLE_SELF){
+    /* Packet is addressed to us / broadcast, we should process it first. */
+    overlay_saw_mdp_frame(NULL,mdp,gettime_ms());
+    if (destination) {
+      /* Is local, and is not broadcast, so shouldn't get sent out
+	 on the wire. */
+      RETURN(0);
     }
+  }
   
-  frame->type=OF_TYPE_DATA;
-  frame->prev=NULL;
-  frame->next=NULL;
+  int modifiers=0;
+  
+  switch(mdp->packetTypeAndFlags&(MDP_NOCRYPT|MDP_NOSIGN)) {
+  case 0:
+    // default to encrypted and authenticated
+    modifiers=OF_CRYPTO_SIGNED|OF_CRYPTO_CIPHERED;
+    break;
+  case MDP_NOCRYPT: 
+    // sign it, but don't encrypt it.
+    modifiers=OF_CRYPTO_SIGNED;
+    break;
+  case MDP_NOSIGN|MDP_NOCRYPT:
+    // just send the payload unmodified
+    modifiers=0; 
+    break;
+  case MDP_NOSIGN: 
+    /* ciphered, but not signed.
+     This means we don't use CryptoBox, but rather a more compact means
+     of representing the ciphered stream segment.
+     */
+     // fall through
+  default:
+    RETURN(WHY("Not implemented"));
+  };
+  
+  // copy the plain text message into a new buffer, with the wire encoded port numbers
   struct overlay_buffer *plaintext=ob_new();
+  if (!plaintext)
+    RETURN(-1);
   
   if (overlay_mdp_encode_ports(plaintext, mdp->out.dst.port, mdp->out.src.port)){
     ob_free(plaintext);
     RETURN (-1);
   }
-  
   if (ob_append_bytes(plaintext, mdp->out.payload, mdp->out.payload_length)){
     ob_free(plaintext);
     RETURN(-1);
   }
   
-  /* Work out the disposition of the frame->  For now we are only worried
-     about the crypto matters, and not compression that may be applied
-     before encryption (since applying it after is useless as ciphered
-     text should have maximum entropy). */
-  switch(mdp->packetTypeAndFlags&(MDP_NOCRYPT|MDP_NOSIGN)) {
-  case 0: /* crypted and signed (using CryptoBox authcryption primitive) */
-    frame->modifiers=OF_CRYPTO_SIGNED|OF_CRYPTO_CIPHERED;
-    {
-      int nm=crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES;
-      int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
-      int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
-      int cz=crypto_box_curve25519xsalsa20poly1305_BOXZEROBYTES;
-      
-      /* generate plain message with zero bytes and get ready to cipher it */
-      int cipher_len=ob_position(plaintext);
-      
-      // TODO, add support for leading zero's in overlay_buffer's, then we don't need to copy the plain text again.
-      unsigned char plain[zb+cipher_len];
-      
-      /* zero bytes */
-      bzero(&plain[0],zb);
-      bcopy(ob_ptr(plaintext),&plain[zb],cipher_len);
-      
-      cipher_len+=zb;
-      
-      ob_free(plaintext);
-      
-      frame->payload = ob_new();
-      
-      unsigned char *nonce = ob_append_space(frame->payload, nb+cipher_len);
-      unsigned char *cipher_text = nonce + nb;
-      if (!nonce)
-	RETURN(-1);
-      if (generate_nonce(nonce,nb)) {
-	op_free(frame);
-	RETURN(WHY("generate_nonce() failed to generate nonce"));
-      }
-      // reserve the high bit of the nonce as a flag for transmitting a shorter nonce.
-      nonce[0]&=0x7f;
-      
-      /* get pre-computed PKxSK bytes (the slow part of auth-cryption that can be
-	 retained and reused, and use that to do the encryption quickly. */
-      unsigned char *k=keyring_get_nm_bytes(mdp->out.src.sid, mdp->out.dst.sid);
-      if (!k) {
-	op_free(frame);
-	RETURN(WHY("could not compute Curve25519(NxM)")); 
-      }
-      /* Actually authcrypt the payload */
-      if (crypto_box_curve25519xsalsa20poly1305_afternm
-	  (cipher_text,plain,cipher_len,nonce,k)){
-	op_free(frame);
-	RETURN(WHY("crypto_box_afternm() failed")); 
-      }
-      if (0) {
-	DEBUG("authcrypted mdp frame");
-	dump("nm",k,nm);
-	dump("plain text",plain,sizeof(plain));
-	dump("nonce",nonce,nb);
-	dump("cipher text",cipher_text,cipher_len);
-      }
-      /* now shuffle down to get rid of the temporary space that crypto_box
-       uses. 
-       TODO extend overlay buffer so we don't need this.
-       */
-      bcopy(&cipher_text[cz],&cipher_text[0],cipher_len-cz);
-      frame->payload->position-=cz;
-      if (0){
-	dump("frame",&frame->payload->bytes[0],
-	     frame->payload->position);
-      }
-    }
-    break;
-      
-  case MDP_NOCRYPT: 
-    /* Payload is sent unencrypted, but signed. */
-    frame->modifiers=OF_CRYPTO_SIGNED;
-    frame->payload = plaintext;
-    ob_makespace(frame->payload,SIGNATURE_BYTES);
-    if (crypto_sign_message(frame->source, frame->payload->bytes, frame->payload->allocSize, &frame->payload->position)){
-      op_free(frame);
-      RETURN(-1);
-    }
-    break;
-      
-  case MDP_NOSIGN|MDP_NOCRYPT: /* clear text and no signature */
-    frame->modifiers=0; 
-    frame->payload = plaintext;
-    break;
-  case MDP_NOSIGN: 
-  default:
-    /* ciphered, but not signed.
-     This means we don't use CryptoBox, but rather a more compact means
-     of representing the ciphered stream segment.
-     */
-    op_free(frame);
-    RETURN(WHY("Not implemented"));
+  /* Prepare the overlay frame for dispatch */
+  struct overlay_frame *frame = emalloc_zero(sizeof(struct overlay_frame));
+  if (!frame){
+    ob_free(plaintext);
+    RETURN(-1);
   }
   
-  frame->queue=mdp->out.queue;
-  if (frame->queue==0)
-    frame->queue = OQ_ORDINARY;
+  frame->source = source;
+  frame->destination = destination;
+  frame->ttl = mdp->out.ttl;
+  frame->queue = mdp->out.queue;
+  frame->type=OF_TYPE_DATA;
+  frame->prev=NULL;
+  frame->next=NULL;
+  frame->modifiers=modifiers;
   
-  if (overlay_payload_enqueue(frame))
-    op_free(frame);
-  RETURN(0);
+  RETURN(overlay_send_frame(frame, plaintext));
   OUT();
 }
 
