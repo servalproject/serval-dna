@@ -726,7 +726,7 @@ int logDump(int level, struct __sourceloc whence, char *name, const unsigned cha
       logMessage(level, whence, "Dump of %s", name);
     for(i = 0; i < len; i += 16) {
       strbuf b = strbuf_local(buf, sizeof buf);
-      strbuf_sprintf(b, "  %04x :", i);
+      strbuf_sprintf(b, "  %04zx :", i);
       int j;
       for (j = 0; j < 16 && i + j < len; j++)
 	strbuf_sprintf(b, " %02x", addr[i + j]);

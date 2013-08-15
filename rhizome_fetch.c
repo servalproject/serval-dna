@@ -168,7 +168,7 @@ int rhizome_fetch_status_html(struct strbuf *b)
     struct rhizome_fetch_queue *q=&rhizome_fetch_queues[i];
     strbuf_sprintf(b, "<p>Slot %d, ", i);
     if (q->active.state!=RHIZOME_FETCH_FREE){
-      strbuf_sprintf(b, "%lld of %lld",
+      strbuf_sprintf(b, "%"PRId64" of %"PRId64,
 	q->active.write_state.file_offset,
 	q->active.manifest->fileLength);
     }else{

@@ -314,7 +314,8 @@ strbuf strbuf_putc(strbuf sb, char ch);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int strbuf_sprintf(strbuf sb, const char *fmt, ...);
+int strbuf_sprintf(strbuf sb, const char *fmt, ...) 
+__attribute__ (( format(printf,2,3) ));
 int strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap);
 
 
