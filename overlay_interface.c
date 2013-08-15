@@ -58,6 +58,7 @@ overlay_interface_close(overlay_interface *interface){
   link_interface_down(interface);
   INFOF("Interface %s addr %s is down", 
     interface->name, inet_ntoa(interface->address.sin_addr));
+  set_destination_ref(&interface->destination, NULL);
   unschedule(&interface->alarm);
   unwatch(&interface->alarm);
   close(interface->alarm.poll.fd);
