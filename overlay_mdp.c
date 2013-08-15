@@ -629,6 +629,10 @@ static struct overlay_buffer * encrypt_payload(
 
 // encrypt or sign the plaintext, then queue the frame for transmission.
 int overlay_send_frame(struct overlay_frame *frame, struct overlay_buffer *plaintext){
+  
+  if (!frame->source)
+    frame->source = my_subscriber;
+    
   /* Work out the disposition of the frame->  For now we are only worried
      about the crypto matters, and not compression that may be applied
      before encryption (since applying it after is useless as ciphered
