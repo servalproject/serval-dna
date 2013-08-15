@@ -228,6 +228,32 @@ test_journalMDP() {
    assertGrep $instance_servald_log "Copying [0-9]\+ bytes from previous journal"
 }
 
+doc_journalHTTP="Transfer and update a journal bundle via HTTP"
+setup_journalHTTP() {
+   setup_common
+   foreach_instance +A +B \
+     executeOk_servald config \
+       set rhizome.mdp.enable 0
+   set_instance +A
+   create_file file1 64
+   create_file file2 64
+   executeOk_servald rhizome journal append $SIDA "" file1
+   extract_stdout_manifestid BID
+   extract_stdout_version VERSION
+   start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
+}
+test_journalHTTP() {
+   wait_until bundle_received_by $BID:$VERSION +B
+   set_instance +A
+   executeOk_servald rhizome journal append $SIDA $BID file2
+   extract_stdout_version VERSION2
+   set_instance +B
+   wait_until bundle_received_by $BID:$VERSION2 +B
+   assertGrep $instance_servald_log "Copying [0-9]\+ bytes from previous journal"
+}
+
 #common setup and test routines for transferring a 1MB file
 setup_bigfile_common() {
    set_instance +A

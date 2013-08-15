@@ -688,6 +688,7 @@ int rhizome_fetch_has_queue_space(unsigned char log2_size);
 struct http_response_parts {
   int code;
   char *reason;
+  int64_t range_start;
   int64_t content_length;
   char *content_start;
 };

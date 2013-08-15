@@ -437,6 +437,9 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
 	  || slot->previous->fileLength + slot->previous->journalTail < slot->manifest->journalTail){
 	rhizome_manifest_free(slot->previous);
 	slot->previous=NULL;
+      }else{
+	strbuf_sprintf(r, "Range: bytes=%"PRId64"-%"PRId64"\r\n", 
+	  slot->previous->fileLength - slot->manifest->journalTail, slot->manifest->fileLength);
       }
     }
 
@@ -1425,12 +1428,19 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	  }
 	  if (slot->write_state.file_length==-1)
 	    slot->write_state.file_length=parts.content_length;
-	  else if (parts.content_length != slot->write_state.file_length)
-	    WARNF("Expected content length %"PRId64", got %"PRId64, slot->write_state.file_length, parts.content_length);
+	  else if (parts.content_length + parts.range_start != slot->write_state.file_length)
+	    WARNF("Expected content length %"PRId64", got %"PRId64" + %"PRId64, 
+	      slot->write_state.file_length, parts.content_length, parts.range_start);
 	  /* We have all we need.  The file is already open, so just write out any initial bytes of
 	     the body we read.
 	  */
 	  slot->state = RHIZOME_FETCH_RXFILE;
+	  if (slot->previous && parts.range_start){
+	    if (parts.range_start != slot->previous->fileLength - slot->manifest->journalTail)
+	      WARNF("Expected Content-Range header to start @%"PRId64, slot->previous->fileLength - slot->manifest->journalTail);
+	    pipe_journal(slot);
+	  }
+	  
 	  int content_bytes = slot->request + slot->request_len - parts.content_start;
 	  if (content_bytes > 0){
 	    rhizome_write_content(slot, (unsigned char*)parts.content_start, content_bytes);
@@ -1487,6 +1497,7 @@ int unpack_http_response(char *response, struct http_response_parts *parts)
   IN();
   parts->code = -1;
   parts->reason = NULL;
+  parts->range_start=0;
   parts->content_length = -1;
   parts->content_start = NULL;
   char *p = NULL;
@@ -1510,6 +1521,16 @@ int unpack_http_response(char *response, struct http_response_parts *parts)
   *p++ = '\0';
   // Iterate over header lines until the last blank line.
   while (!(p[0] == '\n' || (p[0] == '\r' && p[1] == '\n'))) {
+    if (strcase_startswith(p, "Content-Range: bytes ", (const char **)&p)) {
+      char *nump = p;
+      while (isdigit(*p))
+	parts->range_start = parts->range_start * 10 + *p++ - '0';
+      if (p == nump) {
+	if (config.debug.rhizome_rx)
+	  DEBUGF("Invalid HTTP reply: malformed Content-Range header");
+	RETURN(-1);
+      }
+    }
     if (strcase_startswith(p, "Content-Length:", (const char **)&p)) {
       while (*p == ' ')
 	++p;

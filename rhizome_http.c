@@ -735,9 +735,9 @@ static strbuf strbuf_build_http_response(strbuf sb, const struct http_response *
 {
   strbuf_sprintf(sb, "HTTP/1.0 %03u %s\r\n", h->result_code, httpResultString(h->result_code));
   strbuf_sprintf(sb, "Content-type: %s\r\n", h->content_type);
-  if (h->content_end && h->content_length)
+  if (h->content_end && h->content_length && (h->content_start!=0 || h->content_end!=h->content_length))
     strbuf_sprintf(sb, 
-	  "Content-range: %"PRIu64"-%"PRIu64"/%"PRIu64"\r\n"
+	  "Content-range: bytes %"PRIu64"-%"PRIu64"/%"PRIu64"\r\n"
 	  "Content-length: %"PRIu64"\r\n", 
       h->content_start, h->content_end, h->content_length, h->content_end - h->content_start);
   else if (h->content_length)
