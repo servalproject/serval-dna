@@ -245,6 +245,9 @@ void serverCleanUp()
   if (FORM_SERVAL_INSTANCE_PATH(filename, "mdp.socket")) {
     unlink(filename);
   }
+  
+  rhizome_close_db();
+  
   dna_helper_shutdown();
 }
 

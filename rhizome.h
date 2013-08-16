@@ -725,6 +725,9 @@ int rhizome_store_delete(const char *id);
 int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state, int hash);
 int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t *bsk);
 int rhizome_dump_file(const char *id, const char *filepath, int64_t *length);
+int rhizome_read_cached(unsigned char *bundle_id, uint64_t version, time_ms_t timeout, 
+  uint64_t fileOffset, unsigned char *buffer, int length);
+int rhizome_cache_close();
 
 int rhizome_database_filehash_from_id(const char *id, uint64_t version, char hash[SHA512_DIGEST_STRING_LENGTH]);
 

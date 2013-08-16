@@ -288,6 +288,8 @@ int rhizome_close_db()
 {
   IN();
   if (rhizome_db) {
+    rhizome_cache_close();
+    
     if (!sqlite3_get_autocommit(rhizome_db)){
       WHY("Uncommitted transaction!");
       sqlite_exec_void("ROLLBACK;");

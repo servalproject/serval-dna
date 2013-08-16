@@ -831,6 +831,138 @@ int rhizome_read_close(struct rhizome_read *read)
   return 0;
 }
 
+struct cache_entry{
+  struct cache_entry *_left;
+  struct cache_entry *_right;
+  unsigned char bundle_id[RHIZOME_MANIFEST_ID_BYTES];
+  uint64_t version;
+  struct rhizome_read read_state;
+  time_ms_t expires;
+};
+struct cache_entry *root;
+
+static struct cache_entry ** find_entry_location(struct cache_entry **ptr, unsigned char *bundle_id, uint64_t version)
+{
+  while(*ptr){
+    struct cache_entry *entry = *ptr;
+    int cmp = memcmp(bundle_id, entry->bundle_id, sizeof entry->bundle_id);
+    if (cmp==0){
+      if (entry->version==version)
+	break;
+      if (version < entry->version)
+	ptr = &entry->_left;
+      else
+	ptr = &entry->_right;
+      continue;
+    }
+    if (cmp<0)
+      ptr = &entry->_left;
+    else
+      ptr = &entry->_right;
+  }
+  return ptr;
+}
+
+static time_ms_t close_entries(struct cache_entry **entry, time_ms_t timeout)
+{
+  if (!*entry)
+    return 0;
+    
+  time_ms_t ret = close_entries(&(*entry)->_left, timeout);
+  time_ms_t t_right = close_entries(&(*entry)->_right, timeout);
+  if (t_right!=0 && (t_right < ret || ret==0))
+    ret=t_right;
+    
+  if ((*entry)->expires < timeout || timeout==0){
+    rhizome_read_close(&(*entry)->read_state);
+    // remember the two children
+    struct cache_entry *left=(*entry)->_left;
+    struct cache_entry *right=(*entry)->_right;
+    // free this entry
+    free(*entry);
+    // re-add both children to the tree
+    *entry=left;
+    if (right){
+      entry = find_entry_location(entry, right->bundle_id, right->version);
+      *entry=right;
+    }
+  }else{
+    if ((*entry)->expires < ret || ret==0)
+      ret=(*entry)->expires;
+  }
+  return ret;
+}
+
+// close any expired cache entries
+static void rhizome_cache_alarm(struct sched_ent *alarm)
+{
+  alarm->alarm = close_entries(&root, gettime_ms());
+  if (alarm->alarm){
+    alarm->deadline = alarm->alarm + 1000;
+    schedule(alarm);
+  }
+}
+
+static struct profile_total cache_alarm_stats={
+  .name="rhizome_cache_alarm",
+};
+static struct sched_ent cache_alarm={
+  .function = rhizome_cache_alarm,
+  .stats = &cache_alarm_stats,
+};
+
+// close all cache entries
+int rhizome_cache_close()
+{
+  close_entries(&root, 0);
+  unschedule(&cache_alarm);
+  return 0;
+}
+
+// read a block of data, caching meta data for reuse
+int rhizome_read_cached(unsigned char *bundle_id, uint64_t version, time_ms_t timeout, 
+  uint64_t fileOffset, unsigned char *buffer, int length)
+{
+  // look for a cached entry
+  struct cache_entry **ptr = find_entry_location(&root, bundle_id, version);
+  struct cache_entry *entry = *ptr;
+  
+  // if we don't have one yet, create one and open it
+  if (!entry){
+    char *id_str = alloca_tohex_bid(bundle_id);
+    
+    char filehash[SHA512_DIGEST_STRING_LENGTH];
+    if (rhizome_database_filehash_from_id(id_str, version, filehash)<=0)
+      return -1;
+    
+    entry = emalloc_zero(sizeof(struct cache_entry));
+    
+    if (rhizome_open_read(&entry->read_state, filehash, 0)){
+      free(entry);
+      return -1;
+    }
+    bcopy(bundle_id, entry->bundle_id, sizeof(entry->bundle_id));
+    entry->version = version;
+    *ptr = entry;
+  }
+  
+  entry->read_state.offset = fileOffset;
+  if (entry->read_state.length !=-1 && fileOffset >= entry->read_state.length)
+    return 0;
+  
+  if (entry->expires < timeout){
+    entry->expires = timeout;
+    
+    if (!cache_alarm.alarm){
+      cache_alarm.alarm = timeout;
+      cache_alarm.deadline = timeout + 1000;
+      schedule(&cache_alarm);
+    }
+  }
+  
+  return rhizome_read(&entry->read_state, buffer, length);
+}
+
 /* Returns -1 on error, 0 on success.
  */
 static int write_file(struct rhizome_read *read, const char *filepath){
