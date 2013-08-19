@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <stdlib.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
@@ -74,7 +75,7 @@ int main(int argc, char **argv)
   int bounce = 3;
   int bouncedelta = 1;
   while (!ferror(stdout) && offset < size) {
-    int n = sprintf(buf, "%lld", offset);
+    int n = sprintf(buf, "%"PRId64, offset);
     buf[n] = stripe(n);
     size_t labelsiz = labellen;
     if (labelsiz && bounce < sizeof buf) {
