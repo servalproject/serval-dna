@@ -199,6 +199,7 @@ int main(int argc,char **argv)
   grantpt(right); unlockpt(right);
   fprintf(stdout,"%s\n",ptsname(left));
   fprintf(stdout,"%s\n",ptsname(right));
+  fflush(stdout);
 
   fcntl(left,F_SETFL,fcntl(left, F_GETFL, NULL)|O_NONBLOCK);
   fcntl(right,F_SETFL,fcntl(right, F_GETFL, NULL)|O_NONBLOCK);

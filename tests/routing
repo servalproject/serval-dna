@@ -31,17 +31,17 @@ add_interface() {
 }
 
 interface_up() {
-  grep "Interface .* is up" $instance_servald_log || return 1
-  return 0
+   $GREP "Interface .* is up" $instance_servald_log || return 1
+   return 0
 }
 
 has_link() {
    set_instance $1
    executeOk_servald route print
    tfw_log "Looking for link from $1 to $2 ($4)"
-   if ! grep "^${4}:\(BROADCAST\|UNICAST\):dummy.*:0*\$" $_tfw_tmp/stdout; then
+   if ! grep "^${4}:\(BROADCAST\|UNICAST\):.*:0*\$" $_tfw_tmp/stdout; then
       tfw_log "Link not found"
-#      tfw_log "^${4}:\(BROADCAST\|UNICAST\):dummy.*:0*\$"
+#      tfw_log "^${4}:\(BROADCAST\|UNICAST\):.*:0*\$"
 #      tfw_cat --stdout --stderr
       return 1
    fi
@@ -207,6 +207,43 @@ setup_slip_encoding() {
 }
 test_slip_encoding() {
    executeOk_servald test slip --seed=1 --iterations=2000
+}
+
+doc_simulate_extender="Simulate a mesh extender radio link"
+setup_simulate_extender() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   $servald_build_root/fakeradio > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
+   FAKERADIO_PID=$!
+   sleep 1
+   local END1=`head "$SERVALD_VAR/radioout" -n 1`
+   local END2=`tail "$SERVALD_VAR/radioout" -n 1`
+   tfw_log "Started fakeradio pid=$FAKERADIO_PID, end1=$END1, end2=$END2"
+   set_instance +A
+   executeOk_servald config \
+      set interfaces.1.file "$END1"
+   set_instance +B
+   executeOk_servald config \
+      set interfaces.1.file "$END2"
+   foreach_instance +A +B \
+      executeOk_servald config \
+         set interfaces.1.type CATEAR \
+         set interfaces.1.socket_type STREAM \
+         set interfaces.1.encapsulation SINGLE \
+         set interfaces.1.point_to_point on \
+         set interfaces.1.packet_interval 5000
+   foreach_instance +A +B start_routing_instance
+}
+test_simulate_extender() {
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
+}
+teardown_simulate_extender() {
+   teardown
+   tfw_log "Killing fakeradio, pid=$FAKERADIO_PID"
+   kill $FAKERADIO_PID
+   tfw_cat "$SERVALD_VAR/radioerr"
 }
 
 doc_multiple_nodes="Multiple nodes on one link"

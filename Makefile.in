@@ -70,6 +70,8 @@ CFLAGS+=-D_DARWIN_C_SOURCE
 
 DEFS=	@DEFS@
 
+.PHONY: all test clean
+
 all:	servald libmonitorclient.so libmonitorclient.a test
 
 test:   tfw_createfile directory_service fakeradio
