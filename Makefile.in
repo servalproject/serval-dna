@@ -72,7 +72,7 @@ DEFS=	@DEFS@
 
 all:	servald libmonitorclient.so libmonitorclient.a test
 
-test:   tfw_createfile directory_service
+test:   tfw_createfile directory_service fakeradio
 
 sqlite-amalgamation-3070900/sqlite3.o:	sqlite-amalgamation-3070900/sqlite3.c
 	@echo CC $<
@@ -103,6 +103,10 @@ tfw_createfile: tfw_createfile.o str.o strbuf.o strbuf_helpers.o
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -o $@ tfw_createfile.o str.o strbuf.o strbuf_helpers.o
 
+fakeradio: fakeradio.o
+	@echo LINK $@
+	@$(CC) $(CFLAGS) -Wall -o $@ fakeradio.o
+
 # This does not build on 64 bit elf platforms as NaCL isn't built with -fPIC
 # DOC 20120615
 libservald.so: $(OBJS) version.o
@@ -120,5 +124,6 @@ libmonitorclient.a: $(MONITORCLIENTOBJS) version.o
 clean:
 	@rm -f $(OBJS) \
 	  tfw_createfile.o version.o \
+	  fakeradio.o fakeradio \
 	  tfw_createfile servald \
 	  libservald.so libmonitorclient.so libmonitorclient.a
