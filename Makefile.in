@@ -70,11 +70,18 @@ CFLAGS+=-D_DARWIN_C_SOURCE
 
 DEFS=	@DEFS@
 
-all:	servald libmonitorclient.so libmonitorclient.a tfw_createfile
+all:	servald libmonitorclient.so libmonitorclient.a test
+
+test:   tfw_createfile directory_service
 
 sqlite-amalgamation-3070900/sqlite3.o:	sqlite-amalgamation-3070900/sqlite3.c
 	@echo CC $<
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o sqlite-amalgamation-3070900/sqlite3.o
+
+version.o: *.h *.c version_string.sh
+	@echo CC version_servald.c
+	@V=`./version_string.sh` \
+	 && $(CC) -c version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\""
 
 %.o:	%.c
 	@echo CC $<
@@ -84,15 +91,13 @@ $(SERVAL_OBJS): $(HDRS)
 $(MONITORCLIENTOBJS): $(HDRS)
 $(MDPCLIENTOBJS): $(HDRS)
 
-servald:	$(OBJS)
+servald:	$(OBJS) version.o
 	@echo LINK $@
-	@v=`./version_string.sh` \
-            && $(CC) $(CFLAGS) -Wall -o $@ -DSERVALD_VERSION="\"$$v\"" version_servald.c $(OBJS) $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wall -o $@ $(OBJS) version.o $(LDFLAGS)
 
-directory_service: $(MDPCLIENTOBJS) directory_service.o
+directory_service: $(MDPCLIENTOBJS) version.o directory_service.o
 	@echo LINK $@
-	@v=`./version_string.sh` \
-            && $(CC) $(CFLAGS) -Wall -o $@ -DSERVALD_VERSION="\"$$v\"" version_servald.c $(MDPCLIENTOBJS) directory_service.o $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wall -o $@ $(MDPCLIENTOBJS) version.o directory_service.o $(LDFLAGS)
 
 tfw_createfile: tfw_createfile.o str.o strbuf.o strbuf_helpers.o
 	@echo LINK $@
@@ -100,20 +105,20 @@ tfw_createfile: tfw_createfile.o str.o strbuf.o strbuf_helpers.o
 
 # This does not build on 64 bit elf platforms as NaCL isn't built with -fPIC
 # DOC 20120615
-libservald.so: $(OBJS)
+libservald.so: $(OBJS) version.o
 	@echo LINK $@
-	@v=`./version_string.sh` && $(CC) $(CFLAGS) $(DEFS) -DSERVALD_VERSION="\"$$v\"" -Wall -o version_servald.o -c version_servald.c
-	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(OBJS) version_servald.o $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(OBJS) version.o $(LDFLAGS)
 
-libmonitorclient.so: $(MONITORCLIENTOBJS)
+libmonitorclient.so: $(MONITORCLIENTOBJS) version.o
 	@echo LINK $@
-	@v=`./version_string.sh` && $(CC) $(CFLAGS) $(DEFS) -DSERVALD_VERSION="\"$$v\"" -Wall -o version_libmonitorclient.o -c version_servald.c
-	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(MONITORCLIENTOBJS) version_libmonitorclient.o $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(MONITORCLIENTOBJS) version.o $(LDFLAGS)
 
-libmonitorclient.a: $(MONITORCLIENTOBJS)
+libmonitorclient.a: $(MONITORCLIENTOBJS) version.o
 	@echo AR $@
-	@v=`./version_string.sh` && $(CC) $(CFLAGS) $(DEFS) -DSERVALD_VERSION="\"$$v\"" -Wall -o version_libmonitorclient.o -c version_servald.c
-	@$(AR) -cr $@ $(MONITORCLIENTOBJS) version_libmonitorclient.o
+	@$(AR) -cr $@ $(MONITORCLIENTOBJS) version.o
 
 clean:
-	@rm -f $(OBJS) tfw_createfile.o tfw_createfile servald libservald.so libmonitorclient.so version_libmonitorclient.o libmonitorclient.a
+	@rm -f $(OBJS) \
+	  tfw_createfile.o version.o \
+	  tfw_createfile servald \
+	  libservald.so libmonitorclient.so libmonitorclient.a
