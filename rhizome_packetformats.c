@@ -237,14 +237,17 @@ end:
 #define HAS_MANIFESTS (1<<0)
 
 /* Queue an advertisment for a single manifest */
-int rhizome_advertise_manifest(rhizome_manifest *m){
+int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m){
   struct overlay_frame *frame = malloc(sizeof(struct overlay_frame));
   bzero(frame,sizeof(struct overlay_frame));
   frame->type = OF_TYPE_RHIZOME_ADVERT;
   frame->source = my_subscriber;
+  if (dest && (dest->reachable==REACHABLE_UNICAST || dest->reachable==REACHABLE_INDIRECT))
+    frame->destination = dest;
   frame->ttl = 1;
   frame->queue = OQ_OPPORTUNISTIC;
   frame->payload = ob_new();
+  
   ob_limitsize(frame->payload, 800);
   
   if (ob_append_byte(frame->payload, HAS_PORT|HAS_MANIFESTS)) goto error;

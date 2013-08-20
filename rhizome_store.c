@@ -176,7 +176,7 @@ static int write_get_lock(struct rhizome_write *write_state){
       return 0;
     }
     if (!sqlite_code_busy(ret))
-      return WHYF("sqlite3_blob_write() failed: %s", 
+      return WHYF("sqlite3_blob_open() failed: %s", 
 	     sqlite3_errmsg(rhizome_db));
     if (sqlite_retry(&retry, "sqlite3_blob_open")==0)
       return WHYF("Giving up");
@@ -384,7 +384,9 @@ int rhizome_write_file(struct rhizome_write *write, const char *filename){
 
   unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];
   int ret=0;
-  write_get_lock(write);
+  ret = write_get_lock(write);
+  if (ret)
+    goto end;
   while(write->file_offset < write->file_length){
     
     int size=sizeof(buffer);
@@ -476,16 +478,16 @@ int rhizome_finish_write(struct rhizome_write *write){
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
-    goto failure;
+    goto dbfailure;
   
   if (write->id_known){
     if (strcasecmp(write->id, hash_out)){
       WHYF("Expected hash=%s, got %s", write->id, hash_out);
-      goto failure;
+      goto dbfailure;
     }
     if (sqlite_exec_void_retry(&retry, "UPDATE FILES SET inserttime=%lld, datavalid=1 WHERE id='%s'",
 			       gettime_ms(), write->id) == -1)
-      goto failure;
+      goto dbfailure;
   }else{
     str_toupper_inplace(hash_out);
     
@@ -500,22 +502,22 @@ int rhizome_finish_write(struct rhizome_write *write){
       if (sqlite_exec_void_retry(&retry,
 				 "UPDATE FILES SET id='%s', inserttime=%lld, datavalid=1 WHERE id='%s'",
 				 hash_out, gettime_ms(), write->id) == -1)
-	goto failure;
+	goto dbfailure;
       
       if (fd>=0){
 	char blob_path[1024];
 	char dest_path[1024];
 	if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, write->id)){
 	  WHYF("Failed to generate file path");
-	  goto failure;
+	  goto dbfailure;
 	}
 	if (!FORM_RHIZOME_DATASTORE_PATH(dest_path, hash_out)){
 	  WHYF("Failed to generate file path");
-	  goto failure;
+	  goto dbfailure;
 	}
 	if (link(blob_path, dest_path)){
 	  WHY_perror("link");
-	  goto failure;
+	  goto dbfailure;
 	}
 	  
 	if (unlink(blob_path))
@@ -525,19 +527,20 @@ int rhizome_finish_write(struct rhizome_write *write){
 	if (sqlite_exec_void_retry(&retry,
 				   "UPDATE FILEBLOBS SET id='%s' WHERE rowid=%lld",
 				   hash_out, write->blob_rowid) == -1){
-	  goto failure;
+	  goto dbfailure;
 	}
       }
     }
     strlcpy(write->id, hash_out, SHA512_DIGEST_STRING_LENGTH);
   }
   if (sqlite_exec_void_retry(&retry, "COMMIT;") == -1)
-    goto failure;
+    goto dbfailure;
   write->blob_rowid=-1;
   return 0;
   
-failure:
+dbfailure:
   sqlite_exec_void_retry(&retry, "ROLLBACK;");
+failure:
   rhizome_fail_write(write);
   return -1;
 }
@@ -558,6 +561,36 @@ int rhizome_import_file(rhizome_manifest *m, const char *filepath)
   
   // file payload is not in the store yet
   if (rhizome_write_file(&write, filepath)){
+    rhizome_fail_write(&write);
+    return -1;
+  }
+  
+  if (rhizome_finish_write(&write)){
+    rhizome_fail_write(&write);
+    return -1;
+  }
+  
+  return 0;
+}
+
+// store a whole payload from a single buffer
+int rhizome_import_buffer(rhizome_manifest *m, unsigned char *buffer, int length)
+{
+  if (m->fileLength<=0)
+    return 0;
+  if (length!=m->fileLength)
+    return WHYF("Expected %"PRId64" bytes, got %d", m->fileLength, length);
+  
+  /* Import the file first, checking the hash as we go */
+  struct rhizome_write write;
+  bzero(&write, sizeof(write));
+  
+  int ret=rhizome_open_write(&write, m->fileHexHash, m->fileLength, RHIZOME_PRIORITY_DEFAULT);
+  if (ret!=0)
+    return ret;
+  
+  // file payload is not in the store yet
+  if (rhizome_write_buffer(&write, buffer, length)){
     rhizome_fail_write(&write);
     return -1;
   }
@@ -939,7 +972,7 @@ int rhizome_read_cached(unsigned char *bundle_id, uint64_t version, time_ms_t ti
     
     if (rhizome_open_read(&entry->read_state, filehash, 0)){
       free(entry);
-      return -1;
+      return WHYF("Payload %s not found", filehash);
     }
     bcopy(bundle_id, entry->bundle_id, sizeof(entry->bundle_id));
     entry->version = version;

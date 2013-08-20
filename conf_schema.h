@@ -333,7 +333,7 @@ SUB_STRUCT(mdp_iftypelist,  iftype,)
 END_STRUCT
 
 STRUCT(olsr)
-ATOM(bool_t,                enable,      1, boolean,, "If true, OLSR is used for mesh routing")
+ATOM(bool_t,                enable,      0, boolean,, "If true, OLSR is used for mesh routing")
 ATOM(uint16_t,              remote_port, 4130, uint16_nonzero,, "Remote port number")
 ATOM(uint16_t,              local_port,  4131, uint16_nonzero,, "Local port number")
 END_STRUCT

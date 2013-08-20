@@ -335,7 +335,7 @@ int rhizome_list_manifests(struct cli_context *context, const char *service, con
 			   const char *sender_sid, const char *recipient_sid, 
 			   int limit, int offset, char count_rows);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m);
-int rhizome_advertise_manifest(rhizome_manifest *m);
+int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m);
 int rhizome_delete_bundle(const char *manifestid);
 int rhizome_delete_manifest(const char *manifestid);
 int rhizome_delete_payload(const char *manifestid);
@@ -706,6 +706,7 @@ int rhizome_write_file(struct rhizome_write *write, const char *filename);
 int rhizome_fail_write(struct rhizome_write *write);
 int rhizome_finish_write(struct rhizome_write *write);
 int rhizome_import_file(rhizome_manifest *m, const char *filepath);
+int rhizome_import_buffer(rhizome_manifest *m, unsigned char *buffer, int length);
 int rhizome_stat_file(rhizome_manifest *m, const char *filepath);
 int rhizome_add_file(rhizome_manifest *m, const char *filepath);
 int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk);

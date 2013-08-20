@@ -226,6 +226,50 @@ static struct rhizome_fetch_slot *rhizome_find_fetch_slot(long long size)
   return NULL;
 }
 
+
+// find the first matching active slot for this bundle
+static struct rhizome_fetch_slot *fetch_search_slot(unsigned char *id, int prefix_length)
+{
+  int i;
+  for (i = 0; i < NQUEUES; ++i) {
+    struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
+    
+    if (q->active.state != RHIZOME_FETCH_FREE && 
+	memcmp(id, q->active.manifest->cryptoSignPublic, prefix_length) == 0)
+      return &q->active;
+  }
+  return NULL;
+}
+
+// find the first matching candidate for this bundle
+static struct rhizome_fetch_candidate *fetch_search_candidate(unsigned char *id, int prefix_length)
+{
+  int i, j;
+  for (i = 0; i < NQUEUES; ++i) {
+    struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
+    for (j = 0; j < q->candidate_queue_size; j++) {
+      struct rhizome_fetch_candidate *c = &q->candidate_queue[j];
+      if (!c->manifest)
+	continue;
+      if (memcmp(c->manifest->cryptoSignPublic, id, prefix_length))
+	continue;
+      return c;
+    }
+  }
+  return NULL;
+}
+
+/* Search all fetch slots, including active downloads, for a matching manifest */
+rhizome_manifest * rhizome_fetch_search(unsigned char *id, int prefix_length){
+  struct rhizome_fetch_slot *s = fetch_search_slot(id, prefix_length);
+  if (s)
+    return s->manifest;
+  struct rhizome_fetch_candidate *c = fetch_search_candidate(id, prefix_length);
+  if (c)
+    return c->manifest;
+  return NULL;
+}
+
 /* Insert a candidate into a given queue at a given position.  All candidates succeeding the given
  * position are copied backward in the queue to open up an empty element at the given position.  If
  * the queue was full, then the tail element is discarded, freeing the manifest it points to.
@@ -272,6 +316,19 @@ static void rhizome_fetch_unqueue(struct rhizome_fetch_queue *q, int i)
   for (; c < e && c[1].manifest; ++c)
     c[0] = c[1];
   c->manifest = NULL;
+}
+
+static void candidate_unqueue(struct rhizome_fetch_candidate *c)
+{
+  int i, index;
+  for (i = 0; i < NQUEUES; ++i) {
+    struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
+    index = c - q->candidate_queue;
+    if (index>=0 && index < q->candidate_queue_size){
+      rhizome_fetch_unqueue(q, index);
+      return;
+    }
+  }
 }
 
 /* Return true if there are any active fetches currently in progress.
@@ -607,11 +664,10 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
    * This avoids the problem of indefinite postponement of fetching if new versions are constantly
    * being published faster than we can fetch them.
    */
-  int i;
-  for (i = 0; i < NQUEUES; ++i) {
-    struct rhizome_fetch_slot *as = &rhizome_fetch_queues[i].active;
-    const rhizome_manifest *am = as->manifest;
-    if (as->state != RHIZOME_FETCH_FREE && memcmp(m->cryptoSignPublic, am->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES) == 0) {
+  {
+    struct rhizome_fetch_slot *as = fetch_search_slot(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES);
+    if (as){
+      const rhizome_manifest *am = as->manifest;
       if (am->version < m->version) {
 	if (config.debug.rhizome_rx)
 	  DEBUGF("   fetch already in progress -- older version");
@@ -626,6 +682,11 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
 	RETURN(SAMEBUNDLE);
       }
     }
+  }
+  int i;
+  for (i = 0; i < NQUEUES; ++i) {
+    struct rhizome_fetch_slot *as = &rhizome_fetch_queues[i].active;
+    const rhizome_manifest *am = as->manifest;
     if (as->state != RHIZOME_FETCH_FREE && strcasecmp(m->fileHexHash, am->fileHexHash) == 0) {
       if (config.debug.rhizome_rx)
 	DEBUGF("   fetch already in progress, slot=%d filehash=%s", i, m->fileHexHash);
@@ -745,26 +806,6 @@ static void rhizome_start_next_queued_fetches(struct sched_ent *alarm)
   for (i = 0; i < NQUEUES; ++i)
     rhizome_start_next_queued_fetch(&rhizome_fetch_queues[i].active);
   OUT();
-}
-
-/* Search all fetch slots, including active downloads, for a matching manifest */
-rhizome_manifest * rhizome_fetch_search(unsigned char *id, int prefix_length){
-  int i, j;
-  for (i = 0; i < NQUEUES; ++i) {
-    struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
-    
-    if (q->active.state != RHIZOME_FETCH_FREE && 
-	memcmp(id, q->active.manifest->cryptoSignPublic, prefix_length) == 0)
-      return q->active.manifest;
-      
-    for (j = 0; j < q->candidate_queue_size; j++) {
-      struct rhizome_fetch_candidate *c = &q->candidate_queue[j];
-      if (c->manifest && memcmp(id, c->manifest->cryptoSignPublic, prefix_length) == 0)
-	return c->manifest;
-    }
-  }
-  
-  return NULL;
 }
 
 /* Do we have space to add a fetch candidate of this size? */
@@ -1119,6 +1160,9 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
      instances with the same SID.
   */
   IN();
+  if (!is_rhizome_mdp_enabled()){
+    RETURN(rhizome_fetch_close(slot));
+  }
   if (!my_subscriber) {
     DEBUGF("I don't have an identity, so we cannot fall back to MDP");
     RETURN(rhizome_fetch_close(slot));
@@ -1312,15 +1356,11 @@ int rhizome_received_content(unsigned char *bidprefix,
 			     int count,unsigned char *bytes,int type)
 {
   IN();
-  int i;
-  for(i=0;i<NQUEUES;i++) {
-    struct rhizome_fetch_slot *slot=&rhizome_fetch_queues[i].active;
-
-    if (slot->state!=RHIZOME_FETCH_RXFILEMDP
-      || version != slot->bidVersion
-      || memcmp(slot->bid,bidprefix,16)!=0)
-      continue;
-
+  if (!is_rhizome_mdp_enabled())
+    RETURN(-1);
+  struct rhizome_fetch_slot *slot=fetch_search_slot(bidprefix, 16);
+  
+  if (slot && slot->bidVersion == version && slot->state == RHIZOME_FETCH_RXFILEMDP){
     if (rhizome_random_write(&slot->write_state, offset, bytes, count)){
       if (config.debug.rhizome)
 	DEBUGF("Write failed!");
@@ -1332,6 +1372,7 @@ int rhizome_received_content(unsigned char *bidprefix,
 	DEBUGF("Complete failed!");
       RETURN(-1);
     }
+    
     slot->last_write_time=gettime_ms();
     rhizome_fetch_mdp_touch_timeout(slot);
 
@@ -1342,7 +1383,43 @@ int rhizome_received_content(unsigned char *bidprefix,
     }
     RETURN(0);
   }
-
+  
+  // if we get a packet containing an entire payload
+  // we may wish to store it, even if we aren't already fetching this payload via MDP
+  if (offset == 0){
+    rhizome_manifest *m = NULL;
+    struct rhizome_fetch_candidate *c = NULL;
+    
+    if (slot && slot->bidVersion == version && slot->manifest->fileLength==count 
+	  && slot->state!=RHIZOME_FETCH_RXFILEMDP){
+      m=slot->manifest;
+    }else{
+      slot = NULL;
+      c = fetch_search_candidate(bidprefix, 16);
+      if (c && c->manifest->version==version && c->manifest->fileLength==count)
+	m=c->manifest;
+    }
+    
+    if (m){
+      // the rhizome store API doesn't support concurrent writing, so we have an active slot for this payload
+      // we need to close it first without freeing the manifest just yet.
+      if (slot && (slot->write_state.blob_fd>=0 ||
+	    slot->write_state.blob_rowid>=0))
+	rhizome_fail_write(&slot->write_state);
+	
+      if (rhizome_import_buffer(m, bytes, count)>=0 && !rhizome_import_received_bundle(m)){
+	INFOF("Completed MDP transfer in one hit for file %s", m->fileHexHash);
+	if (c)
+	  candidate_unqueue(c);
+      }
+      
+      if (slot)
+	rhizome_fetch_close(slot);
+      
+      RETURN(0);
+    }
+  }
+  
   RETURN(-1);
   OUT();
 }

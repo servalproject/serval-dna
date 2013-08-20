@@ -85,7 +85,7 @@ doc_FileTransfer="New bundle and update transfer to one node"
 setup_FileTransfer() {
    setup_common
    set_instance +A
-   rhizome_add_file file1
+   rhizome_add_file file1 2048
    start_servald_instances +A +B
    foreach_instance +A assert_peers_are_instances +B
    foreach_instance +B assert_peers_are_instances +A
@@ -142,7 +142,7 @@ doc_DisablingHTTPServer="Disabling HTTP rhizome transports works"
 setup_DisablingHTTPServer() {
    setup_common
    set_instance +A
-   rhizome_add_file file1
+   rhizome_add_file file1 2048
    executeOk_servald config set rhizome.http.enable 0
    start_servald_instances +A
 }
@@ -157,7 +157,7 @@ setup_HTTPTransport() {
    executeOk_servald config set rhizome.mdp.enable 0
    set_instance +A
    executeOk_servald config set rhizome.mdp.enable 0
-   rhizome_add_file file1
+   rhizome_add_file file1 2048
    start_servald_instances +A +B
    foreach_instance +A assert_peers_are_instances +B
    foreach_instance +B assert_peers_are_instances +A
@@ -173,7 +173,7 @@ setup_MDPTransport() {
      executeOk_servald config \
        set rhizome.http.enable 0
    set_instance +A
-   rhizome_add_file file1
+   rhizome_add_file file1 2048
    start_servald_instances +A +B
    foreach_instance +A assert_peers_are_instances +B
    foreach_instance +B assert_peers_are_instances +A
@@ -189,7 +189,7 @@ setup_UnicastTransfer() {
      executeOk_servald config \
        set rhizome.http.enable 0
    set_instance +A
-   rhizome_add_file file1
+   rhizome_add_file file1 2048
    set_instance +B
    executeOk_servald config \
       set interfaces.1.file foo \
@@ -209,8 +209,8 @@ setup_journalMDP() {
      executeOk_servald config \
        set rhizome.http.enable 0
    set_instance +A
-   create_file file1 64
-   create_file file2 64
+   create_file file1 2048
+   create_file file2 2048
    executeOk_servald rhizome journal append $SIDA "" file1
    extract_stdout_manifestid BID
    extract_stdout_version VERSION
@@ -235,8 +235,8 @@ setup_journalHTTP() {
      executeOk_servald config \
        set rhizome.mdp.enable 0
    set_instance +A
-   create_file file1 64
-   create_file file2 64
+   create_file file1 2048
+   create_file file2 2048
    executeOk_servald rhizome journal append $SIDA "" file1
    extract_stdout_manifestid BID
    extract_stdout_version VERSION
@@ -341,7 +341,7 @@ test_FileTransferBigHTTPExtBlob() {
 # common setup and test routines for transfers to 4 nodes
 setup_multitransfer_common() {
    set_instance +A
-   rhizome_add_file file1
+   rhizome_add_file file1 2048
    start_servald_instances +A +B +C +D +E
    set_instance +A
    assert_peers_are_instances +B +C +D +E
