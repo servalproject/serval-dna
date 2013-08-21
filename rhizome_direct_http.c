@@ -976,7 +976,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  
 	  struct rhizome_read read;
 	  bzero(&read, sizeof read);
-	  if (rhizome_open_read(&read, filehash, 0))
+	  if (rhizome_open_read(&read, filehash))
 	    goto closeit;
 	
 	  int read_ofs;

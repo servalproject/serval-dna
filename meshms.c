@@ -221,7 +221,7 @@ static int ply_read_open(struct ply_read *ply, const char *id, rhizome_manifest 
     DEBUGF("Opening ply %s", id);
   if (rhizome_retrieve_manifest(id, m))
     return -1;
-  if (rhizome_open_decrypt_read(m, NULL, &ply->read, 0))
+  if (rhizome_open_decrypt_read(m, NULL, &ply->read))
     return -1;
   ply->read.offset = ply->read.length = m->fileLength;
   return 0;
@@ -468,7 +468,7 @@ static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid,
   struct rhizome_read_buffer buff;
   bzero(&buff, sizeof(buff));
   
-  int ret = rhizome_open_decrypt_read(m, NULL, &read, 0);
+  int ret = rhizome_open_decrypt_read(m, NULL, &read);
   if (ret<0)
     goto end;
   

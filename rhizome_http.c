@@ -620,7 +620,7 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	} else {
 	  str_toupper_inplace(id);
 	  bzero(&r->read_state, sizeof(r->read_state));
-	  if (rhizome_open_read(&r->read_state, id, 1))
+	  if (rhizome_open_read(&r->read_state, id))
 	    rhizome_server_simple_http_response(r, 404, "<html><h1>Payload not found</h1></html>\r\n");
 	  else{
 	    if (r->read_state.length==-1){
@@ -635,8 +635,6 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	    if (range){
 	      sscanf(range, "Range: bytes=%"PRId64"-", &r->read_state.offset);
 	      DEBUGF("Found range header %"PRId64,r->read_state.offset);
-	      if (r->read_state.offset)
-		r->read_state.hash=0;
 	    }
 	    
 	    if (r->read_state.length - r->read_state.offset>0){

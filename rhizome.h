@@ -432,8 +432,9 @@ struct rhizome_read{
   unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
   unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
   
-  int hash;
+  int64_t hash_offset;
   SHA512_CTX sha512_context;
+  char invalid;
   
   int64_t blob_rowid;
   int blob_fd;
@@ -718,12 +719,11 @@ int rhizome_journal_pipe(struct rhizome_write *write, const char *fileHash, uint
 
 int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
 			    const unsigned char *key, const unsigned char *nonce);
-int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash);
+int rhizome_open_read(struct rhizome_read *read, const char *fileid);
 int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_length);
 int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer *buffer, unsigned char *data, int len);
 int rhizome_read_close(struct rhizome_read *read);
-int rhizome_store_delete(const char *id);
-int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state, int hash);
+int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state);
 int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t *bsk);
 int rhizome_dump_file(const char *id, const char *filepath, int64_t *length);
 int rhizome_read_cached(unsigned char *bundle_id, uint64_t version, time_ms_t timeout, 

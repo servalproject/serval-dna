@@ -410,25 +410,12 @@ end:
   return ret;
 }
 
-int rhizome_store_delete(const char *id){
-  char blob_path[1024];
-  if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, id))
-    return -1;
-  if (unlink(blob_path)){
-    if (config.debug.externalblobs)
-      DEBUG_perror("unlink");
-    return -1;
-  }
-  return 0;
-}
-
 int rhizome_fail_write(struct rhizome_write *write){
   if (write->blob_fd>=0){
     if (config.debug.externalblobs)
       DEBUGF("Closing and removing fd %d", write->blob_fd);
     close(write->blob_fd);
     write->blob_fd=-1;
-    rhizome_store_delete(write->id);
   }
   write_release_lock(write);
   while(write->buffer_list){
@@ -436,16 +423,7 @@ int rhizome_fail_write(struct rhizome_write *write){
     write->buffer_list=n->_next;
     free(n);
   }
-  // don't worry too much about sql failures.
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  if (write->blob_rowid>=0){
-    sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,
-			   "DELETE FROM FILEBLOBS WHERE rowid=%lld",write->blob_rowid);
-    write->blob_rowid=-1;
-  }
-  sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,
-			 "DELETE FROM FILES WHERE id='%s'",
-			 write->id);
+  rhizome_delete_file(write->id);
   return 0;
 }
 
@@ -689,7 +667,7 @@ failure:
 
 /* Return -1 on error, 0 if file blob found, 1 if not found.
  */
-int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash)
+int rhizome_open_read(struct rhizome_read *read, const char *fileid)
 {
   strncpy(read->id, fileid, sizeof read->id);
   read->id[RHIZOME_FILEHASH_STRLEN] = '\0';
@@ -716,19 +694,22 @@ int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash)
     if (config.debug.externalblobs)
       DEBUGF("Opened stored file %s as fd %d, len %"PRIx64,blob_path, read->blob_fd, read->length);
   }
-  read->hash = hash;
   read->offset = 0;
-  if (hash)
-    SHA512_Init(&read->sha512_context);
+  read->hash_offset = 0;
+  SHA512_Init(&read->sha512_context);
   return 0; // file opened
 }
 
 /* Read content from the store, hashing and decrypting as we go. 
- Random access is supported, but hashing requires reads to be sequential though we don't enforce this. */
+ Random access is supported, but hashing requires all payload contents to be read sequentially. */
 // returns the number of bytes read
 int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buffer_length)
 {
   IN();
+  // hash check failed, just return an error
+  if (read_state->invalid)
+    RETURN(-1);
+    
   int bytes_read = 0;
   if (read_state->blob_fd >= 0) {
     if (lseek(read_state->blob_fd, read_state->offset, SEEK_SET) == -1)
@@ -774,19 +755,24 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
     } while (1);
   } else
     RETURN(WHY("file not open"));
-  if (read_state->hash){
-    if (buffer && bytes_read>0)
-      SHA512_Update(&read_state->sha512_context, buffer, bytes_read);
-      
-    if (read_state->offset + bytes_read>=read_state->length){
+  
+  // hash the payload as we go, but only if we happen to read the payload data in order
+  if (read_state->hash_offset == read_state->offset && buffer && bytes_read>0){
+    SHA512_Update(&read_state->sha512_context, buffer, bytes_read);
+    read_state->hash_offset += bytes_read;
+    // if we hash everything and the has doesn't match, we need to delete the payload
+    if (read_state->hash_offset>=read_state->length){
       char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
       SHA512_End(&read_state->sha512_context, hash_out);
+      
       if (strcasecmp(read_state->id, hash_out)){
+	// hash failure, mark the payload as invalid
+	read_state->invalid = 1;
 	RETURN(WHYF("Expected hash=%s, got %s", read_state->id, hash_out));
       }
-      read_state->hash=0;
     }
   }
+  
   if (read_state->crypt && buffer && bytes_read>0){
     if(rhizome_crypt_xor_block(
 	buffer, bytes_read, 
@@ -861,6 +847,10 @@ int rhizome_read_close(struct rhizome_read *read)
     close(read->blob_fd);
   }
   read->blob_fd = -1;
+  if (read->invalid){
+    // delete payload!
+    rhizome_delete_file(read->id);
+  }
   return 0;
 }
 
@@ -970,7 +960,7 @@ int rhizome_read_cached(unsigned char *bundle_id, uint64_t version, time_ms_t ti
     
     entry = emalloc_zero(sizeof(struct cache_entry));
     
-    if (rhizome_open_read(&entry->read_state, filehash, 0)){
+    if (rhizome_open_read(&entry->read_state, filehash)){
       free(entry);
       return WHYF("Payload %s not found", filehash);
     }
@@ -1048,9 +1038,8 @@ static int read_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizom
   return 0;
 }
 
-int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state, int hash){
-  // for now, always hash the file
-  int ret = rhizome_open_read(read_state, m->fileHexHash, hash);
+int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state){
+  int ret = rhizome_open_read(read_state, m->fileHexHash);
   if (ret == 0)
     ret = read_derive_key(m, bsk, read_state);
   return ret;
@@ -1065,7 +1054,7 @@ int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t
 {
   struct rhizome_read read_state;
   bzero(&read_state, sizeof read_state);
-  int ret = rhizome_open_decrypt_read(m, bsk, &read_state, 1);
+  int ret = rhizome_open_decrypt_read(m, bsk, &read_state);
   if (ret == 0)
     ret = write_file(&read_state, filepath);
   rhizome_read_close(&read_state);
@@ -1081,7 +1070,7 @@ int rhizome_dump_file(const char *id, const char *filepath, int64_t *length)
   struct rhizome_read read_state;
   bzero(&read_state, sizeof read_state);
 
-  int ret = rhizome_open_read(&read_state, id, 1);
+  int ret = rhizome_open_read(&read_state, id);
   
   if (ret == 0) {
     ret = write_file(&read_state, filepath);
@@ -1121,7 +1110,7 @@ int rhizome_journal_pipe(struct rhizome_write *write, const char *fileHash, uint
 {
   struct rhizome_read read_state;
   bzero(&read_state, sizeof read_state);
-  if (rhizome_open_read(&read_state, fileHash, start_offset>0?0:1))
+  if (rhizome_open_read(&read_state, fileHash))
     return -1;
 
   read_state.offset = start_offset;

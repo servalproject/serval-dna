@@ -29,6 +29,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 static char rhizome_thisdatastore_path[256];
 
+static int rhizome_delete_file_retry(sqlite_retry_state *retry, const char *fileid);
+
 const char *rhizome_datastore_path()
 {
   if (!rhizome_thisdatastore_path[0])
@@ -716,11 +718,20 @@ int rhizome_database_filehash_from_id(const char *id, uint64_t version, char has
   OUT();
 }
 
+static int rhizome_delete_external(const char *fileid)
+{
+  // attempt to remove any external blob
+  char blob_path[1024];
+  if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, fileid))
+    return -1;
+  return unlink(blob_path);
+}
+
 static int rhizome_cleanup_external(sqlite_retry_state *retry, sqlite3_stmt *statement){
   int ret=0;
   while (sqlite_step_retry(retry, statement) == SQLITE_ROW) {
     const char *id = (const char *) sqlite3_column_text(statement, 0);
-    if (rhizome_store_delete(id)==0)
+    if (rhizome_delete_external(id)==0)
       ret++;
   }
   return ret;
@@ -851,11 +862,8 @@ int rhizome_drop_stored_file(const char *id,int maximum_priority)
     }
   }
   sqlite3_finalize(statement);
-  if (can_drop) {
-    sqlite_exec_void_retry(&retry, "delete from files where id='%s';",id);
-    rhizome_store_delete(id);
-    sqlite_exec_void_retry(&retry, "delete from fileblobs where id='%s';",id);
-  }
+  if (can_drop)
+    rhizome_delete_file_retry(&retry, id);
   return 0;
 }
 
@@ -1394,6 +1402,9 @@ int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const char *manifes
 static int rhizome_delete_file_retry(sqlite_retry_state *retry, const char *fileid)
 {
   int ret = 0;
+  
+  rhizome_delete_external(fileid);
+  
   sqlite3_stmt *statement = sqlite_prepare(retry, "DELETE FROM files WHERE id = ?");
   if (!statement)
     ret = -1;
