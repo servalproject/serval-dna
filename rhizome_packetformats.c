@@ -369,7 +369,7 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
       }
 
       /* Manifest is okay, so see if it is worth storing */
-      if (rhizome_manifest_version_cache_lookup(m)) {
+      if (!rhizome_is_manifest_interesting(m)) {
 	/* We already have this version or newer */
 	if (config.debug.rhizome_ads)
 	  DEBUG("We already have that manifest or newer.");

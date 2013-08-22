@@ -514,6 +514,9 @@ int rhizome_finish_write(struct rhizome_write *write){
   if (sqlite_exec_void_retry(&retry, "COMMIT;") == -1)
     goto dbfailure;
   write->blob_rowid=-1;
+  
+  if (config.debug.rhizome)
+    DEBUGF("Stored file %s", hash_out);
   return 0;
   
 dbfailure:

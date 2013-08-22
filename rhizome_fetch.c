@@ -357,25 +357,6 @@ int rhizome_any_fetch_queued()
   return 0;
 }
 
-int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
-{
-  char id[RHIZOME_MANIFEST_ID_STRLEN + 1];
-  if (!rhizome_manifest_get(m, "id", id, sizeof id))
-    // dodgy manifest, we don't want to receive it
-    return WHY("Ignoring bad manifest (no ID field)");
-  str_toupper_inplace(id);
-  m->version = rhizome_manifest_get_ll(m, "version");
-  
-  int64_t dbVersion = -1;
-  if (sqlite_exec_int64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id='%s';", id) == -1)
-    return WHY("Select failure");
-  if (dbVersion >= m->version) {
-    if (0) WHYF("We already have %s (%"PRId64" vs %"PRId64")", id, dbVersion, m->version);
-    return -1;
-  }
-  return 0;
-}
-
 typedef struct ignored_manifest {
   unsigned char bid[RHIZOME_BAR_PREFIX_BYTES];
   time_ms_t timeout;
@@ -695,7 +676,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   }
 
   // If we already have this version or newer, do not fetch.
-  if (rhizome_manifest_version_cache_lookup(m)) {
+  if (!rhizome_is_manifest_interesting(m)) {
     if (config.debug.rhizome_rx)
       DEBUG("   fetch not started -- already have that version or newer");
     RETURN(SUPERSEDED);
@@ -859,7 +840,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   if (config.debug.rhizome_rx)
     DEBUGF("Considering import bid=%s version=%"PRId64" size=%"PRId64" priority=%d:", bid, m->version, m->fileLength, priority);
 
-  if (rhizome_manifest_version_cache_lookup(m)) {
+  if (!rhizome_is_manifest_interesting(m)) {
     if (config.debug.rhizome_rx)
       DEBUG("   already have that version or newer");
     rhizome_manifest_free(m);

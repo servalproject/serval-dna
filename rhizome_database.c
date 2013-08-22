@@ -1496,18 +1496,15 @@ int rhizome_delete_file(const char *fileid)
   return rhizome_delete_file_retry(&retry, fileid);
 }
 
-int rhizome_is_bar_interesting(unsigned char *bar){
+static int is_interesting(const char *id_hex, int64_t version)
+{
   IN();
   int ret=1;
-  int64_t version = rhizome_bar_version(bar);
-  char id_hex[RHIZOME_MANIFEST_ID_STRLEN];
-  tohex(id_hex, &bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
-  strcat(id_hex, "%");
 
   // do we have this bundle [or later]?
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare(&retry, 
-    "SELECT id, version FROM manifests WHERE id like ? and version >= ?");
+    "SELECT filehash FROM manifests WHERE id like ? and version >= ?");
 
   if (!statement)
     RETURN(-1);
@@ -1516,15 +1513,32 @@ int rhizome_is_bar_interesting(unsigned char *bar){
   sqlite3_bind_int64(statement, 2, version);
   
   if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
-    if (0){
-      const char *q_id = (const char *) sqlite3_column_text(statement, 0);
-      int64_t q_version = sqlite3_column_int64(statement, 1);
-      DEBUGF("Already have %s, %"PRId64" (vs %s, %"PRId64")", q_id, q_version, id_hex, version);
-    }
+    const char *q_filehash = (const char *) sqlite3_column_text(statement, 0);
     ret=0;
+    if (q_filehash && !rhizome_exists(q_filehash))
+      ret=1;
   }  
   sqlite3_finalize(statement);
 
   RETURN(ret);
   OUT();
+}
+
+int rhizome_is_bar_interesting(unsigned char *bar)
+{
+  int64_t version = rhizome_bar_version(bar);
+  char id_hex[RHIZOME_MANIFEST_ID_STRLEN];
+  tohex(id_hex, &bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
+  strcat(id_hex, "%");
+  return is_interesting(id_hex, version);
+}
+
+int rhizome_is_manifest_interesting(rhizome_manifest *m)
+{
+  char id[RHIZOME_MANIFEST_ID_STRLEN + 1];
+  if (!rhizome_manifest_get(m, "id", id, sizeof id))
+    // dodgy manifest, we don't want to receive it
+    return WHY("Ignoring bad manifest (no ID field)");
+  str_toupper_inplace(id);
+  return is_interesting(id, m->version);
 }

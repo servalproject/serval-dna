@@ -331,6 +331,7 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 int64_t rhizome_bar_version(const unsigned char *bar);
 uint64_t rhizome_bar_bidprefix_ll(unsigned char *bar);
 int rhizome_is_bar_interesting(unsigned char *bar);
+int rhizome_is_manifest_interesting(rhizome_manifest *m);
 int rhizome_list_manifests(struct cli_context *context, const char *service, const char *name, 
 			   const char *sender_sid, const char *recipient_sid, 
 			   int limit, int offset, char count_rows);
@@ -345,8 +346,6 @@ int rhizome_delete_file(const char *fileid);
 #define RHIZOME_VERIFY 1
 
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
-int rhizome_manifest_version_cache_lookup(rhizome_manifest *m);
-int rhizome_manifest_version_cache_store(rhizome_manifest *m);
 int monitor_announce_bundle(rhizome_manifest *m);
 int rhizome_find_secret(const unsigned char *authorSid, int *rs_len, const unsigned char **rs);
 int rhizome_bk_xor_stream(
