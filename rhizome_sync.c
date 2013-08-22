@@ -48,6 +48,8 @@ struct rhizome_sync
   uint64_t highest_seen;
   unsigned char sync_complete;
   int bar_count;
+  time_ms_t start_time;
+  time_ms_t completed;
   time_ms_t next_request;
   time_ms_t last_extended;
   time_ms_t last_response;
@@ -144,6 +146,7 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
 	rhizome_sync_request(subscriber, state->sync_start, 0);
     }else if(!state->sync_complete){
       state->sync_complete = 1;
+      state->completed = gettime_ms();
       if (config.debug.rhizome)
         DEBUGF("BAR sync with %s complete", alloca_tohex_sid(subscriber->sid));
     }
@@ -220,9 +223,15 @@ static void sync_process_bar_list(struct subscriber *subscriber, struct rhizome_
   int bar_count = 0;
   int has_before=0, has_after=0;
   int mid_point = -1;
-
-  state->last_response = gettime_ms();
-
+  time_ms_t now = gettime_ms();
+  
+  if (now - state->start_time > (60*60*1000)){
+    // restart rhizome sync every hour, no matter what state it is in
+    bzero(state, sizeof(struct rhizome_sync));
+    state->start_time = now;
+  }
+  state->last_response = now;
+  
   while(ob_remaining(b)>0 && bar_count < BARS_PER_RESPONSE){
     bar_tokens[bar_count]=ob_get_packed_ui64(b);
     bars[bar_count]=ob_get_bytes_ptr(b, RHIZOME_BAR_BYTES);
@@ -427,9 +436,10 @@ int overlay_mdp_service_rhizome_sync(struct overlay_frame *frame, overlay_mdp_fr
   if (!frame)
     return 0;
   struct rhizome_sync *state = frame->source->sync_state;
-  if (!state)
+  if (!state){
     state = frame->source->sync_state = emalloc_zero(sizeof(struct rhizome_sync));
-
+    state->start_time=gettime_ms();
+  }
   struct overlay_buffer *b = ob_static(mdp->out.payload, sizeof(mdp->out.payload));
   ob_limitsize(b, mdp->out.payload_length);
   int type = ob_get(b);
