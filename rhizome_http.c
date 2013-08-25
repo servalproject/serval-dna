@@ -623,9 +623,7 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 
 	  /* Refuse to honour HTTP request if required (used for debugging and 
 	     testing transition from HTTP to MDP) */
-	  if (config.debug.rhizome_nohttptx) {
-	    rhizome_server_simple_http_response(r, 404, "<html><h1>Feigning 404 because debug.rhozome_nohttptx is set.</h1></html>\r\n");
-	  } else if (rhizome_open_read(&r->read_state, id))
+	  if (rhizome_open_read(&r->read_state, id))
 	    rhizome_server_simple_http_response(r, 404, "<html><h1>Payload not found</h1></html>\r\n");
 	  else{
 	    if (r->read_state.length==-1){
@@ -814,6 +812,11 @@ int rhizome_server_http_response_header(rhizome_http_request *r, int result, con
 */
 int rhizome_server_http_send_bytes(rhizome_http_request *r)
 {
+  // Don't send anything if disabled for testing HTTP->MDP Rhizome failover
+  if (config.debug.rhizome_nohttptx) {
+    return 1;
+  }
+
   // keep writing until we've written something or we run out of data
   while(r->request_type){
     
