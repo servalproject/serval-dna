@@ -182,6 +182,23 @@ test_MDPTransport() {
    receive_and_update_bundle
 }
 
+doc_MDPTransportFailOver="Rhizome fails over to MDP transport"
+setup_MDPTransportFailOver() {
+   setup_common
+   foreach_instance +A +B \
+     executeOk_servald config \
+       set debug.rhizome_nohttptx 1 \
+       set rhizome.mdp.enable 1
+   set_instance +A
+   rhizome_add_file file1 2048
+   start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
+}
+test_MDPTransportFailOver() {
+   receive_and_update_bundle
+}
+
 doc_UnicastTransfer="Rhizome over unicast MDP link"
 setup_UnicastTransfer() {
    setup_common

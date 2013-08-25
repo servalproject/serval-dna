@@ -620,7 +620,12 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	} else {
 	  str_toupper_inplace(id);
 	  bzero(&r->read_state, sizeof(r->read_state));
-	  if (rhizome_open_read(&r->read_state, id))
+
+	  /* Refuse to honour HTTP request if required (used for debugging and 
+	     testing transition from HTTP to MDP) */
+	  if (config.debug.rhizome_nohttptx) {
+	    rhizome_server_simple_http_response(r, 404, "<html><h1>Feigning 404 because debug.rhozome_nohttptx is set.</h1></html>\r\n");
+	  } else if (rhizome_open_read(&r->read_state, id))
 	    rhizome_server_simple_http_response(r, 404, "<html><h1>Payload not found</h1></html>\r\n");
 	  else{
 	    if (r->read_state.length==-1){
