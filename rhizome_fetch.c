@@ -1527,12 +1527,12 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	rhizome_fetch_mdp_slot_callback(alarm);
 	break;
 
-      default:
+    default:
         // timeout or socket error, close the socket
         if (config.debug.rhizome_rx)
           DEBUGF("Closing due to timeout or error %x (%x %x)", alarm->poll.revents, POLLHUP, POLLERR);
-        if (slot->state!=RHIZOME_FETCH_FREE)
-          rhizome_fetch_close(slot);
+        if (slot->state!=RHIZOME_FETCH_FREE&&slot->state!=RHIZOME_FETCH_RXFILEMDP)
+          rhizome_fetch_switch_to_mdp(slot);
     }
   }
 }
