@@ -1371,7 +1371,7 @@ int rhizome_received_content(unsigned char *bidprefix,
   } else {
     if (config.debug.rhizome)
       DEBUGF("Ignoring received block: slot=%p, version=%016llx, slot->bidVersion=%016llx, slot->state=%d (should be %d)",
-	     slot,version,slot->bidVersion,slot->state,RHIZOME_FETCH_RXFILEMDP);
+	     slot,version,slot?slot->bidVersion:0,slot?slot->state:-999,RHIZOME_FETCH_RXFILEMDP);
   }
   
   // if we get a packet containing an entire payload
