@@ -70,8 +70,9 @@ int rhizome_mdp_send_block(struct subscriber *dest, unsigned char *id, uint64_t 
   reply.out.payload[0]='B'; // reply contains blocks
   // include 16 bytes of BID prefix for identification
   bcopy(id, &reply.out.payload[1], 16);
-  // and version of manifest
-  bcopy(&version, &reply.out.payload[1+16], sizeof(uint64_t));
+  // and version of manifest (in the correct byte order)
+  //  bcopy(&version, &reply.out.payload[1+16], sizeof(uint64_t));
+  write_uint64(&reply.out.payload[1+16],version);
   
   int i;
   for(i=0;i<32;i++){
