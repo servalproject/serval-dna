@@ -1083,9 +1083,9 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   write_uint16(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4], slot->mdpRXBlockLength);  
 
   if (config.debug.rhizome_tx)
-    DEBUGF("src sid=%s, dst sid=%s, mdpRXWindowStart=0x%"PRIx64,
-	  alloca_tohex_sid(mdp.out.src.sid),alloca_tohex_sid(mdp.out.dst.sid),
-	  slot->write_state.file_offset);
+    DEBUGF("src sid=%s, dst sid=%s, mdpRXWindowStart=0x%"PRIx64", slot->bidVersion=0x%"PRIx64,
+	   alloca_tohex_sid(mdp.out.src.sid),alloca_tohex_sid(mdp.out.dst.sid),
+	   slot->write_state.file_offset,slot->bidVersion);
 
   overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
   
