@@ -1337,8 +1337,13 @@ int rhizome_received_content(unsigned char *bidprefix,
 			     int count,unsigned char *bytes,int type)
 {
   IN();
-  if (!is_rhizome_mdp_enabled())
+  if (config.debug.rhizome)
+    DEBUGF("Rhizome over MDP receiving %d bytes.",count);
+  if (!is_rhizome_mdp_enabled()) {
+    if (config.debug.rhizome)
+      DEBUGF("Rhizome over MDP is not enabled");
     RETURN(-1);
+  }
   struct rhizome_fetch_slot *slot=fetch_search_slot(bidprefix, 16);
   
   if (slot && slot->bidVersion == version && slot->state == RHIZOME_FETCH_RXFILEMDP){
