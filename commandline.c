@@ -1938,6 +1938,22 @@ int app_count_peers(const struct cli_parsed *parsed, struct cli_context *context
   return 0;
 }
 
+int app_byteorder_test(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  uint64_t in=0x1234;
+  uint64_t out;
+
+  unsigned char bytes[8];
+
+  write_uint64(&bytes[0],in);
+  out=read_uint64(&bytes[0]);
+  if (in!=out)
+    cli_printf(context,"Byte order mangled (0x%016llx should have been %016llx)\n",
+	       out,in);
+  else cli_printf(context,"Byte order preserved.\n");
+  return -1;
+}
+
 int app_crypt_test(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
@@ -2387,6 +2403,8 @@ struct cli_schema command_line_options[]={
    "Run cryptography speed test"},
   {app_nonce_test,{"test","nonce",NULL}, 0,
    "Run nonce generation test"},
+  {app_byteorder_test,{"test","byteorder",NULL}, 0,
+   "Run byte order handling test"},
   {app_slip_test,{"test","slip","[--seed=<N>]","[--duration=<seconds>|--iterations=<N>]",NULL}, 0,
    "Run serial encapsulation test"},
 #ifdef HAVE_VOIPTEST
