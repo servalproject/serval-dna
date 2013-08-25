@@ -1423,6 +1423,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
       /* Keep reading until we have the promised amount of data */
       unsigned char buffer[8192];
       sigPipeFlag = 0;
+      errno=0;
       int bytes = read_nonblock(slot->alarm.poll.fd, buffer, sizeof buffer);
       /* If we got some data, see if we have found the end of the HTTP request */
       if (bytes > 0) {
@@ -1434,10 +1435,12 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	schedule(&slot->alarm);
 	return;
       } else {
-	if (config.debug.rhizome_rx)
-	  DEBUGF("Empty read, closing connection: received %"PRId64" of %"PRId64" bytes",
-		slot->write_state.file_offset,slot->write_state.file_length);
-	rhizome_fetch_switch_to_mdp(slot);
+	if (errno!=EAGAIN) {
+	  if (config.debug.rhizome_rx)
+	    DEBUGF("Empty read, closing connection: received %"PRId64" of %"PRId64" bytes",
+		   slot->write_state.file_offset,slot->write_state.file_length);
+	  rhizome_fetch_switch_to_mdp(slot);
+	}
 	return;
       }
       if (sigPipeFlag) {
