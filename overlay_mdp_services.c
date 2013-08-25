@@ -127,6 +127,10 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
     RETURN(WHYF("No payload?"));
 
   int type=mdp->out.payload[0];
+
+  if (config.debug.rhizome_mdp_rx)
+    DEBUGF("Received Rhizome over MDP block, type=%02x",type);
+
   switch (type) {
   case 'B': /* data block */
   case 'T': /* terminal data block */
@@ -138,6 +142,10 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
       uint64_t offset=read_uint64(&mdp->out.payload[1+16+8]);
       int count=mdp->out.payload_length-(1+16+8+8);
       unsigned char *bytes=&mdp->out.payload[1+16+8+8];
+
+      if (config.debug.rhizome_mdp_rx)
+	DEBUGF("bidprefix=%02x%02x%02x%02x*, offset=%lld, count=%d",
+	       bidprefix[0],bidprefix[1],bidprefix[2],bidprefix[3],offset,count);
 
       /* Now see if there is a slot that matches.  If so, then
 	 see if the bytes are in the window, and write them.
