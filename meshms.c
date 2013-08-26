@@ -221,8 +221,11 @@ static int ply_read_open(struct ply_read *ply, const char *id, rhizome_manifest 
     DEBUGF("Opening ply %s", id);
   if (rhizome_retrieve_manifest(id, m))
     return -1;
-  if (rhizome_open_decrypt_read(m, NULL, &ply->read))
-    return -1;
+  int ret = rhizome_open_decrypt_read(m, NULL, &ply->read);
+  if (ret>0)
+    WARNF("Payload was not found for manifest %s", alloca_tohex_bid(m->cryptoSignPublic));
+  if (ret)
+    return ret;
   ply->read.offset = ply->read.length = m->fileLength;
   return 0;
 }
