@@ -885,14 +885,16 @@ overlay_broadcast_ensemble(struct network_destination *destination,
       /* This lseek() is unneccessary because the dummy file is opened in O_APPEND mode.  It's
        only purpose is to find out the offset to print in the DEBUG statement.  It is vulnerable
        to a race condition with other processes appending to the same file. */
-      off_t fsize = lseek(interface->alarm.poll.fd, (off_t) 0, SEEK_END);
-      /* Don't complain if the seek fails because we are writing to a pipe or device that does
-	 not support seeking. */
-      if (errno!=ESPIPE) {
-	if (fsize == -1)
-	  return WHY_perror("lseek");
-	if (config.debug.overlayinterfaces)
-	  DEBUGF("Write to interface %s at offset=%zu", interface->name, fsize);
+      if (config.debug.overlayinterfaces) {
+	off_t fsize = lseek(interface->alarm.poll.fd, (off_t) 0, SEEK_END);
+	if (fsize == -1) {
+	  /* Don't complain if the seek fails because we are writing to a pipe or device that does
+	    not support seeking. */
+	  if (errno != ESPIPE)
+	    return WHY_perror("lseek");
+	  DEBUGF("Write to interface %s at unknown offset", interface->name);
+	} else
+	  DEBUGF("Write to interface %s at offset=%llu", interface->name, (long long)fsize);
       }
       ssize_t nwrite = write(interface->alarm.poll.fd, &packet, sizeof(packet));
       if (nwrite == -1)
