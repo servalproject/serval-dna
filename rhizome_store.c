@@ -257,9 +257,12 @@ int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsi
   struct rhizome_write_buffer **ptr = &write_state->buffer_list;
   int ret=0;
   int should_write = 0;
-  if (write_state->blob_fd>=0){
+  // if we are writing to a file, or already have the sql blob open, write as much as we can.
+  if (write_state->blob_fd>=0 || write_state->sql_blob){
     should_write = 1;
   }else{
+    // cache up to RHIZOME_BUFFER_MAXIMUM_SIZE or file length before attempting to write everything in one go.
+    // (Not perfect if the range overlaps)
     int64_t new_size = write_state->written_offset + write_state->buffer_size + data_size;
     if (new_size>=write_state->file_length || new_size>=RHIZOME_BUFFER_MAXIMUM_SIZE)
       should_write = 1;
@@ -325,7 +328,7 @@ int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsi
       if (*ptr && offset+size > (*ptr)->offset)
 	size = (*ptr)->offset - offset;
 	
-      if (should_write && offset == write_state->file_offset){
+      if (should_write && offset == write_state->written_offset){
 	if (write_get_lock(write_state)){
 	  ret=-1;
 	  break;
