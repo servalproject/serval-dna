@@ -431,6 +431,8 @@ int rhizome_fail_write(struct rhizome_write *write){
 }
 
 int rhizome_finish_write(struct rhizome_write *write){
+  if (write->blob_rowid==-1 && write->blob_fd == -1)
+    return WHY("Can't finish a write that has already been closed");
   if (write->buffer_list){
     if (rhizome_random_write(write, 0, NULL, 0))
       goto failure;
@@ -458,17 +460,16 @@ int rhizome_finish_write(struct rhizome_write *write){
   SHA512_End(&write->sha512_context, hash_out);
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
-    goto dbfailure;
   
   if (write->id_known){
     if (strcasecmp(write->id, hash_out)){
       WHYF("Expected hash=%s, got %s", write->id, hash_out);
-      goto dbfailure;
+      goto failure;
     }
+    
     if (sqlite_exec_void_retry(&retry, "UPDATE FILES SET inserttime=%lld, datavalid=1 WHERE id='%s'",
 			       gettime_ms(), write->id) == -1)
-      goto dbfailure;
+      goto failure;
   }else{
     str_toupper_inplace(hash_out);
     
@@ -476,6 +477,9 @@ int rhizome_finish_write(struct rhizome_write *write){
       // ooops, we've already got that file, delete the new copy.
       rhizome_fail_write(write);
     }else{
+      if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
+	goto dbfailure;
+      
       // delete any half finished records
       sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,"DELETE FROM FILEBLOBS WHERE id='%s';",hash_out);
       sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,"DELETE FROM FILES WHERE id='%s';",hash_out);
@@ -511,11 +515,11 @@ int rhizome_finish_write(struct rhizome_write *write){
 	  goto dbfailure;
 	}
       }
+      if (sqlite_exec_void_retry(&retry, "COMMIT;") == -1)
+	goto dbfailure;
     }
     strlcpy(write->id, hash_out, SHA512_DIGEST_STRING_LENGTH);
   }
-  if (sqlite_exec_void_retry(&retry, "COMMIT;") == -1)
-    goto dbfailure;
   write->blob_rowid=-1;
   
   if (config.debug.rhizome)
