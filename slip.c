@@ -162,7 +162,7 @@ int parse_rfd900_rssi(char *s)
 	     &lrssi,&rrssi,&lnoise,&rnoise,&rxpackets, &temp)==6)
     {
       int lmargin=(lrssi-lnoise)/1.9;
-      int rmargin=(lrssi-lnoise)/1.9;
+      int rmargin=(rrssi-rnoise)/1.9;
       int maxmargin=lmargin; if (rmargin>maxmargin) maxmargin=rmargin;
       last_radio_rssi=maxmargin;
       last_radio_temperature=temp;
