@@ -145,7 +145,7 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
       unsigned char *bytes=&mdp->out.payload[1+16+8+8];
 
       if (config.debug.rhizome_mdp_rx)
-	DEBUGF("bidprefix=%02x%02x%02x%02x*, offset=%lld, count=%d",
+	DEBUGF("bidprefix=%02x%02x%02x%02x*, offset=%"PRId64", count=%d",
 	       bidprefix[0],bidprefix[1],bidprefix[2],bidprefix[3],offset,count);
 
       /* Now see if there is a slot that matches.  If so, then

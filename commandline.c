@@ -1948,7 +1948,7 @@ int app_byteorder_test(const struct cli_parsed *parsed, struct cli_context *cont
   write_uint64(&bytes[0],in);
   out=read_uint64(&bytes[0]);
   if (in!=out)
-    cli_printf(context,"Byte order mangled (0x%016llx should have been %016llx)\n",
+    cli_printf(context,"Byte order mangled (0x%016"PRIx64" should have been %016"PRIx64")\n",
 	       out,in);
   else cli_printf(context,"Byte order preserved.\n");
   return -1;

@@ -1370,7 +1370,7 @@ int rhizome_received_content(unsigned char *bidprefix,
     RETURN(0);
   } else {
     if (config.debug.rhizome)
-      DEBUGF("Ignoring received block: slot=%p, version=%016llx, slot->bidVersion=%016llx, slot->state=%d (should be %d)",
+      DEBUGF("Ignoring received block: slot=%p, version=%016"PRIx64", slot->bidVersion=%016"PRIx64", slot->state=%d (should be %d)",
 	     slot,version,slot?slot->bidVersion:0,slot?slot->state:-999,RHIZOME_FETCH_RXFILEMDP);
   }
   
