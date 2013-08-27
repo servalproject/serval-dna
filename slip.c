@@ -168,7 +168,7 @@ int parse_rfd900_rssi(char *s)
       last_radio_temperature=temp;
       last_radio_rxpackets=rxpackets;
 
-      if (config.debug.packetradio||(gettime_ms()-last_rssi_time>30000)) {
+      if (gettime_ms()-last_rssi_time>30000) {
 	INFOF("Link budget = %+ddB, temperature=%dC",maxmargin,temp);
 	last_rssi_time=gettime_ms();
       }
