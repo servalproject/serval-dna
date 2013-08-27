@@ -443,6 +443,11 @@ typedef struct overlay_interface {
   int recv_offset; /* file offset */
   unsigned char txbuffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
   int tx_bytes_pending;
+
+  // Throttle TX rate if required (stream interfaces only for now)
+  uint32_t throttle_bytes_per_second;
+  uint32_t throttle_burst_write_size;
+  uint64_t next_tx_allowed;
   
   struct slip_decode_state slip_decode_state;
 

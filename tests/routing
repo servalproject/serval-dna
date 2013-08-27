@@ -232,16 +232,23 @@ setup_simulate_extender() {
       set interfaces.1.file "$END2"
    foreach_instance +A +B \
       executeOk_servald config \
+         set debug.throttling on \
+         set debug.packetradio on \
          set interfaces.1.type CATEAR \
          set interfaces.1.socket_type STREAM \
          set interfaces.1.encapsulation SINGLE \
          set interfaces.1.point_to_point on \
-         set interfaces.1.packet_interval 5000
+         set interfaces.1.packet_interval 5000 \
+         set interfaces.1.burst_size 100 \
+         set interfaces.1.throttle 1000
    foreach_instance +A +B start_routing_instance
 }
 test_simulate_extender() {
    wait_until path_exists +A +B
    wait_until path_exists +B +A
+   set_instance +A
+   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   tfw_cat --stdout --stderr
 }
 teardown_simulate_extender() {
    teardown

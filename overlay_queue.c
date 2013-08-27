@@ -288,6 +288,8 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
     int i;
     for(i=0;i<frame->destination_count;i++)
     {
+      if (frame->destinations[i].destination->interface->tx_bytes_pending>0)
+	continue;
       time_ms_t next_packet = limit_next_allowed(&frame->destinations[i].destination->transfer_limit);
       if (frame->destinations[i].transmit_time){
 	time_ms_t delay_until = frame->destinations[i].transmit_time + frame->destinations[i].destination->resend_delay;

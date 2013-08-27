@@ -378,6 +378,9 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   interface->ctsrts = ifconfig->ctsrts;
   set_destination_ref(&interface->destination, NULL);
   interface->destination = new_destination(interface, ifconfig->encapsulation);
+  
+  interface->throttle_bytes_per_second = ifconfig->throttle;
+  interface->throttle_burst_write_size = ifconfig->burst_size;
   /* Pick a reasonable default MTU.
      This will ultimately get tuned by the bandwidth and other properties of the interface */
   interface->mtu = 1200;
@@ -717,27 +720,52 @@ static void interface_read_stream(struct overlay_interface *interface){
 }
 
 static void write_stream_buffer(overlay_interface *interface){
-  if (interface->tx_bytes_pending>0) {
+  time_ms_t now = gettime_ms();
+  
+  int bytes_allowed=interface->tx_bytes_pending;
+  if (bytes_allowed>0 && interface->next_tx_allowed < now) {
+    // Throttle output to a prescribed bit-rate
+    // first, reduce the number of bytes based on the configured burst size
+    if (interface->throttle_burst_write_size && bytes_allowed > interface->throttle_burst_write_size)
+      bytes_allowed = interface->throttle_burst_write_size;
+    
+    if (config.debug.packetradio) 
+      DEBUGF("Trying to write %d bytes",bytes_allowed);
     int written=write(interface->alarm.poll.fd,interface->txbuffer,
-		      interface->tx_bytes_pending);
-    if (config.debug.packetradio) DEBUGF("Trying to write %d bytes",
-					 interface->tx_bytes_pending);
+		      bytes_allowed);
     if (written>0) {
       interface->tx_bytes_pending-=written;
       bcopy(&interface->txbuffer[written],&interface->txbuffer[0],
 	    interface->tx_bytes_pending);
-      if (config.debug.packetradio) DEBUGF("Wrote %d bytes (%d left pending)",
-					   written,interface->tx_bytes_pending);
-    } else {
-      if (config.debug.packetradio) DEBUGF("Failed to write any data");
+      if (config.debug.packetradio) 
+	DEBUGF("Wrote %d bytes (%d left pending)", written, interface->tx_bytes_pending);
+      
+      // Now when are we allowed to send more?
+      if (interface->throttle_bytes_per_second>0) {
+	int delay = written*1000/interface->throttle_bytes_per_second;
+	if (config.debug.throttling)
+	  DEBUGF("Throttling for %dms.",delay);
+	interface->next_tx_allowed = now + delay;
+      }
+    } else {  
+      if (config.debug.packetradio)
+	DEBUGF("Failed to write any data");
     }
   }
   
-  if (interface->tx_bytes_pending>0) {
-    // more to write, so keep POLLOUT flag
-    interface->alarm.poll.events|=POLLOUT;
+  if (interface->tx_bytes_pending>0){
+    if (interface->next_tx_allowed > now){
+      // We can't write now, so clear POLLOUT flag
+      interface->alarm.poll.events&=~POLLOUT;
+      // set the interface alarm to trigger another write
+      interface->alarm.alarm = interface->next_tx_allowed;
+      interface->alarm.deadline = interface->alarm.alarm+10;
+    } else {
+      // more to write, so set the POLLOUT flag
+      interface->alarm.poll.events|=POLLOUT;
+    }
   } else {
-    // nothing more to write, so clear POLLOUT flag
+    // Nothing to write, so clear POLLOUT flag
     interface->alarm.poll.events&=~POLLOUT;
     // try to empty another packet from the queue ASAP
     overlay_queue_schedule_next(gettime_ms());
@@ -749,14 +777,15 @@ static void write_stream_buffer(overlay_interface *interface){
 static void overlay_interface_poll(struct sched_ent *alarm)
 {
   struct overlay_interface *interface = (overlay_interface *)alarm;
-  
+  time_ms_t now = gettime_ms();
+    
   if (alarm->poll.revents==0){
     alarm->alarm=-1;
     
-    time_ms_t now = gettime_ms();
     if (interface->state==INTERFACE_STATE_UP 
       && interface->destination->tick_ms>0
-      && interface->send_broadcasts){
+      && interface->send_broadcasts
+      && interface->tx_bytes_pending<=0){
       
       if (now >= interface->destination->last_tx+interface->destination->tick_ms)
         overlay_send_tick_packet(interface->destination);
@@ -766,15 +795,17 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     }
     
     switch(interface->socket_type){
-      case SOCK_DGRAM:
       case SOCK_STREAM:
+	write_stream_buffer(interface);
+	break;
+      case SOCK_DGRAM:
 	break;
       case SOCK_FILE:
 	interface_read_file(interface);
         now = gettime_ms();
 	break;
     }
-
+    
     if (alarm->alarm!=-1 && interface->state==INTERFACE_STATE_UP) {
       if (alarm->alarm < now)
         alarm->alarm = now;
@@ -786,6 +817,12 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     switch(interface->socket_type){
       case SOCK_STREAM:
 	write_stream_buffer(interface);
+	if (alarm->alarm!=-1 && interface->state==INTERFACE_STATE_UP) {
+	  if (alarm->alarm < now)
+	    alarm->alarm = now;
+	  unschedule(alarm);
+	  schedule(alarm);
+	}
 	break;
       case SOCK_DGRAM:
       case SOCK_FILE:
@@ -865,7 +902,10 @@ overlay_broadcast_ensemble(struct network_destination *destination,
       
       interface->tx_bytes_pending=out_len;
       write_stream_buffer(interface);
-      
+      if (interface->alarm.alarm!=-1){
+	unschedule(&interface->alarm);
+	schedule(&interface->alarm);
+      }
       return 0;
     }
       
