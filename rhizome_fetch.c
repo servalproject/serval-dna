@@ -1391,12 +1391,6 @@ int rhizome_received_content(unsigned char *bidprefix,
     }
     
     if (m){
-      // the rhizome store API doesn't support concurrent writing, so we have an active slot for this payload
-      // we need to close it first without freeing the manifest just yet.
-      if (slot && (slot->write_state.blob_fd>=0 ||
-	    slot->write_state.blob_rowid>=0))
-	rhizome_fail_write(&slot->write_state);
-	
       if (rhizome_import_buffer(m, bytes, count)>=0 && !rhizome_import_received_bundle(m)){
 	INFOF("Completed MDP transfer in one hit for file %s", m->fileHexHash);
 	if (c)

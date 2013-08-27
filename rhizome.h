@@ -399,6 +399,7 @@ struct rhizome_write_buffer{
 
 struct rhizome_write{
   char id[SHA512_DIGEST_STRING_LENGTH+1];
+  uint64_t temp_id;
   char id_known;
   
   int64_t tail;
