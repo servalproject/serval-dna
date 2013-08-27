@@ -279,7 +279,7 @@ static int ply_read_next(struct ply_read *ply){
     ply->buffer = b;
   }
   
-  int read = rhizome_read(&ply->read, ply->buffer, ply->record_length);
+  int read = rhizome_read_buffered(&ply->read, &ply->buff, ply->buffer, ply->record_length);
   if (read!=ply->record_length)
     return WHYF("Expected %d bytes read, got %d", ply->record_length, read);
   
