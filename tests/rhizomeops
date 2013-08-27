@@ -782,6 +782,7 @@ doc_MeshMSAddGrow="Subsequent add MeshMS updates manifest and removes old payloa
 setup_MeshMSAddGrow() {
    setup_servald
    setup_rhizome
+   executeOk_servald config set rhizome.clean_on_open on
    echo "Message1" >file1
    echo -e "service=MeshMS1\nsender=$SIDB1\nrecipient=$SIDB2" >file1.manifest
 }

@@ -727,38 +727,43 @@ static int rhizome_delete_external(const char *fileid)
   return unlink(blob_path);
 }
 
-static int rhizome_cleanup_external(sqlite_retry_state *retry, sqlite3_stmt *statement){
-  int ret=0;
-  while (sqlite_step_retry(retry, statement) == SQLITE_ROW) {
-    const char *id = (const char *) sqlite3_column_text(statement, 0);
-    if (rhizome_delete_external(id)==0)
-      ret++;
-  }
-  return ret;
-}
-
 int rhizome_cleanup(struct rhizome_cleanup_report *report)
 {
   IN();
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
   // cleanup external blobs for unreferenced files
+  int externals_removed=0;
+  int candidates=0;
+  
   sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT id FROM FILES WHERE inserttime < %lld AND datavalid=0;", gettime_ms() - 300000);
-  int externals_removed=rhizome_cleanup_external(&retry, statement);
+  while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
+    candidates++;
+    const char *id = (const char *) sqlite3_column_text(statement, 0);
+    if (rhizome_delete_external(id)==0)
+      externals_removed++;
+  }
   sqlite3_finalize(statement);
   
   statement = sqlite_prepare(&retry, "SELECT id FROM FILES WHERE inserttime < %lld AND datavalid=1 AND NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);", gettime_ms() - 1000);
-  externals_removed+=rhizome_cleanup_external(&retry, statement);
+  while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
+    candidates++;
+    const char *id = (const char *) sqlite3_column_text(statement, 0);
+    if (rhizome_delete_external(id)==0)
+      externals_removed++;
+  }
   sqlite3_finalize(statement);
   
-  // clean out unreferenced files
   int ret;
-  ret = sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILES WHERE inserttime < %lld AND datavalid=0;", gettime_ms() - 300000);
-  if (report)
-    report->deleted_stale_incoming_files = ret;
-  ret = sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILES WHERE inserttime < %lld AND datavalid=1 AND NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);", gettime_ms() - 1000);
-  if (report)
-    report->deleted_orphan_files = ret;
+  if (candidates){
+    // clean out unreferenced files
+    ret = sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILES WHERE inserttime < %lld AND datavalid=0;", gettime_ms() - 300000);
+    if (report)
+      report->deleted_stale_incoming_files = ret;
+    ret = sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILES WHERE inserttime < %lld AND datavalid=1 AND NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);", gettime_ms() - 1000);
+    if (report)
+      report->deleted_orphan_files = ret;
+  }
   
   ret = sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILEBLOBS WHERE NOT EXISTS ( SELECT  1 FROM FILES WHERE FILES.id = FILEBLOBS.id );");
   if (report)
