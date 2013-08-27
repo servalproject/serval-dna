@@ -686,7 +686,8 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
     */
     WHYF("Serval process already running (pid=%d), but no responding.", pid);
     if (pid>-1) {
-      kill(pid,SIGHUP); sleep(1);
+      kill(pid,SIGHUP); 
+      sleep_ms(1000);
       status=server_probe(&pid);
       if (status!=SERVER_NOTRUNNING) {
 	WHY("Tried to stop stuck servald process, but attempt failed.");

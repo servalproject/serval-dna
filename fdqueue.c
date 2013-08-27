@@ -276,10 +276,7 @@ int fd_poll()
     call_stats.totals=&poll_stats;
     fd_func_enter(__HERE__, &call_stats);
     if (fdcount==0){
-      if (ms>=1000)
-	sleep(ms/1000);
-      else
-	usleep(ms*1000);
+      sleep_ms(ms);
     }else{
       if (config.debug.io) DEBUGF("poll(X,%d,%d)",fdcount,ms);
       r = poll(fds, fdcount, ms);

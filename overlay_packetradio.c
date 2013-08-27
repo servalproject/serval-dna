@@ -70,11 +70,11 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   
   // Ask radio to report RSSI
   (void)write_all(interface->alarm.poll.fd,"\r",1);
-  usleep(600000);
+  sleep_ms(600);
   (void)write_all(interface->alarm.poll.fd,"\r",1);
-  usleep(600000);
+  sleep_ms(600);
   (void)write_all(interface->alarm.poll.fd,"+++",3);
-  usleep(1200000);
+  sleep_ms(1200);
   (void)write_all(interface->alarm.poll.fd,"\rAT&T\rAT&T=RSSI\rATO\r",20);
   if (config.debug.packetradio) {
     tcgetattr(interface->alarm.poll.fd, &t);

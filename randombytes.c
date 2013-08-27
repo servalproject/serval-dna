@@ -17,6 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include "os.h"
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -35,7 +36,7 @@ void randombytes(unsigned char *x,unsigned long long xlen)
     for (;;) {
       fd = open("/dev/urandom",O_RDONLY);
       if (fd != -1) break;
-      sleep(1);
+      sleep_ms(1000);
     }
   }
 
@@ -44,7 +45,7 @@ void randombytes(unsigned char *x,unsigned long long xlen)
 
     i = read(fd,x,i);
     if (i < 1) {
-      sleep(1);
+      sleep_ms(1000);
       continue;
     }
 

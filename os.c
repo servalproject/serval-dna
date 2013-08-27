@@ -96,7 +96,7 @@ int urandombytes(unsigned char *buf, unsigned long long len)
     for (tries = 0; tries < 4; ++tries) {
       urandomfd = open("/dev/urandom",O_RDONLY);
       if (urandomfd != -1) break;
-      sleep(1);
+      sleep_ms(1000);
     }
     if (urandomfd == -1) {
       WHY_perror("open(/dev/urandom)");

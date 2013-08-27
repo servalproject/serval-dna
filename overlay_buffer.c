@@ -183,7 +183,7 @@ int _ob_makespace(struct __sourceloc __whence, struct overlay_buffer *b,int byte
     if (corrupt) {
       WHYF("!!!!!! %d corrupted bytes in overrun catch tray", corrupt);
       dump("overrun catch tray",&b->bytes[b->allocSize],4096);
-      sleep(3600);
+      sleep_ms(36000000);
     }
   }
   unsigned char *new=malloc(newSize+4096);
