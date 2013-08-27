@@ -306,6 +306,8 @@ static int append_meshms_buffer(const sid_t *my_sid, struct conversations *conv,
   if (conv->found_my_ply){
     if (rhizome_retrieve_manifest(conv->my_ply.bundle_id, m))
       goto end;
+    // set the author of the manifest as we should already know that
+    bcopy(my_sid->binary, m->author, sizeof(m->author));
     if (rhizome_find_bundle_author(m))
       goto end;
   }else{
