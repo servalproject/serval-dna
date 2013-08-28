@@ -912,8 +912,9 @@ overlay_broadcast_ensemble(struct network_destination *destination,
 		bytes, len, 0, (struct sockaddr *)&destination->address, sizeof(destination->address)) != len){
 	int e=errno;
 	WHY_perror("sendto(c)");
-	// only close the interface on some kinds of errors
-	if (e==ENETDOWN || e==EINVAL)
+	// close the interface if we had any error while sending broadcast packets,
+	// unicast packets should not bring the interface down
+	if (destination == interface->destination)
 	  overlay_interface_close(interface);
 	// TODO mark unicast destination as failed
 	return -1;
