@@ -757,8 +757,10 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     if (interface->state==INTERFACE_STATE_UP 
       && interface->destination->tick_ms>0
       && interface->send_broadcasts){
+      
       if (now >= interface->destination->last_tx+interface->destination->tick_ms)
         overlay_send_tick_packet(interface->destination);
+	
       alarm->alarm=interface->destination->last_tx+interface->destination->tick_ms;
       alarm->deadline=alarm->alarm+interface->destination->tick_ms/2;
     }
@@ -773,7 +775,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
 	break;
     }
 
-    if (alarm->alarm!=-1) {
+    if (alarm->alarm!=-1 && interface->state==INTERFACE_STATE_UP) {
       if (alarm->alarm < now)
         alarm->alarm = now;
       schedule(alarm);
