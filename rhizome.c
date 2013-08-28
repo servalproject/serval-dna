@@ -281,7 +281,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
       if (m_in->version < storedversion)
 	return WHY("Newer version exists");
       if (m_in->version == storedversion)
-	return WHY("Same version of manifest exists, not adding");
+	return WHYF("Already have %s:%"PRId64", not adding", id, m_in->version);
       break;
     default:
       return WHY("Select found too many rows!");

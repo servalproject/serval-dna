@@ -1520,9 +1520,9 @@ static int is_interesting(const char *id_hex, int64_t version)
   if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
     const char *q_filehash = (const char *) sqlite3_column_text(statement, 0);
     ret=0;
-    if (q_filehash && !rhizome_exists(q_filehash))
+    if (q_filehash && *q_filehash && !rhizome_exists(q_filehash))
       ret=1;
-  }  
+  }
   sqlite3_finalize(statement);
 
   RETURN(ret);
