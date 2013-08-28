@@ -58,7 +58,6 @@ overlay_interface_close(overlay_interface *interface){
   link_interface_down(interface);
   INFOF("Interface %s addr %s is down", 
     interface->name, inet_ntoa(interface->address.sin_addr));
-  set_destination_ref(&interface->destination, NULL);
   unschedule(&interface->alarm);
   unwatch(&interface->alarm);
   close(interface->alarm.poll.fd);
@@ -377,7 +376,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   interface->socket_type = ifconfig->socket_type;
   interface->uartbps = ifconfig->uartbps;
   interface->ctsrts = ifconfig->ctsrts;
-  
+  set_destination_ref(&interface->destination, NULL);
   interface->destination = new_destination(interface, ifconfig->encapsulation);
   /* Pick a reasonable default MTU.
      This will ultimately get tuned by the bandwidth and other properties of the interface */
@@ -910,7 +909,6 @@ overlay_broadcast_ensemble(struct network_destination *destination,
 	DEBUGF("Sending %d byte overlay frame on %s to %s",len,interface->name,inet_ntoa(destination->address.sin_addr));
       if(sendto(interface->alarm.poll.fd, 
 		bytes, len, 0, (struct sockaddr *)&destination->address, sizeof(destination->address)) != len){
-	int e=errno;
 	WHY_perror("sendto(c)");
 	// close the interface if we had any error while sending broadcast packets,
 	// unicast packets should not bring the interface down
