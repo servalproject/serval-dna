@@ -744,7 +744,7 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
       RETURN(-1);
     overlayMode = 1;
     if (foregroundP)
-      RETURN(server(NULL));
+      RETURN(server(parsed));
     const char *dir = getenv("SERVALD_SERVER_CHDIR");
     if (!dir)
       dir = config.server.chdir;
@@ -792,7 +792,7 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
 	      WHYF_perror("execl(%s,\"start\",\"foreground\")", alloca_str_toprint(execpath));
 	      _exit(-1);
 	    }
-	    _exit(server(NULL));
+	    _exit(server(parsed));
 	    // NOT REACHED
 	  }
 	}

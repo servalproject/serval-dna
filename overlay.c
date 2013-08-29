@@ -77,7 +77,7 @@ int overlayMode=0;
 
 keyring_file *keyring=NULL;
 
-int overlayServerMode()
+int overlayServerMode(const struct cli_parsed *parsed)
 {
   IN();
 
@@ -88,7 +88,7 @@ int overlayServerMode()
   /* Get keyring available for use.
      Required for MDP, and very soon as a complete replacement for the
      HLR for DNA lookups, even in non-overlay mode. */
-  keyring = keyring_open_instance();
+  keyring = keyring_open_instance_cli(parsed);
   if (!keyring)
     RETURN(WHY("Could not open serval keyring file."));
   keyring_enter_pin(keyring, "");

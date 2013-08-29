@@ -170,6 +170,8 @@ void serval_setinstancepath(const char *instancepath);
 
 #define SERVER_CONFIG_RELOAD_INTERVAL_MS	1000
 
+struct cli_parsed;
+
 extern int servalShutdown;
 
 extern char *gatewayspec;
@@ -518,7 +520,7 @@ int strn_is_did(const char *did, size_t *lenp);
 int stowSid(unsigned char *packet, int ofs, const char *sid);
 int server_pid();
 void server_save_argv(int argc, const char *const *argv);
-int server(char *backing_file);
+int server(const struct cli_parsed *parsed);
 int server_create_stopfile();
 int server_remove_stopfile();
 int server_check_stopfile();
@@ -562,7 +564,7 @@ int rfs_length(int l);
 int rfs_encode(int l,unsigned char *b);
 int rfs_decode(unsigned char *b,int *offset);
 
-int overlayServerMode();
+int overlayServerMode(const struct cli_parsed *parsed);
 int overlay_payload_enqueue(struct overlay_frame *p);
 int overlay_queue_remaining(int queue);
 int overlay_queue_schedule_next(time_ms_t next_allowed_packet);
@@ -686,7 +688,6 @@ int overlay_broadcast_ensemble(struct network_destination *destination,
 int directory_registration();
 int directory_service_init();
 
-struct cli_parsed;
 int app_nonce_test(const struct cli_parsed *parsed, struct cli_context *context);
 int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context *context);
 int app_monitor_cli(const struct cli_parsed *parsed, struct cli_context *context);

@@ -42,7 +42,6 @@ static int server_getpid = 0;
 
 void signal_handler(int signal);
 void crash_handler(int signal);
-int getKeyring(char *s);
 
 /** Return the PID of the currently running server process, return 0 if there is none.
  */
@@ -83,7 +82,7 @@ void server_save_argv(int argc, const char *const *argv)
     exec_args[exec_argc] = NULL;
 }
 
-int server(char *backing_file)
+int server(const struct cli_parsed *parsed)
 {
   IN();
   /* For testing, it can be very helpful to delay the start of the server process, for example to
@@ -130,7 +129,7 @@ int server(char *backing_file)
   fprintf(f,"%d\n", server_getpid);
   fclose(f);
   
-  overlayServerMode();
+  overlayServerMode(parsed);
 
   RETURN(0);
   OUT();
@@ -417,23 +416,4 @@ void crash_handler(int signal)
   // If that didn't work, then die normally.
   INFOF("exit(%d)", -signal);
   exit(-signal);
-}
-
-int getKeyring(char *backing_file)
-{
- if (!backing_file)
-    {     
-      exit(WHY("Keyring requires a backing file"));
-    }
-  else
-    {
-      if (keyring) 
-	exit(WHY("Keyring being opened twice"));
-      keyring=keyring_open(backing_file);
-      /* unlock all entries with blank pins */
-      keyring_enter_pin(keyring, "");
-    }
- keyring_seed(keyring);
-
- return 0;
 }
