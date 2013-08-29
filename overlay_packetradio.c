@@ -68,21 +68,20 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   if (tcsetattr(interface->alarm.poll.fd, TCSANOW, &t))
     WHY_perror("Failed to set terminal parameters");
   
-  // Ask radio to report RSSI
-  (void)write_all(interface->alarm.poll.fd,"\r",1);
-  sleep_ms(600);
-  (void)write_all(interface->alarm.poll.fd,"\r",1);
-  sleep_ms(600);
-  (void)write_all(interface->alarm.poll.fd,"+++",3);
-  sleep_ms(1200);
-  (void)write_all(interface->alarm.poll.fd,"\rAT&T\rAT&T=RSSI\rATO\r",20);
+  // Enable MAVLink mode to get regular RSSI reports
+  uint8_t buf[256];
+  int buflen=0;
+  buflen=0;
+  mavlink_heartbeat(buf,&buflen);
+  (void)write_all(interface->alarm.poll.fd,buf,buflen);
+
+
   if (config.debug.packetradio) {
     tcgetattr(interface->alarm.poll.fd, &t);
     int in_speed=cfgetispeed(&t);
     int out_speed=cfgetospeed(&t);
 
-    DEBUGF("Enabled RSSI reporting for RFD900 radios");
-    DEBUGF("Sent ATO to make sure we are in on-line mode");
+    DEBUGF("Enabled MAVLink based RSSI reporting for RFD900 radios");
     DEBUGF("uart speed reported as %d/%d",in_speed,out_speed);
   }
   

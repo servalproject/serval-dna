@@ -368,6 +368,7 @@ extern int overlayMode;
 struct slip_decode_state{
 #define SLIP_FORMAT_SLIP 0
 #define SLIP_FORMAT_UPPER7 1
+#define SLIP_FORMAT_MAVLINK 2
   int encapsulator;
   int state;
   unsigned char *src;
@@ -379,6 +380,15 @@ struct slip_decode_state{
   uint32_t crc;
   int src_offset;
   int dst_offset;
+
+  uint8_t mavlink_payload_length;
+  uint8_t mavlink_payload_offset;
+  uint8_t mavlink_payload[256];
+  uint8_t mavlink_sequence;
+  uint8_t mavlink_sysid;
+  uint8_t mavlink_componentid;
+  uint8_t mavlink_msgid;
+  uint16_t mavlink_rxcrc;
 };
 
 struct overlay_interface;
@@ -865,5 +875,10 @@ int link_unicast_ack(struct subscriber *subscriber, struct overlay_interface *in
 int link_add_destinations(struct overlay_frame *frame);
 
 int generate_nonce(unsigned char *nonce,int bytes);
+
+int mavlink_decode(struct slip_decode_state *state,uint8_t c);
+int mavlink_heartbeat(unsigned char *frame,int *outlen);
+int stream_as_mavlink(int f,unsigned char *data,int count,
+		      unsigned char *frame,int *outlen);
 
 #endif // __SERVALD_SERVALD_H

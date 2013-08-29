@@ -1,3 +1,22 @@
+/*
+Serval Distributed Numbering Architecture (DNA)
+Copyright (C) 2012 Paul Gardner-Stephen
+ 
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+ 
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+ 
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
+
 #include "serval.h"
 #include "conf.h"
 #include "log.h"
@@ -25,6 +44,32 @@ int slip_encode(int format,
 		unsigned char *src, int src_bytes, unsigned char *dst, int dst_len)
 {
   switch(format) {
+  case SLIP_FORMAT_MAVLINK:
+    {
+      int i;
+      int dst_offset=0;
+      for(i=0;i<src_bytes;i+=240) {
+	int slice_len=0;
+	int slice_bytes=240;
+	if (i+slice_bytes>src_bytes) slice_bytes=src_bytes-i;
+	if (dst_offset+slice_bytes+6+2>=dst_len) {
+	  if (config.debug.mavlink) 
+	    DEBUGF("Would overflow output buffer.");
+	  return -1;
+	} else {
+	  stream_as_mavlink(0,&src[i],slice_bytes,&dst[dst_offset],&slice_len);
+	  if (config.debug.mavlink) {
+	    DEBUGF("Wrote %d bytes as %d byte MAVLink frame",
+		   slice_bytes,slice_len);
+	    dump("original data",&src[i],slice_bytes);
+	    dump("mavlink frame",&dst[dst_offset],slice_len);
+	  }
+	  dst_offset+=slice_len;
+	}
+      }
+      return dst_offset;
+    }
+    break;
   case SLIP_FORMAT_SLIP:
     {
       int offset=0;
@@ -330,6 +375,23 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
 int slip_decode(struct slip_decode_state *state)
 {
   switch(state->encapsulator) {
+  case SLIP_FORMAT_MAVLINK:
+    {
+      dump("rx data",state->src,state->src_size);
+      for(;state->src_offset<state->src_size;state->src_offset++) {
+	// flag complete reception of a packet
+	DEBUGF("src_offset=%d, src_size=%d, c=%02x",
+	       state->src_offset,state->src_size,state->src[state->src_offset]);
+	if (mavlink_decode(state,state->src[state->src_offset])==1) {
+	  // We have to increment src_offset manually here, because returning
+	  // prevents the post-increment in the for loop from triggering
+	  state->src_offset++;
+	  return 1;
+	}
+      }
+    }
+    return 0;
+    break;
   case SLIP_FORMAT_SLIP:
     {
       /*

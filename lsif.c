@@ -54,9 +54,12 @@
 #ifdef HAVE_LINUX_IF_H
 #include <linux/if.h>
 #else
-#ifdef HAVE_NET_IF_H
+#if HAVE_NET_IF_H || __MACH__ || __NetBSD__ || __OpenBSD__ || __FreeBSD__
 #include <net/if.h>
 #endif
+#endif
+#ifdef HAVE_IFADDRS_H
+#include <ifaddrs.h>
 #endif
 
 /* On platforms that have variable length 

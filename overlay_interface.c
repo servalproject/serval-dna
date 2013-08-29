@@ -57,7 +57,7 @@ static void
 overlay_interface_close(overlay_interface *interface){
   link_interface_down(interface);
   INFOF("Interface %s addr %s is down", 
-    interface->name, inet_ntoa(interface->address.sin_addr));
+	interface->name, inet_ntoa(interface->address.sin_addr));
   unschedule(&interface->alarm);
   unwatch(&interface->alarm);
   close(interface->alarm.poll.fd);
@@ -495,7 +495,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
       interface->slip_decode_state.dst_offset=0;
       /* The encapsulation type should be configurable, but for now default to the one that should
          be safe on the RFD900 radios, and that also allows us to receive RSSI reports inline */
-      interface->slip_decode_state.encapsulator=SLIP_FORMAT_UPPER7;
+      interface->slip_decode_state.encapsulator=SLIP_FORMAT_MAVLINK;
       interface->alarm.poll.events=POLLIN;
       watch(&interface->alarm);
       break;
@@ -882,7 +882,7 @@ overlay_broadcast_ensemble(struct network_destination *destination,
       unsigned char *buffer = interface->txbuffer;
       int out_len=0;
       
-      int encoded = slip_encode(SLIP_FORMAT_UPPER7,
+      int encoded = slip_encode(SLIP_FORMAT_MAVLINK,
 				bytes, len, buffer+out_len, sizeof(interface->txbuffer) - out_len);
       if (encoded < 0)
 	return WHY("Buffer overflow");
@@ -891,7 +891,7 @@ overlay_broadcast_ensemble(struct network_destination *destination,
 	{
 	  // Test decoding of the packet we send
 	  struct slip_decode_state state;
-	  state.encapsulator=SLIP_FORMAT_UPPER7;
+	  state.encapsulator=SLIP_FORMAT_MAVLINK;
 	  state.src_size=encoded;
 	  state.src_offset=0;
 	  state.src=buffer+out_len;
@@ -1063,7 +1063,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
   int i;
   for (i = 0; i < overlay_interface_count; i++)
     if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
-      overlay_interfaces[i].state=INTERFACE_STATE_DETECTING;
+      overlay_interfaces[i].state=INTERFACE_STATE_DETECTING;   
 
   /* Register new dummy interfaces */
   int detect_real_interfaces = 0;
@@ -1115,8 +1115,10 @@ void overlay_interface_discover(struct sched_ent *alarm)
 
   // Close any interfaces that have gone away.
   for(i = 0; i < overlay_interface_count; i++)
-    if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING)
+    if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING) {
+      DEBUGF("Closing interface stuck in DETECTING state.");
       overlay_interface_close(&overlay_interfaces[i]);
+    }
 
   alarm->alarm = gettime_ms()+5000;
   alarm->deadline = alarm->alarm + 10000;
