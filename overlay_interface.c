@@ -1036,7 +1036,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
     }
     int j;
     for (j = 0; j < overlay_interface_count; j++){
-      if (overlay_interfaces[i].socket_type == ifconfig->socket_type && 
+      if (overlay_interfaces[j].socket_type == ifconfig->socket_type && 
 	  strcasecmp(overlay_interfaces[j].name, ifconfig->file) == 0 && 
 	  overlay_interfaces[j].state==INTERFACE_STATE_DETECTING){
 	overlay_interfaces[j].state=INTERFACE_STATE_UP;
