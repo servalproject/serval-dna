@@ -31,8 +31,8 @@
 struct packet_destination{
   // if we've sent this packet once, what was the envelope sequence number?
   int sent_sequence;
-  // delay the next transmission. if we don't get an ack, send it again.
-  time_ms_t delay_until;
+  // track when we last sent this packet. if we don't get an ack, send it again.
+  time_ms_t transmit_time;
   // the actual out going stream for this packet
   struct network_destination *destination;
 };

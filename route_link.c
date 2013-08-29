@@ -163,6 +163,7 @@ struct network_destination * new_destination(struct overlay_interface *interface
     ret->_ref_count=1;
     ret->encapsulation = encapsulation;
     ret->interface = interface;
+    ret->resend_delay = 1000;
 //    DEBUGF("Create ref %p, %d - %s", ret, ret->_ref_count, ret->interface->name);
   }
   return ret;

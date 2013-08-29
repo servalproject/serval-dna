@@ -201,9 +201,10 @@ int overlay_payload_enqueue(struct overlay_frame *p)
       p->resend = 1;
   }
   
-  if (config.debug.verbose && config.debug.overlayframes){
-    int i=0;
-    for (i=0;i<p->destination_count;i++)
+  int i=0;
+  for (i=0;i<p->destination_count;i++){
+    p->destinations[i].sent_sequence=-1;
+    if (config.debug.verbose && config.debug.overlayframes)
       DEBUGF("Sending %s on interface %s", 
 	  p->destinations[i].destination->unicast?"unicast":"broadcast",
 	  p->destinations[i].destination->interface->name);
@@ -288,8 +289,11 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
     for(i=0;i<frame->destination_count;i++)
     {
       time_ms_t next_packet = limit_next_allowed(&frame->destinations[i].destination->transfer_limit);
-      if (next_packet < frame->destinations[i].delay_until)
-	next_packet = frame->destinations[i].delay_until;
+      if (frame->destinations[i].transmit_time){
+	time_ms_t delay_until = frame->destinations[i].transmit_time + frame->destinations[i].destination->resend_delay;
+	if (next_packet < delay_until)
+	  next_packet = delay_until;
+      }
       if (next_allowed_packet==0||next_packet < next_allowed_packet)
 	next_allowed_packet = next_packet;
     }
@@ -350,6 +354,15 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     if (frame->destination_count==0 && frame->destination){
       link_add_destinations(frame);
       
+      int i=0;
+      for (i=0;i<frame->destination_count;i++){
+	frame->destinations[i].sent_sequence=-1;
+	if (config.debug.verbose && config.debug.overlayframes)
+	  DEBUGF("Sending %s on interface %s", 
+	      frame->destinations[i].destination->unicast?"unicast":"broadcast",
+	      frame->destinations[i].destination->interface->name);
+      }
+      
       // degrade packet version if required to reach the destination
       if (frame->packet_version > frame->next_hop->max_packet_version)
 	frame->packet_version = frame->next_hop->max_packet_version;
@@ -370,7 +383,8 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  continue;
 	}
 	
-	if (frame->destinations[i].delay_until>now)
+	if (frame->destinations[i].transmit_time && 
+	  frame->destinations[i].transmit_time + frame->destinations[i].destination->resend_delay > now)
 	  continue;
 	
 	if (packet->buffer){
@@ -437,9 +451,13 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       frame->delay_until = now + 5;
       goto skip;
     }
-
-    frame->destinations[destination_index].sent_sequence = frame->destinations[destination_index].destination->sequence_number;
-    frame->destinations[destination_index].delay_until = now+200;
+    
+    {
+      struct packet_destination *dest = &frame->destinations[destination_index];
+      dest->sent_sequence = dest->destination->sequence_number;
+      dest->transmit_time = now;
+    }
+    
     frame->transmit_count++;
     
     if (config.debug.overlayframes){
@@ -539,6 +557,19 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
 	  char acked = (seq_delta==0 || (seq_delta <= 32 && ack_mask&(1<<(seq_delta-1))))?1:0;
 
 	  if (acked){
+	    int rtt = now - frame->destinations[j].transmit_time;
+	    if (!destination->min_rtt || rtt < destination->min_rtt){
+	      destination->min_rtt = rtt;
+	      int delay = rtt * 2 + 40;
+	      if (delay < destination->resend_delay){
+		destination->resend_delay = delay;
+		if (config.debug.linkstate)
+		  DEBUGF("Adjusting resend delay to %d", destination->resend_delay);
+	      }
+	    }
+	    if (!destination->max_rtt || rtt > destination->max_rtt)
+	      destination->max_rtt = rtt;
+	    
 	    if (config.debug.overlayframes)
 	      DEBUGF("Packet %p to %s sent by seq %d, acked with seq %d", 
 		frame, alloca_tohex_sid(neighbour->sid), frame_seq, ack_seq);

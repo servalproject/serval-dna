@@ -403,6 +403,10 @@ struct network_destination {
 
   // time last packet was sent
   time_ms_t last_tx;
+  
+  int min_rtt;
+  int max_rtt;
+  int resend_delay;
 
   // sequence number of last packet sent to this destination.
   // Used to allow NACKs that can request retransmission of recent packets.
