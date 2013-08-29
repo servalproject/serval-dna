@@ -267,7 +267,7 @@ int keyring_identity_mac(keyring_context *c,keyring_identity *id,
 extern keyring_file *keyring;
 
 /* Public calls to keyring management */
-keyring_file *keyring_open(const char *path);
+keyring_file *keyring_open(const char *path, int writeable);
 keyring_file *keyring_open_instance();
 keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed);
 int keyring_enter_pin(keyring_file *k, const char *pin);

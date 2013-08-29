@@ -28,37 +28,47 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "nacl.h"
 #include "overlay_address.h"
 
+static int _keyring_open(keyring_file *k, const char *path, const char *mode)
+{
+  if (config.debug.keyring)
+    DEBUGF("opening %s in \"%s\" mode", alloca_str_toprint(path), mode);
+  k->file = fopen(path, mode);
+  if (!k->file) {
+    if (errno != EPERM && errno != ENOENT)
+      return WHYF_perror("fopen(%s, \"%s\")", alloca_str_toprint(path), mode);
+    if (config.debug.keyring)
+      DEBUGF("cannot open %s in \"%s\" mode", alloca_str_toprint(path), mode);
+  }
+  return 0;
+}
+
 /*
-  Open keyring file, read BAM and create initial context using the 
-  stored salt. */
-keyring_file *keyring_open(const char *path)
+ * Open keyring file, read BAM and create initial context using the stored salt.
+ */
+keyring_file *keyring_open(const char *path, int writeable)
 {
   /* Allocate structure */
   keyring_file *k = emalloc_zero(sizeof(keyring_file));
   if (!k)
     return NULL;
-  /* Open keyring file read-write if we can, else use it read-only */
-  k->file = fopen(path, "r+");
-  if (!k->file) {
-    if (errno != EPERM && errno != ENOENT)
-      WHYF_perror("fopen(%s, \"r+\")", alloca_str_toprint(path));
-    if (config.debug.keyring)
-      DEBUGF("cannot open %s in \"r+\" mode, falling back to \"r\"", alloca_str_toprint(path));
-    k->file = fopen(path, "r");
-    if (!k->file) {
-      if (errno != EPERM && errno != ENOENT)
-	WHYF_perror("fopen(%s, \"r\")", alloca_str_toprint(path));
-      if (config.debug.keyring)
-	DEBUGF("cannot open %s in \"r\" mode, falling back to \"w+\"", alloca_str_toprint(path));
-      k->file = fopen(path, "w+");
-      if (!k->file) {
-	WHYF_perror("fopen(%s, \"w+\")", alloca_str_toprint(path));
-	keyring_free(k);
-	return NULL;
-      }
-    }
+  /* Open keyring file read-write if we can, else use it read-only, else create it. */
+  if (writeable && _keyring_open(k, path, "r+") == -1) {
+    keyring_free(k);
+    return NULL;
   }
-  assert(k->file != NULL);
+  if (!k->file && _keyring_open(k, path, "r") == -1) {
+    keyring_free(k);
+    return NULL;
+  }
+  if (!k->file && writeable && _keyring_open(k, path, "w+") == -1) {
+    keyring_free(k);
+    return NULL;
+  }
+  if (!k->file) {
+    WHYF_perror("cannot open or create keyring file %s", alloca_str_toprint(path));
+    keyring_free(k);
+    return NULL;
+  }
   if (fseeko(k->file, 0, SEEK_END)) {
     WHYF_perror("fseeko(%s, 0, SEEK_END)", alloca_str_toprint(path));
     keyring_free(k);
@@ -1489,10 +1499,21 @@ keyring_file *keyring_open_instance()
   IN();
   if (create_serval_instance_dir() == -1)
     RETURN(NULL);
+  // Work out the absolute path to the keyring file.
+  const char *keyringpath = getenv("SERVAL_KEYRING_PATH");
   char keyringFile[1024];
-  if (!FORM_SERVAL_INSTANCE_PATH(keyringFile, "serval.keyring"))
-    RETURN(NULL);
-  if ((k = keyring_open(keyringFile)) == NULL)
+  if (!keyringpath) {
+    if (!FORM_SERVAL_INSTANCE_PATH(keyringFile, "serval.keyring"))
+      RETURN(NULL);
+    keyringpath = keyringFile;
+  }
+  // Work out if the keyring file is writeable.
+  int writeable = 0;
+  const char *readonly_env = getenv("SERVAL_KEYRING_READONLY");
+  bool_t readonly_b;
+  if (readonly_env == NULL || cf_opt_boolean(&readonly_b, readonly_env) != CFOK || !readonly_b)
+      writeable = 1;
+  if ((k = keyring_open(keyringpath, writeable)) == NULL)
     RETURN(NULL);
   RETURN(k);
   OUT();
