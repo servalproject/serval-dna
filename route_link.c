@@ -964,8 +964,11 @@ int link_state_ack_soon(struct subscriber *subscriber){
     RETURN(0);
 
   time_ms_t now = gettime_ms();
-  if (neighbour->using_us && neighbour->next_neighbour_update > now + 80){
-    neighbour->next_neighbour_update = now + 80;
+  if (neighbour->using_us 
+    && subscriber->reachable & REACHABLE_DIRECT 
+    && subscriber->destination){
+    if (neighbour->next_neighbour_update > now + subscriber->destination->min_rtt)
+      neighbour->next_neighbour_update = now + subscriber->destination->min_rtt;
   }
   update_alarm(neighbour->next_neighbour_update);
   OUT();
