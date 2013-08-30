@@ -740,9 +740,9 @@ static int send_neighbour_link(struct neighbour *n)
     else
       flags|=FLAG_BROADCAST;
 
-    if (config.debug.linkstate && config.debug.verbose)
+    if (config.debug.ack)
       DEBUGF("LINK STATE; Sending ack to %s for seq %d", alloca_tohex_sid(n->subscriber->sid), n->best_link->ack_sequence);
-
+    
     append_link_state(frame->payload, flags, n->subscriber, my_subscriber, n->best_link->neighbour_interface, 1,
 	              n->best_link->ack_sequence, n->best_link->ack_mask, -1);
     if (overlay_payload_enqueue(frame))
@@ -752,7 +752,7 @@ static int send_neighbour_link(struct neighbour *n)
     n->last_update = now;
   }
   n->next_neighbour_update = n->last_update + n->best_link->interface->destination->tick_ms;
-  if (config.debug.linkstate && config.debug.verbose)
+  if (config.debug.ack)
     DEBUGF("Next update for %s in %lldms", alloca_tohex_sid(n->subscriber->sid), n->next_neighbour_update - gettime_ms());
   OUT();
   return 0;
@@ -961,8 +961,11 @@ int link_state_ack_soon(struct subscriber *subscriber){
   if (neighbour->using_us 
     && subscriber->reachable & REACHABLE_DIRECT 
     && subscriber->destination){
-    if (neighbour->next_neighbour_update > now + subscriber->destination->min_rtt)
+    if (neighbour->next_neighbour_update > now + subscriber->destination->min_rtt){
       neighbour->next_neighbour_update = now + subscriber->destination->min_rtt;
+      if (config.debug.ack)
+	DEBUGF("Asking for next ACK Real Soon Now");
+    }
   }
   update_alarm(neighbour->next_neighbour_update);
   OUT();
@@ -1286,7 +1289,7 @@ int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 	    neighbour->last_update_seq = -1;
 	  }else if(seq_delta < 128){
 	    // send another ack asap
-	    if (config.debug.linkstate && config.debug.verbose)
+	    if (config.debug.ack)
 	      DEBUGF("LINK STATE; neighbour %s missed ack %d, queue another", alloca_tohex_sid(sender->sid), neighbour->last_update_seq);
 	    neighbour->next_neighbour_update=now+5;
 	    update_alarm(neighbour->next_neighbour_update);

@@ -576,8 +576,8 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
 	    if (!destination->max_rtt || rtt > destination->max_rtt)
 	      destination->max_rtt = rtt;
 	    
-	    if (config.debug.overlayframes)
-	      DEBUGF("Packet %p to %s sent by seq %d, acked with seq %d", 
+	    if (config.debug.ack)
+	      DEBUGF("DROPPED DUE TO ACK: Packet %p to %s sent by seq %d, acked with seq %d", 
 		frame, alloca_tohex_sid(neighbour->sid), frame_seq, ack_seq);
 		
 	    // drop packets that don't need to be retransmitted
@@ -589,8 +589,8 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
 	    
 	  }else if (seq_delta < 128 && frame->destination && frame->delay_until>now){
 	    // retransmit asap
-	    if (config.debug.overlayframes)
-	      DEBUGF("Requeue packet %p to %s sent by seq %d due to ack of seq %d", frame, alloca_tohex_sid(neighbour->sid), frame_seq, ack_seq);
+	    if (config.debug.ack)
+	      DEBUGF("RE-TX DUE TO NACK: Requeue packet %p to %s sent by seq %d due to ack of seq %d", frame, alloca_tohex_sid(neighbour->sid), frame_seq, ack_seq);
 	    frame->delay_until = now;
 	    overlay_calc_queue_time(&overlay_tx[i], frame);
 	  }
