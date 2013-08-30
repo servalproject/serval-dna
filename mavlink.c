@@ -113,11 +113,32 @@ struct mavlink_RADIO_v10 {
   uint8_t remnoise;
 };
 
+/*
+  Each mavlink frame consists of 0xfe followed by a standard 6 byte header.
+  Normally the payload plus a 2-byte CRC follows.
+  We are replacing the CRC check with a Reed-Solomon code to correct as well
+  as detect upto 16 bytes with errors, in return for a 32-byte overhead.
+
+  The nature of the particular library we are using is that the overhead is
+  basically fixed, but we can shorten the data section.  
+
+  Note that the mavlink headers are not protected against errors.  This is a
+  limitation of the radio firmware at present. One day we will re-write the
+  radio firmware so that we can send and receive raw radio frames, and get
+  rid of the mavlink framing altogether, and just send R-S protected payloads.
+
+  Not ideal, but will be fine for now.
+*/
+
+#include "fec-3.0.1/fixed.h"
+void encode_rs_8(data_t *data, data_t *parity,int pad);
+int decode_rs_8(data_t *data, int *eras_pos, int no_eras, int pad);
+
 int stream_as_mavlink(int sequence_number,int startP,int endP,
 		      unsigned char *data,int count,
 		      unsigned char *frame,int *outlen)
 {
-  if (count>252-6-4) return -1;
+  if (count>252-6-32) return -1;
   
   frame[0]=0xfe; // mavlink v1.0 frame
   /* payload len, excluding 6 byte header and 2 byte CRC.
@@ -126,7 +147,8 @@ int stream_as_mavlink(int sequence_number,int startP,int endP,
      Note that this construction will result in CRC errors by non-servald
      programmes, which is probably more helpful than otherwise.
   */
-  frame[1]=count+2; 
+  frame[1]=count+32-2;  // we need 32 bytes for the parity, but this field assumes
+  // that there is a 2 byte CRC, so we can save two bytes
   frame[2]=sequence_number; // packet sequence
   frame[3]=0x00; // system ID of sender (MAV_TYPE_GENERIC)
   frame[4]=0x40; // component ID of sender: we are reusing this to mark start,end of MDP frames
@@ -135,14 +157,10 @@ int stream_as_mavlink(int sequence_number,int startP,int endP,
   frame[5]=MAVLINK_MSG_ID_DATASTREAM; // message ID type of this frame: DATA_STREAM
   // payload follows (we reuse the DATA_STREAM message type parameters)
   bcopy(data,&frame[6],count);
-  // Add our own 4-byte CRC of the data only
-  uint32_t crc=Crc32_ComputeBuf(0,&frame[1],-1+count+6);
-  frame[6+count+0]=(crc>>0)&0xff;
-  frame[6+count+1]=(crc>>8)&0xff;
-  frame[6+count+2]=(crc>>16)&0xff;
-  frame[6+count+3]=(crc>>24)&0xff;
-
-  *outlen=count+6+4;
+  
+  encode_rs_8(&frame[6],&frame[6+count],(223-count));
+  
+  *outlen=6+count+32;
   return 0;
 }
 
@@ -217,8 +235,8 @@ int mavlink_parse(struct slip_decode_state *state)
     }
     return 0;
   case MAVLINK_MSG_ID_DATASTREAM:
-    // Extract and return packet
-    // XXX - Ignores CRC at present 
+    // Extract and return packet, after applying Reed-Solomon error detection
+    // and correction
     if (config.debug.mavlink) DEBUG("Received MAVLink DATASTREAM message for us");
     if (state->mavlink_componentid&0x01) {
       if (config.debug.mavlink) {
@@ -232,11 +250,20 @@ int mavlink_parse(struct slip_decode_state *state)
 	if (config.debug.mavlink) DEBUG("Too many extension frames for packet - discarding");
 	return 0;
       }
+    int errcount=decode_rs_8(&state->mavlink_payload[0],NULL,0,
+			     223-(state->mavlink_payload_length-30));
+    if (errcount==-1)
+      {
+	// DEBUGF("Reed-Solomon error correction failed");
+	return -1;
+      } // else DEBUGF("Reed-Solomon corrected %d bytes",errcount);
     bcopy(state->mavlink_payload,&state->dst[state->packet_length],
-	  state->mavlink_payload_length);
-    state->packet_length+=state->mavlink_payload_length;
+	  state->mavlink_payload_length-30);
+    state->packet_length+=state->mavlink_payload_length-30;
     if (state->mavlink_componentid&0x02) {
-      if (config.debug.mavlink) DEBUG("Found end of PDU");      
+      if (config.debug.mavlink) 
+	DEBUGF("Found end of PDU (length=%d)",state->packet_length);
+      state->dst_offset=0;
       return 1;
     } else return 0;
     break;
@@ -288,23 +315,13 @@ int mavlink_decode(struct slip_decode_state *state,uint8_t c)
     if (state->mavlink_payload_length-state->mavlink_payload_offset==1)
       state->mavlink_rxcrc|=c<<8;
     state->mavlink_payload[state->mavlink_payload_offset++]=c;
-    if (state->mavlink_payload_offset==state->mavlink_payload_length)
-      state->state++;
-    break;
-  case MAVLINK_STATE_CRC1:
-    state->mavlink_rxcrc|=c<<16;
-    state->state++;
-    break;
-  case MAVLINK_STATE_CRC2:
-    state->mavlink_rxcrc|=c<<24;
-    state->state=MAVLINK_STATE_UNKNOWN;
-    state->mavlink_payload_length-=2; // don't count the upper 16 bits of our 32bit CRC
-    if (state->mavlink_rxcrc==state->mavlink_crc)
-      return mavlink_parse(state);
-    if (config.debug.mavlink)
-      DEBUGF("CRC mismatch on mavlink encapsulated data: rxed=%08x, calced=%08x",
-	     state->mavlink_rxcrc,state->mavlink_crc);
-    state->mavlink_payload_length=0;
+    if (state->mavlink_payload_offset==state->mavlink_payload_length+2)
+      {
+	int r=mavlink_parse(state);
+	state->mavlink_payload_length=0;
+	state->state=MAVLINK_STATE_UNKNOWN;
+	if (r==1) return 1;
+      }
     break;
   case MAVLINK_STATE_UNKNOWN:
   default:

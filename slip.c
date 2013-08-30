@@ -48,9 +48,13 @@ int slip_encode(int format,
     {
       int i;
       int dst_offset=0;
-      for(i=0;i<src_bytes;i+=240) {
+      // Radio frames are limited to 252 bytes.
+      // MAVLink header takes 7 bytes
+      // Reed-Solomon parity takes 32 bytes
+      // That leaves a maximum size of 252-39=213 bytes
+      for(i=0;i<src_bytes;i+=213) {
 	int slice_len=0;
-	int slice_bytes=240;
+	int slice_bytes=213;
 	if (i+slice_bytes>src_bytes) slice_bytes=src_bytes-i;
 	if (dst_offset+slice_bytes+6+2>=dst_len) {
 	  if (config.debug.mavlink) 
