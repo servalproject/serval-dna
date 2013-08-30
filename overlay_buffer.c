@@ -504,9 +504,10 @@ int asprintable(int c)
   return c;
 }
 
-int ob_dump(struct overlay_buffer *b,char *desc)
+int ob_dump(struct overlay_buffer *b, char *desc)
 {
-  DEBUGF("overlay_buffer '%s' at %p : position=%d, size=%d", desc, b, b->position, b->sizeLimit);
-  dump(NULL, b->bytes, b->sizeLimit>b->position?b->sizeLimit:b->position);
+  DEBUGF("overlay_buffer '%s' at %p (%p) : position=%d, size=%d", desc, b, b->bytes, b->position, b->sizeLimit);
+  if (b->bytes && (b->position || b->sizeLimit))
+    dump(desc, b->bytes, b->position?b->position:b->sizeLimit);
   return 0;
 }
