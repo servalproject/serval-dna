@@ -896,6 +896,8 @@ overlay_broadcast_ensemble(struct network_destination *destination,
 	  state.src_offset=0;
 	  state.src=buffer+out_len;
 	  slip_decode(&state);
+	  // clear received packet after processing
+	  state.packet_length=0;
 	}
 
       out_len+=encoded;

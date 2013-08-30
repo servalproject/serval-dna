@@ -60,15 +60,13 @@ int slip_encode(int format,
 	  int startP=i?0:1;
 	  int endP=i+slice_bytes==src_bytes?1:0;
 	  stream_as_mavlink(0,startP,endP,&src[i],slice_bytes,&dst[dst_offset],&slice_len);
-	  if (config.debug.mavlink) {
-	    DEBUGF("Wrote %d bytes as %d byte MAVLink frame",
-		   slice_bytes,slice_len);
-	    dump("original data",&src[i],slice_bytes);
-	    dump("mavlink frame",&dst[dst_offset],slice_len);
-	  }
 	  dst_offset+=slice_len;
 	}
       }
+      if (config.debug.mavlink) {
+	DEBUGF("Wrote %d byte packet as MAVLink frames",src_bytes);
+      }
+
       return dst_offset;
     }
     break;
@@ -385,6 +383,9 @@ int slip_decode(struct slip_decode_state *state)
 	  // We have to increment src_offset manually here, because returning
 	  // prevents the post-increment in the for loop from triggering
 	  state->src_offset++;
+	  if (config.debug.mavlink) {
+	    DEBUGF("Read %d byte packet from MAVLink frames",state->packet_length);
+	  }
 	  return 1;
 	}
       }

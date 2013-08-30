@@ -388,7 +388,8 @@ struct slip_decode_state{
   uint8_t mavlink_sysid;
   uint8_t mavlink_componentid;
   uint8_t mavlink_msgid;
-  uint16_t mavlink_rxcrc;
+  uint32_t mavlink_rxcrc;
+  uint32_t mavlink_crc;
 };
 
 struct overlay_interface;

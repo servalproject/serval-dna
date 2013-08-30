@@ -117,10 +117,16 @@ int stream_as_mavlink(int sequence_number,int startP,int endP,
 		      unsigned char *data,int count,
 		      unsigned char *frame,int *outlen)
 {
-  if (count>252-6-2) return -1;
+  if (count>252-6-4) return -1;
   
   frame[0]=0xfe; // mavlink v1.0 frame
-  frame[1]=count; // payload len, excluding 6 byte header and 2 byte CRC
+  /* payload len, excluding 6 byte header and 2 byte CRC.
+     But we use a 4-byte CRC, so need to add two to count to make packet lengths
+     be as expected.
+     Note that this construction will result in CRC errors by non-servald
+     programmes, which is probably more helpful than otherwise.
+  */
+  frame[1]=count+2; 
   frame[2]=sequence_number; // packet sequence
   frame[3]=0x00; // system ID of sender (MAV_TYPE_GENERIC)
   frame[4]=0x40; // component ID of sender: we are reusing this to mark start,end of MDP frames
@@ -129,12 +135,14 @@ int stream_as_mavlink(int sequence_number,int startP,int endP,
   frame[5]=MAVLINK_MSG_ID_DATASTREAM; // message ID type of this frame: DATA_STREAM
   // payload follows (we reuse the DATA_STREAM message type parameters)
   bcopy(data,&frame[6],count);
-  // two-byte CRC follows
-  uint16_t crc=mavlink_crc(frame,count); // automatically adds 6 for header length
-  frame[count+6]=crc&0xff;
-  frame[count+7]=crc>>8;
-  
-  *outlen=count+6+2;
+  // Add our own 4-byte CRC of the data only
+  uint32_t crc=Crc32_ComputeBuf(0,&frame[1],-1+count+6);
+  frame[6+count+0]=(crc>>0)&0xff;
+  frame[6+count+1]=(crc>>8)&0xff;
+  frame[6+count+2]=(crc>>16)&0xff;
+  frame[6+count+3]=(crc>>24)&0xff;
+
+  *outlen=count+6+4;
   return 0;
 }
 
@@ -242,43 +250,61 @@ int mavlink_parse(struct slip_decode_state *state)
 
 int mavlink_decode(struct slip_decode_state *state,uint8_t c)
 {
-  if (config.debug.mavlink) DEBUGF("RX character %02x in state %s",
-				   c,mavlink_describe_state(state->state));
+  if (config.debug.mavlinkfsm) DEBUGF("RX character %02x in state %s",
+				      c,mavlink_describe_state(state->state));
   switch(state->state) {
   case MAVLINK_STATE_LENGTH:
+    state->mavlink_crc=0;
+    state->mavlink_crc=Crc32_ComputeBuf(state->mavlink_crc,&c,1);
     state->mavlink_payload_length=c;
     state->mavlink_payload_offset=0;
     state->state++;
     break;
   case MAVLINK_STATE_SEQ:
+    state->mavlink_crc=Crc32_ComputeBuf(state->mavlink_crc,&c,1);
     state->mavlink_sequence=c;
     state->state++;
     break;
   case MAVLINK_STATE_SYSID:
+    state->mavlink_crc=Crc32_ComputeBuf(state->mavlink_crc,&c,1);
     state->mavlink_sysid=c;
     state->state++;
     break;
   case MAVLINK_STATE_COMPONENTID:
+    state->mavlink_crc=Crc32_ComputeBuf(state->mavlink_crc,&c,1);
     state->mavlink_componentid=c;
     state->state++;
     break;
   case MAVLINK_STATE_MSGID:
+    state->mavlink_crc=Crc32_ComputeBuf(state->mavlink_crc,&c,1);
     state->mavlink_msgid=c;
     state->state++;
     break;
   case MAVLINK_STATE_PAYLOAD:
+    if (state->mavlink_payload_length-state->mavlink_payload_offset>2)
+      state->mavlink_crc=Crc32_ComputeBuf(state->mavlink_crc,&c,1);
+    if (state->mavlink_payload_length-state->mavlink_payload_offset==2)
+      state->mavlink_rxcrc=c;
+    if (state->mavlink_payload_length-state->mavlink_payload_offset==1)
+      state->mavlink_rxcrc|=c<<8;
     state->mavlink_payload[state->mavlink_payload_offset++]=c;
     if (state->mavlink_payload_offset==state->mavlink_payload_length)
       state->state++;
     break;
   case MAVLINK_STATE_CRC1:
-    state->mavlink_rxcrc=c;
+    state->mavlink_rxcrc|=c<<16;
     state->state++;
     break;
   case MAVLINK_STATE_CRC2:
-    state->mavlink_rxcrc|=c<<8;
+    state->mavlink_rxcrc|=c<<24;
     state->state=MAVLINK_STATE_UNKNOWN;
-    return mavlink_parse(state);
+    state->mavlink_payload_length-=2; // don't count the upper 16 bits of our 32bit CRC
+    if (state->mavlink_rxcrc==state->mavlink_crc)
+      return mavlink_parse(state);
+    if (config.debug.mavlink)
+      DEBUGF("CRC mismatch on mavlink encapsulated data: rxed=%08x, calced=%08x",
+	     state->mavlink_rxcrc,state->mavlink_crc);
+    state->mavlink_payload_length=0;
     break;
   case MAVLINK_STATE_UNKNOWN:
   default:
