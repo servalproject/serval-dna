@@ -563,7 +563,7 @@ static void free_neighbour(struct neighbour **neighbour_ptr){
   while (out){
     struct link_out *l=out;
     out = l->_next;
-    release_destination_ref(out->destination);
+    release_destination_ref(l->destination);
     free(l);
   }
   
@@ -595,18 +595,16 @@ static void clean_neighbours(time_ms_t now)
     }
     
     struct link_out **out = &n->out_links;
+    int alive=0;
     while(*out){
       struct link_out *link = *out;
-      if (link->destination->interface->state!=INTERFACE_STATE_UP || link->timeout < now){
+      if (link->destination->interface->state!=INTERFACE_STATE_UP){
 	*out = link->_next;
-        if (config.debug.linkstate)
-          DEBUGF("LINK STATE; %s link_out expired for neighbour %s on interface %s", 
-	    link->destination->unicast?"unicast":"broadcast",
-            alloca_tohex_sid(n->subscriber->sid),
-            link->destination->interface->name);
 	release_destination_ref(link->destination);
 	free(link);
       }else{
+	if (link->timeout >= now)
+	  alive=1;
 	out = &link->_next;
       }
     }
@@ -614,11 +612,11 @@ static void clean_neighbours(time_ms_t now)
     // when all links to a neighbour that we are routing through expire, force a routing calculation update
     struct link_state *state = get_link_state(n->subscriber);
     if (state->next_hop == n->subscriber && 
-	(n->link_in_timeout < now || !n->links || !n->out_links) && 
+	(n->link_in_timeout < now || !n->links || !alive) && 
 	state->route_version == route_version)
       route_version++;
       
-    if (!n->links || !n->out_links){
+    if (!n->links || !alive){
       free_neighbour(n_ptr);
     }else{
       n_ptr = &n->_next;
@@ -719,21 +717,16 @@ static int send_neighbour_link(struct neighbour *n)
     frame->send_context = n->subscriber;
     frame->resend=-1;
 
-    if (n->subscriber->reachable & REACHABLE_INDIRECT){
+    if (n->subscriber->reachable & REACHABLE){
       frame->destination = n->subscriber;
-      if (config.debug.linkstate && config.debug.verbose)
-	DEBUGF("Sending link state ack indirectly");
-    }else if (n->subscriber->reachable & REACHABLE){
-      // we don't wont to address the next hop to this neighbour as that will force another reply ack
-      // but we still want them to receive it.
-      frame->destinations[frame->destination_count++].destination = add_destination_ref(n->subscriber->destination);
     }else{
       // no routing decision yet? send this packet to all probable destinations.
       if (config.debug.linkstate && config.debug.verbose)
 	DEBUGF("Sending link state ack to all possibilities");
       struct link_out *out = n->out_links;
       while(out){
-	frame->destinations[frame->destination_count++].destination = add_destination_ref(out->destination);
+	if (out->timeout >= now)
+	  frame->destinations[frame->destination_count++].destination = add_destination_ref(out->destination);
 	out = out->_next;
       }
     }
@@ -895,8 +888,9 @@ int link_add_destinations(struct overlay_frame *frame)
       struct neighbour *n = get_neighbour(frame->destination, 0);
       if (n){
 	struct link_out *out = n->out_links;
+	time_ms_t now = gettime_ms();
 	while(out){
-	  if (frame->destination_count < MAX_PACKET_DESTINATIONS)
+	  if (out->timeout>=now && frame->destination_count < MAX_PACKET_DESTINATIONS)
 	    frame->destinations[frame->destination_count++].destination = add_destination_ref(out->destination);
 	  out = out->_next;
 	}
@@ -1011,13 +1005,13 @@ int link_unicast_ack(struct subscriber *subscriber, struct overlay_interface *in
   return 0;
 }
 
-static struct link_out *create_out_link(struct neighbour *neighbour, overlay_interface *interface, struct sockaddr_in addr, char unicast){
+static struct link_out *create_out_link(struct neighbour *neighbour, overlay_interface *interface, struct sockaddr_in *addr, char unicast){
   struct link_out *ret=emalloc_zero(sizeof(struct link_out));
   if (ret){
     ret->_next=neighbour->out_links;
     neighbour->out_links=ret;
     if (unicast)
-      ret->destination = create_unicast_destination(addr, interface);
+      ret->destination = create_unicast_destination(*addr, interface);
     else
       ret->destination = add_destination_ref(interface->destination);
     
@@ -1033,15 +1027,22 @@ static struct link_out *create_out_link(struct neighbour *neighbour, overlay_int
   return ret;
 }
 
-static struct link_out *find_out_link(struct neighbour *neighbour, overlay_interface *interface, char unicast){
-  struct link_out *ret = neighbour->out_links;
-  while(ret){
-    if (ret->destination->interface==interface 
-	&& ret->destination->unicast==unicast)
-      return ret;
-    ret=ret->_next;
+static void create_out_links(struct neighbour *neighbour, overlay_interface *interface, struct sockaddr_in *addr){
+  struct link_out *l = neighbour->out_links;
+  while(l){
+    if (l->destination->interface==interface)
+      return;
+    l=l->_next;
   }
-  return NULL;
+  // if this packet arrived in an IPv4 packet, assume we need to send them unicast packets
+  if (addr && addr->sin_family==AF_INET && addr->sin_port!=0 && addr->sin_addr.s_addr!=0)
+    create_out_link(neighbour, interface, addr, 1);
+    
+  // if this packet arrived from the same IPv4 subnet, or a different type of network, assume they can hear our broadcasts
+  if (!addr || addr->sin_family!=AF_INET || 
+      (addr->sin_addr.s_addr & interface->netmask.s_addr) 
+      == (interface->address.sin_addr.s_addr & interface->netmask.s_addr))
+    create_out_link(neighbour, interface, addr, 0);
 }
 
 // track stats for receiving packets from this neighbour
@@ -1055,19 +1056,7 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
   struct link_in *link=get_neighbour_link(neighbour, context->interface, context->sender_interface, unicast);
   time_ms_t now = gettime_ms();
 
-  if (!neighbour->out_links){
-    
-    // if this packet arrived in an IPv4 packet, assume we need to send them unicast packets
-    if (context->addr.sin_family==AF_INET && context->addr.sin_port!=0 && context->addr.sin_addr.s_addr!=0)
-      create_out_link(neighbour, context->interface, context->addr, 1);
-      
-    // if this packet arrived from the same IPv4 subnet, or a different type of network, assume they can hear our broadcasts
-    if (context->addr.sin_family!=AF_INET || 
-	(context->addr.sin_addr.s_addr & context->interface->netmask.s_addr) 
-	== (context->interface->address.sin_addr.s_addr & context->interface->netmask.s_addr))
-      create_out_link(neighbour, context->interface, context->addr, 0);
-      
-  }
+  create_out_links(neighbour, context->interface, &context->addr);
 
   link->ack_counter --;
 
@@ -1230,9 +1219,20 @@ int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp)
       if (interface->state != INTERFACE_STATE_UP)
 	continue;
 
-      struct link_out *out = find_out_link(neighbour, interface, flags&FLAG_UNICAST?1:0);
-      if (!out)
-	continue;
+      struct link_out *out = neighbour->out_links;
+      char unicast = flags&FLAG_UNICAST?1:0;
+      while(out){
+	if (out->destination->interface==interface 
+	    && out->destination->unicast==unicast)
+	  break;
+	out=out->_next;
+      }
+      if (!out){
+	if (flags&FLAG_UNICAST)
+	  continue;
+	else
+	  out = create_out_link(neighbour, interface, NULL, 0);
+      }
       // start sending sequence numbers when our neighbour has acked a packet
       if (out->destination->sequence_number<0)
 	out->destination->sequence_number=0;

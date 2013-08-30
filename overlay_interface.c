@@ -1030,6 +1030,8 @@ void overlay_interface_discover(struct sched_ent *alarm)
   const struct config_network_interface *ifconfig = NULL;
   for (i = 0; i < config.interfaces.ac; ++i, ifconfig = NULL) {
     ifconfig = &config.interfaces.av[i].value;
+    if (ifconfig->exclude)
+      continue;
     if (ifconfig->socket_type==SOCK_DGRAM) {
       detect_real_interfaces = 1;
       continue;

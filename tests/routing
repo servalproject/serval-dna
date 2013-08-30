@@ -36,12 +36,16 @@ interface_up() {
 }
 
 has_link() {
+   interface_ex=".*"
+   case "$1" in
+   dummy*) interface_ex="$1"; shift;;
+   esac
    set_instance $1
    executeOk_servald route print
    tfw_log "Looking for link from $1 to $2 ($4)"
-   if ! grep "^${4}:\(BROADCAST\|UNICAST\):.*:0*\$" $_tfw_tmp/stdout; then
+   if ! grep "^${4}:\(BROADCAST\|UNICAST\):${interface_ex}:0*\$" $_tfw_tmp/stdout; then
       tfw_log "Link not found"
-#      tfw_log "^${4}:\(BROADCAST\|UNICAST\):.*:0*\$"
+#      tfw_log "^${4}:\(BROADCAST\|UNICAST\):${interface_ex}:0*\$"
 #      tfw_cat --stdout --stderr
       return 1
    fi
@@ -510,18 +514,22 @@ setup_multi_interface() {
    foreach_instance +A +B start_routing_instance
 }
 
-multi_has_link() {
-   executeOk_servald route print
-   grep "^$1:BROADCAST:dummyeth" $_tfw_tmp/stdout || return 1
-   return 0
-}
-
 doc_multi_interface="Multiple links of different types to the same neighbour"
 test_multi_interface() {
    set_instance +A
-   wait_until multi_has_link $SIDB
+   wait_until has_link dummyeth +A +B +B $SIDB $SIDB
    set_instance +B
-   wait_until multi_has_link $SIDA
+   wait_until has_link dummyeth +B +A +A $SIDA $SIDA
+   set_instance +A
+   executeOk_servald config set interfaces.2.exclude 1
+   wait_until has_link dummywifi +A +B +B $SIDB $SIDB
+   set_instance +B
+   wait_until has_link dummywifi +B +A +A $SIDA $SIDA
+   set_instance +A
+   executeOk_servald config del interfaces.2.exclude
+   wait_until has_link dummyeth +A +B +B $SIDB $SIDB
+   set_instance +B
+   wait_until has_link dummyeth +B +A +A $SIDA $SIDA
 }
 
 # TODO assert that all packets arrive? assert that no duplicates arrive?
