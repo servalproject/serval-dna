@@ -57,7 +57,9 @@ int slip_encode(int format,
 	    DEBUGF("Would overflow output buffer.");
 	  return -1;
 	} else {
-	  stream_as_mavlink(0,&src[i],slice_bytes,&dst[dst_offset],&slice_len);
+	  int startP=i?0:1;
+	  int endP=i+slice_bytes==src_bytes?1:0;
+	  stream_as_mavlink(0,startP,endP,&src[i],slice_bytes,&dst[dst_offset],&slice_len);
 	  if (config.debug.mavlink) {
 	    DEBUGF("Wrote %d bytes as %d byte MAVLink frame",
 		   slice_bytes,slice_len);
@@ -377,11 +379,8 @@ int slip_decode(struct slip_decode_state *state)
   switch(state->encapsulator) {
   case SLIP_FORMAT_MAVLINK:
     {
-      dump("rx data",state->src,state->src_size);
       for(;state->src_offset<state->src_size;state->src_offset++) {
 	// flag complete reception of a packet
-	DEBUGF("src_offset=%d, src_size=%d, c=%02x",
-	       state->src_offset,state->src_size,state->src[state->src_offset]);
 	if (mavlink_decode(state,state->src[state->src_offset])==1) {
 	  // We have to increment src_offset manually here, because returning
 	  // prevents the post-increment in the for loop from triggering

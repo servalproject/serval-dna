@@ -113,16 +113,19 @@ struct mavlink_RADIO_v10 {
   uint8_t remnoise;
 };
 
-int stream_as_mavlink(int f,unsigned char *data,int count,
+int stream_as_mavlink(int sequence_number,int startP,int endP,
+		      unsigned char *data,int count,
 		      unsigned char *frame,int *outlen)
 {
   if (count>252-6-2) return -1;
   
   frame[0]=0xfe; // mavlink v1.0 frame
   frame[1]=count; // payload len, excluding 6 byte header and 2 byte CRC
-  frame[2]=f; // packet sequence
+  frame[2]=sequence_number; // packet sequence
   frame[3]=0x00; // system ID of sender (MAV_TYPE_GENERIC)
-  frame[4]=0xf1; // component ID of sender (MAV_COMP_ID_UART_BRIDGE)
+  frame[4]=0x40; // component ID of sender: we are reusing this to mark start,end of MDP frames
+  if (startP) frame[4]|=0x01;
+  if (endP) frame[4]|=0x02;
   frame[5]=MAVLINK_MSG_ID_DATASTREAM; // message ID type of this frame: DATA_STREAM
   // payload follows (we reuse the DATA_STREAM message type parameters)
   bcopy(data,&frame[6],count);
@@ -209,9 +212,25 @@ int mavlink_parse(struct slip_decode_state *state)
     // Extract and return packet
     // XXX - Ignores CRC at present 
     if (config.debug.mavlink) DEBUG("Received MAVLink DATASTREAM message for us");
-    bcopy(state->mavlink_payload,state->dst,state->mavlink_payload_length);
-    state->packet_length=state->mavlink_payload_length;
-    return 1;
+    if (state->mavlink_componentid&0x01) {
+      if (config.debug.mavlink) {
+	DEBUG("Found start of PDU");
+	if (state->packet_length) DEBUGF("... previous packet had not ended, discarding");
+      }
+      state->packet_length=0;
+    }
+    if (state->packet_length+state->mavlink_payload_length>sizeof(state->dst))
+      {
+	if (config.debug.mavlink) DEBUG("Too many extension frames for packet - discarding");
+	return 0;
+      }
+    bcopy(state->mavlink_payload,&state->dst[state->packet_length],
+	  state->mavlink_payload_length);
+    state->packet_length+=state->mavlink_payload_length;
+    if (state->mavlink_componentid&0x02) {
+      if (config.debug.mavlink) DEBUG("Found end of PDU");      
+      return 1;
+    } else return 0;
     break;
   default:
     if (config.debug.mavlink) 

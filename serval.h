@@ -878,7 +878,8 @@ int generate_nonce(unsigned char *nonce,int bytes);
 
 int mavlink_decode(struct slip_decode_state *state,uint8_t c);
 int mavlink_heartbeat(unsigned char *frame,int *outlen);
-int stream_as_mavlink(int f,unsigned char *data,int count,
+int stream_as_mavlink(int sequence_number,int startP,int endP,
+		      unsigned char *data,int count,
 		      unsigned char *frame,int *outlen);
 
 #endif // __SERVALD_SERVALD_H
