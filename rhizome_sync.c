@@ -47,7 +47,7 @@ struct rhizome_sync
   uint64_t sync_end;
   uint64_t highest_seen;
   unsigned char sync_complete;
-  int bar_count;
+  uint64_t bars_seen;
   time_ms_t start_time;
   time_ms_t completed;
   time_ms_t next_request;
@@ -56,6 +56,8 @@ struct rhizome_sync
   time_ms_t last_new_bundle;
   // a short list of BAR's we are interested in from the last parsed message
   struct bar_entry bars[CACHE_BARS];
+  // how many bars are we interested in?
+  int bar_count;
 };
 
 static void rhizome_sync_request(struct subscriber *subscriber, uint64_t token, unsigned char forwards)
@@ -204,11 +206,15 @@ static int sync_cache_bar(struct rhizome_sync *state, unsigned char *bar, uint64
   if (state->sync_end < token){
     state->sync_end = token;
     state->last_extended = gettime_ms();
+    if (token!=0)
+      state->bars_seen++;
     ret=1;
   }
   if (state->sync_start > token){
     state->sync_start = token;
     state->last_extended = gettime_ms();
+    if (token!=0)
+      state->bars_seen++;
     ret=1;
   }
   return ret;
