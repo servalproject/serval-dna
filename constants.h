@@ -97,6 +97,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define PAYLOAD_FLAG_ONE_HOP (1<<2)
 #define PAYLOAD_FLAG_CIPHERED (1<<4)
 #define PAYLOAD_FLAG_SIGNED (1<<5)
+#define PAYLOAD_FLAG_ACK_SOON (1<<6)
 
 /* Time-to-live is a 'uint5_t'.
  */

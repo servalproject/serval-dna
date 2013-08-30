@@ -547,7 +547,8 @@ int overlay_frame_resolve_addresses(struct overlay_frame *f);
 time_ms_t overlay_time_until_next_tick();
 
 int overlay_frame_append_payload(struct decode_context *context, int encapsulation,
-				 struct overlay_frame *p, struct overlay_buffer *b);
+				 struct overlay_frame *p, struct overlay_buffer *b,
+				 char will_retransmit);
 int overlay_packet_init_header(int packet_version, int encapsulation, 
 			       struct decode_context *context, struct overlay_buffer *buff, 
 			       char unicast, char interface, int seq);

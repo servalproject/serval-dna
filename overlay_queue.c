@@ -445,8 +445,12 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       frame = overlay_queue_remove(queue, frame);
       continue;
     }
-
-    if (overlay_frame_append_payload(&packet->context, packet->destination->encapsulation, frame, packet->buffer)){
+    
+    char will_retransmit=1;
+    if (frame->packet_version<1 || frame->resend<=0 || packet->seq==-1)
+      will_retransmit=0;
+    
+    if (overlay_frame_append_payload(&packet->context, packet->destination->encapsulation, frame, packet->buffer, will_retransmit)){
       // payload was not queued, delay the next attempt slightly
       frame->delay_until = now + 5;
       goto skip;
@@ -469,7 +473,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     }
     
     // dont retransmit if we aren't sending sequence numbers, or we've been asked not to
-    if (frame->packet_version<1 || frame->resend<=0 || packet->seq==-1){
+    if (!will_retransmit){
       if (config.debug.overlayframes)
 	DEBUGF("Not waiting for retransmission (%d, %d, %d)", frame->packet_version, frame->resend, packet->seq);
       remove_destination(frame, destination_index);

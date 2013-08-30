@@ -25,7 +25,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 static int overlay_frame_build_header(int packet_version, struct decode_context *context, 
 			       struct overlay_buffer *buff, 
-			       int queue, int type, int modifiers, int ttl, int sequence,
+			       int queue, int type, int modifiers, char will_retransmit,
+			       int ttl, int sequence,
 			       struct broadcast *broadcast, struct subscriber *next_hop,
 			       struct subscriber *destination, struct subscriber *source)
 {
@@ -33,7 +34,9 @@ static int overlay_frame_build_header(int packet_version, struct decode_context 
     return WHYF("invalid ttl=%d", ttl);
 
   int flags = modifiers & (PAYLOAD_FLAG_CIPHERED | PAYLOAD_FLAG_SIGNED);
-  
+  if (will_retransmit)
+    flags|=PAYLOAD_FLAG_ACK_SOON;
+    
   if (ttl==1 && !broadcast)
     flags |= PAYLOAD_FLAG_ONE_HOP;
   if (destination && destination==next_hop)
@@ -81,7 +84,8 @@ static int overlay_frame_build_header(int packet_version, struct decode_context 
 }
 
 int overlay_frame_append_payload(struct decode_context *context, int encapsulation,
-				 struct overlay_frame *p, struct overlay_buffer *b)
+				 struct overlay_frame *p, struct overlay_buffer *b,
+				 char will_retransmit)
 {
   /* Convert a payload (frame) structure into a series of bytes.
      Assumes that any encryption etc has already been done.
@@ -103,9 +107,10 @@ int overlay_frame_append_payload(struct decode_context *context, int encapsulati
   if ((!p->destination) && !is_all_matching(p->broadcast_id.id,BROADCAST_LEN,0)){
     broadcast = &p->broadcast_id;
   }
-
+  
   if (overlay_frame_build_header(p->packet_version, context, b,
-			     p->queue, p->type, p->modifiers, p->ttl, p->mdp_sequence&0xFF,
+			     p->queue, p->type, p->modifiers, will_retransmit, 
+			     p->ttl, p->mdp_sequence&0xFF,
 			     broadcast, p->next_hop, 
 			     p->destination, p->source))
     goto cleanup;

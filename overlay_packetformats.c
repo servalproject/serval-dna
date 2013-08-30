@@ -471,7 +471,8 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	process_incoming_frame(now, interface, &f, &context);
 
       // We may need to schedule an ACK / NACK soon when we receive a payload addressed to us, or broadcast
-      if (f.next_hop == my_subscriber || f.destination == my_subscriber || !f.destination)
+      if (f.modifiers & PAYLOAD_FLAG_ACK_SOON && 
+	(f.next_hop == my_subscriber || f.destination == my_subscriber || !f.destination))
         link_state_ack_soon(context.sender);
     }
     
