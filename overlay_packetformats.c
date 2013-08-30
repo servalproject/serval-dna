@@ -470,7 +470,8 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       if (header_valid&HEADER_PROCESS)
 	process_incoming_frame(now, interface, &f, &context);
 
-      if (f.next_hop == my_subscriber || f.destination == my_subscriber)
+      // We may need to schedule an ACK / NACK soon when we receive a payload addressed to us, or broadcast
+      if (f.next_hop == my_subscriber || f.destination == my_subscriber || !f.destination)
         link_state_ack_soon(context.sender);
     }
     
