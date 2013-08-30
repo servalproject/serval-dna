@@ -90,6 +90,8 @@ setup_servald() {
    unset SERVALD_SERVER_CHDIR
    unset SERVALD_START_POST_SLEEP
    unset SERVALD_LOG_FILE
+   unset SERVALD_KEYRING_PATH
+   unset SERVALD_KEYRING_READONLY
    servald_instances_dir="$SERVALD_VAR/instance"
    set_instance +Z
 }

@@ -1500,20 +1500,19 @@ keyring_file *keyring_open_instance()
   if (create_serval_instance_dir() == -1)
     RETURN(NULL);
   // Work out the absolute path to the keyring file.
-  const char *keyringpath = getenv("SERVAL_KEYRING_PATH");
+  const char *env = getenv("SERVALD_KEYRING_PATH");
+  if (!env)
+    env = "serval.keyring";
   char keyringFile[1024];
-  if (!keyringpath) {
-    if (!FORM_SERVAL_INSTANCE_PATH(keyringFile, "serval.keyring"))
-      RETURN(NULL);
-    keyringpath = keyringFile;
-  }
+  if (!FORM_SERVAL_INSTANCE_PATH(keyringFile, env))
+    RETURN(NULL);
   // Work out if the keyring file is writeable.
   int writeable = 0;
-  const char *readonly_env = getenv("SERVAL_KEYRING_READONLY");
+  const char *readonly_env = getenv("SERVALD_KEYRING_READONLY");
   bool_t readonly_b;
   if (readonly_env == NULL || cf_opt_boolean(&readonly_b, readonly_env) != CFOK || !readonly_b)
       writeable = 1;
-  if ((k = keyring_open(keyringpath, writeable)) == NULL)
+  if ((k = keyring_open(keyringFile, writeable)) == NULL)
     RETURN(NULL);
   RETURN(k);
   OUT();
