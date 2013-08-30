@@ -594,7 +594,7 @@ escape_grep_extended() {
    re="${re//+/\\+}"
    re="${re//^/\\^}"
    re="${re//\$/\\$}"
-   re="${re//(/\\(}"
+   re="${re//(/\\(}";#"(fix Vim syntax highlighting)
    re="${re//)/\\)}"
    re="${re//|/\\|}"
    re="${re//\[/\\[}"
