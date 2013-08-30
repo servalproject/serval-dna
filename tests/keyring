@@ -173,4 +173,48 @@ test_CompatibleBack1() {
     assertStdoutGrep --matches=0 "^3:"
 }
 
+doc_KeyringPathEnv="Use keyring specified by environment variable"
+setup_KeyringPathEnv() {
+    setup
+    executeOk_servald keyring add ''
+    executeOk_servald keyring list
+    assert_keyring_list 1
+    orig="$(replayStdout)"
+}
+test_KeyringPathEnv() {
+    export SERVALD_KEYRING_PATH="$PWD/keyring"
+    executeOk_servald keyring list
+    assert_keyring_list 0
+    assert --message="created 'keyring' file" [ -s keyring ]
+    executeOk_servald keyring add ''
+    executeOk_servald keyring list
+    assert_keyring_list 1
+    assert [ "$(replayStdout)" != "$orig" ]
+    unset SERVALD_KEYRING_PATH
+    executeOk_servald keyring list
+    assert_keyring_list 1
+    assert [ "$(replayStdout)" == "$orig" ]
+}
+
+doc_ReadOnlyEnv="Use keyring specified by environment variable"
+setup_ReadOnlyEnv() {
+    setup
+    executeOk_servald keyring add ''
+    executeOk_servald keyring list
+    assert_keyring_list 1
+    orig="$(replayStdout)"
+}
+test_ReadOnlyEnv() {
+    export SERVALD_KEYRING_READONLY="true"
+    execute --exit-status=255 $servald keyring add ''
+    tfw_cat --stderr
+    executeOk_servald keyring list
+    assert_keyring_list 1
+    assert [ "$(replayStdout)" == "$orig" ]
+    export SERVALD_KEYRING_READONLY="false"
+    executeOk_servald keyring add ''
+    executeOk_servald keyring list
+    assert_keyring_list 2
+}
+
 runTests "$@"
