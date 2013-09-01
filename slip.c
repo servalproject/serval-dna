@@ -21,6 +21,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "log.h"
 
+#define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __WHENCE__, (M), (P), (N))
+
 /* SLIP-style escape characters used for serial packet radio interfaces */
 #define SLIP_END 0xc0
 #define SLIP_ESC 0xdb
@@ -70,7 +72,15 @@ int slip_encode(int format,
       if (config.debug.mavlink) {
 	DEBUGF("Wrote %d byte packet as MAVLink frames",src_bytes);
       }
-
+      if (config.debug.mavlink_payloads||config.debug.interactive_io) {
+	DEBUG_packet_visualise("Packet Sent",src,src_bytes);
+      }
+      if (config.debug.interactive_io) {
+	fprintf(stderr,"Press ENTER to continue..."); fflush(stderr);
+	char buffer[80];
+	if (!fgets(buffer,80,stdin))
+	  FATAL_perror("calling fgets");
+      }
       return dst_offset;
     }
     break;
@@ -389,6 +399,15 @@ int slip_decode(struct slip_decode_state *state)
 	  state->src_offset++;
 	  if (config.debug.mavlink) {
 	    DEBUGF("Read %d byte packet from MAVLink frames",state->packet_length);
+	  }
+	  if (config.debug.mavlink_payloads||config.debug.interactive_io) {
+	    DEBUG_packet_visualise("Received packet",state->dst,state->packet_length);
+	  }
+	  if (config.debug.interactive_io) {
+	    fprintf(stderr,"Press ENTER to continue..."); fflush(stderr);
+	    char buffer[80];
+	    if (!fgets(buffer,80,stdin))
+	      FATAL_perror("calling fgets");
 	  }
 	  return 1;
 	}

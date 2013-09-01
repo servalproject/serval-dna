@@ -48,7 +48,6 @@ struct sockaddr_in sock_any_addr;
 struct profile_total sock_any_stats;
 
 static void overlay_interface_poll(struct sched_ent *alarm);
-static void logServalPacket(int level, struct __sourceloc __whence, const char *message, const unsigned char *packet, size_t len);
 static int re_init_socket(int interface_index);
 
 #define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __WHENCE__, (M), (P), (N))
@@ -1128,8 +1127,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
   return;
 }
 
-static void
-logServalPacket(int level, struct __sourceloc __whence, const char *message, const unsigned char *packet, size_t len) {
+void logServalPacket(int level, struct __sourceloc __whence, const char *message, const unsigned char *packet, size_t len) {
   struct mallocbuf mb = STRUCT_MALLOCBUF_NULL;
   if (!message) message="<no message>";
   if (serval_packetvisualise_xpf(XPRINTF_MALLOCBUF(&mb), message, packet, len) == -1)
