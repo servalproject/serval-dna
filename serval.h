@@ -253,7 +253,6 @@ typedef struct keyring_file {
 void keyring_free(keyring_file *k);
 void keyring_free_context(keyring_context *c);
 void keyring_free_identity(keyring_identity *id);
-void keyring_free_keypair(keypair *kp);
 int keyring_identity_mac(keyring_context *c,keyring_identity *id,
 			 unsigned char *pkrsalt,unsigned char *mac);
 #define KEYTYPE_CRYPTOBOX 0x01
@@ -286,6 +285,7 @@ int keyring_commit(keyring_file *k);
 keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, const char *pin);
 int keyring_seed(keyring_file *k);
 void keyring_identity_extract(const keyring_identity *id, const unsigned char **sidp, const char **didp, const char **namep);
+int keyring_load(keyring_file *k, unsigned pinc, const char **pinv, FILE *input);
 int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret);
 
 /* Make sure we have space to put bytes of the packet as we go along */

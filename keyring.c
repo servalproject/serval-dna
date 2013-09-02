@@ -28,6 +28,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "nacl.h"
 #include "overlay_address.h"
 
+static void keyring_free_keypair(keypair *kp);
+
 static int _keyring_open(keyring_file *k, const char *path, const char *mode)
 {
   if (config.debug.keyring)
@@ -205,20 +207,30 @@ void keyring_free(keyring_file *k)
   return;
 }
 
+static void wipestr(char *str)
+{
+  while (*str) {
+    if (config.debug.keyring)
+      DEBUGF("wiping PIN char '%c'", *str);
+    *str++ = ' ';
+  }
+}
+
 void keyring_free_context(keyring_context *c)
 {
   int i;
   if (!c) return;
 
   if (c->KeyRingPin) {
-    /* Wipe pin before freeing (slightly tricky since this is a variable length string */
-    for(i=0;c->KeyRingPin[i];i++) c->KeyRingPin[i]=' '; i=0;
-    free(c->KeyRingPin); c->KeyRingPin=NULL;
+    /* Wipe pin from local memory before freeing. */
+    wipestr(c->KeyRingPin);
+    free(c->KeyRingPin);
+    c->KeyRingPin = NULL;
   }
   if (c->KeyRingSalt) {
     bzero(c->KeyRingSalt,c->KeyRingSaltLen);
-    c->KeyRingSalt=NULL;
-    c->KeyRingSaltLen=0;
+    c->KeyRingSalt = NULL;
+    c->KeyRingSaltLen = 0;
   }
   
   /* Wipe out any loaded identities */
@@ -233,47 +245,22 @@ void keyring_free_context(keyring_context *c)
 
 void keyring_free_identity(keyring_identity *id)
 {
-  int i;
   if (id->PKRPin) {
-    /* Wipe pin before freeing (slightly tricky since this is a variable length string */
-    for(i=0;id->PKRPin[i];i++) {
-      if (config.debug.keyring)
-	DEBUGF("clearing PIN char '%c'", id->PKRPin[i]);
-      id->PKRPin[i]=' ';
-    }
-    i=0;
-    
-    free(id->PKRPin); id->PKRPin=NULL;
+    /* Wipe pin from local memory before freeing. */
+    wipestr(id->PKRPin);
+    free(id->PKRPin);
+    id->PKRPin = NULL;
   }
-
+  int i;
   for(i=0;i<PKR_MAX_KEYPAIRS;i++)
     if (id->keypairs[i])
       keyring_free_keypair(id->keypairs[i]);
-
-  if (id->subscriber){
+  if (id->subscriber) {
     id->subscriber->identity=NULL;
     if (id->subscriber->reachable == REACHABLE_SELF)
       id->subscriber->reachable = REACHABLE_NONE;
   }
-    
   bzero(id,sizeof(keyring_identity));
-  return;
-}
-
-void keyring_free_keypair(keypair *kp)
-{
-  if (kp->private_key) {
-    bzero(kp->private_key,kp->private_key_len);
-    free(kp->private_key);
-    kp->private_key=NULL;
-  }
-  if (kp->public_key) {
-    bzero(kp->public_key,kp->public_key_len);
-    free(kp->public_key);
-    kp->public_key=NULL;
-  }
-  
-  bzero(kp,sizeof(keypair));
   return;
 }
 
@@ -421,21 +408,22 @@ struct keytype {
   size_t public_key_size;
   size_t private_key_size;
   size_t packed_size;
-  int (*packer)(const struct keytype *, const keypair *, struct rotbuf *);
+  int (*packer)(const keypair *, struct rotbuf *);
   int (*unpacker)(const struct keytype *, keypair *, struct rotbuf *);
   void (*dumper)(const keypair *, XPRINTF, int);
+  int (*loader)(const keypair *, const char *);
 };
 
-static int pack_private_only(const struct keytype *kt, const keypair *kp, struct rotbuf *rb)
+static int pack_private_only(const keypair *kp, struct rotbuf *rb)
 {
-  rotbuf_putbuf(rb, kp->private_key, kt->private_key_size);
+  rotbuf_putbuf(rb, kp->private_key, kp->private_key_len);
   return 0;
 }
 
-static int pack_private_public(const struct keytype *kt, const keypair *kp, struct rotbuf *rb)
+static int pack_private_public(const keypair *kp, struct rotbuf *rb)
 {
-  rotbuf_putbuf(rb, kp->private_key, kt->private_key_size);
-  rotbuf_putbuf(rb, kp->public_key, kt->public_key_size);
+  rotbuf_putbuf(rb, kp->private_key, kp->private_key_len);
+  rotbuf_putbuf(rb, kp->public_key, kp->public_key_len);
   return 0;
 }
 
@@ -445,6 +433,11 @@ static void dump_raw_hex(const keypair *kp, XPRINTF xpf, int include_secret)
     xprintf(xpf, " pub=%s", alloca_tohex(kp->public_key, kp->public_key_len));
   if (include_secret && kp->private_key_len)
     xprintf(xpf, " sec=%s", alloca_tohex(kp->private_key, kp->private_key_len));
+}
+
+static int load_raw_hex(const keypair *kp, const char *text)
+{
+  return 0;
 }
 
 static int unpack_private_public(const struct keytype *kt, keypair *kp, struct rotbuf *rb)
@@ -480,12 +473,12 @@ static int unpack_private_derive_scalarmult_public(const struct keytype *kt, key
   return 0;
 }
 
-static int pack_did_name(const struct keytype *kt, const keypair *kp, struct rotbuf *rb)
+static int pack_did_name(const keypair *kp, struct rotbuf *rb)
 {
   // Ensure name is nul terminated.
-  if (strnchr((const char *)kp->public_key, kt->public_key_size, '\0') == NULL)
+  if (strnchr((const char *)kp->public_key, kp->public_key_len, '\0') == NULL)
     return WHY("missing nul terminator");
-  return pack_private_public(kt, kp, rb);
+  return pack_private_public(kp, rb);
 }
 
 static int unpack_did_name(const struct keytype *kt, keypair *kp, struct rotbuf *rb)
@@ -500,6 +493,25 @@ static void dump_did_name(const keypair *kp, XPRINTF xpf, int include_secret)
 {
   xprintf(xpf, " DID=%s", alloca_str_toprint_quoted((const char *)kp->private_key, "\"\""));
   xprintf(xpf, " Name=%s", alloca_str_toprint_quoted((const char *)kp->public_key, "\"\""));
+}
+
+static int load_did_name(const keypair *kp, const char *text)
+{
+  const char *s;
+  const char *t;
+  if ((s = strstr(text, " DID=\"")) == NULL)
+    return WHY("missing DID");
+  bzero(kp->private_key, kp->private_key_len);
+  strn_fromprint(kp->private_key, kp->private_key_len, s + 6, '"', &t);
+  if (*t != '"')
+    return WHY("malformed DID quoted string");
+  if ((s = strstr(text, " Name=\"")) == NULL)
+    return WHY("missing Name");
+  bzero(kp->public_key, kp->public_key_len);
+  strn_fromprint(kp->public_key, kp->public_key_len, s + 6, '"', &t);
+  if (*t != '"')
+    return WHY("malformed Name quoted string");
+  return 0;
 }
 
 /* This is where all the supported key types are declared.  In order to preserve backward
@@ -518,7 +530,8 @@ const struct keytype keytypes[] = {
       .packed_size = crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES,
       .packer = pack_private_only,
       .unpacker = unpack_private_derive_scalarmult_public,
-      .dumper = dump_raw_hex
+      .dumper = dump_raw_hex,
+      .loader = load_raw_hex
     },
   [KEYTYPE_CRYPTOSIGN] = {
       /* The NaCl API does not expose any method to derive a cryptosign public key from its private
@@ -531,7 +544,8 @@ const struct keytype keytypes[] = {
       .packed_size = crypto_sign_edwards25519sha512batch_SECRETKEYBYTES + crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES,
       .packer = pack_private_public,
       .unpacker = unpack_private_public,
-      .dumper = dump_raw_hex
+      .dumper = dump_raw_hex,
+      .loader = load_raw_hex
     },
   [KEYTYPE_RHIZOME] = {
       /* The Rhizome Secret (a large, unguessable number) is stored in the private key field, and
@@ -542,7 +556,8 @@ const struct keytype keytypes[] = {
       .packed_size = 32,
       .packer = pack_private_only,
       .unpacker = unpack_private_only,
-      .dumper = dump_raw_hex
+      .dumper = dump_raw_hex,
+      .loader = load_raw_hex
     },
   [KEYTYPE_DID] = {
       /* The DID is stored in unpacked form in the private key field, and the name in nul-terminated
@@ -553,10 +568,57 @@ const struct keytype keytypes[] = {
       .packed_size = 32 + 64,
       .packer = pack_did_name,
       .unpacker = unpack_did_name,
-      .dumper = dump_did_name
+      .dumper = dump_did_name,
+      .loader = load_did_name
     }
   // ADD MORE KEY TYPES HERE
 };
+
+static void keyring_free_keypair(keypair *kp)
+{
+  if (kp->private_key) {
+    bzero(kp->private_key, kp->private_key_len);
+    free(kp->private_key);
+  }
+  if (kp->public_key) {
+    bzero(kp->public_key, kp->public_key_len);
+    free(kp->public_key);
+  }
+  bzero(kp, sizeof(keypair));
+}
+
+static keypair *keyring_alloc_keypair(unsigned ktype, size_t len)
+{
+  assert(ktype != 0);
+  keypair *kp = emalloc_zero(sizeof(keypair));
+  if (!kp)
+    return NULL;
+  kp->type = ktype;
+  if (ktype < NELS(keytypes)) {
+    kp->private_key_len = keytypes[ktype].private_key_size;
+    kp->public_key_len = keytypes[ktype].public_key_size;
+    if (kp->private_key_len + kp->public_key_len != len) {
+      WHYF("keytype=%u private_key_len(%u) + public_key_len(%u) != len(%u)",
+	  ktype,
+	  kp->private_key_len,
+	  kp->public_key_len,
+	  len
+	);
+      keyring_free_keypair(kp);
+      return NULL;
+    }
+  } else {
+    kp->private_key_len = len;
+    kp->public_key_len = 0;
+  }
+  if (   (kp->private_key_len && (kp->private_key = emalloc_zero(kp->private_key_len)) == NULL)
+      || (kp->public_key_len && (kp->public_key = emalloc_zero(kp->public_key_len)) == NULL)
+  ) {
+    keyring_free_keypair(kp);
+    return NULL;
+  }
+  return kp;
+}
 
 static int keyring_pack_identity(keyring_context *c, keyring_identity *id, unsigned char packed[KEYRING_PAGE_SIZE])
 {
@@ -589,44 +651,68 @@ static int keyring_pack_identity(keyring_context *c, keyring_identity *id, unsig
   unsigned kp;
   for (kp = 0; kp < id->keypair_count && !rbuf.wrap; ++kp) {
     unsigned ktype = id->keypairs[kp]->type;
-    if (ktype == 0x00 || ktype >= NELS(keytypes)) {
-      WHYF("illegal key type 0x%02x at kp=%u", ktype, kp);
-      goto scram;
-    }
+    const char *kts = keytype_str(ktype);
+    int (*packer)(const keypair *, struct rotbuf *) = NULL;
+    size_t keypair_len;
     const struct keytype *kt = &keytypes[ktype];
-    if (kt->packer == NULL) {
-      WARNF("unsupported key type 0x%02x, omitted from keyring file", ktype);
-      continue;
+    if (ktype == 0x00)
+      FATALF("ktype=0 in keypair kp=%u", kp);
+    if (ktype < NELS(keytypes)) {
+      packer = kt->packer;
+      keypair_len = kt->packed_size;
+    } else {
+      kts = "unknown";
+      packer = pack_private_only;
+      keypair_len = id->keypairs[kp]->private_key_len;
     }
-    if (config.debug.keyring)
-      DEBUGF("pack key type = 0x%02x", ktype);
-    // First byte is the key type code.
-    rotbuf_putc(&rbuf, ktype);
-    // The next two bytes are the key pair length, for forward compatibility: so older software can
-    // skip over key pairs with an unrecognised type.  The original four first key types do not
-    // store the length, for the sake of backward compatibility with legacy keyring files.  Their
-    // entry lengths are hard-coded.
-    size_t keypair_len = kt->packed_size;
-    switch (ktype) {
-    case KEYTYPE_CRYPTOBOX:
-    case KEYTYPE_CRYPTOSIGN:
-    case KEYTYPE_RHIZOME:
-    case KEYTYPE_DID:
-      break;
-    default:
-      rotbuf_putc(&rbuf, (keypair_len >> 8) & 0xff);
-      rotbuf_putc(&rbuf, keypair_len & 0xff);
-      break;
-    }
-    // The remaining bytes is the key pair in whatever format it uses.
-    struct rotbuf rbstart = rbuf;
-    if (kt->packer(kt, id->keypairs[kp], &rbuf) != 0)
-      break;
-    // Ensure the correct number of bytes were written.
-    unsigned packed = rotbuf_delta(&rbstart, &rbuf);
-    if (packed != keypair_len) {
-      WHYF("key type 0x%02x packed wrong length (packed %u, expecting %u)", ktype, packed, (int)keypair_len);
-      goto scram;
+    if (packer == NULL) {
+      WARNF("no packer function for key type 0x%02x%s%s%s, omitted from keyring file",
+	  ktype,
+	  kts && *kts ? " (" : "",
+	  kts ? kts : "",
+	  kts && *kts ? ")" : ""
+	);
+    } else {
+      if (config.debug.keyring)
+	DEBUGF("pack key type = 0x%02x%s%s%s",
+	    ktype,
+	    kts && *kts ? " (" : "",
+	    kts ? kts : "",
+	    kts && *kts ? ")" : ""
+	  );
+      // First byte is the key type code.
+      rotbuf_putc(&rbuf, ktype);
+      // The next two bytes are the key pair length, for forward compatibility: so older software can
+      // skip over key pairs with an unrecognised type.  The original four first key types do not
+      // store the length, for the sake of backward compatibility with legacy keyring files.  Their
+      // entry lengths are hard-coded.
+      switch (ktype) {
+      case KEYTYPE_CRYPTOBOX:
+      case KEYTYPE_CRYPTOSIGN:
+      case KEYTYPE_RHIZOME:
+      case KEYTYPE_DID:
+	break;
+      default:
+	rotbuf_putc(&rbuf, (keypair_len >> 8) & 0xff);
+	rotbuf_putc(&rbuf, keypair_len & 0xff);
+	break;
+      }
+      // The remaining bytes is the key pair in whatever format it uses.
+      struct rotbuf rbstart = rbuf;
+      if (packer(id->keypairs[kp], &rbuf) != 0)
+	break;
+      // Ensure the correct number of bytes were written.
+      unsigned packed = rotbuf_delta(&rbstart, &rbuf);
+      if (packed != keypair_len) {
+	WHYF("key type 0x%02x%s%s%s packed wrong length (packed %u, expecting %u)",
+	    ktype,
+	    kts && *kts ? " (" : "",
+	    kts ? kts : "",
+	    kts && *kts ? ")" : "",
+	    packed, (int)keypair_len
+	  );
+	goto scram;
+      }
     }
   }
   // Final byte is a zero key type code.
@@ -681,8 +767,8 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
 {
   /* Skip salt and MAC */
   keyring_identity *id = emalloc_zero(sizeof(keyring_identity));
-  if (!id) { WHY("malloc of identity failed"); return NULL; }
-  if (!slot) { WHY("slot is null"); return NULL; }
+  if (!id)
+    return NULL;
   id->PKRPin = str_edup(pin);
   // The two bytes immediately following the MAC describe the rotation offset.
   uint16_t rotation = (slot[PKR_SALT_BYTES + PKR_MAC_BYTES] << 8) | slot[PKR_SALT_BYTES + PKR_MAC_BYTES + 1];
@@ -720,14 +806,17 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
     }
     if (rbuf.wrap)
       break;
+    // Create keyring entry to hold the key pair.  Even entries of unknown type are stored,
+    // so they can be dumped.
+    keypair *kp = keyring_alloc_keypair(ktype, keypair_len);
+    if (kp == NULL)
+      return NULL;
+    struct rotbuf rbstart = rbuf;
     if (ktype < NELS(keytypes) && kt->unpacker) {
       if (config.debug.keyring)
 	DEBUGF("unpack key type = 0x%02x at offset %u", ktype, (int)rotbuf_position(&rbo));
-      struct rotbuf rbstart = rbuf;
       // Create keyring entries to hold the key pair.
-      keypair *kp = NULL;
-      if (   (kp = id->keypairs[id->keypair_count] = emalloc_zero(sizeof(keypair))) == NULL
-	  || (kt->private_key_size && (kp->private_key = emalloc(kt->private_key_size)) == NULL)
+      if (   (kt->private_key_size && (kp->private_key = emalloc(kt->private_key_size)) == NULL)
 	  || (kt->public_key_size && (kp->public_key = emalloc(kt->public_key_size)) == NULL)
       ) {
 	keyring_free_identity(id);
@@ -743,37 +832,37 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
 	keyring_free_identity(id);
 	return NULL;
       }
-      // Ensure that the correct number of bytes was consumed.
-      size_t unpacked = rotbuf_delta(&rbstart, &rbuf);
-      if (unpacked != keypair_len) {
-	// If the number of bytes unpacked does not match the keypair length, it is probably an
-	// empty slot.
-	if (config.debug.keyring)
-	  DEBUGF("key type 0x%02x unpacked wrong length (unpacked %u, expecting %u)", ktype, (int)unpacked, (int)keypair_len);
-	keyring_free_identity(id);
-	return NULL;
-      }
-      // Got a valid key pair!  Sort the key pairs by (key type, public key, private key) and weed
-      // out duplicates.
-      {
-	int c = 1;
-	unsigned i = 0;
-	for (i = 0; i < id->keypair_count && (c = cmp_keypair(id->keypairs[i], id->keypairs[id->keypair_count])) < 0; ++i)
-	  ;
-	if (c > 0) {
-	  keypair *tmp = id->keypairs[id->keypair_count];
-	  unsigned j;
-	  for (j = id->keypair_count; j > i; --j)
-	    id->keypairs[j] = id->keypairs[j - 1];
-	  id->keypairs[i] = tmp;
-	}
-	if (c)
-	  ++id->keypair_count;
-      }
     } else {
       if (config.debug.keyring)
-	DEBUGF("unsupported key type 0x%02x at offset %u, skipping %u bytes", ktype, (int)rotbuf_position(&rbo), (int)keypair_len);
-      rotbuf_advance(&rbuf, keypair_len); // skip
+	DEBUGF("unsupported key type 0x%02x at offset %u, reading %u bytes as private key", ktype, (int)rotbuf_position(&rbo), (int)keypair_len);
+      rotbuf_getbuf(&rbuf, kp->private_key, kp->private_key_len);
+    }
+    // Ensure that the correct number of bytes was consumed.
+    size_t unpacked = rotbuf_delta(&rbstart, &rbuf);
+    if (unpacked != keypair_len) {
+      // If the number of bytes unpacked does not match the keypair length, it is probably an
+      // empty slot.
+      if (config.debug.keyring)
+	DEBUGF("key type 0x%02x unpacked wrong length (unpacked %u, expecting %u)", ktype, (int)unpacked, (int)keypair_len);
+      keyring_free_identity(id);
+      return NULL;
+    }
+    // Got a valid key pair!  Sort the key pairs by (key type, public key, private key) and weed
+    // out duplicates.
+    {
+      int c = 1;
+      unsigned i = 0;
+      for (i = 0; i < id->keypair_count && (c = cmp_keypair(id->keypairs[i], id->keypairs[id->keypair_count])) < 0; ++i)
+	;
+      if (c > 0) {
+	keypair *tmp = id->keypairs[id->keypair_count];
+	unsigned j;
+	for (j = id->keypair_count; j > i; --j)
+	  id->keypairs[j] = id->keypairs[j - 1];
+	id->keypairs[i] = tmp;
+      }
+      if (c)
+	++id->keypair_count;
     }
   }
   // If the buffer offset overshot, we got an invalid keypair code and length combination.
@@ -814,14 +903,12 @@ int keyring_identity_mac(keyring_context *c, keyring_identity *id,
 }
 
 
-/* Read the slot, and try to decrypt it.
-   Decryption is symmetric with encryption, so the same function is used
-   for munging the slot before making use of it, whichever way we are going.
-   Once munged, we then need to verify that the slot is valid, and if so
-   unpack the details of the identity.
-*/
-int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
-			const char *pin,int slot_number)
+/* Read the slot, and try to decrypt it.  Decryption is symmetric with encryption, so the same
+ * function is used for munging the slot before making use of it, whichever way we are going.  Once
+ * munged, we then need to verify that the slot is valid, and if so unpack the details of the
+ * identity.
+ */
+int keyring_decrypt_pkr(keyring_file *k, keyring_context *c, const char *pin, int slot_number)
 {
   int exit_code=1;
   unsigned char slot[KEYRING_PAGE_SIZE];
@@ -909,39 +996,33 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
   int slot;
   int identitiesFound=0;
 
-  for(slot=0;slot<k->file_size/KEYRING_PAGE_SIZE;slot++)
-    {
-      /* slot zero is the BAM and salt, so skip it */
-      if (slot&(KEYRING_BAM_BITS-1)) {
-	/* Not a BAM slot, so examine */
-	off_t file_offset=slot*KEYRING_PAGE_SIZE;
+  for(slot=0;slot<k->file_size/KEYRING_PAGE_SIZE;slot++) {
+    /* slot zero is the BAM and salt, so skip it */
+    if (slot&(KEYRING_BAM_BITS-1)) {
+      /* Not a BAM slot, so examine */
+      off_t file_offset=slot*KEYRING_PAGE_SIZE;
 
-	/* See if this part of the keyring file is organised */
-	keyring_bam *b=k->bam;
-	while (b&&(file_offset>=b->file_offset+KEYRING_SLAB_SIZE))
-	  b=b->next;
-	if (!b) continue;
+      /* See if this part of the keyring file is organised */
+      keyring_bam *b=k->bam;
+      while (b&&(file_offset>=b->file_offset+KEYRING_SLAB_SIZE))
+	b=b->next;
+      if (!b) continue;
 
-	/* Now see if slot is marked in-use.  No point checking unallocated slots,
-	   especially since the cost can be upto a second of CPU time on a phone. */
-	int position=slot&(KEYRING_BAM_BITS-1);
-	int byte=position>>3;
-	int bit=position&7;
-	if (b->bitmap[byte]&(1<<bit)) {
-	  /* Slot is occupied, so check it.
-	     We have to check it for each keyring context (ie keyring pin) */
-	  int c;
-	  for(c=0;c<k->context_count;c++)
-	    {
-	      int result=keyring_decrypt_pkr(k,k->contexts[c],pin?pin:"",slot);
-	      if (!result)
-		identitiesFound++;
-		
-	    }
-	}	
+      /* Now see if slot is marked in-use.  No point checking unallocated slots,
+	  especially since the cost can be upto a second of CPU time on a phone. */
+      int position=slot&(KEYRING_BAM_BITS-1);
+      int byte=position>>3;
+      int bit=position&7;
+      if (b->bitmap[byte]&(1<<bit)) {
+	/* Slot is occupied, so check it.
+	    We have to check it for each keyring context (ie keyring pin) */
+	int c;
+	for (c=0;c<k->context_count;c++)
+	  if (keyring_decrypt_pkr(k,k->contexts[c],pin?pin:"",slot) == 0)
+	    ++identitiesFound;
       }
     }
-  
+  }
   /* Tell the caller how many identities we found */
   RETURN(identitiesFound);
   OUT();
@@ -969,13 +1050,10 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, co
   keyring_identity *id = emalloc_zero(sizeof(keyring_identity));
   if (!id)
     return NULL;
-  
-  /* Store pin */
-  id->PKRPin = str_edup(pin);
-  if (!id->PKRPin) {
-    WHY("Could not store pin");
+
+  /* Remember pin */
+  if (!(id->PKRPin = str_edup(pin)))
     goto kci_safeexit;
-  }
 
   /* Find free slot in keyring.
      Slot 0 in any slab is the BAM and possible keyring salt, so only search for
@@ -1174,29 +1252,16 @@ int keyring_set_did(keyring_identity *id, const char *did, const char *name)
   for(i=0;i<id->keypair_count;i++)
     if (id->keypairs[i]->type==KEYTYPE_DID) {
       if (config.debug.keyring)
-	DEBUG("Identity contains DID");
+	DEBUG("Identity already contains DID");
       break;
     }
-
-  if (i>=PKR_MAX_KEYPAIRS) return WHY("Too many key pairs");
-
+  if (i >= PKR_MAX_KEYPAIRS)
+    return WHY("Too many key pairs");
   /* allocate if needed */
-  if (i>=id->keypair_count) {
-    id->keypairs[i] = emalloc_zero(sizeof(keypair));
-    if (!id->keypairs[i])
+  if (i >= id->keypair_count) {
+    if ((id->keypairs[i] = keyring_alloc_keypair(KEYTYPE_DID, keytypes[KEYTYPE_DID].packed_size)) == NULL)
       return -1;
-    id->keypairs[i]->type=KEYTYPE_DID;
-    unsigned char *packedDid = emalloc_zero(32);
-    if (!packedDid)
-      return -1;
-    unsigned char *packedName = emalloc_zero(64);
-    if (!packedName)
-      return -1;
-    id->keypairs[i]->private_key=packedDid;
-    id->keypairs[i]->private_key_len=32;
-    id->keypairs[i]->public_key=packedName;
-    id->keypairs[i]->public_key_len=64;
-    id->keypair_count++;
+    ++id->keypair_count;
     if (config.debug.keyring)
       DEBUG("Created DID record for identity");
   }
@@ -1671,13 +1736,13 @@ int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret)
     const keyring_identity *id = idx[i];
     for (kp = 0; kp < id->keypair_count; ++kp) {
       keypair *keyp = id->keypairs[kp];
-      xprintf(xpf, "%u: type=%u", i, keyp->type);
-      const char *kts = keytype_str(keyp->type);
-      if (kts && kts[0])
-	xprintf(xpf, "(%s)", kts);
       assert(keyp->type != 0);
       assert(keyp->type < NELS(keytypes));
-      xprintf(xpf, " ");
+      xprintf(xpf, "%u: type=%u", i, keyp->type);
+      const char *kts = keytype_str(keyp->type);
+      if (!kts || !kts[0])
+	kts = "unknown";
+      xprintf(xpf, "(%s) ", kts);
       if (keytypes[keyp->type].dumper)
 	keytypes[keyp->type].dumper(keyp, xpf, include_secret);
       else
@@ -1685,5 +1750,29 @@ int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret)
       xprintf(xpf, "\n");
     }
   }
+  return 0;
+}
+
+int keyring_load(keyring_file *k, unsigned pinc, const char **pinv, FILE *input)
+{
+  clearerr(input);
+  while (1) {
+    unsigned id;
+    unsigned ktype;
+    int i = 0;
+    char content[1024];
+    content[0] = '\0';
+    int n = fscanf(input, "%u: type=%u(%*[^)]) %n", &id, &ktype, &i);
+    fgets(content, sizeof content - 1, input);
+    DEBUGF("n=%d i=%d content=%s", n, i, alloca_str_toprint(content));
+    if (n == EOF && (ferror(input) || feof(input)))
+	break;
+    if (n != 2)
+      return WHY("malformed input");
+    if (ktype == 0)
+      return WHY("invalid input: key type = 0");
+  }
+  if (ferror(input))
+    return WHYF_perror("fscanf");
   return 0;
 }
