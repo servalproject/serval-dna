@@ -343,37 +343,42 @@ size_t toprint_str_len(const char *srcStr, const char quotes[2])
   return srcStr ? strbuf_count(strbuf_toprint_quoted(strbuf_local(NULL, 0), quotes, srcStr)) : 4;
 }
 
-size_t str_fromprint(unsigned char *dst, const char *src)
+size_t strn_fromprint(unsigned char *dst, size_t dstlen, const char *src, char endquote, const char **afterp)
 {
   unsigned char *const odst = dst;
-  while (*src) {
+  unsigned char *const edst = dst + dstlen;
+  while (*src && *src != endquote && dst < edst) {
     switch (*src) {
     case '\\':
       ++src;
+      unsigned char d;
       switch (*src) {
-      case '\0': *dst++ = '\\'; break;
-      case '0': *dst++ = '\0'; ++src; break;
-      case 'n': *dst++ = '\n'; ++src; break;
-      case 'r': *dst++ = '\r'; ++src; break;
-      case 't': *dst++ = '\t'; ++src; break;
+      case '\0': d = '\\'; break;
+      case '0': d = '\0'; ++src; break;
+      case 'n': d = '\n'; ++src; break;
+      case 'r': d = '\r'; ++src; break;
+      case 't': d = '\t'; ++src; break;
       case 'x':
 	if (isxdigit(src[1]) && isxdigit(src[2])) {
 	  ++src;
-	  fromhex(dst++, src, 1);
+	  fromhex(&d, src, 1);
 	  src += 2;
 	  break;
 	}
 	// fall through
       default:
-	*dst++ = *src++;
+	d = *src++;
 	break;
       }
+      *dst++ = d;
       break;
     default:
       *dst++ = *src++;
       break;
     }
   }
+  if (afterp)
+    *afterp = src;
   return dst - odst;
 }
 

@@ -81,7 +81,7 @@ char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcByt
 char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2]);
 size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2]);
 size_t toprint_str_len(const char *srcStr, const char quotes[2]);
-size_t str_fromprint(unsigned char *dst, const char *src);
+size_t strn_fromprint(unsigned char *dst, size_t dstlen, const char *src, char endquote, const char **afterp);
 
 #define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((const char *)(buf),(len), "``") + 1 : (dstlen)), (dstlen), (const char *)(buf), (len), "``")
 #define alloca_str_toprint_quoted(str, quotes)  toprint_str((char *)alloca(toprint_str_len((str), (quotes)) + 1), -1, (str), (quotes))

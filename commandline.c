@@ -482,7 +482,7 @@ int app_echo(const struct cli_parsed *parsed, struct cli_context *context)
       DEBUGF("echo:argv[%d]=\"%s\"", i, arg);
     if (escapes) {
       unsigned char buf[strlen(arg)];
-      size_t len = str_fromprint(buf, arg);
+      size_t len = strn_fromprint(buf, sizeof buf, arg, '\0', NULL);
       cli_write(context, buf, len);
     } else
       cli_puts(context, arg);
