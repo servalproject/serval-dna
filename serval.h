@@ -577,7 +577,8 @@ int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_saw_voice_traffic();
 int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now);
 
-int serval_packetvisualise(XPRINTF xpf, const char *message, const unsigned char *packet, size_t len);
+int serval_packetvisualise(const char *message, const unsigned char *packet, size_t len);
+int serval_packetvisualise_xpf(XPRINTF xpf, const char *message, const unsigned char *packet, size_t len);
 
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_opendb();

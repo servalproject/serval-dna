@@ -824,7 +824,7 @@ overlay_broadcast_ensemble(struct network_destination *destination,
 
   if (config.debug.packettx){
     DEBUGF("Sending this packet via interface %s (len=%d)",interface->name,len);
-    //DEBUG_packet_visualise(NULL,bytes,len);
+    DEBUG_packet_visualise(NULL,bytes,len);
   }
 
   if (interface->state!=INTERFACE_STATE_UP){
@@ -1088,7 +1088,7 @@ static void
 logServalPacket(int level, struct __sourceloc __whence, const char *message, const unsigned char *packet, size_t len) {
   struct mallocbuf mb = STRUCT_MALLOCBUF_NULL;
   if (!message) message="<no message>";
-  if (serval_packetvisualise(XPRINTF_MALLOCBUF(&mb), message, packet, len) == -1)
+  if (serval_packetvisualise_xpf(XPRINTF_MALLOCBUF(&mb), message, packet, len) == -1)
     WHY("serval_packetvisualise() failed");
   else if (mb.buffer == NULL)
     WHYF("serval_packetvisualise() output buffer missing, message=%s packet=%p len=%lu", alloca_toprint(-1, message, strlen(message)), packet, (long unsigned int)len);
