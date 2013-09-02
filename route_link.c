@@ -690,7 +690,7 @@ static int neighbour_link_sent(struct overlay_frame *frame, int sequence, void *
   if (!neighbour)
     return 0;
   neighbour->last_update_seq = sequence;
-  if (config.debug.linkstate && config.debug.verbose)
+  if ((config.debug.linkstate && config.debug.verbose)||config.debug.ack)
     DEBUGF("LINK STATE; ack sent to neighbour %s in seq %d", alloca_tohex_sid(subscriber->sid), sequence);
   return 0;
 }
@@ -721,7 +721,7 @@ static int send_neighbour_link(struct neighbour *n)
       frame->destination = n->subscriber;
     }else{
       // no routing decision yet? send this packet to all probable destinations.
-      if (config.debug.linkstate && config.debug.verbose)
+      if ((config.debug.linkstate && config.debug.verbose)|| config.debug.ack)
 	DEBUGF("Sending link state ack to all possibilities");
       struct link_out *out = n->out_links;
       while(out){
@@ -1079,7 +1079,7 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
 	  if (link->ack_sequence == sender_seq)
 	    break;
 	  // missed a packet? send a link state soon
-          if (config.debug.verbose && config.debug.linkstate)
+          if ((config.debug.verbose && config.debug.linkstate)||config.debug.ack)
             DEBUGF("LINK STATE; missed seq %d from %s on %s", 
 	      link->ack_sequence, alloca_tohex_sid(context->sender->sid), context->interface->name);
 	  link->ack_mask = link->ack_mask << 1;
@@ -1191,7 +1191,7 @@ int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp)
     if (context.invalid_addresses)
       continue;
 
-    if (config.debug.verbose && config.debug.linkstate)
+    if ((config.debug.verbose && config.debug.linkstate)||config.debug.ack)
       DEBUGF("LINK STATE; record - %d, %s, %s, %d, %d, %x, %d",
 	flags,
 	receiver?alloca_tohex_sid(receiver->sid):"NULL",

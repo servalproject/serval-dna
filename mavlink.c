@@ -240,10 +240,15 @@ int mavlink_parse(struct slip_decode_state *state)
     if (config.debug.mavlink) DEBUG("Received MAVLink DATASTREAM message for us");
     if (state->mavlink_componentid&0x01) {
       if (config.debug.mavlink) {
-	DEBUG("Found start of PDU");
+	DEBUGF("Found start of PDU mavlink-seq=0x%02x",state->mavlink_sequence);
 	if (state->packet_length) DEBUGF("... previous packet had not ended, discarding");
       }
       state->packet_length=0;
+    } else {
+      if (config.debug.mavlink) {
+	DEBUGF("Extension PDU mavlink-seq=0x%02x",state->mavlink_sequence);
+	if (state->packet_length) DEBUGF("... previous packet had not ended, discarding");
+      }
     }
     if (state->packet_length+state->mavlink_payload_length>sizeof(state->dst))
       {
@@ -262,7 +267,7 @@ int mavlink_parse(struct slip_decode_state *state)
     state->packet_length+=state->mavlink_payload_length-30;
     if (state->mavlink_componentid&0x02) {
       if (config.debug.mavlink) 
-	DEBUGF("Found end of PDU (length=%d)",state->packet_length);
+	DEBUGF("PDU Complete (length=%d)",state->packet_length);
       state->dst_offset=0;
       return 1;
     } else return 0;
