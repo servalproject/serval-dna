@@ -285,7 +285,7 @@ int keyring_commit(keyring_file *k);
 keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, const char *pin);
 int keyring_seed(keyring_file *k);
 void keyring_identity_extract(const keyring_identity *id, const unsigned char **sidp, const char **didp, const char **namep);
-int keyring_load(keyring_file *k, unsigned pinc, const char **pinv, FILE *input);
+int keyring_load(keyring_file *k, int cn, unsigned pinc, const char **pinv, FILE *input);
 int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret);
 
 /* Make sure we have space to put bytes of the packet as we go along */

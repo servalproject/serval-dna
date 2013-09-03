@@ -1793,7 +1793,7 @@ int app_keyring_load(const struct cli_parsed *parsed, struct cli_context *contex
   FILE *fp = path && strcmp(path, "-") != 0 ? fopen(path, "r") : stdin;
   if (fp == NULL)
     return WHYF_perror("fopen(%s, \"r\")", alloca_str_toprint(path));
-  int ret = keyring_load(k, pinc, pinv, fp);
+  int ret = keyring_load(k, 0, pinc, pinv, fp);
   return ret;
 }
 
