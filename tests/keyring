@@ -196,7 +196,7 @@ test_KeyringPathEnv() {
     assert [ "$(replayStdout)" == "$orig" ]
 }
 
-doc_ReadOnlyEnv="Use keyring specified by environment variable"
+doc_ReadOnlyEnv="Read-only keyring environment variable"
 setup_ReadOnlyEnv() {
     setup
     executeOk_servald keyring add ''
