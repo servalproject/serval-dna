@@ -168,11 +168,10 @@ test_Load() {
    executeOk_servald keyring dump dBA
    tfw_cat dBA
    while read line; do
-      tfw_log -F "${line#[0-9]}" dBA
-      assertGrep -- -F "${line#[0-9]}" dBA
+      assertGrep --fixed-strings dBA "${line#[0-9]}"
    done < dA
    while read line; do
-      assertGrep -- -F "${line#[0-9]}" dBA
+      assertGrep --fixed-strings dBA "${line#[0-9]}"
    done < dB
 }
 
