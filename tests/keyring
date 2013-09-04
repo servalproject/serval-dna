@@ -25,11 +25,19 @@ shopt -s extglob
 
 setup() {
     setup_servald
-    executeOk_servald config \
-      set log.console.level debug \
-      set debug.keyring on
-    executeOk_servald keyring list
-    assert_keyring_list 0
+    setup_instances +A
+    set_instance +A
+}
+
+setup_instances() {
+   for arg; do
+      set_instance $arg
+      executeOk_servald config \
+         set log.console.level debug \
+         set debug.keyring on
+      executeOk_servald keyring list
+      assert_keyring_list 0
+   done
 }
 
 assert_keyring_list() {
@@ -136,6 +144,36 @@ teardown_KeyringAutoCreate() {
    kill_all_servald_processes
    assert_no_servald_processes
    report_servald_server
+}
+
+doc_Load="Load keyring entries from a keyring dump"
+setup_Load() {
+   setup_servald
+   setup_instances +A +B
+   set_instance +A
+   executeOk_servald keyring add ''
+   executeOk_servald keyring add ''
+   executeOk_servald keyring dump dA
+   set_instance +B
+   executeOk_servald keyring add ''
+   executeOk_servald keyring dump dB
+   set_instance +A
+   tfw_cat dA dB
+   assert ! cmp dA dB
+}
+test_Load() {
+   set_instance +B
+   executeOk_servald keyring load dA
+   tfw_cat --stderr
+   executeOk_servald keyring dump dBA
+   tfw_cat dBA
+   while read line; do
+      tfw_log -F "${line#[0-9]}" dBA
+      assertGrep -- -F "${line#[0-9]}" dBA
+   done < dA
+   while read line; do
+      assertGrep -- -F "${line#[0-9]}" dBA
+   done < dB
 }
 
 doc_CompatibleBack1="Can read old keyring file (1)"
