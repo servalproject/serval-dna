@@ -153,10 +153,10 @@ setup_Load() {
    set_instance +A
    executeOk_servald keyring add ''
    executeOk_servald keyring add ''
-   executeOk_servald keyring dump dA
+   executeOk_servald keyring dump --secret dA
    set_instance +B
    executeOk_servald keyring add ''
-   executeOk_servald keyring dump dB
+   executeOk_servald keyring dump --secret dB
    set_instance +A
    tfw_cat dA dB
    assert ! cmp dA dB
@@ -165,7 +165,7 @@ test_Load() {
    set_instance +B
    executeOk_servald keyring load dA
    tfw_cat --stderr
-   executeOk_servald keyring dump dBA
+   executeOk_servald keyring dump --secret dBA
    tfw_cat dBA
    while read line; do
       assertGrep --fixed-strings dBA "${line#[0-9]}"

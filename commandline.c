@@ -1791,10 +1791,21 @@ int app_keyring_load(const struct cli_parsed *parsed, struct cli_context *contex
   if (!k)
     return -1;
   FILE *fp = path && strcmp(path, "-") != 0 ? fopen(path, "r") : stdin;
-  if (fp == NULL)
-    return WHYF_perror("fopen(%s, \"r\")", alloca_str_toprint(path));
-  int ret = keyring_load(k, 0, pinc, pinv, fp);
-  return ret;
+  if (fp == NULL) {
+    WHYF_perror("fopen(%s, \"r\")", alloca_str_toprint(path));
+    keyring_free(k);
+    return -1;
+  }
+  if (keyring_load(k, 0, pinc, pinv, fp) == -1) {
+    keyring_free(k);
+    return -1;
+  }
+  if (keyring_commit(k) == -1) {
+    keyring_free(k);
+    return WHY("Could not write new identity");
+  }
+  keyring_free(k);
+  return 0;
 }
 
 int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *context)

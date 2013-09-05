@@ -253,8 +253,6 @@ typedef struct keyring_file {
 void keyring_free(keyring_file *k);
 void keyring_free_context(keyring_context *c);
 void keyring_free_identity(keyring_identity *id);
-int keyring_identity_mac(keyring_context *c,keyring_identity *id,
-			 unsigned char *pkrsalt,unsigned char *mac);
 #define KEYTYPE_CRYPTOBOX 0x01 // must be lowest
 #define KEYTYPE_CRYPTOSIGN 0x02
 #define KEYTYPE_RHIZOME 0x03
