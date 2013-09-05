@@ -1743,8 +1743,10 @@ int app_keyring_create(const struct cli_parsed *parsed, struct cli_context *cont
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  if (!keyring_open_instance())
+  keyring_file *k = keyring_open_instance();
+  if (!k)
     return -1;
+  keyring_free(k);
   return 0;
 }
 
@@ -1760,11 +1762,18 @@ int app_keyring_dump(const struct cli_parsed *parsed, struct cli_context *contex
   if (!k)
     return -1;
   FILE *fp = path ? fopen(path, "w") : stdout;
-  if (fp == NULL)
-    return WHYF_perror("fopen(%s, \"w\")", alloca_str_toprint(path));
+  if (fp == NULL) {
+    WHYF_perror("fopen(%s, \"w\")", alloca_str_toprint(path));
+    keyring_free(k);
+    return -1;
+  }
   int ret = keyring_dump(k, XPRINTF_STDIO(fp), include_secret);
-  if (fp != stdout && fclose(fp) == EOF)
-    return WHYF_perror("fclose(%s)", alloca_str_toprint(path));
+  if (fp != stdout && fclose(fp) == EOF) {
+    WHYF_perror("fclose(%s)", alloca_str_toprint(path));
+    keyring_free(k);
+    return -1;
+  }
+  keyring_free(k);
   return ret;
 }
 
@@ -1828,6 +1837,7 @@ int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *contex
 	cli_put_string(context, name, "\n");
       }
     }
+  keyring_free(k);
   return 0;
  }
 
