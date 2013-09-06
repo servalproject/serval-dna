@@ -482,7 +482,7 @@ int app_echo(const struct cli_parsed *parsed, struct cli_context *context)
       DEBUGF("echo:argv[%d]=\"%s\"", i, arg);
     if (escapes) {
       unsigned char buf[strlen(arg)];
-      size_t len = str_fromprint(buf, arg);
+      size_t len = strn_fromprint(buf, sizeof buf, arg, '\0', NULL);
       cli_write(context, buf, len);
     } else
       cli_puts(context, arg);
@@ -1743,8 +1743,10 @@ int app_keyring_create(const struct cli_parsed *parsed, struct cli_context *cont
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  if (!keyring_open_instance())
+  keyring_file *k = keyring_open_instance();
+  if (!k)
     return -1;
+  keyring_free(k);
   return 0;
 }
 
@@ -1760,12 +1762,59 @@ int app_keyring_dump(const struct cli_parsed *parsed, struct cli_context *contex
   if (!k)
     return -1;
   FILE *fp = path ? fopen(path, "w") : stdout;
-  if (fp == NULL)
-    return WHYF_perror("fopen(%s, \"w\")", alloca_str_toprint(path));
+  if (fp == NULL) {
+    WHYF_perror("fopen(%s, \"w\")", alloca_str_toprint(path));
+    keyring_free(k);
+    return -1;
+  }
   int ret = keyring_dump(k, XPRINTF_STDIO(fp), include_secret);
-  if (fp != stdout && fclose(fp) == EOF)
-    return WHYF_perror("fclose(%s)", alloca_str_toprint(path));
+  if (fp != stdout && fclose(fp) == EOF) {
+    WHYF_perror("fclose(%s)", alloca_str_toprint(path));
+    keyring_free(k);
+    return -1;
+  }
+  keyring_free(k);
   return ret;
+}
+
+int app_keyring_load(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  const char *path;
+  if (cli_arg(parsed, "file", &path, cli_path_regular, NULL) == -1)
+    return -1;
+  unsigned pinc = 0;
+  unsigned i;
+  for (i = 0; i < parsed->labelc; ++i)
+    if (strn_str_cmp(parsed->labelv[i].label, parsed->labelv[i].len, "pin") == 0)
+      ++pinc;
+  const char *pinv[pinc];
+  unsigned pc = 0;
+  for (i = 0; i < parsed->labelc; ++i)
+    if (strn_str_cmp(parsed->labelv[i].label, parsed->labelv[i].len, "pin") == 0) {
+      assert(pc < pinc);
+      pinv[pc++] = parsed->labelv[i].text;
+    }
+  keyring_file *k = keyring_open_instance_cli(parsed);
+  if (!k)
+    return -1;
+  FILE *fp = path && strcmp(path, "-") != 0 ? fopen(path, "r") : stdin;
+  if (fp == NULL) {
+    WHYF_perror("fopen(%s, \"r\")", alloca_str_toprint(path));
+    keyring_free(k);
+    return -1;
+  }
+  if (keyring_load(k, 0, pinc, pinv, fp) == -1) {
+    keyring_free(k);
+    return -1;
+  }
+  if (keyring_commit(k) == -1) {
+    keyring_free(k);
+    return WHY("Could not write new identity");
+  }
+  keyring_free(k);
+  return 0;
 }
 
 int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *context)
@@ -1788,6 +1837,7 @@ int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *contex
 	cli_put_string(context, name, "\n");
       }
     }
+  keyring_free(k);
   return 0;
  }
 
@@ -2299,7 +2349,9 @@ int app_network_scan(const struct cli_parsed *parsed, struct cli_context *contex
 
 /* See cli_parse() for details of command specification syntax.
 */
-#define KEYRING_PIN_OPTIONS ,"[--keyring-pin=<pin>]","[--entry-pin=<pin>]..."
+#define KEYRING_PIN_OPTION	  ,"[--keyring-pin=<pin>]"
+#define KEYRING_ENTRY_PIN_OPTION  ,"[--entry-pin=<pin>]"
+#define KEYRING_PIN_OPTIONS	  KEYRING_PIN_OPTION KEYRING_ENTRY_PIN_OPTION "..."
 struct cli_schema command_line_options[]={
   {commandline_usage,{"help|-h|--help","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display command usage."},
@@ -2307,7 +2359,7 @@ struct cli_schema command_line_options[]={
    "Output the supplied string."},
   {app_log,{"log","error|warn|hint|info|debug","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Log the supplied message at given level."},
-  {app_server_start,{"start","[foreground|exec <path>]",NULL}, 0,
+  {app_server_start,{"start" KEYRING_PIN_OPTIONS, "[foreground|exec <path>]",NULL}, 0,
    "Start daemon with instance path from SERVALINSTANCE_PATH environment variable."},
   {app_server_stop,{"stop",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Stop a running daemon with instance path from SERVALINSTANCE_PATH environment variable."},
@@ -2380,6 +2432,8 @@ struct cli_schema command_line_options[]={
    "Create a new keyring file."},
   {app_keyring_dump,{"keyring","dump" KEYRING_PIN_OPTIONS,"[--secret]","[<file>]",NULL}, 0,
    "Dump all keyring identities that can be accessed using the specified PINs"},
+  {app_keyring_load,{"keyring","load" KEYRING_PIN_OPTIONS,"<file>","[<pin>]...",NULL}, 0,
+   "Load identities from the given dump text and insert them into the keyring using the specified entry PINs"},
   {app_keyring_list,{"keyring","list" KEYRING_PIN_OPTIONS,NULL}, 0,
    "List identities that can be accessed using the supplied PINs"},
   {app_keyring_add,{"keyring","add" KEYRING_PIN_OPTIONS,"[<pin>]",NULL}, 0,

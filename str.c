@@ -43,32 +43,67 @@ char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes)
 }
 
 /* Convert nbinary*2 ASCII hex characters [0-9A-Fa-f] to nbinary bytes of data.  Can be used to
-   perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);  Returns -1 if a non-hex-digit
-   character is encountered, otherwise returns the number of binary bytes produced (= nbinary).
-   @author Andrew Bettison <andrew@servalproject.com>
+ * perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);  Returns -1 if a non-hex-digit
+ * character is encountered, otherwise returns the number of binary bytes produced (= nbinary).
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
 size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
 {
-  size_t count = 0;
-  while (count != nbinary) {
-    unsigned char high = hexvalue(*srcHex++);
-    if (high & 0xf0) return -1;
-    unsigned char low = hexvalue(*srcHex++);
-    if (low & 0xf0) return -1;
-    dstBinary[count++] = (high << 4) + low;
-  }
-  return count;
+  if (strn_fromhex(dstBinary, nbinary, srcHex, NULL) == nbinary)
+    return nbinary;
+  return -1;
 }
 
-/* Convert nbinary*2 ASCII hex characters [0-9A-Fa-f] followed by a nul '\0' character to nbinary bytes of data.  Can be used to
-   perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);  Returns -1 if a non-hex-digit
-   character is encountered or the character immediately following the last hex digit is not a nul,
-   otherwise returns zero.
-   @author Andrew Bettison <andrew@servalproject.com>
+/* Convert nbinary*2 ASCII hex characters [0-9A-Fa-f] followed by a nul '\0' character to nbinary
+ * bytes of data.  Can be used to perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);
+ * Returns -1 if a non-hex-digit character is encountered or the character immediately following the
+ * last hex digit is not a nul, otherwise returns zero.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
 int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
 {
-  return (fromhex(dstBinary, srcHex, nbinary) == nbinary && srcHex[nbinary * 2] == '\0') ? 0 : -1;
+  const char *p;
+  if (strn_fromhex(dstBinary, nbinary, srcHex, &p) == nbinary && *p == '\0')
+    return 0;
+  return -1;
+}
+
+/* Decode pairs of ASCII hex characters [0-9A-Fa-f] into binary data with an optional upper limit on
+ * the number of binary bytes produced (destination buffer size).  Returns the number of binary
+ * bytes decoded.  If 'afterHex' is not NULL, then sets *afterHex to point to the source character
+ * immediately following the last hex digit consumed.
+ *
+ * Can be used to perform a conversion in-place, eg:
+ *
+ *    strn_fromhex((unsigned char *)buf, n, (const char *)buf, NULL);
+ *
+ * Can also be used to count hex digits without converting, eg:
+ *
+ *    strn_fromhex(NULL, -1, buf, NULL);
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *srcHex, const char **afterHex)
+{
+  unsigned char *dstorig = dstBinary;
+  unsigned char *dstend = dstBinary + dstlen;
+  while (dstlen == -1 || dstBinary < dstend) {
+    int high = hexvalue(srcHex[0]);
+    if (high == -1)
+      break;
+    int low = hexvalue(srcHex[1]);
+    if (low == -1)
+      break;
+    if (dstorig != NULL)
+      *dstBinary = (high << 4) + low;
+    ++dstBinary;
+    srcHex += 2;
+  }
+  if (afterHex)
+    *afterHex = srcHex;
+  return dstBinary - dstorig;
 }
 
 /* Does this whole buffer contain the same value? */
@@ -343,37 +378,42 @@ size_t toprint_str_len(const char *srcStr, const char quotes[2])
   return srcStr ? strbuf_count(strbuf_toprint_quoted(strbuf_local(NULL, 0), quotes, srcStr)) : 4;
 }
 
-size_t str_fromprint(unsigned char *dst, const char *src)
+size_t strn_fromprint(unsigned char *dst, size_t dstlen, const char *src, char endquote, const char **afterp)
 {
   unsigned char *const odst = dst;
-  while (*src) {
+  unsigned char *const edst = dst + dstlen;
+  while (*src && *src != endquote && dst < edst) {
     switch (*src) {
     case '\\':
       ++src;
+      unsigned char d;
       switch (*src) {
-      case '\0': *dst++ = '\\'; break;
-      case '0': *dst++ = '\0'; ++src; break;
-      case 'n': *dst++ = '\n'; ++src; break;
-      case 'r': *dst++ = '\r'; ++src; break;
-      case 't': *dst++ = '\t'; ++src; break;
+      case '\0': d = '\\'; break;
+      case '0': d = '\0'; ++src; break;
+      case 'n': d = '\n'; ++src; break;
+      case 'r': d = '\r'; ++src; break;
+      case 't': d = '\t'; ++src; break;
       case 'x':
 	if (isxdigit(src[1]) && isxdigit(src[2])) {
 	  ++src;
-	  fromhex(dst++, src, 1);
+	  fromhex(&d, src, 1);
 	  src += 2;
 	  break;
 	}
 	// fall through
       default:
-	*dst++ = *src++;
+	d = *src++;
 	break;
       }
+      *dst++ = d;
       break;
     default:
       *dst++ = *src++;
       break;
     }
   }
+  if (afterp)
+    *afterp = src;
   return dst - odst;
 }
 

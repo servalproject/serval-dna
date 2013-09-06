@@ -64,24 +64,41 @@ extern const char hexdigit[16];
 char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes);
 size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
 int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
-int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value);
-char *str_toupper_inplace(char *s);
+size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *src, const char **afterp);
 
 #define alloca_tohex(buf,len)           tohex((char *)alloca((len)*2+1), (buf), (len))
 
 __STR_INLINE int hexvalue(char c)
 {
-  if (c >= '0' && c <= '9') return c - '0';
-  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  switch (c) {
+  case '0': return 0;
+  case '1': return 1;
+  case '2': return 2;
+  case '3': return 3;
+  case '4': return 4;
+  case '5': return 5;
+  case '6': return 6;
+  case '7': return 7;
+  case '8': return 8;
+  case '9': return 9;
+  case 'a': case 'A': return 10;
+  case 'b': case 'B': return 11;
+  case 'c': case 'C': return 12;
+  case 'd': case 'D': return 13;
+  case 'e': case 'E': return 14;
+  case 'f': case 'F': return 15;
+  }
   return -1;
 }
+
+int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value);
+char *str_toupper_inplace(char *s);
 
 char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes, const char quotes[2]);
 char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2]);
 size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2]);
 size_t toprint_str_len(const char *srcStr, const char quotes[2]);
-size_t str_fromprint(unsigned char *dst, const char *src);
+size_t strn_fromprint(unsigned char *dst, size_t dstlen, const char *src, char endquote, const char **afterp);
 
 #define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((const char *)(buf),(len), "``") + 1 : (dstlen)), (dstlen), (const char *)(buf), (len), "``")
 #define alloca_str_toprint_quoted(str, quotes)  toprint_str((char *)alloca(toprint_str_len((str), (quotes)) + 1), -1, (str), (quotes))

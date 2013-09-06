@@ -25,11 +25,19 @@ shopt -s extglob
 
 setup() {
     setup_servald
-    executeOk_servald config \
-      set log.console.level debug \
-      set debug.keyring on
-    executeOk_servald keyring list
-    assert_keyring_list 0
+    setup_instances +A
+    set_instance +A
+}
+
+setup_instances() {
+   for arg; do
+      set_instance $arg
+      executeOk_servald config \
+         set log.console.level debug \
+         set debug.keyring on
+      executeOk_servald keyring list
+      assert_keyring_list 0
+   done
 }
 
 assert_keyring_list() {
@@ -138,6 +146,109 @@ teardown_KeyringAutoCreate() {
    report_servald_server
 }
 
+doc_Load="Load keyring entries from a keyring dump"
+setup_Load() {
+   setup_servald
+   setup_instances +A +B
+   set_instance +A
+   executeOk_servald keyring add ''
+   executeOk_servald keyring add ''
+   executeOk_servald keyring dump --secret dA
+   set_instance +B
+   executeOk_servald keyring add ''
+   executeOk_servald keyring dump --secret dB
+   set_instance +A
+   tfw_cat dA dB
+   assert ! cmp dA dB
+}
+test_Load() {
+   set_instance +B
+   executeOk_servald keyring load dA
+   tfw_cat --stderr
+   executeOk_servald keyring dump --secret dBA
+   tfw_cat dBA
+   assert [ $(cat dBA | wc -l) -eq $(( $(cat dA | wc -l) + $(cat dB | wc -l) )) ]
+   while read line; do
+      assertGrep --fixed-strings dBA "${line#[0-9]}"
+   done < dA
+   while read line; do
+      assertGrep --fixed-strings dBA "${line#[0-9]}"
+   done < dB
+   set_instance +A
+   executeOk_servald keyring load dB
+   tfw_cat --stderr
+   executeOk_servald keyring dump --secret dAB
+   assert cmp dAB dBA
+}
+
+doc_LoadAtomic="Load is atomic: all entries are loaded or none"
+setup_LoadAtomic() {
+   setup_Load
+   echo blah >>dA
+}
+test_LoadAtomic() {
+   set_instance +B
+   execute --exit-status=255 $servald keyring load dA
+   executeOk_servald keyring dump --secret dB2
+   tfw_cat dB2
+   assert cmp dB2 dB
+}
+
+doc_LoadDuplicates="Load de-duplicates keyring entries by SID"
+setup_LoadDuplicates() {
+   setup
+   executeOk_servald keyring add ''
+   executeOk_servald keyring dump --secret dA
+   tfw_cat dA
+}
+test_LoadDuplicates() {
+   executeOk_servald keyring load dA
+   tfw_cat --stderr
+   executeOk_servald keyring dump --secret dAA
+   tfw_cat dAA
+   assert cmp dA dAA
+}
+
+doc_LoadPins="Load keyring entries with PIN arguments"
+setup_LoadPins() {
+   setup_servald
+   setup_instances +A +B
+   set_instance +A
+   executeOk_servald keyring add ''
+   executeOk_servald keyring add ''
+   executeOk_servald keyring add ''
+   executeOk_servald keyring dump --secret dA
+   set_instance +B
+   executeOk_servald keyring add ''
+   executeOk_servald keyring dump --secret dB
+   set_instance +A
+   tfw_cat dA dB
+   assert ! cmp dA dB
+}
+test_LoadPins() {
+   set_instance +B
+   executeOk_servald keyring load dA pin1 '' pin3
+   tfw_cat --stderr
+   for pin in '' pin1 pin3; do
+      executeOk_servald keyring dump --entry-pin="$pin" --secret dBA
+      tfw_cat --stderr dBA
+      let n=0
+      while read line; do
+         case "$pin=$line" in
+         pin1=0:* | *=1:* | pin3=2:* )
+            assertGrep --fixed-strings dBA "${line#[0-9]}"
+            let ++n
+            ;;
+         esac
+      done < dA
+      while read line; do
+         assertGrep --fixed-strings dBA "${line#[0-9]}"
+         let ++n
+      done < dB
+      assert [ $(cat dBA | wc -l) -eq $n ]
+   done
+}
+
 doc_CompatibleBack1="Can read old keyring file (1)"
 setup_CompatibleBack1() {
     setup_servald
@@ -196,7 +307,7 @@ test_KeyringPathEnv() {
     assert [ "$(replayStdout)" == "$orig" ]
 }
 
-doc_ReadOnlyEnv="Use keyring specified by environment variable"
+doc_ReadOnlyEnv="Read-only keyring environment variable"
 setup_ReadOnlyEnv() {
     setup
     executeOk_servald keyring add ''

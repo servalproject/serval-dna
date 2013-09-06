@@ -982,8 +982,6 @@ assertGrep() {
    fi
    _tfw_dump_on_fail "$1"
    _tfw_get_content "$1" || return $?
-   local s=s
-   local message
    _tfw_assert_grep "${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$1" "$_tfw_tmp/content" "$2" || _tfw_failexit
 }
 
@@ -1222,6 +1220,7 @@ _tfw_getopts() {
    _tfw_opt_line=
    _tfw_opt_line_sed=
    _tfw_opt_line_msg=
+   _tfw_opt_grepopts=()
    _tfw_getopts_shift=0
    local oo
    _tfw_shopt oo -s extglob
@@ -1241,6 +1240,7 @@ _tfw_getopts() {
       wait_until:--timeout=*) _tfw_error "invalid value: $1";;
       wait_until:--sleep=@(+([0-9])?(.+([0-9]))|*([0-9]).+([0-9]))) _tfw_opt_sleep="${1#*=}";;
       wait_until:--sleep=*) _tfw_error "invalid value: $1";;
+      *grep:--fixed-strings) _tfw_opt_grepopts+=(-F);;
       assertcontentgrep:--matches=+([0-9])) _tfw_opt_matches="${1#*=}";;
       assertcontentgrep:--matches=*) _tfw_error "invalid value: $1";; 
       assertcontent*:--line=+([0-9])) _tfw_opt_line="${1#*=}"; _tfw_opt_line_msg="line $_tfw_opt_line";;
@@ -1398,7 +1398,7 @@ _tfw_assert_grep() {
       _tfw_error "$file is not readable"
       ret=$?
    else
-      local matches=$(( $($GREP --regexp="$pattern" "$file" | wc -l) + 0 ))
+      local matches=$(( $($GREP "${_tfw_opt_grepopts[@]}" --regexp="$pattern" "$file" | wc -l) + 0 ))
       local done=false
       local ret=0
       local info="$matches match"$([ $matches -ne 1 ] && echo "es")
