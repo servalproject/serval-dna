@@ -146,6 +146,26 @@ teardown_KeyringAutoCreate() {
    report_servald_server
 }
 
+doc_KeyringPinServer="Start a server with a keyring PIN"
+setup_KeyringPinServer() {
+   setup
+   create_single_identity --keyring-pin=yellow
+}
+test_KeyringPinServer() {
+   start_servald_server --keyring-pin=yellow
+   executeOk_servald id self
+   assertStdoutLineCount == 1
+   assertStdoutGrep --fixed-strings "$SIDA"
+}
+finally_KeyringPinServer() {
+   stop_servald_server
+}
+teardown_KeyringPinServer() {
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_servald_server
+}
+
 doc_Load="Load keyring entries from a keyring dump"
 setup_Load() {
    setup_servald

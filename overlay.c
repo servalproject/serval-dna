@@ -91,7 +91,6 @@ int overlayServerMode(const struct cli_parsed *parsed)
   keyring = keyring_open_instance_cli(parsed);
   if (!keyring)
     RETURN(WHY("Could not open serval keyring file."));
-  keyring_enter_pin(keyring, "");
   /* put initial identity in if we don't have any visible */
   keyring_seed(keyring);
 

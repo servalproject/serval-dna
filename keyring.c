@@ -290,7 +290,7 @@ void keyring_free_identity(keyring_identity *id)
 int keyring_enter_keyringpin(keyring_file *k, const char *pin)
 {
   if (config.debug.keyring)
-    DEBUGF("k=%p", k);
+    DEBUGF("k=%p pin=%s", k, alloca_str_toprint(pin));
   if (!k)
     return WHY("k is null");
   if (k->context_count >= KEYRING_MAX_CONTEXTS)
@@ -325,9 +325,10 @@ int keyring_enter_keyringpin(keyring_file *k, const char *pin)
   level function, and all we need to know here is that we shouldn't decrypt the
   first 96 bytes of the block.
 */
-int keyring_munge_block(unsigned char *block,int len /* includes the first 96 bytes */,
-			unsigned char *KeyRingSalt,int KeyRingSaltLen,
-			const char *KeyRingPin, const char *PKRPin)
+static int keyring_munge_block(
+  unsigned char *block, int len /* includes the first 96 bytes */,
+  unsigned char *KeyRingSalt, int KeyRingSaltLen,
+  const char *KeyRingPin, const char *PKRPin)
 {
   if (config.debug.keyring)
     DEBUGF("KeyRingPin=%s PKRPin=%s", alloca_str_toprint(KeyRingPin), alloca_str_toprint(PKRPin));
@@ -1055,8 +1056,12 @@ static int keyring_identity_mac(const keyring_identity *id, unsigned char *pkrsa
  * munged, we then need to verify that the slot is valid, and if so unpack the details of the
  * identity.
  */
-int keyring_decrypt_pkr(keyring_file *k, keyring_context *c, const char *pin, int slot_number)
+static int keyring_decrypt_pkr(keyring_file *k, unsigned cn, const char *pin, int slot_number)
 {
+  if (config.debug.keyring)
+    DEBUGF("k=%p, cn=%u pin=%s slot_number=%d", k, cn, alloca_str_toprint(pin), slot_number);
+  assert(cn < k->context_count);
+  keyring_context *cx = k->contexts[cn];
   unsigned char slot[KEYRING_PAGE_SIZE];
   keyring_identity *id=NULL;
 
@@ -1066,7 +1071,7 @@ int keyring_decrypt_pkr(keyring_file *k, keyring_context *c, const char *pin, in
   if (fread(slot, KEYRING_PAGE_SIZE, 1, k->file) != 1)
     return WHY_perror("fread");
   /* 2. Decrypt data from slot. */
-  if (keyring_munge_block(slot, KEYRING_PAGE_SIZE, c->KeyRingSalt, c->KeyRingSaltLen, c->KeyRingPin, pin)) {
+  if (keyring_munge_block(slot, KEYRING_PAGE_SIZE, cx->KeyRingSalt, cx->KeyRingSaltLen, cx->KeyRingPin, pin)) {
     WHYF("keyring_munge_block() failed, slot=%u", slot_number);
     goto kdp_safeexit;
   }
@@ -1097,7 +1102,7 @@ int keyring_decrypt_pkr(keyring_file *k, keyring_context *c, const char *pin, in
     }
   }
   /* All fine, so add the id into the context and return. */
-  c->identities[c->identity_count++]=id;
+  cx->identities[cx->identity_count++] = id;
   return 0;
 
  kdp_safeexit:
@@ -1125,9 +1130,9 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
 
   // Check if PIN is already entered.
   {
-    unsigned c;
-    for (c = 0; c < k->context_count; ++c) {
-      keyring_context *cx = k->contexts[c];
+    unsigned cn;
+    for (cn = 0; cn < k->context_count; ++cn) {
+      keyring_context *cx = k->contexts[cn];
       unsigned i;
       for (i = 0; i < cx->identity_count; ++i) {
 	keyring_identity *id = cx->identities[i];
@@ -1159,9 +1164,9 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
 	if (b->bitmap[byte]&(1<<bit)) {
 	  /* Slot is occupied, so check it.
 	      We have to check it for each keyring context (ie keyring pin) */
-	  int c;
-	  for (c=0;c<k->context_count;c++)
-	    if (keyring_decrypt_pkr(k,k->contexts[c],pin?pin:"",slot) == 0)
+	  int cn;
+	  for (cn = 0; cn < k->context_count; ++cn)
+	    if (keyring_decrypt_pkr(k, cn, pin, slot) == 0)
 	      ++identitiesFound;
 	}
       }
@@ -1730,8 +1735,10 @@ int keyring_seed(keyring_file *k)
   if (!k) return WHY("keyring is null");
 
   /* nothing to do if there is already an identity */
-  if (k->contexts[0]->identity_count)
-    return 0;
+  unsigned cn;
+  for (cn = 0; cn < k->context_count; ++cn)
+    if (k->contexts[cn]->identity_count)
+      return 0;
   int i;
   char did[65];
   /* Securely generate random telephone number */
