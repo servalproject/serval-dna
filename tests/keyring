@@ -146,7 +146,7 @@ teardown_KeyringAutoCreate() {
    report_servald_server
 }
 
-doc_KeyringPinServer="Start a server with a keyring PIN"
+doc_KeyringPinServer="Start daemon with a keyring PIN"
 setup_KeyringPinServer() {
    setup
    create_single_identity --keyring-pin=yellow
@@ -161,6 +161,46 @@ finally_KeyringPinServer() {
    stop_servald_server
 }
 teardown_KeyringPinServer() {
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_servald_server
+}
+
+doc_EntryPinServer="Start daemon with an entry PIN"
+setup_EntryPinServer() {
+   setup
+   create_single_identity --entry-pin=yodel
+}
+test_EntryPinServer() {
+   start_servald_server --entry-pin=yodel
+   executeOk_servald id self
+   assertStdoutLineCount == 1
+   assertStdoutGrep --fixed-strings "$SIDA"
+}
+finally_KeyringPinServer() {
+   stop_servald_server
+}
+teardown_KeyringPinServer() {
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_servald_server
+}
+
+doc_KeyringEntryPinServer="Start daemon with a keyring and an entry PIN"
+setup_KeyringEntryPinServer() {
+   setup
+   create_single_identity --keyring-pin=yellow --entry-pin=yodel
+}
+test_KeyringEntryPinServer() {
+   start_servald_server --keyring-pin=yellow --entry-pin=yodel
+   executeOk_servald id self
+   assertStdoutLineCount == 1
+   assertStdoutGrep --fixed-strings "$SIDA"
+}
+finally_KeyringKeyringPinServer() {
+   stop_servald_server
+}
+teardown_KeyringKeyringPinServer() {
    kill_all_servald_processes
    assert_no_servald_processes
    report_servald_server
