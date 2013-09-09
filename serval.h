@@ -199,9 +199,9 @@ struct decode_context;
 typedef struct keypair {
   int type;
   unsigned char *private_key;
-  unsigned private_key_len;
+  size_t private_key_len;
   unsigned char *public_key;
-  unsigned public_key_len;
+  size_t public_key_len;
 } keypair;
 
 /* Contains just the list of private:public key pairs and types,

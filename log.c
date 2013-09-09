@@ -238,7 +238,7 @@ static void _log_prefix(_log_iterator *it, int level)
       if (strftime(buf, sizeof buf, "%T", &it->tm) == 0)
 	xputs("EMPTYTIME___ ", it->xpf);
       else
-	xprintf(it->xpf, "%s.%03u ", buf, it->tv.tv_usec / 1000);
+	xprintf(it->xpf, "%s.%03u ", buf, (unsigned int)it->tv.tv_usec / 1000);
     }
   }
 }
@@ -667,7 +667,7 @@ void logString(int level, struct __sourceloc whence, const char *str)
 	_log_iterator_rewind(&it);
 	while (_log_iterator_next(&it, level)) {
 	  _log_prefix_whence(&it, whence);
-	  xprintf(it.xpf, "%.*s", p - s, s);
+	  xprintf(it.xpf, "%.*s", (int)(p - s), s);
 	}
 	s = p + 1;
       }
@@ -676,7 +676,7 @@ void logString(int level, struct __sourceloc whence, const char *str)
       _log_iterator_rewind(&it);
       while (_log_iterator_next(&it, level)) {
 	_log_prefix_whence(&it, whence);
-	xprintf(it.xpf, "%.*s", p - s, s);
+	xprintf(it.xpf, "%.*s", (int)(p - s), s);
       }
     }
   }

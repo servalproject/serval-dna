@@ -486,7 +486,7 @@ static int _load_decode_hex(const char **hex, unsigned char **buf, size_t *len)
       return -1;
   }
   else if (hexlen != *len)
-    return WHYF("invalid hex value, incorrect length (expecting %u bytes, got %u)", *len, hexlen);
+    return WHYF("invalid hex value, incorrect length (expecting %zu bytes, got %zu)", *len, hexlen);
   strn_fromhex(*buf, *len, *hex, hex);
   assert(*hex == end);
   return 0;
@@ -966,7 +966,7 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
     }
     if (keypair_len > rotbuf_remain(&rbuf)) {
       if (config.debug.keyring)
-	DEBUGF("invalid keypair length %u", keypair_len);
+	DEBUGF("invalid keypair length %zu", keypair_len);
       keyring_free_identity(id);
       return NULL;
     }
