@@ -1784,15 +1784,18 @@ int app_keyring_load(const struct cli_parsed *parsed, struct cli_context *contex
   const char *path;
   if (cli_arg(parsed, "file", &path, cli_path_regular, NULL) == -1)
     return -1;
+  const char *kpin;
+  if (cli_arg(parsed, "keyring-pin", &kpin, NULL, "") == -1)
+    return -1;
   unsigned pinc = 0;
   unsigned i;
   for (i = 0; i < parsed->labelc; ++i)
-    if (strn_str_cmp(parsed->labelv[i].label, parsed->labelv[i].len, "pin") == 0)
+    if (strn_str_cmp(parsed->labelv[i].label, parsed->labelv[i].len, "entry-pin") == 0)
       ++pinc;
   const char *pinv[pinc];
   unsigned pc = 0;
   for (i = 0; i < parsed->labelc; ++i)
-    if (strn_str_cmp(parsed->labelv[i].label, parsed->labelv[i].len, "pin") == 0) {
+    if (strn_str_cmp(parsed->labelv[i].label, parsed->labelv[i].len, "entry-pin") == 0) {
       assert(pc < pinc);
       pinv[pc++] = parsed->labelv[i].text;
     }
@@ -1805,7 +1808,7 @@ int app_keyring_load(const struct cli_parsed *parsed, struct cli_context *contex
     keyring_free(k);
     return -1;
   }
-  if (keyring_load(k, 0, pinc, pinv, fp) == -1) {
+  if (keyring_load(k, kpin, pinc, pinv, fp) == -1) {
     keyring_free(k);
     return -1;
   }
@@ -2432,7 +2435,7 @@ struct cli_schema command_line_options[]={
    "Create a new keyring file."},
   {app_keyring_dump,{"keyring","dump" KEYRING_PIN_OPTIONS,"[--secret]","[<file>]",NULL}, 0,
    "Dump all keyring identities that can be accessed using the specified PINs"},
-  {app_keyring_load,{"keyring","load" KEYRING_PIN_OPTIONS,"<file>","[<pin>]...",NULL}, 0,
+  {app_keyring_load,{"keyring","load" KEYRING_PIN_OPTIONS,"<file>","[<keyring-pin>]","[<entry-pin>]...",NULL}, 0,
    "Load identities from the given dump text and insert them into the keyring using the specified entry PINs"},
   {app_keyring_list,{"keyring","list" KEYRING_PIN_OPTIONS,NULL}, 0,
    "List identities that can be accessed using the supplied PINs"},

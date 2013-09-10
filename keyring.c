@@ -279,14 +279,12 @@ void keyring_free_identity(keyring_identity *id)
   return;
 }
 
-/* Create a new keyring context for the loaded keyring file.
-   We don't need to load any identities etc, as that happens when we enter
-   an identity pin.
-   If the pin is NULL, it is assumed to be blank.
-   The pin does NOT have to be numeric, and has no practical length limitation,
-   as it is used as an input into a hashing function.  But for sanity sake, let's
-   limit it to 16KB.
-*/
+/* Create a new keyring context for the loaded keyring file.  Returns the index of the context.  We
+ * don't need to load any identities etc, as that happens when we enter an identity pin.  If the pin
+ * is NULL, it is assumed to be blank.  The pin does NOT have to be numeric, and has no practical
+ * length limitation, as it is used as an input into a hashing function.  But for sanity sake, let's
+ * limit it to 16KB.
+ */
 int keyring_enter_keyringpin(keyring_file *k, const char *pin)
 {
   if (config.debug.keyring)
@@ -300,7 +298,7 @@ int keyring_enter_keyringpin(keyring_file *k, const char *pin)
   int cn;
   for (cn = 0; cn < k->context_count; ++cn)
     if (strcmp(k->contexts[cn]->KeyRingPin, pin) == 0)
-      return 1;
+      return cn;
   keyring_context *c = emalloc_zero(sizeof(keyring_context));
   if (c == NULL)
     return -1;
@@ -314,8 +312,8 @@ int keyring_enter_keyringpin(keyring_file *k, const char *pin)
     return -1;
   }
   bcopy(k->contexts[0]->KeyRingSalt, c->KeyRingSalt, c->KeyRingSaltLen);
-  k->contexts[k->context_count++] = c;
-  return 0;
+  k->contexts[k->context_count] = c;
+  return k->context_count++;
 }
 
 /*
@@ -1880,9 +1878,11 @@ int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret)
   return 0;
 }
 
-int keyring_load(keyring_file *k, int cn, unsigned pinc, const char **pinv, FILE *input)
+int keyring_load(keyring_file *k, const char *keyring_pin, unsigned entry_pinc, const char **entry_pinv, FILE *input)
 {
-  assert(cn < k->context_count);
+  int cn = keyring_enter_keyringpin(k, keyring_pin);
+  if (cn == -1)
+    return -1;
   keyring_context *cx = k->contexts[cn];
   clearerr(input);
   char line[1024];
@@ -1930,7 +1930,7 @@ int keyring_load(keyring_file *k, int cn, unsigned pinc, const char **pinv, FILE
 	keyring_free_keypair(kp);
 	return -1;
       }
-      if ((id->PKRPin = str_edup(pini < pinc ? pinv[pini++] : "")) == NULL) {
+      if ((id->PKRPin = str_edup(pini < entry_pinc ? entry_pinv[pini++] : "")) == NULL) {
 	keyring_free_keypair(kp);
 	keyring_free_identity(id);
 	return -1;

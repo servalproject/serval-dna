@@ -287,10 +287,13 @@ setup_LoadPins() {
 }
 test_LoadPins() {
    set_instance +B
-   executeOk_servald keyring load dA pin1 '' pin3
+   executeOk_servald keyring load dA krpin pin1 '' pin3
+   executeOk_servald keyring dump --secret dBA
+   tfw_cat dBA
+   assert cmp dB dBA
    tfw_cat --stderr
    for pin in '' pin1 pin3; do
-      executeOk_servald keyring dump --entry-pin="$pin" --secret dBA
+      executeOk_servald keyring dump --keyring-pin=krpin --entry-pin="$pin" --secret dBA
       tfw_cat --stderr dBA
       let n=0
       while read line; do
