@@ -11,6 +11,9 @@
 #include <string.h>
 #include <unistd.h>
 
+int chars_per_ms=1;
+int ber=0;
+
 struct radio_state {
   int state;
   char commandbuffer[128];
@@ -39,9 +42,40 @@ long long gettime_ms()
   return nowtv.tv_sec * 1000LL + nowtv.tv_usec / 1000;
 }
 
+int emitChar(int fd,unsigned char c)
+{
+  // Introduce bit errors as required
+  int i;
+  
+  for(i=0;i<8;i++) {
+    if (random()<ber) {
+      c^=(1<<i);
+      printf("Flipped a bit\n");
+    }
+  }
+
+  while(write(fd,&c,1)<1) {
+    printf("Retrying write...errno=%d\n",errno);
+    break;
+    usleep(10000);
+  }
+  return 0;
+}
+
 int emit(int fd,char *s)
 {
-  return write(fd,s,strlen(s));
+  int off=0,len=strlen(s);
+
+  off=write(fd,&s[off],len-off);
+  if (off<0) off=0;
+  while(off<len) {
+    printf("Retrying write... (%d of %d bytes sent, errno=%d)\n",off,len,errno);
+    usleep(10000);
+    int w=write(fd,&s[off],len-off);
+    if (w>0) off+=w;
+    break;
+  }
+  return 0;
 }
 
 int processCommand(int fd,struct radio_state *s,int out_fd)
@@ -73,6 +107,22 @@ int processCommand(int fd,struct radio_state *s,int out_fd)
   return 1;
 }
 
+int dump(char *name,unsigned char *addr,int len)
+{
+  int i,j;
+  fprintf(stderr,"Dump of %s\n",name);
+  for(i=0;i<len;i+=16) 
+    {
+      fprintf(stderr,"  %04x :",i);
+      for(j=0;j<16&&(i+j)<len;j++) fprintf(stderr," %02x",addr[i+j]);
+      for(;j<16;j++) fprintf(stderr,"   ");
+      fprintf(stderr,"    ");
+      for(j=0;j<16&&(i+j)<len;j++) fprintf(stderr,"%c",addr[i+j]>=' '&&addr[i+j]<0x7f?addr[i+j]:'.');
+      fprintf(stderr,"\n");
+    }
+  return 0;
+}
+
 int print_report=0;
 
 int updateState(int fd,struct radio_state *s,int out_fd)
@@ -96,17 +146,12 @@ int updateState(int fd,struct radio_state *s,int out_fd)
       s->last_char_ms=gettime_ms();
 
   if (bytes>0) { 
-    fprintf(stderr,"Received %d bytes: ",bytes);
-    for(i=0;i<bytes&&i<32;i++) {
-      unsigned char c=s->txbuffer[s->txb_len-bytes+i];
-      if (c>=' '&&c<0x7d) fprintf(stderr,"%c",c); else fprintf(stderr,"?");      
-    }
-    if (bytes>20) fprintf(stderr,"...");
-    fprintf(stderr,"\n");
+    fprintf(stderr,"#%d Received %d bytes: ",fd,bytes);
+    dump("received bytes",&s->txbuffer[s->txb_len-bytes],bytes);
   }
 
   // work out how many bytes we can dispatch
-  long long tx_count_allowed=gettime_ms()-s->last_tx_ms;
+  long long tx_count_allowed=(gettime_ms()-s->last_tx_ms)*chars_per_ms;
 
   // now go through the TX buffer and dispatch them
   // (or change state as appropriate)
@@ -116,20 +161,21 @@ int updateState(int fd,struct radio_state *s,int out_fd)
     case STATE_ONLINE:
       if (s->txbuffer[0]!='+') { 
 	s->state=STATE_ONLINE;
-	char c[2]; c[0]=s->txbuffer[0]; c[1]=0;
-	emit(out_fd,c);
+	emitChar(out_fd,s->txbuffer[0]);
       } else { s->state=STATE_PLUS; i--; }
       break;
     case STATE_PLUS:
       if (s->txbuffer[0]!='+') { 
 	s->state=STATE_ONLINE;
 	emit(out_fd,"+"); i+=1;
+	emitChar(out_fd,s->txbuffer[0]);
       } else { s->state=STATE_PLUSPLUS; i--; }
       break;
     case STATE_PLUSPLUS:
       if (s->txbuffer[0]!='+') { 
 	s->state=STATE_ONLINE;
 	emit(out_fd,"++"); i+=2;
+	emitChar(out_fd,s->txbuffer[0]);
       } else { s->state=STATE_PLUSPLUSPLUS; i--; }
       break;
     case STATE_PLUSPLUSPLUS: 
@@ -145,9 +191,7 @@ int updateState(int fd,struct radio_state *s,int out_fd)
       break;
     case STATE_COMMAND:
       {
-	char c[2];
-	c[0]=s->txbuffer[0]; c[1]=0;
-	emit(fd,c);
+	emitChar(out_fd,s->txbuffer[0]);
 	if (s->txbuffer[0]=='\r'||s->txbuffer[0]=='\n') {
 	  // end of command
 	  processCommand(fd,s,out_fd);
@@ -185,6 +229,12 @@ int updateState(int fd,struct radio_state *s,int out_fd)
 
 int main(int argc,char **argv)
 {
+  if (argv[1]) {
+    chars_per_ms=atoi(argv[1]);
+    if (argv[2]) 
+      ber=atoi(argv[2]);
+  }
+
   struct radio_state left_state,right_state;
   bzero(&left_state,sizeof left_state);
   bzero(&right_state,sizeof right_state);
