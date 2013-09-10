@@ -186,6 +186,10 @@ void overlay_rhizome_advertise(struct sched_ent *alarm){
   int (*oldfunc)() = sqlite_set_tracefunc(is_debug_rhizome_ads);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
+  // DEPRECATE REST OF THIS CODE WHICH SEEMS TO BE CAUSING TOO MUCH CHATTER
+  // ESPECIALLY FOR PACKET-RADIO
+  goto end;
+
   /* Get number of bundles available */
   if (sqlite_exec_int64_retry(&retry, &bundles_available, "SELECT COUNT(BAR) FROM MANIFESTS;") != 1){
     WHY("Could not count BARs for advertisement");
