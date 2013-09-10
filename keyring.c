@@ -224,11 +224,8 @@ void keyring_free(keyring_file *k)
 
 static void wipestr(char *str)
 {
-  while (*str) {
-    if (config.debug.keyring)
-      DEBUGF("wiping PIN char '%c'", *str);
+  while (*str)
     *str++ = ' ';
-  }
 }
 
 void keyring_free_context(keyring_context *c)
