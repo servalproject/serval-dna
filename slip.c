@@ -42,8 +42,48 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define DC_VALID 1
 #define DC_ESC 2
 
+static int encode_slip(const unsigned char *src, int src_bytes, unsigned char *dst, int dst_len)
+{
+  int i, offset=0;
+  for (i=0;i<src_bytes;i++){
+    
+    if (offset+3>dst_len)
+      return WHY("Dest buffer full");
+    
+    switch(src[i]) {
+      case SLIP_END:
+	dst[offset++]=SLIP_ESC;
+	dst[offset++]=SLIP_ESC_END;
+	break;
+      case SLIP_ESC:
+	dst[offset++]=SLIP_ESC;
+	dst[offset++]=SLIP_ESC_ESC;
+	break;
+      case SLIP_0a:
+	dst[offset++]=SLIP_ESC;
+	dst[offset++]=SLIP_ESC_0a;
+	break;
+      case SLIP_0d:
+	dst[offset++]=SLIP_ESC;
+	dst[offset++]=SLIP_ESC_0d;
+	break;
+      case SLIP_0f:
+	dst[offset++]=SLIP_ESC;
+	dst[offset++]=SLIP_ESC_0f;
+	break;
+      case SLIP_1b:
+	dst[offset++]=SLIP_ESC;
+	dst[offset++]=SLIP_ESC_1b;
+	break;
+      default:
+	dst[offset++]=src[i];
+    }
+  }
+  return offset;
+}
+
 int slip_encode(int format,
-		unsigned char *src, int src_bytes, unsigned char *dst, int dst_len)
+		const unsigned char *src, int src_bytes, unsigned char *dst, int dst_len)
 {
   switch(format) {
   case SLIP_FORMAT_MAVLINK:
@@ -87,51 +127,25 @@ int slip_encode(int format,
   case SLIP_FORMAT_SLIP:
     {
       int offset=0;
-      int i;
-      
+
       if (offset+2>dst_len)
 	return WHY("Dest buffer full");
       
       dst[offset++]=SLIP_END;
       
-      uint32_t crc=Crc32_ComputeBuf( 0, src, src_bytes);
-      // (I'm assuming there are 4 extra bytes in memory here, which is very naughty...)
-      write_uint32(src+src_bytes, crc);
+      int ret=encode_slip(src, src_bytes, dst + offset, dst_len - offset);
+      if (ret<0)
+	return ret;
+      offset+=ret;
       
-      for (i=0;i<src_bytes+4;i++){
-	
-	if (offset+3>dst_len)
-	  return WHY("Dest buffer full");
-	
-	switch(src[i]) {
-	  case SLIP_END:
-	    dst[offset++]=SLIP_ESC;
-	    dst[offset++]=SLIP_ESC_END;
-	    break;
-	  case SLIP_ESC:
-	    dst[offset++]=SLIP_ESC;
-	    dst[offset++]=SLIP_ESC_ESC;
-	    break;
-	  case SLIP_0a:
-	    dst[offset++]=SLIP_ESC;
-	    dst[offset++]=SLIP_ESC_0a;
-	    break;
-	  case SLIP_0d:
-	    dst[offset++]=SLIP_ESC;
-	    dst[offset++]=SLIP_ESC_0d;
-	    break;
-	  case SLIP_0f:
-	    dst[offset++]=SLIP_ESC;
-	    dst[offset++]=SLIP_ESC_0f;
-	    break;
-	  case SLIP_1b:
-	    dst[offset++]=SLIP_ESC;
-	    dst[offset++]=SLIP_ESC_1b;
-	    break;
-	  default:
-	    dst[offset++]=src[i];
-	}
-      }
+      unsigned char crc[4];
+      write_uint32(crc, Crc32_ComputeBuf( 0, src, src_bytes));
+      
+      ret=encode_slip(crc, 4, dst + offset, dst_len - offset);
+      if (ret<0)
+	return ret;
+      offset+=ret;
+      
       dst[offset++]=SLIP_END;
       
       return offset;

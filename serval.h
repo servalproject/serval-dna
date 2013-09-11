@@ -698,8 +698,7 @@ overlay_interface * overlay_interface_get_default();
 overlay_interface * overlay_interface_find(struct in_addr addr, int return_default);
 overlay_interface * overlay_interface_find_name(const char *name);
 int overlay_interface_compare(overlay_interface *one, overlay_interface *two);
-int overlay_broadcast_ensemble(struct network_destination *destination,
-			       unsigned char *bytes,int len);
+int overlay_broadcast_ensemble(struct network_destination *destination, struct overlay_buffer *buffer);
 
 int directory_registration();
 int directory_service_init();
@@ -849,7 +848,7 @@ int measure_packed_uint(uint64_t v);
 int unpack_uint(unsigned char *buffer, int buff_size, uint64_t *v);
 
 int slip_encode(int format,
-		unsigned char *src, int src_bytes, unsigned char *dst, int dst_len);
+		const unsigned char *src, int src_bytes, unsigned char *dst, int dst_len);
 int slip_decode(struct slip_decode_state *state);
 int upper7_decode(struct slip_decode_state *state,unsigned char byte);
 uint32_t Crc32_ComputeBuf( uint32_t inCrc32, const void *buf,
@@ -880,7 +879,7 @@ int generate_nonce(unsigned char *nonce,int bytes);
 int mavlink_decode(struct slip_decode_state *state,uint8_t c);
 int mavlink_heartbeat(unsigned char *frame,int *outlen);
 int stream_as_mavlink(int sequence_number,int startP,int endP,
-		      unsigned char *data,int count,
+		      const unsigned char *data,int count,
 		      unsigned char *frame,int *outlen);
 
 #endif // __SERVALD_SERVALD_H

@@ -849,21 +849,22 @@ static void overlay_interface_poll(struct sched_ent *alarm)
   }  
 }
 
-int
-overlay_broadcast_ensemble(struct network_destination *destination,
-			   unsigned char *bytes,int len)
+int overlay_broadcast_ensemble(struct network_destination *destination, struct overlay_buffer *buffer)
 {
   assert(destination && destination->interface);
+  const unsigned char *bytes = ob_ptr(buffer);
+  int len = ob_position(buffer);
   
   struct overlay_interface *interface = destination->interface;
   destination->last_tx = gettime_ms();
-
+  
   if (config.debug.packettx){
     DEBUGF("Sending this packet via interface %s (len=%d)",interface->name,len);
-    DEBUG_packet_visualise(NULL,bytes,len);
+    DEBUG_packet_visualise(NULL, bytes, len);
   }
 
   if (interface->state!=INTERFACE_STATE_UP){
+    ob_free(buffer);
     return WHYF("Cannot send to interface %s as it is down", interface->name);
   }
 
@@ -873,31 +874,31 @@ overlay_broadcast_ensemble(struct network_destination *destination,
   switch(interface->socket_type){
     case SOCK_STREAM:
     {
-      if (interface->tx_bytes_pending>0)
+      if (interface->tx_bytes_pending>0){
+	ob_free(buffer);
 	return WHYF("Cannot send two packets to a stream at the same time");
-      
+      }
       /* Encode packet with SLIP escaping.
        XXX - Add error correction here also */
-      unsigned char *buffer = interface->txbuffer;
       int out_len=0;
       
       int encoded = slip_encode(SLIP_FORMAT_MAVLINK,
-				bytes, len, buffer+out_len, sizeof(interface->txbuffer) - out_len);
+				bytes, len, 
+				interface->txbuffer+out_len, sizeof(interface->txbuffer) - out_len);
+      ob_free(buffer);
       if (encoded < 0)
 	return WHY("Buffer overflow");
-						
-      if (config.debug.slip)
-	{
-	  // Test decoding of the packet we send
-	  struct slip_decode_state state;
-	  state.encapsulator=SLIP_FORMAT_MAVLINK;
-	  state.src_size=encoded;
-	  state.src_offset=0;
-	  state.src=buffer+out_len;
-	  slip_decode(&state);
-	  // clear received packet after processing
-	  state.packet_length=0;
-	}
+      if (config.debug.slip){
+	// Test decoding of the packet we send
+	struct slip_decode_state state;
+	state.encapsulator=SLIP_FORMAT_MAVLINK;
+	state.src_size=encoded;
+	state.src_offset=0;
+	state.src=interface->txbuffer+out_len;
+	slip_decode(&state);
+	// clear received packet after processing
+	state.packet_length=0;
+      }
 
       out_len+=encoded;
       
@@ -924,6 +925,7 @@ overlay_broadcast_ensemble(struct network_destination *destination,
       }
       packet.payload_length=len;
       bcopy(bytes, packet.payload, len);
+      ob_free(buffer);
       /* This lseek() is unneccessary because the dummy file is opened in O_APPEND mode.  It's
        only purpose is to find out the offset to print in the DEBUG statement.  It is vulnerable
        to a race condition with other processes appending to the same file. */
@@ -950,8 +952,11 @@ overlay_broadcast_ensemble(struct network_destination *destination,
     {
       if (config.debug.overlayinterfaces) 
 	DEBUGF("Sending %d byte overlay frame on %s to %s",len,interface->name,inet_ntoa(destination->address.sin_addr));
-      if(sendto(interface->alarm.poll.fd, 
-		bytes, len, 0, (struct sockaddr *)&destination->address, sizeof(destination->address)) != len){
+      int sent=sendto(interface->alarm.poll.fd, 
+		bytes, len, 0, 
+		(struct sockaddr *)&destination->address, sizeof(destination->address));
+      ob_free(buffer);
+      if (sent!= len){
 	WHY_perror("sendto(c)");
 	// close the interface if we had any error while sending broadcast packets,
 	// unicast packets should not bring the interface down
@@ -964,6 +969,7 @@ overlay_broadcast_ensemble(struct network_destination *destination,
     }
       
     default:
+      ob_free(buffer);
       return WHY("Unsupported socket type");
   }
 }

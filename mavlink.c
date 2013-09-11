@@ -135,7 +135,7 @@ void encode_rs_8(data_t *data, data_t *parity,int pad);
 int decode_rs_8(data_t *data, int *eras_pos, int no_eras, int pad);
 
 int stream_as_mavlink(int sequence_number,int startP,int endP,
-		      unsigned char *data,int count,
+		      const unsigned char *data,int count,
 		      unsigned char *frame,int *outlen)
 {
   if (count>252-6-32) return -1;
