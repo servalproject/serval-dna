@@ -721,38 +721,50 @@ static void interface_read_stream(struct overlay_interface *interface){
 static void write_stream_buffer(overlay_interface *interface){
   time_ms_t now = gettime_ms();
   
-  int bytes_allowed=interface->tx_bytes_pending;
-  if (bytes_allowed>0 && interface->next_tx_allowed < now) {
-    // Throttle output to a prescribed bit-rate
-    // first, reduce the number of bytes based on the configured burst size
-    if (interface->throttle_burst_write_size && bytes_allowed > interface->throttle_burst_write_size)
-      bytes_allowed = interface->throttle_burst_write_size;
+  // Throttle output to a prescribed bit-rate
+  // first, reduce the number of bytes based on the configured burst size
+  int bytes_allowed=interface->throttle_burst_write_size;
+  
+  if (interface->next_tx_allowed < now){
+    int total_written=0;
+    while ((interface->tx_bytes_pending>0 || interface->tx_packet) && 
+      (bytes_allowed>0 || interface->throttle_burst_write_size==0)) {
+      if (interface->tx_bytes_pending==0 && interface->tx_packet){
+	// TODO firmware heartbeat packets
+	// prepare a new link layer packet in txbuffer
+	if (mavlink_encode_packet(interface))
+	  break;
+      }
     
-    if (config.debug.packetradio) 
-      DEBUGF("Trying to write %d bytes",bytes_allowed);
-    int written=write(interface->alarm.poll.fd,interface->txbuffer,
-		      bytes_allowed);
-    if (written>0) {
+      int bytes = interface->tx_bytes_pending;
+      if (interface->throttle_burst_write_size && bytes>bytes_allowed)
+	bytes=bytes_allowed;
+      if (config.debug.packetradio) 
+	DEBUGF("Trying to write %d bytes",bytes);
+      int written=write(interface->alarm.poll.fd, interface->txbuffer, bytes);
+      if (written<=0)
+	break;
+      
       interface->tx_bytes_pending-=written;
-      bcopy(&interface->txbuffer[written],&interface->txbuffer[0],
-	    interface->tx_bytes_pending);
+      total_written+=written;
+      bytes_allowed-=written;
+      if (interface->tx_bytes_pending)
+	bcopy(&interface->txbuffer[written],&interface->txbuffer[0],
+	      interface->tx_bytes_pending);
       if (config.debug.packetradio) 
 	DEBUGF("Wrote %d bytes (%d left pending)", written, interface->tx_bytes_pending);
-      
-      // Now when are we allowed to send more?
-      if (interface->throttle_bytes_per_second>0) {
-	int delay = written*1000/interface->throttle_bytes_per_second;
-	if (config.debug.throttling)
-	  DEBUGF("Throttling for %dms.",delay);
-	interface->next_tx_allowed = now + delay;
-      }
-    } else {  
-      if (config.debug.packetradio)
-	DEBUGF("Failed to write any data");
+    }
+    
+    // Now when are we allowed to send more?
+    if (interface->throttle_bytes_per_second>0) {
+      int delay = total_written*1000/interface->throttle_bytes_per_second;
+      if (config.debug.throttling)
+	DEBUGF("Throttling for %dms.",delay);
+      interface->next_tx_allowed = now + delay;
     }
   }
   
-  if (interface->tx_bytes_pending>0){
+  if (interface->tx_bytes_pending>0 || interface->tx_packet){
     if (interface->next_tx_allowed > now){
       // We can't write now, so clear POLLOUT flag
       interface->alarm.poll.events&=~POLLOUT;
@@ -874,40 +886,21 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
   switch(interface->socket_type){
     case SOCK_STREAM:
     {
-      if (interface->tx_bytes_pending>0){
+      if (interface->tx_packet){
 	ob_free(buffer);
 	return WHYF("Cannot send two packets to a stream at the same time");
       }
-      /* Encode packet with SLIP escaping.
-       XXX - Add error correction here also */
-      int out_len=0;
       
-      int encoded = slip_encode(SLIP_FORMAT_MAVLINK,
-				bytes, len, 
-				interface->txbuffer+out_len, sizeof(interface->txbuffer) - out_len);
-      ob_free(buffer);
-      if (encoded < 0)
-	return WHY("Buffer overflow");
-      if (config.debug.slip){
-	// Test decoding of the packet we send
-	struct slip_decode_state state;
-	state.encapsulator=SLIP_FORMAT_MAVLINK;
-	state.src_size=encoded;
-	state.src_offset=0;
-	state.src=interface->txbuffer+out_len;
-	slip_decode(&state);
-	// clear received packet after processing
-	state.packet_length=0;
-      }
-
-      out_len+=encoded;
-      
-      interface->tx_bytes_pending=out_len;
+      // prepare the buffer for reading
+      ob_flip(buffer);
+      interface->tx_packet = buffer;
       write_stream_buffer(interface);
+      
       if (interface->alarm.alarm!=-1){
 	unschedule(&interface->alarm);
 	schedule(&interface->alarm);
       }
+      
       return 0;
     }
       

@@ -50,6 +50,7 @@ int ob_free(struct overlay_buffer *b);
 int ob_checkpoint(struct overlay_buffer *b);
 int ob_rewind(struct overlay_buffer *b);
 int ob_limitsize(struct overlay_buffer *b,int bytes);
+int ob_flip(struct overlay_buffer *b);
 int ob_unlimitsize(struct overlay_buffer *b);
 int _ob_makespace(struct __sourceloc whence, struct overlay_buffer *b,int bytes);
 int ob_set(struct overlay_buffer *b, int ofs, unsigned char byte);

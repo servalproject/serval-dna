@@ -452,13 +452,16 @@ typedef struct overlay_interface {
   char name[256];
   
   int recv_offset; /* file offset */
+  
+  // stream socket tx state;
+  struct overlay_buffer *tx_packet;
   unsigned char txbuffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
   int tx_bytes_pending;
-
   // Throttle TX rate if required (stream interfaces only for now)
   uint32_t throttle_bytes_per_second;
   uint32_t throttle_burst_write_size;
   uint64_t next_tx_allowed;
+  
   
   struct slip_decode_state slip_decode_state;
 
@@ -878,8 +881,6 @@ int generate_nonce(unsigned char *nonce,int bytes);
 
 int mavlink_decode(struct slip_decode_state *state,uint8_t c);
 int mavlink_heartbeat(unsigned char *frame,int *outlen);
-int stream_as_mavlink(int sequence_number,int startP,int endP,
-		      const unsigned char *data,int count,
-		      unsigned char *frame,int *outlen);
+int mavlink_encode_packet(struct overlay_interface *interface);
 
 #endif // __SERVALD_SERVALD_H

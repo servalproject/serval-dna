@@ -46,6 +46,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "conf.h"
+#include "overlay_buffer.h"
 
 #define MAVLINK_MSG_ID_RADIO 166
 #define MAVLINK_MSG_ID_DATASTREAM 67
@@ -134,33 +135,40 @@ struct mavlink_RADIO_v10 {
 void encode_rs_8(data_t *data, data_t *parity,int pad);
 int decode_rs_8(data_t *data, int *eras_pos, int no_eras, int pad);
 
-int stream_as_mavlink(int sequence_number,int startP,int endP,
-		      const unsigned char *data,int count,
-		      unsigned char *frame,int *outlen)
+int mavlink_encode_packet(struct overlay_interface *interface)
 {
-  if (count>252-6-32) return -1;
+  int count = ob_remaining(interface->tx_packet);
+  int startP = !ob_position(interface->tx_packet);
+  int endP = 1;
+  if (count>252-6-32){
+    count = 252-6-32;
+    endP = 0;
+  }
   
-  frame[0]=0xfe; // mavlink v1.0 frame
+  interface->txbuffer[0]=0xfe; // mavlink v1.0 frame
   /* payload len, excluding 6 byte header and 2 byte CRC.
      But we use a 4-byte CRC, so need to add two to count to make packet lengths
      be as expected.
      Note that this construction will result in CRC errors by non-servald
      programmes, which is probably more helpful than otherwise.
   */
-  frame[1]=count+32-2;  // we need 32 bytes for the parity, but this field assumes
+  interface->txbuffer[1]=count+32-2;  // we need 32 bytes for the parity, but this field assumes
   // that there is a 2 byte CRC, so we can save two bytes
-  frame[2]=sequence_number; // packet sequence
-  frame[3]=0x00; // system ID of sender (MAV_TYPE_GENERIC)
-  frame[4]=0x40; // component ID of sender: we are reusing this to mark start,end of MDP frames
-  if (startP) frame[4]|=0x01;
-  if (endP) frame[4]|=0x02;
-  frame[5]=MAVLINK_MSG_ID_DATASTREAM; // message ID type of this frame: DATA_STREAM
+  interface->txbuffer[2]=0; // packet sequence
+  interface->txbuffer[3]=0x00; // system ID of sender (MAV_TYPE_GENERIC)
+  interface->txbuffer[4]=0x40; // component ID of sender: we are reusing this to mark start,end of MDP frames
+  if (startP) interface->txbuffer[4]|=0x01;
+  if (endP) interface->txbuffer[4]|=0x02;
+  interface->txbuffer[5]=MAVLINK_MSG_ID_DATASTREAM; // message ID type of this frame: DATA_STREAM
   // payload follows (we reuse the DATA_STREAM message type parameters)
-  bcopy(data,&frame[6],count);
+  ob_get_bytes(interface->tx_packet, &interface->txbuffer[6], count);
   
-  encode_rs_8(&frame[6],&frame[6+count],(223-count));
-  
-  *outlen=6+count+32;
+  encode_rs_8(&interface->txbuffer[6],&interface->txbuffer[6+count],(223-count));
+  interface->tx_bytes_pending=6+count+32;
+  if (endP){
+    ob_free(interface->tx_packet);
+    interface->tx_packet=NULL;
+  }
   return 0;
 }
 

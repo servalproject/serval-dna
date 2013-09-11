@@ -86,44 +86,6 @@ int slip_encode(int format,
 		const unsigned char *src, int src_bytes, unsigned char *dst, int dst_len)
 {
   switch(format) {
-  case SLIP_FORMAT_MAVLINK:
-    {
-      int i;
-      int dst_offset=0;
-      // Radio frames are limited to 252 bytes.
-      // MAVLink header takes 7 bytes
-      // Reed-Solomon parity takes 32 bytes
-      // That leaves a maximum size of 252-39=213 bytes
-      for(i=0;i<src_bytes;i+=213) {
-	int slice_len=0;
-	int slice_bytes=213;
-	if (i+slice_bytes>src_bytes) slice_bytes=src_bytes-i;
-	if (dst_offset+slice_bytes+6+2>=dst_len) {
-	  if (config.debug.mavlink) 
-	    DEBUGF("Would overflow output buffer.");
-	  return -1;
-	} else {
-	  int startP=i?0:1;
-	  int endP=i+slice_bytes==src_bytes?1:0;
-	  stream_as_mavlink(0,startP,endP,&src[i],slice_bytes,&dst[dst_offset],&slice_len);
-	  dst_offset+=slice_len;
-	}
-      }
-      if (config.debug.mavlink) {
-	DEBUGF("Wrote %d byte packet as MAVLink frames",src_bytes);
-      }
-      if (config.debug.mavlink_payloads||config.debug.interactive_io) {
-	DEBUG_packet_visualise("Packet Sent",src,src_bytes);
-      }
-      if (config.debug.interactive_io) {
-	fprintf(stderr,"Press ENTER to continue..."); fflush(stderr);
-	char buffer[80];
-	if (!fgets(buffer,80,stdin))
-	  FATAL_perror("calling fgets");
-      }
-      return dst_offset;
-    }
-    break;
   case SLIP_FORMAT_SLIP:
     {
       int offset=0;

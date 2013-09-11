@@ -139,6 +139,15 @@ int ob_unlimitsize(struct overlay_buffer *b)
   return 0;
 }
 
+int ob_flip(struct overlay_buffer *b)
+{
+  b->checkpointLength=0;
+  if (ob_limitsize(b, b->position))
+    return -1;
+  b->position=0;
+  return 0;
+}
+
 int _ob_makespace(struct __sourceloc __whence, struct overlay_buffer *b,int bytes)
 {
   if (b->sizeLimit!=-1 && b->position+bytes>b->sizeLimit) {
