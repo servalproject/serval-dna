@@ -82,7 +82,7 @@ sqlite-amalgamation-3070900/sqlite3.o:	sqlite-amalgamation-3070900/sqlite3.c
 
 version.o: *.h *.c version_string.sh
 	@echo CC version_servald.c
-	@V=`./version_string.sh` \
+	@V=`./version_string.sh --ignore-untracked` \
 	 && $(CC) -c version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\""
 
 %.o:	%.c
