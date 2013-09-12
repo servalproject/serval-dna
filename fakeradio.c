@@ -2,6 +2,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <errno.h>
@@ -11,7 +12,7 @@
 #include <string.h>
 #include <unistd.h>
 
-int radio_packet_size=256;
+#define PACKET_SIZE 255
 int chars_per_ms=1;
 long ber=0;
 
@@ -21,13 +22,14 @@ struct radio_state {
   const char *name;
   char commandbuffer[128];
   int cb_len;
-  unsigned char txbuffer[1024];
+  unsigned char txbuffer[2048];
   int txb_len;
-  unsigned char rxbuffer[1024];
+  unsigned char rxbuffer[512];
   int rxb_len;
   long long last_char_ms;
   long long next_rssi_time_ms;
   int rssi_output;
+  unsigned char seqnum;
 };
 
 #define STATE_ONLINE 0
@@ -77,6 +79,11 @@ int processCommand(struct radio_state *s)
   log_time();
   fprintf(stderr, "Processing command from %s \"%s\"\n", s->name, cmd);
   
+  if (!strcasecmp(cmd,"AT")) {
+    // Noop
+    append_bytes(s, "OK\r", -1);
+    return 0;
+  }
   if (!strcasecmp(cmd,"ATO")) {
     append_bytes(s, "OK\r", -1);
     s->state=STATE_ONLINE;
@@ -136,10 +143,17 @@ int read_bytes(struct radio_state *s)
     
     // either append to a command buffer
     if (s->state==STATE_COMMAND){
-      if (buff[i]=='\r'||buff[i]=='\n'){
+      if (buff[i]=='\r'){
 	// and process the commend on EOL
 	processCommand(s);
 	s->cb_len=0;
+      
+      // backspace characters
+      }else if (buff[i]=='\b'||buff[i]=='\x7f'){
+	if (s->cb_len>0)
+	  s->cb_len--;
+      
+      // append to command buffer
       }else if (s->cb_len<127)
 	s->commandbuffer[s->cb_len++]=buff[i];
       continue;
@@ -147,7 +161,7 @@ int read_bytes(struct radio_state *s)
     
     // or watch for "+++"
     if (buff[i]=='+'){
-      // consume 3 +'s
+      // count +'s
       if (s->state < STATE_PLUSPLUSPLUS){
 	s->state++;
       }else if(s->txb_len<sizeof(s->txbuffer)){
@@ -187,6 +201,66 @@ int write_bytes(struct radio_state *s)
 int transmitter=0;
 long long next_transmit_time=0;
 
+#define MAVLINK10_STX 254
+#define RADIO_SOURCE_SYSTEM '3'
+#define RADIO_SOURCE_COMPONENT 'D'
+#define MAVLINK_MSG_ID_RADIO 166
+#define MAVLINK_HDR 8
+
+int MAVLINK_MESSAGE_CRCS[]={72, 39, 190, 92, 191, 217, 104, 119, 0, 219, 60, 186, 10, 0, 0, 0, 0, 0, 0, 0, 89, 159, 162, 121, 0, 149, 222, 110, 179, 136, 66, 126, 185, 147, 112, 252, 162, 215, 229, 128, 9, 106, 101, 213, 4, 229, 21, 214, 215, 14, 206, 50, 157, 126, 108, 213, 95, 5, 127, 0, 0, 0, 57, 126, 130, 119, 193, 191, 236, 158, 143, 0, 0, 104, 123, 131, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 174, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 155, 0, 0, 0, 0, 0, 0, 0, 0, 0, 143, 29, 208, 188, 118, 242, 19, 97, 233, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 178, 224, 60, 106, 7};
+
+uint16_t mavlink_crc(unsigned char *buf,int length)
+{
+  uint16_t sum = 0xFFFF;
+  uint8_t i, stoplen;
+  
+  stoplen = length + 6;
+  
+  // MAVLink 1.0 has an extra CRC seed
+  buf[length+6] = MAVLINK_MESSAGE_CRCS[buf[5]];
+  stoplen++;
+  
+  i = 1;
+  while (i<stoplen) {
+    uint8_t tmp;
+    tmp = buf[i] ^ (uint8_t)(sum&0xff);
+    tmp ^= (tmp<<4);
+    sum = (sum>>8) ^ (tmp<<8) ^ (tmp<<3) ^ (tmp>>4);
+    i++;
+  }
+  
+  return sum;
+}
+
+int build_heartbeat(struct radio_state *s){
+  if (s->rxb_len + MAVLINK_HDR + 9 > sizeof(s->rxbuffer))
+    return -1;
+  log_time();
+  fprintf(stderr,"Building heartbeat for %s\n", s->name);
+  unsigned char *b=&s->rxbuffer[s->rxb_len];
+  b[0] = MAVLINK10_STX;
+  b[1] = 9;
+  b[2] = s->seqnum++;
+  b[3] = RADIO_SOURCE_SYSTEM;
+  b[4] = RADIO_SOURCE_COMPONENT;
+  b[5] = MAVLINK_MSG_ID_RADIO;
+  b[6] = 0; //rxerrors
+  b[7] = 0; //rxerrors
+  b[8] = 0; //fixed
+  b[9] = 0; //fixed
+  b[10] = 43; //average RSSI
+  b[11] = 0; //remote average RSSI
+  int space = sizeof(s->txbuffer) - s->txb_len;
+  b[12] = ((space/8)*100) / (sizeof(s->txbuffer)/8); //txbuf space
+  b[13] = 0; //noise
+  b[14] = 0; //remote noise
+  uint16_t crc = mavlink_crc(b, 9);
+  b[15]=crc&0xFF;
+  b[16]=(crc>>8)&0xFF;
+  s->rxb_len += MAVLINK_HDR+9;
+  return 0;
+}
+
 int transfer_bytes(struct radio_state *radios)
 {
   // if there's data to transmit, copy a radio packet from one device to the other
@@ -195,13 +269,58 @@ int transfer_bytes(struct radio_state *radios)
   struct radio_state *t = &radios[transmitter];
   int bytes=t->txb_len;
   
-  // TODO detect MAVLINK frame header
-  // respond to heartbeats?
-  // only transmit if we have read the entire mavlink packet
+  if (bytes > PACKET_SIZE)
+    bytes = PACKET_SIZE;
   
-  if (bytes > radio_packet_size)
-    bytes = radio_packet_size;
-    
+  // try to send some number of whole mavlink frames from our buffer
+  {
+    int p=0, send=0;
+    while(p < bytes){
+      
+      if (t->txbuffer[p]==MAVLINK10_STX){
+	// a mavlink header
+	
+	// we can send everything before this header
+	if (p>0)
+	  send = p-1;
+	
+	// wait for more bytes or for the next transmit slot
+	// TODO add time limit
+	if (p+1 >= bytes)
+	  break;
+	
+	// how big is this mavlink frame?
+	int size = t->txbuffer[p+1];
+	
+	// if the size is valid, try to send the whole packet at once
+	if (size <= PACKET_SIZE - MAVLINK_HDR){
+	  // wait for more bytes or for the next transmit slot
+	  // TODO add time limit
+	  if (p+size+MAVLINK_HDR > bytes)
+	    break;
+	  
+	  // detect when we are about to transmit a heartbeat frame
+	  if (size==9 && t->txbuffer[p+5]==0){
+	    // reply to the host with a heartbeat
+	    build_heartbeat(t);
+	  }
+	  p+=size+MAVLINK_HDR;
+	  send=p;
+	  continue;
+	}
+      }
+      
+      // no valid mavlink frames? just send as much as we can
+      send=p;
+      p++;
+    }
+    if (send<bytes){
+      log_time();
+      fprintf(stderr,"Only sending %d of the available %d bytes for %s\n", send, bytes, t->name);
+    }
+    bytes=send;
+  }
+  
   if (bytes>0){
     log_time();
     fprintf(stderr, "Transferring %d byte packet from %s to %s\n", bytes, t->name, r->name);

@@ -176,10 +176,12 @@ int mavlink_heartbeat(unsigned char *frame,int *outlen)
 {
   int count=9;
   frame[0]=0xfe; // mavlink v1.0 frame
+  // Must be 9 to indicate heartbeat
   frame[1]=count; // payload len, excluding 6 byte header and 2 byte CRC
   frame[2]=0; // packet sequence
   frame[3]=0x00; // system ID of sender (MAV_TYPE_GENERIC)
   frame[4]=0xf1; // component ID of sender (MAV_COMP_ID_UART_BRIDGE)
+  // Must be zero to indicate heartbeat
   frame[5]=0; // message ID type of this frame: DATA_STREAM
 
   // payload follows
