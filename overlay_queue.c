@@ -288,7 +288,7 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
     int i;
     for(i=0;i<frame->destination_count;i++)
     {
-      if (frame->destinations[i].destination->interface->tx_bytes_pending>0)
+      if (frame->destinations[i].destination->interface->tx_packet)
 	continue;
       time_ms_t next_packet = limit_next_allowed(&frame->destinations[i].destination->transfer_limit);
       if (frame->destinations[i].transmit_time){
@@ -401,7 +401,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	}else{
 	  // skip this interface if the stream tx buffer has data
 	  if (dest->interface->socket_type==SOCK_STREAM 
-	    && dest->interface->tx_bytes_pending>0)
+	    && dest->interface->tx_packet)
 	    continue;
 	    
 	  // can we send a packet on this interface now?

@@ -186,7 +186,9 @@ int read_bytes(struct radio_state *s)
 
 int write_bytes(struct radio_state *s)
 {
-  int wrote = write(s->fd, s->rxbuffer, s->rxb_len);
+  int wrote=s->rxb_len;
+  if (s->last_char_ms)
+    wrote = write(s->fd, s->rxbuffer, wrote);
   if (wrote>0){
     log_time();
     fprintf(stderr, "Wrote to %s\n", s->name);

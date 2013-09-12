@@ -49,6 +49,7 @@ struct profile_total sock_any_stats;
 
 static void overlay_interface_poll(struct sched_ent *alarm);
 static int re_init_socket(int interface_index);
+static void write_stream_buffer(overlay_interface *interface);
 
 #define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __WHENCE__, (M), (P), (N))
 
@@ -495,8 +496,12 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
       /* The encapsulation type should be configurable, but for now default to the one that should
          be safe on the RFD900 radios, and that also allows us to receive RSSI reports inline */
       interface->slip_decode_state.encapsulator=SLIP_FORMAT_MAVLINK;
-      interface->alarm.poll.events=POLLIN;
+      interface->alarm.poll.events=POLLIN|POLLOUT;
+      // Queue a hearbeat now
+      interface->tx_bytes_pending=0;
+      mavlink_heartbeat(interface->txbuffer,&interface->tx_bytes_pending);
       watch(&interface->alarm);
+
       break;
     case SOCK_FILE:
       /* Seek to end of file as initial reading point */
@@ -739,7 +744,7 @@ static void write_stream_buffer(overlay_interface *interface){
       int bytes = interface->tx_bytes_pending;
       if (interface->throttle_burst_write_size && bytes>bytes_allowed)
 	bytes=bytes_allowed;
-      if (config.debug.packetradio) 
+      if (config.debug.packetradio)
 	DEBUGF("Trying to write %d bytes",bytes);
       int written=write(interface->alarm.poll.fd, interface->txbuffer, bytes);
       if (written<=0)
@@ -796,7 +801,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     if (interface->state==INTERFACE_STATE_UP 
       && interface->destination->tick_ms>0
       && interface->send_broadcasts
-      && interface->tx_bytes_pending<=0){
+      && !interface->tx_packet){
       
       if (now >= interface->destination->last_tx+interface->destination->tick_ms)
         overlay_send_tick_packet(interface->destination);
