@@ -212,14 +212,14 @@ int mavlink_parse(struct slip_decode_state *state)
   if (packet_length==9){
     if (state->mavlink_payload[5]==MAVLINK_MSG_ID_RADIO){
       // we can assume that radio status packets arrive without corruption
-      last_radio_rssi=(1.0*state->mavlink_payload[6+5]-state->mavlink_payload[6+8])/1.9;
+      last_radio_rssi=(1.0*state->mavlink_payload[10]-state->mavlink_payload[13])/1.9;
       last_radio_temperature=-999; // doesn't get reported
       last_radio_rxpackets=-999; // doesn't get reported
       if (config.debug.mavlink||gettime_ms()-last_rssi_time>30000) {
-	INFOF("Link budget = %+ddB, remote link budget = %+ddB, buffer space = %d",
+	INFOF("Link budget = %+ddB, remote link budget = %+ddB, buffer space = %d%%",
 	      last_radio_rssi,
-	      (int)((1.0*state->mavlink_payload[6+6]-state->mavlink_payload[6+9])/1.9),
-	      state->mavlink_payload[6+7]);
+	      (int)((1.0*state->mavlink_payload[11]-state->mavlink_payload[14])/1.9),
+	      state->mavlink_payload[12]);
 	last_rssi_time=gettime_ms();
       }
     }

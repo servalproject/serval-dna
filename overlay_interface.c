@@ -497,9 +497,6 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
          be safe on the RFD900 radios, and that also allows us to receive RSSI reports inline */
       interface->slip_decode_state.encapsulator=SLIP_FORMAT_MAVLINK;
       interface->alarm.poll.events=POLLIN|POLLOUT;
-      // Queue a hearbeat now
-      interface->tx_bytes_pending=0;
-      mavlink_heartbeat(interface->txbuffer,&interface->tx_bytes_pending);
       watch(&interface->alarm);
 
       break;
@@ -734,11 +731,17 @@ static void write_stream_buffer(overlay_interface *interface){
     int total_written=0;
     while ((interface->tx_bytes_pending>0 || interface->tx_packet) && 
       (bytes_allowed>0 || interface->throttle_burst_write_size==0)) {
+	
       if (interface->tx_bytes_pending==0 && interface->tx_packet){
-	// TODO firmware heartbeat packets
-	// prepare a new link layer packet in txbuffer
-	if (mavlink_encode_packet(interface))
-	  break;
+	if (interface->next_heartbeat <= now){
+	  // Queue a hearbeat now
+	  mavlink_heartbeat(interface->txbuffer,&interface->tx_bytes_pending);
+	  interface->next_heartbeat = now+1000;
+	}else{
+	  // prepare a new link layer packet in txbuffer
+	  if (mavlink_encode_packet(interface))
+	    break;
+	}
       }
     
       int bytes = interface->tx_bytes_pending;
@@ -783,8 +786,6 @@ static void write_stream_buffer(overlay_interface *interface){
   } else {
     // Nothing to write, so clear POLLOUT flag
     interface->alarm.poll.events&=~POLLOUT;
-    // try to empty another packet from the queue ASAP
-    overlay_queue_schedule_next(gettime_ms());
   }
   watch(&interface->alarm);
 }

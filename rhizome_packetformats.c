@@ -329,13 +329,12 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
 	WHY("Error parsing manifest body");
 	goto next;
       }
-      const char *id=alloca_tohex_bid(m->cryptoSignPublic);
       
       /* trim manifest ID to a prefix for ease of debugging
 	 (that is the only use of this */
       if (config.debug.rhizome_ads){
 	long long version = rhizome_manifest_get_ll(m, "version");
-	DEBUGF("manifest id=%s version=%lld", id, version);
+	DEBUGF("manifest id=%s version=%lld", alloca_tohex_bid(m->cryptoSignPublic), version);
       }
 
       /* Crude signature presence test */
@@ -352,11 +351,10 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
 	goto next;
       }
 
-      if (rhizome_ignore_manifest_check(m->cryptoSignPublic,
-					crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)){
+      if (rhizome_ignore_manifest_check(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES)){
 	/* Ignoring manifest that has caused us problems recently */
 	if (config.debug.rhizome_ads)
-	  DEBUGF("Ignoring manifest with errors: %s", id);
+	  DEBUGF("Ignoring manifest with errors: %s", alloca_tohex_bid(m->cryptoSignPublic));
 	goto next;
       }
 
@@ -366,13 +364,13 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
 	/* Don't waste any time on this manifest in future attempts for at least
 	     a minute. */
 	rhizome_queue_ignore_manifest(m->cryptoSignPublic,
-					crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES, 60000);
+					RHIZOME_MANIFEST_ID_BYTES, 60000);
 	goto next;
       }
       /* Manifest is okay, so see if it is worth storing */
 
       // are we already fetching this bundle [or later]?
-      rhizome_manifest *mf=rhizome_fetch_search(id, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+      rhizome_manifest *mf=rhizome_fetch_search(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES);
       if (mf && mf->version >= m->version)
 	goto next;
 	
