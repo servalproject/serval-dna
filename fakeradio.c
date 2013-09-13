@@ -24,6 +24,7 @@ struct radio_state {
   int cb_len;
   unsigned char txbuffer[2048];
   int txb_len;
+  int wait_count;
   unsigned char rxbuffer[512];
   int rxb_len;
   long long last_char_ms;
@@ -316,10 +317,18 @@ int transfer_bytes(struct radio_state *radios)
       send=p;
       p++;
     }
-    if (send<bytes){
-      log_time();
-      fprintf(stderr,"Only sending %d of the available %d bytes for %s\n", send, bytes, t->name);
+    
+    if (send<bytes && !send){
+      if (bytes < PACKET_SIZE && t->wait_count++ <5){
+	log_time();
+	fprintf(stderr,"Waiting for more bytes for %s\n", t->name);
+	dump(NULL, t->txbuffer, bytes);
+      }else
+	send = bytes;
     }
+    
+    if (send)
+      t->wait_count=0;
     bytes=send;
   }
   

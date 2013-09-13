@@ -142,7 +142,7 @@ int mavlink_encode_packet(struct overlay_interface *interface)
   int count = ob_remaining(interface->tx_packet);
   int startP = !ob_position(interface->tx_packet);
   int endP = 1;
-  if (count>255-6-32){
+  if (count+6+32 > 255){
     count = 255-6-32;
     endP = 0;
   }

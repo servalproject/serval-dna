@@ -228,7 +228,7 @@ static struct rhizome_fetch_slot *rhizome_find_fetch_slot(long long size)
 
 
 // find the first matching active slot for this bundle
-static struct rhizome_fetch_slot *fetch_search_slot(unsigned char *id, int prefix_length)
+static struct rhizome_fetch_slot *fetch_search_slot(const unsigned char *id, int prefix_length)
 {
   int i;
   for (i = 0; i < NQUEUES; ++i) {
@@ -242,7 +242,7 @@ static struct rhizome_fetch_slot *fetch_search_slot(unsigned char *id, int prefi
 }
 
 // find the first matching candidate for this bundle
-static struct rhizome_fetch_candidate *fetch_search_candidate(unsigned char *id, int prefix_length)
+static struct rhizome_fetch_candidate *fetch_search_candidate(const unsigned char *id, int prefix_length)
 {
   int i, j;
   for (i = 0; i < NQUEUES; ++i) {
@@ -260,7 +260,7 @@ static struct rhizome_fetch_candidate *fetch_search_candidate(unsigned char *id,
 }
 
 /* Search all fetch slots, including active downloads, for a matching manifest */
-rhizome_manifest * rhizome_fetch_search(unsigned char *id, int prefix_length){
+rhizome_manifest * rhizome_fetch_search(const unsigned char *id, int prefix_length){
   struct rhizome_fetch_slot *s = fetch_search_slot(id, prefix_length);
   if (s)
     return s->manifest;
@@ -1533,7 +1533,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	rhizome_fetch_mdp_slot_callback(alarm);
 	break;
 
-    default:
+      default:
         // timeout or socket error, close the socket
         if (config.debug.rhizome_rx)
           DEBUGF("Closing due to timeout or error %x (%x %x)", alarm->poll.revents, POLLHUP, POLLERR);

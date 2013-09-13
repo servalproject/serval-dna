@@ -386,7 +386,7 @@ int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len);
 #define MAX_CANDIDATES 32
 
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE]);
-rhizome_manifest * rhizome_fetch_search(unsigned char *id, int prefix_length);
+rhizome_manifest * rhizome_fetch_search(const unsigned char *id, int prefix_length);
 
 /* Rhizome file storage api */
 struct rhizome_write_buffer{

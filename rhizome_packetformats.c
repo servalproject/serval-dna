@@ -246,9 +246,10 @@ int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m){
   bzero(frame,sizeof(struct overlay_frame));
   frame->type = OF_TYPE_RHIZOME_ADVERT;
   frame->source = my_subscriber;
-  if (dest && (dest->reachable==REACHABLE_UNICAST || dest->reachable==REACHABLE_INDIRECT))
+  if (dest && dest->reachable&REACHABLE)
     frame->destination = dest;
-  frame->ttl = 1;
+  else
+    frame->ttl = 1;
   frame->queue = OQ_OPPORTUNISTIC;
   frame->payload = ob_new();
   
@@ -260,6 +261,9 @@ int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m){
   if (ob_append_bytes(frame->payload, m->manifestdata, m->manifest_all_bytes)) goto error;
   ob_append_byte(frame->payload, 0xFF);
   if (overlay_payload_enqueue(frame)) goto error;
+  if (config.debug.rhizome_ads)
+    DEBUGF("Advertising manifest %s %"PRId64" to %s", 
+      alloca_tohex_bid(m->cryptoSignPublic), m->version, dest?alloca_tohex_sid(dest->sid):"broadcast");
   return 0;
   
 error:
@@ -325,19 +329,13 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
 	WHY("Error parsing manifest body");
 	goto next;
       }
+      const char *id=alloca_tohex_bid(m->cryptoSignPublic);
       
-      char manifest_id_prefix[RHIZOME_MANIFEST_ID_STRLEN + 1];
-      if (rhizome_manifest_get(m, "id", manifest_id_prefix, sizeof manifest_id_prefix) == NULL) {
-	WHY("Manifest does not contain 'id' field");
-	goto next;
-      }
-
       /* trim manifest ID to a prefix for ease of debugging
 	 (that is the only use of this */
       if (config.debug.rhizome_ads){
-        manifest_id_prefix[8]=0;
 	long long version = rhizome_manifest_get_ll(m, "version");
-	DEBUGF("manifest id=%s* version=%lld", manifest_id_prefix, version);
+	DEBUGF("manifest id=%s version=%lld", id, version);
       }
 
       /* Crude signature presence test */
@@ -358,7 +356,7 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
 					crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)){
 	/* Ignoring manifest that has caused us problems recently */
 	if (config.debug.rhizome_ads)
-	  DEBUGF("Ignoring manifest with errors: %s*", manifest_id_prefix);
+	  DEBUGF("Ignoring manifest with errors: %s", id);
 	goto next;
       }
 
@@ -371,8 +369,13 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
 					crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES, 60000);
 	goto next;
       }
-
       /* Manifest is okay, so see if it is worth storing */
+
+      // are we already fetching this bundle [or later]?
+      rhizome_manifest *mf=rhizome_fetch_search(id, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+      if (mf && mf->version >= m->version)
+	goto next;
+	
       if (!rhizome_is_manifest_interesting(m)) {
 	/* We already have this version or newer */
 	if (config.debug.rhizome_ads)

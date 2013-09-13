@@ -283,7 +283,7 @@ static int add_explain_response(struct subscriber *subscriber, void *context){
 
 static int find_subscr_buffer(struct decode_context *context, struct overlay_buffer *b, int len, struct subscriber **subscriber){
   if (len<=0 || len>SID_SIZE){
-    return WHY("Invalid abbreviation length");
+    return WHYF("Invalid abbreviation length %d", len);
   }
   
   unsigned char *id = ob_get_bytes_ptr(b, len);

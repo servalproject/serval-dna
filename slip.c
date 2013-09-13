@@ -373,9 +373,6 @@ int slip_decode(struct slip_decode_state *state)
 	  // We have to increment src_offset manually here, because returning
 	  // prevents the post-increment in the for loop from triggering
 	  state->src_offset++;
-	  if (config.debug.mavlink) {
-	    DEBUGF("Read %d byte packet from MAVLink frames",state->packet_length);
-	  }
 	  if (config.debug.mavlink_payloads||config.debug.interactive_io) {
 	    DEBUG_packet_visualise("Received packet",state->dst,state->packet_length);
 	  }
