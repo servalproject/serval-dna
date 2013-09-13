@@ -142,8 +142,8 @@ int mavlink_encode_packet(struct overlay_interface *interface)
   int count = ob_remaining(interface->tx_packet);
   int startP = !ob_position(interface->tx_packet);
   int endP = 1;
-  if (count>252-6-32){
-    count = 252-6-32;
+  if (count>255-6-32){
+    count = 255-6-32;
     endP = 0;
   }
   
@@ -154,8 +154,10 @@ int mavlink_encode_packet(struct overlay_interface *interface)
      Note that this construction will result in CRC errors by non-servald
      programmes, which is probably more helpful than otherwise.
   */
-  interface->txbuffer[1]=count+32-2;  // we need 32 bytes for the parity, but this field assumes
+  // we need 32 bytes for the parity, but this field assumes
   // that there is a 2 byte CRC, so we can save two bytes
+  int len = count+32 - 2;
+  interface->txbuffer[1]=len;
   interface->txbuffer[2]=0; // packet sequence
   interface->txbuffer[3]=0x00; // system ID of sender (MAV_TYPE_GENERIC)
   interface->txbuffer[4]=0x40; // component ID of sender: we are reusing this to mark start,end of MDP frames
@@ -165,8 +167,8 @@ int mavlink_encode_packet(struct overlay_interface *interface)
   // payload follows (we reuse the DATA_STREAM message type parameters)
   ob_get_bytes(interface->tx_packet, &interface->txbuffer[6], count);
   
-  encode_rs_8(&interface->txbuffer[6],&interface->txbuffer[6+count],(223-count));
-  interface->tx_bytes_pending=6+count+32;
+  encode_rs_8(&interface->txbuffer[2], &interface->txbuffer[6+count], 223 - (count+4));
+  interface->tx_bytes_pending=len + 8;
   if (endP){
     ob_free(interface->tx_packet);
     interface->tx_packet=NULL;
@@ -199,156 +201,99 @@ int mavlink_heartbeat(unsigned char *frame,int *outlen)
   return 0;
 }
 
-#define MAVLINK_STATE_UNKNOWN 0
-#define MAVLINK_STATE_LENGTH 1
-#define MAVLINK_STATE_SEQ 2
-#define MAVLINK_STATE_SYSID 3
-#define MAVLINK_STATE_COMPONENTID 4
-#define MAVLINK_STATE_MSGID 5
-#define MAVLINK_STATE_PAYLOAD 6
-#define MAVLINK_STATE_CRC1 7
-#define MAVLINK_STATE_CRC2 8
-
-char *mavlink_describe_state(int state)
-{
-  switch(state) {
-  case MAVLINK_STATE_UNKNOWN: return "MAVLINK_STATE_UNKNOWN";
-  case MAVLINK_STATE_LENGTH: return "MAVLINK_STATE_LENGTH";
-  case MAVLINK_STATE_SEQ: return "MAVLINK_STATE_SEQ";
-  case MAVLINK_STATE_SYSID: return "MAVLINK_STATE_SYSID";
-  case MAVLINK_STATE_COMPONENTID: return "MAVLINK_STATE_COMPONENTID";
-  case MAVLINK_STATE_MSGID: return "MAVLINK_STATE_MSGID";
-  case MAVLINK_STATE_PAYLOAD: return "MAVLINK_STATE_PAYLOAD";
-  case MAVLINK_STATE_CRC1: return "MAVLINK_STATE_CRC1";
-  case MAVLINK_STATE_CRC2: return "MAVLINK_STATE_CRC2";
-  default: return "INVALID_STATE";
-  }
-}
-
 extern unsigned long long last_rssi_time;
 extern int last_radio_rssi;
 extern int last_radio_temperature;
 extern int last_radio_rxpackets;
 
-
 int mavlink_parse(struct slip_decode_state *state)
 {
-  switch(state->mavlink_msgid) {
-  case MAVLINK_MSG_ID_RADIO:
-    if (config.debug.mavlink)
-      DEBUG("Received MAVLink radio report");
-    last_radio_rssi=(1.0*state->mavlink_payload[5]-state->mavlink_payload[8])/1.9;
-    last_radio_temperature=-999; // doesn't get reported
-    last_radio_rxpackets=-999; // doesn't get reported
-    if (config.debug.mavlink||gettime_ms()-last_rssi_time>30000) {
-      INFOF("Link budget = %+ddB, remote link budget = %+ddB",
-	    last_radio_rssi,
-	    (int)((1.0*state->mavlink_payload[6]-state->mavlink_payload[9])/1.9));
-      last_rssi_time=gettime_ms();
+  int packet_length=state->mavlink_payload[1];
+  if (packet_length==9){
+    if (state->mavlink_payload[5]==MAVLINK_MSG_ID_RADIO){
+      // we can assume that radio status packets arrive without corruption
+      last_radio_rssi=(1.0*state->mavlink_payload[6+5]-state->mavlink_payload[6+8])/1.9;
+      last_radio_temperature=-999; // doesn't get reported
+      last_radio_rxpackets=-999; // doesn't get reported
+      if (config.debug.mavlink||gettime_ms()-last_rssi_time>30000) {
+	INFOF("Link budget = %+ddB, remote link budget = %+ddB, buffer space = %d",
+	      last_radio_rssi,
+	      (int)((1.0*state->mavlink_payload[6+6]-state->mavlink_payload[6+9])/1.9),
+	      state->mavlink_payload[6+7]);
+	last_rssi_time=gettime_ms();
+      }
     }
     return 0;
-  case MAVLINK_MSG_ID_DATASTREAM:
-    // Extract and return packet, after applying Reed-Solomon error detection
-    // and correction
-    if (config.debug.mavlink){
-      DEBUGF("Received MAVLink DATASTREAM message, len: %d, flags:%s%s", 
-	state->mavlink_payload_length,
-	state->mavlink_componentid&0x01?" start":"",
-	state->mavlink_componentid&0x02?" end":"");
-    }
-    
-    if (state->mavlink_componentid&0x01)
-      state->packet_length=0;
-    
-    if (state->packet_length+state->mavlink_payload_length>sizeof(state->dst)){
-      if (config.debug.mavlink) 
-	DEBUG("Fragmented packet is too long or a previous piece was missed - discarding");
-      state->packet_length=sizeof(state->dst)+1;
-      return 0;
-    }
-    
-    int errcount=decode_rs_8(&state->mavlink_payload[0],NULL,0,
-			     223-(state->mavlink_payload_length-30));
-    if (errcount==-1){
-      if (config.debug.mavlink) 
-	DEBUGF("Reed-Solomon error correction failed");
-      state->packet_length=sizeof(state->dst)+1;
-      return 0;
-    }
-    
-    bcopy(state->mavlink_payload,&state->dst[state->packet_length],
-	  state->mavlink_payload_length-30);
-    state->packet_length+=state->mavlink_payload_length-30;
-    
-    if (state->mavlink_componentid&0x02) {
-      if (config.debug.mavlink) 
-	DEBUGF("PDU Complete (length=%d)",state->packet_length);
-      state->dst_offset=0;
-      return 1;
-    }
-    return 0;
-    
-  default:
-    if (config.debug.mavlink) 
-      DEBUGF("Received unknown MAVLink message type 0x%02x",
-	    state->mavlink_msgid);
-    return -1;
   }
+  
+  int data_bytes = packet_length - (32 - 2);
+  
+  int errcount=decode_rs_8(&state->mavlink_payload[2], NULL, 0, 223 - (data_bytes + 4));
+  if (errcount==-1){
+    if (config.debug.mavlink)
+      DEBUGF("Reed-Solomon error correction failed");
+    state->packet_length=sizeof(state->dst)+1;
+    return 0;
+  }
+  
+  if (config.debug.mavlink){
+    DEBUGF("Received RS protected message, len: %d, errors: %d, flags:%s%s", 
+      data_bytes,
+      errcount,
+      state->mavlink_payload[4]&0x01?" start":"",
+      state->mavlink_payload[4]&0x02?" end":"");
+  }
+  
+  if (state->mavlink_payload[4]&0x01)
+    state->packet_length=0;
+    
+  if (state->packet_length + data_bytes > sizeof(state->dst)){
+    if (config.debug.mavlink) 
+      DEBUG("Fragmented packet is too long or a previous piece was missed - discarding");
+    state->packet_length=sizeof(state->dst)+1;
+    return 0;
+  }
+  
+  bcopy(&state->mavlink_payload[6], &state->dst[state->packet_length], data_bytes);
+  state->packet_length+=data_bytes;
+    
+  if (state->mavlink_payload[4]&0x02) {
+    if (config.debug.mavlink) 
+      DEBUGF("PDU Complete (length=%d)",state->packet_length);
+    state->dst_offset=0;
+    return 1;
+  }
+  return 0;
 }
 
-int mavlink_decode(struct slip_decode_state *state,uint8_t c)
+int mavlink_decode(struct slip_decode_state *state, uint8_t c)
 {
-  if (config.debug.mavlinkfsm) DEBUGF("RX character %02x in state %s",
-				      c,mavlink_describe_state(state->state));
-  switch(state->state) {
-  case MAVLINK_STATE_LENGTH:
-    state->mavlink_crc=Crc32_ComputeBuf(state->mavlink_crc,&c,1);
-    state->mavlink_payload_length=c;
-    state->mavlink_payload_offset=0;
-    state->state++;
-    break;
-  case MAVLINK_STATE_SEQ:
-    state->mavlink_crc=Crc32_ComputeBuf(state->mavlink_crc,&c,1);
-    state->mavlink_sequence=c;
-    state->state++;
-    break;
-  case MAVLINK_STATE_SYSID:
-    state->mavlink_crc=Crc32_ComputeBuf(state->mavlink_crc,&c,1);
-    state->mavlink_sysid=c;
-    state->state++;
-    break;
-  case MAVLINK_STATE_COMPONENTID:
-    state->mavlink_crc=Crc32_ComputeBuf(state->mavlink_crc,&c,1);
-    state->mavlink_componentid=c;
-    state->state++;
-    break;
-  case MAVLINK_STATE_MSGID:
-    state->mavlink_crc=Crc32_ComputeBuf(state->mavlink_crc,&c,1);
-    state->mavlink_msgid=c;
-    state->state++;
-    break;
-  case MAVLINK_STATE_PAYLOAD:
-    if (state->mavlink_payload_length-state->mavlink_payload_offset>2)
-      state->mavlink_crc=Crc32_ComputeBuf(state->mavlink_crc,&c,1);
-    if (state->mavlink_payload_length-state->mavlink_payload_offset==2)
-      state->mavlink_rxcrc=c;
-    if (state->mavlink_payload_length-state->mavlink_payload_offset==1)
-      state->mavlink_rxcrc|=c<<8;
-    state->mavlink_payload[state->mavlink_payload_offset++]=c;
-    if (state->mavlink_payload_offset==state->mavlink_payload_length+2)
-      {
-	int r=mavlink_parse(state);
-	state->mavlink_payload_length=0;
-	state->state=MAVLINK_STATE_UNKNOWN;
-	if (r==1) return 1;
-      }
-    break;
-  default:
-    if (c==0xfe){
-      state->state=MAVLINK_STATE_LENGTH; 
-      state->mavlink_crc=0;
+  int ret=0;
+  // skip all bytes until the next packet boundary
+  if (state->mavlink_payload_offset==0 && c!=0xfe){
+    if (config.debug.mavlink)
+      DEBUGF("Waiting for valid header, skipped byte 0x%02x",c);
+    return 0;
+  }
+    
+  if (state->mavlink_payload_offset==1){
+    // check that the length seems to be valid
+    // radio heartbeats have length==9
+    // RS protected frames must be >= (1 + 32 - 2) bytes
+    if (c+8>255 || (c<31 && c!=9)){
+      if (config.debug.mavlink)
+	DEBUGF("Waiting for valid header, skipped byte 0x%02x",c);
+      state->mavlink_payload_offset=0;
+      return 0;
     }
   }
-
-  return 0;
+  
+  state->mavlink_payload[state->mavlink_payload_offset++]=c;
+  
+  if (state->mavlink_payload_offset >= state->mavlink_payload[1]+8){
+    ret = mavlink_parse(state);
+    state->mavlink_payload_offset=0;
+  }
+  
+  return ret;
 }

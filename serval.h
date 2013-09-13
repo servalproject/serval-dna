@@ -381,15 +381,8 @@ struct slip_decode_state{
   int src_offset;
   int dst_offset;
 
-  uint8_t mavlink_payload_length;
   uint8_t mavlink_payload_offset;
   uint8_t mavlink_payload[256];
-  uint8_t mavlink_sequence;
-  uint8_t mavlink_sysid;
-  uint8_t mavlink_componentid;
-  uint8_t mavlink_msgid;
-  uint32_t mavlink_rxcrc;
-  uint32_t mavlink_crc;
 };
 
 struct overlay_interface;

@@ -251,11 +251,11 @@ int build_heartbeat(struct radio_state *s){
   b[8] = 0; //fixed
   b[9] = 0; //fixed
   b[10] = 43; //average RSSI
-  b[11] = 0; //remote average RSSI
+  b[11] = 35; //remote average RSSI
   int space = sizeof(s->txbuffer) - s->txb_len;
   b[12] = ((space/8)*100) / (sizeof(s->txbuffer)/8); //txbuf space
-  b[13] = 0; //noise
-  b[14] = 0; //remote noise
+  b[13] = 20; //noise
+  b[14] = 20; //remote noise
   uint16_t crc = mavlink_crc(b, 9);
   b[15]=crc&0xFF;
   b[16]=(crc>>8)&0xFF;
