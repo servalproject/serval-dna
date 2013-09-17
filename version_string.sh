@@ -109,7 +109,7 @@ if [ -n "$dirty" ] && ! $allow_modified; then
 fi
 
 # Use the "git describe" command to form the version string.
-if error="$(git describe --match="$version_tag_glob" "${dirty:+--dirty=$dirty}" HEAD 2>&1 1>&5)" 5>&1; then
+if error="$(git describe --match="$version_tag_glob" "${dirty:+--dirty=$dirty}" 2>&1 1>&5)" 5>&1; then
    exit 0
 fi
 
