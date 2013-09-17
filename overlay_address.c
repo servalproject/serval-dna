@@ -355,7 +355,15 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
         *subscriber=context->point_to_point_device;
 	context->previous=*subscriber;
       }else{
-	WHYF("Could not resolve address, I don't know who is on the other end of this link!");
+	// add the abbreviation you told me about
+	if (!context->please_explain){
+	  context->please_explain = calloc(sizeof(struct overlay_frame),1);
+	  context->please_explain->payload=ob_new();
+	  ob_limitsize(context->please_explain->payload, MDP_MTU);
+	}
+	
+	INFOF("Asking for explanation of YOU");
+	ob_append_byte(context->please_explain->payload, OA_CODE_P2P_YOU);
 	context->invalid_addresses=1;
       }
       return 0;
@@ -438,6 +446,12 @@ int process_explain(struct overlay_frame *frame){
   
   while(ob_remaining(b)>0){
     int len = ob_get(b);
+    
+    if (len==OA_CODE_P2P_YOU){
+      add_explain_response(my_subscriber, &context);
+      continue;
+    }
+    
     if (len<=0 || len>SID_SIZE)
       return WHY("Badly formatted explain message");
     unsigned char *sid = ob_get_bytes_ptr(b, len);
