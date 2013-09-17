@@ -736,7 +736,7 @@ static void write_stream_buffer(overlay_interface *interface){
 	if (interface->next_heartbeat <= now){
 	  // Queue a hearbeat now
 	  mavlink_heartbeat(interface->txbuffer,&interface->tx_bytes_pending);
-	  interface->next_heartbeat = now+1000;
+	  interface->next_heartbeat = now+5000;
 	}else{
 	  // prepare a new link layer packet in txbuffer
 	  if (mavlink_encode_packet(interface))
