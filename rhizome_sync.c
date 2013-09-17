@@ -326,7 +326,7 @@ static int append_response(struct overlay_buffer *b, uint64_t token, const unsig
 }
 
 static uint64_t max_token=0;
-static void sync_send_response(struct subscriber *dest, int forwards, uint64_t token)
+static void sync_send_response(struct subscriber *dest, int forwards, uint64_t token, int max_count)
 {
   IN();
   overlay_mdp_frame mdp;
@@ -380,7 +380,7 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
       rhizome_sync_bundle_inserted(bar);
     }
 
-    if (count < BARS_PER_RESPONSE){
+    if (count < BARS_PER_RESPONSE && (max_count==0 || count < max_count)){
       // make sure we include the exact rowid that was requested, even if we just deleted / replaced the manifest
       if (count==0 && rowid!=token){
         if (token!=HEAD_FLAG){
@@ -433,7 +433,7 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
 
 int rhizome_sync_announce()
 {
-  sync_send_response(NULL, 0, HEAD_FLAG);
+  sync_send_response(NULL, 0, HEAD_FLAG, 5);
   return 0;
 }
 
@@ -457,7 +457,7 @@ int overlay_mdp_service_rhizome_sync(struct overlay_frame *frame, overlay_mdp_fr
       {
         int forwards = ob_get(b);
         uint64_t token = ob_get_packed_ui64(b);
-        sync_send_response(frame->source, forwards, token);
+        sync_send_response(frame->source, forwards, token, 0);
       }
       break;
   }
