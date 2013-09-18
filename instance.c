@@ -49,10 +49,10 @@ int form_serval_instance_path(char *buf, size_t bufsiz, const char *path)
   strbuf_path_join(b, serval_instancepath(), path, NULL);
   if (!strbuf_overrun(b))
     return 1;
-  WHYF("Cannot form pathname from %s and %s -- buffer too small (%lu bytes)",
-      alloca_str_toprint(serval_instancepath()),
-      alloca_str_toprint(path),
-      (unsigned long)bufsiz);
+  WHYF("instance path overflow (strlen %lu, sizeof buffer %lu): %s",
+      (unsigned long)strbuf_count(b),
+      (unsigned long)bufsiz,
+      alloca_str_toprint(buf));
   return 0;
 }
 

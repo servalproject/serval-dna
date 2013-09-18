@@ -168,6 +168,17 @@ int create_serval_instance_dir();
 int form_serval_instance_path(char *buf, size_t bufsiz, const char *path);
 void serval_setinstancepath(const char *instancepath);
 
+/* Create a named socket using abstract socket on Linux or a local socket on
+ * other platforms.
+ */
+int esocket(int domain, int type, int protocol);
+int socket_setname(struct sockaddr_un *sockname, const char *name, socklen_t *addrlen);
+int socket_bind(int sock, const struct sockaddr *addr, socklen_t addrlen);
+int socket_connect(int sock, const struct sockaddr *addr, socklen_t addrlen);
+int socket_listen(int sock, int backlog);
+int socket_set_reuseaddr(int fd, int reuseP);
+int socket_set_rcvbufsize(int fd, unsigned buffer_size);
+
 #define SERVER_CONFIG_RELOAD_INTERVAL_MS	1000
 
 struct cli_parsed;
@@ -587,9 +598,6 @@ int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int overlay_mdp_reply_error(int sock,
 			    struct sockaddr_un *recvaddr,int recvaddrlen,
 			    int error_number,char *message);
-extern struct sched_ent mdp_abstract;
-extern struct sched_ent mdp_named;
-
 
 typedef struct sockaddr_mdp {
   unsigned char sid[SID_SIZE];

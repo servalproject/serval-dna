@@ -20,6 +20,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __STRBUF_HELPERS_H__
 #define __STRBUF_HELPERS_H__
 
+// For socklen_t
+#ifdef WIN32
+#  include "win32/win32.h"
+#else
+#  ifdef HAVE_SYS_SOCKET_H
+#    include <sys/socket.h>
+#  endif
+#endif
+
 #include "strbuf.h"
 
 /* Append a representation of the given chars in a given buffer (including nul
@@ -95,12 +104,24 @@ strbuf strbuf_append_argv(strbuf sb, int argc, const char *const *argv);
  */
 strbuf strbuf_append_exit_status(strbuf sb, int status);
 
+/* Append a textual description of a socket domain code (AF_...).
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_append_socket_domain(strbuf sb, int domain);
+#define alloca_socket_domain(domain)    strbuf_str(strbuf_append_socket_domain(strbuf_alloca(15), domain))
+
+/* Append a textual description of a socket type code (SOCK_...).
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_append_socket_type(strbuf sb, int type);
+#define alloca_socket_type(type)    strbuf_str(strbuf_append_socket_type(strbuf_alloca(15), type))
+
 /* Append a textual description of a struct sockaddr_in.
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 struct sockaddr;
-strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *);
-#define alloca_sockaddr(addr)    strbuf_str(strbuf_append_sockaddr(strbuf_alloca(40), (const struct sockaddr *)(addr)))
+strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t addrlen);
+#define alloca_sockaddr(addr, addrlen)    strbuf_str(strbuf_append_sockaddr(strbuf_alloca(200), (const struct sockaddr *)(addr), (addrlen)))
 
 /* Append a strftime(3) string.
  * @author Andrew Bettison <andrew@servalproject.com>

@@ -189,7 +189,8 @@ int rhizome_fetch_status_html(struct strbuf *b)
 }
 
 static struct sched_ent sched_activate = STRUCT_SCHED_ENT_UNUSED;
-static struct profile_total fetch_stats;
+static struct profile_total rsnqf_stats = { .name="rhizome_start_next_queued_fetches" };
+static struct profile_total fetch_stats = { .name="rhizome_fetch_poll" };
 
 /* Find a queue suitable for a fetch of the given number of bytes.  If there is no suitable queue,
  * return NULL.
@@ -505,15 +506,12 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
 
   slot->state = RHIZOME_FETCH_CONNECTING;
   slot->alarm.function = rhizome_fetch_poll;
-  fetch_stats.name = "rhizome_fetch_poll";
   slot->alarm.stats = &fetch_stats;
 
   if (slot->peer_ipandport.sin_family == AF_INET && slot->peer_ipandport.sin_port) {
     /* Transfer via HTTP over IPv4 */
-    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-      WHY_perror("socket");
+    if ((sock = esocket(AF_INET, SOCK_STREAM, 0)) == -1)
       goto bail_http;
-    }
     if (set_nonblock(sock) == -1)
       goto bail_http;
     char buf[INET_ADDRSTRLEN];
@@ -628,7 +626,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
 	   bid,
 	   m->version,
 	   m->fileLength,
-	   alloca_sockaddr(peerip)
+	   alloca_sockaddr(peerip, sizeof(struct sockaddr_in))
 	   );
 
   // If the payload is empty, no need to fetch, so import now.
@@ -823,8 +821,6 @@ int rhizome_fetch_has_queue_space(unsigned char log2_size){
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-struct profile_total rsnqf_stats={.name="rhizome_start_next_queued_fetches"};
-
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE])
 {
   IN();

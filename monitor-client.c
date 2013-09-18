@@ -41,6 +41,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "log.h"
 #include "str.h"
+#include "strbuf_helpers.h"
 
 #include "monitor-client.h"
 #include <ctype.h>
@@ -65,54 +66,21 @@ struct monitor_state {
   int bufferBytes;
 };
 
-int monitor_socket_name(struct sockaddr_un *name){
-  int len;
-#ifdef linux
-  /* Use abstract namespace as Android has no writable FS which supports sockets.
-   Abstract namespace is just plain better, anyway, as no dead files end up
-   hanging around. */
-  name->sun_path[0] = '\0';
-  /* XXX: 104 comes from OSX sys/un.h - no #define (note Linux has UNIX_PATH_MAX and it's 108(!)) */
-  snprintf(&name->sun_path[1],104-2,"%s", config.monitor.socket);
-  /* Doesn't include trailing nul */
-  len = 1+strlen(&name->sun_path[1]) + sizeof(name->sun_family);
-#else
-  snprintf(name->sun_path,104-1,"%s/%s",
-	   serval_instancepath(),
-	   config.monitor.socket
-	  );
-  /* Includes trailing nul */
-  len = 1+strlen(name->sun_path) + sizeof(name->sun_family);
-#endif
-  return len;
-}
-
 /* Open monitor interface abstract domain named socket */
 int monitor_client_open(struct monitor_state **res)
 {
   int fd;
+  if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
+    return WHYF_perror("socket(AF_UNIX, SOCK_STREAM, 0)");
   struct sockaddr_un addr;
-
-  if ( (fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-    WHYF_perror("socket(AF_UNIX, SOCK_STREAM, 0)");
+  socklen_t addrlen;
+  if (socket_setname(&addr, config.monitor.socket, &addrlen) == -1)
     return -1;
-  }
-
-  memset(&addr, 0, sizeof(addr));
-  addr.sun_family = AF_UNIX;
-  int len = monitor_socket_name(&addr);
-
-  INFOF("Attempting to connect to %s %s",
-      addr.sun_path[0] ? "local" : "abstract",
-      alloca_str_toprint(addr.sun_path[0] ? &addr.sun_path[0] : &addr.sun_path[1])
-    );
-
-  if (connect(fd, (struct sockaddr*)&addr, len) == -1) {
-    WHYF_perror("connect(%d, %s)", fd, alloca_toprint(-1, &addr, len));
+  INFOF("Attempting to connect to %s", alloca_sockaddr(&addr, addrlen));
+  if (socket_connect(fd, (struct sockaddr*)&addr, addrlen) == -1) {
     close(fd);
     return -1;
   }
-
   *res = (struct monitor_state*)malloc(sizeof(struct monitor_state));
   memset(*res,0,sizeof(struct monitor_state));
   return fd;

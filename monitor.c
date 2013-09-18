@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include "cli.h"
 #include "str.h"
+#include "strbuf_helpers.h"
 #include "overlay_address.h"
 #include "monitor-client.h"
 
@@ -76,45 +77,24 @@ struct profile_total client_stats;
 
 int monitor_setup_sockets()
 {
-  struct sockaddr_un name;
-  int len;
-  int sock;
-  
-  bzero(&name, sizeof(name));
-  name.sun_family = AF_UNIX;
-  
-  if ((sock = socket(AF_UNIX, SOCK_STREAM, 0))==-1) {
+  int sock = -1;
+  if ((sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
     WHYF_perror("socket(AF_UNIX, SOCK_STREAM, 0)");
     goto error;
   }
-
-  len = monitor_socket_name(&name);
-#ifndef linux
-  unlink(name.sun_path);
-#endif
-
-  if(bind(sock, (struct sockaddr *)&name, len)==-1) {
-    WHYF_perror("bind(%d, %s)", sock, alloca_toprint(-1, &name, len));
+  struct sockaddr_un addr;
+  socklen_t addrlen;
+  if (socket_setname(&addr, config.monitor.socket, &addrlen) == -1)
     goto error;
-  }
-  if(listen(sock,MAX_MONITOR_SOCKETS)==-1) {
-    WHYF_perror("listen(%d, %d)", sock, MAX_MONITOR_SOCKETS);
+  if (socket_bind(sock, (struct sockaddr*)&addr, addrlen) == -1)
     goto error;
-  }
-
-  int reuseP=1;
-  if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof reuseP) < 0) {
-    WHYF_perror("setsockopt(%d, SOL_SOCKET, SO_REUSEADDR, &%d, %d)", sock, reuseP, (int)sizeof reuseP);
+  if (socket_listen(sock, MAX_MONITOR_SOCKETS) == -1)
+    goto error;
+  if (socket_set_reuseaddr(sock, 1) == -1)
     WHY("Could not indicate reuse addresses. Not necessarily a problem (yet)");
-  }
-  
-  int send_buffer_size=64*1024;    
-  if(setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &send_buffer_size, sizeof send_buffer_size)==-1)
-    WHYF_perror("setsockopt(%d, SOL_SOCKET, SO_RCVBUF, &%d, %d)", sock, send_buffer_size, (int)sizeof send_buffer_size);
-
+  socket_set_rcvbufsize(sock, 64 * 1024);
   if (config.debug.io || config.debug.verbose_io)
-    DEBUGF("Monitor server socket bound to %s", alloca_toprint(-1, &name, len));
-
+    DEBUGF("Monitor server socket bound to %s", alloca_sockaddr(&addr, addrlen));
   named_socket.function=monitor_poll;
   named_stats.name="monitor_poll";
   named_socket.stats=&named_stats;
@@ -123,8 +103,8 @@ int monitor_setup_sockets()
   watch(&named_socket);
   return 0;
   
-  error:
-  if (sock>=0)
+error:
+  if (sock != -1)
     close(sock);
   return -1;
 }

@@ -238,10 +238,10 @@ strbuf strbuf_append_exit_status(strbuf sb, int status)
   return sb;
 }
 
-strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr)
+strbuf strbuf_append_socket_domain(strbuf sb, int domain)
 {
   const char *fam = NULL;
-  switch (addr->sa_family) {
+  switch (domain) {
   case AF_UNSPEC:    fam = "AF_UNSPEC"; break;
   case AF_UNIX:	     fam = "AF_UNIX"; break;
   case AF_INET:	     fam = "AF_INET"; break;
@@ -278,18 +278,60 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr)
   if (fam)
     strbuf_puts(sb, fam);
   else
-    strbuf_sprintf(sb, "[%d]", addr->sa_family);
+    strbuf_sprintf(sb, "[%d]", domain);
+  return sb;
+}
+
+strbuf strbuf_append_socket_type(strbuf sb, int type)
+{
+  const char *typ = NULL;
+  switch (type) {
+  case SOCK_STREAM:	typ = "SOCK_STREAM"; break;
+  case SOCK_DGRAM:	typ = "SOCK_DGRAM"; break;
+#ifdef SOCK_RAW
+  case SOCK_RAW:	typ = "SOCK_RAW"; break;
+#endif
+#ifdef SOCK_RDM
+  case SOCK_RDM:	typ = "SOCK_RDM"; break;
+#endif
+#ifdef SOCK_SEQPACKET
+  case SOCK_SEQPACKET:	typ = "SOCK_SEQPACKET"; break;
+#endif
+#ifdef SOCK_PACKET
+  case SOCK_PACKET:	typ = "SOCK_PACKET"; break;
+#endif
+  }
+  if (typ)
+    strbuf_puts(sb, typ);
+  else
+    strbuf_sprintf(sb, "[%d]", type);
+  return sb;
+}
+
+strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t addrlen)
+{
+  strbuf_append_socket_domain(sb, addr->sa_family);
   switch (addr->sa_family) {
-  case AF_UNIX:
-    strbuf_putc(sb, ' ');
-    if (addr->sa_data[0])
-      strbuf_toprint_quoted_len(sb, addr->sa_data, "\"\"", sizeof addr->sa_data);
-    else {
-      strbuf_puts(sb, "abstract ");
-      strbuf_toprint_quoted_len(sb, addr->sa_data, "\"\"", sizeof addr->sa_data);
+  case AF_UNIX: {
+      size_t len = addrlen > sizeof addr->sa_family ? addrlen - sizeof addr->sa_family : 0;
+      strbuf_putc(sb, ' ');
+      if (addr->sa_data[0]) {
+	strbuf_toprint_quoted_len(sb, "\"\"", addr->sa_data, len);
+	if (len < 2)
+	  strbuf_sprintf(sb, " (addrlen=%d too short)", (int)addrlen);
+	if (len && addr->sa_data[len - 1] != '\0')
+	  strbuf_sprintf(sb, " (addrlen=%d, no nul terminator)", (int)addrlen);
+      } else {
+	strbuf_puts(sb, "abstract ");
+	strbuf_toprint_quoted_len(sb, "\"\"", addr->sa_data, len);
+	if (len == 0)
+	  strbuf_sprintf(sb, " (addrlen=%d too short)", (int)addrlen);
+      }
     }
     break;
   case AF_INET: {
+      if (addrlen != sizeof(struct sockaddr_in))
+	strbuf_sprintf(sb, " (addrlen=%d should be %d)", (int)addrlen, sizeof(struct sockaddr_in));
       const struct sockaddr_in *addr_in = (const struct sockaddr_in *) addr;
       strbuf_sprintf(sb, " %u.%u.%u.%u:%u",
 	  ((unsigned char *) &addr_in->sin_addr.s_addr)[0],
@@ -301,8 +343,9 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr)
     }
     break;
   default: {
+      size_t len = addrlen > sizeof addr->sa_family ? addrlen - sizeof addr->sa_family : 0;
       int i;
-      for (i = 0; i < sizeof addr->sa_data; ++i)
+      for (i = 0; i < len; ++i)
 	strbuf_sprintf(sb, " %02x", addr->sa_data[i]);
     }
     break;
