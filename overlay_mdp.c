@@ -39,34 +39,25 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
 static void overlay_mdp_clean_socket_files()
 {
   const char *instance_path = serval_instancepath();
-  char path[PATH_MAX];
   DIR *dir;
   struct dirent *dp;
-  struct stat st;
-
-  /* Open instance_path directory. */
   if ((dir = opendir(instance_path)) == NULL) {
-    WARNF("Can't open %s\n", instance_path);
+    WARNF_perror("opendir(%s)", alloca_str_toprint(instance_path));
     return;
   }
-
-  /* Read all files in instance_path directory. */
   while ((dp = readdir(dir)) != NULL) {
-
-    /* Concatenate dir and name. */
-    sprintf(path, "%s/%s", instance_path, dp->d_name);
-
-    /* Retrieve stat info. */
-    if (stat(path, &st)) {
-      WARNF("Cannot stat %s (errno=%d)\n", path, errno);
+    char path[PATH_MAX];
+    if (!FORM_SERVAL_INSTANCE_PATH(path, dp->d_name))
+      continue;
+    struct stat st;
+    if (lstat(path, &st)) {
+      WARNF_perror("stat(%s)", alloca_str_toprint(path));
       continue;
     }
-
-    if (S_ISSOCK(st.st_mode)) {
-      /* The file is a UNIX socket, delete it. */
+    if (S_ISSOCK(st.st_mode))
       unlink(path);
-    }
   }
+  closedir(dir);
 }
 
 int overlay_mdp_setup_sockets()
