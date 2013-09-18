@@ -659,17 +659,10 @@ static void interface_read_stream(struct overlay_interface *interface){
     dump("read bytes", buffer, nread);
   struct slip_decode_state *state=&interface->slip_decode_state;
   
-  state->src=buffer;
-  state->src_size=nread;
-  state->src_offset=0;
-  
-  while (state->src_offset < state->src_size) {
-    int ret = slip_decode(state);
-    if (ret==1){
-      packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL, -1);
-      state->dst_offset=0;
-    }
-  }
+  int i;
+  for (i=0;i<nread;i++)
+    mavlink_decode(interface, state, buffer[i]);
+    
   OUT();
 }
 
@@ -701,7 +694,7 @@ static void write_stream_buffer(overlay_interface *interface){
       if (interface->throttle_burst_write_size && bytes>bytes_allowed)
 	bytes=bytes_allowed;
       if (config.debug.packetradio)
-	DEBUGF("Trying to write %d bytes",bytes);
+	DEBUGF("Trying to write %d bytes of %d%s", bytes, interface->tx_bytes_pending, interface->tx_packet?", pending packet":"");
       int written=write(interface->alarm.poll.fd, interface->txbuffer, bytes);
       if (written<=0)
 	break;
@@ -776,6 +769,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
 	break;
     }
     
+    unschedule(alarm);
     if (alarm->alarm!=-1 && interface->state==INTERFACE_STATE_UP) {
       if (alarm->alarm < now)
         alarm->alarm = now;

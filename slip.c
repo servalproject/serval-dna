@@ -365,29 +365,6 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
 int slip_decode(struct slip_decode_state *state)
 {
   switch(state->encapsulator) {
-  case SLIP_FORMAT_MAVLINK:
-    {
-      for(;state->src_offset<state->src_size;state->src_offset++) {
-	// flag complete reception of a packet
-	if (mavlink_decode(state,state->src[state->src_offset])==1) {
-	  // We have to increment src_offset manually here, because returning
-	  // prevents the post-increment in the for loop from triggering
-	  state->src_offset++;
-	  if (config.debug.mavlink_payloads||config.debug.interactive_io) {
-	    DEBUG_packet_visualise("Received packet",state->dst,state->packet_length);
-	  }
-	  if (config.debug.interactive_io) {
-	    fprintf(stderr,"Press ENTER to continue..."); fflush(stderr);
-	    char buffer[80];
-	    if (!fgets(buffer,80,stdin))
-	      FATAL_perror("calling fgets");
-	  }
-	  return 1;
-	}
-      }
-    }
-    return 0;
-    break;
   case SLIP_FORMAT_SLIP:
     {
       /*

@@ -47,6 +47,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "conf.h"
 #include "overlay_buffer.h"
+#include "golay.h"
 
 #define MAVLINK_MSG_ID_RADIO 166
 #define MAVLINK_MSG_ID_DATASTREAM 67
@@ -158,8 +159,10 @@ int mavlink_encode_packet(struct overlay_interface *interface)
   // that there is a 2 byte CRC, so we can save two bytes
   int len = count+32 - 2;
   interface->txbuffer[1]=len;
-  interface->txbuffer[2]=0; // packet sequence
-  interface->txbuffer[3]=0x00; // system ID of sender (MAV_TYPE_GENERIC)
+  interface->txbuffer[2]=(len & 0xF); // packet sequence
+  interface->txbuffer[3]=0; // system ID of sender (MAV_TYPE_GENERIC)
+  golay_encode(&interface->txbuffer[1]);
+  
   interface->txbuffer[4]=0x40; // component ID of sender: we are reusing this to mark start,end of MDP frames
   if (startP) interface->txbuffer[4]|=0x01;
   if (endP) interface->txbuffer[4]|=0x02;
@@ -167,7 +170,7 @@ int mavlink_encode_packet(struct overlay_interface *interface)
   // payload follows (we reuse the DATA_STREAM message type parameters)
   ob_get_bytes(interface->tx_packet, &interface->txbuffer[6], count);
   
-  encode_rs_8(&interface->txbuffer[2], &interface->txbuffer[6+count], 223 - (count+4));
+  encode_rs_8(&interface->txbuffer[4], &interface->txbuffer[6+count], 223 - (count+2));
   interface->tx_bytes_pending=len + 8;
   if (endP){
     ob_free(interface->tx_packet);
@@ -185,16 +188,17 @@ int mavlink_heartbeat(unsigned char *frame,int *outlen)
   frame[0]=0xfe; // mavlink v1.0 frame
   // Must be 9 to indicate heartbeat
   frame[1]=count; // payload len, excluding 6 byte header and 2 byte CRC
-  frame[2]=0; // packet sequence
+  frame[2]=(count & 0xF); // packet sequence
   frame[3]=0x00; // system ID of sender (MAV_TYPE_GENERIC)
+  golay_encode(&frame[1]);
   frame[4]=0xf1; // component ID of sender (MAV_COMP_ID_UART_BRIDGE)
   // Must be zero to indicate heartbeat
   frame[5]=0; // message ID type of this frame: DATA_STREAM
 
-  // empty payload
-
-  // two-byte CRC follows
-  mavlink_crc(frame,count); // automatically adds 6 for header length
+  // extra magic number to detect remote heartbeat requests
+  frame[14]=0x55;
+  frame[15]=0x05;
+  golay_encode(&frame[14]);
   
   *outlen=count+8;
   
@@ -206,33 +210,51 @@ extern int last_radio_rssi;
 extern int last_radio_temperature;
 extern int last_radio_rxpackets;
 
-int mavlink_parse(struct slip_decode_state *state)
+static int parse_heartbeat(const unsigned char *payload)
 {
-  int packet_length=state->mavlink_payload[1];
+  if (payload[0]==0xFE 
+    && payload[1]==9
+    && payload[3]==RADIO_SOURCE_SYSTEM
+    && payload[4]==RADIO_SOURCE_COMPONENT
+    && payload[5]==MAVLINK_MSG_ID_RADIO){
+    
+    // we can assume that radio status packets arrive without corruption
+    last_radio_rssi=(1.0*payload[10]-payload[13])/1.9;
+    last_radio_temperature=-999; // doesn't get reported
+    last_radio_rxpackets=-999; // doesn't get reported
+    if (1||config.debug.mavlink||gettime_ms()-last_rssi_time>30000) {
+      INFOF("Link budget = %+ddB, remote link budget = %+ddB, buffer space = %d%%",
+	    last_radio_rssi,
+	    (int)((1.0*payload[11] - payload[14])/1.9),
+	    payload[12]);
+      last_rssi_time=gettime_ms();
+    }
+    return 1;
+  }
+  return 0;
+}
+
+int mavlink_parse(struct overlay_interface *interface, struct slip_decode_state *state, 
+  int packet_length, unsigned char *payload)
+{
   if (packet_length==9){
-    if (state->mavlink_payload[5]==MAVLINK_MSG_ID_RADIO){
-      // we can assume that radio status packets arrive without corruption
-      last_radio_rssi=(1.0*state->mavlink_payload[10]-state->mavlink_payload[13])/1.9;
-      last_radio_temperature=-999; // doesn't get reported
-      last_radio_rxpackets=-999; // doesn't get reported
-      if (config.debug.mavlink||gettime_ms()-last_rssi_time>30000) {
-	INFOF("Link budget = %+ddB, remote link budget = %+ddB, buffer space = %d%%",
-	      last_radio_rssi,
-	      (int)((1.0*state->mavlink_payload[11]-state->mavlink_payload[14])/1.9),
-	      state->mavlink_payload[12]);
-	last_rssi_time=gettime_ms();
-      }
+    // make sure we've heard the start and end of a remote heartbeat request
+    int errs=0;
+    int tail = golay_decode(&errs, &payload[14]);
+    if (tail == 0x555){
+      // if we've lost sync and have skipped bytes, drop any previous packet contents
+      if (state->mavlink_payload_start)
+	state->packet_length=sizeof(state->dst)+1;
+      return 1;
     }
     return 0;
   }
   
   int data_bytes = packet_length - (32 - 2);
-  
-  int errcount=decode_rs_8(&state->mavlink_payload[2], NULL, 0, 223 - (data_bytes + 4));
+  int errcount=decode_rs_8(&payload[4], NULL, 0, 223 - (data_bytes + 2));
   if (errcount==-1){
     if (config.debug.mavlink)
       DEBUGF("Reed-Solomon error correction failed");
-    state->packet_length=sizeof(state->dst)+1;
     return 0;
   }
   
@@ -240,60 +262,128 @@ int mavlink_parse(struct slip_decode_state *state)
     DEBUGF("Received RS protected message, len: %d, errors: %d, flags:%s%s", 
       data_bytes,
       errcount,
-      state->mavlink_payload[4]&0x01?" start":"",
-      state->mavlink_payload[4]&0x02?" end":"");
+      payload[4]&0x01?" start":"",
+      payload[4]&0x02?" end":"");
   }
   
-  if (state->mavlink_payload[4]&0x01)
+  if (payload[4]&0x01)
     state->packet_length=0;
+  else if (state->mavlink_payload_start)
+    // if we've lost sync and have skipped bytes, drop any previous packet contents
+    state->packet_length=sizeof(state->dst)+1;
     
   if (state->packet_length + data_bytes > sizeof(state->dst)){
     if (config.debug.mavlink) 
       DEBUG("Fragmented packet is too long or a previous piece was missed - discarding");
     state->packet_length=sizeof(state->dst)+1;
-    return 0;
+    return 1;
   }
   
-  bcopy(&state->mavlink_payload[6], &state->dst[state->packet_length], data_bytes);
+  bcopy(&payload[6], &state->dst[state->packet_length], data_bytes);
   state->packet_length+=data_bytes;
     
-  if (state->mavlink_payload[4]&0x02) {
+  if (payload[4]&0x02) {
     if (config.debug.mavlink) 
       DEBUGF("PDU Complete (length=%d)",state->packet_length);
     state->dst_offset=0;
-    return 1;
+    
+    packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL, -1);
+    state->packet_length=sizeof(state->dst)+1;
   }
+  return 1;
+}
+
+static int decode_length(struct slip_decode_state *state, unsigned char *p)
+{
+  // look for a valid golay encoded length
+  int errs=0;
+  int length = golay_decode(&errs, p);
+  if (length<0 || ((length >>8) & 0xF) != (length&0xF))
+    return -1;
+  length=length&0xFF;
+  if (length!=9 && (length<31 || length+8>255))
+    return -1;
+  
+  if (config.debug.mavlink && (errs || state->mavlink_payload_length!=*p))
+    DEBUGF("Decoded length %d to %d with %d errs", *p, length, errs);
+  
+  state->mavlink_payload_length=length;
   return 0;
 }
 
-int mavlink_decode(struct slip_decode_state *state, uint8_t c)
+int mavlink_decode(struct overlay_interface *interface, struct slip_decode_state *state, uint8_t c)
 {
-  int ret=0;
-  // skip all bytes until the next packet boundary
-  if (state->mavlink_payload_offset==0 && c!=0xfe){
-    if (config.debug.mavlink)
-      DEBUGF("Waiting for valid header, skipped byte 0x%02x",c);
-    return 0;
+  if (state->mavlink_payload_start + state->mavlink_payload_offset >= sizeof(state->mavlink_payload)){
+    // drop one byte if we run out of space
+    if (1||config.debug.mavlink)
+      DEBUGF("Dropped %02x", state->mavlink_payload[0]);
+    bcopy(state->mavlink_payload+1, state->mavlink_payload, sizeof(state->mavlink_payload) -1);
+    state->mavlink_payload_start--;
   }
-    
-  if (state->mavlink_payload_offset==1){
-    // check that the length seems to be valid
-    // radio heartbeats have length==9
-    // RS protected frames must be >= (1 + 32 - 2) bytes
-    if (c+8>255 || (c<31 && c!=9)){
-      if (config.debug.mavlink)
-	DEBUGF("Waiting for valid header, skipped byte 0x%02x",c);
-      state->mavlink_payload_offset=0;
-      return 0;
+  
+  unsigned char *p = &state->mavlink_payload[state->mavlink_payload_start];
+  p[state->mavlink_payload_offset++]=c;
+  
+  while(1){
+    // look for packet length headers
+    p = &state->mavlink_payload[state->mavlink_payload_start];
+    while(state->mavlink_payload_length==0 && state->mavlink_payload_offset>=6){
+      if (p[0]==0xFE 
+	&& p[1]==9
+	&& p[3]==RADIO_SOURCE_SYSTEM
+	&& p[4]==RADIO_SOURCE_COMPONENT
+	&& p[5]==MAVLINK_MSG_ID_RADIO){
+	//looks like a valid heartbeat response header, read the rest and process it
+	state->mavlink_payload_length=9;
+	break;
+      }
+      if (decode_length(state, &p[1])==0)
+	break;
+      
+      state->mavlink_payload_start++;
+      state->mavlink_payload_offset--;
+      p++;
     }
-  }
-  
-  state->mavlink_payload[state->mavlink_payload_offset++]=c;
-  
-  if (state->mavlink_payload_offset >= state->mavlink_payload[1]+8){
-    ret = mavlink_parse(state);
-    state->mavlink_payload_offset=0;
-  }
-  
-  return ret;
+    
+    // wait for a whole packet
+    if (!state->mavlink_payload_length || state->mavlink_payload_offset < state->mavlink_payload_length+8)
+      return 0;
+    
+    if (parse_heartbeat(p)){
+      // cut the bytes of the heartbeat out of the buffer
+      state->mavlink_payload_offset -= state->mavlink_payload_length+8;
+      if (state->mavlink_payload_offset){
+	// shuffle bytes backwards
+	bcopy(&p[state->mavlink_payload_length+8], p, state->mavlink_payload_offset);
+      }
+      // restart parsing for a valid header from the beginning of out buffer
+      state->mavlink_payload_offset+=state->mavlink_payload_start;
+      state->mavlink_payload_start=0;
+      state->mavlink_payload_length=0;
+      continue;
+    }
+    
+    // is this a well formed packet?
+    if (mavlink_parse(interface, state, state->mavlink_payload_length, p)==1){
+      // Since we know we've synced with the remote party, 
+      // and there's nothing we can do about any earlier data
+      // throw away everything before the end of this packet
+      if (state->mavlink_payload_start && (1||config.debug.mavlink))
+	dump("Skipped", state->mavlink_payload, state->mavlink_payload_start);
+      
+      state->mavlink_payload_offset -= state->mavlink_payload_length+8;
+      if (state->mavlink_payload_offset){
+	// shuffle all remaining bytes back to the start of the buffer
+	bcopy(&state->mavlink_payload[state->mavlink_payload_start + state->mavlink_payload_length+8], 
+	  state->mavlink_payload, state->mavlink_payload_offset);
+      }
+      state->mavlink_payload_start=0;
+    }else{
+      // ignore the first byte for now and start looking for another packet header
+      // we may find a heartbeat in the middle that we need to cut out first
+      state->mavlink_payload_start++;
+      state->mavlink_payload_offset--;
+    }
+    state->mavlink_payload_length=0;
+  };
 }

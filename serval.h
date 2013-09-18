@@ -381,8 +381,10 @@ struct slip_decode_state{
   int src_offset;
   int dst_offset;
 
-  uint8_t mavlink_payload_offset;
-  uint8_t mavlink_payload[256];
+  int mavlink_payload_length;
+  int mavlink_payload_start;
+  int mavlink_payload_offset;
+  uint8_t mavlink_payload[1024];
 };
 
 struct overlay_interface;
@@ -875,7 +877,7 @@ int link_add_destinations(struct overlay_frame *frame);
 
 int generate_nonce(unsigned char *nonce,int bytes);
 
-int mavlink_decode(struct slip_decode_state *state,uint8_t c);
+int mavlink_decode(struct overlay_interface *interface, struct slip_decode_state *state,uint8_t c);
 int mavlink_heartbeat(unsigned char *frame,int *outlen);
 int mavlink_encode_packet(struct overlay_interface *interface);
 
