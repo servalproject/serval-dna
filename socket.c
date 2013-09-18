@@ -52,7 +52,7 @@ int _socket_setname(struct __sourceloc __whence, struct sockaddr_un *addr, const
 int _esocket(struct __sourceloc __whence, int domain, int type, int protocol)
 {
   int fd;
-  if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
+  if ((fd = socket(domain, type, protocol)) == -1)
     return WHYF_perror("socket(%s, %s, 0)", alloca_socket_domain(domain), alloca_socket_type(type));
   if (config.debug.io || config.debug.verbose_io)
     DEBUGF("socket(%s, %s, 0) -> %d", alloca_socket_domain(domain), alloca_socket_type(type), fd);
