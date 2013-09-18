@@ -51,8 +51,6 @@ static void overlay_interface_poll(struct sched_ent *alarm);
 static int re_init_socket(int interface_index);
 static void write_stream_buffer(overlay_interface *interface);
 
-#define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __WHENCE__, (M), (P), (N))
-
 static void
 overlay_interface_close(overlay_interface *interface){
   link_interface_down(interface);
@@ -233,20 +231,7 @@ overlay_interface_read_any(struct sched_ent *alarm){
       return;
     }
     
-    /* We have a frame from this interface */
-    if (config.debug.packetrx)
-      DEBUG_packet_visualise("Read from real interface", packet,plen);
-    if (config.debug.overlayinterfaces)
-      DEBUGF("Received %d bytes from %s on interface %s (ANY)",plen, 
-	     inet_ntoa(src),
-	     interface->name);
-    
-    if (packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen)<0) {
-      if (config.debug.rejecteddata) {
-	WHYF("Malformed packet (length = %d)",plen);
-	dump("the malformed packet",packet,plen);
-      }
-    }
+    packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen);
   }
   if (alarm->poll.revents & (POLLHUP | POLLERR)) {
     INFO("Closing broadcast socket due to error");
@@ -552,21 +537,7 @@ static void interface_read_dgram(struct overlay_interface *interface){
     return;
   }
   
-  /* We have a frame from this interface */
-  if (config.debug.packetrx)
-    DEBUG_packet_visualise("Read from real interface", packet,plen);
-  if (config.debug.overlayinterfaces) {
-    struct in_addr src = ((struct sockaddr_in *)&src_addr)->sin_addr; // avoid strict-alias warning on Solaris (gcc 4.4)
-    DEBUGF("Received %d bytes from %s on interface %s",plen,
-	   inet_ntoa(src),
-	   interface->name);
-  }
-  if (packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen)<0) {
-    if (config.debug.rejecteddata) {
-      WHYF("Malformed packet (length = %d)",plen);
-      dump("the malformed packet",packet,plen);
-    }
-  }
+  packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen);
 }
 
 struct file_packet{
@@ -644,23 +615,13 @@ static void interface_read_file(struct overlay_interface *interface)
     
     if (nread == sizeof packet) {
       interface->recv_offset += nread;
-      
-      if (config.debug.packetrx)
-	DEBUG_packet_visualise("Read from dummy interface", packet.payload, packet.payload_length);
-
       if (should_drop(interface, packet.dst_addr) || (packet.pid == getpid() && !interface->local_echo)){
 	if (config.debug.packetrx)
 	  DEBUGF("Ignoring packet from %d, addressed to %s:%d", packet.pid,
 	      inet_ntoa(packet.dst_addr.sin_addr), ntohs(packet.dst_addr.sin_port));
       }else{
-	if (packetOkOverlay(interface, packet.payload, packet.payload_length, -1, 
-			    (struct sockaddr*)&packet.src_addr, sizeof(packet.src_addr))<0) {
-	  if (config.debug.rejecteddata) {
-	    WARN("Unsupported packet from dummy interface");
-	    WHYF("Malformed packet (length = %d)",packet.payload_length);
-	    dump("the malformed packet",packet.payload,packet.payload_length);
-	  }
-	}
+	packetOkOverlay(interface, packet.payload, packet.payload_length, -1, 
+			    (struct sockaddr*)&packet.src_addr, sizeof(packet.src_addr));
       }
     }
   }
@@ -694,12 +655,9 @@ static void interface_read_stream(struct overlay_interface *interface){
     OUT();
     return;
   }
-  
+  if (config.debug.packetradio)
+    dump("read bytes", buffer, nread);
   struct slip_decode_state *state=&interface->slip_decode_state;
-  
-  if (config.debug.slip) {
-   dump("RX bytes", buffer, nread);
- }
   
   state->src=buffer;
   state->src_size=nread;
@@ -708,12 +666,7 @@ static void interface_read_stream(struct overlay_interface *interface){
   while (state->src_offset < state->src_size) {
     int ret = slip_decode(state);
     if (ret==1){
-      if (packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL, -1)<0) {
-	if (config.debug.rejecteddata) {
-	  WHYF("Malformed packet (length = %d)",state->packet_length);
-	  dump("the malformed packet",state->dst,state->packet_length);
-	}
-      }
+      packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL, -1);
       state->dst_offset=0;
     }
   }

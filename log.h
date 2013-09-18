@@ -107,7 +107,6 @@ void logConfigChanged();
 int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len);
 ssize_t get_self_executable_path(char *buf, size_t len);
 int log_backtrace(int level, struct __sourceloc whence);
-void logServalPacket(int level, struct __sourceloc __whence, const char *message, const unsigned char *packet, size_t len);
 
 struct strbuf;
 

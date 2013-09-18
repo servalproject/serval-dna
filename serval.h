@@ -590,6 +590,8 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now);
 
 int serval_packetvisualise(const char *message, const unsigned char *packet, size_t len);
 int serval_packetvisualise_xpf(XPRINTF xpf, const char *message, const unsigned char *packet, size_t len);
+void logServalPacket(int level, struct __sourceloc __whence, const char *message, const unsigned char *packet, size_t len);
+#define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __WHENCE__, (M), (P), (N))
 
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_opendb();
