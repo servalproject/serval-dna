@@ -278,7 +278,6 @@ int fd_poll()
     if (fdcount==0){
       sleep_ms(ms);
     }else{
-      if (config.debug.io) DEBUGF("poll(X,%d,%d)",fdcount,ms);
       r = poll(fds, fdcount, ms);
       if (config.debug.io) {
 	strbuf b = strbuf_alloca(1024);
@@ -288,10 +287,10 @@ int fd_poll()
 	    strbuf_puts(b, ", ");
 	  strbuf_sprintf(b, "%d:", fds[i].fd);
 	  strbuf_append_poll_events(b, fds[i].events);
-	  strbuf_putc(b, ':');
+	  strbuf_puts(b, "->");
 	  strbuf_append_poll_events(b, fds[i].revents);
 	}
-	DEBUGF("poll(fds=(%s), fdcount=%d, ms=%d) = %d", strbuf_str(b), fdcount, ms, r);
+	DEBUGF("poll(fds=(%s), fdcount=%d, ms=%d) -> %d", strbuf_str(b), fdcount, ms, r);
       }
     }
     fd_func_exit(__HERE__, &call_stats);
