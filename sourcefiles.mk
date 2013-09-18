@@ -13,6 +13,7 @@ SERVAL_SOURCES = \
 	$(SERVAL_BASE)encode.c \
 	$(SERVAL_BASE)fdqueue.c \
 	$(SERVAL_BASE)fifo.c \
+	$(SERVAL_BASE)golay.c \
 	$(SERVAL_BASE)keyring.c \
 	$(SERVAL_BASE)log.c \
 	$(SERVAL_BASE)lsif.c \
