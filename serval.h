@@ -168,16 +168,24 @@ int create_serval_instance_dir();
 int form_serval_instance_path(char *buf, size_t bufsiz, const char *path);
 void serval_setinstancepath(const char *instancepath);
 
-/* Create a named socket using abstract socket on Linux or a local socket on
- * other platforms.
+/* Basic socket operations.
  */
-int esocket(int domain, int type, int protocol);
-int socket_setname(struct sockaddr_un *sockname, const char *name, socklen_t *addrlen);
-int socket_bind(int sock, const struct sockaddr *addr, socklen_t addrlen);
-int socket_connect(int sock, const struct sockaddr *addr, socklen_t addrlen);
-int socket_listen(int sock, int backlog);
-int socket_set_reuseaddr(int fd, int reuseP);
-int socket_set_rcvbufsize(int fd, unsigned buffer_size);
+int _esocket(struct __sourceloc __whence, int domain, int type, int protocol);
+int _socket_setname(struct __sourceloc __whence, struct sockaddr_un *sockname, const char *name, socklen_t *addrlen);
+int _socket_bind(struct __sourceloc __whence, int sock, const struct sockaddr *addr, socklen_t addrlen);
+int _socket_connect(struct __sourceloc __whence, int sock, const struct sockaddr *addr, socklen_t addrlen);
+int _socket_listen(struct __sourceloc __whence, int sock, int backlog);
+int _socket_set_reuseaddr(struct __sourceloc __whence, int sock, int reuseP);
+int _socket_set_rcvbufsize(struct __sourceloc __whence, int sock, unsigned buffer_size);
+
+#define esocket(domain, type, protocol)             _esocket(__HERE__, domain, type, protocol)
+#define socket_setname(sockname, name, addrlenp)    _socket_setname(__HERE__, sockname, name, addrlenp)
+#define socket_bind(sock, addr, addrlen)            _socket_bind(__HERE__, sock, addr, addrlen)
+#define socket_connect(sock, addr, addrlen)         _socket_connect(__HERE__, sock, addr, addrlen)
+#define socket_listen(sock, backlog)                _socket_listen(__HERE__, sock, backlog)
+#define socket_set_reuseaddr(sock, reuseP)          _socket_set_reuseaddr(__HERE__, sock, reuseP)
+#define socket_set_rcvbufsize(sock, buffer_size)    _socket_set_rcvbufsize(__HERE__, sock, buffer_size)
+
 
 #define SERVER_CONFIG_RELOAD_INTERVAL_MS	1000
 

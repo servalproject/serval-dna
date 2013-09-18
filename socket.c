@@ -31,7 +31,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * @author Andrew Bettison <andrew@servalproject.com>
  * @author Daniel O'Connor <daniel@servalproject.com>
  */
-int socket_setname(struct sockaddr_un *addr, const char *name, socklen_t *addrlen)
+int _socket_setname(struct __sourceloc __whence, struct sockaddr_un *addr, const char *name, socklen_t *addrlen)
 {
   bzero(addr, sizeof(*addr));
   addr->sun_family = AF_UNIX;
@@ -49,7 +49,7 @@ int socket_setname(struct sockaddr_un *addr, const char *name, socklen_t *addrle
   return 0;
 }
 
-int esocket(int domain, int type, int protocol)
+int _esocket(struct __sourceloc __whence, int domain, int type, int protocol)
 {
   int fd;
   if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
@@ -59,7 +59,7 @@ int esocket(int domain, int type, int protocol)
   return fd;
 }
 
-int socket_connect(int sock, const struct sockaddr *addr, socklen_t addrlen)
+int _socket_connect(struct __sourceloc __whence, int sock, const struct sockaddr *addr, socklen_t addrlen)
 {
   if (connect(sock, (struct sockaddr *)addr, addrlen) == -1)
     return WHYF_perror("connect(%d,%s,%lu)", sock, alloca_sockaddr(addr, addrlen), (unsigned long)addrlen);
@@ -68,7 +68,7 @@ int socket_connect(int sock, const struct sockaddr *addr, socklen_t addrlen)
   return 0;
 }
 
-int socket_bind(int sock, const struct sockaddr *addr, socklen_t addrlen)
+int _socket_bind(struct __sourceloc __whence, int sock, const struct sockaddr *addr, socklen_t addrlen)
 {
   if (addr->sa_family == AF_UNIX && ((struct sockaddr_un *)addr)->sun_path[0]) {
     if (unlink(((struct sockaddr_un *)addr)->sun_path) == -1 && errno != ENOENT)
@@ -83,7 +83,7 @@ int socket_bind(int sock, const struct sockaddr *addr, socklen_t addrlen)
   return 0;
 }
 
-int socket_listen(int sock, int backlog)
+int _socket_listen(struct __sourceloc __whence, int sock, int backlog)
 {
   if (listen(sock, backlog) == -1)
     return WHYF_perror("listen(%d,%d)", sock, backlog);
@@ -92,7 +92,7 @@ int socket_listen(int sock, int backlog)
   return 0;
 }
 
-int socket_set_reuseaddr(int sock, int reuseP)
+int _socket_set_reuseaddr(struct __sourceloc __whence, int sock, int reuseP)
 {
   if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof reuseP) == -1) {
     WARNF_perror("setsockopt(%d,SOL_SOCKET,SO_REUSEADDR,&%d,%u)", sock, reuseP, (unsigned)sizeof reuseP);
@@ -103,7 +103,7 @@ int socket_set_reuseaddr(int sock, int reuseP)
   return 0;
 }
 
-int socket_set_rcvbufsize(int sock, unsigned buffer_size)
+int _socket_set_rcvbufsize(struct __sourceloc __whence, int sock, unsigned buffer_size)
 {
   if (setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &buffer_size, sizeof buffer_size) == -1) {
     WARNF_perror("setsockopt(%d,SOL_SOCKET,SO_RCVBUF,&%u,%u)", sock, buffer_size, (unsigned)sizeof buffer_size);
