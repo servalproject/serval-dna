@@ -319,7 +319,7 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
 	strbuf_toprint_quoted_len(sb, "\"\"", addr->sa_data, len);
 	if (len < 2)
 	  strbuf_sprintf(sb, " (addrlen=%d too short)", (int)addrlen);
-	if (len && addr->sa_data[len - 1] != '\0')
+	if (len == 0 || addr->sa_data[len - 1] != '\0')
 	  strbuf_sprintf(sb, " (addrlen=%d, no nul terminator)", (int)addrlen);
       } else {
 	strbuf_puts(sb, "abstract ");
@@ -330,8 +330,6 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
     }
     break;
   case AF_INET: {
-      if (addrlen != sizeof(struct sockaddr_in))
-	strbuf_sprintf(sb, " (addrlen=%d should be %d)", (int)addrlen, sizeof(struct sockaddr_in));
       const struct sockaddr_in *addr_in = (const struct sockaddr_in *) addr;
       strbuf_sprintf(sb, " %u.%u.%u.%u:%u",
 	  ((unsigned char *) &addr_in->sin_addr.s_addr)[0],
@@ -340,6 +338,8 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
 	  ((unsigned char *) &addr_in->sin_addr.s_addr)[3],
 	  ntohs(addr_in->sin_port)
 	);
+      if (addrlen != sizeof(struct sockaddr_in))
+	strbuf_sprintf(sb, " (addrlen=%d should be %d)", (int)addrlen, sizeof(struct sockaddr_in));
     }
     break;
   default: {

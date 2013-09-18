@@ -78,10 +78,8 @@ struct profile_total client_stats;
 int monitor_setup_sockets()
 {
   int sock = -1;
-  if ((sock = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-    WHYF_perror("socket(AF_UNIX, SOCK_STREAM, 0)");
+  if ((sock = esocket(AF_UNIX, SOCK_STREAM, 0)) == -1)
     goto error;
-  }
   struct sockaddr_un addr;
   socklen_t addrlen;
   if (socket_setname(&addr, config.monitor.socket, &addrlen) == -1)
@@ -93,14 +91,13 @@ int monitor_setup_sockets()
   if (socket_set_reuseaddr(sock, 1) == -1)
     WHY("Could not indicate reuse addresses. Not necessarily a problem (yet)");
   socket_set_rcvbufsize(sock, 64 * 1024);
-  if (config.debug.io || config.debug.verbose_io)
-    DEBUGF("Monitor server socket bound to %s", alloca_sockaddr(&addr, addrlen));
   named_socket.function=monitor_poll;
   named_stats.name="monitor_poll";
   named_socket.stats=&named_stats;
   named_socket.poll.fd=sock;
   named_socket.poll.events=POLLIN;
   watch(&named_socket);
+  INFOF("Monitor socket: fd=%d %s", sock, alloca_sockaddr(&addr, addrlen));
   return 0;
   
 error:

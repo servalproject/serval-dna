@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "str.h"
 #include "strbuf.h"
+#include "strbuf_helpers.h"
 #include "overlay_buffer.h"
 #include "overlay_address.h"
 #include "overlay_packet.h"
@@ -89,15 +90,16 @@ int overlay_mdp_setup_sockets()
       return -1;
     }
     socket_set_rcvbufsize(mdp_sock.poll.fd, 64 * 1024);
-    /*
+#if 0
     int buffer_size = 64 * 1024;    
     if (setsockopt(mdp_sock.poll.fd, SOL_SOCKET, SO_SNDBUF, &buffer_size, sizeof(buffer_size)) == -1)
       WARNF_perror("setsockopt(%d,SOL_SOCKET,SO_SNDBUF,&%d,%d)", mdp_sock.poll.fd, buffer_size, sizeof buffer_size);
-    */
+#endif
     mdp_sock.function = overlay_mdp_poll;
     mdp_sock.stats = &mdp_stats;
     mdp_sock.poll.events = POLLIN;
     watch(&mdp_sock);
+    INFOF("MDP socket: fd=%d %s", mdp_sock.poll.fd, alloca_sockaddr(&addr, addrlen));
   }
   return 0;
 }
