@@ -43,10 +43,25 @@ void serval_setinstancepath(const char *instancepath)
   thisinstancepath = strdup(instancepath);
 }
 
-int form_serval_instance_path(char *buf, size_t bufsiz, const char *path)
+int formf_serval_instance_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  int ret = vformf_serval_instance_path(__whence, buf, bufsiz, fmt, ap);
+  va_end(ap);
+  return ret;
+}
+
+int vformf_serval_instance_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *fmt, va_list ap)
 {
   strbuf b = strbuf_local(buf, bufsiz);
-  strbuf_path_join(b, serval_instancepath(), path, NULL);
+  strbuf_va_vprintf(b, fmt, ap);
+  if (!strbuf_overrun(b) && strbuf_len(b) && buf[0] != '/') {
+    strbuf_reset(b);
+    strbuf_puts(b, serval_instancepath());
+    strbuf_putc(b, '/');
+    strbuf_va_vprintf(b, fmt, ap);
+  }
   if (!strbuf_overrun(b))
     return 1;
   WHYF("instance path overflow (strlen %lu, sizeof buffer %lu): %s",

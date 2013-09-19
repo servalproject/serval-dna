@@ -161,11 +161,12 @@ extern const char version_servald[];
  * is in scope (so that sizeof(buf) will work).  Evaluates to true if the pathname fitted into
  * the provided buffer, false (0) otherwise (after logging an error).
  */
-#define FORM_SERVAL_INSTANCE_PATH(buf, path) (form_serval_instance_path(buf, sizeof(buf), (path)))
+#define FORM_SERVAL_INSTANCE_PATH(buf, path) (formf_serval_instance_path(__WHENCE__, buf, sizeof(buf), "%s", (path)))
 
 const char *serval_instancepath();
 int create_serval_instance_dir();
-int form_serval_instance_path(char *buf, size_t bufsiz, const char *path);
+int formf_serval_instance_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((format(printf,4,5)));
+int vformf_serval_instance_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, va_list);
 void serval_setinstancepath(const char *instancepath);
 
 /* Basic socket operations.
