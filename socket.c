@@ -31,22 +31,103 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * @author Andrew Bettison <andrew@servalproject.com>
  * @author Daniel O'Connor <daniel@servalproject.com>
  */
-int _socket_setname(struct __sourceloc __whence, struct sockaddr_un *addr, const char *name, socklen_t *addrlen)
+int _socket_setname(struct __sourceloc __whence, struct sockaddr_un *addr, socklen_t *addrlen, const char *fmt, ...)
 {
   bzero(addr, sizeof(*addr));
   addr->sun_family = AF_UNIX;
-#ifdef USE_ABSTRACT_NAMESPACE
-  addr->sun_path[0] = '\0'; // mark as Linux abstract socket
-  int len = snprintf(addr->sun_path + 1, sizeof addr->sun_path - 1, "%s.%s", DEFAULT_ABSTRACT_PREFIX, name);
-  if (len > sizeof addr->sun_path - 1)
-    return WHYF("abstract socket name overflow (%d bytes exceeds maximum %u): %s.%s", DEFAULT_ABSTRACT_PREFIX, name, len, sizeof addr->sun_path - 1);
-  *addrlen = sizeof(addr->sun_family) + 1 + len; // abstract socket names do not have a trailing nul
-#else // !USE_ABSTRACT_NAMESPACE
-  if (!FORM_SERVAL_INSTANCE_PATH(addr->sun_path, name))
-    return WHYF("local socket name overflow: %s", name);
+  va_list ap;
+  va_start(ap, fmt);
+  int r = vformf_serval_instance_path(__WHENCE__, addr->sun_path, sizeof addr->sun_path, fmt, ap);
+  va_end(ap);
+  if (r == -1)
+    return WHY("local socket name overflow");
   *addrlen = sizeof(addr->sun_family) + strlen(addr->sun_path) + 1;
-#endif // !USE_ABSTRACT_NAMESPACE
+#ifdef USE_ABSTRACT_NAMESPACE
+  // For the abstract name we use the absolute path name with the initial '/' replaced by the
+  // leading nul.  This ensures that different instances of the Serval daemon have different socket
+  // names.
+  addr->sun_path[0] = '\0'; // mark as Linux abstract socket
+  --*addrlen; // do not count trailing nul in abstract socket name
+#endif // USE_ABSTRACT_NAMESPACE
   return 0;
+}
+
+/* Compare any two struct sockaddr.  Return -1, 0 or 1.  Cope with invalid and truncated sockaddr
+ * structures.  Uses inode number comparison to resolve symbolic links in AF_UNIX path names so is
+ * not suitable for sorting, because comparison results are inconsistent (eg, if A is a symlink to
+ * C, then A == C but A < B and B < C).
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int cmp_sockaddr(const struct sockaddr *addrA, socklen_t addrlenA, const struct sockaddr *addrB, socklen_t addrlenB)
+{
+  // Two zero-length sockaddrs are equal.
+  if (addrlenA == 0 && addrlenB == 0)
+    return 0;
+  // If either sockaddr is truncated, then we compare the bytes we have.
+  if (addrlenA < sizeof addrA->sa_family || addrlenB < sizeof addrB->sa_family) {
+    int c = memcmp(addrA, addrB, addrlenA < addrlenB ? addrlenA : addrlenB);
+    if (c == 0)
+      c = addrlenA < addrlenB ? -1 : addrlenA > addrlenB ? 1 : 0;
+    return c;
+  }
+  // Order first by address family.
+  if (addrA->sa_family < addrB->sa_family)
+    return -1;
+  if (addrA->sa_family > addrB->sa_family)
+    return 1;
+  // Both addresses are in the same family...
+  switch (addrA->sa_family) {
+  case AF_UNIX: {
+      unsigned pathlenA = addrlenA - sizeof ((const struct sockaddr_un *)addrA)->sun_family;
+      unsigned pathlenB = addrlenB - sizeof ((const struct sockaddr_un *)addrB)->sun_family;
+      if (   pathlenA > 1 && pathlenB > 1
+	  && ((const struct sockaddr_un *)addrA)->sun_path[0] == '\0'
+	  && ((const struct sockaddr_un *)addrB)->sun_path[0] == '\0'
+      ) {
+	// Both abstract sockets - just compare names, nul bytes are not terminators.
+	int c = memcmp(&((const struct sockaddr_un *)addrA)->sun_path[1],
+		       &((const struct sockaddr_un *)addrB)->sun_path[1],
+		       (pathlenA < pathlenB ? pathlenA : pathlenB) - 1);
+	if (c == 0)
+	  c = pathlenA < pathlenB ? -1 : pathlenA > pathlenB ? 1 : 0;
+	return c;
+      }
+      // Either or both are named local file sockets.  If the file names are identical up to the
+      // first nul, then the addresses are equal.  Otherwise, if both are nul terminated file names
+      // (not abstract) then compare for equality by using the inode numbers to factor out symbolic
+      // links.  Otherwise, simply compare the nul-terminated names (abstract names start with a nul
+      // so will always collate ahead of non-empty file names).
+      int c = strncmp(((const struct sockaddr_un *)addrA)->sun_path,
+		      ((const struct sockaddr_un *)addrB)->sun_path,
+		      (pathlenA < pathlenB ? pathlenA : pathlenB));
+      if (c == 0 && pathlenA == pathlenB)
+	return 0;
+      if (   pathlenA && pathlenB
+	  && ((const struct sockaddr_un *)addrA)->sun_path[0]
+	  && ((const struct sockaddr_un *)addrB)->sun_path[0]
+	  && ((const struct sockaddr_un *)addrA)->sun_path[pathlenA - 1] == '\0'
+	  && ((const struct sockaddr_un *)addrB)->sun_path[pathlenB - 1] == '\0'
+      ) {
+	struct stat statA, statB;
+	if (   stat(((const struct sockaddr_un *)addrA)->sun_path, &statA) == 0
+	    && stat(((const struct sockaddr_un *)addrB)->sun_path, &statB) == 0
+	    && statA.st_dev == statB.st_dev
+	    && statA.st_ino == statB.st_ino
+	)
+	    return 0;
+      }
+      if (c == 0)
+	c = pathlenA < pathlenB ? -1 : pathlenA > pathlenB ? 1 : 0;
+      return c;
+    }
+    break;
+  }
+  // Fall back to comparing the data bytes.
+  int c = memcmp(addrA->sa_data, addrB->sa_data, (addrlenA < addrlenB ? addrlenA : addrlenB) - sizeof addrA->sa_family);
+  if (c == 0)
+    c = addrlenA < addrlenB ? -1 : addrlenA > addrlenB ? 1 : 0;
+  return c;
 }
 
 int _esocket(struct __sourceloc __whence, int domain, int type, int protocol)

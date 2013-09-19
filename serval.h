@@ -172,7 +172,8 @@ void serval_setinstancepath(const char *instancepath);
 /* Basic socket operations.
  */
 int _esocket(struct __sourceloc, int domain, int type, int protocol);
-int _socket_setname(struct __sourceloc, struct sockaddr_un *sockname, const char *name, socklen_t *addrlen);
+int _socket_setname(struct __sourceloc, struct sockaddr_un *sockname, socklen_t *addrlen, const char *fmt, ...)
+    __attribute__((format(printf, 4, 5)));
 int _socket_bind(struct __sourceloc, int sock, const struct sockaddr *addr, socklen_t addrlen);
 int _socket_connect(struct __sourceloc, int sock, const struct sockaddr *addr, socklen_t addrlen);
 int _socket_listen(struct __sourceloc, int sock, int backlog);
@@ -180,7 +181,7 @@ int _socket_set_reuseaddr(struct __sourceloc, int sock, int reuseP);
 int _socket_set_rcvbufsize(struct __sourceloc, int sock, unsigned buffer_size);
 
 #define esocket(domain, type, protocol)             _esocket(__WHENCE__, (domain), (type), (protocol))
-#define socket_setname(sockname, name, addrlenp)    _socket_setname(__WHENCE__, (sockname), (name), (addrlenp))
+#define socket_setname(sockname, addrlenp, fmt,...) _socket_setname(__WHENCE__, (sockname), (addrlenp), (fmt), ##__VA_ARGS__)
 #define socket_bind(sock, addr, addrlen)            _socket_bind(__WHENCE__, (sock), (addr), (addrlen))
 #define socket_connect(sock, addr, addrlen)         _socket_connect(__WHENCE__, (sock), (addr), (addrlen))
 #define socket_listen(sock, backlog)                _socket_listen(__WHENCE__, (sock), (backlog))

@@ -74,7 +74,7 @@ int monitor_client_open(struct monitor_state **res)
     return WHYF_perror("socket(AF_UNIX, SOCK_STREAM, 0)");
   struct sockaddr_un addr;
   socklen_t addrlen;
-  if (socket_setname(&addr, config.monitor.socket, &addrlen) == -1)
+  if (socket_setname(&addr, &addrlen, "%s", config.monitor.socket) == -1)
     return -1;
   INFOF("Attempting to connect to %s", alloca_sockaddr(&addr, addrlen));
   if (socket_connect(fd, (struct sockaddr*)&addr, addrlen) == -1) {

@@ -29,6 +29,7 @@ MONITORCLIENTSRCS=conf.c \
 	monitor-client.c \
         instance.c \
 	net.c \
+	socket.c \
 	str.c \
 	strbuf.c \
 	strbuf_helpers.c \
@@ -46,6 +47,7 @@ MDPCLIENTSRCS=conf.c \
 	mdp_client.c \
         instance.c \
 	net.c \
+	socket.c \
 	str.c \
 	strbuf.c \
 	strbuf_helpers.c \

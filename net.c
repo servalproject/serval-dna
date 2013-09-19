@@ -149,21 +149,20 @@ ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl,
   if (len == -1 && errno != EAGAIN && errno != EWOULDBLOCK)
     return WHY_perror("recvmsg");
   
-  if (0 && config.debug.packetrx) {
+#if 0
+  if (config.debug.packetrx) {
     DEBUGF("recvmsg returned %d (flags=%d, msg_controllen=%d)", (int) len, msg.msg_flags, (int)msg.msg_controllen);
     dump("received data", buffer, len);
   }
+#endif
   
-  struct cmsghdr *cmsg;
-  if (len>0)
-  {
-    for (cmsg = CMSG_FIRSTHDR(&msg); 
-	 cmsg != NULL; 
-	 cmsg = CMSG_NXTHDR(&msg,cmsg)) {
-      
-      if ((cmsg->cmsg_level == IPPROTO_IP) && 
-	  ((cmsg->cmsg_type == IP_RECVTTL) ||(cmsg->cmsg_type == IP_TTL))
-	  &&(cmsg->cmsg_len) ){
+  if (len > 0) {
+    struct cmsghdr *cmsg;
+    for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+      if (   cmsg->cmsg_level == IPPROTO_IP
+	  && ((cmsg->cmsg_type == IP_RECVTTL) || (cmsg->cmsg_type == IP_TTL))
+	  && cmsg->cmsg_len
+      ) {
 	if (config.debug.packetrx)
 	  DEBUGF("  TTL (%p) data location resolves to %p", ttl,CMSG_DATA(cmsg));
 	if (CMSG_DATA(cmsg)) {

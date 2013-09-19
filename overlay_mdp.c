@@ -69,7 +69,7 @@ int overlay_mdp_setup_sockets()
   overlay_mdp_clean_socket_files();
 
   if (mdp_sock.poll.fd == -1) {
-    if (socket_setname(&addr, "mdp.socket", &addrlen) == -1)
+    if (socket_setname(&addr, &addrlen, "mdp.socket") == -1)
       return -1;
     if ((mdp_sock.poll.fd = esocket(AF_UNIX, SOCK_DGRAM, 0)) == -1)
       return -1;
@@ -174,13 +174,18 @@ int overlay_mdp_releasebindings(struct sockaddr_un *recvaddr,int recvaddrlen)
 int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, int port,
 				     int flags, struct sockaddr_un *recvaddr, int recvaddrlen)
 {
-  int i;
+  if (config.debug.mdprequests) 
+    DEBUGF("Bind request %s:%d",
+	subscriber ? alloca_tohex_sid(subscriber->sid) : "NULL",
+	port
+      );
   
   if (port<=0){
     return WHYF("Port %d cannot be bound", port);
   }
   if (!mdp_bindings_initialised) {
     /* Mark all slots as unused */
+    int i;
     for(i=0;i<MDP_MAX_BINDINGS;i++)
       mdp_bindings[i].port=0;
     mdp_bindings_initialised=1;
@@ -188,24 +193,27 @@ int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, in
 
   /* See if binding already exists */
   int free=-1;
-  for(i=0;i<MDP_MAX_BINDINGS;i++) {
-    /* Look for duplicate bindings */
-    if (mdp_bindings[i].port == port && mdp_bindings[i].subscriber == subscriber) {
-      if (mdp_bindings[i].name_len==recvaddrlen &&
-	  !memcmp(mdp_bindings[i].socket_name,recvaddr->sun_path,recvaddrlen)) {
-	// this client already owns this port binding?
-	INFO("Identical binding exists");
-	return 0;
-      }else if(flags&MDP_FORCE){
-	// steal the port binding
-	free=i;
-	break;
-      }else{
-	return WHY("Port already in use");
+  {
+    int i;
+    for(i=0;i<MDP_MAX_BINDINGS;i++) {
+      /* Look for duplicate bindings */
+      if (mdp_bindings[i].port == port && mdp_bindings[i].subscriber == subscriber) {
+	if (mdp_bindings[i].name_len==recvaddrlen &&
+	    !memcmp(mdp_bindings[i].socket_name,recvaddr->sun_path,recvaddrlen)) {
+	  // this client already owns this port binding?
+	  INFO("Identical binding exists");
+	  return 0;
+	}else if(flags&MDP_FORCE){
+	  // steal the port binding
+	  free=i;
+	  break;
+	}else{
+	  return WHY("Port already in use");
+	}
       }
+      /* Look for free slots in case we need one */
+      if ((free==-1)&&(mdp_bindings[i].port==0)) free=i;
     }
-    /* Look for free slots in case we need one */
-    if ((free==-1)&&(mdp_bindings[i].port==0)) free=i;
   }
  
   /* Okay, so no binding exists.  Make one, and return success.
@@ -224,15 +232,12 @@ int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, in
     */
     free=random()%MDP_MAX_BINDINGS;
   }
-  if (config.debug.mdprequests) 
-    DEBUGF("Binding %s:%d", subscriber ? alloca_tohex_sid(subscriber->sid) : "NULL", port);
   /* Okay, record binding and report success */
   mdp_bindings[free].port=port;
   mdp_bindings[free].subscriber=subscriber;
   
-  mdp_bindings[free].name_len=recvaddrlen-2;
-  memcpy(mdp_bindings[free].socket_name,recvaddr->sun_path,
-	 mdp_bindings[free].name_len);
+  mdp_bindings[free].name_len = recvaddrlen - sizeof recvaddr->sun_family;
+  memcpy(mdp_bindings[free].socket_name, recvaddr->sun_path, mdp_bindings[free].name_len);
   mdp_bindings[free].binding_time=gettime_ms();
   return 0;
 }
@@ -429,17 +434,15 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
     
     if (match>-1) {
       struct sockaddr_un addr;
-
-      bcopy(mdp_bindings[match].socket_name,addr.sun_path,mdp_bindings[match].name_len);
-      addr.sun_family=AF_UNIX;
-      errno=0;
+      addr.sun_family = AF_UNIX;
+      bcopy(mdp_bindings[match].socket_name, addr.sun_path, mdp_bindings[match].name_len);
       int len=overlay_mdp_relevant_bytes(mdp);
-      int r=sendto(mdp_sock.poll.fd,mdp,len,0,(struct sockaddr*)&addr,sizeof(addr));
-      if (r==overlay_mdp_relevant_bytes(mdp)) {	
+      socklen_t addrlen = sizeof addr.sun_family + mdp_bindings[match].name_len;
+      int r = sendto(mdp_sock.poll.fd,mdp,len,0,(struct sockaddr*)&addr, addrlen);
+      if (r == overlay_mdp_relevant_bytes(mdp))
 	RETURN(0);
-      }
-      WHY("didn't send mdp packet");
-      if (errno==ENOENT) {
+      WHYF("didn't send mdp packet to %s", alloca_sockaddr(&addr, addrlen));
+      if (r == -1 && errno == ENOENT) {
 	/* far-end of socket has died, so drop binding */
 	INFOF("Closing dead MDP client '%s'",mdp_bindings[match].socket_name);
 	overlay_mdp_releasebindings(&addr,mdp_bindings[match].name_len);
@@ -935,11 +938,14 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 
       switch (mdp_type) {
       case MDP_GOODBYE:
-	if (config.debug.mdprequests) DEBUG("MDP_GOODBYE");
+	if (config.debug.mdprequests)
+	  DEBUGF("MDP_GOODBYE from %s", alloca_sockaddr(recvaddr, recvaddrlen));
 	overlay_mdp_releasebindings(recvaddr_un,recvaddrlen);
 	return;
 	  
       case MDP_ROUTING_TABLE:
+	if (config.debug.mdprequests)
+	  DEBUGF("MDP_ROUTING_TABLE from %s", alloca_sockaddr(recvaddr, recvaddrlen));
 	{
 	  struct routing_state state={
 	    .recvaddr_un=recvaddr_un,
@@ -952,6 +958,8 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	return;
       
       case MDP_GETADDRS:
+	if (config.debug.mdprequests)
+	  DEBUGF("MDP_GETADDRS from %s", alloca_sockaddr(recvaddr, recvaddrlen));
 	{
 	  overlay_mdp_frame mdpreply;
 	  bzero(&mdpreply, sizeof(overlay_mdp_frame));
@@ -967,7 +975,8 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	break;
 	  
       case MDP_TX: /* Send payload (and don't treat it as system privileged) */
-	if (config.debug.mdprequests) DEBUG("MDP_TX");
+	if (config.debug.mdprequests)
+	  DEBUGF("MDP_TX from %s", alloca_sockaddr(recvaddr, recvaddrlen));
 	  
 	// Dont allow mdp clients to send very high priority payloads
 	if (mdp->out.queue<=OQ_MESH_MANAGEMENT)
@@ -977,9 +986,9 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	break;
 	  
       case MDP_BIND: /* Bind to port */
+	if (config.debug.mdprequests)
+	  DEBUGF("MDP_BIND from %s", alloca_sockaddr(recvaddr, recvaddrlen));
 	{
-	  if (config.debug.mdprequests) DEBUG("MDP_BIND");
-	  
 	  struct subscriber *subscriber=NULL;
 	  /* Make sure source address is either all zeros (listen on all), or a valid
 	   local address */
@@ -1005,6 +1014,8 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	break;
 	  
       case MDP_SCAN:
+	if (config.debug.mdprequests)
+	  DEBUGF("MDP_SCAN from %s", alloca_sockaddr(recvaddr, recvaddrlen));
 	{
 	  struct overlay_mdp_scan *scan = (struct overlay_mdp_scan *)&mdp->raw;
 	  time_ms_t start=gettime_ms();
@@ -1056,7 +1067,7 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	
       default:
 	/* Client is not allowed to send any other frame type */
-	WARNF("Unsupported MDP frame type: %d", mdp_type);
+	WARNF("Unsupported MDP frame type [%d] from %s", mdp_type, alloca_sockaddr(recvaddr, recvaddrlen));
 	mdp->packetTypeAndFlags=MDP_ERROR;
 	mdp->error.error=2;
 	snprintf(mdp->error.message,128,"Illegal request type.  Clients may use only MDP_TX or MDP_BIND.");

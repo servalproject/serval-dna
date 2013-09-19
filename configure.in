@@ -85,7 +85,6 @@ AC_CHECK_HEADERS(
     sys/ucred.h \
     poll.h \
     netdb.h \
-    linux/if.h \
     linux/ioctl.h \
     linux/netlink.h \
     linux/rtnetlink.h \
@@ -99,8 +98,16 @@ AC_CHECK_HEADERS(
     sys/filio.h \
     sys/endian.h \
     sys/byteorder.h \
-    sys/sockio.h
+    sys/sockio.h \
+    sys/socket.h
 )
+AC_CHECK_HEADERS(
+    linux/if.h
+,,, [
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h>
+#endif
+])
 
 dnl Check for ALSA
 AC_CHECK_HEADER([alsa/asoundlib.h], [have_alsa=1], [have_alsa=0])
@@ -108,12 +115,7 @@ AS_IF([test x"$have_alsa" = "x1"], [AC_DEFINE([HAVE_ALSA_ASOUNDLIB_H])])
 AS_IF([test x"$have_alsa" = "x1"], [AC_SUBST(HAVE_ALSA,1)], [AC_SUBST(HAVE_ALSA,0)])
 
 dnl Lazy way of checking for Linux
-AC_CHECK_HEADER([sys/socket.h])
-AC_CHECK_HEADER([linux/if.h], [AC_DEFINE([USE_ABSTRACT_NAMESPACE])],, [
-#ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
-#endif
-])
+AS_IF([test "x$ac_cv_header_linux_if_h" = xyes], [AC_DEFINE([USE_ABSTRACT_NAMESPACE])])
 
 AC_CHECK_LIB(m,sqrtf,[LDFLAGS="$LDFLAGS -lm"])
 AC_CHECK_LIB(nsl,callrpc,[LDFLAGS="$LDFLAGS -lnsl"])

@@ -19,38 +19,35 @@
 #include <sys/stat.h>
 #include "serval.h"
 #include "conf.h"
+#include "log.h"
 #include "str.h"
 #include "strbuf.h"
+#include "strbuf_helpers.h"
 #include "overlay_buffer.h"
 #include "overlay_address.h"
 #include "overlay_packet.h"
 #include "mdp_client.h"
 
-int mdp_client_socket=-1;
-int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
+int mdp_client_socket = -1;
+
+int overlay_mdp_send(overlay_mdp_frame *mdp, int flags, int timeout_ms)
 {
-  int len=4;
-  
-  if (mdp_client_socket==-1) 
-    if (overlay_mdp_client_init() != 0)
-      return -1;
-  
-  /* Minimise frame length to save work and prevent accidental disclosure of
-   memory contents. */
-  len=overlay_mdp_relevant_bytes(mdp);
-  if (len<0) return WHY("MDP frame invalid (could not compute length)");
-  
-  /* Construct name of socket to send to. */
-  struct sockaddr_un name;
-  name.sun_family = AF_UNIX;
-  if (!FORM_SERVAL_INSTANCE_PATH(name.sun_path, "mdp.socket"))
+  if (mdp_client_socket == -1 && overlay_mdp_client_init() == -1)
     return -1;
-  
+  // Minimise frame length to save work and prevent accidental disclosure of memory contents.
+  int len = overlay_mdp_relevant_bytes(mdp);
+  if (len < 0)
+    return WHY("MDP frame invalid (could not compute length)");
+  /* Construct name of socket to send to. */
+  struct sockaddr_un addr;
+  socklen_t addrlen;
+  if (socket_setname(&addr, &addrlen, "mdp.socket") == -1)
+    return -1;
+  // Send to that socket
   set_nonblock(mdp_client_socket);
-  int result=sendto(mdp_client_socket, mdp, len, 0,
-		    (struct sockaddr *)&name, sizeof(struct sockaddr_un));
+  int result = sendto(mdp_client_socket, mdp, len, 0, (struct sockaddr *)&addr, addrlen);
   set_block(mdp_client_socket);
-  if (result<0) {
+  if (result == -1) {
     mdp->packetTypeAndFlags=MDP_ERROR;
     mdp->error.error=1;
     snprintf(mdp->error.message,128,"Error sending frame to MDP server.");
@@ -91,76 +88,46 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
 
 int overlay_mdp_client_init()
 {
-  char overlay_mdp_client_socket_path[1024];
-  int overlay_mdp_client_socket_path_len=-1;
-  if (mdp_client_socket==-1) {
-    /* Open socket to MDP server (thus connection is always local) */
-    if (0) WHY("Use of abstract name space socket for Linux not implemented");
-    
-    mdp_client_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
-    if (mdp_client_socket < 0) {
-      WHY_perror("socket");
-      return WHY("Could not open socket to MDP server");
-    }
-    
-    /* We must bind to a temporary file name */
-    struct sockaddr_un name;
-    unsigned int random_value;
-    if (urandombytes((unsigned char *)&random_value,sizeof(int)))
+  if (mdp_client_socket == -1) {
+    /* Create local per-client socket to MDP server (connection is always local) */
+    struct sockaddr_un addr;
+    socklen_t addrlen;
+    uint32_t random_value;
+    if (urandombytes((unsigned char *)&random_value, sizeof random_value) == -1)
       return WHY("urandombytes() failed");
-    name.sun_family = AF_UNIX;
-    if (overlay_mdp_client_socket_path_len==-1) {
-      char fmt[1024];
-      if (!FORM_SERVAL_INSTANCE_PATH(fmt, "mdp-client-%d-%08x.socket"))
-	return WHY("Could not form MDP client socket name");
-      snprintf(overlay_mdp_client_socket_path,1024,fmt,getpid(),random_value);
-      overlay_mdp_client_socket_path_len=strlen(overlay_mdp_client_socket_path)+1;
-      if(config.debug.io) DEBUGF("MDP client socket name='%s'",overlay_mdp_client_socket_path);
+    if (socket_setname(&addr, &addrlen, "mdp.client.%u.%08lx.socket", getpid(), (unsigned long)random_value) == -1)
+      return -1;
+    if ((mdp_client_socket = esocket(AF_UNIX, SOCK_DGRAM, 0)) == -1)
+      return -1;
+    if (socket_bind(mdp_client_socket, (struct sockaddr *)&addr, addrlen) == -1) {
+      close(mdp_client_socket);
+      mdp_client_socket = -1;
+      return -1;
     }
-    if (overlay_mdp_client_socket_path_len > sizeof(name.sun_path) - 1)
-      FATALF("MDP socket path too long (%d > %d)", overlay_mdp_client_socket_path_len, (int)sizeof(name.sun_path) - 1);
-    
-    bcopy(overlay_mdp_client_socket_path,name.sun_path,
-	  overlay_mdp_client_socket_path_len);
-    unlink(name.sun_path);
-    int len = 1 + strlen(name.sun_path) + sizeof(name.sun_family) + 1;
-    int r=bind(mdp_client_socket, (struct sockaddr *)&name, len);
-    if (r) {
-      WHY_perror("bind");
-      return WHY("Could not bind MDP client socket to file name");
-    }
-    
-    int send_buffer_size=128*1024;
-    if (setsockopt(mdp_client_socket, SOL_SOCKET, SO_RCVBUF, 
-		   &send_buffer_size, sizeof(send_buffer_size)) == -1)
-      WARN_perror("setsockopt");
+    socket_set_rcvbufsize(mdp_client_socket, 128 * 1024);
   }
-  
   return 0;
 }
 
 int overlay_mdp_client_done()
 {
-  if (mdp_client_socket!=-1) {
+  if (mdp_client_socket != -1) {
     /* Tell MDP server to release all our bindings */
     overlay_mdp_frame mdp;
-    mdp.packetTypeAndFlags=MDP_GOODBYE;
-    overlay_mdp_send(&mdp,0,0);
-    
-    // get the socket name and unlink it from the filesystem
-    struct sockaddr_un name;
-    socklen_t len=sizeof(name);
-    if (getsockname(mdp_client_socket, (struct sockaddr *)&name, &len))
-      WHY_perror("getsockname()");
-    else if(len>sizeof(sa_family_t) && len<=sizeof(name)){
-      if (unlink(name.sun_path))
-	WHY_perror("unlink()");
+    mdp.packetTypeAndFlags = MDP_GOODBYE;
+    overlay_mdp_send(&mdp, 0, 0);
+    // get the socket name and unlink it from the filesystem if not abstract
+    struct sockaddr_un addr;
+    socklen_t addrlen = sizeof addr;
+    if (getsockname(mdp_client_socket, (struct sockaddr *)&addr, &addrlen))
+      WHYF_perror("getsockname(%d)", mdp_client_socket);
+    else if (addrlen > sizeof addr.sun_family && addrlen <= sizeof addr && addr.sun_path[0] != '\0') {
+      if (unlink(addr.sun_path) == -1)
+	WARNF_perror("unlink(%s)", alloca_str_toprint(addr.sun_path));
     }
-    
     close(mdp_client_socket);
+    mdp_client_socket = -1;
   }
-  
-  mdp_client_socket=-1;
   return 0;
 }
 
@@ -186,56 +153,43 @@ int overlay_mdp_client_poll(time_ms_t timeout_ms)
 
 int overlay_mdp_recv(overlay_mdp_frame *mdp, int port, int *ttl) 
 {
-  char mdp_socket_name[101];
-  unsigned char recvaddrbuffer[1024];
-  struct sockaddr *recvaddr=(struct sockaddr *)recvaddrbuffer;
-  unsigned int recvaddrlen=sizeof(recvaddrbuffer);
-  struct sockaddr_un *recvaddr_un;
-  
-  if (!FORM_SERVAL_INSTANCE_PATH(mdp_socket_name, "mdp.socket"))
-    return WHY("Could not find mdp socket");
-  mdp->packetTypeAndFlags=0;
-  
-  /* Check if reply available */
-  set_nonblock(mdp_client_socket);
-  ssize_t len = recvwithttl(mdp_client_socket,(unsigned char *)mdp, sizeof(overlay_mdp_frame),ttl,recvaddr,&recvaddrlen);
-  set_block(mdp_client_socket);
-  
-  recvaddr_un=(struct sockaddr_un *)recvaddr;
-  /* Null terminate received address so that the stat() call below can succeed */
-  if (recvaddrlen<1024) recvaddrbuffer[recvaddrlen]=0;
-  if (len>0) {
-    /* Make sure recvaddr matches who we sent it to */
-    if (strncmp(mdp_socket_name, recvaddr_un->sun_path, sizeof(recvaddr_un->sun_path))) {
-      /* Okay, reply was PROBABLY not from the server, but on OSX if the path
-       has a symlink in it, it is resolved in the reply path, but might not
-       be in the request path (mdp_socket_name), thus we need to stat() and
-       compare inode numbers etc */
-      struct stat sb1,sb2;
-      if (stat(mdp_socket_name,&sb1)) return WHY("stat(mdp_socket_name) failed, so could not verify that reply came from MDP server");
-      if (stat(recvaddr_un->sun_path,&sb2)) return WHY("stat(ra->sun_path) failed, so could not verify that reply came from MDP server");
-      if ((sb1.st_ino!=sb2.st_ino)||(sb1.st_dev!=sb2.st_dev))
-	return WHY("Reply did not come from server");
-    }
-    
-    // silently drop incoming packets for the wrong port number
-    if (port>0 && port != mdp->in.dst.port){
-      WARNF("Ignoring packet for port %d",mdp->in.dst.port);
-      return -1;
-    }
-    
-    int expected_len = overlay_mdp_relevant_bytes(mdp);
-    
-    if (len < expected_len){
-      return WHYF("Expected packet length of %d, received only %lld bytes", expected_len, (long long) len);
-    }
-    
-    /* Valid packet received */
-    return 0;
-  } else 
-  /* no packet received */
+  /* Construct name of socket to receive from. */
+  struct sockaddr_un mdp_addr;
+  socklen_t mdp_addrlen;
+  if (socket_setname(&mdp_addr, &mdp_addrlen, "mdp.socket") == -1)
     return -1;
   
+  /* Check if reply available */
+  struct sockaddr_un recvaddr;
+  socklen_t recvaddrlen = sizeof recvaddr;
+  ssize_t len;
+  mdp->packetTypeAndFlags = 0;
+  set_nonblock(mdp_client_socket);
+  len = recvwithttl(mdp_client_socket, (unsigned char *)mdp, sizeof(overlay_mdp_frame), ttl, (struct sockaddr *)&recvaddr, &recvaddrlen);
+  set_block(mdp_client_socket);
+  if (len <= 0)
+    return -1; // no packet received
+
+  // If the received address overflowed the buffer, then it cannot have come from the server, whose
+  // address always fits within a struct sockaddr_un.
+  if (recvaddrlen > sizeof recvaddr)
+    return WHY("reply did not come from server: address overrun");
+
+  if (cmp_sockaddr((struct sockaddr *)&recvaddr, recvaddrlen, (struct sockaddr *)&mdp_addr, mdp_addrlen) != 0)
+    return WHYF("reply did not come from server: %s", alloca_sockaddr(&recvaddr, recvaddrlen));
+  
+  // silently drop incoming packets for the wrong port number
+  if (port>0 && port != mdp->in.dst.port){
+    WARNF("Ignoring packet for port %d",mdp->in.dst.port);
+    return -1;
+  }
+
+  int expected_len = overlay_mdp_relevant_bytes(mdp);
+  if (len < expected_len)
+    return WHYF("Expected packet length of %d, received only %lld bytes", expected_len, (long long) len);
+  
+  /* Valid packet received */
+  return 0;
 }
 
 // send a request to servald deamon to add a port binding
