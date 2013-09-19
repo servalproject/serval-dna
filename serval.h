@@ -170,22 +170,23 @@ void serval_setinstancepath(const char *instancepath);
 
 /* Basic socket operations.
  */
-int _esocket(struct __sourceloc __whence, int domain, int type, int protocol);
-int _socket_setname(struct __sourceloc __whence, struct sockaddr_un *sockname, const char *name, socklen_t *addrlen);
-int _socket_bind(struct __sourceloc __whence, int sock, const struct sockaddr *addr, socklen_t addrlen);
-int _socket_connect(struct __sourceloc __whence, int sock, const struct sockaddr *addr, socklen_t addrlen);
-int _socket_listen(struct __sourceloc __whence, int sock, int backlog);
-int _socket_set_reuseaddr(struct __sourceloc __whence, int sock, int reuseP);
-int _socket_set_rcvbufsize(struct __sourceloc __whence, int sock, unsigned buffer_size);
+int _esocket(struct __sourceloc, int domain, int type, int protocol);
+int _socket_setname(struct __sourceloc, struct sockaddr_un *sockname, const char *name, socklen_t *addrlen);
+int _socket_bind(struct __sourceloc, int sock, const struct sockaddr *addr, socklen_t addrlen);
+int _socket_connect(struct __sourceloc, int sock, const struct sockaddr *addr, socklen_t addrlen);
+int _socket_listen(struct __sourceloc, int sock, int backlog);
+int _socket_set_reuseaddr(struct __sourceloc, int sock, int reuseP);
+int _socket_set_rcvbufsize(struct __sourceloc, int sock, unsigned buffer_size);
 
-#define esocket(domain, type, protocol)             _esocket(__HERE__, domain, type, protocol)
-#define socket_setname(sockname, name, addrlenp)    _socket_setname(__HERE__, sockname, name, addrlenp)
-#define socket_bind(sock, addr, addrlen)            _socket_bind(__HERE__, sock, addr, addrlen)
-#define socket_connect(sock, addr, addrlen)         _socket_connect(__HERE__, sock, addr, addrlen)
-#define socket_listen(sock, backlog)                _socket_listen(__HERE__, sock, backlog)
-#define socket_set_reuseaddr(sock, reuseP)          _socket_set_reuseaddr(__HERE__, sock, reuseP)
-#define socket_set_rcvbufsize(sock, buffer_size)    _socket_set_rcvbufsize(__HERE__, sock, buffer_size)
+#define esocket(domain, type, protocol)             _esocket(__WHENCE__, (domain), (type), (protocol))
+#define socket_setname(sockname, name, addrlenp)    _socket_setname(__WHENCE__, (sockname), (name), (addrlenp))
+#define socket_bind(sock, addr, addrlen)            _socket_bind(__WHENCE__, (sock), (addr), (addrlen))
+#define socket_connect(sock, addr, addrlen)         _socket_connect(__WHENCE__, (sock), (addr), (addrlen))
+#define socket_listen(sock, backlog)                _socket_listen(__WHENCE__, (sock), (backlog))
+#define socket_set_reuseaddr(sock, reuseP)          _socket_set_reuseaddr(__WHENCE__, (sock), (reuseP))
+#define socket_set_rcvbufsize(sock, buffer_size)    _socket_set_rcvbufsize(__WHENCE__, (sock), (buffer_size))
 
+int cmp_sockaddr(const struct sockaddr *, socklen_t, const struct sockaddr *, socklen_t);
 
 #define SERVER_CONFIG_RELOAD_INTERVAL_MS	1000
 
@@ -777,10 +778,10 @@ void sigIoHandler(int signal);
 int overlay_mdp_setup_sockets();
 
 int is_scheduled(const struct sched_ent *alarm);
-int _schedule(struct __sourceloc whence, struct sched_ent *alarm);
-int _unschedule(struct __sourceloc whence, struct sched_ent *alarm);
-int _watch(struct __sourceloc whence, struct sched_ent *alarm);
-int _unwatch(struct __sourceloc whence, struct sched_ent *alarm);
+int _schedule(struct __sourceloc, struct sched_ent *alarm);
+int _unschedule(struct __sourceloc, struct sched_ent *alarm);
+int _watch(struct __sourceloc, struct sched_ent *alarm);
+int _unwatch(struct __sourceloc, struct sched_ent *alarm);
 #define schedule(alarm)   _schedule(__WHENCE__, alarm)
 #define unschedule(alarm) _unschedule(__WHENCE__, alarm)
 #define watch(alarm)      _watch(__WHENCE__, alarm)
@@ -822,8 +823,8 @@ int limit_init(struct limit_state *state, int rate_micro_seconds);
 int fd_clearstats();
 int fd_showstats();
 int fd_checkalarms();
-int fd_func_enter(struct __sourceloc __whence, struct call_stats *this_call);
-int fd_func_exit(struct __sourceloc __whence, struct call_stats *this_call);
+int fd_func_enter(struct __sourceloc, struct call_stats *this_call);
+int fd_func_exit(struct __sourceloc, struct call_stats *this_call);
 void dump_stack(int log_level);
 
 #define IN() static struct profile_total _aggregate_stats={NULL,0,__FUNCTION__,0,0,0}; \
