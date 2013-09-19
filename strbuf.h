@@ -132,7 +132,7 @@ typedef const struct strbuf *const_strbuf;
 
 
 /** Convenience macro for filling a strbuf from the calling function's
- * printf(3)-like variadic arguments.  See alloca(3) for more information.
+ * printf(3)-like variadic arguments.
  *
  *      #include <stdarg.h>
  *
@@ -147,7 +147,27 @@ typedef const struct strbuf *const_strbuf;
 #define strbuf_va_printf(sb,fmt) do { \
             va_list __strbuf_ap; \
             va_start(__strbuf_ap, fmt); \
-            strbuf_vsprintf(sb, fmt, __strbuf_ap); \
+            strbuf_vsprintf(sb, (fmt), __strbuf_ap); \
+            va_end(__strbuf_ap); \
+        } while (0)
+
+/** Convenience macro for filling a strbuf from the calling function's va_list
+ * variadic argument pointer.
+ *
+ *      #include <stdarg.h>
+ *
+ *      void funcf(const char *format, va_list ap) {
+ *          strbuf b = strbuf_alloca(1024);
+ *          strbuf_va_vprintf(b, format, ap);
+ *          ...
+ *      }
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+#define strbuf_va_vprintf(sb,fmt,ap) do { \
+            va_list __strbuf_ap; \
+            va_copy(__strbuf_ap, (ap)); \
+            strbuf_vsprintf(sb, (fmt), __strbuf_ap); \
             va_end(__strbuf_ap); \
         } while (0)
 
@@ -314,8 +334,7 @@ strbuf strbuf_putc(strbuf sb, char ch);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int strbuf_sprintf(strbuf sb, const char *fmt, ...) 
-__attribute__ (( format(printf,2,3) ));
+int strbuf_sprintf(strbuf sb, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 int strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap);
 
 
