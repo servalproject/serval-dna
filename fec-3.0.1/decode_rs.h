@@ -285,7 +285,7 @@
     }
 #endif
     /* Apply error to data */
-    if (num1 != 0 && loc[j] >= PAD) {
+    if (num1 != 0 && loc[j] >= PAD && loc[j] < NN-NROOTS) {
       data[loc[j]-PAD] ^= ALPHA_TO[MODNN(INDEX_OF[num1] + INDEX_OF[num2] + NN - INDEX_OF[den])];
     }
   }

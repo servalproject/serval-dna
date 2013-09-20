@@ -456,6 +456,7 @@ typedef struct overlay_interface {
   uint32_t throttle_bytes_per_second;
   uint32_t throttle_burst_write_size;
   uint64_t next_tx_allowed;
+  int32_t remaining_space;
   time_ms_t next_heartbeat;
   
   

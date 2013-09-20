@@ -232,8 +232,10 @@ start_radio_instance() {
       set debug.rhizome_ads on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
-      set rhizome.advertise.interval 1000 \
-      set rhizome.rhizome_mdp_block_size 200 \
+      set debug.throttling on \
+      set debug.mavlink on \
+      set rhizome.advertise.interval 5000 \
+      set rhizome.rhizome_mdp_block_size 350 \
       set log.console.level debug \
       set log.console.show_pid on \
       set log.console.show_time on \
@@ -241,23 +243,20 @@ start_radio_instance() {
       set interfaces.1.mdp_tick_ms 5000 \
       set interfaces.1.socket_type STREAM \
       set interfaces.1.encapsulation SINGLE \
-      set interfaces.1.point_to_point on \
-      set interfaces.1.packet_interval 5000 \
-      set interfaces.1.burst_size 100 \
-      set interfaces.1.throttle 32000
+      set interfaces.1.point_to_point on
    start_servald_server
    wait_until interface_up
 }
 setup_SimulatedRadio() {
    setup_common
-   $servald_build_root/fakeradio 64 10000000 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
+   $servald_build_root/fakeradio 6 10000000 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
    FAKERADIO_PID=$!
    sleep 1
    local END1=`head "$SERVALD_VAR/radioout" -n 1`
    local END2=`tail "$SERVALD_VAR/radioout" -n 1`
    tfw_log "Started fakeradio pid=$FAKERADIO_PID, end1=$END1, end2=$END2"
    set_instance +A
-   rhizome_add_file file1 2048
+   rhizome_add_file file1 10000
    executeOk_servald config \
       set interfaces.1.file "$END1"
    set_instance +B

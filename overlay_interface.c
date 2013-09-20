@@ -672,63 +672,84 @@ static void write_stream_buffer(overlay_interface *interface){
   // Throttle output to a prescribed bit-rate
   // first, reduce the number of bytes based on the configured burst size
   int bytes_allowed=interface->throttle_burst_write_size;
-  
-  if (interface->next_tx_allowed < now){
-    int total_written=0;
-    while ((interface->tx_bytes_pending>0 || interface->tx_packet) && 
-      (bytes_allowed>0 || interface->throttle_burst_write_size==0)) {
-	
-      if (interface->tx_bytes_pending==0 && interface->tx_packet){
-	if (interface->next_heartbeat <= now){
-	  // Queue a hearbeat now
-	  mavlink_heartbeat(interface->txbuffer,&interface->tx_bytes_pending);
-	  interface->next_heartbeat = now+5000;
-	}else{
-	  // prepare a new link layer packet in txbuffer
-	  if (mavlink_encode_packet(interface))
-	    break;
-	}
-      }
     
-      int bytes = interface->tx_bytes_pending;
-      if (interface->throttle_burst_write_size && bytes>bytes_allowed)
-	bytes=bytes_allowed;
-      if (config.debug.packetradio)
-	DEBUGF("Trying to write %d bytes of %d%s", bytes, interface->tx_bytes_pending, interface->tx_packet?", pending packet":"");
-      int written=write(interface->alarm.poll.fd, interface->txbuffer, bytes);
-      if (written<=0)
-	break;
-      
-      interface->tx_bytes_pending-=written;
-      total_written+=written;
-      bytes_allowed-=written;
-      if (interface->tx_bytes_pending)
-	bcopy(&interface->txbuffer[written],&interface->txbuffer[0],
-	      interface->tx_bytes_pending);
-      if (config.debug.packetradio) 
-	DEBUGF("Wrote %d bytes (%d left pending)", written, interface->tx_bytes_pending);
+  int total_written=0;
+  while (interface->tx_bytes_pending>0 || interface->tx_packet || interface->next_heartbeat <= now) {
+    
+    if (interface->tx_bytes_pending==0){
+      if (interface->next_heartbeat <= now){
+	// Queue a hearbeat now
+	mavlink_heartbeat(interface->txbuffer,&interface->tx_bytes_pending);
+	if (config.debug.packetradio)
+	  DEBUGF("Built %d byte heartbeat", interface->tx_bytes_pending);
+	interface->next_heartbeat = now+1000;
+      }else if(interface->tx_packet && interface->remaining_space >= 256 + 8+9){
+	// prepare a new link layer packet in txbuffer
+	if (mavlink_encode_packet(interface))
+	  break;
+	if (config.debug.packetradio)
+	  DEBUGF("Built %d byte payload from packet (%d)", interface->tx_bytes_pending, interface->remaining_space);
+	if (interface->remaining_space - interface->tx_bytes_pending < 256 + 8+9)
+	  interface->next_heartbeat = now;
+      }
     }
     
+    if (interface->next_tx_allowed > now)
+      break;
+    
+    int bytes = interface->tx_bytes_pending;
+    if (interface->throttle_burst_write_size && bytes>bytes_allowed)
+      bytes=bytes_allowed;
+    if (bytes<=0)
+      break;
+    
+    if (config.debug.packetradio)
+      DEBUGF("Trying to write %d bytes of %d%s", bytes, interface->tx_bytes_pending, interface->tx_packet?", pending packet":"");
+    int written=write(interface->alarm.poll.fd, interface->txbuffer, bytes);
+    if (written<=0){
+      DEBUGF("Blocking for POLLOUT");
+      break;
+    }
+    
+    interface->remaining_space-=written;
+    interface->tx_bytes_pending-=written;
+    total_written+=written;
+    bytes_allowed-=written;
+    if (interface->tx_bytes_pending){
+      bcopy(&interface->txbuffer[written],&interface->txbuffer[0],
+	    interface->tx_bytes_pending);
+      DEBUGF("Partial write, %d left", interface->tx_bytes_pending);
+    }
+    if (config.debug.packetradio) 
+      DEBUGF("Wrote %d bytes (%d left pending, %d remains)", written, interface->tx_bytes_pending, interface->remaining_space);
+  }
+  
+  if (total_written>0){
     // Now when are we allowed to send more?
-    if (interface->throttle_bytes_per_second>0) {
-      int delay = total_written*1000/interface->throttle_bytes_per_second;
+    int rate = interface->throttle_bytes_per_second;
+    if (interface->remaining_space<=0)
+      rate = 600;
+    if (rate){
+      int delay = total_written*1000/rate;
       if (config.debug.throttling)
-	DEBUGF("Throttling for %dms.",delay);
+	DEBUGF("Throttling for %dms (%d).", delay, interface->remaining_space);
       interface->next_tx_allowed = now + delay;
     }
   }
   
-  if (interface->tx_bytes_pending>0 || interface->tx_packet){
-    if (interface->next_tx_allowed > now){
-      // We can't write now, so clear POLLOUT flag
-      interface->alarm.poll.events&=~POLLOUT;
-      // set the interface alarm to trigger another write
-      interface->alarm.alarm = interface->next_tx_allowed;
-      interface->alarm.deadline = interface->alarm.alarm+10;
-    } else {
-      // more to write, so set the POLLOUT flag
-      interface->alarm.poll.events|=POLLOUT;
-    }
+  time_ms_t next_write = interface->next_tx_allowed;
+  if (interface->tx_bytes_pending<=0){
+    next_write = interface->next_heartbeat;
+  }
+  
+  if (interface->alarm.alarm==-1 || next_write < interface->alarm.alarm){
+    interface->alarm.alarm = next_write;
+    interface->alarm.deadline = interface->alarm.alarm+10;
+  }
+  
+  if (interface->tx_bytes_pending>0 && next_write <= now){
+    // more to write, so set the POLLOUT flag
+    interface->alarm.poll.events|=POLLOUT;
   } else {
     // Nothing to write, so clear POLLOUT flag
     interface->alarm.poll.events&=~POLLOUT;
@@ -802,6 +823,16 @@ static void overlay_interface_poll(struct sched_ent *alarm)
 	break;
       case SOCK_STREAM:
 	interface_read_stream(interface);
+	// if we read a valid heartbeat packet, we may be able to write more bytes now.
+	if (interface->state==INTERFACE_STATE_UP && interface->remaining_space>0){
+	  write_stream_buffer(interface);
+	  if (alarm->alarm!=-1 && interface->state==INTERFACE_STATE_UP) {
+	    if (alarm->alarm < now)
+	      alarm->alarm = now;
+	    unschedule(alarm);
+	    schedule(alarm);
+	  }
+	}
 	break;
       case SOCK_FILE:
 	interface_read_file(interface);

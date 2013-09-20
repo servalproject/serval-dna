@@ -22,8 +22,9 @@ struct radio_state {
   const char *name;
   char commandbuffer[128];
   int cb_len;
-  unsigned char txbuffer[2048];
+  unsigned char txbuffer[1280];
   int txb_len;
+  int tx_count;
   int wait_count;
   unsigned char rxbuffer[512];
   int rxb_len;
@@ -127,9 +128,19 @@ int dump(char *name, unsigned char *addr, int len)
   return 0;
 }
 
+static void store_char(struct radio_state *s, unsigned char c)
+{
+  if(s->txb_len<sizeof(s->txbuffer)){
+    s->txbuffer[s->txb_len++]=c;
+  }else{
+    log_time();
+    fprintf(stderr, "*** Dropped char %02x\n", c);
+  }
+}
+
 int read_bytes(struct radio_state *s)
 {
-  unsigned char buff[256];
+  unsigned char buff[8];
   int i;
   int bytes=read(s->fd,buff,sizeof(buff));
   if (bytes<=0)
@@ -162,25 +173,13 @@ int read_bytes(struct radio_state *s)
     
     // or watch for "+++"
     if (buff[i]=='+'){
-      // count +'s
-      if (s->state < STATE_PLUSPLUSPLUS){
+      if (s->state < STATE_PLUSPLUSPLUS)
 	s->state++;
-      }else if(s->txb_len<sizeof(s->txbuffer)){
-	s->txbuffer[s->txb_len++]=buff[i];
-      }
-      continue;
-    }
-    
-    // regenerate any +'s we consumed
-    while(s->state > STATE_ONLINE){
-      if(s->txb_len<sizeof(s->txbuffer))
-	s->txbuffer[s->txb_len++]='+';
-      s->state--;
-    }
+    }else
+      s->state=STATE_ONLINE;
     
     // or append to the transmit buffer if there's room
-    if(s->txb_len<sizeof(s->txbuffer))
-      s->txbuffer[s->txb_len++]=buff[i];
+    store_char(s,buff[i]);
   }
   return bytes;
 }
@@ -188,6 +187,8 @@ int read_bytes(struct radio_state *s)
 int write_bytes(struct radio_state *s)
 {
   int wrote=s->rxb_len;
+  if (wrote>8)
+    wrote=8;
   if (s->last_char_ms)
     wrote = write(s->fd, s->rxbuffer, wrote);
   if (wrote>0){
@@ -353,9 +354,11 @@ int transfer_bytes(struct radio_state *radios)
     bcopy(&t->txbuffer[bytes], t->txbuffer, t->txb_len - bytes);
   t->txb_len-=bytes;
   
-  // swap who's turn it is to transmit
-  transmitter = receiver;
-  
+  if (bytes==0 || --t->tx_count<=0){
+    // swap who's turn it is to transmit
+    transmitter = receiver;
+    r->tx_count=6;
+  }
   // set the wait time for the next transmission
   next_transmit_time = gettime_ms() + (bytes+10)/chars_per_ms;
   return bytes;
