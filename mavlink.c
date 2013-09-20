@@ -158,15 +158,15 @@ int mavlink_encode_packet(struct overlay_interface *interface)
   // that there is a 2 byte CRC, so we can save two bytes
   int len = count+32 - 2;
   interface->txbuffer[1]=len;
-  interface->txbuffer[2]=(len & 0xF); // packet sequence
-  interface->txbuffer[3]=0; // system ID of sender (MAV_TYPE_GENERIC)
+  interface->txbuffer[2]=(len & 0xF);
+  interface->txbuffer[3]=0;
   golay_encode(&interface->txbuffer[1]);
   
-  interface->txbuffer[4]=0x40; // component ID of sender: we are reusing this to mark start,end of MDP frames
-  if (startP) interface->txbuffer[4]|=0x01;
-  if (endP) interface->txbuffer[4]|=0x02;
-  interface->txbuffer[5]=MAVLINK_MSG_ID_DATASTREAM; // message ID type of this frame: DATA_STREAM
-  // payload follows (we reuse the DATA_STREAM message type parameters)
+  interface->txbuffer[4]=(interface->mavlink_seq++) & 0x3f;
+  if (startP) interface->txbuffer[4]|=0x40;
+  if (endP) interface->txbuffer[4]|=0x80;
+  interface->txbuffer[5]=MAVLINK_MSG_ID_DATASTREAM;
+  
   ob_get_bytes(interface->tx_packet, &interface->txbuffer[6], count);
   
   encode_rs_8(&interface->txbuffer[4], &interface->txbuffer[6+count], 223 - (count+2));
@@ -269,19 +269,32 @@ static int mavlink_parse(struct overlay_interface *interface, struct slip_decode
   }
   *backtrack=errors;
   
+  int seq=payload[4]&0x3f;
+  
   if (config.debug.mavlink){
-    DEBUGF("Received RS protected message, len: %d, errors: %d, flags:%s%s", 
+    DEBUGF("Received RS protected message, len: %d, errors: %d, seq: %d, flags:%s%s", 
       data_bytes,
       errors,
-      payload[4]&0x01?" start":"",
-      payload[4]&0x02?" end":"");
+      seq,
+      payload[4]&0x40?" start":"",
+      payload[4]&0x80?" end":"");
   }
   
-  if (payload[4]&0x01)
-    state->packet_length=0;
-    
-  if (state->packet_length + data_bytes > sizeof(state->dst)){
+  if (seq != ((state->mavlink_seq+1)&0x3f)){
+    // reject partial packet if we missed a sequence number
     if (config.debug.mavlink) 
+      DEBUGF("Rejecting packet, sequence jumped from %d to %d", state->mavlink_seq, seq);
+    state->packet_length=sizeof(state->dst)+1;
+  }
+  
+  if (payload[4]&0x40){
+    // start a new packet
+    state->packet_length=0;
+  }
+  
+  state->mavlink_seq=payload[4]&0x3f;
+  if (state->packet_length + data_bytes > sizeof(state->dst)){
+    if (config.debug.mavlink)
       DEBUG("Fragmented packet is too long or a previous piece was missed - discarding");
     state->packet_length=sizeof(state->dst)+1;
     return 1;
@@ -290,7 +303,7 @@ static int mavlink_parse(struct overlay_interface *interface, struct slip_decode
   bcopy(&payload[6], &state->dst[state->packet_length], data_bytes);
   state->packet_length+=data_bytes;
     
-  if (payload[4]&0x02) {
+  if (payload[4]&0x80) {
     if (config.debug.mavlink) 
       DEBUGF("PDU Complete (length=%d)",state->packet_length);
     state->dst_offset=0;

@@ -382,6 +382,7 @@ struct slip_decode_state{
   int dst_offset;
 
   int mavlink_payload_length;
+  int mavlink_seq;
   int mavlink_payload_start;
   int mavlink_payload_offset;
   uint8_t mavlink_payload[1024];
@@ -458,6 +459,7 @@ typedef struct overlay_interface {
   uint64_t next_tx_allowed;
   int32_t remaining_space;
   time_ms_t next_heartbeat;
+  int mavlink_seq;
   
   
   struct slip_decode_state slip_decode_state;
