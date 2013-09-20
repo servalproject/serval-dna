@@ -78,8 +78,6 @@ path_exists() {
 start_routing_instance() {
    executeOk_servald config \
       set server.interface_path "$SERVALD_VAR" \
-      set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
-      set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
       set debug.mdprequests yes \
       set debug.linkstate yes \
       set debug.verbose yes \

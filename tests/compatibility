@@ -59,15 +59,11 @@ test_dna_090_version() {
    set_instance +A
    executeOk_servald config \
       set interfaces.0.dummy "$DUMMYNET" \
-      set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
-      set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
       set debug.overlayframes on
    start_servald_090
    set_instance +B
    executeOk_servald config \
       set interfaces.1.file "$DUMMYNET" \
-      set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
-      set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
       set debug.linkstate on \
       set debug.overlayrouting on
    create_single_identity

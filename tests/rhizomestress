@@ -74,8 +74,6 @@ setup_StressRhizomeTransfer() {
 start_instance() {
   executeOk_servald config \
        set server.interface_path "$SERVALD_VAR" \
-       set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
-       set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
        set interfaces.0.file dummy \
        set interfaces.0.dummy_address 127.0.0.$instance_number \
        set interfaces.0.dummy_netmask 255.255.255.224

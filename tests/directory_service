@@ -96,8 +96,6 @@ interface_up() {
 start_routing_instance() {
    executeOk_servald config \
       set server.interface_path "$SERVALD_VAR" \
-      set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
-      set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
       set rhizome.enable No \
       set log.console.show_pid on \
       set log.console.show_time on \
