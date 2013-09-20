@@ -41,7 +41,7 @@ int overlay_mdp_send(overlay_mdp_frame *mdp, int flags, int timeout_ms)
   /* Construct name of socket to send to. */
   struct sockaddr_un addr;
   socklen_t addrlen;
-  if (socket_setname(&addr, &addrlen, "mdp.socket") == -1)
+  if (make_local_sockaddr(&addr, &addrlen, "mdp.socket") == -1)
     return -1;
   // Send to that socket
   set_nonblock(mdp_client_socket);
@@ -95,7 +95,7 @@ int overlay_mdp_client_init()
     uint32_t random_value;
     if (urandombytes((unsigned char *)&random_value, sizeof random_value) == -1)
       return WHY("urandombytes() failed");
-    if (socket_setname(&addr, &addrlen, "mdp.client.%u.%08lx.socket", getpid(), (unsigned long)random_value) == -1)
+    if (make_local_sockaddr(&addr, &addrlen, "mdp.client.%u.%08lx.socket", getpid(), (unsigned long)random_value) == -1)
       return -1;
     if ((mdp_client_socket = esocket(AF_UNIX, SOCK_DGRAM, 0)) == -1)
       return -1;
@@ -156,7 +156,7 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp, int port, int *ttl)
   /* Construct name of socket to receive from. */
   struct sockaddr_un mdp_addr;
   socklen_t mdp_addrlen;
-  if (socket_setname(&mdp_addr, &mdp_addrlen, "mdp.socket") == -1)
+  if (make_local_sockaddr(&mdp_addr, &mdp_addrlen, "mdp.socket") == -1)
     return -1;
   
   /* Check if reply available */
@@ -175,7 +175,14 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp, int port, int *ttl)
   if (recvaddrlen > sizeof recvaddr)
     return WHY("reply did not come from server: address overrun");
 
-  if (cmp_sockaddr((struct sockaddr *)&recvaddr, recvaddrlen, (struct sockaddr *)&mdp_addr, mdp_addrlen) != 0)
+  // Compare the address of the sender with the address of our server, to ensure they are the same.
+  // If the comparison fails, then try using realpath(3) on the sender address and compare again.
+  if (	cmp_sockaddr((struct sockaddr *)&recvaddr, recvaddrlen, (struct sockaddr *)&mdp_addr, mdp_addrlen) != 0
+      && (   recvaddr.sun_family != AF_UNIX
+	  || real_sockaddr(&recvaddr, recvaddrlen, &recvaddr, &recvaddrlen) <= 0
+	  || cmp_sockaddr((struct sockaddr *)&recvaddr, recvaddrlen, (struct sockaddr *)&mdp_addr, mdp_addrlen) != 0
+	 )
+  )
     return WHYF("reply did not come from server: %s", alloca_sockaddr(&recvaddr, recvaddrlen));
   
   // silently drop incoming packets for the wrong port number

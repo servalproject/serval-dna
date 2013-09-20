@@ -82,7 +82,7 @@ int monitor_setup_sockets()
     goto error;
   struct sockaddr_un addr;
   socklen_t addrlen;
-  if (socket_setname(&addr, &addrlen, "%s", config.monitor.socket) == -1)
+  if (make_local_sockaddr(&addr, &addrlen, "%s", config.monitor.socket) == -1)
     goto error;
   if (socket_bind(sock, (struct sockaddr*)&addr, addrlen) == -1)
     goto error;

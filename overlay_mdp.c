@@ -69,7 +69,7 @@ int overlay_mdp_setup_sockets()
   overlay_mdp_clean_socket_files();
 
   if (mdp_sock.poll.fd == -1) {
-    if (socket_setname(&addr, &addrlen, "mdp.socket") == -1)
+    if (make_local_sockaddr(&addr, &addrlen, "mdp.socket") == -1)
       return -1;
     if ((mdp_sock.poll.fd = esocket(AF_UNIX, SOCK_DGRAM, 0)) == -1)
       return -1;
