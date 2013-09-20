@@ -781,7 +781,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
   int64_t unread_mark=conv->read_offset;
   
   if (conv->found_their_ply){
-    rhizome_manifest *m_theirs = rhizome_new_manifest();
+    m_theirs = rhizome_new_manifest();
     if (!m_theirs)
       goto end;
     if (ply_read_open(&read_theirs, conv->their_ply.bundle_id, m_theirs))
