@@ -48,16 +48,14 @@ struct sockaddr_in sock_any_addr;
 struct profile_total sock_any_stats;
 
 static void overlay_interface_poll(struct sched_ent *alarm);
-static void logServalPacket(int level, struct __sourceloc __whence, const char *message, const unsigned char *packet, size_t len);
 static int re_init_socket(int interface_index);
-
-#define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __WHENCE__, (M), (P), (N))
+static void write_stream_buffer(overlay_interface *interface);
 
 static void
 overlay_interface_close(overlay_interface *interface){
   link_interface_down(interface);
   INFOF("Interface %s addr %s is down", 
-    interface->name, inet_ntoa(interface->address.sin_addr));
+	interface->name, inet_ntoa(interface->address.sin_addr));
   unschedule(&interface->alarm);
   unwatch(&interface->alarm);
   close(interface->alarm.poll.fd);
@@ -233,20 +231,7 @@ overlay_interface_read_any(struct sched_ent *alarm){
       return;
     }
     
-    /* We have a frame from this interface */
-    if (config.debug.packetrx)
-      DEBUG_packet_visualise("Read from real interface", packet,plen);
-    if (config.debug.overlayinterfaces)
-      DEBUGF("Received %d bytes from %s on interface %s (ANY)",plen, 
-	     inet_ntoa(src),
-	     interface->name);
-    
-    if (packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen)<0) {
-      if (config.debug.rejecteddata) {
-	WHYF("Malformed packet (length = %d)",plen);
-	dump("the malformed packet",packet,plen);
-      }
-    }
+    packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen);
   }
   if (alarm->poll.revents & (POLLHUP | POLLERR)) {
     INFO("Closing broadcast socket due to error");
@@ -378,6 +363,9 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   interface->ctsrts = ifconfig->ctsrts;
   set_destination_ref(&interface->destination, NULL);
   interface->destination = new_destination(interface, ifconfig->encapsulation);
+  
+  interface->throttle_bytes_per_second = ifconfig->throttle;
+  interface->throttle_burst_write_size = ifconfig->burst_size;
   /* Pick a reasonable default MTU.
      This will ultimately get tuned by the bandwidth and other properties of the interface */
   interface->mtu = 1200;
@@ -492,9 +480,10 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
       interface->slip_decode_state.dst_offset=0;
       /* The encapsulation type should be configurable, but for now default to the one that should
          be safe on the RFD900 radios, and that also allows us to receive RSSI reports inline */
-      interface->slip_decode_state.encapsulator=SLIP_FORMAT_UPPER7;
-      interface->alarm.poll.events=POLLIN;
+      interface->slip_decode_state.encapsulator=SLIP_FORMAT_MAVLINK;
+      interface->alarm.poll.events=POLLIN|POLLOUT;
       watch(&interface->alarm);
+
       break;
     case SOCK_FILE:
       /* Seek to end of file as initial reading point */
@@ -548,21 +537,7 @@ static void interface_read_dgram(struct overlay_interface *interface){
     return;
   }
   
-  /* We have a frame from this interface */
-  if (config.debug.packetrx)
-    DEBUG_packet_visualise("Read from real interface", packet,plen);
-  if (config.debug.overlayinterfaces) {
-    struct in_addr src = ((struct sockaddr_in *)&src_addr)->sin_addr; // avoid strict-alias warning on Solaris (gcc 4.4)
-    DEBUGF("Received %d bytes from %s on interface %s",plen,
-	   inet_ntoa(src),
-	   interface->name);
-  }
-  if (packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen)<0) {
-    if (config.debug.rejecteddata) {
-      WHYF("Malformed packet (length = %d)",plen);
-      dump("the malformed packet",packet,plen);
-    }
-  }
+  packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen);
 }
 
 struct file_packet{
@@ -640,23 +615,13 @@ static void interface_read_file(struct overlay_interface *interface)
     
     if (nread == sizeof packet) {
       interface->recv_offset += nread;
-      
-      if (config.debug.packetrx)
-	DEBUG_packet_visualise("Read from dummy interface", packet.payload, packet.payload_length);
-
       if (should_drop(interface, packet.dst_addr) || (packet.pid == getpid() && !interface->local_echo)){
 	if (config.debug.packetrx)
 	  DEBUGF("Ignoring packet from %d, addressed to %s:%d", packet.pid,
 	      inet_ntoa(packet.dst_addr.sin_addr), ntohs(packet.dst_addr.sin_port));
       }else{
-	if (packetOkOverlay(interface, packet.payload, packet.payload_length, -1, 
-			    (struct sockaddr*)&packet.src_addr, sizeof(packet.src_addr))<0) {
-	  if (config.debug.rejecteddata) {
-	    WARN("Unsupported packet from dummy interface");
-	    WHYF("Malformed packet (length = %d)",packet.payload_length);
-	    dump("the malformed packet",packet.payload,packet.payload_length);
-	  }
-	}
+	packetOkOverlay(interface, packet.payload, packet.payload_length, -1, 
+			    (struct sockaddr*)&packet.src_addr, sizeof(packet.src_addr));
       }
     }
   }
@@ -690,57 +655,104 @@ static void interface_read_stream(struct overlay_interface *interface){
     OUT();
     return;
   }
-  
+  if (config.debug.packetradio)
+    dump("read bytes", buffer, nread);
   struct slip_decode_state *state=&interface->slip_decode_state;
   
-  if (config.debug.slip) {
-   dump("RX bytes", buffer, nread);
- }
-  
-  state->src=buffer;
-  state->src_size=nread;
-  state->src_offset=0;
-  
-  while (state->src_offset < state->src_size) {
-    int ret = slip_decode(state);
-    if (ret==1){
-      if (packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL, -1)<0) {
-	if (config.debug.rejecteddata) {
-	  WHYF("Malformed packet (length = %d)",state->packet_length);
-	  dump("the malformed packet",state->dst,state->packet_length);
-	}
-      }
-      state->dst_offset=0;
-    }
-  }
+  int i;
+  for (i=0;i<nread;i++)
+    mavlink_decode(interface, state, buffer[i]);
+    
   OUT();
 }
 
 static void write_stream_buffer(overlay_interface *interface){
-  if (interface->tx_bytes_pending>0) {
-    int written=write(interface->alarm.poll.fd,interface->txbuffer,
-		      interface->tx_bytes_pending);
-    if (config.debug.packetradio) DEBUGF("Trying to write %d bytes",
-					 interface->tx_bytes_pending);
-    if (written>0) {
-      interface->tx_bytes_pending-=written;
+  time_ms_t now = gettime_ms();
+  
+  // Throttle output to a prescribed bit-rate
+  // first, reduce the number of bytes based on the configured burst size
+  int bytes_allowed=interface->throttle_burst_write_size;
+    
+  int total_written=0;
+  while (interface->tx_bytes_pending>0 || interface->tx_packet || interface->next_heartbeat <= now) {
+    
+    if (interface->tx_bytes_pending==0){
+      if (interface->next_heartbeat <= now){
+	// Queue a hearbeat now
+	mavlink_heartbeat(interface->txbuffer,&interface->tx_bytes_pending);
+	if (config.debug.packetradio)
+	  DEBUGF("Built %d byte heartbeat", interface->tx_bytes_pending);
+	interface->next_heartbeat = now+1000;
+      }else if(interface->tx_packet && interface->remaining_space >= 256 + 8+9){
+	// prepare a new link layer packet in txbuffer
+	if (mavlink_encode_packet(interface))
+	  break;
+	if (config.debug.packetradio)
+	  DEBUGF("Built %d byte payload from packet (%d)", interface->tx_bytes_pending, interface->remaining_space);
+	if (interface->remaining_space - interface->tx_bytes_pending < 256 + 8+9)
+	  interface->next_heartbeat = now;
+      }
+    }
+    
+    if (interface->next_tx_allowed > now)
+      break;
+    
+    int bytes = interface->tx_bytes_pending;
+    if (interface->throttle_burst_write_size && bytes>bytes_allowed)
+      bytes=bytes_allowed;
+    if (bytes<=0)
+      break;
+    
+    if (config.debug.packetradio)
+      DEBUGF("Trying to write %d bytes of %d%s", bytes, interface->tx_bytes_pending, interface->tx_packet?", pending packet":"");
+    int written=write(interface->alarm.poll.fd, interface->txbuffer, bytes);
+    if (written<=0){
+      DEBUGF("Blocking for POLLOUT");
+      break;
+    }
+    
+    interface->remaining_space-=written;
+    interface->tx_bytes_pending-=written;
+    total_written+=written;
+    bytes_allowed-=written;
+    if (interface->tx_bytes_pending){
       bcopy(&interface->txbuffer[written],&interface->txbuffer[0],
 	    interface->tx_bytes_pending);
-      if (config.debug.packetradio) DEBUGF("Wrote %d bytes (%d left pending)",
-					   written,interface->tx_bytes_pending);
-    } else {
-      if (config.debug.packetradio) DEBUGF("Failed to write any data");
+      DEBUGF("Partial write, %d left", interface->tx_bytes_pending);
+    }
+    if (config.debug.packetradio) 
+      DEBUGF("Wrote %d bytes (%d left pending, %d remains)", written, interface->tx_bytes_pending, interface->remaining_space);
+  }
+  
+  if (total_written>0){
+    // Now when are we allowed to send more?
+    int rate = interface->throttle_bytes_per_second;
+    if (interface->remaining_space<=0)
+      rate = 600;
+    if (rate){
+      int delay = total_written*1000/rate;
+      if (config.debug.throttling)
+	DEBUGF("Throttling for %dms (%d).", delay, interface->remaining_space);
+      interface->next_tx_allowed = now + delay;
     }
   }
   
-  if (interface->tx_bytes_pending>0) {
-    // more to write, so keep POLLOUT flag
+  time_ms_t next_write = interface->next_tx_allowed;
+  if (interface->tx_bytes_pending<=0){
+    next_write = interface->next_heartbeat;
+  }
+  
+  if (interface->alarm.alarm==-1 || next_write < interface->alarm.alarm){
+    interface->alarm.alarm = next_write;
+    interface->alarm.deadline = interface->alarm.alarm+10;
+  }
+  
+  if (interface->tx_bytes_pending>0 && next_write <= now){
+    // more to write, so set the POLLOUT flag
     interface->alarm.poll.events|=POLLOUT;
   } else {
-    // nothing more to write, so clear POLLOUT flag
+    // Nothing to write, so clear POLLOUT flag
     interface->alarm.poll.events&=~POLLOUT;
-    // try to empty another packet from the queue ASAP
-    overlay_queue_schedule_next(gettime_ms());
   }
   watch(&interface->alarm);
 }
@@ -749,14 +761,15 @@ static void write_stream_buffer(overlay_interface *interface){
 static void overlay_interface_poll(struct sched_ent *alarm)
 {
   struct overlay_interface *interface = (overlay_interface *)alarm;
-  
+  time_ms_t now = gettime_ms();
+    
   if (alarm->poll.revents==0){
     alarm->alarm=-1;
     
-    time_ms_t now = gettime_ms();
     if (interface->state==INTERFACE_STATE_UP 
       && interface->destination->tick_ms>0
-      && interface->send_broadcasts){
+      && interface->send_broadcasts
+      && !interface->tx_packet){
       
       if (now >= interface->destination->last_tx+interface->destination->tick_ms)
         overlay_send_tick_packet(interface->destination);
@@ -766,15 +779,18 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     }
     
     switch(interface->socket_type){
-      case SOCK_DGRAM:
       case SOCK_STREAM:
+	write_stream_buffer(interface);
+	break;
+      case SOCK_DGRAM:
 	break;
       case SOCK_FILE:
 	interface_read_file(interface);
         now = gettime_ms();
 	break;
     }
-
+    
+    unschedule(alarm);
     if (alarm->alarm!=-1 && interface->state==INTERFACE_STATE_UP) {
       if (alarm->alarm < now)
         alarm->alarm = now;
@@ -786,6 +802,12 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     switch(interface->socket_type){
       case SOCK_STREAM:
 	write_stream_buffer(interface);
+	if (alarm->alarm!=-1 && interface->state==INTERFACE_STATE_UP) {
+	  if (alarm->alarm < now)
+	    alarm->alarm = now;
+	  unschedule(alarm);
+	  schedule(alarm);
+	}
 	break;
       case SOCK_DGRAM:
       case SOCK_FILE:
@@ -801,6 +823,16 @@ static void overlay_interface_poll(struct sched_ent *alarm)
 	break;
       case SOCK_STREAM:
 	interface_read_stream(interface);
+	// if we read a valid heartbeat packet, we may be able to write more bytes now.
+	if (interface->state==INTERFACE_STATE_UP && interface->remaining_space>0){
+	  write_stream_buffer(interface);
+	  if (alarm->alarm!=-1 && interface->state==INTERFACE_STATE_UP) {
+	    if (alarm->alarm < now)
+	      alarm->alarm = now;
+	    unschedule(alarm);
+	    schedule(alarm);
+	  }
+	}
 	break;
       case SOCK_FILE:
 	interface_read_file(interface);
@@ -813,21 +845,22 @@ static void overlay_interface_poll(struct sched_ent *alarm)
   }  
 }
 
-int
-overlay_broadcast_ensemble(struct network_destination *destination,
-			   unsigned char *bytes,int len)
+int overlay_broadcast_ensemble(struct network_destination *destination, struct overlay_buffer *buffer)
 {
   assert(destination && destination->interface);
+  const unsigned char *bytes = ob_ptr(buffer);
+  int len = ob_position(buffer);
   
   struct overlay_interface *interface = destination->interface;
   destination->last_tx = gettime_ms();
-
+  
   if (config.debug.packettx){
     DEBUGF("Sending this packet via interface %s (len=%d)",interface->name,len);
-    DEBUG_packet_visualise(NULL,bytes,len);
+    DEBUG_packet_visualise(NULL, bytes, len);
   }
 
   if (interface->state!=INTERFACE_STATE_UP){
+    ob_free(buffer);
     return WHYF("Cannot send to interface %s as it is down", interface->name);
   }
 
@@ -837,34 +870,20 @@ overlay_broadcast_ensemble(struct network_destination *destination,
   switch(interface->socket_type){
     case SOCK_STREAM:
     {
-      if (interface->tx_bytes_pending>0)
+      if (interface->tx_packet){
+	ob_free(buffer);
 	return WHYF("Cannot send two packets to a stream at the same time");
+      }
       
-      /* Encode packet with SLIP escaping.
-       XXX - Add error correction here also */
-      unsigned char *buffer = interface->txbuffer;
-      int out_len=0;
-      
-      int encoded = slip_encode(SLIP_FORMAT_UPPER7,
-				bytes, len, buffer+out_len, sizeof(interface->txbuffer) - out_len);
-      if (encoded < 0)
-	return WHY("Buffer overflow");
-						
-      if (config.debug.slip)
-	{
-	  // Test decoding of the packet we send
-	  struct slip_decode_state state;
-	  state.encapsulator=SLIP_FORMAT_UPPER7;
-	  state.src_size=encoded;
-	  state.src_offset=0;
-	  state.src=buffer+out_len;
-	  slip_decode(&state);
-	}
-
-      out_len+=encoded;
-      
-      interface->tx_bytes_pending=out_len;
+      // prepare the buffer for reading
+      ob_flip(buffer);
+      interface->tx_packet = buffer;
       write_stream_buffer(interface);
+      
+      if (interface->alarm.alarm!=-1){
+	unschedule(&interface->alarm);
+	schedule(&interface->alarm);
+      }
       
       return 0;
     }
@@ -883,6 +902,7 @@ overlay_broadcast_ensemble(struct network_destination *destination,
       }
       packet.payload_length=len;
       bcopy(bytes, packet.payload, len);
+      ob_free(buffer);
       /* This lseek() is unneccessary because the dummy file is opened in O_APPEND mode.  It's
        only purpose is to find out the offset to print in the DEBUG statement.  It is vulnerable
        to a race condition with other processes appending to the same file. */
@@ -909,8 +929,11 @@ overlay_broadcast_ensemble(struct network_destination *destination,
     {
       if (config.debug.overlayinterfaces) 
 	DEBUGF("Sending %d byte overlay frame on %s to %s",len,interface->name,inet_ntoa(destination->address.sin_addr));
-      if(sendto(interface->alarm.poll.fd, 
-		bytes, len, 0, (struct sockaddr *)&destination->address, sizeof(destination->address)) != len){
+      int sent=sendto(interface->alarm.poll.fd, 
+		bytes, len, 0, 
+		(struct sockaddr *)&destination->address, sizeof(destination->address));
+      ob_free(buffer);
+      if (sent!= len){
 	WHY_perror("sendto(c)");
 	// close the interface if we had any error while sending broadcast packets,
 	// unicast packets should not bring the interface down
@@ -923,6 +946,7 @@ overlay_broadcast_ensemble(struct network_destination *destination,
     }
       
     default:
+      ob_free(buffer);
       return WHY("Unsupported socket type");
   }
 }
@@ -1023,7 +1047,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
   int i;
   for (i = 0; i < overlay_interface_count; i++)
     if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
-      overlay_interfaces[i].state=INTERFACE_STATE_DETECTING;
+      overlay_interfaces[i].state=INTERFACE_STATE_DETECTING;   
 
   /* Register new dummy interfaces */
   int detect_real_interfaces = 0;
@@ -1075,8 +1099,10 @@ void overlay_interface_discover(struct sched_ent *alarm)
 
   // Close any interfaces that have gone away.
   for(i = 0; i < overlay_interface_count; i++)
-    if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING)
+    if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING) {
+      DEBUGF("Closing interface stuck in DETECTING state.");
       overlay_interface_close(&overlay_interfaces[i]);
+    }
 
   alarm->alarm = gettime_ms()+5000;
   alarm->deadline = alarm->alarm + 10000;
@@ -1084,8 +1110,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
   return;
 }
 
-static void
-logServalPacket(int level, struct __sourceloc __whence, const char *message, const unsigned char *packet, size_t len) {
+void logServalPacket(int level, struct __sourceloc __whence, const char *message, const unsigned char *packet, size_t len) {
   struct mallocbuf mb = STRUCT_MALLOCBUF_NULL;
   if (!message) message="<no message>";
   if (serval_packetvisualise_xpf(XPRINTF_MALLOCBUF(&mb), message, packet, len) == -1)

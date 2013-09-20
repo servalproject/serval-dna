@@ -229,7 +229,7 @@ static struct rhizome_fetch_slot *rhizome_find_fetch_slot(long long size)
 
 
 // find the first matching active slot for this bundle
-static struct rhizome_fetch_slot *fetch_search_slot(unsigned char *id, int prefix_length)
+static struct rhizome_fetch_slot *fetch_search_slot(const unsigned char *id, int prefix_length)
 {
   int i;
   for (i = 0; i < NQUEUES; ++i) {
@@ -243,7 +243,7 @@ static struct rhizome_fetch_slot *fetch_search_slot(unsigned char *id, int prefi
 }
 
 // find the first matching candidate for this bundle
-static struct rhizome_fetch_candidate *fetch_search_candidate(unsigned char *id, int prefix_length)
+static struct rhizome_fetch_candidate *fetch_search_candidate(const unsigned char *id, int prefix_length)
 {
   int i, j;
   for (i = 0; i < NQUEUES; ++i) {
@@ -261,7 +261,7 @@ static struct rhizome_fetch_candidate *fetch_search_candidate(unsigned char *id,
 }
 
 /* Search all fetch slots, including active downloads, for a matching manifest */
-rhizome_manifest * rhizome_fetch_search(unsigned char *id, int prefix_length){
+rhizome_manifest * rhizome_fetch_search(const unsigned char *id, int prefix_length){
   struct rhizome_fetch_slot *s = fetch_search_slot(id, prefix_length);
   if (s)
     return s->manifest;
@@ -1333,16 +1333,14 @@ int rhizome_received_content(unsigned char *bidprefix,
 			     int count,unsigned char *bytes,int type)
 {
   IN();
-  if (config.debug.rhizome)
-    DEBUGF("Rhizome over MDP receiving %d bytes.",count);
   if (!is_rhizome_mdp_enabled()) {
-    if (config.debug.rhizome)
-      DEBUGF("Rhizome over MDP is not enabled");
     RETURN(-1);
   }
   struct rhizome_fetch_slot *slot=fetch_search_slot(bidprefix, 16);
   
   if (slot && slot->bidVersion == version && slot->state == RHIZOME_FETCH_RXFILEMDP){
+    if (config.debug.rhizome)
+      DEBUGF("Rhizome over MDP receiving %d bytes.",count);
     if (rhizome_random_write(&slot->write_state, offset, bytes, count)){
       if (config.debug.rhizome)
 	DEBUGF("Write failed!");
@@ -1364,10 +1362,6 @@ int rhizome_received_content(unsigned char *bidprefix,
       rhizome_fetch_mdp_requestblocks(slot);
     }
     RETURN(0);
-  } else {
-    if (config.debug.rhizome)
-      DEBUGF("Ignoring received block: slot=%p, version=%016"PRIx64", slot->bidVersion=%016"PRIx64", slot->state=%d (should be %d)",
-	     slot,version,slot?slot->bidVersion:0,slot?slot->state:-999,RHIZOME_FETCH_RXFILEMDP);
   }
   
   // if we get a packet containing an entire payload
@@ -1529,7 +1523,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	rhizome_fetch_mdp_slot_callback(alarm);
 	break;
 
-    default:
+      default:
         // timeout or socket error, close the socket
         if (config.debug.rhizome_rx)
           DEBUGF("Closing due to timeout or error %x (%x %x)", alarm->poll.revents, POLLHUP, POLLERR);

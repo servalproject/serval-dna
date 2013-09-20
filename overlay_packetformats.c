@@ -378,6 +378,17 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
      the source having received the frame from elsewhere.
   */
 
+  if (config.debug.packetrx || interface->debug) {
+    DEBUGF("Received on %s, len %d", interface->name, (int)len);
+    DEBUG_packet_visualise("Received packet",packet,len);
+    if (config.debug.interactive_io) {
+      fprintf(stderr,"Press ENTER to continue..."); fflush(stderr);
+      char buffer[80];
+      if (!fgets(buffer,80,stdin))
+	FATAL_perror("calling fgets");
+    }
+  }
+  
   if (recvaddr&&recvaddr->sa_family!=AF_INET)
     RETURN(WHYF("Unexpected protocol family %d",recvaddr->sa_family));
   
@@ -395,9 +406,6 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     f.recvaddr = *((struct sockaddr_in *)recvaddr); 
   else 
     bzero(&f.recvaddr, sizeof f.recvaddr);
-  
-  if (interface->debug)
-    DEBUGF("Received on %s, len %d: %s", interface->name, (int)len, alloca_tohex(packet, len>64?64:len));
   
   int ret=parseEnvelopeHeader(&context, interface, (struct sockaddr_in *)recvaddr, b);
   if (ret){

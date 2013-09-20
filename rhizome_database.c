@@ -1032,6 +1032,8 @@ int rhizome_store_bundle(rhizome_manifest *m)
 	  m->version
 	  );
     monitor_announce_bundle(m);
+    if (serverMode)
+      rhizome_sync_announce();
     return 0;
   }
 rollback:

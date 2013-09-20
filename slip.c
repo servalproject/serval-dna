@@ -1,6 +1,27 @@
+/*
+Serval Distributed Numbering Architecture (DNA)
+Copyright (C) 2012 Paul Gardner-Stephen
+ 
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+ 
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+ 
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
+
 #include "serval.h"
 #include "conf.h"
 #include "log.h"
+
+#define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __WHENCE__, (M), (P), (N))
 
 /* SLIP-style escape characters used for serial packet radio interfaces */
 #define SLIP_END 0xc0
@@ -21,58 +42,72 @@
 #define DC_VALID 1
 #define DC_ESC 2
 
+static int encode_slip(const unsigned char *src, int src_bytes, unsigned char *dst, int dst_len)
+{
+  int i, offset=0;
+  for (i=0;i<src_bytes;i++){
+    
+    if (offset+3>dst_len)
+      return WHY("Dest buffer full");
+    
+    switch(src[i]) {
+      case SLIP_END:
+	dst[offset++]=SLIP_ESC;
+	dst[offset++]=SLIP_ESC_END;
+	break;
+      case SLIP_ESC:
+	dst[offset++]=SLIP_ESC;
+	dst[offset++]=SLIP_ESC_ESC;
+	break;
+      case SLIP_0a:
+	dst[offset++]=SLIP_ESC;
+	dst[offset++]=SLIP_ESC_0a;
+	break;
+      case SLIP_0d:
+	dst[offset++]=SLIP_ESC;
+	dst[offset++]=SLIP_ESC_0d;
+	break;
+      case SLIP_0f:
+	dst[offset++]=SLIP_ESC;
+	dst[offset++]=SLIP_ESC_0f;
+	break;
+      case SLIP_1b:
+	dst[offset++]=SLIP_ESC;
+	dst[offset++]=SLIP_ESC_1b;
+	break;
+      default:
+	dst[offset++]=src[i];
+    }
+  }
+  return offset;
+}
+
 int slip_encode(int format,
-		unsigned char *src, int src_bytes, unsigned char *dst, int dst_len)
+		const unsigned char *src, int src_bytes, unsigned char *dst, int dst_len)
 {
   switch(format) {
   case SLIP_FORMAT_SLIP:
     {
       int offset=0;
-      int i;
-      
+
       if (offset+2>dst_len)
 	return WHY("Dest buffer full");
       
       dst[offset++]=SLIP_END;
       
-      uint32_t crc=Crc32_ComputeBuf( 0, src, src_bytes);
-      // (I'm assuming there are 4 extra bytes in memory here, which is very naughty...)
-      write_uint32(src+src_bytes, crc);
+      int ret=encode_slip(src, src_bytes, dst + offset, dst_len - offset);
+      if (ret<0)
+	return ret;
+      offset+=ret;
       
-      for (i=0;i<src_bytes+4;i++){
-	
-	if (offset+3>dst_len)
-	  return WHY("Dest buffer full");
-	
-	switch(src[i]) {
-	  case SLIP_END:
-	    dst[offset++]=SLIP_ESC;
-	    dst[offset++]=SLIP_ESC_END;
-	    break;
-	  case SLIP_ESC:
-	    dst[offset++]=SLIP_ESC;
-	    dst[offset++]=SLIP_ESC_ESC;
-	    break;
-	  case SLIP_0a:
-	    dst[offset++]=SLIP_ESC;
-	    dst[offset++]=SLIP_ESC_0a;
-	    break;
-	  case SLIP_0d:
-	    dst[offset++]=SLIP_ESC;
-	    dst[offset++]=SLIP_ESC_0d;
-	    break;
-	  case SLIP_0f:
-	    dst[offset++]=SLIP_ESC;
-	    dst[offset++]=SLIP_ESC_0f;
-	    break;
-	  case SLIP_1b:
-	    dst[offset++]=SLIP_ESC;
-	    dst[offset++]=SLIP_ESC_1b;
-	    break;
-	  default:
-	    dst[offset++]=src[i];
-	}
-      }
+      unsigned char crc[4];
+      write_uint32(crc, Crc32_ComputeBuf( 0, src, src_bytes));
+      
+      ret=encode_slip(crc, 4, dst + offset, dst_len - offset);
+      if (ret<0)
+	return ret;
+      offset+=ret;
+      
       dst[offset++]=SLIP_END;
       
       return offset;
@@ -162,13 +197,13 @@ int parse_rfd900_rssi(char *s)
 	     &lrssi,&rrssi,&lnoise,&rnoise,&rxpackets, &temp)==6)
     {
       int lmargin=(lrssi-lnoise)/1.9;
-      int rmargin=(lrssi-lnoise)/1.9;
+      int rmargin=(rrssi-rnoise)/1.9;
       int maxmargin=lmargin; if (rmargin>maxmargin) maxmargin=rmargin;
       last_radio_rssi=maxmargin;
       last_radio_temperature=temp;
       last_radio_rxpackets=rxpackets;
 
-      if (config.debug.packetradio||(gettime_ms()-last_rssi_time>30000)) {
+      if (gettime_ms()-last_rssi_time>30000) {
 	INFOF("Link budget = %+ddB, temperature=%dC",maxmargin,temp);
 	last_rssi_time=gettime_ms();
       }

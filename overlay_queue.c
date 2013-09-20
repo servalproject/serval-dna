@@ -288,6 +288,8 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
     int i;
     for(i=0;i<frame->destination_count;i++)
     {
+      if (frame->destinations[i].destination->interface->tx_packet)
+	continue;
       time_ms_t next_packet = limit_next_allowed(&frame->destinations[i].destination->transfer_limit);
       if (frame->destinations[i].transmit_time){
 	time_ms_t delay_until = frame->destinations[i].transmit_time + frame->destinations[i].destination->resend_delay;
@@ -399,7 +401,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	}else{
 	  // skip this interface if the stream tx buffer has data
 	  if (dest->interface->socket_type==SOCK_STREAM 
-	    && dest->interface->tx_bytes_pending>0)
+	    && dest->interface->tx_packet)
 	    continue;
 	    
 	  // can we send a packet on this interface now?
@@ -513,8 +515,7 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
     if (config.debug.packetconstruction)
       ob_dump(packet->buffer,"assembled packet");
       
-    overlay_broadcast_ensemble(packet->destination, ob_ptr(packet->buffer), ob_position(packet->buffer));
-    ob_free(packet->buffer);
+    overlay_broadcast_ensemble(packet->destination, packet->buffer);
     ret=1;
   }
   if (packet->destination)
@@ -574,8 +575,8 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
 	    if (!destination->max_rtt || rtt > destination->max_rtt)
 	      destination->max_rtt = rtt;
 	    
-	    if (config.debug.overlayframes)
-	      DEBUGF("Packet %p to %s sent by seq %d, acked with seq %d", 
+	    if (config.debug.ack)
+	      DEBUGF("DROPPED DUE TO ACK: Packet %p to %s sent by seq %d, acked with seq %d", 
 		frame, alloca_tohex_sid(neighbour->sid), frame_seq, ack_seq);
 		
 	    // drop packets that don't need to be retransmitted
@@ -587,8 +588,8 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
 	    
 	  }else if (seq_delta < 128 && frame->destination && frame->delay_until>now){
 	    // retransmit asap
-	    if (config.debug.overlayframes)
-	      DEBUGF("Requeue packet %p to %s sent by seq %d due to ack of seq %d", frame, alloca_tohex_sid(neighbour->sid), frame_seq, ack_seq);
+	    if (config.debug.ack)
+	      DEBUGF("RE-TX DUE TO NACK: Requeue packet %p to %s sent by seq %d due to ack of seq %d", frame, alloca_tohex_sid(neighbour->sid), frame_seq, ack_seq);
 	    frame->delay_until = now;
 	    overlay_calc_queue_time(&overlay_tx[i], frame);
 	  }
