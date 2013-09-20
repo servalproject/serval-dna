@@ -339,7 +339,7 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
 	  ntohs(addr_in->sin_port)
 	);
       if (addrlen != sizeof(struct sockaddr_in))
-	strbuf_sprintf(sb, " (addrlen=%d should be %d)", (int)addrlen, sizeof(struct sockaddr_in));
+	strbuf_sprintf(sb, " (addrlen=%d should be %zd)", (int)addrlen, sizeof(struct sockaddr_in));
     }
     break;
   default: {
