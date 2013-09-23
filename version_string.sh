@@ -108,8 +108,8 @@ if [ -n "$dirty" ] && ! $allow_modified; then
    exit 3
 fi
 
-# Use the "git describe" command to form the version string.
-if error="$(git describe --match="$version_tag_glob" "${dirty:+--dirty=$dirty}" 2>&1 1>&5)" 5>&1; then
+# Use the "git describe" command to form the version string and append $dirty.
+if error="$( (desc="$(git describe --match="$version_tag_glob")" && echo "$desc$dirty") 2>&1 1>&5)" 5>&1; then
    exit 0
 fi
 
