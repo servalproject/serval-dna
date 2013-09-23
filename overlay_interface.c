@@ -63,6 +63,54 @@ overlay_interface_close(overlay_interface *interface){
   interface->state=INTERFACE_STATE_DOWN;
 }
 
+void interface_state_html(struct strbuf *b, struct overlay_interface *interface)
+{
+  switch(interface->state){
+    case INTERFACE_STATE_UP:
+      strbuf_sprintf(b, "Interface %s is Up<br>", interface->name);
+      break;
+    default:
+      strbuf_puts(b, "Interface Down");
+      return;
+  }
+  switch(interface->type){
+    case OVERLAY_INTERFACE_PACKETRADIO:
+      strbuf_puts(b, "Type: Packet Radio<br>");
+      strbuf_sprintf(b, "RSSI: %ddB<br>",interface->radio_rssi);
+      strbuf_sprintf(b, "Remote RSSI: %ddB<br>",interface->remote_rssi);
+      break;
+    case OVERLAY_INTERFACE_ETHERNET:
+      strbuf_puts(b, "Type: Ethernet<br>");
+      break;
+    case OVERLAY_INTERFACE_WIFI:
+      strbuf_puts(b, "Type: Wifi<br>");
+      break;
+    default:
+    case OVERLAY_INTERFACE_UNKNOWN:
+      strbuf_puts(b, "Type: Unknown<br>");
+  }
+  switch(interface->socket_type){
+    case SOCK_STREAM:
+      strbuf_puts(b, "Socket: Stream<br>");
+      break;
+    case SOCK_DGRAM:
+      {
+	char addrtxt[INET_ADDRSTRLEN];
+	strbuf_puts(b, "Socket: DGram<br>");
+	if (inet_ntop(AF_INET, (const void *)&interface->address.sin_addr, addrtxt, INET_ADDRSTRLEN))
+	  strbuf_sprintf(b, "Address: %s:%d<br>", addrtxt, ntohs(interface->address.sin_port));
+	if (inet_ntop(AF_INET, (const void *)&interface->destination->address.sin_addr, addrtxt, INET_ADDRSTRLEN))
+	  strbuf_sprintf(b, "Broadcast Address: %s:%d<br>", addrtxt, ntohs(interface->destination->address.sin_port));
+      }
+      break;
+    case SOCK_FILE:
+      strbuf_puts(b, "Socket: File<br>");
+      break;
+  }
+  strbuf_sprintf(b, "TX: %d<br>", interface->tx_count);
+  strbuf_sprintf(b, "RX: %d<br>", interface->recv_count);
+}
+
 // create a socket with options common to all our UDP sockets
 static int
 overlay_bind_socket(const struct sockaddr *addr, size_t addr_size, char *interface_name){
@@ -230,7 +278,6 @@ overlay_interface_read_any(struct sched_ent *alarm){
 	DEBUGF("Could not find matching interface for packet received from %s", inet_ntoa(src));
       return;
     }
-    
     packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen);
   }
   if (alarm->poll.revents & (POLLHUP | POLLERR)) {
@@ -374,6 +421,8 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   interface->state=INTERFACE_STATE_DOWN;
   interface->alarm.poll.fd=0;
   interface->debug = ifconfig->debug;
+  interface->tx_count=0;
+  interface->recv_count=0;
 
   // How often do we announce ourselves on this interface?
   int tick_ms=-1;
@@ -655,8 +704,6 @@ static void interface_read_stream(struct overlay_interface *interface){
     OUT();
     return;
   }
-  if (config.debug.packetradio)
-    dump("read bytes", buffer, nread);
   struct slip_decode_state *state=&interface->slip_decode_state;
   
   int i;
@@ -681,14 +728,12 @@ static void write_stream_buffer(overlay_interface *interface){
 	// Queue a hearbeat now
 	mavlink_heartbeat(interface->txbuffer,&interface->tx_bytes_pending);
 	if (config.debug.packetradio)
-	  DEBUGF("Built %d byte heartbeat", interface->tx_bytes_pending);
+	  DEBUGF("Sending heartbeat");
 	interface->next_heartbeat = now+1000;
       }else if(interface->tx_packet && interface->remaining_space >= 256 + 8+9){
 	// prepare a new link layer packet in txbuffer
 	if (mavlink_encode_packet(interface))
 	  break;
-	if (config.debug.packetradio)
-	  DEBUGF("Built %d byte payload from packet (%d)", interface->tx_bytes_pending, interface->remaining_space);
 	if (interface->remaining_space - interface->tx_bytes_pending < 256 + 8+9)
 	  interface->next_heartbeat = now;
       }
@@ -703,8 +748,6 @@ static void write_stream_buffer(overlay_interface *interface){
     if (bytes<=0)
       break;
     
-    if (config.debug.packetradio)
-      DEBUGF("Trying to write %d bytes of %d%s", bytes, interface->tx_bytes_pending, interface->tx_packet?", pending packet":"");
     int written=write(interface->alarm.poll.fd, interface->txbuffer, bytes);
     if (written<=0){
       DEBUGF("Blocking for POLLOUT");
@@ -720,8 +763,6 @@ static void write_stream_buffer(overlay_interface *interface){
 	    interface->tx_bytes_pending);
       DEBUGF("Partial write, %d left", interface->tx_bytes_pending);
     }
-    if (config.debug.packetradio) 
-      DEBUGF("Wrote %d bytes (%d left pending, %d remains)", written, interface->tx_bytes_pending, interface->remaining_space);
   }
   
   if (total_written>0){
@@ -867,6 +908,8 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
   if (interface->debug)
     DEBUGF("Sending on %s, len %d: %s", interface->name, len, alloca_tohex(bytes, len>64?64:len));
 
+  interface->tx_count++;
+  
   switch(interface->socket_type){
     case SOCK_STREAM:
     {

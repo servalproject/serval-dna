@@ -543,58 +543,71 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
     if (strcmp(path, "/")==0) {
       r->request_type = RHIZOME_HTTP_REQUEST_FROMBUFFER;
       char temp[8192];
-      snprintf(temp,8192,
-	       "<html><body>"
+      strbuf b=strbuf_local(temp, sizeof(temp));
+      strbuf_sprintf(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>"
 	       "<h1>Hello, I'm %s*</h1><br>"
-	       "<a href=\"/rssi\">rssi</a><br>"
-	       "<a href=\"/rhizome/status\">rhizome status</a><br>"
-	       "<a href=\"/rhizome/files\">rhizome files</a><br>"
-	       "<a href=\"/rhizome/bars\">rhizome bars</a><br>"
-	       "</body></html>",
+	       "Interfaces;<br>",
 	       alloca_tohex(my_subscriber->sid, 8));
-      rhizome_server_simple_http_response(r, 200, temp);
+      int i;
+      for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
+	if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
+	  strbuf_sprintf(b, "<a href=\"/interface/%d\">%d: %s, TX: %d, RX: %d</a><br>", 
+	    i, i, overlay_interfaces[i].name, overlay_interfaces[i].tx_count, overlay_interfaces[i].recv_count);
+      }
+      
+      strbuf_puts(b, "Neighbours;<br>");
+      link_neighbour_short_status_html(b, "/neighbour");
+      
+      if (is_rhizome_http_enabled()){
+	strbuf_puts(b, "<a href=\"/rhizome/status\">Rhizome Status</a><br>");
+      }
+      strbuf_puts(b, "</body></html>");
+      if (strbuf_overrun(b)){
+	rhizome_server_simple_http_response(r, 500, "<html><h1>Buffer overflow</h1></html>\r\n");
+      }else{
+	rhizome_server_simple_http_response(r, 200, temp);
+      }
+    } else if (str_startswith(path, "/neighbour/", (const char **)&id)) {
+      char buf[8*1024];
+      strbuf b=strbuf_local(buf, sizeof buf);
+      
+      sid_t neighbour_sid;
+      if (str_to_sid_t(&neighbour_sid, id) == -1)
+	rhizome_server_simple_http_response(r, 500, "<html><h1>Invalid subscriber id</h1></html>\r\n");
+      else{
+	struct subscriber *neighbour = find_subscriber(neighbour_sid.binary, sizeof(neighbour_sid.binary), 0);
+	if (neighbour){
+	  strbuf_puts(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
+	  link_neighbour_status_html(b, neighbour);
+	  strbuf_puts(b, "</body></html>");
+	  if (strbuf_overrun(b)){
+	    rhizome_server_simple_http_response(r, 500, "<html><h1>Buffer overflow</h1></html>\r\n");
+	  }else{
+	    rhizome_server_simple_http_response(r, 200, buf);
+	  }
+	}else{
+	  rhizome_server_simple_http_response(r, 404, "<html><h1>Subscriber not known</h1></html>\r\n");
+	}
+      }
+    } else if (str_startswith(path, "/interface/", (const char **)&id)) {
+      char buf[8*1024];
+      strbuf b=strbuf_local(buf, sizeof buf);
+      int index=atoi(id);
+      if (index>=0 && index<OVERLAY_MAX_INTERFACES){
+	strbuf_puts(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
+	interface_state_html(b, &overlay_interfaces[index]);
+	strbuf_puts(b, "</body></html>");
+	if (strbuf_overrun(b)){
+	  rhizome_server_simple_http_response(r, 500, "<html><h1>Buffer overflow</h1></html>\r\n");
+	}else{
+	  rhizome_server_simple_http_response(r, 200, buf);
+	}
+      }else{
+	rhizome_server_simple_http_response(r, 400, "<html><h1>Invalid interface id</h1></html>\r\n");
+      }
     } else if (strcmp(path, "/favicon.ico") == 0) {
       r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
       rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);
-    } else if (strcmp(path, "/rssi.csv") == 0) {
-      r->request_type = RHIZOME_HTTP_REQUEST_FROMBUFFER;
-      char temp[8192];
-      snprintf(temp,8192,
-	       ";%lld;%d;%d;%d;%d;%d;%s;%d;%d;%d;%d;%d\n",
-	       gettime_ms(),
-	       last_radio_rssi,last_radio_temperature,last_radio_rxpackets,
-	       (int)bundles_available,
-	       rhizome_active_fetch_count(),
-	       alloca_tohex(my_subscriber->sid, 8),
-	       rhizome_active_fetch_bytes_received(0),
-	       rhizome_active_fetch_bytes_received(1),
-	       rhizome_active_fetch_bytes_received(2),
-	       rhizome_active_fetch_bytes_received(3),
-	       rhizome_active_fetch_bytes_received(4)
-	       );
-      rhizome_server_simple_http_response(r, 200, temp);
-    } else if (strcmp(path, "/rssi") == 0) {
-      r->request_type = RHIZOME_HTTP_REQUEST_FROMBUFFER;
-      char temp[8192];
-      snprintf(temp,8192,
-	       "<html><head><meta http-equiv=\"refresh\" content=\"5\" >"
-	       "</head><body><h1>Radio link margin = %+ddB (%d packets received)<br>"
-	       "Radio temperature = %d&deg;C<br>"
-	       "SID: %s*<br>"
-	       "%d rhizome bundles in database<br>"
-	       "%d rhizome transfers in progress<br>(%d,%d,%d,%d,%d bytes)<br>"
-	       "</h1></body></html>\n",
-	       last_radio_rssi,last_radio_rxpackets,last_radio_temperature,
-	       alloca_tohex(my_subscriber->sid, 8),
-	       (int)bundles_available,
-	       rhizome_active_fetch_count(),
-	       rhizome_active_fetch_bytes_received(0),
-	       rhizome_active_fetch_bytes_received(1),
-	       rhizome_active_fetch_bytes_received(2),
-	       rhizome_active_fetch_bytes_received(3),
-	       rhizome_active_fetch_bytes_received(4)
-	       );
-      rhizome_server_simple_http_response(r, 200, temp);
     } else if (is_rhizome_http_enabled()){
       if (strcmp(path, "/rhizome/groups") == 0) {
 	  /* Return the list of known groups */
@@ -606,7 +619,11 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	  strbuf_puts(&b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
 	  rhizome_fetch_status_html(&b);
 	  strbuf_puts(&b, "</body></html>");
-          rhizome_server_simple_http_response(r, 200, buf);
+	  if (strbuf_overrun(&b)){
+	    rhizome_server_simple_http_response(r, 500, "<html><h1>Buffer overflow</h1></html>\r\n");
+	  }else{
+	    rhizome_server_simple_http_response(r, 200, buf);
+	  }
       } else if (strcmp(path, "/rhizome/files") == 0) {
 	  /* Return the list of known files */
 	  rhizome_server_sql_query_http_response(r, "id", "files", "from files", 32, 1);

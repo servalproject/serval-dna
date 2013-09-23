@@ -413,6 +413,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     RETURN(ret);
   }
   f.sender_interface = context.sender_interface;
+  interface->recv_count++;
   
   while(ob_remaining(b)>0){
     context.invalid_addresses=0;

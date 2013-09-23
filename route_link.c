@@ -624,6 +624,75 @@ static void clean_neighbours(time_ms_t now)
   }
 }
 
+static void link_status_html(struct strbuf *b, struct subscriber *n, struct link *link)
+{
+  if (!link)
+    return;
+  link_status_html(b, n, link->_left);
+  int best=0;
+  if (link->receiver->next_hop==n)
+    best=1;
+  else if(link->receiver==n && n->reachable&REACHABLE_DIRECT)
+    best=1;
+  strbuf_sprintf(b, "%s* -%s H: %d, C: %d, via %s*<br>", 
+    alloca_tohex(link->receiver->sid,8), 
+    best?" *best*":"",
+    link->hop_count, link->path_drop_rate, 
+    link->transmitter?alloca_tohex(link->transmitter->sid,8):"unreachable");
+  link_status_html(b, n, link->_right);
+}
+
+void link_neighbour_short_status_html(struct strbuf *b, const char *link_prefix)
+{
+  struct neighbour *n = neighbours;
+  if (!n)
+    strbuf_puts(b, "No peers<br>");
+  while(n){
+    strbuf_sprintf(b, "<a href=\"%s/%s\">%s*</a>, seq=%d, mask=%08"PRIx64";<br>", 
+      link_prefix,
+      alloca_tohex_sid(n->subscriber->sid),
+      alloca_tohex(n->subscriber->sid,8),
+      n->mdp_ack_sequence, n->mdp_ack_mask);
+    n=n->_next;
+  }
+}
+
+void link_neighbour_status_html(struct strbuf *b, struct subscriber *neighbour)
+{
+  time_ms_t now = gettime_ms();
+  struct neighbour *n = neighbours;
+  while(n){
+    if (n->subscriber == neighbour){
+      strbuf_sprintf(b, "Neighbour %s*;<br>", alloca_tohex(n->subscriber->sid,8));
+      strbuf_sprintf(b, "Seq=%d, mask=%08"PRIx64"<br>", n->mdp_ack_sequence, n->mdp_ack_mask);
+      struct link_in *link_in = n->links;
+      while(link_in){
+	strbuf_sprintf(b, "In: %s%s, seq=%d, mask=%08"PRIx64"<br>", 
+	  link_in->interface->name,
+	  link_in == n->best_link?" *best":"",
+	  link_in->ack_sequence,
+	  link_in->ack_mask);
+	link_in = link_in->_next;
+      }
+      struct link_out *link_out = n->out_links;
+      while(link_out){
+	if (link_out->timeout >= now){
+	  strbuf_sprintf(b, "Out: %s %s<br>", 
+	    link_out->destination->interface->name,
+	    link_out->destination->unicast?"unicast":"broadcast");
+	}
+	link_out = link_out->_next;
+      }
+      strbuf_puts(b, "Links;<br>");
+      link_status_html(b, n->subscriber, n->root);
+      return;
+    }
+    n = n->_next;
+  }
+  strbuf_puts(b, "Not found<br>");
+}
+
+
 static int send_legacy_self_announce_ack(struct neighbour *neighbour, struct link_in *link, time_ms_t now){
   struct overlay_frame *frame=emalloc_zero(sizeof(struct overlay_frame));
   frame->type = OF_TYPE_SELFANNOUNCE_ACK;

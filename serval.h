@@ -472,6 +472,9 @@ typedef struct overlay_interface {
   
   int recv_offset; /* file offset */
   
+  int recv_count;
+  int tx_count;
+  
   // stream socket tx state;
   struct overlay_buffer *tx_packet;
   unsigned char txbuffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
@@ -483,7 +486,8 @@ typedef struct overlay_interface {
   int32_t remaining_space;
   time_ms_t next_heartbeat;
   int mavlink_seq;
-  
+  int radio_rssi;
+  int remote_rssi;
   
   struct slip_decode_state slip_decode_state;
 
@@ -723,6 +727,7 @@ overlay_interface * overlay_interface_find(struct in_addr addr, int return_defau
 overlay_interface * overlay_interface_find_name(const char *name);
 int overlay_interface_compare(overlay_interface *one, overlay_interface *two);
 int overlay_broadcast_ensemble(struct network_destination *destination, struct overlay_buffer *buffer);
+void interface_state_html(struct strbuf *b, struct overlay_interface *interface);
 
 int directory_registration();
 int directory_service_init();
@@ -877,9 +882,6 @@ int slip_decode(struct slip_decode_state *state);
 int upper7_decode(struct slip_decode_state *state,unsigned char byte);
 uint32_t Crc32_ComputeBuf( uint32_t inCrc32, const void *buf,
 			  size_t bufLen );
-extern int last_radio_rssi;
-extern int last_radio_temperature;
-extern int last_radio_rxpackets;
 int rhizome_active_fetch_count();
 int rhizome_active_fetch_bytes_received(int q);
 extern int64_t bundles_available;
@@ -897,6 +899,8 @@ int link_state_ack_soon(struct subscriber *sender);
 int link_state_should_forward_broadcast(struct subscriber *transmitter);
 int link_unicast_ack(struct subscriber *subscriber, struct overlay_interface *interface, struct sockaddr_in addr);
 int link_add_destinations(struct overlay_frame *frame);
+void link_neighbour_short_status_html(struct strbuf *b, const char *link_prefix);
+void link_neighbour_status_html(struct strbuf *b, struct subscriber *neighbour);
 
 int generate_nonce(unsigned char *nonce,int bytes);
 

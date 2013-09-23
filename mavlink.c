@@ -204,11 +204,6 @@ int mavlink_heartbeat(unsigned char *frame,int *outlen)
   return 0;
 }
 
-extern unsigned long long last_rssi_time;
-extern int last_radio_rssi;
-extern int last_radio_temperature;
-extern int last_radio_rxpackets;
-
 static int parse_heartbeat(struct overlay_interface *interface, const unsigned char *payload)
 {
   if (payload[0]==0xFE 
@@ -218,9 +213,8 @@ static int parse_heartbeat(struct overlay_interface *interface, const unsigned c
     && payload[5]==MAVLINK_MSG_ID_RADIO){
     
     // we can assume that radio status packets arrive without corruption
-    last_radio_rssi=(1.0*payload[10]-payload[13])/1.9;
-    last_radio_temperature=-999; // doesn't get reported
-    last_radio_rxpackets=-999; // doesn't get reported
+    interface->radio_rssi=(1.0*payload[10]-payload[13])/1.9;
+    interface->remote_rssi=(1.0*payload[11] - payload[14])/1.9;
     int free_space = payload[12];
     int free_bytes = (free_space * 1280) / 100 - 30;
     interface->remaining_space = free_bytes;
@@ -228,12 +222,11 @@ static int parse_heartbeat(struct overlay_interface *interface, const unsigned c
       interface->next_tx_allowed = gettime_ms();
     if (free_bytes>720)
       interface->next_heartbeat=gettime_ms()+1000;
-    if (config.debug.mavlink||gettime_ms()-last_rssi_time>30000) {
+    if (config.debug.packetradio) {
       INFOF("Link budget = %+ddB, remote link budget = %+ddB, buffer space = %d%% (approx %d)",
-	    last_radio_rssi,
-	    (int)((1.0*payload[11] - payload[14])/1.9),
+	    interface->radio_rssi,
+	    interface->remote_rssi,
 	    free_space, free_bytes);
-      last_rssi_time=gettime_ms();
     }
     return 1;
   }

@@ -41,7 +41,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
     strbuf_init(&b, buf, sizeof buf);
     strbuf_puts(&b, "text");
     strbuf_sprintf(&b, "fmt", val...);
-    if (strbuf_overflow(&b))
+    if (strbuf_overrun(&b))
         // error...
     else
         // use buf
