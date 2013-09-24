@@ -481,19 +481,12 @@ int rhizome_manifest_lookup_signature_validity(unsigned char *hash,unsigned char
   }
   slot%=SIG_CACHE_SIZE;
 
-  int replace=0;
-  if (sig_cache[slot].signature_length!=sig_len) replace=1;
-  for(i=0;i<crypto_hash_sha512_BYTES;i++)
-    if (hash[i]!=sig_cache[i].manifest_hash[i]) { replace=1; break; }
-  for(i=0;i<sig_len;i++)
-    if (sig[i]!=sig_cache[i].signature_bytes[i]) { replace=1; break; }
-
-  if (replace) {
-    for(i=0;i<crypto_hash_sha512_BYTES;i++)
-      sig_cache[i].manifest_hash[i]=hash[i];
-    for(i=0;i<sig_len;i++)
-      sig_cache[i].signature_bytes[i]=sig[i];
-    sig_cache[i].signature_length=sig_len;
+  if (sig_cache[slot].signature_length!=sig_len || 
+      memcmp(hash, sig_cache[slot].manifest_hash, crypto_hash_sha512_BYTES) ||
+      memcmp(sig, sig_cache[slot].signature_bytes, sig_len)){
+    bcopy(hash, sig_cache[slot].manifest_hash, crypto_hash_sha512_BYTES);
+    bcopy(sig, sig_cache[slot].signature_bytes, sig_len);
+    sig_cache[slot].signature_length=sig_len;
 
     unsigned char sigBuf[256];
     unsigned char verifyBuf[256];
@@ -508,12 +501,12 @@ int rhizome_manifest_lookup_signature_validity(unsigned char *hash,unsigned char
     bcopy(&sig[64],&publicKey[0],crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
 
     unsigned long long mlen=0;
-    sig_cache[i].signature_valid=
+    sig_cache[slot].signature_valid=
       crypto_sign_edwards25519sha512batch_open(verifyBuf,&mlen,&sigBuf[0],128,
 					       publicKey)
       ? -1 : 0;
   }
-  RETURN(sig_cache[i].signature_valid);
+  RETURN(sig_cache[slot].signature_valid);
   OUT();
 }
 
