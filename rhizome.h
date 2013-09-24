@@ -465,17 +465,9 @@ typedef struct rhizome_http_request {
   /* All of the below are receiving data */
 #define RHIZOME_HTTP_REQUEST_RECEIVING -1
 #define RHIZOME_HTTP_REQUEST_RECEIVING_MULTIPART -2
-  /* All of the below are sending data */
-#define RHIZOME_HTTP_REQUEST_FROMBUFFER 1
-#define RHIZOME_HTTP_REQUEST_FILE 2
-#define RHIZOME_HTTP_REQUEST_SUBSCRIBEDGROUPLIST 4
-#define RHIZOME_HTTP_REQUEST_ALLGROUPLIST 8
-#define RHIZOME_HTTP_REQUEST_BUNDLESINGROUP 16
-  // manifests are small enough to send from a buffer
-  // for anything too big, we can just use a blob
-#define RHIZOME_HTTP_REQUEST_STORE 32
-#define RHIZOME_HTTP_REQUEST_BLOB 64
-#define RHIZOME_HTTP_REQUEST_FAVICON 128
+  
+  // callback function to fill the response buffer
+  int (*generator)(struct rhizome_http_request *r);
   
   /* Local buffer of data to be sent.
    If a RHIZOME_HTTP_REQUEST_FROMBUFFER, then the buffer is sent, and when empty
@@ -553,8 +545,9 @@ int rhizome_server_free_http_request(rhizome_http_request *r);
 int rhizome_server_http_send_bytes(rhizome_http_request *r);
 int rhizome_server_parse_http_request(rhizome_http_request *r);
 int rhizome_server_simple_http_response(rhizome_http_request *r, int result, const char *response);
+int rhizome_server_http_response(rhizome_http_request *r, int result, 
+    const char *mime_type, const char *body, uint64_t bytes);
 int rhizome_server_http_response_header(rhizome_http_request *r, int result, const char *mime_type, uint64_t bytes);
-int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, char *column);
 int rhizome_http_server_start(int (*http_parse_func)(rhizome_http_request *),
 			      const char *http_parse_func_description,
 			      int port_low,int port_high);

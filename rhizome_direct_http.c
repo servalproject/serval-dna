@@ -604,10 +604,7 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
   INFOF("RHIZOME HTTP SERVER, %s %s %s", verb, alloca_toprint(-1, path, pathlen), proto);
   if (config.debug.rhizome_tx)
     DEBUGF("headers %s", alloca_toprint(-1, headers, headerlen));
-  if (strcmp(verb, "GET") == 0 && strcmp(path, "/favicon.ico") == 0) {
-    r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
-    rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);
-  } else if (strcmp(verb, "POST") == 0
+  if (strcmp(verb, "POST") == 0
       && (   strcmp(path, "/rhizome/import") == 0 
 	  || strcmp(path, "/rhizome/enquiry") == 0
 	  || (config.rhizome.api.addfile.uri_path[0] && strcmp(path, config.rhizome.api.addfile.uri_path) == 0)
