@@ -648,7 +648,7 @@ void link_neighbour_short_status_html(struct strbuf *b, const char *link_prefix)
   if (!n)
     strbuf_puts(b, "No peers<br>");
   while(n){
-    strbuf_sprintf(b, "<a href=\"%s/%s\">%s*</a>, seq=%d, mask=%08"PRIx64";<br>", 
+    strbuf_sprintf(b, "<a href=\"%s/%s\">%s*</a>, seq=%d, mask=%08"PRIx64"<br>", 
       link_prefix,
       alloca_tohex_sid(n->subscriber->sid),
       alloca_tohex(n->subscriber->sid,8),
@@ -665,6 +665,7 @@ void link_neighbour_status_html(struct strbuf *b, struct subscriber *neighbour)
     if (n->subscriber == neighbour){
       strbuf_sprintf(b, "Neighbour %s*;<br>", alloca_tohex(n->subscriber->sid,8));
       strbuf_sprintf(b, "Seq=%d, mask=%08"PRIx64"<br>", n->mdp_ack_sequence, n->mdp_ack_mask);
+      rhizome_sync_status_html(b, n->subscriber);
       struct link_in *link_in = n->links;
       while(link_in){
 	strbuf_sprintf(b, "In: %s%s, seq=%d, mask=%08"PRIx64"<br>", 

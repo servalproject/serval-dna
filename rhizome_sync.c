@@ -60,6 +60,19 @@ struct rhizome_sync
   int bar_count;
 };
 
+void rhizome_sync_status_html(struct strbuf *b, struct subscriber *subscriber)
+{
+  if (!subscriber->sync_state)
+    return;
+  struct rhizome_sync *state=subscriber->sync_state;
+  strbuf_sprintf(b, "Seen %"PRId64" BARs [%"PRId64" to %"PRId64" of %"PRId64"], %d interesting<br>",
+    state->bars_seen,
+    state->sync_start,
+    state->sync_end,
+    state->highest_seen,
+    state->bar_count);
+}
+
 static void rhizome_sync_request(struct subscriber *subscriber, uint64_t token, unsigned char forwards)
 {
   overlay_mdp_frame mdp;

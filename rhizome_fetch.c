@@ -130,6 +130,26 @@ struct rhizome_fetch_queue rhizome_fetch_queues[] = {
 
 #define NQUEUES	    NELS(rhizome_fetch_queues)
 
+static const char * fetch_state(int state)
+{
+  switch (state){
+    case RHIZOME_FETCH_FREE:
+    return "FREE";
+    case RHIZOME_FETCH_CONNECTING:
+    return "HTTP_CONNECTING";
+    case RHIZOME_FETCH_SENDINGHTTPREQUEST:
+    return "HTTP_SENDING_HEADERS";
+    case RHIZOME_FETCH_RXHTTPHEADERS:
+    return "HTTP_RECEIVING_HEADERS";
+    case RHIZOME_FETCH_RXFILE:
+    return "HTTP_RECEIVING_FILE";
+    case RHIZOME_FETCH_RXFILEMDP:
+    return "MDP_RECEIVING_FILE";
+    default:
+    return "UNKNOWN";
+  }
+}
+
 int rhizome_active_fetch_count()
 {
   int i,active=0;
@@ -166,11 +186,18 @@ int rhizome_fetch_status_html(struct strbuf *b)
   int i,j;
   for(i=0;i<NQUEUES;i++){
     struct rhizome_fetch_queue *q=&rhizome_fetch_queues[i];
-    strbuf_sprintf(b, "<p>Slot %d, ", i);
+    int used=0;
+    for (j=0;j<q->candidate_queue_size;j++){
+      if (q->candidate_queue[j].manifest)
+	used++;
+    }
+    strbuf_sprintf(b, "<p>Slot %d, (%d of %d): ", i, used, q->candidate_queue_size);
     if (q->active.state!=RHIZOME_FETCH_FREE){
-      strbuf_sprintf(b, "%"PRId64" of %"PRId64,
+      strbuf_sprintf(b, "%s %"PRId64" of %"PRId64" from %s*",
+	fetch_state(q->active.state),
 	q->active.write_state.file_offset,
-	q->active.manifest->fileLength);
+	q->active.manifest->fileLength,
+	alloca_tohex(q->active.peer_sid,8));
     }else{
       strbuf_puts(b, "inactive");
     }
