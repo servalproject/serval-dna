@@ -559,9 +559,6 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
 {
   DEBUGF("uri=%s", alloca_str_toprint(config.rhizome.api.addfile.uri_path));
   
-  /* Switching to writing, so update the call-back */
-  r->alarm.poll.events=POLLOUT;
-  watch(&r->alarm);
   // Parse the HTTP request into verb, path, protocol, headers and content.
   char *const request_end = r->request + r->request_length;
   char *verb = r->request;

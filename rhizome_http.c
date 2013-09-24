@@ -187,14 +187,43 @@ void rhizome_client_poll(struct sched_ent *alarm)
     rhizome_server_free_http_request(r);
     return;
   }
-  switch(r->request_type)
-    {
-    case RHIZOME_HTTP_REQUEST_RECEIVING_MULTIPART:
+  
+  if (alarm->poll.revents & POLLIN){
+    switch(r->request_type)
       {
-	/* Reading multi-part form data. Read some bytes and proces them. */
-	char buffer[16384];
+      case RHIZOME_HTTP_REQUEST_RECEIVING_MULTIPART:
+	{
+	  /* Reading multi-part form data. Read some bytes and proces them. */
+	  char buffer[16384];
+	  sigPipeFlag=0;
+	  int bytes = read_nonblock(r->alarm.poll.fd, buffer, 16384);
+	  /* If we got some data, see if we have found the end of the HTTP request */
+	  if (bytes > 0) {
+	    // reset inactivity timer
+	    r->alarm.alarm = gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	    r->alarm.deadline = r->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+	    unschedule(&r->alarm);
+	    schedule(&r->alarm);
+	    rhizome_direct_process_post_multipart_bytes(r,buffer,bytes);
+	  }
+	  /* We don't drop the connection on an empty read, because that results
+	     in connections dropping when they shouldn't, including during testing.
+	     The idle timeout should drop the connections instead.
+	  */
+	  if (sigPipeFlag) {
+	    if (config.debug.rhizome_tx)
+	      DEBUG("Received SIGPIPE, closing connection");
+	    rhizome_server_free_http_request(r);
+	    return;
+	  }
+	}
+	break;
+	
+      case RHIZOME_HTTP_REQUEST_RECEIVING:
+	/* Keep reading until we have two CR/LFs in a row */
+	r->request[r->request_length] = '\0';
 	sigPipeFlag=0;
-	int bytes = read_nonblock(r->alarm.poll.fd, buffer, 16384);
+	int bytes = read_nonblock(r->alarm.poll.fd, &r->request[r->request_length], sizeof r->request - r->request_length);
 	/* If we got some data, see if we have found the end of the HTTP request */
 	if (bytes > 0) {
 	  // reset inactivity timer
@@ -202,56 +231,32 @@ void rhizome_client_poll(struct sched_ent *alarm)
 	  r->alarm.deadline = r->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
 	  unschedule(&r->alarm);
 	  schedule(&r->alarm);
-	  rhizome_direct_process_post_multipart_bytes(r,buffer,bytes);
+	  r->request_length += bytes;
+	  r->header_length = http_header_complete(r->request, r->request_length, bytes);
+	  if (r->header_length){
+	    /* We have the request. Now parse it to see if we can respond to it */
+	    if (rhizome_http_parse_func!=NULL) 
+	      rhizome_http_parse_func(r);
+	  }
+	} else {
+	  if (config.debug.rhizome_tx)
+	    DEBUG("Empty read, closing connection");
+	  rhizome_server_free_http_request(r);
+	  return;
 	}
-	/* We don't drop the connection on an empty read, because that results
-	   in connections dropping when they shouldn't, including during testing.
-	   The idle timeout should drop the connections instead.
-	*/
 	if (sigPipeFlag) {
 	  if (config.debug.rhizome_tx)
 	    DEBUG("Received SIGPIPE, closing connection");
 	  rhizome_server_free_http_request(r);
 	  return;
 	}
+	break;
       }
-      break;
-    case RHIZOME_HTTP_REQUEST_RECEIVING:
-      /* Keep reading until we have two CR/LFs in a row */
-      r->request[r->request_length] = '\0';
-      sigPipeFlag=0;
-      int bytes = read_nonblock(r->alarm.poll.fd, &r->request[r->request_length], sizeof r->request - r->request_length);
-      /* If we got some data, see if we have found the end of the HTTP request */
-      if (bytes > 0) {
-	// reset inactivity timer
-	r->alarm.alarm = gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-	r->alarm.deadline = r->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
-	unschedule(&r->alarm);
-	schedule(&r->alarm);
-	r->request_length += bytes;
-	r->header_length = http_header_complete(r->request, r->request_length, bytes);
-	if (r->header_length){
-	  /* We have the request. Now parse it to see if we can respond to it */
-	  if (rhizome_http_parse_func!=NULL) 
-	    rhizome_http_parse_func(r);
-	}
-      } else {
-	if (config.debug.rhizome_tx)
-	  DEBUG("Empty read, closing connection");
-	rhizome_server_free_http_request(r);
-	return;
-      }
-      if (sigPipeFlag) {
-	if (config.debug.rhizome_tx)
-	  DEBUG("Received SIGPIPE, closing connection");
-	rhizome_server_free_http_request(r);
-	return;
-      }
-      break;
-    default:
-      /* Socket already has request -- so just try to send some data. */
-      rhizome_server_http_send_bytes(r);
-      break;
+  }
+  
+  if (alarm->poll.revents & POLLOUT){
+    /* Socket already has request -- so just try to send some data. */
+    rhizome_server_http_send_bytes(r);
   }
   return;
 }
@@ -562,11 +567,7 @@ struct http_handler paths[]={
 int rhizome_direct_parse_http_request(rhizome_http_request *r);
 int rhizome_server_parse_http_request(rhizome_http_request *r)
 {
-  /* Switching to writing, so update the call-back */
-  r->alarm.poll.events=POLLOUT;
-  watch(&r->alarm);
   // Start building up a response.
-  r->request_type = 0;
   // Parse the HTTP "GET" line.
   char *path = NULL;
   char *headers = NULL;
@@ -660,6 +661,14 @@ int rhizome_server_set_response(rhizome_http_request *r, const struct http_respo
 {
   r->request_type=0;
   
+  if (config.debug.rhizome_nohttptx)
+    unwatch(&r->alarm);
+  else{
+    /* Switching to writing, so update the call-back */
+    r->alarm.poll.events=POLLOUT;
+    watch(&r->alarm);
+  }  
+  
   strbuf b = strbuf_local((char *) r->buffer, r->buffer_size);
   strbuf_build_http_response(b, h);
   if (r->buffer == NULL || strbuf_overrun(b) || (h->body && strbuf_remaining(b) < h->content_length)) {
@@ -732,9 +741,8 @@ int rhizome_server_http_response_header(rhizome_http_request *r, int result, con
 int rhizome_server_http_send_bytes(rhizome_http_request *r)
 {
   // Don't send anything if disabled for testing HTTP->MDP Rhizome failover
-  if (config.debug.rhizome_nohttptx) {
+  if (config.debug.rhizome_nohttptx)
     return 1;
-  }
 
   // write one block of buffered data
   if(r->buffer_offset < r->buffer_length){
