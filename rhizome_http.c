@@ -305,7 +305,7 @@ void rhizome_server_poll(struct sched_ent *alarm)
 	schedule(&request->alarm);
       }
     }
-    if (errno != EAGAIN)
+    if (errno && errno != EAGAIN)
       WARN_perror("accept");
   }
   if (alarm->poll.revents & (POLLHUP | POLLERR)) {
