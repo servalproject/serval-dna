@@ -44,6 +44,7 @@ struct profile_total connection_stats;
 
 unsigned short rhizome_http_server_port = 0;
 static int rhizome_server_socket = -1;
+static int request_count=0;
 static time_ms_t rhizome_server_last_start_attempt = -1;
 
 int (*rhizome_http_parse_func)(rhizome_http_request *)=NULL;
@@ -283,7 +284,9 @@ void rhizome_server_poll(struct sched_ent *alarm)
       if (request == NULL) {
 	WHYF_perror("calloc(%u, 1)", (int)sizeof(rhizome_http_request));
 	WHY("Cannot respond to request, out of memory");
+	close(sock);
       } else {
+	request_count++;
 	request->uuid=rhizome_http_request_uuid_counter++;
 	if (peerip) request->requestor=*peerip; 
 	else bzero(&request->requestor,sizeof(request->requestor));
@@ -322,6 +325,7 @@ int rhizome_server_free_http_request(rhizome_http_request *r)
     free(r->buffer);
   rhizome_read_close(&r->read_state);
   free(r);
+  request_count--;
   return 0;
 }
 
@@ -402,6 +406,8 @@ static int rhizome_status_page(rhizome_http_request *r, const char *remainder, c
   struct strbuf b;
   strbuf_init(&b, buf, sizeof buf);
   strbuf_puts(&b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
+  strbuf_sprintf(&b, "%d HTTP requests<br>", request_count);
+  strbuf_sprintf(&b, "%d Bundles transferring via MDP<br>", rhizome_cache_count());
   rhizome_fetch_status_html(&b);
   strbuf_puts(&b, "</body></html>");
   if (strbuf_overrun(&b))

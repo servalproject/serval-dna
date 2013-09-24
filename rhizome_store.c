@@ -959,6 +959,18 @@ int rhizome_cache_close()
   return 0;
 }
 
+static int _rhizome_cache_count(struct cache_entry *entry)
+{
+  if (!entry)
+    return 0;
+  return 1+_rhizome_cache_count(entry->_left)+_rhizome_cache_count(entry->_right);
+}
+
+int rhizome_cache_count()
+{
+  return _rhizome_cache_count(root);
+}
+
 // read a block of data, caching meta data for reuse
 int rhizome_read_cached(unsigned char *bundle_id, uint64_t version, time_ms_t timeout, 
   uint64_t fileOffset, unsigned char *buffer, int length)

@@ -87,7 +87,7 @@ int rhizome_mdp_send_block(struct subscriber *dest, unsigned char *id, uint64_t 
     
     write_uint64(&reply.out.payload[1+16+8], offset);
     
-    int bytes_read = rhizome_read_cached(id, version, gettime_ms()+2000, offset, &reply.out.payload[1+16+8+8], blockLength);
+    int bytes_read = rhizome_read_cached(id, version, gettime_ms()+5000, offset, &reply.out.payload[1+16+8+8], blockLength);
     if (bytes_read<=0)
       break;
     

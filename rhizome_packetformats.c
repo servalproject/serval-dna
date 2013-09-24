@@ -338,12 +338,8 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
       }
 
       /* Crude signature presence test */
-      for(i=m->manifest_all_bytes-1;i>0;i--)
-	if (!m->manifestdata[i]) {
-	  /* A null in the middle says we have a signature */
-	  break;
-	}
-      if (!i) {
+      if (m->manifest_bytes >= m->manifest_all_bytes){
+	// no signature was found when parsing?
 	/* ignore the announcement, but don't ignore other people
 	   offering the same manifest */
 	if (config.debug.rhizome_ads)

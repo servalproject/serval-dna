@@ -598,6 +598,7 @@ int overlay_packet_init_header(int packet_version, int encapsulation,
 int overlay_interface_args(const char *arg);
 void overlay_rhizome_advertise(struct sched_ent *alarm);
 void rhizome_sync_status_html(struct strbuf *b, struct subscriber *subscriber);
+int rhizome_cache_count();
 int overlay_add_local_identity(unsigned char *s);
 
 extern int overlay_interface_count;
