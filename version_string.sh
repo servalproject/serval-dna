@@ -122,11 +122,8 @@ case "$error" in
 *[Cc]'annot describe'* )
    if [ -n "$default_tag" ]; then
       commit=$(git rev-list --abbrev-commit --max-count 1 HEAD)
-      count=$(git rev-list HEAD | wc -l)
-      count=$((count-1))
-      version="$default_tag-$count-g$commit"
-      [ $(git status --short --untracked-files=normal | wc -l) -ne 0 ] && version="$version$dirty"
-      echo "$version"
+      count=$(( $(git rev-list HEAD | wc -l) - 1 ))
+      echo "$default_tag-$count-g$commit$dirty"
       exit 0
    fi
    ;;
