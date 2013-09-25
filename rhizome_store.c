@@ -503,13 +503,11 @@ int rhizome_finish_write(struct rhizome_write *write){
 	WHYF("Failed to generate file path");
 	goto dbfailure;
       }
-      if (link(blob_path, dest_path)){
-	WHY_perror("link");
+      
+      if (rename(blob_path, dest_path)){
+	WHYF_perror("rename(%s, %s)", blob_path, dest_path);
 	goto dbfailure;
       }
-	
-      if (unlink(blob_path))
-	WHY_perror("unlink");
       
     }else{
       if (sqlite_exec_void_retry(&retry,
