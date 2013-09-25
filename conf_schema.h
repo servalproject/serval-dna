@@ -321,7 +321,6 @@ ATOM(bool_t,                respawn_on_crash, 0, boolean,, "If true, server will
 END_STRUCT
 
 STRUCT(monitor)
-STRING(256,                 socket,     DEFAULT_MONITOR_SOCKET_NAME, str_nonempty,, "Name of socket for monitor interface")
 ATOM(uint32_t,              uid,        0, uint32_nonzero,, "Allowed UID for monitor socket client")
 END_STRUCT
 
@@ -336,7 +335,6 @@ VALUE_SUB_STRUCT(mdp_iftype)
 END_ARRAY(5)
 
 STRUCT(mdp)
-STRING(256,                 socket,     DEFAULT_MDP_SOCKET_NAME, str_nonempty,, "Name of socket for MDP client interface")
 SUB_STRUCT(mdp_iftypelist,  iftype,)
 END_STRUCT
 
