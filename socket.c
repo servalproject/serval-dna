@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <limits.h>
 #include <stdlib.h>
+#include <assert.h>
 
 #include "serval.h"
 #include "conf.h"
@@ -48,7 +49,7 @@ int _make_local_sockaddr(struct __sourceloc __whence, struct sockaddr_un *addr, 
   va_end(ap);
   if (!r)
     return WHY("socket name overflow");
-  if (real_sockaddr(addr, strlen(addr->sun_path) + 1, addr, addrlen) == -1)
+  if (real_sockaddr(addr, sizeof addr->sun_family + strlen(addr->sun_path) + 1, addr, addrlen) == -1)
     return -1;
 #ifdef USE_ABSTRACT_NAMESPACE
   // For the abstract name we use the absolute path name with the initial '/' replaced by the
@@ -75,10 +76,10 @@ int _make_local_sockaddr(struct __sourceloc __whence, struct sockaddr_un *addr, 
  */
 int real_sockaddr(const struct sockaddr_un *src_addr, socklen_t src_addrlen, struct sockaddr_un *dst_addr, socklen_t *dst_addrlen)
 {
-  int src_path_len = src_path_len = src_addrlen - sizeof src_addr->sun_family;
+  int src_path_len = src_addrlen - sizeof src_addr->sun_family;
   if (	 src_addrlen >= sizeof src_addr->sun_family + 1
       && src_addr->sun_family == AF_UNIX
-      && src_addr->sun_path[0]
+      && src_addr->sun_path[0] != '\0'
       && src_addr->sun_path[src_path_len - 1] == '\0'
   ) {
     char real_path[PATH_MAX];
@@ -91,7 +92,7 @@ int real_sockaddr(const struct sockaddr_un *src_addr, socklen_t src_addrlen, str
 	     || memcmp(real_path, src_addr->sun_path, src_path_len) != 0
     ) {
       memcpy(dst_addr->sun_path, real_path, real_path_len);
-      *dst_addrlen = real_path_len - sizeof dst_addr->sun_family;
+      *dst_addrlen = real_path_len + sizeof dst_addr->sun_family;
       return 1;
     }
   }
@@ -179,7 +180,9 @@ int _socket_connect(struct __sourceloc __whence, int sock, const struct sockaddr
 
 int _socket_bind(struct __sourceloc __whence, int sock, const struct sockaddr *addr, socklen_t addrlen)
 {
-  if (addr->sa_family == AF_UNIX && ((struct sockaddr_un *)addr)->sun_path[0]) {
+  assert(addrlen > sizeof addr->sa_family);
+  if (addr->sa_family == AF_UNIX && ((struct sockaddr_un *)addr)->sun_path[0] != '\0') {
+    assert(((struct sockaddr_un *)addr)->sun_path[addrlen - sizeof ((struct sockaddr_un *)addr)->sun_family - 1] == '\0');
     if (unlink(((struct sockaddr_un *)addr)->sun_path) == -1 && errno != ENOENT)
       WARNF_perror("unlink(%s)", alloca_str_toprint(((struct sockaddr_un *)addr)->sun_path));
     if (config.debug.io || config.debug.verbose_io)
