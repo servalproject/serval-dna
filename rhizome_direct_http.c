@@ -264,7 +264,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
       }
 
       rhizome_manifest *mout = NULL;
-      if (rhizome_manifest_finalise(m, &mout)) {
+      if (rhizome_manifest_finalise(m, &mout, 1)) {
 	if (mout && mout!=m)
 	  rhizome_manifest_free(mout);
 	rhizome_manifest_free(m);

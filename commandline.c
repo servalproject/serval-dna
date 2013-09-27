@@ -1403,8 +1403,17 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   {
     char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
     rhizome_bytes_to_hex_upper(mout->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
-    cli_field_name(context, "secret", ":");
+    cli_field_name(context, ".secret", ":");
     cli_put_string(context, secret, "\n");
+  }
+  if (*authorSidHex) {
+    cli_field_name(context, ".author", ":");
+    cli_put_string(context, alloca_tohex_sid_t(authorSid), "\n");
+  }
+  const char *bk = rhizome_manifest_get(mout, "BK", NULL, 0);
+  if (bk) {
+    cli_field_name(context, "BK", ":");
+    cli_put_string(context, bk, "\n");
   }
   cli_field_name(context, "version", ":");
   cli_put_long(context, m->version, "\n");
@@ -1497,6 +1506,17 @@ int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_contex
   {
     cli_field_name(context, "manifestid", ":");
     cli_put_string(context, alloca_tohex(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES), "\n");
+  }
+  {
+    char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
+    rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
+    cli_field_name(context, ".secret", ":");
+    cli_put_string(context, secret, "\n");
+  }
+  const char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
+  if (bk) {
+    cli_field_name(context, "BK", ":");
+    cli_put_string(context, bk, "\n");
   }
   cli_field_name(context, "version", ":");
   cli_put_long(context, m->version, "\n");

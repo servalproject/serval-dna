@@ -35,7 +35,7 @@ rexp_did='[0-9+#]\{5,\}'
 # Utility function for extracting information from the output of servald
 # commands that return "key:value\n" pairs.
 #
-#     extract_stdout_keyvalue optional <varname> <key> [<delimiter>] <regular-expression>
+#     extract_stdout_keyvalue_optional <varname> <key> [<delimiter>] <regular-expression>
 #
 # Examines the standard output of the last command executed using "execute" or
 # any of its variants.  If there is a line matching
@@ -55,7 +55,9 @@ extract_stdout_keyvalue_optional() {
    4) _delim="$3"; _rexp="$4";;
    *) error "invalid number of args";;
    esac
-   local _line=$(replayStdout | $GREP "^$_label$_delim")
+   local _label_re=$(escape_grep_basic "$_label")
+   local _delim_re=$(escape_grep_basic "$_delim")
+   local _line=$(replayStdout | $GREP "^$_label_re$_delim_re")
    local _value=
    local _return=1
    if [ -n "$_line" ]; then

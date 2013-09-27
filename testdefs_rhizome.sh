@@ -123,7 +123,7 @@ assert_stdout_add_file() {
    if [ "$re_crypt" = 1 ]; then
       opt_filehash=false
    fi
-   fieldnames='service|manifestid|secret|filesize|filehash|name'
+   fieldnames='service|manifestid|author|secret|BK|filesize|filehash|name'
    for arg; do
       case "$arg" in
       !+($fieldnames))
@@ -142,7 +142,9 @@ assert_stdout_add_file() {
    done
    ${opt_service:-true} && assertStdoutGrep --matches=1 "^service:$re_service\$"
    ${opt_manifestid:-true} && assertStdoutGrep --matches=1 "^manifestid:$re_manifestid\$"
-   ${opt_secret:-true} && assertStdoutGrep --matches=1 "^secret:$re_secret\$"
+   ${opt_author:-true} && assertStdoutGrep --matches=1 "^\.author:$rexp_sid\$"
+   ${opt_secret:-true} && assertStdoutGrep --matches=1 "^\.secret:$re_secret\$"
+   ${opt_BK:-true} && assertStdoutGrep --matches=1 "^BK:$re_BK\$"
    ${opt_filesize:-true} && assertStdoutGrep --matches=1 "^filesize:$actual_filesize\$"
    if replayStdout | $GREP -q '^filesize:0$'; then
       assertStdoutGrep --matches=0 "^filehash:"
@@ -152,8 +154,9 @@ assert_stdout_add_file() {
 }
 
 assert_stdout_import_bundle() {
-   # Output of "import bundle" is the same as "add file" but without the secret.
-   assert_stdout_add_file "$@" '!secret'
+   # Output of "import bundle" is the same as "add file" but without the secret
+   # or author fields.
+   assert_stdout_add_file "$@" '!secret' '!author'
 }
 
 unpack_manifest_for_grep() {
@@ -163,6 +166,7 @@ unpack_manifest_for_grep() {
    re_version="$rexp_version"
    re_date="$rexp_date"
    re_secret="$rexp_bundlesecret"
+   re_BK="$rexp_bundlekey"
    re_sender="\($rexp_sid\)\{0,1\}"
    re_recipient="\($rexp_sid\)\{0,1\}"
    re_filesize="$rexp_filesize"
@@ -184,6 +188,7 @@ unpack_manifest_for_grep() {
       re_crypt=$($SED -n -e '/^crypt=/s///p' "$filename.manifest")
       re_name=$($SED -n -e '/^name=/s///p' "$filename.manifest")
       re_name=$(escape_grep_basic "$re_name")
+      re_BK=$($SED -n -e '/^BK=/s///p' "$filename.manifest")
       re_sender=$($SED -n -e '/^sender=/s///p' "$filename.manifest")
       re_recipient=$($SED -n -e '/^recipient=/s///p' "$filename.manifest")
    fi
@@ -217,7 +222,7 @@ extract_stdout_version() {
 }
 
 extract_stdout_secret() {
-   extract_stdout_keyvalue "$1" secret "$rexp_bundlesecret"
+   extract_stdout_keyvalue "$1" .secret "$rexp_bundlesecret"
 }
 
 extract_stdout_BK() {

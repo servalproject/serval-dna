@@ -63,7 +63,7 @@ setup_AddNoAuthorNoManifest() {
 }
 test_AddNoAuthorNoManifest() {
    executeOk_servald rhizome add file '' file1
-   assert_stdout_add_file file1
+   assert_stdout_add_file file1 !author !BK
 }
 
 doc_AddNoManifest="Add with no manifest file"
@@ -87,7 +87,7 @@ setup_AddNoAuthor() {
 }
 test_AddNoAuthor() {
    executeOk_servald rhizome add file '' file1 file1.manifest
-   assert_stdout_add_file file1
+   assert_stdout_add_file file1 !author !BK
    assertGrep --matches=0 file1.manifest '^BK='
 }
 
@@ -113,7 +113,7 @@ setup_AddNoAuthorEncrypted() {
 test_AddNoAuthorEncrypted() {
    executeOk_servald rhizome add file '' file1 file1.manifest
    tfw_cat --stdout --stderr
-   assert_stdout_add_file file1
+   assert_stdout_add_file file1 !author !BK
    extract_stdout_secret file1_secret
    assertGrep --matches=0 file1.manifest '^BK='
    executeOk_servald rhizome extract file $re_manifestid file1x $file1_secret
@@ -852,7 +852,7 @@ setup_MeshMSAddMissingAuthor() {
 }
 test_MeshMSAddMissingAuthor() {
    executeOk_servald rhizome add file '' file1 file1.manifest
-   assert_stdout_add_file file1
+   assert_stdout_add_file file1 !author !BK
    assert_manifest_complete file1.manifest
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 file1
@@ -867,13 +867,13 @@ setup_ListFilter() {
    echo "File3" > file3
    echo "File4" > file4
    executeOk_servald rhizome add file '' file1 file1.manifest
-   assert_stdout_add_file file1
+   assert_stdout_add_file file1 !author !BK
    executeOk_servald rhizome add file '' file2 file2.manifest
-   assert_stdout_add_file file2
+   assert_stdout_add_file file2 !author !BK
    executeOk_servald rhizome add file '' file3 file3.manifest
-   assert_stdout_add_file file3
+   assert_stdout_add_file file3 !author !BK
    executeOk_servald rhizome add file '' file4 file4.manifest
-   assert_stdout_add_file file4
+   assert_stdout_add_file file4 !author !BK
 }
 test_ListFilter() {
    executeOk_servald rhizome list file
@@ -897,16 +897,16 @@ setup_MeshMSListFilter() {
    echo "Message3" >file4
    echo -e "service=MeshMS1\nsender=$SIDB2\nrecipient=$SIDB3" >file4.manifest
    executeOk_servald rhizome add file '' file1 file1.manifest
-   assert_stdout_add_file file1
+   assert_stdout_add_file file1 !author !BK
    assert_manifest_complete file1.manifest
    executeOk_servald rhizome add file '' file2 file2.manifest
-   assert_stdout_add_file file2
+   assert_stdout_add_file file2 !author !BK
    assert_manifest_complete file2.manifest
    executeOk_servald rhizome add file '' file3 file3.manifest
-   assert_stdout_add_file file3
+   assert_stdout_add_file file3 !author !BK
    assert_manifest_complete file3.manifest
    executeOk_servald rhizome add file '' file4 file4.manifest
-   assert_stdout_add_file file4
+   assert_stdout_add_file file4 !author !BK
    assert_manifest_complete file4.manifest
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 file1 file2 file3 file4
