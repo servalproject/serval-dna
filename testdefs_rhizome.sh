@@ -52,22 +52,25 @@ assert_manifest_complete() {
 assert_rhizome_list() {
    assertStdoutIs --stderr --line=1 -e '13\n'
    assertStdoutIs --stderr --line=2 -e '_id:service:id:version:date:.inserttime:.author:.fromhere:filesize:filehash:sender:recipient:name\n'
-   local filename
    local exactly=true
    local re__inserttime="$rexp_date"
    local re__fromhere='[01]'
    local re__author="\($rexp_sid\)\{0,1\}"
    local files=0
-   for filename; do
-      case "$filename" in
-      --fromhere=*) re__fromhere="${filename#*=}";;
-      --author=*) re__author="${filename#*=}";;
+   local manifestname=
+   local arg
+   for arg; do
+      case "$arg" in
+      --fromhere=*) re__fromhere="${arg#*=}";;
+      --author=*) re__author="${arg#*=}";;
+      --manifest=*) manifestname="${arg#*=}";;
       --and-others) exactly=false;;
-      --*) error "unsupported option: $filename";;
+      --*) error "unsupported option: $arg";;
       *)
-         unpack_manifest_for_grep "$filename"
+         unpack_manifest_for_grep "$arg" "$manifestname"
          assertStdoutGrep --stderr --matches=1 "^$rexp_rowid:$re_service:$re_manifestid:$re_version:$re_date:$re__inserttime:$re__author:$re__fromhere:$re_filesize:$re_filehash:$re_sender:$re_recipient:$re_name\$"
          let files+=1
+         manifestname=
          ;;
       esac
    done
@@ -110,11 +113,26 @@ rhizome_list_dump() {
 }
 
 assert_stdout_add_file() {
+   local manifestname=
+   while [ $# -gt 0 ]; do
+      case "$1" in
+      --manifest=*) manifestname="${1#*=}"; shift;;
+      --*) error "unsupported option: $1"; return 1;;
+      --) shift; break;;
+      *) break;;
+      esac
+   done
    [ $# -ge 1 ] || error "missing filename arg"
-   local filename="${1}"
+   local filename="$1"
    shift
-   unpack_manifest_for_grep "$filename"
+   unpack_manifest_for_grep "$filename" "$manifestname"
    compute_filehash actual_filehash "$filename" actual_filesize
+   opt_service=
+   opt_manifestid=
+   opt_author=
+   opt_secret=
+   opt_BK=
+   opt_filesize=
    opt_name=false
    if replayStdout | $GREP -q '^service:file$'; then
       opt_name=true
@@ -151,6 +169,7 @@ assert_stdout_add_file() {
    else
       ${opt_filehash:-true} && assertStdoutGrep --matches=1 "^filehash:$actual_filehash\$"
    fi
+   ${opt_name:-true} && assertStdoutGrep --matches=1 "^name:$re_name\$"
 }
 
 assert_stdout_import_bundle() {
@@ -161,6 +180,7 @@ assert_stdout_import_bundle() {
 
 unpack_manifest_for_grep() {
    local filename="$1"
+   local manifestname="${2:-$filename.manifest}"
    re_service="$rexp_service"
    re_manifestid="$rexp_manifestid"
    re_version="$rexp_version"
@@ -170,27 +190,27 @@ unpack_manifest_for_grep() {
    re_sender="\($rexp_sid\)\{0,1\}"
    re_recipient="\($rexp_sid\)\{0,1\}"
    re_filesize="$rexp_filesize"
-   re_filehash="$rexp_filehash"
+   re_filehash="\($rexp_filehash\)\{0,1\}"
    re_name=$(escape_grep_basic "${filename##*/}")
-   if [ -e "$filename.manifest" ]; then
-      re_filesize=$($SED -n -e '/^filesize=/s///p' "$filename.manifest")
+   if [ -e "$manifestname" ]; then
+      re_filesize=$($SED -n -e '/^filesize=/s///p' "$manifestname")
       if [ "$filesize" = 0 ]; then
          re_filehash=
       else
-         re_filehash=$($SED -n -e '/^filehash=/s///p' "$filename.manifest")
+         re_filehash=$($SED -n -e '/^filehash=/s///p' "$manifestname")
       fi
       re_secret="$rexp_bundlesecret"
-      re_service=$($SED -n -e '/^service=/s///p' "$filename.manifest")
+      re_service=$($SED -n -e '/^service=/s///p' "$manifestname")
       re_service=$(escape_grep_basic "$re_service")
-      re_manifestid=$($SED -n -e '/^id=/s///p' "$filename.manifest")
-      re_version=$($SED -n -e '/^version=/s///p' "$filename.manifest")
-      re_date=$($SED -n -e '/^date=/s///p' "$filename.manifest")
-      re_crypt=$($SED -n -e '/^crypt=/s///p' "$filename.manifest")
-      re_name=$($SED -n -e '/^name=/s///p' "$filename.manifest")
+      re_manifestid=$($SED -n -e '/^id=/s///p' "$manifestname")
+      re_version=$($SED -n -e '/^version=/s///p' "$manifestname")
+      re_date=$($SED -n -e '/^date=/s///p' "$manifestname")
+      re_crypt=$($SED -n -e '/^crypt=/s///p' "$manifestname")
+      re_name=$($SED -n -e '/^name=/s///p' "$manifestname")
       re_name=$(escape_grep_basic "$re_name")
-      re_BK=$($SED -n -e '/^BK=/s///p' "$filename.manifest")
-      re_sender=$($SED -n -e '/^sender=/s///p' "$filename.manifest")
-      re_recipient=$($SED -n -e '/^recipient=/s///p' "$filename.manifest")
+      re_BK=$($SED -n -e '/^BK=/s///p' "$manifestname")
+      re_sender=$($SED -n -e '/^sender=/s///p' "$manifestname")
+      re_recipient=$($SED -n -e '/^recipient=/s///p' "$manifestname")
    fi
 }
 

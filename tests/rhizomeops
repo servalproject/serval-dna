@@ -166,15 +166,15 @@ setup_AddEmpty() {
    assert_rhizome_list
 }
 test_AddEmpty() {
-   executeOk_servald rhizome add file $SIDB1 '' .manifest
-   tfw_cat --stdout --stderr -v .manifest
-   assert_stdout_add_file ''
-   assert_manifest_complete .manifest
-   assertGrep .manifest '^service=file$'
-   assertGrep .manifest '^name=$'
-   assertGrep .manifest '^filesize=0$'
+   executeOk_servald rhizome add file $SIDB1 '' empty.manifest
+   tfw_cat --stdout --stderr -v empty.manifest
+   assert_stdout_add_file --manifest=empty.manifest ''
+   assert_manifest_complete empty.manifest
+   assertGrep empty.manifest '^service=file$'
+   assertGrep empty.manifest '^name=$'
+   assertGrep empty.manifest '^filesize=0$'
    executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=1 --author=$SIDB1 ''
+   assert_rhizome_list --fromhere=1 --author=$SIDB1 --manifest=empty.manifest ''
 }
 
 doc_AddThenList="List contains one file after one add"
