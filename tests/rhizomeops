@@ -486,8 +486,8 @@ test_ExtractFileInvalidID() {
    assert [ ! -e foo ]
 }
 
-doc_AddDuplicate="Add same manifest detects duplicate"
-setup_AddDuplicate() {
+doc_AddDeDuplicate="Add same manifest detects duplicate"
+setup_AddDeDuplicate() {
    setup_servald
    setup_rhizome
    executeOk_servald rhizome list
@@ -505,7 +505,7 @@ setup_AddDuplicate() {
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
 }
-test_AddDuplicate() {
+test_AddDeDuplicate() {
    # Add first file again - nothing should change in its manifests, and it
    # should appear that the add command succeeded (with perhaps some grumbling
    # on stderr).
@@ -532,11 +532,12 @@ test_AddDuplicate() {
 
 doc_AddMismatched="Add mismatched manifest/payload fails"
 setup_AddMismatched() {
-   setup_AddDuplicate
+   setup_AddDeDuplicate
 }
 test_AddMismatched() {
    # Try to add another file using an existing manifest, should fail and leave
-   # the manifest file unchanged.
+   # the manifest file unchanged because the manifest's version field has not
+   # advanced.
    cp file1.manifest file1_2.manifest
    execute $servald rhizome add file $SIDB1 file1_2 file1_2.manifest
    assertExitStatus '!=' 0
