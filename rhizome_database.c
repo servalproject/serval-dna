@@ -511,6 +511,11 @@ static int _sqlite_exec_prepared(struct __sourceloc __whence, int log_level, sql
   return sqlite_code_ok(stepcode) ? rowcount : -1;
 }
 
+/* Execute an SQL command that returns no value.  If an error occurs then logs it at ERROR level and
+ * returns -1.  Otherwise returns the number of rows changed by the command.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 static int _sqlite_vexec_void(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqlformat, va_list ap)
 {
   strbuf stmt = strbuf_alloca(8192);
@@ -523,9 +528,9 @@ static int _sqlite_vexec_void(struct __sourceloc __whence, int log_level, sqlite
   return sqlite3_changes(rhizome_db);
 }
 
-/* Convenience wrapper for executing an SQL command that returns no value.
- * If an error occurs then logs it at ERROR level and returns -1.  Otherwise returns the number of
- * rows changed by the command.
+/* Convenience wrapper for executing an SQL command that returns no value.  If an error occurs then
+ * logs it at ERROR level and returns -1.  Otherwise returns the number of rows changed by the
+ * command.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
@@ -1244,10 +1249,12 @@ int rhizome_update_file_priority(const char *fileid)
   return 0;
 }
 
-/* Search the database for a manifest having the same name and payload content,
-   and if the version is known, having the same version.
-
-   @author Andrew Bettison <andrew@servalproject.com>
+/* Search the database for a manifest having the same name and payload content, and if the version
+ * is known, having the same version.  Returns 1 if a duplicate is found (setting *found to point to
+ * the duplicate's manifest), returns 0 if no duplicate is found (leaving *found unchanged).
+ * Returns -1 on error (leaving *found undefined).
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 {
