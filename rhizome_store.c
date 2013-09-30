@@ -5,14 +5,11 @@
 
 #define RHIZOME_BUFFER_MAXIMUM_SIZE (1024*1024)
 
-int rhizome_exists(const char *fileHash){
+int rhizome_exists(const char *fileHash)
+{
   int64_t gotfile = 0;
-  
-  if (sqlite_exec_int64(&gotfile, 
-	"SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;", 
-			fileHash) != 1){
+  if (sqlite_exec_int64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;", fileHash) != 1)
     return 0;
-  }
   return gotfile;
 }
 
@@ -418,7 +415,8 @@ end:
   return ret;
 }
 
-int rhizome_fail_write(struct rhizome_write *write){
+int rhizome_fail_write(struct rhizome_write *write)
+{
   if (write->blob_fd>=0){
     if (config.debug.externalblobs)
       DEBUGF("Closing and removing fd %d", write->blob_fd);
@@ -435,7 +433,8 @@ int rhizome_fail_write(struct rhizome_write *write){
   return 0;
 }
 
-int rhizome_finish_write(struct rhizome_write *write){
+int rhizome_finish_write(struct rhizome_write *write)
+{
   if (write->blob_rowid==-1 && write->blob_fd == -1)
     return WHY("Can't finish a write that has already been closed");
   if (write->buffer_list){
@@ -461,7 +460,7 @@ int rhizome_finish_write(struct rhizome_write *write){
   if (write_release_lock(write))
     goto failure;
   
-  char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
+  char hash_out[SHA512_DIGEST_STRING_LENGTH + 1];
   SHA512_End(&write->sha512_context, hash_out);
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
@@ -472,7 +471,7 @@ int rhizome_finish_write(struct rhizome_write *write){
       WHYF("Expected hash=%s, got %s", write->id, hash_out);
       goto failure;
     }
-  }else{
+  } else {
     strlcpy(write->id, hash_out, SHA512_DIGEST_STRING_LENGTH);
   }
   

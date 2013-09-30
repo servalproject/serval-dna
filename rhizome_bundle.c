@@ -349,7 +349,7 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   return rhizome_manifest_parse(m);
 }
 
-int rhizome_hash_file(rhizome_manifest *m,const char *filename,char *hash_out)
+int rhizome_hash_file(rhizome_manifest *m, const char *filename, char *hash_out)
 {
   /* Gnarf! NaCl's crypto_hash() function needs the whole file passed in in one
      go.  Trouble is, we need to run Serval DNA on filesystems that lack mmap(),

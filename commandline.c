@@ -289,11 +289,11 @@ int cli_write(struct cli_context *context, const unsigned char *buf, size_t len)
 int cli_puts(struct cli_context *context, const char *str)
 {
 #ifdef HAVE_JNI_H
-    if (context && context->jni_env)
-      return cli_write(context, (const unsigned char *) str, strlen(str));
-    else
+  if (context && context->jni_env)
+    return cli_write(context, (const unsigned char *) str, strlen(str));
+  else
 #endif
-      return fputs(str, stdout);
+    return fputs(str, stdout);
 }
 
 /* Write a formatted string to output.  If in a JNI call, then this appends the string to the
@@ -329,7 +329,8 @@ int cli_printf(struct cli_context *context, const char *fmt, ...)
   return ret;
 }
 
-void cli_columns(struct cli_context *context, int columns, const char *names[]){
+void cli_columns(struct cli_context *context, int columns, const char *names[])
+{
 #ifdef HAVE_JNI_H
   if (context && context->jni_env) {
     (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, startResultSet, columns);
@@ -352,7 +353,7 @@ void cli_columns(struct cli_context *context, int columns, const char *names[]){
     return;
   }
 #endif
-  cli_printf(context, "%d",columns);
+  cli_printf(context, "%d", columns);
   cli_delim(context, "\n");
   int i;
   for (i=0;i<columns;i++){
@@ -364,7 +365,8 @@ void cli_columns(struct cli_context *context, int columns, const char *names[]){
   }
 }
 
-void cli_field_name(struct cli_context *context, const char *name, const char *delim){
+void cli_field_name(struct cli_context *context, const char *name, const char *delim)
+{
 #ifdef HAVE_JNI_H
   if (context && context->jni_env) {
     jstring str = (jstring)(*context->jni_env)->NewStringUTF(context->jni_env, name);
@@ -1276,7 +1278,7 @@ int app_rhizome_hash_file(const struct cli_parsed *parsed, struct cli_context *c
   const char *filepath;
   cli_arg(parsed, "filepath", &filepath, NULL, "");
   char hexhash[RHIZOME_FILEHASH_STRLEN + 1];
-  if (rhizome_hash_file(NULL,filepath, hexhash))
+  if (rhizome_hash_file(NULL, filepath, hexhash))
     return -1;
   cli_put_string(context, hexhash, "\n");
   return 0;
