@@ -612,7 +612,7 @@ static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *
   if (!sqlite_code_ok(stepcode) || ret == -1)
     return -1;
   if (sqlite_trace_func())
-    DEBUGF("rowcount=%d changes=%d", rowcount, sqlite3_changes(rhizome_db));
+    DEBUGF("rowcount=%d changes=%d result=%lld", rowcount, sqlite3_changes(rhizome_db), (long long)*result);
   return rowcount;
 }
 
