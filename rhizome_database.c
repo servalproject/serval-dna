@@ -29,7 +29,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 static char rhizome_thisdatastore_path[256];
 
+static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const char *manifestid);
 static int rhizome_delete_file_retry(sqlite_retry_state *retry, const char *fileid);
+static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const char *manifestid);
 
 const char *rhizome_datastore_path()
 {
@@ -1402,7 +1404,7 @@ done:
   return ret;  
 }
 
-int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const char *manifestid)
+static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const char *manifestid)
 {
   sqlite3_stmt *statement = sqlite_prepare(retry, "DELETE FROM manifests WHERE id = ?");
   if (!statement)
@@ -1438,7 +1440,7 @@ static int rhizome_delete_file_retry(sqlite_retry_state *retry, const char *file
   return ret == -1 ? -1 : sqlite3_changes(rhizome_db) ? 0 : 1;
 }
 
-int rhizome_delete_payload_retry(sqlite_retry_state *retry, const char *manifestid)
+static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const char *manifestid)
 {
   strbuf fh = strbuf_alloca(RHIZOME_FILEHASH_STRLEN + 1);
   int rows = sqlite_exec_strbuf_retry(retry, fh, "SELECT filehash FROM manifests WHERE id = '%s'", manifestid);
@@ -1448,6 +1450,7 @@ int rhizome_delete_payload_retry(sqlite_retry_state *retry, const char *manifest
     return -1;
   return 0;
 }
+
 /* Remove a manifest and its bundle from the database, given its manifest ID.
  *
  * Returns 0 if manifest is found and removed and bundle was either absent or removed
