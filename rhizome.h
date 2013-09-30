@@ -273,7 +273,7 @@ int rhizome_manifest_verify(rhizome_manifest *m);
 int rhizome_manifest_check_sanity(rhizome_manifest *m_in);
 
 int rhizome_manifest_bind_id(rhizome_manifest *m_in);
-int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout);
+int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout, int deduplicate);
 int rhizome_add_manifest(rhizome_manifest *m_in,int ttl);
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount);

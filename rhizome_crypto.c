@@ -38,10 +38,10 @@ unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m)
 
 int rhizome_manifest_createid(rhizome_manifest *m)
 {
-  m->haveSecret=NEW_BUNDLE_ID;
   if (crypto_sign_edwards25519sha512batch_keypair(m->cryptoSignPublic,m->cryptoSignSecret))
     return WHY("Failed to create keypair for manifest ID.");
   rhizome_manifest_set(m, "id", alloca_tohex_bid(m->cryptoSignPublic));
+  m->haveSecret = NEW_BUNDLE_ID;
   return 0;
 }
 

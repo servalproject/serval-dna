@@ -1290,6 +1290,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     DEBUG_cli_parsed(parsed);
   const char *filepath, *manifestpath, *manifestid, *authorSidHex, *bskhex;
 
+  int force_new = 0 == cli_arg(parsed, "--force-new", NULL, NULL, NULL);
   cli_arg(parsed, "filepath", &filepath, NULL, "");
   if (cli_arg(parsed, "author_sid", &authorSidHex, cli_optional_sid, "") == -1)
     return -1;
@@ -1382,7 +1383,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   }
   
   rhizome_manifest *mout = NULL;
-  int ret=rhizome_manifest_finalise(m,&mout);
+  int ret=rhizome_manifest_finalise(m, &mout, !force_new);
   if (ret<0){
     rhizome_manifest_free(m);
     return -1;
@@ -2473,7 +2474,7 @@ struct cli_schema command_line_options[]={
     "Append a manifest to the end of the file it belongs to."},
   {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL}, 0,
    "Compute the Rhizome hash of a file"},
-  {app_rhizome_add_file,{"rhizome","add","file" KEYRING_PIN_OPTIONS,"<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]",NULL}, 0,
+  {app_rhizome_add_file,{"rhizome","add","file" KEYRING_PIN_OPTIONS,"[--force-new]","<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]",NULL}, 0,
 	"Add a file to Rhizome and optionally write its manifest to the given path"},
   {app_rhizome_add_file, {"rhizome", "journal", "append" KEYRING_PIN_OPTIONS, "<author_sid>", "<manifestid>", "<filepath>", "[<bsk>]", NULL}, 0,
 	"Append content to a journal bundle"},

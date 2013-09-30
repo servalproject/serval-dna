@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <stdlib.h>
+#include <assert.h>
 #include "serval.h"
 #include "conf.h"
 #include "rhizome.h"
@@ -699,17 +700,15 @@ int rhizome_manifest_dump(rhizome_manifest *m, const char *msg)
   return 0;
 }
 
-int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout)
+int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout, int deduplicate)
 {
   IN();
   int ret=0;
   
   // if a manifest was supplied with an ID, don't bother to check for a duplicate.
   // we only want to filter out added files with no existing manifest.
-  if (m->haveSecret==NEW_BUNDLE_ID){
-    if (rhizome_find_duplicate(m, mout)==1)
-      RETURN(2);
-  }
+  if (deduplicate && m->haveSecret != EXISTING_BUNDLE_ID && rhizome_find_duplicate(m, mout) == 1)
+    RETURN(2);
   
   *mout=m;
   
@@ -800,6 +799,7 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
       // TODO assert that new version > old version?
     }
   }
+  assert(m->haveSecret);
   
   int crypt = rhizome_manifest_get_ll(m,"crypt"); 
   if (crypt==-1){

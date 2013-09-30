@@ -486,7 +486,7 @@ test_ExtractFileInvalidID() {
    assert [ ! -e foo ]
 }
 
-doc_AddDeDuplicate="Add same manifest detects duplicate"
+doc_AddDeDuplicate="Add duplicate file does not create new bundle by default"
 setup_AddDeDuplicate() {
    setup_servald
    setup_rhizome
@@ -517,6 +517,7 @@ test_AddDeDuplicate() {
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
    strip_signatures file1.manifest file1.manifestA
    assert diff file1.manifest file1.manifestA
+   assert [ $file1_secret = $file1_dup_secret ]
    # Repeat for second file.
    execute --exit-status=2 $servald rhizome add file $SIDB1 file2 file2.manifestA
    assert [ -s file2.manifestA ]
@@ -526,8 +527,35 @@ test_AddDeDuplicate() {
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
    strip_signatures file2.manifest file2.manifestA
    assert diff file2.manifest file2.manifestA
-   assert [ $file1_secret = $file1_dup_secret ]
    assert [ $file2_secret = $file2_dup_secret ]
+}
+
+doc_AddForceDuplicate="Add duplicate file with --force-new option"
+setup_AddForceDuplicate() {
+   setup_AddDeDuplicate
+}
+test_AddForceDuplicate() {
+   # Add first file again with the --force-new option.  A new manifest
+   # should be created with a new ID.
+   executeOk_servald rhizome add file --force-new $SIDB1 file1 file1.manifestA
+   assert [ -s file1.manifestA ]
+   assert_stdout_add_file --manifest=file1.manifestA file1
+   extract_stdout_secret file1_dup_secret
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2 --manifest=file1.manifestA file1
+   strip_signatures file1.manifest file1.manifestA
+   assert ! diff file1.manifest file1.manifestA
+   assert [ $file1_secret != $file1_dup_secret ]
+   # Repeat for second file.
+   executeOk_servald rhizome add file --force-new $SIDB1 file2 file2.manifestA
+   assert [ -s file2.manifestA ]
+   assert_stdout_add_file --manifest=file2.manifestA file2
+   extract_stdout_secret file2_dup_secret
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2 --manifest=file1.manifestA file1 --manifest=file2.manifestA file2
+   strip_signatures file2.manifest file2.manifestA
+   assert ! diff file2.manifest file2.manifestA
+   assert [ $file2_secret != $file2_dup_secret ]
 }
 
 doc_AddMismatched="Add mismatched manifest/payload fails"

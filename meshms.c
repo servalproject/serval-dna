@@ -318,7 +318,7 @@ static int append_meshms_buffer(const sid_t *my_sid, struct conversations *conv,
   if (rhizome_append_journal_buffer(m, NULL, 0, buffer, len))
     goto end;
   
-  if (rhizome_manifest_finalise(m, &mout))
+  if (rhizome_manifest_finalise(m, &mout, 1))
     goto end;
 
   ret=0;
@@ -594,7 +594,7 @@ static int write_known_conversations(rhizome_manifest *m, struct conversations *
     goto end;
   strlcpy(m->fileHexHash, write.id, SHA512_DIGEST_STRING_LENGTH);
   rhizome_manifest_set(m, "filehash", m->fileHexHash);
-  if (rhizome_manifest_finalise(m,&mout))
+  if (rhizome_manifest_finalise(m, &mout, 1))
     goto end;
   
   ret=0;
