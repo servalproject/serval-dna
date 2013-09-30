@@ -274,15 +274,19 @@ extract_manifest_crypt() {
 }
 
 compute_filehash() {
-   local _var="$1"
+   local _filehashvar="$1"
    local _file="$2"
-   local _filesize="$3"
-   local _hash=$($servald rhizome hash file "$_file") || error "$servald failed to compute file hash"
-   [ -z "${_hash//[0-9a-fA-F]/}" ] || error "file hash contains non-hex: $_hash"
-   [ "${#_hash}" -eq 128 ] || error "file hash incorrect length: $_hash"
-   local _size=$(( $(cat "$filename" | wc -c) + 0 ))
-   [ -n "$_var" ] && eval $_var="\$_hash"
-   [ -n "$_filesize" ] && eval $_filesize="\$_size"
+   local _filesizevar="$3"
+   local _hash=
+   local _size=0
+   if [ -s "$_file" ]; then
+      local _hash=$($servald rhizome hash file "$_file") || error "$servald failed to compute file hash"
+      [ -z "${_hash//[0-9a-fA-F]/}" ] || error "file hash contains non-hex: $_hash"
+      [ "${#_hash}" -eq 128 ] || error "file hash incorrect length: $_hash"
+      local _size=$(( $(cat "$filename" | wc -c) + 0 ))
+   fi
+   [ -n "$_filehashvar" ] && eval $_filehashvar="\$_hash"
+   [ -n "$_filesizevar" ] && eval $_filesizevar="\$_size"
 }
 
 rhizome_http_server_started() {

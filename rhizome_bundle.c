@@ -360,6 +360,7 @@ int rhizome_hash_file(rhizome_manifest *m, const char *filename, char *hash_out)
   if (m && m->payloadEncryption) 
     return WHY("Encryption of payloads not implemented");
 
+  size_t filesize = 0;
   SHA512_CTX context;
   SHA512_Init(&context);
   if (filename[0]) {
@@ -378,11 +379,16 @@ int rhizome_hash_file(rhizome_manifest *m, const char *filename, char *hash_out)
       }
       if (r > 0)
 	SHA512_Update(&context, buffer, r);
+      filesize += r;
     }
     fclose(f);
   }
   SHA512_End(&context, (char *)hash_out);
-  str_toupper_inplace(hash_out);
+  // Empty files (including null filename) have no hash.
+  if (filesize > 0)
+    str_toupper_inplace(hash_out);
+  else
+    hash_out[0] = '\0';
   return 0;
 }
 
