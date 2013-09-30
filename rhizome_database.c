@@ -718,7 +718,6 @@ int64_t rhizome_database_used_bytes()
 int rhizome_database_filehash_from_id(const char *id, uint64_t version, char hash[SHA512_DIGEST_STRING_LENGTH])
 {
   IN();
-  
   strbuf hash_sb = strbuf_local(hash, SHA512_DIGEST_STRING_LENGTH);
   RETURN(sqlite_exec_strbuf(hash_sb, "SELECT filehash FROM MANIFESTS WHERE manifests.version=%lld AND manifests.id='%s';",
 			    version,id));
@@ -737,6 +736,16 @@ static int rhizome_delete_external(const char *fileid)
 static int rhizome_delete_orphan_fileblobs_retry(sqlite_retry_state *retry)
 {
   return sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, retry, "DELETE FROM FILEBLOBS WHERE NOT EXISTS( SELECT 1 FROM FILES WHERE FILES.id = FILEBLOBS.id );");
+}
+
+int rhizome_remove_file_datainvalid(sqlite_retry_state *retry, const char *fileid)
+{
+  int ret = 0;
+  if (sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, retry, "DELETE FROM FILES WHERE id='%s' and datavalid=0;", fileid) == -1)
+    ret = -1;
+  if (sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, retry, "DELETE FROM FILEBLOBS WHERE id='%s' AND NOT EXISTS( SELECT 1 FROM FILES WHERE FILES.id=FILEBLOBS.id );", fileid) == -1)
+    ret = -1;
+  return ret;
 }
 
 int rhizome_cleanup(struct rhizome_cleanup_report *report)

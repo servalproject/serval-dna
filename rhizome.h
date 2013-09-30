@@ -262,6 +262,7 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence);
 #define rhizome_new_manifest() _rhizome_new_manifest(__WHENCE__)
 int rhizome_manifest_pack_variables(rhizome_manifest *m);
 int rhizome_store_bundle(rhizome_manifest *m);
+int rhizome_remove_file_datainvalid(sqlite_retry_state *retry, const char *fileid);
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
 int rhizome_clean_payload(const char *fileidhex);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);

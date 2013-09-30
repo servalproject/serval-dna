@@ -462,23 +462,26 @@ int rhizome_finish_write(struct rhizome_write *write)
   
   char hash_out[SHA512_DIGEST_STRING_LENGTH + 1];
   SHA512_End(&write->sha512_context, hash_out);
-  
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  
   str_toupper_inplace(hash_out);
-  if (write->id_known){
-    if (strcasecmp(write->id, hash_out)){
-      WHYF("Expected hash=%s, got %s", write->id, hash_out);
+
+  if (write->id_known) {
+    if (strcasecmp(write->id, hash_out) != 0) {
+      WHYF("expected filehash=%s, got %s", write->id, hash_out);
       goto failure;
     }
   } else {
     strlcpy(write->id, hash_out, SHA512_DIGEST_STRING_LENGTH);
   }
   
-  if (rhizome_exists(hash_out)){
-    // ooops, we've already got that file, delete the new copy.
-    rhizome_fail_write(write);
-  }else{
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  rhizome_remove_file_datainvalid(&retry, write->id);
+  if (rhizome_exists(write->id)) {
+    // we've already got that payload, delete the new copy
+    sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,"DELETE FROM FILEBLOBS WHERE id='%"PRId64"';", write->temp_id);
+    sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,"DELETE FROM FILES WHERE id='%"PRId64"';", write->temp_id);
+    if (config.debug.rhizome)
+      DEBUGF("File id='%s' already present, removed id='%"PRId64"'", write->id, write->temp_id);
+  } else {
     if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
       goto dbfailure;
     
@@ -517,12 +520,10 @@ int rhizome_finish_write(struct rhizome_write *write)
     }
     if (sqlite_exec_void_retry(&retry, "COMMIT;") == -1)
       goto dbfailure;
+    if (config.debug.rhizome)
+      DEBUGF("Stored file %s", write->id);
   }
-  
   write->blob_rowid=-1;
-  
-  if (config.debug.rhizome)
-    DEBUGF("Stored file %s", hash_out);
   return 0;
   
 dbfailure:
