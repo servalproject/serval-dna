@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __RHIZOME_INLINE
 #include <stdlib.h>
 #include <time.h>
+#include <ctype.h>
 #include "serval.h"
 #include "conf.h"
 #include "rhizome.h"
@@ -133,7 +134,8 @@ int (*sqlite_set_tracefunc(int (*newfunc)()))()
   return oldfunc;
 }
 
-void sqlite_log(void *ignored, int result, const char *msg){
+void sqlite_log(void *ignored, int result, const char *msg)
+{
   WARNF("Sqlite: %d %s", result, msg);
 }
 
@@ -409,44 +411,156 @@ void _sqlite_retry_done(struct __sourceloc __whence, sqlite_retry_state *retry, 
     retry->start = -1;
 }
 
-/*
-   Convenience wrapper for preparing an SQL command.
-   Returns -1 if an error occurs (logged as an error), otherwise zero with the prepared
-   statement in *statement.
+/* Prepare an SQL command from a simple string.  Returns -1 if an error occurs (logged as an error),
+ * otherwise zero with the prepared statement in *statement.
+ *
+ * IMPORTANT!  Do not form statement strings using sprintf(3) or strbuf_sprintf() or similar
+ * methods, because those are susceptible to SQL injection attacks.  Instead, use bound parameters
+ * and bind them using the sqlite_bind() function below.
+ *
+ * IN PARTICULAR, do not add sprintf(3)-like functionality to this method.  It used to take
+ * sprintf(3)-style varargs and these were deliberately removed.  It is vital to discourage bad
+ * practice, and adding sprintf(3)-style args to this function would be a step in the wrong
+ * direction.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
-sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, sqlite_retry_state *retry, const char *sqlformat, ...)
-{
-  strbuf sql = strbuf_alloca(8192);
-  strbuf_va_printf(sql, sqlformat);
-  return _sqlite_prepare_loglevel(__whence, LOG_LEVEL_ERROR, retry, sql);
-}
-
-sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, strbuf stmt)
+sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqltext)
 {
   IN();
   sqlite3_stmt *statement = NULL;
-  if (strbuf_overrun(stmt)) {
-    WHYF("SQL overrun: %s", strbuf_str(stmt));
-    RETURN(NULL);
-  }
   if (!rhizome_db && rhizome_opendb() == -1)
     RETURN(NULL);
   while (1) {
-    switch (sqlite3_prepare_v2(rhizome_db, strbuf_str(stmt), -1, &statement, NULL)) {
+    switch (sqlite3_prepare_v2(rhizome_db, sqltext, -1, &statement, NULL)) {
       case SQLITE_OK:
 	RETURN(statement);
       case SQLITE_BUSY:
       case SQLITE_LOCKED:
-	if (retry && _sqlite_retry(__whence, retry, strbuf_str(stmt))) {
+	if (retry && _sqlite_retry(__whence, retry, sqltext)) {
 	  break; // back to sqlite3_prepare_v2()
 	}
 	// fall through...
       default:
-	LOGF(log_level, "query invalid, %s: %s", sqlite3_errmsg(rhizome_db), strbuf_str(stmt));
+	LOGF(log_level, "query invalid, %s: %s", sqlite3_errmsg(rhizome_db), sqltext);
 	sqlite3_finalize(statement);
 	RETURN(NULL);
     }
   }
+}
+
+enum sqlbind_type {
+  END = 0,
+  NUL,
+  INT,		    // int value
+  INT64,	    // int64_t value
+  STATIC_TEXT,	    // const char *text,
+  STATIC_TEXT_LEN,  // const char *text, int bytes
+  STATIC_BLOB,	    // const void *blob, int bytes
+  SID_T,	    // const sid_t *sidp
+  BUNDLE_ID_T,	    // const unsigned char bid_binary[RHIZOME_BUNDLE_ID_BYTES]
+  FILEHASH_T,	    // const unsigned char hash_binary[RHIZOME_FILEHASH_BYTES]
+  TOHEX,	    // const unsigned char *binary, unsigned bytes
+  TEXT_TOUPPER,	    // const char *text,
+  TEXT_LEN_TOUPPER, // const char *text, unsigned bytes
+
+  NAMED = (1 << 12)
+};
+
+int _sqlite_bind(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement, ...)
+{
+  int ret = 0;
+  va_list ap;
+  va_start(ap, statement);
+  enum sqlbind_type typ;
+  do {
+    typ = va_arg(ap, int);
+    const char *name = NULL;
+    int index;
+    if (typ & NAMED) {
+      typ |= ~NAMED;
+      name = va_arg(ap, const char *);
+      index = sqlite3_bind_parameter_index(statement, name);
+      if (index == 0) {
+	LOGF(log_level, "no parameter %s in query: %s", alloca_str_toprint(name), sqlite3_sql(statement));
+	ret = -1;
+      }
+    } else
+      index = va_arg(ap, int);
+    switch (typ) {
+      case END: break;
+      case NUL:
+	ret = sqlite3_bind_null(statement, index);
+	break;
+      case INT:
+	ret = sqlite3_bind_int(statement, index, va_arg(ap, int));
+	break;
+      case INT64:
+	ret = sqlite3_bind_int64(statement, index, va_arg(ap, int64_t));
+	break;
+      case STATIC_TEXT:
+	ret = sqlite3_bind_text(statement, index, va_arg(ap, const char *), -1, SQLITE_STATIC);
+	break;
+      case STATIC_TEXT_LEN: {
+	  const char *text = va_arg(ap, const char *);
+	  int bytes = va_arg(ap, int);
+	  ret = sqlite3_bind_text(statement, index, text, bytes, SQLITE_STATIC);
+	}
+	break;
+      case STATIC_BLOB: {
+	  const void *blob = va_arg(ap, const void *);
+	  int bytes = va_arg(ap, int);
+	  ret = sqlite3_bind_blob(statement, index, blob, bytes, SQLITE_STATIC);
+	};
+	break;
+      case SID_T: {
+	  const sid_t *sidp = va_arg(ap, const sid_t *);
+	  const char *sid_hex = alloca_tohex_sid_t(*sidp);
+	  ret = sqlite3_bind_text(statement, index, sid_hex, SID_STRLEN, SQLITE_TRANSIENT);
+	}
+	break;
+      case BUNDLE_ID_T: {
+	  const char *bid_hex = alloca_tohex(va_arg(ap, const unsigned char *), RHIZOME_MANIFEST_ID_BYTES);
+	  ret = sqlite3_bind_text(statement, index, bid_hex, RHIZOME_MANIFEST_ID_STRLEN, SQLITE_TRANSIENT);
+	}
+	break;
+      case FILEHASH_T: {
+	  const char *hash_hex = alloca_tohex(va_arg(ap, const unsigned char *), RHIZOME_FILEHASH_BYTES);
+	  ret = sqlite3_bind_text(statement, index, hash_hex, RHIZOME_FILEHASH_STRLEN, SQLITE_TRANSIENT);
+	}
+	break;
+      case TOHEX: {
+	  const unsigned char *binary = va_arg(ap, const unsigned char *);
+	  unsigned bytes = va_arg(ap, unsigned);
+	  ret = sqlite3_bind_text(statement, index, alloca_tohex(binary, bytes), bytes * 2, SQLITE_TRANSIENT);
+	}
+	break;
+      case TEXT_TOUPPER: {
+	  const char *text = va_arg(ap, const char *);
+	  unsigned bytes = strlen(text);
+	  char upper[bytes];
+	  unsigned i;
+	  for (i = 0; i != bytes; ++i)
+	    upper[i] = toupper(text[i]);
+	  ret = sqlite3_bind_text(statement, index, upper, bytes, SQLITE_TRANSIENT);
+	}
+	break;
+      case TEXT_LEN_TOUPPER: {
+	  const char *text = va_arg(ap, const char *);
+	  unsigned bytes = va_arg(ap, unsigned);
+	  char upper[bytes];
+	  unsigned i;
+	  for (i = 0; i != bytes; ++i)
+	    upper[i] = toupper(text[i]);
+	  ret = sqlite3_bind_text(statement, index, upper, bytes, SQLITE_TRANSIENT);
+	}
+	break;
+      default:
+	FATALF("unsupported bind code %d", typ);
+    }
+  } while (typ != END);
+  va_end(ap);
+  return ret;
 }
 
 int _sqlite_step_retry(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)

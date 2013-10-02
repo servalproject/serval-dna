@@ -294,8 +294,7 @@ int (*sqlite_set_tracefunc(int (*newfunc)()))();
 int is_debug_rhizome();
 int is_debug_rhizome_ads();
 
-sqlite3_stmt *_sqlite_prepare(struct __sourceloc, sqlite_retry_state *retry, const char *sqlformat, ...);
-sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc, int log_level, sqlite_retry_state *retry, strbuf stmt);
+sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc, int log_level, sqlite_retry_state *retry, const char *sqltext);
 int _sqlite_retry(struct __sourceloc, sqlite_retry_state *retry, const char *action);
 void _sqlite_retry_done(struct __sourceloc, sqlite_retry_state *retry, const char *action);
 int _sqlite_step_retry(struct __sourceloc, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement);
@@ -309,8 +308,8 @@ int _sqlite_exec_strbuf(struct __sourceloc, strbuf sb, const char *sqlformat, ..
 int _sqlite_exec_strbuf_retry(struct __sourceloc, sqlite_retry_state *retry, strbuf sb, const char *sqlformat, ...);
 int _sqlite_vexec_strbuf_retry(struct __sourceloc, sqlite_retry_state *retry, strbuf sb, const char *sqlformat, va_list ap);
 
-#define sqlite_prepare(rs,fmt,...)              _sqlite_prepare(__WHENCE__, (rs), (fmt), ##__VA_ARGS__)
-#define sqlite_prepare_loglevel(ll,rs,sb)       _sqlite_prepare_loglevel(__WHENCE__, (ll), (rs), (sb))
+#define sqlite_prepare(rs,text)                 _sqlite_prepare_loglevel(__WHENCE__, LOG_LEVEL_ERROR, (rs), (text))
+#define sqlite_prepare_loglevel(ll,rs,text)     _sqlite_prepare_loglevel(__WHENCE__, (ll), (rs), (text))
 #define sqlite_retry(rs,action)                 _sqlite_retry(__WHENCE__, (rs), (action))
 #define sqlite_retry_done(rs,action)            _sqlite_retry_done(__WHENCE__, (rs), (action))
 #define sqlite_step(stmt)                       _sqlite_step_retry(__WHENCE__, LOG_LEVEL_ERROR, NULL, (stmt))
