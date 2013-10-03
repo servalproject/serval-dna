@@ -1613,11 +1613,13 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m)
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
-  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT manifest, version, inserttime, author FROM manifests WHERE id like ?");
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
+      "SELECT manifest, version, inserttime, author FROM manifests WHERE id like ?",
+      TEXT_TOUPPER, manifestid,
+      END);
   if (!statement)
     return -1;
 
-  sqlite3_bind_text(statement, 1, manifestid, -1, SQLITE_STATIC);
   if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
     const char *manifestblob = (char *) sqlite3_column_blob(statement, 0);
     int64_t q_version = sqlite3_column_int64(statement, 1);
@@ -1651,10 +1653,12 @@ done:
 
 static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const char *manifestid)
 {
-  sqlite3_stmt *statement = sqlite_prepare(retry, "DELETE FROM manifests WHERE id = ?");
+  sqlite3_stmt *statement = sqlite_prepare_bind(retry,
+      "DELETE FROM manifests WHERE id = ?",
+      TEXT_TOUPPER, manifestid,
+      END);
   if (!statement)
     return -1;
-  sqlite3_bind_text(statement, 1, manifestid, -1, SQLITE_STATIC);
   if (_sqlite_exec(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
     return -1;
   return sqlite3_changes(rhizome_db) ? 0 : 1;
@@ -1663,25 +1667,13 @@ static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const char *
 static int rhizome_delete_file_retry(sqlite_retry_state *retry, const char *fileid)
 {
   int ret = 0;
-  
   rhizome_delete_external(fileid);
-  
-  sqlite3_stmt *statement = sqlite_prepare(retry, "DELETE FROM files WHERE id = ?");
-  if (!statement)
+  sqlite3_stmt *statement = sqlite_prepare_bind(retry, "DELETE FROM files WHERE id = ?", TEXT_TOUPPER, fileid, END);
+  if (!statement || sqlite_exec_retry(retry, statement) == -1)
     ret = -1;
-  else {
-    sqlite3_bind_text(statement, 1, fileid, -1, SQLITE_STATIC);
-    if (_sqlite_exec(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
-      ret = -1;
-  }
-  statement = sqlite_prepare(retry, "DELETE FROM fileblobs WHERE id = ?");
-  if (!statement)
+  statement = sqlite_prepare_bind(retry, "DELETE FROM fileblobs WHERE id = ?", TEXT_TOUPPER, fileid, END);
+  if (!statement || sqlite_exec_retry(retry, statement) == -1)
     ret = -1;
-  else {
-    sqlite3_bind_text(statement, 1, fileid, -1, SQLITE_STATIC);
-    if (_sqlite_exec(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
-      ret = -1;
-  }
   return ret == -1 ? -1 : sqlite3_changes(rhizome_db) ? 0 : 1;
 }
 
@@ -1765,15 +1757,13 @@ static int is_interesting(const char *id_hex, int64_t version)
 
   // do we have this bundle [or later]?
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, 
-    "SELECT filehash FROM manifests WHERE id like ? and version >= ?");
-
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry, 
+    "SELECT filehash FROM manifests WHERE id like ? and version >= ?",
+    TEXT_TOUPPER, id_hex,
+    INT64, version,
+    END);
   if (!statement)
     RETURN(-1);
-
-  sqlite3_bind_text(statement, 1, id_hex, -1, SQLITE_STATIC);
-  sqlite3_bind_int64(statement, 2, version);
-  
   if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
     const char *q_filehash = (const char *) sqlite3_column_text(statement, 0);
     ret=0;
@@ -1781,7 +1771,6 @@ static int is_interesting(const char *id_hex, int64_t version)
       ret=1;
   }
   sqlite3_finalize(statement);
-
   RETURN(ret);
   OUT();
 }

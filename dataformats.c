@@ -22,6 +22,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include <ctype.h>
 
+int cmp_sid_t(const sid_t *a, const sid_t *b)
+{
+  return memcmp(a, b, sizeof a->binary);
+}
+
 int str_to_sid_t(sid_t *sid, const char *hex)
 {
   if (strcmp(hex, "broadcast") == 0) {

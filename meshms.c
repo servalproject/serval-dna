@@ -90,13 +90,14 @@ static int get_my_conversation_bundle(const sid_t *my_sid, rhizome_manifest *m)
   return 0;
 }
 
-static struct conversations *add_conv(struct conversations **conv, const sid_t *them){
-  struct conversations **ptr=conv;
+static struct conversations *add_conv(struct conversations **conv, const sid_t *them)
+{
+  struct conversations **ptr = conv;
   while(*ptr){
-    int cmp = memcmp((*ptr)->them.binary, them, sizeof((*ptr)->them));
-    if (cmp==0)
+    int cmp = cmp_sid_t(&(*ptr)->them, them);
+    if (cmp == 0)
       break;
-    if (cmp<0)
+    if (cmp < 0)
       ptr = &(*ptr)->_left;
     else
       ptr = &(*ptr)->_right;
@@ -104,38 +105,34 @@ static struct conversations *add_conv(struct conversations **conv, const sid_t *
   if (!*ptr){
     *ptr = emalloc_zero(sizeof(struct conversations));
     if (*ptr)
-      memcpy((*ptr)->them.binary, them->binary, sizeof((*ptr)->them));
+      (*ptr)->them = *them;
   }
   return *ptr;
 }
 
 // find matching conversations
-// if their_sid_hex == my_sid_hex, return all conversations with any recipient
-static int get_database_conversations(const sid_t *my_sid, const sid_t *their_sid, struct conversations **conv){
-  const char *my_sid_hex = alloca_tohex_sid(my_sid->binary);
-  const char *their_sid_hex = alloca_tohex_sid(their_sid?their_sid->binary:my_sid->binary);
-  
+// if their_sid == my_sid, return all conversations with any recipient
+static int get_database_conversations(const sid_t *my_sid, const sid_t *their_sid, struct conversations **conv)
+{
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry,
-    "SELECT id, version, filesize, tail, sender, recipient "
-    "FROM manifests "
-    "WHERE service = '"RHIZOME_SERVICE_MESHMS2"' "
-    "AND (sender=?1 or recipient=?1) "
-    "AND (sender=?2 or recipient=?2)");
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
+      "SELECT id, version, filesize, tail, sender, recipient"
+      " FROM manifests"
+      " WHERE service = ?3"
+      " AND (sender=?1 or recipient=?1)"
+      " AND (sender=?2 or recipient=?2)",
+      SID_T, my_sid,
+      SID_T, their_sid ? their_sid : my_sid,
+      STATIC_TEXT, RHIZOME_SERVICE_MESHMS2,
+      END
+    );
   if (!statement)
     return -1;
-    
-  int ret = sqlite3_bind_text(statement, 1, my_sid_hex, -1, SQLITE_STATIC);
-  if (ret!=SQLITE_OK)
-    goto end;
-  
-  ret = sqlite3_bind_text(statement, 2, their_sid_hex, -1, SQLITE_STATIC);
-  if (ret!=SQLITE_OK)
-    goto end;
-
-  if (config.debug.meshms)
+  if (config.debug.meshms) {
+    const char *my_sid_hex = alloca_tohex_sid_t(*my_sid);
+    const char *their_sid_hex = alloca_tohex_sid_t(*(their_sid ? their_sid : my_sid));
     DEBUGF("Looking for conversations for %s, %s", my_sid_hex, their_sid_hex);
-  
+  }
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     const char *id = (const char *)sqlite3_column_text(statement, 0);
     long long version = sqlite3_column_int64(statement, 1);
@@ -143,21 +140,24 @@ static int get_database_conversations(const sid_t *my_sid, const sid_t *their_si
     long long tail = sqlite3_column_int64(statement, 3);
     const char *sender = (const char *)sqlite3_column_text(statement, 4);
     const char *recipient = (const char *)sqlite3_column_text(statement, 5);
-    const char *them = recipient;
-    
-    if (strcasecmp(them, my_sid_hex)==0)
-      them=sender;
-    
-    sid_t their_sid;
-    fromhex(their_sid.binary, them, sizeof(their_sid));
-    
     if (config.debug.meshms)
       DEBUGF("found id %s, sender %s, recipient %s", id, sender, recipient);
-    
+    const char *them = recipient;
+    sid_t their_sid;
+    if (str_to_sid_t(&their_sid, them) == -1) {
+      WHYF("invalid SID hex: %s -- skipping", alloca_str_toprint(them));
+      continue;
+    }
+    if (cmp_sid_t(&their_sid, my_sid) == 0) {
+      them = sender;
+      if (str_to_sid_t(&their_sid, them) == -1) {
+	WHYF("invalid SID hex: %s -- skipping", alloca_str_toprint(them));
+	continue;
+      }
+    }
     struct conversations *ptr = add_conv(conv, &their_sid);
     if (!ptr)
-      goto end;
-      
+      break;
     struct ply *p;
     if (them==sender){
       ptr->found_their_ply=1;
@@ -171,15 +171,8 @@ static int get_database_conversations(const sid_t *my_sid, const sid_t *their_si
     p->tail = tail;
     p->size = size;
   }
-  
-end:
-  if (ret!=SQLITE_OK){
-    WHYF("Query failed: %s", sqlite3_errmsg(rhizome_db));
-    free_conversations(*conv);
-    *conv=NULL;
-  }
   sqlite3_finalize(statement);
-  return (ret==SQLITE_OK)?0:-1;
+  return 0;
 }
 
 static struct conversations * find_or_create_conv(const sid_t *my_sid, const sid_t *their_sid){
@@ -464,7 +457,8 @@ static int update_conversations(const sid_t *my_sid, struct conversations *conv)
 
 // read our cached conversation list from our rhizome payload
 // if we can't load the existing data correctly, just ignore it.
-static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid, struct conversations **conv){
+static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid, struct conversations **conv)
+{
   if (m->haveSecret==NEW_BUNDLE_ID)
     return 0;
   
@@ -491,7 +485,7 @@ static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid,
       break;
     if (config.debug.meshms)
       DEBUGF("Reading existing conversation for %s", alloca_tohex_sid(sid.binary));
-    if (their_sid && memcmp(sid.binary, their_sid->binary, sizeof(sid)))
+    if (their_sid && cmp_sid_t(&sid, their_sid) != 0)
       continue;
     struct conversations *ptr = add_conv(conv, &sid);
     if (!ptr)
@@ -881,7 +875,7 @@ end:
 static int mark_read(struct conversations *conv, const sid_t *their_sid, const char *offset_str){
   int ret=0;
   if (conv){
-    int cmp = their_sid?memcmp(conv->them.binary, their_sid->binary, sizeof(sid_t)):0;
+    int cmp = their_sid ? cmp_sid_t(&conv->them, their_sid) : 0;
     if (!their_sid || cmp<0){
       ret+=mark_read(conv->_left, their_sid, offset_str);
     }
