@@ -78,7 +78,7 @@ int create_rhizome_datastore_dir()
 sqlite3 *rhizome_db=NULL;
 
 /* XXX Requires a messy join that might be slow. */
-int rhizome_manifest_priority(sqlite_retry_state *retry, const char *id)
+int rhizome_manifest_priority(sqlite_retry_state *retry, const rhizome_bid_t *bidp)
 {
   int64_t result = 0;
   if (sqlite_exec_int64_retry(retry, &result,
@@ -86,7 +86,8 @@ int rhizome_manifest_priority(sqlite_retry_state *retry, const char *id)
 	" WHERE MANIFESTS.id = ?"
 	"   AND GROUPLIST.id = GROUPMEMBERSHIPS.groupid"
 	"   AND GROUPMEMBERSHIPS.manifestid = MANIFESTS.id;",
-	TEXT_TOUPPER, id, END
+	RHIZOME_BID_T, bidp,
+	END
       ) == -1
   )
     return -1;
@@ -933,12 +934,12 @@ int64_t rhizome_database_used_bytes()
   return db_page_size * (db_page_count - db_free_page_count);
 }
 
-int rhizome_database_filehash_from_id(const char *id, uint64_t version, char hash[SHA512_DIGEST_STRING_LENGTH])
+int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t version, char hash[SHA512_DIGEST_STRING_LENGTH])
 {
   IN();
   strbuf hash_sb = strbuf_local(hash, SHA512_DIGEST_STRING_LENGTH);
-  RETURN(sqlite_exec_strbuf(hash_sb, "SELECT filehash FROM MANIFESTS WHERE manifests.version = ? AND manifests.id = ?;",
-			    INT64, version, TEXT_TOUPPER, id, END));
+  RETURN(sqlite_exec_strbuf(hash_sb, "SELECT filehash FROM MANIFESTS WHERE version = ? AND id = ?;",
+			    INT64, version, RHIZOME_BID_T, bidp, END));
   OUT();
 }
 
@@ -1091,10 +1092,10 @@ int rhizome_make_space(int group_priority, long long bytes)
   return WHY("Incomplete");
 }
 
-/* Drop the specified file from storage, and any manifests that reference it, 
-   provided that none of those manifests are being retained at a higher priority
-   than the maximum specified here. */
-int rhizome_drop_stored_file(const char *id,int maximum_priority)
+/* Drop the specified file from storage, and any manifests that reference it, provided that none of
+ * those manifests are being retained at a higher priority than the maximum specified here.
+ */
+int rhizome_drop_stored_file(const char *id, int maximum_priority)
 {
   if (!rhizome_str_is_file_hash(id))
     return WHYF("invalid file hash id=%s", alloca_str_toprint(id));
@@ -1109,23 +1110,28 @@ int rhizome_drop_stored_file(const char *id,int maximum_priority)
       WHYF("Incorrect type in id column of manifests table");
       break;
     }
-    const char *manifestId = (char *) sqlite3_column_text(statement, 0);
+    const char *q_id = (char *) sqlite3_column_text(statement, 0);
+    rhizome_bid_t bid;
+    if (str_to_rhizome_bid_t(&bid, q_id) == -1) {
+      WARNF("malformed column value MANIFESTS.id = %s -- skipped", alloca_str_toprint(q_id));
+      continue;
+    }
     /* Check that manifest is not part of a higher priority group.
 	If so, we cannot drop the manifest or the file.
 	However, we will keep iterating, as we can still drop any other manifests pointing to this file
 	that are lower priority, and thus free up a little space. */
-    int priority = rhizome_manifest_priority(&retry, manifestId);
+    int priority = rhizome_manifest_priority(&retry, &bid);
     if (priority == -1)
-      WHYF("Cannot drop fileid=%s due to error, manifestId=%s", id, manifestId);
+      WHYF("Cannot drop fileid=%s due to error, bid=%s", id, alloca_tohex_rhizome_bid_t(bid));
     else if (priority > maximum_priority) {
-      WHYF("Cannot drop fileid=%s due to manifest priority, manifestId=%s", id, manifestId);
+      WHYF("Cannot drop fileid=%s due to manifest priority, bid=%s", id, alloca_tohex_rhizome_bid_t(bid));
       can_drop = 0;
     } else {
       if (config.debug.rhizome)
 	DEBUGF("removing stale manifests, groupmemberships");
-      sqlite_exec_void_retry(&retry, "delete from manifests where id = ?;", TEXT_TOUPPER, manifestId, END);
-      sqlite_exec_void_retry(&retry, "delete from keypairs where public = ?;", TEXT_TOUPPER, manifestId, END);
-      sqlite_exec_void_retry(&retry, "delete from groupmemberships where manifestid = ?;", TEXT_TOUPPER, manifestId, END);
+      sqlite_exec_void_retry(&retry, "DELETE FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &bid, END);
+      sqlite_exec_void_retry(&retry, "DELETE FROM KEYPAIRS WHERE public = ?;", RHIZOME_BID_T, &bid, END);
+      sqlite_exec_void_retry(&retry, "DELETE FROM GROUPMEMBERSHIPS WHERE manifestid = ?;", RHIZOME_BID_T, &bid, END);
     }
   }
   sqlite3_finalize(statement);
@@ -1795,7 +1801,7 @@ static int is_interesting(const char *id_hex, int64_t version)
 
   // do we have this bundle [or later]?
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare_bind(&retry, 
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
     "SELECT filehash FROM manifests WHERE id like ? and version >= ?",
     TEXT_TOUPPER, id_hex,
     INT64, version,

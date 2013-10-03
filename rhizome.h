@@ -259,7 +259,7 @@ sqlite_retry_state sqlite_retry_state_init(int serverLimit, int serverSleep, int
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename, char append);
 int rhizome_manifest_selfsign(rhizome_manifest *m);
 int rhizome_drop_stored_file(const char *id,int maximum_priority);
-int rhizome_manifest_priority(sqlite_retry_state *retry, const char *id);
+int rhizome_manifest_priority(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
 int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bufferPAndSize);
 int rhizome_hash_file(rhizome_manifest *m, const char *filename,char *hash_out);
 char *rhizome_manifest_get(const rhizome_manifest *m, const char *var, char *out, int maxlen);
@@ -773,7 +773,7 @@ int rhizome_read_cached(const rhizome_bid_t *bid, uint64_t version, time_ms_t ti
   uint64_t fileOffset, unsigned char *buffer, int length);
 int rhizome_cache_close();
 
-int rhizome_database_filehash_from_id(const char *id, uint64_t version, char hash[SHA512_DIGEST_STRING_LENGTH]);
+int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t version, char hash[SHA512_DIGEST_STRING_LENGTH]);
 
 
 int overlay_mdp_service_rhizome_sync(struct overlay_frame *frame, overlay_mdp_frame *mdp);

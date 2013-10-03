@@ -989,10 +989,8 @@ int rhizome_read_cached(const rhizome_bid_t *bidp, uint64_t version, time_ms_t t
   
   // if we don't have one yet, create one and open it
   if (!entry){
-    char *id_str = alloca_tohex_rhizome_bid_t(*bidp);
-    
     char filehash[SHA512_DIGEST_STRING_LENGTH];
-    if (rhizome_database_filehash_from_id(id_str, version, filehash)<=0)
+    if (rhizome_database_filehash_from_id(bidp, version, filehash) == -1)
       return -1;
     
     entry = emalloc_zero(sizeof(struct cache_entry));
