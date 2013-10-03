@@ -303,6 +303,8 @@ enum sqlbind_type {
   INT64,	    // int64_t value
   INT64_TOSTR,	    // int64_t value
   UINT64_TOSTR,	    // uint64_t value
+  TEXT,	            // const char *text,
+  TEXT_LEN,         // const char *text, int bytes
   STATIC_TEXT,	    // const char *text,
   STATIC_TEXT_LEN,  // const char *text, int bytes
   STATIC_BLOB,	    // const void *blob, int bytes

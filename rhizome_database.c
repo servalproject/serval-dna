@@ -565,6 +565,19 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	  BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
 	}
 	break;
+      case TEXT: {
+	  const char *text = va_arg(ap, const char *);
+	  BIND_DEBUG(TEXT, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(text));
+	  BIND_RETRY(sqlite3_bind_text, text, -1, SQLITE_TRANSIENT);
+	}
+	break;
+      case TEXT_LEN: {
+	  const char *text = va_arg(ap, const char *);
+	  int bytes = va_arg(ap, int);
+	  BIND_DEBUG(TEXT_LEN, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", alloca_str_toprint(text), bytes);
+	  BIND_RETRY(sqlite3_bind_text, text, bytes, SQLITE_TRANSIENT);
+	}
+	break;
       case STATIC_TEXT: {
 	  const char *text = va_arg(ap, const char *);
 	  BIND_DEBUG(STATIC_TEXT, sqlite3_bind_text, "%s,-1,SQLITE_STATIC", alloca_str_toprint(text));
