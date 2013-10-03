@@ -545,8 +545,8 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	}
 	break;
       case INT64: {
-	  int64_t value = va_arg(ap, int64_t);
-	  BIND_DEBUG(INT64, sqlite3_bind_int64, "%"PRId64, value);
+	  sqlite3_int64 value = va_arg(ap, int64_t);
+	  BIND_DEBUG(INT64, sqlite3_bind_int64, "%"PRId64, (int64_t)value);
 	  BIND_RETRY(sqlite3_bind_int64, value);
 	}
 	break;
@@ -1642,12 +1642,12 @@ static int unpack_manifest_row(rhizome_manifest *m, sqlite3_stmt *statement)
  * Returns -1 on error
  * Caller is responsible for allocating and freeing rhizome_manifest
  */
-int rhizome_retrieve_manifest(const rhizome_bid_t *bid, rhizome_manifest *m)
+int rhizome_retrieve_manifest(const rhizome_bid_t *bidp, rhizome_manifest *m)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
       "SELECT id, manifest, version, inserttime, author FROM manifests WHERE id = ?",
-      RHIZOME_BID_T, bid,
+      RHIZOME_BID_T, bidp,
       END);
   if (!statement)
     return -1;
@@ -1655,7 +1655,7 @@ int rhizome_retrieve_manifest(const rhizome_bid_t *bid, rhizome_manifest *m)
   if (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
     ret = unpack_manifest_row(m, statement);
   else
-    INFOF("Manifest id=%s not found", alloca_tohex_rhizome_bid_t(*bid));
+    INFOF("Manifest id=%s not found", alloca_tohex_rhizome_bid_t(*bidp));
   sqlite3_finalize(statement);
   return ret;
 }

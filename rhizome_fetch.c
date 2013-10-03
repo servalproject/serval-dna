@@ -869,7 +869,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 
   if (config.debug.rhizome_rx) {
     int64_t stored_version;
-    if (sqlite_exec_int64(&stored_version, "SELECT version FROM MANIFESTS WHERE id = ?", RHIZOME_BID_T, m->cryptoSignPublic, END) > 0)
+    if (sqlite_exec_int64(&stored_version, "SELECT version FROM MANIFESTS WHERE id = ?", RHIZOME_BID_T, &m->cryptoSignPublic, END) > 0)
       DEBUGF("   is new (have version %"PRId64")", stored_version);
   }
 
@@ -1301,11 +1301,16 @@ int rhizome_write_complete(struct rhizome_fetch_slot *slot)
     }
   }
 
-  if (config.debug.rhizome_rx)
+  if (config.debug.rhizome_rx) {
+    time_ms_t now = gettime_ms();
+    time_ms_t interval = now - slot->start_time;
+    if (interval <= 0)
+      interval = 1;
     DEBUGF("Closing rhizome fetch slot = 0x%p.  Received %lld bytes in %lldms (%lldKB/sec).",
            slot,(long long)slot->write_state.file_offset,
-           (long long)gettime_ms()-slot->start_time,
-           (long long)(slot->write_state.file_offset)/(gettime_ms()-slot->start_time));
+           (long long)interval,
+           (long long)((slot->write_state.file_offset) / interval));
+  }
 
   rhizome_fetch_close(slot);
   RETURN(-1);

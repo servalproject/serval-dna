@@ -139,8 +139,7 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
   
   /* Do we already have this manifest or newer? */
   int64_t dbVersion = -1;
-  const char *id=rhizome_manifest_get(m, "id", NULL, 0);
-  if (sqlite_exec_int64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id = ?;", TEXT_TOUPPER, id, END) == -1)
+  if (sqlite_exec_int64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &m->cryptoSignPublic, END) == -1)
     return WHY("Select failure");
 
   if (dbVersion>=m->version)
@@ -261,14 +260,12 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
   }
 
   /* If the manifest already has an ID */
-  char id[SID_STRLEN + 1];
-  if (!rhizome_manifest_get(m_in, "id", id, SID_STRLEN + 1))
-  /* no manifest ID */
+  if (rhizome_bid_t_is_zero(m_in->cryptoSignPublic))
     return WHY("Manifest does not have an ID");   
   
   /* Discard the new manifest unless it is newer than the most recent known version with the same ID */
   int64_t storedversion = -1;
-  switch (sqlite_exec_int64(&storedversion, "SELECT version FROM MANIFESTS WHERE id = ?;", TEXT_TOUPPER, id, END)) {
+  switch (sqlite_exec_int64(&storedversion, "SELECT version FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &m_in->cryptoSignPublic, END)) {
     case -1:
       return WHY("Select failed");
     case 0:
@@ -280,7 +277,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
       if (m_in->version < storedversion)
 	return WHY("Newer version exists");
       if (m_in->version == storedversion)
-	return WHYF("Already have %s:%"PRId64", not adding", id, m_in->version);
+	return WHYF("Already have %s:%"PRId64", not adding", alloca_tohex_rhizome_bid_t(m_in->cryptoSignPublic), m_in->version);
       break;
     default:
       return WHY("Select found too many rows!");
@@ -288,12 +285,6 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
 
   /* Okay, it is written, and can be put directly into the rhizome database now */
   return rhizome_store_bundle(m_in);
-}
-
-/* Update an existing Rhizome bundle */
-int rhizome_bundle_push_update(char *id,long long version,unsigned char *data,int appendP)
-{
-  return WHY("Not implemented");
 }
 
 /* When voice traffic is being carried, we need to throttle Rhizome down

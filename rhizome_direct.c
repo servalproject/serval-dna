@@ -417,8 +417,8 @@ rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int pref
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
       "SELECT manifest, rowid FROM MANIFESTS WHERE id >= ? AND id <= ?",
-      RHIZOME_BID_T, low,
-      RHIZOME_BID_T, high,
+      RHIZOME_BID_T, &low,
+      RHIZOME_BID_T, &high,
       END);
   sqlite3_blob *blob=NULL;
   if (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
@@ -731,10 +731,10 @@ void rhizome_direct_bundle_iterator_free(rhizome_direct_bundle_cursor **c)
    it is possible to make provably complete comparison of the contents
    of the respective rhizome databases.
 */
-int rhizome_direct_get_bars(const rhizome_bid_t *bid_low,
-			    rhizome_bid_t *bid_high,
+int rhizome_direct_get_bars(const rhizome_bid_t *bidp_low,
+			    rhizome_bid_t *bidp_high,
 			    int64_t size_low, int64_t size_high,
-			    const rhizome_bid_t *bid_max,
+			    const rhizome_bid_t *bidp_max,
 			    unsigned char *bars_out,
 			    int bars_requested)
 {
@@ -746,8 +746,8 @@ int rhizome_direct_get_bars(const rhizome_bid_t *bid_low,
       " ORDER BY bar LIMIT ?;",
       INT64, size_low,
       INT64, size_high,
-      RHIZOME_BID_T, bid_low,
-      RHIZOME_BID_T, bid_high,
+      RHIZOME_BID_T, bidp_low,
+      RHIZOME_BID_T, bidp_max,
       INT, bars_requested,
       // The following formulation doesn't remove the weird returning of
       // bundles with out of range filesize values
@@ -797,7 +797,7 @@ int rhizome_direct_get_bars(const rhizome_bid_t *bid_low,
 
 	/* Remember the BID so that we cant write it into bid_high so that the
 	   caller knows how far we got. */
-	str_to_rhizome_bid_t(bid_high, (const char *)sqlite3_column_text(statement, 2));
+	str_to_rhizome_bid_t(bidp_high, (const char *)sqlite3_column_text(statement, 2));
 
 	bars_written++;
 	break;
