@@ -229,7 +229,7 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in)
       return WHYF("Failed to obtain RS for %s to calculate BK",
 		 alloca_tohex_sid(m_in->author));
     }
-    if (!rhizome_secret2bk(m_in->cryptoSignPublic,rs,rs_len,bkbytes,m_in->cryptoSignSecret)) {
+    if (!rhizome_secret2bk(&m_in->cryptoSignPublic, rs, rs_len, bkbytes, m_in->cryptoSignSecret)) {
       char bkhex[RHIZOME_BUNDLE_KEY_STRLEN + 1];
       (void) tohex(bkhex, bkbytes, RHIZOME_BUNDLE_KEY_BYTES);
       if (config.debug.rhizome) DEBUGF("set BK=%s", bkhex);

@@ -84,7 +84,7 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
 
   /* Manifest prefix */
   for(i=0;i<RHIZOME_BAR_PREFIX_BYTES;i++) 
-    bar[RHIZOME_BAR_PREFIX_OFFSET+i]=m->cryptoSignPublic[i];
+    bar[RHIZOME_BAR_PREFIX_OFFSET+i]=m->cryptoSignPublic.binary[i];
   /* file length */
   bar[RHIZOME_BAR_FILESIZE_OFFSET]=log2ll(m->fileLength);
   /* Version */
@@ -268,7 +268,7 @@ int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m){
   if (overlay_payload_enqueue(frame)) goto error;
   if (config.debug.rhizome_ads)
     DEBUGF("Advertising manifest %s %"PRId64" to %s", 
-      alloca_tohex_bid(m->cryptoSignPublic), m->version, dest?alloca_tohex_sid(dest->sid):"broadcast");
+      alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, dest?alloca_tohex_sid(dest->sid):"broadcast");
   return 0;
   
 error:
@@ -339,7 +339,7 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
 	 (that is the only use of this */
       if (config.debug.rhizome_ads){
 	long long version = rhizome_manifest_get_ll(m, "version");
-	DEBUGF("manifest id=%s version=%lld", alloca_tohex_bid(m->cryptoSignPublic), version);
+	DEBUGF("manifest id=%s version=%lld", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), version);
       }
 
       /* Crude signature presence test */
@@ -352,10 +352,10 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
 	goto next;
       }
 
-      if (rhizome_ignore_manifest_check(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES)){
+      if (rhizome_ignore_manifest_check(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary)){
 	/* Ignoring manifest that has caused us problems recently */
 	if (config.debug.rhizome_ads)
-	  DEBUGF("Ignoring manifest with errors: %s", alloca_tohex_bid(m->cryptoSignPublic));
+	  DEBUGF("Ignoring manifest with errors: %s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
 	goto next;
       }
 
@@ -364,14 +364,13 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
 	  DEBUG("Unverified manifest has errors - so not processing any further.");
 	/* Don't waste any time on this manifest in future attempts for at least
 	     a minute. */
-	rhizome_queue_ignore_manifest(m->cryptoSignPublic,
-					RHIZOME_MANIFEST_ID_BYTES, 60000);
+	rhizome_queue_ignore_manifest(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, 60000);
 	goto next;
       }
       /* Manifest is okay, so see if it is worth storing */
 
       // are we already fetching this bundle [or later]?
-      rhizome_manifest *mf=rhizome_fetch_search(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES);
+      rhizome_manifest *mf=rhizome_fetch_search(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary);
       if (mf && mf->version >= m->version)
 	goto next;
 	

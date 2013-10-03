@@ -640,7 +640,7 @@ static int rhizome_write_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, stru
     return -1;
 
   if (config.debug.rhizome)
-    DEBUGF("Encrypting payload contents for %s, %"PRId64, alloca_tohex_bid(m->cryptoSignPublic), m->version);
+    DEBUGF("Encrypting payload contents for %s, %"PRId64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
 
   write->crypt=1;
   if (m->journalTail>0)
@@ -882,18 +882,18 @@ int rhizome_read_close(struct rhizome_read *read)
 struct cache_entry{
   struct cache_entry *_left;
   struct cache_entry *_right;
-  unsigned char bundle_id[RHIZOME_MANIFEST_ID_BYTES];
+  rhizome_bid_t bundle_id;
   uint64_t version;
   struct rhizome_read read_state;
   time_ms_t expires;
 };
 struct cache_entry *root;
 
-static struct cache_entry ** find_entry_location(struct cache_entry **ptr, unsigned char *bundle_id, uint64_t version)
+static struct cache_entry ** find_entry_location(struct cache_entry **ptr, const rhizome_bid_t *bundle_id, uint64_t version)
 {
   while(*ptr){
     struct cache_entry *entry = *ptr;
-    int cmp = memcmp(bundle_id, entry->bundle_id, sizeof entry->bundle_id);
+    int cmp = cmp_rhizome_bid_t(bundle_id, &entry->bundle_id);
     if (cmp==0){
       if (entry->version==version)
 	break;
@@ -931,7 +931,7 @@ static time_ms_t close_entries(struct cache_entry **entry, time_ms_t timeout)
     // re-add both children to the tree
     *entry=left;
     if (right){
-      entry = find_entry_location(entry, right->bundle_id, right->version);
+      entry = find_entry_location(entry, &right->bundle_id, right->version);
       *entry=right;
     }
   }else{
@@ -980,16 +980,16 @@ int rhizome_cache_count()
 }
 
 // read a block of data, caching meta data for reuse
-int rhizome_read_cached(unsigned char *bundle_id, uint64_t version, time_ms_t timeout, 
+int rhizome_read_cached(const rhizome_bid_t *bidp, uint64_t version, time_ms_t timeout, 
   uint64_t fileOffset, unsigned char *buffer, int length)
 {
   // look for a cached entry
-  struct cache_entry **ptr = find_entry_location(&root, bundle_id, version);
+  struct cache_entry **ptr = find_entry_location(&root, bidp, version);
   struct cache_entry *entry = *ptr;
   
   // if we don't have one yet, create one and open it
   if (!entry){
-    char *id_str = alloca_tohex_bid(bundle_id);
+    char *id_str = alloca_tohex_rhizome_bid_t(*bidp);
     
     char filehash[SHA512_DIGEST_STRING_LENGTH];
     if (rhizome_database_filehash_from_id(id_str, version, filehash)<=0)
@@ -1001,7 +1001,7 @@ int rhizome_read_cached(unsigned char *bundle_id, uint64_t version, time_ms_t ti
       free(entry);
       return WHYF("Payload %s not found", filehash);
     }
-    bcopy(bundle_id, entry->bundle_id, sizeof(entry->bundle_id));
+    entry->bundle_id = *bidp;
     entry->version = version;
     *ptr = entry;
   }
@@ -1065,7 +1065,7 @@ static int read_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizom
       return WHY("Unable to decrypt bundle, valid key not found");
     }
     if (config.debug.rhizome)
-      DEBUGF("Decrypting payload contents for %s, %"PRId64, alloca_tohex_bid(m->cryptoSignPublic), m->version);
+      DEBUGF("Decrypting payload contents for %s, %"PRId64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
     
     if (m->journalTail>0)
       read_state->tail = m->journalTail;

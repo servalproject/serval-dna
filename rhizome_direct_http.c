@@ -1046,10 +1046,10 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	   c->size_high,c->limit_size_high);
     DEBUGF("c->buffer_size=%d",c->buffer_size);
     r->cursor->size_low=c->limit_size_high;
-    bcopy(c->limit_bid_high,r->cursor->bid_low,4);
     /* Set tail of BID to all high, as we assume the far end has returned all
        BIDs with the specified prefix. */
-    memset(&r->cursor->bid_low[4],0xff,RHIZOME_MANIFEST_ID_BYTES);
+    r->cursor->bid_low = RHIZOME_BID_MAX;
+    bcopy(c->limit_bid_high.binary, r->cursor->bid_low.binary, 4);
   }
   rhizome_direct_bundle_iterator_free(&c);
 #endif

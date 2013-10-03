@@ -11,7 +11,7 @@
 
 // the manifest details for one half of a conversation
 struct ply{
-  char bundle_id[RHIZOME_MANIFEST_ID_STRLEN+1];
+  rhizome_bid_t bundle_id;
   uint64_t version;
   uint64_t tail;
   uint64_t size;
@@ -134,14 +134,19 @@ static int get_database_conversations(const sid_t *my_sid, const sid_t *their_si
     DEBUGF("Looking for conversations for %s, %s", my_sid_hex, their_sid_hex);
   }
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
-    const char *id = (const char *)sqlite3_column_text(statement, 0);
+    const char *id_hex = (const char *)sqlite3_column_text(statement, 0);
     long long version = sqlite3_column_int64(statement, 1);
     long long size = sqlite3_column_int64(statement, 2);
     long long tail = sqlite3_column_int64(statement, 3);
     const char *sender = (const char *)sqlite3_column_text(statement, 4);
     const char *recipient = (const char *)sqlite3_column_text(statement, 5);
     if (config.debug.meshms)
-      DEBUGF("found id %s, sender %s, recipient %s", id, sender, recipient);
+      DEBUGF("found id %s, sender %s, recipient %s", id_hex, sender, recipient);
+    rhizome_bid_t bid;
+    if (str_to_rhizome_bid_t(&bid, id_hex) == -1) {
+      WHYF("invalid Bundle ID hex: %s -- skipping", alloca_str_toprint(id_hex));
+      continue;
+    }
     const char *them = recipient;
     sid_t their_sid;
     if (str_to_sid_t(&their_sid, them) == -1) {
@@ -166,7 +171,7 @@ static int get_database_conversations(const sid_t *my_sid, const sid_t *their_si
       ptr->found_my_ply=1;
       p=&ptr->my_ply;
     }
-    strncpy(p->bundle_id, id, RHIZOME_MANIFEST_ID_STRLEN+1);
+    p->bundle_id = bid;
     p->version = version;
     p->tail = tail;
     p->size = size;
@@ -194,12 +199,10 @@ static int create_ply(const sid_t *my_sid, struct conversations *conv, rhizome_m
   rhizome_manifest_set(m, "sender", my_sidhex);
   rhizome_manifest_set(m, "recipient", their_sidhex);
   rhizome_manifest_set_ll(m, "tail", m->journalTail);
-  
   if (rhizome_fill_manifest(m, NULL, my_sid, NULL))
     return -1;
-  
-  rhizome_manifest_get(m, "id", conv->my_ply.bundle_id, sizeof(conv->my_ply.bundle_id));
-  conv->found_my_ply=1;
+  conv->my_ply.bundle_id = m->cryptoSignPublic;
+  conv->found_my_ply = 1;
   return 0;
 }
 
@@ -209,14 +212,15 @@ static int append_footer(unsigned char *buffer, char type, int payload_len){
   return 2;
 }
 
-static int ply_read_open(struct ply_read *ply, const char *id, rhizome_manifest *m){
+static int ply_read_open(struct ply_read *ply, const rhizome_bid_t *bid, rhizome_manifest *m)
+{
   if (config.debug.meshms)
-    DEBUGF("Opening ply %s", id);
-  if (rhizome_retrieve_manifest(id, m))
+    DEBUGF("Opening ply %s", alloca_tohex_rhizome_bid_t(*bid));
+  if (rhizome_retrieve_manifest(bid, m))
     return -1;
   int ret = rhizome_open_decrypt_read(m, NULL, &ply->read);
   if (ret>0)
-    WARNF("Payload was not found for manifest %s, %"PRId64, alloca_tohex_bid(m->cryptoSignPublic), m->version);
+    WARNF("Payload was not found for manifest %s, %"PRId64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
   if (ret)
     return ret;
   ply->read.offset = ply->read.length = m->fileLength;
@@ -297,7 +301,7 @@ static int append_meshms_buffer(const sid_t *my_sid, struct conversations *conv,
     goto end;
   
   if (conv->found_my_ply){
-    if (rhizome_retrieve_manifest(conv->my_ply.bundle_id, m))
+    if (rhizome_retrieve_manifest(&conv->my_ply.bundle_id, m))
       goto end;
     // set the author of the manifest as we should already know that
     bcopy(my_sid->binary, m->author, sizeof(m->author));
@@ -347,10 +351,10 @@ static int update_conversation(const sid_t *my_sid, struct conversations *conv){
     DEBUG("Locating their last message");
     
   // find the offset of their last message
-  if (rhizome_retrieve_manifest(conv->their_ply.bundle_id, m_theirs))
+  if (rhizome_retrieve_manifest(&conv->their_ply.bundle_id, m_theirs))
     goto end;
   
-  if (ply_read_open(&ply, conv->their_ply.bundle_id, m_theirs))
+  if (ply_read_open(&ply, &conv->their_ply.bundle_id, m_theirs))
     goto end;
     
   ret = ply_find_next(&ply, MESHMS_BLOCK_TYPE_MESSAGE);
@@ -382,10 +386,10 @@ static int update_conversation(const sid_t *my_sid, struct conversations *conv){
     m_ours = rhizome_new_manifest();
     if (!m_ours)
       goto end;
-    if (rhizome_retrieve_manifest(conv->my_ply.bundle_id, m_ours))
+    if (rhizome_retrieve_manifest(&conv->my_ply.bundle_id, m_ours))
       goto end;
     
-    if (ply_read_open(&ply, conv->my_ply.bundle_id, m_ours))
+    if (ply_read_open(&ply, &conv->my_ply.bundle_id, m_ours))
       goto end;
       
     ret = ply_find_next(&ply, MESHMS_BLOCK_TYPE_ACK);
@@ -767,7 +771,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
   m_ours = rhizome_new_manifest();
   if (!m_ours)
     goto end;
-  if (ply_read_open(&read_ours, conv->my_ply.bundle_id, m_ours))
+  if (ply_read_open(&read_ours, &conv->my_ply.bundle_id, m_ours))
     goto end;
   
   uint64_t their_last_ack=0;
@@ -778,7 +782,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
     m_theirs = rhizome_new_manifest();
     if (!m_theirs)
       goto end;
-    if (ply_read_open(&read_theirs, conv->their_ply.bundle_id, m_theirs))
+    if (ply_read_open(&read_theirs, &conv->their_ply.bundle_id, m_theirs))
       goto end;
       
     // find their last ACK so we know if messages have been received

@@ -191,22 +191,19 @@ int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r)
   if (r->cursor->size_high>=r->cursor->limit_size_high)
     {
       DEBUG("Out of bins");
-      if (memcmp(r->cursor->bid_low,r->cursor->limit_bid_high,
-		 RHIZOME_MANIFEST_ID_BYTES)>=0)
-	{
-	  DEBUG("out of BIDs");
-	  /* Sync has finished.
-	     The transport may have initiated one or more transfers, so
-	     we cannot declare the sync complete until we know the transport
-	     has finished transferring. */
-	  if (!r->bundle_transfers_in_progress)
-	    {
-	      /* seems that all is done */
-	      DEBUG("All done");
-	      return rhizome_direct_conclude_sync_request(r);
-	    } else 
-	    DEBUG("Stuck on in-progress transfers");
-	} else
+      if (cmp_rhizome_bid_t(&r->cursor->bid_low, &r->cursor->limit_bid_high) >= 0) {
+	DEBUG("out of BIDs");
+	/* Sync has finished.
+	    The transport may have initiated one or more transfers, so
+	    we cannot declare the sync complete until we know the transport
+	    has finished transferring. */
+	if (!r->bundle_transfers_in_progress) {
+	  /* seems that all is done */
+	  DEBUG("All done");
+	  return rhizome_direct_conclude_sync_request(r);
+	} else 
+	DEBUG("Stuck on in-progress transfers");
+      } else
 	DEBUGF("bid_low<limit_bid_high");
     }
 
@@ -411,21 +408,17 @@ rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int pref
      Easiest way is to select with a BID range.  We could instead have an extra
      database column with the prefix.
   */
-  assert(prefix_length>=0);
-  assert(prefix_length<=RHIZOME_MANIFEST_ID_BYTES);
-  unsigned char low[RHIZOME_MANIFEST_ID_BYTES];
-  unsigned char high[RHIZOME_MANIFEST_ID_BYTES];
-
-  memset(low,0x00,RHIZOME_MANIFEST_ID_BYTES);
-  memset(high,0xff,RHIZOME_MANIFEST_ID_BYTES);
-  bcopy(bid_prefix,low,prefix_length);
-  bcopy(bid_prefix,high,prefix_length);
-
+  rhizome_bid_t low = RHIZOME_BID_ZERO;
+  rhizome_bid_t high = RHIZOME_BID_MAX;
+  assert(prefix_length >= 0);
+  assert(prefix_length <= sizeof(rhizome_bid_t));
+  bcopy(bid_prefix, low.binary, prefix_length);
+  bcopy(bid_prefix, high.binary, prefix_length);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
       "SELECT manifest, rowid FROM MANIFESTS WHERE id >= ? AND id <= ?",
-      BUNDLE_ID_T, low,
-      BUNDLE_ID_T, high,
+      RHIZOME_BID_T, low,
+      RHIZOME_BID_T, high,
       END);
   sqlite3_blob *blob=NULL;
   if (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
@@ -563,9 +556,8 @@ rhizome_direct_bundle_cursor *rhizome_direct_bundle_iterator(int buffer_size)
 void rhizome_direct_bundle_iterator_unlimit(rhizome_direct_bundle_cursor *r)
 {
   assert(r!=NULL);
-
   r->limit_size_high=1LL<<48LL;
-  memset(r->limit_bid_high,0xff,RHIZOME_MANIFEST_ID_BYTES);
+  r->limit_bid_high = RHIZOME_BID_MAX;
   return;
 }
 
@@ -598,13 +590,13 @@ int rhizome_direct_bundle_iterator_pickle_range(rhizome_direct_bundle_cursor *r,
   v=r->start_size_high;
   while(v>1) { ltwov++; v=v>>1; }
   pickled[0]=ltwov;
-  for(v=0;v<4;v++) pickled[1+v]=r->start_bid_low[v];
+  for(v=0;v<4;v++) pickled[1+v]=r->start_bid_low.binary[v];
   v=r->size_high;
   DEBUGF("pickling size_high=%"PRId64,r->size_high);
   ltwov=0;
   while(v>1) { ltwov++; v=v>>1; }
   pickled[1+4]=ltwov;
-  for(v=0;v<4;v++) pickled[1+4+1+v]=r->bid_high[v];
+  for(v=0;v<4;v++) pickled[1+4+1+v]=r->bid_high.binary[v];
 
   return 1+4+1+4;
 }
@@ -625,13 +617,13 @@ int rhizome_direct_bundle_iterator_unpickle_range(rhizome_direct_bundle_cursor *
   r->size_high=1LL<<pickled[0];
   r->size_low=(r->size_high/2)+1;
   if (r->size_high<=1024) r->size_low=0;
-  for(v=0;v<4;v++) r->bid_low[v]=pickled[1+v];
-  for(;v<RHIZOME_MANIFEST_ID_BYTES;v++) r->bid_low[v]=0x00;
+  r->bid_low = RHIZOME_BID_ZERO;
+  for (v=0;v<4;v++) r->bid_low.binary[v]=pickled[1+v];
 
   /* Get end of range */
   r->limit_size_high=1LL<<pickled[1+4];
-  for(v=0;v<4;v++) r->limit_bid_high[v]=pickled[1+4+1+v];
-  for(;v<RHIZOME_MANIFEST_ID_BYTES;v++) r->limit_bid_high[v]=0xff;
+  r->limit_bid_high = RHIZOME_BID_MAX;
+  for (v=0;v<4;v++) r->limit_bid_high.binary[v]=pickled[1+4+1+v];
 
   return 0;
 }
@@ -653,7 +645,7 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
   */
   /* This is the only information required to remember where we started: */
   c->start_size_high=c->size_high;
-  bcopy(c->bid_low,c->start_bid_low,RHIZOME_MANIFEST_ID_BYTES);
+  c->start_bid_low = c->bid_low;
   c->buffer_offset_bytes=1+4+1+4; /* space for pickled cursor range */
 
   /* -1 is magic value for fill right up */
@@ -674,17 +666,15 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
 	 If we are not yet at the bundle data size limit, then any bundle is okay.
 	 If we are at the bundle data size limit, then we need to honour
 	 c->limit_bid_high. */
-      unsigned char bid_max[RHIZOME_MANIFEST_ID_BYTES];
-      if (c->size_high==c->limit_size_high)
-	bcopy(c->limit_bid_high,bid_max,RHIZOME_MANIFEST_ID_BYTES);
+      rhizome_bid_t bid_max;
+      if (c->size_high == c->limit_size_high)
+	bid_max = c->limit_bid_high;
       else
-	memset(bid_max,0xff,RHIZOME_MANIFEST_ID_BYTES);
-
-      int stuffed_now=rhizome_direct_get_bars(c->bid_low,c->bid_high,
-					      c->size_low,c->size_high,
-					      bid_max,
-					      &c->buffer[c->buffer_used
-							 +c->buffer_offset_bytes],
+	bid_max = RHIZOME_BID_MAX;
+      int stuffed_now=rhizome_direct_get_bars(&c->bid_low, &c->bid_high,
+					      c->size_low, c->size_high,
+					      &bid_max,
+					      &c->buffer[c->buffer_used + c->buffer_offset_bytes],
 					      stuffable);
       bundles_stuffed+=stuffed_now;
       c->buffer_used+=RHIZOME_BAR_BYTES*stuffed_now;
@@ -695,20 +685,19 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
 	if (c->size_high<=1024) c->size_low=0;
 	DEBUGF("size=%"PRId64"..%"PRId64,c->size_low,c->size_high);
 	/* Record that we covered to the end of that size bin */
-	memset(c->bid_high,0xff,RHIZOME_MANIFEST_ID_BYTES);
+	c->bid_high = RHIZOME_BID_MAX;
 	if (c->size_high>c->limit_size_high)
-	  memset(c->bid_low,0xff,RHIZOME_MANIFEST_ID_BYTES);
+	  c->bid_low = RHIZOME_BID_MAX;
 	else
-	  memset(c->bid_low,0x00,RHIZOME_MANIFEST_ID_BYTES);
+	  c->bid_low = RHIZOME_BID_ZERO;
       } else {
 	/* Continue from next BID */
-	bcopy(c->bid_high,c->bid_low,RHIZOME_MANIFEST_ID_BYTES);
+	c->bid_low = c->bid_high;
 	int i;
-	for(i=RHIZOME_BAR_BYTES-1;i>=0;i--)
-	  {
-	    c->bid_low[i]++;
-	    if (c->bid_low[i]) break;
-	  }
+	for(i=RHIZOME_BAR_BYTES-1;i>=0;i--) {
+	  if (++c->bid_low.binary[i])
+	    break;
+	}
 	if (i<0) break;
       }
     }  
@@ -742,10 +731,10 @@ void rhizome_direct_bundle_iterator_free(rhizome_direct_bundle_cursor **c)
    it is possible to make provably complete comparison of the contents
    of the respective rhizome databases.
 */
-int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTES],
-			    unsigned char bid_high[RHIZOME_MANIFEST_ID_BYTES],
+int rhizome_direct_get_bars(const rhizome_bid_t *bid_low,
+			    rhizome_bid_t *bid_high,
 			    int64_t size_low, int64_t size_high,
-			    const unsigned char bid_max[RHIZOME_MANIFEST_ID_BYTES],
+			    const rhizome_bid_t *bid_max,
 			    unsigned char *bars_out,
 			    int bars_requested)
 {
@@ -757,8 +746,8 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
       " ORDER BY bar LIMIT ?;",
       INT64, size_low,
       INT64, size_high,
-      BUNDLE_ID_T, bid_low,
-      BUNDLE_ID_T, bid_high,
+      RHIZOME_BID_T, bid_low,
+      RHIZOME_BID_T, bid_high,
       INT, bars_requested,
       // The following formulation doesn't remove the weird returning of
       // bundles with out of range filesize values
@@ -808,9 +797,7 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
 
 	/* Remember the BID so that we cant write it into bid_high so that the
 	   caller knows how far we got. */
-	fromhex(bid_high,
-		(const char *)sqlite3_column_text(statement, 2),
-		RHIZOME_MANIFEST_ID_BYTES);
+	str_to_rhizome_bid_t(bid_high, (const char *)sqlite3_column_text(statement, 2));
 
 	bars_written++;
 	break;
@@ -826,4 +813,4 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
   
   return bars_written;
 }
-  
+

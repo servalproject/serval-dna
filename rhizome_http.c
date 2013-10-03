@@ -497,13 +497,13 @@ static int manifest_by_prefix_page(rhizome_http_request *r, const char *remainde
 {
   if (!is_rhizome_http_enabled())
     return 1;
-    
-  char id_hex[RHIZOME_MANIFEST_ID_STRLEN+1];
-  strncpy(id_hex, remainder, sizeof id_hex -1);
-  str_toupper_inplace(id_hex);
-  strcat(id_hex, "%");
+  rhizome_bid_t prefix;
+  const char *endp = NULL;
+  unsigned prefix_len = strn_fromhex(prefix.binary, sizeof prefix.binary, remainder, &endp);
+  if (endp == NULL || *endp != '\0' || prefix_len < 1)
+    return 1; // not found
   rhizome_manifest *m = rhizome_new_manifest();
-  int ret = rhizome_retrieve_manifest(id_hex, m);
+  int ret = rhizome_retrieve_manifest_by_prefix(prefix.binary, prefix_len, m);
   if (ret==0)
     rhizome_server_http_response(r, 200, "application/binary", (const char *)m->manifestdata, m->manifest_all_bytes);
   rhizome_manifest_free(m);

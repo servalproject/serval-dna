@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdlib.h>
 #include <time.h>
 #include <ctype.h>
+#include <assert.h>
 #include "serval.h"
 #include "conf.h"
 #include "rhizome.h"
@@ -30,9 +31,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 static char rhizome_thisdatastore_path[256];
 
-static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const char *manifestid);
+static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
 static int rhizome_delete_file_retry(sqlite_retry_state *retry, const char *fileid);
-static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const char *manifestid);
+static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
 
 const char *rhizome_datastore_path()
 {
@@ -611,9 +612,10 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	  BIND_RETRY(sqlite3_bind_text, sid_hex, SID_STRLEN, SQLITE_TRANSIENT);
 	}
 	break;
-      case BUNDLE_ID_T: {
-	  const char *bid_hex = alloca_tohex(va_arg(ap, const unsigned char *), RHIZOME_MANIFEST_ID_BYTES);
-	  BIND_DEBUG(BUNDLE_ID_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", bid_hex, RHIZOME_MANIFEST_ID_STRLEN);
+      case RHIZOME_BID_T: {
+	  const rhizome_bid_t *bidp = va_arg(ap, const rhizome_bid_t *);
+	  const char *bid_hex = alloca_tohex_rhizome_bid_t(*bidp);
+	  BIND_DEBUG(RHIZOME_BID_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", bid_hex, RHIZOME_MANIFEST_ID_STRLEN);
 	  BIND_RETRY(sqlite3_bind_text, bid_hex, RHIZOME_MANIFEST_ID_STRLEN, SQLITE_TRANSIENT);
 	}
 	break;
@@ -1288,7 +1290,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
     const char *service = rhizome_manifest_get(m, "service", NULL, 0);
     INFOF("RHIZOME ADD MANIFEST service=%s bid=%s version=%"PRId64,
 	  service ? service : "NULL",
-	  alloca_tohex_sid(m->cryptoSignPublic),
+	  alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
 	  m->version
 	  );
     monitor_announce_bundle(m);
@@ -1448,7 +1450,7 @@ int rhizome_list_manifests(struct cli_context *context, const char *service, con
 	
 	cli_put_long(context, rowid, ":");
 	cli_put_string(context, blob_service, ":");
-	cli_put_hexvalue(context, m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES, ":");
+	cli_put_hexvalue(context, m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, ":");
 	cli_put_long(context, blob_version, ":");
 	cli_put_long(context, blob_date, ":");
 	cli_put_long(context, q_inserttime, ":");
@@ -1613,62 +1615,85 @@ next:
   return ret;
 }
 
-/* Retrieve a manifest from the database, given its manifest ID.
+static int unpack_manifest_row(rhizome_manifest *m, sqlite3_stmt *statement)
+{
+  const char *q_id = (const char *) sqlite3_column_text(statement, 0);
+  const char *q_blob = (char *) sqlite3_column_blob(statement, 1);
+  int64_t q_version = sqlite3_column_int64(statement, 2);
+  int64_t q_inserttime = sqlite3_column_int64(statement, 3);
+  const char *q_author = (const char *) sqlite3_column_text(statement, 4);
+  size_t q_blobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
+  if (rhizome_read_manifest_file(m, q_blob, q_blobsize))
+    return WHYF("Manifest %s exists but is invalid", q_id);
+  if (q_author) {
+    if (stowSid(m->author, 0, q_author) == -1)
+      WARNF("manifest id=%s contains invalid author=%s -- ignored", q_id, alloca_str_toprint(q_author));
+  }
+  if (m->version != q_version)
+    WARNF("Version mismatch, manifest is %"PRId64", database is %"PRId64, m->version, q_version);
+  m->inserttime = q_inserttime;
+  return 0;
+}
+
+/* Retrieve a manifest from the database, given its Bundle ID.
  *
  * Returns 0 if manifest is found
  * Returns 1 if manifest is not found
  * Returns -1 on error
  * Caller is responsible for allocating and freeing rhizome_manifest
  */
-int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m)
+int rhizome_retrieve_manifest(const rhizome_bid_t *bid, rhizome_manifest *m)
 {
-  int ret=0;
-  
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
-      "SELECT manifest, version, inserttime, author FROM manifests WHERE id like ?",
-      TEXT_TOUPPER, manifestid,
+      "SELECT id, manifest, version, inserttime, author FROM manifests WHERE id = ?",
+      RHIZOME_BID_T, bid,
       END);
   if (!statement)
     return -1;
-
-  if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
-    const char *manifestblob = (char *) sqlite3_column_blob(statement, 0);
-    int64_t q_version = sqlite3_column_int64(statement, 1);
-    int64_t q_inserttime = sqlite3_column_int64(statement, 2);
-    const char *q_author = (const char *) sqlite3_column_text(statement, 3);
-    size_t manifestblobsize = sqlite3_column_bytes(statement, 0); // must call after sqlite3_column_blob()
-    
-    if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize)){
-      ret=WHYF("Manifest %s exists but is invalid", manifestid);
-      goto done;
-    }
-    
-    if (q_author){
-      if (stowSid(m->author, 0, q_author) == -1)
-	WARNF("Manifest %s contains invalid author=%s -- ignored", manifestid, alloca_str_toprint(q_author));
-    }
-    
-    if (m->version!=q_version)
-      WARNF("Version mismatch, manifest is %"PRId64", database is %"PRId64, m->version, q_version);
-    
-    m->inserttime = q_inserttime;
-  }else{
-    INFOF("Manifest %s was not found", manifestid);
-    ret=1;
-  }
-  
-done:
+  int ret = 1;
+  if (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
+    ret = unpack_manifest_row(m, statement);
+  else
+    INFOF("Manifest id=%s not found", alloca_tohex_rhizome_bid_t(*bid));
   sqlite3_finalize(statement);
-  return ret;  
+  return ret;
 }
 
-static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const char *manifestid)
+/* Retrieve any manifest from the database whose Bundle ID starts with the given prefix.
+ *
+ * Returns 0 if a manifest is found
+ * Returns 1 if no manifest is found
+ * Returns -1 on error
+ * Caller is responsible for allocating and freeing rhizome_manifest
+ */
+int rhizome_retrieve_manifest_by_prefix(const unsigned char *prefix, unsigned prefix_len, rhizome_manifest *m)
+{
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  char like[prefix_len * 2 + 2];
+  tohex(like, prefix, prefix_len);
+  like[prefix_len * 2] = '%';
+  like[prefix_len * 2 + 1] = '\0';
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
+      "SELECT id, manifest, version, inserttime, author FROM manifests WHERE id like ?",
+      TEXT, like,
+      END);
+  if (!statement)
+    return -1;
+  int ret = 1;
+  if (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
+    ret = unpack_manifest_row(m, statement);
+  else
+    INFOF("Manifest with id prefix=`%s` not found", like);
+  sqlite3_finalize(statement);
+  return ret;
+}
+
+static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp)
 {
   sqlite3_stmt *statement = sqlite_prepare_bind(retry,
       "DELETE FROM manifests WHERE id = ?",
-      TEXT_TOUPPER, manifestid,
+      RHIZOME_BID_T, bidp,
       END);
   if (!statement)
     return -1;
@@ -1690,10 +1715,10 @@ static int rhizome_delete_file_retry(sqlite_retry_state *retry, const char *file
   return ret == -1 ? -1 : sqlite3_changes(rhizome_db) ? 0 : 1;
 }
 
-static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const char *manifestid)
+static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp)
 {
   strbuf fh = strbuf_alloca(RHIZOME_FILEHASH_STRLEN + 1);
-  int rows = sqlite_exec_strbuf_retry(retry, fh, "SELECT filehash FROM manifests WHERE id = ?", TEXT_TOUPPER, manifestid, END);
+  int rows = sqlite_exec_strbuf_retry(retry, fh, "SELECT filehash FROM manifests WHERE id = ?", RHIZOME_BID_T, bidp, END);
   if (rows == -1)
     return -1;
   if (rows && rhizome_delete_file_retry(retry, strbuf_str(fh)) == -1)
@@ -1709,12 +1734,12 @@ static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const char *m
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_delete_bundle(const char *manifestid)
+int rhizome_delete_bundle(const rhizome_bid_t *bidp)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  if (rhizome_delete_payload_retry(&retry, manifestid) == -1)
+  if (rhizome_delete_payload_retry(&retry, bidp) == -1)
     return -1;
-  if (rhizome_delete_manifest_retry(&retry, manifestid) == -1)
+  if (rhizome_delete_manifest_retry(&retry, bidp) == -1)
     return -1;
   return 0;
 }
@@ -1728,10 +1753,10 @@ int rhizome_delete_bundle(const char *manifestid)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_delete_manifest(const char *manifestid)
+int rhizome_delete_manifest(const rhizome_bid_t *bidp)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  return rhizome_delete_manifest_retry(&retry, manifestid);
+  return rhizome_delete_manifest_retry(&retry, bidp);
 }
 
 /* Remove a bundle's payload (file) from the database, given its manifest ID, leaving its manifest
@@ -1743,10 +1768,10 @@ int rhizome_delete_manifest(const char *manifestid)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_delete_payload(const char *manifestid)
+int rhizome_delete_payload(const rhizome_bid_t *bidp)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  return rhizome_delete_payload_retry(&retry, manifestid);
+  return rhizome_delete_payload_retry(&retry, bidp);
 }
 
 /* Remove a file from the database, given its file hash.
