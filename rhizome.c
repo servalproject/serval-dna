@@ -140,7 +140,7 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
   /* Do we already have this manifest or newer? */
   int64_t dbVersion = -1;
   const char *id=rhizome_manifest_get(m, "id", NULL, 0);
-  if (sqlite_exec_int64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id='%s';", id) == -1)
+  if (sqlite_exec_int64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id = ?;", TEXT_TOUPPER, id, END) == -1)
     return WHY("Select failure");
 
   if (dbVersion>=m->version)
@@ -266,10 +266,9 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
   /* no manifest ID */
     return WHY("Manifest does not have an ID");   
   
-  str_toupper_inplace(id);
   /* Discard the new manifest unless it is newer than the most recent known version with the same ID */
   int64_t storedversion = -1;
-  switch (sqlite_exec_int64(&storedversion, "SELECT version from manifests where id='%s';", id)) {
+  switch (sqlite_exec_int64(&storedversion, "SELECT version FROM MANIFESTS WHERE id = ?;", TEXT_TOUPPER, id, END)) {
     case -1:
       return WHY("Select failed");
     case 0:

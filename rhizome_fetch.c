@@ -857,11 +857,10 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
     RETURN(0);
   }
 
-  const char *bid = alloca_tohex_bid(m->cryptoSignPublic);
   int priority=100; /* normal priority */
 
   if (config.debug.rhizome_rx)
-    DEBUGF("Considering import bid=%s version=%"PRId64" size=%"PRId64" priority=%d:", bid, m->version, m->fileLength, priority);
+    DEBUGF("Considering import bid=%s version=%"PRId64" size=%"PRId64" priority=%d:", alloca_tohex_bid(m->cryptoSignPublic), m->version, m->fileLength, priority);
 
   if (!rhizome_is_manifest_interesting(m)) {
     if (config.debug.rhizome_rx)
@@ -872,7 +871,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 
   if (config.debug.rhizome_rx) {
     int64_t stored_version;
-    if (sqlite_exec_int64(&stored_version, "select version from manifests where id='%s'", bid) > 0)
+    if (sqlite_exec_int64(&stored_version, "SELECT version FROM MANIFESTS WHERE id = ?", BUNDLE_ID_T, m->cryptoSignPublic, END) > 0)
       DEBUGF("   is new (have version %"PRId64")", stored_version);
   }
 

@@ -421,14 +421,13 @@ rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int pref
   bcopy(bid_prefix,low,prefix_length);
   bcopy(bid_prefix,high,prefix_length);
 
-  char query[1024];
-  snprintf(query,1024,"SELECT MANIFEST,ROWID FROM MANIFESTS WHERE ID>='%s' AND ID<='%s'",
-	   alloca_tohex(low,RHIZOME_MANIFEST_ID_BYTES),
-	   alloca_tohex(high,RHIZOME_MANIFEST_ID_BYTES));
-  
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, query);
-  sqlite3_blob *blob=NULL;  
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
+      "SELECT manifest, rowid FROM MANIFESTS WHERE id >= ? AND id <= ?",
+      BUNDLE_ID_T, low,
+      BUNDLE_ID_T, high,
+      END);
+  sqlite3_blob *blob=NULL;
   if (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
     {
       int ret;
@@ -751,23 +750,20 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
 			    int bars_requested)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  char query[1024];
 
-  snprintf(query,1024,
-	   "SELECT BAR,ROWID,ID,FILESIZE FROM MANIFESTS"
-	   " WHERE"
-	   " FILESIZE BETWEEN %" PRId64 " AND %" PRId64
-	   " AND ID>='%s' AND ID<='%s'"
-	   // The following formulation doesn't remove the weird returning of
-	   // bundles with out of range filesize values
-	   //	   " WHERE ID>='%s' AND ID<='%s' AND FILESIZE > %lld AND FILESIZE < %lld"
-	   " ORDER BY BAR LIMIT %d;",
-	   size_low, size_high,
-	   alloca_tohex(bid_low,RHIZOME_MANIFEST_ID_BYTES),
-	   alloca_tohex(bid_max,RHIZOME_MANIFEST_ID_BYTES),
-	   bars_requested);
-
-  sqlite3_stmt *statement=sqlite_prepare(&retry, query);
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
+      "SELECT bar, rowid, id, filesize FROM MANIFESTS"
+      " WHERE filesize BETWEEN ? AND ? AND id >= ? AND id <= ?"
+      " ORDER BY bar LIMIT ?;",
+      INT64, size_low,
+      INT64, size_high,
+      BUNDLE_ID_T, bid_low,
+      BUNDLE_ID_T, bid_high,
+      INT, bars_requested,
+      // The following formulation doesn't remove the weird returning of
+      // bundles with out of range filesize values
+      // " WHERE id >= ? AND id <= ? AND filesize > ? AND filesize < ?"
+      END);
   sqlite3_blob *blob=NULL;  
 
   int bars_written=0;
@@ -784,8 +780,7 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
 	int ret;
 	int64_t filesize = sqlite3_column_int64(statement, 3);
 	if (filesize<size_low||filesize>size_high) {
-	  DEBUGF("WEIRDNESS ALERT: filesize=%"PRId64", but query was: %s",
-		 filesize,query);
+	  DEBUGF("WEIRDNESS ALERT: filesize=%"PRId64", but query was: %s", filesize, sqlite3_sql(statement));
 	  break;
 	} 
 	int64_t rowid = sqlite3_column_int64(statement, 1);

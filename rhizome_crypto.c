@@ -373,10 +373,9 @@ int rhizome_find_bundle_author(rhizome_manifest *m)
 	    DEBUGF("found bundle author sid=%s", alloca_tohex_sid(m->author));
 	
 	  // if this bundle is already in the database, update the author.
-	  if (m->inserttime){
+	  if (m->inserttime) {
 	    const char *id = rhizome_manifest_get(m, "id", NULL, 0);
-	    if (sqlite_exec_void("UPDATE MANIFESTS SET author='%s' WHERE id='%s';", alloca_tohex_sid(m->author), id) == -1)
-	      WARN("Error updating MANIFESTS author column");
+	    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "UPDATE MANIFESTS SET author = ? WHERE id = ?;", SID_T, (sid_t*)m->author, TEXT_TOUPPER, id, END);
 	  }
 	}
 	

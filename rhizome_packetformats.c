@@ -134,38 +134,43 @@ uint64_t rhizome_bar_bidprefix_ll(unsigned char *bar)
   return bidprefix;
 }
 
-static int append_bars(struct overlay_buffer *e, sqlite_retry_state *retry, const char *sql, int64_t *last_rowid){
-  int count=0;
-  
-  sqlite3_stmt *statement=sqlite_prepare(retry, sql, *last_rowid);
-  
+static int append_bars(struct overlay_buffer *e, sqlite_retry_state *retry, const char *sql, int64_t *last_rowid)
+{
+  sqlite3_stmt *statement = sqlite_prepare(retry, sql);
+  if (statement == NULL)
+    return -1;
+  int params = sqlite3_bind_parameter_count(statement);
+  switch (params) {
+    case 0: break;
+    case 1:
+      if (sqlite_bind(retry, statement, INT64, *last_rowid, END) == -1)
+	return -1;
+      break;
+    default:
+      return WHYF("query has invalid number of parameters (%d): %s", params, sqlite3_sql(statement));
+  }
+  int count = 0;
   while(sqlite_step_retry(retry, statement) == SQLITE_ROW) {
     count++;
     if (sqlite3_column_type(statement, 0)!=SQLITE_BLOB)
       continue;
-    
     const void *data = sqlite3_column_blob(statement, 0);
     int blob_bytes = sqlite3_column_bytes(statement, 0);
     int64_t rowid = sqlite3_column_int64(statement, 1);
-    
     if (blob_bytes!=RHIZOME_BAR_BYTES) {
       if (config.debug.rhizome_ads)
 	DEBUG("Found a BAR that is the wrong size - ignoring");
       continue;
     }
-    
     if (ob_append_bytes(e, (unsigned char *)data, blob_bytes)){
       // out of room
       count--;
       break;
     }
-    
     *last_rowid=rowid;
   }
-  
   if (statement)
     sqlite3_finalize(statement);
-  
   return count;
 }
 
@@ -191,7 +196,7 @@ void overlay_rhizome_advertise(struct sched_ent *alarm){
   goto end;
 
   /* Get number of bundles available */
-  if (sqlite_exec_int64_retry(&retry, &bundles_available, "SELECT COUNT(BAR) FROM MANIFESTS;") != 1){
+  if (sqlite_exec_int64_retry(&retry, &bundles_available, "SELECT COUNT(BAR) FROM MANIFESTS;", END) != 1){
     WHY("Could not count BARs for advertisement");
     goto end;
   }
@@ -221,7 +226,7 @@ void overlay_rhizome_advertise(struct sched_ent *alarm){
       bundle_last_rowid=rowid;
     
     count = append_bars(frame->payload, &retry, 
-			"SELECT BAR,ROWID FROM MANIFESTS WHERE ROWID < %lld ORDER BY ROWID DESC LIMIT 17", 
+			"SELECT BAR,ROWID FROM MANIFESTS WHERE ROWID < ? ORDER BY ROWID DESC LIMIT 17", 
 			&bundle_last_rowid);
     if (count<17)
       bundle_last_rowid=INT64_MAX;

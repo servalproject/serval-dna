@@ -178,7 +178,7 @@ void verify_bundles(){
  * that has write permission on the bundle, ie, possesses the Rhizome secret key that generated the
  * BID, and hence can derive the Bundle Secret from the bundle's BK field:
  * - The MANIFESTS table 'author' column is set to the author SID when a bundle is created
- *   locally bu a non-secret identity, so no verification need ever be performed for one's own
+ *   locally by a non-secret identity, so no verification need be performed for one's own
  *   bundles while they remain in the Rhizome store.
  * - When a bundle is imported, the 'author' column is set to NULL to indicate that no
  *   verification has passed yet.  This includes one's own bundles that have been purged from
@@ -411,22 +411,23 @@ void _sqlite_retry_done(struct __sourceloc __whence, sqlite_retry_state *retry, 
     retry->start = -1;
 }
 
-/* Prepare an SQL command from a simple string.  Returns -1 if an error occurs (logged as an error),
- * otherwise zero with the prepared statement in *statement.
+/* Prepare an SQL command from a simple string.  Returns NULL if an error occurs (logged as an
+ * error), otherwise returns a pointer to the prepared SQLite statement.
  *
  * IMPORTANT!  Do not form statement strings using sprintf(3) or strbuf_sprintf() or similar
  * methods, because those are susceptible to SQL injection attacks.  Instead, use bound parameters
- * and bind them using the sqlite_bind() function below.
+ * and bind them using the _sqlite_bind() function below.
  *
- * ALSO!  Do not add sprintf(3)-like functionality to this method.  It used to take sprintf(3)-style
- * varargs and these were deliberately removed.  It is vital to discourage bad practice, and adding
- * sprintf(3)-style args to this function would be a step in the wrong direction.
+ * IMPORTANT!  Do not add sprintf(3)-like functionality to this method.  It used to take
+ * sprintf(3)-style varargs and these were deliberately removed.  It is vital to discourage bad
+ * practice, and adding sprintf(3)-style args to this function would be a step in the wrong
+ * direction.
  *
  * See GitHub issue #69.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqltext)
+sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqltext)
 {
   IN();
   sqlite3_stmt *statement = NULL;
@@ -450,14 +451,23 @@ sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc __whence, int log_leve
   }
 }
 
+/* Bind some parameters to a prepared SQL statement.  Returns -1 if an error occurs (logged as an
+ * error), otherwise zero with the prepared statement in *statement.
+ *
+ * Developed as part of GitHub issue #69.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement, va_list ap)
 {
-  const int index_limit = 50; // for safety checks
+  const int index_limit = sqlite3_limit(rhizome_db, SQLITE_LIMIT_VARIABLE_NUMBER, -1);
   enum sqlbind_type typ;
   int index_counter = 0;
+  strbuf ext = NULL;
   do {
     typ = va_arg(ap, int);
     int index;
+    const char *name = NULL;
     if ((typ & 0xffff0000) == INDEX) {
       typ &= 0xffff;
       index = va_arg(ap, int);
@@ -465,16 +475,29 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	LOGF(log_level, "illegal index %d: %s", index, sqlite3_sql(statement));
 	return -1;
       }
+      if (config.debug.rhizome)
+	strbuf_sprintf((ext = strbuf_alloca(25)), "|INDEX index=%d", index);
     } else if ((typ & 0xffff0000) == NAMED) {
       typ &= 0xffff;
-      const char *name = va_arg(ap, const char *);
+      name = va_arg(ap, const char *);
       index = sqlite3_bind_parameter_index(statement, name);
       if (index == 0) {
 	LOGF(log_level, "no parameter %s in query: %s", alloca_str_toprint(name), sqlite3_sql(statement));
 	return -1;
       }
-    } else
+      if (config.debug.rhizome) {
+	ext = strbuf_alloca(20 + toprint_str_len(name, "\"\""));
+	strbuf_puts(ext, "|NAMED name=");
+	strbuf_toprint_quoted(ext, "\"\"", name);
+      }
+    } else {
       index = ++index_counter;
+      if (config.debug.rhizome)
+	ext = strbuf_alloca(1);
+    }
+#define BIND_DEBUG(TYP,FUNC,ARGFMT,...) \
+	  if (config.debug.rhizome) \
+	    DEBUGF("%s%s %s(%d," ARGFMT ") %s", #TYP, strbuf_str(ext), #FUNC, index, ##__VA_ARGS__, sqlite3_sql(statement))
 #define BIND_RETRY(FUNC, ...) \
 	do { \
 	  switch (FUNC(statement, index, ##__VA_ARGS__)) { \
@@ -492,68 +515,115 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	  break; \
 	} while (1)
     switch (typ) {
-      case END: break;
+      case END:
+	break;
       case NUL:
+	BIND_DEBUG(NUL, sqlite3_bind_null, "");
 	BIND_RETRY(sqlite3_bind_null);
 	break;
       case INT: {
 	  int value = va_arg(ap, int);
+	  BIND_DEBUG(INT, sqlite3_bind_int, "%d", value);
 	  BIND_RETRY(sqlite3_bind_int, value);
+	}
+	break;
+      case INT_TOSTR: {
+	  int value = va_arg(ap, int);
+	  char str[25];
+	  sprintf(str, "%d", value);
+	  BIND_DEBUG(INT_TOSTR, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(str));
+	  BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
+	}
+	break;
+      case UINT_TOSTR: {
+	  unsigned value = va_arg(ap, unsigned);
+	  char str[25];
+	  sprintf(str, "%u", value);
+	  BIND_DEBUG(UINT_TOSTR, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(str));
+	  BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
 	}
 	break;
       case INT64: {
 	  int64_t value = va_arg(ap, int64_t);
+	  BIND_DEBUG(INT64, sqlite3_bind_int64, "%"PRId64, value);
 	  BIND_RETRY(sqlite3_bind_int64, value);
+	}
+	break;
+      case INT64_TOSTR: {
+	  int64_t value = va_arg(ap, int64_t);
+	  char str[35];
+	  sprintf(str, "%"PRId64, value);
+	  BIND_DEBUG(INT64_TOSTR, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(str));
+	  BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
+	}
+	break;
+      case UINT64_TOSTR: {
+	  uint64_t value = va_arg(ap, uint64_t);
+	  char str[35];
+	  sprintf(str, "%"PRIu64, value);
+	  BIND_DEBUG(UINT64_TOSTR, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(str));
+	  BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
 	}
 	break;
       case STATIC_TEXT: {
 	  const char *text = va_arg(ap, const char *);
+	  BIND_DEBUG(STATIC_TEXT, sqlite3_bind_text, "%s,-1,SQLITE_STATIC", alloca_str_toprint(text));
 	  BIND_RETRY(sqlite3_bind_text, text, -1, SQLITE_STATIC);
 	}
 	break;
       case STATIC_TEXT_LEN: {
 	  const char *text = va_arg(ap, const char *);
 	  int bytes = va_arg(ap, int);
+	  BIND_DEBUG(STATIC_TEXT_LEN, sqlite3_bind_text, "%s,%d,SQLITE_STATIC", alloca_str_toprint(text), bytes);
 	  BIND_RETRY(sqlite3_bind_text, text, bytes, SQLITE_STATIC);
 	}
 	break;
       case STATIC_BLOB: {
 	  const void *blob = va_arg(ap, const void *);
 	  int bytes = va_arg(ap, int);
+	  BIND_DEBUG(STATIC_BLOB, sqlite3_bind_blob, "%s,%d,SQLITE_STATIC", alloca_toprint(20, blob, bytes), bytes);
 	  BIND_RETRY(sqlite3_bind_blob, blob, bytes, SQLITE_STATIC);
+	};
+	break;
+      case ZEROBLOB: {
+	  int bytes = va_arg(ap, int);
+	  BIND_DEBUG(ZEROBLOB, sqlite3_bind_zeroblob, "%d,SQLITE_STATIC", bytes);
+	  BIND_RETRY(sqlite3_bind_zeroblob, bytes);
 	};
 	break;
       case SID_T: {
 	  const sid_t *sidp = va_arg(ap, const sid_t *);
 	  const char *sid_hex = alloca_tohex_sid_t(*sidp);
+	  BIND_DEBUG(SID_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", sid_hex, SID_STRLEN);
 	  BIND_RETRY(sqlite3_bind_text, sid_hex, SID_STRLEN, SQLITE_TRANSIENT);
 	}
 	break;
       case BUNDLE_ID_T: {
 	  const char *bid_hex = alloca_tohex(va_arg(ap, const unsigned char *), RHIZOME_MANIFEST_ID_BYTES);
+	  BIND_DEBUG(BUNDLE_ID_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", bid_hex, RHIZOME_MANIFEST_ID_STRLEN);
 	  BIND_RETRY(sqlite3_bind_text, bid_hex, RHIZOME_MANIFEST_ID_STRLEN, SQLITE_TRANSIENT);
 	}
 	break;
       case FILEHASH_T: {
 	  const char *hash_hex = alloca_tohex(va_arg(ap, const unsigned char *), RHIZOME_FILEHASH_BYTES);
+	  BIND_DEBUG(FILEHASH_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", hash_hex, RHIZOME_FILEHASH_STRLEN);
 	  BIND_RETRY(sqlite3_bind_text, hash_hex, RHIZOME_FILEHASH_STRLEN, SQLITE_TRANSIENT);
 	}
 	break;
       case TOHEX: {
 	  const unsigned char *binary = va_arg(ap, const unsigned char *);
 	  unsigned bytes = va_arg(ap, unsigned);
-	  char hex[bytes * 2];
-	  tohex(hex, binary, bytes);
+	  const char *hex = alloca_tohex(binary, bytes);
+	  BIND_DEBUG(TOHEX, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", hex, bytes * 2);
 	  BIND_RETRY(sqlite3_bind_text, hex, bytes * 2, SQLITE_TRANSIENT);
 	}
 	break;
       case TEXT_TOUPPER: {
 	  const char *text = va_arg(ap, const char *);
 	  unsigned bytes = strlen(text);
-	  char upper[bytes];
-	  unsigned i;
-	  for (i = 0; i != bytes; ++i)
-	    upper[i] = toupper(text[i]);
+	  char upper[bytes + 1];
+	  str_toupper_inplace(strcpy(upper, text));
+	  BIND_DEBUG(TEXT_TOUPPER, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", alloca_toprint(-1, upper, bytes), bytes);
 	  BIND_RETRY(sqlite3_bind_text, upper, bytes, SQLITE_TRANSIENT);
 	}
 	break;
@@ -564,11 +634,13 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	  unsigned i;
 	  for (i = 0; i != bytes; ++i)
 	    upper[i] = toupper(text[i]);
+	  BIND_DEBUG(TEXT_LEN_TOUPPER, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", alloca_toprint(-1, upper, bytes), bytes);
 	  BIND_RETRY(sqlite3_bind_text, upper, bytes, SQLITE_TRANSIENT);
 	}
 	break;
+#undef BIND_RETRY
       default:
-	FATALF("unsupported bind code %d", typ);
+	FATALF("unsupported bind code, index=%d typ=0x%08x: %s", index, typ, sqlite3_sql(statement));
     }
   } while (typ != END);
   return 0;
@@ -583,7 +655,28 @@ int _sqlite_bind(struct __sourceloc __whence, int log_level, sqlite_retry_state 
   return ret;
 }
 
-int _sqlite_step_retry(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
+/* Prepare an SQL statement and bind some parameters.  Returns a pointer to the SQLite statement if
+ * successful or NULL if an error occurs (which is logged at the given log level).
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+sqlite3_stmt *_sqlite_prepare_bind(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqltext, ...)
+{
+  sqlite3_stmt *statement = _sqlite_prepare(__whence, log_level, retry, sqltext);
+  if (statement != NULL) {
+    va_list ap;
+    va_start(ap, sqltext);
+    int ret = _sqlite_vbind(__whence, log_level, retry, statement, ap);
+    va_end(ap);
+    if (ret == -1) {
+      sqlite3_finalize(statement);
+      statement = NULL;
+    }
+  }
+  return statement;
+}
+
+int _sqlite_step(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
 {
   IN();
   int ret = -1;
@@ -633,13 +726,13 @@ int _sqlite_step_retry(struct __sourceloc __whence, int log_level, sqlite_retry_
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static int _sqlite_exec_prepared(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
+static int _sqlite_exec(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
 {
   if (!statement)
     return -1;
   int rowcount = 0;
   int stepcode;
-  while ((stepcode = _sqlite_step_retry(__whence, log_level, retry, statement)) == SQLITE_ROW)
+  while ((stepcode = _sqlite_step(__whence, log_level, retry, statement)) == SQLITE_ROW)
     ++rowcount;
   sqlite3_finalize(statement);
   if (sqlite_trace_func())
@@ -654,12 +747,12 @@ static int _sqlite_exec_prepared(struct __sourceloc __whence, int log_level, sql
  */
 static int _sqlite_vexec_void(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqltext, va_list ap)
 {
-  sqlite3_stmt *statement = _sqlite_prepare_loglevel(__whence, log_level, retry, sqltext);
+  sqlite3_stmt *statement = _sqlite_prepare(__whence, log_level, retry, sqltext);
   if (!statement)
     return -1;
   if (_sqlite_vbind(__whence, log_level, retry, statement, ap) == -1)
     return -1;
-  int rowcount = _sqlite_exec_prepared(__whence, log_level, retry, statement);
+  int rowcount = _sqlite_exec(__whence, log_level, retry, statement);
   if (rowcount == -1)
     return -1;
   if (rowcount)
@@ -673,21 +766,7 @@ static int _sqlite_vexec_void(struct __sourceloc __whence, int log_level, sqlite
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int _sqlite_exec_void(struct __sourceloc __whence, const char *sqltext, ...)
-{
-  va_list ap;
-  va_start(ap, sqltext);
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  int ret = _sqlite_vexec_void(__whence, LOG_LEVEL_ERROR, &retry, sqltext, ap);
-  va_end(ap);
-  return ret;
-}
-
-/* Same as sqlite_exec_void(), but logs any error at the given level instead of ERROR.
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
-int _sqlite_exec_void_loglevel(struct __sourceloc __whence, int log_level, const char *sqltext, ...)
+int _sqlite_exec_void(struct __sourceloc __whence, int log_level, const char *sqltext, ...)
 {
   va_list ap;
   va_start(ap, sqltext);
@@ -704,20 +783,7 @@ int _sqlite_exec_void_loglevel(struct __sourceloc __whence, int log_level, const
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int _sqlite_exec_void_retry(struct __sourceloc __whence, sqlite_retry_state *retry, const char *sqltext, ...)
-{
-  va_list ap;
-  va_start(ap, sqltext);
-  int ret = _sqlite_vexec_void(__whence, LOG_LEVEL_ERROR, retry, sqltext, ap);
-  va_end(ap);
-  return ret;
-}
-
-/* Same as sqlite_exec_void_retry(), but logs any error at the given level instead of ERROR.
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
-int _sqlite_exec_void_retry_loglevel(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqltext, ...)
+int _sqlite_exec_void_retry(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqltext, ...)
 {
   va_list ap;
   va_start(ap, sqltext);
@@ -728,7 +794,7 @@ int _sqlite_exec_void_retry_loglevel(struct __sourceloc __whence, int log_level,
 
 static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *retry, int64_t *result, const char *sqltext, va_list ap)
 {
-  sqlite3_stmt *statement = _sqlite_prepare_loglevel(__whence, LOG_LEVEL_ERROR, retry, sqltext);
+  sqlite3_stmt *statement = _sqlite_prepare(__whence, LOG_LEVEL_ERROR, retry, sqltext);
   if (!statement)
     return -1;
   if (_sqlite_vbind(__whence, LOG_LEVEL_ERROR, retry, statement, ap) == -1)
@@ -736,7 +802,7 @@ static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *
   int ret = 0;
   int rowcount = 0;
   int stepcode;
-  while ((stepcode = _sqlite_step_retry(__whence, LOG_LEVEL_ERROR, retry, statement)) == SQLITE_ROW) {
+  while ((stepcode = _sqlite_step(__whence, LOG_LEVEL_ERROR, retry, statement)) == SQLITE_ROW) {
     int columncount = sqlite3_column_count(statement);
     if (columncount != 1)
       ret = WHYF("incorrect column count %d (should be 1): %s", columncount, sqlite3_sql(statement));
@@ -818,7 +884,7 @@ int _sqlite_exec_strbuf_retry(struct __sourceloc __whence, sqlite_retry_state *r
 
 int _sqlite_vexec_strbuf_retry(struct __sourceloc __whence, sqlite_retry_state *retry, strbuf sb, const char *sqltext, va_list ap)
 {
-  sqlite3_stmt *statement = _sqlite_prepare_loglevel(__whence, LOG_LEVEL_ERROR, retry, sqltext);
+  sqlite3_stmt *statement = _sqlite_prepare(__whence, LOG_LEVEL_ERROR, retry, sqltext);
   if (!statement)
     return -1;
   if (_sqlite_vbind(__whence, LOG_LEVEL_ERROR, retry, statement, ap) == -1)
@@ -826,7 +892,7 @@ int _sqlite_vexec_strbuf_retry(struct __sourceloc __whence, sqlite_retry_state *
   int ret = 0;
   int rowcount = 0;
   int stepcode;
-  while ((stepcode = _sqlite_step_retry(__whence, LOG_LEVEL_ERROR, retry, statement)) == SQLITE_ROW) {
+  while ((stepcode = _sqlite_step(__whence, LOG_LEVEL_ERROR, retry, statement)) == SQLITE_ROW) {
     int columncount = sqlite3_column_count(statement);
     if (columncount != 1)
       ret - WHYF("incorrect column count %d (should be 1): %s", columncount, sqlite3_sql(statement));
@@ -856,8 +922,8 @@ int rhizome_database_filehash_from_id(const char *id, uint64_t version, char has
 {
   IN();
   strbuf hash_sb = strbuf_local(hash, SHA512_DIGEST_STRING_LENGTH);
-  RETURN(sqlite_exec_strbuf(hash_sb, "SELECT filehash FROM MANIFESTS WHERE manifests.version=%lld AND manifests.id='%s';",
-			    version,id));
+  RETURN(sqlite_exec_strbuf(hash_sb, "SELECT filehash FROM MANIFESTS WHERE manifests.version = ? AND manifests.id = ?;",
+			    INT64, version, TEXT_TOUPPER, id, END));
   OUT();
 }
 
@@ -1589,7 +1655,7 @@ static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const char *
   if (!statement)
     return -1;
   sqlite3_bind_text(statement, 1, manifestid, -1, SQLITE_STATIC);
-  if (_sqlite_exec_prepared(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
+  if (_sqlite_exec(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
     return -1;
   return sqlite3_changes(rhizome_db) ? 0 : 1;
 }
@@ -1605,7 +1671,7 @@ static int rhizome_delete_file_retry(sqlite_retry_state *retry, const char *file
     ret = -1;
   else {
     sqlite3_bind_text(statement, 1, fileid, -1, SQLITE_STATIC);
-    if (_sqlite_exec_prepared(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
+    if (_sqlite_exec(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
       ret = -1;
   }
   statement = sqlite_prepare(retry, "DELETE FROM fileblobs WHERE id = ?");
@@ -1613,7 +1679,7 @@ static int rhizome_delete_file_retry(sqlite_retry_state *retry, const char *file
     ret = -1;
   else {
     sqlite3_bind_text(statement, 1, fileid, -1, SQLITE_STATIC);
-    if (_sqlite_exec_prepared(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
+    if (_sqlite_exec(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
       ret = -1;
   }
   return ret == -1 ? -1 : sqlite3_changes(rhizome_db) ? 0 : 1;
@@ -1622,7 +1688,7 @@ static int rhizome_delete_file_retry(sqlite_retry_state *retry, const char *file
 static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const char *manifestid)
 {
   strbuf fh = strbuf_alloca(RHIZOME_FILEHASH_STRLEN + 1);
-  int rows = sqlite_exec_strbuf_retry(retry, fh, "SELECT filehash FROM manifests WHERE id = '%s'", manifestid);
+  int rows = sqlite_exec_strbuf_retry(retry, fh, "SELECT filehash FROM manifests WHERE id = ?", TEXT_TOUPPER, manifestid, END);
   if (rows == -1)
     return -1;
   if (rows && rhizome_delete_file_retry(retry, strbuf_str(fh)) == -1)

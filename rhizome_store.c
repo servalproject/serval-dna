@@ -8,12 +8,13 @@
 int rhizome_exists(const char *fileHash)
 {
   int64_t gotfile = 0;
-  if (sqlite_exec_int64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;", fileHash) != 1)
+  if (sqlite_exec_int64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE id = ? and datavalid = 1;", TEXT_TOUPPER, fileHash, END) != 1)
     return 0;
   return gotfile;
 }
 
-int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority){
+int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority)
+{
   write->blob_fd=-1;
   
   if (expectedFileHash){
@@ -24,15 +25,16 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
   }else{
     write->id_known=0;
   }
+  time_ms_t now = gettime_ms();
   static uint64_t last_id=0;
-  write->temp_id = gettime_ms();
-  if (write->temp_id<last_id)
-    write->temp_id=last_id+1;
-  last_id=write->temp_id;
+  write->temp_id = now;
+  if (write->temp_id < last_id)
+    write->temp_id = last_id + 1;
+  last_id = write->temp_id;
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
-  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1)
     return WHY("Failed to begin transaction");
   
   /* 
@@ -45,10 +47,15 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
    */
   
   sqlite3_stmt *statement = NULL;
-  int ret=sqlite_exec_void_retry(&retry,
-				 "INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) "
-				 "VALUES('%"PRId64"',%"PRId64",%d,0,%"PRId64");",
-				 write->temp_id, file_length, priority, gettime_ms());
+  int ret = sqlite_exec_void_retry(
+	&retry,
+	"INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) VALUES(?,?,?,0,?);",
+	UINT64_TOSTR, write->temp_id,
+	INT64, file_length,
+	INT, priority,
+	INT64, now,
+	END
+      );
   if (ret==-1)
     goto insert_row_fail;
   
@@ -61,8 +68,7 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
     }
     
     if (config.debug.externalblobs)
-      DEBUGF("Attempting to put blob for %"PRId64" in %s",
-	     write->temp_id,blob_path);
+      DEBUGF("Attempting to put blob for id='%"PRId64"' in %s", write->temp_id, blob_path);
     
     write->blob_fd=open(blob_path, O_CREAT | O_TRUNC | O_WRONLY, 0664);
     if (write->blob_fd<0)
@@ -72,45 +78,39 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
       DEBUGF("Writing to new blob file %s (fd=%d)", blob_path, write->blob_fd);
     
   }else{
-    statement = sqlite_prepare(&retry,"INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES('%"PRId64"',?)",write->temp_id);
-    if (!statement) {
-      WHYF("Failed to insert into fileblobs: %s", sqlite3_errmsg(rhizome_db));
+    statement = sqlite_prepare_bind(
+	&retry,
+	"INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES(?,?)",
+	UINT64_TOSTR, write->temp_id,
+	ZEROBLOB, (int)file_length,
+	END);
+    if (statement == NULL)
       goto insert_row_fail;
-    }
-    
-    /* Bind appropriate sized zero-filled blob to data field */
-    if (sqlite3_bind_zeroblob(statement, 1, file_length) != SQLITE_OK) {
-      WHYF("sqlite3_bind_zeroblob() failed: %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
-      goto insert_row_fail;
-    }
-    
     /* Do actual insert, and abort if it fails */
     int rowcount = 0;
     int stepcode;
-    while ((stepcode = _sqlite_step_retry(__WHENCE__, LOG_LEVEL_ERROR, &retry, statement)) == SQLITE_ROW)
+    while ((stepcode = sqlite_step_retry(&retry, statement)) == SQLITE_ROW)
       ++rowcount;
     if (rowcount)
       WARNF("void query unexpectedly returned %d row%s", rowcount, rowcount == 1 ? "" : "s");
-    
     if (!sqlite_code_ok(stepcode)){
     insert_row_fail:
-      WHYF("Failed to insert row for fileid=%"PRId64, write->temp_id);
+      WHYF("Failed to insert row for id='%"PRId64"'", write->temp_id);
       if (statement) sqlite3_finalize(statement);
-      sqlite_exec_void_retry(&retry, "ROLLBACK;");
+      sqlite_exec_void_retry(&retry, "ROLLBACK;", END);
       return -1;
     }
-    
     sqlite3_finalize(statement);
     statement=NULL;
     
     /* Get rowid for inserted row, so that we can modify the blob */
     write->blob_rowid = sqlite3_last_insert_rowid(rhizome_db);
     if (config.debug.rhizome_rx)
-      DEBUGF("Got rowid %"PRId64" for %"PRId64, write->blob_rowid, write->temp_id);
+      DEBUGF("Got rowid=%"PRId64" for id='%"PRId64"'", write->blob_rowid, write->temp_id);
     
   }
   
-  if (sqlite_exec_void_retry(&retry, "COMMIT;") == -1){
+  if (sqlite_exec_void_retry(&retry, "COMMIT;", END) == -1){
     if (write->blob_fd>=0){
       if (config.debug.externalblobs)
          DEBUGF("Cancel write to fd %d", write->blob_fd);
@@ -167,7 +167,7 @@ static int write_get_lock(struct rhizome_write *write_state){
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
   // use an explicit transaction so we can delay I/O failures until COMMIT so they can be retried.
-  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1)
     return -1;
   
   while(1){
@@ -243,7 +243,7 @@ static int write_release_lock(struct rhizome_write *write_state){
 	     sqlite3_errmsg(rhizome_db));
     
     sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-    if (sqlite_exec_void_retry(&retry, "COMMIT;") == -1)
+    if (sqlite_exec_void_retry(&retry, "COMMIT;", END) == -1)
       ret=-1;
   }
   write_state->sql_blob=NULL;
@@ -477,21 +477,27 @@ int rhizome_finish_write(struct rhizome_write *write)
   rhizome_remove_file_datainvalid(&retry, write->id);
   if (rhizome_exists(write->id)) {
     // we've already got that payload, delete the new copy
-    sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,"DELETE FROM FILEBLOBS WHERE id='%"PRId64"';", write->temp_id);
-    sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,"DELETE FROM FILES WHERE id='%"PRId64"';", write->temp_id);
+    sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILEBLOBS WHERE id = ?;", UINT64_TOSTR, write->temp_id, END);
+    sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILES WHERE id = ?;", UINT64_TOSTR, write->temp_id, END);
     if (config.debug.rhizome)
       DEBUGF("File id='%s' already present, removed id='%"PRId64"'", write->id, write->temp_id);
   } else {
-    if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
+    if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1)
       goto dbfailure;
     
     // delete any half finished records
-    sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,"DELETE FROM FILEBLOBS WHERE id='%s';",hash_out);
-    sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,"DELETE FROM FILES WHERE id='%s';",hash_out);
+    sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILEBLOBS WHERE id = ?;", STATIC_TEXT, write->id, END);
+    sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILES WHERE id = ?;", STATIC_TEXT, write->id, END);
     
-    if (sqlite_exec_void_retry(&retry,
-			       "UPDATE FILES SET id='%s', inserttime=%lld, datavalid=1 WHERE id='%"PRId64"'",
-			       hash_out, gettime_ms(), write->temp_id) == -1)
+    if (sqlite_exec_void_retry(
+	    &retry,
+	    "UPDATE FILES SET id = ?, inserttime = ?, datavalid = 1 WHERE id = ?",
+	    STATIC_TEXT, write->id,
+	    INT64, gettime_ms(),
+	    UINT64_TOSTR, write->temp_id,
+	    END
+	  ) == -1
+      )
       goto dbfailure;
     
     if (fd>=0){
@@ -501,7 +507,7 @@ int rhizome_finish_write(struct rhizome_write *write)
 	WHYF("Failed to generate file path");
 	goto dbfailure;
       }
-      if (!FORM_RHIZOME_DATASTORE_PATH(dest_path, hash_out)){
+      if (!FORM_RHIZOME_DATASTORE_PATH(dest_path, write->id)){
 	WHYF("Failed to generate file path");
 	goto dbfailure;
       }
@@ -512,13 +518,17 @@ int rhizome_finish_write(struct rhizome_write *write)
       }
       
     }else{
-      if (sqlite_exec_void_retry(&retry,
-				 "UPDATE FILEBLOBS SET id='%s' WHERE rowid=%lld",
-				 hash_out, write->blob_rowid) == -1){
-	goto dbfailure;
-      }
+      if (sqlite_exec_void_retry(
+	    &retry,
+	    "UPDATE FILEBLOBS SET id = ? WHERE rowid = ?",
+	    STATIC_TEXT, write->id,
+	    INT64, write->blob_rowid,
+	    END
+	  ) == -1
+	)
+	  goto dbfailure;
     }
-    if (sqlite_exec_void_retry(&retry, "COMMIT;") == -1)
+    if (sqlite_exec_void_retry(&retry, "COMMIT;", END) == -1)
       goto dbfailure;
     if (config.debug.rhizome)
       DEBUGF("Stored file %s", write->id);
@@ -527,7 +537,7 @@ int rhizome_finish_write(struct rhizome_write *write)
   return 0;
   
 dbfailure:
-  sqlite_exec_void_retry(&retry, "ROLLBACK;");
+  sqlite_exec_void_retry(&retry, "ROLLBACK;", END);
 failure:
   rhizome_fail_write(write);
   return -1;
@@ -687,9 +697,9 @@ int rhizome_open_read(struct rhizome_read *read, const char *fileid)
   if (sqlite_exec_int64(&read->blob_rowid, 
       "SELECT FILEBLOBS.rowid "
       "FROM FILEBLOBS, FILES "
-      "WHERE FILEBLOBS.id = FILES.id "
-      "AND FILES.id = '%s' "
-      "AND FILES.datavalid != 0", read->id) == -1)
+      "WHERE FILEBLOBS.id = FILES.id"
+      " AND FILES.id = ?"
+      " AND FILES.datavalid != 0", STATIC_TEXT, read->id, END) == -1)
     return -1;
   if (read->blob_rowid != -1) {
     read->length = -1; // discover the length on opening the db BLOB
