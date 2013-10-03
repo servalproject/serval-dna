@@ -497,7 +497,7 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	ext = strbuf_alloca(1);
     }
 #define BIND_DEBUG(TYP,FUNC,ARGFMT,...) \
-	  if (config.debug.rhizome) \
+	  if (config.debug.rhizome_bind) \
 	    DEBUGF("%s%s %s(%d," ARGFMT ") %s", #TYP, strbuf_str(ext), #FUNC, index, ##__VA_ARGS__, sqlite3_sql(statement))
 #define BIND_RETRY(FUNC, ...) \
 	do { \
