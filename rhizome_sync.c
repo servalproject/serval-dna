@@ -342,6 +342,9 @@ static uint64_t max_token=0;
 static void sync_send_response(struct subscriber *dest, int forwards, uint64_t token, int max_count)
 {
   IN();
+  if (max_count == 0 || max_count > BARS_PER_RESPONSE)
+    max_count = BARS_PER_RESPONSE;
+    
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
 
@@ -393,7 +396,7 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
       rhizome_sync_bundle_inserted(bar);
     }
 
-    if (count < BARS_PER_RESPONSE && (max_count==0 || count < max_count)){
+    if (count < max_count){
       // make sure we include the exact rowid that was requested, even if we just deleted / replaced the manifest
       if (count==0 && rowid!=token){
         if (token!=HEAD_FLAG){
@@ -415,7 +418,7 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
       }
     }
 
-    if (count >= BARS_PER_RESPONSE && rowid <= max_token)
+    if (count >= max_count && rowid <= max_token)
       break;
   }
 
@@ -423,7 +426,7 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
     max_token = token;
 
   // send a zero lower bound if we reached the end of our manifest list
-  if (count && count < BARS_PER_RESPONSE && !forwards){
+  if (count && count < max_count && !forwards){
     if (append_response(b, 0, NULL))
       ob_rewind(b);
     else {
