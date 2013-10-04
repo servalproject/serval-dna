@@ -577,7 +577,7 @@ test_AddMismatched() {
 
 doc_AddUpdateSameVersion="Add new payload to existing manifest with same version fails"
 setup_AddUpdateSameVersion() {
-   setup_AddDuplicate
+   setup_AddDeDuplicate
    cp file1.manifest file1_2.manifest
    strip_signatures file1_2.manifest
    $SED -i -e '/^date=/d;/^filehash=/d;/^filesize=/d' file1_2.manifest

@@ -884,17 +884,14 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 
 	/* Start by getting the manifest, which is the main thing we need, and also
 	   gives us the information we need for sending any associated file. */
-	rhizome_manifest 
-	  *m=rhizome_direct_get_manifest(&actionlist[i+1],
-					 RHIZOME_BAR_PREFIX_BYTES);
-	if (!m) {
+	rhizome_manifest *m = rhizome_direct_get_manifest(&actionlist[i+1], RHIZOME_BAR_PREFIX_BYTES);
+	if (m == NULL) {
 	  WHY("This should never happen.  The manifest exists, but when I went looking for it, it doesn't appear to be there.");
 	  goto next_item;
 	}
 
 	/* Get filehash and size from manifest if present */
-	const char *id = rhizome_manifest_get(m, "id", NULL, 0);
-	DEBUGF("bundle id = '%s'",id);
+	DEBUGF("bundle id = %s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
 	const char *hash = rhizome_manifest_get(m, "filehash", NULL, 0);
 	DEBUGF("bundle file hash = '%s'",hash);
 	long long filesize = rhizome_manifest_get_ll(m, "filesize");
@@ -965,7 +962,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	/* send file contents */
 	{
 	  char filehash[SHA512_DIGEST_STRING_LENGTH];
-	  if (rhizome_database_filehash_from_id(id, version, filehash)<=0)
+	  if (rhizome_database_filehash_from_id(&m->cryptoSignPublic, version, filehash) == -1)
 	    goto closeit;
 	  
 	  struct rhizome_read read;
@@ -1046,10 +1043,10 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	   c->size_high,c->limit_size_high);
     DEBUGF("c->buffer_size=%d",c->buffer_size);
     r->cursor->size_low=c->limit_size_high;
-    bcopy(c->limit_bid_high,r->cursor->bid_low,4);
     /* Set tail of BID to all high, as we assume the far end has returned all
        BIDs with the specified prefix. */
-    memset(&r->cursor->bid_low[4],0xff,RHIZOME_MANIFEST_ID_BYTES);
+    r->cursor->bid_low = RHIZOME_BID_MAX;
+    bcopy(c->limit_bid_high.binary, r->cursor->bid_low.binary, 4);
   }
   rhizome_direct_bundle_iterator_free(&c);
 #endif

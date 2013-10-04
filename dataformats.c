@@ -22,8 +22,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include <ctype.h>
 
-int str_to_sid_t(sid_t *sid, const char *hex)
+int cmp_sid_t(const sid_t *a, const sid_t *b)
 {
+  return memcmp(a, b, sizeof a->binary);
+}
+
+int str_to_sid_t(sid_t *sid, const char *hex) {
   if (strcmp(hex, "broadcast") == 0) {
     *sid = SID_BROADCAST;
     return 0;
@@ -65,6 +69,28 @@ int strn_is_subscriber_id(const char *sid, size_t *lenp)
       *lenp = SID_STRLEN;
     return 1;
   }
+  return 0;
+}
+
+int cmp_rhizome_bid_t(const rhizome_bid_t *a, const rhizome_bid_t *b)
+{
+  return memcmp(a, b, sizeof a->binary);
+}
+
+int str_to_rhizome_bid_t(rhizome_bid_t *bid, const char *hex)
+{
+  return fromhexstr(bid->binary, hex, sizeof bid->binary);
+}
+
+int strn_to_rhizome_bid_t(rhizome_bid_t *bid, const char *hex, const char **endp)
+{
+  rhizome_bid_t tmp;
+  int n = fromhex(tmp.binary, hex, sizeof tmp.binary);
+  if (n != sizeof tmp.binary)
+    return -1;
+  *bid = tmp;
+  if (endp)
+    *endp = hex + sizeof bid->binary * 2;
   return 0;
 }
 

@@ -51,15 +51,15 @@ int rhizome_manifest_verify(rhizome_manifest *m)
   
   /* Make sure that id variable is correct */
   {
-    unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
+    rhizome_bid_t bid;
     char *id = rhizome_manifest_get(m,"id",NULL,0);
     if (!id) {
       WARN("Manifest lacks 'id' field");
       m->errors++;
-    } else if (fromhexstr(manifest_id, id, RHIZOME_MANIFEST_ID_BYTES) == -1) {
+    } else if (str_to_rhizome_bid_t(&bid, id) == -1) {
       WARN("Invalid manifest 'id' field");
       m->errors++;
-    } else if (m->sig_count == 0 || memcmp(m->signatories[0], manifest_id, RHIZOME_MANIFEST_ID_BYTES) != 0) {
+    } else if (m->sig_count == 0 || memcmp(m->signatories[0], bid.binary, sizeof bid.binary) != 0) {
       if (config.debug.rhizome) {
 	if (m->sig_count>0) {
 	  DEBUGF("Manifest id variable does not match first signature block (signature key is %s)",
@@ -159,7 +159,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
 	
 	if (strcasecmp(var, "id") == 0) {
 	  have_id = 1;
-	  if (fromhexstr(m->cryptoSignPublic, value, RHIZOME_MANIFEST_ID_BYTES) == -1) {
+	  if (str_to_rhizome_bid_t(&m->cryptoSignPublic, value) == -1) {
 	    if (config.debug.rejecteddata)
 	      WARNF("Invalid manifest id: %s", value);
 	    m->errors++;

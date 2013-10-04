@@ -1336,10 +1336,15 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
       rhizome_manifest_free(m);
       return WHY("Manifest file could not be loaded -- not added to rhizome");
     }
-  } else if(manifestid && *manifestid) {
+  } else if (manifestid && *manifestid) {
     if (config.debug.rhizome)
       DEBUGF("Reading manifest from database");
-    if (rhizome_retrieve_manifest(manifestid, m)){
+    rhizome_bid_t bid;
+    if (str_to_rhizome_bid_t(&bid, manifestid) == -1) {
+      rhizome_manifest_free(m);
+      return WHYF("Invalid bundle ID: %s", alloca_str_toprint(manifestid));
+    }
+    if (rhizome_retrieve_manifest(&bid, m)){
       rhizome_manifest_free(m);
       return WHY("Existing manifest could not be loaded -- not added to rhizome");
     }
@@ -1398,10 +1403,8 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     cli_put_string(context, service, "\n");
   }
   {
-    char bid[RHIZOME_MANIFEST_ID_STRLEN + 1];
-    rhizome_bytes_to_hex_upper(mout->cryptoSignPublic, bid, RHIZOME_MANIFEST_ID_BYTES);
     cli_field_name(context, "manifestid", ":");
-    cli_put_string(context, bid, "\n");
+    cli_put_string(context, alloca_tohex_rhizome_bid_t(mout->cryptoSignPublic), "\n");
   }
   {
     char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
@@ -1508,7 +1511,7 @@ int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_contex
   }
   {
     cli_field_name(context, "manifestid", ":");
-    cli_put_string(context, alloca_tohex(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES), "\n");
+    cli_put_string(context, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), "\n");
   }
   {
     char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
@@ -1596,17 +1599,15 @@ int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_context *cont
   } else {
     if (!manifestid)
       return WHY("missing <manifestid> argument");
-    unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
-    if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
+    rhizome_bid_t bid;
+    if (str_to_rhizome_bid_t(&bid, manifestid) == -1)
       return WHY("Invalid manifest ID");
-    char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
-    tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
     if (cli_arg(parsed, "bundle", NULL, NULL, NULL) == 0)
-      ret = rhizome_delete_bundle(manifestIdUpper);
+      ret = rhizome_delete_bundle(&bid);
     else if (cli_arg(parsed, "manifest", NULL, NULL, NULL) == 0)
-      ret = rhizome_delete_manifest(manifestIdUpper);
+      ret = rhizome_delete_manifest(&bid);
     else if (cli_arg(parsed, "payload", NULL, NULL, NULL) == 0)
-      ret = rhizome_delete_payload(manifestIdUpper);
+      ret = rhizome_delete_payload(&bid);
     else
       return WHY("unrecognised command");
   }
@@ -1656,12 +1657,9 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
   
   int ret=0;
   
-  unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
-  if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
+  rhizome_bid_t bid;
+  if (str_to_rhizome_bid_t(&bid, manifestid) == -1)
     return WHY("Invalid manifest ID");
-  
-  char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
-  tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
   
   // treat empty string the same as null
   if (bskhex && !*bskhex)
@@ -1675,7 +1673,7 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
   if (m==NULL)
     return WHY("Out of manifests");
   
-  ret = rhizome_retrieve_manifest(manifestIdUpper, m);
+  ret = rhizome_retrieve_manifest(&bid, m);
   
   if (ret==0){
     // ignore errors
@@ -1683,7 +1681,7 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
     const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
     
     cli_field_name(context, "service", ":");    cli_put_string(context, blob_service, "\n");
-    cli_field_name(context, "manifestid", ":"); cli_put_string(context, manifestIdUpper, "\n");
+    cli_field_name(context, "manifestid", ":"); cli_put_string(context, alloca_tohex_rhizome_bid_t(bid), "\n");
     cli_field_name(context, "version", ":");    cli_put_long(context, m->version, "\n");
     cli_field_name(context, "inserttime", ":"); cli_put_long(context, m->inserttime, "\n");
     if (m->haveSecret) {

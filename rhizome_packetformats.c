@@ -84,7 +84,7 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
 
   /* Manifest prefix */
   for(i=0;i<RHIZOME_BAR_PREFIX_BYTES;i++) 
-    bar[RHIZOME_BAR_PREFIX_OFFSET+i]=m->cryptoSignPublic[i];
+    bar[RHIZOME_BAR_PREFIX_OFFSET+i]=m->cryptoSignPublic.binary[i];
   /* file length */
   bar[RHIZOME_BAR_FILESIZE_OFFSET]=log2ll(m->fileLength);
   /* Version */
@@ -134,38 +134,43 @@ uint64_t rhizome_bar_bidprefix_ll(unsigned char *bar)
   return bidprefix;
 }
 
-static int append_bars(struct overlay_buffer *e, sqlite_retry_state *retry, const char *sql, int64_t *last_rowid){
-  int count=0;
-  
-  sqlite3_stmt *statement=sqlite_prepare(retry, sql, *last_rowid);
-  
+static int append_bars(struct overlay_buffer *e, sqlite_retry_state *retry, const char *sql, int64_t *last_rowid)
+{
+  sqlite3_stmt *statement = sqlite_prepare(retry, sql);
+  if (statement == NULL)
+    return -1;
+  int params = sqlite3_bind_parameter_count(statement);
+  switch (params) {
+    case 0: break;
+    case 1:
+      if (sqlite_bind(retry, statement, INT64, *last_rowid, END) == -1)
+	return -1;
+      break;
+    default:
+      return WHYF("query has invalid number of parameters (%d): %s", params, sqlite3_sql(statement));
+  }
+  int count = 0;
   while(sqlite_step_retry(retry, statement) == SQLITE_ROW) {
     count++;
     if (sqlite3_column_type(statement, 0)!=SQLITE_BLOB)
       continue;
-    
     const void *data = sqlite3_column_blob(statement, 0);
     int blob_bytes = sqlite3_column_bytes(statement, 0);
     int64_t rowid = sqlite3_column_int64(statement, 1);
-    
     if (blob_bytes!=RHIZOME_BAR_BYTES) {
       if (config.debug.rhizome_ads)
 	DEBUG("Found a BAR that is the wrong size - ignoring");
       continue;
     }
-    
     if (ob_append_bytes(e, (unsigned char *)data, blob_bytes)){
       // out of room
       count--;
       break;
     }
-    
     *last_rowid=rowid;
   }
-  
   if (statement)
     sqlite3_finalize(statement);
-  
   return count;
 }
 
@@ -191,7 +196,7 @@ void overlay_rhizome_advertise(struct sched_ent *alarm){
   goto end;
 
   /* Get number of bundles available */
-  if (sqlite_exec_int64_retry(&retry, &bundles_available, "SELECT COUNT(BAR) FROM MANIFESTS;") != 1){
+  if (sqlite_exec_int64_retry(&retry, &bundles_available, "SELECT COUNT(BAR) FROM MANIFESTS;", END) != 1){
     WHY("Could not count BARs for advertisement");
     goto end;
   }
@@ -221,7 +226,7 @@ void overlay_rhizome_advertise(struct sched_ent *alarm){
       bundle_last_rowid=rowid;
     
     count = append_bars(frame->payload, &retry, 
-			"SELECT BAR,ROWID FROM MANIFESTS WHERE ROWID < %lld ORDER BY ROWID DESC LIMIT 17", 
+			"SELECT BAR,ROWID FROM MANIFESTS WHERE ROWID < ? ORDER BY ROWID DESC LIMIT 17", 
 			&bundle_last_rowid);
     if (count<17)
       bundle_last_rowid=INT64_MAX;
@@ -263,7 +268,7 @@ int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m){
   if (overlay_payload_enqueue(frame)) goto error;
   if (config.debug.rhizome_ads)
     DEBUGF("Advertising manifest %s %"PRId64" to %s", 
-      alloca_tohex_bid(m->cryptoSignPublic), m->version, dest?alloca_tohex_sid(dest->sid):"broadcast");
+      alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, dest?alloca_tohex_sid(dest->sid):"broadcast");
   return 0;
   
 error:
@@ -334,7 +339,7 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
 	 (that is the only use of this */
       if (config.debug.rhizome_ads){
 	long long version = rhizome_manifest_get_ll(m, "version");
-	DEBUGF("manifest id=%s version=%lld", alloca_tohex_bid(m->cryptoSignPublic), version);
+	DEBUGF("manifest id=%s version=%lld", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), version);
       }
 
       /* Crude signature presence test */
@@ -347,10 +352,10 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
 	goto next;
       }
 
-      if (rhizome_ignore_manifest_check(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES)){
+      if (rhizome_ignore_manifest_check(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary)){
 	/* Ignoring manifest that has caused us problems recently */
 	if (config.debug.rhizome_ads)
-	  DEBUGF("Ignoring manifest with errors: %s", alloca_tohex_bid(m->cryptoSignPublic));
+	  DEBUGF("Ignoring manifest with errors: %s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
 	goto next;
       }
 
@@ -359,14 +364,13 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
 	  DEBUG("Unverified manifest has errors - so not processing any further.");
 	/* Don't waste any time on this manifest in future attempts for at least
 	     a minute. */
-	rhizome_queue_ignore_manifest(m->cryptoSignPublic,
-					RHIZOME_MANIFEST_ID_BYTES, 60000);
+	rhizome_queue_ignore_manifest(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, 60000);
 	goto next;
       }
       /* Manifest is okay, so see if it is worth storing */
 
       // are we already fetching this bundle [or later]?
-      rhizome_manifest *mf=rhizome_fetch_search(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES);
+      rhizome_manifest *mf=rhizome_fetch_search(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary);
       if (mf && mf->version >= m->version)
 	goto next;
 	

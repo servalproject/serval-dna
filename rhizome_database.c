@@ -20,6 +20,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __RHIZOME_INLINE
 #include <stdlib.h>
 #include <time.h>
+#include <ctype.h>
+#include <assert.h>
 #include "serval.h"
 #include "conf.h"
 #include "rhizome.h"
@@ -29,9 +31,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 static char rhizome_thisdatastore_path[256];
 
-static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const char *manifestid);
+static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
 static int rhizome_delete_file_retry(sqlite_retry_state *retry, const char *fileid);
-static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const char *manifestid);
+static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
 
 const char *rhizome_datastore_path()
 {
@@ -76,15 +78,16 @@ int create_rhizome_datastore_dir()
 sqlite3 *rhizome_db=NULL;
 
 /* XXX Requires a messy join that might be slow. */
-int rhizome_manifest_priority(sqlite_retry_state *retry, const char *id)
+int rhizome_manifest_priority(sqlite_retry_state *retry, const rhizome_bid_t *bidp)
 {
   int64_t result = 0;
   if (sqlite_exec_int64_retry(retry, &result,
-	"select max(grouplist.priorty) from grouplist,manifests,groupmemberships"
-	" where manifests.id='%s'"
-	"   and grouplist.id=groupmemberships.groupid"
-	"   and groupmemberships.manifestid=manifests.id;",
-	id
+	"SELECT max(grouplist.priorty) FROM GROUPLIST,MANIFESTS,GROUPMEMBERSHIPS"
+	" WHERE MANIFESTS.id = ?"
+	"   AND GROUPLIST.id = GROUPMEMBERSHIPS.groupid"
+	"   AND GROUPMEMBERSHIPS.manifestid = MANIFESTS.id;",
+	RHIZOME_BID_T, bidp,
+	END
       ) == -1
   )
     return -1;
@@ -133,7 +136,8 @@ int (*sqlite_set_tracefunc(int (*newfunc)()))()
   return oldfunc;
 }
 
-void sqlite_log(void *ignored, int result, const char *msg){
+void sqlite_log(void *ignored, int result, const char *msg)
+{
   WARNF("Sqlite: %d %s", result, msg);
 }
 
@@ -164,7 +168,7 @@ void verify_bundles(){
     }
     if (ret!=0){
       DEBUGF("Removing invalid manifest entry @%lld", rowid);
-      sqlite_exec_void_retry(&retry, "DELETE FROM MANIFESTS WHERE ROWID=%lld;", rowid);
+      sqlite_exec_void_retry(&retry, "DELETE FROM MANIFESTS WHERE ROWID = ?;", INT64, rowid, END);
     }
     rhizome_manifest_free(m);
   }
@@ -176,7 +180,7 @@ void verify_bundles(){
  * that has write permission on the bundle, ie, possesses the Rhizome secret key that generated the
  * BID, and hence can derive the Bundle Secret from the bundle's BK field:
  * - The MANIFESTS table 'author' column is set to the author SID when a bundle is created
- *   locally bu a non-secret identity, so no verification need ever be performed for one's own
+ *   locally by a non-secret identity, so no verification need be performed for one's own
  *   bundles while they remain in the Rhizome store.
  * - When a bundle is imported, the 'author' column is set to NULL to indicate that no
  *   verification has passed yet.  This includes one's own bundles that have been purged from
@@ -232,47 +236,47 @@ int rhizome_opendb()
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
   int64_t version;
-  if (sqlite_exec_int64_retry(&retry, &version, "PRAGMA user_version;") == -1)
+  if (sqlite_exec_int64_retry(&retry, &version, "PRAGMA user_version;", END) == -1)
     RETURN(-1);
   
   if (version<1){
     /* Create tables as required */
-    sqlite_exec_void_loglevel(loglevel, "PRAGMA auto_vacuum=2;");
-    if (	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer,priority integer);") == -1
-      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, version integer,inserttime integer, filesize integer, filehash text, author text, bar blob, manifest blob);") == -1
-      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, length integer, highestpriority integer, datavalid integer, inserttime integer);") == -1
-      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS FILEBLOBS(id text not null primary key, data blob);") == -1
-      ||	sqlite_exec_void_retry(&retry, "DROP TABLE IF EXISTS FILEMANIFESTS;") == -1
-      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS GROUPMEMBERSHIPS(manifestid text not null, groupid text not null);") == -1
-      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS VERIFICATIONS(sid text not null, did text, name text, starttime integer, endtime integer, signature blob);") == -1
+    sqlite_exec_void_loglevel(loglevel, "PRAGMA auto_vacuum=2;", END);
+    if (	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer,priority integer);", END) == -1
+      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, version integer,inserttime integer, filesize integer, filehash text, author text, bar blob, manifest blob);", END) == -1
+      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, length integer, highestpriority integer, datavalid integer, inserttime integer);", END) == -1
+      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS FILEBLOBS(id text not null primary key, data blob);", END) == -1
+      ||	sqlite_exec_void_retry(&retry, "DROP TABLE IF EXISTS FILEMANIFESTS;", END) == -1
+      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS GROUPMEMBERSHIPS(manifestid text not null, groupid text not null);", END) == -1
+      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS VERIFICATIONS(sid text not null, did text, name text, starttime integer, endtime integer, signature blob);", END) == -1
     ) {
       RETURN(WHY("Failed to create schema"));
     }
 
     /* Create indexes if they don't already exist */
-    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS bundlesizeindex ON manifests (filesize);");
-    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);");
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS bundlesizeindex ON manifests (filesize);", END);
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);", END);
     
-    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=1;");
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=1;", END);
   }
   if (version<2){
-    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN service text;");
-    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN name text;");
-    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN sender text collate nocase;");
-    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN recipient text collate nocase;");
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN service text;", END);
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN name text;", END);
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN sender text collate nocase;", END);
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN recipient text collate nocase;", END);
     // if more bundle verification is required in later upgrades, move this to the end, don't run it more than once.
     verify_bundles();
-    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=2;");
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=2;", END);
   }
   
   if (version<3){
-    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_ID_VERSION ON MANIFESTS(id, version);");
-    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=3;");
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_ID_VERSION ON MANIFESTS(id, version);", END);
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=3;", END);
   }
   
   if (version<4){
-    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN tail integer;");
-    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=4;");
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN tail integer;", END);
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=4;", END);
   }
   
   // TODO recreate tables with collate nocase on hex columns
@@ -296,7 +300,7 @@ int rhizome_close_db()
     
     if (!sqlite3_get_autocommit(rhizome_db)){
       WHY("Uncommitted transaction!");
-      sqlite_exec_void("ROLLBACK;");
+      sqlite_exec_void("ROLLBACK;", END);
     }
     sqlite3_stmt *stmt = NULL;
     while ((stmt = sqlite3_next_stmt(rhizome_db, stmt))) {
@@ -409,47 +413,286 @@ void _sqlite_retry_done(struct __sourceloc __whence, sqlite_retry_state *retry, 
     retry->start = -1;
 }
 
-/*
-   Convenience wrapper for preparing an SQL command.
-   Returns -1 if an error occurs (logged as an error), otherwise zero with the prepared
-   statement in *statement.
+/* Prepare an SQL command from a simple string.  Returns NULL if an error occurs (logged as an
+ * error), otherwise returns a pointer to the prepared SQLite statement.
+ *
+ * IMPORTANT!  Do not form statement strings using sprintf(3) or strbuf_sprintf() or similar
+ * methods, because those are susceptible to SQL injection attacks.  Instead, use bound parameters
+ * and bind them using the _sqlite_bind() function below.
+ *
+ * IMPORTANT!  Do not add sprintf(3)-like functionality to this method.  It used to take
+ * sprintf(3)-style varargs and these were deliberately removed.  It is vital to discourage bad
+ * practice, and adding sprintf(3)-style args to this function would be a step in the wrong
+ * direction.
+ *
+ * See GitHub issue #69.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
-sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, sqlite_retry_state *retry, const char *sqlformat, ...)
-{
-  strbuf sql = strbuf_alloca(8192);
-  strbuf_va_printf(sql, sqlformat);
-  return _sqlite_prepare_loglevel(__whence, LOG_LEVEL_ERROR, retry, sql);
-}
-
-sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, strbuf stmt)
+sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqltext)
 {
   IN();
   sqlite3_stmt *statement = NULL;
-  if (strbuf_overrun(stmt)) {
-    WHYF("SQL overrun: %s", strbuf_str(stmt));
-    RETURN(NULL);
-  }
   if (!rhizome_db && rhizome_opendb() == -1)
     RETURN(NULL);
   while (1) {
-    switch (sqlite3_prepare_v2(rhizome_db, strbuf_str(stmt), -1, &statement, NULL)) {
+    switch (sqlite3_prepare_v2(rhizome_db, sqltext, -1, &statement, NULL)) {
       case SQLITE_OK:
 	RETURN(statement);
       case SQLITE_BUSY:
       case SQLITE_LOCKED:
-	if (retry && _sqlite_retry(__whence, retry, strbuf_str(stmt))) {
+	if (retry && _sqlite_retry(__whence, retry, sqltext)) {
 	  break; // back to sqlite3_prepare_v2()
 	}
 	// fall through...
       default:
-	LOGF(log_level, "query invalid, %s: %s", sqlite3_errmsg(rhizome_db), strbuf_str(stmt));
+	LOGF(log_level, "query invalid, %s: %s", sqlite3_errmsg(rhizome_db), sqltext);
 	sqlite3_finalize(statement);
 	RETURN(NULL);
     }
   }
 }
 
-int _sqlite_step_retry(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
+/* Bind some parameters to a prepared SQL statement.  Returns -1 if an error occurs (logged as an
+ * error), otherwise zero with the prepared statement in *statement.
+ *
+ * Developed as part of GitHub issue #69.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement, va_list ap)
+{
+  const int index_limit = sqlite3_limit(rhizome_db, SQLITE_LIMIT_VARIABLE_NUMBER, -1);
+  enum sqlbind_type typ;
+  int index_counter = 0;
+  strbuf ext = NULL;
+  do {
+    typ = va_arg(ap, int);
+    int index;
+    const char *name = NULL;
+    if ((typ & 0xffff0000) == INDEX) {
+      typ &= 0xffff;
+      index = va_arg(ap, int);
+      if (index < 1 || index > index_limit) {
+	LOGF(log_level, "illegal index %d: %s", index, sqlite3_sql(statement));
+	return -1;
+      }
+      if (config.debug.rhizome)
+	strbuf_sprintf((ext = strbuf_alloca(25)), "|INDEX index=%d", index);
+    } else if ((typ & 0xffff0000) == NAMED) {
+      typ &= 0xffff;
+      name = va_arg(ap, const char *);
+      index = sqlite3_bind_parameter_index(statement, name);
+      if (index == 0) {
+	LOGF(log_level, "no parameter %s in query: %s", alloca_str_toprint(name), sqlite3_sql(statement));
+	return -1;
+      }
+      if (config.debug.rhizome) {
+	ext = strbuf_alloca(20 + toprint_str_len(name, "\"\""));
+	strbuf_puts(ext, "|NAMED name=");
+	strbuf_toprint_quoted(ext, "\"\"", name);
+      }
+    } else {
+      index = ++index_counter;
+      if (config.debug.rhizome)
+	ext = strbuf_alloca(1);
+    }
+#define BIND_DEBUG(TYP,FUNC,ARGFMT,...) \
+	  if (config.debug.rhizome_bind) \
+	    DEBUGF("%s%s %s(%d," ARGFMT ") %s", #TYP, strbuf_str(ext), #FUNC, index, ##__VA_ARGS__, sqlite3_sql(statement))
+#define BIND_RETRY(FUNC, ...) \
+	do { \
+	  switch (FUNC(statement, index, ##__VA_ARGS__)) { \
+	    case SQLITE_OK: \
+	      break; \
+	    case SQLITE_BUSY: \
+	    case SQLITE_LOCKED: \
+	      if (retry && _sqlite_retry(__whence, retry, #FUNC "()")) \
+		continue; \
+	    default: \
+	      LOGF(log_level, #FUNC "(%d) failed, %s: %s", index, sqlite3_errmsg(rhizome_db), sqlite3_sql(statement)); \
+	      sqlite3_finalize(statement); \
+	      return -1; \
+	  } \
+	  break; \
+	} while (1)
+    switch (typ) {
+      case END:
+	break;
+      case NUL:
+	BIND_DEBUG(NUL, sqlite3_bind_null, "");
+	BIND_RETRY(sqlite3_bind_null);
+	break;
+      case INT: {
+	  int value = va_arg(ap, int);
+	  BIND_DEBUG(INT, sqlite3_bind_int, "%d", value);
+	  BIND_RETRY(sqlite3_bind_int, value);
+	}
+	break;
+      case INT_TOSTR: {
+	  int value = va_arg(ap, int);
+	  char str[25];
+	  sprintf(str, "%d", value);
+	  BIND_DEBUG(INT_TOSTR, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(str));
+	  BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
+	}
+	break;
+      case UINT_TOSTR: {
+	  unsigned value = va_arg(ap, unsigned);
+	  char str[25];
+	  sprintf(str, "%u", value);
+	  BIND_DEBUG(UINT_TOSTR, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(str));
+	  BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
+	}
+	break;
+      case INT64: {
+	  sqlite3_int64 value = va_arg(ap, int64_t);
+	  BIND_DEBUG(INT64, sqlite3_bind_int64, "%"PRId64, (int64_t)value);
+	  BIND_RETRY(sqlite3_bind_int64, value);
+	}
+	break;
+      case INT64_TOSTR: {
+	  int64_t value = va_arg(ap, int64_t);
+	  char str[35];
+	  sprintf(str, "%"PRId64, value);
+	  BIND_DEBUG(INT64_TOSTR, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(str));
+	  BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
+	}
+	break;
+      case UINT64_TOSTR: {
+	  uint64_t value = va_arg(ap, uint64_t);
+	  char str[35];
+	  sprintf(str, "%"PRIu64, value);
+	  BIND_DEBUG(UINT64_TOSTR, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(str));
+	  BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
+	}
+	break;
+      case TEXT: {
+	  const char *text = va_arg(ap, const char *);
+	  BIND_DEBUG(TEXT, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(text));
+	  BIND_RETRY(sqlite3_bind_text, text, -1, SQLITE_TRANSIENT);
+	}
+	break;
+      case TEXT_LEN: {
+	  const char *text = va_arg(ap, const char *);
+	  int bytes = va_arg(ap, int);
+	  BIND_DEBUG(TEXT_LEN, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", alloca_str_toprint(text), bytes);
+	  BIND_RETRY(sqlite3_bind_text, text, bytes, SQLITE_TRANSIENT);
+	}
+	break;
+      case STATIC_TEXT: {
+	  const char *text = va_arg(ap, const char *);
+	  BIND_DEBUG(STATIC_TEXT, sqlite3_bind_text, "%s,-1,SQLITE_STATIC", alloca_str_toprint(text));
+	  BIND_RETRY(sqlite3_bind_text, text, -1, SQLITE_STATIC);
+	}
+	break;
+      case STATIC_TEXT_LEN: {
+	  const char *text = va_arg(ap, const char *);
+	  int bytes = va_arg(ap, int);
+	  BIND_DEBUG(STATIC_TEXT_LEN, sqlite3_bind_text, "%s,%d,SQLITE_STATIC", alloca_str_toprint(text), bytes);
+	  BIND_RETRY(sqlite3_bind_text, text, bytes, SQLITE_STATIC);
+	}
+	break;
+      case STATIC_BLOB: {
+	  const void *blob = va_arg(ap, const void *);
+	  int bytes = va_arg(ap, int);
+	  BIND_DEBUG(STATIC_BLOB, sqlite3_bind_blob, "%s,%d,SQLITE_STATIC", alloca_toprint(20, blob, bytes), bytes);
+	  BIND_RETRY(sqlite3_bind_blob, blob, bytes, SQLITE_STATIC);
+	};
+	break;
+      case ZEROBLOB: {
+	  int bytes = va_arg(ap, int);
+	  BIND_DEBUG(ZEROBLOB, sqlite3_bind_zeroblob, "%d,SQLITE_STATIC", bytes);
+	  BIND_RETRY(sqlite3_bind_zeroblob, bytes);
+	};
+	break;
+      case SID_T: {
+	  const sid_t *sidp = va_arg(ap, const sid_t *);
+	  const char *sid_hex = alloca_tohex_sid_t(*sidp);
+	  BIND_DEBUG(SID_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", sid_hex, SID_STRLEN);
+	  BIND_RETRY(sqlite3_bind_text, sid_hex, SID_STRLEN, SQLITE_TRANSIENT);
+	}
+	break;
+      case RHIZOME_BID_T: {
+	  const rhizome_bid_t *bidp = va_arg(ap, const rhizome_bid_t *);
+	  const char *bid_hex = alloca_tohex_rhizome_bid_t(*bidp);
+	  BIND_DEBUG(RHIZOME_BID_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", bid_hex, RHIZOME_MANIFEST_ID_STRLEN);
+	  BIND_RETRY(sqlite3_bind_text, bid_hex, RHIZOME_MANIFEST_ID_STRLEN, SQLITE_TRANSIENT);
+	}
+	break;
+      case FILEHASH_T: {
+	  const char *hash_hex = alloca_tohex(va_arg(ap, const unsigned char *), RHIZOME_FILEHASH_BYTES);
+	  BIND_DEBUG(FILEHASH_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", hash_hex, RHIZOME_FILEHASH_STRLEN);
+	  BIND_RETRY(sqlite3_bind_text, hash_hex, RHIZOME_FILEHASH_STRLEN, SQLITE_TRANSIENT);
+	}
+	break;
+      case TOHEX: {
+	  const unsigned char *binary = va_arg(ap, const unsigned char *);
+	  unsigned bytes = va_arg(ap, unsigned);
+	  const char *hex = alloca_tohex(binary, bytes);
+	  BIND_DEBUG(TOHEX, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", hex, bytes * 2);
+	  BIND_RETRY(sqlite3_bind_text, hex, bytes * 2, SQLITE_TRANSIENT);
+	}
+	break;
+      case TEXT_TOUPPER: {
+	  const char *text = va_arg(ap, const char *);
+	  unsigned bytes = strlen(text);
+	  char upper[bytes + 1];
+	  str_toupper_inplace(strcpy(upper, text));
+	  BIND_DEBUG(TEXT_TOUPPER, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", alloca_toprint(-1, upper, bytes), bytes);
+	  BIND_RETRY(sqlite3_bind_text, upper, bytes, SQLITE_TRANSIENT);
+	}
+	break;
+      case TEXT_LEN_TOUPPER: {
+	  const char *text = va_arg(ap, const char *);
+	  unsigned bytes = va_arg(ap, unsigned);
+	  char upper[bytes];
+	  unsigned i;
+	  for (i = 0; i != bytes; ++i)
+	    upper[i] = toupper(text[i]);
+	  BIND_DEBUG(TEXT_LEN_TOUPPER, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", alloca_toprint(-1, upper, bytes), bytes);
+	  BIND_RETRY(sqlite3_bind_text, upper, bytes, SQLITE_TRANSIENT);
+	}
+	break;
+#undef BIND_RETRY
+      default:
+	FATALF("unsupported bind code, index=%d typ=0x%08x: %s", index, typ, sqlite3_sql(statement));
+    }
+  } while (typ != END);
+  return 0;
+}
+
+int _sqlite_bind(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement, ...)
+{
+  va_list ap;
+  va_start(ap, statement);
+  int ret = _sqlite_vbind(__whence, log_level, retry, statement, ap);
+  va_end(ap);
+  return ret;
+}
+
+/* Prepare an SQL statement and bind some parameters.  Returns a pointer to the SQLite statement if
+ * successful or NULL if an error occurs (which is logged at the given log level).
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+sqlite3_stmt *_sqlite_prepare_bind(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqltext, ...)
+{
+  sqlite3_stmt *statement = _sqlite_prepare(__whence, log_level, retry, sqltext);
+  if (statement != NULL) {
+    va_list ap;
+    va_start(ap, sqltext);
+    int ret = _sqlite_vbind(__whence, log_level, retry, statement, ap);
+    va_end(ap);
+    if (ret == -1) {
+      sqlite3_finalize(statement);
+      statement = NULL;
+    }
+  }
+  return statement;
+}
+
+int _sqlite_step(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
 {
   IN();
   int ret = -1;
@@ -499,13 +742,13 @@ int _sqlite_step_retry(struct __sourceloc __whence, int log_level, sqlite_retry_
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static int _sqlite_exec_prepared(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
+static int _sqlite_exec(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
 {
   if (!statement)
     return -1;
   int rowcount = 0;
   int stepcode;
-  while ((stepcode = _sqlite_step_retry(__whence, log_level, retry, statement)) == SQLITE_ROW)
+  while ((stepcode = _sqlite_step(__whence, log_level, retry, statement)) == SQLITE_ROW)
     ++rowcount;
   sqlite3_finalize(statement);
   if (sqlite_trace_func())
@@ -518,11 +761,14 @@ static int _sqlite_exec_prepared(struct __sourceloc __whence, int log_level, sql
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static int _sqlite_vexec_void(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqlformat, va_list ap)
+static int _sqlite_vexec_void(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqltext, va_list ap)
 {
-  strbuf stmt = strbuf_alloca(8192);
-  strbuf_vsprintf(stmt, sqlformat, ap);
-  int rowcount = _sqlite_exec_prepared(__whence, log_level, retry, _sqlite_prepare_loglevel(__whence, log_level, retry, stmt));
+  sqlite3_stmt *statement = _sqlite_prepare(__whence, log_level, retry, sqltext);
+  if (!statement)
+    return -1;
+  if (_sqlite_vbind(__whence, log_level, retry, statement, ap) == -1)
+    return -1;
+  int rowcount = _sqlite_exec(__whence, log_level, retry, statement);
   if (rowcount == -1)
     return -1;
   if (rowcount)
@@ -536,26 +782,12 @@ static int _sqlite_vexec_void(struct __sourceloc __whence, int log_level, sqlite
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int _sqlite_exec_void(struct __sourceloc __whence, const char *sqlformat, ...)
+int _sqlite_exec_void(struct __sourceloc __whence, int log_level, const char *sqltext, ...)
 {
   va_list ap;
-  va_start(ap, sqlformat);
+  va_start(ap, sqltext);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  int ret = _sqlite_vexec_void(__whence, LOG_LEVEL_ERROR, &retry, sqlformat, ap);
-  va_end(ap);
-  return ret;
-}
-
-/* Same as sqlite_exec_void(), but logs any error at the given level instead of ERROR.
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
-int _sqlite_exec_void_loglevel(struct __sourceloc __whence, int log_level, const char *sqlformat, ...)
-{
-  va_list ap;
-  va_start(ap, sqlformat);
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  int ret = _sqlite_vexec_void(__whence, log_level, &retry, sqlformat, ap);
+  int ret = _sqlite_vexec_void(__whence, log_level, &retry, sqltext, ap);
   va_end(ap);
   return ret;
 }
@@ -567,39 +799,26 @@ int _sqlite_exec_void_loglevel(struct __sourceloc __whence, int log_level, const
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int _sqlite_exec_void_retry(struct __sourceloc __whence, sqlite_retry_state *retry, const char *sqlformat, ...)
+int _sqlite_exec_void_retry(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqltext, ...)
 {
   va_list ap;
-  va_start(ap, sqlformat);
-  int ret = _sqlite_vexec_void(__whence, LOG_LEVEL_ERROR, retry, sqlformat, ap);
+  va_start(ap, sqltext);
+  int ret = _sqlite_vexec_void(__whence, log_level, retry, sqltext, ap);
   va_end(ap);
   return ret;
 }
 
-/* Same as sqlite_exec_void_retry(), but logs any error at the given level instead of ERROR.
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
-int _sqlite_exec_void_retry_loglevel(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqlformat, ...)
+static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *retry, int64_t *result, const char *sqltext, va_list ap)
 {
-  va_list ap;
-  va_start(ap, sqlformat);
-  int ret = _sqlite_vexec_void(__whence, log_level, retry, sqlformat, ap);
-  va_end(ap);
-  return ret;
-}
-
-static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *retry, int64_t *result, const char *sqlformat, va_list ap)
-{
-  strbuf stmt = strbuf_alloca(8192);
-  strbuf_vsprintf(stmt, sqlformat, ap);
-  sqlite3_stmt *statement = _sqlite_prepare_loglevel(__whence, LOG_LEVEL_ERROR, retry, stmt);
+  sqlite3_stmt *statement = _sqlite_prepare(__whence, LOG_LEVEL_ERROR, retry, sqltext);
   if (!statement)
+    return -1;
+  if (_sqlite_vbind(__whence, LOG_LEVEL_ERROR, retry, statement, ap) == -1)
     return -1;
   int ret = 0;
   int rowcount = 0;
   int stepcode;
-  while ((stepcode = _sqlite_step_retry(__whence, LOG_LEVEL_ERROR, retry, statement)) == SQLITE_ROW) {
+  while ((stepcode = _sqlite_step(__whence, LOG_LEVEL_ERROR, retry, statement)) == SQLITE_ROW) {
     int columncount = sqlite3_column_count(statement);
     if (columncount != 1)
       ret = WHYF("incorrect column count %d (should be 1): %s", columncount, sqlite3_sql(statement));
@@ -679,17 +898,17 @@ int _sqlite_exec_strbuf_retry(struct __sourceloc __whence, sqlite_retry_state *r
   return ret;
 }
 
-int _sqlite_vexec_strbuf_retry(struct __sourceloc __whence, sqlite_retry_state *retry, strbuf sb, const char *sqlformat, va_list ap)
+int _sqlite_vexec_strbuf_retry(struct __sourceloc __whence, sqlite_retry_state *retry, strbuf sb, const char *sqltext, va_list ap)
 {
-  strbuf stmt = strbuf_alloca(8192);
-  strbuf_vsprintf(stmt, sqlformat, ap);
-  sqlite3_stmt *statement = _sqlite_prepare_loglevel(__whence, LOG_LEVEL_ERROR, retry, stmt);
+  sqlite3_stmt *statement = _sqlite_prepare(__whence, LOG_LEVEL_ERROR, retry, sqltext);
   if (!statement)
+    return -1;
+  if (_sqlite_vbind(__whence, LOG_LEVEL_ERROR, retry, statement, ap) == -1)
     return -1;
   int ret = 0;
   int rowcount = 0;
   int stepcode;
-  while ((stepcode = _sqlite_step_retry(__whence, LOG_LEVEL_ERROR, retry, statement)) == SQLITE_ROW) {
+  while ((stepcode = _sqlite_step(__whence, LOG_LEVEL_ERROR, retry, statement)) == SQLITE_ROW) {
     int columncount = sqlite3_column_count(statement);
     if (columncount != 1)
       ret - WHYF("incorrect column count %d (should be 1): %s", columncount, sqlite3_sql(statement));
@@ -707,20 +926,20 @@ int64_t rhizome_database_used_bytes()
   int64_t db_page_size;
   int64_t db_page_count;
   int64_t db_free_page_count;
-  if (	sqlite_exec_int64(&db_page_size, "PRAGMA page_size;") == -1LL
-    ||  sqlite_exec_int64(&db_page_count, "PRAGMA page_count;") == -1LL
-    ||	sqlite_exec_int64(&db_free_page_count, "PRAGMA free_count;") == -1LL
+  if (	sqlite_exec_int64(&db_page_size, "PRAGMA page_size;", END) == -1LL
+    ||  sqlite_exec_int64(&db_page_count, "PRAGMA page_count;", END) == -1LL
+    ||	sqlite_exec_int64(&db_free_page_count, "PRAGMA free_count;", END) == -1LL
   )
     return WHY("Cannot measure database used bytes");
   return db_page_size * (db_page_count - db_free_page_count);
 }
 
-int rhizome_database_filehash_from_id(const char *id, uint64_t version, char hash[SHA512_DIGEST_STRING_LENGTH])
+int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t version, char hash[SHA512_DIGEST_STRING_LENGTH])
 {
   IN();
   strbuf hash_sb = strbuf_local(hash, SHA512_DIGEST_STRING_LENGTH);
-  RETURN(sqlite_exec_strbuf(hash_sb, "SELECT filehash FROM MANIFESTS WHERE manifests.version=%lld AND manifests.id='%s';",
-			    version,id));
+  RETURN(sqlite_exec_strbuf(hash_sb, "SELECT filehash FROM MANIFESTS WHERE version = ? AND id = ?;",
+			    INT64, version, RHIZOME_BID_T, bidp, END));
   OUT();
 }
 
@@ -735,15 +954,25 @@ static int rhizome_delete_external(const char *fileid)
 
 static int rhizome_delete_orphan_fileblobs_retry(sqlite_retry_state *retry)
 {
-  return sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, retry, "DELETE FROM FILEBLOBS WHERE NOT EXISTS( SELECT 1 FROM FILES WHERE FILES.id = FILEBLOBS.id );");
+  return sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, retry,
+      "DELETE FROM FILEBLOBS WHERE NOT EXISTS( SELECT 1 FROM FILES WHERE FILES.id = FILEBLOBS.id );",
+      END);
 }
 
 int rhizome_remove_file_datainvalid(sqlite_retry_state *retry, const char *fileid)
 {
   int ret = 0;
-  if (sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, retry, "DELETE FROM FILES WHERE id='%s' and datavalid=0;", fileid) == -1)
+  if (sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, retry,
+	  "DELETE FROM FILES WHERE id = ? and datavalid = 0;",
+	  TEXT_TOUPPER, fileid, END
+	) == -1
+  )
     ret = -1;
-  if (sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, retry, "DELETE FROM FILEBLOBS WHERE id='%s' AND NOT EXISTS( SELECT 1 FROM FILES WHERE FILES.id=FILEBLOBS.id );", fileid) == -1)
+  if (sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, retry,
+	  "DELETE FROM FILEBLOBS WHERE id = ? AND NOT EXISTS( SELECT 1 FROM FILES WHERE FILES.id = FILEBLOBS.id );",
+	  TEXT_TOUPPER, fileid, END
+	) == -1
+  )
     ret = -1;
   return ret;
 }
@@ -761,7 +990,9 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
   int candidates=0;
   if (report)
     report->deleted_orphan_fileblobs = 0;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT id FROM FILES WHERE inserttime < %lld AND datavalid=0;", insert_horizon);
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
+      "SELECT id FROM FILES WHERE inserttime < ? AND datavalid = 0;",
+      INT64, insert_horizon, END);
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     candidates++;
     const char *id = (const char *) sqlite3_column_text(statement, 0);
@@ -770,7 +1001,9 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
   }
   sqlite3_finalize(statement);
   
-  statement = sqlite_prepare(&retry, "SELECT id FROM FILES WHERE inserttime < %lld AND datavalid=1 AND NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);", insert_horizon_no_manifest);
+  statement = sqlite_prepare_bind(&retry,
+      "SELECT id FROM FILES WHERE inserttime < ? AND datavalid = 1 AND NOT EXISTS( SELECT 1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);",
+      INT64, insert_horizon_no_manifest, END);
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     candidates++;
     const char *id = (const char *) sqlite3_column_text(statement, 0);
@@ -782,10 +1015,14 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
   int ret;
   if (candidates) {
     // clean out unreferenced files
-    ret = sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILES WHERE inserttime < %lld AND datavalid=0;", insert_horizon);
+    ret = sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,
+	"DELETE FROM FILES WHERE inserttime < ? AND datavalid = 0;",
+	INT64, insert_horizon, END);
     if (report)
       report->deleted_stale_incoming_files = ret;
-    ret = sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILES WHERE inserttime < %lld AND datavalid=1 AND NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);", insert_horizon_no_manifest);
+    ret = sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,
+	"DELETE FROM FILES WHERE inserttime < ? AND datavalid=1 AND NOT EXISTS( SELECT 1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);",
+	INT64, insert_horizon_no_manifest, END);
     if (report)
       report->deleted_orphan_files = ret;
   }
@@ -815,7 +1052,9 @@ int rhizome_make_space(int group_priority, long long bytes)
 
   /* Okay, not enough space, so free up some. */
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, "select id,length from files where highestpriority < %d order by descending length", group_priority);
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
+      "SELECT id,length FROM FILES WHERE highestpriority < ? ORDER BY DESCENDING LENGTH",
+      INT, group_priority, END);
   if (!statement)
     return -1;
   while (bytes > (config.rhizome.database_size - 65536 - rhizome_database_used_bytes())
@@ -853,15 +1092,15 @@ int rhizome_make_space(int group_priority, long long bytes)
   return WHY("Incomplete");
 }
 
-/* Drop the specified file from storage, and any manifests that reference it, 
-   provided that none of those manifests are being retained at a higher priority
-   than the maximum specified here. */
-int rhizome_drop_stored_file(const char *id,int maximum_priority)
+/* Drop the specified file from storage, and any manifests that reference it, provided that none of
+ * those manifests are being retained at a higher priority than the maximum specified here.
+ */
+int rhizome_drop_stored_file(const char *id, int maximum_priority)
 {
   if (!rhizome_str_is_file_hash(id))
-    return WHYF("invalid file hash id=%s", alloca_toprint(-1, id, strlen(id)));
+    return WHYF("invalid file hash id=%s", alloca_str_toprint(id));
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, "select id from manifests where filehash='%s'", id);
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry, "SELECT id FROM MANIFESTS WHERE filehash = ?", TEXT_TOUPPER, id, END);
   if (!statement)
     return WHYF("Could not drop stored file id=%s", id);
   int can_drop = 1;
@@ -871,23 +1110,28 @@ int rhizome_drop_stored_file(const char *id,int maximum_priority)
       WHYF("Incorrect type in id column of manifests table");
       break;
     }
-    const char *manifestId = (char *) sqlite3_column_text(statement, 0);
+    const char *q_id = (char *) sqlite3_column_text(statement, 0);
+    rhizome_bid_t bid;
+    if (str_to_rhizome_bid_t(&bid, q_id) == -1) {
+      WARNF("malformed column value MANIFESTS.id = %s -- skipped", alloca_str_toprint(q_id));
+      continue;
+    }
     /* Check that manifest is not part of a higher priority group.
 	If so, we cannot drop the manifest or the file.
 	However, we will keep iterating, as we can still drop any other manifests pointing to this file
 	that are lower priority, and thus free up a little space. */
-    int priority = rhizome_manifest_priority(&retry, manifestId);
+    int priority = rhizome_manifest_priority(&retry, &bid);
     if (priority == -1)
-      WHYF("Cannot drop fileid=%s due to error, manifestId=%s", id, manifestId);
+      WHYF("Cannot drop fileid=%s due to error, bid=%s", id, alloca_tohex_rhizome_bid_t(bid));
     else if (priority > maximum_priority) {
-      WHYF("Cannot drop fileid=%s due to manifest priority, manifestId=%s", id, manifestId);
+      WHYF("Cannot drop fileid=%s due to manifest priority, bid=%s", id, alloca_tohex_rhizome_bid_t(bid));
       can_drop = 0;
     } else {
       if (config.debug.rhizome)
 	DEBUGF("removing stale manifests, groupmemberships");
-      sqlite_exec_void_retry(&retry, "delete from manifests where id='%s';", manifestId);
-      sqlite_exec_void_retry(&retry, "delete from keypairs where public='%s';", manifestId);
-      sqlite_exec_void_retry(&retry, "delete from groupmemberships where manifestid='%s';", manifestId);
+      sqlite_exec_void_retry(&retry, "DELETE FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &bid, END);
+      sqlite_exec_void_retry(&retry, "DELETE FROM KEYPAIRS WHERE public = ?;", RHIZOME_BID_T, &bid, END);
+      sqlite_exec_void_retry(&retry, "DELETE FROM GROUPMEMBERSHIPS WHERE manifestid = ?;", RHIZOME_BID_T, &bid, END);
     }
   }
   sqlite3_finalize(statement);
@@ -958,7 +1202,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1)
     return WHY("Failed to begin transaction");
   
   sqlite3_stmt *stmt;
@@ -1047,12 +1291,12 @@ int rhizome_store_bundle(rhizome_manifest *m)
     sqlite3_finalize(stmt);
     stmt = NULL;
   }
-  if (sqlite_exec_void_retry(&retry, "COMMIT;") != -1){
+  if (sqlite_exec_void_retry(&retry, "COMMIT;", END) != -1){
     // This message used in tests; do not modify or remove.
     const char *service = rhizome_manifest_get(m, "service", NULL, 0);
     INFOF("RHIZOME ADD MANIFEST service=%s bid=%s version=%"PRId64,
 	  service ? service : "NULL",
-	  alloca_tohex_sid(m->cryptoSignPublic),
+	  alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
 	  m->version
 	  );
     monitor_announce_bundle(m);
@@ -1064,7 +1308,7 @@ rollback:
   if (stmt)
     sqlite3_finalize(stmt);
   WHYF("Failed to store bundle bid=%s", manifestid);
-  sqlite_exec_void_retry(&retry, "ROLLBACK;");
+  sqlite_exec_void_retry(&retry, "ROLLBACK;", END);
   return -1;
 }
 
@@ -1094,7 +1338,7 @@ int rhizome_list_manifests(struct cli_context *context, const char *service, con
     RETURN(WHYF("SQL command too long: %s", strbuf_str(b)));
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, "%s", strbuf_str(b));
+  sqlite3_stmt *statement = sqlite_prepare(&retry, strbuf_str(b));
   if (!statement)
     RETURN(-1);
   
@@ -1212,7 +1456,7 @@ int rhizome_list_manifests(struct cli_context *context, const char *service, con
 	
 	cli_put_long(context, rowid, ":");
 	cli_put_string(context, blob_service, ":");
-	cli_put_hexvalue(context, m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES, ":");
+	cli_put_hexvalue(context, m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, ":");
 	cli_put_long(context, blob_version, ":");
 	cli_put_long(context, blob_date, ":");
 	cli_put_long(context, q_inserttime, ":");
@@ -1257,13 +1501,18 @@ int rhizome_update_file_priority(const char *fileid)
   int64_t highestPriority = -1;
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   if (sqlite_exec_int64_retry(&retry, &highestPriority,
-	"SELECT max(grouplist.priority) FROM MANIFESTS,GROUPMEMBERSHIPS,GROUPLIST"
-	" where manifests.filehash='%s'"
-	"   AND groupmemberships.manifestid=manifests.id"
-	"   AND groupmemberships.groupid=grouplist.id;",
-	fileid) == -1)
+	"SELECT max(grouplist.priority) FROM MANIFESTS, GROUPMEMBERSHIPS, GROUPLIST"
+	" WHERE MANIFESTS.filehash = ?"
+	"   AND GROUPMEMBERSHIPS.manifestid = MANIFESTS.id"
+	"   AND GROUPMEMBERSHIPS.groupid = GROUPLIST.id;",
+	TEXT_TOUPPER, fileid, END) == -1)
     return -1;
-  if (highestPriority >= 0 && sqlite_exec_void_retry(&retry, "UPDATE files set highestPriority=%lld WHERE id='%s';", highestPriority, fileid) == -1)
+  if (   highestPriority >= 0
+      && sqlite_exec_void_retry(&retry,
+	      "UPDATE files SET highestPriority = ? WHERE id = ?;",
+	      INT, highestPriority, TEXT_TOUPPER, fileid, END
+	  ) == -1
+  )
     return WHYF("cannot update priority for fileid=%s", fileid);
   return 0;
 }
@@ -1303,7 +1552,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
   
   int ret = 0;
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, "%s", strbuf_str(b));
+  sqlite3_stmt *statement = sqlite_prepare(&retry, strbuf_str(b));
   if (!statement)
     return -1;
   
@@ -1372,62 +1621,89 @@ next:
   return ret;
 }
 
-/* Retrieve a manifest from the database, given its manifest ID.
+static int unpack_manifest_row(rhizome_manifest *m, sqlite3_stmt *statement)
+{
+  const char *q_id = (const char *) sqlite3_column_text(statement, 0);
+  const char *q_blob = (char *) sqlite3_column_blob(statement, 1);
+  int64_t q_version = sqlite3_column_int64(statement, 2);
+  int64_t q_inserttime = sqlite3_column_int64(statement, 3);
+  const char *q_author = (const char *) sqlite3_column_text(statement, 4);
+  size_t q_blobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
+  if (rhizome_read_manifest_file(m, q_blob, q_blobsize))
+    return WHYF("Manifest %s exists but is invalid", q_id);
+  if (q_author) {
+    if (stowSid(m->author, 0, q_author) == -1)
+      WARNF("manifest id=%s contains invalid author=%s -- ignored", q_id, alloca_str_toprint(q_author));
+  }
+  if (m->version != q_version)
+    WARNF("Version mismatch, manifest is %"PRId64", database is %"PRId64, m->version, q_version);
+  m->inserttime = q_inserttime;
+  return 0;
+}
+
+/* Retrieve a manifest from the database, given its Bundle ID.
  *
  * Returns 0 if manifest is found
  * Returns 1 if manifest is not found
  * Returns -1 on error
  * Caller is responsible for allocating and freeing rhizome_manifest
  */
-int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m)
+int rhizome_retrieve_manifest(const rhizome_bid_t *bidp, rhizome_manifest *m)
 {
-  int ret=0;
-  
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  
-  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT manifest, version, inserttime, author FROM manifests WHERE id like ?");
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
+      "SELECT id, manifest, version, inserttime, author FROM manifests WHERE id = ?",
+      RHIZOME_BID_T, bidp,
+      END);
   if (!statement)
     return -1;
-
-  sqlite3_bind_text(statement, 1, manifestid, -1, SQLITE_STATIC);
-  if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
-    const char *manifestblob = (char *) sqlite3_column_blob(statement, 0);
-    int64_t q_version = sqlite3_column_int64(statement, 1);
-    int64_t q_inserttime = sqlite3_column_int64(statement, 2);
-    const char *q_author = (const char *) sqlite3_column_text(statement, 3);
-    size_t manifestblobsize = sqlite3_column_bytes(statement, 0); // must call after sqlite3_column_blob()
-    
-    if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize)){
-      ret=WHYF("Manifest %s exists but is invalid", manifestid);
-      goto done;
-    }
-    
-    if (q_author){
-      if (stowSid(m->author, 0, q_author) == -1)
-	WARNF("Manifest %s contains invalid author=%s -- ignored", manifestid, alloca_str_toprint(q_author));
-    }
-    
-    if (m->version!=q_version)
-      WARNF("Version mismatch, manifest is %"PRId64", database is %"PRId64, m->version, q_version);
-    
-    m->inserttime = q_inserttime;
-  }else{
-    INFOF("Manifest %s was not found", manifestid);
-    ret=1;
-  }
-  
-done:
+  int ret = 1;
+  if (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
+    ret = unpack_manifest_row(m, statement);
+  else
+    INFOF("Manifest id=%s not found", alloca_tohex_rhizome_bid_t(*bidp));
   sqlite3_finalize(statement);
-  return ret;  
+  return ret;
 }
 
-static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const char *manifestid)
+/* Retrieve any manifest from the database whose Bundle ID starts with the given prefix.
+ *
+ * Returns 0 if a manifest is found
+ * Returns 1 if no manifest is found
+ * Returns -1 on error
+ * Caller is responsible for allocating and freeing rhizome_manifest
+ */
+int rhizome_retrieve_manifest_by_prefix(const unsigned char *prefix, unsigned prefix_len, rhizome_manifest *m)
 {
-  sqlite3_stmt *statement = sqlite_prepare(retry, "DELETE FROM manifests WHERE id = ?");
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  char like[prefix_len * 2 + 2];
+  tohex(like, prefix, prefix_len);
+  like[prefix_len * 2] = '%';
+  like[prefix_len * 2 + 1] = '\0';
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
+      "SELECT id, manifest, version, inserttime, author FROM manifests WHERE id like ?",
+      TEXT, like,
+      END);
   if (!statement)
     return -1;
-  sqlite3_bind_text(statement, 1, manifestid, -1, SQLITE_STATIC);
-  if (_sqlite_exec_prepared(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
+  int ret = 1;
+  if (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
+    ret = unpack_manifest_row(m, statement);
+  else
+    INFOF("Manifest with id prefix=`%s` not found", like);
+  sqlite3_finalize(statement);
+  return ret;
+}
+
+static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp)
+{
+  sqlite3_stmt *statement = sqlite_prepare_bind(retry,
+      "DELETE FROM manifests WHERE id = ?",
+      RHIZOME_BID_T, bidp,
+      END);
+  if (!statement)
+    return -1;
+  if (_sqlite_exec(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
     return -1;
   return sqlite3_changes(rhizome_db) ? 0 : 1;
 }
@@ -1435,32 +1711,20 @@ static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const char *
 static int rhizome_delete_file_retry(sqlite_retry_state *retry, const char *fileid)
 {
   int ret = 0;
-  
   rhizome_delete_external(fileid);
-  
-  sqlite3_stmt *statement = sqlite_prepare(retry, "DELETE FROM files WHERE id = ?");
-  if (!statement)
+  sqlite3_stmt *statement = sqlite_prepare_bind(retry, "DELETE FROM files WHERE id = ?", TEXT_TOUPPER, fileid, END);
+  if (!statement || sqlite_exec_retry(retry, statement) == -1)
     ret = -1;
-  else {
-    sqlite3_bind_text(statement, 1, fileid, -1, SQLITE_STATIC);
-    if (_sqlite_exec_prepared(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
-      ret = -1;
-  }
-  statement = sqlite_prepare(retry, "DELETE FROM fileblobs WHERE id = ?");
-  if (!statement)
+  statement = sqlite_prepare_bind(retry, "DELETE FROM fileblobs WHERE id = ?", TEXT_TOUPPER, fileid, END);
+  if (!statement || sqlite_exec_retry(retry, statement) == -1)
     ret = -1;
-  else {
-    sqlite3_bind_text(statement, 1, fileid, -1, SQLITE_STATIC);
-    if (_sqlite_exec_prepared(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
-      ret = -1;
-  }
   return ret == -1 ? -1 : sqlite3_changes(rhizome_db) ? 0 : 1;
 }
 
-static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const char *manifestid)
+static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp)
 {
   strbuf fh = strbuf_alloca(RHIZOME_FILEHASH_STRLEN + 1);
-  int rows = sqlite_exec_strbuf_retry(retry, fh, "SELECT filehash FROM manifests WHERE id = '%s'", manifestid);
+  int rows = sqlite_exec_strbuf_retry(retry, fh, "SELECT filehash FROM manifests WHERE id = ?", RHIZOME_BID_T, bidp, END);
   if (rows == -1)
     return -1;
   if (rows && rhizome_delete_file_retry(retry, strbuf_str(fh)) == -1)
@@ -1476,12 +1740,12 @@ static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const char *m
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_delete_bundle(const char *manifestid)
+int rhizome_delete_bundle(const rhizome_bid_t *bidp)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  if (rhizome_delete_payload_retry(&retry, manifestid) == -1)
+  if (rhizome_delete_payload_retry(&retry, bidp) == -1)
     return -1;
-  if (rhizome_delete_manifest_retry(&retry, manifestid) == -1)
+  if (rhizome_delete_manifest_retry(&retry, bidp) == -1)
     return -1;
   return 0;
 }
@@ -1495,10 +1759,10 @@ int rhizome_delete_bundle(const char *manifestid)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_delete_manifest(const char *manifestid)
+int rhizome_delete_manifest(const rhizome_bid_t *bidp)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  return rhizome_delete_manifest_retry(&retry, manifestid);
+  return rhizome_delete_manifest_retry(&retry, bidp);
 }
 
 /* Remove a bundle's payload (file) from the database, given its manifest ID, leaving its manifest
@@ -1510,10 +1774,10 @@ int rhizome_delete_manifest(const char *manifestid)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_delete_payload(const char *manifestid)
+int rhizome_delete_payload(const rhizome_bid_t *bidp)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  return rhizome_delete_payload_retry(&retry, manifestid);
+  return rhizome_delete_payload_retry(&retry, bidp);
 }
 
 /* Remove a file from the database, given its file hash.
@@ -1537,15 +1801,13 @@ static int is_interesting(const char *id_hex, int64_t version)
 
   // do we have this bundle [or later]?
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, 
-    "SELECT filehash FROM manifests WHERE id like ? and version >= ?");
-
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
+    "SELECT filehash FROM manifests WHERE id like ? and version >= ?",
+    TEXT_TOUPPER, id_hex,
+    INT64, version,
+    END);
   if (!statement)
     RETURN(-1);
-
-  sqlite3_bind_text(statement, 1, id_hex, -1, SQLITE_STATIC);
-  sqlite3_bind_int64(statement, 2, version);
-  
   if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
     const char *q_filehash = (const char *) sqlite3_column_text(statement, 0);
     ret=0;
@@ -1553,7 +1815,6 @@ static int is_interesting(const char *id_hex, int64_t version)
       ret=1;
   }
   sqlite3_finalize(statement);
-
   RETURN(ret);
   OUT();
 }

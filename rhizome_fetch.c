@@ -76,7 +76,7 @@ struct rhizome_fetch_slot {
   int manifest_bytes;
 
   /* MDP transport specific elements */
-  unsigned char bid[RHIZOME_MANIFEST_ID_BYTES];
+  rhizome_bid_t bid;
   int64_t bidVersion;
   int prefix_length;
   int mdpIdleTimeout;
@@ -263,7 +263,7 @@ static struct rhizome_fetch_slot *fetch_search_slot(const unsigned char *id, int
     struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
     
     if (q->active.state != RHIZOME_FETCH_FREE && 
-	memcmp(id, q->active.manifest->cryptoSignPublic, prefix_length) == 0)
+	memcmp(id, q->active.manifest->cryptoSignPublic.binary, prefix_length) == 0)
       return &q->active;
   }
   return NULL;
@@ -279,7 +279,7 @@ static struct rhizome_fetch_candidate *fetch_search_candidate(const unsigned cha
       struct rhizome_fetch_candidate *c = &q->candidate_queue[j];
       if (!c->manifest)
 	continue;
-      if (memcmp(c->manifest->cryptoSignPublic, id, prefix_length))
+      if (memcmp(c->manifest->cryptoSignPublic.binary, id, prefix_length))
 	continue;
       return c;
     }
@@ -478,8 +478,8 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
   slot->write_state.blob_rowid=-1;
 
   if (slot->manifest) {
-    bcopy(slot->manifest->cryptoSignPublic,slot->bid,RHIZOME_MANIFEST_ID_BYTES);
-    slot->prefix_length=RHIZOME_MANIFEST_ID_BYTES;
+    slot->bid = slot->manifest->cryptoSignPublic;
+    slot->prefix_length = sizeof slot->bid.binary;
     slot->bidVersion=slot->manifest->version;
     /* Don't provide a filename, because we will stream the file straight into
        the database. */
@@ -493,8 +493,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
       // if we're fetching a journal bundle, work out how many bytes we have of a previous version
       // and therefore what range of bytes we should ask for
       slot->previous = rhizome_new_manifest();
-      const char *id = rhizome_manifest_get(slot->manifest, "id", NULL, 0);
-      if (rhizome_retrieve_manifest(id, slot->previous)){
+      if (rhizome_retrieve_manifest(&slot->manifest->cryptoSignPublic, slot->previous)){
 	rhizome_manifest_free(slot->previous);
 	slot->previous=NULL;
 	
@@ -519,7 +518,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
       RETURN(-1);
   } else {
     strbuf r = strbuf_local(slot->request, sizeof slot->request);
-    strbuf_sprintf(r, "GET /rhizome/manifestbyprefix/%s HTTP/1.0\r\n\r\n", alloca_tohex(slot->bid, slot->prefix_length));
+    strbuf_sprintf(r, "GET /rhizome/manifestbyprefix/%s HTTP/1.0\r\n\r\n", alloca_tohex(slot->bid.binary, slot->prefix_length));
     if (strbuf_overrun(r))
       RETURN(WHY("request overrun"));
     slot->request_len = strbuf_len(r);
@@ -631,8 +630,6 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   if (slot->state != RHIZOME_FETCH_FREE)
     RETURN(SLOTBUSY);
 
-  const char *bid = alloca_tohex_bid(m->cryptoSignPublic);
-
   /* Do the quick rejection tests first, before the more expensive ones,
      like querying the database for manifests.
 
@@ -650,7 +647,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   if (config.debug.rhizome_rx)
     DEBUGF("Fetching bundle slot=%d bid=%s version=%"PRId64" size=%"PRId64" peerip=%s",
 	   slotno(slot),
-	   bid,
+	   alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
 	   m->version,
 	   m->fileLength,
 	   alloca_sockaddr(peerip, sizeof(struct sockaddr_in))
@@ -671,7 +668,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
    * being published faster than we can fetch them.
    */
   {
-    struct rhizome_fetch_slot *as = fetch_search_slot(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES);
+    struct rhizome_fetch_slot *as = fetch_search_slot(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary);
     if (as){
       const rhizome_manifest *am = as->manifest;
       if (am->version < m->version) {
@@ -746,7 +743,7 @@ rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip,
   slot->peer_ipandport = *peerip;
   slot->manifest = NULL;
   bcopy(peersid,slot->peer_sid,SID_SIZE);
-  bcopy(prefix,slot->bid,prefix_length);
+  bcopy(prefix, slot->bid.binary, prefix_length);
   slot->prefix_length=prefix_length;
 
   /* Don't stream into a file blob in the database, because it is a manifest.
@@ -857,11 +854,11 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
     RETURN(0);
   }
 
-  const char *bid = alloca_tohex_bid(m->cryptoSignPublic);
   int priority=100; /* normal priority */
 
   if (config.debug.rhizome_rx)
-    DEBUGF("Considering import bid=%s version=%"PRId64" size=%"PRId64" priority=%d:", bid, m->version, m->fileLength, priority);
+    DEBUGF("Considering import bid=%s version=%"PRId64" size=%"PRId64" priority=%d:",
+	alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, m->fileLength, priority);
 
   if (!rhizome_is_manifest_interesting(m)) {
     if (config.debug.rhizome_rx)
@@ -872,7 +869,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 
   if (config.debug.rhizome_rx) {
     int64_t stored_version;
-    if (sqlite_exec_int64(&stored_version, "select version from manifests where id='%s'", bid) > 0)
+    if (sqlite_exec_int64(&stored_version, "SELECT version FROM MANIFESTS WHERE id = ?", RHIZOME_BID_T, &m->cryptoSignPublic, END) > 0)
       DEBUGF("   is new (have version %"PRId64")", stored_version);
   }
 
@@ -880,8 +877,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
     if (rhizome_manifest_verify(m) != 0) {
       WHY("Error verifying manifest when considering for import");
       /* Don't waste time looking at this manifest again for a while */
-      rhizome_queue_ignore_manifest(m->cryptoSignPublic,
-				    crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES, 60000);
+      rhizome_queue_ignore_manifest(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, 60000);
       rhizome_manifest_free(m);
       RETURN(-1);
     }
@@ -908,7 +904,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
     for (j = 0; j < q->candidate_queue_size; ) {
       struct rhizome_fetch_candidate *c = &q->candidate_queue[j];
       if (c->manifest) {
-	if (memcmp(m->cryptoSignPublic, c->manifest->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES) == 0) {
+	if (cmp_rhizome_bid_t(&m->cryptoSignPublic, &c->manifest->cryptoSignPublic) == 0) {
 	  if (c->manifest->version >= m->version) {
 	    rhizome_manifest_free(m);
 	    RETURN(0);
@@ -916,8 +912,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 	  if (!m->selfSigned && rhizome_manifest_verify(m)) {
 	    WHY("Error verifying manifest when considering queuing for import");
 	    /* Don't waste time looking at this manifest again for a while */
-	    rhizome_queue_ignore_manifest(m->cryptoSignPublic,
-					  crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES, 60000);
+	    rhizome_queue_ignore_manifest(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, 60000);
 	    rhizome_manifest_free(m);
 	    RETURN(-1);
 	  }
@@ -943,8 +938,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   if (!m->selfSigned && rhizome_manifest_verify(m)) {
     WHY("Error verifying manifest when considering queuing for import");
     /* Don't waste time looking at this manifest again for a while */
-    rhizome_queue_ignore_manifest(m->cryptoSignPublic,
-				  crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES, 60000);
+    rhizome_queue_ignore_manifest(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, 60000);
     rhizome_manifest_free(m);
     RETURN(-1);
   }
@@ -966,7 +960,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 	  break;
 	DEBUGF("%d:%d manifest=%p bid=%s priority=%d size=%lld", i, j,
 	    c->manifest,
-	    alloca_tohex_bid(c->manifest->cryptoSignPublic),
+	    alloca_tohex_rhizome_bid_t(c->manifest->cryptoSignPublic),
 	    c->priority,
 	    (long long) c->manifest->fileLength
 	  );
@@ -1080,8 +1074,8 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   mdp.packetTypeAndFlags=MDP_TX;
 
   mdp.out.queue=OQ_ORDINARY;
-  mdp.out.payload_length=RHIZOME_MANIFEST_ID_BYTES+8+8+4+2;
-  bcopy(slot->bid,&mdp.out.payload[0],RHIZOME_MANIFEST_ID_BYTES);
+  mdp.out.payload_length= sizeof slot->bid.binary + 8 + 8 + 4 + 2;
+  bcopy(slot->bid.binary, &mdp.out.payload[0], sizeof slot->bid.binary);
 
   uint32_t bitmap=0;
   int requests=32;
@@ -1099,11 +1093,11 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
     }
     offset+=slot->mdpRXBlockLength;
   }
-  
-  write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES], slot->bidVersion);  
-  write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8], slot->write_state.file_offset);
-  write_uint32(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8], bitmap);
-  write_uint16(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4], slot->mdpRXBlockLength);  
+
+  write_uint64(&mdp.out.payload[sizeof slot->bid.binary], slot->bidVersion);
+  write_uint64(&mdp.out.payload[sizeof slot->bid.binary + 8], slot->write_state.file_offset);
+  write_uint32(&mdp.out.payload[sizeof slot->bid.binary + 8 + 8], bitmap);
+  write_uint16(&mdp.out.payload[sizeof slot->bid.binary + 8 + 8 + 4], slot->mdpRXBlockLength);
 
   if (config.debug.rhizome_tx)
     DEBUGF("src sid=%s, dst sid=%s, mdpRXWindowStart=0x%"PRIx64", slot->bidVersion=0x%"PRIx64,
@@ -1297,7 +1291,7 @@ int rhizome_write_complete(struct rhizome_fetch_slot *slot)
 	rhizome_manifest_free(m);
       } else {
 	if (config.debug.rhizome_rx){
-	  DEBUGF("All looks good for importing manifest id=%s", alloca_tohex_bid(m->cryptoSignPublic));
+	  DEBUGF("All looks good for importing manifest id=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
 	  dump("slot->peerip",&slot->peer_ipandport,sizeof(slot->peer_ipandport));
 	  dump("slot->peersid",&slot->peer_sid,sizeof(slot->peer_sid));
 	}
@@ -1307,11 +1301,16 @@ int rhizome_write_complete(struct rhizome_fetch_slot *slot)
     }
   }
 
-  if (config.debug.rhizome_rx)
+  if (config.debug.rhizome_rx) {
+    time_ms_t now = gettime_ms();
+    time_ms_t interval = now - slot->start_time;
+    if (interval <= 0)
+      interval = 1;
     DEBUGF("Closing rhizome fetch slot = 0x%p.  Received %lld bytes in %lldms (%lldKB/sec).",
            slot,(long long)slot->write_state.file_offset,
-           (long long)gettime_ms()-slot->start_time,
-           (long long)(slot->write_state.file_offset)/(gettime_ms()-slot->start_time));
+           (long long)interval,
+           (long long)((slot->write_state.file_offset) / interval));
+  }
 
   rhizome_fetch_close(slot);
   RETURN(-1);
@@ -1355,7 +1354,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, unsigned char *buffer
   OUT();
 }
 
-int rhizome_received_content(unsigned char *bidprefix,
+int rhizome_received_content(const unsigned char *bidprefix,
 			     uint64_t version, uint64_t offset,
 			     int count,unsigned char *bytes,int type)
 {

@@ -710,7 +710,7 @@ test_DirectPull() {
    set_instance +B
    executeOk_servald rhizome direct pull
    tfw_cat --stdout --stderr
-   assert bundle_received_by $BID_A1:$VERSION_A1 $BID_A2:$VERSION_A2 $BID_A2:$VERSION_A2 --stderr
+   assert bundle_received_by $BID_A1:$VERSION_A1 $BID_A2:$VERSION_A2 $BID_A3:$VERSION_A3 --stderr
    set_instance +A
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 fileA1 fileA2 fileA3
@@ -732,7 +732,7 @@ test_DirectSync() {
    set_instance +B
    executeOk_servald rhizome direct sync
    tfw_cat --stdout --stderr
-   assert bundle_received_by $BID_A1:$VERSION_A1 $BID_A2:$VERSION_A2 $BID_A2:$VERSION_A2 --stderr
+   assert bundle_received_by $BID_A1:$VERSION_A1 $BID_A2:$VERSION_A2 $BID_A3:$VERSION_A3 --stderr
    set_instance +A
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 fileA1 fileA2 fileA3 --fromhere=0 fileB1 fileB2 fileB3

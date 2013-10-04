@@ -552,6 +552,7 @@ typedef struct sid_binary {
 
 #define alloca_tohex_sid_t(sid)         alloca_tohex((sid).binary, sizeof (*(sid_t*)0).binary)
 
+int cmp_sid_t(const sid_t *a, const sid_t *b);
 int str_to_sid_t(sid_t *sid, const char *hex);
 int strn_to_sid_t(sid_t *sid, const char *hex, const char **endp);
 

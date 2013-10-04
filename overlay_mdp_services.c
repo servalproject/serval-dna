@@ -29,7 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "crypto.h"
 #include "log.h"
 
-int rhizome_mdp_send_block(struct subscriber *dest, unsigned char *id, uint64_t version, uint64_t fileOffset, uint32_t bitmap, uint16_t blockLength)
+int rhizome_mdp_send_block(struct subscriber *dest, const rhizome_bid_t *bid, uint64_t version, uint64_t fileOffset, uint32_t bitmap, uint16_t blockLength)
 {
   IN();
   if (!is_rhizome_mdp_server_running())
@@ -38,7 +38,7 @@ int rhizome_mdp_send_block(struct subscriber *dest, unsigned char *id, uint64_t 
     RETURN(WHYF("Invalid block length %d", blockLength));
 
   if (config.debug.rhizome_tx)
-    DEBUGF("Requested blocks for %s @%"PRIx64" bitmap %x", alloca_tohex_bid(id), fileOffset, bitmap);
+    DEBUGF("Requested blocks for %s @%"PRIx64" bitmap %x", alloca_tohex_rhizome_bid_t(*bid), fileOffset, bitmap);
     
   overlay_mdp_frame reply;
   bzero(&reply,sizeof(reply));
@@ -69,7 +69,7 @@ int rhizome_mdp_send_block(struct subscriber *dest, unsigned char *id, uint64_t 
   reply.out.queue=OQ_OPPORTUNISTIC;
   reply.out.payload[0]='B'; // reply contains blocks
   // include 16 bytes of BID prefix for identification
-  bcopy(id, &reply.out.payload[1], 16);
+  bcopy(bid->binary, &reply.out.payload[1], 16);
   // and version of manifest (in the correct byte order)
   //  bcopy(&version, &reply.out.payload[1+16], sizeof(uint64_t));
   write_uint64(&reply.out.payload[1+16],version);
@@ -87,7 +87,7 @@ int rhizome_mdp_send_block(struct subscriber *dest, unsigned char *id, uint64_t 
     
     write_uint64(&reply.out.payload[1+16+8], offset);
     
-    int bytes_read = rhizome_read_cached(id, version, gettime_ms()+5000, offset, &reply.out.payload[1+16+8+8], blockLength);
+    int bytes_read = rhizome_read_cached(bid, version, gettime_ms()+5000, offset, &reply.out.payload[1+16+8+8], blockLength);
     if (bytes_read<=0)
       break;
     
@@ -108,16 +108,12 @@ int rhizome_mdp_send_block(struct subscriber *dest, unsigned char *id, uint64_t 
 
 int overlay_mdp_service_rhizomerequest(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 {
-  uint64_t version=
-    read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]);
-  uint64_t fileOffset=
-    read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8]);
-  uint32_t bitmap=
-    read_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8]);
-  uint16_t blockLength=
-    read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]);
-
-  return rhizome_mdp_send_block(frame->source, &mdp->out.payload[0], version, fileOffset, bitmap, blockLength);
+  const rhizome_bid_t *bidp = (const rhizome_bid_t *) &mdp->out.payload[0];
+  uint64_t version = read_uint64(&mdp->out.payload[sizeof bidp->binary]);
+  uint64_t fileOffset = read_uint64(&mdp->out.payload[sizeof bidp->binary + 8]);
+  uint32_t bitmap = read_uint32(&mdp->out.payload[sizeof bidp->binary + 8 + 8]);
+  uint16_t blockLength = read_uint16(&mdp->out.payload[sizeof bidp->binary + 8 + 8 + 4]);
+  return rhizome_mdp_send_block(frame->source, bidp, version, fileOffset, bitmap, blockLength);
 }
 
 int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
@@ -353,30 +349,23 @@ end:
   RETURN(ret);
 }
 
-static int overlay_mdp_service_manifest_requests(struct overlay_frame *frame, overlay_mdp_frame *mdp){
+static int overlay_mdp_service_manifest_requests(struct overlay_frame *frame, overlay_mdp_frame *mdp)
+{
   int offset=0;
-  char id_hex[RHIZOME_MANIFEST_ID_STRLEN];
-  
-  while (offset<mdp->out.payload_length){
-    unsigned char *bar=&mdp->out.payload[offset];
-    tohex(id_hex, &bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
-    strcat(id_hex, "%");
+  while (offset<mdp->out.payload_length) {
     rhizome_manifest *m = rhizome_new_manifest();
     if (!m)
       return WHY("Unable to allocate manifest");
-    if (!rhizome_retrieve_manifest(id_hex, m)){
+    unsigned char *bar = &mdp->out.payload[offset];
+    if (!rhizome_retrieve_manifest_by_prefix(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES, m)){
       rhizome_advertise_manifest(frame->source, m);
-      
       // pre-emptively send the payload if it will fit in a single packet
-      if (m->fileLength > 0 && m->fileLength <= 1024){
-	rhizome_mdp_send_block(frame->source, m->cryptoSignPublic, m->version, 
-	  0, 0, m->fileLength);
-      }
+      if (m->fileLength > 0 && m->fileLength <= 1024)
+	rhizome_mdp_send_block(frame->source, &m->cryptoSignPublic, m->version, 0, 0, m->fileLength);
     }
     rhizome_manifest_free(m);
     offset+=RHIZOME_BAR_BYTES;
   }
-  
   return 0;
 }
 
