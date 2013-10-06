@@ -223,9 +223,9 @@ int rhizome_close_db();
 void verify_bundles();
 
 struct rhizome_cleanup_report {
-    int deleted_stale_incoming_files;
-    int deleted_orphan_files;
-    int deleted_orphan_fileblobs;
+    unsigned deleted_stale_incoming_files;
+    unsigned deleted_orphan_files;
+    unsigned deleted_orphan_fileblobs;
 };
 
 int rhizome_cleanup(struct rhizome_cleanup_report *report);

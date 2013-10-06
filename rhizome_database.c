@@ -980,24 +980,29 @@ int rhizome_remove_file_datainvalid(sqlite_retry_state *retry, const char *filei
 int rhizome_cleanup(struct rhizome_cleanup_report *report)
 {
   IN();
+  if (config.debug.rhizome && report == NULL)
+    report = alloca(sizeof *report);
+  if (report)
+    bzero(report, sizeof *report);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
+  /* For testing, it helps to speed up the cleanup process. */
+  const char *orphan_payload_persist_ms = getenv("SERVALD_ORPHAN_PAYLOAD_PERSIST_MS");
+  const char *invalid_payload_persist_ms = getenv("SERVALD_INVALID_PAYLOAD_PERSIST_MS");
   time_ms_t now = gettime_ms();
-  time_ms_t insert_horizon_no_manifest = now - 1000; // 1 second ago
-  time_ms_t insert_horizon = now - 300000; // 5 minutes ago
+  time_ms_t insert_horizon_no_manifest = now - (orphan_payload_persist_ms ? atoi(orphan_payload_persist_ms) : 1000); // 1 second ago
+  time_ms_t insert_horizon_not_valid = now - (invalid_payload_persist_ms ? atoi(invalid_payload_persist_ms) : 300000); // 5 minutes ago
 
   // cleanup external blobs for unreferenced files
-  int candidates=0;
-  if (report)
-    report->deleted_orphan_fileblobs = 0;
+  unsigned candidates = 0;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
       "SELECT id FROM FILES WHERE inserttime < ? AND datavalid = 0;",
-      INT64, insert_horizon, END);
+      INT64, insert_horizon_not_valid, END);
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     candidates++;
     const char *id = (const char *) sqlite3_column_text(statement, 0);
     if (rhizome_delete_external(id) == 0 && report)
-      ++report->deleted_orphan_fileblobs;
+      ++report->deleted_stale_incoming_files;
   }
   sqlite3_finalize(statement);
   
@@ -1008,7 +1013,7 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
     candidates++;
     const char *id = (const char *) sqlite3_column_text(statement, 0);
     if (rhizome_delete_external(id) == 0 && report)
-      ++report->deleted_orphan_fileblobs;
+      ++report->deleted_orphan_files;
   }
   sqlite3_finalize(statement);
   
@@ -1017,19 +1022,25 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
     // clean out unreferenced files
     ret = sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,
 	"DELETE FROM FILES WHERE inserttime < ? AND datavalid = 0;",
-	INT64, insert_horizon, END);
-    if (report)
-      report->deleted_stale_incoming_files = ret;
+	INT64, insert_horizon_not_valid, END);
+    if (report && ret > 0)
+      report->deleted_stale_incoming_files += ret;
     ret = sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,
 	"DELETE FROM FILES WHERE inserttime < ? AND datavalid=1 AND NOT EXISTS( SELECT 1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);",
 	INT64, insert_horizon_no_manifest, END);
-    if (report)
-      report->deleted_orphan_files = ret;
+    if (report && ret > 0)
+      report->deleted_orphan_files += ret;
   }
   
   if ((ret = rhizome_delete_orphan_fileblobs_retry(&retry)) > 0 && report)
     report->deleted_orphan_fileblobs += ret;
    
+  if (config.debug.rhizome && report)
+    DEBUGF("report deleted_stale_incoming_files=%u deleted_orphan_files=%u deleted_orphan_fileblobs=%u",
+	report->deleted_stale_incoming_files,
+	report->deleted_orphan_files,
+	report->deleted_orphan_fileblobs
+      );
   RETURN(0);
   OUT();
 }
