@@ -58,6 +58,7 @@ set -e
 
 allow_modified=true
 untracked_files=normal
+ignore_submodules=none
 default_tag="START"
 repo_path=.
 version_tag_glob='[0-9].[0-9]*'
@@ -65,7 +66,7 @@ version_tag_glob='[0-9].[0-9]*'
 while [ $# -gt 0 ]; do
    case "$1" in
    --help) usage; exit 0;;
-   --ignore-untracked) untracked_files=no; shift;;
+   --ignore-untracked) untracked_files=no; ignore_submodules=untracked; shift;;
    --unmodified) allow_modified=false; shift;;
    --no-default-tag) default_tag=; shift;;
    --default-tag=*) default_tag="${1#*=}"; shift;;
@@ -98,7 +99,7 @@ get_author_label() {
 # In order to implement the --ignore-untracked and --unmodified options, use the
 # "git status" command to detect local modifications.
 dirty=
-if [ $(git status --porcelain --untracked-files=$untracked_files 2>/dev/null | wc -l) -ne 0 ]; then
+if [ $(git status --porcelain --untracked-files=$untracked_files --ignore-submodules=$ignore_submodules 2>/dev/null | wc -l) -ne 0 ]; then
    get_author_label
    dirty="+$author_label-$(date '+%Y%m%d%H%M%S')"
 fi
