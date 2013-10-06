@@ -180,9 +180,8 @@ int rhizome_manifest_parse(rhizome_manifest *m)
 	  }
 	} else if (strcasecmp(var, "filesize") == 0) {
 	  have_filesize = 1;
-	  char *ep = value;
-	  long long filesize = strtoll(value, &ep, 10);
-	  if (ep == value || *ep || filesize < 0) {
+	  uint64_t filesize;
+	  if (!str_to_uint64(value, 10, &filesize, NULL)) {
 	    if (config.debug.rejecteddata)
 	      WARNF("Invalid filesize: %s", value);
 	    m->errors++;
@@ -191,24 +190,20 @@ int rhizome_manifest_parse(rhizome_manifest *m)
 	  }
 	} else if (strcasecmp(var, "version") == 0) {
 	  have_version = 1;
-	  char *ep = value;
-	  long long version = strtoll(value, &ep, 10);
-	  if (ep == value || *ep || version < 0) {
+	  uint64_t version;
+	  if (!str_to_uint64(value, 10, &version, NULL)) {
 	    if (config.debug.rejecteddata)
 	      WARNF("Invalid version: %s", value);
 	    m->errors++;
 	  } else {
 	    m->version = version;
 	  }
-	  
 	// since rhizome *MUST* be able to carry future manifest versions
 	// if any of these fields are not well formed, the manifest can still be imported and exported
 	// but the bundle should not be added or exported
- 
 	} else if (strcasecmp(var, "tail") == 0) {
-	  char *ep = value;
-	  long long tail = strtoll(value, &ep, 10);
-	  if (ep == value || *ep || tail < 0) {
+	  uint64_t tail;
+	  if (!str_to_uint64(value, 10, &tail, NULL)) {
 	    if (config.debug.rejecteddata)
 	      WARNF("Invalid tail: %s", value);
 	    m->warnings++;
@@ -236,9 +231,8 @@ int rhizome_manifest_parse(rhizome_manifest *m)
 	  }
 	} else if (strcasecmp(var, "date") == 0) {
 	  have_date = 1;
-	  char *ep = value;
-	  long long date = strtoll(value, &ep, 10);
-	  if (ep == value || *ep || date < 0) {
+	  int64_t date;
+	  if (!str_to_int64(value, 10, &date, NULL)) {
 	    if (config.debug.rejecteddata)
 	      WARNF("Invalid date: %s", value);
 	    m->warnings++;
@@ -419,10 +413,8 @@ int64_t rhizome_manifest_get_ll(rhizome_manifest *m, const char *var)
   int i;
   for (i = 0; i < m->var_count; ++i)
     if (!strcmp(m->vars[i], var)) {
-      char *vp = m->values[i];
-      char *ep = vp;
-      long long val = strtoll(vp, &ep, 10);
-      return (ep != vp && *ep == '\0') ? val : -1;
+      int64_t val;
+      return str_to_int64(m->values[i], 10, &val, NULL) ? val : -1;
     }
   return -1;
 }
@@ -484,11 +476,9 @@ int rhizome_manifest_set(rhizome_manifest *m, const char *var, const char *value
 
 int rhizome_manifest_set_ll(rhizome_manifest *m, char *var, int64_t value)
 {
-  char svalue[100];
-
-  snprintf(svalue,100, "%" PRId64, value);
-
-  return rhizome_manifest_set(m,var,svalue);
+  char str[50];
+  snprintf(str, sizeof str, "%" PRId64, value);
+  return rhizome_manifest_set(m, var, str);
 }
 
 rhizome_manifest manifests[MAX_RHIZOME_MANIFESTS];
@@ -743,7 +733,7 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
   }
   
   if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
-    rhizome_manifest_set_ll(m, "date", (long long) gettime_ms());
+    rhizome_manifest_set_ll(m, "date", (int64_t) gettime_ms());
     if (config.debug.rhizome) DEBUGF("missing 'date', set default date=%s", rhizome_manifest_get(m, "date", NULL, 0));
   }
   
@@ -816,7 +806,7 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
 	if (config.debug.rhizome)
 	  DEBUGF("Implicitly adding payload encryption due to presense of sender & recipient fields");
 	m->payloadEncryption=1;
-	rhizome_manifest_set_ll(m,"crypt",1); 
+	rhizome_manifest_set_ll(m,"crypt",1LL); 
       }
     }
   }

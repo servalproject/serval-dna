@@ -135,9 +135,9 @@ static int get_database_conversations(const sid_t *my_sid, const sid_t *their_si
   }
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     const char *id_hex = (const char *)sqlite3_column_text(statement, 0);
-    long long version = sqlite3_column_int64(statement, 1);
-    long long size = sqlite3_column_int64(statement, 2);
-    long long tail = sqlite3_column_int64(statement, 3);
+    int64_t version = sqlite3_column_int64(statement, 1);
+    int64_t size = sqlite3_column_int64(statement, 2);
+    int64_t tail = sqlite3_column_int64(statement, 3);
     const char *sender = (const char *)sqlite3_column_text(statement, 4);
     const char *recipient = (const char *)sqlite3_column_text(statement, 5);
     if (config.debug.meshms)

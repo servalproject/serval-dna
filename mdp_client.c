@@ -187,7 +187,7 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, int port, int *ttl)
 
   int expected_len = overlay_mdp_relevant_bytes(mdp);
   if (len < expected_len)
-    return WHYF("Expected packet length of %d, received only %lld bytes", expected_len, (long long) len);
+    return WHYF("Expected packet length of %d, received only %zd bytes", expected_len, len);
   
   /* Valid packet received */
   return 0;

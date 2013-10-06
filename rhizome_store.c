@@ -603,7 +603,7 @@ int rhizome_import_buffer(rhizome_manifest *m, unsigned char *buffer, int length
 
 int rhizome_stat_file(rhizome_manifest *m, const char *filepath)
 {
-  long long existing = rhizome_manifest_get_ll(m, "filesize");
+  int64_t existing = rhizome_manifest_get_ll(m, "filesize");
   
   m->fileLength = 0;
   if (filepath[0]) {

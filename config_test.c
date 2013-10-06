@@ -7,7 +7,7 @@
 
 #include "str.h"
 #include "log.h"
-#include "config.h"
+#include "conf.h"
 
 int main(int argc, char **argv)
 {
@@ -45,7 +45,7 @@ int main(int argc, char **argv)
     DEBUGF("config.log.show_pid = %d", config.log.show_pid);
     DEBUGF("config.log.show_time = %d", config.log.show_time);
     DEBUGF("config.server.chdir = %s", alloca_str_toprint(config.server.chdir));
-    DEBUGF("config.debug = %llx", (unsigned long long) config.debug);
+    DEBUGF("config.debug = %"PRIx64, (uint64_t) config.debug);
     DEBUGF("config.directory.service = %s", alloca_tohex(config.directory.service.binary, SID_SIZE));
     DEBUGF("config.rhizome.api.addfile.allow_host = %s", inet_ntoa(config.rhizome.api.addfile.allow_host));
     int j;

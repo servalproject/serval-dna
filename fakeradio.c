@@ -28,8 +28,8 @@ struct radio_state {
   int wait_count;
   unsigned char rxbuffer[512];
   int rxb_len;
-  long long last_char_ms;
-  long long next_rssi_time_ms;
+  int64_t last_char_ms;
+  int64_t next_rssi_time_ms;
   int rssi_output;
   unsigned char seqnum;
 };
@@ -40,7 +40,7 @@ struct radio_state {
 #define STATE_PLUSPLUSPLUS 3
 #define STATE_COMMAND 4
 
-long long gettime_ms()
+int64_t gettime_ms()
 {
   struct timeval nowtv;
   // If gettimeofday() fails or returns an invalid value, all else is lost!
@@ -203,7 +203,7 @@ int write_bytes(struct radio_state *s)
 }
 
 int transmitter=0;
-long long next_transmit_time=0;
+int64_t next_transmit_time=0;
 
 #define MAVLINK10_STX 254
 #define RADIO_SOURCE_SYSTEM '3'
@@ -394,8 +394,8 @@ int main(int argc,char **argv)
 
   while(1) {
     // what events do we need to poll for? how long can we block?
-    long long now = gettime_ms();
-    long long next_event = now+10000;
+    int64_t now = gettime_ms();
+    int64_t next_event = now+10000;
     
     for (i=0;i<2;i++){
       // always watch for incoming data, though we will throw it away if we run out of buffer space

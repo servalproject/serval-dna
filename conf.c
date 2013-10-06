@@ -100,9 +100,9 @@ static int reload(const char *path, int *resultp)
     }
     if (fread(buf, meta.size, 1, f) != 1) {
       if (ferror(f))
-	WHYF_perror("fread(%s, %llu)", path, (unsigned long long) meta.size);
+	WHYF_perror("fread(%s, %"PRIu64")", path, (uint64_t) meta.size);
       else
-	WHYF("fread(%s, %llu) hit EOF", path, (unsigned long long) meta.size);
+	WHYF("fread(%s, %"PRIu64") hit EOF", path, (uint64_t) meta.size);
       free(buf);
       fclose(f);
       return -1;

@@ -228,6 +228,40 @@ char *str_str(char *haystack, const char *needle, int haystack_len)
   return NULL;
 }
 
+int str_to_int64(const char *str, int base, int64_t *result, const char **afterp)
+{
+  if (isspace(*str))
+    return 0;
+  const char *end = str;
+  long long value = strtoll(str, (char**)&end, base);
+  if (end == str)
+    return 0;
+  if (afterp)
+    *afterp = end;
+  else if (*end)
+    return 0;
+  if (result)
+    *result = value;
+  return 1;
+}
+
+int str_to_uint64(const char *str, int base, uint64_t *result, const char **afterp)
+{
+  if (isspace(*str))
+    return 0;
+  const char *end = str;
+  unsigned long long value = strtoull(str, (char**)&end, base);
+  if (end == str)
+    return 0;
+  if (afterp)
+    *afterp = end;
+  else if (*end)
+    return 0;
+  if (result)
+    *result = value;
+  return 1;
+}
+
 static struct scale_factor {
   char symbol;
   uint64_t factor;
@@ -260,11 +294,9 @@ uint64_t scale_factor(const char *str, const char **afterp)
 
 int str_to_int64_scaled(const char *str, int base, int64_t *result, const char **afterp)
 {
-  if (isspace(*str))
-    return 0;
+  int64_t value;
   const char *end = str;
-  long long value = strtoll(str, (char**)&end, base);
-  if (end == str)
+  if (!str_to_int64(str, base, &value, &end))
     return 0;
   value *= scale_factor(end, &end);
   if (afterp)
@@ -278,11 +310,9 @@ int str_to_int64_scaled(const char *str, int base, int64_t *result, const char *
 
 int str_to_uint64_scaled(const char *str, int base, uint64_t *result, const char **afterp)
 {
-  if (isspace(*str))
-    return 0;
+  uint64_t value;
   const char *end = str;
-  unsigned long long value = strtoull(str, (char**)&end, base);
-  if (end == str)
+  if (!str_to_uint64(str, base, &value, &end))
     return 0;
   value *= scale_factor(end, &end);
   if (afterp)

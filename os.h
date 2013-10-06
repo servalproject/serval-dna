@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <sys/types.h>
 
@@ -52,7 +53,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *          then = now;
  *      }
  */
-typedef long long time_ms_t;
+typedef int64_t time_ms_t;
 
 time_ms_t gettime_ms();
 time_ms_t sleep_ms(time_ms_t milliseconds);

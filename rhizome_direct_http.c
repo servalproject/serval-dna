@@ -113,7 +113,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
       }
       unsigned char *addr = mmap(NULL, stat.st_size, PROT_READ, MAP_SHARED, fd, 0);
       if (addr==MAP_FAILED) {
-	WHYF_perror("mmap(NULL, %lld, PROT_READ, MAP_SHARED, %d, 0)", (long long) stat.st_size, fd);
+	WHYF_perror("mmap(NULL, %"PRId64", PROT_READ, MAP_SHARED, %d, 0)", (int64_t) stat.st_size, fd);
 	/* Clean up after ourselves */
 	close(fd);
 	rhizome_direct_clear_temporary_files(r);	     
@@ -614,7 +614,7 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
     if (!ct_str)
       return rhizome_server_simple_http_response(r,400,"<html><h1>Missing or unsupported Content-Type header</h1></html>\r\n");
     /* ok, we have content-type and content-length, now make sure they are well formed. */
-    long long content_length;
+    int64_t content_length;
     if (sscanf(cl_str,"Content-Length: %lld",&content_length)!=1)
       return rhizome_server_simple_http_response(r,400,"<html><h1>Malformed Content-Length header</h1></html>\r\n");
     char boundary_string[1024];
@@ -626,7 +626,7 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
     if (i<4||i>128)
       return rhizome_server_simple_http_response(r,400,"<html><h1>Malformed Content-Type header</h1></html>\r\n");
 
-    DEBUGF("content_length=%lld, boundary_string=%s contentlen=%d", (long long) content_length, alloca_str_toprint(boundary_string), contentlen);
+    DEBUGF("content_length=%"PRId64", boundary_string=%s contentlen=%d", (int64_t) content_length, alloca_str_toprint(boundary_string), contentlen);
 
     /* Now start receiving and parsing multi-part data.  If we already received some of the
 	post-header data, process that first.  Tell the HTTP request that it has moved to multipart
@@ -894,10 +894,10 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	DEBUGF("bundle id = %s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
 	const char *hash = rhizome_manifest_get(m, "filehash", NULL, 0);
 	DEBUGF("bundle file hash = '%s'",hash);
-	long long filesize = rhizome_manifest_get_ll(m, "filesize");
-	DEBUGF("file size = %lld",filesize);
-	long long version = rhizome_manifest_get_ll(m, "version");
-	DEBUGF("version = %lld",version);
+	int64_t filesize = rhizome_manifest_get_ll(m, "filesize");
+	DEBUGF("file size = %"PRId64,filesize);
+	int64_t version = rhizome_manifest_get_ll(m, "version");
+	DEBUGF("version = %"PRId64,version);
 
 	/* We now have everything we need to compose the POST request and send it.
 	 */
@@ -1039,8 +1039,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
       DEBUGF("Couldn't unpickle range. This should never happen.  Assuming near and far cursor ranges match.");
     }
   else {
-    DEBUGF("unpickled size_high=%lld, limit_size_high=%lld",
-	   c->size_high,c->limit_size_high);
+    DEBUGF("unpickled size_high=%"PRId64", limit_size_high=%"PRId64, c->size_high, c->limit_size_high);
     DEBUGF("c->buffer_size=%d",c->buffer_size);
     r->cursor->size_low=c->limit_size_high;
     /* Set tail of BID to all high, as we assume the far end has returned all

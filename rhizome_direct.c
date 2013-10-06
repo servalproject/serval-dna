@@ -351,10 +351,8 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
 	       rhizome_bar_bidprefix_ll(&usbuffer[10+us*RHIZOME_BAR_BYTES]));
       } else {
 	/* We each have a version of this bundle, so see whose is newer */
-	long long them_version
-	  =rhizome_bar_version(&buffer[10+them*RHIZOME_BAR_BYTES]);
-	long long us_version
-	  =rhizome_bar_version(&usbuffer[10+us*RHIZOME_BAR_BYTES]);
+	int64_t them_version = rhizome_bar_version(&buffer[10+them*RHIZOME_BAR_BYTES]);
+	int64_t us_version = rhizome_bar_version(&usbuffer[10+us*RHIZOME_BAR_BYTES]);
 	if (them_version>us_version) {
 	  /* They have the newer version of the bundle */
 	  c->buffer[c->buffer_offset_bytes+c->buffer_used]=0x01; /* Please send */
@@ -584,7 +582,7 @@ int rhizome_direct_bundle_iterator_pickle_range(rhizome_direct_bundle_cursor *r,
      ranges, which will happen with every rhizome direct sync.
   */
 
-  long long v;
+  int64_t v;
   int ltwov=0;
 
   v=r->start_size_high;

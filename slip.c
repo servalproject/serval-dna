@@ -184,7 +184,7 @@ int slip_encode(int format,
 
 }
 
-unsigned long long last_rssi_time=0;
+time_ms_t last_rssi_time=0;
 int last_radio_rssi=-999;
 int last_radio_temperature=-999;
 int last_radio_rxpackets=0;

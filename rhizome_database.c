@@ -229,9 +229,8 @@ int rhizome_opendb()
   int loglevel = (config.debug.rhizome) ? LOG_LEVEL_DEBUG : LOG_LEVEL_SILENT;
 
   /* Read Rhizome configuration */
-  if (config.debug.rhizome) {
-    DEBUGF("Rhizome will use %lluB of storage for its database.", (unsigned long long) config.rhizome.database_size);
-  }
+  if (config.debug.rhizome)
+    DEBUGF("Rhizome will use %"PRIu64"B of storage for its database.", (uint64_t) config.rhizome.database_size);
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
@@ -831,7 +830,7 @@ static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *
   if (!sqlite_code_ok(stepcode) || ret == -1)
     return -1;
   if (sqlite_trace_func())
-    DEBUGF("rowcount=%d changes=%d result=%lld", rowcount, sqlite3_changes(rhizome_db), (long long)*result);
+    DEBUGF("rowcount=%d changes=%d result=%"PRId64, rowcount, sqlite3_changes(rhizome_db), *result);
   return rowcount;
 }
 
@@ -1045,13 +1044,13 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
   OUT();
 }
 
-int rhizome_make_space(int group_priority, long long bytes)
+int rhizome_make_space(int group_priority, uint64_t bytes)
 {
   /* Asked for impossibly large amount */
   if (bytes>=(config.rhizome.database_size-65536))
-    return WHYF("bytes=%lld is too large", bytes);
+    return WHYF("bytes=%"PRIu64" is too large", bytes);
 
-  long long db_used = rhizome_database_used_bytes();
+  int64_t db_used = rhizome_database_used_bytes();
   if (db_used == -1)
     return -1;
   
@@ -1094,7 +1093,8 @@ int rhizome_make_space(int group_priority, long long bytes)
   }
   sqlite3_finalize(statement);
 
-  //long long equal_priority_larger_file_space_used = sqlite_exec_int64("SELECT COUNT(length) FROM FILES WHERE highestpriority=%d and length>%lld",group_priority,bytes);
+  //int64_t equal_priority_larger_file_space_used = sqlite_exec_int64("SELECT COUNT(length) FROM
+  //FILES WHERE highestpriority = ? and length > ?", INT, group_priority, INT64, bytes, END);
   /* XXX Get rid of any equal priority files that are larger than this one */
 
   /* XXX Get rid of any higher priority files that are not relevant in this time or location */
@@ -1239,7 +1239,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
   if (!(   sqlite_code_ok(sqlite3_bind_text(stmt, 1, manifestid, -1, SQLITE_STATIC))
         && sqlite_code_ok(sqlite3_bind_blob(stmt, 2, m->manifestdata, m->manifest_bytes, SQLITE_STATIC))
 	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 3, m->version))
-	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 4, (long long) gettime_ms()))
+	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 4, (int64_t) gettime_ms()))
 	&& sqlite_code_ok(sqlite3_bind_blob(stmt, 5, bar, RHIZOME_BAR_BYTES, SQLITE_STATIC))
 	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 6, m->fileLength))
 	&& sqlite_code_ok(sqlite3_bind_text(stmt, 7, filehash, -1, SQLITE_STATIC))
@@ -1413,15 +1413,15 @@ int rhizome_list_manifests(struct cli_context *context, const char *service, con
     const char *q_manifestid = (const char *) sqlite3_column_text(statement, 0);
     const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
     size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
-    long long q_version = sqlite3_column_int64(statement, 2);
-    long long q_inserttime = sqlite3_column_int64(statement, 3);
+    int64_t q_version = sqlite3_column_int64(statement, 2);
+    int64_t q_inserttime = sqlite3_column_int64(statement, 3);
     const char *q_author = (const char *) sqlite3_column_text(statement, 4);
-    long long rowid = sqlite3_column_int64(statement, 5);
+    int64_t rowid = sqlite3_column_int64(statement, 5);
     
     if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize) == -1) {
       WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
     } else {
-      long long blob_version = rhizome_manifest_get_ll(m, "version");
+      int64_t blob_version = rhizome_manifest_get_ll(m, "version");
       if (blob_version != q_version)
 	WARNF("MANIFESTS row id=%s version=%lld does not match manifest blob.version=%lld", q_manifestid, q_version, blob_version);
       int match = 1;
@@ -1442,7 +1442,7 @@ int rhizome_list_manifests(struct cli_context *context, const char *service, con
       
       if (match) {
 	const char *blob_name = rhizome_manifest_get(m, "name", NULL, 0);
-	long long blob_date = rhizome_manifest_get_ll(m, "date");
+	int64_t blob_date = rhizome_manifest_get_ll(m, "date");
 	const char *blob_filehash = rhizome_manifest_get(m, "filehash", NULL, 0);
 	int from_here = 0;
 	unsigned char senderSid[SID_SIZE];

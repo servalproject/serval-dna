@@ -202,7 +202,7 @@ int rhizome_fetch_status_html(struct strbuf *b)
       strbuf_puts(b, "inactive");
     }
     int candidates=0;
-    long long candidate_size=0;
+    uint64_t candidate_size = 0;
     for (j=0; j< q->candidate_queue_size;j++){
       if (q->candidate_queue[j].manifest){
 	candidates++;
@@ -210,7 +210,7 @@ int rhizome_fetch_status_html(struct strbuf *b)
       }
     }
     if (candidates)
-      strbuf_sprintf(b, ", %d candidates [%lld bytes]", candidates, candidate_size);
+      strbuf_sprintf(b, ", %d candidates [%"PRIu64" bytes]", candidates, candidate_size);
   }
   return 0;
 }
@@ -224,7 +224,7 @@ static struct profile_total fetch_stats = { .name="rhizome_fetch_poll" };
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static struct rhizome_fetch_queue *rhizome_find_queue(long long size)
+static struct rhizome_fetch_queue *rhizome_find_queue(uint64_t size)
 {
   int i;
   unsigned char log_size = log2ll(size);
@@ -242,7 +242,7 @@ static struct rhizome_fetch_queue *rhizome_find_queue(long long size)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static struct rhizome_fetch_slot *rhizome_find_fetch_slot(long long size)
+static struct rhizome_fetch_slot *rhizome_find_fetch_slot(uint64_t size)
 {
   int i;
   unsigned char log_size = log2ll(size);
@@ -459,8 +459,8 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
   m->finalised = 1;
   m->manifest_bytes = m->manifest_all_bytes; // store the signatures too
   if (config.debug.rhizome_rx) {
-    DEBUGF("manifest len=%d has %d signatories. Associated file = %lld bytes", 
-	   m->manifest_bytes, m->sig_count,(long long)m->fileLength);
+    DEBUGF("manifest len=%d has %d signatories. Associated file = %"PRId64" bytes", 
+	   m->manifest_bytes, m->sig_count, m->fileLength);
     dump("manifest", m->manifestdata, m->manifest_all_bytes);
   }
   return rhizome_add_manifest(m, m->ttl - 1 /* TTL */);
@@ -958,11 +958,11 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 	struct rhizome_fetch_candidate *c = &q->candidate_queue[j];
 	if (!c->manifest)
 	  break;
-	DEBUGF("%d:%d manifest=%p bid=%s priority=%d size=%lld", i, j,
+	DEBUGF("%d:%d manifest=%p bid=%s priority=%d size=%"PRId64, i, j,
 	    c->manifest,
 	    alloca_tohex_rhizome_bid_t(c->manifest->cryptoSignPublic),
 	    c->priority,
-	    (long long) c->manifest->fileLength
+	    c->manifest->fileLength
 	  );
       }
     }
@@ -1022,7 +1022,7 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
   IN();
   struct rhizome_fetch_slot *slot=(struct rhizome_fetch_slot*)alarm;
 
-  long long now=gettime_ms();
+  time_ms_t now = gettime_ms();
   if (now-slot->last_write_time>slot->mdpIdleTimeout) {
     DEBUGF("MDP connection timed out: last RX %lldms ago (read %"PRId64" of %"PRId64" bytes)",
 	   now-slot->last_write_time,
@@ -1306,10 +1306,10 @@ int rhizome_write_complete(struct rhizome_fetch_slot *slot)
     time_ms_t interval = now - slot->start_time;
     if (interval <= 0)
       interval = 1;
-    DEBUGF("Closing rhizome fetch slot = 0x%p.  Received %lld bytes in %lldms (%lldKB/sec).",
-           slot,(long long)slot->write_state.file_offset,
-           (long long)interval,
-           (long long)((slot->write_state.file_offset) / interval));
+    DEBUGF("Closing rhizome fetch slot = 0x%p.  Received %"PRId64" bytes in %"PRId64"ms (%"PRId64"KB/sec).",
+           slot, slot->write_state.file_offset,
+           (int64_t)interval,
+           (int64_t)((slot->write_state.file_offset) / interval));
   }
 
   rhizome_fetch_close(slot);

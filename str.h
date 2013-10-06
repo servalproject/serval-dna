@@ -197,6 +197,19 @@ int strn_str_casecmp(const char *str1, size_t len1, const char *str2);
 char *str_str(char *haystack, const char *needle, int haystack_len);
 
 /* Parse a string as an integer in ASCII radix notation in the given 'base' (eg, base=10 means
+ * decimal).
+ *
+ * Return 1 if a valid integer was parsed, storing the value in *result (unless result is NULL) and
+ * storing a pointer to the immediately succeeding character in *afterp (unless afterp is NULL, in
+ * which case returns 1 only if the immediately succeeding character is a nul '\0').  Returns 0
+ * otherwise, leaving *result and *afterp unchanged.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_to_int64(const char *str, int base, int64_t *result, const char **afterp);
+int str_to_uint64(const char *str, int base, uint64_t *result, const char **afterp);
+
+/* Parse a string as an integer in ASCII radix notation in the given 'base' (eg, base=10 means
  * decimal) and scale the result by a factor given by an optional suffix "scaling" character in the
  * set {kKmMgG}: 'k' = 1e3, 'K' = 1<<10, 'm' = 1e6, 'M' = 1<<20, 'g' = 1e9, 'G' = * 1<<30.
  *

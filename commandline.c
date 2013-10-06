@@ -826,7 +826,7 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
   if (post_sleep) {
     time_ms_t milliseconds = atof(post_sleep) * 1000;
     if (milliseconds > 0) {
-      INFOF("Sleeping for %lld milliseconds", (long long) milliseconds);
+      INFOF("Sleeping for %"PRId64" milliseconds", (int64_t) milliseconds);
       sleep_ms(milliseconds);
     }
   }
@@ -1015,10 +1015,10 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
 	      time_ms_t txtime = read_uint64(&mdp.in.payload[4]);
 	      int hop_count = 64 - mdp.in.ttl;
 	      time_ms_t delay = gettime_ms() - txtime;
-	      cli_printf(context, "%s: seq=%d time=%lldms hops=%d %s%s",
+	      cli_printf(context, "%s: seq=%d time=%"PRId64"ms hops=%d %s%s",
 		     alloca_tohex_sid(mdp.in.src.sid),
 		     (*rxseq)-firstSeq+1,
-		     (long long)delay,
+		     (int64_t)delay,
 		     hop_count,
 		     mdp.packetTypeAndFlags&MDP_NOCRYPT?"":" ENCRYPTED",
 		     mdp.packetTypeAndFlags&MDP_NOSIGN?"":" SIGNED");
@@ -2088,8 +2088,8 @@ int app_crypt_test(const struct cli_parsed *parsed, struct cli_context *context)
     }
     time_ms_t end = gettime_ms();
     double each=(end - start) * 1.0 / i;
-    cli_printf(context, "%d bytes - %d tests took %lldms - mean time = %.2fms\n",
-	   len, i, (long long) end - start, each);
+    cli_printf(context, "%d bytes - %d tests took %"PRId64"ms - mean time = %.2fms\n",
+	   len, i, (int64_t)(end - start), each);
     /* Auto-reduce number of repeats so that it doesn't take too long on the phone */
     if (each>1.00) count/=2;
   }

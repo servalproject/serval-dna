@@ -338,8 +338,8 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
       /* trim manifest ID to a prefix for ease of debugging
 	 (that is the only use of this */
       if (config.debug.rhizome_ads){
-	long long version = rhizome_manifest_get_ll(m, "version");
-	DEBUGF("manifest id=%s version=%lld", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), version);
+	int64_t version = rhizome_manifest_get_ll(m, "version");
+	DEBUGF("manifest id=%s version=%"PRId64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), version);
       }
 
       /* Crude signature presence test */

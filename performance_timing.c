@@ -40,11 +40,11 @@ int fd_tallystats(struct profile_total *total,struct profile_total *a)
 
 int fd_showstat(struct profile_total *total, struct profile_total *a)
 {
-  INFOF("%lldms (%2.1f%%) in %d calls (max %lldms, avg %.1fms, +child avg %.1fms) : %s",
-       (long long) a->total_time,
+  INFOF("%"PRId64"ms (%2.1f%%) in %d calls (max %"PRId64"ms, avg %.1fms, +child avg %.1fms) : %s",
+       (int64_t) a->total_time,
        a->total_time*100.0/total->total_time,
        a->calls,
-       (long long) a->max_time,
+       (int64_t) a->max_time,
        a->total_time*1.00/a->calls,
        (a->total_time+a->child_time)*1.00/a->calls,
        a->name);

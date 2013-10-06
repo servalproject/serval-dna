@@ -639,7 +639,7 @@ static void interface_read_file(struct overlay_interface *interface)
   struct file_packet packet;
   
   /* Read from interface file */
-  long long length=lseek(interface->alarm.poll.fd,0,SEEK_END);
+  off_t length = lseek(interface->alarm.poll.fd, (off_t)0, SEEK_END);
   
   int new_packets = (length - interface->recv_offset) / sizeof packet;
   if (new_packets > 20)
@@ -653,7 +653,7 @@ static void interface_read_file(struct overlay_interface *interface)
     }
     
     if (config.debug.overlayinterfaces)
-      DEBUGF("Read interface %s (size=%lld) at offset=%d",interface->name, length, interface->recv_offset);
+      DEBUGF("Read interface %s (size=%"PRId64") at offset=%d",interface->name, (int64_t)length, interface->recv_offset);
     
     ssize_t nread = read(interface->alarm.poll.fd, &packet, sizeof packet);
     if (nread == -1){
@@ -958,7 +958,7 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 	    return WHY_perror("lseek");
 	  DEBUGF("Write to interface %s at unknown offset", interface->name);
 	} else
-	  DEBUGF("Write to interface %s at offset=%llu", interface->name, (long long)fsize);
+	  DEBUGF("Write to interface %s at offset=%"PRId64, interface->name, (int64_t)fsize);
       }
       ssize_t nwrite = write(interface->alarm.poll.fd, &packet, sizeof(packet));
       if (nwrite == -1)
