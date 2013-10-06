@@ -49,20 +49,18 @@ int server_pid()
 {
   const char *instancepath = serval_instancepath();
   struct stat st;
-  if (stat(instancepath, &st) == -1) {
-    WHY_perror("stat");
-    return WHYF("Instance path '%s' non existant or not accessable"
-	" (Set SERVALINSTANCE_PATH to specify an alternate location)",
-	instancepath
-      );
-  }
+  if (stat(instancepath, &st) == -1)
+    return WHYF_perror("stat(%s)", alloca_str_toprint(instancepath));
   if ((st.st_mode & S_IFMT) != S_IFDIR)
     return WHYF("Instance path '%s' is not a directory", instancepath);
   char filename[1024];
   if (!FORM_SERVAL_INSTANCE_PATH(filename, PIDFILE_NAME))
     return -1;
-  FILE *f = NULL;
-  if ((f = fopen(filename, "r"))) {
+  FILE *f = fopen(filename, "r");
+  if (f == NULL) {
+    if (errno != ENOENT)
+      return WHYF_perror("fopen(%s,\"r\")", alloca_str_toprint(filename));
+  } else {
     char buf[20];
     int pid = (fgets(buf, sizeof buf, f) != NULL) ? atoi(buf) : -1;
     fclose(f);
