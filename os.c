@@ -88,7 +88,7 @@ int mkdirsn(const char *path, size_t len, mode_t mode)
   return -1;
 }
 
-int urandombytes(unsigned char *buf, unsigned long long len)
+int urandombytes(unsigned char *buf, size_t len)
 {
   static int urandomfd = -1;
   int tries = 0;
@@ -105,8 +105,7 @@ int urandombytes(unsigned char *buf, unsigned long long len)
   }
   tries = 0;
   while (len > 0) {
-    int i = (len < 1048576) ? len : 1048576;
-    i = read(urandomfd, buf, i);
+    ssize_t i = read(urandomfd, buf, (len < 1048576) ? len : 1048576);
     if (i == -1) {
       if (++tries > 4) {
 	WHY_perror("read(/dev/urandom)");

@@ -89,7 +89,7 @@ int mkdirsn(const char *path, size_t len, mode_t mode);
 int emkdirsn(const char *path, size_t len, mode_t mode);
 
 void srandomdev();
-int urandombytes(unsigned char *buf, unsigned long long len);
+int urandombytes(unsigned char *buf, size_t len);
 
 /* Read the symbolic link into the supplied buffer and add a terminating nul.
  * Logs an ERROR and returns -1 if the buffer is too short to hold the link
