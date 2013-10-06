@@ -121,7 +121,7 @@ int overlay_frame_append_payload(struct decode_context *context, int encapsulati
   }
 
   if (ob_append_bytes(b, ob_ptr(p->payload), ob_position(p->payload))) {
-    WHY("could not append payload"); 
+    WHYF("could not append payload of %u bytes", ob_position(p->payload));
     goto cleanup;
   }
       

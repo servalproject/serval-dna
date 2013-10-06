@@ -150,8 +150,9 @@ int ob_flip(struct overlay_buffer *b)
 
 int _ob_makespace(struct __sourceloc __whence, struct overlay_buffer *b,int bytes)
 {
-  if (b->sizeLimit!=-1 && b->position+bytes>b->sizeLimit) {
-    if (config.debug.packetformats) WHY("Asked to make space beyond size limit");
+  if (b->sizeLimit != -1 && b->position + bytes > b->sizeLimit) {
+    if (config.debug.packetformats)
+      DEBUGF("asked for space to %u, beyond size limit of %u", b->position + bytes, b->sizeLimit);
     return -1;
   }
   
