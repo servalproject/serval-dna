@@ -644,7 +644,7 @@ int str_uri_authority_hostname(const char *auth, const char **partp, size_t *len
   return 1;
 }
 
-int str_uri_authority_port(const char *auth, unsigned short *portp)
+int str_uri_authority_port(const char *auth, uint16_t *portp)
 {
   const char *p;
   const char *q = auth;
@@ -657,7 +657,7 @@ int str_uri_authority_port(const char *auth, unsigned short *portp)
   if (r < p - 1 && *r == ':') {
     for (++r; *r == '0'; ++r)
       ;
-    int n;
+    unsigned int n;
     if (p - r <= 5 && (n = atoi(r)) <= USHRT_MAX) {
       *portp = n;
       return 1;

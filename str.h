@@ -347,7 +347,7 @@ int str_uri_hierarchical_path(const char *hier, const char **partp, size_t *lenp
 int str_uri_authority_username(const char *auth, const char **partp, size_t *lenp);
 int str_uri_authority_password(const char *auth, const char **partp, size_t *lenp);
 int str_uri_authority_hostname(const char *auth, const char **partp, size_t *lenp);
-int str_uri_authority_port(const char *auth, unsigned short *portp);
+int str_uri_authority_port(const char *auth, uint16_t *portp);
 
 
 int parse_argv(char *cmdline, char delim, char **argv, int max_argv);
