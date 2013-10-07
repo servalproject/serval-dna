@@ -197,7 +197,7 @@ typedef struct rhizome_manifest {
 #define     RHIZOME_SERVICE_MESHMS2  "MeshMS2"
 
 extern int64_t rhizome_space;
-extern unsigned short rhizome_http_server_port;
+extern uint16_t rhizome_http_server_port;
 
 int log2ll(uint64_t x);
 int rhizome_configure();
@@ -600,7 +600,7 @@ int rhizome_server_http_response(rhizome_http_request *r, int result,
 int rhizome_server_http_response_header(rhizome_http_request *r, int result, const char *mime_type, uint64_t bytes);
 int rhizome_http_server_start(int (*http_parse_func)(rhizome_http_request *),
 			      const char *http_parse_func_description,
-			      int port_low,int port_high);
+			      uint16_t port_low, uint16_t port_high);
 
 int is_rhizome_enabled();
 int is_rhizome_mdp_enabled();

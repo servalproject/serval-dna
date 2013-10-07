@@ -42,7 +42,7 @@ struct profile_total connection_stats;
   specifying the call-back function to use on client connections. 
  */
 
-unsigned short rhizome_http_server_port = 0;
+uint16_t rhizome_http_server_port = 0;
 static int rhizome_server_socket = -1;
 static int request_count=0;
 static time_ms_t rhizome_server_last_start_attempt = -1;
@@ -90,7 +90,7 @@ int is_rhizome_http_server_running()
  */
 int rhizome_http_server_start(int (*parse_func)(rhizome_http_request *),
 			      const char *parse_func_desc,
-			      int port_low,int port_high)
+			      uint16_t port_low, uint16_t port_high)
 {
   if (rhizome_server_socket != -1)
     return 1;
@@ -103,7 +103,7 @@ int rhizome_http_server_start(int (*parse_func)(rhizome_http_request *),
   if (config.debug.rhizome_tx)
     DEBUGF("Starting rhizome HTTP server");
 
-  unsigned short port;
+  uint16_t port;
   for (port = port_low; port <= port_high; ++port) {
     /* Create a new socket, reusable and non-blocking. */
     if (rhizome_server_socket == -1) {
@@ -158,9 +158,9 @@ error:
 
 success:
   if (config.rhizome.http.enable)
-    INFOF("RHIZOME HTTP SERVER, START port=%d fd=%d", port, rhizome_server_socket);
+    INFOF("RHIZOME HTTP SERVER, START port=%"PRIu16" fd=%d", port, rhizome_server_socket);
   else
-    INFOF("HTTP SERVER (LIMITED SERVICE), START port=%d fd=%d", port, rhizome_server_socket);
+    INFOF("HTTP SERVER (LIMITED SERVICE), START port=%"PRIu16" fd=%d", port, rhizome_server_socket);
 
   /* Remember which function to call when handling client connections */
   rhizome_http_parse_func=parse_func;
