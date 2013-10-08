@@ -40,6 +40,6 @@ int overlay_mdp_getmyaddr(int mpd_sockfd, unsigned index, sid_t *sid);
 int overlay_mdp_bind(int mdp_sockfd, const sid_t *localaddr, int port) ;
 int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, int port, int *ttl);
 int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp,int flags,int timeout_ms);
-int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp);
+ssize_t overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp);
 
 #endif

@@ -133,11 +133,9 @@ int overlay_mdp_reply_error(int sock,
 int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr, socklen_t recvaddrlen,
 			  overlay_mdp_frame *mdpreply)
 {
-  int replylen;
-
   if (!recvaddr) return WHY("No reply address");
 
-  replylen=overlay_mdp_relevant_bytes(mdpreply);
+  ssize_t replylen = overlay_mdp_relevant_bytes(mdpreply);
   if (replylen<0) return WHY("Invalid MDP frame (could not compute length)");
 
   errno=0;
@@ -436,18 +434,19 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
       struct sockaddr_un addr;
       addr.sun_family = AF_UNIX;
       bcopy(mdp_bindings[match].socket_name, addr.sun_path, mdp_bindings[match].name_len);
-      int len=overlay_mdp_relevant_bytes(mdp);
+      ssize_t len = overlay_mdp_relevant_bytes(mdp);
+      if (len < 0)
+	RETURN(WHY("unsupported MDP packet type"));
       socklen_t addrlen = sizeof addr.sun_family + mdp_bindings[match].name_len;
       int r = sendto(mdp_sock.poll.fd,mdp,len,0,(struct sockaddr*)&addr, addrlen);
-      if (r == overlay_mdp_relevant_bytes(mdp))
+      if (r == len)
 	RETURN(0);
-      WHYF("didn't send mdp packet to %s", alloca_sockaddr(&addr, addrlen));
       if (r == -1 && errno == ENOENT) {
 	/* far-end of socket has died, so drop binding */
 	INFOF("Closing dead MDP client '%s'",mdp_bindings[match].socket_name);
 	overlay_mdp_releasebindings(&addr,mdp_bindings[match].name_len);
       }
-      WHY_perror("sendto(e)");
+      WHYF_perror("sendto(fd=%d,len=%zu,addr=%s)", mdp_sock.poll.fd, (size_t)len, alloca_sockaddr(&addr, addrlen));
       RETURN(WHY("Failed to pass received MDP frame to client"));
     } else {
       /* No socket is bound, ignore the packet ... except for magic sockets */
@@ -933,7 +932,7 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 
     if (len > 0) {
       if (recvaddrlen <= sizeof(sa_family_t))
-	WHYF("got recvaddrlen=%d too short -- ignoring frame len=%zd", (int)recvaddrlen, len);
+	WHYF("got recvaddrlen=%d too short -- ignoring frame len=%zu", (int)recvaddrlen, (size_t)len);
       else {
 	/* Look at overlay_mdp_frame we have received */
 	overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];      

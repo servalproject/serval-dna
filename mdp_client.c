@@ -33,7 +33,7 @@ int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp, int flags, int time
   if (mdp_sockfd == -1)
     return -1;
   // Minimise frame length to save work and prevent accidental disclosure of memory contents.
-  int len = overlay_mdp_relevant_bytes(mdp);
+  ssize_t len = overlay_mdp_relevant_bytes(mdp);
   if (len < 0)
     return WHY("MDP frame invalid (could not compute length)");
   /* Construct name of socket to send to. */
@@ -185,9 +185,11 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, int port, int *ttl)
     return -1;
   }
 
-  int expected_len = overlay_mdp_relevant_bytes(mdp);
-  if (len < expected_len)
-    return WHYF("Expected packet length of %d, received only %zd bytes", expected_len, len);
+  ssize_t expected_len = overlay_mdp_relevant_bytes(mdp);
+  if (expected_len < 0)
+    return WHY("unsupported MDP packet type");
+  if ((size_t)len < (size_t)expected_len)
+    return WHYF("Expected packet length of %zu, received only %zd bytes", (size_t) expected_len, (size_t) len);
   
   /* Valid packet received */
   return 0;
@@ -235,9 +237,9 @@ int overlay_mdp_getmyaddr(int mdp_sockfd, unsigned index, sid_t *sid)
   return 0;
 }
 
-int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp) 
+ssize_t overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp) 
 {
-  int len;
+  size_t len;
   switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK)
   {
     case MDP_ROUTING_TABLE:
