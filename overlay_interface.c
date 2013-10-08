@@ -427,6 +427,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   // How often do we announce ourselves on this interface?
   int tick_ms=-1;
   int packet_interval=-1;
+  int reachable_timeout_ms = -1;
 
   // hard coded defaults:
   switch (ifconfig->type) {
@@ -455,13 +456,17 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
 	tick_ms = config.mdp.iftype.av[i].value.tick_ms;
       if (config.mdp.iftype.av[i].value.packet_interval>=0)
 	packet_interval=config.mdp.iftype.av[i].value.packet_interval;
+      if (config.mdp.iftype.av[i].value.reachable_timeout_ms >= 0)
+	reachable_timeout_ms = config.mdp.iftype.av[i].value.reachable_timeout_ms;
     }
   }
   // specific value for this interface
-  if (ifconfig->mdp_tick_ms>=0)
-    tick_ms = ifconfig->mdp_tick_ms;
-  if (ifconfig->packet_interval>=0)
-    packet_interval=ifconfig->packet_interval;
+  if (ifconfig->mdp.tick_ms>=0)
+    tick_ms = ifconfig->mdp.tick_ms;
+  if (ifconfig->mdp.packet_interval>=0)
+    packet_interval=ifconfig->mdp.packet_interval;
+  if (ifconfig->mdp.reachable_timeout_ms >= 0)
+    reachable_timeout_ms = ifconfig->mdp.reachable_timeout_ms;
   
   if (packet_interval<0)
     return WHYF("Invalid packet interval %d specified for interface %s", packet_interval, name);
@@ -477,6 +482,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     return WHYF("No tick interval specified for interface %s", name);
 
   interface->destination->tick_ms = tick_ms;
+  interface->destination->reachable_timeout_ms = reachable_timeout_ms >= 0 ? reachable_timeout_ms : tick_ms > 0 ? tick_ms * 5 : 2500;
   
   limit_init(&interface->destination->transfer_limit, packet_interval);
 

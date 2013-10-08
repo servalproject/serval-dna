@@ -445,18 +445,24 @@ struct network_destination {
   // rate limit for outgoing packets
   struct limit_state transfer_limit;
 
-  /* Number of milli-seconds per tick for this interface, which is basically related to the     
-   the typical TX range divided by the maximum expected speed of nodes in the network.
-   This means that short-range communications has a higher bandwidth requirement than
-   long-range communications because the tick interval has to be shorter to still allow
-   fast-convergence time to allow for mobility.
-   
-   For wifi (nominal range 100m) it is usually 500ms.
-   For ~100K ISM915MHz (nominal range 1000m) it will probably be about 5000ms.
-   For ~10K ISM915MHz (nominal range ~3000m) it will probably be about 15000ms.
-   These figures will be refined over time, and we will allow people to set them per-interface.
+  /* Number of milli-seconds per tick for this interface, which is basically
+   * related to the     the typical TX range divided by the maximum expected
+   * speed of nodes in the network.  This means that short-range communications
+   * has a higher bandwidth requirement than long-range communications because
+   * the tick interval has to be shorter to still allow fast-convergence time
+   * to allow for mobility.
+   *
+   * For wifi (nominal range 100m) it is usually 500ms.
+   * For ~100K ISM915MHz (nominal range 1000m) it will probably be about 5000ms.
+   * For ~10K ISM915MHz (nominal range ~3000m) it will probably be about 15000ms.
+   *
+   * These figures will be refined over time, and we will allow people to set
+   * them per-interface.
    */
-  unsigned tick_ms; /* milliseconds per tick */
+  unsigned tick_ms;
+
+  // Number of milliseconds of no packets until we assume the link is dead.
+  unsigned reachable_timeout_ms;
 };
 
 struct network_destination * new_destination(struct overlay_interface *interface, char encapsulation);

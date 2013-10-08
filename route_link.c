@@ -1342,8 +1342,8 @@ int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 	changed = 1;
 	version++;
       }
-      neighbour->link_in_timeout = now + interface->destination->tick_ms * 5;
-      
+      neighbour->link_in_timeout = now + interface->destination->reachable_timeout_ms;
+
       if (drop_rate != link->drop_rate || transmitter != link->transmitter)
 	version++;
 
@@ -1454,7 +1454,7 @@ int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now)
   nl->link_timeout = now + (link->destination->tick_ms *5);
 
   neighbour->legacy_protocol = 1;
-  neighbour->link_in_timeout = now + link->destination->tick_ms * 5;
+  neighbour->link_in_timeout = now + link->destination->reachable_timeout_ms;
 
   if (changed){
     route_version++;

@@ -234,11 +234,11 @@ setup_simulate_extender() {
          set debug.packetradio on \
          set debug.mavlink on \
          set interfaces.1.type CATEAR \
-         set interfaces.1.mdp_tick_ms 5000 \
+         set interfaces.1.mdp.tick_ms 5000 \
+         set interfaces.1.mdp.packet_interval 5000 \
          set interfaces.1.socket_type STREAM \
          set interfaces.1.encapsulation SINGLE \
-         set interfaces.1.point_to_point on \
-         set interfaces.1.packet_interval 5000
+         set interfaces.1.point_to_point on
    foreach_instance +A +B start_routing_instance
 }
 test_simulate_extender() {
@@ -722,6 +722,9 @@ setup_crowded_mess() {
    foreach_instance +D +F add_interface 5
    foreach_instance +E +G add_interface 6
    foreach_instance +F +G +H add_interface 7
+   foreach_instance +A +B +C +D +E +F +G +H \
+      executeOk_servald config \
+         set mdp.iftype.wifi.reachable_timeout_ms 60000
    foreach_instance +A +B +C +D +E +F +G +H start_routing_instance
 }
 

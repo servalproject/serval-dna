@@ -326,8 +326,9 @@ ATOM(uint32_t,              uid,        0, uint32_nonzero,, "Allowed UID for mon
 END_STRUCT
 
 STRUCT(mdp_iftype)
-ATOM(int32_t,               tick_ms,         -1, int32_nonneg,, "Tick interval for this interface type")
+ATOM(int32_t,               tick_ms,         -1, int32_nonneg,, "Tick interval")
 ATOM(int32_t,               packet_interval, -1, int32_nonneg,, "Minimum interval between packets in microseconds")
+ATOM(int32_t,               reachable_timeout_ms, -1, int32_nonneg,, "Inactivity timeout after which node considered unreachable")
 END_STRUCT
 
 ARRAY(mdp_iftypelist, NO_DUPLICATES)
@@ -447,8 +448,7 @@ ATOM(bool_t,                drop_broadcasts, 0, boolean,, "If true, drop all inc
 ATOM(bool_t,                drop_unicasts,   0, boolean,, "If true, drop all incoming unicast packets")
 ATOM(uint16_t,              drop_packets,    0, uint16_nonzero,, "Percentage of incoming packets that should be dropped for testing purposes")
 ATOM(short,                 type,            OVERLAY_INTERFACE_WIFI, interface_type,, "Type of network interface")
-ATOM(int32_t,               packet_interval, -1, int32_nonneg,, "Minimum interval between packets in microseconds")
-ATOM(int32_t,               mdp_tick_ms,     -1, int32_nonneg,, "Override MDP tick interval for this interface")
+SUB_STRUCT(mdp_iftype,      mdp,)
 ATOM(bool_t,                send_broadcasts, 1, boolean,, "If false, don't send any broadcast packets")
 ATOM(bool_t,                default_route,   0, boolean,, "If true, use this interface as a default route")
 ATOM(bool_t,                prefer_unicast,  0, boolean,, "If true, send unicast data as unicast IP packets if available")
