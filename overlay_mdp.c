@@ -110,7 +110,7 @@ struct mdp_binding mdp_bindings[MDP_MAX_BINDINGS];
 int mdp_bindings_initialised=0;
 
 int overlay_mdp_reply_error(int sock,
-			    struct sockaddr_un *recvaddr,int recvaddrlen,
+			    struct sockaddr_un *recvaddr, socklen_t recvaddrlen,
 			    int error_number,char *message)
 {
   overlay_mdp_frame mdpreply;
@@ -130,7 +130,7 @@ int overlay_mdp_reply_error(int sock,
   return overlay_mdp_reply(sock,recvaddr,recvaddrlen,&mdpreply);
 }
 
-int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
+int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr, socklen_t recvaddrlen,
 			  overlay_mdp_frame *mdpreply)
 {
   int replylen;
@@ -152,13 +152,13 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 }
 
 int overlay_mdp_reply_ok(int sock,
-			 struct sockaddr_un *recvaddr,int recvaddrlen,
+			 struct sockaddr_un *recvaddr, socklen_t recvaddrlen,
 			 char *message)
 {
   return overlay_mdp_reply_error(sock,recvaddr,recvaddrlen,0,message);
 }
 
-int overlay_mdp_releasebindings(struct sockaddr_un *recvaddr,int recvaddrlen)
+int overlay_mdp_releasebindings(struct sockaddr_un *recvaddr, socklen_t recvaddrlen)
 {
   /* Free up any MDP bindings held by this client. */
   int i;
@@ -172,7 +172,7 @@ int overlay_mdp_releasebindings(struct sockaddr_un *recvaddr,int recvaddrlen)
 }
 
 int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, int port,
-				     int flags, struct sockaddr_un *recvaddr, int recvaddrlen)
+				     int flags, struct sockaddr_un *recvaddr,  socklen_t recvaddrlen)
 {
   if (config.debug.mdprequests) 
     DEBUGF("Bind request %s:%d",
@@ -484,7 +484,7 @@ int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char
 }
 
 int overlay_mdp_check_binding(struct subscriber *subscriber, int port, int userGeneratedFrameP,
-			      struct sockaddr_un *recvaddr, int recvaddrlen)
+			      struct sockaddr_un *recvaddr,  socklen_t recvaddrlen)
 {
   /* System generated frames can send anything they want */
   if (!userGeneratedFrameP)
@@ -499,8 +499,8 @@ int overlay_mdp_check_binding(struct subscriber *subscriber, int port, int userG
       continue;
     if ((!mdp_bindings[i].subscriber) || mdp_bindings[i].subscriber == subscriber) {
       /* Binding matches, now make sure the sockets match */
-      if (  mdp_bindings[i].name_len == recvaddrlen - sizeof(short)
-	&&  memcmp(mdp_bindings[i].socket_name, recvaddr->sun_path, recvaddrlen - sizeof(short)) == 0
+      if (  mdp_bindings[i].name_len == recvaddrlen - sizeof(sa_family_t)
+	&&  memcmp(mdp_bindings[i].socket_name, recvaddr->sun_path, recvaddrlen - sizeof(sa_family_t)) == 0
       ) {
 	/* Everything matches, so this unix socket and MDP address combination is valid */
 	return 0;
@@ -510,7 +510,7 @@ int overlay_mdp_check_binding(struct subscriber *subscriber, int port, int userG
 
   return WHYF("No such binding: recvaddr=%p %s addr=%s port=%u (0x%x) -- possible spoofing attack",
 	recvaddr,
-	recvaddr ? alloca_toprint(-1, recvaddr->sun_path, recvaddrlen - sizeof(short)) : "",
+	recvaddr ? alloca_toprint(-1, recvaddr->sun_path, recvaddrlen - sizeof(sa_family_t)) : "",
 	alloca_tohex_sid(subscriber->sid),
 	port, port
       );
@@ -662,7 +662,7 @@ int overlay_send_frame(struct overlay_frame *frame, struct overlay_buffer *plain
    Clients should use overlay_mdp_send()
  */
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
-			 struct sockaddr_un *recvaddr,int recvaddrlen)
+			 struct sockaddr_un *recvaddr, socklen_t recvaddrlen)
 {
   IN();
 
@@ -931,152 +931,156 @@ void overlay_mdp_poll(struct sched_ent *alarm)
     ssize_t len = recvwithttl(alarm->poll.fd,buffer,sizeof(buffer),&ttl, recvaddr, &recvaddrlen);
     recvaddr_un=(struct sockaddr_un *)recvaddr;
 
-    if (len>0) {
-      /* Look at overlay_mdp_frame we have received */
-      overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];      
-      unsigned int mdp_type = mdp->packetTypeAndFlags & MDP_TYPE_MASK;
+    if (len > 0) {
+      if (recvaddrlen <= sizeof(sa_family_t))
+	WHYF("got recvaddrlen=%d too short -- ignoring frame len=%zd", (int)recvaddrlen, len);
+      else {
+	/* Look at overlay_mdp_frame we have received */
+	overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];      
+	unsigned int mdp_type = mdp->packetTypeAndFlags & MDP_TYPE_MASK;
 
-      switch (mdp_type) {
-      case MDP_GOODBYE:
-	if (config.debug.mdprequests)
-	  DEBUGF("MDP_GOODBYE from %s", alloca_sockaddr(recvaddr, recvaddrlen));
-	overlay_mdp_releasebindings(recvaddr_un,recvaddrlen);
-	return;
-	  
-      case MDP_ROUTING_TABLE:
-	if (config.debug.mdprequests)
-	  DEBUGF("MDP_ROUTING_TABLE from %s", alloca_sockaddr(recvaddr, recvaddrlen));
-	{
-	  struct routing_state state={
-	    .recvaddr_un=recvaddr_un,
-	    .recvaddrlen=recvaddrlen,
-	  };
-	  
-	  enum_subscribers(NULL, routing_table, &state);
-	  
-	}
-	return;
-      
-      case MDP_GETADDRS:
-	if (config.debug.mdprequests)
-	  DEBUGF("MDP_GETADDRS from %s", alloca_sockaddr(recvaddr, recvaddrlen));
-	{
-	  overlay_mdp_frame mdpreply;
-	  bzero(&mdpreply, sizeof(overlay_mdp_frame));
-	  mdpreply.packetTypeAndFlags = MDP_ADDRLIST;
-	  if (!overlay_mdp_address_list(&mdp->addrlist, &mdpreply.addrlist))
-	  /* Send back to caller */
-	    overlay_mdp_reply(alarm->poll.fd,
-			      (struct sockaddr_un *)recvaddr,recvaddrlen,
-			      &mdpreply);
-	    
+	switch (mdp_type) {
+	case MDP_GOODBYE:
+	  if (config.debug.mdprequests)
+	    DEBUGF("MDP_GOODBYE from %s", alloca_sockaddr(recvaddr, recvaddrlen));
+	  overlay_mdp_releasebindings(recvaddr_un,recvaddrlen);
 	  return;
-	}
-	break;
-	  
-      case MDP_TX: /* Send payload (and don't treat it as system privileged) */
-	if (config.debug.mdprequests)
-	  DEBUGF("MDP_TX from %s", alloca_sockaddr(recvaddr, recvaddrlen));
-	  
-	// Dont allow mdp clients to send very high priority payloads
-	if (mdp->out.queue<=OQ_MESH_MANAGEMENT)
-	  mdp->out.queue=OQ_ORDINARY;
-	overlay_mdp_dispatch(mdp,1,(struct sockaddr_un*)recvaddr,recvaddrlen);
-	return;
-	break;
-	  
-      case MDP_BIND: /* Bind to port */
-	if (config.debug.mdprequests)
-	  DEBUGF("MDP_BIND from %s", alloca_sockaddr(recvaddr, recvaddrlen));
-	{
-	  struct subscriber *subscriber=NULL;
-	  /* Make sure source address is either all zeros (listen on all), or a valid
-	   local address */
-	  
-	  if (!is_sid_any(mdp->bind.sid)){
-	    subscriber = find_subscriber(mdp->bind.sid, SID_SIZE, 0);
-	    if ((!subscriber) || subscriber->reachable != REACHABLE_SELF){
-	      WHYF("Invalid bind request for sid=%s", alloca_tohex_sid(mdp->bind.sid));
-	      /* Source address is invalid */
-	      overlay_mdp_reply_error(alarm->poll.fd, recvaddr_un, recvaddrlen, 7,
-					     "Bind address is not valid (must be a local MDP address, or all zeroes).");
-	      return;
-	    }
+	    
+	case MDP_ROUTING_TABLE:
+	  if (config.debug.mdprequests)
+	    DEBUGF("MDP_ROUTING_TABLE from %s", alloca_sockaddr(recvaddr, recvaddrlen));
+	  {
+	    struct routing_state state={
+	      .recvaddr_un=recvaddr_un,
+	      .recvaddrlen=recvaddrlen,
+	    };
+	    
+	    enum_subscribers(NULL, routing_table, &state);
 	    
 	  }
-	  if (overlay_mdp_process_bind_request(alarm->poll.fd, subscriber, mdp->bind.port,
-					       mdp->packetTypeAndFlags, recvaddr_un, recvaddrlen))
-	    overlay_mdp_reply_error(alarm->poll.fd,recvaddr_un,recvaddrlen,3, "Port already in use");
-	  else
-	    overlay_mdp_reply_ok(alarm->poll.fd,recvaddr_un,recvaddrlen,"Port bound");
 	  return;
-	}
-	break;
-	  
-      case MDP_SCAN:
-	if (config.debug.mdprequests)
-	  DEBUGF("MDP_SCAN from %s", alloca_sockaddr(recvaddr, recvaddrlen));
-	{
-	  struct overlay_mdp_scan *scan = (struct overlay_mdp_scan *)&mdp->raw;
-	  time_ms_t start=gettime_ms();
-	  
-	  if (scan->addr.s_addr==0){
-	    int i=0;
-	    for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
-	      // skip any interface that is already being scanned
-	      if (scans[i].interface)
-		continue;
-	      
-	      struct overlay_interface *interface = &overlay_interfaces[i];
-	      if (interface->state!=INTERFACE_STATE_UP)
-		continue;
-	      
-	      scans[i].interface = interface;
-	      scans[i].current = ntohl(interface->address.sin_addr.s_addr & interface->netmask.s_addr)+1;
-	      scans[i].last = ntohl(interface->destination->address.sin_addr.s_addr)-1;
-	      if (scans[i].last - scans[i].current>0x10000){
-		INFOF("Skipping scan on interface %s as the address space is too large",interface->name);
-		continue;
-	      }
-	      scans[i].alarm.alarm=start;
-	      scans[i].alarm.function=overlay_mdp_scan;
-	      start+=100;
-	      schedule(&scans[i].alarm);
-	    }
-	  }else{
-	    struct overlay_interface *interface = overlay_interface_find(scan->addr, 1);
-	    if (!interface){
-	      overlay_mdp_reply_error(alarm->poll.fd,recvaddr_un,recvaddrlen, 1, "Unable to find matching interface");
-	      return;
-	    }
-	    int i = interface - overlay_interfaces;
-	    
-	    if (!scans[i].interface){
-	      scans[i].interface = interface;
-	      scans[i].current = ntohl(scan->addr.s_addr);
-	      scans[i].last = ntohl(scan->addr.s_addr);
-	      scans[i].alarm.alarm=start;
-	      scans[i].alarm.function=overlay_mdp_scan;
-	      schedule(&scans[i].alarm);
-	    }
-	  }
-	  
-	  overlay_mdp_reply_ok(alarm->poll.fd,recvaddr_un,recvaddrlen,"Scan initiated");
-	}
-	break;
 	
-      default:
-	/* Client is not allowed to send any other frame type */
-	WARNF("Unsupported MDP frame type [%d] from %s", mdp_type, alloca_sockaddr(recvaddr, recvaddrlen));
-	mdp->packetTypeAndFlags=MDP_ERROR;
-	mdp->error.error=2;
-	snprintf(mdp->error.message,128,"Illegal request type.  Clients may use only MDP_TX or MDP_BIND.");
-	int len=4+4+strlen(mdp->error.message)+1;
-	errno=0;
-	/* We ignore the result of the following, because it is just sending an
-	   error message back to the client.  If this fails, where would we report
-	   the error to? My point exactly. */
-	sendto(alarm->poll.fd,mdp,len,0,(struct sockaddr *)recvaddr,recvaddrlen);
+	case MDP_GETADDRS:
+	  if (config.debug.mdprequests)
+	    DEBUGF("MDP_GETADDRS from %s", alloca_sockaddr(recvaddr, recvaddrlen));
+	  {
+	    overlay_mdp_frame mdpreply;
+	    bzero(&mdpreply, sizeof(overlay_mdp_frame));
+	    mdpreply.packetTypeAndFlags = MDP_ADDRLIST;
+	    if (!overlay_mdp_address_list(&mdp->addrlist, &mdpreply.addrlist))
+	    /* Send back to caller */
+	      overlay_mdp_reply(alarm->poll.fd,
+				(struct sockaddr_un *)recvaddr,recvaddrlen,
+				&mdpreply);
+	      
+	    return;
+	  }
+	  break;
+	    
+	case MDP_TX: /* Send payload (and don't treat it as system privileged) */
+	  if (config.debug.mdprequests)
+	    DEBUGF("MDP_TX from %s", alloca_sockaddr(recvaddr, recvaddrlen));
+	    
+	  // Dont allow mdp clients to send very high priority payloads
+	  if (mdp->out.queue<=OQ_MESH_MANAGEMENT)
+	    mdp->out.queue=OQ_ORDINARY;
+	  overlay_mdp_dispatch(mdp,1,(struct sockaddr_un*)recvaddr,recvaddrlen);
+	  return;
+	  break;
+	    
+	case MDP_BIND: /* Bind to port */
+	  if (config.debug.mdprequests)
+	    DEBUGF("MDP_BIND from %s", alloca_sockaddr(recvaddr, recvaddrlen));
+	  {
+	    struct subscriber *subscriber=NULL;
+	    /* Make sure source address is either all zeros (listen on all), or a valid
+	    local address */
+	    
+	    if (!is_sid_any(mdp->bind.sid)){
+	      subscriber = find_subscriber(mdp->bind.sid, SID_SIZE, 0);
+	      if ((!subscriber) || subscriber->reachable != REACHABLE_SELF){
+		WHYF("Invalid bind request for sid=%s", alloca_tohex_sid(mdp->bind.sid));
+		/* Source address is invalid */
+		overlay_mdp_reply_error(alarm->poll.fd, recvaddr_un, recvaddrlen, 7,
+					      "Bind address is not valid (must be a local MDP address, or all zeroes).");
+		return;
+	      }
+	      
+	    }
+	    if (overlay_mdp_process_bind_request(alarm->poll.fd, subscriber, mdp->bind.port,
+						mdp->packetTypeAndFlags, recvaddr_un, recvaddrlen))
+	      overlay_mdp_reply_error(alarm->poll.fd,recvaddr_un,recvaddrlen,3, "Port already in use");
+	    else
+	      overlay_mdp_reply_ok(alarm->poll.fd,recvaddr_un,recvaddrlen,"Port bound");
+	    return;
+	  }
+	  break;
+	    
+	case MDP_SCAN:
+	  if (config.debug.mdprequests)
+	    DEBUGF("MDP_SCAN from %s", alloca_sockaddr(recvaddr, recvaddrlen));
+	  {
+	    struct overlay_mdp_scan *scan = (struct overlay_mdp_scan *)&mdp->raw;
+	    time_ms_t start=gettime_ms();
+	    
+	    if (scan->addr.s_addr==0){
+	      int i=0;
+	      for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
+		// skip any interface that is already being scanned
+		if (scans[i].interface)
+		  continue;
+		
+		struct overlay_interface *interface = &overlay_interfaces[i];
+		if (interface->state!=INTERFACE_STATE_UP)
+		  continue;
+		
+		scans[i].interface = interface;
+		scans[i].current = ntohl(interface->address.sin_addr.s_addr & interface->netmask.s_addr)+1;
+		scans[i].last = ntohl(interface->destination->address.sin_addr.s_addr)-1;
+		if (scans[i].last - scans[i].current>0x10000){
+		  INFOF("Skipping scan on interface %s as the address space is too large",interface->name);
+		  continue;
+		}
+		scans[i].alarm.alarm=start;
+		scans[i].alarm.function=overlay_mdp_scan;
+		start+=100;
+		schedule(&scans[i].alarm);
+	      }
+	    }else{
+	      struct overlay_interface *interface = overlay_interface_find(scan->addr, 1);
+	      if (!interface){
+		overlay_mdp_reply_error(alarm->poll.fd,recvaddr_un,recvaddrlen, 1, "Unable to find matching interface");
+		return;
+	      }
+	      int i = interface - overlay_interfaces;
+	      
+	      if (!scans[i].interface){
+		scans[i].interface = interface;
+		scans[i].current = ntohl(scan->addr.s_addr);
+		scans[i].last = ntohl(scan->addr.s_addr);
+		scans[i].alarm.alarm=start;
+		scans[i].alarm.function=overlay_mdp_scan;
+		schedule(&scans[i].alarm);
+	      }
+	    }
+	    
+	    overlay_mdp_reply_ok(alarm->poll.fd,recvaddr_un,recvaddrlen,"Scan initiated");
+	  }
+	  break;
+	  
+	default:
+	  /* Client is not allowed to send any other frame type */
+	  WARNF("Unsupported MDP frame type [%d] from %s", mdp_type, alloca_sockaddr(recvaddr, recvaddrlen));
+	  mdp->packetTypeAndFlags=MDP_ERROR;
+	  mdp->error.error=2;
+	  snprintf(mdp->error.message,128,"Illegal request type.  Clients may use only MDP_TX or MDP_BIND.");
+	  int len=4+4+strlen(mdp->error.message)+1;
+	  errno=0;
+	  /* We ignore the result of the following, because it is just sending an
+	    error message back to the client.  If this fails, where would we report
+	    the error to? My point exactly. */
+	  sendto(alarm->poll.fd,mdp,len,0,(struct sockaddr *)recvaddr,recvaddrlen);
+	}
       }
     }
   }

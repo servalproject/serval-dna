@@ -574,7 +574,7 @@ void insertTransactionInCache(unsigned char *transaction_id);
 
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
-		    int recvttl, struct sockaddr *recvaddr, size_t recvaddrlen);
+		    int recvttl, struct sockaddr *recvaddr, socklen_t recvaddrlen);
 int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *frame, 
 			 struct overlay_buffer *buffer, struct subscriber **nexthop);
 int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface *interface, 
@@ -635,7 +635,7 @@ int parseCommandLine(struct cli_context *context, const char *argv0, int argc, c
 
 int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int overlay_mdp_reply_error(int sock,
-			    struct sockaddr_un *recvaddr,int recvaddrlen,
+			    struct sockaddr_un *recvaddr, socklen_t recvaddrlen,
 			    int error_number,char *message);
 
 typedef struct sockaddr_mdp {
@@ -698,10 +698,10 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req);
 
 /* Server-side MDP functions */
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp);
-int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
+int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr, socklen_t recvaddrlen,
 			  overlay_mdp_frame *mdpreply);
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
-		     struct sockaddr_un *recvaddr,int recvaddlen);
+		     struct sockaddr_un *recvaddr, socklen_t recvaddrlen);
 int overlay_mdp_encode_ports(struct overlay_buffer *plaintext, int dst_port, int src_port);
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char *resolved_sid, const char *uri, const char *did, const char *name);
 

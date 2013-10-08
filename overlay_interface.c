@@ -670,7 +670,7 @@ static void interface_read_file(struct overlay_interface *interface)
 	      inet_ntoa(packet.dst_addr.sin_addr), ntohs(packet.dst_addr.sin_port));
       }else{
 	packetOkOverlay(interface, packet.payload, packet.payload_length, -1, 
-			    (struct sockaddr*)&packet.src_addr, sizeof(packet.src_addr));
+			    (struct sockaddr*)&packet.src_addr, (socklen_t) sizeof(packet.src_addr));
       }
     }
   }

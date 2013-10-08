@@ -301,7 +301,7 @@ static int mavlink_parse(struct overlay_interface *interface, struct slip_decode
       DEBUGF("PDU Complete (length=%d)",state->packet_length);
     state->dst_offset=0;
     
-    packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL, -1);
+    packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL, 0);
     state->packet_length=sizeof(state->dst)+1;
   }
   return 1;

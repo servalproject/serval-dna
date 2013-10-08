@@ -324,7 +324,7 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
 }
 
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
-		    int recvttl, struct sockaddr *recvaddr, size_t recvaddrlen)
+		    int recvttl, struct sockaddr *recvaddr, socklen_t recvaddrlen)
 {
   IN();
   /* 
