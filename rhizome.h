@@ -184,7 +184,7 @@ typedef struct rhizome_manifest {
   /* Author of the manifest.  A reference to a local keyring entry.  Manifests
    * not authored locally will have the ANY author (all zeros).
    */
-  unsigned char author[SID_SIZE];
+  sid_t author;
 
 } rhizome_manifest;
 
@@ -279,7 +279,7 @@ int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
 int rhizome_clean_payload(const char *fileidhex);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);
 int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, const char *filepath);
-int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSid, rhizome_bk_t *bsk);
+int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp, rhizome_bk_t *bsk);
 
 int rhizome_manifest_verify(rhizome_manifest *m);
 int rhizome_manifest_check_sanity(rhizome_manifest *m_in);
@@ -397,7 +397,7 @@ int rhizome_delete_file(const char *fileid);
 
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int monitor_announce_bundle(rhizome_manifest *m);
-int rhizome_find_secret(const unsigned char *authorSid, int *rs_len, const unsigned char **rs);
+int rhizome_find_secret(const sid_t *authorSidp, int *rs_len, const unsigned char **rs);
 int rhizome_bk_xor_stream(
   const rhizome_bid_t *bidp,
   const unsigned char *rs,
@@ -435,7 +435,7 @@ int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len);
 #define MAX_RHIZOME_MANIFESTS 40
 #define MAX_CANDIDATES 32
 
-int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE]);
+int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip, const sid_t *peersidp);
 rhizome_manifest * rhizome_fetch_search(const unsigned char *id, int prefix_length);
 
 /* Rhizome file storage api */
@@ -722,7 +722,7 @@ enum rhizome_start_fetch_result {
   SLOTBUSY
 };
 
-enum rhizome_start_fetch_result rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip, const unsigned char sid[SID_SIZE],const unsigned char *prefix, size_t prefix_length);
+enum rhizome_start_fetch_result rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip, const sid_t *sidp, const unsigned char *prefix, size_t prefix_length);
 int rhizome_any_fetch_active();
 int rhizome_any_fetch_queued();
 int rhizome_fetch_queue_bytes();

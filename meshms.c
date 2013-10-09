@@ -65,12 +65,12 @@ static void free_conversations(struct conversations *conv){
   free(conv);
 }
 
-static int get_my_conversation_bundle(const sid_t *my_sid, rhizome_manifest *m)
+static int get_my_conversation_bundle(const sid_t *my_sidp, rhizome_manifest *m)
 {
   /* Find our private key */
   int cn=0,in=0,kp=0;
-  if (!keyring_find_sid(keyring,&cn,&in,&kp,my_sid->binary))
-    return WHYF("SID was not found in keyring: %s", alloca_tohex_sid(my_sid->binary));
+  if (!keyring_find_sid(keyring,&cn,&in,&kp,my_sidp))
+    return WHYF("SID was not found in keyring: %s", alloca_tohex_sid_t(*my_sidp));
   
   char seed[1024];
   snprintf(seed, sizeof(seed), 
@@ -193,8 +193,8 @@ static struct conversations * find_or_create_conv(const sid_t *my_sid, const sid
 
 static int create_ply(const sid_t *my_sid, struct conversations *conv, rhizome_manifest *m){
   m->journalTail = 0;
-  const char *my_sidhex = alloca_tohex_sid(my_sid->binary);
-  const char *their_sidhex = alloca_tohex_sid(conv->them.binary);
+  const char *my_sidhex = alloca_tohex_sid_t(*my_sid);
+  const char *their_sidhex = alloca_tohex_sid_t(conv->them);
   rhizome_manifest_set(m, "service", RHIZOME_SERVICE_MESHMS2);
   rhizome_manifest_set(m, "sender", my_sidhex);
   rhizome_manifest_set(m, "recipient", their_sidhex);
@@ -304,7 +304,7 @@ static int append_meshms_buffer(const sid_t *my_sid, struct conversations *conv,
     if (rhizome_retrieve_manifest(&conv->my_ply.bundle_id, m))
       goto end;
     // set the author of the manifest as we should already know that
-    bcopy(my_sid->binary, m->author, sizeof(m->author));
+    m->author = *my_sid;
     if (rhizome_find_bundle_author(m))
       goto end;
   }else{
@@ -488,7 +488,7 @@ static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid,
     if (ret<sizeof(sid))
       break;
     if (config.debug.meshms)
-      DEBUGF("Reading existing conversation for %s", alloca_tohex_sid(sid.binary));
+      DEBUGF("Reading existing conversation for %s", alloca_tohex_sid_t(sid));
     if (their_sid && cmp_sid_t(&sid, their_sid) != 0)
       continue;
     struct conversations *ptr = add_conv(conv, &sid);
@@ -543,7 +543,7 @@ static int write_conversation(struct rhizome_write *write, struct conversations 
       len+=measure_packed_uint(conv->their_size);
     }
     DEBUGF("len %s, %"PRId64", %"PRId64", %"PRId64" = %d", 
-      alloca_tohex_sid(conv->them.binary),
+      alloca_tohex_sid_t(conv->them),
       conv->their_last_message,
       conv->read_offset,
       conv->their_size,
@@ -896,7 +896,7 @@ static int mark_read(struct conversations *conv, const sid_t *their_sid, const c
       if (offset > conv->read_offset){
 	if (config.debug.meshms)
 	  DEBUGF("Moving read marker for %s, from %"PRId64" to %"PRId64, 
-	    alloca_tohex_sid(conv->them.binary), conv->read_offset, offset);
+	    alloca_tohex_sid_t(conv->them), conv->read_offset, offset);
 	conv->read_offset = offset;
 	ret++;
       }

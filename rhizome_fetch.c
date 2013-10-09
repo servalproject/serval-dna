@@ -36,7 +36,7 @@ struct rhizome_fetch_candidate {
      Can be either IP+port for HTTP or it can be a SID 
      for MDP. */
   struct sockaddr_in peer_ipandport;
-  unsigned char peer_sid[SID_SIZE];
+  sid_t peer_sid;
 
   int priority;
 };
@@ -49,7 +49,7 @@ struct rhizome_fetch_slot {
   rhizome_manifest *manifest;
 
   struct sockaddr_in peer_ipandport;
-  unsigned char peer_sid[SID_SIZE];
+  sid_t peer_sid;
 
   int state;
 #define RHIZOME_FETCH_FREE 0
@@ -197,7 +197,7 @@ int rhizome_fetch_status_html(struct strbuf *b)
 	fetch_state(q->active.state),
 	q->active.write_state.file_offset,
 	q->active.manifest->fileLength,
-	alloca_tohex(q->active.peer_sid,8));
+	alloca_tohex_sid_t_trunc(q->active.peer_sid, 16));
     }else{
       strbuf_puts(b, "inactive");
     }
@@ -560,7 +560,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
       DEBUGF("RHIZOME HTTP REQUEST family=%u addr=%s sid=%s port=%u %s",
 	     slot->peer_ipandport.sin_family, 
 	     buf,
-	     alloca_tohex_sid(slot->peer_sid),
+	     alloca_tohex_sid_t(slot->peer_sid),
 	     ntohs(slot->peer_ipandport.sin_port), 
 	     alloca_str_toprint(slot->request)
 	);
@@ -624,7 +624,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 static enum rhizome_start_fetch_result
-rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct sockaddr_in *peerip,unsigned const char *peersid)
+rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct sockaddr_in *peerip, const sid_t *peersidp)
 {
   IN();
   if (slot->state != RHIZOME_FETCH_FREE)
@@ -717,7 +717,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
 
   /* Prepare for fetching */
   slot->peer_ipandport = *peerip;
-  bcopy(peersid,slot->peer_sid,SID_SIZE);
+  slot->peer_sid = *peersidp;
   slot->manifest = m;
 
   if (schedule_fetch(slot) == -1)
@@ -731,7 +731,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
  */
 enum rhizome_start_fetch_result
 rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip, 
-					 const unsigned char peersid[SID_SIZE],
+					 const sid_t *peersidp,
 					 const unsigned char *prefix, size_t prefix_length)
 {
   assert(peerip);
@@ -742,7 +742,7 @@ rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip,
   /* Prepare for fetching via HTTP */
   slot->peer_ipandport = *peerip;
   slot->manifest = NULL;
-  bcopy(peersid,slot->peer_sid,SID_SIZE);
+  slot->peer_sid = *peersidp;
   bcopy(prefix, slot->bid.binary, prefix_length);
   slot->prefix_length=prefix_length;
 
@@ -770,7 +770,7 @@ static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
     int i = 0;
     struct rhizome_fetch_candidate *c;
     while (i < q->candidate_queue_size && (c = &q->candidate_queue[i])->manifest) {
-      int result = rhizome_fetch(slot, c->manifest, &c->peer_ipandport,c->peer_sid);
+      int result = rhizome_fetch(slot, c->manifest, &c->peer_ipandport, &c->peer_sid);
       switch (result) {
       case SLOTBUSY:
 	OUT(); return;
@@ -845,7 +845,7 @@ int rhizome_fetch_has_queue_space(unsigned char log2_size){
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE])
+int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip, const sid_t *peersidp)
 {
   IN();
   
@@ -947,7 +947,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   c->manifest = m;
   c->priority = priority;
   c->peer_ipandport = *peerip;
-  bcopy(peersid,c->peer_sid,SID_SIZE);
+  c->peer_sid = *peersidp;
 
   if (config.debug.rhizome_rx) {
     DEBUG("Rhizome fetch queues:");
@@ -1066,9 +1066,9 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   overlay_mdp_frame mdp;
 
   bzero(&mdp,sizeof(mdp));
-  bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
+  mdp.out.src.sid = my_subscriber->sid;
   mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
-  bcopy(slot->peer_sid,mdp.out.dst.sid,SID_SIZE);
+  mdp.out.dst.sid = slot->peer_sid;
   mdp.out.dst.port=MDP_PORT_RHIZOME_REQUEST;
   mdp.out.ttl=1;
   mdp.packetTypeAndFlags=MDP_TX;
@@ -1101,8 +1101,10 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
 
   if (config.debug.rhizome_tx)
     DEBUGF("src sid=%s, dst sid=%s, mdpRXWindowStart=0x%"PRIx64", slot->bidVersion=0x%"PRIx64,
-	   alloca_tohex_sid(mdp.out.src.sid),alloca_tohex_sid(mdp.out.dst.sid),
-	   slot->write_state.file_offset,slot->bidVersion);
+	   alloca_tohex_sid_t(mdp.out.src.sid),
+	   alloca_tohex_sid_t(mdp.out.dst.sid),
+	   slot->write_state.file_offset,
+	   slot->bidVersion);
 
   overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
   
@@ -1275,7 +1277,7 @@ int rhizome_write_complete(struct rhizome_fetch_slot *slot)
 	      slot->manifest->fileHexHash);
     } else {
       INFOF("Completed MDP request from %s  for file %s",
-	    alloca_tohex_sid(slot->peer_sid), slot->manifest->fileHexHash);
+	    alloca_tohex_sid_t(slot->peer_sid), slot->manifest->fileHexHash);
     }
   } else {
     /* This was to fetch the manifest, so now fetch the file if needed */
@@ -1295,8 +1297,7 @@ int rhizome_write_complete(struct rhizome_fetch_slot *slot)
 	  dump("slot->peerip",&slot->peer_ipandport,sizeof(slot->peer_ipandport));
 	  dump("slot->peersid",&slot->peer_sid,sizeof(slot->peer_sid));
 	}
-	rhizome_suggest_queue_manifest_import(m, &slot->peer_ipandport,
-						slot->peer_sid);
+	rhizome_suggest_queue_manifest_import(m, &slot->peer_ipandport, &slot->peer_sid);
       }
     }
   }

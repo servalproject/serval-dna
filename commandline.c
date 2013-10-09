@@ -508,24 +508,22 @@ int app_log(const struct cli_parsed *parsed, struct cli_context *context)
 
 void lookup_send_request(int mdp_sockfd, const sid_t *srcsid, int srcport, const sid_t *dstsid, const char *did)
 {
-  int i;
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
   
   /* set source address to the local address and port */
-  mdp.out.src.port=srcport;
-  bcopy(srcsid->binary, mdp.out.src.sid, SID_SIZE);
+  mdp.out.src.port = srcport;
+  mdp.out.src.sid = *srcsid;
   
   /* Send to destination address and DNA lookup port */
   if (dstsid) {
     /* Send an encrypted unicast packet */
     mdp.packetTypeAndFlags=MDP_TX;
-    bcopy(dstsid->binary, mdp.out.dst.sid, SID_SIZE);
+    mdp.out.dst.sid = *dstsid;
   }else{
     /* Send a broadcast packet, flooding across the local mesh network */
     mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT;
-    for(i=0;i<SID_SIZE;i++) 
-      mdp.out.dst.sid[i]=0xff;
+    mdp.out.dst.sid = SID_BROADCAST;
   }  
   mdp.out.dst.port=MDP_PORT_DNALOOKUP;
   
@@ -537,8 +535,8 @@ void lookup_send_request(int mdp_sockfd, const sid_t *srcsid, int srcport, const
   
   /* Also send an encrypted unicast request to a configured directory service */
   if (!dstsid){
-    if (!is_sid_any(config.directory.service.binary)) {
-      memcpy(mdp.out.dst.sid, config.directory.service.binary, SID_SIZE);
+    if (!is_sid_t_any(config.directory.service)) {
+      mdp.out.dst.sid = config.directory.service;
       mdp.packetTypeAndFlags=MDP_TX;
       overlay_mdp_send(mdp_sockfd, &mdp,0,0);
     }
@@ -938,7 +936,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   unsigned int firstSeq=random();
   unsigned int sequence_number=firstSeq;
 
-  int broadcast = is_sid_broadcast(ping_sid.binary);
+  int broadcast = is_sid_t_broadcast(ping_sid);
 
   /* Bind to MDP socket and await confirmation */
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
@@ -973,8 +971,8 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
     mdp.packetTypeAndFlags=MDP_TX;
     if (broadcast) mdp.packetTypeAndFlags|=MDP_NOCRYPT;
     mdp.out.src.port=port;
-    bcopy(srcsid.binary, mdp.out.src.sid, SID_SIZE);
-    bcopy(ping_sid.binary, mdp.out.dst.sid, SID_SIZE);
+    mdp.out.src.sid = srcsid;
+    mdp.out.dst.sid = ping_sid;
     mdp.out.queue=OQ_MESH_MANAGEMENT;
     /* Set port to well known echo port */
     mdp.out.dst.port=MDP_PORT_ECHO;
@@ -1016,7 +1014,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
 	      int hop_count = 64 - mdp.in.ttl;
 	      time_ms_t delay = gettime_ms() - txtime;
 	      cli_printf(context, "%s: seq=%d time=%"PRId64"ms hops=%d %s%s",
-		     alloca_tohex_sid(mdp.in.src.sid),
+		     alloca_tohex_sid_t(mdp.in.src.sid),
 		     (*rxseq)-firstSeq+1,
 		     (int64_t)delay,
 		     hop_count,
@@ -1095,8 +1093,8 @@ int app_trace(const struct cli_parsed *parsed, struct cli_context *context)
   overlay_mdp_frame mdp;
   bzero(&mdp, sizeof(mdp));
   
-  bcopy(srcsid.binary, mdp.out.src.sid, SID_SIZE);
-  bcopy(srcsid.binary, mdp.out.dst.sid, SID_SIZE);
+  mdp.out.src.sid = srcsid;
+  mdp.out.dst.sid = srcsid;
   mdp.out.src.port=port;
   mdp.out.dst.port=MDP_PORT_TRACE;
   mdp.packetTypeAndFlags=MDP_TX;
@@ -1110,7 +1108,7 @@ int app_trace(const struct cli_parsed *parsed, struct cli_context *context)
   
   mdp.out.payload_length = ob_position(b);
   cli_printf(context, "Tracing the network path from %s to %s", 
-	 alloca_tohex_sid(srcsid.binary), alloca_tohex_sid(dstsid.binary));
+	 alloca_tohex_sid_t(srcsid), alloca_tohex_sid_t(dstsid));
   cli_delim(context, "\n");
   cli_flush(context);
 
@@ -1594,7 +1592,7 @@ int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_context *cont
     if (fromhexstr(filehash, fileid, RHIZOME_FILEHASH_BYTES) == -1)
       return WHY("Invalid file ID");
     char fileIDUpper[RHIZOME_FILEHASH_STRLEN + 1];
-    tohex(fileIDUpper, filehash, RHIZOME_FILEHASH_BYTES);
+    tohex(fileIDUpper, RHIZOME_FILEHASH_STRLEN, filehash);
     ret = rhizome_delete_file(fileIDUpper);
   } else {
     if (!manifestid)
@@ -1685,7 +1683,7 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
     cli_field_name(context, "version", ":");    cli_put_long(context, m->version, "\n");
     cli_field_name(context, "inserttime", ":"); cli_put_long(context, m->inserttime, "\n");
     if (m->haveSecret) {
-      cli_field_name(context, ".author", ":");  cli_put_string(context, alloca_tohex_sid(m->author), "\n");
+      cli_field_name(context, ".author", ":");  cli_put_string(context, alloca_tohex_sid_t(m->author), "\n");
     }
     cli_field_name(context, ".readonly", ":");  cli_put_long(context, m->haveSecret?0:1, "\n");
     cli_field_name(context, "filesize", ":");   cli_put_long(context, m->fileLength, "\n");
@@ -1872,12 +1870,12 @@ int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *contex
   int cn, in;
   for (cn = 0; cn < k->context_count; ++cn)
     for (in = 0; in < k->contexts[cn]->identity_count; ++in) {
-      const unsigned char *sid = NULL;
+      const sid_t *sidp = NULL;
       const char *did = NULL;
       const char *name = NULL;
-      keyring_identity_extract(k->contexts[cn]->identities[in], &sid, &did, &name);
-      if (sid || did) {
-	cli_put_string(context, alloca_tohex_sid(sid), ":");
+      keyring_identity_extract(k->contexts[cn]->identities[in], &sidp, &did, &name);
+      if (sidp || did) {
+	cli_put_string(context, alloca_tohex_sid_t(*sidp), ":");
 	cli_put_string(context, did, ":");
 	cli_put_string(context, name, "\n");
       }
@@ -1901,11 +1899,11 @@ int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *context
     keyring_free(k);
     return WHY("Could not create new identity");
   }
-  const unsigned char *sid = NULL;
+  const sid_t *sidp = NULL;
   const char *did = "";
   const char *name = "";
-  keyring_identity_extract(id, &sid, &did, &name);
-  if (!sid) {
+  keyring_identity_extract(id, &sidp, &did, &name);
+  if (!sidp) {
     keyring_free(k);
     return WHY("New identity has no SID");
   }
@@ -1914,7 +1912,7 @@ int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *context
     return WHY("Could not write new identity");
   }
   cli_field_name(context, "sid", ":");
-  cli_put_string(context, alloca_tohex_sid(sid), "\n");
+  cli_put_string(context, alloca_tohex_sid_t(*sidp), "\n");
   if (did) {
     cli_field_name(context, "did", ":");
     cli_put_string(context, did, "\n");
@@ -1946,7 +1944,7 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
     return WHY("str_to_sid_t() failed");
 
   int cn=0,in=0,kp=0;
-  int r=keyring_find_sid(keyring, &cn, &in, &kp, sid.binary);
+  int r=keyring_find_sid(keyring, &cn, &in, &kp, &sid);
   if (!r) return WHY("No matching SID");
   if (keyring_set_did(keyring->contexts[cn]->identities[in], did, name))
     return WHY("Could not set DID");
@@ -1954,7 +1952,7 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
     return WHY("Could not write updated keyring record");
 
   cli_field_name(context, "sid", ":");
-  cli_put_string(context, alloca_tohex_sid(sid.binary), "\n");
+  cli_put_string(context, alloca_tohex_sid_t(sid), "\n");
   if (did) {
     cli_field_name(context, "did", ":");
     cli_put_string(context, did, "\n");
@@ -2072,7 +2070,8 @@ int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
     int i;
     for(i=0;i<a.addrlist.frame_sid_count;i++) {
       count++;
-      cli_printf(context, "%s", alloca_tohex_sid(a.addrlist.sids[i])); cli_delim(context, "\n");
+      cli_printf(context, "%s", alloca_tohex_sid_t(a.addrlist.sids[i]));
+      cli_delim(context, "\n");
     }
     /* get ready to ask for next block of SIDs */
     a.packetTypeAndFlags=MDP_GETADDRS;
@@ -2320,7 +2319,7 @@ int app_route_print(const struct cli_parsed *parsed, struct cli_context *context
       if (p->reachable==REACHABLE_NONE)
 	continue;
 
-      cli_put_string(context, alloca_tohex_sid(p->sid), ":");
+      cli_put_string(context, alloca_tohex_sid_t(p->sid), ":");
       char flags[32];
       strbuf b = strbuf_local(flags, sizeof flags);
       
@@ -2342,7 +2341,7 @@ int app_route_print(const struct cli_parsed *parsed, struct cli_context *context
       }
       cli_put_string(context, strbuf_str(b), ":");
       cli_put_string(context, p->interface_name, ":");
-      cli_put_string(context, alloca_tohex_sid(p->neighbour), "\n");
+      cli_put_string(context, alloca_tohex_sid_t(p->neighbour), "\n");
     }
   }
   overlay_mdp_client_close(mdp_sockfd);
@@ -2419,8 +2418,8 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
     }
     
     // we might receive a late response from an ealier request on the same socket, ignore it
-    if (memcmp(mdp_reply.in.src.sid, dstsid.binary, sizeof dstsid.binary)){
-      WHYF("Unexpected result from SID %s", alloca_tohex_sid(mdp_reply.in.src.sid));
+    if (cmp_sid_t(&mdp_reply.in.src.sid, &dstsid) != 0) {
+      WHYF("Unexpected result from SID %s", alloca_tohex_sid_t(mdp_reply.in.src.sid));
       continue;
     }
       

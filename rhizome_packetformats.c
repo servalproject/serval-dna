@@ -268,7 +268,7 @@ int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m){
   if (overlay_payload_enqueue(frame)) goto error;
   if (config.debug.rhizome_ads)
     DEBUGF("Advertising manifest %s %"PRId64" to %s", 
-      alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, dest?alloca_tohex_sid(dest->sid):"broadcast");
+      alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, dest?alloca_tohex_sid_t(dest->sid):"broadcast");
   return 0;
   
 error:
@@ -385,7 +385,7 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
 	DEBUG("Not seen before.");
 
       // start the fetch process!
-      rhizome_suggest_queue_manifest_import(m, &httpaddr,f->source->sid);
+      rhizome_suggest_queue_manifest_import(m, &httpaddr, &f->source->sid);
       // the above function will free the manifest structure, make sure we don't free it again
       m=NULL;
 
@@ -453,9 +453,9 @@ next:
     if (rhizome_is_bar_interesting(bars[index])==1){
       // add a request for the manifest
       if (mdp.out.payload_length==0){
-	bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
+	mdp.out.src.sid = my_subscriber->sid;
 	mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
-	bcopy(f->source->sid,mdp.out.dst.sid,SID_SIZE);
+	mdp.out.dst.sid = f->source->sid;
 	mdp.out.dst.port=MDP_PORT_RHIZOME_MANIFEST_REQUEST;
 	if (f->source->reachable&REACHABLE_DIRECT)
 	  mdp.out.ttl=1;

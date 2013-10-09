@@ -90,7 +90,7 @@ static void add_record(int mdp_sockfd){
     i++;
   mdp.in.payload[i]=0;
   char *name = (char *)mdp.in.payload+i+1;
-  char *sid = alloca_tohex_sid(mdp.in.src.sid);
+  char *sid = alloca_tohex_sid_t(mdp.in.src.sid);
   
   // TODO check that did is a valid phone number
   

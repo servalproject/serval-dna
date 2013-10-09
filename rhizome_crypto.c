@@ -182,23 +182,23 @@ int rhizome_secret2bk(
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_find_secret(const unsigned char *authorSid, int *rs_len, const unsigned char **rs)
+int rhizome_find_secret(const sid_t *authorSidp, int *rs_len, const unsigned char **rs)
 {
   int cn=0, in=0, kp=0;
-  if (!keyring_find_sid(keyring,&cn,&in,&kp,authorSid)) {
+  if (!keyring_find_sid(keyring,&cn,&in,&kp, authorSidp)) {
     if (config.debug.rhizome)
-      DEBUGF("identity sid=%s is not in keyring", alloca_tohex_sid(authorSid));
+      DEBUGF("identity sid=%s is not in keyring", alloca_tohex_sid_t(*authorSidp));
     return 2;
   }
   kp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
   if (kp == -1) {
     if (config.debug.rhizome)
-      DEBUGF("identity sid=%s has no Rhizome Secret", alloca_tohex_sid(authorSid));
+      DEBUGF("identity sid=%s has no Rhizome Secret", alloca_tohex_sid_t(*authorSidp));
     return 3;
   }
   int rslen = keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key_len;
   if (rslen < 16 || rslen > 1024)
-    return WHYF("identity sid=%s has invalid Rhizome Secret: length=%d", alloca_tohex_sid(authorSid), rslen);
+    return WHYF("identity sid=%s has invalid Rhizome Secret: length=%d", alloca_tohex_sid_t(*authorSidp), rslen);
   if (rs_len)
     *rs_len = rslen;
   if (rs)
@@ -259,12 +259,12 @@ int rhizome_extract_privatekey(rhizome_manifest *m, rhizome_bk_t *bsk)
     if (fromhexstr(bkBytes, bk, RHIZOME_BUNDLE_KEY_BYTES) == -1)
       RETURN(WHYF("invalid BK field: %s", bk));
     
-    if (is_sid_any(m->author)) {
+    if (is_sid_t_any(m->author)) {
       result=rhizome_find_bundle_author(m);
     }else{
       int rs_len;
       const unsigned char *rs;
-      result = rhizome_find_secret(m->author, &rs_len, &rs);
+      result = rhizome_find_secret(&m->author, &rs_len, &rs);
       if (result==0)
 	result = rhizome_bk2secret(m, &m->cryptoSignPublic, rs, rs_len, bkBytes, m->cryptoSignSecret);
     }
@@ -350,8 +350,8 @@ int rhizome_find_bundle_author(rhizome_manifest *m)
     RETURN(WHYF("invalid BK field: %s", bk));
   int cn = 0, in = 0, kp = 0;
   for (; keyring_next_identity(keyring, &cn, &in, &kp); ++kp) {
-    const unsigned char *authorSid = keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key;
-    //if (config.debug.rhizome) DEBUGF("try author identity sid=%s", alloca_tohex(authorSid, SID_SIZE));
+    const sid_t *authorSidp = (const sid_t *) keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key;
+    //if (config.debug.rhizome) DEBUGF("try author identity sid=%s", alloca_tohex_sid_t(*authorSidp));
     int rkp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
     if (rkp != -1) {
       int rs_len = keyring->contexts[cn]->identities[in]->keypairs[rkp]->private_key_len;
@@ -361,17 +361,15 @@ int rhizome_find_bundle_author(rhizome_manifest *m)
 
       if (!rhizome_bk2secret(m, &m->cryptoSignPublic, rs, rs_len, bkBytes, m->cryptoSignSecret)) {
 	m->haveSecret=EXISTING_BUNDLE_ID;
-	
-	if (memcmp(m->author, authorSid, sizeof m->author)){
-	  memcpy(m->author, authorSid, sizeof m->author);
+	if (cmp_sid_t(&m->author, authorSidp) != 0){
+	  m->author = *authorSidp;
 	  if (config.debug.rhizome)
-	    DEBUGF("found bundle author sid=%s", alloca_tohex_sid(m->author));
-	
+	    DEBUGF("found bundle author sid=%s", alloca_tohex_sid_t(m->author));
 	  // if this bundle is already in the database, update the author.
 	  if (m->inserttime)
 	    sqlite_exec_void_loglevel(LOG_LEVEL_WARN,
 		"UPDATE MANIFESTS SET author = ? WHERE id = ?;",
-		SID_T, (sid_t*)m->author,
+		SID_T, &m->author,
 		RHIZOME_BID_T, &m->cryptoSignPublic,
 		END);
 	}
@@ -654,14 +652,14 @@ int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk)
     
     unsigned char *nm_bytes=NULL;
     int cn=0,in=0,kp=0;
-    if (!keyring_find_sid(keyring,&cn,&in,&kp,sender_sid.binary)){
+    if (!keyring_find_sid(keyring, &cn, &in, &kp, &sender_sid)){
       cn=in=kp=0;
-      if (!keyring_find_sid(keyring,&cn,&in,&kp,recipient_sid.binary)){
+      if (!keyring_find_sid(keyring, &cn, &in, &kp, &recipient_sid)){
 	return WHYF("Neither the sender %s nor the recipient %s appears in our keyring", sender, recipient);
       }
-      nm_bytes=keyring_get_nm_bytes(recipient_sid.binary, sender_sid.binary);
+      nm_bytes=keyring_get_nm_bytes(&recipient_sid, &sender_sid);
     }else{
-      nm_bytes=keyring_get_nm_bytes(sender_sid.binary, recipient_sid.binary);
+      nm_bytes=keyring_get_nm_bytes(&sender_sid, &recipient_sid);
     }
     
     if (!nm_bytes)

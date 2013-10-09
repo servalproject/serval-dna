@@ -718,7 +718,7 @@ int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout, int 
   OUT();
 }
 
-int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSid, rhizome_bk_t *bsk){
+int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp, rhizome_bk_t *bsk){
   /* Fill in a few missing manifest fields, to make it easier to use when adding new files:
    - the default service is FILE
    - use the current time for "date"
@@ -754,12 +754,12 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
   
   /* If the author was not specified, then the manifest's "sender"
    field is used, if present. */
-  if (authorSid){
-    memcpy(m->author, authorSid, SID_SIZE);
-  }else{
+  if (authorSidp)
+    m->author = *authorSidp;
+  else{
     const char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
     if (sender){
-      if (fromhexstr(m->author, sender, SID_SIZE) == -1)
+      if (str_to_sid_t(&m->author, sender) == -1)
 	return WHYF("invalid sender: %s", sender);
     }
   }
@@ -802,7 +802,7 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
       sid_t s_sender, s_recipient;
       if (cf_opt_sid(&s_sender, sender)==CFOK 
 	&& cf_opt_sid(&s_recipient, recipient)==CFOK
-	&& !is_sid_broadcast(s_recipient.binary)){
+	&& !is_sid_t_broadcast(s_recipient)){
 	if (config.debug.rhizome)
 	  DEBUGF("Implicitly adding payload encryption due to presense of sender & recipient fields");
 	m->payloadEncryption=1;

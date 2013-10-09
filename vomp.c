@@ -463,9 +463,9 @@ static struct vomp_call_state *vomp_find_or_create_call(struct subscriber *remot
 
 static void prepare_vomp_header(struct vomp_call_state *call, overlay_mdp_frame *mdp){
   mdp->packetTypeAndFlags=MDP_TX;
-  bcopy(call->local.subscriber->sid,mdp->out.src.sid,SID_SIZE);
+  mdp->out.src.sid = call->local.subscriber->sid;
   mdp->out.src.port=MDP_PORT_VOMP;
-  bcopy(call->remote.subscriber->sid,mdp->out.dst.sid,SID_SIZE);
+  mdp->out.dst.sid = call->remote.subscriber->sid;
   mdp->out.dst.port=MDP_PORT_VOMP;
   
   mdp->out.payload[0]=VOMP_VERSION;
@@ -573,8 +573,8 @@ static int monitor_call_status(struct vomp_call_state *call)
 	   call->local.session,call->remote.session,
 	   call->local.state,call->remote.state,
 	   0,
-	   alloca_tohex_sid(call->local.subscriber->sid),
-	   alloca_tohex_sid(call->remote.subscriber->sid),
+	   alloca_tohex_sid_t(call->local.subscriber->sid),
+	   alloca_tohex_sid_t(call->remote.subscriber->sid),
 	   call->local.did,call->remote.did);
   
   monitor_tell_clients(msg, n, MONITOR_VOMP);
@@ -636,8 +636,8 @@ static int vomp_update_local_state(struct vomp_call_state *call, int new_state){
       // tell client our session id.
       monitor_tell_formatted(MONITOR_VOMP, "\nCALLTO:%06x:%s:%s:%s:%s\n", 
 			     call->local.session, 
-			     alloca_tohex_sid(call->local.subscriber->sid), call->local.did,
-			     alloca_tohex_sid(call->remote.subscriber->sid), call->remote.did);
+			     alloca_tohex_sid_t(call->local.subscriber->sid), call->local.did,
+			     alloca_tohex_sid_t(call->remote.subscriber->sid), call->remote.did);
       break;
     case VOMP_STATE_CALLENDED:
       monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%06x\n", call->local.session);
@@ -657,8 +657,8 @@ static int vomp_update_remote_state(struct vomp_call_state *call, int new_state)
     case VOMP_STATE_RINGINGOUT:
       monitor_tell_formatted(MONITOR_VOMP, "\nCALLFROM:%06x:%s:%s:%s:%s\n", 
 			     call->local.session, 
-			     alloca_tohex_sid(call->local.subscriber->sid), call->local.did,
-			     alloca_tohex_sid(call->remote.subscriber->sid), call->remote.did);
+			     alloca_tohex_sid_t(call->local.subscriber->sid), call->local.did,
+			     alloca_tohex_sid_t(call->remote.subscriber->sid), call->remote.did);
       break;
     case VOMP_STATE_RINGINGIN:
       monitor_tell_formatted(MONITOR_VOMP, "\nRINGING:%06x\n", call->local.session);
@@ -906,8 +906,8 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
        trying to use such replays to cause a denial of service attack we need
        to be able to track multiple potential session numbers even from the
        same SID. */
-      struct subscriber *local=find_subscriber(mdp->in.dst.sid, SID_SIZE, 0);
-      struct subscriber *remote=find_subscriber(mdp->in.src.sid, SID_SIZE, 0);
+      struct subscriber *local=find_subscriber(mdp->in.dst.sid.binary, SID_SIZE, 0);
+      struct subscriber *remote=find_subscriber(mdp->in.src.sid.binary, SID_SIZE, 0);
       
       call=vomp_find_or_create_call(remote,local,
 				    sender_session,recvr_session,

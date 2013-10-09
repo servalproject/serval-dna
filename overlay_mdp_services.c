@@ -52,16 +52,16 @@ int rhizome_mdp_send_block(struct subscriber *dest, const rhizome_bid_t *bid, ui
   // receivers in the special case where additional nodes begin listening in from the
   // beginning.
   reply.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT|MDP_NOSIGN;
-  bcopy(my_subscriber->sid,reply.out.src.sid,SID_SIZE);
+  reply.out.src.sid = my_subscriber->sid;
   reply.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
   
   if (dest && (dest->reachable==REACHABLE_UNICAST || dest->reachable==REACHABLE_INDIRECT)){
     // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
-    bcopy(dest->sid, reply.out.dst.sid, SID_SIZE);
+    reply.out.dst.sid = dest->sid;
   }else{
     // send replies to broadcast so that others can hear blocks and record them
     // (not that preemptive listening is implemented yet).
-    memset(reply.out.dst.sid,0xff,SID_SIZE);
+    reply.out.dst.sid = SID_BROADCAST;
     reply.out.ttl=1;
   }
   
@@ -187,16 +187,16 @@ int overlay_mdp_service_dnalookup(overlay_mdp_frame *mdp)
       if (keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key_len > DID_MAXSIZE) 
 	/* skip excessively long DID records */
 	continue;
-      const unsigned char *packedSid = keyring->contexts[cn]->identities[in]->keypairs[0]->public_key;
+      const sid_t *sidp = (const sid_t *) keyring->contexts[cn]->identities[in]->keypairs[0]->public_key;
       const char *unpackedDid = (const char *) keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key;
       const char *name = (const char *)keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key;
       // URI is sid://SIDHEX/DID
       strbuf b = strbuf_alloca(SID_STRLEN + DID_MAXSIZE + 10);
       strbuf_puts(b, "sid://");
-      strbuf_tohex(b, packedSid, SID_SIZE);
+      strbuf_tohex(b, SID_STRLEN, sidp->binary);
       strbuf_puts(b, "/local/");
       strbuf_puts(b, unpackedDid);
-      overlay_mdp_dnalookup_reply(&mdp->out.src, packedSid, strbuf_str(b), unpackedDid, name);
+      overlay_mdp_dnalookup_reply(&mdp->out.src, sidp, strbuf_str(b), unpackedDid, name);
       kp++;
       results++;
     }
@@ -211,9 +211,9 @@ int overlay_mdp_service_dnalookup(overlay_mdp_frame *mdp)
        when results become available, so this function will return
        immediately, so as not to cause blockages and delays in servald.
     */
-    dna_helper_enqueue(mdp, did, mdp->out.src.sid);
+    dna_helper_enqueue(mdp, did, &mdp->out.src.sid);
     monitor_tell_formatted(MONITOR_DNAHELPER, "LOOKUP:%s:%d:%s\n", 
-			   alloca_tohex_sid(mdp->out.src.sid), mdp->out.src.port, 
+			   alloca_tohex_sid_t(mdp->out.src.sid), mdp->out.src.port, 
 			   did);
   }
   RETURN(0);
@@ -235,14 +235,13 @@ int overlay_mdp_service_echo(overlay_mdp_frame *mdp)
   }
   /* If the packet was sent to broadcast, then replace broadcast address
      with our local address. For now just responds with first local address */
-  if (is_sid_broadcast(mdp->out.src.sid))
+  if (is_sid_t_broadcast(mdp->out.src.sid))
     {
       if (my_subscriber)		  
-	bcopy(my_subscriber->sid,
-	      mdp->out.src.sid,SID_SIZE);
+	mdp->out.src.sid = my_subscriber->sid;
       else
 	/* No local addresses, so put all zeroes */
-	bzero(mdp->out.src.sid,SID_SIZE);
+	mdp->out.src.sid = SID_ANY;
     }
   
   /* Always send PONGs auth-crypted so that the receipient knows
@@ -288,7 +287,7 @@ static int overlay_mdp_service_trace(overlay_mdp_frame *mdp){
     goto end;
   }
 
-  INFOF("Trace from %s to %s", alloca_tohex_sid(src->sid), alloca_tohex_sid(dst->sid));
+  INFOF("Trace from %s to %s", alloca_tohex_sid_t(src->sid), alloca_tohex_sid_t(dst->sid));
   
   while(ob_remaining(b)>0){
     struct subscriber *trace=NULL;
@@ -300,7 +299,7 @@ static int overlay_mdp_service_trace(overlay_mdp_frame *mdp){
       ret=WHYF("Invalid address in trace packet");
       goto end;
     }
-    INFOF("Via %s", alloca_tohex_sid(trace->sid));
+    INFOF("Via %s", alloca_tohex_sid_t(trace->sid));
     
     if (trace->reachable==REACHABLE_SELF && !next)
       // We're already in this trace, send the next packet to the node before us in the list
@@ -329,7 +328,7 @@ static int overlay_mdp_service_trace(overlay_mdp_frame *mdp){
       next = src;
   }
   
-  INFOF("Next node is %s", alloca_tohex_sid(next->sid));
+  INFOF("Next node is %s", alloca_tohex_sid_t(next->sid));
   
   ob_unlimitsize(b);
   // always write a full sid into the payload
@@ -340,8 +339,8 @@ static int overlay_mdp_service_trace(overlay_mdp_frame *mdp){
   }
   
   mdp->out.payload_length = ob_position(b);
-  bcopy(my_subscriber->sid, mdp->out.src.sid, SID_SIZE);
-  bcopy(next->sid, mdp->out.dst.sid, SID_SIZE);
+  mdp->out.src.sid = my_subscriber->sid;
+  mdp->out.dst.sid = next->sid;
   
   ret = overlay_mdp_dispatch(mdp, 0, NULL, 0);
 end:

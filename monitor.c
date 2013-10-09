@@ -363,7 +363,7 @@ void monitor_get_all_supported_codecs(unsigned char *codecs){
 static int monitor_announce_all_peers(struct subscriber *subscriber, void *context)
 {
   if (subscriber->reachable&REACHABLE)
-    monitor_announce_peer(subscriber->sid);
+    monitor_announce_peer(&subscriber->sid);
   return 0;
 }
 
@@ -437,26 +437,25 @@ static int monitor_lookup_match(const struct cli_parsed *parsed, struct cli_cont
     .port = atoi(parsed->args[3]),
   };
   
-  if (stowSid((unsigned char *)&addr.sid, 0, sid)==-1)
+  if (str_to_sid_t(&addr.sid, sid) == -1)
     return monitor_write_error(c,"Invalid SID");
   
   char uri[256];
-  snprintf(uri, sizeof(uri), "sid://%s/external/%s", alloca_tohex_sid(my_subscriber->sid), ext);
+  snprintf(uri, sizeof(uri), "sid://%s/external/%s", alloca_tohex_sid_t(my_subscriber->sid), ext);
   DEBUGF("Sending response to %s for %s", sid, uri);
-  overlay_mdp_dnalookup_reply(&addr, my_subscriber->sid, uri, ext, name);
+  overlay_mdp_dnalookup_reply(&addr, &my_subscriber->sid, uri, ext, name);
   return 0;
 }
 
 static int monitor_call(const struct cli_parsed *parsed, struct cli_context *context)
 {
   struct monitor_context *c=context->context;
-  unsigned char sid[SID_SIZE];
-  if (stowSid(sid, 0, parsed->args[1]) == -1)
+  sid_t sid;
+  if (str_to_sid_t(&sid, parsed->args[1]) == -1)
     return monitor_write_error(c,"invalid SID, so cannot place call");
-  
   if (!my_subscriber)
     return monitor_write_error(c,"I don't know who I am");
-  struct subscriber *remote = find_subscriber(sid, SID_SIZE, 1);
+  struct subscriber *remote = find_subscriber(sid.binary, SID_SIZE, 1);
   vomp_dial(my_subscriber, remote, parsed->args[2], parsed->args[3]);
   return 0;
 }
@@ -585,22 +584,22 @@ int monitor_announce_bundle(rhizome_manifest *m)
   return 0;
 }
 
-int monitor_announce_peer(const unsigned char *sid)
+int monitor_announce_peer(const sid_t *sidp)
 {
-  return monitor_tell_formatted(MONITOR_PEERS, "\nNEWPEER:%s\n", alloca_tohex_sid(sid));
+  return monitor_tell_formatted(MONITOR_PEERS, "\nNEWPEER:%s\n", alloca_tohex_sid_t(*sidp));
 }
 
-int monitor_announce_unreachable_peer(const unsigned char *sid)
+int monitor_announce_unreachable_peer(const sid_t *sidp)
 {
-  return monitor_tell_formatted(MONITOR_PEERS, "\nOLDPEER:%s\n", alloca_tohex_sid(sid));
+  return monitor_tell_formatted(MONITOR_PEERS, "\nOLDPEER:%s\n", alloca_tohex_sid_t(*sidp));
 }
 
 int monitor_announce_link(int hop_count, struct subscriber *transmitter, struct subscriber *receiver)
 {
   return monitor_tell_formatted(MONITOR_LINKS, "\nLINK:%d:%s:%s\n", 
     hop_count,
-    transmitter?alloca_tohex_sid(transmitter->sid):"",
-    alloca_tohex_sid(receiver->sid));
+    transmitter ? alloca_tohex_sid_t(transmitter->sid) : "",
+    alloca_tohex_sid_t(receiver->sid));
 }
 
 // test if any monitor clients are interested in a particular type of event

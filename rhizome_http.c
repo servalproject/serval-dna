@@ -528,7 +528,7 @@ static int root_page(rhizome_http_request *r, const char *remainder, const char 
   strbuf_sprintf(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>"
 	   "<h1>Hello, I'm %s*</h1><br>"
 	   "Interfaces;<br>",
-	   alloca_tohex(my_subscriber->sid, 8));
+	   alloca_tohex_sid_t_trunc(my_subscriber->sid, 16));
   int i;
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
     if (overlay_interfaces[i].state==INTERFACE_STATE_UP)

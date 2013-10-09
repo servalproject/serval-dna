@@ -159,7 +159,7 @@ dna_helper_start()
   if (!my_subscriber)
     return WHY("Unable to lookup my SID");
   
-  const char *mysid = alloca_tohex_sid(my_subscriber->sid);
+  const char *mysid = alloca_tohex_sid_t(my_subscriber->sid);
   
   dna_helper_close_pipes();
   int stdin_fds[2], stdout_fds[2], stderr_fds[2];
@@ -434,7 +434,7 @@ void handle_reply_line(const char *bufp, size_t len)
       else {
 	if (config.debug.dnahelper)
 	  DEBUGF("DNAHELPER reply %s", alloca_toprint(-1, bufp, len));
-	overlay_mdp_dnalookup_reply(&request_mdp_data.src, my_subscriber->sid, uri, did, name);
+	overlay_mdp_dnalookup_reply(&request_mdp_data.src, &my_subscriber->sid, uri, did, name);
       }
     }
   } else {
@@ -556,10 +556,10 @@ static void reply_timeout(struct sched_ent *alarm)
 }
 
 int
-dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const unsigned char *requestorSid)
+dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const sid_t *requestorSidp)
 {
   if (config.debug.dnahelper)
-    DEBUGF("DNAHELPER request did=%s sid=%s", did, alloca_tohex_sid(requestorSid));
+    DEBUGF("DNAHELPER request did=%s sid=%s", did, alloca_tohex_sid_t(*requestorSidp));
   if (dna_helper_pid == 0)
     return 0;
   // Only try to restart a DNA helper process if the previous one is well and truly gone.
@@ -587,7 +587,7 @@ dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const unsigned char 
   }
   char buffer[sizeof request_buffer];
   strbuf b = strbuf_local(request_bufptr == request_buffer ? buffer : request_buffer, sizeof buffer);
-  strbuf_tohex(b, requestorSid, SID_SIZE);
+  strbuf_tohex(b, SID_STRLEN, requestorSidp->binary);
   strbuf_putc(b, '|');
   strbuf_puts(b, did);
   strbuf_putc(b, '|');

@@ -31,13 +31,12 @@
 
 const char hexdigit[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 
-char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes)
+char *tohex(char *dstHex, size_t dstStrLen, const unsigned char *srcBinary)
 {
   char *p;
-  for (p = dstHex; bytes--; ++srcBinary) {
-    *p++ = hexdigit[*srcBinary >> 4];
-    *p++ = hexdigit[*srcBinary & 0xf];
-  }
+  size_t i;
+  for (p = dstHex, i = 0; i < dstStrLen; ++i)
+    *p++ = (i & 1) ? hexdigit[*srcBinary++ & 0xf] : hexdigit[*srcBinary >> 4];
   *p = '\0';
   return dstHex;
 }

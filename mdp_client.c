@@ -284,7 +284,7 @@ int overlay_mdp_bind(int mdp_sockfd, const sid_t *localaddr, int port)
 {
   overlay_mdp_frame mdp;
   mdp.packetTypeAndFlags=MDP_BIND|MDP_FORCE;
-  bcopy(localaddr->binary, mdp.bind.sid, SID_SIZE);
+  mdp.bind.sid = *localaddr;
   mdp.bind.port=port;
   int result=overlay_mdp_send(mdp_sockfd, &mdp,MDP_AWAITREPLY,5000);
   if (result) {
@@ -298,7 +298,7 @@ int overlay_mdp_bind(int mdp_sockfd, const sid_t *localaddr, int port)
   return 0;
 }
 
-int overlay_mdp_getmyaddr(int mdp_sockfd, unsigned index, sid_t *sid)
+int overlay_mdp_getmyaddr(int mdp_sockfd, unsigned index, sid_t *sidp)
 {
   overlay_mdp_frame a;
   memset(&a, 0, sizeof(a));
@@ -316,8 +316,8 @@ int overlay_mdp_getmyaddr(int mdp_sockfd, unsigned index, sid_t *sid)
   }
   if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST)
     return WHY("MDP Server returned something other than an address list");
-  if (0) DEBUGF("local addr 0 = %s",alloca_tohex_sid(a.addrlist.sids[0]));
-  bcopy(&a.addrlist.sids[0][0], sid->binary, sizeof sid->binary);
+  if (0) DEBUGF("local addr 0 = %s",alloca_tohex_sid_t(a.addrlist.sids[0]));
+  *sidp = a.addrlist.sids[0];
   return 0;
 }
 
@@ -332,10 +332,10 @@ ssize_t overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
       len=&mdp->raw[0]-(char *)mdp;
       break;
     case MDP_ADDRLIST: 
-      len=(&mdp->addrlist.sids[0][0]-(unsigned char *)mdp) + mdp->addrlist.frame_sid_count*SID_SIZE;
+      len = mdp->addrlist.sids[mdp->addrlist.frame_sid_count].binary - (unsigned char *)mdp;
       break;
     case MDP_GETADDRS: 
-      len=&mdp->addrlist.sids[0][0]-(unsigned char *)mdp;
+      len = mdp->addrlist.sids[0].binary - (unsigned char *)mdp;
       break;
     case MDP_TX: 
       len=(&mdp->out.payload[0]-(unsigned char *)mdp) + mdp->out.payload_length; 

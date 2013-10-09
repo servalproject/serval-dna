@@ -48,7 +48,7 @@
 // This structure supports both our own routing protocol which can store calculation details in *node 
 // or IP4 addresses reachable via any other kind of normal layer3 routing protocol, eg olsr
 struct subscriber{
-  unsigned char sid[SID_SIZE];
+  sid_t sid;
   // minimum abbreviation length, in 4bit nibbles.
   int abbreviate_len;
   

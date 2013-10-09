@@ -58,22 +58,24 @@ static struct tree_node root;
 
 struct subscriber *my_subscriber=NULL;
 
-static unsigned char get_nibble(const unsigned char *sid, int pos){
-  unsigned char byte = sid[pos>>1];
+static unsigned char get_nibble(const unsigned char *sidp, int pos)
+{
+  unsigned char byte = sidp[pos>>1];
   if (!(pos&1))
     byte=byte>>4;
   return byte&0xF;
 }
 
 // find a subscriber struct from a whole or abbreviated subscriber id
-struct subscriber *find_subscriber(const unsigned char *sid, int len, int create){
+struct subscriber *find_subscriber(const unsigned char *sidp, int len, int create)
+{
   struct tree_node *ptr = &root;
   int pos=0;
   if (len!=SID_SIZE)
     create =0;
   
   do{
-    unsigned char nibble = get_nibble(sid, pos++);
+    unsigned char nibble = get_nibble(sidp, pos++);
     
     if (ptr->is_tree & (1<<nibble)){
       ptr = ptr->tree_nodes[nibble];
@@ -85,7 +87,7 @@ struct subscriber *find_subscriber(const unsigned char *sid, int len, int create
 	struct subscriber *ret=(struct subscriber *)malloc(sizeof(struct subscriber));
 	memset(ret,0,sizeof(struct subscriber));
 	ptr->subscribers[nibble]=ret;
-	bcopy(sid, ret->sid, SID_SIZE);
+	ret->sid = *(const sid_t *)sidp;
 	ret->abbreviate_len=pos;
       }
       return ptr->subscribers[nibble];
@@ -93,9 +95,8 @@ struct subscriber *find_subscriber(const unsigned char *sid, int len, int create
     }else{
       // there's a subscriber in this slot, does it match the rest of the sid we've been given?
       struct subscriber *ret = ptr->subscribers[nibble];
-      if (memcmp(ret->sid,sid,len)==0){
+      if (memcmp(ret->sid.binary, sidp, len) == 0)
 	return ret;
-      }
       
       // if we need to insert this subscriber, we have to make a new tree node first
       if (!create)
@@ -108,7 +109,7 @@ struct subscriber *find_subscriber(const unsigned char *sid, int len, int create
       ptr->is_tree |= (1<<nibble);
       
       ptr=new;
-      nibble=get_nibble(ret->sid,pos);
+      nibble=get_nibble(ret->sid.binary, pos);
       ptr->subscribers[nibble]=ret;
       ret->abbreviate_len=pos+1;
       // then go around the loop again to compare the next nibble against the sid until we find an empty slot.
@@ -155,8 +156,9 @@ static int walk_tree(struct tree_node *node, int pos,
 /*
  walk the tree, starting at start inclusive, calling the supplied callback function
  */
-void enum_subscribers(struct subscriber *start, int(*callback)(struct subscriber *, void *), void *context){
-  walk_tree(&root, 0, start->sid, SID_SIZE, NULL, 0, callback, context);
+void enum_subscribers(struct subscriber *start, int(*callback)(struct subscriber *, void *), void *context)
+{
+  walk_tree(&root, 0, start->sid.binary, SID_SIZE, NULL, 0, callback, context);
 }
 
 // generate a new random broadcast address
@@ -237,7 +239,7 @@ int overlay_address_append(struct decode_context *context, struct overlay_buffer
     }
     if (ob_append_byte(b, len))
       return -1;
-    if (ob_append_bytes(b, subscriber->sid, len))
+    if (ob_append_bytes(b, subscriber->sid.binary, len))
       return -1;
   }
   if (context)
@@ -270,10 +272,10 @@ static int add_explain_response(struct subscriber *subscriber, void *context){
   }
   
   // add the whole subscriber id to the payload, stop if we run out of space
-  DEBUGF("Adding full sid by way of explanation %s", alloca_tohex_sid(subscriber->sid));
+  DEBUGF("Adding full sid by way of explanation %s", alloca_tohex_sid_t(subscriber->sid));
   if (ob_append_byte(response->please_explain->payload, SID_SIZE))
     return 1;
-  if (ob_append_bytes(response->please_explain->payload, subscriber->sid, SID_SIZE))
+  if (ob_append_bytes(response->please_explain->payload, subscriber->sid.binary, SID_SIZE))
     return 1;
 
   // let the routing engine know that we had to explain this sid, we probably need to re-send routing info

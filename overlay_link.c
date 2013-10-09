@@ -85,17 +85,17 @@ int set_reachable(struct subscriber *subscriber,
   if (config.debug.overlayrouting || config.debug.linkstate) {
     switch (reachable) {
       case REACHABLE_NONE:
-	DEBUGF("NOT REACHABLE sid=%s", alloca_tohex_sid(subscriber->sid));
+	DEBUGF("NOT REACHABLE sid=%s", alloca_tohex_sid_t(subscriber->sid));
 	break;
       case REACHABLE_INDIRECT:
 	DEBUGF("REACHABLE INDIRECTLY sid=%s, via %s", 
-	  alloca_tohex_sid(subscriber->sid), alloca_tohex_sid(next_hop->sid));
+	  alloca_tohex_sid_t(subscriber->sid), alloca_tohex_sid_t(next_hop->sid));
 	break;
       case REACHABLE_UNICAST:
-	DEBUGF("REACHABLE VIA UNICAST sid=%s, on %s ", alloca_tohex_sid(subscriber->sid), destination->interface->name);
+	DEBUGF("REACHABLE VIA UNICAST sid=%s, on %s ", alloca_tohex_sid_t(subscriber->sid), destination->interface->name);
 	break;
       case REACHABLE_BROADCAST:
-	DEBUGF("REACHABLE VIA BROADCAST sid=%s, on %s ", alloca_tohex_sid(subscriber->sid), destination->interface->name);
+	DEBUGF("REACHABLE VIA BROADCAST sid=%s, on %s ", alloca_tohex_sid_t(subscriber->sid), destination->interface->name);
 	break;
     }
   }
@@ -109,9 +109,9 @@ int set_reachable(struct subscriber *subscriber,
     directory_registration();
   
   if ((old_value & REACHABLE) && (!(reachable & REACHABLE)))
-    monitor_announce_unreachable_peer(subscriber->sid);
+    monitor_announce_unreachable_peer(&subscriber->sid);
   if ((!(old_value & REACHABLE)) && (reachable & REACHABLE))
-    monitor_announce_peer(subscriber->sid);
+    monitor_announce_peer(&subscriber->sid);
   
   return 1;
 }
@@ -145,7 +145,7 @@ int load_subscriber_address(struct subscriber *subscriber)
 {
   if (!subscriber || subscriber->reachable&REACHABLE)
     return 0;
-  int i = config_host_list__get(&config.hosts, (const sid_t*)subscriber->sid);
+  int i = config_host_list__get(&config.hosts, &subscriber->sid);
   // No unicast configuration? just return.
   if (i == -1)
     return 1;
@@ -171,7 +171,7 @@ int load_subscriber_address(struct subscriber *subscriber)
     }
   }
   if (config.debug.overlayrouting)
-    DEBUGF("Loaded address %s:%d for %s", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), alloca_tohex_sid(subscriber->sid));
+    DEBUGF("Loaded address %s:%d for %s", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), alloca_tohex_sid_t(subscriber->sid));
   struct network_destination *destination = create_unicast_destination(addr, interface);
   if (!destination)
     return -1;
@@ -248,7 +248,7 @@ int overlay_send_probe(struct subscriber *peer, struct network_destination *dest
     DEBUGF("Queued probe packet on interface %s to %s:%d for %s", 
 	 destination->interface->name, 
 	 inet_ntoa(destination->address.sin_addr), ntohs(destination->address.sin_port), 
-	 peer?alloca_tohex_sid(peer->sid):"ANY");
+	 peer?alloca_tohex_sid_t(peer->sid):"ANY");
   return 0;
 }
 
@@ -266,10 +266,10 @@ static int overlay_append_unicast_address(struct subscriber *subscriber, struct 
       return -1;
     ob_checkpoint(buff);
     if (config.debug.overlayrouting)
-      DEBUGF("Added STUN info for %s", alloca_tohex_sid(subscriber->sid));
+      DEBUGF("Added STUN info for %s", alloca_tohex_sid_t(subscriber->sid));
   }else{
     if (config.debug.overlayrouting)
-      DEBUGF("Unable to give address of %s, %d", alloca_tohex_sid(subscriber->sid),subscriber->reachable);
+      DEBUGF("Unable to give address of %s, %d", alloca_tohex_sid_t(subscriber->sid),subscriber->reachable);
   }
   return 0;
 }
@@ -277,7 +277,7 @@ static int overlay_append_unicast_address(struct subscriber *subscriber, struct 
 int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp)
 {
   if (config.debug.overlayrouting)
-    DEBUGF("Processing STUN request from %s", alloca_tohex_sid(mdp->out.src.sid));
+    DEBUGF("Processing STUN request from %s", alloca_tohex_sid_t(mdp->out.src.sid));
 
   struct overlay_buffer *payload = ob_static(mdp->out.payload, mdp->out.payload_length);
   ob_limitsize(payload, mdp->out.payload_length);
@@ -286,8 +286,8 @@ int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp)
   bzero(&reply, sizeof(reply));
   reply.packetTypeAndFlags=MDP_TX;
   
-  bcopy(mdp->out.src.sid, reply.out.dst.sid, SID_SIZE);
-  bcopy(mdp->out.dst.sid, reply.out.src.sid, SID_SIZE);
+  reply.out.dst.sid = mdp->out.src.sid;
+  reply.out.src.sid = mdp->out.dst.sid;
   reply.out.src.port=MDP_PORT_STUNREQ;
   reply.out.dst.port=MDP_PORT_STUN;
   reply.out.queue=OQ_MESH_MANAGEMENT;
@@ -330,7 +330,7 @@ int overlay_mdp_service_stun(overlay_mdp_frame *mdp)
   ob_limitsize(buff, mdp->out.payload_length);
 
   if (config.debug.overlayrouting)
-    DEBUGF("Processing STUN info from %s", alloca_tohex_sid(mdp->out.src.sid));
+    DEBUGF("Processing STUN info from %s", alloca_tohex_sid_t(mdp->out.src.sid));
 
   while(ob_remaining(buff)>0){
     struct subscriber *subscriber=NULL;
@@ -379,8 +379,8 @@ int overlay_send_stun_request(struct subscriber *server, struct subscriber *requ
   bzero(&mdp, sizeof(mdp));
   mdp.packetTypeAndFlags=MDP_TX;
   
-  bcopy(my_subscriber->sid, mdp.out.src.sid, SID_SIZE);
-  bcopy(server->sid, mdp.out.dst.sid, SID_SIZE);
+  mdp.out.src.sid = my_subscriber->sid;
+  mdp.out.dst.sid = server->sid;
   mdp.out.src.port=MDP_PORT_STUN;
   mdp.out.dst.port=MDP_PORT_STUNREQ;
   mdp.out.queue=OQ_MESH_MANAGEMENT;
@@ -389,7 +389,7 @@ int overlay_send_stun_request(struct subscriber *server, struct subscriber *requ
   overlay_address_append(NULL, payload, request);
   mdp.out.payload_length=ob_position(payload);
   if (config.debug.overlayrouting)
-    DEBUGF("Sending STUN request to %s", alloca_tohex_sid(server->sid));
+    DEBUGF("Sending STUN request to %s", alloca_tohex_sid_t(server->sid));
   overlay_mdp_dispatch(&mdp,0 /* system generated */,
 		       NULL,0);
   ob_free(payload);

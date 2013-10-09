@@ -84,7 +84,7 @@ int crypto_sign_message(struct subscriber *source, unsigned char *content, int b
   if (*content_len + SIGNATURE_BYTES > buffer_len)
     return WHYF("Insufficient space in message buffer to add signature. %d, need %d",buffer_len, *content_len + SIGNATURE_BYTES);
   
-  unsigned char *key=keyring_find_sas_private(keyring, source->sid, NULL);
+  unsigned char *key=keyring_find_sas_private(keyring, &source->sid, NULL);
   if (!key)
     return WHY("Could not find signing key");
   

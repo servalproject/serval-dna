@@ -32,24 +32,25 @@ struct sched_ent directory_alarm={
 #define DIRECTORY_UPDATE_INTERVAL 120000
 
 // send a registration packet
-static void directory_send(struct subscriber *directory_service, const unsigned char *sid, const char *did, const char *name){
+static void directory_send(struct subscriber *directory_service, const sid_t *sidp, const char *did, const char *name)
+{
   overlay_mdp_frame request;
   
   memset(&request, 0, sizeof(overlay_mdp_frame));
   
   request.packetTypeAndFlags = MDP_TX;
   
-  bcopy(sid, request.out.src.sid, SID_SIZE);
+  request.out.src.sid = *sidp;
   request.out.src.port=MDP_PORT_NOREPLY;
   request.out.queue=OQ_ORDINARY;
   
-  bcopy(directory_service->sid, request.out.dst.sid, SID_SIZE);
+  request.out.dst.sid = directory_service->sid;
   request.out.dst.port=MDP_PORT_DIRECTORY;
   request.out.payload_length = snprintf((char *)request.out.payload, sizeof(request.out.payload), 
 					"%s|%s", did, name);
   // Used by tests
-  INFOF("Sending directory registration for %s, %s, %s to %s", 
-	alloca_tohex(sid,7), did, name, alloca_tohex(directory_service->sid, 7));
+  INFOF("Sending directory registration for %s*, %s, %s to %s*", 
+	alloca_tohex_sid_t_trunc(*sidp, 14), did, name, alloca_tohex_sid_t_trunc(directory_service->sid, 14));
   overlay_mdp_dispatch(&request, 0, NULL, 0);
 }
 
@@ -61,14 +62,14 @@ static void directory_send_keyring(struct subscriber *directory_service){
     keyring_identity *i = keyring->contexts[cn]->identities[in];
     
     if (i->keypairs[kp]->type == KEYTYPE_CRYPTOBOX){
-      const unsigned char *packedSid = i->keypairs[0]->public_key;
+      const sid_t *sidp = (const sid_t *) i->keypairs[0]->public_key;
       
       for(k2=0; k2 < i->keypair_count; k2++){
 	if (i->keypairs[k2]->type==KEYTYPE_DID){
 	  const char *unpackedDid = (const char *) i->keypairs[k2]->private_key;
 	  const char *name = (const char *) i->keypairs[k2]->public_key;
 	  
-	  directory_send(directory_service, packedSid, unpackedDid, name);
+	  directory_send(directory_service, sidp, unpackedDid, name);
 	  // send the first DID only
 	  break;
 	}
@@ -79,12 +80,12 @@ static void directory_send_keyring(struct subscriber *directory_service){
 
 static int load_directory_config()
 {
-  if (!directory_service && !is_sid_any(config.directory.service.binary)) {
+  if (!directory_service && !is_sid_t_any(config.directory.service)) {
     directory_service = find_subscriber(config.directory.service.binary, SID_SIZE, 1);
     if (!directory_service)
       return WHYF("Failed to create subscriber record");
     // used by tests
-    INFOF("ADD DIRECTORY SERVICE %s", alloca_tohex_sid(directory_service->sid));
+    INFOF("ADD DIRECTORY SERVICE %s", alloca_tohex_sid_t(directory_service->sid));
   }
   // always attempt to reload the address, may depend on DNS resolution
   return load_subscriber_address(directory_service);

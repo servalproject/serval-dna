@@ -74,7 +74,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifdef HAVE_ARPA_INET_H
 #include <arpa/inet.h>
 #else
-typedef unsigned int in_addr_t;
+typedef uint32_t in_addr_t;
 struct in_addr {
    in_addr_t s_addr;
 };
@@ -143,6 +143,36 @@ struct in_addr {
 
 
 extern const char version_servald[];
+
+/* Fundamental types.
+ */
+
+typedef struct sid_binary {
+    unsigned char binary[SID_SIZE];
+} sid_t;
+
+#define SID_ANY         ((sid_t){{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}})
+#define SID_BROADCAST   ((sid_t){{0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff}})
+
+// is the SID entirely 0xFF?
+#define is_sid_t_broadcast(SID) is_all_matching((SID).binary, sizeof (*(sid_t*)0).binary, 0xFF)
+
+// is the SID entirely 0x00?
+#define is_sid_t_any(SID) is_all_matching((SID).binary, sizeof (*(sid_t*)0).binary, 0)
+
+#define alloca_tohex_sid_t(sid)         alloca_tohex((sid).binary, sizeof (*(sid_t*)0).binary)
+#define alloca_tohex_sid_t_trunc(sid,strlen)  tohex((char *)alloca((strlen)+2), (strlen), (sid).binary)
+
+int cmp_sid_t(const sid_t *a, const sid_t *b);
+int str_to_sid_t(sid_t *sid, const char *hex);
+int strn_to_sid_t(sid_t *sid, const char *hex, const char **endp);
+
+int str_is_subscriber_id(const char *sid);
+int strn_is_subscriber_id(const char *sid, size_t *lenp);
+int str_is_did(const char *did);
+int strn_is_did(const char *did, size_t *lenp);
+
+#define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
 
 /*
  * INSTANCE_PATH can be set via the ./configure option --enable-instance-path=<path>
@@ -297,15 +327,14 @@ int keyring_next_keytype(const keyring_file *k, int *cn, int *in, int *kp, int k
 int keyring_next_identity(const keyring_file *k,int *cn,int *in,int *kp);
 int keyring_identity_find_keytype(const keyring_file *k, int cn, int in, int keytype);
 int keyring_find_did(const keyring_file *k,int *cn,int *in,int *kp,char *did);
-int keyring_find_sid(const keyring_file *k,int *cn,int *in,int *kp, const unsigned char *sid);
-unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
-					unsigned char **sas_public);
+int keyring_find_sid(const keyring_file *k,int *cn,int *in,int *kp, const sid_t *sidp);
+unsigned char *keyring_find_sas_private(keyring_file *k, const sid_t *sidp, unsigned char **sas_public);
 int keyring_send_sas_request(struct subscriber *subscriber);
 
 int keyring_commit(keyring_file *k);
 keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, const char *pin);
 int keyring_seed(keyring_file *k);
-void keyring_identity_extract(const keyring_identity *id, const unsigned char **sidp, const char **didp, const char **namep);
+void keyring_identity_extract(const keyring_identity *id, const sid_t **sidp, const char **didp, const char **namep);
 int keyring_load(keyring_file *k, const char *keyring_pin, unsigned entry_pinc, const char **entry_pinv, FILE *input);
 int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret);
 
@@ -533,7 +562,7 @@ typedef struct overlay_interface {
      If the interface stops working or disappears, it will be marked as DOWN and the socket closed.
      But if it comes back up again, we should try to reuse this structure, even if the broadcast address has changed.
    */
-  int state;  
+  int state;
 } overlay_interface;
 
 /* Maximum interface count is rather arbitrary.
@@ -543,31 +572,6 @@ extern overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
 extern int overlay_last_interface_number; // used to remember where a packet came from
 extern unsigned int overlay_sequence_number;
 
-typedef struct sid_binary {
-    unsigned char binary[SID_SIZE];
-} sid_t;
-
-#define SID_ANY         ((sid_t){{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}})
-#define SID_BROADCAST   ((sid_t){{0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff}})
-
-// is the SID entirely 0xFF?
-#define is_sid_broadcast(SID) is_all_matching(SID, SID_SIZE, 0xFF)
-
-// is the SID entirely 0x00?
-#define is_sid_any(SID) is_all_matching(SID, SID_SIZE, 0)
-
-#define alloca_tohex_sid_t(sid)         alloca_tohex((sid).binary, sizeof (*(sid_t*)0).binary)
-
-int cmp_sid_t(const sid_t *a, const sid_t *b);
-int str_to_sid_t(sid_t *sid, const char *hex);
-int strn_to_sid_t(sid_t *sid, const char *hex, const char **endp);
-
-int str_is_subscriber_id(const char *sid);
-int strn_is_subscriber_id(const char *sid, size_t *lenp);
-int str_is_did(const char *did);
-int strn_is_did(const char *did, size_t *lenp);
-
-int stowSid(unsigned char *packet, int ofs, const char *sid);
 int server_pid();
 void server_save_argv(int argc, const char *const *argv);
 int server(const struct cli_parsed *parsed);
@@ -590,9 +594,6 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface,
 
 int overlay_frame_process(struct overlay_interface *interface, struct overlay_frame *f);
 int overlay_frame_resolve_addresses(struct overlay_frame *f);
-
-#define alloca_tohex_sid(sid)           alloca_tohex((sid), SID_SIZE)
-#define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
 
 time_ms_t overlay_time_until_next_tick();
 
@@ -644,11 +645,14 @@ int overlay_mdp_reply_error(int sock,
 			    struct sockaddr_un *recvaddr, socklen_t recvaddrlen,
 			    int error_number,char *message);
 
+typedef uint32_t mdp_port_t;
+#define PRImdp_port_t "08" PRIx32
+
 typedef struct sockaddr_mdp {
-  unsigned char sid[SID_SIZE];
-  unsigned int port;
+  sid_t sid;
+  mdp_port_t port;
 } sockaddr_mdp;
-unsigned char *keyring_get_nm_bytes(unsigned char *known_sid, unsigned char *unknown_sid);
+unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknown_sidp);
 
 typedef struct overlay_mdp_data_frame {
   sockaddr_mdp src;
@@ -671,11 +675,11 @@ typedef struct overlay_mdp_addrlist {
   unsigned int first_sid;
   unsigned int last_sid;
   unsigned int frame_sid_count; /* how many of the following 59 slots are populated */
-  unsigned char sids[MDP_MAX_SID_REQUEST][SID_SIZE];
+  sid_t sids[MDP_MAX_SID_REQUEST];
 } overlay_mdp_addrlist;
 
 typedef struct overlay_mdp_nodeinfo {
-  unsigned char sid[SID_SIZE];
+  sid_t sid;
   int sid_prefix_length; /* must be long enough to be unique */
   int foundP;
   int localP;
@@ -709,7 +713,7 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr, socklen_t recvaddrl
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 		     struct sockaddr_un *recvaddr, socklen_t recvaddrlen);
 int overlay_mdp_encode_ports(struct overlay_buffer *plaintext, int dst_port, int src_port);
-int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char *resolved_sid, const char *uri, const char *did, const char *name);
+int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const sid_t *resolved_sidp, const char *uri, const char *did, const char *name);
 
 struct vomp_call_state;
 
@@ -754,8 +758,8 @@ int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 
 int monitor_setup_sockets();
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
-int monitor_announce_peer(const unsigned char *sid);
-int monitor_announce_unreachable_peer(const unsigned char *sid);
+int monitor_announce_peer(const sid_t *sidp);
+int monitor_announce_unreachable_peer(const sid_t *sidp);
 int monitor_announce_link(int hop_count, struct subscriber *transmitter, struct subscriber *receiver);
 int monitor_tell_clients(char *msg, int msglen, int mask);
 int monitor_tell_formatted(int mask, char *fmt, ...);
@@ -802,7 +806,7 @@ int server_probe(int *pid);
 
 int dna_helper_start();
 int dna_helper_shutdown();
-int dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const unsigned char *requestorSid);
+int dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const sid_t *requestorSidp);
 int dna_return_resolution(overlay_mdp_frame *mdp, unsigned char *fromSid,
 			  const char *did,const char *name,const char *uri);
 int parseDnaReply(const char *buf, size_t len, char *token, char *did, char *name, char *uri, const char **bufp);

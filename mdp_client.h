@@ -59,10 +59,10 @@ struct mdp_identity_request{
 #pragma pack(pop)
 
 struct overlay_route_record{
-  unsigned char sid[SID_SIZE];
+  sid_t sid;
   char interface_name[256];
   int reachable;
-  unsigned char neighbour[SID_SIZE];
+  sid_t neighbour;
 };
 
 struct overlay_mdp_scan{

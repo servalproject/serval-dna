@@ -189,14 +189,11 @@ int overlay_mdp_releasebindings(struct sockaddr_un *recvaddr, socklen_t recvaddr
 
 }
 
-int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, int port,
+int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, mdp_port_t port,
 				     int flags, struct sockaddr_un *recvaddr,  socklen_t recvaddrlen)
 {
   if (config.debug.mdprequests) 
-    DEBUGF("Bind request %s:%d",
-	subscriber ? alloca_tohex_sid(subscriber->sid) : "NULL",
-	port
-      );
+    DEBUGF("Bind request %s:%"PRImdp_port_t, subscriber ? alloca_tohex_sid_t(subscriber->sid) : "NULL", port);
   
   if (port<=0){
     return WHYF("Port %d cannot be bound", port);
@@ -263,8 +260,8 @@ int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, in
 static int overlay_mdp_decode_header(struct overlay_buffer *buff, overlay_mdp_frame *mdp)
 {
   /* extract MDP port numbers */
-  int port = ob_get_packed_ui32(buff);
-  int same = port&1;
+  uint32_t port = ob_get_packed_ui32(buff);
+  uint32_t same = port&1;
   port >>=1;
   mdp->in.dst.port = port;
   if (!same){
@@ -309,14 +306,14 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
       
   case OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED:
     {
-      if (0) DEBUGF("crypted MDP frame for %s", alloca_tohex_sid(f->destination->sid));
+      if (0) DEBUGF("crypted MDP frame for %s", alloca_tohex_sid_t(f->destination->sid));
 
       int nm=crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES;
       int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
       int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
       int cz=crypto_box_curve25519xsalsa20poly1305_BOXZEROBYTES;
       
-      unsigned char *k=keyring_get_nm_bytes(f->destination->sid, f->source->sid);
+      unsigned char *k=keyring_get_nm_bytes(&f->destination->sid, &f->source->sid);
       if (!k) 
 	RETURN(WHY("I don't have the private key required to decrypt that"));
       
@@ -350,7 +347,7 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
       if (crypto_box_curve25519xsalsa20poly1305_open_afternm
 	  (plain_block,plain_block,cipher_len,nonce,k)) {
 	RETURN(WHYF("crypto_box_open_afternm() failed (from %s, to %s, len %d)",
-		    alloca_tohex_sid(f->source->sid), alloca_tohex_sid(f->destination->sid), cipher_len));
+		    alloca_tohex_sid_t(f->source->sid), alloca_tohex_sid_t(f->destination->sid), cipher_len));
       }
       
       if (0) dump("plain block",plain_block,sizeof(plain_block));
@@ -382,13 +379,8 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
   mdp.in.ttl = f->ttl;
   
   /* Get source and destination addresses */
-  if (f->destination)
-    bcopy(f->destination->sid,mdp.in.dst.sid,SID_SIZE);
-  else{
-    // pack the broadcast address into the mdp structure, note that we no longer care about the broadcast id
-    memset(mdp.in.dst.sid, 0xFF, SID_SIZE);
-  }
-  bcopy(f->source->sid,mdp.in.src.sid,SID_SIZE);
+  mdp.in.dst.sid = (f->destination) ? f->destination->sid : SID_BROADCAST;
+  mdp.in.src.sid = f->source->sid;
 
   /* copy crypto flags from frame so that we know if we need to decrypt or verify it */
   if (overlay_mdp_decrypt(f,&mdp))
@@ -423,16 +415,16 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
     */
 
     if (config.debug.mdprequests) 
-      DEBUGF("Received packet with listener (MDP ports: src=%s*:%d, dst=%d)",
-	   alloca_tohex(mdp->out.src.sid, 7),
-	   mdp->out.src.port,mdp->out.dst.port);
+      DEBUGF("Received packet with listener (MDP ports: src=%s*:%"PRImdp_port_t", dst=%"PRImdp_port_t")",
+	   alloca_tohex_sid_t_trunc(mdp->out.src.sid, 14),
+	   mdp->out.src.port, mdp->out.dst.port);
 
     // TODO pass in dest subscriber as an argument, we should know it by now
     struct subscriber *destination = NULL;
     if (frame)
       destination = frame->destination;
-    else if (!is_sid_broadcast(mdp->out.dst.sid)){
-      destination = find_subscriber(mdp->out.dst.sid, SID_SIZE, 1);
+    else if (!is_sid_t_broadcast(mdp->out.dst.sid)){
+      destination = find_subscriber(mdp->out.dst.sid.binary, SID_SIZE, 1);
     }
     
     for(i=0;i<MDP_MAX_BINDINGS;i++)
@@ -482,18 +474,18 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
   OUT();
 }
 
-int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char *resolved_sid, const char *uri, const char *did, const char *name)
+int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const sid_t *resolved_sidp, const char *uri, const char *did, const char *name)
 {
   overlay_mdp_frame mdpreply;
   bzero(&mdpreply, sizeof mdpreply);
   mdpreply.packetTypeAndFlags = MDP_TX; // outgoing MDP message
   mdpreply.out.queue=OQ_ORDINARY;
-  memcpy(mdpreply.out.src.sid, resolved_sid, SID_SIZE);
+  mdpreply.out.src.sid = *resolved_sidp;
   mdpreply.out.src.port = MDP_PORT_DNALOOKUP;
   bcopy(dstaddr, &mdpreply.out.dst, sizeof(sockaddr_mdp));
   /* build reply as TOKEN|URI|DID|NAME|<NUL> */
   strbuf b = strbuf_local((char *)mdpreply.out.payload, sizeof mdpreply.out.payload);
-  strbuf_tohex(b, resolved_sid, SID_SIZE);
+  strbuf_tohex(b, SID_STRLEN, resolved_sidp->binary);
   strbuf_sprintf(b, "|%s|%s|%s|", uri, did, name?name:"");
   if (strbuf_overrun(b))
     return WHY("MDP payload overrun");
@@ -530,7 +522,7 @@ int overlay_mdp_check_binding(struct subscriber *subscriber, int port, int userG
   return WHYF("No such binding: recvaddr=%p %s addr=%s port=%u (0x%x) -- possible spoofing attack",
 	recvaddr,
 	recvaddr ? alloca_toprint(-1, recvaddr->sun_path, recvaddrlen - sizeof(sa_family_t)) : "",
-	alloca_tohex_sid(subscriber->sid),
+	alloca_tohex_sid_t(subscriber->sid),
 	port, port
       );
 }
@@ -589,7 +581,7 @@ static struct overlay_buffer * encrypt_payload(
   
   /* get pre-computed PKxSK bytes (the slow part of auth-cryption that can be
      retained and reused, and use that to do the encryption quickly. */
-  unsigned char *k=keyring_get_nm_bytes(source->sid, dest->sid);
+  unsigned char *k=keyring_get_nm_bytes(&source->sid, &dest->sid);
   if (!k) {
     ob_free(ret);
     WHY("could not compute Curve25519(NxM)");
@@ -691,22 +683,22 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   struct subscriber *source=NULL;
   struct subscriber *destination=NULL;
   
-  if (is_sid_any(mdp->out.src.sid)){
+  if (is_sid_t_any(mdp->out.src.sid)){
     /* set source to ourselves */
     source = my_subscriber;
-    bcopy(source->sid, mdp->out.src.sid, SID_SIZE);
-  }else if (is_sid_broadcast(mdp->out.src.sid)){
+    mdp->out.src.sid = source->sid;
+  }else if (is_sid_t_broadcast(mdp->out.src.sid)){
     /* Nope, I'm sorry but we simply can't send packets from 
      * broadcast addresses. */
     RETURN(WHY("Packet had broadcast address as source address"));
   }else{
     // assume all local identities have already been unlocked and marked as SELF.
-    source = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
+    source = find_subscriber(mdp->out.src.sid.binary, SID_SIZE, 0);
     if (!source){
-      RETURN(WHYF("Possible spoofing attempt, tried to send a packet from %s, which is an unknown SID", alloca_tohex_sid(mdp->out.src.sid)));
+      RETURN(WHYF("Possible spoofing attempt, tried to send a packet from %s, which is an unknown SID", alloca_tohex_sid_t(mdp->out.src.sid)));
     }
     if (source->reachable!=REACHABLE_SELF){
-      RETURN(WHYF("Possible spoofing attempt, tried to send a packet from %s", alloca_tohex_sid(mdp->out.src.sid)));
+      RETURN(WHYF("Possible spoofing attempt, tried to send a packet from %s", alloca_tohex_sid_t(mdp->out.src.sid)));
     }
   }
   
@@ -721,7 +713,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   }
   
   /* Work out if destination is broadcast or not */
-  if (is_sid_broadcast(mdp->out.dst.sid)){
+  if (is_sid_t_broadcast(mdp->out.dst.sid)){
     /* broadcast packets cannot be encrypted, so complain if MDP_NOCRYPT
      flag is not set. Also, MDP_NOSIGN must also be applied, until
      NaCl cryptobox keys can be used for signing. */	
@@ -730,7 +722,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 				     recvaddr,recvaddrlen,5,
 				     "Broadcast packets cannot be encrypted "));
   }else{
-    destination = find_subscriber(mdp->out.dst.sid, SID_SIZE, 1);
+    destination = find_subscriber(mdp->out.dst.sid.binary, SID_SIZE, 1);
     // should we reply with an error if the destination is not currently routable?
   }
   
@@ -830,9 +822,8 @@ static int search_subscribers(struct subscriber *subscriber, void *context){
   }
   
   if (response->server_sid_count++ >= response->first_sid && 
-      response->frame_sid_count < MDP_MAX_SID_REQUEST) {
-    memcpy(response->sids[response->frame_sid_count++], subscriber->sid, SID_SIZE);
-  }
+      response->frame_sid_count < MDP_MAX_SID_REQUEST)
+    response->sids[response->frame_sid_count++] = subscriber->sid;
   
   return 0;
 }
@@ -867,7 +858,8 @@ struct routing_state{
   int fd;
 };
 
-static int routing_table(struct subscriber *subscriber, void *context){
+static int routing_table(struct subscriber *subscriber, void *context)
+{
   struct routing_state *state = (struct routing_state *)context;
   overlay_mdp_frame reply;
   bzero(&reply, sizeof(overlay_mdp_frame));
@@ -875,11 +867,11 @@ static int routing_table(struct subscriber *subscriber, void *context){
   struct overlay_route_record *r=(struct overlay_route_record *)&reply.out.payload;
   reply.packetTypeAndFlags=MDP_TX;
   reply.out.payload_length=sizeof(struct overlay_route_record);
-  memcpy(r->sid, subscriber->sid, SID_SIZE);
+  r->sid = subscriber->sid;
   r->reachable = subscriber->reachable;
   
   if (subscriber->reachable==REACHABLE_INDIRECT && subscriber->next_hop)
-    memcpy(r->neighbour, subscriber->next_hop->sid, SID_SIZE);
+    r->neighbour = subscriber->next_hop->sid;
   if (subscriber->reachable & REACHABLE_DIRECT 
     && subscriber->destination 
     && subscriber->destination->interface)
@@ -1032,7 +1024,7 @@ static void mdp_poll2(struct sched_ent *alarm)
     unsigned char *payload = &buffer[sizeof(struct mdp_header)];
     int payload_len = len - sizeof(struct mdp_header);
     
-    if (is_sid_any(header->remote.sid.binary)){
+    if (is_sid_t_any(header->remote.sid)){
       // process local commands
       switch(header->remote.port){
 	case MDP_IDENTITY:
@@ -1132,10 +1124,10 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 	    /* Make sure source address is either all zeros (listen on all), or a valid
 	    local address */
 	    
-	    if (!is_sid_any(mdp->bind.sid)){
-	      subscriber = find_subscriber(mdp->bind.sid, SID_SIZE, 0);
+	    if (!is_sid_t_any(mdp->bind.sid)){
+	      subscriber = find_subscriber(mdp->bind.sid.binary, SID_SIZE, 0);
 	      if ((!subscriber) || subscriber->reachable != REACHABLE_SELF){
-		WHYF("Invalid bind request for sid=%s", alloca_tohex_sid(mdp->bind.sid));
+		WHYF("Invalid bind request for sid=%s", alloca_tohex_sid_t(mdp->bind.sid));
 		/* Source address is invalid */
 		overlay_mdp_reply_error(alarm->poll.fd, recvaddr_un, recvaddrlen, 7,
 					      "Bind address is not valid (must be a local MDP address, or all zeroes).");

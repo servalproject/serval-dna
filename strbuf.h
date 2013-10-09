@@ -289,21 +289,22 @@ strbuf strbuf_ncat(strbuf sb, const char *text, size_t len);
 strbuf strbuf_puts(strbuf sb, const char *text);
 
 
-/** Append binary data strbuf, in uppercase hexadecimal format, truncating if
- * necessary to avoid buffer overrun.  Return a pointer to the strbuf.
+/** Append binary data strbuf, as up to 'len' characters of uppercase
+ * hexadecimal format, truncating if necessary to avoid buffer overrun.  Return
+ * a pointer to the strbuf.
  *
  * After these operations:
  *      n = strbuf_len(sb);
  *      c = strbuf_count(sb);
- *      strbuf_tohex(data, len);
+ *      strbuf_tohex(len, data);
  * the following invariants hold:
- *      strbuf_count(sb) == c + len * 2
+ *      strbuf_count(sb) == c + len
  *      strbuf_len(sb) >= n
- *      strbuf_len(sb) <= n + len * 2
+ *      strbuf_len(sb) <= n + len
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-strbuf strbuf_tohex(strbuf sb, const unsigned char *data, size_t len);
+strbuf strbuf_tohex(strbuf sb, size_t strlen, const unsigned char *data);
 
 
 /** Append a single character to the strbuf if there is space, and place a

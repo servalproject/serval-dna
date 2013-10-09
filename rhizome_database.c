@@ -1206,7 +1206,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
     filehash[0] = '\0';
   }
 
-  const char *author = is_sid_any(m->author) ? NULL : alloca_tohex_sid(m->author);
+  const char *author = is_sid_t_any(m->author) ? NULL : alloca_tohex_sid_t(m->author);
   const char *name = rhizome_manifest_get(m, "name", NULL, 0);
   const char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
   const char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
@@ -1446,24 +1446,24 @@ int rhizome_list_manifests(struct cli_context *context, const char *service, con
 	int64_t blob_date = rhizome_manifest_get_ll(m, "date");
 	const char *blob_filehash = rhizome_manifest_get(m, "filehash", NULL, 0);
 	int from_here = 0;
-	unsigned char senderSid[SID_SIZE];
-	unsigned char recipientSid[SID_SIZE];
+	sid_t senderSid;
+	sid_t recipientSid;
 	
 	if (blob_sender)
-	  stowSid(senderSid, 0, blob_sender);
+	  str_to_sid_t(&senderSid, blob_sender);
 	if (blob_recipient)
-	  stowSid(recipientSid, 0, blob_recipient);
+	  str_to_sid_t(&recipientSid, blob_recipient);
 	
 	if (q_author) {
 	  if (config.debug.rhizome) DEBUGF("q_author=%s", alloca_str_toprint(q_author));
-	  stowSid(m->author, 0, q_author);
+	  str_to_sid_t(&m->author, q_author);
 	  int cn = 0, in = 0, kp = 0;
-	  from_here = keyring_find_sid(keyring, &cn, &in, &kp, m->author);
+	  from_here = keyring_find_sid(keyring, &cn, &in, &kp, &m->author);
 	}
 	if (!from_here && blob_sender) {
 	  if (config.debug.rhizome) DEBUGF("blob_sender=%s", alloca_str_toprint(blob_sender));
 	  int cn = 0, in = 0, kp = 0;
-	  from_here = keyring_find_sid(keyring, &cn, &in, &kp, senderSid);
+	  from_here = keyring_find_sid(keyring, &cn, &in, &kp, &senderSid);
 	}
 	
 	cli_put_long(context, rowid, ":");
@@ -1472,7 +1472,7 @@ int rhizome_list_manifests(struct cli_context *context, const char *service, con
 	cli_put_long(context, blob_version, ":");
 	cli_put_long(context, blob_date, ":");
 	cli_put_long(context, q_inserttime, ":");
-	cli_put_hexvalue(context, q_author?m->author:NULL, SID_SIZE, ":");
+	cli_put_hexvalue(context, q_author ? m->author.binary : NULL, sizeof m->author.binary, ":");
 	cli_put_long(context, from_here, ":");
 	cli_put_long(context, m->fileLength, ":");
 	
@@ -1482,8 +1482,8 @@ int rhizome_list_manifests(struct cli_context *context, const char *service, con
 	
 	cli_put_hexvalue(context, m->fileLength?filehash:NULL, SHA512_DIGEST_LENGTH, ":");
 	
-	cli_put_hexvalue(context, blob_sender?senderSid:NULL, SID_SIZE, ":");
-	cli_put_hexvalue(context, blob_recipient?recipientSid:NULL, SID_SIZE, ":");
+	cli_put_hexvalue(context, blob_sender ? senderSid.binary : NULL, sizeof senderSid.binary, ":");
+	cli_put_hexvalue(context, blob_recipient ? recipientSid.binary : NULL, sizeof recipientSid.binary, ":");
 	cli_put_string(context, blob_name, "\n");
       }
     }
@@ -1504,7 +1504,7 @@ cleanup:
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount)
 {
-  (void) tohex(out, in, byteCount);
+  (void) tohex(out, byteCount * 2, in);
 }
 
 int rhizome_update_file_priority(const char *fileid)
@@ -1611,7 +1611,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
     if (q_author) {
       if (config.debug.rhizome)
 	strbuf_sprintf(b, " .author=%s", q_author);
-      stowSid(blob_m->author, 0, q_author);
+      str_to_sid_t(&blob_m->author, q_author);
     }
     
     // check that we can re-author this manifest
@@ -1644,7 +1644,7 @@ static int unpack_manifest_row(rhizome_manifest *m, sqlite3_stmt *statement)
   if (rhizome_read_manifest_file(m, q_blob, q_blobsize))
     return WHYF("Manifest %s exists but is invalid", q_id);
   if (q_author) {
-    if (stowSid(m->author, 0, q_author) == -1)
+    if (str_to_sid_t(&m->author, q_author) == -1)
       WARNF("manifest id=%s contains invalid author=%s -- ignored", q_id, alloca_str_toprint(q_author));
   }
   if (m->version != q_version)
@@ -1688,10 +1688,11 @@ int rhizome_retrieve_manifest(const rhizome_bid_t *bidp, rhizome_manifest *m)
 int rhizome_retrieve_manifest_by_prefix(const unsigned char *prefix, unsigned prefix_len, rhizome_manifest *m)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  char like[prefix_len * 2 + 2];
-  tohex(like, prefix, prefix_len);
-  like[prefix_len * 2] = '%';
-  like[prefix_len * 2 + 1] = '\0';
+  const unsigned prefix_strlen = prefix_len * 2;
+  char like[prefix_strlen + 2];
+  tohex(like, prefix_strlen, prefix);
+  like[prefix_strlen] = '%';
+  like[prefix_strlen + 1] = '\0';
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
       "SELECT id, manifest, version, inserttime, author FROM manifests WHERE id like ?",
       TEXT, like,
@@ -1835,7 +1836,7 @@ int rhizome_is_bar_interesting(unsigned char *bar)
 {
   int64_t version = rhizome_bar_version(bar);
   char id_hex[RHIZOME_MANIFEST_ID_STRLEN];
-  tohex(id_hex, &bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
+  tohex(id_hex, RHIZOME_BAR_PREFIX_BYTES * 2, &bar[RHIZOME_BAR_PREFIX_OFFSET]);
   strcat(id_hex, "%");
   return is_interesting(id_hex, version);
 }

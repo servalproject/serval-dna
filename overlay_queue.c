@@ -159,7 +159,7 @@ int overlay_payload_enqueue(struct overlay_frame *p)
 
   if (config.debug.packettx)
     DEBUGF("Enqueuing packet for %s* (q[%d]length = %d)",
-	   p->destination?alloca_tohex(p->destination->sid, 7): alloca_tohex(p->broadcast_id.id,BROADCAST_LEN),
+	   p->destination?alloca_tohex_sid_t_trunc(p->destination->sid, 14): alloca_tohex(p->broadcast_id.id, BROADCAST_LEN),
 	   p->queue, queue->length);
   
   if (p->payload && ob_remaining(p->payload)<0){
@@ -332,7 +332,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     if (frame->enqueued_at + queue->latencyTarget < now){
       if (config.debug.overlayframes)
 	DEBUGF("Dropping frame type %x for %s due to expiry timeout", 
-	       frame->type, frame->destination?alloca_tohex_sid(frame->destination->sid):"All");
+	       frame->type, frame->destination?alloca_tohex_sid_t(frame->destination->sid):"All");
       frame = overlay_queue_remove(queue, frame);
       continue;
     }
@@ -470,8 +470,8 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       DEBUGF("Appended payload %p, %d type %x len %d for %s via %s", 
 	     frame, frame->mdp_sequence,
 	     frame->type, ob_position(frame->payload),
-	     frame->destination?alloca_tohex_sid(frame->destination->sid):"All",
-	     frame->next_hop?alloca_tohex_sid(frame->next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
+	     frame->destination?alloca_tohex_sid_t(frame->destination->sid):"All",
+	     frame->next_hop?alloca_tohex_sid_t(frame->next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
     }
     
     // dont retransmit if we aren't sending sequence numbers, or we've been asked not to
@@ -577,7 +577,7 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
 	    
 	    if (config.debug.ack)
 	      DEBUGF("DROPPED DUE TO ACK: Packet %p to %s sent by seq %d, acked with seq %d", 
-		frame, alloca_tohex_sid(neighbour->sid), frame_seq, ack_seq);
+		frame, alloca_tohex_sid_t(neighbour->sid), frame_seq, ack_seq);
 		
 	    // drop packets that don't need to be retransmitted
 	    if (frame->destination || frame->destination_count<=1){
@@ -589,7 +589,7 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
 	  }else if (seq_delta < 128 && frame->destination && frame->delay_until>now){
 	    // retransmit asap
 	    if (config.debug.ack)
-	      DEBUGF("RE-TX DUE TO NACK: Requeue packet %p to %s sent by seq %d due to ack of seq %d", frame, alloca_tohex_sid(neighbour->sid), frame_seq, ack_seq);
+	      DEBUGF("RE-TX DUE TO NACK: Requeue packet %p to %s sent by seq %d due to ack of seq %d", frame, alloca_tohex_sid_t(neighbour->sid), frame_seq, ack_seq);
 	    frame->delay_until = now;
 	    overlay_calc_queue_time(&overlay_tx[i], frame);
 	  }

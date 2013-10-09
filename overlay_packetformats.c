@@ -119,7 +119,7 @@ int overlay_forward_payload(struct overlay_frame *f){
   
   if (config.debug.verbose && config.debug.overlayframes)
     DEBUGF("Forwarding payload for %s, ttl=%u",
-	  (f->destination?alloca_tohex_sid(f->destination->sid):"broadcast"),
+	  (f->destination?alloca_tohex_sid_t(f->destination->sid):"broadcast"),
 	  (unsigned)f->ttl);
 
   /* Queue frame for dispatch.
@@ -307,14 +307,14 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
       context->sender->max_packet_version=context->packet_version;
     
     if (interface->point_to_point && interface->other_device!=context->sender){
-      INFOF("Established point to point link with %s on %s", alloca_tohex_sid(context->sender->sid), interface->name);
+      INFOF("Established point to point link with %s on %s", alloca_tohex_sid_t(context->sender->sid), interface->name);
       context->point_to_point_device = context->interface->other_device = context->sender;
     }
     
     if (config.debug.overlayframes)
       DEBUGF("Received %s packet seq %d from %s on %s", 
 	packet_flags & PACKET_UNICAST?"unicast":"broadcast",
-	sender_seq, alloca_tohex_sid(context->sender->sid), interface->name);
+	sender_seq, alloca_tohex_sid_t(context->sender->sid), interface->name);
   }
   
   link_received_packet(context, sender_seq, packet_flags & PACKET_UNICAST);
@@ -452,12 +452,12 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     
     if (config.debug.overlayframes){
       DEBUGF("Received payload type %x, len %d", f.type, payload_len);
-      DEBUGF("Payload from %s", f.source?alloca_tohex_sid(f.source->sid):"NULL");
-      DEBUGF("Payload to %s", (f.destination?alloca_tohex_sid(f.destination->sid):"broadcast"));
+      DEBUGF("Payload from %s", f.source?alloca_tohex_sid_t(f.source->sid):"NULL");
+      DEBUGF("Payload to %s", (f.destination?alloca_tohex_sid_t(f.destination->sid):"broadcast"));
       if (!is_all_matching(f.broadcast_id.id, BROADCAST_LEN, 0))
 	DEBUGF("Broadcast id %s", alloca_tohex(f.broadcast_id.id, BROADCAST_LEN));
       if (nexthop)
-	DEBUGF("Next hop %s", alloca_tohex_sid(nexthop->sid));
+	DEBUGF("Next hop %s", alloca_tohex_sid_t(nexthop->sid));
     }
     
     if (header_valid!=0){

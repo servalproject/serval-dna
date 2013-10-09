@@ -609,13 +609,13 @@ int cf_cmp_uint16_nonzero(const uint16_t *a, const uint16_t *b)
 int cf_opt_sid(sid_t *sidp, const char *text)
 {
   if (strcasecmp(text, "broadcast")==0){
-    memset(sidp->binary, 0xFF, SID_SIZE);
+    *sidp = SID_BROADCAST;
     return CFOK;
   }
   if (!str_is_subscriber_id(text))
     return CFINVALID;
-  size_t n = fromhex(sidp->binary, text, SID_SIZE);
-  assert(n == SID_SIZE);
+  int r = str_to_sid_t(sidp, text);
+  assert(r != -1);
   return CFOK;
 }
 

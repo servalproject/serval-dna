@@ -1460,13 +1460,12 @@ int keyring_sanitise_position(const keyring_file *k,int *cn,int *in,int *kp)
   return 0;
 }
 
-unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
-					unsigned char **sas_public_out)
+unsigned char *keyring_find_sas_private(keyring_file *k, const sid_t *sidp, unsigned char **sas_public_out)
 {
   IN();
   int cn=0,in=0,kp=0;
 
-  if (!keyring_find_sid(k,&cn,&in,&kp,sid)) {
+  if (!keyring_find_sid(k,&cn,&in,&kp,sidp)) {
     RETURNNULL(WHYNULL("Could not find SID in keyring, so can't find SAS"));
   }
 
@@ -1486,7 +1485,7 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
 	    keyring_commit(k);
 	  }
 	if (config.debug.keyring)
-	  DEBUGF("Found SAS entry for %s*", alloca_tohex(sid, 7));
+	  DEBUGF("Found SAS entry for %s*", alloca_tohex(sidp->binary, 7));
 	if (sas_public_out) *sas_public_out=sas_public; 
 	RETURN(sas_private);
       }
@@ -1495,12 +1494,13 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
   OUT();
 }
 
-static int keyring_store_sas(overlay_mdp_frame *req){
-  struct subscriber *subscriber = find_subscriber(req->in.src.sid,SID_SIZE,1);
+static int keyring_store_sas(overlay_mdp_frame *req)
+{
+  struct subscriber *subscriber = find_subscriber(req->in.src.sid.binary, SID_SIZE, 1);
   
   if (subscriber->sas_valid){
     if (config.debug.keyring)
-      DEBUGF("Ignoring SID:SAS mapping for %s, already have one", alloca_tohex_sid(req->in.src.sid));
+      DEBUGF("Ignoring SID:SAS mapping for %s, already have one", alloca_tohex_sid_t(req->in.src.sid));
     return 0;
   }
   
@@ -1523,9 +1523,8 @@ static int keyring_store_sas(overlay_mdp_frame *req){
   unsigned char signature[siglen];
   
   /* reconstitute signed SID for verification */
-  bcopy(&compactsignature[0],&signature[0],64);
-  bcopy(&req->out.src.sid[0],&signature[64],SID_SIZE);
-  
+  bcopy(compactsignature, signature, 64);
+  bcopy(req->out.src.sid.binary, signature + 64, SID_SIZE);
   int r=crypto_sign_edwards25519sha512batch_open(plain,&plain_len,
 						 signature,siglen,
 						 sas_public);
@@ -1534,7 +1533,7 @@ static int keyring_store_sas(overlay_mdp_frame *req){
   /* These next two tests should never be able to fail, but let's just check anyway. */
   if (plain_len != SID_SIZE)
     return WHY("SID:SAS mapping signed block is wrong length");
-  if (memcmp(plain, req->out.src.sid, SID_SIZE) != 0)
+  if (memcmp(plain, req->out.src.sid.binary, SID_SIZE) != 0)
     return WHY("SID:SAS mapping signed block is for wrong SID");
   
   /* now store it */
@@ -1544,7 +1543,7 @@ static int keyring_store_sas(overlay_mdp_frame *req){
   
   if (config.debug.keyring)
     DEBUGF("Stored SID:SAS mapping, SID=%s to SAS=%s",
-	   alloca_tohex_sid(req->out.src.sid),
+	   alloca_tohex_sid_t(req->out.src.sid),
 	   alloca_tohex_sas(subscriber->sas_public)
 	   );
   return 0;
@@ -1564,7 +1563,7 @@ int keyring_mapping_request(keyring_file *k, overlay_mdp_frame *req)
     /* It's a request, so find the SAS for the SID the request was addressed to,
        use that to sign that SID, and then return it in an authcrypted frame. */
     unsigned char *sas_public=NULL;
-    unsigned char *sas_priv =keyring_find_sas_private(keyring,req->out.dst.sid,&sas_public);
+    unsigned char *sas_priv =keyring_find_sas_private(keyring, &req->out.dst.sid, &sas_public);
 
     if ((!sas_priv)||(!sas_public)) return WHY("I don't have that SAS key");
     unsigned long long slen;
@@ -1580,8 +1579,7 @@ int keyring_mapping_request(keyring_file *k, overlay_mdp_frame *req)
        about doing this, however, as the mapping process is only once per session,
        not once per packet.  Unless I get excited enough to do it, that is.
     */
-    if (crypto_sign_edwards25519sha512batch
-	(&req->out.payload[1+SAS_SIZE],&slen,req->out.dst.sid,SID_SIZE,sas_priv))
+    if (crypto_sign_edwards25519sha512batch(&req->out.payload[1+SAS_SIZE], &slen, req->out.dst.sid.binary, SID_SIZE, sas_priv))
       return WHY("crypto_sign() failed");
     /* chop the SID from the end of the signature, since it can be reinserted on reception */
     slen-=SID_SIZE;
@@ -1592,10 +1590,10 @@ int keyring_mapping_request(keyring_file *k, overlay_mdp_frame *req)
     req->packetTypeAndFlags=MDP_TX; /* crypt and sign */
     req->out.queue=OQ_MESH_MANAGEMENT;
     if (config.debug.keyring)
-      DEBUGF("Sending SID:SAS mapping, %d bytes, %s:0x%X -> %s:0x%X",
+      DEBUGF("Sending SID:SAS mapping, %d bytes, %s:%"PRImdp_port_t" -> %s:%"PRImdp_port_t,
 	    req->out.payload_length,
-	    alloca_tohex_sid(req->out.src.sid), req->out.src.port,
-	    alloca_tohex_sid(req->out.dst.sid), req->out.dst.port
+	    alloca_tohex_sid_t(req->out.src.sid), req->out.src.port,
+	    alloca_tohex_sid_t(req->out.dst.sid), req->out.dst.port
 	  );
     return overlay_mdp_dispatch(req,0,NULL,0);
   } else {
@@ -1620,7 +1618,7 @@ int keyring_send_sas_request(struct subscriber *subscriber){
     return WHY("couldn't request SAS (I don't know who I am)");
   
   if (config.debug.keyring)
-    DEBUGF("Requesting SAS mapping for SID=%s", alloca_tohex_sid(subscriber->sid));
+    DEBUGF("Requesting SAS mapping for SID=%s", alloca_tohex_sid_t(subscriber->sid));
   
   /* request mapping (send request auth-crypted). */
   overlay_mdp_frame mdp;
@@ -1628,10 +1626,10 @@ int keyring_send_sas_request(struct subscriber *subscriber){
   
   mdp.packetTypeAndFlags=MDP_TX;
   mdp.out.queue=OQ_MESH_MANAGEMENT;
-  bcopy(subscriber->sid,mdp.out.dst.sid,SID_SIZE);
+  mdp.out.dst.sid = subscriber->sid;
   mdp.out.dst.port=MDP_PORT_KEYMAPREQUEST;
   mdp.out.src.port=MDP_PORT_KEYMAPREQUEST;
-  bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
+  mdp.out.src.sid = my_subscriber->sid;
   mdp.out.payload_length=1;
   mdp.out.payload[0]=KEYTYPE_CRYPTOSIGN;
   
@@ -1644,16 +1642,16 @@ int keyring_send_sas_request(struct subscriber *subscriber){
   return 0;
 }
 
-int keyring_find_sid(const keyring_file *k, int *cn, int *in, int *kp, const unsigned char *sid)
+int keyring_find_sid(const keyring_file *k, int *cn, int *in, int *kp, const sid_t *sidp)
 {
   for (; keyring_sanitise_position(k, cn, in, kp) == 0; ++*kp)
     if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type == KEYTYPE_CRYPTOBOX
-      && memcmp(sid, k->contexts[*cn]->identities[*in]->keypairs[*kp]->public_key, SID_SIZE) == 0)
+      && memcmp(sidp->binary, k->contexts[*cn]->identities[*in]->keypairs[*kp]->public_key, SID_SIZE) == 0)
       return 1;
   return 0;
 }
 
-void keyring_identity_extract(const keyring_identity *id, const unsigned char **sidp, const char **didp, const char **namep)
+void keyring_identity_extract(const keyring_identity *id, const sid_t **sidp, const char **didp, const char **namep)
 {
   int todo = (sidp ? 1 : 0) | (didp ? 2 : 0) | (namep ? 4 : 0);
   int kpn;
@@ -1662,7 +1660,7 @@ void keyring_identity_extract(const keyring_identity *id, const unsigned char **
     switch (kp->type) {
     case KEYTYPE_CRYPTOBOX:
       if (sidp)
-	*sidp = kp->public_key;
+	*sidp = (const sid_t *)kp->public_key;
       todo &= ~1;
       break;
     case KEYTYPE_DID:
@@ -1748,14 +1746,14 @@ int keyring_seed(keyring_file *k)
   if (keyring_set_did(id, did, "")) return WHY("Could not set DID of new identity");
   if (keyring_commit(k)) return WHY("Could not commit new identity to keyring file");
   {
-    const unsigned char *sid_binary = NULL;
+    const sid_t *sidp = NULL;
     const char *did = NULL;
     const char *name = NULL;
-    keyring_identity_extract(id, &sid_binary, &did, &name);
+    keyring_identity_extract(id, &sidp, &did, &name);
     INFOF("Seeded keyring with identity: did=%s name=%s sid=%s",
 	did ? did : "(null)",
 	alloca_str_toprint(name),
-	sid_binary ? alloca_tohex_sid(sid_binary) : "(null)"
+	sidp ? alloca_tohex_sid_t(*sidp) : "(null)"
       );
   }
   return 0;
@@ -1775,8 +1773,8 @@ int keyring_seed(keyring_file *k)
    do for now. */
 struct nm_record {
   /* 96 bytes per record */
-  unsigned char known_key[crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES];
-  unsigned char unknown_key[crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES];
+  sid_t known_key;
+  sid_t unknown_key;
   unsigned char nm_bytes[crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES];
 };
 
@@ -1785,11 +1783,11 @@ int nm_slots_used=0;
 #define NM_CACHE_SLOTS 512
 struct nm_record nm_cache[NM_CACHE_SLOTS];
 
-unsigned char *keyring_get_nm_bytes(unsigned char *known_sid, unsigned char *unknown_sid)
+unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknown_sidp)
 {
   IN();
-  if (!known_sid) { RETURNNULL(WHYNULL("known pub key is null")); }
-  if (!unknown_sid) { RETURNNULL(WHYNULL("unknown pub key is null")); }
+  if (!known_sidp) { RETURNNULL(WHYNULL("known pub key is null")); }
+  if (!unknown_sidp) { RETURNNULL(WHYNULL("unknown pub key is null")); }
   if (!keyring) { RETURNNULL(WHYNULL("keyring is null")); }
 
   int i;
@@ -1797,15 +1795,15 @@ unsigned char *keyring_get_nm_bytes(unsigned char *known_sid, unsigned char *unk
   /* See if we have it cached already */
   for(i=0;i<nm_slots_used;i++)
     {
-      if (memcmp(nm_cache[i].known_key,known_sid,SID_SIZE)) continue;
-      if (memcmp(nm_cache[i].unknown_key,unknown_sid,SID_SIZE)) continue;
+      if (cmp_sid_t(&nm_cache[i].known_key, known_sidp) != 0) continue;
+      if (cmp_sid_t(&nm_cache[i].unknown_key, unknown_sidp) != 0) continue;
       RETURN(nm_cache[i].nm_bytes);
     }
 
   /* Not in the cache, so prepare to cache it (or return failure if known is not
      in fact a known key */
   int cn=0,in=0,kp=0;
-  if (!keyring_find_sid(keyring,&cn,&in,&kp,known_sid))
+  if (!keyring_find_sid(keyring,&cn,&in,&kp,known_sidp))
     { RETURNNULL(WHYNULL("known key is not in fact known.")); }
 
   /* work out where to store it */
@@ -1816,10 +1814,10 @@ unsigned char *keyring_get_nm_bytes(unsigned char *known_sid, unsigned char *unk
   }
 
   /* calculate and store */
-  bcopy(known_sid,nm_cache[i].known_key,SID_SIZE);
-  bcopy(unknown_sid,nm_cache[i].unknown_key,SID_SIZE);
+  nm_cache[i].known_key = *known_sidp;
+  nm_cache[i].unknown_key = *unknown_sidp;
   crypto_box_curve25519xsalsa20poly1305_beforenm(nm_cache[i].nm_bytes,
-						 unknown_sid,
+						 unknown_sidp->binary,
 						 keyring
 						 ->contexts[cn]
 						 ->identities[in]

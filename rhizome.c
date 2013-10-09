@@ -212,7 +212,7 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in)
      manifests on receiver nodes works easily.  We might implement something that strips the id
      variable out of the manifest when sending it, or some other scheme to avoid sending all the
      extra bytes. */
-  if (!is_sid_any(m_in->author)) {
+  if (!is_sid_t_any(m_in->author)) {
     /* Set the BK using the provided authorship information.
        Serval Security Framework defines BK as being:
        BK = privateKey XOR sha512(RS##BID), where BID = cryptoSignPublic, 
@@ -224,18 +224,15 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in)
     int rs_len=0;
     unsigned char bkbytes[RHIZOME_BUNDLE_KEY_BYTES];
 
-    if (rhizome_find_secret(m_in->author,&rs_len,&rs)) {
-      return WHYF("Failed to obtain RS for %s to calculate BK",
-		 alloca_tohex_sid(m_in->author));
-    }
+    if (rhizome_find_secret(&m_in->author, &rs_len, &rs))
+      return WHYF("Failed to obtain RS for %s to calculate BK", alloca_tohex_sid_t(m_in->author));
     if (!rhizome_secret2bk(&m_in->cryptoSignPublic, rs, rs_len, bkbytes, m_in->cryptoSignSecret)) {
       char bkhex[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-      (void) tohex(bkhex, bkbytes, RHIZOME_BUNDLE_KEY_BYTES);
+      (void) tohex(bkhex, RHIZOME_BUNDLE_KEY_STRLEN, bkbytes);
       if (config.debug.rhizome) DEBUGF("set BK=%s", bkhex);
       rhizome_manifest_set(m_in, "BK", bkhex);
-    } else {
+    } else
       return WHY("Failed to set BK");
-    }
   }
   return 0;
 }

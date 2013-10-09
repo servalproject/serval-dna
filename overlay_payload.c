@@ -96,8 +96,8 @@ int overlay_frame_append_payload(struct decode_context *context, int encapsulati
   
   if (config.debug.packetconstruction){
     DEBUGF( "+++++\nFrame from %s to %s of type 0x%02x %s:",
-	   alloca_tohex_sid(p->source->sid),
-	   alloca_tohex_sid(p->destination->sid),p->type,
+	   alloca_tohex_sid_t(p->source->sid),
+	   alloca_tohex_sid_t(p->destination->sid),p->type,
 	   "append_payload stuffing into packet");
     if (p->payload)
       dump("payload contents", &p->payload->bytes[0],p->payload->position);

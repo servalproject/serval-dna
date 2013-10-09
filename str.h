@@ -61,12 +61,12 @@ __STR_INLINE int is_xstring(const char *text, int len)
 }
 
 extern const char hexdigit[16];
-char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes);
+char *tohex(char *dstHex, size_t dstStrlen, const unsigned char *srcBinary);
 size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
 int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
 size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *src, const char **afterp);
 
-#define alloca_tohex(buf,len)           tohex((char *)alloca((len)*2+1), (buf), (len))
+#define alloca_tohex(buf,bytes)           tohex((char *)alloca((bytes)*2+1), (bytes) * 2, (buf))
 
 __STR_INLINE int hexvalue(char c)
 {

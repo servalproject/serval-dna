@@ -46,7 +46,7 @@ int main(int argc, char **argv)
     DEBUGF("config.log.show_time = %d", config.log.show_time);
     DEBUGF("config.server.chdir = %s", alloca_str_toprint(config.server.chdir));
     DEBUGF("config.debug = %"PRIx64, (uint64_t) config.debug);
-    DEBUGF("config.directory.service = %s", alloca_tohex(config.directory.service.binary, SID_SIZE));
+    DEBUGF("config.directory.service = %s", alloca_tohex_sid_t(config.directory.service));
     DEBUGF("config.rhizome.api.addfile.allow_host = %s", inet_ntoa(config.rhizome.api.addfile.allow_host));
     int j;
     for (j = 0; j < config.mdp.iftype.ac; ++j) {
@@ -76,7 +76,7 @@ int main(int argc, char **argv)
     }
     for (j = 0; j < config.hosts.ac; ++j) {
       char sidhex[SID_STRLEN + 1];
-      tohex(sidhex, config.hosts.av[j].key.binary, SID_SIZE);
+      tohex(sidhex, SID_STRLEN, config.hosts.av[j].key.binary);
       DEBUGF("config.hosts.%s", sidhex);
       DEBUGF("   .interface = %s", alloca_str_toprint(config.hosts.av[j].value.interface));
       DEBUGF("   .address = %s", inet_ntoa(config.hosts.av[j].value.address));

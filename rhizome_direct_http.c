@@ -237,7 +237,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
       }
 	
       sid_t *author=NULL;
-      if (!is_sid_any(config.rhizome.api.addfile.default_author.binary))
+      if (!is_sid_t_any(config.rhizome.api.addfile.default_author))
 	author = &config.rhizome.api.addfile.default_author;
       
       rhizome_bk_t bsk;
@@ -715,7 +715,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   DEBUGF("Dispatch size_high=%"PRId64,r->cursor->size_high);
   rhizome_direct_transport_state_http *state = r->transport_specific_state;
 
-  unsigned char zerosid[SID_SIZE]="\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+  sid_t zerosid = SID_ANY;
 
   int sock=socket(AF_INET, SOCK_STREAM, 0);
   if (sock==-1) {
@@ -870,7 +870,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	   existing routines.
 	*/
 	DEBUGF("Fetching manifest %s* @ 0x%x",alloca_tohex(&actionlist[i], 1+RHIZOME_BAR_PREFIX_BYTES),i);
-	if (!rhizome_fetch_request_manifest_by_prefix(&addr,zerosid,&actionlist[i+1],RHIZOME_BAR_PREFIX_BYTES))
+	if (!rhizome_fetch_request_manifest_by_prefix(&addr, &zerosid, &actionlist[i+1], RHIZOME_BAR_PREFIX_BYTES))
 	  {
 	    /* Fetching the manifest, and then using it to see if we want to 
 	       fetch the file for import is all handled asynchronously, so just
