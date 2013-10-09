@@ -557,7 +557,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   
   directory_registration();
   
-  INFOF("Allowing a maximum of %d packets every %lldms",
+  INFOF("Allowing a maximum of %d packets every %"PRId64"ms",
         interface->destination->transfer_limit.burst_size,
         interface->destination->transfer_limit.burst_length);
 

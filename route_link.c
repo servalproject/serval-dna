@@ -823,7 +823,7 @@ static int send_neighbour_link(struct neighbour *n)
   }
   n->next_neighbour_update = n->last_update + n->best_link->interface->destination->tick_ms;
   if (config.debug.ack)
-    DEBUGF("Next update for %s in %lldms", alloca_tohex_sid(n->subscriber->sid), n->next_neighbour_update - gettime_ms());
+    DEBUGF("Next update for %s in %"PRId64"ms", alloca_tohex_sid(n->subscriber->sid), n->next_neighbour_update - gettime_ms());
   OUT();
   return 0;
 }

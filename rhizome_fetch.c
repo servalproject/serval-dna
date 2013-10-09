@@ -1024,7 +1024,7 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
 
   time_ms_t now = gettime_ms();
   if (now-slot->last_write_time>slot->mdpIdleTimeout) {
-    DEBUGF("MDP connection timed out: last RX %lldms ago (read %"PRId64" of %"PRId64" bytes)",
+    DEBUGF("MDP connection timed out: last RX %"PRId64"ms ago (read %"PRId64" of %"PRId64" bytes)",
 	   now-slot->last_write_time,
 	   slot->write_state.file_offset, slot->write_state.file_length);
     rhizome_fetch_close(slot);

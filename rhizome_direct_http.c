@@ -615,7 +615,7 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
       return rhizome_server_simple_http_response(r,400,"<html><h1>Missing or unsupported Content-Type header</h1></html>\r\n");
     /* ok, we have content-type and content-length, now make sure they are well formed. */
     int64_t content_length;
-    if (sscanf(cl_str,"Content-Length: %lld",&content_length)!=1)
+    if (sscanf(cl_str,"Content-Length: %"PRId64,&content_length)!=1)
       return rhizome_server_simple_http_response(r,400,"<html><h1>Malformed Content-Length header</h1></html>\r\n");
     char boundary_string[1024];
     int i;

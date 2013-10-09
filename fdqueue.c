@@ -41,10 +41,10 @@ void list_alarms()
   struct sched_ent *alarm;
   
   for (alarm = next_deadline; alarm; alarm = alarm->_next)
-    DEBUGF("%p %s deadline in %lldms", alarm->function, alloca_alarm_name(alarm), alarm->deadline - now);
+    DEBUGF("%p %s deadline in %"PRId64"ms", alarm->function, alloca_alarm_name(alarm), alarm->deadline - now);
   
   for (alarm = next_alarm; alarm; alarm = alarm->_next)
-    DEBUGF("%p %s in %lldms, deadline in %lldms", alarm->function, alloca_alarm_name(alarm), alarm->alarm - now, alarm->deadline - now);
+    DEBUGF("%p %s in %"PRId64"ms, deadline in %"PRId64"ms", alarm->function, alloca_alarm_name(alarm), alarm->alarm - now, alarm->deadline - now);
   
   DEBUG("File handles;");
   int i;
@@ -109,7 +109,7 @@ int _schedule(struct __sourceloc __whence, struct sched_ent *alarm)
   
   if (now - alarm->deadline > 1000){
     // 1000ms ago? thats silly, if you keep doing it noone else will get a turn.
-    WHYF("Alarm %s tried to schedule a deadline %lldms ago, from %s() %s:%d",
+    WHYF("Alarm %s tried to schedule a deadline %"PRId64"ms ago, from %s() %s:%d",
 	   alloca_alarm_name(alarm),
            (now - alarm->deadline),
 	   __whence.function,__whence.file,__whence.line);

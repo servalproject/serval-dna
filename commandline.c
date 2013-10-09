@@ -1059,7 +1059,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
     cli_printf(context, "--- %s ping statistics ---\n", alloca_tohex_sid_t(ping_sid));
     cli_printf(context, "%d packets transmitted, %d packets received, %3.1f%% packet loss\n",
 	   tx_count,rx_count,tx_count?(tx_count-rx_count)*100.0/tx_count:0);
-    cli_printf(context, "round-trip min/avg/max/stddev%s = %lld/%.3f/%lld/%.3f ms\n",
+    cli_printf(context, "round-trip min/avg/max/stddev%s = %"PRId64"/%.3f/%"PRId64"/%.3f ms\n",
 	   (samples<rx_count)?" (stddev calculated from last 1024 samples)":"",
 	   rx_mintime,rx_mean,rx_maxtime,rx_stddev);
     cli_delim(context, NULL);

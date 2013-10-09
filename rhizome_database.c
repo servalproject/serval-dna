@@ -1423,7 +1423,8 @@ int rhizome_list_manifests(struct cli_context *context, const char *service, con
     } else {
       int64_t blob_version = rhizome_manifest_get_ll(m, "version");
       if (blob_version != q_version)
-	WARNF("MANIFESTS row id=%s version=%lld does not match manifest blob.version=%lld", q_manifestid, q_version, blob_version);
+	WARNF("MANIFESTS row id=%s version=%"PRId64" does not match manifest blob.version=%"PRId64, 
+	  q_manifestid, q_version, blob_version);
       int match = 1;
       
       const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
