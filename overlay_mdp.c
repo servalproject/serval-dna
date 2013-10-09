@@ -30,8 +30,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "mdp_client.h"
 #include "crypto.h"
 
+static void overlay_mdp_poll(struct sched_ent *alarm);
+static void mdp_poll2(struct sched_ent *alarm);
+
 static struct profile_total mdp_stats = { .name="overlay_mdp_poll" };
-static struct sched_ent mdp_sock = STRUCT_SCHED_ENT_UNUSED;
+static struct sched_ent mdp_sock = {
+  .function = overlay_mdp_poll,
+  .stats = &mdp_stats,
+  .poll.fd = -1,
+};
+
+static struct profile_total mdp_stats2 = { .name="mdp_poll2" };
+static struct sched_ent mdp_sock2 = {
+  .function = mdp_poll2,
+  .stats = &mdp_stats2,
+  .poll.fd = -1,
+};
 
 static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame *mdp, time_ms_t now);
 
@@ -60,37 +74,43 @@ static void overlay_mdp_clean_socket_files()
   closedir(dir);
 }
 
-int overlay_mdp_setup_sockets()
+static int mdp_bind_socket(const char *name)
 {
   struct sockaddr_un addr;
   socklen_t addrlen;
+  int sock;
   
+  if (make_local_sockaddr(&addr, &addrlen, "%s", name) == -1)
+    return -1;
+  if ((sock = esocket(AF_UNIX, SOCK_DGRAM, 0)) == -1)
+    return -1;
+  if (socket_set_reuseaddr(sock, 1) == -1)
+    WARN("Could not set socket to reuse addresses");
+  if (socket_bind(sock, (struct sockaddr *)&addr, addrlen) == -1) {
+    close(sock);
+    return -1;
+  }
+  socket_set_rcvbufsize(sock, 64 * 1024);
+  
+  INFOF("Socket %s: fd=%d %s", name, sock, alloca_sockaddr(&addr, addrlen));
+  return sock;
+}
+
+int overlay_mdp_setup_sockets()
+{
   /* Delete stale socket files from instance directory. */
   overlay_mdp_clean_socket_files();
 
   if (mdp_sock.poll.fd == -1) {
-    if (make_local_sockaddr(&addr, &addrlen, "mdp.socket") == -1)
-      return -1;
-    if ((mdp_sock.poll.fd = esocket(AF_UNIX, SOCK_DGRAM, 0)) == -1)
-      return -1;
-    if (socket_set_reuseaddr(mdp_sock.poll.fd, 1) == -1)
-      WARN("Could not set socket to reuse addresses");
-    if (socket_bind(mdp_sock.poll.fd, (struct sockaddr *)&addr, addrlen) == -1) {
-      close(mdp_sock.poll.fd);
-      mdp_sock.poll.fd = -1;
-      return -1;
-    }
-    socket_set_rcvbufsize(mdp_sock.poll.fd, 64 * 1024);
-#if 0
-    int buffer_size = 64 * 1024;    
-    if (setsockopt(mdp_sock.poll.fd, SOL_SOCKET, SO_SNDBUF, &buffer_size, sizeof(buffer_size)) == -1)
-      WARNF_perror("setsockopt(%d,SOL_SOCKET,SO_SNDBUF,&%d,%d)", mdp_sock.poll.fd, buffer_size, sizeof buffer_size);
-#endif
-    mdp_sock.function = overlay_mdp_poll;
-    mdp_sock.stats = &mdp_stats;
+    mdp_sock.poll.fd = mdp_bind_socket("mdp.socket");
     mdp_sock.poll.events = POLLIN;
     watch(&mdp_sock);
-    INFOF("MDP socket: fd=%d %s", mdp_sock.poll.fd, alloca_sockaddr(&addr, addrlen));
+  }
+  
+  if (mdp_sock2.poll.fd == -1) {
+    mdp_sock2.poll.fd = mdp_bind_socket("mdp.2.socket");
+    mdp_sock2.poll.events = POLLIN;
+    watch(&mdp_sock2);
   }
   return 0;
 }
@@ -914,7 +934,124 @@ static void overlay_mdp_scan(struct sched_ent *alarm)
   }
 }
 
-void overlay_mdp_poll(struct sched_ent *alarm)
+struct mdp_client{
+  struct sockaddr_un *addr;
+  socklen_t addrlen;
+};
+
+static int mdp_reply2(const struct mdp_client *client, const struct mdp_header *header, 
+  int flags, const unsigned char *payload, int payload_len)
+{
+  struct mdp_header response_header;
+  bcopy(header, &response_header, sizeof(response_header));
+  response_header.flags = flags;
+  
+  struct iovec iov[]={
+    {
+      .iov_base = (void *)&response_header,
+      .iov_len = sizeof(struct mdp_header)
+    },
+    {
+      .iov_base = (void *)payload,
+      .iov_len = payload_len
+    }
+  };
+  
+  struct msghdr hdr={
+    .msg_name=client->addr,
+    .msg_namelen=client->addrlen,
+    .msg_iov=iov,
+    .msg_iovlen=2,
+  };
+  
+  if (config.debug.mdprequests)
+    DEBUGF("Replying to %s with code %d", alloca_sockaddr(client->addr, client->addrlen), flags);
+  return sendmsg(mdp_sock2.poll.fd, &hdr, 0);
+}
+
+#define mdp_reply_error(A,B,C)  mdp_reply2(A,B,MDP_FLAG_ERROR,(const unsigned char *)C,strlen(C))
+#define mdp_reply_ok(A,B)  mdp_reply2(A,B,MDP_FLAG_OK,NULL,0)
+
+static int mdp_process_identity_request(struct mdp_client *client, struct mdp_header *header, 
+  const unsigned char *payload, int payload_len)
+{
+  if (payload_len<sizeof(struct mdp_identity_request)){
+    mdp_reply_error(client, header, "Request too short");
+    return -1;
+  }
+  struct mdp_identity_request *request = (struct mdp_identity_request *)payload;
+  payload += sizeof(struct mdp_identity_request);
+  payload_len -= sizeof(struct mdp_identity_request);
+  
+  switch(request->action){
+    case ACTION_UNLOCK:
+      {
+	if (request->type!=TYPE_PIN){
+	  mdp_reply_error(client, header, "Unknown request type");
+	  return -1;
+	}
+	int unlock_count=0;
+	const char *pin = (char *)payload;
+	int ofs=0;
+	while(ofs < payload_len){
+	  if (!payload[ofs++]){
+	    unlock_count += keyring_enter_pin(keyring, pin);
+	    pin=(char *)&payload[ofs++];
+	  }
+	}
+      }
+      break;
+    default:
+      mdp_reply_error(client, header, "Unknown request action");
+      return -1;
+  }
+  mdp_reply_ok(client, header);
+  return 0;
+}
+
+static void mdp_poll2(struct sched_ent *alarm)
+{
+  if (alarm->poll.revents & POLLIN) {
+    unsigned char buffer[1600];
+    struct sockaddr_storage addr;
+    struct mdp_client client={
+      .addr = (struct sockaddr_un *)&addr,
+      .addrlen = sizeof(addr)
+    };
+    int ttl=-1;
+    
+    ssize_t len = recvwithttl(alarm->poll.fd, buffer, sizeof(buffer), &ttl, (struct sockaddr *)&addr, &client.addrlen);
+    
+    if (len<=sizeof(struct mdp_header)){
+      WHYF("Expected length %d, got %d from %s", (int)sizeof(struct mdp_header), (int)len, alloca_sockaddr(client.addr, client.addrlen));
+      return;
+    }
+    
+    struct mdp_header *header = (struct mdp_header *)buffer;
+    
+    unsigned char *payload = &buffer[sizeof(struct mdp_header)];
+    int payload_len = len - sizeof(struct mdp_header);
+    
+    if (is_sid_any(header->remote.sid.binary)){
+      // process local commands
+      switch(header->remote.port){
+	case MDP_IDENTITY:
+	  if (config.debug.mdprequests)
+	    DEBUGF("Processing MDP_IDENTITY from %s", alloca_sockaddr(client.addr, client.addrlen));
+	  mdp_process_identity_request(&client, header, payload, payload_len);
+	  break;
+	default:
+	  mdp_reply_error(&client, header, "Unknown port number");
+	  break;
+      }
+    }else{
+      // TODO transmit packet
+      mdp_reply_error(&client, header, "Transmitting packets is not yet supported");
+    }
+  }
+}
+
+static void overlay_mdp_poll(struct sched_ent *alarm)
 {
   if (alarm->poll.revents & POLLIN) {
     unsigned char buffer[16384];

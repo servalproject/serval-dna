@@ -1967,6 +1967,67 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
   return 0;
 }
 
+int app_id_pin(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  const char *pin;
+  cli_arg(parsed, "entry-pin", &pin, NULL, "");
+  int ret=1;
+  struct mdp_header header={
+    .remote.port=MDP_IDENTITY,
+  };
+  int mdp_sock = mdp_socket();
+  set_nonblock(mdp_sock);
+  
+  unsigned char payload[1200];
+  struct mdp_identity_request *request = (struct mdp_identity_request *)payload;
+  request->action=ACTION_UNLOCK;
+  request->type=TYPE_PIN;
+  int len = sizeof(struct mdp_identity_request);
+  int pin_len = strlen(pin)+1;
+  if (pin_len+len > sizeof(payload))
+    return WHY("Supplied pin is too long");
+  bcopy(pin, &payload[len], pin_len);
+  len+=pin_len;
+  
+  if (!mdp_send(mdp_sock, &header, payload, len)){
+    WHY_perror("mdp_send");
+    goto end;
+  }
+  
+  time_ms_t timeout=gettime_ms()+500;
+  while(1){
+    time_ms_t now = gettime_ms();
+    if (now>timeout)
+      break;
+    int p=mdp_poll(mdp_sock, timeout - now);
+    if (p<0){
+      WHY_perror("mdp_poll");
+      break;
+    }
+    if (p==0){
+      WHYF("Timeout while waiting for response");
+      break;
+    }
+    struct mdp_header rev_header;
+    unsigned char payload[1600];
+    ssize_t len = mdp_recv(mdp_sock, &rev_header, payload, sizeof(payload));
+    if (len<0){
+      WHY_perror("mdp_recv");
+      continue;
+    }
+    if (rev_header.flags & MDP_FLAG_OK)
+      ret=0;
+    if (rev_header.flags & MDP_FLAG_ERROR){
+      payload[len]=0;
+      WHYF("%s",payload);
+    }
+    break;
+  }
+end:
+  mdp_close(mdp_sock);
+  return ret;
+}
+
 int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
@@ -2521,6 +2582,8 @@ struct cli_schema command_line_options[]={
    "Set the DID for the specified SID (must supply PIN to unlock the SID record in the keyring)"},
   {app_id_self,{"id","self|peers|allpeers",NULL}, 0,
    "Return identity(s) as URIs of own node, or of known routable peers, or all known peers"},
+  {app_id_pin, {"id", "enter", "pin", "<entry-pin>", NULL}, 0,
+   "Unlock any pin protected identities and enable routing packets to them"},
   {app_route_print, {"route","print",NULL}, 0,
   "Print the routing table"},
   {app_network_scan, {"scan","[<address>]",NULL}, 0,

@@ -28,6 +28,94 @@
 #include "overlay_packet.h"
 #include "mdp_client.h"
 
+int mdp_socket(void)
+{
+  // for now use the same process for creating sockets
+  return overlay_mdp_client_socket();
+}
+
+int mdp_close(int socket)
+{
+  // use the same process for closing sockets, though this will need to change once bind is implemented
+  return overlay_mdp_client_close(socket);
+}
+
+int mdp_send(int socket, const struct mdp_header *header, const unsigned char *payload, ssize_t len)
+{
+  struct sockaddr_un addr;
+  socklen_t addrlen;
+  if (make_local_sockaddr(&addr, &addrlen, "mdp.2.socket") == -1)
+    return -1;
+  
+  struct iovec iov[]={
+    {
+      .iov_base = (void *)header,
+      .iov_len = sizeof(struct mdp_header)
+    },
+    {
+      .iov_base = (void *)payload,
+      .iov_len = len
+    }
+  };
+  
+  struct msghdr hdr={
+    .msg_name=&addr,
+    .msg_namelen=addrlen,
+    .msg_iov=iov,
+    .msg_iovlen=2,
+  };
+  
+  return sendmsg(socket, &hdr, 0);
+}
+
+ssize_t mdp_recv(int socket, struct mdp_header *header, unsigned char *payload, ssize_t max_len)
+{
+  /* Construct name of socket to receive from. */
+  struct sockaddr_un mdp_addr;
+  socklen_t mdp_addrlen;
+  if (make_local_sockaddr(&mdp_addr, &mdp_addrlen, "mdp.2.socket") == -1)
+    return -1;
+  
+  struct sockaddr_un addr;
+  struct iovec iov[]={
+    {
+      .iov_base = (void *)header,
+      .iov_len = sizeof(struct mdp_header)
+    },
+    {
+      .iov_base = (void *)payload,
+      .iov_len = max_len
+    }
+  };
+  
+  struct msghdr hdr={
+    .msg_name=&addr,
+    .msg_namelen=sizeof(struct sockaddr_un),
+    .msg_iov=iov,
+    .msg_iovlen=2,
+  };
+  
+  ssize_t len = recvmsg(socket, &hdr, 0);
+  if (len<sizeof(struct mdp_header))
+    return -1;
+  
+  // double check that the incoming address matches the servald daemon
+  if (cmp_sockaddr((struct sockaddr *)&addr, hdr.msg_namelen, (struct sockaddr *)&mdp_addr, mdp_addrlen) != 0
+      && (   addr.sun_family != AF_UNIX
+	  || real_sockaddr(&addr, hdr.msg_namelen, &addr, &hdr.msg_namelen) <= 0
+	  || cmp_sockaddr((struct sockaddr *)&addr, hdr.msg_namelen, (struct sockaddr *)&mdp_addr, mdp_addrlen) != 0
+	 )
+  )
+    return -1;
+  
+  return len - sizeof(struct mdp_header);
+}
+
+int mdp_poll(int socket, time_ms_t timeout_ms)
+{
+  return overlay_mdp_client_poll(socket, timeout_ms);
+}
+
 int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp, int flags, int timeout_ms)
 {
   if (mdp_sockfd == -1)
@@ -128,21 +216,17 @@ int overlay_mdp_client_close(int mdp_sockfd)
 int overlay_mdp_client_poll(int mdp_sockfd, time_ms_t timeout_ms)
 {
   fd_set r;
-  int ret;
   FD_ZERO(&r);
   FD_SET(mdp_sockfd, &r);
   if (timeout_ms<0) timeout_ms=0;
   
-  struct timeval tv;
-  
-  if (timeout_ms>=0) {
-    tv.tv_sec=timeout_ms/1000;
-    tv.tv_usec=(timeout_ms%1000)*1000;
-    ret=select(mdp_sockfd+1,&r,NULL,&r,&tv);
-  }
-  else
-    ret=select(mdp_sockfd+1,&r,NULL,&r,NULL);
-  return ret;
+  struct pollfd fds[]={
+    {
+      .fd = mdp_sockfd,
+      .events = POLLIN|POLLERR,
+    }
+  };
+  return poll(fds, 1, timeout_ms);
 }
 
 int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, int port, int *ttl)
@@ -165,7 +249,7 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, int port, int *ttl)
     return -1; // no packet received
 
   // If the received address overflowed the buffer, then it cannot have come from the server, whose
-  // address always fits within a struct sockaddr_un.
+  // address must always fit within a struct sockaddr_un.
   if (recvaddrlen > sizeof recvaddr)
     return WHY("reply did not come from server: address overrun");
 

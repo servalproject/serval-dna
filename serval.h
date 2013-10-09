@@ -831,7 +831,6 @@ int overlay_packetradio_tx_packet(struct overlay_frame *frame);
 void overlay_dummy_poll(struct sched_ent *alarm);
 void server_config_reload(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
-void overlay_mdp_poll(struct sched_ent *alarm);
 int overlay_mdp_try_interal_services(struct overlay_frame *frame, overlay_mdp_frame *mdp);
 int overlay_send_probe(struct subscriber *peer, struct network_destination *destination, int queue);
 int overlay_send_stun_request(struct subscriber *server, struct subscriber *request);
