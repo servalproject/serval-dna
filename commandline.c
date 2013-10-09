@@ -578,7 +578,7 @@ int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *context)
 
   /* Bind to MDP socket and await confirmation */
   sid_t srcsid;
-  int port=32768+(random()&32767);
+  mdp_port_t port=32768+(random()&32767);
   if (overlay_mdp_getmyaddr(mdp_sockfd, 0, &srcsid)) {
     overlay_mdp_client_close(mdp_sockfd);
     return WHY("Could not get local address");
@@ -943,7 +943,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
     return WHY("Cannot create MDP socket");
 
   sid_t srcsid;
-  int port=32768+(random()&32767);
+  mdp_port_t port=32768+(random()&32767);
   if (overlay_mdp_getmyaddr(mdp_sockfd, 0, &srcsid)) {
     overlay_mdp_client_close(mdp_sockfd);
     return WHY("Could not get local address");
@@ -1080,7 +1080,7 @@ int app_trace(const struct cli_parsed *parsed, struct cli_context *context)
 
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
     return WHY("Cannot create MDP socket");
-  int port=32768+(random()&32767);
+  mdp_port_t port=32768+(random()&32767);
   if (overlay_mdp_getmyaddr(mdp_sockfd, 0, &srcsid)) {
     overlay_mdp_client_close(mdp_sockfd);
     return WHY("Could not get local address");
@@ -2359,7 +2359,7 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
   if (cli_arg(parsed, "timeout", &delay, NULL, "3000") == -1)
     return -1;
 
-  int port=32768+(random()&0xffff);
+  mdp_port_t port=32768+(random()&0xffff);
 
   sid_t srcsid;
   sid_t dstsid;

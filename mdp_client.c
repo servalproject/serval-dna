@@ -144,7 +144,7 @@ int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp, int flags, int time
     }
   }
   
-  int port=0;
+  mdp_port_t port=0;
   if ((mdp->packetTypeAndFlags&MDP_TYPE_MASK) == MDP_TX)
       port = mdp->out.src.port;
       
@@ -229,7 +229,7 @@ int overlay_mdp_client_poll(int mdp_sockfd, time_ms_t timeout_ms)
   return poll(fds, 1, timeout_ms);
 }
 
-int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, int port, int *ttl)
+int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, mdp_port_t port, int *ttl)
 {
   /* Construct name of socket to receive from. */
   struct sockaddr_un mdp_addr;
@@ -265,7 +265,7 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, int port, int *ttl)
   
   // silently drop incoming packets for the wrong port number
   if (port>0 && port != mdp->in.dst.port){
-    WARNF("Ignoring packet for port %d",mdp->in.dst.port);
+    WARNF("Ignoring packet for port %"PRImdp_port_t,mdp->in.dst.port);
     return -1;
   }
 
@@ -280,7 +280,7 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, int port, int *ttl)
 }
 
 // send a request to servald deamon to add a port binding
-int overlay_mdp_bind(int mdp_sockfd, const sid_t *localaddr, int port) 
+int overlay_mdp_bind(int mdp_sockfd, const sid_t *localaddr, mdp_port_t port) 
 {
   overlay_mdp_frame mdp;
   mdp.packetTypeAndFlags=MDP_BIND|MDP_FORCE;
@@ -289,10 +289,10 @@ int overlay_mdp_bind(int mdp_sockfd, const sid_t *localaddr, int port)
   int result=overlay_mdp_send(mdp_sockfd, &mdp,MDP_AWAITREPLY,5000);
   if (result) {
     if (mdp.packetTypeAndFlags==MDP_ERROR)
-      WHYF("Could not bind to MDP port %d: error=%d, message='%s'",
+      WHYF("Could not bind to MDP port %"PRImdp_port_t": error=%d, message='%s'",
 	   port,mdp.error.error,mdp.error.message);
     else
-      WHYF("Could not bind to MDP port %d (no reason given)",port);
+      WHYF("Could not bind to MDP port %"PRImdp_port_t" (no reason given)",port);
     return -1;
   }
   return 0;

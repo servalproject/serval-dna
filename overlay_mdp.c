@@ -120,7 +120,7 @@ int overlay_mdp_setup_sockets()
 
 struct mdp_binding{
   struct subscriber *subscriber;
-  int port;
+  mdp_port_t port;
   char socket_name[MDP_MAX_SOCKET_NAME_LEN];
   int name_len;
   time_ms_t binding_time;
@@ -195,7 +195,7 @@ int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, md
   if (config.debug.mdprequests) 
     DEBUGF("Bind request %s:%"PRImdp_port_t, subscriber ? alloca_tohex_sid_t(subscriber->sid) : "NULL", port);
   
-  if (port<=0){
+  if (port == 0){
     return WHYF("Port %d cannot be bound", port);
   }
   if (!mdp_bindings_initialised) {
@@ -260,13 +260,12 @@ int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, md
 static int overlay_mdp_decode_header(struct overlay_buffer *buff, overlay_mdp_frame *mdp)
 {
   /* extract MDP port numbers */
-  uint32_t port = ob_get_packed_ui32(buff);
-  uint32_t same = port&1;
+  mdp_port_t port = ob_get_packed_ui32(buff);
+  int same = port&1;
   port >>=1;
   mdp->in.dst.port = port;
-  if (!same){
+  if (!same)
     port = ob_get_packed_ui32(buff);
-  }
   mdp->in.src.port = port;
   
   int len=ob_remaining(buff);
@@ -494,7 +493,7 @@ int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const sid_t *resolv
   return overlay_mdp_dispatch(&mdpreply, 0 /* system generated */, NULL, 0);
 }
 
-int overlay_mdp_check_binding(struct subscriber *subscriber, int port, int userGeneratedFrameP,
+int overlay_mdp_check_binding(struct subscriber *subscriber, mdp_port_t port, int userGeneratedFrameP,
 			      struct sockaddr_un *recvaddr,  socklen_t recvaddrlen)
 {
   /* System generated frames can send anything they want */
@@ -519,22 +518,22 @@ int overlay_mdp_check_binding(struct subscriber *subscriber, int port, int userG
     }
   }
 
-  return WHYF("No such binding: recvaddr=%p %s addr=%s port=%u (0x%x) -- possible spoofing attack",
+  return WHYF("No such binding: recvaddr=%p %s addr=%s port=%"PRImdp_port_t" -- possible spoofing attack",
 	recvaddr,
 	recvaddr ? alloca_toprint(-1, recvaddr->sun_path, recvaddrlen - sizeof(sa_family_t)) : "",
 	alloca_tohex_sid_t(subscriber->sid),
-	port, port
+	port
       );
 }
 
-int overlay_mdp_encode_ports(struct overlay_buffer *plaintext, int dst_port, int src_port){
-  int port=dst_port << 1;
-  if (dst_port==src_port)
+int overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port)
+{
+  mdp_port_t port = dst_port << 1;
+  if (dst_port == src_port)
     port |= 1;
   if (ob_append_packed_ui32(plaintext, port))
     return -1;
-
-  if (dst_port!=src_port){
+  if (dst_port != src_port){
     if (ob_append_packed_ui32(plaintext, src_port))
       return -1;
   }
@@ -702,8 +701,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     }
   }
   
-  if (overlay_mdp_check_binding(source, mdp->out.src.port, userGeneratedFrameP,
-				recvaddr, recvaddrlen)){
+  if (overlay_mdp_check_binding(source, mdp->out.src.port, userGeneratedFrameP, recvaddr, recvaddrlen)){
     RETURN(overlay_mdp_reply_error
 	   (mdp_sock.poll.fd,
 	    (struct sockaddr_un *)recvaddr,

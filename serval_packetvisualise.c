@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <strings.h>
 #include "xprintf.h"
@@ -114,7 +115,7 @@ static const char * overlay_type(unsigned int type){
   }
 }
 
-static const char * port_name(unsigned int port){
+static const char * port_name(uint32_t port){
   switch(port){
     case 1:
       return "KEY_MAP_REQUEST";
@@ -284,16 +285,16 @@ int isOverlayPacket(XPRINTF xpf, const unsigned char *packet, size_t *ofs, size_
     
     if (!(payload_flags & 128)){
       size_t payload_offset=0;
-      unsigned int dest_port_raw=get_packed_uint32(payload_start, &payload_offset);
+      uint32_t dest_port_raw = get_packed_uint32(payload_start, &payload_offset);
       
       int same = dest_port_raw&1;
-      unsigned int dest_port = dest_port_raw >> 1;
+      uint32_t dest_port = dest_port_raw >> 1;
       
       xprintf(xpf, "%sDestination Port (0x%04x); %d %s\n", indent(8), dest_port_raw, dest_port, port_name(dest_port));
       if (same){
 	xprintf(xpf, "%sSource Port; SAME\n", indent(8));
       }else{
-	unsigned int src_port = get_packed_uint32(payload_start, &payload_offset);
+	uint32_t src_port = get_packed_uint32(payload_start, &payload_offset);
 	xprintf(xpf, "%sSource Port; %d %s\n", indent(8), src_port, port_name(src_port));
       }
       payload_start += payload_offset;

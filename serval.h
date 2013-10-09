@@ -233,9 +233,6 @@ int rhizome_enabled();
 int rhizome_http_server_running();
 const char *rhizome_datastore_path();
 
-extern struct in_addr client_addr;
-extern int client_port;
-
 #define MAX_PEERS 1024
 extern int peer_count;
 extern struct in_addr peers[MAX_PEERS];
@@ -712,7 +709,7 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr, socklen_t recvaddrl
 			  overlay_mdp_frame *mdpreply);
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 		     struct sockaddr_un *recvaddr, socklen_t recvaddrlen);
-int overlay_mdp_encode_ports(struct overlay_buffer *plaintext, int dst_port, int src_port);
+int overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port);
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const sid_t *resolved_sidp, const char *uri, const char *did, const char *name);
 
 struct vomp_call_state;

@@ -26,7 +26,7 @@
 
 struct mdp_sockaddr {
   sid_t sid;
-  uint32_t port;
+  mdp_port_t port;
 };
 
 #define MDP_FLAG_NO_CRYPT (1<<0)
@@ -81,9 +81,9 @@ int overlay_mdp_client_socket(void);
 int overlay_mdp_client_close(int mdp_sockfd);
 int overlay_mdp_client_poll(int mdp_sockfd, time_ms_t timeout_ms);
 int overlay_mdp_getmyaddr(int mpd_sockfd, unsigned index, sid_t *sid);
-int overlay_mdp_bind(int mdp_sockfd, const sid_t *localaddr, int port) ;
-int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, int port, int *ttl);
-int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp,int flags,int timeout_ms);
+int overlay_mdp_bind(int mdp_sockfd, const sid_t *localaddr, mdp_port_t port) ;
+int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, mdp_port_t port, int *ttl);
+int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp, int flags, int timeout_ms);
 ssize_t overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp);
 
 #endif
