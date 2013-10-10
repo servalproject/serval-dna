@@ -32,7 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 static char rhizome_thisdatastore_path[256];
 
 static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
-static int rhizome_delete_file_retry(sqlite_retry_state *retry, const char *fileid);
+static int rhizome_delete_file_retry(sqlite_retry_state *retry, const rhizome_filehash_t *hashp);
 static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
 
 const char *rhizome_datastore_path()
@@ -678,14 +678,16 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	      }
 	    }
 	    break;
-	  case FILEHASH_T: {
-	      const char *hash_hex = alloca_tohex(va_arg(ap, const unsigned char *), RHIZOME_FILEHASH_BYTES);
+	  case RHIZOME_FILEHASH_T: {
+	      const rhizome_filehash_t *hashp = va_arg(ap, const rhizome_filehash_t *);
 	      ++argnum;
-	      if (hash_hex == NULL) {
-		BIND_NULL(FILEHASH_T);
+	      if (hashp == NULL) {
+		BIND_NULL(RHIZOME_FILEHASH_T);
 	      } else {
-		BIND_DEBUG(FILEHASH_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", hash_hex, RHIZOME_FILEHASH_STRLEN);
-		BIND_RETRY(sqlite3_bind_text, hash_hex, RHIZOME_FILEHASH_STRLEN, SQLITE_TRANSIENT);
+		char hash_hex[RHIZOME_FILEHASH_STRLEN];
+		tohex(hash_hex, sizeof hash_hex, hashp->binary);
+		BIND_DEBUG(RHIZOME_FILEHASH_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", hash_hex, sizeof hash_hex);
+		BIND_RETRY(sqlite3_bind_text, hash_hex, sizeof hash_hex, SQLITE_TRANSIENT);
 	      }
 	    }
 	    break;
@@ -1014,20 +1016,24 @@ int64_t rhizome_database_used_bytes()
   return db_page_size * (db_page_count - db_free_page_count);
 }
 
-int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t version, char hash[SHA512_DIGEST_STRING_LENGTH])
+int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t version, rhizome_filehash_t *hashp)
 {
   IN();
-  strbuf hash_sb = strbuf_local(hash, SHA512_DIGEST_STRING_LENGTH);
-  RETURN(sqlite_exec_strbuf(hash_sb, "SELECT filehash FROM MANIFESTS WHERE version = ? AND id = ?;",
-			    INT64, version, RHIZOME_BID_T, bidp, END));
+  strbuf hash_sb = strbuf_alloca(RHIZOME_FILEHASH_STRLEN + 1);
+  if (	 sqlite_exec_strbuf(hash_sb, "SELECT filehash FROM MANIFESTS WHERE version = ? AND id = ?;",
+			    INT64, version, RHIZOME_BID_T, bidp, END) == -1)
+    RETURN(-1);
+  if (strbuf_overrun(hash_sb) || str_to_rhizome_filehash_t(hashp, strbuf_str(hash_sb)) == -1)
+    RETURN(WHYF("malformed file hash for bid=%s version=%"PRId64, alloca_tohex_rhizome_bid_t(*bidp), version));
+  RETURN(0);
   OUT();
 }
 
-static int rhizome_delete_external(const char *fileid)
+static int rhizome_delete_external(const rhizome_filehash_t *hashp)
 {
   // attempt to remove any external blob
   char blob_path[1024];
-  if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, fileid))
+  if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, alloca_tohex_rhizome_filehash_t(*hashp)))
     return -1;
   return unlink(blob_path);
 }
@@ -1039,18 +1045,18 @@ static int rhizome_delete_orphan_fileblobs_retry(sqlite_retry_state *retry)
       END);
 }
 
-int rhizome_remove_file_datainvalid(sqlite_retry_state *retry, const char *fileid)
+int rhizome_remove_file_datainvalid(sqlite_retry_state *retry, const rhizome_filehash_t *hashp)
 {
   int ret = 0;
   if (sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, retry,
 	  "DELETE FROM FILES WHERE id = ? and datavalid = 0;",
-	  TEXT_TOUPPER, fileid, END
+	  RHIZOME_FILEHASH_T, hashp, END
 	) == -1
   )
     ret = -1;
   if (sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, retry,
 	  "DELETE FROM FILEBLOBS WHERE id = ? AND NOT EXISTS( SELECT 1 FROM FILES WHERE FILES.id = FILEBLOBS.id );",
-	  TEXT_TOUPPER, fileid, END
+	  RHIZOME_FILEHASH_T, hashp, END
 	) == -1
   )
     ret = -1;
@@ -1081,18 +1087,24 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     candidates++;
     const char *id = (const char *) sqlite3_column_text(statement, 0);
-    if (rhizome_delete_external(id) == 0 && report)
-      ++report->deleted_stale_incoming_files;
+    rhizome_filehash_t hash;
+    if (str_to_rhizome_filehash_t(&hash, id) == -1)
+      WARNF("invalid field FILES.id=%s -- ignored", alloca_str_toprint(id));
+    else if (rhizome_delete_external(&hash) == 0 && report)
+	++report->deleted_stale_incoming_files;
   }
   sqlite3_finalize(statement);
-  
+
   statement = sqlite_prepare_bind(&retry,
       "SELECT id FROM FILES WHERE inserttime < ? AND datavalid = 1 AND NOT EXISTS( SELECT 1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);",
       INT64, insert_horizon_no_manifest, END);
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     candidates++;
     const char *id = (const char *) sqlite3_column_text(statement, 0);
-    if (rhizome_delete_external(id) == 0 && report)
+    rhizome_filehash_t hash;
+    if (str_to_rhizome_filehash_t(&hash, id) == -1)
+      WARNF("invalid field FILES.id=%s -- ignored", alloca_str_toprint(id));
+    else if (rhizome_delete_external(&hash) == 0 && report)
       ++report->deleted_orphan_files;
   }
   sqlite3_finalize(statement);
@@ -1152,11 +1164,10 @@ int rhizome_make_space(int group_priority, uint64_t bytes)
       && sqlite_step_retry(&retry, statement) == SQLITE_ROW
   ) {
     /* Make sure we can drop this blob, and if so drop it, and recalculate number of bytes required */
-    const unsigned char *id;
-
+    const char *id;
     /* Get values */
     if (sqlite3_column_type(statement, 0)==SQLITE_TEXT)
-      id = sqlite3_column_text(statement, 0);
+      id = (const char *) sqlite3_column_text(statement, 0);
     else {
       WHY("Incorrect type in id column of files table");
       break;
@@ -1167,10 +1178,16 @@ int rhizome_make_space(int group_priority, uint64_t bytes)
       WHY("Incorrect type in length column of files table");
       break;
     }
-    /* Try to drop this file from storage, discarding any references that do not trump the priority
-       of this request.  The query done earlier should ensure this, but it doesn't hurt to be
-       paranoid, and it also protects against inconsistency in the database. */
-    rhizome_drop_stored_file((char *)id, group_priority + 1);
+    rhizome_filehash_t hash;
+    if (str_to_rhizome_filehash_t(&hash, id) == -1)
+      WHYF("invalid field FILES.id=%s -- ignored", alloca_str_toprint(id));
+    else {
+      /* Try to drop this file from storage, discarding any references that do not trump the
+       * priority of this request.  The query done earlier should ensure this, but it doesn't hurt
+       * to be paranoid, and it also protects against inconsistency in the database.
+       */
+      rhizome_drop_stored_file(&hash, group_priority + 1);
+    }
   }
   sqlite3_finalize(statement);
 
@@ -1187,14 +1204,12 @@ int rhizome_make_space(int group_priority, uint64_t bytes)
 /* Drop the specified file from storage, and any manifests that reference it, provided that none of
  * those manifests are being retained at a higher priority than the maximum specified here.
  */
-int rhizome_drop_stored_file(const char *id, int maximum_priority)
+int rhizome_drop_stored_file(const rhizome_filehash_t *hashp, int maximum_priority)
 {
-  if (!rhizome_str_is_file_hash(id))
-    return WHYF("invalid file hash id=%s", alloca_str_toprint(id));
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare_bind(&retry, "SELECT id FROM MANIFESTS WHERE filehash = ?", TEXT_TOUPPER, id, END);
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry, "SELECT id FROM MANIFESTS WHERE filehash = ?", RHIZOME_FILEHASH_T, hashp, END);
   if (!statement)
-    return WHYF("Could not drop stored file id=%s", id);
+    return WHYF("Could not drop stored file id=%s", alloca_tohex_rhizome_filehash_t(*hashp));
   int can_drop = 1;
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     /* Find manifests for this file */
@@ -1214,9 +1229,9 @@ int rhizome_drop_stored_file(const char *id, int maximum_priority)
 	that are lower priority, and thus free up a little space. */
     int priority = rhizome_manifest_priority(&retry, &bid);
     if (priority == -1)
-      WHYF("Cannot drop fileid=%s due to error, bid=%s", id, alloca_tohex_rhizome_bid_t(bid));
+      WHYF("Cannot drop fileid=%s due to error, bid=%s", alloca_tohex_rhizome_filehash_t(*hashp), alloca_tohex_rhizome_bid_t(bid));
     else if (priority > maximum_priority) {
-      WHYF("Cannot drop fileid=%s due to manifest priority, bid=%s", id, alloca_tohex_rhizome_bid_t(bid));
+      WHYF("Cannot drop fileid=%s due to manifest priority, bid=%s", alloca_tohex_rhizome_filehash_t(*hashp), alloca_tohex_rhizome_bid_t(bid));
       can_drop = 0;
     } else {
       if (config.debug.rhizome)
@@ -1228,7 +1243,7 @@ int rhizome_drop_stored_file(const char *id, int maximum_priority)
   }
   sqlite3_finalize(statement);
   if (can_drop)
-    rhizome_delete_file_retry(&retry, id);
+    rhizome_delete_file_retry(&retry, hashp);
   return 0;
 }
 
@@ -1272,16 +1287,8 @@ int rhizome_store_bundle(rhizome_manifest *m)
   rhizome_manifest_to_bar(m,bar);
 
   /* Store the file (but not if it is already in the database) */
-  char filehash[RHIZOME_FILEHASH_STRLEN + 1];
-  if (m->fileLength > 0) {
-    strncpy(filehash, m->fileHexHash, sizeof filehash);
-    str_toupper_inplace(filehash);
-
-    if (!rhizome_exists(filehash))
-      return WHY("File should already be stored by now");
-  } else {
-    filehash[0] = '\0';
-  }
+  if (m->fileLength > 0 && !rhizome_exists(&m->filehash))
+    return WHY("File should already be stored by now");
 
   const char *name = rhizome_manifest_get(m, "name", NULL, 0);
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
@@ -1331,7 +1338,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
 	INT64, (int64_t) gettime_ms(),
 	STATIC_BLOB, bar, RHIZOME_BAR_BYTES,
 	INT64, m->fileLength,
-	TEXT_TOUPPER|NUL, filehash,
+	RHIZOME_FILEHASH_T|NUL, m->fileLength > 0 ? &m->filehash : NULL,
 	SID_T|NUL, is_sid_t_any(m->author) ? NULL : &m->author,
 	STATIC_TEXT, service,
 	STATIC_TEXT|NUL, name,
@@ -1627,15 +1634,28 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
   if (service == NULL)
     return WHY("Manifest has no service");
-  
+
   const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-  const char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
-  const char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
-  
+
+  sid_t *sender = NULL;
+  const char *sender_field = rhizome_manifest_get(m, "sender", NULL, 0);
+  if (sender_field) {
+    sender = (sid_t *) alloca(sizeof *sender);
+    if (str_to_sid_t(sender, sender_field) == -1)
+      return WHYF("invalid field in manifest bid=%s: sender=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), alloca_str_toprint(sender_field));
+  }
+
+  sid_t *recipient = NULL;
+  const char *recipient_field = rhizome_manifest_get(m, "recipient", NULL, 0);
+  if (recipient_field) {
+    recipient = (sid_t *) alloca(sizeof *recipient);
+    if (str_to_sid_t(recipient, recipient_field) == -1)
+      return WHYF("invalid field in manifest bid=%s: recipient=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), alloca_str_toprint(recipient_field));
+  }
+
   char sqlcmd[1024];
   strbuf b = strbuf_local(sqlcmd, sizeof sqlcmd);
   strbuf_puts(b, "SELECT id, manifest, author FROM manifests WHERE filesize = ? AND service = ?");
-  
   if (m->fileLength != 0)
     strbuf_puts(b, " AND filehash = ?");
   if (name)
@@ -1644,73 +1664,60 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
     strbuf_puts(b, " AND sender = ?");
   if (recipient)
     strbuf_puts(b, " AND recipient = ?");
-  
   if (strbuf_overrun(b))
     return WHYF("SQL command too long: %s", strbuf_str(b));
-  
+
   int ret = 0;
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, strbuf_str(b));
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry, strbuf_str(b), INT64, m->fileLength, STATIC_TEXT, service, END);
   if (!statement)
     return -1;
-  
-  int field = 1;
-  sqlite3_bind_int(statement, field++, m->fileLength);
-  sqlite3_bind_text(statement, field++, service, -1, SQLITE_STATIC);
-  
+  int field = 2;
   if (m->fileLength != 0)
-    sqlite3_bind_text(statement, field++, m->fileHexHash, -1, SQLITE_STATIC);
+    sqlite_bind(&retry, statement, INDEX|RHIZOME_FILEHASH_T, ++field, &m->filehash, END);
   if (name)
-    sqlite3_bind_text(statement, field++, name, -1, SQLITE_STATIC);
+    sqlite_bind(&retry, statement, INDEX|STATIC_TEXT, ++field, name, END);
   if (sender)
-    sqlite3_bind_text(statement, field++, sender, -1, SQLITE_STATIC);
+    sqlite_bind(&retry, statement, INDEX|SID_T|NUL, ++field, sender, END);
   if (recipient)
-    sqlite3_bind_text(statement, field++, recipient, -1, SQLITE_STATIC);
-  
+    sqlite_bind(&retry, statement, INDEX|SID_T|NUL, ++field, recipient, END);
+
   int rows = 0;
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     ++rows;
     if (config.debug.rhizome)
       DEBUGF("Row %d", rows);
-      
     rhizome_manifest *blob_m = rhizome_new_manifest();
     if (blob_m == NULL) {
       ret = WHY("Out of manifests");
       break;
     }
-    
     const unsigned char *q_manifestid = sqlite3_column_text(statement, 0);
-    
     const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
     size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
     if (rhizome_read_manifest_file(blob_m, manifestblob, manifestblobsize) == -1) {
       WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
       goto next;
     }
-    
     if (rhizome_manifest_verify(blob_m)) {
       WARNF("MANIFESTS row id=%s fails verification -- skipped", q_manifestid);
       goto next;
     }
-    
     const char *q_author = (const char *) sqlite3_column_text(statement, 2);
     if (q_author) {
       if (config.debug.rhizome)
 	strbuf_sprintf(b, " .author=%s", q_author);
       str_to_sid_t(&blob_m->author, q_author);
     }
-    
     // check that we can re-author this manifest
     if (rhizome_extract_privatekey(blob_m, NULL)){
       goto next;
     }
-    
     *found = blob_m;
     if (config.debug.rhizome)
       DEBUGF("Found duplicate payload, %s", q_manifestid);
     ret = 1;
     break;
-    
 next:
     if (blob_m)
       rhizome_manifest_free(blob_m);
@@ -1807,14 +1814,14 @@ static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizom
   return sqlite3_changes(rhizome_db) ? 0 : 1;
 }
 
-static int rhizome_delete_file_retry(sqlite_retry_state *retry, const char *fileid)
+static int rhizome_delete_file_retry(sqlite_retry_state *retry, const rhizome_filehash_t *hashp)
 {
   int ret = 0;
-  rhizome_delete_external(fileid);
-  sqlite3_stmt *statement = sqlite_prepare_bind(retry, "DELETE FROM files WHERE id = ?", TEXT_TOUPPER, fileid, END);
+  rhizome_delete_external(hashp);
+  sqlite3_stmt *statement = sqlite_prepare_bind(retry, "DELETE FROM files WHERE id = ?", RHIZOME_FILEHASH_T, hashp, END);
   if (!statement || sqlite_exec_retry(retry, statement) == -1)
     ret = -1;
-  statement = sqlite_prepare_bind(retry, "DELETE FROM fileblobs WHERE id = ?", TEXT_TOUPPER, fileid, END);
+  statement = sqlite_prepare_bind(retry, "DELETE FROM fileblobs WHERE id = ?", RHIZOME_FILEHASH_T, hashp, END);
   if (!statement || sqlite_exec_retry(retry, statement) == -1)
     ret = -1;
   return ret == -1 ? -1 : sqlite3_changes(rhizome_db) ? 0 : 1;
@@ -1826,7 +1833,10 @@ static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const rhizome
   int rows = sqlite_exec_strbuf_retry(retry, fh, "SELECT filehash FROM manifests WHERE id = ?", RHIZOME_BID_T, bidp, END);
   if (rows == -1)
     return -1;
-  if (rows && rhizome_delete_file_retry(retry, strbuf_str(fh)) == -1)
+  rhizome_filehash_t hash;
+  if (str_to_rhizome_filehash_t(&hash, strbuf_str(fh)) == -1)
+    return WHYF("invalid field FILES.id=%s", strbuf_str(fh));
+  if (rows && rhizome_delete_file_retry(retry, &hash) == -1)
     return -1;
   return 0;
 }
@@ -1887,10 +1897,10 @@ int rhizome_delete_payload(const rhizome_bid_t *bidp)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_delete_file(const char *fileid)
+int rhizome_delete_file(const rhizome_filehash_t *hashp)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  return rhizome_delete_file_retry(&retry, fileid);
+  return rhizome_delete_file_retry(&retry, hashp);
 }
 
 static int is_interesting(const char *id_hex, int64_t version)
@@ -1901,7 +1911,7 @@ static int is_interesting(const char *id_hex, int64_t version)
   // do we have this bundle [or later]?
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
-    "SELECT filehash FROM manifests WHERE id like ? and version >= ?",
+    "SELECT filehash FROM MANIFESTS WHERE id LIKE ? AND version >= ?",
     TEXT_TOUPPER, id_hex,
     INT64, version,
     END);
@@ -1910,8 +1920,14 @@ static int is_interesting(const char *id_hex, int64_t version)
   if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
     const char *q_filehash = (const char *) sqlite3_column_text(statement, 0);
     ret=0;
-    if (q_filehash && *q_filehash && !rhizome_exists(q_filehash))
-      ret=1;
+    if (q_filehash && *q_filehash) {
+      rhizome_filehash_t hash;
+      if (str_to_rhizome_filehash_t(&hash, q_filehash) == -1) {
+	WARNF("invalid field MANIFESTS.filehash=%s -- ignored", alloca_str_toprint(q_filehash));
+	ret = 1;
+      } else if (!rhizome_exists(&hash))
+	ret = 1;
+    }
   }
   sqlite3_finalize(statement);
   RETURN(ret);

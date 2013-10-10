@@ -487,7 +487,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     slot->manifest->dataFileUnlinkOnFree = 0;
     
     strbuf r = strbuf_local(slot->request, sizeof slot->request);
-    strbuf_sprintf(r, "GET /rhizome/file/%s HTTP/1.0\r\n", slot->manifest->fileHexHash);
+    strbuf_sprintf(r, "GET /rhizome/file/%s HTTP/1.0\r\n", alloca_tohex_rhizome_filehash_t(slot->manifest->filehash));
     
     if (slot->manifest->journalTail>=0){
       // if we're fetching a journal bundle, work out how many bytes we have of a previous version
@@ -509,12 +509,12 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     }
 
     strbuf_puts(r, "\r\n");
-    
+
     if (strbuf_overrun(r))
       RETURN(WHY("request overrun"));
     slot->request_len = strbuf_len(r);
 
-    if (rhizome_open_write(&slot->write_state, slot->manifest->fileHexHash, slot->manifest->fileLength, RHIZOME_PRIORITY_DEFAULT))
+    if (rhizome_open_write(&slot->write_state, &slot->manifest->filehash, slot->manifest->fileLength, RHIZOME_PRIORITY_DEFAULT))
       RETURN(-1);
   } else {
     strbuf r = strbuf_local(slot->request, sizeof slot->request);
@@ -690,9 +690,9 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   for (i = 0; i < NQUEUES; ++i) {
     struct rhizome_fetch_slot *as = &rhizome_fetch_queues[i].active;
     const rhizome_manifest *am = as->manifest;
-    if (as->state != RHIZOME_FETCH_FREE && strcasecmp(m->fileHexHash, am->fileHexHash) == 0) {
+    if (as->state != RHIZOME_FETCH_FREE && cmp_rhizome_filehash_t(&m->filehash, &am->filehash) == 0) {
       if (config.debug.rhizome_rx)
-	DEBUGF("   fetch already in progress, slot=%d filehash=%s", i, m->fileHexHash);
+	DEBUGF("   fetch already in progress, slot=%d filehash=%s", i, alloca_tohex_rhizome_filehash_t(m->filehash));
       RETURN(SAMEPAYLOAD);
     }
   }
@@ -707,7 +707,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
     DEBUGF("   is new");
 
   // If the payload is already available, no need to fetch, so import now.
-  if (rhizome_exists(m->fileHexHash)){
+  if (rhizome_exists(&m->filehash)){
     if (config.debug.rhizome_rx)
       DEBUGF("   fetch not started - payload already present, so importing instead");
     if (rhizome_add_manifest(m, m->ttl-1) == -1)
@@ -1138,8 +1138,7 @@ static int pipe_journal(struct rhizome_fetch_slot *slot){
   if (start>=0 && start < slot->previous->fileLength && length>0){
     if (config.debug.rhizome)
       DEBUGF("Copying %"PRId64" bytes from previous journal", length);
-    rhizome_journal_pipe(&slot->write_state, slot->previous->fileHexHash, 
-      start, length);
+    rhizome_journal_pipe(&slot->write_state, &slot->previous->filehash, start, length);
   }
   
   // and we don't need to do this again, so drop the manifest
@@ -1274,10 +1273,11 @@ int rhizome_write_complete(struct rhizome_fetch_slot *slot)
       }
       INFOF("Completed http request from %s:%u  for file %s",
 	      buf, ntohs(slot->peer_ipandport.sin_port), 
-	      slot->manifest->fileHexHash);
+	      alloca_tohex_rhizome_filehash_t(slot->manifest->filehash));
     } else {
       INFOF("Completed MDP request from %s  for file %s",
-	    alloca_tohex_sid_t(slot->peer_sid), slot->manifest->fileHexHash);
+	    alloca_tohex_sid_t(slot->peer_sid),
+	    alloca_tohex_rhizome_filehash_t(slot->manifest->filehash));
     }
   } else {
     /* This was to fetch the manifest, so now fetch the file if needed */
@@ -1409,7 +1409,8 @@ int rhizome_received_content(const unsigned char *bidprefix,
     
     if (m){
       if (rhizome_import_buffer(m, bytes, count)>=0 && !rhizome_import_received_bundle(m)){
-	INFOF("Completed MDP transfer in one hit for file %s", m->fileHexHash);
+	INFOF("Completed MDP transfer in one hit for file %s",
+	    alloca_tohex_rhizome_filehash_t(m->filehash));
 	if (c)
 	  candidate_unqueue(c);
       }

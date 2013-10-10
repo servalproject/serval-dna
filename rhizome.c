@@ -73,7 +73,7 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
 	filepath ? alloca_str_toprint(filepath) : "NULL");
   
   unsigned char buffer[MAX_MANIFEST_BYTES];
-  int buffer_len=0;
+  size_t buffer_len = 0;
   
   // manifest has been appended to the end of the file.
   if (strcmp(manifest_path, filepath)==0){
@@ -251,10 +251,8 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
   if (rhizome_manifest_check_sanity(m_in))
     return -1;
 
-  if (m_in->fileLength){
-    if (!rhizome_exists(m_in->fileHexHash))
-      return WHY("File has not been imported");
-  }
+  if (m_in->fileLength && !rhizome_exists(&m_in->filehash))
+    return WHY("File has not been imported");
 
   /* If the manifest already has an ID */
   if (rhizome_bid_t_is_zero(m_in->cryptoSignPublic))

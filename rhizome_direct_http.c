@@ -892,10 +892,8 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 
 	/* Get filehash and size from manifest if present */
 	DEBUGF("bundle id = %s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
-	const char *hash = rhizome_manifest_get(m, "filehash", NULL, 0);
-	DEBUGF("bundle file hash = '%s'",hash);
-	int64_t filesize = rhizome_manifest_get_ll(m, "filesize");
-	DEBUGF("file size = %"PRId64,filesize);
+	DEBUGF("bundle filehash = '%s'", alloca_tohex_rhizome_filehash_t(m->filehash));
+	DEBUGF("file size = %"PRId64, m->fileLength);
 	int64_t version = rhizome_manifest_get_ll(m, "version");
 	DEBUGF("version = %"PRId64,version);
 
@@ -923,7 +921,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  +m->manifest_all_bytes
 	  +strlen(template3)-2 /* minus 2 for the "%s" that gets replaced */
 	  +strlen(boundary)
-	  +filesize
+	  +m->fileLength
 	  +strlen("\r\n--")+strlen(boundary)+strlen("--\r\n");
 
 	/* XXX For some reason the above is four bytes out, so fix that */
@@ -961,17 +959,17 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 
 	/* send file contents */
 	{
-	  char filehash[SHA512_DIGEST_STRING_LENGTH];
-	  if (rhizome_database_filehash_from_id(&m->cryptoSignPublic, version, filehash) == -1)
+	  rhizome_filehash_t filehash;
+	  if (rhizome_database_filehash_from_id(&m->cryptoSignPublic, version, &filehash) == -1)
 	    goto closeit;
 	  
 	  struct rhizome_read read;
 	  bzero(&read, sizeof read);
-	  if (rhizome_open_read(&read, filehash))
+	  if (rhizome_open_read(&read, &filehash))
 	    goto closeit;
 	
-	  int read_ofs;
-	  for(read_ofs=0;read_ofs<filesize;){
+	  int64_t read_ofs;
+	  for(read_ofs=0;read_ofs<m->fileLength;){
 	    unsigned char buffer[4096];
 	    read.offset=read_ofs;
 	    int bytes_read = rhizome_read(&read, buffer, sizeof buffer);

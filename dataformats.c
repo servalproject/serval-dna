@@ -94,6 +94,28 @@ int strn_to_rhizome_bid_t(rhizome_bid_t *bid, const char *hex, const char **endp
   return 0;
 }
 
+int cmp_rhizome_filehash_t(const rhizome_filehash_t *a, const rhizome_filehash_t *b)
+{
+  return memcmp(a, b, sizeof a->binary);
+}
+
+int str_to_rhizome_filehash_t(rhizome_filehash_t *hashp, const char *hex)
+{
+  return fromhexstr(hashp->binary, hex, sizeof hashp->binary);
+}
+
+int strn_to_rhizome_filehash_t(rhizome_filehash_t *hashp, const char *hex, const char **endp)
+{
+  rhizome_filehash_t tmp;
+  int n = fromhex(tmp.binary, hex, sizeof tmp.binary);
+  if (n != sizeof tmp.binary)
+    return -1;
+  *hashp = tmp;
+  if (endp)
+    *endp = hex + sizeof hashp->binary * 2;
+  return 0;
+}
+
 int rhizome_strn_is_manifest_id(const char *id)
 {
   return is_xsubstring(id, RHIZOME_MANIFEST_ID_STRLEN);

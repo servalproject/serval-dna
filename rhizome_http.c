@@ -449,14 +449,15 @@ static int rhizome_file_page(rhizome_http_request *r, const char *remainder, con
   if (!is_rhizome_http_enabled())
     return 1;
   
-  if (!rhizome_str_is_file_hash(remainder))
+  rhizome_filehash_t filehash;
+  if (str_to_rhizome_filehash_t(&filehash, remainder) == -1)
     return -1;
   
   bzero(&r->read_state, sizeof(r->read_state));
 
   /* Refuse to honour HTTP request if required (used for debugging and 
      testing transition from HTTP to MDP) */
-  if (rhizome_open_read(&r->read_state, remainder))
+  if (rhizome_open_read(&r->read_state, &filehash))
     return 1;
     
   if (r->read_state.length==-1){

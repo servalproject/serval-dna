@@ -169,14 +169,13 @@ int rhizome_manifest_parse(rhizome_manifest *m)
 	  }
 	} else if (strcasecmp(var, "filehash") == 0) {
 	  have_filehash = 1;
-	  if (!rhizome_str_is_file_hash(value)) {
+	  if (str_to_rhizome_filehash_t(&m->filehash, value) == -1) {
 	    if (config.debug.rejecteddata)
 	      WARNF("Invalid filehash: %s", value);
 	    m->errors++;
 	  } else {
 	    /* Force to upper case to avoid case sensitive comparison problems later. */
 	    str_toupper_inplace(m->values[m->var_count]);
-	    strcpy(m->fileHexHash, m->values[m->var_count]);
 	  }
 	} else if (strcasecmp(var, "filesize") == 0) {
 	  have_filesize = 1;
@@ -344,7 +343,7 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   return rhizome_manifest_parse(m);
 }
 
-int rhizome_hash_file(rhizome_manifest *m, const char *filename, char *hash_out)
+int rhizome_hash_file(rhizome_manifest *m, const char *path, rhizome_filehash_t *hash_out, uint64_t *size_out)
 {
   /* Gnarf! NaCl's crypto_hash() function needs the whole file passed in in one
      go.  Trouble is, we need to run Serval DNA on filesystems that lack mmap(),
@@ -355,35 +354,36 @@ int rhizome_hash_file(rhizome_manifest *m, const char *filename, char *hash_out)
   if (m && m->payloadEncryption) 
     return WHY("Encryption of payloads not implemented");
 
-  size_t filesize = 0;
+  uint64_t filesize = 0;
   SHA512_CTX context;
   SHA512_Init(&context);
-  if (filename[0]) {
-    FILE *f = fopen(filename, "r");
-    if (!f) {
-      WHY_perror("fopen");
-      return WHYF("Could not open %s to calculate SHA512 hash.", filename);
-    }
-    while (!feof(f)) {
-      unsigned char buffer[8192];
-      int r = fread(buffer, 1, 8192, f);
+  if (path[0]) {
+    int fd = open(path, O_RDONLY);
+    if (fd == -1)
+      return WHYF_perror("open(%s,O_RDONLY)", alloca_str_toprint(path));
+    unsigned char buffer[8192];
+    ssize_t r;
+    while ((r = read(fd, buffer, sizeof buffer))) {
       if (r == -1) {
-	WHY_perror("fread");
-	fclose(f);
-	return WHYF("Error reading %s to calculate SHA512 hash", filename);
+	WHYF_perror("read(%s,%u)", alloca_str_toprint(path), sizeof buffer);
+	close(fd);
+	return -1;
       }
-      if (r > 0)
-	SHA512_Update(&context, buffer, r);
-      filesize += r;
+      SHA512_Update(&context, buffer, (size_t) r);
+      filesize += (size_t) r;
     }
-    fclose(f);
+    close(fd);
   }
-  SHA512_End(&context, (char *)hash_out);
-  // Empty files (including null filename) have no hash.
-  if (filesize > 0)
-    str_toupper_inplace(hash_out);
-  else
-    hash_out[0] = '\0';
+  // Empty files (including empty path) have no hash.
+  if (hash_out) {
+    if (filesize > 0)
+      SHA512_Final(hash_out->binary, &context);
+    else
+      *hash_out = RHIZOME_FILEHASH_NONE;
+  }
+  if (size_out)
+    *size_out = filesize;
+  SHA512_End(&context, NULL);
   return 0;
 }
 

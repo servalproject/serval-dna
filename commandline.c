@@ -1275,10 +1275,11 @@ int app_rhizome_hash_file(const struct cli_parsed *parsed, struct cli_context *c
      return the hash of the file unencrypted. */
   const char *filepath;
   cli_arg(parsed, "filepath", &filepath, NULL, "");
-  char hexhash[RHIZOME_FILEHASH_STRLEN + 1];
-  if (rhizome_hash_file(NULL, filepath, hexhash))
+  rhizome_filehash_t hash;
+  uint64_t size;
+  if (rhizome_hash_file(NULL, filepath, &hash, &size) == -1)
     return -1;
-  cli_put_string(context, hexhash, "\n");
+  cli_put_string(context, size ? alloca_tohex_rhizome_filehash_t(hash) : "", "\n");
   return 0;
 }
 
@@ -1425,7 +1426,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   cli_put_long(context, mout->fileLength, "\n");
   if (mout->fileLength != 0) {
     cli_field_name(context, "filehash", ":");
-    cli_put_string(context, mout->fileHexHash, "\n");
+    cli_put_string(context, alloca_tohex_rhizome_filehash_t(mout->filehash), "\n");
   }
   const char *name = rhizome_manifest_get(mout, "name", NULL, 0);
   if (name) {
@@ -1528,7 +1529,7 @@ int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_contex
   cli_put_long(context, m->fileLength, "\n");
   if (m->fileLength != 0) {
     cli_field_name(context, "filehash", ":");
-    cli_put_string(context, m->fileHexHash, "\n");
+    cli_put_string(context, alloca_tohex_rhizome_filehash_t(m->filehash), "\n");
   }
   const char *name = rhizome_manifest_get(m, "name", NULL, 0);
   if (name) {
@@ -1588,12 +1589,10 @@ int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_context *cont
   if (cli_arg(parsed, "file", NULL, NULL, NULL) == 0) {
     if (!fileid)
       return WHY("missing <fileid> argument");
-    unsigned char filehash[RHIZOME_FILEHASH_BYTES];
-    if (fromhexstr(filehash, fileid, RHIZOME_FILEHASH_BYTES) == -1)
-      return WHY("Invalid file ID");
-    char fileIDUpper[RHIZOME_FILEHASH_STRLEN + 1];
-    tohex(fileIDUpper, RHIZOME_FILEHASH_STRLEN, filehash);
-    ret = rhizome_delete_file(fileIDUpper);
+    rhizome_filehash_t hash;
+    if (str_to_rhizome_filehash_t(&hash, fileid) == -1)
+      return WHYF("invalid <fileid> argument: %s", alloca_str_toprint(fileid));
+    ret = rhizome_delete_file(&hash);
   } else {
     if (!manifestid)
       return WHY("missing <manifestid> argument");
@@ -1688,7 +1687,8 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
     cli_field_name(context, ".readonly", ":");  cli_put_long(context, m->haveSecret?0:1, "\n");
     cli_field_name(context, "filesize", ":");   cli_put_long(context, m->fileLength, "\n");
     if (m->fileLength != 0) {
-      cli_field_name(context, "filehash", ":"); cli_put_string(context, m->fileHexHash, "\n");
+      cli_field_name(context, "filehash", ":");
+      cli_put_string(context, alloca_tohex_rhizome_filehash_t(m->filehash), "\n");
     }
   }
   
@@ -1702,7 +1702,7 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
     }else{
       // Save the file without attempting to decrypt
       int64_t length;
-      retfile = rhizome_dump_file(m->fileHexHash, filepath, &length);
+      retfile = rhizome_dump_file(&m->filehash, filepath, &length);
     }
   }
   
@@ -1741,18 +1741,21 @@ int app_rhizome_export_file(const struct cli_parsed *parsed, struct cli_context 
   if (   cli_arg(parsed, "filepath", &filepath, NULL, "") == -1
       || cli_arg(parsed, "fileid", &fileid, cli_fileid, NULL) == -1)
     return -1;
+  rhizome_filehash_t hash;
+  if (str_to_rhizome_filehash_t(&hash, fileid) == -1)
+    return WHYF("invalid <fileid> argument: %s", alloca_str_toprint(fileid));
   if (create_serval_instance_dir() == -1)
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
-  if (!rhizome_exists(fileid))
+  if (!rhizome_exists(&hash))
     return 1;
   int64_t length;
-  int ret = rhizome_dump_file(fileid, filepath, &length);
+  int ret = rhizome_dump_file(&hash, filepath, &length);
   if (ret)
     return ret == -1 ? -1 : 1;
   cli_field_name(context, "filehash", ":");
-  cli_put_string(context, fileid, "\n");
+  cli_put_string(context, alloca_tohex_rhizome_filehash_t(hash), "\n");
   cli_field_name(context, "filesize", ":");
   cli_put_long(context, length, "\n");
   return 0;

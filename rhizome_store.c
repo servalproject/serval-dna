@@ -5,22 +5,22 @@
 
 #define RHIZOME_BUFFER_MAXIMUM_SIZE (1024*1024)
 
-int rhizome_exists(const char *fileHash)
+int rhizome_exists(const rhizome_filehash_t *hashp)
 {
   int64_t gotfile = 0;
-  if (sqlite_exec_int64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE id = ? and datavalid = 1;", TEXT_TOUPPER, fileHash, END) != 1)
+  if (sqlite_exec_int64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE id = ? and datavalid = 1;", RHIZOME_FILEHASH_T, hashp, END) != 1)
     return 0;
   return gotfile;
 }
 
-int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority)
+int rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *expectedHashp, int64_t file_length, int priority)
 {
   write->blob_fd=-1;
   
-  if (expectedFileHash){
-    if (rhizome_exists(expectedFileHash))
+  if (expectedHashp){
+    if (rhizome_exists(expectedHashp))
       return 1;
-    strlcpy(write->id, expectedFileHash, SHA512_DIGEST_STRING_LENGTH);
+    write->id = *expectedHashp;
     write->id_known=1;
   }else{
     write->id_known=0;
@@ -429,7 +429,7 @@ int rhizome_fail_write(struct rhizome_write *write)
     write->buffer_list=n->_next;
     free(n);
   }
-  rhizome_delete_file(write->id);
+  rhizome_delete_file(&write->id);
   return 0;
 }
 
@@ -460,39 +460,39 @@ int rhizome_finish_write(struct rhizome_write *write)
   if (write_release_lock(write))
     goto failure;
   
-  char hash_out[SHA512_DIGEST_STRING_LENGTH + 1];
-  SHA512_End(&write->sha512_context, hash_out);
-  str_toupper_inplace(hash_out);
+  rhizome_filehash_t hash_out;
+  SHA512_Final(hash_out.binary, &write->sha512_context);
+  SHA512_End(&write->sha512_context, NULL);
 
   if (write->id_known) {
-    if (strcasecmp(write->id, hash_out) != 0) {
-      WHYF("expected filehash=%s, got %s", write->id, hash_out);
+    if (cmp_rhizome_filehash_t(&write->id, &hash_out) != 0) {
+      WHYF("expected filehash=%s, got %s", alloca_tohex_rhizome_filehash_t(write->id), alloca_tohex_rhizome_filehash_t(hash_out));
       goto failure;
     }
   } else {
-    strlcpy(write->id, hash_out, SHA512_DIGEST_STRING_LENGTH);
+    write->id = hash_out;
   }
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  rhizome_remove_file_datainvalid(&retry, write->id);
-  if (rhizome_exists(write->id)) {
+  rhizome_remove_file_datainvalid(&retry, &write->id);
+  if (rhizome_exists(&write->id)) {
     // we've already got that payload, delete the new copy
     sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILEBLOBS WHERE id = ?;", UINT64_TOSTR, write->temp_id, END);
     sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILES WHERE id = ?;", UINT64_TOSTR, write->temp_id, END);
     if (config.debug.rhizome)
-      DEBUGF("File id='%s' already present, removed id='%"PRId64"'", write->id, write->temp_id);
+      DEBUGF("File id=%s already present, removed id='%"PRId64"'", alloca_tohex_rhizome_filehash_t(write->id), write->temp_id);
   } else {
     if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1)
       goto dbfailure;
     
     // delete any half finished records
-    sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILEBLOBS WHERE id = ?;", STATIC_TEXT, write->id, END);
-    sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILES WHERE id = ?;", STATIC_TEXT, write->id, END);
+    sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILEBLOBS WHERE id = ?;", RHIZOME_FILEHASH_T, &write->id, END);
+    sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILES WHERE id = ?;", RHIZOME_FILEHASH_T, &write->id, END);
     
     if (sqlite_exec_void_retry(
 	    &retry,
 	    "UPDATE FILES SET id = ?, inserttime = ?, datavalid = 1 WHERE id = ?",
-	    STATIC_TEXT, write->id,
+	    RHIZOME_FILEHASH_T, &write->id,
 	    INT64, gettime_ms(),
 	    UINT64_TOSTR, write->temp_id,
 	    END
@@ -507,7 +507,7 @@ int rhizome_finish_write(struct rhizome_write *write)
 	WHYF("Failed to generate file path");
 	goto dbfailure;
       }
-      if (!FORM_RHIZOME_DATASTORE_PATH(dest_path, write->id)){
+      if (!FORM_RHIZOME_DATASTORE_PATH(dest_path, alloca_tohex_rhizome_filehash_t(write->id))){
 	WHYF("Failed to generate file path");
 	goto dbfailure;
       }
@@ -521,7 +521,7 @@ int rhizome_finish_write(struct rhizome_write *write)
       if (sqlite_exec_void_retry(
 	    &retry,
 	    "UPDATE FILEBLOBS SET id = ? WHERE rowid = ?",
-	    STATIC_TEXT, write->id,
+	    RHIZOME_FILEHASH_T, &write->id,
 	    INT64, write->blob_rowid,
 	    END
 	  ) == -1
@@ -531,7 +531,7 @@ int rhizome_finish_write(struct rhizome_write *write)
     if (sqlite_exec_void_retry(&retry, "COMMIT;", END) == -1)
       goto dbfailure;
     if (config.debug.rhizome)
-      DEBUGF("Stored file %s", write->id);
+      DEBUGF("Stored file %s", alloca_tohex_rhizome_filehash_t(write->id));
   }
   write->blob_rowid=-1;
   return 0;
@@ -553,7 +553,7 @@ int rhizome_import_file(rhizome_manifest *m, const char *filepath)
   struct rhizome_write write;
   bzero(&write, sizeof(write));
   
-  int ret=rhizome_open_write(&write, m->fileHexHash, m->fileLength, RHIZOME_PRIORITY_DEFAULT);
+  int ret=rhizome_open_write(&write, &m->filehash, m->fileLength, RHIZOME_PRIORITY_DEFAULT);
   if (ret!=0)
     return ret;
   
@@ -583,7 +583,7 @@ int rhizome_import_buffer(rhizome_manifest *m, unsigned char *buffer, int length
   struct rhizome_write write;
   bzero(&write, sizeof(write));
   
-  int ret=rhizome_open_write(&write, m->fileHexHash, m->fileLength, RHIZOME_PRIORITY_DEFAULT);
+  int ret=rhizome_open_write(&write, &m->filehash, m->fileLength, RHIZOME_PRIORITY_DEFAULT);
   if (ret!=0)
     return ret;
   
@@ -624,7 +624,7 @@ int rhizome_stat_file(rhizome_manifest *m, const char *filepath)
   rhizome_manifest_set_ll(m, "filesize", m->fileLength);
   
   if (m->fileLength == 0){
-    m->fileHexHash[0] = '\0';
+    m->filehash = RHIZOME_FILEHASH_NONE;
     rhizome_manifest_del(m, "filehash");
   }
   return 0;
@@ -676,8 +676,8 @@ int rhizome_add_file(rhizome_manifest *m, const char *filepath)
   if (rhizome_finish_write(&write))
     goto failure;
 
-  strlcpy(m->fileHexHash, write.id, SHA512_DIGEST_STRING_LENGTH);
-  rhizome_manifest_set(m, "filehash", m->fileHexHash);
+  m->filehash = write.id;
+  rhizome_manifest_set(m, "filehash", alloca_tohex_rhizome_filehash_t(m->filehash));
   return 0;
 
 failure:
@@ -687,26 +687,24 @@ failure:
 
 /* Return -1 on error, 0 if file blob found, 1 if not found.
  */
-int rhizome_open_read(struct rhizome_read *read, const char *fileid)
+int rhizome_open_read(struct rhizome_read *read, const rhizome_filehash_t *hashp)
 {
-  strncpy(read->id, fileid, sizeof read->id);
-  read->id[RHIZOME_FILEHASH_STRLEN] = '\0';
-  str_toupper_inplace(read->id);
+  read->id = *hashp;
   read->blob_rowid = -1;
   read->blob_fd = -1;
-  if (sqlite_exec_int64(&read->blob_rowid, 
+  if (sqlite_exec_int64(&read->blob_rowid,
       "SELECT FILEBLOBS.rowid "
       "FROM FILEBLOBS, FILES "
       "WHERE FILEBLOBS.id = FILES.id"
       " AND FILES.id = ?"
-      " AND FILES.datavalid != 0", STATIC_TEXT, read->id, END) == -1)
+      " AND FILES.datavalid != 0", RHIZOME_FILEHASH_T, &read->id, END) == -1)
     return -1;
   if (read->blob_rowid != -1) {
     read->length = -1; // discover the length on opening the db BLOB
   } else {
     // No row in FILEBLOBS, look for an external blob file.
     char blob_path[1024];
-    if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, read->id))
+    if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, alloca_tohex_rhizome_filehash_t(read->id)))
       return -1;
     read->blob_fd = open(blob_path, O_RDONLY);
     if (read->blob_fd == -1) {
@@ -787,13 +785,13 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
     read_state->hash_offset += bytes_read;
     // if we hash everything and the has doesn't match, we need to delete the payload
     if (read_state->hash_offset>=read_state->length){
-      char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
-      SHA512_End(&read_state->sha512_context, hash_out);
-      
-      if (strcasecmp(read_state->id, hash_out)){
+      rhizome_filehash_t hash_out;
+      SHA512_Final(hash_out.binary, &read_state->sha512_context);
+      SHA512_End(&read_state->sha512_context, NULL);
+      if (cmp_rhizome_filehash_t(&read_state->id, &hash_out) != 0) {
 	// hash failure, mark the payload as invalid
 	read_state->invalid = 1;
-	RETURN(WHYF("Expected hash=%s, got %s", read_state->id, hash_out));
+	RETURN(WHYF("Expected hash=%s, got %s", alloca_tohex_rhizome_filehash_t(read_state->id), alloca_tohex_rhizome_filehash_t(hash_out)));
       }
     }
   }
@@ -874,7 +872,7 @@ int rhizome_read_close(struct rhizome_read *read)
   read->blob_fd = -1;
   if (read->invalid){
     // delete payload!
-    rhizome_delete_file(read->id);
+    rhizome_delete_file(&read->id);
   }
   return 0;
 }
@@ -980,8 +978,7 @@ int rhizome_cache_count()
 }
 
 // read a block of data, caching meta data for reuse
-int rhizome_read_cached(const rhizome_bid_t *bidp, uint64_t version, time_ms_t timeout, 
-  uint64_t fileOffset, unsigned char *buffer, int length)
+int rhizome_read_cached(const rhizome_bid_t *bidp, uint64_t version, time_ms_t timeout, uint64_t fileOffset, unsigned char *buffer, int length)
 {
   // look for a cached entry
   struct cache_entry **ptr = find_entry_location(&root, bidp, version);
@@ -989,15 +986,13 @@ int rhizome_read_cached(const rhizome_bid_t *bidp, uint64_t version, time_ms_t t
   
   // if we don't have one yet, create one and open it
   if (!entry){
-    char filehash[SHA512_DIGEST_STRING_LENGTH];
-    if (rhizome_database_filehash_from_id(bidp, version, filehash) == -1)
+    rhizome_filehash_t filehash;
+    if (rhizome_database_filehash_from_id(bidp, version, &filehash) == -1)
       return -1;
-    
     entry = emalloc_zero(sizeof(struct cache_entry));
-    
-    if (rhizome_open_read(&entry->read_state, filehash)){
+    if (rhizome_open_read(&entry->read_state, &filehash)){
       free(entry);
-      return WHYF("Payload %s not found", filehash);
+      return WHYF("Payload %s not found", alloca_tohex_rhizome_filehash_t(filehash));
     }
     entry->bundle_id = *bidp;
     entry->version = version;
@@ -1073,8 +1068,9 @@ static int read_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizom
   return 0;
 }
 
-int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state){
-  int ret = rhizome_open_read(read_state, m->fileHexHash);
+int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state)
+{
+  int ret = rhizome_open_read(read_state, &m->filehash);
   if (ret == 0)
     ret = read_derive_key(m, bsk, read_state);
   return ret;
@@ -1100,12 +1096,12 @@ int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t
  *
  * Returns -1 on error, 0 if dumped successfully, 1 if not found.
  */
-int rhizome_dump_file(const char *id, const char *filepath, int64_t *length)
+int rhizome_dump_file(const rhizome_filehash_t *hashp, const char *filepath, int64_t *length)
 {
   struct rhizome_read read_state;
   bzero(&read_state, sizeof read_state);
 
-  int ret = rhizome_open_read(&read_state, id);
+  int ret = rhizome_open_read(&read_state, hashp);
   
   if (ret == 0) {
     ret = write_file(&read_state, filepath);
@@ -1141,13 +1137,12 @@ static int rhizome_pipe(struct rhizome_read *read, struct rhizome_write *write, 
   return 0;
 }
 
-int rhizome_journal_pipe(struct rhizome_write *write, const char *fileHash, uint64_t start_offset, uint64_t length)
+int rhizome_journal_pipe(struct rhizome_write *write, const rhizome_filehash_t *hashp, uint64_t start_offset, uint64_t length)
 {
   struct rhizome_read read_state;
   bzero(&read_state, sizeof read_state);
-  if (rhizome_open_read(&read_state, fileHash))
+  if (rhizome_open_read(&read_state, hashp))
     return -1;
-
   read_state.offset = start_offset;
   int ret = rhizome_pipe(&read_state, write, length);
   rhizome_read_close(&read_state);
@@ -1182,7 +1177,7 @@ int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m,
 
   if (copy_length>0){
     // note that we don't need to bother decrypting the existing journal payload
-    ret = rhizome_journal_pipe(write, m->fileHexHash, advance_by, copy_length);
+    ret = rhizome_journal_pipe(write, &m->filehash, advance_by, copy_length);
     if (ret)
       goto failure;
   }
@@ -1218,8 +1213,8 @@ int rhizome_append_journal_buffer(rhizome_manifest *m, rhizome_bk_t *bsk, uint64
   if (ret)
     goto failure;
 
-  strlcpy(m->fileHexHash, write.id, SHA512_DIGEST_STRING_LENGTH);
-  rhizome_manifest_set(m, "filehash", m->fileHexHash);
+  m->filehash = write.id;
+  rhizome_manifest_set(m, "filehash", alloca_tohex_rhizome_filehash_t(m->filehash));
   return 0;
 
 failure:
@@ -1250,8 +1245,8 @@ int rhizome_append_journal_file(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t
   if (ret)
     goto failure;
 
-  strlcpy(m->fileHexHash, write.id, SHA512_DIGEST_STRING_LENGTH);
-  rhizome_manifest_set(m, "filehash", m->fileHexHash);
+  m->filehash = write.id;
+  rhizome_manifest_set(m, "filehash", alloca_tohex_rhizome_filehash_t(m->filehash));
 
   return 0;
 

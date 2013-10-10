@@ -561,7 +561,8 @@ static int write_conversation(struct rhizome_write *write, struct conversations 
   return len;
 }
 
-static int write_known_conversations(rhizome_manifest *m, struct conversations *conv){
+static int write_known_conversations(rhizome_manifest *m, struct conversations *conv)
+{
   rhizome_manifest *mout=NULL;
   
   struct rhizome_write write;
@@ -590,8 +591,8 @@ static int write_known_conversations(rhizome_manifest *m, struct conversations *
     goto end;
   if (rhizome_finish_write(&write))
     goto end;
-  strlcpy(m->fileHexHash, write.id, SHA512_DIGEST_STRING_LENGTH);
-  rhizome_manifest_set(m, "filehash", m->fileHexHash);
+  m->filehash = write.id;
+  rhizome_manifest_set(m, "filehash", alloca_tohex_rhizome_filehash_t(m->filehash));
   if (rhizome_manifest_finalise(m, &mout, 1))
     goto end;
   
