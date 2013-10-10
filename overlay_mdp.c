@@ -959,26 +959,65 @@ static int mdp_reply2(const struct mdp_client *client, const struct mdp_header *
   return sendmsg(mdp_sock2.poll.fd, &hdr, 0);
 }
 
-#define mdp_reply_error(A,B,C)  mdp_reply2(A,B,MDP_FLAG_ERROR,(const unsigned char *)C,strlen(C))
+#define mdp_reply_error(A,B)  mdp_reply2(A,B,MDP_FLAG_ERROR,NULL,0)
 #define mdp_reply_ok(A,B)  mdp_reply2(A,B,MDP_FLAG_OK,NULL,0)
 
 static int mdp_process_identity_request(struct mdp_client *client, struct mdp_header *header, 
   const unsigned char *payload, int payload_len)
 {
   if (payload_len<sizeof(struct mdp_identity_request)){
-    mdp_reply_error(client, header, "Request too short");
-    return -1;
+    mdp_reply_error(client, header);
+    return WHY("Request too small");
   }
   struct mdp_identity_request *request = (struct mdp_identity_request *)payload;
   payload += sizeof(struct mdp_identity_request);
   payload_len -= sizeof(struct mdp_identity_request);
   
   switch(request->action){
+    case ACTION_LOCK:
+      switch (request->type){
+	case TYPE_PIN:
+	  {
+	    const char *pin = (char *)payload;
+	    int ofs=0;
+	    while(ofs < payload_len){
+	      if (!payload[ofs++]){
+		int cn, in;
+		for (cn = keyring->context_count -1; cn>=0; --cn) {
+		  keyring_context *cx = keyring->contexts[cn];
+		  for (in = cx->identity_count -1; in>=0; --in) {
+		    keyring_identity *id = cx->identities[in];
+		    if (id->subscriber != my_subscriber
+		      && strcmp(id->PKRPin, pin) == 0){
+		      keyring_release_identity(keyring, cn, in);
+		    }
+		  }
+		}
+		pin=(char *)&payload[ofs++];
+	      }
+	    }
+	  }
+	  break;
+	case TYPE_SID:
+	  while(payload_len>=SID_SIZE){
+	    int cn=0,in=0,kp=0;
+	    if (keyring_find_sid(keyring, &cn, &in, &kp, payload)
+	      && keyring->contexts[cn]->identities[in]->subscriber != my_subscriber)
+		keyring_release_identity(keyring, cn, in);
+	    payload+=SID_SIZE;
+	    payload_len-=SID_SIZE;
+	  }
+	  break;
+	default:
+	  mdp_reply_error(client, header);
+	  return WHY("Unknown request type");
+      }
+      break;
     case ACTION_UNLOCK:
       {
 	if (request->type!=TYPE_PIN){
-	  mdp_reply_error(client, header, "Unknown request type");
-	  return -1;
+	  mdp_reply_error(client, header);
+	  return WHY("Unknown request type");
 	}
 	int unlock_count=0;
 	const char *pin = (char *)payload;
@@ -992,8 +1031,8 @@ static int mdp_process_identity_request(struct mdp_client *client, struct mdp_he
       }
       break;
     default:
-      mdp_reply_error(client, header, "Unknown request action");
-      return -1;
+      mdp_reply_error(client, header);
+      return WHY("Unknown request action");
   }
   mdp_reply_ok(client, header);
   return 0;
@@ -1031,12 +1070,14 @@ static void mdp_poll2(struct sched_ent *alarm)
 	  mdp_process_identity_request(&client, header, payload, payload_len);
 	  break;
 	default:
-	  mdp_reply_error(&client, header, "Unknown port number");
+	  mdp_reply_error(&client, header);
+	  WHY("Unknown port number");
 	  break;
       }
     }else{
       // TODO transmit packet
-      mdp_reply_error(&client, header, "Transmitting packets is not yet supported");
+      mdp_reply_error(&client, header);
+      WHY("Transmitting packets is not yet supported");
     }
   }
 }

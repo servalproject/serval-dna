@@ -1965,10 +1965,12 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
   return 0;
 }
 
-int app_id_pin(const struct cli_parsed *parsed, struct cli_context *context)
+static int handle_pins(const struct cli_parsed *parsed, struct cli_context *context, int revoke)
 {
-  const char *pin;
+  const char *pin, *sid_hex;
   cli_arg(parsed, "entry-pin", &pin, NULL, "");
+  cli_arg(parsed, "sid", &sid_hex, str_is_subscriber_id, "");
+
   int ret=1;
   struct mdp_header header={
     .remote.port=MDP_IDENTITY,
@@ -1978,14 +1980,29 @@ int app_id_pin(const struct cli_parsed *parsed, struct cli_context *context)
   
   unsigned char payload[1200];
   struct mdp_identity_request *request = (struct mdp_identity_request *)payload;
-  request->action=ACTION_UNLOCK;
-  request->type=TYPE_PIN;
+  
+  if (revoke){
+    request->action=ACTION_LOCK;
+  }else{
+    request->action=ACTION_UNLOCK;
+  }
   int len = sizeof(struct mdp_identity_request);
-  int pin_len = strlen(pin)+1;
-  if (pin_len+len > sizeof(payload))
-    return WHY("Supplied pin is too long");
-  bcopy(pin, &payload[len], pin_len);
-  len+=pin_len;
+  
+  if (pin && *pin){
+    request->type=TYPE_PIN;
+    int pin_len = strlen(pin)+1;
+    if (pin_len+len > sizeof(payload))
+      return WHY("Supplied pin is too long");
+    bcopy(pin, &payload[len], pin_len);
+    len+=pin_len;
+  }else if(sid_hex && *sid_hex){
+    request->type=TYPE_SID;
+    sid_t sid;
+    if (str_to_sid_t(&sid, sid_hex) == -1)
+      return WHY("str_to_sid_t() failed");
+    bcopy(sid.binary, &payload[len], sizeof(sid));
+    len+=sizeof(sid);
+  }
   
   if (!mdp_send(mdp_sock, &header, payload, len)){
     WHY_perror("mdp_send");
@@ -2015,15 +2032,23 @@ int app_id_pin(const struct cli_parsed *parsed, struct cli_context *context)
     }
     if (rev_header.flags & MDP_FLAG_OK)
       ret=0;
-    if (rev_header.flags & MDP_FLAG_ERROR){
-      payload[len]=0;
-      WHYF("%s",payload);
-    }
+    if (rev_header.flags & MDP_FLAG_ERROR)
+      WHY("Operation failed, check the log for more information");
     break;
   }
 end:
   mdp_close(mdp_sock);
   return ret;
+}
+
+int app_revoke_pin(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  return handle_pins(parsed, context, 1);
+}
+
+int app_id_pin(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  return handle_pins(parsed, context, 0);
 }
 
 int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
@@ -2583,6 +2608,10 @@ struct cli_schema command_line_options[]={
    "Return identity(s) as URIs of own node, or of known routable peers, or all known peers"},
   {app_id_pin, {"id", "enter", "pin", "<entry-pin>", NULL}, 0,
    "Unlock any pin protected identities and enable routing packets to them"},
+  {app_revoke_pin, {"id", "revoke", "pin", "<entry-pin>", NULL}, 0,
+   "Unload any identities protected by this pin and drop all routes to them"},
+  {app_revoke_pin, {"id", "revoke", "sid", "<sid>", NULL}, 0,
+   "Unload a specific identity and drop all routes to it"},
   {app_route_print, {"route","print",NULL}, 0,
   "Print the routing table"},
   {app_network_scan, {"scan","[<address>]",NULL}, 0,

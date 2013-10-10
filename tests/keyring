@@ -206,7 +206,7 @@ teardown_KeyringKeyringPinServer() {
    report_servald_server
 }
 
-doc_KeyringEntryPinServer="Start daemon and unlock identities"
+doc_KeyringEntryPinServer="Start daemon, unlock and lock identities"
 setup_KeyringEntryPinServer() {
    setup
    executeOk_servald config set debug.mdprequests on
@@ -235,6 +235,18 @@ test_KeyringEntryPinServer() {
    assertStdoutGrep --fixed-strings "$ONE"
    assertStdoutGrep --fixed-strings "$TWOA"
    assertStdoutGrep --fixed-strings "$TWOB"
+   executeOk_servald id revoke pin 'one'
+   executeOk_servald id self
+   assertStdoutLineCount == 3
+   assertStdoutGrep --fixed-strings "$SIDA"
+   assertStdoutGrep --fixed-strings "$TWOA"
+   assertStdoutGrep --fixed-strings "$TWOB"
+   executeOk_servald id revoke sid "$TWOB"
+   tfw_cat --stderr
+   executeOk_servald id self
+   assertStdoutLineCount == 2
+   assertStdoutGrep --fixed-strings "$SIDA"
+   assertStdoutGrep --fixed-strings "$TWOA"
 }
 teardown_KeyringEntryPinServer() {
    kill_all_servald_processes

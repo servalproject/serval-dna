@@ -29,6 +29,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_address.h"
 
 static void keyring_free_keypair(keypair *kp);
+static void keyring_free_context(keyring_context *c);
+static void keyring_free_identity(keyring_identity *id);
 static int keyring_identity_mac(const keyring_identity *id, unsigned char *pkrsalt, unsigned char *mac);
 
 static int _keyring_open(keyring_file *k, const char *path, const char *mode)
@@ -228,7 +230,25 @@ static void wipestr(char *str)
     *str++ = ' ';
 }
 
-void keyring_free_context(keyring_context *c)
+void keyring_release_identity(keyring_file *k, int cn, int id){
+  if (config.debug.keyring)
+    DEBUGF("Releasing k=%p, cn=%d, id=%d", k, cn, id);
+  keyring_context *c=k->contexts[cn];
+  c->identity_count--;
+  keyring_free_identity(c->identities[id]);
+  if (id!=c->identity_count)
+    c->identities[id] = c->identities[c->identity_count];
+  c->identities[c->identity_count]=NULL;
+  if (c->identity_count==0){
+    keyring_free_context(c);
+    k->context_count --;
+    if (cn!=k->context_count)
+      k->contexts[cn] = k->contexts[k->context_count];
+    k->contexts[k->context_count]=NULL;
+  }
+}
+
+static void keyring_free_context(keyring_context *c)
 {
   int i;
   if (!c) return;
@@ -247,11 +267,12 @@ void keyring_free_context(keyring_context *c)
   
   /* Wipe out any loaded identities */
   for(i=0;i<KEYRING_MAX_IDENTITIES;i++)
-    if (c->identities[i]) keyring_free_identity(c->identities[i]);  
+    if (c->identities[i])
+      keyring_free_identity(c->identities[i]);  
 
   /* Make sure any private data is wiped out */
   bzero(c,sizeof(keyring_context));
-
+  free(c);
   return;
 }
 
@@ -273,6 +294,7 @@ void keyring_free_identity(keyring_identity *id)
       id->subscriber->reachable = REACHABLE_NONE;
   }
   bzero(id,sizeof(keyring_identity));
+  free(id);
   return;
 }
 
@@ -305,7 +327,6 @@ int keyring_enter_keyringpin(keyring_file *k, const char *pin)
       || ((c->KeyRingSalt = emalloc(c->KeyRingSaltLen)) == NULL)
   ) {
     keyring_free_context(c);
-    free(c);
     return -1;
   }
   bcopy(k->contexts[0]->KeyRingSalt, c->KeyRingSalt, c->KeyRingSaltLen);
@@ -747,6 +768,7 @@ static void keyring_free_keypair(keypair *kp)
     free(kp->public_key);
   }
   bzero(kp, sizeof(keypair));
+  free(kp);
 }
 
 static keypair *keyring_alloc_keypair(unsigned ktype, size_t len)
@@ -1104,10 +1126,8 @@ static int keyring_decrypt_pkr(keyring_file *k, unsigned cn, const char *pin, in
   /* Clean up any potentially sensitive data before exiting */
   bzero(slot,KEYRING_PAGE_SIZE);
   bzero(hash,crypto_hash_sha512_BYTES);
-  if (id) {
+  if (id)
     keyring_free_identity(id);
-    id = NULL;
-  }
   return 1;
 }
 
