@@ -1001,7 +1001,7 @@ static int mdp_process_identity_request(struct mdp_client *client, struct mdp_he
 	case TYPE_SID:
 	  while(payload_len>=SID_SIZE){
 	    int cn=0,in=0,kp=0;
-	    if (keyring_find_sid(keyring, &cn, &in, &kp, payload)
+	    if (keyring_find_sid(keyring, &cn, &in, &kp, (const sid_t *)payload)
 	      && keyring->contexts[cn]->identities[in]->subscriber != my_subscriber)
 		keyring_release_identity(keyring, cn, in);
 	    payload+=SID_SIZE;
