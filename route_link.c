@@ -423,6 +423,12 @@ next:
   if (set_reachable(subscriber, destination, next_hop))
     changed = 1;
   
+  if (subscriber->identity && subscriber->reachable==REACHABLE_NONE){
+    subscriber->reachable=REACHABLE_SELF;
+    if (config.debug.overlayrouting || config.debug.linkstate)
+      DEBUGF("REACHABLE via self %s", alloca_tohex_sid_t(subscriber->sid));
+  }
+  
   if (changed){
     monitor_announce_link(best_hop_count, transmitter, subscriber);
     state->next_update = now+5;
