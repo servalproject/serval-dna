@@ -462,43 +462,50 @@ sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, int log_level, sqlite
 int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement, va_list ap)
 {
   const int index_limit = sqlite3_limit(rhizome_db, SQLITE_LIMIT_VARIABLE_NUMBER, -1);
-  enum sqlbind_type typ;
+  unsigned argnum = 0;
   int index_counter = 0;
-  strbuf ext = NULL;
-  do {
-    typ = va_arg(ap, int);
+  enum sqlbind_type typ;
+  while ((typ = va_arg(ap, int)) != END) {
+    ++argnum;
     int index;
     const char *name = NULL;
+    strbuf ext = NULL;
     if ((typ & 0xffff0000) == INDEX) {
       typ &= 0xffff;
       index = va_arg(ap, int);
+      ++argnum;
       if (index < 1 || index > index_limit) {
-	LOGF(log_level, "illegal index %d: %s", index, sqlite3_sql(statement));
+	LOGF(log_level, "at bind arg %u, illegal index=%d: %s", argnum, index, sqlite3_sql(statement));
 	return -1;
       }
       if (config.debug.rhizome)
-	strbuf_sprintf((ext = strbuf_alloca(25)), "|INDEX index=%d", index);
+	strbuf_sprintf((ext = strbuf_alloca(35)), "|INDEX(%d)", index);
     } else if ((typ & 0xffff0000) == NAMED) {
       typ &= 0xffff;
       name = va_arg(ap, const char *);
+      ++argnum;
       index = sqlite3_bind_parameter_index(statement, name);
       if (index == 0) {
-	LOGF(log_level, "no parameter %s in query: %s", alloca_str_toprint(name), sqlite3_sql(statement));
+	LOGF(log_level, "at bind arg %u, no parameter named %s in query: %s", argnum, alloca_str_toprint(name), sqlite3_sql(statement));
 	return -1;
       }
       if (config.debug.rhizome) {
-	ext = strbuf_alloca(20 + toprint_str_len(name, "\"\""));
-	strbuf_puts(ext, "|NAMED name=");
+	ext = strbuf_alloca(30 + toprint_str_len(name, "\"\""));
+	strbuf_puts(ext, "|NAMED(");
 	strbuf_toprint_quoted(ext, "\"\"", name);
+	strbuf_puts(ext, ")");
       }
-    } else {
+    } else if ((typ & 0xffff0000) == 0) {
       index = ++index_counter;
       if (config.debug.rhizome)
-	ext = strbuf_alloca(1);
+	ext = strbuf_alloca(10);
+    } else {
+      FATALF("at bind arg %u, unsupported bind code typ=0x%08x: %s", argnum, typ, sqlite3_sql(statement));
+      return -1;
     }
 #define BIND_DEBUG(TYP,FUNC,ARGFMT,...) \
-	  if (config.debug.rhizome_bind) \
-	    DEBUGF("%s%s %s(%d," ARGFMT ") %s", #TYP, strbuf_str(ext), #FUNC, index, ##__VA_ARGS__, sqlite3_sql(statement))
+	if (config.debug.rhizome_bind) \
+	  DEBUGF("%s%s %s(%d," ARGFMT ") %s", #TYP, strbuf_str(ext), #FUNC, index, ##__VA_ARGS__, sqlite3_sql(statement))
 #define BIND_RETRY(FUNC, ...) \
 	do { \
 	  switch (FUNC(statement, index, ##__VA_ARGS__)) { \
@@ -515,149 +522,223 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	  } \
 	  break; \
 	} while (1)
+#define BIND_NULL(TYP) \
+	if (typ & NUL) { \
+	  BIND_DEBUG(TYP, sqlite3_bind_null, ""); \
+	  BIND_RETRY(sqlite3_bind_null); \
+	} else { \
+	  LOGF(log_level, "at bind arg %u, %s%s parameter is NULL: %s", argnum, #TYP, strbuf_str(ext), sqlite3_sql(statement)); \
+	  sqlite3_finalize(statement); \
+	  return -1; \
+	}
     switch (typ) {
-      case END:
-	break;
       case NUL:
 	BIND_DEBUG(NUL, sqlite3_bind_null, "");
 	BIND_RETRY(sqlite3_bind_null);
 	break;
-      case INT: {
-	  int value = va_arg(ap, int);
-	  BIND_DEBUG(INT, sqlite3_bind_int, "%d", value);
-	  BIND_RETRY(sqlite3_bind_int, value);
-	}
-	break;
-      case INT_TOSTR: {
-	  int value = va_arg(ap, int);
-	  char str[25];
-	  sprintf(str, "%d", value);
-	  BIND_DEBUG(INT_TOSTR, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(str));
-	  BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
-	}
-	break;
-      case UINT_TOSTR: {
-	  unsigned value = va_arg(ap, unsigned);
-	  char str[25];
-	  sprintf(str, "%u", value);
-	  BIND_DEBUG(UINT_TOSTR, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(str));
-	  BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
-	}
-	break;
-      case INT64: {
-	  sqlite3_int64 value = va_arg(ap, int64_t);
-	  BIND_DEBUG(INT64, sqlite3_bind_int64, "%"PRId64, (int64_t)value);
-	  BIND_RETRY(sqlite3_bind_int64, value);
-	}
-	break;
-      case INT64_TOSTR: {
-	  int64_t value = va_arg(ap, int64_t);
-	  char str[35];
-	  sprintf(str, "%"PRId64, value);
-	  BIND_DEBUG(INT64_TOSTR, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(str));
-	  BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
-	}
-	break;
-      case UINT64_TOSTR: {
-	  uint64_t value = va_arg(ap, uint64_t);
-	  char str[35];
-	  sprintf(str, "%"PRIu64, value);
-	  BIND_DEBUG(UINT64_TOSTR, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(str));
-	  BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
-	}
-	break;
-      case TEXT: {
-	  const char *text = va_arg(ap, const char *);
-	  BIND_DEBUG(TEXT, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(text));
-	  BIND_RETRY(sqlite3_bind_text, text, -1, SQLITE_TRANSIENT);
-	}
-	break;
-      case TEXT_LEN: {
-	  const char *text = va_arg(ap, const char *);
-	  int bytes = va_arg(ap, int);
-	  BIND_DEBUG(TEXT_LEN, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", alloca_str_toprint(text), bytes);
-	  BIND_RETRY(sqlite3_bind_text, text, bytes, SQLITE_TRANSIENT);
-	}
-	break;
-      case STATIC_TEXT: {
-	  const char *text = va_arg(ap, const char *);
-	  BIND_DEBUG(STATIC_TEXT, sqlite3_bind_text, "%s,-1,SQLITE_STATIC", alloca_str_toprint(text));
-	  BIND_RETRY(sqlite3_bind_text, text, -1, SQLITE_STATIC);
-	}
-	break;
-      case STATIC_TEXT_LEN: {
-	  const char *text = va_arg(ap, const char *);
-	  int bytes = va_arg(ap, int);
-	  BIND_DEBUG(STATIC_TEXT_LEN, sqlite3_bind_text, "%s,%d,SQLITE_STATIC", alloca_str_toprint(text), bytes);
-	  BIND_RETRY(sqlite3_bind_text, text, bytes, SQLITE_STATIC);
-	}
-	break;
-      case STATIC_BLOB: {
-	  const void *blob = va_arg(ap, const void *);
-	  int bytes = va_arg(ap, int);
-	  BIND_DEBUG(STATIC_BLOB, sqlite3_bind_blob, "%s,%d,SQLITE_STATIC", alloca_toprint(20, blob, bytes), bytes);
-	  BIND_RETRY(sqlite3_bind_blob, blob, bytes, SQLITE_STATIC);
-	};
-	break;
-      case ZEROBLOB: {
-	  int bytes = va_arg(ap, int);
-	  BIND_DEBUG(ZEROBLOB, sqlite3_bind_zeroblob, "%d,SQLITE_STATIC", bytes);
-	  BIND_RETRY(sqlite3_bind_zeroblob, bytes);
-	};
-	break;
-      case SID_T: {
-	  const sid_t *sidp = va_arg(ap, const sid_t *);
-	  const char *sid_hex = alloca_tohex_sid_t(*sidp);
-	  BIND_DEBUG(SID_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", sid_hex, SID_STRLEN);
-	  BIND_RETRY(sqlite3_bind_text, sid_hex, SID_STRLEN, SQLITE_TRANSIENT);
-	}
-	break;
-      case RHIZOME_BID_T: {
-	  const rhizome_bid_t *bidp = va_arg(ap, const rhizome_bid_t *);
-	  const char *bid_hex = alloca_tohex_rhizome_bid_t(*bidp);
-	  BIND_DEBUG(RHIZOME_BID_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", bid_hex, RHIZOME_MANIFEST_ID_STRLEN);
-	  BIND_RETRY(sqlite3_bind_text, bid_hex, RHIZOME_MANIFEST_ID_STRLEN, SQLITE_TRANSIENT);
-	}
-	break;
-      case FILEHASH_T: {
-	  const char *hash_hex = alloca_tohex(va_arg(ap, const unsigned char *), RHIZOME_FILEHASH_BYTES);
-	  BIND_DEBUG(FILEHASH_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", hash_hex, RHIZOME_FILEHASH_STRLEN);
-	  BIND_RETRY(sqlite3_bind_text, hash_hex, RHIZOME_FILEHASH_STRLEN, SQLITE_TRANSIENT);
-	}
-	break;
-      case TOHEX: {
-	  const unsigned char *binary = va_arg(ap, const unsigned char *);
-	  unsigned bytes = va_arg(ap, unsigned);
-	  const char *hex = alloca_tohex(binary, bytes);
-	  BIND_DEBUG(TOHEX, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", hex, bytes * 2);
-	  BIND_RETRY(sqlite3_bind_text, hex, bytes * 2, SQLITE_TRANSIENT);
-	}
-	break;
-      case TEXT_TOUPPER: {
-	  const char *text = va_arg(ap, const char *);
-	  unsigned bytes = strlen(text);
-	  char upper[bytes + 1];
-	  str_toupper_inplace(strcpy(upper, text));
-	  BIND_DEBUG(TEXT_TOUPPER, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", alloca_toprint(-1, upper, bytes), bytes);
-	  BIND_RETRY(sqlite3_bind_text, upper, bytes, SQLITE_TRANSIENT);
-	}
-	break;
-      case TEXT_LEN_TOUPPER: {
-	  const char *text = va_arg(ap, const char *);
-	  unsigned bytes = va_arg(ap, unsigned);
-	  char upper[bytes];
-	  unsigned i;
-	  for (i = 0; i != bytes; ++i)
-	    upper[i] = toupper(text[i]);
-	  BIND_DEBUG(TEXT_LEN_TOUPPER, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", alloca_toprint(-1, upper, bytes), bytes);
-	  BIND_RETRY(sqlite3_bind_text, upper, bytes, SQLITE_TRANSIENT);
-	}
-	break;
-#undef BIND_RETRY
       default:
-	FATALF("unsupported bind code, index=%d typ=0x%08x: %s", index, typ, sqlite3_sql(statement));
+	if ((typ & NUL) && config.debug.rhizome)
+	  strbuf_puts(ext, "|NUL");
+	switch (typ & ~NUL) {
+	  case INT: {
+	      int value = va_arg(ap, int);
+	      ++argnum;
+	      BIND_DEBUG(INT, sqlite3_bind_int, "%d", value);
+	      BIND_RETRY(sqlite3_bind_int, value);
+	    }
+	    break;
+	  case INT_TOSTR: {
+	      int value = va_arg(ap, int);
+	      ++argnum;
+	      char str[25];
+	      sprintf(str, "%d", value);
+	      BIND_DEBUG(INT_TOSTR, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(str));
+	      BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
+	    }
+	    break;
+	  case UINT_TOSTR: {
+	      unsigned value = va_arg(ap, unsigned);
+	      ++argnum;
+	      char str[25];
+	      sprintf(str, "%u", value);
+	      BIND_DEBUG(UINT_TOSTR, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(str));
+	      BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
+	    }
+	    break;
+	  case INT64: {
+	      sqlite3_int64 value = va_arg(ap, int64_t);
+	      BIND_DEBUG(INT64, sqlite3_bind_int64, "%"PRId64, (int64_t)value);
+	      BIND_RETRY(sqlite3_bind_int64, value);
+	    }
+	    break;
+	  case INT64_TOSTR: {
+	      int64_t value = va_arg(ap, int64_t);
+	      ++argnum;
+	      char str[35];
+	      sprintf(str, "%"PRId64, value);
+	      BIND_DEBUG(INT64_TOSTR, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(str));
+	      BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
+	    }
+	    break;
+	  case UINT64_TOSTR: {
+	      uint64_t value = va_arg(ap, uint64_t);
+	      ++argnum;
+	      char str[35];
+	      sprintf(str, "%"PRIu64, value);
+	      BIND_DEBUG(UINT64_TOSTR, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(str));
+	      BIND_RETRY(sqlite3_bind_text, str, -1, SQLITE_TRANSIENT);
+	    }
+	    break;
+	  case TEXT: {
+	      const char *text = va_arg(ap, const char *);
+	      ++argnum;
+	      if (text == NULL) {
+		BIND_NULL(TEXT);
+	      } else {
+		BIND_DEBUG(TEXT, sqlite3_bind_text, "%s,-1,SQLITE_TRANSIENT", alloca_str_toprint(text));
+		BIND_RETRY(sqlite3_bind_text, text, -1, SQLITE_TRANSIENT);
+	      }
+	    }
+	    break;
+	  case TEXT_LEN: {
+	      const char *text = va_arg(ap, const char *);
+	      int bytes = va_arg(ap, int);
+	      argnum += 2;
+	      if (text == NULL) {
+		BIND_NULL(TEXT_LEN);
+	      } else {
+		BIND_DEBUG(TEXT_LEN, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", alloca_str_toprint(text), bytes);
+		BIND_RETRY(sqlite3_bind_text, text, bytes, SQLITE_TRANSIENT);
+	      }
+	    }
+	    break;
+	  case STATIC_TEXT: {
+	      const char *text = va_arg(ap, const char *);
+	      ++argnum;
+	      if (text == NULL) {
+		BIND_NULL(STATIC_TEXT);
+	      } else {
+		BIND_DEBUG(STATIC_TEXT, sqlite3_bind_text, "%s,-1,SQLITE_STATIC", alloca_str_toprint(text));
+		BIND_RETRY(sqlite3_bind_text, text, -1, SQLITE_STATIC);
+	      }
+	    }
+	    break;
+	  case STATIC_TEXT_LEN: {
+	      const char *text = va_arg(ap, const char *);
+	      int bytes = va_arg(ap, int);
+	      argnum += 2;
+	      if (text == NULL) {
+		BIND_NULL(STATIC_TEXT_LEN);
+	      } else {
+		BIND_DEBUG(STATIC_TEXT_LEN, sqlite3_bind_text, "%s,%d,SQLITE_STATIC", alloca_str_toprint(text), bytes);
+		BIND_RETRY(sqlite3_bind_text, text, bytes, SQLITE_STATIC);
+	      }
+	    }
+	    break;
+	  case STATIC_BLOB: {
+	      const void *blob = va_arg(ap, const void *);
+	      int bytes = va_arg(ap, int);
+	      argnum += 2;
+	      if (blob == NULL) {
+		BIND_NULL(STATIC_BLOB);
+	      } else {
+		BIND_DEBUG(STATIC_BLOB, sqlite3_bind_blob, "%s,%d,SQLITE_STATIC", alloca_toprint(20, blob, bytes), bytes);
+		BIND_RETRY(sqlite3_bind_blob, blob, bytes, SQLITE_STATIC);
+	      }
+	    };
+	    break;
+	  case ZEROBLOB: {
+	      int bytes = va_arg(ap, int);
+	      ++argnum;
+	      BIND_DEBUG(ZEROBLOB, sqlite3_bind_zeroblob, "%d,SQLITE_STATIC", bytes);
+	      BIND_RETRY(sqlite3_bind_zeroblob, bytes);
+	    };
+	    break;
+	  case SID_T: {
+	      const sid_t *sidp = va_arg(ap, const sid_t *);
+	      ++argnum;
+	      if (sidp == NULL) {
+		BIND_NULL(SID_T);
+	      } else {
+		const char *sid_hex = alloca_tohex_sid_t(*sidp);
+		BIND_DEBUG(SID_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", sid_hex, SID_STRLEN);
+		BIND_RETRY(sqlite3_bind_text, sid_hex, SID_STRLEN, SQLITE_TRANSIENT);
+	      }
+	    }
+	    break;
+	  case RHIZOME_BID_T: {
+	      const rhizome_bid_t *bidp = va_arg(ap, const rhizome_bid_t *);
+	      ++argnum;
+	      if (bidp == NULL) {
+		BIND_NULL(RHIZOME_BID_T);
+	      } else {
+		const char *bid_hex = alloca_tohex_rhizome_bid_t(*bidp);
+		BIND_DEBUG(RHIZOME_BID_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", bid_hex, RHIZOME_MANIFEST_ID_STRLEN);
+		BIND_RETRY(sqlite3_bind_text, bid_hex, RHIZOME_MANIFEST_ID_STRLEN, SQLITE_TRANSIENT);
+	      }
+	    }
+	    break;
+	  case FILEHASH_T: {
+	      const char *hash_hex = alloca_tohex(va_arg(ap, const unsigned char *), RHIZOME_FILEHASH_BYTES);
+	      ++argnum;
+	      if (hash_hex == NULL) {
+		BIND_NULL(FILEHASH_T);
+	      } else {
+		BIND_DEBUG(FILEHASH_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", hash_hex, RHIZOME_FILEHASH_STRLEN);
+		BIND_RETRY(sqlite3_bind_text, hash_hex, RHIZOME_FILEHASH_STRLEN, SQLITE_TRANSIENT);
+	      }
+	    }
+	    break;
+	  case TOHEX: {
+	      const unsigned char *binary = va_arg(ap, const unsigned char *);
+	      unsigned bytes = va_arg(ap, unsigned);
+	      argnum += 2;
+	      if (binary == NULL) {
+		BIND_NULL(TOHEX);
+	      } else {
+		const char *hex = alloca_tohex(binary, bytes);
+		BIND_DEBUG(TOHEX, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", hex, bytes * 2);
+		BIND_RETRY(sqlite3_bind_text, hex, bytes * 2, SQLITE_TRANSIENT);
+	      }
+	    }
+	    break;
+	  case TEXT_TOUPPER: {
+	      const char *text = va_arg(ap, const char *);
+	      ++argnum;
+	      if (text == NULL) {
+		BIND_NULL(TEXT_TOUPPER);
+	      } else {
+		unsigned bytes = strlen(text);
+		char upper[bytes + 1];
+		str_toupper_inplace(strcpy(upper, text));
+		BIND_DEBUG(TEXT_TOUPPER, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", alloca_toprint(-1, upper, bytes), bytes);
+		BIND_RETRY(sqlite3_bind_text, upper, bytes, SQLITE_TRANSIENT);
+	      }
+	    }
+	    break;
+	  case TEXT_LEN_TOUPPER: {
+	      const char *text = va_arg(ap, const char *);
+	      unsigned bytes = va_arg(ap, unsigned);
+	      argnum += 2;
+	      if (text == NULL) {
+		BIND_NULL(TEXT);
+	      } else {
+		char upper[bytes];
+		unsigned i;
+		for (i = 0; i != bytes; ++i)
+		  upper[i] = toupper(text[i]);
+		BIND_DEBUG(TEXT_LEN_TOUPPER, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", alloca_toprint(-1, upper, bytes), bytes);
+		BIND_RETRY(sqlite3_bind_text, upper, bytes, SQLITE_TRANSIENT);
+	      }
+	    }
+	    break;
+#undef BIND_RETRY
+	  default:
+	    FATALF("at bind arg %u, unsupported bind code typ=0x%08x: %s", argnum, typ, sqlite3_sql(statement));
+	}
+	break;
     }
-  } while (typ != END);
+  }
   return 0;
 }
 
@@ -1186,10 +1267,6 @@ int rhizome_store_bundle(rhizome_manifest *m)
       return WHY("Manifest is not signed, and I don't have the key.  Manifest might be forged or corrupt.");
   }
 
-  char manifestid[RHIZOME_MANIFEST_ID_STRLEN + 1];
-  rhizome_manifest_get(m, "id", manifestid, sizeof manifestid);
-  str_toupper_inplace(manifestid);
-
   /* Bind BAR to data field */
   unsigned char bar[RHIZOME_BAR_BYTES];
   rhizome_manifest_to_bar(m,bar);
@@ -1206,18 +1283,31 @@ int rhizome_store_bundle(rhizome_manifest *m)
     filehash[0] = '\0';
   }
 
-  const char *author = is_sid_t_any(m->author) ? NULL : alloca_tohex_sid_t(m->author);
   const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-  const char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
-  const char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-  
+
+  sid_t *sender = NULL;
+  const char *sender_field = rhizome_manifest_get(m, "sender", NULL, 0);
+  if (sender_field) {
+    sender = (sid_t *) alloca(sizeof *sender);
+    if (str_to_sid_t(sender, sender_field) == -1)
+      return WHYF("invalid field in manifest bid=%s: sender=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), alloca_str_toprint(sender_field));
+  }
+
+  sid_t *recipient = NULL;
+  const char *recipient_field = rhizome_manifest_get(m, "recipient", NULL, 0);
+  if (recipient_field) {
+    recipient = (sid_t *) alloca(sizeof *recipient);
+    if (str_to_sid_t(recipient, recipient_field) == -1)
+      return WHYF("invalid field in manifest bid=%s: recipient=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), alloca_str_toprint(recipient_field));
+  }
+
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1)
     return WHY("Failed to begin transaction");
-  
+
   sqlite3_stmt *stmt;
-  if ((stmt = sqlite_prepare(&retry, 
+  if ((stmt = sqlite_prepare_bind(&retry,
 	"INSERT OR REPLACE INTO MANIFESTS("
 	  "id,"
 	  "manifest,"
@@ -1234,25 +1324,24 @@ int rhizome_store_bundle(rhizome_manifest *m)
 	  "tail"
 	") VALUES("
 	  "?,?,?,?,?,?,?,?,?,?,?,?,?"
-	");")) == NULL)
+	");",
+	RHIZOME_BID_T, &m->cryptoSignPublic,
+	STATIC_BLOB, m->manifestdata, m->manifest_bytes,
+	INT64, m->version,
+	INT64, (int64_t) gettime_ms(),
+	STATIC_BLOB, bar, RHIZOME_BAR_BYTES,
+	INT64, m->fileLength,
+	TEXT_TOUPPER|NUL, filehash,
+	SID_T|NUL, is_sid_t_any(m->author) ? NULL : &m->author,
+	STATIC_TEXT, service,
+	STATIC_TEXT|NUL, name,
+	SID_T|NUL, sender,
+	SID_T|NUL, recipient,
+	INT64, m->journalTail,
+	END
+      )
+  ) == NULL)
     goto rollback;
-  if (!(   sqlite_code_ok(sqlite3_bind_text(stmt, 1, manifestid, -1, SQLITE_STATIC))
-        && sqlite_code_ok(sqlite3_bind_blob(stmt, 2, m->manifestdata, m->manifest_bytes, SQLITE_STATIC))
-	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 3, m->version))
-	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 4, (int64_t) gettime_ms()))
-	&& sqlite_code_ok(sqlite3_bind_blob(stmt, 5, bar, RHIZOME_BAR_BYTES, SQLITE_STATIC))
-	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 6, m->fileLength))
-	&& sqlite_code_ok(sqlite3_bind_text(stmt, 7, filehash, -1, SQLITE_STATIC))
-	&& sqlite_code_ok(sqlite3_bind_text(stmt, 8, author, -1, SQLITE_STATIC))
-	&& sqlite_code_ok(sqlite3_bind_text(stmt, 9, service, -1, SQLITE_STATIC))
-	&& sqlite_code_ok(sqlite3_bind_text(stmt, 10, name, -1, SQLITE_STATIC))
-	&& sqlite_code_ok(sqlite3_bind_text(stmt, 11, sender, -1, SQLITE_STATIC))
-	&& sqlite_code_ok(sqlite3_bind_text(stmt, 12, recipient, -1, SQLITE_STATIC))
-	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 13, m->journalTail))
-  )) {
-    WHYF("query failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(stmt));
-    goto rollback;
-  }
   if (sqlite_step_retry(&retry, stmt) == -1)
     goto rollback;
   sqlite3_finalize(stmt);
@@ -1268,16 +1357,17 @@ int rhizome_store_bundle(rhizome_manifest *m)
     if (closed<1) closed=0;
     int ciphered=rhizome_manifest_get_ll(m,"cipheredgroup");
     if (ciphered<1) ciphered=0;
-    if ((stmt = sqlite_prepare(&retry, "INSERT OR REPLACE INTO GROUPLIST(id,closed,ciphered,priority) VALUES (?,?,?,?);")) == NULL)
+    if ((stmt = sqlite_prepare_bind(&retry,
+	    "INSERT OR REPLACE INTO GROUPLIST(id,closed,ciphered,priority) VALUES (?,?,?,?);",
+	    RHIZOME_BID_T, &m->cryptoSignPublic,
+	    INT, closed,
+	    INT, ciphered,
+	    INT, RHIZOME_PRIORITY_DEFAULT,
+	    END
+	  )
+      ) == NULL
+    )
       goto rollback;
-    if (!(   sqlite_code_ok(sqlite3_bind_text(stmt, 1, manifestid, -1, SQLITE_TRANSIENT))
-          && sqlite_code_ok(sqlite3_bind_int(stmt, 2, closed))
-          && sqlite_code_ok(sqlite3_bind_int(stmt, 3, ciphered))
-          && sqlite_code_ok(sqlite3_bind_int(stmt, 4, RHIZOME_PRIORITY_DEFAULT))
-    )) {
-      WHYF("query failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(stmt));
-      goto rollback;
-    }
     if (sqlite_step_retry(&retry, stmt) == -1)
       goto rollback;
     sqlite3_finalize(stmt);
@@ -1285,16 +1375,12 @@ int rhizome_store_bundle(rhizome_manifest *m)
   }
 
   if (m->group_count > 0) {
-    if ((stmt = sqlite_prepare(&retry, "INSERT OR REPLACE INTO GROUPMEMBERSHIPS(manifestid,groupid) VALUES(?, ?);")) == NULL)
+    if ((stmt = sqlite_prepare(&retry, "INSERT OR REPLACE INTO GROUPMEMBERSHIPS (manifestid, groupid) VALUES (?, ?);")) == NULL)
       goto rollback;
     int i;
     for (i=0;i<m->group_count;i++){
-      if (!(   sqlite_code_ok(sqlite3_bind_text(stmt, 1, manifestid, -1, SQLITE_TRANSIENT))
-	    && sqlite_code_ok(sqlite3_bind_text(stmt, 2, m->groups[i], -1, SQLITE_TRANSIENT))
-      )) {
-	WHYF("query failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(stmt));
+      if (sqlite_bind(&retry, stmt, RHIZOME_BID_T, &m->cryptoSignPublic, TEXT, m->groups[i]) == -1)
 	goto rollback;
-      }
       if (sqlite_step_retry(&retry, stmt) == -1)
 	goto rollback;
       sqlite3_reset(stmt);
@@ -1318,7 +1404,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
 rollback:
   if (stmt)
     sqlite3_finalize(stmt);
-  WHYF("Failed to store bundle bid=%s", manifestid);
+  WHYF("Failed to store bundle bid=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
   sqlite_exec_void_retry(&retry, "ROLLBACK;", END);
   return -1;
 }

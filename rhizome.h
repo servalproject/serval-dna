@@ -308,8 +308,7 @@ int is_debug_rhizome_ads();
 
 enum sqlbind_type {
   END = 0xbabecafe,
-  NUL = 0xbeef,     // (no arg)
-  INT,		    // int value
+  INT = 1,	    // int value
   INT_TOSTR,	    // int value
   UINT_TOSTR,	    // unsigned value
   INT64,	    // int64_t value
@@ -327,6 +326,7 @@ enum sqlbind_type {
   TOHEX,	    // const unsigned char *binary, unsigned bytes
   TEXT_TOUPPER,	    // const char *text,
   TEXT_LEN_TOUPPER, // const char *text, unsigned bytes
+  NUL = 1 << 15,    // NUL (no arg) ; NUL|INT, ...
   INDEX = 0xfade0000, // INDEX|INT, int index, ...
   NAMED = 0xdead0000  // NAMED|INT, const char *label, ...
 };
