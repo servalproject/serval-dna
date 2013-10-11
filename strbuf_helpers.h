@@ -129,4 +129,11 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
 struct tm;
 strbuf strbuf_append_strftime(strbuf sb, const char *format, const struct tm *tm);
 
+/* Append a representation of a struct iovec[] array.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+struct iovec;
+strbuf strbuf_append_iovec(strbuf sb, const struct iovec *iov, int iovcnt);
+#define alloca_iovec(iov,cnt)    strbuf_str(strbuf_append_iovec(strbuf_alloca(200), (iov), (cnt)))
+
 #endif //__STRBUF_HELPERS_H__

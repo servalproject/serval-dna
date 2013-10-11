@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/uio.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <time.h>
@@ -28,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "net.h"
 #include "str.h"
+#include "strbuf_helpers.h"
 
 struct in_addr hton_in_addr(in_addr_t addr)
 {
@@ -82,6 +84,20 @@ ssize_t _write_all(int fd, const void *buf, size_t len, struct __sourceloc __whe
   if (written != len)
     return WHYF_perror("write_all: write(%d,%p %s,%zu) returned %zd",
 	fd, buf, alloca_toprint(30, buf, len), len, (size_t)written);
+  return written;
+}
+
+ssize_t _writev_all(int fd, const struct iovec *iov, int iovcnt, struct __sourceloc __whence)
+{
+  size_t len = 0;
+  int i;
+  for (i = 0; i < iovcnt; ++i)
+    len += iov[i].iov_len;
+  ssize_t written = writev(fd, iov, iovcnt);
+  if (written == -1)
+    return WHYF_perror("writev_all: writev(%d,%s len=%zu)", fd, alloca_iovec(iov, iovcnt), len);
+  if (written != len)
+    return WHYF_perror("writev_all: writev(%d,%s len=%zu) returned %zd", fd, alloca_iovec(iov, iovcnt), len, (size_t)written);
   return written;
 }
 

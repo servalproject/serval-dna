@@ -31,6 +31,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifdef HAVE_ARPA_INET_H
 #include <arpa/inet.h>
 #endif
+#include <sys/uio.h>
 
 static inline strbuf _toprint(strbuf sb, char c)
 {
@@ -375,5 +376,18 @@ strbuf strbuf_append_strftime(strbuf sb, const char *format, const struct tm *tm
   char *buf = alloca(len + 1);
   size_t n = strftime(buf, len + 1, format, tm);
   strbuf_ncat(sb, buf, n);
+  return sb;
+}
+
+strbuf strbuf_append_iovec(strbuf sb, const struct iovec *iov, int iovcnt)
+{
+  int i;
+  strbuf_putc(sb, '[');
+  for (i = 0; i < iovcnt; ++i) {
+    if (i)
+      strbuf_puts(sb, ", ");
+    strbuf_sprintf(sb, "%p#%zu", iov[i].iov_base, iov[i].iov_len);
+  }
+  strbuf_putc(sb, ']');
   return sb;
 }

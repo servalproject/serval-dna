@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdlib.h>
 #include <assert.h>
+#include <sys/uio.h>
 #include "serval.h"
 #include "conf.h"
 #include "rhizome.h"
@@ -656,16 +657,21 @@ int rhizome_write_manifest_file(rhizome_manifest *m, const char *path, char appe
   if (fd == -1)
     return WHYF_perror("open(%s,O_WRONLY|O_CREAT%s,0666)", alloca_str_toprint(path), append ? "|O_APPEND" : "");
   int ret = 0;
-  if (write_all(fd, m->manifestdata, m->manifest_all_bytes) == -1)
-    ret = -1;
-  else if (append) {
-    unsigned char marker[4];
+  unsigned char marker[4];
+  struct iovec iov[2];
+  int iovcnt = 1;
+  iov[0].iov_base = m->manifestdata;
+  iov[0].iov_len = m->manifest_all_bytes;
+  if (append) {
     write_uint16(marker, m->manifest_all_bytes);
-    marker[2]=0x41;
-    marker[3]=0x10;
-    if (write_all(fd, marker, sizeof marker) == -1)
-      ret = -1;
+    marker[2] = 0x41;
+    marker[3] = 0x10;
+    iov[1].iov_base = marker;
+    iov[1].iov_len = sizeof marker;
+    iovcnt = 2;
   }
+  if (writev_all(fd, iov, iovcnt) == -1)
+    ret = -1;
   if (close(fd) == -1)
     ret = WHY_perror("close");
   return ret;
