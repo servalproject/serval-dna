@@ -725,13 +725,10 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
    - if service is file, then use the payload file's basename for "name"
    */
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-  if (service == NULL) {
-    rhizome_manifest_set(m, "service", (service = RHIZOME_SERVICE_FILE));
-    if (config.debug.rhizome) DEBUGF("missing 'service', set default service=%s", service);
-  } else {
-    if (config.debug.rhizome) DEBUGF("manifest contains service=%s", service);
-  }
-  
+  if (service == NULL)
+    return WHYF("missing 'service'");
+  if (config.debug.rhizome)
+    DEBUGF("manifest service=%s", service);
   if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
     rhizome_manifest_set_ll(m, "date", (int64_t) gettime_ms());
     if (config.debug.rhizome) DEBUGF("missing 'date', set default date=%s", rhizome_manifest_get(m, "date", NULL, 0));

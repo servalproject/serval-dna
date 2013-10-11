@@ -227,7 +227,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	if (rhizome_read_manifest_file(m, manifestTemplate, 0) == -1) {
 	  rhizome_manifest_free(m);
 	  rhizome_direct_clear_temporary_files(r);	     
-	  return rhizome_server_simple_http_response(r,500,"rhizome.api.addfile.manifesttemplate can't be read as a manifest.");
+	  return rhizome_server_simple_http_response(r,500,"rhizome.api.addfile.manifest_template_file can't be read as a manifest.");
 	}
 	
       if (rhizome_stat_file(m, filepath)){
@@ -235,14 +235,17 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	rhizome_direct_clear_temporary_files(r);
 	return rhizome_server_simple_http_response(r,500,"Could not store file");
       }
-	
+
+      if (rhizome_manifest_get(m, "service", NULL, 0) == NULL)
+	rhizome_manifest_set(m, "service", RHIZOME_SERVICE_FILE);
+
       sid_t *author=NULL;
       if (!is_sid_t_any(config.rhizome.api.addfile.default_author))
 	author = &config.rhizome.api.addfile.default_author;
       
       rhizome_bk_t bsk;
       memcpy(bsk.binary, config.rhizome.api.addfile.bundle_secret_key.binary, RHIZOME_BUNDLE_KEY_BYTES);
-      
+
       if (rhizome_fill_manifest(m, r->data_file_name, author, &bsk)){
 	rhizome_manifest_free(m);
 	m = NULL;

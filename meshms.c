@@ -83,9 +83,15 @@ static int get_my_conversation_bundle(const sid_t *my_sidp, rhizome_manifest *m)
     return -1;
   
   // always consider the content encrypted, we don't need to rely on the manifest itself.
-  m->payloadEncryption=1;
-  if (m->haveSecret==NEW_BUNDLE_ID){
-    rhizome_fill_manifest(m, NULL, NULL, NULL);
+  m->payloadEncryption = 1;
+  if (m->haveSecret == NEW_BUNDLE_ID) {
+    rhizome_manifest_set(m, "service", RHIZOME_SERVICE_FILE);
+    if (rhizome_fill_manifest(m, NULL, NULL, NULL) == -1)
+      return WHY("Invalid manifest");
+  } else {
+    const char *service = rhizome_manifest_get(m, "service", NULL, 0);
+    if (strcmp(service, RHIZOME_SERVICE_FILE) != 0)
+      return WHYF("Invalid manifest, service=%s but should be %s", service, RHIZOME_SERVICE_MESHMS2);
   }
   return 0;
 }

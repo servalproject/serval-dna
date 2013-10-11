@@ -1362,7 +1362,10 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   if ((!journal) && m->journalTail>=0)
     return WHY("Existing manifest is a journal");
 
-  if (rhizome_fill_manifest(m, filepath, *authorSidHex?&authorSid:NULL, bskhex?&bsk:NULL)){
+  if (rhizome_manifest_get(m, "service", NULL, 0) == NULL)
+    rhizome_manifest_set(m, "service", RHIZOME_SERVICE_FILE);
+
+  if (rhizome_fill_manifest(m, filepath, *authorSidHex ? &authorSid : NULL, bskhex ? &bsk : NULL)){
     rhizome_manifest_free(m);
     return -1;
   }
