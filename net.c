@@ -77,11 +77,11 @@ ssize_t _write_all(int fd, const void *buf, size_t len, struct __sourceloc __whe
 {
   ssize_t written = write(fd, buf, len);
   if (written == -1)
-    return WHYF_perror("write_all: write(%d,%p %s,%lu)",
-	fd, buf, alloca_toprint(30, buf, len), (unsigned long)len);
+    return WHYF_perror("write_all: write(%d,%p %s,%zu)",
+	fd, buf, alloca_toprint(30, buf, len), len);
   if (written != len)
-    return WHYF_perror("write_all: write(%d,%p %s,%lu) returned %ld",
-	fd, buf, alloca_toprint(30, buf, len), (unsigned long)len, (long)written);
+    return WHYF_perror("write_all: write(%d,%p %s,%zu) returned %zd",
+	fd, buf, alloca_toprint(30, buf, len), len, (size_t)written);
   return written;
 }
 

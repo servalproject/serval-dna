@@ -1559,7 +1559,7 @@ int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_cont
     return WHY("Out of manifests.");
   
   int ret=0;
-  if (rhizome_read_manifest_file(m, manifestpath, 0))
+  if (rhizome_read_manifest_file(m, manifestpath, 0) == -1)
     ret=-1;
   // TODO why doesn't read manifest file set finalised???
   m->finalised=1;

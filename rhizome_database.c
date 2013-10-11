@@ -151,7 +151,7 @@ void verify_bundles(){
   while(sqlite_step_retry(&retry, statement)==SQLITE_ROW){
     sqlite3_int64 rowid = sqlite3_column_int64(statement, 0);
     const void *manifest = sqlite3_column_blob(statement, 1);
-    int manifest_length = sqlite3_column_bytes(statement, 1);
+    size_t manifest_length = sqlite3_column_bytes(statement, 1);
     
     rhizome_manifest *m=rhizome_new_manifest();
     int ret=0;
@@ -1734,7 +1734,7 @@ static int unpack_manifest_row(rhizome_manifest *m, sqlite3_stmt *statement)
   int64_t q_inserttime = sqlite3_column_int64(statement, 3);
   const char *q_author = (const char *) sqlite3_column_text(statement, 4);
   size_t q_blobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
-  if (rhizome_read_manifest_file(m, q_blob, q_blobsize))
+  if (rhizome_read_manifest_file(m, q_blob, q_blobsize) == -1)
     return WHYF("Manifest %s exists but is invalid", q_id);
   if (q_author) {
     if (str_to_sid_t(&m->author, q_author) == -1)

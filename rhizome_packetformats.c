@@ -290,7 +290,7 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
   int ad_frame_type=ob_get(f->payload);
   struct sockaddr_in httpaddr = context->addr;
   httpaddr.sin_port = htons(RHIZOME_HTTP_PORT);
-  int manifest_length;
+  size_t manifest_length;
   rhizome_manifest *m=NULL;
 
   int (*oldfunc)() = sqlite_set_tracefunc(is_debug_rhizome_ads);
@@ -307,12 +307,12 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
 	break;
       }
 	
-      manifest_length=ob_get_ui16(f->payload);
+      manifest_length = ob_get_ui16(f->payload);
       if (manifest_length==0) continue;
       
       unsigned char *data = ob_get_bytes_ptr(f->payload, manifest_length);
       if (!data) {
-	WHYF("Illegal manifest length field in rhizome advertisement frame %d vs %d.", 
+	WHYF("Illegal manifest length field in rhizome advertisement frame %zu vs %d", 
 	     manifest_length, f->payload->sizeLimit - f->payload->position);
 	break;
       }

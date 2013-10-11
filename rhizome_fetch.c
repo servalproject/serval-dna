@@ -1287,8 +1287,7 @@ int rhizome_write_complete(struct rhizome_fetch_slot *slot)
        call schedule queued items. */
     rhizome_manifest *m = rhizome_new_manifest();
     if (m) {
-      if (rhizome_read_manifest_file(m, slot->manifest_buffer, 
-				     slot->manifest_bytes) == -1) {
+      if (rhizome_read_manifest_file(m, slot->manifest_buffer, (size_t)slot->manifest_bytes) == -1) {
 	DEBUGF("Couldn't read manifest");
 	rhizome_manifest_free(m);
       } else {

@@ -208,11 +208,14 @@ int rhizome_direct_form_received(rhizome_http_request *r)
       snprintf(filepath,1024,"rhizomedirect.%d.data",r->alarm.poll.fd);
 
       char manifestTemplate[1024];
-      strbuf b = strbuf_local(manifestTemplate, sizeof manifestTemplate);
-      strbuf_path_join(b, serval_instancepath(), config.rhizome.api.addfile.manifest_template_file, NULL);
-      if (manifestTemplate[0] && access(manifestTemplate, R_OK) != 0) {
-	rhizome_direct_clear_temporary_files(r);
-	return rhizome_server_simple_http_response(r,500,"rhizome.api.addfile.manifesttemplate points to a file I could not read.");
+      manifestTemplate[0] = '\0';
+      if (config.rhizome.api.addfile.manifest_template_file[0]) {
+	strbuf b = strbuf_local(manifestTemplate, sizeof manifestTemplate);
+	strbuf_path_join(b, serval_instancepath(), config.rhizome.api.addfile.manifest_template_file, NULL);
+	if (access(manifestTemplate, R_OK) != 0) {
+	  rhizome_direct_clear_temporary_files(r);
+	  return rhizome_server_simple_http_response(r,500,"rhizome.api.addfile.manifest_template_file points to a file I could not read.");
+	}
       }
 
       rhizome_manifest *m = rhizome_new_manifest();

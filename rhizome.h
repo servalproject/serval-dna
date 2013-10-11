@@ -288,7 +288,7 @@ int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename, char 
 int rhizome_manifest_selfsign(rhizome_manifest *m);
 int rhizome_drop_stored_file(const rhizome_filehash_t *hashp, int maximum_priority);
 int rhizome_manifest_priority(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
-int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bufferPAndSize);
+int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, size_t bufferPAndSize);
 int rhizome_hash_file(rhizome_manifest *m, const char *path, rhizome_filehash_t *hash_out, uint64_t *size_out);
 char *rhizome_manifest_get(const rhizome_manifest *m, const char *var, char *out, int maxlen);
 int64_t  rhizome_manifest_get_ll(rhizome_manifest *m, const char *var);
