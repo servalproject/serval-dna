@@ -366,9 +366,9 @@ int transfer_bytes(struct radio_state *radios)
 
 int main(int argc,char **argv)
 {
-  if (argv[1]) {
+  if (1 < argc) {
     chars_per_ms=atol(argv[1]);
-    if (argv[2]) 
+    if (2 < argc)
       ber=atol(argv[2]);
   }
   fprintf(stderr, "Sending %d bytes per ms\n", chars_per_ms);
