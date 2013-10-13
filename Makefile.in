@@ -70,6 +70,12 @@ CFLAGS+=-DSHA2_USE_INTTYPES_H -D_XOPEN_SOURCE=600 -D_XOPEN_SOURCE_EXTENDED=1 -D_
 CFLAGS+=-D_DARWIN_C_SOURCE
 -include Makefile.dbg
 
+# More warnings, discover problems that only happen on some archs
+CFLAGS+=-Wextra
+# Security enhancements from Debian
+CFLAGS+=-fstack-protector --param=ssp-buffer-size=4 -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2
+LDFLAGS+=-Wl,-z,relro
+
 DEFS=	@DEFS@
 
 .PHONY: all test clean
