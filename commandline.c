@@ -2642,5 +2642,5 @@ struct cli_schema command_line_options[]={
   {app_pa_phone,{"phone",NULL}, 0,
    "Run phone test application"},
 #endif
-  {NULL,{NULL}}
+  {NULL,{NULL},0,NULL}
 };
