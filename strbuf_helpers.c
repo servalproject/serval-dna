@@ -52,7 +52,7 @@ static inline strbuf _toprint(strbuf sb, char c)
   return sb;
 }
 
-static strbuf inline _overrun(strbuf sb, const char *suffix)
+inline static strbuf _overrun(strbuf sb, const char *suffix)
 {
   if (strbuf_overrun(sb)) {
     strbuf_trunc(sb, -strlen(suffix));
@@ -61,7 +61,7 @@ static strbuf inline _overrun(strbuf sb, const char *suffix)
   return sb;
 }
 
-static strbuf inline _overrun_quote(strbuf sb, char quote, const char *suffix)
+inline static strbuf _overrun_quote(strbuf sb, char quote, const char *suffix)
 {
   if (strbuf_overrun(sb)) {
     strbuf_trunc(sb, -strlen(suffix) - (quote ? 1 : 0));
