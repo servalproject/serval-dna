@@ -69,7 +69,7 @@ srandomdev(void)
 #ifndef WIN32
   FILE *fd;
   fd = fopen("/dev/urandom", "r");
-  if (fd >= 0) {
+  if (NULL != fd) {
     if (fread(&seed, sizeof seed, 1, fd) != 1)
       WARNF("fread(\"/dev/urandom\") failed -- falling back to gettimeofday()");
     else
