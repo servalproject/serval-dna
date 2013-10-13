@@ -330,17 +330,19 @@ int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *contex
     .name="read_lines",
   };
   struct line_state stdin_state={
-    .alarm.poll.fd = STDIN_FILENO,
-    .alarm.poll.events = POLLIN,
-    .alarm.function = read_lines,
-    .alarm.stats=&stdin_profile,
+    .alarm = {
+      .poll = {.fd = STDIN_FILENO,.events = POLLIN},
+      .function = read_lines,
+      .stats=&stdin_profile
+    },
+    .fd=0,
     .process_line=console_command,
   };
   static struct profile_total monitor_profile={
     .name="monitor_read",
   };
   struct sched_ent monitor_alarm={
-    .poll.events = POLLIN,
+    .poll = {.fd = STDIN_FILENO,.events = POLLIN},
     .function = monitor_read,
     .stats=&monitor_profile,
   };
