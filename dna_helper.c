@@ -87,8 +87,8 @@ static int dna_helper_started = 0;
 
 #define DECLARE_SCHED_ENT(FUNCTION, VARIABLE) \
 static void FUNCTION(struct sched_ent *alarm); \
-static struct profile_total VARIABLE##_timing={.name="" #FUNCTION "",}; \
-static struct sched_ent VARIABLE = {.function = FUNCTION, .stats = & VARIABLE##_timing, .poll.fd = -1, };
+static struct profile_total VARIABLE##_timing={.name="" #FUNCTION "",._next=NULL,._initialised=0,.max_time=0,.total_time=0,.child_time=0,.calls=0}; \
+static struct sched_ent VARIABLE = {.function = FUNCTION, .stats = & VARIABLE##_timing, .poll={.fd=-1, .events=0,.revents=0}};
 
 DECLARE_SCHED_ENT(monitor_requests, sched_requests);
 DECLARE_SCHED_ENT(monitor_replies,  sched_replies);

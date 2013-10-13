@@ -30,7 +30,7 @@ int fdcount=0;
 struct sched_ent *fd_callbacks[MAX_WATCHED_FDS];
 struct sched_ent *next_alarm=NULL;
 struct sched_ent *next_deadline=NULL;
-struct profile_total poll_stats={NULL,0,"Idle (in poll)",0,0,0};
+struct profile_total poll_stats={NULL,0,"Idle (in poll)",0,0,0,0};
 
 #define alloca_alarm_name(alarm) ((alarm)->stats ? alloca_str_toprint((alarm)->stats->name) : "Unnamed")
 

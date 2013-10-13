@@ -48,8 +48,7 @@ static struct profile_total read_timing={
 static struct sched_ent read_watch={
   .function=olsr_read,
   .stats=&read_timing,
-  .poll.fd=-1,
-  .poll.events=POLLIN,
+  .poll={.fd=-1,.events=POLLIN,.revents=0},
 };
 
 int olsr_init_socket(void){

@@ -37,14 +37,14 @@ static struct profile_total mdp_stats = { .name="overlay_mdp_poll" };
 static struct sched_ent mdp_sock = {
   .function = overlay_mdp_poll,
   .stats = &mdp_stats,
-  .poll.fd = -1,
+  .poll={.fd = -1,.events=0,.revents=0},
 };
 
 static struct profile_total mdp_stats2 = { .name="mdp_poll2" };
 static struct sched_ent mdp_sock2 = {
   .function = mdp_poll2,
   .stats = &mdp_stats2,
-  .poll.fd = -1,
+  .poll={.fd = -1,.events=0,.revents=0},
 };
 
 static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame *mdp, time_ms_t now);
@@ -893,6 +893,7 @@ static void overlay_mdp_scan(struct sched_ent *alarm)
   struct sockaddr_in addr={
     .sin_family=AF_INET,
     .sin_port=htons(PORT_DNA),
+    .sin_addr={0},
   };
   struct scan_state *state = (struct scan_state *)alarm;
   uint32_t stop = state->last;
