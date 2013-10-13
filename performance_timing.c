@@ -138,7 +138,7 @@ int fd_clearstats()
 
 int fd_showstats()
 {
-  struct profile_total total={NULL, 0, "Total", 0,0,0};
+  struct profile_total total={NULL, 0, "Total", 0,0,0,0};
   
   stats_head = sort(stats_head);
   
