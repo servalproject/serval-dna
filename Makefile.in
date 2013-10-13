@@ -1,3 +1,7 @@
+DESTDIR=
+prefix=@prefix@
+bindir=@sbindir@
+
 NACL_BASE=	nacl/src
 include $(NACL_BASE)/nacl.mk
 SERVAL_BASE=
@@ -124,6 +128,9 @@ libmonitorclient.so: $(MONITORCLIENTOBJS) version.o
 libmonitorclient.a: $(MONITORCLIENTOBJS) version.o
 	@echo AR $@
 	@$(AR) -cr $@ $(MONITORCLIENTOBJS) version.o
+
+install: servald
+	$(INSTALL) -D servald $(DESTDIR)$(sbindir)
 
 clean:
 	@rm -f $(OBJS) \
