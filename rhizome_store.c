@@ -821,7 +821,7 @@ int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer 
 
     // if we can supply either the beginning or end of the data from cache, do that first.
     uint64_t ofs=read->offset - buffer->offset;
-    if (ofs>=0 && ofs<=buffer->len){
+    if (ofs<=buffer->len){
       int size=len;
       if (size > buffer->len - ofs)
 	size = buffer->len - ofs;

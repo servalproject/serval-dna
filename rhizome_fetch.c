@@ -1135,7 +1135,7 @@ static int pipe_journal(struct rhizome_fetch_slot *slot){
   uint64_t length = slot->previous->fileLength - slot->manifest->journalTail - slot->write_state.file_offset;
   
   // of course there might not be any overlap
-  if (start>=0 && start < slot->previous->fileLength && length>0){
+  if (start < slot->previous->fileLength && length>0){
     if (config.debug.rhizome)
       DEBUGF("Copying %"PRId64" bytes from previous journal", length);
     rhizome_journal_pipe(&slot->write_state, &slot->previous->filehash, start, length);

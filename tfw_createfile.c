@@ -56,7 +56,7 @@ int main(int argc, char **argv)
   for (i = 1; i < argc; ++i) {
     const char *arg = argv[i];
     if (str_startswith(arg, "--size=", &arg)) {
-      if (!str_to_uint64_scaled(arg, 10, &size, NULL) || size < 0)
+      if (!str_to_uint64_scaled(arg, 10, &size, NULL))
 	fatal("illegal --size= argument: %s", arg);
     }
     else if (str_startswith(arg, "--label=", &arg))
