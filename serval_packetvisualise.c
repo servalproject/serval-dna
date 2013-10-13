@@ -321,8 +321,7 @@ int serval_packetvisualise_xpf(XPRINTF xpf, const char *message, const unsigned 
   _dump(xpf, packet, len, 0, "    ");
   size_t ofs=0;
   xprintf(xpf,"  Packet Structure:\n");
-  if (isOverlayPacket(xpf,packet,&ofs,len))
-    ;
+  if (isOverlayPacket(xpf,packet,&ofs,len)) { }
   if (ofs<len) {
     xprintf(xpf,"  WARNING: The last %d (0x%x) bytes of the packet were not parsed.\n",(int)(len-ofs),(int)(len-ofs));
   }
