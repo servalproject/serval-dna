@@ -732,3 +732,31 @@ has_seen_instances() {
 instances_see_each_other() {
    foreach_instance "$@" has_seen_instances "$@"
 }
+
+# Setup function:
+# - ensure that the given version of the curl(1) utility is available
+# - remove all proxy settings
+setup_curl() {
+   local minversion="${1?}"
+   local ver="$(curl --version | tr '\n' ' ')" 
+   case "$ver" in
+   '')
+      fail "curl(1) command is not present"
+      ;;
+   curl\ *\ Protocols:*\ http\ *)
+      set -- $ver
+      tfw_cmp_version "$2" 7
+      case $? in
+      0|2)
+         unset http_proxy
+         unset HTTP_PROXY
+         unset HTTPS_PROXY
+         unset ALL_PROXY
+         return 0
+         ;;
+      esac
+      fail "curl(1) version $2 is not adequate (expecting $minversion or higher)"
+      ;;
+   esac
+   fail "cannot parse output of curl --version: $ver"
+}

@@ -47,18 +47,6 @@ configure_servald_server() {
       set mdp.iftype.wifi.tick_ms 500
 }
 
-setup_curl_7() {
-   case "$(curl --version | tr '\n' ' ')" in
-   curl\ @(7|8|9|[1-9][0-1]).*\ Protocols:*\ http\ *) ;;
-   '') fail "curl(1) command is not present";;
-   *) fail "curl(1) version is not adequate (expecting 7 or higher)";;
-   esac
-   unset http_proxy
-   unset HTTP_PROXY
-   unset HTTPS_PROXY
-   unset ALL_PROXY
-}
-
 setup_common() {
    setup_servald
    assert_no_servald_processes
@@ -526,7 +514,7 @@ test_CorruptPayload() {
 
 doc_HttpFetchRange="Fetch a file range using HTTP GET."
 setup_HttpFetchRange() {
-   setup_curl_7
+   setup_curl 7
    setup_common
    set_instance +A
    rhizome_add_file file1
@@ -549,7 +537,7 @@ test_HttpFetchRange() {
 
 doc_HttpImport="Import bundle using HTTP POST multi-part form."
 setup_HttpImport() {
-   setup_curl_7
+   setup_curl 7
    setup_common
    cat >README.WHYNOTSIPS <<'EOF'
 When we were looking at implementing secure calls for OpenBTS it was suggested
@@ -599,7 +587,7 @@ test_HttpImport() {
 
 doc_HttpAddLocal="Add file locally using HTTP, returns manifest"
 setup_HttpAddLocal() {
-   setup_curl_7
+   setup_curl 7
    setup_common
    set_instance +A
    executeOk_servald config \

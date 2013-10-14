@@ -46,18 +46,6 @@ configure_servald_server() {
       set mdp.iftype.wifi.tick_ms 500
 }
 
-setup_curl_7() {
-   case "$(curl --version | tr '\n' ' ')" in
-   curl\ @(7|8|9|[1-9][0-1]).*\ Protocols:*\ http\ *) ;;
-   '') fail "curl(1) command is not present";;
-   *) fail "curl(1) version is not adequate (expecting 7 or higher)";;
-   esac
-   unset http_proxy
-   unset HTTP_PROXY
-   unset HTTPS_PROXY
-   unset ALL_PROXY
-}
-
 setup_common() {
    setup_servald
    assert_no_servald_processes
