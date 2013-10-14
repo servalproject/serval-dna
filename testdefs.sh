@@ -760,3 +760,24 @@ setup_curl() {
    esac
    fail "cannot parse output of curl --version: $ver"
 }
+
+# Setup function:
+# - ensure that version 1.2 or later of the jq(1) utility is available
+setup_jq() {
+   local minversion="${1?}"
+   local ver="$(jq --version 2>&1)"
+   case "$ver" in
+   '')
+      fail "jq(1) command is not present"
+      ;;
+   jq\ version\ *)
+      set -- $ver
+      tfw_cmp_version "$3" "$minversion"
+      case $? in
+      0|2) return 0;;
+      esac
+      fail "jq(1) version $3 is not adequate (need $minversion or higher)"
+      ;;
+   esac
+   fail "cannot parse output of jq --version: $ver"
+}
