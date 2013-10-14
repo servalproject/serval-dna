@@ -375,6 +375,15 @@ STRUCT(rhizome_direct)
 SUB_STRUCT(peerlist,        peer,)
 END_STRUCT
 
+STRUCT(user)
+STRING(50,                  password,   "", str,, "Authentication password")
+END_STRUCT
+
+ARRAY(userlist,)
+KEY_STRING(25, str)
+VALUE_SUB_STRUCT(user)
+END_ARRAY(10)
+
 STRUCT(rhizome_api_addfile)
 STRING(64,                  uri_path,               "", absolute_path,, "URI path for HTTP add-file request")
 ATOM(struct in_addr,        allow_host,             hton_in_addr(INADDR_LOOPBACK), in_addr,, "IP address of host allowed to make HTTP add-file request")
@@ -383,8 +392,13 @@ ATOM(sid_t,                 default_author,         SID_ANY, sid,, "Author of ad
 ATOM(rhizome_bk_t,          bundle_secret_key,      RHIZOME_BK_NONE, rhizome_bk,, "Secret key of add-file bundle to try if sender not given")
 END_STRUCT
 
+STRUCT(rhizome_api_restful)
+SUB_STRUCT(userlist,        users,)
+END_STRUCT
+
 STRUCT(rhizome_api)
 SUB_STRUCT(rhizome_api_addfile, addfile,)
+SUB_STRUCT(rhizome_api_restful, restful,)
 END_STRUCT
 
 STRUCT(rhizome_http)
