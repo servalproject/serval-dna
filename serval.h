@@ -263,6 +263,8 @@ typedef struct keypair {
 typedef struct keyring_identity {
   char *PKRPin;
   struct subscriber *subscriber;
+  time_ms_t challenge_expires;
+  unsigned char challenge[24];
   unsigned int slot;
   unsigned int keypair_count;
   keypair *keypairs[PKR_MAX_KEYPAIRS];
@@ -700,7 +702,9 @@ typedef struct overlay_mdp_frame {
   };
 } overlay_mdp_frame;
 
-int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req);
+int keyring_mapping_request(keyring_file *k, struct overlay_frame *frame, overlay_mdp_frame *req);
+int keyring_send_unlock(struct subscriber *subscriber);
+void keyring_release_subscriber(keyring_file *k, const sid_t *sid);
 
 /* Server-side MDP functions */
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp);
@@ -909,6 +913,7 @@ int link_unicast_ack(struct subscriber *subscriber, struct overlay_interface *in
 int link_add_destinations(struct overlay_frame *frame);
 void link_neighbour_short_status_html(struct strbuf *b, const char *link_prefix);
 void link_neighbour_status_html(struct strbuf *b, struct subscriber *neighbour);
+int link_stop_routing(struct subscriber *subscriber);
 
 int generate_nonce(unsigned char *nonce,int bytes);
 
