@@ -103,7 +103,7 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
     if (ret==0){
       buffer_len = read_uint16(marker);
       if (buffer_len < 1 || buffer_len > MAX_MANIFEST_BYTES)
-	ret=WHYF("Invalid manifest length %d", buffer_len);
+	ret=WHYF("Invalid manifest length %zd", buffer_len);
     }
     
     if (ret==0){
