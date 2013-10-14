@@ -164,7 +164,7 @@ test_unlock_ids() {
    executeOk_servald id enter pin 'entry-pin'
    wait_until has_link +B +A +A $SIDA $SIDX
    set_instance +A
-   executeOk_servald id revoke pin 'entry-pin'
+   executeOk_servald id relinquish pin 'entry-pin'
    set_instance +B
    wait_until --timeout=30 sid_offline $SIDX
 }

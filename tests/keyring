@@ -235,13 +235,13 @@ test_KeyringEntryPinServer() {
    assertStdoutGrep --fixed-strings "$ONE"
    assertStdoutGrep --fixed-strings "$TWOA"
    assertStdoutGrep --fixed-strings "$TWOB"
-   executeOk_servald id revoke pin 'one'
+   executeOk_servald id relinquish pin 'one'
    executeOk_servald id self
    assertStdoutLineCount == 3
    assertStdoutGrep --fixed-strings "$SIDA"
    assertStdoutGrep --fixed-strings "$TWOA"
    assertStdoutGrep --fixed-strings "$TWOB"
-   executeOk_servald id revoke sid "$TWOB"
+   executeOk_servald id relinquish sid "$TWOB"
    tfw_cat --stderr
    executeOk_servald id self
    assertStdoutLineCount == 2
