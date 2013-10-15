@@ -661,7 +661,7 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 		BIND_NULL(SID_T);
 	      } else {
 		const char *sid_hex = alloca_tohex_sid_t(*sidp);
-		BIND_DEBUG(SID_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", sid_hex, SID_STRLEN);
+		BIND_DEBUG(SID_T, sqlite3_bind_text, "%s,%u,SQLITE_TRANSIENT", sid_hex, SID_STRLEN);
 		BIND_RETRY(sqlite3_bind_text, sid_hex, SID_STRLEN, SQLITE_TRANSIENT);
 	      }
 	    }
@@ -673,7 +673,7 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 		BIND_NULL(RHIZOME_BID_T);
 	      } else {
 		const char *bid_hex = alloca_tohex_rhizome_bid_t(*bidp);
-		BIND_DEBUG(RHIZOME_BID_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", bid_hex, RHIZOME_MANIFEST_ID_STRLEN);
+		BIND_DEBUG(RHIZOME_BID_T, sqlite3_bind_text, "%s,%u,SQLITE_TRANSIENT", bid_hex, RHIZOME_MANIFEST_ID_STRLEN);
 		BIND_RETRY(sqlite3_bind_text, bid_hex, RHIZOME_MANIFEST_ID_STRLEN, SQLITE_TRANSIENT);
 	      }
 	    }
@@ -686,7 +686,7 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	      } else {
 		char hash_hex[RHIZOME_FILEHASH_STRLEN];
 		tohex(hash_hex, sizeof hash_hex, hashp->binary);
-		BIND_DEBUG(RHIZOME_FILEHASH_T, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", hash_hex, sizeof hash_hex);
+		BIND_DEBUG(RHIZOME_FILEHASH_T, sqlite3_bind_text, "%s,%zu,SQLITE_TRANSIENT", hash_hex, sizeof hash_hex);
 		BIND_RETRY(sqlite3_bind_text, hash_hex, sizeof hash_hex, SQLITE_TRANSIENT);
 	      }
 	    }
@@ -699,7 +699,7 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 		BIND_NULL(TOHEX);
 	      } else {
 		const char *hex = alloca_tohex(binary, bytes);
-		BIND_DEBUG(TOHEX, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", hex, bytes * 2);
+		BIND_DEBUG(TOHEX, sqlite3_bind_text, "%s,%u,SQLITE_TRANSIENT", hex, bytes * 2);
 		BIND_RETRY(sqlite3_bind_text, hex, bytes * 2, SQLITE_TRANSIENT);
 	      }
 	    }
@@ -713,7 +713,7 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 		unsigned bytes = strlen(text);
 		char upper[bytes + 1];
 		str_toupper_inplace(strcpy(upper, text));
-		BIND_DEBUG(TEXT_TOUPPER, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", alloca_toprint(-1, upper, bytes), bytes);
+		BIND_DEBUG(TEXT_TOUPPER, sqlite3_bind_text, "%s,%u,SQLITE_TRANSIENT", alloca_toprint(-1, upper, bytes), bytes);
 		BIND_RETRY(sqlite3_bind_text, upper, bytes, SQLITE_TRANSIENT);
 	      }
 	    }
@@ -729,7 +729,7 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 		unsigned i;
 		for (i = 0; i != bytes; ++i)
 		  upper[i] = toupper(text[i]);
-		BIND_DEBUG(TEXT_LEN_TOUPPER, sqlite3_bind_text, "%s,%d,SQLITE_TRANSIENT", alloca_toprint(-1, upper, bytes), bytes);
+		BIND_DEBUG(TEXT_LEN_TOUPPER, sqlite3_bind_text, "%s,%u,SQLITE_TRANSIENT", alloca_toprint(-1, upper, bytes), bytes);
 		BIND_RETRY(sqlite3_bind_text, upper, bytes, SQLITE_TRANSIENT);
 	      }
 	    }

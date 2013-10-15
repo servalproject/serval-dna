@@ -215,4 +215,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define ENCAP_OVERLAY 1
 #define ENCAP_SINGLE 2
 
+// numbers chosen to not conflict with KEYTYPE flags
+#define UNLOCK_REQUEST (0xF0)
+#define UNLOCK_CHALLENGE (0xF1)
+#define UNLOCK_RESPONSE (0xF2)
+
+
 #endif // __SERVALD_CONSTANTS_H
