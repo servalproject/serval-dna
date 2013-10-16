@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include "str.h"
 #include "mem.h"
+#include "keyring.h"
 
 static const char *rhizome_manifest_get(const rhizome_manifest *m, const char *var)
 {

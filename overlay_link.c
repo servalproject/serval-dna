@@ -4,6 +4,7 @@
 #include "overlay_address.h"
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
+#include "keyring.h"
 
 #define MIN_BURST_LENGTH 5000
 

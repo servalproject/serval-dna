@@ -82,7 +82,7 @@ struct subscriber{
   unsigned char sas_valid;
   
   // private keys for local identities
-  keyring_identity *identity;
+  struct keyring_identity *identity;
 };
 
 struct broadcast{

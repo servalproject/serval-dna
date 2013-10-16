@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_address.h"
 #include "crypto.h"
 #include "overlay_packet.h"
+#include "keyring.h"
 
 static void keyring_free_keypair(keypair *kp);
 static void keyring_free_context(keyring_context *c);
@@ -1429,7 +1430,7 @@ int keyring_set_did(keyring_identity *id, const char *did, const char *name)
   return 0;
 }
 
-int keyring_find_did(const keyring_file *k,int *cn,int *in,int *kp,char *did)
+int keyring_find_did(const keyring_file *k, int *cn, int *in, int *kp, const char *did)
 {
   for (; keyring_sanitise_position(k,cn,in,kp) == 0; ++*kp) {
     if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type==KEYTYPE_DID) {

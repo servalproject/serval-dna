@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "str.h"
+#include "keyring.h"
 
 static char rhizome_thisdatastore_path[256];
 
