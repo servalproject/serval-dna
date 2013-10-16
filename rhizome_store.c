@@ -1,3 +1,4 @@
+#include <assert.h>
 #include "serval.h"
 #include "rhizome.h"
 #include "conf.h"
@@ -71,7 +72,7 @@ int rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *ex
       DEBUGF("Attempting to put blob for id='%"PRId64"' in %s", write->temp_id, blob_path);
     
     write->blob_fd=open(blob_path, O_CREAT | O_TRUNC | O_WRONLY, 0664);
-    if (write->blob_fd<0)
+    if (write->blob_fd == -1)
       goto insert_row_fail;
     
     if (config.debug.externalblobs)
@@ -111,7 +112,7 @@ int rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *ex
   }
   
   if (sqlite_exec_void_retry(&retry, "COMMIT;", END) == -1){
-    if (write->blob_fd>=0){
+    if (write->blob_fd != -1){
       if (config.debug.externalblobs)
          DEBUGF("Cancel write to fd %d", write->blob_fd);
       close(write->blob_fd);
@@ -162,7 +163,7 @@ static int prepare_data(struct rhizome_write *write_state, unsigned char *buffer
 
 // open database locks
 static int write_get_lock(struct rhizome_write *write_state){
-  if (write_state->blob_fd>=0 || write_state->sql_blob)
+  if (write_state->blob_fd != -1 || write_state->sql_blob)
     return 0;
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
@@ -193,7 +194,7 @@ static int write_data(struct rhizome_write *write_state, uint64_t file_offset, u
   if (file_offset != write_state->written_offset)
     WARNF("Writing file data out of order! [%"PRId64",%"PRId64"]", file_offset, write_state->written_offset);
     
-  if (write_state->blob_fd>=0) {
+  if (write_state->blob_fd != -1) {
     int ofs=0;
     // keep trying until all of the data is written.
     lseek(write_state->blob_fd, file_offset, SEEK_SET);
@@ -233,7 +234,7 @@ static int write_data(struct rhizome_write *write_state, uint64_t file_offset, u
 // close database locks
 static int write_release_lock(struct rhizome_write *write_state){
   int ret=0;
-  if (write_state->blob_fd>=0)
+  if (write_state->blob_fd != -1)
     return 0;
     
   if (write_state->sql_blob){
@@ -260,7 +261,7 @@ int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsi
   int ret=0;
   int should_write = 0;
   // if we are writing to a file, or already have the sql blob open, write as much as we can.
-  if (write_state->blob_fd>=0 || write_state->sql_blob){
+  if (write_state->blob_fd != -1 || write_state->sql_blob){
     should_write = 1;
   }else{
     // cache up to RHIZOME_BUFFER_MAXIMUM_SIZE or file length before attempting to write everything in one go.
@@ -417,7 +418,7 @@ end:
 
 int rhizome_fail_write(struct rhizome_write *write)
 {
-  if (write->blob_fd>=0){
+  if (write->blob_fd != -1){
     if (config.debug.externalblobs)
       DEBUGF("Closing and removing fd %d", write->blob_fd);
     close(write->blob_fd);
@@ -723,6 +724,58 @@ int rhizome_open_read(struct rhizome_read *read, const rhizome_filehash_t *hashp
   return 0; // file opened
 }
 
+static ssize_t rhizome_read_retry(sqlite_retry_state *retry, struct rhizome_read *read_state, unsigned char *buffer, size_t bufsz)
+{
+  IN();
+  if (read_state->blob_fd != -1) {
+    if (lseek(read_state->blob_fd, (off_t) read_state->offset, SEEK_SET) == -1)
+      RETURN(WHYF_perror("lseek(%d,%lu,SEEK_SET)", read_state->blob_fd, (unsigned long)read_state->offset));
+    if (bufsz == 0)
+      RETURN(0);
+    ssize_t rd = read(read_state->blob_fd, buffer, bufsz);
+    if (rd == -1)
+      RETURN(WHYF_perror("read(%d,%p,%zu)", read_state->blob_fd, buffer, bufsz));
+    if (config.debug.externalblobs)
+      DEBUGF("Read %zu bytes from fd=%d @%"PRIx64, (size_t) rd, read_state->blob_fd, read_state->offset);
+    RETURN(rd);
+  }
+  if (read_state->blob_rowid == -1)
+    RETURN(WHY("file not open"));
+  sqlite3_blob *blob = NULL;
+  int ret;
+  do {
+    assert(blob == NULL);
+    ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", read_state->blob_rowid, 0 /* read only */, &blob);
+  } while (sqlite_code_busy(ret) && sqlite_retry(retry, "sqlite3_blob_open"));
+  if (ret != SQLITE_OK) {
+    assert(blob == NULL);
+    RETURN(WHYF("sqlite3_blob_open() failed: %s", sqlite3_errmsg(rhizome_db)));
+  }
+  assert(blob != NULL);
+  if (read_state->length == -1)
+    read_state->length = sqlite3_blob_bytes(blob);
+  // A NULL buffer skips the actual sqlite3_blob_read() call, which is useful just to work out
+  // the length.
+  size_t bytes_read = 0;
+  if (buffer && bufsz && read_state->offset < read_state->length) {
+    bytes_read = read_state->length - read_state->offset;
+    if (bytes_read > bufsz)
+      bytes_read = bufsz;
+    assert(bytes_read > 0);
+    do {
+      ret = sqlite3_blob_read(blob, buffer, (int) bytes_read, read_state->offset);
+    } while (sqlite_code_busy(ret) && sqlite_retry(retry, "sqlite3_blob_read"));
+    if (ret != SQLITE_OK) {
+      WHYF("sqlite3_blob_read() failed: %s", sqlite3_errmsg(rhizome_db));
+      sqlite3_blob_close(blob);
+      RETURN(-1);
+    }
+  }
+  sqlite3_blob_close(blob);
+  RETURN(bytes_read);
+  OUT();
+}
+
 /* Read content from the store, hashing and decrypting as we go. 
  Random access is supported, but hashing requires all payload contents to be read sequentially. */
 // returns the number of bytes read
@@ -732,53 +785,13 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
   // hash check failed, just return an error
   if (read_state->invalid)
     RETURN(-1);
-    
-  int bytes_read = 0;
-  if (read_state->blob_fd >= 0) {
-    if (lseek(read_state->blob_fd, read_state->offset, SEEK_SET) == -1)
-      RETURN(WHYF_perror("lseek(%d,%ld,SEEK_SET)", read_state->blob_fd, (long)read_state->offset));
-    bytes_read = read(read_state->blob_fd, buffer, buffer_length);
-    if (bytes_read == -1)
-      RETURN(WHYF_perror("read(%d,%p,%ld)", read_state->blob_fd, buffer, (long)buffer_length));
-    if (config.debug.externalblobs)
-      DEBUGF("Read %d bytes from fd %d @%"PRIx64, bytes_read, read_state->blob_fd, read_state->offset);
-  } else if (read_state->blob_rowid != -1) {
-    sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-    do{
-      sqlite3_blob *blob = NULL;
-      int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", read_state->blob_rowid, 0 /* read only */, &blob);
-      if (sqlite_code_busy(ret))
-	goto again;
-      else if(ret!=SQLITE_OK)
-	RETURN(WHYF("sqlite3_blob_open failed: %s",sqlite3_errmsg(rhizome_db)));
-      if (read_state->length==-1)
-	read_state->length=sqlite3_blob_bytes(blob);
-      bytes_read = read_state->length - read_state->offset;
-      if (bytes_read>buffer_length)
-	bytes_read=buffer_length;
-      // allow the caller to do a dummy read, just to work out the length
-      if (!buffer)
-	bytes_read=0;
-      if (bytes_read>0){
-	ret = sqlite3_blob_read(blob, buffer, bytes_read, read_state->offset);
-	if (sqlite_code_busy(ret))
-	  goto again;
-	else if(ret!=SQLITE_OK){
-	  WHYF("sqlite3_blob_read failed: %s",sqlite3_errmsg(rhizome_db));
-	  sqlite3_blob_close(blob);
-	  RETURN(-1);
-	}
-      }
-      sqlite3_blob_close(blob);
-      break;
-    again:
-      if (blob) sqlite3_blob_close(blob);
-      if (!sqlite_retry(&retry, "sqlite3_blob_open"))
-	RETURN(-1);
-    } while (1);
-  } else
-    RETURN(WHY("file not open"));
-  
+
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  ssize_t n = rhizome_read_retry(&retry, read_state, buffer, buffer_length);
+  if (n == -1)
+    RETURN(-1);
+  size_t bytes_read = (size_t) n;
+
   // hash the payload as we go, but only if we happen to read the payload data in order
   if (read_state->hash_offset == read_state->offset && buffer && bytes_read>0){
     SHA512_Update(&read_state->sha512_context, buffer, bytes_read);

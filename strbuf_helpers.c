@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <time.h>
 #include <assert.h>
 #include <stdarg.h>
+#include <inttypes.h>
 #include <sys/wait.h>
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
@@ -32,6 +33,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <arpa/inet.h>
 #endif
 #include <sys/uio.h>
+#include "http_server.h"
 
 static inline strbuf _toprint(strbuf sb, char c)
 {
@@ -389,5 +391,30 @@ strbuf strbuf_append_iovec(strbuf sb, const struct iovec *iov, int iovcnt)
     strbuf_sprintf(sb, "%p#%zu", iov[i].iov_base, iov[i].iov_len);
   }
   strbuf_putc(sb, ']');
+  return sb;
+}
+
+strbuf strbuf_append_http_ranges(strbuf sb, const struct http_range *ranges, unsigned nels)
+{
+  unsigned i;
+  int first = 1;
+  for (i = 0; i != nels; ++i) {
+    const struct http_range *r = &ranges[i];
+    switch (r->type) {
+      case NIL: break;
+      case CLOSED:
+	strbuf_sprintf(sb, "%s%"PRIhttp_size_t"-%"PRIhttp_size_t, first ? "" : ",", r->first, r->last);
+	first = 0;
+	break;
+      case OPEN:
+	strbuf_sprintf(sb, "%s%"PRIhttp_size_t"-", first ? "" : ",", r->first);
+	first = 0;
+	break;
+      case SUFFIX:
+	strbuf_sprintf(sb, "%s-%"PRIhttp_size_t, first ? "" : ",", r->last);
+	first = 0;
+	break;
+    }
+  }
   return sb;
 }

@@ -136,4 +136,11 @@ struct iovec;
 strbuf strbuf_append_iovec(strbuf sb, const struct iovec *iov, int iovcnt);
 #define alloca_iovec(iov,cnt)    strbuf_str(strbuf_append_iovec(strbuf_alloca(200), (iov), (cnt)))
 
+/* Append a representation of a struct http_range[] array.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+struct http_range;
+strbuf strbuf_append_http_ranges(strbuf sb, const struct http_range *ranges, unsigned nels);
+#define alloca_http_ranges(ra)    strbuf_str(strbuf_append_http_ranges(strbuf_alloca(25*NELS(ra)), (ra), NELS(ra)))
+
 #endif //__STRBUF_HELPERS_H__

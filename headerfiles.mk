@@ -18,6 +18,7 @@ HDRS=	fifo.h \
 	crypto.h \
 	log.h \
 	net.h \
+	http_server.h \
 	xprintf.h \
 	constants.h \
 	monitor-client.h \

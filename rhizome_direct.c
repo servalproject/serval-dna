@@ -260,8 +260,7 @@ int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r)
   multiple versions of a given bundle introduces only a slight complication. 
 */
 
-rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
-(unsigned char *buffer,int size, int max_response_bytes)
+rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *buffer,int size, int max_response_bytes)
 {
   if (size<10) return NULL;
   if (size>65536) return NULL;

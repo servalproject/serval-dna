@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "sha2.h"
 #include "str.h"
 #include "strbuf.h"
+#include "http_server.h"
 #include "nacl.h"
 #include <sys/stat.h>
 
@@ -525,71 +526,27 @@ struct rhizome_read
   int64_t length;
 };
 
-typedef struct rhizome_http_request {
-  struct sched_ent alarm;
-  time_ms_t initiate_time; /* time connection was initiated */
-  
-  struct sockaddr_in requestor;
+/* Rhizome-specific HTTP request handling.
+ */
+typedef struct rhizome_http_request
+{
+  struct http_request http; // MUST BE FIRST ELEMENT
 
-  /* identify request from others being run.
+  /* Identify request from others being run.
      Monotonic counter feeds it.  Only used for debugging when we write
      post-<uuid>.log files for multi-part form requests. */
   unsigned int uuid;
 
-  /* The HTTP request as currently received */
-  int request_length;
-  int header_length;
-  char request[1024];
-  
-  /* Nature of the request */
-  int request_type;
-  /* All of the below are receiving data */
-#define RHIZOME_HTTP_REQUEST_RECEIVING -1
-#define RHIZOME_HTTP_REQUEST_RECEIVING_MULTIPART -2
-  
-  // callback function to fill the response buffer
-  int (*generator)(struct rhizome_http_request *r);
-  
-  /* Local buffer of data to be sent.
-   If a RHIZOME_HTTP_REQUEST_FROMBUFFER, then the buffer is sent, and when empty
-   the request is closed.
-   Else emptying the buffer triggers a request to fetch more data.  Only if no
-   more data is provided do we then close the request. */
-  unsigned char *buffer;
-  int buffer_size; // size
-  int buffer_length; // number of bytes loaded into buffer
-  int buffer_offset; // where we are between [0,buffer_length)
-  
   struct rhizome_read read_state;
   
-  /* Path of request (used by POST multipart form requests where
-     the actual processing of the request does not occur while the
-     request headers are still available. */
-  char path[1024];
-  /* Boundary string for POST multipart form requests */
-  char boundary_string[1024];
-  int boundary_string_length;
   /* File currently being written to while decoding POST multipart form */
-  FILE *field_file;
+  enum rhizome_direct_mime_part { NONE = 0, MANIFEST, DATA } current_part;
+  int part_fd;
+  /* Which parts have been received in POST multipart form */
+  bool_t received_manifest;
+  bool_t received_data;
   /* Name of data file supplied */
-  char data_file_name[1024];
-  /* Which fields have been seen in POST multipart form */
-  int fields_seen;
-  /* The seen fields bitmap above shares values with the actual Rhizome Direct
-     state machine.  The state numbers (and thus bitmap values for the various
-     fields) are listed here.
-     
-     To avoid confusion, we should not use single bit values for states that do
-     not correspond directly to a particular field.
-     Doesn't really matter what they are apart from not having exactly one bit set.
-     In fact, the only reason to not have exactly one bit set is so that we keep as
-     many bits available for field types as possible.
-  */
-#define RD_MIME_STATE_MANIFESTHEADERS (1<<0)
-#define RD_MIME_STATE_DATAHEADERS (1<<1)
-#define RD_MIME_STATE_INITIAL 0
-#define RD_MIME_STATE_PARTHEADERS 0xffff0000
-#define RD_MIME_STATE_BODY 0xffff0001
+  char data_file_name[MIME_FILENAME_MAXLEN + 1];
 
   /* The source specification data which are used in different ways by different 
    request types */
@@ -607,15 +564,6 @@ typedef struct rhizome_http_request {
   
 } rhizome_http_request;
 
-struct http_response {
-  unsigned int result_code;
-  const char * content_type;
-  uint64_t content_start;
-  uint64_t content_end;
-  uint64_t content_length;
-  const char * body;
-};
-
 int rhizome_received_content(const unsigned char *bidprefix,uint64_t version, 
 			     uint64_t offset,int count,unsigned char *bytes,
 			     int type);
@@ -629,9 +577,7 @@ int rhizome_server_simple_http_response(rhizome_http_request *r, int result, con
 int rhizome_server_http_response(rhizome_http_request *r, int result, 
     const char *mime_type, const char *body, uint64_t bytes);
 int rhizome_server_http_response_header(rhizome_http_request *r, int result, const char *mime_type, uint64_t bytes);
-int rhizome_http_server_start(int (*http_parse_func)(rhizome_http_request *),
-			      const char *http_parse_func_description,
-			      uint16_t port_low, uint16_t port_high);
+int rhizome_http_server_start(uint16_t port_low, uint16_t port_high);
 
 int is_rhizome_enabled();
 int is_rhizome_mdp_enabled();
@@ -787,7 +733,7 @@ int rhizome_add_file(rhizome_manifest *m, const char *filepath);
 int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk);
 
 int rhizome_open_write_journal(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, uint64_t new_size);
-int rhizome_append_journal_buffer(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, unsigned char *buffer, int len);
+int rhizome_append_journal_buffer(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, unsigned char *buffer, size_t len);
 int rhizome_append_journal_file(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, const char *filename);
 int rhizome_journal_pipe(struct rhizome_write *write, const rhizome_filehash_t *hashp, uint64_t start_offset, uint64_t length);
 
