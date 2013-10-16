@@ -67,6 +67,7 @@ strbuf strbuf_path_join(strbuf sb, ...);
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 strbuf strbuf_append_poll_events(strbuf sb, short events);
+#define alloca_poll_events(ev)    strbuf_str(strbuf_append_poll_events(strbuf_alloca(200), (ev)))
 
 /* Append a nul-terminated string as a single-quoted shell word which, if
  * expanded in a shell command line, would evaluate to the original string.
