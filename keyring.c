@@ -440,7 +440,7 @@ struct keytype {
   size_t packed_size;
   void (*creator)(keypair *);
   int (*packer)(const keypair *, struct rotbuf *);
-  int (*unpacker)(keypair *, struct rotbuf *);
+  int (*unpacker)(keypair *, struct rotbuf *, int);
   void (*dumper)(const keypair *, XPRINTF, int);
   int (*loader)(keypair *, const char *);
 };
@@ -620,20 +620,25 @@ static int load_unknown(keypair *kp, const char *text)
   return 0;
 }
 
-static int unpack_private_public(keypair *kp, struct rotbuf *rb)
+static int unpack_private_public(keypair *kp, struct rotbuf *rb, int key_length)
 {
   rotbuf_getbuf(rb, kp->private_key, kp->private_key_len);
   rotbuf_getbuf(rb, kp->public_key, kp->public_key_len);
   return 0;
 }
 
-static int unpack_private_only(keypair *kp, struct rotbuf *rb)
+static int unpack_private_only(keypair *kp, struct rotbuf *rb, int key_length)
 {
+  if (!kp->private_key){
+    kp->private_key_len = key_length;
+    if ((kp->private_key = emalloc(kp->private_key_len))==NULL)
+      return -1;
+  }
   rotbuf_getbuf(rb, kp->private_key, kp->private_key_len);
   return 0;
 }
 
-static int unpack_cryptobox(keypair *kp, struct rotbuf *rb)
+static int unpack_cryptobox(keypair *kp, struct rotbuf *rb, int key_length)
 {
   rotbuf_getbuf(rb, kp->private_key, kp->private_key_len);
   if (!rb->wrap)
@@ -649,9 +654,9 @@ static int pack_did_name(const keypair *kp, struct rotbuf *rb)
   return pack_private_public(kp, rb);
 }
 
-static int unpack_did_name(keypair *kp, struct rotbuf *rb)
+static int unpack_did_name(keypair *kp, struct rotbuf *rb, int key_length)
 {
-  if (unpack_private_public(kp, rb) == -1)
+  if (unpack_private_public(kp, rb, key_length) == -1)
     return -1;
   // Fail if name is not nul terminated.
   return strnchr((const char *)kp->public_key, kp->public_key_len, '\0') == NULL ? -1 : 0;
@@ -1010,7 +1015,7 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
     if (ktype < NELS(keytypes) && kt->unpacker) {
       if (config.debug.keyring)
 	DEBUGF("unpack key type = 0x%02x(%s) at offset %u", ktype, keytype_str(ktype, "unknown"), (int)rotbuf_position(&rbo));
-      if (kt->unpacker(kp, &rbuf) != 0) {
+      if (kt->unpacker(kp, &rbuf, keypair_len) != 0) {
 	// If there is an error, it is probably an empty slot.
 	if (config.debug.keyring)
 	  DEBUGF("key type 0x%02x does not unpack", ktype);
