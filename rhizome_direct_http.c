@@ -688,7 +688,7 @@ static int receive_http_response(int sock, char *buffer, size_t buffer_len, stru
       if ((count = read(sock, &buffer[len], buffer_len - len)) == -1)
 	return WHYF_perror("read(%d, %p, %d)", sock, &buffer[len], (int)buffer_len - len);
       len += count;
-  } while (len < buffer_len && count != 0 && !http_header_complete(buffer, len, len));
+  } while (len < buffer_len && count != 0 && !is_http_header_complete(buffer, len, len));
   if (config.debug.rhizome_rx)
     DEBUGF("Received HTTP response %s", alloca_toprint(-1, buffer, len));
   if (unpack_http_response(buffer, parts) == -1)

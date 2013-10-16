@@ -148,7 +148,7 @@ __STR_INLINE ssize_t str_rindex(const char *s, char c)
  * nul-terminated, but are held in a buffer which has an associated length.  To avoid this function
  * running past the end of the buffer, the caller must ensure that the buffer contains a sub-string
  * that is not part of the sub-string being sought, eg, "\r\n\r\n" as detected by
- * http_header_complete().  This guarantees that this function will return nonzero before running
+ * is_http_header_complete().  This guarantees that this function will return nonzero before running
  * past the end of the buffer.
  *
  * @author Andrew Bettison <andrew@servalproject.com>

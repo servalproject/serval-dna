@@ -232,7 +232,7 @@ void rhizome_client_poll(struct sched_ent *alarm)
 	  unschedule(&r->alarm);
 	  schedule(&r->alarm);
 	  r->request_length += bytes;
-	  r->header_length = http_header_complete(r->request, r->request_length, bytes);
+	  r->header_length = is_http_header_complete(r->request, r->request_length, bytes);
 	  if (r->header_length){
 	    /* We have the request. Now parse it to see if we can respond to it */
 	    if (rhizome_http_parse_func!=NULL) 
@@ -334,7 +334,7 @@ int rhizome_server_free_http_request(rhizome_http_request *r)
   return 0;
 }
 
-int http_header_complete(const char *buf, size_t len, size_t read_since_last_call)
+int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_call)
 {
   IN();
   const char *bufend = buf + len;

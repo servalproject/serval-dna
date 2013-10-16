@@ -1483,7 +1483,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	slot->alarm.deadline = slot->alarm.alarm + config.rhizome.idle_timeout;
 	schedule(&slot->alarm);
 	slot->request_len += bytes;
-	if (http_header_complete(slot->request, slot->request_len, bytes)) {
+	if (is_http_header_complete(slot->request, slot->request_len, bytes)) {
 	  if (config.debug.rhizome_rx)
 	    DEBUGF("Got HTTP reply: %s", alloca_toprint(160, slot->request, slot->request_len));
 	  /* We have all the reply headers, so parse them, taking care of any following bytes of
@@ -1564,7 +1564,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
    This function takes a pointer to a buffer into which the entire HTTP response header has been
    read.  The caller must have ensured that the buffer contains at least one consecutive pair of
    newlines '\n', optionally with carriage returns '\r' preceding and optionally interspersed with
-   nul characters '\0' (which can originate from telnet).  The http_header_complete() function
+   nul characters '\0' (which can originate from telnet).  The is_http_header_complete() function
    is useful for this.
    This returns pointers to within the supplied buffer, and may overwrite some characters in the
    buffer, for example to nul-terminate a string that was terminated by space ' ' or newline '\r'

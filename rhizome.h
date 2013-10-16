@@ -269,7 +269,7 @@ int rhizome_str_is_bundle_crypt_key(const char *text);
 int rhizome_strn_is_file_hash(const char *text);
 int rhizome_str_is_file_hash(const char *text);
 
-int http_header_complete(const char *buf, size_t len, size_t read_since_last_call);
+int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_call);
 
 typedef struct sqlite_retry_state {
   unsigned int limit; // do not retry once elapsed >= limit
