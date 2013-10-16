@@ -28,6 +28,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include <limits.h>
+#include <errno.h>
 
 const char hexdigit[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 
@@ -227,13 +228,50 @@ char *str_str(char *haystack, const char *needle, int haystack_len)
   return NULL;
 }
 
+int str_to_int(const char *str, int base, int *result, const char **afterp)
+{
+  if (isspace(*str))
+    return 0;
+  const char *end = str;
+  errno = 0;
+  long value = strtol(str, (char**)&end, base);
+  if (errno == ERANGE || end == str || value > INT_MAX || value < INT_MIN)
+    return 0;
+  if (afterp)
+    *afterp = end;
+  else if (*end)
+    return 0;
+  if (result)
+    *result = value;
+  return 1;
+}
+
+int str_to_uint(const char *str, int base, unsigned *result, const char **afterp)
+{
+  if (isspace(*str))
+    return 0;
+  const char *end = str;
+  errno = 0;
+  unsigned long value = strtoul(str, (char**)&end, base);
+  if (errno == ERANGE || end == str || value > UINT_MAX)
+    return 0;
+  if (afterp)
+    *afterp = end;
+  else if (*end)
+    return 0;
+  if (result)
+    *result = value;
+  return 1;
+}
+
 int str_to_int64(const char *str, int base, int64_t *result, const char **afterp)
 {
   if (isspace(*str))
     return 0;
   const char *end = str;
+  errno = 0;
   long long value = strtoll(str, (char**)&end, base);
-  if (end == str)
+  if (errno == ERANGE || end == str)
     return 0;
   if (afterp)
     *afterp = end;
@@ -249,8 +287,9 @@ int str_to_uint64(const char *str, int base, uint64_t *result, const char **afte
   if (isspace(*str))
     return 0;
   const char *end = str;
+  errno = 0;
   unsigned long long value = strtoull(str, (char**)&end, base);
-  if (end == str)
+  if (errno == ERANGE || end == str)
     return 0;
   if (afterp)
     *afterp = end;
