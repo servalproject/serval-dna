@@ -71,6 +71,28 @@ test_DidName() {
     assertStdoutGrep --stderr --matches=1 "^$SID:123456:Display Name\$"
 }
 
+doc_SetTag="Set a named tag against an identity"
+test_SetTag() {
+    executeOk_servald keyring add ''
+    assertStdoutGrep --matches=1 "^sid:"
+    assertStdoutLineCount '==' 1
+    extract_stdout_keyvalue SID sid "$rexp_sid"
+    executeOk_servald keyring set tag "$SID" 'tag1' 'First Value'
+    assertStdoutGrep --matches=1 "^sid:$SID\$"
+    assertStdoutGrep --matches=1 "^tag1:First Value\$"
+    assertStdoutLineCount '==' 2
+    executeOk_servald keyring set tag "$SID" 'tag2' 'Second Value'
+    assertStdoutGrep --matches=1 "^sid:$SID\$"
+    assertStdoutGrep --matches=1 "^tag1:First Value\$"
+    assertStdoutGrep --matches=1 "^tag2:Second Value\$"
+    assertStdoutLineCount '==' 3
+    executeOk_servald keyring set tag "$SID" 'tag1' 'Third Value'
+    assertStdoutGrep --matches=1 "^sid:$SID\$"
+    assertStdoutGrep --matches=1 "^tag1:Third Value\$"
+    assertStdoutGrep --matches=1 "^tag2:Second Value\$"
+    assertStdoutLineCount '==' 3
+}
+
 doc_Pinless="No keyring PIN with PIN-less identities"
 test_Pinless() {
     executeOk_servald keyring add ''

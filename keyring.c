@@ -430,6 +430,7 @@ static const char *keytype_str(unsigned ktype, const char *unknown)
   case KEYTYPE_CRYPTOSIGN: return "CRYPTOSIGN";
   case KEYTYPE_RHIZOME: return "RHIZOME";
   case KEYTYPE_DID: return "DID";
+  case KEYTYPE_PUBLIC_TAG: return "PUBLIC_TAG";
   default: return unknown;
   }
 }
@@ -483,6 +484,12 @@ static void create_rhizome(keypair *kp)
 static int pack_private_only(const keypair *kp, struct rotbuf *rb)
 {
   rotbuf_putbuf(rb, kp->private_key, kp->private_key_len);
+  return 0;
+}
+
+static int pack_public_only(const keypair *kp, struct rotbuf *rb)
+{
+  rotbuf_putbuf(rb, kp->public_key, kp->public_key_len);
   return 0;
 }
 
@@ -638,6 +645,17 @@ static int unpack_private_only(keypair *kp, struct rotbuf *rb, int key_length)
   return 0;
 }
 
+static int unpack_public_only(keypair *kp, struct rotbuf *rb, int key_length)
+{
+  if (!kp->public_key){
+    kp->public_key_len = key_length;
+    if ((kp->public_key = emalloc(kp->public_key_len))==NULL)
+      return -1;
+  }
+  rotbuf_getbuf(rb, kp->public_key, kp->public_key_len);
+  return 0;
+}
+
 static int unpack_cryptobox(keypair *kp, struct rotbuf *rb, int key_length)
 {
   rotbuf_getbuf(rb, kp->private_key, kp->private_key_len);
@@ -769,6 +787,16 @@ const struct keytype keytypes[] = {
       .unpacker = unpack_did_name,
       .dumper = dump_did_name,
       .loader = load_did_name
+    },
+  [KEYTYPE_PUBLIC_TAG] = {
+      .private_key_size = 0,
+      .public_key_size = 0, // size is derived from the stored key length
+      .packed_size = 0,
+      .creator = NULL, // not included in a newly created identity
+      .packer = pack_public_only,
+      .unpacker = unpack_public_only,
+      .dumper = dump_private_public,
+      .loader = load_unknown
     }
   // ADD MORE KEY TYPES HERE
 };
@@ -843,13 +871,16 @@ static int keyring_pack_identity(const keyring_identity *id, unsigned char packe
     unsigned ktype = id->keypairs[kp]->type;
     const char *kts = keytype_str(ktype, "unknown");
     int (*packer)(const keypair *, struct rotbuf *) = NULL;
-    size_t keypair_len;
+    size_t keypair_len=0;
     const struct keytype *kt = &keytypes[ktype];
     if (ktype == 0x00)
       FATALF("ktype=0 in keypair kp=%u", kp);
     if (ktype < NELS(keytypes)) {
       packer = kt->packer;
       keypair_len = kt->packed_size;
+      if (keypair_len==0){
+	keypair_len = id->keypairs[kp]->private_key_len + id->keypairs[kp]->public_key_len;
+      }
     } else {
       packer = pack_private_only;
       keypair_len = id->keypairs[kp]->private_key_len;
@@ -922,16 +953,24 @@ static int cmp_keypair(const keypair *a, const keypair *b)
 {
   int c = a->type < b->type ? -1 : a->type > b->type ? 1 : 0;
   if (c == 0 && a->public_key_len) {
-    assert(a->public_key_len == b->public_key_len);
     assert(a->public_key != NULL);
     assert(b->public_key != NULL);
-    c = memcmp(a->public_key, b->public_key, a->public_key_len);
+    int len=a->public_key_len;
+    if (len>b->public_key_len)
+      len=b->public_key_len;
+    c = memcmp(a->public_key, b->public_key, len);
+    if (c==0 && a->public_key_len!=b->public_key_len)
+      c = a->public_key_len - b->public_key_len;
   }
   if (c == 0 && a->private_key_len) {
-    assert(a->private_key_len == b->private_key_len);
     assert(a->private_key != NULL);
     assert(b->private_key != NULL);
-    c = memcmp(a->private_key, b->private_key, a->private_key_len);
+    int len=a->private_key_len;
+    if (len>b->private_key_len)
+      len=b->private_key_len;
+    c = memcmp(a->private_key, b->private_key, len);
+    if (c==0 && a->private_key_len!=b->private_key_len)
+      c = a->private_key_len - b->private_key_len;
   }
   return c;
 }
@@ -1450,6 +1489,88 @@ int keyring_find_did(const keyring_file *k, int *cn, int *in, int *kp, const cha
     ) {
       return 1; // match
     }
+  }
+  return 0;
+}
+
+int keyring_unpack_tag(keypair *key, const char **name, const unsigned char **value, int *length)
+{
+  int i;
+  for (i=0;i<key->public_key_len-1;i++){
+    if (key->public_key[i]==0){
+      *name = (const char*)key->public_key;
+      *value = &key->public_key[i+1];
+      *length = key->public_key_len - (i+1);
+      return 0;
+    }
+  }
+  return WHY("Did not find NULL values in tag");
+}
+
+int keyring_set_public_tag(keyring_identity *id, const char *name, const unsigned char *value, int length)
+{
+  int i;
+  for(i=0;i<id->keypair_count;i++){
+    const char *tag_name;
+    const unsigned char *tag_value;
+    int tag_length;
+    if (id->keypairs[i]->type==KEYTYPE_PUBLIC_TAG &&
+      keyring_unpack_tag(id->keypairs[i], &tag_name, &tag_value, &tag_length)==0 &&
+      strcmp(tag_name, name)==0) {
+      if (config.debug.keyring)
+	DEBUG("Found existing public tag");
+      break;
+    }
+  }
+  
+  if (i >= PKR_MAX_KEYPAIRS)
+    return WHY("Too many key pairs");
+  
+  /* allocate if needed */
+  if (i >= id->keypair_count) {
+    if (config.debug.keyring)
+      DEBUGF("Creating new public tag @%d", i);
+    if ((id->keypairs[i] = keyring_alloc_keypair(KEYTYPE_PUBLIC_TAG, 0)) == NULL)
+      return -1;
+    ++id->keypair_count;
+  }
+  
+  if (id->keypairs[i]->public_key)
+    free(id->keypairs[i]->public_key);
+  
+  int name_len=strlen(name)+1;
+  id->keypairs[i]->public_key_len = name_len+length;
+  id->keypairs[i]->public_key = emalloc(id->keypairs[i]->public_key_len);
+  if (!id->keypairs[i]->public_key)
+    return -1;
+  bcopy(name, id->keypairs[i]->public_key, name_len);
+  bcopy(value, &id->keypairs[i]->public_key[name_len], length);
+  if (config.debug.keyring)
+    dump("New tag", id->keypairs[i]->public_key, id->keypairs[i]->public_key_len);
+  return 0;
+}
+
+int keyring_find_public_tag(const keyring_file *k, int *cn, int *in, int *kp, const char *name, const unsigned char **value, int *length)
+{
+  for(;keyring_next_keytype(k,cn,in,kp,KEYTYPE_PUBLIC_TAG);++(*kp)) {
+    keypair *keypair=k->contexts[*cn]->identities[*in]->keypairs[*kp];
+    const char *tag_name;
+    if (!keyring_unpack_tag(keypair, &tag_name, value, length) &&
+      strcmp(name, tag_name)==0){
+      return 1;
+    }
+  }
+  *value=NULL;
+  return 0;
+}
+
+int keyring_find_public_tag_value(const keyring_file *k, int *cn, int *in, int *kp, const char *name, const unsigned char *value, int length)
+{
+  const unsigned char *stored_value;
+  int stored_length;
+  for(;keyring_find_public_tag(k, cn, in, kp, name, &stored_value, &stored_length);++(*kp)) {
+    if (stored_length == length && memcmp(value, stored_value, length)==0)
+      return 1;
   }
   return 0;
 }

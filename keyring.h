@@ -66,6 +66,9 @@ void keyring_release_identity(keyring_file *k, int cn, int id);
    and keep them private if people so desire */
 #define KEYTYPE_DID 0x04
 
+/* Arbitrary name / value pairs */
+#define KEYTYPE_PUBLIC_TAG 0x05
+
 /* handle to keyring file for use in running instance */
 extern keyring_file *keyring;
 
@@ -96,5 +99,10 @@ unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknow
 int keyring_mapping_request(keyring_file *k, struct overlay_frame *frame, overlay_mdp_frame *req);
 int keyring_send_unlock(struct subscriber *subscriber);
 void keyring_release_subscriber(keyring_file *k, const sid_t *sid);
+
+int keyring_set_public_tag(keyring_identity *id, const char *name, const unsigned char *value, int length);
+int keyring_find_public_tag(const keyring_file *k, int *cn, int *in, int *kp, const char *name, const unsigned char **value, int *length);
+int keyring_find_public_tag_value(const keyring_file *k, int *cn, int *in, int *kp, const char *name, const unsigned char *value, int length);
+int keyring_unpack_tag(keypair *key, const char **name, const unsigned char **value, int *length);
 
 #endif // __SERVALD_KEYRING_H

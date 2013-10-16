@@ -1971,6 +1971,17 @@ static void cli_output_identity(struct cli_context *context, const keyring_ident
 	  }
 	}
 	break;
+      case KEYTYPE_PUBLIC_TAG:
+	{
+	  const char *name;
+	  const unsigned char *value;
+	  int length;
+	  if (keyring_unpack_tag(kp, &name, &value, &length)==0){
+	    cli_field_name(context, name, ":");
+	    cli_put_string(context, alloca_toprint_quoted(-1, value, length, NULL), "\n");
+	  }
+	}
+	break;
     }
   }
 }
@@ -2044,6 +2055,41 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
     }
   }
 
+  keyring_free(keyring);
+  return r;
+}
+
+static int app_keyring_set_tag(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  const char *sidhex, *tag, *value;
+  cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "");
+  cli_arg(parsed, "tag", &tag, NULL, "");
+  cli_arg(parsed, "value", &value, NULL, "");
+  
+  if (!(keyring = keyring_open_instance_cli(parsed)))
+    return -1;
+
+  sid_t sid;
+  if (str_to_sid_t(&sid, sidhex) == -1)
+    return WHY("str_to_sid_t() failed");
+
+  int cn=0,in=0,kp=0;
+  int r=0;
+  if (!keyring_find_sid(keyring, &cn, &in, &kp, &sid))
+    r=WHY("No matching SID");
+  else{
+    int length = strlen(value);
+    if (keyring_set_public_tag(keyring->contexts[cn]->identities[in], tag, (const unsigned char*)value, length))
+      r=WHY("Could not set tag value");
+    else{
+      if (keyring_commit(keyring))
+	r=WHY("Could not write updated keyring record");
+      else{
+	cli_output_identity(context, keyring->contexts[cn]->identities[in]);
+      }
+    }
+  }
+  
   keyring_free(keyring);
   return r;
 }
@@ -2687,6 +2733,8 @@ struct cli_schema command_line_options[]={
    "Create a new identity in the keyring protected by the supplied PIN (empty PIN if not given)"},
   {app_keyring_set_did,{"keyring", "set","did" KEYRING_PIN_OPTIONS,"<sid>","<did>","<name>",NULL}, 0,
    "Set the DID for the specified SID (must supply PIN to unlock the SID record in the keyring)"},
+  {app_keyring_set_tag,{"keyring", "set","tag" KEYRING_PIN_OPTIONS,"<sid>","<tag>","<value>",NULL}, 0,
+   "Set a named tag for the specified SID (must supply PIN to unlock the SID record in the keyring)"},
   {app_id_self,{"id","self|peers|allpeers",NULL}, 0,
    "Return identity(s) as URIs of own node, or of known routable peers, or all known peers"},
   {app_id_pin, {"id", "enter", "pin", "<entry-pin>", NULL}, 0,
