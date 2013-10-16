@@ -100,7 +100,7 @@ int rhizome_http_server_start(int (*parse_func)(rhizome_http_request *),
   if (now < rhizome_server_last_start_attempt + 5000)
     return 2;
   rhizome_server_last_start_attempt  = now;
-  if (config.debug.rhizome_tx)
+  if (config.debug.rhizome_httpd)
     DEBUGF("Starting rhizome HTTP server");
 
   uint16_t port;
@@ -245,8 +245,8 @@ void rhizome_client_poll(struct sched_ent *alarm)
 	  return;
 	}
 	if (sigPipeFlag) {
-	  if (config.debug.rhizome_tx)
-	    DEBUG("Received SIGPIPE, closing connection");
+	  if (config.debug.rhizome_httpd)
+	    DEBUG("Received SIGPIPE, closing HTTP connection");
 	  rhizome_server_free_http_request(r);
 	  return;
 	}
@@ -595,7 +595,7 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
   }
   
   if (!path) {
-    if (config.debug.rhizome_tx)
+    if (config.debug.rhizome_httpd)
       DEBUGF("Received malformed HTTP request: %s", alloca_toprint(120, (const char *)r->request, r->request_length));
     rhizome_server_simple_http_response(r, 400, "<html><h1>Malformed request</h1></html>\r\n");
     return 0;
@@ -696,7 +696,7 @@ int rhizome_server_set_response(rhizome_http_request *r, const struct http_respo
     r->buffer_length+=h->content_length;
   }
   r->buffer_offset = 0;
-  if (config.debug.rhizome_tx)
+  if (config.debug.rhizome_httpd)
     DEBUGF("Sending HTTP response: %s", alloca_toprint(160, (const char *)r->buffer, r->buffer_length));
   return 0;
 }
@@ -774,7 +774,7 @@ int rhizome_server_http_send_bytes(rhizome_http_request *r)
   
   // once we've written the whole buffer, and nothing new has been generated, close the connection
   if (!r->buffer_length){
-    if (config.debug.rhizome_tx)
+    if (config.debug.rhizome_httpd)
       DEBUG("Closing connection, done");
     return rhizome_server_free_http_request(r);
   }

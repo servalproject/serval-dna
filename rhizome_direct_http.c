@@ -600,12 +600,12 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
     }
   }
   if (content == NULL) {
-    if (config.debug.rhizome_tx)
+    if (config.debug.rhizome_httpd)
       DEBUGF("Received malformed HTTP request %s", alloca_toprint(160, (const char *)r->request, r->request_length));
     return rhizome_server_simple_http_response(r, 400, "<html><h1>Malformed request</h1></html>\r\n");
   }
   INFOF("RHIZOME HTTP SERVER, %s %s %s", verb, alloca_toprint(-1, path, pathlen), proto);
-  if (config.debug.rhizome_tx)
+  if (config.debug.rhizome_httpd)
     DEBUGF("headers %s", alloca_toprint(-1, headers, headerlen));
   if (strcmp(verb, "POST") == 0
       && (   strcmp(path, "/rhizome/import") == 0 

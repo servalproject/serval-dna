@@ -41,6 +41,7 @@ configure_servald_server() {
       set log.console.show_pid on \
       set log.console.show_time on \
       set debug.rhizome on \
+      set debug.rhizome_httpd on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
       set server.respawn_on_crash off \
@@ -216,6 +217,7 @@ start_radio_instance() {
    executeOk_servald config \
       set debug.rhizome on \
       set debug.rhizome_ads on \
+      set debug.rhizome_httpd on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
       set debug.throttling on \
@@ -627,6 +629,7 @@ setup_direct() {
       set log.console.level debug \
       set log.console.show_time on \
       set debug.rhizome on \
+      set debug.rhizome_httpd on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on
    rhizome_add_file fileB1 2000
