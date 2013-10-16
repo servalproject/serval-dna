@@ -56,6 +56,21 @@ test_KeyringCreate() {
     assert_keyring_list 0
 }
 
+doc_DidName="Create an identity & set the name and number"
+test_DidName() {
+    executeOk_servald keyring add ''
+    assertStdoutGrep --matches=1 "^sid:"
+    assertStdoutLineCount '==' 1
+    extract_stdout_keyvalue SID sid "$rexp_sid"
+    executeOk_servald keyring set did "$SID" '123456' 'Display Name'
+    assertStdoutGrep --matches=1 "^sid:$SID\$"
+    assertStdoutGrep --matches=1 "^did:123456\$"
+    assertStdoutGrep --matches=1 "^name:Display Name\$"
+    assertStdoutLineCount '==' 3
+    executeOk_servald keyring list
+    assertStdoutGrep --stderr --matches=1 "^$SID:123456:Display Name\$"
+}
+
 doc_Pinless="No keyring PIN with PIN-less identities"
 test_Pinless() {
     executeOk_servald keyring add ''
