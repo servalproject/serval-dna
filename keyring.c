@@ -1416,10 +1416,14 @@ int keyring_set_did(keyring_identity *id, const char *did, const char *name)
   }
   
   /* Store DID unpacked for ease of searching */
-  int len=strlen(did); if (len>31) len=31;
+  int len=strlen(did); 
+  if (len>31)
+    len=31;
   bcopy(did,&id->keypairs[i]->private_key[0],len);
   bzero(&id->keypairs[i]->private_key[len],32-len);
-  len=strlen(name); if (len>63) len=63;
+  len=strlen(name); 
+  if (len>63) 
+    len=63;
   bcopy(name,&id->keypairs[i]->public_key[0],len);
   bzero(&id->keypairs[i]->public_key[len],64-len);
   
@@ -1432,16 +1436,14 @@ int keyring_set_did(keyring_identity *id, const char *did, const char *name)
 
 int keyring_find_did(const keyring_file *k, int *cn, int *in, int *kp, const char *did)
 {
-  for (; keyring_sanitise_position(k,cn,in,kp) == 0; ++*kp) {
-    if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type==KEYTYPE_DID) {
-      /* Compare DIDs */
-      if ((!did[0])
-	  ||(did[0]=='*'&&did[1]==0)
-	  ||(!strcasecmp(did,(char *)k->contexts[*cn]->identities[*in]
-			  ->keypairs[*kp]->private_key))
-      ) {
-	return 1; // match
-      }
+  for(;keyring_next_keytype(k,cn,in,kp,KEYTYPE_DID);++(*kp)) {
+    /* Compare DIDs */
+    if ((!did[0])
+	||(did[0]=='*'&&did[1]==0)
+	||(!strcasecmp(did,(char *)k->contexts[*cn]->identities[*in]
+			->keypairs[*kp]->private_key))
+    ) {
+      return 1; // match
     }
   }
   return 0;
@@ -1471,24 +1473,27 @@ int keyring_next_identity(const keyring_file *k, int *cn, int *in, int *kp)
 
 int keyring_sanitise_position(const keyring_file *k,int *cn,int *in,int *kp)
 {
-  if (!k) return 1;
+  if (!k)
+    return 1;
   /* Sanity check passed in position */
-  if ((*cn)>=k->context_count) return 1;
-  if ((*in)>=k->contexts[*cn]->identity_count)
-    {
-      (*in)=0; (*cn)++;
-      if ((*cn)>=k->context_count) return 1;
+  while(1){
+    if ((*cn)>=k->context_count)
+      return 1;
+      
+    if ((*in)>=k->contexts[*cn]->identity_count){
+      (*in)=(*kp)=0; 
+      (*cn)++;
+      continue;
     }
-  if ((*kp)>=k->contexts[*cn]->identities[*in]->keypair_count)
-    {
-      *kp=0; (*in)++;
-      if ((*in)>=k->contexts[*cn]->identity_count)
-	{
-	  (*in)=0; (*cn)++;
-	  if ((*cn)>=k->context_count) return 1;
-	}
+    
+    if ((*kp)>=k->contexts[*cn]->identities[*in]->keypair_count){
+      *kp=0;
+      (*in)++;
+      continue;
     }
-  return 0;
+    
+    return 0;
+  }
 }
 
 unsigned char *keyring_find_sas_private(keyring_file *k, const sid_t *sidp, unsigned char **sas_public_out)
@@ -1496,32 +1501,28 @@ unsigned char *keyring_find_sas_private(keyring_file *k, const sid_t *sidp, unsi
   IN();
   int cn=0,in=0,kp=0;
 
-  if (!keyring_find_sid(k,&cn,&in,&kp,sidp)) {
+  if (!keyring_find_sid(k,&cn,&in,&kp,sidp))
     RETURNNULL(WHYNULL("Could not find SID in keyring, so can't find SAS"));
+
+  kp = keyring_identity_find_keytype(k, cn, in, KEYTYPE_CRYPTOSIGN);
+  if (kp==-1)
+    RETURNNULL(WHYNULL("Identity lacks SAS"));
+    
+  unsigned char *sas_private=
+    k->contexts[cn]->identities[in]->keypairs[kp]->private_key;
+  unsigned char *sas_public=
+    k->contexts[cn]->identities[in]->keypairs[kp]->public_key;
+  if (!rhizome_verify_bundle_privatekey(sas_private,sas_public)){
+    /* SAS key is invalid (perhaps because it was a pre 0.90 format one),
+       so replace it */
+    WARN("SAS key is invalid -- regenerating.");
+    crypto_sign_edwards25519sha512batch_keypair(sas_public, sas_private);
+    keyring_commit(k);
   }
-
-  for(kp=0;kp<k->contexts[cn]->identities[in]->keypair_count;kp++)
-    if (k->contexts[cn]->identities[in]->keypairs[kp]->type==KEYTYPE_CRYPTOSIGN)
-      {
-	unsigned char *sas_private=
-	  k->contexts[cn]->identities[in]->keypairs[kp]->private_key;
-	unsigned char *sas_public=
-	  k->contexts[cn]->identities[in]->keypairs[kp]->public_key;
-	if (!rhizome_verify_bundle_privatekey(sas_private, sas_public))
-	  {
-	    /* SAS key is invalid (perhaps because it was a pre 0.90 format one),
-	       so replace it */
-	    WARN("SAS key is invalid -- regenerating.");
-	    crypto_sign_edwards25519sha512batch_keypair(sas_public, sas_private);
-	    keyring_commit(k);
-	  }
-	if (config.debug.keyring)
-	  DEBUGF("Found SAS entry for %s*", alloca_tohex(sidp->binary, 7));
-	if (sas_public_out) *sas_public_out=sas_public; 
-	RETURN(sas_private);
-      }
-
-  RETURNNULL(WHYNULL("Identity lacks SAS"));
+  if (config.debug.keyring)
+    DEBUGF("Found SAS entry for %s*", alloca_tohex(sidp->binary, 7));
+  if (sas_public_out) *sas_public_out=sas_public; 
+  RETURN(sas_private);
   OUT();
 }
 
@@ -1791,10 +1792,10 @@ int keyring_send_sas_request(struct subscriber *subscriber){
 
 int keyring_find_sid(const keyring_file *k, int *cn, int *in, int *kp, const sid_t *sidp)
 {
-  for (; keyring_sanitise_position(k, cn, in, kp) == 0; ++*kp)
-    if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type == KEYTYPE_CRYPTOBOX
-      && memcmp(sidp->binary, k->contexts[*cn]->identities[*in]->keypairs[*kp]->public_key, SID_SIZE) == 0)
+  for(; keyring_next_keytype(k,cn,in,kp,KEYTYPE_CRYPTOBOX); ++(*kp)) {
+    if (memcmp(sidp->binary, k->contexts[*cn]->identities[*in]->keypairs[*kp]->public_key, SID_SIZE) == 0)
       return 1;
+  }
   return 0;
 }
 
