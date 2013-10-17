@@ -472,8 +472,8 @@ struct rhizome_write_buffer
 {
   struct rhizome_write_buffer *_next;
   int64_t offset;
-  int buffer_size;
-  int data_size;
+  size_t buffer_size;
+  size_t data_size;
   unsigned char data[0];
 };
 
@@ -488,7 +488,7 @@ struct rhizome_write
   int64_t written_offset;
   int64_t file_length;
   struct rhizome_write_buffer *buffer_list;
-  int buffer_size;
+  size_t buffer_size;
   
   int crypt;
   unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
@@ -503,7 +503,7 @@ struct rhizome_write
 struct rhizome_read_buffer{
   uint64_t offset;
   unsigned char data[RHIZOME_CRYPT_PAGE_SIZE];
-  int len;
+  size_t len;
 };
 
 struct rhizome_read
@@ -600,12 +600,12 @@ typedef struct rhizome_direct_bundle_cursor {
   rhizome_bid_t bid_low;
   rhizome_bid_t bid_high;
   unsigned char *buffer;
-  int buffer_size;
-  int buffer_used;
-  int buffer_offset_bytes;
+  size_t buffer_size;
+  size_t buffer_used;
+  size_t buffer_offset_bytes;
 } rhizome_direct_bundle_cursor;
 
-rhizome_direct_bundle_cursor *rhizome_direct_bundle_iterator(int buffer_size);
+rhizome_direct_bundle_cursor *rhizome_direct_bundle_iterator(size_t buffer_size);
 void rhizome_direct_bundle_iterator_unlimit(rhizome_direct_bundle_cursor *r);
 int rhizome_direct_bundle_iterator_pickle_range(rhizome_direct_bundle_cursor *r,
 						unsigned char *pickled,
@@ -669,7 +669,7 @@ rhizome_direct_sync_request
 *rhizome_direct_new_sync_request(
 				 void (*transport_specific_dispatch_function)
 				 (struct rhizome_direct_sync_request *),
-				 int buffer_size,int interval, int mode, 
+				 size_t buffer_size, int interval, int mode, 
 				 void *transport_specific_state);
 int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r);
 int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r);
@@ -720,14 +720,14 @@ int unpack_http_response(char *response, struct http_response_parts *parts);
 
 int rhizome_exists(const rhizome_filehash_t *hashp);
 int rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *expectedHashp, int64_t file_length, int priority);
-int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffer, int data_size);
-int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsigned char *buffer, int data_size);
+int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffer, size_t data_size);
+int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsigned char *buffer, size_t data_size);
 int rhizome_write_open_manifest(struct rhizome_write *write, rhizome_manifest *m);
 int rhizome_write_file(struct rhizome_write *write, const char *filename);
 int rhizome_fail_write(struct rhizome_write *write);
 int rhizome_finish_write(struct rhizome_write *write);
 int rhizome_import_file(rhizome_manifest *m, const char *filepath);
-int rhizome_import_buffer(rhizome_manifest *m, unsigned char *buffer, int length);
+int rhizome_import_buffer(rhizome_manifest *m, unsigned char *buffer, size_t length);
 int rhizome_stat_file(rhizome_manifest *m, const char *filepath);
 int rhizome_add_file(rhizome_manifest *m, const char *filepath);
 int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk);
@@ -737,17 +737,17 @@ int rhizome_append_journal_buffer(rhizome_manifest *m, rhizome_bk_t *bsk, uint64
 int rhizome_append_journal_file(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, const char *filename);
 int rhizome_journal_pipe(struct rhizome_write *write, const rhizome_filehash_t *hashp, uint64_t start_offset, uint64_t length);
 
-int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
+int rhizome_crypt_xor_block(unsigned char *buffer, size_t buffer_size, int64_t stream_offset, 
 			    const unsigned char *key, const unsigned char *nonce);
 int rhizome_open_read(struct rhizome_read *read, const rhizome_filehash_t *hashp);
-int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_length);
-int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer *buffer, unsigned char *data, int len);
+int rhizome_read(struct rhizome_read *read, unsigned char *buffer, size_t buffer_length);
+int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer *buffer, unsigned char *data, size_t len);
 int rhizome_read_close(struct rhizome_read *read);
 int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state);
 int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t *bsk);
 int rhizome_dump_file(const rhizome_filehash_t *hashp, const char *filepath, int64_t *length);
 int rhizome_read_cached(const rhizome_bid_t *bid, uint64_t version, time_ms_t timeout, 
-  uint64_t fileOffset, unsigned char *buffer, int length);
+  uint64_t fileOffset, unsigned char *buffer, size_t length);
 int rhizome_cache_close();
 
 int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t version, rhizome_filehash_t *hashp);

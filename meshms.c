@@ -49,7 +49,7 @@ struct ply_read{
   // details of the current record
   uint64_t record_end_offset;
   uint16_t record_length;
-  int buffer_size;
+  size_t buffer_size;
   char type;
   // raw record data
   unsigned char *buffer;
@@ -78,8 +78,7 @@ static int get_my_conversation_bundle(const sid_t *my_sidp, rhizome_manifest *m)
 	alloca_tohex(keyring->contexts[cn]->identities[in]
 	->keypairs[kp]->private_key, crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES));
 	
-  int ret = rhizome_get_bundle_from_seed(m, seed);
-  if (ret<0)
+  if (rhizome_get_bundle_from_seed(m, seed) == -1)
     return -1;
   
   // always consider the content encrypted, we don't need to rely on the manifest itself.
@@ -225,9 +224,9 @@ static int ply_read_open(struct ply_read *ply, const rhizome_bid_t *bid, rhizome
   if (rhizome_retrieve_manifest(bid, m))
     return -1;
   int ret = rhizome_open_decrypt_read(m, NULL, &ply->read);
-  if (ret>0)
+  if (ret == 1)
     WARNF("Payload was not found for manifest %s, %"PRId64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
-  if (ret)
+  if (ret != 0)
     return ret;
   ply->read.offset = ply->read.length = m->fileLength;
   return 0;
@@ -399,11 +398,11 @@ static int update_conversation(const sid_t *my_sid, struct conversations *conv){
       goto end;
       
     ret = ply_find_next(&ply, MESHMS_BLOCK_TYPE_ACK);
-    if (ret<0)
+    if (ret == -1)
       goto end;
       
     if (ret==0){
-      if (unpack_uint(ply.buffer, ply.record_length, &previous_ack)<0)
+      if (unpack_uint(ply.buffer, ply.record_length, &previous_ack) == -1)
 	previous_ack=0;
     }
     if (config.debug.meshms)
@@ -478,7 +477,7 @@ static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid,
   bzero(&buff, sizeof(buff));
   
   int ret = rhizome_open_decrypt_read(m, NULL, &read);
-  if (ret<0)
+  if (ret == -1)
     goto end;
   
   unsigned char version=0xFF;
@@ -527,8 +526,9 @@ end:
   return 0;
 }
 
-static int write_conversation(struct rhizome_write *write, struct conversations *conv){
-  int len=0;
+static ssize_t write_conversation(struct rhizome_write *write, struct conversations *conv)
+{
+  size_t len=0;
   if (!conv)
     return len;
   {
@@ -541,14 +541,14 @@ static int write_conversation(struct rhizome_write *write, struct conversations 
       len+=pack_uint(&buffer[len], conv->read_offset);
       len+=pack_uint(&buffer[len], conv->their_size);
       int ret=rhizome_write_buffer(write, buffer, len);
-      if (ret<0)
+      if (ret == -1)
 	return ret;
     }else{
       len+=measure_packed_uint(conv->their_last_message);
       len+=measure_packed_uint(conv->read_offset);
       len+=measure_packed_uint(conv->their_size);
     }
-    DEBUGF("len %s, %"PRId64", %"PRId64", %"PRId64" = %d", 
+    DEBUGF("len %s, %"PRId64", %"PRId64", %"PRId64" = %zu", 
       alloca_tohex_sid_t(conv->them),
       conv->their_last_message,
       conv->read_offset,
@@ -556,14 +556,14 @@ static int write_conversation(struct rhizome_write *write, struct conversations 
       len);
   }
   // write the two child nodes
-  int ret=write_conversation(write, conv->_left);
-  if (ret<0)
+  ssize_t ret = write_conversation(write, conv->_left);
+  if (ret == -1)
     return ret;
-  len+=ret;
-  ret=write_conversation(write, conv->_right);
-  if (ret<0)
+  len += (size_t) ret;
+  ret = write_conversation(write, conv->_right);
+  if (ret == -1)
     return ret;
-  len+=ret;
+  len += (size_t) ret;
   return len;
 }
 
@@ -578,22 +578,22 @@ static int write_known_conversations(rhizome_manifest *m, struct conversations *
   // TODO rebalance tree...
   
   // measure the final payload first
-  int len=write_conversation(NULL, conv);
-  if (len<0)
+  ssize_t len=write_conversation(NULL, conv);
+  if (len == -1)
     goto end;
   
   // then write it
   m->version++;
   rhizome_manifest_set_ll(m,"version",m->version);
-  m->fileLength = len+1;
+  m->fileLength = (size_t) len + 1;
   rhizome_manifest_set_ll(m,"filesize",m->fileLength);
   
-  if (rhizome_write_open_manifest(&write, m))
+  if (rhizome_write_open_manifest(&write, m) == -1)
     goto end;
   unsigned char version=1;
-  if (rhizome_write_buffer(&write, &version, 1)<0)
+  if (rhizome_write_buffer(&write, &version, 1) == -1)
     goto end;
-  if (write_conversation(&write, conv)<0)
+  if (write_conversation(&write, conv) == -1)
     goto end;
   if (rhizome_finish_write(&write))
     goto end;
@@ -795,7 +795,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
     // find their last ACK so we know if messages have been received
     int r = ply_find_next(&read_theirs, MESHMS_BLOCK_TYPE_ACK);
     if (r==0){
-      if (unpack_uint(read_theirs.buffer, read_theirs.record_length, &their_last_ack)<0)
+      if (unpack_uint(read_theirs.buffer, read_theirs.record_length, &their_last_ack) == -1)
 	their_last_ack=0;
       else
 	their_ack_offset = read_theirs.record_end_offset;
@@ -822,11 +822,11 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
 	// read their message list, and insert all messages that are included in the ack range
 	if (conv->found_their_ply){
 	  int ofs=unpack_uint(read_ours.buffer, read_ours.record_length, (uint64_t*)&read_theirs.read.offset);
-	  if (ofs<0)
+	  if (ofs == -1)
 	    break;
 	  uint64_t end_range;
 	  int x = unpack_uint(read_ours.buffer+ofs, read_ours.record_length - ofs, &end_range);
-	  if (x<0)
+	  if (x == -1)
 	    end_range=0;
 	  else
 	    end_range = read_theirs.read.offset - end_range;

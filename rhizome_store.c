@@ -187,7 +187,8 @@ static int write_get_lock(struct rhizome_write *write_state){
 }
 
 // write data to disk
-static int write_data(struct rhizome_write *write_state, uint64_t file_offset, unsigned char *buffer, int data_size){
+static int write_data(struct rhizome_write *write_state, uint64_t file_offset, unsigned char *buffer, size_t data_size)
+{
   if (data_size<=0)
     return 0;
   
@@ -253,7 +254,8 @@ static int write_release_lock(struct rhizome_write *write_state){
 
 // Write data buffers in any order, the data will be cached and streamed into the database in file order. 
 // Though there is an upper bound on the amount of cached data
-int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsigned char *buffer, int data_size){
+int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsigned char *buffer, size_t data_size)
+{
   if (offset + data_size > write_state->file_length)
     data_size = write_state->file_length - offset;
   
@@ -266,7 +268,7 @@ int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsi
   }else{
     // cache up to RHIZOME_BUFFER_MAXIMUM_SIZE or file length before attempting to write everything in one go.
     // (Not perfect if the range overlaps)
-    int64_t new_size = write_state->written_offset + write_state->buffer_size + data_size;
+    uint64_t new_size = write_state->written_offset + write_state->buffer_size + data_size;
     if (new_size>=write_state->file_length || new_size>=RHIZOME_BUFFER_MAXIMUM_SIZE)
       should_write = 1;
   }
@@ -325,7 +327,7 @@ int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsi
     
     if (!*ptr || offset < (*ptr)->offset){
       // found the insert position in the list
-      int64_t size = data_size;
+      size_t size = data_size;
       
       // allow for buffers to overlap, we may need to split the incoming buffer into multiple pieces.
       if (*ptr && offset+size > (*ptr)->offset)
@@ -349,7 +351,7 @@ int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsi
 	  break;
 	  
 	if (config.debug.rhizome)
-	  DEBUGF("Caching block @%"PRId64", %"PRId64, offset, size);
+	  DEBUGF("Caching block @%"PRId64", %zu", offset, size);
 	struct rhizome_write_buffer *i = emalloc(size + sizeof(struct rhizome_write_buffer));
 	if (!i){
 	  ret=-1;
@@ -378,7 +380,8 @@ int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsi
   return ret;
 }
 
-int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffer, int data_size){
+int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffer, size_t data_size)
+{
   return rhizome_random_write(write_state, write_state->file_offset, buffer, data_size);
 }
 
@@ -399,8 +402,8 @@ int rhizome_write_file(struct rhizome_write *write, const char *filename){
     if (write->file_offset + size > write->file_length)
       size=write->file_length - write->file_offset;
     
-    int r = fread(buffer, 1, size, f);
-    if (r==-1){
+    size_t r = fread(buffer, 1, size, f);
+    if (ferror(f)){
       ret = WHY_perror("fread");
       goto end;
     }
@@ -573,12 +576,12 @@ int rhizome_import_file(rhizome_manifest *m, const char *filepath)
 }
 
 // store a whole payload from a single buffer
-int rhizome_import_buffer(rhizome_manifest *m, unsigned char *buffer, int length)
+int rhizome_import_buffer(rhizome_manifest *m, unsigned char *buffer, size_t length)
 {
   if (m->fileLength<=0)
     return 0;
   if (length!=m->fileLength)
-    return WHYF("Expected %"PRId64" bytes, got %d", m->fileLength, length);
+    return WHYF("Expected %"PRId64" bytes, got %zu", m->fileLength, length);
   
   /* Import the file first, checking the hash as we go */
   struct rhizome_write write;
@@ -779,7 +782,7 @@ static ssize_t rhizome_read_retry(sqlite_retry_state *retry, struct rhizome_read
 /* Read content from the store, hashing and decrypting as we go. 
  Random access is supported, but hashing requires all payload contents to be read sequentially. */
 // returns the number of bytes read
-int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buffer_length)
+ssize_t rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, size_t buffer_length)
 {
   IN();
   // hash check failed, just return an error
@@ -823,9 +826,9 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
 }
 
 /* Read len bytes from read->offset into data, using *buffer to cache any reads */
-int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer *buffer, unsigned char *data, int len)
+int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer *buffer, unsigned char *data, size_t len)
 {
-  int bytes_copied=0;
+  size_t bytes_copied=0;
   
   while (len>0){
     // make sure we only attempt to read data that actually exists
@@ -835,7 +838,7 @@ int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer 
     // if we can supply either the beginning or end of the data from cache, do that first.
     uint64_t ofs=read->offset - buffer->offset;
     if (ofs>=0 && ofs<=buffer->len){
-      int size=len;
+      size_t size=len;
       if (size > buffer->len - ofs)
 	size = buffer->len - ofs;
       if (size>0){
@@ -851,7 +854,7 @@ int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer 
     
     ofs = (read->offset+len) - buffer->offset;
     if (ofs>0 && ofs<=buffer->len){
-      int size=len;
+      size_t size=len;
       if (size > ofs)
 	size = ofs;
       if (size>0){
@@ -867,10 +870,12 @@ int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer 
     // remember the requested read offset so we can put it back
     ofs = read->offset;
     buffer->offset = read->offset = ofs & ~(RHIZOME_CRYPT_PAGE_SIZE -1);
-    buffer->len = rhizome_read(read, buffer->data, sizeof(buffer->data));
+    ssize_t len = rhizome_read(read, buffer->data, sizeof(buffer->data));
     read->offset = ofs;
-    if (buffer->len<=0)
-      return buffer->len;
+    buffer->len = 0;
+    if (len == -1)
+      return -1;
+    buffer->len = (size_t) len;
   }
   return bytes_copied;
 }
@@ -991,7 +996,7 @@ int rhizome_cache_count()
 }
 
 // read a block of data, caching meta data for reuse
-int rhizome_read_cached(const rhizome_bid_t *bidp, uint64_t version, time_ms_t timeout, uint64_t fileOffset, unsigned char *buffer, int length)
+int rhizome_read_cached(const rhizome_bid_t *bidp, uint64_t version, time_ms_t timeout, uint64_t fileOffset, unsigned char *buffer, size_t length)
 {
   // look for a cached entry
   struct cache_entry **ptr = find_entry_location(&root, bidp, version);
@@ -1133,17 +1138,17 @@ static int rhizome_pipe(struct rhizome_read *read, struct rhizome_write *write, 
 
   unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];
   while(length>0){
-    int size=sizeof(buffer);
+    size_t size=sizeof(buffer);
     if (size > length)
       size=length;
 
-    int r = rhizome_read(read, buffer, size);
-    if (r<0)
+    ssize_t r = rhizome_read(read, buffer, size);
+    if (r == -1)
       return r;
 
-    length -= r;
+    length -= (size_t) r;
     
-    if (rhizome_write_buffer(write, buffer, r))
+    if (rhizome_write_buffer(write, buffer, (size_t) r))
       return -1;
   }
 
@@ -1207,12 +1212,12 @@ failure:
   return ret;
 }
 
-int rhizome_append_journal_buffer(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, unsigned char *buffer, int len)
+int rhizome_append_journal_buffer(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, unsigned char *buffer, size_t len)
 {
   struct rhizome_write write;
   bzero(&write, sizeof write);
 
-  int ret = rhizome_write_open_journal(&write, m, bsk, advance_by, len);
+  int ret = rhizome_write_open_journal(&write, m, bsk, advance_by, (uint64_t) len);
   if (ret)
     return -1;
 
