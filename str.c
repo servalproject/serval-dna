@@ -446,11 +446,12 @@ size_t toprint_str_len(const char *srcStr, const char quotes[2])
   return srcStr ? strbuf_count(strbuf_toprint_quoted(strbuf_local(NULL, 0), quotes, srcStr)) : 4;
 }
 
-size_t strn_fromprint(unsigned char *dst, size_t dstlen, const char *src, char endquote, const char **afterp)
+size_t strn_fromprint(unsigned char *dst, size_t dstsiz, const char *src, size_t srclen, char endquote, const char **afterp)
 {
   unsigned char *const odst = dst;
-  unsigned char *const edst = dst + dstlen;
-  while (*src && *src != endquote && dst < edst) {
+  unsigned char *const edst = dst + dstsiz;
+  const char *const esrc = srclen ? src + srclen : NULL;
+  while (src < esrc && *src && *src != endquote && dst < edst) {
     switch (*src) {
     case '\\':
       ++src;
