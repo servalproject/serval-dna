@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <limits.h>
 #include "constants.h"
 #include "strbuf.h"
+#include "fdqueue.h"
 
 /* Generic HTTP request handling.
  *
@@ -111,8 +112,6 @@ void http_request_response(struct http_request *r, int result, const char *mime_
 void http_request_simple_response(struct http_request *r, uint16_t result, const char *body);
 void http_request_response_header(struct http_request *r, int result, const char *mime_type, uint64_t bytes);
 
-#ifdef __SERVALDNA__HTTP_SERVER_IMPLEMENTATION
-
 struct http_request {
   struct sched_ent alarm; // MUST BE FIRST ELEMENT
   enum http_request_phase { RECEIVE, TRANSMIT, DONE } phase;
@@ -150,7 +149,5 @@ struct http_request {
   void (*response_free_buffer)(void*);
   char buffer[8 * 1024];
 };
-
-#endif // __SERVALDNA__HTTP_SERVER_IMPLEMENTATION
 
 #endif // __SERVALDNA__HTTP_SERVER_H

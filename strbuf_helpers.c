@@ -17,8 +17,6 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "strbuf_helpers.h"
-#include <poll.h>
 #include <ctype.h>
 #include <string.h>
 #include <time.h>
@@ -26,6 +24,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdarg.h>
 #include <inttypes.h>
 #include <sys/wait.h>
+#ifdef HAVE_POLL_H
+#include <poll.h>
+#endif
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
 #endif
@@ -34,6 +35,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 #include <sys/uio.h>
 #include "http_server.h"
+#include "strbuf_helpers.h"
 
 static inline strbuf _toprint(strbuf sb, char c)
 {

@@ -25,7 +25,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 #include <assert.h>
 
-#define __SERVALDNA__HTTP_SERVER_IMPLEMENTATION
 #include "serval.h"
 #include "overlay_address.h"
 #include "conf.h"
