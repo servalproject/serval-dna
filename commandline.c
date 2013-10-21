@@ -2023,9 +2023,11 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   const char *sidhex, *did, *name;
-  cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "");
-  cli_arg(parsed, "did", &did, cli_optional_did, "");
-  cli_arg(parsed, "name", &name, NULL, "");
+  
+  if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1 ||
+      cli_arg(parsed, "did", &did, cli_optional_did, "") == -1 ||
+      cli_arg(parsed, "name", &name, NULL, "") == -1)
+    return -1;
 
   if (strlen(name)>63)
     return WHY("Name too long (31 char max)");
@@ -2062,9 +2064,10 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
 static int app_keyring_set_tag(const struct cli_parsed *parsed, struct cli_context *context)
 {
   const char *sidhex, *tag, *value;
-  cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "");
-  cli_arg(parsed, "tag", &tag, NULL, "");
-  cli_arg(parsed, "value", &value, NULL, "");
+  if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1 ||
+      cli_arg(parsed, "tag", &tag, NULL, "") == -1 ||
+      cli_arg(parsed, "value", &value, NULL, "") == -1 )
+    return -1;
   
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
@@ -2097,8 +2100,9 @@ static int app_keyring_set_tag(const struct cli_parsed *parsed, struct cli_conte
 static int handle_pins(const struct cli_parsed *parsed, struct cli_context *context, int revoke)
 {
   const char *pin, *sid_hex;
-  cli_arg(parsed, "entry-pin", &pin, NULL, "");
-  cli_arg(parsed, "sid", &sid_hex, str_is_subscriber_id, "");
+  if (cli_arg(parsed, "entry-pin", &pin, NULL, "") == -1 ||
+      cli_arg(parsed, "sid", &sid_hex, str_is_subscriber_id, "") == -1)
+    return -1;
 
   int ret=1;
   struct mdp_header header={
