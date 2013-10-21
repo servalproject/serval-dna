@@ -43,6 +43,9 @@ int crypto_verify_message(struct subscriber *subscriber, unsigned char *message,
     return WHY("SAS key not currently on record, cannot verify");
   }
   
+  if (*message_len < SIGNATURE_BYTES)
+    return WHY("Message is too short to include a signature");
+  
   *message_len -= SIGNATURE_BYTES;
   
   unsigned char hash[crypto_hash_sha512_BYTES];

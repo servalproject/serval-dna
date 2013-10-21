@@ -93,7 +93,7 @@ ssize_t read_whole_file(const char *path, unsigned char *buffer, size_t buffer_s
     return WHYF_perror("open(%s,O_RDONLY)", alloca_str_toprint(path));
   ssize_t ret = read(fd, buffer, buffer_size);
   if (ret == -1)
-    ret = WHYF_perror("read(%s,%u)", alloca_str_toprint(path), buffer_size);
+    ret = WHYF_perror("read(%s,%zu)", alloca_str_toprint(path), buffer_size);
   if (close(fd) == -1)
     ret = WHY_perror("close");
   return ret;
@@ -367,7 +367,7 @@ int rhizome_hash_file(rhizome_manifest *m, const char *path, rhizome_filehash_t 
     ssize_t r;
     while ((r = read(fd, buffer, sizeof buffer))) {
       if (r == -1) {
-	WHYF_perror("read(%s,%u)", alloca_str_toprint(path), sizeof buffer);
+	WHYF_perror("read(%s,%zu)", alloca_str_toprint(path), sizeof buffer);
 	close(fd);
 	return -1;
       }

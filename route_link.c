@@ -357,7 +357,7 @@ static struct link * find_best_link(struct subscriber *subscriber)
   IN();
   if (subscriber->reachable==REACHABLE_SELF)
     RETURN(NULL);
-
+    
   struct link_state *state = get_link_state(subscriber);
   if (state->route_version == route_version)
     RETURN(state->link);
@@ -420,11 +420,14 @@ next:
   
   if (next_hop == subscriber)
     next_hop = NULL;
+  
   if (set_reachable(subscriber, destination, next_hop))
     changed = 1;
   
-  if (subscriber->identity && subscriber->reachable==REACHABLE_NONE){
+  if (subscriber->identity && subscriber->reachable == REACHABLE_NONE){
     subscriber->reachable=REACHABLE_SELF;
+    changed = 1;
+    best_link = NULL;
     if (config.debug.overlayrouting || config.debug.linkstate)
       DEBUGF("REACHABLE via self %s", alloca_tohex_sid_t(subscriber->sid));
   }
@@ -519,6 +522,8 @@ static int append_link(struct subscriber *subscriber, void *context)
 
   time_ms_t now = gettime_ms();
 
+  struct link *best_link = find_best_link(subscriber);
+    
   if (subscriber->reachable==REACHABLE_SELF){
     if (state->next_update - INCLUDE_ANYWAY <= now){
       // Other entries in our keyring are always one hop away from us.
@@ -530,8 +535,10 @@ static int append_link(struct subscriber *subscriber, void *context)
       state->next_update = now + 5000;
     }
   } else {
-    struct link *best_link = find_best_link(subscriber);
-
+    
+    if (subscriber->identity)
+      keyring_send_unlock(subscriber);
+    
     if (state->next_update - INCLUDE_ANYWAY <= now){
       if (append_link_state(payload, 0, state->transmitter, subscriber, -1, 
 	  best_link?best_link->link_version:-1, -1, 0, best_link?best_link->drop_rate:32)){
@@ -909,6 +916,20 @@ static void update_alarm(time_ms_t limit){
   }
 }
 
+int link_stop_routing(struct subscriber *subscriber)
+{
+  if (subscriber->reachable!=REACHABLE_SELF)
+    return 0;
+  subscriber->reachable = REACHABLE_NONE;
+  subscriber->identity=NULL;
+  if (subscriber==my_subscriber)
+    my_subscriber=NULL;
+  struct link_state *state = get_link_state(subscriber);
+  state->next_update = gettime_ms();
+  update_alarm(state->next_update);
+  return 0;
+}
+
 struct link_in * get_neighbour_link(struct neighbour *neighbour, struct overlay_interface *interface, int sender_interface, int unicast)
 {
   struct link_in *link = neighbour->links;
@@ -1174,7 +1195,7 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
 
   // force an update when we start hearing a new neighbour link
   if (link->link_timeout < now){
-    if (neighbour->next_neighbour_update > now + 10);
+    if (neighbour->next_neighbour_update > now + 10)
       neighbour->next_neighbour_update = now + 10;
   }
   link->link_timeout = now + (context->interface->destination->tick_ms *5);
