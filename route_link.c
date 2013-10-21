@@ -1195,7 +1195,7 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
 
   // force an update when we start hearing a new neighbour link
   if (link->link_timeout < now){
-    if (neighbour->next_neighbour_update > now + 10);
+    if (neighbour->next_neighbour_update > now + 10)
       neighbour->next_neighbour_update = now + 10;
   }
   link->link_timeout = now + (context->interface->destination->tick_ms *5);
