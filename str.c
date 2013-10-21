@@ -235,11 +235,9 @@ int str_to_int(const char *str, int base, int *result, const char **afterp)
   const char *end = str;
   errno = 0;
   long value = strtol(str, (char**)&end, base);
-  if (errno == ERANGE || end == str || value > INT_MAX || value < INT_MIN)
-    return 0;
   if (afterp)
     *afterp = end;
-  else if (*end)
+  if (errno == ERANGE || end == str || value > INT_MAX || value < INT_MIN || isdigit(*end) || (!afterp && *end))
     return 0;
   if (result)
     *result = value;
@@ -253,11 +251,9 @@ int str_to_uint(const char *str, int base, unsigned *result, const char **afterp
   const char *end = str;
   errno = 0;
   unsigned long value = strtoul(str, (char**)&end, base);
-  if (errno == ERANGE || end == str || value > UINT_MAX)
-    return 0;
   if (afterp)
     *afterp = end;
-  else if (*end)
+  if (errno == ERANGE || end == str || value > UINT_MAX || isdigit(*end) || (!afterp && *end))
     return 0;
   if (result)
     *result = value;
@@ -271,11 +267,9 @@ int str_to_int64(const char *str, int base, int64_t *result, const char **afterp
   const char *end = str;
   errno = 0;
   long long value = strtoll(str, (char**)&end, base);
-  if (errno == ERANGE || end == str)
-    return 0;
   if (afterp)
     *afterp = end;
-  else if (*end)
+  if (errno == ERANGE || end == str || isdigit(*end) || (!afterp && *end))
     return 0;
   if (result)
     *result = value;
@@ -289,11 +283,9 @@ int str_to_uint64(const char *str, int base, uint64_t *result, const char **afte
   const char *end = str;
   errno = 0;
   unsigned long long value = strtoull(str, (char**)&end, base);
-  if (errno == ERANGE || end == str)
-    return 0;
   if (afterp)
     *afterp = end;
-  else if (*end)
+  if (errno == ERANGE || end == str || isdigit(*end) || (!afterp && *end))
     return 0;
   if (result)
     *result = value;
@@ -334,8 +326,11 @@ int str_to_int64_scaled(const char *str, int base, int64_t *result, const char *
 {
   int64_t value;
   const char *end = str;
-  if (!str_to_int64(str, base, &value, &end))
+  if (!str_to_int64(str, base, &value, &end)) {
+    if (afterp)
+      *afterp = end;
     return 0;
+  }
   value *= scale_factor(end, &end);
   if (afterp)
     *afterp = end;
@@ -350,8 +345,11 @@ int str_to_uint64_scaled(const char *str, int base, uint64_t *result, const char
 {
   uint64_t value;
   const char *end = str;
-  if (!str_to_uint64(str, base, &value, &end))
+  if (!str_to_uint64(str, base, &value, &end)) {
+    if (afterp)
+      *afterp = end;
     return 0;
+  }
   value *= scale_factor(end, &end);
   if (afterp)
     *afterp = end;
@@ -386,8 +384,11 @@ int str_to_uint64_interval_ms(const char *str, int64_t *result, const char **aft
     return 0;
   const char *end = str;
   unsigned long long value = strtoull(str, (char**)&end, 10) * precision;
-  if (end == str)
+  if (end == str) {
+    if (afterp)
+      *afterp = end;
     return 0;
+  }
   if (end[0] == '.' && isdigit(end[1])) {
     ++end;
     unsigned factor;

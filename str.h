@@ -199,10 +199,11 @@ char *str_str(char *haystack, const char *needle, int haystack_len);
 /* Parse a string as an integer in ASCII radix notation in the given 'base' (eg, base=10 means
  * decimal).
  *
- * Return 1 if a valid integer was parsed, storing the value in *result (unless result is NULL) and
- * storing a pointer to the immediately succeeding character in *afterp (unless afterp is NULL, in
- * which case returns 1 only if the immediately succeeding character is a nul '\0').  Returns 0
- * otherwise, leaving *result and *afterp unchanged.
+ * Returns 1 if a valid integer is parsed, storing the value in *result (unless result is NULL) and
+ * storing a pointer to the immediately succeeding character in *afterp.  If afterp is NULL then
+ * returns 0 unless the immediately succeeding character is a NUL '\0'.  If no integer is parsed or
+ * if the integer overflows (too many digits), then returns 0, leaving *result unchanged and setting
+ * setting *afterp to point to the character where parsing failed.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
