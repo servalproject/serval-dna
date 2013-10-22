@@ -2484,11 +2484,16 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
   return 1;
 }
 
+int context_switch_test(int);
 int app_mem_test(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mem_size;
   int addr;
   uint64_t count;
+
+
+  // First test context switch speed
+  context_switch_test(1);
 
   for(mem_size=1024;mem_size<=(128*1024*1024);mem_size*=2) {
     uint8_t *mem=malloc(mem_size);
@@ -2525,6 +2530,7 @@ int app_mem_test(const struct cli_parsed *parsed, struct cli_context *context)
 
     free(mem);
   }
+
   return 0;
 }
 
