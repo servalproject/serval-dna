@@ -66,7 +66,9 @@ size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
 int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
 size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *src, const char **afterp);
 
-#define alloca_tohex(buf,bytes)           tohex((char *)alloca((bytes)*2+1), (bytes) * 2, (buf))
+#define alloca_tohex(buf,bytes)  tohex((char *)alloca((bytes)*2+1), (bytes) * 2, (buf))
+
+#define alloca_strdup(str)  strcpy(alloca(strlen(str) + 1), (str))
 
 __STR_INLINE int hexvalue(char c)
 {
