@@ -123,6 +123,14 @@ char *str_toupper_inplace(char *str)
   return str;
 }
 
+char *str_tolower_inplace(char *str)
+{
+  register char *s;
+  for (s = str; *s; ++s)
+    *s = tolower(*s);
+  return str;
+}
+
 const char *strnchr(const char *s, size_t n, char c)
 {
   for (; n; --n, ++s) {

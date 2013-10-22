@@ -92,7 +92,9 @@ __STR_INLINE int hexvalue(char c)
 }
 
 int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value);
+
 char *str_toupper_inplace(char *s);
+char *str_tolower_inplace(char *s);
 
 char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes, const char quotes[2]);
 char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2]);
