@@ -2509,9 +2509,19 @@ int app_mem_test(const struct cli_parsed *parsed, struct cli_context *context)
       addr=random()&mem_mask;
       total+=mem[addr];
     }
-    printf("Memory size = %8dKB : %lld random reads per second (irrelevant sum is %016llx)\n",mem_size/1024,count,
+    printf("Memory size = %8dKB : %lld random  reads per second (irrelevant sum is %016llx)\n",mem_size/1024,count*10,
 	   /* use total so that compiler doesn't optimise away our memory accesses */
 	   total);
+
+    end_time=gettime_ms()+100;
+    for(count=0;gettime_ms()<end_time;count++) {
+      addr=random()&mem_mask;
+      mem[addr]=3;
+    }
+    printf("Memory size = %8dKB : %lld random writes per second (irrelevant sum is %016llx)\n",mem_size/1024,count*10,
+	   /* use total so that compiler doesn't optimise away our memory accesses */
+	   total);
+
 
     free(mem);
   }
