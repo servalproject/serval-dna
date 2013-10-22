@@ -115,7 +115,14 @@ if [ -n "$dirty" ] && ! $allow_modified; then
 fi
 
 # Use the "git describe" command to form the version string and append $dirty.
-if error="$( (desc="$(git describe --match="$version_tag_glob")" && echo "$desc$dirty") 2>&1 1>&5)" 5>&1; then
+extragitflags=
+set +e
+error=`git describe --match="$version_tag_glob" 2>&1 1>/dev/null`
+desc=`git describe --match="$version_tag_glob" 2>/dev/null`
+set -e
+
+if [ "x$error" == "x" ]; then
+   echo $desc$dirty
    exit 0
 fi
 
