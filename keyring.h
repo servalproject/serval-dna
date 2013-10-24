@@ -100,9 +100,10 @@ int keyring_mapping_request(keyring_file *k, struct overlay_frame *frame, overla
 int keyring_send_unlock(struct subscriber *subscriber);
 void keyring_release_subscriber(keyring_file *k, const sid_t *sid);
 
-int keyring_set_public_tag(keyring_identity *id, const char *name, const unsigned char *value, int length);
-int keyring_find_public_tag(const keyring_file *k, int *cn, int *in, int *kp, const char *name, const unsigned char **value, int *length);
-int keyring_find_public_tag_value(const keyring_file *k, int *cn, int *in, int *kp, const char *name, const unsigned char *value, int length);
-int keyring_unpack_tag(keypair *key, const char **name, const unsigned char **value, int *length);
+int keyring_set_public_tag(keyring_identity *id, const char *name, const unsigned char *value, size_t length);
+int keyring_find_public_tag(const keyring_file *k, int *cn, int *in, int *kp, const char *name, const unsigned char **value, size_t *length);
+int keyring_find_public_tag_value(const keyring_file *k, int *cn, int *in, int *kp, const char *name, const unsigned char *value, size_t length);
+int keyring_unpack_tag(const unsigned char *packed, size_t packed_len, const char **name, const unsigned char **value, size_t *length);
+int keyring_pack_tag(unsigned char *packed, size_t *packed_len, const char *name, const unsigned char *value, size_t length);
 
 #endif // __SERVALD_KEYRING_H

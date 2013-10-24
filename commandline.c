@@ -1975,8 +1975,8 @@ static void cli_output_identity(struct cli_context *context, const keyring_ident
 	{
 	  const char *name;
 	  const unsigned char *value;
-	  int length;
-	  if (keyring_unpack_tag(kp, &name, &value, &length)==0){
+	  size_t length;
+	  if (keyring_unpack_tag(kp->public_key, kp->public_key_len, &name, &value, &length)==0){
 	    cli_field_name(context, name, ":");
 	    cli_put_string(context, alloca_toprint_quoted(-1, value, length, NULL), "\n");
 	  }

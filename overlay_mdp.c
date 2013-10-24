@@ -964,7 +964,7 @@ static int mdp_reply2(const struct mdp_client *client, const struct mdp_header *
 #define mdp_reply_ok(A,B)  mdp_reply2(A,B,MDP_FLAG_OK,NULL,0)
 
 static int mdp_process_identity_request(struct mdp_client *client, struct mdp_header *header, 
-  const unsigned char *payload, int payload_len)
+  const unsigned char *payload, size_t payload_len)
 {
   if (payload_len<sizeof(struct mdp_identity_request)){
     mdp_reply_error(client, header);
@@ -980,7 +980,7 @@ static int mdp_process_identity_request(struct mdp_client *client, struct mdp_he
 	case TYPE_PIN:
 	  {
 	    const char *pin = (char *)payload;
-	    int ofs=0;
+	    size_t ofs=0;
 	    while(ofs < payload_len){
 	      if (!payload[ofs++]){
 		int cn, in;
@@ -1019,7 +1019,7 @@ static int mdp_process_identity_request(struct mdp_client *client, struct mdp_he
 	}
 	int unlock_count=0;
 	const char *pin = (char *)payload;
-	int ofs=0;
+	size_t ofs=0;
 	while(ofs < payload_len){
 	  if (!payload[ofs++]){
 	    unlock_count += keyring_enter_pin(keyring, pin);
@@ -1057,11 +1057,12 @@ static void mdp_poll2(struct sched_ent *alarm)
     struct mdp_header *header = (struct mdp_header *)buffer;
     
     unsigned char *payload = &buffer[sizeof(struct mdp_header)];
-    int payload_len = len - sizeof(struct mdp_header);
+    size_t payload_len = len - sizeof(struct mdp_header);
     
     if (is_sid_t_any(header->remote.sid)){
       // process local commands
       switch(header->remote.port){
+	// lock and unlock identities
 	case MDP_IDENTITY:
 	  if (config.debug.mdprequests)
 	    DEBUGF("Processing MDP_IDENTITY from %s", alloca_sockaddr(client.addr, client.addrlen));

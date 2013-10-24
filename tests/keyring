@@ -91,6 +91,8 @@ test_SetTag() {
     assertStdoutGrep --matches=1 "^tag1:Third Value\$"
     assertStdoutGrep --matches=1 "^tag2:Second Value\$"
     assertStdoutLineCount '==' 3
+    executeOk_servald keyring dump --secret
+    tfw_cat --stdout
 }
 
 doc_Pinless="No keyring PIN with PIN-less identities"

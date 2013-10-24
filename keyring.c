@@ -1493,29 +1493,45 @@ int keyring_find_did(const keyring_file *k, int *cn, int *in, int *kp, const cha
   return 0;
 }
 
-int keyring_unpack_tag(keypair *key, const char **name, const unsigned char **value, int *length)
+int keyring_unpack_tag(const unsigned char *packed, size_t packed_len, const char **name, const unsigned char **value, size_t *length)
 {
-  int i;
-  for (i=0;i<key->public_key_len-1;i++){
-    if (key->public_key[i]==0){
-      *name = (const char*)key->public_key;
-      *value = &key->public_key[i+1];
-      *length = key->public_key_len - (i+1);
+  size_t i;
+  for (i=0;i<packed_len-1;i++){
+    if (packed[i]==0){
+      *name = (const char*)packed;
+      if (value)
+	*value = &packed[i+1];
+      if (length)
+	*length = packed_len - (i+1);
       return 0;
     }
   }
   return WHY("Did not find NULL values in tag");
 }
 
-int keyring_set_public_tag(keyring_identity *id, const char *name, const unsigned char *value, int length)
+int keyring_pack_tag(unsigned char *packed, size_t *packed_len, const char *name, const unsigned char *value, size_t length)
+{
+  size_t name_len=strlen(name)+1;
+  if (packed && *packed_len <name_len+length)
+    return -1;
+  *packed_len=name_len+length;
+  if (packed){
+    bcopy(name, packed, name_len);
+    bcopy(value, &packed[name_len], length);
+  }
+  return 0;
+}
+
+int keyring_set_public_tag(keyring_identity *id, const char *name, const unsigned char *value, size_t length)
 {
   int i;
   for(i=0;i<id->keypair_count;i++){
     const char *tag_name;
     const unsigned char *tag_value;
-    int tag_length;
+    size_t tag_length;
     if (id->keypairs[i]->type==KEYTYPE_PUBLIC_TAG &&
-      keyring_unpack_tag(id->keypairs[i], &tag_name, &tag_value, &tag_length)==0 &&
+      keyring_unpack_tag(id->keypairs[i]->public_key, id->keypairs[i]->public_key_len, 
+	  &tag_name, &tag_value, &tag_length)==0 &&
       strcmp(tag_name, name)==0) {
       if (config.debug.keyring)
 	DEBUG("Found existing public tag");
@@ -1538,36 +1554,38 @@ int keyring_set_public_tag(keyring_identity *id, const char *name, const unsigne
   if (id->keypairs[i]->public_key)
     free(id->keypairs[i]->public_key);
   
-  int name_len=strlen(name)+1;
-  id->keypairs[i]->public_key_len = name_len+length;
+  if (keyring_pack_tag(NULL, &id->keypairs[i]->public_key_len, name, value, length))
+    return -1;
   id->keypairs[i]->public_key = emalloc(id->keypairs[i]->public_key_len);
   if (!id->keypairs[i]->public_key)
     return -1;
-  bcopy(name, id->keypairs[i]->public_key, name_len);
-  bcopy(value, &id->keypairs[i]->public_key[name_len], length);
+  if (keyring_pack_tag(id->keypairs[i]->public_key, &id->keypairs[i]->public_key_len, name, value, length))
+    return -1;
+  
   if (config.debug.keyring)
     dump("New tag", id->keypairs[i]->public_key, id->keypairs[i]->public_key_len);
   return 0;
 }
 
-int keyring_find_public_tag(const keyring_file *k, int *cn, int *in, int *kp, const char *name, const unsigned char **value, int *length)
+int keyring_find_public_tag(const keyring_file *k, int *cn, int *in, int *kp, const char *name, const unsigned char **value, size_t *length)
 {
   for(;keyring_next_keytype(k,cn,in,kp,KEYTYPE_PUBLIC_TAG);++(*kp)) {
     keypair *keypair=k->contexts[*cn]->identities[*in]->keypairs[*kp];
     const char *tag_name;
-    if (!keyring_unpack_tag(keypair, &tag_name, value, length) &&
+    if (!keyring_unpack_tag(keypair->public_key, keypair->public_key_len, &tag_name, value, length) &&
       strcmp(name, tag_name)==0){
       return 1;
     }
   }
-  *value=NULL;
+  if (value)
+    *value=NULL;
   return 0;
 }
 
-int keyring_find_public_tag_value(const keyring_file *k, int *cn, int *in, int *kp, const char *name, const unsigned char *value, int length)
+int keyring_find_public_tag_value(const keyring_file *k, int *cn, int *in, int *kp, const char *name, const unsigned char *value, size_t length)
 {
   const unsigned char *stored_value;
-  int stored_length;
+  size_t stored_length;
   for(;keyring_find_public_tag(k, cn, in, kp, name, &stored_value, &stored_length);++(*kp)) {
     if (stored_length == length && memcmp(value, stored_value, length)==0)
       return 1;
