@@ -48,13 +48,26 @@ struct mdp_header {
 #define ACTION_LOCK 1
 #define ACTION_UNLOCK 2
 
+/* Port numbers for commands sent to the local daemon*/
+
+/* lock and unlock identities from the local keyring
+ * Requests start with an mdp_identity_request structure followed by a list of pins or SIDs
+*/ 
+#define MDP_IDENTITY 1
+
+/* Search unlocked identities from the running daemon
+ * If the request is empty, all identities will be returned
+ * if the request contains a packed tag / value, identities with a matching tag will be returned
+ * if the value passed in is zero length, all identities with that tag and any value will be returned
+*/
+#define MDP_SEARCH_IDS 2
+
+// an identity request is sent to port MDP_IDENTITY, sid ANY
 struct mdp_identity_request{
   uint8_t action;
   uint8_t type;
-  // followed by a list of SID's or NULL terminated entry pins for the remainder of the payload
+  // the request is followed by a list of SID's or NULL terminated entry pins for the remainder of the payload
 };
-
-#define MDP_IDENTITY 1
 
 #pragma pack(pop)
 

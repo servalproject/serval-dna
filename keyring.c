@@ -1496,7 +1496,7 @@ int keyring_find_did(const keyring_file *k, int *cn, int *in, int *kp, const cha
 int keyring_unpack_tag(const unsigned char *packed, size_t packed_len, const char **name, const unsigned char **value, size_t *length)
 {
   size_t i;
-  for (i=0;i<packed_len-1;i++){
+  for (i=0;i<packed_len;i++){
     if (packed[i]==0){
       *name = (const char*)packed;
       if (value)
