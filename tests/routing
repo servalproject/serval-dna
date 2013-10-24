@@ -265,7 +265,7 @@ setup_simulate_extender() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
-   $servald_build_root/fakeradio 1 20000000 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
+   $servald_build_root/fakeradio 1 0.8 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
    FAKERADIO_PID=$!
    sleep 1
    local END1=`head "$SERVALD_VAR/radioout" -n 1`

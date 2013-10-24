@@ -364,12 +364,48 @@ int transfer_bytes(struct radio_state *radios)
   return bytes;
 }
 
+int calc_ber(double target_packet_fraction)
+{
+  int byte_count=220+32;
+  int max_error_bytes=16;
+
+  int ber;
+  int p;
+  int byte;
+  int bit;
+
+  // 9,000,000 gives a packet delivery rate of ~99%
+  // so no point starting smaller than that.
+  // Only ~30,000,000 reduces packet delivery rate to
+  // ~1%, so the search range is fairly narrow.
+  ber=9000000;
+  if (target_packet_fraction<=0.9) ber=13000000;
+  if (target_packet_fraction<=0.5) ber=18000000;
+  if (target_packet_fraction<=0.25) ber=21000000;
+  if (target_packet_fraction<=0.1) ber=24000000;
+  if (target_packet_fraction<=0.05) ber=26000000;
+  for(;ber<0x70ffffff;ber+=100000)
+    {
+      int packet_errors=0;
+      for(p=0;p<1000;p++) {
+	int byte_errors=0;
+	for(byte=0;byte<byte_count;byte++) {
+	  for(bit=0;bit<8;bit++) if (random()<ber) { byte_errors++; break; }
+	  if (byte_errors>max_error_bytes) { packet_errors++; break; }
+	}
+      }
+      if (packet_errors>=((1.0-target_packet_fraction)*1000)) break;
+    }
+  fprintf(stderr,"ber magic value=%d\n",ber);
+  return ber;
+}
+
 int main(int argc,char **argv)
 {
   if (argv[1]) {
     chars_per_ms=atol(argv[1]);
     if (argv[2]) 
-      ber=atol(argv[2]);
+      ber=calc_ber(atof(argv[2]));
   }
   fprintf(stderr, "Sending %d bytes per ms\n", chars_per_ms);
   fprintf(stderr, "Introducing %f%% bit errors\n", (ber * 100.0) / 0xFFFFFFFF);
