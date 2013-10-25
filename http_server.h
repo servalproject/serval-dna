@@ -73,11 +73,13 @@ struct http_response_headers {
   const char *boundary;
 };
 
+typedef int (*HTTP_CONTENT_GENERATOR)(struct http_request *);
+
 struct http_response {
   uint16_t result_code;
   struct http_response_headers header;
   const char *content;
-  int (*content_generator)(struct http_request *); // callback to produce more content
+  HTTP_CONTENT_GENERATOR content_generator; // callback to produce more content
 };
 
 #define MIME_FILENAME_MAXLEN 127
@@ -108,7 +110,8 @@ void http_request_init(struct http_request *r, int sockfd);
 void http_request_free_response_buffer(struct http_request *r);
 int http_request_set_response_bufsize(struct http_request *r, size_t bufsiz);
 void http_request_finalise(struct http_request *r);
-void http_request_response(struct http_request *r, int result, const char *mime_type, const char *body, uint64_t bytes);
+void http_request_response_static(struct http_request *r, int result, const char *mime_type, const char *body, uint64_t bytes);
+void http_request_response_generated(struct http_request *r, int result, const char *mime_type, HTTP_CONTENT_GENERATOR);
 void http_request_simple_response(struct http_request *r, uint16_t result, const char *body);
 
 typedef int (*HTTP_REQUEST_PARSER)(struct http_request *);

@@ -160,7 +160,7 @@ int rhizome_direct_enquiry_end(struct http_request *hr)
     if (http_request_set_response_bufsize(&r->http, bytes) == -1)
       http_request_simple_response(&r->http, 500, "Internal Error: Out of memory");
     else
-      http_request_response(&r->http, 200, "binary/octet-stream", (const char *)c->buffer, bytes);
+      http_request_response_static(&r->http, 200, "binary/octet-stream", (const char *)c->buffer, bytes);
     rhizome_direct_bundle_iterator_free(&c);
   } else
     http_request_simple_response(&r->http, 500, "Internal Error: No response to enquiry");
@@ -258,7 +258,7 @@ int rhizome_direct_addfile_end(struct http_request *hr)
     if (config.debug.rhizome)
       DEBUGF("Import sans-manifest appeared to succeed");
     /* Respond with the manifest that was added. */
-    http_request_response(&r->http, 200, "text/plain", (const char *)m->manifestdata, m->manifest_bytes);
+    http_request_response_static(&r->http, 200, "text/plain", (const char *)m->manifestdata, m->manifest_bytes);
     /* clean up after ourselves */
     if (mout && mout != m)
       rhizome_manifest_free(mout);

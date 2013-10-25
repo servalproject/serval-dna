@@ -331,7 +331,7 @@ static int neighbour_page(rhizome_http_request *r, const char *remainder)
   strbuf_puts(b, "</body></html>");
   if (strbuf_overrun(b))
     return -1;
-  http_request_response(&r->http, 200, "text/html", buf, strbuf_len(b));
+  http_request_response_static(&r->http, 200, "text/html", buf, strbuf_len(b));
   return 0;
 }
 
@@ -351,7 +351,7 @@ static int interface_page(rhizome_http_request *r, const char *remainder)
   strbuf_puts(b, "</body></html>");
   if (strbuf_overrun(b))
     return -1;
-  http_request_response(&r->http, 200, "text/html", buf, strbuf_len(b));
+  http_request_response_static(&r->http, 200, "text/html", buf, strbuf_len(b));
   return 0;
 }
 
@@ -374,7 +374,7 @@ static int rhizome_status_page(rhizome_http_request *r, const char *remainder)
   strbuf_puts(b, "</body></html>");
   if (strbuf_overrun(b))
     return -1;
-  http_request_response(&r->http, 200, "text/html", buf, strbuf_len(b));
+  http_request_response_static(&r->http, 200, "text/html", buf, strbuf_len(b));
   return 0;
 }
 
@@ -455,8 +455,7 @@ static int rhizome_file_page(rhizome_http_request *r, const char *remainder)
   r->http.response.header.resource_length = closed.last;
   r->http.response.header.content_length = closed.last - closed.first;
   r->read_state.offset = closed.first;
-  r->http.response.content_generator = rhizome_file_content;
-  http_request_response(&r->http, result_code, "application/binary", NULL, 0);
+  http_request_response_generated(&r->http, result_code, "application/binary", rhizome_file_content);
   return 0;
 }
 
@@ -478,7 +477,7 @@ static int manifest_by_prefix_page(rhizome_http_request *r, const char *remainde
   if (ret == -1)
     http_request_simple_response(&r->http, 500, NULL);
   else if (ret == 0)
-    http_request_response(&r->http, 200, "application/binary", (const char *)m->manifestdata, m->manifest_all_bytes);
+    http_request_response_static(&r->http, 200, "application/binary", (const char *)m->manifestdata, m->manifest_all_bytes);
   rhizome_manifest_free(m);
   return ret <= 0 ? 0 : 1;
 }
@@ -487,7 +486,7 @@ static int fav_icon_header(rhizome_http_request *r, const char *remainder)
 {
   if (*remainder)
     return 1;
-  http_request_response(&r->http, 200, "image/vnd.microsoft.icon", (const char *)favicon_bytes, favicon_len);
+  http_request_response_static(&r->http, 200, "image/vnd.microsoft.icon", (const char *)favicon_bytes, favicon_len);
   return 0;
 }
 
@@ -521,6 +520,6 @@ static int root_page(rhizome_http_request *r, const char *remainder)
     WHY("HTTP Root page buffer overrun");
     http_request_simple_response(&r->http, 500, NULL);
   } else
-    http_request_response(&r->http, 200, "text/html", temp, strbuf_len(b));
+    http_request_response_static(&r->http, 200, "text/html", temp, strbuf_len(b));
   return 0;
 }

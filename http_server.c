@@ -1590,18 +1590,18 @@ static void http_request_start_response(struct http_request *r)
   watch(&r->alarm);
 }
 
-/* Start sending a response back to the client.  The response's Content-Type is set by the
- * 'mime_type' parameter (in the standard format "type/subtype").  The response's content is set
- * from the 'body' and 'bytes' parameters, which need not point to static data, ie, is no longer
- * used once this function returns.
+/* Start sending a static (pre-computed) response back to the client.  The response's Content-Type
+ * is set by the 'mime_type' parameter (in the standard format "type/subtype").  The response's
+ * content is set from the 'body' and 'bytes' parameters, which need not point to persistent data,
+ * ie, the memory pointed to by 'body' is no longer referenced once this function returns.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-void http_request_response(struct http_request *r, int result, const char *mime_type, const char *body, uint64_t bytes)
+void http_request_response_static(struct http_request *r, int result, const char *mime_type, const char *body, uint64_t bytes)
 {
   assert(r->phase == RECEIVE);
   assert(result >= 100);
-  assert(result < 600);
+  assert(result < 300);
   assert(mime_type != NULL);
   assert(mime_type[0]);
   r->response.result_code = result;
@@ -1610,6 +1610,20 @@ void http_request_response(struct http_request *r, int result, const char *mime_
   r->response.header.content_length = r->response.header.resource_length = bytes;
   r->response.content = body;
   r->response.content_generator = NULL;
+  http_request_start_response(r);
+}
+
+void http_request_response_generated(struct http_request *r, int result, const char *mime_type, HTTP_CONTENT_GENERATOR generator)
+{
+  assert(r->phase == RECEIVE);
+  assert(result >= 100);
+  assert(result < 300);
+  assert(mime_type != NULL);
+  assert(mime_type[0]);
+  r->response.result_code = result;
+  r->response.header.content_type = mime_type;
+  r->response.content = NULL;
+  r->response.content_generator = generator;
   http_request_start_response(r);
 }
 
