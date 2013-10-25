@@ -273,6 +273,7 @@ void rhizome_server_poll(struct sched_ent *alarm)
 	  request->http.client_in_addr = *peerip;
 	request->http.handle_headers = rhizome_dispatch;
 	request->http.debug_flag = &config.debug.rhizome_httpd;
+	request->http.disable_tx_flag = &config.debug.rhizome_nohttptx;
 	request->http.finalise = rhizome_server_finalise_http_request;
 	request->http.free = free;
 	request->http.idle_timeout = RHIZOME_IDLE_TIMEOUT;
@@ -330,7 +331,7 @@ static int neighbour_page(rhizome_http_request *r, const char *remainder)
   strbuf_puts(b, "</body></html>");
   if (strbuf_overrun(b))
     return -1;
-  http_request_simple_response(&r->http, 200, buf);
+  http_request_response(&r->http, 200, "text/html", buf, strbuf_len(b));
   return 0;
 }
 
@@ -350,7 +351,7 @@ static int interface_page(rhizome_http_request *r, const char *remainder)
   strbuf_puts(b, "</body></html>");
   if (strbuf_overrun(b))
     return -1;
-  http_request_simple_response(&r->http, 200, buf);
+  http_request_response(&r->http, 200, "text/html", buf, strbuf_len(b));
   return 0;
 }
 
@@ -365,16 +366,15 @@ static int rhizome_status_page(rhizome_http_request *r, const char *remainder)
     return 0;
   }
   char buf[32*1024];
-  struct strbuf b;
-  strbuf_init(&b, buf, sizeof buf);
-  strbuf_puts(&b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
-  strbuf_sprintf(&b, "%d HTTP requests<br>", request_count);
-  strbuf_sprintf(&b, "%d Bundles transferring via MDP<br>", rhizome_cache_count());
-  rhizome_fetch_status_html(&b);
-  strbuf_puts(&b, "</body></html>");
-  if (strbuf_overrun(&b))
+  strbuf b = strbuf_local(buf, sizeof buf);
+  strbuf_puts(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
+  strbuf_sprintf(b, "%d HTTP requests<br>", request_count);
+  strbuf_sprintf(b, "%d Bundles transferring via MDP<br>", rhizome_cache_count());
+  rhizome_fetch_status_html(b);
+  strbuf_puts(b, "</body></html>");
+  if (strbuf_overrun(b))
     return -1;
-  http_request_simple_response(&r->http, 200, buf);
+  http_request_response(&r->http, 200, "text/html", buf, strbuf_len(b));
   return 0;
 }
 
@@ -521,6 +521,6 @@ static int root_page(rhizome_http_request *r, const char *remainder)
     WHY("HTTP Root page buffer overrun");
     http_request_simple_response(&r->http, 500, NULL);
   } else
-    http_request_simple_response(&r->http, 200, temp);
+    http_request_response(&r->http, 200, "text/html", temp, strbuf_len(b));
   return 0;
 }

@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <inttypes.h>
 #include <time.h>
 #include "serval.h"
+#include "conf.h"
 #include "http_server.h"
 #include "log.h"
 #include "str.h"
@@ -67,6 +68,18 @@ static struct profile_total http_server_stats = {
   .name = "http_server_poll",
 };
 
+#define DEBUG_DUMP_PARSED(r) do { \
+      if (config.debug.httpd) \
+	DEBUGF("%s %s HTTP/%u.%u", r->verb ? r->verb : "NULL", alloca_str_toprint(r->path), r->version_major, r->version_minor);\
+    } while (0)
+
+#define DEBUG_DUMP_PARSER(r) do { \
+      if (config.debug.httpd) \
+	DEBUGF("parsed %d %s cursor %d %s", \
+	    r->parsed - r->received, alloca_toprint(-1, r->received, r->parsed - r->received), \
+	    r->cursor - r->received, alloca_toprint(50, r->cursor, r->end - r->cursor)); \
+    } while (0)
+
 static void http_server_poll(struct sched_ent *);
 static int http_request_parse_verb(struct http_request *r);
 static int http_request_parse_path(struct http_request *r);
@@ -79,7 +92,6 @@ static void http_request_start_response(struct http_request *r);
 
 void http_request_init(struct http_request *r, int sockfd)
 {
-  bzero(r, sizeof *r);
   assert(sockfd != -1);
   r->request_header.content_length = CONTENT_LENGTH_UNKNOWN;
   r->request_content_remaining = CONTENT_LENGTH_UNKNOWN;
@@ -93,7 +105,7 @@ void http_request_init(struct http_request *r, int sockfd)
   r->alarm.poll.events = POLLIN;
   r->phase = RECEIVE;
   r->received = r->end = r->parsed = r->cursor = r->buffer;
-  r->limit = r->buffer + sizeof r->buffer;
+  r->end_content = NULL;
   r->parser = http_request_parse_verb;
   watch(&r->alarm);
   schedule(&r->alarm);
@@ -273,9 +285,14 @@ static const char * _reserve_str(struct http_request *r, const char *str)
   return _reserve(r, sub);
 }
 
+static inline int _end_of_content(struct http_request *r)
+{
+  return r->cursor == r->end_content;
+}
+
 static inline int _buffer_full(struct http_request *r)
 {
-  return r->parsed == r->received && r->end == r->limit;
+  return r->parsed == r->received && r->end == (r->end_content ? r->end_content : r->buffer + sizeof r->buffer);
 }
 
 static inline int _run_out(struct http_request *r)
@@ -294,6 +311,11 @@ static inline void _commit(struct http_request *r)
 {
   assert(r->cursor <= r->end);
   r->parsed = r->cursor;
+}
+
+static inline void _skip_all(struct http_request *r)
+{
+  r->cursor = r->end;
 }
 
 static inline int _skip_crlf(struct http_request *r)
@@ -550,13 +572,16 @@ static int _parse_quoted_rfc822_time(struct http_request *r, time_t *timep)
   return 0;
 }
 
-/* Return 100 if more received data is needed.  Returns 0 if parsing completes or fails.  Returns a
- * 4nn or 5nn HTTP result code if parsing fails.  Returns -1 if an unexpected error occurs.
+/* If parsing completes, then sets r->parser to the next parsing function and returns 0.  If parsing
+ * cannot complete due to running out of data, returns 100 without changing r->parser, so this
+ * function will be called again once more data has been read.  Returns a 4nn or 5nn HTTP result
+ * code if parsing fails.  Returns -1 if an unexpected error occurs.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 static int http_request_parse_verb(struct http_request *r)
 {
+  DEBUG_DUMP_PARSER(r);
   _rewind(r);
   assert(r->cursor >= r->received);
   assert(!_run_out(r));
@@ -574,7 +599,7 @@ static int http_request_parse_verb(struct http_request *r)
   }
   if (r->verb == NULL) {
     if (r->debug_flag && *r->debug_flag)
-      DEBUGF("Malformed HTTP request: invalid verb: %s", alloca_toprint(20, r->cursor, r->end - r->cursor));
+      DEBUGF("Malformed HTTP request, invalid verb: %s", alloca_toprint(20, r->cursor, r->end - r->cursor));
     return 400;
   }
   _commit(r);
@@ -582,13 +607,16 @@ static int http_request_parse_verb(struct http_request *r)
   return 0;
 }
 
-/* Return 100 if more received data is needed.  Returns 0 if parsing completes or fails.  Returns a
- * 4nn or 5nn HTTP result code if parsing fails.  Returns -1 if an unexpected error occurs.
+/* If parsing completes, then sets r->parser to the next parsing function and returns 0.  If parsing
+ * cannot complete due to running out of data, returns 100 without changing r->parser, so this
+ * function will be called again once more data has been read.  Returns a 4nn or 5nn HTTP result
+ * code if parsing fails.  Returns -1 if an unexpected error occurs.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 static int http_request_parse_path(struct http_request *r)
 {
+  DEBUG_DUMP_PARSER(r);
   // Parse path: word immediately following verb, delimited by spaces.
   assert(r->path == NULL);
   struct substring path;
@@ -599,20 +627,23 @@ static int http_request_parse_path(struct http_request *r)
       DEBUGF("Malformed HTTP %s request at path: %s", r->verb, alloca_toprint(20, r->parsed, r->end - r->parsed));
     return 400;
   }
+  _commit(r);
   if ((r->path = _reserve(r, path)) == NULL)
     return 0; // error
-  _commit(r);
   r->parser = http_request_parse_http_version;
   return 0;
 }
 
-/* Return 100 if more received data is needed.  Returns 0 if parsing completes or fails.  Returns a
- * 4nn or 5nn HTTP result code if parsing fails.  Returns -1 if an unexpected error occurs.
+/* If parsing completes, then sets r->parser to the next parsing function and returns 0.  If parsing
+ * cannot complete due to running out of data, returns 100 without changing r->parser, so this
+ * function will be called again once more data has been read.  Returns a 4nn or 5nn HTTP result
+ * code if parsing fails.  Returns -1 if an unexpected error occurs.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 static int http_request_parse_http_version(struct http_request *r)
 {
+  DEBUG_DUMP_PARSER(r);
   // Parse HTTP version: HTTP/m.n followed by CRLF.
   assert(r->version_major == 0);
   assert(r->version_minor == 0);
@@ -622,14 +653,14 @@ static int http_request_parse_http_version(struct http_request *r)
 	&& major > 0 && major < UINT8_MAX
 	&& _skip_literal(r, ".")
 	&& _parse_uint(r, &minor)
-	&& minor > 0 && minor < UINT8_MAX
+	&& minor < UINT8_MAX
 	&& _skip_eol(r)
-	)
+       )
   ) {
     if (_run_out(r))
       return 100; // read more and try again
     if (r->debug_flag && *r->debug_flag)
-      DEBUGF("HTTP %s malformed request: malformed version: %s", r->verb, alloca_toprint(20, r->parsed, r->end - r->parsed));
+      DEBUGF("Malformed HTTP %s request at version: %s", r->verb, alloca_toprint(20, r->parsed, r->end - r->parsed));
     return 400;
   }
   _commit(r);
@@ -642,16 +673,16 @@ static int http_request_parse_http_version(struct http_request *r)
 }
 
 /* Select the header parser.  Returns 0 after setting the new parser function.  Returns a 4nn or 5nn
- * HTTP result code if parsing fails.
+ * HTTP result code if the request cannot be handled (eg, unsupported HTTP version or invalid path).
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 static int http_request_start_parsing_headers(struct http_request *r)
 {
+  DEBUG_DUMP_PARSER(r);
   assert(r->verb != NULL);
   assert(r->path != NULL);
   assert(r->version_major != 0);
-  assert(r->version_minor != 0);
   if (r->version_major != 1) {
     if (r->debug_flag && *r->debug_flag)
       DEBUGF("Unsupported HTTP version: %u.%u", r->version_major, r->version_minor);
@@ -661,14 +692,19 @@ static int http_request_start_parsing_headers(struct http_request *r)
   return 0;
 }
 
-/* Parse one request header line.  Returns 100 if more received data is needed.  Returns 0 if there
- * are no more headers or parsing fails.  Returns a 4nn or 5nn HTTP result code if parsing fails.
- * Returns -1 if an unexpected error occurs.
+/* Parse one request header line.
+ *
+ * If the end of headers is parsed (blank line), then sets r->parser to the next parsing function
+ * and returns 0.  If a single header line is successfully parsed, returns 0 after advancing
+ * r->parsed.  If parsing cannot complete due to running out of data, returns 0 without changing
+ * r->parser, so this function will be called again once more data has been read.  Returns a 4nn or
+ * 5nn HTTP result code if parsing fails.  Returns -1 if an unexpected error occurs.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 static int http_request_parse_header(struct http_request *r)
 {
+  DEBUG_DUMP_PARSER(r);
   _skip_to_eol(r);
   const char *const eol = r->cursor;
   _skip_eol(r);
@@ -777,13 +813,16 @@ malformed:
   return 400;
 }
 
-/* Select the header parser.  Returns 0 after setting the new parser function.  Returns a 4nn or 5nn
- * HTTP result code if parsing fails.
+/* If parsing completes, then sets r->parser to the next parsing function and returns 0.  If parsing
+ * cannot complete due to running out of data, returns 0 without changing r->parser, so this
+ * function will be called again once more data has been read.  Returns a 4nn or 5nn HTTP result
+ * code if parsing fails.  Returns -1 if an unexpected error occurs.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 static int http_request_start_body(struct http_request *r)
 {
+  DEBUG_DUMP_PARSER(r);
   assert(r->verb != NULL);
   assert(r->path != NULL);
   assert(r->version_major != 0);
@@ -807,7 +846,7 @@ static int http_request_start_body(struct http_request *r)
     if (r->request_header.content_length == CONTENT_LENGTH_UNKNOWN) {
       if (r->debug_flag && *r->debug_flag)
 	DEBUGF("Malformed HTTP %s request: missing Content-Length header", r->verb);
-      return 400;
+      return 411;
     }
     if (r->request_header.content_type == NULL) {
       if (r->debug_flag && *r->debug_flag)
@@ -931,9 +970,11 @@ malformed:
   return 1;
 }
 
-/* Return zero if more received data is needed.  The first call that completes parsing of the body
- * returns 200.  All subsequent calls return 100.  Returns a 4nn or 5nn HTTP result code if parsing
- * fails.
+/* If parsing completes (ie, parsed to end of epilogue), then sets r->parser to NULL and returns 0,
+ * so this function will not be called again.  If parsing cannot complete due to running out of
+ * data, returns 100, so this function will not be called again until more data has been read.
+ * Returns a 4nn or 5nn HTTP result code if parsing fails.  Returns -1 if an unexpected error
+ * occurs.
  *
  * NOTE: No support for nested/mixed parts, as that would considerably complicate the parser.  If
  * the need arises in future, we will deal with it then.  In the meantime, we will have something
@@ -960,15 +1001,22 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	    r->form_data.handle_mime_preamble(r, r->parsed, end_preamble - r->parsed);
 	  _rewind_crlf(r);
 	  _commit(r);
-	  r->form_data_state = EPILOGUE;
 	  if (b == 1) {
 	    r->form_data_state = HEADER;
 	    if (r->form_data.handle_mime_part_start)
 	      r->form_data.handle_mime_part_start(r);
-	  }
+	  } else
+	    r->form_data_state = EPILOGUE;
 	  return 0;
 	}
-	_skip_to_crlf(r);
+	if (!_skip_to_crlf(r)) {
+	  if (_end_of_content(r)) {
+	    if (r->debug_flag && *r->debug_flag)
+	      DEBUGF("Malformed HTTP %s form data: missing first boundary", r->verb);
+	    return 400;
+	  }
+	  return 100; // need more data
+	}
 	at_start = 0;
       }
       if (r->cursor > r->parsed && r->form_data.handle_mime_preamble)
@@ -982,7 +1030,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  return 0;
 	}
 	if (_run_out(r))
-	  return 0; // read more and try again
+	  return 100; // read more and try again
 	_rewind(r);
 	int b;
 	if (_skip_crlf(r) && (b = _skip_mime_boundary(r))) {
@@ -990,17 +1038,18 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  _commit(r);
 	  if (r->form_data.handle_mime_part_end)
 	    r->form_data.handle_mime_part_end(r);
-	  r->form_data_state = EPILOGUE;
 	  // Boundary in the middle of headers starts a new part.
 	  if (b == 1) {
 	    r->form_data_state = HEADER;
 	    if (r->form_data.handle_mime_part_start)
 	      r->form_data.handle_mime_part_start(r);
 	  }
+	  else
+	    r->form_data_state = EPILOGUE;
 	  return 0;
 	}
 	if (_run_out(r))
-	  return 0; // read more and try again
+	  return 100; // read more and try again
 	_rewind(r);
 	struct substring label;
 	if (_skip_crlf(r) && _skip_token(r, &label) && _skip_literal(r, ":") && _skip_optional_space(r)) {
@@ -1027,7 +1076,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  }
 	}
 	if (_run_out(r))
-	  return 0; // read more and try again
+	  return 100; // read more and try again
 	_rewind(r);
       }
       if (r->debug_flag && *r->debug_flag)
@@ -1052,7 +1101,14 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  }
 	  return 0;
 	}
-	_skip_to_crlf(r);
+	if (!_skip_to_crlf(r)) {
+	  if (_end_of_content(r)) {
+	    if (r->debug_flag && *r->debug_flag)
+	      DEBUGF("Malformed HTTP %s form data part: missing end boundary", r->verb);
+	    return 400;
+	  }
+	  return 100; // need more data
+	}
       }
       if (r->cursor > r->parsed && r->form_data.handle_mime_body)
 	r->form_data.handle_mime_body(r, r->parsed, r->parsed - r->cursor);
@@ -1063,9 +1119,10 @@ static int http_request_parse_body_form_data(struct http_request *r)
     if (r->form_data.handle_mime_epilogue && r->cursor != r->parsed)
       r->form_data.handle_mime_epilogue(r, r->parsed, r->cursor - r->parsed);
     _commit(r);
+    r->parser = NULL;
     return 0;
   }
-  assert(0); // not reached
+  abort(); // not reached
 }
 
 static ssize_t http_request_read(struct http_request *r, char *buf, size_t len)
@@ -1090,21 +1147,43 @@ static ssize_t http_request_read(struct http_request *r, char *buf, size_t len)
 static void http_request_receive(struct http_request *r)
 {
   assert(r->phase == RECEIVE);
-  r->limit = r->buffer + sizeof r->buffer;
-  assert(r->end < r->limit);
-  size_t room = r->limit - r->end;
+  const char *const bufend = r->buffer + sizeof r->buffer;
+  assert(r->end <= bufend);
   assert(r->parsed >= r->received);
   assert(r->parsed <= r->end);
-  // If buffer is running short on unused space, shift existing content in buffer down to make more
-  // room if possible.
-  if (   (room < 128 || (room < 1024 && r->parsed - r->received >= 32))
-      && (r->request_content_remaining == CONTENT_LENGTH_UNKNOWN || room < r->request_content_remaining)
+  // Work out if the end of content falls within the buffer yet.  If so, set the end_content
+  // pointer (and make sure it doesn't move).
+  if (r->end_content) {
+    assert(r->request_content_remaining != CONTENT_LENGTH_UNKNOWN);
+    assert(r->end < r->end_content);
+    assert(r->end_content - r->end == r->request_content_remaining);
+  } else if (   r->request_content_remaining != CONTENT_LENGTH_UNKNOWN
+	     && r->request_content_remaining < bufend - r->end
   ) {
-    size_t unparsed = r->end - r->parsed;
-    memmove((char *)r->received, r->parsed, unparsed); // memcpy() does not handle overlapping src and dst
-    r->parsed = r->received;
-    r->end = r->received + unparsed;
-    room = r->limit - r->end;
+    r->end_content = r->end + r->request_content_remaining;
+  }
+  //
+  // If the end of content mark is within the buffer, then there is no need to make any more room,
+  // just keep reading up to the end of content.  Otherwise, If buffer is running short on unused
+  // space, shift existing content in buffer down to make more room if possible.
+  size_t room;
+  if (r->end_content) {
+    assert(r->end_content > r->buffer);
+    assert(r->end_content <= bufend);
+    room = r->end_content - r->end;
+  } else {
+    room = bufend - r->end;
+    size_t spare = r->parsed - r->received;
+    if (   spare
+	&& (room < 128 || (room < 1024 && spare >= 32))
+	&& (r->request_content_remaining == CONTENT_LENGTH_UNKNOWN || spare >= r->request_content_remaining)
+    ) {
+      size_t unparsed = r->end - r->parsed;
+      memmove((char *)r->received, r->parsed, unparsed); // memcpy() does not handle overlapping src and dst
+      r->parsed = r->received;
+      r->end = r->received + unparsed;
+      room = bufend - r->end;
+    }
   }
   // If there is no more buffer space, fail the request.
   if (room == 0) {
@@ -1113,35 +1192,34 @@ static void http_request_receive(struct http_request *r)
     http_request_simple_response(r, 431, NULL);
     return;
   }
-  // Read up to the end of available buffer space or the end of content, whichever is first.
-  size_t read_size = room;
-  if (r->request_content_remaining != CONTENT_LENGTH_UNKNOWN && read_size > r->request_content_remaining) {
-    r->limit = r->end + r->request_content_remaining;
-    read_size = r->request_content_remaining;
-  }
-  if (read_size != 0) {
-    // Read as many bytes as possible into the unused buffer space.  Any read error
-    // closes the connection without any response.
-    ssize_t bytes = http_request_read(r, (char *)r->end, read_size);
-    if (bytes == -1)
-      return;
-    // If no data was read, then just return to polling.  Don't drop the connection on an empty read,
-    // because that drops connections when they shouldn't, including during testing.  The inactivity
-    // timeout will drop the connections instead.
-    if (bytes == 0)
-      return;
-    r->end += (size_t) bytes;
-    // We got some data, so reset the inactivity timer and invoke the parsing state machine to process
-    // it.  The state machine invokes the caller-supplied callback functions.
-    r->alarm.alarm = gettime_ms() + r->idle_timeout;
-    r->alarm.deadline = r->alarm.alarm + r->idle_timeout;
-    unschedule(&r->alarm);
-    schedule(&r->alarm);
-  }
+  // Read up to the end of available buffer space or the end of content, whichever is first.  Read
+  // as many bytes as possible into the unused buffer space.  Any read error closes the connection
+  // without any response.
+  assert(room > 0);
+  if (r->request_content_remaining != CONTENT_LENGTH_UNKNOWN)
+    assert(room <= r->request_content_remaining);
+  ssize_t bytes = http_request_read(r, (char *)r->end, room);
+  if (bytes == -1)
+    return;
+  assert((size_t) bytes <= room);
+  // If no data was read, then just return to polling.  Don't drop the connection on an empty read,
+  // because that drops connections when they shouldn't, including during testing.  The inactivity
+  // timeout will drop inactive connections.
+  if (bytes == 0)
+    return;
+  r->end += (size_t) bytes;
+  if (r->request_content_remaining != CONTENT_LENGTH_UNKNOWN)
+    r->request_content_remaining -= (size_t) bytes;
+  // We got some data, so reset the inactivity timer and invoke the parsing state machine to process
+  // it.  The state machine invokes the caller-supplied callback functions.
+  r->alarm.alarm = gettime_ms() + r->idle_timeout;
+  r->alarm.deadline = r->alarm.alarm + r->idle_timeout;
+  unschedule(&r->alarm);
+  schedule(&r->alarm);
   // Parse the unparsed and received data.
   while (r->phase == RECEIVE) {
     int result;
-    if (_run_out(r) && r->request_content_remaining == 0) {
+    if (r->parsed == r->end_content) {
       if (r->handle_content_end)
 	result = r->handle_content_end(r);
       else {
@@ -1150,26 +1228,27 @@ static void http_request_receive(struct http_request *r)
 	result = 500;
       }
     } else {
+      HTTP_REQUEST_PARSER oldparser = r->parser;
       const char *oldparsed = r->parsed;
+      _rewind(r);
       if (r->parser == NULL) {
 	if (r->debug_flag && *r->debug_flag)
-	  DEBUG("Internal failure parsing HTTP request: no parser function set");
-	result = 500;
+	  DEBUGF("No HTTP parser function set -- skipping %zu bytes", (size_t)(r->end - r->cursor));
+	_skip_all(r);
+	_commit(r);
+	result = 0;
       } else {
-	_rewind(r);
 	result = r->parser(r);
 	assert(r->parsed >= oldparsed);
       }
-      if (result == 100) {
-	if (_run_out(r))
-	  return; // needs more data; poll again
-	if (r->debug_flag && *r->debug_flag)
-	  DEBUG("Internal failure parsing HTTP request: parser function returned 100 but not run out");
-	result = 500;
-      }
-      if (result == 0 && r->parsed == oldparsed) {
+      if (r->phase != RECEIVE)
+	break;
+      if (result == 100)
+	return; // needs more data; poll again
+      if (result == 0 && r->parsed == oldparsed && r->parser == oldparser) {
 	if (r->debug_flag && *r->debug_flag)
 	  DEBUG("Internal failure parsing HTTP request: parser function did not advance");
+	DEBUG_DUMP_PARSER(r);
 	result = 500;
       }
     }
@@ -1180,10 +1259,8 @@ static void http_request_receive(struct http_request *r)
 	DEBUGF("Internal failure parsing HTTP request: invalid result=%d", result);
       r->response.result_code = 500;
     }
-    if (r->response.result_code) {
-      http_request_start_response(r);
-      return;
-    }
+    if (r->response.result_code)
+      break;
     if (result == -1) {
       if (r->debug_flag && *r->debug_flag)
 	DEBUG("Unrecoverable error parsing HTTP request, closing connection");
@@ -1214,7 +1291,7 @@ static void http_request_send_response(struct http_request *r)
     assert(r->response_buffer_sent <= r->response_buffer_length);
     if (r->response_buffer_sent == r->response_buffer_length) {
       if (r->response.content_generator) {
-	// Content generator must fill response_buffer[] and set response_buffer_length.
+	// Content generator must fill set (or re-set) response_buffer and response_buffer_length.
 	r->response_buffer_sent = r->response_buffer_length = 0;
 	if (r->response.content_generator(r) == -1) {
 	  if (r->debug_flag && *r->debug_flag)
@@ -1359,6 +1436,7 @@ static const char *httpResultString(int response_code)
   case 403: return "Forbidden";
   case 404: return "Not Found";
   case 405: return "Method Not Allowed";
+  case 411: return "Length Required";
   case 414: return "Request-URI Too Long";
   case 415: return "Unsupported Media Type";
   case 416: return "Requested Range Not Satisfiable";
@@ -1404,6 +1482,7 @@ static int _render_response(struct http_request *r)
     hr.header.content_range_start = 0;
   }
   assert(hr.header.content_type != NULL);
+  assert(hr.header.content_type[0]);
   strbuf_sprintf(sb, "HTTP/1.0 %03u %s\r\n", hr.result_code, result_string);
   strbuf_sprintf(sb, "Content-Type: %s", hr.header.content_type);
   if (hr.header.boundary) {
@@ -1457,8 +1536,25 @@ static void http_request_render_response(struct http_request *r)
   }
 }
 
+static size_t http_request_drain(struct http_request *r)
+{
+  assert(r->phase == RECEIVE);
+  char buf[8192];
+  size_t drained = 0;
+  ssize_t bytes;
+  while ((bytes = http_request_read(r, buf, sizeof buf)) != -1 && bytes != 0)
+    drained += (size_t) bytes;
+  return drained;
+}
+
 static void http_request_start_response(struct http_request *r)
 {
+  assert(r->phase == RECEIVE);
+  assert(r->response.result_code != 0);
+  if (r->response.content || r->response.content_generator) {
+    assert(r->response.header.content_type != NULL);
+    assert(r->response.header.content_type[0]);
+  }
   // If HTTP responses are disabled (eg, for testing purposes) then skip all response construction
   // and close the connection.
   if (r->disable_tx_flag && *r->disable_tx_flag) {
@@ -1468,11 +1564,9 @@ static void http_request_start_response(struct http_request *r)
   }
   // Drain the rest of the request that has not been received yet (eg, if sending an error response
   // provoked while parsing the early part of a partially-received request).  If a read error
-  // occurs, the connection is closed.
-  ssize_t bytes;
-  while ((bytes = http_request_read(r, (char *) r->received, (r->buffer + sizeof r->buffer) - r->received)) > 0)
-    ;
-  if (bytes == -1)
+  // occurs, the connection is closed so the phase changes to DONE.
+  http_request_drain(r);
+  if (r->phase != RECEIVE)
     return;
   // If the response cannot be rendered, then render a 500 Server Error instead.  If that fails,
   // then just close the connection.
@@ -1496,9 +1590,20 @@ static void http_request_start_response(struct http_request *r)
   watch(&r->alarm);
 }
 
+/* Start sending a response back to the client.  The response's Content-Type is set by the
+ * 'mime_type' parameter (in the standard format "type/subtype").  The response's content is set
+ * from the 'body' and 'bytes' parameters, which need not point to static data, ie, is no longer
+ * used once this function returns.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 void http_request_response(struct http_request *r, int result, const char *mime_type, const char *body, uint64_t bytes)
 {
-  assert(result != 0);
+  assert(r->phase == RECEIVE);
+  assert(result >= 100);
+  assert(result < 600);
+  assert(mime_type != NULL);
+  assert(mime_type[0]);
   r->response.result_code = result;
   r->response.header.content_type = mime_type;
   r->response.header.content_range_start = 0;
@@ -1508,28 +1613,30 @@ void http_request_response(struct http_request *r, int result, const char *mime_
   http_request_start_response(r);
 }
 
+/* Start sending a short redirection or error response back to the client.  The result code must be
+ * either a redirection (3xx) or client error (4xx) or server error (5xx) code.  The 'body' argument
+ * may be a bare message which is enclosed in an HTML envelope to form the response content, so it
+ * may contain HTML markup.  If the 'body' argument is NULL, then the response content is generated
+ * automatically from the result code.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 void http_request_simple_response(struct http_request *r, uint16_t result, const char *body)
 {
+  assert(r->phase == RECEIVE);
+  assert(result >= 300);
+  assert(result < 600);
   strbuf h = NULL;
   if (body) {
     size_t html_len = strlen(body) + 40;
-    char html[html_len];
-    h = strbuf_local(html, html_len);
-    strbuf_sprintf(h, "<html><h1>%s</h1></html>", body);
+    h = strbuf_alloca(html_len);
+    strbuf_sprintf(h, "<html><h1>%03u %s</h1></html>", result, body);
   }
   r->response.result_code = result;
-  r->response.header.content_type = body ? "text/html" : NULL;
+  r->response.header.content_type = "text/html";
   r->response.header.content_range_start = 0;
   r->response.header.resource_length = r->response.header.content_length = h ? strbuf_len(h) : 0;
   r->response.content = h ? strbuf_str(h) : NULL;
-  r->response.content_generator = NULL;
-  http_request_start_response(r);
-}
-
-void http_request_response_header(struct http_request *r, int result, const char *mime_type, uint64_t bytes)
-{
-  r->response.result_code = result;
-  r->response.content = NULL;
   r->response.content_generator = NULL;
   http_request_start_response(r);
 }

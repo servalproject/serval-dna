@@ -181,7 +181,7 @@ int rhizome_fetch_queue_bytes(){
   return bytes;
 }
 
-int rhizome_fetch_status_html(struct strbuf *b)
+int rhizome_fetch_status_html(strbuf b)
 {
   int i,j;
   for(i=0;i<NQUEUES;i++){

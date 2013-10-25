@@ -110,7 +110,8 @@ int http_request_set_response_bufsize(struct http_request *r, size_t bufsiz);
 void http_request_finalise(struct http_request *r);
 void http_request_response(struct http_request *r, int result, const char *mime_type, const char *body, uint64_t bytes);
 void http_request_simple_response(struct http_request *r, uint16_t result, const char *body);
-void http_request_response_header(struct http_request *r, int result, const char *mime_type, uint64_t bytes);
+
+typedef int (*HTTP_REQUEST_PARSER)(struct http_request *);
 
 struct http_request {
   struct sched_ent alarm; // MUST BE FIRST ELEMENT
@@ -120,10 +121,10 @@ struct http_request {
   time_ms_t initiate_time; // time connection was initiated
   time_ms_t idle_timeout; // disconnect if no bytes received for this long
   struct sockaddr_in client_in_addr;
-  int (*parser)(struct http_request *); // current parser function
-  int (*handle_first_line)(struct http_request *); // called after first line is parsed
-  int (*handle_headers)(struct http_request *); // called after all headers are parsed
-  int (*handle_content_end)(struct http_request *); // called after all content is received
+  HTTP_REQUEST_PARSER parser; // current parser function
+  HTTP_REQUEST_PARSER handle_first_line; // called after first line is parsed
+  HTTP_REQUEST_PARSER handle_headers; // called after all headers are parsed
+  HTTP_REQUEST_PARSER handle_content_end; // called after all content is received
   enum mime_state { START, PREAMBLE, HEADER, BODY, EPILOGUE } form_data_state;
   struct http_mime_handler form_data; // called to parse multipart/form-data body
   void (*finalise)(struct http_request *);
@@ -135,7 +136,7 @@ struct http_request {
   struct http_request_headers request_header;
   const char *received; // start of received data in buffer[]
   const char *end; // end of received data in buffer[]
-  const char *limit; // end of content in buffer[]
+  const char *end_content; // end of content if within buffer[], else NULL
   const char *parsed; // start of unparsed data in buffer[]
   const char *cursor; // for parsing
   http_size_t request_content_remaining;
