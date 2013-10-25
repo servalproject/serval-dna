@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <strings.h>
 #include <assert.h>
 #include <inttypes.h>
+#include <stdarg.h>
 
 struct nc_packet{
   uint32_t sequence;
@@ -441,6 +442,36 @@ static void _nc_dump(struct nc *n)
       before current window.
 */
 
+void FAIL(const char *fmt,...){
+  va_list ap;
+  fprintf(stderr, "FAIL: ");
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+  fprintf(stderr, "\n");
+  exit(-1);
+}
+
+void PASS(const char *fmt,...){
+  va_list ap;
+  fprintf(stderr, "PASS: ");
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+  fprintf(stderr, "\n");
+}
+
+void ASSERT(int test, const char *fmt,...){
+  va_list ap;
+  fprintf(stderr, test?"PASS: ":"FAIL: ");
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+  fprintf(stderr, "\n");
+  if (!test)
+    exit(-1);
+}
+
 int nc_test_random_datagram(uint8_t *d,int len)
 {
   int i;
@@ -453,17 +484,9 @@ int nc_test()
 {
   struct nc *tx, *rx;
   tx = nc_new(16, 200);
-  if (!tx){
-    fprintf(stderr,"FAIL: Failed to create validly defined nc struct for TX.\n");
-    return -1;
-  }
+  ASSERT(tx!=NULL, "Create nc struct for TX.");
   rx = nc_new(16, 200);
-  if (!rx){
-    fprintf(stderr,"FAIL: Failed to create validly defined nc struct for RX.\n");
-    return -1;
-  }
-  
-  fprintf(stderr,"PASS: Created nc structs.\n");
+  ASSERT(rx!=NULL, "Create nc struct for RX.");
 
   // Prepare some random datagrams for subsequent tests
   int i;
@@ -473,43 +496,28 @@ int nc_test()
 
   // Test inserting datagrams into the queue
   
-  if (nc_tx_enqueue_datagram(tx,datagrams[0],200)) {
-    fprintf(stderr,"FAIL: Failed to enqueue datagram 0 for TX\n");
-    return -1;
-  }
-  fprintf(stderr,"PASS: Enqueued datagram 0 for TX\n");
-  
-  if (tx->tx.queue_size!=1){
-    fprintf(stderr,"FAIL: Enqueueing datagram increases queue_size\n");
-    return -1;
-  } 
-  fprintf(stderr,"PASS: Enqueueing datagram increases queue_size\n");
+  ASSERT(!nc_tx_enqueue_datagram(tx,datagrams[0],200), "Enqueue datagram 0 for TX");
+  ASSERT(tx->tx.queue_size==1, "Enqueueing datagram increases queue_size");
 
   int j=0;
   for(i=0;i<10;i++) {
     uint8_t outbuffer[12+200];
     int len=sizeof(outbuffer);
     int written = nc_tx_produce_packet(tx, outbuffer, len);
-    if (written==-1){
-      fprintf(stderr,"FAIL: Produce random linear combination of single packet for TX\n");
-      return -1;
-    }
+    if (written==-1)
+      FAIL("Produce random linear combination of single packet for TX");
     if (i==9)
-      fprintf(stderr,"PASS: Produce random linear combination of single packet for TX\n");
+      PASS("Produce random linear combination of single packet for TX");
     uint32_t combination = read_uint32(&outbuffer[8]);
-    if (!combination) {
-      fprintf(stderr,"FAIL: Should not produce empty linear combination bitmap\n");
-      return -1;
-    }
+    if (!combination)
+      FAIL("Should not produce empty linear combination bitmap");
     if (i==9)
-      fprintf(stderr,"PASS: Should not produce empty linear combination bitmap\n");
+      PASS("Should not produce empty linear combination bitmap");
     
-    if (memcmp(&outbuffer[12], datagrams[0], 200)!=0){
-      fprintf(stderr,"FAIL: Output identity datagram when only one in queue\n");
-      return -1;
-    }
+    if (memcmp(&outbuffer[12], datagrams[0], 200)!=0)
+      FAIL("Output identity datagram when only one in queue");
     if (i==9)
-      fprintf(stderr,"PASS: Output identity datagram when only one in queue\n");
+      PASS("Output identity datagram when only one in queue");
   }
   
   // can we combine seq & combination as expected?
@@ -548,15 +556,9 @@ int nc_test()
   {
     uint8_t outbuffer[12+200];
     int written = nc_tx_produce_packet(tx, outbuffer, sizeof(outbuffer));
-    if (written==-1){
-      fprintf(stderr, "Failed to produce packet\n");
-      exit(-1);
-    }
+    ASSERT(written!=-1, "Produce packet");
     int r=nc_rx_packet(rx, outbuffer, written);
-    if (r==-1){
-      fprintf(stderr, "Failed to receive packet\n");
-      exit(-1);
-    }
+    ASSERT(r!=-1, "Receive packet");
   }  
   
   // can we decode it?
@@ -564,50 +566,26 @@ int nc_test()
   {
     uint8_t outbuffer[200];
     int size = nc_rx_next_delivered(rx, outbuffer, sizeof(outbuffer));
-    if (size!=200){
-      fprintf(stderr,"FAIL: Expected to receive 200 bytes, got %d\n", size);
-      exit(-1);
-    }
-    if (memcmp(outbuffer, datagrams[0], 200) != 0){
-      fprintf(stderr,"FAIL: Output of first packet should match incoming packet\n");
-      return -1;
-    }
+    ASSERT(size==200, "Receive 200 bytes, got %d", size);
+    ASSERT(memcmp(outbuffer, datagrams[0], 200) == 0, "Output of first packet should match incoming packet");
   }
   
   // acknowledging this first packet advances the window
   {
     uint8_t outbuffer[12+200];
     int written = nc_tx_produce_packet(rx, outbuffer, sizeof(outbuffer));
-    if (written==-1){
-      fprintf(stderr, "FAIL: Producing ACK\n");
-      exit(-1);
-    }
+    ASSERT(written!=-1, "Produce ACK");
     int r=nc_rx_packet(tx, outbuffer, written);
-    if (r==-1){
-      fprintf(stderr,"FAIL: processing ACK\n");
-      return -1;
-    }
-    if (tx->tx.window_start!=1){
-      fprintf(stderr,"FAIL: acknowledgement advances window_start (is %d, should be 1)\n",tx->tx.window_start);
-      return -1;
-    }
-    fprintf(stderr,"PASS: acknowledgement advances window_start\n");
-    if (tx->tx.queue_size!=0){
-      fprintf(stderr,"FAIL: acknowledgement causes packets to be discarded (is %d, should be 0)\n",tx->tx.queue_size);
-      return -1;
-    }
-    fprintf(stderr,"PASS: acknowledgement causes packets to be discarded\n");
+    ASSERT(r!=-1, "Process ACK");
+    ASSERT(tx->tx.window_start==1, "ACK advances window_start");
+    ASSERT(tx->tx.queue_size==0, "ACK causes packet to be discarded");
   }
   
   for (i=1;i<8;i++){
-    if (nc_tx_enqueue_datagram(tx,datagrams[i],200)) {
-      fprintf(stderr,"FAIL: Failed to enqueue datagram %d for TX\n", i);
-      return -1;
-    }
-    if (tx->tx.queue_size!=i){
-      fprintf(stderr,"FAIL: Enqueueing datagram increases queue_size\n");
-      return -1;
-    } 
+    if (nc_tx_enqueue_datagram(tx,datagrams[i],200))
+      FAIL("Failed to enqueue datagram %d for TX", i);
+    if (tx->tx.queue_size!=i)
+      FAIL("Enqueueing datagram increases queue_size");
   }
   
   int decoded=0;
@@ -615,19 +593,15 @@ int nc_test()
     uint8_t outbuffer[12+200];
     int len=sizeof(outbuffer);
     int written = nc_tx_produce_packet(tx, outbuffer, len);
-    if (written==-1){
-      fprintf(stderr,"FAIL: Produce random linear combination of multiple packets for TX\n");
-      return -1;
-    }
+    if (written==-1)
+      FAIL("Produce random linear combination of multiple packets for TX");
     if (i==0)
-      fprintf(stderr,"PASS: Produce random linear combination of multiple packets for TX\n");
+      PASS("Produce random linear combination of multiple packets for TX");
     uint32_t combination = read_uint32(&outbuffer[8]);
-    if (!combination) {
-      fprintf(stderr,"FAIL: Should not produce empty linear combination bitmap\n");
-      return -1;
-    }
+    if (!combination)
+      FAIL("Should not produce empty linear combination bitmap");
     if (i==0)
-      fprintf(stderr,"PASS: Should not produce empty linear combination bitmap\n");
+      PASS("Should not produce empty linear combination bitmap");
       
     for(j=0;j<200;j++) {
       int k;
@@ -636,13 +610,11 @@ int nc_test()
 	if (combination&(0x80000000>>k))
 	  x^=datagrams[k+1][j];
       }
-      if (x){
-	fprintf(stderr,"FAIL: Output linear combination from multiple packets in the queue\n");
-	return -1;
-      }
+      if (x)
+	FAIL("Output linear combination from multiple packets in the queue");
     }
     if (i==0)
-      fprintf(stderr,"PASS: Output linear combination from multiple packets in the queue\n");
+      PASS("Output linear combination from multiple packets in the queue");
       
     nc_rx_packet(rx, outbuffer, written);
     while(1){
@@ -651,53 +623,33 @@ int nc_test()
       if (size!=200)
 	break;
       decoded++;
-      if (memcmp(out, datagrams[decoded], 200) != 0){
-	fprintf(stderr,"FAIL: Output of %d packet should match incoming packet (@%d, %02x != %02x)\n", decoded, j, out[j], datagrams[decoded][j]);
-	return -1;
-      }
+      if (memcmp(out, datagrams[decoded], 200) != 0)
+	FAIL("Output of %d packet should match incoming packet (@%d, %02x != %02x)", decoded, j, out[j], datagrams[decoded][j]);
       if (decoded==7)
-	fprintf(stderr,"PASS: First 8 packets delivered\n");
+	PASS("First 8 packets delivered");
     }
   }
   
-  if (decoded!=7){
-    fprintf(stderr,"FAIL: First 8 packets should have been delivered by now\n");
-    return -1;
-  }
+  if (decoded!=7)
+    FAIL("First 8 packets should have been delivered by the first 100 test packets sent");
     
   // acknowledging first 8 packets advances the tx window
   {
     uint8_t outbuffer[12+200];
     int written = nc_tx_produce_packet(rx, outbuffer, sizeof(outbuffer));
-    if (written==-1){
-      fprintf(stderr, "FAIL: Producing ACK\n");
-      exit(-1);
-    }
+    ASSERT(written!=-1, "Produce ACK");
     int r=nc_rx_packet(tx, outbuffer, written);
-    if (r==-1){
-      fprintf(stderr,"FAIL: processing ACK\n");
-      return -1;
-    }
-    if (tx->tx.window_start!=8){
-      fprintf(stderr,"FAIL: acknowledgement advances window_start (is %d, should be 8)\n",tx->tx.window_start);
-      return -1;
-    }
-    fprintf(stderr,"PASS: acknowledgement advances window_start\n");
-    if (tx->tx.queue_size!=0){
-      fprintf(stderr,"FAIL: acknowledgement causes packets to be discarded (is %d, should be 0)\n",tx->tx.queue_size);
-      return -1;
-    }
-    fprintf(stderr,"PASS: acknowledgement causes packets to be discarded\n");
+    ASSERT(r!=-1, "Process ACK");
+    ASSERT(tx->tx.window_start==8, "ACK advances window_start");
+    ASSERT(tx->tx.queue_size==0, "ACK causes packets to be discarded");
   }
   
   int sent =0;
   while(rx->rx.deliver_next < 10000){
     // fill the transmit window whenever there is space
     while(tx->tx.queue_size<tx->tx.max_queue_size){
-      if (nc_tx_enqueue_datagram(tx,datagrams[(tx->tx.window_start+tx->tx.queue_size+1)%7],200)){
-	fprintf(stderr,"FAIL: Failed to dispatch pre-fill datagram\n");
-	return -1;
-      }
+      if (nc_tx_enqueue_datagram(tx,datagrams[(tx->tx.window_start+tx->tx.queue_size+1)%7],200))
+	FAIL("Failed to dispatch pre-fill datagram");
     }
     
     // generate a packet in each direction
@@ -722,11 +674,11 @@ int nc_test()
       }
     }
   }
-  fprintf(stderr, "PASS: Delivered 10000 packets after sending %d\n", sent);
+  PASS("Delivered 10000 packets after sending %d", sent);
   
   nc_free(tx);
   nc_free(rx);
-  fprintf(stderr,"PASS: Release memory\n");
+  PASS("Release memory");
   
   return 0;
 }
