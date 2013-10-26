@@ -503,8 +503,10 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
 	rhizome_manifest_free(slot->previous);
 	slot->previous=NULL;
       }else{
-	strbuf_sprintf(r, "Range: bytes=%"PRId64"-%"PRId64"\r\n", 
-	  slot->previous->fileLength - slot->manifest->journalTail, slot->manifest->fileLength);
+	assert(slot->previous->fileLength >= slot->manifest->journalTail);
+	assert(slot->manifest->fileLength > 0);
+	strbuf_sprintf(r, "Range: bytes=%"PRId64"-%"PRId64"\r\n",
+	  slot->previous->fileLength - slot->manifest->journalTail, slot->manifest->fileLength - 1);
       }
     }
 

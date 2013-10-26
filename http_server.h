@@ -139,7 +139,6 @@ struct http_request {
   struct http_request_headers request_header;
   const char *received; // start of received data in buffer[]
   const char *end; // end of received data in buffer[]
-  const char *end_content; // end of content if within buffer[], else NULL
   const char *parsed; // start of unparsed data in buffer[]
   const char *cursor; // for parsing
   http_size_t request_content_remaining;

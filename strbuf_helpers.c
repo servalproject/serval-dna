@@ -420,3 +420,32 @@ strbuf strbuf_append_http_ranges(strbuf sb, const struct http_range *ranges, uns
   }
   return sb;
 }
+
+strbuf strbuf_append_mime_content_disposition(strbuf sb, const struct mime_content_disposition *cd)
+{
+  strbuf_puts(sb, "type=");
+  strbuf_toprint_quoted(sb, "``", cd->type);
+  strbuf_puts(sb, " name=");
+  strbuf_toprint_quoted(sb, "``", cd->name);
+  strbuf_puts(sb, " filename=");
+  strbuf_toprint_quoted(sb, "``", cd->filename);
+  strbuf_puts(sb, " size=");
+  strbuf_sprintf(sb, "%"PRIhttp_size_t, cd->size);
+  struct tm tm;
+  strbuf_puts(sb, " creation_date=");
+  if (cd->creation_date)
+    strbuf_append_strftime(sb, "%a, %d %b %Y %T %z", gmtime_r(&cd->creation_date, &tm));
+  else
+    strbuf_puts(sb, "0");
+  strbuf_puts(sb, " modification_date=");
+  if (cd->modification_date)
+    strbuf_append_strftime(sb, "%a, %d %b %Y %T %z", gmtime_r(&cd->modification_date, &tm));
+  else
+    strbuf_puts(sb, "0");
+  strbuf_puts(sb, " read_date=");
+  if (cd->read_date)
+    strbuf_append_strftime(sb, "%a, %d %b %Y %T %z", gmtime_r(&cd->read_date, &tm));
+  else
+    strbuf_puts(sb, "0");
+  return sb;
+}

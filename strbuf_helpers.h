@@ -144,4 +144,11 @@ struct http_range;
 strbuf strbuf_append_http_ranges(strbuf sb, const struct http_range *ranges, unsigned nels);
 #define alloca_http_ranges(ra)    strbuf_str(strbuf_append_http_ranges(strbuf_alloca(25*NELS(ra)), (ra), NELS(ra)))
 
+/* Append a representation of a struct mime_content_disposition struct.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+struct mime_content_disposition;
+strbuf strbuf_append_mime_content_disposition(strbuf, const struct mime_content_disposition *);
+#define alloca_mime_content_disposition(cd) strbuf_str(strbuf_append_mime_content_disposition(strbuf_alloca(500), (cd)))
+
 #endif //__STRBUF_HELPERS_H__

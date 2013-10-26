@@ -299,6 +299,7 @@ void rhizome_direct_process_mime_end(struct http_request *hr)
     case NONE:
       break;
   }
+  r->current_part = NONE;
 }
 
 void rhizome_direct_process_mime_content_disposition(struct http_request *hr, const struct mime_content_disposition *cd)
