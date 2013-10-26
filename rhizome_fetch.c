@@ -1495,9 +1495,9 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	    rhizome_fetch_switch_to_mdp(slot);
 	    return;
 	  }
-	  if (parts.code != 200) {
+	  if (parts.code != 200 && parts.code != 206) {
 	    if (config.debug.rhizome_rx)
-	      DEBUGF("Failed HTTP request: rhizome server returned %d != 200 OK", parts.code);
+	      DEBUGF("Failed HTTP request: rhizome server returned %03u", parts.code);
 	    rhizome_fetch_switch_to_mdp(slot);
 	    return;
 	  }
@@ -1576,7 +1576,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 int unpack_http_response(char *response, struct http_response_parts *parts)
 {
   IN();
-  parts->code = -1;
+  parts->code = 0;
   parts->reason = NULL;
   parts->range_start=0;
   parts->content_length = -1;

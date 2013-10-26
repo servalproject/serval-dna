@@ -514,12 +514,13 @@ test_CorruptPayload() {
    wait_until grep -i "Stored file $FILEHASH" $LOGA
 }
 
-doc_HttpFetchRange="Fetch a file range using HTTP GET."
+doc_HttpFetchRange="Fetch a file range using HTTP GET"
 setup_HttpFetchRange() {
    setup_curl 7
    setup_common
    set_instance +A
-   rhizome_add_file file1
+   rhizome_add_file file1 100
+   tail --bytes +33 file1 >file1.tail
    start_servald_instances +A
    wait_until rhizome_http_server_started +A
    get_rhizome_server_port PORTA +A
@@ -532,9 +533,11 @@ test_HttpFetchRange() {
          --write-out '%{http_code}\n' \
 	 --continue-at 32 \
          "http://$addr_localhost:$PORTA/rhizome/file/$FILEHASH"
-   tfw_cat http.headers http.output
-   assertGrep http.headers "Content-range:"
-   assertGrep http.headers "Content-length:"
+   tfw_cat -v http.headers http.output
+   assertGrep http.headers "^Content-Range: bytes 32-99/100$"
+   assertGrep http.headers "^Content-Length: 68$"
+   tfw_cat -v file1.tail http.output
+   assert cmp file1.tail http.output
 }
 
 doc_HttpImport="Import bundle using HTTP POST multi-part form."

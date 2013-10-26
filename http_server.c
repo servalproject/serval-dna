@@ -519,21 +519,30 @@ static inline int _parse_uint(struct http_request *r, unsigned int *uintp)
 
 static unsigned _parse_ranges(struct http_request *r, struct http_range *range, unsigned nrange)
 {
-  unsigned i;
-  for (i = 0; 1; ++i) {
+  unsigned i = 0;
+  while (1) {
     enum http_range_type type;
     http_size_t first = 0, last = 0;
-    if (_skip_literal(r, "-") && _parse_http_size_t(r, &last))
+    if (_skip_literal(r, "-")) {
+      if (!_parse_http_size_t(r, &last))
+	return 0;
       type = SUFFIX;
-    else if (_parse_http_size_t(r, &first) && _skip_literal(r, "-"))
-      type = (_parse_http_size_t(r, &last)) ? CLOSED : OPEN;
-    else
+    }
+    else if (_parse_http_size_t(r, &first) && _skip_literal(r, "-")) {
+      if (_parse_http_size_t(r, &last)) {
+	if (last < first)
+	  return 0;
+	type = CLOSED;
+      } else
+	type = OPEN;
+    } else
       return 0;
     if (i < nrange) {
       range[i].type = type;
       range[i].first = first;
       range[i].last = last;
     }
+    ++i;
     if (!_skip_literal(r, ","))
       break;
     _skip_optional_space(r);
@@ -1291,7 +1300,9 @@ static void http_request_send_response(struct http_request *r)
     assert(r->response_buffer_sent <= r->response_buffer_length);
     if (r->response_buffer_sent == r->response_buffer_length) {
       if (r->response.content_generator) {
-	// Content generator must fill set (or re-set) response_buffer and response_buffer_length.
+	// Content generator must fill or partly fill response_buffer and set response_buffer_sent
+	// and response_buffer_length.  May also malloc() a bigger buffer and set response_buffer to
+	// point to it.
 	r->response_buffer_sent = r->response_buffer_length = 0;
 	if (r->response.content_generator(r) == -1) {
 	  if (r->debug_flag && *r->debug_flag)
@@ -1380,32 +1391,23 @@ static void http_server_poll(struct sched_ent *alarm)
     r->free(r); // after this, *r is no longer valid
 }
 
-/* Count the number of bytes in a given set of ranges, given the length of the content to which the
- * ranges will be applied.
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
-http_size_t http_range_bytes(const struct http_range *range, unsigned nranges, http_size_t resource_length)
-{
-  return http_range_close(NULL, range, nranges, resource_length);
-}
-
 /* Copy the array of byte ranges, closing it (converting all ranges to CLOSED) using the supplied
- * resource length.
+ * resource length.  If a range is not satisfiable it is omitted from 'dst'.  Returns the number of
+ * closed ranges written to 'dst'.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-http_size_t http_range_close(struct http_range *dst, const struct http_range *src, unsigned nranges, http_size_t resource_length)
+unsigned http_range_close(struct http_range *dst, const struct http_range *src, unsigned nranges, http_size_t resource_length)
 {
-  http_size_t bytes = 0;
   unsigned i;
+  unsigned ndst = 0;
   for (i = 0; i != nranges; ++i) {
     http_size_t first = 0;
-    http_size_t last = resource_length;
+    http_size_t last = resource_length - 1;
     const struct http_range *range = &src[i];
     switch (range->type) {
       case CLOSED:
-	last = range->last < resource_length ? range->last : resource_length;
+	last = range->last < resource_length ? range->last : resource_length - 1;
       case OPEN:
 	first = range->first < resource_length ? range->first : resource_length;
 	break;
@@ -1415,10 +1417,25 @@ http_size_t http_range_close(struct http_range *dst, const struct http_range *sr
       default:
 	abort(); // not reached
     }
-    assert(first <= last);
-    if (dst)
-      *dst++ = (struct http_range){ .type = CLOSED, .first=first, .last=last };
-    bytes += last - first;
+    if (first <= last)
+      dst[ndst++] = (struct http_range){ .type = CLOSED, .first=first, .last=last };
+  }
+  return ndst;
+}
+
+/* Return the total number of bytes represented by the given ranges which must all be CLOSED and
+ * valid.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+http_size_t http_range_bytes(const struct http_range *range, unsigned nranges)
+{
+  http_size_t bytes = 0;
+  unsigned i;
+  for (i = 0; i != nranges; ++i) {
+    assert(range[i].type == CLOSED);
+    assert(range[i].last >= range[i].first);
+    bytes += range[i].last - range[i].first + 1;
   }
   return bytes;
 }
@@ -1467,11 +1484,17 @@ static strbuf strbuf_append_quoted_string(strbuf sb, const char *str)
  */
 static int _render_response(struct http_request *r)
 {
-  strbuf sb = strbuf_local(r->response_buffer, r->response_buffer_size);
   struct http_response hr = r->response;
   assert(hr.result_code != 0);
+  assert(hr.header.content_range_start <= hr.header.resource_length);
+  assert(hr.header.content_length <= hr.header.resource_length);
+  // To save page handlers having to decide between 200 (OK) and 206 (Partial Content), they can
+  // just send 200 and the content range fields, and this logic will detect if it should be 206.
+  if (hr.header.content_length > 0 && hr.header.content_length < hr.header.resource_length && hr.result_code == 200)
+    hr.result_code = 206; // Partial Content
   const char *result_string = httpResultString(hr.result_code);
-  if (hr.content == NULL) {
+  strbuf sb = strbuf_local(r->response_buffer, r->response_buffer_size);
+  if (hr.content == NULL && hr.content_generator == NULL) {
     strbuf cb = strbuf_alloca(100 + strlen(result_string));
     strbuf_puts(cb, "<html><h1>");
     strbuf_puts(cb, result_string);
@@ -1493,23 +1516,32 @@ static int _render_response(struct http_request *r)
       strbuf_puts(sb, hr.header.boundary);
   }
   strbuf_puts(sb, "\r\n");
-  assert(hr.header.content_range_start <= hr.header.resource_length);
-  assert(hr.header.content_length <= hr.header.resource_length);
-  if (hr.header.content_range_start && hr.header.content_length)
+  if (hr.result_code == 206) {
+    // Must only use result code 206 (Partial Content) if the content is in fact less than the whole
+    // resource length.
+    assert(hr.header.content_length > 0);
+    assert(hr.header.content_length < hr.header.resource_length);
     strbuf_sprintf(sb,
 	  "Content-Range: bytes %"PRIhttp_size_t"-%"PRIhttp_size_t"/%"PRIhttp_size_t"\r\n",
 	  hr.header.content_range_start,
 	  hr.header.content_range_start + hr.header.content_length - 1,
 	  hr.header.resource_length
 	);
+  }
   strbuf_sprintf(sb, "Content-Length: %"PRIhttp_size_t"\r\n", hr.header.content_length);
   strbuf_puts(sb, "\r\n");
-  r->response_length = strbuf_len(sb) + hr.header.content_length;
-  if (strbuf_overrun(sb) || (r->response_buffer_size < r->response_length))
+  if (strbuf_overrun(sb))
     return 0;
-  bcopy(hr.content, strbuf_end(sb), hr.header.content_length);
+  r->response_length = strbuf_len(sb) + hr.header.content_length;
+  if (hr.content) {
+    if (r->response_buffer_size < r->response_length)
+      return 0;
+    bcopy(hr.content, strbuf_end(sb), hr.header.content_length);
+    r->response_buffer_length = r->response_length;
+  } else {
+    r->response_buffer_length = strbuf_len(sb);
+  }
   r->response_buffer_sent = 0;
-  r->response_buffer_length = r->response_length;
   return 1;
 }
 
@@ -1584,7 +1616,7 @@ static void http_request_start_response(struct http_request *r)
   }
   r->response_sent = 0;
   if (r->debug_flag && *r->debug_flag)
-    DEBUGF("Sending HTTP response: %s", alloca_toprint(160, (const char *)r->response_buffer, r->response_length));
+    DEBUGF("Sending HTTP response: %s", alloca_toprint(160, (const char *)r->response_buffer, r->response_buffer_length));
   r->phase = TRANSMIT;
   r->alarm.poll.events = POLLOUT;
   watch(&r->alarm);

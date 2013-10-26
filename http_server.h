@@ -51,8 +51,8 @@ struct http_range {
   http_size_t last; // only for CLOSED or SUFFIX
 };
 
-http_size_t http_range_close(struct http_range *dst, const struct http_range *src, unsigned nranges, http_size_t content_length);
-http_size_t http_range_bytes(const struct http_range *range, unsigned nranges, http_size_t content_length);
+unsigned http_range_close(struct http_range *dst, const struct http_range *src, unsigned nranges, http_size_t content_length);
+http_size_t http_range_bytes(const struct http_range *range, unsigned nranges);
 
 #define CONTENT_LENGTH_UNKNOWN   UINT64_MAX
 

@@ -381,11 +381,10 @@ static int rhizome_status_page(rhizome_http_request *r, const char *remainder)
 static int rhizome_file_content(struct http_request *hr)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
-  assert(r->http.response_length < r->http.response_buffer_size);
-  assert(r->read_state.offset <= r->read_state.length);
+  assert(r->http.response_buffer_sent == 0);
+  assert(r->http.response_buffer_length == 0);
+  assert(r->read_state.offset < r->read_state.length);
   uint64_t readlen = r->read_state.length - r->read_state.offset;
-  if (readlen == 0)
-    return 0;
   size_t suggested_size = 64 * 1024;
   if (suggested_size > readlen)
     suggested_size = readlen;
@@ -395,14 +394,13 @@ static int rhizome_file_content(struct http_request *hr)
     http_request_set_response_bufsize(&r->http, 1);
   if (r->http.response_buffer == NULL)
     return -1;
-  size_t space = r->http.response_buffer_size - r->http.response_length;
-  int len = rhizome_read(&r->read_state,
-		         (unsigned char *)r->http.response_buffer + r->http.response_length,
-			 space);
+  ssize_t len = rhizome_read(&r->read_state,
+		         (unsigned char *)r->http.response_buffer,
+			 r->http.response_buffer_size);
   if (len == -1)
     return -1;
-  assert(len <= space);
-  r->http.response_length += len;
+  assert((size_t) len <= r->http.response_buffer_size);
+  r->http.response_buffer_length += (size_t) len;
   return 0;
 }
 
@@ -437,25 +435,24 @@ static int rhizome_file_page(rhizome_http_request *r, const char *remainder)
     return 1;
   }
   assert(r->read_state.length != -1);
-  int result_code = 200;
-  struct http_range closed = (struct http_range){ .first = 0, .last = r->read_state.length };
+  r->http.response.header.resource_length = r->read_state.length;
   if (r->http.request_header.content_range_count > 0) {
-    if (http_range_bytes(r->http.request_header.content_ranges,
-			 r->http.request_header.content_range_count,
-			 r->read_state.length
-			) == 0
-    ) {
+    assert(r->http.request_header.content_range_count == 1);
+    struct http_range closed;
+    unsigned n = http_range_close(&closed, r->http.request_header.content_ranges, 1, r->read_state.length);
+    if (n == 0 || http_range_bytes(&closed, 1) == 0) {
       http_request_simple_response(&r->http, 416, NULL); // Request Range Not Satisfiable
       return 0;
     }
-    result_code = 206; // Partial Content
-    http_range_close(&closed, &r->http.request_header.content_ranges[0], 1, r->read_state.length);
+    r->http.response.header.content_range_start = closed.first;
+    r->http.response.header.content_length = closed.last - closed.first + 1;
+    r->read_state.offset = closed.first;
+  } else {
+    r->http.response.header.content_range_start = 0;
+    r->http.response.header.content_length = r->http.response.header.resource_length;
+    r->read_state.offset = 0;
   }
-  r->http.response.header.content_range_start = closed.first;
-  r->http.response.header.resource_length = closed.last;
-  r->http.response.header.content_length = closed.last - closed.first;
-  r->read_state.offset = closed.first;
-  http_request_response_generated(&r->http, result_code, "application/binary", rhizome_file_content);
+  http_request_response_generated(&r->http, 200, "application/binary", rhizome_file_content);
   return 0;
 }
 
