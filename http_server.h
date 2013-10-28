@@ -123,7 +123,7 @@ struct http_request {
   bool_t *disable_tx_flag;
   time_ms_t initiate_time; // time connection was initiated
   time_ms_t idle_timeout; // disconnect if no bytes received for this long
-  struct sockaddr_in client_in_addr;
+  struct sockaddr_in client_sockaddr_in;
   HTTP_REQUEST_PARSER parser; // current parser function
   HTTP_REQUEST_PARSER handle_first_line; // called after first line is parsed
   HTTP_REQUEST_PARSER handle_headers; // called after all headers are parsed

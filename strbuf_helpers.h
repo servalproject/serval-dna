@@ -117,6 +117,14 @@ strbuf strbuf_append_socket_domain(strbuf sb, int domain);
 strbuf strbuf_append_socket_type(strbuf sb, int type);
 #define alloca_socket_type(type)    strbuf_str(strbuf_append_socket_type(strbuf_alloca(15), type))
 
+/* Append a textual description of a struct in_addr (in network order) as IPv4
+ * quartet "N.N.N.N".
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+struct in_addr;
+strbuf strbuf_append_in_addr(strbuf sb, const struct in_addr *addr);
+#define alloca_in_addr(addr)    strbuf_str(strbuf_append_in_addr(strbuf_alloca(16), (const struct in_addr *)(addr)))
+
 /* Append a textual description of a struct sockaddr_in.
  * @author Andrew Bettison <andrew@servalproject.com>
  */

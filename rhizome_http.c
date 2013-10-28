@@ -270,7 +270,7 @@ void rhizome_server_poll(struct sched_ent *alarm)
 	request->read_state.blob_fd = -1;
 	request->read_state.blob_rowid = -1;
 	if (peerip)
-	  request->http.client_in_addr = *peerip;
+	  request->http.client_sockaddr_in = *peerip;
 	request->http.handle_headers = rhizome_dispatch;
 	request->http.debug_flag = &config.debug.rhizome_httpd;
 	request->http.disable_tx_flag = &config.debug.rhizome_nohttptx;

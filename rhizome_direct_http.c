@@ -381,13 +381,12 @@ int rhizome_direct_addfile(rhizome_http_request *r, const char *remainder)
     http_request_simple_response(&r->http, 405, NULL);
     return 0;
   }
-  if (cmp_sockaddr((struct sockaddr *)&r->http.client_in_addr, sizeof r->http.client_in_addr,
-		   (struct sockaddr *)&config.rhizome.api.addfile.allow_host, sizeof config.rhizome.api.addfile.allow_host
-		  ) != 0
+  if (   r->http.client_sockaddr_in.sin_family != AF_INET
+      || r->http.client_sockaddr_in.sin_addr.s_addr != config.rhizome.api.addfile.allow_host.s_addr
   ) {
-    INFOF("rhizome.api.addfile request received from %s, but is only allowed from %s",
-	alloca_sockaddr(&r->http.client_in_addr, sizeof r->http.client_in_addr),
-	alloca_sockaddr(&config.rhizome.api.addfile.allow_host, sizeof config.rhizome.api.addfile.allow_host)
+    INFOF("rhizome.api.addfile request received from %s, but is only allowed from AF_INET %s",
+	alloca_sockaddr(&r->http.client_sockaddr_in, sizeof r->http.client_sockaddr_in),
+	alloca_in_addr(&config.rhizome.api.addfile.allow_host)
       );
     rhizome_direct_clear_temporary_files(r);
     http_request_simple_response(&r->http, 404, "<html><h1>Not available from here</h1></html>");

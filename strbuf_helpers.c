@@ -313,6 +313,16 @@ strbuf strbuf_append_socket_type(strbuf sb, int type)
   return sb;
 }
 
+strbuf strbuf_append_in_addr(strbuf sb, const struct in_addr *addr)
+{
+  strbuf_sprintf(sb, " %u.%u.%u.%u",
+      ((unsigned char *) &addr->s_addr)[0],
+      ((unsigned char *) &addr->s_addr)[1],
+      ((unsigned char *) &addr->s_addr)[2],
+      ((unsigned char *) &addr->s_addr)[3]);
+  return sb;
+}
+
 strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t addrlen)
 {
   strbuf_append_socket_domain(sb, addr->sa_family);
@@ -336,13 +346,9 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
     break;
   case AF_INET: {
       const struct sockaddr_in *addr_in = (const struct sockaddr_in *) addr;
-      strbuf_sprintf(sb, " %u.%u.%u.%u:%u",
-	  ((unsigned char *) &addr_in->sin_addr.s_addr)[0],
-	  ((unsigned char *) &addr_in->sin_addr.s_addr)[1],
-	  ((unsigned char *) &addr_in->sin_addr.s_addr)[2],
-	  ((unsigned char *) &addr_in->sin_addr.s_addr)[3],
-	  ntohs(addr_in->sin_port)
-	);
+      strbuf_putc(sb, ' ');
+      strbuf_append_in_addr(sb, &addr_in->sin_addr);
+      strbuf_sprintf(sb, ":%u", ntohs(addr_in->sin_port));
       if (addrlen != sizeof(struct sockaddr_in))
 	strbuf_sprintf(sb, " (addrlen=%d should be %zd)", (int)addrlen, sizeof(struct sockaddr_in));
     }
