@@ -145,6 +145,12 @@ struct iovec;
 strbuf strbuf_append_iovec(strbuf sb, const struct iovec *iov, int iovcnt);
 #define alloca_iovec(iov,cnt)    strbuf_str(strbuf_append_iovec(strbuf_alloca(200), (iov), (cnt)))
 
+/* Append a string using HTTP quoted-string format: delimited by double quotes (") and
+ * internal double quotes and backslash escaped by leading backslash.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_append_quoted_string(strbuf sb, const char *str);
+
 /* Append a representation of a struct http_range[] array.
  * @author Andrew Bettison <andrew@servalproject.com>
  */
@@ -152,7 +158,14 @@ struct http_range;
 strbuf strbuf_append_http_ranges(strbuf sb, const struct http_range *ranges, unsigned nels);
 #define alloca_http_ranges(ra)    strbuf_str(strbuf_append_http_ranges(strbuf_alloca(25*NELS(ra)), (ra), NELS(ra)))
 
-/* Append a representation of a struct mime_content_disposition struct.
+/* Append a representation of a struct mime_content_type in HTTP header format.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+struct mime_content_type;
+strbuf strbuf_append_mime_content_type(strbuf, const struct mime_content_type *);
+#define alloca_mime_content_type(ct) strbuf_str(strbuf_append_mime_content_type(strbuf_alloca(500), (ct)))
+
+/* Append a representation of a struct mime_content_disposition, in HTTP header format.
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 struct mime_content_disposition;

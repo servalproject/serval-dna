@@ -402,6 +402,18 @@ strbuf strbuf_append_iovec(strbuf sb, const struct iovec *iov, int iovcnt)
   return sb;
 }
 
+strbuf strbuf_append_quoted_string(strbuf sb, const char *str)
+{
+  strbuf_putc(sb, '"');
+  for (; *str; ++str) {
+    if (*str == '"' || *str == '\\')
+      strbuf_putc(sb, '\\');
+    strbuf_putc(sb, *str);
+  }
+  strbuf_putc(sb, '"');
+  return sb;
+}
+
 strbuf strbuf_append_http_ranges(strbuf sb, const struct http_range *ranges, unsigned nels)
 {
   unsigned i;
@@ -427,31 +439,47 @@ strbuf strbuf_append_http_ranges(strbuf sb, const struct http_range *ranges, uns
   return sb;
 }
 
+strbuf strbuf_append_mime_content_type(strbuf sb, const struct mime_content_type *ct)
+{
+  strbuf_puts(sb, ct->type);
+  strbuf_putc(sb, '/');
+  strbuf_puts(sb, ct->subtype);
+  if (ct->charset) {
+    strbuf_puts(sb, "; charset=");
+    strbuf_append_quoted_string(sb, ct->charset);
+  }
+  if (ct->multipart_boundary) {
+    strbuf_puts(sb, "; boundary=");
+    strbuf_append_quoted_string(sb, ct->multipart_boundary);
+  }
+  return sb;
+}
+
 strbuf strbuf_append_mime_content_disposition(strbuf sb, const struct mime_content_disposition *cd)
 {
-  strbuf_puts(sb, "type=");
-  strbuf_toprint_quoted(sb, "``", cd->type);
-  strbuf_puts(sb, " name=");
-  strbuf_toprint_quoted(sb, "``", cd->name);
-  strbuf_puts(sb, " filename=");
-  strbuf_toprint_quoted(sb, "``", cd->filename);
-  strbuf_puts(sb, " size=");
-  strbuf_sprintf(sb, "%"PRIhttp_size_t, cd->size);
+  strbuf_puts(sb, cd->type);
+  if (cd->name) {
+    strbuf_puts(sb, "; name=");
+    strbuf_append_quoted_string(sb, cd->name);
+  }
+  if (cd->filename) {
+    strbuf_puts(sb, "; filename=");
+    strbuf_append_quoted_string(sb, cd->filename);
+  }
+  if (cd->size)
+    strbuf_sprintf(sb, "; size=%"PRIhttp_size_t, cd->size);
   struct tm tm;
-  strbuf_puts(sb, " creation_date=");
-  if (cd->creation_date)
-    strbuf_append_strftime(sb, "%a, %d %b %Y %T %z", gmtime_r(&cd->creation_date, &tm));
-  else
-    strbuf_puts(sb, "0");
-  strbuf_puts(sb, " modification_date=");
-  if (cd->modification_date)
-    strbuf_append_strftime(sb, "%a, %d %b %Y %T %z", gmtime_r(&cd->modification_date, &tm));
-  else
-    strbuf_puts(sb, "0");
-  strbuf_puts(sb, " read_date=");
-  if (cd->read_date)
-    strbuf_append_strftime(sb, "%a, %d %b %Y %T %z", gmtime_r(&cd->read_date, &tm));
-  else
-    strbuf_puts(sb, "0");
+  if (cd->creation_date) {
+    strbuf_puts(sb, " creation_date=");
+    strbuf_append_strftime(sb, "\"%a, %d %b %Y %T %z\"", gmtime_r(&cd->creation_date, &tm));
+  }
+  if (cd->modification_date) {
+    strbuf_puts(sb, " modification_date=");
+    strbuf_append_strftime(sb, "\"%a, %d %b %Y %T %z\"", gmtime_r(&cd->modification_date, &tm));
+  }
+  if (cd->read_date) {
+    strbuf_puts(sb, " read_date=");
+    strbuf_append_strftime(sb, "\"%a, %d %b %Y %T %z\"", gmtime_r(&cd->read_date, &tm));
+  }
   return sb;
 }

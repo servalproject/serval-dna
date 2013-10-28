@@ -281,11 +281,13 @@ static const char * _reserve(struct http_request *r, struct substring str)
   return ret;
 }
 
+#if 0
 static const char * _reserve_str(struct http_request *r, const char *str)
 {
   struct substring sub = { .start = str, .end = str + strlen(str) };
   return _reserve(r, sub);
 }
+#endif
 
 static inline int _end_of_content(struct http_request *r)
 {
@@ -556,6 +558,60 @@ static unsigned _parse_ranges(struct http_request *r, struct http_range *range, 
   return i;
 }
 
+static int _parse_content_type(struct http_request *r, struct mime_content_type *ct)
+{
+  size_t n = _parse_token(r, ct->type, sizeof ct->type);
+  if (n == 0)
+    return 0;
+  if (n >= sizeof ct->type) {
+    WARNF("HTTP Content-Type type truncated: %s", alloca_str_toprint(ct->type));
+    return 0;
+  }
+  if (!_skip_literal(r, "/"))
+    return 0;
+  n = _parse_token(r, ct->subtype, sizeof ct->subtype);
+  if (n == 0)
+    return 0;
+  if (n >= sizeof ct->subtype) {
+    WARNF("HTTP Content-Type subtype truncated: %s", alloca_str_toprint(ct->subtype));
+    return 0;
+  }
+  while (_skip_optional_space(r) && _skip_literal(r, ";") && _skip_optional_space(r)) {
+    const char *start = r->cursor;
+    if (_skip_literal(r, "charset=")) {
+      size_t n = _parse_token_or_quoted_string(r, ct->charset, sizeof ct->charset);
+      if (n == 0)
+	return 0;
+      if (n >= sizeof ct->charset) {
+	WARNF("HTTP Content-Type charset truncated: %s", alloca_str_toprint(ct->charset));
+	return 0;
+      }
+      continue;
+    }
+    r->cursor = start;
+    if (_skip_literal(r, "boundary=")) {
+      size_t n = _parse_token_or_quoted_string(r, ct->multipart_boundary, sizeof ct->multipart_boundary);
+      if (n == 0)
+	return 0;
+      if (n >= sizeof ct->multipart_boundary) {
+	WARNF("HTTP Content-Type boundary truncated: %s", alloca_str_toprint(ct->multipart_boundary));
+	return 0;
+      }
+      continue;
+    }
+    r->cursor = start;
+    struct substring param;
+    if (_skip_token(r, &param) && _skip_literal(r, "=") && _parse_token_or_quoted_string(r, NULL, 0)) {
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("Skipping HTTP Content-Type parameter: %s", alloca_substring_toprint(param));
+      continue;
+    }
+    WARNF("Malformed HTTP Content-Type: %s", alloca_toprint(50, r->cursor, r->end - r->cursor));
+    return 0;
+  }
+  return 1;
+}
+
 static int _parse_quoted_rfc822_time(struct http_request *r, time_t *timep)
 {
   char datestr[40];
@@ -743,6 +799,13 @@ static int http_request_parse_header(struct http_request *r)
   _rewind(r);
   const char *const sol = r->cursor;
   if (_skip_literal_nocase(r, "Content-Length:")) {
+    if (r->request_header.content_length != CONTENT_LENGTH_UNKNOWN) {
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("Skipping duplicate HTTP header Content-Length: %s", alloca_toprint(50, sol, r->end - sol));
+      r->cursor = nextline;
+      _commit(r);
+      return 0;
+    }
     _skip_optional_space(r);
     http_size_t length;
     if (_parse_http_size_t(r, &length) && _skip_optional_space(r) && r->cursor == eol) {
@@ -757,50 +820,35 @@ static int http_request_parse_header(struct http_request *r)
   }
   _rewind(r);
   if (_skip_literal_nocase(r, "Content-Type:")) {
+    if (r->request_header.content_type.type[0]) {
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("Skipping duplicate HTTP header Content-Type: %s", alloca_toprint(50, sol, r->end - sol));
+      r->cursor = nextline;
+      _commit(r);
+      return 0;
+    }
     _skip_optional_space(r);
-    struct substring type = substring_NULL;
-    struct substring subtype = substring_NULL;
-    char boundary[BOUNDARY_STRING_MAXLEN + 1];
-    boundary[0] = '\0';
-    if (_skip_token(r, &type) && _skip_literal(r, "/") && _skip_token(r, &subtype)) {
-      // Parse zero or more content-type parameters.
-      for (_skip_optional_space(r); r->cursor < eol && _skip_literal(r, ";"); _skip_optional_space(r)) {
-	_skip_optional_space(r);
-	const char *startparam = r->cursor;
-	if (_skip_literal(r, "boundary=")) {
-	  size_t n = _parse_token_or_quoted_string(r, boundary, sizeof boundary);
-	  if (n == 0 || n >= sizeof boundary || !is_valid_http_boundary_string(boundary))
-	    goto malformed;
-	  continue;
-	}
-	// Silently ignore unrecognised parameters (eg, charset=) if they are well formed.
-	r->cursor = startparam; // partial rewind
-	if (_skip_token(r, NULL) && _skip_literal(r, "=") && _parse_token_or_quoted_string(r, NULL, 0))
-	  continue;
-	break;
-      }
-      if (r->cursor == eol) {
-	r->cursor = nextline;
-	_commit(r);
-	if (   (r->request_header.content_type = _reserve(r, type)) == NULL
-	    || (r->request_header.content_subtype = _reserve(r, subtype)) == NULL
-	    || (boundary[0] && (r->request_header.boundary = _reserve_str(r, boundary)) == NULL)
-	)
-	  return 0; // error
-	if (r->debug_flag && *r->debug_flag)
-	  DEBUGF("Parsed HTTP request Content-type: %s/%s%s%s",
-	      r->request_header.content_type,
-	      r->request_header.content_subtype,
-	      r->request_header.boundary ? "; boundary=" : "",
-	      r->request_header.boundary ? alloca_str_toprint(r->request_header.boundary) : ""
-	    );
-	return 0;
-      }
+    if (   _parse_content_type(r, &r->request_header.content_type)
+	&& _skip_optional_space(r)
+	&& r->cursor == eol
+    ) {
+      r->cursor = nextline;
+      _commit(r);
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("Parsed HTTP request Content-type: %s", alloca_mime_content_type(&r->request_header.content_type));
+      return 0;
     }
     goto malformed;
   }
   _rewind(r);
   if (_skip_literal_nocase(r, "Range:")) {
+    if (r->request_header.content_range_count) {
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("Skipping duplicate HTTP header Range: %s", alloca_toprint(50, sol, r->end - sol));
+      r->cursor = nextline;
+      _commit(r);
+      return 0;
+    }
     _skip_optional_space(r);
     unsigned int n;
     if (   _skip_literal(r, "bytes=")
@@ -858,7 +906,7 @@ static int http_request_start_body(struct http_request *r)
 	DEBUGF("Malformed HTTP %s request: non-zero Content-Length not allowed", r->verb);
       return 400;
     }
-    if (r->request_header.content_type) {
+    if (r->request_header.content_type.type) {
       if (r->debug_flag && *r->debug_flag)
 	DEBUGF("Malformed HTTP %s request: Content-Type not allowed", r->verb);
       return 400;
@@ -871,26 +919,28 @@ static int http_request_start_body(struct http_request *r)
 	DEBUGF("Malformed HTTP %s request: missing Content-Length header", r->verb);
       return 411;
     }
-    if (r->request_header.content_type == NULL) {
+    if (r->request_header.content_type.type == NULL) {
       if (r->debug_flag && *r->debug_flag)
 	DEBUGF("Malformed HTTP %s request: missing Content-Type header", r->verb);
       return 400;
     }
-    if (   strcmp(r->request_header.content_type, "multipart") == 0
-	&& strcmp(r->request_header.content_subtype, "form-data") == 0
+    if (   strcmp(r->request_header.content_type.type, "multipart") == 0
+	&& strcmp(r->request_header.content_type.subtype, "form-data") == 0
     ) {
-      if (r->request_header.boundary == NULL || r->request_header.boundary[0] == '\0') {
+      if (   r->request_header.content_type.multipart_boundary == NULL
+	  || r->request_header.content_type.multipart_boundary[0] == '\0'
+      ) {
 	if (r->debug_flag && *r->debug_flag)
 	  DEBUGF("Malformed HTTP %s request: Content-Type %s/%s missing boundary parameter",
-	      r->verb, r->request_header.content_type, r->request_header.content_subtype);
+	      r->verb, r->request_header.content_type.type, r->request_header.content_type.subtype);
 	return 400;
       }
       r->parser = http_request_parse_body_form_data;
       r->form_data_state = START;
     } else {
       if (r->debug_flag && *r->debug_flag)
-	DEBUGF("Unsupported HTTP %s request: Content-Type %s/%s not supported",
-	    r->verb, r->request_header.content_type, r->request_header.content_subtype);
+	DEBUGF("Unsupported HTTP %s request: Content-Type %s not supported",
+	    r->verb, alloca_mime_content_type(&r->request_header.content_type));
       return 415;
     }
   }
@@ -909,7 +959,7 @@ static int http_request_start_body(struct http_request *r)
  */
 static int _skip_mime_boundary(struct http_request *r)
 {
-  if (!_skip_literal(r, "--") || !_skip_literal(r, r->request_header.boundary))
+  if (!_skip_literal(r, "--") || !_skip_literal(r, r->request_header.content_type.multipart_boundary))
     return 0;
   if (_skip_literal(r, "--") && _skip_crlf(r))
     return 2;
@@ -988,6 +1038,43 @@ malformed:
   return 1;
 }
 
+static void http_request_form_data_start_part(struct http_request *r, int b)
+{
+  switch (r->form_data_state) {
+    case BODY:
+      if (   r->part_header.content_length != CONTENT_LENGTH_UNKNOWN
+	  && r->part_body_length != r->part_header.content_length
+      ) {
+	WARNF("HTTP multipart part body length (%"PRIhttp_size_t") does not match Content-Length header (%"PRIhttp_size_t")",
+	      r->part_body_length,
+	      r->part_header.content_length
+	    );
+      }
+      // fall through...
+    case HEADER:
+      if (r->form_data.handle_mime_part_end) {
+	if (r->debug_flag && *r->debug_flag)
+	  DEBUGF("handle_mime_part_end()");
+	r->form_data.handle_mime_part_end(r);
+      }
+      break;
+    default:
+      break;
+  }
+  if (b == 1) {
+    r->form_data_state = HEADER;
+    bzero(&r->part_header, sizeof r->part_header);
+    r->part_body_length = 0;
+    r->part_header.content_length = CONTENT_LENGTH_UNKNOWN;
+    if (r->form_data.handle_mime_part_start) {
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("handle_mime_part_start()");
+      r->form_data.handle_mime_part_start(r);
+    }
+  } else
+    r->form_data_state = EPILOGUE;
+}
+
 /* If parsing completes (ie, parsed to end of epilogue), then sets r->parser to NULL and returns 0,
  * so this function will not be called again.  If parsing cannot complete due to running out of
  * data, returns 100, so this function will not be called again until more data has been read.
@@ -1029,15 +1116,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	    }
 	    _rewind_crlf(r);
 	    _commit(r);
-	    if (b == 1) {
-	      r->form_data_state = HEADER;
-	      if (r->form_data.handle_mime_part_start) {
-		if (r->debug_flag && *r->debug_flag)
-		  DEBUGF("handle_mime_part_start()");
-		r->form_data.handle_mime_part_start(r);
-	      }
-	    } else
-	      r->form_data_state = EPILOGUE;
+	    http_request_form_data_start_part(r, b);
 	    return 0;
 	  }
 	}
@@ -1074,6 +1153,16 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	// A blank line finishes the headers.  The CRLF does not form part of the body.
 	if (_skip_crlf(r)) {
 	  _commit(r);
+	  if (r->form_data.handle_mime_part_header) {
+	    if (r->debug_flag && *r->debug_flag)
+	      DEBUGF("handle_mime_part_header(Content-Length: %"PRIhttp_size_t", Content-Type: %s, Content-Disposition: %s)",
+		  r->part_header.content_length,
+		  alloca_mime_content_type(&r->part_header.content_type),
+		  alloca_mime_content_disposition(&r->part_header.content_disposition)
+		);
+	    r->form_data.handle_mime_part_header(r, &r->part_header);
+	  }
+
 	  r->form_data_state = BODY;
 	  return 0;
 	}
@@ -1086,23 +1175,9 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	if ((b = _skip_mime_boundary(r))) {
 	  _rewind_crlf(r);
 	  _commit(r);
-	  if (r->form_data.handle_mime_part_end) {
-	    if (r->debug_flag && *r->debug_flag)
-	      DEBUGF("handle_mime_part_end()");
-	    r->form_data.handle_mime_part_end(r);
-	  }
 	  // A boundary in the middle of headers finishes the current part and starts a new part.
 	  // An end boundary terminates the current part and starts the epilogue.
-	  if (b == 1) {
-	    r->form_data_state = HEADER;
-	    if (r->form_data.handle_mime_part_start) {
-	      if (r->debug_flag && *r->debug_flag)
-		DEBUGF("handle_mime_part_start()");
-	      r->form_data.handle_mime_part_start(r);
-	    }
-	  }
-	  else
-	    r->form_data_state = EPILOGUE;
+	  http_request_form_data_start_part(r, b);
 	  return 0;
 	}
 	if (_run_out(r))
@@ -1115,27 +1190,54 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  strncpy(labelstr, label.start, labellen)[labellen] = '\0';
 	  str_tolower_inplace(labelstr);
 	  const char *value = r->cursor;
-	  if (strcmp(labelstr, "content-disposition") == 0) {
-	    struct mime_content_disposition cd;
-	    bzero(&cd, sizeof cd);
-	    if (_parse_content_disposition(r, &cd) && _skip_optional_space(r) && _skip_crlf(r)) {
+	  if (strcmp(labelstr, "content-length") == 0) {
+	    if (r->part_header.content_length != CONTENT_LENGTH_UNKNOWN) {
+	      if (r->debug_flag && *r->debug_flag)
+		DEBUGF("Skipping duplicate HTTP multipart header Content-Length: %s", alloca_toprint(50, sol, r->end - sol));
+	      return 400;
+	    }
+	    http_size_t length;
+	    if (_parse_http_size_t(r, &length) && _skip_optional_space(r) && _skip_crlf(r)) {
 	      _rewind_crlf(r);
 	      _commit(r);
-	      if (r->form_data.handle_mime_content_disposition) {
-		if (r->debug_flag && *r->debug_flag)
-		  DEBUGF("handle_mime_content_disposition(%s)", alloca_mime_content_disposition(&cd));
-		r->form_data.handle_mime_content_disposition(r, &cd);
-	      }
+	      r->part_header.content_length = length;
+	      if (r->debug_flag && *r->debug_flag)
+		DEBUGF("Parsed HTTP multipart header Content-Length: %"PRIhttp_size_t, r->part_header.content_length);
+	      return 0;
+	    }
+	  }
+	  else if (strcmp(labelstr, "content-type") == 0) {
+	    if (r->part_header.content_type.type[0]) {
+	      if (r->debug_flag && *r->debug_flag)
+		DEBUGF("Skipping duplicate HTTP multipart header Content-Type: %s", alloca_toprint(50, sol, r->end - sol));
+	      return 400;
+	    }
+	    if (_parse_content_type(r, &r->part_header.content_type) && _skip_optional_space(r) && _skip_crlf(r)) {
+	      _rewind_crlf(r);
+	      _commit(r);
+	      if (r->debug_flag && *r->debug_flag)
+		DEBUGF("Parsed HTTP multipart header Content-Type: %s", alloca_mime_content_type(&r->part_header.content_type));
+	      return 0;
+	    }
+	  }
+	  else if (strcmp(labelstr, "content-disposition") == 0) {
+	    if (r->part_header.content_disposition.type[0]) {
+	      if (r->debug_flag && *r->debug_flag)
+		DEBUGF("Skipping duplicate HTTP multipart header Content-Disposition: %s", alloca_toprint(50, sol, r->end - sol));
+	      return 400;
+	    }
+	    if (_parse_content_disposition(r, &r->part_header.content_disposition) && _skip_optional_space(r) && _skip_crlf(r)) {
+	      _rewind_crlf(r);
+	      _commit(r);
+	      if (r->debug_flag && *r->debug_flag)
+		DEBUGF("Parsed HTTP multipart header Content-Disposition: %s", alloca_mime_content_disposition(&r->part_header.content_disposition));
 	      return 0;
 	    }
 	  }
 	  else if (_skip_to_crlf(r)) {
 	    _commit(r);
-	    if (r->form_data.handle_mime_header) {
-	      if (r->debug_flag && *r->debug_flag)
-		DEBUGF("handle_mime_header(%s, %s)", alloca_str_toprint(labelstr), alloca_toprint(-1, value, value - r->cursor));
-	      r->form_data.handle_mime_header(r, labelstr, value, value - r->cursor); // excluding CRLF at end
-	    }
+	    if (r->debug_flag && *r->debug_flag)
+	      DEBUGF("Skip HTTP multipart header: %s: %s", alloca_str_toprint(labelstr), alloca_toprint(-1, value, value - r->cursor));
 	    return 0;
 	  }
 	}
@@ -1169,25 +1271,14 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	if ((b = _skip_mime_boundary(r))) {
 	  _rewind_crlf(r);
 	  _commit(r);
+	  assert(end_body >= start);
+	  r->part_body_length += end_body - start;
 	  if (end_body > start && r->form_data.handle_mime_body) {
 	    if (r->debug_flag && *r->debug_flag)
 	      DEBUGF("handle_mime_body(%s length=%zu)", alloca_toprint(80, start, end_body - start), end_body - start);
 	    r->form_data.handle_mime_body(r, start, end_body - start); // excluding CRLF at end
 	  }
-	  if (r->form_data.handle_mime_part_end) {
-	    if (r->debug_flag && *r->debug_flag)
-	      DEBUGF("handle_mime_part_end()");
-	    r->form_data.handle_mime_part_end(r);
-	  }
-	  r->form_data_state = EPILOGUE;
-	  if (b == 1) {
-	    r->form_data_state = HEADER;
-	    if (r->form_data.handle_mime_part_start) {
-	      if (r->debug_flag && *r->debug_flag)
-		DEBUGF("handle_mime_part_start()");
-	      r->form_data.handle_mime_part_start(r);
-	    }
-	  }
+	  http_request_form_data_start_part(r, b);
 	  return 0;
 	}
       }
@@ -1198,6 +1289,8 @@ static int http_request_parse_body_form_data(struct http_request *r)
       }
       _rewind_optional_cr(r);
       _commit(r);
+      assert(r->parsed >= start);
+      r->part_body_length += r->parsed - start;
       if (r->parsed > start && r->form_data.handle_mime_body) {
 	if (r->debug_flag && *r->debug_flag)
 	  DEBUGF("handle_mime_body(%s length=%zu)", alloca_toprint(80, start, r->parsed - start), r->parsed - start);
@@ -1536,18 +1629,6 @@ static const char *httpResultString(int response_code)
   case 501: return "Not Implemented";
   default:  return (response_code <= 4) ? "Unknown status code" : "A suffusion of yellow";
   }
-}
-
-static strbuf strbuf_append_quoted_string(strbuf sb, const char *str)
-{
-  strbuf_putc(sb, '"');
-  for (; *str; ++str) {
-    if (*str == '"' || *str == '\\')
-      strbuf_putc(sb, '\\');
-    strbuf_putc(sb, *str);
-  }
-  strbuf_putc(sb, '"');
-  return sb;
 }
 
 /* Render the HTTP response into the current response buffer.  Return 1 if it fits, 0 if it does
