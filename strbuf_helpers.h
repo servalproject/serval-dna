@@ -67,6 +67,7 @@ strbuf strbuf_path_join(strbuf sb, ...);
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 strbuf strbuf_append_poll_events(strbuf sb, short events);
+#define alloca_poll_events(ev)    strbuf_str(strbuf_append_poll_events(strbuf_alloca(200), (ev)))
 
 /* Append a nul-terminated string as a single-quoted shell word which, if
  * expanded in a shell command line, would evaluate to the original string.
@@ -116,6 +117,14 @@ strbuf strbuf_append_socket_domain(strbuf sb, int domain);
 strbuf strbuf_append_socket_type(strbuf sb, int type);
 #define alloca_socket_type(type)    strbuf_str(strbuf_append_socket_type(strbuf_alloca(15), type))
 
+/* Append a textual description of a struct in_addr (in network order) as IPv4
+ * quartet "N.N.N.N".
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+struct in_addr;
+strbuf strbuf_append_in_addr(strbuf sb, const struct in_addr *addr);
+#define alloca_in_addr(addr)    strbuf_str(strbuf_append_in_addr(strbuf_alloca(16), (const struct in_addr *)(addr)))
+
 /* Append a textual description of a struct sockaddr_in.
  * @author Andrew Bettison <andrew@servalproject.com>
  */
@@ -135,5 +144,19 @@ strbuf strbuf_append_strftime(strbuf sb, const char *format, const struct tm *tm
 struct iovec;
 strbuf strbuf_append_iovec(strbuf sb, const struct iovec *iov, int iovcnt);
 #define alloca_iovec(iov,cnt)    strbuf_str(strbuf_append_iovec(strbuf_alloca(200), (iov), (cnt)))
+
+/* Append a representation of a struct http_range[] array.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+struct http_range;
+strbuf strbuf_append_http_ranges(strbuf sb, const struct http_range *ranges, unsigned nels);
+#define alloca_http_ranges(ra)    strbuf_str(strbuf_append_http_ranges(strbuf_alloca(25*NELS(ra)), (ra), NELS(ra)))
+
+/* Append a representation of a struct mime_content_disposition struct.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+struct mime_content_disposition;
+strbuf strbuf_append_mime_content_disposition(strbuf, const struct mime_content_disposition *);
+#define alloca_mime_content_disposition(cd) strbuf_str(strbuf_append_mime_content_disposition(strbuf_alloca(500), (cd)))
 
 #endif //__STRBUF_HELPERS_H__

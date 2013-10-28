@@ -17,7 +17,7 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-#include "serval.h"
+#include "fdqueue.h"
 #include "conf.h"
 
 struct profile_total *stats_head=NULL;

@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "sha2.h"
 #include "str.h"
 #include "strbuf.h"
+#include "http_server.h"
 #include "nacl.h"
 #include <sys/stat.h>
 
@@ -269,7 +270,7 @@ int rhizome_str_is_bundle_crypt_key(const char *text);
 int rhizome_strn_is_file_hash(const char *text);
 int rhizome_str_is_file_hash(const char *text);
 
-int http_header_complete(const char *buf, size_t len, size_t read_since_last_call);
+int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_call);
 
 typedef struct sqlite_retry_state {
   unsigned int limit; // do not retry once elapsed >= limit
@@ -471,8 +472,8 @@ struct rhizome_write_buffer
 {
   struct rhizome_write_buffer *_next;
   int64_t offset;
-  int buffer_size;
-  int data_size;
+  size_t buffer_size;
+  size_t data_size;
   unsigned char data[0];
 };
 
@@ -487,7 +488,7 @@ struct rhizome_write
   int64_t written_offset;
   int64_t file_length;
   struct rhizome_write_buffer *buffer_list;
-  int buffer_size;
+  size_t buffer_size;
   
   int crypt;
   unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
@@ -502,7 +503,7 @@ struct rhizome_write
 struct rhizome_read_buffer{
   uint64_t offset;
   unsigned char data[RHIZOME_CRYPT_PAGE_SIZE];
-  int len;
+  size_t len;
 };
 
 struct rhizome_read
@@ -525,71 +526,27 @@ struct rhizome_read
   int64_t length;
 };
 
-typedef struct rhizome_http_request {
-  struct sched_ent alarm;
-  time_ms_t initiate_time; /* time connection was initiated */
-  
-  struct sockaddr_in requestor;
+/* Rhizome-specific HTTP request handling.
+ */
+typedef struct rhizome_http_request
+{
+  struct http_request http; // MUST BE FIRST ELEMENT
 
-  /* identify request from others being run.
+  /* Identify request from others being run.
      Monotonic counter feeds it.  Only used for debugging when we write
      post-<uuid>.log files for multi-part form requests. */
   unsigned int uuid;
 
-  /* The HTTP request as currently received */
-  int request_length;
-  int header_length;
-  char request[1024];
-  
-  /* Nature of the request */
-  int request_type;
-  /* All of the below are receiving data */
-#define RHIZOME_HTTP_REQUEST_RECEIVING -1
-#define RHIZOME_HTTP_REQUEST_RECEIVING_MULTIPART -2
-  
-  // callback function to fill the response buffer
-  int (*generator)(struct rhizome_http_request *r);
-  
-  /* Local buffer of data to be sent.
-   If a RHIZOME_HTTP_REQUEST_FROMBUFFER, then the buffer is sent, and when empty
-   the request is closed.
-   Else emptying the buffer triggers a request to fetch more data.  Only if no
-   more data is provided do we then close the request. */
-  unsigned char *buffer;
-  int buffer_size; // size
-  int buffer_length; // number of bytes loaded into buffer
-  int buffer_offset; // where we are between [0,buffer_length)
-  
   struct rhizome_read read_state;
   
-  /* Path of request (used by POST multipart form requests where
-     the actual processing of the request does not occur while the
-     request headers are still available. */
-  char path[1024];
-  /* Boundary string for POST multipart form requests */
-  char boundary_string[1024];
-  int boundary_string_length;
   /* File currently being written to while decoding POST multipart form */
-  FILE *field_file;
+  enum rhizome_direct_mime_part { NONE = 0, MANIFEST, DATA } current_part;
+  int part_fd;
+  /* Which parts have been received in POST multipart form */
+  bool_t received_manifest;
+  bool_t received_data;
   /* Name of data file supplied */
-  char data_file_name[1024];
-  /* Which fields have been seen in POST multipart form */
-  int fields_seen;
-  /* The seen fields bitmap above shares values with the actual Rhizome Direct
-     state machine.  The state numbers (and thus bitmap values for the various
-     fields) are listed here.
-     
-     To avoid confusion, we should not use single bit values for states that do
-     not correspond directly to a particular field.
-     Doesn't really matter what they are apart from not having exactly one bit set.
-     In fact, the only reason to not have exactly one bit set is so that we keep as
-     many bits available for field types as possible.
-  */
-#define RD_MIME_STATE_MANIFESTHEADERS (1<<0)
-#define RD_MIME_STATE_DATAHEADERS (1<<1)
-#define RD_MIME_STATE_INITIAL 0
-#define RD_MIME_STATE_PARTHEADERS 0xffff0000
-#define RD_MIME_STATE_BODY 0xffff0001
+  char data_file_name[MIME_FILENAME_MAXLEN + 1];
 
   /* The source specification data which are used in different ways by different 
    request types */
@@ -607,15 +564,6 @@ typedef struct rhizome_http_request {
   
 } rhizome_http_request;
 
-struct http_response {
-  unsigned int result_code;
-  const char * content_type;
-  uint64_t content_start;
-  uint64_t content_end;
-  uint64_t content_length;
-  const char * body;
-};
-
 int rhizome_received_content(const unsigned char *bidprefix,uint64_t version, 
 			     uint64_t offset,int count,unsigned char *bytes,
 			     int type);
@@ -629,9 +577,7 @@ int rhizome_server_simple_http_response(rhizome_http_request *r, int result, con
 int rhizome_server_http_response(rhizome_http_request *r, int result, 
     const char *mime_type, const char *body, uint64_t bytes);
 int rhizome_server_http_response_header(rhizome_http_request *r, int result, const char *mime_type, uint64_t bytes);
-int rhizome_http_server_start(int (*http_parse_func)(rhizome_http_request *),
-			      const char *http_parse_func_description,
-			      uint16_t port_low, uint16_t port_high);
+int rhizome_http_server_start(uint16_t port_low, uint16_t port_high);
 
 int is_rhizome_enabled();
 int is_rhizome_mdp_enabled();
@@ -654,12 +600,12 @@ typedef struct rhizome_direct_bundle_cursor {
   rhizome_bid_t bid_low;
   rhizome_bid_t bid_high;
   unsigned char *buffer;
-  int buffer_size;
-  int buffer_used;
-  int buffer_offset_bytes;
+  size_t buffer_size;
+  size_t buffer_used;
+  size_t buffer_offset_bytes;
 } rhizome_direct_bundle_cursor;
 
-rhizome_direct_bundle_cursor *rhizome_direct_bundle_iterator(int buffer_size);
+rhizome_direct_bundle_cursor *rhizome_direct_bundle_iterator(size_t buffer_size);
 void rhizome_direct_bundle_iterator_unlimit(rhizome_direct_bundle_cursor *r);
 int rhizome_direct_bundle_iterator_pickle_range(rhizome_direct_bundle_cursor *r,
 						unsigned char *pickled,
@@ -723,7 +669,7 @@ rhizome_direct_sync_request
 *rhizome_direct_new_sync_request(
 				 void (*transport_specific_dispatch_function)
 				 (struct rhizome_direct_sync_request *),
-				 int buffer_size,int interval, int mode, 
+				 size_t buffer_size, int interval, int mode, 
 				 void *transport_specific_state);
 int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r);
 int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r);
@@ -761,7 +707,7 @@ int rhizome_fetch_status_html(struct strbuf *b);
 int rhizome_fetch_has_queue_space(unsigned char log2_size);
 
 struct http_response_parts {
-  int code;
+  uint16_t code;
   char *reason;
   int64_t range_start;
   int64_t content_length;
@@ -774,34 +720,34 @@ int unpack_http_response(char *response, struct http_response_parts *parts);
 
 int rhizome_exists(const rhizome_filehash_t *hashp);
 int rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *expectedHashp, int64_t file_length, int priority);
-int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffer, int data_size);
-int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsigned char *buffer, int data_size);
+int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffer, size_t data_size);
+int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsigned char *buffer, size_t data_size);
 int rhizome_write_open_manifest(struct rhizome_write *write, rhizome_manifest *m);
 int rhizome_write_file(struct rhizome_write *write, const char *filename);
 int rhizome_fail_write(struct rhizome_write *write);
 int rhizome_finish_write(struct rhizome_write *write);
 int rhizome_import_file(rhizome_manifest *m, const char *filepath);
-int rhizome_import_buffer(rhizome_manifest *m, unsigned char *buffer, int length);
+int rhizome_import_buffer(rhizome_manifest *m, unsigned char *buffer, size_t length);
 int rhizome_stat_file(rhizome_manifest *m, const char *filepath);
 int rhizome_add_file(rhizome_manifest *m, const char *filepath);
 int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk);
 
 int rhizome_open_write_journal(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, uint64_t new_size);
-int rhizome_append_journal_buffer(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, unsigned char *buffer, int len);
+int rhizome_append_journal_buffer(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, unsigned char *buffer, size_t len);
 int rhizome_append_journal_file(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, const char *filename);
 int rhizome_journal_pipe(struct rhizome_write *write, const rhizome_filehash_t *hashp, uint64_t start_offset, uint64_t length);
 
-int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
+int rhizome_crypt_xor_block(unsigned char *buffer, size_t buffer_size, int64_t stream_offset, 
 			    const unsigned char *key, const unsigned char *nonce);
 int rhizome_open_read(struct rhizome_read *read, const rhizome_filehash_t *hashp);
-int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_length);
-int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer *buffer, unsigned char *data, int len);
+int rhizome_read(struct rhizome_read *read, unsigned char *buffer, size_t buffer_length);
+int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer *buffer, unsigned char *data, size_t len);
 int rhizome_read_close(struct rhizome_read *read);
 int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state);
 int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t *bsk);
 int rhizome_dump_file(const rhizome_filehash_t *hashp, const char *filepath, int64_t *length);
 int rhizome_read_cached(const rhizome_bid_t *bid, uint64_t version, time_ms_t timeout, 
-  uint64_t fileOffset, unsigned char *buffer, int length);
+  uint64_t fileOffset, unsigned char *buffer, size_t length);
 int rhizome_cache_close();
 
 int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t version, rhizome_filehash_t *hashp);

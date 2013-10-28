@@ -41,22 +41,12 @@ configure_servald_server() {
       set log.console.show_pid on \
       set log.console.show_time on \
       set debug.rhizome on \
+      set debug.httpd on \
+      set debug.rhizome_httpd on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
       set server.respawn_on_crash off \
       set mdp.iftype.wifi.tick_ms 500
-}
-
-setup_curl_7() {
-   case "$(curl --version | tr '\n' ' ')" in
-   curl\ @(7|8|9|[1-9][0-1]).*\ Protocols:*\ http\ *) ;;
-   '') fail "curl(1) command is not present";;
-   *) fail "curl(1) version is not adequate (expecting 7 or higher)";;
-   esac
-   unset http_proxy
-   unset HTTP_PROXY
-   unset HTTPS_PROXY
-   unset ALL_PROXY
 }
 
 setup_common() {
@@ -228,6 +218,7 @@ start_radio_instance() {
    executeOk_servald config \
       set debug.rhizome on \
       set debug.rhizome_ads on \
+      set debug.rhizome_httpd on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
       set debug.throttling on \
@@ -524,12 +515,13 @@ test_CorruptPayload() {
    wait_until grep -i "Stored file $FILEHASH" $LOGA
 }
 
-doc_HttpFetchRange="Fetch a file range using HTTP GET."
+doc_HttpFetchRange="Fetch a file range using HTTP GET"
 setup_HttpFetchRange() {
-   setup_curl_7
+   setup_curl 7
    setup_common
    set_instance +A
-   rhizome_add_file file1
+   rhizome_add_file file1 100
+   tail --bytes +33 file1 >file1.tail
    start_servald_instances +A
    wait_until rhizome_http_server_started +A
    get_rhizome_server_port PORTA +A
@@ -542,14 +534,16 @@ test_HttpFetchRange() {
          --write-out '%{http_code}\n' \
 	 --continue-at 32 \
          "http://$addr_localhost:$PORTA/rhizome/file/$FILEHASH"
-   tfw_cat http.headers http.output
-   assertGrep http.headers "Content-range:"
-   assertGrep http.headers "Content-length:"
+   tfw_cat -v http.headers http.output
+   assertGrep http.headers "^Content-Range: bytes 32-99/100$"
+   assertGrep http.headers "^Content-Length: 68$"
+   tfw_cat -v file1.tail http.output
+   assert cmp file1.tail http.output
 }
 
 doc_HttpImport="Import bundle using HTTP POST multi-part form."
 setup_HttpImport() {
-   setup_curl_7
+   setup_curl 7
    setup_common
    cat >README.WHYNOTSIPS <<'EOF'
 When we were looking at implementing secure calls for OpenBTS it was suggested
@@ -599,7 +593,7 @@ test_HttpImport() {
 
 doc_HttpAddLocal="Add file locally using HTTP, returns manifest"
 setup_HttpAddLocal() {
-   setup_curl_7
+   setup_curl 7
    setup_common
    set_instance +A
    executeOk_servald config \
@@ -639,6 +633,7 @@ setup_direct() {
       set log.console.level debug \
       set log.console.show_time on \
       set debug.rhizome on \
+      set debug.rhizome_httpd on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on
    rhizome_add_file fileB1 2000
@@ -662,6 +657,8 @@ setup_DirectPush() {
    setup_common
    setup_direct
    setup_direct_peer
+   executeOk ls -l
+   tfw_cat --stdout
 }
 test_DirectPush() {
    set_instance +B
