@@ -838,7 +838,6 @@ static int http_request_start_body(struct http_request *r)
   assert(r->verb != NULL);
   assert(r->path != NULL);
   assert(r->version_major != 0);
-  assert(r->version_minor != 0);
   assert(r->parsed <= r->end);
   if (r->verb == HTTP_VERB_GET) {
     // TODO: Implement HEAD requests (only send response header, not body)
@@ -900,9 +899,9 @@ static int _skip_mime_boundary(struct http_request *r)
 {
   if (!_skip_literal(r, "--") || !_skip_literal(r, r->request_header.boundary))
     return 0;
-  if (_skip_literal(r, "--") && _skip_optional_space(r) && _skip_crlf(r))
+  if (_skip_literal(r, "--") && _skip_crlf(r))
     return 2;
-  if (_skip_optional_space(r) && _skip_crlf(r))
+  if (_skip_crlf(r))
     return 1;
   return 0;
 }
@@ -1001,51 +1000,49 @@ static int http_request_parse_body_form_data(struct http_request *r)
       at_start = 1;
       r->form_data_state = PREAMBLE;
       // fall through
-    case PREAMBLE:
-      if (config.debug.httpd)
-	DEBUGF("PREAMBLE");
-      while (!_run_out(r)) {
-	const char *end_preamble = r->cursor;
-	int b;
-	if ((_skip_crlf(r) || at_start) && (b = _skip_mime_boundary(r))) {
-	  assert(end_preamble >= r->parsed);
-	  if (r->form_data.handle_mime_preamble && end_preamble != r->parsed) {
-	    if (r->debug_flag && *r->debug_flag)
-	      DEBUGF("handle_mime_preamble(%s length=%zu)",
-		  alloca_toprint(50, r->parsed, end_preamble - r->parsed), end_preamble - r->parsed);
-	    r->form_data.handle_mime_preamble(r, r->parsed, end_preamble - r->parsed);
-	  }
-	  _rewind_crlf(r);
-	  _commit(r);
-	  if (b == 1) {
-	    r->form_data_state = HEADER;
-	    if (r->form_data.handle_mime_part_start) {
+    case PREAMBLE: {
+	if (config.debug.httpd)
+	  DEBUGF("PREAMBLE");
+	const char *start = r->parsed;
+	for (; at_start || _skip_to_crlf(r); at_start = 0) {
+	  const char *end_preamble = r->cursor;
+	  int b;
+	  if ((b = _skip_mime_boundary(r))) {
+	    assert(end_preamble >= r->parsed);
+	    if (r->form_data.handle_mime_preamble && end_preamble != r->parsed) {
 	      if (r->debug_flag && *r->debug_flag)
-		DEBUGF("handle_mime_part_start()");
-	      r->form_data.handle_mime_part_start(r);
+		DEBUGF("handle_mime_preamble(%s length=%zu)",
+		    alloca_toprint(50, r->parsed, end_preamble - r->parsed), end_preamble - r->parsed);
+	      r->form_data.handle_mime_preamble(r, r->parsed, end_preamble - r->parsed);
 	    }
-	  } else
-	    r->form_data_state = EPILOGUE;
-	  return 0;
-	}
-	if (!_skip_to_crlf(r)) {
-	  if (_end_of_content(r)) {
-	    if (r->debug_flag && *r->debug_flag)
-	      DEBUGF("Malformed HTTP %s form data: missing first boundary", r->verb);
-	    return 400;
+	    _rewind_crlf(r);
+	    _commit(r);
+	    if (b == 1) {
+	      r->form_data_state = HEADER;
+	      if (r->form_data.handle_mime_part_start) {
+		if (r->debug_flag && *r->debug_flag)
+		  DEBUGF("handle_mime_part_start()");
+		r->form_data.handle_mime_part_start(r);
+	      }
+	    } else
+	      r->form_data_state = EPILOGUE;
+	    return 0;
 	  }
-	  return 100; // need more data
 	}
-	at_start = 0;
+	if (_end_of_content(r)) {
+	  if (r->debug_flag && *r->debug_flag)
+	    DEBUGF("Malformed HTTP %s form data: missing first boundary", r->verb);
+	  return 400;
+	}
+	_commit(r);
+	if (r->parsed > start && r->form_data.handle_mime_preamble) {
+	  if (r->debug_flag && *r->debug_flag)
+	    DEBUGF("handle_mime_preamble(%s length=%zu)",
+		alloca_toprint(50, start, r->parsed - start), r->parsed - start);
+	  r->form_data.handle_mime_preamble(r, start, r->parsed - start);
+	}
+	return 100; // need more data
       }
-      if (r->cursor > r->parsed && r->form_data.handle_mime_preamble) {
-	if (r->debug_flag && *r->debug_flag)
-	  DEBUGF("handle_mime_preamble(%s length=%zu)",
-	      alloca_toprint(50, r->parsed, r->cursor - r->parsed), r->cursor - r->parsed);
-	r->form_data.handle_mime_preamble(r, r->parsed, r->cursor - r->parsed);
-      }
-      _commit(r);
-      return 100; // need more data
     case HEADER: {
       if (config.debug.httpd)
 	DEBUGF("HEADER");
@@ -1124,17 +1121,18 @@ static int http_request_parse_body_form_data(struct http_request *r)
     case BODY:
       if (config.debug.httpd)
 	DEBUGF("BODY");
-      const char *start = r->cursor;
-      while (!_run_out(r)) {
+      const char *start = r->parsed;
+      while (_skip_to_crlf(r)) {
 	int b;
-	const char *eol = r->cursor;
-	if (_skip_crlf(r) && (b = _skip_mime_boundary(r))) {
+	const char *end_body = r->cursor;
+	_skip_crlf(r);
+	if ((b = _skip_mime_boundary(r))) {
 	  _rewind_crlf(r);
 	  _commit(r);
-	  if (r->form_data.handle_mime_body) {
+	  if (end_body > start && r->form_data.handle_mime_body) {
 	    if (r->debug_flag && *r->debug_flag)
-	      DEBUGF("handle_mime_body(%s length=%zu)", alloca_toprint(50, start, eol - start), eol - start);
-	    r->form_data.handle_mime_body(r, start, eol - start); // excluding CRLF at end
+	      DEBUGF("handle_mime_body(%s length=%zu)", alloca_toprint(80, start, end_body - start), end_body - start);
+	    r->form_data.handle_mime_body(r, start, end_body - start); // excluding CRLF at end
 	  }
 	  if (r->form_data.handle_mime_part_end) {
 	    if (r->debug_flag && *r->debug_flag)
@@ -1152,21 +1150,18 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  }
 	  return 0;
 	}
-	if (!_skip_to_crlf(r)) {
-	  if (_end_of_content(r)) {
-	    if (r->debug_flag && *r->debug_flag)
-	      DEBUGF("Malformed HTTP %s form data part: missing end boundary", r->verb);
-	    return 400;
-	  }
-	  return 100; // need more data
-	}
       }
-      if (r->cursor > r->parsed && r->form_data.handle_mime_body) {
+      if (_end_of_content(r)) {
 	if (r->debug_flag && *r->debug_flag)
-	  DEBUGF("handle_mime_body(%s length=%zu)", alloca_toprint(50, r->parsed, r->cursor - r->parsed), r->cursor - r->parsed);
-	r->form_data.handle_mime_body(r, r->parsed, r->cursor - r->parsed);
+	  DEBUGF("Malformed HTTP %s form data part: missing end boundary", r->verb);
+	return 400;
       }
       _commit(r);
+      if (r->parsed > start && r->form_data.handle_mime_body) {
+	if (r->debug_flag && *r->debug_flag)
+	  DEBUGF("handle_mime_body(%s length=%zu)", alloca_toprint(80, start, r->parsed - start), r->parsed - start);
+	r->form_data.handle_mime_body(r, start, r->parsed - start);
+      }
       return 100; // need more data
   case EPILOGUE:
       if (config.debug.httpd)
@@ -1227,6 +1222,8 @@ static void http_request_receive(struct http_request *r)
       r->parsed = r->received;
       r->end = r->received + unparsed;
       room = bufend - r->end;
+      if (r->request_content_remaining != CONTENT_LENGTH_UNKNOWN && room > r->request_content_remaining)
+	room = r->request_content_remaining;
     }
   }
   // If there is no more buffer space, fail the request.

@@ -671,9 +671,6 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  +m->fileLength
 	  +strlen("\r\n--")+strlen(boundary)+strlen("--\r\n");
 
-	/* XXX For some reason the above is four bytes out, so fix that */
-	content_length+=4;
-
 	int len=snprintf(buffer,8192,template,content_length,boundary);
 	len+=snprintf(&buffer[len],8192-len,template2,boundary);
 	memcpy(&buffer[len],m->manifestdata,m->manifest_all_bytes);
