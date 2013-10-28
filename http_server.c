@@ -298,6 +298,12 @@ static inline int _run_out(struct http_request *r)
   return r->cursor == r->end;
 }
 
+static inline int _buffer_full(struct http_request *r)
+{
+  const char *const bufend = r->buffer + sizeof r->buffer;
+  return r->parsed == r->received && (r->end == bufend || r->request_content_remaining == 0);
+}
+
 static inline void _rewind(struct http_request *r)
 {
   assert(r->parsed >= r->received);
@@ -326,6 +332,12 @@ static inline int _skip_to_crlf(struct http_request *r)
     if (r->cursor + 1 < r->end && r->cursor[0] == '\r' && r->cursor[1] == '\n')
       return 1;
   return 0;
+}
+
+static inline void _rewind_optional_cr(struct http_request *r)
+{
+  if (r->cursor > r->parsed && r->cursor[-1] == '\r')
+    --r->cursor;
 }
 
 static inline void _rewind_crlf(struct http_request *r)
@@ -1034,6 +1046,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	    DEBUGF("Malformed HTTP %s form data: missing first boundary", r->verb);
 	  return 400;
 	}
+	_rewind_optional_cr(r);
 	_commit(r);
 	if (r->parsed > start && r->form_data.handle_mime_preamble) {
 	  if (r->debug_flag && *r->debug_flag)
@@ -1041,21 +1054,36 @@ static int http_request_parse_body_form_data(struct http_request *r)
 		alloca_toprint(50, start, r->parsed - start), r->parsed - start);
 	  r->form_data.handle_mime_preamble(r, start, r->parsed - start);
 	}
-	return 100; // need more data
       }
+      return 100; // need more data
     case HEADER: {
       if (config.debug.httpd)
 	DEBUGF("HEADER");
-	if (_skip_crlf(r) && _skip_crlf(r)) {
+	// If not at a CRLF, then we are skipping through an over-long header that didn't
+	// fit into the buffer.  Just discard bytes up to the next CRLF.
+	if (!_skip_crlf(r)) {
+	  _skip_to_crlf(r); // advance to next CRLF or end of buffer
+	  _rewind_optional_cr(r); // don't skip a CR at end of buffer (it might be part of a half-received CRLF)
+	  assert(r->cursor > r->parsed);
+	  if (r->debug_flag && *r->debug_flag)
+	    DEBUGF("skipping %zu header bytes", r->cursor - r->parsed);
+	  _commit(r);
+	  return 0;
+	}
+	const char *sol = r->cursor;
+	// A blank line finishes the headers.  The CRLF does not form part of the body.
+	if (_skip_crlf(r)) {
 	  _commit(r);
 	  r->form_data_state = BODY;
 	  return 0;
 	}
 	if (_run_out(r))
 	  return 100; // read more and try again
-	_rewind(r);
+	r->cursor = sol;
+	// A mime boundary technically should not occur in the middle of the headers, but if it
+	// does, treat it as a zero-length body.
 	int b;
-	if (_skip_crlf(r) && (b = _skip_mime_boundary(r))) {
+	if ((b = _skip_mime_boundary(r))) {
 	  _rewind_crlf(r);
 	  _commit(r);
 	  if (r->form_data.handle_mime_part_end) {
@@ -1063,7 +1091,8 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	      DEBUGF("handle_mime_part_end()");
 	    r->form_data.handle_mime_part_end(r);
 	  }
-	  // Boundary in the middle of headers starts a new part.
+	  // A boundary in the middle of headers finishes the current part and starts a new part.
+	  // An end boundary terminates the current part and starts the epilogue.
 	  if (b == 1) {
 	    r->form_data_state = HEADER;
 	    if (r->form_data.handle_mime_part_start) {
@@ -1078,45 +1107,56 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	}
 	if (_run_out(r))
 	  return 100; // read more and try again
-	_rewind(r);
+	r->cursor = sol;
 	struct substring label;
-	if (_skip_crlf(r) && _skip_token(r, &label) && _skip_literal(r, ":") && _skip_optional_space(r)) {
+	if (_skip_token(r, &label) && _skip_literal(r, ":") && _skip_optional_space(r)) {
 	  size_t labellen = label.end - label.start;
 	  char labelstr[labellen + 1];
 	  strncpy(labelstr, label.start, labellen)[labellen] = '\0';
 	  str_tolower_inplace(labelstr);
 	  const char *value = r->cursor;
-	  DEBUG_DUMP_PARSER(r);
 	  if (strcmp(labelstr, "content-disposition") == 0) {
 	    struct mime_content_disposition cd;
 	    bzero(&cd, sizeof cd);
 	    if (_parse_content_disposition(r, &cd) && _skip_optional_space(r) && _skip_crlf(r)) {
+	      _rewind_crlf(r);
+	      _commit(r);
 	      if (r->form_data.handle_mime_content_disposition) {
 		if (r->debug_flag && *r->debug_flag)
 		  DEBUGF("handle_mime_content_disposition(%s)", alloca_mime_content_disposition(&cd));
 		r->form_data.handle_mime_content_disposition(r, &cd);
 	      }
-	      _rewind_crlf(r);
-	      _commit(r);
 	      return 0;
 	    }
-	  } else if (_skip_to_crlf(r)) {
+	  }
+	  else if (_skip_to_crlf(r)) {
+	    _commit(r);
 	    if (r->form_data.handle_mime_header) {
 	      if (r->debug_flag && *r->debug_flag)
 		DEBUGF("handle_mime_header(%s, %s)", alloca_str_toprint(labelstr), alloca_toprint(-1, value, value - r->cursor));
 	      r->form_data.handle_mime_header(r, labelstr, value, value - r->cursor); // excluding CRLF at end
 	    }
-	    _commit(r);
 	    return 0;
 	  }
 	}
+	r->cursor = sol;
+	if (_buffer_full(r)) {
+	  // The line does not start with "Token:" and is too long to fit into the buffer.  Start
+	  // skipping it.
+	  WARNF("Skipping unterminated HTTP MIME header %s", alloca_toprint(50, sol, r->end - sol));
+	  r->cursor = r->end;
+	  _rewind_optional_cr(r);
+	  if (r->debug_flag && *r->debug_flag)
+	    DEBUGF("skipping %zu header bytes", r->cursor - r->parsed);
+	  _commit(r);
+	  return 0;
+	}
 	if (_run_out(r))
 	  return 100; // read more and try again
-	_rewind(r);
+	if (r->debug_flag && *r->debug_flag)
+	  DEBUGF("Malformed HTTP %s form data part: invalid header %s", r->verb, alloca_toprint(50, sol, r->end - sol));
+	DEBUG_DUMP_PARSER(r);
       }
-      if (r->debug_flag && *r->debug_flag)
-	DEBUGF("Malformed HTTP %s form data part: invalid header %s", r->verb, alloca_toprint(50, r->parsed, r->end - r->parsed));
-      DEBUG_DUMP_PARSER(r);
       return 400;
     case BODY:
       if (config.debug.httpd)
@@ -1156,6 +1196,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  DEBUGF("Malformed HTTP %s form data part: missing end boundary", r->verb);
 	return 400;
       }
+      _rewind_optional_cr(r);
       _commit(r);
       if (r->parsed > start && r->form_data.handle_mime_body) {
 	if (r->debug_flag && *r->debug_flag)
