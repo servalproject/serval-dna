@@ -34,24 +34,29 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
 
+typedef int HTTP_HANDLER(rhizome_http_request *r, const char *remainder);
+
 struct http_handler{
   const char *path;
-  int (*parser)(rhizome_http_request *r, const char *remainder);
+  HTTP_HANDLER *parser;
 };
 
-static int rhizome_status_page(rhizome_http_request *r, const char *remainder);
-static int rhizome_file_page(rhizome_http_request *r, const char *remainder);
-static int manifest_by_prefix_page(rhizome_http_request *r, const char *remainder);
-static int interface_page(rhizome_http_request *r, const char *remainder);
-static int neighbour_page(rhizome_http_request *r, const char *remainder);
-static int fav_icon_header(rhizome_http_request *r, const char *remainder);
-static int root_page(rhizome_http_request *r, const char *remainder);
+static HTTP_HANDLER restful_rhizome_bundlelist_json;
 
-extern int rhizome_direct_import(rhizome_http_request *r, const char *remainder);
-extern int rhizome_direct_enquiry(rhizome_http_request *r, const char *remainder);
-extern int rhizome_direct_dispatch(rhizome_http_request *r, const char *remainder);
+static HTTP_HANDLER rhizome_status_page;
+static HTTP_HANDLER rhizome_file_page;
+static HTTP_HANDLER manifest_by_prefix_page;
+static HTTP_HANDLER interface_page;
+static HTTP_HANDLER neighbour_page;
+static HTTP_HANDLER fav_icon_header;
+static HTTP_HANDLER root_page;
+
+extern HTTP_HANDLER rhizome_direct_import;
+extern HTTP_HANDLER rhizome_direct_enquiry;
+extern HTTP_HANDLER rhizome_direct_dispatch;
 
 struct http_handler paths[]={
+  {"/restful/rhizome/bundlelist.json", restful_rhizome_bundlelist_json},
   {"/rhizome/status", rhizome_status_page},
   {"/rhizome/file/", rhizome_file_page},
   {"/rhizome/import", rhizome_direct_import},
@@ -310,6 +315,43 @@ int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_
   }
   RETURN(0);
   OUT();
+}
+
+/* Return 1 if the given authorization credentials are acceptable.
+ * Return 0 if not.
+ */
+static int is_authorized(struct http_client_authorization *auth)
+{
+  if (auth->scheme != BASIC)
+    return 0;
+  unsigned i;
+  for (i = 0; i != config.rhizome.api.restful.users.ac; ++i) {
+    if (   strcmp(config.rhizome.api.restful.users.av[i].key, auth->credentials.basic.user) == 0
+	&& strcmp(config.rhizome.api.restful.users.av[i].value.password, auth->credentials.basic.password) == 0
+    )
+      return 1;
+  }
+  return 0;
+}
+
+static int restful_rhizome_bundlelist_json(rhizome_http_request *r, const char *remainder)
+{
+  if (!is_rhizome_http_enabled())
+    return 1;
+  if (*remainder)
+    return 1;
+  if (r->http.verb != HTTP_VERB_GET) {
+    http_request_simple_response(&r->http, 405, NULL);
+    return 0;
+  }
+  if (!is_authorized(&r->http.request_header.authorization)) {
+    r->http.response.header.www_authenticate.scheme = BASIC;
+    r->http.response.header.www_authenticate.realm = "Serval Rhizome";
+    http_request_simple_response(&r->http, 401, NULL);
+    return 0;
+  }
+  http_request_simple_response(&r->http, 200, NULL);
+  return 0;
 }
 
 static int neighbour_page(rhizome_http_request *r, const char *remainder)

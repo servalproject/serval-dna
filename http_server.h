@@ -63,11 +63,28 @@ struct mime_content_type {
   char charset[31];
 };
 
+
+struct http_client_authorization {
+  enum http_authorization_scheme { NOAUTH = 0, BASIC } scheme;
+  union {
+    struct http_client_credentials_basic {
+        const char *user;
+        const char *password;
+    } basic;
+  } credentials;
+};
+
+struct http_www_authenticate {
+  enum http_authorization_scheme scheme;
+  const char *realm;
+};
+
 struct http_request_headers {
   http_size_t content_length;
   struct mime_content_type content_type;
   unsigned short content_range_count;
   struct http_range content_ranges[5];
+  struct http_client_authorization authorization;
 };
 
 struct http_response_headers {
@@ -76,6 +93,7 @@ struct http_response_headers {
   http_size_t resource_length; // size of entire resource
   const char *content_type; // "type/subtype"
   const char *boundary;
+  struct http_www_authenticate www_authenticate;
 };
 
 typedef int (*HTTP_CONTENT_GENERATOR)(struct http_request *);

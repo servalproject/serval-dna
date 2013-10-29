@@ -41,8 +41,20 @@ setup() {
    get_rhizome_server_port PORTA +A
 }
 
+finally() {
+   stop_all_servald_servers
+}
+
+teardown() {
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
+
 set_rhizome_config() {
    executeOk_servald config \
+      set debug.httpd on \
+      set debug.rhizome_httpd on \
       set debug.rhizome on \
       set debug.verbose on \
       set log.console.level debug
@@ -50,14 +62,18 @@ set_rhizome_config() {
 
 doc_AuthBasicMissing="Basic Authentication credentials are required"
 test_AuthBasicMissing() {
-   execute --exit-status=67 curl \
-         --silent --fail --show-error \
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
          --output http.output \
          --dump-header http.headers \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   assertStdoutIs '401'
+   CR=''
+   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval Rhizome\"$CR$"
 }
 teardown_AuthBasicMissing() {
    tfw_cat http.headers http.output
+   teardown
 }
 
 doc_AuthBasicWrong="Basic Authentication credentials must be correct"
