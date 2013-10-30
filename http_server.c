@@ -180,7 +180,7 @@ uint8_t http_ctype[256] = {
   ['p'] = _BND, ['q'] = _BND, ['r'] = _BND, ['s'] = _BND, ['t'] = _BND,
   ['u'] = _BND, ['v'] = _BND, ['w'] = _BND, ['x'] = _BND, ['y'] = _BND,
   ['z'] = _BND,
-  ['+'] = _BND, ['-'] = _BND, ['.'] = _BND, ['/'] = _BND, [':'] = _BND,
+  ['+'] = _BND, ['-'] = _BND, ['.'] = _BND,
   ['_'] = _BND,
   ['('] = _SEP | _BND,
   [')'] = _SEP | _BND,
