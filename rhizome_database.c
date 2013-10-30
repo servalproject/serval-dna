@@ -1384,7 +1384,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
   if (m->group_count > 0) {
     if ((stmt = sqlite_prepare(&retry, "INSERT OR REPLACE INTO GROUPMEMBERSHIPS (manifestid, groupid) VALUES (?, ?);")) == NULL)
       goto rollback;
-    int i;
+    unsigned i;
     for (i=0;i<m->group_count;i++){
       if (sqlite_bind(&retry, stmt, RHIZOME_BID_T, &m->cryptoSignPublic, TEXT, m->groups[i]) == -1)
 	goto rollback;

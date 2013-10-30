@@ -504,18 +504,19 @@ int rhizome_manifest_lookup_signature_validity(unsigned char *hash,unsigned char
   OUT();
 }
 
-int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
+int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs)
 {
   IN();
   if (!m)
     RETURN(WHY("NULL pointer passed in as manifest"));
   if (config.debug.rhizome)
-    DEBUGF("m->manifest_all_bytes=%d m->manifest_bytes=%d *ofs=%d", m->manifest_all_bytes, m->manifest_bytes, *ofs);
+    DEBUGF("m->manifest_all_bytes=%u m->manifest_bytes=%u *ofs=%u", m->manifest_all_bytes, m->manifest_bytes, *ofs);
 
-  if ((*ofs)>=m->manifest_all_bytes) { RETURN(0); }
+  if ((*ofs) >= m->manifest_all_bytes)
+    RETURN(0);
 
-  int sigType=m->manifestdata[*ofs];
-  int len=(sigType&0x3f)*4+4+1;
+  uint8_t sigType = m->manifestdata[*ofs];
+  uint8_t len = (sigType << 2) + 4 + 1;
 
   /* Each signature type is required to have a different length to detect it.
      At present only crypto_sign_edwards25519sha512batch() signatures are

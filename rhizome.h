@@ -137,8 +137,8 @@ typedef struct rhizome_signature {
 #define MAX_MANIFEST_BYTES 8192
 typedef struct rhizome_manifest {
   int manifest_record_number;
-  int manifest_bytes;
-  int manifest_all_bytes;
+  unsigned manifest_bytes;
+  unsigned manifest_all_bytes;
   unsigned char manifestdata[MAX_MANIFEST_BYTES];
   unsigned char manifesthash[crypto_hash_sha512_BYTES];
 
@@ -151,27 +151,33 @@ typedef struct rhizome_manifest {
   /* Whether we have the secret for this manifest on hand */
   enum { SECRET_UNKNOWN = 0, EXISTING_BUNDLE_ID, NEW_BUNDLE_ID } haveSecret;
 
-  int var_count;
+  unsigned short var_count;
   char *vars[MAX_MANIFEST_VARS];
   char *values[MAX_MANIFEST_VARS];
 
-  int sig_count;
-  /* Parties who have signed this manifest (raw byte format) */
+  /* Parties who have signed this manifest (binary format, malloc(3)).
+   * Recognised signature types:
+   *    0x17 = crypto_sign_edwards25519sha512batch()
+   */
+  unsigned short sig_count;
   unsigned char *signatories[MAX_MANIFEST_VARS];
-  /*
-    0x17 = crypto_sign_edwards25519sha512batch()
-  */
-  unsigned char signatureTypes[MAX_MANIFEST_VARS];
+  uint8_t signatureTypes[MAX_MANIFEST_VARS];
 
-  // errors only involve the correctness of fields that are mandatory for 
-  // proper operation of the transport and storage layer
-  int errors;
-  // a warning indicates that the manifest cannot be perfectly understood by this version of rhizome
-  // during add, the manifest should not be finalised and imported
-  // during extract an error should be displayed.
-  int warnings;
+  /* Imperfections.
+   *  - Errors involve the correctness of fields that are mandatory for proper
+   *    operation of the transport and storage layer.  A manifest with errors > 0
+   *    must not be stored, transmitted or supplied via any API.
+   *  - Warnings indicate a manifest that cannot be fully understood by this
+   *    version of Rhizome (probably from a future or a very old past version
+   *    of Rhizome).  During add or import (local injection), the manifest
+   *    should not be imported.  During extract or export (local) a warning or
+   *    error message should be logged.
+   */
+  unsigned short errors;
+  unsigned short warnings;
+
   time_ms_t inserttime;
-  
+
   /* Set non-zero after variables have been packed and
      signature blocks appended.
      All fields below may not be valid until the manifest has been finalised */
@@ -399,7 +405,7 @@ int _sqlite_vexec_strbuf_retry(struct __sourceloc, sqlite_retry_state *retry, st
 #define sqlite_exec_strbuf_retry(rs,sb,sql,arg,...)     _sqlite_exec_strbuf_retry(__WHENCE__, (rs), (sb), (sql), arg, ##__VA_ARGS__)
 
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
-int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
+int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs);
 int rhizome_update_file_priority(const char *fileid);
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);

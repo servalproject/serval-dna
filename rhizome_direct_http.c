@@ -661,15 +661,15 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  "\r\n";
 	/* Work out what the content length should be */
 	if (config.debug.rhizome_tx)
-	  DEBUGF("manifest_all_bytes=%d, manifest_bytes=%d", m->manifest_all_bytes,m->manifest_bytes);
-	int content_length
-	  =strlen(template2)-2 /* minus 2 for the "%s" that gets replaced */
-	  +strlen(boundary)
-	  +m->manifest_all_bytes
-	  +strlen(template3)-2 /* minus 2 for the "%s" that gets replaced */
-	  +strlen(boundary)
-	  +m->fileLength
-	  +strlen("\r\n--")+strlen(boundary)+strlen("--\r\n");
+	  DEBUGF("manifest_all_bytes=%u, manifest_bytes=%u", m->manifest_all_bytes, m->manifest_bytes);
+	size_t content_length =
+	    strlen(template2) - 2 /* minus 2 for the "%s" that gets replaced */
+	  + strlen(boundary)
+	  + m->manifest_all_bytes
+	  + strlen(template3) - 2 /* minus 2 for the "%s" that gets replaced */
+	  + strlen(boundary)
+	  + m->fileLength
+	  + strlen("\r\n--") + strlen(boundary) + strlen("--\r\n");
 
 	int len=snprintf(buffer,8192,template,content_length,boundary);
 	len+=snprintf(&buffer[len],8192-len,template2,boundary);

@@ -27,7 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 int rhizome_manifest_verify(rhizome_manifest *m)
 {
-  int end_of_text=0;
+  unsigned end_of_text=0;
 
   /* find end of manifest body and start of signatures */
   while(m->manifestdata[end_of_text]&&end_of_text<m->manifest_all_bytes)
@@ -39,10 +39,12 @@ int rhizome_manifest_verify(rhizome_manifest *m)
   crypto_hash_sha512(m->manifesthash,m->manifestdata,end_of_text);
   
   /* Read signature blocks from file. */
-  int ofs=end_of_text;  
+  unsigned ofs = end_of_text;  
   while(ofs<m->manifest_all_bytes) {
-    if (config.debug.rhizome) DEBUGF("ofs=0x%x, m->manifest_bytes=0x%x", ofs,m->manifest_all_bytes);
-    if (rhizome_manifest_extract_signature(m,&ofs)) break;
+    if (config.debug.rhizome)
+      DEBUGF("ofs=0x%x, m->manifest_bytes=0x%x", ofs,m->manifest_all_bytes);
+    if (rhizome_manifest_extract_signature(m, &ofs))
+      break;
   }
   
   if (m->sig_count==0) {
@@ -114,10 +116,10 @@ int rhizome_manifest_parse(rhizome_manifest *m)
   int have_filesize = 0;
   int have_filehash = 0;
   
-  int ofs = 0;
+  unsigned ofs = 0;
   while (ofs < m->manifest_bytes && m->manifestdata[ofs]) {
     char line[1024];
-    int limit = ofs + sizeof line - 1;
+    unsigned limit = ofs + sizeof line - 1;
     if (limit > m->manifest_bytes)
       limit = m->manifest_bytes;
     char *p = line;
@@ -273,7 +275,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
     ++ofs;
 
   /* Remember where the text ends */
-  int end_of_text=ofs;
+  unsigned end_of_text = ofs;
   m->manifest_bytes = end_of_text;
 
   // verify that all required fields are consistent.
@@ -319,7 +321,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
 
   if (m->errors || m->warnings) {
     if (config.debug.rejecteddata)
-      dump("manifest body",m->manifestdata,m->manifest_bytes);
+      dump("manifest body", m->manifestdata, (size_t) m->manifest_bytes);
   }
 
   RETURN(0);
@@ -391,10 +393,9 @@ int rhizome_hash_file(rhizome_manifest *m, const char *path, rhizome_filehash_t 
 
 char *rhizome_manifest_get(const rhizome_manifest *m, const char *var, char *out, int maxlen)
 {
-  int i,j;
-
-  if (!m) return NULL;
-
+  if (!m)
+    return NULL;
+  unsigned i,j;
   for(i=0;i<m->var_count;i++)
     if (!strcmp(m->vars[i],var)) {
       if (out) {
@@ -412,7 +413,7 @@ int64_t rhizome_manifest_get_ll(rhizome_manifest *m, const char *var)
 {
   if (!m)
     return -1;
-  int i;
+  unsigned i;
   for (i = 0; i < m->var_count; ++i)
     if (!strcmp(m->vars[i], var)) {
       int64_t val;
@@ -423,10 +424,8 @@ int64_t rhizome_manifest_get_ll(rhizome_manifest *m, const char *var)
 
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value)
 {
-  int i;
-
   if (!m) return default_value;
-
+  unsigned i;
   for(i=0;i<m->var_count;i++)
     if (!strcmp(m->vars[i],var))
       return strtod(m->values[i],NULL);
@@ -438,7 +437,7 @@ double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_
 int rhizome_manifest_del(rhizome_manifest *m, const char *var)
 {
   int ret = 0;
-  int i;
+  unsigned i;
   for (i = 0; i < m->var_count; ++i)
     if (strcmp(m->vars[i], var) == 0) {
       free(m->vars[i]); 
@@ -459,7 +458,7 @@ int rhizome_manifest_set(rhizome_manifest *m, const char *var, const char *value
 {
   if (!m)
     return WHY("m == NULL");
-  int i;
+  unsigned i;
   for(i=0;i<m->var_count;i++)
     if (!strcmp(m->vars[i],var)) {
       free(m->values[i]); 
@@ -492,7 +491,7 @@ struct __sourceloc manifest_free_whence[MAX_RHIZOME_MANIFESTS];
 static void _log_manifest_trace(struct __sourceloc __whence, const char *operation)
 {
   int count_free = 0;
-  int i;
+  unsigned i;
   for (i = 0; i != MAX_RHIZOME_MANIFESTS; ++i)
     if (manifest_free[i])
       ++count_free;
@@ -503,7 +502,7 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence)
 {
   if (manifest_first_free<0) {
     /* Setup structures */
-    int i;
+    unsigned i;
     for(i=0;i<MAX_RHIZOME_MANIFESTS;i++) {
       manifest_alloc_whence[i]=__NOWHERE__;
       manifest_free_whence[i]=__NOWHERE__;
@@ -515,7 +514,7 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence)
   /* No free manifests */
   if (manifest_first_free>=MAX_RHIZOME_MANIFESTS)
     {
-      int i;
+      unsigned i;
       WHYF("%s(): no free manifest records, this probably indicates a memory leak", __FUNCTION__);
       WHYF("   Slot# | Last allocated by");
       for(i=0;i<MAX_RHIZOME_MANIFESTS;i++) {
@@ -554,7 +553,6 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence)
 void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
 {
   if (!m) return;
-  int i;
   int mid=m->manifest_record_number;
 
   if (m!=&manifests[mid]) {
@@ -574,15 +572,17 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
     exit(-1);
   }
 
-  /* Free variable and signature blocks.
-     XXX These should be moved to malloc-free storage eventually */
-  for(i=0;i<m->var_count;i++)
-    { free(m->vars[i]); free(m->values[i]); 
-      m->vars[i]=NULL; m->values[i]=NULL; }
-  for(i=0;i<m->sig_count;i++)
-    { free(m->signatories[i]);
-      m->signatories[i]=NULL;
-    }
+  /* Free variable and signature blocks. */
+  unsigned i;
+  for(i=0;i<m->var_count;i++) {
+    free(m->vars[i]);
+    free(m->values[i]); 
+    m->vars[i] = m->values[i] = NULL;
+  }
+  for(i=0;i<m->sig_count;i++) {
+    free(m->signatories[i]);
+    m->signatories[i] = NULL;
+  }
 
   if (m->dataFileName) {
     if (m->dataFileUnlinkOnFree && unlink(m->dataFileName) == -1)
@@ -605,8 +605,8 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
    Signatures etc will be added later. */
 int rhizome_manifest_pack_variables(rhizome_manifest *m)
 {
-  int i,ofs=0;
-
+  unsigned i;
+  unsigned ofs = 0;
   for(i=0;i<m->var_count;i++)
     {
       if ((ofs+strlen(m->vars[i])+1+strlen(m->values[i])+1+1)>MAX_MANIFEST_BYTES)
@@ -690,7 +690,7 @@ int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid)
 
 int rhizome_manifest_dump(rhizome_manifest *m, const char *msg)
 {
-  int i;
+  unsigned i;
   WHYF("Dumping manifest %s:", msg);
   for(i=0;i<m->var_count;i++)
     WHYF("[%s]=[%s]\n", m->vars[i], m->values[i]);

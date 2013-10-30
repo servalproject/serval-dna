@@ -73,7 +73,7 @@ struct rhizome_fetch_slot {
 
   /* HTTP streaming reception of manifests */
   char manifest_buffer[1024];
-  int manifest_bytes;
+  unsigned manifest_bytes;
 
   /* MDP transport specific elements */
   rhizome_bid_t bid;
@@ -459,7 +459,7 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
   m->finalised = 1;
   m->manifest_bytes = m->manifest_all_bytes; // store the signatures too
   if (config.debug.rhizome_rx) {
-    DEBUGF("manifest len=%d has %d signatories. Associated file = %"PRId64" bytes", 
+    DEBUGF("manifest len=%u has %u signatories. Associated file = %"PRId64" bytes", 
 	   m->manifest_bytes, m->sig_count, m->fileLength);
     dump("manifest", m->manifestdata, m->manifest_all_bytes);
   }
@@ -1318,7 +1318,7 @@ int rhizome_write_complete(struct rhizome_fetch_slot *slot)
   RETURN(-1);
 }
 
-int rhizome_write_content(struct rhizome_fetch_slot *slot, unsigned char *buffer, int bytes)
+int rhizome_write_content(struct rhizome_fetch_slot *slot, unsigned char *buffer, size_t bytes)
 {
   IN();
   
@@ -1333,8 +1333,9 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, unsigned char *buffer
 
   if (!slot->manifest){
     /* We are reading a manifest.  Read it into a buffer. */
-    int count=bytes;
-    if (count+slot->manifest_bytes>1024) count=1024-slot->manifest_bytes;
+    unsigned count = bytes;
+    if (count + slot->manifest_bytes > 1024)
+      count = 1024 - slot->manifest_bytes;
     bcopy(buffer,&slot->manifest_buffer[slot->manifest_bytes],count);
     slot->manifest_bytes+=count;
     slot->write_state.file_offset+=count;
