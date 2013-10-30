@@ -352,13 +352,11 @@ static const char * _reserve(struct http_request *r, struct substring str)
   return ret;
 }
 
-#if 0
 static const char * _reserve_str(struct http_request *r, const char *str)
 {
   struct substring sub = { .start = str, .end = str + strlen(str) };
   return _reserve(r, sub);
 }
-#endif
 
 static inline int _end_of_content(struct http_request *r)
 {
@@ -744,8 +742,12 @@ static int _parse_authorization(struct http_request *r, struct http_client_autho
   if (_skip_literal(r, "Basic") && _skip_space(r)) {
     size_t bufsz = 5 + header_bytes * 3 / 4; // enough for base64 decoding
     char buf[bufsz];
-    if (_parse_authorization_credentials_basic(r, &auth->credentials.basic, buf, bufsz) == -1) {
+    if (_parse_authorization_credentials_basic(r, &auth->credentials.basic, buf, bufsz)) {
       auth->scheme = BASIC;
+      if (   (auth->credentials.basic.user = _reserve_str(r, auth->credentials.basic.user)) == NULL
+	  || (auth->credentials.basic.password = _reserve_str(r, auth->credentials.basic.password)) == NULL
+      )
+	return 0; // error
       return 1;
     }
     if (r->debug_flag && *r->debug_flag)
@@ -1047,6 +1049,7 @@ static int http_request_parse_header(struct http_request *r)
       assert(r->request_header.authorization.scheme != NOAUTH);
       r->cursor = nextline;
       _commit(r);
+      return 0;
     }
     goto malformed;
   }
@@ -1820,8 +1823,10 @@ static const char *httpResultString(int response_code)
 static int _render_response(struct http_request *r)
 {
   struct http_response hr = r->response;
-  assert(hr.result_code >= 200);
+  assert(hr.result_code >= 100);
   assert(hr.result_code < 600);
+  if (hr.result_code == 401)
+    assert(hr.header.www_authenticate.scheme != NOAUTH);
   const char *result_string = httpResultString(hr.result_code);
   strbuf sb = strbuf_local(r->response_buffer, r->response_buffer_size);
   if (hr.content == NULL && hr.content_generator == NULL) {
@@ -1876,6 +1881,7 @@ static int _render_response(struct http_request *r)
     case BASIC: scheme = "Basic"; break;
   }
   if (scheme) {
+    assert(hr.result_code == 401);
     strbuf_sprintf(sb, "WWW-Authenticate: %s realm=", scheme);
     strbuf_append_quoted_string(sb, hr.header.www_authenticate.realm);
     strbuf_puts(sb, "\r\n");
@@ -1933,7 +1939,6 @@ static size_t http_request_drain(struct http_request *r)
 static void http_request_start_response(struct http_request *r)
 {
   assert(r->phase == RECEIVE);
-  assert(r->response.result_code != 0);
   if (r->response.content || r->response.content_generator) {
     assert(r->response.header.content_type != NULL);
     assert(r->response.header.content_type[0]);
@@ -1951,6 +1956,13 @@ static void http_request_start_response(struct http_request *r)
   http_request_drain(r);
   if (r->phase != RECEIVE)
     return;
+  // Ensure conformance to HTTP standards.
+  if (r->response.result_code == 401 && r->response.header.www_authenticate.scheme == NOAUTH) {
+    WHY("HTTP 401 response missing WWW-Authenticate header, sending 500 Server Error instead");
+    r->response.result_code = 500;
+    r->response.content = NULL;
+    r->response.content_generator = NULL;
+  }
   // If the response cannot be rendered, then render a 500 Server Error instead.  If that fails,
   // then just close the connection.
   http_request_render_response(r);
@@ -1958,6 +1970,7 @@ static void http_request_start_response(struct http_request *r)
     WARN("Cannot render HTTP response, sending 500 Server Error instead");
     r->response.result_code = 500;
     r->response.content = NULL;
+    r->response.content_generator = NULL;
     http_request_render_response(r);
     if (r->response_buffer == NULL) {
       WHY("Cannot render HTTP 500 Server Error response, closing connection");
@@ -1983,8 +1996,6 @@ static void http_request_start_response(struct http_request *r)
 void http_request_response_static(struct http_request *r, int result, const char *mime_type, const char *body, uint64_t bytes)
 {
   assert(r->phase == RECEIVE);
-  assert(result >= 100);
-  assert(result < 300);
   assert(mime_type != NULL);
   assert(mime_type[0]);
   r->response.result_code = result;
@@ -1999,8 +2010,6 @@ void http_request_response_static(struct http_request *r, int result, const char
 void http_request_response_generated(struct http_request *r, int result, const char *mime_type, HTTP_CONTENT_GENERATOR generator)
 {
   assert(r->phase == RECEIVE);
-  assert(result >= 100);
-  assert(result < 300);
   assert(mime_type != NULL);
   assert(mime_type[0]);
   r->response.result_code = result;
@@ -2021,8 +2030,6 @@ void http_request_response_generated(struct http_request *r, int result, const c
 void http_request_simple_response(struct http_request *r, uint16_t result, const char *body)
 {
   assert(r->phase == RECEIVE);
-  assert(result >= 200);
-  assert(result < 600);
   strbuf h = NULL;
   if (body) {
     size_t html_len = strlen(body) + 40;

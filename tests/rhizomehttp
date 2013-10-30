@@ -25,6 +25,7 @@ source "${0%/*}/../testdefs_rhizome.sh"
 shopt -s extglob
 
 setup() {
+   CR=''
    setup_curl 7
    setup_jq 1.2
    setup_servald
@@ -68,7 +69,6 @@ test_AuthBasicMissing() {
          --dump-header http.headers \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
    assertStdoutIs '401'
-   CR=''
    assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval Rhizome\"$CR$"
 }
 teardown_AuthBasicMissing() {
@@ -78,18 +78,25 @@ teardown_AuthBasicMissing() {
 
 doc_AuthBasicWrong="Basic Authentication credentials must be correct"
 test_AuthBasicWrong() {
-   execute --exit-status=67 curl \
-         --silent --fail --show-error \
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
          --output http.output \
          --dump-header http.headers \
          --basic --user fred:nurks \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   assertStdoutIs '401'
+   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval Rhizome\"$CR$"
    executeOk curl \
-         --silent --fail --show-error \
+         --silent --fail --show-error --write-out '%{http_code}' \
          --output http.output \
          --dump-header http.headers \
          --basic --user ron:weasley \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   assertStdoutIs '200'
+}
+teardown_AuthBasicWrong() {
+   tfw_cat http.headers http.output
+   teardown
 }
 
 doc_RhizomeList="Fetch full Rhizome bundle list in JSON format"
