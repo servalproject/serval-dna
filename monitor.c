@@ -546,7 +546,7 @@ struct cli_schema monitor_commands[] = {
   {monitor_call_audio,{"audio","<token>","<type>","[<time>]","[<sequence>]",NULL},0,""},
   {monitor_call_hangup, {"hangup","<token>",NULL},0,""},
   {monitor_call_dtmf, {"dtmf","<token>","<digits>",NULL},0,""},
-  {NULL},
+  {NULL, {NULL, NULL, NULL, NULL},0,NULL},
 };
 
 int monitor_process_command(struct monitor_context *c) 

@@ -81,7 +81,7 @@ int fd_func_enter(struct __sourceloc, struct call_stats *this_call);
 int fd_func_exit(struct __sourceloc, struct call_stats *this_call);
 void dump_stack(int log_level);
 
-#define IN() static struct profile_total _aggregate_stats={NULL,0,__FUNCTION__,0,0,0}; \
+#define IN() static struct profile_total _aggregate_stats={NULL,0,__FUNCTION__,0,0,0,0}; \
     struct call_stats _this_call={.totals=&_aggregate_stats}; \
     fd_func_enter(__HERE__, &_this_call);
 

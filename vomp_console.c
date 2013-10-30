@@ -253,7 +253,7 @@ struct cli_schema console_commands[]={
   {console_hangup,{"hangup",NULL},0,"Hangup the phone line"},
   {console_usage,{"help",NULL},0,"This usage message"},
   {console_audio,{"say","...",NULL},0,"Send a text string to the other party"},
-  {NULL},
+  {NULL, {NULL, NULL, NULL}, 0, NULL},
 };
 
 static int console_usage(const struct cli_parsed *parsed, struct cli_context *context)
