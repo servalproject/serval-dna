@@ -61,11 +61,11 @@ has_link() {
 
 path_exists() {
    local dest
-   for dest; do tru; done;
+   eval dest=\$$#
    local dest_sidvar=SID${dest#+}
    local next_inst=$1
    shift
-   local I N
+   local I
    for I; do
       local sidvar=SID${I#+}
       [ -n "${!sidvar}" ] || break

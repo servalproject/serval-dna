@@ -116,6 +116,11 @@ int strn_to_rhizome_filehash_t(rhizome_filehash_t *hashp, const char *hex, const
   return 0;
 }
 
+int str_to_rhizome_bk_t(rhizome_bk_t *bkp, const char *hex)
+{
+  return fromhexstr(bkp->binary, hex, sizeof bkp->binary);
+}
+
 int rhizome_strn_is_manifest_id(const char *id)
 {
   return is_xsubstring(id, RHIZOME_MANIFEST_ID_STRLEN);
@@ -154,6 +159,15 @@ int rhizome_strn_is_file_hash(const char *hash)
 int rhizome_str_is_file_hash(const char *hash)
 {
   return is_xstring(hash, RHIZOME_FILEHASH_STRLEN);
+}
+
+int rhizome_str_is_manifest_service(const char *text)
+{
+  if (text[0] == '\0')
+    return 0;
+  while (*text && (isalnum(*text) || *text == '_' || *text == '.'))
+    ++text;
+  return *text == '\0';
 }
 
 int str_is_did(const char *did)

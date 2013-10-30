@@ -54,6 +54,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      }
  */
 typedef int64_t time_ms_t;
+#define PRItime_ms_t PRId64
 
 time_ms_t gettime_ms();
 time_ms_t sleep_ms(time_ms_t milliseconds);

@@ -42,6 +42,8 @@ setup_rhizome() {
 set_rhizome_config() {
    executeOk_servald config \
       set debug.rhizome on \
+      set debug.rhizome_manifest on \
+      set debug.rejecteddata on \
       set debug.verbose on \
       set log.console.level debug
 }
@@ -688,10 +690,11 @@ setup_AddUnsupportedService() {
    setup_servald
    setup_rhizome
    echo "Message1" >file1
-   echo -e 'service=Fubar' >file1.manifest
+   echo 'service=Fubar' >file1.manifest
 }
 test_AddUnsupportedService() {
    execute $servald rhizome add file $SIDB1 file1 file1.manifest
+   tfw_cat --stdout --stderr
    assertExitStatus '!=' 0
 }
 
@@ -738,6 +741,7 @@ test_RecipientIsEncrypted() {
    assert diff file1 file1x
    extract_manifest_filehash filehash file1.manifest
    executeOk_servald rhizome export file $filehash file1y
+   tfw_cat file1 -v file1y
    assert ! diff file1 file1y
 }
 

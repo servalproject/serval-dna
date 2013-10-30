@@ -1350,20 +1350,20 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   } else {
     if (config.debug.rhizome)
       DEBUGF("Creating new manifest");
-    if (journal){
-      m->journalTail = 0;
-      rhizome_manifest_set_ll(m,"tail",m->journalTail);
+    if (journal) {
+      rhizome_manifest_set_filesize(m, 0);
+      rhizome_manifest_set_tail(m, 0);
     }
   }
 
-  if (journal && m->journalTail==-1)
+  if (journal && !m->is_journal)
     return WHY("Existing manifest is not a journal");
 
-  if ((!journal) && m->journalTail>=0)
+  if (!journal && m->is_journal)
     return WHY("Existing manifest is a journal");
 
-  if (rhizome_manifest_get(m, "service", NULL, 0) == NULL)
-    rhizome_manifest_set(m, "service", RHIZOME_SERVICE_FILE);
+  if (m->service == NULL)
+    rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
 
   if (rhizome_fill_manifest(m, filepath, *authorSidHex ? &authorSid : NULL, bskhex ? &bsk : NULL)){
     rhizome_manifest_free(m);
@@ -1376,13 +1376,12 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
       return -1;
     }
   }else{
-    if (rhizome_stat_file(m, filepath)){
+    if (rhizome_stat_file(m, filepath) == -1) {
       rhizome_manifest_free(m);
       return -1;
     }
-  
-    if (m->fileLength){
-      if (rhizome_add_file(m, filepath)){
+    if (m->filesize) {
+      if (rhizome_add_file(m, filepath) == -1) {
         rhizome_manifest_free(m);
         return -1;
       }
@@ -1390,7 +1389,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   }
   
   rhizome_manifest *mout = NULL;
-  int ret=rhizome_manifest_finalise(m, &mout, !force_new);
+  int ret = rhizome_manifest_finalise(m, &mout, !force_new);
   if (ret<0){
     rhizome_manifest_free(m);
     return -1;
@@ -1399,10 +1398,9 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   if (manifestpath && *manifestpath
       && rhizome_write_manifest_file(mout, manifestpath, 0) == -1)
     ret = WHY("Could not overwrite manifest file.");
-  const char *service = rhizome_manifest_get(mout, "service", NULL, 0);
-  if (service) {
+  if (mout->service) {
     cli_field_name(context, "service", ":");
-    cli_put_string(context, service, "\n");
+    cli_put_string(context, mout->service, "\n");
   }
   {
     cli_field_name(context, "manifestid", ":");
@@ -1414,27 +1412,25 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     cli_field_name(context, ".secret", ":");
     cli_put_string(context, secret, "\n");
   }
-  if (*authorSidHex) {
+  if (m->has_author) {
     cli_field_name(context, ".author", ":");
-    cli_put_string(context, alloca_tohex_sid_t(authorSid), "\n");
+    cli_put_string(context, alloca_tohex_sid_t(m->author), "\n");
   }
-  const char *bk = rhizome_manifest_get(mout, "BK", NULL, 0);
-  if (bk) {
+  if (mout->has_bundle_key) {
     cli_field_name(context, "BK", ":");
-    cli_put_string(context, bk, "\n");
+    cli_put_string(context, alloca_tohex_rhizome_bk_t(mout->bundle_key), "\n");
   }
   cli_field_name(context, "version", ":");
-  cli_put_long(context, m->version, "\n");
+  cli_put_long(context, mout->version, "\n");
   cli_field_name(context, "filesize", ":");
-  cli_put_long(context, mout->fileLength, "\n");
-  if (mout->fileLength != 0) {
+  cli_put_long(context, mout->filesize, "\n");
+  if (mout->filesize != 0) {
     cli_field_name(context, "filehash", ":");
     cli_put_string(context, alloca_tohex_rhizome_filehash_t(mout->filehash), "\n");
   }
-  const char *name = rhizome_manifest_get(mout, "name", NULL, 0);
-  if (name) {
+  if (mout->name) {
     cli_field_name(context, "name", ":");
-    cli_put_string(context, name, "\n");
+    cli_put_string(context, mout->name, "\n");
   }
   if (mout != m)
     rhizome_manifest_free(mout);
@@ -1506,10 +1502,9 @@ int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_contex
   // TODO generalise the way we dump manifest details from add, import & export
   // so callers can also generalise their parsing
   
-  const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-  if (service) {
+  if (m->service) {
     cli_field_name(context, "service", ":");
-    cli_put_string(context, service, "\n");
+    cli_put_string(context, m->service, "\n");
   }
   {
     cli_field_name(context, "manifestid", ":");
@@ -1521,23 +1516,22 @@ int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_contex
     cli_field_name(context, ".secret", ":");
     cli_put_string(context, secret, "\n");
   }
-  const char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
-  if (bk) {
+  if (m->has_bundle_key) {
     cli_field_name(context, "BK", ":");
-    cli_put_string(context, bk, "\n");
+    cli_put_string(context, alloca_tohex_rhizome_bk_t(m->bundle_key), "\n");
   }
   cli_field_name(context, "version", ":");
   cli_put_long(context, m->version, "\n");
   cli_field_name(context, "filesize", ":");
-  cli_put_long(context, m->fileLength, "\n");
-  if (m->fileLength != 0) {
+  cli_put_long(context, m->filesize, "\n");
+  assert(m->filesize != RHIZOME_SIZE_UNSET);
+  if (m->filesize != 0) {
     cli_field_name(context, "filehash", ":");
     cli_put_string(context, alloca_tohex_rhizome_filehash_t(m->filehash), "\n");
   }
-  const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-  if (name) {
+  if (m->name) {
     cli_field_name(context, "name", ":");
-    cli_put_string(context, name, "\n");
+    cli_put_string(context, m->name, "\n");
   }
   
 cleanup:
@@ -1678,10 +1672,11 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
   if (ret==0){
     // ignore errors
     rhizome_extract_privatekey(m, bskhex ? &bsk : NULL);
-    const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
-    
-    cli_field_name(context, "service", ":");
-    cli_put_string(context, blob_service, "\n");
+
+    if (m->service) {
+      cli_field_name(context, "service", ":");
+      cli_put_string(context, m->service, "\n");
+    }
     cli_field_name(context, "manifestid", ":");
     cli_put_string(context, alloca_tohex_rhizome_bid_t(bid), "\n");
     if (m->haveSecret) {
@@ -1699,8 +1694,9 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
     cli_field_name(context, ".readonly", ":");
     cli_put_long(context, m->haveSecret?0:1, "\n");
     cli_field_name(context, "filesize", ":");
-    cli_put_long(context, m->fileLength, "\n");
-    if (m->fileLength != 0) {
+    cli_put_long(context, m->filesize, "\n");
+    assert(m->filesize != RHIZOME_SIZE_UNSET);
+    if (m->filesize != 0) {
       cli_field_name(context, "filehash", ":");
       cli_put_string(context, alloca_tohex_rhizome_filehash_t(m->filehash), "\n");
     }
@@ -1708,7 +1704,7 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
   
   int retfile=0;
   
-  if (ret==0 && m->fileLength != 0 && filepath && *filepath){
+  if (ret==0 && m->filesize != 0 && filepath && *filepath){
     if (extract){
       // Save the file, implicitly decrypting if required.
       // TODO, this may cause us to search for an author a second time if the above call to rhizome_extract_privatekey failed
