@@ -51,37 +51,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define MAVLINK_MSG_ID_RADIO 166
 #define MAVLINK_MSG_ID_DATASTREAM 67
-int MAVLINK_MESSAGE_CRCS[]={72, 39, 190, 92, 191, 217, 104, 119, 0, 219, 60, 186, 10, 0, 0, 0, 0, 0, 0, 0, 89, 159, 162, 121, 0, 149, 222, 110, 179, 136, 66, 126, 185, 147, 112, 252, 162, 215, 229, 128, 9, 106, 101, 213, 4, 229, 21, 214, 215, 14, 206, 50, 157, 126, 108, 213, 95, 5, 127, 0, 0, 0, 57, 126, 130, 119, 193, 191, 236, 158, 143, 0, 0, 104, 123, 131, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 174, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 155, 0, 0, 0, 0, 0, 0, 0, 0, 0, 143, 29, 208, 188, 118, 242, 19, 97, 233, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 178, 224, 60, 106, 7};
 
 // use '3D' for 3DRadio
 #define RADIO_SOURCE_SYSTEM '3'
 #define RADIO_SOURCE_COMPONENT 'D'
-
-uint16_t mavlink_crc(unsigned char *buf,int length)
-{
-  uint16_t sum = 0xFFFF;
-  uint8_t i, stoplen;
-  
-  stoplen = length + 6;
-  
-  // MAVLink 1.0 has an extra CRC seed
-  buf[length+6] = MAVLINK_MESSAGE_CRCS[buf[5]];
-  stoplen++;
-  
-  i = 1;
-  while (i<stoplen) {
-    uint8_t tmp;
-    tmp = buf[i] ^ (uint8_t)(sum&0xff);
-    tmp ^= (tmp<<4);
-    sum = (sum>>8) ^ (tmp<<8) ^ (tmp<<3) ^ (tmp>>4);
-    i++;
-  }
-  buf[length+6]=sum&0xff;
-  buf[length+7]=sum>>8;
-  
-  return sum;
-}
-
 
 /*
   we use a hand-crafted MAVLink packet based on the following
@@ -117,6 +90,18 @@ struct mavlink_RADIO_v10 {
   uint8_t remnoise;
 };
 
+struct radio_link_state{
+  int tx_seq;
+  int payload_length;
+  int seq;
+  int payload_start;
+  int payload_offset;
+  uint8_t payload[1024];
+  int packet_length;
+  uint8_t dst[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
+  int dst_offset;
+};
+
 /*
   Each mavlink frame consists of 0xfe followed by a standard 6 byte header.
   Normally the payload plus a 2-byte CRC follows.
@@ -138,7 +123,20 @@ struct mavlink_RADIO_v10 {
 void encode_rs_8(data_t *data, data_t *parity,int pad);
 int decode_rs_8(data_t *data, int *eras_pos, int no_eras, int pad);
 
-int mavlink_encode_packet(struct overlay_interface *interface)
+int radio_link_free(struct overlay_interface *interface)
+{
+  free(interface->radio_link_state);
+  interface->radio_link_state=NULL;
+  return 0;
+}
+
+int radio_link_init(struct overlay_interface *interface)
+{
+  interface->radio_link_state = emalloc_zero(sizeof(struct radio_link_state));
+  return 0;
+}
+
+int radio_link_encode_packet(struct overlay_interface *interface)
 {
   int count = ob_remaining(interface->tx_packet);
   int startP = (ob_position(interface->tx_packet) == 0);
@@ -162,7 +160,7 @@ int mavlink_encode_packet(struct overlay_interface *interface)
   interface->txbuffer[3]=0;
   golay_encode(&interface->txbuffer[1]);
   
-  interface->txbuffer[4]=(interface->mavlink_seq++) & 0x3f;
+  interface->txbuffer[4]=(interface->radio_link_state->tx_seq++) & 0x3f;
   if (startP) interface->txbuffer[4]|=0x40;
   if (endP) interface->txbuffer[4]|=0x80;
   interface->txbuffer[5]=MAVLINK_MSG_ID_DATASTREAM;
@@ -179,7 +177,7 @@ int mavlink_encode_packet(struct overlay_interface *interface)
   return 0;
 }
 
-int mavlink_heartbeat(unsigned char *frame,int *outlen)
+int radio_link_heartbeat(unsigned char *frame,int *outlen)
 {
   int count=9;
   bzero(frame, count+8);
@@ -233,7 +231,7 @@ static int parse_heartbeat(struct overlay_interface *interface, const unsigned c
   return 0;
 }
 
-static int mavlink_parse(struct overlay_interface *interface, struct slip_decode_state *state, 
+static int radio_link_parse(struct overlay_interface *interface, struct radio_link_state *state, 
   int packet_length, unsigned char *payload, int *backtrack)
 {
   *backtrack=0;
@@ -256,7 +254,7 @@ static int mavlink_parse(struct overlay_interface *interface, struct slip_decode
   int pad=223 - (data_bytes + 2);
   int errors=decode_rs_8(&payload[4], NULL, 0, pad);
   if (errors==-1){
-    if (config.debug.mavlink)
+    if (config.debug.radio_link)
       DEBUGF("Reed-Solomon error correction failed");
     return 0;
   }
@@ -264,7 +262,7 @@ static int mavlink_parse(struct overlay_interface *interface, struct slip_decode
   
   int seq=payload[4]&0x3f;
   
-  if (config.debug.mavlink){
+  if (config.debug.radio_link){
     DEBUGF("Received RS protected message, len: %d, errors: %d, seq: %d, flags:%s%s", 
       data_bytes,
       errors,
@@ -273,10 +271,10 @@ static int mavlink_parse(struct overlay_interface *interface, struct slip_decode
       payload[4]&0x80?" end":"");
   }
   
-  if (seq != ((state->mavlink_seq+1)&0x3f)){
+  if (seq != ((state->seq+1)&0x3f)){
     // reject partial packet if we missed a sequence number
-    if (config.debug.mavlink) 
-      DEBUGF("Rejecting packet, sequence jumped from %d to %d", state->mavlink_seq, seq);
+    if (config.debug.radio_link) 
+      DEBUGF("Rejecting packet, sequence jumped from %d to %d", state->seq, seq);
     state->packet_length=sizeof(state->dst)+1;
   }
   
@@ -285,9 +283,9 @@ static int mavlink_parse(struct overlay_interface *interface, struct slip_decode
     state->packet_length=0;
   }
   
-  state->mavlink_seq=payload[4]&0x3f;
+  state->seq=payload[4]&0x3f;
   if (state->packet_length + data_bytes > sizeof(state->dst)){
-    if (config.debug.mavlink)
+    if (config.debug.radio_link)
       DEBUG("Fragmented packet is too long or a previous piece was missed - discarding");
     state->packet_length=sizeof(state->dst)+1;
     return 1;
@@ -297,7 +295,7 @@ static int mavlink_parse(struct overlay_interface *interface, struct slip_decode
   state->packet_length+=data_bytes;
     
   if (payload[4]&0x80) {
-    if (config.debug.mavlink) 
+    if (config.debug.radio_link) 
       DEBUGF("PDU Complete (length=%d)",state->packet_length);
     state->dst_offset=0;
     
@@ -307,7 +305,7 @@ static int mavlink_parse(struct overlay_interface *interface, struct slip_decode
   return 1;
 }
 
-static int decode_length(struct slip_decode_state *state, unsigned char *p)
+static int decode_length(struct radio_link_state *state, unsigned char *p)
 {
   // look for a valid golay encoded length
   int errs=0;
@@ -318,90 +316,92 @@ static int decode_length(struct slip_decode_state *state, unsigned char *p)
   if (length!=9 && (length<31 || length+8>255))
     return -1;
   
-  if (config.debug.mavlink && (errs || state->mavlink_payload_length!=*p))
+  if (config.debug.radio_link && (errs || state->payload_length!=*p))
     DEBUGF("Decoded length %d to %d with %d errs", *p, length, errs);
   
-  state->mavlink_payload_length=length;
+  state->payload_length=length;
   return 0;
 }
 
-int mavlink_decode(struct overlay_interface *interface, struct slip_decode_state *state, uint8_t c)
+int radio_link_decode(struct overlay_interface *interface, uint8_t c)
 {
-  if (state->mavlink_payload_start + state->mavlink_payload_offset >= sizeof(state->mavlink_payload)){
+  struct radio_link_state *state=interface->radio_link_state;
+  
+  if (state->payload_start + state->payload_offset >= sizeof(state->payload)){
     // drop one byte if we run out of space
-    if (config.debug.mavlink)
-      DEBUGF("Dropped %02x, buffer full", state->mavlink_payload[0]);
-    bcopy(state->mavlink_payload+1, state->mavlink_payload, sizeof(state->mavlink_payload) -1);
-    state->mavlink_payload_start--;
+    if (config.debug.radio_link)
+      DEBUGF("Dropped %02x, buffer full", state->payload[0]);
+    bcopy(state->payload+1, state->payload, sizeof(state->payload) -1);
+    state->payload_start--;
   }
   
-  unsigned char *p = &state->mavlink_payload[state->mavlink_payload_start];
-  p[state->mavlink_payload_offset++]=c;
+  unsigned char *p = &state->payload[state->payload_start];
+  p[state->payload_offset++]=c;
   
   while(1){
     // look for packet length headers
-    p = &state->mavlink_payload[state->mavlink_payload_start];
-    while(state->mavlink_payload_length==0 && state->mavlink_payload_offset>=6){
+    p = &state->payload[state->payload_start];
+    while(state->payload_length==0 && state->payload_offset>=6){
       if (p[0]==0xFE 
 	&& p[1]==9
 	&& p[3]==RADIO_SOURCE_SYSTEM
 	&& p[4]==RADIO_SOURCE_COMPONENT
 	&& p[5]==MAVLINK_MSG_ID_RADIO){
 	//looks like a valid heartbeat response header, read the rest and process it
-	state->mavlink_payload_length=9;
+	state->payload_length=9;
 	break;
       }
       
       if (decode_length(state, &p[1])==0)
 	break;
       
-      state->mavlink_payload_start++;
-      state->mavlink_payload_offset--;
+      state->payload_start++;
+      state->payload_offset--;
       p++;
     }
     
     // wait for a whole packet
-    if (!state->mavlink_payload_length || state->mavlink_payload_offset < state->mavlink_payload_length+8)
+    if (!state->payload_length || state->payload_offset < state->payload_length+8)
       return 0;
     
     if (parse_heartbeat(interface, p)){
       // cut the bytes of the heartbeat out of the buffer
-      state->mavlink_payload_offset -= state->mavlink_payload_length+8;
-      if (state->mavlink_payload_offset){
+      state->payload_offset -= state->payload_length+8;
+      if (state->payload_offset){
 	// shuffle bytes backwards
-	bcopy(&p[state->mavlink_payload_length+8], p, state->mavlink_payload_offset);
+	bcopy(&p[state->payload_length+8], p, state->payload_offset);
       }
       // restart parsing for a valid header from the beginning of out buffer
-      state->mavlink_payload_offset+=state->mavlink_payload_start;
-      state->mavlink_payload_start=0;
-      state->mavlink_payload_length=0;
+      state->payload_offset+=state->payload_start;
+      state->payload_start=0;
+      state->payload_length=0;
       continue;
     }
     
     // is this a well formed packet?
     int backtrack=0;
-    if (mavlink_parse(interface, state, state->mavlink_payload_length, p, &backtrack)==1){
+    if (radio_link_parse(interface, state, state->payload_length, p, &backtrack)==1){
       // Since we know we've synced with the remote party, 
       // and there's nothing we can do about any earlier data
       // throw away everything before the end of this packet
-      if (state->mavlink_payload_start && config.debug.mavlink)
-	dump("Skipped", state->mavlink_payload, state->mavlink_payload_start);
+      if (state->payload_start && config.debug.radio_link)
+	dump("Skipped", state->payload, state->payload_start);
       
       // If the packet is truncated by less than 16 bytes, RS protection should be enough to recover the packet, 
       // but we may need to examine the last few bytes to find the start of the next packet.
-      state->mavlink_payload_offset -= state->mavlink_payload_length+8-backtrack;
-      if (state->mavlink_payload_offset){
+      state->payload_offset -= state->payload_length+8-backtrack;
+      if (state->payload_offset){
 	// shuffle all remaining bytes back to the start of the buffer
-	bcopy(&state->mavlink_payload[state->mavlink_payload_start + state->mavlink_payload_length+8-backtrack], 
-	  state->mavlink_payload, state->mavlink_payload_offset);
+	bcopy(&state->payload[state->payload_start + state->payload_length+8-backtrack], 
+	  state->payload, state->payload_offset);
       }
-      state->mavlink_payload_start=0;
+      state->payload_start=0;
     }else{
       // ignore the first byte for now and start looking for another packet header
       // we may find a heartbeat in the middle that we need to cut out first
-      state->mavlink_payload_start++;
-      state->mavlink_payload_offset--;
+      state->payload_start++;
+      state->payload_offset--;
     }
-    state->mavlink_payload_length=0;
+    state->payload_length=0;
   };
 }

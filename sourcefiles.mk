@@ -19,7 +19,7 @@ SERVAL_SOURCES = \
 	$(SERVAL_BASE)log.c \
 	$(SERVAL_BASE)lsif.c \
 	$(SERVAL_BASE)main.c \
-	$(SERVAL_BASE)mavlink.c \
+	$(SERVAL_BASE)radio_link.c \
 	$(SERVAL_BASE)meshms.c \
 	$(SERVAL_BASE)mdp_client.c \
 	$(SERVAL_BASE)os.c \

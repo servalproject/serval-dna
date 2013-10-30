@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
 #include "str.h"
+#include "radio_link.h"
 
 #ifdef HAVE_IFADDRS_H
 #include <ifaddrs.h>
@@ -58,6 +59,12 @@ overlay_interface_close(overlay_interface *interface){
   unschedule(&interface->alarm);
   unwatch(&interface->alarm);
   close(interface->alarm.poll.fd);
+  if (interface->txbuffer){
+    free(interface->txbuffer);
+    interface->txbuffer=NULL;
+  }
+  if (interface->radio_link_state)
+    radio_link_free(interface);
   interface->alarm.poll.fd=-1;
   interface->state=INTERFACE_STATE_DOWN;
 }
@@ -531,10 +538,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     
     switch (ifconfig->socket_type) {
     case SOCK_STREAM:
-      interface->slip_decode_state.dst_offset=0;
-      /* The encapsulation type should be configurable, but for now default to the one that should
-         be safe on the RFD900 radios, and that also allows us to receive RSSI reports inline */
-      interface->slip_decode_state.encapsulator=SLIP_FORMAT_MAVLINK;
+      radio_link_init(interface);
       interface->alarm.poll.events=POLLIN|POLLOUT;
       watch(&interface->alarm);
 
@@ -717,11 +721,13 @@ static void interface_read_stream(struct overlay_interface *interface){
     OUT();
     return;
   }
-  struct slip_decode_state *state=&interface->slip_decode_state;
+  
+  if (config.debug.packetradio)
+    dump("read bytes", buffer, nread);
   
   int i;
   for (i=0;i<nread;i++)
-    mavlink_decode(interface, state, buffer[i]);
+    radio_link_decode(interface, buffer[i]);
     
   OUT();
 }
@@ -738,14 +744,21 @@ static void write_stream_buffer(overlay_interface *interface){
     
     if (interface->tx_bytes_pending==0){
       if (interface->next_heartbeat <= now){
+	
+	if (!interface->txbuffer){
+	  interface->txbuffer=emalloc(OVERLAY_INTERFACE_RX_BUFFER_SIZE);
+	  if (!interface->txbuffer)
+	    break;
+	}
+	
 	// Queue a hearbeat now
-	mavlink_heartbeat(interface->txbuffer,&interface->tx_bytes_pending);
+	radio_link_heartbeat(interface->txbuffer,&interface->tx_bytes_pending);
 	if (config.debug.packetradio)
 	  DEBUGF("Sending heartbeat");
 	interface->next_heartbeat = now+1000;
       }else if(interface->tx_packet && interface->remaining_space >= 256 + 8+9){
 	// prepare a new link layer packet in txbuffer
-	if (mavlink_encode_packet(interface))
+	if (radio_link_encode_packet(interface))
 	  break;
 	if (interface->remaining_space - interface->tx_bytes_pending < 256 + 8+9)
 	  interface->next_heartbeat = now;

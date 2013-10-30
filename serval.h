@@ -277,12 +277,6 @@ struct slip_decode_state{
   uint32_t crc;
   int src_offset;
   int dst_offset;
-
-  int mavlink_payload_length;
-  int mavlink_seq;
-  int mavlink_payload_start;
-  int mavlink_payload_offset;
-  uint8_t mavlink_payload[1024];
 };
 
 struct overlay_interface;
@@ -357,7 +351,7 @@ typedef struct overlay_interface {
   
   // stream socket tx state;
   struct overlay_buffer *tx_packet;
-  unsigned char txbuffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
+  uint8_t *txbuffer;
   int tx_bytes_pending;
   // Throttle TX rate if required (stream interfaces only for now)
   uint32_t throttle_bytes_per_second;
@@ -365,11 +359,10 @@ typedef struct overlay_interface {
   uint64_t next_tx_allowed;
   int32_t remaining_space;
   time_ms_t next_heartbeat;
-  int mavlink_seq;
   int radio_rssi;
   int remote_rssi;
   
-  struct slip_decode_state slip_decode_state;
+  struct radio_link_state *radio_link_state;
 
   // copy of ifconfig flags
   uint16_t drop_packets;
@@ -732,9 +725,5 @@ void link_neighbour_status_html(struct strbuf *b, struct subscriber *neighbour);
 int link_stop_routing(struct subscriber *subscriber);
 
 int generate_nonce(unsigned char *nonce,int bytes);
-
-int mavlink_decode(struct overlay_interface *interface, struct slip_decode_state *state,uint8_t c);
-int mavlink_heartbeat(unsigned char *frame,int *outlen);
-int mavlink_encode_packet(struct overlay_interface *interface);
 
 #endif // __SERVALD_SERVALD_H

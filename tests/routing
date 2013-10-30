@@ -282,7 +282,7 @@ setup_simulate_extender() {
       executeOk_servald config \
          set debug.throttling on \
          set debug.packetradio on \
-         set debug.mavlink on \
+         set debug.radio_link on \
          set interfaces.1.type CATEAR \
          set interfaces.1.mdp.tick_ms 5000 \
          set interfaces.1.socket_type STREAM \
