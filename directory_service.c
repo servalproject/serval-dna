@@ -1,9 +1,11 @@
 
-#include "constants.h"
-#include "mdp_client.h"
+#ifdef HAVE_POLL_H
 #include <poll.h>
+#endif
 #include <stdio.h>
 #include <unistd.h>
+#include "constants.h"
+#include "mdp_client.h"
 #include "str.h"
 
 struct item{

@@ -1,7 +1,7 @@
 /* 
-Serval Daemon
+Serval DNA header file
 Copyright (C) 2010-2012 Paul Gardner-Stephen 
-Copyright (C) 2012 Serval Project Inc.
+Copyright (C) 2012-2013 Serval Project, Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -90,9 +90,6 @@ struct in_addr {
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
 #endif
-#ifdef HAVE_POLL_H
-#include <poll.h>
-#endif
 #ifdef HAVE_NETDB_H
 #include <netdb.h>
 #endif
@@ -109,6 +106,7 @@ struct in_addr {
 #include <ctype.h>
 #include <sys/stat.h>
 
+#include "fdqueue.h"
 #include "cli.h"
 #include "constants.h"
 #include "mem.h"
@@ -340,42 +338,6 @@ int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret);
 #define CHECK_PACKET_LEN(B) {if (((*packet_len)+(B))>=packet_maxlen) { return WHY("Packet composition ran out of space."); } }
 
 extern int sock;
-
-struct profile_total {
-  struct profile_total *_next;
-  int _initialised;
-  const char *name;
-  time_ms_t max_time;
-  time_ms_t total_time;
-  time_ms_t child_time;
-  int calls;
-};
-
-struct call_stats{
-  time_ms_t enter_time;
-  time_ms_t child_time;
-  struct profile_total *totals;
-  struct call_stats *prev;
-};
-
-struct sched_ent;
-
-typedef void (*ALARM_FUNCP) (struct sched_ent *alarm);
-
-struct sched_ent{
-  struct sched_ent *_next;
-  struct sched_ent *_prev;
-  
-  ALARM_FUNCP function;
-  void *context;
-  struct pollfd poll;
-  // when we should first consider the alarm
-  time_ms_t alarm;
-  // the order we will prioritise the alarm
-  time_ms_t deadline;
-  struct profile_total *stats;
-  int _poll_index;
-};
 
 struct limit_state{
   // length of time for a burst
@@ -817,17 +779,6 @@ void sigIoHandler(int signal);
 
 int overlay_mdp_setup_sockets();
 
-int is_scheduled(const struct sched_ent *alarm);
-int _schedule(struct __sourceloc, struct sched_ent *alarm);
-int _unschedule(struct __sourceloc, struct sched_ent *alarm);
-int _watch(struct __sourceloc, struct sched_ent *alarm);
-int _unwatch(struct __sourceloc, struct sched_ent *alarm);
-#define schedule(alarm)   _schedule(__WHENCE__, alarm)
-#define unschedule(alarm) _unschedule(__WHENCE__, alarm)
-#define watch(alarm)      _watch(__WHENCE__, alarm)
-#define unwatch(alarm)    _unwatch(__WHENCE__, alarm)
-int fd_poll();
-
 void overlay_interface_discover(struct sched_ent *alarm);
 void overlay_packetradio_poll(struct sched_ent *alarm);
 int overlay_packetradio_setup_port(overlay_interface *interface);
@@ -846,7 +797,6 @@ int overlay_queue_init();
 
 void monitor_client_poll(struct sched_ent *alarm);
 void monitor_poll(struct sched_ent *alarm);
-void rhizome_client_poll(struct sched_ent *alarm);
 void rhizome_fetch_poll(struct sched_ent *alarm);
 void rhizome_server_poll(struct sched_ent *alarm);
 
@@ -857,22 +807,6 @@ int overlay_mdp_service_probe(struct overlay_frame *frame, overlay_mdp_frame *md
 time_ms_t limit_next_allowed(struct limit_state *state);
 int limit_is_allowed(struct limit_state *state);
 int limit_init(struct limit_state *state, int rate_micro_seconds);
-
-/* function timing routines */
-int fd_clearstats();
-int fd_showstats();
-int fd_checkalarms();
-int fd_func_enter(struct __sourceloc, struct call_stats *this_call);
-int fd_func_exit(struct __sourceloc, struct call_stats *this_call);
-void dump_stack(int log_level);
-
-#define IN() static struct profile_total _aggregate_stats={NULL,0,__FUNCTION__,0,0,0}; \
-    struct call_stats _this_call={.totals=&_aggregate_stats}; \
-    fd_func_enter(__HERE__, &_this_call);
-
-#define OUT() fd_func_exit(__HERE__, &_this_call)
-#define RETURN(X) do { OUT(); return (X); } while (0);
-#define RETURNNULL do { OUT(); return (NULL); } while (0);
 
 int olsr_init_socket(void);
 int olsr_send(struct overlay_frame *frame);

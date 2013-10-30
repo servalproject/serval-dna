@@ -153,8 +153,8 @@ struct strbuf;
 #define DEBUG(X)            DEBUGF("%s", (X))
 #define DEBUGF_perror(F,...) LOGF_perror(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
 #define DEBUG_perror(X)     DEBUGF_perror("%s", (X))
-#define D                   DEBUG("D")
-#define T                   { if (config.debug.trace) DEBUG("T"); }
+#define D                   (DEBUG("D"), 1)
+#define T                   (config.debug.trace ? DEBUG("T") : 1)
 #define DEBUG_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_DEBUG, __WHENCE__, (X), (ARGC), (ARGV))
 
 #define dump(X,A,N)         logDump(LOG_LEVEL_DEBUG, __WHENCE__, (X), (const unsigned char *)(A), (size_t)(N))

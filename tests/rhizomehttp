@@ -1,0 +1,140 @@
+#!/bin/bash
+
+# Tests for Serval rhizome operations.
+#
+# Copyright 2013 Serval Project, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+source "${0%/*}/../testdefs_rhizome.sh"
+
+shopt -s extglob
+
+setup() {
+   setup_curl 7
+   setup_jq 1.2
+   setup_servald
+   set_instance +A
+   set_rhizome_config
+   executeOk_servald config \
+      set rhizome.api.restful.users.harry.password potter \
+      set rhizome.api.restful.users.ron.password weasley \
+      set rhizome.api.restful.users.hermione.password grainger
+   create_single_identity
+   echo "$SIDA1" >sids
+   start_servald_instances +A
+   wait_until rhizome_http_server_started +A
+   get_rhizome_server_port PORTA +A
+}
+
+set_rhizome_config() {
+   executeOk_servald config \
+      set debug.rhizome on \
+      set debug.verbose on \
+      set log.console.level debug
+}
+
+doc_AuthBasicMissing="Basic Authentication credentials are required"
+test_AuthBasicMissing() {
+   execute --exit-status=67 curl \
+         --silent --fail --show-error \
+         --output http.output \
+         --dump-header http.headers \
+         "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+}
+teardown_AuthBasicMissing() {
+   tfw_cat http.headers http.output
+}
+
+doc_AuthBasicWrong="Basic Authentication credentials must be correct"
+test_AuthBasicWrong() {
+   execute --exit-status=67 curl \
+         --silent --fail --show-error \
+         --output http.output \
+         --dump-header http.headers \
+         --basic --user fred:nurks \
+         "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   executeOk curl \
+         --silent --fail --show-error \
+         --output http.output \
+         --dump-header http.headers \
+         --basic --user ron:weasley \
+         "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+}
+
+doc_RhizomeList="Fetch full Rhizome bundle list in JSON format"
+setup_RhizomeList() {
+   for n in 1 2 3 4; do
+      create_file file$n ${n}k
+      executeOk_servald rhizome add file $SIDA file$n file$n.manifest
+   done
+}
+test_RhizomeList() {
+   executeOk curl \
+         --silent --fail --show-error \
+         --output http.output \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+}
+
+doc_RhizomeListSince="Fetch Rhizome bundle list since token in JSON format"
+test_RhizomeListSinceJSON() {
+   :
+}
+
+doc_RhizomeManifest="Fetch Rhizome bundle manifest"
+test_RhizomeManifest() {
+   :
+}
+
+doc_RhizomePayloadRaw="Fetch Rhizome raw payload"
+test_RhizomePayloadRaw() {
+   :
+}
+
+doc_RhizomePayloadDecrypted="Fetch Rhizome decrypted payload"
+test_RhizomePayloadDecrypted() {
+   :
+}
+
+doc_RhizomeInsert="Insert new Rhizome bundle"
+test_RhizomeInsert() {
+   :
+}
+
+doc_MeshmsListConversations="List MeshMS conversations"
+test_MeshmsListConversations() {
+   :
+}
+
+doc_MeshmsListMessages="List all MeshMS messages in a single conversation"
+test_MeshmsListMessages() {
+   :
+}
+
+doc_MeshmsListMessagesSince="List MeshMS messages in a single conversation since token"
+test_MeshmsListMessagesSince() {
+   :
+}
+
+doc_MeshmsSend="Send MeshMS message"
+test_MeshmsSend() {
+   :
+}
+
+runTests "$@"

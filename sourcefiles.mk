@@ -14,6 +14,7 @@ SERVAL_SOURCES = \
 	$(SERVAL_BASE)fdqueue.c \
 	$(SERVAL_BASE)fifo.c \
 	$(SERVAL_BASE)golay.c \
+	$(SERVAL_BASE)http_server.c \
 	$(SERVAL_BASE)keyring.c \
 	$(SERVAL_BASE)log.c \
 	$(SERVAL_BASE)lsif.c \

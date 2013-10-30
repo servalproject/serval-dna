@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# Tests for Serval rhizome operations.
+#
+# Copyright 2012 Serval Project, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+
+shopt -s extglob
+
+test_tfw_cmp_version() {
+   execute --exit-status=1 tfw_cmp_version 1 2
+   execute --exit-status=2 tfw_cmp_version 1.0.1 1.0.0
+   execute --exit-status=1 tfw_cmp_version 1.0 1.1
+   execute --exit-status=0 tfw_cmp_version 1            1
+   execute --exit-status=1 tfw_cmp_version 2.1          2.2
+   execute --exit-status=2 tfw_cmp_version 3.0.4.10     3.0.4.2
+   execute --exit-status=1 tfw_cmp_version 4.08         4.08.01
+   execute --exit-status=2 tfw_cmp_version 3.2.1.9.8144 3.2
+   execute --exit-status=1 tfw_cmp_version 3.2          3.2.1.9.8144
+   execute --exit-status=1 tfw_cmp_version 1.2          2.1
+   execute --exit-status=2 tfw_cmp_version 2.1          1.2
+   execute --exit-status=0 tfw_cmp_version 5.6.7        5.6.7
+   execute --exit-status=0 tfw_cmp_version 1.01.1       1.1.1
+   execute --exit-status=0 tfw_cmp_version 1.1.1        1.01.1
+   execute --exit-status=0 tfw_cmp_version 1            1.0
+   execute --exit-status=0 tfw_cmp_version 1.0          1
+   execute --exit-status=0 tfw_cmp_version 1.0.2.0      1.0.2
+   execute --exit-status=0 tfw_cmp_version 1..0         1.0
+   execute --exit-status=0 tfw_cmp_version 1.0          1..0
+}
+
+runTests "$@"

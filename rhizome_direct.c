@@ -135,7 +135,7 @@ rhizome_direct_sync_request
 *rhizome_direct_new_sync_request(
 				 void (*transport_specific_dispatch_function)
 				 (struct rhizome_direct_sync_request *),
-				 int buffer_size,int interval, int mode, void *state)
+				 size_t buffer_size, int interval, int mode, void *state)
 {
   assert(mode&3);
 
@@ -260,8 +260,7 @@ int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r)
   multiple versions of a given bundle introduces only a slight complication. 
 */
 
-rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
-(unsigned char *buffer,int size, int max_response_bytes)
+rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *buffer,int size, int max_response_bytes)
 {
   if (size<10) return NULL;
   if (size>65536) return NULL;
@@ -288,7 +287,7 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
     }
   DEBUGF("unpickled size_high=%"PRId64", limit_size_high=%"PRId64,
 	 c->size_high,c->limit_size_high);
-  DEBUGF("c->buffer_size=%d",c->buffer_size);
+  DEBUGF("c->buffer_size=%zu",c->buffer_size);
 
   /* Get our list of BARs for the same cursor range */
   int us_count=rhizome_direct_bundle_iterator_fill(c,-1);
@@ -534,7 +533,7 @@ int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context 
   }
 }
 
-rhizome_direct_bundle_cursor *rhizome_direct_bundle_iterator(int buffer_size)
+rhizome_direct_bundle_cursor *rhizome_direct_bundle_iterator(size_t buffer_size)
 {
   rhizome_direct_bundle_cursor *r=calloc(sizeof(rhizome_direct_bundle_cursor),1);
   assert(r!=NULL);
