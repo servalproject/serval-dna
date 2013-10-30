@@ -118,9 +118,6 @@ extern time_ms_t rhizome_voice_timeout;
 
 #define RHIZOME_IDLE_TIMEOUT 20000
 
-#define EXISTING_BUNDLE_ID 1
-#define NEW_BUNDLE_ID 2
-
 typedef struct rhizome_signature {
   unsigned char signature[crypto_sign_edwards25519sha512batch_BYTES
 			  +crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES+1];
@@ -145,14 +142,14 @@ typedef struct rhizome_manifest {
   unsigned char manifestdata[MAX_MANIFEST_BYTES];
   unsigned char manifesthash[crypto_hash_sha512_BYTES];
 
-  /* CryptoSign key pair for this manifest.
-     The filename as distributed on Rhizome will be the public key
-     of this pair, thus ensuring that noone can tamper with a bundle
-     except the creator. */
+  /* CryptoSign key pair for this manifest.  The public key is the Bundle ID
+   * (aka Manifest ID).
+   */
   rhizome_bid_t cryptoSignPublic;
   unsigned char cryptoSignSecret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
+
   /* Whether we have the secret for this manifest on hand */
-  int haveSecret;
+  enum { SECRET_UNKNOWN = 0, EXISTING_BUNDLE_ID, NEW_BUNDLE_ID } haveSecret;
 
   int var_count;
   char *vars[MAX_MANIFEST_VARS];

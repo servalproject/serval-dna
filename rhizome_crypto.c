@@ -230,7 +230,7 @@ int rhizome_find_secret(const sid_t *authorSidp, int *rs_len, const unsigned cha
  * which is used to look up the author's rhizome secret in the keyring.
  *
  * Returns 0 if a valid private key was extracted, with the private key in the manifest
- * 'cryptoSignSecret' field and the 'haveSecret' field set to 1.
+ * 'cryptoSignSecret' field and the 'haveSecret' field set to EXISTING_BUNDLE_ID.
  *
  * Returns 1 if the manifest does not have a BK field.
  *
@@ -287,11 +287,11 @@ int rhizome_extract_privatekey(rhizome_manifest *m, rhizome_bk_t *bsk)
     result=1;
   }
   
-  if (result == 0){
-    m->haveSecret=EXISTING_BUNDLE_ID;
-  }else{
+  if (result == 0)
+    m->haveSecret = EXISTING_BUNDLE_ID;
+  else {
     memset(m->cryptoSignSecret, 0, sizeof m->cryptoSignSecret);
-    m->haveSecret=0;
+    m->haveSecret = SECRET_UNKNOWN;
   }
   
   RETURN(result);
@@ -326,7 +326,7 @@ int rhizome_extract_privatekey_required(rhizome_manifest *m, rhizome_bk_t *bsk)
  *
  * Returns 0 if an identity is found with permission to alter the bundle, after setting the manifest
  * 'author' field to the SID of the identity and the manifest 'cryptoSignSecret' field to the bundle
- * secret key and the 'haveSecret' field to 1.
+ * secret key and the 'haveSecret' field to EXISTING_BUNDLE_ID.
  *
  * Returns 1 if no identity in the keyring is the author of this bundle.
  *
@@ -360,7 +360,7 @@ int rhizome_find_bundle_author(rhizome_manifest *m)
       const unsigned char *rs = keyring->contexts[cn]->identities[in]->keypairs[rkp]->private_key;
 
       if (!rhizome_bk2secret(m, &m->cryptoSignPublic, rs, rs_len, bkBytes, m->cryptoSignSecret)) {
-	m->haveSecret=EXISTING_BUNDLE_ID;
+	m->haveSecret = EXISTING_BUNDLE_ID;
 	if (cmp_sid_t(&m->author, authorSidp) != 0){
 	  m->author = *authorSidp;
 	  if (config.debug.rhizome)
@@ -402,13 +402,13 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m,
   for (i = 0;i < 32;++i) 
     if (pkin[i] != pk[i]) {
       if (m&&sk==m->cryptoSignSecret&&pkin==m->cryptoSignPublic.binary)
-	m->haveSecret=0;
+	m->haveSecret = SECRET_UNKNOWN;
       RETURN(-1);
     }
   if (m&&sk==m->cryptoSignSecret&&pkin==m->cryptoSignPublic.binary) {
     if (config.debug.rhizome)
       DEBUGF("We have the private key for this bundle.");
-    m->haveSecret=EXISTING_BUNDLE_ID;
+    m->haveSecret = EXISTING_BUNDLE_ID;
   }
   RETURN(0);
   OUT();

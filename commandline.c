@@ -1680,15 +1680,22 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
     rhizome_extract_privatekey(m, NULL);
     const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
     
-    cli_field_name(context, "service", ":");    cli_put_string(context, blob_service, "\n");
-    cli_field_name(context, "manifestid", ":"); cli_put_string(context, alloca_tohex_rhizome_bid_t(bid), "\n");
-    cli_field_name(context, "version", ":");    cli_put_long(context, m->version, "\n");
-    cli_field_name(context, "inserttime", ":"); cli_put_long(context, m->inserttime, "\n");
+    cli_field_name(context, "service", ":");
+    cli_put_string(context, blob_service, "\n");
+    cli_field_name(context, "manifestid", ":");
+    cli_put_string(context, alloca_tohex_rhizome_bid_t(bid), "\n");
+    cli_field_name(context, "version", ":");
+    cli_put_long(context, m->version, "\n");
+    cli_field_name(context, "inserttime", ":");
+    cli_put_long(context, m->inserttime, "\n");
     if (m->haveSecret) {
-      cli_field_name(context, ".author", ":");  cli_put_string(context, alloca_tohex_sid_t(m->author), "\n");
+      cli_field_name(context, ".author", ":");
+      cli_put_string(context, alloca_tohex_sid_t(m->author), "\n");
     }
-    cli_field_name(context, ".readonly", ":");  cli_put_long(context, m->haveSecret?0:1, "\n");
-    cli_field_name(context, "filesize", ":");   cli_put_long(context, m->fileLength, "\n");
+    cli_field_name(context, ".readonly", ":");
+    cli_put_long(context, m->haveSecret?0:1, "\n");
+    cli_field_name(context, "filesize", ":");
+    cli_put_long(context, m->fileLength, "\n");
     if (m->fileLength != 0) {
       cli_field_name(context, "filehash", ":");
       cli_put_string(context, alloca_tohex_rhizome_filehash_t(m->filehash), "\n");
