@@ -740,7 +740,7 @@ int rhizome_journal_pipe(struct rhizome_write *write, const rhizome_filehash_t *
 int rhizome_crypt_xor_block(unsigned char *buffer, size_t buffer_size, int64_t stream_offset, 
 			    const unsigned char *key, const unsigned char *nonce);
 int rhizome_open_read(struct rhizome_read *read, const rhizome_filehash_t *hashp);
-int rhizome_read(struct rhizome_read *read, unsigned char *buffer, size_t buffer_length);
+ssize_t rhizome_read(struct rhizome_read *read, unsigned char *buffer, size_t buffer_length);
 int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer *buffer, unsigned char *data, size_t len);
 int rhizome_read_close(struct rhizome_read *read);
 int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state);
