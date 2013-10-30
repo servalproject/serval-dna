@@ -233,8 +233,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 
-typedef char bool_t;
-
 #define CONFIG_FILE_MAX_SIZE        (32 * 1024)
 #define INTERFACE_NAME_STRLEN       40
 

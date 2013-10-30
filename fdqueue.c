@@ -17,8 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include <poll.h>
-#include "serval.h"
+#include "fdqueue.h"
 #include "conf.h"
 #include "str.h"
 #include "strbuf.h"

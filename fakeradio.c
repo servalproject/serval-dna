@@ -4,7 +4,9 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <fcntl.h>
+#ifdef HAVE_POLL_H
 #include <poll.h>
+#endif
 #include <errno.h>
 #include <time.h>
 #include <sys/time.h>

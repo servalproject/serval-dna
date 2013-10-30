@@ -21,8 +21,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <poll.h>
 #include <fcntl.h>
+#ifdef HAVE_POLL_H
+#include <poll.h>
+#endif
 
 #include "serval.h"
 #include "conf.h"

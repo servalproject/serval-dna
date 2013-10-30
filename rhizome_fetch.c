@@ -181,7 +181,7 @@ int rhizome_fetch_queue_bytes(){
   return bytes;
 }
 
-int rhizome_fetch_status_html(struct strbuf *b)
+int rhizome_fetch_status_html(strbuf b)
 {
   int i,j;
   for(i=0;i<NQUEUES;i++){
@@ -503,8 +503,10 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
 	rhizome_manifest_free(slot->previous);
 	slot->previous=NULL;
       }else{
-	strbuf_sprintf(r, "Range: bytes=%"PRId64"-%"PRId64"\r\n", 
-	  slot->previous->fileLength - slot->manifest->journalTail, slot->manifest->fileLength);
+	assert(slot->previous->fileLength >= slot->manifest->journalTail);
+	assert(slot->manifest->fileLength > 0);
+	strbuf_sprintf(r, "Range: bytes=%"PRId64"-%"PRId64"\r\n",
+	  slot->previous->fileLength - slot->manifest->journalTail, slot->manifest->fileLength - 1);
       }
     }
 
@@ -1483,7 +1485,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	slot->alarm.deadline = slot->alarm.alarm + config.rhizome.idle_timeout;
 	schedule(&slot->alarm);
 	slot->request_len += bytes;
-	if (http_header_complete(slot->request, slot->request_len, bytes)) {
+	if (is_http_header_complete(slot->request, slot->request_len, bytes)) {
 	  if (config.debug.rhizome_rx)
 	    DEBUGF("Got HTTP reply: %s", alloca_toprint(160, slot->request, slot->request_len));
 	  /* We have all the reply headers, so parse them, taking care of any following bytes of
@@ -1495,9 +1497,9 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	    rhizome_fetch_switch_to_mdp(slot);
 	    return;
 	  }
-	  if (parts.code != 200) {
+	  if (parts.code != 200 && parts.code != 206) {
 	    if (config.debug.rhizome_rx)
-	      DEBUGF("Failed HTTP request: rhizome server returned %d != 200 OK", parts.code);
+	      DEBUGF("Failed HTTP request: rhizome server returned %03u", parts.code);
 	    rhizome_fetch_switch_to_mdp(slot);
 	    return;
 	  }
@@ -1564,7 +1566,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
    This function takes a pointer to a buffer into which the entire HTTP response header has been
    read.  The caller must have ensured that the buffer contains at least one consecutive pair of
    newlines '\n', optionally with carriage returns '\r' preceding and optionally interspersed with
-   nul characters '\0' (which can originate from telnet).  The http_header_complete() function
+   nul characters '\0' (which can originate from telnet).  The is_http_header_complete() function
    is useful for this.
    This returns pointers to within the supplied buffer, and may overwrite some characters in the
    buffer, for example to nul-terminate a string that was terminated by space ' ' or newline '\r'
@@ -1576,7 +1578,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 int unpack_http_response(char *response, struct http_response_parts *parts)
 {
   IN();
-  parts->code = -1;
+  parts->code = 0;
   parts->reason = NULL;
   parts->range_start=0;
   parts->content_length = -1;

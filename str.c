@@ -28,6 +28,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include <limits.h>
+#include <errno.h>
 
 const char hexdigit[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 
@@ -119,6 +120,14 @@ char *str_toupper_inplace(char *str)
   register char *s;
   for (s = str; *s; ++s)
     *s = toupper(*s);
+  return str;
+}
+
+char *str_tolower_inplace(char *str)
+{
+  register char *s;
+  for (s = str; *s; ++s)
+    *s = tolower(*s);
   return str;
 }
 
@@ -227,17 +236,48 @@ char *str_str(char *haystack, const char *needle, int haystack_len)
   return NULL;
 }
 
+int str_to_int(const char *str, int base, int *result, const char **afterp)
+{
+  if (isspace(*str))
+    return 0;
+  const char *end = str;
+  errno = 0;
+  long value = strtol(str, (char**)&end, base);
+  if (afterp)
+    *afterp = end;
+  if (errno == ERANGE || end == str || value > INT_MAX || value < INT_MIN || isdigit(*end) || (!afterp && *end))
+    return 0;
+  if (result)
+    *result = value;
+  return 1;
+}
+
+int str_to_uint(const char *str, int base, unsigned *result, const char **afterp)
+{
+  if (isspace(*str))
+    return 0;
+  const char *end = str;
+  errno = 0;
+  unsigned long value = strtoul(str, (char**)&end, base);
+  if (afterp)
+    *afterp = end;
+  if (errno == ERANGE || end == str || value > UINT_MAX || isdigit(*end) || (!afterp && *end))
+    return 0;
+  if (result)
+    *result = value;
+  return 1;
+}
+
 int str_to_int64(const char *str, int base, int64_t *result, const char **afterp)
 {
   if (isspace(*str))
     return 0;
   const char *end = str;
+  errno = 0;
   long long value = strtoll(str, (char**)&end, base);
-  if (end == str)
-    return 0;
   if (afterp)
     *afterp = end;
-  else if (*end)
+  if (errno == ERANGE || end == str || isdigit(*end) || (!afterp && *end))
     return 0;
   if (result)
     *result = value;
@@ -249,12 +289,11 @@ int str_to_uint64(const char *str, int base, uint64_t *result, const char **afte
   if (isspace(*str))
     return 0;
   const char *end = str;
+  errno = 0;
   unsigned long long value = strtoull(str, (char**)&end, base);
-  if (end == str)
-    return 0;
   if (afterp)
     *afterp = end;
-  else if (*end)
+  if (errno == ERANGE || end == str || isdigit(*end) || (!afterp && *end))
     return 0;
   if (result)
     *result = value;
@@ -295,8 +334,11 @@ int str_to_int64_scaled(const char *str, int base, int64_t *result, const char *
 {
   int64_t value;
   const char *end = str;
-  if (!str_to_int64(str, base, &value, &end))
+  if (!str_to_int64(str, base, &value, &end)) {
+    if (afterp)
+      *afterp = end;
     return 0;
+  }
   value *= scale_factor(end, &end);
   if (afterp)
     *afterp = end;
@@ -311,8 +353,11 @@ int str_to_uint64_scaled(const char *str, int base, uint64_t *result, const char
 {
   uint64_t value;
   const char *end = str;
-  if (!str_to_uint64(str, base, &value, &end))
+  if (!str_to_uint64(str, base, &value, &end)) {
+    if (afterp)
+      *afterp = end;
     return 0;
+  }
   value *= scale_factor(end, &end);
   if (afterp)
     *afterp = end;
@@ -347,8 +392,11 @@ int str_to_uint64_interval_ms(const char *str, int64_t *result, const char **aft
     return 0;
   const char *end = str;
   unsigned long long value = strtoull(str, (char**)&end, 10) * precision;
-  if (end == str)
+  if (end == str) {
+    if (afterp)
+      *afterp = end;
     return 0;
+  }
   if (end[0] == '.' && isdigit(end[1])) {
     ++end;
     unsigned factor;
@@ -407,11 +455,12 @@ size_t toprint_str_len(const char *srcStr, const char quotes[2])
   return srcStr ? strbuf_count(strbuf_toprint_quoted(strbuf_local(NULL, 0), quotes, srcStr)) : 4;
 }
 
-size_t strn_fromprint(unsigned char *dst, size_t dstlen, const char *src, char endquote, const char **afterp)
+size_t strn_fromprint(unsigned char *dst, size_t dstsiz, const char *src, size_t srclen, char endquote, const char **afterp)
 {
   unsigned char *const odst = dst;
-  unsigned char *const edst = dst + dstlen;
-  while (*src && *src != endquote && dst < edst) {
+  unsigned char *const edst = dst + dstsiz;
+  const char *const esrc = srclen ? src + srclen : NULL;
+  while (src < esrc && *src && *src != endquote && dst < edst) {
     switch (*src) {
     case '\\':
       ++src;

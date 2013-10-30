@@ -17,14 +17,16 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "strbuf_helpers.h"
-#include <poll.h>
 #include <ctype.h>
 #include <string.h>
 #include <time.h>
 #include <assert.h>
 #include <stdarg.h>
+#include <inttypes.h>
 #include <sys/wait.h>
+#ifdef HAVE_POLL_H
+#include <poll.h>
+#endif
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
 #endif
@@ -32,6 +34,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <arpa/inet.h>
 #endif
 #include <sys/uio.h>
+#include "http_server.h"
+#include "strbuf_helpers.h"
 
 static inline strbuf _toprint(strbuf sb, char c)
 {
@@ -309,6 +313,16 @@ strbuf strbuf_append_socket_type(strbuf sb, int type)
   return sb;
 }
 
+strbuf strbuf_append_in_addr(strbuf sb, const struct in_addr *addr)
+{
+  strbuf_sprintf(sb, " %u.%u.%u.%u",
+      ((unsigned char *) &addr->s_addr)[0],
+      ((unsigned char *) &addr->s_addr)[1],
+      ((unsigned char *) &addr->s_addr)[2],
+      ((unsigned char *) &addr->s_addr)[3]);
+  return sb;
+}
+
 strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t addrlen)
 {
   strbuf_append_socket_domain(sb, addr->sa_family);
@@ -332,13 +346,9 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
     break;
   case AF_INET: {
       const struct sockaddr_in *addr_in = (const struct sockaddr_in *) addr;
-      strbuf_sprintf(sb, " %u.%u.%u.%u:%u",
-	  ((unsigned char *) &addr_in->sin_addr.s_addr)[0],
-	  ((unsigned char *) &addr_in->sin_addr.s_addr)[1],
-	  ((unsigned char *) &addr_in->sin_addr.s_addr)[2],
-	  ((unsigned char *) &addr_in->sin_addr.s_addr)[3],
-	  ntohs(addr_in->sin_port)
-	);
+      strbuf_putc(sb, ' ');
+      strbuf_append_in_addr(sb, &addr_in->sin_addr);
+      strbuf_sprintf(sb, ":%u", ntohs(addr_in->sin_port));
       if (addrlen != sizeof(struct sockaddr_in))
 	strbuf_sprintf(sb, " (addrlen=%d should be %zd)", (int)addrlen, sizeof(struct sockaddr_in));
     }
@@ -389,5 +399,59 @@ strbuf strbuf_append_iovec(strbuf sb, const struct iovec *iov, int iovcnt)
     strbuf_sprintf(sb, "%p#%zu", iov[i].iov_base, iov[i].iov_len);
   }
   strbuf_putc(sb, ']');
+  return sb;
+}
+
+strbuf strbuf_append_http_ranges(strbuf sb, const struct http_range *ranges, unsigned nels)
+{
+  unsigned i;
+  int first = 1;
+  for (i = 0; i != nels; ++i) {
+    const struct http_range *r = &ranges[i];
+    switch (r->type) {
+      case NIL: break;
+      case CLOSED:
+	strbuf_sprintf(sb, "%s%"PRIhttp_size_t"-%"PRIhttp_size_t, first ? "" : ",", r->first, r->last);
+	first = 0;
+	break;
+      case OPEN:
+	strbuf_sprintf(sb, "%s%"PRIhttp_size_t"-", first ? "" : ",", r->first);
+	first = 0;
+	break;
+      case SUFFIX:
+	strbuf_sprintf(sb, "%s-%"PRIhttp_size_t, first ? "" : ",", r->last);
+	first = 0;
+	break;
+    }
+  }
+  return sb;
+}
+
+strbuf strbuf_append_mime_content_disposition(strbuf sb, const struct mime_content_disposition *cd)
+{
+  strbuf_puts(sb, "type=");
+  strbuf_toprint_quoted(sb, "``", cd->type);
+  strbuf_puts(sb, " name=");
+  strbuf_toprint_quoted(sb, "``", cd->name);
+  strbuf_puts(sb, " filename=");
+  strbuf_toprint_quoted(sb, "``", cd->filename);
+  strbuf_puts(sb, " size=");
+  strbuf_sprintf(sb, "%"PRIhttp_size_t, cd->size);
+  struct tm tm;
+  strbuf_puts(sb, " creation_date=");
+  if (cd->creation_date)
+    strbuf_append_strftime(sb, "%a, %d %b %Y %T %z", gmtime_r(&cd->creation_date, &tm));
+  else
+    strbuf_puts(sb, "0");
+  strbuf_puts(sb, " modification_date=");
+  if (cd->modification_date)
+    strbuf_append_strftime(sb, "%a, %d %b %Y %T %z", gmtime_r(&cd->modification_date, &tm));
+  else
+    strbuf_puts(sb, "0");
+  strbuf_puts(sb, " read_date=");
+  if (cd->read_date)
+    strbuf_append_strftime(sb, "%a, %d %b %Y %T %z", gmtime_r(&cd->read_date, &tm));
+  else
+    strbuf_puts(sb, "0");
   return sb;
 }

@@ -26,21 +26,24 @@ shopt -s extglob
 
 setup_rhizome() {
    set_instance +A
-   executeOk_servald config \
-      set debug.rhizome on \
-      set debug.verbose on \
-      set log.console.level debug
+   set_rhizome_config
    create_single_identity
+   echo "$SIDA1" >sids
    set_instance +B
+   set_rhizome_config
+   create_identities 4
+   echo "$SIDB1" >>sids
+   echo "$SIDB2" >>sids
+   echo "$SIDB3" >>sids
+   echo "$SIDB4" >>sids
+   assert [ $(sort sids | uniq | wc -l) -eq 5 ]
+}
+
+set_rhizome_config() {
    executeOk_servald config \
       set debug.rhizome on \
       set debug.verbose on \
       set log.console.level debug
-   create_identities 4
-   assert [ $SIDB1 != $SIDA1 ]
-   assert [ $SIDB2 != $SIDA1 ]
-   assert [ $SIDB3 != $SIDA1 ]
-   assert [ $SIDB4 != $SIDA1 ]
 }
 
 doc_InitialEmptyList="Initial list is empty"

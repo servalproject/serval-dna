@@ -840,6 +840,20 @@ tfw_quietly() {
    fi
 }
 
+# Compare the two arguments as dotted ascii decimal version strings.
+# Return 0 if they are equal, 1 if arg1 < arg2, 2 if arg1 > arg2
+tfw_cmp_version() {
+   local IFS=.
+   local i=0 a=($1) b=($2)
+   for (( i=0; i < ${#a[@]} || i < ${#b[@]}; ++i )); do
+      local ai="${a[i]:-0}"
+      local bi="${b[i]:-0}"
+      (( 10#$ai < 10#$bi )) && return 1
+      (( 10#$ai > 10#$bi )) && return 2
+   done
+   return 0
+}
+
 # Append the contents of a file to the test case's stdout log.  A normal 'cat'
 # to stdout would also do this, but tfw_cat echoes header and footer delimiter
 # lines around to content to help distinguish it, and also works even in a

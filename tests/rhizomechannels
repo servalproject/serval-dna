@@ -40,22 +40,11 @@ configure_servald_server() {
       set log.show_pid on \
       set log.show_time on \
       set debug.rhizome on \
+      set debug.rhizome_httpd on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
       set server.respawn_on_crash off \
       set mdp.iftype.wifi.tick_ms 500
-}
-
-setup_curl_7() {
-   case "$(curl --version | tr '\n' ' ')" in
-   curl\ @(7|8|9|[1-9][0-1]).*\ Protocols:*\ http\ *) ;;
-   '') fail "curl(1) command is not present";;
-   *) fail "curl(1) version is not adequate (expecting 7 or higher)";;
-   esac
-   unset http_proxy
-   unset HTTP_PROXY
-   unset HTTPS_PROXY
-   unset ALL_PROXY
 }
 
 setup_common() {

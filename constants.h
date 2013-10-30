@@ -220,5 +220,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define UNLOCK_CHALLENGE (0xF1)
 #define UNLOCK_RESPONSE (0xF2)
 
+// should there be a types.h to hold this?
+typedef char bool_t;
+
 
 #endif // __SERVALD_CONSTANTS_H

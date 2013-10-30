@@ -72,13 +72,13 @@ int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed)
     return -1;
   
   int ret=rhizome_retrieve_manifest(&key.Public, m);
-  if (ret<0)
+  if (ret == -1)
     return -1;
   
   m->haveSecret=(ret==0)?EXISTING_BUNDLE_ID:NEW_BUNDLE_ID;
   m->cryptoSignPublic = key.Public;
   bcopy(key.Private, m->cryptoSignSecret, sizeof m->cryptoSignSecret);
-  if (ret>0)
+  if (ret == 1)
     rhizome_manifest_set(m, "id", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
   return ret;
 }
@@ -590,22 +590,22 @@ static void add_nonce(unsigned char *nonce, int64_t value){
 /* crypt a block of a stream, allowing for offsets that don't align perfectly to block boundaries
  * for efficiency the caller should use a buffer size of (n*RHIZOME_CRYPT_PAGE_SIZE)
  */
-int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
+int rhizome_crypt_xor_block(unsigned char *buffer, size_t buffer_size, int64_t stream_offset, 
 			    const unsigned char *key, const unsigned char *nonce){
   
   if (stream_offset<0)
     return WHY("Invalid stream offset");
   
   int64_t nonce_offset = stream_offset & ~(RHIZOME_CRYPT_PAGE_SIZE -1);
-  int offset=0;
+  size_t offset=0;
   
   unsigned char block_nonce[crypto_stream_xsalsa20_NONCEBYTES];
   bcopy(nonce, block_nonce, sizeof(block_nonce));
   add_nonce(block_nonce, nonce_offset);
   
   if (nonce_offset < stream_offset){
-    int padding = stream_offset & (RHIZOME_CRYPT_PAGE_SIZE -1);
-    int size = RHIZOME_CRYPT_PAGE_SIZE - padding;
+    size_t padding = stream_offset & (RHIZOME_CRYPT_PAGE_SIZE -1);
+    size_t size = RHIZOME_CRYPT_PAGE_SIZE - padding;
     if (size>buffer_size)
       size=buffer_size;
     
@@ -619,11 +619,11 @@ int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stre
   }
   
   while(offset < buffer_size){
-    int size = buffer_size - offset;
+    size_t size = buffer_size - offset;
     if (size>RHIZOME_CRYPT_PAGE_SIZE)
       size=RHIZOME_CRYPT_PAGE_SIZE;
     
-    crypto_stream_xsalsa20_xor(buffer+offset, buffer+offset, size, block_nonce, key);
+    crypto_stream_xsalsa20_xor(buffer+offset, buffer+offset, (unsigned long long) size, block_nonce, key);
     
     add_nonce(block_nonce, RHIZOME_CRYPT_PAGE_SIZE);
     offset+=size;

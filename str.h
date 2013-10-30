@@ -66,7 +66,9 @@ size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
 int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
 size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *src, const char **afterp);
 
-#define alloca_tohex(buf,bytes)           tohex((char *)alloca((bytes)*2+1), (bytes) * 2, (buf))
+#define alloca_tohex(buf,bytes)  tohex((char *)alloca((bytes)*2+1), (bytes) * 2, (buf))
+
+#define alloca_strdup(str)  strcpy(alloca(strlen(str) + 1), (str))
 
 __STR_INLINE int hexvalue(char c)
 {
@@ -92,13 +94,15 @@ __STR_INLINE int hexvalue(char c)
 }
 
 int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value);
+
 char *str_toupper_inplace(char *s);
+char *str_tolower_inplace(char *s);
 
 char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes, const char quotes[2]);
 char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2]);
 size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2]);
 size_t toprint_str_len(const char *srcStr, const char quotes[2]);
-size_t strn_fromprint(unsigned char *dst, size_t dstlen, const char *src, char endquote, const char **afterp);
+size_t strn_fromprint(unsigned char *dst, size_t dstsiz, const char *src, size_t srclen, char endquote, const char **afterp);
 
 #define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((const char *)(buf),(len), "``") + 1 : (dstlen)), (dstlen), (const char *)(buf), (len), "``")
 #define alloca_str_toprint_quoted(str, quotes)  toprint_str((char *)alloca(toprint_str_len((str), (quotes)) + 1), -1, (str), (quotes))
@@ -148,7 +152,7 @@ __STR_INLINE ssize_t str_rindex(const char *s, char c)
  * nul-terminated, but are held in a buffer which has an associated length.  To avoid this function
  * running past the end of the buffer, the caller must ensure that the buffer contains a sub-string
  * that is not part of the sub-string being sought, eg, "\r\n\r\n" as detected by
- * http_header_complete().  This guarantees that this function will return nonzero before running
+ * is_http_header_complete().  This guarantees that this function will return nonzero before running
  * past the end of the buffer.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
@@ -199,13 +203,16 @@ char *str_str(char *haystack, const char *needle, int haystack_len);
 /* Parse a string as an integer in ASCII radix notation in the given 'base' (eg, base=10 means
  * decimal).
  *
- * Return 1 if a valid integer was parsed, storing the value in *result (unless result is NULL) and
- * storing a pointer to the immediately succeeding character in *afterp (unless afterp is NULL, in
- * which case returns 1 only if the immediately succeeding character is a nul '\0').  Returns 0
- * otherwise, leaving *result and *afterp unchanged.
+ * Returns 1 if a valid integer is parsed, storing the value in *result (unless result is NULL) and
+ * storing a pointer to the immediately succeeding character in *afterp.  If afterp is NULL then
+ * returns 0 unless the immediately succeeding character is a NUL '\0'.  If no integer is parsed or
+ * if the integer overflows (too many digits), then returns 0, leaving *result unchanged and setting
+ * setting *afterp to point to the character where parsing failed.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
+int str_to_int(const char *str, int base, int *result, const char **afterp);
+int str_to_uint(const char *str, int base, unsigned *result, const char **afterp);
 int str_to_int64(const char *str, int base, int64_t *result, const char **afterp);
 int str_to_uint64(const char *str, int base, uint64_t *result, const char **afterp);
 

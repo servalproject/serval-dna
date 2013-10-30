@@ -233,6 +233,7 @@ ATOM(bool_t, dnaresponses,              0, boolean,, "")
 ATOM(bool_t, dnahelper,                 0, boolean,, "")
 ATOM(bool_t, queues,                    0, boolean,, "")
 ATOM(bool_t, timing,                    0, boolean,, "")
+ATOM(bool_t, httpd,                     0, boolean,, "")
 ATOM(bool_t, io,                        0, boolean,, "")
 ATOM(bool_t, verbose_io,                0, boolean,, "")
 ATOM(bool_t, interactive_io,            0, boolean,, "")
@@ -261,6 +262,7 @@ ATOM(bool_t, slipbytestream,            0, boolean,, "")
 ATOM(bool_t, packetconstruction,        0, boolean,, "")
 ATOM(bool_t, rhizome,                   0, boolean,, "")
 ATOM(bool_t, rhizome_bind,              0, boolean,, "")
+ATOM(bool_t, rhizome_httpd,             0, boolean,, "")
 ATOM(bool_t, rhizome_tx,                0, boolean,, "")
 ATOM(bool_t, rhizome_rx,                0, boolean,, "")
 ATOM(bool_t, rhizome_ads,               0, boolean,, "")
@@ -375,6 +377,15 @@ STRUCT(rhizome_direct)
 SUB_STRUCT(peerlist,        peer,)
 END_STRUCT
 
+STRUCT(user)
+STRING(50,                  password,   "", str,, "Authentication password")
+END_STRUCT
+
+ARRAY(userlist,)
+KEY_STRING(25, str)
+VALUE_SUB_STRUCT(user)
+END_ARRAY(10)
+
 STRUCT(rhizome_api_addfile)
 STRING(64,                  uri_path,               "", absolute_path,, "URI path for HTTP add-file request")
 ATOM(struct in_addr,        allow_host,             hton_in_addr(INADDR_LOOPBACK), in_addr,, "IP address of host allowed to make HTTP add-file request")
@@ -383,8 +394,13 @@ ATOM(sid_t,                 default_author,         SID_ANY, sid,, "Author of ad
 ATOM(rhizome_bk_t,          bundle_secret_key,      RHIZOME_BK_NONE, rhizome_bk,, "Secret key of add-file bundle to try if sender not given")
 END_STRUCT
 
+STRUCT(rhizome_api_restful)
+SUB_STRUCT(userlist,        users,)
+END_STRUCT
+
 STRUCT(rhizome_api)
 SUB_STRUCT(rhizome_api_addfile, addfile,)
+SUB_STRUCT(rhizome_api_restful, restful,)
 END_STRUCT
 
 STRUCT(rhizome_http)
