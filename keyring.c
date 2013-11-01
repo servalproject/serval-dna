@@ -223,7 +223,8 @@ void keyring_free(keyring_file *k)
 
   /* Wipe everything, just to be sure. */
   bzero(k,sizeof(keyring_file));
-
+  free(k);
+  
   return;
 }
 
@@ -272,6 +273,7 @@ static void keyring_free_context(keyring_context *c)
   }
   if (c->KeyRingSalt) {
     bzero(c->KeyRingSalt,c->KeyRingSaltLen);
+    free(c->KeyRingSalt);
     c->KeyRingSalt = NULL;
     c->KeyRingSaltLen = 0;
   }
