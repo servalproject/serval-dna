@@ -170,7 +170,9 @@ runTests() {
    _tfw_verbose=false
    _tfw_stop_on_error=false
    _tfw_stop_on_failure=false
-   _tfw_default_timeout=60
+   _tfw_default_execute_timeout=60
+   _tfw_default_wait_until_timeout=60
+   _tfw_timeout_override=
    local allargs="$*"
    local -a filters=()
    local oo
@@ -187,6 +189,7 @@ runTests() {
       --jobs=*) _tfw_fatal "invalid option: $1";;
       -E|--stop-on-error) _tfw_stop_on_error=true;;
       -F|--stop-on-failure) _tfw_stop_on_failure=true;;
+      --timeout=*) _tfw_timeout_override="${1#*=}";;
       --) shift; break;;
       --*) _tfw_fatal "unsupported option: $1";;
       *) _tfw_fatal "spurious argument: $1";;
@@ -647,7 +650,8 @@ executeOk() {
 }
 
 # Wait until a given condition is met:
-#  - can specify the timeout with --timeout=SECONDS
+#  - can specify the timeout with --timeout=SECONDS (overridden by command-line
+#    option)
 #  - can specify the sleep interval with --sleep=SECONDS
 #  - the condition is a command that is executed repeatedly until returns zero
 #    status
@@ -656,22 +660,27 @@ wait_until() {
    $_tfw_assert_noise && tfw_log "# wait_until" $(shellarg "$@")
    local start=$SECONDS
    _tfw_getopts wait_until "$@"
+   local seconds=${_tfw_timeout_override:-${_tfw_opt_timeout:-${TFW_WAIT_UNTIL_TIMEOUT:-${_tfw_default_wait_until_timeout:-1}}}}
    shift $_tfw_getopts_shift
    local sense=
    while [ "$1" = '!' ]; do
       sense="$sense !"
       shift
    done
-   sleep ${_tfw_opt_timeout:-$_tfw_default_timeout} &
+   sleep $seconds 0 &
    local timeout_pid=$!
    while true; do
       "$@"
       [ $sense $? -eq 0 ] && break
-      kill -0 $timeout_pid 2>/dev/null || fail "timeout"
+      if ! kill -0 $timeout_pid 2>/dev/null; then
+         local end=$SECONDS
+         fail "timeout after $((end - start)) seconds"
+      fi
       sleep ${_tfw_opt_sleep:-1}
    done
    local end=$SECONDS
    $_tfw_assert_noise && tfw_log "# waited for" $((end - start)) "seconds"
+   kill $timeout_pid 2>/dev/null
    return 0
 }
 
@@ -1138,8 +1147,46 @@ _tfw_execute() {
       ulimit -S -c unlimited
       rm -f core
    fi
-   { time -p "$_tfw_executable" "$@" >"$_tfw_process_tmp/stdout" 2>"$_tfw_process_tmp/stderr" ; } 2>"$_tfw_process_tmp/times"
+   {
+      time -p "$_tfw_executable" "$@" >"$_tfw_process_tmp/stdout" 2>"$_tfw_process_tmp/stderr"
+   } 2>"$_tfw_process_tmp/times" &
+   local subshell_pid=$!
+   local timer_pid=
+   local timeout=${_tfw_timeout_override:-${_tfw_opt_timeout:-${TFW_EXECUTE_TIMEOUT:-$_tfw_default_execute_timeout}}}
+   if [ -n "$timeout" ]; then
+      if type pgrep >/dev/null 2>/dev/null; then
+         (
+            # For some reason, set -e does not work here.  So all the following
+            # commands are postfixed with || exit $?
+            local executable_pid=$(pgrep -P $subshell_pid) || exit $?
+            [ -n "$executable_pid" ] || exit $?
+            sleep $timeout 0 0 0 || exit $?
+            kill -0 $executable_pid || exit $?
+            tfw_log "# timeout after $timeout seconds, sending SIGABRT to pid $executable_pid ($executed)" || exit $?
+            kill -ABRT $executable_pid || exit $?
+            sleep 2 || exit $?
+            kill -0 $executable_pid || exit $?
+            tfw_log "# sending second SIGABRT to pid $executable_pid ($executed)" || exit $?
+            kill -ABRT $executable_pid || exit $?
+            sleep 2 || exit $?
+            kill -0 $executable_pid || exit $?
+            tfw_log "# sending SIGKILL to pid $executable_pid ($executed)" || exit $?
+            kill -KILL $executable_pid || exit $?
+            exit 0
+         ) 2>/dev/null &
+         timer_pid=$!
+      else
+         tfw_log "# execution timeout ($timeout seconds) not supported because pgrep(1) not available"
+      fi
+   fi
+   wait $subshell_pid
    _tfw_exitStatus=$?
+   if [ -n "$timer_pid" ]; then
+      while kill -0 $timer_pid 2>/dev/null; do
+         pkill -P $timer_pid 2>/dev/null
+      done
+      wait $timer_pid
+   fi
    # Deal with core dump.
    if $_tfw_opt_core_backtrace && [ -s core ]; then
       tfw_core_backtrace "$_tfw_executable" core
@@ -1154,12 +1201,18 @@ _tfw_execute() {
       $_tfw_assert_noise && tfw_log "# exit status of ($executed) = $_tfw_exitStatus"
    fi
    # Parse execution time report.
-   if ! _tfw_parse_times_to_milliseconds real realtime_ms ||
-      ! _tfw_parse_times_to_milliseconds user usertime_ms ||
-      ! _tfw_parse_times_to_milliseconds sys systime_ms
-   then
-      tfw_log '# malformed output from time:'
-      tfw_cat -v "$_tfw_process_tmp/times"
+   if true || [ -s "$_tfw_process_tmp/times" ]; then
+      if ! _tfw_parse_times_to_milliseconds real realtime_ms ||
+         ! _tfw_parse_times_to_milliseconds user usertime_ms ||
+         ! _tfw_parse_times_to_milliseconds sys systime_ms
+      then
+         tfw_log '# malformed output from time:'
+         tfw_cat -v "$_tfw_process_tmp/times"
+      fi
+   else
+      realtime_ms=
+      usertime_ms=
+      systime_ms=
    fi
    return 0
 }
@@ -1250,8 +1303,8 @@ _tfw_getopts() {
       execute*:--executable=) _tfw_error "missing value: $1";;
       execute*:--executable=*) _tfw_executable="${1#*=}";;
       execute*:--core-backtrace) _tfw_opt_core_backtrace=true;;
-      wait_until:--timeout=@(+([0-9])?(.+([0-9]))|*([0-9]).+([0-9]))) _tfw_opt_timeout="${1#*=}";;
-      wait_until:--timeout=*) _tfw_error "invalid value: $1";;
+      @(execute*|wait_until):--timeout=@(+([0-9])?(.+([0-9]))|*([0-9]).+([0-9]))) _tfw_opt_timeout="${1#*=}";;
+      @(execute*|wait_until):--timeout=*) _tfw_error "invalid value: $1";;
       wait_until:--sleep=@(+([0-9])?(.+([0-9]))|*([0-9]).+([0-9]))) _tfw_opt_sleep="${1#*=}";;
       wait_until:--sleep=*) _tfw_error "invalid value: $1";;
       *grep:--fixed-strings) _tfw_opt_grepopts+=(-F);;
