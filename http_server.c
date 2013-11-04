@@ -75,10 +75,10 @@ static struct profile_total http_server_stats = {
 
 #define DEBUG_DUMP_PARSER(r) do { \
       if (config.debug.httpd) \
-	DEBUGF("parsed %"PRIhttp_size_t" %s cursor %"PRIhttp_size_t" %s end %"PRIhttp_size_t" remain %"PRIhttp_size_t, \
-	    r->parsed - r->received, alloca_toprint(-1, r->parsed, r->cursor - r->parsed), \
-	    r->cursor - r->received, alloca_toprint(50, r->cursor, r->end - r->cursor), \
-	    r->end - r->received, \
+	DEBUGF("parsed %d %s cursor %d %s end %d remain %"PRIhttp_size_t, \
+	    (int)(r->parsed - r->received), alloca_toprint(-1, r->parsed, r->cursor - r->parsed), \
+	    (int)(r->cursor - r->received), alloca_toprint(50, r->cursor, r->end - r->cursor), \
+	    (int)(r->end - r->received), \
 	    r->request_content_remaining \
 	  ); \
     } while (0)
