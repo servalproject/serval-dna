@@ -739,7 +739,7 @@ fork() {
    $_tfw_assert_noise && tfw_log "# fork[$forkid] START" $(shellarg "$@")
    ( "$@" ) 6>"$_tfw_process_tmp/log.stdout" 1>&6 2>"$_tfw_process_tmp/log.stderr" 7>"$_tfw_process_tmp/log.xtrace" &
    _tfw_forked_pids[$forkid]=$!
-   $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$! STARTED"  
+   $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$! STARTED"
 }
 
 forkKillAll() {
@@ -748,7 +748,7 @@ forkKillAll() {
    for ((forkid=0; forkid < ${#_tfw_forked_pids[*]}; ++forkid)); do
       local pid=${_tfw_forked_pids[$forkid]}
       [ -z "$pid" ] && continue
-      $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$pid KILL"  
+      $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$pid KILL"
       kill -TERM $pid 2>/dev/null
    done
 }
@@ -869,7 +869,7 @@ tfw_cmp_version() {
 # context that stdout (fd 1) is redirected.
 tfw_cat() {
    local header=
-   local show_nonprinting=
+   local -a show=(cat)
    for file; do
       case $file in
       --header=*)
@@ -877,15 +877,19 @@ tfw_cat() {
          continue
          ;;
       -v|--show-nonprinting)
-         show_nonprinting=-v
+         show=(cat -v)
+         continue
+         ;;
+      -h|--hexdump)
+         show=(hd '</dev/null')
          continue
          ;;
       --stdout)
-         file="$_tfw_process_tmp/stdout"
+         file="${TFWSTDOUT?}"
          header="${header:-stdout of ($executed)}"
          ;;
       --stderr)
-         file="$_tfw_process_tmp/stderr"
+         file="${TFWSTDERR?}"
          header="${header:-stderr of ($executed)}"
          ;;
       *)
@@ -894,17 +898,19 @@ tfw_cat() {
       esac
       local missing_nl=
       tfw_log "#----- $header -----"
-      cat $show_nonprinting "$file" >&$_tfw_log_fd
-      if [ "$(tail -1c "$file")" != "$newline" ]; then
+      eval "${show[@]}" "$file" >&$_tfw_log_fd
+      if [ "${show[0]}" = cat -a "$(tail -1c "$file" | wc -l)" -eq 0 ]; then
          echo >&$_tfw_log_fd
          missing_nl=" (no newline at end)"
       fi
       tfw_log "#-----$missing_nl"
       header=
-      show_nonprinting=
+      show=(cat)
    done
 }
 
+# Format the standard input into multi columns within an output width set by the
+# COLUMNS env var.
 tfw_multicolumn() {
    $AWK '
       function pad(s, n) {
@@ -965,11 +971,11 @@ assertRealTime() {
 }
 
 replayStdout() {
-   cat $_tfw_tmp/stdout
+   cat ${TFWSTDOUT?}
 }
 
 replayStderr() {
-   cat $_tfw_tmp/stderr
+   cat ${TFWSTDERR?}
 }
 
 assertStdoutIs() {
@@ -1147,8 +1153,10 @@ _tfw_execute() {
       ulimit -S -c unlimited
       rm -f core
    fi
+   export TFWSTDOUT="$_tfw_process_tmp/stdout"
+   export TFWSTDERR="$_tfw_process_tmp/stderr"
    {
-      time -p "$_tfw_executable" "$@" >"$_tfw_process_tmp/stdout" 2>"$_tfw_process_tmp/stderr"
+      time -p "$_tfw_executable" "$@" >"$TFWSTDOUT" 2>"$TFWSTDERR"
    } 2>"$_tfw_process_tmp/times" &
    local subshell_pid=$!
    local timer_pid=
@@ -1194,7 +1202,6 @@ _tfw_execute() {
    # Deal with exit status.
    if [ -n "$_tfw_opt_exit_status" ]; then
       _tfw_message="exit status ($_tfw_exitStatus) of ($executed) is $_tfw_opt_exit_status"
-      _tfw_dump_stderr_on_fail=true
       _tfw_assert [ "$_tfw_exitStatus" -eq "$_tfw_opt_exit_status" ] || _tfw_failexit || return $?
       $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
    else
