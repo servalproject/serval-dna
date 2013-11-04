@@ -42,6 +42,8 @@ setup_rhizome() {
 set_rhizome_config() {
    executeOk_servald config \
       set debug.rhizome on \
+      set debug.rhizome_manifest on \
+      set debug.rejecteddata on \
       set debug.verbose on \
       set log.console.level debug
 }
@@ -215,7 +217,7 @@ setup_ExtractManifestAfterAdd() {
 test_ExtractManifestAfterAdd() {
    executeOk_servald rhizome export manifest $manifestid file1x.manifest
    tfw_cat --stdout --stderr
-   assertStdoutLineCount '==' 8
+   assertStdoutLineCount '==' 9
    local size=$(( $(cat file1 | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^service:file$"
    assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
@@ -224,6 +226,7 @@ test_ExtractManifestAfterAdd() {
    assertStdoutGrep --matches=1 "^filehash:$filehash\$"
    assertStdoutGrep --matches=1 "^filesize:$size\$"
    assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --matches=1 "^\.secret:$rexp_bundlesecret\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
    assert [ -e file1x.manifest ]
    assert diff file1.manifest file1x.manifest
@@ -244,7 +247,7 @@ setup_ExtractManifestFileAfterAdd() {
 test_ExtractManifestFileAfterAdd() {
    executeOk_servald rhizome export bundle $manifestid file1x.manifest file1x
    tfw_cat --stdout --stderr
-   assertStdoutLineCount '==' 8
+   assertStdoutLineCount '==' 9
    local size=$(( $(cat file1 | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^service:file$"
    assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
@@ -253,6 +256,7 @@ test_ExtractManifestFileAfterAdd() {
    assertStdoutGrep --matches=1 "^filehash:$filehash\$"
    assertStdoutGrep --matches=1 "^filesize:$size\$"
    assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --matches=1 "^\.secret:$rexp_bundlesecret\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
    assert [ -e file1x.manifest ]
    assert diff file1.manifest file1x.manifest
@@ -282,7 +286,7 @@ setup_ExtractManifestFileFromExtBlob() {
 test_ExtractManifestFileFromExtBlob() {
    executeOk_servald rhizome export bundle $manifestid1 file1x.manifest file1x
    tfw_cat --stdout --stderr
-   assertStdoutLineCount '==' 8
+   assertStdoutLineCount '==' 9
    local size=$(( $(cat file1 | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^service:file$"
    assertStdoutGrep --matches=1 "^manifestid:$manifestid1\$"
@@ -291,6 +295,7 @@ test_ExtractManifestFileFromExtBlob() {
    assertStdoutGrep --matches=1 "^filehash:$filehash1\$"
    assertStdoutGrep --matches=1 "^filesize:$size\$"
    assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --matches=1 "^\.secret:$rexp_bundlesecret\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
    assert [ -e file1x.manifest ]
    assert diff file1.manifest file1x.manifest
@@ -298,7 +303,7 @@ test_ExtractManifestFileFromExtBlob() {
    assert diff file1 file1x
    executeOk_servald rhizome export bundle $manifestid2 file2x.manifest file2x
    tfw_cat --stdout --stderr
-   assertStdoutLineCount '==' 8
+   assertStdoutLineCount '==' 9
    local size=$(( $(cat file2 | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^service:file$"
    assertStdoutGrep --matches=1 "^manifestid:$manifestid2\$"
@@ -307,6 +312,7 @@ test_ExtractManifestFileFromExtBlob() {
    assertStdoutGrep --matches=1 "^filehash:$filehash2\$"
    assertStdoutGrep --matches=1 "^filesize:$size\$"
    assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --matches=1 "^\.secret:$rexp_bundlesecret\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
    assert [ -e file2x.manifest ]
    assert diff file2.manifest file2x.manifest
@@ -344,17 +350,18 @@ test_ExtractManifestToStdout() {
    executeOk_servald rhizome export manifest $manifestid -
    assertStdoutLineCount '>=' 9
    local size=$(( $(cat file1 | wc -c) + 0 ))
-   assertStdoutGrep --line=..8 --matches=1 "^service:file$"
-   assertStdoutGrep --line=..8 --matches=1 "^manifestid:$manifestid\$"
-   assertStdoutGrep --line=..8 --matches=1 "^version:$version\$"
-   assertStdoutGrep --line=..8 --matches=1 "^inserttime:$rexp_date\$"
-   assertStdoutGrep --line=..8 --matches=1 "^filehash:$filehash\$"
-   assertStdoutGrep --line=..8 --matches=1 "^filesize:$size\$"
-   assertStdoutGrep --line=..8 --matches=1 "^\.author:$SIDB1\$"
-   assertStdoutGrep --line=..8 --matches=1 "^\.readonly:0\$"
-   assertStdoutGrep --line=9 --matches=1 "^manifest:"
-   replayStdout | $SED -n '9s/^manifest://p' >file1x.manifest
-   replayStdout | $SED -n '10,$p' >>file1x.manifest
+   assertStdoutGrep --line=..9 --matches=1 "^service:file$"
+   assertStdoutGrep --line=..9 --matches=1 "^manifestid:$manifestid\$"
+   assertStdoutGrep --line=..9 --matches=1 "^version:$version\$"
+   assertStdoutGrep --line=..9 --matches=1 "^inserttime:$rexp_date\$"
+   assertStdoutGrep --line=..9 --matches=1 "^filehash:$filehash\$"
+   assertStdoutGrep --line=..9 --matches=1 "^filesize:$size\$"
+   assertStdoutGrep --line=..9 --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --line=..9 --matches=1 "^\.secret:$rexp_bundlesecret\$"
+   assertStdoutGrep --line=..9 --matches=1 "^\.readonly:0\$"
+   assertStdoutGrep --line=10 --matches=1 "^manifest:"
+   replayStdout | $SED -n '10s/^manifest://p' >file1x.manifest
+   replayStdout | $SED -n '11,$p' >>file1x.manifest
    cat file1.manifest >file1n.manifest
    echo >>file1n.manifest
    tfw_cat file1n.manifest file1x.manifest
@@ -434,7 +441,7 @@ test_ExtractFileAfterAdd() {
    tfw_cat --stderr
    assert diff file1 file1x
    local size=$(( $(cat file1 | wc -c) + 0 ))
-   assertStdoutLineCount '==' 8
+   assertStdoutLineCount '==' 9
    assertStdoutGrep --matches=1 "^service:file$"
    assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
    assertStdoutGrep --matches=1 "^version:$version\$"
@@ -442,6 +449,7 @@ test_ExtractFileAfterAdd() {
    assertStdoutGrep --matches=1 "^filehash:$filehash\$"
    assertStdoutGrep --matches=1 "^filesize:$size\$"
    assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --matches=1 "^\.secret:$rexp_bundlesecret\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
 }
 
@@ -682,10 +690,11 @@ setup_AddUnsupportedService() {
    setup_servald
    setup_rhizome
    echo "Message1" >file1
-   echo -e 'service=Fubar' >file1.manifest
+   echo 'service=Fubar' >file1.manifest
 }
 test_AddUnsupportedService() {
    execute $servald rhizome add file $SIDB1 file1 file1.manifest
+   tfw_cat --stdout --stderr
    assertExitStatus '!=' 0
 }
 
@@ -732,6 +741,7 @@ test_RecipientIsEncrypted() {
    assert diff file1 file1x
    extract_manifest_filehash filehash file1.manifest
    executeOk_servald rhizome export file $filehash file1y
+   tfw_cat file1 -v file1y
    assert ! diff file1 file1y
 }
 
@@ -1020,7 +1030,7 @@ test_ImportOwnBundle() {
    tfw_cat --stderr
    assert cmp fileB.manifest fileBx.manifest
    assert cmp fileB fileBx
-   assertStdoutLineCount '==' 8
+   assertStdoutLineCount '==' 9
    local size=$(( $(cat fileB | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^service:file$"
    assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
@@ -1029,6 +1039,7 @@ test_ImportOwnBundle() {
    assertStdoutGrep --matches=1 "^filehash:$filehash\$"
    assertStdoutGrep --matches=1 "^filesize:$size\$"
    assertStdoutGrep --matches=1 "^\.author:$SIDB2\$"
+   assertStdoutGrep --matches=1 "^\.secret:$rexp_bundlesecret\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
    # Now bundle author should be known, so appears to be from here
    executeOk_servald rhizome list

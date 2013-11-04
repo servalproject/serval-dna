@@ -21,12 +21,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __SERVALDNA__RHIZOME_H
 
 #include <sqlite3.h>
+#include <limits.h>
 #include "sha2.h"
 #include "str.h"
 #include "strbuf.h"
 #include "http_server.h"
 #include "nacl.h"
-#include <sys/stat.h>
 
 #ifndef __RHIZOME_INLINE
 # if __GNUC__ && !__GNUC_STDC_INLINE__
@@ -104,6 +104,8 @@ __RHIZOME_INLINE int rhizome_is_bk_none(const rhizome_bk_t *bk) {
 }
 
 #define alloca_tohex_rhizome_bk_t(bk) alloca_tohex((bk).binary, sizeof (*(rhizome_bk_t*)0).binary)
+int cmp_rhizome_bk_t(const rhizome_bk_t *a, const rhizome_bk_t *b);
+int str_to_rhizome_bk_t(rhizome_bk_t *bk, const char *hex);
 
 
 extern time_ms_t rhizome_voice_timeout;
@@ -117,9 +119,6 @@ extern time_ms_t rhizome_voice_timeout;
 #define RHIZOME_PRIORITY_NOTINTERESTED 0
 
 #define RHIZOME_IDLE_TIMEOUT 20000
-
-#define EXISTING_BUNDLE_ID 1
-#define NEW_BUNDLE_ID 2
 
 typedef struct rhizome_signature {
   unsigned char signature[crypto_sign_edwards25519sha512batch_BYTES
@@ -138,84 +137,210 @@ typedef struct rhizome_signature {
 
 #define MAX_MANIFEST_VARS 256
 #define MAX_MANIFEST_BYTES 8192
-typedef struct rhizome_manifest {
-  int manifest_record_number;
-  int manifest_bytes;
-  int manifest_all_bytes;
-  unsigned char manifestdata[MAX_MANIFEST_BYTES];
-  unsigned char manifesthash[crypto_hash_sha512_BYTES];
 
-  /* CryptoSign key pair for this manifest.
-     The filename as distributed on Rhizome will be the public key
-     of this pair, thus ensuring that noone can tamper with a bundle
-     except the creator. */
+#define RHIZOME_SIZE_UNSET    UINT64_MAX
+
+typedef struct rhizome_manifest
+{
+  int manifest_record_number;
+
+  /* CryptoSign key pair for this manifest.  The public key is the Bundle ID
+   * (aka Manifest ID).
+   */
   rhizome_bid_t cryptoSignPublic;
   unsigned char cryptoSignSecret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
-  /* Whether we have the secret for this manifest on hand */
-  int haveSecret;
 
-  int var_count;
-  char *vars[MAX_MANIFEST_VARS];
-  char *values[MAX_MANIFEST_VARS];
+  /* Whether cryptoSignSecret is correct (ie, bundle secret is known)
+   */
+  enum { SECRET_UNKNOWN = 0, EXISTING_BUNDLE_ID, NEW_BUNDLE_ID } haveSecret;
 
-  int sig_count;
-  /* Parties who have signed this manifest (raw byte format) */
+  /* Version of the manifest.  Typically the number of milliseconds since 1970.
+   * A value of zero (0) means it has not been set yet.
+   * TODO: change this to uint64_t.
+   */
+  int64_t version;
+
+  /* Payload is described by the offset of its tail (number of missing bytes
+   * before the first byte in the payload), its size (number of bytes) and the
+   * hash of its content.  Bundle size = tail + filesize.
+   */
+  uint64_t tail;
+  uint64_t filesize;
+  rhizome_filehash_t filehash;
+
+  /* All the manifest fields in original order (the order affects the manifest
+   * hash which was used to sign the manifest, so the signature can only be
+   * checked if order is preserved).
+   *
+   * TODO: reduce to only unknown fields.
+   *
+   * TODO: store all vars and values as NUL terminated strings within
+   * manifestdata[], not malloc()/free() heap, to reduce memory fragmentation
+   * and allow manifest struct copying without string lifetime issues.
+   */
+  unsigned short var_count;
+  const char *vars[MAX_MANIFEST_VARS];
+  const char *values[MAX_MANIFEST_VARS];
+
+  /* Parties who have signed this manifest (binary format, malloc(3)).
+   * Recognised signature types:
+   *    0x17 = crypto_sign_edwards25519sha512batch()
+   */
+  unsigned short sig_count;
   unsigned char *signatories[MAX_MANIFEST_VARS];
-  /*
-    0x17 = crypto_sign_edwards25519sha512batch()
-  */
-  unsigned char signatureTypes[MAX_MANIFEST_VARS];
+  uint8_t signatureTypes[MAX_MANIFEST_VARS];
 
-  // errors only involve the correctness of fields that are mandatory for 
-  // proper operation of the transport and storage layer
-  int errors;
-  // a warning indicates that the manifest cannot be perfectly understood by this version of rhizome
-  // during add, the manifest should not be finalised and imported
-  // during extract an error should be displayed.
-  int warnings;
-  time_ms_t inserttime;
-  
-  /* Set non-zero after variables have been packed and
-     signature blocks appended.
-     All fields below may not be valid until the manifest has been finalised */
-  int finalised;
+  /* Imperfections.
+   *  - Errors involve the correctness of fields that are mandatory for proper
+   *    operation of the transport and storage layer.  A manifest with errors > 0
+   *    must not be stored, transmitted or supplied via any API.
+   *  - Warnings indicate a manifest that cannot be fully understood by this
+   *    version of Rhizome (probably from a future or a very old past version
+   *    of Rhizome).  During add or import (local injection), the manifest
+   *    should not be imported.  During extract or export (local) a warning or
+   *    error message should be logged.
+   */
+  unsigned short errors;
+  unsigned short warnings;
+
+  /* Set non-zero after variables have been packed and signature blocks
+   * appended.  All fields below may not be valid until the manifest has been
+   * finalised.
+   */
+  bool_t finalised;
+
+  /* Whether the manifest contains a signature that corresponds to the manifest
+   * id (ie public key).  Caches the result of 
+   */
+  bool_t selfSigned;
+
+  /* If set, unlink(2) the associated file when freeing the manifest.
+   */
+  bool_t dataFileUnlinkOnFree;
+
+  /* Set if the tail field is valid, ie, the bundle is a journal.
+   */
+  bool_t is_journal;
+
+  /* Set if the date field is valid, ie, the manifest contains a valid "date"
+   * field.
+   */
+  bool_t has_date;
+
+  /* Set if the bundle_key field is valid, ie, the manifest contains a valid
+   * "BK" field.
+   */
+  bool_t has_bundle_key;
+
+  /* Set if the sender and recipient fields are valid, ie, the manifest
+   * contains a valid "sender"/"recipient" field.
+   */
+  bool_t has_sender;
+  bool_t has_recipient;
+
+  /* Set if the 'author' element is valid, ie, a SID has been assigned.
+   */
+  bool_t has_author;
 
   /* time-to-live in hops of this manifest. */
   int ttl;
 
-  /* When finalised, we keep the filehash and maximum priority due to any
-     group membership handy */
-  int64_t fileLength;
-  int64_t journalTail;
-  rhizome_filehash_t filehash;
-
   int fileHighestPriority;
+
   /* Absolute path of the file associated with the manifest */
-  char *dataFileName;
-  /* If set, unlink(2) the associated file when freeing the manifest */
-  int dataFileUnlinkOnFree;
-  
+  const char *dataFileName;
+
   /* Whether the paylaod is encrypted or not */
-  int payloadEncryption;
+  enum rhizome_manifest_crypt {
+        PAYLOAD_CRYPT_UNKNOWN = 0,
+        PAYLOAD_CLEAR,
+        PAYLOAD_ENCRYPTED
+    } payloadEncryption;
   unsigned char payloadKey[RHIZOME_CRYPT_KEY_BYTES];
   unsigned char payloadNonce[crypto_stream_xsalsa20_NONCEBYTES];
 
-  /* Whether the manifest contains a signature that corresponds to the 
-     manifest id (ie public key) */
-  int selfSigned;
+  /* From the "date" field, if present.  The number of milliseconds since 1970
+   * when the bundle was last modified.
+   */
+  time_ms_t date;
 
-  /* Version of the manifest.  Typically the number of milliseconds since 1970. */
-  int64_t version;
-  
-  int group_count;
-  char *groups[MAX_MANIFEST_VARS];
+  /* From the "service" field, which should always be present.
+   */
+  const char *service;
 
-  /* Author of the manifest.  A reference to a local keyring entry.  Manifests
-   * not authored locally will have the ANY author (all zeros).
+  /* From the optional "name" field.  NULL if there is no "name" field in the
+   * manifest.
+   */
+  const char *name;
+
+  /* Bundle Key "BK" field from the manifest.
+   */
+  rhizome_bk_t bundle_key;
+
+  /* Sender and recipient fields, if present in the manifest.
+   */
+  sid_t sender;
+  sid_t recipient;
+
+  /* Local data, not encapsulated in the bundle.  The system time of the most
+   * recent INSERT or UPDATE of the manifest into the store.
+   */
+  time_ms_t inserttime;
+
+  /* Local data, not encapsulated in the bundle.  The author of the manifest.
+   * A reference to a local keyring entry.  Manifests not authored locally will
+   * have an ANY author (all zeros).
    */
   sid_t author;
 
+  /* Unused.  SHOULD BE DELETED.
+   */
+  unsigned group_count;
+  char *groups[MAX_MANIFEST_VARS];
+
+  unsigned manifest_bytes;
+  unsigned manifest_all_bytes;
+  unsigned char manifestdata[MAX_MANIFEST_BYTES];
+  unsigned char manifesthash[crypto_hash_sha512_BYTES];
+
 } rhizome_manifest;
+
+/* These setter functions (methods) are needed because the relevant attributes
+ * are stored in two places: in the vars[] array and in a dedicated struct
+ * element.
+ *
+ * TODO: refactor to remove the redundancy, possibly removing these setter
+ * functions as well.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+#define rhizome_manifest_set_id(m,v)  _rhizome_manifest_set_id(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_version(m,v)  _rhizome_manifest_set_version(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_filesize(m,v)  _rhizome_manifest_set_filesize(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_filehash(m,v)  _rhizome_manifest_set_filehash(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_tail(m,v)  _rhizome_manifest_set_tail(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_bundle_key(m,v)  _rhizome_manifest_set_bundle_key(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_service(m,v)  _rhizome_manifest_set_service(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_name(m,v)  _rhizome_manifest_set_name(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_date(m,v)  _rhizome_manifest_set_date(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_sender(m,v)  _rhizome_manifest_set_sender(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_recipient(m,v)  _rhizome_manifest_set_recipient(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_crypt(m,v)  _rhizome_manifest_set_crypt(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_author(m,v)  _rhizome_manifest_set_author(__WHENCE__,(m),(v))
+
+void _rhizome_manifest_set_id(struct __sourceloc, rhizome_manifest *, const rhizome_bid_t *);
+void _rhizome_manifest_set_version(struct __sourceloc, rhizome_manifest *, int64_t); // TODO change to uint64_t
+void _rhizome_manifest_set_filesize(struct __sourceloc, rhizome_manifest *, uint64_t);
+void _rhizome_manifest_set_filehash(struct __sourceloc, rhizome_manifest *, const rhizome_filehash_t *);
+void _rhizome_manifest_set_tail(struct __sourceloc, rhizome_manifest *, uint64_t);
+void _rhizome_manifest_set_bundle_key(struct __sourceloc, rhizome_manifest *, const rhizome_bk_t *);
+void _rhizome_manifest_set_service(struct __sourceloc, rhizome_manifest *, const char *);
+void _rhizome_manifest_set_name(struct __sourceloc, rhizome_manifest *, const char *);
+void _rhizome_manifest_set_date(struct __sourceloc, rhizome_manifest *, time_ms_t);
+void _rhizome_manifest_set_sender(struct __sourceloc, rhizome_manifest *, const sid_t *);
+void _rhizome_manifest_set_recipient(struct __sourceloc, rhizome_manifest *, const sid_t *);
+void _rhizome_manifest_set_crypt(struct __sourceloc, rhizome_manifest *, enum rhizome_manifest_crypt);
+void _rhizome_manifest_set_author(struct __sourceloc, rhizome_manifest *, const sid_t *);
 
 /* Supported service identifiers.  These go in the 'service' field of every
  * manifest, and indicate which application must be used to process the bundle
@@ -261,6 +386,7 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report);
 
 int rhizome_manifest_createid(rhizome_manifest *m);
 int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed);
+
 int rhizome_strn_is_manifest_id(const char *text);
 int rhizome_str_is_manifest_id(const char *text);
 int rhizome_strn_is_bundle_key(const char *text);
@@ -269,6 +395,7 @@ int rhizome_strn_is_bundle_crypt_key(const char *text);
 int rhizome_str_is_bundle_crypt_key(const char *text);
 int rhizome_strn_is_file_hash(const char *text);
 int rhizome_str_is_file_hash(const char *text);
+int rhizome_str_is_manifest_service(const char *text);
 
 int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_call);
 
@@ -291,16 +418,12 @@ int rhizome_drop_stored_file(const rhizome_filehash_t *hashp, int maximum_priori
 int rhizome_manifest_priority(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
 int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, size_t bufferPAndSize);
 int rhizome_hash_file(rhizome_manifest *m, const char *path, rhizome_filehash_t *hash_out, uint64_t *size_out);
-char *rhizome_manifest_get(const rhizome_manifest *m, const char *var, char *out, int maxlen);
-int64_t  rhizome_manifest_get_ll(rhizome_manifest *m, const char *var);
-int rhizome_manifest_set_ll(rhizome_manifest *m,char *var, int64_t value);
-int rhizome_manifest_set(rhizome_manifest *m, const char *var, const char *value);
-int rhizome_manifest_del(rhizome_manifest *m, const char *var);
-int64_t rhizome_file_size(char *filename);
+
 void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m);
 #define rhizome_manifest_free(m) _rhizome_manifest_free(__WHENCE__,m)
 rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence);
 #define rhizome_new_manifest() _rhizome_new_manifest(__WHENCE__)
+
 int rhizome_manifest_pack_variables(rhizome_manifest *m);
 int rhizome_store_bundle(rhizome_manifest *m);
 int rhizome_remove_file_datainvalid(sqlite_retry_state *retry, const rhizome_filehash_t *hashp);
@@ -402,7 +525,7 @@ int _sqlite_vexec_strbuf_retry(struct __sourceloc, sqlite_retry_state *retry, st
 #define sqlite_exec_strbuf_retry(rs,sb,sql,arg,...)     _sqlite_exec_strbuf_retry(__WHENCE__, (rs), (sb), (sql), arg, ##__VA_ARGS__)
 
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
-int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
+int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs);
 int rhizome_update_file_priority(const char *fileid);
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
@@ -448,7 +571,7 @@ int rhizome_secret2bk(
   const unsigned char secret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]
 );
 unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m);
-int rhizome_extract_privatekey(rhizome_manifest *m, rhizome_bk_t *bsk);
+int rhizome_extract_privatekey(rhizome_manifest *m, const rhizome_bk_t *bsk);
 int rhizome_extract_privatekey_required(rhizome_manifest *m, rhizome_bk_t *bsk);
 int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
 			       const unsigned char *pk,rhizome_signature *out);
@@ -471,7 +594,7 @@ rhizome_manifest * rhizome_fetch_search(const unsigned char *id, int prefix_leng
 struct rhizome_write_buffer
 {
   struct rhizome_write_buffer *_next;
-  int64_t offset;
+  uint64_t offset;
   size_t buffer_size;
   size_t data_size;
   unsigned char data[0];
@@ -483,10 +606,10 @@ struct rhizome_write
   uint64_t temp_id;
   char id_known;
   
-  int64_t tail;
-  int64_t file_offset;
-  int64_t written_offset;
-  int64_t file_length;
+  uint64_t tail;
+  uint64_t file_offset;
+  uint64_t written_offset;
+  uint64_t file_length;
   struct rhizome_write_buffer *buffer_list;
   size_t buffer_size;
   
@@ -521,9 +644,9 @@ struct rhizome_read
   int64_t blob_rowid;
   int blob_fd;
   
-  int64_t tail;
-  int64_t offset;
-  int64_t length;
+  uint64_t tail;
+  uint64_t offset;
+  uint64_t length;
 };
 
 /* Rhizome-specific HTTP request handling.
@@ -565,7 +688,7 @@ typedef struct rhizome_http_request
 } rhizome_http_request;
 
 int rhizome_received_content(const unsigned char *bidprefix,uint64_t version, 
-			     uint64_t offset,int count,unsigned char *bytes,
+			     uint64_t offset, size_t count,unsigned char *bytes,
 			     int type);
 int64_t rhizome_database_create_blob_for(const char *filehashhex_or_tempid,
 					 int64_t fileLength,int priority);
@@ -702,15 +825,15 @@ enum rhizome_start_fetch_result {
 enum rhizome_start_fetch_result rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip, const sid_t *sidp, const unsigned char *prefix, size_t prefix_length);
 int rhizome_any_fetch_active();
 int rhizome_any_fetch_queued();
-int rhizome_fetch_queue_bytes();
+uint64_t rhizome_fetch_queue_bytes();
 int rhizome_fetch_status_html(struct strbuf *b);
 int rhizome_fetch_has_queue_space(unsigned char log2_size);
 
 struct http_response_parts {
   uint16_t code;
   char *reason;
-  int64_t range_start;
-  int64_t content_length;
+  uint64_t range_start;
+  uint64_t content_length;
   char *content_start;
 };
 
@@ -719,9 +842,9 @@ int unpack_http_response(char *response, struct http_response_parts *parts);
 /* rhizome storage methods */
 
 int rhizome_exists(const rhizome_filehash_t *hashp);
-int rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *expectedHashp, int64_t file_length, int priority);
+int rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *expectedHashp, uint64_t file_length, int priority);
 int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffer, size_t data_size);
-int rhizome_random_write(struct rhizome_write *write_state, int64_t offset, unsigned char *buffer, size_t data_size);
+int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, unsigned char *buffer, size_t data_size);
 int rhizome_write_open_manifest(struct rhizome_write *write, rhizome_manifest *m);
 int rhizome_write_file(struct rhizome_write *write, const char *filename);
 int rhizome_fail_write(struct rhizome_write *write);
@@ -737,7 +860,7 @@ int rhizome_append_journal_buffer(rhizome_manifest *m, rhizome_bk_t *bsk, uint64
 int rhizome_append_journal_file(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, const char *filename);
 int rhizome_journal_pipe(struct rhizome_write *write, const rhizome_filehash_t *hashp, uint64_t start_offset, uint64_t length);
 
-int rhizome_crypt_xor_block(unsigned char *buffer, size_t buffer_size, int64_t stream_offset, 
+int rhizome_crypt_xor_block(unsigned char *buffer, size_t buffer_size, uint64_t stream_offset, 
 			    const unsigned char *key, const unsigned char *nonce);
 int rhizome_open_read(struct rhizome_read *read, const rhizome_filehash_t *hashp);
 ssize_t rhizome_read(struct rhizome_read *read, unsigned char *buffer, size_t buffer_length);
