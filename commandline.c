@@ -1666,7 +1666,7 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
     bskhex=NULL;
   
   rhizome_bk_t bsk;
-  if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+  if (bskhex && str_to_rhizome_bk_t(&bsk, bskhex) == -1)
     return WHYF("invalid bsk: \"%s\"", bskhex);
 
   rhizome_manifest *m = rhizome_new_manifest();
@@ -1677,21 +1677,25 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
   
   if (ret==0){
     // ignore errors
-    rhizome_extract_privatekey(m, NULL);
+    rhizome_extract_privatekey(m, bskhex ? &bsk : NULL);
     const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
     
     cli_field_name(context, "service", ":");
     cli_put_string(context, blob_service, "\n");
     cli_field_name(context, "manifestid", ":");
     cli_put_string(context, alloca_tohex_rhizome_bid_t(bid), "\n");
+    if (m->haveSecret) {
+      char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
+      rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
+      cli_field_name(context, ".secret", ":");
+      cli_put_string(context, secret, "\n");
+      cli_field_name(context, ".author", ":");
+      cli_put_string(context, alloca_tohex_sid_t(m->author), "\n");
+    }
     cli_field_name(context, "version", ":");
     cli_put_long(context, m->version, "\n");
     cli_field_name(context, "inserttime", ":");
     cli_put_long(context, m->inserttime, "\n");
-    if (m->haveSecret) {
-      cli_field_name(context, ".author", ":");
-      cli_put_string(context, alloca_tohex_sid_t(m->author), "\n");
-    }
     cli_field_name(context, ".readonly", ":");
     cli_put_long(context, m->haveSecret?0:1, "\n");
     cli_field_name(context, "filesize", ":");
