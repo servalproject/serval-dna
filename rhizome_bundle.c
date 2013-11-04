@@ -735,22 +735,18 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
   if (!m) return;
   int mid=m->manifest_record_number;
 
-  if (m!=&manifests[mid]) {
-    WHYF("%s(): asked to free manifest %p, which claims to be manifest slot #%d (%p), but isn't",
-	__FUNCTION__, m, mid, &manifests[mid]
+  if (m!=&manifests[mid])
+    FATALF("%s(): asked to free manifest %p, which claims to be manifest slot #%d (%p), but isn't",
+	  __FUNCTION__, m, mid, &manifests[mid]
       );
-    exit(-1);
-  }
 
-  if (manifest_free[mid]) {
-    WHYF("%s(): asked to free manifest slot #%d (%p), which was already freed at %s:%d:%s()",
-	__FUNCTION__, mid, m,
-	manifest_free_whence[mid].file,
-	manifest_free_whence[mid].line,
-	manifest_free_whence[mid].function
-      );
-    exit(-1);
-  }
+  if (manifest_free[mid])
+    FATALF("%s(): asked to free manifest slot #%d (%p), which was already freed at %s:%d:%s()",
+	  __FUNCTION__, mid, m,
+	  manifest_free_whence[mid].file,
+	  manifest_free_whence[mid].line,
+	  manifest_free_whence[mid].function
+	);
 
   /* Free variable and signature blocks. */
   unsigned i;
@@ -983,4 +979,34 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
   }
 
   return 0;
+}
+
+int rhizome_lookup_author(rhizome_manifest *m)
+{
+  switch (m->authorship) {
+    case AUTHOR_NOT_CHECKED:
+      if (m->has_author) {
+	int cn = 0, in = 0, kp = 0;
+	if (keyring_find_sid(keyring, &cn, &in, &kp, &m->author)) {
+	  m->authorship = AUTHOR_LOCAL;
+	  return 1;
+	}
+      }
+      if (m->has_sender) {
+	int cn = 0, in = 0, kp = 0;
+	if (keyring_find_sid(keyring, &cn, &in, &kp, &m->sender)) {
+	  m->author = m->sender;
+	  m->authorship = AUTHOR_LOCAL;
+	  return 1;
+	}
+      }
+    case AUTHOR_ERROR:
+    case AUTHOR_UNKNOWN:
+    case AUTHOR_IMPOSTOR:
+      return 0;
+    case AUTHOR_LOCAL:
+    case AUTHOR_AUTHENTIC:
+      return 1;
+  }
+  FATAL("m->authorship = %d", m->authorship);
 }

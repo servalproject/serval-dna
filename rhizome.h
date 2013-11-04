@@ -242,6 +242,18 @@ typedef struct rhizome_manifest
    */
   bool_t has_author;
 
+  /* Local authorship.  Useful for dividing bundle lists between "sent" and
+   * "inbox" views.
+   */
+  enum rhizome_bundle_authorship { 
+    AUTHOR_NOT_CHECKED = 0,
+    AUTHOR_ERROR, // author check failed, don't try again
+    AUTHOR_UNKNOWN, // author is not a local identity
+    AUTHOR_LOCAL, // author is in keyring (unlocked) but not verified
+    AUTHOR_IMPOSTOR, // author is a local identity but fails verification
+    AUTHOR_AUTHENTIC // a local identity is the verified author
+  } authorship;
+
   /* time-to-live in hops of this manifest. */
   int ttl;
 
@@ -432,6 +444,7 @@ int rhizome_clean_payload(const char *fileidhex);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);
 int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, const char *filepath);
 int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp, rhizome_bk_t *bsk);
+int rhizome_lookup_author(rhizome_manifest *m);
 
 int rhizome_manifest_verify(rhizome_manifest *m);
 int rhizome_manifest_check_sanity(rhizome_manifest *m_in);
