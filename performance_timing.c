@@ -149,17 +149,8 @@ int fd_showstats()
     stats = stats->_next;
   }
 
-  // Show periodic rhizome transfer information, but only
-  // if there are some active rhizome transfers.
-  if (rhizome_active_fetch_count()!=0)
-    INFOF("Rhizome transfer progress: %"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64" (remaining %"PRIu64")",
-	  rhizome_active_fetch_bytes_received(0),
-	  rhizome_active_fetch_bytes_received(1),
-	  rhizome_active_fetch_bytes_received(2),
-	  rhizome_active_fetch_bytes_received(3),
-	  rhizome_active_fetch_bytes_received(4),
-	  rhizome_active_fetch_bytes_received(5),
-          rhizome_fetch_queue_bytes());
+  // Show periodic rhizome transfer information
+  rhizome_fetch_log_short_status();
 
   // Report any functions that take too much time
   if (!config.debug.timing)

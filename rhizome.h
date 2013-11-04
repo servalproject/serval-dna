@@ -898,7 +898,6 @@ enum rhizome_start_fetch_result {
 enum rhizome_start_fetch_result rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip, const sid_t *sidp, const unsigned char *prefix, size_t prefix_length);
 int rhizome_any_fetch_active();
 int rhizome_any_fetch_queued();
-uint64_t rhizome_fetch_queue_bytes();
 int rhizome_fetch_status_html(struct strbuf *b);
 int rhizome_fetch_has_queue_space(unsigned char log2_size);
 
