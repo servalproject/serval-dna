@@ -430,6 +430,7 @@ ATOM(bool_t,                external_blobs, 0, boolean,, "Store rhizome bundles 
 
 ATOM(uint64_t,              rhizome_mdp_block_size, 512, uint64_scaled,, "Rhizome MDP block size.")
 ATOM(uint64_t,              idle_timeout,           RHIZOME_IDLE_TIMEOUT, uint64_scaled,, "Rhizome transfer timeout if no data received.")
+ATOM(uint64_t,              mdp_stall_timeout,      1000, uint64_scaled,, "Timeout to request more data via mdp.")
 ATOM(uint32_t,              fetch_delay_ms,         50, uint32_nonzero,, "Delay from receiving first bundle advert to initiating fetch")
 SUB_STRUCT(rhizome_direct,  direct,)
 SUB_STRUCT(rhizome_api,     api,)
