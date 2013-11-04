@@ -339,17 +339,33 @@ int transfer_bytes(struct radio_state *radios)
     log_time();
     fprintf(stderr, "Transferring %d byte packet from %s to %s\n", bytes, t->name, r->name);
   }
+  
   int i, j;
-  for (i=0;i<bytes && r->rxb_len<sizeof(r->rxbuffer);i++){
-    char byte = t->txbuffer[i];
-    // introduce bit errors
-    for(j=0;j<8;j++) {
-      if (random()<ber) {
-	byte^=(1<<j);
-	fprintf(stderr,"Flipped a bit\n");
+  int dropped=0;
+  
+// preamble length in bits that must arrive intact
+#define PREAMBLE_LENGTH (20+8)
+
+  // simulate the probability of a bit error in the packet pre-amble and drop the whole packet
+  for (i=0;i<PREAMBLE_LENGTH;i++){
+    if (random()<ber)
+      dropped=1;
+  }
+  
+  if (dropped){
+    fprintf(stderr,"Dropped the whole radio packet due to bit flip in the pre-amble\n");
+  }else{
+    for (i=0;i<bytes && r->rxb_len<sizeof(r->rxbuffer);i++){
+      char byte = t->txbuffer[i];
+      // introduce bit errors
+      for(j=0;j<8;j++) {
+	if (random()<ber) {
+	  byte^=(1<<j);
+	  fprintf(stderr,"Flipped a bit\n");
+	}
       }
+      r->rxbuffer[r->rxb_len++]=byte;
     }
-    r->rxbuffer[r->rxb_len++]=byte;
   }
   
   if (bytes>0 && bytes < t->txb_len)
@@ -362,7 +378,8 @@ int transfer_bytes(struct radio_state *radios)
     r->tx_count=6;
   }
   // set the wait time for the next transmission
-  next_transmit_time = gettime_ms() + (bytes+10)/chars_per_ms;
+  // minimum 20 bit preamble, 1 byte sync, 1 byte length, 2 byte tdm + turn around air-time
+  next_transmit_time = gettime_ms() + (bytes+8+10)/chars_per_ms;
   return bytes;
 }
 
