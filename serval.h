@@ -355,6 +355,8 @@ typedef struct overlay_interface {
   int socket_type;
   char send_broadcasts;
   char prefer_unicast;
+  char reliable;
+  
   /* Not necessarily the real MTU, but the largest frame size we are willing to TX.
    For radio links the actual maximum and the maximum that is likely to be delivered reliably are
    potentially two quite different values. */

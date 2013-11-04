@@ -296,14 +296,19 @@ int nc_tx_produce_packet(struct nc *n, uint8_t *datagram, uint32_t buffer_size)
 static int _nc_dump_half(struct nc_half *n)
 {
   DEBUGF("  window start; %d", n->window_start);
+  DEBUGF("  window size; %d", n->window_size);
+  DEBUGF("  last_ack; %d", n->last_ack);
+  DEBUGF("  unseen; %d", n->unseen);
   DEBUGF("  queue size; %d", n->queue_size);
   DEBUGF("  max queue size; %d", n->max_queue_size);
+  DEBUGF("  delivered; %d", n->deliver_next);
   int i;
   for (i=0;i<n->max_queue_size;i++){
     if (!n->packets[i].payload)
       continue;
     DEBUGF("  %02d: 0x%02x, 0x%08x",
 	   i, n->packets[i].sequence, n->packets[i].combination);
+    dump("packet", n->packets[i].payload, n->packets[i].len);
   }
   return 0;
 }
@@ -339,12 +344,19 @@ static int _nc_rx_combine_packet(struct nc_half *n, struct nc_packet *packet)
   packet->sequence += shift;
   packet->combination <<= shift;
   
+  if (_compare_uint8(packet->sequence, n->window_start)<0){
+    // um, no. I'm not storing an old packet that I've just delivered.
+    // we don't reject these packets earlier, firstly because they shouldn't happen
+    // secondly because we might be able to learn something based on 
+    // packets that haven't been delivered yet
+    free(packet->payload);
+    return 1;
+  }
+    
   int index = packet->sequence & (n->max_queue_size -1);
   if (n->packets[index].payload){
     _nc_dump_half(n);
-    free(packet->payload);
-    FATALF("Attempted to replace RX payload %d (%d) with %d without freeing it first",index,n->packets[index].sequence, packet->sequence);
-    return 1;
+    FATALF("Attempted to replace RX payload %d (%d) with %d [%08x] without freeing it first",index,n->packets[index].sequence, packet->sequence, packet->combination);
   }
   
   // reduce other stored packets
@@ -426,18 +438,19 @@ int nc_rx_next_delivered(struct nc *n, uint8_t *payload, int buffer_size)
     
   int index = n->rx.deliver_next & (n->rx.max_queue_size -1);
   if (!n->rx.packets[index].payload ||
+    n->rx.packets[index].sequence!=n->rx.deliver_next ||
     n->rx.packets[index].combination != 0x80000000)
     return 0;
   
-  bcopy(n->rx.packets[index].payload, payload, n->rx.datagram_size);
-  n->rx.deliver_next++;
+  bcopy(n->rx.packets[index].payload, payload, n->rx.packets[index].len);
   // drop the payload if the sender has already advanced
-  if (_compare_uint8(n->rx.deliver_next, n->rx.window_start) <= 0){
+  if (_compare_uint8(n->rx.deliver_next, n->rx.window_start) < 0){
     free(n->rx.packets[index].payload);
     n->rx.packets[index].payload=NULL;
     n->rx.queue_size--;
   }
-  return n->rx.datagram_size;
+  n->rx.deliver_next++;
+  return n->rx.packets[index].len;
 }
 
 #ifdef RUNTESTS
@@ -459,7 +472,6 @@ static void _nc_dump(struct nc *n)
   fprintf(stderr, "TX\n");
   _nc_dump_half(&n->tx);
   fprintf(stderr, "RX\n");
-  fprintf(stderr, "  delivered; %d\n", n->rx.deliver_next);
   _nc_dump_half(&n->rx);
 }
 

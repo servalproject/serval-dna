@@ -191,7 +191,7 @@ static int encode_next_packet(struct radio_link_state *link_state)
     ob_get_bytes(link_state->tx_packet, &next_packet[1], count);
     if (nc_tx_enqueue_datagram(link_state->network_coding, next_packet, LINK_PAYLOAD_MTU)==0){
       if (config.debug.radio_link)
-	DEBUGF("Enqueued fragment len %d", count+1);
+	DEBUGF("Enqueued fragment len %d of %d", count+1, ob_limit(link_state->tx_packet));
     }else{
       ob_rewind(link_state->tx_packet);
       break;

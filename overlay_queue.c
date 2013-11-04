@@ -452,7 +452,8 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     }
     
     char will_retransmit=1;
-    if (frame->packet_version<1 || frame->resend<=0 || packet->seq==-1)
+    if (packet->destination->interface->reliable || 
+	frame->packet_version<1 || frame->resend<=0 || packet->seq==-1)
       will_retransmit=0;
     
     if (overlay_frame_append_payload(&packet->context, packet->destination->encapsulation, frame, packet->buffer, will_retransmit)){

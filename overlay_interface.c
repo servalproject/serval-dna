@@ -410,7 +410,8 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   interface->ctsrts = ifconfig->ctsrts;
   set_destination_ref(&interface->destination, NULL);
   interface->destination = new_destination(interface, ifconfig->encapsulation);
-  
+  interface->reliable = 0;
+
   /* Pick a reasonable default MTU.
      This will ultimately get tuned by the bandwidth and other properties of the interface */
   interface->mtu = 1200;
@@ -531,6 +532,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     switch (ifconfig->socket_type) {
     case SOCK_STREAM:
       radio_link_init(interface);
+      interface->reliable = 1;
       interface->alarm.poll.events=POLLIN|POLLOUT;
       watch(&interface->alarm);
 
