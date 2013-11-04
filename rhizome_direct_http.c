@@ -222,8 +222,8 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
       return 0;
     }
     // If manifest template did not specify a service field, then by default it is "file".
-    if (rhizome_manifest_get(m, "service", NULL, 0) == NULL)
-      rhizome_manifest_set(m, "service", RHIZOME_SERVICE_FILE);
+    if (m->service == NULL)
+      rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
     sid_t *author = NULL;
     if (!is_sid_t_any(config.rhizome.api.addfile.default_author))
       author = &config.rhizome.api.addfile.default_author;
@@ -234,11 +234,11 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
       http_request_simple_response(&r->http, 500, "Internal Error: Could not fill manifest");
       return 0;
     }
-    m->payloadEncryption=0;
-    rhizome_manifest_set_ll(m,"crypt",m->payloadEncryption?1:0);
+    rhizome_manifest_set_crypt(m, PAYLOAD_CLEAR);
     // import file contents
     // TODO, stream file into database
-    if (m->fileLength) {
+    assert(m->filesize != RHIZOME_SIZE_UNSET);
+    if (m->filesize > 0) {
       if (rhizome_add_file(m, payload_path)) {
 	rhizome_manifest_free(m);
 	rhizome_direct_clear_temporary_files(r);
@@ -637,12 +637,10 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	/* Get filehash and size from manifest if present */
 	if (config.debug.rhizome_tx) {
 	  DEBUGF("bundle id = %s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
-	  DEBUGF("bundle filehash = '%s'", alloca_tohex_rhizome_filehash_t(m->filehash));
-	  DEBUGF("file size = %"PRId64, m->fileLength);
+	  DEBUGF("bundle filehash = %s", alloca_tohex_rhizome_filehash_t(m->filehash));
+	  DEBUGF("file size = %"PRId64, m->filesize);
+	  DEBUGF("version = %"PRId64, m->version);
 	}
-	int64_t version = rhizome_manifest_get_ll(m, "version");
-	if (config.debug.rhizome_tx)
-	  DEBUGF("version = %"PRId64,version);
 
 	/* We now have everything we need to compose the POST request and send it.
 	 */
@@ -661,15 +659,16 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  "\r\n";
 	/* Work out what the content length should be */
 	if (config.debug.rhizome_tx)
-	  DEBUGF("manifest_all_bytes=%d, manifest_bytes=%d", m->manifest_all_bytes,m->manifest_bytes);
-	int content_length
-	  =strlen(template2)-2 /* minus 2 for the "%s" that gets replaced */
-	  +strlen(boundary)
-	  +m->manifest_all_bytes
-	  +strlen(template3)-2 /* minus 2 for the "%s" that gets replaced */
-	  +strlen(boundary)
-	  +m->fileLength
-	  +strlen("\r\n--")+strlen(boundary)+strlen("--\r\n");
+	  DEBUGF("manifest_all_bytes=%u, manifest_bytes=%u", m->manifest_all_bytes, m->manifest_bytes);
+	assert(m->filesize != RHIZOME_SIZE_UNSET);
+	size_t content_length =
+	    strlen(template2) - 2 /* minus 2 for the "%s" that gets replaced */
+	  + strlen(boundary)
+	  + m->manifest_all_bytes
+	  + strlen(template3) - 2 /* minus 2 for the "%s" that gets replaced */
+	  + strlen(boundary)
+	  + m->filesize
+	  + strlen("\r\n--") + strlen(boundary) + strlen("--\r\n");
 
 	int len=snprintf(buffer,8192,template,content_length,boundary);
 	len+=snprintf(&buffer[len],8192-len,template2,boundary);
@@ -705,7 +704,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	/* send file contents */
 	{
 	  rhizome_filehash_t filehash;
-	  if (rhizome_database_filehash_from_id(&m->cryptoSignPublic, version, &filehash) == -1)
+	  if (rhizome_database_filehash_from_id(&m->cryptoSignPublic, m->version, &filehash) == -1)
 	    goto closeit;
 
 	  struct rhizome_read read;
@@ -713,28 +712,26 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  if (rhizome_open_read(&read, &filehash))
 	    goto closeit;
 
-	  int64_t read_ofs;
-	  for(read_ofs=0;read_ofs<m->fileLength;){
+	  uint64_t read_ofs;
+	  for(read_ofs=0;read_ofs<m->filesize;){
 	    unsigned char buffer[4096];
 	    read.offset=read_ofs;
-	    int bytes_read = rhizome_read(&read, buffer, sizeof buffer);
-	    if (bytes_read<0){
+	    ssize_t bytes_read = rhizome_read(&read, buffer, sizeof buffer);
+	    if (bytes_read == -1) {
 	      rhizome_read_close(&read);
 	      goto closeit;
 	    }
-
-	    int write_ofs=0;
-	    while(write_ofs < bytes_read){
-	      int written = write(sock, buffer + write_ofs, bytes_read - write_ofs);
-	      if (written<0){
+	    size_t write_ofs = 0;
+	    while (write_ofs < (size_t) bytes_read){
+	      ssize_t written = write(sock, buffer + write_ofs, (size_t) bytes_read - write_ofs);
+	      if (written == -1){
 		WHY_perror("write");
 		rhizome_read_close(&read);
 		goto closeit;
 	      }
-	      write_ofs+=written;
+	      write_ofs += (size_t) written;
 	    }
-
-	    read_ofs+=bytes_read;
+	    read_ofs += (size_t) bytes_read;
 	  }
 	  rhizome_read_close(&read);
 	}

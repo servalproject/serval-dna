@@ -1,3 +1,4 @@
+#include <assert.h>
 #include "serval.h"
 #include "rhizome.h"
 #include "log.h"
@@ -82,15 +83,24 @@ static int get_my_conversation_bundle(const sid_t *my_sidp, rhizome_manifest *m)
     return -1;
   
   // always consider the content encrypted, we don't need to rely on the manifest itself.
-  m->payloadEncryption = 1;
+  rhizome_manifest_set_crypt(m, PAYLOAD_ENCRYPTED);
+  assert(m->haveSecret);
   if (m->haveSecret == NEW_BUNDLE_ID) {
-    rhizome_manifest_set(m, "service", RHIZOME_SERVICE_FILE);
-    if (rhizome_fill_manifest(m, NULL, NULL, NULL) == -1)
+    rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
+    if (rhizome_fill_manifest(m, NULL, my_sidp, NULL) == -1)
       return WHY("Invalid manifest");
+    if (config.debug.meshms) {
+      char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
+      rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
+      // The 'meshms' automated test depends on this message; do not alter.
+      DEBUGF("MESHMS CONVERSATION BUNDLE bid=%s secret=%s",
+	    alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
+	    secret
+	  );
+    }
   } else {
-    const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-    if (strcmp(service, RHIZOME_SERVICE_FILE) != 0)
-      return WHYF("Invalid manifest, service=%s but should be %s", service, RHIZOME_SERVICE_MESHMS2);
+    if (strcmp(m->service, RHIZOME_SERVICE_FILE) != 0)
+      return WHYF("Invalid manifest, service=%s but should be %s", m->service, RHIZOME_SERVICE_MESHMS2);
   }
   return 0;
 }
@@ -185,33 +195,39 @@ static int get_database_conversations(const sid_t *my_sid, const sid_t *their_si
   return 0;
 }
 
-static struct conversations * find_or_create_conv(const sid_t *my_sid, const sid_t *their_sid){
+static struct conversations * find_or_create_conv(const sid_t *my_sid, const sid_t *their_sid)
+{
   struct conversations *conv=NULL;
   if (meshms_conversations_list(my_sid, their_sid, &conv))
     return NULL;
   if (!conv){
     conv = emalloc_zero(sizeof(struct conversations));
-    bcopy(their_sid->binary, conv->them.binary, sizeof(sid_t));
+    conv->them = *their_sid;
   }
   return conv;
 }
 
-static int create_ply(const sid_t *my_sid, struct conversations *conv, rhizome_manifest *m){
-  m->journalTail = 0;
-  const char *my_sidhex = alloca_tohex_sid_t(*my_sid);
-  const char *their_sidhex = alloca_tohex_sid_t(conv->them);
-  rhizome_manifest_set(m, "service", RHIZOME_SERVICE_MESHMS2);
-  rhizome_manifest_set(m, "sender", my_sidhex);
-  rhizome_manifest_set(m, "recipient", their_sidhex);
-  rhizome_manifest_set_ll(m, "tail", m->journalTail);
+static int create_ply(const sid_t *my_sid, struct conversations *conv, rhizome_manifest *m)
+{
+  if (config.debug.meshms)
+    DEBUGF("Creating ply for my_sid=%s them=%s",
+	alloca_tohex_sid_t(conv->them),
+	alloca_tohex_sid_t(*my_sid));
+  rhizome_manifest_set_service(m, RHIZOME_SERVICE_MESHMS2);
+  rhizome_manifest_set_sender(m, my_sid);
+  rhizome_manifest_set_recipient(m, &conv->them);
+  rhizome_manifest_set_filesize(m, 0);
+  rhizome_manifest_set_tail(m, 0);
   if (rhizome_fill_manifest(m, NULL, my_sid, NULL))
     return -1;
+  assert(m->payloadEncryption == PAYLOAD_ENCRYPTED);
   conv->my_ply.bundle_id = m->cryptoSignPublic;
   conv->found_my_ply = 1;
   return 0;
 }
 
-static int append_footer(unsigned char *buffer, char type, int payload_len){
+static int append_footer(unsigned char *buffer, char type, int payload_len)
+{
   payload_len = (payload_len << 4) | (type&0xF);
   write_uint16(buffer, payload_len);
   return 2;
@@ -228,11 +244,13 @@ static int ply_read_open(struct ply_read *ply, const rhizome_bid_t *bid, rhizome
     WARNF("Payload was not found for manifest %s, %"PRId64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
   if (ret != 0)
     return ret;
-  ply->read.offset = ply->read.length = m->fileLength;
+  assert(m->filesize != RHIZOME_SIZE_UNSET);
+  ply->read.offset = ply->read.length = m->filesize;
   return 0;
 }
 
-static int ply_read_close(struct ply_read *ply){
+static int ply_read_close(struct ply_read *ply)
+{
   if (ply->buffer){
     free(ply->buffer);
     ply->buffer=NULL;
@@ -244,16 +262,17 @@ static int ply_read_close(struct ply_read *ply){
 
 // read the next record from the ply (backwards)
 // returns 1 on EOF, -1 on failure
-static int ply_read_next(struct ply_read *ply){
-  ply->record_end_offset=ply->read.offset;
+static int ply_read_next(struct ply_read *ply)
+{
+  ply->record_end_offset = ply->read.offset;
   unsigned char footer[2];
-  ply->read.offset-=sizeof(footer);
-  if (ply->read.offset<=0){
+  if (ply->read.offset <= sizeof footer) {
     if (config.debug.meshms)
       DEBUGF("EOF");
     return 1;
   }
-  if (rhizome_read_buffered(&ply->read, &ply->buff, footer, sizeof(footer)) < sizeof(footer))
+  ply->read.offset -= sizeof footer;
+  if (rhizome_read_buffered(&ply->read, &ply->buff, footer, sizeof footer) != sizeof footer)
     return -1;
   // (rhizome_read automatically advances the offset by the number of bytes read)
   ply->record_length=read_uint16(footer);
@@ -264,7 +283,7 @@ static int ply_read_next(struct ply_read *ply){
     DEBUGF("Found record %d, length %d @%"PRId64, ply->type, ply->record_length, ply->record_end_offset);
   
   // need to allow for advancing the tail and cutting a message in half.
-  if (ply->record_length + sizeof(footer) > ply->read.offset){
+  if (ply->record_length + sizeof footer > ply->read.offset){
     if (config.debug.meshms)
       DEBUGF("EOF");
     return 1;
@@ -281,9 +300,9 @@ static int ply_read_next(struct ply_read *ply){
     ply->buffer = b;
   }
   
-  int read = rhizome_read_buffered(&ply->read, &ply->buff, ply->buffer, ply->record_length);
-  if (read!=ply->record_length)
-    return WHYF("Expected %d bytes read, got %d", ply->record_length, read);
+  ssize_t read = rhizome_read_buffered(&ply->read, &ply->buff, ply->buffer, ply->record_length);
+  if (read != ply->record_length)
+    return WHYF("Expected %u bytes read, got %zd", ply->record_length, read);
   
   ply->read.offset = record_start;
   return 0;
@@ -308,8 +327,6 @@ static int append_meshms_buffer(const sid_t *my_sid, struct conversations *conv,
   if (conv->found_my_ply){
     if (rhizome_retrieve_manifest(&conv->my_ply.bundle_id, m))
       goto end;
-    // set the author of the manifest as we should already know that
-    m->author = *my_sid;
     if (rhizome_find_bundle_author(m))
       goto end;
   }else{
@@ -481,16 +498,19 @@ static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid,
     goto end;
   
   unsigned char version=0xFF;
-  ret=rhizome_read_buffered(&read, &buff, &version, 1);
-  if (version!=1){
-    WARN("Expected version 1");
+  ssize_t r = rhizome_read_buffered(&read, &buff, &version, 1);
+  ret = -1;
+  if (r == -1)
+    goto end;
+  if (version != 1) {
+    WARNF("Expected version 1 (got 0x%02x)", version);
     goto end;
   }
   
-  while (1){
+  while (1) {
     sid_t sid;
-    ret=rhizome_read_buffered(&read, &buff, sid.binary, sizeof(sid));
-    if (ret<sizeof(sid))
+    r = rhizome_read_buffered(&read, &buff, sid.binary, sizeof sid.binary);
+    if (r != sizeof sid.binary)
       break;
     if (config.debug.meshms)
       DEBUGF("Reading existing conversation for %s", alloca_tohex_sid_t(sid));
@@ -500,30 +520,29 @@ static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid,
     if (!ptr)
       goto end;
     unsigned char details[8*3];
-    ret = rhizome_read_buffered(&read, &buff, details, sizeof(details));
-    if (ret<0)
+    r = rhizome_read_buffered(&read, &buff, details, sizeof details);
+    if (r == -1)
       break;
-    int bytes=ret;
-    int ofs=0;
-    ret=unpack_uint(details, bytes, &ptr->their_last_message);
-    if (ret<0)
+    int bytes = r;
+    int ofs = 0;
+    int unpacked = unpack_uint(details, bytes, &ptr->their_last_message);
+    if (unpacked == -1)
       break;
-    ofs+=ret;
-    
-    ret=unpack_uint(details+ofs,bytes-ofs, &ptr->read_offset);
-    if (ret<0)
+    ofs += unpacked;
+    unpacked = unpack_uint(details+ofs, bytes-ofs, &ptr->read_offset);
+    if (unpacked == -1)
       break;
-    ofs+=ret;
-    
-    ret=unpack_uint(details+ofs,bytes-ofs, &ptr->their_size);
-    if (ret<0)
+    ofs += unpacked;
+    unpacked = unpack_uint(details+ofs, bytes-ofs, &ptr->their_size);
+    if (unpacked == -1)
       break;
-    ofs+=ret;
+    ofs += unpacked;
     read.offset += ofs - bytes;
   }
+  ret = 0;
 end:
   rhizome_read_close(&read);
-  return 0;
+  return ret;
 }
 
 static ssize_t write_conversation(struct rhizome_write *write, struct conversations *conv)
@@ -583,10 +602,8 @@ static int write_known_conversations(rhizome_manifest *m, struct conversations *
     goto end;
   
   // then write it
-  m->version++;
-  rhizome_manifest_set_ll(m,"version",m->version);
-  m->fileLength = (size_t) len + 1;
-  rhizome_manifest_set_ll(m,"filesize",m->fileLength);
+  rhizome_manifest_set_version(m, m->version + 1);
+  rhizome_manifest_set_filesize(m, (size_t)len + 1);
   
   if (rhizome_write_open_manifest(&write, m) == -1)
     goto end;
@@ -597,8 +614,7 @@ static int write_known_conversations(rhizome_manifest *m, struct conversations *
     goto end;
   if (rhizome_finish_write(&write))
     goto end;
-  m->filehash = write.id;
-  rhizome_manifest_set(m, "filehash", alloca_tohex_rhizome_filehash_t(m->filehash));
+  rhizome_manifest_set_filehash(m, &write.id);
   if (rhizome_manifest_finalise(m, &mout, 1))
     goto end;
   
@@ -612,7 +628,8 @@ end:
 }
 
 // read information about existing conversations from a rhizome payload
-static int meshms_conversations_list(const sid_t *my_sid, const sid_t *their_sid, struct conversations **conv){
+static int meshms_conversations_list(const sid_t *my_sid, const sid_t *their_sid, struct conversations **conv)
+{
   int ret=-1;
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
@@ -730,7 +747,8 @@ int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context 
   return ret;
 }
 
-int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context *context){
+int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context *context)
+{
   const char *my_sidhex, *their_sidhex;
   if (cli_arg(parsed, "sender_sid", &my_sidhex, str_is_subscriber_id, "") == -1
     || cli_arg(parsed, "recipient_sid", &their_sidhex, str_is_subscriber_id, "") == -1)
@@ -744,8 +762,10 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
     return -1;
     
   sid_t my_sid, their_sid;
-  fromhex(my_sid.binary, my_sidhex, sizeof(my_sid.binary));
-  fromhex(their_sid.binary, their_sidhex, sizeof(their_sid.binary));
+  if (str_to_sid_t(&my_sid, my_sidhex) == -1)
+    return WHY("invalid sender SID");
+  if (str_to_sid_t(&their_sid, their_sidhex) == -1)
+    return WHY("invalid recipient SID");
   
   struct conversations *conv=find_or_create_conv(&my_sid, &their_sid);
   if (!conv)
@@ -915,7 +935,8 @@ static int mark_read(struct conversations *conv, const sid_t *their_sid, const c
   return ret;
 }
 
-int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *context){
+int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *context)
+{
   const char *my_sidhex, *their_sidhex, *offset_str;
   if (cli_arg(parsed, "sender_sid", &my_sidhex, str_is_subscriber_id, "") == -1
     || cli_arg(parsed, "recipient_sid", &their_sidhex, str_is_subscriber_id, NULL) == -1

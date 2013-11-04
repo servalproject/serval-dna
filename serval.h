@@ -829,7 +829,7 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte);
 uint32_t Crc32_ComputeBuf( uint32_t inCrc32, const void *buf,
 			  size_t bufLen );
 int rhizome_active_fetch_count();
-int rhizome_active_fetch_bytes_received(int q);
+uint64_t rhizome_active_fetch_bytes_received(int q);
 extern int64_t bundles_available;
 extern char crash_handler_clue[1024];
 

@@ -80,17 +80,18 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
 
   if (!m) { RETURN(WHY("null manifest passed in")); }
 
-  int i;
-
   /* Manifest prefix */
+  unsigned i;
   for(i=0;i<RHIZOME_BAR_PREFIX_BYTES;i++) 
     bar[RHIZOME_BAR_PREFIX_OFFSET+i]=m->cryptoSignPublic.binary[i];
   /* file length */
-  bar[RHIZOME_BAR_FILESIZE_OFFSET]=log2ll(m->fileLength);
+  assert(m->filesize != RHIZOME_SIZE_UNSET);
+  bar[RHIZOME_BAR_FILESIZE_OFFSET]=log2ll(m->filesize);
   /* Version */
   for(i=0;i<7;i++) bar[RHIZOME_BAR_VERSION_OFFSET+6-i]=(m->version>>(8*i))&0xff;
 
-  /* geo bounding box */
+#if 0
+  /* geo bounding box TODO: replace with bounding circle!!! */
   double minLat=rhizome_manifest_get_double(m,"min_lat",-90);
   if (minLat<-90) minLat=-90; if (minLat>90) minLat=90;
   double minLong=rhizome_manifest_get_double(m,"min_long",-180);
@@ -99,6 +100,12 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
   if (maxLat<-90) maxLat=-90; if (maxLat>90) maxLat=90;
   double maxLong=rhizome_manifest_get_double(m,"max_long",+180);
   if (maxLong<-180) maxLong=-180; if (maxLong>180) maxLong=180;  
+#else
+  double minLat = -90;
+  double minLong = -180;
+  double maxLat = +90;
+  double maxLong = +180;
+#endif
   unsigned short v;
   int o=RHIZOME_BAR_GEOBOX_OFFSET;
   v=(minLat+90)*(65535/180); bar[o++]=(v>>8)&0xff; bar[o++]=(v>>0)&0xff;
@@ -338,8 +345,7 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
       /* trim manifest ID to a prefix for ease of debugging
 	 (that is the only use of this */
       if (config.debug.rhizome_ads){
-	int64_t version = rhizome_manifest_get_ll(m, "version");
-	DEBUGF("manifest id=%s version=%"PRId64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), version);
+	DEBUGF("manifest id=%s version=%"PRId64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
       }
 
       /* Crude signature presence test */

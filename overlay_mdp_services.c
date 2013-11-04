@@ -137,11 +137,11 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
       unsigned char *bidprefix=&mdp->out.payload[1];
       uint64_t version=read_uint64(&mdp->out.payload[1+16]);
       uint64_t offset=read_uint64(&mdp->out.payload[1+16+8]);
-      int count=mdp->out.payload_length-(1+16+8+8);
+      size_t count = mdp->out.payload_length-(1+16+8+8);
       unsigned char *bytes=&mdp->out.payload[1+16+8+8];
 
       if (config.debug.rhizome_mdp_rx)
-	DEBUGF("bidprefix=%02x%02x%02x%02x*, offset=%"PRId64", count=%d",
+	DEBUGF("bidprefix=%02x%02x%02x%02x*, offset=%"PRId64", count=%zu",
 	       bidprefix[0],bidprefix[1],bidprefix[2],bidprefix[3],offset,count);
 
       /* Now see if there is a slot that matches.  If so, then
@@ -151,7 +151,7 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
 	 a slot to capture this files as it is being requested
 	 by someone else.
       */
-      rhizome_received_content(bidprefix,version,offset,count,bytes,type);
+      rhizome_received_content(bidprefix,version,offset, count, bytes, type);
 
       RETURN(0);
     }
@@ -359,8 +359,8 @@ static int overlay_mdp_service_manifest_requests(struct overlay_frame *frame, ov
     if (!rhizome_retrieve_manifest_by_prefix(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES, m)){
       rhizome_advertise_manifest(frame->source, m);
       // pre-emptively send the payload if it will fit in a single packet
-      if (m->fileLength > 0 && m->fileLength <= 1024)
-	rhizome_mdp_send_block(frame->source, &m->cryptoSignPublic, m->version, 0, 0, m->fileLength);
+      if (m->filesize > 0 && m->filesize <= 1024)
+	rhizome_mdp_send_block(frame->source, &m->cryptoSignPublic, m->version, 0, 0, m->filesize);
     }
     rhizome_manifest_free(m);
     offset+=RHIZOME_BAR_BYTES;

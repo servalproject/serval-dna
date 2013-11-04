@@ -76,9 +76,9 @@ static struct profile_total http_server_stats = {
 #define DEBUG_DUMP_PARSER(r) do { \
       if (config.debug.httpd) \
 	DEBUGF("parsed %d %s cursor %d %s end %d remain %"PRIhttp_size_t, \
-	    r->parsed - r->received, alloca_toprint(-1, r->parsed, r->cursor - r->parsed), \
-	    r->cursor - r->received, alloca_toprint(50, r->cursor, r->end - r->cursor), \
-	    r->end - r->received, \
+	    (int)(r->parsed - r->received), alloca_toprint(-1, r->parsed, r->cursor - r->parsed), \
+	    (int)(r->cursor - r->received), alloca_toprint(50, r->cursor, r->end - r->cursor), \
+	    (int)(r->end - r->received), \
 	    r->request_content_remaining \
 	  ); \
     } while (0)
@@ -1019,7 +1019,7 @@ static int http_request_parse_header(struct http_request *r)
       _commit(r);
       if (n > NELS(r->request_header.content_ranges)) {
 	if (r->debug_flag && *r->debug_flag)
-	  DEBUGF("HTTP request Range header overflow (%u ranges in set, can only handle %u): %s",
+	  DEBUGF("HTTP request Range header overflow (%u ranges in set, can only handle %zu): %s",
 	      n, NELS(r->request_header.content_ranges), alloca_toprint(-1, sol, eol - sol));
 	// In this case ignore the Range: header -- respond with the entire resource.
 	r->request_header.content_range_count = 0;

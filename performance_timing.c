@@ -152,7 +152,7 @@ int fd_showstats()
   // Show periodic rhizome transfer information, but only
   // if there are some active rhizome transfers.
   if (rhizome_active_fetch_count()!=0)
-    INFOF("Rhizome transfer progress: %d,%d,%d,%d,%d,%d (remaining %d)",
+    INFOF("Rhizome transfer progress: %"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64" (remaining %"PRIu64")",
 	  rhizome_active_fetch_bytes_received(0),
 	  rhizome_active_fetch_bytes_received(1),
 	  rhizome_active_fetch_bytes_received(2),
