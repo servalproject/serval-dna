@@ -535,485 +535,6 @@ _tfw_echo_result() {
    esac
 }
 
-# The following functions can be overridden by a test script to provide a
-# default fixture for all test cases.
-
-setup() {
-   :
-}
-
-finally() {
-   :
-}
-
-teardown() {
-   :
-}
-
-# The following functions are provided to facilitate writing test cases and
-# fixtures.
-
-# Add quotations to the given arguments to allow them to be expanded intact
-# in eval expressions.
-shellarg() {
-   _tfw_shellarg "$@"
-   echo "${_tfw_args[*]}"
-}
-
-# Echo the absolute path (containing symlinks if given) of the given
-# file/directory, which does not have to exist or even be accessible.
-abspath() {
-   _tfw_abspath -L "$1"
-}
-
-# Echo the absolute path (resolving all symlinks) of the given file/directory,
-# which does not have to exist or even be accessible.
-realpath() {
-   _tfw_abspath -P "$1"
-}
-
-# Escape all grep(1) basic regular expression metacharacters.
-escape_grep_basic() {
-   local re="$1"
-   local nil=''
-   re="${re//[\\]/\\\\$nil}"
-   re="${re//./\\.}"
-   re="${re//\*/\\*}"
-   re="${re//^/\\^}"
-   re="${re//\$/\\$}"
-   re="${re//\[/\\[}"
-   re="${re//\]/\\]}"
-   echo "$re"
-}
-
-# Escape all egrep(1) extended regular expression metacharacters.
-escape_grep_extended() {
-   local re="$1"
-   local nil=''
-   re="${re//[\\]/\\\\$nil}"
-   re="${re//./\\.}"
-   re="${re//\*/\\*}"
-   re="${re//\?/\\?}"
-   re="${re//+/\\+}"
-   re="${re//^/\\^}"
-   re="${re//\$/\\$}"
-   re="${re//(/\\(}";#"(fix Vim syntax highlighting)
-   re="${re//)/\\)}"
-   re="${re//|/\\|}"
-   re="${re//\[/\\[}"
-   re="${re//{/\\{}"
-   echo "$re"
-}
-
-# Return true if all the arguments arg2... match the given grep(1) regular
-# expression arg1.
-matches_rexp() {
-   _tfw_matches_rexp "$@"
-}
-
-# Create a file with the given size (default 0).
-# Usage: create_file [--append] <path> [<size>]
-# where: <size> is of the form Nu
-#        N is decimal integer
-#        u is one of kKmMgG (k=10^3, K=2^10, m=10^6, M=2^20, g=10^9, G=2^30)
-create_file() {
-   local args=("$@")
-   case "$1" in
-   --append) shift;;
-   *) rm -f "$1";;
-   esac
-   local path="$1"
-   local size="$2"
-   tfw_createfile --label="$path" ${size:+--size=$size} >>"$path" || error "failed command: create_file ${args[*]}"
-}
-
-# Executes its arguments as a command:
-#  - captures the standard output and error in temporary files for later
-#    examination
-#  - captures the exit status for later assertions
-#  - sets the $executed variable to a description of the command that was
-#    executed
-execute() {
-   $_tfw_assert_noise && tfw_log "# execute" $(shellarg "$@")
-   _tfw_getopts execute "$@"
-   shift $_tfw_getopts_shift
-   _tfw_execute "$@"
-}
-
-executeOk() {
-   $_tfw_assert_noise && tfw_log "# executeOk" $(shellarg "$@")
-   _tfw_getopts executeok "$@"
-   _tfw_opt_exit_status=0
-   _tfw_dump_on_fail --stderr
-   shift $_tfw_getopts_shift
-   _tfw_execute "$@"
-}
-
-# Wait until a given condition is met:
-#  - can specify the timeout with --timeout=SECONDS (overridden by command-line
-#    option)
-#  - can specify the sleep interval with --sleep=SECONDS
-#  - the condition is a command that is executed repeatedly until returns zero
-#    status
-# where SECONDS may be fractional, eg, 1.5
-wait_until() {
-   $_tfw_assert_noise && tfw_log "# wait_until" $(shellarg "$@")
-   local start=$SECONDS
-   _tfw_getopts wait_until "$@"
-   local seconds=${_tfw_timeout_override:-${_tfw_opt_timeout:-${TFW_WAIT_UNTIL_TIMEOUT:-${_tfw_default_wait_until_timeout:-1}}}}
-   shift $_tfw_getopts_shift
-   local sense=
-   while [ "$1" = '!' ]; do
-      sense="$sense !"
-      shift
-   done
-   sleep $seconds 0 &
-   local timeout_pid=$!
-   while true; do
-      "$@"
-      [ $sense $? -eq 0 ] && break
-      if ! kill -0 $timeout_pid 2>/dev/null; then
-         local end=$SECONDS
-         fail "timeout after $((end - start)) seconds"
-      fi
-      sleep ${_tfw_opt_sleep:-1}
-   done
-   local end=$SECONDS
-   $_tfw_assert_noise && tfw_log "# waited for" $((end - start)) "seconds"
-   kill $timeout_pid 2>/dev/null
-   return 0
-}
-
-# Executes its arguments as a command in the current shell process (not in a
-# child process), so that side effects like functions setting variables will
-# have effect.
-#  - if the exit status is non-zero, then fails the current test
-#  - otherwise, logs a message indicating the assertion passed
-assert() {
-   _tfw_getopts assert "$@"
-   shift $_tfw_getopts_shift
-   [ -z "$_tfw_message" ] && _tfw_message=$(shellarg "$@")
-   _tfw_assert "$@" || _tfw_failexit || return $?
-   $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
-   return 0
-}
-
-assertExpr() {
-   _tfw_getopts assertexpr "$@"
-   shift $_tfw_getopts_shift
-   _tfw_parse_expr "$@" || return $?
-   _tfw_message="${_tfw_message:+$_tfw_message }("$@")"
-   _tfw_shellarg "${_tfw_expr[@]}"
-   _tfw_assert eval "${_tfw_args[@]}" || _tfw_failexit || return $?
-   $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
-   return 0
-}
-
-fail() {
-   _tfw_getopts fail "$@"
-   shift $_tfw_getopts_shift
-   [ $# -ne 0 ] && _tfw_failmsg "$1"
-   _tfw_backtrace
-   _tfw_failexit
-}
-
-error() {
-   _tfw_getopts error "$@"
-   shift $_tfw_getopts_shift
-   [ $# -ne 0 ] && _tfw_errormsg "$1"
-   _tfw_backtrace
-   _tfw_errorexit
-}
-
-fatal() {
-   [ $# -eq 0 ] && set -- "no reason given"
-   _tfw_fatalmsg "$@"
-   _tfw_backtrace
-   _tfw_fatalexit
-}
-
-fork() {
-   local forkid=${#_tfw_forked_pids[*]}
-   local _tfw_process_tmp="$_tfw_tmp/fork-$forkid"
-   mkdir "$_tfw_process_tmp" || _tfw_fatalexit
-   $_tfw_assert_noise && tfw_log "# fork[$forkid] START" $(shellarg "$@")
-   ( "$@" ) 6>"$_tfw_process_tmp/log.stdout" 1>&6 2>"$_tfw_process_tmp/log.stderr" 7>"$_tfw_process_tmp/log.xtrace" &
-   _tfw_forked_pids[$forkid]=$!
-   $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$! STARTED"
-}
-
-forkKillAll() {
-   $_tfw_assert_noise && tfw_log "# fork kill all"
-   local forkid
-   for ((forkid=0; forkid < ${#_tfw_forked_pids[*]}; ++forkid)); do
-      local pid=${_tfw_forked_pids[$forkid]}
-      [ -z "$pid" ] && continue
-      $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$pid KILL"
-      kill -TERM $pid 2>/dev/null
-   done
-}
-
-forkWaitAll() {
-   _tfw_getopts forkwaitall "$@"
-   shift $_tfw_getopts_shift
-   $_tfw_assert_noise && tfw_log "# fork wait all"
-   while true; do
-      local running=0
-      local forkid
-      for ((forkid=0; forkid < ${#_tfw_forked_pids[*]}; ++forkid)); do
-         local pid=${_tfw_forked_pids[$forkid]}
-         [ -z "$pid" ] && continue
-         if kill -0 $pid 2>/dev/null; then
-            let running+=1
-         else
-            _tfw_forked_pids[$forkid]=
-            wait $pid # should not block because process has exited
-            local status=$?
-            $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$pid EXIT status=$status"
-            echo "++++++++++ fork[$forkid] log.stdout ++++++++++"
-            cat $_tfw_tmp/fork-$forkid/log.stdout
-            echo "++++++++++"
-            echo "++++++++++ fork[$forkid] log.stderr ++++++++++"
-            cat $_tfw_tmp/fork-$forkid/log.stderr
-            echo "++++++++++"
-            if $_tfw_trace; then
-               echo "++++++++++ fork[$forkid] log.xtrace ++++++++++"
-               cat $_tfw_tmp/fork-$forkid/log.xtrace
-               echo "++++++++++"
-            fi
-            case $status in
-            0) ;;
-            1) _tfw_fail "fork[$forkid] process exited with FAIL status";;
-            254) _tfw_error "fork[$forkid] process exited with ERROR status";;
-            255) _tfw_fatal "fork[$forkid] process exited with FATAL status";;
-            *) _tfw_error "fork[$forkid] process exited with status=$status";;
-            esac
-         fi
-      done
-      [ $running -eq 0 ] && return 0
-   done
-}
-
-# Append a time stamped message to the test case's stdout log.  Will work even
-# in a context that stdout (fd 1) is redirected.  Will not log anything in a
-# quietened region.
-tfw_log() {
-   if $_tfw_log_noise; then
-      local ts=$(_tfw_timestamp)
-      cat >&$_tfw_log_fd <<EOF
-${ts##* } $*
-EOF
-   fi
-}
-
-# Copy the given file(s) into the log directory, so they form part of the residue
-# of the log execution (together with log.txt).
-tfw_preserve() {
-   local arg
-   for arg; do
-      if cp -a "$arg" "$_tfw_logdir_test"; then
-         $_tfw_assert_noise && tfw_log "# PRESERVE" $(ls -l -d "$arg")
-      else
-         error "cp failed"
-      fi
-   done
-}
-
-# Execute the given command with log messages quietened.
-tfw_nolog() {
-   if [ "$1" = ! ]; then
-      shift
-      ! tfw_nolog "$@"
-   else
-      local old_log_noise=$_tfw_log_noise
-      _tfw_log_noise=false
-      "$@" >/dev/null
-      local stat=$?
-      _tfw_log_noise=$old_log_noise
-      return $stat
-   fi
-}
-
-# Execute the given command with successful assert log messages quietened.
-tfw_quietly() {
-   if [ "$1" = ! ]; then
-      shift
-      ! tfw_quietly "$@"
-   else
-      local old_assert_noise=$_tfw_assert_noise
-      _tfw_assert_noise=false
-      "$@" >/dev/null
-      local stat=$?
-      _tfw_assert_noise=$old_assert_noise
-      return $stat
-   fi
-}
-
-# Compare the two arguments as dotted ascii decimal version strings.
-# Return 0 if they are equal, 1 if arg1 < arg2, 2 if arg1 > arg2
-tfw_cmp_version() {
-   local IFS=.
-   local i=0 a=($1) b=($2)
-   for (( i=0; i < ${#a[@]} || i < ${#b[@]}; ++i )); do
-      local ai="${a[i]:-0}"
-      local bi="${b[i]:-0}"
-      (( 10#$ai < 10#$bi )) && return 1
-      (( 10#$ai > 10#$bi )) && return 2
-   done
-   return 0
-}
-
-# Append the contents of a file to the test case's stdout log.  A normal 'cat'
-# to stdout would also do this, but tfw_cat echoes header and footer delimiter
-# lines around to content to help distinguish it, and also works even in a
-# context that stdout (fd 1) is redirected.
-tfw_cat() {
-   local header=
-   local -a show=(cat)
-   for file; do
-      case $file in
-      --header=*)
-         header="${1#*=}"
-         continue
-         ;;
-      -v|--show-nonprinting)
-         show=(cat -v)
-         continue
-         ;;
-      -h|--hexdump)
-         show=(hd '</dev/null')
-         continue
-         ;;
-      --stdout)
-         file="${TFWSTDOUT?}"
-         header="${header:-stdout of ($executed)}"
-         ;;
-      --stderr)
-         file="${TFWSTDERR?}"
-         header="${header:-stderr of ($executed)}"
-         ;;
-      *)
-         header="${header:-${file#$_tfw_tmp/}}"
-         ;;
-      esac
-      local missing_nl=
-      tfw_log "#----- $header -----"
-      eval "${show[@]}" "$file" >&$_tfw_log_fd
-      if [ "${show[0]}" = cat -a "$(tail -1c "$file" | wc -l)" -eq 0 ]; then
-         echo >&$_tfw_log_fd
-         missing_nl=" (no newline at end)"
-      fi
-      tfw_log "#-----$missing_nl"
-      header=
-      show=(cat)
-   done
-}
-
-# Format the standard input into multi columns within an output width set by the
-# COLUMNS env var.
-tfw_multicolumn() {
-   $AWK '
-      function pad(s, n) {
-         return sprintf("%-" n "s", s)
-      }
-      {
-         line[nlines++] = $0
-         if (length($0) > colwid)
-            colwid = length($0)
-      }
-      END {
-         wid = 0 + ENVIRON["COLUMNS"]
-         if (wid != 0) {
-            ncol = int(wid / (colwid + 2))
-            if (ncol < 1)
-                  ncol = 1
-         }
-         collen = int((nlines + ncol - 1) / ncol)
-         for (r = 0; r < collen; ++r) {
-            for (c = 0; c < ncol; ++c) {
-                  i = c * collen + r
-                  if (i >= nlines)
-                     break
-                  printf "%s  ", pad(line[i], colwid)
-            }
-            printf "\n"
-         }
-      }
-   '
-}
-
-tfw_core_backtrace() {
-   local executable="$1"
-   local corefile="$2"
-   echo backtrace >"$_tfw_process_tmp/backtrace.gdb"
-   tfw_log "#----- gdb backtrace from $executable $corefile -----"
-   gdb -n -batch -x "$_tfw_process_tmp/backtrace.gdb" "$executable" "$corefile" </dev/null
-   tfw_log "#-----"
-   rm -f "$_tfw_process_tmp/backtrace.gdb"
-}
-
-assertExitStatus() {
-   _tfw_getopts assertexitstatus "$@"
-   shift $_tfw_getopts_shift
-   [ -z "$_tfw_message" ] && _tfw_message="exit status ($_tfw_exitStatus) of ($executed) $*"
-   _tfw_assertExpr "$_tfw_exitStatus" "$@" || _tfw_failexit || return $?
-   $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
-   return 0
-}
-
-assertRealTime() {
-   _tfw_getopts assertrealtime "$@"
-   shift $_tfw_getopts_shift
-   [ -z "$_tfw_message" ] && _tfw_message="real execution time ($realtime) of ($executed) $*"
-   _tfw_assertExpr "$realtime" "$@" || _tfw_failexit || return $?
-   $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
-   return 0
-}
-
-replayStdout() {
-   cat ${TFWSTDOUT?}
-}
-
-replayStderr() {
-   cat ${TFWSTDERR?}
-}
-
-assertStdoutIs() {
-   _tfw_assert_stdxxx_is stdout "$@" || _tfw_failexit
-}
-
-assertStderrIs() {
-   _tfw_assert_stdxxx_is stderr "$@" || _tfw_failexit
-}
-
-assertStdoutLineCount() {
-   _tfw_assert_stdxxx_linecount stdout "$@" || _tfw_failexit
-}
-
-assertStderrLineCount() {
-   _tfw_assert_stdxxx_linecount stderr "$@" || _tfw_failexit
-}
-
-assertStdoutGrep() {
-   _tfw_assert_stdxxx_grep stdout "$@" || _tfw_failexit
-}
-
-assertStderrGrep() {
-   _tfw_assert_stdxxx_grep stderr "$@" || _tfw_failexit
-}
-
-assertGrep() {
-   _tfw_getopts assertcontentgrep "$@"
-   shift $_tfw_getopts_shift
-   if [ $# -ne 2 ]; then
-      _tfw_error "incorrect arguments"
-      return $?
-   fi
-   _tfw_dump_on_fail "$1"
-   _tfw_get_content "$1" || return $?
-   _tfw_assert_grep "${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$1" "$_tfw_tmp/content" "$2" || _tfw_failexit
-}
-
 # Internal (private) functions that are not to be invoked directly from test
 # scripts.
 
@@ -1823,6 +1344,489 @@ _tfw_fatal() {
 
 _tfw_fatalexit() {
    exit 255
+}
+
+
+# The following functions can be overridden by a test script to provide a
+# default fixture for all test cases.
+
+setup() {
+   :
+}
+
+finally() {
+   :
+}
+
+teardown() {
+   :
+}
+
+# The following functions are essential for writing test cases and fixtures.
+
+# Executes its arguments as a command in the current shell process (not in a
+# child process), so that side effects like functions setting variables will
+# have effect.
+#  - if the exit status is non-zero, then fails the current test
+#  - otherwise, logs a message indicating the assertion passed
+assert() {
+   _tfw_getopts assert "$@"
+   shift $_tfw_getopts_shift
+   [ -z "$_tfw_message" ] && _tfw_message=$(shellarg "$@")
+   _tfw_assert "$@" || _tfw_failexit || return $?
+   $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
+   return 0
+}
+
+assertExpr() {
+   _tfw_getopts assertexpr "$@"
+   shift $_tfw_getopts_shift
+   _tfw_parse_expr "$@" || return $?
+   _tfw_message="${_tfw_message:+$_tfw_message }("$@")"
+   _tfw_shellarg "${_tfw_expr[@]}"
+   _tfw_assert eval "${_tfw_args[@]}" || _tfw_failexit || return $?
+   $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
+   return 0
+}
+
+fail() {
+   _tfw_getopts fail "$@"
+   shift $_tfw_getopts_shift
+   [ $# -ne 0 ] && _tfw_failmsg "$1"
+   _tfw_backtrace
+   _tfw_failexit
+}
+
+error() {
+   _tfw_getopts error "$@"
+   shift $_tfw_getopts_shift
+   [ $# -ne 0 ] && _tfw_errormsg "$1"
+   _tfw_backtrace
+   _tfw_errorexit
+}
+
+fatal() {
+   [ $# -eq 0 ] && set -- "no reason given"
+   _tfw_fatalmsg "$@"
+   _tfw_backtrace
+   _tfw_fatalexit
+}
+
+# Append a time stamped message to the test case's stdout log.  Will work even
+# in a context that stdout (fd 1) is redirected.  Will not log anything in a
+# quietened region.
+tfw_log() {
+   if $_tfw_log_noise; then
+      local ts=$(_tfw_timestamp)
+      cat >&$_tfw_log_fd <<EOF
+${ts##* } $*
+EOF
+   fi
+}
+
+# Append the contents of a file to the test case's stdout log.  A normal 'cat'
+# to stdout would also do this, but tfw_cat echoes header and footer delimiter
+# lines around to content to help distinguish it, and also works even in a
+# context that stdout (fd 1) is redirected.
+tfw_cat() {
+   local header=
+   local -a show=(cat)
+   for file; do
+      case $file in
+      --header=*)
+         header="${1#*=}"
+         continue
+         ;;
+      -v|--show-nonprinting)
+         show=(cat -v)
+         continue
+         ;;
+      -h|--hexdump)
+         show=(hd '</dev/null')
+         continue
+         ;;
+      --stdout)
+         file="${TFWSTDOUT?}"
+         header="${header:-stdout of ($executed)}"
+         ;;
+      --stderr)
+         file="${TFWSTDERR?}"
+         header="${header:-stderr of ($executed)}"
+         ;;
+      *)
+         header="${header:-${file#$_tfw_tmp/}}"
+         ;;
+      esac
+      local missing_nl=
+      tfw_log "#----- $header -----"
+      eval "${show[@]}" "$file" >&$_tfw_log_fd
+      if [ "${show[0]}" = cat -a "$(tail -1c "$file" | wc -l)" -eq 0 ]; then
+         echo >&$_tfw_log_fd
+         missing_nl=" (no newline at end)"
+      fi
+      tfw_log "#-----$missing_nl"
+      header=
+      show=(cat)
+   done
+}
+
+# Copy the given file(s) into the log directory, so they form part of the residue
+# of the log execution (together with log.txt).
+tfw_preserve() {
+   local arg
+   for arg; do
+      if cp -a "$arg" "$_tfw_logdir_test"; then
+         $_tfw_assert_noise && tfw_log "# PRESERVE" $(ls -l -d "$arg")
+      else
+         error "cp failed"
+      fi
+   done
+}
+
+# Execute the given command with log messages quietened.
+tfw_nolog() {
+   if [ "$1" = ! ]; then
+      shift
+      ! tfw_nolog "$@"
+   else
+      local old_log_noise=$_tfw_log_noise
+      _tfw_log_noise=false
+      "$@" >/dev/null
+      local stat=$?
+      _tfw_log_noise=$old_log_noise
+      return $stat
+   fi
+}
+
+# Execute the given command with successful assert log messages quietened.
+tfw_quietly() {
+   if [ "$1" = ! ]; then
+      shift
+      ! tfw_quietly "$@"
+   else
+      local old_assert_noise=$_tfw_assert_noise
+      _tfw_assert_noise=false
+      "$@" >/dev/null
+      local stat=$?
+      _tfw_assert_noise=$old_assert_noise
+      return $stat
+   fi
+}
+
+# The following functions are extremely useful for writing test cases.
+
+# Executes its arguments as a command:
+#  - captures the standard output and error in temporary files for later
+#    examination
+#  - captures the exit status for later assertions
+#  - sets the $executed variable to a description of the command that was
+#    executed
+execute() {
+   $_tfw_assert_noise && tfw_log "# execute" $(shellarg "$@")
+   _tfw_getopts execute "$@"
+   shift $_tfw_getopts_shift
+   _tfw_execute "$@"
+}
+
+executeOk() {
+   $_tfw_assert_noise && tfw_log "# executeOk" $(shellarg "$@")
+   _tfw_getopts executeok "$@"
+   _tfw_opt_exit_status=0
+   _tfw_dump_on_fail --stderr
+   shift $_tfw_getopts_shift
+   _tfw_execute "$@"
+}
+
+tfw_core_backtrace() {
+   local executable="$1"
+   local corefile="$2"
+   echo backtrace >"$_tfw_process_tmp/backtrace.gdb"
+   tfw_log "#----- gdb backtrace from $executable $corefile -----"
+   gdb -n -batch -x "$_tfw_process_tmp/backtrace.gdb" "$executable" "$corefile" </dev/null
+   tfw_log "#-----"
+   rm -f "$_tfw_process_tmp/backtrace.gdb"
+}
+
+assertExitStatus() {
+   _tfw_getopts assertexitstatus "$@"
+   shift $_tfw_getopts_shift
+   [ -z "$_tfw_message" ] && _tfw_message="exit status ($_tfw_exitStatus) of ($executed) $*"
+   _tfw_assertExpr "$_tfw_exitStatus" "$@" || _tfw_failexit || return $?
+   $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
+   return 0
+}
+
+assertRealTime() {
+   _tfw_getopts assertrealtime "$@"
+   shift $_tfw_getopts_shift
+   [ -z "$_tfw_message" ] && _tfw_message="real execution time ($realtime) of ($executed) $*"
+   _tfw_assertExpr "$realtime" "$@" || _tfw_failexit || return $?
+   $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
+   return 0
+}
+
+replayStdout() {
+   cat ${TFWSTDOUT?}
+}
+
+replayStderr() {
+   cat ${TFWSTDERR?}
+}
+
+assertStdoutIs() {
+   _tfw_assert_stdxxx_is stdout "$@" || _tfw_failexit
+}
+
+assertStderrIs() {
+   _tfw_assert_stdxxx_is stderr "$@" || _tfw_failexit
+}
+
+assertStdoutLineCount() {
+   _tfw_assert_stdxxx_linecount stdout "$@" || _tfw_failexit
+}
+
+assertStderrLineCount() {
+   _tfw_assert_stdxxx_linecount stderr "$@" || _tfw_failexit
+}
+
+assertStdoutGrep() {
+   _tfw_assert_stdxxx_grep stdout "$@" || _tfw_failexit
+}
+
+assertStderrGrep() {
+   _tfw_assert_stdxxx_grep stderr "$@" || _tfw_failexit
+}
+
+# Wait until a given condition is met:
+#  - can specify the timeout with --timeout=SECONDS (overridden by command-line
+#    option)
+#  - can specify the sleep interval with --sleep=SECONDS
+#  - the condition is a command that is executed repeatedly until returns zero
+#    status
+# where SECONDS may be fractional, eg, 1.5
+wait_until() {
+   $_tfw_assert_noise && tfw_log "# wait_until" $(shellarg "$@")
+   local start=$SECONDS
+   _tfw_getopts wait_until "$@"
+   local seconds=${_tfw_timeout_override:-${_tfw_opt_timeout:-${TFW_WAIT_UNTIL_TIMEOUT:-${_tfw_default_wait_until_timeout:-1}}}}
+   shift $_tfw_getopts_shift
+   local sense=
+   while [ "$1" = '!' ]; do
+      sense="$sense !"
+      shift
+   done
+   sleep $seconds 0 &
+   local timeout_pid=$!
+   while true; do
+      "$@"
+      [ $sense $? -eq 0 ] && break
+      if ! kill -0 $timeout_pid 2>/dev/null; then
+         local end=$SECONDS
+         fail "timeout after $((end - start)) seconds"
+      fi
+      sleep ${_tfw_opt_sleep:-1}
+   done
+   local end=$SECONDS
+   $_tfw_assert_noise && tfw_log "# waited for" $((end - start)) "seconds"
+   kill $timeout_pid 2>/dev/null
+   return 0
+}
+
+fork() {
+   local forkid=${#_tfw_forked_pids[*]}
+   local _tfw_process_tmp="$_tfw_tmp/fork-$forkid"
+   mkdir "$_tfw_process_tmp" || _tfw_fatalexit
+   $_tfw_assert_noise && tfw_log "# fork[$forkid] START" $(shellarg "$@")
+   ( "$@" ) 6>"$_tfw_process_tmp/log.stdout" 1>&6 2>"$_tfw_process_tmp/log.stderr" 7>"$_tfw_process_tmp/log.xtrace" &
+   _tfw_forked_pids[$forkid]=$!
+   $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$! STARTED"
+}
+
+forkKillAll() {
+   $_tfw_assert_noise && tfw_log "# fork kill all"
+   local forkid
+   for ((forkid=0; forkid < ${#_tfw_forked_pids[*]}; ++forkid)); do
+      local pid=${_tfw_forked_pids[$forkid]}
+      [ -z "$pid" ] && continue
+      $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$pid KILL"
+      kill -TERM $pid 2>/dev/null
+   done
+}
+
+forkWaitAll() {
+   _tfw_getopts forkwaitall "$@"
+   shift $_tfw_getopts_shift
+   $_tfw_assert_noise && tfw_log "# fork wait all"
+   while true; do
+      local running=0
+      local forkid
+      for ((forkid=0; forkid < ${#_tfw_forked_pids[*]}; ++forkid)); do
+         local pid=${_tfw_forked_pids[$forkid]}
+         [ -z "$pid" ] && continue
+         if kill -0 $pid 2>/dev/null; then
+            let running+=1
+         else
+            _tfw_forked_pids[$forkid]=
+            wait $pid # should not block because process has exited
+            local status=$?
+            $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$pid EXIT status=$status"
+            echo "++++++++++ fork[$forkid] log.stdout ++++++++++"
+            cat $_tfw_tmp/fork-$forkid/log.stdout
+            echo "++++++++++"
+            echo "++++++++++ fork[$forkid] log.stderr ++++++++++"
+            cat $_tfw_tmp/fork-$forkid/log.stderr
+            echo "++++++++++"
+            if $_tfw_trace; then
+               echo "++++++++++ fork[$forkid] log.xtrace ++++++++++"
+               cat $_tfw_tmp/fork-$forkid/log.xtrace
+               echo "++++++++++"
+            fi
+            case $status in
+            0) ;;
+            1) _tfw_fail "fork[$forkid] process exited with FAIL status";;
+            254) _tfw_error "fork[$forkid] process exited with ERROR status";;
+            255) _tfw_fatal "fork[$forkid] process exited with FATAL status";;
+            *) _tfw_error "fork[$forkid] process exited with status=$status";;
+            esac
+         fi
+      done
+      [ $running -eq 0 ] && return 0
+   done
+}
+
+# The following functions are very convenient when writing test cases.
+
+assertGrep() {
+   _tfw_getopts assertcontentgrep "$@"
+   shift $_tfw_getopts_shift
+   if [ $# -ne 2 ]; then
+      _tfw_error "incorrect arguments"
+      return $?
+   fi
+   _tfw_dump_on_fail "$1"
+   _tfw_get_content "$1" || return $?
+   _tfw_assert_grep "${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$1" "$_tfw_tmp/content" "$2" || _tfw_failexit
+}
+
+# Compare the two arguments as dotted ascii decimal version strings.
+# Return 0 if they are equal, 1 if arg1 < arg2, 2 if arg1 > arg2
+tfw_cmp_version() {
+   local IFS=.
+   local i=0 a=($1) b=($2)
+   for (( i=0; i < ${#a[@]} || i < ${#b[@]}; ++i )); do
+      local ai="${a[i]:-0}"
+      local bi="${b[i]:-0}"
+      (( 10#$ai < 10#$bi )) && return 1
+      (( 10#$ai > 10#$bi )) && return 2
+   done
+   return 0
+}
+
+# Format the standard input into multi columns within an output width set by the
+# COLUMNS env var.
+tfw_multicolumn() {
+   $AWK '
+      function pad(s, n) {
+         return sprintf("%-" n "s", s)
+      }
+      {
+         line[nlines++] = $0
+         if (length($0) > colwid)
+            colwid = length($0)
+      }
+      END {
+         wid = 0 + ENVIRON["COLUMNS"]
+         if (wid != 0) {
+            ncol = int(wid / (colwid + 2))
+            if (ncol < 1)
+                  ncol = 1
+         }
+         collen = int((nlines + ncol - 1) / ncol)
+         for (r = 0; r < collen; ++r) {
+            for (c = 0; c < ncol; ++c) {
+                  i = c * collen + r
+                  if (i >= nlines)
+                     break
+                  printf "%s  ", pad(line[i], colwid)
+            }
+            printf "\n"
+         }
+      }
+   '
+}
+
+# Create a file with the given size (default 0).
+# Usage: create_file [--append] <path> [<size>]
+# where: <size> is of the form Nu
+#        N is decimal integer
+#        u is one of kKmMgG (k=10^3, K=2^10, m=10^6, M=2^20, g=10^9, G=2^30)
+create_file() {
+   local args=("$@")
+   case "$1" in
+   --append) shift;;
+   *) rm -f "$1";;
+   esac
+   local path="$1"
+   local size="$2"
+   tfw_createfile --label="$path" ${size:+--size=$size} >>"$path" || error "failed command: create_file ${args[*]}"
+}
+
+# Add quotations to the given arguments to allow them to be expanded intact
+# in eval expressions.
+shellarg() {
+   _tfw_shellarg "$@"
+   echo "${_tfw_args[*]}"
+}
+
+# Echo the absolute path (containing symlinks if given) of the given
+# file/directory, which does not have to exist or even be accessible.
+abspath() {
+   _tfw_abspath -L "$1"
+}
+
+# Echo the absolute path (resolving all symlinks) of the given file/directory,
+# which does not have to exist or even be accessible.
+realpath() {
+   _tfw_abspath -P "$1"
+}
+
+# Return true if all the arguments arg2... match the given grep(1) regular
+# expression arg1.
+matches_rexp() {
+   _tfw_matches_rexp "$@"
+}
+
+# Escape all grep(1) basic regular expression metacharacters.
+escape_grep_basic() {
+   local re="$1"
+   local nil=''
+   re="${re//[\\]/\\\\$nil}"
+   re="${re//./\\.}"
+   re="${re//\*/\\*}"
+   re="${re//^/\\^}"
+   re="${re//\$/\\$}"
+   re="${re//\[/\\[}"
+   re="${re//\]/\\]}"
+   echo "$re"
+}
+
+# Escape all egrep(1) extended regular expression metacharacters.
+escape_grep_extended() {
+   local re="$1"
+   local nil=''
+   re="${re//[\\]/\\\\$nil}"
+   re="${re//./\\.}"
+   re="${re//\*/\\*}"
+   re="${re//\?/\\?}"
+   re="${re//+/\\+}"
+   re="${re//^/\\^}"
+   re="${re//\$/\\$}"
+   re="${re//(/\\(}";#"(fix Vim syntax highlighting)
+   re="${re//)/\\)}"
+   re="${re//|/\\|}"
+   re="${re//\[/\\[}"
+   re="${re//{/\\{}"
+   echo "$re"
 }
 
 # Restore the caller's shopt preferences before returning.
