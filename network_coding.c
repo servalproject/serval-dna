@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <assert.h>
 #include <inttypes.h>
 #include <stdarg.h>
+#include "strbuf.h"
 #include "network_coding.h"
 #include "dataformats.h"
 #include "log.h"
@@ -55,13 +56,19 @@ struct nc_half {
   // At the receiver, this should be 2*maximum window size to allow for older packets we can't decode yet
   uint8_t max_queue_size; 
   uint8_t queue_size;     // # of packets currently in the array
-  int count_new; // number of un-sent degrees of freedom
+  uint8_t count_new; // number of un-sent degrees of freedom
+  
+  uint32_t packet_count; // total number of packets sent / received
+  uint32_t uninteresting_count; // number of redundant packets received
+  uint32_t ack_count; // number of received acks with no data payload
 };
 
 struct nc{
   struct nc_half tx;
   struct nc_half rx;
 };
+
+static int _nc_dump_half(struct nc_half *n);
 
 static void _nc_free_half(struct nc_half *n)
 {
@@ -240,9 +247,18 @@ static int _nc_tx_combine_random_payloads(struct nc_half *n, struct nc_packet *p
 
 int nc_tx_packet_urgency(struct nc *n)
 {
-  // new data? send asap
-  if (n->tx.count_new)
-    return URGENCY_ASAP;
+  // new data inside the tx window size? send asap
+  if (n->tx.count_new){
+    int i;
+    for(i=0;i<n->tx.window_size;i++) {
+      int index = (n->tx.window_start + i) & (n->tx.max_queue_size -1);
+      // assume we might have gaps in the payload list if we are a retransmitter in the network path
+      if (!n->tx.packets[index].payload)
+	continue;
+      if (n->tx.packets[index].flags & FLAG_NEW)
+	return URGENCY_ASAP;
+    }
+  }
   // ack required? send soon
   if (n->rx.unseen != n->rx.last_ack)
     return URGENCY_ASAP;
@@ -259,8 +275,8 @@ int nc_tx_produce_packet(struct nc *n, uint8_t *datagram, uint32_t buffer_size)
   // TODO: Don't waste more bytes than we need to on the bitmap and sequence number
   if (buffer_size < n->tx.datagram_size+NC_HEADER_LEN)
     return -1;
-    
-  uint8_t window_size = 32 - (n->rx.unseen - n->rx.deliver_next);
+  
+  uint8_t window_size = n->rx.max_queue_size - (n->rx.unseen - n->rx.deliver_next);
   if (window_size > n->rx.max_queue_size)
     window_size = n->rx.max_queue_size;
   
@@ -269,7 +285,7 @@ int nc_tx_produce_packet(struct nc *n, uint8_t *datagram, uint32_t buffer_size)
   n->rx.last_ack = n->rx.unseen;
   size_t len=2;
   
-  if (n->tx.queue_size){
+  if (n->tx.queue_size && n->tx.window_size){
     // Produce linear combination
     struct nc_packet packet={
       .sequence = n->tx.window_start,
@@ -282,15 +298,25 @@ int nc_tx_produce_packet(struct nc *n, uint8_t *datagram, uint32_t buffer_size)
     if (_nc_tx_combine_random_payloads(&n->tx, &packet))
       return -1;
     // TODO assert actual_combination? (should never be zero)
-    // Write out bitmap of actual combinations involved
     datagram[2] = packet.sequence;
+    // Write out bitmap of actual combinations involved
     write_uint32(&datagram[3], packet.combination);
     len = packet.len + NC_HEADER_LEN;
     // truncate zero bytes from the end
     while(!datagram[len-1])
       len--;
-  }
+    
+  }else
+    n->tx.ack_count++;
+
+  n->tx.packet_count++;
   return len;
+}
+
+void nc_state_html(struct strbuf *b, struct nc *n)
+{
+  strbuf_sprintf(b, "NC TX: %d (acks %d)<br>", n->tx.packet_count, n->tx.ack_count);
+  strbuf_sprintf(b, "NC RX: %d (unint %d, acks %d)<br>", n->rx.packet_count, n->rx.uninteresting_count, n->rx.ack_count);
 }
 
 static int _nc_dump_half(struct nc_half *n)
@@ -302,6 +328,13 @@ static int _nc_dump_half(struct nc_half *n)
   DEBUGF("  queue size; %d", n->queue_size);
   DEBUGF("  max queue size; %d", n->max_queue_size);
   DEBUGF("  delivered; %d", n->deliver_next);
+  if (n->packet_count)
+    DEBUGF("  packets; %d", n->packet_count);
+  if (n->uninteresting_count)
+    DEBUGF("  uninteresting; %d", n->uninteresting_count);
+  if (n->ack_count)
+    DEBUGF("  acks; %d", n->ack_count);
+  
   int i;
   for (i=0;i<n->max_queue_size;i++){
     if (!n->packets[i].payload)
@@ -313,6 +346,14 @@ static int _nc_dump_half(struct nc_half *n)
   return 0;
 }
 
+void nc_dump(struct nc *n)
+{
+  DEBUGF("Network coding state");
+  DEBUGF("TX");
+  _nc_dump_half(&n->tx);
+  DEBUGF("RX");
+  _nc_dump_half(&n->rx);
+}
 
 // note, the incoming packet buffer must be allocated from the heap
 // this function will take responsibility for releasing it
@@ -320,6 +361,12 @@ static int _nc_rx_combine_packet(struct nc_half *n, struct nc_packet *packet)
 {
   int i;
   
+  // ignore any packets with no information
+  if (packet->combination == 0){
+    free(packet->payload);
+    return 1;
+  }
+    
   // First, reduce the combinations of the incoming packet based on other packets already seen
   for (i=0;i<n->max_queue_size;i++){
     if (!n->packets[i].payload || _compare_uint8(n->packets[i].sequence, packet->sequence) < 0)
@@ -404,14 +451,25 @@ static void _nc_rx_advance_window(struct nc_half *n, uint8_t new_window_start)
   }
 }
 
+/*
+ * Parse a network coded packet,
+ * returns;
+ *  0 - interesting packet, the caller should immediately attempt to decode packets
+ *  1 - un-interesting
+ *  2 - ack only
+ */
 int nc_rx_packet(struct nc *n, const uint8_t *payload, size_t len)
 {
+  n->rx.packet_count++;
+  
   if (len>=2){
     _nc_ack(&n->tx, payload[0], payload[1]);
   }
   
-  if (len<NC_HEADER_LEN)
-    return 1;
+  if (len<NC_HEADER_LEN){
+    n->rx.ack_count++;
+    return 2;
+  }
   
   uint8_t new_window_start = payload[2];
   
@@ -425,6 +483,9 @@ int nc_rx_packet(struct nc *n, const uint8_t *payload, size_t len)
   bcopy(&payload[NC_HEADER_LEN], packet.payload, len - NC_HEADER_LEN);
   
   int r = _nc_rx_combine_packet(&n->rx, &packet);
+  if (r==1)
+    n->rx.uninteresting_count++;
+
   _nc_rx_advance_window(&n->rx, new_window_start);
   
   return r;
@@ -466,14 +527,6 @@ int nc_rx_next_delivered(struct nc *n, uint8_t *payload, int buffer_size)
    7. nc_rx_linear_combination() rejects when RX queue full, when combination starts
       before current window.
 */
-
-static void _nc_dump(struct nc *n)
-{
-  fprintf(stderr, "TX\n");
-  _nc_dump_half(&n->tx);
-  fprintf(stderr, "RX\n");
-  _nc_dump_half(&n->rx);
-}
 
 void FAIL(const char *fmt,...){
   va_list ap;

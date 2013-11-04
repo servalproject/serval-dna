@@ -109,7 +109,9 @@ struct radio_link_state{
   // next firmware heartbeat
   time_ms_t next_heartbeat;
   
-  time_ms_t last_packet;
+  time_ms_t last_tx_packet;
+  time_ms_t last_rx_packet;
+  time_ms_t last_decoded_packet;
   
   // parsed rssi
   int radio_rssi;
@@ -171,6 +173,7 @@ void radio_link_state_html(struct strbuf *b, struct overlay_interface *interface
   struct radio_link_state *state = interface->radio_link_state;
   strbuf_sprintf(b, "RSSI: %ddB<br>", state->radio_rssi);
   strbuf_sprintf(b, "Remote RSSI: %ddB<br>", state->remote_rssi);
+  nc_state_html(b, state->network_coding);
 }
 
 static int encode_next_packet(struct radio_link_state *link_state)
@@ -356,15 +359,15 @@ int radio_link_tx(struct overlay_interface *interface)
 	break;
     }
     
-    if (link_state->last_packet + delay > now){
-      interface->alarm.alarm = link_state->last_packet + delay;
+    if (link_state->last_tx_packet + delay > now){
+      interface->alarm.alarm = link_state->last_tx_packet + delay;
       if (interface->alarm.alarm > next_tick)
 	interface->alarm.alarm = next_tick;
       break;
     }
     
     send_link_packet(interface);
-    link_state->last_packet = now;
+    link_state->last_tx_packet = now;
   }
   
   watch(&interface->alarm);
@@ -418,6 +421,7 @@ static int radio_link_parse(struct overlay_interface *interface, struct radio_li
     if (tail == 0x555){
       if (config.debug.radio_link)
 	DEBUGF("Decoded remote heartbeat request");
+      state->last_rx_packet=gettime_ms();
       return 1;
     }
     return 0;
@@ -434,6 +438,7 @@ static int radio_link_parse(struct overlay_interface *interface, struct radio_li
   }
   *backtrack=errors;
   
+  state->last_rx_packet=gettime_ms();
   int rx = nc_rx_packet(state->network_coding, payload, packet_length);
   if (config.debug.radio_link)
     DEBUGF("RX returned %d", rx);
@@ -445,6 +450,7 @@ static int radio_link_parse(struct overlay_interface *interface, struct radio_li
       int len=nc_rx_next_delivered(state->network_coding, fragment, sizeof(fragment));
       if (len<=0)
 	break;
+      state->last_decoded_packet = gettime_ms();
       int fragment_len=fragment[0];
       if (fragment_len == PAYLOAD_FRAGMENT)
 	fragment_len = len -1;
@@ -467,6 +473,8 @@ static int radio_link_parse(struct overlay_interface *interface, struct radio_li
 	    dump("Invalid packet?", state->dst, state->packet_length);
 	  }
 	}
+      }else{
+	state->packet_length=sizeof(state->dst);
       }
       
       // reset the buffer for the next packet

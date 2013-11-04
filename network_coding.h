@@ -17,5 +17,7 @@ int nc_tx_produce_packet(struct nc *n, uint8_t *datagram, uint32_t buffer_size);
 int nc_rx_packet(struct nc *n, const uint8_t *payload, size_t len);
 int nc_rx_next_delivered(struct nc *n, uint8_t *payload, int buffer_size);
 int nc_tx_packet_urgency(struct nc *n);
+void nc_dump(struct nc *n);
+void nc_state_html(struct strbuf *b, struct nc *nc);
 
 #endif
