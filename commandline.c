@@ -1358,20 +1358,20 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
 
   if (journal && !m->is_journal)
     return WHY("Existing manifest is not a journal");
-
   if (!journal && m->is_journal)
     return WHY("Existing manifest is a journal");
 
+  if (bskhex)
+    rhizome_apply_bundle_secret(m, &bsk);
   if (m->service == NULL)
     rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
-
-  if (rhizome_fill_manifest(m, filepath, *authorSidHex ? &authorSid : NULL, bskhex ? &bsk : NULL)){
+  if (rhizome_fill_manifest(m, filepath, *authorSidHex ? &authorSid : NULL)) {
     rhizome_manifest_free(m);
     return -1;
   }
 
   if (journal){
-    if (rhizome_append_journal_file(m, bskhex?&bsk:NULL, 0, filepath)){
+    if (rhizome_append_journal_file(m, 0, filepath)){
       rhizome_manifest_free(m);
       return -1;
     }
@@ -1406,15 +1406,17 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     cli_field_name(context, "manifestid", ":");
     cli_put_string(context, alloca_tohex_rhizome_bid_t(mout->cryptoSignPublic), "\n");
   }
+  assert(m->haveSecret);
   {
     char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
     rhizome_bytes_to_hex_upper(mout->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
     cli_field_name(context, ".secret", ":");
     cli_put_string(context, secret, "\n");
   }
-  if (m->has_author) {
+  assert(mout->authorship != AUTHOR_LOCAL);
+  if (mout->authorship == AUTHOR_AUTHENTIC) {
     cli_field_name(context, ".author", ":");
-    cli_put_string(context, alloca_tohex_sid_t(m->author), "\n");
+    cli_put_string(context, alloca_tohex_sid_t(mout->author), "\n");
   }
   if (mout->has_bundle_key) {
     cli_field_name(context, "BK", ":");
@@ -1670,8 +1672,9 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
   ret = rhizome_retrieve_manifest(&bid, m);
   
   if (ret==0){
-    // ignore errors
-    rhizome_extract_privatekey(m, bskhex ? &bsk : NULL);
+    if (bskhex)
+      rhizome_apply_bundle_secret(m, &bsk);
+    rhizome_authenticate_author(m);
 
     if (m->service) {
       cli_field_name(context, "service", ":");
@@ -1684,6 +1687,9 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
       rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
       cli_field_name(context, ".secret", ":");
       cli_put_string(context, secret, "\n");
+    }
+    assert(m->authorship != AUTHOR_LOCAL);
+    if (m->authorship == AUTHOR_AUTHENTIC) {
       cli_field_name(context, ".author", ":");
       cli_put_string(context, alloca_tohex_sid_t(m->author), "\n");
     }
@@ -1707,8 +1713,7 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
   if (ret==0 && m->filesize != 0 && filepath && *filepath){
     if (extract){
       // Save the file, implicitly decrypting if required.
-      // TODO, this may cause us to search for an author a second time if the above call to rhizome_extract_privatekey failed
-      retfile = rhizome_extract_file(m, filepath, bskhex?&bsk:NULL);
+      retfile = rhizome_extract_file(m, filepath);
     }else{
       // Save the file without attempting to decrypt
       int64_t length;

@@ -238,16 +238,13 @@ typedef struct rhizome_manifest
   bool_t has_sender;
   bool_t has_recipient;
 
-  /* Set if the 'author' element is valid, ie, a SID has been assigned.
-   */
-  bool_t has_author;
-
   /* Local authorship.  Useful for dividing bundle lists between "sent" and
    * "inbox" views.
    */
   enum rhizome_bundle_authorship { 
-    AUTHOR_NOT_CHECKED = 0,
-    AUTHOR_ERROR, // author check failed, don't try again
+    ANONYMOUS = 0, // 'author' element is not valid
+    AUTHOR_NOT_CHECKED, // 'author' element is valid but not checked
+    AUTHENTICATION_ERROR, // author check failed, don't try again
     AUTHOR_UNKNOWN, // author is not a local identity
     AUTHOR_LOCAL, // author is in keyring (unlocked) but not verified
     AUTHOR_IMPOSTOR, // author is a local identity but fails verification
@@ -295,7 +292,8 @@ typedef struct rhizome_manifest
   sid_t recipient;
 
   /* Local data, not encapsulated in the bundle.  The system time of the most
-   * recent INSERT or UPDATE of the manifest into the store.
+   * recent INSERT or UPDATE of the manifest into the store.  Zero if the manifest
+   * has not been stored yet.
    */
   time_ms_t inserttime;
 
@@ -326,19 +324,27 @@ typedef struct rhizome_manifest
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-#define rhizome_manifest_set_id(m,v)  _rhizome_manifest_set_id(__WHENCE__,(m),(v))
-#define rhizome_manifest_set_version(m,v)  _rhizome_manifest_set_version(__WHENCE__,(m),(v))
-#define rhizome_manifest_set_filesize(m,v)  _rhizome_manifest_set_filesize(__WHENCE__,(m),(v))
-#define rhizome_manifest_set_filehash(m,v)  _rhizome_manifest_set_filehash(__WHENCE__,(m),(v))
-#define rhizome_manifest_set_tail(m,v)  _rhizome_manifest_set_tail(__WHENCE__,(m),(v))
-#define rhizome_manifest_set_bundle_key(m,v)  _rhizome_manifest_set_bundle_key(__WHENCE__,(m),(v))
-#define rhizome_manifest_set_service(m,v)  _rhizome_manifest_set_service(__WHENCE__,(m),(v))
-#define rhizome_manifest_set_name(m,v)  _rhizome_manifest_set_name(__WHENCE__,(m),(v))
-#define rhizome_manifest_set_date(m,v)  _rhizome_manifest_set_date(__WHENCE__,(m),(v))
-#define rhizome_manifest_set_sender(m,v)  _rhizome_manifest_set_sender(__WHENCE__,(m),(v))
-#define rhizome_manifest_set_recipient(m,v)  _rhizome_manifest_set_recipient(__WHENCE__,(m),(v))
-#define rhizome_manifest_set_crypt(m,v)  _rhizome_manifest_set_crypt(__WHENCE__,(m),(v))
-#define rhizome_manifest_set_author(m,v)  _rhizome_manifest_set_author(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_id(m,v)            _rhizome_manifest_set_id(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_version(m,v)       _rhizome_manifest_set_version(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_filesize(m,v)      _rhizome_manifest_set_filesize(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_filehash(m,v)      _rhizome_manifest_set_filehash(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_tail(m,v)          _rhizome_manifest_set_tail(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_bundle_key(m,v)    _rhizome_manifest_set_bundle_key(__WHENCE__,(m),(v))
+#define rhizome_manifest_del_bundle_key(m)      _rhizome_manifest_del_bundle_key(__WHENCE__,(m))
+#define rhizome_manifest_set_service(m,v)       _rhizome_manifest_set_service(__WHENCE__,(m),(v))
+#define rhizome_manifest_del_service(m)         _rhizome_manifest_del_service(__WHENCE__,(m))
+#define rhizome_manifest_set_name(m,v)          _rhizome_manifest_set_name(__WHENCE__,(m),(v))
+#define rhizome_manifest_del_name(m)            _rhizome_manifest_del_name(__WHENCE__,(m))
+#define rhizome_manifest_set_date(m,v)          _rhizome_manifest_set_date(__WHENCE__,(m),(v))
+#define rhizome_manifest_del_date(m)            _rhizome_manifest_del_date(__WHENCE__,(m))
+#define rhizome_manifest_set_sender(m,v)        _rhizome_manifest_set_sender(__WHENCE__,(m),(v))
+#define rhizome_manifest_del_sender(m)          _rhizome_manifest_del_sender(__WHENCE__,(m))
+#define rhizome_manifest_set_recipient(m,v)     _rhizome_manifest_set_recipient(__WHENCE__,(m),(v))
+#define rhizome_manifest_del_recipient(m)       _rhizome_manifest_del_recipient(__WHENCE__,(m))
+#define rhizome_manifest_set_crypt(m,v)         _rhizome_manifest_set_crypt(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_inserttime(m,v)    _rhizome_manifest_set_inserttime(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_author(m,v)        _rhizome_manifest_set_author(__WHENCE__,(m),(v))
+#define rhizome_manifest_del_author(m)          _rhizome_manifest_del_author(__WHENCE__,(m))
 
 void _rhizome_manifest_set_id(struct __sourceloc, rhizome_manifest *, const rhizome_bid_t *);
 void _rhizome_manifest_set_version(struct __sourceloc, rhizome_manifest *, int64_t); // TODO change to uint64_t
@@ -346,13 +352,21 @@ void _rhizome_manifest_set_filesize(struct __sourceloc, rhizome_manifest *, uint
 void _rhizome_manifest_set_filehash(struct __sourceloc, rhizome_manifest *, const rhizome_filehash_t *);
 void _rhizome_manifest_set_tail(struct __sourceloc, rhizome_manifest *, uint64_t);
 void _rhizome_manifest_set_bundle_key(struct __sourceloc, rhizome_manifest *, const rhizome_bk_t *);
+void _rhizome_manifest_del_bundle_key(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_service(struct __sourceloc, rhizome_manifest *, const char *);
+void _rhizome_manifest_del_service(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_name(struct __sourceloc, rhizome_manifest *, const char *);
+void _rhizome_manifest_del_name(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_date(struct __sourceloc, rhizome_manifest *, time_ms_t);
+void _rhizome_manifest_del_date(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_sender(struct __sourceloc, rhizome_manifest *, const sid_t *);
+void _rhizome_manifest_del_sender(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_recipient(struct __sourceloc, rhizome_manifest *, const sid_t *);
+void _rhizome_manifest_del_recipient(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_crypt(struct __sourceloc, rhizome_manifest *, enum rhizome_manifest_crypt);
+void _rhizome_manifest_set_inserttime(struct __sourceloc, rhizome_manifest *, time_ms_t);
 void _rhizome_manifest_set_author(struct __sourceloc, rhizome_manifest *, const sid_t *);
+void _rhizome_manifest_del_author(struct __sourceloc, rhizome_manifest *);
 
 /* Supported service identifiers.  These go in the 'service' field of every
  * manifest, and indicate which application must be used to process the bundle
@@ -439,17 +453,21 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence);
 int rhizome_manifest_pack_variables(rhizome_manifest *m);
 int rhizome_store_bundle(rhizome_manifest *m);
 int rhizome_remove_file_datainvalid(sqlite_retry_state *retry, const rhizome_filehash_t *hashp);
-int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
-int rhizome_clean_payload(const char *fileidhex);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);
 int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, const char *filepath);
-int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp, rhizome_bk_t *bsk);
+
+int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp);
+
+int rhizome_apply_bundle_secret(rhizome_manifest *, const rhizome_bk_t *);
+int rhizome_manifest_add_bundle_key(rhizome_manifest *);
+
+void rhizome_find_bundle_author_and_secret(rhizome_manifest *m);
 int rhizome_lookup_author(rhizome_manifest *m);
+void rhizome_authenticate_author(rhizome_manifest *m);
 
 int rhizome_manifest_verify(rhizome_manifest *m);
 int rhizome_manifest_check_sanity(rhizome_manifest *m_in);
 
-int rhizome_manifest_bind_id(rhizome_manifest *m_in);
 int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout, int deduplicate);
 int rhizome_add_manifest(rhizome_manifest *m_in,int ttl);
 
@@ -546,9 +564,9 @@ int64_t rhizome_bar_version(const unsigned char *bar);
 uint64_t rhizome_bar_bidprefix_ll(unsigned char *bar);
 int rhizome_is_bar_interesting(unsigned char *bar);
 int rhizome_is_manifest_interesting(rhizome_manifest *m);
-int rhizome_list_manifests(struct cli_context *context, const char *service, const char *name, 
-			   const char *sender_sid, const char *recipient_sid, 
-			   int limit, int offset, char count_rows);
+int rhizome_list_manifests(struct cli_context *context, const char *service, const char *name,
+			   const char *sender_sid, const char *recipient_sid,
+			   size_t rowlimit, size_t rowoffset, char count_rows);
 int rhizome_retrieve_manifest(const rhizome_bid_t *bid, rhizome_manifest *m);
 int rhizome_retrieve_manifest_by_prefix(const unsigned char *prefix, unsigned prefix_len, rhizome_manifest *m);
 int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m);
@@ -562,7 +580,12 @@ int rhizome_delete_file(const rhizome_filehash_t *hashp);
 
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int monitor_announce_bundle(rhizome_manifest *m);
-int rhizome_find_secret(const sid_t *authorSidp, int *rs_len, const unsigned char **rs);
+enum rhizome_secret_disposition {
+    FOUND_RHIZOME_SECRET = 0,
+    IDENTITY_NOT_FOUND,
+    IDENTITY_HAS_NO_RHIZOME_SECRET,
+};
+enum rhizome_secret_disposition find_rhizome_secret(const sid_t *authorSidp, size_t *rs_len, const unsigned char **rs);
 int rhizome_bk_xor_stream(
   const rhizome_bid_t *bidp,
   const unsigned char *rs,
@@ -584,13 +607,9 @@ int rhizome_secret2bk(
   const unsigned char secret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]
 );
 unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m);
-int rhizome_extract_privatekey(rhizome_manifest *m, const rhizome_bk_t *bsk);
-int rhizome_extract_privatekey_required(rhizome_manifest *m, rhizome_bk_t *bsk);
 int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
 			       const unsigned char *pk,rhizome_signature *out);
-int rhizome_verify_bundle_privatekey(rhizome_manifest *m, const unsigned char *sk,
-				     const unsigned char *pk);
-int rhizome_find_bundle_author(rhizome_manifest *m);
+int rhizome_verify_bundle_privatekey(const unsigned char *sk, const unsigned char *pk);
 int rhizome_queue_ignore_manifest(unsigned char *bid_prefix, int prefix_len, int timeout);
 int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len);
 
@@ -866,11 +885,10 @@ int rhizome_import_file(rhizome_manifest *m, const char *filepath);
 int rhizome_import_buffer(rhizome_manifest *m, unsigned char *buffer, size_t length);
 int rhizome_stat_file(rhizome_manifest *m, const char *filepath);
 int rhizome_add_file(rhizome_manifest *m, const char *filepath);
-int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk);
+int rhizome_derive_payload_key(rhizome_manifest *m);
 
-int rhizome_open_write_journal(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, uint64_t new_size);
-int rhizome_append_journal_buffer(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, unsigned char *buffer, size_t len);
-int rhizome_append_journal_file(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, const char *filename);
+int rhizome_append_journal_buffer(rhizome_manifest *m, uint64_t advance_by, unsigned char *buffer, size_t len);
+int rhizome_append_journal_file(rhizome_manifest *m, uint64_t advance_by, const char *filename);
 int rhizome_journal_pipe(struct rhizome_write *write, const rhizome_filehash_t *hashp, uint64_t start_offset, uint64_t length);
 
 int rhizome_crypt_xor_block(unsigned char *buffer, size_t buffer_size, uint64_t stream_offset, 
@@ -879,8 +897,8 @@ int rhizome_open_read(struct rhizome_read *read, const rhizome_filehash_t *hashp
 ssize_t rhizome_read(struct rhizome_read *read, unsigned char *buffer, size_t buffer_length);
 int rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buffer *buffer, unsigned char *data, size_t len);
 int rhizome_read_close(struct rhizome_read *read);
-int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state);
-int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t *bsk);
+int rhizome_open_decrypt_read(rhizome_manifest *m, struct rhizome_read *read_state);
+int rhizome_extract_file(rhizome_manifest *m, const char *filepath);
 int rhizome_dump_file(const rhizome_filehash_t *hashp, const char *filepath, int64_t *length);
 int rhizome_read_cached(const rhizome_bid_t *bid, uint64_t version, time_ms_t timeout, 
   uint64_t fileOffset, unsigned char *buffer, size_t length);

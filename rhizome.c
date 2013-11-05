@@ -184,44 +184,74 @@ int rhizome_manifest_check_sanity(rhizome_manifest *m)
   return 0;
 }
 
-
-/*
-  A bundle can either be an ordinary manifest-payload pair, or a group description.
-  
-  - Group descriptions are manifests with no payload that have the "isagroup" variable set.  They
-    get stored in the manifests table AND a reference is added to the grouplist table.  Any
-    manifest, including any group manifest, may be a member of zero or one group.  This allows a
-    nested, i.e., multi-level group hierarchy where sub-groups will only typically be discovered
-    by joining the parent group.
-*/
-
-int rhizome_manifest_bind_id(rhizome_manifest *m)
+/* Sets the bundle key "BK" field of a manifest.  Returns 1 if the field was set, 0 if not.
+ *
+ * This function must not be called unless the bundle secret is known.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_manifest_add_bundle_key(rhizome_manifest *m)
 {
-  if (rhizome_manifest_createid(m) == -1)
-    return -1;
-  /* The ID is implicit in transit, but we need to store it in the file, so that reimporting
-     manifests on receiver nodes works easily.  We might implement something that strips the id
-     variable out of the manifest when sending it, or some other scheme to avoid sending all the
-     extra bytes. */
-  if (m->has_author) {
-    /* Set the BK using the provided authorship information.
-       Serval Security Framework defines BK as being:
-       BK = privateKey XOR sha512(RS##BID), where BID = cryptoSignPublic, 
-       and RS is the rhizome secret for the specified author. 
-       The nice thing about this specification is that:
-       privateKey = BK XOR sha512(RS##BID), so the same function can be used
-       to encrypt and decrypt the BK field. */
-    const unsigned char *rs;
-    int rs_len=0;
-    if (rhizome_find_secret(&m->author, &rs_len, &rs))
-      return WHYF("Failed to obtain RS for %s to calculate BK", alloca_tohex_sid_t(m->author));
-    rhizome_bk_t bkey;
-    if (!rhizome_secret2bk(&m->cryptoSignPublic, rs, rs_len, bkey.binary, m->cryptoSignSecret))
-      rhizome_manifest_set_bundle_key(m, &bkey);
-    else
-      return WHY("Failed to set BK");
+  IN();
+  assert(m->haveSecret);
+  switch (m->authorship) {
+    case ANONYMOUS: // there can be no BK field without an author
+    case AUTHOR_UNKNOWN: // we already know the author is not in the keyring
+    case AUTHENTICATION_ERROR: // already tried and failed to get Rhizome Secret
+      break;
+    case AUTHOR_NOT_CHECKED:
+    case AUTHOR_LOCAL:
+    case AUTHOR_AUTHENTIC:
+    case AUTHOR_IMPOSTOR: {
+	/* Set the BK using the provided author.  Serval Security Framework defines BK as being:
+	*    BK = privateKey XOR sha512(RS##BID)
+	* where BID = cryptoSignPublic, 
+	*       RS is the rhizome secret for the specified author. 
+	* The nice thing about this specification is that:
+	*    privateKey = BK XOR sha512(RS##BID)
+	* so the same function can be used to encrypt and decrypt the BK field.
+	*/
+	const unsigned char *rs;
+	size_t rs_len = 0;
+	enum rhizome_secret_disposition d = find_rhizome_secret(&m->author, &rs_len, &rs);
+	switch (d) {
+	  case FOUND_RHIZOME_SECRET: {
+	      rhizome_bk_t bkey;
+	      if (rhizome_secret2bk(&m->cryptoSignPublic, rs, rs_len, bkey.binary, m->cryptoSignSecret) == 0) {
+		rhizome_manifest_set_bundle_key(m, &bkey);
+		m->authorship = AUTHOR_AUTHENTIC;
+		RETURN(1);
+	      } else
+		m->authorship = AUTHENTICATION_ERROR;
+	    }
+	    break;
+	  case IDENTITY_NOT_FOUND:
+	    m->authorship = AUTHOR_UNKNOWN;
+	    break;
+	  case IDENTITY_HAS_NO_RHIZOME_SECRET:
+	    m->authorship = AUTHENTICATION_ERROR;
+	    break;
+	  default:
+	    FATALF("find_rhizome_secret() returned unknown code %d", (int)d);
+	    break;
+	}
+      }
+      break;
+    default:
+      FATALF("m->authorship = %d", (int)m->authorship);
   }
-  return 0;
+  rhizome_manifest_del_bundle_key(m);
+  switch (m->authorship) {
+    case AUTHOR_UNKNOWN:
+      WHYF("Cannot set BK because author=%s is not in keyring", alloca_tohex_sid_t(m->author));
+      break;
+    case AUTHENTICATION_ERROR:
+      WHY("Cannot set BK due to error");
+      break;
+    default:
+      break;
+  }
+  RETURN(0);
 }
 
 int rhizome_add_manifest(rhizome_manifest *m, int ttl)

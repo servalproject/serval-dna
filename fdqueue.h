@@ -88,5 +88,6 @@ void dump_stack(int log_level);
 #define OUT() fd_func_exit(__HERE__, &_this_call)
 #define RETURN(X) do { OUT(); return (X); } while (0);
 #define RETURNNULL do { OUT(); return (NULL); } while (0);
+#define RETURNVOID do { OUT(); return; } while (0);
 
 #endif // __SERVALDNA__FDQUEUE_H

@@ -222,13 +222,12 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
       return 0;
     }
     // If manifest template did not specify a service field, then by default it is "file".
+    if (!rhizome_is_bk_none(&config.rhizome.api.addfile.bundle_secret_key))
+      rhizome_apply_bundle_secret(m, &config.rhizome.api.addfile.bundle_secret_key);
     if (m->service == NULL)
       rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
-    sid_t *author = NULL;
-    if (!is_sid_t_any(config.rhizome.api.addfile.default_author))
-      author = &config.rhizome.api.addfile.default_author;
-    rhizome_bk_t bsk = config.rhizome.api.addfile.bundle_secret_key;
-    if (rhizome_fill_manifest(m, r->data_file_name, author, &bsk)) {
+    const sid_t *author = is_sid_t_any(config.rhizome.api.addfile.default_author) ? NULL : &config.rhizome.api.addfile.default_author;
+    if (rhizome_fill_manifest(m, r->data_file_name, author)) {
       rhizome_manifest_free(m);
       rhizome_direct_clear_temporary_files(r);
       http_request_simple_response(&r->http, 500, "Internal Error: Could not fill manifest");

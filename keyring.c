@@ -1504,7 +1504,7 @@ unsigned char *keyring_find_sas_private(keyring_file *k, const sid_t *sidp, unsi
 	  k->contexts[cn]->identities[in]->keypairs[kp]->private_key;
 	unsigned char *sas_public=
 	  k->contexts[cn]->identities[in]->keypairs[kp]->public_key;
-	if (rhizome_verify_bundle_privatekey(NULL,sas_private,sas_public))
+	if (!rhizome_verify_bundle_privatekey(sas_private, sas_public))
 	  {
 	    /* SAS key is invalid (perhaps because it was a pre 0.90 format one),
 	       so replace it */

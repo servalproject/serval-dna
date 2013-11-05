@@ -87,7 +87,7 @@ static int get_my_conversation_bundle(const sid_t *my_sidp, rhizome_manifest *m)
   assert(m->haveSecret);
   if (m->haveSecret == NEW_BUNDLE_ID) {
     rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
-    if (rhizome_fill_manifest(m, NULL, my_sidp, NULL) == -1)
+    if (rhizome_fill_manifest(m, NULL, my_sidp) == -1)
       return WHY("Invalid manifest");
     if (config.debug.meshms) {
       char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
@@ -218,8 +218,9 @@ static int create_ply(const sid_t *my_sid, struct conversations *conv, rhizome_m
   rhizome_manifest_set_recipient(m, &conv->them);
   rhizome_manifest_set_filesize(m, 0);
   rhizome_manifest_set_tail(m, 0);
-  if (rhizome_fill_manifest(m, NULL, my_sid, NULL))
+  if (rhizome_fill_manifest(m, NULL, my_sid))
     return -1;
+  assert(m->haveSecret);
   assert(m->payloadEncryption == PAYLOAD_ENCRYPTED);
   conv->my_ply.bundle_id = m->cryptoSignPublic;
   conv->found_my_ply = 1;
@@ -239,7 +240,7 @@ static int ply_read_open(struct ply_read *ply, const rhizome_bid_t *bid, rhizome
     DEBUGF("Opening ply %s", alloca_tohex_rhizome_bid_t(*bid));
   if (rhizome_retrieve_manifest(bid, m))
     return -1;
-  int ret = rhizome_open_decrypt_read(m, NULL, &ply->read);
+  int ret = rhizome_open_decrypt_read(m, &ply->read);
   if (ret == 1)
     WARNF("Payload was not found for manifest %s, %"PRId64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
   if (ret != 0)
@@ -317,7 +318,8 @@ static int ply_find_next(struct ply_read *ply, char type){
   }
 }
 
-static int append_meshms_buffer(const sid_t *my_sid, struct conversations *conv, unsigned char *buffer, int len){
+static int append_meshms_buffer(const sid_t *my_sid, struct conversations *conv, unsigned char *buffer, int len)
+{
   int ret=-1;
   rhizome_manifest *mout = NULL;
   rhizome_manifest *m = rhizome_new_manifest();
@@ -327,14 +329,17 @@ static int append_meshms_buffer(const sid_t *my_sid, struct conversations *conv,
   if (conv->found_my_ply){
     if (rhizome_retrieve_manifest(&conv->my_ply.bundle_id, m))
       goto end;
-    if (rhizome_find_bundle_author(m))
+    rhizome_authenticate_author(m);
+    if (!m->haveSecret || m->authorship != AUTHOR_AUTHENTIC)
       goto end;
   }else{
     if (create_ply(my_sid, conv, m))
       goto end;
   }
+  assert(m->haveSecret);
+  assert(m->authorship == AUTHOR_AUTHENTIC);
   
-  if (rhizome_append_journal_buffer(m, NULL, 0, buffer, len))
+  if (rhizome_append_journal_buffer(m, 0, buffer, len))
     goto end;
   
   if (rhizome_manifest_finalise(m, &mout, 1))
@@ -493,7 +498,7 @@ static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid,
   struct rhizome_read_buffer buff;
   bzero(&buff, sizeof(buff));
   
-  int ret = rhizome_open_decrypt_read(m, NULL, &read);
+  int ret = rhizome_open_decrypt_read(m, &read);
   if (ret == -1)
     goto end;
   
@@ -713,7 +718,8 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
   return 0;
 }
 
-int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context *context){
+int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context *context)
+{
   const char *my_sidhex, *their_sidhex, *message;
   if (cli_arg(parsed, "sender_sid", &my_sidhex, str_is_subscriber_id, "") == -1
     || cli_arg(parsed, "recipient_sid", &their_sidhex, str_is_subscriber_id, "") == -1
@@ -728,9 +734,11 @@ int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context 
     return -1;
   
   sid_t my_sid, their_sid;
-  fromhex(my_sid.binary, my_sidhex, sizeof(my_sid.binary));
-  fromhex(their_sid.binary, their_sidhex, sizeof(their_sid.binary));
-  struct conversations *conv=find_or_create_conv(&my_sid, &their_sid);
+  if (str_to_sid_t(&my_sid, my_sidhex) == -1)
+    return WHY("invalid sender SID");
+  if (str_to_sid_t(&their_sid, their_sidhex) == -1)
+    return WHY("invalid recipient SID");
+  struct conversations *conv = find_or_create_conv(&my_sid, &their_sid);
   if (!conv)
     return -1;
   

@@ -114,7 +114,6 @@ struct rhizome_fetch_candidate queue3[4];
 struct rhizome_fetch_candidate queue4[2];
 struct rhizome_fetch_candidate queue5[2];
 
-#define NELS(a) (sizeof (a) / sizeof *(a))
 #define slotno(slot) (int)((struct rhizome_fetch_queue *)(slot) - &rhizome_fetch_queues[0])
 
 /* Static allocation of the queue structures.  Must be in order of ascending log_size_threshold.
