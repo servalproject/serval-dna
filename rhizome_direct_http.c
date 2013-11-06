@@ -54,7 +54,7 @@ static void rhizome_direct_clear_temporary_files(rhizome_http_request *r)
   }
 }
 
-int rhizome_direct_import_end(struct http_request *hr)
+static int rhizome_direct_import_end(struct http_request *hr)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
   if (!r->received_manifest) {
@@ -168,7 +168,7 @@ int rhizome_direct_enquiry_end(struct http_request *hr)
   return 0;
 }
 
-int rhizome_direct_addfile_end(struct http_request *hr)
+static int rhizome_direct_addfile_end(struct http_request *hr)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
   // If given a file without a manifest, we should only accept if it we are configured to do so, and
@@ -222,13 +222,12 @@ int rhizome_direct_addfile_end(struct http_request *hr)
       return 0;
     }
     // If manifest template did not specify a service field, then by default it is "file".
+    if (!rhizome_is_bk_none(&config.rhizome.api.addfile.bundle_secret_key))
+      rhizome_apply_bundle_secret(m, &config.rhizome.api.addfile.bundle_secret_key);
     if (m->service == NULL)
       rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
-    sid_t *author = NULL;
-    if (!is_sid_t_any(config.rhizome.api.addfile.default_author))
-      author = &config.rhizome.api.addfile.default_author;
-    rhizome_bk_t bsk = config.rhizome.api.addfile.bundle_secret_key;
-    if (rhizome_fill_manifest(m, r->data_file_name, author, &bsk)) {
+    const sid_t *author = is_sid_t_any(config.rhizome.api.addfile.default_author) ? NULL : &config.rhizome.api.addfile.default_author;
+    if (rhizome_fill_manifest(m, r->data_file_name, author)) {
       rhizome_manifest_free(m);
       rhizome_direct_clear_temporary_files(r);
       http_request_simple_response(&r->http, 500, "Internal Error: Could not fill manifest");
@@ -271,14 +270,14 @@ int rhizome_direct_addfile_end(struct http_request *hr)
   }
 }
 
-void rhizome_direct_process_mime_start(struct http_request *hr)
+static void rhizome_direct_process_mime_start(struct http_request *hr)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
   assert(r->current_part == NONE);
   assert(r->part_fd == -1);
 }
 
-void rhizome_direct_process_mime_end(struct http_request *hr)
+static void rhizome_direct_process_mime_end(struct http_request *hr)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
   if (r->part_fd != -1) {
@@ -302,19 +301,19 @@ void rhizome_direct_process_mime_end(struct http_request *hr)
   r->current_part = NONE;
 }
 
-void rhizome_direct_process_mime_content_disposition(struct http_request *hr, const struct mime_content_disposition *cd)
+static void rhizome_direct_process_mime_part_header(struct http_request *hr, const struct mime_part_headers *h)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
-  if (strcmp(cd->name, "data") == 0) {
+  if (strcmp(h->content_disposition.name, "data") == 0) {
     r->current_part = DATA;
-    strncpy(r->data_file_name, cd->filename, sizeof r->data_file_name)[sizeof r->data_file_name - 1] = '\0';
+    strncpy(r->data_file_name, h->content_disposition.filename, sizeof r->data_file_name)[sizeof r->data_file_name - 1] = '\0';
   }
-  else if (strcmp(cd->name, "manifest") == 0) {
+  else if (strcmp(h->content_disposition.name, "manifest") == 0) {
     r->current_part = MANIFEST;
   } else
     return;
   char path[512];
-  if (form_temporary_file_path(r, path, cd->name) == -1) {
+  if (form_temporary_file_path(r, path, h->content_disposition.name) == -1) {
     http_request_simple_response(&r->http, 500, "Internal Error: Buffer overrun");
     return;
   }
@@ -325,7 +324,7 @@ void rhizome_direct_process_mime_content_disposition(struct http_request *hr, co
   }
 }
 
-void rhizome_direct_process_mime_body(struct http_request *hr, const char *buf, size_t len)
+static void rhizome_direct_process_mime_body(struct http_request *hr, const char *buf, size_t len)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
   if (r->part_fd != -1) {
@@ -344,7 +343,7 @@ int rhizome_direct_import(rhizome_http_request *r, const char *remainder)
   }
   r->http.form_data.handle_mime_part_start = rhizome_direct_process_mime_start;
   r->http.form_data.handle_mime_part_end = rhizome_direct_process_mime_end;
-  r->http.form_data.handle_mime_content_disposition = rhizome_direct_process_mime_content_disposition;
+  r->http.form_data.handle_mime_part_header = rhizome_direct_process_mime_part_header;
   r->http.form_data.handle_mime_body = rhizome_direct_process_mime_body;
   r->http.handle_content_end = rhizome_direct_import_end;
   r->current_part = NONE;
@@ -361,7 +360,7 @@ int rhizome_direct_enquiry(rhizome_http_request *r, const char *remainder)
   }
   r->http.form_data.handle_mime_part_start = rhizome_direct_process_mime_start;
   r->http.form_data.handle_mime_part_end = rhizome_direct_process_mime_end;
-  r->http.form_data.handle_mime_content_disposition = rhizome_direct_process_mime_content_disposition;
+  r->http.form_data.handle_mime_part_header = rhizome_direct_process_mime_part_header;
   r->http.form_data.handle_mime_body = rhizome_direct_process_mime_body;
   r->http.handle_content_end = rhizome_direct_enquiry_end;
   r->current_part = NONE;
@@ -394,7 +393,7 @@ int rhizome_direct_addfile(rhizome_http_request *r, const char *remainder)
   }
   r->http.form_data.handle_mime_part_start = rhizome_direct_process_mime_start;
   r->http.form_data.handle_mime_part_end = rhizome_direct_process_mime_end;
-  r->http.form_data.handle_mime_content_disposition = rhizome_direct_process_mime_content_disposition;
+  r->http.form_data.handle_mime_part_header = rhizome_direct_process_mime_part_header;
   r->http.form_data.handle_mime_body = rhizome_direct_process_mime_body;
   r->http.handle_content_end = rhizome_direct_addfile_end;
   r->current_part = NONE;

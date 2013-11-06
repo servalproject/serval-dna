@@ -98,6 +98,8 @@ void http_request_init(struct http_request *r, int sockfd)
   assert(sockfd != -1);
   r->request_header.content_length = CONTENT_LENGTH_UNKNOWN;
   r->request_content_remaining = CONTENT_LENGTH_UNKNOWN;
+  r->response.header.content_length = CONTENT_LENGTH_UNKNOWN;
+  r->response.header.resource_length = CONTENT_LENGTH_UNKNOWN;
   r->alarm.stats = &http_server_stats;
   r->alarm.function = http_server_poll;
   if (r->idle_timeout == 0)
@@ -162,31 +164,85 @@ void http_request_finalise(struct http_request *r)
   r->phase = DONE;
 }
 
-#define _SEP (1 << 0)
-#define _BND (1 << 1)
+#define _BASE64 (1 << 6)
+#define _MASK64 ((1 << 6) - 1)
+#define _SEP (1 << 7)
+#define _BND (1 << 8)
 
-uint8_t http_ctype[256] = {
-  ['0'] = _BND, ['1'] = _BND, ['2'] = _BND, ['3'] = _BND, ['4'] = _BND,
-  ['5'] = _BND, ['6'] = _BND, ['7'] = _BND, ['8'] = _BND, ['9'] = _BND,
-  ['A'] = _BND, ['B'] = _BND, ['C'] = _BND, ['D'] = _BND, ['E'] = _BND,
-  ['F'] = _BND, ['G'] = _BND, ['H'] = _BND, ['I'] = _BND, ['J'] = _BND,
-  ['K'] = _BND, ['L'] = _BND, ['M'] = _BND, ['N'] = _BND, ['O'] = _BND,
-  ['P'] = _BND, ['Q'] = _BND, ['R'] = _BND, ['S'] = _BND, ['T'] = _BND,
-  ['U'] = _BND, ['V'] = _BND, ['W'] = _BND, ['X'] = _BND, ['Y'] = _BND,
-  ['Z'] = _BND,
-  ['a'] = _BND, ['b'] = _BND, ['c'] = _BND, ['d'] = _BND, ['e'] = _BND,
-  ['f'] = _BND, ['g'] = _BND, ['h'] = _BND, ['i'] = _BND, ['j'] = _BND,
-  ['k'] = _BND, ['l'] = _BND, ['m'] = _BND, ['n'] = _BND, ['o'] = _BND,
-  ['p'] = _BND, ['q'] = _BND, ['r'] = _BND, ['s'] = _BND, ['t'] = _BND,
-  ['u'] = _BND, ['v'] = _BND, ['w'] = _BND, ['x'] = _BND, ['y'] = _BND,
-  ['z'] = _BND,
-  ['+'] = _BND, ['-'] = _BND, ['.'] = _BND, ['/'] = _BND, [':'] = _BND,
+uint16_t http_ctype[256] = {
+  ['A'] = _BND | _BASE64 | 0,
+  ['B'] = _BND | _BASE64 | 1,
+  ['C'] = _BND | _BASE64 | 2,
+  ['D'] = _BND | _BASE64 | 3,
+  ['E'] = _BND | _BASE64 | 4,
+  ['F'] = _BND | _BASE64 | 5,
+  ['G'] = _BND | _BASE64 | 6,
+  ['H'] = _BND | _BASE64 | 7,
+  ['I'] = _BND | _BASE64 | 8,
+  ['J'] = _BND | _BASE64 | 9,
+  ['K'] = _BND | _BASE64 | 10,
+  ['L'] = _BND | _BASE64 | 11,
+  ['M'] = _BND | _BASE64 | 12,
+  ['N'] = _BND | _BASE64 | 13,
+  ['O'] = _BND | _BASE64 | 14,
+  ['P'] = _BND | _BASE64 | 15,
+  ['Q'] = _BND | _BASE64 | 16,
+  ['R'] = _BND | _BASE64 | 17,
+  ['S'] = _BND | _BASE64 | 18,
+  ['T'] = _BND | _BASE64 | 19,
+  ['U'] = _BND | _BASE64 | 20,
+  ['V'] = _BND | _BASE64 | 21,
+  ['W'] = _BND | _BASE64 | 22,
+  ['X'] = _BND | _BASE64 | 23,
+  ['Y'] = _BND | _BASE64 | 24,
+  ['Z'] = _BND | _BASE64 | 25,
+  ['a'] = _BND | _BASE64 | 26,
+  ['b'] = _BND | _BASE64 | 27,
+  ['c'] = _BND | _BASE64 | 28,
+  ['d'] = _BND | _BASE64 | 29,
+  ['e'] = _BND | _BASE64 | 30,
+  ['f'] = _BND | _BASE64 | 31,
+  ['g'] = _BND | _BASE64 | 32,
+  ['h'] = _BND | _BASE64 | 33,
+  ['i'] = _BND | _BASE64 | 34,
+  ['j'] = _BND | _BASE64 | 35,
+  ['k'] = _BND | _BASE64 | 36,
+  ['l'] = _BND | _BASE64 | 37,
+  ['m'] = _BND | _BASE64 | 38,
+  ['n'] = _BND | _BASE64 | 39,
+  ['o'] = _BND | _BASE64 | 40,
+  ['p'] = _BND | _BASE64 | 41,
+  ['q'] = _BND | _BASE64 | 42,
+  ['r'] = _BND | _BASE64 | 43,
+  ['s'] = _BND | _BASE64 | 44,
+  ['t'] = _BND | _BASE64 | 45,
+  ['u'] = _BND | _BASE64 | 46,
+  ['v'] = _BND | _BASE64 | 47,
+  ['w'] = _BND | _BASE64 | 48,
+  ['x'] = _BND | _BASE64 | 49,
+  ['y'] = _BND | _BASE64 | 50,
+  ['z'] = _BND | _BASE64 | 51,
+  ['0'] = _BND | _BASE64 | 52,
+  ['1'] = _BND | _BASE64 | 53,
+  ['2'] = _BND | _BASE64 | 54,
+  ['3'] = _BND | _BASE64 | 55,
+  ['4'] = _BND | _BASE64 | 56,
+  ['5'] = _BND | _BASE64 | 57,
+  ['6'] = _BND | _BASE64 | 58,
+  ['7'] = _BND | _BASE64 | 59,
+  ['8'] = _BND | _BASE64 | 60,
+  ['9'] = _BND | _BASE64 | 61,
+  ['+'] = _BND | _BASE64 | 62,
+  ['/'] = _BND | _BASE64 | 63,
+  ['='] = _SEP | _BND,
+  ['-'] = _BND,
+  ['.'] = _BND,
+  [':'] = _BND,
   ['_'] = _BND,
   ['('] = _SEP | _BND,
   [')'] = _SEP | _BND,
   [','] = _SEP | _BND,
   ['?'] = _SEP | _BND,
-  ['='] = _SEP | _BND,
   [' '] = _SEP | _BND,
   ['\t'] = _SEP,
   ['<'] = _SEP,
@@ -211,6 +267,21 @@ inline int is_http_char(char c)
 inline int is_http_ctl(char c)
 {
   return iscntrl(c);
+}
+
+inline int is_base64_digit(char c)
+{
+  return (http_ctype[(unsigned char) c] & _BASE64) != 0;
+}
+
+inline int is_base64_pad(char c)
+{
+  return c == '=';
+}
+
+inline uint8_t base64_digit(char c)
+{
+  return http_ctype[(unsigned char) c] & _MASK64;
 }
 
 inline int is_http_separator(char c)
@@ -556,6 +627,150 @@ static unsigned _parse_ranges(struct http_request *r, struct http_range *range, 
   return i;
 }
 
+static int _parse_content_type(struct http_request *r, struct mime_content_type *ct)
+{
+  size_t n = _parse_token(r, ct->type, sizeof ct->type);
+  if (n == 0)
+    return 0;
+  if (n >= sizeof ct->type) {
+    WARNF("HTTP Content-Type type truncated: %s", alloca_str_toprint(ct->type));
+    return 0;
+  }
+  if (!_skip_literal(r, "/"))
+    return 0;
+  n = _parse_token(r, ct->subtype, sizeof ct->subtype);
+  if (n == 0)
+    return 0;
+  if (n >= sizeof ct->subtype) {
+    WARNF("HTTP Content-Type subtype truncated: %s", alloca_str_toprint(ct->subtype));
+    return 0;
+  }
+  while (_skip_optional_space(r) && _skip_literal(r, ";") && _skip_optional_space(r)) {
+    const char *start = r->cursor;
+    if (_skip_literal(r, "charset=")) {
+      size_t n = _parse_token_or_quoted_string(r, ct->charset, sizeof ct->charset);
+      if (n == 0)
+	return 0;
+      if (n >= sizeof ct->charset) {
+	WARNF("HTTP Content-Type charset truncated: %s", alloca_str_toprint(ct->charset));
+	return 0;
+      }
+      continue;
+    }
+    r->cursor = start;
+    if (_skip_literal(r, "boundary=")) {
+      size_t n = _parse_token_or_quoted_string(r, ct->multipart_boundary, sizeof ct->multipart_boundary);
+      if (n == 0)
+	return 0;
+      if (n >= sizeof ct->multipart_boundary) {
+	WARNF("HTTP Content-Type boundary truncated: %s", alloca_str_toprint(ct->multipart_boundary));
+	return 0;
+      }
+      continue;
+    }
+    r->cursor = start;
+    struct substring param;
+    if (_skip_token(r, &param) && _skip_literal(r, "=") && _parse_token_or_quoted_string(r, NULL, 0)) {
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("Skipping HTTP Content-Type parameter: %s", alloca_substring_toprint(param));
+      continue;
+    }
+    WARNF("Malformed HTTP Content-Type: %s", alloca_toprint(50, r->cursor, r->end - r->cursor));
+    return 0;
+  }
+  return 1;
+}
+
+static size_t _parse_base64(struct http_request *r, char *bin, size_t binsize)
+{
+  uint8_t buf = 0;
+  size_t digits = 0;
+  size_t bytes = 0;
+  for (; !_run_out(r) && is_base64_digit(*r->cursor); _skip_optional_space(r), ++r->cursor) {
+    if (bytes < binsize) {
+      uint8_t d = base64_digit(*r->cursor);
+      switch (digits++ & 3) {
+	case 0:
+	  buf = d << 2;
+	  break;
+	case 1:
+	  if (bin)
+	    bin[bytes] = buf | (d >> 4);
+	  ++bytes;
+	  buf = d << 4;
+	  break;
+	case 2:
+	  if (bin)
+	    bin[bytes] = buf | (d >> 2);
+	  ++bytes;
+	  buf = d << 6;
+	  break;
+	case 3:
+	  if (bin)
+	    bin[bytes] = buf | d;
+	  ++bytes;
+	  break;
+      }
+    }
+  }
+  if (digits == 0)
+    return 0;
+  if (!_run_out(r) && is_base64_pad(*r->cursor))
+    ++r->cursor;
+  if (!_run_out(r) && is_base64_pad(*r->cursor))
+    ++r->cursor;
+  return bytes;
+}
+
+static int _parse_authorization_credentials_basic(struct http_request *r, struct http_client_credentials_basic *cred, char *buf, size_t bufsz)
+{
+  size_t n = _parse_base64(r, buf, bufsz - 1); // leave room for NUL terminator on password
+  assert(n < bufsz); // buffer must be big enough
+  char *pw = (char *) strnchr(buf, n, ':');
+  if (pw == NULL)
+    return 0; // malformed
+  cred->user = buf;
+  *pw++ = '\0'; // NUL terminate user
+  cred->password = pw;
+  buf[n] = '\0'; // NUL terminate password
+  return 1;
+}
+
+static int _parse_authorization(struct http_request *r, struct http_client_authorization *auth, size_t header_bytes)
+{
+  const char *start = r->cursor;
+  if (_skip_literal(r, "Basic") && _skip_space(r)) {
+    size_t bufsz = 5 + header_bytes * 3 / 4; // enough for base64 decoding
+    char buf[bufsz];
+    if (_parse_authorization_credentials_basic(r, &auth->credentials.basic, buf, bufsz)) {
+      auth->scheme = BASIC;
+      if (   (auth->credentials.basic.user = _reserve_str(r, auth->credentials.basic.user)) == NULL
+	  || (auth->credentials.basic.password = _reserve_str(r, auth->credentials.basic.password)) == NULL
+      )
+	return 0; // error
+      return 1;
+    }
+    if (r->debug_flag && *r->debug_flag)
+      DEBUGF("Malformed HTTP header: Authorization: %s", alloca_toprint(50, start, header_bytes));
+    return 0;
+  }
+  if (_skip_literal(r, "Digest") && _skip_space(r)) {
+    if (r->debug_flag && *r->debug_flag)
+      DEBUG("Ignoring unsupported HTTP Authorization scheme: Digest");
+    r->cursor += header_bytes;
+    return 1;
+  }
+  struct substring scheme;
+  if (_skip_token(r, &scheme) && _skip_space(r)) {
+    if (r->debug_flag && *r->debug_flag)
+      DEBUGF("Unrecognised HTTP Authorization scheme: %s", alloca_toprint(-1, scheme.start, scheme.end - scheme.start));
+    return 0;
+  }
+  if (r->debug_flag && *r->debug_flag)
+    DEBUGF("Malformed HTTP Authorization header: %s", alloca_toprint(50, r->parsed, r->end - r->parsed));
+  return 0;
+}
+
 static int _parse_quoted_rfc822_time(struct http_request *r, time_t *timep)
 {
   char datestr[40];
@@ -743,6 +958,13 @@ static int http_request_parse_header(struct http_request *r)
   _rewind(r);
   const char *const sol = r->cursor;
   if (_skip_literal_nocase(r, "Content-Length:")) {
+    if (r->request_header.content_length != CONTENT_LENGTH_UNKNOWN) {
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("Skipping duplicate HTTP header Content-Length: %s", alloca_toprint(50, sol, r->end - sol));
+      r->cursor = nextline;
+      _commit(r);
+      return 0;
+    }
     _skip_optional_space(r);
     http_size_t length;
     if (_parse_http_size_t(r, &length) && _skip_optional_space(r) && r->cursor == eol) {
@@ -757,56 +979,41 @@ static int http_request_parse_header(struct http_request *r)
   }
   _rewind(r);
   if (_skip_literal_nocase(r, "Content-Type:")) {
+    if (r->request_header.content_type.type[0]) {
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("Skipping duplicate HTTP header Content-Type: %s", alloca_toprint(50, sol, r->end - sol));
+      r->cursor = nextline;
+      _commit(r);
+      return 0;
+    }
     _skip_optional_space(r);
-    struct substring type = substring_NULL;
-    struct substring subtype = substring_NULL;
-    char boundary[BOUNDARY_STRING_MAXLEN + 1];
-    boundary[0] = '\0';
-    if (_skip_token(r, &type) && _skip_literal(r, "/") && _skip_token(r, &subtype)) {
-      // Parse zero or more content-type parameters.
-      for (_skip_optional_space(r); r->cursor < eol && _skip_literal(r, ";"); _skip_optional_space(r)) {
-	_skip_optional_space(r);
-	const char *startparam = r->cursor;
-	if (_skip_literal(r, "boundary=")) {
-	  size_t n = _parse_token_or_quoted_string(r, boundary, sizeof boundary);
-	  if (n == 0 || n >= sizeof boundary || !is_valid_http_boundary_string(boundary))
-	    goto malformed;
-	  continue;
-	}
-	// Silently ignore unrecognised parameters (eg, charset=) if they are well formed.
-	r->cursor = startparam; // partial rewind
-	if (_skip_token(r, NULL) && _skip_literal(r, "=") && _parse_token_or_quoted_string(r, NULL, 0))
-	  continue;
-	break;
-      }
-      if (r->cursor == eol) {
-	r->cursor = nextline;
-	_commit(r);
-	if (   (r->request_header.content_type = _reserve(r, type)) == NULL
-	    || (r->request_header.content_subtype = _reserve(r, subtype)) == NULL
-	    || (boundary[0] && (r->request_header.boundary = _reserve_str(r, boundary)) == NULL)
-	)
-	  return 0; // error
-	if (r->debug_flag && *r->debug_flag)
-	  DEBUGF("Parsed HTTP request Content-type: %s/%s%s%s",
-	      r->request_header.content_type,
-	      r->request_header.content_subtype,
-	      r->request_header.boundary ? "; boundary=" : "",
-	      r->request_header.boundary ? alloca_str_toprint(r->request_header.boundary) : ""
-	    );
-	return 0;
-      }
+    if (   _parse_content_type(r, &r->request_header.content_type)
+	&& _skip_optional_space(r)
+	&& r->cursor == eol
+    ) {
+      r->cursor = nextline;
+      _commit(r);
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("Parsed HTTP request Content-type: %s", alloca_mime_content_type(&r->request_header.content_type));
+      return 0;
     }
     goto malformed;
   }
   _rewind(r);
   if (_skip_literal_nocase(r, "Range:")) {
+    if (r->request_header.content_range_count) {
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("Skipping duplicate HTTP header Range: %s", alloca_toprint(50, sol, r->end - sol));
+      r->cursor = nextline;
+      _commit(r);
+      return 0;
+    }
     _skip_optional_space(r);
     unsigned int n;
     if (   _skip_literal(r, "bytes=")
 	&& (n = _parse_ranges(r, r->request_header.content_ranges, NELS(r->request_header.content_ranges)))
 	&& _skip_optional_space(r)
-	&& (r->cursor == eol)
+	&& r->cursor == eol
     ) {
       r->cursor = nextline;
       _commit(r);
@@ -821,6 +1028,27 @@ static int http_request_parse_header(struct http_request *r)
 	if (r->debug_flag && *r->debug_flag)
 	  DEBUGF("Parsed HTTP request Range: bytes=%s", alloca_http_ranges(r->request_header.content_ranges));
       }
+      return 0;
+    }
+    goto malformed;
+  }
+  _rewind(r);
+  if (_skip_literal_nocase(r, "Authorization:")) {
+    if (r->request_header.authorization.scheme != NOAUTH) {
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("Skipping duplicate HTTP header Authorization: %s", alloca_toprint(50, sol, r->end - sol));
+      r->cursor = nextline;
+      _commit(r);
+      return 0;
+    }
+    _skip_optional_space(r);
+    if (   _parse_authorization(r, &r->request_header.authorization, eol - r->cursor)
+	&& _skip_optional_space(r)
+	&& r->cursor == eol
+    ) {
+      assert(r->request_header.authorization.scheme != NOAUTH);
+      r->cursor = nextline;
+      _commit(r);
       return 0;
     }
     goto malformed;
@@ -858,7 +1086,7 @@ static int http_request_start_body(struct http_request *r)
 	DEBUGF("Malformed HTTP %s request: non-zero Content-Length not allowed", r->verb);
       return 400;
     }
-    if (r->request_header.content_type) {
+    if (r->request_header.content_type.type) {
       if (r->debug_flag && *r->debug_flag)
 	DEBUGF("Malformed HTTP %s request: Content-Type not allowed", r->verb);
       return 400;
@@ -871,26 +1099,28 @@ static int http_request_start_body(struct http_request *r)
 	DEBUGF("Malformed HTTP %s request: missing Content-Length header", r->verb);
       return 411;
     }
-    if (r->request_header.content_type == NULL) {
+    if (r->request_header.content_type.type == NULL) {
       if (r->debug_flag && *r->debug_flag)
 	DEBUGF("Malformed HTTP %s request: missing Content-Type header", r->verb);
       return 400;
     }
-    if (   strcmp(r->request_header.content_type, "multipart") == 0
-	&& strcmp(r->request_header.content_subtype, "form-data") == 0
+    if (   strcmp(r->request_header.content_type.type, "multipart") == 0
+	&& strcmp(r->request_header.content_type.subtype, "form-data") == 0
     ) {
-      if (r->request_header.boundary == NULL || r->request_header.boundary[0] == '\0') {
+      if (   r->request_header.content_type.multipart_boundary == NULL
+	  || r->request_header.content_type.multipart_boundary[0] == '\0'
+      ) {
 	if (r->debug_flag && *r->debug_flag)
 	  DEBUGF("Malformed HTTP %s request: Content-Type %s/%s missing boundary parameter",
-	      r->verb, r->request_header.content_type, r->request_header.content_subtype);
+	      r->verb, r->request_header.content_type.type, r->request_header.content_type.subtype);
 	return 400;
       }
       r->parser = http_request_parse_body_form_data;
       r->form_data_state = START;
     } else {
       if (r->debug_flag && *r->debug_flag)
-	DEBUGF("Unsupported HTTP %s request: Content-Type %s/%s not supported",
-	    r->verb, r->request_header.content_type, r->request_header.content_subtype);
+	DEBUGF("Unsupported HTTP %s request: Content-Type %s not supported",
+	    r->verb, alloca_mime_content_type(&r->request_header.content_type));
       return 415;
     }
   }
@@ -909,7 +1139,7 @@ static int http_request_start_body(struct http_request *r)
  */
 static int _skip_mime_boundary(struct http_request *r)
 {
-  if (!_skip_literal(r, "--") || !_skip_literal(r, r->request_header.boundary))
+  if (!_skip_literal(r, "--") || !_skip_literal(r, r->request_header.content_type.multipart_boundary))
     return 0;
   if (_skip_literal(r, "--") && _skip_crlf(r))
     return 2;
@@ -988,6 +1218,43 @@ malformed:
   return 1;
 }
 
+static void http_request_form_data_start_part(struct http_request *r, int b)
+{
+  switch (r->form_data_state) {
+    case BODY:
+      if (   r->part_header.content_length != CONTENT_LENGTH_UNKNOWN
+	  && r->part_body_length != r->part_header.content_length
+      ) {
+	WARNF("HTTP multipart part body length (%"PRIhttp_size_t") does not match Content-Length header (%"PRIhttp_size_t")",
+	      r->part_body_length,
+	      r->part_header.content_length
+	    );
+      }
+      // fall through...
+    case HEADER:
+      if (r->form_data.handle_mime_part_end) {
+	if (r->debug_flag && *r->debug_flag)
+	  DEBUGF("handle_mime_part_end()");
+	r->form_data.handle_mime_part_end(r);
+      }
+      break;
+    default:
+      break;
+  }
+  if (b == 1) {
+    r->form_data_state = HEADER;
+    bzero(&r->part_header, sizeof r->part_header);
+    r->part_body_length = 0;
+    r->part_header.content_length = CONTENT_LENGTH_UNKNOWN;
+    if (r->form_data.handle_mime_part_start) {
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("handle_mime_part_start()");
+      r->form_data.handle_mime_part_start(r);
+    }
+  } else
+    r->form_data_state = EPILOGUE;
+}
+
 /* If parsing completes (ie, parsed to end of epilogue), then sets r->parser to NULL and returns 0,
  * so this function will not be called again.  If parsing cannot complete due to running out of
  * data, returns 100, so this function will not be called again until more data has been read.
@@ -1029,15 +1296,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	    }
 	    _rewind_crlf(r);
 	    _commit(r);
-	    if (b == 1) {
-	      r->form_data_state = HEADER;
-	      if (r->form_data.handle_mime_part_start) {
-		if (r->debug_flag && *r->debug_flag)
-		  DEBUGF("handle_mime_part_start()");
-		r->form_data.handle_mime_part_start(r);
-	      }
-	    } else
-	      r->form_data_state = EPILOGUE;
+	    http_request_form_data_start_part(r, b);
 	    return 0;
 	  }
 	}
@@ -1074,6 +1333,16 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	// A blank line finishes the headers.  The CRLF does not form part of the body.
 	if (_skip_crlf(r)) {
 	  _commit(r);
+	  if (r->form_data.handle_mime_part_header) {
+	    if (r->debug_flag && *r->debug_flag)
+	      DEBUGF("handle_mime_part_header(Content-Length: %"PRIhttp_size_t", Content-Type: %s, Content-Disposition: %s)",
+		  r->part_header.content_length,
+		  alloca_mime_content_type(&r->part_header.content_type),
+		  alloca_mime_content_disposition(&r->part_header.content_disposition)
+		);
+	    r->form_data.handle_mime_part_header(r, &r->part_header);
+	  }
+
 	  r->form_data_state = BODY;
 	  return 0;
 	}
@@ -1086,23 +1355,9 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	if ((b = _skip_mime_boundary(r))) {
 	  _rewind_crlf(r);
 	  _commit(r);
-	  if (r->form_data.handle_mime_part_end) {
-	    if (r->debug_flag && *r->debug_flag)
-	      DEBUGF("handle_mime_part_end()");
-	    r->form_data.handle_mime_part_end(r);
-	  }
 	  // A boundary in the middle of headers finishes the current part and starts a new part.
 	  // An end boundary terminates the current part and starts the epilogue.
-	  if (b == 1) {
-	    r->form_data_state = HEADER;
-	    if (r->form_data.handle_mime_part_start) {
-	      if (r->debug_flag && *r->debug_flag)
-		DEBUGF("handle_mime_part_start()");
-	      r->form_data.handle_mime_part_start(r);
-	    }
-	  }
-	  else
-	    r->form_data_state = EPILOGUE;
+	  http_request_form_data_start_part(r, b);
 	  return 0;
 	}
 	if (_run_out(r))
@@ -1115,27 +1370,54 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  strncpy(labelstr, label.start, labellen)[labellen] = '\0';
 	  str_tolower_inplace(labelstr);
 	  const char *value = r->cursor;
-	  if (strcmp(labelstr, "content-disposition") == 0) {
-	    struct mime_content_disposition cd;
-	    bzero(&cd, sizeof cd);
-	    if (_parse_content_disposition(r, &cd) && _skip_optional_space(r) && _skip_crlf(r)) {
+	  if (strcmp(labelstr, "content-length") == 0) {
+	    if (r->part_header.content_length != CONTENT_LENGTH_UNKNOWN) {
+	      if (r->debug_flag && *r->debug_flag)
+		DEBUGF("Skipping duplicate HTTP multipart header Content-Length: %s", alloca_toprint(50, sol, r->end - sol));
+	      return 400;
+	    }
+	    http_size_t length;
+	    if (_parse_http_size_t(r, &length) && _skip_optional_space(r) && _skip_crlf(r)) {
 	      _rewind_crlf(r);
 	      _commit(r);
-	      if (r->form_data.handle_mime_content_disposition) {
-		if (r->debug_flag && *r->debug_flag)
-		  DEBUGF("handle_mime_content_disposition(%s)", alloca_mime_content_disposition(&cd));
-		r->form_data.handle_mime_content_disposition(r, &cd);
-	      }
+	      r->part_header.content_length = length;
+	      if (r->debug_flag && *r->debug_flag)
+		DEBUGF("Parsed HTTP multipart header Content-Length: %"PRIhttp_size_t, r->part_header.content_length);
+	      return 0;
+	    }
+	  }
+	  else if (strcmp(labelstr, "content-type") == 0) {
+	    if (r->part_header.content_type.type[0]) {
+	      if (r->debug_flag && *r->debug_flag)
+		DEBUGF("Skipping duplicate HTTP multipart header Content-Type: %s", alloca_toprint(50, sol, r->end - sol));
+	      return 400;
+	    }
+	    if (_parse_content_type(r, &r->part_header.content_type) && _skip_optional_space(r) && _skip_crlf(r)) {
+	      _rewind_crlf(r);
+	      _commit(r);
+	      if (r->debug_flag && *r->debug_flag)
+		DEBUGF("Parsed HTTP multipart header Content-Type: %s", alloca_mime_content_type(&r->part_header.content_type));
+	      return 0;
+	    }
+	  }
+	  else if (strcmp(labelstr, "content-disposition") == 0) {
+	    if (r->part_header.content_disposition.type[0]) {
+	      if (r->debug_flag && *r->debug_flag)
+		DEBUGF("Skipping duplicate HTTP multipart header Content-Disposition: %s", alloca_toprint(50, sol, r->end - sol));
+	      return 400;
+	    }
+	    if (_parse_content_disposition(r, &r->part_header.content_disposition) && _skip_optional_space(r) && _skip_crlf(r)) {
+	      _rewind_crlf(r);
+	      _commit(r);
+	      if (r->debug_flag && *r->debug_flag)
+		DEBUGF("Parsed HTTP multipart header Content-Disposition: %s", alloca_mime_content_disposition(&r->part_header.content_disposition));
 	      return 0;
 	    }
 	  }
 	  else if (_skip_to_crlf(r)) {
 	    _commit(r);
-	    if (r->form_data.handle_mime_header) {
-	      if (r->debug_flag && *r->debug_flag)
-		DEBUGF("handle_mime_header(%s, %s)", alloca_str_toprint(labelstr), alloca_toprint(-1, value, value - r->cursor));
-	      r->form_data.handle_mime_header(r, labelstr, value, value - r->cursor); // excluding CRLF at end
-	    }
+	    if (r->debug_flag && *r->debug_flag)
+	      DEBUGF("Skip HTTP multipart header: %s: %s", alloca_str_toprint(labelstr), alloca_toprint(-1, value, value - r->cursor));
 	    return 0;
 	  }
 	}
@@ -1169,25 +1451,14 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	if ((b = _skip_mime_boundary(r))) {
 	  _rewind_crlf(r);
 	  _commit(r);
+	  assert(end_body >= start);
+	  r->part_body_length += end_body - start;
 	  if (end_body > start && r->form_data.handle_mime_body) {
 	    if (r->debug_flag && *r->debug_flag)
 	      DEBUGF("handle_mime_body(%s length=%zu)", alloca_toprint(80, start, end_body - start), end_body - start);
 	    r->form_data.handle_mime_body(r, start, end_body - start); // excluding CRLF at end
 	  }
-	  if (r->form_data.handle_mime_part_end) {
-	    if (r->debug_flag && *r->debug_flag)
-	      DEBUGF("handle_mime_part_end()");
-	    r->form_data.handle_mime_part_end(r);
-	  }
-	  r->form_data_state = EPILOGUE;
-	  if (b == 1) {
-	    r->form_data_state = HEADER;
-	    if (r->form_data.handle_mime_part_start) {
-	      if (r->debug_flag && *r->debug_flag)
-		DEBUGF("handle_mime_part_start()");
-	      r->form_data.handle_mime_part_start(r);
-	    }
-	  }
+	  http_request_form_data_start_part(r, b);
 	  return 0;
 	}
       }
@@ -1198,6 +1469,8 @@ static int http_request_parse_body_form_data(struct http_request *r)
       }
       _rewind_optional_cr(r);
       _commit(r);
+      assert(r->parsed >= start);
+      r->part_body_length += r->parsed - start;
       if (r->parsed > start && r->form_data.handle_mime_body) {
 	if (r->debug_flag && *r->debug_flag)
 	  DEBUGF("handle_mime_body(%s length=%zu)", alloca_toprint(80, start, r->parsed - start), r->parsed - start);
@@ -1427,6 +1700,9 @@ static void http_request_send_response(struct http_request *r)
     r->response_buffer_sent += (size_t) written;
     assert(r->response_sent <= r->response_length);
     assert(r->response_buffer_sent <= r->response_buffer_length);
+    if (r->debug_flag && *r->debug_flag)
+      DEBUGF("Wrote %zu bytes to HTTP socket, total %"PRIhttp_size_t", remaining=%"PRIhttp_size_t,
+	  (size_t) written, r->response_sent, r->response_length - r->response_sent);
     // Reset inactivity timer.
     r->alarm.alarm = gettime_ms() + r->idle_timeout;
     r->alarm.deadline = r->alarm.alarm + r->idle_timeout;
@@ -1538,18 +1814,6 @@ static const char *httpResultString(int response_code)
   }
 }
 
-static strbuf strbuf_append_quoted_string(strbuf sb, const char *str)
-{
-  strbuf_putc(sb, '"');
-  for (; *str; ++str) {
-    if (*str == '"' || *str == '\\')
-      strbuf_putc(sb, '\\');
-    strbuf_putc(sb, *str);
-  }
-  strbuf_putc(sb, '"');
-  return sb;
-}
-
 /* Render the HTTP response into the current response buffer.  Return 1 if it fits, 0 if it does
  * not.  The buffer response_pointer may be NULL, in which case no response is rendered, but the
  * content_length is still computed
@@ -1559,24 +1823,32 @@ static strbuf strbuf_append_quoted_string(strbuf sb, const char *str)
 static int _render_response(struct http_request *r)
 {
   struct http_response hr = r->response;
-  assert(hr.result_code != 0);
-  assert(hr.header.content_range_start <= hr.header.resource_length);
-  assert(hr.header.content_length <= hr.header.resource_length);
-  // To save page handlers having to decide between 200 (OK) and 206 (Partial Content), they can
-  // just send 200 and the content range fields, and this logic will detect if it should be 206.
-  if (hr.header.content_length > 0 && hr.header.content_length < hr.header.resource_length && hr.result_code == 200)
-    hr.result_code = 206; // Partial Content
+  assert(hr.result_code >= 100);
+  assert(hr.result_code < 600);
+  if (hr.result_code == 401)
+    assert(hr.header.www_authenticate.scheme != NOAUTH);
   const char *result_string = httpResultString(hr.result_code);
   strbuf sb = strbuf_local(r->response_buffer, r->response_buffer_size);
   if (hr.content == NULL && hr.content_generator == NULL) {
+    assert(hr.header.content_length == CONTENT_LENGTH_UNKNOWN);
+    assert(hr.header.resource_length == CONTENT_LENGTH_UNKNOWN);
+    assert(hr.header.content_range_start == 0);
     strbuf cb = strbuf_alloca(100 + strlen(result_string));
-    strbuf_puts(cb, "<html><h1>");
-    strbuf_puts(cb, result_string);
-    strbuf_puts(cb, "</h1></html>\r\n");
+    strbuf_sprintf(cb, "<html><h1>%03u %s</h1></html>", hr.result_code, result_string);
     hr.content = strbuf_str(cb);
     hr.header.resource_length = hr.header.content_length = strbuf_len(cb);
     hr.header.content_type = "text/html";
     hr.header.content_range_start = 0;
+  } else {
+    assert(hr.header.content_length != CONTENT_LENGTH_UNKNOWN);
+    assert(hr.header.resource_length != CONTENT_LENGTH_UNKNOWN);
+    assert(hr.header.content_length <= hr.header.resource_length);
+    assert(hr.header.content_range_start + hr.header.content_length <= hr.header.resource_length);
+    // To save page handlers having to decide between 200 (OK) and 206 (Partial Content), they can
+    // just set the content range fields and pass 200 to http_request_response_static(), and this
+    // logic will change it to 206 if appropriate.
+    if (hr.header.content_length > 0 && hr.header.content_length < hr.header.resource_length && hr.result_code == 200)
+      hr.result_code = 206; // Partial Content
   }
   assert(hr.header.content_type != NULL);
   assert(hr.header.content_type[0]);
@@ -1603,6 +1875,17 @@ static int _render_response(struct http_request *r)
 	);
   }
   strbuf_sprintf(sb, "Content-Length: %"PRIhttp_size_t"\r\n", hr.header.content_length);
+  const char *scheme = NULL;
+  switch (hr.header.www_authenticate.scheme) {
+    case NOAUTH: break;
+    case BASIC: scheme = "Basic"; break;
+  }
+  if (scheme) {
+    assert(hr.result_code == 401);
+    strbuf_sprintf(sb, "WWW-Authenticate: %s realm=", scheme);
+    strbuf_append_quoted_string(sb, hr.header.www_authenticate.realm);
+    strbuf_puts(sb, "\r\n");
+  }
   strbuf_puts(sb, "\r\n");
   if (strbuf_overrun(sb))
     return 0;
@@ -1656,7 +1939,6 @@ static size_t http_request_drain(struct http_request *r)
 static void http_request_start_response(struct http_request *r)
 {
   assert(r->phase == RECEIVE);
-  assert(r->response.result_code != 0);
   if (r->response.content || r->response.content_generator) {
     assert(r->response.header.content_type != NULL);
     assert(r->response.header.content_type[0]);
@@ -1674,6 +1956,13 @@ static void http_request_start_response(struct http_request *r)
   http_request_drain(r);
   if (r->phase != RECEIVE)
     return;
+  // Ensure conformance to HTTP standards.
+  if (r->response.result_code == 401 && r->response.header.www_authenticate.scheme == NOAUTH) {
+    WHY("HTTP 401 response missing WWW-Authenticate header, sending 500 Server Error instead");
+    r->response.result_code = 500;
+    r->response.content = NULL;
+    r->response.content_generator = NULL;
+  }
   // If the response cannot be rendered, then render a 500 Server Error instead.  If that fails,
   // then just close the connection.
   http_request_render_response(r);
@@ -1681,6 +1970,7 @@ static void http_request_start_response(struct http_request *r)
     WARN("Cannot render HTTP response, sending 500 Server Error instead");
     r->response.result_code = 500;
     r->response.content = NULL;
+    r->response.content_generator = NULL;
     http_request_render_response(r);
     if (r->response_buffer == NULL) {
       WHY("Cannot render HTTP 500 Server Error response, closing connection");
@@ -1706,8 +1996,6 @@ static void http_request_start_response(struct http_request *r)
 void http_request_response_static(struct http_request *r, int result, const char *mime_type, const char *body, uint64_t bytes)
 {
   assert(r->phase == RECEIVE);
-  assert(result >= 100);
-  assert(result < 300);
   assert(mime_type != NULL);
   assert(mime_type[0]);
   r->response.result_code = result;
@@ -1722,8 +2010,6 @@ void http_request_response_static(struct http_request *r, int result, const char
 void http_request_response_generated(struct http_request *r, int result, const char *mime_type, HTTP_CONTENT_GENERATOR generator)
 {
   assert(r->phase == RECEIVE);
-  assert(result >= 100);
-  assert(result < 300);
   assert(mime_type != NULL);
   assert(mime_type[0]);
   r->response.result_code = result;
@@ -1744,8 +2030,6 @@ void http_request_response_generated(struct http_request *r, int result, const c
 void http_request_simple_response(struct http_request *r, uint16_t result, const char *body)
 {
   assert(r->phase == RECEIVE);
-  assert(result >= 200);
-  assert(result < 600);
   strbuf h = NULL;
   if (body) {
     size_t html_len = strlen(body) + 40;
@@ -1755,8 +2039,10 @@ void http_request_simple_response(struct http_request *r, uint16_t result, const
   r->response.result_code = result;
   r->response.header.content_type = "text/html";
   r->response.header.content_range_start = 0;
-  r->response.header.resource_length = r->response.header.content_length = h ? strbuf_len(h) : 0;
-  r->response.content = h ? strbuf_str(h) : NULL;
+  if (h) {
+    r->response.header.resource_length = r->response.header.content_length = strbuf_len(h);
+    r->response.content = strbuf_str(h);
+  }
   r->response.content_generator = NULL;
   http_request_start_response(r);
 }

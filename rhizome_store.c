@@ -637,13 +637,13 @@ int rhizome_stat_file(rhizome_manifest *m, const char *filepath)
   return 0;
 }
 
-static int rhizome_write_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_write *write)
+static int rhizome_write_derive_key(rhizome_manifest *m, struct rhizome_write *write)
 {
   if (m->payloadEncryption != PAYLOAD_ENCRYPTED)
     return 0;
   
   // if the manifest specifies encryption, make sure we can generate the payload key and encrypt the contents as we go
-  if (rhizome_derive_key(m, bsk))
+  if (rhizome_derive_payload_key(m))
     return -1;
 
   if (config.debug.rhizome)
@@ -664,7 +664,7 @@ int rhizome_write_open_manifest(struct rhizome_write *write, rhizome_manifest *m
   if (rhizome_open_write(write, NULL, m->filesize, RHIZOME_PRIORITY_DEFAULT))
     return -1;
 
-  if (rhizome_write_derive_key(m, NULL, write))
+  if (rhizome_write_derive_key(m, write))
     return -1;
   return 0;
 }
@@ -1083,13 +1083,13 @@ static int write_file(struct rhizome_read *read, const char *filepath){
   return ret;
 }
 
-static int read_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state)
+static int read_derive_key(rhizome_manifest *m, struct rhizome_read *read_state)
 {
   read_state->crypt = m->payloadEncryption == PAYLOAD_ENCRYPTED;
   if (read_state->crypt){
     // if the manifest specifies encryption, make sure we can generate the payload key and encrypt
     // the contents as we go
-    if (rhizome_derive_key(m, bsk)) {
+    if (rhizome_derive_payload_key(m)) {
       rhizome_read_close(read_state);
       return WHY("Unable to decrypt bundle, valid key not found");
     }
@@ -1103,11 +1103,11 @@ static int read_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizom
   return 0;
 }
 
-int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state)
+int rhizome_open_decrypt_read(rhizome_manifest *m, struct rhizome_read *read_state)
 {
   int ret = rhizome_open_read(read_state, &m->filehash);
   if (ret == 0)
-    ret = read_derive_key(m, bsk, read_state);
+    ret = read_derive_key(m, read_state);
   return ret;
 }
 
@@ -1116,11 +1116,11 @@ int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhi
  *
  * Returns -1 on error, 0 if extracted successfully, 1 if not found.
  */
-int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t *bsk)
+int rhizome_extract_file(rhizome_manifest *m, const char *filepath)
 {
   struct rhizome_read read_state;
   bzero(&read_state, sizeof read_state);
-  int ret = rhizome_open_decrypt_read(m, bsk, &read_state);
+  int ret = rhizome_open_decrypt_read(m, &read_state);
   if (ret == 0)
     ret = write_file(&read_state, filepath);
   rhizome_read_close(&read_state);
@@ -1185,7 +1185,7 @@ int rhizome_journal_pipe(struct rhizome_write *write, const rhizome_filehash_t *
 }
 
 // open an existing journal bundle, advance the head pointer, duplicate the existing content and get ready to add more.
-int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, uint64_t new_size)
+int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m, uint64_t advance_by, uint64_t new_size)
 {
   int ret = 0;
 
@@ -1213,7 +1213,7 @@ int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m,
       goto failure;
   }
 
-  ret = rhizome_write_derive_key(m, bsk, write);
+  ret = rhizome_write_derive_key(m, write);
   if (ret)
     goto failure;
   
@@ -1225,12 +1225,12 @@ failure:
   return ret;
 }
 
-int rhizome_append_journal_buffer(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, unsigned char *buffer, size_t len)
+int rhizome_append_journal_buffer(rhizome_manifest *m, uint64_t advance_by, unsigned char *buffer, size_t len)
 {
   struct rhizome_write write;
   bzero(&write, sizeof write);
 
-  int ret = rhizome_write_open_journal(&write, m, bsk, advance_by, (uint64_t) len);
+  int ret = rhizome_write_open_journal(&write, m, advance_by, (uint64_t) len);
   if (ret)
     return -1;
 
@@ -1253,7 +1253,7 @@ failure:
   return ret;
 }
 
-int rhizome_append_journal_file(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t advance_by, const char *filename)
+int rhizome_append_journal_file(rhizome_manifest *m, uint64_t advance_by, const char *filename)
 {
   struct stat stat;
   if (lstat(filename,&stat))
@@ -1261,7 +1261,7 @@ int rhizome_append_journal_file(rhizome_manifest *m, rhizome_bk_t *bsk, uint64_t
 
   struct rhizome_write write;
   bzero(&write, sizeof write);
-  int ret = rhizome_write_open_journal(&write, m, bsk, advance_by, stat.st_size);
+  int ret = rhizome_write_open_journal(&write, m, advance_by, stat.st_size);
   if (ret)
     return -1;
 

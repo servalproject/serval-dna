@@ -920,8 +920,8 @@ _tfw_assertExpr() {
 
 _tfw_get_content() {
    case "$_tfw_opt_line_sed" in
-   '') ln -f "$1" "$_tfw_process_tmp/content" || error "ln failed";;
-   *) $SED -n -e "${_tfw_opt_line_sed}p" "$1" >"$_tfw_process_tmp/content" || error "sed failed";;
+   '') cat "$1" >|"$_tfw_process_tmp/content" || error "cat failed";;
+   *) $SED -n -e "${_tfw_opt_line_sed}p" "$1" >|"$_tfw_process_tmp/content" || error "sed failed";;
    esac
 }
 

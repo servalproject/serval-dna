@@ -44,6 +44,8 @@ int rhizome_manifest_createid(rhizome_manifest *m)
     return WHY("Failed to create keypair for manifest ID.");
   rhizome_manifest_set_id(m, &m->cryptoSignPublic);
   m->haveSecret = NEW_BUNDLE_ID;
+  // A new Bundle ID and secret invalidates any existing BK field.
+  rhizome_manifest_del_bundle_key(m);
   return 0;
 }
 
@@ -60,7 +62,7 @@ static int generate_keypair(const char *seed, struct signing_key *key)
   
   // The first 256 bits (32 bytes) of the hash will be used as the private key of the BID.
   bcopy(hash, key->Private, sizeof key->Private);
-  if (crypto_sign_compute_public_key(key->Private, key->Public.binary))
+  if (crypto_sign_compute_public_key(key->Private, key->Public.binary) == -1)
     return WHY("Could not generate public key");
   // The last 32 bytes of the private key should be identical to the public key.  This is what
   // crypto_sign_edwards25519sha512batch_keypair() returns, and there is code that depends on it.
@@ -81,13 +83,13 @@ int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed)
     return -1;
   if (ret == 1) {
     // manifest not retrieved
-    rhizome_manifest_set_id(m, &key.Public);
+    rhizome_manifest_set_id(m, &key.Public); // zerofills m->cryptoSignSecret
     m->haveSecret = NEW_BUNDLE_ID;
   } else {
     m->haveSecret = EXISTING_BUNDLE_ID;
   }
   bcopy(key.Private, m->cryptoSignSecret, sizeof m->cryptoSignSecret);
-  //Disabled for performance, but these asserts should always hold.
+  // Disabled for performance, these asserts should nevertheless always hold.
   //assert(cmp_rhizome_bid_t(&m->cryptoSignPublic, &key.Public) == 0);
   //assert(memcmp(m->cryptoSignPublic.binary, m->cryptoSignSecret + RHIZOME_BUNDLE_KEY_BYTES, sizeof m->cryptoSignPublic.binary) == 0);
   return ret;
@@ -124,10 +126,12 @@ int rhizome_bk_xor_stream(
   return 0;
 }
 
-/*
-  CryptoSign Secret Keys in cupercop-20120525 onwards have the public key as the
-  second half of the secret key.  The public key is the BID, so this simplifies
-  the BK<-->SECRET conversion processes. */
+/* CryptoSign Secret Keys in cupercop-20120525 onwards have the public key as the second half of the
+ * secret key.  The public key is the BID, so this simplifies the BK<-->SECRET conversion processes.
+ *
+ * Returns 0 if the BK decodes correctly to the bundle secret, 1 if not.  Returns -1 if there is an
+ * error.
+ */
 int rhizome_bk2secret(rhizome_manifest *m,
   const rhizome_bid_t *bidp,
   const unsigned char *rs, const size_t rs_len,
@@ -138,21 +142,16 @@ int rhizome_bk2secret(rhizome_manifest *m,
 {
   IN();
   unsigned char xor_stream[RHIZOME_BUNDLE_KEY_BYTES];
-  if (rhizome_bk_xor_stream(bidp,rs,rs_len,xor_stream,RHIZOME_BUNDLE_KEY_BYTES))
+  if (rhizome_bk_xor_stream(bidp, rs, rs_len, xor_stream, RHIZOME_BUNDLE_KEY_BYTES))
     RETURN(WHY("rhizome_bk_xor_stream() failed"));
-
-  int i;
-
   /* XOR and store secret part of secret key */
-  for(i = 0; i != RHIZOME_BUNDLE_KEY_BYTES; i++)
+  unsigned i;
+  for (i = 0; i != RHIZOME_BUNDLE_KEY_BYTES; ++i)
     secret[i] = bkin[i] ^ xor_stream[i];
-  /* Copy BID as public-key part of secret key */
-  for(;i!=crypto_sign_edwards25519sha512batch_SECRETKEYBYTES;++i)
-    secret[i] = bidp->binary[i - RHIZOME_BUNDLE_KEY_BYTES];
-
   bzero(xor_stream, sizeof xor_stream);
-  
-  RETURN(rhizome_verify_bundle_privatekey(m, secret, bidp->binary));
+  /* Copy BID as public-key part of secret key */
+  bcopy(bidp->binary, secret + RHIZOME_BUNDLE_KEY_BYTES, sizeof bidp->binary);
+  RETURN(rhizome_verify_bundle_privatekey(secret, bidp->binary) ? 0 : 1);
   OUT();
 }
 
@@ -181,243 +180,245 @@ int rhizome_secret2bk(
 }
 
 
-/* Given the SID of a bundle's author, search for an identity in the keyring and return its
- * Rhizome secret if found.
+/* Given a SID, search the keyring for an identity with the same SID and return its Rhizome secret
+ * if found.
  *
- * Returns -1 if an error occurs.
- * Returns 0 if the author's rhizome secret is found; '*rs' is set to point to the secret key in the
- * keyring, and '*rs_len' is set to the key length.
- * Returns 2 if the author's identity is not in the keyring.
- * Returns 3 if the author's identity is in the keyring but has no rhizome secret.
+ * Returns FOUND_RHIZOME_SECRET if the author's rhizome secret is found; '*rs' is set to point to
+ * the secret key in the keyring, and '*rs_len' is set to the key length.
+ *
+ * Returns IDENTITY_NOT_FOUND if the SID is not in the keyring.
+ *
+ * Returns IDENTITY_HAS_NO_RHIZOME_SECRET if the SID is in the keyring but has no Rhizome Secret.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_find_secret(const sid_t *authorSidp, int *rs_len, const unsigned char **rs)
+enum rhizome_secret_disposition find_rhizome_secret(const sid_t *authorSidp, size_t *rs_len, const unsigned char **rs)
 {
+  IN();
   int cn=0, in=0, kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp, authorSidp)) {
     if (config.debug.rhizome)
       DEBUGF("identity sid=%s is not in keyring", alloca_tohex_sid_t(*authorSidp));
-    return 2;
+    RETURN(IDENTITY_NOT_FOUND);
   }
   kp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
   if (kp == -1) {
-    if (config.debug.rhizome)
-      DEBUGF("identity sid=%s has no Rhizome Secret", alloca_tohex_sid_t(*authorSidp));
-    return 3;
+    WARNF("Identity sid=%s has no Rhizome Secret", alloca_tohex_sid_t(*authorSidp));
+    RETURN(IDENTITY_HAS_NO_RHIZOME_SECRET);
   }
   int rslen = keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key_len;
-  if (rslen < 16 || rslen > 1024)
-    return WHYF("identity sid=%s has invalid Rhizome Secret: length=%d", alloca_tohex_sid_t(*authorSidp), rslen);
+  assert(rslen >= 16);
+  assert(rslen <= 1024);
   if (rs_len)
     *rs_len = rslen;
   if (rs)
     *rs = keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key;
-  return 0;
+  RETURN(FOUND_RHIZOME_SECRET);
 }
 
-/* Given the SID of a bundle's author and the bundle ID, XOR a bundle key (private or public) with
- * RS##BID where RS is the rhizome secret of the bundle's author, and BID is the bundle's public key
- * (aka the Bundle ID).
- *
- * This will convert a manifest BK field into the bundle's private key, or vice versa.
- *
- * Returns -1 if an error occurs.
- * Returns 0 if the author's private key is located and the XOR is performed successfully.
- * Returns 2 if the author's identity is not in the keyring (this return code from
- * rhizome_find_secret()).
- * Returns 3 if the author's identity is in the keyring but has no rhizome secret (this return code
- * from rhizome_find_secret()).
- *
- * Looks up the SID in the keyring, and if it is present and has a valid-looking RS, calls
- * rhizome_bk_xor_rs() to perform the XOR.
+/* Attempt to authenticate the authorship of the given bundle, and set the 'authorship' element
+ * accordingly.  If the manifest has nk BK field, then no authentication can be performed.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-
-/* See if the manifest has a BK entry, and if so, use it to obtain the private key for the BID.  The
- * manifest's 'author' field must contain the (binary) SID of the purported author of the bundle,
- * which is used to look up the author's rhizome secret in the keyring.
- *
- * Returns 0 if a valid private key was extracted, with the private key in the manifest
- * 'cryptoSignSecret' field and the 'haveSecret' field set to EXISTING_BUNDLE_ID.
- *
- * Returns 1 if the manifest does not have a BK field.
- *
- * Returns 2 if the author is not found in the keyring (not unlocked?) -- this return code from
- * rhizome_bk_xor().
- *
- * Returns 3 if the author is found in the keyring but has no rhizome secret -- this return code
- * from rhizome_bk_xor().
- *
- * Returns 4 if the author is found in the keyring and has a rhizome secret but the private bundle
- * key formed using it does not verify.
- *
- * Returns -1 on error.
- *
- * @author Andrew Bettison <andrew@servalproject.com>
-
- */
-int rhizome_extract_privatekey(rhizome_manifest *m, const rhizome_bk_t *bsk)
+void rhizome_authenticate_author(rhizome_manifest *m)
 {
-  if (config.debug.rhizome)
-    DEBUGF("manifest[%d] bsk=%s", m->manifest_record_number, bsk ? alloca_tohex_rhizome_bk_t(*bsk) : "NULL");
   IN();
-  int result;
-  if (m->has_bundle_key) {
-    if (!m->has_author) {
-      result = rhizome_find_bundle_author(m);
-    } else {
-      int rs_len;
-      const unsigned char *rs;
-      result = rhizome_find_secret(&m->author, &rs_len, &rs);
-      if (result == 0)
-	result = rhizome_bk2secret(m, &m->cryptoSignPublic, rs, rs_len, m->bundle_key.binary, m->cryptoSignSecret);
-    }
-    if (result == 0 && bsk && !rhizome_is_bk_none(bsk)){
-      // If a bundle secret key was supplied that does not match the secret key derived from the
-      // author, then warn but carry on using the author's.
-      if (memcmp(bsk->binary, m->cryptoSignSecret, sizeof bsk->binary) != 0)
-	WARNF("Supplied bundle secret key is invalid -- ignoring");
-    }
-  }else if (bsk && !rhizome_is_bk_none(bsk)){
-    bcopy(bsk->binary, m->cryptoSignSecret, sizeof bsk->binary);
-    bcopy(m->cryptoSignPublic.binary, m->cryptoSignSecret + sizeof bsk->binary, sizeof m->cryptoSignPublic.binary);
-    if (rhizome_verify_bundle_privatekey(m, m->cryptoSignSecret, m->cryptoSignPublic.binary))
-      result=5;
-    else
-      result=0;
-  }else{
-    result=1;
+  if (!m->has_bundle_key)
+    RETURNVOID;
+  switch (m->authorship) {
+    case ANONYMOUS:
+      rhizome_find_bundle_author_and_secret(m);
+      break;
+    case AUTHOR_NOT_CHECKED:
+    case AUTHOR_LOCAL: {
+	if (config.debug.rhizome)
+	  DEBUGF("manifest[%d] authenticate author=%s", m->manifest_record_number, alloca_tohex_sid_t(m->author));
+	size_t rs_len;
+	const unsigned char *rs;
+	enum rhizome_secret_disposition d = find_rhizome_secret(&m->author, &rs_len, &rs);
+	switch (d) {
+	  case FOUND_RHIZOME_SECRET:
+	    if (config.debug.rhizome)
+	      DEBUGF("author has Rhizome secret");
+	    switch (rhizome_bk2secret(m, &m->cryptoSignPublic, rs, rs_len, m->bundle_key.binary, m->cryptoSignSecret)) {
+	      case 0:
+		if (config.debug.rhizome)
+		  DEBUGF("authentic");
+		m->authorship = AUTHOR_AUTHENTIC;
+		if (!m->haveSecret)
+		  m->haveSecret = EXISTING_BUNDLE_ID;
+		break;
+	      case -1:
+		if (config.debug.rhizome)
+		  DEBUGF("error");
+		m->authorship = AUTHENTICATION_ERROR;
+		break;
+	      default:
+		if (config.debug.rhizome)
+		  DEBUGF("impostor");
+		m->authorship = AUTHOR_IMPOSTOR;
+		break;
+	    }
+	    break;
+	  case IDENTITY_NOT_FOUND:
+	    if (config.debug.rhizome)
+	      DEBUGF("author not found");
+	    m->authorship = AUTHOR_UNKNOWN;
+	    break;
+	  case IDENTITY_HAS_NO_RHIZOME_SECRET:
+	    if (config.debug.rhizome)
+	      DEBUGF("author has no Rhizome secret");
+	    m->authorship = AUTHENTICATION_ERROR;
+	    break;
+	  default:
+	    FATALF("find_rhizome_secret() returned unknown code %d", (int)d);
+	    break;
+	}
+      }
+      break;
+    case AUTHENTICATION_ERROR:
+    case AUTHOR_UNKNOWN:
+    case AUTHOR_IMPOSTOR:
+    case AUTHOR_AUTHENTIC:
+      // work has already been done, don't repeat it
+      break;
+    default:
+      FATALF("m->authorship = %d", (int)m->authorship);
+      break;
   }
-  if (result == 0)
-    m->haveSecret = EXISTING_BUNDLE_ID;
-  else {
-    memset(m->cryptoSignSecret, 0, sizeof m->cryptoSignSecret);
-    m->haveSecret = SECRET_UNKNOWN;
-  }
-  RETURN(result);
   OUT();
 }
 
-/* Same as rhizome_extract_privatekey, except warnings become errors and are logged */
-int rhizome_extract_privatekey_required(rhizome_manifest *m, rhizome_bk_t *bsk)
+/* If the given bundle secret key corresponds to the bundle's ID (public key) then store it in the
+ * manifest structure and mark the secret key as known.  Return 1 if the secret key was assigned,
+ * 0 if not.
+ *
+ * This function should only be called on a manifest that already has a public key (ID) and does
+ * not have a known secret key.
+ * 
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_apply_bundle_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
 {
-  int result = rhizome_extract_privatekey(m, bsk);
-  switch (result) {
-    case -1:
-    case 0:
-      return result;
-    case 1:
-      return WHY("Bundle contains no BK field, and no bundle secret supplied");
-    case 2:
-      return WHY("Author unknown");
-    case 3:
-      return WHY("Author does not have a Rhizome Secret");
-    case 4:
-      return WHY("Author does not have permission to modify manifest");
-    case 5:
-      return WHY("Bundle secret is not valid for this manifest");
-    default:
-      return WHYF("Unknown result from rhizome_extract_privatekey(): %d", result);
+  IN();
+  if (config.debug.rhizome)
+    DEBUGF("manifest[%d] bsk=%s", m->manifest_record_number, bsk ? alloca_tohex_rhizome_bk_t(*bsk) : "NULL");
+  assert(m->haveSecret == SECRET_UNKNOWN);
+  assert(is_all_matching(m->cryptoSignSecret, sizeof m->cryptoSignSecret, 0));
+  assert(!rhizome_bid_t_is_zero(m->cryptoSignPublic));
+  assert(bsk != NULL);
+  assert(!rhizome_is_bk_none(bsk));
+  if (rhizome_verify_bundle_privatekey(bsk->binary, m->cryptoSignPublic.binary)) {
+    if (config.debug.rhizome)
+      DEBUG("bundle secret verifies ok");
+    bcopy(bsk->binary, m->cryptoSignSecret, sizeof bsk->binary);
+    bcopy(m->cryptoSignPublic.binary, m->cryptoSignSecret + sizeof bsk->binary, sizeof m->cryptoSignPublic.binary);
+    m->haveSecret = EXISTING_BUNDLE_ID;
+    RETURN(1);
   }
+  RETURN(0);
+  OUT();
 }
 
 /* Discover if the given manifest was created (signed) by any unlocked identity currently in the
  * keyring.
  *
- * Returns 0 if an identity is found with permission to alter the bundle, after setting the manifest
- * 'author' field to the SID of the identity and the manifest 'cryptoSignSecret' field to the bundle
- * secret key and the 'haveSecret' field to EXISTING_BUNDLE_ID.
+ * This function must only be called if the bundle secret is not known.  If it is known, then
+ * use 
  *
- * Returns 1 if no identity in the keyring is the author of this bundle.
+ * If the authorship is already known (ie, not ANONYMOUS) then returns without changing anything.
+ * That means this function can be called several times on the same manifest, but will only perform
+ * any work the first time.
  *
- * Returns 4 if the manifest has no BK field.
+ * If the manifest has no bundle key (BK) field, then it is anonymous, so leaves 'authorship'
+ * unchanged and returns.
  *
- * Returns -1 if an error occurs, eg, the manifest contains an invalid BK field.
+ * If an identity is found in the keyring with permission to alter the bundle, then sets the
+ * manifest 'authorship' field to AUTHOR_AUTHENTIC, the 'author' field to the SID of the identity,
+ * the manifest 'cryptoSignSecret' field to the bundle secret key and the 'haveSecret' field to
+ * EXISTING_BUNDLE_ID.
+ *
+ * If no identity is found in the keyring that combines with the bundle key (BK) field to yield
+ * the bundle's secret key, then leaves the manifest 'authorship' field as ANONYMOUS.
+ *
+ * If an error occurs, eg, the keyring contains an invalid Rhizome Secret or a cryptographic
+ * operation fails, then sets the 'authorship' field to AUTHENTICATION_ERROR and leaves the
+ * 'author', 'haveSecret' and 'cryptoSignSecret' fields unchanged.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_find_bundle_author(rhizome_manifest *m)
+void rhizome_find_bundle_author_and_secret(rhizome_manifest *m)
 {
   IN();
-  if (!m->has_bundle_key) {
-    if (config.debug.rhizome)
-      DEBUG("missing BK");
-    RETURN(4);
-  }
+  if (m->authorship != ANONYMOUS)
+    RETURNVOID;
+  assert(is_sid_t_any(m->author));
+  if (!m->has_bundle_key)
+    RETURNVOID;
   int cn = 0, in = 0, kp = 0;
   for (; keyring_next_identity(keyring, &cn, &in, &kp); ++kp) {
     const sid_t *authorSidp = (const sid_t *) keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key;
     //if (config.debug.rhizome) DEBUGF("try author identity sid=%s", alloca_tohex_sid_t(*authorSidp));
     int rkp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
     if (rkp != -1) {
-      int rs_len = keyring->contexts[cn]->identities[in]->keypairs[rkp]->private_key_len;
-      if (rs_len < 16 || rs_len > 1024)
-	RETURN(WHYF("invalid Rhizome Secret: length=%d", rs_len));
+      size_t rs_len = keyring->contexts[cn]->identities[in]->keypairs[rkp]->private_key_len;
+      if (rs_len < 16 || rs_len > 1024) {
+	WHYF("invalid Rhizome Secret: length=%zu", rs_len);
+	m->authorship = AUTHENTICATION_ERROR;
+	RETURNVOID;
+      }
       const unsigned char *rs = keyring->contexts[cn]->identities[in]->keypairs[rkp]->private_key;
-      if (rhizome_bk2secret(m, &m->cryptoSignPublic, rs, rs_len, m->bundle_key.binary, m->cryptoSignSecret) == 0) {
-	m->haveSecret = EXISTING_BUNDLE_ID;
-	if (!m->has_author || cmp_sid_t(&m->author, authorSidp) != 0){
-	  if (config.debug.rhizome)
-	    DEBUGF("found bundle author sid=%s", alloca_tohex_sid_t(*authorSidp));
-	  rhizome_manifest_set_author(m, authorSidp);
-	  // if this bundle is already in the database, update the author.
-	  if (m->inserttime)
-	    sqlite_exec_void_loglevel(LOG_LEVEL_WARN,
-		"UPDATE MANIFESTS SET author = ? WHERE id = ?;",
-		SID_T, &m->author,
-		RHIZOME_BID_T, &m->cryptoSignPublic,
-		END);
-	}
-	RETURN(0); // bingo
+      unsigned char *secretp = m->cryptoSignSecret;
+      if (m->haveSecret)
+	secretp = alloca(sizeof m->cryptoSignSecret);
+      if (rhizome_bk2secret(m, &m->cryptoSignPublic, rs, rs_len, m->bundle_key.binary, secretp) == 0) {
+	if (m->haveSecret) {
+	  if (memcmp(secretp, m->cryptoSignSecret, sizeof m->cryptoSignSecret) != 0)
+	    FATALF("Bundle secret does not match derived secret");
+	} else
+	  m->haveSecret = EXISTING_BUNDLE_ID;
+	if (config.debug.rhizome)
+	  DEBUGF("found bundle author sid=%s", alloca_tohex_sid_t(*authorSidp));
+	rhizome_manifest_set_author(m, authorSidp);
+	m->authorship = AUTHOR_AUTHENTIC;
+	// if this bundle is already in the database, update the author.
+	if (m->inserttime)
+	  sqlite_exec_void_loglevel(LOG_LEVEL_WARN,
+	      "UPDATE MANIFESTS SET author = ? WHERE id = ?;",
+	      SID_T, &m->author,
+	      RHIZOME_BID_T, &m->cryptoSignPublic,
+	      END);
+	RETURNVOID; // bingo
       }
     }
   }
+  assert(m->authorship == ANONYMOUS);
   if (config.debug.rhizome)
     DEBUG("bundle author not found");
-  RETURN(1);
   OUT();
 }
 
-/* Verify the validity of the manifest's secret key, ie, is the given manifest's 'cryptoSignSecret'
- * field actually the secret key corresponding to the public key in 'cryptoSignPublic'?
- * Return 0 if valid, 1 if not.  Return -1 if an error occurs.
+/* Verify the validity of a given secret manifest key.  Return 1 if valid, 0 if not.
  *
  * There is no NaCl API to efficiently test this.  We use a modified version of
  * crypto_sign_keypair() to accomplish this task.
  */
-int rhizome_verify_bundle_privatekey(rhizome_manifest *m,
-				     const unsigned char *sk,
-				     const unsigned char *pkin)
+int rhizome_verify_bundle_privatekey(const unsigned char *sk, const unsigned char *pkin)
 {
   IN();
-  unsigned char pk[32];
-  int i;
-  crypto_sign_compute_public_key(sk,pk);
-  for (i = 0;i < 32;++i) 
-    if (pkin[i] != pk[i]) {
-      if (m&&sk==m->cryptoSignSecret&&pkin==m->cryptoSignPublic.binary)
-	m->haveSecret = SECRET_UNKNOWN;
-      RETURN(-1);
-    }
-  if (m&&sk==m->cryptoSignSecret&&pkin==m->cryptoSignPublic.binary) {
-    if (config.debug.rhizome)
-      DEBUGF("We have the private key for this bundle.");
-    m->haveSecret = EXISTING_BUNDLE_ID;
-  }
-  RETURN(0);
-  OUT();
+  rhizome_bid_t pk;
+  if (crypto_sign_compute_public_key(sk, pk.binary) == -1)
+    RETURN(0);
+  int ret = bcmp(pkin, pk.binary, sizeof pk.binary) == 0;
+  RETURN(ret);
 }
 
-int rhizome_sign_hash(rhizome_manifest *m,
-		      rhizome_signature *out)
+int rhizome_sign_hash(rhizome_manifest *m, rhizome_signature *out)
 {
   IN();
-  if (!m->haveSecret && rhizome_extract_privatekey_required(m, NULL))
-    RETURN(-1);
-
-  int ret=rhizome_sign_hash_with_key(m, m->cryptoSignSecret, m->cryptoSignPublic.binary, out);
+  assert(m->haveSecret);
+  int ret = rhizome_sign_hash_with_key(m, m->cryptoSignSecret, m->cryptoSignPublic.binary, out);
   RETURN(ret);
   OUT();
 }
@@ -627,7 +628,7 @@ int rhizome_crypt_xor_block(unsigned char *buffer, size_t buffer_size, uint64_t 
   return 0;
 }
 
-int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk)
+int rhizome_derive_payload_key(rhizome_manifest *m)
 {
   // don't do anything if the manifest isn't flagged as being encrypted
   if (m->payloadEncryption != PAYLOAD_ENCRYPTED)
@@ -655,9 +656,8 @@ int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk)
     bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
     
   }else{
-    if (!m->haveSecret && rhizome_extract_privatekey_required(m, bsk))
-      return -1;
-    assert(m->haveSecret);
+    if (!m->haveSecret)
+      return WHY("Cannot derive payload key because bundle secret is unknown");
     
     unsigned char raw_key[9+crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]="sasquatch";
     bcopy(m->cryptoSignSecret, &raw_key[9], crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
