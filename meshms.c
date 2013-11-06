@@ -694,13 +694,16 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
     return -1;
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-  if (rhizome_opendb() == -1)
+  if (rhizome_opendb() == -1){
+    keyring_free(keyring);
     return -1;
+  }
   
   struct conversations *conv=NULL;
-  if (meshms_conversations_list(&sid, NULL, &conv))
+  if (meshms_conversations_list(&sid, NULL, &conv)){
+    keyring_free(keyring);
     return -1;
-  
+  }  
   const char *names[]={
     "_id","recipient","read", "last_message", "read_offset"
   };
@@ -710,6 +713,7 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
   cli_row_count(context, rows);
 
   free_conversations(conv);
+  keyring_free(keyring);
   return 0;
 }
 
@@ -724,16 +728,19 @@ int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context 
     return -1;
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-  if (rhizome_opendb() == -1)
+  if (rhizome_opendb() == -1){
+    keyring_free(keyring);
     return -1;
+  }
   
   sid_t my_sid, their_sid;
   fromhex(my_sid.binary, my_sidhex, sizeof(my_sid.binary));
   fromhex(their_sid.binary, their_sidhex, sizeof(their_sid.binary));
   struct conversations *conv=find_or_create_conv(&my_sid, &their_sid);
-  if (!conv)
+  if (!conv){
+    keyring_free(keyring);
     return -1;
-  
+  }  
   // construct a message payload
   int message_len = strlen(message)+1;
   
@@ -744,6 +751,7 @@ int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context 
   int ret = append_meshms_buffer(&my_sid, conv, buffer, message_len);
   
   free_conversations(conv);
+  keyring_free(keyring);
   return ret;
 }
 
@@ -758,19 +766,24 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
     return -1;
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-  if (rhizome_opendb() == -1)
+  if (rhizome_opendb() == -1){
+    keyring_free(keyring);
     return -1;
-    
+  }    
   sid_t my_sid, their_sid;
-  if (str_to_sid_t(&my_sid, my_sidhex) == -1)
+  if (str_to_sid_t(&my_sid, my_sidhex) == -1){
+    keyring_free(keyring);
     return WHY("invalid sender SID");
-  if (str_to_sid_t(&their_sid, their_sidhex) == -1)
+  }
+  if (str_to_sid_t(&their_sid, their_sidhex) == -1){
+    keyring_free(keyring);
     return WHY("invalid recipient SID");
-  
+  }  
   struct conversations *conv=find_or_create_conv(&my_sid, &their_sid);
-  if (!conv)
+  if (!conv){
+    keyring_free(keyring);
     return -1;
-  
+  }
   int ret=-1;
   
   const char *names[]={
@@ -900,6 +913,7 @@ end:
     ply_read_close(&read_theirs);
   }
   free_conversations(conv);
+  keyring_free(keyring);
   return ret;
 }
 
@@ -947,9 +961,10 @@ int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *co
     return -1;
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-  if (rhizome_opendb() == -1)
+  if (rhizome_opendb() == -1){
+    keyring_free(keyring);
     return -1;
-  
+  }  
   sid_t my_sid, their_sid;
   fromhex(my_sid.binary, my_sidhex, sizeof(my_sid.binary));
   if (their_sidhex)
@@ -987,5 +1002,6 @@ end:
   if (m)
     rhizome_manifest_free(m);
   free_conversations(conv);
+  keyring_free(keyring);
   return ret;
 }

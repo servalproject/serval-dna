@@ -1314,17 +1314,22 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
 
   if (create_serval_instance_dir() == -1)
     return -1;
+  
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-  if (rhizome_opendb() == -1)
+  
+  if (rhizome_opendb() == -1){
+    keyring_free(keyring);
     return -1;
+  }
   
   /* Create a new manifest that will represent the file.  If a manifest file was supplied, then read
    * it, otherwise create a blank manifest. */
   rhizome_manifest *m = rhizome_new_manifest();
-  if (!m)
+  if (!m){
+    keyring_free(keyring);
     return WHY("Manifest struct could not be allocated -- not added to rhizome");
-  
+  }  
   if (manifestpath && *manifestpath && access(manifestpath, R_OK) == 0) {
     if (config.debug.rhizome)
       DEBUGF("reading manifest from %s", manifestpath);
@@ -1333,6 +1338,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
        trying to write it out. */
     if (rhizome_read_manifest_file(m, manifestpath, 0) == -1) {
       rhizome_manifest_free(m);
+      keyring_free(keyring);
       return WHY("Manifest file could not be loaded -- not added to rhizome");
     }
   } else if (manifestid && *manifestid) {
@@ -1341,10 +1347,12 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     rhizome_bid_t bid;
     if (str_to_rhizome_bid_t(&bid, manifestid) == -1) {
       rhizome_manifest_free(m);
+      keyring_free(keyring);
       return WHYF("Invalid bundle ID: %s", alloca_str_toprint(manifestid));
     }
     if (rhizome_retrieve_manifest(&bid, m)){
       rhizome_manifest_free(m);
+      keyring_free(keyring);
       return WHY("Existing manifest could not be loaded -- not added to rhizome");
     }
   } else {
@@ -1356,33 +1364,41 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     }
   }
 
-  if (journal && !m->is_journal)
+  if (journal && !m->is_journal){
+    rhizome_manifest_free(m);
+    keyring_free(keyring);
     return WHY("Existing manifest is not a journal");
-
-  if (!journal && m->is_journal)
+  }
+  if (!journal && m->is_journal){
+    rhizome_manifest_free(m);
+    keyring_free(keyring);
     return WHY("Existing manifest is a journal");
-
+  }
   if (m->service == NULL)
     rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
 
   if (rhizome_fill_manifest(m, filepath, *authorSidHex ? &authorSid : NULL, bskhex ? &bsk : NULL)){
     rhizome_manifest_free(m);
+    keyring_free(keyring);
     return -1;
   }
 
   if (journal){
     if (rhizome_append_journal_file(m, bskhex?&bsk:NULL, 0, filepath)){
       rhizome_manifest_free(m);
+      keyring_free(keyring);
       return -1;
     }
   }else{
     if (rhizome_stat_file(m, filepath) == -1) {
       rhizome_manifest_free(m);
+      keyring_free(keyring);
       return -1;
     }
     if (m->filesize) {
       if (rhizome_add_file(m, filepath) == -1) {
         rhizome_manifest_free(m);
+	keyring_free(keyring);
         return -1;
       }
     }
@@ -1392,6 +1408,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   int ret = rhizome_manifest_finalise(m, &mout, !force_new);
   if (ret<0){
     rhizome_manifest_free(m);
+    keyring_free(keyring);
     return -1;
   }
   
@@ -1435,6 +1452,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   if (mout != m)
     rhizome_manifest_free(mout);
   rhizome_manifest_free(m);
+  keyring_free(keyring);
   return ret;
 }
 
@@ -1584,27 +1602,38 @@ int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_context *cont
     return -1;
   int ret=0;
   if (cli_arg(parsed, "file", NULL, NULL, NULL) == 0) {
-    if (!fileid)
+    if (!fileid){
+      keyring_free(keyring);
       return WHY("missing <fileid> argument");
+    }
     rhizome_filehash_t hash;
-    if (str_to_rhizome_filehash_t(&hash, fileid) == -1)
+    if (str_to_rhizome_filehash_t(&hash, fileid) == -1){
+      keyring_free(keyring);
       return WHYF("invalid <fileid> argument: %s", alloca_str_toprint(fileid));
+    }
     ret = rhizome_delete_file(&hash);
   } else {
-    if (!manifestid)
+    if (!manifestid){
+      keyring_free(keyring);
       return WHY("missing <manifestid> argument");
+    }
     rhizome_bid_t bid;
-    if (str_to_rhizome_bid_t(&bid, manifestid) == -1)
+    if (str_to_rhizome_bid_t(&bid, manifestid) == -1){
+      keyring_free(keyring);
       return WHY("Invalid manifest ID");
+    }
     if (cli_arg(parsed, "bundle", NULL, NULL, NULL) == 0)
       ret = rhizome_delete_bundle(&bid);
     else if (cli_arg(parsed, "manifest", NULL, NULL, NULL) == 0)
       ret = rhizome_delete_manifest(&bid);
     else if (cli_arg(parsed, "payload", NULL, NULL, NULL) == 0)
       ret = rhizome_delete_payload(&bid);
-    else
+    else{
+      keyring_free(keyring);
       return WHY("unrecognised command");
+    }
   }
+  keyring_free(keyring);
   return ret;
 }
 
@@ -1652,21 +1681,26 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
   int ret=0;
   
   rhizome_bid_t bid;
-  if (str_to_rhizome_bid_t(&bid, manifestid) == -1)
+  if (str_to_rhizome_bid_t(&bid, manifestid) == -1){
+    keyring_free(keyring);
     return WHY("Invalid manifest ID");
+  }
   
   // treat empty string the same as null
   if (bskhex && !*bskhex)
     bskhex=NULL;
   
   rhizome_bk_t bsk;
-  if (bskhex && str_to_rhizome_bk_t(&bsk, bskhex) == -1)
+  if (bskhex && str_to_rhizome_bk_t(&bsk, bskhex) == -1){
+    keyring_free(keyring);
     return WHYF("invalid bsk: \"%s\"", bskhex);
+  }
 
   rhizome_manifest *m = rhizome_new_manifest();
-  if (m==NULL)
+  if (m==NULL){
+    keyring_free(keyring);
     return WHY("Out of manifests");
-  
+  }
   ret = rhizome_retrieve_manifest(&bid, m);
   
   if (ret==0){
@@ -1740,6 +1774,7 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
     ret = retfile == -1 ? -1 : 1;
   if (m)
     rhizome_manifest_free(m);
+  keyring_free(keyring);
   return ret;
 }
 
@@ -1787,9 +1822,13 @@ int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context *contex
     return -1;
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-  if (rhizome_opendb() == -1)
-    return -1;
-  return rhizome_list_manifests(context, service, name, sender_sid, recipient_sid, atoi(offset), atoi(limit), 0);
+    
+  int r=-1;
+  if (rhizome_opendb() != -1){
+    r=rhizome_list_manifests(context, service, name, sender_sid, recipient_sid, atoi(offset), atoi(limit), 0);
+  }
+  keyring_free(keyring);
+  return r;
 }
 
 int app_keyring_create(const struct cli_parsed *parsed, struct cli_context *context)
@@ -1953,8 +1992,10 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
     return -1;
 
   sid_t sid;
-  if (str_to_sid_t(&sid, sidhex) == -1)
+  if (str_to_sid_t(&sid, sidhex) == -1){
+    keyring_free(keyring);
     return WHY("str_to_sid_t() failed");
+  }
 
   int cn=0,in=0,kp=0;
   int r=keyring_find_sid(keyring, &cn, &in, &kp, &sid);
