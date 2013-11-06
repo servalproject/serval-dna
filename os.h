@@ -66,7 +66,7 @@ __SERVALDNA_OS_INLINE void bzero(void *buf, size_t len) {
 #endif
 
 #ifndef HAVE_BCOPY
-__SERVALDNA_OS_INLINE void bcopy(void *src, void *dst, size_t len) {
+__SERVALDNA_OS_INLINE void bcopy(const void *src, void *dst, size_t len) {
     memcpy(dst, src, len);
 }
 #endif
