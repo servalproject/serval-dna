@@ -46,7 +46,7 @@ static struct broadcast bpilist[MAX_BPIS];
 // each slot either points to another tree node or a struct subscriber.
 struct tree_node{
   // bit flags for the type of object each element points to
-  int is_tree;
+  uint16_t is_tree;
   
   union{
     struct tree_node *tree_nodes[16];
@@ -64,6 +64,42 @@ static unsigned char get_nibble(const unsigned char *sidp, int pos)
   if (!(pos&1))
     byte=byte>>4;
   return byte&0xF;
+}
+
+static void free_subscriber(struct subscriber *subscriber)
+{
+  if (subscriber->link_state || subscriber->destination)
+    FATAL("Can't free a subscriber that is being used in routing");
+  if (subscriber->sync_state)
+    FATAL("Can't free a subscriber that is being used by rhizome");
+  if (subscriber->identity)
+    FATAL("Can't free a subscriber that is unlocked in the keyring");
+  free(subscriber);
+}
+
+static void free_children(struct tree_node *parent)
+{
+  int i;
+  for (i=0;i<16;i++){
+    if (parent->is_tree & (1<<i)){
+      free_children(parent->tree_nodes[i]);
+      free(parent->tree_nodes[i]);
+      parent->tree_nodes[i]=NULL;
+    }else if(parent->subscribers[i]){
+      free_subscriber(parent->subscribers[i]);
+      parent->subscribers[i]=NULL;
+    }
+  }
+  parent->is_tree=0;
+}
+
+void free_subscribers()
+{
+  // don't attempt to free anything if we're running as a server
+  // who knows where subscriber ptr's may have leaked to.
+  if (serverMode)
+    FATAL("Freeing subscribers from a running daemon is not supported");
+  free_children(&root);
 }
 
 // find a subscriber struct from a whole or abbreviated subscriber id

@@ -924,9 +924,11 @@ int link_stop_routing(struct subscriber *subscriber)
   subscriber->identity=NULL;
   if (subscriber==my_subscriber)
     my_subscriber=NULL;
-  struct link_state *state = get_link_state(subscriber);
-  state->next_update = gettime_ms();
-  update_alarm(state->next_update);
+  if (subscriber->link_state){
+    struct link_state *state = get_link_state(subscriber);
+    state->next_update = gettime_ms();
+    update_alarm(state->next_update);
+  }
   return 0;
 }
 

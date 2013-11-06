@@ -57,9 +57,6 @@ struct subscriber{
   
   int max_packet_version;
   
-  // overlay routing information
-  struct overlay_node *node;
-
   // link state routing information
   struct link_state *link_state;
   
@@ -128,5 +125,7 @@ int overlay_address_append(struct decode_context *context, struct overlay_buffer
 int overlay_broadcast_parse(struct overlay_buffer *b, struct broadcast *broadcast);
 int overlay_address_parse(struct decode_context *context, struct overlay_buffer *b, struct subscriber **subscriber);
 int send_please_explain(struct decode_context *context, struct subscriber *source, struct subscriber *destination);
+
+void free_subscribers();
 
 #endif

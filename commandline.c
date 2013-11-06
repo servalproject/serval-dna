@@ -250,6 +250,7 @@ int parseCommandLine(struct cli_context *context, const char *argv0, int argc, c
 
   /* clean up after ourselves */
   rhizome_close_db();
+  free_subscribers();
   OUT();
   
   if (config.debug.timing)
