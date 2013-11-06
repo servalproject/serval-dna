@@ -1407,27 +1407,12 @@ rollback:
   return -1;
 }
 
-struct rhizome_list_cursor {
-  // Query parameters that narrow the set of listed bundles.
-  const char *service;
-  const char *name;
-  sid_t sender;
-  sid_t recipient;
-  // Set by calling the next() function.
-  int64_t rowid;
-  rhizome_manifest *manifest;
-  size_t rowcount;
-  // Private state.
-  sqlite3_stmt *_statement;
-  unsigned _offset;
-};
-
 /* The cursor struct must be zerofilled and the query parameters optionally filled in prior to
  * calling this function.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static int rhizome_list_open(sqlite_retry_state *retry, struct rhizome_list_cursor *cursor)
+int rhizome_list_open(sqlite_retry_state *retry, struct rhizome_list_cursor *cursor)
 {
   IN();
   strbuf b = strbuf_alloca(1024);
@@ -1436,9 +1421,9 @@ static int rhizome_list_open(sqlite_retry_state *retry, struct rhizome_list_curs
     strbuf_puts(b, " AND service = @service");
   if (cursor->name)
     strbuf_puts(b, " AND name like @name");
-  if (!is_sid_t_any(cursor->sender))
+  if (cursor->is_sender_set)
     strbuf_puts(b, " AND sender = @sender");
-  if (!is_sid_t_any(cursor->recipient))
+  if (cursor->is_recipient_set)
     strbuf_puts(b, " AND recipient = @recipient");
   strbuf_puts(b, " ORDER BY inserttime DESC LIMIT -1 OFFSET @offset");
   if (strbuf_overrun(b))
@@ -1452,9 +1437,9 @@ static int rhizome_list_open(sqlite_retry_state *retry, struct rhizome_list_curs
     goto failure;
   if (cursor->name && sqlite_bind(retry, cursor->_statement, NAMED|STATIC_TEXT, "@name", cursor->name, END) == -1)
     goto failure;
-  if (!is_sid_t_any(cursor->sender) && sqlite_bind(retry, cursor->_statement, NAMED|SID_T, "@sender", &cursor->sender, END) == -1)
+  if (cursor->is_sender_set && sqlite_bind(retry, cursor->_statement, NAMED|SID_T, "@sender", &cursor->sender, END) == -1)
     goto failure;
-  if (!is_sid_t_any(cursor->recipient) && sqlite_bind(retry, cursor->_statement, NAMED|SID_T, "@recipient", &cursor->recipient, END) == -1)
+  if (cursor->is_recipient_set && sqlite_bind(retry, cursor->_statement, NAMED|SID_T, "@recipient", &cursor->recipient, END) == -1)
     goto failure;
   cursor->manifest = NULL;
   RETURN(0);
@@ -1466,7 +1451,7 @@ failure:
   OUT();
 }
 
-static int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_cursor *cursor)
+int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_cursor *cursor)
 {
   IN();
   if (cursor->_statement == NULL && rhizome_list_open(retry, cursor) == -1)
@@ -1516,9 +1501,9 @@ static int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_curs
     rhizome_manifest_set_inserttime(m, q_inserttime);
     if (cursor->service && !(m->service && strcasecmp(cursor->service, m->service) == 0))
       continue;
-    if (!is_sid_t_any(cursor->sender) && !(m->has_sender && cmp_sid_t(&cursor->sender, &m->sender) == 0))
+    if (cursor->is_sender_set && !(m->has_sender && cmp_sid_t(&cursor->sender, &m->sender) == 0))
       continue;
-    if (!is_sid_t_any(cursor->recipient) && !(m->has_recipient && cmp_sid_t(&cursor->recipient, &m->recipient) == 0))
+    if (cursor->is_recipient_set && !(m->has_recipient && cmp_sid_t(&cursor->recipient, &m->recipient) == 0))
       continue;
     // Don't do rhizome_verify_author(m); too CPU expensive for a listing.  Save that for when
     // the bundle is extracted or exported.
@@ -1529,7 +1514,7 @@ static int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_curs
   OUT();
 }
 
-static void rhizome_list_release(struct rhizome_list_cursor *cursor)
+void rhizome_list_release(struct rhizome_list_cursor *cursor)
 {
   if (cursor->manifest) {
     rhizome_manifest_free(cursor->manifest);
@@ -1539,76 +1524,6 @@ static void rhizome_list_release(struct rhizome_list_cursor *cursor)
     sqlite3_finalize(cursor->_statement);
     cursor->_statement = NULL;
   }
-}
-
-int rhizome_list_manifests(struct cli_context *context, const char *service, const char *name,
-			   const char *sender_hex, const char *recipient_hex,
-			   size_t rowlimit, size_t rowoffset, char count_rows)
-{
-  IN();
-  struct rhizome_list_cursor cursor;
-  bzero(&cursor, sizeof cursor);
-  cursor.service = service && service[0] ? service : NULL;
-  cursor.name = name && name[0] ? name : NULL;
-  if (sender_hex && *sender_hex && str_to_sid_t(&cursor.sender, sender_hex) == -1)
-    RETURN(WHYF("Invalid sender SID: %s", sender_hex));
-  if (recipient_hex && *recipient_hex && str_to_sid_t(&cursor.recipient, recipient_hex) == -1)
-    RETURN(WHYF("Invalid recipient SID: %s", recipient_hex));
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  if (rhizome_list_open(&retry, &cursor) == -1)
-    RETURN(-1);
-  const char *names[]={
-    "_id",
-    "service",
-    "id",
-    "version",
-    "date",
-    ".inserttime",
-    ".author",
-    ".fromhere",
-    "filesize",
-    "filehash",
-    "sender",
-    "recipient",
-    "name"
-  };
-  cli_columns(context, NELS(names), names);
-  while (rhizome_list_next(&retry, &cursor) == 1) {
-    rhizome_manifest *m = cursor.manifest;
-    assert(m->filesize != RHIZOME_SIZE_UNSET);
-    if (cursor.rowcount < rowoffset)
-      continue;
-    if (rowlimit == 0 || cursor.rowcount <= rowlimit) {
-      rhizome_lookup_author(m);
-      cli_put_long(context, cursor.rowid, ":");
-      cli_put_string(context, m->service, ":");
-      cli_put_hexvalue(context, m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, ":");
-      cli_put_long(context, m->version, ":");
-      cli_put_long(context, m->has_date ? m->date : 0, ":");
-      cli_put_long(context, m->inserttime, ":");
-      switch (m->authorship) {
-	case AUTHOR_LOCAL:
-	case AUTHOR_AUTHENTIC:
-	  cli_put_hexvalue(context, m->author.binary, sizeof m->author.binary, ":");
-	  cli_put_long(context, 1, ":");
-	  break;
-	default:
-	  cli_put_string(context, NULL, ":");
-	  cli_put_long(context, 0, ":");
-	  break;
-      }
-      cli_put_long(context, m->filesize, ":");
-      cli_put_hexvalue(context, m->filesize ? m->filehash.binary : NULL, sizeof m->filehash.binary, ":");
-      cli_put_hexvalue(context, m->has_sender ? m->sender.binary : NULL, sizeof m->sender.binary, ":");
-      cli_put_hexvalue(context, m->has_recipient ? m->recipient.binary : NULL, sizeof m->recipient.binary, ":");
-      cli_put_string(context, m->name, "\n");
-    } else if (!count_rows)
-      break;
-  }
-  rhizome_list_release(&cursor);
-  cli_row_count(context, cursor.rowcount);
-  RETURN(0);
-  OUT();
 }
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount)

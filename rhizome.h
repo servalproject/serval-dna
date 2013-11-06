@@ -564,9 +564,6 @@ int64_t rhizome_bar_version(const unsigned char *bar);
 uint64_t rhizome_bar_bidprefix_ll(unsigned char *bar);
 int rhizome_is_bar_interesting(unsigned char *bar);
 int rhizome_is_manifest_interesting(rhizome_manifest *m);
-int rhizome_list_manifests(struct cli_context *context, const char *service, const char *name,
-			   const char *sender_sid, const char *recipient_sid,
-			   size_t rowlimit, size_t rowoffset, char count_rows);
 int rhizome_retrieve_manifest(const rhizome_bid_t *bid, rhizome_manifest *m);
 int rhizome_retrieve_manifest_by_prefix(const unsigned char *prefix, unsigned prefix_len, rhizome_manifest *m);
 int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m);
@@ -612,6 +609,29 @@ int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
 int rhizome_verify_bundle_privatekey(const unsigned char *sk, const unsigned char *pk);
 int rhizome_queue_ignore_manifest(unsigned char *bid_prefix, int prefix_len, int timeout);
 int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len);
+
+/* Rhizome list cursor for iterating over all or a subset of manifests in the store.
+ */
+struct rhizome_list_cursor {
+  // Query parameters that narrow the set of listed bundles.
+  const char *service;
+  const char *name;
+  bool_t is_sender_set;
+  bool_t is_recipient_set;
+  sid_t sender;
+  sid_t recipient;
+  // Set by calling the next() function.
+  int64_t rowid;
+  rhizome_manifest *manifest;
+  size_t rowcount;
+  // Private state.
+  sqlite3_stmt *_statement;
+  unsigned _offset;
+};
+
+int rhizome_list_open(sqlite_retry_state *, struct rhizome_list_cursor *);
+int rhizome_list_next(sqlite_retry_state *, struct rhizome_list_cursor *);
+void rhizome_list_release(struct rhizome_list_cursor *);
 
 /* one manifest is required per candidate, plus a few spare.
    so MAX_RHIZOME_MANIFESTS must be > MAX_CANDIDATES. 
