@@ -192,6 +192,7 @@ struct http_request {
   http_size_t response_length; // total response bytes (header + content)
   http_size_t response_sent; // for counting up to response_length
   char *response_buffer;
+  size_t response_buffer_need;
   size_t response_buffer_size;
   size_t response_buffer_length;
   size_t response_buffer_sent;

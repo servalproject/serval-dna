@@ -1642,16 +1642,22 @@ static void http_request_receive(struct http_request *r)
  */
 static void http_request_send_response(struct http_request *r)
 {
-  assert(r->response_sent <= r->response_length);
-  while (r->response_sent < r->response_length) {
+  if (r->response_length != CONTENT_LENGTH_UNKNOWN)
+    assert(r->response_sent <= r->response_length);
+  int g = 1;
+  while (g) {
+    if (r->response_length != CONTENT_LENGTH_UNKNOWN && r->response_sent == r->response_length)
+      break;
     assert(r->response_buffer_sent <= r->response_buffer_length);
     if (r->response_buffer_sent == r->response_buffer_length) {
+      g = 0;
       if (r->response.content_generator) {
 	// Content generator must fill or partly fill response_buffer and set response_buffer_sent
 	// and response_buffer_length.  May also malloc() a bigger buffer and set response_buffer to
 	// point to it.
 	r->response_buffer_sent = r->response_buffer_length = 0;
-	if (r->response.content_generator(r) == -1) {
+	g = r->response.content_generator(r);
+	if (g == -1) {
 	  if (r->debug_flag && *r->debug_flag)
 	    DEBUG("Content generation error, closing connection");
 	  http_request_finalise(r);
@@ -1659,12 +1665,17 @@ static void http_request_send_response(struct http_request *r)
 	}
 	assert(r->response_buffer_sent <= r->response_buffer_length);
 	if (r->response_buffer_sent == r->response_buffer_length) {
-	  WHYF("HTTP response generator produced no content at offset %"PRIhttp_size_t"/%"PRIhttp_size_t" (%"PRIhttp_size_t" bytes remaining)",
-	      r->response_sent, r->response_length, r->response_length - r->response_sent);
+	  if (g == 0)
+	    break;
+	  if (r->response_length != CONTENT_LENGTH_UNKNOWN)
+	    WHYF("HTTP response generator produced no content at offset %"PRIhttp_size_t"/%"PRIhttp_size_t" (%"PRIhttp_size_t" bytes remaining)",
+		r->response_sent, r->response_length, r->response_length - r->response_sent);
+	  else
+	    WHYF("HTTP response generator produced no content at offset %"PRIhttp_size_t"", r->response_sent);
 	  http_request_finalise(r);
 	  return;
 	}
-      } else {
+      } else if (r->response_length != CONTENT_LENGTH_UNKNOWN) {
 	WHYF("HTTP response is short of total length (%"PRIhttp_size_t") by %"PRIhttp_size_t" bytes",
 	    r->response_length, r->response_length - r->response_sent);
 	http_request_finalise(r);
@@ -1900,7 +1911,8 @@ static int _render_response(struct http_request *r)
 	  hr.header.resource_length
 	);
   }
-  strbuf_sprintf(sb, "Content-Length: %"PRIhttp_size_t"\r\n", hr.header.content_length);
+  if (hr.header.content_length != CONTENT_LENGTH_UNKNOWN)
+    strbuf_sprintf(sb, "Content-Length: %"PRIhttp_size_t"\r\n", hr.header.content_length);
   const char *scheme = NULL;
   switch (hr.header.www_authenticate.scheme) {
     case NOAUTH: break;
@@ -1913,17 +1925,23 @@ static int _render_response(struct http_request *r)
     strbuf_puts(sb, "\r\n");
   }
   strbuf_puts(sb, "\r\n");
-  if (strbuf_overrun(sb))
-    return 0;
-  r->response_length = strbuf_len(sb) + hr.header.content_length;
+  if (hr.header.content_length != CONTENT_LENGTH_UNKNOWN)
+    r->response_length = strbuf_count(sb) + hr.header.content_length;
+  else
+    r->response_length = CONTENT_LENGTH_UNKNOWN;
   if (hr.content) {
-    if (r->response_buffer_size < r->response_length)
-      return 0;
-    bcopy(hr.content, strbuf_end(sb), hr.header.content_length);
-    r->response_buffer_length = r->response_length;
+    assert(r->response_length != CONTENT_LENGTH_UNKNOWN);
+    r->response_buffer_need = r->response_length + 1;
   } else {
-    r->response_buffer_length = strbuf_len(sb);
+    assert(hr.content_generator);
+    r->response_buffer_need = strbuf_count(sb) + 1;
   }
+  if (r->response_buffer_size < r->response_buffer_need)
+    return 0;
+  assert(!strbuf_overrun(sb));
+  if (hr.content)
+    bcopy(hr.content, strbuf_end(sb), hr.header.content_length);
+  r->response_buffer_length = r->response_buffer_need;
   r->response_buffer_sent = 0;
   return 1;
 }
@@ -1942,9 +1960,9 @@ static void http_request_render_response(struct http_request *r)
   // rendered headers, so after this step, whether or not the buffer was overrun, we know the total
   // length of the response.
   if (!_render_response(r)) {
-    // If the response did not fit into the existing buffer, then allocate a large buffer from the
-    // heap and try rendering again.
-    if (http_request_set_response_bufsize(r, r->response_length + 1) == -1)
+    // If the static response did not fit into the existing buffer, then allocate a large buffer
+    // from the heap and try rendering again.
+    if (http_request_set_response_bufsize(r, r->response_buffer_need) == -1)
       WHY("Cannot render HTTP response, out of memory");
     else if (!_render_response(r))
       FATAL("Re-render of HTTP response overflowed buffer");

@@ -443,7 +443,7 @@ static int rhizome_file_content(struct http_request *hr)
     return -1;
   assert((size_t) len <= r->http.response_buffer_size);
   r->http.response_buffer_length += (size_t) len;
-  return 0;
+  return 1;
 }
 
 static int rhizome_file_page(rhizome_http_request *r, const char *remainder)
