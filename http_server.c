@@ -1825,30 +1825,54 @@ static int _render_response(struct http_request *r)
   struct http_response hr = r->response;
   assert(hr.result_code >= 100);
   assert(hr.result_code < 600);
+  // Status code 401 must be accompanied by a WWW-Authenticate header.
   if (hr.result_code == 401)
     assert(hr.header.www_authenticate.scheme != NOAUTH);
   const char *result_string = httpResultString(hr.result_code);
   strbuf sb = strbuf_local(r->response_buffer, r->response_buffer_size);
-  if (hr.content == NULL && hr.content_generator == NULL) {
+  // Cannot specify both static (pre-rendered) content AND generated content.
+  assert(!(hr.content && hr.content_generator));
+  if (hr.content || hr.content_generator) {
+    // With static (pre-rendered) content, the content length is mandatory (so we know how much data
+    // follows the 'hr.content' pointer.  Generated content will generally not send a Content-Length
+    // header, nor send partial content, but they might.
+    if (hr.content)
+      assert(hr.header.content_length != CONTENT_LENGTH_UNKNOWN);
+    // Ensure that all partial content fields are consistent.  If content length or resource length
+    // are unknown, there can be no range field.
+    if (   hr.header.content_length != CONTENT_LENGTH_UNKNOWN
+	&& hr.header.resource_length != CONTENT_LENGTH_UNKNOWN
+    ) {
+      assert(hr.header.content_length <= hr.header.resource_length);
+      assert(hr.header.content_range_start + hr.header.content_length <= hr.header.resource_length);
+    } else {
+      assert(hr.header.content_range_start == 0);
+    }
+    // Convert a 200 status code into 206 if only partial content is being sent.  This saves page
+    // handlers having to decide between 200 (OK) and 206 (Partial Content), they can just set the
+    // content and resource length fields and pass 200 to http_request_response_static(), and this
+    // logic will change it to 206 if appropriate.
+    if (   hr.header.content_length != CONTENT_LENGTH_UNKNOWN
+	&& hr.header.resource_length != CONTENT_LENGTH_UNKNOWN
+	&& hr.header.content_length > 0
+	&& hr.header.content_length < hr.header.resource_length
+    ) {
+      if (hr.result_code == 200)
+	hr.result_code = 206; // Partial Content
+    }
+  } else {
+    // If no content is supplied at all, then render a standard, short body based solely on result
+    // code.
     assert(hr.header.content_length == CONTENT_LENGTH_UNKNOWN);
     assert(hr.header.resource_length == CONTENT_LENGTH_UNKNOWN);
     assert(hr.header.content_range_start == 0);
+    assert(hr.result_code != 206);
     strbuf cb = strbuf_alloca(100 + strlen(result_string));
     strbuf_sprintf(cb, "<html><h1>%03u %s</h1></html>", hr.result_code, result_string);
     hr.content = strbuf_str(cb);
-    hr.header.resource_length = hr.header.content_length = strbuf_len(cb);
     hr.header.content_type = "text/html";
+    hr.header.resource_length = hr.header.content_length = strbuf_len(cb);
     hr.header.content_range_start = 0;
-  } else {
-    assert(hr.header.content_length != CONTENT_LENGTH_UNKNOWN);
-    assert(hr.header.resource_length != CONTENT_LENGTH_UNKNOWN);
-    assert(hr.header.content_length <= hr.header.resource_length);
-    assert(hr.header.content_range_start + hr.header.content_length <= hr.header.resource_length);
-    // To save page handlers having to decide between 200 (OK) and 206 (Partial Content), they can
-    // just set the content range fields and pass 200 to http_request_response_static(), and this
-    // logic will change it to 206 if appropriate.
-    if (hr.header.content_length > 0 && hr.header.content_length < hr.header.resource_length && hr.result_code == 200)
-      hr.result_code = 206; // Partial Content
   }
   assert(hr.header.content_type != NULL);
   assert(hr.header.content_type[0]);
@@ -1865,6 +1889,8 @@ static int _render_response(struct http_request *r)
   if (hr.result_code == 206) {
     // Must only use result code 206 (Partial Content) if the content is in fact less than the whole
     // resource length.
+    assert(hr.header.content_length != CONTENT_LENGTH_UNKNOWN);
+    assert(hr.header.resource_length != CONTENT_LENGTH_UNKNOWN);
     assert(hr.header.content_length > 0);
     assert(hr.header.content_length < hr.header.resource_length);
     strbuf_sprintf(sb,
