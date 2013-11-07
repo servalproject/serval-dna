@@ -707,35 +707,27 @@ typedef struct rhizome_http_request
 {
   struct http_request http; // MUST BE FIRST ELEMENT
 
-  /* Identify request from others being run.
-     Monotonic counter feeds it.  Only used for debugging when we write
-     post-<uuid>.log files for multi-part form requests. */
+  /* Identify request from others being run.  Monotonic counter feeds it.  Only
+   * used for debugging when we write post-<uuid>.log files for multi-part form
+   * requests.
+   */
   unsigned int uuid;
 
-  struct rhizome_read read_state;
-  
-  /* File currently being written to while decoding POST multipart form */
+  /* For receiving a POST multipart form:
+   */
+  // Which part is currently being received
   enum rhizome_direct_mime_part { NONE = 0, MANIFEST, DATA } current_part;
+  // Temporary file currently current part is being written to
   int part_fd;
-  /* Which parts have been received in POST multipart form */
+  // Which parts have already been received
   bool_t received_manifest;
   bool_t received_data;
-  /* Name of data file supplied */
+  // Name of data file supplied in part's Content-Disposition header, filename
+  // parameter (if any)
   char data_file_name[MIME_FILENAME_MAXLEN + 1];
 
-  /* The source specification data which are used in different ways by different 
-   request types */
-  char source[1024];
-  int64_t source_index;
-  int64_t source_count;
-  int source_record_size;
-  unsigned int source_flags;
-  
-  const char *sql_table;
-  const char *sql_row;
-  int64_t rowid;
-  /* source_index used for offset in blob */
-  int64_t blob_end; 
+  // For responses that serve a payload.
+  struct rhizome_read read_state;
   
 } rhizome_http_request;
 
