@@ -726,8 +726,18 @@ typedef struct rhizome_http_request
   // parameter (if any)
   char data_file_name[MIME_FILENAME_MAXLEN + 1];
 
-  // For responses that serve a payload.
-  struct rhizome_read read_state;
+  union {
+    /* For responses that send part or all of a payload.
+    */
+    struct rhizome_read read_state;
+
+    /* For responses that list manifests.
+    */
+    struct {
+        size_t rowcount;
+        struct rhizome_list_cursor cursor;
+    } list;
+  } u;
   
 } rhizome_http_request;
 
