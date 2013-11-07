@@ -304,6 +304,7 @@ int radio_link_tx(struct overlay_interface *interface)
   interface->alarm.alarm = 0;
   time_ms_t next_tick = interface->destination->last_tx+interface->destination->tick_ms;
   time_ms_t now = gettime_ms();
+  interface->alarm.poll.events&=~POLLOUT;
   
   while(1){
     
@@ -321,7 +322,6 @@ int radio_link_tx(struct overlay_interface *interface)
 	interface->alarm.poll.events|=POLLOUT;
 	break;
       }
-      link_state->remaining_space-=written;
       link_state->tx_bytes-=written;
       if (link_state->tx_bytes)
 	link_state->tx_pos+=written;
@@ -330,11 +330,13 @@ int radio_link_tx(struct overlay_interface *interface)
       continue;
     }
   
-    interface->alarm.poll.events&=~POLLOUT;
-    
     if (link_state->next_heartbeat<=now){
       build_heartbeat(link_state);
-      link_state->next_heartbeat = now + 1000;
+      link_state->remaining_space -= link_state->tx_bytes;
+      if (link_state->remaining_space < LINK_MTU + HEARTBEAT_SIZE)
+	link_state->next_heartbeat = now + 600;
+      else
+	link_state->next_heartbeat = now + 5000;
       continue;
     }
     
@@ -345,29 +347,36 @@ int radio_link_tx(struct overlay_interface *interface)
       break;
     }
     
-    if (link_state->remaining_space < LINK_MTU + HEARTBEAT_SIZE)
-      link_state->next_heartbeat = now;
-    
     int urgency = nc_tx_packet_urgency(link_state->network_coding);
-    time_ms_t delay = 500;
+    time_ms_t delay = 600;
     switch (urgency){
       case URGENCY_ASAP:
-	delay=20;
+	delay=5;
+	break;
+      case URGENCY_ACK_SOON:
+	delay=50;
 	break;
       case URGENCY_SOON:
-	delay=200;
+	delay=100;
 	break;
     }
     
     if (link_state->last_tx_packet + delay > now){
       interface->alarm.alarm = link_state->last_tx_packet + delay;
-      if (interface->alarm.alarm > next_tick)
+      if (interface->alarm.alarm > next_tick && next_tick > now){
 	interface->alarm.alarm = next_tick;
+      }
       break;
     }
     
     send_link_packet(interface);
+    link_state->remaining_space -= link_state->tx_bytes;
     link_state->last_tx_packet = now;
+    
+    if (link_state->remaining_space < LINK_MTU + HEARTBEAT_SIZE)
+      link_state->next_heartbeat = now;
+    else if(link_state->next_heartbeat > now + 600)
+      link_state->next_heartbeat = now + 600;
   }
   
   watch(&interface->alarm);
@@ -383,7 +392,7 @@ int radio_link_tx(struct overlay_interface *interface)
 
 static int parse_heartbeat(struct radio_link_state *state, const unsigned char *payload)
 {
-  if (payload[0]==0xFE 
+  if (payload[0]==0xFE
     && payload[1]==9
     && payload[3]==RADIO_SOURCE_SYSTEM
     && payload[4]==RADIO_SOURCE_COMPONENT

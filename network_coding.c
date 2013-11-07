@@ -165,10 +165,16 @@ static int _nc_ack(struct nc_half *n, uint8_t first_unseen, uint8_t window_size)
     window_size=n->max_queue_size;
   n->window_size = window_size;
   
-  // ignore invalid input or no new information
-  if (_compare_uint8(first_unseen, n->window_start) <= 0 ||
-    _compare_uint8(first_unseen, n->window_start + n->queue_size) > 0 )
+  // ignore no new information
+  if (first_unseen == n->window_start)
+    return 0;
+  
+  // ignore invalid input
+  if (_compare_uint8(first_unseen, n->window_start) < 0 ||
+    _compare_uint8(first_unseen, n->window_start + n->queue_size) > 0 ){
+    //WARNF("Invalid ACK! (%d, %d, %d)", first_unseen, n->window_start, n->queue_size);
     return -1;
+  }
   
   // release any seen packets
   while(_compare_uint8(n->window_start, first_unseen) < 0){
@@ -261,12 +267,12 @@ int nc_tx_packet_urgency(struct nc *n)
   }
   // ack required? send soon
   if (n->rx.unseen != n->rx.last_ack)
-    return URGENCY_ASAP;
+    return URGENCY_ACK_SOON;
   // no new data at either end? don't care
-  if (!n->tx.queue_size && !n->rx.queue_size)
-    return URGENCY_IDLE;
-  // send soon-ish
-  return URGENCY_SOON;
+  if (n->tx.queue_size || n->rx.queue_size)
+    // send soon-ish
+    return URGENCY_SOON;
+  return URGENCY_IDLE;
 }
 
 // construct a packet and return the payload size
@@ -315,8 +321,10 @@ int nc_tx_produce_packet(struct nc *n, uint8_t *datagram, uint32_t buffer_size)
 
 void nc_state_html(struct strbuf *b, struct nc *n)
 {
-  strbuf_sprintf(b, "NC TX: %d (acks %d)<br>", n->tx.packet_count, n->tx.ack_count);
-  strbuf_sprintf(b, "NC RX: %d (unint %d, acks %d)<br>", n->rx.packet_count, n->rx.uninteresting_count, n->rx.ack_count);
+  strbuf_sprintf(b, "NC TX: %d (acks %d, queue %d)<br>", 
+    n->tx.packet_count, n->tx.ack_count, n->tx.queue_size);
+  strbuf_sprintf(b, "NC RX: %d (unint %d, acks %d, queue %d)<br>", 
+    n->rx.packet_count, n->rx.uninteresting_count, n->rx.ack_count, n->rx.queue_size);
 }
 
 static int _nc_dump_half(struct nc_half *n)
@@ -365,6 +373,13 @@ static int _nc_rx_combine_packet(struct nc_half *n, struct nc_packet *packet)
   if (packet->combination == 0){
     free(packet->payload);
     return 1;
+  }
+  
+  // ignore any packets that are completely out of sequence
+  if (n->queue_size && (_compare_uint8(packet->sequence, n->window_start)<0
+      || _compare_uint8(packet->sequence, n->window_start+n->max_queue_size)>0)){
+    free(packet->payload);
+    return -1;
   }
     
   // First, reduce the combinations of the incoming packet based on other packets already seen
@@ -463,7 +478,8 @@ int nc_rx_packet(struct nc *n, const uint8_t *payload, size_t len)
   n->rx.packet_count++;
   
   if (len>=2){
-    _nc_ack(&n->tx, payload[0], payload[1]);
+    if (_nc_ack(&n->tx, payload[0], payload[1]))
+      return -1;
   }
   
   if (len<NC_HEADER_LEN){
@@ -485,8 +501,8 @@ int nc_rx_packet(struct nc *n, const uint8_t *payload, size_t len)
   int r = _nc_rx_combine_packet(&n->rx, &packet);
   if (r==1)
     n->rx.uninteresting_count++;
-
-  _nc_rx_advance_window(&n->rx, new_window_start);
+  if (r>=0)
+    _nc_rx_advance_window(&n->rx, new_window_start);
   
   return r;
 }

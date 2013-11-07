@@ -4,8 +4,9 @@
 #define NC_HEADER_LEN 7
 
 #define URGENCY_ASAP 0
-#define URGENCY_SOON 1
-#define URGENCY_IDLE 2
+#define URGENCY_ACK_SOON 1
+#define URGENCY_SOON 2
+#define URGENCY_IDLE 3
 
 struct nc;
 
