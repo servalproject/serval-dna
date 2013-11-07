@@ -1871,40 +1871,45 @@ int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context *contex
     "name"
   };
   cli_columns(context, NELS(headers), headers);
-  while (rhizome_list_next(&retry, &cursor) == 1) {
-    rhizome_manifest *m = cursor.manifest;
-    assert(m->filesize != RHIZOME_SIZE_UNSET);
-    if (cursor.rowcount < rowoffset)
+  size_t rowcount = 0;
+  int n;
+  while ((n = rhizome_list_next(&retry, &cursor)) == 1) {
+    ++rowcount;
+    if (rowcount <= rowoffset)
       continue;
-    if (rowlimit != 0 && cursor.rowcount > rowlimit)
-      break;
-    rhizome_lookup_author(m);
-    cli_put_long(context, cursor.rowid, ":");
-    cli_put_string(context, m->service, ":");
-    cli_put_hexvalue(context, m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, ":");
-    cli_put_long(context, m->version, ":");
-    cli_put_long(context, m->has_date ? m->date : 0, ":");
-    cli_put_long(context, m->inserttime, ":");
-    switch (m->authorship) {
-      case AUTHOR_LOCAL:
-      case AUTHOR_AUTHENTIC:
-	cli_put_hexvalue(context, m->author.binary, sizeof m->author.binary, ":");
-	cli_put_long(context, 1, ":");
-	break;
-      default:
-	cli_put_string(context, NULL, ":");
-	cli_put_long(context, 0, ":");
-	break;
+    if (rowlimit == 0 || rowcount <= rowoffset + rowlimit) {
+      rhizome_manifest *m = cursor.manifest;
+      assert(m->filesize != RHIZOME_SIZE_UNSET);
+      rhizome_lookup_author(m);
+      cli_put_long(context, cursor.rowid, ":");
+      cli_put_string(context, m->service, ":");
+      cli_put_hexvalue(context, m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, ":");
+      cli_put_long(context, m->version, ":");
+      cli_put_long(context, m->has_date ? m->date : 0, ":");
+      cli_put_long(context, m->inserttime, ":");
+      switch (m->authorship) {
+	case AUTHOR_LOCAL:
+	case AUTHOR_AUTHENTIC:
+	  cli_put_hexvalue(context, m->author.binary, sizeof m->author.binary, ":");
+	  cli_put_long(context, 1, ":");
+	  break;
+	default:
+	  cli_put_string(context, NULL, ":");
+	  cli_put_long(context, 0, ":");
+	  break;
+      }
+      cli_put_long(context, m->filesize, ":");
+      cli_put_hexvalue(context, m->filesize ? m->filehash.binary : NULL, sizeof m->filehash.binary, ":");
+      cli_put_hexvalue(context, m->has_sender ? m->sender.binary : NULL, sizeof m->sender.binary, ":");
+      cli_put_hexvalue(context, m->has_recipient ? m->recipient.binary : NULL, sizeof m->recipient.binary, ":");
+      cli_put_string(context, m->name, "\n");
     }
-    cli_put_long(context, m->filesize, ":");
-    cli_put_hexvalue(context, m->filesize ? m->filehash.binary : NULL, sizeof m->filehash.binary, ":");
-    cli_put_hexvalue(context, m->has_sender ? m->sender.binary : NULL, sizeof m->sender.binary, ":");
-    cli_put_hexvalue(context, m->has_recipient ? m->recipient.binary : NULL, sizeof m->recipient.binary, ":");
-    cli_put_string(context, m->name, "\n");
   }
   rhizome_list_release(&cursor);
-  cli_row_count(context, cursor.rowcount);
   keyring_free(keyring);
+  if (n == -1)
+    return -1;
+  cli_row_count(context, rowcount);
   return 0;
 }
 

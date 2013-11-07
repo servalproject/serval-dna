@@ -623,10 +623,10 @@ struct rhizome_list_cursor {
   // Set by calling the next() function.
   int64_t rowid;
   rhizome_manifest *manifest;
-  size_t rowcount;
   // Private state.
   sqlite3_stmt *_statement;
-  unsigned _offset;
+  int64_t _rowid_first;
+  int64_t _rowid_last;
 };
 
 int rhizome_list_open(sqlite_retry_state *, struct rhizome_list_cursor *);
