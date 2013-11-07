@@ -986,7 +986,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
     /* Now look for replies until one second has passed, and print any replies
        with appropriate information as required */
     time_ms_t now = gettime_ms();
-    time_ms_t finish = now + (tx_count < icount?interval_ms:timeout_ms);
+    time_ms_t finish = now + ((tx_count < icount || icount==0)?interval_ms:timeout_ms);
     for (; !servalShutdown && now < finish; now = gettime_ms()) {
       time_ms_t poll_timeout_ms = finish - gettime_ms();
       
