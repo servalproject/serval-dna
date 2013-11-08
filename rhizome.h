@@ -631,6 +631,7 @@ struct rhizome_list_cursor {
 
 int rhizome_list_open(sqlite_retry_state *, struct rhizome_list_cursor *);
 int rhizome_list_next(sqlite_retry_state *, struct rhizome_list_cursor *);
+void rhizome_list_commit(struct rhizome_list_cursor *);
 void rhizome_list_release(struct rhizome_list_cursor *);
 
 /* one manifest is required per candidate, plus a few spare.

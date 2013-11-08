@@ -1487,10 +1487,6 @@ int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
     int64_t q_inserttime = sqlite3_column_int64(c->_statement, 3);
     const char *q_author = (const char *) sqlite3_column_text(c->_statement, 4);
     c->rowid = sqlite3_column_int64(c->_statement, 5);
-    if (c->rowid > c->_rowid_first)
-      c->_rowid_first = c->rowid;
-    if (c->_rowid_last == 0 || c->rowid < c->_rowid_last)
-      c->_rowid_last = c->rowid;
     sid_t *author = NULL;
     if (q_author) {
       author = alloca(sizeof *author);
@@ -1526,6 +1522,15 @@ int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
   }
   RETURN(0);
   OUT();
+}
+
+void rhizome_list_commit(struct rhizome_list_cursor *c)
+{
+  assert(c->rowid != 0);
+  if (c->rowid > c->_rowid_first)
+    c->_rowid_first = c->rowid;
+  if (c->_rowid_last == 0 || c->rowid < c->_rowid_last)
+    c->_rowid_last = c->rowid;
 }
 
 void rhizome_list_release(struct rhizome_list_cursor *c)
