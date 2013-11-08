@@ -335,7 +335,7 @@ static int is_authorized(struct http_client_authorization *auth)
   return 0;
 }
 
-static int restful_rhizome_bundlelist_json_content(struct http_request *);
+static HTTP_CONTENT_GENERATOR restful_rhizome_bundlelist_json_content;
 
 static int restful_rhizome_bundlelist_json(rhizome_http_request *r, const char *remainder)
 {
@@ -353,19 +353,16 @@ static int restful_rhizome_bundlelist_json(rhizome_http_request *r, const char *
     http_request_simple_response(&r->http, 401, NULL);
     return 0;
   }
+  r->u.list.phase = LIST_HEADER;
   r->u.list.rowcount = 0;
   bzero(&r->u.list.cursor, sizeof r->u.list.cursor);
   http_request_response_generated(&r->http, 200, "application/json", restful_rhizome_bundlelist_json_content);
   return 0;
 }
 
-static int restful_rhizome_bundlelist_json_content(struct http_request *hr)
+static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *retry, struct rhizome_http_request *r, strbuf b)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
-  assert(r->http.response_buffer_sent == 0);
-  assert(r->http.response_buffer_length == 0);
-  strbuf b = strbuf_local(r->http.response_buffer, r->http.response_buffer_size);
-  const char *headers[]={
+  const char *headers[] = {
     "_id",
     "service",
     "id",
@@ -380,66 +377,102 @@ static int restful_rhizome_bundlelist_json_content(struct http_request *hr)
     "recipient",
     "name"
   };
-  if (r->u.list.rowcount == 0) {
-    strbuf_puts(b, "[[");
-    unsigned i;
-    for (i = 0; i != NELS(headers); ++i) {
-      if (i)
+  switch (r->u.list.phase) {
+    case LIST_HEADER:
+      strbuf_puts(b, "[[");
+      unsigned i;
+      for (i = 0; i != NELS(headers); ++i) {
+	if (i)
+	  strbuf_putc(b, ',');
+	strbuf_json_string(b, headers[i]);
+      }
+      strbuf_puts(b, "]");
+      if (strbuf_overrun(b))
+	return 0;
+      r->u.list.phase = LIST_BODY;
+      return 1;
+    case LIST_BODY:
+      {
+	int ret = rhizome_list_next(retry, &r->u.list.cursor);
+	if (ret == -1)
+	  return -1;
+	if (ret == 0) {
+	  strbuf_puts(b, "\n]\n");
+	  if (strbuf_overrun(b))
+	    return 0;
+	  r->u.list.phase = LIST_DONE;
+	  return 0;
+	}
+	rhizome_manifest *m = r->u.list.cursor.manifest;
+	assert(m->filesize != RHIZOME_SIZE_UNSET);
+	rhizome_lookup_author(m);
+	strbuf_puts(b, ",\n [");
+	strbuf_sprintf(b, "%"PRIu64, r->u.list.cursor.rowid);
 	strbuf_putc(b, ',');
-      strbuf_json_string(b, headers[i]);
-    }
-    strbuf_puts(b, "]");
+	strbuf_json_string(b, m->service);
+	strbuf_putc(b, ',');
+	strbuf_json_hex(b, m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary);
+	strbuf_putc(b, ',');
+	strbuf_sprintf(b, "%"PRId64, m->version);
+	strbuf_putc(b, ',');
+	if (m->has_date)
+	  strbuf_sprintf(b, "%"PRItime_ms_t, m->date);
+	else
+	  strbuf_json_null(b);
+	strbuf_putc(b, ',');
+	strbuf_sprintf(b, "%"PRItime_ms_t",", m->inserttime);
+	switch (m->authorship) {
+	  case AUTHOR_LOCAL:
+	  case AUTHOR_AUTHENTIC:
+	    strbuf_json_hex(b, m->author.binary, sizeof m->author.binary);
+	    strbuf_puts(b, ",1,");
+	    break;
+	  default:
+	    strbuf_json_null(b);
+	    strbuf_puts(b, ",1,");
+	    break;
+	}
+	strbuf_sprintf(b, "%"PRIu64, m->filesize);
+	strbuf_putc(b, ',');
+	strbuf_json_hex(b, m->filesize ? m->filehash.binary : NULL, sizeof m->filehash.binary);
+	strbuf_putc(b, ',');
+	strbuf_json_hex(b, m->has_sender ? m->sender.binary : NULL, sizeof m->sender.binary);
+	strbuf_putc(b, ',');
+	strbuf_json_hex(b, m->has_recipient ? m->recipient.binary : NULL, sizeof m->recipient.binary);
+	strbuf_putc(b, ',');
+	strbuf_json_string(b, m->name);
+	strbuf_puts(b, "]");
+	if (strbuf_overrun(b))
+	  return 0;
+	rhizome_list_commit(&r->u.list.cursor);
+	++r->u.list.rowcount;
+	return 1;
+      }
+    case LIST_DONE:
+      break;
   }
+  return 0;
+}
+
+static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
+{
+  rhizome_http_request *r = (rhizome_http_request *) hr;
+  assert(bufsz > 0);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  int ret = rhizome_list_next(&retry, &r->u.list.cursor);
-  if (ret == 0) {
-    strbuf_puts(b, "\n]\n");
-  } else if (ret == 1) {
-    ++r->u.list.rowcount;
-    rhizome_manifest *m = r->u.list.cursor.manifest;
-    assert(m->filesize != RHIZOME_SIZE_UNSET);
-    rhizome_lookup_author(m);
-    strbuf_puts(b, ",\n [");
-    strbuf_sprintf(b, "%"PRIu64, r->u.list.cursor.rowid);
-    strbuf_putc(b, ',');
-    strbuf_json_string(b, m->service);
-    strbuf_putc(b, ',');
-    strbuf_json_hex(b, m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary);
-    strbuf_putc(b, ',');
-    strbuf_sprintf(b, "%"PRId64, m->version);
-    strbuf_putc(b, ',');
-    if (m->has_date)
-      strbuf_sprintf(b, "%"PRItime_ms_t, m->date);
-    else
-      strbuf_json_null(b);
-    strbuf_putc(b, ',');
-    strbuf_sprintf(b, "%"PRItime_ms_t",", m->inserttime);
-    switch (m->authorship) {
-      case AUTHOR_LOCAL:
-      case AUTHOR_AUTHENTIC:
-	strbuf_json_hex(b, m->author.binary, sizeof m->author.binary);
-	strbuf_puts(b, ",1,");
-	break;
-      default:
-	strbuf_json_null(b);
-	strbuf_puts(b, ",1,");
-	break;
+  int ret = rhizome_list_open(&retry, &r->u.list.cursor);
+  if (ret == -1)
+    return -1;
+  strbuf b = strbuf_local((char *)buf, bufsz);
+  while ((ret = restful_rhizome_bundlelist_json_content_chunk(&retry, r, b)) != -1) {
+    if (strbuf_overrun(b)) {
+      result->need = strbuf_count(b) + 1 - result->generated;
+      break;
     }
-    strbuf_sprintf(b, "%"PRIu64, m->filesize);
-    strbuf_putc(b, ',');
-    strbuf_json_hex(b, m->filesize ? m->filehash.binary : NULL, sizeof m->filehash.binary);
-    strbuf_putc(b, ',');
-    strbuf_json_hex(b, m->has_sender ? m->sender.binary : NULL, sizeof m->sender.binary);
-    strbuf_putc(b, ',');
-    strbuf_json_hex(b, m->has_recipient ? m->recipient.binary : NULL, sizeof m->recipient.binary);
-    strbuf_putc(b, ',');
-    strbuf_json_string(b, m->name);
-    strbuf_puts(b, "]");
+    result->generated = strbuf_len(b);
+    if (ret == 0)
+      break;
   }
-  if (strbuf_overrun(b))
-    ret = WHY("HTTP response buffer overrun");
   rhizome_list_release(&r->u.list.cursor);
-  r->http.response_buffer_length = strbuf_len(b);
   return ret;
 }
 
@@ -509,30 +542,24 @@ static int rhizome_status_page(rhizome_http_request *r, const char *remainder)
   return 0;
 }
 
-static int rhizome_file_content(struct http_request *hr)
+static int rhizome_file_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
 {
+  // Reads the next part of the payload into the supplied buffer.
   rhizome_http_request *r = (rhizome_http_request *) hr;
-  assert(r->http.response_buffer_sent == 0);
-  assert(r->http.response_buffer_length == 0);
   assert(r->u.read_state.offset < r->u.read_state.length);
-  uint64_t readlen = r->u.read_state.length - r->u.read_state.offset;
-  size_t suggested_size = 64 * 1024;
-  if (suggested_size > readlen)
-    suggested_size = readlen;
-  if (r->http.response_buffer_size < suggested_size)
-    http_request_set_response_bufsize(&r->http, suggested_size);
-  if (r->http.response_buffer == NULL)
-    http_request_set_response_bufsize(&r->http, 1);
-  if (r->http.response_buffer == NULL)
+  size_t readlen = r->u.read_state.length - r->u.read_state.offset;
+  if (readlen > bufsz)
+    readlen = bufsz;
+  ssize_t n = rhizome_read(&r->u.read_state, buf, readlen);
+  if (n == -1)
     return -1;
-  ssize_t len = rhizome_read(&r->u.read_state,
-		         (unsigned char *)r->http.response_buffer,
-			 r->http.response_buffer_size);
-  if (len == -1)
-    return -1;
-  assert((size_t) len <= r->http.response_buffer_size);
-  r->http.response_buffer_length += (size_t) len;
-  return 1;
+  result->generated = (size_t) n;
+  // Ask for a large buffer for all future reads.
+  const size_t preferred_bufsz = 64 * 1024;
+  assert(r->u.read_state.offset < r->u.read_state.length);
+  size_t remain = r->u.read_state.length - r->u.read_state.offset;
+  result->need = remain < preferred_bufsz ? remain : preferred_bufsz;
+  return remain ? 1 : 0;
 }
 
 static int rhizome_file_page(rhizome_http_request *r, const char *remainder)

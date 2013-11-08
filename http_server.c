@@ -118,6 +118,8 @@ void http_request_init(struct http_request *r, int sockfd)
 void http_request_free_response_buffer(struct http_request *r)
 {
   if (r->response_free_buffer) {
+    if (r->debug_flag && *r->debug_flag)
+      DEBUGF("Free response buffer of %zu bytes", r->response_buffer_size);
     r->response_free_buffer(r->response_buffer);
     r->response_free_buffer = NULL;
   }
@@ -127,6 +129,8 @@ void http_request_free_response_buffer(struct http_request *r)
 
 int http_request_set_response_bufsize(struct http_request *r, size_t bufsiz)
 {
+  // Don't allocate a new buffer if the existing one contains content.
+  assert(r->response_buffer_sent == r->response_buffer_length);
   const char *const bufe = r->buffer + sizeof r->buffer;
   assert(r->received < bufe);
   size_t rbufsiz = bufe - r->received;
@@ -134,6 +138,8 @@ int http_request_set_response_bufsize(struct http_request *r, size_t bufsiz)
     http_request_free_response_buffer(r);
     r->response_buffer = (char *) r->received;
     r->response_buffer_size = rbufsiz;
+    if (r->debug_flag && *r->debug_flag)
+      DEBUGF("Static response buffer %zu bytes", r->response_buffer_size);
     return 0;
   }
   if (bufsiz != r->response_buffer_size) {
@@ -142,6 +148,8 @@ int http_request_set_response_bufsize(struct http_request *r, size_t bufsiz)
       return -1;
     r->response_free_buffer = free;
     r->response_buffer_size = bufsiz;
+    if (r->debug_flag && *r->debug_flag)
+      DEBUGF("Allocated response buffer %zu bytes", r->response_buffer_size);
   }
   assert(r->response_buffer_size >= bufsiz);
   assert(r->response_buffer != NULL);
@@ -1642,56 +1650,87 @@ static void http_request_receive(struct http_request *r)
  */
 static void http_request_send_response(struct http_request *r)
 {
-  if (r->response_length != CONTENT_LENGTH_UNKNOWN)
-    assert(r->response_sent <= r->response_length);
-  int g = 1;
-  while (g) {
-    if (r->response_length != CONTENT_LENGTH_UNKNOWN && r->response_sent == r->response_length)
-      break;
+  while (1) {
+    if (r->response_length != CONTENT_LENGTH_UNKNOWN)
+      assert(r->response_sent <= r->response_length);
     assert(r->response_buffer_sent <= r->response_buffer_length);
-    if (r->response_buffer_sent == r->response_buffer_length) {
-      g = 0;
-      if (r->response.content_generator) {
-	// Content generator must fill or partly fill response_buffer and set response_buffer_sent
-	// and response_buffer_length.  May also malloc() a bigger buffer and set response_buffer to
-	// point to it.
-	r->response_buffer_sent = r->response_buffer_length = 0;
-	g = r->response.content_generator(r);
-	if (g == -1) {
-	  if (r->debug_flag && *r->debug_flag)
-	    DEBUG("Content generation error, closing connection");
-	  http_request_finalise(r);
-	  return;
-	}
-	assert(r->response_buffer_sent <= r->response_buffer_length);
-	if (r->response_buffer_sent == r->response_buffer_length) {
-	  if (g == 0)
-	    break;
-	  if (r->response_length != CONTENT_LENGTH_UNKNOWN)
-	    WHYF("HTTP response generator produced no content at offset %"PRIhttp_size_t"/%"PRIhttp_size_t" (%"PRIhttp_size_t" bytes remaining)",
-		r->response_sent, r->response_length, r->response_length - r->response_sent);
-	  else
-	    WHYF("HTTP response generator produced no content at offset %"PRIhttp_size_t"", r->response_sent);
-	  http_request_finalise(r);
-	  return;
-	}
-      } else if (r->response_length != CONTENT_LENGTH_UNKNOWN) {
-	WHYF("HTTP response is short of total length (%"PRIhttp_size_t") by %"PRIhttp_size_t" bytes",
-	    r->response_length, r->response_length - r->response_sent);
-	http_request_finalise(r);
-	return;
-      }
+    uint64_t remaining = CONTENT_LENGTH_UNKNOWN;
+    size_t unsent = r->response_buffer_length - r->response_buffer_sent;
+    if (r->response_length != CONTENT_LENGTH_UNKNOWN) {
+      remaining = r->response_length - r->response_sent;
+      assert(unsent <= remaining);
+      assert(r->response_buffer_need <= remaining);
+      if (remaining == 0)
+	break; // no more to generate
     }
-    assert(r->response_buffer_sent < r->response_buffer_length);
-    size_t bytes = r->response_buffer_length - r->response_buffer_sent;
-    if (r->response_sent + bytes > r->response_length) {
-      WHYF("HTTP response overruns total length (%"PRIhttp_size_t") by %"PRIhttp_size_t"  bytes -- truncating",
-	  r->response_length,
-	  r->response_sent + bytes - r->response_length);
-      bytes = r->response_length - r->response_sent;
+    if (unsent == 0)
+      r->response_buffer_sent = r->response_buffer_length = 0;
+    if (r->response.content_generator) {
+      // If the buffer is smaller than the content generator needs, and it contains no unsent
+      // content, then allocate a larger buffer.
+      if (r->response_buffer_need > r->response_buffer_size && unsent == 0) {
+	if (http_request_set_response_bufsize(r, r->response_buffer_need) == -1) {
+	  WHYF("HTTP response truncated at offset=%"PRIhttp_size_t" due to insufficient buffer space",
+	      r->response_sent);
+	  http_request_finalise(r);
+	  return;
+	}
+      }
+      // If there are some sent bytes at the start of the buffer and only a few unsent bytes, then
+      // move the unsent content to the start of the buffer to make more room.
+      if (r->response_buffer_sent > 0 && unsent < 128) {
+	memmove(r->response_buffer, r->response_buffer + r->response_buffer_sent, unsent);
+	r->response_buffer_length -= r->response_buffer_sent;
+	r->response_buffer_sent = 0;
+      }
+      // If there is enough unfilled room at the end of the buffer, then fill the buffer with some
+      // more content.
+      assert(r->response_buffer_length <= r->response_buffer_size);
+      size_t unfilled = r->response_buffer_size - r->response_buffer_length;
+      if (unfilled > 0 && unfilled >= r->response_buffer_need) {
+	// The content generator must fill or partly fill the part of the buffer we indicate and
+	// return the number of bytes appended.  If it returns zero, it means it has no more
+	// content (EOF), and must not be called again.  If the return value exceeds the buffer size
+	// we supply, it gives the amount of free space the generator needs in order to append; the
+	// generator will not append any bytes until that much free space is available.  If returns
+	// -1, it means an unrecoverable error occurred, and the generator must not be called again.
+	struct http_content_generator_result result;
+	bzero(&result, sizeof result);
+	int ret = r->response.content_generator(r, (unsigned char *) r->response_buffer + r->response_buffer_length, unfilled, &result);
+	if (ret == -1) {
+	  WHY("Content generation error, closing connection");
+	  http_request_finalise(r);
+	  return;
+	}
+	if (result.generated == 0 && result.need <= unfilled) {
+	  WHYF("HTTP response generator produced no content at offset %"PRIhttp_size_t, r->response_sent);
+	  http_request_finalise(r);
+	  return;
+	}
+	if (r->debug_flag && *r->debug_flag)
+	  DEBUGF("Generated HTTP %zu bytes of content, need %zu bytes of buffer", result.generated, result.need);
+	assert(result.generated <= unfilled);
+	r->response_buffer_length += result.generated;
+	r->response_buffer_need = result.need;
+	if (ret == 0)
+	  r->response.content_generator = NULL;
+	continue;
+      }
+    } else if (remaining != CONTENT_LENGTH_UNKNOWN && unsent < remaining) {
+      WHYF("HTTP response generator finished prematurely at offset %"PRIhttp_size_t"/%"PRIhttp_size_t" (%"PRIhttp_size_t" bytes remaining)",
+	  r->response_sent, r->response_length, remaining);
+      http_request_finalise(r);
+      return;
+    } else if (unsent == 0)
+      break;
+    assert(unsent > 0);
+    if (remaining != CONTENT_LENGTH_UNKNOWN && unsent > remaining) {
+      WHYF("HTTP response overruns Content-Length (%"PRIhttp_size_t") by %"PRIhttp_size_t" bytes -- truncating",
+	  r->response_length, unsent - remaining);
+      unsent = remaining;
     }
     sigPipeFlag = 0;
-    ssize_t written = write_nonblock(r->alarm.poll.fd, r->response_buffer + r->response_buffer_sent, bytes);
+    ssize_t written = write_nonblock(r->alarm.poll.fd, r->response_buffer + r->response_buffer_sent, unsent);
     if (written == -1) {
       if (r->debug_flag && *r->debug_flag)
 	DEBUG("HTTP socket write error, closing connection");
@@ -1719,8 +1758,8 @@ static void http_request_send_response(struct http_request *r)
     r->alarm.deadline = r->alarm.alarm + r->idle_timeout;
     unschedule(&r->alarm);
     schedule(&r->alarm);
-    // If we wrote less than we tried, then go back to polling.
-    if (written < (size_t) bytes)
+    // If we wrote less than we tried, then go back to polling, otherwise keep generating content.
+    if (written < (size_t) unsent)
       return;
   }
   if (r->debug_flag && *r->debug_flag)
@@ -1929,19 +1968,22 @@ static int _render_response(struct http_request *r)
     r->response_length = strbuf_count(sb) + hr.header.content_length;
   else
     r->response_length = CONTENT_LENGTH_UNKNOWN;
+  r->response_buffer_need = strbuf_count(sb) + 1; // the header and the strbuf terminating NUL
   if (hr.content) {
     assert(r->response_length != CONTENT_LENGTH_UNKNOWN);
-    r->response_buffer_need = r->response_length + 1;
-  } else {
+    if (r->response_buffer_need < r->response_length)
+      r->response_buffer_need = r->response_length;
+  } else
     assert(hr.content_generator);
-    r->response_buffer_need = strbuf_count(sb) + 1;
-  }
   if (r->response_buffer_size < r->response_buffer_need)
-    return 0;
+    return 0; // doesn't fit
   assert(!strbuf_overrun(sb));
-  if (hr.content)
+  if (hr.content) {
     bcopy(hr.content, strbuf_end(sb), hr.header.content_length);
-  r->response_buffer_length = r->response_buffer_need;
+    r->response_buffer_length = r->response_length;
+  } else {
+    r->response_buffer_length = strbuf_count(sb);
+  }
   r->response_buffer_sent = 0;
   return 1;
 }
@@ -2022,6 +2064,7 @@ static void http_request_start_response(struct http_request *r)
       return;
     }
   }
+  r->response_buffer_need = 0;
   r->response_sent = 0;
   if (r->debug_flag && *r->debug_flag)
     DEBUGF("Sending HTTP response: %s", alloca_toprint(160, (const char *)r->response_buffer, r->response_buffer_length));

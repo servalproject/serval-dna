@@ -735,6 +735,7 @@ typedef struct rhizome_http_request
     /* For responses that list manifests.
     */
     struct {
+        enum { LIST_HEADER = 0, LIST_BODY, LIST_DONE } phase;
         size_t rowcount;
         struct rhizome_list_cursor cursor;
     } list;
