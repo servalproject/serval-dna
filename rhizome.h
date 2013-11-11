@@ -291,6 +291,12 @@ typedef struct rhizome_manifest
   sid_t sender;
   sid_t recipient;
 
+  /* Local data, not encapsulated in the bundle.  The ROWID of the SQLite
+   * MANIFESTS table row in which this manifest is stored.  Zero if the
+   * manifest has not been stored yet.
+   */
+  uint64_t rowid;
+
   /* Local data, not encapsulated in the bundle.  The system time of the most
    * recent INSERT or UPDATE of the manifest into the store.  Zero if the manifest
    * has not been stored yet.
@@ -342,6 +348,7 @@ typedef struct rhizome_manifest
 #define rhizome_manifest_set_recipient(m,v)     _rhizome_manifest_set_recipient(__WHENCE__,(m),(v))
 #define rhizome_manifest_del_recipient(m)       _rhizome_manifest_del_recipient(__WHENCE__,(m))
 #define rhizome_manifest_set_crypt(m,v)         _rhizome_manifest_set_crypt(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_rowid(m,v)         _rhizome_manifest_set_rowid(__WHENCE__,(m),(v))
 #define rhizome_manifest_set_inserttime(m,v)    _rhizome_manifest_set_inserttime(__WHENCE__,(m),(v))
 #define rhizome_manifest_set_author(m,v)        _rhizome_manifest_set_author(__WHENCE__,(m),(v))
 #define rhizome_manifest_del_author(m)          _rhizome_manifest_del_author(__WHENCE__,(m))
@@ -364,6 +371,7 @@ void _rhizome_manifest_del_sender(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_recipient(struct __sourceloc, rhizome_manifest *, const sid_t *);
 void _rhizome_manifest_del_recipient(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_crypt(struct __sourceloc, rhizome_manifest *, enum rhizome_manifest_crypt);
+void _rhizome_manifest_set_rowid(struct __sourceloc, rhizome_manifest *, uint64_t);
 void _rhizome_manifest_set_inserttime(struct __sourceloc, rhizome_manifest *, time_ms_t);
 void _rhizome_manifest_set_author(struct __sourceloc, rhizome_manifest *, const sid_t *);
 void _rhizome_manifest_del_author(struct __sourceloc, rhizome_manifest *);
@@ -621,7 +629,6 @@ struct rhizome_list_cursor {
   sid_t sender;
   sid_t recipient;
   // Set by calling the next() function.
-  int64_t rowid;
   rhizome_manifest *manifest;
   // Private state.
   sqlite3_stmt *_statement;

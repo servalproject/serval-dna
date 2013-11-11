@@ -111,6 +111,7 @@ setup_RhizomeList() {
       extract_stdout_filesize SIZE[$n]
       extract_stdout_filehash HASH[$n]
       extract_stdout_date DATE[$n]
+      extract_stdout_rowid ROWID[$n]
    done
 }
 test_RhizomeList() {
@@ -176,6 +177,7 @@ test_RhizomeList() {
                      filesize:${SIZE[$n]},
                      filehash:\"${HASH[$n]}\",
                      date:${DATE[$n]},
+                     _id:${ROWID[$n]},
                      \".fromhere\":1,
                      \".author\":\"$SIDA\",
                   }

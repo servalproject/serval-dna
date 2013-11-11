@@ -406,7 +406,7 @@ static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *ret
 	assert(m->filesize != RHIZOME_SIZE_UNSET);
 	rhizome_lookup_author(m);
 	strbuf_puts(b, ",\n [");
-	strbuf_sprintf(b, "%"PRIu64, r->u.list.cursor.rowid);
+	strbuf_sprintf(b, "%"PRIu64, m->rowid);
 	strbuf_putc(b, ',');
 	strbuf_json_string(b, m->service);
 	strbuf_putc(b, ',');

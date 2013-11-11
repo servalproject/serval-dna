@@ -302,6 +302,14 @@ extract_stdout_secret() {
    extract_stdout_keyvalue "$1" .secret "$rexp_bundlesecret"
 }
 
+extract_stdout_rowid() {
+   extract_stdout_keyvalue "$1" .rowid "$rexp_rowid"
+}
+
+extract_stdout_inserttime() {
+   extract_stdout_keyvalue "$1" .inserttime "$rexp_date"
+}
+
 extract_stdout_BK() {
    extract_stdout_keyvalue "$1" BK "$rexp_bundlekey"
 }
