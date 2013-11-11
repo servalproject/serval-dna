@@ -241,10 +241,9 @@ static struct profile_total fetch_stats = { .name="rhizome_fetch_poll" };
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static struct rhizome_fetch_queue *rhizome_find_queue(uint64_t size)
+static struct rhizome_fetch_queue *rhizome_find_queue(unsigned char log_size)
 {
   int i;
-  unsigned char log_size = log2ll(size);
   for (i = 0; i < NQUEUES; ++i) {
     struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
     if (log_size < q->log_size_threshold)
@@ -836,17 +835,14 @@ static void rhizome_start_next_queued_fetches(struct sched_ent *alarm)
 
 /* Do we have space to add a fetch candidate of this size? */
 int rhizome_fetch_has_queue_space(unsigned char log2_size){
-  int i;
-  for (i = 0; i < NQUEUES; ++i) {
-    struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
-    if (log2_size < q->log_size_threshold){
-      // is there an empty candidate?
-      unsigned j;
-      for (j=0;j < q->candidate_queue_size;j++)
-	if (!q->candidate_queue[j].manifest)
-	  return 1;
-      return 0;
-    }
+  struct rhizome_fetch_queue *q = rhizome_find_queue(log2_size);
+  if (q){
+    // is there an empty candidate?
+    unsigned j=0;
+    for (j=0;j < q->candidate_queue_size;j++)
+      if (!q->candidate_queue[j].manifest)
+	return 1;
+    return 0;
   }
   return 0;
 }
@@ -911,7 +907,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   }
 
   // Find the proper queue for the payload.  If there is none suitable, it is an error.
-  struct rhizome_fetch_queue *qi = rhizome_find_queue(m->filesize);
+  struct rhizome_fetch_queue *qi = rhizome_find_queue(log2ll(m->filesize));
   if (!qi) {
     WHYF("No suitable fetch queue for bundle size=%"PRIu64, m->filesize);
     rhizome_manifest_free(m);
@@ -1048,8 +1044,8 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
   struct rhizome_fetch_slot *slot=(struct rhizome_fetch_slot*)alarm;
 
   time_ms_t now = gettime_ms();
-  if (now-slot->last_write_time>slot->mdpIdleTimeout) {
-    DEBUGF("MDP connection timed out: last RX %"PRId64"ms ago (read %"PRIu64" of %"PRIu64" bytes)",
+  if (now - slot->last_write_time > slot->mdpIdleTimeout) {
+    DEBUGF("MDP connection timed out: last RX %"PRId64"ms ago (read %"PRId64" of %"PRId64" bytes)",
 	   now-slot->last_write_time,
 	   slot->write_state.file_offset,
 	   slot->write_state.file_length);
@@ -1233,8 +1229,15 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
        down too much.  Much careful thought is required to optimise this
        transport.
     */
-  slot->mdpIdleTimeout=config.rhizome.idle_timeout; // give up if nothing received for 5 seconds
-  slot->mdpRXBlockLength=config.rhizome.rhizome_mdp_block_size; // Rhizome over MDP block size
+  slot->mdpIdleTimeout = config.rhizome.idle_timeout; // give up if nothing received for 5 seconds
+  
+  unsigned char log_size=log2ll(slot->manifest->filesize);
+  struct rhizome_fetch_queue *q=rhizome_find_queue(log_size);
+  // increase the timeout based on the queue number
+  if (q)
+    slot->mdpIdleTimeout *= 1+(q - rhizome_fetch_queues);
+  
+  slot->mdpRXBlockLength = config.rhizome.rhizome_mdp_block_size; // Rhizome over MDP block size
   rhizome_fetch_mdp_requestblocks(slot);
 
   RETURN(0);
