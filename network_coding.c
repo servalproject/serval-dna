@@ -29,9 +29,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "dataformats.h"
 #include "log.h"
 #include "mem.h"
+#include "os.h"
 
 #define FLAG_NEW 1
 struct nc_packet{
+  time_ms_t added;
   uint8_t sequence;
   uint32_t combination;
   size_t len;
@@ -90,6 +92,8 @@ int nc_free(struct nc *n)
 
 struct nc *nc_new(uint8_t max_window_size, uint8_t datagram_size)
 {
+  if ((max_window_size-1)&max_window_size)
+    FATALF("max_window_size must be a power of 2");
   struct nc *n = calloc(sizeof(struct nc),1);
   if (!n)
     return NULL;
@@ -100,13 +104,13 @@ struct nc *nc_new(uint8_t max_window_size, uint8_t datagram_size)
   }
   n->tx.max_queue_size = max_window_size;
   n->tx.window_size = 4;
-  n->rx.packets = calloc(sizeof(struct nc_packet)*max_window_size*2,1);
+  n->rx.max_queue_size = max_window_size*2;
+  n->rx.packets = calloc(sizeof(struct nc_packet)*n->rx.max_queue_size,1);
   if (!n->rx.packets){
     free(n->tx.packets);
     free(n);
     return NULL;
   }
-  n->rx.max_queue_size = max_window_size*2;
   n->tx.datagram_size = datagram_size;
   n->rx.datagram_size = datagram_size;
   return n;
@@ -143,6 +147,7 @@ int nc_tx_enqueue_datagram(struct nc *n, unsigned char *d, size_t len)
   n->tx.packets[index].sequence = seq;
   n->tx.packets[index].combination = 0x80000000;
   n->tx.packets[index].flags = FLAG_NEW;
+  n->tx.packets[index].added = gettime_ms();
   n->tx.count_new++;
   n->tx.packets[index].len = len;
   bcopy(d, n->tx.packets[index].payload, len);
@@ -435,6 +440,7 @@ static int _nc_rx_combine_packet(struct nc_half *n, struct nc_packet *packet)
   
   // add the packet to our incoming list
   n->packets[index]=*packet;
+  n->packets[index].added = gettime_ms();
   n->queue_size++;
   
   // find the first missing seq
@@ -488,7 +494,9 @@ int nc_rx_packet(struct nc *n, const uint8_t *payload, size_t len)
   }
   
   uint8_t new_window_start = payload[2];
-  
+  if (_compare_uint8(new_window_start, n->rx.unseen)>0)
+    return -1;
+    
   // assume incoming packets can be padded with zero's up to n->rx.datagram_size
   struct nc_packet packet={
     .sequence = new_window_start,
