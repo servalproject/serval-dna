@@ -1442,6 +1442,10 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     cli_field_name(context, "BK", ":");
     cli_put_string(context, alloca_tohex_rhizome_bk_t(mout->bundle_key), "\n");
   }
+  if (mout->has_date) {
+    cli_field_name(context, "date", ":");
+    cli_put_long(context, mout->date, "\n");
+  }
   cli_field_name(context, "version", ":");
   cli_put_long(context, mout->version, "\n");
   cli_field_name(context, "filesize", ":");
@@ -1545,6 +1549,10 @@ int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_contex
   }
   cli_field_name(context, "version", ":");
   cli_put_long(context, m->version, "\n");
+  if (m->has_date) {
+    cli_field_name(context, "date", ":");
+    cli_put_long(context, m->date, "\n");
+  }
   cli_field_name(context, "filesize", ":");
   cli_put_long(context, m->filesize, "\n");
   assert(m->filesize != RHIZOME_SIZE_UNSET);
