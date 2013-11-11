@@ -84,6 +84,8 @@ struct mavlink_RADIO_v10 {
 #define LINK_NC_MTU (LINK_MTU - FEC_LENGTH - RADIO_ACTUAL_HEADER_LENGTH)
 #define LINK_PAYLOAD_MTU (LINK_NC_MTU - NC_HEADER_LEN)
 
+#define SERIAL_BUFFER 960
+
 struct radio_link_state{
   struct nc *network_coding;
   
@@ -164,7 +166,7 @@ int radio_link_free(struct overlay_interface *interface)
 int radio_link_init(struct overlay_interface *interface)
 {
   interface->radio_link_state = emalloc_zero(sizeof(struct radio_link_state));
-  interface->radio_link_state->network_coding = nc_new(16, LINK_PAYLOAD_MTU);
+  interface->radio_link_state->network_coding = nc_new(8, LINK_PAYLOAD_MTU);
   return 0;
 }
 
@@ -348,7 +350,7 @@ int radio_link_tx(struct overlay_interface *interface)
     }
     
     int urgency = nc_tx_packet_urgency(link_state->network_coding);
-    time_ms_t delay = 600;
+    time_ms_t delay = 400;
     switch (urgency){
       case URGENCY_ASAP:
 	delay=5;
@@ -402,7 +404,7 @@ static int parse_heartbeat(struct radio_link_state *state, const unsigned char *
     state->radio_rssi=(1.0*payload[10]-payload[13])/1.9;
     state->remote_rssi=(1.0*payload[11] - payload[14])/1.9;
     int free_space = payload[12];
-    int free_bytes = (free_space * 1280) / 100 - 30;
+    int free_bytes = (free_space * SERIAL_BUFFER) / 100 - 30;
     state->remaining_space = free_bytes;
     if (free_bytes>0)
       state->next_tx_allowed = gettime_ms();
@@ -516,87 +518,91 @@ static int decode_length(struct radio_link_state *state, unsigned char *p)
 }
 
 // add one byte at a time from the serial link, and attempt to decode packets
-int radio_link_decode(struct overlay_interface *interface, uint8_t c)
+int radio_link_decode(struct overlay_interface *interface, uint8_t *buffer, ssize_t len)
 {
   IN();
   struct radio_link_state *state=interface->radio_link_state;
-  
-  if (state->payload_start + state->payload_offset >= sizeof(state->payload)){
-    // drop one byte if we run out of space
-    if (config.debug.radio_link)
-      DEBUGF("Dropped %02x, buffer full", state->payload[0]);
-    bcopy(state->payload+1, state->payload, sizeof(state->payload) -1);
-    state->payload_start--;
-  }
-  
-  unsigned char *p = &state->payload[state->payload_start];
-  p[state->payload_offset++]=c;
-  
-  while(1){
-    // look for packet length headers
-    p = &state->payload[state->payload_start];
-    while(state->payload_length==0 && state->payload_offset>=6){
-      if (p[0]==0xFE 
-	&& p[1]==9
-	&& p[3]==RADIO_SOURCE_SYSTEM
-	&& p[4]==RADIO_SOURCE_COMPONENT
-	&& p[5]==MAVLINK_MSG_ID_RADIO){
-	//looks like a valid heartbeat response header, read the rest and process it
-	state->payload_length=17;
-	break;
-      }
-      
-      if (decode_length(state, &p[1])==0)
-	break;
-      
-      state->payload_start++;
-      state->payload_offset--;
-      p++;
+  int i;
+  for (i=0;i<len;i++){
+    uint8_t c = buffer[i];
+    
+    if (state->payload_start + state->payload_offset >= sizeof(state->payload)){
+      // drop one byte if we run out of space
+      if (config.debug.radio_link)
+	DEBUGF("Dropped %02x, buffer full", state->payload[0]);
+      bcopy(state->payload+1, state->payload, sizeof(state->payload) -1);
+      state->payload_start--;
     }
     
-    // wait for a whole packet
-    if (!state->payload_length || state->payload_offset < state->payload_length)
-      RETURN(0);
+    unsigned char *p = &state->payload[state->payload_start];
+    p[state->payload_offset++]=c;
     
-    if (parse_heartbeat(state, p)){
-      // cut the bytes of the heartbeat out of the buffer
-      state->payload_offset -= state->payload_length;
-      if (state->payload_offset){
-	// shuffle bytes backwards
-	bcopy(&p[state->payload_length], p, state->payload_offset);
+    while(1){
+      // look for packet length headers
+      p = &state->payload[state->payload_start];
+      while(state->payload_length==0 && state->payload_offset>=6){
+	if (p[0]==0xFE 
+	  && p[1]==9
+	  && p[3]==RADIO_SOURCE_SYSTEM
+	  && p[4]==RADIO_SOURCE_COMPONENT
+	  && p[5]==MAVLINK_MSG_ID_RADIO){
+	  //looks like a valid heartbeat response header, read the rest and process it
+	  state->payload_length=17;
+	  break;
+	}
+	
+	if (decode_length(state, &p[1])==0)
+	  break;
+	
+	state->payload_start++;
+	state->payload_offset--;
+	p++;
       }
-      // restart parsing for a valid header from the beginning of out buffer
-      state->payload_offset+=state->payload_start;
-      state->payload_start=0;
+      
+      // wait for a whole packet
+      if (!state->payload_length || state->payload_offset < state->payload_length)
+	break;
+      
+      if (parse_heartbeat(state, p)){
+	// cut the bytes of the heartbeat out of the buffer
+	state->payload_offset -= state->payload_length;
+	if (state->payload_offset){
+	  // shuffle bytes backwards
+	  bcopy(&p[state->payload_length], p, state->payload_offset);
+	}
+	// restart parsing for a valid header from the beginning of out buffer
+	state->payload_offset+=state->payload_start;
+	state->payload_start=0;
+	state->payload_length=0;
+	continue;
+      }
+      
+      // is this a well formed packet?
+      int backtrack=0;
+      if (radio_link_parse(interface, state, state->payload_length, p, &backtrack)==1){
+	// Since we know we've synced with the remote party, 
+	// and there's nothing we can do about any earlier data
+	// throw away everything before the end of this packet
+	if (state->payload_start && config.debug.radio_link)
+	  dump("Skipped", state->payload, state->payload_start);
+	
+	// If the packet is truncated by less than 16 bytes, RS protection should be enough to recover the packet, 
+	// but we may need to examine the last few bytes to find the start of the next packet.
+	state->payload_offset -= state->payload_length - backtrack;
+	if (state->payload_offset){
+	  // shuffle all remaining bytes back to the start of the buffer
+	  bcopy(&state->payload[state->payload_start + state->payload_length - backtrack], 
+	    state->payload, state->payload_offset);
+	}
+	state->payload_start=0;
+      }else{
+	// ignore the first byte for now and start looking for another packet header
+	// we may find a heartbeat in the middle that we need to cut out first
+	state->payload_start++;
+	state->payload_offset--;
+      }
       state->payload_length=0;
-      continue;
-    }
-    
-    // is this a well formed packet?
-    int backtrack=0;
-    if (radio_link_parse(interface, state, state->payload_length, p, &backtrack)==1){
-      // Since we know we've synced with the remote party, 
-      // and there's nothing we can do about any earlier data
-      // throw away everything before the end of this packet
-      if (state->payload_start && config.debug.radio_link)
-	dump("Skipped", state->payload, state->payload_start);
-      
-      // If the packet is truncated by less than 16 bytes, RS protection should be enough to recover the packet, 
-      // but we may need to examine the last few bytes to find the start of the next packet.
-      state->payload_offset -= state->payload_length - backtrack;
-      if (state->payload_offset){
-	// shuffle all remaining bytes back to the start of the buffer
-	bcopy(&state->payload[state->payload_start + state->payload_length - backtrack], 
-	  state->payload, state->payload_offset);
-      }
-      state->payload_start=0;
-    }else{
-      // ignore the first byte for now and start looking for another packet header
-      // we may find a heartbeat in the middle that we need to cut out first
-      state->payload_start++;
-      state->payload_offset--;
-    }
-    state->payload_length=0;
-  };
+    };
+  }
   RETURN(0);
 }
