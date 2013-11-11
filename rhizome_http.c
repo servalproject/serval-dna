@@ -387,9 +387,8 @@ static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *ret
 	strbuf_json_string(b, headers[i]);
       }
       strbuf_puts(b, "]");
-      if (strbuf_overrun(b))
-	return 0;
-      r->u.list.phase = LIST_BODY;
+      if (!strbuf_overrun(b))
+	r->u.list.phase = LIST_BODY;
       return 1;
     case LIST_BODY:
       {
@@ -442,10 +441,10 @@ static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *ret
 	strbuf_putc(b, ',');
 	strbuf_json_string(b, m->name);
 	strbuf_puts(b, "]");
-	if (strbuf_overrun(b))
-	  return 0;
-	rhizome_list_commit(&r->u.list.cursor);
-	++r->u.list.rowcount;
+	if (!strbuf_overrun(b)) {
+	  rhizome_list_commit(&r->u.list.cursor);
+	  ++r->u.list.rowcount;
+	}
 	return 1;
       }
     case LIST_DONE:
@@ -465,6 +464,8 @@ static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsi
   strbuf b = strbuf_local((char *)buf, bufsz);
   while ((ret = restful_rhizome_bundlelist_json_content_chunk(&retry, r, b)) != -1) {
     if (strbuf_overrun(b)) {
+      if (config.debug.rhizome)
+	DEBUGF("overrun by %zu bytes", strbuf_count(b) - strbuf_len(b));
       result->need = strbuf_count(b) + 1 - result->generated;
       break;
     }
@@ -544,20 +545,27 @@ static int rhizome_status_page(rhizome_http_request *r, const char *remainder)
 
 static int rhizome_file_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
 {
+  // Only read multiples of 4k from disk.
+  const size_t blocksz = 1 << 12;
+  // Ask for a large buffer for all future reads.
+  const size_t preferred_bufsz = 16 * blocksz;
   // Reads the next part of the payload into the supplied buffer.
   rhizome_http_request *r = (rhizome_http_request *) hr;
   assert(r->u.read_state.offset < r->u.read_state.length);
-  size_t readlen = r->u.read_state.length - r->u.read_state.offset;
-  if (readlen > bufsz)
-    readlen = bufsz;
-  ssize_t n = rhizome_read(&r->u.read_state, buf, readlen);
-  if (n == -1)
-    return -1;
-  result->generated = (size_t) n;
-  // Ask for a large buffer for all future reads.
-  const size_t preferred_bufsz = 64 * 1024;
-  assert(r->u.read_state.offset < r->u.read_state.length);
-  size_t remain = r->u.read_state.length - r->u.read_state.offset;
+  uint64_t remain = r->u.read_state.length - r->u.read_state.offset;
+  size_t readlen = bufsz;
+  if (remain < bufsz)
+    readlen = remain;
+  else
+    readlen &= ~(blocksz - 1);
+  if (readlen > 0) {
+    ssize_t n = rhizome_read(&r->u.read_state, buf, readlen);
+    if (n == -1)
+      return -1;
+    result->generated = (size_t) n;
+  }
+  assert(r->u.read_state.offset <= r->u.read_state.length);
+  remain = r->u.read_state.length - r->u.read_state.offset;
   result->need = remain < preferred_bufsz ? remain : preferred_bufsz;
   return remain ? 1 : 0;
 }

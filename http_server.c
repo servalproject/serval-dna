@@ -1656,6 +1656,8 @@ static void http_request_send_response(struct http_request *r)
     assert(r->response_buffer_sent <= r->response_buffer_length);
     uint64_t remaining = CONTENT_LENGTH_UNKNOWN;
     size_t unsent = r->response_buffer_length - r->response_buffer_sent;
+    if (r->debug_flag && *r->debug_flag)
+      DEBUGF("HTTP response buffer contains %zu bytes unsent", unsent);
     if (r->response_length != CONTENT_LENGTH_UNKNOWN) {
       remaining = r->response_length - r->response_sent;
       assert(unsent <= remaining);
@@ -1703,17 +1705,17 @@ static void http_request_send_response(struct http_request *r)
 	  return;
 	}
 	if (result.generated == 0 && result.need <= unfilled) {
-	  WHYF("HTTP response generator produced no content at offset %"PRIhttp_size_t, r->response_sent);
+	  WHYF("HTTP response generator produced no content at offset %"PRIhttp_size_t" (ret=%d)", r->response_sent, ret);
 	  http_request_finalise(r);
 	  return;
 	}
 	if (r->debug_flag && *r->debug_flag)
-	  DEBUGF("Generated HTTP %zu bytes of content, need %zu bytes of buffer", result.generated, result.need);
+	  DEBUGF("Generated HTTP %zu bytes of content, need %zu bytes of buffer (ret=%d)", result.generated, result.need, ret);
 	assert(result.generated <= unfilled);
 	r->response_buffer_length += result.generated;
 	r->response_buffer_need = result.need;
 	if (ret == 0)
-	  r->response.content_generator = NULL;
+	  r->response.content_generator = NULL; // ensure we never invoke again
 	continue;
       }
     } else if (remaining != CONTENT_LENGTH_UNKNOWN && unsent < remaining) {

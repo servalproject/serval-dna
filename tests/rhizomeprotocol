@@ -75,7 +75,7 @@ doc_FileTransfer="New bundle and update transfer to one node"
 setup_FileTransfer() {
    setup_common
    set_instance +A
-   rhizome_add_file file1 2048
+   rhizome_add_file file1 250000
    start_servald_instances +A +B
    foreach_instance +A assert_peers_are_instances +B
    foreach_instance +B assert_peers_are_instances +A

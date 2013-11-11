@@ -306,6 +306,18 @@ extract_stdout_BK() {
    extract_stdout_keyvalue "$1" BK "$rexp_bundlekey"
 }
 
+extract_stdout_date() {
+   extract_stdout_keyvalue "$1" date "$rexp_date"
+}
+
+extract_stdout_filesize() {
+   extract_stdout_keyvalue "$1" filesize "$rexp_filesize"
+}
+
+extract_stdout_filehash() {
+   extract_stdout_keyvalue "$1" filehash "$rexp_filehash"
+}
+
 extract_manifest() {
    local _var="$1"
    local _manifestfile="$2"
@@ -344,6 +356,10 @@ extract_manifest_name() {
 
 extract_manifest_version() {
    extract_manifest "$1" "$2" version "$rexp_version"
+}
+
+extract_manifest_date() {
+   extract_manifest "$1" "$2" date "$rexp_date"
 }
 
 extract_manifest_crypt() {
