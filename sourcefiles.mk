@@ -69,6 +69,7 @@ SERVAL_SOURCES = \
 	$(SERVAL_BASE)strbuf.c \
 	$(SERVAL_BASE)strbuf_helpers.c \
 	$(SERVAL_BASE)strlcpy.c \
+	$(SERVAL_BASE)uuid.c \
 	$(SERVAL_BASE)vomp.c \
 	$(SERVAL_BASE)vomp_console.c \
 	$(SERVAL_BASE)xprintf.c \
