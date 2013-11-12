@@ -33,42 +33,41 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/types.h>
 
 #ifdef WIN32
-#include "win32/win32.h"
+#   include "win32/win32.h"
 #else
-#include <unistd.h>
-#ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
-#endif
-#ifdef HAVE_NET_ROUTE_H
-     #include <net/route.h>
-#endif
-#ifdef HAVE_LINUX_IF_H
-#include <linux/if.h>
-#else
-#ifdef HAVE_NET_IF_H
-#include <net/if.h>
-#endif
-#endif
-#ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
-#endif
-#ifdef HAVE_LINUX_NETLINK_H
-#include <linux/netlink.h>
-#endif
-#ifdef HAVE_LINUX_RTNETLINK_H
-#include <linux/rtnetlink.h>
-#endif
-#ifdef HAVE_IFADDRS_H
-#include <ifaddrs.h>
-#endif
-#ifdef HAVE_SYS_SOCKIO_H
-#include <sys/sockio.h>
-#endif
-
-#ifdef HAVE_SYS_UCRED_H
-#include <sys/ucred.h>
-#endif
-#endif
+#   include <unistd.h>
+#   ifdef HAVE_SYS_SOCKET_H
+#     include <sys/socket.h>
+#   endif
+#   ifdef HAVE_NET_ROUTE_H
+#     include <net/route.h>
+#   endif
+#   ifdef HAVE_LINUX_IF_H
+#     include <linux/if.h>
+#   else
+#     ifdef HAVE_NET_IF_H
+#       include <net/if.h>
+#     endif
+#   endif
+#   ifdef HAVE_NETINET_IN_H
+#     include <netinet/in.h>
+#   endif
+#   ifdef HAVE_LINUX_NETLINK_H
+#     include <linux/netlink.h>
+#   endif
+#   ifdef HAVE_LINUX_RTNETLINK_H
+#     include <linux/rtnetlink.h>
+#   endif
+#   ifdef HAVE_IFADDRS_H
+#     include <ifaddrs.h>
+#   endif
+#   ifdef HAVE_SYS_SOCKIO_H
+#     include <sys/sockio.h>
+#   endif
+#   ifdef HAVE_SYS_UCRED_H
+#     include <sys/ucred.h>
+#   endif
+#endif //!WIN32
 
 #if !defined(FORASTERISK) && !defined(s_addr)
 #ifdef HAVE_ARPA_INET_H
