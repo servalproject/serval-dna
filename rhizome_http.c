@@ -1,6 +1,6 @@
 /*
-Serval Distributed Numbering Architecture (DNA)
-Copyright (C) 2010 Paul Gardner-Stephen
+Serval DNA Rhizome HTTP external interface
+Copyright (C) 2013 Serval Project, Inc.
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -21,7 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/socket.h>
 #include <signal.h>
 #ifdef HAVE_SYS_FILIO_H
-#include <sys/filio.h>
+# include <sys/filio.h>
 #endif
 #include <assert.h>
 
@@ -252,7 +252,7 @@ void rhizome_server_poll(struct sched_ent *alarm)
     } else {
       struct sockaddr_in *peerip=NULL;
       if (addr.sa_family == AF_INET) {
-	peerip = (struct sockaddr_in *)&addr;
+	peerip = (struct sockaddr_in *)&addr; // network order
 	INFOF("RHIZOME HTTP SERVER, ACCEPT addrlen=%u family=%u port=%u addr=%u.%u.%u.%u",
 	    addr_len, peerip->sin_family, peerip->sin_port,
 	    ((unsigned char*)&peerip->sin_addr.s_addr)[0],
@@ -318,10 +318,16 @@ int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_
   OUT();
 }
 
+static int is_from_loopback(const struct http_request *r)
+{
+  return   r->client_sockaddr_in.sin_family == AF_INET
+	&& ((unsigned char*)&r->client_sockaddr_in.sin_addr.s_addr)[0] == IN_LOOPBACKNET;
+}
+
 /* Return 1 if the given authorization credentials are acceptable.
  * Return 0 if not.
  */
-static int is_authorized(struct http_client_authorization *auth)
+static int is_authorized(const struct http_client_authorization *auth)
 {
   if (auth->scheme != BASIC)
     return 0;
@@ -333,6 +339,21 @@ static int is_authorized(struct http_client_authorization *auth)
       return 1;
   }
   return 0;
+}
+
+static int authorize(struct http_request *r)
+{
+  if (!is_from_loopback(r)) {
+    http_request_simple_response(r, 403, NULL);
+    return 0;
+  }
+  if (!is_authorized(&r->request_header.authorization)) {
+    r->response.header.www_authenticate.scheme = BASIC;
+    r->response.header.www_authenticate.realm = "Serval Rhizome";
+    http_request_simple_response(r, 401, NULL);
+    return 0;
+  }
+  return 1;
 }
 
 static HTTP_CONTENT_GENERATOR restful_rhizome_bundlelist_json_content;
@@ -347,12 +368,8 @@ static int restful_rhizome_bundlelist_json(rhizome_http_request *r, const char *
     http_request_simple_response(&r->http, 405, NULL);
     return 0;
   }
-  if (!is_authorized(&r->http.request_header.authorization)) {
-    r->http.response.header.www_authenticate.scheme = BASIC;
-    r->http.response.header.www_authenticate.realm = "Serval Rhizome";
-    http_request_simple_response(&r->http, 401, NULL);
+  if (!authorize(&r->http))
     return 0;
-  }
   r->u.list.phase = LIST_HEADER;
   r->u.list.rowcount = 0;
   bzero(&r->u.list.cursor, sizeof r->u.list.cursor);
