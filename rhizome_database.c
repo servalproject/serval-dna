@@ -75,7 +75,8 @@ int create_rhizome_datastore_dir()
   return emkdirs(rhizome_datastore_path(), 0700);
 }
 
-sqlite3 *rhizome_db=NULL;
+sqlite3 *rhizome_db = NULL;
+uuid_t rhizome_db_uuid;
 
 /* XXX Requires a messy join that might be slow. */
 int rhizome_manifest_priority(sqlite_retry_state *retry, const rhizome_bid_t *bidp)
@@ -207,7 +208,10 @@ void verify_bundles(){
 
 int rhizome_opendb()
 {
-  if (rhizome_db) return 0;
+  if (rhizome_db) {
+    assert(uuid_is_valid(&rhizome_db_uuid));
+    return 0;
+  }
 
   IN();
   
@@ -257,11 +261,9 @@ int rhizome_opendb()
     ) {
       RETURN(WHY("Failed to create schema"));
     }
-
     /* Create indexes if they don't already exist */
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS bundlesizeindex ON manifests (filesize);", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);", END);
-    
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=1;", END);
   }
   if (version<2){
@@ -273,26 +275,52 @@ int rhizome_opendb()
     verify_bundles();
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=2;", END);
   }
-  
   if (version<3){
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_ID_VERSION ON MANIFESTS(id, version);", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=3;", END);
   }
-  
   if (version<4){
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN tail integer;", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=4;", END);
   }
-  
+  if (version<5){
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE TABLE IF NOT EXISTS IDENTITY(uuid text not null); ", END);
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=5;", END);
+  }
+
+  char buf[UUID_STRLEN + 1];
+  int r = sqlite_exec_strbuf_retry(&retry, strbuf_local(buf, sizeof buf), "SELECT uuid from IDENTITY LIMIT 1;", END);
+  if (r == -1)
+    RETURN(-1);
+  if (r) {
+    if (!str_to_uuid(buf, &rhizome_db_uuid, NULL)) {
+      WHYF("IDENTITY table contains malformed UUID %s -- overwriting", alloca_str_toprint(buf));
+      if (uuid_generate_random(&rhizome_db_uuid) == -1)
+	RETURN(WHY("Cannot generate new UUID for Rhizome database"));
+      if (sqlite_exec_void_retry(&retry, "UPDATE IDENTITY SET uuid = ? LIMIT 1;", UUID_T, &rhizome_db_uuid, END) == -1)
+	RETURN(WHY("Failed to update new UUID in Rhizome database"));
+      if (config.debug.rhizome)
+	DEBUGF("Updated Rhizome database UUID to %s", alloca_uuid_str(rhizome_db_uuid));
+    }
+  } else if (r == 0) {
+    if (uuid_generate_random(&rhizome_db_uuid) == -1)
+      RETURN(WHY("Cannot generate UUID for Rhizome database"));
+    if (sqlite_exec_void_retry(&retry, "INSERT INTO IDENTITY (uuid) VALUES (?);", UUID_T, &rhizome_db_uuid, END) == -1)
+      RETURN(WHY("Failed to insert UUID into Rhizome database"));
+    if (config.debug.rhizome)
+      DEBUGF("Set Rhizome database UUID to %s", alloca_uuid_str(rhizome_db_uuid));
+  }
+
   // TODO recreate tables with collate nocase on hex columns
-  
+
   /* Future schema updates should be performed here. 
    The above schema can be assumed to exist.
    All changes should attempt to preserve any existing data */
-  
+
   // We can't delete a file that is being transferred in another process at this very moment...
   if (config.rhizome.clean_on_open)
     rhizome_cleanup(NULL);
+  INFOF("Opened Rhizome database %s, UUID=%s", dbpath, alloca_uuid_str(rhizome_db_uuid));
   RETURN(0);
   OUT();
 }
@@ -737,6 +765,19 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 		  upper[i] = toupper(text[i]);
 		BIND_DEBUG(TEXT_LEN_TOUPPER, sqlite3_bind_text, "%s,%u,SQLITE_TRANSIENT", alloca_toprint(-1, upper, bytes), bytes);
 		BIND_RETRY(sqlite3_bind_text, upper, bytes, SQLITE_TRANSIENT);
+	      }
+	    }
+	    break;
+	  case UUID_T: {
+	      const uuid_t *uuidp = va_arg(ap, const uuid_t *);
+	      ++argnum;
+	      if (uuidp == NULL) {
+		BIND_NULL(UUID_T);
+	      } else {
+		char uuid_str[UUID_STRLEN + 1];
+		uuid_to_str(uuidp, uuid_str);
+		BIND_DEBUG(UUID_T, sqlite3_bind_text, "%s,%u,SQLITE_TRANSIENT", uuid_str, UUID_STRLEN);
+		BIND_RETRY(sqlite3_bind_text, uuid_str, UUID_STRLEN, SQLITE_TRANSIENT);
 	      }
 	    }
 	    break;

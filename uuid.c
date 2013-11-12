@@ -66,23 +66,26 @@ int uuid_generate_random(uuid_t *uuid)
   return 0;
 }
 
-void uuid_to_str(const uuid_t *uuid, char *dst)
+char *uuid_to_str(const uuid_t *uuid, char *const dst)
 {
+  char *p = dst;
   assert(uuid_is_valid(uuid));
   unsigned i;
   for (i = 0; i != sizeof uuid->u.binary; ++i) {
     switch (i) {
       case 4: case 6: case 8: case 10:
-	*dst++ = '-';
+	*p++ = '-';
       default:
-	*dst++ = hexdigit[uuid->u.binary[i] >> 4];
-	*dst++ = hexdigit[uuid->u.binary[i] & 0xf];
+	*p++ = hexdigit[uuid->u.binary[i] >> 4];
+	*p++ = hexdigit[uuid->u.binary[i] & 0xf];
     }
   }
-  *dst = '\0';
+  *p = '\0';
+  assert(p == dst + UUID_STRLEN);
+  return dst;
 }
 
-int str_to_uuid(const char *str, uuid_t *uuid, const char **afterp)
+int str_to_uuid(const char *const str, uuid_t *uuid, const char **afterp)
 {
   const char *end = str;
   int ret = 0;
@@ -96,7 +99,7 @@ int str_to_uuid(const char *str, uuid_t *uuid, const char **afterp)
       && *end == '-'
       && strn_fromhex(uuid->u.binary + 10, 6, end + 1, &end) == 6
   ) {
-    assert(end == str + 36);
+    assert(end == str + UUID_STRLEN);
     ret = uuid_is_valid(uuid);
   }
   if (afterp)
