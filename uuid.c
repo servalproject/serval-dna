@@ -76,8 +76,8 @@ char *uuid_to_str(const uuid_t *uuid, char *const dst)
       case 4: case 6: case 8: case 10:
 	*p++ = '-';
       default:
-	*p++ = hexdigit[uuid->u.binary[i] >> 4];
-	*p++ = hexdigit[uuid->u.binary[i] & 0xf];
+	*p++ = hexdigit_lower[uuid->u.binary[i] >> 4];
+	*p++ = hexdigit_lower[uuid->u.binary[i] & 0xf];
     }
   }
   *p = '\0';

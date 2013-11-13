@@ -457,8 +457,8 @@ strbuf strbuf_json_hex(strbuf sb, const unsigned char *buf, size_t len)
     strbuf_putc(sb, '"');
     size_t i;
     for (i = 0; i != len; ++i) {
-      strbuf_putc(sb, hexdigit[*buf >> 4]);
-      strbuf_putc(sb, hexdigit[*buf++ & 0xf]);
+      strbuf_putc(sb, hexdigit_upper[*buf >> 4]);
+      strbuf_putc(sb, hexdigit_upper[*buf++ & 0xf]);
     }
     strbuf_putc(sb, '"');
   } else

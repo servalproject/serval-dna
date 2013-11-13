@@ -30,14 +30,15 @@
 #include <limits.h>
 #include <errno.h>
 
-const char hexdigit[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
+const char hexdigit_upper[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
+const char hexdigit_lower[16] = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
 
 char *tohex(char *dstHex, size_t dstStrLen, const unsigned char *srcBinary)
 {
   char *p;
   size_t i;
   for (p = dstHex, i = 0; i < dstStrLen; ++i)
-    *p++ = (i & 1) ? hexdigit[*srcBinary++ & 0xf] : hexdigit[*srcBinary >> 4];
+    *p++ = (i & 1) ? hexdigit_upper[*srcBinary++ & 0xf] : hexdigit_upper[*srcBinary >> 4];
   *p = '\0';
   return dstHex;
 }
