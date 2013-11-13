@@ -377,6 +377,17 @@ static int restful_rhizome_bundlelist_json(rhizome_http_request *r, const char *
   return 0;
 }
 
+#define LIST_TOKEN_STRLEN_MAX (UUID_STRLEN + 30)
+#define alloca_list_token(rowid) list_token(alloca(LIST_TOKEN_STRLEN_MAX), (rowid))
+
+static char *list_token(char *buf, uint64_t rowid)
+{
+  strbuf b = strbuf_local(buf, LIST_TOKEN_STRLEN_MAX);
+  strbuf_uuid(b, &rhizome_db_uuid);
+  strbuf_sprintf(b, "-%"PRIu64, rowid);
+  return buf;
+}
+
 static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *retry, struct rhizome_http_request *r, strbuf b)
 {
   const char *headers[] = {
@@ -396,7 +407,7 @@ static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *ret
   };
   switch (r->u.list.phase) {
     case LIST_HEADER:
-      strbuf_puts(b, "[[");
+      strbuf_puts(b, "{\n\"header\":[");
       unsigned i;
       for (i = 0; i != NELS(headers); ++i) {
 	if (i)
@@ -405,24 +416,32 @@ static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *ret
       }
       strbuf_puts(b, "]");
       if (!strbuf_overrun(b))
-	r->u.list.phase = LIST_BODY;
+	r->u.list.phase = LIST_TOKEN;
       return 1;
-    case LIST_BODY:
+    case LIST_TOKEN:
+    case LIST_ROWS:
       {
 	int ret = rhizome_list_next(retry, &r->u.list.cursor);
 	if (ret == -1)
 	  return -1;
+	rhizome_manifest *m = r->u.list.cursor.manifest;
+	if (r->u.list.phase == LIST_TOKEN) {
+	  strbuf_puts(b, ",\n\"token\":");
+	  strbuf_json_string(b, alloca_list_token(ret ? m->rowid : 0));
+	  strbuf_puts(b, ",\n\"rows\":[");
+	}
 	if (ret == 0) {
-	  strbuf_puts(b, "\n]\n");
+	  strbuf_puts(b, "\n]\n}\n");
 	  if (strbuf_overrun(b))
 	    return 0;
 	  r->u.list.phase = LIST_DONE;
 	  return 0;
 	}
-	rhizome_manifest *m = r->u.list.cursor.manifest;
 	assert(m->filesize != RHIZOME_SIZE_UNSET);
 	rhizome_lookup_author(m);
-	strbuf_puts(b, ",\n [");
+	if (r->u.list.phase != LIST_TOKEN)
+	  strbuf_putc(b, ',');
+	strbuf_puts(b, "\n[");
 	strbuf_sprintf(b, "%"PRIu64, m->rowid);
 	strbuf_putc(b, ',');
 	strbuf_json_string(b, m->service);
@@ -462,12 +481,13 @@ static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *ret
 	  rhizome_list_commit(&r->u.list.cursor);
 	  ++r->u.list.rowcount;
 	}
+	r->u.list.phase = LIST_ROWS;
 	return 1;
       }
     case LIST_DONE:
-      break;
+      return 0;
   }
-  return 0;
+  abort();
 }
 
 static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)

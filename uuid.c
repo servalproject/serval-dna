@@ -66,22 +66,27 @@ int uuid_generate_random(uuid_t *uuid)
   return 0;
 }
 
-char *uuid_to_str(const uuid_t *uuid, char *const dst)
+strbuf strbuf_uuid(strbuf sb, const uuid_t *uuid)
 {
-  char *p = dst;
   assert(uuid_is_valid(uuid));
   unsigned i;
   for (i = 0; i != sizeof uuid->u.binary; ++i) {
     switch (i) {
       case 4: case 6: case 8: case 10:
-	*p++ = '-';
+	strbuf_putc(sb, '-');
       default:
-	*p++ = hexdigit_lower[uuid->u.binary[i] >> 4];
-	*p++ = hexdigit_lower[uuid->u.binary[i] & 0xf];
+	strbuf_putc(sb, hexdigit_lower[uuid->u.binary[i] >> 4]);
+	strbuf_putc(sb, hexdigit_lower[uuid->u.binary[i] & 0xf]);
     }
   }
-  *p = '\0';
-  assert(p == dst + UUID_STRLEN);
+  return sb;
+}
+
+char *uuid_to_str(const uuid_t *uuid, char *const dst)
+{
+  strbuf b = strbuf_local(dst, UUID_STRLEN + 1);
+  strbuf_uuid(b, uuid);
+  assert(!strbuf_overrun(b));
   return dst;
 }
 

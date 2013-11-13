@@ -1493,11 +1493,10 @@ int rhizome_list_open(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
     strbuf_puts(b, " AND sender = @sender");
   if (c->is_recipient_set)
     strbuf_puts(b, " AND recipient = @recipient");
-  if (c->_rowid_first) {
-    assert(c->_rowid_last);
-    assert(c->_rowid_last <= c->_rowid_first);
-    strbuf_puts(b, " AND (rowid > @first OR rowid < @last)");
-  }
+  if (c->rowid_since)
+    strbuf_puts(b, " AND rowid > @since");
+  if (c->_rowid_last)
+    strbuf_puts(b, " AND rowid < @last");
   strbuf_puts(b, " ORDER BY rowid DESC"); // most recent first
   if (strbuf_overrun(b))
     RETURN(WHYF("SQL command too long: %s", strbuf_str(b)));
@@ -1512,12 +1511,12 @@ int rhizome_list_open(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
     goto failure;
   if (c->is_recipient_set && sqlite_bind(retry, c->_statement, NAMED|SID_T, "@recipient", &c->recipient, END) == -1)
     goto failure;
-  if (   c->_rowid_first
-      && sqlite_bind(retry, c->_statement, NAMED|INT64, "@first", c->_rowid_first,
-					   NAMED|INT64, "@last", c->_rowid_last, END) == -1
-  )
+  if (c->rowid_since && sqlite_bind(retry, c->_statement, NAMED|INT64, "@since", c->rowid_since, END) == -1)
+    goto failure;
+  if (c->_rowid_last && sqlite_bind(retry, c->_statement, NAMED|INT64, "@last", c->_rowid_last, END) == -1)
     goto failure;
   c->manifest = NULL;
+  c->_rowid_current = 0;
   RETURN(0);
   OUT();
 failure:
@@ -1527,16 +1526,27 @@ failure:
   OUT();
 }
 
+/* Guaranteed to return manifests with monotonically descending rowid.  The first manifest will have
+ * the greatest rowid.
+ *
+ * Returns 1 if a new manifest has been fetched from the list, in which case the cursor 'manifest'
+ * field points to the fetched manifest.  Returns 0 if there are no more manifests in the list.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
 {
   IN();
   if (c->_statement == NULL && rhizome_list_open(retry, c) == -1)
     RETURN(-1);
-  while (sqlite_step_retry(retry, c->_statement) == SQLITE_ROW) {
+  while (1) {
     if (c->manifest) {
       rhizome_manifest_free(c->manifest);
+      c->_rowid_current = 0;
       c->manifest = NULL;
     }
+    if (sqlite_step_retry(retry, c->_statement) != SQLITE_ROW)
+      break;
     assert(sqlite3_column_count(c->_statement) == 6);
     assert(sqlite3_column_type(c->_statement, 0) == SQLITE_TEXT);
     assert(sqlite3_column_type(c->_statement, 1) == SQLITE_BLOB);
@@ -1544,13 +1554,22 @@ int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
     assert(sqlite3_column_type(c->_statement, 3) == SQLITE_INTEGER);
     assert(sqlite3_column_type(c->_statement, 4) == SQLITE_TEXT || sqlite3_column_type(c->_statement, 4) == SQLITE_NULL);
     assert(sqlite3_column_type(c->_statement, 5) == SQLITE_INTEGER);
+    uint64_t q_rowid = sqlite3_column_int64(c->_statement, 5);
+    if (c->_rowid_current && q_rowid >= c->_rowid_current) {
+      WHYF("Query returned rowid=%"PRIu64" out of order (last was %"PRIu64") -- skipped", q_rowid, c->_rowid_current);
+      continue;
+    }
+    c->_rowid_current = q_rowid;
+    if (q_rowid <= c->rowid_since) {
+      WHYF("Query returned rowid=%"PRIu64" <= rowid_since=%"PRIu64" -- skipped", q_rowid, c->rowid_since);
+      continue;
+    }
     const char *q_manifestid = (const char *) sqlite3_column_text(c->_statement, 0);
     const char *manifestblob = (char *) sqlite3_column_blob(c->_statement, 1);
     size_t manifestblobsize = sqlite3_column_bytes(c->_statement, 1); // must call after sqlite3_column_blob()
     int64_t q_version = sqlite3_column_int64(c->_statement, 2);
     int64_t q_inserttime = sqlite3_column_int64(c->_statement, 3);
     const char *q_author = (const char *) sqlite3_column_text(c->_statement, 4);
-    uint64_t q_rowid = sqlite3_column_int64(c->_statement, 5);
     sid_t *author = NULL;
     if (q_author) {
       author = alloca(sizeof *author);
@@ -1581,27 +1600,28 @@ int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
       continue;
     if (c->is_recipient_set && !(m->has_recipient && cmp_sid_t(&c->recipient, &m->recipient) == 0))
       continue;
+    assert(c->_rowid_current != 0);
     // Don't do rhizome_verify_author(m); too CPU expensive for a listing.  Save that for when
     // the bundle is extracted or exported.
     RETURN(1);
   }
+  assert(c->_rowid_current == 0);
   RETURN(0);
   OUT();
 }
 
 void rhizome_list_commit(struct rhizome_list_cursor *c)
 {
-  assert(c->manifest->rowid != 0);
-  if (c->manifest->rowid > c->_rowid_first)
-    c->_rowid_first = c->manifest->rowid;
-  if (c->_rowid_last == 0 || c->manifest->rowid < c->_rowid_last)
-    c->_rowid_last = c->manifest->rowid;
+  assert(c->_rowid_current != 0);
+  if (c->_rowid_last == 0 || c->_rowid_current < c->_rowid_last)
+    c->_rowid_last = c->_rowid_current;
 }
 
 void rhizome_list_release(struct rhizome_list_cursor *c)
 {
   if (c->manifest) {
     rhizome_manifest_free(c->manifest);
+    c->_rowid_current = 0;
     c->manifest = NULL;
   }
   if (c->_statement) {

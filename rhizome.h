@@ -631,12 +631,13 @@ struct rhizome_list_cursor {
   bool_t is_recipient_set;
   sid_t sender;
   sid_t recipient;
+  uint64_t rowid_since;
   // Set by calling the next() function.
   rhizome_manifest *manifest;
   // Private state.
   sqlite3_stmt *_statement;
-  int64_t _rowid_first;
-  int64_t _rowid_last;
+  uint64_t _rowid_current;
+  uint64_t _rowid_last; // for re-opening query
 };
 
 int rhizome_list_open(sqlite_retry_state *, struct rhizome_list_cursor *);
@@ -745,7 +746,7 @@ typedef struct rhizome_http_request
     /* For responses that list manifests.
     */
     struct {
-        enum { LIST_HEADER = 0, LIST_BODY, LIST_DONE } phase;
+        enum { LIST_HEADER = 0, LIST_TOKEN, LIST_ROWS, LIST_DONE } phase;
         size_t rowcount;
         struct rhizome_list_cursor cursor;
     } list;

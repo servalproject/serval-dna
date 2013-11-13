@@ -123,53 +123,66 @@ test_RhizomeList() {
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
    tfw_cat http.headers bundlelist.json
    tfw_preserve bundlelist.json
-   assert [ "$(jq 'length' bundlelist.json)" = $((NBUNDLES+1)) ]
+   assert [ "$(jq '.rows | length' bundlelist.json)" = $NBUNDLES ]
    # The following jq(1) incantation transforms the JSON array in
    # bundlelist.json from the following form (which is optimised for
    # transmission size):
-   #     [
-   #        [  "_id", "service", "id", "version","date",".inserttime",
-   #           ".author",".fromhere","filesize","filehash","sender","recipient",
-   #           "name"
-   #        ],
-   #        [  rowid1, "service1", bundleid1, version1, .... ],
-   #        [  rowid2, "service2", bundleid2, version2, .... ],
-   #           ...
-   #        [  rowidN, "serviceN", bundleidN, versionN, .... ]
-   #     ]
+   #     {
+   #        "header":[  "_id", "service", "id", "version","date",".inserttime",
+   #              ".author",".fromhere","filesize","filehash","sender","recipient",
+   #              "name"
+   #           ],
+   #        "token":"xxx",
+   #        "rows":[
+   #              [  rowid1, "service1", bundleid1, version1, .... ],
+   #              [  rowid2, "service2", bundleid2, version2, .... ],
+   #                 ...
+   #              [  rowidN, "serviceN", bundleidN, versionN, .... ]
+   #           ]
+   #     }
    #
    # into an array of JSON objects:
-   #     [
-   #        {
-   #           "_id": rowid1,
-   #           "service": service1,
-   #           "id": bundleid1,
-   #           "version": version1,
+   #     {
+   #        "token":"xxx",
+   #        "bundles":[
+   #           {
+   #              "_id": rowid1,
+   #              "service": service1,
+   #              "id": bundleid1,
+   #              "version": version1,
+   #              ...
+   #           },
+   #           {
+   #              "_id": rowid2,
+   #              "service": service2,
+   #              "id": bundleid2,
+   #              "version": version2,
+   #              ...
+   #           },
    #           ...
-   #        },
-   #        {
-   #           "_id": rowid2,
-   #           "service": service2,
-   #           "id": bundleid2,
-   #           "version": version2,
-   #           ...
-   #        },
-   #        ...
-   #
-   #        {
-   #           "_id": rowidN,
-   #           "service": serviceN,
-   #           "id": bundleidN,
-   #           "version": versionN,
-   #           ...
-   #        }
-   #     ]
+   #           {
+   #              "_id": rowidN,
+   #              "service": serviceN,
+   #              "id": bundleidN,
+   #              "version": versionN,
+   #              ...
+   #           }
+   #        ]
+   #     }
    # which is much easier to test with jq(1) expressions.
-   jq '[ .[0] as $h | .[1:][] as $d | [ $d | keys | .[] as $i | {key:$h[$i], value:$d[$i]} ] | from_entries ]' \
+   jq \
+      '[
+         .header as $h |
+         .rows[] as $d |
+         [ $d | keys | .[] as $i | {key:$h[$i], value:$d[$i]} ] |
+         from_entries
+      ] as $bundles |
+      .token as $token |
+      { token:$token, bundles:$bundles }' \
       bundlelist.json >array_of_objects.json
-   #tfw_cat array_of_objects.json
+   tfw_preserve array_of_objects.json
    for ((n = 0; n != NBUNDLES; ++n)); do
-      jqscript="contains([
+      jqscript=".bundles | contains([
                   {  name:\"file$n\",
                      service:\"file\",
                      id:\"${BID[$n]}\",
