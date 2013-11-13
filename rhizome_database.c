@@ -107,11 +107,32 @@ int is_debug_rhizome_ads()
 
 static int (*sqlite_trace_func)() = is_debug_rhizome;
 const struct __sourceloc *sqlite_trace_whence = NULL;
+static int sqlite_trace_done;
 
+/* This is called by SQLite when executing a statement using sqlite3_step().  Unfortunately, it is
+ * not called on PRAGMA statements, and possibly others.  Hence the use of the profile callback (see
+ * below).
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 static void sqlite_trace_callback(void *context, const char *rendered_sql)
 {
   if (sqlite_trace_func())
     logMessage(LOG_LEVEL_DEBUG, sqlite_trace_whence ? *sqlite_trace_whence : __HERE__, "%s", rendered_sql);
+  ++sqlite_trace_done;
+}
+
+/* This is called by SQLite when an executed statement finishes.  We use it to log rendered SQL
+ * statements when the trace callback (above) has not been called, eg, for PRAGMA statements.  This
+ * requires that the 'sqlite_trace_done' static be reset to zero whenever a new prepared statement
+ * is about to be stepped.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+static void sqlite_profile_callback(void *context, const char *rendered_sql, sqlite_uint64 nanosec)
+{
+  if (!sqlite_trace_done)
+    sqlite_trace_callback(context, rendered_sql);
 }
 
 /* This function allows code like:
@@ -153,7 +174,6 @@ void verify_bundles(){
     sqlite3_int64 rowid = sqlite3_column_int64(statement, 0);
     const void *manifest = sqlite3_column_blob(statement, 1);
     size_t manifest_length = sqlite3_column_bytes(statement, 1);
-    
     rhizome_manifest *m=rhizome_new_manifest();
     int ret=0;
     ret = rhizome_read_manifest_file(m, manifest, manifest_length);
@@ -236,6 +256,7 @@ int rhizome_opendb()
     RETURN(WHYF("SQLite could not open database %s: %s", dbpath, sqlite3_errmsg(rhizome_db)));
   }
   sqlite3_trace(rhizome_db, sqlite_trace_callback, NULL);
+  sqlite3_profile(rhizome_db, sqlite_profile_callback, NULL);
   int loglevel = (config.debug.rhizome) ? LOG_LEVEL_DEBUG : LOG_LEVEL_SILENT;
 
   /* Read Rhizome configuration */
@@ -826,6 +847,7 @@ int _sqlite_step(struct __sourceloc __whence, int log_level, sqlite_retry_state 
   IN();
   int ret = -1;
   sqlite_trace_whence = &__whence;
+  sqlite_trace_done = 0;
   while (statement) {
     int stepcode = sqlite3_step(statement);
     switch (stepcode) {
