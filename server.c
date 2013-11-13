@@ -21,7 +21,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <unistd.h>
 #include <time.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
 #include <sys/stat.h>
 
 #include "serval.h"
@@ -108,11 +107,9 @@ int server(const struct cli_parsed *parsed)
   sigemptyset(&sig.sa_mask); // Block the same signals during handler
   sigaddset(&sig.sa_mask, SIGHUP);
   sigaddset(&sig.sa_mask, SIGINT);
-  sigaddset(&sig.sa_mask, SIGQUIT);
   sig.sa_flags = 0;
   sigaction(SIGHUP, &sig, NULL);
   sigaction(SIGINT, &sig, NULL);
-  sigaction(SIGQUIT, &sig, NULL);
 
   /* Record PID to advertise that the server is now running */
   char filename[1024];

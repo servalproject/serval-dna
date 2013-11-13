@@ -21,7 +21,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <sys/types.h> // for size_t, ssize_t
 #include <sys/socket.h> // for struct sockaddr, socklen_t
+#ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h> // for struct in_addr
+#endif
 #include <arpa/inet.h> // for in_addr_t
 #include "log.h" // for __WHENCE__ and struct __sourceloc
 

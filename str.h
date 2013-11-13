@@ -60,7 +60,8 @@ __STR_INLINE int is_xstring(const char *text, int len)
   return *text == '\0';
 }
 
-extern const char hexdigit[16];
+extern const char hexdigit_upper[16];
+extern const char hexdigit_lower[16];
 char *tohex(char *dstHex, size_t dstStrlen, const unsigned char *srcBinary);
 size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
 int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary);

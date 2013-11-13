@@ -311,6 +311,11 @@ void _rhizome_manifest_set_crypt(struct __sourceloc __whence, rhizome_manifest *
   m->payloadEncryption = flag;
 }
 
+void _rhizome_manifest_set_rowid(struct __sourceloc __whence, rhizome_manifest *m, uint64_t rowid)
+{
+  m->rowid = rowid;
+}
+
 void _rhizome_manifest_set_inserttime(struct __sourceloc __whence, rhizome_manifest *m, time_ms_t time)
 {
   m->inserttime = time;

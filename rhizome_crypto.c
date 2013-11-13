@@ -384,11 +384,11 @@ void rhizome_find_bundle_author_and_secret(rhizome_manifest *m)
 	rhizome_manifest_set_author(m, authorSidp);
 	m->authorship = AUTHOR_AUTHENTIC;
 	// if this bundle is already in the database, update the author.
-	if (m->inserttime)
+	if (m->rowid)
 	  sqlite_exec_void_loglevel(LOG_LEVEL_WARN,
-	      "UPDATE MANIFESTS SET author = ? WHERE id = ?;",
+	      "UPDATE MANIFESTS SET author = ? WHERE rowid = ?;",
 	      SID_T, &m->author,
-	      RHIZOME_BID_T, &m->cryptoSignPublic,
+	      INT64, m->rowid,
 	      END);
 	RETURNVOID; // bingo
       }

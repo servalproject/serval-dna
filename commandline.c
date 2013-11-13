@@ -1439,9 +1439,17 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     cli_field_name(context, ".author", ":");
     cli_put_string(context, alloca_tohex_sid_t(mout->author), "\n");
   }
+  cli_field_name(context, ".rowid", ":");
+  cli_put_long(context, m->rowid, "\n");
+  cli_field_name(context, ".inserttime", ":");
+  cli_put_long(context, m->inserttime, "\n");
   if (mout->has_bundle_key) {
     cli_field_name(context, "BK", ":");
     cli_put_string(context, alloca_tohex_rhizome_bk_t(mout->bundle_key), "\n");
+  }
+  if (mout->has_date) {
+    cli_field_name(context, "date", ":");
+    cli_put_long(context, mout->date, "\n");
   }
   cli_field_name(context, "version", ":");
   cli_put_long(context, mout->version, "\n");
@@ -1546,6 +1554,10 @@ int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_contex
   }
   cli_field_name(context, "version", ":");
   cli_put_long(context, m->version, "\n");
+  if (m->has_date) {
+    cli_field_name(context, "date", ":");
+    cli_put_long(context, m->date, "\n");
+  }
   cli_field_name(context, "filesize", ":");
   cli_put_long(context, m->filesize, "\n");
   assert(m->filesize != RHIZOME_SIZE_UNSET);
@@ -1720,6 +1732,19 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
     }
     cli_field_name(context, "manifestid", ":");
     cli_put_string(context, alloca_tohex_rhizome_bid_t(bid), "\n");
+    cli_field_name(context, "version", ":");
+    cli_put_long(context, m->version, "\n");
+    if (m->has_date) {
+      cli_field_name(context, "date", ":");
+      cli_put_long(context, m->date, "\n");
+    }
+    cli_field_name(context, "filesize", ":");
+    cli_put_long(context, m->filesize, "\n");
+    assert(m->filesize != RHIZOME_SIZE_UNSET);
+    if (m->filesize != 0) {
+      cli_field_name(context, "filehash", ":");
+      cli_put_string(context, alloca_tohex_rhizome_filehash_t(m->filehash), "\n");
+    }
     if (m->haveSecret) {
       char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
       rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
@@ -1731,19 +1756,12 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
       cli_field_name(context, ".author", ":");
       cli_put_string(context, alloca_tohex_sid_t(m->author), "\n");
     }
-    cli_field_name(context, "version", ":");
-    cli_put_long(context, m->version, "\n");
-    cli_field_name(context, "inserttime", ":");
+    cli_field_name(context, ".rowid", ":");
+    cli_put_long(context, m->rowid, "\n");
+    cli_field_name(context, ".inserttime", ":");
     cli_put_long(context, m->inserttime, "\n");
     cli_field_name(context, ".readonly", ":");
     cli_put_long(context, m->haveSecret?0:1, "\n");
-    cli_field_name(context, "filesize", ":");
-    cli_put_long(context, m->filesize, "\n");
-    assert(m->filesize != RHIZOME_SIZE_UNSET);
-    if (m->filesize != 0) {
-      cli_field_name(context, "filehash", ":");
-      cli_put_string(context, alloca_tohex_rhizome_filehash_t(m->filehash), "\n");
-    }
   }
   
   int retfile=0;
@@ -1819,25 +1837,99 @@ int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context *contex
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  const char *service, *name, *sender_sid, *recipient_sid, *offset, *limit;
+  const char *service = NULL, *name = NULL, *sender_hex = NULL, *recipient_hex = NULL, *offset_ascii = NULL, *limit_ascii = NULL;
   cli_arg(parsed, "service", &service, NULL, "");
   cli_arg(parsed, "name", &name, NULL, "");
-  cli_arg(parsed, "sender_sid", &sender_sid, cli_optional_sid, "");
-  cli_arg(parsed, "recipient_sid", &recipient_sid, cli_optional_sid, "");
-  cli_arg(parsed, "offset", &offset, cli_uint, "0");
-  cli_arg(parsed, "limit", &limit, cli_uint, "0");
+  cli_arg(parsed, "sender_sid", &sender_hex, cli_optional_sid, "");
+  cli_arg(parsed, "recipient_sid", &recipient_hex, cli_optional_sid, "");
+  cli_arg(parsed, "offset", &offset_ascii, cli_uint, "0");
+  cli_arg(parsed, "limit", &limit_ascii, cli_uint, "0");
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-    
-  int r=-1;
-  if (rhizome_opendb() != -1){
-    r=rhizome_list_manifests(context, service, name, sender_sid, recipient_sid, atoi(offset), atoi(limit), 0);
+  if (rhizome_opendb() == -1) {
+    keyring_free(keyring);
+    return -1;
   }
+  size_t rowlimit = atoi(limit_ascii);
+  size_t rowoffset = atoi(offset_ascii);
+  struct rhizome_list_cursor cursor;
+  bzero(&cursor, sizeof cursor);
+  cursor.service = service && service[0] ? service : NULL;
+  cursor.name = name && name[0] ? name : NULL;
+  if (sender_hex && sender_hex[0]) {
+    if (str_to_sid_t(&cursor.sender, sender_hex) == -1)
+      return WHYF("Invalid <sender>: %s", sender_hex);
+    cursor.is_sender_set = 1;
+  }
+  if (recipient_hex && recipient_hex[0]) {
+    if (str_to_sid_t(&cursor.recipient, recipient_hex) == -1)
+      return WHYF("Invalid <recipient: %s", recipient_hex);
+    cursor.is_recipient_set = 1;
+  }
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  if (rhizome_list_open(&retry, &cursor) == -1) {
+    keyring_free(keyring);
+    return -1;
+  }
+  const char *headers[]={
+    "_id",
+    "service",
+    "id",
+    "version",
+    "date",
+    ".inserttime",
+    ".author",
+    ".fromhere",
+    "filesize",
+    "filehash",
+    "sender",
+    "recipient",
+    "name"
+  };
+  cli_columns(context, NELS(headers), headers);
+  size_t rowcount = 0;
+  int n;
+  while ((n = rhizome_list_next(&retry, &cursor)) == 1) {
+    ++rowcount;
+    if (rowcount <= rowoffset)
+      continue;
+    if (rowlimit == 0 || rowcount <= rowoffset + rowlimit) {
+      rhizome_manifest *m = cursor.manifest;
+      assert(m->filesize != RHIZOME_SIZE_UNSET);
+      rhizome_lookup_author(m);
+      cli_put_long(context, m->rowid, ":");
+      cli_put_string(context, m->service, ":");
+      cli_put_hexvalue(context, m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, ":");
+      cli_put_long(context, m->version, ":");
+      cli_put_long(context, m->has_date ? m->date : 0, ":");
+      cli_put_long(context, m->inserttime, ":");
+      switch (m->authorship) {
+	case AUTHOR_LOCAL:
+	case AUTHOR_AUTHENTIC:
+	  cli_put_hexvalue(context, m->author.binary, sizeof m->author.binary, ":");
+	  cli_put_long(context, 1, ":");
+	  break;
+	default:
+	  cli_put_string(context, NULL, ":");
+	  cli_put_long(context, 0, ":");
+	  break;
+      }
+      cli_put_long(context, m->filesize, ":");
+      cli_put_hexvalue(context, m->filesize ? m->filehash.binary : NULL, sizeof m->filehash.binary, ":");
+      cli_put_hexvalue(context, m->has_sender ? m->sender.binary : NULL, sizeof m->sender.binary, ":");
+      cli_put_hexvalue(context, m->has_recipient ? m->recipient.binary : NULL, sizeof m->recipient.binary, ":");
+      cli_put_string(context, m->name, "\n");
+    }
+  }
+  rhizome_list_release(&cursor);
   keyring_free(keyring);
-  return r;
+  if (n == -1)
+    return -1;
+  cli_row_count(context, rowcount);
+  return 0;
 }
 
 int app_keyring_create(const struct cli_parsed *parsed, struct cli_context *context)

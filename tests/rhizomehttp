@@ -99,20 +99,104 @@ teardown_AuthBasicWrong() {
    teardown
 }
 
-doc_RhizomeList="Fetch full Rhizome bundle list in JSON format"
+doc_RhizomeList="Fetch small Rhizome bundle list in JSON format"
 setup_RhizomeList() {
-   for n in 1 2 3 4; do
-      create_file file$n ${n}k
+   setup
+   NBUNDLES=100
+   for ((n = 0; n != NBUNDLES; ++n)); do
+      create_file file$n $((1000 + $n))
       executeOk_servald rhizome add file $SIDA file$n file$n.manifest
+      extract_stdout_manifestid BID[$n]
+      extract_stdout_version VERSION[$n]
+      extract_stdout_filesize SIZE[$n]
+      extract_stdout_filehash HASH[$n]
+      extract_stdout_date DATE[$n]
+      extract_stdout_rowid ROWID[$n]
    done
 }
 test_RhizomeList() {
    executeOk curl \
          --silent --fail --show-error \
-         --output http.output \
+         --output bundlelist.json \
          --dump-header http.headers \
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   tfw_cat http.headers bundlelist.json
+   tfw_preserve bundlelist.json
+   assert [ "$(jq '.rows | length' bundlelist.json)" = $NBUNDLES ]
+   # The following jq(1) incantation transforms the JSON array in
+   # bundlelist.json from the following form (which is optimised for
+   # transmission size):
+   #     {
+   #        "header":[  "_id", "service", "id", "version","date",".inserttime",
+   #              ".author",".fromhere","filesize","filehash","sender","recipient",
+   #              "name"
+   #           ],
+   #        "token":"xxx",
+   #        "rows":[
+   #              [  rowid1, "service1", bundleid1, version1, .... ],
+   #              [  rowid2, "service2", bundleid2, version2, .... ],
+   #                 ...
+   #              [  rowidN, "serviceN", bundleidN, versionN, .... ]
+   #           ]
+   #     }
+   #
+   # into an array of JSON objects:
+   #     {
+   #        "token":"xxx",
+   #        "bundles":[
+   #           {
+   #              "_id": rowid1,
+   #              "service": service1,
+   #              "id": bundleid1,
+   #              "version": version1,
+   #              ...
+   #           },
+   #           {
+   #              "_id": rowid2,
+   #              "service": service2,
+   #              "id": bundleid2,
+   #              "version": version2,
+   #              ...
+   #           },
+   #           ...
+   #           {
+   #              "_id": rowidN,
+   #              "service": serviceN,
+   #              "id": bundleidN,
+   #              "version": versionN,
+   #              ...
+   #           }
+   #        ]
+   #     }
+   # which is much easier to test with jq(1) expressions.
+   jq \
+      '[
+         .header as $h |
+         .rows[] as $d |
+         [ $d | keys | .[] as $i | {key:$h[$i], value:$d[$i]} ] |
+         from_entries
+      ] as $bundles |
+      .token as $token |
+      { token:$token, bundles:$bundles }' \
+      bundlelist.json >array_of_objects.json
+   tfw_preserve array_of_objects.json
+   for ((n = 0; n != NBUNDLES; ++n)); do
+      jqscript=".bundles | contains([
+                  {  name:\"file$n\",
+                     service:\"file\",
+                     id:\"${BID[$n]}\",
+                     version:${VERSION[$n]},
+                     filesize:${SIZE[$n]},
+                     filehash:\"${HASH[$n]}\",
+                     date:${DATE[$n]},
+                     _id:${ROWID[$n]},
+                     \".fromhere\":1,
+                     \".author\":\"$SIDA\",
+                  }
+               ])"
+      assert [ "$(jq "$jqscript" array_of_objects.json)" = true ]
+   done
 }
 
 doc_RhizomeListSince="Fetch Rhizome bundle list since token in JSON format"

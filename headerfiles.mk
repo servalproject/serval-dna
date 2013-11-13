@@ -11,6 +11,7 @@ HDRS=	fifo.h \
 	rotbuf.h \
 	mem.h \
 	os.h \
+	uuid.h \
 	strbuf.h \
 	strbuf_helpers.h \
 	sha2.h \

@@ -36,6 +36,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/uio.h>
 #include "http_server.h"
 #include "strbuf_helpers.h"
+#include "str.h"
 
 static inline strbuf _toprint(strbuf sb, char c)
 {
@@ -411,6 +412,57 @@ strbuf strbuf_append_quoted_string(strbuf sb, const char *str)
     strbuf_putc(sb, *str);
   }
   strbuf_putc(sb, '"');
+  return sb;
+}
+
+strbuf strbuf_json_null(strbuf sb)
+{
+  strbuf_puts(sb, "null");
+  return sb;
+}
+
+strbuf strbuf_json_string(strbuf sb, const char *str)
+{
+  if (str) {
+    strbuf_putc(sb, '"');
+    for (; *str; ++str) {
+      if (*str == '"' || *str == '\\') {
+	strbuf_putc(sb, '\\');
+	strbuf_putc(sb, *str);
+      }
+      else if (*str == '\b')
+	strbuf_puts(sb, "\\b");
+      else if (*str == '\f')
+	strbuf_puts(sb, "\\f");
+      else if (*str == '\n')
+	strbuf_puts(sb, "\\n");
+      else if (*str == '\r')
+	strbuf_puts(sb, "\\r");
+      else if (*str == '\t')
+	strbuf_puts(sb, "\\t");
+      else if (iscntrl(*str))
+	strbuf_sprintf(sb, "\\u%04X", (unsigned char) *str);
+      else
+	strbuf_putc(sb, *str);
+    }
+    strbuf_putc(sb, '"');
+  } else
+    strbuf_json_null(sb);
+  return sb;
+}
+
+strbuf strbuf_json_hex(strbuf sb, const unsigned char *buf, size_t len)
+{
+  if (buf) {
+    strbuf_putc(sb, '"');
+    size_t i;
+    for (i = 0; i != len; ++i) {
+      strbuf_putc(sb, hexdigit_upper[*buf >> 4]);
+      strbuf_putc(sb, hexdigit_upper[*buf++ & 0xf]);
+    }
+    strbuf_putc(sb, '"');
+  } else
+    strbuf_json_null(sb);
   return sb;
 }
 

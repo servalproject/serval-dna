@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sqlite3.h>
 #include <limits.h>
 #include "sha2.h"
+#include "uuid.h"
 #include "str.h"
 #include "strbuf.h"
 #include "http_server.h"
@@ -291,6 +292,12 @@ typedef struct rhizome_manifest
   sid_t sender;
   sid_t recipient;
 
+  /* Local data, not encapsulated in the bundle.  The ROWID of the SQLite
+   * MANIFESTS table row in which this manifest is stored.  Zero if the
+   * manifest has not been stored yet.
+   */
+  uint64_t rowid;
+
   /* Local data, not encapsulated in the bundle.  The system time of the most
    * recent INSERT or UPDATE of the manifest into the store.  Zero if the manifest
    * has not been stored yet.
@@ -342,6 +349,7 @@ typedef struct rhizome_manifest
 #define rhizome_manifest_set_recipient(m,v)     _rhizome_manifest_set_recipient(__WHENCE__,(m),(v))
 #define rhizome_manifest_del_recipient(m)       _rhizome_manifest_del_recipient(__WHENCE__,(m))
 #define rhizome_manifest_set_crypt(m,v)         _rhizome_manifest_set_crypt(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_rowid(m,v)         _rhizome_manifest_set_rowid(__WHENCE__,(m),(v))
 #define rhizome_manifest_set_inserttime(m,v)    _rhizome_manifest_set_inserttime(__WHENCE__,(m),(v))
 #define rhizome_manifest_set_author(m,v)        _rhizome_manifest_set_author(__WHENCE__,(m),(v))
 #define rhizome_manifest_del_author(m)          _rhizome_manifest_del_author(__WHENCE__,(m))
@@ -364,6 +372,7 @@ void _rhizome_manifest_del_sender(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_recipient(struct __sourceloc, rhizome_manifest *, const sid_t *);
 void _rhizome_manifest_del_recipient(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_crypt(struct __sourceloc, rhizome_manifest *, enum rhizome_manifest_crypt);
+void _rhizome_manifest_set_rowid(struct __sourceloc, rhizome_manifest *, uint64_t);
 void _rhizome_manifest_set_inserttime(struct __sourceloc, rhizome_manifest *, time_ms_t);
 void _rhizome_manifest_set_author(struct __sourceloc, rhizome_manifest *, const sid_t *);
 void _rhizome_manifest_del_author(struct __sourceloc, rhizome_manifest *);
@@ -397,6 +406,7 @@ int create_rhizome_datastore_dir();
 #define FORM_RHIZOME_IMPORT_PATH(buf,fmt,...) (form_rhizome_import_path((buf), sizeof(buf), (fmt), ##__VA_ARGS__))
 
 extern sqlite3 *rhizome_db;
+uuid_t rhizome_db_uuid;
 
 int rhizome_opendb();
 int rhizome_close_db();
@@ -509,6 +519,7 @@ enum sqlbind_type {
   TOHEX,              // const unsigned char *binary, unsigned bytes
   TEXT_TOUPPER,       // const char *text,
   TEXT_LEN_TOUPPER,   // const char *text, unsigned bytes
+  UUID_T,	      // const uuid_t *uuidp
   NUL = 1 << 15,      // NUL (no arg) ; NUL|INT, ...
   INDEX = 0xfade0000, // INDEX|INT, int index, ...
   NAMED = 0xdead0000  // NAMED|INT, const char *label, ...
@@ -564,9 +575,6 @@ int64_t rhizome_bar_version(const unsigned char *bar);
 uint64_t rhizome_bar_bidprefix_ll(unsigned char *bar);
 int rhizome_is_bar_interesting(unsigned char *bar);
 int rhizome_is_manifest_interesting(rhizome_manifest *m);
-int rhizome_list_manifests(struct cli_context *context, const char *service, const char *name,
-			   const char *sender_sid, const char *recipient_sid,
-			   size_t rowlimit, size_t rowoffset, char count_rows);
 int rhizome_retrieve_manifest(const rhizome_bid_t *bid, rhizome_manifest *m);
 int rhizome_retrieve_manifest_by_prefix(const unsigned char *prefix, unsigned prefix_len, rhizome_manifest *m);
 int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m);
@@ -612,6 +620,30 @@ int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
 int rhizome_verify_bundle_privatekey(const unsigned char *sk, const unsigned char *pk);
 int rhizome_queue_ignore_manifest(unsigned char *bid_prefix, int prefix_len, int timeout);
 int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len);
+
+/* Rhizome list cursor for iterating over all or a subset of manifests in the store.
+ */
+struct rhizome_list_cursor {
+  // Query parameters that narrow the set of listed bundles.
+  const char *service;
+  const char *name;
+  bool_t is_sender_set;
+  bool_t is_recipient_set;
+  sid_t sender;
+  sid_t recipient;
+  uint64_t rowid_since;
+  // Set by calling the next() function.
+  rhizome_manifest *manifest;
+  // Private state.
+  sqlite3_stmt *_statement;
+  uint64_t _rowid_current;
+  uint64_t _rowid_last; // for re-opening query
+};
+
+int rhizome_list_open(sqlite_retry_state *, struct rhizome_list_cursor *);
+int rhizome_list_next(sqlite_retry_state *, struct rhizome_list_cursor *);
+void rhizome_list_commit(struct rhizome_list_cursor *);
+void rhizome_list_release(struct rhizome_list_cursor *);
 
 /* one manifest is required per candidate, plus a few spare.
    so MAX_RHIZOME_MANIFESTS must be > MAX_CANDIDATES. 
@@ -687,35 +719,38 @@ typedef struct rhizome_http_request
 {
   struct http_request http; // MUST BE FIRST ELEMENT
 
-  /* Identify request from others being run.
-     Monotonic counter feeds it.  Only used for debugging when we write
-     post-<uuid>.log files for multi-part form requests. */
+  /* Identify request from others being run.  Monotonic counter feeds it.  Only
+   * used for debugging when we write post-<uuid>.log files for multi-part form
+   * requests.
+   */
   unsigned int uuid;
 
-  struct rhizome_read read_state;
-  
-  /* File currently being written to while decoding POST multipart form */
+  /* For receiving a POST multipart form:
+   */
+  // Which part is currently being received
   enum rhizome_direct_mime_part { NONE = 0, MANIFEST, DATA } current_part;
+  // Temporary file currently current part is being written to
   int part_fd;
-  /* Which parts have been received in POST multipart form */
+  // Which parts have already been received
   bool_t received_manifest;
   bool_t received_data;
-  /* Name of data file supplied */
+  // Name of data file supplied in part's Content-Disposition header, filename
+  // parameter (if any)
   char data_file_name[MIME_FILENAME_MAXLEN + 1];
 
-  /* The source specification data which are used in different ways by different 
-   request types */
-  char source[1024];
-  int64_t source_index;
-  int64_t source_count;
-  int source_record_size;
-  unsigned int source_flags;
-  
-  const char *sql_table;
-  const char *sql_row;
-  int64_t rowid;
-  /* source_index used for offset in blob */
-  int64_t blob_end; 
+  union {
+    /* For responses that send part or all of a payload.
+    */
+    struct rhizome_read read_state;
+
+    /* For responses that list manifests.
+    */
+    struct {
+        enum { LIST_HEADER = 0, LIST_TOKEN, LIST_ROWS, LIST_DONE } phase;
+        size_t rowcount;
+        struct rhizome_list_cursor cursor;
+    } list;
+  } u;
   
 } rhizome_http_request;
 
