@@ -4,6 +4,7 @@
 #include "overlay_packet.h"
 #include "str.h"
 #include "conf.h"
+#include "keyring.h"
 #include <assert.h>
 
 /*

@@ -16,6 +16,7 @@
 #include "str.h"
 #include "overlay_address.h"
 #include "conf.h"
+#include "keyring.h"
 
 struct subscriber *directory_service;
 

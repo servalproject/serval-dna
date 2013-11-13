@@ -45,6 +45,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "cli.h"
 #include "overlay_address.h"
 #include "overlay_buffer.h"
+#include "keyring.h"
 
 extern struct cli_schema command_line_options[];
 
@@ -1942,7 +1943,48 @@ int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *contex
     }
   keyring_free(k);
   return 0;
- }
+}
+
+static void cli_output_identity(struct cli_context *context, const keyring_identity *id)
+{
+  int i;
+  for (i=0;i<id->keypair_count;i++){
+    keypair *kp=id->keypairs[i];
+    switch(kp->type){
+      case KEYTYPE_CRYPTOBOX:
+	cli_field_name(context, "sid", ":");
+	cli_put_string(context, alloca_tohex(kp->public_key, kp->public_key_len), "\n");
+	break;
+      case KEYTYPE_DID:
+	{
+	  char *str = (char*)kp->private_key;
+	  int l = strlen(str);
+	  if (l){
+	    cli_field_name(context, "did", ":");
+	    cli_put_string(context, str, "\n");
+	  }
+	  str = (char*)kp->public_key;
+	  l=strlen(str);
+	  if (l){
+	    cli_field_name(context, "name", ":");
+	    cli_put_string(context, str, "\n");
+	  }
+	}
+	break;
+      case KEYTYPE_PUBLIC_TAG:
+	{
+	  const char *name;
+	  const unsigned char *value;
+	  size_t length;
+	  if (keyring_unpack_tag(kp->public_key, kp->public_key_len, &name, &value, &length)==0){
+	    cli_field_name(context, name, ":");
+	    cli_put_string(context, alloca_toprint_quoted(-1, value, length, NULL), "\n");
+	  }
+	}
+	break;
+    }
+  }
+}
 
 int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *context)
 {
@@ -1971,16 +2013,7 @@ int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *context
     keyring_free(k);
     return WHY("Could not write new identity");
   }
-  cli_field_name(context, "sid", ":");
-  cli_put_string(context, alloca_tohex_sid_t(*sidp), "\n");
-  if (did) {
-    cli_field_name(context, "did", ":");
-    cli_put_string(context, did, "\n");
-  }
-  if (name) {
-    cli_field_name(context, "name", ":");
-    cli_put_string(context, name, "\n");
-  }
+  cli_output_identity(context, id);
   keyring_free(k);
   return 0;
 }
@@ -1990,14 +2023,14 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   const char *sidhex, *did, *name;
-  cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "");
-  cli_arg(parsed, "did", &did, cli_optional_did, "");
-  cli_arg(parsed, "name", &name, NULL, "");
-
-  if (strlen(name)>63) return WHY("Name too long (31 char max)");
-
-  if (!(keyring = keyring_open_instance_cli(parsed)))
+  
+  if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1 ||
+      cli_arg(parsed, "did", &did, cli_optional_did, "") == -1 ||
+      cli_arg(parsed, "name", &name, NULL, "") == -1)
     return -1;
+
+  if (strlen(name)>63)
+    return WHY("Name too long (31 char max)");
 
   sid_t sid;
   if (str_to_sid_t(&sid, sidhex) == -1){
@@ -2005,33 +2038,89 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
     return WHY("str_to_sid_t() failed");
   }
 
+  if (!(keyring = keyring_open_instance_cli(parsed)))
+    return -1;
+  
   int cn=0,in=0,kp=0;
-  int r=keyring_find_sid(keyring, &cn, &in, &kp, &sid);
-  if (!r) return WHY("No matching SID");
-  if (keyring_set_did(keyring->contexts[cn]->identities[in], did, name))
-    return WHY("Could not set DID");
-  if (keyring_commit(keyring))
-    return WHY("Could not write updated keyring record");
+  int r=0;
+  if (!keyring_find_sid(keyring, &cn, &in, &kp, &sid))
+    r=WHY("No matching SID");
+  else{
+    if (keyring_set_did(keyring->contexts[cn]->identities[in], did, name))
+      r=WHY("Could not set DID");
+    else{
+      if (keyring_commit(keyring))
+	r=WHY("Could not write updated keyring record");
+      else{
+	cli_output_identity(context, keyring->contexts[cn]->identities[in]);
+      }
+    }
+  }
 
-  cli_field_name(context, "sid", ":");
-  cli_put_string(context, alloca_tohex_sid_t(sid), "\n");
-  if (did) {
-    cli_field_name(context, "did", ":");
-    cli_put_string(context, did, "\n");
-  }
-  if (name) {
-    cli_field_name(context, "name", ":");
-    cli_put_string(context, name, "\n");
-  }
   keyring_free(keyring);
-  return 0;
+  return r;
+}
+
+static int app_keyring_set_tag(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  const char *sidhex, *tag, *value;
+  if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1 ||
+      cli_arg(parsed, "tag", &tag, NULL, "") == -1 ||
+      cli_arg(parsed, "value", &value, NULL, "") == -1 )
+    return -1;
+  
+  if (!(keyring = keyring_open_instance_cli(parsed)))
+    return -1;
+
+  sid_t sid;
+  if (str_to_sid_t(&sid, sidhex) == -1)
+    return WHY("str_to_sid_t() failed");
+
+  int cn=0,in=0,kp=0;
+  int r=0;
+  if (!keyring_find_sid(keyring, &cn, &in, &kp, &sid))
+    r=WHY("No matching SID");
+  else{
+    int length = strlen(value);
+    if (keyring_set_public_tag(keyring->contexts[cn]->identities[in], tag, (const unsigned char*)value, length))
+      r=WHY("Could not set tag value");
+    else{
+      if (keyring_commit(keyring))
+	r=WHY("Could not write updated keyring record");
+      else{
+	cli_output_identity(context, keyring->contexts[cn]->identities[in]);
+      }
+    }
+  }
+  
+  keyring_free(keyring);
+  return r;
+}
+
+ssize_t mdp_poll_recv(int mdp_sock, time_ms_t timeout, struct mdp_header *rev_header, unsigned char *payload, size_t buffer_size)
+{
+  time_ms_t now = gettime_ms();
+  if (now>timeout)
+    return -2;
+  int p=mdp_poll(mdp_sock, timeout - now);
+  if (p<0)
+    return WHY_perror("mdp_poll");
+  if (p==0)
+    return -2;
+  ssize_t len = mdp_recv(mdp_sock, rev_header, payload, buffer_size);
+  if (len<0)
+    return WHY_perror("mdp_recv");
+  if (rev_header->flags & MDP_FLAG_ERROR)
+    return WHY("Operation failed, check the log for more information");
+  return len;
 }
 
 static int handle_pins(const struct cli_parsed *parsed, struct cli_context *context, int revoke)
 {
   const char *pin, *sid_hex;
-  cli_arg(parsed, "entry-pin", &pin, NULL, "");
-  cli_arg(parsed, "sid", &sid_hex, str_is_subscriber_id, "");
+  if (cli_arg(parsed, "entry-pin", &pin, NULL, "") == -1 ||
+      cli_arg(parsed, "sid", &sid_hex, str_is_subscriber_id, "") == -1)
+    return -1;
 
   int ret=1;
   struct mdp_header header={
@@ -2040,8 +2129,8 @@ static int handle_pins(const struct cli_parsed *parsed, struct cli_context *cont
   int mdp_sock = mdp_socket();
   set_nonblock(mdp_sock);
   
-  unsigned char payload[1200];
-  struct mdp_identity_request *request = (struct mdp_identity_request *)payload;
+  unsigned char request_payload[1200];
+  struct mdp_identity_request *request = (struct mdp_identity_request *)request_payload;
   
   if (revoke){
     request->action=ACTION_LOCK;
@@ -2053,50 +2142,39 @@ static int handle_pins(const struct cli_parsed *parsed, struct cli_context *cont
   if (pin && *pin){
     request->type=TYPE_PIN;
     int pin_len = strlen(pin)+1;
-    if (pin_len+len > sizeof(payload))
+    if (pin_len+len > sizeof(request_payload))
       return WHY("Supplied pin is too long");
-    bcopy(pin, &payload[len], pin_len);
+    bcopy(pin, &request_payload[len], pin_len);
     len+=pin_len;
   }else if(sid_hex && *sid_hex){
     request->type=TYPE_SID;
     sid_t sid;
     if (str_to_sid_t(&sid, sid_hex) == -1)
       return WHY("str_to_sid_t() failed");
-    bcopy(sid.binary, &payload[len], sizeof(sid));
+    bcopy(sid.binary, &request_payload[len], sizeof(sid));
     len+=sizeof(sid);
   }
   
-  if (!mdp_send(mdp_sock, &header, payload, len)){
+  if (!mdp_send(mdp_sock, &header, request_payload, len)){
     WHY_perror("mdp_send");
     goto end;
   }
   
   time_ms_t timeout=gettime_ms()+500;
   while(1){
-    time_ms_t now = gettime_ms();
-    if (now>timeout)
+    struct mdp_header rev_header;
+    unsigned char response_payload[1600];
+    ssize_t len = mdp_poll_recv(mdp_sock, timeout, &rev_header, response_payload, sizeof(response_payload));
+    if (len==-1)
       break;
-    int p=mdp_poll(mdp_sock, timeout - now);
-    if (p<0){
-      WHY_perror("mdp_poll");
-      break;
-    }
-    if (p==0){
+    if (len==-2){
       WHYF("Timeout while waiting for response");
       break;
     }
-    struct mdp_header rev_header;
-    unsigned char payload[1600];
-    ssize_t len = mdp_recv(mdp_sock, &rev_header, payload, sizeof(payload));
-    if (len<0){
-      WHY_perror("mdp_recv");
-      continue;
-    }
-    if (rev_header.flags & MDP_FLAG_OK)
+    if (rev_header.flags & MDP_FLAG_OK){
       ret=0;
-    if (rev_header.flags & MDP_FLAG_ERROR)
-      WHY("Operation failed, check the log for more information");
-    break;
+      break;
+    }
   }
 end:
   mdp_close(mdp_sock);
@@ -2111,6 +2189,68 @@ int app_revoke_pin(const struct cli_parsed *parsed, struct cli_context *context)
 int app_id_pin(const struct cli_parsed *parsed, struct cli_context *context)
 {
   return handle_pins(parsed, context, 0);
+}
+
+int app_id_list(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  const char *tag, *value;
+  if (cli_arg(parsed, "tag", &tag, NULL, "") == -1 ||
+      cli_arg(parsed, "value", &value, NULL, "") == -1 )
+    return -1;
+  
+  int ret=-1;
+  struct mdp_header header={
+    .remote.port=MDP_SEARCH_IDS,
+  };
+  int mdp_sock = mdp_socket();
+  set_nonblock(mdp_sock);
+  
+  unsigned char request_payload[1200];
+  size_t len=0;
+  
+  if (tag && *tag){
+    size_t value_len=0;
+    if (value && *value)
+      value_len = strlen(value);
+    len = sizeof(request_payload);
+    if (keyring_pack_tag(request_payload, &len, tag, (unsigned char*)value, value_len))
+      goto end;
+  }
+  
+  if (!mdp_send(mdp_sock, &header, request_payload, len)){
+    WHY_perror("mdp_send");
+    goto end;
+  }
+  
+  time_ms_t timeout=gettime_ms()+500;
+  while(1){
+    struct mdp_header rev_header;
+    unsigned char response_payload[1600];
+    ssize_t len = mdp_poll_recv(mdp_sock, timeout, &rev_header, response_payload, sizeof(response_payload));
+    DEBUGF("mdp_poll_recv = %zd", len);
+    if (len==-1)
+      break;
+    if (len==-2){
+      WHYF("Timeout while waiting for response");
+      break;
+    }
+    
+    if (len>=SID_SIZE){
+      sid_t *id = (sid_t*)response_payload;
+      cli_field_name(context, "sid", ":");
+      cli_put_hexvalue(context, id->binary, sizeof(sid_t), "\n");
+      // TODO receive and decode other details about this identity
+    }
+    
+    if (rev_header.flags & MDP_FLAG_OK){
+      ret=0;
+      break;
+    }
+  }
+  
+end:
+  mdp_close(mdp_sock);
+  return ret;
 }
 
 int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
@@ -2666,6 +2806,10 @@ struct cli_schema command_line_options[]={
    "Create a new identity in the keyring protected by the supplied PIN (empty PIN if not given)"},
   {app_keyring_set_did,{"keyring", "set","did" KEYRING_PIN_OPTIONS,"<sid>","<did>","<name>",NULL}, 0,
    "Set the DID for the specified SID (must supply PIN to unlock the SID record in the keyring)"},
+  {app_keyring_set_tag,{"keyring", "set","tag" KEYRING_PIN_OPTIONS,"<sid>","<tag>","<value>",NULL}, 0,
+   "Set a named tag for the specified SID (must supply PIN to unlock the SID record in the keyring)"},
+  {app_id_list, {"id", "list", "[<tag>]", "[<value>]", NULL}, 0, 
+   "Search unlocked identities based on an optional tag and value"},
   {app_id_self,{"id","self|peers|allpeers",NULL}, 0,
    "Return identity(s) as URIs of own node, or of known routable peers, or all known peers"},
   {app_id_pin, {"id", "enter", "pin", "<entry-pin>", NULL}, 0,

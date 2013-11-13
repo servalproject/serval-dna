@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_packet.h"
 #include "mdp_client.h"
 #include "crypto.h"
+#include "keyring.h"
 
 static void overlay_mdp_poll(struct sched_ent *alarm);
 static void mdp_poll2(struct sched_ent *alarm);
@@ -963,7 +964,7 @@ static int mdp_reply2(const struct mdp_client *client, const struct mdp_header *
 #define mdp_reply_ok(A,B)  mdp_reply2(A,B,MDP_FLAG_OK,NULL,0)
 
 static int mdp_process_identity_request(struct mdp_client *client, struct mdp_header *header, 
-  const unsigned char *payload, int payload_len)
+  const unsigned char *payload, size_t payload_len)
 {
   if (payload_len<sizeof(struct mdp_identity_request)){
     mdp_reply_error(client, header);
@@ -979,7 +980,7 @@ static int mdp_process_identity_request(struct mdp_client *client, struct mdp_he
 	case TYPE_PIN:
 	  {
 	    const char *pin = (char *)payload;
-	    int ofs=0;
+	    size_t ofs=0;
 	    while(ofs < payload_len){
 	      if (!payload[ofs++]){
 		int cn, in;
@@ -1018,7 +1019,7 @@ static int mdp_process_identity_request(struct mdp_client *client, struct mdp_he
 	}
 	int unlock_count=0;
 	const char *pin = (char *)payload;
-	int ofs=0;
+	size_t ofs=0;
 	while(ofs < payload_len){
 	  if (!payload[ofs++]){
 	    unlock_count += keyring_enter_pin(keyring, pin);
@@ -1030,6 +1031,56 @@ static int mdp_process_identity_request(struct mdp_client *client, struct mdp_he
     default:
       mdp_reply_error(client, header);
       return WHY("Unknown request action");
+  }
+  mdp_reply_ok(client, header);
+  return 0;
+}
+
+// return one response per matching identity
+static int mdp_search_identities(struct mdp_client *client, struct mdp_header *header, 
+  const unsigned char *payload, size_t payload_len)
+{
+  int cn=0, in=0, kp=0;
+  const char *tag=NULL;
+  const unsigned char *value=NULL;
+  size_t value_len=0;
+  
+  if (payload_len){
+    if (keyring_unpack_tag(payload, payload_len, &tag, &value, &value_len)){
+      mdp_reply_error(client, header);
+      return -1;
+    }
+  }
+  
+  while(1){
+    if (value_len){
+      if (config.debug.mdprequests)
+	DEBUGF("Looking for next %s tag & value", tag);
+      if (!keyring_find_public_tag_value(keyring, &cn, &in, &kp, tag, value, value_len))
+	break;
+    }else if(tag){
+      if (config.debug.mdprequests)
+	DEBUGF("Looking for next %s tag", tag);
+      if (!keyring_find_public_tag(keyring, &cn, &in, &kp, tag, NULL, NULL))
+	break;
+    }else{
+      if (config.debug.mdprequests)
+	DEBUGF("Looking for next identity");
+      if (!keyring_next_identity(keyring, &cn, &in, &kp))
+	break;
+    }
+    
+    keyring_identity *id = keyring->contexts[cn]->identities[in];
+    unsigned char reply_payload[1200];
+    int ofs=0;
+    
+    bcopy(id->subscriber->sid.binary, &reply_payload[ofs], sizeof(id->subscriber->sid));
+    ofs+=sizeof(id->subscriber->sid);
+    
+    // TODO return other details of this identity
+    
+    mdp_reply2(client, header, 0, reply_payload, ofs);
+    kp++;
   }
   mdp_reply_ok(client, header);
   return 0;
@@ -1048,7 +1099,7 @@ static void mdp_poll2(struct sched_ent *alarm)
     
     ssize_t len = recvwithttl(alarm->poll.fd, buffer, sizeof(buffer), &ttl, (struct sockaddr *)&addr, &client.addrlen);
     
-    if (len<=sizeof(struct mdp_header)){
+    if (len<sizeof(struct mdp_header)){
       WHYF("Expected length %d, got %d from %s", (int)sizeof(struct mdp_header), (int)len, alloca_sockaddr(client.addr, client.addrlen));
       return;
     }
@@ -1056,15 +1107,22 @@ static void mdp_poll2(struct sched_ent *alarm)
     struct mdp_header *header = (struct mdp_header *)buffer;
     
     unsigned char *payload = &buffer[sizeof(struct mdp_header)];
-    int payload_len = len - sizeof(struct mdp_header);
+    size_t payload_len = len - sizeof(struct mdp_header);
     
     if (is_sid_t_any(header->remote.sid)){
       // process local commands
       switch(header->remote.port){
+	// lock and unlock identities
 	case MDP_IDENTITY:
 	  if (config.debug.mdprequests)
 	    DEBUGF("Processing MDP_IDENTITY from %s", alloca_sockaddr(client.addr, client.addrlen));
 	  mdp_process_identity_request(&client, header, payload, payload_len);
+	  break;
+	// seach unlocked identities
+	case MDP_SEARCH_IDS:
+	  if (config.debug.mdprequests)
+	    DEBUGF("Processing MDP_SEARCH_IDS from %s", alloca_sockaddr(client.addr, client.addrlen));
+	  mdp_search_identities(&client, header, payload, payload_len);
 	  break;
 	default:
 	  mdp_reply_error(&client, header);
