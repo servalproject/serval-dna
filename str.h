@@ -17,8 +17,8 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-#ifndef __STR_H__
-#define __STR_H__
+#ifndef __SERVAL_DNA_STR_H__
+#define __SERVAL_DNA_STR_H__
 
 #include <string.h>
 #include <stdint.h>
@@ -26,20 +26,34 @@
 #include <ctype.h>
 #include <alloca.h>
 
-#ifndef __STR_INLINE
+#ifndef __SERVAL_DNA_STR_INLINE
 # if __GNUC__ && !__GNUC_STDC_INLINE__
-#  define __STR_INLINE extern inline
+#  define __SERVAL_DNA_STR_INLINE extern inline
 # else
-#  define __STR_INLINE inline
+#  define __SERVAL_DNA_STR_INLINE inline
 # endif
 #endif
+
+/* -------------------- Useful functions and macros -------------------- */
+
+#define alloca_strdup(str)  strcpy(alloca(strlen(str) + 1), (str))
+
+int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value);
+
+char *str_toupper_inplace(char *s);
+char *str_tolower_inplace(char *s);
+
+/* -------------------- Hexadecimal strings -------------------- */
+
+extern const char hexdigit_upper[16];
+extern const char hexdigit_lower[16];
 
 /* Return true iff 'len' bytes starting at 'text' are hex digits, upper or lower case.
  * Does not check the following byte.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-__STR_INLINE int is_xsubstring(const char *text, int len)
+__SERVAL_DNA_STR_INLINE int is_xsubstring(const char *text, int len)
 {
   while (len--)
     if (!isxdigit(*text++))
@@ -52,7 +66,7 @@ __STR_INLINE int is_xsubstring(const char *text, int len)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-__STR_INLINE int is_xstring(const char *text, int len)
+__SERVAL_DNA_STR_INLINE int is_xstring(const char *text, int len)
 {
   while (len--)
     if (!isxdigit(*text++))
@@ -60,44 +74,112 @@ __STR_INLINE int is_xstring(const char *text, int len)
   return *text == '\0';
 }
 
-extern const char hexdigit_upper[16];
-extern const char hexdigit_lower[16];
+/* Converts a given binary blob to uppercase ASCII hexadecimal.
+ */
 char *tohex(char *dstHex, size_t dstStrlen, const unsigned char *srcBinary);
-size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
-int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
-size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *src, const char **afterp);
-
 #define alloca_tohex(buf,bytes)  tohex((char *)alloca((bytes)*2+1), (bytes) * 2, (buf))
 
-#define alloca_strdup(str)  strcpy(alloca(strlen(str) + 1), (str))
+/* Convert nbinary*2 ASCII hex characters [0-9A-Fa-f] to nbinary bytes of data.  Can be used to
+ * perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);  Returns -1 if a non-hex-digit
+ * character is encountered, otherwise returns the number of binary bytes produced (= nbinary).
+ * Does not insist that the last hex digit is followed by a NUL or any particular character.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
 
-__STR_INLINE int hexvalue(char c)
-{
-  switch (c) {
-  case '0': return 0;
-  case '1': return 1;
-  case '2': return 2;
-  case '3': return 3;
-  case '4': return 4;
-  case '5': return 5;
-  case '6': return 6;
-  case '7': return 7;
-  case '8': return 8;
-  case '9': return 9;
-  case 'a': case 'A': return 10;
-  case 'b': case 'B': return 11;
-  case 'c': case 'C': return 12;
-  case 'd': case 'D': return 13;
-  case 'e': case 'E': return 14;
-  case 'f': case 'F': return 15;
-  }
-  return -1;
+/* Convert nbinary*2 ASCII hex characters [0-9A-Fa-f] followed by a NUL '\0' character to nbinary
+ * bytes of data.  Can be used to perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);
+ * Returns -1 if a non-hex-digit character is encountered or the character immediately following the
+ * last hex digit is not a NUL, otherwise returns zero.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
+
+/* Decode pairs of ASCII hex characters [0-9A-Fa-f] into binary data with an optional upper limit on
+ * the number of binary bytes produced (destination buffer size).  Returns the number of binary
+ * bytes decoded.  If 'afterHex' is not NULL, then sets *afterHex to point to the source character
+ * immediately following the last hex digit consumed.
+ *
+ * Can be used to perform a conversion in-place, eg:
+ *
+ *    strn_fromhex((unsigned char *)buf, n, (const char *)buf, NULL);
+ *
+ * Can also be used to count hex digits without converting, eg:
+ *
+ *    strn_fromhex(NULL, -1, buf, NULL);
+ *
+ * The fromhex() and fromhexstr() functions are both implemented using strn_fromhex().
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *src, const char **afterp);
+
+/* -------------------- Character classes -------------------- */
+
+#define _SERVAL_CTYPE_0_BASE64_MASK 0x3f
+#define _SERVAL_CTYPE_0_BASE64 (1 << 6)
+#define _SERVAL_CTYPE_0_MULTIPART_BOUNDARY (1 << 7)
+
+#define _SERVAL_CTYPE_1_HEX_MASK 0xf
+#define _SERVAL_CTYPE_1_HTTP_SEPARATOR (1 << 4)
+
+extern uint8_t _serval_ctype_0[UINT8_MAX];
+extern uint8_t _serval_ctype_1[UINT8_MAX];
+
+__SERVAL_DNA_STR_INLINE int is_http_char(char c) {
+  return isascii(c);
 }
 
-int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value);
+__SERVAL_DNA_STR_INLINE int is_http_ctl(char c) {
+  return iscntrl(c);
+}
 
-char *str_toupper_inplace(char *s);
-char *str_tolower_inplace(char *s);
+__SERVAL_DNA_STR_INLINE int is_base64_digit(char c) {
+  return (_serval_ctype_0[(unsigned char) c] & _SERVAL_CTYPE_0_BASE64) != 0;
+}
+
+__SERVAL_DNA_STR_INLINE int is_base64_pad(char c) {
+  return c == '=';
+}
+
+__SERVAL_DNA_STR_INLINE uint8_t base64_digit(char c) {
+  return _serval_ctype_0[(unsigned char) c] & _SERVAL_CTYPE_0_BASE64_MASK;
+}
+
+__SERVAL_DNA_STR_INLINE int is_multipart_boundary(char c) {
+  return (_serval_ctype_0[(unsigned char) c] & _SERVAL_CTYPE_0_MULTIPART_BOUNDARY) != 0;
+}
+
+__SERVAL_DNA_STR_INLINE int is_valid_multipart_boundary_string(const char *s)
+{
+  if (s[0] == '\0')
+    return 0;
+  for (; *s; ++s)
+    if (!is_multipart_boundary(*s))
+      return 0;
+  return s[-1] != ' ';
+}
+
+__SERVAL_DNA_STR_INLINE int is_http_separator(char c) {
+  return (_serval_ctype_1[(unsigned char) c] & _SERVAL_CTYPE_1_HTTP_SEPARATOR) != 0;
+}
+
+__SERVAL_DNA_STR_INLINE int is_http_token(char c) {
+  return is_http_char(c) && !is_http_ctl(c) && !is_http_separator(c);
+}
+
+/* Convert the given ASCII hex digit character into its radix value, eg, '0' ->
+ * 0, 'b' -> 11.  If the argument is not an ASCII hex digit, returns -1.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+__SERVAL_DNA_STR_INLINE int hexvalue(char c) {
+  return isxdigit(c) ? _serval_ctype_1[(unsigned char) c] & _SERVAL_CTYPE_1_HEX_MASK : -1;
+}
+
+/* -------------------- Printable string representation -------------------- */
 
 char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes, const char quotes[2]);
 char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2]);
@@ -110,6 +192,8 @@ size_t strn_fromprint(unsigned char *dst, size_t dstsiz, const char *src, size_t
 
 #define alloca_str_toprint_quoted(str, quotes)  toprint_str((char *)alloca(toprint_str_len((str), (quotes)) + 1), -1, (str), (quotes))
 #define alloca_str_toprint(str)  alloca_str_toprint_quoted(str, "``")
+
+/* -------------------- Useful string primitives -------------------- */
 
 /* Like strchr(3), but only looks for 'c' in the first 'n' characters of 's', stopping at the first
  * nul char in 's'.
@@ -125,24 +209,24 @@ const char *strnchr(const char *s, size_t n, char c);
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 
-__STR_INLINE ssize_t str_index_dfl(const char *s, char c, ssize_t dfl)
+__SERVAL_DNA_STR_INLINE ssize_t str_index_dfl(const char *s, char c, ssize_t dfl)
 {
   const char *r = strchr(s, c);
   return r ? r - s : dfl;
 }
 
-__STR_INLINE ssize_t str_rindex_dfl(const char *s, char c, ssize_t dfl)
+__SERVAL_DNA_STR_INLINE ssize_t str_rindex_dfl(const char *s, char c, ssize_t dfl)
 {
   const char *r = strrchr(s, c);
   return r ? r - s : dfl;
 }
 
-__STR_INLINE ssize_t str_index(const char *s, char c)
+__SERVAL_DNA_STR_INLINE ssize_t str_index(const char *s, char c)
 {
   return str_index_dfl(s, c, -1);
 }
 
-__STR_INLINE ssize_t str_rindex(const char *s, char c)
+__SERVAL_DNA_STR_INLINE ssize_t str_rindex(const char *s, char c)
 {
   return str_rindex_dfl(s, c, -1);
 }
@@ -270,17 +354,17 @@ int str_to_uint64_interval_ms(const char *str, int64_t *result, const char **aft
  */
 int str_is_uri(const char *uri);
 
-__STR_INLINE int is_uri_char_scheme(char c)
+__SERVAL_DNA_STR_INLINE int is_uri_char_scheme(char c)
 {
   return isalpha(c) || isdigit(c) || c == '+' || c == '-' || c == '.';
 }
 
-__STR_INLINE int is_uri_char_unreserved(char c)
+__SERVAL_DNA_STR_INLINE int is_uri_char_unreserved(char c)
 {
   return isalpha(c) || isdigit(c) || c == '-' || c == '.' || c == '_' || c == '~';
 }
 
-__STR_INLINE int is_uri_char_reserved(char c)
+__SERVAL_DNA_STR_INLINE int is_uri_char_reserved(char c)
 {
   switch (c) {
     case ':': case '/': case '?': case '#': case '[': case ']': case '@':
@@ -296,7 +380,7 @@ __STR_INLINE int is_uri_char_reserved(char c)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-__STR_INLINE int str_is_uri_scheme(const char *scheme)
+__SERVAL_DNA_STR_INLINE int str_is_uri_scheme(const char *scheme)
 {
   if (!isalpha(*scheme++))
     return 0;
@@ -362,4 +446,4 @@ int str_uri_authority_port(const char *auth, uint16_t *portp);
 
 int parse_argv(char *cmdline, char delim, char **argv, int max_argv);
 
-#endif
+#endif // __SERVAL_DNA_STR_H__

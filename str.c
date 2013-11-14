@@ -43,12 +43,6 @@ char *tohex(char *dstHex, size_t dstStrLen, const unsigned char *srcBinary)
   return dstHex;
 }
 
-/* Convert nbinary*2 ASCII hex characters [0-9A-Fa-f] to nbinary bytes of data.  Can be used to
- * perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);  Returns -1 if a non-hex-digit
- * character is encountered, otherwise returns the number of binary bytes produced (= nbinary).
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
 size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
 {
   if (strn_fromhex(dstBinary, nbinary, srcHex, NULL) == nbinary)
@@ -56,13 +50,6 @@ size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
   return -1;
 }
 
-/* Convert nbinary*2 ASCII hex characters [0-9A-Fa-f] followed by a nul '\0' character to nbinary
- * bytes of data.  Can be used to perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);
- * Returns -1 if a non-hex-digit character is encountered or the character immediately following the
- * last hex digit is not a nul, otherwise returns zero.
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
 int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
 {
   const char *p;
@@ -71,21 +58,6 @@ int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
   return -1;
 }
 
-/* Decode pairs of ASCII hex characters [0-9A-Fa-f] into binary data with an optional upper limit on
- * the number of binary bytes produced (destination buffer size).  Returns the number of binary
- * bytes decoded.  If 'afterHex' is not NULL, then sets *afterHex to point to the source character
- * immediately following the last hex digit consumed.
- *
- * Can be used to perform a conversion in-place, eg:
- *
- *    strn_fromhex((unsigned char *)buf, n, (const char *)buf, NULL);
- *
- * Can also be used to count hex digits without converting, eg:
- *
- *    strn_fromhex(NULL, -1, buf, NULL);
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
 size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *srcHex, const char **afterHex)
 {
   unsigned char *dstorig = dstBinary;
@@ -106,6 +78,132 @@ size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *srcHex
     *afterHex = srcHex;
   return dstBinary - dstorig;
 }
+
+#define _B64 _SERVAL_CTYPE_0_BASE64
+#define _BND _SERVAL_CTYPE_0_MULTIPART_BOUNDARY
+
+uint8_t _serval_ctype_0[UINT8_MAX] = {
+  ['A'] = _BND | _B64 | 0,
+  ['B'] = _BND | _B64 | 1,
+  ['C'] = _BND | _B64 | 2,
+  ['D'] = _BND | _B64 | 3,
+  ['E'] = _BND | _B64 | 4,
+  ['F'] = _BND | _B64 | 5,
+  ['G'] = _BND | _B64 | 6,
+  ['H'] = _BND | _B64 | 7,
+  ['I'] = _BND | _B64 | 8,
+  ['J'] = _BND | _B64 | 9,
+  ['K'] = _BND | _B64 | 10,
+  ['L'] = _BND | _B64 | 11,
+  ['M'] = _BND | _B64 | 12,
+  ['N'] = _BND | _B64 | 13,
+  ['O'] = _BND | _B64 | 14,
+  ['P'] = _BND | _B64 | 15,
+  ['Q'] = _BND | _B64 | 16,
+  ['R'] = _BND | _B64 | 17,
+  ['S'] = _BND | _B64 | 18,
+  ['T'] = _BND | _B64 | 19,
+  ['U'] = _BND | _B64 | 20,
+  ['V'] = _BND | _B64 | 21,
+  ['W'] = _BND | _B64 | 22,
+  ['X'] = _BND | _B64 | 23,
+  ['Y'] = _BND | _B64 | 24,
+  ['Z'] = _BND | _B64 | 25,
+  ['a'] = _BND | _B64 | 26,
+  ['b'] = _BND | _B64 | 27,
+  ['c'] = _BND | _B64 | 28,
+  ['d'] = _BND | _B64 | 29,
+  ['e'] = _BND | _B64 | 30,
+  ['f'] = _BND | _B64 | 31,
+  ['g'] = _BND | _B64 | 32,
+  ['h'] = _BND | _B64 | 33,
+  ['i'] = _BND | _B64 | 34,
+  ['j'] = _BND | _B64 | 35,
+  ['k'] = _BND | _B64 | 36,
+  ['l'] = _BND | _B64 | 37,
+  ['m'] = _BND | _B64 | 38,
+  ['n'] = _BND | _B64 | 39,
+  ['o'] = _BND | _B64 | 40,
+  ['p'] = _BND | _B64 | 41,
+  ['q'] = _BND | _B64 | 42,
+  ['r'] = _BND | _B64 | 43,
+  ['s'] = _BND | _B64 | 44,
+  ['t'] = _BND | _B64 | 45,
+  ['u'] = _BND | _B64 | 46,
+  ['v'] = _BND | _B64 | 47,
+  ['w'] = _BND | _B64 | 48,
+  ['x'] = _BND | _B64 | 49,
+  ['y'] = _BND | _B64 | 50,
+  ['z'] = _BND | _B64 | 51,
+  ['0'] = _BND | _B64 | 52,
+  ['1'] = _BND | _B64 | 53,
+  ['2'] = _BND | _B64 | 54,
+  ['3'] = _BND | _B64 | 55,
+  ['4'] = _BND | _B64 | 56,
+  ['5'] = _BND | _B64 | 57,
+  ['6'] = _BND | _B64 | 58,
+  ['7'] = _BND | _B64 | 59,
+  ['8'] = _BND | _B64 | 60,
+  ['9'] = _BND | _B64 | 61,
+  ['+'] = _BND | _B64 | 62,
+  ['/'] = _BND | _B64 | 63,
+  ['='] = _BND,
+  ['-'] = _BND,
+  ['.'] = _BND,
+  [':'] = _BND,
+  ['_'] = _BND,
+  ['('] = _BND,
+  [')'] = _BND,
+  [','] = _BND,
+  ['?'] = _BND,
+  [' '] = _BND,
+};
+
+#define _SEP _SERVAL_CTYPE_1_HTTP_SEPARATOR 
+
+uint8_t _serval_ctype_1[UINT8_MAX] = {
+  ['A'] = 0xA,
+  ['B'] = 0xB,
+  ['C'] = 0xC,
+  ['D'] = 0xD,
+  ['E'] = 0xE,
+  ['F'] = 0xF,
+  ['a'] = 0xa,
+  ['b'] = 0xb,
+  ['c'] = 0xc,
+  ['d'] = 0xd,
+  ['e'] = 0xe,
+  ['f'] = 0xf,
+  ['0'] = 0,
+  ['1'] = 1,
+  ['2'] = 2,
+  ['3'] = 3,
+  ['4'] = 4,
+  ['5'] = 5,
+  ['6'] = 6,
+  ['7'] = 7,
+  ['8'] = 8,
+  ['9'] = 9,
+  ['\t'] = _SEP,
+  [' '] = _SEP,
+  ['='] = _SEP,
+  ['<'] = _SEP,
+  ['>'] = _SEP,
+  ['@'] = _SEP,
+  [';'] = _SEP,
+  [':'] = _SEP,
+  ['\\'] = _SEP,
+  ['"'] = _SEP,
+  ['/'] = _SEP,
+  ['['] = _SEP,
+  [']'] = _SEP,
+  ['{'] = _SEP,
+  ['}'] = _SEP,
+  ['('] = _SEP,
+  [')'] = _SEP,
+  [','] = _SEP,
+  ['?'] = _SEP,
+};
 
 /* Does this whole buffer contain the same value? */
 int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value)
