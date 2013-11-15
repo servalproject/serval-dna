@@ -124,6 +124,9 @@ size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *src, c
 
 #define _SERVAL_CTYPE_1_HEX_MASK 0xf
 #define _SERVAL_CTYPE_1_HTTP_SEPARATOR (1 << 4)
+#define _SERVAL_CTYPE_1_URI_SCHEME (1 << 5)
+#define _SERVAL_CTYPE_1_URI_UNRESERVED (1 << 6)
+#define _SERVAL_CTYPE_1_URI_RESERVED (1 << 7)
 
 extern uint8_t _serval_ctype_0[UINT8_MAX];
 extern uint8_t _serval_ctype_1[UINT8_MAX];
@@ -354,25 +357,16 @@ int str_to_uint64_interval_ms(const char *str, int64_t *result, const char **aft
  */
 int str_is_uri(const char *uri);
 
-__SERVAL_DNA_STR_INLINE int is_uri_char_scheme(char c)
-{
-  return isalpha(c) || isdigit(c) || c == '+' || c == '-' || c == '.';
+__SERVAL_DNA_STR_INLINE int is_uri_char_scheme(char c) {
+  return (_serval_ctype_1[(unsigned char) c] & _SERVAL_CTYPE_1_URI_SCHEME) != 0;
 }
 
-__SERVAL_DNA_STR_INLINE int is_uri_char_unreserved(char c)
-{
-  return isalpha(c) || isdigit(c) || c == '-' || c == '.' || c == '_' || c == '~';
+__SERVAL_DNA_STR_INLINE int is_uri_char_unreserved(char c) {
+  return (_serval_ctype_1[(unsigned char) c] & _SERVAL_CTYPE_1_URI_UNRESERVED) != 0;
 }
 
-__SERVAL_DNA_STR_INLINE int is_uri_char_reserved(char c)
-{
-  switch (c) {
-    case ':': case '/': case '?': case '#': case '[': case ']': case '@':
-    case '!': case '$': case '&': case '\'': case '(': case ')':
-    case '*': case '+': case ',': case ';': case '=':
-      return 1;
-  }
-  return 0;
+__SERVAL_DNA_STR_INLINE int is_uri_char_reserved(char c) {
+  return (_serval_ctype_1[(unsigned char) c] & _SERVAL_CTYPE_1_URI_RESERVED) != 0;
 }
 
 /* Return true if the string resembles a URI scheme without the terminating colon.
