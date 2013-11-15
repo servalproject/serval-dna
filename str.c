@@ -79,6 +79,128 @@ size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *srcHex
   return dstBinary - dstorig;
 }
 
+const char base64_symbols[64] = {
+  'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P',
+  'Q','R','S','T','U','V','W','X','Y','Z','a','b','c','d','e','f',
+  'g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v',
+  'w','x','y','z','0','1','2','3','4','5','6','7','8','9','+','/'
+};
+
+size_t base64_encode(char *const dstBase64, const unsigned char *src, size_t srclen)
+{
+  char *dst = dstBase64;
+  unsigned place = 0;
+  unsigned char buf = 0;
+  for (; srclen; --srclen, ++src) {
+    switch (place) {
+      case 0:
+	*dst++ = base64_symbols[*src >> 2];
+	buf = (*src << 4) & 0x3f;
+	place = 1;
+	break;
+      case 1:
+	*dst++ = base64_symbols[(*src >> 4) | buf];
+	buf = (*src << 2) & 0x3f;
+	place = 2;
+	break;
+      case 2:
+	*dst++ = base64_symbols[(*src >> 6) | buf];
+	*dst++ = base64_symbols[*src & 0x3f];
+	place = 0;
+	break;
+    }
+  }
+  if (place)
+    *dst++ = base64_symbols[buf];
+  switch (place) {
+    case 2:
+      *dst++ = '=';
+    case 1:
+      *dst++ = '=';
+  }
+  return dst - dstBase64;
+}
+
+char *to_base64_str(char *const dstBase64, const unsigned char *srcBinary, size_t srcBytes)
+{
+  dstBase64[base64_encode(dstBase64, srcBinary, srcBytes)] = '\0';
+  return dstBase64;
+}
+
+size_t base64_decode(unsigned char *dstBinary, size_t dstsiz, const char *const srcBase64, size_t srclen,
+                     const char **afterp, int flags, int (*skip_pred)(char))
+{
+  uint8_t buf = 0;
+  size_t digits = 0;
+  unsigned pads = 0;
+  size_t bytes = 0;
+  const char *const srcend = srcBase64 + srclen;
+  const char *src = srcBase64;
+  const char *first_pad = NULL;
+  for (; srclen == 0 || (src < srcend); ++src) {
+    int isdigit = is_base64_digit(*src);
+    int ispad = is_base64_pad(*src);
+    if (!isdigit && !ispad && skip_pred && skip_pred(*src))
+      continue;
+    assert(pads <= 2);
+    if (pads == 2)
+      break;
+    int place = digits & 3;
+    if (pads == 1) {
+      if (place == 3)
+	break;
+      assert(place == 2);
+      if (ispad) {
+	++pads;
+	continue; // consume trailing space before ending
+      }
+      // If only one pad character was present but there should be two, then don't consume the first
+      // one.
+      assert(first_pad != NULL);
+      src = first_pad;
+      break;
+    }
+    assert(pads == 0);
+    if (ispad && place >= 2) {
+      first_pad = src;
+      ++pads;
+      continue;
+    }
+    if (!isdigit)
+      break;
+    ++digits;
+    if (dstBinary && bytes < dstsiz) {
+      uint8_t d = base64_digit(*src);
+      switch (place) {
+	case 0:
+	  buf = d << 2;
+	  break;
+	case 1:
+	  dstBinary[bytes++] = buf | (d >> 4);
+	  buf = d << 4;
+	  break;
+	case 2:
+	  dstBinary[bytes++] = buf | (d >> 2);
+	  buf = d << 6;
+	  break;
+	case 3:
+	  dstBinary[bytes++] = buf | d;
+	  break;
+      }
+    } else if (flags & B64_CONSUME_ALL) {
+      switch (place) {
+	case 1: case 2: case 3: ++bytes;
+      }
+    } else
+      break;
+  }
+  if (afterp)
+    *afterp = src;
+  else if (*src)
+    return 0;
+  return bytes;
+}
+
 #define _B64 _SERVAL_CTYPE_0_BASE64
 #define _BND _SERVAL_CTYPE_0_MULTIPART_BOUNDARY
 

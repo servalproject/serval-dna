@@ -116,6 +116,67 @@ int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
  */
 size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *src, const char **afterp);
 
+/* -------------------- Base64 encoding and decoding -------------------- */
+
+/* Return the number of bytes required to represent 'binaryBytes' bytes of binary data encoded
+ * into Base64 form.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+__SERVAL_DNA_STR_INLINE size_t base64_encode_len(size_t binaryBytes) {
+  return (binaryBytes + 2) / 3 * 4;
+}
+
+const char base64_symbols[64];
+
+/* Encode 'srcBytes' bytes of binary data at 'srcBinary' into Base64 representation at 'dstBase64',
+ * which must point to at least 'base64_encode_len(srcBytes)' bytes.  The encoding is terminated
+ * by a "=" or "==" pad to bring the total number of encoded bytes up to a multiple of 4.
+ *
+ * Returns the total number of encoded bytes writtent at 'dstBase64'.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t base64_encode(char *dstBase64, const unsigned char *srcBinary, size_t srcBytes);
+
+/* The same as base64_encode() but appends a terminating NUL character to the encoded string,
+ * so 'dstBase64' must point to at least 'base64_encode_len(srcBytes) + 1' bytes.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+char *to_base64_str(char *dstBase64, const unsigned char *srcBinary, size_t srcBytes);
+
+#define alloca_base64(buf,len)  to_base64_str(alloca(base64_encode_len(len) + 1), (buf), (len))
+
+/* Decode the string at 'srcBase64' as ASCII Base-64, writing up to 'dstsiz' decoded binary bytes at
+ * 'dstBinary'.  Returns the number of decoded binary bytes produced.  If 'dstsiz' is zero or
+ * 'dstBinary' is NULL, no binary bytes are produced and returns zero.
+ *
+ * If the 'afterp' pointer is not NULL, then sets *afterp to point to the first character in
+ * 'srcBase64' where decoding stopped for whatever reason.
+ *
+ * If 'srclen' is 0, then the string at 'stcBase64' is assumed to be NUL-terminated, and decoding
+ * runs until the first non-Base64-digit is encountered.  If 'srclen' is nonzero, then decoding will
+ * cease at the first non-Base64-digit or when 'srclen' bytes at 'srcBase64' have been decoded,
+ * whichever comes first.
+ *
+ * If 'skip_pred' is not NULL, then all leading, internal and trailing characters C which are not a
+ * valid Base64 digit or pad '=' will be skipped if skip_pred(C) returns true.  Otherwise, decoding
+ * ends at C.
+ *
+ * If the B64_CONSUME_ALL flag is set, then once the 'dstsiz' limit is reached (or if 'dstBinary' is
+ * NULL), the Base64 decoding process continues without actually writing decoded bytes, but instead
+ * counts them and advances through the 'srcBase64' buffer as usual.  The return value is then the
+ * number of binary bytes that would be decoded were all available Base64 decoded from 'srcBase64',
+ * and *afterp points to the first character beyond the end of the decoded source characters.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t base64_decode(unsigned char *dstBinary, size_t dstsiz, const char *const srcBase64, size_t srclen,
+                     const char **afterp, int flags, int (*skip_pred)(char));
+
+#define B64_CONSUME_ALL (1 << 0)
+
 /* -------------------- Character classes -------------------- */
 
 #define _SERVAL_CTYPE_0_BASE64_MASK 0x3f

@@ -344,9 +344,14 @@ static int _skip_literal_nocase(struct http_request *r, const char *literal)
   return *literal == '\0';
 }
 
+static int is_http_space(char c)
+{
+  return c == ' ' || c == '\t';
+}
+
 static int _skip_optional_space(struct http_request *r)
 {
-  while (!_run_out(r) && (*r->cursor == ' ' || *r->cursor == '\t'))
+  while (!_run_out(r) && is_http_space(*r->cursor))
     ++r->cursor;
   return 1;
 }
@@ -546,43 +551,7 @@ static int _parse_content_type(struct http_request *r, struct mime_content_type 
 
 static size_t _parse_base64(struct http_request *r, char *bin, size_t binsize)
 {
-  uint8_t buf = 0;
-  size_t digits = 0;
-  size_t bytes = 0;
-  for (; !_run_out(r) && is_base64_digit(*r->cursor); _skip_optional_space(r), ++r->cursor) {
-    if (bytes < binsize) {
-      uint8_t d = base64_digit(*r->cursor);
-      switch (digits++ & 3) {
-	case 0:
-	  buf = d << 2;
-	  break;
-	case 1:
-	  if (bin)
-	    bin[bytes] = buf | (d >> 4);
-	  ++bytes;
-	  buf = d << 4;
-	  break;
-	case 2:
-	  if (bin)
-	    bin[bytes] = buf | (d >> 2);
-	  ++bytes;
-	  buf = d << 6;
-	  break;
-	case 3:
-	  if (bin)
-	    bin[bytes] = buf | d;
-	  ++bytes;
-	  break;
-      }
-    }
-  }
-  if (digits == 0)
-    return 0;
-  if (!_run_out(r) && is_base64_pad(*r->cursor))
-    ++r->cursor;
-  if (!_run_out(r) && is_base64_pad(*r->cursor))
-    ++r->cursor;
-  return bytes;
+  return base64_decode((unsigned char *)bin, binsize, r->cursor, r->end - r->cursor, &r->cursor, B64_CONSUME_ALL, is_http_space);
 }
 
 static int _parse_authorization_credentials_basic(struct http_request *r, struct http_client_credentials_basic *cred, char *buf, size_t bufsz)
