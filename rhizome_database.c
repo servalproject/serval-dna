@@ -740,10 +740,10 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	      if (hashp == NULL) {
 		BIND_NULL(RHIZOME_FILEHASH_T);
 	      } else {
-		char hash_hex[RHIZOME_FILEHASH_STRLEN];
-		tohex(hash_hex, sizeof hash_hex, hashp->binary);
-		BIND_DEBUG(RHIZOME_FILEHASH_T, sqlite3_bind_text, "%s,%zu,SQLITE_TRANSIENT", hash_hex, sizeof hash_hex);
-		BIND_RETRY(sqlite3_bind_text, hash_hex, sizeof hash_hex, SQLITE_TRANSIENT);
+		char hash_hex[RHIZOME_FILEHASH_STRLEN + 1];
+		tohex(hash_hex, RHIZOME_FILEHASH_STRLEN, hashp->binary);
+		BIND_DEBUG(RHIZOME_FILEHASH_T, sqlite3_bind_text, "%s,%zu,SQLITE_TRANSIENT", hash_hex, RHIZOME_FILEHASH_STRLEN);
+		BIND_RETRY(sqlite3_bind_text, hash_hex, RHIZOME_FILEHASH_STRLEN, SQLITE_TRANSIENT);
 	      }
 	    }
 	    break;
@@ -1961,7 +1961,7 @@ static int is_interesting(const char *id_hex, int64_t version)
 int rhizome_is_bar_interesting(unsigned char *bar)
 {
   int64_t version = rhizome_bar_version(bar);
-  char id_hex[RHIZOME_MANIFEST_ID_STRLEN];
+  char id_hex[RHIZOME_BAR_PREFIX_BYTES + 2];
   tohex(id_hex, RHIZOME_BAR_PREFIX_BYTES * 2, &bar[RHIZOME_BAR_PREFIX_OFFSET]);
   strcat(id_hex, "%");
   return is_interesting(id_hex, version);

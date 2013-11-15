@@ -74,7 +74,8 @@ __SERVAL_DNA_STR_INLINE int is_xstring(const char *text, int len)
   return *text == '\0';
 }
 
-/* Converts a given binary blob to uppercase ASCII hexadecimal.
+/* Converts a given binary blob to uppercase ASCII hexadecimal with a NUL terminator on the end.
+ * 'dstHex' must point to a buffer of at least 'dstStrLen' + 1 bytes.
  */
 char *tohex(char *dstHex, size_t dstStrlen, const unsigned char *srcBinary);
 #define alloca_tohex(buf,bytes)  tohex((char *)alloca((bytes)*2+1), (bytes) * 2, (buf))

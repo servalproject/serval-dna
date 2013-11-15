@@ -157,7 +157,7 @@ typedef struct sid_binary {
 #define is_sid_t_any(SID) is_all_matching((SID).binary, sizeof (*(sid_t*)0).binary, 0)
 
 #define alloca_tohex_sid_t(sid)         alloca_tohex((sid).binary, sizeof (*(sid_t*)0).binary)
-#define alloca_tohex_sid_t_trunc(sid,strlen)  tohex((char *)alloca((strlen)+2), (strlen), (sid).binary)
+#define alloca_tohex_sid_t_trunc(sid,strlen)  tohex((char *)alloca((strlen)+1), (strlen), (sid).binary)
 
 int cmp_sid_t(const sid_t *a, const sid_t *b);
 int str_to_sid_t(sid_t *sid, const char *hex);
