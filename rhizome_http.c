@@ -397,6 +397,7 @@ static char *list_token(char *buf, uint64_t rowid)
 static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *retry, struct rhizome_http_request *r, strbuf b)
 {
   const char *headers[] = {
+    ".token",
     "_id",
     "service",
     "id",
@@ -420,22 +421,16 @@ static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *ret
 	  strbuf_putc(b, ',');
 	strbuf_json_string(b, headers[i]);
       }
-      strbuf_puts(b, "]");
+      strbuf_puts(b, "],\n\"rows\":[");
       if (!strbuf_overrun(b))
-	r->u.list.phase = LIST_TOKEN;
+	r->u.list.phase = LIST_ROWS;
       return 1;
-    case LIST_TOKEN:
     case LIST_ROWS:
       {
 	int ret = rhizome_list_next(retry, &r->u.list.cursor);
 	if (ret == -1)
 	  return -1;
 	rhizome_manifest *m = r->u.list.cursor.manifest;
-	if (r->u.list.phase == LIST_TOKEN) {
-	  strbuf_puts(b, ",\n\"token\":");
-	  strbuf_json_string(b, alloca_list_token(ret ? m->rowid : 0));
-	  strbuf_puts(b, ",\n\"rows\":[");
-	}
 	if (ret == 0) {
 	  strbuf_puts(b, "\n]\n}\n");
 	  if (strbuf_overrun(b))
@@ -445,9 +440,15 @@ static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *ret
 	}
 	assert(m->filesize != RHIZOME_SIZE_UNSET);
 	rhizome_lookup_author(m);
-	if (r->u.list.phase != LIST_TOKEN)
+	if (r->u.list.rowcount != 0)
 	  strbuf_putc(b, ',');
 	strbuf_puts(b, "\n[");
+	if (m->rowid > r->u.list.rowid_highest) {
+	  strbuf_json_string(b, alloca_list_token(m->rowid));
+	  r->u.list.rowid_highest = m->rowid;
+	} else
+	  strbuf_json_null(b);
+	strbuf_putc(b, ',');
 	strbuf_sprintf(b, "%"PRIu64, m->rowid);
 	strbuf_putc(b, ',');
 	strbuf_json_string(b, m->service);
