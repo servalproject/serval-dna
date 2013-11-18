@@ -124,30 +124,32 @@ size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *src, c
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-__SERVAL_DNA_STR_INLINE size_t base64_encode_len(size_t binaryBytes) {
-  return (binaryBytes + 2) / 3 * 4;
-}
+#define BASE64_ENCODED_LEN(binaryBytes) (((size_t)(binaryBytes) + 2) / 3 * 4)
 
 const char base64_symbols[64];
 
 /* Encode 'srcBytes' bytes of binary data at 'srcBinary' into Base64 representation at 'dstBase64',
- * which must point to at least 'base64_encode_len(srcBytes)' bytes.  The encoding is terminated
+ * which must point to at least 'BASE64_ENCODED_LEN(srcBytes)' bytes.  The encoding is terminated
  * by a "=" or "==" pad to bring the total number of encoded bytes up to a multiple of 4.
  *
  * Returns the total number of encoded bytes writtent at 'dstBase64'.
  *
+ * The base64_encodev() is a multi-buffer gather variant, analagous to readv(2) and writev(2).
+ *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 size_t base64_encode(char *dstBase64, const unsigned char *srcBinary, size_t srcBytes);
+struct iovec;
+size_t base64_encodev(char *dstBase64, const struct iovec *iov, int iovcnt);
 
 /* The same as base64_encode() but appends a terminating NUL character to the encoded string,
- * so 'dstBase64' must point to at least 'base64_encode_len(srcBytes) + 1' bytes.
+ * so 'dstBase64' must point to at least 'BASE64_ENCODED_LEN(srcBytes) + 1' bytes.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 char *to_base64_str(char *dstBase64, const unsigned char *srcBinary, size_t srcBytes);
 
-#define alloca_base64(buf,len)  to_base64_str(alloca(base64_encode_len(len) + 1), (buf), (len))
+#define alloca_base64(buf,len)  to_base64_str(alloca(BASE64_ENCODED_LEN(len) + 1), (buf), (len))
 
 /* Decode the string at 'srcBase64' as ASCII Base-64, writing up to 'dstsiz' decoded binary bytes at
  * 'dstBinary'.  Returns the number of decoded binary bytes produced.  If 'dstsiz' is zero or

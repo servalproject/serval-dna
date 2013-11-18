@@ -24,6 +24,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/uio.h>
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
@@ -86,28 +87,33 @@ const char base64_symbols[64] = {
   'w','x','y','z','0','1','2','3','4','5','6','7','8','9','+','/'
 };
 
-size_t base64_encode(char *const dstBase64, const unsigned char *src, size_t srclen)
+size_t base64_encodev(char *dstBase64, const struct iovec *const iov, int const iovcnt)
 {
   char *dst = dstBase64;
   unsigned place = 0;
   unsigned char buf = 0;
-  for (; srclen; --srclen, ++src) {
-    switch (place) {
-      case 0:
-	*dst++ = base64_symbols[*src >> 2];
-	buf = (*src << 4) & 0x3f;
-	place = 1;
-	break;
-      case 1:
-	*dst++ = base64_symbols[(*src >> 4) | buf];
-	buf = (*src << 2) & 0x3f;
-	place = 2;
-	break;
-      case 2:
-	*dst++ = base64_symbols[(*src >> 6) | buf];
-	*dst++ = base64_symbols[*src & 0x3f];
-	place = 0;
-	break;
+  int iovc = 0;
+  for (iovc = 0; iovc != iovcnt; ++iovc) {
+    unsigned char *src = iov[iovc].iov_base;
+    size_t cnt = iov[iovc].iov_len;
+    for (; cnt; --cnt, ++src) {
+      switch (place) {
+	case 0:
+	  *dst++ = base64_symbols[*src >> 2];
+	  buf = (*src << 4) & 0x3f;
+	  place = 1;
+	  break;
+	case 1:
+	  *dst++ = base64_symbols[(*src >> 4) | buf];
+	  buf = (*src << 2) & 0x3f;
+	  place = 2;
+	  break;
+	case 2:
+	  *dst++ = base64_symbols[(*src >> 6) | buf];
+	  *dst++ = base64_symbols[*src & 0x3f];
+	  place = 0;
+	  break;
+      }
     }
   }
   if (place)
@@ -119,6 +125,14 @@ size_t base64_encode(char *const dstBase64, const unsigned char *src, size_t src
       *dst++ = '=';
   }
   return dst - dstBase64;
+}
+
+size_t base64_encode(char *const dstBase64, const unsigned char *src, size_t srclen)
+{
+  struct iovec iov;
+  iov.iov_base = (void *) src;
+  iov.iov_len = srclen;
+  return base64_encodev(dstBase64, &iov, 1);
 }
 
 char *to_base64_str(char *const dstBase64, const unsigned char *srcBinary, size_t srcBytes)
