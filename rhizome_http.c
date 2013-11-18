@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifdef HAVE_SYS_FILIO_H
 # include <sys/filio.h>
 #endif
+#include <sys/uio.h>
 #include <assert.h>
 
 #include "serval.h"
@@ -377,14 +378,19 @@ static int restful_rhizome_bundlelist_json(rhizome_http_request *r, const char *
   return 0;
 }
 
-#define LIST_TOKEN_STRLEN_MAX (UUID_STRLEN + 30)
-#define alloca_list_token(rowid) list_token(alloca(LIST_TOKEN_STRLEN_MAX), (rowid))
+#define LIST_TOKEN_STRLEN (BASE64_ENCODED_LEN(sizeof(uuid_t) + 8))
+#define alloca_list_token(rowid) list_token(alloca(LIST_TOKEN_STRLEN + 1), (rowid))
 
 static char *list_token(char *buf, uint64_t rowid)
 {
-  strbuf b = strbuf_local(buf, LIST_TOKEN_STRLEN_MAX);
-  strbuf_uuid(b, &rhizome_db_uuid);
-  strbuf_sprintf(b, "-%"PRIu64, rowid);
+  struct iovec iov[2];
+  iov[0].iov_base = rhizome_db_uuid.u.binary;
+  iov[0].iov_len = sizeof rhizome_db_uuid.u.binary;
+  iov[1].iov_base = &rowid;
+  iov[1].iov_len = sizeof rowid;
+  size_t n = base64_encodev(buf, iov, 2);
+  assert(n == LIST_TOKEN_STRLEN);
+  buf[n] = '\0';
   return buf;
 }
 
