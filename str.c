@@ -17,7 +17,7 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-#define __STR_INLINE
+#define __SERVAL_DNA_STR_INLINE
 #include "str.h"
 #include "strbuf_helpers.h"
 #include "constants.h"
@@ -80,14 +80,23 @@ size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *srcHex
   return dstBinary - dstorig;
 }
 
-const char base64_symbols[64] = {
+const char base64_symbols[65] = {
   'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P',
   'Q','R','S','T','U','V','W','X','Y','Z','a','b','c','d','e','f',
   'g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v',
-  'w','x','y','z','0','1','2','3','4','5','6','7','8','9','+','/'
+  'w','x','y','z','0','1','2','3','4','5','6','7','8','9','+','/',
+  '='
 };
 
-size_t base64_encodev(char *dstBase64, const struct iovec *const iov, int const iovcnt)
+const char base64url_symbols[65] = {
+  'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P',
+  'Q','R','S','T','U','V','W','X','Y','Z','a','b','c','d','e','f',
+  'g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v',
+  'w','x','y','z','0','1','2','3','4','5','6','7','8','9','-','_',
+  '='
+};
+
+static size_t _base64_encodev(const char symbols[], char *dstBase64, const struct iovec *const iov, int const iovcnt)
 {
   char *dst = dstBase64;
   unsigned place = 0;
@@ -99,32 +108,42 @@ size_t base64_encodev(char *dstBase64, const struct iovec *const iov, int const 
     for (; cnt; --cnt, ++src) {
       switch (place) {
 	case 0:
-	  *dst++ = base64_symbols[*src >> 2];
+	  *dst++ = symbols[*src >> 2];
 	  buf = (*src << 4) & 0x3f;
 	  place = 1;
 	  break;
 	case 1:
-	  *dst++ = base64_symbols[(*src >> 4) | buf];
+	  *dst++ = symbols[(*src >> 4) | buf];
 	  buf = (*src << 2) & 0x3f;
 	  place = 2;
 	  break;
 	case 2:
-	  *dst++ = base64_symbols[(*src >> 6) | buf];
-	  *dst++ = base64_symbols[*src & 0x3f];
+	  *dst++ = symbols[(*src >> 6) | buf];
+	  *dst++ = symbols[*src & 0x3f];
 	  place = 0;
 	  break;
       }
     }
   }
   if (place)
-    *dst++ = base64_symbols[buf];
+    *dst++ = symbols[buf];
   switch (place) {
     case 2:
-      *dst++ = '=';
+      *dst++ = symbols[64];
     case 1:
-      *dst++ = '=';
+      *dst++ = symbols[64];
   }
   return dst - dstBase64;
+}
+
+size_t base64_encodev(char *dstBase64, const struct iovec *const iov, int const iovcnt)
+{
+  return _base64_encodev(base64_symbols, dstBase64, iov, iovcnt);
+}
+
+size_t base64url_encodev(char *dstBase64, const struct iovec *const iov, int const iovcnt)
+{
+  return _base64_encodev(base64url_symbols, dstBase64, iov, iovcnt);
 }
 
 size_t base64_encode(char *const dstBase64, const unsigned char *src, size_t srclen)
@@ -132,7 +151,15 @@ size_t base64_encode(char *const dstBase64, const unsigned char *src, size_t src
   struct iovec iov;
   iov.iov_base = (void *) src;
   iov.iov_len = srclen;
-  return base64_encodev(dstBase64, &iov, 1);
+  return _base64_encodev(base64_symbols, dstBase64, &iov, 1);
+}
+
+size_t base64url_encode(char *const dstBase64, const unsigned char *src, size_t srclen)
+{
+  struct iovec iov;
+  iov.iov_base = (void *) src;
+  iov.iov_len = srclen;
+  return _base64_encodev(base64url_symbols, dstBase64, &iov, 1);
 }
 
 char *to_base64_str(char *const dstBase64, const unsigned char *srcBinary, size_t srcBytes)
@@ -141,8 +168,16 @@ char *to_base64_str(char *const dstBase64, const unsigned char *srcBinary, size_
   return dstBase64;
 }
 
-size_t base64_decode(unsigned char *dstBinary, size_t dstsiz, const char *const srcBase64, size_t srclen,
-                     const char **afterp, int flags, int (*skip_pred)(char))
+char *to_base64url_str(char *const dstBase64, const unsigned char *srcBinary, size_t srcBytes)
+{
+  dstBase64[base64url_encode(dstBase64, srcBinary, srcBytes)] = '\0';
+  return dstBase64;
+}
+
+static size_t _base64_decode(unsigned char *dstBinary, size_t dstsiz, const char *const srcBase64, size_t srclen,
+                     const char **afterp, int flags, int (*skip_pred)(char),
+		     int (*isdigit_pred)(char), int (*ispad_pred)(char), uint8_t (*todigit)(char)
+		  )
 {
   uint8_t buf = 0;
   size_t digits = 0;
@@ -152,8 +187,8 @@ size_t base64_decode(unsigned char *dstBinary, size_t dstsiz, const char *const 
   const char *src = srcBase64;
   const char *first_pad = NULL;
   for (; srclen == 0 || (src < srcend); ++src) {
-    int isdigit = is_base64_digit(*src);
-    int ispad = is_base64_pad(*src);
+    int isdigit = isdigit_pred(*src);
+    int ispad = ispad_pred(*src);
     if (!isdigit && !ispad && skip_pred && skip_pred(*src))
       continue;
     assert(pads <= 2);
@@ -184,7 +219,7 @@ size_t base64_decode(unsigned char *dstBinary, size_t dstsiz, const char *const 
       break;
     ++digits;
     if (dstBinary && bytes < dstsiz) {
-      uint8_t d = base64_digit(*src);
+      uint8_t d = todigit(*src);
       switch (place) {
 	case 0:
 	  buf = d << 2;
@@ -215,84 +250,90 @@ size_t base64_decode(unsigned char *dstBinary, size_t dstsiz, const char *const 
   return bytes;
 }
 
+size_t base64_decode(unsigned char *dstBinary, size_t dstsiz, const char *const srcBase64, size_t srclen,
+                     const char **afterp, int flags, int (*skip_pred)(char))
+{
+  return _base64_decode(dstBinary, dstsiz, srcBase64, srclen, afterp, flags, skip_pred, is_base64_digit, is_base64_pad, base64_digit);
+}
+
+
+size_t base64url_decode(unsigned char *dstBinary, size_t dstsiz, const char *const srcBase64, size_t srclen,
+                        const char **afterp, int flags, int (*skip_pred)(char))
+{
+  return _base64_decode(dstBinary, dstsiz, srcBase64, srclen, afterp, flags, skip_pred, is_base64url_digit, is_base64url_pad, base64url_digit);
+}
+
+
 #define _B64 _SERVAL_CTYPE_0_BASE64
-#define _BND _SERVAL_CTYPE_0_MULTIPART_BOUNDARY
+#define _B64U _SERVAL_CTYPE_0_BASE64URL
 
 uint8_t _serval_ctype_0[UINT8_MAX] = {
-  ['A'] = _BND | _B64 | 0,
-  ['B'] = _BND | _B64 | 1,
-  ['C'] = _BND | _B64 | 2,
-  ['D'] = _BND | _B64 | 3,
-  ['E'] = _BND | _B64 | 4,
-  ['F'] = _BND | _B64 | 5,
-  ['G'] = _BND | _B64 | 6,
-  ['H'] = _BND | _B64 | 7,
-  ['I'] = _BND | _B64 | 8,
-  ['J'] = _BND | _B64 | 9,
-  ['K'] = _BND | _B64 | 10,
-  ['L'] = _BND | _B64 | 11,
-  ['M'] = _BND | _B64 | 12,
-  ['N'] = _BND | _B64 | 13,
-  ['O'] = _BND | _B64 | 14,
-  ['P'] = _BND | _B64 | 15,
-  ['Q'] = _BND | _B64 | 16,
-  ['R'] = _BND | _B64 | 17,
-  ['S'] = _BND | _B64 | 18,
-  ['T'] = _BND | _B64 | 19,
-  ['U'] = _BND | _B64 | 20,
-  ['V'] = _BND | _B64 | 21,
-  ['W'] = _BND | _B64 | 22,
-  ['X'] = _BND | _B64 | 23,
-  ['Y'] = _BND | _B64 | 24,
-  ['Z'] = _BND | _B64 | 25,
-  ['a'] = _BND | _B64 | 26,
-  ['b'] = _BND | _B64 | 27,
-  ['c'] = _BND | _B64 | 28,
-  ['d'] = _BND | _B64 | 29,
-  ['e'] = _BND | _B64 | 30,
-  ['f'] = _BND | _B64 | 31,
-  ['g'] = _BND | _B64 | 32,
-  ['h'] = _BND | _B64 | 33,
-  ['i'] = _BND | _B64 | 34,
-  ['j'] = _BND | _B64 | 35,
-  ['k'] = _BND | _B64 | 36,
-  ['l'] = _BND | _B64 | 37,
-  ['m'] = _BND | _B64 | 38,
-  ['n'] = _BND | _B64 | 39,
-  ['o'] = _BND | _B64 | 40,
-  ['p'] = _BND | _B64 | 41,
-  ['q'] = _BND | _B64 | 42,
-  ['r'] = _BND | _B64 | 43,
-  ['s'] = _BND | _B64 | 44,
-  ['t'] = _BND | _B64 | 45,
-  ['u'] = _BND | _B64 | 46,
-  ['v'] = _BND | _B64 | 47,
-  ['w'] = _BND | _B64 | 48,
-  ['x'] = _BND | _B64 | 49,
-  ['y'] = _BND | _B64 | 50,
-  ['z'] = _BND | _B64 | 51,
-  ['0'] = _BND | _B64 | 52,
-  ['1'] = _BND | _B64 | 53,
-  ['2'] = _BND | _B64 | 54,
-  ['3'] = _BND | _B64 | 55,
-  ['4'] = _BND | _B64 | 56,
-  ['5'] = _BND | _B64 | 57,
-  ['6'] = _BND | _B64 | 58,
-  ['7'] = _BND | _B64 | 59,
-  ['8'] = _BND | _B64 | 60,
-  ['9'] = _BND | _B64 | 61,
-  ['+'] = _BND | _B64 | 62,
-  ['/'] = _BND | _B64 | 63,
-  ['='] = _BND,
-  ['-'] = _BND,
-  ['.'] = _BND,
-  [':'] = _BND,
-  ['_'] = _BND,
-  ['('] = _BND,
-  [')'] = _BND,
-  [','] = _BND,
-  ['?'] = _BND,
-  [' '] = _BND,
+  ['A'] = _B64 | _B64U | 0,
+  ['B'] = _B64 | _B64U | 1,
+  ['C'] = _B64 | _B64U | 2,
+  ['D'] = _B64 | _B64U | 3,
+  ['E'] = _B64 | _B64U | 4,
+  ['F'] = _B64 | _B64U | 5,
+  ['G'] = _B64 | _B64U | 6,
+  ['H'] = _B64 | _B64U | 7,
+  ['I'] = _B64 | _B64U | 8,
+  ['J'] = _B64 | _B64U | 9,
+  ['K'] = _B64 | _B64U | 10,
+  ['L'] = _B64 | _B64U | 11,
+  ['M'] = _B64 | _B64U | 12,
+  ['N'] = _B64 | _B64U | 13,
+  ['O'] = _B64 | _B64U | 14,
+  ['P'] = _B64 | _B64U | 15,
+  ['Q'] = _B64 | _B64U | 16,
+  ['R'] = _B64 | _B64U | 17,
+  ['S'] = _B64 | _B64U | 18,
+  ['T'] = _B64 | _B64U | 19,
+  ['U'] = _B64 | _B64U | 20,
+  ['V'] = _B64 | _B64U | 21,
+  ['W'] = _B64 | _B64U | 22,
+  ['X'] = _B64 | _B64U | 23,
+  ['Y'] = _B64 | _B64U | 24,
+  ['Z'] = _B64 | _B64U | 25,
+  ['a'] = _B64 | _B64U | 26,
+  ['b'] = _B64 | _B64U | 27,
+  ['c'] = _B64 | _B64U | 28,
+  ['d'] = _B64 | _B64U | 29,
+  ['e'] = _B64 | _B64U | 30,
+  ['f'] = _B64 | _B64U | 31,
+  ['g'] = _B64 | _B64U | 32,
+  ['h'] = _B64 | _B64U | 33,
+  ['i'] = _B64 | _B64U | 34,
+  ['j'] = _B64 | _B64U | 35,
+  ['k'] = _B64 | _B64U | 36,
+  ['l'] = _B64 | _B64U | 37,
+  ['m'] = _B64 | _B64U | 38,
+  ['n'] = _B64 | _B64U | 39,
+  ['o'] = _B64 | _B64U | 40,
+  ['p'] = _B64 | _B64U | 41,
+  ['q'] = _B64 | _B64U | 42,
+  ['r'] = _B64 | _B64U | 43,
+  ['s'] = _B64 | _B64U | 44,
+  ['t'] = _B64 | _B64U | 45,
+  ['u'] = _B64 | _B64U | 46,
+  ['v'] = _B64 | _B64U | 47,
+  ['w'] = _B64 | _B64U | 48,
+  ['x'] = _B64 | _B64U | 49,
+  ['y'] = _B64 | _B64U | 50,
+  ['z'] = _B64 | _B64U | 51,
+  ['0'] = _B64 | _B64U | 52,
+  ['1'] = _B64 | _B64U | 53,
+  ['2'] = _B64 | _B64U | 54,
+  ['3'] = _B64 | _B64U | 55,
+  ['4'] = _B64 | _B64U | 56,
+  ['5'] = _B64 | _B64U | 57,
+  ['6'] = _B64 | _B64U | 58,
+  ['7'] = _B64 | _B64U | 59,
+  ['8'] = _B64 | _B64U | 60,
+  ['9'] = _B64 | _B64U | 61,
+  ['+'] = _B64 | 62,
+  ['/'] = _B64 | 63,
+  ['-'] = _B64U | 62,
+  ['_'] = _B64U | 63,
 };
 
 #define _SEP		_SERVAL_CTYPE_1_HTTP_SEPARATOR 
@@ -393,6 +434,85 @@ uint8_t _serval_ctype_1[UINT8_MAX] = {
   ['#'] = _URI_RES,
   ['@'] = _SEP | _URI_RES,
   ['~'] = _URI_UNRES,
+};
+
+#define _BND _SERVAL_CTYPE_2_MULTIPART_BOUNDARY
+
+uint8_t _serval_ctype_2[UINT8_MAX] = {
+  ['A'] = _BND,
+  ['B'] = _BND,
+  ['C'] = _BND,
+  ['D'] = _BND,
+  ['E'] = _BND,
+  ['F'] = _BND,
+  ['G'] = _BND,
+  ['H'] = _BND,
+  ['I'] = _BND,
+  ['J'] = _BND,
+  ['K'] = _BND,
+  ['L'] = _BND,
+  ['M'] = _BND,
+  ['N'] = _BND,
+  ['O'] = _BND,
+  ['P'] = _BND,
+  ['Q'] = _BND,
+  ['R'] = _BND,
+  ['S'] = _BND,
+  ['T'] = _BND,
+  ['U'] = _BND,
+  ['V'] = _BND,
+  ['W'] = _BND,
+  ['X'] = _BND,
+  ['Y'] = _BND,
+  ['Z'] = _BND,
+  ['a'] = _BND,
+  ['b'] = _BND,
+  ['c'] = _BND,
+  ['d'] = _BND,
+  ['e'] = _BND,
+  ['f'] = _BND,
+  ['g'] = _BND,
+  ['h'] = _BND,
+  ['i'] = _BND,
+  ['j'] = _BND,
+  ['k'] = _BND,
+  ['l'] = _BND,
+  ['m'] = _BND,
+  ['n'] = _BND,
+  ['o'] = _BND,
+  ['p'] = _BND,
+  ['q'] = _BND,
+  ['r'] = _BND,
+  ['s'] = _BND,
+  ['t'] = _BND,
+  ['u'] = _BND,
+  ['v'] = _BND,
+  ['w'] = _BND,
+  ['x'] = _BND,
+  ['y'] = _BND,
+  ['z'] = _BND,
+  ['0'] = _BND,
+  ['1'] = _BND,
+  ['2'] = _BND,
+  ['3'] = _BND,
+  ['4'] = _BND,
+  ['5'] = _BND,
+  ['6'] = _BND,
+  ['7'] = _BND,
+  ['8'] = _BND,
+  ['9'] = _BND,
+  ['+'] = _BND,
+  ['/'] = _BND,
+  ['='] = _BND,
+  ['-'] = _BND,
+  ['.'] = _BND,
+  [':'] = _BND,
+  ['_'] = _BND,
+  ['('] = _BND,
+  [')'] = _BND,
+  [','] = _BND,
+  ['?'] = _BND,
+  [' '] = _BND,
 };
 
 /* Does this whole buffer contain the same value? */

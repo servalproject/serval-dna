@@ -126,11 +126,15 @@ size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *src, c
  */
 #define BASE64_ENCODED_LEN(binaryBytes) (((size_t)(binaryBytes) + 2) / 3 * 4)
 
-const char base64_symbols[64];
+/* Array of encoding symbols.  Entry [64] is the pad character (usually '=').
+ */
+const char base64_symbols[65];
+const char base64url_symbols[65];
 
-/* Encode 'srcBytes' bytes of binary data at 'srcBinary' into Base64 representation at 'dstBase64',
- * which must point to at least 'BASE64_ENCODED_LEN(srcBytes)' bytes.  The encoding is terminated
- * by a "=" or "==" pad to bring the total number of encoded bytes up to a multiple of 4.
+/* Encode 'srcBytes' bytes of binary data at 'srcBinary' into Base64 representation at 'dstBase64'
+ * (or Base64-URL representation at 'dstBase64url'), which must point to at least
+ * 'BASE64_ENCODED_LEN(srcBytes)' bytes.  The encoding is terminated by a "=" or "==" pad to bring
+ * the total number of encoded bytes up to a multiple of 4.
  *
  * Returns the total number of encoded bytes writtent at 'dstBase64'.
  *
@@ -139,8 +143,10 @@ const char base64_symbols[64];
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 size_t base64_encode(char *dstBase64, const unsigned char *srcBinary, size_t srcBytes);
+size_t base64url_encode(char *dstBase64url, const unsigned char *srcBinary, size_t srcBytes);
 struct iovec;
-size_t base64_encodev(char *dstBase64, const struct iovec *iov, int iovcnt);
+size_t base64_encode(char *dstBase64, const unsigned char *srcBinary, size_t srcBytes);
+size_t base64url_encodev(char *dstBase64url, const struct iovec *iov, int iovcnt);
 
 /* The same as base64_encode() but appends a terminating NUL character to the encoded string,
  * so 'dstBase64' must point to at least 'BASE64_ENCODED_LEN(srcBytes) + 1' bytes.
@@ -148,12 +154,15 @@ size_t base64_encodev(char *dstBase64, const struct iovec *iov, int iovcnt);
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 char *to_base64_str(char *dstBase64, const unsigned char *srcBinary, size_t srcBytes);
+char *to_base64url_str(char *dstBase64url, const unsigned char *srcBinary, size_t srcBytes);
 
 #define alloca_base64(buf,len)  to_base64_str(alloca(BASE64_ENCODED_LEN(len) + 1), (buf), (len))
+#define alloca_base64url(buf,len)  to_base64url_str(alloca(BASE64_ENCODED_LEN(len) + 1), (buf), (len))
 
-/* Decode the string at 'srcBase64' as ASCII Base-64, writing up to 'dstsiz' decoded binary bytes at
- * 'dstBinary'.  Returns the number of decoded binary bytes produced.  If 'dstsiz' is zero or
- * 'dstBinary' is NULL, no binary bytes are produced and returns zero.
+/* Decode the string at 'srcBase64' as ASCII Base64 or Base64-URL (as per RFC-4648), writing up to
+ * 'dstsiz' decoded binary bytes at 'dstBinary'.  Returns the number of decoded binary bytes
+ * produced.  If 'dstsiz' is zero or 'dstBinary' is NULL, no binary bytes are produced and returns
+ * zero.
  *
  * If the 'afterp' pointer is not NULL, then sets *afterp to point to the first character in
  * 'srcBase64' where decoding stopped for whatever reason.
@@ -177,6 +186,8 @@ char *to_base64_str(char *dstBase64, const unsigned char *srcBinary, size_t srcB
  */
 size_t base64_decode(unsigned char *dstBinary, size_t dstsiz, const char *const srcBase64, size_t srclen,
                      const char **afterp, int flags, int (*skip_pred)(char));
+size_t base64url_decode(unsigned char *dstBinary, size_t dstsiz, const char *const srcBase64url, size_t srclen,
+                        const char **afterp, int flags, int (*skip_pred)(char));
 
 #define B64_CONSUME_ALL (1 << 0)
 
@@ -184,7 +195,7 @@ size_t base64_decode(unsigned char *dstBinary, size_t dstsiz, const char *const 
 
 #define _SERVAL_CTYPE_0_BASE64_MASK 0x3f
 #define _SERVAL_CTYPE_0_BASE64 (1 << 6)
-#define _SERVAL_CTYPE_0_MULTIPART_BOUNDARY (1 << 7)
+#define _SERVAL_CTYPE_0_BASE64URL (1 << 7)
 
 #define _SERVAL_CTYPE_1_HEX_MASK 0xf
 #define _SERVAL_CTYPE_1_HTTP_SEPARATOR (1 << 4)
@@ -192,8 +203,11 @@ size_t base64_decode(unsigned char *dstBinary, size_t dstsiz, const char *const 
 #define _SERVAL_CTYPE_1_URI_UNRESERVED (1 << 6)
 #define _SERVAL_CTYPE_1_URI_RESERVED (1 << 7)
 
+#define _SERVAL_CTYPE_2_MULTIPART_BOUNDARY (1 << 0)
+
 extern uint8_t _serval_ctype_0[UINT8_MAX];
 extern uint8_t _serval_ctype_1[UINT8_MAX];
+extern uint8_t _serval_ctype_2[UINT8_MAX];
 
 __SERVAL_DNA_STR_INLINE int is_http_char(char c) {
   return isascii(c);
@@ -207,7 +221,15 @@ __SERVAL_DNA_STR_INLINE int is_base64_digit(char c) {
   return (_serval_ctype_0[(unsigned char) c] & _SERVAL_CTYPE_0_BASE64) != 0;
 }
 
+__SERVAL_DNA_STR_INLINE int is_base64url_digit(char c) {
+  return (_serval_ctype_0[(unsigned char) c] & _SERVAL_CTYPE_0_BASE64URL) != 0;
+}
+
 __SERVAL_DNA_STR_INLINE int is_base64_pad(char c) {
+  return c == '=';
+}
+
+__SERVAL_DNA_STR_INLINE int is_base64url_pad(char c) {
   return c == '=';
 }
 
@@ -215,8 +237,12 @@ __SERVAL_DNA_STR_INLINE uint8_t base64_digit(char c) {
   return _serval_ctype_0[(unsigned char) c] & _SERVAL_CTYPE_0_BASE64_MASK;
 }
 
+__SERVAL_DNA_STR_INLINE uint8_t base64url_digit(char c) {
+  return _serval_ctype_0[(unsigned char) c] & _SERVAL_CTYPE_0_BASE64_MASK;
+}
+
 __SERVAL_DNA_STR_INLINE int is_multipart_boundary(char c) {
-  return (_serval_ctype_0[(unsigned char) c] & _SERVAL_CTYPE_0_MULTIPART_BOUNDARY) != 0;
+  return (_serval_ctype_2[(unsigned char) c] & _SERVAL_CTYPE_2_MULTIPART_BOUNDARY) != 0;
 }
 
 __SERVAL_DNA_STR_INLINE int is_valid_multipart_boundary_string(const char *s)
