@@ -126,6 +126,7 @@ struct mdp_binding{
   struct subscriber *subscriber;
   mdp_port_t port;
   int version;
+  int (*internal)(const struct mdp_header *header, const uint8_t *payload, size_t len);
   struct socket_address client;
   time_ms_t binding_time;
 };
@@ -267,6 +268,49 @@ static int overlay_mdp_process_bind_request(int sock, struct subscriber *subscri
   mdp_bindings[free].client.addrlen = client->addrlen;
   memcpy(&mdp_bindings[free].client.addr, &client->addr, client->addrlen);
   mdp_bindings[free].binding_time=gettime_ms();
+  return 0;
+}
+
+int mdp_bind_internal(struct subscriber *subscriber, mdp_port_t port,
+  int (*internal)(const struct mdp_header *header, const uint8_t *payload, size_t len))
+{
+  
+  int i;
+  struct mdp_binding *free_slot=NULL;
+  
+  for(i=0;i<MDP_MAX_BINDINGS;i++) {
+    if ((!free_slot) && mdp_bindings[i].port==0)
+      free_slot=&mdp_bindings[i];
+    
+    if (mdp_bindings[i].port == port 
+      && mdp_bindings[i].subscriber == subscriber)
+      return -1;
+  }
+  
+  if (!free_slot)
+    return -1;
+    
+  free_slot->subscriber=subscriber;
+  free_slot->port=port;
+  free_slot->version=1;
+  free_slot->internal=internal;
+  free_slot->binding_time=gettime_ms();
+  return 0;
+}
+
+int mdp_unbind_internal(struct subscriber *subscriber, mdp_port_t port,
+  int (*internal)(const struct mdp_header *header, const uint8_t *payload, size_t len))
+{
+  int i;
+  for(i=0;i<MDP_MAX_BINDINGS;i++) {
+    if (mdp_bindings[i].port == port
+      && mdp_bindings[i].subscriber == subscriber
+      && mdp_bindings[i].internal == internal){
+      mdp_bindings[i].port=0;
+      mdp_bindings[i].subscriber=NULL;
+      mdp_bindings[i].internal=NULL;
+    }
+  }
   return 0;
 }
 
@@ -483,6 +527,10 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
 	    header.flags|=MDP_FLAG_NO_CRYPT;
 	  if (mdp->packetTypeAndFlags & MDP_NOSIGN)
 	    header.flags|=MDP_FLAG_NO_SIGN;
+	    
+	  if (mdp_bindings[match].internal)
+	    RETURN(mdp_bindings[match].internal(&header, mdp->out.payload, mdp->out.payload_length));
+	    
 	  RETURN(mdp_send2(&mdp_bindings[match].client, &header, mdp->out.payload, mdp->out.payload_length));
 	}
     }
@@ -1262,6 +1310,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
       case MDP_LISTEN:
 	// double check that this binding belongs to this connection
 	if (!binding
+	  || binding->internal
 	  || !compare_client(&binding->client, client))
 	  mdp_reply_error(client, header);
 	break;
@@ -1285,6 +1334,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
   }else{
     // double check that this binding belongs to this connection
     if (!binding
+      || binding->internal
       || !source
       || header->local.port == 0 
       || !compare_client(&binding->client, client)){
@@ -1342,6 +1392,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
   
   // remove binding
   if (binding 
+    && !binding->internal
     && header->flags & MDP_FLAG_CLOSE
     && compare_client(&binding->client, client)){
     if (config.debug.mdprequests)

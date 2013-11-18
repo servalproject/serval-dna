@@ -552,6 +552,13 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client);
 void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port);
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const sid_t *resolved_sidp, const char *uri, const char *did, const char *name);
 
+struct mdp_header;
+int mdp_bind_internal(struct subscriber *subscriber, mdp_port_t port,
+  int (*internal)(const struct mdp_header *header, const uint8_t *payload, size_t len));
+int mdp_unbind_internal(struct subscriber *subscriber, mdp_port_t port,
+  int (*internal)(const struct mdp_header *header, const uint8_t *payload, size_t len));
+
+
 struct vomp_call_state;
 
 void set_codec_flag(int codec, unsigned char *flags);
