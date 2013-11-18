@@ -44,6 +44,7 @@ struct http_handler{
 };
 
 static HTTP_HANDLER restful_rhizome_bundlelist_json;
+static HTTP_HANDLER restful_rhizome_newsince;
 
 static HTTP_HANDLER rhizome_status_page;
 static HTTP_HANDLER rhizome_file_page;
@@ -59,6 +60,7 @@ extern HTTP_HANDLER rhizome_direct_dispatch;
 
 struct http_handler paths[]={
   {"/restful/rhizome/bundlelist.json", restful_rhizome_bundlelist_json},
+  {"/restful/rhizome/newsince/", restful_rhizome_newsince},
   {"/rhizome/status", rhizome_status_page},
   {"/rhizome/file/", rhizome_file_page},
   {"/rhizome/import", rhizome_direct_import},
@@ -357,6 +359,31 @@ static int authorize(struct http_request *r)
   return 1;
 }
 
+#define LIST_TOKEN_STRLEN (BASE64_ENCODED_LEN(sizeof(uuid_t) + 8))
+#define alloca_list_token(rowid) list_token_to_str(alloca(LIST_TOKEN_STRLEN + 1), (rowid))
+
+static char *list_token_to_str(char *buf, uint64_t rowid)
+{
+  struct iovec iov[2];
+  iov[0].iov_base = rhizome_db_uuid.u.binary;
+  iov[0].iov_len = sizeof rhizome_db_uuid.u.binary;
+  iov[1].iov_base = &rowid;
+  iov[1].iov_len = sizeof rowid;
+  size_t n = base64url_encodev(buf, iov, 2);
+  assert(n == LIST_TOKEN_STRLEN);
+  buf[n] = '\0';
+  return buf;
+}
+
+static int strn_to_list_token(const char *str, uint64_t *rowidp, const char **afterp)
+{
+  unsigned char token[sizeof rhizome_db_uuid.u.binary + sizeof *rowidp];
+  if (base64url_decode(token, sizeof token, str, 0, afterp, 0, NULL) != sizeof token)
+    return 0;
+  memcpy(rowidp, token + sizeof rhizome_db_uuid.u.binary, sizeof *rowidp);
+  return 1;
+}
+
 static HTTP_CONTENT_GENERATOR restful_rhizome_bundlelist_json_content;
 
 static int restful_rhizome_bundlelist_json(rhizome_http_request *r, const char *remainder)
@@ -378,20 +405,26 @@ static int restful_rhizome_bundlelist_json(rhizome_http_request *r, const char *
   return 0;
 }
 
-#define LIST_TOKEN_STRLEN (BASE64_ENCODED_LEN(sizeof(uuid_t) + 8))
-#define alloca_list_token(rowid) list_token(alloca(LIST_TOKEN_STRLEN + 1), (rowid))
-
-static char *list_token(char *buf, uint64_t rowid)
+static int restful_rhizome_newsince(rhizome_http_request *r, const char *remainder)
 {
-  struct iovec iov[2];
-  iov[0].iov_base = rhizome_db_uuid.u.binary;
-  iov[0].iov_len = sizeof rhizome_db_uuid.u.binary;
-  iov[1].iov_base = &rowid;
-  iov[1].iov_len = sizeof rowid;
-  size_t n = base64_encodev(buf, iov, 2);
-  assert(n == LIST_TOKEN_STRLEN);
-  buf[n] = '\0';
-  return buf;
+  if (!is_rhizome_http_enabled())
+    return 1;
+  uint64_t rowid;
+  const char *end = NULL;
+  if (!strn_to_list_token(remainder, &rowid, &end) || strcmp(end, "/bundlelist.json") != 0)
+    return 1;
+  if (r->http.verb != HTTP_VERB_GET) {
+    http_request_simple_response(&r->http, 405, NULL);
+    return 0;
+  }
+  if (!authorize(&r->http))
+    return 0;
+  r->u.list.phase = LIST_HEADER;
+  r->u.list.rowcount = 0;
+  bzero(&r->u.list.cursor, sizeof r->u.list.cursor);
+  r->u.list.cursor.rowid_since = rowid;
+  http_request_response_generated(&r->http, 200, "application/json", restful_rhizome_bundlelist_json_content);
+  return 0;
 }
 
 static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *retry, struct rhizome_http_request *r, strbuf b)
