@@ -493,6 +493,7 @@ sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, int log_level, sqlite
   while (1) {
     switch (sqlite3_prepare_v2(rhizome_db, sqltext, -1, &statement, NULL)) {
       case SQLITE_OK:
+	sqlite_trace_done = 0;
 	RETURN(statement);
       case SQLITE_BUSY:
       case SQLITE_LOCKED:
@@ -848,7 +849,6 @@ int _sqlite_step(struct __sourceloc __whence, int log_level, sqlite_retry_state 
   IN();
   int ret = -1;
   sqlite_trace_whence = &__whence;
-  sqlite_trace_done = 0;
   while (statement) {
     int stepcode = sqlite3_step(statement);
     switch (stepcode) {
