@@ -84,6 +84,7 @@ static struct profile_total http_server_stats = {
     } while (0)
 
 static void http_server_poll(struct sched_ent *);
+static void http_request_set_idle_timeout(struct http_request *r);
 static int http_request_parse_verb(struct http_request *r);
 static int http_request_parse_path(struct http_request *r);
 static int http_request_parse_http_version(struct http_request *r);
@@ -104,14 +105,21 @@ void http_request_init(struct http_request *r, int sockfd)
   r->alarm.function = http_server_poll;
   if (r->idle_timeout == 0)
     r->idle_timeout = 10000; // 10 seconds
-  r->alarm.alarm = gettime_ms() + r->idle_timeout;
-  r->alarm.deadline = r->alarm.alarm + r->idle_timeout;
   r->alarm.poll.fd = sockfd;
   r->alarm.poll.events = POLLIN;
   r->phase = RECEIVE;
   r->received = r->end = r->parsed = r->cursor = r->buffer;
   r->parser = http_request_parse_verb;
   watch(&r->alarm);
+  http_request_set_idle_timeout(r);
+}
+
+static void http_request_set_idle_timeout(struct http_request *r)
+{
+  assert(r->phase == RECEIVE || r->phase == TRANSMIT);
+  r->alarm.alarm = gettime_ms() + r->idle_timeout;
+  r->alarm.deadline = r->alarm.alarm + r->idle_timeout;
+  unschedule(&r->alarm);
   schedule(&r->alarm);
 }
 
@@ -160,9 +168,10 @@ void http_request_finalise(struct http_request *r)
 {
   if (r->phase == DONE)
     return;
-  assert(r->phase == RECEIVE || r->phase == TRANSMIT);
+  assert(r->phase == RECEIVE || r->phase == TRANSMIT || r->phase == PAUSE);
   unschedule(&r->alarm);
-  unwatch(&r->alarm);
+  if (r->phase != PAUSE)
+    unwatch(&r->alarm);
   close(r->alarm.poll.fd);
   r->alarm.poll.fd = -1;
   if (r->finalise)
@@ -1399,10 +1408,7 @@ static void http_request_receive(struct http_request *r)
     r->request_content_remaining -= (size_t) bytes;
   // We got some data, so reset the inactivity timer and invoke the parsing state machine to process
   // it.  The state machine invokes the caller-supplied callback functions.
-  r->alarm.alarm = gettime_ms() + r->idle_timeout;
-  r->alarm.deadline = r->alarm.alarm + r->idle_timeout;
-  unschedule(&r->alarm);
-  schedule(&r->alarm);
+  http_request_set_idle_timeout(r);
   // Parse the unparsed and received data.
   while (r->phase == RECEIVE) {
     int result;
@@ -1474,6 +1480,7 @@ static void http_request_receive(struct http_request *r)
  */
 static void http_request_send_response(struct http_request *r)
 {
+  assert(r->phase == TRANSMIT);
   while (1) {
     if (r->response_length != CONTENT_LENGTH_UNKNOWN)
       assert(r->response_sent <= r->response_length);
@@ -1491,7 +1498,10 @@ static void http_request_send_response(struct http_request *r)
     }
     if (unsent == 0)
       r->response_buffer_sent = r->response_buffer_length = 0;
-    if (r->response.content_generator) {
+    if (r->phase == PAUSE) {
+      if (unsent == 0)
+	return; // nothing to send
+    } else if (r->response.content_generator) {
       // If the buffer is smaller than the content generator needs, and it contains no unsent
       // content, then allocate a larger buffer.
       if (r->response_buffer_need > r->response_buffer_size && unsent == 0) {
@@ -1528,17 +1538,17 @@ static void http_request_send_response(struct http_request *r)
 	  http_request_finalise(r);
 	  return;
 	}
-	if (result.generated == 0 && result.need <= unfilled) {
+	assert(result.generated <= unfilled);
+	r->response_buffer_length += result.generated;
+	r->response_buffer_need = result.need;
+	if (result.generated == 0 && result.need <= unfilled && r->phase != PAUSE) {
 	  WHYF("HTTP response generator produced no content at offset %"PRIhttp_size_t" (ret=%d)", r->response_sent, ret);
 	  http_request_finalise(r);
 	  return;
 	}
 	if (r->debug_flag && *r->debug_flag)
 	  DEBUGF("Generated HTTP %zu bytes of content, need %zu bytes of buffer (ret=%d)", result.generated, result.need, ret);
-	assert(result.generated <= unfilled);
-	r->response_buffer_length += result.generated;
-	r->response_buffer_need = result.need;
-	if (ret == 0)
+	if (r->phase != PAUSE && ret == 0)
 	  r->response.content_generator = NULL; // ensure we never invoke again
 	continue;
       }
@@ -1580,10 +1590,8 @@ static void http_request_send_response(struct http_request *r)
       DEBUGF("Wrote %zu bytes to HTTP socket, total %"PRIhttp_size_t", remaining=%"PRIhttp_size_t,
 	  (size_t) written, r->response_sent, r->response_length - r->response_sent);
     // Reset inactivity timer.
-    r->alarm.alarm = gettime_ms() + r->idle_timeout;
-    r->alarm.deadline = r->alarm.alarm + r->idle_timeout;
-    unschedule(&r->alarm);
-    schedule(&r->alarm);
+    if (r->phase != PAUSE)
+      http_request_set_idle_timeout(r);
     // If we wrote less than we tried, then go back to polling, otherwise keep generating content.
     if (written < (size_t) unsent)
       return;
@@ -1597,9 +1605,16 @@ static void http_server_poll(struct sched_ent *alarm)
 {
   struct http_request *r = (struct http_request *) alarm;
   if (alarm->poll.revents == 0) {
-    if (r->debug_flag && *r->debug_flag)
-      DEBUGF("Timeout, closing connection");
-    http_request_finalise(r);
+    if (r->phase == PAUSE) {
+      r->phase = TRANSMIT;
+      r->alarm.poll.events = POLLOUT;
+      watch(&r->alarm);
+      http_request_set_idle_timeout(r);
+    } else {
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("Timeout, closing connection");
+      http_request_finalise(r);
+    }
   }
   else if (alarm->poll.revents & (POLLHUP | POLLERR)) {
     if (r->debug_flag && *r->debug_flag)
@@ -1897,6 +1912,19 @@ static void http_request_start_response(struct http_request *r)
   r->phase = TRANSMIT;
   r->alarm.poll.events = POLLOUT;
   watch(&r->alarm);
+}
+
+void http_request_pause_response(struct http_request *r, time_ms_t until)
+{
+  if (r->debug_flag && *r->debug_flag)
+    DEBUGF("Pausing response for %.3f sec", (double)(until - gettime_ms()) / 1000.0);
+  assert(r->phase == TRANSMIT);
+  r->phase = PAUSE;
+  r->alarm.alarm = until;
+  r->alarm.deadline = until + r->idle_timeout;
+  unwatch(&r->alarm);
+  unschedule(&r->alarm);
+  schedule(&r->alarm);
 }
 
 /* Start sending a static (pre-computed) response back to the client.  The response's Content-Type

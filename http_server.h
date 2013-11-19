@@ -143,6 +143,7 @@ void http_request_init(struct http_request *r, int sockfd);
 void http_request_free_response_buffer(struct http_request *r);
 int http_request_set_response_bufsize(struct http_request *r, size_t bufsiz);
 void http_request_finalise(struct http_request *r);
+void http_request_pause_response(struct http_request *r, time_ms_t until);
 void http_request_response_static(struct http_request *r, int result, const char *mime_type, const char *body, uint64_t bytes);
 void http_request_response_generated(struct http_request *r, int result, const char *mime_type, HTTP_CONTENT_GENERATOR *);
 void http_request_simple_response(struct http_request *r, uint16_t result, const char *body);
@@ -152,7 +153,7 @@ typedef int (*HTTP_REQUEST_PARSER)(struct http_request *);
 struct http_request {
   struct sched_ent alarm; // MUST BE FIRST ELEMENT
   // The following control the lifetime of this struct.
-  enum http_request_phase { RECEIVE, TRANSMIT, DONE } phase;
+  enum http_request_phase { RECEIVE, TRANSMIT, PAUSE, DONE } phase;
   void (*finalise)(struct http_request *);
   void (*free)(void*);
   // These can be set up to point to config flags, to allow debug to be
