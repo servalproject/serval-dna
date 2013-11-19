@@ -423,6 +423,7 @@ static int restful_rhizome_newsince(rhizome_http_request *r, const char *remaind
   r->u.list.rowcount = 0;
   bzero(&r->u.list.cursor, sizeof r->u.list.cursor);
   r->u.list.cursor.rowid_since = rowid;
+  r->u.list.end_time = gettime_ms() + config.rhizome.api.restful.newsince_timeout * 1000;
   http_request_response_generated(&r->http, 200, "application/json", restful_rhizome_bundlelist_json_content);
   return 0;
 }
@@ -463,14 +464,21 @@ static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *ret
 	int ret = rhizome_list_next(retry, &r->u.list.cursor);
 	if (ret == -1)
 	  return -1;
-	rhizome_manifest *m = r->u.list.cursor.manifest;
 	if (ret == 0) {
-	  strbuf_puts(b, "\n]\n}\n");
-	  if (strbuf_overrun(b))
+	  time_ms_t now;
+	  if (r->u.list.cursor.rowid_since == 0 || (now = gettime_ms()) >= r->u.list.end_time) {
+	    strbuf_puts(b, "\n]\n}\n");
+	    if (!strbuf_overrun(b))
+	      r->u.list.phase = LIST_DONE;
 	    return 0;
-	  r->u.list.phase = LIST_DONE;
+	  }
+	  time_ms_t wake_at = now + 2000;
+	  if (wake_at > r->u.list.end_time)
+	    wake_at = r->u.list.end_time;
+	  http_request_pause_response(&r->http, wake_at);
 	  return 0;
 	}
+	rhizome_manifest *m = r->u.list.cursor.manifest;
 	assert(m->filesize != RHIZOME_SIZE_UNSET);
 	rhizome_lookup_author(m);
 	if (r->u.list.rowcount != 0)
@@ -521,7 +529,6 @@ static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *ret
 	  rhizome_list_commit(&r->u.list.cursor);
 	  ++r->u.list.rowcount;
 	}
-	r->u.list.phase = LIST_ROWS;
 	return 1;
       }
     case LIST_DONE:

@@ -753,6 +753,7 @@ typedef struct rhizome_http_request
         enum { LIST_HEADER = 0, LIST_ROWS, LIST_DONE } phase;
         uint64_t rowid_highest;
         size_t rowcount;
+        time_ms_t end_time;
         struct rhizome_list_cursor cursor;
     } list;
   } u;
