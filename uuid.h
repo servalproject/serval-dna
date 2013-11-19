@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdint.h>
 #include <alloca.h>
+#include <string.h>
 #include "strbuf.h"
 
 #ifndef __SERVALDNA_UUID_H_INLINE
@@ -72,6 +73,10 @@ enum uuid_version {
   UUID_VERSION_RANDOM = 4,
   UUID_VERSION_NAME_SHA1 = 5
 };
+
+__SERVALDNA_UUID_H_INLINE int cmp_uuid_t(const uuid_t *a, const uuid_t *b) {
+  return memcmp(a->u.binary, b->u.binary, sizeof a->u.binary);
+}
 
 __SERVALDNA_UUID_H_INLINE int uuid_is_valid(const uuid_t *any_uuid) {
   return (any_uuid->u.record.clock_seq_hi_and_reserved & 0xc0) == 0x80;

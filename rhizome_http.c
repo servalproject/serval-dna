@@ -380,6 +380,8 @@ static int strn_to_list_token(const char *str, uint64_t *rowidp, const char **af
   unsigned char token[sizeof rhizome_db_uuid.u.binary + sizeof *rowidp];
   if (base64url_decode(token, sizeof token, str, 0, afterp, 0, NULL) != sizeof token)
     return 0;
+  if (cmp_uuid_t(&rhizome_db_uuid, (uuid_t *) &token) != 0)
+    return 0;
   memcpy(rowidp, token + sizeof rhizome_db_uuid.u.binary, sizeof *rowidp);
   return 1;
 }
