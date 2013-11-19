@@ -99,12 +99,9 @@ teardown_AuthBasicWrong() {
    teardown
 }
 
-doc_RhizomeList="Fetch small Rhizome bundle list in JSON format"
-setup_RhizomeList() {
-   setup
-   NBUNDLES=100
-   ROWID_MAX=0
-   for ((n = 0; n != NBUNDLES; ++n)); do
+add_bundles() {
+   local n
+   for ((n = $1; n <= $2; ++n)); do
       create_file file$n $((1000 + $n))
       executeOk_servald rhizome add file $SIDA file$n file$n.manifest
       extract_stdout_manifestid BID[$n]
@@ -113,20 +110,11 @@ setup_RhizomeList() {
       extract_stdout_filehash HASH[$n]
       extract_stdout_date DATE[$n]
       extract_stdout_rowid ROWID[$n]
-      [ "${ROWID[$n]}" -gt "$ROWID_MAX" ] && ROWID_MAX=${ROWID[$n]}
+      [ "${ROWID[$n]}" -gt "${ROWID_MAX:-0}" ] && ROWID_MAX=${ROWID[$n]}
    done
-   assert [ "$ROWID_MAX" -ge "$NBUNDLES" ]
 }
-test_RhizomeList() {
-   executeOk curl \
-         --silent --fail --show-error \
-         --output bundlelist.json \
-         --dump-header http.headers \
-         --basic --user harry:potter \
-         "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
-   tfw_cat http.headers bundlelist.json
-   tfw_preserve bundlelist.json
-   assert [ "$(jq '.rows | length' bundlelist.json)" = $NBUNDLES ]
+
+transform_bundlelist_json() {
    # The following jq(1) incantation transforms the JSON array in
    # bundlelist.json from the following form (which is optimised for
    # transmission size):
@@ -145,38 +133,36 @@ test_RhizomeList() {
    #     }
    #
    # into an array of JSON objects:
-   #     {
-   #        "bundles":[
-   #           {
-   #              "__index": 0,
-   #              ".token": "xx",
-   #              "_id": rowid1,
-   #              "service": service1,
-   #              "id": bundleid1,
-   #              "version": version1,
-   #              ...
-   #           },
-   #           {
-   #              "__index": 1,
-   #              ".token": null,
-   #              "_id": rowid2,
-   #              "service": service2,
-   #              "id": bundleid2,
-   #              "version": version2,
-   #              ...
-   #           },
+   #     [
+   #        {
+   #           "__index": 0,
+   #           ".token": "xx",
+   #           "_id": rowid1,
+   #           "service": service1,
+   #           "id": bundleid1,
+   #           "version": version1,
    #           ...
-   #           {
-   #              "__index": 2,
-   #              ".token": null,
-   #              "_id": rowidN,
-   #              "service": serviceN,
-   #              "id": bundleidN,
-   #              "version": versionN,
-   #              ...
-   #           }
-   #        ]
-   #     }
+   #        },
+   #        {
+   #           "__index": 1,
+   #           ".token": null,
+   #           "_id": rowid2,
+   #           "service": service2,
+   #           "id": bundleid2,
+   #           "version": version2,
+   #           ...
+   #        },
+   #        ...
+   #        {
+   #           "__index": 2,
+   #           ".token": null,
+   #           "_id": rowidN,
+   #           "service": serviceN,
+   #           "id": bundleidN,
+   #           "version": versionN,
+   #           ...
+   #        }
+   #     ]
    # which is much easier to test with jq(1) expressions.
    jq '
          [
@@ -187,7 +173,33 @@ test_RhizomeList() {
             from_entries |
             .["__index"] = $index
          ]
-      ' bundlelist.json >array_of_objects.json
+      ' "$1" >"$2"
+}
+
+assertJq() {
+   local json="$1"
+   local jqscript="$2"
+   assert --message="$jqscript" [ "$(jq "$jqscript" "$json")" = true ]
+}
+
+doc_RhizomeList="Fetch small Rhizome bundle list in JSON format"
+setup_RhizomeList() {
+   setup
+   NBUNDLES=100
+   add_bundles 0 $((NBUNDLES-1))
+   assert [ "$ROWID_MAX" -ge "$NBUNDLES" ]
+}
+test_RhizomeList() {
+   executeOk curl \
+         --silent --fail --show-error \
+         --output bundlelist.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   tfw_cat http.headers bundlelist.json
+   tfw_preserve bundlelist.json
+   assert [ "$(jq '.rows | length' bundlelist.json)" = $NBUNDLES ]
+   transform_bundlelist_json bundlelist.json array_of_objects.json
    tfw_preserve array_of_objects.json
    for ((n = 0; n != NBUNDLES; ++n)); do
       if [ "${ROWID[$n]}" -eq "$ROWID_MAX" ]; then
@@ -196,7 +208,8 @@ test_RhizomeList() {
       else
          token=',".token":null,'
       fi
-      jqscript="contains([
+      assertJq array_of_objects.json \
+               "contains([
                   {  name:\"file$n\",
                      service:\"file\",
                      id:\"${BID[$n]}\",
@@ -210,13 +223,64 @@ test_RhizomeList() {
                      $token
                   }
                ])"
-      assert --message="$jqscript" [ "$(jq "$jqscript" array_of_objects.json)" = true ]
    done
 }
 
-doc_RhizomeListSince="Fetch Rhizome bundle list since token in JSON format"
-test_RhizomeListSinceJSON() {
-   :
+curl_newsince() {
+   curl \
+         --silent --fail --show-error \
+         --no-buffer \
+         --output newsince_bundlelist.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/rhizome/newsince/$token/bundlelist.json"
+}
+
+doc_RhizomeNewSince="Fetch Rhizome bundle list since token in JSON format"
+setup_RhizomeNewSince() {
+   setup
+   executeOk_servald config set rhizome.api.restful.newsince_timeout 60s
+   add_bundles 0 5
+   executeOk curl \
+         --silent --fail --show-error \
+         --output bundlelist.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   assert [ "$(jq '.rows | length' bundlelist.json)" = 6 ]
+   transform_bundlelist_json bundlelist.json array_of_objects.json
+   token=$(jq --raw-output '.[0][".token"]' array_of_objects.json)
+   assert [ -n "$token" ]
+}
+test_RhizomeNewSince() {
+   fork curl_newsince
+   sleep 1
+   add_bundles 6 10
+   wait_until --timeout=8 grep "${BID[10]}" newsince_bundlelist.json
+   forkKillAll
+   if ! jq . newsince_bundlelist.json >/dev/null 2>/dev/null; then
+      echo ']}' >>newsince_bundlelist.json
+      assert jq . newsince_bundlelist.json >/dev/null
+   fi
+   transform_bundlelist_json newsince_bundlelist.json newsince_array_of_objects.json
+   tfw_preserve newsince_bundlelist.json newsince_array_of_objects.json
+   for ((n = 6; n <= 10; ++n)); do
+      assertJq newsince_array_of_objects.json \
+               "contains([
+                  {  name:\"file$n\",
+                     service:\"file\",
+                     id:\"${BID[$n]}\",
+                     version:${VERSION[$n]},
+                     filesize:${SIZE[$n]},
+                     filehash:\"${HASH[$n]}\",
+                     date:${DATE[$n]},
+                     _id:${ROWID[$n]},
+                     \".fromhere\":1,
+                     \".author\":\"$SIDA\",
+                     \".token\":\"\"
+                  }
+               ])"
+   done
 }
 
 doc_RhizomeManifest="Fetch Rhizome bundle manifest"
