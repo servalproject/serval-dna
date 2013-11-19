@@ -631,6 +631,10 @@ struct rhizome_list_cursor {
   bool_t is_recipient_set;
   sid_t sender;
   sid_t recipient;
+  // If set, then the cursor moves in ascending (chronological) order starting
+  // from the first bundle with rowid > rowid_since.  If zero, then the cursor
+  // moves in descending (reverse chronological) order starting from the most
+  // recent bundle.
   uint64_t rowid_since;
   // Set by calling the next() function.
   rhizome_manifest *manifest;
