@@ -1648,7 +1648,7 @@ forkKillAll() {
    for ((forkid=0; forkid < ${#_tfw_forked_pids[*]}; ++forkid)); do
       local pid=${_tfw_forked_pids[$forkid]}
       [ -z "$pid" ] && continue
-      $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$pid KILL"
+      $_tfw_assert_noise && tfw_log "# fork[$forkid] kill -TERM $pid"
       kill -TERM $pid 2>/dev/null
    done
 }
