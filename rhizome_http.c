@@ -474,7 +474,7 @@ static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *ret
 	      r->u.list.phase = LIST_DONE;
 	    return 0;
 	  }
-	  time_ms_t wake_at = now + 2000;
+	  time_ms_t wake_at = now + config.rhizome.api.restful.newsince_poll_ms;
 	  if (wake_at > r->u.list.end_time)
 	    wake_at = r->u.list.end_time;
 	  http_request_pause_response(&r->http, wake_at);

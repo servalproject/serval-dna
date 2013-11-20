@@ -240,6 +240,7 @@ doc_RhizomeNewSince="Fetch Rhizome bundle list since token in JSON format"
 setup_RhizomeNewSince() {
    setup
    executeOk_servald config set rhizome.api.restful.newsince_timeout 60s
+   executeOk_servald config set rhizome.api.restful.newsince_poll_ms 500
    add_bundles 0 5
    executeOk curl \
          --silent --fail --show-error \

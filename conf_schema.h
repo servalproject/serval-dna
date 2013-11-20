@@ -398,6 +398,7 @@ END_STRUCT
 STRUCT(rhizome_api_restful)
 SUB_STRUCT(userlist,        users,)
 ATOM(uint32_t,              newsince_timeout,       60, uint32_time_interval,, "Time to block while reporting new bundles")
+ATOM(uint32_t,              newsince_poll_ms,       2000, uint32_nonzero,, "Database poll interval while blocked reporting new bundles")
 END_STRUCT
 
 STRUCT(rhizome_api)
