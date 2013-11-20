@@ -230,8 +230,7 @@ curl_newsince() {
    curl \
          --silent --fail --show-error \
          --no-buffer \
-         --output newsince_bundlelist.json \
-         --dump-header http.headers \
+         --output "$1" \
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/newsince/$token/bundlelist.json"
 }
@@ -254,33 +253,43 @@ setup_RhizomeNewSince() {
    assert [ -n "$token" ]
 }
 test_RhizomeNewSince() {
-   fork curl_newsince
-   sleep 1
+   fork %curl1 curl_newsince newsince1.json
+   fork %curl2 curl_newsince newsince2.json
+   fork %curl3 curl_newsince newsince3.json
+   wait_until [ -e newsince1.json -a -e newsince2.json -a -e newsince3.json ]
    add_bundles 6 10
-   wait_until --timeout=8 grep "${BID[10]}" newsince_bundlelist.json
-   forkKillAll
-   if ! jq . newsince_bundlelist.json >/dev/null 2>/dev/null; then
-      echo ']}' >>newsince_bundlelist.json
-      assert jq . newsince_bundlelist.json >/dev/null
-   fi
-   transform_bundlelist_json newsince_bundlelist.json newsince_array_of_objects.json
-   tfw_preserve newsince_bundlelist.json newsince_array_of_objects.json
-   for ((n = 6; n <= 10; ++n)); do
-      assertJq newsince_array_of_objects.json \
-               "contains([
-                  {  name:\"file$n\",
-                     service:\"file\",
-                     id:\"${BID[$n]}\",
-                     version:${VERSION[$n]},
-                     filesize:${SIZE[$n]},
-                     filehash:\"${HASH[$n]}\",
-                     date:${DATE[$n]},
-                     _id:${ROWID[$n]},
-                     \".fromhere\":1,
-                     \".author\":\"$SIDA\",
-                     \".token\":\"\"
-                  }
-               ])"
+   wait_until --timeout=10 grep "${BID[10]}" newsince1.json
+   wait_until --timeout=10 grep "${BID[10]}" newsince2.json
+   wait_until --timeout=10 grep "${BID[10]}" newsince3.json
+   fork_terminate_all
+   fork_wait_all
+   for i in 1 2 3; do
+      if [ $(jq . newsince$i | wc -c) -eq 0 ]; then
+         echo ']}' >>newsince$i.json
+         assert [ $(jq . newsince$i.json | wc -c) -ne 0 ]
+      fi
+      transform_bundlelist_json newsince$i.json objects$i.json
+      tfw_preserve newsince$i.json objects$i.json
+      for ((n = 0; n <= 5; ++n)); do
+         assertJq objects$i.json "contains([{id:\"${BID[$n]}\"}]) | not"
+      done
+      for ((n = 6; n <= 10; ++n)); do
+         assertJq objects$i.json \
+                  "contains([
+                     {  name:\"file$n\",
+                        service:\"file\",
+                        id:\"${BID[$n]}\",
+                        version:${VERSION[$n]},
+                        filesize:${SIZE[$n]},
+                        filehash:\"${HASH[$n]}\",
+                        date:${DATE[$n]},
+                        _id:${ROWID[$n]},
+                        \".fromhere\":1,
+                        \".author\":\"$SIDA\",
+                        \".token\":\"\"
+                     }
+                  ])"
+      done
    done
 }
 
