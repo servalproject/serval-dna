@@ -1263,7 +1263,7 @@ _tfw_fail() {
 _tfw_backtrace() {
    tfw_log '#----- shell backtrace -----'
    local -i up=1
-   while [ "${BASH_SOURCE[$up]}" == "${BASH_SOURCE[0]}" ]; do
+   while [ "${BASH_SOURCE[$up]}" == "${BASH_SOURCE[0]}" -a "${FUNCNAME[$up]}" != '_tfw_finalise' ]; do
       let up=up+1
    done
    local -i i=0
@@ -1307,10 +1307,14 @@ _tfw_errormsg() {
    local -i up=1
    local -i top=${#FUNCNAME[*]}
    let top=top-1
-   while [ $up -lt $top -a "${BASH_SOURCE[$up]}" == "${BASH_SOURCE[0]}" ]; do
+   while [ $up -lt $top -a "${BASH_SOURCE[$up]}" = "${BASH_SOURCE[0]}" -a "${FUNCNAME[$up]}" != '_tfw_finalise' ]; do
       let up=up+1
    done
-   tfw_log "ERROR: in ${FUNCNAME[$up]}: $*"
+   if [ "${BASH_SOURCE[$up]}" = "${BASH_SOURCE[0]}" ]; then
+      tfw_log "ERROR: $*"
+   else
+      tfw_log "ERROR: in ${FUNCNAME[$up]}: $*"
+   fi
 }
 
 _tfw_error() {
