@@ -632,8 +632,8 @@ _tfw_finalise() {
       set +x
       ;;
    esac
-   forkKillAll
-   forkWaitAll
+   fork_terminate_all
+   fork_wait_all
    tfw_log '# END FINALLY'
 }
 
@@ -824,7 +824,7 @@ _tfw_getopts() {
       *:--stdout) _tfw_dump_on_fail --stdout;;
       *:--stderr) _tfw_dump_on_fail --stderr;;
       assert*:--dump-on-fail=*) _tfw_dump_on_fail "${1#*=}";;
-      @(assert*|forkwait*):--error-on-fail) _tfw_opt_error_on_fail=true;;
+      @(assert*|fork_wait*):--error-on-fail) _tfw_opt_error_on_fail=true;;
       assert*:--message=*) _tfw_message="${1#*=}";;
       execute:--exit-status=+([0-9])) _tfw_opt_exit_status="${1#*=}";;
       execute:--exit-status=*) _tfw_error "invalid value: $1";;
@@ -837,12 +837,12 @@ _tfw_getopts() {
       wait_until:--sleep=*) _tfw_error "invalid value: $1";;
       *grep:--fixed-strings) _tfw_opt_grepopts+=(-F);;
       assertcontentgrep:--matches=+([0-9])) _tfw_opt_matches="${1#*=}";;
-      assertcontentgrep:--matches=*) _tfw_error "invalid value: $1";; 
+      assertcontentgrep:--matches=*) _tfw_error "invalid value: $1";;
       assertcontent*:--line=+([0-9])) _tfw_opt_line="${1#*=}"; _tfw_opt_line_msg="line $_tfw_opt_line";;
       assertcontent*:--line=+([0-9])..) _tfw_opt_line="${1#*=}\$"; _tfw_opt_line_msg="lines $_tfw_opt_line";;
       assertcontent*:--line=..+([0-9])) _tfw_opt_line="1${1#*=}"; _tfw_opt_line_msg="lines $_tfw_opt_line";;
       assertcontent*:--line=+([0-9])..+([0-9])) _tfw_opt_line="${1#*=}"; _tfw_opt_line_msg="lines $_tfw_opt_line";;
-      assertcontent*:--line=*) _tfw_error "invalid value: $1";; 
+      assertcontent*:--line=*) _tfw_error "invalid value: $1";;
       *:--) let _tfw_getopts_shift=_tfw_getopts_shift+1; shift; break;;
       *:--*) _tfw_error "unsupported option: $1";;
       *) break;;
@@ -1632,66 +1632,136 @@ wait_until() {
    return 0
 }
 
+# For managing concurrent processes that will be automatically killed when
+# cleaning up.
+
 fork() {
+   _tfw_getopts fork "$@"
+   shift $_tfw_getopts_shift
    local forkid=${#_tfw_forked_pids[*]}
+   if _tfw_set_forklabel "$1"; then
+      shift
+      [ -n "$_tfw_forkid" ] && error "fork label '%$_tfw_forklabel' already in use"
+   fi
    local _tfw_process_tmp="$_tfw_tmp/fork-$forkid"
    mkdir "$_tfw_process_tmp" || _tfw_fatalexit
    $_tfw_assert_noise && tfw_log "# fork[$forkid] START" $(shellarg "$@")
    ( "$@" ) 6>"$_tfw_process_tmp/log.stdout" 1>&6 2>"$_tfw_process_tmp/log.stderr" 7>"$_tfw_process_tmp/log.xtrace" &
    _tfw_forked_pids[$forkid]=$!
-   $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$! STARTED"
+   [ -n "$_tfw_forklabel" ] && eval _tfw_fork_label_$_tfw_forklabel=$forkid
+   $_tfw_assert_noise && tfw_log "# fork[$forkid] ${_tfw_forklabel:+%$_tfw_forklabel }pid=$! STARTED"
 }
 
-forkKillAll() {
-   $_tfw_assert_noise && tfw_log "# fork kill all"
-   local forkid
-   for ((forkid=0; forkid < ${#_tfw_forked_pids[*]}; ++forkid)); do
-      local pid=${_tfw_forked_pids[$forkid]}
-      [ -z "$pid" ] && continue
-      $_tfw_assert_noise && tfw_log "# fork[$forkid] kill -TERM $pid"
-      kill -TERM $pid 2>/dev/null
+fork_terminate() {
+   _tfw_getopts fork_terminate "$@"
+   shift $_tfw_getopts_shift
+   $_tfw_assert_noise && tfw_log "# fork_terminate $*"
+   for arg; do
+      _tfw_set_forklabel "$arg" || error "not a fork label '$arg'"
+      [ -n "$_tfw_forkid" ] || error "no such fork: %$_tfw_forklabel"
+      _tfw_terminate $_tfw_forkid
    done
 }
 
-forkWaitAll() {
-   _tfw_getopts forkwaitall "$@"
+fork_wait() {
+   _tfw_getopts fork_wait "$@"
    shift $_tfw_getopts_shift
-   $_tfw_assert_noise && tfw_log "# fork wait all"
+   $_tfw_assert_noise && tfw_log "# fork_wait $*"
    while true; do
       local running=0
-      local forkid
-      for ((forkid=0; forkid < ${#_tfw_forked_pids[*]}; ++forkid)); do
-         local pid=${_tfw_forked_pids[$forkid]}
-         [ -z "$pid" ] && continue
-         if kill -0 $pid 2>/dev/null; then
+      for arg; do
+         _tfw_set_forklabel "$arg" || error "not a fork label '$arg'"
+         [ -n "$_tfw_forkid" ] || error "no such fork: %$_tfw_forklabel"
+         if ! _tfw_forkwait $_tfw_forkid; then
             let running+=1
-         else
-            _tfw_forked_pids[$forkid]=
-            wait $pid # should not block because process has exited
-            local status=$?
-            $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$pid EXIT status=$status"
-            echo "++++++++++ fork[$forkid] log.stdout ++++++++++"
-            cat $_tfw_tmp/fork-$forkid/log.stdout
-            echo "++++++++++"
-            echo "++++++++++ fork[$forkid] log.stderr ++++++++++"
-            cat $_tfw_tmp/fork-$forkid/log.stderr
-            echo "++++++++++"
-            if $_tfw_trace; then
-               echo "++++++++++ fork[$forkid] log.xtrace ++++++++++"
-               cat $_tfw_tmp/fork-$forkid/log.xtrace
-               echo "++++++++++"
-            fi
-            case $status in
-            0) ;;
-            1) _tfw_fail "fork[$forkid] process exited with FAIL status";;
-            254) _tfw_error "fork[$forkid] process exited with ERROR status";;
-            255) _tfw_fatal "fork[$forkid] process exited with FATAL status";;
-            *) _tfw_error "fork[$forkid] process exited with status=$status";;
-            esac
          fi
       done
       [ $running -eq 0 ] && return 0
    done
+}
+
+fork_terminate_all() {
+   _tfw_getopts fork_terminate_all "$@"
+   shift $_tfw_getopts_shift
+   [ $# -eq 0 ] || error "unsupported arguments: $*"
+   $_tfw_assert_noise && tfw_log "# fork_terminate_all"
+   local forkid
+   for ((forkid=0; forkid < ${#_tfw_forked_pids[*]}; ++forkid)); do
+      _tfw_terminate $forkid
+   done
+}
+
+fork_wait_all() {
+   _tfw_getopts fork_wait_all "$@"
+   shift $_tfw_getopts_shift
+   [ $# -eq 0 ] || error "unsupported arguments: $*"
+   $_tfw_assert_noise && tfw_log "# fork_wait_all"
+   while true; do
+      local running=0
+      local forkid
+      for ((forkid=0; forkid < ${#_tfw_forked_pids[*]}; ++forkid)); do
+         if ! _tfw_forkwait $forkid; then
+            let running+=1
+         fi
+      done
+      [ $running -eq 0 ] && return 0
+   done
+}
+
+_tfw_set_forklabel() {
+   case "$1" in
+   '%'+([[A-Za-z0-9]))
+      _tfw_forklabel="${1#%}"
+      eval _tfw_forkid="\$_tfw_fork_label_$_tfw_forklabel"
+      return 0
+      ;;
+   '%'*)
+      error "malformed fork label '$1'"
+      return 0
+      ;;
+   esac
+   return 1
+}
+
+_tfw_terminate() {
+   local forkid="$1"
+   [ -z "$forkid" ] && return 1
+   local pid=${_tfw_forked_pids[$forkid]}
+   [ -z "$pid" ] && return 1
+   $_tfw_assert_noise && tfw_log "# fork[$forkid] kill -TERM $pid"
+   kill -TERM $pid 2>/dev/null
+}
+
+_tfw_forkwait() {
+   local forkid="$1"
+   [ -z "$forkid" ] && return 0
+   local pid=${_tfw_forked_pids[$forkid]}
+   [ -z "$pid" ] && return 0
+   kill -0 $pid 2>/dev/null && return 1 # still running
+   _tfw_forked_pids[$forkid]=
+   wait $pid # should not block because process has exited
+   local status=$?
+   $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$pid EXIT status=$status"
+   echo "++++++++++ fork[$forkid] log.stdout ++++++++++"
+   cat $_tfw_tmp/fork-$forkid/log.stdout
+   echo "++++++++++"
+   echo "++++++++++ fork[$forkid] log.stderr ++++++++++"
+   cat $_tfw_tmp/fork-$forkid/log.stderr
+   echo "++++++++++"
+   if $_tfw_trace; then
+      echo "++++++++++ fork[$forkid] log.xtrace ++++++++++"
+      cat $_tfw_tmp/fork-$forkid/log.xtrace
+      echo "++++++++++"
+   fi
+   case $status in
+   0) ;;
+   143) ;; # terminated with SIGTERM (probably from fork_terminate)
+   1) _tfw_fail "fork[$forkid] process exited with FAIL status";;
+   254) _tfw_error "fork[$forkid] process exited with ERROR status";;
+   255) _tfw_fatal "fork[$forkid] process exited with FATAL status";;
+   *) _tfw_error "fork[$forkid] process exited with status=$status";;
+   esac
+   return 0
 }
 
 # The following functions are very convenient when writing test cases.

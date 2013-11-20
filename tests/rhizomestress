@@ -180,7 +180,7 @@ test_StressRhizomeDirect() {
    fork executeOk_servald rhizome direct push
    set_instance +E
    fork executeOk_servald rhizome direct sync
-   forkWaitAll
+   fork_wait_all
    set_instance +A
    executeOk_servald rhizome list ''
    tfw_quietly assert_rhizome_list --fromhere=1 file-A-!(*.manifest) --fromhere=0 file-[BDE]-!(*.manifest)
