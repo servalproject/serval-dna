@@ -1117,7 +1117,7 @@ int app_trace(const struct cli_parsed *parsed, struct cli_context *context)
   int ret=overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 5000);
   ob_free(b);
   if (ret)
-    DEBUGF("overlay_mdp_send returned %d", ret);
+    WHYF("overlay_mdp_send returned %d", ret);
   else{
     int offset=0;
     {
@@ -2319,7 +2319,6 @@ int app_id_list(const struct cli_parsed *parsed, struct cli_context *context)
     struct mdp_header rev_header;
     unsigned char response_payload[1600];
     ssize_t len = mdp_poll_recv(mdp_sock, timeout, &rev_header, response_payload, sizeof(response_payload));
-    DEBUGF("mdp_poll_recv = %zd", len);
     if (len==-1)
       break;
     if (len==-2){
@@ -2838,11 +2837,10 @@ int app_network_scan(const struct cli_parsed *parsed, struct cli_context *contex
     return -1;
   
   if (address){
-    DEBUGF("Parsing arg %s", address);
     if (!inet_aton(address, &scan->addr))
       return WHY("Unable to parse the address");
   }else
-    DEBUGF("Scanning local networks");
+    INFO("Scanning local networks");
   
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
     return WHY("Cannot create MDP socket");

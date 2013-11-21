@@ -838,7 +838,7 @@ ssize_t rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buf
   size_t bytes_copied=0;
   
   while (len>0){
-    DEBUGF("len=%zu read->length=%"PRIu64" read->offset=%"PRIu64" buffer->offset=%"PRIu64"", len, read->length, read->offset, buffer->offset);
+    //DEBUGF("len=%zu read->length=%"PRIu64" read->offset=%"PRIu64" buffer->offset=%"PRIu64"", len, read->length, read->offset, buffer->offset);
     // make sure we only attempt to read data that actually exists
     if (read->length != RHIZOME_SIZE_UNSET && read->offset + len > read->length)
       len = read->length - read->offset;
@@ -858,7 +858,6 @@ ssize_t rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buf
 	  len-=size;
 	  read->offset+=size;
 	  bytes_copied+=size;
-	  DEBUGF("read->offset=%"PRIu64, read->offset);
 	  continue;
 	}
       }
@@ -876,7 +875,6 @@ ssize_t rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buf
 	  bcopy(buffer->data + ofs - size, data + len - size, size);
 	  len-=size;
 	  bytes_copied+=size;
-	  DEBUGF("read->offset=%"PRIu64, read->offset);
 	  continue;
 	}
       }
@@ -892,7 +890,6 @@ ssize_t rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buf
     if (r == -1)
       return -1;
     buffer->len = (size_t) r;
-    DEBUGF("read->offset=%"PRIu64, read->offset);
   }
   return bytes_copied;
 }
