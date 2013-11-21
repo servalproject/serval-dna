@@ -2772,6 +2772,56 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
   return 1;
 }
 
+void context_switch_test(int);
+int app_mem_test(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  int mem_size;
+  int addr;
+  uint64_t count;
+
+
+  // First test context switch speed
+  context_switch_test(1);
+
+  for(mem_size=1024;mem_size<=(128*1024*1024);mem_size*=2) {
+    uint8_t *mem=malloc(mem_size);
+    if (!mem) {
+      fprintf(stderr,"Could not allocate %dKB memory -- stopping test.\n",mem_size/1024);
+      return -1;
+    }
+
+    // Fill memory with random stuff so that we don't have memory page-in
+    // delays when doing the reads
+    for(addr=0;addr<mem_size;addr++) mem[addr]=random()&0xff;
+    
+    uint64_t end_time=gettime_ms()+100;
+    uint64_t total=0;
+    uint32_t mem_mask=mem_size-1;
+
+    for(count=0;gettime_ms()<end_time;count++) {
+      addr=random()&mem_mask;
+      total+=mem[addr];
+    }
+    printf("Memory size = %8dKB : %lld random  reads per second (irrelevant sum is %016llx)\n",mem_size/1024,count*10,
+	   /* use total so that compiler doesn't optimise away our memory accesses */
+	   total);
+
+    end_time=gettime_ms()+100;
+    for(count=0;gettime_ms()<end_time;count++) {
+      addr=random()&mem_mask;
+      mem[addr]=3;
+    }
+    printf("Memory size = %8dKB : %lld random writes per second (irrelevant sum is %016llx)\n",mem_size/1024,count*10,
+	   /* use total so that compiler doesn't optimise away our memory accesses */
+	   total);
+
+
+    free(mem);
+  }
+
+  return 0;
+}
+
 int app_network_scan(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
@@ -2926,6 +2976,8 @@ struct cli_schema command_line_options[]={
    "Run cryptography speed test"},
   {app_nonce_test,{"test","nonce",NULL}, 0,
    "Run nonce generation test"},
+  {app_mem_test,{"test","memory",NULL}, 0,
+   "Run memory speed test"},
   {app_byteorder_test,{"test","byteorder",NULL}, 0,
    "Run byte order handling test"},
   {app_slip_test,{"test","slip","[--seed=<N>]","[--duration=<seconds>|--iterations=<N>]",NULL}, 0,

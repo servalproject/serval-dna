@@ -115,7 +115,11 @@ if [ -n "$dirty" ] && ! $allow_modified; then
 fi
 
 # Use the "git describe" command to form the version string and append $dirty.
-if error="$( (desc="$(git describe --match="$version_tag_glob")" && echo "$desc$dirty") 2>&1 1>&5)" 5>&1; then
+# This ugly construction is required for use on machines with bash version < 4.
+error="$(git describe --match="$version_tag_glob" 2>&1 1>/dev/null)" || true
+
+if [ -z "$error" ]; then
+   echo "$(git describe --match="$version_tag_glob")$dirty"
    exit 0
 fi
 
