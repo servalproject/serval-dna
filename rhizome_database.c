@@ -1988,7 +1988,7 @@ static int is_interesting(const char *id_hex, int64_t version)
 int rhizome_is_bar_interesting(unsigned char *bar)
 {
   int64_t version = rhizome_bar_version(bar);
-  char id_hex[RHIZOME_BAR_PREFIX_BYTES + 2];
+  char id_hex[RHIZOME_BAR_PREFIX_BYTES *2 + 2];
   tohex(id_hex, RHIZOME_BAR_PREFIX_BYTES * 2, &bar[RHIZOME_BAR_PREFIX_OFFSET]);
   strcat(id_hex, "%");
   return is_interesting(id_hex, version);
