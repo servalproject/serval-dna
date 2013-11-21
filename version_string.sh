@@ -17,11 +17,6 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-if [ ! -e .git ]; then
-  echo "UNKNOWN-VERSION"
-  exit
-fi
-
 usage() {
    echo "Usage: ${0##*/} [options]"'
 
@@ -85,6 +80,11 @@ while [ $# -gt 0 ]; do
 done
 
 cd "$repo_path" >/dev/null
+
+if [ ! -d .git ]; then
+  echo "UNKNOWN-VERSION"
+  exit 0
+fi
 
 get_author_label() {
    # See git-commit-tree(1) for the semantics of working out the author's email
