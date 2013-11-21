@@ -285,7 +285,6 @@ setup_simulate_extender() {
          set debug.mavlink on \
          set interfaces.1.type CATEAR \
          set interfaces.1.mdp.tick_ms 5000 \
-         set interfaces.1.mdp.packet_interval 5000 \
          set interfaces.1.socket_type STREAM \
          set interfaces.1.encapsulation SINGLE \
          set interfaces.1.point_to_point on

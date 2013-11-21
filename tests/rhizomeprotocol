@@ -720,7 +720,7 @@ start_radio_instance() {
 doc_SimulatedRadio="MDP Transfer over simulated radio link (~90% packet arrival)"
 setup_SimulatedRadio() {
    setup_common
-   $servald_build_root/fakeradio 6 0.9 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
+   $servald_build_root/fakeradio 4 0.9 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
    FAKERADIO_PID=$!
    sleep 5
    local END1=`head "$SERVALD_VAR/radioout" -n 1`
@@ -748,7 +748,7 @@ teardown_SimulatedRadio() {
 doc_SimulatedRadio2="MDP Transfer over simulated radio link (~50% packet arrival)"
 setup_SimulatedRadio2() {
    setup_common
-   $servald_build_root/fakeradio 6 0.5 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
+   $servald_build_root/fakeradio 4 0.5 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
    FAKERADIO_PID=$!
    sleep 1
    local END1=`head "$SERVALD_VAR/radioout" -n 1`
