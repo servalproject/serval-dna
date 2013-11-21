@@ -230,19 +230,23 @@ int server_check_stopfile()
 
 void serverCleanUp()
 {
-  /* Try to remove shutdown and PID files and exit */
-  server_remove_stopfile();
-  char filename[1024];
-  if (FORM_SERVAL_INSTANCE_PATH(filename, PIDFILE_NAME))
-    unlink(filename);
-  
-  if (FORM_SERVAL_INSTANCE_PATH(filename, "mdp.socket")) {
-    unlink(filename);
+  if (serverMode){
+    rhizome_close_db();
+    dna_helper_shutdown();
   }
   
-  rhizome_close_db();
+  char filename[1024];
+  if (FORM_SERVAL_INSTANCE_PATH(filename, "mdp.socket"))
+    unlink(filename);
   
-  dna_helper_shutdown();
+  if (FORM_SERVAL_INSTANCE_PATH(filename, "mdp.2.socket"))
+    unlink(filename);
+    
+  if (FORM_SERVAL_INSTANCE_PATH(filename, "monitor.socket"))
+    unlink(filename);
+  
+  /* Try to remove shutdown and PID files and exit */
+  server_remove_stopfile();
 }
 
 static void signame(char *buf, size_t len, int signal)
