@@ -38,7 +38,7 @@ void report()
 	stop_timing=1;
 }
 
-int context_switch_test(int duration)
+void context_switch_test(int duration)
 {
 	unsigned long	check;
 	int	p1[2], p2[2];

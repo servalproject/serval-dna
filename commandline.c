@@ -2484,7 +2484,7 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
   return 1;
 }
 
-int context_switch_test(int);
+void context_switch_test(int);
 int app_mem_test(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mem_size;
