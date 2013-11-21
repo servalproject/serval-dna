@@ -217,6 +217,8 @@ int _socket_set_rcvbufsize(struct __sourceloc, int sock, unsigned buffer_size);
 int real_sockaddr(const struct sockaddr_un *src_addr, socklen_t src_addrlen, struct sockaddr_un *dst_addr, socklen_t *dst_addrlen);
 int cmp_sockaddr(const struct sockaddr *, socklen_t, const struct sockaddr *, socklen_t);
 
+ssize_t recvwithttl(int sock, unsigned char *buffer, size_t bufferlen, int *ttl, struct sockaddr *recvaddr, socklen_t *recvaddrlen);
+
 #define SERVER_CONFIG_RELOAD_INTERVAL_MS	1000
 
 struct cli_parsed;

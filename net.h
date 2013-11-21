@@ -52,6 +52,5 @@ ssize_t _write_all_nonblock(int fd, const void *buf, size_t len, struct __source
 ssize_t _writev_all(int fd, const struct iovec *iov, int iovcnt, struct __sourceloc __whence);
 ssize_t _write_str(int fd, const char *str, struct __sourceloc __whence);
 ssize_t _write_str_nonblock(int fd, const char *str, struct __sourceloc __whence);
-ssize_t recvwithttl(int sock, unsigned char *buffer, size_t bufferlen, int *ttl, struct sockaddr *recvaddr, socklen_t *recvaddrlen);
 
 #endif // __SERVALD_NET_H
