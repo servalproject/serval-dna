@@ -743,7 +743,7 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	      } else {
 		char hash_hex[RHIZOME_FILEHASH_STRLEN + 1];
 		tohex(hash_hex, RHIZOME_FILEHASH_STRLEN, hashp->binary);
-		BIND_DEBUG(RHIZOME_FILEHASH_T, sqlite3_bind_text, "%s,%zu,SQLITE_TRANSIENT", hash_hex, RHIZOME_FILEHASH_STRLEN);
+		BIND_DEBUG(RHIZOME_FILEHASH_T, sqlite3_bind_text, "%s,%u,SQLITE_TRANSIENT", hash_hex, RHIZOME_FILEHASH_STRLEN);
 		BIND_RETRY(sqlite3_bind_text, hash_hex, RHIZOME_FILEHASH_STRLEN, SQLITE_TRANSIENT);
 	      }
 	    }
