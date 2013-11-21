@@ -27,17 +27,20 @@ int cmp_sid_t(const sid_t *a, const sid_t *b)
   return memcmp(a, b, sizeof a->binary);
 }
 
-int str_to_sid_t(sid_t *sid, const char *hex) {
+int str_to_sid_t(sid_t *sid, const char *hex)
+{
   if (strcmp(hex, "broadcast") == 0) {
-    *sid = SID_BROADCAST;
+    if (sid)
+      *sid = SID_BROADCAST;
     return 0;
   }
-  return fromhexstr(sid->binary, hex, sizeof sid->binary);
+  return sid ? fromhexstr(sid->binary, hex, sizeof sid->binary) : is_xstring(hex, SID_STRLEN) ? 0 : -1;
 }
 
 int strn_to_sid_t(sid_t *sid, const char *hex, const char **endp)
 {
   if (str_startswith(hex, "broadcast", endp) == 0) {
+    if (sid)
     *sid = SID_BROADCAST;
     return 0;
   }
@@ -79,7 +82,7 @@ int cmp_rhizome_bid_t(const rhizome_bid_t *a, const rhizome_bid_t *b)
 
 int str_to_rhizome_bid_t(rhizome_bid_t *bid, const char *hex)
 {
-  return fromhexstr(bid->binary, hex, sizeof bid->binary);
+  return bid ? fromhexstr(bid->binary, hex, sizeof bid->binary) : is_xstring(hex, RHIZOME_BUNDLE_ID_STRLEN) ? 0 : -1;
 }
 
 int strn_to_rhizome_bid_t(rhizome_bid_t *bid, const char *hex, const char **endp)
@@ -101,7 +104,7 @@ int cmp_rhizome_filehash_t(const rhizome_filehash_t *a, const rhizome_filehash_t
 
 int str_to_rhizome_filehash_t(rhizome_filehash_t *hashp, const char *hex)
 {
-  return fromhexstr(hashp->binary, hex, sizeof hashp->binary);
+  return hashp ? fromhexstr(hashp->binary, hex, sizeof hashp->binary) : is_xstring(hex, RHIZOME_FILEHASH_STRLEN) ? 0 : -1;
 }
 
 int strn_to_rhizome_filehash_t(rhizome_filehash_t *hashp, const char *hex, const char **endp)
@@ -118,27 +121,7 @@ int strn_to_rhizome_filehash_t(rhizome_filehash_t *hashp, const char *hex, const
 
 int str_to_rhizome_bk_t(rhizome_bk_t *bkp, const char *hex)
 {
-  return fromhexstr(bkp->binary, hex, sizeof bkp->binary);
-}
-
-int rhizome_strn_is_manifest_id(const char *id)
-{
-  return is_xsubstring(id, RHIZOME_MANIFEST_ID_STRLEN);
-}
-
-int rhizome_str_is_manifest_id(const char *id)
-{
-  return is_xstring(id, RHIZOME_MANIFEST_ID_STRLEN);
-}
-
-int rhizome_strn_is_bundle_key(const char *key)
-{
-  return is_xsubstring(key, RHIZOME_BUNDLE_KEY_STRLEN);
-}
-
-int rhizome_str_is_bundle_key(const char *key)
-{
-  return is_xstring(key, RHIZOME_BUNDLE_KEY_STRLEN);
+  return bkp ? fromhexstr(bkp->binary, hex, sizeof bkp->binary) : is_xstring(hex, RHIZOME_BUNDLE_KEY_STRLEN) ? 0 : -1;
 }
 
 int rhizome_strn_is_bundle_crypt_key(const char *key)
@@ -149,16 +132,6 @@ int rhizome_strn_is_bundle_crypt_key(const char *key)
 int rhizome_str_is_bundle_crypt_key(const char *key)
 {
   return is_xstring(key, RHIZOME_CRYPT_KEY_STRLEN);
-}
-
-int rhizome_strn_is_file_hash(const char *hash)
-{
-  return is_xsubstring(hash, RHIZOME_FILEHASH_STRLEN);
-}
-
-int rhizome_str_is_file_hash(const char *hash)
-{
-  return is_xstring(hash, RHIZOME_FILEHASH_STRLEN);
 }
 
 int rhizome_str_is_manifest_service(const char *text)
