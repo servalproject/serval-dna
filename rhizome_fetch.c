@@ -318,7 +318,7 @@ static struct rhizome_fetch_candidate *rhizome_fetch_insert(struct rhizome_fetch
   if (config.debug.rhizome_rx)
     DEBUGF("insert queue[%d] candidate[%u]", (int)(q - rhizome_fetch_queues), i);
   assert(i >= 0 && i < q->candidate_queue_size);
-  assert(i == 0 || c[i-1].manifest);
+  assert(i == 0 || c[-1].manifest);
   if (e->manifest) // queue is full
     rhizome_manifest_free(e->manifest);
   else
