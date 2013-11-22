@@ -31,9 +31,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  In either case, functions that don't take an offset use and advance the position.
  */
 
-struct overlay_buffer *ob_new(void)
+struct overlay_buffer *_ob_new(struct __sourceloc __whence)
 {
   struct overlay_buffer *ret = emalloc_zero(sizeof(struct overlay_buffer));
+  if (config.debug.overlaybuffer)
+    DEBUGF("ob_new() return %p", ret);
   if (ret == NULL)
     return NULL;
   ob_unlimitsize(ret);
@@ -42,9 +44,11 @@ struct overlay_buffer *ob_new(void)
 
 // index an existing static buffer.
 // and allow other callers to use the ob_ convenience methods for reading and writing up to size bytes.
-struct overlay_buffer *ob_static(unsigned char *bytes, int size)
+struct overlay_buffer *_ob_static(struct __sourceloc __whence, unsigned char *bytes, int size)
 {
   struct overlay_buffer *ret = emalloc_zero(sizeof(struct overlay_buffer));
+  if (config.debug.overlaybuffer)
+    DEBUGF("ob_static(bytes=%p, size=%d) return %p", bytes, size, ret);
   if (ret == NULL)
     return NULL;
   ret->bytes = bytes;
@@ -57,13 +61,15 @@ struct overlay_buffer *ob_static(unsigned char *bytes, int size)
 // create a new overlay buffer from an existing piece of another buffer.
 // Both buffers will point to the same memory region.
 // It is up to the caller to ensure this buffer is not used after the parent buffer is freed.
-struct overlay_buffer *ob_slice(struct overlay_buffer *b, int offset, int length)
+struct overlay_buffer *_ob_slice(struct __sourceloc __whence, struct overlay_buffer *b, int offset, int length)
 {
   if (offset+length > b->allocSize) {
     WHY("Buffer isn't long enough to slice");
     return NULL;
   }
   struct overlay_buffer *ret = emalloc_zero(sizeof(struct overlay_buffer));
+  if (config.debug.overlaybuffer)
+    DEBUGF("ob_slice(b=%p, offset=%d, length=%d) return %p", b, offset, length, ret);
   if (ret == NULL)
       return NULL;
   ret->bytes = b->bytes+offset;
@@ -73,9 +79,11 @@ struct overlay_buffer *ob_slice(struct overlay_buffer *b, int offset, int length
   return ret;
 }
 
-struct overlay_buffer *ob_dup(struct overlay_buffer *b)
+struct overlay_buffer *_ob_dup(struct __sourceloc __whence, struct overlay_buffer *b)
 {
   struct overlay_buffer *ret = emalloc_zero(sizeof(struct overlay_buffer));
+  if (config.debug.overlaybuffer)
+    DEBUGF("ob_dup(b=%p) return %p", b, ret);
   if (ret == NULL)
     return NULL;
   ret->sizeLimit = b->sizeLimit;
@@ -94,29 +102,35 @@ struct overlay_buffer *ob_dup(struct overlay_buffer *b)
   return ret;
 }
 
-void ob_free(struct overlay_buffer *b)
+void _ob_free(struct __sourceloc __whence, struct overlay_buffer *b)
 {
   assert(b != NULL);
+  if (config.debug.overlaybuffer)
+    DEBUGF("ob_free(b=%p)", b);
   if (b->allocated)
     free(b->allocated);
   free(b);
 }
 
-int ob_checkpoint(struct overlay_buffer *b)
+int _ob_checkpoint(struct __sourceloc __whence, struct overlay_buffer *b)
 {
   assert(b != NULL);
   b->checkpointLength = b->position;
+  if (config.debug.overlaybuffer)
+    DEBUGF("ob_checkpoint(b=%p) checkpointLength=%d", b, b->checkpointLength);
   return 0;
 }
 
-int ob_rewind(struct overlay_buffer *b)
+int _ob_rewind(struct __sourceloc __whence, struct overlay_buffer *b)
 {
   assert(b != NULL);
   b->position = b->checkpointLength;
+  if (config.debug.overlaybuffer)
+    DEBUGF("ob_rewind(b=%p) position=%d", b, b->position);
   return 0;
 }
 
-void ob_limitsize(struct overlay_buffer *b, int bytes)
+void _ob_limitsize(struct __sourceloc __whence, struct overlay_buffer *b, int bytes)
 {
   assert(b != NULL);
   assert(bytes >= 0);
@@ -125,17 +139,23 @@ void ob_limitsize(struct overlay_buffer *b, int bytes)
   assert(b->checkpointLength <= bytes);
   if (b->bytes && b->allocated == NULL)
     assert(bytes <= b->allocSize);
-  b->sizeLimit=bytes;
+  b->sizeLimit = bytes;
+  if (config.debug.overlaybuffer)
+    DEBUGF("ob_limitsize(b=%p, bytes=%d) sizeLimit=%d", b, bytes, b->sizeLimit);
 }
 
-void ob_unlimitsize(struct overlay_buffer *b)
+void _ob_unlimitsize(struct __sourceloc __whence, struct overlay_buffer *b)
 {
   assert(b != NULL);
   b->sizeLimit = -1;
+  if (config.debug.overlaybuffer)
+    DEBUGF("ob_unlimitsize(b=%p) sizeLimit=%d", b, b->sizeLimit);
 }
 
-void ob_flip(struct overlay_buffer *b)
+void _ob_flip(struct __sourceloc __whence, struct overlay_buffer *b)
 {
+  if (config.debug.overlaybuffer)
+    DEBUGF("ob_flip(b=%p) checkpointLength=0 position=0", b);
   b->checkpointLength = 0;
   ob_limitsize(b, b->position);
   b->position = 0;
@@ -143,22 +163,31 @@ void ob_flip(struct overlay_buffer *b)
 
 /* Return 1 if space is available, 0 if not.
  */
-ssize_t ob_makespace(struct overlay_buffer *b, size_t bytes)
+ssize_t _ob_makespace(struct __sourceloc __whence, struct overlay_buffer *b, size_t bytes)
 {
   assert(b != NULL);
+  if (config.debug.overlaybuffer)
+    DEBUGF("ob_makespace(b=%p, bytes=%d) b->bytes=%p b->position=%d b->allocSize=%d",
+	   b, bytes, b->bytes, b->position, b->allocSize);
   assert(b->position >= 0);
   if (b->sizeLimit != -1)
     assert(b->sizeLimit >= 0);
   assert(b->allocSize >= 0);
   if (b->position)
     assert(b->bytes != NULL);
-  if (b->sizeLimit != -1 && b->position + bytes > b->sizeLimit)
+  if (b->sizeLimit != -1 && b->position + bytes > b->sizeLimit) {
+    if (config.debug.packetformats)
+      DEBUGF("ob_makespace(): asked for space to %u, beyond size limit of %u", b->position + bytes, b->sizeLimit);
     return 0;
+  }
   if (b->position + bytes <= b->allocSize)
     return 1;
   // Don't realloc a static buffer.
-  if (b->bytes && b->allocated == NULL)
+  if (b->bytes && b->allocated == NULL) {
+    if (config.debug.packetformats)
+      DEBUGF("ob_makespace(): asked for space to %u, beyond static buffer size of %u", b->position + bytes, b->allocSize);
     return 0;
+  }
   int newSize=b->position+bytes;
   if (newSize<64) newSize=64;
   if (newSize&63) newSize+=64-(newSize&63);
@@ -212,49 +241,68 @@ ssize_t ob_makespace(struct overlay_buffer *b, size_t bytes)
  Functions that append data and increase the size of the buffer if possible / required
  */
 
-void ob_append_byte(struct overlay_buffer *b,unsigned char byte)
+void _ob_append_byte(struct __sourceloc __whence, struct overlay_buffer *b, unsigned char byte)
 {
   const int bytes = 1;
-  if (ob_makespace(b, bytes))
+  if (ob_makespace(b, bytes)) {
     b->bytes[b->position] = byte;
+    if (config.debug.overlaybuffer)
+      DEBUGF("ob_append_byte(b=%p, byte=0x%02x) %p[%d]=%02x position=%d", b, byte, b->bytes, b->position, byte, b->position + bytes);
+  } else {
+    if (config.debug.overlaybuffer)
+      DEBUGF("ob_append_byte(b=%p, byte=0x%02x) OVERRUN position=%d", b, byte, b->position + bytes);
+  }
   b->position += bytes;
 }
 
-unsigned char *ob_append_space(struct overlay_buffer *b, int count)
+unsigned char *_ob_append_space(struct __sourceloc __whence, struct overlay_buffer *b, int count)
 {
   assert(count > 0);
   unsigned char *r = ob_makespace(b, count) ? &b->bytes[b->position] : NULL;
   b->position += count;
+  if (config.debug.overlaybuffer)
+    DEBUGF("ob_append_space(b=%p, count=%d) position=%d return %p", b, count, b->position, r);
   return r;
 }
 
-void ob_append_bytes(struct overlay_buffer *b, const unsigned char *bytes, int count)
+void _ob_append_bytes(struct __sourceloc __whence, struct overlay_buffer *b, const unsigned char *bytes, int count)
 {
   assert(count > 0);
   unsigned char *r = ob_makespace(b, count) ? &b->bytes[b->position] : NULL;
-  if (r)
+  if (r) {
     bcopy(bytes, r, count);
+    if (config.debug.overlaybuffer)
+      DEBUGF("ob_append_bytes(b=%p, bytes=%p, count=%d) position=%d return %p", b, bytes, count, b->position + count, r);
+  } else {
+    if (config.debug.overlaybuffer)
+      DEBUGF("ob_append_bytes(b=%p, bytes=%p, count=%d) OVERRUN position=%d return NULL", b, bytes, count, b->position + count);
+  }
+  if (config.debug.overlaybuffer)
+    dump("ob_append_bytes", bytes, count);
   b->position += count;
-  if (r)
-    bcopy(bytes, r, count);
 }
 
-void append_buffer(struct overlay_buffer *b, struct overlay_buffer *s)
+void _ob_append_buffer(struct __sourceloc __whence, struct overlay_buffer *b, struct overlay_buffer *s)
 {
   ob_append_bytes(b, s->bytes, s->position);
 }
 
-void ob_append_ui16(struct overlay_buffer *b, uint16_t v)
+void _ob_append_ui16(struct __sourceloc __whence, struct overlay_buffer *b, uint16_t v)
 {
   const int bytes = 2;
   if (ob_makespace(b, bytes)) {
     b->bytes[b->position] = (v >> 8) & 0xFF;
     b->bytes[b->position+1] = v & 0xFF;
+    if (config.debug.overlaybuffer)
+      DEBUGF("ob_append_ui16(b=%p, v=%u) %p[%d]=%s position=%d", b, v, b->bytes, b->position, alloca_tohex(&b->bytes[b->position], bytes), b->position + bytes);
+  } else {
+    if (config.debug.overlaybuffer)
+      DEBUGF("ob_append_ui16(b=%p, v=%u) OVERRUN position=%d", b, v, b->position + bytes);
   }
   b->position += bytes;
 }
 
-void ob_append_ui32(struct overlay_buffer *b, uint32_t v)
+void _ob_append_ui32(struct __sourceloc __whence, struct overlay_buffer *b, uint32_t v)
 {
   const int bytes = 4;
   if (ob_makespace(b, bytes)) {
@@ -262,11 +310,17 @@ void ob_append_ui32(struct overlay_buffer *b, uint32_t v)
     b->bytes[b->position+1] = (v >> 16) & 0xFF;
     b->bytes[b->position+2] = (v >> 8) & 0xFF;
     b->bytes[b->position+3] = v & 0xFF;
+    if (config.debug.overlaybuffer)
+      DEBUGF("ob_append_ui32(b=%p, v=%"PRIu32") %p[%d]=%s position=%d",
+	  b, v, b->bytes, b->position, alloca_tohex(&b->bytes[b->position], bytes), b->position + bytes);
+  } else {
+    if (config.debug.overlaybuffer)
+      DEBUGF("ob_append_ui32(b=%p, v=%"PRIu32") OVERRUN position=%d", b, v, b->position + bytes);
   }
   b->position += bytes;
 }
 
-void ob_append_ui64(struct overlay_buffer *b, uint64_t v)
+void _ob_append_ui64(struct __sourceloc __whence, struct overlay_buffer *b, uint64_t v)
 {
   const int bytes = 8;
   if (ob_makespace(b, bytes)) {
@@ -278,6 +332,12 @@ void ob_append_ui64(struct overlay_buffer *b, uint64_t v)
     b->bytes[b->position+5] = (v >> 16) & 0xFF;
     b->bytes[b->position+6] = (v >> 8) & 0xFF;
     b->bytes[b->position+7] = v & 0xFF;
+    if (config.debug.overlaybuffer)
+      DEBUGF("ob_append_ui64(b=%p, v=%"PRIu64") %p[%d]=%s position=%d",
+	  b, v, b->bytes, b->position, alloca_tohex(&b->bytes[b->position], bytes), b->position + bytes);
+  } else {
+    if (config.debug.overlaybuffer)
+      DEBUGF("ob_append_ui64(b=%p, v=%"PRIu64") OVERRUN position=%d", b, v, b->position + bytes);
   }
   b->position += bytes;
 }
@@ -316,7 +376,7 @@ int unpack_uint(unsigned char *buffer, int buff_size, uint64_t *v){
   return i;
 }
 
-void ob_append_packed_ui32(struct overlay_buffer *b, uint32_t v)
+void _ob_append_packed_ui32(struct __sourceloc __whence, struct overlay_buffer *b, uint32_t v)
 {
   do {
     ob_append_byte(b, (v&0x7f) | (v>0x7f?0x80:0));
@@ -324,7 +384,7 @@ void ob_append_packed_ui32(struct overlay_buffer *b, uint32_t v)
   } while (v != 0);
 }
 
-void ob_append_packed_ui64(struct overlay_buffer *b, uint64_t v)
+void _ob_append_packed_ui64(struct __sourceloc __whence, struct overlay_buffer *b, uint64_t v)
 {
   do {
     ob_append_byte(b, (v&0x7f) | (v>0x7f?0x80:0));
@@ -332,7 +392,7 @@ void ob_append_packed_ui64(struct overlay_buffer *b, uint64_t v)
   } while (v != 0);
 }
 
-void ob_append_rfs(struct overlay_buffer *b, int l)
+void _ob_append_rfs(struct __sourceloc __whence, struct overlay_buffer *b, int l)
 {
   assert(l >= 0);
   assert(l <= 0xffff);
@@ -453,35 +513,41 @@ uint64_t ob_get_packed_ui64(struct overlay_buffer *b)
   return ret;
 }
 
-int ob_get(struct overlay_buffer *b){
+int ob_get(struct overlay_buffer *b)
+{
   if (test_offset(b, b->position, 1))
     return -1;
-  
   return b->bytes[b->position++];
 }
 
-void ob_set_ui16(struct overlay_buffer *b, int offset, uint16_t v)
+void _ob_set_ui16(struct __sourceloc __whence, struct overlay_buffer *b, int offset, uint16_t v)
 {
+  const int bytes = 2;
   assert(b != NULL);
   assert(offset >= 0);
   if (b->sizeLimit != -1)
-    assert(offset + 2 <= b->sizeLimit);
-  assert(offset + 2 <= b->allocSize);
+    assert(offset + bytes <= b->sizeLimit);
+  assert(offset + bytes <= b->allocSize);
   b->bytes[offset] = (v >> 8) & 0xFF;
   b->bytes[offset+1] = v & 0xFF;
+  if (config.debug.overlaybuffer)
+    DEBUGF("ob_set_ui16(b=%p, offset=%d, v=%u) %p[%d]=%s", b, offset, v, b->bytes, offset, alloca_tohex(&b->bytes[offset], bytes));
 }
 
-void ob_set(struct overlay_buffer *b, int offset, unsigned char byte)
+void _ob_set(struct __sourceloc __whence, struct overlay_buffer *b, int offset, unsigned char byte)
 {
+  const int bytes = 1;
   assert(b != NULL);
   assert(offset >= 0);
   if (b->sizeLimit != -1)
-    assert(offset + 1 <= b->sizeLimit);
-  assert(offset + 1 <= b->allocSize);
+    assert(offset + bytes <= b->sizeLimit);
+  assert(offset + bytes <= b->allocSize);
   b->bytes[offset] = byte;
+  if (config.debug.overlaybuffer)
+    DEBUGF("ob_set(b=%p, offset=%d, byte=0x%02x) %p[%d]=%s", b, offset, byte, b->bytes, offset, alloca_tohex(&b->bytes[offset], bytes));
 }
 
-void ob_patch_rfs(struct overlay_buffer *b)
+void _ob_patch_rfs(struct __sourceloc __whence, struct overlay_buffer *b)
 {
   ob_set_ui16(b,b->var_length_offset,b->position - (b->var_length_offset + 2));
 }
@@ -503,12 +569,15 @@ int ob_remaining(struct overlay_buffer *b)
   return b->sizeLimit - b->position;
 }
 
-int ob_overrun(struct overlay_buffer *b)
+int _ob_overrun(struct __sourceloc __whence, struct overlay_buffer *b)
 {
   assert(b->allocSize >= 0);
   if (b->sizeLimit != -1)
     assert(b->sizeLimit >= 0);
-  return b->position > (b->sizeLimit != -1 && b->sizeLimit < b->allocSize ? b->sizeLimit : b->allocSize);
+  int ret = b->position > (b->sizeLimit != -1 && b->sizeLimit < b->allocSize ? b->sizeLimit : b->allocSize);
+  if (config.debug.overlaybuffer)
+    DEBUGF("ob_overrun(b=%p) return %d", b, ret);
+  return ret;
 }
 
 unsigned char *ob_ptr(struct overlay_buffer *b)
