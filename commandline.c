@@ -2758,7 +2758,7 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
       
       /* Got a good DNA reply, copy it into place and stop polling */
       cli_field_name(context, "sid", ":");
-      cli_put_string(context, sidhex, ":");
+      cli_put_string(context, sidhex, "\n");
       cli_field_name(context, "did", ":");
       cli_put_string(context, did, "\n");
       cli_field_name(context, "name", ":");
