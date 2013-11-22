@@ -154,19 +154,16 @@ int overlay_mdp_reply_error(int sock,
 int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr, socklen_t recvaddrlen,
 			  overlay_mdp_frame *mdpreply)
 {
-  if (!recvaddr) return WHY("No reply address");
-
+  if (!recvaddr)
+    return WHY("No reply address");
   ssize_t replylen = overlay_mdp_relevant_bytes(mdpreply);
-  if (replylen<0) return WHY("Invalid MDP frame (could not compute length)");
-
-  errno=0;
-  int r=sendto(sock,(char *)mdpreply,replylen,0,
-	       (struct sockaddr *)recvaddr,recvaddrlen);
-  if (r<replylen) { 
+  if (replylen == -1)
+    return WHY("Invalid MDP frame (could not compute length)");
+  ssize_t r = sendto(sock, (char *)mdpreply, (size_t)replylen, 0, (struct sockaddr *)recvaddr, recvaddrlen);
+  if (r == -1 || (size_t)r < (size_t)replylen) { 
     WHYF_perror("sendto(fd=%d,len=%zu,addr=%s)", sock, (size_t)replylen, alloca_sockaddr((struct sockaddr *)recvaddr, recvaddrlen));
     return WHYF("sendto() failed when sending MDP reply, sock=%d, r=%d", sock, r); 
-  } else
-    if (0) DEBUGF("reply of %d bytes sent",r);
+  }
   return 0;  
 }
 
@@ -450,8 +447,8 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
       if (len < 0)
 	RETURN(WHY("unsupported MDP packet type"));
       socklen_t addrlen = sizeof addr.sun_family + mdp_bindings[match].name_len;
-      int r = sendto(mdp_sock.poll.fd,mdp,len,0,(struct sockaddr*)&addr, addrlen);
-      if (r == len)
+      ssize_t r = sendto(mdp_sock.poll.fd, mdp, (size_t)len, 0, (struct sockaddr*)&addr, addrlen);
+      if ((size_t)r == (size_t)len)
 	RETURN(0);
       if (r == -1 && errno == ENOENT) {
 	/* far-end of socket has died, so drop binding */

@@ -976,12 +976,12 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
     case SOCK_DGRAM:
     {
       if (config.debug.overlayinterfaces) 
-	DEBUGF("Sending %d byte overlay frame on %s to %s",len,interface->name,inet_ntoa(destination->address.sin_addr));
-      int sent=sendto(interface->alarm.poll.fd, 
-		bytes, len, 0, 
+	DEBUGF("Sending %zu byte overlay frame on %s to %s", (size_t)len, interface->name, inet_ntoa(destination->address.sin_addr));
+      ssize_t sent = sendto(interface->alarm.poll.fd, 
+		bytes, (size_t)len, 0, 
 		(struct sockaddr *)&destination->address, sizeof(destination->address));
       ob_free(buffer);
-      if (sent!= len){
+      if (sent == -1 || (size_t)sent != (size_t)len) {
 	WHYF_perror("sendto(fd=%d,len=%zu,addr=%s)",
 	    interface->alarm.poll.fd,
 	    (size_t)len,

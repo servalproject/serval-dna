@@ -122,7 +122,7 @@ int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp, int flags, int time
     return -1;
   // Minimise frame length to save work and prevent accidental disclosure of memory contents.
   ssize_t len = overlay_mdp_relevant_bytes(mdp);
-  if (len < 0)
+  if (len == -1)
     return WHY("MDP frame invalid (could not compute length)");
   /* Construct name of socket to send to. */
   struct sockaddr_un addr;
@@ -131,7 +131,7 @@ int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp, int flags, int time
     return -1;
   // Send to that socket
   set_nonblock(mdp_sockfd);
-  int result = sendto(mdp_sockfd, mdp, len, 0, (struct sockaddr *)&addr, addrlen);
+  ssize_t result = sendto(mdp_sockfd, mdp, (size_t)len, 0, (struct sockaddr *)&addr, addrlen);
   set_block(mdp_sockfd);
   if (result == -1) {
     mdp->packetTypeAndFlags=MDP_ERROR;
