@@ -982,11 +982,16 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 		(struct sockaddr *)&destination->address, sizeof(destination->address));
       ob_free(buffer);
       if (sent == -1 || (size_t)sent != (size_t)len) {
-	WHYF_perror("sendto(fd=%d,len=%zu,addr=%s)",
-	    interface->alarm.poll.fd,
-	    (size_t)len,
-	    alloca_sockaddr((struct sockaddr *)&destination->address, sizeof destination->address)
-	  );
+	if (sent == -1)
+	  WHYF_perror("sendto(fd=%d,len=%zu,addr=%s) on interface %s",
+	      interface->alarm.poll.fd,
+	      (size_t)len,
+	      alloca_sockaddr((struct sockaddr *)&destination->address, sizeof destination->address),
+	      interface->name
+	    );
+	else
+	  WHYF("sendto() sent %zu bytes of overlay frame (%zu) to interface %s (socket=%d)",
+	      (size_t)sent, (size_t)len, interface->name, interface->alarm.poll.fd);
 	// close the interface if we had any error while sending broadcast packets,
 	// unicast packets should not bring the interface down
 	if (destination == interface->destination)

@@ -160,10 +160,12 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr, socklen_t recvaddrl
   if (replylen == -1)
     return WHY("Invalid MDP frame (could not compute length)");
   ssize_t r = sendto(sock, (char *)mdpreply, (size_t)replylen, 0, (struct sockaddr *)recvaddr, recvaddrlen);
-  if (r == -1 || (size_t)r < (size_t)replylen) { 
+  if (r == -1) {
     WHYF_perror("sendto(fd=%d,len=%zu,addr=%s)", sock, (size_t)replylen, alloca_sockaddr((struct sockaddr *)recvaddr, recvaddrlen));
-    return WHYF("sendto() failed when sending MDP reply, sock=%d, r=%d", sock, r); 
+    return WHYF("sendto() failed when sending MDP reply"); 
   }
+  if ((size_t)r != (size_t)replylen)
+    return WHYF("sendto() sent %zu bytes of MDP reply (%zu) to socket=%d", (size_t)r, (size_t)replylen, sock); 
   return 0;  
 }
 
@@ -444,19 +446,22 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
       addr.sun_family = AF_UNIX;
       bcopy(mdp_bindings[match].socket_name, addr.sun_path, mdp_bindings[match].name_len);
       ssize_t len = overlay_mdp_relevant_bytes(mdp);
-      if (len < 0)
+      if (len == -1)
 	RETURN(WHY("unsupported MDP packet type"));
       socklen_t addrlen = sizeof addr.sun_family + mdp_bindings[match].name_len;
       ssize_t r = sendto(mdp_sock.poll.fd, mdp, (size_t)len, 0, (struct sockaddr*)&addr, addrlen);
-      if ((size_t)r == (size_t)len)
-	RETURN(0);
-      if (r == -1 && errno == ENOENT) {
-	/* far-end of socket has died, so drop binding */
-	INFOF("Closing dead MDP client '%s'",mdp_bindings[match].socket_name);
-	overlay_mdp_releasebindings(&addr,mdp_bindings[match].name_len);
+      if ((size_t)r != (size_t)len) {
+	if (r == -1) {
+	  WHYF_perror("sendto(fd=%d,len=%zu,addr=%s)", mdp_sock.poll.fd, (size_t)len, alloca_sockaddr(&addr, addrlen));
+	  if (errno == ENOENT) {
+	    /* far-end of socket has died, so drop binding */
+	    INFOF("Closing dead MDP client '%s'",mdp_bindings[match].socket_name);
+	    overlay_mdp_releasebindings(&addr,mdp_bindings[match].name_len);
+	  }
+	} else
+	  WHYF("sendto() sent %zu bytes of MDP frame (%zu) to client, socket=%d", (size_t)r, (size_t)len, mdp_sock.poll.fd); 
+	RETURN(WHY("Failed to pass received MDP frame to client"));
       }
-      WHYF_perror("sendto(fd=%d,len=%zu,addr=%s)", mdp_sock.poll.fd, (size_t)len, alloca_sockaddr(&addr, addrlen));
-      RETURN(WHY("Failed to pass received MDP frame to client"));
     } else {
       /* No socket is bound, ignore the packet ... except for magic sockets */
       RETURN(overlay_mdp_try_interal_services(frame, mdp));

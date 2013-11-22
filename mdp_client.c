@@ -133,11 +133,15 @@ int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp, int flags, int time
   set_nonblock(mdp_sockfd);
   ssize_t result = sendto(mdp_sockfd, mdp, (size_t)len, 0, (struct sockaddr *)&addr, addrlen);
   set_block(mdp_sockfd);
-  if (result == -1) {
+  if ((size_t)result != (size_t)len) {
+    if (result == -1)
+      WHYF_perror("sendto(fd=%d,len=%zu,addr=%s)", mdp_sockfd, (size_t)len, alloca_sockaddr(&addr, addrlen));
+    else
+      WHYF("sendto() sent %zu bytes of MDP reply (%zu) to socket=%d", (size_t)result, (size_t)len, mdp_sockfd); 
     mdp->packetTypeAndFlags=MDP_ERROR;
     mdp->error.error=1;
     snprintf(mdp->error.message,128,"Error sending frame to MDP server.");
-    return WHYF_perror("sendto(fd=%d,len=%zu,addr=%s)", mdp_sockfd, (size_t)len, alloca_sockaddr(&addr, addrlen));
+    return -1;
   } else {
     if (!(flags&MDP_AWAITREPLY)) {       
       return 0;
