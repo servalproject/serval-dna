@@ -137,7 +137,7 @@ int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp, int flags, int time
     mdp->packetTypeAndFlags=MDP_ERROR;
     mdp->error.error=1;
     snprintf(mdp->error.message,128,"Error sending frame to MDP server.");
-    return WHY_perror("sendto(f)");
+    return WHYF_perror("sendto(fd=%d,len=%zu,addr=%s)", mdp_sockfd, (size_t)len, alloca_sockaddr(&addr, addrlen));
   } else {
     if (!(flags&MDP_AWAITREPLY)) {       
       return 0;

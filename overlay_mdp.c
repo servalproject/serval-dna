@@ -163,7 +163,7 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr, socklen_t recvaddrl
   int r=sendto(sock,(char *)mdpreply,replylen,0,
 	       (struct sockaddr *)recvaddr,recvaddrlen);
   if (r<replylen) { 
-    WHY_perror("sendto(d)"); 
+    WHYF_perror("sendto(fd=%d,len=%zu,addr=%s)", sock, (size_t)replylen, alloca_sockaddr((struct sockaddr *)recvaddr, recvaddrlen));
     return WHYF("sendto() failed when sending MDP reply, sock=%d, r=%d", sock, r); 
   } else
     if (0) DEBUGF("reply of %d bytes sent",r);
