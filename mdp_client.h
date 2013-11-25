@@ -31,8 +31,9 @@ struct mdp_sockaddr {
 
 #define MDP_FLAG_NO_CRYPT (1<<0)
 #define MDP_FLAG_NO_SIGN (1<<1)
-#define MDP_FLAG_BIND_ALL (1<<2)
-#define MDP_FLAG_OK (1<<3)
+#define MDP_FLAG_BIND (1<<2)
+
+#define MDP_FLAG_CLOSE (1<<3)
 #define MDP_FLAG_ERROR (1<<4)
 
 struct mdp_header {
@@ -43,6 +44,9 @@ struct mdp_header {
   uint8_t ttl;
 };
 
+#define BIND_PRIMARY SID_ANY
+#define BIND_ALL SID_BROADCAST
+
 #define TYPE_SID 1
 #define TYPE_PIN 2
 #define ACTION_LOCK 1
@@ -50,6 +54,7 @@ struct mdp_header {
 
 /* Port numbers for commands sent to the local daemon*/
 
+#define MDP_LISTEN 0
 /* lock and unlock identities from the local keyring
  * Requests start with an mdp_identity_request structure followed by a list of pins or SIDs
 */ 
@@ -82,12 +87,14 @@ struct overlay_mdp_scan{
   struct in_addr addr;
 };
 
-/* V2 interface */
+/* low level V2 mdp interface */
 int mdp_socket(void);
 int mdp_close(int socket);
-int mdp_send(int socket, const struct mdp_header *header, const unsigned char *payload, ssize_t len);
-ssize_t mdp_recv(int socket, struct mdp_header *header, unsigned char *payload, ssize_t max_len);
+int mdp_send(int socket, const struct mdp_header *header, const uint8_t *payload, size_t len);
+ssize_t mdp_recv(int socket, struct mdp_header *header, uint8_t *payload, ssize_t max_len);
 int mdp_poll(int socket, time_ms_t timeout_ms);
+
+
 
 /* Client-side MDP function */
 int overlay_mdp_client_socket(void);

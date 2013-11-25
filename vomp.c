@@ -523,7 +523,7 @@ static int vomp_send_status_remote(struct vomp_call_state *call)
 
   call->local.sequence++;
   
-  overlay_mdp_dispatch(&mdp,0,NULL,0);
+  overlay_mdp_dispatch(&mdp, NULL);
   
   return 0;
 }
@@ -561,7 +561,7 @@ int vomp_received_audio(struct vomp_call_state *call, int audio_codec, int time,
     
   mdp.out.queue=OQ_ISOCHRONOUS_VOICE;
   
-  overlay_mdp_dispatch(&mdp,0,NULL,0);
+  overlay_mdp_dispatch(&mdp, NULL);
   
   return 0;
 }

@@ -195,28 +195,6 @@ int formf_serval_instance_path(struct __sourceloc, char *buf, size_t bufsiz, con
 int vformf_serval_instance_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, va_list);
 void serval_setinstancepath(const char *instancepath);
 
-/* Basic socket operations.
- */
-int _make_local_sockaddr(struct __sourceloc, struct sockaddr_un *sockname, socklen_t *addrlen, const char *fmt, ...)
-    __attribute__((format(printf, 4, 5)));
-int _esocket(struct __sourceloc, int domain, int type, int protocol);
-int _socket_bind(struct __sourceloc, int sock, const struct sockaddr *addr, socklen_t addrlen);
-int _socket_connect(struct __sourceloc, int sock, const struct sockaddr *addr, socklen_t addrlen);
-int _socket_listen(struct __sourceloc, int sock, int backlog);
-int _socket_set_reuseaddr(struct __sourceloc, int sock, int reuseP);
-int _socket_set_rcvbufsize(struct __sourceloc, int sock, unsigned buffer_size);
-
-#define make_local_sockaddr(sockname, addrlenp, fmt,...) _make_local_sockaddr(__WHENCE__, (sockname), (addrlenp), (fmt), ##__VA_ARGS__)
-#define esocket(domain, type, protocol)             _esocket(__WHENCE__, (domain), (type), (protocol))
-#define socket_bind(sock, addr, addrlen)            _socket_bind(__WHENCE__, (sock), (addr), (addrlen))
-#define socket_connect(sock, addr, addrlen)         _socket_connect(__WHENCE__, (sock), (addr), (addrlen))
-#define socket_listen(sock, backlog)                _socket_listen(__WHENCE__, (sock), (backlog))
-#define socket_set_reuseaddr(sock, reuseP)          _socket_set_reuseaddr(__WHENCE__, (sock), (reuseP))
-#define socket_set_rcvbufsize(sock, buffer_size)    _socket_set_rcvbufsize(__WHENCE__, (sock), (buffer_size))
-
-int real_sockaddr(const struct sockaddr_un *src_addr, socklen_t src_addrlen, struct sockaddr_un *dst_addr, socklen_t *dst_addrlen);
-int cmp_sockaddr(const struct sockaddr *, socklen_t, const struct sockaddr *, socklen_t);
-
 #define SERVER_CONFIG_RELOAD_INTERVAL_MS	1000
 
 struct cli_parsed;
@@ -508,9 +486,6 @@ int rhizome_opendb();
 int parseCommandLine(struct cli_context *context, const char *argv0, int argc, const char *const *argv);
 
 int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
-int overlay_mdp_reply_error(int sock,
-			    struct sockaddr_un *recvaddr, socklen_t recvaddrlen,
-			    int error_number,char *message);
 
 typedef uint32_t mdp_port_t;
 #define PRImdp_port_t "#08" PRIx32
@@ -572,10 +547,8 @@ typedef struct overlay_mdp_frame {
 
 /* Server-side MDP functions */
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp);
-int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr, socklen_t recvaddrlen,
-			  overlay_mdp_frame *mdpreply);
-int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
-		     struct sockaddr_un *recvaddr, socklen_t recvaddrlen);
+struct socket_address;
+int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client);
 void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port);
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const sid_t *resolved_sidp, const char *uri, const char *did, const char *name);
 
@@ -688,7 +661,7 @@ int overlay_packetradio_tx_packet(struct overlay_frame *frame);
 void overlay_dummy_poll(struct sched_ent *alarm);
 void server_config_reload(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
-int overlay_mdp_try_interal_services(struct overlay_frame *frame, overlay_mdp_frame *mdp);
+int overlay_mdp_try_internal_services(struct overlay_frame *frame, overlay_mdp_frame *mdp);
 int overlay_send_probe(struct subscriber *peer, struct network_destination *destination, int queue);
 int overlay_send_stun_request(struct subscriber *server, struct subscriber *request);
 void fd_periodicstats(struct sched_ent *alarm);

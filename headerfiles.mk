@@ -6,6 +6,7 @@ HDRS=	fifo.h \
 	rhizome.h \
 	serval.h \
 	keyring.h \
+	socket.h \
 	cli.h \
 	str.h \
 	rotbuf.h \

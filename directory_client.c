@@ -52,7 +52,7 @@ static void directory_send(struct subscriber *directory_service, const sid_t *si
   // Used by tests
   INFOF("Sending directory registration for %s*, %s, %s to %s*", 
 	alloca_tohex_sid_t_trunc(*sidp, 14), did, name, alloca_tohex_sid_t_trunc(directory_service->sid, 14));
-  overlay_mdp_dispatch(&request, 0, NULL, 0);
+  overlay_mdp_dispatch(&request, NULL);
 }
 
 // send a registration packet for each unlocked identity

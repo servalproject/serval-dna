@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "overlay_address.h"
 #include "monitor-client.h"
+#include "socket.h"
 
 #ifdef HAVE_UCRED_H
 #include <ucred.h>
@@ -80,11 +81,10 @@ int monitor_setup_sockets()
   int sock = -1;
   if ((sock = esocket(AF_UNIX, SOCK_STREAM, 0)) == -1)
     goto error;
-  struct sockaddr_un addr;
-  socklen_t addrlen;
-  if (make_local_sockaddr(&addr, &addrlen, "monitor.socket") == -1)
+  struct socket_address addr;
+  if (make_local_sockaddr(&addr, "monitor.socket") == -1)
     goto error;
-  if (socket_bind(sock, (struct sockaddr*)&addr, addrlen) == -1)
+  if (socket_bind(sock, &addr.addr, addr.addrlen) == -1)
     goto error;
   if (socket_listen(sock, MAX_MONITOR_SOCKETS) == -1)
     goto error;
@@ -97,7 +97,7 @@ int monitor_setup_sockets()
   named_socket.poll.fd=sock;
   named_socket.poll.events=POLLIN;
   watch(&named_socket);
-  INFOF("Monitor socket: fd=%d %s", sock, alloca_sockaddr(&addr, addrlen));
+  INFOF("Monitor socket: fd=%d %s", sock, alloca_socket_address(&addr));
   return 0;
   
 error:

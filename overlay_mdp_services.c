@@ -99,7 +99,7 @@ int rhizome_mdp_send_block(struct subscriber *dest, const rhizome_bid_t *bid, ui
       reply.out.payload[0]='T';
     
     // send packet
-    if (overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0))
+    if (overlay_mdp_dispatch(&reply, NULL))
       break;
   }
 
@@ -252,8 +252,7 @@ int overlay_mdp_service_echo(overlay_mdp_frame *mdp)
   mdp->packetTypeAndFlags&=~(MDP_NOCRYPT|MDP_NOSIGN);
   
   /* queue frame for delivery */
-  overlay_mdp_dispatch(mdp,0 /* system generated */,
-		       NULL,0);
+  overlay_mdp_dispatch(mdp, NULL);
   mdp->packetTypeAndFlags=preserved;
   
   /* and switch addresses back around in case the caller was planning on
@@ -342,20 +341,20 @@ static int overlay_mdp_service_trace(overlay_mdp_frame *mdp){
   mdp->out.payload_length = ob_position(b);
   mdp->out.src.sid = my_subscriber->sid;
   mdp->out.dst.sid = next->sid;
-  ret = overlay_mdp_dispatch(mdp, 0, NULL, 0);
+  ret = overlay_mdp_dispatch(mdp, NULL);
 end:
   ob_free(b);
   RETURN(ret);
 }
 
-static int overlay_mdp_service_manifest_requests(struct overlay_frame *frame, overlay_mdp_frame *mdp)
+static int overlay_mdp_service_manifest_requests(struct overlay_frame *frame, const uint8_t *payload, size_t len)
 {
   int offset=0;
-  while (offset<mdp->out.payload_length) {
+  while (offset<len) {
     rhizome_manifest *m = rhizome_new_manifest();
     if (!m)
       return WHY("Unable to allocate manifest");
-    unsigned char *bar = &mdp->out.payload[offset];
+    const unsigned char *bar = &payload[offset];
     if (!rhizome_retrieve_manifest_by_prefix(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES, m)){
       rhizome_advertise_manifest(frame->source, m);
       // pre-emptively send the payload if it will fit in a single packet
@@ -368,7 +367,7 @@ static int overlay_mdp_service_manifest_requests(struct overlay_frame *frame, ov
   return 0;
 }
 
-int overlay_mdp_try_interal_services(struct overlay_frame *frame, overlay_mdp_frame *mdp)
+int overlay_mdp_try_internal_services(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 {
   IN();
   switch(mdp->out.dst.port) {
@@ -383,7 +382,7 @@ int overlay_mdp_try_interal_services(struct overlay_frame *frame, overlay_mdp_fr
   case MDP_PORT_STUN:             RETURN(overlay_mdp_service_stun(mdp));
   case MDP_PORT_RHIZOME_REQUEST:  RETURN(overlay_mdp_service_rhizomerequest(frame, mdp));
   case MDP_PORT_RHIZOME_RESPONSE: RETURN(overlay_mdp_service_rhizomeresponse(mdp));    
-  case MDP_PORT_RHIZOME_MANIFEST_REQUEST: RETURN(overlay_mdp_service_manifest_requests(frame, mdp));
+  case MDP_PORT_RHIZOME_MANIFEST_REQUEST: RETURN(overlay_mdp_service_manifest_requests(frame, mdp->out.payload, mdp->out.payload_length));
   case MDP_PORT_RHIZOME_SYNC: RETURN(overlay_mdp_service_rhizome_sync(frame, mdp));
   }
    

@@ -139,6 +139,10 @@ struct sockaddr;
 strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t addrlen);
 #define alloca_sockaddr(addr, addrlen)    strbuf_str(strbuf_append_sockaddr(strbuf_alloca(200), (const struct sockaddr *)(addr), (addrlen)))
 
+struct socket_address;
+strbuf strbuf_append_socket_address(strbuf sb, const struct socket_address *addr);
+#define alloca_socket_address(addr)    strbuf_str(strbuf_append_socket_address(strbuf_alloca(200), (addr)))
+
 /* Append a strftime(3) string.
  * @author Andrew Bettison <andrew@servalproject.com>
  */

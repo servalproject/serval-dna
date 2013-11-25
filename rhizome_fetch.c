@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "strbuf_helpers.h"
 #include "overlay_address.h"
+#include "socket.h"
 
 /* Represents a queued fetch of a bundle payload, for which the manifest is already known.
  */
@@ -1122,7 +1123,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
 	   slot->write_state.file_offset,
 	   slot->bidVersion);
 
-  overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
+  overlay_mdp_dispatch(&mdp, NULL);
   
   // remember when we sent the request so that we can adjust the inter-request
   // interval based on how fast the packets arrive.
