@@ -108,7 +108,7 @@ int _schedule(struct __sourceloc __whence, struct sched_ent *alarm)
   
   if (now - alarm->deadline > 1000){
     // 1000ms ago? thats silly, if you keep doing it noone else will get a turn.
-    WHYF("Alarm %s tried to schedule a deadline %"PRId64"ms ago",
+    FATALF("Alarm %s tried to schedule a deadline %"PRId64"ms ago",
 	   alloca_alarm_name(alarm),
            (now - alarm->deadline)
 	);

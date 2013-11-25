@@ -255,6 +255,7 @@ static struct neighbour *get_neighbour(struct subscriber *subscriber, char creat
     n->mdp_ack_sequence = -1;
     // TODO measure min/max rtt
     n->rtt = 120;
+    n->next_neighbour_update = gettime_ms() + 10;
     neighbours = n;
     if (config.debug.linkstate)
       DEBUGF("LINK STATE; new neighbour %s", alloca_tohex_sid_t(n->subscriber->sid));
@@ -892,7 +893,10 @@ static void link_send(struct sched_ent *alarm)
   }
 }
 
-static void update_alarm(time_ms_t limit){
+static void update_alarm(struct __sourceloc __whence, time_ms_t limit)
+{
+  if (limit == 0)
+    FATALF("limit == 0");
   if (link_send_alarm.alarm>limit || link_send_alarm.alarm==0){
     unschedule(&link_send_alarm);
     link_send_alarm.alarm = limit;
@@ -912,7 +916,7 @@ int link_stop_routing(struct subscriber *subscriber)
   if (subscriber->link_state){
     struct link_state *state = get_link_state(subscriber);
     state->next_update = gettime_ms();
-    update_alarm(state->next_update);
+    update_alarm(__WHENCE__, state->next_update);
   }
   return 0;
 }
@@ -1031,7 +1035,8 @@ int link_state_should_forward_broadcast(struct subscriber *transmitter)
 }
 
 // when we receive a packet from a neighbour with ourselves as the next hop, make sure we send an ack soon(ish)
-int link_state_ack_soon(struct subscriber *subscriber){
+int link_state_ack_soon(struct subscriber *subscriber)
+{
   IN();
   struct neighbour *neighbour = get_neighbour(subscriber, 0);
   if (!neighbour)
@@ -1046,8 +1051,8 @@ int link_state_ack_soon(struct subscriber *subscriber){
       if (config.debug.ack)
 	DEBUGF("Asking for next ACK Real Soon Now");
     }
+    update_alarm(__WHENCE__, neighbour->next_neighbour_update);
   }
-  update_alarm(neighbour->next_neighbour_update);
   OUT();
   return 0;
 }
@@ -1088,7 +1093,8 @@ int link_unicast_ack(struct subscriber *subscriber, struct overlay_interface *in
   return 0;
 }
 
-static struct link_out *create_out_link(struct neighbour *neighbour, overlay_interface *interface, struct sockaddr_in *addr, char unicast){
+static struct link_out *create_out_link(struct neighbour *neighbour, overlay_interface *interface, struct sockaddr_in *addr, char unicast)
+{
   struct link_out *ret=emalloc_zero(sizeof(struct link_out));
   if (ret){
     ret->_next=neighbour->out_links;
@@ -1102,9 +1108,9 @@ static struct link_out *create_out_link(struct neighbour *neighbour, overlay_int
 	unicast?"unicast":"broadcast",
 	alloca_tohex_sid_t(neighbour->subscriber->sid),
 	interface->name);
-
-    ret->timeout = gettime_ms()+ret->destination->tick_ms*3;
-    update_alarm(gettime_ms()+5);
+    time_ms_t now = gettime_ms();
+    ret->timeout = now + ret->destination->tick_ms * 3;
+    update_alarm(__WHENCE__, now + 5);
   }
   return ret;
 }
@@ -1192,7 +1198,7 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
     send_neighbour_link(neighbour);
   }
 
-  update_alarm(neighbour->next_neighbour_update);
+  update_alarm(__WHENCE__, neighbour->next_neighbour_update);
   return 0;
 }
 
@@ -1371,7 +1377,7 @@ int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 	    if (config.debug.ack)
 	      DEBUGF("LINK STATE; neighbour %s missed ack %d, queue another", alloca_tohex_sid_t(sender->sid), neighbour->last_update_seq);
 	    neighbour->next_neighbour_update=now+5;
-	    update_alarm(neighbour->next_neighbour_update);
+	    update_alarm(__WHENCE__, neighbour->next_neighbour_update);
 	  }
         }
       }
@@ -1412,8 +1418,8 @@ void link_explained(struct subscriber *subscriber)
 {
   time_ms_t now = gettime_ms();
   struct link_state *state = get_link_state(subscriber);
-  state->next_update = now+5;
-  update_alarm(now+5);
+  state->next_update = now + 5;
+  update_alarm(__WHENCE__, now + 5);
 }
 
 void link_interface_down(struct overlay_interface *interface)
