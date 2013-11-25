@@ -344,19 +344,6 @@ typedef struct overlay_interface {
   int recv_count;
   int tx_count;
   
-  // stream socket tx state;
-  struct overlay_buffer *tx_packet;
-  uint8_t *txbuffer;
-  int tx_bytes_pending;
-  // Throttle TX rate if required (stream interfaces only for now)
-  uint32_t throttle_bytes_per_second;
-  uint32_t throttle_burst_write_size;
-  uint64_t next_tx_allowed;
-  int32_t remaining_space;
-  time_ms_t next_heartbeat;
-  int radio_rssi;
-  int remote_rssi;
-  
   struct radio_link_state *radio_link_state;
 
   // copy of ifconfig flags

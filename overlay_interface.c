@@ -49,7 +49,6 @@ struct profile_total sock_any_stats;
 
 static void overlay_interface_poll(struct sched_ent *alarm);
 static int re_init_socket(int interface_index);
-static void write_stream_buffer(overlay_interface *interface);
 
 static void
 overlay_interface_close(overlay_interface *interface){
@@ -59,10 +58,6 @@ overlay_interface_close(overlay_interface *interface){
   unschedule(&interface->alarm);
   unwatch(&interface->alarm);
   close(interface->alarm.poll.fd);
-  if (interface->txbuffer){
-    free(interface->txbuffer);
-    interface->txbuffer=NULL;
-  }
   if (interface->radio_link_state)
     radio_link_free(interface);
   interface->alarm.poll.fd=-1;
@@ -82,8 +77,7 @@ void interface_state_html(struct strbuf *b, struct overlay_interface *interface)
   switch(interface->type){
     case OVERLAY_INTERFACE_PACKETRADIO:
       strbuf_puts(b, "Type: Packet Radio<br>");
-      strbuf_sprintf(b, "RSSI: %ddB<br>",interface->radio_rssi);
-      strbuf_sprintf(b, "Remote RSSI: %ddB<br>",interface->remote_rssi);
+      radio_link_state_html(b, interface);
       break;
     case OVERLAY_INTERFACE_ETHERNET:
       strbuf_puts(b, "Type: Ethernet<br>");
@@ -417,8 +411,6 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   set_destination_ref(&interface->destination, NULL);
   interface->destination = new_destination(interface, ifconfig->encapsulation);
   
-  interface->throttle_bytes_per_second = ifconfig->throttle;
-  interface->throttle_burst_write_size = ifconfig->burst_size;
   /* Pick a reasonable default MTU.
      This will ultimately get tuned by the bandwidth and other properties of the interface */
   interface->mtu = 1200;
@@ -722,8 +714,6 @@ static void interface_read_stream(struct overlay_interface *interface){
     return;
   }
   
-  if (config.debug.packetradio)
-    dump("read bytes", buffer, nread);
   
   int i;
   for (i=0;i<nread;i++)
@@ -731,104 +721,6 @@ static void interface_read_stream(struct overlay_interface *interface){
     
   OUT();
 }
-
-static void write_stream_buffer(overlay_interface *interface){
-  time_ms_t now = gettime_ms();
-  
-  // Throttle output to a prescribed bit-rate
-  // first, reduce the number of bytes based on the configured burst size
-  int bytes_allowed=interface->throttle_burst_write_size;
-    
-  int total_written=0;
-  while (interface->tx_bytes_pending>0 || interface->tx_packet || interface->next_heartbeat <= now) {
-    
-    if (interface->tx_bytes_pending==0){
-      // allocate tx buffer on first use
-      if (!interface->txbuffer){
-	interface->txbuffer=emalloc(OVERLAY_INTERFACE_RX_BUFFER_SIZE);
-	if (!interface->txbuffer)
-	  break;
-      }
-      
-      if (interface->next_heartbeat <= now){
-	// Queue a hearbeat now
-	radio_link_heartbeat(interface->txbuffer,&interface->tx_bytes_pending);
-	if (config.debug.packetradio)
-	  DEBUGF("Sending heartbeat");
-	interface->next_heartbeat = now+1000;
-	
-      }else if(interface->remaining_space >= LINK_MTU + HEARTBEAT_SIZE){
-	// prepare a new link layer packet in txbuffer
-	if (radio_link_encode_packet(interface))
-	  break;
-	if (interface->remaining_space - interface->tx_bytes_pending < LINK_MTU + HEARTBEAT_SIZE)
-	  interface->next_heartbeat = now;
-      }
-      
-      // nothing interesting to send, just break
-      if (interface->tx_bytes_pending==0)
-	break;
-    }
-    
-    if (interface->next_tx_allowed > now)
-      break;
-    
-    int bytes = interface->tx_bytes_pending;
-    if (interface->throttle_burst_write_size && bytes>bytes_allowed)
-      bytes=bytes_allowed;
-    if (bytes<=0)
-      break;
-    
-    int written=write(interface->alarm.poll.fd, interface->txbuffer, bytes);
-    if (written<=0){
-      DEBUGF("Blocking for POLLOUT");
-      break;
-    }
-    
-    interface->remaining_space-=written;
-    interface->tx_bytes_pending-=written;
-    total_written+=written;
-    bytes_allowed-=written;
-    if (interface->tx_bytes_pending){
-      bcopy(&interface->txbuffer[written],&interface->txbuffer[0],
-	    interface->tx_bytes_pending);
-      DEBUGF("Partial write, %d left", interface->tx_bytes_pending);
-    }
-  }
-  
-  if (total_written>0){
-    // Now when are we allowed to send more?
-    int rate = interface->throttle_bytes_per_second;
-    if (interface->remaining_space<=0)
-      rate = 600;
-    if (rate){
-      int delay = total_written*1000/rate;
-      if (config.debug.throttling)
-	DEBUGF("Throttling for %dms (%d).", delay, interface->remaining_space);
-      interface->next_tx_allowed = now + delay;
-    }
-  }
-  
-  time_ms_t next_write = interface->next_tx_allowed;
-  if (interface->tx_bytes_pending<=0){
-    next_write = interface->next_heartbeat;
-  }
-  
-  if (interface->alarm.alarm==-1 || next_write < interface->alarm.alarm){
-    interface->alarm.alarm = next_write;
-    interface->alarm.deadline = interface->alarm.alarm+10;
-  }
-  
-  if (interface->tx_bytes_pending>0 && next_write <= now){
-    // more to write, so set the POLLOUT flag
-    interface->alarm.poll.events|=POLLOUT;
-  } else {
-    // Nothing to write, so clear POLLOUT flag
-    interface->alarm.poll.events&=~POLLOUT;
-  }
-  watch(&interface->alarm);
-}
-
 
 static void overlay_interface_poll(struct sched_ent *alarm)
 {
@@ -841,7 +733,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     if (interface->state==INTERFACE_STATE_UP 
       && interface->destination->tick_ms>0
       && interface->send_broadcasts
-      && !interface->tx_packet){
+      && !radio_link_is_busy(interface)){
       
       if (now >= interface->destination->last_tx+interface->destination->tick_ms)
         overlay_send_tick_packet(interface->destination);
@@ -852,8 +744,8 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     
     switch(interface->socket_type){
       case SOCK_STREAM:
-	write_stream_buffer(interface);
-	break;
+	radio_link_tx(interface);
+	return;
       case SOCK_DGRAM:
 	break;
       case SOCK_FILE:
@@ -873,14 +765,8 @@ static void overlay_interface_poll(struct sched_ent *alarm)
   if (alarm->poll.revents & POLLOUT){
     switch(interface->socket_type){
       case SOCK_STREAM:
-	write_stream_buffer(interface);
-	if (alarm->alarm!=-1 && interface->state==INTERFACE_STATE_UP) {
-	  if (alarm->alarm < now)
-	    alarm->alarm = now;
-	  unschedule(alarm);
-	  schedule(alarm);
-	}
-	break;
+	radio_link_tx(interface);
+	return;
       case SOCK_DGRAM:
       case SOCK_FILE:
 	//XXX error? fatal?
@@ -896,14 +782,9 @@ static void overlay_interface_poll(struct sched_ent *alarm)
       case SOCK_STREAM:
 	interface_read_stream(interface);
 	// if we read a valid heartbeat packet, we may be able to write more bytes now.
-	if (interface->state==INTERFACE_STATE_UP && interface->remaining_space>0){
-	  write_stream_buffer(interface);
-	  if (alarm->alarm!=-1 && interface->state==INTERFACE_STATE_UP) {
-	    if (alarm->alarm < now)
-	      alarm->alarm = now;
-	    unschedule(alarm);
-	    schedule(alarm);
-	  }
+	if (interface->state==INTERFACE_STATE_UP){
+	  radio_link_tx(interface);
+	  return;
 	}
 	break;
       case SOCK_FILE:
@@ -943,24 +824,7 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
   
   switch(interface->socket_type){
     case SOCK_STREAM:
-    {
-      if (interface->tx_packet){
-	ob_free(buffer);
-	return WHYF("Cannot send two packets to a stream at the same time");
-      }
-      
-      // prepare the buffer for reading
-      ob_flip(buffer);
-      interface->tx_packet = buffer;
-      write_stream_buffer(interface);
-      
-      if (interface->alarm.alarm!=-1){
-	unschedule(&interface->alarm);
-	schedule(&interface->alarm);
-      }
-      
-      return 0;
-    }
+      return radio_link_queue_packet(interface, buffer);
       
     case SOCK_FILE:
     {
