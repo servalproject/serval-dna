@@ -399,21 +399,33 @@ int calc_ber(double target_packet_fraction)
   // so no point starting smaller than that.
   // Only ~30,000,000 reduces packet delivery rate to
   // ~1%, so the search range is fairly narrow.
-  ber=9000000;
-  if (target_packet_fraction<=0.9) ber=13000000;
-  if (target_packet_fraction<=0.5) ber=18000000;
-  if (target_packet_fraction<=0.25) ber=21000000;
-  if (target_packet_fraction<=0.1) ber=24000000;
-  if (target_packet_fraction<=0.05) ber=26000000;
+  ber=0;
+  if (target_packet_fraction<=0.9) ber=6900000;
+  if (target_packet_fraction<=0.5) ber=16900000;
+  if (target_packet_fraction<=0.25) ber=20600000;
+  if (target_packet_fraction<=0.1) ber=23400000;
+  if (target_packet_fraction<=0.05) ber=28600000;
+
   for(;ber<0x70ffffff;ber+=100000)
     {
       int packet_errors=0;
       for(p=0;p<1000;p++) {
 	int byte_errors=0;
-	for(byte=0;byte<byte_count;byte++) {
-	  for(bit=0;bit<8;bit++) if (random()<ber) { byte_errors++; break; }
-	  if (byte_errors>max_error_bytes) { packet_errors++; break; }
+	int dropped = 0;
+	for (byte=0;byte<PREAMBLE_LENGTH;byte++){
+	  if (random()<ber){
+	    dropped = 1;
+	    break;
+	  }
 	}
+	if (!dropped){
+	  for(byte=0;byte<byte_count;byte++) {
+	    for(bit=0;bit<8;bit++) if (random()<ber) { byte_errors++; break; }
+	    if (byte_errors>max_error_bytes) { dropped=1; break; }
+	  }
+	}
+	if (dropped)
+	  packet_errors++;
       }
       if (packet_errors>=((1.0-target_packet_fraction)*1000)) break;
     }
@@ -423,13 +435,11 @@ int calc_ber(double target_packet_fraction)
 
 int main(int argc,char **argv)
 {
-  if (argv[1]) {
+  if (argc>=1) {
     chars_per_ms=atol(argv[1]);
-    if (argv[2]) 
+    if (argc>=2) 
       ber=calc_ber(atof(argv[2]));
   }
-  fprintf(stderr, "Sending %d bytes per ms\n", chars_per_ms);
-  fprintf(stderr, "Introducing %f%% bit errors\n", (ber * 100.0) / 0xFFFFFFFF);
 
   struct pollfd fds[2];
   struct radio_state radios[2];
@@ -437,18 +447,21 @@ int main(int argc,char **argv)
   bzero(&radios,sizeof radios);
   
   int i;
+  radios[0].name="left";
+  radios[1].name="right";
   for (i=0;i<2;i++){
     radios[i].fd=posix_openpt(O_RDWR|O_NOCTTY);
     grantpt(radios[i].fd);
     unlockpt(radios[i].fd);
     fcntl(radios[i].fd,F_SETFL,fcntl(radios[i].fd, F_GETFL, NULL)|O_NONBLOCK);
-    fprintf(stdout,"%s\n",ptsname(radios[i].fd));
+    fprintf(stdout,"%s:%s\n", radios[i].name, ptsname(radios[i].fd));
     fds[i].fd = radios[i].fd;
   }
-  radios[0].name="left";
-  radios[1].name="right";
   fflush(stdout);
 
+  fprintf(stderr, "Sending %d bytes per ms\n", chars_per_ms);
+  fprintf(stderr, "Introducing %f%% bit errors\n", (ber * 100.0) / 0xFFFFFFFF);
+  
   while(1) {
     // what events do we need to poll for? how long can we block?
     int64_t now = gettime_ms();
