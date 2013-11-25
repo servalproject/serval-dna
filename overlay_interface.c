@@ -743,26 +743,31 @@ static void write_stream_buffer(overlay_interface *interface){
   while (interface->tx_bytes_pending>0 || interface->tx_packet || interface->next_heartbeat <= now) {
     
     if (interface->tx_bytes_pending==0){
+      // allocate tx buffer on first use
+      if (!interface->txbuffer){
+	interface->txbuffer=emalloc(OVERLAY_INTERFACE_RX_BUFFER_SIZE);
+	if (!interface->txbuffer)
+	  break;
+      }
+      
       if (interface->next_heartbeat <= now){
-	
-	if (!interface->txbuffer){
-	  interface->txbuffer=emalloc(OVERLAY_INTERFACE_RX_BUFFER_SIZE);
-	  if (!interface->txbuffer)
-	    break;
-	}
-	
 	// Queue a hearbeat now
 	radio_link_heartbeat(interface->txbuffer,&interface->tx_bytes_pending);
 	if (config.debug.packetradio)
 	  DEBUGF("Sending heartbeat");
 	interface->next_heartbeat = now+1000;
-      }else if(interface->tx_packet && interface->remaining_space >= 256 + 8+9){
+	
+      }else if(interface->remaining_space >= LINK_MTU + HEARTBEAT_SIZE){
 	// prepare a new link layer packet in txbuffer
 	if (radio_link_encode_packet(interface))
 	  break;
-	if (interface->remaining_space - interface->tx_bytes_pending < 256 + 8+9)
+	if (interface->remaining_space - interface->tx_bytes_pending < LINK_MTU + HEARTBEAT_SIZE)
 	  interface->next_heartbeat = now;
       }
+      
+      // nothing interesting to send, just break
+      if (interface->tx_bytes_pending==0)
+	break;
     }
     
     if (interface->next_tx_allowed > now)
