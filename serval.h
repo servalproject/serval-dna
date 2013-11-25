@@ -163,11 +163,6 @@ int cmp_sid_t(const sid_t *a, const sid_t *b);
 int str_to_sid_t(sid_t *sid, const char *hex);
 int strn_to_sid_t(sid_t *sid, const char *hex, const char **endp);
 
-int str_is_subscriber_id(const char *sid);
-int strn_is_subscriber_id(const char *sid, size_t *lenp);
-int str_is_did(const char *did);
-int strn_is_did(const char *did, size_t *lenp);
-
 #define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
 
 /*
@@ -685,13 +680,6 @@ int limit_init(struct limit_state *state, int rate_micro_seconds);
 
 int olsr_init_socket(void);
 int olsr_send(struct overlay_frame *frame);
-
-void write_uint64(unsigned char *o,uint64_t v);
-void write_uint16(unsigned char *o,uint16_t v);
-void write_uint32(unsigned char *o,uint32_t v);
-uint64_t read_uint64(unsigned char *o);
-uint32_t read_uint32(unsigned char *o);
-uint16_t read_uint16(unsigned char *o);
 
 int pack_uint(unsigned char *buffer, uint64_t v);
 int measure_packed_uint(uint64_t v);

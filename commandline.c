@@ -46,6 +46,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_address.h"
 #include "overlay_buffer.h"
 #include "keyring.h"
+#include "dataformats.h"
 
 extern struct cli_schema command_line_options[];
 

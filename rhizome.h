@@ -423,16 +423,6 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report);
 int rhizome_manifest_createid(rhizome_manifest *m);
 int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed);
 
-int rhizome_strn_is_manifest_id(const char *text);
-int rhizome_str_is_manifest_id(const char *text);
-int rhizome_strn_is_bundle_key(const char *text);
-int rhizome_str_is_bundle_key(const char *text);
-int rhizome_strn_is_bundle_crypt_key(const char *text);
-int rhizome_str_is_bundle_crypt_key(const char *text);
-int rhizome_strn_is_file_hash(const char *text);
-int rhizome_str_is_file_hash(const char *text);
-int rhizome_str_is_manifest_service(const char *text);
-
 int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_call);
 
 typedef struct sqlite_retry_state {
