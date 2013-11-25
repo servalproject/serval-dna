@@ -1101,24 +1101,25 @@ int app_trace(const struct cli_parsed *parsed, struct cli_context *context)
   mdp.out.dst.port=MDP_PORT_TRACE;
   mdp.packetTypeAndFlags=MDP_TX;
   struct overlay_buffer *b = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
-  
   ob_append_byte(b, SID_SIZE);
   ob_append_bytes(b, srcsid.binary, SID_SIZE);
-  
   ob_append_byte(b, SID_SIZE);
   ob_append_bytes(b, dstsid.binary, SID_SIZE);
-  
-  mdp.out.payload_length = ob_position(b);
-  cli_printf(context, "Tracing the network path from %s to %s", 
-	 alloca_tohex_sid_t(srcsid), alloca_tohex_sid_t(dstsid));
-  cli_delim(context, "\n");
-  cli_flush(context);
-
-  int ret=overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 5000);
+  int ret;
+  if (ob_overrun(b))
+    ret = WHY("overlay buffer overrun");
+  else {
+    mdp.out.payload_length = ob_position(b);
+    cli_printf(context, "Tracing the network path from %s to %s", 
+	  alloca_tohex_sid_t(srcsid), alloca_tohex_sid_t(dstsid));
+    cli_delim(context, "\n");
+    cli_flush(context);
+    ret = overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 5000);
+    if (ret)
+      WHYF("overlay_mdp_send returned %d", ret);
+  }
   ob_free(b);
-  if (ret)
-    WHYF("overlay_mdp_send returned %d", ret);
-  else{
+  if (ret == 0) {
     int offset=0;
     {
       // skip the first two sid's

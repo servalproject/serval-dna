@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
   since for things like number resolution we are happy to send repeat requests.
  */
 
+#include <assert.h>
 #include "serval.h"
 #include "conf.h"
 #include "str.h"
@@ -234,35 +235,28 @@ int overlay_broadcast_drop_check(struct broadcast *addr)
   }
 }
 
-int overlay_broadcast_append(struct overlay_buffer *b, struct broadcast *broadcast)
+void overlay_broadcast_append(struct overlay_buffer *b, struct broadcast *broadcast)
 {
-  return ob_append_bytes(b, broadcast->id, BROADCAST_LEN);
+  ob_append_bytes(b, broadcast->id, BROADCAST_LEN);
 }
 
 // append an appropriate abbreviation into the address
-int overlay_address_append(struct decode_context *context, struct overlay_buffer *b, struct subscriber *subscriber)
+void overlay_address_append(struct decode_context *context, struct overlay_buffer *b, struct subscriber *subscriber)
 {
-  if (!subscriber)
-    return WHY("No address supplied");
-
-  if(context
-      && subscriber == context->point_to_point_device){
-    if (ob_append_byte(b, OA_CODE_P2P_YOU))
-      return -1;
-  }else if(context
+  assert(subscriber != NULL);
+  if (context && subscriber == context->point_to_point_device)
+    ob_append_byte(b, OA_CODE_P2P_YOU);
+  else if(context
       && !subscriber->send_full
       && subscriber == my_subscriber
       && context->point_to_point_device
-      && (context->encoding_header==0 || !context->interface->local_echo)){
-    if (ob_append_byte(b, OA_CODE_P2P_ME))
-      return -1;
-  }else if (context && subscriber==context->sender){
-    if (ob_append_byte(b, OA_CODE_SELF))
-      return -1;
-  }else if(context && subscriber==context->previous){
-    if (ob_append_byte(b, OA_CODE_PREVIOUS))
-      return -1;
-  }else{
+      && (context->encoding_header==0 || !context->interface->local_echo))
+    ob_append_byte(b, OA_CODE_P2P_ME);
+  else if (context && subscriber==context->sender)
+    ob_append_byte(b, OA_CODE_SELF);
+  else if (context && subscriber==context->previous)
+    ob_append_byte(b, OA_CODE_PREVIOUS);
+  else {
     int len=SID_SIZE;
     if (subscriber->send_full){
       subscriber->send_full=0;
@@ -273,17 +267,15 @@ int overlay_address_append(struct decode_context *context, struct overlay_buffer
       if (len>SID_SIZE)
 	len=SID_SIZE;
     }
-    if (ob_append_byte(b, len))
-      return -1;
-    if (ob_append_bytes(b, subscriber->sid.binary, len))
-      return -1;
+    ob_append_byte(b, len);
+    ob_append_bytes(b, subscriber->sid.binary, len);
   }
   if (context)
     context->previous = subscriber;
-  return 0;
 }
 
-static int add_explain_response(struct subscriber *subscriber, void *context){
+static int add_explain_response(struct subscriber *subscriber, void *context)
+{
   struct decode_context *response = context;
   // only explain a SID once every half second.
   time_ms_t now = gettime_ms();
@@ -292,8 +284,13 @@ static int add_explain_response(struct subscriber *subscriber, void *context){
   subscriber->last_explained = now;
 
   if (!response->please_explain){
-    response->please_explain = calloc(sizeof(struct overlay_frame),1);
-    response->please_explain->payload=ob_new();
+    if ((response->please_explain = emalloc_zero(sizeof(struct overlay_frame))) == NULL)
+      return 1; // stop walking
+    if ((response->please_explain->payload = ob_new()) == NULL) {
+      free(response->please_explain);
+      response->please_explain = NULL;
+      return 1; // stop walking
+    }
     ob_limitsize(response->please_explain->payload, 1024);
   }
   
@@ -309,11 +306,10 @@ static int add_explain_response(struct subscriber *subscriber, void *context){
   
   // add the whole subscriber id to the payload, stop if we run out of space
   DEBUGF("Adding full sid by way of explanation %s", alloca_tohex_sid_t(subscriber->sid));
-  if (ob_append_byte(response->please_explain->payload, SID_SIZE))
+  ob_append_byte(response->please_explain->payload, SID_SIZE);
+  ob_append_bytes(response->please_explain->payload, subscriber->sid.binary, SID_SIZE);
+  if (ob_overrun(response->please_explain->payload))
     return 1;
-  if (ob_append_bytes(response->please_explain->payload, subscriber->sid.binary, SID_SIZE))
-    return 1;
-
   // let the routing engine know that we had to explain this sid, we probably need to re-send routing info
   link_explained(subscriber);
   return 0;
@@ -345,7 +341,8 @@ static int find_subscr_buffer(struct decode_context *context, struct overlay_buf
     // add the abbreviation you told me about
     if (!context->please_explain){
       context->please_explain = calloc(sizeof(struct overlay_frame),1);
-      context->please_explain->payload=ob_new();
+      if ((context->please_explain->payload = ob_new()) == NULL)
+	return -1;
       ob_limitsize(context->please_explain->payload, MDP_MTU);
     }
     
@@ -396,7 +393,8 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
 	// add the abbreviation you told me about
 	if (!context->please_explain){
 	  context->please_explain = calloc(sizeof(struct overlay_frame),1);
-	  context->please_explain->payload=ob_new();
+	  if ((context->please_explain->payload = ob_new()) == NULL)
+	    return -1;
 	  ob_limitsize(context->please_explain->payload, MDP_MTU);
 	}
 	
@@ -433,8 +431,9 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
 int send_please_explain(struct decode_context *context, struct subscriber *source, struct subscriber *destination){
   IN();
   struct overlay_frame *frame=context->please_explain;
-  if (!frame)
+  if (frame == NULL)
     RETURN(0);
+  assert(frame->payload != NULL);
   frame->type = OF_TYPE_PLEASEEXPLAIN;
   
   if (source)
@@ -466,7 +465,7 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   }
   
   frame->queue=OQ_MESH_MANAGEMENT;
-  if (!overlay_payload_enqueue(frame))
+  if (overlay_payload_enqueue(frame) != -1)
     RETURN(0);
   op_free(frame);
   RETURN(-1);

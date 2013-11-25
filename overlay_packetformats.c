@@ -42,20 +42,16 @@ int overlay_packet_init_header(int packet_version, int encapsulation,
   if (encapsulation !=ENCAP_OVERLAY && encapsulation !=ENCAP_SINGLE)
     return WHY("Invalid packet encapsulation");
   
-  if (ob_append_byte(buff, packet_version))
-    return -1;
-  if (ob_append_byte(buff, encapsulation))
-    return -1;
+  ob_append_byte(buff, packet_version);
+  ob_append_byte(buff, encapsulation);
   
-  if (context->interface->point_to_point 
-    && context->interface->other_device 
-    && packet_version>=1)
+  if (   context->interface->point_to_point 
+      && context->interface->other_device 
+      && packet_version>=1
+  )
     context->point_to_point_device = context->interface->other_device;
-    
   context->encoding_header=1;
-  
-  if (overlay_address_append(context, buff, my_subscriber))
-    return -1;
+  overlay_address_append(context, buff, my_subscriber);
   
   context->encoding_header=0;
   context->sender = my_subscriber;

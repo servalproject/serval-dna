@@ -267,9 +267,7 @@ static int overlay_mdp_decode_header(struct overlay_buffer *buff, overlay_mdp_fr
   if (!same)
     port = ob_get_packed_ui32(buff);
   mdp->in.src.port = port;
-  
-  int len=ob_remaining(buff);
-  
+  int len = ob_remaining(buff);
   if (len<0)
     return WHY("MDP payload is too short");
   mdp->in.payload_length=len;
@@ -316,10 +314,8 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
       if (!k) 
 	RETURN(WHY("I don't have the private key required to decrypt that"));
       
-      if (0){
-	dump("frame",&f->payload->bytes[f->payload->position],
-	     ob_remaining(f->payload));
-      }
+      if (0)
+	dump("frame",&f->payload->bytes[f->payload->position], ob_remaining(f->payload));
       
       unsigned char *nonce=ob_get_bytes_ptr(f->payload, nb);
       if (!nonce)
@@ -529,18 +525,14 @@ int overlay_mdp_check_binding(struct subscriber *subscriber, mdp_port_t port, in
       );
 }
 
-int overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port)
+void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port)
 {
   mdp_port_t port = dst_port << 1;
   if (dst_port == src_port)
     port |= 1;
-  if (ob_append_packed_ui32(plaintext, port))
-    return -1;
-  if (dst_port != src_port){
-    if (ob_append_packed_ui32(plaintext, src_port))
-      return -1;
-  }
-  return 0;
+  ob_append_packed_ui32(plaintext, port);
+  if (dst_port != src_port)
+    ob_append_packed_ui32(plaintext, src_port);
 }
 
 static struct overlay_buffer * encrypt_payload(
@@ -564,13 +556,15 @@ static struct overlay_buffer * encrypt_payload(
   cipher_len+=zb;
   
   struct overlay_buffer *ret = ob_new();
+  if (ret == NULL)
+    return NULL;
   
   unsigned char *nonce = ob_append_space(ret, nb+cipher_len);
-  unsigned char *cipher_text = nonce + nb;
   if (!nonce){
     ob_free(ret);
     return NULL;
   }
+  unsigned char *cipher_text = nonce + nb;
 
   if (generate_nonce(nonce,nb)){
     ob_free(ret);
@@ -644,8 +638,9 @@ int overlay_send_frame(struct overlay_frame *frame, struct overlay_buffer *plain
   case OF_CRYPTO_SIGNED:
     // Lets just append some space into the existing payload buffer for the signature, without copying it.
     frame->payload = plaintext;
-    ob_makespace(frame->payload,SIGNATURE_BYTES);
-    if (crypto_sign_message(frame->source, ob_ptr(frame->payload), frame->payload->allocSize, &frame->payload->position)){
+    if (   ob_makespace(frame->payload, SIGNATURE_BYTES) != SIGNATURE_BYTES
+        || crypto_sign_message(frame->source, ob_ptr(frame->payload), frame->payload->allocSize, &frame->payload->position) == -1
+    ) {
       op_free(frame);
       return -1;
     }
@@ -773,14 +768,13 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   
   // copy the plain text message into a new buffer, with the wire encoded port numbers
   struct overlay_buffer *plaintext=ob_new();
-  if (!plaintext)
+  if (plaintext == NULL)
     RETURN(-1);
   
-  if (overlay_mdp_encode_ports(plaintext, mdp->out.dst.port, mdp->out.src.port)){
-    ob_free(plaintext);
-    RETURN (-1);
-  }
-  if (ob_append_bytes(plaintext, mdp->out.payload, mdp->out.payload_length)){
+  overlay_mdp_encode_ports(plaintext, mdp->out.dst.port, mdp->out.src.port);
+  if (mdp->out.payload_length)
+    ob_append_bytes(plaintext, mdp->out.payload, mdp->out.payload_length);
+  if (ob_overrun(plaintext)) {
     ob_free(plaintext);
     RETURN(-1);
   }

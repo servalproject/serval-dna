@@ -334,15 +334,14 @@ static int overlay_mdp_service_trace(overlay_mdp_frame *mdp){
   ob_unlimitsize(b);
   // always write a full sid into the payload
   my_subscriber->send_full=1;
-  if (overlay_address_append(&context, b, my_subscriber)){
+  overlay_address_append(&context, b, my_subscriber);
+  if (ob_overrun(b)) {
     ret = WHYF("Unable to append my address to the trace");
     goto end;
   }
-  
   mdp->out.payload_length = ob_position(b);
   mdp->out.src.sid = my_subscriber->sid;
   mdp->out.dst.sid = next->sid;
-  
   ret = overlay_mdp_dispatch(mdp, 0, NULL, 0);
 end:
   ob_free(b);

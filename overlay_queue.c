@@ -17,6 +17,7 @@
  */
 
 
+#include <assert.h>
 #include "serval.h"
 #include "conf.h"
 #include "overlay_buffer.h"
@@ -150,11 +151,9 @@ int overlay_payload_enqueue(struct overlay_frame *p)
    Complain if there are too many frames in the queue.
    */
   
-  if (!p) return WHY("Cannot queue NULL");
-  
-  if (p->queue>=OQ_MAX) 
-    return WHY("Invalid queue specified");
-  
+  assert(p != NULL);
+  assert(p->queue < OQ_MAX);
+  assert(p->payload != NULL);
   overlay_txqueue *queue = &overlay_tx[p->queue];
 
   if (config.debug.packettx)
@@ -162,18 +161,15 @@ int overlay_payload_enqueue(struct overlay_frame *p)
 	   p->destination?alloca_tohex_sid_t_trunc(p->destination->sid, 14): alloca_tohex(p->broadcast_id.id, BROADCAST_LEN),
 	   p->queue, queue->length);
   
-  if (p->payload && ob_remaining(p->payload)<0){
-    // HACK, maybe should be done in each caller
-    // set the size of the payload based on the position written
-    ob_limitsize(p->payload,ob_position(p->payload));
-  }
+  if (ob_overrun(p->payload))
+    return WHY("Packet content overrun -- not queueing");
   
+  if (ob_position(p->payload) >= MDP_MTU)
+    FATAL("Queued packet is too big");
+
   if (queue->length>=queue->maxLength) 
     return WHYF("Queue #%d congested (size = %d)",p->queue,queue->maxLength);
     
-  if (ob_position(p->payload)>=MDP_MTU)
-    FATAL("Queued packet is too big");
-
   // it should be safe to try sending all packets with an mdp sequence
   if (p->packet_version<=0)
     p->packet_version=1;
@@ -226,11 +222,13 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   return 0;
 }
 
-static void
+static int
 overlay_init_packet(struct outgoing_packet *packet, int packet_version,
-		    struct network_destination *destination){
+		    struct network_destination *destination)
+{
   packet->context.interface = destination->interface;
-  packet->buffer=ob_new();
+  if ((packet->buffer = ob_new()) == NULL)
+    return -1;
   packet->packet_version = packet_version;
   packet->context.packet_version = packet_version;
   packet->destination = add_destination_ref(destination);
@@ -238,20 +236,24 @@ overlay_init_packet(struct outgoing_packet *packet, int packet_version,
     packet->seq=-1;
   else
     packet->seq = destination->sequence_number = (destination->sequence_number + 1) & 0xFFFF;
-  
   ob_limitsize(packet->buffer, destination->interface->mtu);
-  
-  int i=destination->interface - overlay_interfaces;
-  overlay_packet_init_header(packet_version, destination->encapsulation, 
-			     &packet->context, packet->buffer, 
-			     destination->unicast, 
-			     i, packet->seq);
+  int i = destination->interface - overlay_interfaces;
+  if (overlay_packet_init_header(packet_version, destination->encapsulation, 
+				 &packet->context, packet->buffer, 
+				 destination->unicast, 
+				 i, packet->seq) == -1
+  ) {
+    ob_free(packet->buffer);
+    packet->buffer = NULL;
+    return -1;
+  }
   packet->header_length = ob_position(packet->buffer);
   if (config.debug.overlayframes)
     DEBUGF("Creating %d packet for interface %s, seq %d, %s", 
       packet_version,
       destination->interface->name, destination->sequence_number,
       destination->unicast?"unicast":"broadcast");
+  return 0;
 }
 
 int overlay_queue_schedule_next(time_ms_t next_allowed_packet){
@@ -331,8 +333,9 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
   while(frame){
     if (frame->enqueued_at + queue->latencyTarget < now){
       if (config.debug.overlayframes)
-	DEBUGF("Dropping frame type %x for %s due to expiry timeout", 
-	       frame->type, frame->destination?alloca_tohex_sid_t(frame->destination->sid):"All");
+	DEBUGF("Dropping frame type %x (length %d) for %s due to expiry timeout", 
+	       frame->type, frame->payload->checkpointLength,
+	       frame->destination?alloca_tohex_sid_t(frame->destination->sid):"All");
       frame = overlay_queue_remove(queue, frame);
       continue;
     }
@@ -411,11 +414,11 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  // send a packet to this destination
 	  if (frame->source_full)
 	    my_subscriber->send_full=1;
-
-	  overlay_init_packet(packet, frame->packet_version, dest);
-	  destination_index=i;
-	  frame->destinations[i].sent_sequence = dest->sequence_number;
-	  break;
+	  if (overlay_init_packet(packet, frame->packet_version, dest) != -1) {
+	    destination_index=i;
+	    frame->destinations[i].sent_sequence = dest->sequence_number;
+	    break;
+	  }
 	}
       }
     }
@@ -532,12 +535,12 @@ static void overlay_send_packet(struct sched_ent *alarm){
   overlay_fill_send_packet(&packet, gettime_ms());
 }
 
-int overlay_send_tick_packet(struct network_destination *destination){
+int overlay_send_tick_packet(struct network_destination *destination)
+{
   struct outgoing_packet packet;
   bzero(&packet, sizeof(struct outgoing_packet));
-  overlay_init_packet(&packet, 0, destination);
-  
-  overlay_fill_send_packet(&packet, gettime_ms());
+  if (overlay_init_packet(&packet, 0, destination) != -1)
+    overlay_fill_send_packet(&packet, gettime_ms());
   return 0;
 }
 

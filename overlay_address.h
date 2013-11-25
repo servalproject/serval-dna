@@ -119,8 +119,8 @@ int process_explain(struct overlay_frame *frame);
 int overlay_broadcast_drop_check(struct broadcast *addr);
 int overlay_broadcast_generate_address(struct broadcast *addr);
 
-int overlay_broadcast_append(struct overlay_buffer *b, struct broadcast *broadcast);
-int overlay_address_append(struct decode_context *context, struct overlay_buffer *b, struct subscriber *subscriber);
+void overlay_broadcast_append(struct overlay_buffer *b, struct broadcast *broadcast);
+void overlay_address_append(struct decode_context *context, struct overlay_buffer *b, struct subscriber *subscriber);
 
 int overlay_broadcast_parse(struct overlay_buffer *b, struct broadcast *broadcast);
 int overlay_address_parse(struct decode_context *context, struct overlay_buffer *b, struct subscriber **subscriber);
