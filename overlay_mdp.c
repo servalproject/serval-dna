@@ -445,6 +445,9 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
       if (len == -1)
 	RETURN(WHY("unsupported MDP packet type"));
       socklen_t addrlen = sizeof addr.sun_family + mdp_bindings[match].name_len;
+      if (config.debug.mdprequests) 
+	DEBUGF("Resolved bound socket on port %"PRImdp_port_t", addr=%s",
+	    mdp_bindings[match].port, alloca_sockaddr(&addr, addrlen));
       ssize_t r = sendto(mdp_sock.poll.fd, mdp, (size_t)len, 0, (struct sockaddr*)&addr, addrlen);
       if ((size_t)r != (size_t)len) {
 	if (r == -1) {
@@ -459,6 +462,7 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
 	RETURN(WHY("Failed to pass received MDP frame to client"));
       }
     } else {
+	DEBUGF("No socket bound to port %"PRImdp_port_t", try internal service", mdp->out.dst.port);
       /* No socket is bound, ignore the packet ... except for magic sockets */
       RETURN(overlay_mdp_try_interal_services(frame, mdp));
     }
@@ -474,6 +478,13 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
 
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const sid_t *resolved_sidp, const char *uri, const char *did, const char *name)
 {
+  if (config.debug.mdprequests)
+    DEBUGF("MDP_PORT_DNALOOKUP resolved_sid=%s uri=%s did=%s name=%s",
+	  alloca_tohex_sid_t(*resolved_sidp),
+	  alloca_str_toprint(uri),
+	  alloca_str_toprint(did),
+	  alloca_str_toprint(name)
+	);
   overlay_mdp_frame mdpreply;
   bzero(&mdpreply, sizeof mdpreply);
   mdpreply.packetTypeAndFlags = MDP_TX; // outgoing MDP message
@@ -538,9 +549,9 @@ void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_p
 static struct overlay_buffer * encrypt_payload(
   struct subscriber *source, 
   struct subscriber *dest, 
-  const unsigned char *buffer, int cipher_len){
-    
-  int nm=crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES;
+  const unsigned char *buffer,
+  int cipher_len)
+{
   int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
   int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
   int cz=crypto_box_curve25519xsalsa20poly1305_BOXZEROBYTES;
@@ -585,30 +596,31 @@ static struct overlay_buffer * encrypt_payload(
   }
   
   /* Actually authcrypt the payload */
-  if (crypto_box_curve25519xsalsa20poly1305_afternm
-      (cipher_text,plain,cipher_len,nonce,k)){
+  if (crypto_box_curve25519xsalsa20poly1305_afternm(cipher_text, plain,cipher_len, nonce, k)) {
     ob_free(ret);
     WHY("crypto_box_afternm() failed");
     return NULL;
   }
   
-  if (0) {
+#if 0
+  if (config.debug.crypto) {
     DEBUG("authcrypted mdp frame");
-    dump("nm",k,nm);
+    dump("nm",k,crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
     dump("plain text",plain,sizeof(plain));
     dump("nonce",nonce,nb);
     dump("cipher text",cipher_text,cipher_len);
   }
+#endif
   
-  /* now shuffle down to get rid of the temporary space that crypto_box
-   uses. 
+  /* now shuffle down to get rid of the temporary space that crypto_box uses. 
    TODO extend overlay buffer so we don't need this.
    */
   bcopy(&cipher_text[cz],&cipher_text[0],cipher_len-cz);
   ret->position-=cz;
-  if (0){
+#if 0
+  if (config.debug.crypto)
     dump("frame", &ret->bytes[0], ret->position);
-  }
+#endif
   
   return ret;
 }
@@ -633,17 +645,25 @@ int overlay_send_frame(struct overlay_frame *frame, struct overlay_buffer *plain
       op_free(frame);
       return -1;
     }
+#if 0
+    if (config.debug.crypto)
+      dump("Frame signed ciphertext", ob_ptr(frame->payload), ob_position(frame->payload));
+#endif
     break;
       
   case OF_CRYPTO_SIGNED:
     // Lets just append some space into the existing payload buffer for the signature, without copying it.
     frame->payload = plaintext;
-    if (   ob_makespace(frame->payload, SIGNATURE_BYTES) != SIGNATURE_BYTES
+    if (   !ob_makespace(frame->payload, SIGNATURE_BYTES)
         || crypto_sign_message(frame->source, ob_ptr(frame->payload), frame->payload->allocSize, &frame->payload->position) == -1
     ) {
       op_free(frame);
       return -1;
     }
+#if 0
+    if (config.debug.crypto)
+      dump("Frame signed plaintext", ob_ptr(frame->payload), ob_position(frame->payload));
+#endif
     break;
       
   case 0:
@@ -673,6 +693,17 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 			 struct sockaddr_un *recvaddr, socklen_t recvaddrlen)
 {
   IN();
+  unsigned __d = 0;
+  if (config.debug.mdprequests) {
+    __d = fd_depth();
+    DEBUGF("[%u] src=%s*:%"PRImdp_port_t", dst=%s*:%"PRImdp_port_t", userGen=%d, recv=%s",
+	   __d,
+	   alloca_tohex_sid_t_trunc(mdp->out.src.sid, 14), mdp->out.src.port,
+	   alloca_tohex_sid_t_trunc(mdp->out.dst.sid, 14), mdp->out.dst.port,
+	   userGeneratedFrameP,
+	   recvaddr ? alloca_sockaddr(recvaddr, recvaddrlen) : "NULL"
+	);
+  }
 
   if (mdp->out.payload_length > sizeof(mdp->out.payload))
     FATAL("Payload length is past the end of the buffer");
@@ -710,6 +741,8 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   
   /* Work out if destination is broadcast or not */
   if (is_sid_t_broadcast(mdp->out.dst.sid)){
+    if (config.debug.mdprequests) 
+      DEBUGF("[%u] Broadcast packet", __d);
     /* broadcast packets cannot be encrypted, so complain if MDP_NOCRYPT
      flag is not set. Also, MDP_NOSIGN must also be applied, until
      NaCl cryptobox keys can be used for signing. */	
@@ -731,12 +764,15 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   if (mdp->out.queue == 0)
     mdp->out.queue = OQ_ORDINARY;
     
-  if (!destination || destination->reachable == REACHABLE_SELF){
+  if (config.debug.mdprequests) 
+    DEBUGF("[%u] destination->sid=%s", __d, destination ? alloca_tohex_sid_t(destination->sid) : "NULL");
+  if (!destination || destination->reachable == REACHABLE_SELF) {
     /* Packet is addressed to us / broadcast, we should process it first. */
     overlay_saw_mdp_frame(NULL,mdp,gettime_ms());
     if (destination) {
-      /* Is local, and is not broadcast, so shouldn't get sent out
-	 on the wire. */
+      /* Is local, and is not broadcast, so shouldn't get sent out on the wire. */
+      if (config.debug.mdprequests) 
+	DEBUGF("[%u] Local packet, not transmitting", __d);
       RETURN(0);
     }
   }
@@ -775,8 +811,15 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   if (mdp->out.payload_length)
     ob_append_bytes(plaintext, mdp->out.payload, mdp->out.payload_length);
   if (ob_overrun(plaintext)) {
+    if (config.debug.mdprequests) 
+      DEBUGF("[%u] Frame overrun: position=%d allocSize=%d sizeLimit=%d", __d,
+	  plaintext->position, plaintext->allocSize, plaintext->sizeLimit);
     ob_free(plaintext);
     RETURN(-1);
+  }
+  if (config.debug.mdprequests) {
+    DEBUGF("[%u] Send frame %zu bytes", __d, ob_position(plaintext));
+    dump("Frame plaintext", ob_ptr(plaintext), ob_position(plaintext));
   }
   
   /* Prepare the overlay frame for dispatch */
@@ -823,7 +866,8 @@ static int search_subscribers(struct subscriber *subscriber, void *context){
   return 0;
 }
 
-int overlay_mdp_address_list(overlay_mdp_addrlist *request, overlay_mdp_addrlist *response){
+int overlay_mdp_address_list(overlay_mdp_addrlist *request, overlay_mdp_addrlist *response)
+{
   if (config.debug.mdprequests)
     DEBUGF("MDP_GETADDRS first_sid=%u mode=%d", request->first_sid, request->mode);
   

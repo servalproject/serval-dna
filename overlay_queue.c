@@ -157,7 +157,7 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   overlay_txqueue *queue = &overlay_tx[p->queue];
 
   if (config.debug.packettx)
-    DEBUGF("Enqueuing packet for %s* (q[%d]length = %d)",
+    DEBUGF("Enqueuing packet for %s* (q[%d].length = %d)",
 	   p->destination?alloca_tohex_sid_t_trunc(p->destination->sid, 14): alloca_tohex(p->broadcast_id.id, BROADCAST_LEN),
 	   p->queue, queue->length);
   
