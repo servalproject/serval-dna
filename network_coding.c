@@ -24,9 +24,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <assert.h>
 #include <inttypes.h>
 #include <stdarg.h>
+#include "network_coding.h"
+#include "dataformats.h"
 
 #define FLAG_NEW 1
-#define HEADER_LEN 7
+
 
 struct nc_packet{
   uint8_t sequence;
@@ -55,21 +57,6 @@ struct nc{
   struct nc_half tx;
   struct nc_half rx;
 };
-
-void write_uint32(unsigned char *o,uint32_t v)
-{
-  int i;
-  for(i=0;i<4;i++)
-  { *(o++)=v&0xff; v=v>>8; }
-}
-
-uint32_t read_uint32(unsigned char *o)
-{
-  int i;
-  uint32_t v=0;
-  for(i=0;i<4;i++) v=(v<<8)|o[4-1-i];
-  return v;
-}
 
 static void _nc_free_half(struct nc_half *n)
 {
@@ -265,7 +252,7 @@ static int _nc_tx_combine_random_payloads(struct nc_half *n, struct nc_packet *p
 int nc_tx_produce_packet(struct nc *n, uint8_t *datagram, uint32_t buffer_size)
 {
   // TODO: Don't waste more bytes than we need to on the bitmap and sequence number
-  if (buffer_size < n->tx.datagram_size+HEADER_LEN)
+  if (buffer_size < n->tx.datagram_size+NC_HEADER_LEN)
     return -1;
 
   if (_nc_get_ack(&n->rx, &datagram[0], &datagram[1]))
@@ -281,7 +268,7 @@ int nc_tx_produce_packet(struct nc *n, uint8_t *datagram, uint32_t buffer_size)
   struct nc_packet packet={
     .sequence = n->tx.window_start,
     .combination = 0,
-    .payload = &datagram[HEADER_LEN],
+    .payload = &datagram[NC_HEADER_LEN],
   };
   
   if (_nc_tx_combine_random_payloads(&n->tx, &packet))
@@ -291,7 +278,7 @@ int nc_tx_produce_packet(struct nc *n, uint8_t *datagram, uint32_t buffer_size)
   // Write out bitmap of actual combinations involved
   datagram[2] = packet.sequence;
   write_uint32(&datagram[3], packet.combination);
-  return HEADER_LEN+n->tx.datagram_size;
+  return NC_HEADER_LEN+n->tx.datagram_size;
 }
 
 static int _nc_rx_combine_packet(struct nc_half *n, struct nc_packet *packet)
@@ -372,14 +359,14 @@ static void _nc_rx_advance_window(struct nc_half *n, uint8_t new_window_start)
 
 int nc_rx_packet(struct nc *n, uint8_t *payload, size_t len)
 {
-  if (len!=2 && len != HEADER_LEN+n->rx.datagram_size){
+  if (len!=2 && len != NC_HEADER_LEN+n->rx.datagram_size){
     fprintf(stderr, "len=%zd\n",len);
     return -1;
   }
   
   _nc_ack(&n->tx, payload[0], payload[1]);
   
-  if (len < HEADER_LEN+n->rx.datagram_size)
+  if (len < NC_HEADER_LEN+n->rx.datagram_size)
     return 0;
   
   uint8_t new_window_start = payload[2];
@@ -387,7 +374,7 @@ int nc_rx_packet(struct nc *n, uint8_t *payload, size_t len)
   struct nc_packet packet={
     .sequence = new_window_start,
     .combination = read_uint32(&payload[3]),
-    .payload = &payload[HEADER_LEN],
+    .payload = &payload[NC_HEADER_LEN],
   };
   
   int r = _nc_rx_combine_packet(&n->rx, &packet);
@@ -419,12 +406,19 @@ int nc_rx_next_delivered(struct nc *n, uint8_t *payload, int buffer_size)
   return n->rx.datagram_size;
 }
 
-static void _hexdump(uint8_t *bytes, size_t len)
-{
-  size_t i;
-  for (i=0;i<len;i++)
-    fprintf(stderr, "%02x ", bytes[i]);
-}
+#ifdef RUNTESTS
+/* TODO: Tests that should be written.
+   1. nc_new() works, and rejects bad input.
+   2. nc_free() works, including on partially initialised structures.
+   3. nc_tx_enqueue_datagram() works, including failing on bad input and when the
+      queue is full.
+   4. nc_tx_ack_dof() works, rejects bad input, and correctly releases buffers.
+   5. nc_tx_random_linear_combination() works, rejects bad input, and produces valid
+      linear combinations of the enqueued datagrams, and never produces all zeroes.
+   6. nc_rx_linear_combination() works, rejects bad input
+   7. nc_rx_linear_combination() rejects when RX queue full, when combination starts
+      before current window.
+*/
 
 static int _nc_dump_half(struct nc_half *n)
 {
@@ -440,8 +434,6 @@ static int _nc_dump_half(struct nc_half *n)
     int j;
     for(j=0;j<32;j++)
       fprintf(stderr, "%0d",(n->packets[i].combination>>(31-j))&1);
-    fprintf(stderr, "  ");
-    _hexdump(n->packets[i].payload, 16);
     fprintf(stderr, "\n");
   }
   return 0;
@@ -455,20 +447,6 @@ static void _nc_dump(struct nc *n)
   fprintf(stderr, "  delivered; %d\n", n->rx.deliver_next);
   _nc_dump_half(&n->rx);
 }
-
-#ifdef RUNTESTS
-/* TODO: Tests that should be written.
-   1. nc_new() works, and rejects bad input.
-   2. nc_free() works, including on partially initialised structures.
-   3. nc_tx_enqueue_datagram() works, including failing on bad input and when the
-      queue is full.
-   4. nc_tx_ack_dof() works, rejects bad input, and correctly releases buffers.
-   5. nc_tx_random_linear_combination() works, rejects bad input, and produces valid
-      linear combinations of the enqueued datagrams, and never produces all zeroes.
-   6. nc_rx_linear_combination() works, rejects bad input
-   7. nc_rx_linear_combination() rejects when RX queue full, when combination starts
-      before current window.
-*/
 
 void FAIL(const char *fmt,...){
   va_list ap;
@@ -530,7 +508,7 @@ int nc_test()
 
   int j=0;
   for(i=0;i<10;i++) {
-    uint8_t outbuffer[HEADER_LEN+200];
+    uint8_t outbuffer[NC_HEADER_LEN+200];
     int len=sizeof(outbuffer);
     int written = nc_tx_produce_packet(tx, outbuffer, len);
     if (written==-1)
@@ -543,7 +521,7 @@ int nc_test()
     if (i==9)
       PASS("Should not produce empty linear combination bitmap");
     
-    if (memcmp(&outbuffer[HEADER_LEN], datagrams[0], 200)!=0)
+    if (memcmp(&outbuffer[NC_HEADER_LEN], datagrams[0], 200)!=0)
       FAIL("Output identity datagram when only one in queue");
     if (i==9)
       PASS("Output identity datagram when only one in queue");
@@ -583,7 +561,7 @@ int nc_test()
   
   // now can we receive this first packet?
   {
-    uint8_t outbuffer[HEADER_LEN+200];
+    uint8_t outbuffer[NC_HEADER_LEN+200];
     int written = nc_tx_produce_packet(tx, outbuffer, sizeof(outbuffer));
     ASSERT(written!=-1, "Produce packet");
     int r=nc_rx_packet(rx, outbuffer, written);
@@ -602,7 +580,7 @@ int nc_test()
   
   // acknowledging this first packet advances the window
   {
-    uint8_t outbuffer[HEADER_LEN+200];
+    uint8_t outbuffer[NC_HEADER_LEN+200];
     int written = nc_tx_produce_packet(rx, outbuffer, sizeof(outbuffer));
     ASSERT(written!=-1, "Produce ACK");
     int r=nc_rx_packet(tx, outbuffer, written);
@@ -621,7 +599,7 @@ int nc_test()
   
   int decoded=0;
   for(i=0;i<100;i++) {
-    uint8_t outbuffer[HEADER_LEN+200];
+    uint8_t outbuffer[NC_HEADER_LEN+200];
     int len=sizeof(outbuffer);
     int written = nc_tx_produce_packet(tx, outbuffer, len);
     if (written==-1)
@@ -636,7 +614,7 @@ int nc_test()
       
     for(j=0;j<200;j++) {
       int k;
-      uint8_t x = outbuffer[HEADER_LEN+j];
+      uint8_t x = outbuffer[NC_HEADER_LEN+j];
       for (k=0;k<8;k++){
 	if (combination&(0x80000000>>k))
 	  x^=datagrams[k+1][j];
@@ -668,7 +646,7 @@ int nc_test()
     
   // acknowledging first 8 packets advances the tx window
   {
-    uint8_t outbuffer[HEADER_LEN+200];
+    uint8_t outbuffer[NC_HEADER_LEN+200];
     int written = nc_tx_produce_packet(rx, outbuffer, sizeof(outbuffer));
     ASSERT(written!=-1, "Produce ACK");
     int r=nc_rx_packet(tx, outbuffer, written);
@@ -682,7 +660,7 @@ int nc_test()
   int dropped=0;
   bzero(histogram, sizeof(histogram));
   
-  uint8_t packets[8][HEADER_LEN+200];
+  uint8_t packets[8][NC_HEADER_LEN+200];
   
   while(decoded < 10000 && sent <=1000000){
     // fill the transmit window whenever there is space
@@ -693,8 +671,8 @@ int nc_test()
     
     // generate a packet in each direction
     sent++;
-    int wone = nc_tx_produce_packet(tx, packets[sent&7], HEADER_LEN+200);
-    int wtwo = nc_tx_produce_packet(rx, packets[(sent+4)&7], HEADER_LEN+200);
+    int wone = nc_tx_produce_packet(tx, packets[sent&7], NC_HEADER_LEN+200);
+    int wtwo = nc_tx_produce_packet(rx, packets[(sent+4)&7], NC_HEADER_LEN+200);
     if (sent <13)
       continue;
       

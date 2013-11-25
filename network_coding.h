@@ -1,0 +1,6 @@
+#ifndef __SERVALD_NETWORK_CODING_H
+#define __SERVALD_NETWORK_CODING_H
+
+#define NC_HEADER_LEN 7
+
+#endif

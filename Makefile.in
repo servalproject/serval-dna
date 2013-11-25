@@ -111,9 +111,6 @@ fakeradio: fakeradio.o
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -o $@ fakeradio.o
 
-network_coding: network_coding.c
-	@$(CC) -DRUNTESTS -Wall -o $@ network_coding.c
-
 # This does not build on 64 bit elf platforms as NaCL isn't built with -fPIC
 # DOC 20120615
 libservald.so: $(OBJS) version.o
