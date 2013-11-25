@@ -193,14 +193,14 @@ int write_bytes(struct radio_state *s)
     wrote=8;
   if (s->last_char_ms)
     wrote = write(s->fd, s->rxbuffer, wrote);
-  if (wrote>0){
-    log_time();
-    fprintf(stderr, "Wrote to %s\n", s->name);
-    dump(NULL, s->rxbuffer, wrote);
-    if (wrote < s->rxb_len)
-      bcopy(&s->rxbuffer[wrote], s->rxbuffer, s->rxb_len - wrote);
-    s->rxb_len -= wrote;
-  }
+  if (wrote<=0)
+    abort();
+  log_time();
+  fprintf(stderr, "Wrote to %s\n", s->name);
+  dump(NULL, s->rxbuffer, wrote);
+  if (wrote < s->rxb_len)
+    bcopy(&s->rxbuffer[wrote], s->rxbuffer, s->rxb_len - wrote);
+  s->rxb_len -= wrote;
   return wrote;
 }
 

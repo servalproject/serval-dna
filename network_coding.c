@@ -26,21 +26,25 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdarg.h>
 #include "network_coding.h"
 #include "dataformats.h"
+#include "log.h"
+#include "mem.h"
 
 #define FLAG_NEW 1
-
-
 struct nc_packet{
   uint8_t sequence;
   uint32_t combination;
+  size_t len;
   uint8_t flags;
   uint8_t *payload;
 };
 
 struct nc_half {
+  uint8_t last_ack;
+  
   // Define the size parameters of the network coding data structures
   uint8_t window_size;    // limited to the number of bits we can fit in a uint32_t
   uint8_t window_start;   // sequence of first datagram in sending window
+  uint8_t unseen; // sequence of first unseen packet
   size_t datagram_size;  // number of bytes in each fixed sized unit
   uint8_t deliver_next;   // sequence of next packet that should be delivered
   // dynamically sized array of pointers to packet buffers
@@ -51,6 +55,7 @@ struct nc_half {
   // At the receiver, this should be 2*maximum window size to allow for older packets we can't decode yet
   uint8_t max_queue_size; 
   uint8_t queue_size;     // # of packets currently in the array
+  int count_new; // number of un-sent degrees of freedom
 };
 
 struct nc{
@@ -115,24 +120,24 @@ int nc_tx_has_room(struct nc *n)
 
 int nc_tx_enqueue_datagram(struct nc *n, unsigned char *d, size_t len)
 {
-  if (len!=n->tx.datagram_size){
-    fprintf(stderr, "Invalid length %zd (%zd)\n", len, n->tx.datagram_size);
-    return -1;
-  }
+  if (len==0 || len>n->tx.datagram_size)
+    return WHYF("Invalid length %zd (%zd)", len, n->tx.datagram_size);
   if (!nc_tx_has_room(n))
     return 1;
 
   // Add datagram to queue
   uint8_t seq = n->tx.window_start + n->tx.queue_size;
   int index = seq & (n->tx.max_queue_size -1);
-  if (n->tx.packets[index].payload){
-    fprintf(stderr, "Attempted to replace TX payload %d (%d) with %d without freeing it first\n",index,n->tx.packets[index].sequence, seq);
-    exit(-1);
-  }
-  n->tx.packets[index].payload = malloc(len);
+  if (n->tx.packets[index].payload)
+    FATALF("Attempted to replace TX payload %d (%d) with %d without freeing it first",index,n->tx.packets[index].sequence, seq);
+  n->tx.packets[index].payload = emalloc(len);
+  if (!n->tx.packets[index].payload)
+    return 1;
   n->tx.packets[index].sequence = seq;
   n->tx.packets[index].combination = 0x80000000;
   n->tx.packets[index].flags = FLAG_NEW;
+  n->tx.count_new++;
+  n->tx.packets[index].len = len;
   bcopy(d, n->tx.packets[index].payload, len);
   n->tx.queue_size++;
   return 0;
@@ -145,23 +150,6 @@ static int _compare_uint8(uint8_t one, uint8_t two)
   if (((one - two)&0xFF) < 0x80)
     return 1;
   return -1;
-}
-
-static int _nc_get_ack(struct nc_half *n, uint8_t *first_unseen, uint8_t *window_size)
-{
-  uint8_t seq;
-
-  for (seq = n->window_start; ;seq++){
-    int index = seq & (n->max_queue_size -1);
-    if (n->packets[index].sequence != seq || !n->packets[index].payload)
-      break;
-  }
-  *window_size = 32 - (seq - n->deliver_next);
-  if (*window_size > n->max_queue_size)
-    *window_size = n->max_queue_size;
-  *first_unseen = seq;
-  
-  return 0;
 }
 
 static int _nc_ack(struct nc_half *n, uint8_t first_unseen, uint8_t window_size)
@@ -200,12 +188,13 @@ static uint32_t _combine_masks(const struct nc_packet *src, const struct nc_pack
   return dst->combination ^ mask;
 }
 
-static void _combine_packets(const struct nc_packet *src, struct nc_packet *dst, size_t datagram_size)
+static void _combine_packets(const struct nc_packet *src, struct nc_packet *dst)
 {
-  // TODO verify that this combination mask is set correctly.
+  if (dst->len < src->len)
+    FATALF("Expected the destination buffer to be at least %zu", src->len);
   dst->combination = _combine_masks(src, dst);
   size_t i;
-  for(i=0;i<datagram_size;i++)
+  for(i=0; i < src->len; i++)
     dst->payload[i]^=src->payload[i];
 }
 
@@ -234,18 +223,34 @@ static int _nc_tx_combine_random_payloads(struct nc_half *n, struct nc_packet *p
     if (n->packets[index].flags & FLAG_NEW){
       if (added_new)
 	continue;
-      _combine_packets(&n->packets[index], packet, n->datagram_size);
+      _combine_packets(&n->packets[index], packet);
       added_new = 1;
+      n->count_new --;
       n->packets[index].flags =0;
       continue;
     }
     
     if (combination&1)
-      _combine_packets(&n->packets[index], packet, n->datagram_size);
+      _combine_packets(&n->packets[index], packet);
     combination>>=1;
   }
 
   return 0;
+}
+
+int nc_tx_packet_urgency(struct nc *n)
+{
+  // new data? send asap
+  if (n->tx.count_new)
+    return URGENCY_ASAP;
+  // ack required? send soon
+  if (n->rx.unseen != n->rx.last_ack)
+    return URGENCY_ASAP;
+  // no new data at either end? don't care
+  if (!n->tx.queue_size && !n->rx.queue_size)
+    return URGENCY_IDLE;
+  // send soon-ish
+  return URGENCY_SOON;
 }
 
 // construct a packet and return the payload size
@@ -254,33 +259,58 @@ int nc_tx_produce_packet(struct nc *n, uint8_t *datagram, uint32_t buffer_size)
   // TODO: Don't waste more bytes than we need to on the bitmap and sequence number
   if (buffer_size < n->tx.datagram_size+NC_HEADER_LEN)
     return -1;
-
-  if (_nc_get_ack(&n->rx, &datagram[0], &datagram[1]))
-    return -1;
+    
+  uint8_t window_size = 32 - (n->rx.unseen - n->rx.deliver_next);
+  if (window_size > n->rx.max_queue_size)
+    window_size = n->rx.max_queue_size;
   
-  if (!n->tx.queue_size){
-    // No data to send, just send an ack
-    // TODO don't ack too often
-    return 2;
+  datagram[0]=n->rx.unseen;
+  datagram[1]=window_size;
+  n->rx.last_ack = n->rx.unseen;
+  size_t len=2;
+  
+  if (n->tx.queue_size){
+    // Produce linear combination
+    struct nc_packet packet={
+      .sequence = n->tx.window_start,
+      .combination = 0,
+      .payload = &datagram[NC_HEADER_LEN],
+      .len = buffer_size - NC_HEADER_LEN,
+    };
+    bzero(packet.payload, packet.len);
+    
+    if (_nc_tx_combine_random_payloads(&n->tx, &packet))
+      return -1;
+    // TODO assert actual_combination? (should never be zero)
+    // Write out bitmap of actual combinations involved
+    datagram[2] = packet.sequence;
+    write_uint32(&datagram[3], packet.combination);
+    len = packet.len + NC_HEADER_LEN;
+    // truncate zero bytes from the end
+    while(!datagram[len-1])
+      len--;
   }
-
-  // Produce linear combination
-  struct nc_packet packet={
-    .sequence = n->tx.window_start,
-    .combination = 0,
-    .payload = &datagram[NC_HEADER_LEN],
-  };
-  
-  if (_nc_tx_combine_random_payloads(&n->tx, &packet))
-    return -1;
-  
-  // TODO assert actual_combination? (should never be zero)
-  // Write out bitmap of actual combinations involved
-  datagram[2] = packet.sequence;
-  write_uint32(&datagram[3], packet.combination);
-  return NC_HEADER_LEN+n->tx.datagram_size;
+  return len;
 }
 
+static int _nc_dump_half(struct nc_half *n)
+{
+  DEBUGF("  window start; %d", n->window_start);
+  DEBUGF("  queue size; %d", n->queue_size);
+  DEBUGF("  max queue size; %d", n->max_queue_size);
+  int i;
+  for (i=0;i<n->max_queue_size;i++){
+    if (!n->packets[i].payload)
+      continue;
+    DEBUGF("  %02d: 0x%02x, 0x%08x",
+	   i, n->packets[i].sequence, n->packets[i].combination);
+  }
+  return 0;
+}
+
+
+// note, the incoming packet buffer must be allocated from the heap
+// this function will take responsibility for releasing it
 static int _nc_rx_combine_packet(struct nc_half *n, struct nc_packet *packet)
 {
   int i;
@@ -296,12 +326,12 @@ static int _nc_rx_combine_packet(struct nc_half *n, struct nc_packet *packet)
     
     // rx packet doesn't add any new information
     if (new_mask==0){
+      free(packet->payload);
       return 1;
     }
     
-    if (new_mask < packet->combination){
-      _combine_packets(&n->packets[i], packet, n->datagram_size);
-    }
+    if (new_mask < packet->combination)
+      _combine_packets(&n->packets[i], packet);
   }
   
   // the new packet must contain new information that will cause a new packet to be seen.
@@ -311,15 +341,12 @@ static int _nc_rx_combine_packet(struct nc_half *n, struct nc_packet *packet)
   
   int index = packet->sequence & (n->max_queue_size -1);
   if (n->packets[index].payload){
-    fprintf(stderr, "Attempted to replace RX payload %d (%d) with %d without freeing it first\n",index,n->packets[index].sequence, packet->sequence);
-    exit(-1);
+    _nc_dump_half(n);
+    free(packet->payload);
+    FATALF("Attempted to replace RX payload %d (%d) with %d without freeing it first",index,n->packets[index].sequence, packet->sequence);
+    return 1;
   }
   
-  // try to duplicate the payload first, we don't want to reduce existing packets if this fails.
-  unsigned char *dup_payload = malloc(n->datagram_size);
-  if (!dup_payload)
-    return -1;
-  bcopy(packet->payload, dup_payload, n->datagram_size);
   // reduce other stored packets
   for (i=0;i<n->max_queue_size;i++){
     if (!n->packets[i].payload || _compare_uint8(n->packets[i].sequence, packet->sequence) > 0)
@@ -328,15 +355,23 @@ static int _nc_rx_combine_packet(struct nc_half *n, struct nc_packet *packet)
 //      n->packets[i].sequence, n->packets[i].combination,
 //      packet->sequence, packet->combination);
     uint32_t new_mask = _combine_masks(packet, &n->packets[i]);
-    if (new_mask < n->packets[i].combination){
-      _combine_packets(packet, &n->packets[i], n->datagram_size);
-    }
+    if (new_mask < n->packets[i].combination)
+      _combine_packets(packet, &n->packets[i]);
   }
   
   // add the packet to our incoming list
   n->packets[index]=*packet;
-  n->packets[index].payload = dup_payload;
   n->queue_size++;
+  
+  // find the first missing seq
+  uint8_t seq;
+  for (seq = n->window_start; ;seq++){
+    int index = seq & (n->max_queue_size -1);
+    if (n->packets[index].sequence != seq || !n->packets[index].payload)
+      break;
+  }
+  n->unseen = seq;
+  
   return 0;
 }
 
@@ -357,28 +392,27 @@ static void _nc_rx_advance_window(struct nc_half *n, uint8_t new_window_start)
   }
 }
 
-int nc_rx_packet(struct nc *n, uint8_t *payload, size_t len)
+int nc_rx_packet(struct nc *n, const uint8_t *payload, size_t len)
 {
-  if (len!=2 && len != NC_HEADER_LEN+n->rx.datagram_size){
-    fprintf(stderr, "len=%zd\n",len);
-    return -1;
+  if (len>=2){
+    _nc_ack(&n->tx, payload[0], payload[1]);
   }
   
-  _nc_ack(&n->tx, payload[0], payload[1]);
-  
-  if (len < NC_HEADER_LEN+n->rx.datagram_size)
-    return 0;
+  if (len<NC_HEADER_LEN)
+    return 1;
   
   uint8_t new_window_start = payload[2];
   
+  // assume incoming packets can be padded with zero's up to n->rx.datagram_size
   struct nc_packet packet={
     .sequence = new_window_start,
     .combination = read_uint32(&payload[3]),
-    .payload = &payload[NC_HEADER_LEN],
+    .payload = emalloc_zero(n->rx.datagram_size),
+    .len = n->rx.datagram_size,
   };
+  bcopy(&payload[NC_HEADER_LEN], packet.payload, len - NC_HEADER_LEN);
   
   int r = _nc_rx_combine_packet(&n->rx, &packet);
-  
   _nc_rx_advance_window(&n->rx, new_window_start);
   
   return r;
@@ -414,30 +448,11 @@ int nc_rx_next_delivered(struct nc *n, uint8_t *payload, int buffer_size)
       queue is full.
    4. nc_tx_ack_dof() works, rejects bad input, and correctly releases buffers.
    5. nc_tx_random_linear_combination() works, rejects bad input, and produces valid
-      linear combinations of the enqueued datagrams, and never produces all zeroes.
+      linear combinations of the enqueuedumd datagrams, and never produces all zeroes.
    6. nc_rx_linear_combination() works, rejects bad input
    7. nc_rx_linear_combination() rejects when RX queue full, when combination starts
       before current window.
 */
-
-static int _nc_dump_half(struct nc_half *n)
-{
-  fprintf(stderr, "  window start; %d\n", n->window_start);
-  fprintf(stderr, "  queue size; %d\n", n->queue_size);
-  fprintf(stderr, "  max queue size; %d\n", n->max_queue_size);
-  int i;
-  for (i=0;i<n->max_queue_size;i++){
-    if (!n->packets[i].payload)
-      continue;
-    fprintf(stderr, "  %02d: 0x%02x, 0x%08x ",
-	   i, n->packets[i].sequence, n->packets[i].combination);
-    int j;
-    for(j=0;j<32;j++)
-      fprintf(stderr, "%0d",(n->packets[i].combination>>(31-j))&1);
-    fprintf(stderr, "\n");
-  }
-  return 0;
-}
 
 static void _nc_dump(struct nc *n)
 {

@@ -980,8 +980,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
       int r = mdp_send(mdp_sockfd, &mdp_header, payload, sizeof(payload));
       if (r<0)
 	WHY_perror("mdp_send");
-      else
-	tx_count++;
+      tx_count++;
     }
     
     /* Now look for replies until one second has passed, and print any replies

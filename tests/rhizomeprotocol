@@ -702,7 +702,6 @@ start_radio_instance() {
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
       set debug.throttling on \
-      set debug.radio_link on \
       set rhizome.advertise.interval 5000 \
       set rhizome.rhizome_mdp_block_size 375 \
       set log.console.level debug \

@@ -296,10 +296,10 @@ setup_simulate_extender() {
    foreach_instance +A +B start_routing_instance
 }
 test_simulate_extender() {
-   wait_until path_exists +A +B
-   wait_until path_exists +B +A
+   wait_until --timeout=20 path_exists +A +B
+   wait_until --timeout=20 path_exists +B +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   executeOk_servald mdp ping --interval=0.500 --timeout=10 $SIDB 20
    tfw_cat --stdout --stderr
 }
 teardown_simulate_extender() {

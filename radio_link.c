@@ -49,6 +49,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_buffer.h"
 #include "golay.h"
 #include "radio_link.h"
+#include "network_coding.h"
 
 #define MAVLINK_MSG_ID_RADIO 166
 #define MAVLINK_MSG_ID_DATASTREAM 67
@@ -73,18 +74,19 @@ struct mavlink_RADIO_v10 {
 
 */
 
+#define PAYLOAD_FRAGMENT 0xFF
 #define FEC_LENGTH 32
 #define FEC_MAX_BYTES 223
 #define RADIO_HEADER_LENGTH 6
-#define RADIO_USED_HEADER_LENGTH 4
+#define RADIO_ACTUAL_HEADER_LENGTH 4
 #define RADIO_CRC_LENGTH 2
 
-#define LINK_PAYLOAD_MTU (LINK_MTU - FEC_LENGTH - RADIO_HEADER_LENGTH - RADIO_CRC_LENGTH)
+#define LINK_NC_MTU (LINK_MTU - FEC_LENGTH - RADIO_ACTUAL_HEADER_LENGTH)
+#define LINK_PAYLOAD_MTU (LINK_NC_MTU - NC_HEADER_LEN)
 
 struct radio_link_state{
-  // next seq for transmission
-  int tx_seq;
-
+  struct nc *network_coding;
+  
   // small buffer for parsing incoming bytes from the serial interface, 
   // looking for recoverable link layer packets
   // should be large enough to hold at least one packet from the remote end
@@ -94,8 +96,6 @@ struct radio_link_state{
   // decoded length of next link layer packet
   // including all header and footer bytes
   int payload_length;
-  // last rx seq for reassembly
-  int seq;
   // offset within payload that we have found a valid looking header
   int payload_start;
   // offset after payload_start for incoming bytes
@@ -152,6 +152,7 @@ int decode_rs_8(data_t *data, int *eras_pos, int no_eras, int pad);
 int radio_link_free(struct overlay_interface *interface)
 {
   if (interface->radio_link_state){
+    nc_free(interface->radio_link_state->network_coding);
     free(interface->radio_link_state);
     interface->radio_link_state=NULL;
   }
@@ -161,6 +162,7 @@ int radio_link_free(struct overlay_interface *interface)
 int radio_link_init(struct overlay_interface *interface)
 {
   interface->radio_link_state = emalloc_zero(sizeof(struct radio_link_state));
+  interface->radio_link_state->network_coding = nc_new(16, LINK_PAYLOAD_MTU);
   return 0;
 }
 
@@ -171,47 +173,34 @@ void radio_link_state_html(struct strbuf *b, struct overlay_interface *interface
   strbuf_sprintf(b, "Remote RSSI: %ddB<br>", state->remote_rssi);
 }
 
-// write a new link layer packet to interface->txbuffer
-// consuming more bytes from the next interface->tx_packet if required
-static int radio_link_encode_packet(struct radio_link_state *link_state)
+static int encode_next_packet(struct radio_link_state *link_state)
 {
-  // if we have nothing interesting left to send, don't create a packet at all
-  if (!link_state->tx_packet)
-    return 0;
+  while (link_state->tx_packet && nc_tx_has_room(link_state->network_coding)){
+    // queue one packet
+    uint8_t next_packet[LINK_PAYLOAD_MTU];
+    bzero(next_packet, sizeof(next_packet));
+    ob_checkpoint(link_state->tx_packet);
     
-  int count = ob_remaining(link_state->tx_packet);
-  int startP = (ob_position(link_state->tx_packet) == 0);
-  int endP = 1;
-  if (count > LINK_PAYLOAD_MTU){
-    count = LINK_PAYLOAD_MTU;
-    endP = 0;
-  }
-  
-  link_state->txbuffer[0]=0xfe; // mavlink v1.0 magic header
-  
-  // we need to add FEC_LENGTH for FEC, but the length field doesn't include the expected headers or CRC
-  int len = count + FEC_LENGTH - RADIO_CRC_LENGTH;
-  link_state->txbuffer[1]=len; // mavlink payload length
-  link_state->txbuffer[2]=(len & 0xF);
-  link_state->txbuffer[3]=0;
-  
-  // add golay encoding so that decoding the actual length is more reliable
-  golay_encode(&link_state->txbuffer[1]);
-  
-  
-  link_state->txbuffer[4]=(link_state->tx_seq++) & 0x3f;
-  if (startP) link_state->txbuffer[4]|=0x40;
-  if (endP) link_state->txbuffer[4]|=0x80;
-  link_state->txbuffer[5]=MAVLINK_MSG_ID_DATASTREAM;
-  
-  ob_get_bytes(link_state->tx_packet, &link_state->txbuffer[6], count);
-  
-  encode_rs_8(&link_state->txbuffer[4], &link_state->txbuffer[6+count], FEC_MAX_BYTES - (count+2));
-  link_state->tx_bytes=len + RADIO_CRC_LENGTH + RADIO_HEADER_LENGTH;
-  if (endP){
-    ob_free(link_state->tx_packet);
-    link_state->tx_packet=NULL;
-    overlay_queue_schedule_next(gettime_ms());
+    int count = ob_remaining(link_state->tx_packet);
+    if (count > LINK_PAYLOAD_MTU -1){
+      count = LINK_PAYLOAD_MTU -1;
+      next_packet[0]=PAYLOAD_FRAGMENT;
+    }else
+      next_packet[0]=count;
+    
+    ob_get_bytes(link_state->tx_packet, &next_packet[1], count);
+    if (nc_tx_enqueue_datagram(link_state->network_coding, next_packet, LINK_PAYLOAD_MTU)==0){
+      if (config.debug.radio_link)
+	DEBUGF("Enqueued fragment len %d", count+1);
+    }else{
+      ob_rewind(link_state->tx_packet);
+      break;
+    }
+    if (!ob_remaining(link_state->tx_packet)){
+      ob_free(link_state->tx_packet);
+      link_state->tx_packet=NULL;
+      overlay_queue_schedule_next(gettime_ms());
+    }
   }
   return 0;
 }
@@ -236,6 +225,41 @@ int radio_link_queue_packet(struct overlay_interface *interface, struct overlay_
   ob_flip(buffer);
   link_state->tx_packet = buffer;
   radio_link_tx(interface);
+  
+  return 0;
+}
+
+static int send_link_packet(struct overlay_interface *interface)
+{
+  struct radio_link_state *link_state = interface->radio_link_state;
+  
+  int data_length = nc_tx_produce_packet(link_state->network_coding, 
+    &link_state->txbuffer[RADIO_ACTUAL_HEADER_LENGTH], LINK_NC_MTU);
+  
+  // if we have nothing interesting to send, don't create a packet at all
+  if (data_length <=0)
+    return 0;
+  
+  link_state->txbuffer[0]=0xfe; // mavlink v1.0 magic header
+  
+  // the current firmware assumes that the whole packet contains 6 bytes of header and 2 bytes of crc
+  // that are not counted in the length.
+  int whole_packet = data_length + FEC_LENGTH + RADIO_ACTUAL_HEADER_LENGTH;
+  int radio_length = whole_packet - RADIO_HEADER_LENGTH - RADIO_CRC_LENGTH;
+  link_state->txbuffer[1]=radio_length; // mavlink payload length
+  link_state->txbuffer[2]=(radio_length & 0xF);
+  link_state->txbuffer[3]=0;
+  
+  // add golay encoding so that decoding the actual length is more reliable
+  golay_encode(&link_state->txbuffer[1]);
+  
+  encode_rs_8(&link_state->txbuffer[RADIO_ACTUAL_HEADER_LENGTH], 
+    &link_state->txbuffer[RADIO_ACTUAL_HEADER_LENGTH + data_length], 
+    FEC_MAX_BYTES - data_length);
+  
+  link_state->tx_bytes=whole_packet;
+  if (config.debug.radio_link)
+    DEBUGF("Produced packet len %d", whole_packet);
   
   return 0;
 }
@@ -280,6 +304,9 @@ int radio_link_tx(struct overlay_interface *interface)
   
   while(1){
     
+    // encode more data if we have a packet waiting, and have space
+    encode_next_packet(link_state);
+    
     if (link_state->tx_bytes){
       if (link_state->next_tx_allowed > now){
 	interface->alarm.alarm = link_state->next_tx_allowed;
@@ -318,14 +345,25 @@ int radio_link_tx(struct overlay_interface *interface)
     if (link_state->remaining_space < LINK_MTU + HEARTBEAT_SIZE)
       link_state->next_heartbeat = now;
     
-    if (!link_state->tx_packet){
-      // finished current packet, wait for more.
-      interface->alarm.alarm = next_tick;
+    int urgency = nc_tx_packet_urgency(link_state->network_coding);
+    time_ms_t delay = 500;
+    switch (urgency){
+      case URGENCY_ASAP:
+	delay=20;
+	break;
+      case URGENCY_SOON:
+	delay=200;
+	break;
+    }
+    
+    if (link_state->last_packet + delay > now){
+      interface->alarm.alarm = link_state->last_packet + delay;
+      if (interface->alarm.alarm > next_tick)
+	interface->alarm.alarm = next_tick;
       break;
     }
     
-    // encode another packet fragment
-    radio_link_encode_packet(link_state);
+    send_link_packet(interface);
     link_state->last_packet = now;
   }
   
@@ -369,7 +407,7 @@ static int parse_heartbeat(struct radio_link_state *state, const unsigned char *
 }
 
 static int radio_link_parse(struct overlay_interface *interface, struct radio_link_state *state, 
-  size_t packet_length, uint8_t *payload, int *backtrack)
+  int packet_length, unsigned char *payload, int *backtrack)
 {
   *backtrack=0;
   if (packet_length==17){
@@ -385,57 +423,58 @@ static int radio_link_parse(struct overlay_interface *interface, struct radio_li
     return 0;
   }
   
-  size_t data_bytes = packet_length - (RADIO_USED_HEADER_LENGTH + FEC_LENGTH);
+  payload += RADIO_ACTUAL_HEADER_LENGTH;
+  packet_length -= RADIO_ACTUAL_HEADER_LENGTH + FEC_LENGTH;
   
-  int errors=decode_rs_8(&payload[4], NULL, 0, FEC_MAX_BYTES - data_bytes);
+  int errors=decode_rs_8(payload, NULL, 0, FEC_MAX_BYTES - packet_length);
   if (errors==-1){
     if (config.debug.radio_link)
       DEBUGF("Reed-Solomon error correction failed");
     return 0;
   }
   *backtrack=errors;
-  data_bytes -= 2;
-  int seq=payload[4]&0x3f;
   
-  if (config.debug.radio_link){
-    DEBUGF("Received RS protected message, len: %zd, errors: %d, seq: %d, flags:%s%s", 
-      data_bytes,
-      errors,
-      seq,
-      payload[4]&0x40?" start":"",
-      payload[4]&0x80?" end":"");
+  int rx = nc_rx_packet(state->network_coding, payload, packet_length);
+  if (config.debug.radio_link)
+    DEBUGF("RX returned %d", rx);
+  
+  if (rx==0){
+    // we received an interesting packet, can we deliver anything?
+    uint8_t fragment[LINK_PAYLOAD_MTU];
+    while(1){
+      int len=nc_rx_next_delivered(state->network_coding, fragment, sizeof(fragment));
+      if (len<=0)
+	break;
+      int fragment_len=fragment[0];
+      if (fragment_len == PAYLOAD_FRAGMENT)
+	fragment_len = len -1;
+	
+      // is this fragment length invalid?
+      if (fragment_len > len -1)
+	state->packet_length=sizeof(state->dst);
+      
+      // can we fit this fragment into our payload buffer?
+      if (fragment_len+state->packet_length < sizeof(state->dst)){
+	bcopy(&fragment[1], &state->dst[state->packet_length], fragment_len);
+	state->packet_length+=fragment_len;
+	
+	// is this the last fragment?
+	if (fragment[0] != PAYLOAD_FRAGMENT){
+	  if (config.debug.radio_link)
+	    DEBUGF("PDU Complete (length=%d)",state->packet_length);
+	  
+	  if (packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL, 0)){
+	    dump("Invalid packet?", state->dst, state->packet_length);
+	  }
+	}
+      }
+      
+      // reset the buffer for the next packet
+      if (fragment[0] != PAYLOAD_FRAGMENT)
+	state->packet_length=0;
+    }
   }
   
-  if (seq != ((state->seq+1)&0x3f)){
-    // reject partial packet if we missed a sequence number
-    if (config.debug.radio_link) 
-      DEBUGF("Rejecting packet, sequence jumped from %d to %d", state->seq, seq);
-    state->packet_length=sizeof(state->dst)+1;
-  }
-  
-  if (payload[4]&0x40){
-    // start a new packet
-    state->packet_length=0;
-  }
-  
-  state->seq=payload[4]&0x3f;
-  if (state->packet_length + data_bytes > sizeof(state->dst)){
-    if (config.debug.radio_link)
-      DEBUG("Fragmented packet is too long or a previous piece was missed - discarding");
-    state->packet_length=sizeof(state->dst)+1;
-    return 1;
-  }
-  
-  bcopy(&payload[RADIO_HEADER_LENGTH], &state->dst[state->packet_length], data_bytes);
-  state->packet_length+=data_bytes;
-    
-  if (payload[4]&0x80) {
-    if (config.debug.radio_link) 
-      DEBUGF("PDU Complete (length=%d)",state->packet_length);
-    
-    packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL, 0);
-    state->packet_length=sizeof(state->dst)+1;
-  }
   return 1;
 }
 
