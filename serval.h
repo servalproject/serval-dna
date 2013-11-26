@@ -513,7 +513,7 @@ int overlay_mdp_reply_error(int sock,
 			    int error_number,char *message);
 
 typedef uint32_t mdp_port_t;
-#define PRImdp_port_t "08" PRIx32
+#define PRImdp_port_t "#08" PRIx32
 
 typedef struct sockaddr_mdp {
   sid_t sid;
