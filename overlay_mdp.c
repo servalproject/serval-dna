@@ -445,7 +445,7 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
       if (len == -1)
 	RETURN(WHY("unsupported MDP packet type"));
       socklen_t addrlen = sizeof addr.sun_family + mdp_bindings[match].name_len;
-      if (config.debug.mdprequests) 
+      if (config.debug.mdprequests)
 	DEBUGF("Resolved bound socket on port %"PRImdp_port_t", addr=%s",
 	    mdp_bindings[match].port, alloca_sockaddr(&addr, addrlen));
       ssize_t r = sendto(mdp_sock.poll.fd, mdp, (size_t)len, 0, (struct sockaddr*)&addr, addrlen);
@@ -462,6 +462,7 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
 	RETURN(WHY("Failed to pass received MDP frame to client"));
       }
     } else {
+      if (config.debug.mdprequests)
 	DEBUGF("No socket bound to port %"PRImdp_port_t", try internal service", mdp->out.dst.port);
       /* No socket is bound, ignore the packet ... except for magic sockets */
       RETURN(overlay_mdp_try_interal_services(frame, mdp));
