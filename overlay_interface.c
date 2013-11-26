@@ -657,9 +657,6 @@ static void interface_read_file(struct overlay_interface *interface)
       return;
     }
     
-    if (config.debug.overlayinterfaces)
-      DEBUGF("Read interface %s (size=%"PRId64") at offset=%d",interface->name, (int64_t)length, interface->recv_offset);
-    
     ssize_t nread = read(interface->alarm.poll.fd, &packet, sizeof packet);
     if (nread == -1){
       WHY_perror("read");
@@ -668,11 +665,22 @@ static void interface_read_file(struct overlay_interface *interface)
     }
     
     if (nread == sizeof packet) {
+      if (config.debug.overlayinterfaces)
+	DEBUGF("Read from interface %s (filesize=%"PRId64") at offset=%d: src_addr=%s dst_addr=%s pid=%d length=%d",
+	      interface->name, (int64_t)length, interface->recv_offset,
+	      alloca_sockaddr(&packet.src_addr, sizeof packet.src_addr),
+	      alloca_sockaddr(&packet.dst_addr, sizeof packet.dst_addr),
+	      packet.pid,
+	      packet.payload_length
+	    );
       interface->recv_offset += nread;
       if (should_drop(interface, packet.dst_addr) || (packet.pid == getpid() && !interface->local_echo)){
 	if (config.debug.packetrx)
-	  DEBUGF("Ignoring packet from %d, addressed to %s:%d", packet.pid,
-	      inet_ntoa(packet.dst_addr.sin_addr), ntohs(packet.dst_addr.sin_port));
+	  DEBUGF("Ignoring packet from pid=%d src_addr=%s dst_addr=%s",
+		packet.pid,
+		alloca_sockaddr_in(&packet.src_addr),
+		alloca_sockaddr_in(&packet.dst_addr)
+	      );
       }else{
 	packetOkOverlay(interface, packet.payload, packet.payload_length, -1, 
 			    (struct sockaddr*)&packet.src_addr, (socklen_t) sizeof(packet.src_addr));
@@ -961,9 +969,21 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 	    not support seeking. */
 	  if (errno != ESPIPE)
 	    return WHY_perror("lseek");
-	  DEBUGF("Write to interface %s at unknown offset", interface->name);
+	  DEBUGF("Write to interface %s at offset unknown: src_addr=%s dst_addr=%s pid=%d length=%d",
+		interface->name,
+		alloca_sockaddr(&packet.src_addr, sizeof packet.src_addr),
+		alloca_sockaddr(&packet.dst_addr, sizeof packet.dst_addr),
+		packet.pid,
+		packet.payload_length
+	      );
 	} else
-	  DEBUGF("Write to interface %s at offset=%"PRId64, interface->name, (int64_t)fsize);
+	  DEBUGF("Write to interface %s at offset=%"PRId64": src_addr=%s dst_addr=%s pid=%d length=%d",
+		interface->name, (int64_t)fsize,
+		alloca_sockaddr(&packet.src_addr, sizeof packet.src_addr),
+		alloca_sockaddr(&packet.dst_addr, sizeof packet.dst_addr),
+		packet.pid,
+		packet.payload_length
+	      );
       }
       ssize_t nwrite = write(interface->alarm.poll.fd, &packet, sizeof(packet));
       if (nwrite == -1)
