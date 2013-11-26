@@ -168,11 +168,12 @@ static int append_bars(struct overlay_buffer *e, sqlite_retry_state *retry, cons
 	DEBUG("Found a BAR that is the wrong size - ignoring");
       continue;
     }
-    if (ob_append_bytes(e, (unsigned char *)data, blob_bytes)){
+    if (ob_remaining(e) < blob_bytes) {
       // out of room
       count--;
       break;
     }
+    ob_append_bytes(e, (unsigned char *)data, blob_bytes);
     *last_rowid=rowid;
   }
   if (statement)
@@ -184,7 +185,8 @@ static int append_bars(struct overlay_buffer *e, sqlite_retry_state *retry, cons
  Always advertise the most recent 3 manifests in the table, cycle through the rest of the table, adding 17 BAR's at a time
  */
 int64_t bundles_available=0;
-void overlay_rhizome_advertise(struct sched_ent *alarm){
+void overlay_rhizome_advertise(struct sched_ent *alarm)
+{
   bundles_available=0;
   static int64_t bundle_last_rowid=INT64_MAX;
   
@@ -197,7 +199,7 @@ void overlay_rhizome_advertise(struct sched_ent *alarm){
   int (*oldfunc)() = sqlite_set_tracefunc(is_debug_rhizome_ads);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
-  // DEPRECATE REST OF THIS CODE WHICH SEEMS TO BE CAUSING TOO MUCH CHATTER
+  // TODO: DEPRECATE REST OF THIS CODE WHICH SEEMS TO BE CAUSING TOO MUCH CHATTER
   // ESPECIALLY FOR PACKET-RADIO
   goto end;
 
@@ -216,31 +218,28 @@ void overlay_rhizome_advertise(struct sched_ent *alarm){
   frame->source = my_subscriber;
   frame->ttl = 1;
   frame->queue = OQ_OPPORTUNISTIC;
-  frame->payload = ob_new();
+  if ((frame->payload = ob_new()) == NULL) {
+    op_free(frame);
+    goto end;
+  }
   ob_limitsize(frame->payload, 800);
-  
   ob_append_byte(frame->payload, 2);
   ob_append_ui16(frame->payload, rhizome_http_server_port);
-  
   int64_t rowid=0;
   int count = append_bars(frame->payload, &retry, 
 			  "SELECT BAR,ROWID FROM MANIFESTS ORDER BY ROWID DESC LIMIT 3", 
 			  &rowid);
-  
   if (count>=3){
     if (bundle_last_rowid>rowid || bundle_last_rowid<=0)
       bundle_last_rowid=rowid;
-    
     count = append_bars(frame->payload, &retry, 
 			"SELECT BAR,ROWID FROM MANIFESTS WHERE ROWID < ? ORDER BY ROWID DESC LIMIT 17", 
 			&bundle_last_rowid);
     if (count<17)
       bundle_last_rowid=INT64_MAX;
   }
-  
-  if (overlay_payload_enqueue(frame))
+  if (overlay_payload_enqueue(frame) == -1)
     op_free(frame);
-
 end:
   sqlite_set_tracefunc(oldfunc);
   alarm->alarm = gettime_ms()+config.rhizome.advertise.interval;
@@ -262,21 +261,20 @@ int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m){
   else
     frame->ttl = 1;
   frame->queue = OQ_OPPORTUNISTIC;
-  frame->payload = ob_new();
-  
+  if ((frame->payload = ob_new()) == NULL)
+    goto error;
   ob_limitsize(frame->payload, 800);
-  
-  if (ob_append_byte(frame->payload, HAS_PORT|HAS_MANIFESTS)) goto error;
-  if (ob_append_ui16(frame->payload, is_rhizome_http_enabled()?rhizome_http_server_port:0)) goto error;
-  if (ob_append_ui16(frame->payload, m->manifest_all_bytes)) goto error;
-  if (ob_append_bytes(frame->payload, m->manifestdata, m->manifest_all_bytes)) goto error;
+  ob_append_byte(frame->payload, HAS_PORT|HAS_MANIFESTS);
+  ob_append_ui16(frame->payload, is_rhizome_http_enabled()?rhizome_http_server_port:0);
+  ob_append_ui16(frame->payload, m->manifest_all_bytes);
+  ob_append_bytes(frame->payload, m->manifestdata, m->manifest_all_bytes);
   ob_append_byte(frame->payload, 0xFF);
-  if (overlay_payload_enqueue(frame)) goto error;
+  if (overlay_payload_enqueue(frame) == -1)
+    goto error;
   if (config.debug.rhizome_ads)
     DEBUGF("Advertising manifest %s %"PRId64" to %s", 
       alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, dest?alloca_tohex_sid_t(dest->sid):"broadcast");
   return 0;
-  
 error:
   op_free(frame);
   return -1;

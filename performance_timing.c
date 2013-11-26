@@ -208,6 +208,15 @@ void dump_stack(int log_level)
   }
 }
 
+unsigned fd_depth()
+{
+  unsigned depth = 0;
+  struct call_stats *call;
+  for (call = current_call; call; call = call->prev)
+    ++depth;
+  return depth;
+}
+
 int fd_func_enter(struct __sourceloc __whence, struct call_stats *this_call)
 {
   if (config.debug.profiling)

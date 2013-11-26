@@ -1,3 +1,4 @@
+#include <assert.h>
 #include "serval.h"
 #include "conf.h"
 #include "str.h"
@@ -222,14 +223,14 @@ int overlay_send_probe(struct subscriber *peer, struct network_destination *dest
   frame->ttl=1;
   frame->queue=queue;
   frame->destinations[frame->destination_count++].destination=add_destination_ref(destination);
-  frame->payload = ob_new();
-  frame->source_full = 1;
-  // TODO call mdp payload encryption / signing without calling overlay_mdp_dispatch...
-  
-  if (overlay_mdp_encode_ports(frame->payload, MDP_PORT_ECHO, MDP_PORT_PROBE)){
+  if ((frame->payload = ob_new()) == NULL) {
     op_free(frame);
     return -1;
   }
+  frame->source_full = 1;
+  // TODO call mdp payload encryption / signing without calling overlay_mdp_dispatch...
+  
+  overlay_mdp_encode_ports(frame->payload, MDP_PORT_ECHO, MDP_PORT_PROBE);
   // not worried about byte order here as we are the only node that should be parsing the contents.
   unsigned char *dst=ob_append_space(frame->payload, sizeof(struct probe_contents));
   if (!dst){
@@ -254,25 +255,21 @@ int overlay_send_probe(struct subscriber *peer, struct network_destination *dest
 }
 
 // append the address of a unicast link into a packet buffer
-static int overlay_append_unicast_address(struct subscriber *subscriber, struct overlay_buffer *buff)
+static void overlay_append_unicast_address(struct subscriber *subscriber, struct overlay_buffer *buff)
 {
-  if (subscriber->destination 
-    && subscriber->destination->unicast
-    && subscriber->destination->address.sin_family==AF_INET){
-    if (overlay_address_append(NULL, buff, subscriber))
-      return -1;
-    if (ob_append_ui32(buff, subscriber->destination->address.sin_addr.s_addr))
-      return -1;
-    if (ob_append_ui16(buff, subscriber->destination->address.sin_port))
-      return -1;
-    ob_checkpoint(buff);
+  if (   subscriber->destination 
+      && subscriber->destination->unicast
+      && subscriber->destination->address.sin_family==AF_INET
+  ) {
+    overlay_address_append(NULL, buff, subscriber);
+    ob_append_ui32(buff, subscriber->destination->address.sin_addr.s_addr);
+    ob_append_ui16(buff, subscriber->destination->address.sin_port);
     if (config.debug.overlayrouting)
       DEBUGF("Added STUN info for %s", alloca_tohex_sid_t(subscriber->sid));
   }else{
     if (config.debug.overlayrouting)
       DEBUGF("Unable to give address of %s, %d", alloca_tohex_sid_t(subscriber->sid),subscriber->reachable);
   }
-  return 0;
 }
 
 int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp)
@@ -296,22 +293,20 @@ int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp)
   struct overlay_buffer *replypayload = ob_static(reply.out.payload, sizeof(reply.out.payload));
   
   ob_checkpoint(replypayload);
-  while(ob_remaining(payload)>0){
+  while (ob_remaining(payload) > 0) {
     struct subscriber *subscriber=NULL;
-    
     if (overlay_address_parse(NULL, payload, &subscriber))
       break;
-    
     if (!subscriber){
       if (config.debug.overlayrouting)
 	DEBUGF("Unknown subscriber");
       continue;
     }
-    
-    if (overlay_append_unicast_address(subscriber, replypayload))
+    overlay_append_unicast_address(subscriber, replypayload);
+    if (ob_overrun(payload))
       break;
+    ob_checkpoint(replypayload);
   }
-  
   ob_rewind(replypayload);
   reply.out.payload_length=ob_position(replypayload);
   
@@ -388,11 +383,12 @@ int overlay_send_stun_request(struct subscriber *server, struct subscriber *requ
   
   struct overlay_buffer *payload = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
   overlay_address_append(NULL, payload, request);
-  mdp.out.payload_length=ob_position(payload);
-  if (config.debug.overlayrouting)
-    DEBUGF("Sending STUN request to %s", alloca_tohex_sid_t(server->sid));
-  overlay_mdp_dispatch(&mdp,0 /* system generated */,
-		       NULL,0);
+  if (!ob_overrun(payload)) {
+    mdp.out.payload_length=ob_position(payload);
+    if (config.debug.overlayrouting)
+      DEBUGF("Sending STUN request to %s", alloca_tohex_sid_t(server->sid));
+    overlay_mdp_dispatch(&mdp, 0 /* system generated */, NULL,0);
+  }
   ob_free(payload);
   return 0;
 }

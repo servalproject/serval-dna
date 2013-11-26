@@ -141,7 +141,7 @@ int decode_rs_8(data_t *data, int *eras_pos, int no_eras, int pad);
 int mavlink_encode_packet(struct overlay_interface *interface)
 {
   int count = ob_remaining(interface->tx_packet);
-  int startP = !ob_position(interface->tx_packet);
+  int startP = (ob_position(interface->tx_packet) == 0);
   int endP = 1;
   if (count+6+32 > 255){
     count = 255-6-32;

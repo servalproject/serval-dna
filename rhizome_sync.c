@@ -321,21 +321,16 @@ static void sync_process_bar_list(struct subscriber *subscriber, struct rhizome_
 
 }
 
-static int append_response(struct overlay_buffer *b, uint64_t token, const unsigned char *bar)
+static void append_response(struct overlay_buffer *b, uint64_t token, const unsigned char *bar)
 {
-  if (ob_append_packed_ui64(b, token))
-    return -1;
-  if (bar){
-    if (ob_append_bytes(b, bar, RHIZOME_BAR_BYTES))
-      return -1;
-  }else{
+  ob_append_packed_ui64(b, token);
+  if (bar)
+    ob_append_bytes(b, bar, RHIZOME_BAR_BYTES);
+  else{
     unsigned char *ptr = ob_append_space(b, RHIZOME_BAR_BYTES);
-    if (!ptr)
-      return -1;
-    bzero(ptr, RHIZOME_BAR_BYTES);
+    if (ptr)
+      bzero(ptr, RHIZOME_BAR_BYTES);
   }
-  ob_checkpoint(b);
-  return 0;
 }
 
 static uint64_t max_token=0;
@@ -400,24 +395,26 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
       // make sure we include the exact rowid that was requested, even if we just deleted / replaced the manifest
       if (count==0 && rowid!=token){
         if (token!=HEAD_FLAG){
-          if (append_response(b, token, NULL))
+	  ob_checkpoint(b);
+          append_response(b, token, NULL);
+	  if (ob_overrun(b))
 	    ob_rewind(b);
-	  else{
+	  else {
             count++;
             last = token;
 	  }
         }else
           token = rowid;
       }
-
-      if (append_response(b, rowid, bar))
+      ob_checkpoint(b);
+      append_response(b, rowid, bar);
+      if (ob_overrun(b))
 	ob_rewind(b);
       else {
         last = rowid;
         count++;
       }
     }
-
     if (count >= max_count && rowid <= max_token)
       break;
   }
@@ -427,7 +424,9 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
 
   // send a zero lower bound if we reached the end of our manifest list
   if (count && count < max_count && !forwards){
-    if (append_response(b, 0, NULL))
+    ob_checkpoint(b);
+    append_response(b, 0, NULL);
+    if (ob_overrun(b))
       ob_rewind(b);
     else {
       last = 0;

@@ -316,7 +316,7 @@ strbuf strbuf_append_socket_type(strbuf sb, int type)
 
 strbuf strbuf_append_in_addr(strbuf sb, const struct in_addr *addr)
 {
-  strbuf_sprintf(sb, " %u.%u.%u.%u",
+  strbuf_sprintf(sb, "%u.%u.%u.%u",
       ((unsigned char *) &addr->s_addr)[0],
       ((unsigned char *) &addr->s_addr)[1],
       ((unsigned char *) &addr->s_addr)[2],
@@ -324,13 +324,21 @@ strbuf strbuf_append_in_addr(strbuf sb, const struct in_addr *addr)
   return sb;
 }
 
+strbuf strbuf_append_sockaddr_in(strbuf sb, const struct sockaddr_in *addr)
+{
+  assert(addr->sin_family == AF_INET);
+  strbuf_puts(sb, "AF_INET:");
+  strbuf_append_in_addr(sb, &addr->sin_addr);
+  strbuf_sprintf(sb, ":%u", ntohs(addr->sin_port));
+  return sb;
+}
+
 strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t addrlen)
 {
-  strbuf_append_socket_domain(sb, addr->sa_family);
   switch (addr->sa_family) {
   case AF_UNIX: {
+      strbuf_puts(sb, "AF_UNIX:");
       size_t len = addrlen > sizeof addr->sa_family ? addrlen - sizeof addr->sa_family : 0;
-      strbuf_putc(sb, ' ');
       if (addr->sa_data[0]) {
 	strbuf_toprint_quoted_len(sb, "\"\"", addr->sa_data, len);
 	if (len < 2)
@@ -347,18 +355,19 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
     break;
   case AF_INET: {
       const struct sockaddr_in *addr_in = (const struct sockaddr_in *) addr;
-      strbuf_putc(sb, ' ');
-      strbuf_append_in_addr(sb, &addr_in->sin_addr);
-      strbuf_sprintf(sb, ":%u", ntohs(addr_in->sin_port));
+      strbuf_append_sockaddr_in(sb, addr_in);
       if (addrlen != sizeof(struct sockaddr_in))
 	strbuf_sprintf(sb, " (addrlen=%d should be %zd)", (int)addrlen, sizeof(struct sockaddr_in));
     }
     break;
   default: {
+      strbuf_append_socket_domain(sb, addr->sa_family);
       size_t len = addrlen > sizeof addr->sa_family ? addrlen - sizeof addr->sa_family : 0;
       int i;
-      for (i = 0; i < len; ++i)
-	strbuf_sprintf(sb, " %02x", addr->sa_data[i]);
+      for (i = 0; i < len; ++i) {
+	strbuf_putc(sb, i ? ',' : ':');
+	strbuf_sprintf(sb, "%02x", addr->sa_data[i]);
+      }
     }
     break;
   }
