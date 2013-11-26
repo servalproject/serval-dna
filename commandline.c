@@ -1332,7 +1332,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   if (!m){
     keyring_free(keyring);
     return WHY("Manifest struct could not be allocated -- not added to rhizome");
-  }  
+  }
   if (manifestpath && *manifestpath && access(manifestpath, R_OK) == 0) {
     if (config.debug.rhizome)
       DEBUGF("reading manifest from %s", manifestpath);

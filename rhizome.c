@@ -156,32 +156,30 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
 int rhizome_manifest_check_sanity(rhizome_manifest *m)
 {
   /* Ensure manifest meets basic sanity checks. */
-  if (m->filesize == RHIZOME_SIZE_UNSET)
-    return WHY("Manifest missing 'filesize' field");
-  if (m->filesize && rhizome_filehash_t_is_zero(m->filehash))
-    return WHY("Manifest 'filehash' field has not been set");
-  if (m->service == NULL || !m->service[0])
-    return WHY("Manifest missing 'service' field");
-  if (!m->has_date)
-    return WHY("Manifest missing 'date' field");
+  int ret = 0;
   if (m->version == 0)
-    return WHY("Manifest must have a version number");
-  if (strcasecmp(m->service, RHIZOME_SERVICE_FILE) == 0) {
+    ret = WHY("Manifest must have a version number");
+  if (m->filesize == RHIZOME_SIZE_UNSET)
+    ret = WHY("Manifest missing 'filesize' field");
+  else if (m->filesize && rhizome_filehash_t_is_zero(m->filehash))
+    ret = WHY("Manifest 'filehash' field has not been set");
+  if (m->service == NULL)
+    ret = WHY("Manifest missing 'service' field");
+  else if (strcasecmp(m->service, RHIZOME_SERVICE_FILE) == 0) {
     if (m->name == NULL)
-      return WHY("Manifest missing 'name' field");
+      ret = WHY("Manifest with service='" RHIZOME_SERVICE_FILE "' missing 'name' field");
   } else if (strcasecmp(m->service, RHIZOME_SERVICE_MESHMS) == 0 
 	  || strcasecmp(m->service, RHIZOME_SERVICE_MESHMS2) == 0) {
     if (!m->has_sender)
-      return WHY("MeshMS Manifest missing 'sender' field");
+      ret = WHYF("Manifest with service='%s' missing 'sender' field", m->service);
     if (!m->has_recipient)
-      return WHY("MeshMS Manifest missing 'recipient' field");
-  } else {
-    return WHYF("Invalid service=%s", m->service);
+      ret = WHYF("Manifest with service='%s' missing 'recipient' field", m->service);
   }
-  if (config.debug.rhizome)
-    DEBUGF("sender=%s", m->has_sender ? alloca_tohex_sid_t(m->sender) : "(null)");
-  /* passes all sanity checks */
-  return 0;
+  else if (!rhizome_str_is_manifest_service(m->service))
+    ret = WHYF("Manifest invalid 'service' field %s", alloca_str_toprint(m->service));
+  if (!m->has_date)
+    ret = WHY("Manifest missing 'date' field");
+  return ret;
 }
 
 /* Sets the bundle key "BK" field of a manifest.  Returns 1 if the field was set, 0 if not.
