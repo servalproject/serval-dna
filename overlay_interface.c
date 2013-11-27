@@ -715,9 +715,7 @@ static void interface_read_stream(struct overlay_interface *interface){
   }
   
   
-  int i;
-  for (i=0;i<nread;i++)
-    radio_link_decode(interface, buffer[i]);
+  radio_link_decode(interface, buffer, nread);
     
   OUT();
 }

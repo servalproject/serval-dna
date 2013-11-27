@@ -305,11 +305,6 @@ int transfer_bytes(struct radio_state *radios)
 	  if (p+size+MAVLINK_HDR > bytes)
 	    break;
 	  
-	  // detect when we are about to transmit a heartbeat frame
-	  if (size==9 && t->txbuffer[p+5]==0){
-	    // reply to the host with a heartbeat
-	    build_heartbeat(t);
-	  }
 	  p+=size+MAVLINK_HDR;
 	  send=p;
 	  continue;
@@ -348,13 +343,31 @@ int transfer_bytes(struct radio_state *radios)
 
   // simulate the probability of a bit error in the packet pre-amble and drop the whole packet
   for (i=0;i<PREAMBLE_LENGTH;i++){
-    if (random()<ber)
+    if (random()<ber){
       dropped=1;
+      fprintf(stderr,"Dropped the whole radio packet due to bit flip in the pre-amble\n");
+      break;
+    }
   }
   
-  if (dropped){
-    fprintf(stderr,"Dropped the whole radio packet due to bit flip in the pre-amble\n");
-  }else{
+  if (r->rxb_len + bytes + 9 > sizeof(r->rxbuffer)){
+    dropped=1;
+    fprintf(stderr,"Dropped the whole radio packet due to insufficient space\n");
+  }
+  
+  if (!dropped){
+    // build new firmware header
+    r->rxbuffer[r->rxb_len++]=0xaa;
+    r->rxbuffer[r->rxb_len++]=0x55;
+    r->rxbuffer[r->rxb_len++]=0x42; // rssi
+    r->rxbuffer[r->rxb_len++]=0x44; // remote rsi
+    r->rxbuffer[r->rxb_len++]=0x12; // temperature
+    r->rxbuffer[r->rxb_len++]=bytes; // packet length (can be zero)
+    int remaining_space = sizeof(r->txbuffer) - r->txb_len;
+    r->rxbuffer[r->rxb_len++]=remaining_space & 0xFF;
+    r->rxbuffer[r->rxb_len++]=remaining_space >> 8;
+    r->rxbuffer[r->rxb_len++]=0x55;
+    
     for (i=0;i<bytes && r->rxb_len<sizeof(r->rxbuffer);i++){
       char byte = t->txbuffer[i];
       // introduce bit errors
