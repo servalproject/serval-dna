@@ -124,9 +124,8 @@ struct radio_link_state{
   int remote_rssi;
   // estimated firmware buffer space
   int32_t remaining_space;
+  int32_t total_space;
   
-  // next serial write
-  uint64_t next_tx_allowed;
   // partially sent packet
   struct overlay_buffer *tx_packet;
   
@@ -169,7 +168,8 @@ int radio_link_free(struct overlay_interface *interface)
 int radio_link_init(struct overlay_interface *interface)
 {
   interface->radio_link_state = emalloc_zero(sizeof(struct radio_link_state));
-  interface->radio_link_state->remaining_space = 512;
+  interface->radio_link_state->remaining_space = 256;
+  interface->radio_link_state->total_space = 256;  
   return 0;
 }
 
@@ -265,10 +265,6 @@ int radio_link_tx(struct overlay_interface *interface)
     now = gettime_ms();
     
     if (link_state->tx_bytes){
-      if (link_state->next_tx_allowed > now){
-	interface->alarm.alarm = link_state->next_tx_allowed;
-	break;
-      }
       int bytes = link_state->tx_bytes;
       if (bytes > link_state->remaining_space){
 	bytes = link_state->remaining_space;
@@ -289,6 +285,8 @@ int radio_link_tx(struct overlay_interface *interface)
 	link_state->tx_pos+=written;
       else
 	link_state->tx_pos=0;
+      if (config.debug.packetradio)
+	INFOF("Radio packet TX wrote %d, remaining %d", written, link_state->remaining_space);
       continue;
     }
   
@@ -456,18 +454,33 @@ int radio_link_decode(struct overlay_interface *interface, const uint8_t *buffer
 	  // we can assume that radio status packets arrive without corruption
 	  state->radio_rssi=state->radio_header[2];//(1.0*payload[10]-payload[13])/1.9;
 	  state->remote_rssi=state->radio_header[3];//(1.0*payload[11] - payload[14])/1.9;
-	  state->remaining_space = ((state->radio_header[7]<<8) | state->radio_header[6]) - 64;
-	  if (state->remaining_space>=LINK_MTU){
-	    state->next_tx_allowed = gettime_ms();
-	  }
-	    
+	  state->remaining_space = ((state->radio_header[7]<<8) | state->radio_header[6]);
+	  
+	  // track the actual buffer space
+	  if (state->total_space < state->remaining_space)
+	    state->total_space = state->remaining_space;
+	  
 	  if (config.debug.packetradio)
-	    INFOF("RX len = %02x, rssi = %+ddB, remote rssi = %+ddB, buffer space = %d",
+	    INFOF("Radio packet RX len = %02x, rssi = %+ddB, remote rssi = %+ddB, buffer space = %d (of %d)",
 		  state->radio_header[5],
 		  state->radio_rssi,
 		  state->remote_rssi,
-		  state->remaining_space);
-		  
+		  state->remaining_space,
+		  state->total_space);
+	  
+	  // reserve some bytes to allow for rtt lag and hope that's enough
+	  if (state->remaining_space<64)
+	    state->remaining_space=0;
+	  else
+	    state->remaining_space-=64;
+	    
+	  if (state->total_space > 3*LINK_MTU){
+	    if (state->remaining_space < (state->total_space - 3*LINK_MTU))
+	      state->remaining_space = 0;
+	    else
+	      state->remaining_space -= (state->total_space - 3*LINK_MTU);
+	  }
+	  
 	  if (state->radio_header[5])
 	    state->mode=MODE_PACKET;
 	}else if (config.debug.radio_link)

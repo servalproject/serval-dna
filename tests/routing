@@ -261,7 +261,7 @@ test_slip_encoding() {
    executeOk_servald test slip --seed=1 --iterations=2000
 }
 start_fakeradio() {
-   $servald_build_root/fakeradio 4 1 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
+   $servald_build_root/fakeradio 4 0.8 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
    FAKERADIO_PID=$!
    wait_until $GREP "^right:" "$SERVALD_VAR/radioout"
    local _line=`head "$SERVALD_VAR/radioout" -n 1`
@@ -299,7 +299,7 @@ test_simulate_extender() {
    wait_until path_exists +A +B
    wait_until path_exists +B +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   executeOk_servald mdp ping --interval=0.3 --timeout=5 $SIDB 100
    tfw_cat --stdout --stderr
 }
 teardown_simulate_extender() {
