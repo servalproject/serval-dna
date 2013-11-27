@@ -168,8 +168,8 @@ int fd_showstats()
       while(stats!=NULL){
 	/* If a function spends more than 1 second in any 
 	   notionally 3 second period, then dob on it */
-	if (stats->total_time>1000
-	    &&strcmp(stats->name,"Idle (in poll)"))
+	if ((stats->total_time>1000 || stats->calls > 10000)
+	    && strcmp(stats->name,"Idle (in poll)"))
 	  fd_showstat(&total,stats);
 	stats = stats->_next;
       }
