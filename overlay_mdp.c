@@ -819,7 +819,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     RETURN(-1);
   }
   if (config.debug.mdprequests) {
-    DEBUGF("[%u] Send frame %zu bytes", __d, ob_position(plaintext));
+    DEBUGF("[%u] Send frame %u bytes", __d, ob_position(plaintext));
     dump("Frame plaintext", ob_ptr(plaintext), ob_position(plaintext));
   }
   

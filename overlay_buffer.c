@@ -167,7 +167,7 @@ ssize_t _ob_makespace(struct __sourceloc __whence, struct overlay_buffer *b, siz
 {
   assert(b != NULL);
   if (config.debug.overlaybuffer)
-    DEBUGF("ob_makespace(b=%p, bytes=%d) b->bytes=%p b->position=%d b->allocSize=%d",
+    DEBUGF("ob_makespace(b=%p, bytes=%zd) b->bytes=%p b->position=%d b->allocSize=%d",
 	   b, bytes, b->bytes, b->position, b->allocSize);
   assert(b->position >= 0);
   if (b->sizeLimit != -1)
@@ -177,7 +177,7 @@ ssize_t _ob_makespace(struct __sourceloc __whence, struct overlay_buffer *b, siz
     assert(b->bytes != NULL);
   if (b->sizeLimit != -1 && b->position + bytes > b->sizeLimit) {
     if (config.debug.packetformats)
-      DEBUGF("ob_makespace(): asked for space to %u, beyond size limit of %u", b->position + bytes, b->sizeLimit);
+      DEBUGF("ob_makespace(): asked for space to %zu, beyond size limit of %u", b->position + bytes, b->sizeLimit);
     return 0;
   }
   if (b->position + bytes <= b->allocSize)
@@ -185,7 +185,7 @@ ssize_t _ob_makespace(struct __sourceloc __whence, struct overlay_buffer *b, siz
   // Don't realloc a static buffer.
   if (b->bytes && b->allocated == NULL) {
     if (config.debug.packetformats)
-      DEBUGF("ob_makespace(): asked for space to %u, beyond static buffer size of %u", b->position + bytes, b->allocSize);
+      DEBUGF("ob_makespace(): asked for space to %zu, beyond static buffer size of %u", b->position + bytes, b->allocSize);
     return 0;
   }
   int newSize=b->position+bytes;
