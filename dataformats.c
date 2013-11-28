@@ -239,3 +239,13 @@ uint16_t read_uint16(const unsigned char *o)
   for(i=0;i<2;i++) v=(v<<8)|o[2-1-i];
   return v;
 }
+
+int compare_wrapped_uint8(uint8_t one, uint8_t two)
+{
+  return (int8_t)(one - two);
+}
+
+int compare_wrapped_uint16(uint16_t one, uint16_t two)
+{
+  return (int16_t)(one - two);
+}

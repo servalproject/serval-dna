@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# Tests for stream connections
+#
+# Copyright 2012 Serval Project, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+
+teardown() {
+   stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
+
+doc_hello="Simple Hello World"
+setup_hello() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   foreach_instance +A +B \
+      executeOk_servald config \
+         set debug.mdprequests on \
+         set log.console.level DEBUG \
+         set log.console.show_time on
+   start_servald_instances +A +B
+   set_instance +A
+}
+test_hello() {
+   fork executeOk_servald --timeout=5 msp listen 512 <<EOF
+Hello from the server
+EOF
+   sleep 1
+   set_instance +B
+   executeOk_servald --timeout=7 msp connect $SIDA 512 <<EOF
+Hello from the client
+EOF
+   tfw_cat --stdout --stderr
+   fork_wait_all
+}
+
+
+runTests "$@"
+

@@ -602,6 +602,7 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
 int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context *context);
 int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context *context);
 int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *context);
+int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *context);
 
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 

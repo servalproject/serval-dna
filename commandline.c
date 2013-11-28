@@ -2261,6 +2261,7 @@ static int app_keyring_set_tag(const struct cli_parsed *parsed, struct cli_conte
   return r;
 }
 
+// returns -1 on error, -2 on timeout, packet length on success.
 ssize_t mdp_poll_recv(int mdp_sock, time_ms_t timeout, struct mdp_header *rev_header, unsigned char *payload, size_t buffer_size)
 {
   time_ms_t now = gettime_ms();
@@ -3055,6 +3056,10 @@ struct cli_schema command_line_options[]={
    "Run byte order handling test"},
   {app_slip_test,{"test","slip","[--seed=<N>]","[--duration=<seconds>|--iterations=<N>]",NULL}, 0,
    "Run serial encapsulation test"},
+  {app_msp_connection,{"msp", "listen", "<port>", NULL}, 0,
+  "Listen for incoming connections"},
+  {app_msp_connection,{"msp", "connect", "<sid>", "<port>", NULL}, 0,
+  "Connect to a remote party"},
 #ifdef HAVE_VOIPTEST
   {app_pa_phone,{"phone",NULL}, 0,
    "Run phone test application"},

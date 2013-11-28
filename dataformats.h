@@ -42,4 +42,9 @@ uint64_t read_uint64(const unsigned char *o);
 uint32_t read_uint32(const unsigned char *o);
 uint16_t read_uint16(const unsigned char *o);
 
+// compare sequence numbers that wrap
+// returns <0 if one is before two, 0 if they are the same, else >0
+int compare_wrapped_uint8(uint8_t one, uint8_t two);
+int compare_wrapped_uint16(uint16_t one, uint16_t two);
+
 #endif //__SERVAL_DNA___DATA_FORMATS_H

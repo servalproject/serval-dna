@@ -495,7 +495,7 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
   */
 
   if (config.debug.mdprequests) 
-    DEBUGF("Received packet with listener (MDP ports: src=%s*:%"PRImdp_port_t", dst=%"PRImdp_port_t")",
+    DEBUGF("Received packet (MDP ports: src=%s*:%"PRImdp_port_t", dst=%"PRImdp_port_t")",
 	 alloca_tohex_sid_t_trunc(mdp->out.src.sid, 14),
 	 mdp->out.src.port, mdp->out.dst.port);
 
@@ -530,6 +530,8 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
 	  if (len < 0)
 	    RETURN(WHY("unsupported MDP packet type"));
 	  struct socket_address *client = &mdp_bindings[match].client;
+	  if (config.debug.mdprequests) 
+	    DEBUGF("Forwarding packet to client %s", alloca_socket_address(client));
 	  ssize_t r = sendto(mdp_sock.poll.fd,mdp,len,0, &client->addr, client->addrlen);
 	  if (r == -1){
 	    WHYF_perror("sendto(fd=%d,len=%zu,addr=%s)", mdp_sock.poll.fd, (size_t)len, alloca_socket_address(client));
@@ -546,6 +548,7 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
 	}
       case 1:
 	{
+	  struct socket_address *client = &mdp_bindings[match].client;
 	  struct mdp_header header;
 	  header.local.sid=mdp->out.dst.sid;
 	  header.local.port=mdp->out.dst.port;
@@ -562,7 +565,9 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
 	  if (mdp_bindings[match].internal)
 	    RETURN(mdp_bindings[match].internal(&header, mdp->out.payload, mdp->out.payload_length));
 	    
-	  RETURN(mdp_send2(&mdp_bindings[match].client, &header, mdp->out.payload, mdp->out.payload_length));
+	  if (config.debug.mdprequests)
+	    DEBUGF("Forwarding packet to client v2 %s", alloca_socket_address(client));
+	  RETURN(mdp_send2(client, &header, mdp->out.payload, mdp->out.payload_length));
 	}
     }
   } else {
@@ -740,6 +745,11 @@ static int overlay_send_frame(
   if (!source)
     return WHYF("No source specified");
   
+  if (config.debug.mdprequests)
+    DEBUGF("Attempting to queue mdp packet from %s:%d to %s:%d",
+      alloca_tohex_sid_t(source->sid), src_port, 
+      destination?alloca_tohex_sid_t(destination->sid):"broadcast", dst_port);
+      
   /* Prepare the overlay frame for dispatch */
   struct overlay_frame *frame = emalloc_zero(sizeof(struct overlay_frame));
   if (!frame)
@@ -1406,9 +1416,6 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
       overlay_saw_mdp_frame(NULL, &mdp);
     }
     
-    if (config.debug.mdprequests)
-      DEBUGF("Attempting to queue mdp packet");
-      
     // construct, encrypt, sign and queue the packet
     if (overlay_send_frame(
       source, header->local.port,

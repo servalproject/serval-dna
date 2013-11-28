@@ -19,8 +19,6 @@
 #ifndef __SERVAL_DNA__MDP_CLIENT_H
 #define __SERVAL_DNA__MDP_CLIENT_H
 
-#include "serval.h"
-
 // define 3rd party mdp API without any structure padding
 #pragma pack(push, 1)
 
@@ -93,7 +91,6 @@ int mdp_close(int socket);
 int mdp_send(int socket, const struct mdp_header *header, const uint8_t *payload, size_t len);
 ssize_t mdp_recv(int socket, struct mdp_header *header, uint8_t *payload, ssize_t max_len);
 int mdp_poll(int socket, time_ms_t timeout_ms);
-
 
 
 /* Client-side MDP function */
