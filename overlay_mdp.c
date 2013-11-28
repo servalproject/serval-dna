@@ -1138,7 +1138,9 @@ static void mdp_poll2(struct sched_ent *alarm)
     };
     int ttl=-1;
     
-    ssize_t len = recvwithttl(alarm->poll.fd, buffer, sizeof(buffer), &ttl, (struct sockaddr *)&addr, &client.addrlen);
+    ssize_t len = recvwithttl(alarm->poll.fd, buffer, sizeof buffer, &ttl, (struct sockaddr *)&addr, &client.addrlen);
+    if (len == -1)
+      WHYF_perror("recvwithttl(%d,%p,%zu,&%d,%p,%p)", alarm->poll.fd, buffer, sizeof buffer, ttl, &addr, &client.addrlen);
     
     if (len<sizeof(struct mdp_header)){
       WHYF("Expected length %d, got %d from %s", (int)sizeof(struct mdp_header), (int)len, alloca_sockaddr(client.addr, client.addrlen));
@@ -1184,14 +1186,16 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
     unsigned char buffer[16384];
     int ttl;
     unsigned char recvaddrbuffer[1024];
-    struct sockaddr *recvaddr=(struct sockaddr *)&recvaddrbuffer[0];
-    socklen_t recvaddrlen=sizeof(recvaddrbuffer);
+    struct sockaddr *recvaddr = (struct sockaddr *)recvaddrbuffer;
+    socklen_t recvaddrlen = sizeof recvaddrbuffer;
     struct sockaddr_un *recvaddr_un=NULL;
 
     ttl=-1;
     bzero((void *)recvaddrbuffer,sizeof(recvaddrbuffer));
     
-    ssize_t len = recvwithttl(alarm->poll.fd,buffer,sizeof(buffer),&ttl, recvaddr, &recvaddrlen);
+    ssize_t len = recvwithttl(alarm->poll.fd, buffer, sizeof buffer, &ttl, recvaddr, &recvaddrlen);
+    if (len == -1)
+      WHYF_perror("recvwithttl(%d,%p,%zu,&%d,%p,%p)", alarm->poll.fd, buffer, sizeof buffer, ttl, recvaddr, &recvaddrlen);
     recvaddr_un=(struct sockaddr_un *)recvaddr;
 
     if (len > 0) {

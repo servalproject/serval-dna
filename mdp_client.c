@@ -248,6 +248,8 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, mdp_port_t port, in
   mdp->packetTypeAndFlags = 0;
   set_nonblock(mdp_sockfd);
   len = recvwithttl(mdp_sockfd, (unsigned char *)mdp, sizeof(overlay_mdp_frame), ttl, (struct sockaddr *)&recvaddr, &recvaddrlen);
+  if (len == -1)
+    WHYF_perror("recvwithttl(%d,%p,%zu,&%d,%p,%p)", mdp_sockfd, mdp, sizeof(overlay_mdp_frame), *ttl, &recvaddr, &recvaddrlen);
   set_block(mdp_sockfd);
   if (len <= 0)
     return -1; // no packet received
