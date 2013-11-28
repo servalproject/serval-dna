@@ -294,7 +294,6 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
   int ad_frame_type=ob_get(f->payload);
   struct sockaddr_in httpaddr = context->addr;
   httpaddr.sin_port = htons(RHIZOME_HTTP_PORT);
-  size_t manifest_length;
   rhizome_manifest *m=NULL;
 
   int (*oldfunc)() = sqlite_set_tracefunc(is_debug_rhizome_ads);
@@ -305,73 +304,66 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
   
   if (ad_frame_type & HAS_MANIFESTS){
     /* Extract whole manifests */
-    while(f->payload->position < f->payload->sizeLimit) {
-      if (ob_getbyte(f->payload, f->payload->position)==0xff){
-	f->payload->position++;
+    while (ob_remaining(f->payload) > 0) {
+      if (ob_peek(f->payload) == 0xff) {
+	ob_skip(f->payload, 1);
 	break;
       }
-	
-      manifest_length = ob_get_ui16(f->payload);
+
+      size_t manifest_length = ob_get_ui16(f->payload);
       if (manifest_length==0) continue;
       
       unsigned char *data = ob_get_bytes_ptr(f->payload, manifest_length);
       if (!data) {
 	WHYF("Illegal manifest length field in rhizome advertisement frame %zu vs %d", 
-	     manifest_length, f->payload->sizeLimit - f->payload->position);
+	     manifest_length, ob_remaining(f->payload));
 	break;
       }
 
-      /* Read manifest without verifying signatures (which would waste lots of
-	 energy, everytime we see a manifest that we already have).
-	 In fact, it would be better here to do a really rough and ready parser
-	 to get the id and version fields out, and avoid the memory copies that
-	 otherwise happen. 
-	 But we do need to make sure that at least one signature is there.
-      */	
-      m = rhizome_new_manifest();
-      if (!m) {
-	WHY("Out of manifests");
+      // Briefly inspect the manifest to see if it looks interesting.
+      struct rhizome_manifest_summary summ;
+      if (!rhizome_manifest_inspect((char *)data, manifest_length, &summ)) {
+	if (config.debug.rhizome_ads)
+	  DEBUG("Ignoring manifest that looks malformed");
 	goto next;
       }
       
-      if (rhizome_read_manifest_file(m, (char *)data, manifest_length) == -1) {
-	WHY("Error parsing manifest body");
-	goto next;
-      }
-      
-      /* trim manifest ID to a prefix for ease of debugging
-	 (that is the only use of this */
-      if (config.debug.rhizome_ads){
-	DEBUGF("manifest id=%s version=%"PRId64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
-      }
+      if (config.debug.rhizome_ads)
+	DEBUGF("manifest id=%s version=%"PRId64, alloca_tohex_rhizome_bid_t(summ.bid), summ.version);
 
-      /* Crude signature presence test */
-      if (m->manifest_bytes >= m->manifest_all_bytes){
-	// no signature was found when parsing?
-	/* ignore the announcement, but don't ignore other people
-	   offering the same manifest */
+      // If it looks like there is no signature at all, ignore the announcement but don't brown-list
+      // the manifest ID, so that we will still process other offers of the same manifest with
+      // signatures.
+      if (summ.body_len == manifest_length) {
 	if (config.debug.rhizome_ads)
 	  DEBUG("Ignoring manifest announcment with no signature");
 	goto next;
       }
 
-      if (rhizome_ignore_manifest_check(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary)){
+      if (rhizome_ignore_manifest_check(summ.bid.binary, sizeof summ.bid.binary)){
 	/* Ignoring manifest that has caused us problems recently */
 	if (config.debug.rhizome_ads)
-	  DEBUGF("Ignoring manifest with errors: %s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+	  DEBUGF("Ignoring manifest with errors bid=%s", alloca_tohex_rhizome_bid_t(summ.bid));
 	goto next;
       }
 
-      if (m->errors > 0){
-	if (config.debug.rhizome_ads)
-	  DEBUG("Unverified manifest has errors - so not processing any further.");
-	/* Don't waste any time on this manifest in future attempts for at least
-	     a minute. */
+      // The manifest looks potentially interesting, so now do a full parse and validation.
+      if ((m = rhizome_new_manifest()) == NULL)
+	goto next;
+      if (   rhizome_read_manifest_file(m, (char *)data, manifest_length) == -1
+	  || !rhizome_manifest_validate(m)
+      ) {
+	WARN("Malformed manifest");
+	// Don't attend to this manifest for at least a minute
 	rhizome_queue_ignore_manifest(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, 60000);
 	goto next;
       }
-      /* Manifest is okay, so see if it is worth storing */
-
+      assert(m->has_id);
+      assert(m->version != 0);
+      assert(cmp_rhizome_bid_t(&m->cryptoSignPublic, &summ.bid) == 0);
+      assert(m->version == summ.version);
+      assert(m->manifest_body_bytes == summ.body_len);
+      
       // are we already fetching this bundle [or later]?
       rhizome_manifest *mf=rhizome_fetch_search(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary);
       if (mf && mf->version >= m->version)

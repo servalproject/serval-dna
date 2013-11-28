@@ -434,7 +434,7 @@ int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
   int mLen = crypto_hash_sha512_BYTES;
   int r = crypto_sign_edwards25519sha512batch(signatureBuffer, &sigLen, &hash[0], mLen, sk);
   if (r)
-    RETURN(WHY("crypto_sign_edwards25519sha512batch() failed."));
+    RETURN(WHY("crypto_sign_edwards25519sha512batch() failed"));
   /* Here we use knowledge of the internal structure of the signature block
      to remove the hash, since that is implicitly transported, thus reducing the
      actual signature size down to 64 bytes.
@@ -457,7 +457,7 @@ typedef struct manifest_signature_block_cache {
 #define SIG_CACHE_SIZE 1024
 manifest_signature_block_cache sig_cache[SIG_CACHE_SIZE];
 
-int rhizome_manifest_lookup_signature_validity(unsigned char *hash,unsigned char *sig,int sig_len)
+int rhizome_manifest_lookup_signature_validity(const unsigned char *hash, const unsigned char *sig, int sig_len)
 {
   IN();
   unsigned int slot=0;
@@ -505,73 +505,45 @@ int rhizome_manifest_lookup_signature_validity(unsigned char *hash,unsigned char
 int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs)
 {
   IN();
-  if (!m)
-    RETURN(WHY("NULL pointer passed in as manifest"));
-  if (config.debug.rhizome)
-    DEBUGF("m->manifest_all_bytes=%u m->manifest_bytes=%u *ofs=%u", m->manifest_all_bytes, m->manifest_bytes, *ofs);
-
-  if ((*ofs) >= m->manifest_all_bytes)
-    RETURN(0);
-
+  if (config.debug.rhizome_manifest)
+    DEBUGF("*ofs=%u m->manifest_all_bytes=%zu", *ofs, m->manifest_all_bytes);
+  assert((*ofs) < m->manifest_all_bytes);
+  const unsigned char *sig = m->manifestdata + *ofs;
   uint8_t sigType = m->manifestdata[*ofs];
   uint8_t len = (sigType << 2) + 4 + 1;
-
-  /* Each signature type is required to have a different length to detect it.
-     At present only crypto_sign_edwards25519sha512batch() signatures are
-     supported. */
-  int r;
-  if (m->sig_count<MAX_MANIFEST_VARS)
-    switch(sigType) 
-      {
-      case 0x17: /* crypto_sign_edwards25519sha512batch() */
-	/* Reconstitute signature block */
-	r=rhizome_manifest_lookup_signature_validity
-	  (m->manifesthash,&m->manifestdata[(*ofs)+1],96);
-#ifdef DEPRECATED
-	unsigned char sigBuf[256];
-	unsigned char verifyBuf[256];
-	unsigned char publicKey[256];
-	bcopy(&m->manifestdata[(*ofs)+1],&sigBuf[0],64);
-	bcopy(&m->manifesthash[0],&sigBuf[64],crypto_hash_sha512_BYTES);
-	/* Get public key of signatory */
-	bcopy(&m->manifestdata[(*ofs)+1+64],&publicKey[0],crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
-	unsigned long long mlen=0;
-	int r=crypto_sign_edwards25519sha512batch_open(verifyBuf,&mlen,&sigBuf[0],128, publicKey);
-#endif
-	if (r) {
-	  (*ofs)+=len;
-	  m->errors++;
-	  RETURN(WHY("Error in signature block (verification failed)."));
-	} else {
-	  /* Signature block passes, so add to list of signatures */
-	  m->signatureTypes[m->sig_count]=len;
-	  m->signatories[m->sig_count]
-	    =malloc(crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
-	  if(!m->signatories[m->sig_count]) {
-	    (*ofs)+=len;
-	    RETURN(WHY("malloc() failed when reading signature block"));
-	  }
-	  bcopy(&m->manifestdata[(*ofs)+1+64],m->signatories[m->sig_count],
-		crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
-	  m->sig_count++;
-	  if (config.debug.rhizome) DEBUG("Signature passed.");
-	}
-	break;
-      default:
-	(*ofs)+=len;
-	m->errors++;
-	RETURN(WHYF("Encountered illegal or malformed signature block (unknown type=0x%02x @ offset 0x%x)",sigType,(*ofs)-len));
-      }
-  else
+  if (*ofs + len > m->manifest_all_bytes) {
+    WARNF("Invalid signature at offset %u: type=%#02x gives len=%u that overruns manifest size",
+	*ofs, sigType, len);
+    RETURN(1);
+  }
+  *ofs += len;
+  assert (m->sig_count <= NELS(m->signatories));
+  if (m->sig_count == NELS(m->signatories)) {
+    WARN("Too many signature blocks in manifest");
+    RETURN(2);
+  }
+  switch (sigType) {
+    case 0x17: // crypto_sign_edwards25519sha512batch()
     {
-      (*ofs)+=len;
-      WHY("Too many signature blocks in manifest.");
-      m->errors++;
+      assert(len == 97);
+      /* Reconstitute signature block */
+      int r = rhizome_manifest_lookup_signature_validity(m->manifesthash, sig + 1, 96);
+      if (r) {
+	WARN("Signature verification failed");
+	RETURN(4);
+      }
+      m->signatureTypes[m->sig_count] = len;
+      if ((m->signatories[m->sig_count] = emalloc(crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)) == NULL)
+	RETURN(-1);
+      bcopy(sig + 1 + 64, m->signatories[m->sig_count], crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+      m->sig_count++;
+      if (config.debug.rhizome)
+	DEBUG("Signature verified");
+      RETURN(0);
     }
-
-  (*ofs)+=len;
-  RETURN(0);
-  OUT();
+  }
+  WARNF("Unsupported signature at ofs=%u: type=%#02x", sig - m->manifestdata, sigType);
+  RETURN(3);
 }
 
 // add value to nonce, with the same result regardless of CPU endian order

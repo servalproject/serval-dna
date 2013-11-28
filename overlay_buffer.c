@@ -416,12 +416,17 @@ int test_offset(struct overlay_buffer *b,int start,int length)
   return 0;
 }
 
-int ob_getbyte(struct overlay_buffer *b, int ofs)
+// next byte without advancing
+int ob_peek(struct overlay_buffer *b)
 {
-  if (test_offset(b, ofs, 1))
+  if (test_offset(b, b->position, 1))
     return -1;
-  
-  return b->bytes[ofs];
+  return b->bytes[b->position];
+}
+
+void ob_skip(struct overlay_buffer *b, unsigned n)
+{
+  b->position += n;
 }
 
 int ob_get_bytes(struct overlay_buffer *b, unsigned char *buff, int len){

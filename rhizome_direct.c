@@ -442,11 +442,12 @@ rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int pref
       if (!manifestblob) goto error;
 
       rhizome_manifest *m=rhizome_new_manifest();
-      if (rhizome_read_manifest_file(m,manifestblob,manifestblobsize)==-1)
-	{
-	  rhizome_manifest_free(m);
-	  goto error;
-	}
+      if (   rhizome_read_manifest_file(m,manifestblob,manifestblobsize)==-1
+	  || !rhizome_manifest_validate(m)
+      ) {
+	rhizome_manifest_free(m);
+	goto error;
+      }
       
       DEBUGF("Read manifest");
       sqlite3_blob_close(blob);

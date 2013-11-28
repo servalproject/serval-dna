@@ -95,7 +95,8 @@ void _ob_append_rfs(struct __sourceloc whence, struct overlay_buffer *b,int l);
 #define ob_append_rfs(b, l) _ob_append_rfs(__WHENCE__, b, l)
 
 // get one byte, -ve number indicates failure
-int ob_getbyte(struct overlay_buffer *b,int ofs);
+int ob_peek(struct overlay_buffer *b);
+void ob_skip(struct overlay_buffer *b, unsigned n);
 // get one byte from the current position, -ve number indicates failure
 int ob_get(struct overlay_buffer *b);
 int ob_get_bytes(struct overlay_buffer *b, unsigned char *buff, int len);

@@ -92,7 +92,7 @@ static const char *_rhizome_manifest_set(struct __sourceloc __whence, rhizome_ma
       m->finalised = 0;
       return ret;
     }
-  if (m->var_count >= MAX_MANIFEST_VARS)
+  if (m->var_count >= NELS(m->vars))
     return WHYNULL("no more manifest vars");
   if ((m->vars[m->var_count] = str_edup(var)) == NULL)
     return NULL;
@@ -344,72 +344,52 @@ void _rhizome_manifest_del_author(struct __sourceloc __whence, rhizome_manifest 
   }
 }
 
+/* Compute the hash of the manifest's body, including the NUL byte that separates the body from
+ * the signature block, and verify that a signature is present and is correct.
+ *
+ * Returns 1 if the manifest signature is valid, ie, the signature is a self-signature using the
+ * manifest's own private key.  Sets the m->finalised flag to 1.
+ *
+ * Returns 0 if there are no signatures or if the signature block does not verify.
+ *
+ * Only call this function on manifests for which rhizome_manifest_validate(m) has returned true.
+ */
 int rhizome_manifest_verify(rhizome_manifest *m)
 {
-  unsigned end_of_text=0;
-
-  /* find end of manifest body and start of signatures */
-  while(m->manifestdata[end_of_text]&&end_of_text<m->manifest_all_bytes)
-    end_of_text++;
-  end_of_text++; /* include null byte in body for verification purposes */
-
-  /* Calculate hash of the text part of the file, as we need to couple this with
-     each signature block to */
-  crypto_hash_sha512(m->manifesthash,m->manifestdata,end_of_text);
-
-  /* Read signature blocks from file. */
-  unsigned ofs = end_of_text;
-  while(ofs<m->manifest_all_bytes) {
-    if (config.debug.rhizome)
-      DEBUGF("ofs=0x%x, m->manifest_bytes=0x%x", ofs,m->manifest_all_bytes);
-    if (rhizome_manifest_extract_signature(m, &ofs))
+  assert(m->manifest_body_bytes > 0);
+  assert(m->manifest_all_bytes > 0);
+  assert(m->manifest_body_bytes <= m->manifest_all_bytes);
+  if (m->manifest_body_bytes == m->manifest_all_bytes)
+    assert(m->manifestdata[m->manifest_body_bytes - 1] == '\0');
+  // Hash the body
+  crypto_hash_sha512(m->manifesthash, m->manifestdata, m->manifest_body_bytes);
+  // Read signature blocks
+  unsigned ofs = m->manifest_body_bytes;
+  while (ofs < m->manifest_all_bytes) {
+    if (rhizome_manifest_extract_signature(m, &ofs) == -1)
       break;
   }
+  assert(ofs <= m->manifest_all_bytes);
 
-  if (m->sig_count==0) {
-    WHYF("Manifest has zero valid signatures");
-    m->errors++;
+  // Make sure the first signatory's public key is the bundle ID
+  assert(m->has_id);
+  if (m->sig_count == 0) {
+    if (config.debug.rhizome)
+      DEBUG("Manifest has no signature blocks, but should have self-signature block");
+    m->selfSigned = 0;
+    return 0;
   }
-
-  /* Make sure that id variable is correct */
-  {
-    rhizome_bid_t bid;
-    const char *id = rhizome_manifest_get(m,"id");
-    if (!id) {
-      WHY("Manifest lacks 'id' field");
-      m->errors++;
-    } else if (str_to_rhizome_bid_t(&bid, id) == -1) {
-      WHY("Invalid manifest 'id' field");
-      m->errors++;
-    } else if (cmp_rhizome_bid_t(&bid, &m->cryptoSignPublic) != 0) {
-      WHYF("Manifest id field does not match cryptoSignPublic: id=%s, cryptoSignPublic=%s",
-	  alloca_tohex_rhizome_bid_t(bid),
-	  alloca_tohex_rhizome_bid_t(m->cryptoSignPublic)
-	);
-      m->errors++;
-    } else if (m->sig_count == 0 || memcmp(m->signatories[0], bid.binary, sizeof bid.binary) != 0) {
-      if (config.debug.rhizome) {
-	if (m->sig_count>0) {
-	  DEBUGF("Manifest id variable does not match first signature block (signature key is %s)",
-		  alloca_tohex(m->signatories[0], crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)
-		  );
-	} else {
-	  DEBUG("Manifest has no signature blocks, but should have self-signature block");
-	}
-      }
-      m->errors++;
-      m->selfSigned = 0;
-    } else
-      m->selfSigned = 1;
+  if (memcmp(m->signatories[0], m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary) != 0) {
+    if (config.debug.rhizome)
+      DEBUGF("Manifest id does not match first signature block (signature key is %s)",
+	      alloca_tohex(m->signatories[0], crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)
+	    );
+    m->selfSigned = 0;
+    return 0;
   }
-
-  /* Mark as finalised, as it is all read and intact,
-     unless of course it has errors, or is lacking a self-signature. */
-  if (!m->errors) m->finalised=1;
-  else WHY("Verified a manifest that has errors, so marking as not finalised");
-
-  if (m->errors) return WHY("Manifest verification failed");
-  else return 0;
+  m->selfSigned = 1;
+  m->finalised = 1;
+  return 1;
 }
 
 ssize_t read_whole_file(const char *path, unsigned char *buffer, size_t buffer_size)
@@ -425,257 +405,394 @@ ssize_t read_whole_file(const char *path, unsigned char *buffer, size_t buffer_s
   return ret;
 }
 
-int rhizome_manifest_parse(rhizome_manifest *m)
+static void rhizome_manifest_clear(rhizome_manifest *m)
 {
-  IN();
-  m->manifest_all_bytes=m->manifest_bytes;
-  m->var_count = 0;
+  while (m->var_count) {
+    --m->var_count;
+    free((char *) m->vars[m->var_count]);
+    free((char *) m->values[m->var_count]);
+    m->vars[m->var_count] = m->values[m->var_count] = NULL;
+  }
+  while (m->sig_count) {
+    --m->sig_count;
+    free(m->signatories[m->sig_count]);
+    m->signatories[m->sig_count] = NULL;
+  }
+  m->malformed = 0;
+  m->has_id = 0;
+  m->is_journal = 0;
   m->filesize = RHIZOME_SIZE_UNSET;
   m->tail = RHIZOME_SIZE_UNSET;
+  m->version = 0;
+  // TODO initialise more fields
+}
 
-  /* Parse out variables, signature etc */
-  int have_id = 0;
-  int have_version = 0;
-  int have_filehash = 0;
-
-  unsigned ofs = 0;
-  while (ofs < m->manifest_bytes && m->manifestdata[ofs]) {
-    char line[1024];
-    unsigned limit = ofs + sizeof line - 1;
-    if (limit > m->manifest_bytes)
-      limit = m->manifest_bytes;
-    char *p = line;
-    while (ofs < limit && !(m->manifestdata[ofs] == '\0' || m->manifestdata[ofs] == '\n' || m->manifestdata[ofs] == '\r'))
-	  *p++ = m->manifestdata[ofs++];
-    *p = '\0';
-    if (m->manifestdata[ofs] == '\r')
-      ++ofs;
-    if (m->manifestdata[ofs] == '\n')
-      ++ofs;
-    /* Ignore blank lines */
-    if (line[0] == '\0')
-      continue;
-    /* Ignore comment lines */
-    if (line[0] == '#' || line[0] == '!')
-      continue;
-    /* Parse field=value lines */
-    size_t linelen = p - line;
-    p = strchr(line, '=');
-    if (p == NULL || p == line) {
-      m->errors++;
-      WARNF("Malformed manifest line: %s", alloca_toprint(80, line, linelen));
-    } else {
-      *p++ = '\0';
-      char *var = line;
-      char *value = p;
-      if (rhizome_manifest_get(m, var)) {
-	if (config.debug.rejecteddata)
-	  DEBUGF("Ill formed manifest file, duplicate variable \"%s\"", var);
-	m->errors++;
-      } else if (m->var_count >= MAX_MANIFEST_VARS) {
-	if (config.debug.rejecteddata)
-	  WARN("Ill formed manifest file, too many variables");
-	m->errors++;
-      } else {
-	m->vars[m->var_count] = strdup(var);
-	m->values[m->var_count] = strdup(value);
-	/* The bundle ID is implicit in transit, but we need to store it in the manifest, so that
-	 * reimporting manifests on receiver nodes works easily.  We might implement something that
-	 * strips the id variable out of the manifest when sending it, or some other scheme to avoid
-	 * sending all the extra bytes.
-	 */
-	if (strcasecmp(var, "id") == 0) {
-	  have_id = 1;
-	  if (str_to_rhizome_bid_t(&m->cryptoSignPublic, value) == -1) {
-	    if (config.debug.rejecteddata)
-	      DEBUGF("Invalid manifest id: %s", value);
-	    m->errors++;
-	  } else {
-	    if (config.debug.rhizome_manifest)
-	      DEBUGF("PARSE manifest[%d].id = %s", m->manifest_record_number, alloca_tohex_sid_t(m->cryptoSignPublic));
+int rhizome_manifest_inspect(const char *buf, size_t len, struct rhizome_manifest_summary *summ)
+{
+  const char *const end = buf + len;
+  int has_bid = 0;
+  int has_version = 0;
+  const char *begin = buf;
+  enum { Label, Value, Error } state = Label;
+  const char *p;
+  for (p = buf; state != Error && p < end && *p; ++p)
+    switch (state) {
+      case Label:
+	if (*p == '=') {
+	  if (p == begin)
+	    state = Error; // nil field name
+	  else {
+	    int *has = NULL;
+	    if (p == begin + 2 && strncmp(begin, "id", 2) == 0)
+	      has = &has_bid;
+	    else if (p == begin + 7 && strncmp(begin, "version", 7) == 0)
+	      has = &has_version;
+	    state = Value;
+	    if (has) {
+	      if (*has)
+		state = Error; // duplicate
+	      else {
+		*has = 1;
+		begin = p + 1;
+	      }
+	    }
 	  }
-	} else if (strcasecmp(var, "filehash") == 0) {
-	  have_filehash = 1;
-	  if (str_to_rhizome_filehash_t(&m->filehash, value) == -1) {
-	    if (config.debug.rejecteddata)
-	      DEBUGF("Invalid filehash: %s", value);
-	    m->errors++;
-	  } else {
-	    if (config.debug.rhizome_manifest)
-	      DEBUGF("PARSE manifest[%d].filehash = %s", m->manifest_record_number, alloca_tohex_rhizome_filehash_t(m->filehash));
+	} else if (!(p == begin ? isalpha(*p) : isalnum(*p)))
+	  state = Error; // bad field name
+	break;
+      case Value:
+	if (*p == '\n') {
+	  const char *eol = p[-1] == '\r' ? p - 1 : p;
+	  if (has_bid == 1) {
+	    const char *e;
+	    if (strn_to_rhizome_bid_t(&summ->bid, begin, &e) == 0 && e == eol)
+	      has_bid = 2;
+	    else
+	      state = Error; // invalid "id" field
+	  } else if (has_version == 1) {
+	    const char *e;
+	    if (str_to_uint64(begin, 10, (uint64_t*)&summ->version, &e) && e == eol)
+	      has_version = 2;
+	    else
+	      state = Error; // invalid "version" field
 	  }
-	} else if (strcasecmp(var, "filesize") == 0) {
-	  uint64_t filesize;
-	  if (!str_to_uint64(value, 10, &filesize, NULL) || filesize == RHIZOME_SIZE_UNSET) {
-	    if (config.debug.rejecteddata)
-	      DEBUGF("Invalid filesize: %s", value);
-	    m->errors++;
-	  } else {
-	    m->filesize = filesize;
-	    if (config.debug.rhizome_manifest)
-	      DEBUGF("PARSE manifest[%d].filesize = %"PRIu64, m->manifest_record_number, m->filesize);
+	  if (state == Value) {
+	    state = Label;
+	    begin = p + 1;
 	  }
-	} else if (strcasecmp(var, "version") == 0) {
-	  have_version = 1;
-	  uint64_t version;
-	  if (!str_to_uint64(value, 10, &version, NULL)) {
-	    if (config.debug.rejecteddata)
-	      DEBUGF("Invalid version: %s", value);
-	    m->errors++;
-	  } else {
-	    m->version = version;
-	    if (config.debug.rhizome_manifest)
-	      DEBUGF("PARSE manifest[%d].version = %"PRIu64, m->manifest_record_number, m->version);
-	  }
-	// since rhizome *MUST* be able to carry future manifest versions
-	// if any of these fields are not well formed, the manifest can still be imported and exported
-	// but the bundle should not be added or exported
-	} else if (strcasecmp(var, "tail") == 0) {
-	  uint64_t tail;
-	  if (!str_to_uint64(value, 10, &tail, NULL) || tail == RHIZOME_SIZE_UNSET) {
-	    if (config.debug.rejecteddata)
-	      DEBUGF("Invalid tail: %s", value);
-	    m->errors++;
-	  } else {
-	    m->tail = tail;
-	    m->is_journal = 1;
-	    if (config.debug.rhizome_manifest)
-	      DEBUGF("PARSE manifest[%d].tail = %"PRIu64, m->manifest_record_number, m->tail);
-	  }
-	} else if (strcasecmp(var, "BK") == 0) {
-	  if (str_to_rhizome_bk_t(&m->bundle_key, value) == -1) {
-	    if (config.debug.rejecteddata)
-	      DEBUGF("Invalid BK: %s", value);
-	    m->warnings++;
-	  } else {
-	    m->has_bundle_key = 1;
-	    if (config.debug.rhizome_manifest)
-	      DEBUGF("PARSE manifest[%d].BK = %s", m->manifest_record_number, alloca_tohex_rhizome_bk_t(m->bundle_key));
-	  }
-	} else if (strcasecmp(var, "service") == 0) {
-	  if (rhizome_str_is_manifest_service(value)) {
-	    m->service = m->values[m->var_count]; // will be free()d when vars[] and values[] are free()d
-	    if (config.debug.rhizome_manifest)
-	      DEBUGF("PARSE manifest[%d].service = %s", m->manifest_record_number, alloca_str_toprint(m->service));
-	  } else {
-	    if (config.debug.rejecteddata)
-	      DEBUGF("Invalid service: %s", value);
-	    m->warnings++;
-	  }
-	} else if (strcasecmp(var, "date") == 0) {
-	  int64_t date;
-	  if (!str_to_int64(value, 10, &date, NULL)) {
-	    if (config.debug.rejecteddata)
-	      DEBUGF("Invalid date: %s", value);
-	    m->warnings++;
-	  } else {
-	    m->date = date;
-	    m->has_date = 1;
-	    if (config.debug.rhizome_manifest)
-	      DEBUGF("PARSE manifest[%d].date = %"PRItime_ms_t, m->manifest_record_number, m->date);
-	  }
-	} else if (strcasecmp(var, "sender") == 0) {
-	  if (str_to_sid_t(&m->sender, value) == -1) {
-	    if (config.debug.rejecteddata)
-	      DEBUGF("Invalid sender: %s", value);
-	    m->warnings++;
-	  } else {
-	    m->has_sender = 1;
-	    if (config.debug.rhizome_manifest)
-	      DEBUGF("PARSE manifest[%d].sender = %s", m->manifest_record_number, alloca_tohex_sid_t(m->sender));
-	  }
-	} else if (strcasecmp(var, "recipient") == 0) {
-	  if (str_to_sid_t(&m->recipient, value) == -1) {
-	    if (config.debug.rejecteddata)
-	      DEBUGF("Invalid recipient: %s", value);
-	    m->warnings++;
-	  } else {
-	    m->has_recipient = 1;
-	    if (config.debug.rhizome_manifest)
-	      DEBUGF("PARSE manifest[%d].recipient = %s", m->manifest_record_number, alloca_tohex_sid_t(m->recipient));
-	  }
-	} else if (strcasecmp(var, "name") == 0) {
-	  if (value[0] == '\0') {
-	    if (config.debug.rejecteddata)
-	      WARN("Empty name");
-	    //m->warnings++;  TODO Meshms code should set a name for its "conversations" bundle
-	  }
-	  m->name = m->values[m->var_count]; // will be free()d when vars[] and values[] are free()d
-	  if (config.debug.rhizome_manifest)
-	    DEBUGF("PARSE manifest[%d].name = %s", m->manifest_record_number, alloca_str_toprint(m->name));
-	} else if (strcasecmp(var, "crypt") == 0) {
-	  if (!(strcmp(value, "0") == 0 || strcmp(value, "1") == 0)) {
-	    if (config.debug.rejecteddata)
-	      DEBUGF("Invalid crypt: %s", value);
-	    m->warnings++;
-	  } else {
-	    m->payloadEncryption = (value[0] == '1') ? PAYLOAD_ENCRYPTED : PAYLOAD_CLEAR;
-	    if (config.debug.rhizome_manifest)
-	      DEBUGF("PARSE manifest[%d].crypt = %u", m->manifest_record_number, m->payloadEncryption == PAYLOAD_ENCRYPTED ? 1 : 0);
-	  }
-	} else {
-	  // An unknown field is not an error... older rhizome nodes must carry newer manifests.
-	  if (config.debug.rhizome_manifest)
-	    DEBUGF("SKIP manifest[%d].%s = %s", m->manifest_record_number, var, alloca_str_toprint(value));
 	}
-	m->var_count++;
-      }
+	break;
+      default:
+	abort();
     }
-  }
-  /* The null byte gets included in the check sum */
-  if (ofs < m->manifest_bytes)
-    ++ofs;
+  if (p < end && *p == '\0')
+    ++p;
+  summ->body_len = p - buf;
+  return state == Label && has_bid == 2 && has_version == 2;
+}
 
-  /* Remember where the text ends */
-  unsigned end_of_text = ofs;
-  m->manifest_bytes = end_of_text;
+/* Parse a Rhizome text manifest from its internal buffer up to and including the terminating NUL
+ * character which marks the start of the signature block.
+ *
+ * Prior to calling, the caller must set up m->manifest_all_bytes to the length of the manifest
+ * text, including the signature block, and set m->manifestdata[0..m->manifest_all_bytes-1] to
+ * contain the manifest text and signature block to be parsed.
+ *
+ * A "well formed" manifest consists of a series of zero or more lines with the form:
+ *
+ *	LABEL "=" VALUE [ CR ] LF
+ *
+ * where LABEL matches the regular expression [A-Za-z][A-Za-z0-9]* (identifier without underscore)
+ *       VALUE is any value that does not contain NUL, CR or LF (leading and trailing spaces are
+ *	       not stripped from VALUE)
+ *       NUL is ASCII 0
+ *       CR is ASCII 13
+ *       LF is ASCII 10
+ *
+ * Unpacks all parsed field labels and string values into the m->vars[] and m->values[] arrays, as
+ * pointers to malloc(3)ed NUL terminated strings, in the order they appear, and sets m->var_count
+ * to the number of fields unpacked.  Sets m->manifest_body_bytes to the number of bytes in the text
+ * portion up to and including the optional NUL that starts the signature block (if present).
+ *
+ * Returns 1 if the manifest is not well formed (syntax violation), any essential field is
+ * malformed, or if there are any duplicate fields.  In this case the m->vars[] and m->values[]
+ * arrays are not set and the manifest is returned to the state it was in prior to calling.
+ *
+ * Returns 0 if the manifest is well formed, if there are no duplicate fields, and if all essential
+ * fields are valid.  Counts invalid non-essential fields and unrecognised fields in m->malformed.
+ *
+ * Returns -1 if there is an unrecoverable error (eg, malloc(3) returns NULL, out of memory).
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+static int rhizome_manifest_parse(rhizome_manifest *m)
+{
+  IN();
+  assert(m->manifest_all_bytes <= sizeof m->manifestdata);
+  assert(m->manifest_body_bytes == 0);
+  assert(m->var_count == 0);
+  assert(!m->malformed);
+  assert(!m->has_id);
+  assert(!m->is_journal);
+  assert(m->filesize == RHIZOME_SIZE_UNSET);
+  assert(m->tail == RHIZOME_SIZE_UNSET);
+  assert(m->version == 0);
 
-  // verify that all required fields are consistent.
-  if (!have_id) {
-    if (config.debug.rejecteddata)
-      DEBUG("Missing manifest id field");
-    m->errors++;
-  }
-  if (!have_version) {
-    if (config.debug.rejecteddata)
-      DEBUG("Missing version field");
-    m->errors++;
-  }
-  if (m->filesize == RHIZOME_SIZE_UNSET) {
-    if (config.debug.rejecteddata)
-      DEBUG("Missing filesize field");
-    m->errors++;
-  }
-  if (!have_filehash && m->filesize > 0) {
-    if (config.debug.rejecteddata)
-      DEBUG("Missing filehash field");
-    m->errors++;
-  }
-  if (have_filehash && m->filesize == 0) {
-    if (config.debug.rejecteddata)
-      DEBUG("Spurious filehash field");
-    m->errors++;
-  }
+  unsigned has_invalid_essential = 0;
+  unsigned has_duplicate = 0;
 
-  // warn if expected fields are missing
-  if (m->service == NULL) {
-    if (config.debug.rejecteddata)
-      DEBUG("Missing service field");
-    m->warnings++;
+  const char *const end = (const char *)m->manifestdata + m->manifest_all_bytes;
+  const char *p;
+  unsigned line_number = 0;
+  for (p = (const char *)m->manifestdata; p < end && *p; ++p) {
+    ++line_number;
+    if (!isalpha(*p)) {
+      if (config.debug.rhizome_manifest)
+	DEBUGF("Invalid manifest field name at line %u: %s", line_number, alloca_toprint(20, p, end - p));
+      break;
+    }
+    const char *const plabel = p++;
+    while (p < end && isalnum(*p))
+      ++p;
+    if (*p != '=') {
+      if (config.debug.rhizome_manifest)
+	DEBUGF("Invalid manifest field name at line %u: %s", line_number, alloca_toprint(-1, plabel, p - plabel + 1));
+      break;
+    }
+    const char *const pvalue = ++p;
+    while (p < end && *p && *p != '\n')
+      ++p;
+    if (p >= end || *p != '\n') {
+      if (config.debug.rhizome_manifest)
+	DEBUGF("Missing manifest newline at line %u: %s", line_number, alloca_toprint(-1, plabel, p - plabel));
+      break;
+    }
+    const char *const eol = (p > pvalue && p[-1] == '\r') ? p - 1 : p;
+    if (m->var_count >= NELS(m->vars)) {
+      if (config.debug.rhizome_manifest)
+	DEBUGF("Manifest field limit reached at line %u", line_number);
+      break;
+    }
+    assert(pvalue - plabel - 1 > 0);
+    const char *label = strn_edup(plabel, pvalue - plabel - 1);
+    const char *value = strn_edup(pvalue, eol - pvalue);
+    if (label == NULL || value == NULL) {
+      free((char *)label);
+      free((char *)value);
+      RETURN(-1);
+    }
+    enum { FIELD_UNKNOWN, FIELD_OK, FIELD_DUPLICATE, FIELD_MALFORMED, FIELD_INVALID } status = FIELD_UNKNOWN;
+    if (rhizome_manifest_get(m, label))
+      status = FIELD_DUPLICATE;
+    else if (strcasecmp(label, "id") == 0) {
+      if (str_to_rhizome_bid_t(&m->cryptoSignPublic, value) != -1) {
+	status = FIELD_OK;
+	m->has_id = 1;
+	if (config.debug.rhizome_manifest)
+	  DEBUGF("PARSE manifest[%d].id = %s", m->manifest_record_number, alloca_tohex_sid_t(m->cryptoSignPublic));
+      } else
+	status = FIELD_INVALID;
+    }
+    else if (strcasecmp(label, "version") == 0) {
+      uint64_t version;
+      if (str_to_uint64(value, 10, &version, NULL) && version != 0) {
+	status = FIELD_OK;
+	m->version = version;
+	if (config.debug.rhizome_manifest)
+	  DEBUGF("PARSE manifest[%d].version = %"PRIu64, m->manifest_record_number, m->version);
+      } else
+	status = FIELD_INVALID;
+    }
+    else if (strcasecmp(label, "filehash") == 0) {
+      if (str_to_rhizome_filehash_t(&m->filehash, value) != -1 && !rhizome_filehash_t_is_zero(m->filehash)) {
+	status = FIELD_OK;
+	if (config.debug.rhizome_manifest)
+	  DEBUGF("PARSE manifest[%d].filehash = %s", m->manifest_record_number, alloca_tohex_rhizome_filehash_t(m->filehash));
+      } else
+	status = FIELD_INVALID;
+    }
+    else if (strcasecmp(label, "filesize") == 0) {
+      uint64_t filesize;
+      if (str_to_uint64(value, 10, &filesize, NULL) && filesize != RHIZOME_SIZE_UNSET) {
+	status = FIELD_OK;
+	m->filesize = filesize;
+	if (config.debug.rhizome_manifest)
+	  DEBUGF("PARSE manifest[%d].filesize = %"PRIu64, m->manifest_record_number, m->filesize);
+      } else
+	status = FIELD_INVALID;
+    }
+    else if (strcasecmp(label, "tail") == 0) {
+      uint64_t tail;
+      if (str_to_uint64(value, 10, &tail, NULL) && tail != RHIZOME_SIZE_UNSET) {
+	status = FIELD_OK;
+	m->tail = tail;
+	m->is_journal = 1;
+	if (config.debug.rhizome_manifest)
+	  DEBUGF("PARSE manifest[%d].tail = %"PRIu64, m->manifest_record_number, m->tail);
+      } else
+	status = FIELD_INVALID;
+    }
+    // Since rhizome MUST be able to carry future manifest versions, if any of the following fields
+    // are not well formed, they are simply not unpacked into their respective struct elements and
+    // treated as an unrecognised field.  The m->malformed flag is set so that the application API
+    // layer can refuse to add (or export?) the bundle.
+    else if (strcasecmp(label, "BK") == 0) {
+      if (str_to_rhizome_bk_t(&m->bundle_key, value) != -1) {
+	status = FIELD_OK;
+	m->has_bundle_key = 1;
+	if (config.debug.rhizome_manifest)
+	  DEBUGF("PARSE manifest[%d].BK = %s", m->manifest_record_number, alloca_tohex_rhizome_bk_t(m->bundle_key));
+      } else
+	status = FIELD_MALFORMED;
+    }
+    else if (strcasecmp(label, "service") == 0) {
+      if (rhizome_str_is_manifest_service(value)) {
+	status = FIELD_OK;
+	m->service = value; // will be free()d when vars[] and values[] are free()d
+	if (config.debug.rhizome_manifest)
+	  DEBUGF("PARSE manifest[%d].service = %s", m->manifest_record_number, alloca_str_toprint(m->service));
+      } else
+	status = FIELD_MALFORMED;
+    }
+    else if (strcasecmp(label, "date") == 0) {
+      int64_t date;
+      if (str_to_int64(value, 10, &date, NULL)) {
+	status = FIELD_OK;
+	m->date = date;
+	m->has_date = 1;
+	if (config.debug.rhizome_manifest)
+	  DEBUGF("PARSE manifest[%d].date = %"PRItime_ms_t, m->manifest_record_number, m->date);
+      } else
+	status = FIELD_MALFORMED;
+    }
+    else if (strcasecmp(label, "sender") == 0) {
+      if (str_to_sid_t(&m->sender, value) != -1) {
+	status = FIELD_OK;
+	m->has_sender = 1;
+	if (config.debug.rhizome_manifest)
+	  DEBUGF("PARSE manifest[%d].sender = %s", m->manifest_record_number, alloca_tohex_sid_t(m->sender));
+      } else
+	status = FIELD_MALFORMED;
+    }
+    else if (strcasecmp(label, "recipient") == 0) {
+      if (str_to_sid_t(&m->recipient, value) != -1) {
+	status = FIELD_OK;
+	m->has_recipient = 1;
+	if (config.debug.rhizome_manifest)
+	  DEBUGF("PARSE manifest[%d].recipient = %s", m->manifest_record_number, alloca_tohex_sid_t(m->recipient));
+      } else
+	status = FIELD_MALFORMED;
+    }
+    else if (strcasecmp(label, "name") == 0) {
+      status = FIELD_OK;
+      m->name = value; // will be free()d when vars[] and values[] are free()d
+      if (config.debug.rhizome_manifest)
+	DEBUGF("PARSE manifest[%d].name = %s", m->manifest_record_number, alloca_str_toprint(m->name));
+    }
+    else if (strcasecmp(label, "crypt") == 0) {
+      if (strcmp(value, "0") == 0 || strcmp(value, "1") == 0) {
+	status = FIELD_OK;
+	m->payloadEncryption = (value[0] == '1') ? PAYLOAD_ENCRYPTED : PAYLOAD_CLEAR;
+	if (config.debug.rhizome_manifest)
+	  DEBUGF("PARSE manifest[%d].crypt = %u", m->manifest_record_number, m->payloadEncryption == PAYLOAD_ENCRYPTED ? 1 : 0);
+      } else
+	status = FIELD_MALFORMED;
+    }
+    const char *reason = NULL;
+    switch (status) {
+      case FIELD_OK:
+	m->vars[m->var_count] = label;
+	m->values[m->var_count] = value;
+	++m->var_count;
+	break;
+      case FIELD_DUPLICATE:
+	++has_duplicate;
+	reason = "duplicate";
+	break;
+      case FIELD_INVALID:
+	++has_invalid_essential;
+	reason = "invalid";
+	break;
+      case FIELD_UNKNOWN:
+	++m->malformed;
+	reason = "unsupported";
+	break;
+      case FIELD_MALFORMED:
+	++m->malformed;
+	reason = "invalid";
+	break;
+      default:
+	abort();
+    }
+    if (reason) {
+      if (config.debug.rhizome_manifest)
+	DEBUGF("SKIP manifest[%d].%s = %s (%s)", m->manifest_record_number, label, alloca_str_toprint(value), reason);
+      free((char *)label);
+      free((char *)value);
+    }
+    assert(p < end);
+    assert(*p == '\n');
   }
-  if (!m->has_date) {
-    if (config.debug.rejecteddata)
-      DEBUG("Missing date field");
-    m->warnings++;
+  if ((p < end && *p) || has_invalid_essential || has_duplicate) {
+    rhizome_manifest_clear(m);
+    RETURN(1);
   }
-
-  if (m->errors || m->warnings) {
-    if (config.debug.rejecteddata)
-      dump("manifest body", m->manifestdata, (size_t) m->manifest_bytes);
+  // The null byte is included in the body (and checksum), not the signature block
+  if (p < end) {
+    assert(*p == '\0');
+    ++p;
   }
-
+  m->manifest_body_bytes = p - (const char *)m->manifestdata;
   RETURN(0);
   OUT();
+}
+
+/* Return 1 if all necessary fields are present, 0 if not.  Increment m->malformed if any
+ * unnecessary fields are missing.
+ */
+int rhizome_manifest_validate(rhizome_manifest *m)
+{
+  int ret = 1;
+  if (!m->has_id) {
+    if (config.debug.rhizome_manifest)
+      DEBUG("Missing 'id' field");
+    ret = 0;
+  }
+  if (m->version == 0) {
+    if (config.debug.rhizome_manifest)
+      DEBUG("Missing 'version' field");
+    ret = 0;
+  }
+  if (m->filesize == RHIZOME_SIZE_UNSET) {
+    if (config.debug.rhizome_manifest)
+      DEBUG("Missing 'filesize' field");
+    ret = 0;
+  }
+  if (rhizome_filehash_t_is_zero(m->filehash)) {
+    if (m->filesize > 0) {
+      if (config.debug.rhizome_manifest)
+	DEBUG("Missing 'filehash' field");
+      ret = 0;
+    }
+  } else {
+    if (m->filesize == 0) {
+      if (config.debug.rhizome_manifest)
+	DEBUG("Spurious 'filehash' field");
+      ret = 0;
+    }
+  }
+  // warn if expected fields are missing
+  if (m->service == NULL) {
+    if (config.debug.rhizome_manifest)
+      DEBUG("Missing 'service' field");
+    ++m->malformed;
+  }
+  if (!m->has_date) {
+    if (config.debug.rhizome_manifest)
+      DEBUG("Missing 'date' field");
+    ++m->malformed;
+  }
+  return ret;
 }
 
 int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, size_t bufferP)
@@ -686,15 +803,19 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, size_t
     return WHY("Buffer too big");
 
   if (bufferP) {
-    m->manifest_bytes=bufferP;
-    memcpy(m->manifestdata, filename, m->manifest_bytes);
+    m->manifest_all_bytes=bufferP;
+    memcpy(m->manifestdata, filename, m->manifest_all_bytes);
   } else {
     ssize_t bytes = read_whole_file(filename, m->manifestdata, sizeof m->manifestdata);
     if (bytes == -1)
       return -1;
-    m->manifest_bytes = bytes;
+    m->manifest_all_bytes = (size_t) bytes;
   }
-  return rhizome_manifest_parse(m);
+  switch (rhizome_manifest_parse(m)) {
+    case 0: return 0;
+    case -1: return -1;
+    default: return WHY("Invalid manifest");
+  }
 }
 
 int rhizome_hash_file(rhizome_manifest *m, const char *path, rhizome_filehash_t *hash_out, uint64_t *size_out)
@@ -804,8 +925,7 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence)
   if (config.debug.manifests) _log_manifest_trace(__whence, __FUNCTION__);
 
   // Set global defaults for a manifest (which are not zero)
-  m->filesize = RHIZOME_SIZE_UNSET;
-  m->tail = RHIZOME_SIZE_UNSET;
+  rhizome_manifest_clear(m);
 
   return m;
 }
@@ -829,17 +949,7 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
 	);
 
   /* Free variable and signature blocks. */
-  unsigned i;
-  for(i=0;i<m->var_count;i++) {
-    free((char *) m->vars[i]);
-    free((char *) m->values[i]);
-    m->vars[i] = m->values[i] = NULL;
-  }
-  for(i=0;i<m->sig_count;i++) {
-    free(m->signatories[i]);
-    m->signatories[i] = NULL;
-  }
-
+  rhizome_manifest_clear(m);
   if (m->dataFileName) {
     if (m->dataFileUnlinkOnFree && unlink(m->dataFileName) == -1)
       WARNF_perror("unlink(%s)", alloca_str_toprint(m->dataFileName));
@@ -856,48 +966,54 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
   return;
 }
 
-/* Convert variable list to string, complaining if it ends up
-   too long.
-   Signatures etc will be added later. */
+/* Convert variable list into manifest text body and compute the hash.  Do not sign.
+ */
 int rhizome_manifest_pack_variables(rhizome_manifest *m)
 {
+  assert(m->var_count <= NELS(m->vars));
+  strbuf sb = strbuf_local((char*)m->manifestdata, sizeof m->manifestdata);
   unsigned i;
-  unsigned ofs = 0;
-  for(i=0;i<m->var_count;i++)
-    {
-      if ((ofs+strlen(m->vars[i])+1+strlen(m->values[i])+1+1)>MAX_MANIFEST_BYTES)
-	return WHY("Manifest variables too long in total to fit in MAX_MANIFEST_BYTES");
-      snprintf((char *)&m->manifestdata[ofs],MAX_MANIFEST_BYTES-ofs,"%s=%s\n",
-	       m->vars[i],m->values[i]);
-      ofs+=strlen((char *)&m->manifestdata[ofs]);
-    }
-  m->manifestdata[ofs++]=0x00;
-  m->manifest_bytes=ofs;
-  if (config.debug.rhizome) DEBUG("Repacked variables in manifest.");
-  m->manifest_all_bytes=ofs;
-
-  /* Recalculate hash */
-  crypto_hash_sha512(m->manifesthash,m->manifestdata,m->manifest_bytes);
-
+  for (i = 0; i < m->var_count; ++i) {
+    strbuf_puts(sb, m->vars[i]);
+    strbuf_putc(sb, '=');
+    strbuf_puts(sb, m->values[i]);
+    strbuf_putc(sb, '\n');
+  }
+  if (strbuf_overrun(sb))
+    return WHYF("Manifest overflow: body of %zu bytes exceeds limit of %zu", strbuf_count(sb) + 1, sizeof m->manifestdata);
+  m->manifest_body_bytes = strbuf_len(sb) + 1;
+  if (config.debug.rhizome)
+    DEBUGF("Repacked variables into manifest: %zu bytes", m->manifest_body_bytes);
+  m->manifest_all_bytes = m->manifest_body_bytes;
+  m->selfSigned = 0;
   return 0;
 }
 
-/* Sign this manifest using our it's own BID secret key.
-   TODO: need a third-party signing primitive, eg, to support signing with SAS.
+/* Sign this manifest using it's own BID secret key.  Manifest must not already be signed.
+ * Manifest body hash must already be computed.
  */
 int rhizome_manifest_selfsign(rhizome_manifest *m)
 {
+  assert(m->manifest_body_bytes > 0);
+  assert(m->manifest_body_bytes <= sizeof m->manifestdata);
+  assert(m->manifestdata[m->manifest_body_bytes - 1] == '\0');
+  assert(m->manifest_body_bytes == m->manifest_all_bytes); // no signature yet
   if (!m->haveSecret)
     return WHY("Need private key to sign manifest");
+  crypto_hash_sha512(m->manifesthash, m->manifestdata, m->manifest_body_bytes);
   rhizome_signature sig;
   if (rhizome_sign_hash(m, &sig) == -1)
     return WHY("rhizome_sign_hash() failed");
+  assert(sig.signatureLength > 0);
   /* Append signature to end of manifest data */
-  if (sig.signatureLength + m->manifest_bytes > MAX_MANIFEST_BYTES)
-    return WHY("Manifest plus signatures is too long");
-  bcopy(&sig.signature[0], &m->manifestdata[m->manifest_bytes], sig.signatureLength);
-  m->manifest_bytes += sig.signatureLength;
-  m->manifest_all_bytes = m->manifest_bytes;
+  if (sig.signatureLength + m->manifest_body_bytes > sizeof m->manifestdata)
+    return WHYF("Manifest overflow: body %zu + signature %zu bytes exceeds limit of %zu",
+		m->manifest_body_bytes,
+		sig.signatureLength,
+		sizeof m->manifestdata
+	      );
+  bcopy(sig.signature, m->manifestdata + m->manifest_body_bytes, sig.signatureLength);
+  m->manifest_all_bytes = m->manifest_body_bytes + sig.signatureLength;
   return 0;
 }
 

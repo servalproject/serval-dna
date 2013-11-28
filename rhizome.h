@@ -124,7 +124,7 @@ extern time_ms_t rhizome_voice_timeout;
 typedef struct rhizome_signature {
   unsigned char signature[crypto_sign_edwards25519sha512batch_BYTES
 			  +crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES+1];
-  int signatureLength;
+  size_t signatureLength;
 } rhizome_signature;
 
 #define RHIZOME_BAR_BYTES 32
@@ -191,18 +191,15 @@ typedef struct rhizome_manifest
   unsigned char *signatories[MAX_MANIFEST_VARS];
   uint8_t signatureTypes[MAX_MANIFEST_VARS];
 
-  /* Imperfections.
-   *  - Errors involve the correctness of fields that are mandatory for proper
-   *    operation of the transport and storage layer.  A manifest with errors > 0
-   *    must not be stored, transmitted or supplied via any API.
-   *  - Warnings indicate a manifest that cannot be fully understood by this
-   *    version of Rhizome (probably from a future or a very old past version
-   *    of Rhizome).  During add or import (local injection), the manifest
-   *    should not be imported.  During extract or export (local) a warning or
-   *    error message should be logged.
+  /* Set to non-zero if a manifest has been parsed that cannot be fully
+   * understood by this version of Rhizome (probably from a future or a very
+   * old past version of Rhizome).  During add (local injection), the manifest
+   * should not be imported.  During extract (local decode) a warning or error
+   * message should be logged.  Manifests marked as malformed are still
+   * transported, imported and exported normally, as long as their signature is
+   * valid.
    */
-  unsigned short errors;
-  unsigned short warnings;
+  unsigned short malformed;
 
   /* Set non-zero after variables have been packed and signature blocks
    * appended.  All fields below may not be valid until the manifest has been
@@ -211,13 +208,17 @@ typedef struct rhizome_manifest
   bool_t finalised;
 
   /* Whether the manifest contains a signature that corresponds to the manifest
-   * id (ie public key).  Caches the result of 
+   * id (ie public key).
    */
   bool_t selfSigned;
 
   /* If set, unlink(2) the associated file when freeing the manifest.
    */
   bool_t dataFileUnlinkOnFree;
+
+  /* Set if the ID field (cryptoSignPublic) contains a bundle ID.
+   */
+  bool_t has_id;
 
   /* Set if the tail field is valid, ie, the bundle is a journal.
    */
@@ -315,8 +316,8 @@ typedef struct rhizome_manifest
   unsigned group_count;
   char *groups[MAX_MANIFEST_VARS];
 
-  unsigned manifest_bytes;
-  unsigned manifest_all_bytes;
+  size_t manifest_body_bytes;
+  size_t manifest_all_bytes;
   unsigned char manifestdata[MAX_MANIFEST_BYTES];
   unsigned char manifesthash[crypto_hash_sha512_BYTES];
 
@@ -448,11 +449,20 @@ sqlite_retry_state sqlite_retry_state_init(int serverLimit, int serverSleep, int
 
 #define SQLITE_RETRY_STATE_DEFAULT sqlite_retry_state_init(-1,-1,-1,-1)
 
+struct rhizome_manifest_summary {
+  rhizome_bid_t bid;
+  int64_t version;
+  size_t body_len;
+};
+
+int rhizome_manifest_inspect(const char *buf, size_t len, struct rhizome_manifest_summary *summ);
+
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename, char append);
 int rhizome_manifest_selfsign(rhizome_manifest *m);
 int rhizome_drop_stored_file(const rhizome_filehash_t *hashp, int maximum_priority);
 int rhizome_manifest_priority(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
 int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, size_t bufferPAndSize);
+int rhizome_manifest_validate(rhizome_manifest *m);
 int rhizome_hash_file(rhizome_manifest *m, const char *path, rhizome_filehash_t *hash_out, uint64_t *size_out);
 
 void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m);

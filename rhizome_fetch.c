@@ -464,10 +464,9 @@ int rhizome_queue_ignore_manifest(unsigned char *bid_prefix, int prefix_len, int
 static int rhizome_import_received_bundle(struct rhizome_manifest *m)
 {
   m->finalised = 1;
-  m->manifest_bytes = m->manifest_all_bytes; // store the signatures too
   if (config.debug.rhizome_rx) {
     DEBUGF("manifest len=%u has %u signatories. Associated filesize=%"PRIu64" bytes", 
-	   m->manifest_bytes, m->sig_count, m->filesize);
+	   m->manifest_all_bytes, m->sig_count, m->filesize);
     dump("manifest", m->manifestdata, m->manifest_all_bytes);
   }
   return rhizome_add_manifest(m, m->ttl - 1 /* TTL */);
@@ -887,7 +886,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 
   assert(m->filesize != RHIZOME_SIZE_UNSET);
   if (m->filesize == 0) {
-    if (rhizome_manifest_verify(m) != 0) {
+    if (!rhizome_manifest_verify(m)) {
       WHY("Error verifying manifest when considering for import");
       /* Don't waste time looking at this manifest again for a while */
       rhizome_queue_ignore_manifest(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, 60000);
@@ -923,7 +922,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 	    rhizome_manifest_free(m);
 	    RETURN(0);
 	  }
-	  if (!m->selfSigned && rhizome_manifest_verify(m)) {
+	  if (!m->selfSigned && !rhizome_manifest_verify(m)) {
 	    WHY("Error verifying manifest when considering queuing for import");
 	    /* Don't waste time looking at this manifest again for a while */
 	    rhizome_queue_ignore_manifest(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, 60000);
@@ -949,7 +948,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
     RETURN(1);
   }
 
-  if (!m->selfSigned && rhizome_manifest_verify(m)) {
+  if (!m->selfSigned && !rhizome_manifest_verify(m)) {
     WHY("Error verifying manifest when considering queuing for import");
     /* Don't waste time looking at this manifest again for a while */
     rhizome_queue_ignore_manifest(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, 60000);
@@ -1306,7 +1305,9 @@ int rhizome_write_complete(struct rhizome_fetch_slot *slot)
        call schedule queued items. */
     rhizome_manifest *m = rhizome_new_manifest();
     if (m) {
-      if (rhizome_read_manifest_file(m, slot->manifest_buffer, (size_t)slot->manifest_bytes) == -1) {
+      if (   rhizome_read_manifest_file(m, slot->manifest_buffer, (size_t)slot->manifest_bytes) == -1
+	  || !rhizome_manifest_validate(m)
+      ) {
 	DEBUGF("Couldn't read manifest");
 	rhizome_manifest_free(m);
       } else {

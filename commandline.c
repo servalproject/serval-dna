@@ -1338,8 +1338,9 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
       DEBUGF("reading manifest from %s", manifestpath);
     /* Don't verify the manifest, because it will fail if it is incomplete.
        This is okay, because we fill in any missing bits and sanity check before
-       trying to write it out. */
-    if (rhizome_read_manifest_file(m, manifestpath, 0) == -1) {
+       trying to write it out. However, we do insist that whatever we load is
+       valid and not malformed. */
+    if (rhizome_read_manifest_file(m, manifestpath, 0) == -1 || m->malformed) {
       rhizome_manifest_free(m);
       keyring_free(keyring);
       return WHY("Manifest file could not be loaded -- not added to rhizome");
@@ -1584,22 +1585,19 @@ int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_cont
   if ( cli_arg(parsed, "manifestpath", &manifestpath, NULL, "") == -1
     || cli_arg(parsed, "filepath", &filepath, NULL, "") == -1)
     return -1;
-  
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     return WHY("Out of manifests.");
-  
-  int ret=0;
-  if (rhizome_read_manifest_file(m, manifestpath, 0) == -1)
-    ret=-1;
-  // TODO why doesn't read manifest file set finalised???
-  m->finalised=1;
-  
-  if (ret==0 && rhizome_write_manifest_file(m, filepath, 1) == -1)
-    ret = -1;
-  
-  if (m)
-    rhizome_manifest_free(m);
+  int ret = -1;
+  if (   rhizome_read_manifest_file(m, manifestpath, 0) != -1
+      && rhizome_manifest_validate(m)
+      && rhizome_manifest_verify(m)
+  ) {
+    assert(m->finalised);
+    if (rhizome_write_manifest_file(m, filepath, 1) != -1)
+      ret = 0;
+  }
+  rhizome_manifest_free(m);
   return ret;
 }
 

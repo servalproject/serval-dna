@@ -130,13 +130,10 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
   
   if (rhizome_read_manifest_file(m, manifest_path, buffer_len) == -1)
     return WHY("could not read manifest file");
-  if (rhizome_manifest_verify(m))
+  if (!rhizome_manifest_validate(m))
+    return WHY("manifest is invalid");
+  if (!rhizome_manifest_verify(m))
     return WHY("could not verify manifest");
-  
-  /* Make sure we store signatures */
-  // TODO, why do we need this? Why isn't the state correct from rhizome_read_manifest_file? 
-  // This feels like a hack...
-  m->manifest_bytes=m->manifest_all_bytes;
   
   /* Do we already have this manifest or newer? */
   int64_t dbVersion = -1;
