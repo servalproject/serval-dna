@@ -25,6 +25,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <fnmatch.h>
 #include "serval.h"
 #include "conf.h"
+#include "net.h"
+#include "socket.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "overlay_buffer.h"
@@ -248,18 +250,19 @@ int overlay_interface_compare(overlay_interface *one, overlay_interface *two)
 // OSX doesn't recieve broadcast packets on sockets bound to an interface's address
 // So we have to bind a socket to INADDR_ANY to receive these packets.
 static void
-overlay_interface_read_any(struct sched_ent *alarm){
+overlay_interface_read_any(struct sched_ent *alarm)
+{
   if (alarm->poll.revents & POLLIN) {
     int plen=0;
     int recvttl=1;
     unsigned char packet[16384];
     overlay_interface *interface=NULL;
-    struct sockaddr src_addr;
-    socklen_t addrlen = sizeof(src_addr);
+    struct socket_address recvaddr;
+    recvaddr.addrlen = sizeof recvaddr.store;
     
     /* Read only one UDP packet per call to share resources more fairly, and also
      enable stats to accurately count packets received */
-    plen = recvwithttl(alarm->poll.fd, packet, sizeof(packet), &recvttl, &src_addr, &addrlen);
+    plen = recvwithttl(alarm->poll.fd, packet, sizeof(packet), &recvttl, &recvaddr);
     if (plen == -1) {
       WHY_perror("recvwithttl(c)");
       unwatch(alarm);
@@ -267,18 +270,16 @@ overlay_interface_read_any(struct sched_ent *alarm){
       return;
     }
     
-    struct in_addr src = ((struct sockaddr_in *)&src_addr)->sin_addr;
-    
     /* Try to identify the real interface that the packet arrived on */
-    interface = overlay_interface_find(src, 0);
+    interface = overlay_interface_find(recvaddr.inet.sin_addr, 0);
     
     /* Drop the packet if we don't find a match */
     if (!interface){
       if (config.debug.overlayinterfaces)
-	DEBUGF("Could not find matching interface for packet received from %s", inet_ntoa(src));
+	DEBUGF("Could not find matching interface for packet received from %s", inet_ntoa(recvaddr.inet.sin_addr));
       return;
     }
-    packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen);
+    packetOkOverlay(interface, packet, plen, recvttl, &recvaddr);
   }
   if (alarm->poll.revents & (POLLHUP | POLLERR)) {
     INFO("Closing broadcast socket due to error");
@@ -569,25 +570,24 @@ cleanup:
   return cleanup_ret;
 }
 
-static void interface_read_dgram(struct overlay_interface *interface){
+static void interface_read_dgram(struct overlay_interface *interface)
+{
   int plen=0;
   unsigned char packet[8096];
   
-  struct sockaddr src_addr;
-  socklen_t addrlen = sizeof(src_addr);
-  
-  
+  struct socket_address recvaddr;
+  recvaddr.addrlen = sizeof recvaddr.store;
+
   /* Read only one UDP packet per call to share resources more fairly, and also
    enable stats to accurately count packets received */
   int recvttl=1;
-  plen = recvwithttl(interface->alarm.poll.fd,packet, sizeof(packet), &recvttl, &src_addr, &addrlen);
+  plen = recvwithttl(interface->alarm.poll.fd,packet, sizeof(packet), &recvttl, &recvaddr);
   if (plen == -1) {
     WHY_perror("recvwithttl(c)");
     overlay_interface_close(interface);
     return;
   }
-  
-  packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen);
+  packetOkOverlay(interface, packet, plen, recvttl, &recvaddr);
 }
 
 struct file_packet{
@@ -678,8 +678,10 @@ static void interface_read_file(struct overlay_interface *interface)
 		alloca_sockaddr_in(&packet.dst_addr)
 	      );
       }else{
-	packetOkOverlay(interface, packet.payload, packet.payload_length, -1, 
-			    (struct sockaddr*)&packet.src_addr, (socklen_t) sizeof(packet.src_addr));
+	struct socket_address srcaddr;
+	srcaddr.addrlen = sizeof packet.src_addr;
+	srcaddr.inet = packet.src_addr;
+	packetOkOverlay(interface, packet.payload, packet.payload_length, -1, &srcaddr);
       }
     }
   }

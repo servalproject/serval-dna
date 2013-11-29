@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "conf.h"
+#include "socket.h"
 #include "str.h"
 #include "strbuf.h"
 #include "overlay_buffer.h"
@@ -320,7 +321,7 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
 }
 
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
-		    int recvttl, struct sockaddr *recvaddr, socklen_t recvaddrlen)
+		    int recvttl, struct socket_address *recvaddr)
 {
   IN();
   /* 
@@ -385,8 +386,8 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     }
   }
   
-  if (recvaddr&&recvaddr->sa_family!=AF_INET)
-    RETURN(WHYF("Unexpected protocol family %d",recvaddr->sa_family));
+  if (recvaddr && recvaddr->addr.sa_family != AF_INET)
+    RETURN(WHYF("Unexpected protocol family %d", recvaddr->addr.sa_family));
   
   struct overlay_frame f;
   struct decode_context context;
@@ -399,11 +400,11 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   
   f.interface = interface;
   if (recvaddr)
-    f.recvaddr = *((struct sockaddr_in *)recvaddr); 
+    f.recvaddr = recvaddr->inet;
   else 
     bzero(&f.recvaddr, sizeof f.recvaddr);
   
-  int ret=parseEnvelopeHeader(&context, interface, (struct sockaddr_in *)recvaddr, b);
+  int ret=parseEnvelopeHeader(&context, interface, recvaddr ? &recvaddr->inet : NULL, b);
   if (ret){
     ob_free(b);
     RETURN(ret);

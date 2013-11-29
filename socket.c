@@ -44,14 +44,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 int _make_local_sockaddr(struct __sourceloc __whence, struct socket_address *addr, const char *fmt, ...)
 {
   bzero(addr, sizeof(*addr));
-  addr->addr_un.sun_family = AF_UNIX;
+  addr->local.sun_family = AF_UNIX;
   va_list ap;
   va_start(ap, fmt);
-  int r = vformf_serval_instance_path(__WHENCE__, addr->addr_un.sun_path, sizeof addr->addr_un.sun_path, fmt, ap);
+  int r = vformf_serval_instance_path(__WHENCE__, addr->local.sun_path, sizeof addr->local.sun_path, fmt, ap);
   va_end(ap);
   if (!r)
     return WHY("socket name overflow");
-  addr->addrlen=sizeof addr->addr_un.sun_family + strlen(addr->addr_un.sun_path) + 1;
+  addr->addrlen=sizeof addr->local.sun_family + strlen(addr->local.sun_path) + 1;
 // TODO perform real path transformation in making the serval instance path
 //  if (real_sockaddr(addr, addr) == -1)
 //    return -1;
@@ -60,7 +60,7 @@ int _make_local_sockaddr(struct __sourceloc __whence, struct socket_address *add
   // For the abstract name we use the absolute path name with the initial '/' replaced by the
   // leading nul.  This ensures that different instances of the Serval daemon have different socket
   // names.
-  addr->addr_un.sun_path[0] = '\0'; // mark as Linux abstract socket
+  addr->local.sun_path[0] = '\0'; // mark as Linux abstract socket
   --addr->addrlen; // do not count trailing nul in abstract socket name
 #endif // USE_ABSTRACT_NAMESPACE
   return 0;
@@ -80,24 +80,24 @@ int _make_local_sockaddr(struct __sourceloc __whence, struct socket_address *add
  */
 int real_sockaddr(const struct socket_address *src_addr, struct socket_address *dst_addr)
 {
-  int src_path_len = src_addr->addrlen - sizeof src_addr->addr_un.sun_family;
-  if (	 src_addr->addrlen >= sizeof src_addr->addr_un.sun_family + 1
-      && src_addr->addr_un.sun_family == AF_UNIX
-      && src_addr->addr_un.sun_path[0] != '\0'
-      && src_addr->addr_un.sun_path[src_path_len - 1] == '\0'
+  int src_path_len = src_addr->addrlen - sizeof src_addr->local.sun_family;
+  if (	 src_addr->addrlen >= sizeof src_addr->local.sun_family + 1
+      && src_addr->local.sun_family == AF_UNIX
+      && src_addr->local.sun_path[0] != '\0'
+      && src_addr->local.sun_path[src_path_len - 1] == '\0'
   ) {
     char real_path[PATH_MAX];
     size_t real_path_len;
-    if (realpath(src_addr->addr_un.sun_path, real_path) == NULL)
-      return WHYF_perror("realpath(%s)", alloca_str_toprint(src_addr->addr_un.sun_path));
-    else if ((real_path_len = strlen(real_path) + 1) > sizeof dst_addr->addr_un.sun_path)
+    if (realpath(src_addr->local.sun_path, real_path) == NULL)
+      return WHYF_perror("realpath(%s)", alloca_str_toprint(src_addr->local.sun_path));
+    else if ((real_path_len = strlen(real_path) + 1) > sizeof dst_addr->local.sun_path)
       return WHYF("sockaddr overrun: realpath(%s) returned %s", 
-	  alloca_str_toprint(src_addr->addr_un.sun_path), alloca_str_toprint(real_path));
+	  alloca_str_toprint(src_addr->local.sun_path), alloca_str_toprint(real_path));
     else if (   real_path_len != src_path_len
-	     || memcmp(real_path, src_addr->addr_un.sun_path, src_path_len) != 0
+	     || memcmp(real_path, src_addr->local.sun_path, src_path_len) != 0
     ) {
-      memcpy(dst_addr->addr_un.sun_path, real_path, real_path_len);
-      dst_addr->addrlen = real_path_len + sizeof dst_addr->addr_un.sun_family;
+      memcpy(dst_addr->local.sun_path, real_path, real_path_len);
+      dst_addr->addrlen = real_path_len + sizeof dst_addr->local.sun_family;
       return 1;
     }
   }
@@ -133,23 +133,23 @@ int cmp_sockaddr(const struct socket_address *addrA, const struct socket_address
   // Both addresses are in the same family...
   switch (addrA->addr.sa_family) {
   case AF_UNIX: {
-      unsigned pathlenA = addrA->addrlen - sizeof (addrA->addr_un.sun_family);
-      unsigned pathlenB = addrB->addrlen - sizeof (addrB->addr_un.sun_family);
+      unsigned pathlenA = addrA->addrlen - sizeof (addrA->local.sun_family);
+      unsigned pathlenB = addrB->addrlen - sizeof (addrB->local.sun_family);
       int c;
       if (   pathlenA > 1 && pathlenB > 1
-	  && addrA->addr_un.sun_path[0] == '\0'
-	  && addrB->addr_un.sun_path[0] == '\0'
+	  && addrA->local.sun_path[0] == '\0'
+	  && addrB->local.sun_path[0] == '\0'
       ) {
 	// Both abstract sockets - just compare names, nul bytes are not terminators.
-	c = memcmp(&addrA->addr_un.sun_path[1],
-		   &addrB->addr_un.sun_path[1],
+	c = memcmp(&addrA->local.sun_path[1],
+		   &addrB->local.sun_path[1],
 		   (pathlenA < pathlenB ? pathlenA : pathlenB) - 1);
       } else {
 	// Either or both are named local file sockets.  If the file names are identical up to the
 	// first nul, then the addresses are equal.  This collates abstract socket names, whose first
 	// character is a nul, ahead of all non-empty file socket names.
-	c = strncmp(addrA->addr_un.sun_path,
-		    addrB->addr_un.sun_path,
+	c = strncmp(addrA->local.sun_path,
+		    addrB->local.sun_path,
 		    (pathlenA < pathlenB ? pathlenA : pathlenB));
       }
       if (c == 0)

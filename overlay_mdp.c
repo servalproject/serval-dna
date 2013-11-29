@@ -1479,11 +1479,11 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
     unsigned char buffer[16384];
     int ttl;
     struct socket_address client;
-    client.addrlen=sizeof(client.store);
+    client.addrlen = sizeof client.store;
 
     ttl=-1;
     
-    ssize_t len = recvwithttl(alarm->poll.fd,buffer,sizeof(buffer),&ttl, (struct sockaddr *)&client.addr, &client.addrlen);
+    ssize_t len = recvwithttl(alarm->poll.fd,buffer,sizeof(buffer),&ttl, &client);
 
     if (len > 0) {
       if (client.addrlen <= sizeof(sa_family_t))

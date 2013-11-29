@@ -433,7 +433,7 @@ static int radio_link_parse(struct overlay_interface *interface, struct radio_li
     if (config.debug.radio_link) 
       DEBUGF("PDU Complete (length=%d)",state->packet_length);
     
-    packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL, 0);
+    packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL);
     state->packet_length=sizeof(state->dst)+1;
   }
   return 1;

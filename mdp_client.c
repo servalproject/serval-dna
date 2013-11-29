@@ -43,10 +43,10 @@ static void mdp_unlink(int mdp_sock)
   if (getsockname(mdp_sock, &addr.addr, &addr.addrlen))
     WHYF_perror("getsockname(%d)", mdp_sock);
   else if (addr.addr.sa_family==AF_UNIX 
-    && addr.addrlen > sizeof addr.addr_un.sun_family 
-    && addr.addrlen <= sizeof addr.addr_un && addr.addr_un.sun_path[0] != '\0') {
-    if (unlink(addr.addr_un.sun_path) == -1)
-      WARNF_perror("unlink(%s)", alloca_str_toprint(addr.addr_un.sun_path));
+    && addr.addrlen > sizeof addr.local.sun_family 
+    && addr.addrlen <= sizeof addr.local && addr.local.sun_path[0] != '\0') {
+    if (unlink(addr.local.sun_path) == -1)
+      WARNF_perror("unlink(%s)", alloca_str_toprint(addr.local.sun_path));
   }
   close(mdp_sock);
 }
@@ -123,7 +123,7 @@ ssize_t mdp_recv(int socket, struct mdp_header *header, uint8_t *payload, ssize_
   addr.addrlen=hdr.msg_namelen;
   // double check that the incoming address matches the servald daemon
   if (cmp_sockaddr(&addr, &mdp_addr) != 0
-      && (   addr.addr_un.sun_family != AF_UNIX
+      && (   addr.local.sun_family != AF_UNIX
 	  || real_sockaddr(&addr, &addr) <= 0
 	  || cmp_sockaddr(&addr, &mdp_addr) != 0
 	 )
@@ -259,7 +259,7 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, mdp_port_t port, in
   ssize_t len;
   mdp->packetTypeAndFlags = 0;
   set_nonblock(mdp_sockfd);
-  len = recvwithttl(mdp_sockfd, (unsigned char *)mdp, sizeof(overlay_mdp_frame), ttl, &recvaddr.addr, &recvaddr.addrlen);
+  len = recvwithttl(mdp_sockfd, (unsigned char *)mdp, sizeof(overlay_mdp_frame), ttl, &recvaddr);
   set_block(mdp_sockfd);
   if (len <= 0)
     return -1; // no packet received
@@ -272,7 +272,7 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, mdp_port_t port, in
   // Compare the address of the sender with the address of our server, to ensure they are the same.
   // If the comparison fails, then try using realpath(3) on the sender address and compare again.
   if (	cmp_sockaddr(&recvaddr, &mdp_addr) != 0
-      && (   recvaddr.addr_un.sun_family != AF_UNIX
+      && (   recvaddr.local.sun_family != AF_UNIX
 	  || real_sockaddr(&recvaddr, &recvaddr) <= 0
 	  || cmp_sockaddr(&recvaddr, &mdp_addr) != 0
 	 )
