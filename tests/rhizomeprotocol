@@ -59,7 +59,7 @@ setup_common() {
 }
 
 receive_and_update_bundle() {
-   wait_until bundle_received_by $BID:$VERSION +B
+   wait_until "$@" bundle_received_by $BID:$VERSION +B
    set_instance +B
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file1
@@ -67,7 +67,7 @@ receive_and_update_bundle() {
    set_instance +A
    rhizome_update_file file1 file2
    set_instance +B
-   wait_until bundle_received_by $BID:$VERSION +B
+   wait_until "$@" bundle_received_by $BID:$VERSION +B
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file2
    assert_rhizome_received file2
@@ -767,7 +767,7 @@ setup_SimulatedRadio2() {
    foreach_instance +A +B start_radio_instance
 }
 test_SimulatedRadio2() {
-   receive_and_update_bundle
+   receive_and_update_bundle --timeout=120
 }
 teardown_SimulatedRadio2() {
    teardown
