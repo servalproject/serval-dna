@@ -252,6 +252,8 @@ int olsr_send(struct overlay_frame *frame){
   struct decode_context context;
   bzero(&context, sizeof context);
   struct overlay_buffer *b=ob_new();
+  if (b == NULL)
+    return 0;
   
   // build olsr specific frame header
   ob_append_byte(b, PACKET_FORMAT_NUMBER);
@@ -259,7 +261,6 @@ int olsr_send(struct overlay_frame *frame){
   
   // address the packet as transmitted by me
   overlay_address_append(&context, b, my_subscriber);
-  
   overlay_address_append(&context, b, frame->source);
   overlay_broadcast_append(b, &frame->broadcast_id);
   ob_append_byte(b, frame->modifiers);

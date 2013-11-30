@@ -17,37 +17,33 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-#define __STR_INLINE
+#define __SERVAL_DNA_STR_INLINE
 #include "str.h"
 #include "strbuf_helpers.h"
 #include "constants.h"
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/uio.h>
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
 #include <limits.h>
 #include <errno.h>
 
-const char hexdigit[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
+const char hexdigit_upper[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
+const char hexdigit_lower[16] = {'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f'};
 
 char *tohex(char *dstHex, size_t dstStrLen, const unsigned char *srcBinary)
 {
   char *p;
   size_t i;
   for (p = dstHex, i = 0; i < dstStrLen; ++i)
-    *p++ = (i & 1) ? hexdigit[*srcBinary++ & 0xf] : hexdigit[*srcBinary >> 4];
+    *p++ = (i & 1) ? hexdigit_upper[*srcBinary++ & 0xf] : hexdigit_upper[*srcBinary >> 4];
   *p = '\0';
   return dstHex;
 }
 
-/* Convert nbinary*2 ASCII hex characters [0-9A-Fa-f] to nbinary bytes of data.  Can be used to
- * perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);  Returns -1 if a non-hex-digit
- * character is encountered, otherwise returns the number of binary bytes produced (= nbinary).
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
 size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
 {
   if (strn_fromhex(dstBinary, nbinary, srcHex, NULL) == nbinary)
@@ -55,13 +51,6 @@ size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
   return -1;
 }
 
-/* Convert nbinary*2 ASCII hex characters [0-9A-Fa-f] followed by a nul '\0' character to nbinary
- * bytes of data.  Can be used to perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);
- * Returns -1 if a non-hex-digit character is encountered or the character immediately following the
- * last hex digit is not a nul, otherwise returns zero.
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
 int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
 {
   const char *p;
@@ -70,21 +59,6 @@ int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
   return -1;
 }
 
-/* Decode pairs of ASCII hex characters [0-9A-Fa-f] into binary data with an optional upper limit on
- * the number of binary bytes produced (destination buffer size).  Returns the number of binary
- * bytes decoded.  If 'afterHex' is not NULL, then sets *afterHex to point to the source character
- * immediately following the last hex digit consumed.
- *
- * Can be used to perform a conversion in-place, eg:
- *
- *    strn_fromhex((unsigned char *)buf, n, (const char *)buf, NULL);
- *
- * Can also be used to count hex digits without converting, eg:
- *
- *    strn_fromhex(NULL, -1, buf, NULL);
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
 size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *srcHex, const char **afterHex)
 {
   unsigned char *dstorig = dstBinary;
@@ -105,6 +79,441 @@ size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *srcHex
     *afterHex = srcHex;
   return dstBinary - dstorig;
 }
+
+const char base64_symbols[65] = {
+  'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P',
+  'Q','R','S','T','U','V','W','X','Y','Z','a','b','c','d','e','f',
+  'g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v',
+  'w','x','y','z','0','1','2','3','4','5','6','7','8','9','+','/',
+  '='
+};
+
+const char base64url_symbols[65] = {
+  'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P',
+  'Q','R','S','T','U','V','W','X','Y','Z','a','b','c','d','e','f',
+  'g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v',
+  'w','x','y','z','0','1','2','3','4','5','6','7','8','9','-','_',
+  '='
+};
+
+static size_t _base64_encodev(const char symbols[], char *dstBase64, const struct iovec *const iov, int const iovcnt)
+{
+  char *dst = dstBase64;
+  unsigned place = 0;
+  unsigned char buf = 0;
+  int iovc = 0;
+  for (iovc = 0; iovc != iovcnt; ++iovc) {
+    unsigned char *src = iov[iovc].iov_base;
+    size_t cnt = iov[iovc].iov_len;
+    for (; cnt; --cnt, ++src) {
+      switch (place) {
+	case 0:
+	  *dst++ = symbols[*src >> 2];
+	  buf = (*src << 4) & 0x3f;
+	  place = 1;
+	  break;
+	case 1:
+	  *dst++ = symbols[(*src >> 4) | buf];
+	  buf = (*src << 2) & 0x3f;
+	  place = 2;
+	  break;
+	case 2:
+	  *dst++ = symbols[(*src >> 6) | buf];
+	  *dst++ = symbols[*src & 0x3f];
+	  place = 0;
+	  break;
+      }
+    }
+  }
+  if (place)
+    *dst++ = symbols[buf];
+  switch (place) {
+    case 2:
+      *dst++ = symbols[64];
+    case 1:
+      *dst++ = symbols[64];
+  }
+  return dst - dstBase64;
+}
+
+size_t base64_encodev(char *dstBase64, const struct iovec *const iov, int const iovcnt)
+{
+  return _base64_encodev(base64_symbols, dstBase64, iov, iovcnt);
+}
+
+size_t base64url_encodev(char *dstBase64, const struct iovec *const iov, int const iovcnt)
+{
+  return _base64_encodev(base64url_symbols, dstBase64, iov, iovcnt);
+}
+
+size_t base64_encode(char *const dstBase64, const unsigned char *src, size_t srclen)
+{
+  struct iovec iov;
+  iov.iov_base = (void *) src;
+  iov.iov_len = srclen;
+  return _base64_encodev(base64_symbols, dstBase64, &iov, 1);
+}
+
+size_t base64url_encode(char *const dstBase64, const unsigned char *src, size_t srclen)
+{
+  struct iovec iov;
+  iov.iov_base = (void *) src;
+  iov.iov_len = srclen;
+  return _base64_encodev(base64url_symbols, dstBase64, &iov, 1);
+}
+
+char *to_base64_str(char *const dstBase64, const unsigned char *srcBinary, size_t srcBytes)
+{
+  dstBase64[base64_encode(dstBase64, srcBinary, srcBytes)] = '\0';
+  return dstBase64;
+}
+
+char *to_base64url_str(char *const dstBase64, const unsigned char *srcBinary, size_t srcBytes)
+{
+  dstBase64[base64url_encode(dstBase64, srcBinary, srcBytes)] = '\0';
+  return dstBase64;
+}
+
+static size_t _base64_decode(unsigned char *dstBinary, size_t dstsiz, const char *const srcBase64, size_t srclen,
+                     const char **afterp, int flags, int (*skip_pred)(char),
+		     int (*isdigit_pred)(char), int (*ispad_pred)(char), uint8_t (*todigit)(char)
+		  )
+{
+  uint8_t buf = 0;
+  size_t digits = 0;
+  unsigned pads = 0;
+  size_t bytes = 0;
+  const char *const srcend = srcBase64 + srclen;
+  const char *src = srcBase64;
+  const char *first_pad = NULL;
+  for (; srclen == 0 || (src < srcend); ++src) {
+    int isdigit = isdigit_pred(*src);
+    int ispad = ispad_pred(*src);
+    if (!isdigit && !ispad && skip_pred && skip_pred(*src))
+      continue;
+    assert(pads <= 2);
+    if (pads == 2)
+      break;
+    int place = digits & 3;
+    if (pads == 1) {
+      if (place == 3)
+	break;
+      assert(place == 2);
+      if (ispad) {
+	++pads;
+	continue; // consume trailing space before ending
+      }
+      // If only one pad character was present but there should be two, then don't consume the first
+      // one.
+      assert(first_pad != NULL);
+      src = first_pad;
+      break;
+    }
+    assert(pads == 0);
+    if (ispad && place >= 2) {
+      first_pad = src;
+      ++pads;
+      continue;
+    }
+    if (!isdigit)
+      break;
+    ++digits;
+    if (dstBinary && bytes < dstsiz) {
+      uint8_t d = todigit(*src);
+      switch (place) {
+	case 0:
+	  buf = d << 2;
+	  break;
+	case 1:
+	  dstBinary[bytes++] = buf | (d >> 4);
+	  buf = d << 4;
+	  break;
+	case 2:
+	  dstBinary[bytes++] = buf | (d >> 2);
+	  buf = d << 6;
+	  break;
+	case 3:
+	  dstBinary[bytes++] = buf | d;
+	  break;
+      }
+    } else if (flags & B64_CONSUME_ALL) {
+      switch (place) {
+	case 1: case 2: case 3: ++bytes;
+      }
+    } else
+      break;
+  }
+  if (afterp)
+    *afterp = src;
+  else if (*src)
+    return 0;
+  return bytes;
+}
+
+size_t base64_decode(unsigned char *dstBinary, size_t dstsiz, const char *const srcBase64, size_t srclen,
+                     const char **afterp, int flags, int (*skip_pred)(char))
+{
+  return _base64_decode(dstBinary, dstsiz, srcBase64, srclen, afterp, flags, skip_pred, is_base64_digit, is_base64_pad, base64_digit);
+}
+
+
+size_t base64url_decode(unsigned char *dstBinary, size_t dstsiz, const char *const srcBase64, size_t srclen,
+                        const char **afterp, int flags, int (*skip_pred)(char))
+{
+  return _base64_decode(dstBinary, dstsiz, srcBase64, srclen, afterp, flags, skip_pred, is_base64url_digit, is_base64url_pad, base64url_digit);
+}
+
+
+#define _B64 _SERVAL_CTYPE_0_BASE64
+#define _B64U _SERVAL_CTYPE_0_BASE64URL
+
+uint8_t _serval_ctype_0[UINT8_MAX] = {
+  ['A'] = _B64 | _B64U | 0,
+  ['B'] = _B64 | _B64U | 1,
+  ['C'] = _B64 | _B64U | 2,
+  ['D'] = _B64 | _B64U | 3,
+  ['E'] = _B64 | _B64U | 4,
+  ['F'] = _B64 | _B64U | 5,
+  ['G'] = _B64 | _B64U | 6,
+  ['H'] = _B64 | _B64U | 7,
+  ['I'] = _B64 | _B64U | 8,
+  ['J'] = _B64 | _B64U | 9,
+  ['K'] = _B64 | _B64U | 10,
+  ['L'] = _B64 | _B64U | 11,
+  ['M'] = _B64 | _B64U | 12,
+  ['N'] = _B64 | _B64U | 13,
+  ['O'] = _B64 | _B64U | 14,
+  ['P'] = _B64 | _B64U | 15,
+  ['Q'] = _B64 | _B64U | 16,
+  ['R'] = _B64 | _B64U | 17,
+  ['S'] = _B64 | _B64U | 18,
+  ['T'] = _B64 | _B64U | 19,
+  ['U'] = _B64 | _B64U | 20,
+  ['V'] = _B64 | _B64U | 21,
+  ['W'] = _B64 | _B64U | 22,
+  ['X'] = _B64 | _B64U | 23,
+  ['Y'] = _B64 | _B64U | 24,
+  ['Z'] = _B64 | _B64U | 25,
+  ['a'] = _B64 | _B64U | 26,
+  ['b'] = _B64 | _B64U | 27,
+  ['c'] = _B64 | _B64U | 28,
+  ['d'] = _B64 | _B64U | 29,
+  ['e'] = _B64 | _B64U | 30,
+  ['f'] = _B64 | _B64U | 31,
+  ['g'] = _B64 | _B64U | 32,
+  ['h'] = _B64 | _B64U | 33,
+  ['i'] = _B64 | _B64U | 34,
+  ['j'] = _B64 | _B64U | 35,
+  ['k'] = _B64 | _B64U | 36,
+  ['l'] = _B64 | _B64U | 37,
+  ['m'] = _B64 | _B64U | 38,
+  ['n'] = _B64 | _B64U | 39,
+  ['o'] = _B64 | _B64U | 40,
+  ['p'] = _B64 | _B64U | 41,
+  ['q'] = _B64 | _B64U | 42,
+  ['r'] = _B64 | _B64U | 43,
+  ['s'] = _B64 | _B64U | 44,
+  ['t'] = _B64 | _B64U | 45,
+  ['u'] = _B64 | _B64U | 46,
+  ['v'] = _B64 | _B64U | 47,
+  ['w'] = _B64 | _B64U | 48,
+  ['x'] = _B64 | _B64U | 49,
+  ['y'] = _B64 | _B64U | 50,
+  ['z'] = _B64 | _B64U | 51,
+  ['0'] = _B64 | _B64U | 52,
+  ['1'] = _B64 | _B64U | 53,
+  ['2'] = _B64 | _B64U | 54,
+  ['3'] = _B64 | _B64U | 55,
+  ['4'] = _B64 | _B64U | 56,
+  ['5'] = _B64 | _B64U | 57,
+  ['6'] = _B64 | _B64U | 58,
+  ['7'] = _B64 | _B64U | 59,
+  ['8'] = _B64 | _B64U | 60,
+  ['9'] = _B64 | _B64U | 61,
+  ['+'] = _B64 | 62,
+  ['/'] = _B64 | 63,
+  ['-'] = _B64U | 62,
+  ['_'] = _B64U | 63,
+};
+
+#define _SEP		_SERVAL_CTYPE_1_HTTP_SEPARATOR 
+#define _URI_SCHEME	_SERVAL_CTYPE_1_URI_SCHEME
+#define _URI_UNRES	_SERVAL_CTYPE_1_URI_UNRESERVED
+#define _URI_RES	_SERVAL_CTYPE_1_URI_RESERVED
+
+uint8_t _serval_ctype_1[UINT8_MAX] = {
+  ['A'] = _URI_SCHEME | _URI_UNRES | 0xA,
+  ['B'] = _URI_SCHEME | _URI_UNRES | 0xB,
+  ['C'] = _URI_SCHEME | _URI_UNRES | 0xC,
+  ['D'] = _URI_SCHEME | _URI_UNRES | 0xD,
+  ['E'] = _URI_SCHEME | _URI_UNRES | 0xE,
+  ['F'] = _URI_SCHEME | _URI_UNRES | 0xF,
+  ['G'] = _URI_SCHEME | _URI_UNRES,
+  ['H'] = _URI_SCHEME | _URI_UNRES,
+  ['I'] = _URI_SCHEME | _URI_UNRES,
+  ['J'] = _URI_SCHEME | _URI_UNRES,
+  ['K'] = _URI_SCHEME | _URI_UNRES,
+  ['L'] = _URI_SCHEME | _URI_UNRES,
+  ['M'] = _URI_SCHEME | _URI_UNRES,
+  ['N'] = _URI_SCHEME | _URI_UNRES,
+  ['O'] = _URI_SCHEME | _URI_UNRES,
+  ['P'] = _URI_SCHEME | _URI_UNRES,
+  ['Q'] = _URI_SCHEME | _URI_UNRES,
+  ['R'] = _URI_SCHEME | _URI_UNRES,
+  ['S'] = _URI_SCHEME | _URI_UNRES,
+  ['T'] = _URI_SCHEME | _URI_UNRES,
+  ['U'] = _URI_SCHEME | _URI_UNRES,
+  ['V'] = _URI_SCHEME | _URI_UNRES,
+  ['W'] = _URI_SCHEME | _URI_UNRES,
+  ['X'] = _URI_SCHEME | _URI_UNRES,
+  ['Y'] = _URI_SCHEME | _URI_UNRES,
+  ['Z'] = _URI_SCHEME | _URI_UNRES,
+  ['a'] = _URI_SCHEME | _URI_UNRES | 0xa,
+  ['b'] = _URI_SCHEME | _URI_UNRES | 0xb,
+  ['c'] = _URI_SCHEME | _URI_UNRES | 0xc,
+  ['d'] = _URI_SCHEME | _URI_UNRES | 0xd,
+  ['e'] = _URI_SCHEME | _URI_UNRES | 0xe,
+  ['f'] = _URI_SCHEME | _URI_UNRES | 0xf,
+  ['g'] = _URI_SCHEME | _URI_UNRES,
+  ['h'] = _URI_SCHEME | _URI_UNRES,
+  ['i'] = _URI_SCHEME | _URI_UNRES,
+  ['j'] = _URI_SCHEME | _URI_UNRES,
+  ['k'] = _URI_SCHEME | _URI_UNRES,
+  ['l'] = _URI_SCHEME | _URI_UNRES,
+  ['m'] = _URI_SCHEME | _URI_UNRES,
+  ['n'] = _URI_SCHEME | _URI_UNRES,
+  ['o'] = _URI_SCHEME | _URI_UNRES,
+  ['p'] = _URI_SCHEME | _URI_UNRES,
+  ['q'] = _URI_SCHEME | _URI_UNRES,
+  ['r'] = _URI_SCHEME | _URI_UNRES,
+  ['s'] = _URI_SCHEME | _URI_UNRES,
+  ['t'] = _URI_SCHEME | _URI_UNRES,
+  ['u'] = _URI_SCHEME | _URI_UNRES,
+  ['v'] = _URI_SCHEME | _URI_UNRES,
+  ['w'] = _URI_SCHEME | _URI_UNRES,
+  ['x'] = _URI_SCHEME | _URI_UNRES,
+  ['y'] = _URI_SCHEME | _URI_UNRES,
+  ['z'] = _URI_SCHEME | _URI_UNRES,
+  ['0'] = _URI_SCHEME | _URI_UNRES | 0,
+  ['1'] = _URI_SCHEME | _URI_UNRES | 1,
+  ['2'] = _URI_SCHEME | _URI_UNRES | 2,
+  ['3'] = _URI_SCHEME | _URI_UNRES | 3,
+  ['4'] = _URI_SCHEME | _URI_UNRES | 4,
+  ['5'] = _URI_SCHEME | _URI_UNRES | 5,
+  ['6'] = _URI_SCHEME | _URI_UNRES | 6,
+  ['7'] = _URI_SCHEME | _URI_UNRES | 7,
+  ['8'] = _URI_SCHEME | _URI_UNRES | 8,
+  ['9'] = _URI_SCHEME | _URI_UNRES | 9,
+  ['\t'] = _SEP,
+  [' '] = _SEP,
+  ['_'] = _URI_UNRES,
+  ['='] = _SEP | _URI_RES,
+  ['<'] = _SEP,
+  ['>'] = _SEP,
+  [';'] = _SEP | _URI_RES,
+  [':'] = _SEP | _URI_RES,
+  ['\\'] = _SEP,
+  ['\''] = _URI_RES,
+  ['"'] = _SEP,
+  ['/'] = _SEP | _URI_RES,
+  ['['] = _SEP | _URI_RES,
+  [']'] = _SEP | _URI_RES,
+  ['{'] = _SEP,
+  ['}'] = _SEP,
+  ['('] = _SEP | _URI_RES,
+  [')'] = _SEP | _URI_RES,
+  [','] = _SEP | _URI_RES,
+  ['.'] = _URI_SCHEME | _URI_UNRES,
+  ['?'] = _SEP | _URI_RES,
+  ['!'] = _URI_RES,
+  ['+'] = _URI_SCHEME | _URI_RES,
+  ['-'] = _URI_SCHEME | _URI_UNRES,
+  ['*'] = _URI_RES,
+  ['$'] = _URI_RES,
+  ['&'] = _URI_RES,
+  ['#'] = _URI_RES,
+  ['@'] = _SEP | _URI_RES,
+  ['~'] = _URI_UNRES,
+};
+
+#define _BND _SERVAL_CTYPE_2_MULTIPART_BOUNDARY
+
+uint8_t _serval_ctype_2[UINT8_MAX] = {
+  ['A'] = _BND,
+  ['B'] = _BND,
+  ['C'] = _BND,
+  ['D'] = _BND,
+  ['E'] = _BND,
+  ['F'] = _BND,
+  ['G'] = _BND,
+  ['H'] = _BND,
+  ['I'] = _BND,
+  ['J'] = _BND,
+  ['K'] = _BND,
+  ['L'] = _BND,
+  ['M'] = _BND,
+  ['N'] = _BND,
+  ['O'] = _BND,
+  ['P'] = _BND,
+  ['Q'] = _BND,
+  ['R'] = _BND,
+  ['S'] = _BND,
+  ['T'] = _BND,
+  ['U'] = _BND,
+  ['V'] = _BND,
+  ['W'] = _BND,
+  ['X'] = _BND,
+  ['Y'] = _BND,
+  ['Z'] = _BND,
+  ['a'] = _BND,
+  ['b'] = _BND,
+  ['c'] = _BND,
+  ['d'] = _BND,
+  ['e'] = _BND,
+  ['f'] = _BND,
+  ['g'] = _BND,
+  ['h'] = _BND,
+  ['i'] = _BND,
+  ['j'] = _BND,
+  ['k'] = _BND,
+  ['l'] = _BND,
+  ['m'] = _BND,
+  ['n'] = _BND,
+  ['o'] = _BND,
+  ['p'] = _BND,
+  ['q'] = _BND,
+  ['r'] = _BND,
+  ['s'] = _BND,
+  ['t'] = _BND,
+  ['u'] = _BND,
+  ['v'] = _BND,
+  ['w'] = _BND,
+  ['x'] = _BND,
+  ['y'] = _BND,
+  ['z'] = _BND,
+  ['0'] = _BND,
+  ['1'] = _BND,
+  ['2'] = _BND,
+  ['3'] = _BND,
+  ['4'] = _BND,
+  ['5'] = _BND,
+  ['6'] = _BND,
+  ['7'] = _BND,
+  ['8'] = _BND,
+  ['9'] = _BND,
+  ['+'] = _BND,
+  ['/'] = _BND,
+  ['='] = _BND,
+  ['-'] = _BND,
+  ['.'] = _BND,
+  [':'] = _BND,
+  ['_'] = _BND,
+  ['('] = _BND,
+  [')'] = _BND,
+  [','] = _BND,
+  ['?'] = _BND,
+  [' '] = _BND,
+};
 
 /* Does this whole buffer contain the same value? */
 int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value)

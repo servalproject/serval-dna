@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "overlay_address.h"
+#include "dataformats.h"
 
 /*
   The challenge with making an interface for calling an external program to 

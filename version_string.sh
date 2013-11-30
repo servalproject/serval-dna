@@ -17,11 +17,6 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-if [ ! -e .git ]; then
-  echo "UNKNOWN-VERSION"
-  exit
-fi
-
 usage() {
    echo "Usage: ${0##*/} [options]"'
 
@@ -86,6 +81,11 @@ done
 
 cd "$repo_path" >/dev/null
 
+if [ ! -d .git ]; then
+  echo "UNKNOWN-VERSION"
+  exit 0
+fi
+
 get_author_label() {
    # See git-commit-tree(1) for the semantics of working out the author's email
    # address when committing.
@@ -115,7 +115,11 @@ if [ -n "$dirty" ] && ! $allow_modified; then
 fi
 
 # Use the "git describe" command to form the version string and append $dirty.
-if error="$( (desc="$(git describe --match="$version_tag_glob")" && echo "$desc$dirty") 2>&1 1>&5)" 5>&1; then
+# This ugly construction is required for use on machines with bash version < 4.
+error="$(git describe --match="$version_tag_glob" 2>&1 1>/dev/null)" || true
+
+if [ -z "$error" ]; then
+   echo "$(git describe --match="$version_tag_glob")$dirty"
    exit 0
 fi
 

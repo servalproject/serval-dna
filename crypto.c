@@ -3,6 +3,7 @@
 #include "serval.h"
 #include "overlay_address.h"
 #include "crypto.h"
+#include "keyring.h"
 
 // verify a signature against a public sas key.
 int crypto_verify_signature(unsigned char *sas_key, 

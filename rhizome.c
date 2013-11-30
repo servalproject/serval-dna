@@ -17,11 +17,13 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <stdlib.h>
+#include <assert.h>
 #include "serval.h"
 #include "conf.h"
 #include "str.h"
 #include "rhizome.h"
-#include <stdlib.h>
+#include "dataformats.h"
 
 int is_rhizome_enabled()
 {
@@ -129,13 +131,10 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
   
   if (rhizome_read_manifest_file(m, manifest_path, buffer_len) == -1)
     return WHY("could not read manifest file");
-  if (rhizome_manifest_verify(m))
+  if (!rhizome_manifest_validate(m))
+    return WHY("manifest is invalid");
+  if (!rhizome_manifest_verify(m))
     return WHY("could not verify manifest");
-  
-  /* Make sure we store signatures */
-  // TODO, why do we need this? Why isn't the state correct from rhizome_read_manifest_file? 
-  // This feels like a hack...
-  m->manifest_bytes=m->manifest_all_bytes;
   
   /* Do we already have this manifest or newer? */
   int64_t dbVersion = -1;
@@ -152,115 +151,130 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
   return rhizome_add_manifest(m, 1);
 }
 
-int rhizome_manifest_check_sanity(rhizome_manifest *m_in)
+int rhizome_manifest_check_sanity(rhizome_manifest *m)
 {
   /* Ensure manifest meets basic sanity checks. */
-  const char *service = rhizome_manifest_get(m_in, "service", NULL, 0);
-  const char *sender = rhizome_manifest_get(m_in, "sender", NULL, 0);
-  const char *recipient = rhizome_manifest_get(m_in, "recipient", NULL, 0);
-  
-  if (service == NULL || !service[0])
-      return WHY("Manifest missing 'service' field");
-  if (rhizome_manifest_get_ll(m_in, "date") == -1)
-      return WHY("Manifest missing 'date' field");
-  
-  /* Get manifest version number. */
-  m_in->version = rhizome_manifest_get_ll(m_in, "version");
-  if (m_in->version==-1)
-    return WHY("Manifest must have a version number");
-  
-  if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
-    const char *name = rhizome_manifest_get(m_in, "name", NULL, 0);
-    if (name == NULL)
-      return WHY("Manifest missing 'name' field");
-  } else if (strcasecmp(service, RHIZOME_SERVICE_MESHMS) == 0 
-    || strcasecmp(service, RHIZOME_SERVICE_MESHMS2) == 0) {
-    if (sender == NULL || !sender[0])
-      return WHY("MeshMS Manifest missing 'sender' field");
-    if (!str_is_subscriber_id(sender))
-      return WHYF("MeshMS Manifest contains invalid 'sender' field: %s", sender);
-    if (recipient == NULL || !recipient[0])
-      return WHY("MeshMS Manifest missing 'recipient' field");
-    if (!str_is_subscriber_id(recipient))
-      return WHYF("MeshMS Manifest contains invalid 'recipient' field: %s", recipient);
-  } else {
-    return WHY("Invalid service type");
+  int ret = 0;
+  if (m->version == 0)
+    ret = WHY("Manifest must have a version number");
+  if (m->filesize == RHIZOME_SIZE_UNSET)
+    ret = WHY("Manifest missing 'filesize' field");
+  else if (m->filesize && rhizome_filehash_t_is_zero(m->filehash))
+    ret = WHY("Manifest 'filehash' field has not been set");
+  if (m->service == NULL)
+    ret = WHY("Manifest missing 'service' field");
+  else if (strcasecmp(m->service, RHIZOME_SERVICE_FILE) == 0) {
+    if (m->name == NULL)
+      ret = WHY("Manifest with service='" RHIZOME_SERVICE_FILE "' missing 'name' field");
+  } else if (strcasecmp(m->service, RHIZOME_SERVICE_MESHMS) == 0 
+	  || strcasecmp(m->service, RHIZOME_SERVICE_MESHMS2) == 0) {
+    if (!m->has_sender)
+      ret = WHYF("Manifest with service='%s' missing 'sender' field", m->service);
+    if (!m->has_recipient)
+      ret = WHYF("Manifest with service='%s' missing 'recipient' field", m->service);
   }
-  if (config.debug.rhizome)
-    DEBUGF("sender='%s'", sender ? sender : "(null)");
-
-  /* passes all sanity checks */
-  return 0;
+  else if (!rhizome_str_is_manifest_service(m->service))
+    ret = WHYF("Manifest invalid 'service' field %s", alloca_str_toprint(m->service));
+  if (!m->has_date)
+    ret = WHY("Manifest missing 'date' field");
+  return ret;
 }
 
-
-/*
-  A bundle can either be an ordinary manifest-payload pair, or a group description.
-  
-  - Group descriptions are manifests with no payload that have the "isagroup" variable set.  They
-    get stored in the manifests table AND a reference is added to the grouplist table.  Any
-    manifest, including any group manifest, may be a member of zero or one group.  This allows a
-    nested, i.e., multi-level group hierarchy where sub-groups will only typically be discovered
-    by joining the parent group.
-*/
-
-int rhizome_manifest_bind_id(rhizome_manifest *m_in)
+/* Sets the bundle key "BK" field of a manifest.  Returns 1 if the field was set, 0 if not.
+ *
+ * This function must not be called unless the bundle secret is known.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_manifest_add_bundle_key(rhizome_manifest *m)
 {
-  if (rhizome_manifest_createid(m_in) == -1)
-    return -1;
-  /* The ID is implicit in transit, but we need to store it in the file, so that reimporting
-     manifests on receiver nodes works easily.  We might implement something that strips the id
-     variable out of the manifest when sending it, or some other scheme to avoid sending all the
-     extra bytes. */
-  if (!is_sid_t_any(m_in->author)) {
-    /* Set the BK using the provided authorship information.
-       Serval Security Framework defines BK as being:
-       BK = privateKey XOR sha512(RS##BID), where BID = cryptoSignPublic, 
-       and RS is the rhizome secret for the specified author. 
-       The nice thing about this specification is that:
-       privateKey = BK XOR sha512(RS##BID), so the same function can be used
-       to encrypt and decrypt the BK field. */
-    const unsigned char *rs;
-    int rs_len=0;
-    unsigned char bkbytes[RHIZOME_BUNDLE_KEY_BYTES];
-
-    if (rhizome_find_secret(&m_in->author, &rs_len, &rs))
-      return WHYF("Failed to obtain RS for %s to calculate BK", alloca_tohex_sid_t(m_in->author));
-    if (!rhizome_secret2bk(&m_in->cryptoSignPublic, rs, rs_len, bkbytes, m_in->cryptoSignSecret)) {
-      char bkhex[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-      (void) tohex(bkhex, RHIZOME_BUNDLE_KEY_STRLEN, bkbytes);
-      if (config.debug.rhizome) DEBUGF("set BK=%s", bkhex);
-      rhizome_manifest_set(m_in, "BK", bkhex);
-    } else
-      return WHY("Failed to set BK");
+  IN();
+  assert(m->haveSecret);
+  switch (m->authorship) {
+    case ANONYMOUS: // there can be no BK field without an author
+    case AUTHOR_UNKNOWN: // we already know the author is not in the keyring
+    case AUTHENTICATION_ERROR: // already tried and failed to get Rhizome Secret
+      break;
+    case AUTHOR_NOT_CHECKED:
+    case AUTHOR_LOCAL:
+    case AUTHOR_AUTHENTIC:
+    case AUTHOR_IMPOSTOR: {
+	/* Set the BK using the provided author.  Serval Security Framework defines BK as being:
+	*    BK = privateKey XOR sha512(RS##BID)
+	* where BID = cryptoSignPublic, 
+	*       RS is the rhizome secret for the specified author. 
+	* The nice thing about this specification is that:
+	*    privateKey = BK XOR sha512(RS##BID)
+	* so the same function can be used to encrypt and decrypt the BK field.
+	*/
+	const unsigned char *rs;
+	size_t rs_len = 0;
+	enum rhizome_secret_disposition d = find_rhizome_secret(&m->author, &rs_len, &rs);
+	switch (d) {
+	  case FOUND_RHIZOME_SECRET: {
+	      rhizome_bk_t bkey;
+	      if (rhizome_secret2bk(&m->cryptoSignPublic, rs, rs_len, bkey.binary, m->cryptoSignSecret) == 0) {
+		rhizome_manifest_set_bundle_key(m, &bkey);
+		m->authorship = AUTHOR_AUTHENTIC;
+		RETURN(1);
+	      } else
+		m->authorship = AUTHENTICATION_ERROR;
+	    }
+	    break;
+	  case IDENTITY_NOT_FOUND:
+	    m->authorship = AUTHOR_UNKNOWN;
+	    break;
+	  case IDENTITY_HAS_NO_RHIZOME_SECRET:
+	    m->authorship = AUTHENTICATION_ERROR;
+	    break;
+	  default:
+	    FATALF("find_rhizome_secret() returned unknown code %d", (int)d);
+	    break;
+	}
+      }
+      break;
+    default:
+      FATALF("m->authorship = %d", (int)m->authorship);
   }
-  return 0;
+  rhizome_manifest_del_bundle_key(m);
+  switch (m->authorship) {
+    case AUTHOR_UNKNOWN:
+      WHYF("Cannot set BK because author=%s is not in keyring", alloca_tohex_sid_t(m->author));
+      break;
+    case AUTHENTICATION_ERROR:
+      WHY("Cannot set BK due to error");
+      break;
+    default:
+      break;
+  }
+  RETURN(0);
 }
 
-int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
+int rhizome_add_manifest(rhizome_manifest *m, int ttl)
 {
   if (config.debug.rhizome)
-    DEBUGF("rhizome_add_manifest(m_in=%p, ttl=%d)",m_in, ttl);
+    DEBUGF("rhizome_add_manifest(m=%p, ttl=%d)",m, ttl);
 
-  if (m_in->finalised==0)
+  if (m->finalised==0)
     return WHY("Manifest must be finalised before being stored");
 
   /* Store time to live, clamped to within legal range */
-  m_in->ttl = ttl < 0 ? 0 : ttl > 254 ? 254 : ttl;
+  m->ttl = ttl < 0 ? 0 : ttl > 254 ? 254 : ttl;
 
-  if (rhizome_manifest_check_sanity(m_in))
+  if (rhizome_manifest_check_sanity(m))
     return -1;
 
-  if (m_in->fileLength && !rhizome_exists(&m_in->filehash))
+  assert(m->filesize != RHIZOME_SIZE_UNSET);
+  if (m->filesize > 0 && !rhizome_exists(&m->filehash))
     return WHY("File has not been imported");
 
   /* If the manifest already has an ID */
-  if (rhizome_bid_t_is_zero(m_in->cryptoSignPublic))
+  if (rhizome_bid_t_is_zero(m->cryptoSignPublic))
     return WHY("Manifest does not have an ID");   
   
   /* Discard the new manifest unless it is newer than the most recent known version with the same ID */
   int64_t storedversion = -1;
-  switch (sqlite_exec_int64(&storedversion, "SELECT version FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &m_in->cryptoSignPublic, END)) {
+  switch (sqlite_exec_int64(&storedversion, "SELECT version FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &m->cryptoSignPublic, END)) {
     case -1:
       return WHY("Select failed");
     case 0:
@@ -268,18 +282,18 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
       break;
     case 1:
       if (config.debug.rhizome) 
-	DEBUGF("Found existing version=%"PRId64", new version=%"PRId64, storedversion, m_in->version);
-      if (m_in->version < storedversion)
+	DEBUGF("Found existing version=%"PRId64", new version=%"PRId64, storedversion, m->version);
+      if (m->version < storedversion)
 	return WHY("Newer version exists");
-      if (m_in->version == storedversion)
-	return WHYF("Already have %s:%"PRId64", not adding", alloca_tohex_rhizome_bid_t(m_in->cryptoSignPublic), m_in->version);
+      if (m->version == storedversion)
+	return WHYF("Already have %s:%"PRId64", not adding", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
       break;
     default:
       return WHY("Select found too many rows!");
   }
 
   /* Okay, it is written, and can be put directly into the rhizome database now */
-  return rhizome_store_bundle(m_in);
+  return rhizome_store_bundle(m);
 }
 
 /* When voice traffic is being carried, we need to throttle Rhizome down

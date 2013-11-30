@@ -27,7 +27,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
 
 /* Android doesn't have log2(), and we don't really need to do floating point
@@ -80,17 +79,18 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
 
   if (!m) { RETURN(WHY("null manifest passed in")); }
 
-  int i;
-
   /* Manifest prefix */
+  unsigned i;
   for(i=0;i<RHIZOME_BAR_PREFIX_BYTES;i++) 
     bar[RHIZOME_BAR_PREFIX_OFFSET+i]=m->cryptoSignPublic.binary[i];
   /* file length */
-  bar[RHIZOME_BAR_FILESIZE_OFFSET]=log2ll(m->fileLength);
+  assert(m->filesize != RHIZOME_SIZE_UNSET);
+  bar[RHIZOME_BAR_FILESIZE_OFFSET]=log2ll(m->filesize);
   /* Version */
   for(i=0;i<7;i++) bar[RHIZOME_BAR_VERSION_OFFSET+6-i]=(m->version>>(8*i))&0xff;
 
-  /* geo bounding box */
+#if 0
+  /* geo bounding box TODO: replace with bounding circle!!! */
   double minLat=rhizome_manifest_get_double(m,"min_lat",-90);
   if (minLat<-90) minLat=-90; if (minLat>90) minLat=90;
   double minLong=rhizome_manifest_get_double(m,"min_long",-180);
@@ -99,6 +99,12 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
   if (maxLat<-90) maxLat=-90; if (maxLat>90) maxLat=90;
   double maxLong=rhizome_manifest_get_double(m,"max_long",+180);
   if (maxLong<-180) maxLong=-180; if (maxLong>180) maxLong=180;  
+#else
+  double minLat = -90;
+  double minLong = -180;
+  double maxLat = +90;
+  double maxLong = +180;
+#endif
   unsigned short v;
   int o=RHIZOME_BAR_GEOBOX_OFFSET;
   v=(minLat+90)*(65535/180); bar[o++]=(v>>8)&0xff; bar[o++]=(v>>0)&0xff;
@@ -162,11 +168,12 @@ static int append_bars(struct overlay_buffer *e, sqlite_retry_state *retry, cons
 	DEBUG("Found a BAR that is the wrong size - ignoring");
       continue;
     }
-    if (ob_append_bytes(e, (unsigned char *)data, blob_bytes)){
+    if (ob_remaining(e) < blob_bytes) {
       // out of room
       count--;
       break;
     }
+    ob_append_bytes(e, (unsigned char *)data, blob_bytes);
     *last_rowid=rowid;
   }
   if (statement)
@@ -178,7 +185,8 @@ static int append_bars(struct overlay_buffer *e, sqlite_retry_state *retry, cons
  Always advertise the most recent 3 manifests in the table, cycle through the rest of the table, adding 17 BAR's at a time
  */
 int64_t bundles_available=0;
-void overlay_rhizome_advertise(struct sched_ent *alarm){
+void overlay_rhizome_advertise(struct sched_ent *alarm)
+{
   bundles_available=0;
   static int64_t bundle_last_rowid=INT64_MAX;
   
@@ -191,7 +199,7 @@ void overlay_rhizome_advertise(struct sched_ent *alarm){
   int (*oldfunc)() = sqlite_set_tracefunc(is_debug_rhizome_ads);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
-  // DEPRECATE REST OF THIS CODE WHICH SEEMS TO BE CAUSING TOO MUCH CHATTER
+  // TODO: DEPRECATE REST OF THIS CODE WHICH SEEMS TO BE CAUSING TOO MUCH CHATTER
   // ESPECIALLY FOR PACKET-RADIO
   goto end;
 
@@ -210,31 +218,28 @@ void overlay_rhizome_advertise(struct sched_ent *alarm){
   frame->source = my_subscriber;
   frame->ttl = 1;
   frame->queue = OQ_OPPORTUNISTIC;
-  frame->payload = ob_new();
+  if ((frame->payload = ob_new()) == NULL) {
+    op_free(frame);
+    goto end;
+  }
   ob_limitsize(frame->payload, 800);
-  
   ob_append_byte(frame->payload, 2);
   ob_append_ui16(frame->payload, rhizome_http_server_port);
-  
   int64_t rowid=0;
   int count = append_bars(frame->payload, &retry, 
 			  "SELECT BAR,ROWID FROM MANIFESTS ORDER BY ROWID DESC LIMIT 3", 
 			  &rowid);
-  
   if (count>=3){
     if (bundle_last_rowid>rowid || bundle_last_rowid<=0)
       bundle_last_rowid=rowid;
-    
     count = append_bars(frame->payload, &retry, 
 			"SELECT BAR,ROWID FROM MANIFESTS WHERE ROWID < ? ORDER BY ROWID DESC LIMIT 17", 
 			&bundle_last_rowid);
     if (count<17)
       bundle_last_rowid=INT64_MAX;
   }
-  
-  if (overlay_payload_enqueue(frame))
+  if (overlay_payload_enqueue(frame) == -1)
     op_free(frame);
-
 end:
   sqlite_set_tracefunc(oldfunc);
   alarm->alarm = gettime_ms()+config.rhizome.advertise.interval;
@@ -256,21 +261,20 @@ int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m){
   else
     frame->ttl = 1;
   frame->queue = OQ_OPPORTUNISTIC;
-  frame->payload = ob_new();
-  
+  if ((frame->payload = ob_new()) == NULL)
+    goto error;
   ob_limitsize(frame->payload, 800);
-  
-  if (ob_append_byte(frame->payload, HAS_PORT|HAS_MANIFESTS)) goto error;
-  if (ob_append_ui16(frame->payload, is_rhizome_http_enabled()?rhizome_http_server_port:0)) goto error;
-  if (ob_append_ui16(frame->payload, m->manifest_all_bytes)) goto error;
-  if (ob_append_bytes(frame->payload, m->manifestdata, m->manifest_all_bytes)) goto error;
+  ob_append_byte(frame->payload, HAS_PORT|HAS_MANIFESTS);
+  ob_append_ui16(frame->payload, is_rhizome_http_enabled()?rhizome_http_server_port:0);
+  ob_append_ui16(frame->payload, m->manifest_all_bytes);
+  ob_append_bytes(frame->payload, m->manifestdata, m->manifest_all_bytes);
   ob_append_byte(frame->payload, 0xFF);
-  if (overlay_payload_enqueue(frame)) goto error;
+  if (overlay_payload_enqueue(frame) == -1)
+    goto error;
   if (config.debug.rhizome_ads)
     DEBUGF("Advertising manifest %s %"PRId64" to %s", 
       alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, dest?alloca_tohex_sid_t(dest->sid):"broadcast");
   return 0;
-  
 error:
   op_free(frame);
   return -1;
@@ -290,7 +294,6 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
   int ad_frame_type=ob_get(f->payload);
   struct sockaddr_in httpaddr = context->addr;
   httpaddr.sin_port = htons(RHIZOME_HTTP_PORT);
-  size_t manifest_length;
   rhizome_manifest *m=NULL;
 
   int (*oldfunc)() = sqlite_set_tracefunc(is_debug_rhizome_ads);
@@ -301,74 +304,66 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
   
   if (ad_frame_type & HAS_MANIFESTS){
     /* Extract whole manifests */
-    while(f->payload->position < f->payload->sizeLimit) {
-      if (ob_getbyte(f->payload, f->payload->position)==0xff){
-	f->payload->position++;
+    while (ob_remaining(f->payload) > 0) {
+      if (ob_peek(f->payload) == 0xff) {
+	ob_skip(f->payload, 1);
 	break;
       }
-	
-      manifest_length = ob_get_ui16(f->payload);
+
+      size_t manifest_length = ob_get_ui16(f->payload);
       if (manifest_length==0) continue;
       
       unsigned char *data = ob_get_bytes_ptr(f->payload, manifest_length);
       if (!data) {
 	WHYF("Illegal manifest length field in rhizome advertisement frame %zu vs %d", 
-	     manifest_length, f->payload->sizeLimit - f->payload->position);
+	     manifest_length, ob_remaining(f->payload));
 	break;
       }
 
-      /* Read manifest without verifying signatures (which would waste lots of
-	 energy, everytime we see a manifest that we already have).
-	 In fact, it would be better here to do a really rough and ready parser
-	 to get the id and version fields out, and avoid the memory copies that
-	 otherwise happen. 
-	 But we do need to make sure that at least one signature is there.
-      */	
-      m = rhizome_new_manifest();
-      if (!m) {
-	WHY("Out of manifests");
+      // Briefly inspect the manifest to see if it looks interesting.
+      struct rhizome_manifest_summary summ;
+      if (!rhizome_manifest_inspect((char *)data, manifest_length, &summ)) {
+	if (config.debug.rhizome_ads)
+	  DEBUG("Ignoring manifest that looks malformed");
 	goto next;
       }
       
-      if (rhizome_read_manifest_file(m, (char *)data, manifest_length) == -1) {
-	WHY("Error parsing manifest body");
-	goto next;
-      }
-      
-      /* trim manifest ID to a prefix for ease of debugging
-	 (that is the only use of this */
-      if (config.debug.rhizome_ads){
-	int64_t version = rhizome_manifest_get_ll(m, "version");
-	DEBUGF("manifest id=%s version=%"PRId64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), version);
-      }
+      if (config.debug.rhizome_ads)
+	DEBUGF("manifest id=%s version=%"PRId64, alloca_tohex_rhizome_bid_t(summ.bid), summ.version);
 
-      /* Crude signature presence test */
-      if (m->manifest_bytes >= m->manifest_all_bytes){
-	// no signature was found when parsing?
-	/* ignore the announcement, but don't ignore other people
-	   offering the same manifest */
+      // If it looks like there is no signature at all, ignore the announcement but don't brown-list
+      // the manifest ID, so that we will still process other offers of the same manifest with
+      // signatures.
+      if (summ.body_len == manifest_length) {
 	if (config.debug.rhizome_ads)
 	  DEBUG("Ignoring manifest announcment with no signature");
 	goto next;
       }
 
-      if (rhizome_ignore_manifest_check(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary)){
+      if (rhizome_ignore_manifest_check(summ.bid.binary, sizeof summ.bid.binary)){
 	/* Ignoring manifest that has caused us problems recently */
 	if (config.debug.rhizome_ads)
-	  DEBUGF("Ignoring manifest with errors: %s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+	  DEBUGF("Ignoring manifest with errors bid=%s", alloca_tohex_rhizome_bid_t(summ.bid));
 	goto next;
       }
 
-      if (m->errors > 0){
-	if (config.debug.rhizome_ads)
-	  DEBUG("Unverified manifest has errors - so not processing any further.");
-	/* Don't waste any time on this manifest in future attempts for at least
-	     a minute. */
+      // The manifest looks potentially interesting, so now do a full parse and validation.
+      if ((m = rhizome_new_manifest()) == NULL)
+	goto next;
+      if (   rhizome_read_manifest_file(m, (char *)data, manifest_length) == -1
+	  || !rhizome_manifest_validate(m)
+      ) {
+	WARN("Malformed manifest");
+	// Don't attend to this manifest for at least a minute
 	rhizome_queue_ignore_manifest(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, 60000);
 	goto next;
       }
-      /* Manifest is okay, so see if it is worth storing */
-
+      assert(m->has_id);
+      assert(m->version != 0);
+      assert(cmp_rhizome_bid_t(&m->cryptoSignPublic, &summ.bid) == 0);
+      assert(m->version == summ.version);
+      assert(m->manifest_body_bytes == summ.body_len);
+      
       // are we already fetching this bundle [or later]?
       rhizome_manifest *mf=rhizome_fetch_search(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary);
       if (mf && mf->version >= m->version)
@@ -479,7 +474,7 @@ next:
     lookup_time = (end_time - start_time);
 
   if (mdp.out.payload_length>0)
-    overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
+    overlay_mdp_dispatch(&mdp, NULL);
 
 end:
   sqlite_set_tracefunc(oldfunc);

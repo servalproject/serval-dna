@@ -47,8 +47,10 @@ set_server_vars() {
       set log.console.show_time on \
       set mdp.iftype.wifi.tick_ms 100 \
       set rhizome.enable No \
-      set debug.overlayinterfaces Yes \
+      set debug.overlayinterfaces No \
+      set debug.overlaybuffer No \
       set debug.packetformats No \
+      set debug.overlayframes No \
       set debug.overlayrouting No \
       set debug.packettx No \
       set debug.packetrx No \

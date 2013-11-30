@@ -57,9 +57,6 @@ struct subscriber{
   
   int max_packet_version;
   
-  // overlay routing information
-  struct overlay_node *node;
-
   // link state routing information
   struct link_state *link_state;
   
@@ -85,7 +82,7 @@ struct subscriber{
   unsigned char sas_valid;
   
   // private keys for local identities
-  keyring_identity *identity;
+  struct keyring_identity *identity;
 };
 
 struct broadcast{
@@ -113,7 +110,9 @@ struct decode_context{
 extern struct subscriber *my_subscriber;
 extern struct subscriber *directory_service;
 
-struct subscriber *find_subscriber(const unsigned char *sid, int len, int create);
+struct subscriber *_find_subscriber(struct __sourceloc, const unsigned char *sid, int len, int create);
+#define find_subscriber(sid, len, create) _find_subscriber(__WHENCE__, sid, len, create)
+
 void enum_subscribers(struct subscriber *start, int(*callback)(struct subscriber *, void *), void *context);
 int set_reachable(struct subscriber *subscriber, struct network_destination *destination, struct subscriber *next_hop);
 int load_subscriber_address(struct subscriber *subscriber);
@@ -122,11 +121,13 @@ int process_explain(struct overlay_frame *frame);
 int overlay_broadcast_drop_check(struct broadcast *addr);
 int overlay_broadcast_generate_address(struct broadcast *addr);
 
-int overlay_broadcast_append(struct overlay_buffer *b, struct broadcast *broadcast);
-int overlay_address_append(struct decode_context *context, struct overlay_buffer *b, struct subscriber *subscriber);
+void overlay_broadcast_append(struct overlay_buffer *b, struct broadcast *broadcast);
+void overlay_address_append(struct decode_context *context, struct overlay_buffer *b, struct subscriber *subscriber);
 
 int overlay_broadcast_parse(struct overlay_buffer *b, struct broadcast *broadcast);
 int overlay_address_parse(struct decode_context *context, struct overlay_buffer *b, struct subscriber **subscriber);
 int send_please_explain(struct decode_context *context, struct subscriber *source, struct subscriber *destination);
+
+void free_subscribers();
 
 #endif

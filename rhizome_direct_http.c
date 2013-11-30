@@ -54,7 +54,7 @@ static void rhizome_direct_clear_temporary_files(rhizome_http_request *r)
   }
 }
 
-int rhizome_direct_import_end(struct http_request *hr)
+static int rhizome_direct_import_end(struct http_request *hr)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
   if (!r->received_manifest) {
@@ -168,7 +168,7 @@ int rhizome_direct_enquiry_end(struct http_request *hr)
   return 0;
 }
 
-int rhizome_direct_addfile_end(struct http_request *hr)
+static int rhizome_direct_addfile_end(struct http_request *hr)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
   // If given a file without a manifest, we should only accept if it we are configured to do so, and
@@ -222,23 +222,22 @@ int rhizome_direct_addfile_end(struct http_request *hr)
       return 0;
     }
     // If manifest template did not specify a service field, then by default it is "file".
-    if (rhizome_manifest_get(m, "service", NULL, 0) == NULL)
-      rhizome_manifest_set(m, "service", RHIZOME_SERVICE_FILE);
-    sid_t *author = NULL;
-    if (!is_sid_t_any(config.rhizome.api.addfile.default_author))
-      author = &config.rhizome.api.addfile.default_author;
-    rhizome_bk_t bsk = config.rhizome.api.addfile.bundle_secret_key;
-    if (rhizome_fill_manifest(m, r->data_file_name, author, &bsk)) {
+    if (!rhizome_is_bk_none(&config.rhizome.api.addfile.bundle_secret_key))
+      rhizome_apply_bundle_secret(m, &config.rhizome.api.addfile.bundle_secret_key);
+    if (m->service == NULL)
+      rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
+    const sid_t *author = is_sid_t_any(config.rhizome.api.addfile.default_author) ? NULL : &config.rhizome.api.addfile.default_author;
+    if (rhizome_fill_manifest(m, r->data_file_name, author)) {
       rhizome_manifest_free(m);
       rhizome_direct_clear_temporary_files(r);
       http_request_simple_response(&r->http, 500, "Internal Error: Could not fill manifest");
       return 0;
     }
-    m->payloadEncryption=0;
-    rhizome_manifest_set_ll(m,"crypt",m->payloadEncryption?1:0);
+    rhizome_manifest_set_crypt(m, PAYLOAD_CLEAR);
     // import file contents
     // TODO, stream file into database
-    if (m->fileLength) {
+    assert(m->filesize != RHIZOME_SIZE_UNSET);
+    if (m->filesize > 0) {
       if (rhizome_add_file(m, payload_path)) {
 	rhizome_manifest_free(m);
 	rhizome_direct_clear_temporary_files(r);
@@ -258,7 +257,7 @@ int rhizome_direct_addfile_end(struct http_request *hr)
     if (config.debug.rhizome)
       DEBUGF("Import sans-manifest appeared to succeed");
     /* Respond with the manifest that was added. */
-    http_request_response_static(&r->http, 200, "text/plain", (const char *)m->manifestdata, m->manifest_bytes);
+    http_request_response_static(&r->http, 200, "text/plain", (const char *)m->manifestdata, m->manifest_all_bytes);
     /* clean up after ourselves */
     if (mout && mout != m)
       rhizome_manifest_free(mout);
@@ -271,14 +270,14 @@ int rhizome_direct_addfile_end(struct http_request *hr)
   }
 }
 
-void rhizome_direct_process_mime_start(struct http_request *hr)
+static void rhizome_direct_process_mime_start(struct http_request *hr)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
   assert(r->current_part == NONE);
   assert(r->part_fd == -1);
 }
 
-void rhizome_direct_process_mime_end(struct http_request *hr)
+static void rhizome_direct_process_mime_end(struct http_request *hr)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
   if (r->part_fd != -1) {
@@ -302,19 +301,19 @@ void rhizome_direct_process_mime_end(struct http_request *hr)
   r->current_part = NONE;
 }
 
-void rhizome_direct_process_mime_content_disposition(struct http_request *hr, const struct mime_content_disposition *cd)
+static void rhizome_direct_process_mime_part_header(struct http_request *hr, const struct mime_part_headers *h)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
-  if (strcmp(cd->name, "data") == 0) {
+  if (strcmp(h->content_disposition.name, "data") == 0) {
     r->current_part = DATA;
-    strncpy(r->data_file_name, cd->filename, sizeof r->data_file_name)[sizeof r->data_file_name - 1] = '\0';
+    strncpy(r->data_file_name, h->content_disposition.filename, sizeof r->data_file_name)[sizeof r->data_file_name - 1] = '\0';
   }
-  else if (strcmp(cd->name, "manifest") == 0) {
+  else if (strcmp(h->content_disposition.name, "manifest") == 0) {
     r->current_part = MANIFEST;
   } else
     return;
   char path[512];
-  if (form_temporary_file_path(r, path, cd->name) == -1) {
+  if (form_temporary_file_path(r, path, h->content_disposition.name) == -1) {
     http_request_simple_response(&r->http, 500, "Internal Error: Buffer overrun");
     return;
   }
@@ -325,7 +324,7 @@ void rhizome_direct_process_mime_content_disposition(struct http_request *hr, co
   }
 }
 
-void rhizome_direct_process_mime_body(struct http_request *hr, const char *buf, size_t len)
+static void rhizome_direct_process_mime_body(struct http_request *hr, const char *buf, size_t len)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
   if (r->part_fd != -1) {
@@ -344,7 +343,7 @@ int rhizome_direct_import(rhizome_http_request *r, const char *remainder)
   }
   r->http.form_data.handle_mime_part_start = rhizome_direct_process_mime_start;
   r->http.form_data.handle_mime_part_end = rhizome_direct_process_mime_end;
-  r->http.form_data.handle_mime_content_disposition = rhizome_direct_process_mime_content_disposition;
+  r->http.form_data.handle_mime_part_header = rhizome_direct_process_mime_part_header;
   r->http.form_data.handle_mime_body = rhizome_direct_process_mime_body;
   r->http.handle_content_end = rhizome_direct_import_end;
   r->current_part = NONE;
@@ -361,7 +360,7 @@ int rhizome_direct_enquiry(rhizome_http_request *r, const char *remainder)
   }
   r->http.form_data.handle_mime_part_start = rhizome_direct_process_mime_start;
   r->http.form_data.handle_mime_part_end = rhizome_direct_process_mime_end;
-  r->http.form_data.handle_mime_content_disposition = rhizome_direct_process_mime_content_disposition;
+  r->http.form_data.handle_mime_part_header = rhizome_direct_process_mime_part_header;
   r->http.form_data.handle_mime_body = rhizome_direct_process_mime_body;
   r->http.handle_content_end = rhizome_direct_enquiry_end;
   r->current_part = NONE;
@@ -394,7 +393,7 @@ int rhizome_direct_addfile(rhizome_http_request *r, const char *remainder)
   }
   r->http.form_data.handle_mime_part_start = rhizome_direct_process_mime_start;
   r->http.form_data.handle_mime_part_end = rhizome_direct_process_mime_end;
-  r->http.form_data.handle_mime_content_disposition = rhizome_direct_process_mime_content_disposition;
+  r->http.form_data.handle_mime_part_header = rhizome_direct_process_mime_part_header;
   r->http.form_data.handle_mime_body = rhizome_direct_process_mime_body;
   r->http.handle_content_end = rhizome_direct_addfile_end;
   r->current_part = NONE;
@@ -637,12 +636,10 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	/* Get filehash and size from manifest if present */
 	if (config.debug.rhizome_tx) {
 	  DEBUGF("bundle id = %s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
-	  DEBUGF("bundle filehash = '%s'", alloca_tohex_rhizome_filehash_t(m->filehash));
-	  DEBUGF("file size = %"PRId64, m->fileLength);
+	  DEBUGF("bundle filehash = %s", alloca_tohex_rhizome_filehash_t(m->filehash));
+	  DEBUGF("file size = %"PRId64, m->filesize);
+	  DEBUGF("version = %"PRId64, m->version);
 	}
-	int64_t version = rhizome_manifest_get_ll(m, "version");
-	if (config.debug.rhizome_tx)
-	  DEBUGF("version = %"PRId64,version);
 
 	/* We now have everything we need to compose the POST request and send it.
 	 */
@@ -661,15 +658,16 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  "\r\n";
 	/* Work out what the content length should be */
 	if (config.debug.rhizome_tx)
-	  DEBUGF("manifest_all_bytes=%d, manifest_bytes=%d", m->manifest_all_bytes,m->manifest_bytes);
-	int content_length
-	  =strlen(template2)-2 /* minus 2 for the "%s" that gets replaced */
-	  +strlen(boundary)
-	  +m->manifest_all_bytes
-	  +strlen(template3)-2 /* minus 2 for the "%s" that gets replaced */
-	  +strlen(boundary)
-	  +m->fileLength
-	  +strlen("\r\n--")+strlen(boundary)+strlen("--\r\n");
+	  DEBUGF("manifest_all_bytes=%u, manifest_body_bytes=%u", m->manifest_all_bytes, m->manifest_body_bytes);
+	assert(m->filesize != RHIZOME_SIZE_UNSET);
+	size_t content_length =
+	    strlen(template2) - 2 /* minus 2 for the "%s" that gets replaced */
+	  + strlen(boundary)
+	  + m->manifest_all_bytes
+	  + strlen(template3) - 2 /* minus 2 for the "%s" that gets replaced */
+	  + strlen(boundary)
+	  + m->filesize
+	  + strlen("\r\n--") + strlen(boundary) + strlen("--\r\n");
 
 	int len=snprintf(buffer,8192,template,content_length,boundary);
 	len+=snprintf(&buffer[len],8192-len,template2,boundary);
@@ -705,7 +703,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	/* send file contents */
 	{
 	  rhizome_filehash_t filehash;
-	  if (rhizome_database_filehash_from_id(&m->cryptoSignPublic, version, &filehash) == -1)
+	  if (rhizome_database_filehash_from_id(&m->cryptoSignPublic, m->version, &filehash) == -1)
 	    goto closeit;
 
 	  struct rhizome_read read;
@@ -713,28 +711,26 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  if (rhizome_open_read(&read, &filehash))
 	    goto closeit;
 
-	  int64_t read_ofs;
-	  for(read_ofs=0;read_ofs<m->fileLength;){
+	  uint64_t read_ofs;
+	  for(read_ofs=0;read_ofs<m->filesize;){
 	    unsigned char buffer[4096];
 	    read.offset=read_ofs;
-	    int bytes_read = rhizome_read(&read, buffer, sizeof buffer);
-	    if (bytes_read<0){
+	    ssize_t bytes_read = rhizome_read(&read, buffer, sizeof buffer);
+	    if (bytes_read == -1) {
 	      rhizome_read_close(&read);
 	      goto closeit;
 	    }
-
-	    int write_ofs=0;
-	    while(write_ofs < bytes_read){
-	      int written = write(sock, buffer + write_ofs, bytes_read - write_ofs);
-	      if (written<0){
+	    size_t write_ofs = 0;
+	    while (write_ofs < (size_t) bytes_read){
+	      ssize_t written = write(sock, buffer + write_ofs, (size_t) bytes_read - write_ofs);
+	      if (written == -1){
 		WHY_perror("write");
 		rhizome_read_close(&read);
 		goto closeit;
 	      }
-	      write_ofs+=written;
+	      write_ofs += (size_t) written;
 	    }
-
-	    read_ofs+=bytes_read;
+	    read_ofs += (size_t) bytes_read;
 	  }
 	  rhizome_read_close(&read);
 	}

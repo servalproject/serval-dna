@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "str.h"
+#include "keyring.h"
 
 static char rhizome_thisdatastore_path[256];
 
@@ -75,7 +76,8 @@ int create_rhizome_datastore_dir()
   return emkdirs(rhizome_datastore_path(), 0700);
 }
 
-sqlite3 *rhizome_db=NULL;
+sqlite3 *rhizome_db = NULL;
+uuid_t rhizome_db_uuid;
 
 /* XXX Requires a messy join that might be slow. */
 int rhizome_manifest_priority(sqlite_retry_state *retry, const rhizome_bid_t *bidp)
@@ -106,11 +108,32 @@ int is_debug_rhizome_ads()
 
 static int (*sqlite_trace_func)() = is_debug_rhizome;
 const struct __sourceloc *sqlite_trace_whence = NULL;
+static int sqlite_trace_done;
 
+/* This is called by SQLite when executing a statement using sqlite3_step().  Unfortunately, it is
+ * not called on PRAGMA statements, and possibly others.  Hence the use of the profile callback (see
+ * below).
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 static void sqlite_trace_callback(void *context, const char *rendered_sql)
 {
   if (sqlite_trace_func())
     logMessage(LOG_LEVEL_DEBUG, sqlite_trace_whence ? *sqlite_trace_whence : __HERE__, "%s", rendered_sql);
+  ++sqlite_trace_done;
+}
+
+/* This is called by SQLite when an executed statement finishes.  We use it to log rendered SQL
+ * statements when the trace callback (above) has not been called, eg, for PRAGMA statements.  This
+ * requires that the 'sqlite_trace_done' static be reset to zero whenever a new prepared statement
+ * is about to be stepped.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+static void sqlite_profile_callback(void *context, const char *rendered_sql, sqlite_uint64 nanosec)
+{
+  if (!sqlite_trace_done)
+    sqlite_trace_callback(context, rendered_sql);
 }
 
 /* This function allows code like:
@@ -141,33 +164,31 @@ void sqlite_log(void *ignored, int result, const char *msg)
   WARNF("Sqlite: %d %s", result, msg);
 }
 
-void verify_bundles(){
+void verify_bundles()
+{
   // assume that only the manifest itself can be trusted
   // fetch all manifests and reinsert them.
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   // This cursor must be ordered descending as re-inserting the manifests will give them a new higher manifest id.
   // If we didn't, we'd get stuck in an infinite loop.
   sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT ROWID, MANIFEST FROM MANIFESTS ORDER BY ROWID DESC;");
-  while(sqlite_step_retry(&retry, statement)==SQLITE_ROW){
+  while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     sqlite3_int64 rowid = sqlite3_column_int64(statement, 0);
     const void *manifest = sqlite3_column_blob(statement, 1);
     size_t manifest_length = sqlite3_column_bytes(statement, 1);
-    
     rhizome_manifest *m=rhizome_new_manifest();
-    int ret=0;
-    ret = rhizome_read_manifest_file(m, manifest, manifest_length);
-    if (ret==0 && m->errors)
-      ret=-1;
-    if (ret==0)
-      ret=rhizome_manifest_verify(m);
-    if (ret==0){
-      m->finalised=1;
-      m->manifest_bytes=m->manifest_all_bytes;
-      // store it again, to ensure it is valid and stored correctly with matching file content.
-      ret=rhizome_store_bundle(m);
+    int ret = -1;
+    if (   rhizome_read_manifest_file(m, manifest, manifest_length) == 0
+	&& rhizome_manifest_validate(m)
+	&& rhizome_manifest_verify(m)
+    ) {
+      assert(m->finalised);
+      // Store it again, to ensure that MANIFESTS columns are up to date.
+      ret = rhizome_store_bundle(m);
     }
-    if (ret!=0){
-      DEBUGF("Removing invalid manifest entry @%lld", rowid);
+    if (ret) {
+      if (config.debug.rhizome)
+	DEBUGF("Removing invalid manifest entry @%lld", rowid);
       sqlite_exec_void_retry(&retry, "DELETE FROM MANIFESTS WHERE ROWID = ?;", INT64, rowid, END);
     }
     rhizome_manifest_free(m);
@@ -176,20 +197,25 @@ void verify_bundles(){
 }
 
 /*
- * The MANIFESTS table 'author' column records the cryptographically verified SID of the author
- * that has write permission on the bundle, ie, possesses the Rhizome secret key that generated the
- * BID, and hence can derive the Bundle Secret from the bundle's BK field:
- * - The MANIFESTS table 'author' column is set to the author SID when a bundle is created
- *   locally by a non-secret identity, so no verification need be performed for one's own
- *   bundles while they remain in the Rhizome store.
- * - When a bundle is imported, the 'author' column is set to NULL to indicate that no
- *   verification has passed yet.  This includes one's own bundles that have been purged from
- *   the local Rhizome store then recovered from a remote Rhizome node.
- * - When a manifest with NULL 'author' is examined closely, ie extracted, not merely
- *   listed, the keyring is searched for an identity that is the author.  If an author is
- *   found, the MANIFESTS table 'author' column is updated.  This allows one to regain the
- *   ability to overwrite one's own bundles that have been lost but recovered from an exterior
- *   Rhizome node.
+ * The MANIFESTS table 'author' column records the cryptographically verified SID of the author that
+ * has write permission on the bundle, ie, possesses the Rhizome secret key that generated the BID,
+ * and hence can derive the Bundle Secret from the bundle's BK field:
+ *
+ * - The MANIFESTS table 'author' column is set to the author SID when a bundle is created locally
+ *   by a non-secret identity, so no verification need be performed for one's own bundles while they
+ *   remain in the local Rhizome store.
+ *
+ * - When a bundle is imported, the 'author' column is set to NULL to indicate that no verification
+ *   has passed yet.  This includes one's own bundles that have been purged from the local Rhizome
+ *   store then recovered from a remote Rhizome node.
+ *
+ * - When a manifest with NULL 'author' is examined closely, ie extracted, not merely listed, the
+ *   keyring is searched for an identity that is the author.  If the identity is found and its
+ *   Rhizome Secret unlocks the Bundle Key (ie, reveals a Bundle Secret that yields the Bundle's ID
+ *   as its public key), the MANIFESTS table 'author' column is updated.  This allows one to regain
+ *   the ability to overwrite one's own bundles that have been lost but
+ *   recovered from an exterior Rhizome node.
+ *
  * - The above check automates the "own bundle recovery" mechanism at the expense of a CPU-heavy
  *   cryptographic check every time a foreign bundle is examined, but at least listing is fast.
  *   This will not scale as many identities are added to the keyring.  It will eventually have to be
@@ -201,7 +227,10 @@ void verify_bundles(){
 
 int rhizome_opendb()
 {
-  if (rhizome_db) return 0;
+  if (rhizome_db) {
+    assert(uuid_is_valid(&rhizome_db_uuid));
+    return 0;
+  }
 
   IN();
   
@@ -226,6 +255,7 @@ int rhizome_opendb()
     RETURN(WHYF("SQLite could not open database %s: %s", dbpath, sqlite3_errmsg(rhizome_db)));
   }
   sqlite3_trace(rhizome_db, sqlite_trace_callback, NULL);
+  sqlite3_profile(rhizome_db, sqlite_profile_callback, NULL);
   int loglevel = (config.debug.rhizome) ? LOG_LEVEL_DEBUG : LOG_LEVEL_SILENT;
 
   /* Read Rhizome configuration */
@@ -251,11 +281,9 @@ int rhizome_opendb()
     ) {
       RETURN(WHY("Failed to create schema"));
     }
-
     /* Create indexes if they don't already exist */
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS bundlesizeindex ON manifests (filesize);", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);", END);
-    
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=1;", END);
   }
   if (version<2){
@@ -267,26 +295,52 @@ int rhizome_opendb()
     verify_bundles();
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=2;", END);
   }
-  
   if (version<3){
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_ID_VERSION ON MANIFESTS(id, version);", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=3;", END);
   }
-  
   if (version<4){
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN tail integer;", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=4;", END);
   }
-  
+  if (version<5){
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE TABLE IF NOT EXISTS IDENTITY(uuid text not null); ", END);
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=5;", END);
+  }
+
+  char buf[UUID_STRLEN + 1];
+  int r = sqlite_exec_strbuf_retry(&retry, strbuf_local(buf, sizeof buf), "SELECT uuid from IDENTITY LIMIT 1;", END);
+  if (r == -1)
+    RETURN(-1);
+  if (r) {
+    if (!str_to_uuid(buf, &rhizome_db_uuid, NULL)) {
+      WHYF("IDENTITY table contains malformed UUID %s -- overwriting", alloca_str_toprint(buf));
+      if (uuid_generate_random(&rhizome_db_uuid) == -1)
+	RETURN(WHY("Cannot generate new UUID for Rhizome database"));
+      if (sqlite_exec_void_retry(&retry, "UPDATE IDENTITY SET uuid = ? LIMIT 1;", UUID_T, &rhizome_db_uuid, END) == -1)
+	RETURN(WHY("Failed to update new UUID in Rhizome database"));
+      if (config.debug.rhizome)
+	DEBUGF("Updated Rhizome database UUID to %s", alloca_uuid_str(rhizome_db_uuid));
+    }
+  } else if (r == 0) {
+    if (uuid_generate_random(&rhizome_db_uuid) == -1)
+      RETURN(WHY("Cannot generate UUID for Rhizome database"));
+    if (sqlite_exec_void_retry(&retry, "INSERT INTO IDENTITY (uuid) VALUES (?);", UUID_T, &rhizome_db_uuid, END) == -1)
+      RETURN(WHY("Failed to insert UUID into Rhizome database"));
+    if (config.debug.rhizome)
+      DEBUGF("Set Rhizome database UUID to %s", alloca_uuid_str(rhizome_db_uuid));
+  }
+
   // TODO recreate tables with collate nocase on hex columns
-  
+
   /* Future schema updates should be performed here. 
    The above schema can be assumed to exist.
    All changes should attempt to preserve any existing data */
-  
+
   // We can't delete a file that is being transferred in another process at this very moment...
   if (config.rhizome.clean_on_open)
     rhizome_cleanup(NULL);
+  INFOF("Opened Rhizome database %s, UUID=%s", dbpath, alloca_uuid_str(rhizome_db_uuid));
   RETURN(0);
   OUT();
 }
@@ -437,6 +491,7 @@ sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, int log_level, sqlite
   while (1) {
     switch (sqlite3_prepare_v2(rhizome_db, sqltext, -1, &statement, NULL)) {
       case SQLITE_OK:
+	sqlite_trace_done = 0;
 	RETURN(statement);
       case SQLITE_BUSY:
       case SQLITE_LOCKED:
@@ -504,7 +559,7 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
       return -1;
     }
 #define BIND_DEBUG(TYP,FUNC,ARGFMT,...) \
-	if (config.debug.rhizome_bind) \
+	if (config.debug.rhizome_sql_bind) \
 	  DEBUGF("%s%s %s(%d," ARGFMT ") %s", #TYP, strbuf_str(ext), #FUNC, index, ##__VA_ARGS__, sqlite3_sql(statement))
 #define BIND_RETRY(FUNC, ...) \
 	do { \
@@ -684,10 +739,10 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	      if (hashp == NULL) {
 		BIND_NULL(RHIZOME_FILEHASH_T);
 	      } else {
-		char hash_hex[RHIZOME_FILEHASH_STRLEN];
-		tohex(hash_hex, sizeof hash_hex, hashp->binary);
-		BIND_DEBUG(RHIZOME_FILEHASH_T, sqlite3_bind_text, "%s,%zu,SQLITE_TRANSIENT", hash_hex, sizeof hash_hex);
-		BIND_RETRY(sqlite3_bind_text, hash_hex, sizeof hash_hex, SQLITE_TRANSIENT);
+		char hash_hex[RHIZOME_FILEHASH_STRLEN + 1];
+		tohex(hash_hex, RHIZOME_FILEHASH_STRLEN, hashp->binary);
+		BIND_DEBUG(RHIZOME_FILEHASH_T, sqlite3_bind_text, "%s,%u,SQLITE_TRANSIENT", hash_hex, RHIZOME_FILEHASH_STRLEN);
+		BIND_RETRY(sqlite3_bind_text, hash_hex, RHIZOME_FILEHASH_STRLEN, SQLITE_TRANSIENT);
 	      }
 	    }
 	    break;
@@ -731,6 +786,19 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 		  upper[i] = toupper(text[i]);
 		BIND_DEBUG(TEXT_LEN_TOUPPER, sqlite3_bind_text, "%s,%u,SQLITE_TRANSIENT", alloca_toprint(-1, upper, bytes), bytes);
 		BIND_RETRY(sqlite3_bind_text, upper, bytes, SQLITE_TRANSIENT);
+	      }
+	    }
+	    break;
+	  case UUID_T: {
+	      const uuid_t *uuidp = va_arg(ap, const uuid_t *);
+	      ++argnum;
+	      if (uuidp == NULL) {
+		BIND_NULL(UUID_T);
+	      } else {
+		char uuid_str[UUID_STRLEN + 1];
+		uuid_to_str(uuidp, uuid_str);
+		BIND_DEBUG(UUID_T, sqlite3_bind_text, "%s,%u,SQLITE_TRANSIENT", uuid_str, UUID_STRLEN);
+		BIND_RETRY(sqlite3_bind_text, uuid_str, UUID_STRLEN, SQLITE_TRANSIENT);
 	      }
 	    }
 	    break;
@@ -1270,49 +1338,32 @@ int rhizome_drop_stored_file(const rhizome_filehash_t *hashp, int maximum_priori
  */
 int rhizome_store_bundle(rhizome_manifest *m)
 {
-  if (!m->finalised) return WHY("Manifest was not finalised");
+  if (!m->finalised)
+    return WHY("Manifest was not finalised");
 
-  if (m->haveSecret) {
-    /* We used to store the secret in the database, but we don't anymore, as we use 
-     the BK field in the manifest. So nothing to do here. */
-  } else {
-    /* We don't have the secret for this manifest, so only allow updates if 
-     the self-signature is valid */
-    if (!m->selfSigned)
-      return WHY("Manifest is not signed, and I don't have the key.  Manifest might be forged or corrupt.");
-  }
+  // If we don't have the secret for this manifest, only store it if its self-signature is valid
+  if (!m->haveSecret && !m->selfSigned)
+    return WHY("Manifest is not signed, and I don't have the key.  Manifest might be forged or corrupt.");
 
   /* Bind BAR to data field */
   unsigned char bar[RHIZOME_BAR_BYTES];
   rhizome_manifest_to_bar(m,bar);
 
   /* Store the file (but not if it is already in the database) */
-  if (m->fileLength > 0 && !rhizome_exists(&m->filehash))
+  assert(m->filesize != RHIZOME_SIZE_UNSET);
+  if (m->filesize > 0 && !rhizome_exists(&m->filehash))
     return WHY("File should already be stored by now");
-
-  const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-  const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-
-  sid_t *sender = NULL;
-  const char *sender_field = rhizome_manifest_get(m, "sender", NULL, 0);
-  if (sender_field) {
-    sender = (sid_t *) alloca(sizeof *sender);
-    if (str_to_sid_t(sender, sender_field) == -1)
-      return WHYF("invalid field in manifest bid=%s: sender=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), alloca_str_toprint(sender_field));
-  }
-
-  sid_t *recipient = NULL;
-  const char *recipient_field = rhizome_manifest_get(m, "recipient", NULL, 0);
-  if (recipient_field) {
-    recipient = (sid_t *) alloca(sizeof *recipient);
-    if (str_to_sid_t(recipient, recipient_field) == -1)
-      return WHYF("invalid field in manifest bid=%s: recipient=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), alloca_str_toprint(recipient_field));
-  }
 
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1)
     return WHY("Failed to begin transaction");
 
+  time_ms_t now = gettime_ms();
+
+  // The INSERT OR REPLACE statement will delete a row with the same ID (primary key) if it exists,
+  // so a new autoincremented ROWID will be allocated whether or not the manifest with this ID is
+  // already in the table.  Other code depends on this property: that ROWID is monotonically
+  // increasing with time and unique.
   sqlite3_stmt *stmt;
   if ((stmt = sqlite_prepare_bind(&retry,
 	"INSERT OR REPLACE INTO MANIFESTS("
@@ -1333,18 +1384,19 @@ int rhizome_store_bundle(rhizome_manifest *m)
 	  "?,?,?,?,?,?,?,?,?,?,?,?,?"
 	");",
 	RHIZOME_BID_T, &m->cryptoSignPublic,
-	STATIC_BLOB, m->manifestdata, m->manifest_bytes,
+	STATIC_BLOB, m->manifestdata, m->manifest_all_bytes,
 	INT64, m->version,
-	INT64, (int64_t) gettime_ms(),
+	INT64, (int64_t) now,
 	STATIC_BLOB, bar, RHIZOME_BAR_BYTES,
-	INT64, m->fileLength,
-	RHIZOME_FILEHASH_T|NUL, m->fileLength > 0 ? &m->filehash : NULL,
-	SID_T|NUL, is_sid_t_any(m->author) ? NULL : &m->author,
-	STATIC_TEXT, service,
-	STATIC_TEXT|NUL, name,
-	SID_T|NUL, sender,
-	SID_T|NUL, recipient,
-	INT64, m->journalTail,
+	INT64, m->filesize,
+	RHIZOME_FILEHASH_T|NUL, m->filesize > 0 ? &m->filehash : NULL,
+	// Only store the author if it is known to be authentic.
+	SID_T|NUL, m->authorship == AUTHOR_AUTHENTIC ? &m->author : NULL,
+	STATIC_TEXT, m->service,
+	STATIC_TEXT|NUL, m->name,
+	SID_T|NUL, m->has_sender ? &m->sender : NULL,
+	SID_T|NUL, m->has_recipient ? &m->recipient : NULL,
+	INT64, m->tail,
 	END
       )
   ) == NULL)
@@ -1353,12 +1405,15 @@ int rhizome_store_bundle(rhizome_manifest *m)
     goto rollback;
   sqlite3_finalize(stmt);
   stmt = NULL;
+  rhizome_manifest_set_rowid(m, sqlite3_last_insert_rowid(rhizome_db));
+  rhizome_manifest_set_inserttime(m, now);
 
 //  if (serverMode)
 //    rhizome_sync_bundle_inserted(bar);
 
   // TODO remove old payload?
   
+#if 0
   if (rhizome_manifest_get(m,"isagroup",NULL,0)!=NULL) {
     int closed=rhizome_manifest_get_ll(m,"closedgroup");
     if (closed<1) closed=0;
@@ -1380,11 +1435,13 @@ int rhizome_store_bundle(rhizome_manifest *m)
     sqlite3_finalize(stmt);
     stmt = NULL;
   }
+#endif
 
+#if 0
   if (m->group_count > 0) {
     if ((stmt = sqlite_prepare(&retry, "INSERT OR REPLACE INTO GROUPMEMBERSHIPS (manifestid, groupid) VALUES (?, ?);")) == NULL)
       goto rollback;
-    int i;
+    unsigned i;
     for (i=0;i<m->group_count;i++){
       if (sqlite_bind(&retry, stmt, RHIZOME_BID_T, &m->cryptoSignPublic, TEXT, m->groups[i]) == -1)
 	goto rollback;
@@ -1395,14 +1452,15 @@ int rhizome_store_bundle(rhizome_manifest *m)
     sqlite3_finalize(stmt);
     stmt = NULL;
   }
+#endif
+
   if (sqlite_exec_void_retry(&retry, "COMMIT;", END) != -1){
     // This message used in tests; do not modify or remove.
-    const char *service = rhizome_manifest_get(m, "service", NULL, 0);
     INFOF("RHIZOME ADD MANIFEST service=%s bid=%s version=%"PRId64,
-	  service ? service : "NULL",
+	  m->service ? m->service : "NULL",
 	  alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
 	  m->version
-	  );
+	);
     monitor_announce_bundle(m);
     if (serverMode)
       rhizome_sync_announce();
@@ -1416,183 +1474,188 @@ rollback:
   return -1;
 }
 
-int rhizome_list_manifests(struct cli_context *context, const char *service, const char *name, 
-			   const char *sender_sid, const char *recipient_sid, 
-			   int limit, int offset, char count_rows)
+/* The cursor struct must be zerofilled and the query parameters optionally filled in prior to
+ * calling this function.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_list_open(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
 {
+  if (config.debug.rhizome)
+    DEBUGF("c=%p c->service=%s c->name=%s c->sender=%s c->recipient=%s c->rowid_since=%"PRIu64" c->_rowid_last=%"PRIu64,
+	c,
+	alloca_str_toprint(c->service),
+	alloca_str_toprint(c->name),
+	c->is_sender_set ? alloca_tohex_sid_t(c->sender) : "UNSET",
+	c->is_recipient_set ? alloca_tohex_sid_t(c->recipient) : "UNSET",
+	c->rowid_since,
+	c->_rowid_last
+      );
   IN();
   strbuf b = strbuf_alloca(1024);
   strbuf_sprintf(b, "SELECT id, manifest, version, inserttime, author, rowid FROM manifests WHERE 1=1");
-  
-  if (service && *service)
-    strbuf_sprintf(b, " AND service = ?1");
-  if (name && *name)
-    strbuf_sprintf(b, " AND name like ?2");
-  if (sender_sid && *sender_sid)
-    strbuf_sprintf(b, " AND sender = ?3");
-  if (recipient_sid && *recipient_sid)
-    strbuf_sprintf(b, " AND recipient = ?4");
-  
-  strbuf_sprintf(b, " ORDER BY inserttime DESC");
-  
-  if (offset)
-    strbuf_sprintf(b, " OFFSET %u", offset);
-  
+  if (c->service)
+    strbuf_puts(b, " AND service = @service");
+  if (c->name)
+    strbuf_puts(b, " AND name like @name");
+  if (c->is_sender_set)
+    strbuf_puts(b, " AND sender = @sender");
+  if (c->is_recipient_set)
+    strbuf_puts(b, " AND recipient = @recipient");
+  if (c->rowid_since) {
+    strbuf_puts(b, " AND rowid > @last ORDER BY rowid ASC"); // oldest first
+    if (c->_rowid_last < c->rowid_since)
+      c->_rowid_last = c->rowid_since;
+  } else {
+    if (c->_rowid_last)
+      strbuf_puts(b, " AND rowid < @last");
+    strbuf_puts(b, " ORDER BY rowid DESC"); // most recent first
+  }
   if (strbuf_overrun(b))
     RETURN(WHYF("SQL command too long: %s", strbuf_str(b)));
-  
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, strbuf_str(b));
-  if (!statement)
+  c->_statement = sqlite_prepare(retry, strbuf_str(b));
+  if (c->_statement == NULL)
     RETURN(-1);
-  
-  int ret = 0;
-  
-  if (service && *service)
-    ret = sqlite3_bind_text(statement, 1, service, -1, SQLITE_STATIC);
-  if (ret==SQLITE_OK && name && *name)
-    ret = sqlite3_bind_text(statement, 2, name, -1, SQLITE_STATIC);
-  if (ret==SQLITE_OK && sender_sid && *sender_sid)
-    ret = sqlite3_bind_text(statement, 3, sender_sid, -1, SQLITE_STATIC);
-  if (ret==SQLITE_OK && recipient_sid && *recipient_sid)
-    ret = sqlite3_bind_text(statement, 4, recipient_sid, -1, SQLITE_STATIC);
-  
-  if (ret!=SQLITE_OK){
-    ret = WHYF("Failed to bind parameters: %s", sqlite3_errmsg(rhizome_db));
-    goto cleanup;
-  }
-  
-  ret=0;
-  size_t rows = 0;
-  
-  const char *names[]={
-    "_id",
-    "service",
-    "id",
-    "version",
-    "date",
-    ".inserttime",
-    ".author",
-    ".fromhere",
-    "filesize",
-    "filehash",
-    "sender",
-    "recipient",
-    "name"
-  };
-  cli_columns(context, 13, names);
-  
-  while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
-    ++rows;
-    if (limit>0 && rows>limit)
-      break;
-    if (!(   sqlite3_column_count(statement) == 6
-	  && sqlite3_column_type(statement, 0) == SQLITE_TEXT
-	  && sqlite3_column_type(statement, 1) == SQLITE_BLOB
-	  && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
-	  && sqlite3_column_type(statement, 3) == SQLITE_INTEGER
-	  && (	sqlite3_column_type(statement, 4) == SQLITE_TEXT
-	     || sqlite3_column_type(statement, 4) == SQLITE_NULL
-	     )
-    )) { 
-      ret = WHY("Incorrect statement column");
-      break;
-    }
-    rhizome_manifest *m = rhizome_new_manifest();
-    if (m == NULL) {
-      ret = WHY("Out of manifests");
-      break;
-    }
-    const char *q_manifestid = (const char *) sqlite3_column_text(statement, 0);
-    const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
-    size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
-    int64_t q_version = sqlite3_column_int64(statement, 2);
-    int64_t q_inserttime = sqlite3_column_int64(statement, 3);
-    const char *q_author = (const char *) sqlite3_column_text(statement, 4);
-    int64_t rowid = sqlite3_column_int64(statement, 5);
-    
-    if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize) == -1) {
-      WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
-    } else {
-      int64_t blob_version = rhizome_manifest_get_ll(m, "version");
-      if (blob_version != q_version)
-	WARNF("MANIFESTS row id=%s version=%"PRId64" does not match manifest blob.version=%"PRId64, 
-	  q_manifestid, q_version, blob_version);
-      int match = 1;
-      
-      const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
-      if (service[0] && !(blob_service && strcasecmp(service, blob_service) == 0))
-	match = 0;
-      const char *blob_sender = rhizome_manifest_get(m, "sender", NULL, 0);
-      const char *blob_recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
-      if (match && sender_sid[0]) {
-	if (!(blob_sender && strcasecmp(sender_sid, blob_sender) == 0))
-	  match = 0;
-      }
-      if (match && recipient_sid[0]) {
-	if (!(blob_recipient && strcasecmp(recipient_sid, blob_recipient) == 0))
-	  match = 0;
-      }
-      
-      if (match) {
-	const char *blob_name = rhizome_manifest_get(m, "name", NULL, 0);
-	int64_t blob_date = rhizome_manifest_get_ll(m, "date");
-	const char *blob_filehash = rhizome_manifest_get(m, "filehash", NULL, 0);
-	int from_here = 0;
-	sid_t senderSid;
-	sid_t recipientSid;
-	
-	if (blob_sender)
-	  str_to_sid_t(&senderSid, blob_sender);
-	if (blob_recipient)
-	  str_to_sid_t(&recipientSid, blob_recipient);
-	
-	if (q_author) {
-	  if (config.debug.rhizome) DEBUGF("q_author=%s", alloca_str_toprint(q_author));
-	  str_to_sid_t(&m->author, q_author);
-	  int cn = 0, in = 0, kp = 0;
-	  from_here = keyring_find_sid(keyring, &cn, &in, &kp, &m->author);
-	}
-	if (!from_here && blob_sender) {
-	  if (config.debug.rhizome) DEBUGF("blob_sender=%s", alloca_str_toprint(blob_sender));
-	  int cn = 0, in = 0, kp = 0;
-	  from_here = keyring_find_sid(keyring, &cn, &in, &kp, &senderSid);
-	}
-	
-	cli_put_long(context, rowid, ":");
-	cli_put_string(context, blob_service, ":");
-	cli_put_hexvalue(context, m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, ":");
-	cli_put_long(context, blob_version, ":");
-	cli_put_long(context, blob_date, ":");
-	cli_put_long(context, q_inserttime, ":");
-	cli_put_hexvalue(context, q_author ? m->author.binary : NULL, sizeof m->author.binary, ":");
-	cli_put_long(context, from_here, ":");
-	cli_put_long(context, m->fileLength, ":");
-	
-	unsigned char filehash[SHA512_DIGEST_LENGTH];
-	if (m->fileLength)
-	  fromhex(filehash, blob_filehash, SHA512_DIGEST_LENGTH);
-	
-	cli_put_hexvalue(context, m->fileLength?filehash:NULL, SHA512_DIGEST_LENGTH, ":");
-	
-	cli_put_hexvalue(context, blob_sender ? senderSid.binary : NULL, sizeof senderSid.binary, ":");
-	cli_put_hexvalue(context, blob_recipient ? recipientSid.binary : NULL, sizeof recipientSid.binary, ":");
-	cli_put_string(context, blob_name, "\n");
-      }
-    }
-    if (m) rhizome_manifest_free(m);
-  }
-  
-  if (ret==0 && count_rows){
-    while (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
-      ++rows;
-  }
-  cli_row_count(context, rows);
-  
-cleanup:
-  sqlite3_finalize(statement);
-  RETURN(ret);
+  if (c->service && sqlite_bind(retry, c->_statement, NAMED|STATIC_TEXT, "@service", c->service, END) == -1)
+    goto failure;
+  if (c->name && sqlite_bind(retry, c->_statement, NAMED|STATIC_TEXT, "@name", c->name, END) == -1)
+    goto failure;
+  if (c->is_sender_set && sqlite_bind(retry, c->_statement, NAMED|SID_T, "@sender", &c->sender, END) == -1)
+    goto failure;
+  if (c->is_recipient_set && sqlite_bind(retry, c->_statement, NAMED|SID_T, "@recipient", &c->recipient, END) == -1)
+    goto failure;
+  if (c->_rowid_last && sqlite_bind(retry, c->_statement, NAMED|INT64, "@last", c->_rowid_last, END) == -1)
+    goto failure;
+  c->manifest = NULL;
+  c->_rowid_current = 0;
+  RETURN(0);
   OUT();
+failure:
+  sqlite3_finalize(c->_statement);
+  c->_statement = NULL;
+  RETURN(-1);
+  OUT();
+}
+
+/* Guaranteed to return manifests with monotonically descending rowid.  The first manifest will have
+ * the greatest rowid.
+ *
+ * Returns 1 if a new manifest has been fetched from the list, in which case the cursor 'manifest'
+ * field points to the fetched manifest.  Returns 0 if there are no more manifests in the list.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
+{
+  if (config.debug.rhizome)
+    DEBUGF("c=%p c->service=%s c->name=%s c->sender=%s c->recipient=%s c->rowid_since=%"PRIu64" c->_rowid_last=%"PRIu64,
+	c,
+	alloca_str_toprint(c->service),
+	alloca_str_toprint(c->name),
+	c->is_sender_set ? alloca_tohex_sid_t(c->sender) : "UNSET",
+	c->is_recipient_set ? alloca_tohex_sid_t(c->recipient) : "UNSET",
+	c->rowid_since,
+	c->_rowid_last
+      );
+  IN();
+  if (c->_statement == NULL && rhizome_list_open(retry, c) == -1)
+    RETURN(-1);
+  while (1) {
+    if (c->manifest) {
+      rhizome_manifest_free(c->manifest);
+      c->_rowid_current = 0;
+      c->manifest = NULL;
+    }
+    if (sqlite_step_retry(retry, c->_statement) != SQLITE_ROW)
+      break;
+    assert(sqlite3_column_count(c->_statement) == 6);
+    assert(sqlite3_column_type(c->_statement, 0) == SQLITE_TEXT);
+    assert(sqlite3_column_type(c->_statement, 1) == SQLITE_BLOB);
+    assert(sqlite3_column_type(c->_statement, 2) == SQLITE_INTEGER);
+    assert(sqlite3_column_type(c->_statement, 3) == SQLITE_INTEGER);
+    assert(sqlite3_column_type(c->_statement, 4) == SQLITE_TEXT || sqlite3_column_type(c->_statement, 4) == SQLITE_NULL);
+    assert(sqlite3_column_type(c->_statement, 5) == SQLITE_INTEGER);
+    uint64_t q_rowid = sqlite3_column_int64(c->_statement, 5);
+    if (c->_rowid_current && (c->rowid_since ? q_rowid >= c->_rowid_current : q_rowid <= c->_rowid_current)) {
+      WHYF("Query returned rowid=%"PRIu64" out of order (last was %"PRIu64") -- skipped", q_rowid, c->_rowid_current);
+      continue;
+    }
+    c->_rowid_current = q_rowid;
+    if (q_rowid <= c->rowid_since) {
+      WHYF("Query returned rowid=%"PRIu64" <= rowid_since=%"PRIu64" -- skipped", q_rowid, c->rowid_since);
+      continue;
+    }
+    const char *q_manifestid = (const char *) sqlite3_column_text(c->_statement, 0);
+    const char *manifestblob = (char *) sqlite3_column_blob(c->_statement, 1);
+    size_t manifestblobsize = sqlite3_column_bytes(c->_statement, 1); // must call after sqlite3_column_blob()
+    int64_t q_version = sqlite3_column_int64(c->_statement, 2);
+    int64_t q_inserttime = sqlite3_column_int64(c->_statement, 3);
+    const char *q_author = (const char *) sqlite3_column_text(c->_statement, 4);
+    sid_t *author = NULL;
+    if (q_author) {
+      author = alloca(sizeof *author);
+      if (str_to_sid_t(author, q_author) == -1) {
+	WHYF("MANIFESTS row id=%s has invalid author column %s -- skipped", q_manifestid, alloca_str_toprint(q_author));
+	continue;
+      }
+    }
+    rhizome_manifest *m = c->manifest = rhizome_new_manifest();
+    if (m == NULL)
+      RETURN(-1);
+    if (   rhizome_read_manifest_file(m, manifestblob, manifestblobsize) == -1
+	|| !rhizome_manifest_validate(m)
+    ) {
+      WHYF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
+      continue;
+    }
+    if (m->version != q_version) {
+      WHYF("MANIFESTS row id=%s version=%"PRId64" does not match manifest blob version=%"PRId64" -- skipped",
+	  q_manifestid, q_version, m->version);
+      continue;
+    }
+    if (author)
+      rhizome_manifest_set_author(m, author);
+    rhizome_manifest_set_rowid(m, q_rowid);
+    rhizome_manifest_set_inserttime(m, q_inserttime);
+    if (c->service && !(m->service && strcasecmp(c->service, m->service) == 0))
+      continue;
+    if (c->is_sender_set && !(m->has_sender && cmp_sid_t(&c->sender, &m->sender) == 0))
+      continue;
+    if (c->is_recipient_set && !(m->has_recipient && cmp_sid_t(&c->recipient, &m->recipient) == 0))
+      continue;
+    assert(c->_rowid_current != 0);
+    // Don't do rhizome_verify_author(m); too CPU expensive for a listing.  Save that for when
+    // the bundle is extracted or exported.
+    RETURN(1);
+  }
+  assert(c->_rowid_current == 0);
+  RETURN(0);
+  OUT();
+}
+
+void rhizome_list_commit(struct rhizome_list_cursor *c)
+{
+  if (config.debug.rhizome)
+    DEBUGF("c=%p c->rowid_since=%"PRIu64" c->_rowid_current=%"PRIu64" c->_rowid_last=%"PRIu64,
+	c, c->rowid_since, c->_rowid_current, c->_rowid_last);
+  assert(c->_rowid_current != 0);
+  if (c->_rowid_last == 0 || (c->rowid_since ? c->_rowid_current > c->_rowid_last : c->_rowid_current < c->_rowid_last))
+    c->_rowid_last = c->_rowid_current;
+}
+
+void rhizome_list_release(struct rhizome_list_cursor *c)
+{
+  if (config.debug.rhizome)
+    DEBUGF("c=%p", c);
+  if (c->manifest) {
+    rhizome_manifest_free(c->manifest);
+    c->_rowid_current = 0;
+    c->manifest = NULL;
+  }
+  if (c->_statement) {
+    sqlite3_finalize(c->_statement);
+    c->_statement = NULL;
+  }
 }
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount)
@@ -1631,56 +1694,36 @@ int rhizome_update_file_priority(const char *fileid)
  */
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 {
-  const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-  if (service == NULL)
+  if (m->service == NULL)
     return WHY("Manifest has no service");
-
-  const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-
-  sid_t *sender = NULL;
-  const char *sender_field = rhizome_manifest_get(m, "sender", NULL, 0);
-  if (sender_field) {
-    sender = (sid_t *) alloca(sizeof *sender);
-    if (str_to_sid_t(sender, sender_field) == -1)
-      return WHYF("invalid field in manifest bid=%s: sender=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), alloca_str_toprint(sender_field));
-  }
-
-  sid_t *recipient = NULL;
-  const char *recipient_field = rhizome_manifest_get(m, "recipient", NULL, 0);
-  if (recipient_field) {
-    recipient = (sid_t *) alloca(sizeof *recipient);
-    if (str_to_sid_t(recipient, recipient_field) == -1)
-      return WHYF("invalid field in manifest bid=%s: recipient=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), alloca_str_toprint(recipient_field));
-  }
-
   char sqlcmd[1024];
   strbuf b = strbuf_local(sqlcmd, sizeof sqlcmd);
   strbuf_puts(b, "SELECT id, manifest, author FROM manifests WHERE filesize = ? AND service = ?");
-  if (m->fileLength != 0)
+  assert(m->filesize != RHIZOME_SIZE_UNSET);
+  if (m->filesize > 0)
     strbuf_puts(b, " AND filehash = ?");
-  if (name)
+  if (m->name)
     strbuf_puts(b, " AND name = ?");
-  if (sender)
+  if (m->has_sender)
     strbuf_puts(b, " AND sender = ?");
-  if (recipient)
+  if (m->has_recipient)
     strbuf_puts(b, " AND recipient = ?");
   if (strbuf_overrun(b))
     return WHYF("SQL command too long: %s", strbuf_str(b));
-
   int ret = 0;
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare_bind(&retry, strbuf_str(b), INT64, m->fileLength, STATIC_TEXT, service, END);
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry, strbuf_str(b), INT64, m->filesize, STATIC_TEXT, m->service, END);
   if (!statement)
     return -1;
   int field = 2;
-  if (m->fileLength != 0)
+  if (m->filesize > 0)
     sqlite_bind(&retry, statement, INDEX|RHIZOME_FILEHASH_T, ++field, &m->filehash, END);
-  if (name)
-    sqlite_bind(&retry, statement, INDEX|STATIC_TEXT, ++field, name, END);
-  if (sender)
-    sqlite_bind(&retry, statement, INDEX|SID_T|NUL, ++field, sender, END);
-  if (recipient)
-    sqlite_bind(&retry, statement, INDEX|SID_T|NUL, ++field, recipient, END);
+  if (m->name)
+    sqlite_bind(&retry, statement, INDEX|STATIC_TEXT, ++field, m->name, END);
+  if (m->has_sender)
+    sqlite_bind(&retry, statement, INDEX|SID_T, ++field, &m->sender, END);
+  if (m->has_recipient)
+    sqlite_bind(&retry, statement, INDEX|SID_T, ++field, &m->recipient, END);
 
   int rows = 0;
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
@@ -1695,24 +1738,28 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
     const unsigned char *q_manifestid = sqlite3_column_text(statement, 0);
     const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
     size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
-    if (rhizome_read_manifest_file(blob_m, manifestblob, manifestblobsize) == -1) {
+    if (   rhizome_read_manifest_file(blob_m, manifestblob, manifestblobsize) == -1
+	|| !rhizome_manifest_validate(blob_m)
+    ) {
       WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
       goto next;
     }
-    if (rhizome_manifest_verify(blob_m)) {
+    if (!rhizome_manifest_verify(blob_m)) {
       WARNF("MANIFESTS row id=%s fails verification -- skipped", q_manifestid);
       goto next;
     }
     const char *q_author = (const char *) sqlite3_column_text(statement, 2);
     if (q_author) {
-      if (config.debug.rhizome)
-	strbuf_sprintf(b, " .author=%s", q_author);
-      str_to_sid_t(&blob_m->author, q_author);
+      sid_t author;
+      if (str_to_sid_t(&author, q_author) == -1)
+	WARNF("MANIFESTS row id=%s has invalid author=%s -- ignored", q_manifestid, alloca_str_toprint(q_author));
+      else
+	rhizome_manifest_set_author(blob_m, &author);
     }
     // check that we can re-author this manifest
-    if (rhizome_extract_privatekey(blob_m, NULL)){
+    rhizome_authenticate_author(blob_m);
+    if (m->authorship != AUTHOR_AUTHENTIC)
       goto next;
-    }
     *found = blob_m;
     if (config.debug.rhizome)
       DEBUGF("Found duplicate payload, %s", q_manifestid);
@@ -1734,15 +1781,20 @@ static int unpack_manifest_row(rhizome_manifest *m, sqlite3_stmt *statement)
   int64_t q_inserttime = sqlite3_column_int64(statement, 3);
   const char *q_author = (const char *) sqlite3_column_text(statement, 4);
   size_t q_blobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
-  if (rhizome_read_manifest_file(m, q_blob, q_blobsize) == -1)
-    return WHYF("Manifest %s exists but is invalid", q_id);
+  uint64_t q_rowid = sqlite3_column_int64(statement, 5);
+  if (rhizome_read_manifest_file(m, q_blob, q_blobsize) == -1 || !rhizome_manifest_validate(m))
+    return WHYF("Manifest bid=%s in database but invalid", q_id);
   if (q_author) {
-    if (str_to_sid_t(&m->author, q_author) == -1)
-      WARNF("manifest id=%s contains invalid author=%s -- ignored", q_id, alloca_str_toprint(q_author));
+    sid_t author;
+    if (str_to_sid_t(&author, q_author) == -1)
+      WARNF("MANIFESTS row id=%s has invalid author=%s -- ignored", q_id, alloca_str_toprint(q_author));
+    else
+      rhizome_manifest_set_author(m, &author);
   }
   if (m->version != q_version)
     WARNF("Version mismatch, manifest is %"PRId64", database is %"PRId64, m->version, q_version);
-  m->inserttime = q_inserttime;
+  rhizome_manifest_set_rowid(m, q_rowid);
+  rhizome_manifest_set_inserttime(m, q_inserttime);
   return 0;
 }
 
@@ -1757,7 +1809,7 @@ int rhizome_retrieve_manifest(const rhizome_bid_t *bidp, rhizome_manifest *m)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
-      "SELECT id, manifest, version, inserttime, author FROM manifests WHERE id = ?",
+      "SELECT id, manifest, version, inserttime, author, rowid FROM manifests WHERE id = ?",
       RHIZOME_BID_T, bidp,
       END);
   if (!statement)
@@ -1787,7 +1839,7 @@ int rhizome_retrieve_manifest_by_prefix(const unsigned char *prefix, unsigned pr
   like[prefix_strlen] = '%';
   like[prefix_strlen + 1] = '\0';
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
-      "SELECT id, manifest, version, inserttime, author FROM manifests WHERE id like ?",
+      "SELECT id, manifest, version, inserttime, author, rowid FROM manifests WHERE id like ?",
       TEXT, like,
       END);
   if (!statement)
@@ -1937,7 +1989,7 @@ static int is_interesting(const char *id_hex, int64_t version)
 int rhizome_is_bar_interesting(unsigned char *bar)
 {
   int64_t version = rhizome_bar_version(bar);
-  char id_hex[RHIZOME_MANIFEST_ID_STRLEN];
+  char id_hex[RHIZOME_BAR_PREFIX_BYTES *2 + 2];
   tohex(id_hex, RHIZOME_BAR_PREFIX_BYTES * 2, &bar[RHIZOME_BAR_PREFIX_OFFSET]);
   strcat(id_hex, "%");
   return is_interesting(id_hex, version);
@@ -1945,10 +1997,5 @@ int rhizome_is_bar_interesting(unsigned char *bar)
 
 int rhizome_is_manifest_interesting(rhizome_manifest *m)
 {
-  char id[RHIZOME_MANIFEST_ID_STRLEN + 1];
-  if (!rhizome_manifest_get(m, "id", id, sizeof id))
-    // dodgy manifest, we don't want to receive it
-    return WHY("Ignoring bad manifest (no ID field)");
-  str_toupper_inplace(id);
-  return is_interesting(id, m->version);
+  return is_interesting(alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
 }

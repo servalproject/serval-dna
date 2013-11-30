@@ -56,13 +56,35 @@ http_size_t http_range_bytes(const struct http_range *range, unsigned nranges);
 
 #define CONTENT_LENGTH_UNKNOWN   UINT64_MAX
 
+struct mime_content_type {
+  char type[64];
+  char subtype[64];
+  char multipart_boundary[71];
+  char charset[31];
+};
+
+
+struct http_client_authorization {
+  enum http_authorization_scheme { NOAUTH = 0, BASIC } scheme;
+  union {
+    struct http_client_credentials_basic {
+        const char *user;
+        const char *password;
+    } basic;
+  } credentials;
+};
+
+struct http_www_authenticate {
+  enum http_authorization_scheme scheme;
+  const char *realm;
+};
+
 struct http_request_headers {
   http_size_t content_length;
-  const char *content_type;
-  const char *content_subtype;
-  const char *boundary;
+  struct mime_content_type content_type;
   unsigned short content_range_count;
   struct http_range content_ranges[5];
+  struct http_client_authorization authorization;
 };
 
 struct http_response_headers {
@@ -71,15 +93,21 @@ struct http_response_headers {
   http_size_t resource_length; // size of entire resource
   const char *content_type; // "type/subtype"
   const char *boundary;
+  struct http_www_authenticate www_authenticate;
 };
 
-typedef int (*HTTP_CONTENT_GENERATOR)(struct http_request *);
+struct http_content_generator_result {
+  size_t generated;
+  size_t need;
+};
+
+typedef int (HTTP_CONTENT_GENERATOR)(struct http_request *, unsigned char *, size_t, struct http_content_generator_result *);
 
 struct http_response {
   uint16_t result_code;
   struct http_response_headers header;
   const char *content;
-  HTTP_CONTENT_GENERATOR content_generator; // callback to produce more content
+  HTTP_CONTENT_GENERATOR *content_generator; // callback to produce more content
 };
 
 #define MIME_FILENAME_MAXLEN 127
@@ -94,11 +122,16 @@ struct mime_content_disposition {
   time_t read_date;
 };
 
+struct mime_part_headers {
+  http_size_t content_length;
+  struct mime_content_type content_type;
+  struct mime_content_disposition content_disposition;
+};
+
 struct http_mime_handler {
   void (*handle_mime_preamble)(struct http_request *, const char *, size_t);
   void (*handle_mime_part_start)(struct http_request *);
-  void (*handle_mime_content_disposition)(struct http_request *, const struct mime_content_disposition *);
-  void (*handle_mime_header)(struct http_request *, const char *label, const char *, size_t);
+  void (*handle_mime_part_header)(struct http_request *, const struct mime_part_headers *);
   void (*handle_mime_body)(struct http_request *, const char *, size_t);
   void (*handle_mime_part_end)(struct http_request *);
   void (*handle_mime_epilogue)(struct http_request *, const char *, size_t);
@@ -110,46 +143,67 @@ void http_request_init(struct http_request *r, int sockfd);
 void http_request_free_response_buffer(struct http_request *r);
 int http_request_set_response_bufsize(struct http_request *r, size_t bufsiz);
 void http_request_finalise(struct http_request *r);
+void http_request_pause_response(struct http_request *r, time_ms_t until);
 void http_request_response_static(struct http_request *r, int result, const char *mime_type, const char *body, uint64_t bytes);
-void http_request_response_generated(struct http_request *r, int result, const char *mime_type, HTTP_CONTENT_GENERATOR);
+void http_request_response_generated(struct http_request *r, int result, const char *mime_type, HTTP_CONTENT_GENERATOR *);
 void http_request_simple_response(struct http_request *r, uint16_t result, const char *body);
 
 typedef int (*HTTP_REQUEST_PARSER)(struct http_request *);
 
 struct http_request {
   struct sched_ent alarm; // MUST BE FIRST ELEMENT
-  enum http_request_phase { RECEIVE, TRANSMIT, DONE } phase;
-  bool_t *debug_flag;
-  bool_t *disable_tx_flag;
-  time_ms_t initiate_time; // time connection was initiated
-  time_ms_t idle_timeout; // disconnect if no bytes received for this long
-  struct sockaddr_in client_sockaddr_in;
-  HTTP_REQUEST_PARSER parser; // current parser function
-  HTTP_REQUEST_PARSER handle_first_line; // called after first line is parsed
-  HTTP_REQUEST_PARSER handle_headers; // called after all headers are parsed
-  HTTP_REQUEST_PARSER handle_content_end; // called after all content is received
-  enum mime_state { START, PREAMBLE, HEADER, BODY, EPILOGUE } form_data_state;
-  struct http_mime_handler form_data; // called to parse multipart/form-data body
+  // The following control the lifetime of this struct.
+  enum http_request_phase { RECEIVE, TRANSMIT, PAUSE, DONE } phase;
   void (*finalise)(struct http_request *);
   void (*free)(void*);
+  // These can be set up to point to config flags, to allow debug to be
+  // enabled indpendently for different instances HTTP server instances
+  // that use this code.
+  bool_t *debug_flag;
+  bool_t *disable_tx_flag;
+  // The following are used for parsing the HTTP request.
+  time_ms_t initiate_time; // time connection was initiated
+  time_ms_t idle_timeout; // disconnect if no bytes received for this long
+  struct sockaddr_in client_sockaddr_in; // caller may supply this
+  // The parsed HTTP request is accumulated into the following fields.
   const char *verb; // points to nul terminated static string, "GET", "PUT", etc.
   const char *path; // points into buffer; nul terminated
   uint8_t version_major; // m from from HTTP/m.n
   uint8_t version_minor; // n from HTTP/m.n
   struct http_request_headers request_header;
+  // Parsing is done by setting 'parser' to point to a series of parsing
+  // functions as the parsing state progresses.
+  HTTP_REQUEST_PARSER parser; // current parser function
+  // The caller may set these up, and they are invoked by the parser as request
+  // parsing reaches different stages.
+  HTTP_REQUEST_PARSER handle_first_line; // called after first line is parsed
+  HTTP_REQUEST_PARSER handle_headers; // called after all HTTP headers are parsed
+  HTTP_REQUEST_PARSER handle_content_end; // called after all content is received
+  // The following are used for managing the buffer during RECEIVE phase.
   const char *received; // start of received data in buffer[]
   const char *end; // end of received data in buffer[]
   const char *parsed; // start of unparsed data in buffer[]
   const char *cursor; // for parsing
   http_size_t request_content_remaining;
+  // The following are used for parsing a multipart body.
+  enum mime_state { START, PREAMBLE, HEADER, BODY, EPILOGUE } form_data_state;
+  struct http_mime_handler form_data;
+  struct mime_part_headers part_header;
+  http_size_t part_body_length;
+  // The following are used for constructing the response that will be sent in
+  // TRANSMIT phase.
   struct http_response response;
+  // The following are used during TRANSMIT phase to control buffering and
+  // sending.
   http_size_t response_length; // total response bytes (header + content)
   http_size_t response_sent; // for counting up to response_length
   char *response_buffer;
+  size_t response_buffer_need;
   size_t response_buffer_size;
   size_t response_buffer_length;
   size_t response_buffer_sent;
   void (*response_free_buffer)(void*);
+  // This buffer is used during RECEIVE and TRANSMIT phase.
   char buffer[8 * 1024];
 };
 

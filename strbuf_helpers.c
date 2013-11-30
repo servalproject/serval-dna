@@ -36,6 +36,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/uio.h>
 #include "http_server.h"
 #include "strbuf_helpers.h"
+#include "str.h"
+#include "socket.h"
 
 static inline strbuf _toprint(strbuf sb, char c)
 {
@@ -315,7 +317,7 @@ strbuf strbuf_append_socket_type(strbuf sb, int type)
 
 strbuf strbuf_append_in_addr(strbuf sb, const struct in_addr *addr)
 {
-  strbuf_sprintf(sb, " %u.%u.%u.%u",
+  strbuf_sprintf(sb, "%u.%u.%u.%u",
       ((unsigned char *) &addr->s_addr)[0],
       ((unsigned char *) &addr->s_addr)[1],
       ((unsigned char *) &addr->s_addr)[2],
@@ -323,13 +325,21 @@ strbuf strbuf_append_in_addr(strbuf sb, const struct in_addr *addr)
   return sb;
 }
 
+strbuf strbuf_append_sockaddr_in(strbuf sb, const struct sockaddr_in *addr)
+{
+  assert(addr->sin_family == AF_INET);
+  strbuf_puts(sb, "AF_INET:");
+  strbuf_append_in_addr(sb, &addr->sin_addr);
+  strbuf_sprintf(sb, ":%u", ntohs(addr->sin_port));
+  return sb;
+}
+
 strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t addrlen)
 {
-  strbuf_append_socket_domain(sb, addr->sa_family);
   switch (addr->sa_family) {
   case AF_UNIX: {
+      strbuf_puts(sb, "AF_UNIX:");
       size_t len = addrlen > sizeof addr->sa_family ? addrlen - sizeof addr->sa_family : 0;
-      strbuf_putc(sb, ' ');
       if (addr->sa_data[0]) {
 	strbuf_toprint_quoted_len(sb, "\"\"", addr->sa_data, len);
 	if (len < 2)
@@ -346,22 +356,28 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
     break;
   case AF_INET: {
       const struct sockaddr_in *addr_in = (const struct sockaddr_in *) addr;
-      strbuf_putc(sb, ' ');
-      strbuf_append_in_addr(sb, &addr_in->sin_addr);
-      strbuf_sprintf(sb, ":%u", ntohs(addr_in->sin_port));
+      strbuf_append_sockaddr_in(sb, addr_in);
       if (addrlen != sizeof(struct sockaddr_in))
 	strbuf_sprintf(sb, " (addrlen=%d should be %zd)", (int)addrlen, sizeof(struct sockaddr_in));
     }
     break;
   default: {
+      strbuf_append_socket_domain(sb, addr->sa_family);
       size_t len = addrlen > sizeof addr->sa_family ? addrlen - sizeof addr->sa_family : 0;
       int i;
-      for (i = 0; i < len; ++i)
-	strbuf_sprintf(sb, " %02x", addr->sa_data[i]);
+      for (i = 0; i < len; ++i) {
+	strbuf_putc(sb, i ? ',' : ':');
+	strbuf_sprintf(sb, "%02x", addr->sa_data[i]);
+      }
     }
     break;
   }
   return sb;
+}
+
+strbuf strbuf_append_socket_address(strbuf sb, const struct socket_address *addr)
+{
+  return strbuf_append_sockaddr(sb, &addr->addr, addr->addrlen);
 }
 
 strbuf strbuf_append_strftime(strbuf sb, const char *format, const struct tm *tm)
@@ -402,6 +418,69 @@ strbuf strbuf_append_iovec(strbuf sb, const struct iovec *iov, int iovcnt)
   return sb;
 }
 
+strbuf strbuf_append_quoted_string(strbuf sb, const char *str)
+{
+  strbuf_putc(sb, '"');
+  for (; *str; ++str) {
+    if (*str == '"' || *str == '\\')
+      strbuf_putc(sb, '\\');
+    strbuf_putc(sb, *str);
+  }
+  strbuf_putc(sb, '"');
+  return sb;
+}
+
+strbuf strbuf_json_null(strbuf sb)
+{
+  strbuf_puts(sb, "null");
+  return sb;
+}
+
+strbuf strbuf_json_string(strbuf sb, const char *str)
+{
+  if (str) {
+    strbuf_putc(sb, '"');
+    for (; *str; ++str) {
+      if (*str == '"' || *str == '\\') {
+	strbuf_putc(sb, '\\');
+	strbuf_putc(sb, *str);
+      }
+      else if (*str == '\b')
+	strbuf_puts(sb, "\\b");
+      else if (*str == '\f')
+	strbuf_puts(sb, "\\f");
+      else if (*str == '\n')
+	strbuf_puts(sb, "\\n");
+      else if (*str == '\r')
+	strbuf_puts(sb, "\\r");
+      else if (*str == '\t')
+	strbuf_puts(sb, "\\t");
+      else if (iscntrl(*str))
+	strbuf_sprintf(sb, "\\u%04X", (unsigned char) *str);
+      else
+	strbuf_putc(sb, *str);
+    }
+    strbuf_putc(sb, '"');
+  } else
+    strbuf_json_null(sb);
+  return sb;
+}
+
+strbuf strbuf_json_hex(strbuf sb, const unsigned char *buf, size_t len)
+{
+  if (buf) {
+    strbuf_putc(sb, '"');
+    size_t i;
+    for (i = 0; i != len; ++i) {
+      strbuf_putc(sb, hexdigit_upper[*buf >> 4]);
+      strbuf_putc(sb, hexdigit_upper[*buf++ & 0xf]);
+    }
+    strbuf_putc(sb, '"');
+  } else
+    strbuf_json_null(sb);
+  return sb;
+}
+
 strbuf strbuf_append_http_ranges(strbuf sb, const struct http_range *ranges, unsigned nels)
 {
   unsigned i;
@@ -427,31 +506,47 @@ strbuf strbuf_append_http_ranges(strbuf sb, const struct http_range *ranges, uns
   return sb;
 }
 
+strbuf strbuf_append_mime_content_type(strbuf sb, const struct mime_content_type *ct)
+{
+  strbuf_puts(sb, ct->type);
+  strbuf_putc(sb, '/');
+  strbuf_puts(sb, ct->subtype);
+  if (ct->charset) {
+    strbuf_puts(sb, "; charset=");
+    strbuf_append_quoted_string(sb, ct->charset);
+  }
+  if (ct->multipart_boundary) {
+    strbuf_puts(sb, "; boundary=");
+    strbuf_append_quoted_string(sb, ct->multipart_boundary);
+  }
+  return sb;
+}
+
 strbuf strbuf_append_mime_content_disposition(strbuf sb, const struct mime_content_disposition *cd)
 {
-  strbuf_puts(sb, "type=");
-  strbuf_toprint_quoted(sb, "``", cd->type);
-  strbuf_puts(sb, " name=");
-  strbuf_toprint_quoted(sb, "``", cd->name);
-  strbuf_puts(sb, " filename=");
-  strbuf_toprint_quoted(sb, "``", cd->filename);
-  strbuf_puts(sb, " size=");
-  strbuf_sprintf(sb, "%"PRIhttp_size_t, cd->size);
+  strbuf_puts(sb, cd->type);
+  if (cd->name) {
+    strbuf_puts(sb, "; name=");
+    strbuf_append_quoted_string(sb, cd->name);
+  }
+  if (cd->filename) {
+    strbuf_puts(sb, "; filename=");
+    strbuf_append_quoted_string(sb, cd->filename);
+  }
+  if (cd->size)
+    strbuf_sprintf(sb, "; size=%"PRIhttp_size_t, cd->size);
   struct tm tm;
-  strbuf_puts(sb, " creation_date=");
-  if (cd->creation_date)
-    strbuf_append_strftime(sb, "%a, %d %b %Y %T %z", gmtime_r(&cd->creation_date, &tm));
-  else
-    strbuf_puts(sb, "0");
-  strbuf_puts(sb, " modification_date=");
-  if (cd->modification_date)
-    strbuf_append_strftime(sb, "%a, %d %b %Y %T %z", gmtime_r(&cd->modification_date, &tm));
-  else
-    strbuf_puts(sb, "0");
-  strbuf_puts(sb, " read_date=");
-  if (cd->read_date)
-    strbuf_append_strftime(sb, "%a, %d %b %Y %T %z", gmtime_r(&cd->read_date, &tm));
-  else
-    strbuf_puts(sb, "0");
+  if (cd->creation_date) {
+    strbuf_puts(sb, " creation_date=");
+    strbuf_append_strftime(sb, "\"%a, %d %b %Y %T %z\"", gmtime_r(&cd->creation_date, &tm));
+  }
+  if (cd->modification_date) {
+    strbuf_puts(sb, " modification_date=");
+    strbuf_append_strftime(sb, "\"%a, %d %b %Y %T %z\"", gmtime_r(&cd->modification_date, &tm));
+  }
+  if (cd->read_date) {
+    strbuf_puts(sb, " read_date=");
+    strbuf_append_strftime(sb, "\"%a, %d %b %Y %T %z\"", gmtime_r(&cd->read_date, &tm));
+  }
   return sb;
 }

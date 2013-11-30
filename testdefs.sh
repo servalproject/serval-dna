@@ -57,14 +57,17 @@ extract_stdout_keyvalue_optional() {
    esac
    local _label_re=$(escape_grep_basic "$_label")
    local _delim_re=$(escape_grep_basic "$_delim")
-   local _line=$(replayStdout | $GREP "^$_label_re$_delim_re")
+   local _line=$($GREP "^$_label_re$_delim_re" "$TFWSTDOUT")
    local _value=
    local _return=1
    if [ -n "$_line" ]; then
       _value="${_line#*$_delim}"
       _return=0
    fi
-   [ -n "$_var" ] && eval $_var="\$_value"
+   if [ -n "$_var" ]; then
+      eval $_var="\$_value"
+      eval tfw_log "$_var=\$(shellarg "\${$_var}")"
+   fi
    return $_return
 }
 
