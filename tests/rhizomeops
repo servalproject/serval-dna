@@ -42,6 +42,8 @@ setup_rhizome() {
 set_rhizome_config() {
    executeOk_servald config \
       set debug.rhizome on \
+      set debug.rhizome_manifest on \
+      set debug.rejecteddata on \
       set debug.verbose on \
       set log.console.level debug
 }
@@ -206,24 +208,29 @@ setup_ExtractManifestAfterAdd() {
    setup_rhizome
    echo "A test file" >file1
    executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
+   extract_stdout_rowid rowid
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1
    extract_manifest_id manifestid file1.manifest
    extract_manifest_version version file1.manifest
    extract_manifest_filehash filehash file1.manifest
+   extract_manifest_date date file1.manifest
 }
 test_ExtractManifestAfterAdd() {
    executeOk_servald rhizome export manifest $manifestid file1x.manifest
    tfw_cat --stdout --stderr
-   assertStdoutLineCount '==' 8
+   assertStdoutLineCount '==' 11
    local size=$(( $(cat file1 | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^service:file$"
    assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
    assertStdoutGrep --matches=1 "^version:$version\$"
-   assertStdoutGrep --matches=1 "^inserttime:$rexp_date\$"
+   assertStdoutGrep --matches=1 "^\.rowid:$rowid\$"
+   assertStdoutGrep --matches=1 "^\.inserttime:$rexp_date\$"
    assertStdoutGrep --matches=1 "^filehash:$filehash\$"
    assertStdoutGrep --matches=1 "^filesize:$size\$"
+   assertStdoutGrep --matches=1 "^date:$date\$"
    assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --matches=1 "^\.secret:$rexp_bundlesecret\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
    assert [ -e file1x.manifest ]
    assert diff file1.manifest file1x.manifest
@@ -235,24 +242,29 @@ setup_ExtractManifestFileAfterAdd() {
    setup_rhizome
    echo "A test file" >file1
    executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
+   extract_stdout_rowid rowid
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1
    extract_manifest_id manifestid file1.manifest
    extract_manifest_version version file1.manifest
    extract_manifest_filehash filehash file1.manifest
+   extract_manifest_date date file1.manifest
 }
 test_ExtractManifestFileAfterAdd() {
    executeOk_servald rhizome export bundle $manifestid file1x.manifest file1x
    tfw_cat --stdout --stderr
-   assertStdoutLineCount '==' 8
+   assertStdoutLineCount '==' 11
    local size=$(( $(cat file1 | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^service:file$"
    assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
    assertStdoutGrep --matches=1 "^version:$version\$"
-   assertStdoutGrep --matches=1 "^inserttime:$rexp_date\$"
+   assertStdoutGrep --matches=1 "^\.rowid:$rowid\$"
+   assertStdoutGrep --matches=1 "^\.inserttime:$rexp_date\$"
    assertStdoutGrep --matches=1 "^filehash:$filehash\$"
    assertStdoutGrep --matches=1 "^filesize:$size\$"
+   assertStdoutGrep --matches=1 "^date:$date\$"
    assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --matches=1 "^\.secret:$rexp_bundlesecret\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
    assert [ -e file1x.manifest ]
    assert diff file1.manifest file1x.manifest
@@ -267,30 +279,37 @@ setup_ExtractManifestFileFromExtBlob() {
    executeOk_servald config set rhizome.external_blobs 1
    echo "A test file" >file1
    executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
+   extract_stdout_rowid rowid1
    executeOk_servald config set rhizome.external_blobs 0
    echo "Another test file" >file2
    executeOk_servald rhizome add file $SIDB1 file2 file2.manifest
+   extract_stdout_rowid rowid2
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
    extract_manifest_id manifestid1 file1.manifest
    extract_manifest_version version1 file1.manifest
    extract_manifest_filehash filehash1 file1.manifest
+   extract_manifest_date date1 file1.manifest
    extract_manifest_id manifestid2 file2.manifest
    extract_manifest_version version2 file2.manifest
    extract_manifest_filehash filehash2 file2.manifest
+   extract_manifest_date date2 file2.manifest
 }
 test_ExtractManifestFileFromExtBlob() {
    executeOk_servald rhizome export bundle $manifestid1 file1x.manifest file1x
    tfw_cat --stdout --stderr
-   assertStdoutLineCount '==' 8
+   assertStdoutLineCount '==' 11
    local size=$(( $(cat file1 | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^service:file$"
    assertStdoutGrep --matches=1 "^manifestid:$manifestid1\$"
    assertStdoutGrep --matches=1 "^version:$version1\$"
-   assertStdoutGrep --matches=1 "^inserttime:$rexp_date\$"
+   assertStdoutGrep --matches=1 "^\.rowid:$rowid1\$"
+   assertStdoutGrep --matches=1 "^\.inserttime:$rexp_date\$"
    assertStdoutGrep --matches=1 "^filehash:$filehash1\$"
    assertStdoutGrep --matches=1 "^filesize:$size\$"
+   assertStdoutGrep --matches=1 "^date:$date1\$"
    assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --matches=1 "^\.secret:$rexp_bundlesecret\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
    assert [ -e file1x.manifest ]
    assert diff file1.manifest file1x.manifest
@@ -298,15 +317,18 @@ test_ExtractManifestFileFromExtBlob() {
    assert diff file1 file1x
    executeOk_servald rhizome export bundle $manifestid2 file2x.manifest file2x
    tfw_cat --stdout --stderr
-   assertStdoutLineCount '==' 8
+   assertStdoutLineCount '==' 11
    local size=$(( $(cat file2 | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^service:file$"
    assertStdoutGrep --matches=1 "^manifestid:$manifestid2\$"
    assertStdoutGrep --matches=1 "^version:$version2\$"
-   assertStdoutGrep --matches=1 "^inserttime:$rexp_date\$"
+   assertStdoutGrep --matches=1 "^\.rowid:$rowid2\$"
+   assertStdoutGrep --matches=1 "^\.inserttime:$rexp_date\$"
    assertStdoutGrep --matches=1 "^filehash:$filehash2\$"
    assertStdoutGrep --matches=1 "^filesize:$size\$"
+   assertStdoutGrep --matches=1 "^date:$date2\$"
    assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --matches=1 "^\.secret:$rexp_bundlesecret\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
    assert [ -e file2x.manifest ]
    assert diff file2.manifest file2x.manifest
@@ -336,25 +358,30 @@ setup_ExtractManifestToStdout() {
    setup_rhizome
    echo "A test file" >file1
    executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
+   extract_stdout_rowid rowid
    extract_manifest_id manifestid file1.manifest
    extract_manifest_version version file1.manifest
    extract_manifest_filehash filehash file1.manifest
+   extract_manifest_date date file1.manifest
 }
 test_ExtractManifestToStdout() {
    executeOk_servald rhizome export manifest $manifestid -
-   assertStdoutLineCount '>=' 9
+   assertStdoutLineCount '>=' 11
    local size=$(( $(cat file1 | wc -c) + 0 ))
-   assertStdoutGrep --line=..8 --matches=1 "^service:file$"
-   assertStdoutGrep --line=..8 --matches=1 "^manifestid:$manifestid\$"
-   assertStdoutGrep --line=..8 --matches=1 "^version:$version\$"
-   assertStdoutGrep --line=..8 --matches=1 "^inserttime:$rexp_date\$"
-   assertStdoutGrep --line=..8 --matches=1 "^filehash:$filehash\$"
-   assertStdoutGrep --line=..8 --matches=1 "^filesize:$size\$"
-   assertStdoutGrep --line=..8 --matches=1 "^\.author:$SIDB1\$"
-   assertStdoutGrep --line=..8 --matches=1 "^\.readonly:0\$"
-   assertStdoutGrep --line=9 --matches=1 "^manifest:"
-   replayStdout | $SED -n '9s/^manifest://p' >file1x.manifest
-   replayStdout | $SED -n '10,$p' >>file1x.manifest
+   assertStdoutGrep --line=..11 --matches=1 "^service:file$"
+   assertStdoutGrep --line=..11 --matches=1 "^manifestid:$manifestid\$"
+   assertStdoutGrep --line=..11 --matches=1 "^version:$version\$"
+   assertStdoutGrep --line=..11 --matches=1 "^\.rowid:$rowid\$"
+   assertStdoutGrep --line=..11 --matches=1 "^\.inserttime:$rexp_date\$"
+   assertStdoutGrep --line=..11 --matches=1 "^filehash:$filehash\$"
+   assertStdoutGrep --line=..11 --matches=1 "^filesize:$size\$"
+   assertStdoutGrep --line=..11 --matches=1 "^date:$date\$"
+   assertStdoutGrep --line=..11 --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --line=..11 --matches=1 "^\.secret:$rexp_bundlesecret\$"
+   assertStdoutGrep --line=..11 --matches=1 "^\.readonly:0\$"
+   assertStdoutGrep --line=12 --matches=1 "^manifest:"
+   replayStdout | $SED -n '12s/^manifest://p' >file1x.manifest
+   replayStdout | $SED -n '13,$p' >>file1x.manifest
    cat file1.manifest >file1n.manifest
    echo >>file1n.manifest
    tfw_cat file1n.manifest file1x.manifest
@@ -367,23 +394,27 @@ setup_ExtractManifestAfterAddNoAuthor() {
    setup_rhizome
    echo "A test file" >file1
    executeOk_servald rhizome add file '' file1 file1.manifest
+   extract_stdout_rowid rowid
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file1
    extract_manifest_id manifestid file1.manifest
    extract_manifest_version version file1.manifest
    extract_manifest_filehash filehash file1.manifest
+   extract_manifest_date date file1.manifest
 }
 test_ExtractManifestAfterAddNoAuthor() {
    executeOk_servald rhizome export manifest $manifestid file1x.manifest
    assert diff file1.manifest file1x.manifest
-   assertStdoutLineCount '==' 7
+   assertStdoutLineCount '==' 9
    local size=$(( $(cat file1 | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^service:file$"
    assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
    assertStdoutGrep --matches=1 "^version:$version\$"
-   assertStdoutGrep --matches=1 "^inserttime:$rexp_date\$"
+   assertStdoutGrep --matches=1 "^\.rowid:$rowid\$"
+   assertStdoutGrep --matches=1 "^\.inserttime:$rexp_date\$"
    assertStdoutGrep --matches=1 "^filehash:$filehash\$"
    assertStdoutGrep --matches=1 "^filesize:$size\$"
+   assertStdoutGrep --matches=1 "^date:$date\$"
    assertStdoutGrep --matches=1 "^\.readonly:1\$"
 }
 
@@ -423,25 +454,30 @@ setup_ExtractFileAfterAdd() {
    echo "A test file" >file1
    executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
    tfw_cat --stderr
+   extract_stdout_rowid rowid
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1
    extract_manifest_id manifestid file1.manifest
    extract_manifest_version version file1.manifest
    extract_manifest_filehash filehash file1.manifest
+   extract_manifest_date date file1.manifest
 }
 test_ExtractFileAfterAdd() {
    executeOk_servald rhizome extract file $manifestid file1x
    tfw_cat --stderr
    assert diff file1 file1x
    local size=$(( $(cat file1 | wc -c) + 0 ))
-   assertStdoutLineCount '==' 8
+   assertStdoutLineCount '==' 11
    assertStdoutGrep --matches=1 "^service:file$"
    assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
    assertStdoutGrep --matches=1 "^version:$version\$"
-   assertStdoutGrep --matches=1 "^inserttime:$rexp_date\$"
+   assertStdoutGrep --matches=1 "^\.rowid:$rowid\$"
+   assertStdoutGrep --matches=1 "^\.inserttime:$rexp_date\$"
    assertStdoutGrep --matches=1 "^filehash:$filehash\$"
    assertStdoutGrep --matches=1 "^filesize:$size\$"
+   assertStdoutGrep --matches=1 "^date:$date\$"
    assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --matches=1 "^\.secret:$rexp_bundlesecret\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
 }
 
@@ -509,10 +545,9 @@ setup_AddDeDuplicate() {
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
 }
 test_AddDeDuplicate() {
-   # Add first file again - nothing should change in its manifests, and it
-   # should appear that the add command succeeded (with perhaps some grumbling
-   # on stderr).
-   execute --exit-status=2 $servald rhizome add file $SIDB1 file1 file1.manifestA
+   # Add first file again - should return a "duplicate" status code and nothing
+   # should change in its manifests.
+   execute --exit-status=2 --stderr $servald rhizome add file $SIDB1 file1 file1.manifestA
    assert [ -s file1.manifestA ]
    assert_stdout_add_file file1
    extract_stdout_secret file1_dup_secret
@@ -522,7 +557,7 @@ test_AddDeDuplicate() {
    assert diff file1.manifest file1.manifestA
    assert [ $file1_secret = $file1_dup_secret ]
    # Repeat for second file.
-   execute --exit-status=2 $servald rhizome add file $SIDB1 file2 file2.manifestA
+   execute --exit-status=2 --stderr $servald rhizome add file $SIDB1 file2 file2.manifestA
    assert [ -s file2.manifestA ]
    assert_stdout_add_file file2
    extract_stdout_secret file2_dup_secret
@@ -643,7 +678,7 @@ test_AddUpdateNoAuthor() {
    execute $servald rhizome add file $SIDB1 file1_2 file1_2.manifest
    tfw_cat --stderr
    assertExitStatus '!=' 0
-   # Rhizome store contents have old payload.
+   # Rhizome store contents have old payload, with the original author.
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
 }
@@ -656,9 +691,10 @@ test_AddUpdateNoAuthorWithSecret() {
    tfw_cat -v file1_2.manifest
    executeOk_servald rhizome add file $SIDB1 file1_2 file1_2.manifest "$file1_secret"
    tfw_cat --stderr
-   # Rhizome store contents have new payload.
+   # Rhizome store contents have new payload, but it has lost its author (no BK
+   # field any more).
    executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=1 --author=$SIDB1 file1_2 file2
+   assert_rhizome_list --fromhere=0 file1_2 --fromhere=1 --author=$SIDB1 file2
 }
 
 doc_AddUpdateAutoVersion="Add new payload to existing manifest with automatic version"
@@ -677,16 +713,29 @@ test_AddUpdateAutoVersion() {
    assert_rhizome_list --fromhere=1 file1_2 file2
 }
 
-doc_AddUnsupportedService="Add with unsupported service fails"
-setup_AddUnsupportedService() {
+doc_AddServiceInvalid="Add with invalid service fails"
+setup_AddServiceInvalid() {
    setup_servald
    setup_rhizome
    echo "Message1" >file1
-   echo -e 'service=Fubar' >file1.manifest
+   echo 'service=Fubar!' >file1.manifest
 }
-test_AddUnsupportedService() {
+test_AddServiceInvalid() {
    execute $servald rhizome add file $SIDB1 file1 file1.manifest
+   tfw_cat --stdout --stderr
    assertExitStatus '!=' 0
+}
+
+doc_AddServiceUnsupported="Add with unsupported service succeeds"
+setup_AddServiceUnsupported() {
+   setup_servald
+   setup_rhizome
+   echo "Message1" >file1
+   echo 'service=Fubar' >file1.manifest
+}
+test_AddServiceUnsupported() {
+   executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
+   tfw_cat --stdout --stderr
 }
 
 doc_EncryptedPayload="Add and extract an encrypted payload"
@@ -732,6 +781,7 @@ test_RecipientIsEncrypted() {
    assert diff file1 file1x
    extract_manifest_filehash filehash file1.manifest
    executeOk_servald rhizome export file $filehash file1y
+   tfw_cat file1 -v file1y
    assert ! diff file1 file1y
 }
 
@@ -1002,9 +1052,11 @@ setup_ImportOwnBundle() {
    echo "Hello from B" >fileB
    executeOk_servald rhizome add file $SIDB2 fileB fileB.manifest
    assert_stdout_add_file fileB
+   extract_stdout_rowid rowid
    extract_manifest_id manifestid fileB.manifest
    extract_manifest_version version fileB.manifest
    extract_manifest_filehash filehash fileB.manifest
+   extract_manifest_date date fileB.manifest
    rm -f $SERVALINSTANCE_PATH/rhizome.db
    executeOk_servald rhizome list
    assert_rhizome_list
@@ -1020,15 +1072,18 @@ test_ImportOwnBundle() {
    tfw_cat --stderr
    assert cmp fileB.manifest fileBx.manifest
    assert cmp fileB fileBx
-   assertStdoutLineCount '==' 8
+   assertStdoutLineCount '==' 11
    local size=$(( $(cat fileB | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^service:file$"
    assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
    assertStdoutGrep --matches=1 "^version:$version\$"
-   assertStdoutGrep --matches=1 "^inserttime:$rexp_date\$"
+   assertStdoutGrep --matches=1 "^\.rowid:$rowid\$"
+   assertStdoutGrep --matches=1 "^\.inserttime:$rexp_date\$"
    assertStdoutGrep --matches=1 "^filehash:$filehash\$"
    assertStdoutGrep --matches=1 "^filesize:$size\$"
+   assertStdoutGrep --matches=1 "^date:$date\$"
    assertStdoutGrep --matches=1 "^\.author:$SIDB2\$"
+   assertStdoutGrep --matches=1 "^\.secret:$rexp_bundlesecret\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
    # Now bundle author should be known, so appears to be from here
    executeOk_servald rhizome list

@@ -45,6 +45,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "cli.h"
 #include "overlay_address.h"
 #include "overlay_buffer.h"
+#include "keyring.h"
+#include "dataformats.h"
 
 extern struct cli_schema command_line_options[];
 
@@ -250,6 +252,7 @@ int parseCommandLine(struct cli_context *context, const char *argv0, int argc, c
 
   /* clean up after ourselves */
   rhizome_close_db();
+  free_subscribers();
   OUT();
   
   if (config.debug.timing)
@@ -929,9 +932,6 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   int64_t interval_ms = 1000;
   str_to_uint64_interval_ms(opt_interval, &interval_ms, NULL);
 
-  overlay_mdp_frame mdp;
-  bzero(&mdp, sizeof(overlay_mdp_frame));
-
   /* First sequence number in the echo frames */
   unsigned int firstSeq=random();
   unsigned int sequence_number=firstSeq;
@@ -939,22 +939,23 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   int broadcast = is_sid_t_broadcast(ping_sid);
 
   /* Bind to MDP socket and await confirmation */
-  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+  if ((mdp_sockfd = mdp_socket()) < 0)
     return WHY("Cannot create MDP socket");
 
-  sid_t srcsid;
-  mdp_port_t port=32768+(random()&32767);
-  if (overlay_mdp_getmyaddr(mdp_sockfd, 0, &srcsid)) {
-    overlay_mdp_client_close(mdp_sockfd);
-    return WHY("Could not get local address");
-  }
-  if (overlay_mdp_bind(mdp_sockfd, &srcsid, port)) {
-    overlay_mdp_client_close(mdp_sockfd);
-    return WHY("Could not bind to MDP socket");
-  }
+  struct mdp_header mdp_header;
+  bzero(&mdp_header, sizeof(mdp_header));
+
+  mdp_header.local.sid = BIND_PRIMARY;
+  mdp_header.remote.sid = ping_sid;
+  mdp_header.remote.port = MDP_PORT_ECHO;
+  mdp_header.qos = OQ_MESH_MANAGEMENT;
+  mdp_header.ttl = PAYLOAD_TTL_DEFAULT;
+  mdp_header.flags = MDP_FLAG_BIND;
+  if (broadcast)
+    mdp_header.flags |= MDP_FLAG_NO_CRYPT;
   
   /* TODO Eventually we should try to resolve SID to phone number and vice versa */
-  cli_printf(context, "MDP PING %s (%s): 12 data bytes", alloca_tohex_sid_t(ping_sid), alloca_tohex_sid_t(ping_sid));
+  cli_printf(context, "MDP PING %s: 12 data bytes", alloca_tohex_sid_t(ping_sid));
   cli_delim(context, "\n");
   cli_flush(context);
 
@@ -966,81 +967,91 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
 
   if (broadcast)
     WARN("broadcast ping packets will not be encrypted");
+  
   for (; icount==0 || tx_count<icount; ++sequence_number) {
-    /* Now send the ping packets */
-    mdp.packetTypeAndFlags=MDP_TX;
-    if (broadcast) mdp.packetTypeAndFlags|=MDP_NOCRYPT;
-    mdp.out.src.port=port;
-    mdp.out.src.sid = srcsid;
-    mdp.out.dst.sid = ping_sid;
-    mdp.out.queue=OQ_MESH_MANAGEMENT;
-    /* Set port to well known echo port */
-    mdp.out.dst.port=MDP_PORT_ECHO;
-    mdp.out.payload_length=4+8;
-    int *seq=(int *)&mdp.out.payload;
-    *seq=sequence_number;
-    write_uint64(&mdp.out.payload[4], gettime_ms());
     
-    int res=overlay_mdp_send(mdp_sockfd, &mdp, 0, 0);
-    if (res) {
-      WHYF("could not dispatch PING frame #%d (error %d)%s%s",
-	  sequence_number - firstSeq,
-	  res,
-	  mdp.packetTypeAndFlags == MDP_ERROR ? ": " : "",
-	  mdp.packetTypeAndFlags == MDP_ERROR ? mdp.error.message : ""
-	);
-    } else
-      tx_count++;
-
+    // send a ping packet
+    {
+      uint8_t payload[12];
+      int *seq=(int *)payload;
+      *seq=sequence_number;
+      write_uint64(&payload[4], gettime_ms());
+      
+      int r = mdp_send(mdp_sockfd, &mdp_header, payload, sizeof(payload));
+      if (r<0)
+	WHY_perror("mdp_send");
+      else
+	tx_count++;
+    }
+    
     /* Now look for replies until one second has passed, and print any replies
        with appropriate information as required */
     time_ms_t now = gettime_ms();
-    time_ms_t finish = now + (tx_count < icount?interval_ms:timeout_ms);
+    time_ms_t finish = now + ((tx_count < icount || icount==0)?interval_ms:timeout_ms);
     for (; !servalShutdown && now < finish; now = gettime_ms()) {
       time_ms_t poll_timeout_ms = finish - gettime_ms();
-      int result = overlay_mdp_client_poll(mdp_sockfd, poll_timeout_ms);
-
-      if (result>0) {
-	int ttl=-1;
-	if (overlay_mdp_recv(mdp_sockfd, &mdp, port, &ttl)==0) {
-	  switch(mdp.packetTypeAndFlags&MDP_TYPE_MASK) {
-	  case MDP_ERROR:
-	    WHYF("mdpping: overlay_mdp_recv: %s (code %d)", mdp.error.message, mdp.error.error);
-	    break;
-	  case MDP_TX:
-	    {
-	      int *rxseq=(int *)&mdp.in.payload;
-	      time_ms_t txtime = read_uint64(&mdp.in.payload[4]);
-	      int hop_count = 64 - mdp.in.ttl;
-	      time_ms_t delay = gettime_ms() - txtime;
-	      cli_printf(context, "%s: seq=%d time=%"PRId64"ms hops=%d %s%s",
-		     alloca_tohex_sid_t(mdp.in.src.sid),
-		     (*rxseq)-firstSeq+1,
-		     (int64_t)delay,
-		     hop_count,
-		     mdp.packetTypeAndFlags&MDP_NOCRYPT?"":" ENCRYPTED",
-		     mdp.packetTypeAndFlags&MDP_NOSIGN?"":" SIGNED");
-	      cli_delim(context, "\n");
-	      cli_flush(context);
-	      // TODO Put duplicate pong detection here so that stats work properly.
-	      rx_count++;
-	      ret=0;
-	      rx_ms+=delay;
-	      if (rx_mintime>delay||rx_mintime==-1) rx_mintime=delay;
-	      if (delay>rx_maxtime) rx_maxtime=delay;
-	      rx_times[rx_count%1024]=delay;
-	    }
-	    break;
-	  default:
-	    WHYF("mdpping: overlay_mdp_recv: Unexpected MDP frame type 0x%x", mdp.packetTypeAndFlags);
-	    break;
-	  }
-	}
+      
+      if (mdp_poll(mdp_sockfd, poll_timeout_ms)<=0)
+	continue;
+	
+      struct mdp_header mdp_recv_header;
+      uint8_t recv_payload[12];
+      ssize_t len = mdp_recv(mdp_sockfd, &mdp_recv_header, recv_payload, sizeof(recv_payload));
+      
+      if (len<0){
+	WHY_perror("mdp_recv");
+	break;
       }
+      
+      if (mdp_recv_header.flags & MDP_FLAG_ERROR){
+	WHY("Serval daemon reported an error, please check the log for more information");
+	break;
+      }
+      
+      if (mdp_recv_header.flags & MDP_FLAG_BIND){
+	// received port binding confirmation
+	mdp_header.local = mdp_recv_header.local;
+	mdp_header.flags &= ~MDP_FLAG_BIND;
+	DEBUGF("Bound to %s:%d", alloca_tohex_sid_t(mdp_header.local.sid), mdp_header.local.port);
+	continue;
+      }
+      
+      if (len<sizeof(recv_payload)){
+	DEBUGF("Ignoring ping response as it is too short");
+	continue;
+      }
+      
+      int *rxseq=(int *)&recv_payload;
+      time_ms_t txtime = read_uint64(&recv_payload[4]);
+      int hop_count = 64 - mdp_recv_header.ttl;
+      time_ms_t delay = gettime_ms() - txtime;
+      
+      cli_put_hexvalue(context, mdp_recv_header.remote.sid.binary, SID_SIZE, ": seq=");
+      cli_put_long(context, (*rxseq)-firstSeq+1, " time=");
+      cli_put_long(context, delay, "ms hops=");
+      cli_put_long(context, hop_count, "");
+      
+      if (mdp_recv_header.flags&MDP_FLAG_NO_CRYPT)
+	cli_put_string(context, "", "");
+      else
+	cli_put_string(context, " ENCRYPTED", "");
+	
+      if (mdp_recv_header.flags&MDP_FLAG_NO_SIGN)
+	cli_put_string(context, "", "\n");
+      else
+	cli_put_string(context, " SIGNED", "\n");
+      cli_flush(context);
+      // TODO Put duplicate pong detection here so that stats work properly.
+      rx_count++;
+      ret=0;
+      rx_ms+=delay;
+      if (rx_mintime>delay||rx_mintime==-1) rx_mintime=delay;
+      if (delay>rx_maxtime) rx_maxtime=delay;
+      rx_times[rx_count%1024]=delay;
     }
   }
 
-  overlay_mdp_client_close(mdp_sockfd);
+  mdp_close(mdp_sockfd);
   
   {
     float rx_stddev=0;
@@ -1099,24 +1110,25 @@ int app_trace(const struct cli_parsed *parsed, struct cli_context *context)
   mdp.out.dst.port=MDP_PORT_TRACE;
   mdp.packetTypeAndFlags=MDP_TX;
   struct overlay_buffer *b = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
-  
   ob_append_byte(b, SID_SIZE);
   ob_append_bytes(b, srcsid.binary, SID_SIZE);
-  
   ob_append_byte(b, SID_SIZE);
   ob_append_bytes(b, dstsid.binary, SID_SIZE);
-  
-  mdp.out.payload_length = ob_position(b);
-  cli_printf(context, "Tracing the network path from %s to %s", 
-	 alloca_tohex_sid_t(srcsid), alloca_tohex_sid_t(dstsid));
-  cli_delim(context, "\n");
-  cli_flush(context);
-
-  int ret=overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 5000);
+  int ret;
+  if (ob_overrun(b))
+    ret = WHY("overlay buffer overrun");
+  else {
+    mdp.out.payload_length = ob_position(b);
+    cli_printf(context, "Tracing the network path from %s to %s", 
+	  alloca_tohex_sid_t(srcsid), alloca_tohex_sid_t(dstsid));
+    cli_delim(context, "\n");
+    cli_flush(context);
+    ret = overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 5000);
+    if (ret)
+      WHYF("overlay_mdp_send returned %d", ret);
+  }
   ob_free(b);
-  if (ret)
-    DEBUGF("overlay_mdp_send returned %d", ret);
-  else{
+  if (ret == 0) {
     int offset=0;
     {
       // skip the first two sid's
@@ -1314,25 +1326,32 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
 
   if (create_serval_instance_dir() == -1)
     return -1;
+  
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-  if (rhizome_opendb() == -1)
+  
+  if (rhizome_opendb() == -1){
+    keyring_free(keyring);
     return -1;
+  }
   
   /* Create a new manifest that will represent the file.  If a manifest file was supplied, then read
    * it, otherwise create a blank manifest. */
   rhizome_manifest *m = rhizome_new_manifest();
-  if (!m)
+  if (!m){
+    keyring_free(keyring);
     return WHY("Manifest struct could not be allocated -- not added to rhizome");
-  
+  }
   if (manifestpath && *manifestpath && access(manifestpath, R_OK) == 0) {
     if (config.debug.rhizome)
       DEBUGF("reading manifest from %s", manifestpath);
     /* Don't verify the manifest, because it will fail if it is incomplete.
        This is okay, because we fill in any missing bits and sanity check before
-       trying to write it out. */
-    if (rhizome_read_manifest_file(m, manifestpath, 0) == -1) {
+       trying to write it out. However, we do insist that whatever we load is
+       valid and not malformed. */
+    if (rhizome_read_manifest_file(m, manifestpath, 0) == -1 || m->malformed) {
       rhizome_manifest_free(m);
+      keyring_free(keyring);
       return WHY("Manifest file could not be loaded -- not added to rhizome");
     }
   } else if (manifestid && *manifestid) {
@@ -1341,104 +1360,124 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     rhizome_bid_t bid;
     if (str_to_rhizome_bid_t(&bid, manifestid) == -1) {
       rhizome_manifest_free(m);
+      keyring_free(keyring);
       return WHYF("Invalid bundle ID: %s", alloca_str_toprint(manifestid));
     }
     if (rhizome_retrieve_manifest(&bid, m)){
       rhizome_manifest_free(m);
+      keyring_free(keyring);
       return WHY("Existing manifest could not be loaded -- not added to rhizome");
     }
   } else {
     if (config.debug.rhizome)
       DEBUGF("Creating new manifest");
-    if (journal){
-      m->journalTail = 0;
-      rhizome_manifest_set_ll(m,"tail",m->journalTail);
+    if (journal) {
+      rhizome_manifest_set_filesize(m, 0);
+      rhizome_manifest_set_tail(m, 0);
     }
   }
 
-  if (journal && m->journalTail==-1)
-    return WHY("Existing manifest is not a journal");
-
-  if ((!journal) && m->journalTail>=0)
-    return WHY("Existing manifest is a journal");
-
-  if (rhizome_manifest_get(m, "service", NULL, 0) == NULL)
-    rhizome_manifest_set(m, "service", RHIZOME_SERVICE_FILE);
-
-  if (rhizome_fill_manifest(m, filepath, *authorSidHex ? &authorSid : NULL, bskhex ? &bsk : NULL)){
+  if (journal && !m->is_journal){
     rhizome_manifest_free(m);
+    keyring_free(keyring);
+    return WHY("Existing manifest is not a journal");
+  }
+  if (!journal && m->is_journal) {
+    rhizome_manifest_free(m);
+    keyring_free(keyring);
+    return WHY("Existing manifest is a journal");
+  }
+
+  if (bskhex)
+    rhizome_apply_bundle_secret(m, &bsk);
+  if (m->service == NULL)
+    rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
+  if (rhizome_fill_manifest(m, filepath, *authorSidHex ? &authorSid : NULL)) {
+    rhizome_manifest_free(m);
+    keyring_free(keyring);
     return -1;
   }
 
   if (journal){
-    if (rhizome_append_journal_file(m, bskhex?&bsk:NULL, 0, filepath)){
+    if (rhizome_append_journal_file(m, 0, filepath)){
       rhizome_manifest_free(m);
+      keyring_free(keyring);
       return -1;
     }
   }else{
-    if (rhizome_stat_file(m, filepath)){
+    if (rhizome_stat_file(m, filepath) == -1) {
       rhizome_manifest_free(m);
+      keyring_free(keyring);
       return -1;
     }
-  
-    if (m->fileLength){
-      if (rhizome_add_file(m, filepath)){
+    if (m->filesize) {
+      if (rhizome_add_file(m, filepath) == -1) {
         rhizome_manifest_free(m);
+	keyring_free(keyring);
         return -1;
       }
     }
   }
   
   rhizome_manifest *mout = NULL;
-  int ret=rhizome_manifest_finalise(m, &mout, !force_new);
+  int ret = rhizome_manifest_finalise(m, &mout, !force_new);
   if (ret<0){
     rhizome_manifest_free(m);
+    keyring_free(keyring);
     return -1;
   }
   
   if (manifestpath && *manifestpath
       && rhizome_write_manifest_file(mout, manifestpath, 0) == -1)
     ret = WHY("Could not overwrite manifest file.");
-  const char *service = rhizome_manifest_get(mout, "service", NULL, 0);
-  if (service) {
+  if (mout->service) {
     cli_field_name(context, "service", ":");
-    cli_put_string(context, service, "\n");
+    cli_put_string(context, mout->service, "\n");
   }
   {
     cli_field_name(context, "manifestid", ":");
     cli_put_string(context, alloca_tohex_rhizome_bid_t(mout->cryptoSignPublic), "\n");
   }
+  assert(m->haveSecret);
   {
     char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
     rhizome_bytes_to_hex_upper(mout->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
     cli_field_name(context, ".secret", ":");
     cli_put_string(context, secret, "\n");
   }
-  if (*authorSidHex) {
+  assert(mout->authorship != AUTHOR_LOCAL);
+  if (mout->authorship == AUTHOR_AUTHENTIC) {
     cli_field_name(context, ".author", ":");
-    cli_put_string(context, alloca_tohex_sid_t(authorSid), "\n");
+    cli_put_string(context, alloca_tohex_sid_t(mout->author), "\n");
   }
-  const char *bk = rhizome_manifest_get(mout, "BK", NULL, 0);
-  if (bk) {
+  cli_field_name(context, ".rowid", ":");
+  cli_put_long(context, m->rowid, "\n");
+  cli_field_name(context, ".inserttime", ":");
+  cli_put_long(context, m->inserttime, "\n");
+  if (mout->has_bundle_key) {
     cli_field_name(context, "BK", ":");
-    cli_put_string(context, bk, "\n");
+    cli_put_string(context, alloca_tohex_rhizome_bk_t(mout->bundle_key), "\n");
+  }
+  if (mout->has_date) {
+    cli_field_name(context, "date", ":");
+    cli_put_long(context, mout->date, "\n");
   }
   cli_field_name(context, "version", ":");
-  cli_put_long(context, m->version, "\n");
+  cli_put_long(context, mout->version, "\n");
   cli_field_name(context, "filesize", ":");
-  cli_put_long(context, mout->fileLength, "\n");
-  if (mout->fileLength != 0) {
+  cli_put_long(context, mout->filesize, "\n");
+  if (mout->filesize != 0) {
     cli_field_name(context, "filehash", ":");
     cli_put_string(context, alloca_tohex_rhizome_filehash_t(mout->filehash), "\n");
   }
-  const char *name = rhizome_manifest_get(mout, "name", NULL, 0);
-  if (name) {
+  if (mout->name) {
     cli_field_name(context, "name", ":");
-    cli_put_string(context, name, "\n");
+    cli_put_string(context, mout->name, "\n");
   }
   if (mout != m)
     rhizome_manifest_free(mout);
   rhizome_manifest_free(m);
+  keyring_free(keyring);
   return ret;
 }
 
@@ -1506,10 +1545,9 @@ int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_contex
   // TODO generalise the way we dump manifest details from add, import & export
   // so callers can also generalise their parsing
   
-  const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-  if (service) {
+  if (m->service) {
     cli_field_name(context, "service", ":");
-    cli_put_string(context, service, "\n");
+    cli_put_string(context, m->service, "\n");
   }
   {
     cli_field_name(context, "manifestid", ":");
@@ -1521,23 +1559,26 @@ int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_contex
     cli_field_name(context, ".secret", ":");
     cli_put_string(context, secret, "\n");
   }
-  const char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
-  if (bk) {
+  if (m->has_bundle_key) {
     cli_field_name(context, "BK", ":");
-    cli_put_string(context, bk, "\n");
+    cli_put_string(context, alloca_tohex_rhizome_bk_t(m->bundle_key), "\n");
   }
   cli_field_name(context, "version", ":");
   cli_put_long(context, m->version, "\n");
+  if (m->has_date) {
+    cli_field_name(context, "date", ":");
+    cli_put_long(context, m->date, "\n");
+  }
   cli_field_name(context, "filesize", ":");
-  cli_put_long(context, m->fileLength, "\n");
-  if (m->fileLength != 0) {
+  cli_put_long(context, m->filesize, "\n");
+  assert(m->filesize != RHIZOME_SIZE_UNSET);
+  if (m->filesize != 0) {
     cli_field_name(context, "filehash", ":");
     cli_put_string(context, alloca_tohex_rhizome_filehash_t(m->filehash), "\n");
   }
-  const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-  if (name) {
+  if (m->name) {
     cli_field_name(context, "name", ":");
-    cli_put_string(context, name, "\n");
+    cli_put_string(context, m->name, "\n");
   }
   
 cleanup:
@@ -1553,22 +1594,19 @@ int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_cont
   if ( cli_arg(parsed, "manifestpath", &manifestpath, NULL, "") == -1
     || cli_arg(parsed, "filepath", &filepath, NULL, "") == -1)
     return -1;
-  
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     return WHY("Out of manifests.");
-  
-  int ret=0;
-  if (rhizome_read_manifest_file(m, manifestpath, 0) == -1)
-    ret=-1;
-  // TODO why doesn't read manifest file set finalised???
-  m->finalised=1;
-  
-  if (ret==0 && rhizome_write_manifest_file(m, filepath, 1) == -1)
-    ret = -1;
-  
-  if (m)
-    rhizome_manifest_free(m);
+  int ret = -1;
+  if (   rhizome_read_manifest_file(m, manifestpath, 0) != -1
+      && rhizome_manifest_validate(m)
+      && rhizome_manifest_verify(m)
+  ) {
+    assert(m->finalised);
+    if (rhizome_write_manifest_file(m, filepath, 1) != -1)
+      ret = 0;
+  }
+  rhizome_manifest_free(m);
   return ret;
 }
 
@@ -1590,27 +1628,38 @@ int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_context *cont
     return -1;
   int ret=0;
   if (cli_arg(parsed, "file", NULL, NULL, NULL) == 0) {
-    if (!fileid)
+    if (!fileid){
+      keyring_free(keyring);
       return WHY("missing <fileid> argument");
+    }
     rhizome_filehash_t hash;
-    if (str_to_rhizome_filehash_t(&hash, fileid) == -1)
+    if (str_to_rhizome_filehash_t(&hash, fileid) == -1){
+      keyring_free(keyring);
       return WHYF("invalid <fileid> argument: %s", alloca_str_toprint(fileid));
+    }
     ret = rhizome_delete_file(&hash);
   } else {
-    if (!manifestid)
+    if (!manifestid){
+      keyring_free(keyring);
       return WHY("missing <manifestid> argument");
+    }
     rhizome_bid_t bid;
-    if (str_to_rhizome_bid_t(&bid, manifestid) == -1)
+    if (str_to_rhizome_bid_t(&bid, manifestid) == -1){
+      keyring_free(keyring);
       return WHY("Invalid manifest ID");
+    }
     if (cli_arg(parsed, "bundle", NULL, NULL, NULL) == 0)
       ret = rhizome_delete_bundle(&bid);
     else if (cli_arg(parsed, "manifest", NULL, NULL, NULL) == 0)
       ret = rhizome_delete_manifest(&bid);
     else if (cli_arg(parsed, "payload", NULL, NULL, NULL) == 0)
       ret = rhizome_delete_payload(&bid);
-    else
+    else{
+      keyring_free(keyring);
       return WHY("unrecognised command");
+    }
   }
+  keyring_free(keyring);
   return ret;
 }
 
@@ -1658,50 +1707,77 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
   int ret=0;
   
   rhizome_bid_t bid;
-  if (str_to_rhizome_bid_t(&bid, manifestid) == -1)
+  if (str_to_rhizome_bid_t(&bid, manifestid) == -1){
+    keyring_free(keyring);
     return WHY("Invalid manifest ID");
+  }
   
   // treat empty string the same as null
   if (bskhex && !*bskhex)
     bskhex=NULL;
   
   rhizome_bk_t bsk;
-  if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+  if (bskhex && str_to_rhizome_bk_t(&bsk, bskhex) == -1){
+    keyring_free(keyring);
     return WHYF("invalid bsk: \"%s\"", bskhex);
+  }
 
   rhizome_manifest *m = rhizome_new_manifest();
-  if (m==NULL)
+  if (m==NULL){
+    keyring_free(keyring);
     return WHY("Out of manifests");
-  
+  }
   ret = rhizome_retrieve_manifest(&bid, m);
   
   if (ret==0){
-    // ignore errors
-    rhizome_extract_privatekey(m, NULL);
-    const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
-    
-    cli_field_name(context, "service", ":");    cli_put_string(context, blob_service, "\n");
-    cli_field_name(context, "manifestid", ":"); cli_put_string(context, alloca_tohex_rhizome_bid_t(bid), "\n");
-    cli_field_name(context, "version", ":");    cli_put_long(context, m->version, "\n");
-    cli_field_name(context, "inserttime", ":"); cli_put_long(context, m->inserttime, "\n");
-    if (m->haveSecret) {
-      cli_field_name(context, ".author", ":");  cli_put_string(context, alloca_tohex_sid_t(m->author), "\n");
+    if (bskhex)
+      rhizome_apply_bundle_secret(m, &bsk);
+    rhizome_authenticate_author(m);
+
+    if (m->service) {
+      cli_field_name(context, "service", ":");
+      cli_put_string(context, m->service, "\n");
     }
-    cli_field_name(context, ".readonly", ":");  cli_put_long(context, m->haveSecret?0:1, "\n");
-    cli_field_name(context, "filesize", ":");   cli_put_long(context, m->fileLength, "\n");
-    if (m->fileLength != 0) {
+    cli_field_name(context, "manifestid", ":");
+    cli_put_string(context, alloca_tohex_rhizome_bid_t(bid), "\n");
+    cli_field_name(context, "version", ":");
+    cli_put_long(context, m->version, "\n");
+    if (m->has_date) {
+      cli_field_name(context, "date", ":");
+      cli_put_long(context, m->date, "\n");
+    }
+    cli_field_name(context, "filesize", ":");
+    cli_put_long(context, m->filesize, "\n");
+    assert(m->filesize != RHIZOME_SIZE_UNSET);
+    if (m->filesize != 0) {
       cli_field_name(context, "filehash", ":");
       cli_put_string(context, alloca_tohex_rhizome_filehash_t(m->filehash), "\n");
     }
+    if (m->haveSecret) {
+      char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
+      rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
+      cli_field_name(context, ".secret", ":");
+      cli_put_string(context, secret, "\n");
+    }
+    assert(m->authorship != AUTHOR_LOCAL);
+    if (m->authorship == AUTHOR_AUTHENTIC) {
+      cli_field_name(context, ".author", ":");
+      cli_put_string(context, alloca_tohex_sid_t(m->author), "\n");
+    }
+    cli_field_name(context, ".rowid", ":");
+    cli_put_long(context, m->rowid, "\n");
+    cli_field_name(context, ".inserttime", ":");
+    cli_put_long(context, m->inserttime, "\n");
+    cli_field_name(context, ".readonly", ":");
+    cli_put_long(context, m->haveSecret?0:1, "\n");
   }
   
   int retfile=0;
   
-  if (ret==0 && m->fileLength != 0 && filepath && *filepath){
+  if (ret==0 && m->filesize != 0 && filepath && *filepath){
     if (extract){
       // Save the file, implicitly decrypting if required.
-      // TODO, this may cause us to search for an author a second time if the above call to rhizome_extract_privatekey failed
-      retfile = rhizome_extract_file(m, filepath, bskhex?&bsk:NULL);
+      retfile = rhizome_extract_file(m, filepath);
     }else{
       // Save the file without attempting to decrypt
       int64_t length;
@@ -1733,6 +1809,7 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
     ret = retfile == -1 ? -1 : 1;
   if (m)
     rhizome_manifest_free(m);
+  keyring_free(keyring);
   return ret;
 }
 
@@ -1768,21 +1845,99 @@ int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context *contex
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  const char *service, *name, *sender_sid, *recipient_sid, *offset, *limit;
+  const char *service = NULL, *name = NULL, *sender_hex = NULL, *recipient_hex = NULL, *offset_ascii = NULL, *limit_ascii = NULL;
   cli_arg(parsed, "service", &service, NULL, "");
   cli_arg(parsed, "name", &name, NULL, "");
-  cli_arg(parsed, "sender_sid", &sender_sid, cli_optional_sid, "");
-  cli_arg(parsed, "recipient_sid", &recipient_sid, cli_optional_sid, "");
-  cli_arg(parsed, "offset", &offset, cli_uint, "0");
-  cli_arg(parsed, "limit", &limit, cli_uint, "0");
+  cli_arg(parsed, "sender_sid", &sender_hex, cli_optional_sid, "");
+  cli_arg(parsed, "recipient_sid", &recipient_hex, cli_optional_sid, "");
+  cli_arg(parsed, "offset", &offset_ascii, cli_uint, "0");
+  cli_arg(parsed, "limit", &limit_ascii, cli_uint, "0");
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-  if (rhizome_opendb() == -1)
+  if (rhizome_opendb() == -1) {
+    keyring_free(keyring);
     return -1;
-  return rhizome_list_manifests(context, service, name, sender_sid, recipient_sid, atoi(offset), atoi(limit), 0);
+  }
+  size_t rowlimit = atoi(limit_ascii);
+  size_t rowoffset = atoi(offset_ascii);
+  struct rhizome_list_cursor cursor;
+  bzero(&cursor, sizeof cursor);
+  cursor.service = service && service[0] ? service : NULL;
+  cursor.name = name && name[0] ? name : NULL;
+  if (sender_hex && sender_hex[0]) {
+    if (str_to_sid_t(&cursor.sender, sender_hex) == -1)
+      return WHYF("Invalid <sender>: %s", sender_hex);
+    cursor.is_sender_set = 1;
+  }
+  if (recipient_hex && recipient_hex[0]) {
+    if (str_to_sid_t(&cursor.recipient, recipient_hex) == -1)
+      return WHYF("Invalid <recipient: %s", recipient_hex);
+    cursor.is_recipient_set = 1;
+  }
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  if (rhizome_list_open(&retry, &cursor) == -1) {
+    keyring_free(keyring);
+    return -1;
+  }
+  const char *headers[]={
+    "_id",
+    "service",
+    "id",
+    "version",
+    "date",
+    ".inserttime",
+    ".author",
+    ".fromhere",
+    "filesize",
+    "filehash",
+    "sender",
+    "recipient",
+    "name"
+  };
+  cli_columns(context, NELS(headers), headers);
+  size_t rowcount = 0;
+  int n;
+  while ((n = rhizome_list_next(&retry, &cursor)) == 1) {
+    ++rowcount;
+    if (rowcount <= rowoffset)
+      continue;
+    if (rowlimit == 0 || rowcount <= rowoffset + rowlimit) {
+      rhizome_manifest *m = cursor.manifest;
+      assert(m->filesize != RHIZOME_SIZE_UNSET);
+      rhizome_lookup_author(m);
+      cli_put_long(context, m->rowid, ":");
+      cli_put_string(context, m->service, ":");
+      cli_put_hexvalue(context, m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, ":");
+      cli_put_long(context, m->version, ":");
+      cli_put_long(context, m->has_date ? m->date : 0, ":");
+      cli_put_long(context, m->inserttime, ":");
+      switch (m->authorship) {
+	case AUTHOR_LOCAL:
+	case AUTHOR_AUTHENTIC:
+	  cli_put_hexvalue(context, m->author.binary, sizeof m->author.binary, ":");
+	  cli_put_long(context, 1, ":");
+	  break;
+	default:
+	  cli_put_string(context, NULL, ":");
+	  cli_put_long(context, 0, ":");
+	  break;
+      }
+      cli_put_long(context, m->filesize, ":");
+      cli_put_hexvalue(context, m->filesize ? m->filehash.binary : NULL, sizeof m->filehash.binary, ":");
+      cli_put_hexvalue(context, m->has_sender ? m->sender.binary : NULL, sizeof m->sender.binary, ":");
+      cli_put_hexvalue(context, m->has_recipient ? m->recipient.binary : NULL, sizeof m->recipient.binary, ":");
+      cli_put_string(context, m->name, "\n");
+    }
+  }
+  rhizome_list_release(&cursor);
+  keyring_free(keyring);
+  if (n == -1)
+    return -1;
+  cli_row_count(context, rowcount);
+  return 0;
 }
 
 int app_keyring_create(const struct cli_parsed *parsed, struct cli_context *context)
@@ -1888,7 +2043,48 @@ int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *contex
     }
   keyring_free(k);
   return 0;
- }
+}
+
+static void cli_output_identity(struct cli_context *context, const keyring_identity *id)
+{
+  int i;
+  for (i=0;i<id->keypair_count;i++){
+    keypair *kp=id->keypairs[i];
+    switch(kp->type){
+      case KEYTYPE_CRYPTOBOX:
+	cli_field_name(context, "sid", ":");
+	cli_put_string(context, alloca_tohex(kp->public_key, kp->public_key_len), "\n");
+	break;
+      case KEYTYPE_DID:
+	{
+	  char *str = (char*)kp->private_key;
+	  int l = strlen(str);
+	  if (l){
+	    cli_field_name(context, "did", ":");
+	    cli_put_string(context, str, "\n");
+	  }
+	  str = (char*)kp->public_key;
+	  l=strlen(str);
+	  if (l){
+	    cli_field_name(context, "name", ":");
+	    cli_put_string(context, str, "\n");
+	  }
+	}
+	break;
+      case KEYTYPE_PUBLIC_TAG:
+	{
+	  const char *name;
+	  const unsigned char *value;
+	  size_t length;
+	  if (keyring_unpack_tag(kp->public_key, kp->public_key_len, &name, &value, &length)==0){
+	    cli_field_name(context, name, ":");
+	    cli_put_string(context, alloca_toprint_quoted(-1, value, length, NULL), "\n");
+	  }
+	}
+	break;
+    }
+  }
+}
 
 int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *context)
 {
@@ -1917,16 +2113,7 @@ int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *context
     keyring_free(k);
     return WHY("Could not write new identity");
   }
-  cli_field_name(context, "sid", ":");
-  cli_put_string(context, alloca_tohex_sid_t(*sidp), "\n");
-  if (did) {
-    cli_field_name(context, "did", ":");
-    cli_put_string(context, did, "\n");
-  }
-  if (name) {
-    cli_field_name(context, "name", ":");
-    cli_put_string(context, name, "\n");
-  }
+  cli_output_identity(context, id);
   keyring_free(k);
   return 0;
 }
@@ -1936,12 +2123,52 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   const char *sidhex, *did, *name;
-  cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "");
-  cli_arg(parsed, "did", &did, cli_optional_did, "");
-  cli_arg(parsed, "name", &name, NULL, "");
+  
+  if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1 ||
+      cli_arg(parsed, "did", &did, cli_optional_did, "") == -1 ||
+      cli_arg(parsed, "name", &name, NULL, "") == -1)
+    return -1;
 
-  if (strlen(name)>63) return WHY("Name too long (31 char max)");
+  if (strlen(name)>63)
+    return WHY("Name too long (31 char max)");
 
+  sid_t sid;
+  if (str_to_sid_t(&sid, sidhex) == -1){
+    keyring_free(keyring);
+    return WHY("str_to_sid_t() failed");
+  }
+
+  if (!(keyring = keyring_open_instance_cli(parsed)))
+    return -1;
+  
+  int cn=0,in=0,kp=0;
+  int r=0;
+  if (!keyring_find_sid(keyring, &cn, &in, &kp, &sid))
+    r=WHY("No matching SID");
+  else{
+    if (keyring_set_did(keyring->contexts[cn]->identities[in], did, name))
+      r=WHY("Could not set DID");
+    else{
+      if (keyring_commit(keyring))
+	r=WHY("Could not write updated keyring record");
+      else{
+	cli_output_identity(context, keyring->contexts[cn]->identities[in]);
+      }
+    }
+  }
+
+  keyring_free(keyring);
+  return r;
+}
+
+static int app_keyring_set_tag(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  const char *sidhex, *tag, *value;
+  if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1 ||
+      cli_arg(parsed, "tag", &tag, NULL, "") == -1 ||
+      cli_arg(parsed, "value", &value, NULL, "") == -1 )
+    return -1;
+  
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
 
@@ -1950,32 +2177,50 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
     return WHY("str_to_sid_t() failed");
 
   int cn=0,in=0,kp=0;
-  int r=keyring_find_sid(keyring, &cn, &in, &kp, &sid);
-  if (!r) return WHY("No matching SID");
-  if (keyring_set_did(keyring->contexts[cn]->identities[in], did, name))
-    return WHY("Could not set DID");
-  if (keyring_commit(keyring))
-    return WHY("Could not write updated keyring record");
-
-  cli_field_name(context, "sid", ":");
-  cli_put_string(context, alloca_tohex_sid_t(sid), "\n");
-  if (did) {
-    cli_field_name(context, "did", ":");
-    cli_put_string(context, did, "\n");
+  int r=0;
+  if (!keyring_find_sid(keyring, &cn, &in, &kp, &sid))
+    r=WHY("No matching SID");
+  else{
+    int length = strlen(value);
+    if (keyring_set_public_tag(keyring->contexts[cn]->identities[in], tag, (const unsigned char*)value, length))
+      r=WHY("Could not set tag value");
+    else{
+      if (keyring_commit(keyring))
+	r=WHY("Could not write updated keyring record");
+      else{
+	cli_output_identity(context, keyring->contexts[cn]->identities[in]);
+      }
+    }
   }
-  if (name) {
-    cli_field_name(context, "name", ":");
-    cli_put_string(context, name, "\n");
-  }
+  
   keyring_free(keyring);
-  return 0;
+  return r;
+}
+
+ssize_t mdp_poll_recv(int mdp_sock, time_ms_t timeout, struct mdp_header *rev_header, unsigned char *payload, size_t buffer_size)
+{
+  time_ms_t now = gettime_ms();
+  if (now>timeout)
+    return -2;
+  int p=mdp_poll(mdp_sock, timeout - now);
+  if (p<0)
+    return WHY_perror("mdp_poll");
+  if (p==0)
+    return -2;
+  ssize_t len = mdp_recv(mdp_sock, rev_header, payload, buffer_size);
+  if (len<0)
+    return WHY_perror("mdp_recv");
+  if (rev_header->flags & MDP_FLAG_ERROR)
+    return WHY("Operation failed, check the log for more information");
+  return len;
 }
 
 static int handle_pins(const struct cli_parsed *parsed, struct cli_context *context, int revoke)
 {
   const char *pin, *sid_hex;
-  cli_arg(parsed, "entry-pin", &pin, NULL, "");
-  cli_arg(parsed, "sid", &sid_hex, str_is_subscriber_id, "");
+  if (cli_arg(parsed, "entry-pin", &pin, NULL, "") == -1 ||
+      cli_arg(parsed, "sid", &sid_hex, str_is_subscriber_id, "") == -1)
+    return -1;
 
   int ret=1;
   struct mdp_header header={
@@ -1984,8 +2229,8 @@ static int handle_pins(const struct cli_parsed *parsed, struct cli_context *cont
   int mdp_sock = mdp_socket();
   set_nonblock(mdp_sock);
   
-  unsigned char payload[1200];
-  struct mdp_identity_request *request = (struct mdp_identity_request *)payload;
+  unsigned char request_payload[1200];
+  struct mdp_identity_request *request = (struct mdp_identity_request *)request_payload;
   
   if (revoke){
     request->action=ACTION_LOCK;
@@ -1997,50 +2242,39 @@ static int handle_pins(const struct cli_parsed *parsed, struct cli_context *cont
   if (pin && *pin){
     request->type=TYPE_PIN;
     int pin_len = strlen(pin)+1;
-    if (pin_len+len > sizeof(payload))
+    if (pin_len+len > sizeof(request_payload))
       return WHY("Supplied pin is too long");
-    bcopy(pin, &payload[len], pin_len);
+    bcopy(pin, &request_payload[len], pin_len);
     len+=pin_len;
   }else if(sid_hex && *sid_hex){
     request->type=TYPE_SID;
     sid_t sid;
     if (str_to_sid_t(&sid, sid_hex) == -1)
       return WHY("str_to_sid_t() failed");
-    bcopy(sid.binary, &payload[len], sizeof(sid));
+    bcopy(sid.binary, &request_payload[len], sizeof(sid));
     len+=sizeof(sid);
   }
   
-  if (!mdp_send(mdp_sock, &header, payload, len)){
+  if (!mdp_send(mdp_sock, &header, request_payload, len)){
     WHY_perror("mdp_send");
     goto end;
   }
   
   time_ms_t timeout=gettime_ms()+500;
   while(1){
-    time_ms_t now = gettime_ms();
-    if (now>timeout)
+    struct mdp_header rev_header;
+    unsigned char response_payload[1600];
+    ssize_t len = mdp_poll_recv(mdp_sock, timeout, &rev_header, response_payload, sizeof(response_payload));
+    if (len==-1)
       break;
-    int p=mdp_poll(mdp_sock, timeout - now);
-    if (p<0){
-      WHY_perror("mdp_poll");
-      break;
-    }
-    if (p==0){
+    if (len==-2){
       WHYF("Timeout while waiting for response");
       break;
     }
-    struct mdp_header rev_header;
-    unsigned char payload[1600];
-    ssize_t len = mdp_recv(mdp_sock, &rev_header, payload, sizeof(payload));
-    if (len<0){
-      WHY_perror("mdp_recv");
-      continue;
-    }
-    if (rev_header.flags & MDP_FLAG_OK)
+    if (rev_header.flags & MDP_FLAG_CLOSE){
       ret=0;
-    if (rev_header.flags & MDP_FLAG_ERROR)
-      WHY("Operation failed, check the log for more information");
-    break;
+      break;
+    }
   }
 end:
   mdp_close(mdp_sock);
@@ -2055,6 +2289,67 @@ int app_revoke_pin(const struct cli_parsed *parsed, struct cli_context *context)
 int app_id_pin(const struct cli_parsed *parsed, struct cli_context *context)
 {
   return handle_pins(parsed, context, 0);
+}
+
+int app_id_list(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  const char *tag, *value;
+  if (cli_arg(parsed, "tag", &tag, NULL, "") == -1 ||
+      cli_arg(parsed, "value", &value, NULL, "") == -1 )
+    return -1;
+  
+  int ret=-1;
+  struct mdp_header header={
+    .remote.port=MDP_SEARCH_IDS,
+  };
+  int mdp_sock = mdp_socket();
+  set_nonblock(mdp_sock);
+  
+  unsigned char request_payload[1200];
+  size_t len=0;
+  
+  if (tag && *tag){
+    size_t value_len=0;
+    if (value && *value)
+      value_len = strlen(value);
+    len = sizeof(request_payload);
+    if (keyring_pack_tag(request_payload, &len, tag, (unsigned char*)value, value_len))
+      goto end;
+  }
+  
+  if (!mdp_send(mdp_sock, &header, request_payload, len)){
+    WHY_perror("mdp_send");
+    goto end;
+  }
+  
+  time_ms_t timeout=gettime_ms()+500;
+  while(1){
+    struct mdp_header rev_header;
+    unsigned char response_payload[1600];
+    ssize_t len = mdp_poll_recv(mdp_sock, timeout, &rev_header, response_payload, sizeof(response_payload));
+    if (len==-1)
+      break;
+    if (len==-2){
+      WHYF("Timeout while waiting for response");
+      break;
+    }
+    
+    if (len>=SID_SIZE){
+      sid_t *id = (sid_t*)response_payload;
+      cli_field_name(context, "sid", ":");
+      cli_put_hexvalue(context, id->binary, sizeof(sid_t), "\n");
+      // TODO receive and decode other details about this identity
+    }
+    
+    if (rev_header.flags & MDP_FLAG_CLOSE){
+      ret=0;
+      break;
+    }
+  }
+  
+end:
+  mdp_close(mdp_sock);
+  return ret;
 }
 
 int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
@@ -2471,7 +2766,7 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
       
       /* Got a good DNA reply, copy it into place and stop polling */
       cli_field_name(context, "sid", ":");
-      cli_put_string(context, sidhex, ":");
+      cli_put_string(context, sidhex, "\n");
       cli_field_name(context, "did", ":");
       cli_put_string(context, did, "\n");
       cli_field_name(context, "name", ":");
@@ -2482,6 +2777,58 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
   }
   overlay_mdp_client_close(mdp_sockfd);
   return 1;
+}
+
+void context_switch_test(int);
+int app_mem_test(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  size_t mem_size;
+  size_t addr;
+  uint64_t count;
+
+
+  // First test context switch speed
+  context_switch_test(1);
+
+  for(mem_size=1024;mem_size<=(128*1024*1024);mem_size*=2) {
+    uint8_t *mem=malloc(mem_size);
+    if (!mem) {
+      fprintf(stderr,"Could not allocate %zdKB memory -- stopping test.\n",mem_size/1024);
+      return -1;
+    }
+
+    // Fill memory with random stuff so that we don't have memory page-in
+    // delays when doing the reads
+    for(addr=0;addr<mem_size;addr++) mem[addr]=random()&0xff;
+    
+    time_ms_t end_time=gettime_ms()+100;
+    uint64_t total=0;
+    size_t mem_mask=mem_size-1;
+
+    for(count=0;gettime_ms()<end_time;count++) {
+      addr=random()&mem_mask;
+      total+=mem[addr];
+    }
+    printf("Memory size = %8zdKB : %"PRId64" random  reads per second (irrelevant sum is %016"PRIx64")\n",
+	   mem_size/1024,count*10,
+	   /* use total so that compiler doesn't optimise away our memory accesses */
+	   total);
+
+    end_time=gettime_ms()+100;
+    for(count=0;gettime_ms()<end_time;count++) {
+      addr=random()&mem_mask;
+      mem[addr]=3;
+    }
+    printf("Memory size = %8zdKB : %"PRId64" random writes per second (irrelevant sum is %016"PRIx64")\n",
+	   mem_size/1024,count*10,
+	   /* use total so that compiler doesn't optimise away our memory accesses */
+	   total);
+
+
+    free(mem);
+  }
+
+  return 0;
 }
 
 int app_network_scan(const struct cli_parsed *parsed, struct cli_context *context)
@@ -2500,11 +2847,10 @@ int app_network_scan(const struct cli_parsed *parsed, struct cli_context *contex
     return -1;
   
   if (address){
-    DEBUGF("Parsing arg %s", address);
     if (!inet_aton(address, &scan->addr))
       return WHY("Unable to parse the address");
   }else
-    DEBUGF("Scanning local networks");
+    INFO("Scanning local networks");
   
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
     return WHY("Cannot create MDP socket");
@@ -2610,6 +2956,10 @@ struct cli_schema command_line_options[]={
    "Create a new identity in the keyring protected by the supplied PIN (empty PIN if not given)"},
   {app_keyring_set_did,{"keyring", "set","did" KEYRING_PIN_OPTIONS,"<sid>","<did>","<name>",NULL}, 0,
    "Set the DID for the specified SID (must supply PIN to unlock the SID record in the keyring)"},
+  {app_keyring_set_tag,{"keyring", "set","tag" KEYRING_PIN_OPTIONS,"<sid>","<tag>","<value>",NULL}, 0,
+   "Set a named tag for the specified SID (must supply PIN to unlock the SID record in the keyring)"},
+  {app_id_list, {"id", "list", "[<tag>]", "[<value>]", NULL}, 0, 
+   "Search unlocked identities based on an optional tag and value"},
   {app_id_self,{"id","self|peers|allpeers",NULL}, 0,
    "Return identity(s) as URIs of own node, or of known routable peers, or all known peers"},
   {app_id_pin, {"id", "enter", "pin", "<entry-pin>", NULL}, 0,
@@ -2634,6 +2984,8 @@ struct cli_schema command_line_options[]={
    "Run cryptography speed test"},
   {app_nonce_test,{"test","nonce",NULL}, 0,
    "Run nonce generation test"},
+  {app_mem_test,{"test","memory",NULL}, 0,
+   "Run memory speed test"},
   {app_byteorder_test,{"test","byteorder",NULL}, 0,
    "Run byte order handling test"},
   {app_slip_test,{"test","slip","[--seed=<N>]","[--duration=<seconds>|--iterations=<N>]",NULL}, 0,

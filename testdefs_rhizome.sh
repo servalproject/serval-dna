@@ -78,6 +78,63 @@ assert_rhizome_list() {
    rhizome_list_file_count=$(( $(replayStdout | wc -l) - 2 ))
 }
 
+# Parse the standard output produced by the immediately preceding "rhizome list"
+# command into the following shell variables:
+#  NCOLS the number of columns
+#  NROWS the number of data rows (not counting headers)
+#  HEADER[c] the C-th header label, 0 <= C <= NCOLS-1
+#  <label>[R] where <label> is a header label with all non-alphanumerics
+#  replaced by underscore '_' and all alphas converted to upper case, eg,
+#  .author -> _AUTHOR, is the value of that column in the R-th row, 0 <=
+#  R < NROWS
+#
+# Warning: overwrites existing shell variables.  Names of overwritten shell
+# variables are derived directly from the output of rhizome list, so cannot be
+# controlled.  If a prefix is supplied, all variables are prefixed with that.
+rhizome_list_unpack() {
+   local prefix="$1"
+   {
+      local n
+      read n
+      eval ${prefix}NCOLS=\"\$n\"
+      declare -a ${prefix}HEADER
+      local -a header
+      local oIFS="$IFS"
+      IFS=:
+      read -r -a header
+      IFS="$oIFS"
+      eval ${prefix}HEADER="(\"\${header[@]}\")"
+      local hdr
+      local -a colvars=()
+      for hdr in "${header[@]}"; do
+         case "$hdr" in
+         id)
+            hdr=BID;;
+         *)
+            hdr="${hdr//[^A-Za-z0-9_]/_}"
+            # hdr="${hdr^^*}" would do in Bash-4.0 and later
+            hdr="$(echo "$hdr" | sed -e 's/.*/\U&/')"
+            ;;
+         esac
+         colvars+=("$hdr")
+      done
+      local -a row
+      IFS=:
+      local i=0
+      while eval read -r -a row; do
+         local j=0
+         local val
+         for val in "${row[@]}"; do
+            eval ${prefix}${colvars[$j]}[$i]=\"\$val\"
+            let ++j
+         done
+         let ++i
+      done
+      IFS="$oIFS"
+      eval ${prefix}NROWS=$i
+   } < "$TFWSTDOUT"
+}
+
 rhizome_list_dump() {
    local ncols
    local -a headers
@@ -245,8 +302,28 @@ extract_stdout_secret() {
    extract_stdout_keyvalue "$1" .secret "$rexp_bundlesecret"
 }
 
+extract_stdout_rowid() {
+   extract_stdout_keyvalue "$1" .rowid "$rexp_rowid"
+}
+
+extract_stdout_inserttime() {
+   extract_stdout_keyvalue "$1" .inserttime "$rexp_date"
+}
+
 extract_stdout_BK() {
    extract_stdout_keyvalue "$1" BK "$rexp_bundlekey"
+}
+
+extract_stdout_date() {
+   extract_stdout_keyvalue "$1" date "$rexp_date"
+}
+
+extract_stdout_filesize() {
+   extract_stdout_keyvalue "$1" filesize "$rexp_filesize"
+}
+
+extract_stdout_filehash() {
+   extract_stdout_keyvalue "$1" filehash "$rexp_filehash"
 }
 
 extract_manifest() {
@@ -287,6 +364,10 @@ extract_manifest_name() {
 
 extract_manifest_version() {
    extract_manifest "$1" "$2" version "$rexp_version"
+}
+
+extract_manifest_date() {
+   extract_manifest "$1" "$2" date "$rexp_date"
 }
 
 extract_manifest_crypt() {

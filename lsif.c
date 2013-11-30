@@ -46,7 +46,6 @@
 #ifndef SIOCGIFCONF
 #include <sys/sockio.h>
 #endif
-#include <netinet/in.h>
 #include <netinet/if_ether.h>
 #if __MACH__
 #include <net/if_dl.h>

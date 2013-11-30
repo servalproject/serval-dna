@@ -33,42 +33,41 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/types.h>
 
 #ifdef WIN32
-#include "win32/win32.h"
+#   include "win32/win32.h"
 #else
-#include <unistd.h>
-#ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
-#endif
-#ifdef HAVE_NET_ROUTE_H
-     #include <net/route.h>
-#endif
-#ifdef HAVE_LINUX_IF_H
-#include <linux/if.h>
-#else
-#ifdef HAVE_NET_IF_H
-#include <net/if.h>
-#endif
-#endif
-#ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
-#endif
-#ifdef HAVE_LINUX_NETLINK_H
-#include <linux/netlink.h>
-#endif
-#ifdef HAVE_LINUX_RTNETLINK_H
-#include <linux/rtnetlink.h>
-#endif
-#ifdef HAVE_IFADDRS_H
-#include <ifaddrs.h>
-#endif
-#ifdef HAVE_SYS_SOCKIO_H
-#include <sys/sockio.h>
-#endif
-
-#ifdef HAVE_SYS_UCRED_H
-#include <sys/ucred.h>
-#endif
-#endif
+#   include <unistd.h>
+#   ifdef HAVE_SYS_SOCKET_H
+#     include <sys/socket.h>
+#   endif
+#   ifdef HAVE_NET_ROUTE_H
+#     include <net/route.h>
+#   endif
+#   ifdef HAVE_LINUX_IF_H
+#     include <linux/if.h>
+#   else
+#     ifdef HAVE_NET_IF_H
+#       include <net/if.h>
+#     endif
+#   endif
+#   ifdef HAVE_NETINET_IN_H
+#     include <netinet/in.h>
+#   endif
+#   ifdef HAVE_LINUX_NETLINK_H
+#     include <linux/netlink.h>
+#   endif
+#   ifdef HAVE_LINUX_RTNETLINK_H
+#     include <linux/rtnetlink.h>
+#   endif
+#   ifdef HAVE_IFADDRS_H
+#     include <ifaddrs.h>
+#   endif
+#   ifdef HAVE_SYS_SOCKIO_H
+#     include <sys/sockio.h>
+#   endif
+#   ifdef HAVE_SYS_UCRED_H
+#     include <sys/ucred.h>
+#   endif
+#endif //!WIN32
 
 #if !defined(FORASTERISK) && !defined(s_addr)
 #ifdef HAVE_ARPA_INET_H
@@ -103,7 +102,6 @@ struct in_addr {
 #endif
 
 #include <fcntl.h>
-#include <ctype.h>
 #include <sys/stat.h>
 
 #include "fdqueue.h"
@@ -159,16 +157,11 @@ typedef struct sid_binary {
 #define is_sid_t_any(SID) is_all_matching((SID).binary, sizeof (*(sid_t*)0).binary, 0)
 
 #define alloca_tohex_sid_t(sid)         alloca_tohex((sid).binary, sizeof (*(sid_t*)0).binary)
-#define alloca_tohex_sid_t_trunc(sid,strlen)  tohex((char *)alloca((strlen)+2), (strlen), (sid).binary)
+#define alloca_tohex_sid_t_trunc(sid,strlen)  tohex((char *)alloca((strlen)+1), (strlen), (sid).binary)
 
 int cmp_sid_t(const sid_t *a, const sid_t *b);
 int str_to_sid_t(sid_t *sid, const char *hex);
 int strn_to_sid_t(sid_t *sid, const char *hex, const char **endp);
-
-int str_is_subscriber_id(const char *sid);
-int strn_is_subscriber_id(const char *sid, size_t *lenp);
-int str_is_did(const char *did);
-int strn_is_did(const char *did, size_t *lenp);
 
 #define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
 
@@ -197,28 +190,6 @@ int formf_serval_instance_path(struct __sourceloc, char *buf, size_t bufsiz, con
 int vformf_serval_instance_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, va_list);
 void serval_setinstancepath(const char *instancepath);
 
-/* Basic socket operations.
- */
-int _make_local_sockaddr(struct __sourceloc, struct sockaddr_un *sockname, socklen_t *addrlen, const char *fmt, ...)
-    __attribute__((format(printf, 4, 5)));
-int _esocket(struct __sourceloc, int domain, int type, int protocol);
-int _socket_bind(struct __sourceloc, int sock, const struct sockaddr *addr, socklen_t addrlen);
-int _socket_connect(struct __sourceloc, int sock, const struct sockaddr *addr, socklen_t addrlen);
-int _socket_listen(struct __sourceloc, int sock, int backlog);
-int _socket_set_reuseaddr(struct __sourceloc, int sock, int reuseP);
-int _socket_set_rcvbufsize(struct __sourceloc, int sock, unsigned buffer_size);
-
-#define make_local_sockaddr(sockname, addrlenp, fmt,...) _make_local_sockaddr(__WHENCE__, (sockname), (addrlenp), (fmt), ##__VA_ARGS__)
-#define esocket(domain, type, protocol)             _esocket(__WHENCE__, (domain), (type), (protocol))
-#define socket_bind(sock, addr, addrlen)            _socket_bind(__WHENCE__, (sock), (addr), (addrlen))
-#define socket_connect(sock, addr, addrlen)         _socket_connect(__WHENCE__, (sock), (addr), (addrlen))
-#define socket_listen(sock, backlog)                _socket_listen(__WHENCE__, (sock), (backlog))
-#define socket_set_reuseaddr(sock, reuseP)          _socket_set_reuseaddr(__WHENCE__, (sock), (reuseP))
-#define socket_set_rcvbufsize(sock, buffer_size)    _socket_set_rcvbufsize(__WHENCE__, (sock), (buffer_size))
-
-int real_sockaddr(const struct sockaddr_un *src_addr, socklen_t src_addrlen, struct sockaddr_un *dst_addr, socklen_t *dst_addrlen);
-int cmp_sockaddr(const struct sockaddr *, socklen_t, const struct sockaddr *, socklen_t);
-
 #define SERVER_CONFIG_RELOAD_INTERVAL_MS	1000
 
 struct cli_parsed;
@@ -240,99 +211,8 @@ extern char *instrumentation_file;
 extern char *batman_socket;
 extern char *batman_peerfile;
 
-
 struct subscriber;
 struct decode_context;
-
-typedef struct keypair {
-  int type;
-  unsigned char *private_key;
-  size_t private_key_len;
-  unsigned char *public_key;
-  size_t public_key_len;
-} keypair;
-
-/* Contains just the list of private:public key pairs and types,
-   the pin used to extract them, and the slot in the keyring file
-   (so that it can be replaced/rewritten as required). */
-#define PKR_MAX_KEYPAIRS 64
-#define PKR_SALT_BYTES 32
-#define PKR_MAC_BYTES 64
-typedef struct keyring_identity {
-  char *PKRPin;
-  struct subscriber *subscriber;
-  time_ms_t challenge_expires;
-  unsigned char challenge[24];
-  unsigned int slot;
-  unsigned int keypair_count;
-  keypair *keypairs[PKR_MAX_KEYPAIRS];
-} keyring_identity;
-
-/* 64K identities, can easily be increased should the need arise,
-   but keep it low-ish for now so that the 64K pointers don't eat too
-   much ram on a small device.  Should probably think about having
-   small and large device settings for some of these things */
-#define KEYRING_MAX_IDENTITIES 65536
-typedef struct keyring_context {
-  char *KeyRingPin;
-  unsigned char *KeyRingSalt;
-  int KeyRingSaltLen;
-  unsigned int identity_count;
-  keyring_identity *identities[KEYRING_MAX_IDENTITIES];
-} keyring_context;
-
-#define KEYRING_PAGE_SIZE 4096LL
-#define KEYRING_BAM_BYTES 2048LL
-#define KEYRING_BAM_BITS (KEYRING_BAM_BYTES<<3)
-#define KEYRING_SLAB_SIZE (KEYRING_PAGE_SIZE*KEYRING_BAM_BITS)
-typedef struct keyring_bam {
-  off_t file_offset;
-  unsigned char bitmap[KEYRING_BAM_BYTES];
-  struct keyring_bam *next;
-} keyring_bam;
-
-#define KEYRING_MAX_CONTEXTS 256
-typedef struct keyring_file {
-  int context_count;
-  keyring_bam *bam;
-  keyring_context *contexts[KEYRING_MAX_CONTEXTS];
-  FILE *file;
-  off_t file_size;
-} keyring_file;
-
-void keyring_free(keyring_file *k);
-void keyring_release_identity(keyring_file *k, int cn, int id);
-#define KEYTYPE_CRYPTOBOX 0x01 // must be lowest
-#define KEYTYPE_CRYPTOSIGN 0x02
-#define KEYTYPE_RHIZOME 0x03
-/* DIDs aren't really keys, but the keyring is a real handy place to keep them,
-   and keep them private if people so desire */
-#define KEYTYPE_DID 0x04
-
-/* handle to keyring file for use in running instance */
-extern keyring_file *keyring;
-
-/* Public calls to keyring management */
-keyring_file *keyring_open(const char *path, int writeable);
-keyring_file *keyring_open_instance();
-keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed);
-int keyring_enter_pin(keyring_file *k, const char *pin);
-int keyring_set_did(keyring_identity *id, const char *did, const char *name);
-int keyring_sanitise_position(const keyring_file *k,int *cn,int *in,int *kp);
-int keyring_next_keytype(const keyring_file *k, int *cn, int *in, int *kp, int keytype);
-int keyring_next_identity(const keyring_file *k,int *cn,int *in,int *kp);
-int keyring_identity_find_keytype(const keyring_file *k, int cn, int in, int keytype);
-int keyring_find_did(const keyring_file *k,int *cn,int *in,int *kp,char *did);
-int keyring_find_sid(const keyring_file *k,int *cn,int *in,int *kp, const sid_t *sidp);
-unsigned char *keyring_find_sas_private(keyring_file *k, const sid_t *sidp, unsigned char **sas_public);
-int keyring_send_sas_request(struct subscriber *subscriber);
-
-int keyring_commit(keyring_file *k);
-keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, const char *pin);
-int keyring_seed(keyring_file *k);
-void keyring_identity_extract(const keyring_identity *id, const sid_t **sidp, const char **didp, const char **namep);
-int keyring_load(keyring_file *k, const char *keyring_pin, unsigned entry_pinc, const char **entry_pinv, FILE *input);
-int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret);
 
 /* Make sure we have space to put bytes of the packet as we go along */
 #define CHECK_PACKET_LEN(B) {if (((*packet_len)+(B))>=packet_maxlen) { return WHY("Packet composition ran out of space."); } }
@@ -392,12 +272,6 @@ struct slip_decode_state{
   uint32_t crc;
   int src_offset;
   int dst_offset;
-
-  int mavlink_payload_length;
-  int mavlink_seq;
-  int mavlink_payload_start;
-  int mavlink_payload_offset;
-  uint8_t mavlink_payload[1024];
 };
 
 struct overlay_interface;
@@ -470,21 +344,7 @@ typedef struct overlay_interface {
   int recv_count;
   int tx_count;
   
-  // stream socket tx state;
-  struct overlay_buffer *tx_packet;
-  unsigned char txbuffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
-  int tx_bytes_pending;
-  // Throttle TX rate if required (stream interfaces only for now)
-  uint32_t throttle_bytes_per_second;
-  uint32_t throttle_burst_write_size;
-  uint64_t next_tx_allowed;
-  int32_t remaining_space;
-  time_ms_t next_heartbeat;
-  int mavlink_seq;
-  int radio_rssi;
-  int remote_rssi;
-  
-  struct slip_decode_state slip_decode_state;
+  struct radio_link_state *radio_link_state;
 
   // copy of ifconfig flags
   uint16_t drop_packets;
@@ -544,7 +404,7 @@ void insertTransactionInCache(unsigned char *transaction_id);
 
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
-		    int recvttl, struct sockaddr *recvaddr, socklen_t recvaddrlen);
+		    int recvttl, struct socket_address *recvaddr);
 int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *frame, 
 			 struct overlay_buffer *buffer, struct subscriber **nexthop);
 int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface *interface, 
@@ -601,18 +461,14 @@ int rhizome_opendb();
 int parseCommandLine(struct cli_context *context, const char *argv0, int argc, const char *const *argv);
 
 int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
-int overlay_mdp_reply_error(int sock,
-			    struct sockaddr_un *recvaddr, socklen_t recvaddrlen,
-			    int error_number,char *message);
 
 typedef uint32_t mdp_port_t;
-#define PRImdp_port_t "08" PRIx32
+#define PRImdp_port_t "#08" PRIx32
 
 typedef struct sockaddr_mdp {
   sid_t sid;
   mdp_port_t port;
 } sockaddr_mdp;
-unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknown_sidp);
 
 typedef struct overlay_mdp_data_frame {
   sockaddr_mdp src;
@@ -664,18 +520,19 @@ typedef struct overlay_mdp_frame {
   };
 } overlay_mdp_frame;
 
-int keyring_mapping_request(keyring_file *k, struct overlay_frame *frame, overlay_mdp_frame *req);
-int keyring_send_unlock(struct subscriber *subscriber);
-void keyring_release_subscriber(keyring_file *k, const sid_t *sid);
-
 /* Server-side MDP functions */
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp);
-int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr, socklen_t recvaddrlen,
-			  overlay_mdp_frame *mdpreply);
-int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
-		     struct sockaddr_un *recvaddr, socklen_t recvaddrlen);
-int overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port);
+struct socket_address;
+int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client);
+void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port);
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const sid_t *resolved_sidp, const char *uri, const char *did, const char *name);
+
+struct mdp_header;
+int mdp_bind_internal(struct subscriber *subscriber, mdp_port_t port,
+  int (*internal)(const struct mdp_header *header, const uint8_t *payload, size_t len));
+int mdp_unbind_internal(struct subscriber *subscriber, mdp_port_t port,
+  int (*internal)(const struct mdp_header *header, const uint8_t *payload, size_t len));
+
 
 struct vomp_call_state;
 
@@ -786,7 +643,7 @@ int overlay_packetradio_tx_packet(struct overlay_frame *frame);
 void overlay_dummy_poll(struct sched_ent *alarm);
 void server_config_reload(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
-int overlay_mdp_try_interal_services(struct overlay_frame *frame, overlay_mdp_frame *mdp);
+int overlay_mdp_try_internal_services(struct overlay_frame *frame, overlay_mdp_frame *mdp);
 int overlay_send_probe(struct subscriber *peer, struct network_destination *destination, int queue);
 int overlay_send_stun_request(struct subscriber *server, struct subscriber *request);
 void fd_periodicstats(struct sched_ent *alarm);
@@ -811,13 +668,6 @@ int limit_init(struct limit_state *state, int rate_micro_seconds);
 int olsr_init_socket(void);
 int olsr_send(struct overlay_frame *frame);
 
-void write_uint64(unsigned char *o,uint64_t v);
-void write_uint16(unsigned char *o,uint16_t v);
-void write_uint32(unsigned char *o,uint32_t v);
-uint64_t read_uint64(unsigned char *o);
-uint32_t read_uint32(unsigned char *o);
-uint16_t read_uint16(unsigned char *o);
-
 int pack_uint(unsigned char *buffer, uint64_t v);
 int measure_packed_uint(uint64_t v);
 int unpack_uint(unsigned char *buffer, int buff_size, uint64_t *v);
@@ -828,8 +678,7 @@ int slip_decode(struct slip_decode_state *state);
 int upper7_decode(struct slip_decode_state *state,unsigned char byte);
 uint32_t Crc32_ComputeBuf( uint32_t inCrc32, const void *buf,
 			  size_t bufLen );
-int rhizome_active_fetch_count();
-int rhizome_active_fetch_bytes_received(int q);
+void rhizome_fetch_log_short_status();
 extern int64_t bundles_available;
 extern char crash_handler_clue[1024];
 
@@ -850,9 +699,5 @@ void link_neighbour_status_html(struct strbuf *b, struct subscriber *neighbour);
 int link_stop_routing(struct subscriber *subscriber);
 
 int generate_nonce(unsigned char *nonce,int bytes);
-
-int mavlink_decode(struct overlay_interface *interface, struct slip_decode_state *state,uint8_t c);
-int mavlink_heartbeat(unsigned char *frame,int *outlen);
-int mavlink_encode_packet(struct overlay_interface *interface);
 
 #endif // __SERVALD_SERVALD_H

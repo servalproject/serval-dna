@@ -51,10 +51,8 @@ void *_emalloc_zero(struct __sourceloc __whence, size_t bytes)
 char *_strn_edup(struct __sourceloc __whence, const char *str, size_t len)
 {
   char *new = _emalloc(__whence, len + 1);
-  if (new) {
-    strncpy(new, str, len);
-    new[len] = '\0';
-  }
+  if (new)
+    strncpy(new, str, len)[len] = '\0';
   return new;
 }
 

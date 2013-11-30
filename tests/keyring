@@ -29,6 +29,12 @@ setup() {
     set_instance +A
 }
 
+teardown_servald() {
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_servald_server
+}
+
 setup_instances() {
    for arg; do
       set_instance $arg
@@ -54,6 +60,46 @@ test_KeyringCreate() {
     assert_keyring_list 2
     executeOk_servald keyring create
     assert_keyring_list 0
+}
+
+doc_DidName="Create an identity & set the name and number"
+test_DidName() {
+    executeOk_servald keyring add ''
+    assertStdoutGrep --matches=1 "^sid:"
+    assertStdoutLineCount '==' 1
+    extract_stdout_keyvalue SID sid "$rexp_sid"
+    executeOk_servald keyring set did "$SID" '123456' 'Display Name'
+    assertStdoutGrep --matches=1 "^sid:$SID\$"
+    assertStdoutGrep --matches=1 "^did:123456\$"
+    assertStdoutGrep --matches=1 "^name:Display Name\$"
+    assertStdoutLineCount '==' 3
+    executeOk_servald keyring list
+    assertStdoutGrep --stderr --matches=1 "^$SID:123456:Display Name\$"
+}
+
+keyring_set_tag() {
+    executeOk_servald keyring set tag "$1" "$2" "$3"
+    assertStdoutGrep --matches=1 "^sid:$1\$"
+    assertStdoutGrep --matches=1 "^$2:$3\$"
+}
+
+doc_SetTag="Set a named tag against an identity"
+test_SetTag() {
+    executeOk_servald keyring add ''
+    assertStdoutGrep --matches=1 "^sid:"
+    assertStdoutLineCount '==' 1
+    extract_stdout_keyvalue SID sid "$rexp_sid"
+    keyring_set_tag "$SID" 'tag1' 'First Value'
+    assertStdoutLineCount '==' 2
+    keyring_set_tag "$SID" 'tag2' 'Second Value'
+    executeOk_servald keyring set tag "$SID" 'tag2' 'Second Value'
+    assertStdoutGrep --matches=1 "^tag1:First Value\$"
+    assertStdoutLineCount '==' 3
+    keyring_set_tag "$SID" 'tag1' 'Third Value'
+    assertStdoutGrep --matches=1 "^tag2:Second Value\$"
+    assertStdoutLineCount '==' 3
+    executeOk_servald keyring dump --secret
+    tfw_cat --stdout
 }
 
 doc_Pinless="No keyring PIN with PIN-less identities"
@@ -141,9 +187,7 @@ finally_KeyringAutoCreate() {
     stop_servald_server
 }
 teardown_KeyringAutoCreate() {
-   kill_all_servald_processes
-   assert_no_servald_processes
-   report_servald_server
+   teardown_servald
 }
 
 doc_KeyringPinServer="Start daemon with a keyring PIN"
@@ -161,9 +205,7 @@ finally_KeyringPinServer() {
    stop_servald_server
 }
 teardown_KeyringPinServer() {
-   kill_all_servald_processes
-   assert_no_servald_processes
-   report_servald_server
+   teardown_servald
 }
 
 doc_EntryPinServer="Start daemon with an entry PIN"
@@ -181,9 +223,7 @@ finally_KeyringPinServer() {
    stop_servald_server
 }
 teardown_KeyringPinServer() {
-   kill_all_servald_processes
-   assert_no_servald_processes
-   report_servald_server
+   teardown_servald
 }
 
 doc_KeyringEntryPinServer="Start daemon with a keyring and an entry PIN"
@@ -201,9 +241,7 @@ finally_KeyringKeyringPinServer() {
    stop_servald_server
 }
 teardown_KeyringKeyringPinServer() {
-   kill_all_servald_processes
-   assert_no_servald_processes
-   report_servald_server
+   teardown_servald
 }
 
 doc_KeyringEntryPinServer="Start daemon, unlock and lock identities"
@@ -224,34 +262,64 @@ test_KeyringEntryPinServer() {
    assertStdoutLineCount == 1
    assertStdoutGrep --fixed-strings "$SIDA"
    executeOk_servald id enter pin 'one'
-   executeOk_servald id self
+   executeOk_servald id list
    assertStdoutLineCount == 2
-   assertStdoutGrep --fixed-strings "$SIDA"
-   assertStdoutGrep --fixed-strings "$ONE"
+   assertStdoutGrep --fixed-strings "sid:$SIDA"
+   assertStdoutGrep --fixed-strings "sid:$ONE"
    executeOk_servald id enter pin 'two'
-   executeOk_servald id self
+   executeOk_servald id list
    assertStdoutLineCount == 4
-   assertStdoutGrep --fixed-strings "$SIDA"
-   assertStdoutGrep --fixed-strings "$ONE"
-   assertStdoutGrep --fixed-strings "$TWOA"
-   assertStdoutGrep --fixed-strings "$TWOB"
+   assertStdoutGrep --fixed-strings "sid:$SIDA"
+   assertStdoutGrep --fixed-strings "sid:$ONE"
+   assertStdoutGrep --fixed-strings "sid:$TWOA"
+   assertStdoutGrep --fixed-strings "sid:$TWOB"
    executeOk_servald id relinquish pin 'one'
-   executeOk_servald id self
+   executeOk_servald id list
    assertStdoutLineCount == 3
-   assertStdoutGrep --fixed-strings "$SIDA"
-   assertStdoutGrep --fixed-strings "$TWOA"
-   assertStdoutGrep --fixed-strings "$TWOB"
+   assertStdoutGrep --fixed-strings "sid:$SIDA"
+   assertStdoutGrep --fixed-strings "sid:$TWOA"
+   assertStdoutGrep --fixed-strings "sid:$TWOB"
    executeOk_servald id relinquish sid "$TWOB"
    tfw_cat --stderr
-   executeOk_servald id self
+   executeOk_servald id list
    assertStdoutLineCount == 2
-   assertStdoutGrep --fixed-strings "$SIDA"
-   assertStdoutGrep --fixed-strings "$TWOA"
+   assertStdoutGrep --fixed-strings "sid:$SIDA"
+   assertStdoutGrep --fixed-strings "sid:$TWOA"
 }
 teardown_KeyringEntryPinServer() {
-   kill_all_servald_processes
-   assert_no_servald_processes
-   report_servald_server
+   teardown_servald
+}
+
+doc_ListTags="Search for unlocked identities by their tags & values"
+setup_ListTags() {
+   setup
+   executeOk_servald keyring add
+   extract_stdout_keyvalue ONE sid "$rexp_sid"
+   keyring_set_tag "$ONE" 'tag1' 'First Value'
+   executeOk_servald keyring add
+   extract_stdout_keyvalue TWO sid "$rexp_sid"
+   keyring_set_tag "$TWO" 'tag1' 'Second Value'
+   executeOk_servald keyring add
+   extract_stdout_keyvalue THREE sid "$rexp_sid"
+   keyring_set_tag "$THREE" 'tag2' 'Third Value'
+   start_servald_server
+}
+test_ListTags() {
+   executeOk_servald id list
+   assertStdoutLineCount == 3
+   assertStdoutGrep --fixed-strings "sid:$ONE"
+   assertStdoutGrep --fixed-strings "sid:$TWO"
+   assertStdoutGrep --fixed-strings "sid:$THREE"
+   executeOk_servald id list 'tag1'
+   assertStdoutLineCount == 2
+   assertStdoutGrep --fixed-strings "sid:$ONE"
+   assertStdoutGrep --fixed-strings "sid:$TWO"
+   executeOk_servald id list 'tag1' 'First Value'
+   assertStdoutLineCount == 1
+   assertStdoutGrep --fixed-strings "sid:$ONE"
+}
+teardown_ListTags() {
+   teardown_servald
 }
 
 doc_Load="Load keyring entries from a keyring dump"

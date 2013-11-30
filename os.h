@@ -54,6 +54,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      }
  */
 typedef int64_t time_ms_t;
+#define PRItime_ms_t PRId64
 
 time_ms_t gettime_ms();
 time_ms_t sleep_ms(time_ms_t milliseconds);
@@ -65,7 +66,7 @@ __SERVALDNA_OS_INLINE void bzero(void *buf, size_t len) {
 #endif
 
 #ifndef HAVE_BCOPY
-__SERVALDNA_OS_INLINE void bcopy(void *src, void *dst, size_t len) {
+__SERVALDNA_OS_INLINE void bcopy(const void *src, void *dst, size_t len) {
     memcpy(dst, src, len);
 }
 #endif

@@ -21,7 +21,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <unistd.h>
 #include <time.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
 #include <sys/stat.h>
 
 #include "serval.h"
@@ -108,11 +107,9 @@ int server(const struct cli_parsed *parsed)
   sigemptyset(&sig.sa_mask); // Block the same signals during handler
   sigaddset(&sig.sa_mask, SIGHUP);
   sigaddset(&sig.sa_mask, SIGINT);
-  sigaddset(&sig.sa_mask, SIGQUIT);
   sig.sa_flags = 0;
   sigaction(SIGHUP, &sig, NULL);
   sigaction(SIGINT, &sig, NULL);
-  sigaction(SIGQUIT, &sig, NULL);
 
   /* Record PID to advertise that the server is now running */
   char filename[1024];
@@ -233,19 +230,23 @@ int server_check_stopfile()
 
 void serverCleanUp()
 {
-  /* Try to remove shutdown and PID files and exit */
-  server_remove_stopfile();
-  char filename[1024];
-  if (FORM_SERVAL_INSTANCE_PATH(filename, PIDFILE_NAME))
-    unlink(filename);
-  
-  if (FORM_SERVAL_INSTANCE_PATH(filename, "mdp.socket")) {
-    unlink(filename);
+  if (serverMode){
+    rhizome_close_db();
+    dna_helper_shutdown();
   }
   
-  rhizome_close_db();
+  char filename[1024];
+  if (FORM_SERVAL_INSTANCE_PATH(filename, "mdp.socket"))
+    unlink(filename);
   
-  dna_helper_shutdown();
+  if (FORM_SERVAL_INSTANCE_PATH(filename, "mdp.2.socket"))
+    unlink(filename);
+    
+  if (FORM_SERVAL_INSTANCE_PATH(filename, "monitor.socket"))
+    unlink(filename);
+  
+  /* Try to remove shutdown and PID files and exit */
+  server_remove_stopfile();
 }
 
 static void signame(char *buf, size_t len, int signal)

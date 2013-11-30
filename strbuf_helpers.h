@@ -128,9 +128,20 @@ strbuf strbuf_append_in_addr(strbuf sb, const struct in_addr *addr);
 /* Append a textual description of a struct sockaddr_in.
  * @author Andrew Bettison <andrew@servalproject.com>
  */
+struct sockaddr_in;
+strbuf strbuf_append_sockaddr_in(strbuf sb, const struct sockaddr_in *addr);
+#define alloca_sockaddr_in(addr)    strbuf_str(strbuf_append_sockaddr_in(strbuf_alloca(45), (const struct sockaddr_in *)(addr)))
+
+/* Append a textual description of a struct sockaddr.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 struct sockaddr;
 strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t addrlen);
 #define alloca_sockaddr(addr, addrlen)    strbuf_str(strbuf_append_sockaddr(strbuf_alloca(200), (const struct sockaddr *)(addr), (addrlen)))
+
+struct socket_address;
+strbuf strbuf_append_socket_address(strbuf sb, const struct socket_address *addr);
+#define alloca_socket_address(addr)    strbuf_str(strbuf_append_socket_address(strbuf_alloca(200), (addr)))
 
 /* Append a strftime(3) string.
  * @author Andrew Bettison <andrew@servalproject.com>
@@ -145,6 +156,19 @@ struct iovec;
 strbuf strbuf_append_iovec(strbuf sb, const struct iovec *iov, int iovcnt);
 #define alloca_iovec(iov,cnt)    strbuf_str(strbuf_append_iovec(strbuf_alloca(200), (iov), (cnt)))
 
+/* Append a string using HTTP quoted-string format: delimited by double quotes (") and
+ * internal double quotes and backslash escaped by leading backslash.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_append_quoted_string(strbuf sb, const char *str);
+
+/* Append various JSON elements.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_json_null(strbuf sb);
+strbuf strbuf_json_string(strbuf sb, const char *str);
+strbuf strbuf_json_hex(strbuf sb, const unsigned char *buf, size_t len);
+
 /* Append a representation of a struct http_range[] array.
  * @author Andrew Bettison <andrew@servalproject.com>
  */
@@ -152,7 +176,14 @@ struct http_range;
 strbuf strbuf_append_http_ranges(strbuf sb, const struct http_range *ranges, unsigned nels);
 #define alloca_http_ranges(ra)    strbuf_str(strbuf_append_http_ranges(strbuf_alloca(25*NELS(ra)), (ra), NELS(ra)))
 
-/* Append a representation of a struct mime_content_disposition struct.
+/* Append a representation of a struct mime_content_type in HTTP header format.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+struct mime_content_type;
+strbuf strbuf_append_mime_content_type(strbuf, const struct mime_content_type *);
+#define alloca_mime_content_type(ct) strbuf_str(strbuf_append_mime_content_type(strbuf_alloca(500), (ct)))
+
+/* Append a representation of a struct mime_content_disposition, in HTTP header format.
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 struct mime_content_disposition;
