@@ -81,6 +81,7 @@ Options:
    --jobs=N                Run tests in parallel, at most N at a time
    -E, --stop-on-error     Do not execute any tests after an ERROR occurs
    -F, --stop-on-failure   Do not execute any tests after a FAIL occurs
+   --timeout=N             Override default timeout, make it N seconds instead of 60
    --filter=PREFIX         Only execute tests whose names start with PREFIX
    --filter=N              Only execute test number N
    --filter=M-N            Only execute tests with numbers in range M-N inclusive
