@@ -6,6 +6,7 @@ HDRS=	fifo.h \
 	rhizome.h \
 	serval.h \
 	keyring.h \
+	socket.h \
 	cli.h \
 	str.h \
 	rotbuf.h \
@@ -18,6 +19,7 @@ HDRS=	fifo.h \
 	conf.h \
 	conf_schema.h \
 	crypto.h \
+	dataformats.h \
 	log.h \
 	net.h \
 	fdqueue.h \
@@ -26,4 +28,5 @@ HDRS=	fifo.h \
 	constants.h \
 	monitor-client.h \
 	mdp_client.h \
+	radio_link.h \
 	sqlite-amalgamation-3070900/sqlite3.h

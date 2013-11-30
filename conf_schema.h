@@ -242,9 +242,7 @@ ATOM(bool_t, gateway,                   0, boolean,, "")
 ATOM(bool_t, keyring,                   0, boolean,, "")
 ATOM(bool_t, security,                  0, boolean,, "")
 ATOM(bool_t, mdprequests,               0, boolean,, "")
-ATOM(bool_t, mavlink,                   0, boolean,, "")
-ATOM(bool_t, mavlink_payloads,          0, boolean,, "")
-ATOM(bool_t, mavlinkfsm,                0, boolean,, "")
+ATOM(bool_t, radio_link,                0, boolean,, "")
 ATOM(bool_t, peers,                     0, boolean,, "")
 ATOM(bool_t, overlaybuffer,             0, boolean,, "")
 ATOM(bool_t, overlayframes,             0, boolean,, "")
@@ -432,6 +430,7 @@ ATOM(bool_t,                external_blobs, 0, boolean,, "Store rhizome bundles 
 
 ATOM(uint64_t,              rhizome_mdp_block_size, 512, uint64_scaled,, "Rhizome MDP block size.")
 ATOM(uint64_t,              idle_timeout,           RHIZOME_IDLE_TIMEOUT, uint64_scaled,, "Rhizome transfer timeout if no data received.")
+ATOM(uint64_t,              mdp_stall_timeout,      1000, uint64_scaled,, "Timeout to request more data via mdp.")
 ATOM(uint32_t,              fetch_delay_ms,         50, uint32_nonzero,, "Delay from receiving first bundle advert to initiating fetch")
 SUB_STRUCT(rhizome_direct,  direct,)
 SUB_STRUCT(rhizome_api,     api,)
@@ -477,8 +476,6 @@ ATOM(bool_t,                debug,           0, boolean,, "If true, log details 
 ATOM(bool_t,                point_to_point,  0, boolean,, "If true, assume there will only be two devices on this interface")
 ATOM(bool_t,                ctsrts,          0, boolean,, "If true, enable CTS/RTS hardware handshaking")
 ATOM(int32_t,               uartbps,         57600, int32_rs232baudrate,, "Speed of serial UART link speed (which may be different to serial device link speed)")
-ATOM(int32_t,               throttle,        0, int32_nonneg,, "Limit transmit speed of serial interface (bytes per second)") 
-ATOM(int32_t,               burst_size,      0, int32_nonneg,, "Write no more than this many bytes at a time to a serial interface") 
 END_STRUCT
 
 ARRAY(interface_list, NO_DUPLICATES)

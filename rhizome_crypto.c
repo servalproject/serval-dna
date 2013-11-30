@@ -23,13 +23,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "crypto_sign_edwards25519sha512batch.h"
 #include "nacl/src/crypto_sign_edwards25519sha512batch_ref/ge.h"
-
 #include "serval.h"
 #include "conf.h"
 #include "str.h"
 #include "rhizome.h"
 #include "crypto.h"
 #include "keyring.h"
+#include "dataformats.h"
 
 /* Work out the encrypt/decrypt key for the supplied manifest.
    If the manifest is not encrypted, then return NULL.

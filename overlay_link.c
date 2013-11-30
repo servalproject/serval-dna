@@ -313,7 +313,7 @@ int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp)
   if (reply.out.payload_length){
     if (config.debug.overlayrouting)
       DEBUGF("Sending reply");
-    overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0);
+    overlay_mdp_dispatch(&reply, NULL);
   }
   ob_free(replypayload);
   ob_free(payload);
@@ -387,7 +387,7 @@ int overlay_send_stun_request(struct subscriber *server, struct subscriber *requ
     mdp.out.payload_length=ob_position(payload);
     if (config.debug.overlayrouting)
       DEBUGF("Sending STUN request to %s", alloca_tohex_sid_t(server->sid));
-    overlay_mdp_dispatch(&mdp, 0 /* system generated */, NULL,0);
+    overlay_mdp_dispatch(&mdp, NULL);
   }
   ob_free(payload);
   return 0;

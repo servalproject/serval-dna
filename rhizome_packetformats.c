@@ -474,7 +474,7 @@ next:
     lookup_time = (end_time - start_time);
 
   if (mdp.out.payload_length>0)
-    overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
+    overlay_mdp_dispatch(&mdp, NULL);
 
 end:
   sqlite_set_tracefunc(oldfunc);

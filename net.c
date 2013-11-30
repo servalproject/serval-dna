@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "conf.h"
 #include "net.h"
+#include "socket.h"
 #include "str.h"
 #include "strbuf_helpers.h"
 
@@ -138,8 +139,7 @@ ssize_t _write_str_nonblock(int fd, const char *str, struct __sourceloc __whence
   return _write_all_nonblock(fd, str, strlen(str), __whence);
 }
 
-ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl,
-		    struct sockaddr *recvaddr, socklen_t *recvaddrlen)
+ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl, struct socket_address *recvaddr)
 {
   struct msghdr msg;
   struct iovec iov[1];
@@ -147,8 +147,8 @@ ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl,
   iov[0].iov_base=buffer;
   iov[0].iov_len=bufferlen;
   bzero(&msg,sizeof(msg));
-  msg.msg_name = recvaddr;
-  msg.msg_namelen = *recvaddrlen;
+  msg.msg_name = &recvaddr->store;
+  msg.msg_namelen = recvaddr->addrlen;
   msg.msg_iov = &iov[0];
   msg.msg_iovlen = 1;
   msg.msg_control = cmsgcmsg;
@@ -187,7 +187,7 @@ ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl,
       }	 
     }
   }
-  *recvaddrlen=msg.msg_namelen;
+  recvaddr->addrlen = msg.msg_namelen;
   
   return len;
 }

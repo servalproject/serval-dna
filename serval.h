@@ -163,11 +163,6 @@ int cmp_sid_t(const sid_t *a, const sid_t *b);
 int str_to_sid_t(sid_t *sid, const char *hex);
 int strn_to_sid_t(sid_t *sid, const char *hex, const char **endp);
 
-int str_is_subscriber_id(const char *sid);
-int strn_is_subscriber_id(const char *sid, size_t *lenp);
-int str_is_did(const char *did);
-int strn_is_did(const char *did, size_t *lenp);
-
 #define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
 
 /*
@@ -194,28 +189,6 @@ int create_serval_instance_dir();
 int formf_serval_instance_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((format(printf,4,5)));
 int vformf_serval_instance_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, va_list);
 void serval_setinstancepath(const char *instancepath);
-
-/* Basic socket operations.
- */
-int _make_local_sockaddr(struct __sourceloc, struct sockaddr_un *sockname, socklen_t *addrlen, const char *fmt, ...)
-    __attribute__((format(printf, 4, 5)));
-int _esocket(struct __sourceloc, int domain, int type, int protocol);
-int _socket_bind(struct __sourceloc, int sock, const struct sockaddr *addr, socklen_t addrlen);
-int _socket_connect(struct __sourceloc, int sock, const struct sockaddr *addr, socklen_t addrlen);
-int _socket_listen(struct __sourceloc, int sock, int backlog);
-int _socket_set_reuseaddr(struct __sourceloc, int sock, int reuseP);
-int _socket_set_rcvbufsize(struct __sourceloc, int sock, unsigned buffer_size);
-
-#define make_local_sockaddr(sockname, addrlenp, fmt,...) _make_local_sockaddr(__WHENCE__, (sockname), (addrlenp), (fmt), ##__VA_ARGS__)
-#define esocket(domain, type, protocol)             _esocket(__WHENCE__, (domain), (type), (protocol))
-#define socket_bind(sock, addr, addrlen)            _socket_bind(__WHENCE__, (sock), (addr), (addrlen))
-#define socket_connect(sock, addr, addrlen)         _socket_connect(__WHENCE__, (sock), (addr), (addrlen))
-#define socket_listen(sock, backlog)                _socket_listen(__WHENCE__, (sock), (backlog))
-#define socket_set_reuseaddr(sock, reuseP)          _socket_set_reuseaddr(__WHENCE__, (sock), (reuseP))
-#define socket_set_rcvbufsize(sock, buffer_size)    _socket_set_rcvbufsize(__WHENCE__, (sock), (buffer_size))
-
-int real_sockaddr(const struct sockaddr_un *src_addr, socklen_t src_addrlen, struct sockaddr_un *dst_addr, socklen_t *dst_addrlen);
-int cmp_sockaddr(const struct sockaddr *, socklen_t, const struct sockaddr *, socklen_t);
 
 #define SERVER_CONFIG_RELOAD_INTERVAL_MS	1000
 
@@ -299,12 +272,6 @@ struct slip_decode_state{
   uint32_t crc;
   int src_offset;
   int dst_offset;
-
-  int mavlink_payload_length;
-  int mavlink_seq;
-  int mavlink_payload_start;
-  int mavlink_payload_offset;
-  uint8_t mavlink_payload[1024];
 };
 
 struct overlay_interface;
@@ -377,21 +344,7 @@ typedef struct overlay_interface {
   int recv_count;
   int tx_count;
   
-  // stream socket tx state;
-  struct overlay_buffer *tx_packet;
-  unsigned char txbuffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
-  int tx_bytes_pending;
-  // Throttle TX rate if required (stream interfaces only for now)
-  uint32_t throttle_bytes_per_second;
-  uint32_t throttle_burst_write_size;
-  uint64_t next_tx_allowed;
-  int32_t remaining_space;
-  time_ms_t next_heartbeat;
-  int mavlink_seq;
-  int radio_rssi;
-  int remote_rssi;
-  
-  struct slip_decode_state slip_decode_state;
+  struct radio_link_state *radio_link_state;
 
   // copy of ifconfig flags
   uint16_t drop_packets;
@@ -451,7 +404,7 @@ void insertTransactionInCache(unsigned char *transaction_id);
 
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
-		    int recvttl, struct sockaddr *recvaddr, socklen_t recvaddrlen);
+		    int recvttl, struct socket_address *recvaddr);
 int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *frame, 
 			 struct overlay_buffer *buffer, struct subscriber **nexthop);
 int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface *interface, 
@@ -508,9 +461,6 @@ int rhizome_opendb();
 int parseCommandLine(struct cli_context *context, const char *argv0, int argc, const char *const *argv);
 
 int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
-int overlay_mdp_reply_error(int sock,
-			    struct sockaddr_un *recvaddr, socklen_t recvaddrlen,
-			    int error_number,char *message);
 
 typedef uint32_t mdp_port_t;
 #define PRImdp_port_t "#08" PRIx32
@@ -572,12 +522,17 @@ typedef struct overlay_mdp_frame {
 
 /* Server-side MDP functions */
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp);
-int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr, socklen_t recvaddrlen,
-			  overlay_mdp_frame *mdpreply);
-int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
-		     struct sockaddr_un *recvaddr, socklen_t recvaddrlen);
+struct socket_address;
+int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client);
 void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port);
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const sid_t *resolved_sidp, const char *uri, const char *did, const char *name);
+
+struct mdp_header;
+int mdp_bind_internal(struct subscriber *subscriber, mdp_port_t port,
+  int (*internal)(const struct mdp_header *header, const uint8_t *payload, size_t len));
+int mdp_unbind_internal(struct subscriber *subscriber, mdp_port_t port,
+  int (*internal)(const struct mdp_header *header, const uint8_t *payload, size_t len));
+
 
 struct vomp_call_state;
 
@@ -688,7 +643,7 @@ int overlay_packetradio_tx_packet(struct overlay_frame *frame);
 void overlay_dummy_poll(struct sched_ent *alarm);
 void server_config_reload(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
-int overlay_mdp_try_interal_services(struct overlay_frame *frame, overlay_mdp_frame *mdp);
+int overlay_mdp_try_internal_services(struct overlay_frame *frame, overlay_mdp_frame *mdp);
 int overlay_send_probe(struct subscriber *peer, struct network_destination *destination, int queue);
 int overlay_send_stun_request(struct subscriber *server, struct subscriber *request);
 void fd_periodicstats(struct sched_ent *alarm);
@@ -713,13 +668,6 @@ int limit_init(struct limit_state *state, int rate_micro_seconds);
 int olsr_init_socket(void);
 int olsr_send(struct overlay_frame *frame);
 
-void write_uint64(unsigned char *o,uint64_t v);
-void write_uint16(unsigned char *o,uint16_t v);
-void write_uint32(unsigned char *o,uint32_t v);
-uint64_t read_uint64(unsigned char *o);
-uint32_t read_uint32(unsigned char *o);
-uint16_t read_uint16(unsigned char *o);
-
 int pack_uint(unsigned char *buffer, uint64_t v);
 int measure_packed_uint(uint64_t v);
 int unpack_uint(unsigned char *buffer, int buff_size, uint64_t *v);
@@ -730,8 +678,7 @@ int slip_decode(struct slip_decode_state *state);
 int upper7_decode(struct slip_decode_state *state,unsigned char byte);
 uint32_t Crc32_ComputeBuf( uint32_t inCrc32, const void *buf,
 			  size_t bufLen );
-int rhizome_active_fetch_count();
-uint64_t rhizome_active_fetch_bytes_received(int q);
+void rhizome_fetch_log_short_status();
 extern int64_t bundles_available;
 extern char crash_handler_clue[1024];
 
@@ -752,9 +699,5 @@ void link_neighbour_status_html(struct strbuf *b, struct subscriber *neighbour);
 int link_stop_routing(struct subscriber *subscriber);
 
 int generate_nonce(unsigned char *nonce,int bytes);
-
-int mavlink_decode(struct overlay_interface *interface, struct slip_decode_state *state,uint8_t c);
-int mavlink_heartbeat(unsigned char *frame,int *outlen);
-int mavlink_encode_packet(struct overlay_interface *interface);
 
 #endif // __SERVALD_SERVALD_H

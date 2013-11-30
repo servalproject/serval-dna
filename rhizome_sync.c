@@ -93,7 +93,7 @@ static void rhizome_sync_request(struct subscriber *subscriber, uint64_t token, 
   mdp.out.payload_length = ob_position(b);
   if (config.debug.rhizome)
     DEBUGF("Sending request to %s for BARs from %"PRIu64" %s", alloca_tohex_sid_t(subscriber->sid), token, forwards?"forwards":"backwards");
-  overlay_mdp_dispatch(&mdp,0,NULL,0);
+  overlay_mdp_dispatch(&mdp, NULL);
   ob_free(b);
 }
 
@@ -147,7 +147,7 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
       break;
   }
   if (mdp.out.payload_length!=0)
-    overlay_mdp_dispatch(&mdp,0,NULL,0);
+    overlay_mdp_dispatch(&mdp, NULL);
 
   // send request for more bars if we have room to cache them
   if (state->bar_count >= CACHE_BARS)
@@ -440,7 +440,7 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
     mdp.out.payload_length = ob_position(b);
     if (config.debug.rhizome_ads)
       DEBUGF("Sending %d BARs from %"PRIu64" to %"PRIu64, count, token, last);
-    overlay_mdp_dispatch(&mdp,0,NULL,0);
+    overlay_mdp_dispatch(&mdp, NULL);
   }
   ob_free(b);
   OUT();

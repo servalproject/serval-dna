@@ -6,6 +6,7 @@
 #include "crypto.h"
 #include "strlcpy.h"
 #include "keyring.h"
+#include "dataformats.h"
 
 #define MESHMS_BLOCK_TYPE_ACK 0x01
 #define MESHMS_BLOCK_TYPE_MESSAGE 0x02
