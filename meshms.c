@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "crypto.h"
 #include "strlcpy.h"
 #include "keyring.h"
+#include "dataformats.h"
 
 #define MESHMS_BLOCK_TYPE_ACK 0x01
 #define MESHMS_BLOCK_TYPE_MESSAGE 0x02
@@ -293,8 +294,12 @@ static int ply_read_next(struct ply_read *ply)
     return 1;
   }
   ply->read.offset -= sizeof footer;
-  if (rhizome_read_buffered(&ply->read, &ply->buff, footer, sizeof footer) != sizeof footer)
-    return -1;
+  ssize_t read;
+  read = rhizome_read_buffered(&ply->read, &ply->buff, footer, sizeof footer);
+  if (read == -1)
+    return WHYF("rhizome_read_buffered() failed");
+  if ((size_t) read != sizeof footer)
+    return WHYF("Expected %zu bytes read, got %zu", (size_t) sizeof footer, (size_t) read);
   // (rhizome_read automatically advances the offset by the number of bytes read)
   ply->record_length=read_uint16(footer);
   ply->type = ply->record_length & 0xF;
@@ -321,9 +326,11 @@ static int ply_read_next(struct ply_read *ply)
     ply->buffer = b;
   }
   
-  ssize_t read = rhizome_read_buffered(&ply->read, &ply->buff, ply->buffer, ply->record_length);
-  if (read != ply->record_length)
-    return WHYF("Expected %u bytes read, got %zd", ply->record_length, read);
+  read = rhizome_read_buffered(&ply->read, &ply->buff, ply->buffer, ply->record_length);
+  if (read == -1)
+    return WHYF("rhizome_read_buffered() failed");
+  if ((size_t) read != ply->record_length)
+    return WHYF("Expected %u bytes read, got %zu", ply->record_length, (size_t) read);
   
   ply->read.offset = record_start;
   return 0;
@@ -397,10 +404,6 @@ static int update_conversation(const sid_t *my_sid, struct conversations *conv){
   if (config.debug.meshms)
     DEBUG("Locating their last message");
     
-  // find the offset of their last message
-  if (rhizome_retrieve_manifest(&conv->their_ply.bundle_id, m_theirs))
-    goto end;
-  
   if (ply_read_open(&ply, &conv->their_ply.bundle_id, m_theirs))
     goto end;
     
@@ -433,9 +436,6 @@ static int update_conversation(const sid_t *my_sid, struct conversations *conv){
     m_ours = rhizome_new_manifest();
     if (!m_ours)
       goto end;
-    if (rhizome_retrieve_manifest(&conv->my_ply.bundle_id, m_ours))
-      goto end;
-    
     if (ply_read_open(&ply, &conv->my_ply.bundle_id, m_ours))
       goto end;
       

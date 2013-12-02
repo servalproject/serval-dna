@@ -1,4 +1,4 @@
-/* 
+/*
 Serval DNA Golay coding
 Copyright (C) 2013 Serval Project, Inc.
 
@@ -17,5 +17,10 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-int golay_encode(unsigned char *data);
-int golay_decode(int *errs, unsigned char *data);
+#ifndef __SERVALD_GOLAY_H
+#define __SERVALD_GOLAY_H
+
+int golay_encode(uint8_t *data);
+int golay_decode(int *errs, uint8_t *data);
+
+#endif

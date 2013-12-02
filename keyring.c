@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "crypto.h"
 #include "overlay_packet.h"
 #include "keyring.h"
+#include "dataformats.h"
 
 static void keyring_free_keypair(keypair *kp);
 static void keyring_free_context(keyring_context *c);
@@ -1766,7 +1767,7 @@ static int keyring_respond_sas(keyring_file *k, overlay_mdp_frame *req)
 	  alloca_tohex_sid_t(req->out.src.sid), req->out.src.port,
 	  alloca_tohex_sid_t(req->out.dst.sid), req->out.dst.port
 	);
-  return overlay_mdp_dispatch(req,0,NULL,0);
+  return overlay_mdp_dispatch(req, NULL);
 }
 
 // someone else is claiming to be me on this network
@@ -1792,7 +1793,7 @@ int keyring_send_unlock(struct subscriber *subscriber)
   if (crypto_sign_message(subscriber, mdp.out.payload, sizeof(mdp.out.payload), &len))
     return -1;
   mdp.out.payload_length=len;
-  return overlay_mdp_dispatch(&mdp, 0 /* system generated */, NULL, 0);
+  return overlay_mdp_dispatch(&mdp, NULL);
 }
 
 static int keyring_send_challenge(struct subscriber *source, struct subscriber *dest)
@@ -1817,7 +1818,7 @@ static int keyring_send_challenge(struct subscriber *source, struct subscriber *
   bcopy(source->identity->challenge, &mdp.out.payload[1], sizeof(source->identity->challenge));
   mdp.out.payload_length+=sizeof(source->identity->challenge);
   
-  return overlay_mdp_dispatch(&mdp, 0 /* system generated */, NULL, 0);
+  return overlay_mdp_dispatch(&mdp, NULL);
 }
 
 static int keyring_respond_challenge(struct subscriber *subscriber, overlay_mdp_frame *req)
@@ -1841,7 +1842,7 @@ static int keyring_respond_challenge(struct subscriber *subscriber, overlay_mdp_
   if (crypto_sign_message(subscriber, mdp.out.payload, sizeof(mdp.out.payload), &len))
     return -1;
   mdp.out.payload_length=len;
-  return overlay_mdp_dispatch(&mdp, 0 /* system generated */, NULL, 0);
+  return overlay_mdp_dispatch(&mdp, NULL);
 }
 
 static int keyring_process_challenge(keyring_file *k, struct subscriber *subscriber, overlay_mdp_frame *req)
@@ -1927,7 +1928,7 @@ int keyring_send_sas_request(struct subscriber *subscriber){
   mdp.out.payload_length=1;
   mdp.out.payload[0]=KEYTYPE_CRYPTOSIGN;
   
-  if (overlay_mdp_dispatch(&mdp, 0 /* system generated */, NULL, 0))
+  if (overlay_mdp_dispatch(&mdp, NULL))
     return WHY("Failed to send SAS resolution request");
   if (config.debug.keyring)
     DEBUGF("Dispatched SAS resolution request");

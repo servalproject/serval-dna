@@ -545,10 +545,9 @@ setup_AddDeDuplicate() {
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
 }
 test_AddDeDuplicate() {
-   # Add first file again - nothing should change in its manifests, and it
-   # should appear that the add command succeeded (with perhaps some grumbling
-   # on stderr).
-   execute --exit-status=2 $servald rhizome add file $SIDB1 file1 file1.manifestA
+   # Add first file again - should return a "duplicate" status code and nothing
+   # should change in its manifests.
+   execute --exit-status=2 --stderr $servald rhizome add file $SIDB1 file1 file1.manifestA
    assert [ -s file1.manifestA ]
    assert_stdout_add_file file1
    extract_stdout_secret file1_dup_secret
@@ -558,7 +557,7 @@ test_AddDeDuplicate() {
    assert diff file1.manifest file1.manifestA
    assert [ $file1_secret = $file1_dup_secret ]
    # Repeat for second file.
-   execute --exit-status=2 $servald rhizome add file $SIDB1 file2 file2.manifestA
+   execute --exit-status=2 --stderr $servald rhizome add file $SIDB1 file2 file2.manifestA
    assert [ -s file2.manifestA ]
    assert_stdout_add_file file2
    extract_stdout_secret file2_dup_secret
@@ -714,17 +713,29 @@ test_AddUpdateAutoVersion() {
    assert_rhizome_list --fromhere=1 file1_2 file2
 }
 
-doc_AddUnsupportedService="Add with unsupported service fails"
-setup_AddUnsupportedService() {
+doc_AddServiceInvalid="Add with invalid service fails"
+setup_AddServiceInvalid() {
+   setup_servald
+   setup_rhizome
+   echo "Message1" >file1
+   echo 'service=Fubar!' >file1.manifest
+}
+test_AddServiceInvalid() {
+   execute $servald rhizome add file $SIDB1 file1 file1.manifest
+   tfw_cat --stdout --stderr
+   assertExitStatus '!=' 0
+}
+
+doc_AddServiceUnsupported="Add with unsupported service succeeds"
+setup_AddServiceUnsupported() {
    setup_servald
    setup_rhizome
    echo "Message1" >file1
    echo 'service=Fubar' >file1.manifest
 }
-test_AddUnsupportedService() {
-   execute $servald rhizome add file $SIDB1 file1 file1.manifest
+test_AddServiceUnsupported() {
+   executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
    tfw_cat --stdout --stderr
-   assertExitStatus '!=' 0
 }
 
 doc_EncryptedPayload="Add and extract an encrypted payload"

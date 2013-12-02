@@ -18,14 +18,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #define POLY  0xAE3  /* or use the other polynomial, 0xC75 */
+#include <inttypes.h>
 
-static unsigned long golay(unsigned long cw) 
+static uint32_t golay(uint32_t cw) 
 /* This function calculates [23,12] Golay codewords. 
    The format of the returned longint is 
    [checkbits(11),data(12)]. */ 
 { 
   int i; 
-  unsigned long c; 
+  uint32_t c; 
   cw&=0xfffl; 
   c=cw; /* save original codeword */ 
   for (i=1; i<=12; i++)  /* examine each data bit */ 
@@ -37,16 +38,16 @@ static unsigned long golay(unsigned long cw)
   return((cw<<12)|c);    /* assemble codeword */ 
 }
 
-static int parity(unsigned long cw) 
+static int parity(uint32_t cw) 
 /* This function checks the overall parity of codeword cw.
    If parity is even, 0 is returned, else 1. */ 
 { 
-  unsigned char p; 
-
+  uint8_t p; 
+  
   /* XOR the bytes of the codeword */ 
-  p=*(unsigned char*)&cw; 
-  p^=*((unsigned char*)&cw+1); 
-  p^=*((unsigned char*)&cw+2); 
+  p=cw & 0xFF; 
+  p^=(cw>>8) & 0xFF; 
+  p^=(cw>>16) & 0xFF; 
 
   /* XOR the halves of the intermediate result */ 
   p=p ^ (p>>4); 
@@ -57,9 +58,9 @@ static int parity(unsigned long cw)
   return(p & 1); 
 }
 
-int golay_encode(unsigned char *data)
+int golay_encode(uint8_t *data)
 {
-  unsigned long cw = data[0] | (data[1]<<8) | (data[2]<<16);
+  uint32_t cw = data[0] | (data[1]<<8) | (data[2]<<16);
   cw = golay(cw);
   if (parity(cw))
     cw|=0x800000l;
@@ -69,7 +70,7 @@ int golay_encode(unsigned char *data)
   return 0;
 }
 
-static unsigned long syndrome(unsigned long cw) 
+static uint32_t syndrome(uint32_t cw) 
 /* This function calculates and returns the syndrome 
    of a [23,12] Golay codeword. */ 
 { 
@@ -84,7 +85,7 @@ static unsigned long syndrome(unsigned long cw)
   return(cw<<12);        /* value pairs with upper bits of cw */
 }
 
-static int weight(unsigned long cw) 
+static int weight(uint32_t cw) 
 /* This function calculates the weight of 
    23 bit codeword cw. */ 
 { 
@@ -106,7 +107,7 @@ static int weight(unsigned long cw)
   return(bits); 
 } 
 
-static unsigned long rotate_left(unsigned long cw, int n) 
+static uint32_t rotate_left(uint32_t cw, int n) 
 /* This function rotates 23 bit codeword cw left by n bits. */ 
 { 
   int i; 
@@ -125,7 +126,7 @@ static unsigned long rotate_left(unsigned long cw, int n)
   return(cw & 0x7fffffl); 
 } 
 
-static unsigned long rotate_right(unsigned long cw, int n) 
+static uint32_t rotate_right(uint32_t cw, int n) 
 /* This function rotates 23 bit codeword cw right by n bits. */ 
 { 
   int i; 
@@ -144,20 +145,20 @@ static unsigned long rotate_right(unsigned long cw, int n)
   return(cw & 0x7fffffl); 
 }
 
-static unsigned long correct(unsigned long cw, int *errs) 
+static uint32_t correct(uint32_t cw, int *errs) 
 /* This function corrects Golay [23,12] codeword cw, returning the 
    corrected codeword. This function will produce the corrected codeword 
    for three or fewer errors. It will produce some other valid Golay 
    codeword for four or more errors, possibly not the intended 
    one. *errs is set to the number of bit errors corrected. */ 
 { 
-  unsigned char 
+  uint8_t 
     w;                /* current syndrome limit weight, 2 or 3 */ 
-  unsigned long 
+  uint32_t 
     mask;             /* mask for bit flipping */ 
   int 
     i,j;              /* index */ 
-  unsigned long 
+  uint32_t 
     s,                /* calculated syndrome */ 
     cwsaver;          /* saves initial value of cw */ 
 
@@ -205,17 +206,17 @@ static unsigned long correct(unsigned long cw, int *errs)
   return(cwsaver); /* return original if no corrections */ 
 } /* correct */ 
 
-int golay_decode(int *errs, const unsigned char *data)
+int golay_decode(int *errs, const uint8_t *data)
 /* This function decodes codeword *cw , error correction is attempted, 
    with *errs set to the number of bits corrected, and returning 0 if 
    no errors exist, or 1 if parity errors exist. */ 
 { 
-  unsigned long cw = data[0] | (data[1]<<8) | (data[2]<<16);
-  unsigned long parity_bit=cw & 0x800000l;
+  uint32_t cw = data[0] | (data[1]<<8) | (data[2]<<16);
+  uint32_t parity_bit=cw & 0x800000l;
   cw&=~0x800000l;            /* remove parity bit for correction */
   cw=correct(cw, errs);     /* correct up to three bits */ 
   cw|=parity_bit;
   if (parity(cw))
-    return -1;
+    *errs++;
   return cw&0xFFF;
 } /* decode */ 

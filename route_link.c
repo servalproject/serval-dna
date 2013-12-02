@@ -274,6 +274,7 @@ static struct neighbour *get_neighbour(struct subscriber *subscriber, char creat
     n->mdp_ack_sequence = -1;
     // TODO measure min/max rtt
     n->rtt = 120;
+    n->next_neighbour_update = gettime_ms() + 10;
     neighbours = n;
     if (config.debug.linkstate)
       DEBUGF("LINK STATE; new neighbour %s", alloca_tohex_sid_t(n->subscriber->sid));
@@ -486,48 +487,27 @@ static int append_link_state(struct overlay_buffer *payload, char flags,
     flags|=FLAG_HAS_ACK;
   if (drop_rate!=-1)
     flags|=FLAG_HAS_DROP_RATE;
-
   int length_pos = ob_position(payload);
-  if (ob_append_byte(payload, 0))
-    return -1;
-
-  if (ob_append_byte(payload, flags))
-    return -1;
-
-  if (overlay_address_append(NULL, payload, receiver))
-    return -1;
-
-  if (ob_append_byte(payload, version))
-    return -1;
-
+  ob_append_byte(payload, 0);
+  ob_append_byte(payload, flags);
+  overlay_address_append(NULL, payload, receiver);
+  ob_append_byte(payload, version);
   if (transmitter)
-    if (overlay_address_append(NULL, payload, transmitter))
-      return -1;
-
-  if (interface!=-1)
-    if (ob_append_byte(payload, interface))
-      return -1;
-
-  if (ack_sequence!=-1){
-    if (ob_append_byte(payload, ack_sequence))
-      return -1;
-    if (ob_append_ui32(payload, ack_mask))
-      return -1;
+    overlay_address_append(NULL, payload, transmitter);
+  if (interface != -1)
+    ob_append_byte(payload, interface);
+  if (ack_sequence != -1){
+    ob_append_byte(payload, ack_sequence);
+    ob_append_ui32(payload, ack_mask);
   }
-
-  if (drop_rate!=-1)
-    if (ob_append_byte(payload, drop_rate))
-      return -1;
-
-
+  if (drop_rate != -1)
+    ob_append_byte(payload, drop_rate);
   // TODO insert future fields here
-
-
+  if (ob_overrun(payload))
+    return -1;
   // patch the record length
   int end_pos = ob_position(payload);
-  if (ob_set(payload, length_pos, end_pos - length_pos))
-    return -1;
-
+  ob_set(payload, length_pos, end_pos - length_pos);
   ob_checkpoint(payload);
   return 0;
 }
@@ -729,12 +709,15 @@ static int send_legacy_self_announce_ack(struct neighbour *neighbour, struct lin
   frame->ttl = 6;
   frame->destination = neighbour->subscriber;
   frame->source = my_subscriber;
-  frame->payload = ob_new();
+  if ((frame->payload = ob_new()) == NULL) {
+    op_free(frame);
+    return -1;
+  }
   ob_append_ui32(frame->payload, neighbour->last_update);
   ob_append_ui32(frame->payload, now);
   ob_append_byte(frame->payload, link->neighbour_interface);
   frame->queue=OQ_MESH_MANAGEMENT;
-  if (overlay_payload_enqueue(frame)){
+  if (overlay_payload_enqueue(frame) == -1) {
     op_free(frame);
     return -1;
   }
@@ -806,12 +789,16 @@ static int send_neighbour_link(struct neighbour *n)
     send_legacy_self_announce_ack(n, n->best_link, now);
     n->last_update = now;
   } else {
-    struct overlay_frame *frame=emalloc_zero(sizeof(struct overlay_frame));
+    struct overlay_frame *frame = emalloc_zero(sizeof(struct overlay_frame));
     frame->type=OF_TYPE_DATA;
     frame->source=my_subscriber;
     frame->ttl=1;
     frame->queue=OQ_MESH_MANAGEMENT;
-    frame->payload = ob_new();
+    if ((frame->payload = ob_new()) == NULL) {
+      op_free(frame);
+      RETURN(-1);
+    }
+
     frame->send_hook = neighbour_link_sent;
     frame->send_context = n->subscriber;
     frame->resend=-1;
@@ -844,7 +831,7 @@ static int send_neighbour_link(struct neighbour *n)
     
     append_link_state(frame->payload, flags, n->subscriber, my_subscriber, n->best_link->neighbour_interface, 1,
 	              n->best_link->ack_sequence, n->best_link->ack_mask, -1);
-    if (overlay_payload_enqueue(frame))
+    if (overlay_payload_enqueue(frame) == -1)
       op_free(frame);
 
     n->best_link->ack_counter = ACK_WINDOW;
@@ -904,30 +891,31 @@ static void link_send(struct sched_ent *alarm)
   frame->source=my_subscriber;
   frame->ttl=1;
   frame->queue=OQ_MESH_MANAGEMENT;
-  frame->payload = ob_new();
-  ob_limitsize(frame->payload, 400);
-
-  overlay_mdp_encode_ports(frame->payload, MDP_PORT_LINKSTATE, MDP_PORT_LINKSTATE);
-  ob_checkpoint(frame->payload);
-  int pos = ob_position(frame->payload);
-
-  enum_subscribers(NULL, append_link, frame->payload);
-
-  ob_rewind(frame->payload);
-
-  if (ob_position(frame->payload) == pos)
-    op_free(frame);
-  else if (overlay_payload_enqueue(frame))
-    op_free(frame);
-
-  if (neighbours){
-    alarm->deadline = alarm->alarm;
-    schedule(alarm);
-  }else
-    alarm->alarm=0;
+  if ((frame->payload = ob_new()) == NULL)
+    WHY("Cannot send link details");
+  else {
+    ob_limitsize(frame->payload, 400);
+    overlay_mdp_encode_ports(frame->payload, MDP_PORT_LINKSTATE, MDP_PORT_LINKSTATE);
+    ob_checkpoint(frame->payload);
+    int pos = ob_position(frame->payload);
+    enum_subscribers(NULL, append_link, frame->payload);
+    ob_rewind(frame->payload);
+    if (ob_position(frame->payload) == pos)
+      op_free(frame);
+    else if (overlay_payload_enqueue(frame))
+      op_free(frame);
+    if (neighbours){
+      alarm->deadline = alarm->alarm;
+      schedule(alarm);
+    }else
+      alarm->alarm=0;
+  }
 }
 
-static void update_alarm(time_ms_t limit){
+static void update_alarm(struct __sourceloc __whence, time_ms_t limit)
+{
+  if (limit == 0)
+    FATALF("limit == 0");
   if (link_send_alarm.alarm>limit || link_send_alarm.alarm==0){
     unschedule(&link_send_alarm);
     link_send_alarm.alarm = limit;
@@ -947,7 +935,7 @@ int link_stop_routing(struct subscriber *subscriber)
   if (subscriber->link_state){
     struct link_state *state = get_link_state(subscriber);
     state->next_update = gettime_ms();
-    update_alarm(state->next_update);
+    update_alarm(__WHENCE__, state->next_update);
   }
   return 0;
 }
@@ -1066,7 +1054,8 @@ int link_state_should_forward_broadcast(struct subscriber *transmitter)
 }
 
 // when we receive a packet from a neighbour with ourselves as the next hop, make sure we send an ack soon(ish)
-int link_state_ack_soon(struct subscriber *subscriber){
+int link_state_ack_soon(struct subscriber *subscriber)
+{
   IN();
   struct neighbour *neighbour = get_neighbour(subscriber, 0);
   if (!neighbour)
@@ -1081,8 +1070,8 @@ int link_state_ack_soon(struct subscriber *subscriber){
       if (config.debug.ack)
 	DEBUGF("Asking for next ACK Real Soon Now");
     }
+    update_alarm(__WHENCE__, neighbour->next_neighbour_update);
   }
-  update_alarm(neighbour->next_neighbour_update);
   OUT();
   return 0;
 }
@@ -1123,7 +1112,8 @@ int link_unicast_ack(struct subscriber *subscriber, struct overlay_interface *in
   return 0;
 }
 
-static struct link_out *create_out_link(struct neighbour *neighbour, overlay_interface *interface, struct sockaddr_in *addr, char unicast){
+static struct link_out *create_out_link(struct neighbour *neighbour, overlay_interface *interface, struct sockaddr_in *addr, char unicast)
+{
   struct link_out *ret=emalloc_zero(sizeof(struct link_out));
   if (ret){
     ret->_next=neighbour->out_links;
@@ -1132,15 +1122,14 @@ static struct link_out *create_out_link(struct neighbour *neighbour, overlay_int
       ret->destination = create_unicast_destination(*addr, interface);
     else
       ret->destination = add_destination_ref(interface->destination);
-    
     if (config.debug.linkstate)
       DEBUGF("LINK STATE; Create possible %s link_out for neighbour %s on interface %s", 
 	unicast?"unicast":"broadcast",
 	alloca_tohex_sid_t(neighbour->subscriber->sid),
 	interface->name);
-
-    ret->timeout = gettime_ms()+ret->destination->tick_ms*3;
-    update_alarm(gettime_ms()+5);
+    time_ms_t now = gettime_ms();
+    ret->timeout = now + ret->destination->tick_ms * 3;
+    update_alarm(__WHENCE__, now + 5);
   }
   return ret;
 }
@@ -1228,7 +1217,7 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
     send_neighbour_link(neighbour);
   }
 
-  update_alarm(neighbour->next_neighbour_update);
+  update_alarm(__WHENCE__, neighbour->next_neighbour_update);
   return 0;
 }
 
@@ -1407,7 +1396,7 @@ int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 	    if (config.debug.ack)
 	      DEBUGF("LINK STATE; neighbour %s missed ack %d, queue another", alloca_tohex_sid_t(sender->sid), neighbour->last_update_seq);
 	    neighbour->next_neighbour_update=now+5;
-	    update_alarm(neighbour->next_neighbour_update);
+	    update_alarm(__WHENCE__, neighbour->next_neighbour_update);
 	  }
         }
       }
@@ -1448,8 +1437,8 @@ void link_explained(struct subscriber *subscriber)
 {
   time_ms_t now = gettime_ms();
   struct link_state *state = get_link_state(subscriber);
-  state->next_update = now+5;
-  update_alarm(now+5);
+  state->next_update = now + 5;
+  update_alarm(__WHENCE__, now + 5);
 }
 
 void link_interface_down(struct overlay_interface *interface)

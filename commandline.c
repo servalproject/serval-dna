@@ -46,6 +46,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_address.h"
 #include "overlay_buffer.h"
 #include "keyring.h"
+#include "dataformats.h"
 
 extern struct cli_schema command_line_options[];
 
@@ -931,9 +932,6 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   int64_t interval_ms = 1000;
   str_to_uint64_interval_ms(opt_interval, &interval_ms, NULL);
 
-  overlay_mdp_frame mdp;
-  bzero(&mdp, sizeof(overlay_mdp_frame));
-
   /* First sequence number in the echo frames */
   unsigned int firstSeq=random();
   unsigned int sequence_number=firstSeq;
@@ -941,22 +939,23 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   int broadcast = is_sid_t_broadcast(ping_sid);
 
   /* Bind to MDP socket and await confirmation */
-  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+  if ((mdp_sockfd = mdp_socket()) < 0)
     return WHY("Cannot create MDP socket");
 
-  sid_t srcsid;
-  mdp_port_t port=32768+(random()&32767);
-  if (overlay_mdp_getmyaddr(mdp_sockfd, 0, &srcsid)) {
-    overlay_mdp_client_close(mdp_sockfd);
-    return WHY("Could not get local address");
-  }
-  if (overlay_mdp_bind(mdp_sockfd, &srcsid, port)) {
-    overlay_mdp_client_close(mdp_sockfd);
-    return WHY("Could not bind to MDP socket");
-  }
+  struct mdp_header mdp_header;
+  bzero(&mdp_header, sizeof(mdp_header));
+
+  mdp_header.local.sid = BIND_PRIMARY;
+  mdp_header.remote.sid = ping_sid;
+  mdp_header.remote.port = MDP_PORT_ECHO;
+  mdp_header.qos = OQ_MESH_MANAGEMENT;
+  mdp_header.ttl = PAYLOAD_TTL_DEFAULT;
+  mdp_header.flags = MDP_FLAG_BIND;
+  if (broadcast)
+    mdp_header.flags |= MDP_FLAG_NO_CRYPT;
   
   /* TODO Eventually we should try to resolve SID to phone number and vice versa */
-  cli_printf(context, "MDP PING %s (%s): 12 data bytes", alloca_tohex_sid_t(ping_sid), alloca_tohex_sid_t(ping_sid));
+  cli_printf(context, "MDP PING %s: 12 data bytes", alloca_tohex_sid_t(ping_sid));
   cli_delim(context, "\n");
   cli_flush(context);
 
@@ -968,81 +967,91 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
 
   if (broadcast)
     WARN("broadcast ping packets will not be encrypted");
+  
   for (; icount==0 || tx_count<icount; ++sequence_number) {
-    /* Now send the ping packets */
-    mdp.packetTypeAndFlags=MDP_TX;
-    if (broadcast) mdp.packetTypeAndFlags|=MDP_NOCRYPT;
-    mdp.out.src.port=port;
-    mdp.out.src.sid = srcsid;
-    mdp.out.dst.sid = ping_sid;
-    mdp.out.queue=OQ_MESH_MANAGEMENT;
-    /* Set port to well known echo port */
-    mdp.out.dst.port=MDP_PORT_ECHO;
-    mdp.out.payload_length=4+8;
-    int *seq=(int *)&mdp.out.payload;
-    *seq=sequence_number;
-    write_uint64(&mdp.out.payload[4], gettime_ms());
     
-    int res=overlay_mdp_send(mdp_sockfd, &mdp, 0, 0);
-    if (res) {
-      WHYF("could not dispatch PING frame #%d (error %d)%s%s",
-	  sequence_number - firstSeq,
-	  res,
-	  mdp.packetTypeAndFlags == MDP_ERROR ? ": " : "",
-	  mdp.packetTypeAndFlags == MDP_ERROR ? mdp.error.message : ""
-	);
-    } else
-      tx_count++;
-
+    // send a ping packet
+    {
+      uint8_t payload[12];
+      int *seq=(int *)payload;
+      *seq=sequence_number;
+      write_uint64(&payload[4], gettime_ms());
+      
+      int r = mdp_send(mdp_sockfd, &mdp_header, payload, sizeof(payload));
+      if (r<0)
+	WHY_perror("mdp_send");
+      else
+	tx_count++;
+    }
+    
     /* Now look for replies until one second has passed, and print any replies
        with appropriate information as required */
     time_ms_t now = gettime_ms();
-    time_ms_t finish = now + (tx_count < icount?interval_ms:timeout_ms);
+    time_ms_t finish = now + ((tx_count < icount || icount==0)?interval_ms:timeout_ms);
     for (; !servalShutdown && now < finish; now = gettime_ms()) {
       time_ms_t poll_timeout_ms = finish - gettime_ms();
-      int result = overlay_mdp_client_poll(mdp_sockfd, poll_timeout_ms);
-
-      if (result>0) {
-	int ttl=-1;
-	if (overlay_mdp_recv(mdp_sockfd, &mdp, port, &ttl)==0) {
-	  switch(mdp.packetTypeAndFlags&MDP_TYPE_MASK) {
-	  case MDP_ERROR:
-	    WHYF("mdpping: overlay_mdp_recv: %s (code %d)", mdp.error.message, mdp.error.error);
-	    break;
-	  case MDP_TX:
-	    {
-	      int *rxseq=(int *)&mdp.in.payload;
-	      time_ms_t txtime = read_uint64(&mdp.in.payload[4]);
-	      int hop_count = 64 - mdp.in.ttl;
-	      time_ms_t delay = gettime_ms() - txtime;
-	      cli_printf(context, "%s: seq=%d time=%"PRId64"ms hops=%d %s%s",
-		     alloca_tohex_sid_t(mdp.in.src.sid),
-		     (*rxseq)-firstSeq+1,
-		     (int64_t)delay,
-		     hop_count,
-		     mdp.packetTypeAndFlags&MDP_NOCRYPT?"":" ENCRYPTED",
-		     mdp.packetTypeAndFlags&MDP_NOSIGN?"":" SIGNED");
-	      cli_delim(context, "\n");
-	      cli_flush(context);
-	      // TODO Put duplicate pong detection here so that stats work properly.
-	      rx_count++;
-	      ret=0;
-	      rx_ms+=delay;
-	      if (rx_mintime>delay||rx_mintime==-1) rx_mintime=delay;
-	      if (delay>rx_maxtime) rx_maxtime=delay;
-	      rx_times[rx_count%1024]=delay;
-	    }
-	    break;
-	  default:
-	    WHYF("mdpping: overlay_mdp_recv: Unexpected MDP frame type 0x%x", mdp.packetTypeAndFlags);
-	    break;
-	  }
-	}
+      
+      if (mdp_poll(mdp_sockfd, poll_timeout_ms)<=0)
+	continue;
+	
+      struct mdp_header mdp_recv_header;
+      uint8_t recv_payload[12];
+      ssize_t len = mdp_recv(mdp_sockfd, &mdp_recv_header, recv_payload, sizeof(recv_payload));
+      
+      if (len<0){
+	WHY_perror("mdp_recv");
+	break;
       }
+      
+      if (mdp_recv_header.flags & MDP_FLAG_ERROR){
+	WHY("Serval daemon reported an error, please check the log for more information");
+	break;
+      }
+      
+      if (mdp_recv_header.flags & MDP_FLAG_BIND){
+	// received port binding confirmation
+	mdp_header.local = mdp_recv_header.local;
+	mdp_header.flags &= ~MDP_FLAG_BIND;
+	DEBUGF("Bound to %s:%d", alloca_tohex_sid_t(mdp_header.local.sid), mdp_header.local.port);
+	continue;
+      }
+      
+      if (len<sizeof(recv_payload)){
+	DEBUGF("Ignoring ping response as it is too short");
+	continue;
+      }
+      
+      int *rxseq=(int *)&recv_payload;
+      time_ms_t txtime = read_uint64(&recv_payload[4]);
+      int hop_count = 64 - mdp_recv_header.ttl;
+      time_ms_t delay = gettime_ms() - txtime;
+      
+      cli_put_hexvalue(context, mdp_recv_header.remote.sid.binary, SID_SIZE, ": seq=");
+      cli_put_long(context, (*rxseq)-firstSeq+1, " time=");
+      cli_put_long(context, delay, "ms hops=");
+      cli_put_long(context, hop_count, "");
+      
+      if (mdp_recv_header.flags&MDP_FLAG_NO_CRYPT)
+	cli_put_string(context, "", "");
+      else
+	cli_put_string(context, " ENCRYPTED", "");
+	
+      if (mdp_recv_header.flags&MDP_FLAG_NO_SIGN)
+	cli_put_string(context, "", "\n");
+      else
+	cli_put_string(context, " SIGNED", "\n");
+      cli_flush(context);
+      // TODO Put duplicate pong detection here so that stats work properly.
+      rx_count++;
+      ret=0;
+      rx_ms+=delay;
+      if (rx_mintime>delay||rx_mintime==-1) rx_mintime=delay;
+      if (delay>rx_maxtime) rx_maxtime=delay;
+      rx_times[rx_count%1024]=delay;
     }
   }
 
-  overlay_mdp_client_close(mdp_sockfd);
+  mdp_close(mdp_sockfd);
   
   {
     float rx_stddev=0;
@@ -1101,24 +1110,25 @@ int app_trace(const struct cli_parsed *parsed, struct cli_context *context)
   mdp.out.dst.port=MDP_PORT_TRACE;
   mdp.packetTypeAndFlags=MDP_TX;
   struct overlay_buffer *b = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
-  
   ob_append_byte(b, SID_SIZE);
   ob_append_bytes(b, srcsid.binary, SID_SIZE);
-  
   ob_append_byte(b, SID_SIZE);
   ob_append_bytes(b, dstsid.binary, SID_SIZE);
-  
-  mdp.out.payload_length = ob_position(b);
-  cli_printf(context, "Tracing the network path from %s to %s", 
-	 alloca_tohex_sid_t(srcsid), alloca_tohex_sid_t(dstsid));
-  cli_delim(context, "\n");
-  cli_flush(context);
-
-  int ret=overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 5000);
+  int ret;
+  if (ob_overrun(b))
+    ret = WHY("overlay buffer overrun");
+  else {
+    mdp.out.payload_length = ob_position(b);
+    cli_printf(context, "Tracing the network path from %s to %s", 
+	  alloca_tohex_sid_t(srcsid), alloca_tohex_sid_t(dstsid));
+    cli_delim(context, "\n");
+    cli_flush(context);
+    ret = overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 5000);
+    if (ret)
+      WHYF("overlay_mdp_send returned %d", ret);
+  }
   ob_free(b);
-  if (ret)
-    DEBUGF("overlay_mdp_send returned %d", ret);
-  else{
+  if (ret == 0) {
     int offset=0;
     {
       // skip the first two sid's
@@ -1331,14 +1341,15 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   if (!m){
     keyring_free(keyring);
     return WHY("Manifest struct could not be allocated -- not added to rhizome");
-  }  
+  }
   if (manifestpath && *manifestpath && access(manifestpath, R_OK) == 0) {
     if (config.debug.rhizome)
       DEBUGF("reading manifest from %s", manifestpath);
     /* Don't verify the manifest, because it will fail if it is incomplete.
        This is okay, because we fill in any missing bits and sanity check before
-       trying to write it out. */
-    if (rhizome_read_manifest_file(m, manifestpath, 0) == -1) {
+       trying to write it out. However, we do insist that whatever we load is
+       valid and not malformed. */
+    if (rhizome_read_manifest_file(m, manifestpath, 0) == -1 || m->malformed) {
       rhizome_manifest_free(m);
       keyring_free(keyring);
       return WHY("Manifest file could not be loaded -- not added to rhizome");
@@ -1583,22 +1594,19 @@ int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_cont
   if ( cli_arg(parsed, "manifestpath", &manifestpath, NULL, "") == -1
     || cli_arg(parsed, "filepath", &filepath, NULL, "") == -1)
     return -1;
-  
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     return WHY("Out of manifests.");
-  
-  int ret=0;
-  if (rhizome_read_manifest_file(m, manifestpath, 0) == -1)
-    ret=-1;
-  // TODO why doesn't read manifest file set finalised???
-  m->finalised=1;
-  
-  if (ret==0 && rhizome_write_manifest_file(m, filepath, 1) == -1)
-    ret = -1;
-  
-  if (m)
-    rhizome_manifest_free(m);
+  int ret = -1;
+  if (   rhizome_read_manifest_file(m, manifestpath, 0) != -1
+      && rhizome_manifest_validate(m)
+      && rhizome_manifest_verify(m)
+  ) {
+    assert(m->finalised);
+    if (rhizome_write_manifest_file(m, filepath, 1) != -1)
+      ret = 0;
+  }
+  rhizome_manifest_free(m);
   return ret;
 }
 
@@ -2263,7 +2271,7 @@ static int handle_pins(const struct cli_parsed *parsed, struct cli_context *cont
       WHYF("Timeout while waiting for response");
       break;
     }
-    if (rev_header.flags & MDP_FLAG_OK){
+    if (rev_header.flags & MDP_FLAG_CLOSE){
       ret=0;
       break;
     }
@@ -2319,7 +2327,6 @@ int app_id_list(const struct cli_parsed *parsed, struct cli_context *context)
     struct mdp_header rev_header;
     unsigned char response_payload[1600];
     ssize_t len = mdp_poll_recv(mdp_sock, timeout, &rev_header, response_payload, sizeof(response_payload));
-    DEBUGF("mdp_poll_recv = %zd", len);
     if (len==-1)
       break;
     if (len==-2){
@@ -2334,7 +2341,7 @@ int app_id_list(const struct cli_parsed *parsed, struct cli_context *context)
       // TODO receive and decode other details about this identity
     }
     
-    if (rev_header.flags & MDP_FLAG_OK){
+    if (rev_header.flags & MDP_FLAG_CLOSE){
       ret=0;
       break;
     }
@@ -2759,7 +2766,7 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
       
       /* Got a good DNA reply, copy it into place and stop polling */
       cli_field_name(context, "sid", ":");
-      cli_put_string(context, sidhex, ":");
+      cli_put_string(context, sidhex, "\n");
       cli_field_name(context, "did", ":");
       cli_put_string(context, did, "\n");
       cli_field_name(context, "name", ":");
@@ -2770,6 +2777,58 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
   }
   overlay_mdp_client_close(mdp_sockfd);
   return 1;
+}
+
+void context_switch_test(int);
+int app_mem_test(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  size_t mem_size;
+  size_t addr;
+  uint64_t count;
+
+
+  // First test context switch speed
+  context_switch_test(1);
+
+  for(mem_size=1024;mem_size<=(128*1024*1024);mem_size*=2) {
+    uint8_t *mem=malloc(mem_size);
+    if (!mem) {
+      fprintf(stderr,"Could not allocate %zdKB memory -- stopping test.\n",mem_size/1024);
+      return -1;
+    }
+
+    // Fill memory with random stuff so that we don't have memory page-in
+    // delays when doing the reads
+    for(addr=0;addr<mem_size;addr++) mem[addr]=random()&0xff;
+    
+    time_ms_t end_time=gettime_ms()+100;
+    uint64_t total=0;
+    size_t mem_mask=mem_size-1;
+
+    for(count=0;gettime_ms()<end_time;count++) {
+      addr=random()&mem_mask;
+      total+=mem[addr];
+    }
+    printf("Memory size = %8zdKB : %"PRId64" random  reads per second (irrelevant sum is %016"PRIx64")\n",
+	   mem_size/1024,count*10,
+	   /* use total so that compiler doesn't optimise away our memory accesses */
+	   total);
+
+    end_time=gettime_ms()+100;
+    for(count=0;gettime_ms()<end_time;count++) {
+      addr=random()&mem_mask;
+      mem[addr]=3;
+    }
+    printf("Memory size = %8zdKB : %"PRId64" random writes per second (irrelevant sum is %016"PRIx64")\n",
+	   mem_size/1024,count*10,
+	   /* use total so that compiler doesn't optimise away our memory accesses */
+	   total);
+
+
+    free(mem);
+  }
+
+  return 0;
 }
 
 int app_network_scan(const struct cli_parsed *parsed, struct cli_context *context)
@@ -2788,11 +2847,10 @@ int app_network_scan(const struct cli_parsed *parsed, struct cli_context *contex
     return -1;
   
   if (address){
-    DEBUGF("Parsing arg %s", address);
     if (!inet_aton(address, &scan->addr))
       return WHY("Unable to parse the address");
   }else
-    DEBUGF("Scanning local networks");
+    INFO("Scanning local networks");
   
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
     return WHY("Cannot create MDP socket");
@@ -2926,6 +2984,8 @@ struct cli_schema command_line_options[]={
    "Run cryptography speed test"},
   {app_nonce_test,{"test","nonce",NULL}, 0,
    "Run nonce generation test"},
+  {app_mem_test,{"test","memory",NULL}, 0,
+   "Run memory speed test"},
   {app_byteorder_test,{"test","byteorder",NULL}, 0,
    "Run byte order handling test"},
   {app_slip_test,{"test","slip","[--seed=<N>]","[--duration=<seconds>|--iterations=<N>]",NULL}, 0,

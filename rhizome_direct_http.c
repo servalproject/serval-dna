@@ -257,7 +257,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
     if (config.debug.rhizome)
       DEBUGF("Import sans-manifest appeared to succeed");
     /* Respond with the manifest that was added. */
-    http_request_response_static(&r->http, 200, "text/plain", (const char *)m->manifestdata, m->manifest_bytes);
+    http_request_response_static(&r->http, 200, "text/plain", (const char *)m->manifestdata, m->manifest_all_bytes);
     /* clean up after ourselves */
     if (mout && mout != m)
       rhizome_manifest_free(mout);
@@ -658,7 +658,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  "\r\n";
 	/* Work out what the content length should be */
 	if (config.debug.rhizome_tx)
-	  DEBUGF("manifest_all_bytes=%u, manifest_bytes=%u", m->manifest_all_bytes, m->manifest_bytes);
+	  DEBUGF("manifest_all_bytes=%u, manifest_body_bytes=%u", m->manifest_all_bytes, m->manifest_body_bytes);
 	assert(m->filesize != RHIZOME_SIZE_UNSET);
 	size_t content_length =
 	    strlen(template2) - 2 /* minus 2 for the "%s" that gets replaced */

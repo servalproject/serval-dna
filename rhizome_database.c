@@ -164,31 +164,29 @@ void sqlite_log(void *ignored, int result, const char *msg)
   WARNF("Sqlite: %d %s", result, msg);
 }
 
-void verify_bundles(){
+void verify_bundles()
+{
   // assume that only the manifest itself can be trusted
   // fetch all manifests and reinsert them.
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   // This cursor must be ordered descending as re-inserting the manifests will give them a new higher manifest id.
   // If we didn't, we'd get stuck in an infinite loop.
   sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT ROWID, MANIFEST FROM MANIFESTS ORDER BY ROWID DESC;");
-  while(sqlite_step_retry(&retry, statement)==SQLITE_ROW){
+  while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     sqlite3_int64 rowid = sqlite3_column_int64(statement, 0);
     const void *manifest = sqlite3_column_blob(statement, 1);
     size_t manifest_length = sqlite3_column_bytes(statement, 1);
     rhizome_manifest *m=rhizome_new_manifest();
-    int ret=0;
-    ret = rhizome_read_manifest_file(m, manifest, manifest_length);
-    if (ret==0 && m->errors)
-      ret=-1;
-    if (ret==0)
-      ret=rhizome_manifest_verify(m);
-    if (ret==0){
-      m->finalised=1;
-      m->manifest_bytes=m->manifest_all_bytes;
-      // store it again, to ensure it is valid and stored correctly with matching file content.
-      ret=rhizome_store_bundle(m);
+    int ret = -1;
+    if (   rhizome_read_manifest_file(m, manifest, manifest_length) == 0
+	&& rhizome_manifest_validate(m)
+	&& rhizome_manifest_verify(m)
+    ) {
+      assert(m->finalised);
+      // Store it again, to ensure that MANIFESTS columns are up to date.
+      ret = rhizome_store_bundle(m);
     }
-    if (ret!=0){
+    if (ret) {
       if (config.debug.rhizome)
 	DEBUGF("Removing invalid manifest entry @%lld", rowid);
       sqlite_exec_void_retry(&retry, "DELETE FROM MANIFESTS WHERE ROWID = ?;", INT64, rowid, END);
@@ -743,7 +741,7 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	      } else {
 		char hash_hex[RHIZOME_FILEHASH_STRLEN + 1];
 		tohex(hash_hex, RHIZOME_FILEHASH_STRLEN, hashp->binary);
-		BIND_DEBUG(RHIZOME_FILEHASH_T, sqlite3_bind_text, "%s,%zu,SQLITE_TRANSIENT", hash_hex, RHIZOME_FILEHASH_STRLEN);
+		BIND_DEBUG(RHIZOME_FILEHASH_T, sqlite3_bind_text, "%s,%u,SQLITE_TRANSIENT", hash_hex, RHIZOME_FILEHASH_STRLEN);
 		BIND_RETRY(sqlite3_bind_text, hash_hex, RHIZOME_FILEHASH_STRLEN, SQLITE_TRANSIENT);
 	      }
 	    }
@@ -1386,7 +1384,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
 	  "?,?,?,?,?,?,?,?,?,?,?,?,?"
 	");",
 	RHIZOME_BID_T, &m->cryptoSignPublic,
-	STATIC_BLOB, m->manifestdata, m->manifest_bytes,
+	STATIC_BLOB, m->manifestdata, m->manifest_all_bytes,
 	INT64, m->version,
 	INT64, (int64_t) now,
 	STATIC_BLOB, bar, RHIZOME_BAR_BYTES,
@@ -1604,7 +1602,9 @@ int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
     rhizome_manifest *m = c->manifest = rhizome_new_manifest();
     if (m == NULL)
       RETURN(-1);
-    if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize) == -1) {
+    if (   rhizome_read_manifest_file(m, manifestblob, manifestblobsize) == -1
+	|| !rhizome_manifest_validate(m)
+    ) {
       WHYF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
       continue;
     }
@@ -1710,7 +1710,6 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
     strbuf_puts(b, " AND recipient = ?");
   if (strbuf_overrun(b))
     return WHYF("SQL command too long: %s", strbuf_str(b));
-
   int ret = 0;
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry, strbuf_str(b), INT64, m->filesize, STATIC_TEXT, m->service, END);
@@ -1739,11 +1738,13 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
     const unsigned char *q_manifestid = sqlite3_column_text(statement, 0);
     const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
     size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
-    if (rhizome_read_manifest_file(blob_m, manifestblob, manifestblobsize) == -1) {
+    if (   rhizome_read_manifest_file(blob_m, manifestblob, manifestblobsize) == -1
+	|| !rhizome_manifest_validate(blob_m)
+    ) {
       WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
       goto next;
     }
-    if (rhizome_manifest_verify(blob_m)) {
+    if (!rhizome_manifest_verify(blob_m)) {
       WARNF("MANIFESTS row id=%s fails verification -- skipped", q_manifestid);
       goto next;
     }
@@ -1781,8 +1782,8 @@ static int unpack_manifest_row(rhizome_manifest *m, sqlite3_stmt *statement)
   const char *q_author = (const char *) sqlite3_column_text(statement, 4);
   size_t q_blobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
   uint64_t q_rowid = sqlite3_column_int64(statement, 5);
-  if (rhizome_read_manifest_file(m, q_blob, q_blobsize) == -1)
-    return WHYF("Manifest %s exists but is invalid", q_id);
+  if (rhizome_read_manifest_file(m, q_blob, q_blobsize) == -1 || !rhizome_manifest_validate(m))
+    return WHYF("Manifest bid=%s in database but invalid", q_id);
   if (q_author) {
     sid_t author;
     if (str_to_sid_t(&author, q_author) == -1)
@@ -1988,7 +1989,7 @@ static int is_interesting(const char *id_hex, int64_t version)
 int rhizome_is_bar_interesting(unsigned char *bar)
 {
   int64_t version = rhizome_bar_version(bar);
-  char id_hex[RHIZOME_BAR_PREFIX_BYTES + 2];
+  char id_hex[RHIZOME_BAR_PREFIX_BYTES *2 + 2];
   tohex(id_hex, RHIZOME_BAR_PREFIX_BYTES * 2, &bar[RHIZOME_BAR_PREFIX_OFFSET]);
   strcat(id_hex, "%");
   return is_interesting(id_hex, version);

@@ -25,11 +25,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <fnmatch.h>
 #include "serval.h"
 #include "conf.h"
+#include "net.h"
+#include "socket.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
 #include "str.h"
+#include "radio_link.h"
 
 #ifdef HAVE_IFADDRS_H
 #include <ifaddrs.h>
@@ -48,7 +51,6 @@ struct profile_total sock_any_stats;
 
 static void overlay_interface_poll(struct sched_ent *alarm);
 static int re_init_socket(int interface_index);
-static void write_stream_buffer(overlay_interface *interface);
 
 static void
 overlay_interface_close(overlay_interface *interface){
@@ -58,6 +60,8 @@ overlay_interface_close(overlay_interface *interface){
   unschedule(&interface->alarm);
   unwatch(&interface->alarm);
   close(interface->alarm.poll.fd);
+  if (interface->radio_link_state)
+    radio_link_free(interface);
   interface->alarm.poll.fd=-1;
   interface->state=INTERFACE_STATE_DOWN;
 }
@@ -75,8 +79,7 @@ void interface_state_html(struct strbuf *b, struct overlay_interface *interface)
   switch(interface->type){
     case OVERLAY_INTERFACE_PACKETRADIO:
       strbuf_puts(b, "Type: Packet Radio<br>");
-      strbuf_sprintf(b, "RSSI: %ddB<br>",interface->radio_rssi);
-      strbuf_sprintf(b, "Remote RSSI: %ddB<br>",interface->remote_rssi);
+      radio_link_state_html(b, interface);
       break;
     case OVERLAY_INTERFACE_ETHERNET:
       strbuf_puts(b, "Type: Ethernet<br>");
@@ -247,37 +250,39 @@ int overlay_interface_compare(overlay_interface *one, overlay_interface *two)
 // OSX doesn't recieve broadcast packets on sockets bound to an interface's address
 // So we have to bind a socket to INADDR_ANY to receive these packets.
 static void
-overlay_interface_read_any(struct sched_ent *alarm){
+overlay_interface_read_any(struct sched_ent *alarm)
+{
   if (alarm->poll.revents & POLLIN) {
     int plen=0;
     int recvttl=1;
     unsigned char packet[16384];
     overlay_interface *interface=NULL;
-    struct sockaddr src_addr;
-    socklen_t addrlen = sizeof(src_addr);
+    struct socket_address recvaddr;
+    recvaddr.addrlen = sizeof recvaddr.store;
     
     /* Read only one UDP packet per call to share resources more fairly, and also
      enable stats to accurately count packets received */
-    plen = recvwithttl(alarm->poll.fd, packet, sizeof(packet), &recvttl, &src_addr, &addrlen);
+    plen = recvwithttl(alarm->poll.fd, packet, sizeof(packet), &recvttl, &recvaddr);
     if (plen == -1) {
-      WHY_perror("recvwithttl(c)");
+      WHYF_perror("recvwithttl(%d,%p,%zu,&%d,%p(%s))",
+	    alarm->poll.fd, packet, sizeof packet, recvttl,
+	    &recvaddr, alloca_socket_address(&recvaddr)
+	  );
       unwatch(alarm);
       close(alarm->poll.fd);
       return;
     }
     
-    struct in_addr src = ((struct sockaddr_in *)&src_addr)->sin_addr;
-    
     /* Try to identify the real interface that the packet arrived on */
-    interface = overlay_interface_find(src, 0);
+    interface = overlay_interface_find(recvaddr.inet.sin_addr, 0);
     
     /* Drop the packet if we don't find a match */
     if (!interface){
       if (config.debug.overlayinterfaces)
-	DEBUGF("Could not find matching interface for packet received from %s", inet_ntoa(src));
+	DEBUGF("Could not find matching interface for packet received from %s", inet_ntoa(recvaddr.inet.sin_addr));
       return;
     }
-    packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen);
+    packetOkOverlay(interface, packet, plen, recvttl, &recvaddr);
   }
   if (alarm->poll.revents & (POLLHUP | POLLERR)) {
     INFO("Closing broadcast socket due to error");
@@ -410,8 +415,6 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   set_destination_ref(&interface->destination, NULL);
   interface->destination = new_destination(interface, ifconfig->encapsulation);
   
-  interface->throttle_bytes_per_second = ifconfig->throttle;
-  interface->throttle_burst_write_size = ifconfig->burst_size;
   /* Pick a reasonable default MTU.
      This will ultimately get tuned by the bandwidth and other properties of the interface */
   interface->mtu = 1200;
@@ -531,10 +534,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     
     switch (ifconfig->socket_type) {
     case SOCK_STREAM:
-      interface->slip_decode_state.dst_offset=0;
-      /* The encapsulation type should be configurable, but for now default to the one that should
-         be safe on the RFD900 radios, and that also allows us to receive RSSI reports inline */
-      interface->slip_decode_state.encapsulator=SLIP_FORMAT_MAVLINK;
+      radio_link_init(interface);
       interface->alarm.poll.events=POLLIN|POLLOUT;
       watch(&interface->alarm);
 
@@ -573,25 +573,27 @@ cleanup:
   return cleanup_ret;
 }
 
-static void interface_read_dgram(struct overlay_interface *interface){
+static void interface_read_dgram(struct overlay_interface *interface)
+{
   int plen=0;
   unsigned char packet[8096];
   
-  struct sockaddr src_addr;
-  socklen_t addrlen = sizeof(src_addr);
-  
-  
+  struct socket_address recvaddr;
+  recvaddr.addrlen = sizeof recvaddr.store;
+
   /* Read only one UDP packet per call to share resources more fairly, and also
    enable stats to accurately count packets received */
   int recvttl=1;
-  plen = recvwithttl(interface->alarm.poll.fd,packet, sizeof(packet), &recvttl, &src_addr, &addrlen);
+  plen = recvwithttl(interface->alarm.poll.fd,packet, sizeof(packet), &recvttl, &recvaddr);
   if (plen == -1) {
-    WHY_perror("recvwithttl(c)");
+    WHYF_perror("recvwithttl(%d,%p,%zu,&%d,%p(%s))",
+	  interface->alarm.poll.fd, packet, sizeof packet, recvttl,
+	  &recvaddr, alloca_socket_address(&recvaddr)
+	);
     overlay_interface_close(interface);
     return;
   }
-  
-  packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen);
+  packetOkOverlay(interface, packet, plen, recvttl, &recvaddr);
 }
 
 struct file_packet{
@@ -657,9 +659,6 @@ static void interface_read_file(struct overlay_interface *interface)
       return;
     }
     
-    if (config.debug.overlayinterfaces)
-      DEBUGF("Read interface %s (size=%"PRId64") at offset=%d",interface->name, (int64_t)length, interface->recv_offset);
-    
     ssize_t nread = read(interface->alarm.poll.fd, &packet, sizeof packet);
     if (nread == -1){
       WHY_perror("read");
@@ -668,14 +667,27 @@ static void interface_read_file(struct overlay_interface *interface)
     }
     
     if (nread == sizeof packet) {
+      if (config.debug.overlayinterfaces)
+	DEBUGF("Read from interface %s (filesize=%"PRId64") at offset=%d: src_addr=%s dst_addr=%s pid=%d length=%d",
+	      interface->name, (int64_t)length, interface->recv_offset,
+	      alloca_sockaddr(&packet.src_addr, sizeof packet.src_addr),
+	      alloca_sockaddr(&packet.dst_addr, sizeof packet.dst_addr),
+	      packet.pid,
+	      packet.payload_length
+	    );
       interface->recv_offset += nread;
       if (should_drop(interface, packet.dst_addr) || (packet.pid == getpid() && !interface->local_echo)){
 	if (config.debug.packetrx)
-	  DEBUGF("Ignoring packet from %d, addressed to %s:%d", packet.pid,
-	      inet_ntoa(packet.dst_addr.sin_addr), ntohs(packet.dst_addr.sin_port));
+	  DEBUGF("Ignoring packet from pid=%d src_addr=%s dst_addr=%s",
+		packet.pid,
+		alloca_sockaddr_in(&packet.src_addr),
+		alloca_sockaddr_in(&packet.dst_addr)
+	      );
       }else{
-	packetOkOverlay(interface, packet.payload, packet.payload_length, -1, 
-			    (struct sockaddr*)&packet.src_addr, (socklen_t) sizeof(packet.src_addr));
+	struct socket_address srcaddr;
+	srcaddr.addrlen = sizeof packet.src_addr;
+	srcaddr.inet = packet.src_addr;
+	packetOkOverlay(interface, packet.payload, packet.payload_length, -1, &srcaddr);
       }
     }
   }
@@ -709,100 +721,14 @@ static void interface_read_stream(struct overlay_interface *interface){
     OUT();
     return;
   }
-  struct slip_decode_state *state=&interface->slip_decode_state;
+  
   
   int i;
   for (i=0;i<nread;i++)
-    mavlink_decode(interface, state, buffer[i]);
+    radio_link_decode(interface, buffer[i]);
     
   OUT();
 }
-
-static void write_stream_buffer(overlay_interface *interface){
-  time_ms_t now = gettime_ms();
-  
-  // Throttle output to a prescribed bit-rate
-  // first, reduce the number of bytes based on the configured burst size
-  int bytes_allowed=interface->throttle_burst_write_size;
-    
-  int total_written=0;
-  while (interface->tx_bytes_pending>0 || interface->tx_packet || interface->next_heartbeat <= now) {
-    
-    if (interface->tx_bytes_pending==0){
-      if (interface->next_heartbeat <= now){
-	// Queue a hearbeat now
-	mavlink_heartbeat(interface->txbuffer,&interface->tx_bytes_pending);
-	if (config.debug.packetradio)
-	  DEBUGF("Sending heartbeat");
-	interface->next_heartbeat = now+1000;
-      }else if(interface->tx_packet && interface->remaining_space >= 256 + 8+9){
-	// prepare a new link layer packet in txbuffer
-	if (mavlink_encode_packet(interface))
-	  break;
-	if (interface->remaining_space - interface->tx_bytes_pending < 256 + 8+9)
-	  interface->next_heartbeat = now;
-      }
-    }
-    
-    if (interface->next_tx_allowed > now)
-      break;
-    
-    int bytes = interface->tx_bytes_pending;
-    if (interface->throttle_burst_write_size && bytes>bytes_allowed)
-      bytes=bytes_allowed;
-    if (bytes<=0)
-      break;
-    
-    int written=write(interface->alarm.poll.fd, interface->txbuffer, bytes);
-    if (written<=0){
-      DEBUGF("Blocking for POLLOUT");
-      break;
-    }
-    
-    interface->remaining_space-=written;
-    interface->tx_bytes_pending-=written;
-    total_written+=written;
-    bytes_allowed-=written;
-    if (interface->tx_bytes_pending){
-      bcopy(&interface->txbuffer[written],&interface->txbuffer[0],
-	    interface->tx_bytes_pending);
-      DEBUGF("Partial write, %d left", interface->tx_bytes_pending);
-    }
-  }
-  
-  if (total_written>0){
-    // Now when are we allowed to send more?
-    int rate = interface->throttle_bytes_per_second;
-    if (interface->remaining_space<=0)
-      rate = 600;
-    if (rate){
-      int delay = total_written*1000/rate;
-      if (config.debug.throttling)
-	DEBUGF("Throttling for %dms (%d).", delay, interface->remaining_space);
-      interface->next_tx_allowed = now + delay;
-    }
-  }
-  
-  time_ms_t next_write = interface->next_tx_allowed;
-  if (interface->tx_bytes_pending<=0){
-    next_write = interface->next_heartbeat;
-  }
-  
-  if (interface->alarm.alarm==-1 || next_write < interface->alarm.alarm){
-    interface->alarm.alarm = next_write;
-    interface->alarm.deadline = interface->alarm.alarm+10;
-  }
-  
-  if (interface->tx_bytes_pending>0 && next_write <= now){
-    // more to write, so set the POLLOUT flag
-    interface->alarm.poll.events|=POLLOUT;
-  } else {
-    // Nothing to write, so clear POLLOUT flag
-    interface->alarm.poll.events&=~POLLOUT;
-  }
-  watch(&interface->alarm);
-}
-
 
 static void overlay_interface_poll(struct sched_ent *alarm)
 {
@@ -815,7 +741,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     if (interface->state==INTERFACE_STATE_UP 
       && interface->destination->tick_ms>0
       && interface->send_broadcasts
-      && !interface->tx_packet){
+      && !radio_link_is_busy(interface)){
       
       if (now >= interface->destination->last_tx+interface->destination->tick_ms)
         overlay_send_tick_packet(interface->destination);
@@ -826,8 +752,8 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     
     switch(interface->socket_type){
       case SOCK_STREAM:
-	write_stream_buffer(interface);
-	break;
+	radio_link_tx(interface);
+	return;
       case SOCK_DGRAM:
 	break;
       case SOCK_FILE:
@@ -847,14 +773,8 @@ static void overlay_interface_poll(struct sched_ent *alarm)
   if (alarm->poll.revents & POLLOUT){
     switch(interface->socket_type){
       case SOCK_STREAM:
-	write_stream_buffer(interface);
-	if (alarm->alarm!=-1 && interface->state==INTERFACE_STATE_UP) {
-	  if (alarm->alarm < now)
-	    alarm->alarm = now;
-	  unschedule(alarm);
-	  schedule(alarm);
-	}
-	break;
+	radio_link_tx(interface);
+	return;
       case SOCK_DGRAM:
       case SOCK_FILE:
 	//XXX error? fatal?
@@ -870,14 +790,9 @@ static void overlay_interface_poll(struct sched_ent *alarm)
       case SOCK_STREAM:
 	interface_read_stream(interface);
 	// if we read a valid heartbeat packet, we may be able to write more bytes now.
-	if (interface->state==INTERFACE_STATE_UP && interface->remaining_space>0){
-	  write_stream_buffer(interface);
-	  if (alarm->alarm!=-1 && interface->state==INTERFACE_STATE_UP) {
-	    if (alarm->alarm < now)
-	      alarm->alarm = now;
-	    unschedule(alarm);
-	    schedule(alarm);
-	  }
+	if (interface->state==INTERFACE_STATE_UP){
+	  radio_link_tx(interface);
+	  return;
 	}
 	break;
       case SOCK_FILE:
@@ -917,24 +832,7 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
   
   switch(interface->socket_type){
     case SOCK_STREAM:
-    {
-      if (interface->tx_packet){
-	ob_free(buffer);
-	return WHYF("Cannot send two packets to a stream at the same time");
-      }
-      
-      // prepare the buffer for reading
-      ob_flip(buffer);
-      interface->tx_packet = buffer;
-      write_stream_buffer(interface);
-      
-      if (interface->alarm.alarm!=-1){
-	unschedule(&interface->alarm);
-	schedule(&interface->alarm);
-      }
-      
-      return 0;
-    }
+      return radio_link_queue_packet(interface, buffer);
       
     case SOCK_FILE:
     {
@@ -961,9 +859,21 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 	    not support seeking. */
 	  if (errno != ESPIPE)
 	    return WHY_perror("lseek");
-	  DEBUGF("Write to interface %s at unknown offset", interface->name);
+	  DEBUGF("Write to interface %s at offset unknown: src_addr=%s dst_addr=%s pid=%d length=%d",
+		interface->name,
+		alloca_sockaddr(&packet.src_addr, sizeof packet.src_addr),
+		alloca_sockaddr(&packet.dst_addr, sizeof packet.dst_addr),
+		packet.pid,
+		packet.payload_length
+	      );
 	} else
-	  DEBUGF("Write to interface %s at offset=%"PRId64, interface->name, (int64_t)fsize);
+	  DEBUGF("Write to interface %s at offset=%"PRId64": src_addr=%s dst_addr=%s pid=%d length=%d",
+		interface->name, (int64_t)fsize,
+		alloca_sockaddr(&packet.src_addr, sizeof packet.src_addr),
+		alloca_sockaddr(&packet.dst_addr, sizeof packet.dst_addr),
+		packet.pid,
+		packet.payload_length
+	      );
       }
       ssize_t nwrite = write(interface->alarm.poll.fd, &packet, sizeof(packet));
       if (nwrite == -1)
@@ -976,13 +886,22 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
     case SOCK_DGRAM:
     {
       if (config.debug.overlayinterfaces) 
-	DEBUGF("Sending %d byte overlay frame on %s to %s",len,interface->name,inet_ntoa(destination->address.sin_addr));
-      int sent=sendto(interface->alarm.poll.fd, 
-		bytes, len, 0, 
+	DEBUGF("Sending %zu byte overlay frame on %s to %s", (size_t)len, interface->name, inet_ntoa(destination->address.sin_addr));
+      ssize_t sent = sendto(interface->alarm.poll.fd, 
+		bytes, (size_t)len, 0, 
 		(struct sockaddr *)&destination->address, sizeof(destination->address));
       ob_free(buffer);
-      if (sent!= len){
-	WHY_perror("sendto(c)");
+      if (sent == -1 || (size_t)sent != (size_t)len) {
+	if (sent == -1)
+	  WHYF_perror("sendto(fd=%d,len=%zu,addr=%s) on interface %s",
+	      interface->alarm.poll.fd,
+	      (size_t)len,
+	      alloca_sockaddr((struct sockaddr *)&destination->address, sizeof destination->address),
+	      interface->name
+	    );
+	else
+	  WHYF("sendto() sent %zu bytes of overlay frame (%zu) to interface %s (socket=%d)",
+	      (size_t)sent, (size_t)len, interface->name, interface->alarm.poll.fd);
 	// close the interface if we had any error while sending broadcast packets,
 	// unicast packets should not bring the interface down
 	if (destination == interface->destination)

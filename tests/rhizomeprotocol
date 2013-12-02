@@ -43,6 +43,8 @@ configure_servald_server() {
       set debug.rhizome on \
       set debug.httpd on \
       set debug.rhizome_httpd on \
+      set debug.rhizome_manifest on \
+      set debug.rhizome_ads on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
       set server.respawn_on_crash off \
@@ -57,7 +59,7 @@ setup_common() {
 }
 
 receive_and_update_bundle() {
-   wait_until bundle_received_by $BID:$VERSION +B
+   wait_until "$@" bundle_received_by $BID:$VERSION +B
    set_instance +B
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file1
@@ -65,7 +67,7 @@ receive_and_update_bundle() {
    set_instance +A
    rhizome_update_file file1 file2
    set_instance +B
-   wait_until bundle_received_by $BID:$VERSION +B
+   wait_until "$@" bundle_received_by $BID:$VERSION +B
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file2
    assert_rhizome_received file2
@@ -209,59 +211,6 @@ test_UnicastTransfer() {
    receive_and_update_bundle
 }
 
-doc_SimulatedRadio="MDP Transfer over simulated radio link"
-interface_up() {
-   $GREP "Interface .* is up" $instance_servald_log || return 1
-   return 0
-}
-start_radio_instance() {
-   executeOk_servald config \
-      set debug.rhizome on \
-      set debug.rhizome_ads on \
-      set debug.rhizome_httpd on \
-      set debug.rhizome_tx on \
-      set debug.rhizome_rx on \
-      set debug.throttling on \
-      set debug.mavlink on \
-      set rhizome.advertise.interval 5000 \
-      set rhizome.rhizome_mdp_block_size 350 \
-      set log.console.level debug \
-      set log.console.show_pid on \
-      set log.console.show_time on \
-      set interfaces.1.type CATEAR \
-      set interfaces.1.mdp.tick_ms 5000 \
-      set interfaces.1.socket_type STREAM \
-      set interfaces.1.encapsulation SINGLE \
-      set interfaces.1.point_to_point on
-   start_servald_server
-   wait_until interface_up
-}
-setup_SimulatedRadio() {
-   setup_common
-   $servald_build_root/fakeradio 6 10000000 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
-   FAKERADIO_PID=$!
-   sleep 1
-   local END1=`head "$SERVALD_VAR/radioout" -n 1`
-   local END2=`tail "$SERVALD_VAR/radioout" -n 1`
-   tfw_log "Started fakeradio pid=$FAKERADIO_PID, end1=$END1, end2=$END2"
-   set_instance +A
-   rhizome_add_file file1 10000
-   executeOk_servald config \
-      set interfaces.1.file "$END1"
-   set_instance +B
-   executeOk_servald config \
-      set interfaces.1.file "$END2"
-   foreach_instance +A +B start_radio_instance
-}
-test_SimulatedRadio() {
-   receive_and_update_bundle
-}
-teardown_SimulatedRadio() {
-   teardown
-   tfw_log "Killing fakeradio, pid=$FAKERADIO_PID"
-   kill $FAKERADIO_PID
-   tfw_cat "$SERVALD_VAR/radioerr"
-}
 
 doc_journalMDP="Transfer and update a journal bundle via MDP"
 setup_journalMDP() {
@@ -742,6 +691,89 @@ test_DirectSync() {
    assert_rhizome_received fileA1
    assert_rhizome_received fileA2
    assert_rhizome_received fileA3
+}
+
+interface_up() {
+   $GREP "Interface .* is up" $instance_servald_log || return 1
+   return 0
+}
+start_radio_instance() {
+   executeOk_servald config \
+      set debug.rhizome on \
+      set debug.rhizome_ads on \
+      set debug.rhizome_tx on \
+      set debug.rhizome_rx on \
+      set debug.throttling on \
+      set debug.radio_link on \
+      set rhizome.advertise.interval 5000 \
+      set rhizome.rhizome_mdp_block_size 375 \
+      set log.console.level debug \
+      set log.console.show_pid on \
+      set log.console.show_time on \
+      set interfaces.1.type CATEAR \
+      set interfaces.1.mdp.tick_ms 5000 \
+      set interfaces.1.socket_type STREAM \
+      set interfaces.1.encapsulation SINGLE \
+      set interfaces.1.point_to_point on
+   start_servald_server
+   wait_until interface_up
+}
+
+start_fakeradio() {
+   $servald_build_root/fakeradio $1 $2 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
+   FAKERADIO_PID=$!
+   wait_until $GREP "^right:" "$SERVALD_VAR/radioout"
+   local _line=`head "$SERVALD_VAR/radioout" -n 1`
+   END1="${_line#*:}"
+   _line=`tail "$SERVALD_VAR/radioout" -n 1`
+   END2="${_line#*:}"
+   tfw_log "Started fakeradio pid=$FAKERADIO_PID, end1=$END1, end2=$END2"
+}
+
+doc_SimulatedRadio="MDP Transfer over simulated radio link (~90% packet arrival)"
+setup_SimulatedRadio() {
+   setup_common
+   start_fakeradio 4 0.9
+   set_instance +A
+   rhizome_add_file file1 5000
+   executeOk_servald config \
+      set interfaces.1.file "$END1"
+   set_instance +B
+   executeOk_servald config \
+      set interfaces.1.file "$END2"
+   foreach_instance +A +B start_radio_instance
+}
+test_SimulatedRadio() {
+   receive_and_update_bundle
+}
+teardown_SimulatedRadio() {
+   teardown
+   tfw_log "Killing fakeradio, pid=$FAKERADIO_PID"
+   kill $FAKERADIO_PID
+   tfw_cat "$SERVALD_VAR/radioerr"
+}
+
+doc_SimulatedRadio2="MDP Transfer over simulated radio link (~50% packet arrival)"
+setup_SimulatedRadio2() {
+   setup_common
+   start_fakeradio 4 0.5
+   set_instance +A
+   rhizome_add_file file1 5000
+   executeOk_servald config \
+      set interfaces.1.file "$END1"
+   set_instance +B
+   executeOk_servald config \
+      set interfaces.1.file "$END2"
+   foreach_instance +A +B start_radio_instance
+}
+test_SimulatedRadio2() {
+   receive_and_update_bundle --timeout=120
+}
+teardown_SimulatedRadio2() {
+   teardown
+   tfw_log "Killing fakeradio, pid=$FAKERADIO_PID"
+   kill $FAKERADIO_PID
+   tfw_cat "$SERVALD_VAR/radioerr"
 }
 
 runTests "$@"

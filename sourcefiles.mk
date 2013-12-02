@@ -20,7 +20,7 @@ SERVAL_SOURCES = \
 	$(SERVAL_BASE)log_util.c \
 	$(SERVAL_BASE)lsif.c \
 	$(SERVAL_BASE)main.c \
-	$(SERVAL_BASE)mavlink.c \
+	$(SERVAL_BASE)radio_link.c \
 	$(SERVAL_BASE)meshms.c \
 	$(SERVAL_BASE)mdp_client.c \
 	$(SERVAL_BASE)mdp_net.c \
@@ -78,4 +78,5 @@ SERVAL_SOURCES = \
         $(SERVAL_BASE)fec-3.0.1/ccsds_tables.c \
 	$(SERVAL_BASE)fec-3.0.1/decode_rs_8.c \
 	$(SERVAL_BASE)fec-3.0.1/encode_rs_8.c \
-	$(SERVAL_BASE)fec-3.0.1/init_rs_char.c
+	$(SERVAL_BASE)fec-3.0.1/init_rs_char.c \
+	$(SERVAL_BASE)context1.c 

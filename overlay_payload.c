@@ -51,34 +51,28 @@ static int overlay_frame_build_header(int packet_version, struct decode_context 
   if (type!=OF_TYPE_DATA)
     flags |= PAYLOAD_FLAG_LEGACY_TYPE;
   
-  if (ob_append_byte(buff, flags)) return -1;
+  ob_append_byte(buff, flags);
   
-  if (!(flags & PAYLOAD_FLAG_SENDER_SAME)){
-    if (overlay_address_append(context, buff, source)) return -1;
-  }
+  if (!(flags & PAYLOAD_FLAG_SENDER_SAME))
+    overlay_address_append(context, buff, source);
   
   if (flags & PAYLOAD_FLAG_TO_BROADCAST){
-    if (!(flags & PAYLOAD_FLAG_ONE_HOP)){
-      if (overlay_broadcast_append(buff, broadcast)) return -1;
-    }
-  }else{
-    if (overlay_address_append(context, buff, destination)) return -1;
-    if (!(flags & PAYLOAD_FLAG_ONE_HOP)){
-      if (overlay_address_append(context, buff, next_hop)) return -1;
-    }
+    if (!(flags & PAYLOAD_FLAG_ONE_HOP))
+      overlay_broadcast_append(buff, broadcast);
+  } else {
+    overlay_address_append(context, buff, destination);
+    if (!(flags & PAYLOAD_FLAG_ONE_HOP))
+      overlay_address_append(context, buff, next_hop);
   }
   
-  if (!(flags & PAYLOAD_FLAG_ONE_HOP)){
-    if (ob_append_byte(buff, ttl | ((queue&3)<<5))) return -1;
-  }
+  if (!(flags & PAYLOAD_FLAG_ONE_HOP))
+    ob_append_byte(buff, ttl | ((queue&3)<<5));
   
-  if (flags & PAYLOAD_FLAG_LEGACY_TYPE){
-    if (ob_append_byte(buff, type)) return -1;
-  }
+  if (flags & PAYLOAD_FLAG_LEGACY_TYPE)
+    ob_append_byte(buff, type);
 
   if (packet_version >= 1)
-    if (ob_append_byte(buff, sequence))
-      return -1;
+    ob_append_byte(buff, sequence);
   
   return 0;
 }
@@ -112,20 +106,17 @@ int overlay_frame_append_payload(struct decode_context *context, int encapsulati
 			     p->queue, p->type, p->modifiers, will_retransmit, 
 			     p->ttl, p->mdp_sequence&0xFF,
 			     broadcast, p->next_hop, 
-			     p->destination, p->source))
+			     p->destination, p->source) == -1)
     goto cleanup;
   
-  if (encapsulation == ENCAP_OVERLAY){
-    if (ob_append_ui16(b, ob_position(p->payload)))
-      goto cleanup;
-  }
+  if (encapsulation == ENCAP_OVERLAY)
+    ob_append_ui16(b, ob_position(p->payload));
 
-  if (ob_append_bytes(b, ob_ptr(p->payload), ob_position(p->payload))) {
-    WHYF("could not append payload of %u bytes", ob_position(p->payload));
-    goto cleanup;
-  }
-      
-  return 0;
+  if (ob_position(p->payload))
+    ob_append_bytes(b, ob_ptr(p->payload), ob_position(p->payload));
+
+  if (!ob_overrun(b))
+    return 0;
   
 cleanup:
   ob_rewind(b);
@@ -150,13 +141,18 @@ struct overlay_frame *op_dup(struct overlay_frame *in)
   if (!in) return NULL;
 
   /* clone the frame */
-  struct overlay_frame *out=malloc(sizeof(struct overlay_frame));
-  if (!out) { WHY("malloc() failed"); return NULL; }
+  struct overlay_frame *out = emalloc(sizeof(struct overlay_frame));
+  if (out == NULL)
+    return NULL;
 
   /* copy main data structure */
   bcopy(in,out,sizeof(struct overlay_frame));
 
-  if (in->payload)
-    out->payload=ob_dup(in->payload);
+  if (in->payload) {
+    if ((out->payload = ob_dup(in->payload)) == NULL) {
+      free(out);
+      return NULL;
+    }
+  }
   return out;
 }

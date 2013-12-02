@@ -36,15 +36,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 #include <sys/un.h>
 #include <fcntl.h>
+#include <ctype.h>
 
 #include "constants.h"
 #include "conf.h"
 #include "log.h"
 #include "str.h"
 #include "strbuf_helpers.h"
-
+#include "socket.h"
 #include "monitor-client.h"
-#include <ctype.h>
 
 #define STATE_INIT 0
 #define STATE_DATA 1
@@ -72,12 +72,11 @@ int monitor_client_open(struct monitor_state **res)
   int fd;
   if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
     return WHYF_perror("socket(AF_UNIX, SOCK_STREAM, 0)");
-  struct sockaddr_un addr;
-  socklen_t addrlen;
-  if (make_local_sockaddr(&addr, &addrlen, "monitor.socket") == -1)
+  struct socket_address addr;
+  if (make_local_sockaddr(&addr, "monitor.socket") == -1)
     return -1;
-  INFOF("Attempting to connect to %s", alloca_sockaddr(&addr, addrlen));
-  if (socket_connect(fd, (struct sockaddr*)&addr, addrlen) == -1) {
+  INFOF("Attempting to connect to %s", alloca_socket_address(&addr));
+  if (socket_connect(fd, &addr.addr, addr.addrlen) == -1) {
     close(fd);
     return -1;
   }

@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "conf.h"
+#include "dataformats.h"
 
 int cf_opt_boolean(bool_t *booleanp, const char *text)
 {

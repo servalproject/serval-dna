@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
   since for things like number resolution we are happy to send repeat requests.
  */
 
+#include <assert.h>
 #include "serval.h"
 #include "conf.h"
 #include "str.h"
@@ -103,57 +104,69 @@ void free_subscribers()
 }
 
 // find a subscriber struct from a whole or abbreviated subscriber id
-struct subscriber *find_subscriber(const unsigned char *sidp, int len, int create)
+struct subscriber *_find_subscriber(struct __sourceloc __whence, const unsigned char *sidp, int len, int create)
 {
+  IN();
+  if (config.debug.subscriber)
+    DEBUGF("find_subscriber(sid=%s, create=%d)", alloca_tohex(sidp, len), create);
   struct tree_node *ptr = &root;
   int pos=0;
   if (len!=SID_SIZE)
     create =0;
-  
-  do{
+  struct subscriber *ret = NULL;
+  do {
     unsigned char nibble = get_nibble(sidp, pos++);
-    
     if (ptr->is_tree & (1<<nibble)){
       ptr = ptr->tree_nodes[nibble];
-      
     }else if(!ptr->subscribers[nibble]){
       // subscriber is not yet known
-      
-      if (create){
-	struct subscriber *ret=(struct subscriber *)malloc(sizeof(struct subscriber));
-	memset(ret,0,sizeof(struct subscriber));
-	ptr->subscribers[nibble]=ret;
+      if (create && (ret = (struct subscriber *) emalloc_zero(sizeof(struct subscriber)))) {
+	ptr->subscribers[nibble] = ret;
 	ret->sid = *(const sid_t *)sidp;
-	ret->abbreviate_len=pos;
+	ret->abbreviate_len = pos;
+	if (config.debug.subscriber)
+	  DEBUGF("set node[%.*s].subscribers[%c]=%p (sid=%s, abbrev_len=%d)",
+		pos - 1, alloca_tohex(sidp, len), hexdigit_upper[nibble],
+		ret, alloca_tohex_sid_t(ret->sid), ret->abbreviate_len
+	      );
       }
-      return ptr->subscribers[nibble];
-      
+      goto done;
     }else{
       // there's a subscriber in this slot, does it match the rest of the sid we've been given?
-      struct subscriber *ret = ptr->subscribers[nibble];
+      ret = ptr->subscribers[nibble];
       if (memcmp(ret->sid.binary, sidp, len) == 0)
-	return ret;
-      
+	goto done;
       // if we need to insert this subscriber, we have to make a new tree node first
-      if (!create)
-	return NULL;
-      
+      if (!create) {
+	ret = NULL;
+	goto done;
+      }
       // create a new tree node and move the existing subscriber into it
-      struct tree_node *new=(struct tree_node *)malloc(sizeof(struct tree_node));
-      memset(new,0,sizeof(struct tree_node));
-      ptr->tree_nodes[nibble]=new;
+      struct tree_node *new = (struct tree_node *) emalloc_zero(sizeof(struct tree_node));
+      if (new == NULL) {
+	ret = NULL;
+	goto done;
+      }
+      if (config.debug.subscriber)
+	DEBUGF("create node[%.*s]", pos, alloca_tohex(sidp, len));
+      ptr->tree_nodes[nibble] = new;
       ptr->is_tree |= (1<<nibble);
-      
-      ptr=new;
-      nibble=get_nibble(ret->sid.binary, pos);
-      ptr->subscribers[nibble]=ret;
-      ret->abbreviate_len=pos+1;
+      ptr = new;
+      nibble = get_nibble(ret->sid.binary, pos);
+      ptr->subscribers[nibble] = ret;
+      ret->abbreviate_len = pos + 1;
+      if (config.debug.subscriber)
+	DEBUGF("set node[%.*s].subscribers[%c]=%p(sid=%s, abbrev_len=%d)",
+	    pos, alloca_tohex(sidp, len), hexdigit_upper[nibble],
+	    ret, alloca_tohex_sid_t(ret->sid), ret->abbreviate_len
+	  );
       // then go around the loop again to compare the next nibble against the sid until we find an empty slot.
     }
-  }while(pos < len*2);
-  
-  // abbreviation is not unique
-  return NULL;
+  } while(pos < len*2);
+done:
+  if (config.debug.subscriber)
+    DEBUGF("find_subscriber() return %p", ret);
+  RETURN(ret);
 }
 
 /* 
@@ -234,35 +247,28 @@ int overlay_broadcast_drop_check(struct broadcast *addr)
   }
 }
 
-int overlay_broadcast_append(struct overlay_buffer *b, struct broadcast *broadcast)
+void overlay_broadcast_append(struct overlay_buffer *b, struct broadcast *broadcast)
 {
-  return ob_append_bytes(b, broadcast->id, BROADCAST_LEN);
+  ob_append_bytes(b, broadcast->id, BROADCAST_LEN);
 }
 
 // append an appropriate abbreviation into the address
-int overlay_address_append(struct decode_context *context, struct overlay_buffer *b, struct subscriber *subscriber)
+void overlay_address_append(struct decode_context *context, struct overlay_buffer *b, struct subscriber *subscriber)
 {
-  if (!subscriber)
-    return WHY("No address supplied");
-
-  if(context
-      && subscriber == context->point_to_point_device){
-    if (ob_append_byte(b, OA_CODE_P2P_YOU))
-      return -1;
-  }else if(context
+  assert(subscriber != NULL);
+  if (context && subscriber == context->point_to_point_device)
+    ob_append_byte(b, OA_CODE_P2P_YOU);
+  else if(context
       && !subscriber->send_full
       && subscriber == my_subscriber
       && context->point_to_point_device
-      && (context->encoding_header==0 || !context->interface->local_echo)){
-    if (ob_append_byte(b, OA_CODE_P2P_ME))
-      return -1;
-  }else if (context && subscriber==context->sender){
-    if (ob_append_byte(b, OA_CODE_SELF))
-      return -1;
-  }else if(context && subscriber==context->previous){
-    if (ob_append_byte(b, OA_CODE_PREVIOUS))
-      return -1;
-  }else{
+      && (context->encoding_header==0 || !context->interface->local_echo))
+    ob_append_byte(b, OA_CODE_P2P_ME);
+  else if (context && subscriber==context->sender)
+    ob_append_byte(b, OA_CODE_SELF);
+  else if (context && subscriber==context->previous)
+    ob_append_byte(b, OA_CODE_PREVIOUS);
+  else {
     int len=SID_SIZE;
     if (subscriber->send_full){
       subscriber->send_full=0;
@@ -273,17 +279,15 @@ int overlay_address_append(struct decode_context *context, struct overlay_buffer
       if (len>SID_SIZE)
 	len=SID_SIZE;
     }
-    if (ob_append_byte(b, len))
-      return -1;
-    if (ob_append_bytes(b, subscriber->sid.binary, len))
-      return -1;
+    ob_append_byte(b, len);
+    ob_append_bytes(b, subscriber->sid.binary, len);
   }
   if (context)
     context->previous = subscriber;
-  return 0;
 }
 
-static int add_explain_response(struct subscriber *subscriber, void *context){
+static int add_explain_response(struct subscriber *subscriber, void *context)
+{
   struct decode_context *response = context;
   // only explain a SID once every half second.
   time_ms_t now = gettime_ms();
@@ -292,8 +296,13 @@ static int add_explain_response(struct subscriber *subscriber, void *context){
   subscriber->last_explained = now;
 
   if (!response->please_explain){
-    response->please_explain = calloc(sizeof(struct overlay_frame),1);
-    response->please_explain->payload=ob_new();
+    if ((response->please_explain = emalloc_zero(sizeof(struct overlay_frame))) == NULL)
+      return 1; // stop walking
+    if ((response->please_explain->payload = ob_new()) == NULL) {
+      free(response->please_explain);
+      response->please_explain = NULL;
+      return 1; // stop walking
+    }
     ob_limitsize(response->please_explain->payload, 1024);
   }
   
@@ -301,6 +310,8 @@ static int add_explain_response(struct subscriber *subscriber, void *context){
   // the header of this packet must include our full sid.
   if (subscriber->reachable==REACHABLE_SELF){
     if (subscriber==my_subscriber){
+      if (config.debug.subscriber)
+	DEBUGF("Explaining SELF sid=%s", alloca_tohex_sid_t(subscriber->sid));
       response->please_explain->source_full=1;
       return 0;
     }
@@ -308,18 +319,22 @@ static int add_explain_response(struct subscriber *subscriber, void *context){
   }
   
   // add the whole subscriber id to the payload, stop if we run out of space
-  DEBUGF("Adding full sid by way of explanation %s", alloca_tohex_sid_t(subscriber->sid));
-  if (ob_append_byte(response->please_explain->payload, SID_SIZE))
+  if (config.debug.subscriber)
+    DEBUGF("Explaining sid=%s", alloca_tohex_sid_t(subscriber->sid));
+  ob_checkpoint(response->please_explain->payload);
+  ob_append_byte(response->please_explain->payload, SID_SIZE);
+  ob_append_bytes(response->please_explain->payload, subscriber->sid.binary, SID_SIZE);
+  if (ob_overrun(response->please_explain->payload)) {
+    ob_rewind(response->please_explain->payload);
     return 1;
-  if (ob_append_bytes(response->please_explain->payload, subscriber->sid.binary, SID_SIZE))
-    return 1;
-
+  }
   // let the routing engine know that we had to explain this sid, we probably need to re-send routing info
   link_explained(subscriber);
   return 0;
 }
 
-static int find_subscr_buffer(struct decode_context *context, struct overlay_buffer *b, int len, struct subscriber **subscriber){
+static int find_subscr_buffer(struct decode_context *context, struct overlay_buffer *b, int len, struct subscriber **subscriber)
+{
   if (len<=0 || len>SID_SIZE){
     return WHYF("Invalid abbreviation length %d", len);
   }
@@ -345,7 +360,8 @@ static int find_subscr_buffer(struct decode_context *context, struct overlay_buf
     // add the abbreviation you told me about
     if (!context->please_explain){
       context->please_explain = calloc(sizeof(struct overlay_frame),1);
-      context->please_explain->payload=ob_new();
+      if ((context->please_explain->payload = ob_new()) == NULL)
+	return -1;
       ob_limitsize(context->please_explain->payload, MDP_MTU);
     }
     
@@ -396,7 +412,8 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
 	// add the abbreviation you told me about
 	if (!context->please_explain){
 	  context->please_explain = calloc(sizeof(struct overlay_frame),1);
-	  context->please_explain->payload=ob_new();
+	  if ((context->please_explain->payload = ob_new()) == NULL)
+	    return -1;
 	  ob_limitsize(context->please_explain->payload, MDP_MTU);
 	}
 	
@@ -430,11 +447,13 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
 }
 
 // once we've finished parsing a packet, complete and send a please explain if required.
-int send_please_explain(struct decode_context *context, struct subscriber *source, struct subscriber *destination){
+int send_please_explain(struct decode_context *context, struct subscriber *source, struct subscriber *destination)
+{
   IN();
   struct overlay_frame *frame=context->please_explain;
-  if (!frame)
+  if (frame == NULL)
     RETURN(0);
+  assert(frame->payload != NULL);
   frame->type = OF_TYPE_PLEASEEXPLAIN;
   
   if (source)
@@ -466,7 +485,7 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   }
   
   frame->queue=OQ_MESH_MANAGEMENT;
-  if (!overlay_payload_enqueue(frame))
+  if (overlay_payload_enqueue(frame) != -1)
     RETURN(0);
   op_free(frame);
   RETURN(-1);
@@ -474,7 +493,8 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
 }
 
 // process an incoming request for explanation of subscriber abbreviations
-int process_explain(struct overlay_frame *frame){
+int process_explain(struct overlay_frame *frame)
+{
   struct overlay_buffer *b=frame->payload;
   
   struct decode_context context;
@@ -499,14 +519,17 @@ int process_explain(struct overlay_frame *frame){
     if (len==SID_SIZE){
       // This message is also used to inform people of previously unknown subscribers
       // make sure we know this one
+      INFOF("Storing explain response for %s", alloca_tohex(sid, len));
       find_subscriber(sid,len,1);
     }else{
       // reply to the sender with all subscribers that match this abbreviation
-      INFOF("Sending responses for %s", alloca_tohex(sid, len));
+      INFOF("Sending explain responses for %s", alloca_tohex(sid, len));
       walk_tree(&root, 0, sid, len, sid, len, add_explain_response, &context);
     }
   }
-  
-  send_please_explain(&context, frame->destination, frame->source);
+  if (context.please_explain)
+    send_please_explain(&context, frame->destination, frame->source);
+  else if (config.debug.subscriber)
+    DEBUG("No explain responses");
   return 0;
 }

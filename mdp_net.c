@@ -16,35 +16,29 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "serval.h"
+#include "socket.h"
 #include "conf.h"
 #include "log.h"
 
-ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl,
-		    struct sockaddr *recvaddr, socklen_t *recvaddrlen)
+ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl, struct socket_address *recvaddr)
 {
   struct msghdr msg;
   struct iovec iov[1];
-  
+  struct cmsghdr cmsgcmsg[16];
   iov[0].iov_base=buffer;
   iov[0].iov_len=bufferlen;
   bzero(&msg,sizeof(msg));
-  msg.msg_name = recvaddr;
-  msg.msg_namelen = *recvaddrlen;
+  msg.msg_name = &recvaddr->store;
+  msg.msg_namelen = recvaddr->addrlen;
   msg.msg_iov = &iov[0];
   msg.msg_iovlen = 1;
-  // setting the following makes the data end up in the wrong place
-  //  msg.msg_iov->iov_base=iov_buffer;
-  // msg.msg_iov->iov_len=sizeof(iov_buffer);
-  
-  struct cmsghdr cmsgcmsg[16];
-  msg.msg_control = &cmsgcmsg[0];
-  msg.msg_controllen = sizeof(struct cmsghdr)*16;
+  msg.msg_control = cmsgcmsg;
+  msg.msg_controllen = sizeof cmsgcmsg;
   msg.msg_flags = 0;
   
   ssize_t len = recvmsg(sock,&msg,0);
   if (len == -1 && errno != EAGAIN && errno != EWOULDBLOCK)
-    return WHY_perror("recvmsg");
+    return WHYF_perror("recvmsg(%d,%p,0)", sock, &msg);
   
 #if 0
   if (config.debug.packetrx) {
@@ -74,7 +68,7 @@ ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl,
       }	 
     }
   }
-  *recvaddrlen=msg.msg_namelen;
+  recvaddr->addrlen = msg.msg_namelen;
   
   return len;
 }
