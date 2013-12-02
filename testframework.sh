@@ -127,6 +127,7 @@ declare -a _tfw_test_names=()
 declare -a _tfw_test_sourcefiles=()
 declare -a _tfw_job_pgids=()
 declare -a _tfw_forked_pids=()
+declare -a _tfw_forked_labels=()
 
 # The rest of this file is parsed for extended glob patterns.
 _tfw_shopt _tfw_orig_shopt -s extglob
@@ -1648,13 +1649,15 @@ fork() {
       shift
       [ -n "$_tfw_forkid" ] && error "fork label '%$_tfw_forklabel' already in use"
    fi
+   local desc="fork[$forkid]${_tfw_forklabel:+ %$_tfw_forklabel}"
    local _tfw_process_tmp="$_tfw_tmp/fork-$forkid"
    mkdir "$_tfw_process_tmp" || _tfw_fatalexit
-   $_tfw_assert_noise && tfw_log "# fork[$forkid] START" $(shellarg "$@")
+   $_tfw_assert_noise && tfw_log "# $desc START" $(shellarg "$@")
    "$@" 6>"$_tfw_process_tmp/log.stdout" 1>&6 2>"$_tfw_process_tmp/log.stderr" 7>"$_tfw_process_tmp/log.xtrace" &
    _tfw_forked_pids[$forkid]=$!
+   _tfw_forked_labels[$forkid]="$_tfw_forklabel"
    [ -n "$_tfw_forklabel" ] && eval _tfw_fork_label_$_tfw_forklabel=$forkid
-   $_tfw_assert_noise && tfw_log "# fork[$forkid] ${_tfw_forklabel:+%$_tfw_forklabel }pid=$! STARTED"
+   $_tfw_assert_noise && tfw_log "# $desc pid=$! STARTED"
 }
 
 fork_terminate() {
@@ -1664,7 +1667,7 @@ fork_terminate() {
    for arg; do
       _tfw_set_forklabel "$arg" || error "not a fork label '$arg'"
       [ -n "$_tfw_forkid" ] || error "no such fork: %$_tfw_forklabel"
-      _tfw_terminate $_tfw_forkid
+      _tfw_forkterminate $_tfw_forkid
    done
 }
 
@@ -1692,7 +1695,7 @@ fork_terminate_all() {
    $_tfw_assert_noise && tfw_log "# fork_terminate_all"
    local forkid
    for ((forkid=0; forkid < ${#_tfw_forked_pids[*]}; ++forkid)); do
-      _tfw_terminate $forkid
+      _tfw_forkterminate $forkid
    done
 }
 
@@ -1728,12 +1731,14 @@ _tfw_set_forklabel() {
    return 1
 }
 
-_tfw_terminate() {
+_tfw_forkterminate() {
    local forkid="$1"
    [ -z "$forkid" ] && return 1
    local pid=${_tfw_forked_pids[$forkid]}
+   local label=${_tfw_forked_labels[$forkid]}
+   local desc="fork[$forkid]${label:+ %$label}"
    [ -z "$pid" ] && return 1
-   $_tfw_assert_noise && tfw_log "# fork[$forkid] kill -TERM $pid"
+   $_tfw_assert_noise && tfw_log "# $desc kill -TERM $pid"
    kill -TERM $pid 2>/dev/null
 }
 
@@ -1741,30 +1746,32 @@ _tfw_forkwait() {
    local forkid="$1"
    [ -z "$forkid" ] && return 0
    local pid=${_tfw_forked_pids[$forkid]}
+   local label=${_tfw_forked_labels[$forkid]}
    [ -z "$pid" ] && return 0
    kill -0 $pid 2>/dev/null && return 1 # still running
    _tfw_forked_pids[$forkid]=
    wait $pid # should not block because process has exited
    local status=$?
-   $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$pid EXIT status=$status"
-   echo "++++++++++ fork[$forkid] log.stdout ++++++++++"
+   local desc="fork[$forkid]${label:+ %$label}"
+   $_tfw_assert_noise && tfw_log "# $desc pid=$pid EXIT status=$status"
+   echo "++++++++++ $desc log.stdout ++++++++++"
    cat $_tfw_tmp/fork-$forkid/log.stdout
    echo "++++++++++"
-   echo "++++++++++ fork[$forkid] log.stderr ++++++++++"
+   echo "++++++++++ $desc log.stderr ++++++++++"
    cat $_tfw_tmp/fork-$forkid/log.stderr
    echo "++++++++++"
    if $_tfw_trace; then
-      echo "++++++++++ fork[$forkid] log.xtrace ++++++++++"
+      echo "++++++++++ $desc log.xtrace ++++++++++"
       cat $_tfw_tmp/fork-$forkid/log.xtrace
       echo "++++++++++"
    fi
    case $status in
    0) ;;
    143) ;; # terminated with SIGTERM (probably from fork_terminate)
-   1) _tfw_fail "fork[$forkid] process exited with FAIL status";;
-   254) _tfw_error "fork[$forkid] process exited with ERROR status";;
-   255) _tfw_fatal "fork[$forkid] process exited with FATAL status";;
-   *) _tfw_error "fork[$forkid] process exited with status=$status";;
+   1) _tfw_fail "$desc process exited with FAIL status";;
+   254) _tfw_error "$desc process exited with ERROR status";;
+   255) _tfw_fatal "$desc process exited with FATAL status";;
+   *) _tfw_error "$desc process exited with status=$status";;
    esac
    return 0
 }
