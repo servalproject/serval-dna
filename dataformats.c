@@ -171,6 +171,19 @@ int rhizome_str_is_manifest_service(const char *text)
   return *text == '\0';
 }
 
+/* A name cannot contain a LF because that is the Rhizome text manifest field terminator.  For the
+ * time being, CR is not allowed either, because the Rhizome field terminator includes an optional
+ * CR.  See rhizome_manifest_parse().
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_str_is_manifest_name(const char *text)
+{
+  while (*text && *text != '\n' && *text != '\r')
+    ++text;
+  return *text == '\0';
+}
+
 int str_is_did(const char *did)
 {
   size_t len = 0;

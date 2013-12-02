@@ -204,6 +204,7 @@ void _rhizome_manifest_del_bundle_key(struct __sourceloc __whence, rhizome_manif
 void _rhizome_manifest_set_service(struct __sourceloc __whence, rhizome_manifest *m, const char *service)
 {
   if (service) {
+    assert(rhizome_str_is_manifest_service(service));
     const char *v = rhizome_manifest_set(m, "service", service);
     assert(v); // TODO: remove known manifest fields from vars[]
     m->service = v;
@@ -223,6 +224,7 @@ void _rhizome_manifest_del_service(struct __sourceloc __whence, rhizome_manifest
 void _rhizome_manifest_set_name(struct __sourceloc __whence, rhizome_manifest *m, const char *name)
 {
   if (name) {
+    assert(rhizome_str_is_manifest_name(name));
     const char *v = rhizome_manifest_set(m, "name", name);
     assert(v); // TODO: remove known manifest fields from vars[]
     m->name = v;

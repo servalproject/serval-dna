@@ -15,6 +15,7 @@ int rhizome_str_is_bundle_crypt_key(const char *text);
 int rhizome_strn_is_file_hash(const char *text);
 int rhizome_str_is_file_hash(const char *text);
 int rhizome_str_is_manifest_service(const char *text);
+int rhizome_str_is_manifest_name(const char *text);
 
 void write_uint64(unsigned char *o,uint64_t v);
 void write_uint16(unsigned char *o,uint16_t v);
