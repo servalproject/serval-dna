@@ -1651,7 +1651,7 @@ fork() {
    local _tfw_process_tmp="$_tfw_tmp/fork-$forkid"
    mkdir "$_tfw_process_tmp" || _tfw_fatalexit
    $_tfw_assert_noise && tfw_log "# fork[$forkid] START" $(shellarg "$@")
-   ( "$@" ) 6>"$_tfw_process_tmp/log.stdout" 1>&6 2>"$_tfw_process_tmp/log.stderr" 7>"$_tfw_process_tmp/log.xtrace" &
+   "$@" 6>"$_tfw_process_tmp/log.stdout" 1>&6 2>"$_tfw_process_tmp/log.stderr" 7>"$_tfw_process_tmp/log.xtrace" &
    _tfw_forked_pids[$forkid]=$!
    [ -n "$_tfw_forklabel" ] && eval _tfw_fork_label_$_tfw_forklabel=$forkid
    $_tfw_assert_noise && tfw_log "# fork[$forkid] ${_tfw_forklabel:+%$_tfw_forklabel }pid=$! STARTED"
