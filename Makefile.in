@@ -1,6 +1,7 @@
-DESTDIR=
 prefix=@prefix@
-bindir=@sbindir@
+exec_prefix=@exec_prefix@
+bindir=@bindir@
+sbindir=@sbindir@
 
 NACL_BASE=	nacl/src
 include $(NACL_BASE)/nacl.mk
@@ -72,6 +73,11 @@ CFLAGS+=-Wall -Wno-unused-value
 CFLAGS+=-DSHA2_USE_INTTYPES_H -D_XOPEN_SOURCE=600 -D_XOPEN_SOURCE_EXTENDED=1 -D__EXTENSIONS__=1
 # OSX magic to compensate for the Solaris magic
 CFLAGS+=-D_DARWIN_C_SOURCE
+
+INSTALL=        install
+INSTALL_PROGRAM=$(INSTALL)
+INSTALL_DATA=   $(INSTALL) -m 644
+
 -include Makefile.dbg
 
 DEFS=	@DEFS@
@@ -130,10 +136,13 @@ libmonitorclient.a: $(MONITORCLIENTOBJS) version.o
 	@$(AR) -cr $@ $(MONITORCLIENTOBJS) version.o
 
 install: servald
-	$(INSTALL) -D servald $(DESTDIR)$(sbindir)
+	$(INSTALL_PROGRAM) -D servald $(DESTDIR)$(sbindir)/servald
+
+uninstall:
+	$(RM) $(DESTDIR)$(sbindir)/servald
 
 clean:
-	@rm -f $(OBJS) \
+	@$(RM) $(OBJS) \
 	  tfw_createfile.o version.o \
 	  fakeradio.o fakeradio \
 	  tfw_createfile servald \
