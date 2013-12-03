@@ -130,7 +130,7 @@ For more documentation, see:
 [free software]: http://www.gnu.org/philosophy/free-sw.html
 [contributors]: /servalproject/serval-dna/blob/development/CONTRIBUTORS.md
 [GitHub]: https://github.com/servalproject
-[GPL2]: http://www.gnu.org/licenses/gpl-2.0.html
+[GPL2]: ./GPL-2.0.txt
 [individ]: http://developer.servalproject.org/files/serval_project_inc-individual.pdf
 [entity]: http://developer.servalproject.org/files/serval_project_inc-entity.pdf
 [DNA]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:dna
