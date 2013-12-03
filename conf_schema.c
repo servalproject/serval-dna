@@ -633,11 +633,7 @@ int cf_cmp_sid(const sid_t *a, const sid_t *b)
 
 int cf_opt_rhizome_bk(rhizome_bk_t *bkp, const char *text)
 {
-  if (!rhizome_str_is_bundle_key(text))
-    return CFINVALID;
-  size_t n = fromhex(bkp->binary, text, RHIZOME_BUNDLE_KEY_BYTES);
-  assert(n == RHIZOME_BUNDLE_KEY_BYTES);
-  return CFOK;
+  return str_to_rhizome_bk_t(bkp, text) ? CFOK : CFINVALID;
 }
 
 int cf_fmt_rhizome_bk(const char **textp, const rhizome_bk_t *bkp)

@@ -1,9 +1,19 @@
 #ifndef __SERVALD_SOCKET_H
 #define __SERVALD_SOCKET_H
 
-#ifndef WIN32
-#include <sys/un.h>
+#ifdef WIN32
+#   include "win32/win32.h"
+#else
+#   include <sys/un.h>
+#   ifdef HAVE_SYS_SOCKET_H
+#     include <sys/socket.h>
+#   endif
+#   ifdef HAVE_NETINET_IN_H
+#     include <netinet/in.h>
+#   endif
 #endif
+
+#include "log.h"
 
 struct socket_address{
   socklen_t addrlen;
@@ -53,5 +63,7 @@ ssize_t _recv_message(struct __sourceloc, int fd, struct socket_address *address
 
 #define send_message(fd, address, data)    _send_message(__WHENCE__, (fd), (address), (data))
 #define recv_message(fd, address, data)    _recv_message(__WHENCE__, (fd), (address), (data))
+
+ssize_t recvwithttl(int sock, unsigned char *buffer, size_t bufferlen, int *ttl, struct socket_address *recvaddr);
 
 #endif

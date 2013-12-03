@@ -213,6 +213,7 @@ extern char *batman_peerfile;
 
 struct subscriber;
 struct decode_context;
+struct socket_address;
 
 /* Make sure we have space to put bytes of the packet as we go along */
 #define CHECK_PACKET_LEN(B) {if (((*packet_len)+(B))>=packet_maxlen) { return WHY("Packet composition ran out of space."); } }
@@ -522,7 +523,6 @@ typedef struct overlay_mdp_frame {
 
 /* Server-side MDP functions */
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp);
-struct socket_address;
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client);
 void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port);
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const sid_t *resolved_sidp, const char *uri, const char *did, const char *name);

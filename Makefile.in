@@ -28,6 +28,7 @@ MONITORCLIENTSRCS=conf.c \
         conf_schema.c \
 	dataformats.c \
 	log.c \
+	log_util.c \
         xprintf.c \
 	os.c \
 	mem.c \
@@ -48,10 +49,12 @@ MDPCLIENTSRCS=conf.c \
 	os.c \
 	mem.c \
 	log.c \
+	log_util.c \
         xprintf.c \
 	mdp_client.c \
         instance.c \
 	net.c \
+        mdp_net.c \
 	socket.c \
 	str.c \
 	strbuf.c \
@@ -86,7 +89,7 @@ DEFS=	@DEFS@
 
 all:	servald libmonitorclient.so libmonitorclient.a test
 
-test:   tfw_createfile directory_service fakeradio
+test:   tfw_createfile directory_service fakeradio config_test
 
 sqlite-amalgamation-3070900/sqlite3.o:	sqlite-amalgamation-3070900/sqlite3.c
 	@echo CC $<
@@ -120,6 +123,10 @@ tfw_createfile: tfw_createfile.o str.o strbuf.o strbuf_helpers.o
 fakeradio: fakeradio.o
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -o $@ fakeradio.o
+
+config_test: config_test.o conf_om.o conf_schema.o conf_parse.o str.o strbuf.o strbuf_helpers.o mem.o dataformats.o net.o log_util.o
+	@echo LINK $@
+	@$(CC) $(CFLAGS) -Wall -o $@ config_test.o conf_om.o conf_schema.o conf_parse.o str.o strbuf.o strbuf_helpers.o mem.o dataformats.o net.o log_util.o
 
 # This does not build on 64 bit elf platforms as NaCL isn't built with -fPIC
 # DOC 20120615

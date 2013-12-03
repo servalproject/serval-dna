@@ -1,3 +1,22 @@
+/* 
+Serval DNA MeshMS
+Copyright (C) 2013 Serval Project, Inc.
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
+
 #include <assert.h>
 #include "serval.h"
 #include "rhizome.h"
@@ -385,10 +404,6 @@ static int update_conversation(const sid_t *my_sid, struct conversations *conv){
   if (config.debug.meshms)
     DEBUG("Locating their last message");
     
-  // find the offset of their last message
-  if (rhizome_retrieve_manifest(&conv->their_ply.bundle_id, m_theirs))
-    goto end;
-  
   if (ply_read_open(&ply, &conv->their_ply.bundle_id, m_theirs))
     goto end;
     
@@ -421,9 +436,6 @@ static int update_conversation(const sid_t *my_sid, struct conversations *conv){
     m_ours = rhizome_new_manifest();
     if (!m_ours)
       goto end;
-    if (rhizome_retrieve_manifest(&conv->my_ply.bundle_id, m_ours))
-      goto end;
-    
     if (ply_read_open(&ply, &conv->my_ply.bundle_id, m_ours))
       goto end;
       
