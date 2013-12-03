@@ -89,13 +89,11 @@ Download, build and test
 
 Instructions for downloading, building and testing Serval DNA are in
 [INSTALL.md](./INSTALL.md).
-([alternative link](/servalproject/serval-dna/blob/development/INSTALL.md))
 
 Configure
 ---------
 
-See [doc/Servald-Configuration](./doc/Servald-Configuration.md)
-([alternative link](/servalproject/serval-dna/blob/development/doc/Servald-Configuration.md)).
+See [doc/Servald-Configuration](./doc/Servald-Configuration.md).
 
 More information
 ----------------
@@ -114,13 +112,11 @@ via a two-way [pipe][] called the *monitor interface*.
 For more documentation, see:
 
  * the [doc/](./doc/) directory
-   ([alternative link](/servalproject/serval-dna/tree/development/doc/))
 
  * the [Serval DNA][] page in the [Serval Project Wiki][]
 
-* [CONTRIBUTORS.md](./CONTRIBUTORS.md)
-  ([alternative link](/servalproject/serval-dna/blob/development/CONTRIBUTORS.md))
-  All individuals who have contributed to the software.
+ * [CONTRIBUTORS.md](./CONTRIBUTORS.md)  All individuals who have contributed
+   to the software.
 
 [Serval Project]: http://www.servalproject.org/
 [Serval Project Wiki]: http://developer.servalproject.org/
