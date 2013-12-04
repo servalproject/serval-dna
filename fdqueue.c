@@ -103,6 +103,10 @@ int _schedule(struct __sourceloc __whence, struct sched_ent *alarm)
   if (!alarm->function)
     return WHY("Can't schedule if you haven't set the function pointer");
 
+  // don't bother to schedule an alarm that will (by definition) never run
+  if (alarm->alarm == TIME_NEVER_WILL)
+    return 0;
+
   if (alarm->deadline < alarm->alarm)
     alarm->deadline = alarm->alarm;
   
