@@ -16,8 +16,8 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
-#ifndef __SERVALD_DATA_FORMATS_H
-#define __SERVALD_DATA_FORMATS_H
+#ifndef __SERVAL_DNA___DATA_FORMATS_H
+#define __SERVAL_DNA___DATA_FORMATS_H
 
 int str_is_subscriber_id(const char *sid);
 int strn_is_subscriber_id(const char *sid, size_t *lenp);
@@ -42,4 +42,4 @@ uint64_t read_uint64(const unsigned char *o);
 uint32_t read_uint32(const unsigned char *o);
 uint16_t read_uint16(const unsigned char *o);
 
-#endif
+#endif //__SERVAL_DNA___DATA_FORMATS_H

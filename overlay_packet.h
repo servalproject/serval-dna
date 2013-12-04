@@ -17,8 +17,8 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-#ifndef _SERVALD_OVERLAY_PACKET_H
-#define _SERVALD_OVERLAY_PACKET_H
+#ifndef __SERVAL_DNA__OVERLAY_PACKET_H
+#define __SERVAL_DNA__OVERLAY_PACKET_H
 
 #include "overlay_address.h"
 #include "serval.h"
@@ -102,4 +102,4 @@ struct overlay_frame {
 int op_free(struct overlay_frame *p);
 struct overlay_frame *op_dup(struct overlay_frame *f);
 
-#endif
+#endif //__SERVAL_DNA__OVERLAY_PACKET_H

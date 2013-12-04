@@ -17,8 +17,8 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-#ifndef __SERVAL_DNA_STR_H__
-#define __SERVAL_DNA_STR_H__
+#ifndef __SERVAL_DNA__STR_H__
+#define __SERVAL_DNA__STR_H__
 
 #include <string.h>
 #include <stdint.h>
@@ -26,11 +26,11 @@
 #include <ctype.h>
 #include <alloca.h>
 
-#ifndef __SERVAL_DNA_STR_INLINE
+#ifndef __SERVAL_DNA__STR_INLINE
 # if __GNUC__ && !__GNUC_STDC_INLINE__
-#  define __SERVAL_DNA_STR_INLINE extern inline
+#  define __SERVAL_DNA__STR_INLINE extern inline
 # else
-#  define __SERVAL_DNA_STR_INLINE inline
+#  define __SERVAL_DNA__STR_INLINE inline
 # endif
 #endif
 
@@ -53,7 +53,7 @@ extern const char hexdigit_lower[16];
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-__SERVAL_DNA_STR_INLINE int is_xsubstring(const char *text, int len)
+__SERVAL_DNA__STR_INLINE int is_xsubstring(const char *text, int len)
 {
   while (len--)
     if (!isxdigit(*text++))
@@ -66,7 +66,7 @@ __SERVAL_DNA_STR_INLINE int is_xsubstring(const char *text, int len)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-__SERVAL_DNA_STR_INLINE int is_xstring(const char *text, int len)
+__SERVAL_DNA__STR_INLINE int is_xstring(const char *text, int len)
 {
   while (len--)
     if (!isxdigit(*text++))
@@ -209,43 +209,43 @@ extern uint8_t _serval_ctype_0[UINT8_MAX];
 extern uint8_t _serval_ctype_1[UINT8_MAX];
 extern uint8_t _serval_ctype_2[UINT8_MAX];
 
-__SERVAL_DNA_STR_INLINE int is_http_char(char c) {
+__SERVAL_DNA__STR_INLINE int is_http_char(char c) {
   return isascii(c);
 }
 
-__SERVAL_DNA_STR_INLINE int is_http_ctl(char c) {
+__SERVAL_DNA__STR_INLINE int is_http_ctl(char c) {
   return iscntrl(c);
 }
 
-__SERVAL_DNA_STR_INLINE int is_base64_digit(char c) {
+__SERVAL_DNA__STR_INLINE int is_base64_digit(char c) {
   return (_serval_ctype_0[(unsigned char) c] & _SERVAL_CTYPE_0_BASE64) != 0;
 }
 
-__SERVAL_DNA_STR_INLINE int is_base64url_digit(char c) {
+__SERVAL_DNA__STR_INLINE int is_base64url_digit(char c) {
   return (_serval_ctype_0[(unsigned char) c] & _SERVAL_CTYPE_0_BASE64URL) != 0;
 }
 
-__SERVAL_DNA_STR_INLINE int is_base64_pad(char c) {
+__SERVAL_DNA__STR_INLINE int is_base64_pad(char c) {
   return c == '=';
 }
 
-__SERVAL_DNA_STR_INLINE int is_base64url_pad(char c) {
+__SERVAL_DNA__STR_INLINE int is_base64url_pad(char c) {
   return c == '=';
 }
 
-__SERVAL_DNA_STR_INLINE uint8_t base64_digit(char c) {
+__SERVAL_DNA__STR_INLINE uint8_t base64_digit(char c) {
   return _serval_ctype_0[(unsigned char) c] & _SERVAL_CTYPE_0_BASE64_MASK;
 }
 
-__SERVAL_DNA_STR_INLINE uint8_t base64url_digit(char c) {
+__SERVAL_DNA__STR_INLINE uint8_t base64url_digit(char c) {
   return _serval_ctype_0[(unsigned char) c] & _SERVAL_CTYPE_0_BASE64_MASK;
 }
 
-__SERVAL_DNA_STR_INLINE int is_multipart_boundary(char c) {
+__SERVAL_DNA__STR_INLINE int is_multipart_boundary(char c) {
   return (_serval_ctype_2[(unsigned char) c] & _SERVAL_CTYPE_2_MULTIPART_BOUNDARY) != 0;
 }
 
-__SERVAL_DNA_STR_INLINE int is_valid_multipart_boundary_string(const char *s)
+__SERVAL_DNA__STR_INLINE int is_valid_multipart_boundary_string(const char *s)
 {
   if (s[0] == '\0')
     return 0;
@@ -255,11 +255,11 @@ __SERVAL_DNA_STR_INLINE int is_valid_multipart_boundary_string(const char *s)
   return s[-1] != ' ';
 }
 
-__SERVAL_DNA_STR_INLINE int is_http_separator(char c) {
+__SERVAL_DNA__STR_INLINE int is_http_separator(char c) {
   return (_serval_ctype_1[(unsigned char) c] & _SERVAL_CTYPE_1_HTTP_SEPARATOR) != 0;
 }
 
-__SERVAL_DNA_STR_INLINE int is_http_token(char c) {
+__SERVAL_DNA__STR_INLINE int is_http_token(char c) {
   return is_http_char(c) && !is_http_ctl(c) && !is_http_separator(c);
 }
 
@@ -268,7 +268,7 @@ __SERVAL_DNA_STR_INLINE int is_http_token(char c) {
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-__SERVAL_DNA_STR_INLINE int hexvalue(char c) {
+__SERVAL_DNA__STR_INLINE int hexvalue(char c) {
   return isxdigit(c) ? _serval_ctype_1[(unsigned char) c] & _SERVAL_CTYPE_1_HEX_MASK : -1;
 }
 
@@ -302,24 +302,24 @@ const char *strnchr(const char *s, size_t n, char c);
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 
-__SERVAL_DNA_STR_INLINE ssize_t str_index_dfl(const char *s, char c, ssize_t dfl)
+__SERVAL_DNA__STR_INLINE ssize_t str_index_dfl(const char *s, char c, ssize_t dfl)
 {
   const char *r = strchr(s, c);
   return r ? r - s : dfl;
 }
 
-__SERVAL_DNA_STR_INLINE ssize_t str_rindex_dfl(const char *s, char c, ssize_t dfl)
+__SERVAL_DNA__STR_INLINE ssize_t str_rindex_dfl(const char *s, char c, ssize_t dfl)
 {
   const char *r = strrchr(s, c);
   return r ? r - s : dfl;
 }
 
-__SERVAL_DNA_STR_INLINE ssize_t str_index(const char *s, char c)
+__SERVAL_DNA__STR_INLINE ssize_t str_index(const char *s, char c)
 {
   return str_index_dfl(s, c, -1);
 }
 
-__SERVAL_DNA_STR_INLINE ssize_t str_rindex(const char *s, char c)
+__SERVAL_DNA__STR_INLINE ssize_t str_rindex(const char *s, char c)
 {
   return str_rindex_dfl(s, c, -1);
 }
@@ -447,15 +447,15 @@ int str_to_uint64_interval_ms(const char *str, int64_t *result, const char **aft
  */
 int str_is_uri(const char *uri);
 
-__SERVAL_DNA_STR_INLINE int is_uri_char_scheme(char c) {
+__SERVAL_DNA__STR_INLINE int is_uri_char_scheme(char c) {
   return (_serval_ctype_1[(unsigned char) c] & _SERVAL_CTYPE_1_URI_SCHEME) != 0;
 }
 
-__SERVAL_DNA_STR_INLINE int is_uri_char_unreserved(char c) {
+__SERVAL_DNA__STR_INLINE int is_uri_char_unreserved(char c) {
   return (_serval_ctype_1[(unsigned char) c] & _SERVAL_CTYPE_1_URI_UNRESERVED) != 0;
 }
 
-__SERVAL_DNA_STR_INLINE int is_uri_char_reserved(char c) {
+__SERVAL_DNA__STR_INLINE int is_uri_char_reserved(char c) {
   return (_serval_ctype_1[(unsigned char) c] & _SERVAL_CTYPE_1_URI_RESERVED) != 0;
 }
 
@@ -464,7 +464,7 @@ __SERVAL_DNA_STR_INLINE int is_uri_char_reserved(char c) {
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-__SERVAL_DNA_STR_INLINE int str_is_uri_scheme(const char *scheme)
+__SERVAL_DNA__STR_INLINE int str_is_uri_scheme(const char *scheme)
 {
   if (!isalpha(*scheme++))
     return 0;
@@ -530,4 +530,4 @@ int str_uri_authority_port(const char *auth, uint16_t *portp);
 
 int parse_argv(char *cmdline, char delim, char **argv, int max_argv);
 
-#endif // __SERVAL_DNA_STR_H__
+#endif // __SERVAL_DNA__STR_H__

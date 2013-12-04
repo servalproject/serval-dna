@@ -17,8 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef _SERVALD_OVERLAY_ADDRESS_H
-#define _SERVALD_OVERLAY_ADDRESS_H
+#ifndef __SERVAL_DNA__OVERLAY_ADDRESS_H
+#define __SERVAL_DNA__OVERLAY_ADDRESS_H
 
 #include "constants.h"
 
@@ -130,4 +130,4 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
 
 void free_subscribers();
 
-#endif
+#endif //__SERVAL_DNA__OVERLAY_ADDRESS_H

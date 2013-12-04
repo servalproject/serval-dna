@@ -16,8 +16,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALD_RADIO_LINK_H
-#define __SERVALD_RADIO_LINK_H
+#ifndef __SERVAL_DNA___RADIO_LINK_H
+#define __SERVAL_DNA___RADIO_LINK_H
 
 #define HEARTBEAT_SIZE (8+9)
 #define LINK_MTU 255
@@ -30,4 +30,4 @@ void radio_link_state_html(struct strbuf *b, struct overlay_interface *interface
 int radio_link_is_busy(struct overlay_interface *interface);
 int radio_link_queue_packet(struct overlay_interface *interface, struct overlay_buffer *buffer);
 
-#endif
+#endif //__SERVAL_DNA___RADIO_LINK_H

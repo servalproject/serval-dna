@@ -16,8 +16,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALD_NET_H
-#define __SERVALD_NET_H
+#ifndef __SERVAL_DNA__NET_H
+#define __SERVAL_DNA__NET_H
 
 #include <sys/types.h> // for size_t, ssize_t
 #include <sys/socket.h> // for struct sockaddr, socklen_t
@@ -53,4 +53,4 @@ ssize_t _writev_all(int fd, const struct iovec *iov, int iovcnt, struct __source
 ssize_t _write_str(int fd, const char *str, struct __sourceloc __whence);
 ssize_t _write_str_nonblock(int fd, const char *str, struct __sourceloc __whence);
 
-#endif // __SERVALD_NET_H
+#endif // __SERVAL_DNA__NET_H

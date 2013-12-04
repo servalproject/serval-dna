@@ -18,8 +18,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALD_SERVALD_H
-#define __SERVALD_SERVALD_H
+#ifndef __SERVAL_DNA__SERVAL_H
+#define __SERVAL_DNA__SERVAL_H
 
 #include <stdio.h>
 #include <errno.h>
@@ -700,4 +700,4 @@ int link_stop_routing(struct subscriber *subscriber);
 
 int generate_nonce(unsigned char *nonce,int bytes);
 
-#endif // __SERVALD_SERVALD_H
+#endif // __SERVAL_DNA__SERVAL_H

@@ -17,8 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALD_CRYPTO_H
-#define __SERVALD_CRYPTO_H
+#ifndef __SERVAL_DNA__CRYPTO_H
+#define __SERVAL_DNA__CRYPTO_H
 
 #include "nacl.h"
 #define SIGNATURE_BYTES crypto_sign_edwards25519sha512batch_BYTES

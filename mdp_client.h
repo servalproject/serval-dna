@@ -16,8 +16,8 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-#ifndef __SERVALD_MDP_CLIENT_H
-#define __SERVALD_MDP_CLIENT_H
+#ifndef __SERVAL_DNA__MDP_CLIENT_H
+#define __SERVAL_DNA__MDP_CLIENT_H
 
 #include "serval.h"
 

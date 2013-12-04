@@ -17,8 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALDNA__RHIZOME_H
-#define __SERVALDNA__RHIZOME_H
+#ifndef __SERVAL_DNA__RHIZOME_H
+#define __SERVAL_DNA__RHIZOME_H
 
 #include <sqlite3.h>
 #include <limits.h>
@@ -954,4 +954,4 @@ int overlay_mdp_service_rhizome_sync(struct overlay_frame *frame, overlay_mdp_fr
 int rhizome_sync_announce();
 int rhizome_sync_bundle_inserted(const unsigned char *bar);
 
-#endif //__SERVALDNA__RHIZOME_H
+#endif //__SERVAL_DNA__RHIZOME_H

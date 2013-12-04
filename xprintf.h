@@ -17,8 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALD_XPRINTF_H
-#define __SERVALD_XPRINTF_H
+#ifndef __SERVAL_DNA__XPRINTF_H
+#define __SERVAL_DNA__XPRINTF_H
 
 /* Generalised (extensible) printf framework.
  *
@@ -107,4 +107,4 @@ CONTEXT_VPRINTF _cx_vprintf_mallocbuf;
 #define XPRINTF_STRBUF(SB)    _XPRINTF(_cx_vprintf_strbuf,(SB))
 CONTEXT_VPRINTF _cx_vprintf_strbuf;
 
-#endif // __SERVALD_XPRINTF_H
+#endif // __SERVAL_DNA__XPRINTF_H

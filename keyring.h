@@ -18,8 +18,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALD_KEYRING_H
-#define __SERVALD_KEYRING_H
+#ifndef __SERVAL_DNA__KEYRING_H
+#define __SERVAL_DNA__KEYRING_H
 
 typedef struct keypair {
   int type;
@@ -126,4 +126,4 @@ int keyring_find_public_tag_value(const keyring_file *k, int *cn, int *in, int *
 int keyring_unpack_tag(const unsigned char *packed, size_t packed_len, const char **name, const unsigned char **value, size_t *length);
 int keyring_pack_tag(unsigned char *packed, size_t *packed_len, const char *name, const unsigned char *value, size_t length);
 
-#endif // __SERVALD_KEYRING_H
+#endif // __SERVAL_DNA__KEYRING_H

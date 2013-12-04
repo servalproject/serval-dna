@@ -222,8 +222,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 
-#ifndef __SERVALDNA_CONF_H
-#define __SERVALDNA_CONF_H
+#ifndef __SERVAL_DNA__CONF_H
+#define __SERVAL_DNA__CONF_H
 
 #include <stdint.h>
 #include <arpa/inet.h>
@@ -701,4 +701,4 @@ int cf_reload();
 int cf_reload_strict();
 int cf_reload_permissive();
 
-#endif //__SERVALDNA_CONF_H
+#endif //__SERVAL_DNA__CONF_H

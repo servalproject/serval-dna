@@ -17,8 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALD_SOCKET_H
-#define __SERVALD_SOCKET_H
+#ifndef __SERVAL_DNA___SOCKET_H
+#define __SERVAL_DNA___SOCKET_H
 
 #ifdef WIN32
 #   include "win32/win32.h"
@@ -85,4 +85,4 @@ ssize_t _recv_message(struct __sourceloc, int fd, struct socket_address *address
 
 ssize_t recvwithttl(int sock, unsigned char *buffer, size_t bufferlen, int *ttl, struct socket_address *recvaddr);
 
-#endif
+#endif // __SERVAL_DNA___SOCKET_H

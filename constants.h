@@ -16,8 +16,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALD_CONSTANTS_H
-#define __SERVALD_CONSTANTS_H
+#ifndef __SERVAL_DNA__CONSTANTS_H
+#define __SERVAL_DNA__CONSTANTS_H
 
 #define NELS(a) (sizeof (a) / sizeof *(a))
 
@@ -224,4 +224,4 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 typedef char bool_t;
 
 
-#endif // __SERVALD_CONSTANTS_H
+#endif // __SERVAL_DNA__CONSTANTS_H
