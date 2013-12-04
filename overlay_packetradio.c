@@ -1,6 +1,6 @@
 /*
 Serval DNA packet radio interface
-Copyright (C) 2013 Serval Project, Inc.
+Copyright (C) 2013 Serval Project Inc.
 Copyright (C) 2013 Paul Gardner-Stephen
  
 This program is free software; you can redistribute it and/or

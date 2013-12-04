@@ -1,6 +1,6 @@
 /*
-Serval daemon
-Copyright (C) 2012 The Serval Project
+Serval DNA daemon
+Copyright (C) 2012 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License

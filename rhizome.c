@@ -1,6 +1,6 @@
 /*
 Serval DNA Rhizome file distribution
-Copyright (C) 2012-2013 Serval Project, Inc.
+Copyright (C) 2012-2013 Serval Project Inc.
 Copyright (C) 2011-2012 Paul Gardner-Stephen
  
 This program is free software; you can redistribute it and/or

@@ -1,6 +1,6 @@
 /*
 Serval DNA configuration stand-alone configuration check utility
-Copyright 2013 Serval Project, Inc.
+Copyright 2013 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
