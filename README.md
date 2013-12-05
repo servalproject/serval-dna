@@ -1,6 +1,6 @@
 Serval DNA
 ==========
-[Serval Project][], May 2013
+[Serval Project][], December 2013
 
 This repository contains the source code for the “core” Serval components
 implemented in [GNU C][]:
@@ -48,13 +48,12 @@ implemented in [GNU C][]:
    has two parts: a *manifest* that describes the content, and the *payload*,
    which is the content itself.  Each bundle has its own unique cryptographic
    identifier that allows any recipient to verify that it has not been tampered
-   with.
+   with.  A bundle's payload may be encrypted by the author so that only the
+   designated recipient can read it.
 
- * The **[MeshMS][]** messaging service is implemented using Rhizome as its
-   transport, with each thread represented as a pair of bundles, one for each
-   direction.  At present, the MeshMS logic is implemented in Java within the
-   [Serval Mesh][batphone] Android app, but is planned to be re-implemented in
-   C as part of Serval DNA (see [issue #28][]).
+ * The **[MeshMS][]** messaging service sends short text messages using Rhizome
+   as its transport.  Each message thread is stored and carried in a pair of
+   journal bundles, one for each direction (ply).
 
  * **[Serval Infrastructure][]** services may optionally be deployed on any devices
    in the mesh to expose external services to mesh subscribers and vice versa
@@ -77,12 +76,20 @@ Project's [serval-dna][] Git repository on [GitHub][].
 The copyright in most of the source code in Serval DNA is held by [Serval
 Project Inc.][SPI], a not-for-profit association incorporated in the state of
 South Australia in the Commonwealth of Australia for the purpose of developing
-the Serval mesh software.
+the Serval mesh software.  The [COPYRIGHT][] file contains a full list of all
+those who hold copyright in portions of the Serval DNA source code.
 
-The [Serval Project][] will accept contributions from individual developers who
-have agreed to the [Serval Project Developer Agreement - Individual][individ],
-and from organisations that have agreed to the [Serval Project Developer
-Agreement - Entity][entity].
+The [Serval Project][] will accept contributions for which copyright has been
+assigned to [Serval Project Inc.][SPI], or which are licensed to either [Serval
+Project Inc.][SPI] or to the public on terms that allow the Serval Project to
+freely redistribute and re-license the code under non-restrictive terms, for
+example, to release Serval DNA as part of a product distributed through the
+[Apple app store][].
+
+Individual developers may assign copyright in their contributions by signing
+the [Serval Project Developer Agreement - Individual][individ], and
+organisations by signing the [Serval Project Developer Agreement -
+Entity][entity].
 
 Download, build and test
 ------------------------
@@ -130,7 +137,9 @@ For more documentation, see:
 [free software]: http://www.gnu.org/philosophy/free-sw.html
 [contributors]: /servalproject/serval-dna/blob/development/CONTRIBUTORS.md
 [GitHub]: https://github.com/servalproject
+[COPYRIGHT]: ./COPYRIGHT.txt
 [GPL2]: ./GPL-2.0.txt
+[Apple app store]: http://www.fsf.org/blogs/licensing/more-about-the-app-store-gpl-enforcement
 [individ]: http://developer.servalproject.org/files/serval_project_inc-individual.pdf
 [entity]: http://developer.servalproject.org/files/serval_project_inc-entity.pdf
 [DNA]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:dna
