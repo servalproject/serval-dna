@@ -4,8 +4,8 @@
 #define MSP_STATE_UNINITIALISED 0
 #define MSP_STATE_LISTENING (1<<0)
 
-#define MSP_STATE_CONNECTING (1<<1)
-#define MSP_STATE_CONNECTED (1<<2)
+#define MSP_STATE_RECEIVED_DATA (1<<1)
+#define MSP_STATE_RECEIVED_PACKET (1<<2)
 
 #define MSP_STATE_SHUTDOWN_LOCAL (1<<3)
 #define MSP_STATE_SHUTDOWN_REMOTE (1<<4)
@@ -13,7 +13,7 @@
 // this connection is about to be free'd, release any other resources or references to the state
 #define MSP_STATE_CLOSED (1<<5)
 
-// something has gone wrong somewhere and the connection will be closed
+// something has gone wrong somewhere
 #define MSP_STATE_ERROR (1<<6)
 
 // does the client want to be interupted to reading data?
@@ -33,6 +33,7 @@ typedef uint16_t msp_state_t;
 // allocate a new socket
 struct msp_sock * msp_socket(int mdp_sock);
 void msp_close(struct msp_sock *sock);
+void msp_close_all(int mdp_sock);
 
 int msp_set_handler(struct msp_sock *sock, 
   int (*handler)(struct msp_sock *sock, msp_state_t state, const uint8_t *payload, size_t len, void *context), 

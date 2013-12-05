@@ -152,7 +152,7 @@ static int msp_listener(struct msp_sock *sock, msp_state_t state, const uint8_t 
   if (payload)
     return msp_handler(sock, state, payload, len, conn);
   
-  // stop listening after an incoming connection
+  // stop listening after the first incoming connection
   msp_close(listener);
   
   return 0;
@@ -315,7 +315,7 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
   if (sidhex && *sidhex){
     stdio_connection = alloc_connection();
     if (!stdio_connection)
-      return -1;
+      goto end;
     stdio_connection->sock = sock;
     msp_set_handler(sock, msp_handler, stdio_connection);
     msp_set_remote(sock, addr);
@@ -327,11 +327,14 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
   }else{
     msp_set_handler(sock, msp_listener, NULL);
     msp_set_local(sock, addr);
-    msp_listen(sock);
+    
+    // sock will be closed if listen fails
+    if (msp_listen(sock)==-1)
+      goto end;
+    
     listener=sock;
     INFOF(" - Listening on port %d", addr.port);
   }
-  sock=NULL;
   
   while(fd_poll()){
     ;
@@ -339,9 +342,9 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
   ret=0;
   
 end:
-  if (sock)
-    msp_close(sock);
+  listener=NULL;
   if (mdp_sock.poll.fd>=0){
+    msp_close_all(mdp_sock.poll.fd);
     if (mdp_sock.poll.events){
       unwatch(&mdp_sock);
       INFOF("Unwatching mdp socket");

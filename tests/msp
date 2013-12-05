@@ -40,21 +40,23 @@ setup_hello() {
          set log.console.level DEBUG \
          set log.console.show_time on
    start_servald_instances +A +B
-   set_instance +A
 }
-test_hello() {
-   fork executeOk_servald --timeout=5 msp listen 512 <<EOF
+server_hello() {
+   executeOk_servald --timeout=5 msp listen 512 <<EOF
 Hello from the server
 EOF
-   sleep 1
+   assertStdoutGrep --matches=1 "^Hello from the client$"
+}
+test_hello() {
+   set_instance +A
+   fork server_hello
+   wait_until grep "Bind MDP $SIDA:512" "$instance_servald_log"
    set_instance +B
    executeOk_servald --timeout=7 msp connect $SIDA 512 <<EOF
 Hello from the client
 EOF
-   tfw_cat --stdout --stderr
+   assertStdoutGrep --matches=1 "^Hello from the server$"
    fork_wait_all
 }
 
-
 runTests "$@"
-
