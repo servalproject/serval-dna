@@ -95,10 +95,11 @@ sqlite-amalgamation-3070900/sqlite3.o:	sqlite-amalgamation-3070900/sqlite3.c
 	@echo CC $<
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o sqlite-amalgamation-3070900/sqlite3.o
 
-version.o: *.h *.c version_string.sh
+version.o: *.h *.c version_string.sh COPYRIGHT.txt Makefile
 	@echo CC version_servald.c
 	@V=`./version_string.sh --ignore-untracked` \
-	 && $(CC) -c version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\""
+	 && C="`sed -e :a -e N -e '$$!ba' -e 's/[\\\\"]/\\\\&/g' -e 's/\\n/\\\\n/g' COPYRIGHT.txt`" \
+	 && $(CC) -c version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\"" -DSERVALD_COPYRIGHT="\"$$C\""
 
 %.o:	%.c
 	@echo CC $<
@@ -127,6 +128,14 @@ fakeradio: fakeradio.o
 config_test: config_test.o conf_om.o conf_schema.o conf_parse.o str.o strbuf.o strbuf_helpers.o mem.o dataformats.o net.o log_util.o
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -o $@ config_test.o conf_om.o conf_schema.o conf_parse.o str.o strbuf.o strbuf_helpers.o mem.o dataformats.o net.o log_util.o
+
+copyright: COPYRIGHT.txt
+
+findPATH = $(firstword $(wildcard $(addsuffix /$(1),$(subst :, ,$(PATH)))))
+COPYRIGHT_TOOL := $(call findPATH,sp-copyright-tool)
+
+COPYRIGHT.txt: *.c *.h $(COPYRIGHT_TOOL)
+	 $(COPYRIGHT_TOOL) -o $@ condense *.c *.h
 
 # This does not build on 64 bit elf platforms as NaCL isn't built with -fPIC
 # DOC 20120615

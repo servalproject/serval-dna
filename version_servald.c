@@ -1,5 +1,5 @@
 /* 
-Serval DNA version string
+Serval DNA version and copyright strings
 Copyright (C) 2013 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
@@ -21,4 +21,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #error "SERVALD_VERSION is not defined"
 #endif
 
+#ifndef SERVALD_COPYRIGHT
+#error "SERVALD_COPYRIGHT is not defined"
+#endif
+
 const char version_servald[] = SERVALD_VERSION;
+const char copyright_servald[] = SERVALD_COPYRIGHT;
