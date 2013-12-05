@@ -16,15 +16,8 @@
 // something has gone wrong somewhere
 #define MSP_STATE_ERROR (1<<6)
 
-// does the client want to be interupted to reading data?
-#define MSP_STATE_POLLIN (1<<7)
-// does the client want to know when data can be written?
-#define MSP_STATE_POLLOUT (1<<8)
-
-// is there some data to read?
-#define MSP_STATE_DATAIN (1<<9)
 // is there space for sending more data?
-#define MSP_STATE_DATAOUT (1<<10)
+#define MSP_STATE_DATAOUT (1<<7)
 
 
 struct msp_sock;
@@ -47,9 +40,6 @@ int msp_listen(struct msp_sock *sock);
 
 int msp_get_remote_adr(struct msp_sock *sock, struct mdp_sockaddr *remote);
 msp_state_t msp_get_state(struct msp_sock *sock);
-
-// which events are you interested in handling?
-void msp_set_watch(struct msp_sock *sock, msp_state_t flags);
 
 // bind, send data, and potentially shutdown this end of the connection
 int msp_send(struct msp_sock *sock, const uint8_t *payload, size_t len);

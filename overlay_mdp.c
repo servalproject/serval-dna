@@ -784,7 +784,8 @@ static int overlay_send_frame(
   }
   if (config.debug.mdprequests) {
     DEBUGF("Send frame %zu bytes", ob_position(plaintext));
-    dump("Frame plaintext", ob_ptr(plaintext), ob_position(plaintext));
+    if (config.debug.verbose)
+      dump("Frame plaintext", ob_ptr(plaintext), ob_position(plaintext));
   }
   
   /* Work out the disposition of the frame->  For now we are only worried

@@ -21,7 +21,7 @@ struct msp_packet{
   size_t len;
 };
 
-#define MAX_WINDOW_SIZE 64
+#define MAX_WINDOW_SIZE 4
 struct msp_window{
   int packet_count;
   uint32_t base_rtt;
@@ -58,7 +58,9 @@ struct msp_sock * msp_socket(int mdp_sock)
   ret->tx.base_rtt = ret->tx.rtt = 0xFFFFFFFF;
   ret->tx.last_activity = TIME_NEVER_HAS;
   ret->rx.last_activity = TIME_NEVER_HAS;
+  ret->next_action = TIME_NEVER_WILL;
   ret->timeout = gettime_ms() + 10000;
+  ret->previous_ack = 0xFFFF;
   if (root)
     root->_prev=ret;
   root = ret;
@@ -71,14 +73,19 @@ static void free_all_packets(struct msp_window *window)
   while(p){
     struct msp_packet *free_me=p;
     p=p->_next;
-    free((void *)free_me->payload);
+    if (free_me->payload)
+      free((void *)free_me->payload);
     free(free_me);
   }
 }
 
 static void free_acked_packets(struct msp_window *window, uint16_t seq)
 {
+  if (!window->_head)
+    return;
+  
   struct msp_packet *p = window->_head;
+  
   uint32_t rtt=0;
   time_ms_t now = gettime_ms();
 
@@ -87,7 +94,8 @@ static void free_acked_packets(struct msp_window *window, uint16_t seq)
       rtt = now - p->sent;
     struct msp_packet *free_me=p;
     p=p->_next;
-    free((void *)free_me->payload);
+    if (free_me->payload)
+      free((void *)free_me->payload);
     free(free_me);
     window->packet_count--;
   }
@@ -96,12 +104,13 @@ static void free_acked_packets(struct msp_window *window, uint16_t seq)
     window->rtt = rtt;
     if (window->base_rtt > rtt)
       window->base_rtt = rtt;
+    DEBUGF("RTT %u, base %u", rtt, window->base_rtt);
   }
   if (!p)
     window->_tail = NULL;
 }
 
-void msp_close(struct msp_sock *sock)
+static void msp_free(struct msp_sock *sock)
 {
   sock->state |= MSP_STATE_CLOSED;
   
@@ -115,22 +124,26 @@ void msp_close(struct msp_sock *sock)
     root=sock->_next;
   if (sock->_next)
     sock->_next->_prev = sock->_prev;
-  
+
   free_all_packets(&sock->tx);
   free_all_packets(&sock->rx);
   
   free(sock);
 }
 
+void msp_close(struct msp_sock *sock)
+{
+  sock->state |= MSP_STATE_CLOSED;
+}
+
 void msp_close_all(int mdp_sock)
 {
-  struct msp_sock **p = &root;
-  while(*p){
-    if ((*p)->mdp_sock == mdp_sock){
-      msp_close(*p);
-    }else{
-      p=&(*p)->_next;
-    }
+  struct msp_sock *p = root;
+  while(p){
+    struct msp_sock *sock=p;
+    p=p->_next;
+    if (sock->mdp_sock == mdp_sock)
+      msp_free(sock);
   }
 }
 
@@ -148,14 +161,6 @@ msp_state_t msp_get_state(struct msp_sock *sock)
   return sock->state;
 }
 
-void msp_set_watch(struct msp_sock *sock, msp_state_t flags)
-{
-  assert(flags & ~(MSP_STATE_POLLIN|MSP_STATE_POLLOUT));
-  // clear any existing poll bits, and set the requested ones
-  sock->state &= ~(MSP_STATE_POLLIN|MSP_STATE_POLLOUT);
-  sock->state |= flags;
-}
-
 int msp_set_local(struct msp_sock *sock, struct mdp_sockaddr local)
 {
   assert(sock->state == MSP_STATE_UNINITIALISED);
@@ -167,6 +172,9 @@ int msp_set_remote(struct msp_sock *sock, struct mdp_sockaddr remote)
 {
   assert(sock->state == MSP_STATE_UNINITIALISED);
   sock->header.remote = remote;
+  sock->state|=MSP_STATE_DATAOUT;
+  // make sure we send a packet soon
+  sock->next_action = gettime_ms()+10;
   return 0;
 }
 
@@ -179,8 +187,7 @@ int msp_listen(struct msp_sock *sock)
   sock->header.flags |= MDP_FLAG_BIND;
   
   if (mdp_send(sock->mdp_sock, &sock->header, NULL, 0)==-1){
-    sock->state|=MSP_STATE_ERROR;
-    msp_close(sock);
+    sock->state|=MSP_STATE_ERROR|MSP_STATE_CLOSED;
     return -1;
   }
   
@@ -197,42 +204,40 @@ int msp_get_remote_adr(struct msp_sock *sock, struct mdp_sockaddr *remote)
 static int add_packet(struct msp_window *window, uint16_t seq, uint8_t flags, 
   const uint8_t *payload, size_t len)
 {
-  struct msp_packet *packet = emalloc_zero(sizeof(struct msp_packet));
-  if (!packet)
-    return -1;
+  
+  struct msp_packet **insert_pos=NULL;
   
   if (!window->_head){
-    window->_head = window->_tail = packet;
+    insert_pos = &window->_head;
   }else{
     if (window->_tail->seq == seq){
       // ignore duplicate packets
-      free(packet);
       return 0;
     }else if (compare_wrapped_uint16(window->_tail->seq, seq)<0){
       if (compare_wrapped_uint16(window->_head->seq, seq)>0){
 	// this is ambiguous
-	free(packet);
 	return WHYF("%04x is both < tail (%04x) and > head (%04x)", seq, window->_tail->seq, window->_head->seq);
       }
-      
-      window->_tail->_next = packet;
-      window->_tail = packet;
+      insert_pos = &window->_tail->_next;
     }else{
-      struct msp_packet **pos = &window->_head;
-      while(compare_wrapped_uint16((*pos)->seq, seq)<0){
-	if ((*pos)->seq == seq){
-	  // ignore duplicate packets
-	  free(packet);
-	  return 0;
-	}
-	pos = &(*pos)->_next;
+      insert_pos = &window->_head;
+      while(compare_wrapped_uint16((*insert_pos)->seq, seq)<0)
+	insert_pos = &(*insert_pos)->_next;
+      if ((*insert_pos)->seq == seq){
+	// ignore duplicate packets
+	return 0;
       }
-      (*pos)->_next = packet;
-      packet->_next = (*pos);
-      *pos = packet;
     }
   }
   
+  struct msp_packet *packet = emalloc_zero(sizeof(struct msp_packet));
+  if (!packet)
+    return -1;
+    
+  packet->_next = (*insert_pos);
+  *insert_pos = packet;
+  if (!packet->_next)
+    window->_tail = packet;
   packet->added = gettime_ms();
   packet->seq = seq;
   packet->flags = flags;
@@ -272,7 +277,6 @@ static int msp_send_packet(struct msp_sock *sock, struct msp_packet *packet)
   write_uint16(&msp_header[3], packet->seq);
   sock->previous_ack = sock->rx.next_seq;
   
-  DEBUGF("Sending packet flags %d, ack %d, seq %d", packet->flags, sock->rx.next_seq, packet->seq);
   struct fragmented_data data={
     .fragment_count=3,
     .iov={
@@ -297,9 +301,12 @@ static int msp_send_packet(struct msp_sock *sock, struct msp_packet *packet)
   
   ssize_t r = send_message(sock->mdp_sock, &daemon_addr, &data);
   if (r==-1){
+    if (errno==11)
+      return 1;
     msp_close_all(sock->mdp_sock);
     return -1;
   }
+  DEBUGF("Sent packet seq %02x len %zd (acked %02x)", packet->seq, packet->len, sock->rx.next_seq);
   sock->tx.last_activity = packet->sent = gettime_ms();
   return 0;
 }
@@ -338,9 +345,11 @@ static int send_ack(struct msp_sock *sock)
   
   ssize_t r = send_message(sock->mdp_sock, &daemon_addr, &data);
   if (r==-1){
-    msp_close_all(sock->mdp_sock);
+    if (errno!=11)
+      msp_close_all(sock->mdp_sock);
     return -1;
   }
+  DEBUGF("Sent packet (acked %02x)", sock->rx.next_seq);
   sock->tx.last_activity = gettime_ms();
   return 0;
 }
@@ -358,7 +367,8 @@ int msp_send(struct msp_sock *sock, const uint8_t *payload, size_t len)
     return -1;
   
   sock->tx.next_seq++;
-  
+  if (sock->tx.packet_count>=MAX_WINDOW_SIZE)
+    sock->state&=~MSP_STATE_DATAOUT;
   // make sure we attempt to process packets from this sock soon
   // TODO calculate based on congestion window
   sock->next_action = gettime_ms();
@@ -376,6 +386,9 @@ int msp_shutdown(struct msp_sock *sock)
     sock->tx.next_seq++;
   }
   sock->state|=MSP_STATE_SHUTDOWN_LOCAL;
+  sock->state&=~MSP_STATE_DATAOUT;
+  // make sure we send a packet soon
+  sock->next_action = gettime_ms();
   return 0;
 }
 
@@ -384,17 +397,16 @@ static int process_sock(struct msp_sock *sock)
   time_ms_t now = gettime_ms();
   
   if (sock->timeout < now){
-    msp_close(sock);
+    sock->state |= MSP_STATE_CLOSED;
     return -1;
   }
   
   sock->next_action = sock->timeout;
+  
   struct msp_packet *p;
   
   // deliver packets that have now arrived in order
   p = sock->rx._head;
-  if (p)
-    DEBUGF("Seq %d vs %d", p->seq, sock->rx.next_seq);
   
   // TODO ... ? (sock->state & MSP_STATE_POLLIN) 
   while(p && p->seq == sock->rx.next_seq){
@@ -404,10 +416,17 @@ static int process_sock(struct msp_sock *sock)
     if (packet->flags & FLAG_SHUTDOWN)
       sock->state|=MSP_STATE_SHUTDOWN_REMOTE;
     
-    if (sock->handler
-      && sock->handler(sock, sock->state, packet->payload, packet->len, sock->context)==-1){
+    if (sock->handler && packet->payload){
+      int r = sock->handler(sock, sock->state, packet->payload, packet->len, sock->context);
+      if (r==-1){
+	sock->state |= MSP_STATE_CLOSED;
+	return -1;
+      }
       // keep the packet if the handler refused to accept it.
-      break;
+      if (r){
+	sock->next_action=gettime_ms()+1;
+	break;
+      }
     }
     
     p=p->_next;
@@ -418,31 +437,42 @@ static int process_sock(struct msp_sock *sock)
   // transmit packets that can now be sent
   p = sock->tx._head;
   while(p){
-    if (p->sent==0 || p->sent + sock->tx.rtt*2 < now){
+    if (p->sent==0 || p->sent + 1500 < now){
       if (!sock->header.local.port){
 	if (sock->header.flags & MDP_FLAG_BIND)
 	  // wait until we have heard back from the daemon with our port number before sending another packet.
 	  break;
 	sock->header.flags |= MDP_FLAG_BIND;
       }
-      if (msp_send_packet(sock, p)==-1)
+      int r = msp_send_packet(sock, p);
+      if (r==-1)
 	return -1;
+      if (r)
+	break;
     }
-    if (sock->next_action > p->sent + sock->tx.rtt*2)
-      sock->next_action = p->sent + sock->tx.rtt*2;
+    if (sock->next_action > p->sent + 1500)
+      sock->next_action = p->sent + 1500;
     p=p->_next;
   }
   
+  time_ms_t next_packet = sock->tx.last_activity + sock->tx.rtt*2;
+  
   // should we send an ack now without sending a payload?
-  if (sock->previous_ack != sock->rx.next_seq){
-    if (send_ack(sock))
+  if (sock->previous_ack != sock->rx.next_seq || now > next_packet){
+    int r = send_ack(sock);
+    if (r==-1)
       return -1;
+    next_packet = sock->tx.last_activity + sock->tx.rtt*2;
   }
   
-  if ((sock->state & (MSP_STATE_SHUTDOWN_LOCAL|MSP_STATE_SHUTDOWN_REMOTE)) == (MSP_STATE_SHUTDOWN_LOCAL|MSP_STATE_SHUTDOWN_REMOTE)
+  if (sock->next_action > next_packet)
+    sock->next_action = next_packet;
+  
+  if (sock->state & MSP_STATE_SHUTDOWN_LOCAL
+    && sock->state & MSP_STATE_SHUTDOWN_REMOTE
     && sock->tx.packet_count == 0 
     && sock->rx.packet_count == 0){
-    msp_close(sock);
+    sock->state |= MSP_STATE_CLOSED;
     return -1;
   }
     
@@ -451,20 +481,25 @@ static int process_sock(struct msp_sock *sock)
 
 int msp_processing(time_ms_t *next_action)
 {
-  *next_action=0;
+  *next_action=TIME_NEVER_WILL;
   struct msp_sock *sock = root;
   time_ms_t now = gettime_ms();
   while(sock){
-    struct msp_sock *s=sock;
-    sock = s->_next;
-    
-    if (s->next_action && s->next_action <= now){
+    if (!(sock->state & MSP_STATE_CLOSED)
+      && sock->next_action <= now){
       // this might cause the socket to be closed.
-      if (process_sock(s)==0){
+      if (process_sock(sock)==0){
 	// remember the time of the next thing we need to do.
-	if (s->next_action!=0 && s->next_action < *next_action)
-	  *next_action=s->next_action;
+	if (sock->next_action < *next_action)
+	  *next_action=sock->next_action;
       }
+    }
+    if (sock->state & MSP_STATE_CLOSED){
+      struct msp_sock *s = sock->_next;
+      msp_free(sock);
+      sock=s;
+    }else{
+      sock = sock->_next;
     }
   }
   return 0;
@@ -472,12 +507,10 @@ int msp_processing(time_ms_t *next_action)
 
 static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t *payload, size_t len)
 {
-  DEBUGF("packet from %s:%d", alloca_tohex_sid_t(header->remote.sid), header->remote.port);
-  
   // any kind of error reported by the daemon, close all related msp connections
   if (header->flags & MDP_FLAG_ERROR){
     msp_close_all(mdp_sock);
-    return 0;
+    return -1;
   }
 
   // find or create mdp_sock...
@@ -493,6 +526,7 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
 	  s->header.local = header->local;
 	  s->header.flags &= ~MDP_FLAG_BIND;
 	  DEBUGF("Bound to %s:%d", alloca_tohex_sid_t(header->local.sid), header->local.port);
+	  s->next_action = gettime_ms();
 	  return 0;
 	}
 	
@@ -540,7 +574,16 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
     uint16_t ack_seq = read_uint16(&payload[1]);
     // release acknowledged packets
     free_acked_packets(&sock->tx, ack_seq);
+    
     // TODO if their ack seq has not advanced, we may need to hurry up and retransmit a packet
+  }
+  
+  if (sock->tx.packet_count < MAX_WINDOW_SIZE 
+    && !(sock->state & MSP_STATE_DATAOUT)
+    && !(sock->state & MSP_STATE_SHUTDOWN_LOCAL)){
+    sock->state|=MSP_STATE_DATAOUT;
+    if (sock->handler)
+      sock->handler(sock, sock->state, NULL, 0, sock->context);
   }
   
   // make sure we attempt to process packets from this sock soon

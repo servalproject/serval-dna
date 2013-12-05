@@ -21,6 +21,7 @@ struct connection{
 struct connection *stdio_connection=NULL;
 struct msp_sock *listener=NULL;
 
+static int try_send();
 static void msp_poll(struct sched_ent *alarm);
 static void stdin_poll(struct sched_ent *alarm);
 static void stdout_poll(struct sched_ent *alarm);
@@ -85,20 +86,24 @@ static void free_connection(struct connection *conn)
 static int msp_handler(struct msp_sock *sock, msp_state_t state, const uint8_t *payload, size_t len, void *context)
 {
   struct connection *conn = context;
-  DEBUGF("Handler, state %d, payload len %zd", state, len);
   
   if (payload && len){
-    dump("incoming payload", payload, len);
-    if (conn->out->capacity < len + conn->out->limit){
-      DEBUGF("Insufficient space len %zd, capacity %zd, limit %zd", len, conn->out->capacity, conn->out->limit);
-      return -1;
+    if (conn->out->limit){
+      // attempt to write immediately
+      stdout_alarm.poll.revents=POLLOUT;
+      stdout_poll(&stdout_alarm);
     }
-    if (conn->out->limit==0){
-      watch(&stdout_alarm);
-      INFOF("Watching stdout");
-    }
+    if (conn->out->capacity < len + conn->out->limit)
+      return 1;
+    
     bcopy(payload, &conn->out->bytes[conn->out->limit], len);
     conn->out->limit+=len;
+    // attempt to write immediately
+    if (!is_watching(&stdout_alarm))
+      watch(&stdout_alarm);
+      
+    stdout_alarm.poll.revents=POLLOUT;
+    stdout_poll(&stdout_alarm);
   }
   
   if (state & MSP_STATE_CLOSED){
@@ -106,35 +111,31 @@ static int msp_handler(struct msp_sock *sock, msp_state_t state, const uint8_t *
     msp_get_remote_adr(sock, &remote);
     INFOF(" - Connection with %s:%d closed", alloca_tohex_sid_t(remote.sid), remote.port);
     
-    if (conn == stdio_connection){
-      stdio_connection->sock=NULL;
-    }else{
+    conn->sock = NULL;
+    
+    if (conn != stdio_connection)
       free_connection(conn);
-    }
     
     unschedule(&mdp_sock);
     
-    if (mdp_sock.poll.events){
+    if (is_watching(&mdp_sock))
       unwatch(&mdp_sock);
-      mdp_sock.poll.events=0;
-      INFOF("Unwatching mdp socket");
-    }
-    mdp_close(mdp_sock.poll.fd);
-    mdp_sock.poll.fd=-1;
     return 0;
   }
   
-  if (state & MSP_STATE_SHUTDOWN_REMOTE){
-    struct mdp_sockaddr remote;
-    msp_get_remote_adr(sock, &remote);
-    INFOF(" - Connection with %s:%d remote shutdown", alloca_tohex_sid_t(remote.sid), remote.port);
+  if (state&MSP_STATE_DATAOUT){
+    try_send();
+    if (stdio_connection->in->limit<stdio_connection->in->capacity && !is_watching(&stdin_alarm))
+      watch(&stdin_alarm);
   }
-  
   return 0;
 }
 
 static int msp_listener(struct msp_sock *sock, msp_state_t state, const uint8_t *payload, size_t len, void *UNUSED(context))
 {
+  if (state & MSP_STATE_CLOSED)
+    return 0;
+  
   struct mdp_sockaddr remote;
   msp_get_remote_adr(sock, &remote);
   INFOF(" - New connection from %s:%d", alloca_tohex_sid_t(remote.sid), remote.port);
@@ -146,7 +147,6 @@ static int msp_listener(struct msp_sock *sock, msp_state_t state, const uint8_t 
   if (!stdio_connection){
     stdio_connection=conn;
     watch(&stdin_alarm);
-    INFOF("Watching stdin");
   }
   msp_set_handler(sock, msp_handler, conn);
   if (payload)
@@ -176,13 +176,24 @@ static void msp_poll(struct sched_ent *alarm)
   }
 }
 
+static int try_send()
+{
+  if (!stdio_connection->in->limit)
+    return 0;
+  if (msp_send(stdio_connection->sock, stdio_connection->in->bytes, stdio_connection->in->limit)==-1)
+    return 0;
+  
+  // if this packet was acceptted, clear the read buffer
+  stdio_connection->in->limit = stdio_connection->in->position = 0;
+  
+  return 1;
+}
+
 static void stdin_poll(struct sched_ent *alarm)
 {
-  INFOF("Poll stdin, %d", alarm->poll.revents);
   if (alarm->poll.revents & POLLIN) {
     if (!stdio_connection){
       unwatch(alarm);
-      INFOF("Unwatching stdin");
       return;
     }
     
@@ -191,30 +202,25 @@ static void stdin_poll(struct sched_ent *alarm)
       ssize_t r = read(alarm->poll.fd, 
 	stdio_connection->in->bytes + stdio_connection->in->limit,
 	remaining);
-      INFOF("Read %zd from stdin %d, %d", r, alarm->poll.revents, errno);
       if (r>0){
-	dump("stdin",stdio_connection->in->bytes + stdio_connection->in->limit, r);
-	
 	stdio_connection->in->limit+=r;
-	
-	if (msp_send(stdio_connection->sock, stdio_connection->in->bytes, stdio_connection->in->limit)!=-1){
-	  // if this packet was acceptted, clear the read buffer
-	  stdio_connection->in->limit = stdio_connection->in->position = 0;
+	if (try_send()){
 	  // attempt to process this socket asap
 	  mdp_sock.alarm = gettime_ms();
 	  mdp_sock.deadline = mdp_sock.alarm+10;
 	  unschedule(&mdp_sock);
 	  schedule(&mdp_sock);
 	}
-	
 	// stop reading input when the buffer is full
 	if (stdio_connection->in->limit==stdio_connection->in->capacity){
 	  unwatch(alarm);
-	  INFOF("Unwatching stdin");
 	}
       }else{
-	// EOF, just trigger our error handler
-	alarm->poll.revents|=POLLERR;
+	if (stdio_connection->in->limit)
+	  unwatch(alarm);
+	else
+	  // EOF and no data in the buffer, just trigger our error handler
+	  alarm->poll.revents|=POLLERR;
       }
     }
   }
@@ -224,7 +230,8 @@ static void stdin_poll(struct sched_ent *alarm)
     struct mdp_sockaddr remote;
     msp_get_remote_adr(stdio_connection->sock, &remote);
     msp_shutdown(stdio_connection->sock);
-    unwatch(alarm);
+    if (is_watching(alarm))
+      unwatch(alarm);
     INFOF(" - Connection with %s:%d local shutdown", alloca_tohex_sid_t(remote.sid), remote.port);
     // attempt to process this socket asap
     mdp_sock.alarm = gettime_ms();
@@ -238,8 +245,8 @@ static void stdout_poll(struct sched_ent *alarm)
 {
   if (alarm->poll.revents & POLLOUT) {
     if (!stdio_connection){
-      unwatch(alarm);
-      INFOF("Unwatching stdout");
+      if (is_watching(alarm))
+	unwatch(alarm);
       return;
     }
     // try to write some data
@@ -248,7 +255,6 @@ static void stdout_poll(struct sched_ent *alarm)
       ssize_t r = write(alarm->poll.fd, 
 	stdio_connection->out->bytes+stdio_connection->out->position,
 	data);
-      INFOF("Wrote %zd to stdout", r);
       if (r > 0)
 	stdio_connection->out->position+=r;
     }
@@ -257,19 +263,22 @@ static void stdout_poll(struct sched_ent *alarm)
     if (stdio_connection->out->position==stdio_connection->out->limit){
       stdio_connection->out->limit=0;
       stdio_connection->out->position=0;
-      unwatch(alarm);
-      INFOF("Unwatching stdout");
+      if (is_watching(alarm))
+	unwatch(alarm);
     }
     
     if (stdio_connection->out->limit < stdio_connection->out->capacity){
-      // TODO try to get more data from the socket
+      // make sure we try to process this socket soon for more data
+      mdp_sock.alarm = gettime_ms();
+      mdp_sock.deadline = mdp_sock.alarm+10;
+      unschedule(&mdp_sock);
+      schedule(&mdp_sock);
     }
   }
   
   if (alarm->poll.revents & (POLLHUP | POLLERR)) {
-    unwatch(alarm);
-    INFOF("Unwatching stdout");
-    // Um, quit?
+    if (is_watching(alarm))
+      unwatch(alarm);
   }
 }
 
@@ -300,7 +309,6 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
     goto end;
   mdp_sock.poll.events = POLLIN;
   watch(&mdp_sock);
-  INFOF("Watching mdp socket");
   
   set_nonblock(STDIN_FILENO);
   set_nonblock(STDOUT_FILENO);
@@ -319,11 +327,10 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
     stdio_connection->sock = sock;
     msp_set_handler(sock, msp_handler, stdio_connection);
     msp_set_remote(sock, addr);
-    INFOF("Set remote %s:%d", alloca_tohex_sid_t(addr.sid), addr.port);
+    INFOF("- Connecting to %s:%d", alloca_tohex_sid_t(addr.sid), addr.port);
     
     // note we only watch these stdio handles when we have space / bytes in our buffers
     watch(&stdin_alarm);
-    INFOF("Watching stdin");
   }else{
     msp_set_handler(sock, msp_listener, NULL);
     msp_set_local(sock, addr);
@@ -336,6 +343,10 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
     INFOF(" - Listening on port %d", addr.port);
   }
   
+  // run msp_processing once to init alarm timer
+  mdp_sock.poll.revents=0;
+  msp_poll(&mdp_sock);
+  
   while(fd_poll()){
     ;
   }
@@ -343,12 +354,10 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
   
 end:
   listener=NULL;
+  if (is_watching(&mdp_sock))
+    unwatch(&mdp_sock);
   if (mdp_sock.poll.fd>=0){
     msp_close_all(mdp_sock.poll.fd);
-    if (mdp_sock.poll.events){
-      unwatch(&mdp_sock);
-      INFOF("Unwatching mdp socket");
-    }
     mdp_close(mdp_sock.poll.fd);
   }
   unschedule(&mdp_sock);
