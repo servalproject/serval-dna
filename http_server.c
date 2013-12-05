@@ -927,7 +927,7 @@ static int http_request_start_body(struct http_request *r)
 	DEBUGF("Malformed HTTP %s request: non-zero Content-Length not allowed", r->verb);
       return 400;
     }
-    if (r->request_header.content_type.type) {
+    if (r->request_header.content_type.type[0]) {
       if (r->debug_flag && *r->debug_flag)
 	DEBUGF("Malformed HTTP %s request: Content-Type not allowed", r->verb);
       return 400;
@@ -940,7 +940,7 @@ static int http_request_start_body(struct http_request *r)
 	DEBUGF("Malformed HTTP %s request: missing Content-Length header", r->verb);
       return 411;
     }
-    if (r->request_header.content_type.type == NULL) {
+    if (r->request_header.content_type.type[0] == '\0') {
       if (r->debug_flag && *r->debug_flag)
 	DEBUGF("Malformed HTTP %s request: missing Content-Type header", r->verb);
       return 400;
