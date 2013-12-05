@@ -294,8 +294,24 @@ test_RhizomeNewSince() {
 }
 
 doc_RhizomeManifest="Fetch Rhizome bundle manifest"
+setup_RhizomeManifest() {
+   setup
+   add_bundles 0 2
+}
 test_RhizomeManifest() {
-   :
+   for n in 0 1 2; do
+      executeOk curl \
+            --silent --fail --show-error \
+            --output bundle$n.rhm \
+            --dump-header http.headers \
+            --basic --user harry:potter \
+            "http://$addr_localhost:$PORTA/restful/rhizome/${BID[$n]}.rhm"
+      tfw_cat http.headers bundle$n.rhm
+      tfw_preserve bundle$n.rhm
+   done
+   for n in 0 1 2; do
+      assert diff file$n.manifest bundle$n.rhm
+   done
 }
 
 doc_RhizomePayloadRaw="Fetch Rhizome raw payload"

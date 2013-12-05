@@ -45,6 +45,7 @@ struct http_handler{
 
 static HTTP_HANDLER restful_rhizome_bundlelist_json;
 static HTTP_HANDLER restful_rhizome_newsince;
+static HTTP_HANDLER restful_rhizome_;
 
 static HTTP_HANDLER rhizome_status_page;
 static HTTP_HANDLER rhizome_file_page;
@@ -61,6 +62,7 @@ extern HTTP_HANDLER rhizome_direct_dispatch;
 struct http_handler paths[]={
   {"/restful/rhizome/bundlelist.json", restful_rhizome_bundlelist_json},
   {"/restful/rhizome/newsince/", restful_rhizome_newsince},
+  {"/restful/rhizome/", restful_rhizome_},
   {"/rhizome/status", rhizome_status_page},
   {"/rhizome/file/", rhizome_file_page},
   {"/rhizome/import", rhizome_direct_import},
@@ -561,6 +563,30 @@ static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsi
   }
   rhizome_list_release(&r->u.list.cursor);
   return ret;
+}
+
+static int restful_rhizome_(rhizome_http_request *r, const char *remainder)
+{
+  if (!is_rhizome_http_enabled())
+    return 1;
+  rhizome_bid_t bid;
+  const char *end;
+  if (!strn_to_rhizome_bid_t(&bid, remainder, &end) == -1 || strcmp(end, ".rhm") != 0)
+    return 1;
+  if (r->http.verb != HTTP_VERB_GET) {
+    http_request_simple_response(&r->http, 405, NULL);
+    return 0;
+  }
+  if (!authorize(&r->http))
+    return 0;
+  rhizome_manifest *m = rhizome_new_manifest();
+  int ret = rhizome_retrieve_manifest(&bid, m);
+  if (ret == -1)
+    http_request_simple_response(&r->http, 500, NULL);
+  else if (ret == 0)
+    http_request_response_static(&r->http, 200, "x-servalproject/rhizome-manifest-text", (const char *)m->manifestdata, m->manifest_all_bytes);
+  rhizome_manifest_free(m);
+  return ret <= 0 ? 0 : 1;
 }
 
 static int neighbour_page(rhizome_http_request *r, const char *remainder)
