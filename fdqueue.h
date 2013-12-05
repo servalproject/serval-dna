@@ -63,6 +63,7 @@ struct sched_ent{
 };
 
 int is_scheduled(const struct sched_ent *alarm);
+int is_watching(struct sched_ent *alarm);
 int _schedule(struct __sourceloc, struct sched_ent *alarm);
 int _unschedule(struct __sourceloc, struct sched_ent *alarm);
 int _watch(struct __sourceloc, struct sched_ent *alarm);

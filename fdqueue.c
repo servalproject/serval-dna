@@ -195,6 +195,13 @@ int _watch(struct __sourceloc __whence, struct sched_ent *alarm)
   return 0;
 }
 
+int is_watching(struct sched_ent *alarm)
+{
+  if (alarm->_poll_index <0 || fds[alarm->_poll_index].fd!=alarm->poll.fd)
+    return 0;
+  return 1;
+}
+
 // stop watching a file handle
 int _unwatch(struct __sourceloc __whence, struct sched_ent *alarm)
 {
