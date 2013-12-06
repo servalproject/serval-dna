@@ -476,7 +476,7 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
 {
   m->finalised = 1;
   if (config.debug.rhizome_rx) {
-    DEBUGF("manifest len=%u has %u signatories. Associated filesize=%"PRIu64" bytes", 
+    DEBUGF("manifest len=%zu has %u signatories. Associated filesize=%"PRIu64" bytes", 
 	   m->manifest_all_bytes, m->sig_count, m->filesize);
     dump("manifest", m->manifestdata, m->manifest_all_bytes);
   }

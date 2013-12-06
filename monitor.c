@@ -576,7 +576,7 @@ static int monitor_help(const struct cli_parsed *parsed, struct cli_context *con
 int monitor_announce_bundle(rhizome_manifest *m)
 {
   char msg[1024];
-  int len = snprintf(msg,1024,"\n*%d:BUNDLE:%s\n",
+  int len = snprintf(msg,1024,"\n*%zd:BUNDLE:%s\n",
            m->manifest_all_bytes,
 	   alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
   bcopy(m->manifestdata, &msg[len], m->manifest_all_bytes);

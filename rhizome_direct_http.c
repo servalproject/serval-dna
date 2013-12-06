@@ -658,7 +658,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  "\r\n";
 	/* Work out what the content length should be */
 	if (config.debug.rhizome_tx)
-	  DEBUGF("manifest_all_bytes=%u, manifest_body_bytes=%u", m->manifest_all_bytes, m->manifest_body_bytes);
+	  DEBUGF("manifest_all_bytes=%zu, manifest_body_bytes=%zu", m->manifest_all_bytes, m->manifest_body_bytes);
 	assert(m->filesize != RHIZOME_SIZE_UNSET);
 	size_t content_length =
 	    strlen(template2) - 2 /* minus 2 for the "%s" that gets replaced */

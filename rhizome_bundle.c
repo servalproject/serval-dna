@@ -1023,7 +1023,7 @@ int rhizome_manifest_selfsign(rhizome_manifest *m)
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *path, char append)
 {
   if (config.debug.rhizome)
-    DEBUGF("write manifest (%d bytes) to %s", m->manifest_all_bytes, path);
+    DEBUGF("write manifest (%zd bytes) to %s", m->manifest_all_bytes, path);
   if (!m)
     return WHY("Manifest is null.");
   if (!m->finalised)
