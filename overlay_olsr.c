@@ -95,6 +95,7 @@ int olsr_init_socket(void){
     .sin_family = AF_INET,
     .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
     .sin_port = htons(config.olsr.local_port),
+    .sin_zero = {0},
   };
   
   fd = socket(AF_INET,SOCK_DGRAM,0);
@@ -245,6 +246,7 @@ static int send_packet(unsigned char *header, int header_len, unsigned char *pay
     .sin_family=AF_INET,
     .sin_addr.s_addr=htonl(INADDR_LOOPBACK),
     .sin_port=htons(config.olsr.remote_port),
+    .sin_zero = {0},
   };
   
   struct iovec iov[]={
