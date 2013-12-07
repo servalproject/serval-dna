@@ -1,6 +1,7 @@
 /*
-Serval Distributed Numbering Architecture (DNA)
-Copyright (C) 2010 Paul Gardner-Stephen
+Serval DNA MDP addressing
+Copyright (C) 2012-2013 Serval Project Inc.
+Copyright (C) 2012 Paul Gardner-Stephen
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License

@@ -1,5 +1,7 @@
 /*
-Copyright (C) 2010-2012 Paul Gardner-Stephen, Serval Project.
+Serval DNA keyring
+Copyright (C) 2013 Serval Project Inc.
+Copyright (C) 2010-2012 Paul Gardner-Stephen
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License

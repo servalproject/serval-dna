@@ -17,19 +17,19 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALDNA_UUID_H
-#define __SERVALDNA_UUID_H
+#ifndef __SERVAL_DNA__UUID_H
+#define __SERVAL_DNA__UUID_H
 
 #include <stdint.h>
 #include <alloca.h>
 #include <string.h>
 #include "strbuf.h"
 
-#ifndef __SERVALDNA_UUID_H_INLINE
+#ifndef __SERVAL_DNA__UUID_H_INLINE
 # if __GNUC__ && !__GNUC_STDC_INLINE__
-#  define __SERVALDNA_UUID_H_INLINE extern inline
+#  define __SERVAL_DNA__UUID_H_INLINE extern inline
 # else
-#  define __SERVALDNA_UUID_H_INLINE inline
+#  define __SERVAL_DNA__UUID_H_INLINE inline
 # endif
 #endif
 
@@ -74,11 +74,11 @@ enum uuid_version {
   UUID_VERSION_NAME_SHA1 = 5
 };
 
-__SERVALDNA_UUID_H_INLINE int cmp_uuid_t(const uuid_t *a, const uuid_t *b) {
+__SERVAL_DNA__UUID_H_INLINE int cmp_uuid_t(const uuid_t *a, const uuid_t *b) {
   return memcmp(a->u.binary, b->u.binary, sizeof a->u.binary);
 }
 
-__SERVALDNA_UUID_H_INLINE int uuid_is_valid(const uuid_t *any_uuid) {
+__SERVAL_DNA__UUID_H_INLINE int uuid_is_valid(const uuid_t *any_uuid) {
   return (any_uuid->u.record.clock_seq_hi_and_reserved & 0xc0) == 0x80;
 }
 
@@ -125,4 +125,4 @@ strbuf strbuf_uuid(strbuf, const uuid_t *valid_uuid);
  */
 int str_to_uuid(const char *str, uuid_t *result, const char **afterp);
 
-#endif //__SERVALDNA_OS_H
+#endif //__SERVAL_DNA__OS_H

@@ -1,6 +1,6 @@
 /*
 Serval DNA - HTTP Server API
-Copyright (C) 2013 Serval Project, Inc.
+Copyright (C) 2013 Serval Project Inc.
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -17,8 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALDNA__HTTP_SERVER_H
-#define __SERVALDNA__HTTP_SERVER_H
+#ifndef __SERVAL_DNA__HTTP_SERVER_H
+#define __SERVAL_DNA__HTTP_SERVER_H
 
 #include <limits.h>
 #include "constants.h"
@@ -207,4 +207,4 @@ struct http_request {
   char buffer[8 * 1024];
 };
 
-#endif // __SERVALDNA__HTTP_SERVER_H
+#endif // __SERVAL_DNA__HTTP_SERVER_H

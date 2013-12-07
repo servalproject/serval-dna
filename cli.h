@@ -1,6 +1,6 @@
 /*
  Serval command line parsing and processing.
- Copyright (C) 2012,2013 Serval Project, Inc.
+ Copyright (C) 2012,2013 Serval Project Inc.
  
  This program is free software; you can redistribute it and/or
  modify it under the terms of the GNU General Public License
@@ -17,8 +17,8 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-#ifndef __SERVALD_CLI_H
-#define __SERVALD_CLI_H 
+#ifndef __SERVAL_DNA__CLI_H
+#define __SERVAL_DNA__CLI_H
 
 #include "xprintf.h"
 #include "log.h"
@@ -102,4 +102,4 @@ void cli_put_long(struct cli_context *context, int64_t value, const char *delim)
 void cli_put_string(struct cli_context *context, const char *value, const char *delim);
 void cli_put_hexvalue(struct cli_context *context, const unsigned char *value, int length, const char *delim);
 
-#endif // __SERVALD_CLI_H 
+#endif // __SERVAL_DNA__CLI_H

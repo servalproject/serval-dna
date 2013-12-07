@@ -1,7 +1,7 @@
 /* 
 Serval DNA header file
 Copyright (C) 2010-2012 Paul Gardner-Stephen 
-Copyright (C) 2012-2013 Serval Project, Inc.
+Copyright (C) 2012-2013 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -18,8 +18,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALD_SERVALD_H
-#define __SERVALD_SERVALD_H
+#ifndef __SERVAL_DNA__SERVAL_H
+#define __SERVAL_DNA__SERVAL_H
 
 #include <stdio.h>
 #include <errno.h>
@@ -139,6 +139,7 @@ struct in_addr {
 
 
 extern const char version_servald[];
+extern const char copyright_servald[];
 
 /* Fundamental types.
  */
@@ -213,6 +214,7 @@ extern char *batman_peerfile;
 
 struct subscriber;
 struct decode_context;
+struct socket_address;
 
 /* Make sure we have space to put bytes of the packet as we go along */
 #define CHECK_PACKET_LEN(B) {if (((*packet_len)+(B))>=packet_maxlen) { return WHY("Packet composition ran out of space."); } }
@@ -522,7 +524,6 @@ typedef struct overlay_mdp_frame {
 
 /* Server-side MDP functions */
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp);
-struct socket_address;
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client);
 void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port);
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const sid_t *resolved_sidp, const char *uri, const char *did, const char *name);
@@ -700,4 +701,4 @@ int link_stop_routing(struct subscriber *subscriber);
 
 int generate_nonce(unsigned char *nonce,int bytes);
 
-#endif // __SERVALD_SERVALD_H
+#endif // __SERVAL_DNA__SERVAL_H

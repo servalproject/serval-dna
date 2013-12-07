@@ -1,5 +1,6 @@
 /*
-Copyright (C) 2012 Paul Gardner-Stephen, Serval Project.
+Copyright (C) 2012 Paul Gardner-Stephen
+Copyright (C) 2012 Serval Project Inc.
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -16,8 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALD_MONITOR_CLIENT_H
-#define __SERVALD_MONITOR_CLIENT_H
+#ifndef __SERVAL_DNA__MONITOR_CLIENT_H
+#define __SERVAL_DNA__MONITOR_CLIENT_H
 
 struct monitor_state;
 

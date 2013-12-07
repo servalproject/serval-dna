@@ -17,8 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALDNA_OS_H
-#define __SERVALDNA_OS_H
+#ifndef __SERVAL_DNA__OS_H
+#define __SERVAL_DNA__OS_H
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,11 +26,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <unistd.h>
 #include <sys/types.h>
 
-#ifndef __SERVALDNA_OS_INLINE
+#ifndef __SERVAL_DNA__OS_INLINE
 # if __GNUC__ && !__GNUC_STDC_INLINE__
-#  define __SERVALDNA_OS_INLINE extern inline
+#  define __SERVAL_DNA__OS_INLINE extern inline
 # else
-#  define __SERVALDNA_OS_INLINE inline
+#  define __SERVAL_DNA__OS_INLINE inline
 # endif
 #endif
 
@@ -60,19 +60,19 @@ time_ms_t gettime_ms();
 time_ms_t sleep_ms(time_ms_t milliseconds);
 
 #ifndef HAVE_BZERO
-__SERVALDNA_OS_INLINE void bzero(void *buf, size_t len) {
+__SERVAL_DNA__OS_INLINE void bzero(void *buf, size_t len) {
     memset(buf, 0, len);
 }
 #endif
 
 #ifndef HAVE_BCOPY
-__SERVALDNA_OS_INLINE void bcopy(const void *src, void *dst, size_t len) {
+__SERVAL_DNA__OS_INLINE void bcopy(const void *src, void *dst, size_t len) {
     memcpy(dst, src, len);
 }
 #endif
 
 #ifndef HAVE_BCMP
-__SERVALDNA_OS_INLINE int bcmp(const void *s1, const void *s2, size_t n) {
+__SERVAL_DNA__OS_INLINE int bcmp(const void *s1, const void *s2, size_t n) {
     // bcmp() is only an equality test, not an order test, so its return value
     // is not specified as negative or positive, only non-zero.  Hoewver
     // memcmp() is an order test.  We deliberately discard negative return
@@ -123,4 +123,4 @@ int urandombytes(unsigned char *buf, size_t len);
  */
 ssize_t read_symlink(const char *path, char *buf, size_t len);
 
-#endif //__SERVALDNA_OS_H
+#endif //__SERVAL_DNA__OS_H

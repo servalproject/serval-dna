@@ -17,8 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALDNA__RHIZOME_H
-#define __SERVALDNA__RHIZOME_H
+#ifndef __SERVAL_DNA__RHIZOME_H
+#define __SERVAL_DNA__RHIZOME_H
 
 #include <sqlite3.h>
 #include <limits.h>
@@ -37,16 +37,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 # endif
 #endif
 
-// TODO  Rename MANIFEST_ID to BUNDLE_ID
-#define RHIZOME_MANIFEST_ID_BYTES       crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
-#define RHIZOME_MANIFEST_ID_STRLEN      (RHIZOME_MANIFEST_ID_BYTES * 2)
-#define RHIZOME_BUNDLE_KEY_BYTES        (crypto_sign_edwards25519sha512batch_SECRETKEYBYTES-crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)
-#define RHIZOME_BUNDLE_KEY_STRLEN       (RHIZOME_BUNDLE_KEY_BYTES  * 2)
+#define RHIZOME_BUNDLE_ID_BYTES         crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
+#define RHIZOME_BUNDLE_ID_STRLEN        (RHIZOME_BUNDLE_ID_BYTES * 2)
+#define RHIZOME_BUNDLE_KEY_BYTES        (crypto_sign_edwards25519sha512batch_SECRETKEYBYTES - crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)
+#define RHIZOME_BUNDLE_KEY_STRLEN       (RHIZOME_BUNDLE_KEY_BYTES * 2)
 #define RHIZOME_FILEHASH_BYTES          SHA512_DIGEST_LENGTH
 #define RHIZOME_FILEHASH_STRLEN         (RHIZOME_FILEHASH_BYTES * 2)
 
 #define RHIZOME_CRYPT_KEY_BYTES         crypto_stream_xsalsa20_ref_KEYBYTES
 #define RHIZOME_CRYPT_KEY_STRLEN        (RHIZOME_CRYPT_KEY_BYTES * 2)
+
+// TODO  Rename MANIFEST_ID to BUNDLE_ID
+// The following constants are deprecated, use the BUNDLE_ID forms instead
+#define RHIZOME_MANIFEST_ID_BYTES       RHIZOME_BUNDLE_ID_BYTES
+#define RHIZOME_MANIFEST_ID_STRLEN      RHIZOME_BUNDLE_ID_STRLEN
 
 // assumed to always be 2^n
 #define RHIZOME_CRYPT_PAGE_SIZE         4096
@@ -950,4 +954,4 @@ int overlay_mdp_service_rhizome_sync(struct overlay_frame *frame, overlay_mdp_fr
 int rhizome_sync_announce();
 int rhizome_sync_bundle_inserted(const unsigned char *bar);
 
-#endif //__SERVALDNA__RHIZOME_H
+#endif //__SERVAL_DNA__RHIZOME_H

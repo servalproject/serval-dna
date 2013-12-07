@@ -1,3 +1,8 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+bindir=@bindir@
+sbindir=@sbindir@
+
 NACL_BASE=	nacl/src
 include $(NACL_BASE)/nacl.mk
 SERVAL_BASE=
@@ -23,6 +28,7 @@ MONITORCLIENTSRCS=conf.c \
         conf_schema.c \
 	dataformats.c \
 	log.c \
+	log_util.c \
         xprintf.c \
 	os.c \
 	mem.c \
@@ -43,10 +49,12 @@ MDPCLIENTSRCS=conf.c \
 	os.c \
 	mem.c \
 	log.c \
+	log_util.c \
         xprintf.c \
 	mdp_client.c \
         instance.c \
 	net.c \
+        mdp_net.c \
 	socket.c \
 	str.c \
 	strbuf.c \
@@ -68,6 +76,11 @@ CFLAGS+=-Wall -Wno-unused-value
 CFLAGS+=-DSHA2_USE_INTTYPES_H -D_XOPEN_SOURCE=600 -D_XOPEN_SOURCE_EXTENDED=1 -D__EXTENSIONS__=1
 # OSX magic to compensate for the Solaris magic
 CFLAGS+=-D_DARWIN_C_SOURCE
+
+INSTALL=        install
+INSTALL_PROGRAM=$(INSTALL)
+INSTALL_DATA=   $(INSTALL) -m 644
+
 -include Makefile.dbg
 
 # More warnings, discover problems that only happen on some archs
@@ -82,16 +95,17 @@ DEFS=	@DEFS@
 
 all:	servald libmonitorclient.so libmonitorclient.a test
 
-test:   tfw_createfile directory_service fakeradio
+test:   tfw_createfile directory_service fakeradio config_test
 
 sqlite-amalgamation-3070900/sqlite3.o:	sqlite-amalgamation-3070900/sqlite3.c
 	@echo CC $<
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o sqlite-amalgamation-3070900/sqlite3.o
 
-version.o: *.h *.c version_string.sh
+version.o: *.h *.c version_string.sh COPYRIGHT.txt Makefile
 	@echo CC version_servald.c
 	@V=`./version_string.sh --ignore-untracked` \
-	 && $(CC) -c version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\""
+	 && C="`sed -e :a -e N -e '$$!ba' -e 's/[\\\\"]/\\\\&/g' -e 's/\\n/\\\\n/g' COPYRIGHT.txt`" \
+	 && $(CC) -c version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\"" -DSERVALD_COPYRIGHT="\"$$C\""
 
 %.o:	%.c
 	@echo CC $<
@@ -117,6 +131,18 @@ fakeradio: fakeradio.o
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -o $@ fakeradio.o
 
+config_test: config_test.o conf_om.o conf_schema.o conf_parse.o str.o strbuf.o strbuf_helpers.o mem.o dataformats.o net.o log_util.o
+	@echo LINK $@
+	@$(CC) $(CFLAGS) -Wall -o $@ config_test.o conf_om.o conf_schema.o conf_parse.o str.o strbuf.o strbuf_helpers.o mem.o dataformats.o net.o log_util.o $(LDFLAGS)
+
+copyright: COPYRIGHT.txt
+
+findPATH = $(firstword $(wildcard $(addsuffix /$(1),$(subst :, ,$(PATH)))))
+COPYRIGHT_TOOL := $(call findPATH,sp-copyright-tool)
+
+COPYRIGHT.txt: *.c *.h $(COPYRIGHT_TOOL)
+	 $(COPYRIGHT_TOOL) -o $@ condense *.c *.h
+
 # This does not build on 64 bit elf platforms as NaCL isn't built with -fPIC
 # DOC 20120615
 libservald.so: $(OBJS) version.o
@@ -131,8 +157,14 @@ libmonitorclient.a: $(MONITORCLIENTOBJS) version.o
 	@echo AR $@
 	@$(AR) -cr $@ $(MONITORCLIENTOBJS) version.o
 
+install: servald
+	$(INSTALL_PROGRAM) -D servald $(DESTDIR)$(sbindir)/servald
+
+uninstall:
+	$(RM) $(DESTDIR)$(sbindir)/servald
+
 clean:
-	@rm -f $(OBJS) \
+	@$(RM) $(OBJS) \
 	  tfw_createfile.o version.o \
 	  fakeradio.o fakeradio \
 	  tfw_createfile servald \

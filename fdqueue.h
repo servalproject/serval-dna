@@ -1,6 +1,6 @@
 /* 
 Serval DNA file descriptor queue
-Copyright (C) 2012-2013 Serval Project, Inc.
+Copyright (C) 2012-2013 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -17,8 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALDNA__FDQUEUE_H
-#define __SERVALDNA__FDQUEUE_H
+#ifndef __SERVAL_DNA__FDQUEUE_H
+#define __SERVAL_DNA__FDQUEUE_H
 
 #ifdef HAVE_POLL_H
 #include <poll.h>
@@ -91,4 +91,4 @@ unsigned fd_depth();
 #define RETURNNULL(X) do { X; OUT(); return (NULL); } while (0)
 #define RETURNVOID do { OUT(); return; } while (0)
 
-#endif // __SERVALDNA__FDQUEUE_H
+#endif // __SERVAL_DNA__FDQUEUE_H

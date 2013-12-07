@@ -17,11 +17,13 @@ SERVAL_SOURCES = \
 	$(SERVAL_BASE)http_server.c \
 	$(SERVAL_BASE)keyring.c \
 	$(SERVAL_BASE)log.c \
+	$(SERVAL_BASE)log_util.c \
 	$(SERVAL_BASE)lsif.c \
 	$(SERVAL_BASE)main.c \
 	$(SERVAL_BASE)radio_link.c \
 	$(SERVAL_BASE)meshms.c \
 	$(SERVAL_BASE)mdp_client.c \
+	$(SERVAL_BASE)mdp_net.c \
 	$(SERVAL_BASE)os.c \
 	$(SERVAL_BASE)mem.c \
 	$(SERVAL_BASE)instance.c \

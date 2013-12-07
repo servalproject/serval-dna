@@ -17,8 +17,8 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-#ifndef __SERVALD__OVERLAY_BUFFER_H
-#define __SERVALD__OVERLAY_BUFFER_H
+#ifndef __SERVAL_DNA___OVERLAY_BUFFER_H
+#define __SERVAL_DNA___OVERLAY_BUFFER_H
 
 struct overlay_buffer {
   unsigned char *bytes;
@@ -118,4 +118,4 @@ unsigned char* ob_ptr(struct overlay_buffer *b);
 
 #define ob_overrun(b) _ob_overrun(__WHENCE__, b)
 
-#endif //__SERVALD__OVERLAY_BUFFER_H
+#endif //__SERVAL_DNA___OVERLAY_BUFFER_H

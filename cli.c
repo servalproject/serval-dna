@@ -1,6 +1,6 @@
 /*
 Serval DNA command-line functions
-Copyright (C) 2010-2013 Serval Project, Inc.
+Copyright (C) 2010-2013 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -340,17 +340,17 @@ int cli_optional_sid(const char *arg)
 
 int cli_optional_bundle_key(const char *arg)
 {
-  return !arg[0] || rhizome_str_is_bundle_key(arg);
+  return !arg[0] || str_to_rhizome_bk_t(NULL, arg) != -1;
 }
 
 int cli_manifestid(const char *arg)
 {
-  return rhizome_str_is_manifest_id(arg);
+  return str_to_rhizome_bid_t(NULL, arg) != -1;
 }
 
 int cli_fileid(const char *arg)
 {
-  return rhizome_str_is_file_hash(arg);
+  return str_to_rhizome_filehash_t(NULL, arg) != -1;
 }
 
 int cli_optional_bundle_crypt_key(const char *arg)

@@ -1,24 +1,24 @@
 /* 
- Serval Daemon
- Copyright (C) 2012 Serval Project Inc.
- 
- This program is free software; you can redistribute it and/or
- modify it under the terms of the GNU General Public License
- as published by the Free Software Foundation; either version 2
- of the License, or (at your option) any later version.
- 
- This program is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
- 
- You should have received a copy of the GNU General Public License
- along with this program; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+Serval DNA MDP addressing
+Copyright (C) 2012-2013 Serval Project Inc.
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef _SERVALD_OVERLAY_ADDRESS_H
-#define _SERVALD_OVERLAY_ADDRESS_H
+#ifndef __SERVAL_DNA__OVERLAY_ADDRESS_H
+#define __SERVAL_DNA__OVERLAY_ADDRESS_H
 
 #include "constants.h"
 
@@ -130,4 +130,4 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
 
 void free_subscribers();
 
-#endif
+#endif //__SERVAL_DNA__OVERLAY_ADDRESS_H

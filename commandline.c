@@ -1,6 +1,6 @@
 /*
 Serval DNA command-line functions
-Copyright (C) 2010-2013 Serval Project, Inc.
+Copyright (C) 2010-2013 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -54,6 +54,17 @@ int commandline_usage(const struct cli_parsed *parsed, struct cli_context *conte
 {
   printf("Serval DNA version %s\nUsage:\n", version_servald);
   return cli_usage_parsed(parsed, XPRINTF_STDIO(stdout));
+}
+
+int version_message(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  printf("Serval DNA version %s\n%s\n", version_servald, copyright_servald);
+  printf("\
+License GPLv2+: GNU GPL version 2 or later <http://gnu.org/licenses/gpl.html>.\n\
+This is free software: you are free to change and redistribute it.\n\
+There is NO WARRANTY, to the extent permitted by law.\n\
+");
+  return 0;
 }
 
 /* Data structures for accumulating output of a single JNI call.
@@ -2871,6 +2882,8 @@ int app_network_scan(const struct cli_parsed *parsed, struct cli_context *contex
 struct cli_schema command_line_options[]={
   {commandline_usage,{"help|-h|--help","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display command usage."},
+  {version_message,{"version|copyright"},CLIFLAG_PERMISSIVE_CONFIG,
+   "Display copyright information."},
   {app_echo,{"echo","[-e]","[--]","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Output the supplied string."},
   {app_log,{"log","error|warn|hint|info|debug","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,

@@ -542,7 +542,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs)
       RETURN(0);
     }
   }
-  WARNF("Unsupported signature at ofs=%u: type=%#02x", sig - m->manifestdata, sigType);
+  WARNF("Unsupported signature at ofs=%u: type=%#02x", (unsigned)(sig - m->manifestdata), sigType);
   RETURN(3);
 }
 

@@ -17,8 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVALDNA__MEM_H
-#define __SERVALDNA__MEM_H
+#ifndef __SERVAL_DNA__MEM_H
+#define __SERVAL_DNA__MEM_H
 
 #include <sys/types.h>
 #include "log.h"
@@ -69,4 +69,4 @@ char *_strn_edup(struct __sourceloc, const char *str, size_t len);
 #define str_edup(str)        _str_edup(__HERE__, (str))
 #define strn_edup(str, len)  _strn_edup(__HERE__, (str), (len))
 
-#endif // __SERVALDNA__MEM_H
+#endif // __SERVAL_DNA__MEM_H

@@ -1,6 +1,6 @@
 /*
 Serval Distributed Numbering Architecture (DNA)
-Copyright (C) 2012 Serval Project, Inc.
+Copyright (C) 2012 Serval Project Inc.
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -476,7 +476,7 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
 {
   m->finalised = 1;
   if (config.debug.rhizome_rx) {
-    DEBUGF("manifest len=%u has %u signatories. Associated filesize=%"PRIu64" bytes", 
+    DEBUGF("manifest len=%zu has %u signatories. Associated filesize=%"PRIu64" bytes", 
 	   m->manifest_all_bytes, m->sig_count, m->filesize);
     dump("manifest", m->manifestdata, m->manifest_all_bytes);
   }

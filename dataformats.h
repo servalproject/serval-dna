@@ -1,5 +1,23 @@
-#ifndef __SERVALD_DATA_FORMATS_H
-#define __SERVALD_DATA_FORMATS_H
+/*
+Serval DNA data interchange formats
+Copyright (C) 2012-2013 Serval Project Inc.
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
+#ifndef __SERVAL_DNA___DATA_FORMATS_H
+#define __SERVAL_DNA___DATA_FORMATS_H
 
 int str_is_subscriber_id(const char *sid);
 int strn_is_subscriber_id(const char *sid, size_t *lenp);
@@ -15,6 +33,7 @@ int rhizome_str_is_bundle_crypt_key(const char *text);
 int rhizome_strn_is_file_hash(const char *text);
 int rhizome_str_is_file_hash(const char *text);
 int rhizome_str_is_manifest_service(const char *text);
+int rhizome_str_is_manifest_name(const char *text);
 
 void write_uint64(unsigned char *o,uint64_t v);
 void write_uint16(unsigned char *o,uint16_t v);
@@ -23,4 +42,4 @@ uint64_t read_uint64(const unsigned char *o);
 uint32_t read_uint32(const unsigned char *o);
 uint16_t read_uint16(const unsigned char *o);
 
-#endif
+#endif //__SERVAL_DNA___DATA_FORMATS_H

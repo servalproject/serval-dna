@@ -1,9 +1,38 @@
-#ifndef __SERVALD_SOCKET_H
-#define __SERVALD_SOCKET_H
+/* 
+Serval DNA header file for socket operations
+Copyright (C) 2012-2013 Serval Project Inc.
 
-#ifndef WIN32
-#include <sys/un.h>
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
+
+#ifndef __SERVAL_DNA___SOCKET_H
+#define __SERVAL_DNA___SOCKET_H
+
+#ifdef WIN32
+#   include "win32/win32.h"
+#else
+#   include <sys/un.h>
+#   ifdef HAVE_SYS_SOCKET_H
+#     include <sys/socket.h>
+#   endif
+#   ifdef HAVE_NETINET_IN_H
+#     include <netinet/in.h>
+#   endif
 #endif
+
+#include "log.h"
 
 struct socket_address{
   socklen_t addrlen;
@@ -54,4 +83,6 @@ ssize_t _recv_message(struct __sourceloc, int fd, struct socket_address *address
 #define send_message(fd, address, data)    _send_message(__WHENCE__, (fd), (address), (data))
 #define recv_message(fd, address, data)    _recv_message(__WHENCE__, (fd), (address), (data))
 
-#endif
+ssize_t recvwithttl(int sock, unsigned char *buffer, size_t bufferlen, int *ttl, struct socket_address *recvaddr);
+
+#endif // __SERVAL_DNA___SOCKET_H
