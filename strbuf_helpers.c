@@ -393,7 +393,7 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
   default: {
       strbuf_append_socket_domain(sb, addr->sa_family);
       size_t len = addrlen > sizeof addr->sa_family ? addrlen - sizeof addr->sa_family : 0;
-      int i;
+      unsigned i;
       for (i = 0; i < len; ++i) {
 	strbuf_putc(sb, i ? ',' : ':');
 	strbuf_sprintf(sb, "%02x", addr->sa_data[i]);
