@@ -328,7 +328,7 @@ static struct rhizome_fetch_candidate *rhizome_fetch_insert(struct rhizome_fetch
   struct rhizome_fetch_candidate * e = &q->candidate_queue[q->candidate_queue_size - 1];
   if (config.debug.rhizome_rx)
     DEBUGF("insert queue[%d] candidate[%u]", (int)(q - rhizome_fetch_queues), i);
-  assert(i >= 0 && i < q->candidate_queue_size);
+  assert(i < q->candidate_queue_size);
   assert(i == 0 || c[-1].manifest);
   if (e->manifest) // queue is full
     rhizome_manifest_free(e->manifest);
@@ -350,7 +350,7 @@ static struct rhizome_fetch_candidate *rhizome_fetch_insert(struct rhizome_fetch
  */
 static void rhizome_fetch_unqueue(struct rhizome_fetch_queue *q, unsigned i)
 {
-  assert(i >= 0 && i < q->candidate_queue_size);
+  assert(i < q->candidate_queue_size);
   struct rhizome_fetch_candidate *c = &q->candidate_queue[i];
   if (config.debug.rhizome_rx)
     DEBUGF("unqueue queue[%d] candidate[%d] manifest=%p", (int)(q - rhizome_fetch_queues), i, c->manifest);
@@ -370,7 +370,7 @@ static void candidate_unqueue(struct rhizome_fetch_candidate *c)
   for (i = 0; i < NQUEUES; ++i) {
     struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
     unsigned index = c - q->candidate_queue;
-    if (index>=0 && index < q->candidate_queue_size){
+    if (index < q->candidate_queue_size){
       rhizome_fetch_unqueue(q, index);
       return;
     }
@@ -1161,7 +1161,7 @@ static int pipe_journal(struct rhizome_fetch_slot *slot){
   uint64_t length = slot->previous->filesize - slot->manifest->tail - slot->write_state.file_offset;
   
   // of course there might not be any overlap
-  if (start>=0 && start < slot->previous->filesize && length>0){
+  if (start < slot->previous->filesize && length>0){
     if (config.debug.rhizome)
       DEBUGF("Copying %"PRId64" bytes from previous journal", length);
     rhizome_journal_pipe(&slot->write_state, &slot->previous->filehash, start, length);
