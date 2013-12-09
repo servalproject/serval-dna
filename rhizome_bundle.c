@@ -316,11 +316,15 @@ void _rhizome_manifest_set_crypt(struct __sourceloc __whence, rhizome_manifest *
 
 void _rhizome_manifest_set_rowid(struct __sourceloc __whence, rhizome_manifest *m, uint64_t rowid)
 {
+  if (config.debug.rhizome_manifest)
+    DEBUGF("SET manifest[%d].rowid = %"PRIu64, m->manifest_record_number, rowid);
   m->rowid = rowid;
 }
 
 void _rhizome_manifest_set_inserttime(struct __sourceloc __whence, rhizome_manifest *m, time_ms_t time)
 {
+  if (config.debug.rhizome_manifest)
+    DEBUGF("SET manifest[%d].inserttime = %"PRItime_ms_t, m->manifest_record_number, time);
   m->inserttime = time;
 }
 
