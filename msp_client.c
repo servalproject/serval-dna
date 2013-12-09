@@ -39,6 +39,7 @@ struct msp_sock{
   struct msp_window tx;
   struct msp_window rx;
   uint16_t previous_ack;
+  time_ms_t next_ack;
   int (*handler)(struct msp_sock *sock, msp_state_t state, const uint8_t *payload, size_t len, void *context);
   void *context;
   struct mdp_header header;
@@ -60,7 +61,7 @@ struct msp_sock * msp_socket(int mdp_sock)
   ret->rx.last_activity = TIME_NEVER_HAS;
   ret->next_action = TIME_NEVER_WILL;
   ret->timeout = gettime_ms() + 10000;
-  ret->previous_ack = 0xFFFF;
+  ret->previous_ack = 0x7FFF;
   if (root)
     root->_prev=ret;
   root = ret;
@@ -253,13 +254,14 @@ static int add_packet(struct msp_window *window, uint16_t seq, uint8_t flags,
     bcopy(payload, p, len);
   }
   window->packet_count++;
-  return 0;
+  return 1;
 }
 
 struct socket_address daemon_addr={.addrlen=0,};
 
 static int msp_send_packet(struct msp_sock *sock, struct msp_packet *packet)
 {
+  assert(sock->header.remote.port);
   if (daemon_addr.addrlen == 0){
     if (make_local_sockaddr(&daemon_addr, "mdp.2.socket") == -1)
       return -1;
@@ -308,11 +310,13 @@ static int msp_send_packet(struct msp_sock *sock, struct msp_packet *packet)
   }
   DEBUGF("Sent packet seq %02x len %zd (acked %02x)", packet->seq, packet->len, sock->rx.next_seq);
   sock->tx.last_activity = packet->sent = gettime_ms();
+  sock->next_ack = packet->sent + 1500;
   return 0;
 }
 
 static int send_ack(struct msp_sock *sock)
 {
+  assert(sock->header.remote.port);
   if (daemon_addr.addrlen == 0){
     if (make_local_sockaddr(&daemon_addr, "mdp.2.socket") == -1)
       return -1;
@@ -327,7 +331,6 @@ static int send_ack(struct msp_sock *sock)
     msp_header[0]|=FLAG_ACK;
     
   write_uint16(&msp_header[1], sock->rx.next_seq);
-  sock->previous_ack = sock->rx.next_seq;
   
   struct fragmented_data data={
     .fragment_count=2,
@@ -350,7 +353,9 @@ static int send_ack(struct msp_sock *sock)
     return -1;
   }
   DEBUGF("Sent packet (acked %02x)", sock->rx.next_seq);
+  sock->previous_ack = sock->rx.next_seq;
   sock->tx.last_activity = gettime_ms();
+  sock->next_ack = sock->tx.last_activity + 1500;
   return 0;
 }
 
@@ -397,11 +402,15 @@ static int process_sock(struct msp_sock *sock)
   time_ms_t now = gettime_ms();
   
   if (sock->timeout < now){
-    sock->state |= MSP_STATE_CLOSED;
+    WHY("MSP socket timed out");
+    sock->state |= (MSP_STATE_CLOSED|MSP_STATE_ERROR);
     return -1;
   }
   
   sock->next_action = sock->timeout;
+  
+  if (sock->state & MSP_STATE_LISTENING)
+    return 0;
   
   struct msp_packet *p;
   
@@ -455,23 +464,21 @@ static int process_sock(struct msp_sock *sock)
     p=p->_next;
   }
   
-  time_ms_t next_packet = sock->tx.last_activity + sock->tx.rtt*2;
-  
   // should we send an ack now without sending a payload?
-  if (sock->previous_ack != sock->rx.next_seq || now > next_packet){
+  if (now > sock->next_ack){
     int r = send_ack(sock);
     if (r==-1)
       return -1;
-    next_packet = sock->tx.last_activity + sock->tx.rtt*2;
   }
   
-  if (sock->next_action > next_packet)
-    sock->next_action = next_packet;
+  if (sock->next_action > sock->next_ack)
+    sock->next_action = sock->next_ack;
   
   if (sock->state & MSP_STATE_SHUTDOWN_LOCAL
     && sock->state & MSP_STATE_SHUTDOWN_REMOTE
     && sock->tx.packet_count == 0 
-    && sock->rx.packet_count == 0){
+    && sock->rx.packet_count == 0
+    && sock->previous_ack == sock->rx.next_seq){
     sock->state |= MSP_STATE_CLOSED;
     return -1;
   }
@@ -598,7 +605,8 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
   sock->state |= MSP_STATE_RECEIVED_DATA;
   uint16_t seq = read_uint16(&payload[3]);
   
-  add_packet(&sock->rx, seq, flags, &payload[5], len - 5);
+  if (add_packet(&sock->rx, seq, flags, &payload[5], len - 5)==1)
+    sock->next_ack = gettime_ms();
   return 0;
 }
 

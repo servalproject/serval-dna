@@ -29,6 +29,26 @@ teardown() {
    report_all_servald_servers
 }
 
+doc_connect_fail="Timeout when the connection isn't reachable"
+setup_connect_fail() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   foreach_instance +A +B \
+      executeOk_servald config \
+         set debug.mdprequests on \
+         set log.console.level DEBUG \
+         set log.console.show_time on
+   start_servald_instances +A
+}
+test_connect_fail() {
+   set_instance +A
+   execute --exit-status=1 --timeout=20 $servald msp connect $SIDB 512 <<EOF
+Hello from the client
+EOF
+   tfw_cat --stderr
+}
+
 doc_hello="Simple Hello World"
 setup_hello() {
    setup_servald
@@ -114,6 +134,35 @@ test_server_no_data() {
    set_instance +B
    executeOk_servald --timeout=20 msp connect $SIDA 512 <file1
    tfw_cat --stderr
+   fork_wait_all
+}
+
+doc_keep_alive="Keep the connection alive with no data"
+setup_keep_alive() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   foreach_instance +A +B \
+      executeOk_servald config \
+         set debug.mdprequests on \
+         set log.console.level DEBUG \
+         set log.console.show_time on
+   start_servald_instances +A +B
+}
+listen_pipe() {
+   executeOk_servald msp listen 512 < <(echo "START" && sleep 20 && echo "END")
+   tfw_cat --stdout --stderr
+}
+connect_pipe() {
+   executeOk_servald msp connect $1 512 < <(echo "START" && sleep 20 && echo "END")
+   tfw_cat --stdout --stderr
+}
+test_keep_alive() {
+   set_instance +A
+   fork listen_pipe
+   wait_until --timeout=10 grep "Bind MDP $SIDA:512" "$instance_servald_log"
+   set_instance +B
+   fork connect_pipe $SIDA
    fork_wait_all
 }
 

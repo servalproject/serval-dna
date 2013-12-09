@@ -16,6 +16,7 @@ struct connection{
   struct msp_sock *sock;
   struct buffer *in;
   struct buffer *out;
+  int last_state;
 };
 
 struct connection *stdio_connection=NULL;
@@ -86,6 +87,7 @@ static void free_connection(struct connection *conn)
 static int msp_handler(struct msp_sock *sock, msp_state_t state, const uint8_t *payload, size_t len, void *context)
 {
   struct connection *conn = context;
+  conn->last_state=state;
   
   if (payload && len){
     if (conn->out->limit){
@@ -350,7 +352,11 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
   while(fd_poll()){
     ;
   }
-  ret=0;
+  
+  if (stdio_connection && stdio_connection->last_state & MSP_STATE_ERROR)
+    ret = 1;
+  else
+    ret = 0;
   
 end:
   listener=NULL;
