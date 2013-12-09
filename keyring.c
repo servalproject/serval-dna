@@ -259,7 +259,7 @@ void keyring_release_identity(keyring_file *k, int cn, int id){
 void keyring_release_subscriber(keyring_file *k, const sid_t *sid)
 {
   int cn=0,in=0,kp=0;
-  if (keyring_find_sid(keyring, &cn, &in, &kp, sid)
+  if (keyring_find_sid(k, &cn, &in, &kp, sid)
     && keyring->contexts[cn]->identities[in]->subscriber != my_subscriber)
       keyring_release_identity(keyring, cn, in);
 }
@@ -1599,8 +1599,8 @@ int keyring_find_public_tag_value(const keyring_file *k, int *cn, int *in, int *
 int keyring_identity_find_keytype(const keyring_file *k, int cn, int in, int keytype)
 {
   int kp;
-  for (kp = 0; kp < keyring->contexts[cn]->identities[in]->keypair_count; ++kp)
-    if (keyring->contexts[cn]->identities[in]->keypairs[kp]->type == keytype)
+  for (kp = 0; kp < k->contexts[cn]->identities[in]->keypair_count; ++kp)
+    if (k->contexts[cn]->identities[in]->keypairs[kp]->type == keytype)
       return kp;
   return -1;
 }
