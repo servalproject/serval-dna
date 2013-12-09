@@ -706,7 +706,7 @@ void rhizome_list_release(struct rhizome_list_cursor *);
 #define MAX_RHIZOME_MANIFESTS 40
 #define MAX_CANDIDATES 32
 
-int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip, const sid_t *peersidp);
+int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct socket_address *addr, const sid_t *peersidp);
 rhizome_manifest * rhizome_fetch_search(const unsigned char *id, int prefix_length);
 
 /* Rhizome file storage api */
@@ -994,7 +994,10 @@ enum rhizome_start_fetch_result {
   SLOTBUSY
 };
 
-enum rhizome_start_fetch_result rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip, const sid_t *sidp, const unsigned char *prefix, size_t prefix_length);
+enum rhizome_start_fetch_result
+rhizome_fetch_request_manifest_by_prefix(const struct socket_address *addr, 
+					 const sid_t *peersidp,
+					 const unsigned char *prefix, size_t prefix_length);
 int rhizome_any_fetch_active();
 int rhizome_any_fetch_queued();
 int rhizome_fetch_status_html(struct strbuf *b);

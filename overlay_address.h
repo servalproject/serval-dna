@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __SERVAL_DNA__OVERLAY_ADDRESS_H
 
 #include "constants.h"
+#include "socket.h"
 
 // not reachable
 #define REACHABLE_NONE 0
@@ -94,7 +95,7 @@ struct decode_context{
   int sender_interface;
   int packet_version;
   int encapsulation;
-  struct sockaddr_in addr;
+  struct socket_address addr;
   union{
     // only valid while decoding
     int invalid_addresses;

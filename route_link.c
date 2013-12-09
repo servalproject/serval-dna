@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "overlay_address.h"
 #include "overlay_buffer.h"
+#include "overlay_interface.h"
 #include "overlay_packet.h"
 #include "str.h"
 #include "conf.h"
@@ -189,9 +190,9 @@ struct network_destination * new_destination(struct overlay_interface *interface
   return ret;
 }
 
-struct network_destination * create_unicast_destination(struct sockaddr_in addr, struct overlay_interface *interface){
-  if (!interface)
-    interface = overlay_interface_find(addr.sin_addr, 1);
+struct network_destination * create_unicast_destination(struct socket_address *addr, struct overlay_interface *interface){
+  if (!interface && addr->addr.sa_family == AF_INET)
+    interface = overlay_interface_find(addr->inet.sin_addr, 1);
   if (!interface){
     WHY("I don't know which interface to use");
     return NULL;
@@ -200,14 +201,12 @@ struct network_destination * create_unicast_destination(struct sockaddr_in addr,
     WHY("The interface is down.");
     return NULL;
   }
-  if (addr.sin_addr.s_addr==0 || addr.sin_port==0){
-//    WHY("Invalid unicast address");
+  if (addr->addr.sa_family == AF_INET && (addr->inet.sin_addr.s_addr==0 || addr->inet.sin_port==0))
     return NULL;
-  }
   
   struct network_destination *ret = new_destination(interface, ENCAP_OVERLAY);
   if (ret){
-    ret->address = addr;
+    ret->address = *addr;
     ret->unicast = 1;
     ret->tick_ms = interface->destination->tick_ms;
     ret->sequence_number = -1;
@@ -1107,20 +1106,20 @@ int link_received_duplicate(struct subscriber *subscriber, int payload_seq)
 }
 
 // remote peer has confirmed hearing a recent unicast packet
-int link_unicast_ack(struct subscriber *UNUSED(subscriber), struct overlay_interface *UNUSED(interface), struct sockaddr_in UNUSED(addr))
+int link_unicast_ack(struct subscriber *UNUSED(subscriber), struct overlay_interface *UNUSED(interface), struct socket_address *UNUSED(addr))
 {
   // TODO find / create network destination, keep it alive
   return 0;
 }
 
-static struct link_out *create_out_link(struct neighbour *neighbour, overlay_interface *interface, struct sockaddr_in *addr, char unicast)
+static struct link_out *create_out_link(struct neighbour *neighbour, overlay_interface *interface, struct socket_address *addr, char unicast)
 {
   struct link_out *ret=emalloc_zero(sizeof(struct link_out));
   if (ret){
     ret->_next=neighbour->out_links;
     neighbour->out_links=ret;
     if (unicast)
-      ret->destination = create_unicast_destination(*addr, interface);
+      ret->destination = create_unicast_destination(addr, interface);
     else
       ret->destination = add_destination_ref(interface->destination);
     if (config.debug.linkstate)
@@ -1135,7 +1134,7 @@ static struct link_out *create_out_link(struct neighbour *neighbour, overlay_int
   return ret;
 }
 
-static void create_out_links(struct neighbour *neighbour, overlay_interface *interface, struct sockaddr_in *addr){
+static void create_out_links(struct neighbour *neighbour, overlay_interface *interface, struct socket_address *addr){
   struct link_out *l = neighbour->out_links;
   while(l){
     if (l->destination->interface==interface)
@@ -1143,13 +1142,13 @@ static void create_out_links(struct neighbour *neighbour, overlay_interface *int
     l=l->_next;
   }
   // if this packet arrived in an IPv4 packet, assume we need to send them unicast packets
-  if (addr && addr->sin_family==AF_INET && addr->sin_port!=0 && addr->sin_addr.s_addr!=0)
+  if (addr && addr->addr.sa_family==AF_INET && addr->inet.sin_port!=0 && addr->inet.sin_addr.s_addr!=0)
     create_out_link(neighbour, interface, addr, 1);
     
   // if this packet arrived from the same IPv4 subnet, or a different type of network, assume they can hear our broadcasts
-  if (!addr || addr->sin_family!=AF_INET || 
-      (addr->sin_addr.s_addr & interface->netmask.s_addr) 
-      == (interface->address.sin_addr.s_addr & interface->netmask.s_addr))
+  if (!addr || addr->addr.sa_family!=AF_INET || 
+      (addr->inet.sin_addr.s_addr & interface->netmask.s_addr) 
+      == (interface->address.inet.sin_addr.s_addr & interface->netmask.s_addr))
     create_out_link(neighbour, interface, addr, 0);
 }
 

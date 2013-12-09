@@ -18,9 +18,10 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <termios.h>
 #include "serval.h"
 #include "conf.h"
-#include <termios.h>
+#include "overlay_interface.h"
 
 int overlay_packetradio_setup_port(overlay_interface *interface)
 {

@@ -47,6 +47,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "conf.h"
 #include "overlay_buffer.h"
+#include "overlay_interface.h"
 #include "golay.h"
 #include "radio_link.h"
 

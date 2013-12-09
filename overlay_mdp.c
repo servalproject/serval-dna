@@ -57,6 +57,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "overlay_buffer.h"
 #include "overlay_address.h"
+#include "overlay_interface.h"
 #include "overlay_packet.h"
 #include "mdp_client.h"
 #include "crypto.h"
@@ -1058,20 +1059,21 @@ struct scan_state scans[OVERLAY_MAX_INTERFACES];
 
 static void overlay_mdp_scan(struct sched_ent *alarm)
 {
-  struct sockaddr_in addr={
-    .sin_family=AF_INET,
-    .sin_port=htons(PORT_DNA),
-    .sin_addr={0},
-  };
+  struct socket_address addr;
+  bzero(&addr, sizeof(addr));
+  addr.addrlen = sizeof(addr.inet);
+  addr.inet.sin_family=AF_INET;
+  addr.inet.sin_port=htons(PORT_DNA);
+  
   struct scan_state *state = (struct scan_state *)alarm;
   uint32_t stop = state->last;
   if (stop - state->current > 25)
     stop = state->current+25;
   
   while(state->current <= stop){
-    addr.sin_addr.s_addr=htonl(state->current);
-    if (addr.sin_addr.s_addr != state->interface->address.sin_addr.s_addr){
-      struct network_destination *destination = create_unicast_destination(addr, state->interface);
+    addr.inet.sin_addr.s_addr=htonl(state->current);
+    if (addr.inet.sin_addr.s_addr != state->interface->address.inet.sin_addr.s_addr){
+      struct network_destination *destination = create_unicast_destination(&addr, state->interface);
       if (!destination)
 	break;
       int ret = overlay_send_probe(NULL, destination, OQ_ORDINARY);
@@ -1630,12 +1632,14 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 		struct overlay_interface *interface = &overlay_interfaces[i];
 		if (interface->state!=INTERFACE_STATE_UP)
 		  continue;
-		
+		if (interface->address.addr.sa_family!=AF_INET)
+		  continue;
 		scans[i].interface = interface;
-		scans[i].current = ntohl(interface->address.sin_addr.s_addr & interface->netmask.s_addr)+1;
-		scans[i].last = ntohl(interface->destination->address.sin_addr.s_addr)-1;
+		scans[i].current = ntohl(interface->address.inet.sin_addr.s_addr & ~interface->netmask.s_addr)+1;
+		scans[i].last = ntohl(interface->destination->address.inet.sin_addr.s_addr)-1;
 		if (scans[i].last - scans[i].current>0x10000){
-		  INFOF("Skipping scan on interface %s as the address space is too large",interface->name);
+		  INFOF("Skipping scan on interface %s as the address space is too large (%04x %04x)",
+		    interface->name, scans[i].last, scans[i].current);
 		  continue;
 		}
 		scans[i].alarm.alarm=start;

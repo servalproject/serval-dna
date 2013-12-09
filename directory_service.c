@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 #include <stdio.h>
 #include <unistd.h>
+#include <inttypes.h>
 #include "constants.h"
 #include "serval.h"
 #include "mdp_client.h"

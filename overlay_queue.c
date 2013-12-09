@@ -21,6 +21,7 @@
 #include "serval.h"
 #include "conf.h"
 #include "overlay_buffer.h"
+#include "overlay_interface.h"
 #include "overlay_packet.h"
 #include "radio_link.h"
 #include "str.h"

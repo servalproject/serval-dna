@@ -22,8 +22,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "socket.h"
 #include "str.h"
 #include "strbuf.h"
+#include "strbuf_helpers.h"
 #include "overlay_buffer.h"
+#include "overlay_interface.h"
 #include "overlay_packet.h"
+
 
 struct sockaddr_in loopback;
 
@@ -259,7 +262,7 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
 }
 
 int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface *interface, 
-			struct sockaddr_in *addr, struct overlay_buffer *buffer){
+			struct socket_address *addr, struct overlay_buffer *buffer){
   IN();
   
   context->interface = interface;
@@ -387,7 +390,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   }
   
   if (recvaddr && recvaddr->addr.sa_family != AF_INET)
-    RETURN(WHYF("Unexpected protocol family %d", recvaddr->addr.sa_family));
+    RETURN(WHYF("Unexpected address %s", alloca_socket_address(recvaddr)));
   
   struct overlay_frame f;
   struct decode_context context;
@@ -404,7 +407,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   else 
     bzero(&f.recvaddr, sizeof f.recvaddr);
   
-  int ret=parseEnvelopeHeader(&context, interface, recvaddr ? &recvaddr->inet : NULL, b);
+  int ret=parseEnvelopeHeader(&context, interface, recvaddr, b);
   if (ret){
     ob_free(b);
     RETURN(ret);

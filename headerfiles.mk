@@ -3,6 +3,7 @@ HDRS=	fifo.h \
 	overlay_buffer.h \
 	overlay_address.h \
 	overlay_packet.h \
+	overlay_interface.h \
 	rhizome.h \
 	serval.h \
 	keyring.h \
