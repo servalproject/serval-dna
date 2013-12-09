@@ -282,7 +282,7 @@ overlay_interface_read_any(struct sched_ent *alarm)
 	DEBUGF("Could not find matching interface for packet received from %s", inet_ntoa(recvaddr.inet.sin_addr));
       return;
     }
-    packetOkOverlay(interface, packet, plen, recvttl, &recvaddr);
+    packetOkOverlay(interface, packet, plen, &recvaddr);
   }
   if (alarm->poll.revents & (POLLHUP | POLLERR)) {
     INFO("Closing broadcast socket due to error");
@@ -587,13 +587,13 @@ static void interface_read_dgram(struct overlay_interface *interface)
   plen = recvwithttl(interface->alarm.poll.fd,packet, sizeof(packet), &recvttl, &recvaddr);
   if (plen == -1) {
     WHYF_perror("recvwithttl(%d,%p,%zu,&%d,%p(%s))",
-	  interface->alarm.poll.fd, packet, sizeof packet, recvttl,
+	  interface->alarm.poll.fd, packet, sizeof packet,
 	  &recvaddr, alloca_socket_address(&recvaddr)
 	);
     overlay_interface_close(interface);
     return;
   }
-  packetOkOverlay(interface, packet, plen, recvttl, &recvaddr);
+  packetOkOverlay(interface, packet, plen, &recvaddr);
 }
 
 struct file_packet{
@@ -687,7 +687,7 @@ static void interface_read_file(struct overlay_interface *interface)
 	struct socket_address srcaddr;
 	srcaddr.addrlen = sizeof packet.src_addr;
 	srcaddr.inet = packet.src_addr;
-	packetOkOverlay(interface, packet.payload, packet.payload_length, -1, &srcaddr);
+	packetOkOverlay(interface, packet.payload, packet.payload_length, &srcaddr);
       }
     }
   }

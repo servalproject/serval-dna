@@ -500,7 +500,7 @@ static int rhizome_sync_with_peers(int mode, int peer_count, const struct config
   return 0;
 }
 
-int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context *context)
+int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);

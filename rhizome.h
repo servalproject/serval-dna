@@ -604,7 +604,7 @@ int rhizome_bk_xor_stream(
   const size_t rs_len,
   unsigned char *xor_stream,
   int xor_stream_byte_count);
-int rhizome_bk2secret(rhizome_manifest *m,
+int rhizome_bk2secret(
   const rhizome_bid_t *bidp,
   const unsigned char *rs, const size_t rs_len,
   /* The BK need only be the length of the secret half of the secret key */
@@ -618,7 +618,6 @@ int rhizome_secret2bk(
   unsigned char bkout[RHIZOME_BUNDLE_KEY_BYTES],
   const unsigned char secret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]
 );
-unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m);
 int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
 			       const unsigned char *pk,rhizome_signature *out);
 int rhizome_verify_bundle_privatekey(const unsigned char *sk, const unsigned char *pk);
@@ -765,8 +764,7 @@ typedef struct rhizome_http_request
 } rhizome_http_request;
 
 int rhizome_received_content(const unsigned char *bidprefix,uint64_t version, 
-			     uint64_t offset, size_t count,unsigned char *bytes,
-			     int type);
+			     uint64_t offset, size_t count,unsigned char *bytes);
 int64_t rhizome_database_create_blob_for(const char *filehashhex_or_tempid,
 					 int64_t fileLength,int priority);
 int rhizome_server_set_response(rhizome_http_request *r, const struct http_response *h);

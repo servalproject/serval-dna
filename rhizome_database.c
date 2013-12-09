@@ -116,7 +116,7 @@ static int sqlite_trace_done;
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static void sqlite_trace_callback(void *context, const char *rendered_sql)
+static void sqlite_trace_callback(void *UNUSED(context), const char *rendered_sql)
 {
   if (sqlite_trace_func())
     logMessage(LOG_LEVEL_DEBUG, sqlite_trace_whence ? *sqlite_trace_whence : __HERE__, "%s", rendered_sql);
@@ -130,7 +130,7 @@ static void sqlite_trace_callback(void *context, const char *rendered_sql)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static void sqlite_profile_callback(void *context, const char *rendered_sql, sqlite_uint64 nanosec)
+static void sqlite_profile_callback(void *context, const char *rendered_sql, sqlite_uint64 UNUSED(nanosec))
 {
   if (!sqlite_trace_done)
     sqlite_trace_callback(context, rendered_sql);
@@ -159,7 +159,7 @@ int (*sqlite_set_tracefunc(int (*newfunc)()))()
   return oldfunc;
 }
 
-void sqlite_log(void *ignored, int result, const char *msg)
+void sqlite_log(void *UNUSED(ignored), int result, const char *msg)
 {
   WARNF("Sqlite: %d %s", result, msg);
 }

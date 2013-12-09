@@ -93,7 +93,8 @@ static void send_audio(int session_id, unsigned char *buffer, int len, int codec
   monitor_client_writeline_and_data(monitor_client_fd, buffer, len, "audio %06x %d\n", session_id, codec);
 }
 
-static int remote_call(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_call(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
+{
   int token = strtol(argv[0], NULL, 16);
   
   if (call_token != -1){
@@ -111,7 +112,8 @@ static int remote_call(char *cmd, int argc, char **argv, unsigned char *data, in
   return 1;
 }
 
-static int remote_ringing(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_ringing(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
+{
   int token = strtol(argv[0], NULL, 16);
   if (call_token == token){
     printf("They're ringing\n");
@@ -121,7 +123,8 @@ static int remote_ringing(char *cmd, int argc, char **argv, unsigned char *data,
   return 1;
 }
 
-static int remote_pickup(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_pickup(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
+{
   int token = strtol(argv[0], NULL, 16);
   if (call_token == token){
     printf("They've picked up\n");
@@ -131,7 +134,8 @@ static int remote_pickup(char *cmd, int argc, char **argv, unsigned char *data, 
   return 1;
 }
 
-static int remote_dialing(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_dialing(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
+{
   int token = strtol(argv[0], NULL, 16);
   if (call_token == -1){
     call_token=token;
@@ -143,7 +147,8 @@ static int remote_dialing(char *cmd, int argc, char **argv, unsigned char *data,
   return 1;
 }
 
-static int remote_hangup(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_hangup(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
+{
   int token = strtol(argv[0], NULL, 16);
   if (call_token == token){
     printf("Call ended\n");
@@ -153,7 +158,8 @@ static int remote_hangup(char *cmd, int argc, char **argv, unsigned char *data, 
   return 1;
 }
 
-static int remote_audio(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_audio(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
+{
   int token = strtol(argv[0], NULL, 16);
   if (call_token == token){
     int codec = strtol(argv[1], NULL, 10);
@@ -171,7 +177,8 @@ static int remote_audio(char *cmd, int argc, char **argv, unsigned char *data, i
   return 1;
 }
 
-static int remote_codecs(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_codecs(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
+{
   int token = strtol(argv[0], NULL, 16);
   if (call_token == token){
     int i;
@@ -185,7 +192,8 @@ static int remote_codecs(char *cmd, int argc, char **argv, unsigned char *data, 
   return 1;
 }
 
-static int remote_print(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_print(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *UNUSED(context))
+{
   int i;
   printf("%s",cmd);
   for (i=0;i<argc;i++){
@@ -199,7 +207,8 @@ static int remote_print(char *cmd, int argc, char **argv, unsigned char *data, i
   return 1;
 }
 
-static int remote_noop(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_noop(char *UNUSED(cmd), int UNUSED(argc), char **UNUSED(argv), unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
+{
   return 1;
 }
 
@@ -217,7 +226,7 @@ struct monitor_command_handler console_handlers[]={
   {.command="MONITORSTATUS", .handler=remote_noop},
 };
 
-static int console_dial(const struct cli_parsed *parsed, struct cli_context *context)
+static int console_dial(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (call_token!=-1){
     printf("Already in a call\n");
@@ -230,7 +239,7 @@ static int console_dial(const struct cli_parsed *parsed, struct cli_context *con
   return 0;
 }
 
-static int console_answer(const struct cli_parsed *parsed, struct cli_context *context)
+static int console_answer(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   if (call_token==-1){
     printf("No active call to answer\n");
@@ -240,7 +249,7 @@ static int console_answer(const struct cli_parsed *parsed, struct cli_context *c
   return 0;
 }
 
-static int console_hangup(const struct cli_parsed *parsed, struct cli_context *context)
+static int console_hangup(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   if (call_token==-1){
     printf("No call to hangup\n");
@@ -250,7 +259,7 @@ static int console_hangup(const struct cli_parsed *parsed, struct cli_context *c
   return 0;
 }
 
-static int console_audio(const struct cli_parsed *parsed, struct cli_context *context)
+static int console_audio(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (call_token==-1){
     printf("No active call\n");
@@ -285,7 +294,7 @@ struct cli_schema console_commands[]={
   {NULL, {NULL, NULL, NULL}, 0, NULL},
 };
 
-static int console_usage(const struct cli_parsed *parsed, struct cli_context *context)
+static int console_usage(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   cli_usage(console_commands, XPRINTF_STDIO(stdout));
   fflush(stdout);
@@ -353,7 +362,7 @@ static void monitor_read(struct sched_ent *alarm){
   }
 }
 
-int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *context)
+int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);

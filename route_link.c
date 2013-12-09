@@ -461,7 +461,8 @@ next:
   RETURN(best_link);
 }
 
-static int monitor_announce(struct subscriber *subscriber, void *context){
+static int monitor_announce(struct subscriber *subscriber, void *UNUSED(context))
+{
   if (subscriber->reachable & REACHABLE){
     struct link_state *state = get_link_state(subscriber);
     monitor_announce_link(state->hop_count, state->transmitter, subscriber);
@@ -765,7 +766,7 @@ static int neighbour_find_best_link(struct neighbour *n)
   return 0;
 }
 
-static int neighbour_link_sent(struct overlay_frame *frame, int sequence, void *context)
+static int neighbour_link_sent(struct overlay_frame *UNUSED(frame), int sequence, void *context)
 {
   struct subscriber *subscriber = context;
   struct neighbour *neighbour = get_neighbour(subscriber, 0);
@@ -1077,7 +1078,7 @@ int link_state_ack_soon(struct subscriber *subscriber)
 }
 
 // our neighbour is sending a duplicate frame, did we see the original?
-int link_received_duplicate(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int payload_seq, int unicast)
+int link_received_duplicate(struct subscriber *subscriber, int payload_seq)
 {
   struct neighbour *neighbour = get_neighbour(subscriber, 0);
   if (!neighbour)
@@ -1106,7 +1107,7 @@ int link_received_duplicate(struct subscriber *subscriber, struct overlay_interf
 }
 
 // remote peer has confirmed hearing a recent unicast packet
-int link_unicast_ack(struct subscriber *subscriber, struct overlay_interface *interface, struct sockaddr_in addr)
+int link_unicast_ack(struct subscriber *UNUSED(subscriber), struct overlay_interface *UNUSED(interface), struct sockaddr_in UNUSED(addr))
 {
   // TODO find / create network destination, keep it alive
   return 0;
@@ -1441,7 +1442,7 @@ void link_explained(struct subscriber *subscriber)
   update_alarm(__WHENCE__, now + 5);
 }
 
-void link_interface_down(struct overlay_interface *interface)
+void link_interface_down(struct overlay_interface *UNUSED(interface))
 {
   clean_neighbours(gettime_ms());
 }

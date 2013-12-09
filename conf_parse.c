@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <assert.h>
+#include "constants.h"
 #include "log.h"
 #include "conf.h"
 
@@ -515,7 +516,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
     int cf_fmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *strct) { \
       return cf_xfmt_config_##__name(parentp, strct, NULL); \
     } \
-    int cf_xfmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *strct, const struct config_##__name *dflt) { \
+    int cf_xfmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *strct, const struct config_##__name *UNUSED(dflt)) { \
       int result = CFOK; \
       int ret;
 #define __FMT_TEXT(__repr, __eltname, __eltexpr, __defaultvar) \
@@ -619,7 +620,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
 #define END_STRUCT_DEFAULT
 #define ARRAY(__name, __flags, __validator...) \
-    int cf_xfmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *array, const struct config_##__name *dflt) { \
+    int cf_xfmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *array, const struct config_##__name *UNUSED(dflt)) { \
       return cf_fmt_config_##__name(parentp, array); \
     } \
     int cf_fmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *array) { \

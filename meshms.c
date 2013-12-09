@@ -742,7 +742,7 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
   return 0;
 }
 
-int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context *context)
+int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   const char *my_sidhex, *their_sidhex, *message;
   if (cli_arg(parsed, "sender_sid", &my_sidhex, str_is_subscriber_id, "") == -1
@@ -977,7 +977,7 @@ static int mark_read(struct conversations *conv, const sid_t *their_sid, const c
   return ret;
 }
 
-int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *context)
+int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   const char *my_sidhex, *their_sidhex, *offset_str;
   if (cli_arg(parsed, "sender_sid", &my_sidhex, str_is_subscriber_id, "") == -1

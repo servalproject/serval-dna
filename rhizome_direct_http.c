@@ -337,6 +337,8 @@ static void rhizome_direct_process_mime_body(struct http_request *hr, const char
 
 int rhizome_direct_import(rhizome_http_request *r, const char *remainder)
 {
+  if (*remainder)
+    return 1;
   if (r->http.verb != HTTP_VERB_POST) {
     http_request_simple_response(&r->http, 405, NULL);
     return 0;
@@ -354,6 +356,8 @@ int rhizome_direct_import(rhizome_http_request *r, const char *remainder)
 
 int rhizome_direct_enquiry(rhizome_http_request *r, const char *remainder)
 {
+  if (*remainder)
+    return 1;
   if (r->http.verb != HTTP_VERB_POST) {
     http_request_simple_response(&r->http, 405, NULL);
     return 0;
@@ -376,6 +380,8 @@ int rhizome_direct_enquiry(rhizome_http_request *r, const char *remainder)
  */
 int rhizome_direct_addfile(rhizome_http_request *r, const char *remainder)
 {
+  if (*remainder)
+    return 1;
   if (r->http.verb != HTTP_VERB_POST) {
     http_request_simple_response(&r->http, 405, NULL);
     return 0;
@@ -402,12 +408,12 @@ int rhizome_direct_addfile(rhizome_http_request *r, const char *remainder)
   return 0;
 }
 
-int rhizome_direct_dispatch(rhizome_http_request *r, const char *remainder)
+int rhizome_direct_dispatch(rhizome_http_request *r, const char *UNUSED(remainder))
 {
   if (   config.rhizome.api.addfile.uri_path[0]
       && strcmp(r->http.path, config.rhizome.api.addfile.uri_path) == 0
   )
-    return rhizome_direct_addfile(r, remainder);
+    return rhizome_direct_addfile(r, "");
   return 1;
 }
 

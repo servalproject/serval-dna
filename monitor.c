@@ -391,7 +391,7 @@ void monitor_get_all_supported_codecs(unsigned char *codecs){
   }
 }
 
-static int monitor_announce_all_peers(struct subscriber *subscriber, void *context)
+static int monitor_announce_all_peers(struct subscriber *subscriber, void *UNUSED(context))
 {
   if (subscriber->reachable&REACHABLE)
     monitor_announce_peer(&subscriber->sid);
@@ -491,7 +491,7 @@ static int monitor_call(const struct cli_parsed *parsed, struct cli_context *con
   return 0;
 }
 
-static int monitor_call_ring(const struct cli_parsed *parsed, struct cli_context *context)
+static int monitor_call_ring(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
@@ -501,7 +501,7 @@ static int monitor_call_ring(const struct cli_parsed *parsed, struct cli_context
   return 0;
 }
 
-static int monitor_call_pickup(const struct cli_parsed *parsed, struct cli_context *context)
+static int monitor_call_pickup(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
@@ -529,7 +529,7 @@ static int monitor_call_audio(const struct cli_parsed *parsed, struct cli_contex
   return 0;
 }
 
-static int monitor_call_hangup(const struct cli_parsed *parsed, struct cli_context *context)
+static int monitor_call_hangup(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
@@ -592,7 +592,7 @@ int monitor_process_command(struct monitor_context *c)
   return 0;
 }
 
-static int monitor_help(const struct cli_parsed *parsed, struct cli_context *context)
+static int monitor_help(const struct cli_parsed *UNUSED(parsed), struct cli_context *context)
 {
   struct monitor_context *c=context->context;
   strbuf b = strbuf_alloca(16384);

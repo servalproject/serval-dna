@@ -282,7 +282,7 @@ error:
 
 time_ms_t lookup_time=0;
 
-int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, struct overlay_frame *f, time_ms_t now)
+int overlay_rhizome_saw_advertisements(struct decode_context *context, struct overlay_frame *f)
 {
   IN();
   if (!f)

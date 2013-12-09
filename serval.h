@@ -435,7 +435,7 @@ void insertTransactionInCache(unsigned char *transaction_id);
 
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
-		    int recvttl, struct socket_address *recvaddr);
+		    struct socket_address *recvaddr);
 int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *frame, 
 			 struct overlay_buffer *buffer, struct subscriber **nexthop);
 int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface *interface, 
@@ -476,10 +476,10 @@ int overlay_queue_schedule_next(time_ms_t next_allowed_packet);
 int overlay_send_tick_packet(struct network_destination *destination);
 int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *destination, uint32_t ack_mask, int ack_seq);
 
-int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, struct overlay_frame *f,  time_ms_t now);
+int overlay_rhizome_saw_advertisements(struct decode_context *context, struct overlay_frame *f);
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_saw_voice_traffic();
-int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now);
+int overlay_saw_mdp_containing_frame(struct overlay_frame *f);
 
 int serval_packetvisualise(const char *message, const unsigned char *packet, size_t len);
 int serval_packetvisualise_xpf(XPRINTF xpf, const char *message, const unsigned char *packet, size_t len);
@@ -713,7 +713,7 @@ extern int64_t bundles_available;
 extern char crash_handler_clue[1024];
 
 
-int link_received_duplicate(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int previous_seq, int unicast);
+int link_received_duplicate(struct subscriber *subscriber, int previous_seq);
 int link_received_packet(struct decode_context *context, int sender_seq, char unicast);
 int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp);
 void link_explained(struct subscriber *subscriber);

@@ -201,7 +201,7 @@ static void parse_frame(struct overlay_buffer *buff){
   // the remaining bytes are an mdp payload, process it
   frame.payload = buff;
   
-  overlay_saw_mdp_containing_frame(&frame, gettime_ms());
+  overlay_saw_mdp_containing_frame(&frame);
   
   // TODO relay this packet to other non-olsr networks.
   

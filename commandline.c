@@ -79,13 +79,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 extern struct cli_schema command_line_options[];
 
-int commandline_usage(const struct cli_parsed *parsed, struct cli_context *context)
+int commandline_usage(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   printf("Serval DNA version %s\nUsage:\n", version_servald);
   return cli_usage_parsed(parsed, XPRINTF_STDIO(stdout));
 }
 
-int version_message(const struct cli_parsed *parsed, struct cli_context *context)
+int version_message(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   printf("Serval DNA version %s\n%s\n", version_servald, copyright_servald);
   printf("\
@@ -165,7 +165,7 @@ int Throw(JNIEnv *env, const char *class, const char *msg)
 /* JNI entry point to command line.  See org.servalproject.servald.ServalD class for the Java side.
    JNI method descriptor: "(Ljava/util/List;[Ljava/lang/String;)I"
 */
-JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv *env, jobject this, jobject outv, jobjectArray args)
+JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv *env, jobject UNUSED(this), jobject outv, jobjectArray args)
 {
   struct cli_context context;
   bzero(&context, sizeof(context));
@@ -535,7 +535,7 @@ int app_echo(const struct cli_parsed *parsed, struct cli_context *context)
   return 0;
 }
 
-int app_log(const struct cli_parsed *parsed, struct cli_context *context)
+int app_log(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1233,7 +1233,7 @@ int app_config_dump(const struct cli_parsed *parsed, struct cli_context *context
   return ret == CFOK ? 0 : 1;
 }
 
-int app_config_set(const struct cli_parsed *parsed, struct cli_context *context)
+int app_config_set(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1626,7 +1626,7 @@ cleanup:
   return status;
 }
 
-int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_context *context)
+int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1650,7 +1650,7 @@ int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_cont
   return ret;
 }
 
-int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_context *context)
+int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1980,7 +1980,7 @@ int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context *contex
   return 0;
 }
 
-int app_keyring_create(const struct cli_parsed *parsed, struct cli_context *context)
+int app_keyring_create(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1991,7 +1991,7 @@ int app_keyring_create(const struct cli_parsed *parsed, struct cli_context *cont
   return 0;
 }
 
-int app_keyring_dump(const struct cli_parsed *parsed, struct cli_context *context)
+int app_keyring_dump(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -2018,7 +2018,7 @@ int app_keyring_dump(const struct cli_parsed *parsed, struct cli_context *contex
   return ret;
 }
 
-int app_keyring_load(const struct cli_parsed *parsed, struct cli_context *context)
+int app_keyring_load(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -2255,7 +2255,7 @@ ssize_t mdp_poll_recv(int mdp_sock, time_ms_t timeout, struct mdp_header *rev_he
   return len;
 }
 
-static int handle_pins(const struct cli_parsed *parsed, struct cli_context *context, int revoke)
+static int handle_pins(const struct cli_parsed *parsed, struct cli_context *UNUSED(context), int revoke)
 {
   const char *pin, *sid_hex;
   if (cli_arg(parsed, "entry-pin", &pin, NULL, "") == -1 ||
@@ -2473,7 +2473,7 @@ int app_count_peers(const struct cli_parsed *parsed, struct cli_context *context
   return 0;
 }
 
-int app_byteorder_test(const struct cli_parsed *parsed, struct cli_context *context)
+int app_byteorder_test(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   uint64_t in=0x1234;
   uint64_t out;
@@ -2820,7 +2820,7 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
 }
 
 void context_switch_test(int);
-int app_mem_test(const struct cli_parsed *parsed, struct cli_context *context)
+int app_mem_test(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   size_t mem_size;
   size_t addr;

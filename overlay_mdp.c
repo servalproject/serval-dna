@@ -81,7 +81,7 @@ static struct sched_ent mdp_sock2 = {
   .poll={.fd = -1},
 };
 
-static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame *mdp, time_ms_t now);
+static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame *mdp);
 static int mdp_send2(struct socket_address *client, struct mdp_header *header, 
   const uint8_t *payload, size_t payload_len);
 
@@ -235,7 +235,7 @@ static int overlay_mdp_releasebindings(struct socket_address *client)
 
 }
 
-static int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, mdp_port_t port,
+static int overlay_mdp_process_bind_request(struct subscriber *subscriber, mdp_port_t port,
 				     int flags, struct socket_address *client)
 {
   if (config.debug.mdprequests) 
@@ -446,7 +446,7 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
   OUT();
 }
 
-int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
+int overlay_saw_mdp_containing_frame(struct overlay_frame *f)
 {
   IN();
   /* Take frame source and destination and use them to populate mdp->in->{src,dst}
@@ -469,7 +469,7 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
     RETURN(-1);
 
   /* and do something with it! */
-  RETURN(overlay_saw_mdp_frame(f, &mdp,now));
+  RETURN(overlay_saw_mdp_frame(f, &mdp));
   OUT();
 }
 
@@ -482,7 +482,7 @@ int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp)
   return 0;
 }
 
-static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame *mdp, time_ms_t now)
+static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 {
   IN();
   int i;
@@ -916,7 +916,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client)
     DEBUGF("[%u] destination->sid=%s", __d, destination ? alloca_tohex_sid_t(destination->sid) : "NULL");
   if (!destination || destination->reachable == REACHABLE_SELF){
     /* Packet is addressed to us / broadcast, we should process it first. */
-    overlay_saw_mdp_frame(NULL,mdp,gettime_ms());
+    overlay_saw_mdp_frame(NULL,mdp);
     if (destination) {
       /* Is local, and is not broadcast, so shouldn't get sent out on the wire. */
       if (config.debug.mdprequests) 
@@ -1404,7 +1404,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
       
       if (config.debug.mdprequests)
 	DEBUGF("Attempting to process mdp packet locally");
-      overlay_saw_mdp_frame(NULL, &mdp, gettime_ms());
+      overlay_saw_mdp_frame(NULL, &mdp);
     }
     
     if (config.debug.mdprequests)
@@ -1597,7 +1597,7 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 	      }
 	      
 	    }
-	    if (overlay_mdp_process_bind_request(alarm->poll.fd, subscriber, mdp->bind.port,
+	    if (overlay_mdp_process_bind_request(subscriber, mdp->bind.port,
 						mdp->packetTypeAndFlags, &client))
 	      overlay_mdp_reply_error(alarm->poll.fd, &client, 3, "Port already in use");
 	    else

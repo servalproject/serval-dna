@@ -89,7 +89,7 @@ int main(int argc,char **argv)
 
 #endif
 
-int serval_packetvisualise_renderaddress(XPRINTF xpf, const unsigned char *packet, size_t *ofs, int senderP)
+static int serval_packetvisualise_renderaddress(XPRINTF xpf, const unsigned char *packet, size_t *ofs)
 {
   unsigned int len = packet[(*ofs)++];
   xprintf(xpf,"(0x%02x) ",len);
@@ -206,7 +206,7 @@ int isOverlayPacket(XPRINTF xpf, const unsigned char *packet, size_t *ofs, size_
   }
 
   xprintf(xpf, "%sSender; ", indent(4));
-  int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs,0);
+  int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs);
   xprintf(xpf, "\n");
   if (ret)
     return ret;
@@ -247,7 +247,7 @@ int isOverlayPacket(XPRINTF xpf, const unsigned char *packet, size_t *ofs, size_
     
     if (!payload_flags & 1){
       xprintf(xpf, "%sSender; ", indent(6));
-      int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs,0);
+      int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs);
       xprintf(xpf, "\n");
       if (ret)
 	return ret;
@@ -263,13 +263,13 @@ int isOverlayPacket(XPRINTF xpf, const unsigned char *packet, size_t *ofs, size_
       }
     }else{
       xprintf(xpf, "%sDestination; ", indent(6));
-      int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs,0);
+      int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs);
       xprintf(xpf, "\n");
       if (ret)
 	return ret;
       if (!(payload_flags & 4)){
 	xprintf(xpf, "%sNext Hop; ", indent(6));
-	int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs,0);
+	int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs);
 	xprintf(xpf, "\n");
 	if (ret)
 	  return ret;

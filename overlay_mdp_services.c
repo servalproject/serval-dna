@@ -154,7 +154,7 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
 	 a slot to capture this files as it is being requested
 	 by someone else.
       */
-      rhizome_received_content(bidprefix,version,offset, count, bytes, type);
+      rhizome_received_content(bidprefix,version,offset, count, bytes);
 
       RETURN(0);
     }

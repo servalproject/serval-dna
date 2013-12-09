@@ -56,7 +56,7 @@ struct sched_ent next_packet;
 struct profile_total send_packet;
 
 static void overlay_send_packet(struct sched_ent *alarm);
-static int overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame);
+static int overlay_calc_queue_time(struct overlay_frame *frame);
 
 int overlay_queue_init(){
   /* Set default congestion levels for queues */
@@ -219,7 +219,7 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   if (p->queue==OQ_ISOCHRONOUS_VOICE)
     rhizome_saw_voice_traffic();
   
-  overlay_calc_queue_time(queue, p);
+  overlay_calc_queue_time(p);
   return 0;
 }
 
@@ -283,7 +283,8 @@ static void remove_destination(struct overlay_frame *frame, int i){
 
 // update the alarm time and return 1 if changed
 static int
-overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
+overlay_calc_queue_time(struct overlay_frame *frame)
+{
   
   time_ms_t next_allowed_packet=0;
   // check all interfaces
@@ -492,7 +493,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     
   skip:
     // if we can't send the payload now, check when we should try next
-    overlay_calc_queue_time(queue, frame);
+    overlay_calc_queue_time(frame);
     frame = frame->next;
   }
 }
@@ -528,7 +529,8 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
 }
 
 // when the queue timer elapses, send a packet
-static void overlay_send_packet(struct sched_ent *alarm){
+static void overlay_send_packet(struct sched_ent *UNUSED(alarm))
+{
   struct outgoing_packet packet;
   bzero(&packet, sizeof(struct outgoing_packet));
   packet.seq=-1;
@@ -594,7 +596,7 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
 	    if (config.debug.ack)
 	      DEBUGF("RE-TX DUE TO NACK: Requeue packet %p to %s sent by seq %d due to ack of seq %d", frame, alloca_tohex_sid_t(neighbour->sid), frame_seq, ack_seq);
 	    frame->delay_until = now;
-	    overlay_calc_queue_time(&overlay_tx[i], frame);
+	    overlay_calc_queue_time(frame);
 	  }
 	}
       }

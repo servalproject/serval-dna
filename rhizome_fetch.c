@@ -827,6 +827,7 @@ static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
 static void rhizome_start_next_queued_fetches(struct sched_ent *alarm)
 {
   IN();
+  assert(alarm == &sched_activate);
   int i;
   for (i = 0; i < NQUEUES; ++i)
     rhizome_start_next_queued_fetch(&rhizome_fetch_queues[i].active);
@@ -1393,7 +1394,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, unsigned char *buffer
 
 int rhizome_received_content(const unsigned char *bidprefix,
 			     uint64_t version, uint64_t offset,
-			     size_t count, unsigned char *bytes, int type)
+			     size_t count, unsigned char *bytes)
 {
   IN();
   if (!is_rhizome_mdp_enabled()) {

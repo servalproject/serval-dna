@@ -632,6 +632,7 @@ static int load_unknown(keypair *kp, const char *text)
 
 static int unpack_private_public(keypair *kp, struct rotbuf *rb, int key_length)
 {
+  assert(key_length == kp->private_key_len + kp->public_key_len);
   rotbuf_getbuf(rb, kp->private_key, kp->private_key_len);
   rotbuf_getbuf(rb, kp->public_key, kp->public_key_len);
   return 0;
@@ -661,6 +662,7 @@ static int unpack_public_only(keypair *kp, struct rotbuf *rb, int key_length)
 
 static int unpack_cryptobox(keypair *kp, struct rotbuf *rb, int key_length)
 {
+  assert(key_length == kp->private_key_len);
   rotbuf_getbuf(rb, kp->private_key, kp->private_key_len);
   if (!rb->wrap)
     _derive_scalarmult_public(kp->public_key, kp->private_key);
@@ -683,7 +685,7 @@ static int unpack_did_name(keypair *kp, struct rotbuf *rb, int key_length)
   return strnchr((const char *)kp->public_key, kp->public_key_len, '\0') == NULL ? -1 : 0;
 }
 
-static void dump_did_name(const keypair *kp, XPRINTF xpf, int include_secret)
+static void dump_did_name(const keypair *kp, XPRINTF xpf, int UNUSED(include_secret))
 {
   xprintf(xpf, " DID=%s", alloca_str_toprint_quoted((const char *)kp->private_key, "\"\""));
   xprintf(xpf, " Name=%s", alloca_str_toprint_quoted((const char *)kp->public_key, "\"\""));

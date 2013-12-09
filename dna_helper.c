@@ -46,6 +46,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
   POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <assert.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
@@ -354,6 +355,7 @@ static void monitor_requests(struct sched_ent *alarm)
 	strbuf_str(strbuf_append_poll_events(strbuf_alloca(40), sched_requests.poll.revents))
       );
   }
+  assert(alarm == &sched_requests);
   // On Linux, poll(2) returns ERR when the remote reader dies.  On Mac OS X, poll(2) returns NVAL,
   // which is documented to mean the file descriptor is not open, but testing revealed that in this
   // case it is still open.  See issue #5.
@@ -480,6 +482,7 @@ static void monitor_replies(struct sched_ent *alarm)
 	strbuf_str(strbuf_append_poll_events(strbuf_alloca(40), sched_replies.poll.revents))
       );
   }
+  assert(alarm == &sched_replies);
   if (sched_replies.poll.revents & POLLIN) {
     size_t remaining = reply_buffer + sizeof reply_buffer - reply_bufend;
     ssize_t nread = read_nonblock(sched_replies.poll.fd, reply_bufend, remaining);
@@ -532,6 +535,7 @@ static void monitor_errors(struct sched_ent *alarm)
 	strbuf_str(strbuf_append_poll_events(strbuf_alloca(40), sched_errors.poll.revents))
       );
   }
+  assert(alarm == &sched_errors);
   if (sched_errors.poll.revents & POLLIN) {
     char buffer[1024];
     ssize_t nread = read_nonblock(sched_errors.poll.fd, buffer, sizeof buffer);
@@ -550,6 +554,7 @@ static void monitor_errors(struct sched_ent *alarm)
 
 static void harvester(struct sched_ent *alarm)
 {
+  assert(alarm == &sched_harvester);
   // While the helper process appears to still be running, keep calling this function.
   // Otherwise, wait a while before re-starting the helper.
   if (dna_helper_harvest(0) <= 0) {
@@ -570,6 +575,7 @@ static void harvester(struct sched_ent *alarm)
 
 static void restart_delayer(struct sched_ent *alarm)
 {
+  assert(alarm == &sched_restart);
   if (dna_helper_pid == 0) {
     if (config.debug.dnahelper)
       DEBUG("DNAHELPER re-enable restart");
@@ -579,6 +585,7 @@ static void restart_delayer(struct sched_ent *alarm)
 
 static void reply_timeout(struct sched_ent *alarm)
 {
+  assert(alarm == &sched_timeout);
   if (awaiting_reply) {
     WHY("DNAHELPER reply timeout");
     dna_helper_kill();
