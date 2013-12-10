@@ -587,7 +587,7 @@ static void interface_read_dgram(struct overlay_interface *interface)
   plen = recvwithttl(interface->alarm.poll.fd,packet, sizeof(packet), &recvttl, &recvaddr);
   if (plen == -1) {
     WHYF_perror("recvwithttl(%d,%p,%zu,&%d,%p(%s))",
-	  interface->alarm.poll.fd, packet, sizeof packet,
+	  interface->alarm.poll.fd, packet, sizeof packet, recvttl,
 	  &recvaddr, alloca_socket_address(&recvaddr)
 	);
     overlay_interface_close(interface);
