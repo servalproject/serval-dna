@@ -295,14 +295,14 @@ struct slip_decode_state{
   int encapsulator;
   int state;
   unsigned char *src;
-  int src_size;
+  unsigned src_size;
   char rssi_text[RSSI_TEXT_SIZE];
-  int rssi_len;
-  int packet_length;
+  unsigned rssi_len;
+  unsigned packet_length;
   unsigned char dst[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
   uint32_t crc;
-  int src_offset;
-  int dst_offset;
+  unsigned src_offset;
+  unsigned dst_offset;
 };
 
 struct overlay_interface;
