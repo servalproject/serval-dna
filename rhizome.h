@@ -911,6 +911,8 @@ struct http_response_parts {
   char *content_start;
 };
 
+#define HTTP_RESPONSE_CONTENT_LENGTH_UNSET UINT64_MAX
+
 int unpack_http_response(char *response, struct http_response_parts *parts);
 
 /* rhizome storage methods */

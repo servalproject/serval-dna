@@ -434,7 +434,7 @@ static int receive_http_response(int sock, char *buffer, size_t buffer_len, stru
     INFOF("Failed HTTP request: server returned %03u %s", parts->code, parts->reason);
     return -1;
   }
-  if (parts->content_length == -1) {
+  if (parts->content_length == HTTP_RESPONSE_CONTENT_LENGTH_UNSET) {
     if (config.debug.rhizome_rx)
       DEBUGF("Invalid HTTP reply: missing Content-Length header");
     return -1;

@@ -1541,7 +1541,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	    rhizome_fetch_switch_to_mdp(slot);
 	    return;
 	  }
-	  if (parts.content_length == -1) {
+	  if (parts.content_length == HTTP_RESPONSE_CONTENT_LENGTH_UNSET) {
 	    if (config.debug.rhizome_rx)
 	      DEBUGF("Invalid HTTP reply: missing Content-Length header");
 	    rhizome_fetch_switch_to_mdp(slot);
@@ -1619,7 +1619,7 @@ int unpack_http_response(char *response, struct http_response_parts *parts)
   parts->code = 0;
   parts->reason = NULL;
   parts->range_start=0;
-  parts->content_length = -1;
+  parts->content_length = HTTP_RESPONSE_CONTENT_LENGTH_UNSET;
   parts->content_start = NULL;
   char *p = NULL;
   if (!str_startswith(response, "HTTP/1.0 ", (const char **)&p)) {
