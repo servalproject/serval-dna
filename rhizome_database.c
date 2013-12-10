@@ -1208,7 +1208,9 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
 int rhizome_make_space(int group_priority, uint64_t bytes)
 {
   /* Asked for impossibly large amount */
-  if (bytes>=(config.rhizome.database_size-65536))
+  const size_t margin = 65536;
+  const uint64_t limit = config.rhizome.database_size > margin ? config.rhizome.database_size - margin : 1;
+  if (bytes >= limit)
     return WHYF("bytes=%"PRIu64" is too large", bytes);
 
   int64_t db_used = rhizome_database_used_bytes();
@@ -1218,7 +1220,7 @@ int rhizome_make_space(int group_priority, uint64_t bytes)
   rhizome_cleanup(NULL);
   
   /* If there is already enough space now, then do nothing more */
-  if (db_used<=(config.rhizome.database_size-bytes-65536))
+  if (db_used + bytes <= limit)
     return 0;
 
   /* Okay, not enough space, so free up some. */
@@ -1228,7 +1230,7 @@ int rhizome_make_space(int group_priority, uint64_t bytes)
       INT, group_priority, END);
   if (!statement)
     return -1;
-  while (bytes > (config.rhizome.database_size - 65536 - rhizome_database_used_bytes())
+  while (rhizome_database_used_bytes() + bytes > limit
       && sqlite_step_retry(&retry, statement) == SQLITE_ROW
   ) {
     /* Make sure we can drop this blob, and if so drop it, and recalculate number of bytes required */
