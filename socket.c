@@ -80,7 +80,8 @@ int _make_local_sockaddr(struct __sourceloc __whence, struct socket_address *add
  */
 int real_sockaddr(const struct socket_address *src_addr, struct socket_address *dst_addr)
 {
-  int src_path_len = src_addr->addrlen - sizeof src_addr->local.sun_family;
+  assert(src_addr->addrlen > sizeof src_addr->local.sun_family);
+  size_t src_path_len = src_addr->addrlen - sizeof src_addr->local.sun_family;
   if (	 src_addr->addrlen >= sizeof src_addr->local.sun_family + 1
       && src_addr->local.sun_family == AF_UNIX
       && src_addr->local.sun_path[0] != '\0'

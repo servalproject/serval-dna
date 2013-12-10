@@ -1147,7 +1147,7 @@ int rhizome_extract_file(rhizome_manifest *m, const char *filepath)
  *
  * Returns -1 on error, 0 if dumped successfully, 1 if not found.
  */
-int rhizome_dump_file(const rhizome_filehash_t *hashp, const char *filepath, int64_t *length)
+int rhizome_dump_file(const rhizome_filehash_t *hashp, const char *filepath, uint64_t *lengthp)
 {
   struct rhizome_read read_state;
   bzero(&read_state, sizeof read_state);
@@ -1156,8 +1156,8 @@ int rhizome_dump_file(const rhizome_filehash_t *hashp, const char *filepath, int
   
   if (ret == 0) {
     ret = write_file(&read_state, filepath);
-    if (length)
-      *length = read_state.length;
+    if (lengthp)
+      *lengthp = read_state.length;
   }
   rhizome_read_close(&read_state);
   return ret;
@@ -1166,7 +1166,8 @@ int rhizome_dump_file(const rhizome_filehash_t *hashp, const char *filepath, int
 // pipe data from one payload to another
 static int rhizome_pipe(struct rhizome_read *read, struct rhizome_write *write, uint64_t length)
 {
-  if (length > write->file_length - write->file_offset)
+  assert(write->file_offset <= write->file_length);
+  if (length > (uint64_t)(write->file_length - write->file_offset))
     return WHY("Unable to pipe that much data");
 
   unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];

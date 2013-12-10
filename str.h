@@ -378,7 +378,7 @@ int strn_str_casecmp(const char *str1, size_t len1, const char *str2);
  * @author Paul Gardner-Stephen <paul@servalproject.org>
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-char *str_str(char *haystack, const char *needle, int haystack_len);
+char *str_str(char *haystack, const char *needle, size_t haystack_len);
 
 /* Parse a string as an integer in ASCII radix notation in the given 'base' (eg, base=10 means
  * decimal).

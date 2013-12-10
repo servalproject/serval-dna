@@ -708,7 +708,7 @@ struct rhizome_read
   unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
   unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
   
-  int64_t hash_offset;
+  uint64_t hash_offset;
   SHA512_CTX sha512_context;
   char invalid;
   
@@ -808,7 +808,7 @@ void rhizome_direct_bundle_iterator_unlimit(rhizome_direct_bundle_cursor *r);
 int rhizome_direct_bundle_iterator_pickle_range(rhizome_direct_bundle_cursor *r,
 						unsigned char *pickled,
 						int pickle_buffer_size);
-rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int prefix_length);
+rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix, size_t prefix_length);
 int rhizome_direct_bundle_iterator_unpickle_range(rhizome_direct_bundle_cursor *r,
 						  const unsigned char *pickled,
 						  int pickle_buffer_size);
@@ -941,7 +941,7 @@ ssize_t rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buf
 int rhizome_read_close(struct rhizome_read *read);
 int rhizome_open_decrypt_read(rhizome_manifest *m, struct rhizome_read *read_state);
 int rhizome_extract_file(rhizome_manifest *m, const char *filepath);
-int rhizome_dump_file(const rhizome_filehash_t *hashp, const char *filepath, int64_t *length);
+int rhizome_dump_file(const rhizome_filehash_t *hashp, const char *filepath, uint64_t *lengthp);
 int rhizome_read_cached(const rhizome_bid_t *bid, uint64_t version, time_ms_t timeout, 
   uint64_t fileOffset, unsigned char *buffer, size_t length);
 int rhizome_cache_close();

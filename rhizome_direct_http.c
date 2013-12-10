@@ -419,12 +419,12 @@ int rhizome_direct_dispatch(rhizome_http_request *r, const char *UNUSED(remainde
 
 static int receive_http_response(int sock, char *buffer, size_t buffer_len, struct http_response_parts *parts)
 {
-  int len = 0;
-  int count;
+  size_t len = 0;
+  ssize_t count;
   do {
       if ((count = read(sock, &buffer[len], buffer_len - len)) == -1)
 	return WHYF_perror("read(%d, %p, %d)", sock, &buffer[len], (int)buffer_len - len);
-      len += count;
+      len += (size_t)count;
   } while (len < buffer_len && count != 0 && !is_http_header_complete(buffer, len, len));
   if (config.debug.rhizome_rx)
     DEBUGF("Received HTTP response %s", alloca_toprint(-1, buffer, len));
@@ -440,7 +440,7 @@ static int receive_http_response(int sock, char *buffer, size_t buffer_len, stru
     return -1;
   }
   if (config.debug.rhizome_rx)
-    DEBUGF("content_length=%"PRId64, parts->content_length);
+    DEBUGF("content_length=%"PRIu64, parts->content_length);
   return len - (parts->content_start - buffer);
 }
 

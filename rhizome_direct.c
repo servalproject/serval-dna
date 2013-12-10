@@ -391,7 +391,7 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *bu
   return c;
 }
 
-rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int prefix_length)
+rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix, size_t prefix_length)
 {
   /* Give a BID prefix, e.g., from a BAR, find the matching manifest and return it.
      Of course, it is possible that more than one manifest matches.  This should
@@ -407,7 +407,6 @@ rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int pref
   */
   rhizome_bid_t low = RHIZOME_BID_ZERO;
   rhizome_bid_t high = RHIZOME_BID_MAX;
-  assert(prefix_length >= 0);
   assert(prefix_length <= sizeof(rhizome_bid_t));
   bcopy(bid_prefix, low.binary, prefix_length);
   bcopy(bid_prefix, high.binary, prefix_length);

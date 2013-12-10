@@ -195,7 +195,7 @@ int cli_parse(const int argc, const char *const *args, const struct cli_schema *
 	  // Look for a match.
 	  const char *prefix = NULL;
 	  unsigned prefixlen = 0;
-	  char prefixarglen = 0;
+	  unsigned prefixarglen = 0;
 	  const char *caret = strchr(word, '<');
 	  if (wordlen > 2 && caret && word[wordlen-1] == '>') {
 	    if ((prefixarglen = prefixlen = caret - word)) {
@@ -297,7 +297,7 @@ int cli_invoke(const struct cli_parsed *parsed, struct cli_context *context)
 
 int _cli_arg(struct __sourceloc __whence, const struct cli_parsed *parsed, char *label, const char **dst, int (*validator)(const char *arg), char *defaultvalue)
 {
-  int labellen = strlen(label);
+  unsigned labellen = strlen(label);
   if (dst)
     *dst = defaultvalue;
   unsigned i;

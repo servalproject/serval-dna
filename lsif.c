@@ -124,7 +124,7 @@ int
 lsif(void) {
   char            buf[8192];
   struct ifconf   ifc;
-  int             sck, nInterfaces, ofs;
+  int             sck;
   struct ifreq    *ifr;
   struct in_addr  addr, netmask;
 
@@ -138,7 +138,7 @@ lsif(void) {
   }
  
   /* Query available interfaces. */
-  ifc.ifc_len = sizeof(buf);
+  ifc.ifc_len = sizeof buf;
   ifc.ifc_buf = buf;
   if(ioctl(sck, SIOCGIFCONF, &ifc) < 0) {
     WHY_perror("ioctl(SIOCGIFCONF)");
@@ -147,10 +147,9 @@ lsif(void) {
   }
 
   /* Iterate through the list of interfaces. */
-  nInterfaces = 0;
-  ofs = 0;
-  
-  while (ofs < ifc.ifc_len && ofs < sizeof(buf)) {
+  unsigned nInterfaces = 0;
+  unsigned ofs = 0;
+  while (ofs < (unsigned)ifc.ifc_len && ofs < sizeof buf) {
     ifr = (struct ifreq *)(ifc.ifc_ifcu.ifcu_buf + ofs);
     ofs += _SIZEOF_ADDR_IFREQ(*ifr);
 
@@ -183,7 +182,7 @@ lsif(void) {
     nInterfaces++;
   }
   
-  if (config.debug.overlayinterfaces) DEBUGF("Examined %d interface addresses", nInterfaces);
+  if (config.debug.overlayinterfaces) DEBUGF("Examined %u interface addresses", nInterfaces);
 
   close(sck); 
   return 0;

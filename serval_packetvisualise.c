@@ -291,7 +291,7 @@ int isOverlayPacket(XPRINTF xpf, const unsigned char *packet, size_t *ofs, size_
       xprintf(xpf, "%sMDP Sequence; 0x%02x\n", indent(6), packet[(*ofs)++]);
     }
     
-    int payload_len = 0;
+    uint16_t payload_len = 0;
     if (encapsulation==1){
       payload_len=packet[(*ofs)++]<<8;
       payload_len|=packet[(*ofs)++];

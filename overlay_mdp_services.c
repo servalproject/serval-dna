@@ -351,8 +351,8 @@ end:
 
 static int overlay_mdp_service_manifest_requests(struct overlay_frame *frame, const uint8_t *payload, size_t len)
 {
-  int offset=0;
-  while (offset<len) {
+  size_t offset = 0;
+  while (offset < len) {
     rhizome_manifest *m = rhizome_new_manifest();
     if (!m)
       return WHY("Unable to allocate manifest");

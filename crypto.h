@@ -30,7 +30,7 @@ int crypto_verify_message(struct subscriber *subscriber, unsigned char *message,
 int crypto_create_signature(unsigned char *key, 
 			    unsigned char *content, int content_len, 
 			    unsigned char *signature, int *sig_length);
-int crypto_sign_message(struct subscriber *source, unsigned char *content, int buffer_len, int *content_len);
+int crypto_sign_message(struct subscriber *source, unsigned char *content, size_t buffer_len, size_t *content_len);
 int crypto_sign_compute_public_key(const unsigned char *skin, unsigned char *pk);
 
 #endif

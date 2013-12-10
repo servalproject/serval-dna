@@ -1820,7 +1820,7 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
       retfile = rhizome_extract_file(m, filepath);
     }else{
       // Save the file without attempting to decrypt
-      int64_t length;
+      uint64_t length;
       retfile = rhizome_dump_file(&m->filehash, filepath, &length);
     }
   }
@@ -1870,7 +1870,7 @@ int app_rhizome_export_file(const struct cli_parsed *parsed, struct cli_context 
     return -1;
   if (!rhizome_exists(&hash))
     return 1;
-  int64_t length;
+  uint64_t length;
   int ret = rhizome_dump_file(&hash, filepath, &length);
   if (ret)
     return ret == -1 ? -1 : 1;
@@ -2278,22 +2278,21 @@ static int handle_pins(const struct cli_parsed *parsed, struct cli_context *UNUS
   }else{
     request->action=ACTION_UNLOCK;
   }
-  int len = sizeof(struct mdp_identity_request);
-  
-  if (pin && *pin){
+  size_t len = sizeof(struct mdp_identity_request);
+  if (pin && *pin) {
     request->type=TYPE_PIN;
-    int pin_len = strlen(pin)+1;
-    if (pin_len+len > sizeof(request_payload))
+    size_t pin_siz = strlen(pin) + 1;
+    if (pin_siz + len > sizeof(request_payload))
       return WHY("Supplied pin is too long");
-    bcopy(pin, &request_payload[len], pin_len);
-    len+=pin_len;
+    bcopy(pin, &request_payload[len], pin_siz);
+    len += pin_siz;
   }else if(sid_hex && *sid_hex){
     request->type=TYPE_SID;
     sid_t sid;
     if (str_to_sid_t(&sid, sid_hex) == -1)
       return WHY("str_to_sid_t() failed");
     bcopy(sid.binary, &request_payload[len], sizeof(sid));
-    len+=sizeof(sid);
+    len += sizeof(sid);
   }
   
   if (!mdp_send(mdp_sock, &header, request_payload, len)){
