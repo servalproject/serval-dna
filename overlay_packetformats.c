@@ -78,9 +78,9 @@ int overlay_packet_init_header(int packet_version, int encapsulation,
 }
 
 // a frame destined for one of our local addresses, or broadcast, has arrived. Process it.
-int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, struct overlay_frame *f, struct decode_context *context){
+int process_incoming_frame(time_ms_t now, struct overlay_interface *UNUSED(interface), struct overlay_frame *f, struct decode_context *context)
+{
   IN();
-  int id = (interface - overlay_interfaces);
   switch(f->type)
   {
     case OF_TYPE_SELFANNOUNCE_ACK:
