@@ -1135,15 +1135,14 @@ static int mdp_process_identity_request(struct socket_address *client, struct md
 	    size_t ofs=0;
 	    while(ofs < payload_len){
 	      if (!payload[ofs++]){
-		int cn, in;
-		for (cn = keyring->context_count -1; cn>=0; --cn) {
-		  keyring_context *cx = keyring->contexts[cn];
-		  for (in = cx->identity_count -1; in>=0; --in) {
-		    keyring_identity *id = cx->identities[in];
-		    if (id->subscriber != my_subscriber
-		      && strcmp(id->PKRPin, pin) == 0){
+		unsigned cn;
+		for (cn = keyring->context_count; cn > 0;) {
+		  keyring_context *cx = keyring->contexts[--cn];
+		  unsigned in;
+		  for (in = cx->identity_count; in > 0;) {
+		    keyring_identity *id = cx->identities[--in];
+		    if (id->subscriber != my_subscriber && strcmp(id->PKRPin, pin) == 0)
 		      keyring_release_identity(keyring, cn, in);
-		    }
 		  }
 		}
 		pin=(char *)&payload[ofs++];
@@ -1192,7 +1191,7 @@ static int mdp_process_identity_request(struct socket_address *client, struct md
 static int mdp_search_identities(struct socket_address *client, struct mdp_header *header, 
   const uint8_t *payload, size_t payload_len)
 {
-  int cn=0, in=0, kp=0;
+  unsigned cn=0, in=0, kp=0;
   const char *tag=NULL;
   const unsigned char *value=NULL;
   size_t value_len=0;

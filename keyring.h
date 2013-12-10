@@ -22,7 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __SERVAL_DNA__KEYRING_H
 
 typedef struct keypair {
-  int type;
+  unsigned type;
   unsigned char *private_key;
   size_t private_key_len;
   unsigned char *public_key;
@@ -70,7 +70,7 @@ typedef struct keyring_bam {
 
 #define KEYRING_MAX_CONTEXTS 256
 typedef struct keyring_file {
-  int context_count;
+  unsigned context_count;
   keyring_bam *bam;
   keyring_context *contexts[KEYRING_MAX_CONTEXTS];
   FILE *file;
@@ -78,7 +78,7 @@ typedef struct keyring_file {
 } keyring_file;
 
 void keyring_free(keyring_file *k);
-void keyring_release_identity(keyring_file *k, int cn, int id);
+void keyring_release_identity(keyring_file *k, unsigned cn, unsigned id);
 #define KEYTYPE_CRYPTOBOX 0x01 // must be lowest
 #define KEYTYPE_CRYPTOSIGN 0x02
 #define KEYTYPE_RHIZOME 0x03
@@ -98,17 +98,17 @@ keyring_file *keyring_open_instance();
 keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed);
 int keyring_enter_pin(keyring_file *k, const char *pin);
 int keyring_set_did(keyring_identity *id, const char *did, const char *name);
-int keyring_sanitise_position(const keyring_file *k,int *cn,int *in,int *kp);
-int keyring_next_keytype(const keyring_file *k, int *cn, int *in, int *kp, int keytype);
-int keyring_next_identity(const keyring_file *k,int *cn,int *in,int *kp);
-int keyring_identity_find_keytype(const keyring_file *k, int cn, int in, int keytype);
-int keyring_find_did(const keyring_file *k,int *cn,int *in,int *kp, const char *did);
-int keyring_find_sid(const keyring_file *k,int *cn,int *in,int *kp, const sid_t *sidp);
+int keyring_sanitise_position(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp);
+int keyring_next_keytype(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp, unsigned keytype);
+int keyring_next_identity(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp);
+int keyring_identity_find_keytype(const keyring_file *k, unsigned cn, unsigned in, unsigned keytype);
+int keyring_find_did(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp, const char *did);
+int keyring_find_sid(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp, const sid_t *sidp);
 unsigned char *keyring_find_sas_private(keyring_file *k, const sid_t *sidp, unsigned char **sas_public);
 int keyring_send_sas_request(struct subscriber *subscriber);
 
 int keyring_commit(keyring_file *k);
-keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, const char *pin);
+keyring_identity *keyring_create_identity(keyring_file *k, keyring_context *c, const char *pin);
 int keyring_seed(keyring_file *k);
 void keyring_identity_extract(const keyring_identity *id, const sid_t **sidp, const char **didp, const char **namep);
 int keyring_load(keyring_file *k, const char *keyring_pin, unsigned entry_pinc, const char **entry_pinv, FILE *input);
@@ -121,8 +121,8 @@ int keyring_send_unlock(struct subscriber *subscriber);
 void keyring_release_subscriber(keyring_file *k, const sid_t *sid);
 
 int keyring_set_public_tag(keyring_identity *id, const char *name, const unsigned char *value, size_t length);
-int keyring_find_public_tag(const keyring_file *k, int *cn, int *in, int *kp, const char *name, const unsigned char **value, size_t *length);
-int keyring_find_public_tag_value(const keyring_file *k, int *cn, int *in, int *kp, const char *name, const unsigned char *value, size_t length);
+int keyring_find_public_tag(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp, const char *name, const unsigned char **value, size_t *length);
+int keyring_find_public_tag_value(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp, const char *name, const unsigned char *value, size_t length);
 int keyring_unpack_tag(const unsigned char *packed, size_t packed_len, const char **name, const unsigned char **value, size_t *length);
 int keyring_pack_tag(unsigned char *packed, size_t *packed_len, const char *name, const unsigned char *value, size_t length);
 

@@ -2068,7 +2068,7 @@ int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *contex
   keyring_file *k = keyring_open_instance_cli(parsed);
   if (!k)
     return -1;
-  int cn, in;
+  unsigned cn, in;
   for (cn = 0; cn < k->context_count; ++cn)
     for (in = 0; in < k->contexts[cn]->identity_count; ++in) {
       const sid_t *sidp = NULL;
@@ -2136,6 +2136,7 @@ int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *context
   if (!k)
     return -1;
   keyring_enter_pin(k, pin);
+  assert(k->context_count > 0);
   const keyring_identity *id = keyring_create_identity(k, k->contexts[k->context_count - 1], pin);
   if (id == NULL) {
     keyring_free(k);
@@ -2181,7 +2182,7 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
   
-  int cn=0,in=0,kp=0;
+  unsigned cn=0, in=0, kp=0;
   int r=0;
   if (!keyring_find_sid(keyring, &cn, &in, &kp, &sid))
     r=WHY("No matching SID");
@@ -2216,7 +2217,7 @@ static int app_keyring_set_tag(const struct cli_parsed *parsed, struct cli_conte
   if (str_to_sid_t(&sid, sidhex) == -1)
     return WHY("str_to_sid_t() failed");
 
-  int cn=0,in=0,kp=0;
+  unsigned cn=0, in=0, kp=0;
   int r=0;
   if (!keyring_find_sid(keyring, &cn, &in, &kp, &sid))
     r=WHY("No matching SID");

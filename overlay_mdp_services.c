@@ -168,7 +168,7 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
 int overlay_mdp_service_dnalookup(overlay_mdp_frame *mdp)
 {
   IN();
-  int cn=0,in=0,kp=0;
+  unsigned cn=0, in=0, kp=0;
   char did[64+1];
   int pll=mdp->out.payload_length;
   if (pll>64) pll=64;

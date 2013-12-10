@@ -188,17 +188,18 @@ int rhizome_secret2bk(
 enum rhizome_secret_disposition find_rhizome_secret(const sid_t *authorSidp, size_t *rs_len, const unsigned char **rs)
 {
   IN();
-  int cn=0, in=0, kp=0;
+  unsigned cn=0, in=0, kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp, authorSidp)) {
     if (config.debug.rhizome)
       DEBUGF("identity sid=%s is not in keyring", alloca_tohex_sid_t(*authorSidp));
     RETURN(IDENTITY_NOT_FOUND);
   }
-  kp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
-  if (kp == -1) {
+  int kpi = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
+  if (kpi == -1) {
     WARNF("Identity sid=%s has no Rhizome Secret", alloca_tohex_sid_t(*authorSidp));
     RETURN(IDENTITY_HAS_NO_RHIZOME_SECRET);
   }
+  kp = (unsigned)kpi;
   int rslen = keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key_len;
   assert(rslen >= 16);
   assert(rslen <= 1024);
@@ -349,7 +350,7 @@ void rhizome_find_bundle_author_and_secret(rhizome_manifest *m)
   assert(is_sid_t_any(m->author));
   if (!m->has_bundle_key)
     RETURNVOID;
-  int cn = 0, in = 0, kp = 0;
+  unsigned cn = 0, in = 0, kp = 0;
   for (; keyring_next_identity(keyring, &cn, &in, &kp); ++kp) {
     const sid_t *authorSidp = (const sid_t *) keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key;
     //if (config.debug.rhizome) DEBUGF("try author identity sid=%s", alloca_tohex_sid_t(*authorSidp));
@@ -600,7 +601,7 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
     return 0;
   if (m->has_sender && m->has_recipient){
     unsigned char *nm_bytes=NULL;
-    int cn=0,in=0,kp=0;
+    unsigned cn=0, in=0, kp=0;
     if (!keyring_find_sid(keyring, &cn, &in, &kp, &m->sender)){
       cn=in=kp=0;
       if (!keyring_find_sid(keyring, &cn, &in, &kp, &m->recipient)){

@@ -1180,7 +1180,7 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
 int rhizome_lookup_author(rhizome_manifest *m)
 {
   IN();
-  int cn, in, kp;
+  unsigned cn, in, kp;
   switch (m->authorship) {
     case AUTHOR_NOT_CHECKED:
       if (config.debug.rhizome)

@@ -90,7 +90,7 @@ static void free_conversations(struct conversations *conv){
 static int get_my_conversation_bundle(const sid_t *my_sidp, rhizome_manifest *m)
 {
   /* Find our private key */
-  int cn=0,in=0,kp=0;
+  unsigned cn=0, in=0, kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp,my_sidp))
     return WHYF("SID was not found in keyring: %s", alloca_tohex_sid_t(*my_sidp));
   
