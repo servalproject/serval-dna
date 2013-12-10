@@ -93,18 +93,18 @@ struct radio_link_state{
   
   // decoded length of next link layer packet
   // including all header and footer bytes
-  int payload_length;
+  size_t payload_length;
   // last rx seq for reassembly
   int seq;
   // offset within payload that we have found a valid looking header
-  int payload_start;
+  unsigned payload_start;
   // offset after payload_start for incoming bytes
-  int payload_offset;
+  unsigned payload_offset;
   
   // small buffer for assembling mdp payloads.
   uint8_t dst[MDP_MTU];
   // length of recovered packet
-  int packet_length;
+  size_t packet_length;
   
   // next firmware heartbeat
   time_ms_t next_heartbeat;
@@ -118,7 +118,7 @@ struct radio_link_state{
   int32_t remaining_space;
   
   // next serial write
-  uint64_t next_tx_allowed;
+  time_ms_t next_tx_allowed;
   // partially sent packet
   struct overlay_buffer *tx_packet;
   
@@ -443,17 +443,17 @@ static int decode_length(struct radio_link_state *state, unsigned char *p)
 {
   // look for a valid golay encoded length
   int errs=0;
-  int length = golay_decode(&errs, p);
-  if (length<0 || ((length >>8) & 0xF) != (length&0xF))
+  int gd = golay_decode(&errs, p);
+  if (gd<0 || ((gd >>8) & 0xF) != (gd&0xF))
     return -1;
-  length=length&0xFF;
+  size_t length = gd&0xFF;
   length += RADIO_HEADER_LENGTH + RADIO_CRC_LENGTH;
   
   if (length!=17 && (length <= FEC_LENGTH || length > LINK_MTU))
     return -1;
   
   if (config.debug.radio_link && (errs || state->payload_length!=*p))
-    DEBUGF("Decoded length %d to %d with %d errs", *p, length, errs);
+    DEBUGF("Decoded length %u to %zu with %d errs", *p, length, errs);
   
   state->payload_length=length;
   return 0;
@@ -465,7 +465,7 @@ int radio_link_decode(struct overlay_interface *interface, uint8_t c)
   IN();
   struct radio_link_state *state=interface->radio_link_state;
   
-  if (state->payload_start + state->payload_offset >= sizeof(state->payload)){
+  if (state->payload_start + state->payload_offset >= sizeof state->payload){
     // drop one byte if we run out of space
     if (config.debug.radio_link)
       DEBUGF("Dropped %02x, buffer full", state->payload[0]);
