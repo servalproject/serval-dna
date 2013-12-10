@@ -108,15 +108,19 @@ jmethodID startResultSet, setColumnName, putString, putBlob, putLong, putDouble,
 
 static int outv_growbuf(struct cli_context *context, size_t needed)
 {
-  size_t newsize = (context->outv_limit - context->outv_current < needed) ? (context->outv_limit - context->outv_buffer) + needed : 0;
-  if (newsize) {
+  assert(context->outv_current <= context->outv_limit);
+  size_t remaining = (size_t)(context->outv_limit - context->outv_current);
+  if (remaining < needed) {
+    size_t cursize = context->outv_current - context->outv_buffer;
+    size_t newsize = cursize + needed;
     // Round up to nearest multiple of OUTV_BUFFER_ALLOCSIZE.
     newsize = newsize + OUTV_BUFFER_ALLOCSIZE - ((newsize - 1) % OUTV_BUFFER_ALLOCSIZE + 1);
-    size_t length = context->outv_current - context->outv_buffer;
+    assert(newsize > cursize);
+    assert((size_t)(newsize - cursize) >= needed);
     context->outv_buffer = realloc(context->outv_buffer, newsize);
     if (context->outv_buffer == NULL)
       return WHYF("Out of memory allocating %lu bytes", (unsigned long) newsize);
-    context->outv_current = context->outv_buffer + length;
+    context->outv_current = context->outv_buffer + cursize;
     context->outv_limit = context->outv_buffer + newsize;
   }
   return 0;
@@ -340,36 +344,45 @@ int cli_puts(struct cli_context *context, const char *str)
 }
 
 /* Write a formatted string to output.  If in a JNI call, then this appends the string to the
-   current output field, excluding the terminating null.  Returns the number of bytes
-   written/appended, or -1 on error.
+   current output field, excluding the terminating null.
  */
-int cli_printf(struct cli_context *context, const char *fmt, ...)
+void cli_printf(struct cli_context *context, const char *fmt, ...)
 {
-  int ret = 0;
   va_list ap;
 #ifdef HAVE_JNI_H
   if (context && context->jni_env) {
+    assert(context->outv_current <= context->outv_limit);
     size_t avail = context->outv_limit - context->outv_current;
     va_start(ap, fmt);
     int count = vsnprintf(context->outv_current, avail, fmt, ap);
     va_end(ap);
-    if (count >= avail) {
-      if (outv_growbuf(context, count) == -1)
-	return -1;
-      va_start(ap, fmt);
-      vsprintf(context->outv_current, fmt, ap);
-      va_end(ap);
+    if (count < 0) {
+      WHYF("vsnprintf(%p,%zu,%s,...) failed", context->outv_current, avail, alloca_str_toprint(fmt));
+      return;
+    } else if ((size_t)count < avail) {
+      context->outv_current += count;
+      return;
     }
-    context->outv_current += count;
-    ret = count;
+    if (outv_growbuf(context, count) == -1)
+      return;
+    avail = context->outv_limit - context->outv_current;
+    va_start(ap, fmt);
+    count = vsprintf(context->outv_current, fmt, ap);
+    va_end(ap);
+    if (count < 0) {
+      WHYF("vsprintf(%p,%s,...) failed", context->outv_current, alloca_str_toprint(fmt));
+      return;
+    }
+    assert((size_t)count < avail);
+    context->outv_current += (size_t)count;
   } else
 #endif
   {
     va_start(ap, fmt);
-    ret = vfprintf(stdout, fmt, ap);
+    if (vfprintf(stdout, fmt, ap) < 0)
+      WHYF("vfprintf(stdout,%s,...) failed", alloca_str_toprint(fmt));
     va_end(ap);
   }
-  return ret;
 }
 
 void cli_columns(struct cli_context *context, int columns, const char *names[])
