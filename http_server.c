@@ -1593,7 +1593,7 @@ static void http_request_send_response(struct http_request *r)
     if (r->phase != PAUSE)
       http_request_set_idle_timeout(r);
     // If we wrote less than we tried, then go back to polling, otherwise keep generating content.
-    if (written < (size_t) unsent)
+    if ((size_t) written < (size_t) unsent)
       return;
   }
   if (r->debug_flag && *r->debug_flag)

@@ -1473,11 +1473,11 @@ static void mdp_poll2(struct sched_ent *alarm)
     struct iovec iov[]={
       {
 	.iov_base = (void *)&header,
-	.iov_len = sizeof(struct mdp_header)
+	.iov_len = sizeof header
       },
       {
 	.iov_base = (void *)payload,
-	.iov_len = sizeof(payload)
+	.iov_len = sizeof payload
       }
     };
     
@@ -1489,17 +1489,17 @@ static void mdp_poll2(struct sched_ent *alarm)
     };
     
     ssize_t len = recvmsg(alarm->poll.fd, &hdr, 0);
-    if (len<0){
-      WHY_perror("recvmsg");
+    if (len == -1){
+      WHYF_perror("recvmsg(%d,%p,0)", alarm->poll.fd, &hdr);
       return;
     }
-    if (len<sizeof(struct mdp_header)){
-      WHYF("Expected length %d, got %d from %s", (int)sizeof(struct mdp_header), (int)len, alloca_socket_address(&client));
+    if ((size_t)len < sizeof header) {
+      WHYF("Expected length %zu, got %zu from %s", sizeof header, len, alloca_socket_address(&client));
       return;
     }
     
     client.addrlen = hdr.msg_namelen;
-    size_t payload_len = len - sizeof(header);
+    size_t payload_len = (size_t)(len - sizeof header);
     mdp_process_packet(&client, &header, payload, payload_len);
   }
 }
@@ -1521,7 +1521,7 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 	    &client, alloca_socket_address(&client)
 	  );
 
-    if (len > 0) {
+    if ((size_t)len > 0) {
       if (client.addrlen <= sizeof(sa_family_t))
 	WHYF("got client.addrlen=%d too short -- ignoring frame len=%zu", (int)client.addrlen, (size_t)len);
       else {

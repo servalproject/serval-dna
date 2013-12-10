@@ -144,10 +144,8 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
     }
     
     if (ret==0){
-      ret = fread(buffer, 1, buffer_len, f);
-      if (ret==buffer_len)
-	ret=0;
-      else
+      ssize_t nread = fread(buffer, 1, buffer_len, f);
+      if ((size_t)nread != buffer_len)
 	ret=WHY_perror("Unable to read manifest contents");
     }
     

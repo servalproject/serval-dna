@@ -81,7 +81,7 @@ ssize_t _write_all(int fd, const void *buf, size_t len, struct __sourceloc __whe
   if (written == -1)
     return WHYF_perror("write_all: write(%d,%p %s,%zu)",
 	fd, buf, alloca_toprint(30, buf, len), len);
-  if (written != len)
+  if ((size_t)written != len)
     return WHYF_perror("write_all: write(%d,%p %s,%zu) returned %zd",
 	fd, buf, alloca_toprint(30, buf, len), len, (size_t)written);
   return written;
@@ -96,7 +96,7 @@ ssize_t _writev_all(int fd, const struct iovec *iov, int iovcnt, struct __source
   ssize_t written = writev(fd, iov, iovcnt);
   if (written == -1)
     return WHYF_perror("writev_all: writev(%d,%s len=%zu)", fd, alloca_iovec(iov, iovcnt), len);
-  if (written != len)
+  if ((size_t)written != len)
     return WHYF_perror("writev_all: writev(%d,%s len=%zu) returned %zd", fd, alloca_iovec(iov, iovcnt), len, (size_t)written);
   return written;
 }
@@ -123,9 +123,9 @@ ssize_t _write_nonblock(int fd, const void *buf, size_t len, struct __sourceloc 
 ssize_t _write_all_nonblock(int fd, const void *buf, size_t len, struct __sourceloc __whence)
 {
   ssize_t written = _write_nonblock(fd, buf, len, __whence);
-  if (written != -1 && written != len)
-    return WHYF("write_all_nonblock: write(%d,%p %s,%lu) returned %ld",
-	fd, buf, alloca_toprint(30, buf, len), (unsigned long)len, (long)written);
+  if (written != -1 && (size_t)written != len)
+    return WHYF("write_all_nonblock: write(%d,%p %s,%zu) returned %zd",
+	fd, buf, alloca_toprint(30, buf, len), len, (size_t)written);
   return written;
 }
 

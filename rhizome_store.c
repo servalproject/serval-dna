@@ -221,17 +221,17 @@ static int write_data(struct rhizome_write *write_state, uint64_t file_offset, u
     WARNF("Writing file data out of order! [%"PRId64",%"PRId64"]", file_offset, write_state->written_offset);
     
   if (write_state->blob_fd != -1) {
-    int ofs=0;
+    size_t ofs = 0;
     // keep trying until all of the data is written.
     if (lseek64(write_state->blob_fd, (off64_t) file_offset, SEEK_SET) == -1)
       return WHYF_perror("lseek64(%d,%"PRIu64",SEEK_SET)", write_state->blob_fd, file_offset);
-    while(ofs < data_size){
-      int r=write(write_state->blob_fd, buffer + ofs, data_size - ofs);
-      if (r<0)
+    while (ofs < data_size){
+      ssize_t r = write(write_state->blob_fd, buffer + ofs, (size_t)(data_size - ofs));
+      if (r == -1)
 	return WHY_perror("write");
       if (config.debug.externalblobs)
-        DEBUGF("Wrote %d bytes to fd %d", r, write_state->blob_fd);
-      ofs+=r;
+        DEBUGF("Wrote %zd bytes to fd %d", (size_t)r, write_state->blob_fd);
+      ofs += (size_t)r;
     }
   }else{
     if (!write_state->sql_blob)
@@ -782,7 +782,7 @@ static ssize_t rhizome_read_retry(sqlite_retry_state *retry, struct rhizome_read
   // the length.
   size_t bytes_read = 0;
   if (buffer && bufsz && read_state->offset < read_state->length) {
-    bytes_read = read_state->length - read_state->offset;
+    bytes_read = (size_t)(read_state->length - read_state->offset);
     if (bytes_read > bufsz)
       bytes_read = bufsz;
     assert(bytes_read > 0);
@@ -821,7 +821,7 @@ ssize_t rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, siz
     SHA512_Update(&read_state->sha512_context, buffer, bytes_read);
     read_state->hash_offset += bytes_read;
     // if we hash everything and the has doesn't match, we need to delete the payload
-    if (read_state->hash_offset>=read_state->length){
+    if (read_state->hash_offset >= read_state->length){
       rhizome_filehash_t hash_out;
       SHA512_Final(hash_out.binary, &read_state->sha512_context);
       SHA512_End(&read_state->sha512_context, NULL);

@@ -1051,7 +1051,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
       uint8_t recv_payload[12];
       ssize_t len = mdp_recv(mdp_sockfd, &mdp_recv_header, recv_payload, sizeof(recv_payload));
       
-      if (len<0){
+      if (len == -1){
 	WHY_perror("mdp_recv");
 	break;
       }
@@ -1069,7 +1069,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
 	continue;
       }
       
-      if (len<sizeof(recv_payload)){
+      if ((size_t)len < sizeof(recv_payload)){
 	DEBUGF("Ignoring ping response as it is too short");
 	continue;
       }
