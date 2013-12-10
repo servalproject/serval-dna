@@ -460,7 +460,7 @@ void rhizome_sync_status_html(struct strbuf *b, struct subscriber *subscriber);
 int rhizome_cache_count();
 int overlay_add_local_identity(unsigned char *s);
 
-extern int overlay_interface_count;
+extern unsigned overlay_interface_count;
 
 extern int overlay_local_identity_count;
 extern unsigned char *overlay_local_identities[OVERLAY_MAX_LOCAL_IDENTITIES];

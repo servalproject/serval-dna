@@ -39,7 +39,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 
 int overlay_ready=0;
-int overlay_interface_count=0;
+unsigned overlay_interface_count=0;
 overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
 int overlay_last_interface_number=-1;
 
@@ -934,11 +934,11 @@ overlay_interface_register(char *name,
 
   // Find the matching non-dummy interface rule.
   const struct config_network_interface *ifconfig = NULL;
-  int i;
+  unsigned i;
   for (i = 0; i < config.interfaces.ac; ++i, ifconfig = NULL) {
     ifconfig = &config.interfaces.av[i].value;
     if (ifconfig->socket_type==SOCK_DGRAM) {
-      int j;
+      unsigned j;
       for (j = 0; j < ifconfig->match.patc; ++j){
 	if (fnmatch(ifconfig->match.patv[j], name, 0) == 0)
 	  break;
@@ -1011,7 +1011,7 @@ overlay_interface_register(char *name,
 void overlay_interface_discover(struct sched_ent *alarm)
 {
   /* Mark all UP interfaces as DETECTING, so we can tell which interfaces are new, and which are dead */
-  int i;
+  unsigned i;
   for (i = 0; i < overlay_interface_count; i++)
     if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
       overlay_interfaces[i].state=INTERFACE_STATE_DETECTING;   
@@ -1027,7 +1027,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
       detect_real_interfaces = 1;
       continue;
     }
-    int j;
+    unsigned j;
     for (j = 0; j < overlay_interface_count; j++){
       if (overlay_interfaces[j].socket_type == ifconfig->socket_type && 
 	  strcasecmp(overlay_interfaces[j].name, ifconfig->file) == 0 && 

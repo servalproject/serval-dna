@@ -111,7 +111,7 @@ static int serval_packetvisualise_renderaddress(XPRINTF xpf, const unsigned char
 	xprintf(xpf,"<illegal address token 0x%02x>",len);
 	return -1;
       }
-      int i;
+      unsigned i;
       for (i=0;i<len;i++)
 	xprintf(xpf,"%02X",packet[(*ofs)++]);
       if (len<32) xprintf(xpf,"*");
@@ -360,9 +360,10 @@ int serval_packetvisualise_xpf(XPRINTF xpf, const char *message, const unsigned 
 
 static void _dump(XPRINTF xpf, const unsigned char *data, size_t len, size_t ofs, const char *prefix)
 {
-  int i, j;
+  unsigned i;
   for (i = ofs & 0xFFFFFFF0; i < len; i += 16) {
     xprintf(xpf, "%s%04x:", prefix, i);
+    unsigned j;
     for (j = 0; j < 16; ++j)
       if (i + j >= ofs && i + j < len)
 	xprintf(xpf," %02x", data[i+j]);

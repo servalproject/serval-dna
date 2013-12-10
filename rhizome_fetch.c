@@ -151,10 +151,11 @@ static const char * fetch_state(int state)
   }
 }
 
-static uint64_t rhizome_active_fetch_bytes_received(int q)
+static uint64_t rhizome_active_fetch_bytes_received(unsigned q)
 {
-  if (q<0 || q>=NQUEUES) return -1;
-  if (rhizome_fetch_queues[q].active.state==RHIZOME_FETCH_FREE) return -1;
+  assert(q < NQUEUES);
+  if (rhizome_fetch_queues[q].active.state == RHIZOME_FETCH_FREE)
+    return 0;
   return rhizome_fetch_queues[q].active.write_state.file_offset;
 }
 
@@ -180,13 +181,13 @@ static uint64_t rhizome_fetch_queue_bytes()
 
 void rhizome_fetch_log_short_status()
 {
-  int i,active=0;
+  unsigned active = 0;
+  unsigned i;
   for(i=0;i<NQUEUES;i++)
     if (rhizome_fetch_queues[i].active.state!=RHIZOME_FETCH_FREE)
       active++;
   if (!active)
     return;
-  
   INFOF("Rhizome transfer progress: %"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64" (remaining %"PRIu64")",
 	rhizome_active_fetch_bytes_received(0),
 	rhizome_active_fetch_bytes_received(1),
@@ -244,7 +245,7 @@ static struct profile_total fetch_stats = { .name="rhizome_fetch_poll" };
  */
 static struct rhizome_fetch_queue *rhizome_find_queue(unsigned char log_size)
 {
-  int i;
+  unsigned i;
   for (i = 0; i < NQUEUES; ++i) {
     struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
     if (log_size < q->log_size_threshold)
@@ -261,8 +262,8 @@ static struct rhizome_fetch_queue *rhizome_find_queue(unsigned char log_size)
  */
 static struct rhizome_fetch_slot *rhizome_find_fetch_slot(uint64_t size)
 {
-  int i;
   unsigned char log_size = log2ll(size);
+  unsigned i;
   for (i = 0; i < NQUEUES; ++i) {
     struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
     if (log_size < q->log_size_threshold && q->active.state == RHIZOME_FETCH_FREE)
@@ -275,7 +276,7 @@ static struct rhizome_fetch_slot *rhizome_find_fetch_slot(uint64_t size)
 // find the first matching active slot for this bundle
 static struct rhizome_fetch_slot *fetch_search_slot(const unsigned char *id, int prefix_length)
 {
-  int i;
+  unsigned i;
   for (i = 0; i < NQUEUES; ++i) {
     struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
     
@@ -383,7 +384,7 @@ static void candidate_unqueue(struct rhizome_fetch_candidate *c)
  */
 int rhizome_any_fetch_active()
 {
-  int i;
+  unsigned i;
   for (i = 0; i < NQUEUES; ++i)
     if (rhizome_fetch_queues[i].active.state != RHIZOME_FETCH_FREE)
       return 1;
@@ -396,7 +397,7 @@ int rhizome_any_fetch_active()
  */
 int rhizome_any_fetch_queued()
 {
-  int i;
+  unsigned i;
   for (i = 0; i < NQUEUES; ++i)
     if (rhizome_fetch_queues[i].candidate_queue[0].manifest)
       return 1;
@@ -708,7 +709,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
       }
     }
   }
-  int i;
+  unsigned i;
   for (i = 0; i < NQUEUES; ++i) {
     struct rhizome_fetch_slot *as = &rhizome_fetch_queues[i].active;
     const rhizome_manifest *am = as->manifest;
@@ -828,7 +829,7 @@ static void rhizome_start_next_queued_fetches(struct sched_ent *alarm)
 {
   IN();
   assert(alarm == &sched_activate);
-  int i;
+  unsigned i;
   for (i = 0; i < NQUEUES; ++i)
     rhizome_start_next_queued_fetch(&rhizome_fetch_queues[i].active);
   OUT();
@@ -839,7 +840,7 @@ int rhizome_fetch_has_queue_space(unsigned char log2_size){
   struct rhizome_fetch_queue *q = rhizome_find_queue(log2_size);
   if (q){
     // is there an empty candidate?
-    unsigned j=0;
+    unsigned j;
     for (j=0;j < q->candidate_queue_size;j++)
       if (!q->candidate_queue[j].manifest)
 	return 1;

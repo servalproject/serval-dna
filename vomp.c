@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 */
 
+#include <assert.h>
 #include "serval.h"
 #include "str.h"
 #include "conf.h"
@@ -184,7 +185,7 @@ struct vomp_call_state {
  This is partly to deal with denial of service attacks that might occur by causing
  the ejection of newly allocated session numbers before the caller has had a chance
  to progress the call to a further state. */
-int vomp_call_count=0;
+unsigned vomp_call_count=0;
 // TODO allocate call structures dynamically
 struct vomp_call_state vomp_call_states[VOMP_MAX_CALLS];
 struct profile_total vomp_stats;
@@ -331,7 +332,7 @@ int is_codec_set(int codec, unsigned char *flags){
 
 struct vomp_call_state *vomp_find_call_by_session(int session_token)
 {
-  int i;
+  unsigned i;
   for(i=0;i<vomp_call_count;i++)
     if (session_token==vomp_call_states[i].local.session)
       return &vomp_call_states[i];
@@ -347,7 +348,7 @@ static int vomp_generate_session_id()
       return WHY("Insufficient entropy");
     session_id&=VOMP_SESSION_MASK;
     if (config.debug.vomp) DEBUGF("session=0x%08x",session_id);
-    int i;
+    unsigned i;
     /* reject duplicate call session numbers */
     for(i=0;i<vomp_call_count;i++)
       if (session_id==vomp_call_states[i].local.session
@@ -399,11 +400,10 @@ static struct vomp_call_state *vomp_find_or_create_call(struct subscriber *remot
 					  int sender_state,
 					  int recvr_state)
 {
-  int i;
   struct vomp_call_state *call;
-  
   if (config.debug.vomp)
-    DEBUGF("%d calls already in progress.",vomp_call_count);
+    DEBUGF("%u calls already in progress.",vomp_call_count);
+  unsigned i;
   for(i=0;i<vomp_call_count;i++)
     {
       call = &vomp_call_states[i];
@@ -774,11 +774,12 @@ static int vomp_call_destroy(struct vomp_call_state *call)
     DEBUGF("Destroying call %06x:%06x [%s,%s]", call->local.session, call->remote.session, call->local.did,call->remote.did);
   
   /* now release the call structure */
-  int i = (call - vomp_call_states);
+  unsigned i = (call - vomp_call_states);
   unschedule(&call->alarm);
   call->local.session=0;
   call->remote.session=0;
   
+  assert(vomp_call_count > 0);
   vomp_call_count--;
   if (i!=vomp_call_count){
     unschedule(&vomp_call_states[vomp_call_count].alarm);

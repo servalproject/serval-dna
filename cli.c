@@ -44,7 +44,7 @@ int cli_usage_args(const int argc, const char *const *args, const struct cli_sch
   unsigned cmd;
   int matched_any = 0;
   for (cmd = 0; commands[cmd].function; ++cmd) {
-    unsigned opt;
+    int opt;
     const char *word;
     int matched = 1;
     for (opt = 0; matched && opt < argc && (word = commands[cmd].words[opt]); ++opt)
@@ -99,7 +99,7 @@ int cli_parse(const int argc, const char *const *args, const struct cli_schema *
     cmdpa.labelc = 0;
     cmdpa.varargi = -1;
     const char *pattern = NULL;
-    unsigned arg = 0;
+    int arg = 0;
     unsigned opt = 0;
     while ((pattern = commands[cmd].words[opt])) {
       //DEBUGF("cmd=%d opt=%d pattern='%s' args[arg=%d]='%s'", cmd, opt, pattern, arg, arg < argc ? args[arg] : "");
@@ -167,7 +167,7 @@ int cli_parse(const int argc, const char *const *args, const struct cli_schema *
 	  pattern += 1;
 	  patlen -= 2;
 	}
-	unsigned oarg = arg;
+	int oarg = arg;
 	const char *text = NULL;
 	const char *label = NULL;
 	unsigned labellen = 0;
@@ -277,7 +277,7 @@ void _debug_cli_parsed(struct __sourceloc __whence, const struct cli_parsed *par
 {
   DEBUG_argv("command", parsed->argc, parsed->args);
   strbuf b = strbuf_alloca(1024);
-  int i;
+  unsigned i;
   for (i = 0; i < parsed->labelc; ++i) {
     const struct labelv *lab = &parsed->labelv[i];
     strbuf_sprintf(b, " %s=%s", alloca_toprint(-1, lab->label, lab->len), alloca_str_toprint(lab->text));
@@ -300,7 +300,7 @@ int _cli_arg(struct __sourceloc __whence, const struct cli_parsed *parsed, char 
   int labellen = strlen(label);
   if (dst)
     *dst = defaultvalue;
-  int i;
+  unsigned i;
   for (i = 0; i < parsed->labelc; ++i) {
     if (parsed->labelv[i].len == labellen && strncasecmp(label, parsed->labelv[i].label, labellen) == 0) {
       const char *value = parsed->labelv[i].text;

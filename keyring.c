@@ -1170,7 +1170,7 @@ static int keyring_decrypt_pkr(keyring_file *k, unsigned cn, const char *pin, in
     goto kdp_safeexit;
   }
   // Add any unlocked subscribers to our memory table, flagged as local SIDs.
-  int i=0;
+  unsigned i;
   for (i=0;i<id->keypair_count;i++){
     if (id->keypairs[i]->type == KEYTYPE_CRYPTOBOX) {
       add_subscriber(id, i);
@@ -1446,7 +1446,7 @@ int keyring_set_did(keyring_identity *id, const char *did, const char *name)
   if (!name) name="Mr. Smith";
 
   /* Find where to put it */
-  int i;
+  unsigned i;
   for(i=0;i<id->keypair_count;i++)
     if (id->keypairs[i]->type==KEYTYPE_DID) {
       if (config.debug.keyring)
@@ -1529,8 +1529,8 @@ int keyring_pack_tag(unsigned char *packed, size_t *packed_len, const char *name
 
 int keyring_set_public_tag(keyring_identity *id, const char *name, const unsigned char *value, size_t length)
 {
-  int i;
-  for(i=0;i<id->keypair_count;i++){
+  unsigned i;
+  for (i=0;i<id->keypair_count;i++){
     const char *tag_name;
     const unsigned char *tag_value;
     size_t tag_length;
@@ -1600,7 +1600,7 @@ int keyring_find_public_tag_value(const keyring_file *k, int *cn, int *in, int *
 
 int keyring_identity_find_keytype(const keyring_file *k, int cn, int in, int keytype)
 {
-  int kp;
+  unsigned kp;
   for (kp = 0; kp < k->contexts[cn]->identities[in]->keypair_count; ++kp)
     if (k->contexts[cn]->identities[in]->keypairs[kp]->type == keytype)
       return kp;
@@ -1951,7 +1951,7 @@ int keyring_find_sid(const keyring_file *k, int *cn, int *in, int *kp, const sid
 void keyring_identity_extract(const keyring_identity *id, const sid_t **sidp, const char **didp, const char **namep)
 {
   int todo = (sidp ? 1 : 0) | (didp ? 2 : 0) | (namep ? 4 : 0);
-  int kpn;
+  unsigned kpn;
   for (kpn = 0; todo && kpn < id->keypair_count; ++kpn) {
     keypair *kp = id->keypairs[kpn];
     switch (kp->type) {
@@ -2075,7 +2075,7 @@ struct nm_record {
   unsigned char nm_bytes[crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES];
 };
 
-int nm_slots_used=0;
+unsigned nm_slots_used=0;
 /* 512 x 96 bytes = 48KB, not too big */
 #define NM_CACHE_SLOTS 512
 struct nm_record nm_cache[NM_CACHE_SLOTS];
@@ -2087,9 +2087,8 @@ unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknow
   if (!unknown_sidp) { RETURNNULL(WHYNULL("unknown pub key is null")); }
   if (!keyring) { RETURNNULL(WHYNULL("keyring is null")); }
 
-  int i;
-
   /* See if we have it cached already */
+  unsigned i;
   for(i=0;i<nm_slots_used;i++)
     {
       if (cmp_sid_t(&nm_cache[i].known_key, known_sidp) != 0) continue;

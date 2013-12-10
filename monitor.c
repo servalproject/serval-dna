@@ -405,7 +405,7 @@ static int monitor_set(const struct cli_parsed *parsed, struct cli_context *cont
     c->flags|=MONITOR_VOMP;
     // store the list of supported codecs against the monitor connection,
     // since we need to forget about them when the client disappears.
-    int i;
+    unsigned i;
     for (i = 2; i < parsed->argc; ++i) {
       int codec = atoi(parsed->args[i]);
       if (codec>=0 && codec <=255)
@@ -547,7 +547,7 @@ static int monitor_call_dtmf(const struct cli_parsed *parsed, struct cli_context
     return monitor_write_error(c,"Invalid call token");
   const char *digits = parsed->args[2];
   
-  int i;
+  unsigned i;
   for(i=0;i<strlen(digits);i++) {
     int digit=vomp_parse_dtmf_digit(digits[i]);
     if (digit<0)

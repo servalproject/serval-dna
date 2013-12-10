@@ -213,7 +213,7 @@ dna_helper_start()
   // Construct argv[] for execv() and log messages.
   const char *argv[config.dna.helper.argv.ac + 2];
   argv[0] = config.dna.helper.executable;
-  int i;
+  unsigned i;
   for (i = 0; i < config.dna.helper.argv.ac; ++i)
     argv[i + 1] = config.dna.helper.argv.av[i].value;
   argv[i + 1] = NULL;

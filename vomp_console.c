@@ -267,8 +267,8 @@ static int console_audio(const struct cli_parsed *parsed, struct cli_context *UN
   }else{
     static char buf[256];
     static struct strbuf str_buf = STRUCT_STRBUF_EMPTY;
-    int i;
     strbuf_init(&str_buf, buf, sizeof(buf));
+    unsigned i;
     for (i = 0; i < parsed->argc; ++i) {
       if (i)
 	strbuf_putc(&str_buf, ' ');

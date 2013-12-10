@@ -527,7 +527,7 @@ int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context 
     return -1;
   } else {
     const struct config_rhizome_peer *peers[config.rhizome.direct.peer.ac];
-    int i;
+    unsigned i;
     for (i = 0; i < config.rhizome.direct.peer.ac; ++i)
       peers[i] = &config.rhizome.direct.peer.av[i].value;
     return rhizome_sync_with_peers(mode, config.rhizome.direct.peer.ac, peers);

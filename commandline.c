@@ -519,7 +519,7 @@ int app_echo(const struct cli_parsed *parsed, struct cli_context *context)
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   int escapes = !cli_arg(parsed, "-e", NULL, NULL, NULL);
-  int i;
+  unsigned i;
   for (i = parsed->varargi; i < parsed->argc; ++i) {
     const char *arg = parsed->args[i];
     if (config.debug.verbose)
@@ -1257,8 +1257,8 @@ int app_config_set(const struct cli_parsed *parsed, struct cli_context *UNUSED(c
   // </kludge>
   const char *var[parsed->argc - 1];
   const char *val[parsed->argc - 1];
-  int nvar = 0;
-  int i;
+  unsigned nvar = 0;
+  unsigned i;
   for (i = 1; i < parsed->argc; ++i) {
     const char *arg = parsed->args[i];
     int iv;
@@ -2087,7 +2087,7 @@ int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *contex
 
 static void cli_output_identity(struct cli_context *context, const keyring_identity *id)
 {
-  int i;
+  unsigned i;
   for (i=0;i<id->keypair_count;i++){
     keypair *kp=id->keypairs[i];
     switch(kp->type){
@@ -2433,7 +2433,7 @@ int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
       overlay_mdp_client_close(mdp_sockfd);
       return WHY("MDP Server returned something other than an address list");
     }
-    int i;
+    unsigned i;
     for(i=0;i<a.addrlist.frame_sid_count;i++) {
       count++;
       cli_printf(context, "%s", alloca_tohex_sid_t(a.addrlist.sids[i]));
