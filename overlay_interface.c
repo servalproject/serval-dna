@@ -810,13 +810,13 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 {
   assert(destination && destination->interface);
   const unsigned char *bytes = ob_ptr(buffer);
-  int len = ob_position(buffer);
+  size_t len = ob_position(buffer);
   
   struct overlay_interface *interface = destination->interface;
   destination->last_tx = gettime_ms();
   
   if (config.debug.packettx){
-    DEBUGF("Sending this packet via interface %s (len=%d)",interface->name,len);
+    DEBUGF("Sending this packet via interface %s (len=%zu)",interface->name, len);
     DEBUG_packet_visualise(NULL, bytes, len);
   }
 
@@ -826,7 +826,7 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
   }
 
   if (interface->debug)
-    DEBUGF("Sending on %s, len %d: %s", interface->name, len, alloca_tohex(bytes, len>64?64:len));
+    DEBUGF("Sending on %s, len %zu: %s", interface->name, len, alloca_tohex(bytes, len>64?64:len));
 
   interface->tx_count++;
   
@@ -842,11 +842,11 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 	.pid = getpid(),
       };
       
-      if (len > sizeof(packet.payload)){
+      if (len > sizeof packet.payload) {
 	WARN("Truncating long packet to fit within MTU byte limit for dummy interface");
-	len = sizeof(packet.payload);
+	len = sizeof packet.payload;
       }
-      packet.payload_length=len;
+      packet.payload_length = len;
       bcopy(bytes, packet.payload, len);
       ob_free(buffer);
       /* This lseek() is unneccessary because the dummy file is opened in O_APPEND mode.  It's
@@ -886,22 +886,22 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
     case SOCK_DGRAM:
     {
       if (config.debug.overlayinterfaces) 
-	DEBUGF("Sending %zu byte overlay frame on %s to %s", (size_t)len, interface->name, inet_ntoa(destination->address.sin_addr));
+	DEBUGF("Sending %zu byte overlay frame on %s to %s", len, interface->name, inet_ntoa(destination->address.sin_addr));
       ssize_t sent = sendto(interface->alarm.poll.fd, 
 		bytes, (size_t)len, 0, 
 		(struct sockaddr *)&destination->address, sizeof(destination->address));
       ob_free(buffer);
-      if (sent == -1 || (size_t)sent != (size_t)len) {
+      if (sent == -1 || (size_t)sent != len) {
 	if (sent == -1)
 	  WHYF_perror("sendto(fd=%d,len=%zu,addr=%s) on interface %s",
 	      interface->alarm.poll.fd,
-	      (size_t)len,
+	      len,
 	      alloca_sockaddr((struct sockaddr *)&destination->address, sizeof destination->address),
 	      interface->name
 	    );
 	else
 	  WHYF("sendto() sent %zu bytes of overlay frame (%zu) to interface %s (socket=%d)",
-	      (size_t)sent, (size_t)len, interface->name, interface->alarm.poll.fd);
+	      (size_t)sent, len, interface->name, interface->alarm.poll.fd);
 	// close the interface if we had any error while sending broadcast packets,
 	// unicast packets should not bring the interface down
 	if (destination == interface->destination)

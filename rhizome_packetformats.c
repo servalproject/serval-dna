@@ -168,12 +168,12 @@ static int append_bars(struct overlay_buffer *e, sqlite_retry_state *retry, cons
 	DEBUG("Found a BAR that is the wrong size - ignoring");
       continue;
     }
-    if (ob_remaining(e) < blob_bytes) {
+    if (ob_remaining(e) < RHIZOME_BAR_BYTES) {
       // out of room
       count--;
       break;
     }
-    ob_append_bytes(e, (unsigned char *)data, blob_bytes);
+    ob_append_bytes(e, (unsigned char *)data, RHIZOME_BAR_BYTES);
     *last_rowid=rowid;
   }
   if (statement)

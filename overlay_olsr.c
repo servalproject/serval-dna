@@ -196,7 +196,7 @@ static void parse_frame(struct overlay_buffer *buff){
   frame.modifiers=ob_get(buff);
   
   if (config.debug.overlayinterfaces) 
-    DEBUGF("Received %d byte payload via olsr", buff->sizeLimit - buff->position);
+    DEBUGF("Received %zu byte payload via olsr", buff->sizeLimit - buff->position);
   
   // the remaining bytes are an mdp payload, process it
   frame.payload = buff;
@@ -297,7 +297,7 @@ int olsr_send(struct overlay_frame *frame){
   ob_append_byte(b, frame->modifiers);
   
   if (config.debug.overlayinterfaces) 
-    DEBUGF("Sending %d byte payload via olsr", frame->payload->sizeLimit);
+    DEBUGF("Sending %zu byte payload via olsr", frame->payload->sizeLimit);
   
   // send the packet
   int ret = send_packet(b->bytes, b->position, frame->payload->bytes, frame->payload->sizeLimit);

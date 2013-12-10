@@ -24,43 +24,43 @@ struct overlay_buffer {
   unsigned char *bytes;
   
   // remembered position for rewinding
-  int checkpointLength;
+  size_t checkpointLength;
   
   // position of data read / written
-  int position;
+  size_t position;
   
   // maximum allowed bytes for reading / writing
-  int sizeLimit;
+  size_t sizeLimit;
   
   // size of buffer
-  int allocSize;
+  size_t allocSize;
   
   // is this an allocated buffer? can it be resized? Should it be freed?
   unsigned char * allocated;
   
   // length position for later patching
-  int var_length_offset;
+  size_t var_length_offset;
 };
 
 struct overlay_buffer *_ob_new(struct __sourceloc __whence);
-struct overlay_buffer *_ob_static(struct __sourceloc __whence, unsigned char *bytes, int size);
-struct overlay_buffer *_ob_slice(struct __sourceloc __whence, struct overlay_buffer *b, int offset, int length);
+struct overlay_buffer *_ob_static(struct __sourceloc __whence, unsigned char *bytes, size_t size);
+struct overlay_buffer *_ob_slice(struct __sourceloc __whence, struct overlay_buffer *b, size_t offset, size_t length);
 struct overlay_buffer *_ob_dup(struct __sourceloc __whence, struct overlay_buffer *b);
 void _ob_free(struct __sourceloc __whence, struct overlay_buffer *b);
 int _ob_checkpoint(struct __sourceloc __whence, struct overlay_buffer *b);
 int _ob_rewind(struct __sourceloc __whence, struct overlay_buffer *b);
-void _ob_limitsize(struct __sourceloc __whence, struct overlay_buffer *b,int bytes);
+void _ob_limitsize(struct __sourceloc __whence, struct overlay_buffer *b, size_t bytes);
 void _ob_flip(struct __sourceloc __whence, struct overlay_buffer *b);
 void _ob_unlimitsize(struct __sourceloc __whence, struct overlay_buffer *b);
 ssize_t _ob_makespace(struct __sourceloc whence, struct overlay_buffer *b, size_t bytes);
-void _ob_set(struct __sourceloc __whence, struct overlay_buffer *b, int ofs, unsigned char byte);
-void _ob_set_ui16(struct __sourceloc __whence, struct overlay_buffer *b, int offset, uint16_t v);
+void _ob_set(struct __sourceloc __whence, struct overlay_buffer *b, size_t ofs, unsigned char byte);
+void _ob_set_ui16(struct __sourceloc __whence, struct overlay_buffer *b, size_t offset, uint16_t v);
 void _ob_patch_rfs(struct __sourceloc __whence, struct overlay_buffer *b);
 
 void _ob_append_byte(struct __sourceloc whence, struct overlay_buffer *b,unsigned char byte);
-void _ob_append_bytes(struct __sourceloc whence, struct overlay_buffer *b,const unsigned char *bytes,int count);
+void _ob_append_bytes(struct __sourceloc whence, struct overlay_buffer *b,const unsigned char *bytes, size_t count);
 void _ob_append_buffer(struct __sourceloc whence, struct overlay_buffer *b,struct overlay_buffer *s);
-unsigned char *_ob_append_space(struct __sourceloc whence, struct overlay_buffer *b,int count);
+unsigned char *_ob_append_space(struct __sourceloc whence, struct overlay_buffer *b, size_t count);
 void _ob_append_ui16(struct __sourceloc whence, struct overlay_buffer *b, uint16_t v);
 void _ob_append_ui32(struct __sourceloc whence, struct overlay_buffer *b, uint32_t v);
 void _ob_append_ui64(struct __sourceloc whence, struct overlay_buffer *b, uint64_t v);
@@ -99,8 +99,8 @@ int ob_peek(struct overlay_buffer *b);
 void ob_skip(struct overlay_buffer *b, unsigned n);
 // get one byte from the current position, -ve number indicates failure
 int ob_get(struct overlay_buffer *b);
-int ob_get_bytes(struct overlay_buffer *b, unsigned char *buff, int len);
-unsigned char * ob_get_bytes_ptr(struct overlay_buffer *b, int len);
+int ob_get_bytes(struct overlay_buffer *b, unsigned char *buff, size_t len);
+unsigned char * ob_get_bytes_ptr(struct overlay_buffer *b, size_t len);
 uint64_t ob_get_ui64(struct overlay_buffer *b);
 uint32_t ob_get_ui32(struct overlay_buffer *b);
 uint16_t ob_get_ui16(struct overlay_buffer *b);
@@ -110,9 +110,9 @@ uint32_t ob_get_packed_ui32(struct overlay_buffer *b);
 uint64_t ob_get_packed_ui64(struct overlay_buffer *b);
 
 // information routines
-int ob_position(struct overlay_buffer *b);
-int ob_limit(struct overlay_buffer *b);
-int ob_remaining(struct overlay_buffer *b);
+size_t ob_position(struct overlay_buffer *b);
+size_t ob_limit(struct overlay_buffer *b);
+size_t ob_remaining(struct overlay_buffer *b);
 int _ob_overrun(struct __sourceloc, struct overlay_buffer *b);
 unsigned char* ob_ptr(struct overlay_buffer *b);
 

@@ -94,7 +94,7 @@ int overlay_frame_append_payload(struct decode_context *context, int encapsulati
 	   alloca_tohex_sid_t(p->destination->sid),p->type,
 	   "append_payload stuffing into packet");
     if (p->payload)
-      dump("payload contents", &p->payload->bytes[0],p->payload->position);
+      dump("payload contents", &p->payload->bytes[0], ob_position(p->payload));
   }
   
   struct broadcast *broadcast=NULL;

@@ -425,7 +425,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     }
     
     // TODO allow for single byte length?
-    unsigned int payload_len;
+    size_t payload_len;
     
     switch (context.encapsulation){
       case ENCAP_SINGLE:
@@ -459,7 +459,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     
     if (header_valid!=0){
 
-      f.payload = ob_slice(b, b->position, payload_len);
+      f.payload = ob_slice(b, ob_position(b), payload_len);
       if (!f.payload){
 	// out of memory?
 	WHY("Unable to slice payload");

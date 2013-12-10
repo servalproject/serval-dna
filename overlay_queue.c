@@ -335,7 +335,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
   while(frame){
     if (frame->enqueued_at + queue->latencyTarget < now){
       if (config.debug.overlayframes)
-	DEBUGF("Dropping frame type %x (length %d) for %s due to expiry timeout", 
+	DEBUGF("Dropping frame type %x (length %zu) for %s due to expiry timeout", 
 	       frame->type, frame->payload->checkpointLength,
 	       frame->destination?alloca_tohex_sid_t(frame->destination->sid):"All");
       frame = overlay_queue_remove(queue, frame);

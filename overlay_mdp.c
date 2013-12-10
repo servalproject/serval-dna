@@ -766,7 +766,7 @@ static int overlay_send_frame(
   
   if (ob_overrun(plaintext)) {
     if (config.debug.mdprequests) 
-      DEBUGF("Frame overrun: position=%d allocSize=%d sizeLimit=%d",
+      DEBUGF("Frame overrun: position=%zu allocSize=%zu sizeLimit=%zu",
 	  plaintext->position, plaintext->allocSize, plaintext->sizeLimit);
     op_free(frame);
     ob_free(plaintext);
