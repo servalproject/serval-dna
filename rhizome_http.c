@@ -637,6 +637,7 @@ static int rhizome_file_content(struct http_request *hr, unsigned char *buf, siz
   const size_t preferred_bufsz = 16 * blocksz;
   // Reads the next part of the payload into the supplied buffer.
   rhizome_http_request *r = (rhizome_http_request *) hr;
+  assert(r->u.read_state.length != RHIZOME_SIZE_UNSET);
   assert(r->u.read_state.offset < r->u.read_state.length);
   uint64_t remain = r->u.read_state.length - r->u.read_state.offset;
   size_t readlen = bufsz;
@@ -682,11 +683,11 @@ static int rhizome_file_page(rhizome_http_request *r, const char *remainder)
   }
   if (n != 0)
     return 1;
-  if (r->u.read_state.length == -1 && rhizome_read(&r->u.read_state, NULL, 0)) {
+  if (r->u.read_state.length == RHIZOME_SIZE_UNSET && rhizome_read(&r->u.read_state, NULL, 0)) {
     rhizome_read_close(&r->u.read_state);
     return 1;
   }
-  assert(r->u.read_state.length != -1);
+  assert(r->u.read_state.length != RHIZOME_SIZE_UNSET);
   r->http.response.header.resource_length = r->u.read_state.length;
   if (r->http.request_header.content_range_count > 0) {
     assert(r->http.request_header.content_range_count == 1);

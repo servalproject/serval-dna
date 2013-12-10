@@ -1051,7 +1051,7 @@ int rhizome_read_cached(const rhizome_bid_t *bidp, uint64_t version, time_ms_t t
   }
   
   entry->read_state.offset = fileOffset;
-  if (entry->read_state.length !=-1 && fileOffset >= entry->read_state.length)
+  if (entry->read_state.length != RHIZOME_SIZE_UNSET && fileOffset >= entry->read_state.length)
     return 0;
   
   if (entry->expires < timeout){
