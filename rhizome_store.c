@@ -27,8 +27,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 int rhizome_exists(const rhizome_filehash_t *hashp)
 {
-  int64_t gotfile = 0;
-  if (sqlite_exec_int64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE id = ? and datavalid = 1;", RHIZOME_FILEHASH_T, hashp, END) != 1)
+  uint64_t gotfile = 0;
+  if (sqlite_exec_uint64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE id = ? and datavalid = 1;", RHIZOME_FILEHASH_T, hashp, END) != 1)
     return 0;
   return gotfile;
 }
@@ -467,7 +467,7 @@ int rhizome_fail_write(struct rhizome_write *write)
 
 int rhizome_finish_write(struct rhizome_write *write)
 {
-  if (write->blob_rowid==-1 && write->blob_fd == -1)
+  if (write->blob_rowid==0 && write->blob_fd == -1)
     return WHY("Can't finish a write that has already been closed");
   if (write->buffer_list){
     if (rhizome_random_write(write, 0, NULL, 0))
@@ -565,7 +565,7 @@ int rhizome_finish_write(struct rhizome_write *write)
     if (config.debug.rhizome)
       DEBUGF("Stored file %s", alloca_tohex_rhizome_filehash_t(write->id));
   }
-  write->blob_rowid=-1;
+  write->blob_rowid = 0;
   return 0;
   
 dbfailure:
@@ -666,7 +666,7 @@ static int rhizome_write_derive_key(rhizome_manifest *m, struct rhizome_write *w
     return -1;
 
   if (config.debug.rhizome)
-    DEBUGF("Encrypting payload contents for %s, %"PRId64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
+    DEBUGF("Encrypting payload contents for %s, %"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
 
   write->crypt=1;
   if (m->is_journal && m->tail > 0)
@@ -713,16 +713,16 @@ failure:
 int rhizome_open_read(struct rhizome_read *read, const rhizome_filehash_t *hashp)
 {
   read->id = *hashp;
-  read->blob_rowid = -1;
+  read->blob_rowid = 0;
   read->blob_fd = -1;
-  if (sqlite_exec_int64(&read->blob_rowid,
+  if (sqlite_exec_uint64(&read->blob_rowid,
       "SELECT FILEBLOBS.rowid "
       "FROM FILEBLOBS, FILES "
       "WHERE FILEBLOBS.id = FILES.id"
       " AND FILES.id = ?"
       " AND FILES.datavalid != 0", RHIZOME_FILEHASH_T, &read->id, END) == -1)
     return -1;
-  if (read->blob_rowid != -1) {
+  if (read->blob_rowid != 0) {
     read->length = RHIZOME_SIZE_UNSET; // discover the length on opening the db BLOB
   } else {
     // No row in FILEBLOBS, look for an external blob file.
@@ -763,7 +763,7 @@ static ssize_t rhizome_read_retry(sqlite_retry_state *retry, struct rhizome_read
       DEBUGF("Read %zu bytes from fd=%d @%"PRIx64, (size_t) rd, read_state->blob_fd, read_state->offset);
     RETURN(rd);
   }
-  if (read_state->blob_rowid == -1)
+  if (read_state->blob_rowid == 0)
     RETURN(WHY("file not open"));
   sqlite3_blob *blob = NULL;
   int ret;
@@ -1110,7 +1110,7 @@ static int read_derive_key(rhizome_manifest *m, struct rhizome_read *read_state)
       return WHY("Unable to decrypt bundle, valid key not found");
     }
     if (config.debug.rhizome)
-      DEBUGF("Decrypting payload contents for bid=%s version=%"PRId64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
+      DEBUGF("Decrypting payload contents for bid=%s version=%"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
     if (m->is_journal && m->tail > 0)
       read_state->tail = m->tail;
     bcopy(m->payloadKey, read_state->key, sizeof(read_state->key));

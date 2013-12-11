@@ -79,7 +79,7 @@ struct rhizome_fetch_slot {
 
   /* MDP transport specific elements */
   rhizome_bid_t bid;
-  int64_t bidVersion;
+  uint64_t bidVersion;
   int prefix_length;
   int mdpIdleTimeout;
   time_ms_t mdp_last_request_time;
@@ -493,12 +493,12 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
   slot->start_time=gettime_ms();
   slot->alarm.poll.fd = -1;
   slot->write_state.blob_fd=-1;
-  slot->write_state.blob_rowid=-1;
+  slot->write_state.blob_rowid = 0;
 
   if (slot->manifest) {
     slot->bid = slot->manifest->cryptoSignPublic;
     slot->prefix_length = sizeof slot->bid.binary;
-    slot->bidVersion=slot->manifest->version;
+    slot->bidVersion = slot->manifest->version;
     /* Don't provide a filename, because we will stream the file straight into
        the database. */
     slot->manifest->dataFileName = NULL;
@@ -668,7 +668,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   */
 
   if (config.debug.rhizome_rx)
-    DEBUGF("Fetching bundle slot=%d bid=%s version=%"PRId64" size=%"PRIu64" peerip=%s",
+    DEBUGF("Fetching bundle slot=%d bid=%s version=%"PRIu64" size=%"PRIu64" peerip=%s",
 	   slotno(slot),
 	   alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
 	   m->version,
@@ -878,7 +878,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   int priority=100; /* normal priority */
 
   if (config.debug.rhizome_rx)
-    DEBUGF("Considering import bid=%s version=%"PRId64" size=%"PRIu64" priority=%d:",
+    DEBUGF("Considering import bid=%s version=%"PRIu64" size=%"PRIu64" priority=%d:",
 	alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, m->filesize, priority);
 
   if (!rhizome_is_manifest_interesting(m)) {
@@ -889,9 +889,9 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   }
 
   if (config.debug.rhizome_rx) {
-    int64_t stored_version;
-    if (sqlite_exec_int64(&stored_version, "SELECT version FROM MANIFESTS WHERE id = ?", RHIZOME_BID_T, &m->cryptoSignPublic, END) > 0)
-      DEBUGF("   is new (have version %"PRId64")", stored_version);
+    uint64_t stored_version;
+    if (sqlite_exec_uint64(&stored_version, "SELECT version FROM MANIFESTS WHERE id = ?", RHIZOME_BID_T, &m->cryptoSignPublic, END) > 0)
+      DEBUGF("   is new (have version %"PRIu64")", stored_version);
   }
 
   assert(m->filesize != RHIZOME_SIZE_UNSET);
@@ -1026,8 +1026,7 @@ static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
     rhizome_manifest_free(slot->previous);
   slot->previous = NULL;
   
-  if (slot->write_state.blob_fd>=0 ||
-      slot->write_state.blob_rowid>=0)
+  if (slot->write_state.blob_fd != -1 || slot->write_state.blob_rowid != 0)
     rhizome_fail_write(&slot->write_state);
 
   // Release the fetch slot.

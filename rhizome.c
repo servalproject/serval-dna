@@ -165,11 +165,11 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
     return WHY("could not verify manifest");
   
   /* Do we already have this manifest or newer? */
-  int64_t dbVersion = -1;
-  if (sqlite_exec_int64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &m->cryptoSignPublic, END) == -1)
+  uint64_t dbVersion = 0;
+  if (sqlite_exec_uint64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &m->cryptoSignPublic, END) == -1)
     return WHY("Select failure");
 
-  if (dbVersion>=m->version)
+  if (dbVersion >= m->version)
     return 2;
 
   int status = rhizome_import_file(m, filepath);
@@ -301,8 +301,8 @@ int rhizome_add_manifest(rhizome_manifest *m, int ttl)
     return WHY("Manifest does not have an ID");   
   
   /* Discard the new manifest unless it is newer than the most recent known version with the same ID */
-  int64_t storedversion = -1;
-  switch (sqlite_exec_int64(&storedversion, "SELECT version FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &m->cryptoSignPublic, END)) {
+  uint64_t storedversion = -1;
+  switch (sqlite_exec_uint64(&storedversion, "SELECT version FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &m->cryptoSignPublic, END)) {
     case -1:
       return WHY("Select failed");
     case 0:
@@ -310,11 +310,11 @@ int rhizome_add_manifest(rhizome_manifest *m, int ttl)
       break;
     case 1:
       if (config.debug.rhizome) 
-	DEBUGF("Found existing version=%"PRId64", new version=%"PRId64, storedversion, m->version);
+	DEBUGF("Found existing version=%"PRIu64", new version=%"PRIu64, storedversion, m->version);
       if (m->version < storedversion)
 	return WHY("Newer version exists");
       if (m->version == storedversion)
-	return WHYF("Already have %s:%"PRId64", not adding", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
+	return WHYF("Already have %s:%"PRIu64", not adding", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
       break;
     default:
       return WHY("Select found too many rows!");

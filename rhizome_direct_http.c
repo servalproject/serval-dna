@@ -644,7 +644,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  DEBUGF("bundle id = %s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
 	  DEBUGF("bundle filehash = %s", alloca_tohex_rhizome_filehash_t(m->filehash));
 	  DEBUGF("file size = %"PRId64, m->filesize);
-	  DEBUGF("version = %"PRId64, m->version);
+	  DEBUGF("version = %"PRIu64, m->version);
 	}
 
 	/* We now have everything we need to compose the POST request and send it.

@@ -277,7 +277,7 @@ void rhizome_server_poll(struct sched_ent *alarm)
 	request->uuid = rhizome_http_request_uuid_counter++;
 	request->data_file_name[0] = '\0';
 	request->u.read_state.blob_fd = -1;
-	request->u.read_state.blob_rowid = -1;
+	request->u.read_state.blob_rowid = 0;
 	if (peerip)
 	  request->http.client_sockaddr_in = *peerip;
 	request->http.handle_headers = rhizome_dispatch;
@@ -498,7 +498,7 @@ static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *ret
 	strbuf_putc(b, ',');
 	strbuf_json_hex(b, m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary);
 	strbuf_putc(b, ',');
-	strbuf_sprintf(b, "%"PRId64, m->version);
+	strbuf_sprintf(b, "%"PRIu64, m->version);
 	strbuf_putc(b, ',');
 	if (m->has_date)
 	  strbuf_sprintf(b, "%"PRItime_ms_t, m->date);
