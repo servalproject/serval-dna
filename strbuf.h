@@ -76,7 +76,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <sys/types.h>
-#include <stdint.h>
+#include <stdint.h> // for SIZE_MAX on Debian/Unbuntu/...
+#include <limits.h> // for SIZE_MAX on Android
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
