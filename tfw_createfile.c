@@ -98,13 +98,11 @@ int main(int argc, char **argv)
   for (i = 0; i != sizeof buf; ++i)
     buf[i] = stripe(i);
   const size_t labellen = strlen(label);
-  int bouncemax = sizeof buf - labellen;
-  if (bouncemax < 0)
-    bouncemax = sizeof buf;
-  int bounce = 3;
+  unsigned bouncemax = labellen < sizeof buf ? sizeof buf - labellen : sizeof buf;
+  unsigned bounce = 3;
   int bouncedelta = 1;
   while (!ferror(stdout) && offset < size) {
-    int n = sprintf(buf, "%"PRId64, offset);
+    unsigned n = sprintf(buf, "%"PRId64, offset);
     buf[n] = stripe(n);
     size_t labelsiz = labellen;
     if (labelsiz && bounce < sizeof buf) {
@@ -112,7 +110,7 @@ int main(int argc, char **argv)
 	labelsiz = sizeof buf - bounce;
       memcpy(buf + bounce, label, labelsiz);
     }
-    int remain = size - offset - 1;
+    unsigned remain = size - offset - 1;
     if (remain > sizeof buf)
       remain = sizeof buf;
     fwrite(buf, remain, 1, stdout);
