@@ -1494,7 +1494,7 @@ static void mdp_poll2(struct sched_ent *alarm)
       return;
     }
     if ((size_t)len < sizeof header) {
-      WHYF("Expected length %zu, got %zu from %s", sizeof header, len, alloca_socket_address(&client));
+      WHYF("Expected length %zu, got %zu from %s", sizeof header, (size_t)len, alloca_socket_address(&client));
       return;
     }
     
