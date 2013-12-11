@@ -180,6 +180,7 @@ struct http_request {
   HTTP_REQUEST_PARSER handle_headers; // called after all HTTP headers are parsed
   HTTP_REQUEST_PARSER handle_content_end; // called after all content is received
   // The following are used for managing the buffer during RECEIVE phase.
+  const char *reserved; // end of reserved data in buffer[]
   const char *received; // start of received data in buffer[]
   const char *end; // end of received data in buffer[]
   const char *parsed; // start of unparsed data in buffer[]

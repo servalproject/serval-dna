@@ -108,7 +108,9 @@ void http_request_init(struct http_request *r, int sockfd)
   r->alarm.poll.fd = sockfd;
   r->alarm.poll.events = POLLIN;
   r->phase = RECEIVE;
-  r->received = r->end = r->parsed = r->cursor = r->buffer;
+  r->reserved = r->buffer;
+  // Put aside a few bytes for reserving strings, so that the path can be reserved ok.
+  r->received = r->end = r->parsed = r->cursor = r->buffer + 32;
   r->parser = http_request_parse_verb;
   watch(&r->alarm);
   http_request_set_idle_timeout(r);
@@ -140,11 +142,11 @@ int http_request_set_response_bufsize(struct http_request *r, size_t bufsiz)
   // Don't allocate a new buffer if the existing one contains content.
   assert(r->response_buffer_sent == r->response_buffer_length);
   const char *const bufe = r->buffer + sizeof r->buffer;
-  assert(r->received < bufe);
-  size_t rbufsiz = bufe - r->received;
+  assert(r->reserved < bufe);
+  size_t rbufsiz = bufe - r->reserved;
   if (bufsiz <= rbufsiz) {
     http_request_free_response_buffer(r);
-    r->response_buffer = (char *) r->received;
+    r->response_buffer = (char *) r->reserved;
     r->response_buffer_size = rbufsiz;
     if (r->debug_flag && *r->debug_flag)
       DEBUGF("Static response buffer %zu bytes", r->response_buffer_size);
@@ -197,37 +199,112 @@ static int _matches(struct substring str, const char *text)
 }
 #endif
 
-static const char * _reserve(struct http_request *r, struct substring str)
+void write_pointer(unsigned char *mem, void *v)
 {
-  char *reslim = r->buffer + sizeof r->buffer - 1024; // always leave this much unreserved space
-  assert(r->received <= reslim);
+  uintptr_t n = (uintptr_t) v;
+  unsigned i;
+  for (i = 0; i != sizeof v; ++i)
+    mem[i] = n >> (8 * i);
+}
+
+void *read_pointer(const unsigned char *mem)
+{
+  uintptr_t n = 0;
+  unsigned i;
+  for (i = 0; i != sizeof(void*); ++i)
+    n |= mem[i] << (8 * i);
+  return (void *) n;
+}
+
+/* Allocate space from the start of the request buffer to hold the given substring plus a
+ * terminating NUL.  Enough bytes must have already been marked as parsed in order to make room,
+ * otherwise the reservation fails and returns 0.  If successful, copies the substring plus a
+ * terminating NUL into the reserved space, places a pointer to the reserved area into '*resp', and
+ * returns 1.
+ *
+ * Keeps a copy to the pointer 'resp', so that when the reserved area is released, all pointers into
+ * it can be set to NULL automatically.  This provides some safety: if the pointer is accidentally
+ * dereferenced after the release it will cause a SEGV instead of using a string that has been
+ * overwritten.  It does not protect from using copies of '*resp', which of course will not be have
+ * been set to NULL by the release.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+static int _reserve(struct http_request *r, const char **resp, struct substring str)
+{
+  // Reserved string pointer must lie within this http_request struct.
+  assert((char*)resp >= (char*)r);
+  assert((char*)resp < (char*)(r + 1));
   size_t len = str.end - str.start;
-  size_t siz = len + 1;
-  if (r->received + siz > reslim) {
+  // Substring must contain no NUL chars.
+  assert(strnchr(str.start, len, '\0') == NULL);
+  char *reslim = r->buffer + sizeof r->buffer - 1024; // always leave this much unreserved space
+  assert(r->reserved <= reslim);
+  size_t siz = sizeof(char**) + len + 1;
+  if (r->reserved + siz > reslim) {
     r->response.result_code = 414;
-    return NULL;
+    return 0;
   }
-  if (r->received + siz > r->parsed) {
+  if (r->reserved + siz > r->parsed) {
     WARNF("Error during HTTP parsing, unparsed content %s would be overwritten by reserving %s",
 	alloca_toprint(30, r->parsed, r->end - r->parsed),
 	alloca_substring_toprint(str)
       );
     r->response.result_code = 500;
-    return NULL;
+    return 0;
   }
-  char *ret = (char *) r->received;
-  if (ret != str.start)
-    memmove(ret, str.start, len);
-  ret[len] = '\0';
-  r->received += siz;
+  const char ***respp = (const char ***) r->reserved;
+  char *restr = (char *)(respp + 1);
+  write_pointer((unsigned char*)respp, resp); // can't use *respp = resp; could cause SIGBUS if not aligned
+  if (restr != str.start)
+    memmove(restr, str.start, len);
+  restr[len] = '\0';
+  r->reserved += siz;
+  if (r->reserved > r->received)
+    r->received = r->reserved;
   assert(r->received <= r->parsed);
-  return ret;
+  *resp = restr;
+  DEBUGF("respp=%p resp=%p restr=%p %s", respp, resp, restr, alloca_toprint(-1, restr, len + 1));
+  return 1;
 }
 
-static const char * _reserve_str(struct http_request *r, const char *str)
+/* The same as _reserve(), but takes a NUL-terminated string as a source argument instead of a
+ * substring.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+static int _reserve_str(struct http_request *r, const char **resp, const char *str)
 {
   struct substring sub = { .start = str, .end = str + strlen(str) };
-  return _reserve(r, sub);
+  return _reserve(r, resp, sub);
+}
+
+/* Release all the strings reserved by _reserve(), returning the space to the request buffer, and
+ * resetting to NULL all the pointers to reserved strings that were set by _reserve().
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+static void _release_reserved(struct http_request *r)
+{
+  char *res = r->buffer;
+  while (res < r->reserved) {
+    assert(res + sizeof(char**) + 1 <= r->reserved);
+    const char ***respp = (const char ***) res;
+    char *restr = (char *)(respp + 1);
+    const char **resp = read_pointer((const unsigned char*)respp); // can't use resp = *respp; could cause SIGBUS if not aligned
+    DEBUGF("respp=%p resp=%p restr=%p %s", respp, resp, restr, alloca_str_toprint(restr));
+    assert((const char*)resp >= (const char*)r);
+    assert((const char*)resp < (const char*)(r + 1));
+    assert(*resp == restr);
+    *resp = NULL;
+    for (res = restr; res < r->reserved && *res; ++res)
+      ;
+    assert(res < r->reserved);
+    assert(*res == '\0');
+    ++res;
+  }
+  assert(res == r->reserved);
+  r->reserved = r->buffer;
 }
 
 static inline int _end_of_content(struct http_request *r)
@@ -585,8 +662,8 @@ static int _parse_authorization(struct http_request *r, struct http_client_autho
     char buf[bufsz];
     if (_parse_authorization_credentials_basic(r, &auth->credentials.basic, buf, bufsz)) {
       auth->scheme = BASIC;
-      if (   (auth->credentials.basic.user = _reserve_str(r, auth->credentials.basic.user)) == NULL
-	  || (auth->credentials.basic.password = _reserve_str(r, auth->credentials.basic.password)) == NULL
+      if (   !_reserve_str(r, &auth->credentials.basic.user, auth->credentials.basic.user)
+	  || !_reserve_str(r, &auth->credentials.basic.password, auth->credentials.basic.password)
       )
 	return 0; // error
       return 1;
@@ -699,7 +776,7 @@ static int http_request_parse_path(struct http_request *r)
     return 400;
   }
   _commit(r);
-  if ((r->path = _reserve(r, path)) == NULL)
+  if (!_reserve(r, &r->path, path))
     return 0; // error
   r->parser = http_request_parse_http_version;
   return 0;
@@ -1866,6 +1943,7 @@ static size_t http_request_drain(struct http_request *r)
 static void http_request_start_response(struct http_request *r)
 {
   assert(r->phase == RECEIVE);
+  _release_reserved(r);
   if (r->response.content || r->response.content_generator) {
     assert(r->response.header.content_type != NULL);
     assert(r->response.header.content_type[0]);
