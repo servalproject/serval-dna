@@ -76,6 +76,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <sys/types.h>
+#include <stdint.h> // for SIZE_MAX on Debian/Unbuntu/...
+#include <limits.h> // for SIZE_MAX on Android
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
@@ -442,15 +444,15 @@ __STRBUF_INLINE size_t strbuf_len(const_strbuf sb) {
 }
 
 
-/** Return remaining space in the strbuf, not counting the terminating nul.  Return
- * the maximum possible size_t value if the strbuf is of undefined size.
+/** Return remaining space in the strbuf, not counting the terminating nul.
+ * Return SIZE_MAX if the strbuf is of undefined size.
  *
  * Invariant: strbuf_size(sb) == -1 || strbuf_remaining(sb) == strbuf_size(sb) - strbuf_len(sb)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 __STRBUF_INLINE size_t strbuf_remaining(const_strbuf sb) {
-  return sb->end ? sb->end - strbuf_end(sb) : ~(size_t)0;
+  return !sb->end ? SIZE_MAX : sb->current > sb->end ? 0 : (size_t)(sb->end - sb->current);
 }
 
 /** Return the number of chars appended to the strbuf so far, not counting the

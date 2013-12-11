@@ -75,19 +75,16 @@ static void directory_send(struct subscriber *directory_service, const sid_t *si
 
 // send a registration packet for each unlocked identity
 static void directory_send_keyring(struct subscriber *directory_service){
-  int cn=0, in=0, kp=0, k2;
-  
+  unsigned cn=0, in=0, kp=0;
   for (; !keyring_sanitise_position(keyring, &cn, &in, &kp); ++kp){
     keyring_identity *i = keyring->contexts[cn]->identities[in];
-    
     if (i->keypairs[kp]->type == KEYTYPE_CRYPTOBOX){
       const sid_t *sidp = (const sid_t *) i->keypairs[0]->public_key;
-      
+      unsigned k2;
       for(k2=0; k2 < i->keypair_count; k2++){
 	if (i->keypairs[k2]->type==KEYTYPE_DID){
 	  const char *unpackedDid = (const char *) i->keypairs[k2]->private_key;
 	  const char *name = (const char *) i->keypairs[k2]->public_key;
-	  
 	  directory_send(directory_service, sidp, unpackedDid, name);
 	  // send the first DID only
 	  break;

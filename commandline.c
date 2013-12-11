@@ -17,6 +17,35 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+/*
+  Portions Copyright (C) 2013 Petter Reinholdtsen
+  Some rights reserved
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
+     the documentation and/or other materials provided with the
+     distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+  COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+*/
+
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <math.h>
@@ -50,13 +79,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 extern struct cli_schema command_line_options[];
 
-int commandline_usage(const struct cli_parsed *parsed, struct cli_context *context)
+int commandline_usage(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   printf("Serval DNA version %s\nUsage:\n", version_servald);
   return cli_usage_parsed(parsed, XPRINTF_STDIO(stdout));
 }
 
-int version_message(const struct cli_parsed *parsed, struct cli_context *context)
+int version_message(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   printf("Serval DNA version %s\n%s\n", version_servald, copyright_servald);
   printf("\
@@ -79,15 +108,19 @@ jmethodID startResultSet, setColumnName, putString, putBlob, putLong, putDouble,
 
 static int outv_growbuf(struct cli_context *context, size_t needed)
 {
-  size_t newsize = (context->outv_limit - context->outv_current < needed) ? (context->outv_limit - context->outv_buffer) + needed : 0;
-  if (newsize) {
+  assert(context->outv_current <= context->outv_limit);
+  size_t remaining = (size_t)(context->outv_limit - context->outv_current);
+  if (remaining < needed) {
+    size_t cursize = context->outv_current - context->outv_buffer;
+    size_t newsize = cursize + needed;
     // Round up to nearest multiple of OUTV_BUFFER_ALLOCSIZE.
     newsize = newsize + OUTV_BUFFER_ALLOCSIZE - ((newsize - 1) % OUTV_BUFFER_ALLOCSIZE + 1);
-    size_t length = context->outv_current - context->outv_buffer;
+    assert(newsize > cursize);
+    assert((size_t)(newsize - cursize) >= needed);
     context->outv_buffer = realloc(context->outv_buffer, newsize);
     if (context->outv_buffer == NULL)
       return WHYF("Out of memory allocating %lu bytes", (unsigned long) newsize);
-    context->outv_current = context->outv_buffer + length;
+    context->outv_current = context->outv_buffer + cursize;
     context->outv_limit = context->outv_buffer + newsize;
   }
   return 0;
@@ -136,7 +169,7 @@ int Throw(JNIEnv *env, const char *class, const char *msg)
 /* JNI entry point to command line.  See org.servalproject.servald.ServalD class for the Java side.
    JNI method descriptor: "(Ljava/util/List;[Ljava/lang/String;)I"
 */
-JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv *env, jobject this, jobject outv, jobjectArray args)
+JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv *env, jobject UNUSED(this), jobject outv, jobjectArray args)
 {
   struct cli_context context;
   bzero(&context, sizeof(context));
@@ -311,36 +344,45 @@ int cli_puts(struct cli_context *context, const char *str)
 }
 
 /* Write a formatted string to output.  If in a JNI call, then this appends the string to the
-   current output field, excluding the terminating null.  Returns the number of bytes
-   written/appended, or -1 on error.
+   current output field, excluding the terminating null.
  */
-int cli_printf(struct cli_context *context, const char *fmt, ...)
+void cli_printf(struct cli_context *context, const char *fmt, ...)
 {
-  int ret = 0;
   va_list ap;
 #ifdef HAVE_JNI_H
   if (context && context->jni_env) {
+    assert(context->outv_current <= context->outv_limit);
     size_t avail = context->outv_limit - context->outv_current;
     va_start(ap, fmt);
     int count = vsnprintf(context->outv_current, avail, fmt, ap);
     va_end(ap);
-    if (count >= avail) {
-      if (outv_growbuf(context, count) == -1)
-	return -1;
-      va_start(ap, fmt);
-      vsprintf(context->outv_current, fmt, ap);
-      va_end(ap);
+    if (count < 0) {
+      WHYF("vsnprintf(%p,%zu,%s,...) failed", context->outv_current, avail, alloca_str_toprint(fmt));
+      return;
+    } else if ((size_t)count < avail) {
+      context->outv_current += count;
+      return;
     }
-    context->outv_current += count;
-    ret = count;
+    if (outv_growbuf(context, count) == -1)
+      return;
+    avail = context->outv_limit - context->outv_current;
+    va_start(ap, fmt);
+    count = vsprintf(context->outv_current, fmt, ap);
+    va_end(ap);
+    if (count < 0) {
+      WHYF("vsprintf(%p,%s,...) failed", context->outv_current, alloca_str_toprint(fmt));
+      return;
+    }
+    assert((size_t)count < avail);
+    context->outv_current += (size_t)count;
   } else
 #endif
   {
     va_start(ap, fmt);
-    ret = vfprintf(stdout, fmt, ap);
+    if (vfprintf(stdout, fmt, ap) < 0)
+      WHYF("vfprintf(stdout,%s,...) failed", alloca_str_toprint(fmt));
     va_end(ap);
   }
-  return ret;
 }
 
 void cli_columns(struct cli_context *context, int columns, const char *names[])
@@ -490,7 +532,7 @@ int app_echo(const struct cli_parsed *parsed, struct cli_context *context)
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   int escapes = !cli_arg(parsed, "-e", NULL, NULL, NULL);
-  int i;
+  unsigned i;
   for (i = parsed->varargi; i < parsed->argc; ++i) {
     const char *arg = parsed->args[i];
     if (config.debug.verbose)
@@ -506,7 +548,7 @@ int app_echo(const struct cli_parsed *parsed, struct cli_context *context)
   return 0;
 }
 
-int app_log(const struct cli_parsed *parsed, struct cli_context *context)
+int app_log(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1009,7 +1051,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
       uint8_t recv_payload[12];
       ssize_t len = mdp_recv(mdp_sockfd, &mdp_recv_header, recv_payload, sizeof(recv_payload));
       
-      if (len<0){
+      if (len == -1){
 	WHY_perror("mdp_recv");
 	break;
       }
@@ -1027,7 +1069,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
 	continue;
       }
       
-      if (len<sizeof(recv_payload)){
+      if ((size_t)len < sizeof(recv_payload)){
 	DEBUGF("Ignoring ping response as it is too short");
 	continue;
       }
@@ -1204,7 +1246,7 @@ int app_config_dump(const struct cli_parsed *parsed, struct cli_context *context
   return ret == CFOK ? 0 : 1;
 }
 
-int app_config_set(const struct cli_parsed *parsed, struct cli_context *context)
+int app_config_set(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1228,8 +1270,8 @@ int app_config_set(const struct cli_parsed *parsed, struct cli_context *context)
   // </kludge>
   const char *var[parsed->argc - 1];
   const char *val[parsed->argc - 1];
-  int nvar = 0;
-  int i;
+  unsigned nvar = 0;
+  unsigned i;
   for (i = 1; i < parsed->argc; ++i) {
     const char *arg = parsed->args[i];
     int iv;
@@ -1597,7 +1639,7 @@ cleanup:
   return status;
 }
 
-int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_context *context)
+int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1621,7 +1663,7 @@ int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_cont
   return ret;
 }
 
-int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_context *context)
+int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1791,7 +1833,7 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
       retfile = rhizome_extract_file(m, filepath);
     }else{
       // Save the file without attempting to decrypt
-      int64_t length;
+      uint64_t length;
       retfile = rhizome_dump_file(&m->filehash, filepath, &length);
     }
   }
@@ -1841,7 +1883,7 @@ int app_rhizome_export_file(const struct cli_parsed *parsed, struct cli_context 
     return -1;
   if (!rhizome_exists(&hash))
     return 1;
-  int64_t length;
+  uint64_t length;
   int ret = rhizome_dump_file(&hash, filepath, &length);
   if (ret)
     return ret == -1 ? -1 : 1;
@@ -1951,7 +1993,7 @@ int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context *contex
   return 0;
 }
 
-int app_keyring_create(const struct cli_parsed *parsed, struct cli_context *context)
+int app_keyring_create(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1962,7 +2004,7 @@ int app_keyring_create(const struct cli_parsed *parsed, struct cli_context *cont
   return 0;
 }
 
-int app_keyring_dump(const struct cli_parsed *parsed, struct cli_context *context)
+int app_keyring_dump(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1989,7 +2031,7 @@ int app_keyring_dump(const struct cli_parsed *parsed, struct cli_context *contex
   return ret;
 }
 
-int app_keyring_load(const struct cli_parsed *parsed, struct cli_context *context)
+int app_keyring_load(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -2039,7 +2081,7 @@ int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *contex
   keyring_file *k = keyring_open_instance_cli(parsed);
   if (!k)
     return -1;
-  int cn, in;
+  unsigned cn, in;
   for (cn = 0; cn < k->context_count; ++cn)
     for (in = 0; in < k->contexts[cn]->identity_count; ++in) {
       const sid_t *sidp = NULL;
@@ -2058,7 +2100,7 @@ int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *contex
 
 static void cli_output_identity(struct cli_context *context, const keyring_identity *id)
 {
-  int i;
+  unsigned i;
   for (i=0;i<id->keypair_count;i++){
     keypair *kp=id->keypairs[i];
     switch(kp->type){
@@ -2107,6 +2149,7 @@ int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *context
   if (!k)
     return -1;
   keyring_enter_pin(k, pin);
+  assert(k->context_count > 0);
   const keyring_identity *id = keyring_create_identity(k, k->contexts[k->context_count - 1], pin);
   if (id == NULL) {
     keyring_free(k);
@@ -2152,7 +2195,7 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
   
-  int cn=0,in=0,kp=0;
+  unsigned cn=0, in=0, kp=0;
   int r=0;
   if (!keyring_find_sid(keyring, &cn, &in, &kp, &sid))
     r=WHY("No matching SID");
@@ -2187,7 +2230,7 @@ static int app_keyring_set_tag(const struct cli_parsed *parsed, struct cli_conte
   if (str_to_sid_t(&sid, sidhex) == -1)
     return WHY("str_to_sid_t() failed");
 
-  int cn=0,in=0,kp=0;
+  unsigned cn=0, in=0, kp=0;
   int r=0;
   if (!keyring_find_sid(keyring, &cn, &in, &kp, &sid))
     r=WHY("No matching SID");
@@ -2226,7 +2269,7 @@ ssize_t mdp_poll_recv(int mdp_sock, time_ms_t timeout, struct mdp_header *rev_he
   return len;
 }
 
-static int handle_pins(const struct cli_parsed *parsed, struct cli_context *context, int revoke)
+static int handle_pins(const struct cli_parsed *parsed, struct cli_context *UNUSED(context), int revoke)
 {
   const char *pin, *sid_hex;
   if (cli_arg(parsed, "entry-pin", &pin, NULL, "") == -1 ||
@@ -2248,22 +2291,21 @@ static int handle_pins(const struct cli_parsed *parsed, struct cli_context *cont
   }else{
     request->action=ACTION_UNLOCK;
   }
-  int len = sizeof(struct mdp_identity_request);
-  
-  if (pin && *pin){
+  size_t len = sizeof(struct mdp_identity_request);
+  if (pin && *pin) {
     request->type=TYPE_PIN;
-    int pin_len = strlen(pin)+1;
-    if (pin_len+len > sizeof(request_payload))
+    size_t pin_siz = strlen(pin) + 1;
+    if (pin_siz + len > sizeof(request_payload))
       return WHY("Supplied pin is too long");
-    bcopy(pin, &request_payload[len], pin_len);
-    len+=pin_len;
+    bcopy(pin, &request_payload[len], pin_siz);
+    len += pin_siz;
   }else if(sid_hex && *sid_hex){
     request->type=TYPE_SID;
     sid_t sid;
     if (str_to_sid_t(&sid, sid_hex) == -1)
       return WHY("str_to_sid_t() failed");
     bcopy(sid.binary, &request_payload[len], sizeof(sid));
-    len+=sizeof(sid);
+    len += sizeof(sid);
   }
   
   if (!mdp_send(mdp_sock, &header, request_payload, len)){
@@ -2404,7 +2446,7 @@ int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
       overlay_mdp_client_close(mdp_sockfd);
       return WHY("MDP Server returned something other than an address list");
     }
-    int i;
+    unsigned i;
     for(i=0;i<a.addrlist.frame_sid_count;i++) {
       count++;
       cli_printf(context, "%s", alloca_tohex_sid_t(a.addrlist.sids[i]));
@@ -2444,7 +2486,7 @@ int app_count_peers(const struct cli_parsed *parsed, struct cli_context *context
   return 0;
 }
 
-int app_byteorder_test(const struct cli_parsed *parsed, struct cli_context *context)
+int app_byteorder_test(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   uint64_t in=0x1234;
   uint64_t out;
@@ -2791,7 +2833,7 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
 }
 
 void context_switch_test(int);
-int app_mem_test(const struct cli_parsed *parsed, struct cli_context *context)
+int app_mem_test(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   size_t mem_size;
   size_t addr;
@@ -3007,5 +3049,5 @@ struct cli_schema command_line_options[]={
   {app_pa_phone,{"phone",NULL}, 0,
    "Run phone test application"},
 #endif
-  {NULL,{NULL}}
+  {NULL,{NULL},0,NULL}
 };

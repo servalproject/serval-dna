@@ -161,9 +161,8 @@ typedef struct rhizome_manifest
 
   /* Version of the manifest.  Typically the number of milliseconds since 1970.
    * A value of zero (0) means it has not been set yet.
-   * TODO: change this to uint64_t.
    */
-  int64_t version;
+  uint64_t version;
 
   /* Payload is described by the offset of its tail (number of missing bytes
    * before the first byte in the payload), its size (number of bytes) and the
@@ -360,7 +359,7 @@ typedef struct rhizome_manifest
 #define rhizome_manifest_del_author(m)          _rhizome_manifest_del_author(__WHENCE__,(m))
 
 void _rhizome_manifest_set_id(struct __sourceloc, rhizome_manifest *, const rhizome_bid_t *);
-void _rhizome_manifest_set_version(struct __sourceloc, rhizome_manifest *, int64_t); // TODO change to uint64_t
+void _rhizome_manifest_set_version(struct __sourceloc, rhizome_manifest *, uint64_t);
 void _rhizome_manifest_set_filesize(struct __sourceloc, rhizome_manifest *, uint64_t);
 void _rhizome_manifest_set_filehash(struct __sourceloc, rhizome_manifest *, const rhizome_filehash_t *);
 void _rhizome_manifest_set_tail(struct __sourceloc, rhizome_manifest *, uint64_t);
@@ -445,7 +444,7 @@ sqlite_retry_state sqlite_retry_state_init(int serverLimit, int serverSleep, int
 
 struct rhizome_manifest_summary {
   rhizome_bid_t bid;
-  int64_t version;
+  uint64_t version;
   size_t body_len;
 };
 
@@ -538,8 +537,8 @@ void _sqlite_retry_done(struct __sourceloc, sqlite_retry_state *retry, const cha
 int _sqlite_step(struct __sourceloc, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement);
 int _sqlite_exec_void(struct __sourceloc, int log_level, const char *sqltext, ...);
 int _sqlite_exec_void_retry(struct __sourceloc, int log_level, sqlite_retry_state *retry, const char *sqltext, ...);
-int _sqlite_exec_int64(struct __sourceloc, int64_t *result, const char *sqltext, ...);
-int _sqlite_exec_int64_retry(struct __sourceloc, sqlite_retry_state *retry, int64_t *result, const char *sqltext, ...);
+int _sqlite_exec_uint64(struct __sourceloc, uint64_t *result, const char *sqltext, ...);
+int _sqlite_exec_uint64_retry(struct __sourceloc, sqlite_retry_state *retry, uint64_t *result, const char *sqltext, ...);
 int _sqlite_exec_strbuf(struct __sourceloc, strbuf sb, const char *sqltext, ...);
 int _sqlite_exec_strbuf_retry(struct __sourceloc, sqlite_retry_state *retry, strbuf sb, const char *sqltext, ...);
 int _sqlite_vexec_strbuf_retry(struct __sourceloc, sqlite_retry_state *retry, strbuf sb, const char *sqltext, va_list ap);
@@ -565,8 +564,8 @@ int _sqlite_vexec_strbuf_retry(struct __sourceloc, sqlite_retry_state *retry, st
 #define sqlite_exec_void_loglevel(ll,sql,arg,...)       _sqlite_exec_void(__WHENCE__, (ll), (sql), arg, ##__VA_ARGS__)
 #define sqlite_exec_void_retry(rs,sql,arg,...)          _sqlite_exec_void_retry(__WHENCE__, LOG_LEVEL_ERROR, (rs), (sql), arg, ##__VA_ARGS__)
 #define sqlite_exec_void_retry_loglevel(ll,rs,sql,arg,...) _sqlite_exec_void_retry(__WHENCE__, (ll), (rs), (sql), arg, ##__VA_ARGS__)
-#define sqlite_exec_int64(res,sql,arg,...)              _sqlite_exec_int64(__WHENCE__, (res), (sql), arg, ##__VA_ARGS__)
-#define sqlite_exec_int64_retry(rs,res,sql,arg,...)     _sqlite_exec_int64_retry(__WHENCE__, (rs), (res), (sql), arg, ##__VA_ARGS__)
+#define sqlite_exec_uint64(res,sql,arg,...)             _sqlite_exec_uint64(__WHENCE__, (res), (sql), arg, ##__VA_ARGS__)
+#define sqlite_exec_uint64_retry(rs,res,sql,arg,...)    _sqlite_exec_uint64_retry(__WHENCE__, (rs), (res), (sql), arg, ##__VA_ARGS__)
 #define sqlite_exec_strbuf(sb,sql,arg,...)              _sqlite_exec_strbuf(__WHENCE__, (sb), (sql), arg, ##__VA_ARGS__)
 #define sqlite_exec_strbuf_retry(rs,sb,sql,arg,...)     _sqlite_exec_strbuf_retry(__WHENCE__, (rs), (sb), (sql), arg, ##__VA_ARGS__)
 
@@ -575,7 +574,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs);
 int rhizome_update_file_priority(const char *fileid);
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
-int64_t rhizome_bar_version(const unsigned char *bar);
+uint64_t rhizome_bar_version(const unsigned char *bar);
 uint64_t rhizome_bar_bidprefix_ll(unsigned char *bar);
 int rhizome_is_bar_interesting(unsigned char *bar);
 int rhizome_is_manifest_interesting(rhizome_manifest *m);
@@ -604,7 +603,7 @@ int rhizome_bk_xor_stream(
   const size_t rs_len,
   unsigned char *xor_stream,
   int xor_stream_byte_count);
-int rhizome_bk2secret(rhizome_manifest *m,
+int rhizome_bk2secret(
   const rhizome_bid_t *bidp,
   const unsigned char *rs, const size_t rs_len,
   /* The BK need only be the length of the secret half of the secret key */
@@ -618,7 +617,6 @@ int rhizome_secret2bk(
   unsigned char bkout[RHIZOME_BUNDLE_KEY_BYTES],
   const unsigned char secret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]
 );
-unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m);
 int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
 			       const unsigned char *pk,rhizome_signature *out);
 int rhizome_verify_bundle_privatekey(const unsigned char *sk, const unsigned char *pk);
@@ -690,7 +688,7 @@ struct rhizome_write
   unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
   
   SHA512_CTX sha512_context;
-  int64_t blob_rowid;
+  uint64_t blob_rowid;
   int blob_fd;
   sqlite3_blob *sql_blob;
 };
@@ -709,11 +707,11 @@ struct rhizome_read
   unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
   unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
   
-  int64_t hash_offset;
+  uint64_t hash_offset;
   SHA512_CTX sha512_context;
   char invalid;
   
-  int64_t blob_rowid;
+  uint64_t blob_rowid;
   int blob_fd;
   
   uint64_t tail;
@@ -765,8 +763,7 @@ typedef struct rhizome_http_request
 } rhizome_http_request;
 
 int rhizome_received_content(const unsigned char *bidprefix,uint64_t version, 
-			     uint64_t offset, size_t count,unsigned char *bytes,
-			     int type);
+			     uint64_t offset, size_t count,unsigned char *bytes);
 int64_t rhizome_database_create_blob_for(const char *filehashhex_or_tempid,
 					 int64_t fileLength,int priority);
 int rhizome_server_set_response(rhizome_http_request *r, const struct http_response *h);
@@ -810,7 +807,7 @@ void rhizome_direct_bundle_iterator_unlimit(rhizome_direct_bundle_cursor *r);
 int rhizome_direct_bundle_iterator_pickle_range(rhizome_direct_bundle_cursor *r,
 						unsigned char *pickled,
 						int pickle_buffer_size);
-rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int prefix_length);
+rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix, size_t prefix_length);
 int rhizome_direct_bundle_iterator_unpickle_range(rhizome_direct_bundle_cursor *r,
 						  const unsigned char *pickled,
 						  int pickle_buffer_size);
@@ -913,6 +910,8 @@ struct http_response_parts {
   char *content_start;
 };
 
+#define HTTP_RESPONSE_CONTENT_LENGTH_UNSET UINT64_MAX
+
 int unpack_http_response(char *response, struct http_response_parts *parts);
 
 /* rhizome storage methods */
@@ -943,7 +942,7 @@ ssize_t rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buf
 int rhizome_read_close(struct rhizome_read *read);
 int rhizome_open_decrypt_read(rhizome_manifest *m, struct rhizome_read *read_state);
 int rhizome_extract_file(rhizome_manifest *m, const char *filepath);
-int rhizome_dump_file(const rhizome_filehash_t *hashp, const char *filepath, int64_t *length);
+int rhizome_dump_file(const rhizome_filehash_t *hashp, const char *filepath, uint64_t *lengthp);
 int rhizome_read_cached(const rhizome_bid_t *bid, uint64_t version, time_ms_t timeout, 
   uint64_t fileOffset, unsigned char *buffer, size_t length);
 int rhizome_cache_close();

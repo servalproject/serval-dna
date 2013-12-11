@@ -31,7 +31,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "cli.h"
 #include "monitor-client.h"
 
-int remote_print(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+int remote_print(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *UNUSED(context))
+{
   int i;
   printf("%s",cmd);
   for (i=0;i<argc;i++){
@@ -48,7 +49,7 @@ struct monitor_command_handler monitor_handlers[]={
   {.command="",      .handler=remote_print},
 };
 
-int app_monitor_cli(const struct cli_parsed *parsed, struct cli_context *context)
+int app_monitor_cli(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   struct pollfd fds[2];
   struct monitor_state *state;

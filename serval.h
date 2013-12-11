@@ -18,6 +18,35 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+/*
+  Portions Copyright (C) 2013 Petter Reinholdtsen
+  Some rights reserved
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
+     the documentation and/or other materials provided with the
+     distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+  COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+*/
+
 #ifndef __SERVAL_DNA__SERVAL_H
 #define __SERVAL_DNA__SERVAL_H
 
@@ -237,7 +266,7 @@ struct overlay_buffer;
 struct overlay_frame;
 struct broadcast;
 
-#define STRUCT_SCHED_ENT_UNUSED {.poll.fd=-1, ._poll_index=-1,}
+#define STRUCT_SCHED_ENT_UNUSED {.poll={.fd=-1}, ._poll_index=-1,}
 
 extern int overlayMode;
 
@@ -266,14 +295,14 @@ struct slip_decode_state{
   int encapsulator;
   int state;
   unsigned char *src;
-  int src_size;
+  unsigned src_size;
   char rssi_text[RSSI_TEXT_SIZE];
-  int rssi_len;
-  int packet_length;
+  unsigned rssi_len;
+  unsigned packet_length;
   unsigned char dst[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
   uint32_t crc;
-  int src_offset;
-  int dst_offset;
+  unsigned src_offset;
+  unsigned dst_offset;
 };
 
 struct overlay_interface;
@@ -406,7 +435,7 @@ void insertTransactionInCache(unsigned char *transaction_id);
 
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
-		    int recvttl, struct socket_address *recvaddr);
+		    struct socket_address *recvaddr);
 int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *frame, 
 			 struct overlay_buffer *buffer, struct subscriber **nexthop);
 int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface *interface, 
@@ -431,7 +460,7 @@ void rhizome_sync_status_html(struct strbuf *b, struct subscriber *subscriber);
 int rhizome_cache_count();
 int overlay_add_local_identity(unsigned char *s);
 
-extern int overlay_interface_count;
+extern unsigned overlay_interface_count;
 
 extern int overlay_local_identity_count;
 extern unsigned char *overlay_local_identities[OVERLAY_MAX_LOCAL_IDENTITIES];
@@ -447,10 +476,10 @@ int overlay_queue_schedule_next(time_ms_t next_allowed_packet);
 int overlay_send_tick_packet(struct network_destination *destination);
 int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *destination, uint32_t ack_mask, int ack_seq);
 
-int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, struct overlay_frame *f,  time_ms_t now);
+int overlay_rhizome_saw_advertisements(struct decode_context *context, struct overlay_frame *f);
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_saw_voice_traffic();
-int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now);
+int overlay_saw_mdp_containing_frame(struct overlay_frame *f);
 
 int serval_packetvisualise(const char *message, const unsigned char *packet, size_t len);
 int serval_packetvisualise_xpf(XPRINTF xpf, const char *message, const unsigned char *packet, size_t len);
@@ -540,7 +569,7 @@ struct vomp_call_state;
 void set_codec_flag(int codec, unsigned char *flags);
 int is_codec_set(int codec, unsigned char *flags);
 
-struct vomp_call_state *vomp_find_call_by_session(int session_token);
+struct vomp_call_state *vomp_find_call_by_session(unsigned int session_token);
 int vomp_mdp_received(overlay_mdp_frame *mdp);
 int vomp_parse_dtmf_digit(char c);
 int vomp_dial(struct subscriber *local, struct subscriber *remote, const char *local_did, const char *remote_did);
@@ -680,11 +709,10 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte);
 uint32_t Crc32_ComputeBuf( uint32_t inCrc32, const void *buf,
 			  size_t bufLen );
 void rhizome_fetch_log_short_status();
-extern int64_t bundles_available;
 extern char crash_handler_clue[1024];
 
 
-int link_received_duplicate(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int previous_seq, int unicast);
+int link_received_duplicate(struct subscriber *subscriber, int previous_seq);
 int link_received_packet(struct decode_context *context, int sender_seq, char unicast);
 int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp);
 void link_explained(struct subscriber *subscriber);

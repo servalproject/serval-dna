@@ -120,7 +120,7 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
     if (log2_size!=0xFF && rhizome_fetch_has_queue_space(log2_size)!=1)
       continue;
 
-    int64_t version = rhizome_bar_version(state->bars[i].bar);
+    uint64_t version = rhizome_bar_version(state->bars[i].bar);
     // are we already fetching this bundle [or later]?
     rhizome_manifest *m=rhizome_fetch_search(prefix, RHIZOME_BAR_PREFIX_BYTES);
     if (m && m->version >= version)
@@ -176,14 +176,14 @@ static int sync_bundle_inserted(struct subscriber *subscriber, void *context)
     return 0;
 
   const unsigned char *id = &bar[RHIZOME_BAR_PREFIX_OFFSET];
-  int64_t version = rhizome_bar_version(bar);
+  uint64_t version = rhizome_bar_version(bar);
 
   struct rhizome_sync *state = subscriber->sync_state;
   int i;
   for (i=state->bar_count -1;i>=0;i--){
     unsigned char *this_bar = state->bars[i].bar;
     unsigned char *this_id = &this_bar[RHIZOME_BAR_PREFIX_OFFSET];
-    int64_t this_version = rhizome_bar_version(this_bar);
+    uint64_t this_version = rhizome_bar_version(this_bar);
     if (memcmp(this_id, id, RHIZOME_BAR_PREFIX_BYTES)==0 && version >= this_version){
       // remove this BAR and shift the last BAR down to this position if required.
       if (config.debug.rhizome)

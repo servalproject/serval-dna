@@ -18,6 +18,36 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
+
+/*
+  Portions Copyright (C) 2013 Petter Reinholdtsen
+  Some rights reserved
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
+     the documentation and/or other materials provided with the
+     distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+  COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+*/
+
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -59,7 +89,7 @@ int main(int argc,char **argv)
 
 #endif
 
-int serval_packetvisualise_renderaddress(XPRINTF xpf, const unsigned char *packet, size_t *ofs, int senderP)
+static int serval_packetvisualise_renderaddress(XPRINTF xpf, const unsigned char *packet, size_t *ofs)
 {
   unsigned int len = packet[(*ofs)++];
   xprintf(xpf,"(0x%02x) ",len);
@@ -81,7 +111,7 @@ int serval_packetvisualise_renderaddress(XPRINTF xpf, const unsigned char *packe
 	xprintf(xpf,"<illegal address token 0x%02x>",len);
 	return -1;
       }
-      int i;
+      unsigned i;
       for (i=0;i<len;i++)
 	xprintf(xpf,"%02X",packet[(*ofs)++]);
       if (len<32) xprintf(xpf,"*");
@@ -176,7 +206,7 @@ int isOverlayPacket(XPRINTF xpf, const unsigned char *packet, size_t *ofs, size_
   }
 
   xprintf(xpf, "%sSender; ", indent(4));
-  int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs,0);
+  int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs);
   xprintf(xpf, "\n");
   if (ret)
     return ret;
@@ -217,7 +247,7 @@ int isOverlayPacket(XPRINTF xpf, const unsigned char *packet, size_t *ofs, size_
     
     if (!payload_flags & 1){
       xprintf(xpf, "%sSender; ", indent(6));
-      int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs,0);
+      int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs);
       xprintf(xpf, "\n");
       if (ret)
 	return ret;
@@ -233,13 +263,13 @@ int isOverlayPacket(XPRINTF xpf, const unsigned char *packet, size_t *ofs, size_
       }
     }else{
       xprintf(xpf, "%sDestination; ", indent(6));
-      int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs,0);
+      int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs);
       xprintf(xpf, "\n");
       if (ret)
 	return ret;
       if (!(payload_flags & 4)){
 	xprintf(xpf, "%sNext Hop; ", indent(6));
-	int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs,0);
+	int ret=serval_packetvisualise_renderaddress(xpf,packet,ofs);
 	xprintf(xpf, "\n");
 	if (ret)
 	  return ret;
@@ -261,7 +291,7 @@ int isOverlayPacket(XPRINTF xpf, const unsigned char *packet, size_t *ofs, size_
       xprintf(xpf, "%sMDP Sequence; 0x%02x\n", indent(6), packet[(*ofs)++]);
     }
     
-    int payload_len = 0;
+    uint16_t payload_len = 0;
     if (encapsulation==1){
       payload_len=packet[(*ofs)++]<<8;
       payload_len|=packet[(*ofs)++];
@@ -321,8 +351,7 @@ int serval_packetvisualise_xpf(XPRINTF xpf, const char *message, const unsigned 
   _dump(xpf, packet, len, 0, "    ");
   size_t ofs=0;
   xprintf(xpf,"  Packet Structure:\n");
-  if (isOverlayPacket(xpf,packet,&ofs,len))
-    ;
+  if (isOverlayPacket(xpf,packet,&ofs,len)) { }
   if (ofs<len) {
     xprintf(xpf,"  WARNING: The last %d (0x%x) bytes of the packet were not parsed.\n",(int)(len-ofs),(int)(len-ofs));
   }
@@ -331,9 +360,10 @@ int serval_packetvisualise_xpf(XPRINTF xpf, const char *message, const unsigned 
 
 static void _dump(XPRINTF xpf, const unsigned char *data, size_t len, size_t ofs, const char *prefix)
 {
-  int i, j;
+  unsigned i;
   for (i = ofs & 0xFFFFFFF0; i < len; i += 16) {
     xprintf(xpf, "%s%04x:", prefix, i);
+    unsigned j;
     for (j = 0; j < 16; ++j)
       if (i + j >= ofs && i + j < len)
 	xprintf(xpf," %02x", data[i+j]);

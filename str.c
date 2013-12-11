@@ -632,7 +632,7 @@ int parse_argv(char *cmdline, char delim, char **argv, int max_argv)
 }
 
 /* Like strstr() but doesn't depend on null termination */
-char *str_str(char *haystack, const char *needle, int haystack_len)
+char *str_str(char *haystack, const char *needle, size_t haystack_len)
 {
   size_t needle_len = strlen(needle);
   if (needle_len == 0)

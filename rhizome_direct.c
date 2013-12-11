@@ -350,8 +350,8 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *bu
 	       rhizome_bar_bidprefix_ll(&usbuffer[10+us*RHIZOME_BAR_BYTES]));
       } else {
 	/* We each have a version of this bundle, so see whose is newer */
-	int64_t them_version = rhizome_bar_version(&buffer[10+them*RHIZOME_BAR_BYTES]);
-	int64_t us_version = rhizome_bar_version(&usbuffer[10+us*RHIZOME_BAR_BYTES]);
+	uint64_t them_version = rhizome_bar_version(&buffer[10+them*RHIZOME_BAR_BYTES]);
+	uint64_t us_version = rhizome_bar_version(&usbuffer[10+us*RHIZOME_BAR_BYTES]);
 	if (them_version>us_version) {
 	  /* They have the newer version of the bundle */
 	  c->buffer[c->buffer_offset_bytes+c->buffer_used]=0x01; /* Please send */
@@ -359,10 +359,10 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *bu
 		&c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
 		RHIZOME_BAR_PREFIX_BYTES);
 	  c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
-	  DEBUGF("They have newer version of bundle %016"PRIx64"* (%"PRId64" versus %"PRId64")",
+	  DEBUGF("They have newer version of bundle %016"PRIx64"* (%"PRIu64" versus %"PRIu64")",
 		 rhizome_bar_bidprefix_ll(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
-		 rhizome_bar_version(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
-		 rhizome_bar_version(&buffer[10+them*RHIZOME_BAR_BYTES]));
+		 them_version,
+		 us_version);
 	} else if (them_version<us_version) {
 	  /* We have the newer version of the bundle */
 	  c->buffer[c->buffer_offset_bytes+c->buffer_used]=0x02; /* I have [newer] */
@@ -370,10 +370,10 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *bu
 		&c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
 		RHIZOME_BAR_PREFIX_BYTES);
 	  c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
-	  DEBUGF("We have newer version of bundle %016"PRIx64"* (%"PRId64" versus %"PRId64")",
+	  DEBUGF("We have newer version of bundle %016"PRIx64"* (%"PRIu64" versus %"PRIu64")",
 		 rhizome_bar_bidprefix_ll(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
-		 rhizome_bar_version(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
-		 rhizome_bar_version(&buffer[10+them*RHIZOME_BAR_BYTES]));
+		 us_version,
+		 them_version);
 	} else {
 	  DEBUGF("We both have the same version of %016"PRIx64"*",
 		 rhizome_bar_bidprefix_ll(&buffer[10+them*RHIZOME_BAR_BYTES]));
@@ -391,7 +391,7 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *bu
   return c;
 }
 
-rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int prefix_length)
+rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix, size_t prefix_length)
 {
   /* Give a BID prefix, e.g., from a BAR, find the matching manifest and return it.
      Of course, it is possible that more than one manifest matches.  This should
@@ -407,7 +407,6 @@ rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int pref
   */
   rhizome_bid_t low = RHIZOME_BID_ZERO;
   rhizome_bid_t high = RHIZOME_BID_MAX;
-  assert(prefix_length >= 0);
   assert(prefix_length <= sizeof(rhizome_bid_t));
   bcopy(bid_prefix, low.binary, prefix_length);
   bcopy(bid_prefix, high.binary, prefix_length);
@@ -500,7 +499,7 @@ static int rhizome_sync_with_peers(int mode, int peer_count, const struct config
   return 0;
 }
 
-int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context *context)
+int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -527,7 +526,7 @@ int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context 
     return -1;
   } else {
     const struct config_rhizome_peer *peers[config.rhizome.direct.peer.ac];
-    int i;
+    unsigned i;
     for (i = 0; i < config.rhizome.direct.peer.ac; ++i)
       peers[i] = &config.rhizome.direct.peer.av[i].value;
     return rhizome_sync_with_peers(mode, config.rhizome.direct.peer.ac, peers);

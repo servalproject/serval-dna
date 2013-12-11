@@ -83,6 +83,12 @@ INSTALL_DATA=   $(INSTALL) -m 644
 
 -include Makefile.dbg
 
+# More warnings, discover problems that only happen on some archs
+CFLAGS+=-Wextra
+# Security enhancements from Debian
+CFLAGS+=-fstack-protector --param=ssp-buffer-size=4 -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2
+LDFLAGS+=-Wl,-z,relro
+
 DEFS=	@DEFS@
 
 .PHONY: all test clean

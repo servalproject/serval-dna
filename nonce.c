@@ -49,7 +49,7 @@ int generate_nonce(unsigned char *nonce,int bytes)
   return 0;
 }
 
-int app_nonce_test(const struct cli_parsed *parsed, struct cli_context *context)
+int app_nonce_test(const struct cli_parsed *UNUSED(parsed), struct cli_context *context)
 {
   int i,j;
   unsigned char nonces[0x10001][32];

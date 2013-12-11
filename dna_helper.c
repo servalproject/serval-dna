@@ -17,6 +17,36 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+/*
+  Portions Copyright (C) 2013 Petter Reinholdtsen
+  Some rights reserved
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
+     the documentation and/or other materials provided with the
+     distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+  COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+*/
+
+#include <assert.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
@@ -88,8 +118,8 @@ static int dna_helper_started = 0;
 
 #define DECLARE_SCHED_ENT(FUNCTION, VARIABLE) \
 static void FUNCTION(struct sched_ent *alarm); \
-static struct profile_total VARIABLE##_timing={.name="" #FUNCTION "",}; \
-static struct sched_ent VARIABLE = {.function = FUNCTION, .stats = & VARIABLE##_timing, .poll.fd = -1, };
+static struct profile_total VARIABLE##_timing={.name="" #FUNCTION "",._next=NULL,._initialised=0,.max_time=0,.total_time=0,.child_time=0,.calls=0}; \
+static struct sched_ent VARIABLE = {.function = FUNCTION, .stats = & VARIABLE##_timing, .poll={.fd=-1}};
 
 DECLARE_SCHED_ENT(monitor_requests, sched_requests);
 DECLARE_SCHED_ENT(monitor_replies,  sched_replies);
@@ -183,7 +213,7 @@ dna_helper_start()
   // Construct argv[] for execv() and log messages.
   const char *argv[config.dna.helper.argv.ac + 2];
   argv[0] = config.dna.helper.executable;
-  int i;
+  unsigned i;
   for (i = 0; i < config.dna.helper.argv.ac; ++i)
     argv[i + 1] = config.dna.helper.argv.av[i].value;
   argv[i + 1] = NULL;
@@ -325,6 +355,7 @@ static void monitor_requests(struct sched_ent *alarm)
 	strbuf_str(strbuf_append_poll_events(strbuf_alloca(40), sched_requests.poll.revents))
       );
   }
+  assert(alarm == &sched_requests);
   // On Linux, poll(2) returns ERR when the remote reader dies.  On Mac OS X, poll(2) returns NVAL,
   // which is documented to mean the file descriptor is not open, but testing revealed that in this
   // case it is still open.  See issue #5.
@@ -451,6 +482,7 @@ static void monitor_replies(struct sched_ent *alarm)
 	strbuf_str(strbuf_append_poll_events(strbuf_alloca(40), sched_replies.poll.revents))
       );
   }
+  assert(alarm == &sched_replies);
   if (sched_replies.poll.revents & POLLIN) {
     size_t remaining = reply_buffer + sizeof reply_buffer - reply_bufend;
     ssize_t nread = read_nonblock(sched_replies.poll.fd, reply_bufend, remaining);
@@ -503,6 +535,7 @@ static void monitor_errors(struct sched_ent *alarm)
 	strbuf_str(strbuf_append_poll_events(strbuf_alloca(40), sched_errors.poll.revents))
       );
   }
+  assert(alarm == &sched_errors);
   if (sched_errors.poll.revents & POLLIN) {
     char buffer[1024];
     ssize_t nread = read_nonblock(sched_errors.poll.fd, buffer, sizeof buffer);
@@ -521,6 +554,7 @@ static void monitor_errors(struct sched_ent *alarm)
 
 static void harvester(struct sched_ent *alarm)
 {
+  assert(alarm == &sched_harvester);
   // While the helper process appears to still be running, keep calling this function.
   // Otherwise, wait a while before re-starting the helper.
   if (dna_helper_harvest(0) <= 0) {
@@ -541,6 +575,7 @@ static void harvester(struct sched_ent *alarm)
 
 static void restart_delayer(struct sched_ent *alarm)
 {
+  assert(alarm == &sched_restart);
   if (dna_helper_pid == 0) {
     if (config.debug.dnahelper)
       DEBUG("DNAHELPER re-enable restart");
@@ -550,6 +585,7 @@ static void restart_delayer(struct sched_ent *alarm)
 
 static void reply_timeout(struct sched_ent *alarm)
 {
+  assert(alarm == &sched_timeout);
   if (awaiting_reply) {
     WHY("DNAHELPER reply timeout");
     dna_helper_kill();

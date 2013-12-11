@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 */
 
+#include <assert.h>
 #include "serval.h"
 #include "str.h"
 #include "conf.h"
@@ -171,7 +172,7 @@ struct vomp_call_state {
   time_ms_t create_time;
   time_ms_t last_activity;
   time_ms_t audio_clock;
-  int remote_audio_clock;
+  unsigned remote_audio_clock;
   
   // last local & remote status we sent to all interested parties
   int last_sent_status;
@@ -184,7 +185,7 @@ struct vomp_call_state {
  This is partly to deal with denial of service attacks that might occur by causing
  the ejection of newly allocated session numbers before the caller has had a chance
  to progress the call to a further state. */
-int vomp_call_count=0;
+unsigned vomp_call_count=0;
 // TODO allocate call structures dynamically
 struct vomp_call_state vomp_call_states[VOMP_MAX_CALLS];
 struct profile_total vomp_stats;
@@ -329,9 +330,9 @@ int is_codec_set(int codec, unsigned char *flags){
   return flags[codec >> 3] & (1<<(codec & 7));
 }
 
-struct vomp_call_state *vomp_find_call_by_session(int session_token)
+struct vomp_call_state *vomp_find_call_by_session(unsigned int session_token)
 {
-  int i;
+  unsigned i;
   for(i=0;i<vomp_call_count;i++)
     if (session_token==vomp_call_states[i].local.session)
       return &vomp_call_states[i];
@@ -340,14 +341,14 @@ struct vomp_call_state *vomp_find_call_by_session(int session_token)
 
 static int vomp_generate_session_id()
 {
-  int session_id=0;
+  unsigned int session_id=0;
   while (!session_id)
   {
-    if (urandombytes((unsigned char *)&session_id,sizeof(int)))
+    if (urandombytes((unsigned char *)&session_id, sizeof session_id))
       return WHY("Insufficient entropy");
     session_id&=VOMP_SESSION_MASK;
     if (config.debug.vomp) DEBUGF("session=0x%08x",session_id);
-    int i;
+    unsigned i;
     /* reject duplicate call session numbers */
     for(i=0;i<vomp_call_count;i++)
       if (session_id==vomp_call_states[i].local.session
@@ -399,11 +400,10 @@ static struct vomp_call_state *vomp_find_or_create_call(struct subscriber *remot
 					  int sender_state,
 					  int recvr_state)
 {
-  int i;
   struct vomp_call_state *call;
-  
   if (config.debug.vomp)
-    DEBUGF("%d calls already in progress.",vomp_call_count);
+    DEBUGF("%u calls already in progress.",vomp_call_count);
+  unsigned i;
   for(i=0;i<vomp_call_count;i++)
     {
       call = &vomp_call_states[i];
@@ -697,35 +697,33 @@ static int vomp_update(struct vomp_call_state *call)
   return 0;
 }
 
-static int to_absolute_value(int short_value, int reference_value){
-  short_value = (reference_value & 0xFFFF0000) | short_value;
-  
-  if (short_value + 0x8000 < reference_value)
-    short_value+=0x10000;
-  
-  if (short_value > reference_value + 0x8000)
-    short_value-=0x10000;
-  
-  return short_value;
+static uint32_t to_absolute_value(uint16_t short_value, unsigned int reference_value)
+{
+  uint32_t abs_value = (reference_value & 0xFFFF0000) | short_value;
+  if (abs_value + 0x8000 < reference_value)
+    abs_value += 0x10000;
+  if (abs_value > reference_value + 0x8000)
+    abs_value -= 0x10000;
+  return abs_value;
 }
 
 static int vomp_process_audio(struct vomp_call_state *call, overlay_mdp_frame *mdp, time_ms_t now)
 {
-  int ofs=6;
+  size_t ofs=6;
 
   if(ofs>=mdp->in.payload_length)
     return 0;
   
   int codec=mdp->in.payload[ofs++];
   
-  int time = mdp->in.payload[ofs]<<8 | mdp->in.payload[ofs+1]<<0;
+  uint16_t time = mdp->in.payload[ofs]<<8 | mdp->in.payload[ofs+1]<<0;
   ofs+=2;
-  int sequence = mdp->in.payload[ofs]<<8 | mdp->in.payload[ofs+1]<<0;
+  uint16_t sequence = mdp->in.payload[ofs]<<8 | mdp->in.payload[ofs+1]<<0;
   ofs+=2;
   
   // rebuild absolute time value from short relative time.
-  int decoded_time = to_absolute_value(time, call->remote_audio_clock);
-  int decoded_sequence = to_absolute_value(sequence, call->remote.sequence);
+  uint32_t decoded_time = to_absolute_value(time, call->remote_audio_clock);
+  uint32_t decoded_sequence = to_absolute_value(sequence, call->remote.sequence);
   
   if (call->remote_audio_clock < decoded_time &&
     call->remote.sequence < decoded_sequence){
@@ -733,7 +731,7 @@ static int vomp_process_audio(struct vomp_call_state *call, overlay_mdp_frame *m
     call->remote.sequence = decoded_sequence;
   }else if (call->remote_audio_clock < decoded_time ||
     call->remote.sequence < decoded_sequence){
-    WARNF("Mismatch while decoding sequence and time offset (%d, %d) + (%d, %d) = (%d, %d)",
+    WARNF("Mismatch while decoding sequence and time offset (%u, %u) + (%u, %u) = (%u, %u)",
 	time, sequence,
 	call->remote_audio_clock, call->remote.sequence,
 	decoded_time, decoded_sequence);
@@ -774,11 +772,12 @@ static int vomp_call_destroy(struct vomp_call_state *call)
     DEBUGF("Destroying call %06x:%06x [%s,%s]", call->local.session, call->remote.session, call->local.did,call->remote.did);
   
   /* now release the call structure */
-  int i = (call - vomp_call_states);
+  unsigned i = (call - vomp_call_states);
   unschedule(&call->alarm);
   call->local.session=0;
   call->remote.session=0;
   
+  assert(vomp_call_count > 0);
   vomp_call_count--;
   if (i!=vomp_call_count){
     unschedule(&vomp_call_states[vomp_call_count].alarm);

@@ -119,7 +119,7 @@ static int cf_om_make_child(struct cf_om_node **const parentp, const char *const
   if (!*parentp && (*parentp = emalloc_zero(sizeof **parentp)) == NULL)
     return -1;
   size_t keylen = keyend - key;
-  int i = 0;
+  unsigned i = 0;
   struct cf_om_node *child;
   if ((*parentp)->nodc) {
     // Binary search for matching child.
@@ -132,9 +132,9 @@ static int cf_om_make_child(struct cf_om_node **const parentp, const char *const
       c = strncmp(key, child->key, keylen);
       if (c == 0 && child->key[keylen])
 	c = -1;
-      //DEBUGF("   m=%d n=%d i=%d child->key=%s c=%d", m, n, i, alloca_str_toprint(child->key), c);
+      //DEBUGF("   m=%u n=%u i=%u child->key=%s c=%d", m, n, i, alloca_str_toprint(child->key), c);
       if (c == 0) {
-	//DEBUGF("   found i=%d", i);
+	//DEBUGF("   found i=%u", i);
 	return i;
       }
       if (c > 0)
@@ -144,7 +144,6 @@ static int cf_om_make_child(struct cf_om_node **const parentp, const char *const
     } while (m <= n);
   }
   // At this point, i is the index where a new child should be inserted.
-  assert(i >= 0);
   assert(i <= (*parentp)->nodc);
   if ((child = emalloc_zero(sizeof *child)) == NULL)
     return -1;
@@ -156,11 +155,11 @@ static int cf_om_make_child(struct cf_om_node **const parentp, const char *const
   ++(*parentp)->nodc;
   if ((*parentp)->nodc > NELS((*parentp)->nodv))
     *parentp = realloc(*parentp, sizeof(**parentp) + sizeof((*parentp)->nodv[0]) * ((*parentp)->nodc - NELS((*parentp)->nodv)));
-  int j;
+  unsigned j;
   for (j = (*parentp)->nodc - 1; j > i; --j)
     (*parentp)->nodv[j] = (*parentp)->nodv[j-1];
   (*parentp)->nodv[i] = child;
-  //DEBUGF("   insert i=%d", i);
+  //DEBUGF("   insert i=%u", i);
   return i;
 }
 
@@ -184,7 +183,7 @@ int cf_om_get_child(const struct cf_om_node *parent, const char *key, const char
   if (keyend == NULL)
     keyend = key + strlen(key);
   // TODO: use binary search, since child nodes are already sorted by key
-  int i;
+  unsigned i;
   for (i = 0; i < parent->nodc; ++i)
     if (memcmp(parent->nodv[i]->key, key, keyend - key) == 0 && parent->nodv[i]->key[keyend - key] == '\0')
       return i;
@@ -318,7 +317,7 @@ void cf_om_dump_node(const struct cf_om_node *node, int indent)
 	alloca_str_toprint(node->key),
 	alloca_str_toprint(node->text)
       );
-    int i;
+    unsigned i;
     for (i = 0; i < node->nodc; ++i)
       cf_om_dump_node(node->nodv[i], indent + 1);
   }
@@ -445,7 +444,7 @@ int cf_om_iter_next(struct cf_om_iterator *it)
     return 0;
   while (1) {
     const struct cf_om_node *parent = it->stack[it->sp].node;
-    int i = it->stack[it->sp].index++;
+    unsigned i = it->stack[it->sp].index++;
     if (i < parent->nodc) {
       it->node = parent->nodv[i];
       if (it->node == NULL)
@@ -487,7 +486,7 @@ void _cf_warn_nodev(struct __sourceloc __whence, const struct cf_om_node *node, 
 
 void _cf_warn_childrenv(struct __sourceloc __whence, const struct cf_om_node *parent, const char *fmt, va_list ap)
 {
-  int i;
+  unsigned i;
   for (i = 0; i < parent->nodc; ++i) {
     _cf_warn_nodev(__whence, parent->nodv[i], NULL, fmt, ap);
     _cf_warn_childrenv(__whence, parent->nodv[i], fmt, ap);
@@ -549,7 +548,7 @@ void _cf_warn_unsupported_node(struct __sourceloc __whence, const struct cf_om_n
 
 void _cf_warn_unsupported_children(struct __sourceloc __whence, const struct cf_om_node *parent)
 {
-  int i;
+  unsigned i;
   for (i = 0; i < parent->nodc; ++i) {
     if (parent->nodv[i]->text)
       _cf_warn_unsupported_node(__whence, parent->nodv[i]);
@@ -572,7 +571,7 @@ strbuf strbuf_cf_flags(strbuf sb, int flags)
       { CFINVALID, "CFINVALID" },
       { CFUNSUPPORTED, "CFUNSUPPORTED" },
     };
-  int i;
+  unsigned i;
   for (i = 0; i < NELS(flagdefs); ++i) {
     if (flags & flagdefs[i].flag) {
       if (strbuf_len(sb) != n)
@@ -624,7 +623,7 @@ strbuf strbuf_cf_flag_reason(strbuf sb, int flags)
       { CFSUB(CFINVALID), "contains invalid element" },
       { CFSUB(CFUNSUPPORTED), "contains unsupported element" },
     };
-  int i;
+  unsigned i;
   for (i = 0; i < NELS(flagdefs); ++i) {
     if (flags & flagdefs[i].flag) {
       if (strbuf_len(sb) != n)

@@ -90,7 +90,7 @@ static void free_conversations(struct conversations *conv){
 static int get_my_conversation_bundle(const sid_t *my_sidp, rhizome_manifest *m)
 {
   /* Find our private key */
-  int cn=0,in=0,kp=0;
+  unsigned cn=0, in=0, kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp,my_sidp))
     return WHYF("SID was not found in keyring: %s", alloca_tohex_sid_t(*my_sidp));
   
@@ -171,7 +171,7 @@ static int get_database_conversations(const sid_t *my_sid, const sid_t *their_si
   }
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     const char *id_hex = (const char *)sqlite3_column_text(statement, 0);
-    int64_t version = sqlite3_column_int64(statement, 1);
+    uint64_t version = sqlite3_column_int64(statement, 1);
     int64_t size = sqlite3_column_int64(statement, 2);
     int64_t tail = sqlite3_column_int64(statement, 3);
     const char *sender = (const char *)sqlite3_column_text(statement, 4);
@@ -263,7 +263,7 @@ static int ply_read_open(struct ply_read *ply, const rhizome_bid_t *bid, rhizome
     return -1;
   int ret = rhizome_open_decrypt_read(m, &ply->read);
   if (ret == 1)
-    WARNF("Payload was not found for manifest %s, %"PRId64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
+    WARNF("Payload was not found for manifest %s, %"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
   if (ret != 0)
     return ret;
   assert(m->filesize != RHIZOME_SIZE_UNSET);
@@ -742,7 +742,7 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
   return 0;
 }
 
-int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context *context)
+int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   const char *my_sidhex, *their_sidhex, *message;
   if (cli_arg(parsed, "sender_sid", &my_sidhex, str_is_subscriber_id, "") == -1
@@ -977,7 +977,7 @@ static int mark_read(struct conversations *conv, const sid_t *their_sid, const c
   return ret;
 }
 
-int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *context)
+int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   const char *my_sidhex, *their_sidhex, *offset_str;
   if (cli_arg(parsed, "sender_sid", &my_sidhex, str_is_subscriber_id, "") == -1

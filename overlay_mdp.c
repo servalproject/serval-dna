@@ -18,6 +18,35 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+/*
+  Portions Copyright (C) 2013 Petter Reinholdtsen
+  Some rights reserved
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
+     the documentation and/or other materials provided with the
+     distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+  COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+*/
+
 #include <dirent.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -42,17 +71,17 @@ static struct profile_total mdp_stats = { .name="overlay_mdp_poll" };
 static struct sched_ent mdp_sock = {
   .function = overlay_mdp_poll,
   .stats = &mdp_stats,
-  .poll.fd = -1,
+  .poll={.fd = -1},
 };
 
 static struct profile_total mdp_stats2 = { .name="mdp_poll2" };
 static struct sched_ent mdp_sock2 = {
   .function = mdp_poll2,
   .stats = &mdp_stats2,
-  .poll.fd = -1,
+  .poll={.fd = -1},
 };
 
-static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame *mdp, time_ms_t now);
+static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame *mdp);
 static int mdp_send2(struct socket_address *client, struct mdp_header *header, 
   const uint8_t *payload, size_t payload_len);
 
@@ -206,7 +235,7 @@ static int overlay_mdp_releasebindings(struct socket_address *client)
 
 }
 
-static int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, mdp_port_t port,
+static int overlay_mdp_process_bind_request(struct subscriber *subscriber, mdp_port_t port,
 				     int flags, struct socket_address *client)
 {
   if (config.debug.mdprequests) 
@@ -417,7 +446,7 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
   OUT();
 }
 
-int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
+int overlay_saw_mdp_containing_frame(struct overlay_frame *f)
 {
   IN();
   /* Take frame source and destination and use them to populate mdp->in->{src,dst}
@@ -440,7 +469,7 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
     RETURN(-1);
 
   /* and do something with it! */
-  RETURN(overlay_saw_mdp_frame(f, &mdp,now));
+  RETURN(overlay_saw_mdp_frame(f, &mdp));
   OUT();
 }
 
@@ -453,7 +482,7 @@ int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp)
   return 0;
 }
 
-static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame *mdp, time_ms_t now)
+static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 {
   IN();
   int i;
@@ -737,7 +766,7 @@ static int overlay_send_frame(
   
   if (ob_overrun(plaintext)) {
     if (config.debug.mdprequests) 
-      DEBUGF("Frame overrun: position=%d allocSize=%d sizeLimit=%d",
+      DEBUGF("Frame overrun: position=%zu allocSize=%zu sizeLimit=%zu",
 	  plaintext->position, plaintext->allocSize, plaintext->sizeLimit);
     op_free(frame);
     ob_free(plaintext);
@@ -887,7 +916,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client)
     DEBUGF("[%u] destination->sid=%s", __d, destination ? alloca_tohex_sid_t(destination->sid) : "NULL");
   if (!destination || destination->reachable == REACHABLE_SELF){
     /* Packet is addressed to us / broadcast, we should process it first. */
-    overlay_saw_mdp_frame(NULL,mdp,gettime_ms());
+    overlay_saw_mdp_frame(NULL,mdp);
     if (destination) {
       /* Is local, and is not broadcast, so shouldn't get sent out on the wire. */
       if (config.debug.mdprequests) 
@@ -1021,6 +1050,7 @@ static void overlay_mdp_scan(struct sched_ent *alarm)
   struct sockaddr_in addr={
     .sin_family=AF_INET,
     .sin_port=htons(PORT_DNA),
+    .sin_addr={0},
   };
   struct scan_state *state = (struct scan_state *)alarm;
   uint32_t stop = state->last;
@@ -1105,15 +1135,14 @@ static int mdp_process_identity_request(struct socket_address *client, struct md
 	    size_t ofs=0;
 	    while(ofs < payload_len){
 	      if (!payload[ofs++]){
-		int cn, in;
-		for (cn = keyring->context_count -1; cn>=0; --cn) {
-		  keyring_context *cx = keyring->contexts[cn];
-		  for (in = cx->identity_count -1; in>=0; --in) {
-		    keyring_identity *id = cx->identities[in];
-		    if (id->subscriber != my_subscriber
-		      && strcmp(id->PKRPin, pin) == 0){
+		unsigned cn;
+		for (cn = keyring->context_count; cn > 0;) {
+		  keyring_context *cx = keyring->contexts[--cn];
+		  unsigned in;
+		  for (in = cx->identity_count; in > 0;) {
+		    keyring_identity *id = cx->identities[--in];
+		    if (id->subscriber != my_subscriber && strcmp(id->PKRPin, pin) == 0)
 		      keyring_release_identity(keyring, cn, in);
-		    }
 		  }
 		}
 		pin=(char *)&payload[ofs++];
@@ -1162,7 +1191,7 @@ static int mdp_process_identity_request(struct socket_address *client, struct md
 static int mdp_search_identities(struct socket_address *client, struct mdp_header *header, 
   const uint8_t *payload, size_t payload_len)
 {
-  int cn=0, in=0, kp=0;
+  unsigned cn=0, in=0, kp=0;
   const char *tag=NULL;
   const unsigned char *value=NULL;
   size_t value_len=0;
@@ -1374,7 +1403,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
       
       if (config.debug.mdprequests)
 	DEBUGF("Attempting to process mdp packet locally");
-      overlay_saw_mdp_frame(NULL, &mdp, gettime_ms());
+      overlay_saw_mdp_frame(NULL, &mdp);
     }
     
     if (config.debug.mdprequests)
@@ -1444,11 +1473,11 @@ static void mdp_poll2(struct sched_ent *alarm)
     struct iovec iov[]={
       {
 	.iov_base = (void *)&header,
-	.iov_len = sizeof(struct mdp_header)
+	.iov_len = sizeof header
       },
       {
 	.iov_base = (void *)payload,
-	.iov_len = sizeof(payload)
+	.iov_len = sizeof payload
       }
     };
     
@@ -1460,17 +1489,17 @@ static void mdp_poll2(struct sched_ent *alarm)
     };
     
     ssize_t len = recvmsg(alarm->poll.fd, &hdr, 0);
-    if (len<0){
-      WHY_perror("recvmsg");
+    if (len == -1){
+      WHYF_perror("recvmsg(%d,%p,0)", alarm->poll.fd, &hdr);
       return;
     }
-    if (len<sizeof(struct mdp_header)){
-      WHYF("Expected length %d, got %d from %s", (int)sizeof(struct mdp_header), (int)len, alloca_socket_address(&client));
+    if ((size_t)len < sizeof header) {
+      WHYF("Expected length %zu, got %zu from %s", sizeof header, (size_t)len, alloca_socket_address(&client));
       return;
     }
     
     client.addrlen = hdr.msg_namelen;
-    size_t payload_len = len - sizeof(header);
+    size_t payload_len = (size_t)(len - sizeof header);
     mdp_process_packet(&client, &header, payload, payload_len);
   }
 }
@@ -1492,7 +1521,7 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 	    &client, alloca_socket_address(&client)
 	  );
 
-    if (len > 0) {
+    if ((size_t)len > 0) {
       if (client.addrlen <= sizeof(sa_family_t))
 	WHYF("got client.addrlen=%d too short -- ignoring frame len=%zu", (int)client.addrlen, (size_t)len);
       else {
@@ -1567,7 +1596,7 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 	      }
 	      
 	    }
-	    if (overlay_mdp_process_bind_request(alarm->poll.fd, subscriber, mdp->bind.port,
+	    if (overlay_mdp_process_bind_request(subscriber, mdp->bind.port,
 						mdp->packetTypeAndFlags, &client))
 	      overlay_mdp_reply_error(alarm->poll.fd, &client, 3, "Port already in use");
 	    else

@@ -17,6 +17,35 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+/*
+  Portions Copyright (C) 2013 Petter Reinholdtsen
+  Some rights reserved
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
+     the documentation and/or other materials provided with the
+     distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+  COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+*/
+
 #include <stdlib.h>
 #include <inttypes.h>
 #include <stdio.h>
@@ -56,7 +85,7 @@ int main(int argc, char **argv)
   for (i = 1; i < argc; ++i) {
     const char *arg = argv[i];
     if (str_startswith(arg, "--size=", &arg)) {
-      if (!str_to_uint64_scaled(arg, 10, &size, NULL) || size < 0)
+      if (!str_to_uint64_scaled(arg, 10, &size, NULL))
 	fatal("illegal --size= argument: %s", arg);
     }
     else if (str_startswith(arg, "--label=", &arg))
@@ -69,13 +98,11 @@ int main(int argc, char **argv)
   for (i = 0; i != sizeof buf; ++i)
     buf[i] = stripe(i);
   const size_t labellen = strlen(label);
-  int bouncemax = sizeof buf - labellen;
-  if (bouncemax < 0)
-    bouncemax = sizeof buf;
-  int bounce = 3;
+  unsigned bouncemax = labellen < sizeof buf ? sizeof buf - labellen : sizeof buf;
+  unsigned bounce = 3;
   int bouncedelta = 1;
   while (!ferror(stdout) && offset < size) {
-    int n = sprintf(buf, "%"PRId64, offset);
+    unsigned n = sprintf(buf, "%"PRId64, offset);
     buf[n] = stripe(n);
     size_t labelsiz = labellen;
     if (labelsiz && bounce < sizeof buf) {
@@ -83,7 +110,7 @@ int main(int argc, char **argv)
 	labelsiz = sizeof buf - bounce;
       memcpy(buf + bounce, label, labelsiz);
     }
-    int remain = size - offset - 1;
+    unsigned remain = size - offset - 1;
     if (remain > sizeof buf)
       remain = sizeof buf;
     fwrite(buf, remain, 1, stdout);

@@ -119,8 +119,10 @@ ssize_t mdp_recv(int socket, struct mdp_header *header, uint8_t *payload, ssize_
   };
   
   ssize_t len = recvmsg(socket, &hdr, 0);
-  if (len<sizeof(struct mdp_header))
-    return WHYF("Received message is too short (%d)", (int)len);
+  if (len == -1)
+    return WHYF_perror("recvmsg(%d,%p,0)", socket, &hdr);
+  if ((size_t)len < sizeof(struct mdp_header))
+    return WHYF("Received message is too short (%zu)", (size_t)len);
   addr.addrlen=hdr.msg_namelen;
   // double check that the incoming address matches the servald daemon
   if (cmp_sockaddr(&addr, &mdp_addr) != 0

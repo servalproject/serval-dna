@@ -78,9 +78,9 @@ int overlay_packet_init_header(int packet_version, int encapsulation,
 }
 
 // a frame destined for one of our local addresses, or broadcast, has arrived. Process it.
-int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, struct overlay_frame *f, struct decode_context *context){
+int process_incoming_frame(time_ms_t now, struct overlay_interface *UNUSED(interface), struct overlay_frame *f, struct decode_context *context)
+{
   IN();
-  int id = (interface - overlay_interfaces);
   switch(f->type)
   {
     case OF_TYPE_SELFANNOUNCE_ACK:
@@ -88,11 +88,11 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
       break;
       // data frames
     case OF_TYPE_RHIZOME_ADVERT:
-      overlay_rhizome_saw_advertisements(id,context,f,now);
+      overlay_rhizome_saw_advertisements(context,f);
       break;
     case OF_TYPE_DATA:
     case OF_TYPE_DATA_VOICE:
-      overlay_saw_mdp_containing_frame(f,now);
+      overlay_saw_mdp_containing_frame(f);
       break;
     case OF_TYPE_PLEASEEXPLAIN:
       process_explain(f);
@@ -238,7 +238,7 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
       RETURN(WHY("Unable to read packet seq"));
     // TODO unicast
     if ((flags & PAYLOAD_FLAG_ONE_HOP) || !(flags & PAYLOAD_FLAG_TO_BROADCAST)){
-      if (link_received_duplicate(context->sender, context->interface, context->sender_interface, seq, 0)){
+      if (link_received_duplicate(context->sender, seq)){
         if (config.debug.verbose && config.debug.overlayframes)
           DEBUG("Don't process or forward duplicate payloads");
         forward=process=0;
@@ -321,7 +321,7 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
 }
 
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
-		    int recvttl, struct socket_address *recvaddr)
+		    struct socket_address *recvaddr)
 {
   IN();
   /* 
@@ -425,7 +425,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     }
     
     // TODO allow for single byte length?
-    unsigned int payload_len;
+    size_t payload_len;
     
     switch (context.encapsulation){
       case ENCAP_SINGLE:
@@ -459,7 +459,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     
     if (header_valid!=0){
 
-      f.payload = ob_slice(b, b->position, payload_len);
+      f.payload = ob_slice(b, ob_position(b), payload_len);
       if (!f.payload){
 	// out of memory?
 	WHY("Unable to slice payload");
