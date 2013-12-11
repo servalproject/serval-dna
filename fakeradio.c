@@ -42,13 +42,13 @@ struct radio_state {
   int state;
   const char *name;
   char commandbuffer[128];
-  int cb_len;
+  unsigned cb_len;
   unsigned char txbuffer[1280];
-  int txb_len;
-  int tx_count;
-  int wait_count;
+  unsigned txb_len;
+  unsigned tx_count;
+  unsigned wait_count;
   unsigned char rxbuffer[512];
-  int rxb_len;
+  unsigned rxb_len;
   int64_t last_char_ms;
   int64_t next_rssi_time_ms;
   int rssi_output;
@@ -130,9 +130,9 @@ int processCommand(struct radio_state *s)
   return 1;
 }
 
-int dump(char *name, unsigned char *addr, int len)
+int dump(char *name, unsigned char *addr, size_t len)
 {
-  int i,j;
+  unsigned i,j;
   if (name)
     fprintf(stderr,"Dump of %s\n",name);
   for(i=0;i<len;i+=16){
@@ -205,22 +205,21 @@ int read_bytes(struct radio_state *s)
   return bytes;
 }
 
-int write_bytes(struct radio_state *s)
+void write_bytes(struct radio_state *s)
 {
-  int wrote=s->rxb_len;
+  ssize_t wrote = s->rxb_len;
   if (wrote>8)
     wrote=8;
   if (s->last_char_ms)
     wrote = write(s->fd, s->rxbuffer, wrote);
-  if (wrote>0){
+  if (wrote != -1){
     log_time();
     fprintf(stderr, "Wrote to %s\n", s->name);
-    dump(NULL, s->rxbuffer, wrote);
-    if (wrote < s->rxb_len)
-      bcopy(&s->rxbuffer[wrote], s->rxbuffer, s->rxb_len - wrote);
-    s->rxb_len -= wrote;
+    dump(NULL, s->rxbuffer, (size_t)wrote);
+    if ((size_t)wrote < s->rxb_len)
+      bcopy(&s->rxbuffer[(size_t)wrote], s->rxbuffer, s->rxb_len - (size_t)wrote);
+    s->rxb_len -= (size_t)wrote;
   }
-  return wrote;
 }
 
 int transmitter=0;
@@ -286,21 +285,21 @@ int build_heartbeat(struct radio_state *s){
   return 0;
 }
 
-int transfer_bytes(struct radio_state *radios)
+void transfer_bytes(struct radio_state *radios)
 {
   // if there's data to transmit, copy a radio packet from one device to the other
   int receiver = transmitter^1;
   struct radio_state *r = &radios[receiver];
   struct radio_state *t = &radios[transmitter];
-  int bytes=t->txb_len;
+  size_t bytes = t->txb_len;
   
   if (bytes > PACKET_SIZE)
     bytes = PACKET_SIZE;
   
   // try to send some number of whole mavlink frames from our buffer
   {
-    int p=0, send=0;
-    while(p < bytes){
+    size_t p=0, send=0;
+    while (p < bytes){
       
       if (t->txbuffer[p]==MAVLINK10_STX){
 	// a mavlink header
@@ -315,7 +314,7 @@ int transfer_bytes(struct radio_state *radios)
 	  break;
 	
 	// how big is this mavlink frame?
-	int size = t->txbuffer[p+1];
+	size_t size = t->txbuffer[p+1];
 	
 	// if the size is valid, try to send the whole packet at once
 	if (size <= PACKET_SIZE - MAVLINK_HDR){
@@ -359,7 +358,7 @@ int transfer_bytes(struct radio_state *radios)
     fprintf(stderr, "Transferring %d byte packet from %s to %s\n", bytes, t->name, r->name);
   }
   
-  int i, j;
+  unsigned i, j;
   int dropped=0;
   
 // preamble length in bits that must arrive intact
@@ -394,14 +393,13 @@ int transfer_bytes(struct radio_state *radios)
   // set the wait time for the next transmission
   next_transmit_time = gettime_ms() + 5 + bytes/chars_per_ms;
   
-  if (bytes==0 || --t->tx_count<=0){
+  if (bytes==0 || t->tx_count == 0 || --t->tx_count == 0){
     // swap who's turn it is to transmit after sending 3 packets or running out of data.
     transmitter = receiver;
     r->tx_count=3;
     // add Tx->Rx change time (it's about 40ms between receiving empty packets)
     next_transmit_time+=15;
   }
-  return bytes;
 }
 
 int calc_ber(double target_packet_fraction)
