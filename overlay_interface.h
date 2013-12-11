@@ -135,6 +135,7 @@ void overlay_interface_discover(struct sched_ent *alarm);
 int overlay_interface_register(char *name,
 			   struct socket_address *addr,
 			   struct socket_address *broadcast);
+void overlay_interface_close_all();
 overlay_interface * overlay_interface_get_default();
 overlay_interface * overlay_interface_find(struct in_addr addr, int return_default);
 overlay_interface * overlay_interface_find_name(const char *name);

@@ -17,7 +17,9 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <dirent.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <assert.h>
@@ -54,6 +56,8 @@ static void overlay_interface_poll(struct sched_ent *alarm);
 
 static void
 overlay_interface_close(overlay_interface *interface){
+  if (interface->address.addr.sa_family == AF_UNIX)
+    unlink(interface->address.local.sun_path);
   link_interface_down(interface);
   INFOF("Interface %s addr %s is down", 
 	interface->name, alloca_socket_address(&interface->address));
@@ -64,6 +68,15 @@ overlay_interface_close(overlay_interface *interface){
     radio_link_free(interface);
   interface->alarm.poll.fd=-1;
   interface->state=INTERFACE_STATE_DOWN;
+}
+
+void overlay_interface_close_all()
+{
+  unsigned i;
+  for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
+    if (overlay_interfaces[i].state != INTERFACE_STATE_DOWN)
+      overlay_interface_close(&overlay_interfaces[i]);
+  }
 }
 
 void interface_state_html(struct strbuf *b, struct overlay_interface *interface)
@@ -320,10 +333,8 @@ static int overlay_interface_init_any(int port)
 }
 
 static int
-overlay_interface_init_socket(int interface_index)
+overlay_interface_init_socket(overlay_interface *interface)
 {
-  overlay_interface *const interface = &overlay_interfaces[interface_index];
-
   /*
    On linux you can bind to the broadcast address to receive broadcast packets per interface [or subnet],
    but then you can't receive unicast packets on the same socket.
@@ -371,7 +382,9 @@ overlay_interface_init(const char *name, struct socket_address *addr,
     return WHY("Too many interfaces -- Increase OVERLAY_MAX_INTERFACES");
 
   overlay_interface *const interface = &overlay_interfaces[overlay_interface_count];
-
+  bzero(interface, sizeof(overlay_interface));
+  interface->state=INTERFACE_STATE_DOWN;
+  
   strncpy(interface->name, name, sizeof interface->name);
   
   // copy ifconfig values
@@ -394,7 +407,6 @@ overlay_interface_init(const char *name, struct socket_address *addr,
   interface->mtu = 1200;
   interface->point_to_point = ifconfig->point_to_point;
   
-  interface->state=INTERFACE_STATE_DOWN;
   interface->alarm.poll.fd=0;
   interface->debug = ifconfig->debug;
   interface->tx_count=0;
@@ -462,17 +474,19 @@ overlay_interface_init(const char *name, struct socket_address *addr,
   
   limit_init(&interface->destination->transfer_limit, packet_interval);
 
-  interface->address = *addr;
-  interface->destination->address = *broadcast;
+  if (addr)
+    interface->address = *addr;
+  if (broadcast)
+    interface->destination->address = *broadcast;
   
   interface->alarm.function = overlay_interface_poll;
   interface_poll_stats.name="overlay_interface_poll";
   interface->alarm.stats=&interface_poll_stats;
   
-  if (ifconfig->socket_type==SOCK_DGRAM){
+  if (ifconfig->socket_type == SOCK_DGRAM){
     interface->local_echo = 1;
     
-    if (overlay_interface_init_socket(overlay_interface_count))
+    if (overlay_interface_init_socket(interface))
       return WHY("overlay_interface_init_socket() failed");
   }else{
     char read_file[1024];
@@ -767,6 +781,44 @@ static void overlay_interface_poll(struct sched_ent *alarm)
   }  
 }
 
+static int send_local_broadcast(int fd, const uint8_t *bytes, size_t len, struct socket_address *address)
+{
+  DIR *dir;
+  struct dirent *dp;
+  if ((dir = opendir(address->local.sun_path)) == NULL) {
+    WARNF_perror("opendir(%s)", alloca_str_toprint(address->local.sun_path));
+    return -1;
+  }
+  while ((dp = readdir(dir)) != NULL) {
+    struct socket_address addr;
+    
+    strbuf d = strbuf_local(addr.local.sun_path, sizeof addr.local.sun_path);
+    strbuf_path_join(d, address->local.sun_path, dp->d_name, NULL);
+    if (strbuf_overrun(d)){
+      WHYF("interface file name overrun: %s", alloca_str_toprint(strbuf_str(d)));
+      continue;
+    }
+    
+    struct stat st;
+    if (lstat(addr.local.sun_path, &st)) {
+      WARNF_perror("stat(%s)", alloca_str_toprint(addr.local.sun_path));
+      continue;
+    }
+    
+    if (S_ISSOCK(st.st_mode)){
+      addr.local.sun_family = AF_UNIX;
+      addr.addrlen = sizeof(addr.local.sun_family) + strlen(addr.local.sun_path)+1;
+      
+      ssize_t sent = sendto(fd, bytes, len, 0, 
+		&addr.addr, addr.addrlen);
+      if (sent == -1)
+	WHYF_perror("sendto(%d, %zu, %s)", fd, len, alloca_socket_address(&addr));
+    }
+  }
+  closedir(dir);
+  return 0;
+}
+
 int overlay_broadcast_ensemble(struct network_destination *destination, struct overlay_buffer *buffer)
 {
   assert(destination && destination->interface);
@@ -849,28 +901,33 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
       if (config.debug.overlayinterfaces) 
 	DEBUGF("Sending %zu byte overlay frame on %s to %s", 
 	  (size_t)len, interface->name, alloca_socket_address(&destination->address));
-      ssize_t sent = sendto(interface->alarm.poll.fd, 
-		bytes, (size_t)len, 0, 
-		(struct sockaddr *)&destination->address, sizeof(destination->address));
-      ob_free(buffer);
-      if (sent == -1 || (size_t)sent != len) {
-	if (sent == -1)
+      
+      if (destination->address.addr.sa_family == AF_UNIX
+	&& !destination->unicast){
+	// find all sockets in this folder and send to them
+	send_local_broadcast(interface->alarm.poll.fd, 
+		  bytes, (size_t)len, &destination->address);
+      }else{
+	ssize_t sent = sendto(interface->alarm.poll.fd, 
+		  bytes, (size_t)len, 0, 
+		  &destination->address.addr, destination->address.addrlen);
+	if (sent == -1){
 	  WHYF_perror("sendto(fd=%d,len=%zu,addr=%s) on interface %s",
 	      interface->alarm.poll.fd,
-	      len,
-	      alloca_sockaddr((struct sockaddr *)&destination->address, sizeof destination->address),
+	      (size_t)len,
+	      alloca_socket_address(&destination->address),
 	      interface->name
 	    );
-	else
-	  WHYF("sendto() sent %zu bytes of overlay frame (%zu) to interface %s (socket=%d)",
-	      (size_t)sent, len, interface->name, interface->alarm.poll.fd);
-	// close the interface if we had any error while sending broadcast packets,
-	// unicast packets should not bring the interface down
-	if (destination == interface->destination)
-	  overlay_interface_close(interface);
-	// TODO mark unicast destination as failed
-	return -1;
+	  // close the interface if we had any error while sending broadcast packets,
+	  // unicast packets should not bring the interface down
+	  // TODO mark unicast destination as failed?
+	  if (destination == interface->destination)
+	    overlay_interface_close(interface);
+	  ob_free(buffer);
+	  return -1;
+	}
       }
+      ob_free(buffer);
       return 0;
     }
       
@@ -966,7 +1023,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
     ifconfig = &config.interfaces.av[i].value;
     if (ifconfig->exclude)
       continue;
-    if (ifconfig->socket_type==SOCK_DGRAM) {
+    if (!*ifconfig->file) {
       detect_real_interfaces = 1;
       continue;
     }
@@ -981,22 +1038,55 @@ void overlay_interface_discover(struct sched_ent *alarm)
     }
     
     if (j >= overlay_interface_count) {
-      // New dummy interface, so register it.
+      // New file interface, so register it.
       struct socket_address addr, broadcast;
       bzero(&addr, sizeof addr);
       bzero(&broadcast, sizeof broadcast);
       
-      addr.addrlen=sizeof addr.inet;
-      addr.inet.sin_family=AF_INET;
-      addr.inet.sin_port=htons(ifconfig->port);
-      addr.inet.sin_addr=ifconfig->dummy_address;
-      
-      broadcast.addrlen=sizeof addr.inet;
-      broadcast.inet.sin_family=AF_INET;
-      broadcast.inet.sin_port=htons(ifconfig->port);
-      broadcast.inet.sin_addr.s_addr=ifconfig->dummy_address.s_addr | ~ifconfig->dummy_netmask.s_addr;
-      
-      overlay_interface_init(ifconfig->file, &addr, &broadcast, ifconfig);
+      switch(ifconfig->socket_type){
+      case SOCK_FILE:
+	// use a fake inet address
+	addr.addrlen=sizeof addr.inet;
+	addr.inet.sin_family=AF_INET;
+	addr.inet.sin_port=htons(ifconfig->port);
+	addr.inet.sin_addr=ifconfig->dummy_address;
+	
+	broadcast.addrlen=sizeof addr.inet;
+	broadcast.inet.sin_family=AF_INET;
+	broadcast.inet.sin_port=htons(ifconfig->port);
+	broadcast.inet.sin_addr.s_addr=ifconfig->dummy_address.s_addr | ~ifconfig->dummy_netmask.s_addr;
+      // Fallthrough
+      case SOCK_STREAM:
+	overlay_interface_init(ifconfig->file, &addr, &broadcast, ifconfig);
+	break;
+      case SOCK_DGRAM:
+	{
+	  // use a local dgram socket
+	  // no abstract sockets for now
+	  strbuf d = strbuf_local(addr.local.sun_path, sizeof addr.local.sun_path);
+	  strbuf_path_join(d, serval_instancepath(), config.server.interface_path, ifconfig->file, NULL);
+	  if (strbuf_overrun(d)){
+	    WHYF("interface file name overrun: %s", alloca_str_toprint(strbuf_str(d)));
+	    // TODO set ifconfig->exclude to prevent spam??
+	    break;
+	  }
+	  unlink(addr.local.sun_path);
+	  addr.local.sun_family=AF_UNIX;
+	  size_t len = strlen(addr.local.sun_path);
+	  
+	  addr.addrlen=sizeof addr.local.sun_family + len + 1;
+	  
+	  broadcast = addr;
+	  while(len && broadcast.local.sun_path[len]!='/')
+	    broadcast.local.sun_path[len--]='\0';
+	  broadcast.addrlen = sizeof addr.local.sun_family + len + 2;
+	  
+	  DEBUGF("Attempting to bind local socket w. addr %s, broadcast %s",
+	    alloca_socket_address(&addr), alloca_socket_address(&broadcast));
+	  overlay_interface_init(ifconfig->file, &addr, &broadcast, ifconfig);
+	  break;
+	}
+      }
     }
   }
 

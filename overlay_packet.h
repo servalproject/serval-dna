@@ -85,7 +85,7 @@ struct overlay_frame {
   
   // how did we receive this packet?
   struct overlay_interface *interface;
-  struct sockaddr_in recvaddr;
+  
   // packet envelope header;
   // Was it a unicast frame
   char unicast;

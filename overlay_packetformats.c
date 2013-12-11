@@ -389,9 +389,6 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     }
   }
   
-  if (recvaddr && recvaddr->addr.sa_family != AF_INET)
-    RETURN(WHYF("Unexpected address %s", alloca_socket_address(recvaddr)));
-  
   struct overlay_frame f;
   struct decode_context context;
   bzero(&context, sizeof context);
@@ -402,10 +399,6 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   ob_limitsize(b, len);
   
   f.interface = interface;
-  if (recvaddr)
-    f.recvaddr = recvaddr->inet;
-  else 
-    bzero(&f.recvaddr, sizeof f.recvaddr);
   
   int ret=parseEnvelopeHeader(&context, interface, recvaddr, b);
   if (ret){

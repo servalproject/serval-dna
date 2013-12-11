@@ -307,6 +307,7 @@ int server(const struct cli_parsed *parsed);
 int server_create_stopfile();
 int server_remove_stopfile();
 int server_check_stopfile();
+void overlay_mdp_clean_socket_files();
 void serverCleanUp();
 int isTransactionInCache(unsigned char *transaction_id);
 void insertTransactionInCache(unsigned char *transaction_id);

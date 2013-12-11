@@ -22,7 +22,14 @@
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
-add_interface() {
+add_local_interface() {
+   mkdir $SERVALD_VAR/dummy$1
+   executeOk_servald config \
+      set interfaces.$1.file dummy$1/$instance_number \
+      set interfaces.$1.socket_type dgram
+}
+
+add_dummy_interface() {
    >$SERVALD_VAR/dummy$1
    executeOk_servald config \
       set interfaces.$1.file dummy$1 \
@@ -81,7 +88,6 @@ start_routing_instance() {
       set debug.mdprequests yes \
       set debug.linkstate yes \
       set debug.verbose yes \
-      set debug.subscriber yes \
       set debug.overlayrouting yes \
       set log.console.level debug \
       set log.console.show_pid on \
@@ -109,7 +115,7 @@ setup_single_link() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
-   foreach_instance +A +B add_interface 1
+   foreach_instance +A +B add_local_interface 1
    foreach_instance +A +B start_routing_instance
 }
 test_single_link() {
@@ -125,7 +131,7 @@ setup_multiple_ids() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_identities 2
-   foreach_instance +A +B add_interface 1
+   foreach_instance +A +B add_local_interface 1
    foreach_instance +A +B start_routing_instance
 }
 test_multiple_ids() {
@@ -152,7 +158,7 @@ setup_unlock_ids() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
-   foreach_instance +A +B add_interface 1
+   foreach_instance +A +B add_local_interface 1
    set_instance +A
    executeOk_servald keyring add 'entry-pin'
    extract_stdout_keyvalue SIDX sid "$rexp_sid"
@@ -182,7 +188,7 @@ setup_migrate_id() {
    set_instance +B
    executeOk_servald keyring load sidx '' 'entry-pin'
    foreach_instance +A +B create_single_identity
-   foreach_instance +A +B add_interface 1
+   foreach_instance +A +B add_local_interface 1
    foreach_instance +A +B start_routing_instance
 }
 test_migrate_id() {
@@ -201,7 +207,7 @@ setup_single_mdp() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
-   foreach_instance +A +B add_interface 1
+   foreach_instance +A +B add_local_interface 1
    foreach_instance +A +B executeOk_servald config set interfaces.1.encapsulation single
    foreach_instance +A +B start_routing_instance
 }
@@ -218,7 +224,7 @@ setup_mismatched_encap() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
-   foreach_instance +A +B add_interface 1
+   foreach_instance +A +B add_local_interface 1
    foreach_instance +A executeOk_servald config set interfaces.1.encapsulation single
    foreach_instance +A +B start_routing_instance
 }
@@ -235,10 +241,9 @@ setup_single_p2p() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
-   foreach_instance +A +B add_interface 1
+   foreach_instance +A +B add_local_interface 1
    foreach_instance +A +B \
      executeOk_servald config \
-       set interfaces.1.debug 1 \
        set interfaces.1.encapsulation single \
        set interfaces.1.point_to_point on
    foreach_instance +A +B start_routing_instance
@@ -314,7 +319,7 @@ setup_multiple_nodes() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B +C +D create_single_identity
-   foreach_instance +A +B +C +D add_interface 1
+   foreach_instance +A +B +C +D add_local_interface 1
    foreach_instance +A +B +C +D start_routing_instance
 }
 test_multiple_nodes() {
@@ -338,7 +343,7 @@ setup_scan() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B +C create_single_identity
-  foreach_instance +A +B +C add_interface 1
+  foreach_instance +A +B +C add_dummy_interface 1
   foreach_instance +A +B +C \
     executeOk_servald config \
       set interfaces.1.drop_broadcasts on
@@ -388,7 +393,7 @@ setup_single_filter() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B create_single_identity
-  foreach_instance +A +B add_interface 1
+  foreach_instance +A +B add_dummy_interface 1
   set_instance +B
   executeOk_servald config \
       set interfaces.1.drop_broadcasts on
@@ -412,7 +417,7 @@ setup_broadcast_only() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
-   foreach_instance +A +B add_interface 1
+   foreach_instance +A +B add_dummy_interface 1
    foreach_instance +A +B \
       executeOk_servald config set interfaces.1.drop_unicasts 1
    foreach_instance +A +B start_routing_instance
@@ -432,7 +437,7 @@ setup_prefer_unicast() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
-   foreach_instance +A +B add_interface 1
+   foreach_instance +A +B add_local_interface 1
    foreach_instance +A +B \
       executeOk_servald config \
          set interfaces.1.prefer_unicast 1 \
@@ -454,9 +459,9 @@ setup_multihop_linear() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B +C +D create_single_identity
-   foreach_instance +A +B add_interface 1
-   foreach_instance +B +C add_interface 2
-   foreach_instance +C +D add_interface 3
+   foreach_instance +A +B add_local_interface 1
+   foreach_instance +B +C add_local_interface 2
+   foreach_instance +C +D add_local_interface 3
    foreach_instance +A +B +C +D start_routing_instance
 }
 test_multihop_linear() {
@@ -480,9 +485,9 @@ setup_unicast_route() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B +C +D create_single_identity
-  foreach_instance +A +B add_interface 1
-  foreach_instance +B +C add_interface 2
-  foreach_instance +C +D add_interface 3
+  foreach_instance +A +B add_dummy_interface 1
+  foreach_instance +B +C add_dummy_interface 2
+  foreach_instance +C +D add_dummy_interface 3
   set_instance +A
   executeOk_servald config \
       set interfaces.1.drop_broadcasts on
@@ -504,8 +509,8 @@ setup_offline() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B +C +D create_single_identity
-   foreach_instance +A +B +C add_interface 1
-   foreach_instance +A +B +D add_interface 2
+   foreach_instance +A +B +C add_local_interface 1
+   foreach_instance +A +B +D add_local_interface 2
    foreach_instance +A +B +C +D start_routing_instance
 }
 
@@ -543,8 +548,8 @@ setup_lose_neighbours() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B +C create_single_identity
-   foreach_instance +A +B add_interface 1
-   foreach_instance +B +C add_interface 2
+   foreach_instance +A +B add_local_interface 1
+   foreach_instance +B +C add_local_interface 2
    foreach_instance +A +B +C start_routing_instance
 }
 test_lose_neighbours() {
@@ -556,8 +561,8 @@ test_lose_neighbours() {
    set_instance +A
    wait_until --timeout=30 instance_offline +C
    start_servald_server +B
-   wait_until path_exists +A +B +C
-   wait_until path_exists +C +B +A
+   wait_until --timeout=20 path_exists +A +B +C
+   wait_until --timeout=20 path_exists +C +B +A
 }
 
 setup_multi_interface() {
@@ -603,7 +608,7 @@ setup_ping_unreliable() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B create_single_identity
-  foreach_instance +A +B add_interface 1
+  foreach_instance +A +B add_dummy_interface 1
   foreach_instance +A +B \
     executeOk_servald config \
       set interfaces.1.drop_packets 40
@@ -622,11 +627,11 @@ setup_ping_unreliable2() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B +C create_single_identity
-  foreach_instance +A +B add_interface 1
+  foreach_instance +A +B add_dummy_interface 1
   foreach_instance +A +B \
     executeOk_servald config \
       set interfaces.1.drop_packets 40
-  foreach_instance +B +C add_interface 2
+  foreach_instance +B +C add_dummy_interface 2
   foreach_instance +B +C \
     executeOk_servald config \
       set interfaces.2.drop_packets 40
@@ -645,7 +650,7 @@ setup_brping_unreliable() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B create_single_identity
-  foreach_instance +A +B add_interface 1
+  foreach_instance +A +B add_dummy_interface 1
   foreach_instance +A +B \
     executeOk_servald config \
       set interfaces.1.drop_packets 20
@@ -664,9 +669,9 @@ setup_unreliable_links() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B +C create_single_identity
-  foreach_instance +A +B add_interface 1
-  foreach_instance +B +C add_interface 2
-  foreach_instance +A +C add_interface 3
+  foreach_instance +A +B add_dummy_interface 1
+  foreach_instance +B +C add_dummy_interface 2
+  foreach_instance +A +C add_dummy_interface 3
   set_instance +A
   executeOk_servald config \
     set interfaces.1.drop_packets 5 \
@@ -696,12 +701,12 @@ setup_unreliable_links2() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B +C +D create_single_identity
-  foreach_instance +A +B add_interface 1
-  foreach_instance +A +C add_interface 2
-  foreach_instance +A +D add_interface 3
-  foreach_instance +B +C add_interface 4
-  foreach_instance +B +D add_interface 5
-  foreach_instance +C +D add_interface 6
+  foreach_instance +A +B add_dummy_interface 1
+  foreach_instance +A +C add_dummy_interface 2
+  foreach_instance +A +D add_dummy_interface 3
+  foreach_instance +B +C add_dummy_interface 4
+  foreach_instance +B +D add_dummy_interface 5
+  foreach_instance +C +D add_dummy_interface 6
   set_instance +A
   executeOk_servald config \
     set interfaces.1.drop_packets 5 \
@@ -736,14 +741,14 @@ setup_circle() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B +C +D +E +F +G +H create_single_identity
-   foreach_instance +A +B add_interface 1
-   foreach_instance +B +C add_interface 2
-   foreach_instance +C +D add_interface 3
-   foreach_instance +D +E add_interface 4
-   foreach_instance +E +F add_interface 5
-   foreach_instance +F +G add_interface 6
-   foreach_instance +G +H add_interface 7
-   foreach_instance +H +A add_interface 8
+   foreach_instance +A +B add_local_interface 1
+   foreach_instance +B +C add_local_interface 2
+   foreach_instance +C +D add_local_interface 3
+   foreach_instance +D +E add_local_interface 4
+   foreach_instance +E +F add_local_interface 5
+   foreach_instance +F +G add_local_interface 6
+   foreach_instance +G +H add_local_interface 7
+   foreach_instance +H +A add_local_interface 8
    foreach_instance +A +B +C +D +E +F +G +H start_routing_instance
 }
 
@@ -775,13 +780,13 @@ setup_crowded_mess() {
    assert_no_servald_processes
 # BCDE & DEFG form squares, ABC & FGH form triangles
    foreach_instance +A +B +C +D +E +F +G +H create_single_identity
-   foreach_instance +A +B +C add_interface 1
-   foreach_instance +B +D add_interface 2
-   foreach_instance +C +E add_interface 3
-   foreach_instance +D +E add_interface 4
-   foreach_instance +D +F add_interface 5
-   foreach_instance +E +G add_interface 6
-   foreach_instance +F +G +H add_interface 7
+   foreach_instance +A +B +C add_local_interface 1
+   foreach_instance +B +D add_local_interface 2
+   foreach_instance +C +E add_local_interface 3
+   foreach_instance +D +E add_local_interface 4
+   foreach_instance +D +F add_local_interface 5
+   foreach_instance +E +G add_local_interface 6
+   foreach_instance +F +G +H add_local_interface 7
    foreach_instance +A +B +C +D +E +F +G +H \
       executeOk_servald config \
          set mdp.iftype.wifi.reachable_timeout_ms 60000

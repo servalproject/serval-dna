@@ -87,7 +87,7 @@ static int mdp_send2(struct socket_address *client, struct mdp_header *header,
   const uint8_t *payload, size_t payload_len);
 
 /* Delete all UNIX socket files in instance directory. */
-static void overlay_mdp_clean_socket_files()
+void overlay_mdp_clean_socket_files()
 {
   const char *instance_path = serval_instancepath();
   DIR *dir;

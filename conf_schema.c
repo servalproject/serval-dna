@@ -985,14 +985,6 @@ int vld_network_interface(const struct cf_om_node *parent, struct config_network
       return result | CFINCOMPLETE;
     }
   } else {
-    if (nifp->socket_type == SOCK_DGRAM && nifp->file[0]){
-      int nodei_socket_type = cf_om_get_child(parent, "socket_type", NULL);
-      int nodei_file = cf_om_get_child(parent, "file", NULL);
-      assert(nodei_socket_type != -1);
-      assert(nodei_file != -1);
-      cf_warn_incompatible(parent->nodv[nodei_socket_type], parent->nodv[nodei_file]);
-      return result | CFSUB(CFINCOMPATIBLE);
-    }
     if (nifp->socket_type != SOCK_DGRAM && !nifp->file[0]){
       cf_warn_missing_node(parent, "file");
       return result | CFSUB(CFINCOMPATIBLE);

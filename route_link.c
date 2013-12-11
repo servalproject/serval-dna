@@ -1142,8 +1142,7 @@ static void create_out_links(struct neighbour *neighbour, overlay_interface *int
     l=l->_next;
   }
   // if this packet arrived in an IPv4 packet, assume we need to send them unicast packets
-  if (addr && addr->addr.sa_family==AF_INET && addr->inet.sin_port!=0 && addr->inet.sin_addr.s_addr!=0)
-    create_out_link(neighbour, interface, addr, 1);
+  create_out_link(neighbour, interface, addr, 1);
     
   // if this packet arrived from the same IPv4 subnet, or a different type of network, assume they can hear our broadcasts
   if (!addr || addr->addr.sa_family!=AF_INET || 
