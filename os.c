@@ -156,9 +156,9 @@ ssize_t read_symlink(const char *path, char *buf, size_t len)
   }
   ssize_t nr = readlink(path, buf, len);
   if (nr == -1)
-    return WHYF_perror("readlink(%s)", path);
-  if (nr >= len)
-    return WHYF("buffer overrun from readlink(%s, len=%lu)", path, (unsigned long) len);
+    return WHYF_perror("readlink(%s,%p,%zu)", path, buf, len);
+  if ((size_t)nr >= len)
+    return WHYF("buffer overrun from readlink(%s, len=%zu)", path, len);
   buf[nr] = '\0';
   return nr;
 }

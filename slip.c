@@ -236,10 +236,10 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
     u7d_calls++;
   if (config.debug.slipdecode)
     snprintf(crash_handler_clue,1024,
-	     "upper7_decode() call #%d: state=%d, byte=0x%02x, rssi_len=%d, dst_offset=%d",
+	     "upper7_decode() call #%d: state=%d, byte=0x%02x, rssi_len=%u, dst_offset=%u",
 	     u7d_calls,state->state,byte,state->rssi_len,state->dst_offset);
   if (config.debug.slipbytestream)
-    WHYF("call #%d: state=%d, byte=0x%02x, rssi_len=%d, dst_offset=%d",
+    WHYF("call #%d: state=%d, byte=0x%02x, rssi_len=%u, dst_offset=%u",
 	 u7d_calls,state->state,byte,state->rssi_len,state->dst_offset);
 
   // Parse out inline RSSI reports
@@ -252,13 +252,11 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
     // for CRC verification etc.
     state->state=UPPER7_STATE_NOTINPACKET; RETURN(1);
   } else if (byte>=' '&&byte<=0x7f) {
-    if (state->rssi_len<0) state->rssi_len=0;
     if (state->rssi_len<RSSI_TEXT_SIZE) 
       state->rssi_text[state->rssi_len++]=byte;
     RETURN(0);
   } else if (byte=='\r'||byte=='\n') {
     if (state->rssi_len>=RSSI_TEXT_SIZE) state->rssi_len=RSSI_TEXT_SIZE-1;
-    if (state->rssi_len<0) state->rssi_len=0;
     state->rssi_text[state->rssi_len]=0;
     parse_rfd900_rssi(state->rssi_text);
     state->rssi_len=0;
@@ -274,9 +272,8 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
   byte&=0x7f;
   if (state->packet_length>=OVERLAY_INTERFACE_RX_BUFFER_SIZE
       ||(state->dst_offset+7)>=OVERLAY_INTERFACE_RX_BUFFER_SIZE
-      ||state->dst_offset<0)
-    {
-      WARNF("state=%p, state->dst_offset=%d, ->packet_length=%d, ->state=%d. State reset.",
+  ) {
+      WARNF("state=%p, state->dst_offset=%u, ->packet_length=%u, ->state=%d. State reset.",
 	    state,state->dst_offset,state->packet_length,state->state);
       state->state=UPPER7_STATE_NOTINPACKET;
       state->dst_offset=0;
@@ -294,7 +291,7 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
       state->dst_offset=0;
     } else {
       if (config.debug.packetradio) 
-	DEBUGF("Ignoring jumbo packet of %d bytes",state->packet_length);
+	DEBUGF("Ignoring jumbo packet of %u bytes",state->packet_length);
       state->state=UPPER7_STATE_NOTINPACKET;
     }
     RETURN(0);
@@ -306,9 +303,8 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
   case UPPER7_STATE_D0:
     if (state->packet_length>=OVERLAY_INTERFACE_RX_BUFFER_SIZE
 	||(state->dst_offset+7)>=OVERLAY_INTERFACE_RX_BUFFER_SIZE
-	||state->dst_offset<0)
-      {
-	WARNF("state->dst_offset=%d, ->packet_length=%d, ->state=%d. State reset (again).",
+    ) {
+	WARNF("state->dst_offset=%u, ->packet_length=%u, ->state=%d. State reset (again).",
 	      state->dst_offset,state->packet_length,state->state);
 	state->state=UPPER7_STATE_NOTINPACKET;
 	state->dst_offset=0;
@@ -376,7 +372,7 @@ int slip_decode(struct slip_decode_state *state)
        */
       while(state->src_offset < state->src_size){
 	// clear the valid bit flag if we hit the end of the destination buffer
-	if (state->dst_offset>=sizeof(state->dst))
+	if (state->dst_offset >= sizeof state->dst)
 	  state->state&=~DC_VALID;
 	
 	if (state->state&DC_ESC){
@@ -447,10 +443,9 @@ int slip_decode(struct slip_decode_state *state)
   case SLIP_FORMAT_UPPER7:
     {
       if (config.debug.slip) {
-	if (state->rssi_len<0) state->rssi_len=0;
 	if (state->rssi_len>=RSSI_TEXT_SIZE) state->rssi_len=RSSI_TEXT_SIZE-1;
 	state->rssi_text[state->rssi_len]=0;
-	DEBUGF("RX state=%d, rssi_len=%d, rssi_text='%s',src=%p, src_size=%d",
+	DEBUGF("RX state=%d, rssi_len=%u, rssi_text='%s',src=%p, src_size=%u",
 	       state->state,state->rssi_len,state->rssi_text,
 	       state->src,state->src_size);
       }
@@ -464,14 +459,14 @@ int slip_decode(struct slip_decode_state *state)
 	  uint32_t crc=Crc32_ComputeBuf( 0, state->dst, state->packet_length);
 	  if (crc!=state->crc) {
 	    if (config.debug.packetradio||config.debug.rejecteddata)
-	      DEBUGF("Rejected packet of %d bytes due to CRC mis-match (%08x vs %08x)",
+	      DEBUGF("Rejected packet of %u bytes due to CRC mis-match (%08x vs %08x)",
 		     state->packet_length,crc,state->crc);
 	    if (config.debug.rejecteddata) {
 	      dump("bad packet",state->dst,state->packet_length);
 	    }
 	  } else {
 	    if (config.debug.packetradio) 
-	      DEBUGF("Accepted packet of %d bytes (CRC ok)",state->packet_length);
+	      DEBUGF("Accepted packet of %u bytes (CRC ok)",state->packet_length);
 	    return 1;
 	  }
 	}

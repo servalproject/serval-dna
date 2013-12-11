@@ -271,7 +271,7 @@ static void _log_prefix_whence(_log_iterator *it, struct __sourceloc whence)
   }
 }
 
-static void _log_end_line(_log_iterator *it, int level)
+static void _log_end_line(_log_iterator *it, int UNUSED(level))
 {
 #ifdef ANDROID
   if (it->config == &config.log.android) {

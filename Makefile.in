@@ -83,6 +83,12 @@ INSTALL_DATA=   $(INSTALL) -m 644
 
 -include Makefile.dbg
 
+# More warnings, discover problems that only happen on some archs
+CFLAGS+=-Wextra
+# Security enhancements from Debian
+CFLAGS+=-fstack-protector --param=ssp-buffer-size=4 -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2
+LDFLAGS+=-Wl,-z,relro
+
 DEFS=	@DEFS@
 
 .PHONY: all test clean
@@ -127,15 +133,18 @@ fakeradio: fakeradio.o
 
 config_test: config_test.o conf_om.o conf_schema.o conf_parse.o str.o strbuf.o strbuf_helpers.o mem.o dataformats.o net.o log_util.o
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ config_test.o conf_om.o conf_schema.o conf_parse.o str.o strbuf.o strbuf_helpers.o mem.o dataformats.o net.o log_util.o
+	@$(CC) $(CFLAGS) -Wall -o $@ config_test.o conf_om.o conf_schema.o conf_parse.o str.o strbuf.o strbuf_helpers.o mem.o dataformats.o net.o log_util.o $(LDFLAGS)
 
-copyright: COPYRIGHT.txt
+copyright:
+	@if [ -x "$(COPYRIGHT_TOOL)" ]; then \
+            echo GENERATE COPYRIGHT.txt; \
+            $(COPYRIGHT_TOOL) -o COPYRIGHT.txt condense *.c *.h; \
+        else \
+            echo 'sp-copyright-tool is not in $$PATH; COPYRIGHT.txt not updated'; \
+        fi
 
 findPATH = $(firstword $(wildcard $(addsuffix /$(1),$(subst :, ,$(PATH)))))
 COPYRIGHT_TOOL := $(call findPATH,sp-copyright-tool)
-
-COPYRIGHT.txt: *.c *.h $(COPYRIGHT_TOOL)
-	 $(COPYRIGHT_TOOL) -o $@ condense *.c *.h
 
 # This does not build on 64 bit elf platforms as NaCL isn't built with -fPIC
 # DOC 20120615

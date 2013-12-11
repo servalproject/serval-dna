@@ -19,7 +19,18 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__CONSTANTS_H
 #define __SERVAL_DNA__CONSTANTS_H
 
-#define NELS(a) (sizeof (a) / sizeof *(a))
+/* Useful macros not specific to Serval DNA
+ */
+
+// Number of elements in an array (Warning: does not work if A is a pointer!).
+#define NELS(A) (sizeof (A) / sizeof *(A))
+
+// To suppress the "unused parameter" warning from -Wunused-parameter.
+#ifdef __GNUC__
+#  define UNUSED(x) x __attribute__((__unused__))
+#else
+#  define UNUSED(x) x
+#endif
 
 /* Packet format:
 

@@ -31,14 +31,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "keyring.h"
 #include "dataformats.h"
 
-/* Work out the encrypt/decrypt key for the supplied manifest.
-   If the manifest is not encrypted, then return NULL.
-*/
-unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m)
-{
-  return NULL;
-}
-
 int rhizome_manifest_createid(rhizome_manifest *m)
 {
   if (crypto_sign_edwards25519sha512batch_keypair(m->cryptoSignPublic.binary, m->cryptoSignSecret))
@@ -133,7 +125,7 @@ int rhizome_bk_xor_stream(
  * Returns 0 if the BK decodes correctly to the bundle secret, 1 if not.  Returns -1 if there is an
  * error.
  */
-int rhizome_bk2secret(rhizome_manifest *m,
+int rhizome_bk2secret(
   const rhizome_bid_t *bidp,
   const unsigned char *rs, const size_t rs_len,
   /* The BK need only be the length of the secret half of the secret key */
@@ -196,17 +188,18 @@ int rhizome_secret2bk(
 enum rhizome_secret_disposition find_rhizome_secret(const sid_t *authorSidp, size_t *rs_len, const unsigned char **rs)
 {
   IN();
-  int cn=0, in=0, kp=0;
+  unsigned cn=0, in=0, kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp, authorSidp)) {
     if (config.debug.rhizome)
       DEBUGF("identity sid=%s is not in keyring", alloca_tohex_sid_t(*authorSidp));
     RETURN(IDENTITY_NOT_FOUND);
   }
-  kp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
-  if (kp == -1) {
+  int kpi = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
+  if (kpi == -1) {
     WARNF("Identity sid=%s has no Rhizome Secret", alloca_tohex_sid_t(*authorSidp));
     RETURN(IDENTITY_HAS_NO_RHIZOME_SECRET);
   }
+  kp = (unsigned)kpi;
   int rslen = keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key_len;
   assert(rslen >= 16);
   assert(rslen <= 1024);
@@ -242,7 +235,7 @@ void rhizome_authenticate_author(rhizome_manifest *m)
 	  case FOUND_RHIZOME_SECRET:
 	    if (config.debug.rhizome)
 	      DEBUGF("author has Rhizome secret");
-	    switch (rhizome_bk2secret(m, &m->cryptoSignPublic, rs, rs_len, m->bundle_key.binary, m->cryptoSignSecret)) {
+	    switch (rhizome_bk2secret(&m->cryptoSignPublic, rs, rs_len, m->bundle_key.binary, m->cryptoSignSecret)) {
 	      case 0:
 		if (config.debug.rhizome)
 		  DEBUGF("authentic");
@@ -357,7 +350,7 @@ void rhizome_find_bundle_author_and_secret(rhizome_manifest *m)
   assert(is_sid_t_any(m->author));
   if (!m->has_bundle_key)
     RETURNVOID;
-  int cn = 0, in = 0, kp = 0;
+  unsigned cn = 0, in = 0, kp = 0;
   for (; keyring_next_identity(keyring, &cn, &in, &kp); ++kp) {
     const sid_t *authorSidp = (const sid_t *) keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key;
     //if (config.debug.rhizome) DEBUGF("try author identity sid=%s", alloca_tohex_sid_t(*authorSidp));
@@ -373,7 +366,7 @@ void rhizome_find_bundle_author_and_secret(rhizome_manifest *m)
       unsigned char *secretp = m->cryptoSignSecret;
       if (m->haveSecret)
 	secretp = alloca(sizeof m->cryptoSignSecret);
-      if (rhizome_bk2secret(m, &m->cryptoSignPublic, rs, rs_len, m->bundle_key.binary, secretp) == 0) {
+      if (rhizome_bk2secret(&m->cryptoSignPublic, rs, rs_len, m->bundle_key.binary, secretp) == 0) {
 	if (m->haveSecret) {
 	  if (memcmp(secretp, m->cryptoSignSecret, sizeof m->cryptoSignSecret) != 0)
 	    FATALF("Bundle secret does not match derived secret");
@@ -542,7 +535,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs)
       RETURN(0);
     }
   }
-  WARNF("Unsupported signature at ofs=%u: type=%#02x", sig - m->manifestdata, sigType);
+  WARNF("Unsupported signature at ofs=%u: type=%#02x", (unsigned)(sig - m->manifestdata), sigType);
   RETURN(3);
 }
 
@@ -608,7 +601,7 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
     return 0;
   if (m->has_sender && m->has_recipient){
     unsigned char *nm_bytes=NULL;
-    int cn=0,in=0,kp=0;
+    unsigned cn=0, in=0, kp=0;
     if (!keyring_find_sid(keyring, &cn, &in, &kp, &m->sender)){
       cn=in=kp=0;
       if (!keyring_find_sid(keyring, &cn, &in, &kp, &m->recipient)){

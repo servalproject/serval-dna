@@ -17,6 +17,35 @@
  */
 
 /*
+  Portions Copyright (C) 2013 Petter Reinholdtsen
+  Some rights reserved
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
+     the documentation and/or other materials provided with the
+     distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+  COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*
  
  Integration with olsr routing.
  
@@ -48,8 +77,7 @@ static struct profile_total read_timing={
 static struct sched_ent read_watch={
   .function=olsr_read,
   .stats=&read_timing,
-  .poll.fd=-1,
-  .poll.events=POLLIN,
+  .poll={.fd=-1,.events=POLLIN},
 };
 
 int olsr_init_socket(void){
@@ -67,6 +95,7 @@ int olsr_init_socket(void){
     .sin_family = AF_INET,
     .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
     .sin_port = htons(config.olsr.local_port),
+    .sin_zero = {0},
   };
   
   fd = socket(AF_INET,SOCK_DGRAM,0);
@@ -167,12 +196,12 @@ static void parse_frame(struct overlay_buffer *buff){
   frame.modifiers=ob_get(buff);
   
   if (config.debug.overlayinterfaces) 
-    DEBUGF("Received %d byte payload via olsr", buff->sizeLimit - buff->position);
+    DEBUGF("Received %zu byte payload via olsr", buff->sizeLimit - buff->position);
   
   // the remaining bytes are an mdp payload, process it
   frame.payload = buff;
   
-  overlay_saw_mdp_containing_frame(&frame, gettime_ms());
+  overlay_saw_mdp_containing_frame(&frame);
   
   // TODO relay this packet to other non-olsr networks.
   
@@ -217,6 +246,7 @@ static int send_packet(unsigned char *header, int header_len, unsigned char *pay
     .sin_family=AF_INET,
     .sin_addr.s_addr=htonl(INADDR_LOOPBACK),
     .sin_port=htons(config.olsr.remote_port),
+    .sin_zero = {0},
   };
   
   struct iovec iov[]={
@@ -267,7 +297,7 @@ int olsr_send(struct overlay_frame *frame){
   ob_append_byte(b, frame->modifiers);
   
   if (config.debug.overlayinterfaces) 
-    DEBUGF("Sending %d byte payload via olsr", frame->payload->sizeLimit);
+    DEBUGF("Sending %zu byte payload via olsr", frame->payload->sizeLimit);
   
   // send the packet
   int ret = send_packet(b->bytes, b->position, frame->payload->bytes, frame->payload->sizeLimit);

@@ -504,7 +504,7 @@ int cf_cmp_ushort_nonzero(const unsigned short *a, const unsigned short *b)
 int vld_argv(const struct cf_om_node *parent, struct config_argv *array, int result)
 {
   unsigned short last_key = 0;
-  int i;
+  unsigned i;
   if (array->ac) {
     unsigned short last_key = array->av[0].key;
     for (i = 1; i < array->ac; ++i) {

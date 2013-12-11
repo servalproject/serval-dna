@@ -17,16 +17,18 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include "constants.h"
+
 int sigPipeFlag=0;
 int sigIoFlag=0;
 
-void sigPipeHandler(int signal)
+void sigPipeHandler(int UNUSED(signal))
 {
   sigPipeFlag++;
   return;
 }
 
-void sigIoHandler(int signal)
+void sigIoHandler(int UNUSED(signal))
 {  
   sigIoFlag++;
   return;

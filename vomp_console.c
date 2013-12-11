@@ -16,6 +16,35 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+/*
+  Portions Copyright (C) 2013 Petter Reinholdtsen
+  Some rights reserved
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
+     the documentation and/or other materials provided with the
+     distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+  COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+*/
+
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <stdio.h>
@@ -64,7 +93,8 @@ static void send_audio(int session_id, unsigned char *buffer, int len, int codec
   monitor_client_writeline_and_data(monitor_client_fd, buffer, len, "audio %06x %d\n", session_id, codec);
 }
 
-static int remote_call(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_call(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
+{
   int token = strtol(argv[0], NULL, 16);
   
   if (call_token != -1){
@@ -82,7 +112,8 @@ static int remote_call(char *cmd, int argc, char **argv, unsigned char *data, in
   return 1;
 }
 
-static int remote_ringing(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_ringing(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
+{
   int token = strtol(argv[0], NULL, 16);
   if (call_token == token){
     printf("They're ringing\n");
@@ -92,7 +123,8 @@ static int remote_ringing(char *cmd, int argc, char **argv, unsigned char *data,
   return 1;
 }
 
-static int remote_pickup(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_pickup(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
+{
   int token = strtol(argv[0], NULL, 16);
   if (call_token == token){
     printf("They've picked up\n");
@@ -102,7 +134,8 @@ static int remote_pickup(char *cmd, int argc, char **argv, unsigned char *data, 
   return 1;
 }
 
-static int remote_dialing(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_dialing(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
+{
   int token = strtol(argv[0], NULL, 16);
   if (call_token == -1){
     call_token=token;
@@ -114,7 +147,8 @@ static int remote_dialing(char *cmd, int argc, char **argv, unsigned char *data,
   return 1;
 }
 
-static int remote_hangup(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_hangup(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
+{
   int token = strtol(argv[0], NULL, 16);
   if (call_token == token){
     printf("Call ended\n");
@@ -124,7 +158,8 @@ static int remote_hangup(char *cmd, int argc, char **argv, unsigned char *data, 
   return 1;
 }
 
-static int remote_audio(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_audio(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
+{
   int token = strtol(argv[0], NULL, 16);
   if (call_token == token){
     int codec = strtol(argv[1], NULL, 10);
@@ -142,7 +177,8 @@ static int remote_audio(char *cmd, int argc, char **argv, unsigned char *data, i
   return 1;
 }
 
-static int remote_codecs(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_codecs(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
+{
   int token = strtol(argv[0], NULL, 16);
   if (call_token == token){
     int i;
@@ -156,7 +192,8 @@ static int remote_codecs(char *cmd, int argc, char **argv, unsigned char *data, 
   return 1;
 }
 
-static int remote_print(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_print(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *UNUSED(context))
+{
   int i;
   printf("%s",cmd);
   for (i=0;i<argc;i++){
@@ -170,7 +207,8 @@ static int remote_print(char *cmd, int argc, char **argv, unsigned char *data, i
   return 1;
 }
 
-static int remote_noop(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
+static int remote_noop(char *UNUSED(cmd), int UNUSED(argc), char **UNUSED(argv), unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
+{
   return 1;
 }
 
@@ -188,7 +226,7 @@ struct monitor_command_handler console_handlers[]={
   {.command="MONITORSTATUS", .handler=remote_noop},
 };
 
-static int console_dial(const struct cli_parsed *parsed, struct cli_context *context)
+static int console_dial(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (call_token!=-1){
     printf("Already in a call\n");
@@ -201,7 +239,7 @@ static int console_dial(const struct cli_parsed *parsed, struct cli_context *con
   return 0;
 }
 
-static int console_answer(const struct cli_parsed *parsed, struct cli_context *context)
+static int console_answer(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   if (call_token==-1){
     printf("No active call to answer\n");
@@ -211,7 +249,7 @@ static int console_answer(const struct cli_parsed *parsed, struct cli_context *c
   return 0;
 }
 
-static int console_hangup(const struct cli_parsed *parsed, struct cli_context *context)
+static int console_hangup(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   if (call_token==-1){
     printf("No call to hangup\n");
@@ -221,7 +259,7 @@ static int console_hangup(const struct cli_parsed *parsed, struct cli_context *c
   return 0;
 }
 
-static int console_audio(const struct cli_parsed *parsed, struct cli_context *context)
+static int console_audio(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (call_token==-1){
     printf("No active call\n");
@@ -229,8 +267,8 @@ static int console_audio(const struct cli_parsed *parsed, struct cli_context *co
   }else{
     static char buf[256];
     static struct strbuf str_buf = STRUCT_STRBUF_EMPTY;
-    int i;
     strbuf_init(&str_buf, buf, sizeof(buf));
+    unsigned i;
     for (i = 0; i < parsed->argc; ++i) {
       if (i)
 	strbuf_putc(&str_buf, ' ');
@@ -253,10 +291,10 @@ struct cli_schema console_commands[]={
   {console_hangup,{"hangup",NULL},0,"Hangup the phone line"},
   {console_usage,{"help",NULL},0,"This usage message"},
   {console_audio,{"say","...",NULL},0,"Send a text string to the other party"},
-  {NULL},
+  {NULL, {NULL, NULL, NULL}, 0, NULL},
 };
 
-static int console_usage(const struct cli_parsed *parsed, struct cli_context *context)
+static int console_usage(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   cli_usage(console_commands, XPRINTF_STDIO(stdout));
   fflush(stdout);
@@ -324,7 +362,7 @@ static void monitor_read(struct sched_ent *alarm){
   }
 }
 
-int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *context)
+int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -332,17 +370,19 @@ int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *contex
     .name="read_lines",
   };
   struct line_state stdin_state={
-    .alarm.poll.fd = STDIN_FILENO,
-    .alarm.poll.events = POLLIN,
-    .alarm.function = read_lines,
-    .alarm.stats=&stdin_profile,
+    .alarm = {
+      .poll = {.fd = STDIN_FILENO,.events = POLLIN},
+      .function = read_lines,
+      .stats=&stdin_profile
+    },
+    .fd=0,
     .process_line=console_command,
   };
   static struct profile_total monitor_profile={
     .name="monitor_read",
   };
   struct sched_ent monitor_alarm={
-    .poll.events = POLLIN,
+    .poll = {.fd = STDIN_FILENO,.events = POLLIN},
     .function = monitor_read,
     .stats=&monitor_profile,
   };

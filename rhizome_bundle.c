@@ -38,13 +38,13 @@ static const char *rhizome_manifest_get(const rhizome_manifest *m, const char *v
 }
 
 #if 0
-static int64_t rhizome_manifest_get_ll(rhizome_manifest *m, const char *var)
+static uint64_t rhizome_manifest_get_ui64(rhizome_manifest *m, const char *var)
 {
   unsigned i;
   for (i = 0; i < m->var_count; ++i)
     if (strcmp(m->vars[i], var) == 0) {
-      int64_t val;
-      return str_to_int64(m->values[i], 10, &val, NULL) ? val : -1;
+      uint64_t val;
+      return str_to_uint64(m->values[i], 10, &val, NULL) ? val : -1;
     }
   return -1;
 }
@@ -75,7 +75,7 @@ static int _rhizome_manifest_del(struct __sourceloc __whence, rhizome_manifest *
 }
 
 #define rhizome_manifest_set(m,var,value) _rhizome_manifest_set(__WHENCE__, (m), (var), (value))
-#define rhizome_manifest_set_ll(m,var,value) _rhizome_manifest_set_ll(__WHENCE__, (m), (var), (value))
+#define rhizome_manifest_set_ui64(m,var,value) _rhizome_manifest_set_ui64(__WHENCE__, (m), (var), (value))
 #define rhizome_manifest_del(m,var) _rhizome_manifest_del(__WHENCE__, (m), (var))
 
 static const char *_rhizome_manifest_set(struct __sourceloc __whence, rhizome_manifest *m, const char *var, const char *value)
@@ -108,10 +108,10 @@ static const char *_rhizome_manifest_set(struct __sourceloc __whence, rhizome_ma
   return ret;
 }
 
-static const char *_rhizome_manifest_set_ll(struct __sourceloc __whence, rhizome_manifest *m, char *var, int64_t value)
+static const char *_rhizome_manifest_set_ui64(struct __sourceloc __whence, rhizome_manifest *m, char *var, uint64_t value)
 {
   char str[50];
-  snprintf(str, sizeof str, "%" PRId64, value);
+  snprintf(str, sizeof str, "%" PRIu64, value);
   return rhizome_manifest_set(m, var, str);
 }
 
@@ -136,16 +136,16 @@ void _rhizome_manifest_set_id(struct __sourceloc __whence, rhizome_manifest *m, 
   }
 }
 
-void _rhizome_manifest_set_version(struct __sourceloc __whence, rhizome_manifest *m, int64_t version)
+void _rhizome_manifest_set_version(struct __sourceloc __whence, rhizome_manifest *m, uint64_t version)
 {
-  const char *v = rhizome_manifest_set_ll(m, "version", version);
+  const char *v = rhizome_manifest_set_ui64(m, "version", version);
   assert(v); // TODO: remove known manifest fields from vars[]
   m->version = version;
 }
 
 void _rhizome_manifest_set_filesize(struct __sourceloc __whence, rhizome_manifest *m, uint64_t size)
 {
-  const char *v = rhizome_manifest_set_ll(m, "filesize", size);
+  const char *v = rhizome_manifest_set_ui64(m, "filesize", size);
   assert(v); // TODO: remove known manifest fields from vars[]
   m->filesize = size;
   if (m->filesize == 0)
@@ -171,7 +171,7 @@ void _rhizome_manifest_set_filehash(struct __sourceloc __whence, rhizome_manifes
 
 void _rhizome_manifest_set_tail(struct __sourceloc __whence, rhizome_manifest *m, uint64_t tail)
 {
-  const char *v = rhizome_manifest_set_ll(m, "tail", tail);
+  const char *v = rhizome_manifest_set_ui64(m, "tail", tail);
   assert(v); // TODO: remove known manifest fields from vars[]
   m->tail = tail;
   m->is_journal = (tail != RHIZOME_SIZE_UNSET);
@@ -245,7 +245,7 @@ void _rhizome_manifest_del_name(struct __sourceloc __whence, rhizome_manifest *m
 
 void _rhizome_manifest_set_date(struct __sourceloc __whence, rhizome_manifest *m, time_ms_t date)
 {
-  const char *v = rhizome_manifest_set_ll(m, "date", date);
+  const char *v = rhizome_manifest_set_ui64(m, "date", (uint64_t)date);
   assert(v); // TODO: remove known manifest fields from vars[]
   m->date = date;
   m->has_date = 1;
@@ -316,11 +316,15 @@ void _rhizome_manifest_set_crypt(struct __sourceloc __whence, rhizome_manifest *
 
 void _rhizome_manifest_set_rowid(struct __sourceloc __whence, rhizome_manifest *m, uint64_t rowid)
 {
+  if (config.debug.rhizome_manifest)
+    DEBUGF("SET manifest[%d].rowid = %"PRIu64, m->manifest_record_number, rowid);
   m->rowid = rowid;
 }
 
 void _rhizome_manifest_set_inserttime(struct __sourceloc __whence, rhizome_manifest *m, time_ms_t time)
 {
+  if (config.debug.rhizome_manifest)
+    DEBUGF("SET manifest[%d].inserttime = %"PRItime_ms_t, m->manifest_record_number, time);
   m->inserttime = time;
 }
 
@@ -474,7 +478,7 @@ int rhizome_manifest_inspect(const char *buf, size_t len, struct rhizome_manifes
 	      state = Error; // invalid "id" field
 	  } else if (has_version == 1) {
 	    const char *e;
-	    if (str_to_uint64(begin, 10, (uint64_t*)&summ->version, &e) && e == eol)
+	    if (str_to_uint64(begin, 10, &summ->version, &e) && e == eol)
 	      has_version = 2;
 	    else
 	      state = Error; // invalid "version" field
@@ -1023,7 +1027,7 @@ int rhizome_manifest_selfsign(rhizome_manifest *m)
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *path, char append)
 {
   if (config.debug.rhizome)
-    DEBUGF("write manifest (%d bytes) to %s", m->manifest_all_bytes, path);
+    DEBUGF("write manifest (%zd bytes) to %s", m->manifest_all_bytes, path);
   if (!m)
     return WHY("Manifest is null.");
   if (!m->finalised)
@@ -1176,7 +1180,7 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
 int rhizome_lookup_author(rhizome_manifest *m)
 {
   IN();
-  int cn, in, kp;
+  unsigned cn, in, kp;
   switch (m->authorship) {
     case AUTHOR_NOT_CHECKED:
       if (config.debug.rhizome)

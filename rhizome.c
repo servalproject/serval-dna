@@ -18,6 +18,35 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+/*
+  Portions Copyright (C) 2013 Petter Reinholdtsen
+  Some rights reserved
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
+     the documentation and/or other materials provided with the
+     distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+  COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+*/
+
 #include <stdlib.h>
 #include <assert.h>
 #include "serval.h"
@@ -106,7 +135,7 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
     if (ret==0){
       buffer_len = read_uint16(marker);
       if (buffer_len < 1 || buffer_len > MAX_MANIFEST_BYTES)
-	ret=WHYF("Invalid manifest length %zd", buffer_len);
+	ret=WHYF("Invalid manifest length %zu", buffer_len);
     }
     
     if (ret==0){
@@ -115,10 +144,8 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
     }
     
     if (ret==0){
-      ret = fread(buffer, 1, buffer_len, f);
-      if (ret==buffer_len)
-	ret=0;
-      else
+      ssize_t nread = fread(buffer, 1, buffer_len, f);
+      if ((size_t)nread != buffer_len)
 	ret=WHY_perror("Unable to read manifest contents");
     }
     
@@ -138,11 +165,11 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
     return WHY("could not verify manifest");
   
   /* Do we already have this manifest or newer? */
-  int64_t dbVersion = -1;
-  if (sqlite_exec_int64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &m->cryptoSignPublic, END) == -1)
+  uint64_t dbVersion = 0;
+  if (sqlite_exec_uint64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &m->cryptoSignPublic, END) == -1)
     return WHY("Select failure");
 
-  if (dbVersion>=m->version)
+  if (dbVersion >= m->version)
     return 2;
 
   int status = rhizome_import_file(m, filepath);
@@ -274,8 +301,8 @@ int rhizome_add_manifest(rhizome_manifest *m, int ttl)
     return WHY("Manifest does not have an ID");   
   
   /* Discard the new manifest unless it is newer than the most recent known version with the same ID */
-  int64_t storedversion = -1;
-  switch (sqlite_exec_int64(&storedversion, "SELECT version FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &m->cryptoSignPublic, END)) {
+  uint64_t storedversion = -1;
+  switch (sqlite_exec_uint64(&storedversion, "SELECT version FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &m->cryptoSignPublic, END)) {
     case -1:
       return WHY("Select failed");
     case 0:
@@ -283,11 +310,11 @@ int rhizome_add_manifest(rhizome_manifest *m, int ttl)
       break;
     case 1:
       if (config.debug.rhizome) 
-	DEBUGF("Found existing version=%"PRId64", new version=%"PRId64, storedversion, m->version);
+	DEBUGF("Found existing version=%"PRIu64", new version=%"PRIu64, storedversion, m->version);
       if (m->version < storedversion)
 	return WHY("Newer version exists");
       if (m->version == storedversion)
-	return WHYF("Already have %s:%"PRId64", not adding", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
+	return WHYF("Already have %s:%"PRIu64", not adding", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
       break;
     default:
       return WHY("Select found too many rows!");

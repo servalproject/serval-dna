@@ -82,8 +82,8 @@ uuid_t rhizome_db_uuid;
 /* XXX Requires a messy join that might be slow. */
 int rhizome_manifest_priority(sqlite_retry_state *retry, const rhizome_bid_t *bidp)
 {
-  int64_t result = 0;
-  if (sqlite_exec_int64_retry(retry, &result,
+  uint64_t result = 0;
+  if (sqlite_exec_uint64_retry(retry, &result,
 	"SELECT max(grouplist.priorty) FROM GROUPLIST,MANIFESTS,GROUPMEMBERSHIPS"
 	" WHERE MANIFESTS.id = ?"
 	"   AND GROUPLIST.id = GROUPMEMBERSHIPS.groupid"
@@ -116,7 +116,7 @@ static int sqlite_trace_done;
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static void sqlite_trace_callback(void *context, const char *rendered_sql)
+static void sqlite_trace_callback(void *UNUSED(context), const char *rendered_sql)
 {
   if (sqlite_trace_func())
     logMessage(LOG_LEVEL_DEBUG, sqlite_trace_whence ? *sqlite_trace_whence : __HERE__, "%s", rendered_sql);
@@ -130,7 +130,7 @@ static void sqlite_trace_callback(void *context, const char *rendered_sql)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static void sqlite_profile_callback(void *context, const char *rendered_sql, sqlite_uint64 nanosec)
+static void sqlite_profile_callback(void *context, const char *rendered_sql, sqlite_uint64 UNUSED(nanosec))
 {
   if (!sqlite_trace_done)
     sqlite_trace_callback(context, rendered_sql);
@@ -159,7 +159,7 @@ int (*sqlite_set_tracefunc(int (*newfunc)()))()
   return oldfunc;
 }
 
-void sqlite_log(void *ignored, int result, const char *msg)
+void sqlite_log(void *UNUSED(ignored), int result, const char *msg)
 {
   WARNF("Sqlite: %d %s", result, msg);
 }
@@ -264,8 +264,8 @@ int rhizome_opendb()
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
-  int64_t version;
-  if (sqlite_exec_int64_retry(&retry, &version, "PRAGMA user_version;", END) == -1)
+  uint64_t version;
+  if (sqlite_exec_uint64_retry(&retry, &version, "PRAGMA user_version;", END) == -1)
     RETURN(-1);
   
   if (version<1){
@@ -958,7 +958,7 @@ int _sqlite_exec_void_retry(struct __sourceloc __whence, int log_level, sqlite_r
   return ret;
 }
 
-static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *retry, int64_t *result, const char *sqltext, va_list ap)
+static int _sqlite_vexec_uint64(struct __sourceloc __whence, sqlite_retry_state *retry, uint64_t *result, const char *sqltext, va_list ap)
 {
   sqlite3_stmt *statement = _sqlite_prepare(__whence, LOG_LEVEL_ERROR, retry, sqltext);
   if (!statement)
@@ -981,7 +981,7 @@ static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *
   if (!sqlite_code_ok(stepcode) || ret == -1)
     return -1;
   if (sqlite_trace_func())
-    DEBUGF("rowcount=%d changes=%d result=%"PRId64, rowcount, sqlite3_changes(rhizome_db), *result);
+    DEBUGF("rowcount=%d changes=%d result=%"PRIu64, rowcount, sqlite3_changes(rhizome_db), *result);
   return rowcount;
 }
 
@@ -995,28 +995,28 @@ static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int _sqlite_exec_int64(struct __sourceloc __whence, int64_t *result, const char *sqlformat,...)
+int _sqlite_exec_uint64(struct __sourceloc __whence, uint64_t *result, const char *sqlformat,...)
 {
   va_list ap;
   va_start(ap, sqlformat);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  int ret = _sqlite_vexec_int64(__whence, &retry, result, sqlformat, ap);
+  int ret = _sqlite_vexec_uint64(__whence, &retry, result, sqlformat, ap);
   va_end(ap);
   return ret;
 }
 
-/* Same as sqlite_exec_int64() but if the statement cannot be executed because the database is
+/* Same as sqlite_exec_uint64() but if the statement cannot be executed because the database is
  * currently locked for updates, then will call sqlite_retry() on the supplied retry state variable
  * instead of its own, internal one.  If 'retry' is passed as NULL, then will not sleep and retry at
  * all in the event of a busy condition, but will log it as an error and return immediately.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int _sqlite_exec_int64_retry(struct __sourceloc __whence, sqlite_retry_state *retry, int64_t *result, const char *sqlformat,...)
+int _sqlite_exec_uint64_retry(struct __sourceloc __whence, sqlite_retry_state *retry, uint64_t *result, const char *sqlformat,...)
 {
   va_list ap;
   va_start(ap, sqlformat);
-  int ret = _sqlite_vexec_int64(__whence, retry, result, sqlformat, ap);
+  int ret = _sqlite_vexec_uint64(__whence, retry, result, sqlformat, ap);
   va_end(ap);
   return ret;
 }
@@ -1071,16 +1071,18 @@ int _sqlite_vexec_strbuf_retry(struct __sourceloc __whence, sqlite_retry_state *
   return sqlite_code_ok(stepcode) && ret != -1 ? rowcount : -1;
 }
 
-int64_t rhizome_database_used_bytes()
+static uint64_t rhizome_database_used_bytes()
 {
-  int64_t db_page_size;
-  int64_t db_page_count;
-  int64_t db_free_page_count;
-  if (	sqlite_exec_int64(&db_page_size, "PRAGMA page_size;", END) == -1LL
-    ||  sqlite_exec_int64(&db_page_count, "PRAGMA page_count;", END) == -1LL
-    ||	sqlite_exec_int64(&db_free_page_count, "PRAGMA free_count;", END) == -1LL
-  )
-    return WHY("Cannot measure database used bytes");
+  uint64_t db_page_size;
+  uint64_t db_page_count;
+  uint64_t db_free_page_count;
+  if (	sqlite_exec_uint64(&db_page_size, "PRAGMA page_size;", END) == -1LL
+    ||  sqlite_exec_uint64(&db_page_count, "PRAGMA page_count;", END) == -1LL
+    ||	sqlite_exec_uint64(&db_free_page_count, "PRAGMA free_count;", END) == -1LL
+  ) {
+    WHY("Cannot measure database used bytes");
+    return UINT64_MAX;
+  }
   return db_page_size * (db_page_count - db_free_page_count);
 }
 
@@ -1092,7 +1094,7 @@ int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t versio
 			    INT64, version, RHIZOME_BID_T, bidp, END) == -1)
     RETURN(-1);
   if (strbuf_overrun(hash_sb) || str_to_rhizome_filehash_t(hashp, strbuf_str(hash_sb)) == -1)
-    RETURN(WHYF("malformed file hash for bid=%s version=%"PRId64, alloca_tohex_rhizome_bid_t(*bidp), version));
+    RETURN(WHYF("malformed file hash for bid=%s version=%"PRIu64, alloca_tohex_rhizome_bid_t(*bidp), version));
   RETURN(0);
   OUT();
 }
@@ -1208,17 +1210,19 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
 int rhizome_make_space(int group_priority, uint64_t bytes)
 {
   /* Asked for impossibly large amount */
-  if (bytes>=(config.rhizome.database_size-65536))
+  const size_t margin = 65536;
+  const uint64_t limit = config.rhizome.database_size > margin ? config.rhizome.database_size - margin : 1;
+  if (bytes >= limit)
     return WHYF("bytes=%"PRIu64" is too large", bytes);
 
-  int64_t db_used = rhizome_database_used_bytes();
-  if (db_used == -1)
+  uint64_t db_used = rhizome_database_used_bytes();
+  if (db_used == UINT64_MAX)
     return -1;
   
   rhizome_cleanup(NULL);
   
   /* If there is already enough space now, then do nothing more */
-  if (db_used<=(config.rhizome.database_size-bytes-65536))
+  if (db_used + bytes <= limit)
     return 0;
 
   /* Okay, not enough space, so free up some. */
@@ -1228,9 +1232,7 @@ int rhizome_make_space(int group_priority, uint64_t bytes)
       INT, group_priority, END);
   if (!statement)
     return -1;
-  while (bytes > (config.rhizome.database_size - 65536 - rhizome_database_used_bytes())
-      && sqlite_step_retry(&retry, statement) == SQLITE_ROW
-  ) {
+  while (db_used + bytes > limit && sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     /* Make sure we can drop this blob, and if so drop it, and recalculate number of bytes required */
     const char *id;
     /* Get values */
@@ -1255,6 +1257,8 @@ int rhizome_make_space(int group_priority, uint64_t bytes)
        * to be paranoid, and it also protects against inconsistency in the database.
        */
       rhizome_drop_stored_file(&hash, group_priority + 1);
+      if ((db_used = rhizome_database_used_bytes()) == UINT64_MAX)
+	break;
     }
   }
   sqlite3_finalize(statement);
@@ -1456,7 +1460,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
 
   if (sqlite_exec_void_retry(&retry, "COMMIT;", END) != -1){
     // This message used in tests; do not modify or remove.
-    INFOF("RHIZOME ADD MANIFEST service=%s bid=%s version=%"PRId64,
+    INFOF("RHIZOME ADD MANIFEST service=%s bid=%s version=%"PRIu64,
 	  m->service ? m->service : "NULL",
 	  alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
 	  m->version
@@ -1588,7 +1592,7 @@ int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
     const char *q_manifestid = (const char *) sqlite3_column_text(c->_statement, 0);
     const char *manifestblob = (char *) sqlite3_column_blob(c->_statement, 1);
     size_t manifestblobsize = sqlite3_column_bytes(c->_statement, 1); // must call after sqlite3_column_blob()
-    int64_t q_version = sqlite3_column_int64(c->_statement, 2);
+    uint64_t q_version = sqlite3_column_int64(c->_statement, 2);
     int64_t q_inserttime = sqlite3_column_int64(c->_statement, 3);
     const char *q_author = (const char *) sqlite3_column_text(c->_statement, 4);
     sid_t *author = NULL;
@@ -1609,7 +1613,7 @@ int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
       continue;
     }
     if (m->version != q_version) {
-      WHYF("MANIFESTS row id=%s version=%"PRId64" does not match manifest blob version=%"PRId64" -- skipped",
+      WHYF("MANIFESTS row id=%s version=%"PRIu64" does not match manifest blob version=%"PRIu64" -- skipped",
 	  q_manifestid, q_version, m->version);
       continue;
     }
@@ -1666,20 +1670,21 @@ void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCoun
 int rhizome_update_file_priority(const char *fileid)
 {
   /* work out the highest priority of any referrer */
-  int64_t highestPriority = -1;
+  uint64_t highestPriority = 0;
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  if (sqlite_exec_int64_retry(&retry, &highestPriority,
+  if (sqlite_exec_uint64_retry(&retry, &highestPriority,
 	"SELECT max(grouplist.priority) FROM MANIFESTS, GROUPMEMBERSHIPS, GROUPLIST"
 	" WHERE MANIFESTS.filehash = ?"
 	"   AND GROUPMEMBERSHIPS.manifestid = MANIFESTS.id"
 	"   AND GROUPMEMBERSHIPS.groupid = GROUPLIST.id;",
-	TEXT_TOUPPER, fileid, END) == -1)
+	TEXT_TOUPPER, fileid, END
+      ) == -1
+  )
     return -1;
-  if (   highestPriority >= 0
-      && sqlite_exec_void_retry(&retry,
-	      "UPDATE files SET highestPriority = ? WHERE id = ?;",
-	      INT, highestPriority, TEXT_TOUPPER, fileid, END
-	  ) == -1
+  if (sqlite_exec_void_retry(&retry,
+	"UPDATE files SET highestPriority = ? WHERE id = ?;",
+	INT64, highestPriority, TEXT_TOUPPER, fileid, END
+      ) == -1
   )
     return WHYF("cannot update priority for fileid=%s", fileid);
   return 0;
@@ -1777,7 +1782,7 @@ static int unpack_manifest_row(rhizome_manifest *m, sqlite3_stmt *statement)
 {
   const char *q_id = (const char *) sqlite3_column_text(statement, 0);
   const char *q_blob = (char *) sqlite3_column_blob(statement, 1);
-  int64_t q_version = sqlite3_column_int64(statement, 2);
+  uint64_t q_version = sqlite3_column_int64(statement, 2);
   int64_t q_inserttime = sqlite3_column_int64(statement, 3);
   const char *q_author = (const char *) sqlite3_column_text(statement, 4);
   size_t q_blobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
@@ -1792,7 +1797,7 @@ static int unpack_manifest_row(rhizome_manifest *m, sqlite3_stmt *statement)
       rhizome_manifest_set_author(m, &author);
   }
   if (m->version != q_version)
-    WARNF("Version mismatch, manifest is %"PRId64", database is %"PRId64, m->version, q_version);
+    WARNF("Version mismatch, manifest is %"PRIu64", database is %"PRIu64, m->version, q_version);
   rhizome_manifest_set_rowid(m, q_rowid);
   rhizome_manifest_set_inserttime(m, q_inserttime);
   return 0;
@@ -1955,7 +1960,7 @@ int rhizome_delete_file(const rhizome_filehash_t *hashp)
   return rhizome_delete_file_retry(&retry, hashp);
 }
 
-static int is_interesting(const char *id_hex, int64_t version)
+static int is_interesting(const char *id_hex, uint64_t version)
 {
   IN();
   int ret=1;
@@ -1988,7 +1993,7 @@ static int is_interesting(const char *id_hex, int64_t version)
 
 int rhizome_is_bar_interesting(unsigned char *bar)
 {
-  int64_t version = rhizome_bar_version(bar);
+  uint64_t version = rhizome_bar_version(bar);
   char id_hex[RHIZOME_BAR_PREFIX_BYTES *2 + 2];
   tohex(id_hex, RHIZOME_BAR_PREFIX_BYTES * 2, &bar[RHIZOME_BAR_PREFIX_OFFSET]);
   strcat(id_hex, "%");

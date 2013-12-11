@@ -461,7 +461,8 @@ next:
   RETURN(best_link);
 }
 
-static int monitor_announce(struct subscriber *subscriber, void *context){
+static int monitor_announce(struct subscriber *subscriber, void *UNUSED(context))
+{
   if (subscriber->reachable & REACHABLE){
     struct link_state *state = get_link_state(subscriber);
     monitor_announce_link(state->hop_count, state->transmitter, subscriber);
@@ -487,7 +488,7 @@ static int append_link_state(struct overlay_buffer *payload, char flags,
     flags|=FLAG_HAS_ACK;
   if (drop_rate!=-1)
     flags|=FLAG_HAS_DROP_RATE;
-  int length_pos = ob_position(payload);
+  size_t length_pos = ob_position(payload);
   ob_append_byte(payload, 0);
   ob_append_byte(payload, flags);
   overlay_address_append(NULL, payload, receiver);
@@ -506,7 +507,7 @@ static int append_link_state(struct overlay_buffer *payload, char flags,
   if (ob_overrun(payload))
     return -1;
   // patch the record length
-  int end_pos = ob_position(payload);
+  size_t end_pos = ob_position(payload);
   ob_set(payload, length_pos, end_pos - length_pos);
   ob_checkpoint(payload);
   return 0;
@@ -765,7 +766,7 @@ static int neighbour_find_best_link(struct neighbour *n)
   return 0;
 }
 
-static int neighbour_link_sent(struct overlay_frame *frame, int sequence, void *context)
+static int neighbour_link_sent(struct overlay_frame *UNUSED(frame), int sequence, void *context)
 {
   struct subscriber *subscriber = context;
   struct neighbour *neighbour = get_neighbour(subscriber, 0);
@@ -897,7 +898,7 @@ static void link_send(struct sched_ent *alarm)
     ob_limitsize(frame->payload, 400);
     overlay_mdp_encode_ports(frame->payload, MDP_PORT_LINKSTATE, MDP_PORT_LINKSTATE);
     ob_checkpoint(frame->payload);
-    int pos = ob_position(frame->payload);
+    size_t pos = ob_position(frame->payload);
     enum_subscribers(NULL, append_link, frame->payload);
     ob_rewind(frame->payload);
     if (ob_position(frame->payload) == pos)
@@ -1077,7 +1078,7 @@ int link_state_ack_soon(struct subscriber *subscriber)
 }
 
 // our neighbour is sending a duplicate frame, did we see the original?
-int link_received_duplicate(struct subscriber *subscriber, struct overlay_interface *interface, int sender_interface, int payload_seq, int unicast)
+int link_received_duplicate(struct subscriber *subscriber, int payload_seq)
 {
   struct neighbour *neighbour = get_neighbour(subscriber, 0);
   if (!neighbour)
@@ -1106,7 +1107,7 @@ int link_received_duplicate(struct subscriber *subscriber, struct overlay_interf
 }
 
 // remote peer has confirmed hearing a recent unicast packet
-int link_unicast_ack(struct subscriber *subscriber, struct overlay_interface *interface, struct sockaddr_in addr)
+int link_unicast_ack(struct subscriber *UNUSED(subscriber), struct overlay_interface *UNUSED(interface), struct sockaddr_in UNUSED(addr))
 {
   // TODO find / create network destination, keep it alive
   return 0;
@@ -1242,7 +1243,7 @@ int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 
     struct subscriber *receiver=NULL, *transmitter=NULL;
     struct overlay_interface *interface = NULL;
-    int start_pos = ob_position(payload);
+    size_t start_pos = ob_position(payload);
     int length = ob_get(payload);
     if (length <=0)
       break;
@@ -1441,7 +1442,7 @@ void link_explained(struct subscriber *subscriber)
   update_alarm(__WHENCE__, now + 5);
 }
 
-void link_interface_down(struct overlay_interface *interface)
+void link_interface_down(struct overlay_interface *UNUSED(interface))
 {
   clean_neighbours(gettime_ms());
 }

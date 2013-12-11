@@ -17,6 +17,35 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+/*
+  Portions Copyright (C) 2013 Petter Reinholdtsen
+  Some rights reserved
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
+     the documentation and/or other materials provided with the
+     distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+  COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+*/
+
 #ifndef __SERVAL_DNA__FDQUEUE_H
 #define __SERVAL_DNA__FDQUEUE_H
 
@@ -63,6 +92,7 @@ struct sched_ent{
 };
 
 int is_scheduled(const struct sched_ent *alarm);
+int is_watching(struct sched_ent *alarm);
 int _schedule(struct __sourceloc, struct sched_ent *alarm);
 int _unschedule(struct __sourceloc, struct sched_ent *alarm);
 int _watch(struct __sourceloc, struct sched_ent *alarm);
@@ -82,7 +112,7 @@ int fd_func_exit(struct __sourceloc, struct call_stats *this_call);
 void dump_stack(int log_level);
 unsigned fd_depth();
 
-#define IN() static struct profile_total _aggregate_stats={NULL,0,__FUNCTION__,0,0,0}; \
+#define IN() static struct profile_total _aggregate_stats={NULL,0,__FUNCTION__,0,0,0,0}; \
     struct call_stats _this_call={.totals=&_aggregate_stats}; \
     fd_func_enter(__HERE__, &_this_call);
 

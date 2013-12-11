@@ -19,7 +19,7 @@ int crypto_stream(
 {
   unsigned char in[16];
   unsigned char block[64];
-  int i;
+  unsigned i;
   unsigned int u;
 
   if (!clen) return 0;

@@ -120,12 +120,12 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
   OUT();
 }
 
-int64_t rhizome_bar_version(const unsigned char *bar)
+uint64_t rhizome_bar_version(const unsigned char *bar)
 {
-  int64_t version=0;
+  uint64_t version=0;
   int i;
   for(i=0;i<7;i++) 
-    version|=((int64_t)(bar[RHIZOME_BAR_VERSION_OFFSET+6-i]))<<(8LL*i);
+    version|=((uint64_t)(bar[RHIZOME_BAR_VERSION_OFFSET+6-i]))<<(8LL*i);
   return version;
 }
 
@@ -168,12 +168,12 @@ static int append_bars(struct overlay_buffer *e, sqlite_retry_state *retry, cons
 	DEBUG("Found a BAR that is the wrong size - ignoring");
       continue;
     }
-    if (ob_remaining(e) < blob_bytes) {
+    if (ob_remaining(e) < RHIZOME_BAR_BYTES) {
       // out of room
       count--;
       break;
     }
-    ob_append_bytes(e, (unsigned char *)data, blob_bytes);
+    ob_append_bytes(e, (unsigned char *)data, RHIZOME_BAR_BYTES);
     *last_rowid=rowid;
   }
   if (statement)
@@ -184,7 +184,7 @@ static int append_bars(struct overlay_buffer *e, sqlite_retry_state *retry, cons
 /* Periodically queue BAR advertisements
  Always advertise the most recent 3 manifests in the table, cycle through the rest of the table, adding 17 BAR's at a time
  */
-int64_t bundles_available=0;
+static uint64_t bundles_available=0;
 void overlay_rhizome_advertise(struct sched_ent *alarm)
 {
   bundles_available=0;
@@ -204,7 +204,7 @@ void overlay_rhizome_advertise(struct sched_ent *alarm)
   goto end;
 
   /* Get number of bundles available */
-  if (sqlite_exec_int64_retry(&retry, &bundles_available, "SELECT COUNT(BAR) FROM MANIFESTS;", END) != 1){
+  if (sqlite_exec_uint64_retry(&retry, &bundles_available, "SELECT COUNT(BAR) FROM MANIFESTS;", END) != 1){
     WHY("Could not count BARs for advertisement");
     goto end;
   }
@@ -272,7 +272,7 @@ int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m){
   if (overlay_payload_enqueue(frame) == -1)
     goto error;
   if (config.debug.rhizome_ads)
-    DEBUGF("Advertising manifest %s %"PRId64" to %s", 
+    DEBUGF("Advertising manifest %s %"PRIu64" to %s", 
       alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, dest?alloca_tohex_sid_t(dest->sid):"broadcast");
   return 0;
 error:
@@ -282,7 +282,7 @@ error:
 
 time_ms_t lookup_time=0;
 
-int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, struct overlay_frame *f, time_ms_t now)
+int overlay_rhizome_saw_advertisements(struct decode_context *context, struct overlay_frame *f)
 {
   IN();
   if (!f)
@@ -329,7 +329,7 @@ int overlay_rhizome_saw_advertisements(int i, struct decode_context *context, st
       }
       
       if (config.debug.rhizome_ads)
-	DEBUGF("manifest id=%s version=%"PRId64, alloca_tohex_rhizome_bid_t(summ.bid), summ.version);
+	DEBUGF("manifest id=%s version=%"PRIu64, alloca_tohex_rhizome_bid_t(summ.bid), summ.version);
 
       // If it looks like there is no signature at all, ignore the announcement but don't brown-list
       // the manifest ID, so that we will still process other offers of the same manifest with
@@ -421,7 +421,7 @@ next:
     if (log2_size!=0xFF && rhizome_fetch_has_queue_space(log2_size)!=1)
       continue;
 
-    int64_t version = rhizome_bar_version(bar);
+    uint64_t version = rhizome_bar_version(bar);
     // are we already fetching this bundle [or later]?
     rhizome_manifest *m=rhizome_fetch_search(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
     if (m && m->version >= version)

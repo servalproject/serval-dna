@@ -337,6 +337,8 @@ static void rhizome_direct_process_mime_body(struct http_request *hr, const char
 
 int rhizome_direct_import(rhizome_http_request *r, const char *remainder)
 {
+  if (*remainder)
+    return 1;
   if (r->http.verb != HTTP_VERB_POST) {
     http_request_simple_response(&r->http, 405, NULL);
     return 0;
@@ -354,6 +356,8 @@ int rhizome_direct_import(rhizome_http_request *r, const char *remainder)
 
 int rhizome_direct_enquiry(rhizome_http_request *r, const char *remainder)
 {
+  if (*remainder)
+    return 1;
   if (r->http.verb != HTTP_VERB_POST) {
     http_request_simple_response(&r->http, 405, NULL);
     return 0;
@@ -376,6 +380,8 @@ int rhizome_direct_enquiry(rhizome_http_request *r, const char *remainder)
  */
 int rhizome_direct_addfile(rhizome_http_request *r, const char *remainder)
 {
+  if (*remainder)
+    return 1;
   if (r->http.verb != HTTP_VERB_POST) {
     http_request_simple_response(&r->http, 405, NULL);
     return 0;
@@ -402,23 +408,23 @@ int rhizome_direct_addfile(rhizome_http_request *r, const char *remainder)
   return 0;
 }
 
-int rhizome_direct_dispatch(rhizome_http_request *r, const char *remainder)
+int rhizome_direct_dispatch(rhizome_http_request *r, const char *UNUSED(remainder))
 {
   if (   config.rhizome.api.addfile.uri_path[0]
       && strcmp(r->http.path, config.rhizome.api.addfile.uri_path) == 0
   )
-    return rhizome_direct_addfile(r, remainder);
+    return rhizome_direct_addfile(r, "");
   return 1;
 }
 
 static int receive_http_response(int sock, char *buffer, size_t buffer_len, struct http_response_parts *parts)
 {
-  int len = 0;
-  int count;
+  size_t len = 0;
+  ssize_t count;
   do {
       if ((count = read(sock, &buffer[len], buffer_len - len)) == -1)
 	return WHYF_perror("read(%d, %p, %d)", sock, &buffer[len], (int)buffer_len - len);
-      len += count;
+      len += (size_t)count;
   } while (len < buffer_len && count != 0 && !is_http_header_complete(buffer, len, len));
   if (config.debug.rhizome_rx)
     DEBUGF("Received HTTP response %s", alloca_toprint(-1, buffer, len));
@@ -428,13 +434,13 @@ static int receive_http_response(int sock, char *buffer, size_t buffer_len, stru
     INFOF("Failed HTTP request: server returned %03u %s", parts->code, parts->reason);
     return -1;
   }
-  if (parts->content_length == -1) {
+  if (parts->content_length == HTTP_RESPONSE_CONTENT_LENGTH_UNSET) {
     if (config.debug.rhizome_rx)
       DEBUGF("Invalid HTTP reply: missing Content-Length header");
     return -1;
   }
   if (config.debug.rhizome_rx)
-    DEBUGF("content_length=%"PRId64, parts->content_length);
+    DEBUGF("content_length=%"PRIu64, parts->content_length);
   return len - (parts->content_start - buffer);
 }
 
@@ -638,7 +644,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  DEBUGF("bundle id = %s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
 	  DEBUGF("bundle filehash = %s", alloca_tohex_rhizome_filehash_t(m->filehash));
 	  DEBUGF("file size = %"PRId64, m->filesize);
-	  DEBUGF("version = %"PRId64, m->version);
+	  DEBUGF("version = %"PRIu64, m->version);
 	}
 
 	/* We now have everything we need to compose the POST request and send it.
@@ -658,7 +664,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  "\r\n";
 	/* Work out what the content length should be */
 	if (config.debug.rhizome_tx)
-	  DEBUGF("manifest_all_bytes=%u, manifest_body_bytes=%u", m->manifest_all_bytes, m->manifest_body_bytes);
+	  DEBUGF("manifest_all_bytes=%zu, manifest_body_bytes=%zu", m->manifest_all_bytes, m->manifest_body_bytes);
 	assert(m->filesize != RHIZOME_SIZE_UNSET);
 	size_t content_length =
 	    strlen(template2) - 2 /* minus 2 for the "%s" that gets replaced */

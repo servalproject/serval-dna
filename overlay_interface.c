@@ -39,7 +39,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 
 int overlay_ready=0;
-int overlay_interface_count=0;
+unsigned overlay_interface_count=0;
 overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
 int overlay_last_interface_number=-1;
 
@@ -282,7 +282,7 @@ overlay_interface_read_any(struct sched_ent *alarm)
 	DEBUGF("Could not find matching interface for packet received from %s", inet_ntoa(recvaddr.inet.sin_addr));
       return;
     }
-    packetOkOverlay(interface, packet, plen, recvttl, &recvaddr);
+    packetOkOverlay(interface, packet, plen, &recvaddr);
   }
   if (alarm->poll.revents & (POLLHUP | POLLERR)) {
     INFO("Closing broadcast socket due to error");
@@ -593,7 +593,7 @@ static void interface_read_dgram(struct overlay_interface *interface)
     overlay_interface_close(interface);
     return;
   }
-  packetOkOverlay(interface, packet, plen, recvttl, &recvaddr);
+  packetOkOverlay(interface, packet, plen, &recvaddr);
 }
 
 struct file_packet{
@@ -687,7 +687,7 @@ static void interface_read_file(struct overlay_interface *interface)
 	struct socket_address srcaddr;
 	srcaddr.addrlen = sizeof packet.src_addr;
 	srcaddr.inet = packet.src_addr;
-	packetOkOverlay(interface, packet.payload, packet.payload_length, -1, &srcaddr);
+	packetOkOverlay(interface, packet.payload, packet.payload_length, &srcaddr);
       }
     }
   }
@@ -810,13 +810,13 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 {
   assert(destination && destination->interface);
   const unsigned char *bytes = ob_ptr(buffer);
-  int len = ob_position(buffer);
+  size_t len = ob_position(buffer);
   
   struct overlay_interface *interface = destination->interface;
   destination->last_tx = gettime_ms();
   
   if (config.debug.packettx){
-    DEBUGF("Sending this packet via interface %s (len=%d)",interface->name,len);
+    DEBUGF("Sending this packet via interface %s (len=%zu)",interface->name, len);
     DEBUG_packet_visualise(NULL, bytes, len);
   }
 
@@ -826,7 +826,7 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
   }
 
   if (interface->debug)
-    DEBUGF("Sending on %s, len %d: %s", interface->name, len, alloca_tohex(bytes, len>64?64:len));
+    DEBUGF("Sending on %s, len %zu: %s", interface->name, len, alloca_tohex(bytes, len>64?64:len));
 
   interface->tx_count++;
   
@@ -842,11 +842,11 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 	.pid = getpid(),
       };
       
-      if (len > sizeof(packet.payload)){
+      if (len > sizeof packet.payload) {
 	WARN("Truncating long packet to fit within MTU byte limit for dummy interface");
-	len = sizeof(packet.payload);
+	len = sizeof packet.payload;
       }
-      packet.payload_length=len;
+      packet.payload_length = len;
       bcopy(bytes, packet.payload, len);
       ob_free(buffer);
       /* This lseek() is unneccessary because the dummy file is opened in O_APPEND mode.  It's
@@ -886,22 +886,22 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
     case SOCK_DGRAM:
     {
       if (config.debug.overlayinterfaces) 
-	DEBUGF("Sending %zu byte overlay frame on %s to %s", (size_t)len, interface->name, inet_ntoa(destination->address.sin_addr));
+	DEBUGF("Sending %zu byte overlay frame on %s to %s", len, interface->name, inet_ntoa(destination->address.sin_addr));
       ssize_t sent = sendto(interface->alarm.poll.fd, 
 		bytes, (size_t)len, 0, 
 		(struct sockaddr *)&destination->address, sizeof(destination->address));
       ob_free(buffer);
-      if (sent == -1 || (size_t)sent != (size_t)len) {
+      if (sent == -1 || (size_t)sent != len) {
 	if (sent == -1)
 	  WHYF_perror("sendto(fd=%d,len=%zu,addr=%s) on interface %s",
 	      interface->alarm.poll.fd,
-	      (size_t)len,
+	      len,
 	      alloca_sockaddr((struct sockaddr *)&destination->address, sizeof destination->address),
 	      interface->name
 	    );
 	else
 	  WHYF("sendto() sent %zu bytes of overlay frame (%zu) to interface %s (socket=%d)",
-	      (size_t)sent, (size_t)len, interface->name, interface->alarm.poll.fd);
+	      (size_t)sent, len, interface->name, interface->alarm.poll.fd);
 	// close the interface if we had any error while sending broadcast packets,
 	// unicast packets should not bring the interface down
 	if (destination == interface->destination)
@@ -934,11 +934,11 @@ overlay_interface_register(char *name,
 
   // Find the matching non-dummy interface rule.
   const struct config_network_interface *ifconfig = NULL;
-  int i;
+  unsigned i;
   for (i = 0; i < config.interfaces.ac; ++i, ifconfig = NULL) {
     ifconfig = &config.interfaces.av[i].value;
     if (ifconfig->socket_type==SOCK_DGRAM) {
-      int j;
+      unsigned j;
       for (j = 0; j < ifconfig->match.patc; ++j){
 	if (fnmatch(ifconfig->match.patv[j], name, 0) == 0)
 	  break;
@@ -1011,7 +1011,7 @@ overlay_interface_register(char *name,
 void overlay_interface_discover(struct sched_ent *alarm)
 {
   /* Mark all UP interfaces as DETECTING, so we can tell which interfaces are new, and which are dead */
-  int i;
+  unsigned i;
   for (i = 0; i < overlay_interface_count; i++)
     if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
       overlay_interfaces[i].state=INTERFACE_STATE_DETECTING;   
@@ -1027,7 +1027,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
       detect_real_interfaces = 1;
       continue;
     }
-    int j;
+    unsigned j;
     for (j = 0; j < overlay_interface_count; j++){
       if (overlay_interfaces[j].socket_type == ifconfig->socket_type && 
 	  strcasecmp(overlay_interfaces[j].name, ifconfig->file) == 0 && 

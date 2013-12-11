@@ -79,7 +79,7 @@ struct rhizome_fetch_slot {
 
   /* MDP transport specific elements */
   rhizome_bid_t bid;
-  int64_t bidVersion;
+  uint64_t bidVersion;
   int prefix_length;
   int mdpIdleTimeout;
   time_ms_t mdp_last_request_time;
@@ -151,10 +151,11 @@ static const char * fetch_state(int state)
   }
 }
 
-static uint64_t rhizome_active_fetch_bytes_received(int q)
+static uint64_t rhizome_active_fetch_bytes_received(unsigned q)
 {
-  if (q<0 || q>=NQUEUES) return -1;
-  if (rhizome_fetch_queues[q].active.state==RHIZOME_FETCH_FREE) return -1;
+  assert(q < NQUEUES);
+  if (rhizome_fetch_queues[q].active.state == RHIZOME_FETCH_FREE)
+    return 0;
   return rhizome_fetch_queues[q].active.write_state.file_offset;
 }
 
@@ -180,13 +181,13 @@ static uint64_t rhizome_fetch_queue_bytes()
 
 void rhizome_fetch_log_short_status()
 {
-  int i,active=0;
+  unsigned active = 0;
+  unsigned i;
   for(i=0;i<NQUEUES;i++)
     if (rhizome_fetch_queues[i].active.state!=RHIZOME_FETCH_FREE)
       active++;
   if (!active)
     return;
-  
   INFOF("Rhizome transfer progress: %"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64",%"PRIu64" (remaining %"PRIu64")",
 	rhizome_active_fetch_bytes_received(0),
 	rhizome_active_fetch_bytes_received(1),
@@ -244,7 +245,7 @@ static struct profile_total fetch_stats = { .name="rhizome_fetch_poll" };
  */
 static struct rhizome_fetch_queue *rhizome_find_queue(unsigned char log_size)
 {
-  int i;
+  unsigned i;
   for (i = 0; i < NQUEUES; ++i) {
     struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
     if (log_size < q->log_size_threshold)
@@ -261,8 +262,8 @@ static struct rhizome_fetch_queue *rhizome_find_queue(unsigned char log_size)
  */
 static struct rhizome_fetch_slot *rhizome_find_fetch_slot(uint64_t size)
 {
-  int i;
   unsigned char log_size = log2ll(size);
+  unsigned i;
   for (i = 0; i < NQUEUES; ++i) {
     struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
     if (log_size < q->log_size_threshold && q->active.state == RHIZOME_FETCH_FREE)
@@ -275,7 +276,7 @@ static struct rhizome_fetch_slot *rhizome_find_fetch_slot(uint64_t size)
 // find the first matching active slot for this bundle
 static struct rhizome_fetch_slot *fetch_search_slot(const unsigned char *id, int prefix_length)
 {
-  int i;
+  unsigned i;
   for (i = 0; i < NQUEUES; ++i) {
     struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
     
@@ -328,7 +329,7 @@ static struct rhizome_fetch_candidate *rhizome_fetch_insert(struct rhizome_fetch
   struct rhizome_fetch_candidate * e = &q->candidate_queue[q->candidate_queue_size - 1];
   if (config.debug.rhizome_rx)
     DEBUGF("insert queue[%d] candidate[%u]", (int)(q - rhizome_fetch_queues), i);
-  assert(i >= 0 && i < q->candidate_queue_size);
+  assert(i < q->candidate_queue_size);
   assert(i == 0 || c[-1].manifest);
   if (e->manifest) // queue is full
     rhizome_manifest_free(e->manifest);
@@ -350,7 +351,7 @@ static struct rhizome_fetch_candidate *rhizome_fetch_insert(struct rhizome_fetch
  */
 static void rhizome_fetch_unqueue(struct rhizome_fetch_queue *q, unsigned i)
 {
-  assert(i >= 0 && i < q->candidate_queue_size);
+  assert(i < q->candidate_queue_size);
   struct rhizome_fetch_candidate *c = &q->candidate_queue[i];
   if (config.debug.rhizome_rx)
     DEBUGF("unqueue queue[%d] candidate[%d] manifest=%p", (int)(q - rhizome_fetch_queues), i, c->manifest);
@@ -370,7 +371,7 @@ static void candidate_unqueue(struct rhizome_fetch_candidate *c)
   for (i = 0; i < NQUEUES; ++i) {
     struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
     unsigned index = c - q->candidate_queue;
-    if (index>=0 && index < q->candidate_queue_size){
+    if (index < q->candidate_queue_size){
       rhizome_fetch_unqueue(q, index);
       return;
     }
@@ -383,7 +384,7 @@ static void candidate_unqueue(struct rhizome_fetch_candidate *c)
  */
 int rhizome_any_fetch_active()
 {
-  int i;
+  unsigned i;
   for (i = 0; i < NQUEUES; ++i)
     if (rhizome_fetch_queues[i].active.state != RHIZOME_FETCH_FREE)
       return 1;
@@ -396,7 +397,7 @@ int rhizome_any_fetch_active()
  */
 int rhizome_any_fetch_queued()
 {
-  int i;
+  unsigned i;
   for (i = 0; i < NQUEUES; ++i)
     if (rhizome_fetch_queues[i].candidate_queue[0].manifest)
       return 1;
@@ -476,7 +477,7 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
 {
   m->finalised = 1;
   if (config.debug.rhizome_rx) {
-    DEBUGF("manifest len=%u has %u signatories. Associated filesize=%"PRIu64" bytes", 
+    DEBUGF("manifest len=%zu has %u signatories. Associated filesize=%"PRIu64" bytes", 
 	   m->manifest_all_bytes, m->sig_count, m->filesize);
     dump("manifest", m->manifestdata, m->manifest_all_bytes);
   }
@@ -492,12 +493,12 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
   slot->start_time=gettime_ms();
   slot->alarm.poll.fd = -1;
   slot->write_state.blob_fd=-1;
-  slot->write_state.blob_rowid=-1;
+  slot->write_state.blob_rowid = 0;
 
   if (slot->manifest) {
     slot->bid = slot->manifest->cryptoSignPublic;
     slot->prefix_length = sizeof slot->bid.binary;
-    slot->bidVersion=slot->manifest->version;
+    slot->bidVersion = slot->manifest->version;
     /* Don't provide a filename, because we will stream the file straight into
        the database. */
     slot->manifest->dataFileName = NULL;
@@ -667,7 +668,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   */
 
   if (config.debug.rhizome_rx)
-    DEBUGF("Fetching bundle slot=%d bid=%s version=%"PRId64" size=%"PRIu64" peerip=%s",
+    DEBUGF("Fetching bundle slot=%d bid=%s version=%"PRIu64" size=%"PRIu64" peerip=%s",
 	   slotno(slot),
 	   alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
 	   m->version,
@@ -708,7 +709,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
       }
     }
   }
-  int i;
+  unsigned i;
   for (i = 0; i < NQUEUES; ++i) {
     struct rhizome_fetch_slot *as = &rhizome_fetch_queues[i].active;
     const rhizome_manifest *am = as->manifest;
@@ -827,7 +828,8 @@ static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
 static void rhizome_start_next_queued_fetches(struct sched_ent *alarm)
 {
   IN();
-  int i;
+  assert(alarm == &sched_activate);
+  unsigned i;
   for (i = 0; i < NQUEUES; ++i)
     rhizome_start_next_queued_fetch(&rhizome_fetch_queues[i].active);
   OUT();
@@ -838,7 +840,7 @@ int rhizome_fetch_has_queue_space(unsigned char log2_size){
   struct rhizome_fetch_queue *q = rhizome_find_queue(log2_size);
   if (q){
     // is there an empty candidate?
-    unsigned j=0;
+    unsigned j;
     for (j=0;j < q->candidate_queue_size;j++)
       if (!q->candidate_queue[j].manifest)
 	return 1;
@@ -876,7 +878,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   int priority=100; /* normal priority */
 
   if (config.debug.rhizome_rx)
-    DEBUGF("Considering import bid=%s version=%"PRId64" size=%"PRIu64" priority=%d:",
+    DEBUGF("Considering import bid=%s version=%"PRIu64" size=%"PRIu64" priority=%d:",
 	alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, m->filesize, priority);
 
   if (!rhizome_is_manifest_interesting(m)) {
@@ -887,9 +889,9 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   }
 
   if (config.debug.rhizome_rx) {
-    int64_t stored_version;
-    if (sqlite_exec_int64(&stored_version, "SELECT version FROM MANIFESTS WHERE id = ?", RHIZOME_BID_T, &m->cryptoSignPublic, END) > 0)
-      DEBUGF("   is new (have version %"PRId64")", stored_version);
+    uint64_t stored_version;
+    if (sqlite_exec_uint64(&stored_version, "SELECT version FROM MANIFESTS WHERE id = ?", RHIZOME_BID_T, &m->cryptoSignPublic, END) > 0)
+      DEBUGF("   is new (have version %"PRIu64")", stored_version);
   }
 
   assert(m->filesize != RHIZOME_SIZE_UNSET);
@@ -1024,8 +1026,7 @@ static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
     rhizome_manifest_free(slot->previous);
   slot->previous = NULL;
   
-  if (slot->write_state.blob_fd>=0 ||
-      slot->write_state.blob_rowid>=0)
+  if (slot->write_state.blob_fd != -1 || slot->write_state.blob_rowid != 0)
     rhizome_fail_write(&slot->write_state);
 
   // Release the fetch slot.
@@ -1161,7 +1162,7 @@ static int pipe_journal(struct rhizome_fetch_slot *slot){
   uint64_t length = slot->previous->filesize - slot->manifest->tail - slot->write_state.file_offset;
   
   // of course there might not be any overlap
-  if (start>=0 && start < slot->previous->filesize && length>0){
+  if (start < slot->previous->filesize && length>0){
     if (config.debug.rhizome)
       DEBUGF("Copying %"PRId64" bytes from previous journal", length);
     rhizome_journal_pipe(&slot->write_state, &slot->previous->filehash, start, length);
@@ -1393,7 +1394,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, unsigned char *buffer
 
 int rhizome_received_content(const unsigned char *bidprefix,
 			     uint64_t version, uint64_t offset,
-			     size_t count, unsigned char *bytes, int type)
+			     size_t count, unsigned char *bytes)
 {
   IN();
   if (!is_rhizome_mdp_enabled()) {
@@ -1539,7 +1540,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	    rhizome_fetch_switch_to_mdp(slot);
 	    return;
 	  }
-	  if (parts.content_length == -1) {
+	  if (parts.content_length == HTTP_RESPONSE_CONTENT_LENGTH_UNSET) {
 	    if (config.debug.rhizome_rx)
 	      DEBUGF("Invalid HTTP reply: missing Content-Length header");
 	    rhizome_fetch_switch_to_mdp(slot);
@@ -1617,7 +1618,7 @@ int unpack_http_response(char *response, struct http_response_parts *parts)
   parts->code = 0;
   parts->reason = NULL;
   parts->range_start=0;
-  parts->content_length = -1;
+  parts->content_length = HTTP_RESPONSE_CONTENT_LENGTH_UNSET;
   parts->content_start = NULL;
   char *p = NULL;
   if (!str_startswith(response, "HTTP/1.0 ", (const char **)&p)) {

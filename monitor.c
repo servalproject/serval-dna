@@ -18,6 +18,35 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 /*
+  Portions Copyright (C) 2013 Petter Reinholdtsen
+  Some rights reserved
+
+  Redistribution and use in source and binary forms, with or without
+  modification, are permitted provided that the following conditions are met:
+
+  1. Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+
+  2. Redistributions in binary form must reproduce the above copyright
+     notice, this list of conditions and the following disclaimer in
+     the documentation and/or other materials provided with the
+     distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+  FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+  COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+  INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+  BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+  LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+  ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  POSSIBILITY OF SUCH DAMAGE.
+*/
+
+/*
   Android does unix domain sockets, but only stream sockets, not datagram sockets.
   So we need a separate monitor interface for Android. A bit of a pain, but in
   fact it lets us make a very Android/Java-friendly interface, without any binary
@@ -362,7 +391,7 @@ void monitor_get_all_supported_codecs(unsigned char *codecs){
   }
 }
 
-static int monitor_announce_all_peers(struct subscriber *subscriber, void *context)
+static int monitor_announce_all_peers(struct subscriber *subscriber, void *UNUSED(context))
 {
   if (subscriber->reachable&REACHABLE)
     monitor_announce_peer(&subscriber->sid);
@@ -376,7 +405,7 @@ static int monitor_set(const struct cli_parsed *parsed, struct cli_context *cont
     c->flags|=MONITOR_VOMP;
     // store the list of supported codecs against the monitor connection,
     // since we need to forget about them when the client disappears.
-    int i;
+    unsigned i;
     for (i = 2; i < parsed->argc; ++i) {
       int codec = atoi(parsed->args[i]);
       if (codec>=0 && codec <=255)
@@ -462,7 +491,7 @@ static int monitor_call(const struct cli_parsed *parsed, struct cli_context *con
   return 0;
 }
 
-static int monitor_call_ring(const struct cli_parsed *parsed, struct cli_context *context)
+static int monitor_call_ring(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
@@ -472,7 +501,7 @@ static int monitor_call_ring(const struct cli_parsed *parsed, struct cli_context
   return 0;
 }
 
-static int monitor_call_pickup(const struct cli_parsed *parsed, struct cli_context *context)
+static int monitor_call_pickup(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
@@ -500,7 +529,7 @@ static int monitor_call_audio(const struct cli_parsed *parsed, struct cli_contex
   return 0;
 }
 
-static int monitor_call_hangup(const struct cli_parsed *parsed, struct cli_context *context)
+static int monitor_call_hangup(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
@@ -518,7 +547,7 @@ static int monitor_call_dtmf(const struct cli_parsed *parsed, struct cli_context
     return monitor_write_error(c,"Invalid call token");
   const char *digits = parsed->args[2];
   
-  int i;
+  unsigned i;
   for(i=0;i<strlen(digits);i++) {
     int digit=vomp_parse_dtmf_digit(digits[i]);
     if (digit<0)
@@ -548,7 +577,7 @@ struct cli_schema monitor_commands[] = {
   {monitor_call_audio,{"audio","<token>","<type>","[<time>]","[<sequence>]",NULL},0,""},
   {monitor_call_hangup, {"hangup","<token>",NULL},0,""},
   {monitor_call_dtmf, {"dtmf","<token>","<digits>",NULL},0,""},
-  {NULL},
+  {NULL, {NULL, NULL, NULL, NULL},0,NULL},
 };
 
 int monitor_process_command(struct monitor_context *c) 
@@ -563,7 +592,7 @@ int monitor_process_command(struct monitor_context *c)
   return 0;
 }
 
-static int monitor_help(const struct cli_parsed *parsed, struct cli_context *context)
+static int monitor_help(const struct cli_parsed *UNUSED(parsed), struct cli_context *context)
 {
   struct monitor_context *c=context->context;
   strbuf b = strbuf_alloca(16384);
@@ -576,7 +605,7 @@ static int monitor_help(const struct cli_parsed *parsed, struct cli_context *con
 int monitor_announce_bundle(rhizome_manifest *m)
 {
   char msg[1024];
-  int len = snprintf(msg,1024,"\n*%d:BUNDLE:%s\n",
+  int len = snprintf(msg,1024,"\n*%zd:BUNDLE:%s\n",
            m->manifest_all_bytes,
 	   alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
   bcopy(m->manifestdata, &msg[len], m->manifest_all_bytes);

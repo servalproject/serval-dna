@@ -92,8 +92,7 @@ int cli_optional_did(const char *text);
 
 int cli_putchar(struct cli_context *context, char c);
 int cli_puts(struct cli_context *context, const char *str);
-int cli_printf(struct cli_context *context, const char *fmt, ...)
-__attribute__ (( format(printf,2,3) ));
+void cli_printf(struct cli_context *context, const char *fmt, ...) __attribute__ (( format(printf,2,3) ));
 int cli_delim(struct cli_context *context, const char *opt);
 void cli_columns(struct cli_context *context, int columns, const char *names[]);
 void cli_row_count(struct cli_context *context, int rows);

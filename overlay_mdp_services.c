@@ -154,7 +154,7 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
 	 a slot to capture this files as it is being requested
 	 by someone else.
       */
-      rhizome_received_content(bidprefix,version,offset, count, bytes, type);
+      rhizome_received_content(bidprefix,version,offset, count, bytes);
 
       RETURN(0);
     }
@@ -168,7 +168,7 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
 int overlay_mdp_service_dnalookup(overlay_mdp_frame *mdp)
 {
   IN();
-  int cn=0,in=0,kp=0;
+  unsigned cn=0, in=0, kp=0;
   char did[64+1];
   int pll=mdp->out.payload_length;
   if (pll>64) pll=64;
@@ -351,8 +351,8 @@ end:
 
 static int overlay_mdp_service_manifest_requests(struct overlay_frame *frame, const uint8_t *payload, size_t len)
 {
-  int offset=0;
-  while (offset<len) {
+  size_t offset = 0;
+  while (offset < len) {
     rhizome_manifest *m = rhizome_new_manifest();
     if (!m)
       return WHY("Unable to allocate manifest");

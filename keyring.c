@@ -238,10 +238,12 @@ static void wipestr(char *str)
     *str++ = ' ';
 }
 
-void keyring_release_identity(keyring_file *k, int cn, int id){
+void keyring_release_identity(keyring_file *k, unsigned cn, unsigned id)
+{
   if (config.debug.keyring)
-    DEBUGF("Releasing k=%p, cn=%d, id=%d", k, cn, id);
+    DEBUGF("Releasing k=%p, cn=%u, id=%u", k, cn, id);
   keyring_context *c=k->contexts[cn];
+  assert(c->identity_count > 0);
   c->identity_count--;
   keyring_free_identity(c->identities[id]);
   if (id!=c->identity_count)
@@ -249,6 +251,7 @@ void keyring_release_identity(keyring_file *k, int cn, int id){
   c->identities[c->identity_count]=NULL;
   if (c->identity_count==0){
     keyring_free_context(c);
+    assert(k->context_count > 0);
     k->context_count --;
     if (cn!=k->context_count)
       k->contexts[cn] = k->contexts[k->context_count];
@@ -258,8 +261,8 @@ void keyring_release_identity(keyring_file *k, int cn, int id){
 
 void keyring_release_subscriber(keyring_file *k, const sid_t *sid)
 {
-  int cn=0,in=0,kp=0;
-  if (keyring_find_sid(keyring, &cn, &in, &kp, sid)
+  unsigned cn=0, in=0, kp=0;
+  if (keyring_find_sid(k, &cn, &in, &kp, sid)
     && keyring->contexts[cn]->identities[in]->subscriber != my_subscriber)
       keyring_release_identity(keyring, cn, in);
 }
@@ -328,7 +331,7 @@ int keyring_enter_keyringpin(keyring_file *k, const char *pin)
     return WHY("Too many loaded contexts already");
   if (k->context_count < 1)
     return WHY("Cannot enter PIN without keyring salt being available");
-  int cn;
+  unsigned cn;
   for (cn = 0; cn < k->context_count; ++cn)
     if (strcmp(k->contexts[cn]->KeyRingPin, pin) == 0)
       return cn;
@@ -444,7 +447,7 @@ struct keytype {
   size_t packed_size;
   void (*creator)(keypair *);
   int (*packer)(const keypair *, struct rotbuf *);
-  int (*unpacker)(keypair *, struct rotbuf *, int);
+  int (*unpacker)(keypair *, struct rotbuf *, size_t);
   void (*dumper)(const keypair *, XPRINTF, int);
   int (*loader)(keypair *, const char *);
 };
@@ -630,14 +633,15 @@ static int load_unknown(keypair *kp, const char *text)
   return 0;
 }
 
-static int unpack_private_public(keypair *kp, struct rotbuf *rb, int key_length)
+static int unpack_private_public(keypair *kp, struct rotbuf *rb, size_t key_length)
 {
+  assert(key_length == kp->private_key_len + kp->public_key_len);
   rotbuf_getbuf(rb, kp->private_key, kp->private_key_len);
   rotbuf_getbuf(rb, kp->public_key, kp->public_key_len);
   return 0;
 }
 
-static int unpack_private_only(keypair *kp, struct rotbuf *rb, int key_length)
+static int unpack_private_only(keypair *kp, struct rotbuf *rb, size_t key_length)
 {
   if (!kp->private_key){
     kp->private_key_len = key_length;
@@ -648,7 +652,7 @@ static int unpack_private_only(keypair *kp, struct rotbuf *rb, int key_length)
   return 0;
 }
 
-static int unpack_public_only(keypair *kp, struct rotbuf *rb, int key_length)
+static int unpack_public_only(keypair *kp, struct rotbuf *rb, size_t key_length)
 {
   if (!kp->public_key){
     kp->public_key_len = key_length;
@@ -659,8 +663,9 @@ static int unpack_public_only(keypair *kp, struct rotbuf *rb, int key_length)
   return 0;
 }
 
-static int unpack_cryptobox(keypair *kp, struct rotbuf *rb, int key_length)
+static int unpack_cryptobox(keypair *kp, struct rotbuf *rb, size_t key_length)
 {
+  assert(key_length == kp->private_key_len);
   rotbuf_getbuf(rb, kp->private_key, kp->private_key_len);
   if (!rb->wrap)
     _derive_scalarmult_public(kp->public_key, kp->private_key);
@@ -675,7 +680,7 @@ static int pack_did_name(const keypair *kp, struct rotbuf *rb)
   return pack_private_public(kp, rb);
 }
 
-static int unpack_did_name(keypair *kp, struct rotbuf *rb, int key_length)
+static int unpack_did_name(keypair *kp, struct rotbuf *rb, size_t key_length)
 {
   if (unpack_private_public(kp, rb, key_length) == -1)
     return -1;
@@ -683,7 +688,7 @@ static int unpack_did_name(keypair *kp, struct rotbuf *rb, int key_length)
   return strnchr((const char *)kp->public_key, kp->public_key_len, '\0') == NULL ? -1 : 0;
 }
 
-static void dump_did_name(const keypair *kp, XPRINTF xpf, int include_secret)
+static void dump_did_name(const keypair *kp, XPRINTF xpf, int UNUSED(include_secret))
 {
   xprintf(xpf, " DID=%s", alloca_str_toprint_quoted((const char *)kp->private_key, "\"\""));
   xprintf(xpf, " Name=%s", alloca_str_toprint_quoted((const char *)kp->public_key, "\"\""));
@@ -958,9 +963,9 @@ static int cmp_keypair(const keypair *a, const keypair *b)
   if (c == 0 && a->public_key_len) {
     assert(a->public_key != NULL);
     assert(b->public_key != NULL);
-    int len=a->public_key_len;
-    if (len>b->public_key_len)
-      len=b->public_key_len;
+    size_t len = a->public_key_len;
+    if (len > b->public_key_len)
+      len = b->public_key_len;
     c = memcmp(a->public_key, b->public_key, len);
     if (c==0 && a->public_key_len!=b->public_key_len)
       c = a->public_key_len - b->public_key_len;
@@ -968,9 +973,9 @@ static int cmp_keypair(const keypair *a, const keypair *b)
   if (c == 0 && a->private_key_len) {
     assert(a->private_key != NULL);
     assert(b->private_key != NULL);
-    int len=a->private_key_len;
-    if (len>b->private_key_len)
-      len=b->private_key_len;
+    size_t len = a->private_key_len;
+    if (len > b->private_key_len)
+      len = b->private_key_len;
     c = memcmp(a->private_key, b->private_key, len);
     if (c==0 && a->private_key_len!=b->private_key_len)
       c = a->private_key_len - b->private_key_len;
@@ -1168,7 +1173,7 @@ static int keyring_decrypt_pkr(keyring_file *k, unsigned cn, const char *pin, in
     goto kdp_safeexit;
   }
   // Add any unlocked subscribers to our memory table, flagged as local SIDs.
-  int i=0;
+  unsigned i;
   for (i=0;i<id->keypair_count;i++){
     if (id->keypairs[i]->type == KEYTYPE_CRYPTOBOX) {
       add_subscriber(id, i);
@@ -1237,7 +1242,7 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
 	if (b->bitmap[byte]&(1<<bit)) {
 	  /* Slot is occupied, so check it.
 	      We have to check it for each keyring context (ie keyring pin) */
-	  int cn;
+	  unsigned cn;
 	  for (cn = 0; cn < k->context_count; ++cn)
 	    if (keyring_decrypt_pkr(k, cn, pin, slot) == 0)
 	      ++identitiesFound;
@@ -1444,7 +1449,7 @@ int keyring_set_did(keyring_identity *id, const char *did, const char *name)
   if (!name) name="Mr. Smith";
 
   /* Find where to put it */
-  int i;
+  unsigned i;
   for(i=0;i<id->keypair_count;i++)
     if (id->keypairs[i]->type==KEYTYPE_DID) {
       if (config.debug.keyring)
@@ -1461,27 +1466,27 @@ int keyring_set_did(keyring_identity *id, const char *did, const char *name)
     if (config.debug.keyring)
       DEBUG("Created DID record for identity");
   }
-  
+
   /* Store DID unpacked for ease of searching */
-  int len=strlen(did); 
+  size_t len=strlen(did);
   if (len>31)
     len=31;
   bcopy(did,&id->keypairs[i]->private_key[0],len);
   bzero(&id->keypairs[i]->private_key[len],32-len);
-  len=strlen(name); 
-  if (len>63) 
+  len=strlen(name);
+  if (len>63)
     len=63;
   bcopy(name,&id->keypairs[i]->public_key[0],len);
   bzero(&id->keypairs[i]->public_key[len],64-len);
-  
+
   if (config.debug.keyring){
     dump("storing did",&id->keypairs[i]->private_key[0],32);
     dump("storing name",&id->keypairs[i]->public_key[0],64);
-  }  
+  }
   return 0;
 }
 
-int keyring_find_did(const keyring_file *k, int *cn, int *in, int *kp, const char *did)
+int keyring_find_did(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp, const char *did)
 {
   for(;keyring_next_keytype(k,cn,in,kp,KEYTYPE_DID);++(*kp)) {
     /* Compare DIDs */
@@ -1527,8 +1532,8 @@ int keyring_pack_tag(unsigned char *packed, size_t *packed_len, const char *name
 
 int keyring_set_public_tag(keyring_identity *id, const char *name, const unsigned char *value, size_t length)
 {
-  int i;
-  for(i=0;i<id->keypair_count;i++){
+  unsigned i;
+  for (i=0;i<id->keypair_count;i++){
     const char *tag_name;
     const unsigned char *tag_value;
     size_t tag_length;
@@ -1570,7 +1575,7 @@ int keyring_set_public_tag(keyring_identity *id, const char *name, const unsigne
   return 0;
 }
 
-int keyring_find_public_tag(const keyring_file *k, int *cn, int *in, int *kp, const char *name, const unsigned char **value, size_t *length)
+int keyring_find_public_tag(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp, const char *name, const unsigned char **value, size_t *length)
 {
   for(;keyring_next_keytype(k,cn,in,kp,KEYTYPE_PUBLIC_TAG);++(*kp)) {
     keypair *keypair=k->contexts[*cn]->identities[*in]->keypairs[*kp];
@@ -1585,7 +1590,7 @@ int keyring_find_public_tag(const keyring_file *k, int *cn, int *in, int *kp, co
   return 0;
 }
 
-int keyring_find_public_tag_value(const keyring_file *k, int *cn, int *in, int *kp, const char *name, const unsigned char *value, size_t length)
+int keyring_find_public_tag_value(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp, const char *name, const unsigned char *value, size_t length)
 {
   const unsigned char *stored_value;
   size_t stored_length;
@@ -1596,16 +1601,16 @@ int keyring_find_public_tag_value(const keyring_file *k, int *cn, int *in, int *
   return 0;
 }
 
-int keyring_identity_find_keytype(const keyring_file *k, int cn, int in, int keytype)
+int keyring_identity_find_keytype(const keyring_file *k, unsigned cn, unsigned in, unsigned keytype)
 {
-  int kp;
-  for (kp = 0; kp < keyring->contexts[cn]->identities[in]->keypair_count; ++kp)
-    if (keyring->contexts[cn]->identities[in]->keypairs[kp]->type == keytype)
+  unsigned kp;
+  for (kp = 0; kp < k->contexts[cn]->identities[in]->keypair_count; ++kp)
+    if (k->contexts[cn]->identities[in]->keypairs[kp]->type == keytype)
       return kp;
   return -1;
 }
 
-int keyring_next_keytype(const keyring_file *k, int *cn, int *in, int *kp, int keytype)
+int keyring_next_keytype(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp, unsigned keytype)
 {
   for (; keyring_sanitise_position(k, cn, in, kp) == 0; ++*kp)
     if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type == keytype)
@@ -1613,15 +1618,13 @@ int keyring_next_keytype(const keyring_file *k, int *cn, int *in, int *kp, int k
   return 0;
 }
 
-int keyring_next_identity(const keyring_file *k, int *cn, int *in, int *kp)
+int keyring_next_identity(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp)
 {
   return keyring_next_keytype(k, cn, in, kp, KEYTYPE_CRYPTOBOX);
 }
 
-int keyring_sanitise_position(const keyring_file *k,int *cn,int *in,int *kp)
+int keyring_sanitise_position(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp)
 {
-  if (!k)
-    return 1;
   /* Sanity check passed in position */
   while(1){
     if ((*cn)>=k->context_count)
@@ -1646,15 +1649,13 @@ int keyring_sanitise_position(const keyring_file *k,int *cn,int *in,int *kp)
 unsigned char *keyring_find_sas_private(keyring_file *k, const sid_t *sidp, unsigned char **sas_public_out)
 {
   IN();
-  int cn=0,in=0,kp=0;
-
+  unsigned cn=0, in=0, kp=0;
   if (!keyring_find_sid(k,&cn,&in,&kp,sidp))
     RETURNNULL(WHYNULL("Could not find SID in keyring, so can't find SAS"));
-
-  kp = keyring_identity_find_keytype(k, cn, in, KEYTYPE_CRYPTOSIGN);
-  if (kp==-1)
+  int kpi = keyring_identity_find_keytype(k, cn, in, KEYTYPE_CRYPTOSIGN);
+  if (kpi == -1)
     RETURNNULL(WHYNULL("Identity lacks SAS"));
-    
+  kp = (unsigned) kpi;
   unsigned char *sas_private=
     k->contexts[cn]->identities[in]->keypairs[kp]->private_key;
   unsigned char *sas_public=
@@ -1668,7 +1669,8 @@ unsigned char *keyring_find_sas_private(keyring_file *k, const sid_t *sidp, unsi
   }
   if (config.debug.keyring)
     DEBUGF("Found SAS entry for %s*", alloca_tohex(sidp->binary, 7));
-  if (sas_public_out) *sas_public_out=sas_public; 
+  if (sas_public_out)
+    *sas_public_out = sas_public;
   RETURN(sas_private);
   OUT();
 }
@@ -1789,10 +1791,10 @@ int keyring_send_unlock(struct subscriber *subscriber)
   mdp.out.src.port=MDP_PORT_KEYMAPREQUEST;
   mdp.out.src.sid = my_subscriber->sid;
   mdp.out.payload[0]=UNLOCK_REQUEST;
-  int len=1;
+  size_t len = 1;
   if (crypto_sign_message(subscriber, mdp.out.payload, sizeof(mdp.out.payload), &len))
     return -1;
-  mdp.out.payload_length=len;
+  mdp.out.payload_length = len;
   return overlay_mdp_dispatch(&mdp, NULL);
 }
 
@@ -1838,7 +1840,7 @@ static int keyring_respond_challenge(struct subscriber *subscriber, overlay_mdp_
   mdp.out.src.sid = my_subscriber->sid;
   mdp.out.payload[0]=UNLOCK_RESPONSE;
   bcopy(&req->out.payload[1], &mdp.out.payload[1], req->out.payload_length -1);
-  int len=req->out.payload_length;
+  size_t len = req->out.payload_length;
   if (crypto_sign_message(subscriber, mdp.out.payload, sizeof(mdp.out.payload), &len))
     return -1;
   mdp.out.payload_length=len;
@@ -1937,7 +1939,7 @@ int keyring_send_sas_request(struct subscriber *subscriber){
   return 0;
 }
 
-int keyring_find_sid(const keyring_file *k, int *cn, int *in, int *kp, const sid_t *sidp)
+int keyring_find_sid(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp, const sid_t *sidp)
 {
   for(; keyring_next_keytype(k,cn,in,kp,KEYTYPE_CRYPTOBOX); ++(*kp)) {
     if (memcmp(sidp->binary, k->contexts[*cn]->identities[*in]->keypairs[*kp]->public_key, SID_SIZE) == 0)
@@ -1949,7 +1951,7 @@ int keyring_find_sid(const keyring_file *k, int *cn, int *in, int *kp, const sid
 void keyring_identity_extract(const keyring_identity *id, const sid_t **sidp, const char **didp, const char **namep)
 {
   int todo = (sidp ? 1 : 0) | (didp ? 2 : 0) | (namep ? 4 : 0);
-  int kpn;
+  unsigned kpn;
   for (kpn = 0; todo && kpn < id->keypair_count; ++kpn) {
     keypair *kp = id->keypairs[kpn];
     switch (kp->type) {
@@ -2073,7 +2075,7 @@ struct nm_record {
   unsigned char nm_bytes[crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES];
 };
 
-int nm_slots_used=0;
+unsigned nm_slots_used=0;
 /* 512 x 96 bytes = 48KB, not too big */
 #define NM_CACHE_SLOTS 512
 struct nm_record nm_cache[NM_CACHE_SLOTS];
@@ -2085,9 +2087,8 @@ unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknow
   if (!unknown_sidp) { RETURNNULL(WHYNULL("unknown pub key is null")); }
   if (!keyring) { RETURNNULL(WHYNULL("keyring is null")); }
 
-  int i;
-
   /* See if we have it cached already */
+  unsigned i;
   for(i=0;i<nm_slots_used;i++)
     {
       if (cmp_sid_t(&nm_cache[i].known_key, known_sidp) != 0) continue;
@@ -2097,9 +2098,9 @@ unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknow
 
   /* Not in the cache, so prepare to cache it (or return failure if known is not
      in fact a known key */
-  int cn=0,in=0,kp=0;
+  unsigned cn=0, in=0, kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp,known_sidp))
-    { RETURNNULL(WHYNULL("known key is not in fact known.")); }
+    RETURNNULL(WHYNULL("known key is not in fact known."));
 
   /* work out where to store it */
   if (nm_slots_used<NM_CACHE_SLOTS) {
@@ -2144,7 +2145,7 @@ static void keyring_dump_keypair(const keypair *kp, XPRINTF xpf, int include_sec
 
 int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret)
 {
-  int cn, in, kp;
+  unsigned cn, in, kp;
   unsigned nids = 0;
   for (cn = in = kp = 0; keyring_sanitise_position(k, &cn, &in, &kp) == 0; ++in)
     ++nids;
