@@ -297,6 +297,22 @@ test_RhizomeNewSince() {
    done
 }
 
+assert_http_response_headers() {
+   local n=$1
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Id: ${BID[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Version: ${VERSION[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Filesize: ${SIZE[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Filehash: ${HASH[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-BK: ${BK[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Date: ${DATE[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Name: \"file$n\"$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Service: file$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Author: ${AUTHOR[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Secret: ${SECRET[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Inserttime: ${INSERTTIME[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Rowid: ${ROWID[$n]}$CR\$"
+}
+
 doc_RhizomeManifest="Fetch Rhizome bundle manifest"
 setup_RhizomeManifest() {
    setup
@@ -315,24 +331,29 @@ test_RhizomeManifest() {
    done
    for n in 0 1 2; do
       assert diff file$n.manifest bundle$n.rhm
-      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Id: ${BID[$n]}$CR\$"
-      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Version: ${VERSION[$n]}$CR\$"
-      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Filesize: ${SIZE[$n]}$CR\$"
-      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Filehash: ${HASH[$n]}$CR\$"
-      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-BK: ${BK[$n]}$CR\$"
-      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Date: ${DATE[$n]}$CR\$"
-      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Name: \"file$n\"$CR\$"
-      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Service: file$CR\$"
-      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Author: ${AUTHOR[$n]}$CR\$"
-      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Secret: ${SECRET[$n]}$CR\$"
-      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Inserttime: ${INSERTTIME[$n]}$CR\$"
-      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Rowid: ${ROWID[$n]}$CR\$"
+      assert_http_response_headers $n
    done
 }
 
 doc_RhizomePayloadRaw="Fetch Rhizome raw payload"
+setup_RhizomePayloadRaw() {
+   setup
+   add_bundles 0 2
+}
 test_RhizomePayloadRaw() {
-   :
+   for n in 0 1 2; do
+      executeOk curl \
+            --silent --fail --show-error \
+            --output raw.bin$n \
+            --dump-header http.headers$n \
+            --basic --user harry:potter \
+            "http://$addr_localhost:$PORTA/restful/rhizome/${BID[$n]}/raw.bin"
+      tfw_cat http.headers$n raw.bin$n
+   done
+   for n in 0 1 2; do
+      assert cmp file$n raw.bin$n
+      assert_http_response_headers $n
+   done
 }
 
 doc_RhizomePayloadDecrypted="Fetch Rhizome decrypted payload"

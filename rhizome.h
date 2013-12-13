@@ -744,6 +744,12 @@ typedef struct rhizome_http_request
   // parameter (if any)
   char data_file_name[MIME_FILENAME_MAXLEN + 1];
 
+  /* For responses that pertain to a single manifest.
+   */
+  rhizome_manifest *manifest;
+
+  /* Mutually exclusive response arguments.
+   */
   union {
     /* For responses that send part or all of a payload.
     */
@@ -758,11 +764,6 @@ typedef struct rhizome_http_request
         time_ms_t end_time;
         struct rhizome_list_cursor cursor;
     } list;
-
-    /* For responses that contain a single manifest.
-     */
-    rhizome_manifest *manifest;
-
   } u;
   
 } rhizome_http_request;

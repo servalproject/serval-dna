@@ -565,15 +565,31 @@ static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsi
   return ret;
 }
 
+static int rhizome_payload_content_init(rhizome_http_request *r, const rhizome_filehash_t *hash);
+static HTTP_CONTENT_GENERATOR rhizome_payload_content;
+
 static HTTP_RENDERER render_manifest_headers;
+
+static HTTP_HANDLER restful_rhizome_bid_rhm;
+static HTTP_HANDLER restful_rhizome_bid_raw_bin;
 
 static int restful_rhizome_(rhizome_http_request *r, const char *remainder)
 {
   if (!is_rhizome_http_enabled())
     return 1;
+  HTTP_HANDLER *handler = NULL;
   rhizome_bid_t bid;
   const char *end;
-  if (!strn_to_rhizome_bid_t(&bid, remainder, &end) == -1 || strcmp(end, ".rhm") != 0)
+  if (strn_to_rhizome_bid_t(&bid, remainder, &end) != -1) {
+    if (strcmp(end, ".rhm") == 0) {
+      handler = restful_rhizome_bid_rhm;
+      remainder = "";
+    } else if (strcmp(end, "/raw.bin") == 0) {
+      handler = restful_rhizome_bid_raw_bin;
+      remainder = "";
+    }
+  }
+  if (handler == NULL)
     return 1;
   if (r->http.verb != HTTP_VERB_GET) {
     http_request_simple_response(&r->http, 405, NULL);
@@ -587,12 +603,46 @@ static int restful_rhizome_(rhizome_http_request *r, const char *remainder)
     http_request_simple_response(&r->http, 500, NULL);
   else if (ret == 0) {
     rhizome_authenticate_author(m);
-    r->u.manifest = m;
+    r->manifest = m;
     r->http.render_extra_headers = render_manifest_headers;
-    http_request_response_static(&r->http, 200, "x-servalproject/rhizome-manifest-text", (const char *)m->manifestdata, m->manifest_all_bytes);
+  } else {
+    assert(r->manifest == NULL);
+    assert(r->http.render_extra_headers == NULL);
   }
+  ret = handler(r, remainder);
   rhizome_manifest_free(m);
   return ret <= 0 ? 0 : 1;
+}
+
+static int restful_rhizome_bid_rhm(rhizome_http_request *r, const char *remainder)
+{
+  if (remainder[0])
+    return 1;
+  if (r->manifest == NULL)
+    return 1;
+  http_request_response_static(&r->http, 200, "x-servalproject/rhizome-manifest-text",
+      (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes
+    );
+  return 0;
+}
+
+static int restful_rhizome_bid_raw_bin(rhizome_http_request *r, const char *remainder)
+{
+  if (remainder[0])
+    return 1;
+  if (r->manifest == NULL)
+    return 1;
+  if (r->manifest->filesize == 0) {
+    http_request_response_static(&r->http, 200, "application/binary", "", 0);
+    return 0;
+  }
+  int ret = rhizome_payload_content_init(r, &r->manifest->filehash);
+  if (ret == -1)
+    return 0;
+  if (ret)
+    return 1;
+  http_request_response_generated(&r->http, 200, "application/binary", rhizome_payload_content);
+  return 0;
 }
 
 static int neighbour_page(rhizome_http_request *r, const char *remainder)
@@ -661,7 +711,42 @@ static int rhizome_status_page(rhizome_http_request *r, const char *remainder)
   return 0;
 }
 
-static int rhizome_file_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
+static int rhizome_payload_content_init(rhizome_http_request *r, const rhizome_filehash_t *hash)
+{
+  bzero(&r->u.read_state, sizeof r->u.read_state);
+  int n = rhizome_open_read(&r->u.read_state, hash);
+  if (n == -1) {
+    http_request_simple_response(&r->http, 500, NULL);
+    return -1;
+  }
+  if (n != 0)
+    return 1;
+  if (r->u.read_state.length == RHIZOME_SIZE_UNSET && rhizome_read(&r->u.read_state, NULL, 0)) {
+    rhizome_read_close(&r->u.read_state);
+    return 1;
+  }
+  assert(r->u.read_state.length != RHIZOME_SIZE_UNSET);
+  r->http.response.header.resource_length = r->u.read_state.length;
+  if (r->http.request_header.content_range_count > 0) {
+    assert(r->http.request_header.content_range_count == 1);
+    struct http_range closed;
+    unsigned n = http_range_close(&closed, r->http.request_header.content_ranges, 1, r->u.read_state.length);
+    if (n == 0 || http_range_bytes(&closed, 1) == 0) {
+      http_request_simple_response(&r->http, 416, NULL); // Request Range Not Satisfiable
+      return -1;
+    }
+    r->http.response.header.content_range_start = closed.first;
+    r->http.response.header.content_length = closed.last - closed.first + 1;
+    r->u.read_state.offset = closed.first;
+  } else {
+    r->http.response.header.content_range_start = 0;
+    r->http.response.header.content_length = r->http.response.header.resource_length;
+    r->u.read_state.offset = 0;
+  }
+  return 0;
+}
+
+static int rhizome_payload_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
 {
   // Only read multiples of 4k from disk.
   const size_t blocksz = 1 << 12;
@@ -707,37 +792,12 @@ static int rhizome_file_page(rhizome_http_request *r, const char *remainder)
   rhizome_filehash_t filehash;
   if (str_to_rhizome_filehash_t(&filehash, remainder) == -1)
     return 1;
-  bzero(&r->u.read_state, sizeof r->u.read_state);
-  int n = rhizome_open_read(&r->u.read_state, &filehash);
-  if (n == -1) {
-    http_request_simple_response(&r->http, 500, NULL);
+  int ret = rhizome_payload_content_init(r, &filehash);
+  if (ret == -1)
     return 0;
-  }
-  if (n != 0)
+  if (ret)
     return 1;
-  if (r->u.read_state.length == RHIZOME_SIZE_UNSET && rhizome_read(&r->u.read_state, NULL, 0)) {
-    rhizome_read_close(&r->u.read_state);
-    return 1;
-  }
-  assert(r->u.read_state.length != RHIZOME_SIZE_UNSET);
-  r->http.response.header.resource_length = r->u.read_state.length;
-  if (r->http.request_header.content_range_count > 0) {
-    assert(r->http.request_header.content_range_count == 1);
-    struct http_range closed;
-    unsigned n = http_range_close(&closed, r->http.request_header.content_ranges, 1, r->u.read_state.length);
-    if (n == 0 || http_range_bytes(&closed, 1) == 0) {
-      http_request_simple_response(&r->http, 416, NULL); // Request Range Not Satisfiable
-      return 0;
-    }
-    r->http.response.header.content_range_start = closed.first;
-    r->http.response.header.content_length = closed.last - closed.first + 1;
-    r->u.read_state.offset = closed.first;
-  } else {
-    r->http.response.header.content_range_start = 0;
-    r->http.response.header.content_length = r->http.response.header.resource_length;
-    r->u.read_state.offset = 0;
-  }
-  http_request_response_generated(&r->http, 200, "application/binary", rhizome_file_content);
+  http_request_response_generated(&r->http, 200, "application/binary", rhizome_payload_content);
   return 0;
 }
 
@@ -775,7 +835,7 @@ static int fav_icon_header(rhizome_http_request *r, const char *remainder)
 static void render_manifest_headers(struct http_request *hr, strbuf sb)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
-  rhizome_manifest *m = r->u.manifest;
+  rhizome_manifest *m = r->manifest;
   strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Id: %s\r\n", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
   strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Version: %"PRIu64"\r\n", m->version);
   strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Filesize: %"PRIu64"\r\n", m->filesize);
