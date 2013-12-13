@@ -527,6 +527,65 @@ void cli_flush(struct cli_context *context)
   fflush(stdout);
 }
 
+static void cli_put_manifest(struct cli_context *context, const rhizome_manifest *m)
+{
+  assert(m->filesize != RHIZOME_SIZE_UNSET);
+  cli_field_name(context, "manifestid", ":"); // TODO rename to "bundleid" or "bid"
+  cli_put_string(context, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), "\n");
+  cli_field_name(context, "version", ":");
+  cli_put_long(context, m->version, "\n");
+  cli_field_name(context, "filesize", ":");
+  cli_put_long(context, m->filesize, "\n");
+  if (m->filesize != 0) {
+    cli_field_name(context, "filehash", ":");
+    cli_put_string(context, alloca_tohex_rhizome_filehash_t(m->filehash), "\n");
+  }
+  if (m->has_bundle_key) {
+    cli_field_name(context, "BK", ":");
+    cli_put_string(context, alloca_tohex_rhizome_bk_t(m->bundle_key), "\n");
+  }
+  if (m->has_date) {
+    cli_field_name(context, "date", ":");
+    cli_put_long(context, m->date, "\n");
+  }
+  switch (m->payloadEncryption) {
+    case PAYLOAD_CRYPT_UNKNOWN:
+      break;
+    case PAYLOAD_CLEAR:
+      cli_field_name(context, "crypt", ":");
+      cli_put_long(context, 0, "\n");
+      break;
+    case PAYLOAD_ENCRYPTED:
+      cli_field_name(context, "crypt", ":");
+      cli_put_long(context, 1, "\n");
+      break;
+  }
+  if (m->service) {
+    cli_field_name(context, "service", ":");
+    cli_put_string(context, m->service, "\n");
+  }
+  if (m->name) {
+    cli_field_name(context, "name", ":");
+    cli_put_string(context, m->name, "\n");
+  }
+  cli_field_name(context, ".readonly", ":");
+  cli_put_long(context, m->haveSecret ? 0 : 1, "\n");
+  if (m->haveSecret) {
+    char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
+    rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
+    cli_field_name(context, ".secret", ":");
+    cli_put_string(context, secret, "\n");
+  }
+  if (m->authorship == AUTHOR_AUTHENTIC) {
+    cli_field_name(context, ".author", ":");
+    cli_put_string(context, alloca_tohex_sid_t(m->author), "\n");
+  }
+  cli_field_name(context, ".rowid", ":");
+  cli_put_long(context, m->rowid, "\n");
+  cli_field_name(context, ".inserttime", ":");
+  cli_put_long(context, m->inserttime, "\n");
+}
+
 int app_echo(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
@@ -1479,54 +1538,15 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     keyring_free(keyring);
     return -1;
   }
-  
+
   if (manifestpath && *manifestpath
       && rhizome_write_manifest_file(mout, manifestpath, 0) == -1)
     ret = WHY("Could not overwrite manifest file.");
-  if (mout->service) {
-    cli_field_name(context, "service", ":");
-    cli_put_string(context, mout->service, "\n");
-  }
-  {
-    cli_field_name(context, "manifestid", ":");
-    cli_put_string(context, alloca_tohex_rhizome_bid_t(mout->cryptoSignPublic), "\n");
-  }
+
   assert(m->haveSecret);
-  {
-    char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-    rhizome_bytes_to_hex_upper(mout->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
-    cli_field_name(context, ".secret", ":");
-    cli_put_string(context, secret, "\n");
-  }
   assert(mout->authorship != AUTHOR_LOCAL);
-  if (mout->authorship == AUTHOR_AUTHENTIC) {
-    cli_field_name(context, ".author", ":");
-    cli_put_string(context, alloca_tohex_sid_t(mout->author), "\n");
-  }
-  cli_field_name(context, ".rowid", ":");
-  cli_put_long(context, m->rowid, "\n");
-  cli_field_name(context, ".inserttime", ":");
-  cli_put_long(context, m->inserttime, "\n");
-  if (mout->has_bundle_key) {
-    cli_field_name(context, "BK", ":");
-    cli_put_string(context, alloca_tohex_rhizome_bk_t(mout->bundle_key), "\n");
-  }
-  if (mout->has_date) {
-    cli_field_name(context, "date", ":");
-    cli_put_long(context, mout->date, "\n");
-  }
-  cli_field_name(context, "version", ":");
-  cli_put_long(context, mout->version, "\n");
-  cli_field_name(context, "filesize", ":");
-  cli_put_long(context, mout->filesize, "\n");
-  if (mout->filesize != 0) {
-    cli_field_name(context, "filehash", ":");
-    cli_put_string(context, alloca_tohex_rhizome_filehash_t(mout->filehash), "\n");
-  }
-  if (mout->name) {
-    cli_field_name(context, "name", ":");
-    cli_put_string(context, mout->name, "\n");
-  }
+  cli_put_manifest(context, mout);
+
   if (mout != m)
     rhizome_manifest_free(mout);
   rhizome_manifest_free(m);
@@ -1595,44 +1615,7 @@ int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_contex
   if (status<0)
     goto cleanup;
   
-  // TODO generalise the way we dump manifest details from add, import & export
-  // so callers can also generalise their parsing
-  
-  if (m->service) {
-    cli_field_name(context, "service", ":");
-    cli_put_string(context, m->service, "\n");
-  }
-  {
-    cli_field_name(context, "manifestid", ":");
-    cli_put_string(context, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), "\n");
-  }
-  {
-    char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-    rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
-    cli_field_name(context, ".secret", ":");
-    cli_put_string(context, secret, "\n");
-  }
-  if (m->has_bundle_key) {
-    cli_field_name(context, "BK", ":");
-    cli_put_string(context, alloca_tohex_rhizome_bk_t(m->bundle_key), "\n");
-  }
-  cli_field_name(context, "version", ":");
-  cli_put_long(context, m->version, "\n");
-  if (m->has_date) {
-    cli_field_name(context, "date", ":");
-    cli_put_long(context, m->date, "\n");
-  }
-  cli_field_name(context, "filesize", ":");
-  cli_put_long(context, m->filesize, "\n");
-  assert(m->filesize != RHIZOME_SIZE_UNSET);
-  if (m->filesize != 0) {
-    cli_field_name(context, "filehash", ":");
-    cli_put_string(context, alloca_tohex_rhizome_filehash_t(m->filehash), "\n");
-  }
-  if (m->name) {
-    cli_field_name(context, "name", ":");
-    cli_put_string(context, m->name, "\n");
-  }
+  cli_put_manifest(context, m);
   
 cleanup:
   rhizome_manifest_free(m);
@@ -1787,42 +1770,8 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
       rhizome_apply_bundle_secret(m, &bsk);
     rhizome_authenticate_author(m);
 
-    if (m->service) {
-      cli_field_name(context, "service", ":");
-      cli_put_string(context, m->service, "\n");
-    }
-    cli_field_name(context, "manifestid", ":");
-    cli_put_string(context, alloca_tohex_rhizome_bid_t(bid), "\n");
-    cli_field_name(context, "version", ":");
-    cli_put_long(context, m->version, "\n");
-    if (m->has_date) {
-      cli_field_name(context, "date", ":");
-      cli_put_long(context, m->date, "\n");
-    }
-    cli_field_name(context, "filesize", ":");
-    cli_put_long(context, m->filesize, "\n");
-    assert(m->filesize != RHIZOME_SIZE_UNSET);
-    if (m->filesize != 0) {
-      cli_field_name(context, "filehash", ":");
-      cli_put_string(context, alloca_tohex_rhizome_filehash_t(m->filehash), "\n");
-    }
-    if (m->haveSecret) {
-      char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-      rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
-      cli_field_name(context, ".secret", ":");
-      cli_put_string(context, secret, "\n");
-    }
     assert(m->authorship != AUTHOR_LOCAL);
-    if (m->authorship == AUTHOR_AUTHENTIC) {
-      cli_field_name(context, ".author", ":");
-      cli_put_string(context, alloca_tohex_sid_t(m->author), "\n");
-    }
-    cli_field_name(context, ".rowid", ":");
-    cli_put_long(context, m->rowid, "\n");
-    cli_field_name(context, ".inserttime", ":");
-    cli_put_long(context, m->inserttime, "\n");
-    cli_field_name(context, ".readonly", ":");
-    cli_put_long(context, m->haveSecret?0:1, "\n");
+    cli_put_manifest(context, m);
   }
   
   int retfile=0;
