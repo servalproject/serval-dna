@@ -626,10 +626,12 @@ static void interface_read_file(struct overlay_interface *interface)
   
   /* Read from interface file */
   off_t length = lseek(interface->alarm.poll.fd, (off_t)0, SEEK_END);
-  
+  if (interface->recv_offset > length)
+    FATALF("File shrunk? It shouldn't shrink! Ever");
   int new_packets = (length - interface->recv_offset) / sizeof packet;
   if (new_packets > 20)
-    WARNF("Getting behind, there are %d unread packets", new_packets);
+    WARNF("Getting behind, there are %d unread packets (%"PRId64" vs %"PRId64")", 
+	new_packets, (int64_t)interface->recv_offset, (int64_t)length);
   
   if (interface->recv_offset<length){
     if (lseek(interface->alarm.poll.fd,interface->recv_offset,SEEK_SET) == -1){
@@ -647,8 +649,8 @@ static void interface_read_file(struct overlay_interface *interface)
     
     if (nread == sizeof packet) {
       if (config.debug.overlayinterfaces)
-	DEBUGF("Read from interface %s (filesize=%"PRId64") at offset=%d: src_addr=%s dst_addr=%s pid=%d length=%d",
-	      interface->name, (int64_t)length, interface->recv_offset,
+	DEBUGF("Read from interface %s (filesize=%"PRId64") at offset=%"PRId64": src_addr=%s dst_addr=%s pid=%d length=%d",
+	      interface->name, (int64_t)length, (int64_t)interface->recv_offset,
 	      alloca_socket_address(&packet.src_addr),
 	      alloca_socket_address(&packet.dst_addr),
 	      packet.pid,
@@ -1114,7 +1116,6 @@ void overlay_interface_discover(struct sched_ent *alarm)
   // Close any interfaces that have gone away.
   for(i = 0; i < overlay_interface_count; i++)
     if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING) {
-      DEBUGF("Closing interface stuck in DETECTING state.");
       overlay_interface_close(&overlay_interfaces[i]);
     }
 

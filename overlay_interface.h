@@ -70,7 +70,7 @@ typedef struct overlay_interface {
   
   char name[256];
   
-  int recv_offset; /* file offset */
+  off_t recv_offset; /* file offset */
   
   int recv_count;
   int tx_count;

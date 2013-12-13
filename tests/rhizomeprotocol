@@ -36,6 +36,7 @@ teardown() {
 
 # Called by start_servald_instances for each instance.
 configure_servald_server() {
+   add_servald_interface
    executeOk_servald config \
       set log.console.level debug \
       set log.console.show_pid on \
@@ -574,7 +575,7 @@ setup_direct() {
    rhizome_add_file fileA3 100000
    BID_A3=$BID
    VERSION_A3=$VERSION
-   start_servald_instances dummy1 +A
+   start_servald_instances +A
    wait_until rhizome_http_server_started +A
    get_rhizome_server_port PORTA +A
    set_instance +B

@@ -25,7 +25,7 @@ setup() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
-   configure_servald_server() { set_server_vars; }
+   configure_servald_server() { add_servald_interface; set_server_vars; }
    start_servald_instances +A +B
    set_instance +A
 }
@@ -125,6 +125,7 @@ EOF
    chmod 0755 "$dnahelper"
    foreach_instance +A +B +C +D create_single_identity
    configure_servald_server() {
+      add_servald_interface
       set_server_vars
       executeOk_servald config \
          set debug.dnahelper on \
