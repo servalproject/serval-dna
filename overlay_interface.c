@@ -56,13 +56,14 @@ static void overlay_interface_poll(struct sched_ent *alarm);
 
 static void
 overlay_interface_close(overlay_interface *interface){
+  INFOF("Interface %s addr %s is down", 
+	interface->name, alloca_socket_address(&interface->address));
   if (interface->address.addr.sa_family == AF_UNIX)
     unlink(interface->address.local.sun_path);
   link_interface_down(interface);
-  INFOF("Interface %s addr %s is down", 
-	interface->name, alloca_socket_address(&interface->address));
   unschedule(&interface->alarm);
-  unwatch(&interface->alarm);
+  if (is_watching(&interface->alarm))
+    unwatch(&interface->alarm);
   close(interface->alarm.poll.fd);
   if (interface->radio_link_state)
     radio_link_free(interface);
@@ -74,7 +75,7 @@ void overlay_interface_close_all()
 {
   unsigned i;
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
-    if (overlay_interfaces[i].state != INTERFACE_STATE_DOWN)
+    if (overlay_interfaces[i].state == INTERFACE_STATE_UP)
       overlay_interface_close(&overlay_interfaces[i]);
   }
 }
