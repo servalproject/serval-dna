@@ -1500,7 +1500,7 @@ static void http_request_receive(struct http_request *r)
 	result = 500;
       }
     } else {
-      HTTP_REQUEST_PARSER oldparser = r->parser;
+      HTTP_REQUEST_PARSER *oldparser = r->parser;
       const char *oldparsed = r->parsed;
       if (r->parser == NULL) {
 	if (r->debug_flag && *r->debug_flag)
@@ -1881,6 +1881,9 @@ static int _render_response(struct http_request *r)
     strbuf_append_quoted_string(sb, hr.header.www_authenticate.realm);
     strbuf_puts(sb, "\r\n");
   }
+  if (r->render_extra_headers)
+    r->render_extra_headers(r, sb);
+  assert(strcmp(strbuf_substr(sb, -2), "\r\n") == 0);
   strbuf_puts(sb, "\r\n");
   if (hr.header.content_length != CONTENT_LENGTH_UNKNOWN)
     r->response_length = strbuf_count(sb) + hr.header.content_length;
