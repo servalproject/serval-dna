@@ -330,6 +330,10 @@ extract_stdout_filehash() {
    extract_stdout_keyvalue "$1" filehash "$rexp_filehash"
 }
 
+extract_stdout_crypt() {
+   extract_stdout_keyvalue "$1" crypt "$rexp_crypt"
+}
+
 extract_manifest() {
    local _var="$1"
    local _manifestfile="$2"

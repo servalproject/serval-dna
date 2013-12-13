@@ -100,9 +100,16 @@ teardown_AuthBasicWrong() {
 }
 
 add_bundles() {
+   local encrypted=false
+   case "$1" in
+   --encrypted) encrypted=true; shift;;
+   esac
    local n
    for ((n = $1; n <= $2; ++n)); do
       create_file file$n $((1000 + $n))
+      if $encrypted; then
+         echo "crypt=1" >file$n.manifest
+      fi
       executeOk_servald rhizome add file $SIDA file$n file$n.manifest
       extract_stdout_manifestid BID[$n]
       extract_stdout_version VERSION[$n]
@@ -114,6 +121,18 @@ add_bundles() {
       extract_stdout_author AUTHOR[$n]
       extract_stdout_secret SECRET[$n]
       extract_stdout_inserttime INSERTTIME[$n]
+      if $encrypted; then
+         extract_stdout_crypt CRYPT[$n]
+         assert [ "${CRYPT[$n]}" = 1 ]
+      else
+         CRYPT[$n]=
+      fi
+      executeOk_servald rhizome export file ${HASH[$n]} raw$n
+      if $encrypted; then
+         assert ! cmp file$n raw$n
+      else
+         assert cmp file$n raw$n
+      fi
       [ "${ROWID[$n]}" -gt "${ROWID_MAX:-0}" ] && ROWID_MAX=${ROWID[$n]}
    done
 }
@@ -186,7 +205,7 @@ assertJq() {
    assert --message="$jqscript" [ "$(jq "$jqscript" "$json")" = true ]
 }
 
-doc_RhizomeList="Fetch small Rhizome bundle list in JSON format"
+doc_RhizomeList="Fetch Rhizome bundle list in JSON format"
 setup_RhizomeList() {
    setup
    NBUNDLES=100
@@ -338,10 +357,11 @@ test_RhizomeManifest() {
 doc_RhizomePayloadRaw="Fetch Rhizome raw payload"
 setup_RhizomePayloadRaw() {
    setup
-   add_bundles 0 2
+   add_bundles 0 1
+   add_bundles --encrypted 2 3
 }
 test_RhizomePayloadRaw() {
-   for n in 0 1 2; do
+   for n in 0 1 2 3; do
       executeOk curl \
             --silent --fail --show-error \
             --output raw.bin$n \
@@ -351,7 +371,7 @@ test_RhizomePayloadRaw() {
       tfw_cat http.headers$n raw.bin$n
    done
    for n in 0 1 2; do
-      assert cmp file$n raw.bin$n
+      assert cmp raw$n raw.bin$n
       assert_http_response_headers $n
    done
 }
