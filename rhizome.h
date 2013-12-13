@@ -758,6 +758,11 @@ typedef struct rhizome_http_request
         time_ms_t end_time;
         struct rhizome_list_cursor cursor;
     } list;
+
+    /* For responses that contain a single manifest.
+     */
+    rhizome_manifest *manifest;
+
   } u;
   
 } rhizome_http_request;

@@ -69,7 +69,7 @@ test_AuthBasicMissing() {
          --dump-header http.headers \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
    assertStdoutIs '401'
-   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval Rhizome\"$CR$"
+   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval Rhizome\"$CR\$"
 }
 teardown_AuthBasicMissing() {
    tfw_cat http.headers http.output
@@ -85,7 +85,7 @@ test_AuthBasicWrong() {
          --basic --user fred:nurks \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
    assertStdoutIs '401'
-   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval Rhizome\"$CR$"
+   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval Rhizome\"$CR\$"
    executeOk curl \
          --silent --fail --show-error --write-out '%{http_code}' \
          --output http.output \
@@ -109,7 +109,11 @@ add_bundles() {
       extract_stdout_filesize SIZE[$n]
       extract_stdout_filehash HASH[$n]
       extract_stdout_date DATE[$n]
+      extract_stdout_BK BK[$n]
       extract_stdout_rowid ROWID[$n]
+      extract_stdout_author AUTHOR[$n]
+      extract_stdout_secret SECRET[$n]
+      extract_stdout_inserttime INSERTTIME[$n]
       [ "${ROWID[$n]}" -gt "${ROWID_MAX:-0}" ] && ROWID_MAX=${ROWID[$n]}
    done
 }
@@ -303,14 +307,26 @@ test_RhizomeManifest() {
       executeOk curl \
             --silent --fail --show-error \
             --output bundle$n.rhm \
-            --dump-header http.headers \
+            --dump-header http.headers$n \
             --basic --user harry:potter \
             "http://$addr_localhost:$PORTA/restful/rhizome/${BID[$n]}.rhm"
-      tfw_cat http.headers bundle$n.rhm
+      tfw_cat http.headers$n bundle$n.rhm
       tfw_preserve bundle$n.rhm
    done
    for n in 0 1 2; do
       assert diff file$n.manifest bundle$n.rhm
+      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Id: ${BID[$n]}$CR\$"
+      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Version: ${VERSION[$n]}$CR\$"
+      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Filesize: ${SIZE[$n]}$CR\$"
+      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Filehash: ${HASH[$n]}$CR\$"
+      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-BK: ${BK[$n]}$CR\$"
+      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Date: ${DATE[$n]}$CR\$"
+      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Name: \"file$n\"$CR\$"
+      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Service: file$CR\$"
+      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Author: ${AUTHOR[$n]}$CR\$"
+      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Secret: ${SECRET[$n]}$CR\$"
+      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Inserttime: ${INSERTTIME[$n]}$CR\$"
+      assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Rowid: ${ROWID[$n]}$CR\$"
    done
 }
 

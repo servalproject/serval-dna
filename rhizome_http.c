@@ -565,6 +565,8 @@ static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsi
   return ret;
 }
 
+static HTTP_RENDERER render_manifest_headers;
+
 static int restful_rhizome_(rhizome_http_request *r, const char *remainder)
 {
   if (!is_rhizome_http_enabled())
@@ -583,8 +585,12 @@ static int restful_rhizome_(rhizome_http_request *r, const char *remainder)
   int ret = rhizome_retrieve_manifest(&bid, m);
   if (ret == -1)
     http_request_simple_response(&r->http, 500, NULL);
-  else if (ret == 0)
+  else if (ret == 0) {
+    rhizome_authenticate_author(m);
+    r->u.manifest = m;
+    r->http.render_extra_headers = render_manifest_headers;
     http_request_response_static(&r->http, 200, "x-servalproject/rhizome-manifest-text", (const char *)m->manifestdata, m->manifest_all_bytes);
+  }
   rhizome_manifest_free(m);
   return ret <= 0 ? 0 : 1;
 }
@@ -764,6 +770,39 @@ static int fav_icon_header(rhizome_http_request *r, const char *remainder)
     return 1;
   http_request_response_static(&r->http, 200, "image/vnd.microsoft.icon", (const char *)favicon_bytes, favicon_len);
   return 0;
+}
+
+static void render_manifest_headers(struct http_request *hr, strbuf sb)
+{
+  rhizome_http_request *r = (rhizome_http_request *) hr;
+  rhizome_manifest *m = r->u.manifest;
+  strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Id: %s\r\n", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+  strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Version: %"PRIu64"\r\n", m->version);
+  strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Filesize: %"PRIu64"\r\n", m->filesize);
+  if (m->filesize != 0)
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Filehash: %s\r\n", alloca_tohex_rhizome_filehash_t(m->filehash));
+  if (m->has_bundle_key)
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-BK: %s\r\n", alloca_tohex_rhizome_bk_t(m->bundle_key));
+  if (m->has_date)
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Date: %"PRIu64"\r\n", m->date);
+  if (m->name) {
+    strbuf_puts(sb, "Serval-Rhizome-Bundle-Name: ");
+    strbuf_append_quoted_string(sb, m->name);
+    strbuf_puts(sb, "\r\n");
+  }
+  if (m->service)
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Service: %s\r\n", m->service);
+  assert(m->authorship != AUTHOR_LOCAL);
+  if (m->authorship == AUTHOR_AUTHENTIC)
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Author: %s\r\n", alloca_tohex_sid_t(m->author));
+  assert(m->haveSecret);
+  {
+    char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
+    rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Secret: %s\r\n", secret);
+  }
+  strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Rowid: %"PRIu64"\r\n", m->rowid);
+  strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Inserttime: %"PRIu64"\r\n", m->inserttime);
 }
 
 static int root_page(rhizome_http_request *r, const char *remainder)

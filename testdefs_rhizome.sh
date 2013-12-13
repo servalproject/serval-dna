@@ -298,6 +298,10 @@ extract_stdout_version() {
    extract_stdout_keyvalue "$1" version "$rexp_version"
 }
 
+extract_stdout_author() {
+   extract_stdout_keyvalue "$1" .author "$rexp_author"
+}
+
 extract_stdout_secret() {
    extract_stdout_keyvalue "$1" .secret "$rexp_bundlesecret"
 }
