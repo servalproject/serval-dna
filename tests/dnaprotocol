@@ -45,17 +45,10 @@ set_server_vars() {
       set log.console.level debug \
       set log.console.show_pid on \
       set log.console.show_time on \
-      set mdp.iftype.wifi.tick_ms 100 \
       set rhizome.enable No \
-      set debug.overlayinterfaces No \
-      set debug.overlaybuffer No \
-      set debug.packetformats No \
-      set debug.overlayframes No \
-      set debug.overlayrouting No \
-      set debug.packettx No \
-      set debug.packetrx No \
       set debug.mdprequests Yes \
-      set debug.keyring Yes
+      set debug.keyring Yes \
+      set debug.linkstate Yes
 }
 
 doc_LookupWildcard="Lookup by wildcard"

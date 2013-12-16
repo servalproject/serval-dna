@@ -259,6 +259,7 @@ setup_servald_so() {
 start_servald_server() {
    push_instance
    set_instance_fromarg "$1" && shift
+   configure_servald_server
    # Start servald server
    local -a before_pids
    local -a after_pids
@@ -699,14 +700,8 @@ add_servald_interface() {
 start_servald_instances() {
    push_instance
    tfw_log "# start servald instances $*"
-   local I
-   for I; do
-      set_instance $I
-      # These config settings can be overridden in a caller-supplied configure_servald_server().
-      # They are extremely useful for the majority of fixtures.
-      configure_servald_server
+   foreach_instance "$@" \
       start_servald_server
-   done
    # Now wait until they see each other.
    foreach_instance "$@" \
       wait_until --sleep=0.25 has_seen_instances "$@"

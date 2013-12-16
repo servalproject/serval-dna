@@ -26,15 +26,15 @@ setup() {
    assert_no_servald_processes
 }
 
-setup_interfaces() {
-   >$TFWTMP/dummy
-   executeOk_servald config set interfaces "+>$TFWTMP/dummy"
-}
-
 teardown() {
    get_servald_server_pidfile && stop_servald_server
    kill_all_servald_processes
    assert_no_servald_processes
+}
+
+# make sure servald config is blank
+configure_servald_server() {
+   :
 }
 
 doc_StartCreateInstanceDir="Starting server creates instance directory"
@@ -53,10 +53,8 @@ setup_StartLogfile() {
    executeOk_servald config set log.file.directory_path "$PWD/log"
 }
 test_StartLogfile() {
-   executeOk_servald start
-   sleep 0.1
-   assert [ -s log/*.log ]
-   tfw_cat log/*.log
+   start_servald_server
+   assert_servald_server_no_errors
 }
 
 doc_StartNoInterfaces="Starting server with no configured interfaces gives warning"
@@ -70,14 +68,26 @@ test_StartNoInterfaces() {
    tfw_cat "$instance_servald_log"
 }
 
-doc_StartNoErrors="Starting server on dummy interface gives no errors"
+doc_StartNoErrors="Starting server on dummy file interface gives no errors"
 setup_StartNoErrors() {
    setup
-   setup_interfaces
+   add_servald_interface --file
 }
 test_StartNoErrors() {
    start_servald_server
-   sleep 0.1
+   wait_until grep "Interface .* is up" $instance_servald_log
+   assert_servald_server_no_errors
+   tfw_cat "$instance_servald_log"
+}
+
+doc_StartLocalNoErrors="Starting server on local interface gives no errors"
+setup_StartLocalNoErrors() {
+   setup
+   add_servald_interface
+}
+test_StartLocalNoErrors() {
+   start_servald_server
+   wait_until grep "Interface .* is up" $instance_servald_log
    assert_servald_server_no_errors
    tfw_cat "$instance_servald_log"
 }
@@ -85,7 +95,6 @@ test_StartNoErrors() {
 doc_StartStart="Start server while already running"
 setup_StartStart() {
    setup
-   setup_interfaces
    start_servald_server
 }
 test_StartStart() {
@@ -99,7 +108,6 @@ test_StartStart() {
 doc_StartStopFast="Stop server before it finishes starting"
 setup_StartStopFast() {
    setup
-   setup_interfaces
    export SERVALD_SERVER_START_DELAY=250
 }
 test_StartStopFast() {
@@ -110,7 +118,6 @@ test_StartStopFast() {
 doc_NoZombie="Server process does not become a zombie"
 setup_NoZombie() {
    setup
-   setup_interfaces
    export SERVALD_START_POST_SLEEP=1000
    servald_start &
    start_pid=$!

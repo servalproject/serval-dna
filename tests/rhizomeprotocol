@@ -36,7 +36,7 @@ teardown() {
 
 # Called by start_servald_instances for each instance.
 configure_servald_server() {
-   add_servald_interface
+   add_servald_interface --file
    executeOk_servald config \
       set log.console.level debug \
       set log.console.show_pid on \
