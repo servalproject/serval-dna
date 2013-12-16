@@ -338,11 +338,9 @@ static void rhizome_direct_process_mime_body(struct http_request *hr, const char
 int rhizome_direct_import(rhizome_http_request *r, const char *remainder)
 {
   if (*remainder)
-    return 1;
-  if (r->http.verb != HTTP_VERB_POST) {
-    http_request_simple_response(&r->http, 405, NULL);
-    return 0;
-  }
+    return 404;
+  if (r->http.verb != HTTP_VERB_POST)
+    return 405;
   r->http.form_data.handle_mime_part_start = rhizome_direct_process_mime_start;
   r->http.form_data.handle_mime_part_end = rhizome_direct_process_mime_end;
   r->http.form_data.handle_mime_part_header = rhizome_direct_process_mime_part_header;
@@ -351,17 +349,15 @@ int rhizome_direct_import(rhizome_http_request *r, const char *remainder)
   r->current_part = NONE;
   r->part_fd = -1;
   r->data_file_name[0] = '\0';
-  return 0;
+  return 1;
 }
 
 int rhizome_direct_enquiry(rhizome_http_request *r, const char *remainder)
 {
   if (*remainder)
-    return 1;
-  if (r->http.verb != HTTP_VERB_POST) {
-    http_request_simple_response(&r->http, 405, NULL);
-    return 0;
-  }
+    return 404;
+  if (r->http.verb != HTTP_VERB_POST)
+    return 405;
   r->http.form_data.handle_mime_part_start = rhizome_direct_process_mime_start;
   r->http.form_data.handle_mime_part_end = rhizome_direct_process_mime_end;
   r->http.form_data.handle_mime_part_header = rhizome_direct_process_mime_part_header;
@@ -370,7 +366,7 @@ int rhizome_direct_enquiry(rhizome_http_request *r, const char *remainder)
   r->current_part = NONE;
   r->part_fd = -1;
   r->data_file_name[0] = '\0';
-  return 0;
+  return 1;
 }
 
 /* Servald can be configured to accept files without manifests via HTTP from localhost, so that
@@ -381,11 +377,9 @@ int rhizome_direct_enquiry(rhizome_http_request *r, const char *remainder)
 int rhizome_direct_addfile(rhizome_http_request *r, const char *remainder)
 {
   if (*remainder)
-    return 1;
-  if (r->http.verb != HTTP_VERB_POST) {
-    http_request_simple_response(&r->http, 405, NULL);
-    return 0;
-  }
+    return 404;
+  if (r->http.verb != HTTP_VERB_POST)
+    return 405;
   if (   r->http.client_sockaddr_in.sin_family != AF_INET
       || r->http.client_sockaddr_in.sin_addr.s_addr != config.rhizome.api.addfile.allow_host.s_addr
   ) {
@@ -394,8 +388,7 @@ int rhizome_direct_addfile(rhizome_http_request *r, const char *remainder)
 	alloca_in_addr(&config.rhizome.api.addfile.allow_host)
       );
     rhizome_direct_clear_temporary_files(r);
-    http_request_simple_response(&r->http, 404, "<html><h1>Not available from here</h1></html>");
-    return 0;
+    return 403; // Forbidden
   }
   r->http.form_data.handle_mime_part_start = rhizome_direct_process_mime_start;
   r->http.form_data.handle_mime_part_end = rhizome_direct_process_mime_end;
@@ -405,7 +398,7 @@ int rhizome_direct_addfile(rhizome_http_request *r, const char *remainder)
   r->current_part = NONE;
   r->part_fd = -1;
   r->data_file_name[0] = '\0';
-  return 0;
+  return 1;
 }
 
 int rhizome_direct_dispatch(rhizome_http_request *r, const char *UNUSED(remainder))
@@ -414,7 +407,7 @@ int rhizome_direct_dispatch(rhizome_http_request *r, const char *UNUSED(remainde
       && strcmp(r->http.path, config.rhizome.api.addfile.uri_path) == 0
   )
     return rhizome_direct_addfile(r, "");
-  return 1;
+  return 404;
 }
 
 static int receive_http_response(int sock, char *buffer, size_t buffer_len, struct http_response_parts *parts)

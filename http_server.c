@@ -1523,9 +1523,10 @@ static void http_request_receive(struct http_request *r)
 	result = 500;
       }
     }
-    if (result >= 300)
+    if (result >= 200 && result < 600) {
+      assert(r->response.result_code == 0 || r->response.result_code == result);
       r->response.result_code = result;
-    else if (result) {
+    } else if (result) {
       if (r->debug_flag && *r->debug_flag)
 	DEBUGF("Internal failure parsing HTTP request: invalid result=%d", result);
       r->response.result_code = 500;
@@ -1539,8 +1540,10 @@ static void http_request_receive(struct http_request *r)
       return;
     }
   }
-  if (r->phase != RECEIVE)
+  if (r->phase != RECEIVE) {
+    assert(r->response.result_code != 0);
     return;
+  }
   if (r->response.result_code == 0) {
     WHY("No HTTP response set, using 500 Server Error");
     r->response.result_code = 500;
