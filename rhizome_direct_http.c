@@ -423,7 +423,7 @@ static int receive_http_response(int sock, char *buffer, size_t buffer_len, stru
   ssize_t count;
   do {
       if ((count = read(sock, &buffer[len], buffer_len - len)) == -1)
-	return WHYF_perror("read(%d, %p, %d)", sock, &buffer[len], (int)buffer_len - len);
+	return WHYF_perror("read(%d, %p, %d)", sock, &buffer[len], (int)(buffer_len - len));
       len += (size_t)count;
   } while (len < buffer_len && count != 0 && !is_http_header_complete(buffer, len, len));
   if (config.debug.rhizome_rx)

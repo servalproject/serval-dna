@@ -355,7 +355,7 @@ void transfer_bytes(struct radio_state *radios)
   
   if (bytes>0){
     log_time();
-    fprintf(stderr, "Transferring %d byte packet from %s to %s\n", bytes, t->name, r->name);
+    fprintf(stderr, "Transferring %zd byte packet from %s to %s\n", bytes, t->name, r->name);
   }
   
   unsigned i, j;

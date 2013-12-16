@@ -471,7 +471,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     frame->transmit_count++;
     
     if (config.debug.overlayframes){
-      DEBUGF("Appended payload %p, %d type %x len %d for %s via %s", 
+      DEBUGF("Appended payload %p, %d type %x len %zd for %s via %s", 
 	     frame, frame->mdp_sequence,
 	     frame->type, ob_position(frame->payload),
 	     frame->destination?alloca_tohex_sid_t(frame->destination->sid):"All",

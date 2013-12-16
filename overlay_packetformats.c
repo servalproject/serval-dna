@@ -439,7 +439,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 
 	  if (config.debug.overlayframes)
 	    dump("Payload Header", header_start, current - header_start);
-	  ret = WHYF("Invalid payload length (%d)", payload_len);
+	  ret = WHYF("Invalid payload length (%zd)", payload_len);
 	  goto end;
 	}
 	break;
@@ -448,7 +448,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     int next_payload = ob_position(b) + payload_len;
     
     if (config.debug.overlayframes){
-      DEBUGF("Received payload type %x, len %d", f.type, payload_len);
+      DEBUGF("Received payload type %x, len %zd", f.type, payload_len);
       DEBUGF("Payload from %s", f.source?alloca_tohex_sid_t(f.source->sid):"NULL");
       DEBUGF("Payload to %s", (f.destination?alloca_tohex_sid_t(f.destination->sid):"broadcast"));
       if (!is_all_matching(f.broadcast_id.id, BROADCAST_LEN, 0))

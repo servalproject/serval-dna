@@ -246,7 +246,7 @@ void _ob_append_byte(struct __sourceloc __whence, struct overlay_buffer *b, unsi
   if (ob_makespace(b, bytes)) {
     b->bytes[b->position] = byte;
     if (config.debug.overlaybuffer)
-      DEBUGF("ob_append_byte(b=%p, byte=0x%02x) %p[%d]=%02x position=%zu", b, byte, b->bytes, b->position, byte, b->position + bytes);
+      DEBUGF("ob_append_byte(b=%p, byte=0x%02x) %p[%zd]=%02x position=%zu", b, byte, b->bytes, b->position, byte, b->position + bytes);
   } else {
     if (config.debug.overlaybuffer)
       DEBUGF("ob_append_byte(b=%p, byte=0x%02x) OVERRUN position=%zu", b, byte, b->position + bytes);
@@ -293,7 +293,7 @@ void _ob_append_ui16(struct __sourceloc __whence, struct overlay_buffer *b, uint
     b->bytes[b->position] = (v >> 8) & 0xFF;
     b->bytes[b->position+1] = v & 0xFF;
     if (config.debug.overlaybuffer)
-      DEBUGF("ob_append_ui16(b=%p, v=%u) %p[%d]=%s position=%zu", b, v, b->bytes, b->position, alloca_tohex(&b->bytes[b->position], bytes), b->position + bytes);
+      DEBUGF("ob_append_ui16(b=%p, v=%u) %p[%zd]=%s position=%zu", b, v, b->bytes, b->position, alloca_tohex(&b->bytes[b->position], bytes), b->position + bytes);
   } else {
     if (config.debug.overlaybuffer)
       DEBUGF("ob_append_ui16(b=%p, v=%u) OVERRUN position=%zu", b, v, b->position + bytes);
@@ -310,7 +310,7 @@ void _ob_append_ui32(struct __sourceloc __whence, struct overlay_buffer *b, uint
     b->bytes[b->position+2] = (v >> 8) & 0xFF;
     b->bytes[b->position+3] = v & 0xFF;
     if (config.debug.overlaybuffer)
-      DEBUGF("ob_append_ui32(b=%p, v=%"PRIu32") %p[%d]=%s position=%zu",
+      DEBUGF("ob_append_ui32(b=%p, v=%"PRIu32") %p[%zd]=%s position=%zu",
 	  b, v, b->bytes, b->position, alloca_tohex(&b->bytes[b->position], bytes), b->position + bytes);
   } else {
     if (config.debug.overlaybuffer)
@@ -332,7 +332,7 @@ void _ob_append_ui64(struct __sourceloc __whence, struct overlay_buffer *b, uint
     b->bytes[b->position+6] = (v >> 8) & 0xFF;
     b->bytes[b->position+7] = v & 0xFF;
     if (config.debug.overlaybuffer)
-      DEBUGF("ob_append_ui64(b=%p, v=%"PRIu64") %p[%d]=%s position=%zu",
+      DEBUGF("ob_append_ui64(b=%p, v=%"PRIu64") %p[%zd]=%s position=%zu",
 	  b, v, b->bytes, b->position, alloca_tohex(&b->bytes[b->position], bytes), b->position + bytes);
   } else {
     if (config.debug.overlaybuffer)
@@ -530,7 +530,7 @@ void _ob_set_ui16(struct __sourceloc __whence, struct overlay_buffer *b, size_t 
   b->bytes[offset] = (v >> 8) & 0xFF;
   b->bytes[offset+1] = v & 0xFF;
   if (config.debug.overlaybuffer)
-    DEBUGF("ob_set_ui16(b=%p, offset=%d, v=%u) %p[%d]=%s", b, offset, v, b->bytes, offset, alloca_tohex(&b->bytes[offset], bytes));
+    DEBUGF("ob_set_ui16(b=%p, offset=%zd, v=%u) %p[%zd]=%s", b, offset, v, b->bytes, offset, alloca_tohex(&b->bytes[offset], bytes));
 }
 
 void _ob_set(struct __sourceloc __whence, struct overlay_buffer *b, size_t offset, unsigned char byte)
@@ -541,7 +541,7 @@ void _ob_set(struct __sourceloc __whence, struct overlay_buffer *b, size_t offse
   assert(offset + bytes <= b->allocSize);
   b->bytes[offset] = byte;
   if (config.debug.overlaybuffer)
-    DEBUGF("ob_set(b=%p, offset=%d, byte=0x%02x) %p[%d]=%s", b, offset, byte, b->bytes, offset, alloca_tohex(&b->bytes[offset], bytes));
+    DEBUGF("ob_set(b=%p, offset=%zd, byte=0x%02x) %p[%zd]=%s", b, offset, byte, b->bytes, offset, alloca_tohex(&b->bytes[offset], bytes));
 }
 
 void _ob_patch_rfs(struct __sourceloc __whence, struct overlay_buffer *b)

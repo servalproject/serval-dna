@@ -773,7 +773,7 @@ static int overlay_send_frame(
     return -1;
   }
   if (config.debug.mdprequests) {
-    DEBUGF("Send frame %u bytes", ob_position(plaintext));
+    DEBUGF("Send frame %zu bytes", ob_position(plaintext));
     dump("Frame plaintext", ob_ptr(plaintext), ob_position(plaintext));
   }
   

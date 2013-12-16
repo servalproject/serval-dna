@@ -315,7 +315,7 @@ int overlay_rhizome_saw_advertisements(struct decode_context *context, struct ov
       
       unsigned char *data = ob_get_bytes_ptr(f->payload, manifest_length);
       if (!data) {
-	WHYF("Illegal manifest length field in rhizome advertisement frame %zu vs %d", 
+	WHYF("Illegal manifest length field in rhizome advertisement frame %zu vs %zd", 
 	     manifest_length, ob_remaining(f->payload));
 	break;
       }
@@ -408,7 +408,7 @@ next:
     unsigned char *bar;
     bars[bar_count]=bar=ob_get_bytes_ptr(f->payload, RHIZOME_BAR_BYTES);
     if (!bar){
-      WARNF("Expected whole BAR @%x (only %d bytes remain)", ob_position(f->payload), ob_remaining(f->payload));
+      WARNF("Expected whole BAR @%zx (only %zd bytes remain)", ob_position(f->payload), ob_remaining(f->payload));
       break;
     }
 
