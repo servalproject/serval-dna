@@ -559,7 +559,8 @@ static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsi
   return ret;
 }
 
-static int rhizome_payload_content_init(rhizome_http_request *r, const rhizome_filehash_t *hash);
+static int rhizome_response_content_init_filehash(rhizome_http_request *r, const rhizome_filehash_t *hash);
+static int rhizome_response_content_init_payload(rhizome_http_request *r, rhizome_manifest *);
 
 static HTTP_CONTENT_GENERATOR rhizome_payload_content;
 
@@ -567,6 +568,7 @@ static HTTP_RENDERER render_manifest_headers;
 
 static HTTP_HANDLER restful_rhizome_bid_rhm;
 static HTTP_HANDLER restful_rhizome_bid_raw_bin;
+static HTTP_HANDLER restful_rhizome_bid_decrypted_bin;
 
 static int restful_rhizome_(rhizome_http_request *r, const char *remainder)
 {
@@ -581,6 +583,9 @@ static int restful_rhizome_(rhizome_http_request *r, const char *remainder)
       remainder = "";
     } else if (strcmp(end, "/raw.bin") == 0) {
       handler = restful_rhizome_bid_raw_bin;
+      remainder = "";
+    } else if (strcmp(end, "/decrypted.bin") == 0) {
+      handler = restful_rhizome_bid_decrypted_bin;
       remainder = "";
     }
   }
@@ -628,9 +633,26 @@ static int restful_rhizome_bid_raw_bin(rhizome_http_request *r, const char *rema
     http_request_response_static(&r->http, 200, "application/binary", "", 0);
     return 1;
   }
-  int ret = rhizome_payload_content_init(r, &r->manifest->filehash);
+  int ret = rhizome_response_content_init_filehash(r, &r->manifest->filehash);
   if (ret)
     return ret;
+  http_request_response_generated(&r->http, 200, "application/binary", rhizome_payload_content);
+  return 1;
+}
+
+static int restful_rhizome_bid_decrypted_bin(rhizome_http_request *r, const char *remainder)
+{
+  if (*remainder || r->manifest == NULL)
+    return 404;
+  if (r->manifest->filesize == 0) {
+    // TODO use Content Type from manifest (once it is implemented)
+    http_request_response_static(&r->http, 200, "application/binary", "", 0);
+    return 1;
+  }
+  int ret = rhizome_response_content_init_payload(r, r->manifest);
+  if (ret)
+    return ret;
+  // TODO use Content Type from manifest (once it is implemented)
   http_request_response_generated(&r->http, 200, "application/binary", rhizome_payload_content);
   return 1;
 }
@@ -695,14 +717,8 @@ static int rhizome_status_page(rhizome_http_request *r, const char *remainder)
   return 1;
 }
 
-static int rhizome_payload_content_init(rhizome_http_request *r, const rhizome_filehash_t *hash)
+static int rhizome_response_content_init_read_state(rhizome_http_request *r)
 {
-  bzero(&r->u.read_state, sizeof r->u.read_state);
-  int n = rhizome_open_read(&r->u.read_state, hash);
-  if (n == -1)
-    return 500;
-  if (n != 0)
-    return 404;
   if (r->u.read_state.length == RHIZOME_SIZE_UNSET && rhizome_read(&r->u.read_state, NULL, 0)) {
     rhizome_read_close(&r->u.read_state);
     return 404;
@@ -724,6 +740,28 @@ static int rhizome_payload_content_init(rhizome_http_request *r, const rhizome_f
     r->u.read_state.offset = 0;
   }
   return 0;
+}
+
+static int rhizome_response_content_init_filehash(rhizome_http_request *r, const rhizome_filehash_t *hash)
+{
+  bzero(&r->u.read_state, sizeof r->u.read_state);
+  int n = rhizome_open_read(&r->u.read_state, hash);
+  if (n == -1)
+    return -1;
+  if (n != 0)
+    return 404;
+  return rhizome_response_content_init_read_state(r);
+}
+
+static int rhizome_response_content_init_payload(rhizome_http_request *r, rhizome_manifest *m)
+{
+  bzero(&r->u.read_state, sizeof r->u.read_state);
+  int n = rhizome_open_decrypt_read(m, &r->u.read_state);
+  if (n == -1)
+    return -1;
+  if (n != 0)
+    return 404;
+  return rhizome_response_content_init_read_state(r);
 }
 
 static int rhizome_payload_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
@@ -770,7 +808,7 @@ static int rhizome_file_page(rhizome_http_request *r, const char *remainder)
   rhizome_filehash_t filehash;
   if (str_to_rhizome_filehash_t(&filehash, remainder) == -1)
     return 1;
-  int ret = rhizome_payload_content_init(r, &filehash);
+  int ret = rhizome_response_content_init_filehash(r, &filehash);
   if (ret)
     return ret;
   http_request_response_generated(&r->http, 200, "application/binary", rhizome_payload_content);

@@ -370,15 +370,32 @@ test_RhizomePayloadRaw() {
             "http://$addr_localhost:$PORTA/restful/rhizome/${BID[$n]}/raw.bin"
       tfw_cat http.headers$n raw.bin$n
    done
-   for n in 0 1 2; do
+   for n in 0 1 2 3; do
       assert cmp raw$n raw.bin$n
       assert_http_response_headers $n
    done
 }
 
 doc_RhizomePayloadDecrypted="Fetch Rhizome decrypted payload"
+setup_RhizomePayloadDecrypted() {
+   setup
+   add_bundles 0 1
+   add_bundles --encrypted 2 3
+}
 test_RhizomePayloadDecrypted() {
-   :
+   for n in 0 1 2 3; do
+      executeOk curl \
+            --silent --fail --show-error \
+            --output decrypted.bin$n \
+            --dump-header http.headers$n \
+            --basic --user harry:potter \
+            "http://$addr_localhost:$PORTA/restful/rhizome/${BID[$n]}/decrypted.bin"
+      tfw_cat http.headers$n decrypted.bin$n
+   done
+   for n in 0 1 2 3; do
+      assert cmp file$n decrypted.bin$n
+      assert_http_response_headers $n
+   done
 }
 
 doc_RhizomeInsert="Insert new Rhizome bundle"
