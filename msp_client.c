@@ -68,6 +68,17 @@ struct msp_sock * msp_socket(int mdp_sock)
   return ret;
 }
 
+unsigned msp_socket_count()
+{
+  unsigned i=0;
+  struct msp_sock *p=root;
+  while(p){
+    i++;
+    p=p->_next;
+  }
+  return i;
+}
+
 static void free_all_packets(struct msp_window *window)
 {
   struct msp_packet *p = window->_head;
@@ -114,11 +125,7 @@ static void free_acked_packets(struct msp_window *window, uint16_t seq)
 static void msp_free(struct msp_sock *sock)
 {
   sock->state |= MSP_STATE_CLOSED;
-  
-  // last chance to free other resources
-  if (sock->handler)
-    sock->handler(sock, sock->state, NULL, 0, sock->context);
-    
+  // remove from the list first
   if (sock->_prev)
     sock->_prev->_next = sock->_next;
   else
@@ -126,6 +133,10 @@ static void msp_free(struct msp_sock *sock)
   if (sock->_next)
     sock->_next->_prev = sock->_prev;
 
+  // last chance to free other resources
+  if (sock->handler)
+    sock->handler(sock, sock->state, NULL, 0, sock->context);
+    
   free_all_packets(&sock->tx);
   free_all_packets(&sock->rx);
   
@@ -134,6 +145,7 @@ static void msp_free(struct msp_sock *sock)
 
 void msp_close(struct msp_sock *sock)
 {
+  // TODO if never sent / received, just free it
   sock->state |= MSP_STATE_CLOSED;
 }
 

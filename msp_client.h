@@ -27,6 +27,7 @@ typedef uint16_t msp_state_t;
 struct msp_sock * msp_socket(int mdp_sock);
 void msp_close(struct msp_sock *sock);
 void msp_close_all(int mdp_sock);
+unsigned msp_socket_count();
 
 int msp_set_handler(struct msp_sock *sock, 
   int (*handler)(struct msp_sock *sock, msp_state_t state, const uint8_t *payload, size_t len, void *context), 
