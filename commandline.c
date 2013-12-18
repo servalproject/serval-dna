@@ -1431,7 +1431,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   if (bskhex && !*bskhex)
     bskhex=NULL;
   
-  if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+  if (bskhex && str_to_rhizome_bk_t(&bsk, bskhex) == -1)
     return WHYF("invalid bsk: \"%s\"", bskhex);
   
   int journal = strcasecmp(parsed->args[1], "journal")==0;

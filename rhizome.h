@@ -111,6 +111,7 @@ __RHIZOME_INLINE int rhizome_is_bk_none(const rhizome_bk_t *bk) {
 #define alloca_tohex_rhizome_bk_t(bk) alloca_tohex((bk).binary, sizeof (*(rhizome_bk_t*)0).binary)
 int cmp_rhizome_bk_t(const rhizome_bk_t *a, const rhizome_bk_t *b);
 int str_to_rhizome_bk_t(rhizome_bk_t *bk, const char *hex);
+int strn_to_rhizome_bk_t(rhizome_bk_t *bk, const char *hex, const char **endp);
 
 
 extern time_ms_t rhizome_voice_timeout;
