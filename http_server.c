@@ -264,7 +264,6 @@ static int _reserve(struct http_request *r, const char **resp, struct substring 
     r->received = r->reserved;
   assert(r->received <= r->parsed);
   *resp = restr;
-  DEBUGF("respp=%p resp=%p restr=%p %s", respp, resp, restr, alloca_toprint(-1, restr, len + 1));
   return 1;
 }
 
@@ -292,7 +291,6 @@ static void _release_reserved(struct http_request *r)
     const char ***respp = (const char ***) res;
     char *restr = (char *)(respp + 1);
     const char **resp = read_pointer((const unsigned char*)respp); // can't use resp = *respp; could cause SIGBUS if not aligned
-    DEBUGF("respp=%p resp=%p restr=%p %s", respp, resp, restr, alloca_str_toprint(restr));
     assert((const char*)resp >= (const char*)r);
     assert((const char*)resp < (const char*)(r + 1));
     assert(*resp == restr);
