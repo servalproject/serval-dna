@@ -108,6 +108,7 @@ static int get_my_conversation_bundle(const sid_t *my_sidp, rhizome_manifest *m)
   assert(m->haveSecret);
   if (m->haveSecret == NEW_BUNDLE_ID) {
     rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
+    rhizome_manifest_set_name(m, "");
     if (rhizome_fill_manifest(m, NULL, my_sidp) == -1)
       return WHY("Invalid manifest");
     if (config.debug.meshms) {

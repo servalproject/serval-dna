@@ -1144,18 +1144,20 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
   }
 
   if (strcasecmp(RHIZOME_SERVICE_FILE, m->service) == 0) {
-    if (m->name == NULL) {
-      if (filepath && *filepath) {
-	const char *name = strrchr(filepath, '/');
-	rhizome_manifest_set_name(m, name ? name + 1 : filepath);
-      } else
-	rhizome_manifest_set_name(m, "");
+    if (m->name) {
       if (config.debug.rhizome)
-	DEBUGF("missing 'name', set default name=%s", alloca_str_toprint(m->name));
-    } else {
-      if (config.debug.rhizome)
-	DEBUGF("manifest contains name=%s", alloca_str_toprint(m->name));
+	DEBUGF("manifest already contains name=%s", alloca_str_toprint(m->name));
+    } else if (filepath) {
+      const char *name = strrchr(filepath, '/');
+      if (!name)
+	name = filepath;
+      if (rhizome_str_is_manifest_name(name))
+	rhizome_manifest_set_name(m, name);
+      else if (config.debug.rhizome)
+	DEBUGF("invalid rhizome name %s -- not used", alloca_str_toprint(name));
     }
+    else if (config.debug.rhizome)
+      DEBUGF("manifest missing 'name'");
   }
 
   // Anything sent from one person to another should be considered private and encrypted by default.
