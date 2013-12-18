@@ -1105,7 +1105,14 @@ static int rhizome_delete_external(const rhizome_filehash_t *hashp)
   char blob_path[1024];
   if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, alloca_tohex_rhizome_filehash_t(*hashp)))
     return -1;
-  return unlink(blob_path);
+  if (unlink(blob_path) == -1) {
+    if (errno != ENOENT)
+      return WHYF_perror("unlink(%s)", alloca_str_toprint(blob_path));
+    return 1;
+  }
+  if (config.debug.externalblobs)
+    DEBUGF("Deleted blob file %s", blob_path);
+  return 0;
 }
 
 static int rhizome_delete_orphan_fileblobs_retry(sqlite_retry_state *retry)

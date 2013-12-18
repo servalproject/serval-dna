@@ -544,10 +544,12 @@ int rhizome_finish_write(struct rhizome_write *write)
 	goto dbfailure;
       }
       
-      if (rename(blob_path, dest_path)){
+      if (rename(blob_path, dest_path) == -1) {
 	WHYF_perror("rename(%s, %s)", blob_path, dest_path);
 	goto dbfailure;
       }
+      if (config.debug.externalblobs)
+	DEBUGF("Renamed %s to %s", blob_path, dest_path);
       
     }else{
       if (sqlite_exec_void_retry(
@@ -731,8 +733,11 @@ int rhizome_open_read(struct rhizome_read *read, const rhizome_filehash_t *hashp
       return -1;
     read->blob_fd = open(blob_path, O_RDONLY);
     if (read->blob_fd == -1) {
-      if (errno == ENOENT)
+      if (errno == ENOENT) {
+	if (config.debug.externalblobs)
+	  DEBUGF("Stored file does not exist: %s", blob_path);
 	return 1; // file not available
+      }
       return WHYF_perror("open(%s)", alloca_str_toprint(blob_path));
     }
     off64_t pos = lseek64(read->blob_fd, 0, SEEK_END);
@@ -740,7 +745,7 @@ int rhizome_open_read(struct rhizome_read *read, const rhizome_filehash_t *hashp
       return WHYF_perror("lseek64(%s,0,SEEK_END)", alloca_str_toprint(blob_path));
     read->length = pos;
     if (config.debug.externalblobs)
-      DEBUGF("Opened stored file %s as fd %d, len %"PRIx64,blob_path, read->blob_fd, read->length);
+      DEBUGF("Opened stored file %s as fd %d, len %"PRIx64, blob_path, read->blob_fd, read->length);
   }
   read->offset = 0;
   read->hash_offset = 0;
