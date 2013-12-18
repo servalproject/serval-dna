@@ -1780,10 +1780,14 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
     if (extract){
       // Save the file, implicitly decrypting if required.
       retfile = rhizome_extract_file(m, filepath);
+      if (retfile)
+	WHYF("rhizome_extract_file() returned %d", retfile);
     }else{
       // Save the file without attempting to decrypt
       uint64_t length;
       retfile = rhizome_dump_file(&m->filehash, filepath, &length);
+      if (retfile)
+	WHYF("rhizome_dump_file() returned %d", retfile);
     }
   }
   
