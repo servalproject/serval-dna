@@ -29,6 +29,8 @@ void msp_close(struct msp_sock *sock);
 void msp_close_all(int mdp_sock);
 unsigned msp_socket_count();
 
+void msp_debug();
+
 int msp_set_handler(struct msp_sock *sock, 
   int (*handler)(struct msp_sock *sock, msp_state_t state, const uint8_t *payload, size_t len, void *context), 
   void *context);

@@ -3058,7 +3058,7 @@ struct cli_schema command_line_options[]={
    "Run serial encapsulation test"},
   {app_msp_connection,{"msp", "listen", "<port>", NULL}, 0,
   "Listen for incoming connections"},
-  {app_msp_connection,{"msp", "connect", "<sid>", "<port>", NULL}, 0,
+  {app_msp_connection,{"msp", "connect", "[--once]", "[--forward=<local_port>]", "<sid>", "<port>", NULL}, 0,
   "Connect to a remote party"},
 #ifdef HAVE_VOIPTEST
   {app_pa_phone,{"phone",NULL}, 0,

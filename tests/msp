@@ -29,16 +29,21 @@ teardown() {
    report_all_servald_servers
 }
 
+configure_servald_server() {
+   create_single_identity
+   add_servald_interface
+   executeOk_servald config \
+      set debug.mdprequests on \
+      set log.console.level DEBUG \
+      set log.console.show_time on
+}
+
 doc_connect_fail="Timeout when the connection isn't reachable"
 setup_connect_fail() {
    setup_servald
    assert_no_servald_processes
-   foreach_instance +A +B create_single_identity
-   foreach_instance +A +B \
-      executeOk_servald config \
-         set debug.mdprequests on \
-         set log.console.level DEBUG \
-         set log.console.show_time on
+   set_instance +B
+   create_single_identity
    start_servald_instances +A
 }
 test_connect_fail() {
@@ -53,12 +58,6 @@ doc_hello="Simple Hello World"
 setup_hello() {
    setup_servald
    assert_no_servald_processes
-   foreach_instance +A +B create_single_identity
-   foreach_instance +A +B \
-      executeOk_servald config \
-         set debug.mdprequests on \
-         set log.console.level DEBUG \
-         set log.console.show_time on
    start_servald_instances +A +B
 }
 server_hello() {
@@ -66,6 +65,7 @@ server_hello() {
 Hello from the server
 EOF
    assertStdoutGrep --matches=1 "^Hello from the client$"
+   tfw_cat --stderr
 }
 test_hello() {
    set_instance +A
@@ -84,12 +84,6 @@ setup_client_no_data() {
    setup_servald
    assert_no_servald_processes
    create_file file1 64000
-   foreach_instance +A +B create_single_identity
-   foreach_instance +A +B \
-      executeOk_servald config \
-         set debug.mdprequests on \
-         set log.console.level DEBUG \
-         set log.console.show_time on
    start_servald_instances +A +B
 }
 server_client_no_data() {
@@ -113,12 +107,6 @@ setup_server_no_data() {
    setup_servald
    assert_no_servald_processes
    create_file file1 64000
-   foreach_instance +A +B create_single_identity
-   foreach_instance +A +B \
-      executeOk_servald config \
-         set debug.mdprequests on \
-         set log.console.level DEBUG \
-         set log.console.show_time on
    start_servald_instances +A +B
 }
 server_server_no_data() {
@@ -141,12 +129,6 @@ doc_keep_alive="Keep the connection alive with no data"
 setup_keep_alive() {
    setup_servald
    assert_no_servald_processes
-   foreach_instance +A +B create_single_identity
-   foreach_instance +A +B \
-      executeOk_servald config \
-         set debug.mdprequests on \
-         set log.console.level DEBUG \
-         set log.console.show_time on
    start_servald_instances +A +B
 }
 listen_pipe() {
@@ -163,6 +145,28 @@ test_keep_alive() {
    wait_until --timeout=10 grep "Bind MDP $SIDA:512" "$instance_servald_log"
    set_instance +B
    fork connect_pipe $SIDA
+   fork_wait_all
+}
+
+doc_forward="Forward TCP connections to a remote server"
+setup_forward() {
+   setup_servald
+   assert_no_servald_processes
+   start_servald_instances +A +B
+}
+client_forward() {
+   executeOk --timeout=20 $servald msp connect --once --forward=2048 $1 512
+   tfw_cat --stdout --stderr
+}
+test_forward() {
+   set_instance +A
+   fork server_hello
+   wait_until --timeout=10 grep "Bind MDP $SIDA:512" "$instance_servald_log"
+   set_instance +B
+   fork client_forward $SIDA
+   sleep 1
+   executeOk nc -v 127.0.0.1 2048 < <(echo "Hello from the client")
+   assertStdoutGrep --matches=1 "^Hello from the server$"
    fork_wait_all
 }
 

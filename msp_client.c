@@ -79,6 +79,18 @@ unsigned msp_socket_count()
   return i;
 }
 
+void msp_debug()
+{
+  struct msp_sock *p=root;
+  DEBUGF("Msp sockets;");
+  while(p){
+    DEBUGF("State %d, from %s:%d to %s:%d", p->state, 
+      alloca_tohex_sid_t(p->header.local.sid), p->header.local.port, 
+      alloca_tohex_sid_t(p->header.remote.sid), p->header.remote.port);
+    p=p->_next;
+  }
+}
+
 static void free_all_packets(struct msp_window *window)
 {
   struct msp_packet *p = window->_head;
@@ -113,6 +125,8 @@ static void free_acked_packets(struct msp_window *window, uint16_t seq)
   }
   window->_head = p;
   if (rtt){
+    if (rtt < 10)
+      rtt=10;
     window->rtt = rtt;
     if (window->base_rtt > rtt)
       window->base_rtt = rtt;
