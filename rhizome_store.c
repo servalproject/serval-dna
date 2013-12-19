@@ -467,6 +467,7 @@ int rhizome_fail_write(struct rhizome_write *write)
 
 int rhizome_finish_write(struct rhizome_write *write)
 {
+  int ret = -1;
   if (write->blob_rowid==0 && write->blob_fd == -1)
     return WHY("Can't finish a write that has already been closed");
   if (write->buffer_list){
@@ -498,7 +499,8 @@ int rhizome_finish_write(struct rhizome_write *write)
 
   if (write->id_known) {
     if (cmp_rhizome_filehash_t(&write->id, &hash_out) != 0) {
-      WHYF("expected filehash=%s, got %s", alloca_tohex_rhizome_filehash_t(write->id), alloca_tohex_rhizome_filehash_t(hash_out));
+      WARNF("expected filehash=%s, got %s", alloca_tohex_rhizome_filehash_t(write->id), alloca_tohex_rhizome_filehash_t(hash_out));
+      ret = 1;
       goto failure;
     }
   } else {
@@ -574,11 +576,16 @@ dbfailure:
   sqlite_exec_void_retry(&retry, "ROLLBACK;", END);
 failure:
   rhizome_fail_write(write);
-  return -1;
+  return ret;
 }
 
-// import a file for an existing bundle with a known file hash
-int rhizome_import_file(rhizome_manifest *m, const char *filepath)
+/* Import the payload for an existing manifest with a known file size and hash.  Compute the hash of
+ * the payload as it is imported, and when finished, check if the size and hash match the manifest.
+ * If the import is successful and the size and hash match, return 0.  If the size or hash do not
+ * match, return 1.  If there is an error reading the payload file or writing to the database,
+ * return -1.
+ */
+int rhizome_import_payload_from_file(rhizome_manifest *m, const char *filepath)
 {
   assert(m->filesize != RHIZOME_SIZE_UNSET);
   if (m->filesize == 0)
@@ -598,12 +605,7 @@ int rhizome_import_file(rhizome_manifest *m, const char *filepath)
     return -1;
   }
   
-  if (rhizome_finish_write(&write)){
-    rhizome_fail_write(&write);
-    return -1;
-  }
-  
-  return 0;
+  return rhizome_finish_write(&write);
 }
 
 // store a whole payload from a single buffer
@@ -630,15 +632,17 @@ int rhizome_import_buffer(rhizome_manifest *m, unsigned char *buffer, size_t len
     return -1;
   }
   
-  if (rhizome_finish_write(&write)){
-    rhizome_fail_write(&write);
-    return -1;
-  }
-  
-  return 0;
+  return rhizome_finish_write(&write);
 }
 
-int rhizome_stat_file(rhizome_manifest *m, const char *filepath)
+/* Checks the size of the file with the given path as a candidate payload for an existing manifest.
+ * An empty path (zero length) is taken to mean empty payload (size = 0).  If the manifest's
+ * 'filesize' is not yet set, then sets the manifest's 'filesize' to the size of the file and
+ * returns 0.  Otherwise, if the file's size equals the 'filesize' in the manifest, return 0.  If
+ * the file size does not match the manifest's 'filesize', returns 1.  If there is an error calling
+ * stat(2) on the payload file (eg, file does not exist), returns -1.
+ */
+int rhizome_stat_payload_file(rhizome_manifest *m, const char *filepath)
 {
   uint64_t size = 0;
   if (filepath[0]) {
@@ -647,14 +651,14 @@ int rhizome_stat_file(rhizome_manifest *m, const char *filepath)
       return WHYF_perror("lstat(%s)", alloca_str_toprint(filepath));
     size = stat.st_size;
   }
-  
-  // Fail if the file is shorter than already specified by the manifest.
-  if (m->filesize != RHIZOME_SIZE_UNSET && size < m->filesize)
-    return WHY("Manifest length is longer than the file");
-  
-  // If the file is longer than already specified by the manifest, ignore the end of the file.
-  if (m->filesize == RHIZOME_SIZE_UNSET || size > m->filesize)
+  if (m->filesize == RHIZOME_SIZE_UNSET)
     rhizome_manifest_set_filesize(m, size);
+  else if (size != m->filesize) {
+    if (config.debug.rhizome)
+      DEBUGF("payload file %s (size=%"PRIu64") does not match manifest[%d].filesize=%"PRIu64,
+	  alloca_str_toprint(filepath), size, m->manifest_record_number, m->filesize);
+    return 1;
+  }
   return 0;
 }
 
@@ -681,10 +685,14 @@ static int rhizome_write_derive_key(rhizome_manifest *m, struct rhizome_write *w
 
 int rhizome_write_open_manifest(struct rhizome_write *write, rhizome_manifest *m)
 {
-  assert(m->filesize != RHIZOME_SIZE_UNSET);
-  if (rhizome_open_write(write, NULL, m->filesize, RHIZOME_PRIORITY_DEFAULT))
+  if (rhizome_open_write(
+	  write,
+	  m->has_filehash ? &m->filehash : NULL,
+	  m->filesize,
+	  RHIZOME_PRIORITY_DEFAULT
+	)
+  )
     return -1;
-
   if (rhizome_write_derive_key(m, write))
     return -1;
   return 0;
@@ -692,22 +700,25 @@ int rhizome_write_open_manifest(struct rhizome_write *write, rhizome_manifest *m
 
 // import a file for a new bundle with an unknown file hash
 // update the manifest with the details of the file
-int rhizome_add_file(rhizome_manifest *m, const char *filepath)
+int rhizome_store_payload_file(rhizome_manifest *m, const char *filepath)
 {
   // Stream the file directly into the database, encrypting & hashing as we go.
   struct rhizome_write write;
   bzero(&write, sizeof(write));
-  if (rhizome_write_open_manifest(&write, m))
-    goto failure;
-  if (rhizome_write_file(&write, filepath))
-    goto failure;
-  if (rhizome_finish_write(&write))
-    goto failure;
-  rhizome_manifest_set_filehash(m, &write.id);
-  return 0;
-failure:
-  rhizome_fail_write(&write);
-  return -1;
+  if (   rhizome_write_open_manifest(&write, m)
+      || rhizome_write_file(&write, filepath)
+  ) {
+    rhizome_fail_write(&write);
+    return -1;
+  }
+  int ret = rhizome_finish_write(&write);
+  if (ret == 0) {
+    if (m->has_filehash)
+      assert(cmp_rhizome_filehash_t(&m->filehash, &write.id) == 0);
+    else
+      rhizome_manifest_set_filehash(m, &write.id);
+  }
+  return ret;
 }
 
 /* Return -1 on error, 0 if file blob found, 1 if not found.

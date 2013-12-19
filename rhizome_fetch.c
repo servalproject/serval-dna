@@ -475,13 +475,27 @@ int rhizome_queue_ignore_manifest(unsigned char *bid_prefix, int prefix_len, int
 
 static int rhizome_import_received_bundle(struct rhizome_manifest *m)
 {
-  m->finalised = 1;
+  if (!rhizome_manifest_validate(m))
+    return 0;
   if (config.debug.rhizome_rx) {
     DEBUGF("manifest len=%zu has %u signatories. Associated filesize=%"PRIu64" bytes", 
 	   m->manifest_all_bytes, m->sig_count, m->filesize);
     dump("manifest", m->manifestdata, m->manifest_all_bytes);
   }
-  return rhizome_add_manifest(m, m->ttl - 1 /* TTL */);
+  enum rhizome_bundle_status status = rhizome_add_manifest(m, NULL);
+  switch (status) {
+    case RHIZOME_BUNDLE_STATUS_NEW:
+      return 0;
+    case RHIZOME_BUNDLE_STATUS_SAME:
+    case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+    case RHIZOME_BUNDLE_STATUS_OLD:
+      return 1;
+    case RHIZOME_BUNDLE_STATUS_ERROR:
+    case RHIZOME_BUNDLE_STATUS_INVALID:
+      return -1;
+    default:
+      FATALF("rhizome_add_manifest() returned %d", status);
+  }
 }
 
 // begin fetching a bundle
@@ -733,7 +747,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   if (rhizome_exists(&m->filehash)){
     if (config.debug.rhizome_rx)
       DEBUGF("   fetch not started - payload already present, so importing instead");
-    if (rhizome_add_manifest(m, m->ttl-1) == -1)
+    if (rhizome_add_manifest(m, NULL) == -1)
       RETURN(WHY("add manifest failed"));
     RETURN(IMPORTED);
   }
@@ -1294,7 +1308,7 @@ int rhizome_write_complete(struct rhizome_fetch_slot *slot)
       RETURN(-1);
     }
 
-    if (rhizome_import_received_bundle(slot->manifest)){
+    if (rhizome_import_received_bundle(slot->manifest) == -1){
       rhizome_fetch_close(slot);
       RETURN(-1);
     }
@@ -1447,9 +1461,10 @@ int rhizome_received_content(const unsigned char *bidprefix,
     }
     
     if (m){
-      if (rhizome_import_buffer(m, bytes, count) >= 0 && !rhizome_import_received_bundle(m)){
+      if (rhizome_import_buffer(m, bytes, count) >= 0){
 	INFOF("Completed MDP transfer in one hit for file %s",
 	    alloca_tohex_rhizome_filehash_t(m->filehash));
+	rhizome_import_received_bundle(m);
 	if (c)
 	  candidate_unqueue(c);
       }

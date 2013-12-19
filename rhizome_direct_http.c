@@ -79,12 +79,12 @@ static int rhizome_direct_import_end(struct http_request *hr)
 	alloca_str_toprint(manifest_path),
 	alloca_str_toprint(payload_path)
       );
-  int ret = 0;
+  enum rhizome_bundle_status status = 0;
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
-    ret = WHY("Out of manifests");
+    status = WHY("Out of manifests");
   else {
-    ret = rhizome_bundle_import_files(m, manifest_path, payload_path);
+    status = rhizome_bundle_import_files(m, NULL, manifest_path, payload_path);
     rhizome_manifest_free(m);
   }
   rhizome_direct_clear_temporary_files(r);
@@ -96,13 +96,28 @@ static int rhizome_direct_import_end(struct http_request *hr)
     the import fails due to malformed data etc.
     (should probably also indicate if we have a newer version if possible)
   */
-  switch (ret) {
-  case 0:
+  switch (status) {
+  case RHIZOME_BUNDLE_STATUS_NEW:
     http_request_simple_response(&r->http, 201, "Bundle succesfully imported");
     return 0;
-  case 2:
+  case RHIZOME_BUNDLE_STATUS_SAME:
     http_request_simple_response(&r->http, 200, "Bundle already imported");
     return 0;
+  case RHIZOME_BUNDLE_STATUS_OLD:
+    http_request_simple_response(&r->http, 403, "Newer bundle already stored");
+    return 0;
+  case RHIZOME_BUNDLE_STATUS_INVALID:
+    http_request_simple_response(&r->http, 403, "Manifest is invalid");
+    return 0;
+  case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+    http_request_simple_response(&r->http, 403, "Manifest is inconsistent with file");
+    return 0;
+  case RHIZOME_BUNDLE_STATUS_FAKE:
+    http_request_simple_response(&r->http, 403, "Manifest not signed");
+    return 0;
+  case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+  case RHIZOME_BUNDLE_STATUS_ERROR:
+    break;
   }
   http_request_simple_response(&r->http, 500, "Internal Error: Rhizome import failed");
   return 0;
@@ -181,7 +196,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
       return 0;
     }
     if (config.debug.rhizome)
-      DEBUGF("Call rhizome_add_file(%s)", alloca_str_toprint(payload_path));
+      DEBUGF("Call rhizome_store_payload_file(%s)", alloca_str_toprint(payload_path));
     char manifestTemplate[1024];
     manifestTemplate[0] = '\0';
     if (config.rhizome.api.addfile.manifest_template_file[0]) {
@@ -214,7 +229,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
       http_request_simple_response(&r->http, 500, "Internal Error: Malformed manifest template");
       return 0;
     }
-    if (rhizome_stat_file(m, payload_path)) {
+    if (rhizome_stat_payload_file(m, payload_path)) {
       WHY("Payload file stat failed");
       rhizome_manifest_free(m);
       rhizome_direct_clear_temporary_files(r);
@@ -238,7 +253,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
     // TODO, stream file into database
     assert(m->filesize != RHIZOME_SIZE_UNSET);
     if (m->filesize > 0) {
-      if (rhizome_add_file(m, payload_path)) {
+      if (rhizome_store_payload_file(m, payload_path)) {
 	rhizome_manifest_free(m);
 	rhizome_direct_clear_temporary_files(r);
 	http_request_simple_response(&r->http, 500, "Internal Error: Could not store file");
@@ -246,7 +261,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
       }
     }
     rhizome_manifest *mout = NULL;
-    if (rhizome_manifest_finalise(m, &mout, 1)) {
+    if (rhizome_manifest_finalise(m, &mout, 1) == -1) {
       if (mout && mout != m)
 	rhizome_manifest_free(mout);
       rhizome_manifest_free(m);

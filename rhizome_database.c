@@ -187,7 +187,7 @@ void verify_bundles()
       ) {
 	assert(m->finalised);
 	// Store it again, to ensure that MANIFESTS columns are up to date.
-	ret = rhizome_store_bundle(m);
+	ret = rhizome_store_manifest(m);
       }
       if (ret) {
 	if (config.debug.rhizome)
@@ -1351,7 +1351,7 @@ int rhizome_drop_stored_file(const rhizome_filehash_t *hashp, int maximum_priori
   We need to also need to create the appropriate row(s) in the MANIFESTS, FILES, 
    and GROUPMEMBERSHIPS tables, and possibly GROUPLIST as well.
  */
-int rhizome_store_bundle(rhizome_manifest *m)
+int rhizome_store_manifest(rhizome_manifest *m)
 {
   if (!m->finalised)
     return WHY("Manifest was not finalised");
@@ -1704,13 +1704,13 @@ int rhizome_update_file_priority(const char *fileid)
 }
 
 /* Search the database for a manifest having the same name and payload content, and if the version
- * is known, having the same version.  Returns 1 if a duplicate is found (setting *found to point to
- * the duplicate's manifest), returns 0 if no duplicate is found (leaving *found unchanged).
- * Returns -1 on error (leaving *found undefined).
+ * is known, having the same version.  Returns RHIZOME_BUNDLE_STATUS_DUPLICATE if a duplicate is found
+ * (setting *found to point to the duplicate's manifest), returns RHIZOME_BUNDLE_STATUS_NEW if no
+ * duplicate is found (leaving *found unchanged).  Returns -1 on error (leaving *found undefined).
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
+enum rhizome_bundle_status rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 {
   if (m->service == NULL)
     return WHY("Manifest has no service");
@@ -1728,7 +1728,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
     strbuf_puts(b, " AND recipient = ?");
   if (strbuf_overrun(b))
     return WHYF("SQL command too long: %s", strbuf_str(b));
-  int ret = 0;
+  int ret = RHIZOME_BUNDLE_STATUS_NEW;
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry, strbuf_str(b), INT64, m->filesize, STATIC_TEXT, m->service, END);
   if (!statement)
@@ -1760,7 +1760,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
     blob_m->manifest_all_bytes = manifestblobsize;
     if (   rhizome_manifest_parse(blob_m) == -1
 	|| !rhizome_manifest_validate(blob_m)
-    ) {
+       ) {
       WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
       goto next;
     }
@@ -1783,7 +1783,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
     *found = blob_m;
     if (config.debug.rhizome)
       DEBUGF("Found duplicate payload, %s", q_manifestid);
-    ret = 1;
+    ret = RHIZOME_BUNDLE_STATUS_DUPLICATE;
     break;
 next:
     if (blob_m)

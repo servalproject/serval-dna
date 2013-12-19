@@ -1510,48 +1510,60 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     return -1;
   }
 
+  enum rhizome_bundle_status status = RHIZOME_BUNDLE_STATUS_NEW;
   if (journal){
-    if (rhizome_append_journal_file(m, 0, filepath)){
-      rhizome_manifest_free(m);
-      keyring_free(keyring);
-      return -1;
-    }
-  }else{
-    if (rhizome_stat_file(m, filepath) == -1) {
-      rhizome_manifest_free(m);
-      keyring_free(keyring);
-      return -1;
-    }
-    if (m->filesize) {
-      if (rhizome_add_file(m, filepath) == -1) {
-        rhizome_manifest_free(m);
-	keyring_free(keyring);
-        return -1;
+    if (rhizome_append_journal_file(m, 0, filepath))
+      status = -1;
+  } else {
+    int n = rhizome_stat_payload_file(m, filepath);
+    if (n == 0 && m->filesize)
+      n = rhizome_store_payload_file(m, filepath);
+    if (n == -1)
+      status = -1;
+    else if (n)
+      status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
+  }
+  rhizome_manifest *mout = m;
+  if (status == RHIZOME_BUNDLE_STATUS_NEW) {
+    if (!rhizome_manifest_validate(m) || m->malformed)
+      status = RHIZOME_BUNDLE_STATUS_INVALID;
+    else {
+      status = rhizome_manifest_finalise(m, &mout, !force_new);
+      if (mout && mout != m && !rhizome_manifest_validate(mout)) {
+	WHYF("Stored manifest id=%s is invalid -- overwriting", alloca_tohex_rhizome_bid_t(mout->cryptoSignPublic));
+	status = RHIZOME_BUNDLE_STATUS_NEW;
       }
     }
   }
-  
-  rhizome_manifest *mout = NULL;
-  int ret = rhizome_manifest_finalise(m, &mout, !force_new);
-  if (ret<0){
-    rhizome_manifest_free(m);
-    keyring_free(keyring);
-    return -1;
+  switch (status) {
+    case RHIZOME_BUNDLE_STATUS_NEW:
+      if (mout && mout != m)
+	rhizome_manifest_free(mout);
+      mout = m;
+      // fall through
+    case RHIZOME_BUNDLE_STATUS_SAME:
+    case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+    case RHIZOME_BUNDLE_STATUS_OLD:
+      cli_put_manifest(context, mout);
+      if (   manifestpath && *manifestpath
+	  && rhizome_write_manifest_file(mout, manifestpath, 0) == -1
+      )
+	WHYF("Could not write manifest to %s", alloca_str_toprint(manifestpath));
+      break;
+    case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+    case RHIZOME_BUNDLE_STATUS_ERROR:
+    case RHIZOME_BUNDLE_STATUS_INVALID:
+      break;
+    default:
+      FATALF("status=%d", status);
   }
-
-  if (manifestpath && *manifestpath
-      && rhizome_write_manifest_file(mout, manifestpath, 0) == -1)
-    ret = WHY("Could not overwrite manifest file.");
-
-  assert(m->haveSecret);
-  assert(mout->authorship != AUTHOR_LOCAL);
-  cli_put_manifest(context, mout);
-
-  if (mout != m)
+  if (mout && mout != m) {
     rhizome_manifest_free(mout);
+    m = NULL;
+  }
   rhizome_manifest_free(m);
   keyring_free(keyring);
-  return ret;
+  return status;
 }
 
 int app_slip_test(const struct cli_parsed *parsed, struct cli_context *context)
@@ -1606,18 +1618,27 @@ int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_contex
   cli_arg(parsed, "manifestpath", &manifestpath, NULL, "");
   if (rhizome_opendb() == -1)
     return -1;
-  
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     return WHY("Out of manifests.");
-  
-  int status=rhizome_bundle_import_files(m, manifestpath, filepath);
-  if (status<0)
-    goto cleanup;
-  
-  cli_put_manifest(context, m);
-  
-cleanup:
+  rhizome_manifest *m_out = NULL;
+  enum rhizome_bundle_status status = rhizome_bundle_import_files(m, &m_out, manifestpath, filepath);
+  switch (status) {
+    case RHIZOME_BUNDLE_STATUS_NEW:
+    case RHIZOME_BUNDLE_STATUS_SAME:
+    case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+    case RHIZOME_BUNDLE_STATUS_OLD:
+      cli_put_manifest(context, m_out);
+      break;
+    case RHIZOME_BUNDLE_STATUS_ERROR:
+    case RHIZOME_BUNDLE_STATUS_INVALID:
+    case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+      break;
+    default:
+      FATALF("rhizome_bundle_import_files() returned %d", status);
+  }
+  if (m_out && m_out != m)
+    rhizome_manifest_free(m_out);
   rhizome_manifest_free(m);
   return status;
 }
@@ -1638,7 +1659,6 @@ int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_cont
       && rhizome_manifest_validate(m)
       && rhizome_manifest_verify(m)
   ) {
-    assert(m->finalised);
     if (rhizome_write_manifest_file(m, filepath, 1) != -1)
       ret = 0;
   }
@@ -1764,12 +1784,11 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
     return WHY("Out of manifests");
   }
   ret = rhizome_retrieve_manifest(&bid, m);
-  
   if (ret==0){
+    assert(m->finalised);
     if (bskhex)
       rhizome_apply_bundle_secret(m, &bsk);
     rhizome_authenticate_author(m);
-
     assert(m->authorship != AUTHOR_LOCAL);
     cli_put_manifest(context, m);
   }
@@ -1801,11 +1820,6 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
       int append = (strcmp(manifestpath, filepath)==0)?1:0;
       // don't write out the manifest if we were asked to append it and writing the file failed.
       if ((!append) || retfile==0){
-	/* If the manifest has been read in from database, the blob is there,
-	 and we can lie and say we are finalised and just want to write it
-	 out.  TODO: really should have a dirty/clean flag, so that write
-	 works if clean but not finalised. */
-	m->finalised=1;
 	if (rhizome_write_manifest_file(m, manifestpath, append) == -1)
 	  ret = -1;
       }

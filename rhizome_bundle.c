@@ -63,7 +63,6 @@ static int _rhizome_manifest_del(struct __sourceloc __whence, rhizome_manifest *
       free((char *) m->vars[i]);
       free((char *) m->values[i]);
       --m->var_count;
-      m->finalised = 0;
       ret = 1;
       break;
     }
@@ -90,7 +89,6 @@ static const char *_rhizome_manifest_set(struct __sourceloc __whence, rhizome_ma
 	return NULL;
       free((char *)m->values[i]);
       m->values[i] = ret;
-      m->finalised = 0;
       return ret;
     }
   if (m->var_count >= NELS(m->vars))
@@ -104,7 +102,6 @@ static const char *_rhizome_manifest_set(struct __sourceloc __whence, rhizome_ma
     return NULL;
   }
   m->var_count++;
-  m->finalised = 0;
   return ret;
 }
 
@@ -135,6 +132,7 @@ void _rhizome_manifest_set_id(struct __sourceloc __whence, rhizome_manifest *m, 
       m->authorship = AUTHOR_LOCAL;
   }
   m->has_id = 1;
+  m->finalised = 0;
 }
 
 void _rhizome_manifest_set_version(struct __sourceloc __whence, rhizome_manifest *m, uint64_t version)
@@ -142,6 +140,7 @@ void _rhizome_manifest_set_version(struct __sourceloc __whence, rhizome_manifest
   const char *v = rhizome_manifest_set_ui64(m, "version", version);
   assert(v); // TODO: remove known manifest fields from vars[]
   m->version = version;
+  m->finalised = 0;
 }
 
 void _rhizome_manifest_set_filesize(struct __sourceloc __whence, rhizome_manifest *m, uint64_t size)
@@ -149,6 +148,7 @@ void _rhizome_manifest_set_filesize(struct __sourceloc __whence, rhizome_manifes
   const char *v = rhizome_manifest_set_ui64(m, "filesize", size);
   assert(v); // TODO: remove known manifest fields from vars[]
   m->filesize = size;
+  m->finalised = 0;
   if (m->filesize == 0)
     rhizome_manifest_set_filehash(m, NULL);
 }
@@ -163,11 +163,14 @@ void _rhizome_manifest_set_filehash(struct __sourceloc __whence, rhizome_manifes
     const char *v = rhizome_manifest_set(m, "filehash", alloca_tohex_rhizome_filehash_t(*hash));
     assert(v); // TODO: remove known manifest fields from vars[]
     m->filehash = *hash;
+    m->has_filehash = 1;
   } else {
     assert(m->filesize == 0);
     rhizome_manifest_del(m, "filehash");
     m->filehash = RHIZOME_FILEHASH_NONE;
+    m->has_filehash = 0;
   }
+  m->finalised = 0;
 }
 
 void _rhizome_manifest_set_tail(struct __sourceloc __whence, rhizome_manifest *m, uint64_t tail)
@@ -176,6 +179,7 @@ void _rhizome_manifest_set_tail(struct __sourceloc __whence, rhizome_manifest *m
   assert(v); // TODO: remove known manifest fields from vars[]
   m->tail = tail;
   m->is_journal = (tail != RHIZOME_SIZE_UNSET);
+  m->finalised = 0;
 }
 
 void _rhizome_manifest_set_bundle_key(struct __sourceloc __whence, rhizome_manifest *m, const rhizome_bk_t *bkp)
@@ -185,6 +189,7 @@ void _rhizome_manifest_set_bundle_key(struct __sourceloc __whence, rhizome_manif
     assert(v); // TODO: remove known manifest fields from vars[]
     m->bundle_key = *bkp;
     m->has_bundle_key = 1;
+    m->finalised = 0;
   } else
     _rhizome_manifest_del_bundle_key(__whence, m);
 }
@@ -195,6 +200,7 @@ void _rhizome_manifest_del_bundle_key(struct __sourceloc __whence, rhizome_manif
     rhizome_manifest_del(m, "BK");
     m->has_bundle_key = 0;
     m->bundle_key = RHIZOME_BK_NONE; // not strictly necessary, but aids debugging
+    m->finalised = 0;
   } else
     assert(rhizome_manifest_get(m, "BK") == NULL);
   // Once there is no BK field, any authenticated authorship is no longer.
@@ -209,6 +215,7 @@ void _rhizome_manifest_set_service(struct __sourceloc __whence, rhizome_manifest
     const char *v = rhizome_manifest_set(m, "service", service);
     assert(v); // TODO: remove known manifest fields from vars[]
     m->service = v;
+    m->finalised = 0;
   } else
     _rhizome_manifest_del_service(__whence, m);
 }
@@ -217,6 +224,7 @@ void _rhizome_manifest_del_service(struct __sourceloc __whence, rhizome_manifest
 {
   if (m->service) {
     m->service = NULL;
+    m->finalised = 0;
     rhizome_manifest_del(m, "service");
   } else
     assert(rhizome_manifest_get(m, "service") == NULL);
@@ -224,6 +232,7 @@ void _rhizome_manifest_del_service(struct __sourceloc __whence, rhizome_manifest
 
 void _rhizome_manifest_set_name(struct __sourceloc __whence, rhizome_manifest *m, const char *name)
 {
+  m->finalised = 0;
   if (name) {
     assert(rhizome_str_is_manifest_name(name));
     const char *v = rhizome_manifest_set(m, "name", name);
@@ -239,6 +248,7 @@ void _rhizome_manifest_del_name(struct __sourceloc __whence, rhizome_manifest *m
 {
   if (m->name) {
     m->name = NULL;
+    m->finalised = 0;
     rhizome_manifest_del(m, "name");
   } else
     assert(rhizome_manifest_get(m, "name") == NULL);
@@ -250,6 +260,7 @@ void _rhizome_manifest_set_date(struct __sourceloc __whence, rhizome_manifest *m
   assert(v); // TODO: remove known manifest fields from vars[]
   m->date = date;
   m->has_date = 1;
+  m->finalised = 0;
 }
 
 void _rhizome_manifest_set_sender(struct __sourceloc __whence, rhizome_manifest *m, const sid_t *sidp)
@@ -259,6 +270,7 @@ void _rhizome_manifest_set_sender(struct __sourceloc __whence, rhizome_manifest 
     assert(v); // TODO: remove known manifest fields from vars[]
     m->sender = *sidp;
     m->has_sender = 1;
+    m->finalised = 0;
   } else
     _rhizome_manifest_del_sender(__whence, m);
 }
@@ -269,6 +281,7 @@ void _rhizome_manifest_del_sender(struct __sourceloc __whence, rhizome_manifest 
     rhizome_manifest_del(m, "sender");
     m->sender = SID_ANY;
     m->has_sender = 0;
+    m->finalised = 0;
   } else
     assert(rhizome_manifest_get(m, "sender") == NULL);
 }
@@ -280,6 +293,7 @@ void _rhizome_manifest_set_recipient(struct __sourceloc __whence, rhizome_manife
     assert(v); // TODO: remove known manifest fields from vars[]
     m->recipient = *sidp;
     m->has_recipient = 1;
+    m->finalised = 0;
   } else
     _rhizome_manifest_del_recipient(__whence, m);
 }
@@ -290,6 +304,7 @@ void _rhizome_manifest_del_recipient(struct __sourceloc __whence, rhizome_manife
     rhizome_manifest_del(m, "recipient");
     m->recipient = SID_ANY;
     m->has_recipient = 0;
+    m->finalised = 0;
   } else
     assert(rhizome_manifest_get(m, "recipient") == NULL);
 }
@@ -313,6 +328,7 @@ void _rhizome_manifest_set_crypt(struct __sourceloc __whence, rhizome_manifest *
     default: abort();
   }
   m->payloadEncryption = flag;
+  m->finalised = 0;
 }
 
 void _rhizome_manifest_set_rowid(struct __sourceloc __whence, rhizome_manifest *m, uint64_t rowid)
@@ -355,15 +371,18 @@ void _rhizome_manifest_del_author(struct __sourceloc __whence, rhizome_manifest 
 /* Compute the hash of the manifest's body, including the NUL byte that separates the body from
  * the signature block, and verify that a signature is present and is correct.
  *
- * Returns 1 if the manifest signature is valid, ie, the signature is a self-signature using the
- * manifest's own private key.  Sets the m->finalised flag to 1.
+ * If the manifest signature is valid, ie, the signature is a self-signature using the
+ * manifest's own private key, then sets the m->selfSigned flag and returns 1.
  *
- * Returns 0 if there are no signatures or if the signature block does not verify.
+ * If there are no signatures or if the signature block does not verify, then clears the
+ * m->selfSigned flag and returns 0.
  *
- * Only call this function on manifests for which rhizome_manifest_validate(m) has returned true.
+ * Only call this function on manifests for which rhizome_manifest_validate(m) has returned true
+ * (ie, m->finalised is set).
  */
 int rhizome_manifest_verify(rhizome_manifest *m)
 {
+  assert(m->finalised);
   assert(m->manifest_body_bytes > 0);
   assert(m->manifest_all_bytes > 0);
   assert(m->manifest_body_bytes <= m->manifest_all_bytes);
@@ -378,7 +397,6 @@ int rhizome_manifest_verify(rhizome_manifest *m)
       break;
   }
   assert(ofs <= m->manifest_all_bytes);
-
   // Make sure the first signatory's public key is the bundle ID
   assert(m->has_id);
   if (m->sig_count == 0) {
@@ -396,7 +414,6 @@ int rhizome_manifest_verify(rhizome_manifest *m)
     return 0;
   }
   m->selfSigned = 1;
-  m->finalised = 1;
   return 1;
 }
 
@@ -415,6 +432,7 @@ static void rhizome_manifest_clear(rhizome_manifest *m)
   }
   m->malformed = 0;
   m->has_id = 0;
+  m->has_filehash = 0;
   m->is_journal = 0;
   m->filesize = RHIZOME_SIZE_UNSET;
   m->tail = RHIZOME_SIZE_UNSET;
@@ -526,12 +544,18 @@ int rhizome_manifest_parse(rhizome_manifest *m)
   assert(m->manifest_all_bytes <= sizeof m->manifestdata);
   assert(m->manifest_body_bytes == 0);
   assert(m->var_count == 0);
+  assert(!m->finalised);
   assert(!m->malformed);
   assert(!m->has_id);
+  assert(!m->has_filehash);
   assert(!m->is_journal);
   assert(m->filesize == RHIZOME_SIZE_UNSET);
   assert(m->tail == RHIZOME_SIZE_UNSET);
   assert(m->version == 0);
+  assert(!m->has_date);
+  assert(!m->has_sender);
+  assert(!m->has_recipient);
+  assert(m->payloadEncryption == PAYLOAD_CRYPT_UNKNOWN);
 
   unsigned has_invalid_essential = 0;
   unsigned has_duplicate = 0;
@@ -581,6 +605,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
       status = FIELD_DUPLICATE;
     else if (strcasecmp(label, "id") == 0) {
       if (str_to_rhizome_bid_t(&m->cryptoSignPublic, value) != -1) {
+	assert(!m->has_id);
 	status = FIELD_OK;
 	m->has_id = 1;
 	if (config.debug.rhizome_manifest)
@@ -591,6 +616,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
     else if (strcasecmp(label, "version") == 0) {
       uint64_t version;
       if (str_to_uint64(value, 10, &version, NULL) && version != 0) {
+	assert(m->version == 0);
 	status = FIELD_OK;
 	m->version = version;
 	if (config.debug.rhizome_manifest)
@@ -599,8 +625,10 @@ int rhizome_manifest_parse(rhizome_manifest *m)
 	status = FIELD_INVALID;
     }
     else if (strcasecmp(label, "filehash") == 0) {
-      if (str_to_rhizome_filehash_t(&m->filehash, value) != -1 && !rhizome_filehash_t_is_zero(m->filehash)) {
+      if (str_to_rhizome_filehash_t(&m->filehash, value) != -1) {
+	assert(!m->has_filehash);
 	status = FIELD_OK;
+	m->has_filehash = 1;
 	if (config.debug.rhizome_manifest)
 	  DEBUGF("PARSE manifest[%d].filehash = %s", m->manifest_record_number, alloca_tohex_rhizome_filehash_t(m->filehash));
       } else
@@ -609,6 +637,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
     else if (strcasecmp(label, "filesize") == 0) {
       uint64_t filesize;
       if (str_to_uint64(value, 10, &filesize, NULL) && filesize != RHIZOME_SIZE_UNSET) {
+	assert(m->filesize == RHIZOME_SIZE_UNSET);
 	status = FIELD_OK;
 	m->filesize = filesize;
 	if (config.debug.rhizome_manifest)
@@ -619,6 +648,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
     else if (strcasecmp(label, "tail") == 0) {
       uint64_t tail;
       if (str_to_uint64(value, 10, &tail, NULL) && tail != RHIZOME_SIZE_UNSET) {
+	assert(m->tail == RHIZOME_SIZE_UNSET);
 	status = FIELD_OK;
 	m->tail = tail;
 	m->is_journal = 1;
@@ -633,6 +663,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
     // layer can refuse to add (or export?) the bundle.
     else if (strcasecmp(label, "BK") == 0) {
       if (str_to_rhizome_bk_t(&m->bundle_key, value) != -1) {
+	assert(!m->has_bundle_key);
 	status = FIELD_OK;
 	m->has_bundle_key = 1;
 	if (config.debug.rhizome_manifest)
@@ -642,6 +673,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
     }
     else if (strcasecmp(label, "service") == 0) {
       if (rhizome_str_is_manifest_service(value)) {
+	assert(m->service == NULL);
 	status = FIELD_OK;
 	m->service = value; // will be free()d when vars[] and values[] are free()d
 	if (config.debug.rhizome_manifest)
@@ -652,6 +684,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
     else if (strcasecmp(label, "date") == 0) {
       int64_t date;
       if (str_to_int64(value, 10, &date, NULL)) {
+	assert(!m->has_date);
 	status = FIELD_OK;
 	m->date = date;
 	m->has_date = 1;
@@ -662,6 +695,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
     }
     else if (strcasecmp(label, "sender") == 0) {
       if (str_to_sid_t(&m->sender, value) != -1) {
+	assert(!m->has_sender);
 	status = FIELD_OK;
 	m->has_sender = 1;
 	if (config.debug.rhizome_manifest)
@@ -671,6 +705,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
     }
     else if (strcasecmp(label, "recipient") == 0) {
       if (str_to_sid_t(&m->recipient, value) != -1) {
+	assert(!m->has_recipient);
 	status = FIELD_OK;
 	m->has_recipient = 1;
 	if (config.debug.rhizome_manifest)
@@ -686,6 +721,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
     }
     else if (strcasecmp(label, "crypt") == 0) {
       if (strcmp(value, "0") == 0 || strcmp(value, "1") == 0) {
+	assert(m->payloadEncryption == PAYLOAD_CRYPT_UNKNOWN);
 	status = FIELD_OK;
 	m->payloadEncryption = (value[0] == '1') ? PAYLOAD_ENCRYPTED : PAYLOAD_CLEAR;
 	if (config.debug.rhizome_manifest)
@@ -742,8 +778,13 @@ int rhizome_manifest_parse(rhizome_manifest *m)
   OUT();
 }
 
-/* Return 1 if all necessary fields are present, 0 if not.  Increment m->malformed if any
- * unnecessary fields are missing.
+/* If all essential (transport) fields are present and well formed then sets the m->finalised field
+ * and returns 1, otherwise returns 0.
+ *
+ * Increments m->malformed if any non-essential fields are missing or invalid.  It is up to the
+ * caller to check the m->malformed field and decide whether or not to process a malformed manifest.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
 int rhizome_manifest_validate(rhizome_manifest *m)
 {
@@ -762,24 +803,44 @@ int rhizome_manifest_validate(rhizome_manifest *m)
     if (config.debug.rhizome_manifest)
       DEBUG("Missing 'filesize' field");
     ret = 0;
+  } else if (m->filesize == 0 && m->has_filehash) {
+    if (config.debug.rhizome_manifest)
+      DEBUG("Spurious 'filehash' field");
+    ret = 0;
+  } else if (m->filesize != 0 && !m->has_filehash) {
+    if (config.debug.rhizome_manifest)
+      DEBUG("Missing 'filehash' field");
+    ret = 0;
   }
-  if (rhizome_filehash_t_is_zero(m->filehash)) {
-    if (m->filesize > 0) {
-      if (config.debug.rhizome_manifest)
-	DEBUG("Missing 'filehash' field");
-      ret = 0;
-    }
-  } else {
-    if (m->filesize == 0) {
-      if (config.debug.rhizome_manifest)
-	DEBUG("Spurious 'filehash' field");
-      ret = 0;
-    }
-  }
-  // warn if expected fields are missing
+  // Warn if expected fields are missing or invalid
   if (m->service == NULL) {
     if (config.debug.rhizome_manifest)
       DEBUG("Missing 'service' field");
+    ++m->malformed;
+  }
+  else if (strcmp(m->service, RHIZOME_SERVICE_FILE) == 0) {
+    if (m->name == NULL) {
+      if (config.debug.rhizome_manifest)
+	DEBUG("Manifest with service='" RHIZOME_SERVICE_FILE "' missing 'name' field");
+      ++m->malformed;
+    }
+  } else if (strcmp(m->service, RHIZOME_SERVICE_MESHMS) == 0 
+	  || strcmp(m->service, RHIZOME_SERVICE_MESHMS2) == 0
+  ) {
+    if (!m->has_sender) {
+      if (config.debug.rhizome_manifest)
+	DEBUGF("Manifest with service='%s' missing 'sender' field", m->service);
+      ++m->malformed;
+    }
+    if (!m->has_recipient) {
+      if (config.debug.rhizome_manifest)
+	DEBUGF("Manifest with service='%s' missing 'recipient' field", m->service);
+      ++m->malformed;
+    }
+  }
+  else if (!rhizome_str_is_manifest_service(m->service)) {
+    if (config.debug.rhizome_manifest)
+      DEBUGF("Manifest invalid 'service' field %s", alloca_str_toprint(m->service));
     ++m->malformed;
   }
   if (!m->has_date) {
@@ -787,6 +848,7 @@ int rhizome_manifest_validate(rhizome_manifest *m)
       DEBUG("Missing 'date' field");
     ++m->malformed;
   }
+  m->finalised = ret;
   return ret;
 }
 
@@ -1002,10 +1064,7 @@ int rhizome_write_manifest_file(rhizome_manifest *m, const char *path, char appe
 {
   if (config.debug.rhizome)
     DEBUGF("write manifest (%zd bytes) to %s", m->manifest_all_bytes, path);
-  if (!m)
-    return WHY("Manifest is null.");
-  if (!m->finalised)
-    return WHY("Manifest must be finalised before it can be written.");
+  assert(m->finalised);
   int fd = open(path, O_WRONLY | O_CREAT | (append ? O_APPEND : 0), 0666);
   if (fd == -1)
     return WHYF_perror("open(%s,O_WRONLY|O_CREAT%s,0666)", alloca_str_toprint(path), append ? "|O_APPEND" : "");
@@ -1039,20 +1098,28 @@ int rhizome_manifest_dump(rhizome_manifest *m, const char *msg)
   return 0;
 }
 
-int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout, int deduplicate)
+enum rhizome_bundle_status rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout, int deduplicate)
 {
   IN();
-  int ret=0;
 
-  if (m->filesize == RHIZOME_SIZE_UNSET)
-    RETURN(WHY("Manifest filesize unknown"));
+  if (!m->finalised && !rhizome_manifest_validate(m))
+    RETURN(RHIZOME_BUNDLE_STATUS_INVALID);
 
   // if a manifest was supplied with an ID, don't bother to check for a duplicate.
   // we only want to filter out added files with no existing manifest.
-  if (deduplicate && m->haveSecret != EXISTING_BUNDLE_ID && rhizome_find_duplicate(m, mout) == 1)
-    RETURN(2);
-
-  *mout=m;
+  if (deduplicate && m->haveSecret != EXISTING_BUNDLE_ID) {
+    enum rhizome_bundle_status status = rhizome_find_duplicate(m, mout);
+    switch (status) {
+      case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+      case RHIZOME_BUNDLE_STATUS_ERROR:
+	RETURN(status);
+      case RHIZOME_BUNDLE_STATUS_NEW:
+	break;
+      default:
+	FATALF("rhizome_find_duplicate() returned %d", status);
+    }
+  }
+  *mout = m;
 
   /* Convert to final form for signing and writing to disk */
   if (rhizome_manifest_pack_variables(m))
@@ -1063,20 +1130,19 @@ int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout, int 
     RETURN(WHY("Could not sign manifest"));
 
   /* mark manifest as finalised */
-  m->finalised=1;
-  ret = rhizome_add_manifest(m, 255 /* TTL */);
-
-  RETURN(ret);
+  enum rhizome_bundle_status status = rhizome_add_manifest(m, mout);
+  RETURN(status);
   OUT();
 }
 
+/* Fill in a few missing manifest fields, to make it easier to use when adding new files:
+ *  - use the current time for "date" and "version"
+ *  - use the given author SID, or the 'sender' if present, as the author
+ *  - create an ID if there is none, otherwise authenticate the existing one
+ *  - if service is file, then use the payload file's basename for "name"
+ */
 int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp)
 {
-  /* Fill in a few missing manifest fields, to make it easier to use when adding new files:
-   - use the current time for "date" and "version"
-   - if service is file, then use the payload file's basename for "name"
-   */
-
   /* Set version of manifest from current time if not already set. */
   if (m->version == 0)
     rhizome_manifest_set_version(m, gettime_ms());
