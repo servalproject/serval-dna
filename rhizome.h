@@ -468,7 +468,6 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m);
 rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence);
 #define rhizome_new_manifest() _rhizome_new_manifest(__WHENCE__)
 
-int rhizome_manifest_pack_variables(rhizome_manifest *m);
 int rhizome_store_bundle(rhizome_manifest *m);
 int rhizome_remove_file_datainvalid(sqlite_retry_state *retry, const rhizome_filehash_t *hashp);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);

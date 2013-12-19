@@ -949,7 +949,7 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
 
 /* Convert variable list into manifest text body and compute the hash.  Do not sign.
  */
-int rhizome_manifest_pack_variables(rhizome_manifest *m)
+static int rhizome_manifest_pack_variables(rhizome_manifest *m)
 {
   assert(m->var_count <= NELS(m->vars));
   strbuf sb = strbuf_local((char*)m->manifestdata, sizeof m->manifestdata);
