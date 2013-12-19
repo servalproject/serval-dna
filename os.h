@@ -125,4 +125,12 @@ int urandombytes(unsigned char *buf, size_t len);
  */
 ssize_t read_symlink(const char *path, char *buf, size_t len);
 
+/* Read the whole file into the given buffer.  If the file will not fit into
+ * the buffer or if there is an error opening or reading the file, logs an
+ * error and returns -1.  Otherwise, returns the number of bytes read.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+ssize_t read_whole_file(const char *path, unsigned char *buffer, size_t buffer_size);
+
 #endif //__SERVAL_DNA__OS_H

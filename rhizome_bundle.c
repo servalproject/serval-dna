@@ -399,19 +399,6 @@ int rhizome_manifest_verify(rhizome_manifest *m)
   return 1;
 }
 
-ssize_t read_whole_file(const char *path, unsigned char *buffer, size_t buffer_size)
-{
-  int fd = open(path, O_RDONLY);
-  if (fd == -1)
-    return WHYF_perror("open(%s,O_RDONLY)", alloca_str_toprint(path));
-  ssize_t ret = read(fd, buffer, buffer_size);
-  if (ret == -1)
-    ret = WHYF_perror("read(%s,%zu)", alloca_str_toprint(path), buffer_size);
-  if (close(fd) == -1)
-    ret = WHY_perror("close");
-  return ret;
-}
-
 static void rhizome_manifest_clear(rhizome_manifest *m)
 {
   while (m->var_count) {
