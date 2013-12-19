@@ -104,21 +104,18 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
 	manifest_path ? alloca_str_toprint(manifest_path) : "NULL",
 	filepath ? alloca_str_toprint(filepath) : "NULL");
   
-  unsigned char buffer[MAX_MANIFEST_BYTES];
   size_t buffer_len = 0;
+  int ret = 0;
   
   // manifest has been appended to the end of the file.
   if (strcmp(manifest_path, filepath)==0){
     unsigned char marker[4];
-    int ret=0;
     FILE *f = fopen(filepath, "r");
     
     if (f == NULL)
       return WHYF_perror("Could not open manifest file %s for reading.", filepath);
-    
     if (fseek(f, -sizeof(marker), SEEK_END))
       ret=WHY_perror("Unable to seek to end of file");
-    
     if (ret==0){
       ret = fread(marker, 1, sizeof(marker), f);
       if (ret==sizeof(marker))
@@ -126,39 +123,37 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
       else
 	ret=WHY_perror("Unable to read end of manifest marker");
     }
-    
     if (ret==0){
       if (marker[2]!=0x41 || marker[3]!=0x10)
 	ret=WHYF("Expected 0x4110 marker at end of file");
     }
-    
     if (ret==0){
       buffer_len = read_uint16(marker);
       if (buffer_len < 1 || buffer_len > MAX_MANIFEST_BYTES)
 	ret=WHYF("Invalid manifest length %zu", buffer_len);
     }
-    
     if (ret==0){
       if (fseek(f, -(buffer_len+sizeof(marker)), SEEK_END))
 	ret=WHY_perror("Unable to seek to end of file");
     }
-    
-    if (ret==0){
-      ssize_t nread = fread(buffer, 1, buffer_len, f);
-      if ((size_t)nread != buffer_len)
-	ret=WHY_perror("Unable to read manifest contents");
+    if (ret == 0 && fread(m->manifestdata, buffer_len, 1, f) != 1) {
+      if (ferror(f))
+	ret = WHYF("fread(%p,%zu,1,%s) error", m->manifestdata, buffer_len, alloca_str_toprint(filepath));
+      else if (feof(f))
+	ret = WHYF("fread(%p,%zu,1,%s) hit end of file", m->manifestdata, buffer_len, alloca_str_toprint(filepath));
     }
-    
     fclose(f);
-    
-    if (ret)
-      return ret;
-    
-    manifest_path=(char*)buffer;
+  } else {
+    ssize_t size = read_whole_file(manifest_path, m->manifestdata, sizeof m->manifestdata);
+    if (size == -1)
+      ret = -1;
+    buffer_len = (size_t) size;
   }
-  
-  if (rhizome_read_manifest_file(m, manifest_path, buffer_len) == -1)
-    return WHY("could not read manifest file");
+  if (ret)
+    return ret;
+  m->manifest_all_bytes = buffer_len;
+  if (rhizome_manifest_parse(m) == -1)
+    return WHY("could not parse manifest file");
   if (!rhizome_manifest_validate(m))
     return WHY("manifest is invalid");
   if (!rhizome_manifest_verify(m))

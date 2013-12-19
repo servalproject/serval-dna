@@ -207,7 +207,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
       rhizome_direct_clear_temporary_files(r);
       return 0;
     }
-    if (manifestTemplate[0] && rhizome_read_manifest_file(m, manifestTemplate, 0) == -1) {
+    if (manifestTemplate[0] && rhizome_read_manifest_from_file(m, manifestTemplate) == -1) {
       WHY("Manifest template read failed");
       rhizome_manifest_free(m);
       rhizome_direct_clear_temporary_files(r);

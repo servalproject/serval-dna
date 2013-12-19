@@ -438,10 +438,15 @@ rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix, size_t 
       if (manifestblobsize<1||manifestblobsize>1024) goto error;
 
       const char *manifestblob = (char *) sqlite3_column_blob(statement, 0);
-      if (!manifestblob) goto error;
+      if (!manifestblob)
+	goto error;
 
-      rhizome_manifest *m=rhizome_new_manifest();
-      if (   rhizome_read_manifest_file(m,manifestblob,manifestblobsize)==-1
+      rhizome_manifest *m = rhizome_new_manifest();
+      if (!m)
+	goto error;
+      memcpy(m->manifestdata, manifestblob, manifestblobsize);
+      m->manifest_all_bytes = manifestblobsize;
+      if (   rhizome_manifest_parse(m) == -1
 	  || !rhizome_manifest_validate(m)
       ) {
 	rhizome_manifest_free(m);

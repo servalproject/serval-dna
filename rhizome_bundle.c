@@ -519,7 +519,7 @@ int rhizome_manifest_inspect(const char *buf, size_t len, struct rhizome_manifes
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static int rhizome_manifest_parse(rhizome_manifest *m)
+int rhizome_manifest_parse(rhizome_manifest *m)
 {
   IN();
   assert(m->manifest_all_bytes <= sizeof m->manifestdata);
@@ -789,27 +789,13 @@ int rhizome_manifest_validate(rhizome_manifest *m)
   return ret;
 }
 
-int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, size_t bufferP)
+int rhizome_read_manifest_from_file(rhizome_manifest *m, const char *filename)
 {
-  if (!m)
-    return WHY("Null manifest");
-  if (bufferP>sizeof(m->manifestdata))
-    return WHY("Buffer too big");
-
-  if (bufferP) {
-    m->manifest_all_bytes=bufferP;
-    memcpy(m->manifestdata, filename, m->manifest_all_bytes);
-  } else {
-    ssize_t bytes = read_whole_file(filename, m->manifestdata, sizeof m->manifestdata);
-    if (bytes == -1)
-      return -1;
-    m->manifest_all_bytes = (size_t) bytes;
-  }
-  switch (rhizome_manifest_parse(m)) {
-    case 0: return 0;
-    case -1: return -1;
-    default: return WHY("Invalid manifest");
-  }
+  ssize_t bytes = read_whole_file(filename, m->manifestdata, sizeof m->manifestdata);
+  if (bytes == -1)
+    return -1;
+  m->manifest_all_bytes = (size_t) bytes;
+  return rhizome_manifest_parse(m);
 }
 
 int rhizome_hash_file(rhizome_manifest *m, const char *path, rhizome_filehash_t *hash_out, uint64_t *size_out)

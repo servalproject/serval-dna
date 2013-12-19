@@ -455,8 +455,12 @@ int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename, char 
 int rhizome_manifest_selfsign(rhizome_manifest *m);
 int rhizome_drop_stored_file(const rhizome_filehash_t *hashp, int maximum_priority);
 int rhizome_manifest_priority(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
-int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, size_t bufferPAndSize);
+int rhizome_read_manifest_from_file(rhizome_manifest *m, const char *filename);
 int rhizome_manifest_validate(rhizome_manifest *m);
+int rhizome_manifest_parse(rhizome_manifest *m);
+int rhizome_manifest_verify(rhizome_manifest *m);
+int rhizome_manifest_check_sanity(rhizome_manifest *m_in);
+
 int rhizome_hash_file(rhizome_manifest *m, const char *path, rhizome_filehash_t *hash_out, uint64_t *size_out);
 
 void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m);
@@ -479,8 +483,6 @@ void rhizome_find_bundle_author_and_secret(rhizome_manifest *m);
 int rhizome_lookup_author(rhizome_manifest *m);
 void rhizome_authenticate_author(rhizome_manifest *m);
 
-int rhizome_manifest_verify(rhizome_manifest *m);
-int rhizome_manifest_check_sanity(rhizome_manifest *m_in);
 
 int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout, int deduplicate);
 int rhizome_add_manifest(rhizome_manifest *m_in,int ttl);

@@ -174,24 +174,28 @@ void verify_bundles()
   sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT ROWID, MANIFEST FROM MANIFESTS ORDER BY ROWID DESC;");
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     sqlite3_int64 rowid = sqlite3_column_int64(statement, 0);
-    const void *manifest = sqlite3_column_blob(statement, 1);
-    size_t manifest_length = sqlite3_column_bytes(statement, 1);
-    rhizome_manifest *m=rhizome_new_manifest();
-    int ret = -1;
-    if (   rhizome_read_manifest_file(m, manifest, manifest_length) == 0
-	&& rhizome_manifest_validate(m)
-	&& rhizome_manifest_verify(m)
-    ) {
-      assert(m->finalised);
-      // Store it again, to ensure that MANIFESTS columns are up to date.
-      ret = rhizome_store_bundle(m);
+    const void *blob = sqlite3_column_blob(statement, 1);
+    size_t blob_length = sqlite3_column_bytes(statement, 1);
+    rhizome_manifest *m = rhizome_new_manifest();
+    if (m) {
+      memcpy(m->manifestdata, blob, blob_length);
+      m->manifest_all_bytes = blob_length;
+      int ret = -1;
+      if (   rhizome_manifest_parse(m) != -1
+	  && rhizome_manifest_validate(m)
+	  && rhizome_manifest_verify(m)
+      ) {
+	assert(m->finalised);
+	// Store it again, to ensure that MANIFESTS columns are up to date.
+	ret = rhizome_store_bundle(m);
+      }
+      if (ret) {
+	if (config.debug.rhizome)
+	  DEBUGF("Removing invalid manifest entry @%lld", rowid);
+	sqlite_exec_void_retry(&retry, "DELETE FROM MANIFESTS WHERE ROWID = ?;", INT64, rowid, END);
+      }
+      rhizome_manifest_free(m);
     }
-    if (ret) {
-      if (config.debug.rhizome)
-	DEBUGF("Removing invalid manifest entry @%lld", rowid);
-      sqlite_exec_void_retry(&retry, "DELETE FROM MANIFESTS WHERE ROWID = ?;", INT64, rowid, END);
-    }
-    rhizome_manifest_free(m);
   }
   sqlite3_finalize(statement);
 }
@@ -1613,7 +1617,9 @@ int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
     rhizome_manifest *m = c->manifest = rhizome_new_manifest();
     if (m == NULL)
       RETURN(-1);
-    if (   rhizome_read_manifest_file(m, manifestblob, manifestblobsize) == -1
+    memcpy(m->manifestdata, manifestblob, manifestblobsize);
+    m->manifest_all_bytes = manifestblobsize;
+    if (   rhizome_manifest_parse(m) == -1
 	|| !rhizome_manifest_validate(m)
     ) {
       WHYF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
@@ -1750,7 +1756,9 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
     const unsigned char *q_manifestid = sqlite3_column_text(statement, 0);
     const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
     size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
-    if (   rhizome_read_manifest_file(blob_m, manifestblob, manifestblobsize) == -1
+    memcpy(blob_m->manifestdata, manifestblob, manifestblobsize);
+    blob_m->manifest_all_bytes = manifestblobsize;
+    if (   rhizome_manifest_parse(blob_m) == -1
 	|| !rhizome_manifest_validate(blob_m)
     ) {
       WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
@@ -1794,7 +1802,9 @@ static int unpack_manifest_row(rhizome_manifest *m, sqlite3_stmt *statement)
   const char *q_author = (const char *) sqlite3_column_text(statement, 4);
   size_t q_blobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
   uint64_t q_rowid = sqlite3_column_int64(statement, 5);
-  if (rhizome_read_manifest_file(m, q_blob, q_blobsize) == -1 || !rhizome_manifest_validate(m))
+  memcpy(m->manifestdata, q_blob, q_blobsize);
+  m->manifest_all_bytes = q_blobsize;
+  if (rhizome_manifest_parse(m) == -1 || !rhizome_manifest_validate(m))
     return WHYF("Manifest bid=%s in database but invalid", q_id);
   if (q_author) {
     sid_t author;

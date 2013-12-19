@@ -350,7 +350,9 @@ int overlay_rhizome_saw_advertisements(struct decode_context *context, struct ov
       // The manifest looks potentially interesting, so now do a full parse and validation.
       if ((m = rhizome_new_manifest()) == NULL)
 	goto next;
-      if (   rhizome_read_manifest_file(m, (char *)data, manifest_length) == -1
+      memcpy(m->manifestdata, data, manifest_length);
+      m->manifest_all_bytes = manifest_length;
+      if (   rhizome_manifest_parse(m) == -1
 	  || !rhizome_manifest_validate(m)
       ) {
 	WARN("Malformed manifest");
