@@ -61,7 +61,7 @@ set_rhizome_config() {
       set log.console.level debug
 }
 
-doc_AuthBasicMissing="Basic Authentication credentials are required"
+doc_AuthBasicMissing="HTTP RESTful missing Basic Authentication credentials"
 test_AuthBasicMissing() {
    executeOk curl \
          --silent --show-error --write-out '%{http_code}' \
@@ -76,7 +76,7 @@ teardown_AuthBasicMissing() {
    teardown
 }
 
-doc_AuthBasicWrong="Basic Authentication credentials must be correct"
+doc_AuthBasicWrong="HTTP RESTful incorrect Basic Authentication credentials"
 test_AuthBasicWrong() {
    executeOk curl \
          --silent --show-error --write-out '%{http_code}' \
@@ -205,7 +205,7 @@ assertJq() {
    assert --message="$jqscript" [ "$(jq "$jqscript" "$json")" = true ]
 }
 
-doc_RhizomeList="Fetch Rhizome bundle list in JSON format"
+doc_RhizomeList="HTTP RESTful list Rhizome bundles as JSON"
 setup_RhizomeList() {
    setup
    NBUNDLES=100
@@ -258,7 +258,7 @@ curl_newsince() {
          "http://$addr_localhost:$PORTA/restful/rhizome/newsince/$token/bundlelist.json"
 }
 
-doc_RhizomeNewSince="Fetch Rhizome bundle list since token in JSON format"
+doc_RhizomeNewSince="HTTP RESTful list Rhizome bundles since token as JSON"
 setup_RhizomeNewSince() {
    setup
    executeOk_servald config set rhizome.api.restful.newsince_timeout 60s
@@ -332,7 +332,7 @@ assert_http_response_headers() {
    assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Rowid: ${ROWID[$n]}$CR\$"
 }
 
-doc_RhizomeManifest="Fetch Rhizome bundle manifest"
+doc_RhizomeManifest="HTTP RESTful fetch Rhizome manifest"
 setup_RhizomeManifest() {
    setup
    add_bundles 0 2
@@ -354,7 +354,7 @@ test_RhizomeManifest() {
    done
 }
 
-doc_RhizomePayloadRaw="Fetch Rhizome raw payload"
+doc_RhizomePayloadRaw="HTTP RESTful fetch Rhizome raw payload"
 setup_RhizomePayloadRaw() {
    setup
    add_bundles 0 1
@@ -376,7 +376,7 @@ test_RhizomePayloadRaw() {
    done
 }
 
-doc_RhizomePayloadDecrypted="Fetch Rhizome decrypted payload"
+doc_RhizomePayloadDecrypted="HTTP RESTful fetch Rhizome decrypted payload"
 setup_RhizomePayloadDecrypted() {
    setup
    add_bundles 0 1
@@ -403,22 +403,22 @@ test_RhizomeInsert() {
    :
 }
 
-doc_MeshmsListConversations="List MeshMS conversations"
+doc_MeshmsListConversations="HTTP RESTful list MeshMS conversations as JSON"
 test_MeshmsListConversations() {
    :
 }
 
-doc_MeshmsListMessages="List all MeshMS messages in a single conversation"
+doc_MeshmsListMessages="HTTP RESTful list MeshMS messages in one conversation as JSON"
 test_MeshmsListMessages() {
    :
 }
 
-doc_MeshmsListMessagesSince="List MeshMS messages in a single conversation since token"
+doc_MeshmsListMessagesSince="HTTP RESTful list MeshMS messages in one conversation since token as JSON"
 test_MeshmsListMessagesSince() {
    :
 }
 
-doc_MeshmsSend="Send MeshMS message"
+doc_MeshmsSend="HTTP RESTful send MeshMS message"
 test_MeshmsSend() {
    :
 }
