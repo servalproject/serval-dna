@@ -189,8 +189,18 @@ static int msp_handler(struct msp_sock *sock, msp_state_t state, const uint8_t *
 
 static int msp_listener(struct msp_sock *sock, msp_state_t state, const uint8_t *payload, size_t len, void *UNUSED(context))
 {
-  if (state & MSP_STATE_CLOSED)
+  if (state & MSP_STATE_ERROR){
+    WHY("Error listening for incoming connections");
+  }
+  if (state & MSP_STATE_CLOSED){
+    if (msp_socket_count()==0){
+      unschedule(&mdp_sock);
+      
+      if (is_watching(&mdp_sock))
+	unwatch(&mdp_sock);
+    }
     return 0;
+  }
   
   struct mdp_sockaddr remote;
   msp_get_remote_adr(sock, &remote);

@@ -1,5 +1,6 @@
 
 #include <assert.h>
+#include <inttypes.h>
 #include "serval.h"
 #include "mdp_client.h"
 #include "msp_client.h"
@@ -81,12 +82,15 @@ unsigned msp_socket_count()
 
 void msp_debug()
 {
+  time_ms_t now = gettime_ms();
   struct msp_sock *p=root;
   DEBUGF("Msp sockets;");
   while(p){
-    DEBUGF("State %d, from %s:%d to %s:%d", p->state, 
+    DEBUGF("State %d, from %s:%d to %s:%d, timeout in %"PRId64"ms", 
+      p->state, 
       alloca_tohex_sid_t(p->header.local.sid), p->header.local.port, 
-      alloca_tohex_sid_t(p->header.remote.sid), p->header.remote.port);
+      alloca_tohex_sid_t(p->header.remote.sid), p->header.remote.port,
+      (p->timeout - now));
     p=p->_next;
   }
 }
@@ -218,7 +222,8 @@ int msp_listen(struct msp_sock *sock)
     return -1;
   }
   
-  sock->timeout = TIME_NEVER_WILL;
+  sock->timeout = gettime_ms()+1000;
+  sock->next_action = sock->timeout;
   return 0;
 }
 
@@ -560,6 +565,8 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
 	  s->header.flags &= ~MDP_FLAG_BIND;
 	  DEBUGF("Bound to %s:%d", alloca_tohex_sid_t(header->local.sid), header->local.port);
 	  s->next_action = gettime_ms();
+	  if (s->state & MSP_STATE_LISTENING)
+	    s->timeout = TIME_NEVER_WILL;
 	  return 0;
 	}
 	
