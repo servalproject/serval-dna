@@ -28,6 +28,7 @@ int saw_error=0;
 int once =0;
 struct msp_sock *listener=NULL;
 struct mdp_sockaddr remote_addr;
+struct socket_address ip_addr;
 
 static int try_send(struct connection *conn);
 static void msp_poll(struct sched_ent *alarm);
@@ -122,11 +123,9 @@ static void free_connection(struct connection *conn)
   conn->out=NULL;
   conn->alarm_in.poll.fd=-1;
   conn->alarm_out.poll.fd=-1;
-  DEBUGF("Freeing connection %p", conn);
   free(conn);
 
   if (msp_socket_count()==0){
-    DEBUGF("All sockets closed");
     unschedule(&mdp_sock);
     
     if (is_watching(&mdp_sock))
@@ -196,8 +195,23 @@ static int msp_listener(struct msp_sock *sock, msp_state_t state, const uint8_t 
   struct mdp_sockaddr remote;
   msp_get_remote_adr(sock, &remote);
   INFOF(" - New connection from %s:%d", alloca_tohex_sid_t(remote.sid), remote.port);
+  int fd_in = STDIN_FILENO;
+  int fd_out = STDOUT_FILENO;
   
-  struct connection *conn = alloc_connection(sock, STDIN_FILENO, io_poll, STDOUT_FILENO, io_poll);
+  if (ip_addr.addrlen){
+    int fd = esocket(PF_INET, SOCK_STREAM, 0);
+    if (fd==-1){
+      msp_close(sock);
+      return -1;
+    }
+    if (socket_connect(fd, &ip_addr.addr, ip_addr.addrlen)==-1){
+      msp_close(sock);
+      close(fd);
+      return -1;
+    }
+    fd_in = fd_out = fd;
+  }
+  struct connection *conn = alloc_connection(sock, fd_in, io_poll, fd_out, io_poll);
   if (!conn)
     return -1;
     
@@ -390,6 +404,14 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
   
   set_nonblock(STDIN_FILENO);
   set_nonblock(STDOUT_FILENO);
+  bzero(&ip_addr, sizeof ip_addr);
+  
+  if (local_port_string){
+    ip_addr.addrlen = sizeof(ip_addr.inet);
+    ip_addr.inet.sin_family = AF_INET;
+    ip_addr.inet.sin_port = htons(atoi(local_port_string));
+    ip_addr.inet.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  }
   
   if (sidhex && *sidhex){
     if (local_port_string){
@@ -397,17 +419,12 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
       listen_alarm.poll.fd = esocket(PF_INET, SOCK_STREAM, 0);
       if (listen_alarm.poll.fd==-1)
 	goto end;
-      struct socket_address ip_addr;
-      ip_addr.addrlen = sizeof(ip_addr.inet);
-      ip_addr.inet.sin_family = AF_INET;
-      ip_addr.inet.sin_port = htons(atoi(local_port_string));
-      ip_addr.inet.sin_addr.s_addr = INADDR_ANY;
       if (socket_bind(listen_alarm.poll.fd, &ip_addr.addr, ip_addr.addrlen)==-1)
 	goto end;
       if (socket_listen(listen_alarm.poll.fd, 0)==-1)
 	goto end;
       watch(&listen_alarm);
-      INFOF("- Forwarding from port %d to %s:%d", ntohs(ip_addr.inet.sin_port), alloca_tohex_sid_t(addr.sid), addr.port);
+      INFOF("- Forwarding from %s to %s:%d", alloca_socket_address(&ip_addr), alloca_tohex_sid_t(addr.sid), addr.port);
     }else{
       sock = msp_socket(mdp_sock.poll.fd);
       once = 1;
@@ -420,7 +437,6 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
     }
   }else{
     sock = msp_socket(mdp_sock.poll.fd);
-    once = 1;
     msp_set_handler(sock, msp_listener, NULL);
     msp_set_local(sock, addr);
     
@@ -429,7 +445,12 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
       goto end;
     
     listener=sock;
-    INFOF(" - Listening on port %d", addr.port);
+    if (local_port_string){
+      INFOF("- Forwarding from port %d to %s", addr.port, alloca_socket_address(&ip_addr));
+    }else{
+      once = 1;
+      INFOF(" - Listening on port %d", addr.port);
+    }
   }
   
   process_msp_asap();

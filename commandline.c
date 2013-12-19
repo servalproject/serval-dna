@@ -3056,7 +3056,7 @@ struct cli_schema command_line_options[]={
    "Run byte order handling test"},
   {app_slip_test,{"test","slip","[--seed=<N>]","[--duration=<seconds>|--iterations=<N>]",NULL}, 0,
    "Run serial encapsulation test"},
-  {app_msp_connection,{"msp", "listen", "<port>", NULL}, 0,
+  {app_msp_connection,{"msp", "listen", "[--once]", "[--forward=<local_port>]", "<port>", NULL}, 0,
   "Listen for incoming connections"},
   {app_msp_connection,{"msp", "connect", "[--once]", "[--forward=<local_port>]", "<sid>", "<port>", NULL}, 0,
   "Connect to a remote party"},

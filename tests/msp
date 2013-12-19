@@ -155,7 +155,7 @@ setup_forward() {
    start_servald_instances +A +B
 }
 client_forward() {
-   executeOk --timeout=20 $servald msp connect --once --forward=2048 $1 512
+   executeOk --timeout=20 $servald msp connect --once --forward=$1 $2 512
    tfw_cat --stdout --stderr
 }
 test_forward() {
@@ -163,9 +163,36 @@ test_forward() {
    fork server_hello
    wait_until --timeout=10 grep "Bind MDP $SIDA:512" "$instance_servald_log"
    set_instance +B
-   fork client_forward $SIDA
+   fork client_forward 2048 $SIDA
    sleep 1
    executeOk nc -v 127.0.0.1 2048 < <(echo "Hello from the client")
+   assertStdoutGrep --matches=1 "^Hello from the server$"
+   fork_wait_all
+}
+
+doc_tcp_tunnel="Tunnel a tcp connection"
+setup_tcp_tunnel() {
+   setup_servald
+   assert_no_servald_processes
+   start_servald_instances +A +B
+}
+server_forward() {
+   executeOk_servald msp listen --once --forward=$1 512
+   tfw_cat --stderr
+}
+nc_listen() {
+   execute nc -v -l $1 < <(echo "Hello from the server")
+   tfw_cat --stdout --stderr
+}
+
+test_tcp_tunnel() {
+   fork nc_listen 6000
+   set_instance +A
+   fork server_forward 6000
+   set_instance +B
+   fork client_forward 6001 $SIDA
+   sleep 1
+   executeOk nc -v 127.0.0.1 6001 < <(echo "Hello from the client")
    assertStdoutGrep --matches=1 "^Hello from the server$"
    fork_wait_all
 }
