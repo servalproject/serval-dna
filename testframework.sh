@@ -840,6 +840,7 @@ _tfw_getopts() {
       *grep:--fixed-strings) _tfw_opt_grepopts+=(-F);;
       assertcontentgrep:--matches=+([0-9])) _tfw_opt_matches="${1#*=}";;
       assertcontentgrep:--matches=*) _tfw_error "invalid value: $1";;
+      assertcontentgrep:--ignore-case) _tfw_opt_grepopts+=(-i);;
       assertcontent*:--line=+([0-9])) _tfw_opt_line="${1#*=}"; _tfw_opt_line_msg="line $_tfw_opt_line";;
       assertcontent*:--line=+([0-9])..) _tfw_opt_line="${1#*=}\$"; _tfw_opt_line_msg="lines $_tfw_opt_line";;
       assertcontent*:--line=..+([0-9])) _tfw_opt_line="1${1#*=}"; _tfw_opt_line_msg="lines $_tfw_opt_line";;
