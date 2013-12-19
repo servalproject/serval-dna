@@ -300,7 +300,7 @@ int rhizome_apply_bundle_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
     DEBUGF("manifest[%d] bsk=%s", m->manifest_record_number, bsk ? alloca_tohex_rhizome_bk_t(*bsk) : "NULL");
   assert(m->haveSecret == SECRET_UNKNOWN);
   assert(is_all_matching(m->cryptoSignSecret, sizeof m->cryptoSignSecret, 0));
-  assert(!rhizome_bid_t_is_zero(m->cryptoSignPublic));
+  assert(m->has_id);
   assert(bsk != NULL);
   assert(!rhizome_is_bk_none(bsk));
   if (rhizome_verify_bundle_privatekey(bsk->binary, m->cryptoSignPublic.binary)) {

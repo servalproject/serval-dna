@@ -119,7 +119,7 @@ void _rhizome_manifest_set_id(struct __sourceloc __whence, rhizome_manifest *m, 
 {
   const char *v = rhizome_manifest_set(m, "id", alloca_tohex_rhizome_bid_t(*bidp));
   assert(v); // TODO: remove known manifest fields from vars[]
-  if (bidp != &m->cryptoSignPublic && cmp_rhizome_bid_t(&m->cryptoSignPublic, bidp) != 0) {
+  if (m->has_id && bidp != &m->cryptoSignPublic && cmp_rhizome_bid_t(&m->cryptoSignPublic, bidp) != 0) {
     m->cryptoSignPublic = *bidp;
     // The BID just changed, so the secret key and bundle key are no longer valid.
     if (m->haveSecret) {
@@ -134,6 +134,7 @@ void _rhizome_manifest_set_id(struct __sourceloc __whence, rhizome_manifest *m, 
     if (m->authorship == AUTHOR_AUTHENTIC)
       m->authorship = AUTHOR_LOCAL;
   }
+  m->has_id = 1;
 }
 
 void _rhizome_manifest_set_version(struct __sourceloc __whence, rhizome_manifest *m, uint64_t version)
