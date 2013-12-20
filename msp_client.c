@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <inttypes.h>
 #include "serval.h"
+#include "conf.h"
 #include "mdp_client.h"
 #include "msp_client.h"
 #include "str.h"
@@ -136,7 +137,8 @@ static void free_acked_packets(struct msp_window *window, uint16_t seq)
     window->rtt = rtt;
     if (window->base_rtt > rtt)
       window->base_rtt = rtt;
-    DEBUGF("RTT %u, base %u", rtt, window->base_rtt);
+    if (config.debug.msp)
+      DEBUGF("RTT %u, base %u", rtt, window->base_rtt);
   }
   if (!p)
     window->_tail = NULL;
@@ -342,7 +344,8 @@ static int msp_send_packet(struct msp_sock *sock, struct msp_packet *packet)
     msp_close_all(sock->mdp_sock);
     return -1;
   }
-  DEBUGF("Sent packet seq %02x len %zd (acked %02x)", packet->seq, packet->len, sock->rx.next_seq);
+  if (config.debug.msp)
+    DEBUGF("Sent packet seq %02x len %zd (acked %02x)", packet->seq, packet->len, sock->rx.next_seq);
   sock->tx.last_activity = packet->sent = gettime_ms();
   sock->next_ack = packet->sent + 1500;
   return 0;
@@ -386,7 +389,8 @@ static int send_ack(struct msp_sock *sock)
       msp_close_all(sock->mdp_sock);
     return -1;
   }
-  DEBUGF("Sent packet (acked %02x)", sock->rx.next_seq);
+  if (config.debug.msp)
+    DEBUGF("Sent packet (acked %02x)", sock->rx.next_seq);
   sock->previous_ack = sock->rx.next_seq;
   sock->tx.last_activity = gettime_ms();
   sock->next_ack = sock->tx.last_activity + 1500;
@@ -574,7 +578,8 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
 	  // process bind response from the daemon
 	  s->header.local = header->local;
 	  s->header.flags &= ~MDP_FLAG_BIND;
-	  DEBUGF("Bound to %s:%d", alloca_tohex_sid_t(header->local.sid), header->local.port);
+	  if (config.debug.msp)
+	    DEBUGF("Bound to %s:%d", alloca_tohex_sid_t(header->local.sid), header->local.port);
 	  s->next_action = gettime_ms();
 	  if (s->state & MSP_STATE_LISTENING)
 	    s->timeout = TIME_NEVER_WILL;

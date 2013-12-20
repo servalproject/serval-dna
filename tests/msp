@@ -34,6 +34,7 @@ configure_servald_server() {
    add_servald_interface
    executeOk_servald config \
       set debug.mdprequests on \
+      set debug.msp on \
       set log.console.level DEBUG \
       set log.console.show_time on
 }
