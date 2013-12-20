@@ -1080,7 +1080,10 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   if (broadcast)
     WARN("broadcast ping packets will not be encrypted");
   
-  for (; icount==0 || tx_count<icount; ++sequence_number) {
+  sigIntFlag = 0;
+  signal(SIGINT, sigIntHandler);
+  
+  for (; sigIntFlag==0 && (icount==0 || tx_count<icount); ++sequence_number) {
     
     // send a ping packet
     {
@@ -1100,7 +1103,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
        with appropriate information as required */
     time_ms_t now = gettime_ms();
     time_ms_t finish = now + ((tx_count < icount || icount==0)?interval_ms:timeout_ms);
-    for (; !servalShutdown && now < finish; now = gettime_ms()) {
+    for (; sigIntFlag==0 && now < finish; now = gettime_ms()) {
       time_ms_t poll_timeout_ms = finish - gettime_ms();
       
       if (mdp_poll(mdp_sockfd, poll_timeout_ms)<=0)
@@ -1163,6 +1166,8 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
     }
   }
 
+  signal(SIGINT, SIG_DFL);
+  sigIntFlag = 0;
   mdp_close(mdp_sockfd);
   
   {

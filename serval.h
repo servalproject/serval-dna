@@ -483,8 +483,10 @@ int dna_return_resolution(overlay_mdp_frame *mdp, unsigned char *fromSid,
 int parseDnaReply(const char *buf, size_t len, char *token, char *did, char *name, char *uri, const char **bufp);
 extern int sigPipeFlag;
 extern int sigIoFlag;
+extern int sigIntFlag;
 void sigPipeHandler(int signal);
 void sigIoHandler(int signal);
+void sigIntHandler(int signal);
 
 int overlay_mdp_setup_sockets();
 

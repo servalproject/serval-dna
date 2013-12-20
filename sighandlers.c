@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 int sigPipeFlag=0;
 int sigIoFlag=0;
+int sigIntFlag=0;
 
 void sigPipeHandler(int UNUSED(signal))
 {
@@ -32,4 +33,9 @@ void sigIoHandler(int UNUSED(signal))
 {  
   sigIoFlag++;
   return;
+}
+
+void sigIntHandler(int UNUSED(signal))
+{
+  sigIntFlag++;
 }

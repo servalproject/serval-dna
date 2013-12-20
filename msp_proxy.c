@@ -464,11 +464,15 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
   }
   
   process_msp_asap();
+  sigIntFlag = 0;
+  signal(SIGINT, sigIntHandler);
   
-  while(fd_poll()){
+  while(sigIntFlag==0 && fd_poll()){
     ;
   }
   ret = saw_error;
+  signal(SIGINT, SIG_DFL);
+  sigIntFlag = 0;
   
 end:
   listener=NULL;
