@@ -167,14 +167,6 @@ struct mdp_binding mdp_bindings[MDP_MAX_BINDINGS];
 int mdp_bindings_initialised=0;
 mdp_port_t next_port_binding=256;
 
-static int compare_client(struct socket_address *one, struct socket_address *two)
-{
-  if (one->addrlen==two->addrlen
-    && memcmp(&one->addr, &two->addr, two->addrlen)==0)
-    return 1;
-  return 0;
-}
-
 static int overlay_mdp_reply(int sock, struct socket_address *client,
 			  overlay_mdp_frame *mdpreply)
 {
@@ -229,7 +221,7 @@ static int overlay_mdp_releasebindings(struct socket_address *client)
   /* Free up any MDP bindings held by this client. */
   int i;
   for(i=0;i<MDP_MAX_BINDINGS;i++)
-    if (compare_client(&mdp_bindings[i].client, client))
+    if (cmp_sockaddr(&mdp_bindings[i].client, client)==0)
       mdp_bindings[i].port=0;
 
   return 0;
@@ -260,7 +252,7 @@ static int overlay_mdp_process_bind_request(struct subscriber *subscriber, mdp_p
     for(i=0;i<MDP_MAX_BINDINGS;i++) {
       /* Look for duplicate bindings */
       if (mdp_bindings[i].port == port && mdp_bindings[i].subscriber == subscriber) {
-	if (compare_client(&mdp_bindings[i].client, client)) {
+	if (cmp_sockaddr(&mdp_bindings[i].client, client)==0) {
 	  // this client already owns this port binding?
 	  INFO("Identical binding exists");
 	  return 0;
@@ -623,7 +615,7 @@ static int overlay_mdp_check_binding(struct subscriber *subscriber, mdp_port_t p
       continue;
     if ((!mdp_bindings[i].subscriber) || mdp_bindings[i].subscriber == subscriber) {
       /* Binding matches, now make sure the sockets match */
-      if (compare_client(&mdp_bindings[i].client, client)) {
+      if (cmp_sockaddr(&mdp_bindings[i].client, client)==0) {
 	/* Everything matches, so this unix socket and MDP address combination is valid */
 	return 0;
       }
@@ -1256,7 +1248,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
     int i;
     for(i=0;i<MDP_MAX_BINDINGS;i++) {
       if (mdp_bindings[i].port!=0 
-	&& compare_client(&mdp_bindings[i].client, client)){
+	&& cmp_sockaddr(&mdp_bindings[i].client, client)==0){
 	if (config.debug.mdprequests)
 	  DEBUGF("Unbind MDP %s:%d from %s", 
 	    mdp_bindings[i].subscriber?alloca_tohex_sid_t(mdp_bindings[i].subscriber->sid):"All",
@@ -1355,8 +1347,13 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
 	// double check that this binding belongs to this connection
 	if (!binding
 	  || binding->internal
-	  || !compare_client(&binding->client, client))
+	  || cmp_sockaddr(&binding->client, client)!=0){
 	  mdp_reply_error(client, header);
+	  WHYF("Already bound by someone else? %s vs %s", 
+	    alloca_socket_address(&binding->client), 
+	    alloca_socket_address(client));
+	
+	}
 	break;
       case MDP_IDENTITY:
 	if (config.debug.mdprequests)
@@ -1381,7 +1378,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
       || binding->internal
       || !source
       || header->local.port == 0 
-      || !compare_client(&binding->client, client)){
+      || cmp_sockaddr(&binding->client, client)!=0){
       mdp_reply_error(client, header);
       WHY("No matching binding found");
       return;
@@ -1435,7 +1432,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
   if (binding 
     && !binding->internal
     && header->flags & MDP_FLAG_CLOSE
-    && compare_client(&binding->client, client)){
+    && cmp_sockaddr(&binding->client, client)==0){
     if (config.debug.mdprequests)
       DEBUGF("Unbind MDP %s:%d from %s", 
 	binding->subscriber?alloca_tohex_sid_t(binding->subscriber->sid):"All",
