@@ -86,10 +86,12 @@ void msp_debug()
   struct msp_sock *p=root;
   DEBUGF("Msp sockets;");
   while(p){
-    DEBUGF("State %d, from %s:%d to %s:%d, timeout in %"PRId64"ms", 
+    DEBUGF("State %d, from %s:%d to %s:%d, next %"PRId64"ms, ack %"PRId64"ms timeout %"PRId64"ms", 
       p->state, 
       alloca_tohex_sid_t(p->header.local.sid), p->header.local.port, 
       alloca_tohex_sid_t(p->header.remote.sid), p->header.remote.port,
+      (p->next_action - now),
+      (p->next_ack - now),
       (p->timeout - now));
     p=p->_next;
   }
@@ -205,7 +207,8 @@ int msp_set_remote(struct msp_sock *sock, struct mdp_sockaddr remote)
   sock->header.remote = remote;
   sock->state|=MSP_STATE_DATAOUT;
   // make sure we send a packet soon
-  sock->next_action = gettime_ms()+10;
+  sock->next_ack = gettime_ms()+10;
+  sock->next_action = sock->next_ack;
   return 0;
 }
 
@@ -497,6 +500,12 @@ static int process_sock(struct msp_sock *sock)
   
   // should we send an ack now without sending a payload?
   if (now > sock->next_ack){
+    if (!sock->header.local.port){
+      if (sock->header.flags & MDP_FLAG_BIND)
+	// wait until we have heard back from the daemon with our port number before sending another packet.
+	return 0;
+      sock->header.flags |= MDP_FLAG_BIND;
+    }
     int r = send_ack(sock);
     if (r==-1)
       return -1;
@@ -531,7 +540,8 @@ int msp_processing(time_ms_t *next_action)
 	if (sock->next_action < *next_action)
 	  *next_action=sock->next_action;
       }
-    }
+    }else if (sock->next_action < *next_action)
+      *next_action=sock->next_action;
     if (sock->state & MSP_STATE_CLOSED){
       struct msp_sock *s = sock->_next;
       msp_free(sock);
@@ -547,6 +557,7 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
 {
   // any kind of error reported by the daemon, close all related msp connections
   if (header->flags & MDP_FLAG_ERROR){
+    WHY("Error returned from daemon");
     msp_close_all(mdp_sock);
     return -1;
   }
