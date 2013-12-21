@@ -129,12 +129,16 @@ struct mime_part_headers {
 };
 
 struct http_mime_handler {
-  void (*handle_mime_preamble)(struct http_request *, const char *, size_t);
-  void (*handle_mime_part_start)(struct http_request *);
-  void (*handle_mime_part_header)(struct http_request *, const struct mime_part_headers *);
-  void (*handle_mime_body)(struct http_request *, const char *, size_t);
-  void (*handle_mime_part_end)(struct http_request *);
-  void (*handle_mime_epilogue)(struct http_request *, const char *, size_t);
+  // All these functions may abort the request processing by returning an HTTP
+  // filure status code in the range 400-599 or by initiating an HTTP response
+  // directly (changing the phase from RECEIVE to TRANSMIT).  They can return
+  // zero to indicate that parsing should proceed.
+  int (*handle_mime_preamble)(struct http_request *, const char *, size_t);
+  int (*handle_mime_part_start)(struct http_request *);
+  int (*handle_mime_part_header)(struct http_request *, const struct mime_part_headers *);
+  int (*handle_mime_body)(struct http_request *, const char *, size_t);
+  int (*handle_mime_part_end)(struct http_request *);
+  int (*handle_mime_epilogue)(struct http_request *, const char *, size_t);
 };
 
 struct http_request;

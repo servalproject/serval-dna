@@ -1134,7 +1134,33 @@ malformed:
   return 1;
 }
 
-static void http_request_form_data_start_part(struct http_request *r, int b)
+#define _HANDLER_RESULT(result) do { \
+    if (r->phase != RECEIVE) \
+      return 1; \
+    if (result) { \
+      assert((result) >= 400); \
+      assert((result) < 600); \
+      return (result); \
+    } \
+  } while (0)
+#define _INVOKE_HANDLER_VOID(FUNC) do { \
+    if (r->form_data.FUNC) { \
+      if (r->debug_flag && *r->debug_flag) \
+	DEBUGF(#FUNC "()"); \
+      int result = r->form_data.FUNC(r); \
+      _HANDLER_RESULT(result); \
+    } \
+  } while (0)
+#define _INVOKE_HANDLER_BUF_LEN(FUNC, START, END) do { \
+    if (r->form_data.FUNC && (START) != (END)) { \
+      if (r->debug_flag && *r->debug_flag) \
+	DEBUGF(#FUNC "(%s length=%zu)", alloca_toprint(50, (START), (END) - (START)), (END) - (START)); \
+      int result = r->form_data.FUNC(r, (START), (END) - (START)); \
+      _HANDLER_RESULT(result); \
+    } \
+  } while (0)
+
+static int http_request_form_data_start_part(struct http_request *r, int b)
 {
   switch (r->form_data_state) {
     case BODY:
@@ -1148,11 +1174,7 @@ static void http_request_form_data_start_part(struct http_request *r, int b)
       }
       // fall through...
     case HEADER:
-      if (r->form_data.handle_mime_part_end) {
-	if (r->debug_flag && *r->debug_flag)
-	  DEBUGF("handle_mime_part_end()");
-	r->form_data.handle_mime_part_end(r);
-      }
+      _INVOKE_HANDLER_VOID(handle_mime_part_end);
       break;
     default:
       break;
@@ -1162,13 +1184,10 @@ static void http_request_form_data_start_part(struct http_request *r, int b)
     bzero(&r->part_header, sizeof r->part_header);
     r->part_body_length = 0;
     r->part_header.content_length = CONTENT_LENGTH_UNKNOWN;
-    if (r->form_data.handle_mime_part_start) {
-      if (r->debug_flag && *r->debug_flag)
-	DEBUGF("handle_mime_part_start()");
-      r->form_data.handle_mime_part_start(r);
-    }
+    _INVOKE_HANDLER_VOID(handle_mime_part_start);
   } else
     r->form_data_state = EPILOGUE;
+  return 0;
 }
 
 /* If parsing completes (ie, parsed to end of epilogue), then sets r->parser to NULL and returns 0,
@@ -1204,16 +1223,10 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  int b;
 	  if ((b = _skip_mime_boundary(r))) {
 	    assert(end_preamble >= r->parsed);
-	    if (r->form_data.handle_mime_preamble && end_preamble != r->parsed) {
-	      if (r->debug_flag && *r->debug_flag)
-		DEBUGF("handle_mime_preamble(%s length=%zu)",
-		    alloca_toprint(50, r->parsed, end_preamble - r->parsed), end_preamble - r->parsed);
-	      r->form_data.handle_mime_preamble(r, r->parsed, end_preamble - r->parsed);
-	    }
+	    _INVOKE_HANDLER_BUF_LEN(handle_mime_preamble, r->parsed, end_preamble);
 	    _rewind_crlf(r);
 	    _commit(r);
-	    http_request_form_data_start_part(r, b);
-	    return 0;
+	    return http_request_form_data_start_part(r, b);
 	  }
 	}
 	if (_end_of_content(r)) {
@@ -1223,12 +1236,8 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	}
 	_rewind_optional_cr(r);
 	_commit(r);
-	if (r->parsed > start && r->form_data.handle_mime_preamble) {
-	  if (r->debug_flag && *r->debug_flag)
-	    DEBUGF("handle_mime_preamble(%s length=%zu)",
-		alloca_toprint(50, start, r->parsed - start), r->parsed - start);
-	  r->form_data.handle_mime_preamble(r, start, r->parsed - start);
-	}
+	assert(r->parsed >= start);
+	_INVOKE_HANDLER_BUF_LEN(handle_mime_preamble, start, r->parsed);
       }
       return 100; // need more data
     case HEADER: {
@@ -1256,9 +1265,9 @@ static int http_request_parse_body_form_data(struct http_request *r)
 		  alloca_mime_content_type(&r->part_header.content_type),
 		  alloca_mime_content_disposition(&r->part_header.content_disposition)
 		);
-	    r->form_data.handle_mime_part_header(r, &r->part_header);
+	    int result = r->form_data.handle_mime_part_header(r, &r->part_header);
+	    _HANDLER_RESULT(result); \
 	  }
-
 	  r->form_data_state = BODY;
 	  return 0;
 	}
@@ -1273,8 +1282,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  _commit(r);
 	  // A boundary in the middle of headers finishes the current part and starts a new part.
 	  // An end boundary terminates the current part and starts the epilogue.
-	  http_request_form_data_start_part(r, b);
-	  return 0;
+	  return http_request_form_data_start_part(r, b);
 	}
 	if (_run_out(r))
 	  return 100; // read more and try again
@@ -1369,13 +1377,8 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  _commit(r);
 	  assert(end_body >= start);
 	  r->part_body_length += end_body - start;
-	  if (end_body > start && r->form_data.handle_mime_body) {
-	    if (r->debug_flag && *r->debug_flag)
-	      DEBUGF("handle_mime_body(%s length=%zu)", alloca_toprint(80, start, end_body - start), end_body - start);
-	    r->form_data.handle_mime_body(r, start, end_body - start); // excluding CRLF at end
-	  }
-	  http_request_form_data_start_part(r, b);
-	  return 0;
+	  _INVOKE_HANDLER_BUF_LEN(handle_mime_body, start, end_body); // excluding CRLF at end
+	  return http_request_form_data_start_part(r, b);
 	}
       }
       if (_end_of_content(r)) {
@@ -1387,27 +1390,21 @@ static int http_request_parse_body_form_data(struct http_request *r)
       _commit(r);
       assert(r->parsed >= start);
       r->part_body_length += r->parsed - start;
-      if (r->parsed > start && r->form_data.handle_mime_body) {
-	if (r->debug_flag && *r->debug_flag)
-	  DEBUGF("handle_mime_body(%s length=%zu)", alloca_toprint(80, start, r->parsed - start), r->parsed - start);
-	r->form_data.handle_mime_body(r, start, r->parsed - start);
-      }
+      _INVOKE_HANDLER_BUF_LEN(handle_mime_body, start, r->parsed);
       return 100; // need more data
   case EPILOGUE:
       if (config.debug.httpd)
 	DEBUGF("EPILOGUE");
     r->cursor = r->end;
-    if (r->form_data.handle_mime_epilogue && r->cursor != r->parsed) {
-      if (r->debug_flag && *r->debug_flag)
-	DEBUGF("handle_mime_epilogue(%s length=%zu)",
-	    alloca_toprint(50, r->parsed, r->cursor - r->parsed), r->cursor - r->parsed);
-      r->form_data.handle_mime_epilogue(r, r->parsed, r->cursor - r->parsed);
-    }
+    assert(r->cursor >= r->parsed);
+    _INVOKE_HANDLER_BUF_LEN(handle_mime_epilogue, r->parsed, r->cursor);
     _commit(r);
     assert(_run_out(r));
     if (_end_of_content(r))
       return 0; // done
     return 100; // need more data
+  default:
+    FATALF("form_data_state = %d", r->form_data_state);
   }
   abort(); // not reached
 }

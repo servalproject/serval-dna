@@ -285,21 +285,22 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
   }
 }
 
-static void rhizome_direct_process_mime_start(struct http_request *hr)
+static int rhizome_direct_process_mime_start(struct http_request *hr)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
   assert(r->current_part == NONE);
   assert(r->part_fd == -1);
+  return 0;
 }
 
-static void rhizome_direct_process_mime_end(struct http_request *hr)
+static int rhizome_direct_process_mime_end(struct http_request *hr)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
   if (r->part_fd != -1) {
     if (close(r->part_fd) == -1) {
       WHYF_perror("close(%d)", r->part_fd);
       http_request_simple_response(&r->http, 500, "Internal Error: Close temporary file failed");
-      return;
+      return 500;
     }
     r->part_fd = -1;
   }
@@ -314,9 +315,10 @@ static void rhizome_direct_process_mime_end(struct http_request *hr)
       break;
   }
   r->current_part = NONE;
+  return 0;
 }
 
-static void rhizome_direct_process_mime_part_header(struct http_request *hr, const struct mime_part_headers *h)
+static int rhizome_direct_process_mime_part_header(struct http_request *hr, const struct mime_part_headers *h)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
   if (strcmp(h->content_disposition.name, "data") == 0) {
@@ -326,28 +328,30 @@ static void rhizome_direct_process_mime_part_header(struct http_request *hr, con
   else if (strcmp(h->content_disposition.name, "manifest") == 0) {
     r->current_part = MANIFEST;
   } else
-    return;
+    return 0;
   char path[512];
   if (form_temporary_file_path(r, path, h->content_disposition.name) == -1) {
     http_request_simple_response(&r->http, 500, "Internal Error: Buffer overrun");
-    return;
+    return 0;
   }
   if ((r->part_fd = open(path, O_WRONLY | O_CREAT, 0666)) == -1) {
     WHYF_perror("open(%s,O_WRONLY|O_CREAT,0666)", alloca_str_toprint(path));
     http_request_simple_response(&r->http, 500, "Internal Error: Create temporary file failed");
-    return;
+    return 0;
   }
+  return 0;
 }
 
-static void rhizome_direct_process_mime_body(struct http_request *hr, const char *buf, size_t len)
+static int rhizome_direct_process_mime_body(struct http_request *hr, const char *buf, size_t len)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
   if (r->part_fd != -1) {
     if (write_all(r->part_fd, buf, len) == -1) {
       http_request_simple_response(&r->http, 500, "Internal Error: Write temporary file failed");
-      return;
+      return 500;
     }
   }
+  return 0;
 }
 
 int rhizome_direct_import(rhizome_http_request *r, const char *remainder)
