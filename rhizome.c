@@ -158,13 +158,24 @@ enum rhizome_bundle_status rhizome_bundle_import_files(rhizome_manifest *m, rhiz
     return RHIZOME_BUNDLE_STATUS_INVALID;
   enum rhizome_bundle_status status = rhizome_manifest_check_stored(m, mout);
   if (status == RHIZOME_BUNDLE_STATUS_NEW) {
-    int n = rhizome_import_payload_from_file(m, filepath);
-    if (n == -1)
-      return -1;
-    if (n != 0)
-      status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
-    else if (rhizome_store_manifest(m) == -1)
-      return -1;
+    enum rhizome_payload_status pstatus = rhizome_import_payload_from_file(m, filepath);
+    switch (pstatus) {
+      case RHIZOME_PAYLOAD_STATUS_EMPTY:
+      case RHIZOME_PAYLOAD_STATUS_STORED:
+      case RHIZOME_PAYLOAD_STATUS_NEW:
+	if (rhizome_store_manifest(m) == -1)
+	  return -1;
+	break;
+      case RHIZOME_PAYLOAD_STATUS_ERROR:
+      case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+	return -1;
+      case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+      case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+	status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
+	break;
+      default:
+	FATALF("pstatus = %d", pstatus);
+    }
   }
   return status;
 }

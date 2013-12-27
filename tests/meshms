@@ -33,6 +33,7 @@ setup_logging() {
       set debug.meshms on \
       set debug.rhizome on \
       set debug.rhizome_manifest on \
+      set debug.externalblobs on \
       set debug.rejecteddata on \
       set log.console.level debug \
       set log.console.show_time on
@@ -72,6 +73,7 @@ test_MessageDelivery() {
    tfw_log "CONV_BID=$CONV_BID CONV_SECRET=$CONV_SECRET"
    # 5. mark the first message as read
    executeOk_servald meshms read messages $SIDA2 $SIDA1 5
+   tfw_cat --stderr
    check_meshms_bundles
    executeOk_servald meshms list messages $SIDA2 $SIDA1
    assertStdoutGrep --stdout --matches=1 "^0:19:<:How are you\$"
@@ -99,14 +101,14 @@ check_meshms_bundles() {
    # The only "file" bundle should be the conversation list
    executeOk_servald rhizome list file
    rhizome_list_unpack X
-   assert [ $XNROWS -eq 1 ]
-   assert [ ${XBID[0]} = $CONV_BID ]
+   assert --stdout --stderr [ $XNROWS -eq 1 ]
+   assert --stdout --stderr [ ${XBID[0]} = $CONV_BID ]
    executeOk_servald rhizome extract bundle $CONV_BID manifest.conv payload.conv $CONV_SECRET
    tfw_cat -v manifest.conv --hexdump payload.conv
    # The only "MeshMS2" bundles should be the two ply bundles
    executeOk_servald rhizome list MeshMS2
    rhizome_list_unpack X
-   assert [ $XNROWS -eq 2 ]
+   assert --stdout [ $XNROWS -eq 2 ]
    local bid
    for bid in ${XBID[*]}; do
       executeOk_servald rhizome extract bundle $bid manifest.$bid payload.$bid

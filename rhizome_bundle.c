@@ -116,9 +116,8 @@ void _rhizome_manifest_set_id(struct __sourceloc __whence, rhizome_manifest *m, 
 {
   const char *v = rhizome_manifest_set(m, "id", alloca_tohex_rhizome_bid_t(*bidp));
   assert(v); // TODO: remove known manifest fields from vars[]
+  // If the BID is changed, the secret key and bundle key are no longer valid.
   if (m->has_id && bidp != &m->cryptoSignPublic && cmp_rhizome_bid_t(&m->cryptoSignPublic, bidp) != 0) {
-    m->cryptoSignPublic = *bidp;
-    // The BID just changed, so the secret key and bundle key are no longer valid.
     if (m->haveSecret) {
       m->haveSecret = SECRET_UNKNOWN;
       bzero(m->cryptoSignSecret, sizeof m->cryptoSignSecret); // not strictly necessary but aids debugging
@@ -131,6 +130,7 @@ void _rhizome_manifest_set_id(struct __sourceloc __whence, rhizome_manifest *m, 
     if (m->authorship == AUTHOR_AUTHENTIC)
       m->authorship = AUTHOR_LOCAL;
   }
+  m->cryptoSignPublic = *bidp;
   m->has_id = 1;
   m->finalised = 0;
 }
@@ -1057,6 +1057,7 @@ int rhizome_manifest_selfsign(rhizome_manifest *m)
 	      );
   bcopy(sig.signature, m->manifestdata + m->manifest_body_bytes, sig.signatureLength);
   m->manifest_all_bytes = m->manifest_body_bytes + sig.signatureLength;
+  m->selfSigned = 1;
   return 0;
 }
 
@@ -1126,8 +1127,10 @@ enum rhizome_bundle_status rhizome_manifest_finalise(rhizome_manifest *m, rhizom
     RETURN(WHY("Could not convert manifest to wire format"));
 
   /* Sign it */
+  assert(!m->selfSigned);
   if (rhizome_manifest_selfsign(m))
     RETURN(WHY("Could not sign manifest"));
+  assert(m->selfSigned);
 
   /* mark manifest as finalised */
   enum rhizome_bundle_status status = rhizome_add_manifest(m, mout);
@@ -1157,7 +1160,7 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
 
   /* Set the bundle ID (public key) and secret key.
    */
-  if (!m->haveSecret && rhizome_bid_t_is_zero(m->cryptoSignPublic)) {
+  if (!m->haveSecret && !m->has_id) {
     if (config.debug.rhizome)
       DEBUG("creating new bundle");
     if (rhizome_manifest_createid(m) == -1)

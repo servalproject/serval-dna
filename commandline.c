@@ -1511,17 +1511,34 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   }
 
   enum rhizome_bundle_status status = RHIZOME_BUNDLE_STATUS_NEW;
+  enum rhizome_payload_status pstatus;
   if (journal){
-    if (rhizome_append_journal_file(m, 0, filepath))
-      status = -1;
+    pstatus = rhizome_append_journal_file(m, 0, filepath);
   } else {
-    int n = rhizome_stat_payload_file(m, filepath);
-    if (n == 0 && m->filesize)
-      n = rhizome_store_payload_file(m, filepath);
-    if (n == -1)
-      status = -1;
-    else if (n)
+    pstatus = rhizome_stat_payload_file(m, filepath);
+    assert(m->filesize != RHIZOME_SIZE_UNSET);
+    if (pstatus == RHIZOME_PAYLOAD_STATUS_NEW) {
+      assert(m->filesize > 0);
+      pstatus = rhizome_store_payload_file(m, filepath);
+    }
+  }
+  switch (pstatus) {
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+      break;
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+      status = RHIZOME_BUNDLE_STATUS_ERROR;
+      break;
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
       status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
+      break;
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      status = RHIZOME_BUNDLE_STATUS_FAKE;
+      break;
+    default:
+      FATALF("pstatus = %d", pstatus);
   }
   rhizome_manifest *mout = m;
   if (status == RHIZOME_BUNDLE_STATUS_NEW) {
@@ -1553,6 +1570,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
     case RHIZOME_BUNDLE_STATUS_ERROR:
     case RHIZOME_BUNDLE_STATUS_INVALID:
+    case RHIZOME_BUNDLE_STATUS_FAKE:
       break;
     default:
       FATALF("status=%d", status);
@@ -1793,20 +1811,19 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
     cli_put_manifest(context, m);
   }
   
-  int retfile=0;
-  
+  enum rhizome_payload_status pstatus = RHIZOME_PAYLOAD_STATUS_EMPTY;
   if (ret==0 && m->filesize != 0 && filepath && *filepath){
     if (extract){
       // Save the file, implicitly decrypting if required.
-      retfile = rhizome_extract_file(m, filepath);
-      if (retfile)
-	WHYF("rhizome_extract_file() returned %d", retfile);
+      pstatus = rhizome_extract_file(m, filepath);
+      if (pstatus != RHIZOME_PAYLOAD_STATUS_EMPTY && pstatus != RHIZOME_PAYLOAD_STATUS_STORED)
+	WHYF("rhizome_extract_file() returned %d", pstatus);
     }else{
       // Save the file without attempting to decrypt
       uint64_t length;
-      retfile = rhizome_dump_file(&m->filehash, filepath, &length);
-      if (retfile)
-	WHYF("rhizome_dump_file() returned %d", retfile);
+      pstatus = rhizome_dump_file(&m->filehash, filepath, &length);
+      if (pstatus != RHIZOME_PAYLOAD_STATUS_EMPTY && pstatus != RHIZOME_PAYLOAD_STATUS_STORED)
+	WHYF("rhizome_dump_file() returned %d", pstatus);
     }
   }
   
@@ -1819,14 +1836,28 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
     } else {
       int append = (strcmp(manifestpath, filepath)==0)?1:0;
       // don't write out the manifest if we were asked to append it and writing the file failed.
-      if ((!append) || retfile==0){
+      if (!append || (pstatus == RHIZOME_PAYLOAD_STATUS_EMPTY || pstatus == RHIZOME_PAYLOAD_STATUS_STORED)) {
 	if (rhizome_write_manifest_file(m, manifestpath, append) == -1)
 	  ret = -1;
       }
     }
   }
-  if (retfile)
-    ret = retfile == -1 ? -1 : 1;
+  switch (pstatus) {
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+      break;
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+      ret = 1; // payload not found
+      break;
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      ret = -1;
+      break;
+    default:
+      FATALF("pstatus = %d", pstatus);
+  }
   if (m)
     rhizome_manifest_free(m);
   keyring_free(keyring);
@@ -1851,9 +1882,21 @@ int app_rhizome_export_file(const struct cli_parsed *parsed, struct cli_context 
   if (!rhizome_exists(&hash))
     return 1;
   uint64_t length;
-  int ret = rhizome_dump_file(&hash, filepath, &length);
-  if (ret)
-    return ret == -1 ? -1 : 1;
+  enum rhizome_payload_status pstatus = rhizome_dump_file(&hash, filepath, &length);
+  switch (pstatus) {
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+      break;
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+      return 1; // payload not found
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      return -1;
+    default:
+      FATALF("pstatus = %d", pstatus);
+  }
   cli_field_name(context, "filehash", ":");
   cli_put_string(context, alloca_tohex_rhizome_filehash_t(hash), "\n");
   cli_field_name(context, "filesize", ":");

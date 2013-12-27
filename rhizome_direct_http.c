@@ -229,7 +229,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
       http_request_simple_response(&r->http, 500, "Internal Error: Malformed manifest template");
       return 0;
     }
-    if (rhizome_stat_payload_file(m, payload_path)) {
+    if (rhizome_stat_payload_file(m, payload_path) != RHIZOME_PAYLOAD_STATUS_NEW) {
       WHY("Payload file stat failed");
       rhizome_manifest_free(m);
       rhizome_direct_clear_temporary_files(r);
@@ -253,7 +253,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
     // TODO, stream file into database
     assert(m->filesize != RHIZOME_SIZE_UNSET);
     if (m->filesize > 0) {
-      if (rhizome_store_payload_file(m, payload_path)) {
+      if (rhizome_store_payload_file(m, payload_path) != RHIZOME_PAYLOAD_STATUS_NEW) {
 	rhizome_manifest_free(m);
 	rhizome_direct_clear_temporary_files(r);
 	http_request_simple_response(&r->http, 500, "Internal Error: Could not store file");
@@ -726,8 +726,20 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 
 	  struct rhizome_read read;
 	  bzero(&read, sizeof read);
-	  if (rhizome_open_read(&read, &filehash))
-	    goto closeit;
+	  enum rhizome_bundle_status pstatus = rhizome_open_read(&read, &filehash);
+	  switch (pstatus) {
+	    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+	    case RHIZOME_PAYLOAD_STATUS_STORED:
+	      break;
+	    case RHIZOME_PAYLOAD_STATUS_NEW:
+	    case RHIZOME_PAYLOAD_STATUS_ERROR:
+	    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+	    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+	    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+	      goto closeit;
+	    default:
+	      FATALF("pstatus = %d", pstatus);
+	  }
 
 	  uint64_t read_ofs;
 	  for(read_ofs=0;read_ofs<m->filesize;){

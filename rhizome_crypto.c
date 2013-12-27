@@ -450,7 +450,7 @@ typedef struct manifest_signature_block_cache {
 #define SIG_CACHE_SIZE 1024
 manifest_signature_block_cache sig_cache[SIG_CACHE_SIZE];
 
-int rhizome_manifest_lookup_signature_validity(const unsigned char *hash, const unsigned char *sig, int sig_len)
+static int rhizome_manifest_lookup_signature_validity(const unsigned char *hash, const unsigned char *sig, int sig_len)
 {
   IN();
   unsigned int slot=0;
@@ -594,36 +594,39 @@ int rhizome_crypt_xor_block(unsigned char *buffer, size_t buffer_size, uint64_t 
   return 0;
 }
 
+/* If payload key is known, sets m->payloadKey and m->payloadNonce and returns 1.
+ * Otherwise, returns 0;
+ */
 int rhizome_derive_payload_key(rhizome_manifest *m)
 {
   // don't do anything if the manifest isn't flagged as being encrypted
-  if (m->payloadEncryption != PAYLOAD_ENCRYPTED)
-    return 0;
+  assert(m->payloadEncryption == PAYLOAD_ENCRYPTED);
   if (m->has_sender && m->has_recipient){
     unsigned char *nm_bytes=NULL;
     unsigned cn=0, in=0, kp=0;
     if (!keyring_find_sid(keyring, &cn, &in, &kp, &m->sender)){
       cn=in=kp=0;
       if (!keyring_find_sid(keyring, &cn, &in, &kp, &m->recipient)){
-	return WHYF("Neither the sender %s nor the recipient %s appears in our keyring",
+	WARNF("Neither sender=%s nor recipient=%s is in keyring",
 	    alloca_tohex_sid_t(m->sender),
 	    alloca_tohex_sid_t(m->recipient));
+	return 0;
       }
       nm_bytes=keyring_get_nm_bytes(&m->recipient, &m->sender);
     }else{
       nm_bytes=keyring_get_nm_bytes(&m->sender, &m->recipient);
     }
-    
-    if (!nm_bytes)
-      return -1;
+    assert(nm_bytes != NULL);
     
     unsigned char hash[crypto_hash_sha512_BYTES];
     crypto_hash_sha512(hash, nm_bytes, crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
     bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
     
   }else{
-    if (!m->haveSecret)
-      return WHY("Cannot derive payload key because bundle secret is unknown");
+    if (!m->haveSecret) {
+      WHY("Cannot derive payload key because bundle secret is unknown");
+      return 0;
+    }
     
     unsigned char raw_key[9+crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]="sasquatch";
     bcopy(m->cryptoSignSecret, &raw_key[9], crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
@@ -645,6 +648,6 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
   
   crypto_hash_sha512(hash, raw_nonce, sizeof(raw_nonce));
   bcopy(hash, m->payloadNonce, sizeof(m->payloadNonce));
-  
-  return 0;  
+
+  return 1;
 }

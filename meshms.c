@@ -262,17 +262,17 @@ static int ply_read_open(struct ply_read *ply, const rhizome_bid_t *bid, rhizome
     DEBUGF("Opening ply %s", alloca_tohex_rhizome_bid_t(*bid));
   if (rhizome_retrieve_manifest(bid, m))
     return -1;
-  int ret = rhizome_open_decrypt_read(m, &ply->read);
-  if (ret == 1)
+  enum rhizome_payload_status pstatus = rhizome_open_decrypt_read(m, &ply->read);
+  if (pstatus == RHIZOME_PAYLOAD_STATUS_NEW)
     WARNF("Payload was not found for manifest %s, %"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
-  if (ret != 0)
-    return ret;
+  if (pstatus != RHIZOME_PAYLOAD_STATUS_STORED && pstatus != RHIZOME_PAYLOAD_STATUS_EMPTY)
+    return -1;
   assert(m->filesize != RHIZOME_SIZE_UNSET);
   ply->read.offset = ply->read.length = m->filesize;
   return 0;
 }
 
-static int ply_read_close(struct ply_read *ply)
+static void ply_read_close(struct ply_read *ply)
 {
   if (ply->buffer){
     free(ply->buffer);
@@ -280,7 +280,7 @@ static int ply_read_close(struct ply_read *ply)
   }
   ply->buffer_size=0;
   ply->buff.len=0;
-  return rhizome_read_close(&ply->read);
+  rhizome_read_close(&ply->read);
 }
 
 // read the next record from the ply (backwards)
@@ -367,14 +367,36 @@ static int append_meshms_buffer(const sid_t *my_sid, struct conversations *conv,
   assert(m->haveSecret);
   assert(m->authorship == AUTHOR_AUTHENTIC);
   
-  if (rhizome_append_journal_buffer(m, 0, buffer, len))
+  enum rhizome_payload_status pstatus = rhizome_append_journal_buffer(m, 0, buffer, len);
+  if (pstatus != RHIZOME_PAYLOAD_STATUS_NEW)
     goto end;
   
-  if (rhizome_manifest_finalise(m, &mout, 1) == -1)
-    goto end;
-
-  ret=0;
-  
+  enum rhizome_bundle_status status = rhizome_manifest_finalise(m, &mout, 1);
+  switch (status) {
+    case RHIZOME_BUNDLE_STATUS_ERROR:
+      // error is already logged
+      break;
+    case RHIZOME_BUNDLE_STATUS_NEW:
+      ret = 0;
+      break;
+    case RHIZOME_BUNDLE_STATUS_SAME:
+    case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+    case RHIZOME_BUNDLE_STATUS_OLD:
+      WHYF("MeshMS ply manifest (version=%"PRIu64") gazumped by Rhizome store (version=%"PRIu64")",
+	  m->version, mout->version);
+      break;
+    case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+      WHYF("MeshMS ply manifest not consistent with payload");
+      break;
+    case RHIZOME_BUNDLE_STATUS_FAKE:
+      WHYF("MeshMS ply manifest is not signed");
+      break;
+    case RHIZOME_BUNDLE_STATUS_INVALID:
+      WHYF("MeshMS ply manifest is invalid");
+      break;
+    default:
+      FATALF("status=%d", status);
+  }
 end:
   if (mout && mout!=m)
     rhizome_manifest_free(mout);
@@ -385,7 +407,8 @@ end:
 
 // update if any conversations are unread or need to be acked.
 // return -1 for failure, 1 if the conversation index needs to be saved.
-static int update_conversation(const sid_t *my_sid, struct conversations *conv){
+static int update_conversation(const sid_t *my_sid, struct conversations *conv)
+{
   if (config.debug.meshms)
     DEBUG("Checking if conversation needs to be acked");
     
@@ -489,7 +512,8 @@ end:
 }
 
 // update conversations, and return 1 if the conversation index should be saved
-static int update_conversations(const sid_t *my_sid, struct conversations *conv){
+static int update_conversations(const sid_t *my_sid, struct conversations *conv)
+{
   if (!conv)
     return 0;
   int ret = 0;
@@ -519,13 +543,13 @@ static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid,
   struct rhizome_read_buffer buff;
   bzero(&buff, sizeof(buff));
   
-  int ret = rhizome_open_decrypt_read(m, &read);
-  if (ret == -1)
+  int ret = -1;
+  enum rhizome_payload_status pstatus = rhizome_open_decrypt_read(m, &read);
+  if (pstatus != RHIZOME_PAYLOAD_STATUS_STORED)
     goto end;
   
   unsigned char version=0xFF;
   ssize_t r = rhizome_read_buffered(&read, &buff, &version, 1);
-  ret = -1;
   if (r == -1)
     goto end;
   if (version != 1) {
@@ -593,12 +617,13 @@ static ssize_t write_conversation(struct rhizome_write *write, struct conversati
       len+=measure_packed_uint(conv->read_offset);
       len+=measure_packed_uint(conv->their_size);
     }
-    DEBUGF("len %s, %"PRId64", %"PRId64", %"PRId64" = %zu", 
-      alloca_tohex_sid_t(conv->them),
-      conv->their_last_message,
-      conv->read_offset,
-      conv->their_size,
-      len);
+    if (config.debug.meshms)
+      DEBUGF("len %s, %"PRId64", %"PRId64", %"PRId64" = %zu", 
+	alloca_tohex_sid_t(conv->them),
+	conv->their_last_message,
+	conv->read_offset,
+	conv->their_size,
+	len);
   }
   // write the two child nodes
   ssize_t ret = write_conversation(write, conv->_left);
@@ -630,21 +655,46 @@ static int write_known_conversations(rhizome_manifest *m, struct conversations *
   // then write it
   rhizome_manifest_set_version(m, m->version + 1);
   rhizome_manifest_set_filesize(m, (size_t)len + 1);
-  
-  if (rhizome_write_open_manifest(&write, m) == -1)
-    goto end;
-  unsigned char version=1;
-  if (rhizome_write_buffer(&write, &version, 1) == -1)
-    goto end;
-  if (write_conversation(&write, conv) == -1)
-    goto end;
-  if (rhizome_finish_write(&write))
-    goto end;
-  rhizome_manifest_set_filehash(m, &write.id);
-  if (rhizome_manifest_finalise(m, &mout, 1) == -1)
-    goto end;
-  
-  ret=0;
+  rhizome_manifest_set_filehash(m, NULL);
+
+  enum rhizome_payload_status pstatus = rhizome_write_open_manifest(&write, m);
+  if (pstatus == RHIZOME_PAYLOAD_STATUS_NEW) {
+    unsigned char version=1;
+    if (rhizome_write_buffer(&write, &version, 1) == -1)
+      goto end;
+    if (write_conversation(&write, conv) == -1)
+      goto end;
+    pstatus = rhizome_finish_write(&write);
+    if (pstatus != RHIZOME_PAYLOAD_STATUS_NEW)
+      goto end;
+    rhizome_manifest_set_filehash(m, &write.id);
+  }
+  enum rhizome_bundle_status status = rhizome_manifest_finalise(m, &mout, 1);
+  switch (status) {
+    case RHIZOME_BUNDLE_STATUS_ERROR:
+      // error is already logged
+      break;
+    case RHIZOME_BUNDLE_STATUS_NEW:
+      ret = 0;
+      break;
+    case RHIZOME_BUNDLE_STATUS_SAME:
+    case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+    case RHIZOME_BUNDLE_STATUS_OLD:
+      WHYF("MeshMS conversation manifest (version=%"PRIu64") gazumped by Rhizome store (version=%"PRIu64")",
+	  m->version, mout->version);
+      break;
+    case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+      WHY("MeshMS conversation manifest not consistent with payload");
+      break;
+    case RHIZOME_BUNDLE_STATUS_FAKE:
+      WHY("MeshMS conversation manifest is not signed");
+      break;
+    case RHIZOME_BUNDLE_STATUS_INVALID:
+      WHY("MeshMS conversation manifest is invalid");
+      break;
+    default:
+      FATALF("status=%d", status);
+  }
 end:
   if (ret)
     rhizome_fail_write(&write);

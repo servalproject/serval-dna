@@ -90,14 +90,14 @@ int rhizome_mdp_send_block(struct subscriber *dest, const rhizome_bid_t *bid, ui
     
     write_uint64(&reply.out.payload[1+16+8], offset);
     
-    int bytes_read = rhizome_read_cached(bid, version, gettime_ms()+5000, offset, &reply.out.payload[1+16+8+8], blockLength);
+    ssize_t bytes_read = rhizome_read_cached(bid, version, gettime_ms()+5000, offset, &reply.out.payload[1+16+8+8], blockLength);
     if (bytes_read<=0)
       break;
     
-    reply.out.payload_length=1+16+8+8+bytes_read;
+    reply.out.payload_length=1+16+8+8+(size_t)bytes_read;
     
     // Mark the last block of the file, if required
-    if (bytes_read < blockLength)
+    if ((size_t)bytes_read < blockLength)
       reply.out.payload[0]='T';
     
     // send packet

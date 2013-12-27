@@ -89,7 +89,7 @@ struct rhizome_fetch_slot {
   unsigned char mdpRXWindow[32*200];
 };
 
-static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot);
+static enum rhizome_start_fetch_result rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot);
 static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot);
 
 /* Represents a queue of fetch candidates and a single active fetch for bundle payloads whose size
@@ -498,8 +498,12 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
   }
 }
 
-// begin fetching a bundle
-static int schedule_fetch(struct rhizome_fetch_slot *slot)
+/* Returns STARTED (0) if the fetch was started.
+ * Returns IMPORTED if the payload is already in the store.
+ * Returns -1 on error.
+ */
+static enum rhizome_start_fetch_result
+schedule_fetch(struct rhizome_fetch_slot *slot)
 {
   IN();
   int sock = -1;
@@ -550,9 +554,27 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     if (strbuf_overrun(r))
       RETURN(WHY("request overrun"));
     slot->request_len = strbuf_len(r);
-
-    if (rhizome_open_write(&slot->write_state, &slot->manifest->filehash, slot->manifest->filesize, RHIZOME_PRIORITY_DEFAULT))
-      RETURN(-1);
+    enum rhizome_payload_status status = rhizome_open_write(&slot->write_state,
+							    &slot->manifest->filehash,
+							    slot->manifest->filesize,
+							    RHIZOME_PRIORITY_DEFAULT);
+    switch (status) {
+      case RHIZOME_PAYLOAD_STATUS_EMPTY:
+      case RHIZOME_PAYLOAD_STATUS_STORED:
+	RETURN(IMPORTED);
+      case RHIZOME_PAYLOAD_STATUS_NEW:
+	break;
+      case RHIZOME_PAYLOAD_STATUS_ERROR:
+	RETURN(WHY("error writing new payload"));
+      case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+	RETURN(WHY("payload size does not match"));
+      case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+	RETURN(WHY("payload hash does not match"));
+      case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+	RETURN(WHY("payload cannot be encrypted"));
+      default:
+	FATALF("status = %d", status);
+    }
   } else {
     strbuf r = strbuf_local(slot->request, sizeof slot->request);
     strbuf_sprintf(r, "GET /rhizome/manifestbyprefix/%s HTTP/1.0\r\n\r\n", alloca_tohex(slot->bid.binary, slot->prefix_length));
@@ -610,14 +632,15 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     slot->alarm.alarm = gettime_ms() + config.rhizome.idle_timeout;
     slot->alarm.deadline = slot->alarm.alarm + config.rhizome.idle_timeout;
     schedule(&slot->alarm);
-    RETURN(0);
+    RETURN(STARTED);
   }
 
+  enum rhizome_start_fetch_result result;
  bail_http:
     /* Fetch via overlay, either because no IP address was provided, or because
        the connection/attempt to fetch via HTTP failed. */
-  rhizome_fetch_switch_to_mdp(slot);
-  RETURN(0);
+  result = rhizome_fetch_switch_to_mdp(slot);
+  RETURN(result);
   OUT();
 }
 
@@ -743,23 +766,20 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   if (config.debug.rhizome_rx)
     DEBUGF("   is new");
 
-  // If the payload is already available, no need to fetch, so import now.
-  if (rhizome_exists(&m->filehash)){
-    if (config.debug.rhizome_rx)
-      DEBUGF("   fetch not started - payload already present, so importing instead");
-    if (rhizome_add_manifest(m, NULL) == -1)
-      RETURN(WHY("add manifest failed"));
-    RETURN(IMPORTED);
-  }
-
   /* Prepare for fetching */
   slot->peer_ipandport = *peerip;
   slot->peer_sid = *peersidp;
   slot->manifest = m;
 
-  if (schedule_fetch(slot) == -1)
-    RETURN(-1);
-  RETURN(STARTED);
+  enum rhizome_start_fetch_result result = schedule_fetch(slot);
+  // If the payload is already available, no need to fetch, so import now.
+  if (result == IMPORTED) {
+    if (config.debug.rhizome_rx)
+      DEBUGF("   fetch not started - payload already present, so importing instead");
+    if (rhizome_add_manifest(m, NULL) == -1)
+      RETURN(WHY("add manifest failed"));
+  }
+  RETURN(result);
 }
 
 /* Returns STARTED (0) if the fetch was started.
@@ -788,10 +808,7 @@ rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip,
      for inserting into the database, but we can avoid the temporary file in
      the process. */
   
-  if (schedule_fetch(slot) == -1) {
-    return -1;
-  }
-  return STARTED;
+  return schedule_fetch(slot);
 }
 
 /* Activate the next fetch for the given slot.  This takes the next job from the head of the slot's
@@ -1017,7 +1034,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   OUT();
 }
 
-static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
+static void rhizome_fetch_close(struct rhizome_fetch_slot *slot)
 {
   if (config.debug.rhizome_rx)
     DEBUGF("close Rhizome fetch slot=%d", slotno(slot));
@@ -1049,8 +1066,6 @@ static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
   // Activate the next queued fetch that is eligible for this slot.  Try starting candidates from
   // all queues with the same or smaller size thresholds until the slot is taken.
   rhizome_start_next_queued_fetch(slot);
-
-  return 0;
 }
 
 static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
@@ -1188,7 +1203,7 @@ static int pipe_journal(struct rhizome_fetch_slot *slot){
   return 0;
 }
 
-static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
+static enum rhizome_start_fetch_result rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
 {
   /* In Rhizome Direct we use the same fetch slot system, but we aren't actually
      a running servald instance, so we cannot fall back to MDP.  This is detected
@@ -1201,11 +1216,13 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
   */
   IN();
   if (!is_rhizome_mdp_enabled()){
-    RETURN(rhizome_fetch_close(slot));
+    rhizome_fetch_close(slot);
+    RETURN(-1);
   }
   if (!my_subscriber) {
     DEBUGF("I don't have an identity, so we cannot fall back to MDP");
-    RETURN(rhizome_fetch_close(slot));
+    rhizome_fetch_close(slot);
+    RETURN(-1);
   }
 
   if (config.debug.rhizome_rx)
@@ -1255,7 +1272,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
   slot->mdpRXBlockLength = config.rhizome.rhizome_mdp_block_size; // Rhizome over MDP block size
   rhizome_fetch_mdp_requestblocks(slot);
 
-  RETURN(0);
+  RETURN(STARTED);
   OUT();
 }
 
@@ -1291,7 +1308,7 @@ void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
   return;
 }
 
-int rhizome_write_complete(struct rhizome_fetch_slot *slot)
+static int rhizome_write_complete(struct rhizome_fetch_slot *slot)
 {
   IN();
 
@@ -1303,7 +1320,8 @@ int rhizome_write_complete(struct rhizome_fetch_slot *slot)
     if (config.debug.rhizome_rx)
       DEBUGF("Received all of file via rhizome -- now to import it");
 
-    if (rhizome_finish_write(&slot->write_state)){
+    enum rhizome_payload_status status = rhizome_finish_write(&slot->write_state);
+    if (status != RHIZOME_PAYLOAD_STATUS_EMPTY && status != RHIZOME_PAYLOAD_STATUS_NEW) {
       rhizome_fetch_close(slot);
       RETURN(-1);
     }
@@ -1461,7 +1479,7 @@ int rhizome_received_content(const unsigned char *bidprefix,
     }
     
     if (m){
-      if (rhizome_import_buffer(m, bytes, count) >= 0){
+      if (rhizome_import_buffer(m, bytes, count) == RHIZOME_PAYLOAD_STATUS_NEW) {
 	INFOF("Completed MDP transfer in one hit for file %s",
 	    alloca_tohex_rhizome_filehash_t(m->filehash));
 	rhizome_import_received_bundle(m);

@@ -745,22 +745,42 @@ static int rhizome_response_content_init_read_state(rhizome_http_request *r)
 static int rhizome_response_content_init_filehash(rhizome_http_request *r, const rhizome_filehash_t *hash)
 {
   bzero(&r->u.read_state, sizeof r->u.read_state);
-  int n = rhizome_open_read(&r->u.read_state, hash);
-  if (n == -1)
-    return -1;
-  if (n != 0)
-    return 404;
+  enum rhizome_payload_status status = rhizome_open_read(&r->u.read_state, hash);
+  switch (status) {
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+      break;
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+      return 404;
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      return -1;
+    default:
+      FATALF("status = %d", status);
+  }
   return rhizome_response_content_init_read_state(r);
 }
 
 static int rhizome_response_content_init_payload(rhizome_http_request *r, rhizome_manifest *m)
 {
   bzero(&r->u.read_state, sizeof r->u.read_state);
-  int n = rhizome_open_decrypt_read(m, &r->u.read_state);
-  if (n == -1)
-    return -1;
-  if (n != 0)
-    return 404;
+  enum rhizome_payload_status status = rhizome_open_decrypt_read(m, &r->u.read_state);
+  switch (status) {
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+      break;
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+      return 404;
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      return -1;
+    default:
+      FATALF("status = %d", status);
+  }
   return rhizome_response_content_init_read_state(r);
 }
 

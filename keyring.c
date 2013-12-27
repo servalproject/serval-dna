@@ -2083,9 +2083,7 @@ struct nm_record nm_cache[NM_CACHE_SLOTS];
 unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknown_sidp)
 {
   IN();
-  if (!known_sidp) { RETURNNULL(WHYNULL("known pub key is null")); }
-  if (!unknown_sidp) { RETURNNULL(WHYNULL("unknown pub key is null")); }
-  if (!keyring) { RETURNNULL(WHYNULL("keyring is null")); }
+  assert(keyring != NULL);
 
   /* See if we have it cached already */
   unsigned i;
