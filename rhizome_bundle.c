@@ -1138,6 +1138,21 @@ enum rhizome_bundle_status rhizome_manifest_finalise(rhizome_manifest *m, rhizom
   OUT();
 }
 
+/* Returns 1 if the name was successfully set, 0 if not.
+ */
+int rhizome_manifest_set_name_from_path(rhizome_manifest *m, const char *filepath)
+{
+  const char *name = strrchr(filepath, '/');
+  if (!name)
+    name = filepath;
+  if (!rhizome_str_is_manifest_name(name)) {
+    WARNF("invalid rhizome name %s -- not used", alloca_str_toprint(name));
+    return 0;
+  }
+  rhizome_manifest_set_name(m, name);
+  return 1;
+}
+
 /* Fill in a few missing manifest fields, to make it easier to use when adding new files:
  *  - use the current time for "date" and "version"
  *  - use the given author SID, or the 'sender' if present, as the author
@@ -1190,15 +1205,8 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
     if (m->name) {
       if (config.debug.rhizome)
 	DEBUGF("manifest already contains name=%s", alloca_str_toprint(m->name));
-    } else if (filepath) {
-      const char *name = strrchr(filepath, '/');
-      if (!name)
-	name = filepath;
-      if (rhizome_str_is_manifest_name(name))
-	rhizome_manifest_set_name(m, name);
-      else if (config.debug.rhizome)
-	DEBUGF("invalid rhizome name %s -- not used", alloca_str_toprint(name));
-    }
+    } else if (filepath)
+      rhizome_manifest_set_name_from_path(m, filepath);
     else if (config.debug.rhizome)
       DEBUGF("manifest missing 'name'");
   }
