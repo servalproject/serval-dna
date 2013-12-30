@@ -391,36 +391,41 @@ int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffe
   return rhizome_random_write(write_state, write_state->file_offset, buffer, data_size);
 }
 
-/* Expects file to be at least file_length in size, ignoring anything longer than that */
+/* If file_length is known, then expects file to be at least file_length in size, ignoring anything
+ * longer than that.  Returns 0 if successful, -1 if error (logged).
+ */
 int rhizome_write_file(struct rhizome_write *write, const char *filename)
 {
-  FILE *f = fopen(filename, "r");
-  if (!f)
-    return WHY_perror("fopen");
-
+  int fd = open(filename, O_RDONLY);
+  if (fd == -1)
+    return WHYF_perror("open(%s,O_RDONLY)", alloca_str_toprint(filename));
   unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];
-  int ret=0;
-  ret = write_get_lock(write);
-  if (ret)
-    goto end;
-  while(write->file_offset < write->file_length) {
-    size_t size = sizeof buffer;
-    if (write->file_offset + size > write->file_length)
-      size = write->file_length - write->file_offset;
-    size_t r = fread(buffer, 1, size, f);
-    if (ferror(f)){
-      ret = WHY_perror("fread");
-      goto end;
-    }
-    if (rhizome_write_buffer(write, buffer, r)){
-      ret=-1;
-      goto end;
+  int ret = write_get_lock(write);
+  if (ret == 0) {
+    while (write->file_length == RHIZOME_SIZE_UNSET || write->file_offset < write->file_length) {
+      size_t size = sizeof buffer;
+      if (write->file_length != RHIZOME_SIZE_UNSET && write->file_offset + size > write->file_length)
+	size = write->file_length - write->file_offset;
+      ssize_t r = read(fd, buffer, size);
+      if (r == -1) {
+	ret = WHYF_perror("read(%d,%p,%zu)", fd, buffer, size);
+	break;
+      }
+      if (write->file_length != RHIZOME_SIZE_UNSET && (size_t) r != size) {
+	ret = WHYF("file truncated - read(%d,%p,%zu) returned %zu", fd, buffer, size, (size_t) r);
+	break;
+      }
+      if (r && rhizome_write_buffer(write, buffer, (size_t) r)) {
+	ret = -1;
+	break;
+      }
+      if ((size_t) r != size)
+	break;
     }
   }
-end:
   if (write_release_lock(write))
-    ret=-1;
-  fclose(f);
+    ret = -1;
+  close(fd);
   return ret;
 }
 
