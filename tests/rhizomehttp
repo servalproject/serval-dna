@@ -859,22 +859,22 @@ test_RhizomeInsertIncorrectFilehash() {
 }
 
 doc_MeshmsListConversations="HTTP RESTful list MeshMS conversations as JSON"
-test_MeshmsListConversations() {
+Xtest_MeshmsListConversations() {
    :
 }
 
 doc_MeshmsListMessages="HTTP RESTful list MeshMS messages in one conversation as JSON"
-test_MeshmsListMessages() {
+Xtest_MeshmsListMessages() {
    :
 }
 
 doc_MeshmsListMessagesSince="HTTP RESTful list MeshMS messages in one conversation since token as JSON"
-test_MeshmsListMessagesSince() {
+Xtest_MeshmsListMessagesSince() {
    :
 }
 
 doc_MeshmsSend="HTTP RESTful send MeshMS message"
-test_MeshmsSend() {
+Xtest_MeshmsSend() {
    :
 }
 
