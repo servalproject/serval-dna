@@ -149,8 +149,6 @@ void _rhizome_manifest_set_filesize(struct __sourceloc __whence, rhizome_manifes
   assert(v); // TODO: remove known manifest fields from vars[]
   m->filesize = size;
   m->finalised = 0;
-  if (m->filesize == 0)
-    rhizome_manifest_set_filehash(m, NULL);
 }
 
 /* Must always set file size before setting the file hash, to avoid assertion failures.
@@ -159,13 +157,11 @@ void _rhizome_manifest_set_filehash(struct __sourceloc __whence, rhizome_manifes
 {
   assert(m->filesize != RHIZOME_SIZE_UNSET);
   if (hash) {
-    assert(m->filesize > 0);
     const char *v = rhizome_manifest_set(m, "filehash", alloca_tohex_rhizome_filehash_t(*hash));
     assert(v); // TODO: remove known manifest fields from vars[]
     m->filehash = *hash;
     m->has_filehash = 1;
   } else {
-    assert(m->filesize == 0);
     rhizome_manifest_del(m, "filehash");
     m->filehash = RHIZOME_FILEHASH_NONE;
     m->has_filehash = 0;
