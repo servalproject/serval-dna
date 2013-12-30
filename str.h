@@ -410,6 +410,8 @@ int str_to_uint64(const char *str, int base, uint64_t *result, const char **afte
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
+int str_to_int32_scaled(const char *str, int base, int32_t *result, const char **afterp);
+int str_to_uint32_scaled(const char *str, int base, uint32_t *result, const char **afterp);
 int str_to_int64_scaled(const char *str, int base, int64_t *result, const char **afterp);
 int str_to_uint64_scaled(const char *str, int base, uint64_t *result, const char **afterp);
 uint64_t scale_factor(const char *str, const char **afterp);
@@ -423,6 +425,7 @@ uint64_t scale_factor(const char *str, const char **afterp);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
+int uint32_scaled_to_str(char *str, size_t len, uint32_t value);
 int uint64_scaled_to_str(char *str, size_t len, uint64_t value);
 
 /* Parse a string as a time interval (seconds) in millisecond resolution.  Return the number of

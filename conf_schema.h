@@ -426,7 +426,7 @@ ATOM(bool_t,                clean_on_open,  0, boolean,, "If true, Rhizome datab
 ATOM(bool_t,                clean_on_start, 1, boolean,, "If true, Rhizome database is cleaned at start of daemon")
 STRING(256,                 datastore_path, "", absolute_path,, "Path of rhizome storage directory, absolute or relative to instance directory")
 ATOM(uint64_t,              database_size,  1000000, uint64_scaled,, "Size of database in bytes")
-ATOM(bool_t,                external_blobs, 0, boolean,, "Store rhizome bundles as separate files.")
+ATOM(uint32_t,              max_blob_size,  128 * 1024, uint32_scaled,, "Store payloads larger than this in files not SQLite blobs")
 
 ATOM(uint64_t,              rhizome_mdp_block_size, 512, uint64_scaled,, "Rhizome MDP block size.")
 ATOM(uint64_t,              idle_timeout,           RHIZOME_IDLE_TIMEOUT, uint64_scaled,, "Rhizome transfer timeout if no data received.")

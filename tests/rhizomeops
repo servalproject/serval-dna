@@ -282,11 +282,11 @@ doc_ExtractManifestFileFromExtBlob="Export bundle from external blob"
 setup_ExtractManifestFileFromExtBlob() {
    setup_servald
    setup_rhizome
-   executeOk_servald config set rhizome.external_blobs 1
+   executeOk_servald config set rhizome.max_blob_size 0
    echo "A test file" >file1
    executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
    extract_stdout_rowid rowid1
-   executeOk_servald config set rhizome.external_blobs 0
+   executeOk_servald config set rhizome.max_blob_size 1000
    echo "Another test file" >file2
    executeOk_servald rhizome add file $SIDB1 file2 file2.manifest
    extract_stdout_rowid rowid2
@@ -352,7 +352,7 @@ doc_CorruptExternalBlob="A corrupted payload should fail to export"
 setup_CorruptExternalBlob() {
    setup_servald
    setup_rhizome
-   executeOk_servald config set rhizome.external_blobs 1
+   executeOk_servald config set rhizome.max_blob_size 0
    echo "A test file" >file1
    executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
    extract_manifest_id manifestid file1.manifest

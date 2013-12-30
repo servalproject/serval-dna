@@ -657,6 +657,9 @@ int cf_fmt_int32_nonneg(const char **, const int32_t *intp);
 int cf_opt_uint32_nonzero(uint32_t *intp, const char *text);
 int cf_fmt_uint32_nonzero(const char **, const uint32_t *intp);
 
+int cf_opt_uint32_scaled(uint32_t *intp, const char *text);
+int cf_fmt_uint32_scaled(const char **, const uint32_t *intp);
+
 int cf_opt_uint64_scaled(uint64_t *intp, const char *text);
 int cf_fmt_uint64_scaled(const char **, const uint64_t *intp);
 

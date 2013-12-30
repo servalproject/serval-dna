@@ -86,7 +86,7 @@ enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, cons
   
   char blob_path[1024];
   
-  if (config.rhizome.external_blobs || file_length > 128*1024) {
+  if (file_length > config.rhizome.max_blob_size) {
     if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, "%"PRId64, write->temp_id)){
       WHY("Invalid path");
       goto insert_row_fail;

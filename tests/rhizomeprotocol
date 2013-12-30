@@ -326,7 +326,7 @@ setup_FileTransferBigMDPExtBlob() {
    foreach_instance +A +B \
       executeOk_servald config \
          set rhizome.http.enable 0 \
-         set rhizome.external_blobs 1 \
+         set rhizome.max_blob_size 0 \
 	 set debug.externalblobs 1
    setup_bigfile_common
 }
@@ -340,7 +340,7 @@ setup_FileTransferBigHTTPExtBlob() {
    foreach_instance +A +B \
       executeOk_servald config \
          set rhizome.mdp.enable 0 \
-         set rhizome.external_blobs 1 \
+         set rhizome.max_blob_size 0 \
 	 set debug.externalblobs 1
    setup_bigfile_common
 }
@@ -402,7 +402,7 @@ setup_FileTransferMultiMDPExtBlob() {
    foreach_instance +A +B +C +D +E \
       executeOk_servald config \
          set rhizome.http.enable 0 \
-         set rhizome.external_blobs 1 \
+         set rhizome.max_blob_size 0 \
 	 set debug.externalblobs 1
    setup_multitransfer_common
 }
@@ -416,7 +416,7 @@ setup_FileTransferMultiHTTPExtBlob() {
    foreach_instance +A +B +C +D +E \
       executeOk_servald config \
          set rhizome.mdp.enable 0 \
-         set rhizome.external_blobs 1 \
+         set rhizome.max_blob_size 0 \
 	 set debug.externalblobs 1
    setup_multitransfer_common
 }
@@ -449,7 +449,7 @@ doc_CorruptPayload="A corrupted payload should be re-fetched"
 setup_CorruptPayload() {
    setup_common
    set_instance +A
-   executeOk_servald config set rhizome.external_blobs 1
+   executeOk_servald config set rhizome.max_blob_size 0
    rhizome_add_file file1 1024
    create_file file2 1024
    start_servald_instances +A +B
