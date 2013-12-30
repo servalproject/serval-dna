@@ -552,8 +552,8 @@ static void add_nonce(unsigned char *nonce, uint64_t value)
   }
 }
 
-/* crypt a block of a stream, allowing for offsets that don't align perfectly to block boundaries
- * for efficiency the caller should use a buffer size of (n*RHIZOME_CRYPT_PAGE_SIZE)
+/* Encrypt a block of a stream in-place, allowing for offsets that don't align perfectly to block
+ * boundaries for efficiency the caller should use a buffer size of (n*RHIZOME_CRYPT_PAGE_SIZE).
  */
 int rhizome_crypt_xor_block(unsigned char *buffer, size_t buffer_size, uint64_t stream_offset, 
 			    const unsigned char *key, const unsigned char *nonce)
@@ -601,7 +601,8 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
 {
   // don't do anything if the manifest isn't flagged as being encrypted
   assert(m->payloadEncryption == PAYLOAD_ENCRYPTED);
-  if (m->has_sender && m->has_recipient){
+  unsigned char hash[crypto_hash_sha512_BYTES];
+  if (m->has_sender && m->has_recipient) {
     unsigned char *nm_bytes=NULL;
     unsigned cn=0, in=0, kp=0;
     if (!keyring_find_sid(keyring, &cn, &in, &kp, &m->sender)){
@@ -612,42 +613,52 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
 	    alloca_tohex_sid_t(m->recipient));
 	return 0;
       }
-      nm_bytes=keyring_get_nm_bytes(&m->recipient, &m->sender);
+      nm_bytes = keyring_get_nm_bytes(&m->recipient, &m->sender);
+      if (config.debug.rhizome)
+	DEBUGF("derived payload key from recipient=%s* to sender=%s*",
+	      alloca_tohex_sid_t_trunc(m->recipient, 7),
+	      alloca_tohex_sid_t_trunc(m->sender, 7)
+	    );
     }else{
-      nm_bytes=keyring_get_nm_bytes(&m->sender, &m->recipient);
+      nm_bytes = keyring_get_nm_bytes(&m->sender, &m->recipient);
+      if (config.debug.rhizome)
+	DEBUGF("derived payload key from sender=%s* to recipient=%s*",
+	      alloca_tohex_sid_t_trunc(m->sender, 7),
+	      alloca_tohex_sid_t_trunc(m->recipient, 7)
+	    );
     }
     assert(nm_bytes != NULL);
-    
-    unsigned char hash[crypto_hash_sha512_BYTES];
     crypto_hash_sha512(hash, nm_bytes, crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
-    bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
     
   }else{
     if (!m->haveSecret) {
       WHY("Cannot derive payload key because bundle secret is unknown");
       return 0;
     }
-    
+    if (config.debug.rhizome)
+      DEBUGF("derived payload key from bundle secret bsk=%s", alloca_tohex(m->cryptoSignSecret, sizeof m->cryptoSignSecret));
     unsigned char raw_key[9+crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]="sasquatch";
     bcopy(m->cryptoSignSecret, &raw_key[9], crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
-    
     unsigned char hash[crypto_hash_sha512_BYTES];
-    
     crypto_hash_sha512(hash, raw_key, sizeof(raw_key));
-    bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
   }
-  
+  bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
+  if (config.debug.rhizome_manifest)
+    DEBUGF("SET manifest[%d].payloadKey = %s", m->manifest_record_number, alloca_tohex(m->payloadKey, sizeof m->payloadKey));
+
   // journal bundles must always have the same nonce, regardless of version.
   // otherwise, generate nonce from version#bundle id#version;
   unsigned char raw_nonce[8 + 8 + sizeof m->cryptoSignPublic.binary];
-  write_uint64(&raw_nonce[0], m->is_journal ? 0 : m->version);
+  uint64_t nonce_version = m->is_journal ? 0 : m->version;
+  write_uint64(&raw_nonce[0], nonce_version);
   bcopy(m->cryptoSignPublic.binary, &raw_nonce[8], sizeof m->cryptoSignPublic.binary);
-  write_uint64(&raw_nonce[8 + sizeof m->cryptoSignPublic.binary], m->is_journal ? 0 : m->version);
-  
-  unsigned char hash[crypto_hash_sha512_BYTES];
-  
+  write_uint64(&raw_nonce[8 + sizeof m->cryptoSignPublic.binary], nonce_version);
+  if (config.debug.rhizome)
+    DEBUGF("derived payload nonce from bid=%s version=%"PRIu64, alloca_tohex_sid_t(m->cryptoSignPublic), nonce_version);
   crypto_hash_sha512(hash, raw_nonce, sizeof(raw_nonce));
   bcopy(hash, m->payloadNonce, sizeof(m->payloadNonce));
+  if (config.debug.rhizome_manifest)
+    DEBUGF("SET manifest[%d].payloadNonce = %s", m->manifest_record_number, alloca_tohex(m->payloadNonce, sizeof m->payloadNonce));
 
   return 1;
 }
