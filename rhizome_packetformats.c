@@ -112,9 +112,7 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
   v=(maxLat+90)*(65535/180); bar[o++]=(v>>8)&0xff; bar[o++]=(v>>0)&0xff;
   v=(maxLong+180)*(65535/360); bar[o++]=(v>>8)&0xff; bar[o++]=(v>>0)&0xff;
 
-  /* TTL */
-  if (m->ttl>0) bar[RHIZOME_BAR_TTL_OFFSET]=m->ttl-1; 
-  else bar[RHIZOME_BAR_TTL_OFFSET]=0;
+  bar[RHIZOME_BAR_TTL_OFFSET]=0;
   
   RETURN(0);
   OUT();
@@ -350,7 +348,9 @@ int overlay_rhizome_saw_advertisements(struct decode_context *context, struct ov
       // The manifest looks potentially interesting, so now do a full parse and validation.
       if ((m = rhizome_new_manifest()) == NULL)
 	goto next;
-      if (   rhizome_read_manifest_file(m, (char *)data, manifest_length) == -1
+      memcpy(m->manifestdata, data, manifest_length);
+      m->manifest_all_bytes = manifest_length;
+      if (   rhizome_manifest_parse(m) == -1
 	  || !rhizome_manifest_validate(m)
       ) {
 	WARN("Malformed manifest");

@@ -162,3 +162,24 @@ ssize_t read_symlink(const char *path, char *buf, size_t len)
   buf[nr] = '\0';
   return nr;
 }
+
+ssize_t read_whole_file(const char *path, unsigned char *buffer, size_t buffer_size)
+{
+  int fd = open(path, O_RDONLY);
+  if (fd == -1)
+    return WHYF_perror("open(%d,%s,O_RDONLY)", fd, alloca_str_toprint(path));
+  ssize_t ret;
+  struct stat stat;
+  if (fstat(fd, &stat) == -1)
+    ret = WHYF_perror("fstat(%d)", fd);
+  else if ((size_t)stat.st_size > buffer_size)
+    ret = WHYF("file %s (size %zu) is larger than available buffer (%zu)", alloca_str_toprint(path), (size_t)stat.st_size, buffer_size);
+  else {
+    ret = read(fd, buffer, buffer_size);
+    if (ret == -1)
+      ret = WHYF_perror("read(%d,%s,%zu)", fd, alloca_str_toprint(path), buffer_size);
+  }
+  if (close(fd) == -1)
+    ret = WHYF_perror("close(%d)", fd);
+  return ret;
+}

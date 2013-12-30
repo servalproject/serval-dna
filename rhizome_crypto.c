@@ -300,7 +300,7 @@ int rhizome_apply_bundle_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
     DEBUGF("manifest[%d] bsk=%s", m->manifest_record_number, bsk ? alloca_tohex_rhizome_bk_t(*bsk) : "NULL");
   assert(m->haveSecret == SECRET_UNKNOWN);
   assert(is_all_matching(m->cryptoSignSecret, sizeof m->cryptoSignSecret, 0));
-  assert(!rhizome_bid_t_is_zero(m->cryptoSignPublic));
+  assert(m->has_id);
   assert(bsk != NULL);
   assert(!rhizome_is_bk_none(bsk));
   if (rhizome_verify_bundle_privatekey(bsk->binary, m->cryptoSignPublic.binary)) {
@@ -450,7 +450,7 @@ typedef struct manifest_signature_block_cache {
 #define SIG_CACHE_SIZE 1024
 manifest_signature_block_cache sig_cache[SIG_CACHE_SIZE];
 
-int rhizome_manifest_lookup_signature_validity(const unsigned char *hash, const unsigned char *sig, int sig_len)
+static int rhizome_manifest_lookup_signature_validity(const unsigned char *hash, const unsigned char *sig, int sig_len)
 {
   IN();
   unsigned int slot=0;
@@ -552,8 +552,8 @@ static void add_nonce(unsigned char *nonce, uint64_t value)
   }
 }
 
-/* crypt a block of a stream, allowing for offsets that don't align perfectly to block boundaries
- * for efficiency the caller should use a buffer size of (n*RHIZOME_CRYPT_PAGE_SIZE)
+/* Encrypt a block of a stream in-place, allowing for offsets that don't align perfectly to block
+ * boundaries for efficiency the caller should use a buffer size of (n*RHIZOME_CRYPT_PAGE_SIZE).
  */
 int rhizome_crypt_xor_block(unsigned char *buffer, size_t buffer_size, uint64_t stream_offset, 
 			    const unsigned char *key, const unsigned char *nonce)
@@ -594,57 +594,71 @@ int rhizome_crypt_xor_block(unsigned char *buffer, size_t buffer_size, uint64_t 
   return 0;
 }
 
+/* If payload key is known, sets m->payloadKey and m->payloadNonce and returns 1.
+ * Otherwise, returns 0;
+ */
 int rhizome_derive_payload_key(rhizome_manifest *m)
 {
   // don't do anything if the manifest isn't flagged as being encrypted
-  if (m->payloadEncryption != PAYLOAD_ENCRYPTED)
-    return 0;
-  if (m->has_sender && m->has_recipient){
+  assert(m->payloadEncryption == PAYLOAD_ENCRYPTED);
+  unsigned char hash[crypto_hash_sha512_BYTES];
+  if (m->has_sender && m->has_recipient) {
     unsigned char *nm_bytes=NULL;
     unsigned cn=0, in=0, kp=0;
     if (!keyring_find_sid(keyring, &cn, &in, &kp, &m->sender)){
       cn=in=kp=0;
       if (!keyring_find_sid(keyring, &cn, &in, &kp, &m->recipient)){
-	return WHYF("Neither the sender %s nor the recipient %s appears in our keyring",
+	WARNF("Neither sender=%s nor recipient=%s is in keyring",
 	    alloca_tohex_sid_t(m->sender),
 	    alloca_tohex_sid_t(m->recipient));
+	return 0;
       }
-      nm_bytes=keyring_get_nm_bytes(&m->recipient, &m->sender);
+      nm_bytes = keyring_get_nm_bytes(&m->recipient, &m->sender);
+      if (config.debug.rhizome)
+	DEBUGF("derived payload key from recipient=%s* to sender=%s*",
+	      alloca_tohex_sid_t_trunc(m->recipient, 7),
+	      alloca_tohex_sid_t_trunc(m->sender, 7)
+	    );
     }else{
-      nm_bytes=keyring_get_nm_bytes(&m->sender, &m->recipient);
+      nm_bytes = keyring_get_nm_bytes(&m->sender, &m->recipient);
+      if (config.debug.rhizome)
+	DEBUGF("derived payload key from sender=%s* to recipient=%s*",
+	      alloca_tohex_sid_t_trunc(m->sender, 7),
+	      alloca_tohex_sid_t_trunc(m->recipient, 7)
+	    );
     }
-    
-    if (!nm_bytes)
-      return -1;
-    
-    unsigned char hash[crypto_hash_sha512_BYTES];
+    assert(nm_bytes != NULL);
     crypto_hash_sha512(hash, nm_bytes, crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
-    bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
     
   }else{
-    if (!m->haveSecret)
-      return WHY("Cannot derive payload key because bundle secret is unknown");
-    
+    if (!m->haveSecret) {
+      WHY("Cannot derive payload key because bundle secret is unknown");
+      return 0;
+    }
+    if (config.debug.rhizome)
+      DEBUGF("derived payload key from bundle secret bsk=%s", alloca_tohex(m->cryptoSignSecret, sizeof m->cryptoSignSecret));
     unsigned char raw_key[9+crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]="sasquatch";
     bcopy(m->cryptoSignSecret, &raw_key[9], crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
-    
     unsigned char hash[crypto_hash_sha512_BYTES];
-    
     crypto_hash_sha512(hash, raw_key, sizeof(raw_key));
-    bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
   }
-  
+  bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
+  if (config.debug.rhizome_manifest)
+    DEBUGF("SET manifest[%d].payloadKey = %s", m->manifest_record_number, alloca_tohex(m->payloadKey, sizeof m->payloadKey));
+
   // journal bundles must always have the same nonce, regardless of version.
   // otherwise, generate nonce from version#bundle id#version;
   unsigned char raw_nonce[8 + 8 + sizeof m->cryptoSignPublic.binary];
-  write_uint64(&raw_nonce[0], m->is_journal ? 0 : m->version);
+  uint64_t nonce_version = m->is_journal ? 0 : m->version;
+  write_uint64(&raw_nonce[0], nonce_version);
   bcopy(m->cryptoSignPublic.binary, &raw_nonce[8], sizeof m->cryptoSignPublic.binary);
-  write_uint64(&raw_nonce[8 + sizeof m->cryptoSignPublic.binary], m->is_journal ? 0 : m->version);
-  
-  unsigned char hash[crypto_hash_sha512_BYTES];
-  
+  write_uint64(&raw_nonce[8 + sizeof m->cryptoSignPublic.binary], nonce_version);
+  if (config.debug.rhizome)
+    DEBUGF("derived payload nonce from bid=%s version=%"PRIu64, alloca_tohex_sid_t(m->cryptoSignPublic), nonce_version);
   crypto_hash_sha512(hash, raw_nonce, sizeof(raw_nonce));
   bcopy(hash, m->payloadNonce, sizeof(m->payloadNonce));
-  
-  return 0;  
+  if (config.debug.rhizome_manifest)
+    DEBUGF("SET manifest[%d].payloadNonce = %s", m->manifest_record_number, alloca_tohex(m->payloadNonce, sizeof m->payloadNonce));
+
+  return 1;
 }

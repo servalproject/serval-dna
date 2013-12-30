@@ -93,32 +93,28 @@ int rhizome_fetch_delay_ms()
 }
 
 /* Import a bundle from a pair of files, one containing the manifest and the optional other
-   containing the payload.  The logic is all in rhizome_bundle_import().  This function just wraps
-   that function and manages file and object buffers and lifetimes.
-*/
-
-int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, const char *filepath)
+ * containing the payload.  The work is all done by rhizome_bundle_import() and
+ * rhizome_store_manifest().
+ */
+enum rhizome_bundle_status rhizome_bundle_import_files(rhizome_manifest *m, rhizome_manifest **mout, const char *manifest_path, const char *filepath)
 {
   if (config.debug.rhizome)
     DEBUGF("(manifest_path=%s, filepath=%s)",
 	manifest_path ? alloca_str_toprint(manifest_path) : "NULL",
 	filepath ? alloca_str_toprint(filepath) : "NULL");
   
-  unsigned char buffer[MAX_MANIFEST_BYTES];
   size_t buffer_len = 0;
+  int ret = 0;
   
   // manifest has been appended to the end of the file.
   if (strcmp(manifest_path, filepath)==0){
     unsigned char marker[4];
-    int ret=0;
     FILE *f = fopen(filepath, "r");
     
     if (f == NULL)
       return WHYF_perror("Could not open manifest file %s for reading.", filepath);
-    
     if (fseek(f, -sizeof(marker), SEEK_END))
       ret=WHY_perror("Unable to seek to end of file");
-    
     if (ret==0){
       ret = fread(marker, 1, sizeof(marker), f);
       if (ret==sizeof(marker))
@@ -126,86 +122,62 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
       else
 	ret=WHY_perror("Unable to read end of manifest marker");
     }
-    
     if (ret==0){
       if (marker[2]!=0x41 || marker[3]!=0x10)
 	ret=WHYF("Expected 0x4110 marker at end of file");
     }
-    
     if (ret==0){
       buffer_len = read_uint16(marker);
       if (buffer_len < 1 || buffer_len > MAX_MANIFEST_BYTES)
 	ret=WHYF("Invalid manifest length %zu", buffer_len);
     }
-    
     if (ret==0){
       if (fseek(f, -(buffer_len+sizeof(marker)), SEEK_END))
 	ret=WHY_perror("Unable to seek to end of file");
     }
-    
-    if (ret==0){
-      ssize_t nread = fread(buffer, 1, buffer_len, f);
-      if ((size_t)nread != buffer_len)
-	ret=WHY_perror("Unable to read manifest contents");
+    if (ret == 0 && fread(m->manifestdata, buffer_len, 1, f) != 1) {
+      if (ferror(f))
+	ret = WHYF("fread(%p,%zu,1,%s) error", m->manifestdata, buffer_len, alloca_str_toprint(filepath));
+      else if (feof(f))
+	ret = WHYF("fread(%p,%zu,1,%s) hit end of file", m->manifestdata, buffer_len, alloca_str_toprint(filepath));
     }
-    
     fclose(f);
-    
-    if (ret)
-      return ret;
-    
-    manifest_path=(char*)buffer;
+  } else {
+    ssize_t size = read_whole_file(manifest_path, m->manifestdata, sizeof m->manifestdata);
+    if (size == -1)
+      ret = -1;
+    buffer_len = (size_t) size;
   }
-  
-  if (rhizome_read_manifest_file(m, manifest_path, buffer_len) == -1)
-    return WHY("could not read manifest file");
-  if (!rhizome_manifest_validate(m))
-    return WHY("manifest is invalid");
-  if (!rhizome_manifest_verify(m))
-    return WHY("could not verify manifest");
-  
-  /* Do we already have this manifest or newer? */
-  uint64_t dbVersion = 0;
-  if (sqlite_exec_uint64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &m->cryptoSignPublic, END) == -1)
-    return WHY("Select failure");
-
-  if (dbVersion >= m->version)
-    return 2;
-
-  int status = rhizome_import_file(m, filepath);
-  if (status<0)
-    return status;
-  
-  return rhizome_add_manifest(m, 1);
-}
-
-int rhizome_manifest_check_sanity(rhizome_manifest *m)
-{
-  /* Ensure manifest meets basic sanity checks. */
-  int ret = 0;
-  if (m->version == 0)
-    ret = WHY("Manifest must have a version number");
-  if (m->filesize == RHIZOME_SIZE_UNSET)
-    ret = WHY("Manifest missing 'filesize' field");
-  else if (m->filesize && rhizome_filehash_t_is_zero(m->filehash))
-    ret = WHY("Manifest 'filehash' field has not been set");
-  if (m->service == NULL)
-    ret = WHY("Manifest missing 'service' field");
-  else if (strcasecmp(m->service, RHIZOME_SERVICE_FILE) == 0) {
-    if (m->name == NULL)
-      ret = WHY("Manifest with service='" RHIZOME_SERVICE_FILE "' missing 'name' field");
-  } else if (strcasecmp(m->service, RHIZOME_SERVICE_MESHMS) == 0 
-	  || strcasecmp(m->service, RHIZOME_SERVICE_MESHMS2) == 0) {
-    if (!m->has_sender)
-      ret = WHYF("Manifest with service='%s' missing 'sender' field", m->service);
-    if (!m->has_recipient)
-      ret = WHYF("Manifest with service='%s' missing 'recipient' field", m->service);
+  if (ret)
+    return ret;
+  m->manifest_all_bytes = buffer_len;
+  if (   rhizome_manifest_parse(m) == -1
+      || !rhizome_manifest_validate(m)
+      || !rhizome_manifest_verify(m)
+  )
+    return RHIZOME_BUNDLE_STATUS_INVALID;
+  enum rhizome_bundle_status status = rhizome_manifest_check_stored(m, mout);
+  if (status == RHIZOME_BUNDLE_STATUS_NEW) {
+    enum rhizome_payload_status pstatus = rhizome_import_payload_from_file(m, filepath);
+    switch (pstatus) {
+      case RHIZOME_PAYLOAD_STATUS_EMPTY:
+      case RHIZOME_PAYLOAD_STATUS_STORED:
+      case RHIZOME_PAYLOAD_STATUS_NEW:
+	if (rhizome_store_manifest(m) == -1)
+	  return -1;
+	break;
+      case RHIZOME_PAYLOAD_STATUS_ERROR:
+      case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+	return -1;
+      case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+      case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+	status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
+	break;
+      default:
+	FATALF("pstatus = %d", pstatus);
+    }
   }
-  else if (!rhizome_str_is_manifest_service(m->service))
-    ret = WHYF("Manifest invalid 'service' field %s", alloca_str_toprint(m->service));
-  if (!m->has_date)
-    ret = WHY("Manifest missing 'date' field");
-  return ret;
+  return status;
 }
 
 /* Sets the bundle key "BK" field of a manifest.  Returns 1 if the field was set, 0 if not.
@@ -278,50 +250,90 @@ int rhizome_manifest_add_bundle_key(rhizome_manifest *m)
   RETURN(0);
 }
 
-int rhizome_add_manifest(rhizome_manifest *m, int ttl)
+/* Test the status of a given manifest 'm' (id, version) with respect to the Rhizome store, and
+ * return a code which indicates whether 'm' should be stored or not, setting *mout to 'm' or
+ * to point to a newly allocated manifest.  The caller is responsible for freeing *mout if *mout !=
+ * m.  If the caller passes mout==NULL then no new manifest is allocated.
+ *
+ *  - If the store contains no manifest with the given id, sets *mout = m and returns
+ *    RHIZOME_BUNDLE_STATUS_NEW, ie, the manifest 'm' should be stored.
+ *
+ *  - If the store contains a manifest with the same id and an older version, sets *mout to the
+ *    stored manifest and returns RHIZOME_BUNDLE_STATUS_NEW, ie, the manifest 'm' should be
+ *    stored.
+ *
+ *  - If the store contains a manifest with the same id and version, sets *mout to the stored
+ *    manifest and returns RHIZOME_BUNDLE_STATUS_SAME.  The caller must compare *m and *mout, and
+ *    if they are not identical, must decide what to do.
+ *
+ *  - If the store contains a manifest with the same id and a later version, sets *mout to the
+ *    stored manifest and returns RHIZOME_BUNDLE_STATUS_OLD, ie, the manifest 'm' should NOT be
+ *    stored.
+ *
+ *  - If there is an error querying the Rhizome store or allocating a new manifest structure, logs
+ *    an error and returns -1.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+enum rhizome_bundle_status rhizome_manifest_check_stored(rhizome_manifest *m, rhizome_manifest **mout)
 {
-  if (config.debug.rhizome)
-    DEBUGF("rhizome_add_manifest(m=%p, ttl=%d)",m, ttl);
-
-  if (m->finalised==0)
-    return WHY("Manifest must be finalised before being stored");
-
-  /* Store time to live, clamped to within legal range */
-  m->ttl = ttl < 0 ? 0 : ttl > 254 ? 254 : ttl;
-
-  if (rhizome_manifest_check_sanity(m))
+  assert(m->has_id);
+  assert(m->version != 0);
+  rhizome_manifest *stored_m = rhizome_new_manifest();
+  if (stored_m == NULL)
     return -1;
-
-  assert(m->filesize != RHIZOME_SIZE_UNSET);
-  if (m->filesize > 0 && !rhizome_exists(&m->filehash))
-    return WHY("File has not been imported");
-
-  /* If the manifest already has an ID */
-  if (rhizome_bid_t_is_zero(m->cryptoSignPublic))
-    return WHY("Manifest does not have an ID");   
-  
-  /* Discard the new manifest unless it is newer than the most recent known version with the same ID */
-  uint64_t storedversion = -1;
-  switch (sqlite_exec_uint64(&storedversion, "SELECT version FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &m->cryptoSignPublic, END)) {
+  int n = rhizome_retrieve_manifest(&m->cryptoSignPublic, stored_m);
+  switch (n) {
     case -1:
-      return WHY("Select failed");
-    case 0:
-      if (config.debug.rhizome) DEBUG("No existing manifest");
-      break;
+      rhizome_manifest_free(stored_m);
+      return -1;
     case 1:
-      if (config.debug.rhizome) 
-	DEBUGF("Found existing version=%"PRIu64", new version=%"PRIu64, storedversion, m->version);
-      if (m->version < storedversion)
-	return WHY("Newer version exists");
-      if (m->version == storedversion)
-	return WHYF("Already have %s:%"PRIu64", not adding", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
+      if (config.debug.rhizome)
+	DEBUGF("No stored manifest with id=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+      rhizome_manifest_free(stored_m);
+      if (mout)
+	*mout = m;
+      return RHIZOME_BUNDLE_STATUS_NEW;
+    case 0:
       break;
     default:
-      return WHY("Select found too many rows!");
+      FATALF("rhizome_retrieve_manifest() returned %d", n);
   }
+  if (mout)
+    *mout = stored_m;
+  else
+    rhizome_manifest_free(stored_m);
+  enum rhizome_bundle_status result = RHIZOME_BUNDLE_STATUS_NEW;
+  const char *what = "newer than";
+  if (m->version < stored_m->version) {
+    result = RHIZOME_BUNDLE_STATUS_OLD;
+    what = "older than";
+  }
+  if (m->version == stored_m->version) {
+    return RHIZOME_BUNDLE_STATUS_SAME;
+    what = "same as";
+  }
+  if (config.debug.rhizome)
+    DEBUGF("Bundle %s:%"PRIu64" is %s stored version %"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, what, stored_m->version);
+  return result;
+}
 
-  /* Okay, it is written, and can be put directly into the rhizome database now */
-  return rhizome_store_bundle(m);
+enum rhizome_bundle_status rhizome_add_manifest(rhizome_manifest *m, rhizome_manifest **mout)
+{
+  if (config.debug.rhizome)
+    DEBUGF("rhizome_add_manifest(m=manifest[%d](%p), mout=%p)", m->manifest_record_number, m, mout);
+  if (!m->finalised && !rhizome_manifest_validate(m))
+    return RHIZOME_BUNDLE_STATUS_INVALID;
+  assert(m->finalised);
+  if (!m->selfSigned && !rhizome_manifest_verify(m))
+    return RHIZOME_BUNDLE_STATUS_FAKE;
+  assert(m->filesize != RHIZOME_SIZE_UNSET);
+  if (m->filesize > 0 && !rhizome_exists(&m->filehash))
+    return WHY("Payload has not been stored");
+  enum rhizome_bundle_status status = rhizome_manifest_check_stored(m, mout);
+  if (status == RHIZOME_BUNDLE_STATUS_NEW && rhizome_store_manifest(m) == -1)
+    return -1;
+  return status;
 }
 
 /* When voice traffic is being carried, we need to throttle Rhizome down

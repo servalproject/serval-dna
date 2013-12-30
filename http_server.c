@@ -108,7 +108,9 @@ void http_request_init(struct http_request *r, int sockfd)
   r->alarm.poll.fd = sockfd;
   r->alarm.poll.events = POLLIN;
   r->phase = RECEIVE;
-  r->received = r->end = r->parsed = r->cursor = r->buffer;
+  r->reserved = r->buffer;
+  // Put aside a few bytes for reserving strings, so that the path can be reserved ok.
+  r->received = r->end = r->parsed = r->cursor = r->buffer + 32;
   r->parser = http_request_parse_verb;
   watch(&r->alarm);
   http_request_set_idle_timeout(r);
@@ -140,11 +142,11 @@ int http_request_set_response_bufsize(struct http_request *r, size_t bufsiz)
   // Don't allocate a new buffer if the existing one contains content.
   assert(r->response_buffer_sent == r->response_buffer_length);
   const char *const bufe = r->buffer + sizeof r->buffer;
-  assert(r->received < bufe);
-  size_t rbufsiz = bufe - r->received;
+  assert(r->reserved < bufe);
+  size_t rbufsiz = bufe - r->reserved;
   if (bufsiz <= rbufsiz) {
     http_request_free_response_buffer(r);
-    r->response_buffer = (char *) r->received;
+    r->response_buffer = (char *) r->reserved;
     r->response_buffer_size = rbufsiz;
     if (r->debug_flag && *r->debug_flag)
       DEBUGF("Static response buffer %zu bytes", r->response_buffer_size);
@@ -197,37 +199,110 @@ static int _matches(struct substring str, const char *text)
 }
 #endif
 
-static const char * _reserve(struct http_request *r, struct substring str)
+void write_pointer(unsigned char *mem, void *v)
 {
-  char *reslim = r->buffer + sizeof r->buffer - 1024; // always leave this much unreserved space
-  assert(r->received <= reslim);
+  uintptr_t n = (uintptr_t) v;
+  unsigned i;
+  for (i = 0; i != sizeof v; ++i)
+    mem[i] = n >> (8 * i);
+}
+
+void *read_pointer(const unsigned char *mem)
+{
+  uintptr_t n = 0;
+  unsigned i;
+  for (i = 0; i != sizeof(void*); ++i)
+    n |= mem[i] << (8 * i);
+  return (void *) n;
+}
+
+/* Allocate space from the start of the request buffer to hold the given substring plus a
+ * terminating NUL.  Enough bytes must have already been marked as parsed in order to make room,
+ * otherwise the reservation fails and returns 0.  If successful, copies the substring plus a
+ * terminating NUL into the reserved space, places a pointer to the reserved area into '*resp', and
+ * returns 1.
+ *
+ * Keeps a copy to the pointer 'resp', so that when the reserved area is released, all pointers into
+ * it can be set to NULL automatically.  This provides some safety: if the pointer is accidentally
+ * dereferenced after the release it will cause a SEGV instead of using a string that has been
+ * overwritten.  It does not protect from using copies of '*resp', which of course will not be have
+ * been set to NULL by the release.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+static int _reserve(struct http_request *r, const char **resp, struct substring str)
+{
+  // Reserved string pointer must lie within this http_request struct.
+  assert((char*)resp >= (char*)r);
+  assert((char*)resp < (char*)(r + 1));
   size_t len = str.end - str.start;
-  size_t siz = len + 1;
-  if (r->received + siz > reslim) {
+  // Substring must contain no NUL chars.
+  assert(strnchr(str.start, len, '\0') == NULL);
+  char *reslim = r->buffer + sizeof r->buffer - 1024; // always leave this much unreserved space
+  assert(r->reserved <= reslim);
+  size_t siz = sizeof(char**) + len + 1;
+  if (r->reserved + siz > reslim) {
     r->response.result_code = 414;
-    return NULL;
+    return 0;
   }
-  if (r->received + siz > r->parsed) {
+  if (r->reserved + siz > r->parsed) {
     WARNF("Error during HTTP parsing, unparsed content %s would be overwritten by reserving %s",
 	alloca_toprint(30, r->parsed, r->end - r->parsed),
 	alloca_substring_toprint(str)
       );
     r->response.result_code = 500;
-    return NULL;
+    return 0;
   }
-  char *ret = (char *) r->received;
-  if (ret != str.start)
-    memmove(ret, str.start, len);
-  ret[len] = '\0';
-  r->received += siz;
+  const char ***respp = (const char ***) r->reserved;
+  char *restr = (char *)(respp + 1);
+  write_pointer((unsigned char*)respp, resp); // can't use *respp = resp; could cause SIGBUS if not aligned
+  if (restr != str.start)
+    memmove(restr, str.start, len);
+  restr[len] = '\0';
+  r->reserved += siz;
+  if (r->reserved > r->received)
+    r->received = r->reserved;
   assert(r->received <= r->parsed);
-  return ret;
+  *resp = restr;
+  return 1;
 }
 
-static const char * _reserve_str(struct http_request *r, const char *str)
+/* The same as _reserve(), but takes a NUL-terminated string as a source argument instead of a
+ * substring.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+static int _reserve_str(struct http_request *r, const char **resp, const char *str)
 {
   struct substring sub = { .start = str, .end = str + strlen(str) };
-  return _reserve(r, sub);
+  return _reserve(r, resp, sub);
+}
+
+/* Release all the strings reserved by _reserve(), returning the space to the request buffer, and
+ * resetting to NULL all the pointers to reserved strings that were set by _reserve().
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+static void _release_reserved(struct http_request *r)
+{
+  char *res = r->buffer;
+  while (res < r->reserved) {
+    assert(res + sizeof(char**) + 1 <= r->reserved);
+    const char ***respp = (const char ***) res;
+    char *restr = (char *)(respp + 1);
+    const char **resp = read_pointer((const unsigned char*)respp); // can't use resp = *respp; could cause SIGBUS if not aligned
+    assert((const char*)resp >= (const char*)r);
+    assert((const char*)resp < (const char*)(r + 1));
+    assert(*resp == restr);
+    *resp = NULL;
+    for (res = restr; res < r->reserved && *res; ++res)
+      ;
+    assert(res < r->reserved);
+    assert(*res == '\0');
+    ++res;
+  }
+  assert(res == r->reserved);
+  r->reserved = r->buffer;
 }
 
 static inline int _end_of_content(struct http_request *r)
@@ -463,12 +538,12 @@ static size_t _parse_token_or_quoted_string(struct http_request *r, char *dst, s
 
 static inline int _parse_http_size_t(struct http_request *r, http_size_t *szp)
 {
-  return !_run_out(r) && isdigit(*r->cursor) && str_to_uint64(r->cursor, 10, szp, &r->cursor);
+  return !_run_out(r) && isdigit(*r->cursor) && str_to_uint64(r->cursor, 10, szp, (const char **)&r->cursor);
 }
 
-static inline int _parse_uint(struct http_request *r, unsigned int *uintp)
+static inline int _parse_uint32(struct http_request *r, uint32_t *uint32p)
 {
-  return !_run_out(r) && isdigit(*r->cursor) && str_to_uint(r->cursor, 10, uintp, &r->cursor);
+  return !_run_out(r) && isdigit(*r->cursor) && str_to_uint32(r->cursor, 10, uint32p, (const char **)&r->cursor);
 }
 
 static unsigned _parse_ranges(struct http_request *r, struct http_range *range, unsigned nrange)
@@ -523,7 +598,7 @@ static int _parse_content_type(struct http_request *r, struct mime_content_type 
     return 0;
   }
   while (_skip_optional_space(r) && _skip_literal(r, ";") && _skip_optional_space(r)) {
-    const char *start = r->cursor;
+    char *start = r->cursor;
     if (_skip_literal(r, "charset=")) {
       size_t n = _parse_token_or_quoted_string(r, ct->charset, sizeof ct->charset);
       if (n == 0)
@@ -560,7 +635,7 @@ static int _parse_content_type(struct http_request *r, struct mime_content_type 
 
 static size_t _parse_base64(struct http_request *r, char *bin, size_t binsize)
 {
-  return base64_decode((unsigned char *)bin, binsize, r->cursor, r->end - r->cursor, &r->cursor, B64_CONSUME_ALL, is_http_space);
+  return base64_decode((unsigned char *)bin, binsize, r->cursor, r->end - r->cursor, (const char **)&r->cursor, B64_CONSUME_ALL, is_http_space);
 }
 
 static int _parse_authorization_credentials_basic(struct http_request *r, struct http_client_credentials_basic *cred, char *buf, size_t bufsz)
@@ -579,14 +654,14 @@ static int _parse_authorization_credentials_basic(struct http_request *r, struct
 
 static int _parse_authorization(struct http_request *r, struct http_client_authorization *auth, size_t header_bytes)
 {
-  const char *start = r->cursor;
+  char *start = r->cursor;
   if (_skip_literal(r, "Basic") && _skip_space(r)) {
     size_t bufsz = 5 + header_bytes * 3 / 4; // enough for base64 decoding
     char buf[bufsz];
     if (_parse_authorization_credentials_basic(r, &auth->credentials.basic, buf, bufsz)) {
       auth->scheme = BASIC;
-      if (   (auth->credentials.basic.user = _reserve_str(r, auth->credentials.basic.user)) == NULL
-	  || (auth->credentials.basic.password = _reserve_str(r, auth->credentials.basic.password)) == NULL
+      if (   !_reserve_str(r, &auth->credentials.basic.user, auth->credentials.basic.user)
+	  || !_reserve_str(r, &auth->credentials.basic.password, auth->credentials.basic.password)
       )
 	return 0; // error
       return 1;
@@ -699,7 +774,7 @@ static int http_request_parse_path(struct http_request *r)
     return 400;
   }
   _commit(r);
-  if ((r->path = _reserve(r, path)) == NULL)
+  if (!_reserve(r, &r->path, path))
     return 0; // error
   r->parser = http_request_parse_http_version;
   return 0;
@@ -718,12 +793,12 @@ static int http_request_parse_http_version(struct http_request *r)
   // Parse HTTP version: HTTP/m.n followed by CRLF.
   assert(r->version_major == 0);
   assert(r->version_minor == 0);
-  unsigned major, minor;
+  uint32_t major, minor;
   if (!(   _skip_literal(r, "HTTP/")
-	&& _parse_uint(r, &major)
+	&& _parse_uint32(r, &major)
 	&& major > 0 && major < UINT8_MAX
 	&& _skip_literal(r, ".")
-	&& _parse_uint(r, &minor)
+	&& _parse_uint32(r, &minor)
 	&& minor < UINT8_MAX
 	&& _skip_eol(r)
        )
@@ -795,7 +870,7 @@ static int http_request_parse_header(struct http_request *r)
       return r->handle_headers(r);
     return 0;
   }
-  const char *const nextline = r->cursor;
+  char *const nextline = r->cursor;
   _rewind(r);
   const char *const sol = r->cursor;
   if (_skip_literal_nocase(r, "Content-Length:")) {
@@ -927,7 +1002,7 @@ static int http_request_start_body(struct http_request *r)
 	DEBUGF("Malformed HTTP %s request: non-zero Content-Length not allowed", r->verb);
       return 400;
     }
-    if (r->request_header.content_type.type) {
+    if (r->request_header.content_type.type[0]) {
       if (r->debug_flag && *r->debug_flag)
 	DEBUGF("Malformed HTTP %s request: Content-Type not allowed", r->verb);
       return 400;
@@ -940,7 +1015,7 @@ static int http_request_start_body(struct http_request *r)
 	DEBUGF("Malformed HTTP %s request: missing Content-Length header", r->verb);
       return 411;
     }
-    if (r->request_header.content_type.type == NULL) {
+    if (r->request_header.content_type.type[0] == '\0') {
       if (r->debug_flag && *r->debug_flag)
 	DEBUGF("Malformed HTTP %s request: missing Content-Type header", r->verb);
       return 400;
@@ -999,7 +1074,7 @@ static int _parse_content_disposition(struct http_request *r, struct mime_conten
     return 0;
   }
   while (_skip_optional_space(r) && _skip_literal(r, ";") && _skip_optional_space(r)) {
-    const char *start = r->cursor;
+    char *start = r->cursor;
     if (_skip_literal(r, "filename=")) {
       size_t n = _parse_token_or_quoted_string(r, cd->filename, sizeof cd->filename);
       if (n == 0)
@@ -1059,7 +1134,33 @@ malformed:
   return 1;
 }
 
-static void http_request_form_data_start_part(struct http_request *r, int b)
+#define _HANDLER_RESULT(result) do { \
+    if (r->phase != RECEIVE) \
+      return 1; \
+    if (result) { \
+      assert((result) >= 400); \
+      assert((result) < 600); \
+      return (result); \
+    } \
+  } while (0)
+#define _INVOKE_HANDLER_VOID(FUNC) do { \
+    if (r->form_data.FUNC) { \
+      if (r->debug_flag && *r->debug_flag) \
+	DEBUGF(#FUNC "()"); \
+      int result = r->form_data.FUNC(r); \
+      _HANDLER_RESULT(result); \
+    } \
+  } while (0)
+#define _INVOKE_HANDLER_BUF_LEN(FUNC, START, END) do { \
+    if (r->form_data.FUNC && (START) != (END)) { \
+      if (r->debug_flag && *r->debug_flag) \
+	DEBUGF(#FUNC "(%s length=%zu)", alloca_toprint(50, (START), (END) - (START)), (END) - (START)); \
+      int result = r->form_data.FUNC(r, (START), (END) - (START)); \
+      _HANDLER_RESULT(result); \
+    } \
+  } while (0)
+
+static int http_request_form_data_start_part(struct http_request *r, int b)
 {
   switch (r->form_data_state) {
     case BODY:
@@ -1073,11 +1174,7 @@ static void http_request_form_data_start_part(struct http_request *r, int b)
       }
       // fall through...
     case HEADER:
-      if (r->form_data.handle_mime_part_end) {
-	if (r->debug_flag && *r->debug_flag)
-	  DEBUGF("handle_mime_part_end()");
-	r->form_data.handle_mime_part_end(r);
-      }
+      _INVOKE_HANDLER_VOID(handle_mime_part_end);
       break;
     default:
       break;
@@ -1087,13 +1184,10 @@ static void http_request_form_data_start_part(struct http_request *r, int b)
     bzero(&r->part_header, sizeof r->part_header);
     r->part_body_length = 0;
     r->part_header.content_length = CONTENT_LENGTH_UNKNOWN;
-    if (r->form_data.handle_mime_part_start) {
-      if (r->debug_flag && *r->debug_flag)
-	DEBUGF("handle_mime_part_start()");
-      r->form_data.handle_mime_part_start(r);
-    }
+    _INVOKE_HANDLER_VOID(handle_mime_part_start);
   } else
     r->form_data_state = EPILOGUE;
+  return 0;
 }
 
 /* If parsing completes (ie, parsed to end of epilogue), then sets r->parser to NULL and returns 0,
@@ -1123,22 +1217,16 @@ static int http_request_parse_body_form_data(struct http_request *r)
     case PREAMBLE: {
 	if (config.debug.httpd)
 	  DEBUGF("PREAMBLE");
-	const char *start = r->parsed;
+	char *start = r->parsed;
 	for (; at_start || _skip_to_crlf(r); at_start = 0) {
 	  const char *end_preamble = r->cursor;
 	  int b;
 	  if ((b = _skip_mime_boundary(r))) {
 	    assert(end_preamble >= r->parsed);
-	    if (r->form_data.handle_mime_preamble && end_preamble != r->parsed) {
-	      if (r->debug_flag && *r->debug_flag)
-		DEBUGF("handle_mime_preamble(%s length=%zu)",
-		    alloca_toprint(50, r->parsed, end_preamble - r->parsed), end_preamble - r->parsed);
-	      r->form_data.handle_mime_preamble(r, r->parsed, end_preamble - r->parsed);
-	    }
+	    _INVOKE_HANDLER_BUF_LEN(handle_mime_preamble, r->parsed, end_preamble);
 	    _rewind_crlf(r);
 	    _commit(r);
-	    http_request_form_data_start_part(r, b);
-	    return 0;
+	    return http_request_form_data_start_part(r, b);
 	  }
 	}
 	if (_end_of_content(r)) {
@@ -1148,12 +1236,8 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	}
 	_rewind_optional_cr(r);
 	_commit(r);
-	if (r->parsed > start && r->form_data.handle_mime_preamble) {
-	  if (r->debug_flag && *r->debug_flag)
-	    DEBUGF("handle_mime_preamble(%s length=%zu)",
-		alloca_toprint(50, start, r->parsed - start), r->parsed - start);
-	  r->form_data.handle_mime_preamble(r, start, r->parsed - start);
-	}
+	assert(r->parsed >= start);
+	_INVOKE_HANDLER_BUF_LEN(handle_mime_preamble, start, r->parsed);
       }
       return 100; // need more data
     case HEADER: {
@@ -1170,7 +1254,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  _commit(r);
 	  return 0;
 	}
-	const char *sol = r->cursor;
+	char *const sol = r->cursor;
 	// A blank line finishes the headers.  The CRLF does not form part of the body.
 	if (_skip_crlf(r)) {
 	  _commit(r);
@@ -1181,9 +1265,9 @@ static int http_request_parse_body_form_data(struct http_request *r)
 		  alloca_mime_content_type(&r->part_header.content_type),
 		  alloca_mime_content_disposition(&r->part_header.content_disposition)
 		);
-	    r->form_data.handle_mime_part_header(r, &r->part_header);
+	    int result = r->form_data.handle_mime_part_header(r, &r->part_header);
+	    _HANDLER_RESULT(result); \
 	  }
-
 	  r->form_data_state = BODY;
 	  return 0;
 	}
@@ -1198,8 +1282,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  _commit(r);
 	  // A boundary in the middle of headers finishes the current part and starts a new part.
 	  // An end boundary terminates the current part and starts the epilogue.
-	  http_request_form_data_start_part(r, b);
-	  return 0;
+	  return http_request_form_data_start_part(r, b);
 	}
 	if (_run_out(r))
 	  return 100; // read more and try again
@@ -1284,23 +1367,20 @@ static int http_request_parse_body_form_data(struct http_request *r)
     case BODY:
       if (config.debug.httpd)
 	DEBUGF("BODY");
-      const char *start = r->parsed;
+      char *start = r->parsed;
       while (_skip_to_crlf(r)) {
 	int b;
-	const char *end_body = r->cursor;
+	char *end_body = r->cursor;
 	_skip_crlf(r);
 	if ((b = _skip_mime_boundary(r))) {
 	  _rewind_crlf(r);
 	  _commit(r);
 	  assert(end_body >= start);
 	  r->part_body_length += end_body - start;
-	  if (end_body > start && r->form_data.handle_mime_body) {
-	    if (r->debug_flag && *r->debug_flag)
-	      DEBUGF("handle_mime_body(%s length=%zu)", alloca_toprint(80, start, end_body - start), end_body - start);
-	    r->form_data.handle_mime_body(r, start, end_body - start); // excluding CRLF at end
-	  }
-	  http_request_form_data_start_part(r, b);
-	  return 0;
+	  // Note: the handler function may modify the data in-place (eg, Rhizome does encryption
+	  // that way).
+	  _INVOKE_HANDLER_BUF_LEN(handle_mime_body, start, end_body); // excluding CRLF at end
+	  return http_request_form_data_start_part(r, b);
 	}
       }
       if (_end_of_content(r)) {
@@ -1312,27 +1392,22 @@ static int http_request_parse_body_form_data(struct http_request *r)
       _commit(r);
       assert(r->parsed >= start);
       r->part_body_length += r->parsed - start;
-      if (r->parsed > start && r->form_data.handle_mime_body) {
-	if (r->debug_flag && *r->debug_flag)
-	  DEBUGF("handle_mime_body(%s length=%zu)", alloca_toprint(80, start, r->parsed - start), r->parsed - start);
-	r->form_data.handle_mime_body(r, start, r->parsed - start);
-      }
+	// Note: the handler function may modify the data in-place
+      _INVOKE_HANDLER_BUF_LEN(handle_mime_body, start, r->parsed);
       return 100; // need more data
   case EPILOGUE:
       if (config.debug.httpd)
 	DEBUGF("EPILOGUE");
     r->cursor = r->end;
-    if (r->form_data.handle_mime_epilogue && r->cursor != r->parsed) {
-      if (r->debug_flag && *r->debug_flag)
-	DEBUGF("handle_mime_epilogue(%s length=%zu)",
-	    alloca_toprint(50, r->parsed, r->cursor - r->parsed), r->cursor - r->parsed);
-      r->form_data.handle_mime_epilogue(r, r->parsed, r->cursor - r->parsed);
-    }
+    assert(r->cursor >= r->parsed);
+    _INVOKE_HANDLER_BUF_LEN(handle_mime_epilogue, r->parsed, r->cursor);
     _commit(r);
     assert(_run_out(r));
     if (_end_of_content(r))
       return 0; // done
     return 100; // need more data
+  default:
+    FATALF("form_data_state = %d", r->form_data_state);
   }
   abort(); // not reached
 }
@@ -1423,7 +1498,7 @@ static void http_request_receive(struct http_request *r)
 	result = 500;
       }
     } else {
-      HTTP_REQUEST_PARSER oldparser = r->parser;
+      HTTP_REQUEST_PARSER *oldparser = r->parser;
       const char *oldparsed = r->parsed;
       if (r->parser == NULL) {
 	if (r->debug_flag && *r->debug_flag)
@@ -1446,9 +1521,10 @@ static void http_request_receive(struct http_request *r)
 	result = 500;
       }
     }
-    if (result >= 300)
+    if (result >= 200 && result < 600) {
+      assert(r->response.result_code == 0 || r->response.result_code == result);
       r->response.result_code = result;
-    else if (result) {
+    } else if (result) {
       if (r->debug_flag && *r->debug_flag)
 	DEBUGF("Internal failure parsing HTTP request: invalid result=%d", result);
       r->response.result_code = 500;
@@ -1462,8 +1538,10 @@ static void http_request_receive(struct http_request *r)
       return;
     }
   }
-  if (r->phase != RECEIVE)
+  if (r->phase != RECEIVE) {
+    assert(r->response.result_code != 0);
     return;
+  }
   if (r->response.result_code == 0) {
     WHY("No HTTP response set, using 500 Server Error");
     r->response.result_code = 500;
@@ -1694,6 +1772,8 @@ static const char *httpResultString(int response_code)
   case 403: return "Forbidden";
   case 404: return "Not Found";
   case 405: return "Method Not Allowed";
+  case 408: return "Request Timeout";
+  case 409: return "Conflict";
   case 411: return "Length Required";
   case 414: return "Request-URI Too Long";
   case 415: return "Unsupported Media Type";
@@ -1804,6 +1884,9 @@ static int _render_response(struct http_request *r)
     strbuf_append_quoted_string(sb, hr.header.www_authenticate.realm);
     strbuf_puts(sb, "\r\n");
   }
+  if (r->render_extra_headers)
+    r->render_extra_headers(r, sb);
+  assert(strcmp(strbuf_substr(sb, -2), "\r\n") == 0);
   strbuf_puts(sb, "\r\n");
   if (hr.header.content_length != CONTENT_LENGTH_UNKNOWN)
     r->response_length = strbuf_count(sb) + hr.header.content_length;
@@ -1866,6 +1949,7 @@ static size_t http_request_drain(struct http_request *r)
 static void http_request_start_response(struct http_request *r)
 {
   assert(r->phase == RECEIVE);
+  _release_reserved(r);
   if (r->response.content || r->response.content_generator) {
     assert(r->response.header.content_type != NULL);
     assert(r->response.header.content_type[0]);

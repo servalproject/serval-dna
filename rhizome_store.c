@@ -25,6 +25,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define RHIZOME_BUFFER_MAXIMUM_SIZE (1024*1024)
 
+uint64_t rhizome_copy_file_to_blob(int fd, uint64_t id, size_t size);
+
 int rhizome_exists(const rhizome_filehash_t *hashp)
 {
   uint64_t gotfile = 0;
@@ -33,13 +35,34 @@ int rhizome_exists(const rhizome_filehash_t *hashp)
   return gotfile;
 }
 
-int rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *expectedHashp, uint64_t file_length, int priority)
+/* Creates a row in the FILEBLOBS table and return the ROWID.  Returns 0 if unsuccessful (error
+ * logged).
+ */
+static int rhizome_create_fileblob(sqlite_retry_state *retry, uint64_t id, size_t size)
 {
+  if (sqlite_exec_void_retry(
+      retry,
+      "INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES(?,?)",
+      UINT64_TOSTR, id,
+      ZEROBLOB, (int)size,
+      END) == -1
+  ) {
+    WHYF("Failed to create blob, size=%zu, id=%"PRIu64, size, id);
+    return 0;
+  }
+  return sqlite3_last_insert_rowid(rhizome_db);
+}
+
+enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *expectedHashp, uint64_t file_length, int priority)
+{
+  if (file_length == 0)
+    return RHIZOME_PAYLOAD_STATUS_EMPTY;
+
   write->blob_fd=-1;
   
   if (expectedHashp){
     if (rhizome_exists(expectedHashp))
-      return 1;
+      return RHIZOME_PAYLOAD_STATUS_STORED;
     write->id = *expectedHashp;
     write->id_known=1;
   }else{
@@ -54,100 +77,67 @@ int rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *ex
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
-  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1)
-    return WHY("Failed to begin transaction");
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1) {
+    WHY("Failed to begin transaction");
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
+  }
   
-  /* 
+  /*
    we have to write incrementally so that we can handle blobs larger than available memory.
    This is possible using:
    int sqlite3_bind_zeroblob(sqlite3_stmt*, int, int n);
    That binds an all zeroes blob to a field.  We can then populate the data by
    opening a handle to the blob using:
    int sqlite3_blob_write(sqlite3_blob *, const void *z, int n, int iOffset);
-   */
-  
-  sqlite3_stmt *statement = NULL;
-  int ret = sqlite_exec_void_retry(
+  */
+  if (sqlite_exec_void_retry(
 	&retry,
 	"INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) VALUES(?,?,?,0,?);",
 	UINT64_TOSTR, write->temp_id,
-	INT64, file_length,
+	INT64, file_length == RHIZOME_SIZE_UNSET ? (int64_t)-1 : (int64_t)file_length,
 	INT, priority,
 	INT64, now,
 	END
-      );
-  if (ret==-1)
-    goto insert_row_fail;
-  
+      ) == -1
+  ) {
+    WHYF("Failed to create FILES db row, id='%"PRIu64"'", write->temp_id);
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
+  }
   char blob_path[1024];
-  
-  if (config.rhizome.external_blobs || file_length > 128*1024) {
-    if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, "%"PRId64, write->temp_id)){
-      WHY("Invalid path");
-      goto insert_row_fail;
-    }
-    
+  if (file_length == RHIZOME_SIZE_UNSET || file_length > config.rhizome.max_blob_size) {
+    if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, "%"PRIu64, write->temp_id))
+      return RHIZOME_PAYLOAD_STATUS_ERROR;
     if (config.debug.externalblobs)
-      DEBUGF("Attempting to put blob for id='%"PRId64"' in %s", write->temp_id, blob_path);
-    
-    write->blob_fd=open(blob_path, O_CREAT | O_TRUNC | O_WRONLY, 0664);
-    if (write->blob_fd == -1)
-      goto insert_row_fail;
-    
+      DEBUGF("Attempting to put blob for id='%"PRIu64"' in %s", write->temp_id, blob_path);
+    if ((write->blob_fd = open(blob_path, O_CREAT | O_TRUNC | O_RDWR, 0664)) == -1) {
+      WHYF("Failed to create payload file, id='%"PRIu64"'", write->temp_id);
+      return RHIZOME_PAYLOAD_STATUS_ERROR;
+    }
     if (config.debug.externalblobs)
       DEBUGF("Writing to new blob file %s (fd=%d)", blob_path, write->blob_fd);
-    
-  }else{
-    statement = sqlite_prepare_bind(
-	&retry,
-	"INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES(?,?)",
-	UINT64_TOSTR, write->temp_id,
-	ZEROBLOB, (int)file_length,
-	END);
-    if (statement == NULL)
-      goto insert_row_fail;
-    /* Do actual insert, and abort if it fails */
-    int rowcount = 0;
-    int stepcode;
-    while ((stepcode = sqlite_step_retry(&retry, statement)) == SQLITE_ROW)
-      ++rowcount;
-    if (rowcount)
-      WARNF("void query unexpectedly returned %d row%s", rowcount, rowcount == 1 ? "" : "s");
-    if (!sqlite_code_ok(stepcode)){
-    insert_row_fail:
-      WHYF("Failed to insert row for id='%"PRId64"'", write->temp_id);
-      if (statement) sqlite3_finalize(statement);
+  } else {
+    if ((write->blob_rowid = rhizome_create_fileblob(&retry, write->temp_id, (size_t)file_length)) == 0) {
       sqlite_exec_void_retry(&retry, "ROLLBACK;", END);
-      return -1;
+      return RHIZOME_PAYLOAD_STATUS_ERROR;
     }
-    sqlite3_finalize(statement);
-    statement=NULL;
-    
-    /* Get rowid for inserted row, so that we can modify the blob */
-    write->blob_rowid = sqlite3_last_insert_rowid(rhizome_db);
     if (config.debug.rhizome_rx)
-      DEBUGF("Got rowid=%"PRId64" for id='%"PRId64"'", write->blob_rowid, write->temp_id);
-    
+      DEBUGF("Got rowid=%"PRId64" for id='%"PRIu64"'", write->blob_rowid, write->temp_id);
   }
-  
   if (sqlite_exec_void_retry(&retry, "COMMIT;", END) == -1){
-    if (write->blob_fd != -1){
+    if (write->blob_fd != -1) {
       if (config.debug.externalblobs)
          DEBUGF("Cancel write to fd %d", write->blob_fd);
       close(write->blob_fd);
       write->blob_fd=-1;
       unlink(blob_path);
     }
-    return -1;
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
   }
-  
   write->file_length = file_length;
   write->file_offset = 0;
   write->written_offset = 0;
-  
   SHA512_Init(&write->sha512_context);
-  
-  return 0;
+  return RHIZOME_PAYLOAD_STATUS_NEW;
 }
 
 /* blob_open / close will lock the database, this is bad for other processes that might attempt to 
@@ -161,7 +151,9 @@ static int prepare_data(struct rhizome_write *write_state, unsigned char *buffer
     return WHY("No content supplied");
     
   /* Make sure we aren't being asked to write more data than we expected */
-  if (write_state->file_offset + data_size > write_state->file_length)
+  if (   write_state->file_length != RHIZOME_SIZE_UNSET
+      && write_state->file_offset + data_size > write_state->file_length
+  )
     return WHYF("Too much content supplied, %"PRIu64" + %zu > %"PRIu64,
 		write_state->file_offset, data_size, write_state->file_length);
 
@@ -171,6 +163,9 @@ static int prepare_data(struct rhizome_write *write_state, unsigned char *buffer
 	  write_state->file_offset + write_state->tail, 
 	  write_state->key, write_state->nonce))
       return -1;
+    if (config.debug.rhizome) {
+      //dump("after encrypt", buffer, data_size);
+    }
   }
   
   SHA512_Update(&write_state->sha512_context, buffer, data_size);
@@ -182,32 +177,21 @@ static int prepare_data(struct rhizome_write *write_state, unsigned char *buffer
 }
 
 // open database locks
-static int write_get_lock(struct rhizome_write *write_state){
+static int write_get_lock(struct rhizome_write *write_state)
+{
   if (write_state->blob_fd != -1 || write_state->sql_blob)
     return 0;
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  
   // use an explicit transaction so we can delay I/O failures until COMMIT so they can be retried.
   if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1)
     return -1;
-  
-  while(1){
-    int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", 
-		write_state->blob_rowid, 1 /* read/write */, &write_state->sql_blob);
-    if (ret==SQLITE_OK){
-      sqlite_retry_done(&retry, "sqlite3_blob_open");
-      return 0;
-    }
-    if (!sqlite_code_busy(ret))
-      return WHYF("sqlite3_blob_open() failed: %s", 
-	     sqlite3_errmsg(rhizome_db));
-    if (sqlite_retry(&retry, "sqlite3_blob_open")==0)
-      return WHYF("Giving up");
-  }
+  if (sqlite_blob_open_retry(&retry, "main", "FILEBLOBS", "data", write_state->blob_rowid, 1 /* read/write */, &write_state->sql_blob) == -1)
+    return -1;
+  return 0;
 }
 
 // write data to disk
-static int write_data(struct rhizome_write *write_state, uint64_t file_offset, unsigned char *buffer, size_t data_size)
+static int write_data(struct rhizome_write *write_state, uint64_t file_offset, const unsigned char *buffer, size_t data_size)
 {
   if (config.debug.rhizome) {
     DEBUGF("write_state->file_length=%"PRIu64" file_offset=%"PRIu64, write_state->file_length, file_offset);
@@ -237,18 +221,8 @@ static int write_data(struct rhizome_write *write_state, uint64_t file_offset, u
     if (!write_state->sql_blob)
       return WHY("Must call write_get_lock() before write_data()");
     sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-    while(1){
-      int ret=sqlite3_blob_write(write_state->sql_blob, buffer, data_size, file_offset);
-      if (ret==SQLITE_OK){
-	sqlite_retry_done(&retry, "sqlite3_blob_write");
-	break;
-      }
-      if (!sqlite_code_busy(ret))
-	return WHYF("sqlite3_blob_write() failed: %s", 
-	     sqlite3_errmsg(rhizome_db));
-      if (sqlite_retry(&retry, "sqlite3_blob_write")==0)
-	return WHY("Giving up");
-    }
+    if (sqlite_blob_write_retry(&retry, write_state->sql_blob, buffer, data_size, file_offset) == -1)
+      return -1;
   }
   
   write_state->written_offset = file_offset + data_size;
@@ -259,17 +233,14 @@ static int write_data(struct rhizome_write *write_state, uint64_t file_offset, u
 }
 
 // close database locks
-static int write_release_lock(struct rhizome_write *write_state){
+static int write_release_lock(struct rhizome_write *write_state)
+{
   int ret=0;
   if (write_state->blob_fd != -1)
     return 0;
     
   if (write_state->sql_blob){
-    ret = sqlite3_blob_close(write_state->sql_blob);
-    if (ret)
-      WHYF("sqlite3_blob_close() failed: %s", 
-	     sqlite3_errmsg(rhizome_db));
-    
+    ret = sqlite_blob_close(write_state->sql_blob);
     sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
     if (sqlite_exec_void_retry(&retry, "COMMIT;", END) == -1)
       ret=-1;
@@ -284,22 +255,27 @@ int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, uns
 {
   if (config.debug.rhizome) {
     DEBUGF("write_state->file_length=%"PRIu64" offset=%"PRIu64, write_state->file_length, offset);
-    //dump("buffer", buffer, data_size);
+    dump("buffer", buffer, data_size);
   }
-  if (offset + data_size > write_state->file_length)
+  if (   write_state->file_length != RHIZOME_SIZE_UNSET
+      && offset + data_size > write_state->file_length
+  )
     data_size = write_state->file_length - offset;
   
   struct rhizome_write_buffer **ptr = &write_state->buffer_list;
   int ret=0;
   int should_write = 0;
-  // if we are writing to a file, or already have the sql blob open, write as much as we can.
-  if (write_state->blob_fd != -1 || write_state->sql_blob){
+  // if we are writing to a file, or already have the sql blob open, or are finishing, write as much
+  // as we can.
+  if (write_state->blob_fd != -1 || write_state->sql_blob || buffer == NULL)
     should_write = 1;
-  }else{
+  else {
     // cache up to RHIZOME_BUFFER_MAXIMUM_SIZE or file length before attempting to write everything in one go.
     // (Not perfect if the range overlaps)
     uint64_t new_size = write_state->written_offset + write_state->buffer_size + data_size;
-    if (new_size >= write_state->file_length || new_size >= RHIZOME_BUFFER_MAXIMUM_SIZE)
+    if (   (write_state->file_length != RHIZOME_SIZE_UNSET && new_size >= write_state->file_length)
+	|| new_size >= RHIZOME_BUFFER_MAXIMUM_SIZE
+    )
       should_write = 1;
   }
   uint64_t last_offset = write_state->written_offset;
@@ -415,39 +391,45 @@ int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffe
   return rhizome_random_write(write_state, write_state->file_offset, buffer, data_size);
 }
 
-/* Expects file to be at least file_length in size, ignoring anything longer than that */
-int rhizome_write_file(struct rhizome_write *write, const char *filename){
-  FILE *f = fopen(filename, "r");
-  if (!f)
-    return WHY_perror("fopen");
-
+/* If file_length is known, then expects file to be at least file_length in size, ignoring anything
+ * longer than that.  Returns 0 if successful, -1 if error (logged).
+ */
+int rhizome_write_file(struct rhizome_write *write, const char *filename)
+{
+  int fd = open(filename, O_RDONLY);
+  if (fd == -1)
+    return WHYF_perror("open(%s,O_RDONLY)", alloca_str_toprint(filename));
   unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];
-  int ret=0;
-  ret = write_get_lock(write);
-  if (ret)
-    goto end;
-  while(write->file_offset < write->file_length) {
-    size_t size = sizeof buffer;
-    if (write->file_offset + size > write->file_length)
-      size = write->file_length - write->file_offset;
-    size_t r = fread(buffer, 1, size, f);
-    if (ferror(f)){
-      ret = WHY_perror("fread");
-      goto end;
-    }
-    if (rhizome_write_buffer(write, buffer, r)){
-      ret=-1;
-      goto end;
+  int ret = write_get_lock(write);
+  if (ret == 0) {
+    while (write->file_length == RHIZOME_SIZE_UNSET || write->file_offset < write->file_length) {
+      size_t size = sizeof buffer;
+      if (write->file_length != RHIZOME_SIZE_UNSET && write->file_offset + size > write->file_length)
+	size = write->file_length - write->file_offset;
+      ssize_t r = read(fd, buffer, size);
+      if (r == -1) {
+	ret = WHYF_perror("read(%d,%p,%zu)", fd, buffer, size);
+	break;
+      }
+      if (write->file_length != RHIZOME_SIZE_UNSET && (size_t) r != size) {
+	ret = WHYF("file truncated - read(%d,%p,%zu) returned %zu", fd, buffer, size, (size_t) r);
+	break;
+      }
+      if (r && rhizome_write_buffer(write, buffer, (size_t) r)) {
+	ret = -1;
+	break;
+      }
+      if ((size_t) r != size)
+	break;
     }
   }
-end:
   if (write_release_lock(write))
-    ret=-1;
-  fclose(f);
+    ret = -1;
+  close(fd);
   return ret;
 }
 
-int rhizome_fail_write(struct rhizome_write *write)
+void rhizome_fail_write(struct rhizome_write *write)
 {
   if (write->blob_fd != -1){
     if (config.debug.externalblobs)
@@ -462,49 +444,88 @@ int rhizome_fail_write(struct rhizome_write *write)
     free(n);
   }
   rhizome_delete_file(&write->id);
-  return 0;
 }
 
-int rhizome_finish_write(struct rhizome_write *write)
+enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
 {
-  if (write->blob_rowid==0 && write->blob_fd == -1)
-    return WHY("Can't finish a write that has already been closed");
+  assert(write->blob_rowid != 0 || write->blob_fd != -1);
+  enum rhizome_payload_status status = RHIZOME_PAYLOAD_STATUS_NEW;
   if (write->buffer_list){
-    if (rhizome_random_write(write, 0, NULL, 0))
+    if (rhizome_random_write(write, 0, NULL, 0)) {
+      status = RHIZOME_PAYLOAD_STATUS_ERROR;
       goto failure;
-    if (write->buffer_list){
+    }
+    if (write->buffer_list) {
       WHYF("Buffer was not cleared");
+      status = RHIZOME_PAYLOAD_STATUS_ERROR;
       goto failure;
     }
   }
-  
-  if (write->file_offset < write->file_length){
-    WHYF("Only processed %"PRIu64" bytes, expected %"PRIu64, write->file_offset, write->file_length);
+
+  // Once the whole file has been written, we finally know its size and hash.
+  if (write->file_length == RHIZOME_SIZE_UNSET) {
+    if (config.debug.rhizome)
+      DEBUGF("Wrote %"PRIu64" bytes, set file_length", write->file_offset);
+    write->file_length = write->file_offset;
+  } else {
+    assert(write->file_offset <= write->file_length);
+    if (write->file_offset < write->file_length) {
+      WHYF("Only wrote %"PRIu64" bytes, expected %"PRIu64, write->file_offset, write->file_length);
+      status = RHIZOME_PAYLOAD_STATUS_WRONG_SIZE;
+      goto failure;
+    }
   }
-    
-  int fd = write->blob_fd;
-  if (fd>=0){
-    if (config.debug.externalblobs)
-      DEBUGF("Closing fd %d", fd);
-    close(fd);
-    write->blob_fd=-1;
-  }
-  if (write_release_lock(write))
-    goto failure;
-  
   rhizome_filehash_t hash_out;
   SHA512_Final(hash_out.binary, &write->sha512_context);
   SHA512_End(&write->sha512_context, NULL);
 
+  char blob_path[1024];
+  if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, "%"PRIu64, write->temp_id)) {
+    WHYF("Failed to generate external blob path");
+    status = RHIZOME_PAYLOAD_STATUS_ERROR;
+    goto failure;
+  }
+  // If the payload was written into an external blob (file) but is small enough to fit into a
+  // SQLite blob, then copy it into a proper blob (this occurs if rhizome_open_write() was called
+  // with file_length == RHIZOME_SIZE_UNSET).
+  int external = 0;
+  if (write->blob_fd != -1) {
+    external = 1;
+    if (write->file_length <= config.rhizome.max_blob_size) {
+      if (config.debug.rhizome)
+	DEBUGF("Copying %zu bytes from external file %s into blob, id=%"PRIu64, (size_t)write->file_offset, blob_path, write->temp_id);
+      int ret = 0;
+      if (lseek(write->blob_fd, 0, SEEK_SET) == (off_t) -1)
+	ret = WHYF_perror("lseek(%d,0,SEEK_SET)", write->blob_fd);
+      else if ((write->blob_rowid = rhizome_copy_file_to_blob(write->blob_fd, write->temp_id, (size_t)write->file_length)) == 0)
+	ret = -1;
+      if (ret == -1) {
+	WHY("Failed to copy external file into blob; keeping external file");
+      } else {
+	external = 0;
+	if (unlink(blob_path) == -1)
+	  WARNF_perror("unlink(%s)", alloca_str_toprint(blob_path));
+      }
+    }
+    if (config.debug.externalblobs)
+      DEBUGF("Closing fd=%d", write->blob_fd);
+    close(write->blob_fd);
+    write->blob_fd = -1;
+  }
+  if (write_release_lock(write)) {
+    status = RHIZOME_PAYLOAD_STATUS_ERROR;
+    goto failure;
+  }
+
   if (write->id_known) {
     if (cmp_rhizome_filehash_t(&write->id, &hash_out) != 0) {
-      WHYF("expected filehash=%s, got %s", alloca_tohex_rhizome_filehash_t(write->id), alloca_tohex_rhizome_filehash_t(hash_out));
+      WARNF("expected filehash=%s, got %s", alloca_tohex_rhizome_filehash_t(write->id), alloca_tohex_rhizome_filehash_t(hash_out));
+      status = RHIZOME_PAYLOAD_STATUS_WRONG_HASH;
       goto failure;
     }
-  } else {
+  } else
     write->id = hash_out;
-  }
-  
+
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   rhizome_remove_file_datainvalid(&retry, &write->id);
   if (rhizome_exists(&write->id)) {
@@ -512,43 +533,39 @@ int rhizome_finish_write(struct rhizome_write *write)
     sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILEBLOBS WHERE id = ?;", UINT64_TOSTR, write->temp_id, END);
     sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILES WHERE id = ?;", UINT64_TOSTR, write->temp_id, END);
     if (config.debug.rhizome)
-      DEBUGF("File id=%s already present, removed id='%"PRId64"'", alloca_tohex_rhizome_filehash_t(write->id), write->temp_id);
+      DEBUGF("Payload id=%s already present, removed id='%"PRIu64"'", alloca_tohex_rhizome_filehash_t(write->id), write->temp_id);
   } else {
     if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1)
       goto dbfailure;
-    
+
     // delete any half finished records
     sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILEBLOBS WHERE id = ?;", RHIZOME_FILEHASH_T, &write->id, END);
     sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILES WHERE id = ?;", RHIZOME_FILEHASH_T, &write->id, END);
-    
+
     if (sqlite_exec_void_retry(
 	    &retry,
-	    "UPDATE FILES SET id = ?, inserttime = ?, datavalid = 1 WHERE id = ?",
+	    "UPDATE FILES SET id = ?, length = ?, inserttime = ?, datavalid = 1 WHERE id = ?",
 	    RHIZOME_FILEHASH_T, &write->id,
+	    INT64, write->file_length,
 	    INT64, gettime_ms(),
 	    UINT64_TOSTR, write->temp_id,
 	    END
 	  ) == -1
       )
       goto dbfailure;
-    
-    if (fd>=0){
-      char blob_path[1024];
+
+    if (external) {
       char dest_path[1024];
-      if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, "%"PRId64, write->temp_id)){
-	WHYF("Failed to generate file path");
-	goto dbfailure;
-      }
       if (!FORM_RHIZOME_DATASTORE_PATH(dest_path, alloca_tohex_rhizome_filehash_t(write->id))){
 	WHYF("Failed to generate file path");
 	goto dbfailure;
       }
-      
-      if (rename(blob_path, dest_path)){
+      if (rename(blob_path, dest_path) == -1) {
 	WHYF_perror("rename(%s, %s)", blob_path, dest_path);
 	goto dbfailure;
       }
-      
+      if (config.debug.externalblobs)
+	DEBUGF("Renamed %s to %s", blob_path, dest_path);
     }else{
       if (sqlite_exec_void_retry(
 	    &retry,
@@ -566,107 +583,116 @@ int rhizome_finish_write(struct rhizome_write *write)
       DEBUGF("Stored file %s", alloca_tohex_rhizome_filehash_t(write->id));
   }
   write->blob_rowid = 0;
-  return 0;
-  
+  return status;
+
 dbfailure:
   sqlite_exec_void_retry(&retry, "ROLLBACK;", END);
+  status = RHIZOME_PAYLOAD_STATUS_ERROR;
 failure:
   rhizome_fail_write(write);
-  return -1;
+  return status;
 }
 
-// import a file for an existing bundle with a known file hash
-int rhizome_import_file(rhizome_manifest *m, const char *filepath)
+/* Import the payload for an existing manifest with a known file size and hash.  Compute the hash of
+ * the payload as it is imported, and when finished, check if the size and hash match the manifest.
+ * If the import is successful and the size and hash match, return 0.  If the size or hash do not
+ * match, return 1.  If there is an error reading the payload file or writing to the database,
+ * return -1.
+ */
+enum rhizome_payload_status rhizome_import_payload_from_file(rhizome_manifest *m, const char *filepath)
 {
   assert(m->filesize != RHIZOME_SIZE_UNSET);
   if (m->filesize == 0)
-    return 0;
+    return RHIZOME_PAYLOAD_STATUS_EMPTY;
   
   /* Import the file first, checking the hash as we go */
   struct rhizome_write write;
   bzero(&write, sizeof(write));
   
-  int ret=rhizome_open_write(&write, &m->filehash, m->filesize, RHIZOME_PRIORITY_DEFAULT);
-  if (ret!=0)
-    return ret;
+  enum rhizome_payload_status status = rhizome_open_write(&write, &m->filehash, m->filesize, RHIZOME_PRIORITY_DEFAULT);
+  if (status != RHIZOME_PAYLOAD_STATUS_NEW)
+    return status;
   
   // file payload is not in the store yet
   if (rhizome_write_file(&write, filepath)){
     rhizome_fail_write(&write);
-    return -1;
+    return RHIZOME_BUNDLE_STATUS_ERROR;
   }
   
-  if (rhizome_finish_write(&write)){
-    rhizome_fail_write(&write);
-    return -1;
-  }
-  
-  return 0;
+  return rhizome_finish_write(&write);
 }
 
 // store a whole payload from a single buffer
-int rhizome_import_buffer(rhizome_manifest *m, unsigned char *buffer, size_t length)
+enum rhizome_payload_status rhizome_import_buffer(rhizome_manifest *m, unsigned char *buffer, size_t length)
 {
   assert(m->filesize != RHIZOME_SIZE_UNSET);
   if (m->filesize == 0)
-    return 0;
+    return RHIZOME_PAYLOAD_STATUS_EMPTY;
 
-  if (length != m->filesize)
-    return WHYF("Expected %"PRIu64" bytes, got %zu", m->filesize, length);
+  if (length != m->filesize) {
+    WHYF("Expected %"PRIu64" bytes, got %zu", m->filesize, length);
+    return RHIZOME_PAYLOAD_STATUS_WRONG_SIZE;
+  }
   
   /* Import the file first, checking the hash as we go */
   struct rhizome_write write;
   bzero(&write, sizeof(write));
   
-  int ret=rhizome_open_write(&write, &m->filehash, m->filesize, RHIZOME_PRIORITY_DEFAULT);
-  if (ret!=0)
-    return ret;
+  enum rhizome_payload_status status = rhizome_open_write(&write, &m->filehash, m->filesize, RHIZOME_PRIORITY_DEFAULT);
+  if (status != RHIZOME_PAYLOAD_STATUS_NEW)
+    return status;
   
   // file payload is not in the store yet
   if (rhizome_write_buffer(&write, buffer, length)){
     rhizome_fail_write(&write);
-    return -1;
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
   }
   
-  if (rhizome_finish_write(&write)){
-    rhizome_fail_write(&write);
-    return -1;
-  }
-  
-  return 0;
+  return rhizome_finish_write(&write);
 }
 
-int rhizome_stat_file(rhizome_manifest *m, const char *filepath)
+/* Checks the size of the file with the given path as a candidate payload for an existing manifest.
+ * An empty path (zero length) is taken to mean empty payload (size = 0).  If the manifest's
+ * 'filesize' is not yet set, then sets the manifest's 'filesize' to the size of the file and
+ * returns 0.  Otherwise, if the file's size equals the 'filesize' in the manifest, return 0.  If
+ * the file size does not match the manifest's 'filesize', returns 1.  If there is an error calling
+ * stat(2) on the payload file (eg, file does not exist), returns -1.
+ */
+enum rhizome_payload_status rhizome_stat_payload_file(rhizome_manifest *m, const char *filepath)
 {
   uint64_t size = 0;
   if (filepath[0]) {
     struct stat stat;
-    if (lstat(filepath, &stat))
-      return WHYF_perror("lstat(%s)", alloca_str_toprint(filepath));
+    if (lstat(filepath, &stat)) {
+      WHYF_perror("lstat(%s)", alloca_str_toprint(filepath));
+      return RHIZOME_PAYLOAD_STATUS_ERROR;
+    }
     size = stat.st_size;
   }
-  
-  // Fail if the file is shorter than already specified by the manifest.
-  if (m->filesize != RHIZOME_SIZE_UNSET && size < m->filesize)
-    return WHY("Manifest length is longer than the file");
-  
-  // If the file is longer than already specified by the manifest, ignore the end of the file.
-  if (m->filesize == RHIZOME_SIZE_UNSET || size > m->filesize)
+  if (m->filesize == RHIZOME_SIZE_UNSET)
     rhizome_manifest_set_filesize(m, size);
-  return 0;
+  else if (size != m->filesize) {
+    if (config.debug.rhizome)
+      DEBUGF("payload file %s (size=%"PRIu64") does not match manifest[%d].filesize=%"PRIu64,
+	  alloca_str_toprint(filepath), size, m->manifest_record_number, m->filesize);
+    return RHIZOME_PAYLOAD_STATUS_WRONG_SIZE;
+  }
+  return size ? RHIZOME_PAYLOAD_STATUS_NEW : RHIZOME_PAYLOAD_STATUS_EMPTY;
 }
 
-static int rhizome_write_derive_key(rhizome_manifest *m, struct rhizome_write *write)
+static enum rhizome_bundle_status rhizome_write_derive_key(rhizome_manifest *m, struct rhizome_write *write)
 {
   if (m->payloadEncryption != PAYLOAD_ENCRYPTED)
-    return 0;
-  
-  // if the manifest specifies encryption, make sure we can generate the payload key and encrypt the contents as we go
-  if (rhizome_derive_payload_key(m))
-    return -1;
+    return RHIZOME_PAYLOAD_STATUS_NEW;
+
+  // if the manifest specifies encryption, make sure we can generate the payload key and encrypt the
+  // contents as we go
+  if (!rhizome_derive_payload_key(m))
+    return RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL;
 
   if (config.debug.rhizome)
-    DEBUGF("Encrypting payload contents for %s, %"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
+    DEBUGF("Encrypting payload contents for bid=%s, version=%"PRIu64,
+	alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
 
   write->crypt=1;
   if (m->is_journal && m->tail > 0)
@@ -674,43 +700,75 @@ static int rhizome_write_derive_key(rhizome_manifest *m, struct rhizome_write *w
 
   bcopy(m->payloadKey, write->key, sizeof(write->key));
   bcopy(m->payloadNonce, write->nonce, sizeof(write->nonce));
-  return 0;
+  return RHIZOME_PAYLOAD_STATUS_NEW;
 }
 
-int rhizome_write_open_manifest(struct rhizome_write *write, rhizome_manifest *m)
+enum rhizome_payload_status rhizome_write_open_manifest(struct rhizome_write *write, rhizome_manifest *m)
 {
-  assert(m->filesize != RHIZOME_SIZE_UNSET);
-  if (rhizome_open_write(write, NULL, m->filesize, RHIZOME_PRIORITY_DEFAULT))
-    return -1;
-
-  if (rhizome_write_derive_key(m, write))
-    return -1;
-  return 0;
+  enum rhizome_payload_status status = rhizome_open_write(
+	  write,
+	  m->has_filehash ? &m->filehash : NULL,
+	  m->filesize,
+	  RHIZOME_PRIORITY_DEFAULT
+	);
+  if (status == RHIZOME_PAYLOAD_STATUS_NEW)
+    status = rhizome_write_derive_key(m, write);
+  return status;
 }
 
 // import a file for a new bundle with an unknown file hash
 // update the manifest with the details of the file
-int rhizome_add_file(rhizome_manifest *m, const char *filepath)
+enum rhizome_payload_status rhizome_store_payload_file(rhizome_manifest *m, const char *filepath)
 {
   // Stream the file directly into the database, encrypting & hashing as we go.
   struct rhizome_write write;
   bzero(&write, sizeof(write));
-  if (rhizome_write_open_manifest(&write, m))
-    goto failure;
-  if (rhizome_write_file(&write, filepath))
-    goto failure;
-  if (rhizome_finish_write(&write))
-    goto failure;
-  rhizome_manifest_set_filehash(m, &write.id);
-  return 0;
-failure:
-  rhizome_fail_write(&write);
-  return -1;
+  enum rhizome_payload_status status = rhizome_write_open_manifest(&write, m);
+  switch (status) {
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+      break;
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      return status;
+    default:
+      FATALF("status = %d", status);
+  }
+  if (rhizome_write_file(&write, filepath) == -1) {
+    rhizome_fail_write(&write);
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
+  }
+  status = rhizome_finish_write(&write);
+  switch (status) {
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+      assert(write.file_length == 0);
+      assert(m->filesize == 0);
+      break;
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+      assert(m->filesize == write.file_length);
+      if (m->has_filehash)
+	assert(cmp_rhizome_filehash_t(&m->filehash, &write.id) == 0);
+      else
+	rhizome_manifest_set_filehash(m, &write.id);
+      break;
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      break;
+    default:
+      FATALF("status = %d", status);
+  }
+  return status;
 }
 
-/* Return -1 on error, 0 if file blob found, 1 if not found.
+/* Return RHIZOME_PAYLOAD_STATUS_STORED if file blob found, RHIZOME_PAYLOAD_STATUS_NEW if not found.
  */
-int rhizome_open_read(struct rhizome_read *read, const rhizome_filehash_t *hashp)
+enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const rhizome_filehash_t *hashp)
 {
   read->id = *hashp;
   read->blob_rowid = 0;
@@ -721,31 +779,37 @@ int rhizome_open_read(struct rhizome_read *read, const rhizome_filehash_t *hashp
       "WHERE FILEBLOBS.id = FILES.id"
       " AND FILES.id = ?"
       " AND FILES.datavalid != 0", RHIZOME_FILEHASH_T, &read->id, END) == -1)
-    return -1;
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
   if (read->blob_rowid != 0) {
     read->length = RHIZOME_SIZE_UNSET; // discover the length on opening the db BLOB
   } else {
     // No row in FILEBLOBS, look for an external blob file.
     char blob_path[1024];
     if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, alloca_tohex_rhizome_filehash_t(read->id)))
-      return -1;
+      return RHIZOME_PAYLOAD_STATUS_ERROR;
     read->blob_fd = open(blob_path, O_RDONLY);
     if (read->blob_fd == -1) {
-      if (errno == ENOENT)
-	return 1; // file not available
-      return WHYF_perror("open(%s)", alloca_str_toprint(blob_path));
+      if (errno == ENOENT) {
+	if (config.debug.externalblobs)
+	  DEBUGF("Stored file does not exist: %s", blob_path);
+	return RHIZOME_PAYLOAD_STATUS_NEW;
+      }
+      WHYF_perror("open(%s)", alloca_str_toprint(blob_path));
+      return RHIZOME_PAYLOAD_STATUS_ERROR;
     }
     off64_t pos = lseek64(read->blob_fd, 0, SEEK_END);
-    if (pos == -1)
-      return WHYF_perror("lseek64(%s,0,SEEK_END)", alloca_str_toprint(blob_path));
+    if (pos == -1) {
+      WHYF_perror("lseek64(%s,0,SEEK_END)", alloca_str_toprint(blob_path));
+      return RHIZOME_PAYLOAD_STATUS_ERROR;
+    }
     read->length = pos;
     if (config.debug.externalblobs)
-      DEBUGF("Opened stored file %s as fd %d, len %"PRIx64,blob_path, read->blob_fd, read->length);
+      DEBUGF("Opened stored file %s as fd %d, len %"PRIx64, blob_path, read->blob_fd, read->length);
   }
   read->offset = 0;
   read->hash_offset = 0;
   SHA512_Init(&read->sha512_context);
-  return 0; // file opened
+  return RHIZOME_PAYLOAD_STATUS_STORED;
 }
 
 static ssize_t rhizome_read_retry(sqlite_retry_state *retry, struct rhizome_read *read_state, unsigned char *buffer, size_t bufsz)
@@ -764,17 +828,10 @@ static ssize_t rhizome_read_retry(sqlite_retry_state *retry, struct rhizome_read
     RETURN(rd);
   }
   if (read_state->blob_rowid == 0)
-    RETURN(WHY("file not open"));
+    RETURN(WHY("blob not created"));
   sqlite3_blob *blob = NULL;
-  int ret;
-  do {
-    assert(blob == NULL);
-    ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", read_state->blob_rowid, 0 /* read only */, &blob);
-  } while (sqlite_code_busy(ret) && sqlite_retry(retry, "sqlite3_blob_open"));
-  if (ret != SQLITE_OK) {
-    assert(blob == NULL);
-    RETURN(WHYF("sqlite3_blob_open() failed: %s", sqlite3_errmsg(rhizome_db)));
-  }
+  if (sqlite_blob_open_retry(retry, "main", "FILEBLOBS", "data", read_state->blob_rowid, 0 /* read only */, &blob) == -1)
+    RETURN(WHY("blob open failed"));
   assert(blob != NULL);
   if (read_state->length == RHIZOME_SIZE_UNSET)
     read_state->length = sqlite3_blob_bytes(blob);
@@ -786,16 +843,17 @@ static ssize_t rhizome_read_retry(sqlite_retry_state *retry, struct rhizome_read
     if (bytes_read > bufsz)
       bytes_read = bufsz;
     assert(bytes_read > 0);
+    int ret;
     do {
       ret = sqlite3_blob_read(blob, buffer, (int) bytes_read, read_state->offset);
     } while (sqlite_code_busy(ret) && sqlite_retry(retry, "sqlite3_blob_read"));
     if (ret != SQLITE_OK) {
       WHYF("sqlite3_blob_read() failed: %s", sqlite3_errmsg(rhizome_db));
-      sqlite3_blob_close(blob);
+      sqlite_blob_close(blob);
       RETURN(-1);
     }
   }
-  sqlite3_blob_close(blob);
+  sqlite_blob_close(blob);
   RETURN(bytes_read);
   OUT();
 }
@@ -913,19 +971,18 @@ ssize_t rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buf
   return bytes_copied;
 }
 
-int rhizome_read_close(struct rhizome_read *read)
+void rhizome_read_close(struct rhizome_read *read)
 {
-  if (read->blob_fd >=0){
+  if (read->blob_fd != -1) {
     if (config.debug.externalblobs)
       DEBUGF("Closing store fd %d", read->blob_fd);
     close(read->blob_fd);
+    read->blob_fd = -1;
   }
-  read->blob_fd = -1;
-  if (read->invalid){
+  if (read->invalid) {
     // delete payload!
     rhizome_delete_file(&read->id);
   }
-  return 0;
 }
 
 struct cache_entry{
@@ -1029,7 +1086,7 @@ int rhizome_cache_count()
 }
 
 // read a block of data, caching meta data for reuse
-int rhizome_read_cached(const rhizome_bid_t *bidp, uint64_t version, time_ms_t timeout, uint64_t fileOffset, unsigned char *buffer, size_t length)
+ssize_t rhizome_read_cached(const rhizome_bid_t *bidp, uint64_t version, time_ms_t timeout, uint64_t fileOffset, unsigned char *buffer, size_t length)
 {
   // look for a cached entry
   struct cache_entry **ptr = find_entry_location(&root, bidp, version);
@@ -1041,9 +1098,24 @@ int rhizome_read_cached(const rhizome_bid_t *bidp, uint64_t version, time_ms_t t
     if (rhizome_database_filehash_from_id(bidp, version, &filehash) == -1)
       return -1;
     entry = emalloc_zero(sizeof(struct cache_entry));
-    if (rhizome_open_read(&entry->read_state, &filehash)){
-      free(entry);
-      return WHYF("Payload %s not found", alloca_tohex_rhizome_filehash_t(filehash));
+    if (entry == NULL)
+      return -1;
+    enum rhizome_payload_status status = rhizome_open_read(&entry->read_state, &filehash);
+    switch (status) {
+      case RHIZOME_PAYLOAD_STATUS_EMPTY:
+      case RHIZOME_PAYLOAD_STATUS_STORED:
+	break;
+      case RHIZOME_PAYLOAD_STATUS_NEW:
+	free(entry);
+	return WHYF("Payload %s not found", alloca_tohex_rhizome_filehash_t(filehash));
+      case RHIZOME_PAYLOAD_STATUS_ERROR:
+      case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+      case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+      case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+	free(entry);
+	return WHYF("Error opening payload %s", alloca_tohex_rhizome_filehash_t(filehash));
+      default:
+	FATALF("status = %d", status);
     }
     entry->bundle_id = *bidp;
     entry->version = version;
@@ -1099,15 +1171,16 @@ static int write_file(struct rhizome_read *read, const char *filepath){
   return ret;
 }
 
-static int read_derive_key(rhizome_manifest *m, struct rhizome_read *read_state)
+static enum rhizome_payload_status read_derive_key(rhizome_manifest *m, struct rhizome_read *read_state)
 {
   read_state->crypt = m->payloadEncryption == PAYLOAD_ENCRYPTED;
   if (read_state->crypt){
     // if the manifest specifies encryption, make sure we can generate the payload key and encrypt
     // the contents as we go
-    if (rhizome_derive_payload_key(m)) {
+    if (!rhizome_derive_payload_key(m)) {
       rhizome_read_close(read_state);
-      return WHY("Unable to decrypt bundle, valid key not found");
+      WHY("Unable to decrypt bundle, valid key not found");
+      return RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL;
     }
     if (config.debug.rhizome)
       DEBUGF("Decrypting payload contents for bid=%s version=%"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
@@ -1116,51 +1189,48 @@ static int read_derive_key(rhizome_manifest *m, struct rhizome_read *read_state)
     bcopy(m->payloadKey, read_state->key, sizeof(read_state->key));
     bcopy(m->payloadNonce, read_state->nonce, sizeof(read_state->nonce));
   }
-  return 0;
+  return RHIZOME_PAYLOAD_STATUS_STORED;
 }
 
-int rhizome_open_decrypt_read(rhizome_manifest *m, struct rhizome_read *read_state)
+enum rhizome_payload_status rhizome_open_decrypt_read(rhizome_manifest *m, struct rhizome_read *read_state)
 {
-  int ret = rhizome_open_read(read_state, &m->filehash);
-  if (ret == 0)
-    ret = read_derive_key(m, read_state);
-  return ret;
+  enum rhizome_payload_status status = rhizome_open_read(read_state, &m->filehash);
+  if (status == RHIZOME_PAYLOAD_STATUS_STORED)
+    status = read_derive_key(m, read_state);
+  return status;
 }
 
 /* Extract the file related to a manifest to the file system.  The file will be de-crypted and
  * verified while reading.  If filepath is not supplied, the file will still be checked.
- *
- * Returns -1 on error, 0 if extracted successfully, 1 if not found.
  */
-int rhizome_extract_file(rhizome_manifest *m, const char *filepath)
+enum rhizome_payload_status rhizome_extract_file(rhizome_manifest *m, const char *filepath)
 {
   struct rhizome_read read_state;
   bzero(&read_state, sizeof read_state);
-  int ret = rhizome_open_decrypt_read(m, &read_state);
-  if (ret == 0)
-    ret = write_file(&read_state, filepath);
+  enum rhizome_payload_status status = rhizome_open_decrypt_read(m, &read_state);
+  if (status == RHIZOME_PAYLOAD_STATUS_STORED) {
+    if (write_file(&read_state, filepath) == -1)
+      status = RHIZOME_PAYLOAD_STATUS_ERROR;
+  }
   rhizome_read_close(&read_state);
-  return ret;
+  return status;
 }
 
 /* dump the raw contents of a file
- *
- * Returns -1 on error, 0 if dumped successfully, 1 if not found.
  */
-int rhizome_dump_file(const rhizome_filehash_t *hashp, const char *filepath, uint64_t *lengthp)
+enum rhizome_payload_status rhizome_dump_file(const rhizome_filehash_t *hashp, const char *filepath, uint64_t *lengthp)
 {
   struct rhizome_read read_state;
   bzero(&read_state, sizeof read_state);
-
-  int ret = rhizome_open_read(&read_state, hashp);
-  
-  if (ret == 0) {
-    ret = write_file(&read_state, filepath);
-    if (lengthp)
+  enum rhizome_payload_status status = rhizome_open_read(&read_state, hashp);
+  if (status == RHIZOME_PAYLOAD_STATUS_STORED) {
+    if (write_file(&read_state, filepath) == -1)
+      status = RHIZOME_PAYLOAD_STATUS_ERROR;
+    else if (lengthp)
       *lengthp = read_state.length;
   }
   rhizome_read_close(&read_state);
-  return ret;
+  return status;
 }
 
 // pipe data from one payload to another
@@ -1189,116 +1259,124 @@ static int rhizome_pipe(struct rhizome_read *read, struct rhizome_write *write, 
   return 0;
 }
 
-int rhizome_journal_pipe(struct rhizome_write *write, const rhizome_filehash_t *hashp, uint64_t start_offset, uint64_t length)
+uint64_t rhizome_copy_file_to_blob(int fd, uint64_t id, size_t size)
+{
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  uint64_t rowid = rhizome_create_fileblob(&retry, id, size);
+  if (rowid == 0)
+    return 0;
+  sqlite3_blob *blob = NULL;
+  if (sqlite_blob_open_retry(&retry, "main", "FILEBLOBS", "data", rowid, 1 /* read/write */, &blob) == -1)
+    goto fail;
+  char buf[16384];
+  size_t offset = 0;
+  while (offset < size) {
+    size_t toread = size - offset;
+    if (toread > sizeof buf)
+      toread = sizeof buf;
+    ssize_t nread = read(fd, buf, toread);
+    if (nread == -1) {
+      WHYF_perror("read(%d,%p,%zu)", fd, buf, toread);
+      goto fail;
+    }
+    if ((size_t)nread == 0) {
+      WHYF("read(%d,%p,%zu) returned 0", fd, buf, toread);
+      goto fail;
+    }
+    if (sqlite_blob_write_retry(&retry, blob, buf, (int)nread, (int)offset) == -1)
+      goto fail;
+    assert((size_t)nread <= toread);
+    offset += (size_t)nread;
+  }
+  assert(offset == size);
+  sqlite_blob_close(blob);
+  return rowid;
+fail:
+  if (blob)
+    sqlite_blob_close(blob);
+  sqlite_exec_void_retry(&retry, "DELETE FROM FILEBLOBS WHERE id = ?;", UINT64_TOSTR, id, END);
+  return 0;
+}
+
+enum rhizome_payload_status rhizome_journal_pipe(struct rhizome_write *write, const rhizome_filehash_t *hashp, uint64_t start_offset, uint64_t length)
 {
   struct rhizome_read read_state;
   bzero(&read_state, sizeof read_state);
-  if (rhizome_open_read(&read_state, hashp))
-    return -1;
-  read_state.offset = start_offset;
-  int ret = rhizome_pipe(&read_state, write, length);
+  enum rhizome_payload_status status = rhizome_open_read(&read_state, hashp);
+  if (status == RHIZOME_PAYLOAD_STATUS_STORED) {
+    read_state.offset = start_offset;
+    if (rhizome_pipe(&read_state, write, length) == -1)
+      status = RHIZOME_PAYLOAD_STATUS_ERROR;
+  }
   rhizome_read_close(&read_state);
-  return ret;
+  return status;
 }
 
 // open an existing journal bundle, advance the head pointer, duplicate the existing content and get ready to add more.
-int rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m, uint64_t advance_by, uint64_t new_size)
+enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m, uint64_t advance_by, uint64_t new_size)
 {
-  int ret = 0;
-
   assert(m->filesize != RHIZOME_SIZE_UNSET);
+  assert(m->filesize + new_size > 0);
   assert(m->is_journal);
-  if (advance_by > m->filesize)
-    return WHY("Cannot advance past the existing content");
-
+  assert(advance_by <= m->filesize);
   uint64_t copy_length = m->filesize - advance_by;
   rhizome_manifest_set_filesize(m, m->filesize + new_size - advance_by);
-
   if (advance_by > 0)
     rhizome_manifest_set_tail(m, m->tail + advance_by);
-
   rhizome_manifest_set_version(m, m->filesize);
-
-  ret = rhizome_open_write(write, NULL, m->filesize, RHIZOME_PRIORITY_DEFAULT);
-  if (ret)
-    goto failure;
-
-  if (copy_length>0){
+  enum rhizome_payload_status status = rhizome_open_write(write, NULL, m->filesize, RHIZOME_PRIORITY_DEFAULT);
+  if (status == RHIZOME_PAYLOAD_STATUS_NEW && copy_length > 0) {
     // note that we don't need to bother decrypting the existing journal payload
-    ret = rhizome_journal_pipe(write, &m->filehash, advance_by, copy_length);
-    if (ret)
-      goto failure;
+    enum rhizome_payload_status rstatus = rhizome_journal_pipe(write, &m->filehash, advance_by, copy_length);
+    if (rstatus != RHIZOME_PAYLOAD_STATUS_STORED)
+      status = RHIZOME_PAYLOAD_STATUS_ERROR;
   }
-
-  ret = rhizome_write_derive_key(m, write);
-  if (ret)
-    goto failure;
-  
-  return 0;
-
-failure:
-  if (ret)
+  if (status == RHIZOME_PAYLOAD_STATUS_NEW)
+    status = rhizome_write_derive_key(m, write);
+  if (status != RHIZOME_PAYLOAD_STATUS_NEW)
     rhizome_fail_write(write);
-  return ret;
+  return status;
 }
 
-int rhizome_append_journal_buffer(rhizome_manifest *m, uint64_t advance_by, unsigned char *buffer, size_t len)
+enum rhizome_payload_status rhizome_append_journal_buffer(rhizome_manifest *m, uint64_t advance_by, unsigned char *buffer, size_t len)
 {
   struct rhizome_write write;
   bzero(&write, sizeof write);
-
-  int ret = rhizome_write_open_journal(&write, m, advance_by, (uint64_t) len);
-  if (ret)
-    return -1;
-
-  if (buffer && len){
-    ret = rhizome_write_buffer(&write, buffer, len);
-    if (ret)
-      goto failure;
-  }
-
-  ret = rhizome_finish_write(&write);
-  if (ret)
-    goto failure;
-
-  rhizome_manifest_set_filehash(m, &write.id);
-  return 0;
-
-failure:
-  if (ret)
+  enum rhizome_payload_status status = rhizome_write_open_journal(&write, m, advance_by, (uint64_t) len);
+  if (status != RHIZOME_PAYLOAD_STATUS_NEW)
+    return status;
+  if (buffer && len && rhizome_write_buffer(&write, buffer, len) == -1) {
     rhizome_fail_write(&write);
-  return ret;
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
+  }
+  status = rhizome_finish_write(&write);
+  if (status != RHIZOME_PAYLOAD_STATUS_NEW) {
+    rhizome_fail_write(&write);
+    return status;
+  }
+  rhizome_manifest_set_filehash(m, &write.id);
+  return status;
 }
 
-int rhizome_append_journal_file(rhizome_manifest *m, uint64_t advance_by, const char *filename)
+enum rhizome_payload_status rhizome_append_journal_file(rhizome_manifest *m, uint64_t advance_by, const char *filename)
 {
   struct stat stat;
   if (lstat(filename,&stat))
     return WHYF_perror("stat(%s)", alloca_str_toprint(filename));
-
   struct rhizome_write write;
   bzero(&write, sizeof write);
-  int ret = rhizome_write_open_journal(&write, m, advance_by, stat.st_size);
-  if (ret)
-    return -1;
-
-  if (stat.st_size){
-    ret = rhizome_write_file(&write, filename);
-    if (ret)
-      goto failure;
-  }
-
-  ret = rhizome_finish_write(&write);
-  if (ret)
-    goto failure;
-
-  rhizome_manifest_set_filehash(m, &write.id);
-
-  return 0;
-
-failure:
-  if (ret)
+  enum rhizome_payload_status status = rhizome_write_open_journal(&write, m, advance_by, stat.st_size);
+  if (status != RHIZOME_PAYLOAD_STATUS_NEW)
+    return status;
+  if (stat.st_size != 0 && rhizome_write_file(&write, filename) == -1) {
     rhizome_fail_write(&write);
-  return ret;
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
+  }
+  status = rhizome_finish_write(&write);
+  if (status != RHIZOME_PAYLOAD_STATUS_NEW) {
+    rhizome_fail_write(&write);
+    return status;
+  }
+  rhizome_manifest_set_filehash(m, &write.id);
+  return status;
 }
-

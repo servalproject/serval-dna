@@ -428,6 +428,30 @@ int cf_cmp_uint32_time_interval(const uint32_t *a, const uint32_t *b)
   return cf_cmp_uint32(a, b);
 }
 
+int cf_opt_uint32_scaled(uint32_t *intp, const char *text)
+{
+  uint32_t result;
+  const char *end;
+  if (!str_to_uint32_scaled(text, 10, &result, &end) || *end)
+    return CFINVALID;
+  *intp = result;
+  return CFOK;
+}
+
+int cf_fmt_uint32_scaled(const char **textp, const uint32_t *uintp)
+{
+  char buf[25];
+  int n = uint32_scaled_to_str(buf, sizeof buf, *uintp);
+  assert(n != 0);
+  *textp = str_edup(buf);
+  return CFOK;
+}
+
+int cf_cmp_uint32_scaled(const uint32_t *a, const uint32_t *b)
+{
+  return *a < *b ? -1 : *a > *b ? 1 : 0;
+}
+
 int cf_opt_uint64_scaled(uint64_t *intp, const char *text)
 {
   uint64_t result;

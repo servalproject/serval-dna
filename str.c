@@ -645,7 +645,7 @@ char *str_str(char *haystack, const char *needle, size_t haystack_len)
   return NULL;
 }
 
-int str_to_int(const char *str, int base, int *result, const char **afterp)
+int str_to_int32(const char *str, int base, int32_t *result, const char **afterp)
 {
   if (isspace(*str))
     return 0;
@@ -654,14 +654,14 @@ int str_to_int(const char *str, int base, int *result, const char **afterp)
   long value = strtol(str, (char**)&end, base);
   if (afterp)
     *afterp = end;
-  if (errno == ERANGE || end == str || value > INT_MAX || value < INT_MIN || isdigit(*end) || (!afterp && *end))
+  if (errno == ERANGE || end == str || value > INT32_MAX || value < INT32_MIN || isdigit(*end) || (!afterp && *end))
     return 0;
   if (result)
     *result = value;
   return 1;
 }
 
-int str_to_uint(const char *str, int base, unsigned *result, const char **afterp)
+int str_to_uint32(const char *str, int base, uint32_t *result, const char **afterp)
 {
   if (isspace(*str))
     return 0;
@@ -670,7 +670,7 @@ int str_to_uint(const char *str, int base, unsigned *result, const char **afterp
   unsigned long value = strtoul(str, (char**)&end, base);
   if (afterp)
     *afterp = end;
-  if (errno == ERANGE || end == str || value > UINT_MAX || isdigit(*end) || (!afterp && *end))
+  if (errno == ERANGE || end == str || value > UINT32_MAX || isdigit(*end) || (!afterp && *end))
     return 0;
   if (result)
     *result = value;
@@ -756,6 +756,42 @@ int str_to_int64_scaled(const char *str, int base, int64_t *result, const char *
   if (result)
     *result = value;
   return 1;
+}
+
+int str_to_uint32_scaled(const char *str, int base, uint32_t *result, const char **afterp)
+{
+  uint32_t value;
+  const char *end = str;
+  if (!str_to_uint32(str, base, &value, &end)) {
+    if (afterp)
+      *afterp = end;
+    return 0;
+  }
+  value *= scale_factor(end, &end);
+  if (afterp)
+    *afterp = end;
+  else if (*end)
+    return 0;
+  if (result)
+    *result = value;
+  return 1;
+}
+
+int uint32_scaled_to_str(char *str, size_t len, uint32_t value)
+{
+  char symbol = '\0';
+  int i;
+  for (i = 0; i != NELS(scale_factors); ++i)
+    if (value % scale_factors[i].factor == 0) {
+      value /= scale_factors[i].factor;
+      symbol = scale_factors[i].symbol;
+      break;
+    }
+  strbuf b = strbuf_local(str, len);
+  strbuf_sprintf(b, "%lu", (unsigned long) value);
+  if (symbol)
+    strbuf_putc(b, symbol);
+  return strbuf_overrun(b) ? 0 : 1;
 }
 
 int str_to_uint64_scaled(const char *str, int base, uint64_t *result, const char **afterp)

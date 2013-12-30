@@ -40,7 +40,7 @@ int str_to_sid_t(sid_t *sid, const char *hex)
 
 int strn_to_sid_t(sid_t *sid, const char *hex, const char **endp)
 {
-  if (str_startswith(hex, "broadcast", endp) == 0) {
+  if (str_startswith(hex, "broadcast", endp)) {
     if (sid)
     *sid = SID_BROADCAST;
     return 0;
@@ -92,9 +92,10 @@ int strn_to_rhizome_bid_t(rhizome_bid_t *bid, const char *hex, const char **endp
   int n = fromhex(tmp.binary, hex, sizeof tmp.binary);
   if (n != sizeof tmp.binary)
     return -1;
-  *bid = tmp;
+  if (bid)
+    *bid = tmp;
   if (endp)
-    *endp = hex + sizeof bid->binary * 2;
+    *endp = hex + sizeof tmp.binary * 2;
   return 0;
 }
 
@@ -114,15 +115,29 @@ int strn_to_rhizome_filehash_t(rhizome_filehash_t *hashp, const char *hex, const
   int n = fromhex(tmp.binary, hex, sizeof tmp.binary);
   if (n != sizeof tmp.binary)
     return -1;
-  *hashp = tmp;
+  if (hashp)
+    *hashp = tmp;
   if (endp)
-    *endp = hex + sizeof hashp->binary * 2;
+    *endp = hex + sizeof tmp.binary * 2;
   return 0;
 }
 
 int str_to_rhizome_bk_t(rhizome_bk_t *bkp, const char *hex)
 {
   return bkp ? fromhexstr(bkp->binary, hex, sizeof bkp->binary) : is_xstring(hex, RHIZOME_BUNDLE_KEY_STRLEN) ? 0 : -1;
+}
+
+int strn_to_rhizome_bk_t(rhizome_bk_t *bkp, const char *hex, const char **endp)
+{
+  rhizome_bk_t tmp;
+  int n = fromhex(tmp.binary, hex, sizeof tmp.binary);
+  if (n != sizeof tmp.binary)
+    return -1;
+  if (bkp)
+    *bkp = tmp;
+  if (endp)
+    *endp = hex + sizeof tmp.binary * 2;
+  return 0;
 }
 
 int rhizome_strn_is_bundle_crypt_key(const char *key)

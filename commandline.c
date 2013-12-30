@@ -527,6 +527,65 @@ void cli_flush(struct cli_context *context)
   fflush(stdout);
 }
 
+static void cli_put_manifest(struct cli_context *context, const rhizome_manifest *m)
+{
+  assert(m->filesize != RHIZOME_SIZE_UNSET);
+  cli_field_name(context, "manifestid", ":"); // TODO rename to "bundleid" or "bid"
+  cli_put_string(context, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), "\n");
+  cli_field_name(context, "version", ":");
+  cli_put_long(context, m->version, "\n");
+  cli_field_name(context, "filesize", ":");
+  cli_put_long(context, m->filesize, "\n");
+  if (m->filesize != 0) {
+    cli_field_name(context, "filehash", ":");
+    cli_put_string(context, alloca_tohex_rhizome_filehash_t(m->filehash), "\n");
+  }
+  if (m->has_bundle_key) {
+    cli_field_name(context, "BK", ":");
+    cli_put_string(context, alloca_tohex_rhizome_bk_t(m->bundle_key), "\n");
+  }
+  if (m->has_date) {
+    cli_field_name(context, "date", ":");
+    cli_put_long(context, m->date, "\n");
+  }
+  switch (m->payloadEncryption) {
+    case PAYLOAD_CRYPT_UNKNOWN:
+      break;
+    case PAYLOAD_CLEAR:
+      cli_field_name(context, "crypt", ":");
+      cli_put_long(context, 0, "\n");
+      break;
+    case PAYLOAD_ENCRYPTED:
+      cli_field_name(context, "crypt", ":");
+      cli_put_long(context, 1, "\n");
+      break;
+  }
+  if (m->service) {
+    cli_field_name(context, "service", ":");
+    cli_put_string(context, m->service, "\n");
+  }
+  if (m->name) {
+    cli_field_name(context, "name", ":");
+    cli_put_string(context, m->name, "\n");
+  }
+  cli_field_name(context, ".readonly", ":");
+  cli_put_long(context, m->haveSecret ? 0 : 1, "\n");
+  if (m->haveSecret) {
+    char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
+    rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
+    cli_field_name(context, ".secret", ":");
+    cli_put_string(context, secret, "\n");
+  }
+  if (m->authorship == AUTHOR_AUTHENTIC) {
+    cli_field_name(context, ".author", ":");
+    cli_put_string(context, alloca_tohex_sid_t(m->author), "\n");
+  }
+  cli_field_name(context, ".rowid", ":");
+  cli_put_long(context, m->rowid, "\n");
+  cli_field_name(context, ".inserttime", ":");
+  cli_put_long(context, m->inserttime, "\n");
+}
+
 int app_echo(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
@@ -1372,7 +1431,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   if (bskhex && !*bskhex)
     bskhex=NULL;
   
-  if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+  if (bskhex && str_to_rhizome_bk_t(&bsk, bskhex) == -1)
     return WHYF("invalid bsk: \"%s\"", bskhex);
   
   int journal = strcasecmp(parsed->args[1], "journal")==0;
@@ -1401,8 +1460,8 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     /* Don't verify the manifest, because it will fail if it is incomplete.
        This is okay, because we fill in any missing bits and sanity check before
        trying to write it out. However, we do insist that whatever we load is
-       valid and not malformed. */
-    if (rhizome_read_manifest_file(m, manifestpath, 0) == -1 || m->malformed) {
+       parsed okay and not malformed. */
+    if (rhizome_read_manifest_from_file(m, manifestpath) || m->malformed) {
       rhizome_manifest_free(m);
       keyring_free(keyring);
       return WHY("Manifest file could not be loaded -- not added to rhizome");
@@ -1451,87 +1510,78 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     return -1;
   }
 
+  enum rhizome_bundle_status status = RHIZOME_BUNDLE_STATUS_NEW;
+  enum rhizome_payload_status pstatus;
   if (journal){
-    if (rhizome_append_journal_file(m, 0, filepath)){
-      rhizome_manifest_free(m);
-      keyring_free(keyring);
-      return -1;
+    pstatus = rhizome_append_journal_file(m, 0, filepath);
+  } else {
+    pstatus = rhizome_stat_payload_file(m, filepath);
+    assert(m->filesize != RHIZOME_SIZE_UNSET);
+    if (pstatus == RHIZOME_PAYLOAD_STATUS_NEW) {
+      assert(m->filesize > 0);
+      pstatus = rhizome_store_payload_file(m, filepath);
     }
-  }else{
-    if (rhizome_stat_file(m, filepath) == -1) {
-      rhizome_manifest_free(m);
-      keyring_free(keyring);
-      return -1;
-    }
-    if (m->filesize) {
-      if (rhizome_add_file(m, filepath) == -1) {
-        rhizome_manifest_free(m);
-	keyring_free(keyring);
-        return -1;
+  }
+  switch (pstatus) {
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+      break;
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+      status = RHIZOME_BUNDLE_STATUS_ERROR;
+      break;
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+      status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
+      break;
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      status = RHIZOME_BUNDLE_STATUS_FAKE;
+      break;
+    default:
+      FATALF("pstatus = %d", pstatus);
+  }
+  rhizome_manifest *mout = m;
+  if (status == RHIZOME_BUNDLE_STATUS_NEW) {
+    if (!rhizome_manifest_validate(m) || m->malformed)
+      status = RHIZOME_BUNDLE_STATUS_INVALID;
+    else {
+      status = rhizome_manifest_finalise(m, &mout, !force_new);
+      if (mout && mout != m && !rhizome_manifest_validate(mout)) {
+	WHYF("Stored manifest id=%s is invalid -- overwriting", alloca_tohex_rhizome_bid_t(mout->cryptoSignPublic));
+	status = RHIZOME_BUNDLE_STATUS_NEW;
       }
     }
   }
-  
-  rhizome_manifest *mout = NULL;
-  int ret = rhizome_manifest_finalise(m, &mout, !force_new);
-  if (ret<0){
-    rhizome_manifest_free(m);
-    keyring_free(keyring);
-    return -1;
+  switch (status) {
+    case RHIZOME_BUNDLE_STATUS_NEW:
+      if (mout && mout != m)
+	rhizome_manifest_free(mout);
+      mout = m;
+      // fall through
+    case RHIZOME_BUNDLE_STATUS_SAME:
+    case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+    case RHIZOME_BUNDLE_STATUS_OLD:
+      cli_put_manifest(context, mout);
+      if (   manifestpath && *manifestpath
+	  && rhizome_write_manifest_file(mout, manifestpath, 0) == -1
+      )
+	WHYF("Could not write manifest to %s", alloca_str_toprint(manifestpath));
+      break;
+    case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+    case RHIZOME_BUNDLE_STATUS_ERROR:
+    case RHIZOME_BUNDLE_STATUS_INVALID:
+    case RHIZOME_BUNDLE_STATUS_FAKE:
+      break;
+    default:
+      FATALF("status=%d", status);
   }
-  
-  if (manifestpath && *manifestpath
-      && rhizome_write_manifest_file(mout, manifestpath, 0) == -1)
-    ret = WHY("Could not overwrite manifest file.");
-  if (mout->service) {
-    cli_field_name(context, "service", ":");
-    cli_put_string(context, mout->service, "\n");
-  }
-  {
-    cli_field_name(context, "manifestid", ":");
-    cli_put_string(context, alloca_tohex_rhizome_bid_t(mout->cryptoSignPublic), "\n");
-  }
-  assert(m->haveSecret);
-  {
-    char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-    rhizome_bytes_to_hex_upper(mout->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
-    cli_field_name(context, ".secret", ":");
-    cli_put_string(context, secret, "\n");
-  }
-  assert(mout->authorship != AUTHOR_LOCAL);
-  if (mout->authorship == AUTHOR_AUTHENTIC) {
-    cli_field_name(context, ".author", ":");
-    cli_put_string(context, alloca_tohex_sid_t(mout->author), "\n");
-  }
-  cli_field_name(context, ".rowid", ":");
-  cli_put_long(context, m->rowid, "\n");
-  cli_field_name(context, ".inserttime", ":");
-  cli_put_long(context, m->inserttime, "\n");
-  if (mout->has_bundle_key) {
-    cli_field_name(context, "BK", ":");
-    cli_put_string(context, alloca_tohex_rhizome_bk_t(mout->bundle_key), "\n");
-  }
-  if (mout->has_date) {
-    cli_field_name(context, "date", ":");
-    cli_put_long(context, mout->date, "\n");
-  }
-  cli_field_name(context, "version", ":");
-  cli_put_long(context, mout->version, "\n");
-  cli_field_name(context, "filesize", ":");
-  cli_put_long(context, mout->filesize, "\n");
-  if (mout->filesize != 0) {
-    cli_field_name(context, "filehash", ":");
-    cli_put_string(context, alloca_tohex_rhizome_filehash_t(mout->filehash), "\n");
-  }
-  if (mout->name) {
-    cli_field_name(context, "name", ":");
-    cli_put_string(context, mout->name, "\n");
-  }
-  if (mout != m)
+  if (mout && mout != m) {
     rhizome_manifest_free(mout);
+    m = NULL;
+  }
   rhizome_manifest_free(m);
   keyring_free(keyring);
-  return ret;
+  return status;
 }
 
 int app_slip_test(const struct cli_parsed *parsed, struct cli_context *context)
@@ -1586,55 +1636,27 @@ int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_contex
   cli_arg(parsed, "manifestpath", &manifestpath, NULL, "");
   if (rhizome_opendb() == -1)
     return -1;
-  
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     return WHY("Out of manifests.");
-  
-  int status=rhizome_bundle_import_files(m, manifestpath, filepath);
-  if (status<0)
-    goto cleanup;
-  
-  // TODO generalise the way we dump manifest details from add, import & export
-  // so callers can also generalise their parsing
-  
-  if (m->service) {
-    cli_field_name(context, "service", ":");
-    cli_put_string(context, m->service, "\n");
+  rhizome_manifest *m_out = NULL;
+  enum rhizome_bundle_status status = rhizome_bundle_import_files(m, &m_out, manifestpath, filepath);
+  switch (status) {
+    case RHIZOME_BUNDLE_STATUS_NEW:
+    case RHIZOME_BUNDLE_STATUS_SAME:
+    case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+    case RHIZOME_BUNDLE_STATUS_OLD:
+      cli_put_manifest(context, m_out);
+      break;
+    case RHIZOME_BUNDLE_STATUS_ERROR:
+    case RHIZOME_BUNDLE_STATUS_INVALID:
+    case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+      break;
+    default:
+      FATALF("rhizome_bundle_import_files() returned %d", status);
   }
-  {
-    cli_field_name(context, "manifestid", ":");
-    cli_put_string(context, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), "\n");
-  }
-  {
-    char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-    rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
-    cli_field_name(context, ".secret", ":");
-    cli_put_string(context, secret, "\n");
-  }
-  if (m->has_bundle_key) {
-    cli_field_name(context, "BK", ":");
-    cli_put_string(context, alloca_tohex_rhizome_bk_t(m->bundle_key), "\n");
-  }
-  cli_field_name(context, "version", ":");
-  cli_put_long(context, m->version, "\n");
-  if (m->has_date) {
-    cli_field_name(context, "date", ":");
-    cli_put_long(context, m->date, "\n");
-  }
-  cli_field_name(context, "filesize", ":");
-  cli_put_long(context, m->filesize, "\n");
-  assert(m->filesize != RHIZOME_SIZE_UNSET);
-  if (m->filesize != 0) {
-    cli_field_name(context, "filehash", ":");
-    cli_put_string(context, alloca_tohex_rhizome_filehash_t(m->filehash), "\n");
-  }
-  if (m->name) {
-    cli_field_name(context, "name", ":");
-    cli_put_string(context, m->name, "\n");
-  }
-  
-cleanup:
+  if (m_out && m_out != m)
+    rhizome_manifest_free(m_out);
   rhizome_manifest_free(m);
   return status;
 }
@@ -1651,11 +1673,10 @@ int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_cont
   if (!m)
     return WHY("Out of manifests.");
   int ret = -1;
-  if (   rhizome_read_manifest_file(m, manifestpath, 0) != -1
+  if (   rhizome_read_manifest_from_file(m, manifestpath) != -1
       && rhizome_manifest_validate(m)
       && rhizome_manifest_verify(m)
   ) {
-    assert(m->finalised);
     if (rhizome_write_manifest_file(m, filepath, 1) != -1)
       ret = 0;
   }
@@ -1781,60 +1802,28 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
     return WHY("Out of manifests");
   }
   ret = rhizome_retrieve_manifest(&bid, m);
-  
   if (ret==0){
+    assert(m->finalised);
     if (bskhex)
       rhizome_apply_bundle_secret(m, &bsk);
     rhizome_authenticate_author(m);
-
-    if (m->service) {
-      cli_field_name(context, "service", ":");
-      cli_put_string(context, m->service, "\n");
-    }
-    cli_field_name(context, "manifestid", ":");
-    cli_put_string(context, alloca_tohex_rhizome_bid_t(bid), "\n");
-    cli_field_name(context, "version", ":");
-    cli_put_long(context, m->version, "\n");
-    if (m->has_date) {
-      cli_field_name(context, "date", ":");
-      cli_put_long(context, m->date, "\n");
-    }
-    cli_field_name(context, "filesize", ":");
-    cli_put_long(context, m->filesize, "\n");
-    assert(m->filesize != RHIZOME_SIZE_UNSET);
-    if (m->filesize != 0) {
-      cli_field_name(context, "filehash", ":");
-      cli_put_string(context, alloca_tohex_rhizome_filehash_t(m->filehash), "\n");
-    }
-    if (m->haveSecret) {
-      char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-      rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
-      cli_field_name(context, ".secret", ":");
-      cli_put_string(context, secret, "\n");
-    }
     assert(m->authorship != AUTHOR_LOCAL);
-    if (m->authorship == AUTHOR_AUTHENTIC) {
-      cli_field_name(context, ".author", ":");
-      cli_put_string(context, alloca_tohex_sid_t(m->author), "\n");
-    }
-    cli_field_name(context, ".rowid", ":");
-    cli_put_long(context, m->rowid, "\n");
-    cli_field_name(context, ".inserttime", ":");
-    cli_put_long(context, m->inserttime, "\n");
-    cli_field_name(context, ".readonly", ":");
-    cli_put_long(context, m->haveSecret?0:1, "\n");
+    cli_put_manifest(context, m);
   }
   
-  int retfile=0;
-  
+  enum rhizome_payload_status pstatus = RHIZOME_PAYLOAD_STATUS_EMPTY;
   if (ret==0 && m->filesize != 0 && filepath && *filepath){
     if (extract){
       // Save the file, implicitly decrypting if required.
-      retfile = rhizome_extract_file(m, filepath);
+      pstatus = rhizome_extract_file(m, filepath);
+      if (pstatus != RHIZOME_PAYLOAD_STATUS_EMPTY && pstatus != RHIZOME_PAYLOAD_STATUS_STORED)
+	WHYF("rhizome_extract_file() returned %d", pstatus);
     }else{
       // Save the file without attempting to decrypt
       uint64_t length;
-      retfile = rhizome_dump_file(&m->filehash, filepath, &length);
+      pstatus = rhizome_dump_file(&m->filehash, filepath, &length);
+      if (pstatus != RHIZOME_PAYLOAD_STATUS_EMPTY && pstatus != RHIZOME_PAYLOAD_STATUS_STORED)
+	WHYF("rhizome_dump_file() returned %d", pstatus);
     }
   }
   
@@ -1847,19 +1836,28 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
     } else {
       int append = (strcmp(manifestpath, filepath)==0)?1:0;
       // don't write out the manifest if we were asked to append it and writing the file failed.
-      if ((!append) || retfile==0){
-	/* If the manifest has been read in from database, the blob is there,
-	 and we can lie and say we are finalised and just want to write it
-	 out.  TODO: really should have a dirty/clean flag, so that write
-	 works if clean but not finalised. */
-	m->finalised=1;
+      if (!append || (pstatus == RHIZOME_PAYLOAD_STATUS_EMPTY || pstatus == RHIZOME_PAYLOAD_STATUS_STORED)) {
 	if (rhizome_write_manifest_file(m, manifestpath, append) == -1)
 	  ret = -1;
       }
     }
   }
-  if (retfile)
-    ret = retfile == -1 ? -1 : 1;
+  switch (pstatus) {
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+      break;
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+      ret = 1; // payload not found
+      break;
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      ret = -1;
+      break;
+    default:
+      FATALF("pstatus = %d", pstatus);
+  }
   if (m)
     rhizome_manifest_free(m);
   keyring_free(keyring);
@@ -1884,9 +1882,21 @@ int app_rhizome_export_file(const struct cli_parsed *parsed, struct cli_context 
   if (!rhizome_exists(&hash))
     return 1;
   uint64_t length;
-  int ret = rhizome_dump_file(&hash, filepath, &length);
-  if (ret)
-    return ret == -1 ? -1 : 1;
+  enum rhizome_payload_status pstatus = rhizome_dump_file(&hash, filepath, &length);
+  switch (pstatus) {
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+      break;
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+      return 1; // payload not found
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      return -1;
+    default:
+      FATALF("pstatus = %d", pstatus);
+  }
   cli_field_name(context, "filehash", ":");
   cli_put_string(context, alloca_tohex_rhizome_filehash_t(hash), "\n");
   cli_field_name(context, "filesize", ":");

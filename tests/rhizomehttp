@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Tests for Serval rhizome operations.
+# Tests for Serval DNA HTTP RESTful interface
 #
 # Copyright 2013 Serval Project, Inc.
 #
@@ -26,6 +26,7 @@ shopt -s extglob
 
 setup() {
    CR=''
+   VT='	'
    setup_curl 7
    setup_jq 1.2
    setup_servald
@@ -35,8 +36,11 @@ setup() {
       set rhizome.api.restful.users.harry.password potter \
       set rhizome.api.restful.users.ron.password weasley \
       set rhizome.api.restful.users.hermione.password grainger
-   create_single_identity
-   echo "$SIDA1" >sids
+   if [ -z "$IDENTITY_COUNT" ]; then
+      create_single_identity
+   else
+      create_identities $IDENTITY_COUNT
+   fi
    start_servald_instances +A
    wait_until rhizome_http_server_started +A
    get_rhizome_server_port PORTA +A
@@ -56,12 +60,14 @@ set_rhizome_config() {
    executeOk_servald config \
       set debug.httpd on \
       set debug.rhizome_httpd on \
+      set debug.rhizome_manifest on \
+      set debug.externalblobs on \
       set debug.rhizome on \
       set debug.verbose on \
       set log.console.level debug
 }
 
-doc_AuthBasicMissing="Basic Authentication credentials are required"
+doc_AuthBasicMissing="HTTP RESTful missing Basic Authentication credentials"
 test_AuthBasicMissing() {
    executeOk curl \
          --silent --show-error --write-out '%{http_code}' \
@@ -69,14 +75,14 @@ test_AuthBasicMissing() {
          --dump-header http.headers \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
    assertStdoutIs '401'
-   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval Rhizome\"$CR$"
+   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval Rhizome\"$CR\$"
 }
 teardown_AuthBasicMissing() {
    tfw_cat http.headers http.output
    teardown
 }
 
-doc_AuthBasicWrong="Basic Authentication credentials must be correct"
+doc_AuthBasicWrong="HTTP RESTful incorrect Basic Authentication credentials"
 test_AuthBasicWrong() {
    executeOk curl \
          --silent --show-error --write-out '%{http_code}' \
@@ -85,7 +91,7 @@ test_AuthBasicWrong() {
          --basic --user fred:nurks \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
    assertStdoutIs '401'
-   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval Rhizome\"$CR$"
+   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval Rhizome\"$CR\$"
    executeOk curl \
          --silent --fail --show-error --write-out '%{http_code}' \
          --output http.output \
@@ -100,16 +106,40 @@ teardown_AuthBasicWrong() {
 }
 
 add_bundles() {
+   local encrypted=false
+   case "$1" in
+   --encrypted) encrypted=true; shift;;
+   esac
    local n
    for ((n = $1; n <= $2; ++n)); do
       create_file file$n $((1000 + $n))
+      if $encrypted; then
+         echo "crypt=1" >file$n.manifest
+      fi
       executeOk_servald rhizome add file $SIDA file$n file$n.manifest
       extract_stdout_manifestid BID[$n]
       extract_stdout_version VERSION[$n]
       extract_stdout_filesize SIZE[$n]
       extract_stdout_filehash HASH[$n]
       extract_stdout_date DATE[$n]
+      extract_stdout_BK BK[$n]
       extract_stdout_rowid ROWID[$n]
+      extract_stdout_author AUTHOR[$n]
+      extract_stdout_secret SECRET[$n]
+      extract_stdout_inserttime INSERTTIME[$n]
+      NAME[$n]=file$n
+      if $encrypted; then
+         extract_stdout_crypt CRYPT[$n]
+         assert [ "${CRYPT[$n]}" = 1 ]
+      else
+         CRYPT[$n]=
+      fi
+      executeOk_servald rhizome export file ${HASH[$n]} raw$n
+      if $encrypted; then
+         assert ! cmp file$n raw$n
+      else
+         assert cmp file$n raw$n
+      fi
       [ "${ROWID[$n]}" -gt "${ROWID_MAX:-0}" ] && ROWID_MAX=${ROWID[$n]}
    done
 }
@@ -182,7 +212,7 @@ assertJq() {
    assert --message="$jqscript" [ "$(jq "$jqscript" "$json")" = true ]
 }
 
-doc_RhizomeList="Fetch small Rhizome bundle list in JSON format"
+doc_RhizomeList="HTTP RESTful list Rhizome bundles as JSON"
 setup_RhizomeList() {
    setup
    NBUNDLES=100
@@ -235,7 +265,7 @@ curl_newsince() {
          "http://$addr_localhost:$PORTA/restful/rhizome/newsince/$token/bundlelist.json"
 }
 
-doc_RhizomeNewSince="Fetch Rhizome bundle list since token in JSON format"
+doc_RhizomeNewSince="HTTP RESTful list Rhizome bundles since token as JSON"
 setup_RhizomeNewSince() {
    setup
    executeOk_servald config set rhizome.api.restful.newsince_timeout 60s
@@ -293,43 +323,558 @@ test_RhizomeNewSince() {
    done
 }
 
-doc_RhizomeManifest="Fetch Rhizome bundle manifest"
+assert_http_response_headers() {
+   local n=$1
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Id: ${BID[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Version: ${VERSION[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Filesize: ${SIZE[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Filehash: ${HASH[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-BK: ${BK[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Date: ${DATE[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Name: \"${NAME[$n]}\"$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Service: file$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Author: ${AUTHOR[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Secret: ${SECRET[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Inserttime: ${INSERTTIME[$n]}$CR\$"
+   assertGrep --matches=1 http.headers$n "^Serval-Rhizome-Bundle-Rowid: ${ROWID[$n]}$CR\$"
+}
+
+doc_RhizomeManifest="HTTP RESTful fetch Rhizome manifest"
+setup_RhizomeManifest() {
+   setup
+   add_bundles 0 2
+}
 test_RhizomeManifest() {
-   :
+   for n in 0 1 2; do
+      executeOk curl \
+            --silent --fail --show-error \
+            --output bundle$n.rhm \
+            --dump-header http.headers$n \
+            --basic --user harry:potter \
+            "http://$addr_localhost:$PORTA/restful/rhizome/${BID[$n]}.rhm"
+      tfw_cat http.headers$n bundle$n.rhm
+      tfw_preserve bundle$n.rhm
+   done
+   for n in 0 1 2; do
+      assert diff file$n.manifest bundle$n.rhm
+      assert_http_response_headers $n
+   done
 }
 
-doc_RhizomePayloadRaw="Fetch Rhizome raw payload"
+doc_RhizomePayloadRaw="HTTP RESTful fetch Rhizome raw payload"
+setup_RhizomePayloadRaw() {
+   setup
+   add_bundles 0 1
+   add_bundles --encrypted 2 3
+}
 test_RhizomePayloadRaw() {
-   :
+   for n in 0 1 2 3; do
+      executeOk curl \
+            --silent --fail --show-error \
+            --output raw.bin$n \
+            --dump-header http.headers$n \
+            --basic --user harry:potter \
+            "http://$addr_localhost:$PORTA/restful/rhizome/${BID[$n]}/raw.bin"
+      tfw_cat http.headers$n raw.bin$n
+   done
+   for n in 0 1 2 3; do
+      assert cmp raw$n raw.bin$n
+      assert_http_response_headers $n
+   done
 }
 
-doc_RhizomePayloadDecrypted="Fetch Rhizome decrypted payload"
+doc_RhizomePayloadDecrypted="HTTP RESTful fetch Rhizome decrypted payload"
+setup_RhizomePayloadDecrypted() {
+   setup
+   add_bundles 0 1
+   add_bundles --encrypted 2 3
+}
 test_RhizomePayloadDecrypted() {
-   :
+   for n in 0 1 2 3; do
+      executeOk curl \
+            --silent --fail --show-error \
+            --output decrypted.bin$n \
+            --dump-header http.headers$n \
+            --basic --user harry:potter \
+            "http://$addr_localhost:$PORTA/restful/rhizome/${BID[$n]}/decrypted.bin"
+      tfw_cat http.headers$n decrypted.bin$n
+   done
+   for n in 0 1 2 3; do
+      assert cmp file$n decrypted.bin$n
+      assert_http_response_headers $n
+   done
 }
 
-doc_RhizomeInsert="Insert new Rhizome bundle"
+extract_http_header() {
+   local __var="$1"
+   local __headerfile="$2"
+   local __header="$3"
+   local __rexp="$4"
+   local __value=$($SED -n -e "/^$__header:[ $VT]*$__rexp$CR\$/s/^$__header:[ $VT]*\(.*\)$CR\$/\1/p" "$__headerfile")
+   assert --message="$__headerfile contains valid '$__header' header" \
+          --dump-on-fail="$__headerfile" \
+          [ -n "$__value" ]
+   [ -n "$__var" ] && eval $__var=\"\$__value\"
+}
+
+http_unquote_string() {
+   local __var="$1"
+   local __unq="$(eval echo '"${'$__var'}"' | sed -e 's/^"//' -e 's/"$//' -e 's/\\\(.\)/\1/g')"
+   eval $__var=\"\$__unq\"
+}
+
+doc_RhizomeInsert="HTTP RESTful insert new Rhizome bundles"
+setup_RhizomeInsert() {
+   IDENTITY_COUNT=3
+   SIDA4=
+   setup
+   for n in 1 2 3 4; do
+      create_file file$n $((1000 + $n))
+      create_file nfile$n $((1100 + $n))
+      payload_filename[$n]=
+      eval author[$n]=\$SIDA$n
+      service[$n]=file
+   done
+   name[1]=blarg
+   echo "name=blarg" >manifest1
+   name[2]=file2
+   echo "crypt=1" >manifest2
+   name[3]=kibble
+   payload_filename[3]=kibble
+   >manifest3
+   name[4]=
+   service[4]=wah
+   echo -e "service=wah\ncrypt=0" >manifest4
+}
 test_RhizomeInsert() {
+   for n in 1 2 3 4; do
+      authorargs=()
+      [ -n "${author[$n]}" ] && authorargs=(--form "bundle-author=${author[$n]}")
+      execute curl \
+            --silent --show-error --write-out '%{http_code}' \
+            --output file$n.manifest \
+            --dump-header http.header$n \
+            --basic --user harry:potter \
+            "${authorargs[@]}" \
+            --form "manifest=@manifest$n;type=rhizome-manifest/text" \
+            --form "payload=@file$n${payload_filename[$n]:+;filename=\"${payload_filename[$n]}\"}" \
+            "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+      tfw_cat http.header$n file$n.manifest
+      assertExitStatus == 0
+      assertStdoutIs 201
+      extract_http_header BID[$n] http.header$n Serval-Rhizome-Bundle-Id "$rexp_manifestid"
+      extract_http_header VERSION[$n] http.header$n Serval-Rhizome-Bundle-Version "$rexp_version"
+      extract_http_header SIZE[$n] http.header$n Serval-Rhizome-Bundle-Filesize "$rexp_filesize"
+      extract_http_header HASH[$n] http.header$n Serval-Rhizome-Bundle-Filehash "$rexp_filehash"
+      extract_http_header DATE[$n] http.header$n Serval-Rhizome-Bundle-Date "$rexp_date"
+      extract_http_header ROWID[$n] http.header$n Serval-Rhizome-Bundle-Rowid "$rexp_rowid"
+      extract_http_header INSERTTIME[$n] http.header$n Serval-Rhizome-Bundle-Inserttime "$rexp_date"
+      extract_http_header SECRET[$n] http.header$n Serval-Rhizome-Bundle-Secret "$rexp_bundlesecret"
+      extract_http_header SERVICE[$n] http.header$n Serval-Rhizome-Bundle-Service ".*"
+      assert [ ${SIZE[$n]} -eq $((1000 + $n)) ]
+      assert [ "${SERVICE[$n]}" = "${service[$n]}" ]
+      extract_manifest_id BID file$n.manifest
+      extract_manifest_version VERSION file$n.manifest
+      extract_manifest_filesize SIZE file$n.manifest
+      extract_manifest_filehash HASH file$n.manifest
+      extract_manifest_date DATE file$n.manifest
+      extract_manifest_service SERVICE file$n.manifest
+      assert [ "$BID" = "${BID[$n]}" ]
+      assert [ "$VERSION" = "${VERSION[$n]}" ]
+      assert [ "$SIZE" = "${SIZE[$n]}" ]
+      assert [ "$HASH" = "${HASH[$n]}" ]
+      assert [ "$DATE" = "${DATE[$n]}" ]
+      assert [ "$SERVICE" = "${SERVICE[$n]}" ]
+      if [ -n "${name[$n]}" ]; then
+         extract_http_header NAME[$n] http.header$n Serval-Rhizome-Bundle-Name ".*"
+         http_unquote_string NAME[$n]
+         assert [ "${NAME[$n]}" = "${name[$n]}" ]
+         extract_manifest_name NAME file$n.manifest
+         assert [ "$NAME" = "${NAME[$n]}" ]
+      fi
+      if [ -n "${author[$n]}" ]; then
+         extract_http_header AUTHOR[$n] http.header$n Serval-Rhizome-Bundle-Author "$rexp_sid"
+         assert [ "${AUTHOR[$n]}" = "${author[$n]}" ]
+         extract_http_header BK[$n] http.header$n Serval-Rhizome-Bundle-BK "$rexp_bundlekey"
+         extract_manifest_BK BK file$n.manifest
+         assert [ "$BK" = "${BK[$n]}" ]
+      fi
+   done
+   executeOk_servald rhizome list
+   assert_rhizome_list \
+      --fromhere=1 \
+         --author=${author[1]} file1 \
+         --author=${author[2]} file2 \
+         --author=${author[3]} file3 \
+      --fromhere=0 \
+         --author=${author[4]} file4
+   for n in 1 2 3 4; do
+      executeOk_servald rhizome extract bundle ${BID[$n]} xfile$n.manifest xfile$n
+      assert diff xfile$n.manifest file$n.manifest
+      assert diff file$n xfile$n
+   done
+   for n in 1 2 3 4; do
+      $SED -e '/^version=/d;/^date=/d;/^filehash=/d;/^filesize=/d' xfile$n.manifest >nmanifest$n
+      execute curl \
+            --silent --show-error --write-out '%{http_code}' \
+            --output nfile$n.manifest \
+            --dump-header http.header$n \
+            --basic --user harry:potter \
+            --form "manifest=@nmanifest$n;type=rhizome-manifest/text" \
+            --form "payload=@nfile$n;filename=\"nfile$n\"" \
+            "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+      tfw_cat http.header$n nfile$n.manifest
+      assertExitStatus == 0
+      if [ -n "${author[$n]}" ]; then
+         assertStdoutIs 201
+      else
+         assertStdoutIs 403
+         assertGrep --ignore-case nfile$n.manifest "missing bundle secret"
+      fi
+   done
+}
+
+doc_RhizomeInsertAnon="HTTP RESTful update anonymous Rhizome bundle"
+setup_RhizomeInsertAnon() {
+   setup
+   create_file file1 1001
+   executeOk_servald rhizome add file '' file1 file1.manifest
+   extract_stdout_secret SECRET
+   assertGrep --matches=0 file1.manifest '^BK='
+   $SED -e '/^version=/d;/^date=/d;/^filehash=/d;/^filesize=/d' file1.manifest >file2.manifest
+   create_file file2 1002
+}
+test_RhizomeInsertAnon() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output ifile2.manifest \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "bundle-secret=$SECRET" \
+         --form "manifest=@file2.manifest;type=rhizome-manifest/text" \
+         --form "payload=@file2" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header ifile2.manifest
+   assertExitStatus == 0
+   assertStdoutIs 201
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=0 --manifest=ifile2.manifest file2
+}
+
+doc_RhizomeInsertEmpty="HTTP RESTful insert empty Rhizome bundle"
+setup_RhizomeInsertEmpty() {
+   setup
+   >empty
+   assert [ ! -s empty ]
+}
+test_RhizomeInsertEmpty() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output empty.manifest \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "manifest=;type=rhizome-manifest/text" \
+         --form "payload=@empty;filename=\"lucky\"" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header empty.manifest
+   assertExitStatus == 0
+   assertStdoutIs 201
+   extract_manifest_id BID empty.manifest
+   executeOk_servald rhizome list
+   assert_rhizome_list empty
+   executeOk_servald rhizome extract bundle $BID xempty.manifest xempty
+   assert [ ! -e xempty ]
+   assert diff xempty.manifest empty.manifest
+}
+
+doc_RhizomeInsertLarge="HTTP RESTful insert 50 MiB Rhizome bundle"
+setup_RhizomeInsertLarge() {
+   setup
+   create_file file1 50m
+}
+test_RhizomeInsertLarge() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output file1.manifest \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "manifest=;type=rhizome-manifest/text" \
+         --form "payload=@file1" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header file1.manifest
+   assertExitStatus == 0
+   assertStdoutIs 201
+   extract_manifest_id BID file1.manifest
+   executeOk_servald rhizome list
+   assert_rhizome_list file1
+   executeOk_servald rhizome extract bundle $BID xfile1.manifest xfile1
+   assert diff xfile1.manifest file1.manifest
+   assert cmp file1 xfile1
+}
+
+doc_RhizomeInsertMissingManifest="HTTP RESTful insert missing 'manifest' form part"
+setup_RhizomeInsertMissingManifest() {
+   setup
+   echo 'File one' >file1
+}
+test_RhizomeInsertMissingManifest() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "payload=@file1" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertGrep --ignore-case http.body 'missing.*manifest.*form.*part'
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
+doc_RhizomeInsertIncorrectManifestType="HTTP RESTful insert incorrect 'manifest' content type"
+setup_RhizomeInsertIncorrectManifestType() {
+   setup
+   echo 'File one' >file1
+}
+test_RhizomeInsertIncorrectManifestType() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "manifest=;type=rhizome-manifest/something" \
+         --form "payload=@file1" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertGrep --ignore-case http.body 'unsupported content-type.*manifest.*form.*part'
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
+doc_RhizomeInsertDuplicateManifest="HTTP RESTful insert duplicate 'manifest' form part"
+setup_RhizomeInsertDuplicateManifest() {
+   setup
+   echo 'File one' >file1
+   echo 'name=wah' >file1.manifest
+   echo 'name=bee' >file2.manifest
+}
+test_RhizomeInsertDuplicateManifest() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "manifest=@file1.manifest;type=rhizome-manifest/text" \
+         --form "manifest=@file2.manifest;type=rhizome-manifest/text" \
+         --form "payload=@file1" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertGrep --ignore-case http.body 'duplicate.*manifest.*form.*part'
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
+doc_RhizomeInsertJournal="HTTP RESTful insert does not support journals"
+setup_RhizomeInsertJournal() {
+   setup
+   echo 'File one' >file1
+   echo 'tail=0' >file1.manifest
+}
+test_RhizomeInsertJournal() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "manifest=@file1.manifest;type=rhizome-manifest/text" \
+         --form "payload=@file1" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertGrep --ignore-case http.body 'not supported.*journal'
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
+doc_RhizomeInsertMissingPayload="HTTP RESTful insert missing 'payload' form part"
+setup_RhizomeInsertMissingPayload() {
+   setup
+   echo 'File one' >file1
+   echo 'name=wah' >file1.manifest
+}
+test_RhizomeInsertMissingPayload() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "manifest=@file1.manifest;type=rhizome-manifest/text" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertGrep --ignore-case http.body 'missing.*payload.*form.*part'
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
+doc_RhizomeInsertDuplicatePayload="HTTP RESTful insert duplicate 'payload' form part"
+setup_RhizomeInsertDuplicatePayload() {
+   setup
+   echo 'File one' >file1
+   echo 'File two' >file2
+   echo 'name=wah' >file1.manifest
+}
+test_RhizomeInsertDuplicatePayload() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "manifest=@file1.manifest;type=rhizome-manifest/text" \
+         --form "payload=@file1" \
+         --form "payload=@file2" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertGrep --ignore-case http.body 'duplicate.*payload.*form.*part'
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
+doc_RhizomeInsertPartOrder="HTTP RESTful insert 'payload' form part before 'manifest'"
+setup_RhizomeInsertPartOrder() {
+   setup
+   echo 'File one' >file1
+   echo 'name=wah' >file1.manifest
+}
+test_RhizomeInsertPartOrder() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "payload=@file1" \
+         --form "manifest=@file1.manifest;type=rhizome-manifest/text" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertGrep --ignore-case http.body 'missing.*manifest.*form.*part'
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
+doc_RhizomeInsertPartUnsupported="HTTP RESTful insert unsupported form part"
+setup_RhizomeInsertPartUnsupported() {
+   setup
+   echo 'File one' >file1
+   echo 'name=wah' >file1.manifest
+}
+test_RhizomeInsertPartUnsupported() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "manifest=@file1.manifest;type=rhizome-manifest/text" \
+         --form "payload=@file1" \
+         --form "happyhappy=joyjoy" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertGrep --ignore-case http.body 'unsupported.*form.*part'
+   assertGrep http.body 'happyhappy'
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
+doc_RhizomeInsertIncorrectFilesize="HTTP RESTful insert with incorrect filesize"
+setup_RhizomeInsertIncorrectFilesize() {
+   setup
+   echo 'File one' >file1
+   echo 'filesize=6' >file1.manifest
+   echo 'File two' >file2
+   echo 'filesize=100' >file2.manifest
+}
+test_RhizomeInsertIncorrectFilesize() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "manifest=@file1.manifest;type=rhizome-manifest/text" \
+         --form "payload=@file1" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertGrep --ignore-case http.body 'payload size.*contradicts manifest'
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "manifest=@file2.manifest;type=rhizome-manifest/text" \
+         --form "payload=@file2" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertGrep --ignore-case http.body 'payload size.*contradicts manifest'
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
+doc_RhizomeInsertIncorrectFilehash="HTTP RESTful insert with incorrect filehash"
+setup_RhizomeInsertIncorrectFilehash() {
+   setup
+   echo 'File one' >file1
+   echo 'filehash=FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' >file1.manifest
+}
+test_RhizomeInsertIncorrectFilehash() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "manifest=@file1.manifest;type=rhizome-manifest/text" \
+         --form "payload=@file1" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertGrep --ignore-case http.body 'payload hash.*contradicts manifest'
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
+doc_MeshmsListConversations="HTTP RESTful list MeshMS conversations as JSON"
+Xtest_MeshmsListConversations() {
    :
 }
 
-doc_MeshmsListConversations="List MeshMS conversations"
-test_MeshmsListConversations() {
+doc_MeshmsListMessages="HTTP RESTful list MeshMS messages in one conversation as JSON"
+Xtest_MeshmsListMessages() {
    :
 }
 
-doc_MeshmsListMessages="List all MeshMS messages in a single conversation"
-test_MeshmsListMessages() {
+doc_MeshmsListMessagesSince="HTTP RESTful list MeshMS messages in one conversation since token as JSON"
+Xtest_MeshmsListMessagesSince() {
    :
 }
 
-doc_MeshmsListMessagesSince="List MeshMS messages in a single conversation since token"
-test_MeshmsListMessagesSince() {
-   :
-}
-
-doc_MeshmsSend="Send MeshMS message"
-test_MeshmsSend() {
+doc_MeshmsSend="HTTP RESTful send MeshMS message"
+Xtest_MeshmsSend() {
    :
 }
 

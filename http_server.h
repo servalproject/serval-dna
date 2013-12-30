@@ -129,12 +129,16 @@ struct mime_part_headers {
 };
 
 struct http_mime_handler {
-  void (*handle_mime_preamble)(struct http_request *, const char *, size_t);
-  void (*handle_mime_part_start)(struct http_request *);
-  void (*handle_mime_part_header)(struct http_request *, const struct mime_part_headers *);
-  void (*handle_mime_body)(struct http_request *, const char *, size_t);
-  void (*handle_mime_part_end)(struct http_request *);
-  void (*handle_mime_epilogue)(struct http_request *, const char *, size_t);
+  // All these functions may abort the request processing by returning an HTTP
+  // filure status code in the range 400-599 or by initiating an HTTP response
+  // directly (changing the phase from RECEIVE to TRANSMIT).  They can return
+  // zero to indicate that parsing should proceed.
+  int (*handle_mime_preamble)(struct http_request *, char *, size_t);
+  int (*handle_mime_part_start)(struct http_request *);
+  int (*handle_mime_part_header)(struct http_request *, const struct mime_part_headers *);
+  int (*handle_mime_body)(struct http_request *, char *, size_t);
+  int (*handle_mime_part_end)(struct http_request *);
+  int (*handle_mime_epilogue)(struct http_request *, char *, size_t);
 };
 
 struct http_request;
@@ -148,7 +152,8 @@ void http_request_response_static(struct http_request *r, int result, const char
 void http_request_response_generated(struct http_request *r, int result, const char *mime_type, HTTP_CONTENT_GENERATOR *);
 void http_request_simple_response(struct http_request *r, uint16_t result, const char *body);
 
-typedef int (*HTTP_REQUEST_PARSER)(struct http_request *);
+typedef int HTTP_REQUEST_PARSER(struct http_request *);
+typedef void HTTP_RENDERER(struct http_request *, strbuf);
 
 struct http_request {
   struct sched_ent alarm; // MUST BE FIRST ELEMENT
@@ -173,17 +178,18 @@ struct http_request {
   struct http_request_headers request_header;
   // Parsing is done by setting 'parser' to point to a series of parsing
   // functions as the parsing state progresses.
-  HTTP_REQUEST_PARSER parser; // current parser function
+  HTTP_REQUEST_PARSER *parser; // current parser function
   // The caller may set these up, and they are invoked by the parser as request
   // parsing reaches different stages.
-  HTTP_REQUEST_PARSER handle_first_line; // called after first line is parsed
-  HTTP_REQUEST_PARSER handle_headers; // called after all HTTP headers are parsed
-  HTTP_REQUEST_PARSER handle_content_end; // called after all content is received
+  HTTP_REQUEST_PARSER *handle_first_line; // called after first line is parsed
+  HTTP_REQUEST_PARSER *handle_headers; // called after all HTTP headers are parsed
+  HTTP_REQUEST_PARSER *handle_content_end; // called after all content is received
   // The following are used for managing the buffer during RECEIVE phase.
-  const char *received; // start of received data in buffer[]
-  const char *end; // end of received data in buffer[]
-  const char *parsed; // start of unparsed data in buffer[]
-  const char *cursor; // for parsing
+  char *reserved; // end of reserved data in buffer[]
+  char *received; // start of received data in buffer[]
+  char *end; // end of received data in buffer[]
+  char *parsed; // start of unparsed data in buffer[]
+  char *cursor; // for parsing
   http_size_t request_content_remaining;
   // The following are used for parsing a multipart body.
   enum mime_state { START, PREAMBLE, HEADER, BODY, EPILOGUE } form_data_state;
@@ -193,6 +199,7 @@ struct http_request {
   // The following are used for constructing the response that will be sent in
   // TRANSMIT phase.
   struct http_response response;
+  HTTP_RENDERER *render_extra_headers;
   // The following are used during TRANSMIT phase to control buffering and
   // sending.
   http_size_t response_length; // total response bytes (header + content)

@@ -30,8 +30,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_address.h"
 #include "conf.h"
 #include "str.h"
+#include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "rhizome.h"
+#include "dataformats.h"
 #include "http_server.h"
 
 #define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
@@ -45,6 +47,8 @@ struct http_handler{
 
 static HTTP_HANDLER restful_rhizome_bundlelist_json;
 static HTTP_HANDLER restful_rhizome_newsince;
+static HTTP_HANDLER restful_rhizome_insert;
+static HTTP_HANDLER restful_rhizome_;
 
 static HTTP_HANDLER rhizome_status_page;
 static HTTP_HANDLER rhizome_file_page;
@@ -61,6 +65,8 @@ extern HTTP_HANDLER rhizome_direct_dispatch;
 struct http_handler paths[]={
   {"/restful/rhizome/bundlelist.json", restful_rhizome_bundlelist_json},
   {"/restful/rhizome/newsince/", restful_rhizome_newsince},
+  {"/restful/rhizome/insert", restful_rhizome_insert},
+  {"/restful/rhizome/", restful_rhizome_},
   {"/rhizome/status", rhizome_status_page},
   {"/rhizome/file/", rhizome_file_page},
   {"/rhizome/import", rhizome_direct_import},
@@ -82,18 +88,19 @@ static int rhizome_dispatch(struct http_request *hr)
   for (i = 0; i < NELS(paths); ++i) {
     const char *remainder;
     if (str_startswith(r->http.path, paths[i].path, &remainder)){
-      int ret = paths[i].parser(r, remainder);
-      if (ret < 0) {
-	http_request_simple_response(&r->http, 500, NULL);
+      int result = paths[i].parser(r, remainder);
+      if (result == -1 || (result >= 200 && result < 600))
+	return result;
+      if (result == 1)
 	return 0;
-      }
-      if (ret == 0)
-	return 0;
+      if (result)
+	return WHYF("dispatch function for %s returned invalid result %d", paths[i].path, result);
     }
   }
-  http_request_simple_response(&r->http, 404, NULL);
-  return 0;
+  return 404;
 }
+
+static HTTP_RENDERER render_manifest_headers;
 
 struct sched_ent server_alarm;
 struct profile_total server_stats = {
@@ -103,7 +110,7 @@ struct profile_total server_stats = {
 /*
   HTTP server and client code for rhizome transfers and rhizome direct.
   Selection of either use is made when starting the HTTP server and
-  specifying the call-back function to use on client connections. 
+  specifying the call-back function to use on client connections.
  */
 
 uint16_t rhizome_http_server_port = 0;
@@ -232,10 +239,32 @@ success:
 
 }
 
-static void rhizome_server_finalise_http_request(struct http_request *_r)
+static void finalise_union_read_state(rhizome_http_request *r)
 {
-  rhizome_http_request *r = (rhizome_http_request *) _r;
   rhizome_read_close(&r->u.read_state);
+}
+
+static void finalise_union_rhizome_insert(rhizome_http_request *r)
+{
+  if (r->u.insert.manifest_text) {
+    free(r->u.insert.manifest_text);
+    r->u.insert.manifest_text = NULL;
+  }
+  if (r->u.insert.write.blob_fd != -1)
+    rhizome_fail_write(&r->u.insert.write);
+}
+
+static void rhizome_server_finalise_http_request(struct http_request *hr)
+{
+  rhizome_http_request *r = (rhizome_http_request *) hr;
+  if (r->manifest) {
+    rhizome_manifest_free(r->manifest);
+    r->manifest = NULL;
+  }
+  if (r->finalise_union) {
+    r->finalise_union(r);
+    r->finalise_union = NULL;
+  }
   request_count--;
 }
 
@@ -275,9 +304,6 @@ void rhizome_server_poll(struct sched_ent *alarm)
       } else {
 	request_count++;
 	request->uuid = rhizome_http_request_uuid_counter++;
-	request->data_file_name[0] = '\0';
-	request->u.read_state.blob_fd = -1;
-	request->u.read_state.blob_rowid = 0;
 	if (peerip)
 	  request->http.client_sockaddr_in = *peerip;
 	request->http.handle_headers = rhizome_dispatch;
@@ -306,14 +332,14 @@ int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_
   int count = 0;
   for (; p != bufend; ++p) {
     switch (*p) {
-      case '\n': 
+      case '\n':
 	if (++count==2)
 	  RETURN(p - buf);
       case '\r': // ignore CR
       case '\0': // ignore NUL (telnet inserts them)
 	break;
-      default: 
-	count = 0; 
+      default:
+	count = 0;
 	break;
     }
   }
@@ -346,17 +372,14 @@ static int is_authorized(const struct http_client_authorization *auth)
 
 static int authorize(struct http_request *r)
 {
-  if (!is_from_loopback(r)) {
-    http_request_simple_response(r, 403, NULL);
-    return 0;
-  }
+  if (!is_from_loopback(r))
+    return 403;
   if (!is_authorized(&r->request_header.authorization)) {
     r->response.header.www_authenticate.scheme = BASIC;
     r->response.header.www_authenticate.realm = "Serval Rhizome";
-    http_request_simple_response(r, 401, NULL);
-    return 0;
+    return 401;
   }
-  return 1;
+  return 0;
 }
 
 #define LIST_TOKEN_STRLEN (BASE64_ENCODED_LEN(sizeof(uuid_t) + 8))
@@ -391,43 +414,41 @@ static HTTP_CONTENT_GENERATOR restful_rhizome_bundlelist_json_content;
 static int restful_rhizome_bundlelist_json(rhizome_http_request *r, const char *remainder)
 {
   if (!is_rhizome_http_enabled())
-    return 1;
+    return 403;
   if (*remainder)
-    return 1;
-  if (r->http.verb != HTTP_VERB_GET) {
-    http_request_simple_response(&r->http, 405, NULL);
-    return 0;
-  }
-  if (!authorize(&r->http))
-    return 0;
+    return 404;
+  if (r->http.verb != HTTP_VERB_GET)
+    return 405;
+  int ret = authorize(&r->http);
+  if (ret)
+    return ret;
   r->u.list.phase = LIST_HEADER;
   r->u.list.rowcount = 0;
   bzero(&r->u.list.cursor, sizeof r->u.list.cursor);
   http_request_response_generated(&r->http, 200, "application/json", restful_rhizome_bundlelist_json_content);
-  return 0;
+  return 1;
 }
 
 static int restful_rhizome_newsince(rhizome_http_request *r, const char *remainder)
 {
   if (!is_rhizome_http_enabled())
-    return 1;
+    return 403;
   uint64_t rowid;
   const char *end = NULL;
   if (!strn_to_list_token(remainder, &rowid, &end) || strcmp(end, "/bundlelist.json") != 0)
-    return 1;
-  if (r->http.verb != HTTP_VERB_GET) {
-    http_request_simple_response(&r->http, 405, NULL);
-    return 0;
-  }
-  if (!authorize(&r->http))
-    return 0;
+    return 404;
+  if (r->http.verb != HTTP_VERB_GET)
+    return 405;
+  int ret = authorize(&r->http);
+  if (ret)
+    return ret;
   r->u.list.phase = LIST_HEADER;
   r->u.list.rowcount = 0;
   bzero(&r->u.list.cursor, sizeof r->u.list.cursor);
   r->u.list.cursor.rowid_since = rowid;
   r->u.list.end_time = gettime_ms() + config.rhizome.api.restful.newsince_timeout * 1000;
   http_request_response_generated(&r->http, 200, "application/json", restful_rhizome_bundlelist_json_content);
-  return 0;
+  return 1;
 }
 
 static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *retry, struct rhizome_http_request *r, strbuf b)
@@ -563,59 +584,514 @@ static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsi
   return ret;
 }
 
+static HTTP_REQUEST_PARSER restful_rhizome_insert_end;
+static int insert_mime_part_start(struct http_request *);
+static int insert_mime_part_end(struct http_request *);
+static int insert_mime_part_header(struct http_request *, const struct mime_part_headers *);
+static int insert_mime_part_body(struct http_request *, char *, size_t);
+
+static int restful_rhizome_insert(rhizome_http_request *r, const char *remainder)
+{
+  if (*remainder)
+    return 404;
+  if (!is_rhizome_http_enabled())
+    return 403;
+  if (r->http.verb != HTTP_VERB_POST)
+    return 405;
+  int ret = authorize(&r->http);
+  if (ret)
+    return ret;
+  // Parse the request body as multipart/form-data.
+  assert(r->u.insert.current_part == NULL);
+  assert(!r->u.insert.received_author);
+  assert(!r->u.insert.received_secret);
+  assert(!r->u.insert.received_manifest);
+  assert(!r->u.insert.received_payload);
+  bzero(&r->u.insert.write, sizeof r->u.insert.write);
+  r->u.insert.write.blob_fd = -1;
+  r->finalise_union = finalise_union_rhizome_insert;
+  r->http.form_data.handle_mime_part_start = insert_mime_part_start;
+  r->http.form_data.handle_mime_part_end = insert_mime_part_end;
+  r->http.form_data.handle_mime_part_header = insert_mime_part_header;
+  r->http.form_data.handle_mime_body = insert_mime_part_body;
+  // Perform the insert once the body has arrived.
+  r->http.handle_content_end = restful_rhizome_insert_end;
+  return 1;
+}
+
+static char PART_MANIFEST[] = "manifest";
+static char PART_PAYLOAD[] = "payload";
+static char PART_AUTHOR[] = "bundle-author";
+static char PART_SECRET[] = "bundle-secret";
+
+static int insert_mime_part_start(struct http_request *hr)
+{
+  rhizome_http_request *r = (rhizome_http_request *) hr;
+  assert(r->u.insert.current_part == NULL);
+  return 0;
+}
+
+static int http_response_form_part(rhizome_http_request *r, const char *what, const char *partname, const char *text, size_t textlen)
+{
+  if (config.debug.rhizome)
+    DEBUGF("%s \"%s\" form part %s", what, partname, text ? alloca_toprint(-1, text, textlen) : "");
+  strbuf msg = strbuf_alloca(100);
+  strbuf_sprintf(msg, "%s \"%s\" form part", what, partname);
+  http_request_simple_response(&r->http, 403, strbuf_str(msg));
+  return 403;
+}
+
+static int insert_make_manifest(rhizome_http_request *r)
+{
+  if (!r->u.insert.received_manifest)
+    return http_response_form_part(r, "Missing", PART_MANIFEST, NULL, 0);
+  if ((r->manifest = rhizome_new_manifest())) {
+    if (r->u.insert.manifest_len == 0)
+      return 0;
+    assert(r->u.insert.manifest_len <= sizeof r->manifest->manifestdata);
+    memcpy(r->manifest->manifestdata, r->u.insert.manifest_text, r->u.insert.manifest_len);
+    r->manifest->manifest_all_bytes = r->u.insert.manifest_len;
+    int n = rhizome_manifest_parse(r->manifest);
+    switch (n) {
+      case -1:
+	break;
+      case 0:
+	if (!r->manifest->malformed)
+	  return 0;
+	// fall through
+      case 1:
+	http_request_simple_response(&r->http, 403, "Malformed manifest");
+	return 403;
+      default:
+	WHYF("rhizome_manifest_parse() returned %d", n);
+	break;
+    }
+  }
+  return 500;
+}
+
+static int insert_mime_part_header(struct http_request *hr, const struct mime_part_headers *h)
+{
+  rhizome_http_request *r = (rhizome_http_request *) hr;
+  if (strcmp(h->content_disposition.name, PART_AUTHOR) == 0) {
+    if (r->u.insert.received_author)
+      return http_response_form_part(r, "Duplicate", PART_AUTHOR, NULL, 0);
+    r->u.insert.current_part = PART_AUTHOR;
+  }
+  else if (strcmp(h->content_disposition.name, PART_SECRET) == 0) {
+    if (r->u.insert.received_secret)
+      return http_response_form_part(r, "Duplicate", PART_SECRET, NULL, 0);
+    r->u.insert.current_part = PART_SECRET;
+  }
+  else if (strcmp(h->content_disposition.name, PART_MANIFEST) == 0) {
+    // Reject a request if it has a repeated manifest part.
+    if (r->u.insert.received_manifest)
+      return http_response_form_part(r, "Duplicate", PART_MANIFEST, NULL, 0);
+    assert(r->u.insert.manifest_text == NULL);
+    assert(r->u.insert.manifest_text_size == 0);
+    assert(r->u.insert.manifest_len == 0);
+    if (   strcmp(h->content_type.type, "rhizome-manifest") != 0
+	|| strcmp(h->content_type.subtype, "text") != 0
+    )
+      return http_response_form_part(r, "Unsupported Content-Type in", PART_MANIFEST, NULL, 0);
+    r->u.insert.current_part = PART_MANIFEST;
+  }
+  else if (strcmp(h->content_disposition.name, PART_PAYLOAD) == 0) {
+    // Reject a request if it has a repeated payload part.
+    if (r->u.insert.received_payload)
+      return http_response_form_part(r, "Duplicate", PART_PAYLOAD, NULL, 0);
+    // Reject a request if it has a missing manifest part preceding the payload part.
+    if (!r->u.insert.received_manifest)
+      return http_response_form_part(r, "Missing", PART_MANIFEST, NULL, 0);
+    assert(r->manifest != NULL);
+    r->u.insert.current_part = PART_PAYLOAD;
+    // If the manifest does not contain a 'name' field, then assign it from the payload filename.
+    if (   strcasecmp(RHIZOME_SERVICE_FILE, r->manifest->service) == 0
+	&& r->manifest->name == NULL
+	&& *h->content_disposition.filename
+    )
+      rhizome_manifest_set_name_from_path(r->manifest, h->content_disposition.filename);
+    // Start writing the payload content into the Rhizome store.  Note: r->manifest->filesize can be
+    // RHIZOME_SIZE_UNSET at this point, if the manifest did not contain a 'filesize' field.
+    r->u.insert.payload_status = rhizome_write_open_manifest(&r->u.insert.write, r->manifest);
+    r->u.insert.payload_size = 0;
+    switch (r->u.insert.payload_status) {
+      case RHIZOME_PAYLOAD_STATUS_ERROR:
+	WHYF("rhizome_write_open_manifest() returned %d", r->u.insert.payload_status);
+	return 500;
+      case RHIZOME_PAYLOAD_STATUS_STORED:
+	// TODO: initialise payload hash so it can be compared with stored payload
+	break;
+      default:
+	break;
+    }
+  }
+  else
+    return http_response_form_part(r, "Unsupported", h->content_disposition.name, NULL, 0);
+  return 0;
+}
+
+static int accumulate_text(rhizome_http_request *r, const char *partname, char *textbuf, size_t textsiz, size_t *textlenp, const char *buf, size_t len)
+{
+  if (len) {
+    size_t newlen = *textlenp + len;
+    if (newlen > textsiz) {
+      if (config.debug.rhizome)
+	DEBUGF("Form part \"%s\" too long, %zu bytes overflows maximum %zu by %zu",
+	    partname, newlen, textsiz, (size_t)(newlen - textsiz)
+	  );
+      strbuf msg = strbuf_alloca(100);
+      strbuf_sprintf(msg, "Overflow in \"%s\" form part", partname);
+      http_request_simple_response(&r->http, 403, strbuf_str(msg));
+      return 0;
+    }
+    memcpy(textbuf + *textlenp, buf, len);
+    *textlenp = newlen;
+  }
+  return 1;
+}
+
+static int insert_mime_part_body(struct http_request *hr, char *buf, size_t len)
+{
+  rhizome_http_request *r = (rhizome_http_request *) hr;
+  if (r->u.insert.current_part == PART_AUTHOR) {
+    accumulate_text(r, PART_AUTHOR,
+		    r->u.insert.author_hex,
+		    sizeof r->u.insert.author_hex,
+		    &r->u.insert.author_hex_len,
+		    buf, len);
+  }
+  else if (r->u.insert.current_part == PART_SECRET) {
+    accumulate_text(r, PART_SECRET,
+		    r->u.insert.secret_hex,
+		    sizeof r->u.insert.secret_hex,
+		    &r->u.insert.secret_hex_len,
+		    buf, len);
+  }
+  else if (r->u.insert.current_part == PART_MANIFEST) {
+    if (len == 0)
+      return 0;
+    size_t newlen = r->u.insert.manifest_len + len;
+    if (newlen > MAX_MANIFEST_BYTES) {
+      if (config.debug.rhizome)
+	DEBUGF("manifest too large, %zu bytes overflows maximum %zu by %zu",
+	    newlen, MAX_MANIFEST_BYTES, (size_t)(newlen - MAX_MANIFEST_BYTES)
+	  );
+      http_request_simple_response(&r->http, 403, "Manifest size overflow");
+      return 403;
+    }
+    if (newlen > r->u.insert.manifest_text_size) {
+      if ((r->u.insert.manifest_text = erealloc(r->u.insert.manifest_text, newlen)) == NULL)
+	return 500;
+      r->u.insert.manifest_text_size = newlen;
+    }
+    memcpy(r->u.insert.manifest_text + r->u.insert.manifest_len, buf, len);
+    r->u.insert.manifest_len = newlen;
+  }
+  else if (r->u.insert.current_part == PART_PAYLOAD) {
+    r->u.insert.payload_size += len;
+    switch (r->u.insert.payload_status) {
+      case RHIZOME_PAYLOAD_STATUS_NEW:
+	if (rhizome_write_buffer(&r->u.insert.write, (unsigned char *)buf, len) == -1)
+	  return 500;
+	break;
+      case RHIZOME_PAYLOAD_STATUS_STORED:
+	// TODO: calculate payload hash so it can be compared with stored payload
+	break;
+      default:
+	break;
+    }
+  } else
+    FATALF("current_part = %s", alloca_str_toprint(r->u.insert.current_part));
+  return 0;
+}
+
+static int insert_mime_part_end(struct http_request *hr)
+{
+  rhizome_http_request *r = (rhizome_http_request *) hr;
+  if (r->u.insert.current_part == PART_AUTHOR) {
+    if (   r->u.insert.author_hex_len != sizeof r->u.insert.author_hex
+	|| strn_to_sid_t(&r->u.insert.author, r->u.insert.author_hex, NULL) == -1
+    )
+      return http_response_form_part(r, "Invalid", PART_AUTHOR, r->u.insert.author_hex, r->u.insert.author_hex_len);
+    r->u.insert.received_author = 1;
+    if (config.debug.rhizome)
+      DEBUGF("received %s = %s", PART_AUTHOR, alloca_tohex_sid_t(r->u.insert.author));
+  }
+  else if (r->u.insert.current_part == PART_SECRET) {
+    if (   r->u.insert.secret_hex_len != sizeof r->u.insert.secret_hex
+	|| strn_to_rhizome_bk_t(&r->u.insert.bundle_secret, r->u.insert.secret_hex, NULL) == -1
+    )
+      return http_response_form_part(r, "Invalid", PART_SECRET, r->u.insert.secret_hex, r->u.insert.secret_hex_len);
+    r->u.insert.received_secret = 1;
+    if (config.debug.rhizome)
+      DEBUGF("received %s = %s", PART_SECRET, alloca_tohex_rhizome_bk_t(r->u.insert.bundle_secret));
+  }
+  else if (r->u.insert.current_part == PART_MANIFEST) {
+    r->u.insert.received_manifest = 1;
+    int result = insert_make_manifest(r);
+    if (result)
+      return result;
+    if (r->manifest->has_id && r->u.insert.received_secret)
+      rhizome_apply_bundle_secret(r->manifest, &r->u.insert.bundle_secret);
+    if (r->manifest->service == NULL)
+      rhizome_manifest_set_service(r->manifest, RHIZOME_SERVICE_FILE);
+    if (rhizome_fill_manifest(r->manifest, NULL, r->u.insert.received_author ? &r->u.insert.author: NULL) == -1) {
+      WHY("rhizome_fill_manifest() failed");
+      return 500;
+    }
+    if (r->manifest->is_journal) {
+      http_request_simple_response(&r->http, 403, "Insert not supported for journals");
+      return 403;
+    }
+    assert(r->manifest != NULL);
+  }
+  else if (r->u.insert.current_part == PART_PAYLOAD) {
+    r->u.insert.received_payload = 1;
+    if (r->u.insert.payload_status == RHIZOME_PAYLOAD_STATUS_NEW)
+      r->u.insert.payload_status = rhizome_finish_write(&r->u.insert.write);
+    if (r->u.insert.payload_status == RHIZOME_PAYLOAD_STATUS_ERROR) {
+      WHYF("rhizome_finish_write() returned status = %d", r->u.insert.payload_status);
+      return 500;
+    }
+  } else
+    FATALF("current_part = %s", alloca_str_toprint(r->u.insert.current_part));
+  r->u.insert.current_part = NULL;
+  return 0;
+}
+
+static int restful_rhizome_insert_end(struct http_request *hr)
+{
+  rhizome_http_request *r = (rhizome_http_request *) hr;
+  if (!r->u.insert.received_manifest)
+    return http_response_form_part(r, "Missing", PART_MANIFEST, NULL, 0);
+  if (!r->u.insert.received_payload)
+    return http_response_form_part(r, "Missing", PART_PAYLOAD, NULL, 0);
+  // Fill in the missing manifest fields and ensure payload and manifest are consistent.
+  assert(r->manifest != NULL);
+  assert(r->u.insert.write.file_length != RHIZOME_SIZE_UNSET);
+  switch (r->u.insert.payload_status) {
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+      return 500;
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+      if (r->manifest->filesize == RHIZOME_SIZE_UNSET)
+	rhizome_manifest_set_filesize(r->manifest, r->u.insert.write.file_length);
+      // fall through
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+      // TODO: check that stored hash matches received payload's hash
+      // fall through
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+      assert(r->manifest->filesize != RHIZOME_SIZE_UNSET);
+      if (r->u.insert.payload_size == r->manifest->filesize)
+	break;
+      // fall through
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+      {
+	strbuf msg = strbuf_alloca(200);
+	strbuf_sprintf(msg, "Payload size (%"PRIu64") contradicts manifest (filesize=%"PRIu64")", r->u.insert.payload_size, r->manifest->filesize);
+	http_request_simple_response(&r->http, 403, strbuf_str(msg));
+	return 403;
+      }
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+      http_request_simple_response(&r->http, 403, "Payload hash contradicts manifest");
+      return 403;
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      http_request_simple_response(&r->http, 403, "Missing bundle secret");
+      return 403;
+    default:
+      FATALF("payload_status = %d", r->u.insert.payload_status);
+  }
+  // Finalise the manifest and add it to the store.
+  if (r->manifest->filesize) {
+    if (!r->manifest->has_filehash)
+      rhizome_manifest_set_filehash(r->manifest, &r->u.insert.write.id);
+    else
+      assert(cmp_rhizome_filehash_t(&r->u.insert.write.id, &r->manifest->filehash) == 0);
+  }
+  if (!rhizome_manifest_validate(r->manifest) || r->manifest->malformed) {
+    http_request_simple_response(&r->http, 403, "Manifest is malformed");
+    return 403;
+  }
+  if (!r->manifest->haveSecret) {
+    http_request_simple_response(&r->http, 403, "Missing bundle secret");
+    return 403;
+  }
+  rhizome_manifest *mout = NULL;
+  int result;
+  switch (rhizome_manifest_finalise(r->manifest, &mout, !r->u.insert.force_new)) {
+    case RHIZOME_BUNDLE_STATUS_NEW:
+      result = 201;
+      if (mout && mout != r->manifest)
+	rhizome_manifest_free(mout);
+      mout = NULL;
+      break;
+    case RHIZOME_BUNDLE_STATUS_SAME:
+    case RHIZOME_BUNDLE_STATUS_OLD:
+    case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+      result = 200;
+      break;
+    case RHIZOME_BUNDLE_STATUS_INVALID:
+      result = 403;
+      break;
+    case RHIZOME_BUNDLE_STATUS_ERROR:
+    default:
+      result = 500;
+      break;
+  }
+  if (mout && mout != r->manifest) {
+    rhizome_manifest_free(r->manifest);
+    r->manifest = mout;
+  }
+  if (result >= 400)
+    return result;
+  rhizome_authenticate_author(r->manifest);
+  r->http.render_extra_headers = render_manifest_headers;
+  http_request_response_static(&r->http, result, "rhizome-manifest/text",
+      (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes
+    );
+  return 0;
+}
+
+static int rhizome_response_content_init_filehash(rhizome_http_request *r, const rhizome_filehash_t *hash);
+static int rhizome_response_content_init_payload(rhizome_http_request *r, rhizome_manifest *);
+
+static HTTP_CONTENT_GENERATOR rhizome_payload_content;
+
+static HTTP_HANDLER restful_rhizome_bid_rhm;
+static HTTP_HANDLER restful_rhizome_bid_raw_bin;
+static HTTP_HANDLER restful_rhizome_bid_decrypted_bin;
+
+static int restful_rhizome_(rhizome_http_request *r, const char *remainder)
+{
+  if (!is_rhizome_http_enabled())
+    return 403;
+  HTTP_HANDLER *handler = NULL;
+  rhizome_bid_t bid;
+  const char *end;
+  if (strn_to_rhizome_bid_t(&bid, remainder, &end) != -1) {
+    if (strcmp(end, ".rhm") == 0) {
+      handler = restful_rhizome_bid_rhm;
+      remainder = "";
+    } else if (strcmp(end, "/raw.bin") == 0) {
+      handler = restful_rhizome_bid_raw_bin;
+      remainder = "";
+    } else if (strcmp(end, "/decrypted.bin") == 0) {
+      handler = restful_rhizome_bid_decrypted_bin;
+      remainder = "";
+    }
+  }
+  if (handler == NULL)
+    return 404;
+  if (r->http.verb != HTTP_VERB_GET)
+    return 405;
+  int ret = authorize(&r->http);
+  if (ret)
+    return ret;
+  if ((r->manifest = rhizome_new_manifest()) == NULL)
+    return 500;
+  ret = rhizome_retrieve_manifest(&bid, r->manifest);
+  if (ret == -1)
+    return 500;
+  if (ret == 0) {
+    rhizome_authenticate_author(r->manifest);
+    r->http.render_extra_headers = render_manifest_headers;
+  } else {
+    assert(r->manifest == NULL);
+    assert(r->http.render_extra_headers == NULL);
+  }
+  ret = handler(r, remainder);
+  return ret;
+}
+
+static int restful_rhizome_bid_rhm(rhizome_http_request *r, const char *remainder)
+{
+  if (*remainder || r->manifest == NULL)
+    return 404;
+  http_request_response_static(&r->http, 200, "rhizome-manifest/text",
+      (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes
+    );
+  return 1;
+}
+
+static int restful_rhizome_bid_raw_bin(rhizome_http_request *r, const char *remainder)
+{
+  if (*remainder || r->manifest == NULL)
+    return 404;
+  if (r->manifest->filesize == 0) {
+    http_request_response_static(&r->http, 200, "application/binary", "", 0);
+    return 1;
+  }
+  int ret = rhizome_response_content_init_filehash(r, &r->manifest->filehash);
+  if (ret)
+    return ret;
+  http_request_response_generated(&r->http, 200, "application/binary", rhizome_payload_content);
+  return 1;
+}
+
+static int restful_rhizome_bid_decrypted_bin(rhizome_http_request *r, const char *remainder)
+{
+  if (*remainder || r->manifest == NULL)
+    return 404;
+  if (r->manifest->filesize == 0) {
+    // TODO use Content Type from manifest (once it is implemented)
+    http_request_response_static(&r->http, 200, "application/binary", "", 0);
+    return 1;
+  }
+  int ret = rhizome_response_content_init_payload(r, r->manifest);
+  if (ret)
+    return ret;
+  // TODO use Content Type from manifest (once it is implemented)
+  http_request_response_generated(&r->http, 200, "application/binary", rhizome_payload_content);
+  return 1;
+}
+
 static int neighbour_page(rhizome_http_request *r, const char *remainder)
 {
-  if (r->http.verb != HTTP_VERB_GET) {
-    http_request_simple_response(&r->http, 405, NULL);
-    return 0;
-  }
+  if (r->http.verb != HTTP_VERB_GET)
+    return 405;
   char buf[8*1024];
   strbuf b = strbuf_local(buf, sizeof buf);
   sid_t neighbour_sid;
   if (str_to_sid_t(&neighbour_sid, remainder) == -1)
-    return 1;
+    return 404;
   struct subscriber *neighbour = find_subscriber(neighbour_sid.binary, sizeof(neighbour_sid.binary), 0);
   if (!neighbour)
-    return 1;
+    return 404;
   strbuf_puts(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
   link_neighbour_status_html(b, neighbour);
   strbuf_puts(b, "</body></html>");
   if (strbuf_overrun(b))
     return -1;
   http_request_response_static(&r->http, 200, "text/html", buf, strbuf_len(b));
-  return 0;
+  return 1;
 }
 
 static int interface_page(rhizome_http_request *r, const char *remainder)
 {
-  if (r->http.verb != HTTP_VERB_GET) {
-    http_request_simple_response(&r->http, 405, NULL);
-    return 0;
-  }
+  if (r->http.verb != HTTP_VERB_GET)
+    return 405;
   char buf[8*1024];
   strbuf b=strbuf_local(buf, sizeof buf);
   int index=atoi(remainder);
   if (index<0 || index>=OVERLAY_MAX_INTERFACES)
-    return 1;
+    return 404;
   strbuf_puts(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
   interface_state_html(b, &overlay_interfaces[index]);
   strbuf_puts(b, "</body></html>");
   if (strbuf_overrun(b))
     return -1;
   http_request_response_static(&r->http, 200, "text/html", buf, strbuf_len(b));
-  return 0;
+  return 1;
 }
 
 static int rhizome_status_page(rhizome_http_request *r, const char *remainder)
 {
   if (!is_rhizome_http_enabled())
-    return 1;
+    return 403;
   if (*remainder)
-    return 1;
-  if (r->http.verb != HTTP_VERB_GET) {
-    http_request_simple_response(&r->http, 405, NULL);
-    return 0;
-  }
+    return 404;
+  if (r->http.verb != HTTP_VERB_GET)
+    return 405;
   char buf[32*1024];
   strbuf b = strbuf_local(buf, sizeof buf);
   strbuf_puts(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
@@ -626,10 +1102,83 @@ static int rhizome_status_page(rhizome_http_request *r, const char *remainder)
   if (strbuf_overrun(b))
     return -1;
   http_request_response_static(&r->http, 200, "text/html", buf, strbuf_len(b));
+  return 1;
+}
+
+static int rhizome_response_content_init_read_state(rhizome_http_request *r)
+{
+  if (r->u.read_state.length == RHIZOME_SIZE_UNSET && rhizome_read(&r->u.read_state, NULL, 0)) {
+    rhizome_read_close(&r->u.read_state);
+    return 404;
+  }
+  assert(r->u.read_state.length != RHIZOME_SIZE_UNSET);
+  r->http.response.header.resource_length = r->u.read_state.length;
+  if (r->http.request_header.content_range_count > 0) {
+    assert(r->http.request_header.content_range_count == 1);
+    struct http_range closed;
+    unsigned n = http_range_close(&closed, r->http.request_header.content_ranges, 1, r->u.read_state.length);
+    if (n == 0 || http_range_bytes(&closed, 1) == 0)
+      return 416; // Request Range Not Satisfiable
+    r->http.response.header.content_range_start = closed.first;
+    r->http.response.header.content_length = closed.last - closed.first + 1;
+    r->u.read_state.offset = closed.first;
+  } else {
+    r->http.response.header.content_range_start = 0;
+    r->http.response.header.content_length = r->http.response.header.resource_length;
+    r->u.read_state.offset = 0;
+  }
   return 0;
 }
 
-static int rhizome_file_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
+static int rhizome_response_content_init_filehash(rhizome_http_request *r, const rhizome_filehash_t *hash)
+{
+  bzero(&r->u.read_state, sizeof r->u.read_state);
+  r->u.read_state.blob_fd = -1;
+  assert(r->finalise_union == NULL);
+  r->finalise_union = finalise_union_read_state;
+  enum rhizome_payload_status status = rhizome_open_read(&r->u.read_state, hash);
+  switch (status) {
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+      break;
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+      return 404;
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      return -1;
+    default:
+      FATALF("status = %d", status);
+  }
+  return rhizome_response_content_init_read_state(r);
+}
+
+static int rhizome_response_content_init_payload(rhizome_http_request *r, rhizome_manifest *m)
+{
+  bzero(&r->u.read_state, sizeof r->u.read_state);
+  r->u.read_state.blob_fd = -1;
+  assert(r->finalise_union == NULL);
+  r->finalise_union = finalise_union_read_state;
+  enum rhizome_payload_status status = rhizome_open_decrypt_read(m, &r->u.read_state);
+  switch (status) {
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+      break;
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+      return 404;
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      return -1;
+    default:
+      FATALF("status = %d", status);
+  }
+  return rhizome_response_content_init_read_state(r);
+}
+
+static int rhizome_payload_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
 {
   // Only read multiples of 4k from disk.
   const size_t blocksz = 1 << 12;
@@ -661,93 +1210,95 @@ static int rhizome_file_page(rhizome_http_request *r, const char *remainder)
 {
   /* Stream the specified payload */
   if (!is_rhizome_http_enabled())
-    return 1;
-  if (r->http.verb != HTTP_VERB_GET) {
-    http_request_simple_response(&r->http, 405, NULL);
-    return 0;
-  }
+    return 403;
+  if (r->http.verb != HTTP_VERB_GET)
+    return 405;
   if (r->http.request_header.content_range_count > 1) {
     // To support byte range sets, eg, Range: bytes=0-100,200-300,400- we would have
     // to reply with a multipart/byteranges MIME content.
     http_request_simple_response(&r->http, 501, "Not Implemented: Byte range sets");
-    return 0;
+    return 1;
   }
   rhizome_filehash_t filehash;
   if (str_to_rhizome_filehash_t(&filehash, remainder) == -1)
     return 1;
-  bzero(&r->u.read_state, sizeof r->u.read_state);
-  int n = rhizome_open_read(&r->u.read_state, &filehash);
-  if (n == -1) {
-    http_request_simple_response(&r->http, 500, NULL);
-    return 0;
-  }
-  if (n != 0)
-    return 1;
-  if (r->u.read_state.length == RHIZOME_SIZE_UNSET && rhizome_read(&r->u.read_state, NULL, 0)) {
-    rhizome_read_close(&r->u.read_state);
-    return 1;
-  }
-  assert(r->u.read_state.length != RHIZOME_SIZE_UNSET);
-  r->http.response.header.resource_length = r->u.read_state.length;
-  if (r->http.request_header.content_range_count > 0) {
-    assert(r->http.request_header.content_range_count == 1);
-    struct http_range closed;
-    unsigned n = http_range_close(&closed, r->http.request_header.content_ranges, 1, r->u.read_state.length);
-    if (n == 0 || http_range_bytes(&closed, 1) == 0) {
-      http_request_simple_response(&r->http, 416, NULL); // Request Range Not Satisfiable
-      return 0;
-    }
-    r->http.response.header.content_range_start = closed.first;
-    r->http.response.header.content_length = closed.last - closed.first + 1;
-    r->u.read_state.offset = closed.first;
-  } else {
-    r->http.response.header.content_range_start = 0;
-    r->http.response.header.content_length = r->http.response.header.resource_length;
-    r->u.read_state.offset = 0;
-  }
-  http_request_response_generated(&r->http, 200, "application/binary", rhizome_file_content);
-  return 0;
+  int ret = rhizome_response_content_init_filehash(r, &filehash);
+  if (ret)
+    return ret;
+  http_request_response_generated(&r->http, 200, "application/binary", rhizome_payload_content);
+  return 1;
 }
 
 static int manifest_by_prefix_page(rhizome_http_request *r, const char *remainder)
 {
   if (!is_rhizome_http_enabled())
-    return 1;
-  if (r->http.verb != HTTP_VERB_GET) {
-    http_request_simple_response(&r->http, 405, NULL);
-    return 0;
-  }
+    return 403;
+  if (r->http.verb != HTTP_VERB_GET)
+    return 405;
   rhizome_bid_t prefix;
   const char *endp = NULL;
   unsigned prefix_len = strn_fromhex(prefix.binary, sizeof prefix.binary, remainder, &endp);
   if (endp == NULL || *endp != '\0' || prefix_len < 1)
-    return 1; // not found
-  rhizome_manifest *m = rhizome_new_manifest();
-  int ret = rhizome_retrieve_manifest_by_prefix(prefix.binary, prefix_len, m);
+    return 404; // not found
+  if ((r->manifest = rhizome_new_manifest()) == NULL)
+    return 500;
+  int ret = rhizome_retrieve_manifest_by_prefix(prefix.binary, prefix_len, r->manifest);
   if (ret == -1)
-    http_request_simple_response(&r->http, 500, NULL);
-  else if (ret == 0)
-    http_request_response_static(&r->http, 200, "application/binary", (const char *)m->manifestdata, m->manifest_all_bytes);
-  rhizome_manifest_free(m);
-  return ret <= 0 ? 0 : 1;
+    return 500;
+  if (ret == 0) {
+    http_request_response_static(&r->http, 200, "application/binary", (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes);
+    return 1;
+  }
+  return 404;
 }
 
 static int fav_icon_header(rhizome_http_request *r, const char *remainder)
 {
   if (*remainder)
-    return 1;
+    return 404;
   http_request_response_static(&r->http, 200, "image/vnd.microsoft.icon", (const char *)favicon_bytes, favicon_len);
-  return 0;
+  return 1;
+}
+
+static void render_manifest_headers(struct http_request *hr, strbuf sb)
+{
+  rhizome_http_request *r = (rhizome_http_request *) hr;
+  rhizome_manifest *m = r->manifest;
+  strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Id: %s\r\n", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+  strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Version: %"PRIu64"\r\n", m->version);
+  strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Filesize: %"PRIu64"\r\n", m->filesize);
+  if (m->filesize != 0)
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Filehash: %s\r\n", alloca_tohex_rhizome_filehash_t(m->filehash));
+  if (m->has_bundle_key)
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-BK: %s\r\n", alloca_tohex_rhizome_bk_t(m->bundle_key));
+  if (m->has_date)
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Date: %"PRIu64"\r\n", m->date);
+  if (m->name) {
+    strbuf_puts(sb, "Serval-Rhizome-Bundle-Name: ");
+    strbuf_append_quoted_string(sb, m->name);
+    strbuf_puts(sb, "\r\n");
+  }
+  if (m->service)
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Service: %s\r\n", m->service);
+  assert(m->authorship != AUTHOR_LOCAL);
+  if (m->authorship == AUTHOR_AUTHENTIC)
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Author: %s\r\n", alloca_tohex_sid_t(m->author));
+  assert(m->haveSecret);
+  {
+    char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
+    rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Secret: %s\r\n", secret);
+  }
+  strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Rowid: %"PRIu64"\r\n", m->rowid);
+  strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Inserttime: %"PRIu64"\r\n", m->inserttime);
 }
 
 static int root_page(rhizome_http_request *r, const char *remainder)
 {
   if (*remainder)
-    return 1;
-  if (r->http.verb != HTTP_VERB_GET) {
-    http_request_simple_response(&r->http, 405, NULL);
-    return 0;
-  }
+    return 404;
+  if (r->http.verb != HTTP_VERB_GET)
+    return 405;
   char temp[8192];
   strbuf b = strbuf_local(temp, sizeof temp);
   strbuf_sprintf(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>"
@@ -768,8 +1319,8 @@ static int root_page(rhizome_http_request *r, const char *remainder)
   strbuf_puts(b, "</body></html>");
   if (strbuf_overrun(b)) {
     WHY("HTTP Root page buffer overrun");
-    http_request_simple_response(&r->http, 500, NULL);
-  } else
-    http_request_response_static(&r->http, 200, "text/html", temp, strbuf_len(b));
-  return 0;
+    return 500;
+  }
+  http_request_response_static(&r->http, 200, "text/html", temp, strbuf_len(b));
+  return 1;
 }
