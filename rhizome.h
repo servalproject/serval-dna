@@ -780,26 +780,67 @@ typedef struct rhizome_http_request
    */
   unsigned int uuid;
 
-  /* For receiving a POST multipart form:
-   */
-  // Which part is currently being received
-  enum rhizome_direct_mime_part { NONE = 0, MANIFEST, DATA } current_part;
-  // Temporary file currently current part is being written to
-  int part_fd;
-  // Which parts have already been received
-  bool_t received_manifest;
-  bool_t received_data;
-  // Name of data file supplied in part's Content-Disposition header, filename
-  // parameter (if any)
-  char data_file_name[MIME_FILENAME_MAXLEN + 1];
-
-  /* For responses that pertain to a single manifest.
+  /* For requests/responses that pertain to a single manifest.
    */
   rhizome_manifest *manifest;
+
+  /* Finaliser for union contents (below).
+   */
+  void (*finalise_union)(struct rhizome_http_request *);
 
   /* Mutually exclusive response arguments.
    */
   union {
+
+    /* For receiving Rhizome Direct import request
+     */
+    struct {
+      // Which part is currently being received
+      const char *current_part;
+      // Temporary file currently current part is being written to
+      int part_fd;
+      // Which parts have already been received
+      bool_t received_manifest;
+      bool_t received_data;
+      // Name of data file supplied in part's Content-Disposition header, filename
+      // parameter (if any)
+      char data_file_name[MIME_FILENAME_MAXLEN + 1];
+    }
+      direct_import;
+
+    /* For receiving RESTful Rhizome insert request
+     */
+    struct {
+      // Which part is currently being received
+      const char *current_part;
+      // Which parts have already been received
+      bool_t received_author;
+      bool_t received_secret;
+      bool_t received_manifest;
+      bool_t received_payload;
+      // For storing the "bundle-author" hex SID as we receive it
+      char author_hex[SID_STRLEN];
+      size_t author_hex_len;
+      sid_t author;
+      // For storing the "bundle-secret" hex as we receive it
+      char secret_hex[RHIZOME_BUNDLE_KEY_STRLEN];
+      size_t secret_hex_len;
+      rhizome_bk_t bundle_secret;
+      // The "force-new" parameter
+      char force_new_text[5]; // enough for "false"
+      size_t force_new_text_len;
+      bool_t force_new;
+      // For storing the manifest text (malloc/realloc) as we receive it
+      char *manifest_text;
+      size_t manifest_text_size;
+      size_t manifest_len;
+      // For receiving the payload
+      enum rhizome_payload_status payload_status;
+      uint64_t payload_size;
+      struct rhizome_write write;
+    }
+      insert;
+
     /* For responses that send part or all of a payload.
     */
     struct rhizome_read read_state;
@@ -807,14 +848,16 @@ typedef struct rhizome_http_request
     /* For responses that list manifests.
     */
     struct {
-        enum { LIST_HEADER = 0, LIST_ROWS, LIST_DONE } phase;
-        uint64_t rowid_highest;
-        size_t rowcount;
-        time_ms_t end_time;
-        struct rhizome_list_cursor cursor;
-    } list;
+      enum { LIST_HEADER = 0, LIST_ROWS, LIST_DONE } phase;
+      uint64_t rowid_highest;
+      size_t rowcount;
+      time_ms_t end_time;
+      struct rhizome_list_cursor cursor;
+    }
+      list;
+
   } u;
-  
+
 } rhizome_http_request;
 
 int rhizome_received_content(const unsigned char *bidprefix,uint64_t version, 

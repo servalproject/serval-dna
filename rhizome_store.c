@@ -691,7 +691,8 @@ static enum rhizome_bundle_status rhizome_write_derive_key(rhizome_manifest *m, 
     return RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL;
 
   if (config.debug.rhizome)
-    DEBUGF("Encrypting payload contents for %s, %"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
+    DEBUGF("Encrypting payload contents for bid=%s, version=%"PRIu64,
+	alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
 
   write->crypt=1;
   if (m->is_journal && m->tail > 0)

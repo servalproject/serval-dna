@@ -1435,8 +1435,7 @@ int rhizome_drop_stored_file(const rhizome_filehash_t *hashp, int maximum_priori
  */
 int rhizome_store_manifest(rhizome_manifest *m)
 {
-  if (!m->finalised)
-    return WHY("Manifest was not finalised");
+  assert(m->finalised);
 
   // If we don't have the secret for this manifest, only store it if its self-signature is valid
   if (!m->haveSecret && !m->selfSigned)

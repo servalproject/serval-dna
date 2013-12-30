@@ -538,12 +538,12 @@ static size_t _parse_token_or_quoted_string(struct http_request *r, char *dst, s
 
 static inline int _parse_http_size_t(struct http_request *r, http_size_t *szp)
 {
-  return !_run_out(r) && isdigit(*r->cursor) && str_to_uint64(r->cursor, 10, szp, &r->cursor);
+  return !_run_out(r) && isdigit(*r->cursor) && str_to_uint64(r->cursor, 10, szp, (const char **)&r->cursor);
 }
 
 static inline int _parse_uint32(struct http_request *r, uint32_t *uint32p)
 {
-  return !_run_out(r) && isdigit(*r->cursor) && str_to_uint32(r->cursor, 10, uint32p, &r->cursor);
+  return !_run_out(r) && isdigit(*r->cursor) && str_to_uint32(r->cursor, 10, uint32p, (const char **)&r->cursor);
 }
 
 static unsigned _parse_ranges(struct http_request *r, struct http_range *range, unsigned nrange)
@@ -598,7 +598,7 @@ static int _parse_content_type(struct http_request *r, struct mime_content_type 
     return 0;
   }
   while (_skip_optional_space(r) && _skip_literal(r, ";") && _skip_optional_space(r)) {
-    const char *start = r->cursor;
+    char *start = r->cursor;
     if (_skip_literal(r, "charset=")) {
       size_t n = _parse_token_or_quoted_string(r, ct->charset, sizeof ct->charset);
       if (n == 0)
@@ -635,7 +635,7 @@ static int _parse_content_type(struct http_request *r, struct mime_content_type 
 
 static size_t _parse_base64(struct http_request *r, char *bin, size_t binsize)
 {
-  return base64_decode((unsigned char *)bin, binsize, r->cursor, r->end - r->cursor, &r->cursor, B64_CONSUME_ALL, is_http_space);
+  return base64_decode((unsigned char *)bin, binsize, r->cursor, r->end - r->cursor, (const char **)&r->cursor, B64_CONSUME_ALL, is_http_space);
 }
 
 static int _parse_authorization_credentials_basic(struct http_request *r, struct http_client_credentials_basic *cred, char *buf, size_t bufsz)
@@ -654,7 +654,7 @@ static int _parse_authorization_credentials_basic(struct http_request *r, struct
 
 static int _parse_authorization(struct http_request *r, struct http_client_authorization *auth, size_t header_bytes)
 {
-  const char *start = r->cursor;
+  char *start = r->cursor;
   if (_skip_literal(r, "Basic") && _skip_space(r)) {
     size_t bufsz = 5 + header_bytes * 3 / 4; // enough for base64 decoding
     char buf[bufsz];
@@ -870,7 +870,7 @@ static int http_request_parse_header(struct http_request *r)
       return r->handle_headers(r);
     return 0;
   }
-  const char *const nextline = r->cursor;
+  char *const nextline = r->cursor;
   _rewind(r);
   const char *const sol = r->cursor;
   if (_skip_literal_nocase(r, "Content-Length:")) {
@@ -1074,7 +1074,7 @@ static int _parse_content_disposition(struct http_request *r, struct mime_conten
     return 0;
   }
   while (_skip_optional_space(r) && _skip_literal(r, ";") && _skip_optional_space(r)) {
-    const char *start = r->cursor;
+    char *start = r->cursor;
     if (_skip_literal(r, "filename=")) {
       size_t n = _parse_token_or_quoted_string(r, cd->filename, sizeof cd->filename);
       if (n == 0)
@@ -1217,7 +1217,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
     case PREAMBLE: {
 	if (config.debug.httpd)
 	  DEBUGF("PREAMBLE");
-	const char *start = r->parsed;
+	char *start = r->parsed;
 	for (; at_start || _skip_to_crlf(r); at_start = 0) {
 	  const char *end_preamble = r->cursor;
 	  int b;
@@ -1254,7 +1254,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  _commit(r);
 	  return 0;
 	}
-	const char *sol = r->cursor;
+	char *const sol = r->cursor;
 	// A blank line finishes the headers.  The CRLF does not form part of the body.
 	if (_skip_crlf(r)) {
 	  _commit(r);
@@ -1367,16 +1367,18 @@ static int http_request_parse_body_form_data(struct http_request *r)
     case BODY:
       if (config.debug.httpd)
 	DEBUGF("BODY");
-      const char *start = r->parsed;
+      char *start = r->parsed;
       while (_skip_to_crlf(r)) {
 	int b;
-	const char *end_body = r->cursor;
+	char *end_body = r->cursor;
 	_skip_crlf(r);
 	if ((b = _skip_mime_boundary(r))) {
 	  _rewind_crlf(r);
 	  _commit(r);
 	  assert(end_body >= start);
 	  r->part_body_length += end_body - start;
+	  // Note: the handler function may modify the data in-place (eg, Rhizome does encryption
+	  // that way).
 	  _INVOKE_HANDLER_BUF_LEN(handle_mime_body, start, end_body); // excluding CRLF at end
 	  return http_request_form_data_start_part(r, b);
 	}
@@ -1390,6 +1392,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
       _commit(r);
       assert(r->parsed >= start);
       r->part_body_length += r->parsed - start;
+	// Note: the handler function may modify the data in-place
       _INVOKE_HANDLER_BUF_LEN(handle_mime_body, start, r->parsed);
       return 100; // need more data
   case EPILOGUE:

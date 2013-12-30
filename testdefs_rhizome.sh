@@ -24,7 +24,7 @@ rexp_bundlesecret="$rexp_bundlekey"
 rexp_filehash='[0-9a-fA-F]\{128\}'
 rexp_filesize='[0-9]\{1,\}'
 rexp_version='[0-9]\{1,\}'
-rexp_crypt='[0-9]\{1,\}'
+rexp_crypt='[01]'
 rexp_date='[0-9]\{1,\}'
 rexp_rowid='[0-9]\{1,\}'
 

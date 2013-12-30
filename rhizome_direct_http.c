@@ -57,11 +57,11 @@ static void rhizome_direct_clear_temporary_files(rhizome_http_request *r)
 static int rhizome_direct_import_end(struct http_request *hr)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
-  if (!r->received_manifest) {
+  if (!r->u.direct_import.received_manifest) {
     http_request_simple_response(&r->http, 400, "Missing 'manifest' part");
     return 0;
   }
-  if (!r->received_data) {
+  if (!r->u.direct_import.received_data) {
     http_request_simple_response(&r->http, 400, "Missing 'data' part");
     return 0;
   }
@@ -126,7 +126,7 @@ static int rhizome_direct_import_end(struct http_request *hr)
 int rhizome_direct_enquiry_end(struct http_request *hr)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
-  if (!r->received_data) {
+  if (!r->u.direct_import.received_data) {
     http_request_simple_response(&r->http, 400, "Missing 'data' part");
     return 0;
   }
@@ -189,7 +189,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
   // If given a file without a manifest, we should only accept if it we are configured to do so, and
   // the connection is from localhost.  Otherwise people could cause your servald to create
   // arbitrary bundles, which would be bad.
-  if (!r->received_manifest) {
+  if (!r->u.direct_import.received_manifest) {
     char payload_path[512];
     if (form_temporary_file_path(r, payload_path, "data") == -1) {
       http_request_simple_response(&r->http, 500, "Internal Error: Buffer overrun");
@@ -242,7 +242,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
     if (m->service == NULL)
       rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
     const sid_t *author = is_sid_t_any(config.rhizome.api.addfile.default_author) ? NULL : &config.rhizome.api.addfile.default_author;
-    if (rhizome_fill_manifest(m, r->data_file_name, author)) {
+    if (rhizome_fill_manifest(m, r->u.direct_import.data_file_name, author)) {
       rhizome_manifest_free(m);
       rhizome_direct_clear_temporary_files(r);
       http_request_simple_response(&r->http, 500, "Internal Error: Could not fill manifest");
@@ -285,48 +285,48 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
   }
 }
 
+static char PART_MANIFEST[] = "manifest";
+static char PART_DATA[] = "data";
+
 static int rhizome_direct_process_mime_start(struct http_request *hr)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
-  assert(r->current_part == NONE);
-  assert(r->part_fd == -1);
+  assert(r->u.direct_import.current_part == NULL);
+  assert(r->u.direct_import.part_fd == -1);
   return 0;
 }
 
 static int rhizome_direct_process_mime_end(struct http_request *hr)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
-  if (r->part_fd != -1) {
-    if (close(r->part_fd) == -1) {
-      WHYF_perror("close(%d)", r->part_fd);
+  if (r->u.direct_import.part_fd != -1) {
+    if (close(r->u.direct_import.part_fd) == -1) {
+      WHYF_perror("close(%d)", r->u.direct_import.part_fd);
       http_request_simple_response(&r->http, 500, "Internal Error: Close temporary file failed");
       return 500;
     }
-    r->part_fd = -1;
+    r->u.direct_import.part_fd = -1;
   }
-  switch (r->current_part) {
-    case MANIFEST:
-      r->received_manifest = 1;
-      break;
-    case DATA:
-      r->received_data = 1;
-      break;
-    case NONE:
-      break;
-  }
-  r->current_part = NONE;
+  if (r->u.direct_import.current_part == PART_MANIFEST)
+    r->u.direct_import.received_manifest = 1;
+  else if (r->u.direct_import.current_part == PART_DATA)
+    r->u.direct_import.received_data = 1;
+  r->u.direct_import.current_part = NULL;
   return 0;
 }
 
 static int rhizome_direct_process_mime_part_header(struct http_request *hr, const struct mime_part_headers *h)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
-  if (strcmp(h->content_disposition.name, "data") == 0) {
-    r->current_part = DATA;
-    strncpy(r->data_file_name, h->content_disposition.filename, sizeof r->data_file_name)[sizeof r->data_file_name - 1] = '\0';
+  if (strcmp(h->content_disposition.name, PART_DATA) == 0) {
+    r->u.direct_import.current_part = PART_DATA;
+    strncpy(r->u.direct_import.data_file_name,
+	    h->content_disposition.filename,
+	    sizeof r->u.direct_import.data_file_name)
+     [sizeof r->u.direct_import.data_file_name - 1] = '\0';
   }
-  else if (strcmp(h->content_disposition.name, "manifest") == 0) {
-    r->current_part = MANIFEST;
+  else if (strcmp(h->content_disposition.name, PART_MANIFEST) == 0) {
+    r->u.direct_import.current_part = PART_MANIFEST;
   } else
     return 0;
   char path[512];
@@ -334,7 +334,7 @@ static int rhizome_direct_process_mime_part_header(struct http_request *hr, cons
     http_request_simple_response(&r->http, 500, "Internal Error: Buffer overrun");
     return 0;
   }
-  if ((r->part_fd = open(path, O_WRONLY | O_CREAT, 0666)) == -1) {
+  if ((r->u.direct_import.part_fd = open(path, O_WRONLY | O_CREAT, 0666)) == -1) {
     WHYF_perror("open(%s,O_WRONLY|O_CREAT,0666)", alloca_str_toprint(path));
     http_request_simple_response(&r->http, 500, "Internal Error: Create temporary file failed");
     return 0;
@@ -342,11 +342,11 @@ static int rhizome_direct_process_mime_part_header(struct http_request *hr, cons
   return 0;
 }
 
-static int rhizome_direct_process_mime_body(struct http_request *hr, const char *buf, size_t len)
+static int rhizome_direct_process_mime_body(struct http_request *hr, char *buf, size_t len)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
-  if (r->part_fd != -1) {
-    if (write_all(r->part_fd, buf, len) == -1) {
+  if (r->u.direct_import.part_fd != -1) {
+    if (write_all(r->u.direct_import.part_fd, buf, len) == -1) {
       http_request_simple_response(&r->http, 500, "Internal Error: Write temporary file failed");
       return 500;
     }
@@ -365,9 +365,9 @@ int rhizome_direct_import(rhizome_http_request *r, const char *remainder)
   r->http.form_data.handle_mime_part_header = rhizome_direct_process_mime_part_header;
   r->http.form_data.handle_mime_body = rhizome_direct_process_mime_body;
   r->http.handle_content_end = rhizome_direct_import_end;
-  r->current_part = NONE;
-  r->part_fd = -1;
-  r->data_file_name[0] = '\0';
+  r->u.direct_import.current_part = NULL;
+  r->u.direct_import.part_fd = -1;
+  r->u.direct_import.data_file_name[0] = '\0';
   return 1;
 }
 
@@ -382,9 +382,9 @@ int rhizome_direct_enquiry(rhizome_http_request *r, const char *remainder)
   r->http.form_data.handle_mime_part_header = rhizome_direct_process_mime_part_header;
   r->http.form_data.handle_mime_body = rhizome_direct_process_mime_body;
   r->http.handle_content_end = rhizome_direct_enquiry_end;
-  r->current_part = NONE;
-  r->part_fd = -1;
-  r->data_file_name[0] = '\0';
+  r->u.direct_import.current_part = NULL;
+  r->u.direct_import.part_fd = -1;
+  r->u.direct_import.data_file_name[0] = '\0';
   return 1;
 }
 
@@ -414,9 +414,9 @@ int rhizome_direct_addfile(rhizome_http_request *r, const char *remainder)
   r->http.form_data.handle_mime_part_header = rhizome_direct_process_mime_part_header;
   r->http.form_data.handle_mime_body = rhizome_direct_process_mime_body;
   r->http.handle_content_end = rhizome_direct_addfile_end;
-  r->current_part = NONE;
-  r->part_fd = -1;
-  r->data_file_name[0] = '\0';
+  r->u.direct_import.current_part = NULL;
+  r->u.direct_import.part_fd = -1;
+  r->u.direct_import.data_file_name[0] = '\0';
   return 1;
 }
 

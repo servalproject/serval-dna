@@ -133,12 +133,12 @@ struct http_mime_handler {
   // filure status code in the range 400-599 or by initiating an HTTP response
   // directly (changing the phase from RECEIVE to TRANSMIT).  They can return
   // zero to indicate that parsing should proceed.
-  int (*handle_mime_preamble)(struct http_request *, const char *, size_t);
+  int (*handle_mime_preamble)(struct http_request *, char *, size_t);
   int (*handle_mime_part_start)(struct http_request *);
   int (*handle_mime_part_header)(struct http_request *, const struct mime_part_headers *);
-  int (*handle_mime_body)(struct http_request *, const char *, size_t);
+  int (*handle_mime_body)(struct http_request *, char *, size_t);
   int (*handle_mime_part_end)(struct http_request *);
-  int (*handle_mime_epilogue)(struct http_request *, const char *, size_t);
+  int (*handle_mime_epilogue)(struct http_request *, char *, size_t);
 };
 
 struct http_request;
@@ -185,11 +185,11 @@ struct http_request {
   HTTP_REQUEST_PARSER *handle_headers; // called after all HTTP headers are parsed
   HTTP_REQUEST_PARSER *handle_content_end; // called after all content is received
   // The following are used for managing the buffer during RECEIVE phase.
-  const char *reserved; // end of reserved data in buffer[]
-  const char *received; // start of received data in buffer[]
-  const char *end; // end of received data in buffer[]
-  const char *parsed; // start of unparsed data in buffer[]
-  const char *cursor; // for parsing
+  char *reserved; // end of reserved data in buffer[]
+  char *received; // start of received data in buffer[]
+  char *end; // end of received data in buffer[]
+  char *parsed; // start of unparsed data in buffer[]
+  char *cursor; // for parsing
   http_size_t request_content_remaining;
   // The following are used for parsing a multipart body.
   enum mime_state { START, PREAMBLE, HEADER, BODY, EPILOGUE } form_data_state;
