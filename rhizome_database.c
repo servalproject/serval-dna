@@ -1075,6 +1075,88 @@ int _sqlite_vexec_strbuf_retry(struct __sourceloc __whence, sqlite_retry_state *
   return sqlite_code_ok(stepcode) && ret != -1 ? rowcount : -1;
 }
 
+int _sqlite_blob_open_retry(
+  struct __sourceloc __whence,
+  int log_level,
+  sqlite_retry_state *retry,
+  const char *dbname,
+  const char *tablename,
+  const char *colname,
+  sqlite3_int64 rowid,
+  int flags,
+  sqlite3_blob **blobp
+)
+{
+  IN();
+  while (1) {
+    int code = sqlite3_blob_open(rhizome_db, dbname, tablename, colname, rowid, flags, blobp);
+    switch (code) {
+      case SQLITE_OK:
+	if (retry)
+	  _sqlite_retry_done(__whence, retry, "sqlite3_blob_open()");
+	RETURN(code);
+      case SQLITE_DONE:
+      case SQLITE_ROW:
+	LOGF(log_level, "sqlite3_blob_open() returned unexpected code (%d)", code);
+	RETURN(-1);
+      case SQLITE_BUSY:
+      case SQLITE_LOCKED:
+	if (retry && _sqlite_retry(__whence, retry, "sqlite3_blob_open()"))
+	  break; // back to sqlite3_blob_open()
+	// fall through...
+      default:
+	LOGF(log_level, "sqlite3_blob_open() failed (%d), %s", code, sqlite3_errmsg(rhizome_db));
+	RETURN(-1);
+    }
+  }
+  FATAL("not reached");
+  OUT();
+}
+
+int _sqlite_blob_write_retry(
+  struct __sourceloc __whence,
+  int log_level,
+  sqlite_retry_state *retry,
+  sqlite3_blob *blob,
+  const void *buf,
+  int len,
+  int offset
+)
+{
+  IN();
+  while (1) {
+    int code = sqlite3_blob_write(blob, buf, len, offset);
+    switch (code) {
+      case SQLITE_OK:
+	if (retry)
+	  _sqlite_retry_done(__whence, retry, "sqlite3_blob_write()");
+	RETURN(code);
+      case SQLITE_DONE:
+      case SQLITE_ROW:
+	LOGF(log_level, "sqlite3_blob_write() returned unexpected code (%d)", code);
+	RETURN(-1);
+      case SQLITE_BUSY:
+      case SQLITE_LOCKED:
+	if (retry && _sqlite_retry(__whence, retry, "sqlite3_blob_write()"))
+	  break; // back to sqlite3_blob_open()
+	// fall through...
+      default:
+	LOGF(log_level, "sqlite3_blob_write() failed (%d), %s", code, sqlite3_errmsg(rhizome_db));
+	RETURN(-1);
+    }
+  }
+  FATAL("not reached");
+  OUT();
+}
+
+int _sqlite_blob_close(struct __sourceloc __whence, int log_level, sqlite3_blob *blob)
+{
+  int code = sqlite3_blob_close(blob);
+  if (code != SQLITE_OK)
+    LOGF(log_level, "sqlite3_blob_close() failed: %s", sqlite3_errmsg(rhizome_db));
+  return 0;
+}
+
 static uint64_t rhizome_database_used_bytes()
 {
   uint64_t db_page_size;

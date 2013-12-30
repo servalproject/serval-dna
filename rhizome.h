@@ -565,6 +565,27 @@ int _sqlite_exec_uint64_retry(struct __sourceloc, sqlite_retry_state *retry, uin
 int _sqlite_exec_strbuf(struct __sourceloc, strbuf sb, const char *sqltext, ...);
 int _sqlite_exec_strbuf_retry(struct __sourceloc, sqlite_retry_state *retry, strbuf sb, const char *sqltext, ...);
 int _sqlite_vexec_strbuf_retry(struct __sourceloc, sqlite_retry_state *retry, strbuf sb, const char *sqltext, va_list ap);
+int _sqlite_blob_open_retry(
+  struct __sourceloc,
+  int log_level,
+  sqlite_retry_state *retry,
+  const char *dbname,
+  const char *tablename,
+  const char *colname,
+  sqlite3_int64 rowid,
+  int flags,
+  sqlite3_blob **blobp
+);
+int _sqlite_blob_write_retry(
+  struct __sourceloc,
+  int log_level,
+  sqlite_retry_state *retry,
+  sqlite3_blob *blob,
+  const void *buf,
+  int len,
+  int offset
+);
+int _sqlite_blob_close(struct __sourceloc, int log_level, sqlite3_blob *blob);
 
 // The 'arg' arguments in the following macros appear to be unnecessary, but
 // they serve a very useful purpose, so don't remove them!  They ensure that
@@ -591,6 +612,10 @@ int _sqlite_vexec_strbuf_retry(struct __sourceloc, sqlite_retry_state *retry, st
 #define sqlite_exec_uint64_retry(rs,res,sql,arg,...)    _sqlite_exec_uint64_retry(__WHENCE__, (rs), (res), (sql), arg, ##__VA_ARGS__)
 #define sqlite_exec_strbuf(sb,sql,arg,...)              _sqlite_exec_strbuf(__WHENCE__, (sb), (sql), arg, ##__VA_ARGS__)
 #define sqlite_exec_strbuf_retry(rs,sb,sql,arg,...)     _sqlite_exec_strbuf_retry(__WHENCE__, (rs), (sb), (sql), arg, ##__VA_ARGS__)
+#define sqlite_blob_open_retry(rs,db,table,col,row,flags,blobp) \
+                                                        _sqlite_blob_open_retry(__WHENCE__, LOG_LEVEL_ERROR, (rs), (db), (table), (col), (row), (flags), (blobp))
+#define sqlite_blob_close(blob)                         _sqlite_blob_close(__WHENCE__, LOG_LEVEL_ERROR, (blob));
+#define sqlite_blob_write_retry(rs,blob,buf,siz,off)    _sqlite_blob_write_retry(__WHENCE__, LOG_LEVEL_ERROR, (rs), (blob), (buf), (siz), (off))
 
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
 int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs);
