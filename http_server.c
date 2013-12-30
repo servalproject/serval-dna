@@ -541,9 +541,9 @@ static inline int _parse_http_size_t(struct http_request *r, http_size_t *szp)
   return !_run_out(r) && isdigit(*r->cursor) && str_to_uint64(r->cursor, 10, szp, &r->cursor);
 }
 
-static inline int _parse_uint(struct http_request *r, unsigned int *uintp)
+static inline int _parse_uint32(struct http_request *r, uint32_t *uint32p)
 {
-  return !_run_out(r) && isdigit(*r->cursor) && str_to_uint(r->cursor, 10, uintp, &r->cursor);
+  return !_run_out(r) && isdigit(*r->cursor) && str_to_uint32(r->cursor, 10, uint32p, &r->cursor);
 }
 
 static unsigned _parse_ranges(struct http_request *r, struct http_range *range, unsigned nrange)
@@ -793,12 +793,12 @@ static int http_request_parse_http_version(struct http_request *r)
   // Parse HTTP version: HTTP/m.n followed by CRLF.
   assert(r->version_major == 0);
   assert(r->version_minor == 0);
-  unsigned major, minor;
+  uint32_t major, minor;
   if (!(   _skip_literal(r, "HTTP/")
-	&& _parse_uint(r, &major)
+	&& _parse_uint32(r, &major)
 	&& major > 0 && major < UINT8_MAX
 	&& _skip_literal(r, ".")
-	&& _parse_uint(r, &minor)
+	&& _parse_uint32(r, &minor)
 	&& minor < UINT8_MAX
 	&& _skip_eol(r)
        )

@@ -391,8 +391,8 @@ char *str_str(char *haystack, const char *needle, size_t haystack_len);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int str_to_int(const char *str, int base, int *result, const char **afterp);
-int str_to_uint(const char *str, int base, unsigned *result, const char **afterp);
+int str_to_int32(const char *str, int base, int32_t *result, const char **afterp);
+int str_to_uint32(const char *str, int base, uint32_t *result, const char **afterp);
 int str_to_int64(const char *str, int base, int64_t *result, const char **afterp);
 int str_to_uint64(const char *str, int base, uint64_t *result, const char **afterp);
 
