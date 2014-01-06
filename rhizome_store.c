@@ -311,7 +311,7 @@ int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, uns
     
     // skip over incoming data that we've already received
     if (offset < last_offset){
-      int64_t delta = last_offset - offset;
+      uint64_t delta = last_offset - offset;
       if (delta >= data_size)
 	break;
       data_size -= delta;

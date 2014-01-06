@@ -178,7 +178,7 @@ static void resolve_request(){
   }
 }
 
-int main(int argc, char **argv){
+int main(void){
   struct pollfd fds[2];
   int mdp_sockfd;
 

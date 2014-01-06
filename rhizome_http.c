@@ -775,7 +775,7 @@ static int insert_mime_part_body(struct http_request *hr, char *buf, size_t len)
     if (newlen > MAX_MANIFEST_BYTES) {
       if (config.debug.rhizome)
 	DEBUGF("manifest too large, %zu bytes overflows maximum %zu by %zu",
-	    newlen, MAX_MANIFEST_BYTES, (size_t)(newlen - MAX_MANIFEST_BYTES)
+	    newlen, (size_t)MAX_MANIFEST_BYTES, (size_t)(newlen - MAX_MANIFEST_BYTES)
 	  );
       http_request_simple_response(&r->http, 403, "Manifest size overflow");
       return 403;

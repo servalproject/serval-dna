@@ -130,7 +130,7 @@ __ROTBUF_INLINE size_t rotbuf_remain(struct rotbuf *rb)
  */
 __ROTBUF_INLINE size_t rotbuf_count(struct rotbuf *rb)
 {
-  return rb->wrap ? (rb->ebuf - rb->buf) + rb->wrap - 1 : rotbuf_position(rb);
+  return rb->wrap ? (size_t)((rb->ebuf - rb->buf) + rb->wrap - 1) : rotbuf_position(rb);
 }
 
 void rotbuf_log(struct __sourceloc __whence, int log_level, const char *prefix, const struct rotbuf *rb);
