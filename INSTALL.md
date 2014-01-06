@@ -47,6 +47,12 @@ Optional:
  * Java compiler and SDK (mandatory for Android's **libservald.so**)
  * ALSA sound library and headers (only present on Linux not Android)
 
+Test dependencies:
+
+ * bash 3.2.48 or later
+ * jq 1.3 or later
+ * curl
+
 Build
 -----
 
