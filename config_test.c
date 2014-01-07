@@ -86,7 +86,7 @@ int main(int argc, char **argv)
       DEBUGF("config.interfaces.%u", config.interfaces.av[j].key);
       DEBUGF("   .exclude = %d", config.interfaces.av[j].value.exclude);
       DEBUGF("   .match = [");
-      int k;
+      unsigned k;
       for (k = 0; k < config.interfaces.av[j].value.match.patc; ++k)
 	DEBUGF("             %s", alloca_str_toprint(config.interfaces.av[j].value.match.patv[k]));
       DEBUGF("            ]");
