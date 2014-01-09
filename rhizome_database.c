@@ -2089,7 +2089,7 @@ static int is_interesting(const char *id_hex, uint64_t version)
   OUT();
 }
 
-int rhizome_is_bar_interesting(unsigned char *bar)
+int rhizome_is_bar_interesting(const unsigned char *bar)
 {
   uint64_t version = rhizome_bar_version(bar);
   char id_hex[RHIZOME_BAR_PREFIX_BYTES *2 + 2];

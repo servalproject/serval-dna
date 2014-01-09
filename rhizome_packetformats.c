@@ -129,7 +129,7 @@ uint64_t rhizome_bar_version(const unsigned char *bar)
 
 /* This function only displays the first 8 bytes, and should not be used
    for comparison. */
-uint64_t rhizome_bar_bidprefix_ll(unsigned char *bar)
+uint64_t rhizome_bar_bidprefix_ll(const unsigned char *bar)
 {
   uint64_t bidprefix=0;
   int i;
