@@ -164,6 +164,7 @@ int cmp_sockaddr(const struct socket_address *addrA, const struct socket_address
       (addrA->addrlen < addrB->addrlen ? addrA->addrlen : addrB->addrlen) - sizeof addrA->addr.sa_family);
   if (c == 0)
     c = addrA->addrlen < addrB->addrlen ? -1 : addrA->addrlen > addrB->addrlen ? 1 : 0;
+  
   return c;
 }
 
@@ -234,6 +235,24 @@ int _socket_set_rcvbufsize(struct __sourceloc __whence, int sock, unsigned buffe
   return 0;
 }
 
+int socket_unlink_close(int sock)
+{
+  // get the socket name and unlink it from the filesystem if not abstract
+  struct socket_address addr;
+  addr.addrlen = sizeof addr.store;
+  if (getsockname(sock, &addr.addr, &addr.addrlen))
+    WHYF_perror("getsockname(%d)", sock);
+  else if (addr.addr.sa_family==AF_UNIX 
+    && addr.addrlen > sizeof addr.local.sun_family 
+    && addr.addrlen <= sizeof addr.local 
+    && addr.local.sun_path[0] != '\0') {
+    if (unlink(addr.local.sun_path) == -1)
+      WARNF_perror("unlink(%s)", alloca_str_toprint(addr.local.sun_path));
+  }
+  close(sock);
+  return 0;
+}
+
 ssize_t _send_message(struct __sourceloc __whence, int fd, const struct socket_address *address, const struct fragmented_data *data)
 {
   struct msghdr hdr={
@@ -260,5 +279,6 @@ ssize_t _recv_message(struct __sourceloc __whence, int fd, struct socket_address
   ssize_t ret = recvmsg(fd, &hdr, 0);
   if (ret==-1)
     WHYF_perror("recvmsg(%d,%s,%lu)", fd, alloca_socket_address(address), (unsigned long)address->addrlen);
+  address->addrlen = hdr.msg_namelen;
   return ret;
 }

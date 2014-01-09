@@ -204,7 +204,9 @@ int _watch(struct __sourceloc __whence, struct sched_ent *alarm)
     WARN("watch() called without supplying an alarm name");
 
   if (!alarm->function)
-    return WHY("Can't watch if you haven't set the function pointer");
+    FATAL("Can't watch if you haven't set the function pointer");
+  if (!alarm->poll.events)
+    FATAL("Can't watch if you haven't set any poll flags");
   
   if (alarm->_poll_index>=0 && fd_callbacks[alarm->_poll_index]==alarm){
     // updating event flags

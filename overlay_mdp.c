@@ -57,6 +57,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "overlay_buffer.h"
 #include "overlay_address.h"
+#include "overlay_interface.h"
 #include "overlay_packet.h"
 #include "mdp_client.h"
 #include "crypto.h"
@@ -86,7 +87,7 @@ static int mdp_send2(struct socket_address *client, struct mdp_header *header,
   const uint8_t *payload, size_t payload_len);
 
 /* Delete all UNIX socket files in instance directory. */
-static void overlay_mdp_clean_socket_files()
+void overlay_mdp_clean_socket_files()
 {
   const char *instance_path = serval_instancepath();
   DIR *dir;
@@ -166,14 +167,6 @@ struct mdp_binding mdp_bindings[MDP_MAX_BINDINGS];
 int mdp_bindings_initialised=0;
 mdp_port_t next_port_binding=256;
 
-static int compare_client(struct socket_address *one, struct socket_address *two)
-{
-  if (one->addrlen==two->addrlen
-    && memcmp(&one->addr, &two->addr, two->addrlen)==0)
-    return 1;
-  return 0;
-}
-
 static int overlay_mdp_reply(int sock, struct socket_address *client,
 			  overlay_mdp_frame *mdpreply)
 {
@@ -228,7 +221,7 @@ static int overlay_mdp_releasebindings(struct socket_address *client)
   /* Free up any MDP bindings held by this client. */
   int i;
   for(i=0;i<MDP_MAX_BINDINGS;i++)
-    if (compare_client(&mdp_bindings[i].client, client))
+    if (cmp_sockaddr(&mdp_bindings[i].client, client)==0)
       mdp_bindings[i].port=0;
 
   return 0;
@@ -259,7 +252,7 @@ static int overlay_mdp_process_bind_request(struct subscriber *subscriber, mdp_p
     for(i=0;i<MDP_MAX_BINDINGS;i++) {
       /* Look for duplicate bindings */
       if (mdp_bindings[i].port == port && mdp_bindings[i].subscriber == subscriber) {
-	if (compare_client(&mdp_bindings[i].client, client)) {
+	if (cmp_sockaddr(&mdp_bindings[i].client, client)==0) {
 	  // this client already owns this port binding?
 	  INFO("Identical binding exists");
 	  return 0;
@@ -495,7 +488,7 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
   */
 
   if (config.debug.mdprequests) 
-    DEBUGF("Received packet with listener (MDP ports: src=%s*:%"PRImdp_port_t", dst=%"PRImdp_port_t")",
+    DEBUGF("Received packet (MDP ports: src=%s*:%"PRImdp_port_t", dst=%"PRImdp_port_t")",
 	 alloca_tohex_sid_t_trunc(mdp->out.src.sid, 14),
 	 mdp->out.src.port, mdp->out.dst.port);
 
@@ -530,6 +523,8 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
 	  if (len < 0)
 	    RETURN(WHY("unsupported MDP packet type"));
 	  struct socket_address *client = &mdp_bindings[match].client;
+	  if (config.debug.mdprequests) 
+	    DEBUGF("Forwarding packet to client %s", alloca_socket_address(client));
 	  ssize_t r = sendto(mdp_sock.poll.fd,mdp,len,0, &client->addr, client->addrlen);
 	  if (r == -1){
 	    WHYF_perror("sendto(fd=%d,len=%zu,addr=%s)", mdp_sock.poll.fd, (size_t)len, alloca_socket_address(client));
@@ -546,6 +541,7 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
 	}
       case 1:
 	{
+	  struct socket_address *client = &mdp_bindings[match].client;
 	  struct mdp_header header;
 	  header.local.sid=mdp->out.dst.sid;
 	  header.local.port=mdp->out.dst.port;
@@ -562,7 +558,9 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
 	  if (mdp_bindings[match].internal)
 	    RETURN(mdp_bindings[match].internal(&header, mdp->out.payload, mdp->out.payload_length));
 	    
-	  RETURN(mdp_send2(&mdp_bindings[match].client, &header, mdp->out.payload, mdp->out.payload_length));
+	  if (config.debug.mdprequests)
+	    DEBUGF("Forwarding packet to client v2 %s", alloca_socket_address(client));
+	  RETURN(mdp_send2(client, &header, mdp->out.payload, mdp->out.payload_length));
 	}
     }
   } else {
@@ -617,7 +615,7 @@ static int overlay_mdp_check_binding(struct subscriber *subscriber, mdp_port_t p
       continue;
     if ((!mdp_bindings[i].subscriber) || mdp_bindings[i].subscriber == subscriber) {
       /* Binding matches, now make sure the sockets match */
-      if (compare_client(&mdp_bindings[i].client, client)) {
+      if (cmp_sockaddr(&mdp_bindings[i].client, client)==0) {
 	/* Everything matches, so this unix socket and MDP address combination is valid */
 	return 0;
       }
@@ -740,6 +738,11 @@ static int overlay_send_frame(
   if (!source)
     return WHYF("No source specified");
   
+  if (config.debug.mdprequests)
+    DEBUGF("Attempting to queue mdp packet from %s:%d to %s:%d",
+      alloca_tohex_sid_t(source->sid), src_port, 
+      destination?alloca_tohex_sid_t(destination->sid):"broadcast", dst_port);
+      
   /* Prepare the overlay frame for dispatch */
   struct overlay_frame *frame = emalloc_zero(sizeof(struct overlay_frame));
   if (!frame)
@@ -774,7 +777,8 @@ static int overlay_send_frame(
   }
   if (config.debug.mdprequests) {
     DEBUGF("Send frame %zu bytes", ob_position(plaintext));
-    dump("Frame plaintext", ob_ptr(plaintext), ob_position(plaintext));
+    if (config.debug.verbose)
+      dump("Frame plaintext", ob_ptr(plaintext), ob_position(plaintext));
   }
   
   /* Work out the disposition of the frame->  For now we are only worried
@@ -1047,20 +1051,21 @@ struct scan_state scans[OVERLAY_MAX_INTERFACES];
 
 static void overlay_mdp_scan(struct sched_ent *alarm)
 {
-  struct sockaddr_in addr={
-    .sin_family=AF_INET,
-    .sin_port=htons(PORT_DNA),
-    .sin_addr={0},
-  };
+  struct socket_address addr;
+  bzero(&addr, sizeof(addr));
+  addr.addrlen = sizeof(addr.inet);
+  addr.inet.sin_family=AF_INET;
+  addr.inet.sin_port=htons(PORT_DNA);
+  
   struct scan_state *state = (struct scan_state *)alarm;
   uint32_t stop = state->last;
   if (stop - state->current > 25)
     stop = state->current+25;
   
   while(state->current <= stop){
-    addr.sin_addr.s_addr=htonl(state->current);
-    if (addr.sin_addr.s_addr != state->interface->address.sin_addr.s_addr){
-      struct network_destination *destination = create_unicast_destination(addr, state->interface);
+    addr.inet.sin_addr.s_addr=htonl(state->current);
+    if (addr.inet.sin_addr.s_addr != state->interface->address.inet.sin_addr.s_addr){
+      struct network_destination *destination = create_unicast_destination(&addr, state->interface);
       if (!destination)
 	break;
       int ret = overlay_send_probe(NULL, destination, OQ_ORDINARY);
@@ -1243,7 +1248,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
     int i;
     for(i=0;i<MDP_MAX_BINDINGS;i++) {
       if (mdp_bindings[i].port!=0 
-	&& compare_client(&mdp_bindings[i].client, client)){
+	&& cmp_sockaddr(&mdp_bindings[i].client, client)==0){
 	if (config.debug.mdprequests)
 	  DEBUGF("Unbind MDP %s:%d from %s", 
 	    mdp_bindings[i].subscriber?alloca_tohex_sid_t(mdp_bindings[i].subscriber->sid):"All",
@@ -1342,8 +1347,13 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
 	// double check that this binding belongs to this connection
 	if (!binding
 	  || binding->internal
-	  || !compare_client(&binding->client, client))
+	  || cmp_sockaddr(&binding->client, client)!=0){
 	  mdp_reply_error(client, header);
+	  WHYF("Already bound by someone else? %s vs %s", 
+	    alloca_socket_address(&binding->client), 
+	    alloca_socket_address(client));
+	
+	}
 	break;
       case MDP_IDENTITY:
 	if (config.debug.mdprequests)
@@ -1368,7 +1378,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
       || binding->internal
       || !source
       || header->local.port == 0 
-      || !compare_client(&binding->client, client)){
+      || cmp_sockaddr(&binding->client, client)!=0){
       mdp_reply_error(client, header);
       WHY("No matching binding found");
       return;
@@ -1406,9 +1416,6 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
       overlay_saw_mdp_frame(NULL, &mdp);
     }
     
-    if (config.debug.mdprequests)
-      DEBUGF("Attempting to queue mdp packet");
-      
     // construct, encrypt, sign and queue the packet
     if (overlay_send_frame(
       source, header->local.port,
@@ -1425,7 +1432,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
   if (binding 
     && !binding->internal
     && header->flags & MDP_FLAG_CLOSE
-    && compare_client(&binding->client, client)){
+    && cmp_sockaddr(&binding->client, client)==0){
     if (config.debug.mdprequests)
       DEBUGF("Unbind MDP %s:%d from %s", 
 	binding->subscriber?alloca_tohex_sid_t(binding->subscriber->sid):"All",
@@ -1622,12 +1629,14 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 		struct overlay_interface *interface = &overlay_interfaces[i];
 		if (interface->state!=INTERFACE_STATE_UP)
 		  continue;
-		
+		if (interface->address.addr.sa_family!=AF_INET)
+		  continue;
 		scans[i].interface = interface;
-		scans[i].current = ntohl(interface->address.sin_addr.s_addr & interface->netmask.s_addr)+1;
-		scans[i].last = ntohl(interface->destination->address.sin_addr.s_addr)-1;
+		scans[i].current = ntohl(interface->address.inet.sin_addr.s_addr & ~interface->netmask.s_addr)+1;
+		scans[i].last = ntohl(interface->destination->address.inet.sin_addr.s_addr)-1;
 		if (scans[i].last - scans[i].current>0x10000){
-		  INFOF("Skipping scan on interface %s as the address space is too large",interface->name);
+		  INFOF("Skipping scan on interface %s as the address space is too large (%04x %04x)",
+		    interface->name, scans[i].last, scans[i].current);
 		  continue;
 		}
 		scans[i].alarm.alarm=start;

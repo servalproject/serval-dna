@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
+#include "overlay_interface.h"
 
 #define PIDFILE_NAME	  "servald.pid"
 #define STOPFILE_NAME	  "servald.stop"
@@ -233,17 +234,10 @@ void serverCleanUp()
   if (serverMode){
     rhizome_close_db();
     dna_helper_shutdown();
+    overlay_interface_close_all();
   }
   
-  char filename[1024];
-  if (FORM_SERVAL_INSTANCE_PATH(filename, "mdp.socket"))
-    unlink(filename);
-  
-  if (FORM_SERVAL_INSTANCE_PATH(filename, "mdp.2.socket"))
-    unlink(filename);
-    
-  if (FORM_SERVAL_INSTANCE_PATH(filename, "monitor.socket"))
-    unlink(filename);
+  overlay_mdp_clean_socket_files();
   
   /* Try to remove shutdown and PID files and exit */
   server_remove_stopfile();

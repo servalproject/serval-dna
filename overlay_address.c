@@ -27,13 +27,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
 #include <assert.h>
+#include <arpa/inet.h>
 #include "serval.h"
 #include "conf.h"
 #include "str.h"
 #include "overlay_address.h"
 #include "overlay_buffer.h"
+#include "overlay_interface.h"
 #include "overlay_packet.h"
-#include <arpa/inet.h>
 
 #define MAX_BPIS 1024
 #define BPI_MASK 0x3ff
@@ -476,7 +477,7 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
       frame->destination = destination;
       frame->destinations[frame->destination_count++].destination=add_destination_ref(context->interface->destination);
       
-      struct network_destination *dest = create_unicast_destination(context->addr, context->interface);
+      struct network_destination *dest = create_unicast_destination(&context->addr, context->interface);
       if (dest)
 	frame->destinations[frame->destination_count++].destination=dest;
     

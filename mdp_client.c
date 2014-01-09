@@ -26,6 +26,7 @@
 #include "strbuf_helpers.h"
 #include "overlay_buffer.h"
 #include "overlay_address.h"
+#include "overlay_interface.h"
 #include "overlay_packet.h"
 #include "mdp_client.h"
 #include "socket.h"
@@ -34,22 +35,6 @@ int mdp_socket(void)
 {
   // for now use the same process for creating sockets
   return overlay_mdp_client_socket();
-}
-
-static void mdp_unlink(int mdp_sock)
-{
-  // get the socket name and unlink it from the filesystem if not abstract
-  struct socket_address addr;
-  addr.addrlen = sizeof addr.store;
-  if (getsockname(mdp_sock, &addr.addr, &addr.addrlen))
-    WHYF_perror("getsockname(%d)", mdp_sock);
-  else if (addr.addr.sa_family==AF_UNIX 
-    && addr.addrlen > sizeof addr.local.sun_family 
-    && addr.addrlen <= sizeof addr.local && addr.local.sun_path[0] != '\0') {
-    if (unlink(addr.local.sun_path) == -1)
-      WARNF_perror("unlink(%s)", alloca_str_toprint(addr.local.sun_path));
-  }
-  close(mdp_sock);
 }
 
 int mdp_close(int socket)
@@ -63,7 +48,7 @@ int mdp_close(int socket)
   mdp_send(socket, &header, NULL, 0);
   
   // remove socket
-  mdp_unlink(socket);
+  socket_unlink_close(socket);
   return 0;
 }
 
@@ -229,7 +214,7 @@ int overlay_mdp_client_close(int mdp_sockfd)
   mdp.packetTypeAndFlags = MDP_GOODBYE;
   overlay_mdp_send(mdp_sockfd, &mdp, 0, 0);
   
-  mdp_unlink(mdp_sockfd);
+  socket_unlink_close(mdp_sockfd);
   return 0;
 }
 

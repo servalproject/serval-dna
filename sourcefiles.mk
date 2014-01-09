@@ -24,6 +24,8 @@ SERVAL_SOURCES = \
 	$(SERVAL_BASE)meshms.c \
 	$(SERVAL_BASE)mdp_client.c \
 	$(SERVAL_BASE)mdp_net.c \
+	$(SERVAL_BASE)msp_client.c \
+	$(SERVAL_BASE)msp_proxy.c \
 	$(SERVAL_BASE)os.c \
 	$(SERVAL_BASE)mem.c \
 	$(SERVAL_BASE)instance.c \

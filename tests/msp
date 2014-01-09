@@ -1,0 +1,201 @@
+#!/bin/bash
+
+# Tests for stream connections
+#
+# Copyright 2012 Serval Project, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+
+teardown() {
+   stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
+
+configure_servald_server() {
+   create_single_identity
+   add_servald_interface
+   executeOk_servald config \
+      set debug.mdprequests on \
+      set debug.msp on \
+      set log.console.level DEBUG \
+      set log.console.show_time on
+}
+
+doc_connect_fail="Timeout when the connection isn't reachable"
+setup_connect_fail() {
+   setup_servald
+   assert_no_servald_processes
+   set_instance +B
+   create_single_identity
+   start_servald_instances +A
+}
+test_connect_fail() {
+   set_instance +A
+   execute --exit-status=1 --timeout=20 $servald msp connect $SIDB 512 <<EOF
+Hello from the client
+EOF
+   tfw_cat --stderr
+}
+
+doc_hello="Simple Hello World"
+setup_hello() {
+   setup_servald
+   assert_no_servald_processes
+   start_servald_instances +A +B
+}
+server_hello() {
+   executeOk_servald --timeout=20 msp listen 512 <<EOF
+Hello from the server
+EOF
+   assertStdoutGrep --matches=1 "^Hello from the client$"
+   tfw_cat --stderr
+}
+test_hello() {
+   set_instance +A
+   fork server_hello
+   wait_until grep "Bind MDP $SIDA:512" "$instance_servald_log"
+   set_instance +B
+   executeOk_servald --timeout=20 msp connect $SIDA 512 <<EOF
+Hello from the client
+EOF
+   assertStdoutGrep --matches=1 "^Hello from the server$"
+   fork_wait_all
+}
+
+doc_client_no_data="Client connection with no data"
+setup_client_no_data() {
+   setup_servald
+   assert_no_servald_processes
+   create_file file1 64000
+   start_servald_instances +A +B
+}
+server_client_no_data() {
+   executeOk_servald --timeout=20 msp listen 512 <file1
+   tfw_cat --stderr
+}
+test_client_no_data() {
+   set_instance +A
+   fork server_client_no_data
+   wait_until grep "Bind MDP $SIDA:512" "$instance_servald_log"
+   set_instance +B
+   executeOk_servald --timeout=20 msp connect $SIDA 512 <<EOF
+EOF
+   tfw_cat --stderr
+   assert diff file1 "$TFWSTDOUT"
+   fork_wait_all
+}
+
+doc_server_no_data="Server sends no data"
+setup_server_no_data() {
+   setup_servald
+   assert_no_servald_processes
+   create_file file1 64000
+   start_servald_instances +A +B
+}
+server_server_no_data() {
+   executeOk_servald --timeout=20 msp listen 512 <<EOF
+EOF
+   tfw_cat --stderr
+   assert diff file1 "$TFWSTDOUT"
+}
+test_server_no_data() {
+   set_instance +A
+   fork server_server_no_data
+   wait_until grep "Bind MDP $SIDA:512" "$instance_servald_log"
+   set_instance +B
+   executeOk_servald --timeout=20 msp connect $SIDA 512 <file1
+   tfw_cat --stderr
+   fork_wait_all
+}
+
+doc_keep_alive="Keep the connection alive with no data"
+setup_keep_alive() {
+   setup_servald
+   assert_no_servald_processes
+   start_servald_instances +A +B
+}
+listen_pipe() {
+   executeOk_servald msp listen 512 < <(echo "START" && sleep 20 && echo "END")
+   tfw_cat --stdout --stderr
+}
+connect_pipe() {
+   executeOk_servald msp connect $1 512 < <(echo "START" && sleep 20 && echo "END")
+   tfw_cat --stdout --stderr
+}
+test_keep_alive() {
+   set_instance +A
+   fork listen_pipe
+   wait_until --timeout=10 grep "Bind MDP $SIDA:512" "$instance_servald_log"
+   set_instance +B
+   fork connect_pipe $SIDA
+   fork_wait_all
+}
+
+doc_forward="Forward TCP connections to a remote server"
+setup_forward() {
+   setup_servald
+   assert_no_servald_processes
+   start_servald_instances +A +B
+}
+client_forward() {
+   executeOk --timeout=20 $servald msp connect --once --forward=$1 $2 512
+   tfw_cat --stdout --stderr
+}
+test_forward() {
+   set_instance +A
+   fork server_hello
+   wait_until --timeout=10 grep "Bind MDP $SIDA:512" "$instance_servald_log"
+   set_instance +B
+   fork client_forward 2048 $SIDA
+   sleep 1
+   executeOk nc -v 127.0.0.1 2048 < <(echo "Hello from the client")
+   assertStdoutGrep --matches=1 "^Hello from the server$"
+   fork_wait_all
+}
+
+doc_tcp_tunnel="Tunnel a tcp connection"
+setup_tcp_tunnel() {
+   setup_servald
+   assert_no_servald_processes
+   start_servald_instances +A +B
+}
+server_forward() {
+   executeOk_servald msp listen --once --forward=$1 512
+   tfw_cat --stderr
+}
+nc_listen() {
+   execute nc -v -l $1 < <(echo "Hello from the server")
+   tfw_cat --stdout --stderr
+}
+
+test_tcp_tunnel() {
+   fork nc_listen 6000
+   set_instance +A
+   fork server_forward 6000
+   set_instance +B
+   fork client_forward 6001 $SIDA
+   sleep 1
+   executeOk nc -v 127.0.0.1 6001 < <(echo "Hello from the client")
+   assertStdoutGrep --matches=1 "^Hello from the server$"
+   fork_wait_all
+}
+
+runTests "$@"

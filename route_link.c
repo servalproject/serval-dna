@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "overlay_address.h"
 #include "overlay_buffer.h"
+#include "overlay_interface.h"
 #include "overlay_packet.h"
 #include "str.h"
 #include "conf.h"
@@ -38,7 +39,6 @@ Link state routing;
 
 */
 
-#define INCLUDE_ANYWAY (200)
 #define MAX_LINK_STATES 512
 
 #define FLAG_HAS_INTERFACE (1<<0)
@@ -171,6 +171,7 @@ static struct profile_total link_send_stats={
 static struct sched_ent link_send_alarm={
   .function = link_send,
   .stats = &link_send_stats,
+  .alarm = TIME_NEVER_WILL,
 };
 
 struct neighbour *neighbours=NULL;
@@ -184,14 +185,15 @@ struct network_destination * new_destination(struct overlay_interface *interface
     ret->encapsulation = encapsulation;
     ret->interface = interface;
     ret->resend_delay = 1000;
+    ret->last_tx = TIME_NEVER_HAS;
 //    DEBUGF("Create ref %p, %d - %s", ret, ret->_ref_count, ret->interface->name);
   }
   return ret;
 }
 
-struct network_destination * create_unicast_destination(struct sockaddr_in addr, struct overlay_interface *interface){
-  if (!interface)
-    interface = overlay_interface_find(addr.sin_addr, 1);
+struct network_destination * create_unicast_destination(struct socket_address *addr, struct overlay_interface *interface){
+  if (!interface && addr->addr.sa_family == AF_INET)
+    interface = overlay_interface_find(addr->inet.sin_addr, 1);
   if (!interface){
     WHY("I don't know which interface to use");
     return NULL;
@@ -200,14 +202,12 @@ struct network_destination * create_unicast_destination(struct sockaddr_in addr,
     WHY("The interface is down.");
     return NULL;
   }
-  if (addr.sin_addr.s_addr==0 || addr.sin_port==0){
-//    WHY("Invalid unicast address");
+  if (addr->addr.sa_family == AF_INET && (addr->inet.sin_addr.s_addr==0 || addr->inet.sin_port==0))
     return NULL;
-  }
   
   struct network_destination *ret = new_destination(interface, ENCAP_OVERLAY);
   if (ret){
-    ret->address = addr;
+    ret->address = *addr;
     ret->unicast = 1;
     ret->tick_ms = interface->destination->tick_ms;
     ret->sequence_number = -1;
@@ -526,7 +526,7 @@ static int append_link(struct subscriber *subscriber, void *context)
   struct link *best_link = find_best_link(subscriber);
     
   if (subscriber->reachable==REACHABLE_SELF){
-    if (state->next_update - INCLUDE_ANYWAY <= now){
+    if (state->next_update - 20 <= now){
       // Other entries in our keyring are always one hop away from us.
       if (append_link_state(payload, 0, my_subscriber, subscriber, -1, 1, -1, 0, 0)){
         link_send_alarm.alarm = now+5;
@@ -540,7 +540,7 @@ static int append_link(struct subscriber *subscriber, void *context)
     if (subscriber->identity)
       keyring_send_unlock(subscriber);
     
-    if (state->next_update - INCLUDE_ANYWAY <= now){
+    if (state->next_update - 20 <= now){
       if (append_link_state(payload, 0, state->transmitter, subscriber, -1, 
 	  best_link?best_link->link_version:-1, -1, 0, best_link?best_link->drop_rate:32)){
         link_send_alarm.alarm = now+5;
@@ -854,7 +854,7 @@ static int link_send_neighbours()
   while (n){
     neighbour_find_best_link(n);
 
-    if (n->next_neighbour_update - INCLUDE_ANYWAY <= now){
+    if (n->next_neighbour_update <= now){
       send_neighbour_link(n);
     }
 
@@ -880,9 +880,7 @@ static int link_send_neighbours()
 // send link details
 static void link_send(struct sched_ent *alarm)
 {
-  time_ms_t now = gettime_ms();
-
-  alarm->alarm=now + 60000;
+  alarm->alarm=TIME_NEVER_WILL;
 
   // TODO use a separate alarm
   link_send_neighbours();
@@ -905,11 +903,9 @@ static void link_send(struct sched_ent *alarm)
       op_free(frame);
     else if (overlay_payload_enqueue(frame))
       op_free(frame);
-    if (neighbours){
-      alarm->deadline = alarm->alarm;
-      schedule(alarm);
-    }else
-      alarm->alarm=0;
+      
+    alarm->deadline = alarm->alarm;
+    schedule(alarm);
   }
 }
 
@@ -917,7 +913,7 @@ static void update_alarm(struct __sourceloc __whence, time_ms_t limit)
 {
   if (limit == 0)
     FATALF("limit == 0");
-  if (link_send_alarm.alarm>limit || link_send_alarm.alarm==0){
+  if (link_send_alarm.alarm>limit){
     unschedule(&link_send_alarm);
     link_send_alarm.alarm = limit;
     link_send_alarm.deadline = limit+10;
@@ -1066,8 +1062,8 @@ int link_state_ack_soon(struct subscriber *subscriber)
   if (neighbour->using_us 
     && subscriber->reachable & REACHABLE_DIRECT 
     && subscriber->destination){
-    if (neighbour->next_neighbour_update > now + subscriber->destination->min_rtt){
-      neighbour->next_neighbour_update = now + subscriber->destination->min_rtt;
+    if (neighbour->next_neighbour_update > now + 40 + subscriber->destination->min_rtt){
+      neighbour->next_neighbour_update = now + 40 + subscriber->destination->min_rtt;
       if (config.debug.ack)
 	DEBUGF("Asking for next ACK Real Soon Now");
     }
@@ -1107,20 +1103,20 @@ int link_received_duplicate(struct subscriber *subscriber, int payload_seq)
 }
 
 // remote peer has confirmed hearing a recent unicast packet
-int link_unicast_ack(struct subscriber *UNUSED(subscriber), struct overlay_interface *UNUSED(interface), struct sockaddr_in UNUSED(addr))
+int link_unicast_ack(struct subscriber *UNUSED(subscriber), struct overlay_interface *UNUSED(interface), struct socket_address *UNUSED(addr))
 {
   // TODO find / create network destination, keep it alive
   return 0;
 }
 
-static struct link_out *create_out_link(struct neighbour *neighbour, overlay_interface *interface, struct sockaddr_in *addr, char unicast)
+static struct link_out *create_out_link(struct neighbour *neighbour, overlay_interface *interface, struct socket_address *addr, char unicast)
 {
   struct link_out *ret=emalloc_zero(sizeof(struct link_out));
   if (ret){
     ret->_next=neighbour->out_links;
     neighbour->out_links=ret;
     if (unicast)
-      ret->destination = create_unicast_destination(*addr, interface);
+      ret->destination = create_unicast_destination(addr, interface);
     else
       ret->destination = add_destination_ref(interface->destination);
     if (config.debug.linkstate)
@@ -1135,7 +1131,7 @@ static struct link_out *create_out_link(struct neighbour *neighbour, overlay_int
   return ret;
 }
 
-static void create_out_links(struct neighbour *neighbour, overlay_interface *interface, struct sockaddr_in *addr){
+static void create_out_links(struct neighbour *neighbour, overlay_interface *interface, struct socket_address *addr){
   struct link_out *l = neighbour->out_links;
   while(l){
     if (l->destination->interface==interface)
@@ -1143,13 +1139,12 @@ static void create_out_links(struct neighbour *neighbour, overlay_interface *int
     l=l->_next;
   }
   // if this packet arrived in an IPv4 packet, assume we need to send them unicast packets
-  if (addr && addr->sin_family==AF_INET && addr->sin_port!=0 && addr->sin_addr.s_addr!=0)
-    create_out_link(neighbour, interface, addr, 1);
+  create_out_link(neighbour, interface, addr, 1);
     
   // if this packet arrived from the same IPv4 subnet, or a different type of network, assume they can hear our broadcasts
-  if (!addr || addr->sin_family!=AF_INET || 
-      (addr->sin_addr.s_addr & interface->netmask.s_addr) 
-      == (interface->address.sin_addr.s_addr & interface->netmask.s_addr))
+  if (!addr || addr->addr.sa_family!=AF_INET || 
+      (addr->inet.sin_addr.s_addr & interface->netmask.s_addr) 
+      == (interface->address.inet.sin_addr.s_addr & interface->netmask.s_addr))
     create_out_link(neighbour, interface, addr, 0);
 }
 
@@ -1421,7 +1416,7 @@ int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp)
   if (changed){
     route_version++;
     neighbour->path_version ++;
-    if (link_send_alarm.alarm>now+5 || link_send_alarm.alarm==0){
+    if (link_send_alarm.alarm>now+5){
       unschedule(&link_send_alarm);
       link_send_alarm.alarm=now+5;
       // read all incoming packets first
@@ -1494,7 +1489,7 @@ int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now)
   if (changed){
     route_version++;
     neighbour->path_version ++;
-    if (link_send_alarm.alarm>now+5 || link_send_alarm.alarm==0){
+    if (link_send_alarm.alarm>now+5){
       unschedule(&link_send_alarm);
       link_send_alarm.alarm=now+5;
       // read all incoming packets first

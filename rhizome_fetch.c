@@ -37,7 +37,7 @@ struct rhizome_fetch_candidate {
   /* Address of node offering manifest.
      Can be either IP+port for HTTP or it can be a SID 
      for MDP. */
-  struct sockaddr_in peer_ipandport;
+  struct socket_address addr;
   sid_t peer_sid;
 
   int priority;
@@ -50,7 +50,7 @@ struct rhizome_fetch_slot {
   struct sched_ent alarm; // must be first element in struct
   rhizome_manifest *manifest;
 
-  struct sockaddr_in peer_ipandport;
+  struct socket_address addr;
   sid_t peer_sid;
 
   int state;
@@ -593,34 +593,25 @@ schedule_fetch(struct rhizome_fetch_slot *slot)
   slot->alarm.function = rhizome_fetch_poll;
   slot->alarm.stats = &fetch_stats;
 
-  if (slot->peer_ipandport.sin_family == AF_INET && slot->peer_ipandport.sin_port) {
+  if (slot->addr.addr.sa_family == AF_INET && slot->addr.inet.sin_port) {
     /* Transfer via HTTP over IPv4 */
     if ((sock = esocket(AF_INET, SOCK_STREAM, 0)) == -1)
       goto bail_http;
     if (set_nonblock(sock) == -1)
       goto bail_http;
-    char buf[INET_ADDRSTRLEN];
-    if (inet_ntop(AF_INET, &slot->peer_ipandport.sin_addr, buf, sizeof buf) == NULL) {
-      buf[0] = '*';
-      buf[1] = '\0';
-    }
-    if (connect(sock, (struct sockaddr*)&slot->peer_ipandport, 
-		sizeof slot->peer_ipandport) == -1) {
+    if (connect(sock, &slot->addr.addr, slot->addr.addrlen) == -1) {
       if (errno == EINPROGRESS) {
 	if (config.debug.rhizome_rx)
 	  DEBUGF("connect() returned EINPROGRESS");
       } else {
-	WHYF_perror("connect(%d, %s:%u)", sock, buf, 
-		    ntohs(slot->peer_ipandport.sin_port));
+	WHYF_perror("connect(%d, %s)", sock, alloca_socket_address(&slot->addr));
 	goto bail_http;
       }
     }
     if (config.debug.rhizome_rx)
-      DEBUGF("RHIZOME HTTP REQUEST family=%u addr=%s sid=%s port=%u %s",
-	     slot->peer_ipandport.sin_family, 
-	     buf,
+      DEBUGF("RHIZOME HTTP REQUEST addr=%s sid=%s %s",
+	     alloca_socket_address(&slot->addr),
 	     alloca_tohex_sid_t(slot->peer_sid),
-	     ntohs(slot->peer_ipandport.sin_port), 
 	     alloca_str_toprint(slot->request)
 	);
     slot->alarm.poll.fd = sock;
@@ -684,7 +675,8 @@ schedule_fetch(struct rhizome_fetch_slot *slot)
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 static enum rhizome_start_fetch_result
-rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct sockaddr_in *peerip, const sid_t *peersidp)
+rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, 
+  const struct socket_address *addr, const sid_t *peersidp)
 {
   IN();
   if (slot->state != RHIZOME_FETCH_FREE)
@@ -705,12 +697,12 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   */
 
   if (config.debug.rhizome_rx)
-    DEBUGF("Fetching bundle slot=%d bid=%s version=%"PRIu64" size=%"PRIu64" peerip=%s",
+    DEBUGF("Fetching bundle slot=%d bid=%s version=%"PRIu64" size=%"PRIu64" addr=%s",
 	   slotno(slot),
 	   alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
 	   m->version,
 	   m->filesize,
-	   alloca_sockaddr(peerip, sizeof(struct sockaddr_in))
+	   alloca_socket_address(addr)
 	   );
 
   // If the payload is empty, no need to fetch, so import now.
@@ -767,7 +759,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
     DEBUGF("   is new");
 
   /* Prepare for fetching */
-  slot->peer_ipandport = *peerip;
+  slot->addr = *addr;
   slot->peer_sid = *peersidp;
   slot->manifest = m;
 
@@ -787,17 +779,17 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
  * Returns -1 on error.
  */
 enum rhizome_start_fetch_result
-rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip, 
+rhizome_fetch_request_manifest_by_prefix(const struct socket_address *addr, 
 					 const sid_t *peersidp,
 					 const unsigned char *prefix, size_t prefix_length)
 {
-  assert(peerip);
+  assert(addr);
   struct rhizome_fetch_slot *slot = rhizome_find_fetch_slot(MAX_MANIFEST_BYTES);
   if (slot == NULL)
     return SLOTBUSY;
 
   /* Prepare for fetching via HTTP */
-  slot->peer_ipandport = *peerip;
+  slot->addr = *addr;
   slot->manifest = NULL;
   slot->peer_sid = *peersidp;
   bcopy(prefix, slot->bid.binary, prefix_length);
@@ -824,7 +816,7 @@ static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
     unsigned i = 0;
     struct rhizome_fetch_candidate *c;
     while (i < q->candidate_queue_size && (c = &q->candidate_queue[i])->manifest) {
-      int result = rhizome_fetch(slot, c->manifest, &c->peer_ipandport, &c->peer_sid);
+      int result = rhizome_fetch(slot, c->manifest, &c->addr, &c->peer_sid);
       switch (result) {
       case SLOTBUSY:
 	OUT(); return;
@@ -880,7 +872,7 @@ int rhizome_fetch_has_queue_space(unsigned char log2_size){
   return 0;
 }
 
-/* Queue a fetch for the payload of the given manifest.  If 'peerip' is not NULL, then it is used as
+/* Queue a fetch for the payload of the given manifest.  If 'addr' is not NULL, then it is used as
  * the port and IP address of an HTTP server from which the fetch is performed.  Otherwise the fetch
  * is performed over MDP.
  *
@@ -897,7 +889,7 @@ int rhizome_fetch_has_queue_space(unsigned char log2_size){
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip, const sid_t *peersidp)
+int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct socket_address *addr, const sid_t *peersidp)
 {
   IN();
   
@@ -1000,7 +992,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   struct rhizome_fetch_candidate *c = rhizome_fetch_insert(qi, ci);
   c->manifest = m;
   c->priority = priority;
-  c->peer_ipandport = *peerip;
+  c->addr = *addr;
   c->peer_sid = *peersidp;
 
   if (config.debug.rhizome_rx) {
@@ -1332,13 +1324,8 @@ static int rhizome_write_complete(struct rhizome_fetch_slot *slot)
     }
 
     if (slot->state==RHIZOME_FETCH_RXFILE) {
-      char buf[INET_ADDRSTRLEN];
-      if (inet_ntop(AF_INET, &slot->peer_ipandport.sin_addr, buf, sizeof buf) == NULL) {
-	buf[0] = '*';
-	buf[1] = '\0';
-      }
-      INFOF("Completed http request from %s:%u  for file %s",
-	      buf, ntohs(slot->peer_ipandport.sin_port), 
+      INFOF("Completed http request from %s for file %s",
+	      alloca_socket_address(&slot->addr), 
 	      alloca_tohex_rhizome_filehash_t(slot->manifest->filehash));
     } else {
       INFOF("Completed MDP request from %s  for file %s",
@@ -1362,11 +1349,12 @@ static int rhizome_write_complete(struct rhizome_fetch_slot *slot)
 	rhizome_manifest_free(m);
       } else {
 	if (config.debug.rhizome_rx){
-	  DEBUGF("All looks good for importing manifest id=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
-	  dump("slot->peerip",&slot->peer_ipandport,sizeof(slot->peer_ipandport));
-	  dump("slot->peersid",&slot->peer_sid,sizeof(slot->peer_sid));
+	  DEBUGF("All looks good for importing manifest id=%s, addr=%s, sid=%s", 
+	    alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
+	    alloca_socket_address(&slot->addr),
+	    alloca_tohex_sid_t(slot->peer_sid));
 	}
-	rhizome_suggest_queue_manifest_import(m, &slot->peer_ipandport, &slot->peer_sid);
+	rhizome_suggest_queue_manifest_import(m, &slot->addr, &slot->peer_sid);
       }
     }
   }

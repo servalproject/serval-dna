@@ -23,15 +23,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "overlay_address.h"
 #include "overlay_buffer.h"
+#include "overlay_interface.h"
 #include "overlay_packet.h"
 #include "keyring.h"
+#include "strbuf_helpers.h"
 
 #define MIN_BURST_LENGTH 5000
-
-struct probe_contents{
-  struct sockaddr_in addr;
-  unsigned char interface;
-};
 
 static void update_limit_state(struct limit_state *state, time_ms_t now){
   if (state->next_interval > now || state->burst_size==0){
@@ -177,14 +174,15 @@ int load_subscriber_address(struct subscriber *subscriber)
     if (!interface)
       return WHY("Can't fund configured interface");
   }
-  struct sockaddr_in addr;
+  struct socket_address addr;
   bzero(&addr, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_addr = hostc->address;
-  addr.sin_port = htons(hostc->port);
-  if (addr.sin_addr.s_addr==INADDR_NONE){
+  addr.addrlen = sizeof(addr.inet);
+  addr.inet.sin_family = AF_INET;
+  addr.inet.sin_addr = hostc->address;
+  addr.inet.sin_port = htons(hostc->port);
+  if (addr.inet.sin_addr.s_addr==INADDR_NONE){
     if (interface || overlay_interface_get_default()){
-      if (resolve_name(hostc->host, &addr.sin_addr))
+      if (resolve_name(hostc->host, &addr.inet.sin_addr))
 	return -1;
     }else{
       // interface isnt up yet
@@ -192,8 +190,8 @@ int load_subscriber_address(struct subscriber *subscriber)
     }
   }
   if (config.debug.overlayrouting)
-    DEBUGF("Loaded address %s:%d for %s", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), alloca_tohex_sid_t(subscriber->sid));
-  struct network_destination *destination = create_unicast_destination(addr, interface);
+    DEBUGF("Loaded address %s for %s", alloca_socket_address(&addr), alloca_tohex_sid_t(subscriber->sid));
+  struct network_destination *destination = create_unicast_destination(&addr, interface);
   if (!destination)
     return -1;
   int ret=overlay_send_probe(subscriber, destination, OQ_MESH_MANAGEMENT);
@@ -206,7 +204,7 @@ int
 overlay_mdp_service_probe(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 {
   IN();
-  if (mdp->out.src.port!=MDP_PORT_ECHO || mdp->out.payload_length != sizeof(struct probe_contents)){
+  if (mdp->out.src.port!=MDP_PORT_ECHO){
     WARN("Probe packets should be returned from remote echo port");
     RETURN(-1);
   }
@@ -214,12 +212,16 @@ overlay_mdp_service_probe(struct overlay_frame *frame, overlay_mdp_frame *mdp)
   if (frame->source->reachable == REACHABLE_SELF)
     RETURN(0);
   
-  struct probe_contents probe;
-  bcopy(&mdp->out.payload, &probe, sizeof(struct probe_contents));
-  if (probe.addr.sin_family!=AF_INET)
-    RETURN(WHY("Unsupported address family"));
+  uint8_t interface = mdp->out.payload[0];
+  struct socket_address addr;
+  addr.addrlen = mdp->out.payload_length - 1;
   
-  RETURN(link_unicast_ack(frame->source, &overlay_interfaces[probe.interface], probe.addr));
+  if (addr.addrlen > sizeof(addr.store))
+    RETURN(-1);
+  
+  bcopy(&mdp->out.payload[1], &addr.addr, addr.addrlen);
+  
+  RETURN(link_unicast_ack(frame->source, &overlay_interfaces[interface], &addr));
   OUT();
 }
 
@@ -250,25 +252,18 @@ int overlay_send_probe(struct subscriber *peer, struct network_destination *dest
   // TODO call mdp payload encryption / signing without calling overlay_mdp_dispatch...
   
   overlay_mdp_encode_ports(frame->payload, MDP_PORT_ECHO, MDP_PORT_PROBE);
-  // not worried about byte order here as we are the only node that should be parsing the contents.
-  unsigned char *dst=ob_append_space(frame->payload, sizeof(struct probe_contents));
-  if (!dst){
-    op_free(frame);
-    return -1;
-  }
-  struct probe_contents probe;
-  probe.addr=destination->address;
-  // get interface number
-  probe.interface = destination->interface - overlay_interfaces;
-  bcopy(&probe, dst, sizeof(struct probe_contents));
+  
+  ob_append_byte(frame->payload, destination->interface - overlay_interfaces);
+  ob_append_bytes(frame->payload, (uint8_t*)&destination->address.addr, destination->address.addrlen);
+  
   if (overlay_payload_enqueue(frame)){
     op_free(frame);
     return -1;
   }
   if (config.debug.overlayrouting)
-    DEBUGF("Queued probe packet on interface %s to %s:%d for %s", 
+    DEBUGF("Queued probe packet on interface %s to %s for %s", 
 	 destination->interface->name, 
-	 inet_ntoa(destination->address.sin_addr), ntohs(destination->address.sin_port), 
+	 alloca_socket_address(&destination->address), 
 	 peer?alloca_tohex_sid_t(peer->sid):"ANY");
   return 0;
 }
@@ -278,11 +273,11 @@ static void overlay_append_unicast_address(struct subscriber *subscriber, struct
 {
   if (   subscriber->destination 
       && subscriber->destination->unicast
-      && subscriber->destination->address.sin_family==AF_INET
+      && subscriber->destination->address.addr.sa_family==AF_INET
   ) {
     overlay_address_append(NULL, buff, subscriber);
-    ob_append_ui32(buff, subscriber->destination->address.sin_addr.s_addr);
-    ob_append_ui16(buff, subscriber->destination->address.sin_port);
+    ob_append_ui32(buff, subscriber->destination->address.inet.sin_addr.s_addr);
+    ob_append_ui16(buff, subscriber->destination->address.inet.sin_port);
     if (config.debug.overlayrouting)
       DEBUGF("Added STUN info for %s", alloca_tohex_sid_t(subscriber->sid));
   }else{
@@ -349,22 +344,22 @@ int overlay_mdp_service_stun(overlay_mdp_frame *mdp)
 
   while(ob_remaining(buff)>0){
     struct subscriber *subscriber=NULL;
-    struct sockaddr_in addr;
     
     // TODO explain addresses, link expiry time, resolve differences between addresses...
     
     if (overlay_address_parse(NULL, buff, &subscriber)){
       break;
     }
-    
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = ob_get_ui32(buff);
-    addr.sin_port = ob_get_ui16(buff);
+    struct socket_address addr;
+    addr.addrlen = sizeof(addr.inet);
+    addr.inet.sin_family = AF_INET;
+    addr.inet.sin_addr.s_addr = ob_get_ui32(buff);
+    addr.inet.sin_port = ob_get_ui16(buff);
     
     if (!subscriber || (subscriber->reachable!=REACHABLE_NONE))
       continue;
     
-    struct network_destination *destination = create_unicast_destination(addr, NULL);
+    struct network_destination *destination = create_unicast_destination(&addr, NULL);
     if (destination){
       overlay_send_probe(subscriber, destination, OQ_MESH_MANAGEMENT);
       release_destination_ref(destination);

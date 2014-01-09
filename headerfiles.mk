@@ -3,6 +3,7 @@ HDRS=	fifo.h \
 	overlay_buffer.h \
 	overlay_address.h \
 	overlay_packet.h \
+	overlay_interface.h \
 	rhizome.h \
 	serval.h \
 	keyring.h \
@@ -28,5 +29,6 @@ HDRS=	fifo.h \
 	constants.h \
 	monitor-client.h \
 	mdp_client.h \
+	msp_client.h \
 	radio_link.h \
 	sqlite-amalgamation-3070900/sqlite3.h

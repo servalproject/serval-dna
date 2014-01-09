@@ -73,6 +73,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include "strbuf.h"
 #include "keyring.h"
+#include "overlay_interface.h"
 
 int overlayMode=0;
 

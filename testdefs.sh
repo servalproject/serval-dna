@@ -259,6 +259,7 @@ setup_servald_so() {
 start_servald_server() {
    push_instance
    set_instance_fromarg "$1" && shift
+   configure_servald_server
    # Start servald server
    local -a before_pids
    local -a after_pids
@@ -654,7 +655,38 @@ create_identities() {
 #  - set up the configuration immediately prior to starting a servald server process
 #  - called by start_servald_instances
 configure_servald_server() {
-   :
+   add_servald_interface
+}
+
+add_servald_interface() {
+   local SOCKET_TYPE="dgram"
+   local INTERFACE="1"
+   local TYPE="wifi"
+   while [ $# -ne 0 ]; do
+      case "$1" in
+      --wifi) TYPE="wifi"; shift;;
+      --ethernet) TYPE="ethernet"; shift;;
+      --file) SOCKET_TYPE="file"; shift;;
+      *) INTERFACE="$1"; shift;;
+      esac
+   done
+   if [ "${SOCKET_TYPE}" == "file" ]; then
+      >>$SERVALD_VAR/dummy$INTERFACE
+      executeOk_servald config \
+         set server.interface_path $SERVALD_VAR \
+         set interfaces.$INTERFACE.socket_type $SOCKET_TYPE \
+         set interfaces.$INTERFACE.file dummy$INTERFACE \
+         set interfaces.$INTERFACE.type $TYPE \
+         set interfaces.$INTERFACE.dummy_address 127.0.$INTERFACE.$instance_number \
+         set interfaces.$INTERFACE.dummy_netmask 255.255.255.224
+   else
+      mkdir "$SERVALD_VAR/dummy$INTERFACE/"
+      executeOk_servald config \
+         set server.interface_path $SERVALD_VAR \
+         set interfaces.$INTERFACE.socket_type $SOCKET_TYPE \
+         set interfaces.$INTERFACE.file dummy$INTERFACE/$instance_name \
+         set interfaces.$INTERFACE.type $TYPE
+   fi
 }
 
 # Utility function:
@@ -666,29 +698,13 @@ configure_servald_server() {
 #  - wait for all instances to detect each other
 #  - assert that all instances are in each others' peer lists
 start_servald_instances() {
-   local DUMMY=dummy
-   case "$1" in
-   dummy*) DUMMY="$1"; shift;;
-   esac
    push_instance
-   tfw_log "# start servald instances DUMMY=$DUMMY $*"
-   local DUMMYNET="$SERVALD_VAR/$DUMMY"
-   >$DUMMYNET
-   local I
-   for I; do
-      set_instance $I
-      # These config settings can be overridden in a caller-supplied configure_servald_server().
-      # They are extremely useful for the majority of fixtures.
-      executeOk_servald config \
-         set interfaces.1.file "$DUMMYNET"
-      configure_servald_server
+   tfw_log "# start servald instances $*"
+   foreach_instance "$@" \
       start_servald_server
-      eval DUMMY$instance_name="\$DUMMYNET"
-   done
    # Now wait until they see each other.
    foreach_instance "$@" \
       wait_until --sleep=0.25 has_seen_instances "$@"
-   tfw_log "# dummynet file:" $(ls -l $DUMMYNET)
    pop_instance
 }
 

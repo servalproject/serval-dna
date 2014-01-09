@@ -25,7 +25,7 @@ setup() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
-   configure_servald_server() { set_server_vars; }
+   configure_servald_server() { add_servald_interface; set_server_vars; }
    start_servald_instances +A +B
    set_instance +A
 }
@@ -45,17 +45,10 @@ set_server_vars() {
       set log.console.level debug \
       set log.console.show_pid on \
       set log.console.show_time on \
-      set mdp.iftype.wifi.tick_ms 100 \
       set rhizome.enable No \
-      set debug.overlayinterfaces No \
-      set debug.overlaybuffer No \
-      set debug.packetformats No \
-      set debug.overlayframes No \
-      set debug.overlayrouting No \
-      set debug.packettx No \
-      set debug.packetrx No \
       set debug.mdprequests Yes \
-      set debug.keyring Yes
+      set debug.keyring Yes \
+      set debug.linkstate Yes
 }
 
 doc_LookupWildcard="Lookup by wildcard"
@@ -125,6 +118,7 @@ EOF
    chmod 0755 "$dnahelper"
    foreach_instance +A +B +C +D create_single_identity
    configure_servald_server() {
+      add_servald_interface
       set_server_vars
       executeOk_servald config \
          set debug.dnahelper on \

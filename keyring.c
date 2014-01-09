@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "nacl.h"
 #include "overlay_address.h"
 #include "crypto.h"
+#include "overlay_interface.h"
 #include "overlay_packet.h"
 #include "keyring.h"
 #include "dataformats.h"

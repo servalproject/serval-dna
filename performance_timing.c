@@ -178,9 +178,6 @@ int fd_showstats()
     stats = stats->_next;
   }
 
-  // Show periodic rhizome transfer information
-  rhizome_fetch_log_short_status();
-
   // Report any functions that take too much time
   if (!config.debug.timing)
     {

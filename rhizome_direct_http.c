@@ -17,16 +17,19 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <assert.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <arpa/inet.h>
+
 #include "serval.h"
 #include "rhizome.h"
 #include "conf.h"
 #include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
-#include <assert.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <arpa/inet.h>
+#include "socket.h"
+
 
 static int _form_temporary_file_path(struct __sourceloc __whence, rhizome_http_request *r, char *pathbuf, size_t bufsiz, const char *field)
 {
@@ -488,14 +491,15 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
     goto end;
   }
 
-  struct sockaddr_in addr;
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(state->port);
-  addr.sin_addr = *((struct in_addr *)hostent->h_addr);
-  bzero(&(addr.sin_zero),8);
+  struct socket_address addr;
+  bzero(&addr,sizeof(addr));
+  addr.addrlen = sizeof(addr.inet);
+  addr.inet.sin_family = AF_INET;
+  addr.inet.sin_port = htons(state->port);
+  addr.inet.sin_addr = *((struct in_addr *)hostent->h_addr);
 
-  if (connect(sock, (struct sockaddr *)&addr, sizeof addr) == -1) {
-    WHYF_perror("connect(%s)", alloca_sockaddr(&addr, sizeof addr));
+  if (connect(sock, &addr.addr, addr.addrlen) == -1) {
+    WHYF_perror("connect(%s)", alloca_socket_address(&addr));
     close(sock);
     goto end;
   }
@@ -693,18 +697,13 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	len+=m->manifest_all_bytes;
 	len+=snprintf(&buffer[len],8192-len,template3,boundary);
 
-	addr.sin_family = AF_INET;
-	addr.sin_port = htons(state->port);
-	addr.sin_addr = *((struct in_addr *)hostent->h_addr);
-	bzero(&(addr.sin_zero),8);
-
 	sock=socket(AF_INET, SOCK_STREAM, 0);
 	if (sock==-1) {
 	  if (config.debug.rhizome_tx)
 	    DEBUGF("could not open socket");
 	  goto closeit;
 	}
-	if (connect(sock,(struct sockaddr *)&addr,sizeof(struct sockaddr)) == -1) {
+	if (connect(sock,&addr.addr,addr.addrlen) == -1) {
 	  if (config.debug.rhizome_tx)
 	    DEBUGF("Could not connect to remote");
 	  goto closeit;

@@ -1080,7 +1080,10 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   if (broadcast)
     WARN("broadcast ping packets will not be encrypted");
   
-  for (; icount==0 || tx_count<icount; ++sequence_number) {
+  sigIntFlag = 0;
+  signal(SIGINT, sigIntHandler);
+  
+  for (; sigIntFlag==0 && (icount==0 || tx_count<icount); ++sequence_number) {
     
     // send a ping packet
     {
@@ -1100,7 +1103,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
        with appropriate information as required */
     time_ms_t now = gettime_ms();
     time_ms_t finish = now + ((tx_count < icount || icount==0)?interval_ms:timeout_ms);
-    for (; !servalShutdown && now < finish; now = gettime_ms()) {
+    for (; sigIntFlag==0 && now < finish; now = gettime_ms()) {
       time_ms_t poll_timeout_ms = finish - gettime_ms();
       
       if (mdp_poll(mdp_sockfd, poll_timeout_ms)<=0)
@@ -1163,6 +1166,8 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
     }
   }
 
+  signal(SIGINT, SIG_DFL);
+  sigIntFlag = 0;
   mdp_close(mdp_sockfd);
   
   {
@@ -2261,6 +2266,7 @@ static int app_keyring_set_tag(const struct cli_parsed *parsed, struct cli_conte
   return r;
 }
 
+// returns -1 on error, -2 on timeout, packet length on success.
 ssize_t mdp_poll_recv(int mdp_sock, time_ms_t timeout, struct mdp_header *rev_header, unsigned char *payload, size_t buffer_size)
 {
   time_ms_t now = gettime_ms();
@@ -3055,6 +3061,10 @@ struct cli_schema command_line_options[]={
    "Run byte order handling test"},
   {app_slip_test,{"test","slip","[--seed=<N>]","[--duration=<seconds>|--iterations=<N>]",NULL}, 0,
    "Run serial encapsulation test"},
+  {app_msp_connection,{"msp", "listen", "[--once]", "[--forward=<local_port>]", "<port>", NULL}, 0,
+  "Listen for incoming connections"},
+  {app_msp_connection,{"msp", "connect", "[--once]", "[--forward=<local_port>]", "<sid>", "<port>", NULL}, 0,
+  "Connect to a remote party"},
 #ifdef HAVE_VOIPTEST
   {app_pa_phone,{"phone",NULL}, 0,
    "Run phone test application"},

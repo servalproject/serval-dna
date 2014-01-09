@@ -21,6 +21,7 @@
 #include "serval.h"
 #include "conf.h"
 #include "overlay_buffer.h"
+#include "overlay_interface.h"
 #include "overlay_packet.h"
 #include "radio_link.h"
 #include "str.h"
@@ -568,6 +569,9 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
 
 	  if (acked){
 	    int rtt = now - frame->destinations[j].transmit_time;
+	    // if we're on a fake network, the actual rtt can be unrealistic
+	    if (rtt <5)
+	      rtt=5;
 	    if (!destination->min_rtt || rtt < destination->min_rtt){
 	      destination->min_rtt = rtt;
 	      int delay = rtt * 2 + 40;

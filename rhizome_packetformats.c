@@ -290,14 +290,17 @@ int overlay_rhizome_saw_advertisements(struct decode_context *context, struct ov
     RETURN(0);
   
   int ad_frame_type=ob_get(f->payload);
-  struct sockaddr_in httpaddr = context->addr;
-  httpaddr.sin_port = htons(RHIZOME_HTTP_PORT);
+  struct socket_address httpaddr = context->addr;
+  if (httpaddr.addr.sa_family == AF_INET)
+    httpaddr.inet.sin_port = htons(RHIZOME_HTTP_PORT);
   rhizome_manifest *m=NULL;
 
   int (*oldfunc)() = sqlite_set_tracefunc(is_debug_rhizome_ads);
 
   if (ad_frame_type & HAS_PORT){
-    httpaddr.sin_port = htons(ob_get_ui16(f->payload));
+    uint16_t port = ob_get_ui16(f->payload);
+    if (httpaddr.addr.sa_family == AF_INET)
+      httpaddr.inet.sin_port = htons(port);
   }
   
   if (ad_frame_type & HAS_MANIFESTS){

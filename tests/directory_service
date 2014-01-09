@@ -22,6 +22,7 @@ source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
 configure_servald_server() {
+   add_servald_interface
    executeOk_servald config \
       set log.console.show_pid on \
       set log.console.show_time on \
