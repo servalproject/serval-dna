@@ -141,11 +141,26 @@ static void process_msp_asap()
   schedule(&mdp_sock);
 }
 
+static void remote_shutdown(struct connection *conn)
+{
+  struct mdp_sockaddr remote;
+  if (shutdown(conn->alarm_out.poll.fd, SHUT_WR))
+    WARNF_perror("shutdown(%d)", conn->alarm_out.poll.fd);
+  msp_get_remote_adr(conn->sock, &remote);
+  INFOF(" - Connection with %s:%d remote shutdown", alloca_tohex_sid_t(remote.sid), remote.port);
+}
+
+static void local_shutdown(struct connection *conn)
+{
+  struct mdp_sockaddr remote;
+  msp_get_remote_adr(conn->sock, &remote);
+  msp_shutdown(conn->sock);
+  INFOF(" - Connection with %s:%d local shutdown", alloca_tohex_sid_t(remote.sid), remote.port);
+}
+
 static int msp_handler(struct msp_sock *sock, msp_state_t state, const uint8_t *payload, size_t len, void *context)
 {
   struct connection *conn = context;
-  conn->last_state=state;
-  
   if (state & MSP_STATE_ERROR)
     saw_error=1;
     
@@ -167,6 +182,11 @@ static int msp_handler(struct msp_sock *sock, msp_state_t state, const uint8_t *
     conn->alarm_out.poll.revents=POLLOUT;
     conn->alarm_out.function(&conn->alarm_out);
   }
+  
+  if ((state & MSP_STATE_SHUTDOWN_REMOTE) && !(conn->last_state & MSP_STATE_SHUTDOWN_REMOTE) && conn->out->limit==0)
+    remote_shutdown(conn);
+  
+  conn->last_state=state;
   
   if (state & MSP_STATE_CLOSED){
     struct mdp_sockaddr remote;
@@ -256,14 +276,6 @@ static void msp_poll(struct sched_ent *alarm)
   }
 }
 
-static void local_shutdown(struct connection *conn)
-{
-  struct mdp_sockaddr remote;
-  msp_get_remote_adr(conn->sock, &remote);
-  msp_shutdown(conn->sock);
-  INFOF(" - Connection with %s:%d local shutdown", alloca_tohex_sid_t(remote.sid), remote.port);
-}
-
 static int try_send(struct connection *conn)
 {
   if (!conn->in->limit)
@@ -274,7 +286,7 @@ static int try_send(struct connection *conn)
   // if this packet was acceptted, clear the read buffer
   conn->in->limit = conn->in->position = 0;
   // hit end of data?
-  if (conn->alarm_in.poll.events==0){
+  if (!(conn->alarm_in.poll.events&POLLIN)){
     local_shutdown(conn);
   }else{
     if (!is_watching(&conn->alarm_in))
@@ -324,6 +336,8 @@ static void io_poll(struct sched_ent *alarm)
       conn->out->limit = conn->out->position = 0;
       if (is_watching(alarm))
 	unwatch(alarm);
+      if (conn->last_state & MSP_STATE_SHUTDOWN_REMOTE)
+	remote_shutdown(conn);
     }
     
     if (conn->out->limit < conn->out->capacity){
@@ -338,7 +352,7 @@ static void io_poll(struct sched_ent *alarm)
   if (alarm->poll.revents & POLLHUP) {
     // EOF? trigger a graceful shutdown
     unwatch(alarm);
-    alarm->poll.events = 0;
+    alarm->poll.events &= ~POLLIN;
     if (!conn->in->limit){
       local_shutdown(conn);
       process_msp_asap();

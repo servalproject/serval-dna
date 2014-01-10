@@ -421,6 +421,7 @@ int msp_send(struct msp_sock *sock, const uint8_t *payload, size_t len)
 
 int msp_shutdown(struct msp_sock *sock)
 {
+  assert(!(sock->state&MSP_STATE_SHUTDOWN_LOCAL));
   if (sock->tx._tail && sock->tx._tail->sent==0){
     sock->tx._tail->flags |= FLAG_SHUTDOWN;
   }else{
@@ -459,11 +460,11 @@ static int process_sock(struct msp_sock *sock)
   while(p && p->seq == sock->rx.next_seq){
     struct msp_packet *packet=p;
     
-    // process packet flags when we have delivered the packet
+    // process packet flags when we are about to deliver the last packet
     if (packet->flags & FLAG_SHUTDOWN)
       sock->state|=MSP_STATE_SHUTDOWN_REMOTE;
     
-    if (sock->handler && packet->payload){
+    if (sock->handler){
       int r = sock->handler(sock, sock->state, packet->payload, packet->len, sock->context);
       if (r==-1){
 	sock->state |= MSP_STATE_CLOSED;
