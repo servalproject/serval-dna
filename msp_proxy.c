@@ -374,6 +374,7 @@ static void listen_poll(struct sched_ent *alarm)
 
     msp_set_handler(sock, msp_handler, connection);
     msp_set_remote(sock, remote_addr);
+    process_msp_asap();
     
     if (once){
       unwatch(alarm);
