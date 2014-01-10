@@ -1185,14 +1185,9 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
 	  link->ack_mask = link->ack_mask << 1;
 	  link->ack_counter --;
 
-	  // if we need to nack promptly
+	  // we may need to nack promptly
 	  if (neighbour->using_us && link==neighbour->best_link){
-	    neighbour->next_neighbour_update = now + 10;
-
-	    if (link->ack_counter <=0){
-	      neighbour_find_best_link(neighbour);
-              send_neighbour_link(neighbour);
-	    }
+	    neighbour->next_neighbour_update = now + 5;
 	  }
         }
       }
@@ -1208,9 +1203,10 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
   link->link_timeout = now + (context->interface->destination->tick_ms *5);
 
   // force an update soon when we need to promptly ack packets
-  if (neighbour->using_us > now && link == neighbour->best_link && link->ack_counter <=0){
+  if (neighbour->using_us && link->ack_counter <=0){
     neighbour_find_best_link(neighbour);
-    send_neighbour_link(neighbour);
+    if (link == neighbour->best_link)
+      send_neighbour_link(neighbour);
   }
 
   update_alarm(__WHENCE__, neighbour->next_neighbour_update);
@@ -1379,8 +1375,7 @@ int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 
       // process acks / nacks
       if (ack_seq!=-1){
-	// TODO unicast
-        overlay_queue_ack(sender, interface->destination, ack_mask, ack_seq);
+        overlay_queue_ack(sender, destination, ack_mask, ack_seq);
 
         // did they miss our last ack?
         if (neighbour->last_update_seq!=-1){
