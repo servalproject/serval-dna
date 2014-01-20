@@ -414,6 +414,7 @@ static HTTP_CONTENT_GENERATOR restful_rhizome_bundlelist_json_content;
 
 static int restful_rhizome_bundlelist_json(rhizome_http_request *r, const char *remainder)
 {
+  r->http.response.header.content_type = "application/json";
   if (!is_rhizome_http_enabled())
     return 403;
   if (*remainder)
@@ -432,6 +433,7 @@ static int restful_rhizome_bundlelist_json(rhizome_http_request *r, const char *
 
 static int restful_rhizome_newsince(rhizome_http_request *r, const char *remainder)
 {
+  r->http.response.header.content_type = "application/json";
   if (!is_rhizome_http_enabled())
     return 403;
   uint64_t rowid;
@@ -593,6 +595,7 @@ static int insert_mime_part_body(struct http_request *, char *, size_t);
 
 static int restful_rhizome_insert(rhizome_http_request *r, const char *remainder)
 {
+  r->http.response.header.content_type = "application/json";
   if (*remainder)
     return 404;
   if (!is_rhizome_http_enabled())
@@ -964,6 +967,7 @@ static HTTP_HANDLER restful_rhizome_bid_decrypted_bin;
 
 static int restful_rhizome_(rhizome_http_request *r, const char *remainder)
 {
+  r->http.response.header.content_type = "application/json";
   if (!is_rhizome_http_enabled())
     return 403;
   HTTP_HANDLER *handler = NULL;
