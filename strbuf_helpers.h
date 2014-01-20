@@ -166,6 +166,7 @@ strbuf strbuf_append_quoted_string(strbuf sb, const char *str);
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 strbuf strbuf_json_null(strbuf sb);
+strbuf strbuf_json_boolean(strbuf sb, int boolean);
 strbuf strbuf_json_string(strbuf sb, const char *str);
 strbuf strbuf_json_hex(strbuf sb, const unsigned char *buf, size_t len);
 

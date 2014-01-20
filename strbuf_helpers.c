@@ -465,6 +465,12 @@ strbuf strbuf_json_null(strbuf sb)
   return sb;
 }
 
+strbuf strbuf_json_boolean(strbuf sb, int boolean)
+{
+  strbuf_puts(sb, boolean ? "true" : "false");
+  return sb;
+}
+
 strbuf strbuf_json_string(strbuf sb, const char *str)
 {
   if (str) {
