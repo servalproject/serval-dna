@@ -82,6 +82,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string.h>
 #include <stdarg.h>
 #include <alloca.h>
+#include <assert.h>
 
 #ifndef __STRBUF_INLINE
 # if __GNUC__ && !__GNUC_STDC_INLINE__
@@ -132,6 +133,29 @@ typedef const struct strbuf *const_strbuf;
  */
 #define strbuf_alloca(size) strbuf_make(alloca(SIZEOF_STRBUF + (size)), SIZEOF_STRBUF + (size))
 
+/** Convenience macro that calls strbuf_alloca() to allocate a large enough
+ * buffer to hold the entire content produced by a given expression that
+ * appends to the strbuf.  The first strbuf_alloca() will use the supplied
+ * initial length, and if that overruns, then a second strbuf_alloca() will use
+ * the strbuf_count() from the first pass, so as long as the expression is
+ * stable (ie, always produces the same output), the final assert() will not
+ * be triggered.
+ *
+ *      strbuf b;
+ *      STRBUF_ALLOCA_FIT(b, 20, (strbuf_append_variable_content(b, ...)));
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+#define STRBUF_ALLOCA_FIT(__SB, __INITIAL_LEN, __EXPR) \
+    do { \
+        __SB = strbuf_alloca((__INITIAL_LEN) + 1); \
+        __EXPR; \
+        if (strbuf_overrun(__SB)) { \
+            __SB = strbuf_alloca(strbuf_count(__SB) + 1); \
+            __EXPR; \
+        } \
+        assert(!strbuf_overrun(__SB)); \
+    } while (0)
 
 /** Convenience macro for filling a strbuf from the calling function's
  * printf(3)-like variadic arguments.
