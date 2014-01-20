@@ -387,9 +387,7 @@ void crash_handler(int signal)
   BACKTRACE;
   if (config.server.respawn_on_crash) {
     unsigned i;
-    for(i=0;i<overlay_interface_count;i++)
-      if (overlay_interfaces[i].alarm.poll.fd>-1)
-	close(overlay_interfaces[i].alarm.poll.fd);
+    overlay_interface_close_all();
     char execpath[160];
     if (get_self_executable_path(execpath, sizeof execpath) != -1) {
       strbuf b = strbuf_alloca(1024);

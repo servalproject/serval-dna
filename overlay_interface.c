@@ -42,7 +42,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 
 int overlay_ready=0;
-unsigned overlay_interface_count=0;
 overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
 int overlay_last_interface_number=-1;
 
@@ -378,11 +377,18 @@ overlay_interface_init(const char *name, struct socket_address *addr,
 {
   int cleanup_ret = -1;
 
-  /* Too many interfaces */
-  if (overlay_interface_count >= OVERLAY_MAX_INTERFACES)
+  int interface_id=-1;
+  int i;
+  for (i=0; i<OVERLAY_MAX_INTERFACES; i++){
+    if (overlay_interfaces[i].state==INTERFACE_STATE_DOWN){
+      interface_id=i;
+      break;
+    }
+  }
+  if (interface_id==-1)
     return WHY("Too many interfaces -- Increase OVERLAY_MAX_INTERFACES");
 
-  overlay_interface *const interface = &overlay_interfaces[overlay_interface_count];
+  overlay_interface *const interface = &overlay_interfaces[interface_id];
   bzero(interface, sizeof(overlay_interface));
   interface->state=INTERFACE_STATE_DOWN;
   
@@ -539,7 +545,6 @@ overlay_interface_init(const char *name, struct socket_address *addr,
         interface->destination->transfer_limit.burst_size,
         interface->destination->transfer_limit.burst_length);
 
-  overlay_interface_count++;
   return 0;
   
 cleanup:
@@ -946,12 +951,6 @@ overlay_interface_register(char *name,
 			   struct socket_address *addr,
 			   struct socket_address *broadcast)
 {
-  if (config.debug.overlayinterfaces) {
-    // note, inet_ntop doesn't seem to behave on android
-    DEBUGF("%s address: %s", name, alloca_socket_address(addr));
-    DEBUGF("%s broadcast address: %s", name, alloca_socket_address(broadcast));
-  }
-
   // Find the matching non-dummy interface rule.
   const struct config_network_interface *ifconfig = NULL;
   unsigned i;
@@ -984,15 +983,19 @@ overlay_interface_register(char *name,
   if (broadcast->addr.sa_family==AF_INET)
     broadcast->inet.sin_port = htons(ifconfig->port);
 
+  if (config.debug.overlayinterfaces) {
+    // note, inet_ntop doesn't seem to behave on android
+    DEBUGF("%s address: %s", name, alloca_socket_address(addr));
+    DEBUGF("%s broadcast address: %s", name, alloca_socket_address(broadcast));
+  }
+
   /* Search in the exist list of interfaces */
-  for(i = 0; i < overlay_interface_count; i++){
-    if (overlay_interfaces[i].state==INTERFACE_STATE_DOWN){
+  for(i = 0; i < OVERLAY_MAX_INTERFACES; i++){
+    if (overlay_interfaces[i].state==INTERFACE_STATE_DOWN)
       continue;
-    }
     
-    if (strcasecmp(overlay_interfaces[i].name, name) 
-      && cmp_sockaddr(addr, &overlay_interfaces[i].address)==0
-      && overlay_interfaces[i].state!=INTERFACE_STATE_DOWN){
+    if (strcasecmp(overlay_interfaces[i].name, name)==0
+      && cmp_sockaddr(addr, &overlay_interfaces[i].address)==0){
       
       // mark this interface as still alive
       if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING)
@@ -1005,8 +1008,8 @@ overlay_interface_register(char *name,
   /* New interface, so register it */
   if (overlay_interface_init(name, addr, broadcast, ifconfig))
     return WHYF("Could not initialise newly seen interface %s", name);
-  else
-    if (config.debug.overlayinterfaces) DEBUGF("Registered interface %s", name);
+  else if (config.debug.overlayinterfaces) 
+    DEBUGF("Registered interface %s", name);
 
   return 0;
 }
@@ -1015,7 +1018,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
 {
   /* Mark all UP interfaces as DETECTING, so we can tell which interfaces are new, and which are dead */
   unsigned i;
-  for (i = 0; i < overlay_interface_count; i++)
+  for (i = 0; i < OVERLAY_MAX_INTERFACES; i++)
     if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
       overlay_interfaces[i].state=INTERFACE_STATE_DETECTING;   
 
@@ -1031,7 +1034,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
       continue;
     }
     unsigned j;
-    for (j = 0; j < overlay_interface_count; j++){
+    for (j = 0; j < OVERLAY_MAX_INTERFACES; j++){
       if (overlay_interfaces[j].socket_type == ifconfig->socket_type && 
 	  strcasecmp(overlay_interfaces[j].name, ifconfig->file) == 0 && 
 	  overlay_interfaces[j].state==INTERFACE_STATE_DETECTING){
@@ -1040,7 +1043,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
       }
     }
     
-    if (j >= overlay_interface_count) {
+    if (j >= OVERLAY_MAX_INTERFACES) {
       // New file interface, so register it.
       struct socket_address addr, broadcast;
       bzero(&addr, sizeof addr);
@@ -1114,7 +1117,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
   }
 
   // Close any interfaces that have gone away.
-  for(i = 0; i < overlay_interface_count; i++)
+  for(i = 0; i < OVERLAY_MAX_INTERFACES; i++)
     if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING) {
       overlay_interface_close(&overlay_interfaces[i]);
     }

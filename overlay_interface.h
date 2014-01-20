@@ -3,10 +3,9 @@
 
 #include "socket.h"
 
-#define INTERFACE_STATE_FREE 0
+#define INTERFACE_STATE_DOWN 0
 #define INTERFACE_STATE_UP 1
-#define INTERFACE_STATE_DOWN 2
-#define INTERFACE_STATE_DETECTING 3
+#define INTERFACE_STATE_DETECTING 2
 
 
 struct overlay_interface;
@@ -121,8 +120,6 @@ typedef struct overlay_interface {
  Memory consumption is O(n) with respect to this parameter, so let's not make it too big for now.
  */
 extern overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
-
-extern unsigned overlay_interface_count;
 
 struct network_destination * new_destination(struct overlay_interface *interface, char encapsulation);
 struct network_destination * create_unicast_destination(struct socket_address *addr, struct overlay_interface *interface);

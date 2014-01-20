@@ -133,6 +133,17 @@ int cmp_sockaddr(const struct socket_address *addrA, const struct socket_address
     return 1;
   // Both addresses are in the same family...
   switch (addrA->addr.sa_family) {
+  case AF_INET: {
+      if (addrA->inet.sin_addr.s_addr < addrB->inet.sin_addr.s_addr)
+	return -1;
+      if (addrA->inet.sin_addr.s_addr > addrB->inet.sin_addr.s_addr)
+	return 1;
+      if (addrA->inet.sin_port < addrB->inet.sin_port)
+	return -1;
+      if (addrA->inet.sin_port > addrB->inet.sin_port)
+	return 1;
+      return 0;
+    }break;
   case AF_UNIX: {
       unsigned pathlenA = addrA->addrlen - sizeof (addrA->local.sun_family);
       unsigned pathlenB = addrB->addrlen - sizeof (addrB->local.sun_family);
