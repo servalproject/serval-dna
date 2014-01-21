@@ -32,17 +32,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MESHMS_BLOCK_TYPE_BID_REFERENCE 0x03
 
 // the manifest details for one half of a conversation
-struct ply{
+struct ply {
   rhizome_bid_t bundle_id;
   uint64_t version;
   uint64_t tail;
   uint64_t size;
 };
 
-struct conversations{
+struct conversations {
   // binary tree
   struct conversations *_left;
   struct conversations *_right;
+  // keeping a pointer to parent node here means the traversal iterator does not need a stack, so
+  // there is no fixed limit on the tree depth
+  struct conversations *_parent;
   
   // who are we talking to?
   sid_t them;
@@ -59,6 +62,10 @@ struct conversations{
   uint64_t read_offset;
   // our cached value for the last known size of their ply
   uint64_t their_size;
+};
+
+struct conversation_iterator {
+  struct conversations *current;
 };
 
 // cursor state for reading one half of a conversation
@@ -79,7 +86,8 @@ struct ply_read{
 
 static int meshms_conversations_list(const sid_t *my_sid, const sid_t *their_sid, struct conversations **conv);
 
-static void free_conversations(struct conversations *conv){
+static void free_conversations(struct conversations *conv)
+{
   if (!conv)
     return;
   free_conversations(conv->_left);
@@ -130,10 +138,12 @@ static int get_my_conversation_bundle(const sid_t *my_sidp, rhizome_manifest *m)
 static struct conversations *add_conv(struct conversations **conv, const sid_t *them)
 {
   struct conversations **ptr = conv;
-  while(*ptr){
+  struct conversations *parent = NULL;
+  while (*ptr) {
     int cmp = cmp_sid_t(&(*ptr)->them, them);
     if (cmp == 0)
       break;
+    parent = *ptr;
     if (cmp < 0)
       ptr = &(*ptr)->_left;
     else
@@ -141,6 +151,7 @@ static struct conversations *add_conv(struct conversations **conv, const sid_t *
   }
   if (!*ptr){
     *ptr = emalloc_zero(sizeof(struct conversations));
+    (*ptr)->_parent = parent;
     if (*ptr)
       (*ptr)->them = *them;
   }
@@ -222,10 +233,8 @@ static struct conversations * find_or_create_conv(const sid_t *my_sid, const sid
   struct conversations *conv=NULL;
   if (meshms_conversations_list(my_sid, their_sid, &conv))
     return NULL;
-  if (!conv){
-    conv = emalloc_zero(sizeof(struct conversations));
+  if (!conv && (conv = emalloc_zero(sizeof(struct conversations))))
     conv->them = *their_sid;
-  }
   return conv;
 }
 
@@ -731,29 +740,45 @@ end:
   return ret;
 }
 
-// recursively traverse the conversation tree in sorted order and output the details of each conversation
-static int output_conversations(struct cli_context *context, struct conversations *conv, 
-      int output, int offset, int count){
-  if (!conv)
-    return 0;
-  
-  int traverse_count = output_conversations(context, conv->_left, output, offset, count);
-  if (count <0 || output + traverse_count < offset + count){
-    if (output + traverse_count >= offset){
-      cli_put_long(context, output + traverse_count, ":");
-      cli_put_hexvalue(context, conv->them.binary, sizeof(conv->them), ":");
-      cli_put_string(context, conv->read_offset < conv->their_last_message ? "unread":"", ":");
-      cli_put_long(context, conv->their_last_message, ":");
-      cli_put_long(context, conv->read_offset, "\n");
-    }
-    traverse_count++;
+/* Start traversing the given conversation binary tree in infix order.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+static void conversation_iterator_start(struct conversation_iterator *it, struct conversations *conv)
+{
+  assert(conv->_parent == NULL); // can only iterate over whole tree
+  it->current = conv;
+  // infix traversal; descend to the leftmost leaf and start there
+  while (it->current->_left)
+    it->current = it->current->_left;
+}
+
+/* Advance to the next conversation in the tree.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+static void conversation_iterator_advance(struct conversation_iterator *it)
+{
+  assert(it->current != NULL); // do not call on a finished iterator
+  if (it->current->_right) {
+    it->current = it->current->_right;
+    while (it->current->_left)
+      it->current = it->current->_left;
   }
-  traverse_count += output_conversations(context, conv->_right, output + traverse_count, offset, count);
-  return traverse_count;
+  else {
+    while (1) {
+      struct conversations *conv = it->current;
+      it->current = it->current->_parent;
+      if (it->current == NULL || conv == it->current->_left)
+	break;
+      assert(conv == it->current->_right);
+    }
+  }
 }
 
 // output the list of existing conversations for a given local identity
-int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context *context){
+int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context *context)
+{
   const char *sidhex, *offset_str, *count_str;
   if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1
     || cli_arg(parsed, "offset", &offset_str, NULL, "0")==-1
@@ -785,7 +810,22 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
   };
 
   cli_columns(context, 5, names);
-  int rows = output_conversations(context, conv, 0, offset, count);
+  int rows = 0;
+  if (conv) {
+    struct conversation_iterator it;
+    for (conversation_iterator_start(&it, conv);
+	it.current && (count < 0 || rows < offset + count);
+	conversation_iterator_advance(&it), ++rows
+    ) {
+      if (rows >= offset) {
+	cli_put_long(context, rows, ":");
+	cli_put_hexvalue(context, it.current->them.binary, sizeof(it.current->them), ":");
+	cli_put_string(context, it.current->read_offset < it.current->their_last_message ? "unread":"", ":");
+	cli_put_long(context, it.current->their_last_message, ":");
+	cli_put_long(context, it.current->read_offset, "\n");
+      }
+    }
+  }
   cli_row_count(context, rows);
 
   free_conversations(conv);
@@ -996,7 +1036,8 @@ end:
   return ret;
 }
 
-static int mark_read(struct conversations *conv, const sid_t *their_sid, const char *offset_str){
+static int mark_read(struct conversations *conv, const sid_t *their_sid, const char *offset_str)
+{
   int ret=0;
   if (conv){
     int cmp = their_sid ? cmp_sid_t(&conv->them, their_sid) : 0;
