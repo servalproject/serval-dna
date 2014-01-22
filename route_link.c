@@ -678,8 +678,9 @@ void link_neighbour_status_html(struct strbuf *b, struct subscriber *neighbour)
       rhizome_sync_status_html(b, n->subscriber);
       struct link_in *link_in = n->links;
       while(link_in){
-	strbuf_sprintf(b, "In: %s%s, seq=%d, mask=%08"PRIx64"<br>", 
+	strbuf_sprintf(b, "In: %s %s%s, seq=%d, mask=%08"PRIx64"<br>", 
 	  link_in->interface->name,
+	  link_in->unicast?"unicast":"broadcast",
 	  link_in == n->best_link?" *best":"",
 	  link_in->ack_sequence,
 	  link_in->ack_mask);
