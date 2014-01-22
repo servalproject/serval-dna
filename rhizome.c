@@ -53,6 +53,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "str.h"
 #include "rhizome.h"
+#include "rhizome_http.h"
 #include "dataformats.h"
 
 int is_rhizome_enabled()

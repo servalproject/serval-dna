@@ -5,6 +5,7 @@ HDRS=	fifo.h \
 	overlay_packet.h \
 	overlay_interface.h \
 	rhizome.h \
+	rhizome_http.h \
 	serval.h \
 	keyring.h \
 	socket.h \

@@ -32,9 +32,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
-#include "rhizome.h"
 #include "dataformats.h"
-#include "http_server.h"
+#include "rhizome.h"
+#include "rhizome_http.h"
 #include "overlay_interface.h"
 
 #define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
