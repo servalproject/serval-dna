@@ -21,12 +21,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __SERVAL_DNA__RHIZOME_HTTP_H
 
 #include "rhizome.h"
+#include "meshms.h"
 #include "http_server.h"
 
 int is_rhizome_http_server_running();
 
-/* Rhizome-specific HTTP request handling.
- */
+enum list_phase { LIST_HEADER = 0, LIST_ROWS, LIST_DONE };
+
 typedef struct rhizome_http_request
 {
   struct http_request http; // MUST BE FIRST ELEMENT
@@ -109,13 +110,23 @@ typedef struct rhizome_http_request
     /* For responses that list manifests.
     */
     struct {
-      enum { LIST_HEADER = 0, LIST_ROWS, LIST_DONE } phase;
+      enum list_phase phase;
       uint64_t rowid_highest;
       size_t rowcount;
       time_ms_t end_time;
       struct rhizome_list_cursor cursor;
     }
-      list;
+      rhlist;
+
+    /* For responses that list MeshMS conversations.
+    */
+    struct {
+      enum list_phase phase;
+      size_t rowcount;
+      struct meshms_conversations *conv;
+      struct meshms_conversation_iterator iter;
+    }
+      mclist;
 
   } u;
 

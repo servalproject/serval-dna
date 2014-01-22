@@ -51,7 +51,7 @@ setup() {
    CR=''
    VT='	'
    setup_curl 7
-   setup_jq 1.2
+   setup_jq 1.3
    setup_servald
    set_instance +A
    set_rhizome_config
@@ -171,52 +171,38 @@ add_bundles() {
    done
 }
 
-transform_bundlelist_json() {
-   # The following jq(1) incantation transforms the JSON array in
-   # bundlelist.json from the following form (which is optimised for
-   # transmission size):
+transform_list_json() {
+   # The following jq(1) incantation transforms a JSON array in from the
+   # following form (which is optimised for transmission size):
    #     {
-   #        "header":[
-   #              ".token", "_id", "service", "id", "version","date",".inserttime",
-   #              ".author",".fromhere","filesize","filehash","sender","recipient",
-   #              "name"
-   #           ],
+   #        "header":[ "label1", "label2", "label3", ... ],
    #        "rows":[
-   #              [  "xx", rowid1, "service1", bundleid1, version1, .... ],
-   #              [  null, rowid2, "service2", bundleid2, version2, .... ],
+   #              [  row1value1, row1value2, row1value3, ... ],
+   #              [  row2value1, row2value2, row2value3, ... ],
    #                 ...
-   #              [  null, rowidN, "serviceN", bundleidN, versionN, .... ]
+   #              [  rowNvalue1, rowNvalue2, rowNvalue3, ... ]
    #           ]
    #     }
    #
    # into an array of JSON objects:
    #     [
    #        {
-   #           "__index": 0,
-   #           ".token": "xx",
-   #           "_id": rowid1,
-   #           "service": service1,
-   #           "id": bundleid1,
-   #           "version": version1,
+   #           "label1": row1value1,
+   #           "label2": row1value2,
+   #           "label3": row1value3,
    #           ...
    #        },
    #        {
-   #           "__index": 1,
-   #           ".token": null,
-   #           "_id": rowid2,
-   #           "service": service2,
-   #           "id": bundleid2,
-   #           "version": version2,
+   #           "label1": row2value1,
+   #           "label2": row2value2,
+   #           "label3": row2value3,
    #           ...
    #        },
    #        ...
    #        {
-   #           "__index": 2,
-   #           ".token": null,
-   #           "_id": rowidN,
-   #           "service": serviceN,
-   #           "id": bundleidN,
-   #           "version": versionN,
+   #           "label1": rowNvalue1,
+   #           "label2": rowNvalue2,
+   #           "label3": rowNvalue3,
    #           ...
    #        }
    #     ]
@@ -250,7 +236,7 @@ test_RhizomeList() {
    tfw_cat http.headers bundlelist.json
    tfw_preserve bundlelist.json
    assert [ "$(jq '.rows | length' bundlelist.json)" = $NBUNDLES ]
-   transform_bundlelist_json bundlelist.json array_of_objects.json
+   transform_list_json bundlelist.json array_of_objects.json
    tfw_preserve array_of_objects.json
    for ((n = 0; n != NBUNDLES; ++n)); do
       if [ "${ROWID[$n]}" -eq "$ROWID_MAX" ]; then
@@ -299,7 +285,7 @@ setup_RhizomeNewSince() {
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
    assert [ "$(jq '.rows | length' bundlelist.json)" = 6 ]
-   transform_bundlelist_json bundlelist.json array_of_objects.json
+   transform_list_json bundlelist.json array_of_objects.json
    token=$(jq --raw-output '.[0][".token"]' array_of_objects.json)
    assert [ -n "$token" ]
 }
@@ -319,7 +305,7 @@ test_RhizomeNewSince() {
          echo ']}' >>newsince$i.json
          assert [ $(jq . newsince$i.json | wc -c) -ne 0 ]
       fi
-      transform_bundlelist_json newsince$i.json objects$i.json
+      transform_list_json newsince$i.json objects$i.json
       tfw_preserve newsince$i.json objects$i.json
       for ((n = 0; n <= 5; ++n)); do
          assertJq objects$i.json "contains([{id:\"${BID[$n]}\"}]) | not"
@@ -891,8 +877,89 @@ test_RhizomeInsertIncorrectFilehash() {
 }
 
 doc_MeshmsListConversations="HTTP RESTful list MeshMS conversations as JSON"
-Xtest_MeshmsListConversations() {
-   :
+setup_MeshmsListConversations() {
+   IDENTITY_COUNT=5
+   setup
+   # create 3 threads, with all permutations of incoming and outgoing messages
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
+   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
+   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message3"
+   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message4"
+}
+test_MeshmsListConversations() {
+   executeOk curl \
+         --silent --fail --show-error \
+         --output conversationlist1.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/conversationlist.json"
+   tfw_cat http.headers conversationlist1.json
+   tfw_preserve conversationlist1.json
+   assert [ "$(jq '.rows | length' conversationlist1.json)" = 3 ]
+   transform_list_json conversationlist1.json conversations1.json
+   tfw_preserve conversations1.json
+   assertJq conversations1.json \
+            "contains([
+               {  recipient: \"$SIDA2\",
+                  read: true,
+                  last_message: 0,
+                  read_offset: 0
+               }
+            ])"
+   assertJq conversations1.json \
+            "contains([
+               {  recipient: \"$SIDA3\",
+                  read: false,
+                  last_message: 11,
+                  read_offset: 0
+               }
+            ])"
+   assertJq conversations1.json \
+            "contains([
+               {  recipient: \"$SIDA4\",
+                  read: false,
+                  last_message: 14,
+                  read_offset: 0
+               }
+            ])"
+   # mark all incoming messages as read
+   executeOk_servald meshms read messages $SIDA1
+   tfw_cat --stderr
+   executeOk curl \
+         --silent --fail --show-error \
+         --output conversationlist2.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/conversationlist.json"
+   tfw_cat http.headers conversationlist2.json
+   tfw_preserve conversationlist2.json
+   assert [ "$(jq '.rows | length' conversationlist2.json)" = 3 ]
+   transform_list_json conversationlist2.json conversations2.json
+   tfw_preserve conversations2.json
+   assertJq conversations2.json \
+            "contains([
+               {  recipient: \"$SIDA2\",
+                  read: true,
+                  last_message: 0,
+                  read_offset: 0
+               }
+            ])"
+   assertJq conversations2.json \
+            "contains([
+               {  recipient: \"$SIDA3\",
+                  read: true,
+                  last_message: 11,
+                  read_offset: 11
+               }
+            ])"
+   assertJq conversations2.json \
+            "contains([
+               {  recipient: \"$SIDA4\",
+                  read: true,
+                  last_message: 14,
+                  read_offset: 14
+               }
+            ])"
 }
 
 doc_MeshmsListMessages="HTTP RESTful list MeshMS messages in one conversation as JSON"

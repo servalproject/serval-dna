@@ -152,6 +152,9 @@ void http_request_response_static(struct http_request *r, int result, const char
 void http_request_response_generated(struct http_request *r, int result, const char *mime_type, HTTP_CONTENT_GENERATOR *);
 void http_request_simple_response(struct http_request *r, uint16_t result, const char *body);
 
+typedef int (HTTP_CONTENT_GENERATOR_STRBUF_CHUNKER)(struct http_request *, strbuf);
+int generate_http_content_from_strbuf_chunks(struct http_request *, char *, size_t, struct http_content_generator_result *, HTTP_CONTENT_GENERATOR_STRBUF_CHUNKER *);
+
 typedef int HTTP_REQUEST_PARSER(struct http_request *);
 typedef void HTTP_RENDERER(struct http_request *, strbuf);
 

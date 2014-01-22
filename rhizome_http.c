@@ -50,6 +50,7 @@ static HTTP_HANDLER restful_rhizome_bundlelist_json;
 static HTTP_HANDLER restful_rhizome_newsince;
 static HTTP_HANDLER restful_rhizome_insert;
 static HTTP_HANDLER restful_rhizome_;
+static HTTP_HANDLER restful_meshms_;
 
 static HTTP_HANDLER rhizome_status_page;
 static HTTP_HANDLER rhizome_file_page;
@@ -68,6 +69,7 @@ struct http_handler paths[]={
   {"/restful/rhizome/newsince/", restful_rhizome_newsince},
   {"/restful/rhizome/insert", restful_rhizome_insert},
   {"/restful/rhizome/", restful_rhizome_},
+  {"/restful/meshms/", restful_meshms_},
   {"/rhizome/status", rhizome_status_page},
   {"/rhizome/file/", rhizome_file_page},
   {"/rhizome/import", rhizome_direct_import},
@@ -255,6 +257,12 @@ static void finalise_union_rhizome_insert(rhizome_http_request *r)
     rhizome_fail_write(&r->u.insert.write);
 }
 
+static void finalise_union_meshms_conversationlist(rhizome_http_request *r)
+{
+  meshms_free_conversations(r->u.mclist.conv);
+  r->u.mclist.conv = NULL;
+}
+
 static void rhizome_server_finalise_http_request(struct http_request *hr)
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
@@ -424,11 +432,24 @@ static int restful_rhizome_bundlelist_json(rhizome_http_request *r, const char *
   int ret = authorize(&r->http);
   if (ret)
     return ret;
-  r->u.list.phase = LIST_HEADER;
-  r->u.list.rowcount = 0;
-  bzero(&r->u.list.cursor, sizeof r->u.list.cursor);
+  r->u.rhlist.phase = LIST_HEADER;
+  r->u.rhlist.rowcount = 0;
+  bzero(&r->u.rhlist.cursor, sizeof r->u.rhlist.cursor);
   http_request_response_generated(&r->http, 200, "application/json", restful_rhizome_bundlelist_json_content);
   return 1;
+}
+
+static HTTP_CONTENT_GENERATOR_STRBUF_CHUNKER restful_rhizome_bundlelist_json_content_chunk;
+
+static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
+{
+  rhizome_http_request *r = (rhizome_http_request *) hr;
+  int ret = rhizome_list_open(&r->u.rhlist.cursor);
+  if (ret == -1)
+    return -1;
+  ret = generate_http_content_from_strbuf_chunks(hr, (char *)buf, bufsz, result, restful_rhizome_bundlelist_json_content_chunk);
+  rhizome_list_release(&r->u.rhlist.cursor);
+  return ret;
 }
 
 static int restful_rhizome_newsince(rhizome_http_request *r, const char *remainder)
@@ -445,17 +466,18 @@ static int restful_rhizome_newsince(rhizome_http_request *r, const char *remaind
   int ret = authorize(&r->http);
   if (ret)
     return ret;
-  r->u.list.phase = LIST_HEADER;
-  r->u.list.rowcount = 0;
-  bzero(&r->u.list.cursor, sizeof r->u.list.cursor);
-  r->u.list.cursor.rowid_since = rowid;
-  r->u.list.end_time = gettime_ms() + config.rhizome.api.restful.newsince_timeout * 1000;
+  r->u.rhlist.phase = LIST_HEADER;
+  r->u.rhlist.rowcount = 0;
+  bzero(&r->u.rhlist.cursor, sizeof r->u.rhlist.cursor);
+  r->u.rhlist.cursor.rowid_since = rowid;
+  r->u.rhlist.end_time = gettime_ms() + config.rhizome.api.restful.newsince_timeout * 1000;
   http_request_response_generated(&r->http, 200, "application/json", restful_rhizome_bundlelist_json_content);
   return 1;
 }
 
-static int restful_rhizome_bundlelist_json_content_chunk(struct rhizome_http_request *r, strbuf b)
+static int restful_rhizome_bundlelist_json_content_chunk(struct http_request *hr, strbuf b)
 {
+  rhizome_http_request *r = (rhizome_http_request *) hr;
   const char *headers[] = {
     ".token",
     "_id",
@@ -472,7 +494,7 @@ static int restful_rhizome_bundlelist_json_content_chunk(struct rhizome_http_req
     "recipient",
     "name"
   };
-  switch (r->u.list.phase) {
+  switch (r->u.rhlist.phase) {
     case LIST_HEADER:
       strbuf_puts(b, "{\n\"header\":[");
       unsigned i;
@@ -483,36 +505,36 @@ static int restful_rhizome_bundlelist_json_content_chunk(struct rhizome_http_req
       }
       strbuf_puts(b, "],\n\"rows\":[");
       if (!strbuf_overrun(b))
-	r->u.list.phase = LIST_ROWS;
+	r->u.rhlist.phase = LIST_ROWS;
       return 1;
     case LIST_ROWS:
       {
-	int ret = rhizome_list_next(&r->u.list.cursor);
+	int ret = rhizome_list_next(&r->u.rhlist.cursor);
 	if (ret == -1)
 	  return -1;
 	if (ret == 0) {
 	  time_ms_t now;
-	  if (r->u.list.cursor.rowid_since == 0 || (now = gettime_ms()) >= r->u.list.end_time) {
+	  if (r->u.rhlist.cursor.rowid_since == 0 || (now = gettime_ms()) >= r->u.rhlist.end_time) {
 	    strbuf_puts(b, "\n]\n}\n");
 	    if (!strbuf_overrun(b))
-	      r->u.list.phase = LIST_DONE;
+	      r->u.rhlist.phase = LIST_DONE;
 	    return 0;
 	  }
 	  time_ms_t wake_at = now + config.rhizome.api.restful.newsince_poll_ms;
-	  if (wake_at > r->u.list.end_time)
-	    wake_at = r->u.list.end_time;
+	  if (wake_at > r->u.rhlist.end_time)
+	    wake_at = r->u.rhlist.end_time;
 	  http_request_pause_response(&r->http, wake_at);
 	  return 0;
 	}
-	rhizome_manifest *m = r->u.list.cursor.manifest;
+	rhizome_manifest *m = r->u.rhlist.cursor.manifest;
 	assert(m->filesize != RHIZOME_SIZE_UNSET);
 	rhizome_lookup_author(m);
-	if (r->u.list.rowcount != 0)
+	if (r->u.rhlist.rowcount != 0)
 	  strbuf_putc(b, ',');
 	strbuf_puts(b, "\n[");
-	if (m->rowid > r->u.list.rowid_highest) {
+	if (m->rowid > r->u.rhlist.rowid_highest) {
 	  strbuf_json_string(b, alloca_list_token(m->rowid));
-	  r->u.list.rowid_highest = m->rowid;
+	  r->u.rhlist.rowid_highest = m->rowid;
 	} else
 	  strbuf_json_null(b);
 	strbuf_putc(b, ',');
@@ -552,8 +574,8 @@ static int restful_rhizome_bundlelist_json_content_chunk(struct rhizome_http_req
 	strbuf_json_string(b, m->name);
 	strbuf_puts(b, "]");
 	if (!strbuf_overrun(b)) {
-	  rhizome_list_commit(&r->u.list.cursor);
-	  ++r->u.list.rowcount;
+	  rhizome_list_commit(&r->u.rhlist.cursor);
+	  ++r->u.rhlist.rowcount;
 	}
 	return 1;
       }
@@ -561,29 +583,6 @@ static int restful_rhizome_bundlelist_json_content_chunk(struct rhizome_http_req
       return 0;
   }
   abort();
-}
-
-static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
-{
-  rhizome_http_request *r = (rhizome_http_request *) hr;
-  assert(bufsz > 0);
-  int ret = rhizome_list_open(&r->u.list.cursor);
-  if (ret == -1)
-    return -1;
-  strbuf b = strbuf_local((char *)buf, bufsz);
-  while ((ret = restful_rhizome_bundlelist_json_content_chunk(r, b)) != -1) {
-    if (strbuf_overrun(b)) {
-      if (config.debug.rhizome)
-	DEBUGF("overrun by %zu bytes", strbuf_count(b) - strbuf_len(b));
-      result->need = strbuf_count(b) + 1 - result->generated;
-      break;
-    }
-    result->generated = strbuf_len(b);
-    if (ret == 0)
-      break;
-  }
-  rhizome_list_release(&r->u.list.cursor);
-  return ret;
 }
 
 static HTTP_REQUEST_PARSER restful_rhizome_insert_end;
@@ -1047,6 +1046,113 @@ static int restful_rhizome_bid_decrypted_bin(rhizome_http_request *r, const char
   // TODO use Content Type from manifest (once it is implemented)
   http_request_response_generated(&r->http, 200, "application/binary", rhizome_payload_content);
   return 1;
+}
+
+static HTTP_HANDLER restful_meshms_conversationlist_json;
+
+static int restful_meshms_(rhizome_http_request *r, const char *remainder)
+{
+  r->http.response.header.content_type = "application/json";
+  if (!is_rhizome_http_enabled())
+    return 403;
+  HTTP_HANDLER *handler = NULL;
+  const char *end;
+  if (strn_to_sid_t(&r->sid, remainder, &end) != -1) {
+    if (strcmp(end, "/conversationlist.json") == 0) {
+      handler = restful_meshms_conversationlist_json;
+      remainder = "";
+    }
+  }
+  if (handler == NULL)
+    return 404;
+  if (r->http.verb != HTTP_VERB_GET)
+    return 405;
+  int ret = authorize(&r->http);
+  if (ret)
+    return ret;
+  ret = handler(r, remainder);
+  return ret;
+}
+
+static HTTP_CONTENT_GENERATOR restful_meshms_conversationlist_json_content;
+
+static int restful_meshms_conversationlist_json(rhizome_http_request *r, const char *remainder)
+{
+  if (*remainder)
+    return 404;
+  assert(r->finalise_union == NULL);
+  r->finalise_union = finalise_union_meshms_conversationlist;
+  r->u.mclist.phase = LIST_HEADER;
+  r->u.mclist.rowcount = 0;
+  r->u.mclist.conv = NULL;
+  if (meshms_conversations_list(&r->sid, NULL, &r->u.mclist.conv))
+    return -1;
+  meshms_conversation_iterator_start(&r->u.mclist.iter, r->u.mclist.conv);
+  http_request_response_generated(&r->http, 200, "application/json", restful_meshms_conversationlist_json_content);
+  return 1;
+}
+
+static HTTP_CONTENT_GENERATOR_STRBUF_CHUNKER restful_meshms_conversationlist_json_content_chunk;
+
+static int restful_meshms_conversationlist_json_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
+{
+  return generate_http_content_from_strbuf_chunks(hr, (char *)buf, bufsz, result, restful_meshms_conversationlist_json_content_chunk);
+}
+
+static int restful_meshms_conversationlist_json_content_chunk(struct http_request *hr, strbuf b)
+{
+  rhizome_http_request *r = (rhizome_http_request *) hr;
+  const char *headers[] = {
+    "_id",
+    "recipient",
+    "read",
+    "last_message",
+    "read_offset"
+  };
+  switch (r->u.mclist.phase) {
+    case LIST_HEADER:
+      strbuf_puts(b, "{\n\"header\":[");
+      unsigned i;
+      for (i = 0; i != NELS(headers); ++i) {
+	if (i)
+	  strbuf_putc(b, ',');
+	strbuf_json_string(b, headers[i]);
+      }
+      strbuf_puts(b, "],\n\"rows\":[");
+      if (!strbuf_overrun(b))
+	r->u.mclist.phase = LIST_ROWS;
+      return 1;
+    case LIST_ROWS:
+      if (r->u.mclist.iter.current == NULL) {
+	strbuf_puts(b, "\n]\n}\n");
+	if (!strbuf_overrun(b))
+	  r->u.mclist.phase = LIST_DONE;
+	return 0;
+      } else {
+	if (r->u.mclist.rowcount != 0)
+	  strbuf_putc(b, ',');
+	strbuf_puts(b, "\n[");
+	strbuf_sprintf(b, "%u", r->u.mclist.rowcount);
+	strbuf_putc(b, ',');
+	strbuf_json_hex(b, r->u.mclist.iter.current->them.binary, sizeof r->u.mclist.iter.current->them.binary);
+	strbuf_putc(b, ',');
+	strbuf_json_boolean(b, r->u.mclist.iter.current->read_offset >= r->u.mclist.iter.current->their_last_message);
+	strbuf_putc(b, ',');
+	strbuf_sprintf(b, "%"PRIu64, r->u.mclist.iter.current->their_last_message);
+	strbuf_putc(b, ',');
+	strbuf_sprintf(b, "%"PRIu64, r->u.mclist.iter.current->read_offset);
+	strbuf_puts(b, "]");
+	if (!strbuf_overrun(b)) {
+	  meshms_conversation_iterator_advance(&r->u.mclist.iter);
+	  ++r->u.mclist.rowcount;
+	}
+	return 1;
+      }
+    case LIST_DONE:
+      return 0;
+  }
+  abort();
+  return 0;
 }
 
 static int neighbour_page(rhizome_http_request *r, const char *remainder)

@@ -2084,3 +2084,28 @@ void http_request_simple_response(struct http_request *r, uint16_t result, const
   r->response.content_generator = NULL;
   http_request_start_response(r);
 }
+
+int generate_http_content_from_strbuf_chunks(
+  struct http_request *r,
+  char *buf,
+  size_t bufsz,
+  struct http_content_generator_result *result,
+  HTTP_CONTENT_GENERATOR_STRBUF_CHUNKER *chunker
+)
+{
+  assert(bufsz > 0);
+  strbuf b = strbuf_local((char *)buf, bufsz);
+  int ret;
+  while ((ret = chunker(r, b)) != -1) {
+    if (strbuf_overrun(b)) {
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("overrun by %zu bytes", strbuf_count(b) - strbuf_len(b));
+      result->need = strbuf_count(b) + 1 - result->generated;
+      break;
+    }
+    result->generated = strbuf_len(b);
+    if (ret == 0)
+      break;
+  }
+  return ret;
+}
