@@ -639,7 +639,6 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
       DEBUGF("derived payload key from bundle secret bsk=%s", alloca_tohex(m->cryptoSignSecret, sizeof m->cryptoSignSecret));
     unsigned char raw_key[9+crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]="sasquatch";
     bcopy(m->cryptoSignSecret, &raw_key[9], crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
-    unsigned char hash[crypto_hash_sha512_BYTES];
     crypto_hash_sha512(hash, raw_key, sizeof(raw_key));
   }
   bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
