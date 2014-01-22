@@ -454,7 +454,7 @@ static int restful_rhizome_newsince(rhizome_http_request *r, const char *remaind
   return 1;
 }
 
-static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *retry, struct rhizome_http_request *r, strbuf b)
+static int restful_rhizome_bundlelist_json_content_chunk(struct rhizome_http_request *r, strbuf b)
 {
   const char *headers[] = {
     ".token",
@@ -487,7 +487,7 @@ static int restful_rhizome_bundlelist_json_content_chunk(sqlite_retry_state *ret
       return 1;
     case LIST_ROWS:
       {
-	int ret = rhizome_list_next(retry, &r->u.list.cursor);
+	int ret = rhizome_list_next(&r->u.list.cursor);
 	if (ret == -1)
 	  return -1;
 	if (ret == 0) {
@@ -567,12 +567,11 @@ static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsi
 {
   rhizome_http_request *r = (rhizome_http_request *) hr;
   assert(bufsz > 0);
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  int ret = rhizome_list_open(&retry, &r->u.list.cursor);
+  int ret = rhizome_list_open(&r->u.list.cursor);
   if (ret == -1)
     return -1;
   strbuf b = strbuf_local((char *)buf, bufsz);
-  while ((ret = restful_rhizome_bundlelist_json_content_chunk(&retry, r, b)) != -1) {
+  while ((ret = restful_rhizome_bundlelist_json_content_chunk(r, b)) != -1) {
     if (strbuf_overrun(b)) {
       if (config.debug.rhizome)
 	DEBUGF("overrun by %zu bytes", strbuf_count(b) - strbuf_len(b));

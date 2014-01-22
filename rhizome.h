@@ -687,14 +687,15 @@ struct rhizome_list_cursor {
   uint64_t rowid_since;
   // Set by calling the next() function.
   rhizome_manifest *manifest;
-  // Private state.
+  // Private state - implementation that could change.
+  sqlite_retry_state _retry;
   sqlite3_stmt *_statement;
   uint64_t _rowid_current;
   uint64_t _rowid_last; // for re-opening query
 };
 
-int rhizome_list_open(sqlite_retry_state *, struct rhizome_list_cursor *);
-int rhizome_list_next(sqlite_retry_state *, struct rhizome_list_cursor *);
+int rhizome_list_open(struct rhizome_list_cursor *);
+int rhizome_list_next(struct rhizome_list_cursor *);
 void rhizome_list_commit(struct rhizome_list_cursor *);
 void rhizome_list_release(struct rhizome_list_cursor *);
 
