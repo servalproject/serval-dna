@@ -6,6 +6,7 @@ HDRS=	fifo.h \
 	overlay_interface.h \
 	rhizome.h \
 	rhizome_http.h \
+	meshms.h \
 	serval.h \
 	keyring.h \
 	socket.h \

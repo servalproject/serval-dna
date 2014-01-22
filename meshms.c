@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <assert.h>
 #include "serval.h"
 #include "rhizome.h"
+#include "meshms.h"
 #include "log.h"
 #include "conf.h"
 #include "crypto.h"
@@ -31,45 +32,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MESHMS_BLOCK_TYPE_MESSAGE 0x02
 #define MESHMS_BLOCK_TYPE_BID_REFERENCE 0x03
 
-// the manifest details for one half of a conversation
-struct ply {
-  rhizome_bid_t bundle_id;
-  uint64_t version;
-  uint64_t tail;
-  uint64_t size;
-};
-
-struct conversations {
-  // binary tree
-  struct conversations *_left;
-  struct conversations *_right;
-  // keeping a pointer to parent node here means the traversal iterator does not need a stack, so
-  // there is no fixed limit on the tree depth
-  struct conversations *_parent;
-  
-  // who are we talking to?
-  sid_t them;
-  
-  char found_my_ply;
-  struct ply my_ply;
-  
-  char found_their_ply;
-  struct ply their_ply;
-  
-  // what is the offset of their last message
-  uint64_t their_last_message;
-  // what is the last message we marked as read
-  uint64_t read_offset;
-  // our cached value for the last known size of their ply
-  uint64_t their_size;
-};
-
-struct conversation_iterator {
-  struct conversations *current;
-};
-
 // cursor state for reading one half of a conversation
-struct ply_read{
+struct ply_read {
   // rhizome payload
   struct rhizome_read read;
   // block buffer
@@ -84,15 +48,15 @@ struct ply_read{
   unsigned char *buffer;
 };
 
-static int meshms_conversations_list(const sid_t *my_sid, const sid_t *their_sid, struct conversations **conv);
-
-static void free_conversations(struct conversations *conv)
+void meshms_free_conversations(struct meshms_conversations *conv)
 {
-  if (!conv)
-    return;
-  free_conversations(conv->_left);
-  free_conversations(conv->_right);
-  free(conv);
+  if (conv) {
+    if (conv->_parent && conv != conv->_parent->_left && conv != conv->_parent->_right)
+      WHYF("deformed MeshMS conversation tree");
+    meshms_free_conversations(conv->_left);
+    meshms_free_conversations(conv->_right);
+    free(conv);
+  }
 }
 
 static int get_my_conversation_bundle(const sid_t *my_sidp, rhizome_manifest *m)
@@ -101,7 +65,7 @@ static int get_my_conversation_bundle(const sid_t *my_sidp, rhizome_manifest *m)
   unsigned cn=0, in=0, kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp,my_sidp))
     return WHYF("SID was not found in keyring: %s", alloca_tohex_sid_t(*my_sidp));
-  
+
   char seed[1024];
   snprintf(seed, sizeof(seed), 
     "incorrection%sconcentrativeness", 
@@ -135,10 +99,10 @@ static int get_my_conversation_bundle(const sid_t *my_sidp, rhizome_manifest *m)
   return 0;
 }
 
-static struct conversations *add_conv(struct conversations **conv, const sid_t *them)
+static struct meshms_conversations *add_conv(struct meshms_conversations **conv, const sid_t *them)
 {
-  struct conversations **ptr = conv;
-  struct conversations *parent = NULL;
+  struct meshms_conversations **ptr = conv;
+  struct meshms_conversations *parent = NULL;
   while (*ptr) {
     int cmp = cmp_sid_t(&(*ptr)->them, them);
     if (cmp == 0)
@@ -150,7 +114,7 @@ static struct conversations *add_conv(struct conversations **conv, const sid_t *
       ptr = &(*ptr)->_right;
   }
   if (!*ptr){
-    *ptr = emalloc_zero(sizeof(struct conversations));
+    *ptr = emalloc_zero(sizeof(struct meshms_conversations));
     (*ptr)->_parent = parent;
     if (*ptr)
       (*ptr)->them = *them;
@@ -160,7 +124,7 @@ static struct conversations *add_conv(struct conversations **conv, const sid_t *
 
 // find matching conversations
 // if their_sid == my_sid, return all conversations with any recipient
-static int get_database_conversations(const sid_t *my_sid, const sid_t *their_sid, struct conversations **conv)
+static int get_database_conversations(const sid_t *my_sid, const sid_t *their_sid, struct meshms_conversations **conv)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
@@ -208,10 +172,10 @@ static int get_database_conversations(const sid_t *my_sid, const sid_t *their_si
 	continue;
       }
     }
-    struct conversations *ptr = add_conv(conv, &their_sid);
+    struct meshms_conversations *ptr = add_conv(conv, &their_sid);
     if (!ptr)
       break;
-    struct ply *p;
+    struct meshms_ply *p;
     if (them==sender){
       ptr->found_their_ply=1;
       p=&ptr->their_ply;
@@ -228,17 +192,17 @@ static int get_database_conversations(const sid_t *my_sid, const sid_t *their_si
   return 0;
 }
 
-static struct conversations * find_or_create_conv(const sid_t *my_sid, const sid_t *their_sid)
+static struct meshms_conversations * find_or_create_conv(const sid_t *my_sid, const sid_t *their_sid)
 {
-  struct conversations *conv=NULL;
+  struct meshms_conversations *conv=NULL;
   if (meshms_conversations_list(my_sid, their_sid, &conv))
     return NULL;
-  if (!conv && (conv = emalloc_zero(sizeof(struct conversations))))
+  if (!conv && (conv = emalloc_zero(sizeof(struct meshms_conversations))))
     conv->them = *their_sid;
   return conv;
 }
 
-static int create_ply(const sid_t *my_sid, struct conversations *conv, rhizome_manifest *m)
+static int create_ply(const sid_t *my_sid, struct meshms_conversations *conv, rhizome_manifest *m)
 {
   if (config.debug.meshms)
     DEBUGF("Creating ply for my_sid=%s them=%s",
@@ -355,7 +319,7 @@ static int ply_find_next(struct ply_read *ply, char type){
   }
 }
 
-static int append_meshms_buffer(const sid_t *my_sid, struct conversations *conv, unsigned char *buffer, int len)
+static int append_meshms_buffer(const sid_t *my_sid, struct meshms_conversations *conv, unsigned char *buffer, int len)
 {
   int ret=-1;
   rhizome_manifest *mout = NULL;
@@ -416,7 +380,7 @@ end:
 
 // update if any conversations are unread or need to be acked.
 // return -1 for failure, 1 if the conversation index needs to be saved.
-static int update_conversation(const sid_t *my_sid, struct conversations *conv)
+static int update_conversation(const sid_t *my_sid, struct meshms_conversations *conv)
 {
   if (config.debug.meshms)
     DEBUG("Checking if conversation needs to be acked");
@@ -521,7 +485,7 @@ end:
 }
 
 // update conversations, and return 1 if the conversation index should be saved
-static int update_conversations(const sid_t *my_sid, struct conversations *conv)
+static int update_conversations(const sid_t *my_sid, struct meshms_conversations *conv)
 {
   if (!conv)
     return 0;
@@ -542,7 +506,7 @@ static int update_conversations(const sid_t *my_sid, struct conversations *conv)
 
 // read our cached conversation list from our rhizome payload
 // if we can't load the existing data correctly, just ignore it.
-static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid, struct conversations **conv)
+static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid, struct meshms_conversations **conv)
 {
   if (m->haveSecret==NEW_BUNDLE_ID)
     return 0;
@@ -575,7 +539,7 @@ static int read_known_conversations(rhizome_manifest *m, const sid_t *their_sid,
       DEBUGF("Reading existing conversation for %s", alloca_tohex_sid_t(sid));
     if (their_sid && cmp_sid_t(&sid, their_sid) != 0)
       continue;
-    struct conversations *ptr = add_conv(conv, &sid);
+    struct meshms_conversations *ptr = add_conv(conv, &sid);
     if (!ptr)
       goto end;
     unsigned char details[8*3];
@@ -604,7 +568,7 @@ end:
   return ret;
 }
 
-static ssize_t write_conversation(struct rhizome_write *write, struct conversations *conv)
+static ssize_t write_conversation(struct rhizome_write *write, struct meshms_conversations *conv)
 {
   size_t len=0;
   if (!conv)
@@ -646,7 +610,7 @@ static ssize_t write_conversation(struct rhizome_write *write, struct conversati
   return len;
 }
 
-static int write_known_conversations(rhizome_manifest *m, struct conversations *conv)
+static int write_known_conversations(rhizome_manifest *m, struct meshms_conversations *conv)
 {
   rhizome_manifest *mout=NULL;
   
@@ -713,7 +677,7 @@ end:
 }
 
 // read information about existing conversations from a rhizome payload
-static int meshms_conversations_list(const sid_t *my_sid, const sid_t *their_sid, struct conversations **conv)
+int meshms_conversations_list(const sid_t *my_sid, const sid_t *their_sid, struct meshms_conversations **conv)
 {
   int ret=-1;
   rhizome_manifest *m = rhizome_new_manifest();
@@ -744,7 +708,7 @@ end:
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static void conversation_iterator_start(struct conversation_iterator *it, struct conversations *conv)
+void meshms_conversation_iterator_start(struct meshms_conversation_iterator *it, struct meshms_conversations *conv)
 {
   assert(conv->_parent == NULL); // can only iterate over whole tree
   it->current = conv;
@@ -757,7 +721,7 @@ static void conversation_iterator_start(struct conversation_iterator *it, struct
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static void conversation_iterator_advance(struct conversation_iterator *it)
+void meshms_conversation_iterator_advance(struct meshms_conversation_iterator *it)
 {
   assert(it->current != NULL); // do not call on a finished iterator
   if (it->current->_right) {
@@ -767,7 +731,7 @@ static void conversation_iterator_advance(struct conversation_iterator *it)
   }
   else {
     while (1) {
-      struct conversations *conv = it->current;
+      struct meshms_conversations *conv = it->current;
       it->current = it->current->_parent;
       if (it->current == NULL || conv == it->current->_left)
 	break;
@@ -800,7 +764,7 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
     return -1;
   }
   
-  struct conversations *conv=NULL;
+  struct meshms_conversations *conv=NULL;
   if (meshms_conversations_list(&sid, NULL, &conv)){
     keyring_free(keyring);
     return -1;
@@ -812,10 +776,10 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
   cli_columns(context, 5, names);
   int rows = 0;
   if (conv) {
-    struct conversation_iterator it;
-    for (conversation_iterator_start(&it, conv);
+    struct meshms_conversation_iterator it;
+    for (meshms_conversation_iterator_start(&it, conv);
 	it.current && (count < 0 || rows < offset + count);
-	conversation_iterator_advance(&it), ++rows
+	meshms_conversation_iterator_advance(&it), ++rows
     ) {
       if (rows >= offset) {
 	cli_put_long(context, rows, ":");
@@ -828,7 +792,7 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
   }
   cli_row_count(context, rows);
 
-  free_conversations(conv);
+  meshms_free_conversations(conv);
   keyring_free(keyring);
   return 0;
 }
@@ -855,7 +819,7 @@ int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context 
     return WHY("invalid sender SID");
   if (str_to_sid_t(&their_sid, their_sidhex) == -1)
     return WHY("invalid recipient SID");
-  struct conversations *conv = find_or_create_conv(&my_sid, &their_sid);
+  struct meshms_conversations *conv = find_or_create_conv(&my_sid, &their_sid);
   if (!conv) {
     keyring_free(keyring);
     return -1;
@@ -869,7 +833,7 @@ int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context 
   message_len+=append_footer(buffer+message_len, MESHMS_BLOCK_TYPE_MESSAGE, message_len);
   int ret = append_meshms_buffer(&my_sid, conv, buffer, message_len);
   
-  free_conversations(conv);
+  meshms_free_conversations(conv);
   keyring_free(keyring);
   return ret;
 }
@@ -898,7 +862,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
     keyring_free(keyring);
     return WHY("invalid recipient SID");
   }  
-  struct conversations *conv=find_or_create_conv(&my_sid, &their_sid);
+  struct meshms_conversations *conv=find_or_create_conv(&my_sid, &their_sid);
   if (!conv){
     keyring_free(keyring);
     return -1;
@@ -1031,12 +995,12 @@ end:
     rhizome_manifest_free(m_theirs);
     ply_read_close(&read_theirs);
   }
-  free_conversations(conv);
+  meshms_free_conversations(conv);
   keyring_free(keyring);
   return ret;
 }
 
-static int mark_read(struct conversations *conv, const sid_t *their_sid, const char *offset_str)
+static int mark_read(struct meshms_conversations *conv, const sid_t *their_sid, const char *offset_str)
 {
   int ret=0;
   if (conv){
@@ -1091,7 +1055,7 @@ int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *UN
     fromhex(their_sid.binary, their_sidhex, sizeof(their_sid.binary));
   
   int ret=-1;
-  struct conversations *conv=NULL;
+  struct meshms_conversations *conv=NULL;
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     goto end;
@@ -1121,7 +1085,7 @@ int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *UN
 end:
   if (m)
     rhizome_manifest_free(m);
-  free_conversations(conv);
+  meshms_free_conversations(conv);
   keyring_free(keyring);
   return ret;
 }
