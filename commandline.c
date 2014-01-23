@@ -1043,7 +1043,9 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
     timeout_ms = 60 * 60000; // 1 hour...
   int64_t interval_ms = 1000;
   str_to_uint64_interval_ms(opt_interval, &interval_ms, NULL);
-
+  if (interval_ms == 0)
+    interval_ms = 1000;
+    
   /* First sequence number in the echo frames */
   unsigned int firstSeq=random();
   unsigned int sequence_number=firstSeq;
@@ -1054,6 +1056,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   if ((mdp_sockfd = mdp_socket()) < 0)
     return WHY("Cannot create MDP socket");
 
+  set_nonblock(mdp_sockfd);
   struct mdp_header mdp_header;
   bzero(&mdp_header, sizeof(mdp_header));
 
@@ -1083,7 +1086,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   sigIntFlag = 0;
   signal(SIGINT, sigIntHandler);
   
-  for (; sigIntFlag==0 && (icount==0 || tx_count<icount); ++sequence_number) {
+  for (; sigIntFlag==0 && (icount==0 || tx_count<icount); ) {
     
     // send a ping packet
     {
@@ -1093,10 +1096,12 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
       write_uint64(&payload[4], gettime_ms());
       
       int r = mdp_send(mdp_sockfd, &mdp_header, payload, sizeof(payload));
-      if (r<0)
-	WHY_perror("mdp_send");
-      else
+      if (r<0){
+	WARN_perror("mdp_send");
+      }else{
+	sequence_number++;
 	tx_count++;
+      }
     }
     
     /* Now look for replies until one second has passed, and print any replies
@@ -1127,12 +1132,14 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
 	// received port binding confirmation
 	mdp_header.local = mdp_recv_header.local;
 	mdp_header.flags &= ~MDP_FLAG_BIND;
-	DEBUGF("Bound to %s:%d", alloca_tohex_sid_t(mdp_header.local.sid), mdp_header.local.port);
+	if (config.debug.mdprequests)
+	  DEBUGF("Bound to %s:%d", alloca_tohex_sid_t(mdp_header.local.sid), mdp_header.local.port);
 	continue;
       }
       
       if ((size_t)len < sizeof(recv_payload)){
-	DEBUGF("Ignoring ping response as it is too short");
+	if (config.debug.mdprequests)
+	  DEBUGF("Ignoring ping response as it is too short");
 	continue;
       }
       
