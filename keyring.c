@@ -1861,7 +1861,7 @@ static int keyring_process_challenge(keyring_file *k, struct subscriber *subscri
   return 0;
 }
 
-int keyring_mapping_request(keyring_file *k, struct overlay_frame *frame, overlay_mdp_frame *req)
+int keyring_mapping_request(keyring_file *k, struct internal_mdp_header *header, overlay_mdp_frame *req)
 {
   if (!k) return WHY("keyring is null");
   if (!req) return WHY("req is null");
@@ -1881,21 +1881,21 @@ int keyring_mapping_request(keyring_file *k, struct overlay_frame *frame, overla
     case UNLOCK_REQUEST:
       {
 	int len = req->out.payload_length;
-	if (crypto_verify_message(frame->destination, req->out.payload, &len))
+	if (crypto_verify_message(header->destination, req->out.payload, &len))
 	  return WHY("Signature check failed");
 	req->out.payload_length = len;
       }
-      return keyring_send_challenge(frame->destination, frame->source);
+      return keyring_send_challenge(header->destination, header->source);
     case UNLOCK_CHALLENGE:
-      return keyring_respond_challenge(frame->source, req);
+      return keyring_respond_challenge(header->source, req);
     case UNLOCK_RESPONSE:
       {
 	int len = req->out.payload_length;
-	if (crypto_verify_message(frame->destination, req->out.payload, &len))
+	if (crypto_verify_message(header->destination, req->out.payload, &len))
 	  return WHY("Signature check failed");
 	req->out.payload_length = len;
       }
-      return keyring_process_challenge(k, frame->destination, req);
+      return keyring_process_challenge(k, header->destination, req);
   }
   return WHY("Not implemented");
 }

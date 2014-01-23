@@ -72,7 +72,6 @@ int mdp_send(int socket, const struct mdp_header *header, const uint8_t *payload
     }
   };
   
-  
   return send_message(socket, &addr, &data);
 }
 

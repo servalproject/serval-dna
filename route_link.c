@@ -1215,18 +1215,15 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
 }
 
 // parse incoming link details
-int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp)
+int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   IN();
-  struct overlay_buffer *payload = ob_static(mdp->out.payload, mdp->out.payload_length);
-  ob_limitsize(payload, mdp->out.payload_length);
 
-  struct subscriber *sender = find_subscriber(mdp->out.src.sid.binary, SID_SIZE, 0);
-  struct neighbour *neighbour = get_neighbour(sender, 1);
+  struct neighbour *neighbour = get_neighbour(header->source, 1);
 
   struct decode_context context;
   bzero(&context, sizeof(context));
-  context.interface = frame->interface;
+  context.interface = header->receive_interface;
   time_ms_t now = gettime_ms();
   char changed = 0;
 
@@ -1300,7 +1297,7 @@ int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 
     if (receiver == my_subscriber){
       // track if our neighbour is using us as an immediate neighbour, if they are we need to ack / nack promptly
-      neighbour->using_us = (transmitter==sender?1:0);
+      neighbour->using_us = (transmitter==header->source?1:0);
 
       // for routing, we can completely ignore any links that our neighbour is using to route to us.
       // we can always send packets to ourself :)
@@ -1309,7 +1306,7 @@ int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 
     struct network_destination *destination=NULL;
     
-    if (receiver == sender){
+    if (receiver == header->source){
       // ignore other incoming links to our neighbour
       if (transmitter!=my_subscriber || interface_id==-1)
         continue;
@@ -1353,7 +1350,7 @@ int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp)
     if (!link)
       continue;
 
-    if (transmitter == my_subscriber && receiver == sender && interface_id != -1 && destination){
+    if (transmitter == my_subscriber && receiver == header->source && interface_id != -1 && destination){
       // they can hear us? we can route through them!
       
       version = link->link_version;
@@ -1376,7 +1373,7 @@ int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 
       // process acks / nacks
       if (ack_seq!=-1){
-        overlay_queue_ack(sender, destination, ack_mask, ack_seq);
+        overlay_queue_ack(header->source, destination, ack_mask, ack_seq);
 
         // did they miss our last ack?
         if (neighbour->last_update_seq!=-1){
@@ -1386,7 +1383,8 @@ int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp)
 	  }else if(seq_delta < 128){
 	    // send another ack asap
 	    if (config.debug.ack)
-	      DEBUGF("LINK STATE; neighbour %s missed ack %d, queue another", alloca_tohex_sid_t(sender->sid), neighbour->last_update_seq);
+	      DEBUGF("LINK STATE; neighbour %s missed ack %d, queue another", 
+		alloca_tohex_sid_t(header->source->sid), neighbour->last_update_seq);
 	    neighbour->next_neighbour_update=now+5;
 	    update_alarm(__WHENCE__, neighbour->next_neighbour_update);
 	  }
@@ -1407,7 +1405,7 @@ int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp)
     }
   }
 
-  send_please_explain(&context, my_subscriber, sender);
+  send_please_explain(&context, my_subscriber, header->source);
 
   if (changed){
     route_version++;

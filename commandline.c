@@ -1131,12 +1131,11 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   for (; sigIntFlag==0 && (icount==0 || tx_count<icount); ) {
     
     // send a ping packet
-    {
+    if (tx_count==0 || !(mdp_header.flags & MDP_FLAG_BIND)){
       uint8_t payload[12];
       int *seq=(int *)payload;
       *seq=sequence_number;
       write_uint64(&payload[4], gettime_ms());
-      
       int r = mdp_send(mdp_sockfd, &mdp_header, payload, sizeof(payload));
       if (r<0){
 	WARN_perror("mdp_send");
@@ -1167,7 +1166,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
       
       if (mdp_recv_header.flags & MDP_FLAG_ERROR){
 	WHY("Serval daemon reported an error, please check the log for more information");
-	break;
+	continue;
       }
       
       if (mdp_recv_header.flags & MDP_FLAG_BIND){

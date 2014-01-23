@@ -98,6 +98,18 @@ struct overlay_frame {
   struct overlay_buffer *payload;
 };
 
+// simple representation for passing mdp packet header details
+struct internal_mdp_header{
+  struct subscriber *source;
+  mdp_port_t source_port;
+  struct subscriber *destination;
+  mdp_port_t destination_port;
+  uint8_t ttl;
+  uint8_t qos;
+  uint8_t modifiers; // combination of OF_ flags, as per overlay_frame above
+  struct overlay_interface *receive_interface;
+};
+
 
 int op_free(struct overlay_frame *p);
 struct overlay_frame *op_dup(struct overlay_frame *f);

@@ -246,6 +246,7 @@ struct decode_context;
 struct socket_address;
 struct overlay_interface;
 struct network_destination;
+struct internal_mdp_header;
 
 /* Make sure we have space to put bytes of the packet as we go along */
 #define CHECK_PACKET_LEN(B) {if (((*packet_len)+(B))>=packet_maxlen) { return WHY("Packet composition ran out of space."); } }
@@ -418,11 +419,15 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client);
 void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port);
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const sid_t *resolved_sidp, const char *uri, const char *did, const char *name);
 
-struct mdp_header;
+void overlay_mdp_fill_legacy(
+  const struct internal_mdp_header *header,
+  struct overlay_buffer *payload,
+  overlay_mdp_frame *mdp);
+
 int mdp_bind_internal(struct subscriber *subscriber, mdp_port_t port,
-  int (*internal)(const struct mdp_header *header, const uint8_t *payload, size_t len));
+  int (*internal)(struct internal_mdp_header *header, struct overlay_buffer *payload));
 int mdp_unbind_internal(struct subscriber *subscriber, mdp_port_t port,
-  int (*internal)(const struct mdp_header *header, const uint8_t *payload, size_t len));
+  int (*internal)(struct internal_mdp_header *header, struct overlay_buffer *payload));
 
 
 struct vomp_call_state;
@@ -493,7 +498,8 @@ int overlay_mdp_setup_sockets();
 int overlay_packetradio_setup_port(struct overlay_interface *interface);
 void server_config_reload(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
-int overlay_mdp_try_internal_services(struct overlay_frame *frame, overlay_mdp_frame *mdp);
+void overlay_mdp_bind_internal_services();
+int overlay_mdp_try_internal_services(struct internal_mdp_header *header, struct overlay_buffer *payload);
 int overlay_send_probe(struct subscriber *peer, struct network_destination *destination, int queue);
 int overlay_send_stun_request(struct subscriber *server, struct subscriber *request);
 void fd_periodicstats(struct sched_ent *alarm);
@@ -508,7 +514,7 @@ void rhizome_server_poll(struct sched_ent *alarm);
 
 int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp);
 int overlay_mdp_service_stun(overlay_mdp_frame *mdp);
-int overlay_mdp_service_probe(struct overlay_frame *frame, overlay_mdp_frame *mdp);
+int overlay_mdp_service_probe(struct internal_mdp_header *header, overlay_mdp_frame *mdp);
 
 time_ms_t limit_next_allowed(struct limit_state *state);
 int limit_is_allowed(struct limit_state *state);
@@ -533,7 +539,7 @@ extern char crash_handler_clue[1024];
 
 int link_received_duplicate(struct subscriber *subscriber, int previous_seq);
 int link_received_packet(struct decode_context *context, int sender_seq, char unicast);
-int link_receive(struct overlay_frame *frame, overlay_mdp_frame *mdp);
+int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payload);
 void link_explained(struct subscriber *subscriber);
 void link_interface_down(struct overlay_interface *interface);
 int link_state_announce_links();

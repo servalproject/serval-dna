@@ -41,7 +41,7 @@ int rhizome_mdp_send_block(struct subscriber *dest, const rhizome_bid_t *bid, ui
     RETURN(WHYF("Invalid block length %d", blockLength));
 
   if (config.debug.rhizome_tx)
-    DEBUGF("Requested blocks for %s @%"PRIx64" bitmap %x", alloca_tohex_rhizome_bid_t(*bid), fileOffset, bitmap);
+    DEBUGF("Requested blocks for bid=%s, ver=%"PRIu64" @%"PRIx64" bitmap %x", alloca_tohex_rhizome_bid_t(*bid), version, fileOffset, bitmap);
     
   overlay_mdp_frame reply;
   bzero(&reply,sizeof(reply));
@@ -109,24 +109,24 @@ int rhizome_mdp_send_block(struct subscriber *dest, const rhizome_bid_t *bid, ui
   OUT();
 }
 
-int overlay_mdp_service_rhizomerequest(struct overlay_frame *frame, overlay_mdp_frame *mdp)
+int overlay_mdp_service_rhizomerequest(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
-  const rhizome_bid_t *bidp = (const rhizome_bid_t *) &mdp->out.payload[0];
-  uint64_t version = read_uint64(&mdp->out.payload[sizeof bidp->binary]);
-  uint64_t fileOffset = read_uint64(&mdp->out.payload[sizeof bidp->binary + 8]);
-  uint32_t bitmap = read_uint32(&mdp->out.payload[sizeof bidp->binary + 8 + 8]);
-  uint16_t blockLength = read_uint16(&mdp->out.payload[sizeof bidp->binary + 8 + 8 + 4]);
-  return rhizome_mdp_send_block(frame->source, bidp, version, fileOffset, bitmap, blockLength);
+  const rhizome_bid_t *bidp = (const rhizome_bid_t *) ob_get_bytes_ptr(payload, sizeof bidp->binary);
+  // Note, was originally built using read_uint64 which has reverse byte order of ob_get_ui64
+  uint64_t version = ob_get_ui64_rv(payload);
+  uint64_t fileOffset = ob_get_ui64_rv(payload);
+  uint32_t bitmap = ob_get_ui32_rv(payload);
+  uint16_t blockLength = ob_get_ui16_rv(payload);
+  if (ob_overrun(payload))
+    return -1;
+  return rhizome_mdp_send_block(header->source, bidp, version, fileOffset, bitmap, blockLength);
 }
 
-int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
+int overlay_mdp_service_rhizomeresponse(struct overlay_buffer *payload)
 {
   IN();
   
-  if (!mdp->out.payload_length)
-    RETURN(WHYF("No payload?"));
-
-  int type=mdp->out.payload[0];
+  int type=ob_get(payload);
 
   if (config.debug.rhizome_mdp_rx)
     DEBUGF("Received Rhizome over MDP block, type=%02x",type);
@@ -135,14 +135,14 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
   case 'B': /* data block */
   case 'T': /* terminal data block */
     {
-      if (mdp->out.payload_length<(1+16+8+8+1)) 
+      unsigned char *bidprefix=ob_get_bytes_ptr(payload, 16);
+      uint64_t version=ob_get_ui64_rv(payload);
+      uint64_t offset=ob_get_ui64_rv(payload);
+      if (ob_overrun(payload))
 	RETURN(WHYF("Payload too short"));
-      unsigned char *bidprefix=&mdp->out.payload[1];
-      uint64_t version=read_uint64(&mdp->out.payload[1+16]);
-      uint64_t offset=read_uint64(&mdp->out.payload[1+16+8]);
-      size_t count = mdp->out.payload_length-(1+16+8+8);
-      unsigned char *bytes=&mdp->out.payload[1+16+8+8];
-
+      size_t count = ob_remaining(payload);
+      unsigned char *bytes=ob_current_ptr(payload);
+      
       if (config.debug.rhizome_mdp_rx)
 	DEBUGF("bidprefix=%02x%02x%02x%02x*, offset=%"PRId64", count=%zu",
 	       bidprefix[0],bidprefix[1],bidprefix[2],bidprefix[3],offset,count);
@@ -349,47 +349,72 @@ end:
   RETURN(ret);
 }
 
-static int overlay_mdp_service_manifest_requests(struct overlay_frame *frame, const uint8_t *payload, size_t len)
+static int overlay_mdp_service_manifest_requests(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
-  size_t offset = 0;
-  while (offset < len) {
+  while (ob_remaining(payload)) {
+    const unsigned char *bar = ob_get_bytes_ptr(payload, RHIZOME_BAR_BYTES);
+    if (!bar)
+      break;
     rhizome_manifest *m = rhizome_new_manifest();
     if (!m)
       return WHY("Unable to allocate manifest");
-    const unsigned char *bar = &payload[offset];
     if (!rhizome_retrieve_manifest_by_prefix(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES, m)){
-      rhizome_advertise_manifest(frame->source, m);
+      rhizome_advertise_manifest(header->source, m);
       // pre-emptively send the payload if it will fit in a single packet
       if (m->filesize > 0 && m->filesize <= 1024)
-	rhizome_mdp_send_block(frame->source, &m->cryptoSignPublic, m->version, 0, 0, m->filesize);
+	rhizome_mdp_send_block(header->source, &m->cryptoSignPublic, m->version, 0, 0, m->filesize);
     }
     rhizome_manifest_free(m);
-    offset+=RHIZOME_BAR_BYTES;
   }
   return 0;
 }
 
-int overlay_mdp_try_internal_services(struct overlay_frame *frame, overlay_mdp_frame *mdp)
+void overlay_mdp_bind_internal_services()
+{
+  mdp_bind_internal(NULL, MDP_PORT_LINKSTATE, link_receive);
+  mdp_bind_internal(NULL, MDP_PORT_RHIZOME_REQUEST, overlay_mdp_service_rhizomerequest);
+  mdp_bind_internal(NULL, MDP_PORT_RHIZOME_MANIFEST_REQUEST, overlay_mdp_service_manifest_requests);
+  mdp_bind_internal(NULL, MDP_PORT_RHIZOME_SYNC, overlay_mdp_service_rhizome_sync);
+}
+
+int overlay_mdp_try_internal_services(
+  struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   IN();
-  switch(mdp->out.dst.port) {
-  case MDP_PORT_LINKSTATE:        RETURN(link_receive(frame, mdp));
-  case MDP_PORT_VOMP:             RETURN(vomp_mdp_received(mdp));
-  case MDP_PORT_KEYMAPREQUEST:    RETURN(keyring_mapping_request(keyring, frame, mdp));
-  case MDP_PORT_DNALOOKUP:        RETURN(overlay_mdp_service_dnalookup(mdp));
-  case MDP_PORT_ECHO:             RETURN(overlay_mdp_service_echo(mdp));
-  case MDP_PORT_TRACE:            RETURN(overlay_mdp_service_trace(mdp));
-  case MDP_PORT_PROBE:            RETURN(overlay_mdp_service_probe(frame, mdp));
-  case MDP_PORT_STUNREQ:          RETURN(overlay_mdp_service_stun_req(mdp));
-  case MDP_PORT_STUN:             RETURN(overlay_mdp_service_stun(mdp));
-  case MDP_PORT_RHIZOME_REQUEST:  RETURN(overlay_mdp_service_rhizomerequest(frame, mdp));
-  case MDP_PORT_RHIZOME_RESPONSE: RETURN(overlay_mdp_service_rhizomeresponse(mdp));    
-  case MDP_PORT_RHIZOME_MANIFEST_REQUEST: RETURN(overlay_mdp_service_manifest_requests(frame, mdp->out.payload, mdp->out.payload_length));
-  case MDP_PORT_RHIZOME_SYNC: RETURN(overlay_mdp_service_rhizome_sync(frame, mdp));
+  overlay_mdp_frame mdp;
+  
+  // TODO convert to internal bindings
+  switch(header->destination_port) {
+  case MDP_PORT_VOMP:
+    overlay_mdp_fill_legacy(header, payload, &mdp);
+    RETURN(vomp_mdp_received(&mdp));
+  case MDP_PORT_KEYMAPREQUEST:
+    overlay_mdp_fill_legacy(header, payload, &mdp);
+    RETURN(keyring_mapping_request(keyring, header, &mdp));
+  case MDP_PORT_DNALOOKUP:
+    overlay_mdp_fill_legacy(header, payload, &mdp);
+    RETURN(overlay_mdp_service_dnalookup(&mdp));
+  case MDP_PORT_ECHO:
+    overlay_mdp_fill_legacy(header, payload, &mdp);
+    RETURN(overlay_mdp_service_echo(&mdp));
+  case MDP_PORT_TRACE:
+    overlay_mdp_fill_legacy(header, payload, &mdp);
+    RETURN(overlay_mdp_service_trace(&mdp));
+  case MDP_PORT_PROBE:
+    overlay_mdp_fill_legacy(header, payload, &mdp);
+    RETURN(overlay_mdp_service_probe(header, &mdp));
+  case MDP_PORT_STUNREQ:
+    overlay_mdp_fill_legacy(header, payload, &mdp);
+    RETURN(overlay_mdp_service_stun_req(&mdp));
+  case MDP_PORT_STUN:
+    overlay_mdp_fill_legacy(header, payload, &mdp);
+    RETURN(overlay_mdp_service_stun(&mdp));
+  case MDP_PORT_RHIZOME_RESPONSE:
+    RETURN(overlay_mdp_service_rhizomeresponse(payload));
   }
    
   /* Unbound socket.  We won't be sending ICMP style connection refused
      messages, partly because they are a waste of bandwidth. */
   RETURN(WHYF("Received packet for which no listening process exists (MDP ports: src=%d, dst=%d",
-	      mdp->out.src.port,mdp->out.dst.port));
+	      header->source_port, header->destination_port));
 }

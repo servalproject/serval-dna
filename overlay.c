@@ -126,6 +126,8 @@ schedule(&_sched_##X); }
   overlay_mdp_setup_sockets();
   monitor_setup_sockets();
   
+  overlay_mdp_bind_internal_services();
+  
   olsr_init_socket();
 
   /* Get rhizome server started BEFORE populating fd list so that

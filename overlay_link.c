@@ -201,7 +201,7 @@ int load_subscriber_address(struct subscriber *subscriber)
 
 /* Collection of unicast echo responses to detect working links */
 int
-overlay_mdp_service_probe(struct overlay_frame *frame, overlay_mdp_frame *mdp)
+overlay_mdp_service_probe(struct internal_mdp_header *header, overlay_mdp_frame *mdp)
 {
   IN();
   if (mdp->out.src.port!=MDP_PORT_ECHO){
@@ -209,7 +209,7 @@ overlay_mdp_service_probe(struct overlay_frame *frame, overlay_mdp_frame *mdp)
     RETURN(-1);
   }
   
-  if (frame->source->reachable == REACHABLE_SELF)
+  if (header->source->reachable == REACHABLE_SELF)
     RETURN(0);
   
   uint8_t interface = mdp->out.payload[0];
@@ -221,7 +221,7 @@ overlay_mdp_service_probe(struct overlay_frame *frame, overlay_mdp_frame *mdp)
   
   bcopy(&mdp->out.payload[1], &addr.addr, addr.addrlen);
   
-  RETURN(link_unicast_ack(frame->source, &overlay_interfaces[interface], &addr));
+  RETURN(link_unicast_ack(header->source, &overlay_interfaces[interface], &addr));
   OUT();
 }
 

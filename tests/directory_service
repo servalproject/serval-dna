@@ -22,7 +22,6 @@ source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
 configure_servald_server() {
-   add_servald_interface
    executeOk_servald config \
       set log.console.show_pid on \
       set log.console.show_time on \
@@ -63,12 +62,13 @@ setup_publish() {
       set dna.helper.executable "$servald_build_root/directory_service" \
       set debug.dnahelper on
    foreach_instance +B +C +D executeOk_servald config set directory.service $SIDA
+   foreach_instance +A +B +C +D add_servald_interface
    start_servald_instances +A +B +C +D
-   wait_until grep "DNAHELPER got STARTED ACK" $LOGA
 }
 
 doc_publish="Publish and retrieve a directory entry"
 test_publish() {
+   wait_until grep "DNAHELPER got STARTED ACK" $LOGA
    foreach_instance +B +C +D
       wait_until sent_directory_request
    set_instance +A
@@ -95,20 +95,20 @@ interface_up() {
 }
 
 start_routing_instance() {
-   executeOk_servald config \
-      set server.interface_path "$SERVALD_VAR" \
-      set rhizome.enable No \
-      set log.console.show_pid on \
-      set log.console.show_time on \
-      set debug.mdprequests Yes \
-      set debug.overlayframes Yes
    start_servald_server
    wait_until interface_up
 }
 
 configure_node() {
    executeOk_servald config \
+      set server.interface_path "$SERVALD_VAR" \
+      set rhizome.enable No \
+      set log.console.show_pid on \
+      set log.console.show_time on \
+      set debug.mdprequests Yes \
+      set debug.overlayframes Yes \
       set interfaces.0.file dummy1 \
+      set interfaces.0.socket_type file \
       set interfaces.0.send_broadcasts 0 \
       set interfaces.0.drop_broadcasts on \
       set interfaces.0.default_route 1 \

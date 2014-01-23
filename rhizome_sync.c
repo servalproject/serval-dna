@@ -455,32 +455,27 @@ int rhizome_sync_announce()
   return 0;
 }
 
-int overlay_mdp_service_rhizome_sync(struct overlay_frame *frame, overlay_mdp_frame *mdp)
+int overlay_mdp_service_rhizome_sync(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
-  if (!frame)
-    return 0;
-  struct rhizome_sync *state = frame->source->sync_state;
+  struct rhizome_sync *state = header->source->sync_state;
   if (!state){
-    state = frame->source->sync_state = emalloc_zero(sizeof(struct rhizome_sync));
+    state = header->source->sync_state = emalloc_zero(sizeof(struct rhizome_sync));
     state->start_time=gettime_ms();
   }
-  struct overlay_buffer *b = ob_static(mdp->out.payload, sizeof(mdp->out.payload));
-  ob_limitsize(b, mdp->out.payload_length);
-  int type = ob_get(b);
+  int type = ob_get(payload);
   switch (type){
     case MSG_TYPE_BARS:
-      sync_process_bar_list(frame->source, state, b);
+      sync_process_bar_list(header->source, state, payload);
       break;
     case MSG_TYPE_REQ:
       {
-        int forwards = ob_get(b);
-        uint64_t token = ob_get_packed_ui64(b);
-        sync_send_response(frame->source, forwards, token, 0);
+        int forwards = ob_get(payload);
+        uint64_t token = ob_get_packed_ui64(payload);
+        sync_send_response(header->source, forwards, token, 0);
       }
       break;
   }
-  ob_free(b);
-  rhizome_sync_send_requests(frame->source, state);
+  rhizome_sync_send_requests(header->source, state);
   return 0;
 }
 

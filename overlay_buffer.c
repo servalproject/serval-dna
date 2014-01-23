@@ -281,11 +281,6 @@ void _ob_append_bytes(struct __sourceloc __whence, struct overlay_buffer *b, con
   b->position += count;
 }
 
-void _ob_append_buffer(struct __sourceloc __whence, struct overlay_buffer *b, struct overlay_buffer *s)
-{
-  ob_append_bytes(b, s->bytes, s->position);
-}
-
 void _ob_append_ui16(struct __sourceloc __whence, struct overlay_buffer *b, uint16_t v)
 {
   const int bytes = 2;
@@ -428,6 +423,21 @@ void ob_skip(struct overlay_buffer *b, unsigned n)
   b->position += n;
 }
 
+// return a null terminated string pointer and advance past the string
+const char *ob_get_str_ptr(struct overlay_buffer *b)
+{
+  const char *ret = (const char*)(b->bytes + b->position);
+  off_t ofs=0;
+  while (test_offset(b, ofs)==0){
+    if (ret[ofs]=='\0'){
+      b->position+=ofs+1;
+      return ret;
+    }
+    ofs++;
+  }
+  return NULL;
+}
+
 int ob_get_bytes(struct overlay_buffer *b, unsigned char *buff, size_t len)
 {
   if (test_offset(b, len))
@@ -458,6 +468,18 @@ uint32_t ob_get_ui32(struct overlay_buffer *b)
   return ret;
 }
 
+uint32_t ob_get_ui32_rv(struct overlay_buffer *b)
+{
+  if (test_offset(b, 4))
+    return 0xFFFFFFFF; // ... unsigned
+  uint32_t ret = b->bytes[b->position]
+	| b->bytes[b->position +1] << 8
+	| b->bytes[b->position +2] << 16
+	| b->bytes[b->position +3] << 24;
+  b->position+=4;
+  return ret;
+}
+
 uint64_t ob_get_ui64(struct overlay_buffer *b)
 {
   if (test_offset(b, 8))
@@ -474,12 +496,38 @@ uint64_t ob_get_ui64(struct overlay_buffer *b)
   return ret;
 }
 
+uint64_t ob_get_ui64_rv(struct overlay_buffer *b)
+{
+  if (test_offset(b, 8))
+    return 0xFFFFFFFF; // ... unsigned
+  uint64_t ret = (uint64_t)b->bytes[b->position]
+	| (uint64_t)b->bytes[b->position +1] << 8
+	| (uint64_t)b->bytes[b->position +2] << 16
+	| (uint64_t)b->bytes[b->position +3] << 24
+	| (uint64_t)b->bytes[b->position +4] << 32
+	| (uint64_t)b->bytes[b->position +5] << 40
+	| (uint64_t)b->bytes[b->position +6] << 48
+	| (uint64_t)b->bytes[b->position +7] << 56;
+  b->position+=8;
+  return ret;
+}
+
 uint16_t ob_get_ui16(struct overlay_buffer *b)
 {
   if (test_offset(b, 2))
     return 0xFFFF; // ... unsigned
   uint16_t ret = b->bytes[b->position] << 8
 	| b->bytes[b->position +1];
+  b->position+=2;
+  return ret;
+}
+
+uint16_t ob_get_ui16_rv(struct overlay_buffer *b)
+{
+  if (test_offset(b, 2))
+    return 0xFFFF; // ... unsigned
+  uint16_t ret = b->bytes[b->position]
+	| b->bytes[b->position +1] << 8;
   b->position+=2;
   return ret;
 }
@@ -578,6 +626,11 @@ int _ob_overrun(struct __sourceloc __whence, struct overlay_buffer *b)
 unsigned char *ob_ptr(struct overlay_buffer *b)
 {
   return b->bytes;
+}
+
+unsigned char *ob_current_ptr(struct overlay_buffer *b)
+{
+  return &b->bytes[b->position];
 }
 
 int asprintable(int c)

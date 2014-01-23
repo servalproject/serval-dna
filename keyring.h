@@ -116,7 +116,7 @@ int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret);
 
 unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknown_sidp);
 
-int keyring_mapping_request(keyring_file *k, struct overlay_frame *frame, overlay_mdp_frame *req);
+int keyring_mapping_request(keyring_file *k, struct internal_mdp_header *header, overlay_mdp_frame *req);
 int keyring_send_unlock(struct subscriber *subscriber);
 void keyring_release_subscriber(keyring_file *k, const sid_t *sid);
 
