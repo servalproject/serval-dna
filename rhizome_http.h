@@ -26,7 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 int is_rhizome_http_server_running();
 
-enum list_phase { LIST_HEADER = 0, LIST_ROWS, LIST_DONE };
+enum list_phase { LIST_HEADER = 0, LIST_ROWS, LIST_END, LIST_DONE };
 
 typedef struct rhizome_http_request
 {
@@ -42,9 +42,10 @@ typedef struct rhizome_http_request
    */
   rhizome_manifest *manifest;
 
-  /* For requests/responses that pertain to a single identity.
+  /* For requests/responses that contain one or two SIDs.
    */
-  sid_t sid;
+  sid_t sid1;
+  sid_t sid2;
 
   /* Finaliser for union contents (below).
    */
@@ -127,6 +128,16 @@ typedef struct rhizome_http_request
       struct meshms_conversation_iterator iter;
     }
       mclist;
+
+    /* For responses that list MeshMS messages in a single conversation.
+    */
+    struct {
+      enum list_phase phase;
+      size_t rowcount;
+      struct meshms_message_iterator iter;
+      int finished;
+    }
+      msglist;
 
   } u;
 
