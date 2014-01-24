@@ -56,6 +56,21 @@ struct meshms_conversations {
   uint64_t their_size;
 };
 
+// cursor state for reading one half of a conversation
+struct meshms_ply_read {
+  // rhizome payload
+  struct rhizome_read read;
+  // block buffer
+  struct rhizome_read_buffer buff;
+  // details of the current record
+  uint64_t record_end_offset;
+  uint16_t record_length;
+  size_t buffer_size;
+  char type;
+  // raw record data
+  unsigned char *buffer;
+};
+
 /* Fetch the list of all MeshMS conversations into a binary tree whose nodes
  * are all allocated by malloc(3).
  */
@@ -64,11 +79,59 @@ void meshms_free_conversations(struct meshms_conversations *conv);
 
 /* For iterating over a binary tree of all MeshMS conversations, as created by
  * meshms_conversations_list().
+ *
+ *      struct meshms_conversation_iterator it;
+ *      meshms_conversation_iterator_start(&it, conv);
+ *      while (it.current) {
+ *          ...
+ *          meshms_conversation_iterator_advance(&it);
+ *      }
  */
 struct meshms_conversation_iterator {
   struct meshms_conversations *current;
 };
 void meshms_conversation_iterator_start(struct meshms_conversation_iterator *, struct meshms_conversations *);
 void meshms_conversation_iterator_advance(struct meshms_conversation_iterator *);
+
+/* For iterating through the messages in a single MeshMS conversation; both
+ * plys threaded (interleaved) in the order as seen by the sender.
+ *
+ *      struct meshms_message_iterator it;
+ *      if (meshms_message_iterator_open(&it, &sender_sid, &recip_sid) == -1)
+ *          return -1;
+ *      int ret;
+ *      while ((ret = meshms_message_iterator_next(&it)) == 0) {
+ *          ...
+ *      }
+ *      meshms_message_iterator_close(&it);
+ *      if (ret == -1)
+ *          return -1;
+ *      ...
+ */
+struct meshms_message_iterator {
+  // Public fields that remain fixed for the life of the iterator.
+  uint64_t recipient_ack_offset; // offset in recipient ply of most recent ack
+  uint64_t sent_ack_offset; // offset in sender ply of most recent message acked by recipient
+  uint64_t received_read_offset; // offset in recipient ply of most recent message read by (displayed to) sender
+  // Public fields that change per message.
+  uint64_t offset;
+  const char *text; // NUL terminated text of message
+  enum { SENT, RECEIVED } direction;
+  union {
+    bool_t delivered; // for SENT
+    bool_t read; // for RECEIVED
+  };
+  // Private implementation -- could change, so don't use them.
+  struct meshms_conversations *_conv;
+  rhizome_manifest *_manifest_sender;
+  rhizome_manifest *_manifest_recipient;
+  struct meshms_ply_read _read_sender;
+  struct meshms_ply_read _read_recipient;
+  uint64_t _end_range;
+  bool_t _in_ack;
+};
+int meshms_message_iterator_open(struct meshms_message_iterator *, const sid_t *sender, const sid_t *recipient);
+void meshms_message_iterator_close(struct meshms_message_iterator *);
+int meshms_message_iterator_next(struct meshms_message_iterator *);
 
 #endif // __SERVAL_DNA__MESHMS_H
