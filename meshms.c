@@ -723,6 +723,8 @@ int meshms_message_iterator_open(struct meshms_message_iterator *iter, const sid
   iter->_my_sid = *me;
   iter->my_sid = &iter->_my_sid;
   iter->their_sid = &iter->_conv->them;
+  iter->my_ply_bid = &iter->_conv->my_ply.bundle_id;
+  iter->their_ply_bid = &iter->_conv->their_ply.bundle_id;
   iter->read_offset = iter->_conv->read_offset;
   // If I have never sent a message (or acked any of theirs), there are no messages in the thread.
   if (iter->_conv->found_my_ply) {
@@ -759,6 +761,11 @@ fail:
   return -1;
 }
 
+int meshms_message_iterator_is_open(const struct meshms_message_iterator *iter)
+{
+  return iter->_conv != NULL;
+}
+
 void meshms_message_iterator_close(struct meshms_message_iterator *iter)
 {
   if (iter->_my_manifest) {
@@ -772,6 +779,7 @@ void meshms_message_iterator_close(struct meshms_message_iterator *iter)
     iter->_their_manifest = NULL;
   }
   meshms_free_conversations(iter->_conv);
+  iter->_conv = NULL;
 }
 
 int meshms_message_iterator_prev(struct meshms_message_iterator *iter)
@@ -789,6 +797,7 @@ int meshms_message_iterator_prev(struct meshms_message_iterator *iter)
 	DEBUGF("Reading other log from %"PRId64", to %"PRId64, iter->_their_reader.read.offset, iter->_end_range);
       if ((ret = ply_read_prev(&iter->_their_reader)) == -1)
 	break;
+      iter->which_ply = THEIR_PLY;
       if (ret == 0 && iter->_their_reader.read.offset >= iter->_end_range) {
 	switch (iter->_their_reader.type) {
 	  case MESHMS_BLOCK_TYPE_ACK:
@@ -813,6 +822,7 @@ int meshms_message_iterator_prev(struct meshms_message_iterator *iter)
     else if ((ret = ply_read_prev(&iter->_my_reader)) == 0) {
       if (config.debug.meshms)
 	DEBUGF("Offset %"PRId64", type %d, read_offset %"PRId64, iter->_my_reader.read.offset, iter->_my_reader.type, iter->read_offset);
+      iter->which_ply = MY_PLY;
       switch (iter->_my_reader.type) {
 	case MESHMS_BLOCK_TYPE_ACK:
 	  // Read the received messages up to the ack'ed offset

@@ -892,7 +892,7 @@ ssize_t rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, siz
   }
   
   if (read_state->crypt && buffer && bytes_read>0){
-    dump("before decrypt", buffer, bytes_read);
+    //dump("before decrypt", buffer, bytes_read);
     if(rhizome_crypt_xor_block(
 	buffer, bytes_read, 
 	read_state->offset + read_state->tail, 

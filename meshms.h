@@ -112,10 +112,13 @@ struct meshms_message_iterator {
   // Public fields that remain fixed for the life of the iterator:
   const sid_t *my_sid;
   const sid_t *their_sid;
+  const rhizome_bid_t *my_ply_bid;
+  const rhizome_bid_t *their_ply_bid;
   uint64_t latest_ack_offset; // offset in remote (their) ply of most recent ACK
   uint64_t latest_ack_my_offset; // offset in my ply of most recent message ACKed by them
   uint64_t read_offset; // offset in remote (their) ply of most recent message read by me
   // The following public fields change per message:
+  enum meshms_which_ply { MY_PLY, THEIR_PLY } which_ply;
   enum { MESSAGE_SENT, MESSAGE_RECEIVED, ACK_RECEIVED } type;
   // For MESSAGE_SENT 'offset' is the byte position within the local ply
   // (mine).  For MESSAGE_RECEIVED and ACK_RECEIVED, it is the byte position
@@ -138,6 +141,7 @@ struct meshms_message_iterator {
   bool_t _in_ack;
 };
 int meshms_message_iterator_open(struct meshms_message_iterator *, const sid_t *me, const sid_t *them);
+int meshms_message_iterator_is_open(const struct meshms_message_iterator *);
 void meshms_message_iterator_close(struct meshms_message_iterator *);
 int meshms_message_iterator_prev(struct meshms_message_iterator *);
 

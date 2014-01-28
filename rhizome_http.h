@@ -47,6 +47,14 @@ typedef struct rhizome_http_request
   sid_t sid1;
   sid_t sid2;
 
+  /* For requests/responses that contain a Rhizome Bundle ID.
+   */
+  rhizome_bid_t bid;
+
+  /* For requests/responses that contain a 64-bit unsigned integer (eg, SQLite ROWID, byte offset).
+   */
+  uint64_t ui64;
+
   /* Finaliser for union contents (below).
    */
   void (*finalise_union)(struct rhizome_http_request *);
@@ -132,11 +140,16 @@ typedef struct rhizome_http_request
     /* For responses that list MeshMS messages in a single conversation.
     */
     struct {
+      enum meshms_which_ply token_which_ply;
+      uint64_t token_offset;
+      enum meshms_which_ply latest_which_ply;
+      uint64_t latest_offset;
+      time_ms_t end_time;
+      uint64_t highest_ack_offset;
       enum list_phase phase;
       size_t rowcount;
       struct meshms_message_iterator iter;
       int finished;
-      uint64_t highest_ack_offset;
     }
       msglist;
 
