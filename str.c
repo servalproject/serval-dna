@@ -128,9 +128,9 @@ static size_t _base64_encodev(const char symbols[], char *dstBase64, const struc
   if (place)
     *dst++ = symbols[buf];
   switch (place) {
-    case 2:
-      *dst++ = symbols[64];
     case 1:
+      *dst++ = symbols[64];
+    case 2:
       *dst++ = symbols[64];
   }
   return dst - dstBase64;
