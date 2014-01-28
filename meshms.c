@@ -242,7 +242,7 @@ static void ply_read_close(struct meshms_ply_read *ply)
 
 // read the next record from the ply (backwards)
 // returns 1 on EOF, -1 on failure
-static int ply_read_next(struct meshms_ply_read *ply)
+static int ply_read_prev(struct meshms_ply_read *ply)
 {
   ply->record_end_offset = ply->read.offset;
   unsigned char footer[2];
@@ -295,9 +295,9 @@ static int ply_read_next(struct meshms_ply_read *ply)
 }
 
 // keep reading past messages until you find this type.
-static int ply_find_next(struct meshms_ply_read *ply, char type){
+static int ply_find_prev(struct meshms_ply_read *ply, char type){
   while(1){
-    int ret = ply_read_next(ply);
+    int ret = ply_read_prev(ply);
     if (ret || ply->type==type)
       return ret;
   }
@@ -387,8 +387,7 @@ static int update_conversation(const sid_t *my_sid, struct meshms_conversations 
     
   if (ply_read_open(&ply, &conv->their_ply.bundle_id, m_theirs))
     goto end;
-    
-  ret = ply_find_next(&ply, MESHMS_BLOCK_TYPE_MESSAGE);
+  ret = ply_find_prev(&ply, MESHMS_BLOCK_TYPE_MESSAGE);
   if (ret!=0){
     // no messages indicates that we didn't do anthing
     if (ret>0)
@@ -419,8 +418,7 @@ static int update_conversation(const sid_t *my_sid, struct meshms_conversations 
       goto end;
     if (ply_read_open(&ply, &conv->my_ply.bundle_id, m_ours))
       goto end;
-      
-    ret = ply_find_next(&ply, MESHMS_BLOCK_TYPE_ACK);
+    ret = ply_find_prev(&ply, MESHMS_BLOCK_TYPE_ACK);
     if (ret == -1)
       goto end;
       
@@ -737,13 +735,14 @@ int meshms_message_iterator_open(struct meshms_message_iterator *iter, const sid
       goto fail;
     if (ply_read_open(&iter->_read_sender, &iter->_conv->my_ply.bundle_id, iter->_manifest_sender))
       goto fail;
+    // Seek to end of my ply.
     if (iter->_conv->found_their_ply) {
       if ((iter->_manifest_recipient = rhizome_new_manifest()) == NULL)
 	goto fail;
       if (ply_read_open(&iter->_read_recipient, &iter->_conv->their_ply.bundle_id, iter->_manifest_recipient))
 	goto fail;
-      // Find the recipient's ACK so we know which messages have been delivered.
-      int r = ply_find_next(&iter->_read_recipient, MESHMS_BLOCK_TYPE_ACK);
+      // Find the recipient's latest ACK so we know which messages have been delivered.
+      int r = ply_find_prev(&iter->_read_recipient, MESHMS_BLOCK_TYPE_ACK);
       if (r == 0) {
 	if (unpack_uint(iter->_read_recipient.buffer, iter->_read_recipient.record_length, &iter->sent_ack_offset) == -1)
 	  iter->sent_ack_offset = 0;
@@ -752,6 +751,8 @@ int meshms_message_iterator_open(struct meshms_message_iterator *iter, const sid
 	if (config.debug.meshms)
 	  DEBUGF("Found recipient last ack @%"PRId64, iter->sent_ack_offset);
       }
+      // Re-seek to end of their ply.
+      iter->_read_recipient.read.offset = iter->_read_recipient.read.length;
     }
   } else {
     if (config.debug.meshms)
@@ -779,7 +780,7 @@ void meshms_message_iterator_close(struct meshms_message_iterator *iter)
   meshms_free_conversations(iter->_conv);
 }
 
-int meshms_message_iterator_next(struct meshms_message_iterator *iter)
+int meshms_message_iterator_prev(struct meshms_message_iterator *iter)
 {
   assert(iter->_conv != NULL);
   if (iter->_conv->found_my_ply) {
@@ -792,7 +793,7 @@ int meshms_message_iterator_next(struct meshms_message_iterator *iter)
     if (iter->_in_ack) {
       if (config.debug.meshms)
 	DEBUGF("Reading other log from %"PRId64", to %"PRId64, iter->_read_recipient.read.offset, iter->_end_range);
-      ret = ply_find_next(&iter->_read_recipient, MESHMS_BLOCK_TYPE_MESSAGE);
+      ret = ply_find_prev(&iter->_read_recipient, MESHMS_BLOCK_TYPE_MESSAGE);
       if (ret == 0 && iter->_read_recipient.read.offset >= iter->_end_range) {
 	iter->offset = iter->_read_recipient.record_end_offset;
 	iter->text = (const char *)iter->_read_recipient.buffer;
@@ -802,7 +803,7 @@ int meshms_message_iterator_next(struct meshms_message_iterator *iter)
       }
       iter->_in_ack = 0;
     }
-    if ((ret = ply_read_next(&iter->_read_sender)) == 0) {
+    if ((ret = ply_read_prev(&iter->_read_sender)) == 0) {
       if (config.debug.meshms)
 	DEBUGF("Offset %"PRId64", type %d, received_read_offset %"PRId64, iter->_read_sender.read.offset, iter->_read_sender.type, iter->received_read_offset);
       switch (iter->_read_sender.type) {
@@ -971,7 +972,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
   bool_t marked_read = 0;
   int id = 0;
   int ret;
-  while ((ret = meshms_message_iterator_next(&iter)) == 0) {
+  while ((ret = meshms_message_iterator_prev(&iter)) == 0) {
     switch (iter.direction) {
       case SENT:
 	if (iter.delivered && !marked_delivered){

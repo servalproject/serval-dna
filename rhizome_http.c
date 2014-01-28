@@ -1201,7 +1201,7 @@ static int restful_meshms_messagelist_json(rhizome_http_request *r, const char *
   r->finalise_union = finalise_union_meshms_messagelist;
   r->u.msglist.rowcount = 0;
   meshms_message_iterator_open(&r->u.msglist.iter, &r->sid1, &r->sid2);
-  if ((r->u.msglist.finished = meshms_message_iterator_next(&r->u.msglist.iter)) == -1)
+  if ((r->u.msglist.finished = meshms_message_iterator_prev(&r->u.msglist.iter)) == -1)
     return -1;
   r->u.msglist.phase = LIST_HEADER;
   http_request_response_generated(&r->http, 200, "application/json", restful_meshms_messagelist_json_content);
@@ -1271,7 +1271,7 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
 	strbuf_puts(b, "]");
 	if (!strbuf_overrun(b)) {
 	  ++r->u.msglist.rowcount;
-	  if ((r->u.msglist.finished = meshms_message_iterator_next(&r->u.msglist.iter)) == -1)
+	  if ((r->u.msglist.finished = meshms_message_iterator_prev(&r->u.msglist.iter)) == -1)
 	    return -1;
 	}
 	return 1;

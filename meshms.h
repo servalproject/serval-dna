@@ -100,7 +100,7 @@ void meshms_conversation_iterator_advance(struct meshms_conversation_iterator *)
  *      if (meshms_message_iterator_open(&it, &sender_sid, &recip_sid) == -1)
  *          return -1;
  *      int ret;
- *      while ((ret = meshms_message_iterator_next(&it)) == 0) {
+ *      while ((ret = meshms_message_iterator_prev(&it)) == 0) {
  *          ...
  *      }
  *      meshms_message_iterator_close(&it);
@@ -132,6 +132,6 @@ struct meshms_message_iterator {
 };
 int meshms_message_iterator_open(struct meshms_message_iterator *, const sid_t *sender, const sid_t *recipient);
 void meshms_message_iterator_close(struct meshms_message_iterator *);
-int meshms_message_iterator_next(struct meshms_message_iterator *);
+int meshms_message_iterator_prev(struct meshms_message_iterator *);
 
 #endif // __SERVAL_DNA__MESHMS_H
