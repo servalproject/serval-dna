@@ -766,11 +766,20 @@ static struct overlay_buffer * encrypt_payload(
 }
 
 // encrypt or sign the plaintext, then queue the frame for transmission.
-static int overlay_send_frame(struct internal_mdp_header *header,
+int overlay_send_frame(struct internal_mdp_header *header,
   struct overlay_buffer *payload)
 {
-  if (header->destination && header->destination->reachable == REACHABLE_SELF)
-    return 0;
+  if ((!header->destination) || header->destination->reachable == REACHABLE_SELF){
+    ob_checkpoint(payload);
+    overlay_saw_mdp_frame(header, payload);
+    ob_rewind(payload);
+    if (header->destination) {
+      /* Is local, and is not broadcast, so shouldn't get sent out on the wire. */
+      if (config.debug.mdprequests) 
+	DEBUGF("Local packet, not transmitting");
+      return 0;
+    }
+  }
   
   if (header->ttl == 0) 
     header->ttl = PAYLOAD_TTL_DEFAULT;
@@ -992,20 +1001,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client)
     RETURN(WHY("Not implemented"));
   };
   
-  if (!header.destination || header.destination->reachable == REACHABLE_SELF){
-    /* Packet is addressed to us / broadcast, we should process it first. */
-    struct overlay_buffer *mdp_payload = ob_static(mdp->out.payload, mdp->out.payload_length);
-    ob_limitsize(mdp_payload, mdp->out.payload_length);
-    overlay_saw_mdp_frame(&header, mdp_payload);
-    ob_free(mdp_payload);
-    if (header.destination) {
-      /* Is local, and is not broadcast, so shouldn't get sent out on the wire. */
-      if (config.debug.mdprequests) 
-	DEBUGF("[%u] Local packet, not transmitting", __d);
-      RETURN(0);
-    }
-  }
-
   struct overlay_buffer *buff = ob_static(mdp->out.payload, mdp->out.payload_length);
   ob_limitsize(buff, mdp->out.payload_length);
   
@@ -1447,12 +1442,6 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
       internal_header.modifiers|=OF_CRYPTO_CIPHERED;
     if ((header->flags & MDP_FLAG_NO_SIGN) == 0)
       internal_header.modifiers|=OF_CRYPTO_SIGNED;
-    
-    if (!internal_header.destination || internal_header.destination->reachable==REACHABLE_SELF){
-      if (config.debug.mdprequests)
-	DEBUGF("Attempting to process mdp packet locally");
-      overlay_saw_mdp_frame(&internal_header, payload);
-    }
     
     // construct, encrypt, sign and queue the packet
     if (overlay_send_frame(

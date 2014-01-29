@@ -111,6 +111,8 @@ test_single_link() {
    wait_until --timeout=10 path_exists +A +B
    wait_until --timeout=5 path_exists +B +A
    set_instance +A
+   executeOk_servald mdp ping --timeout=3 $SIDA 1
+   tfw_cat --stdout --stderr
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
 }
@@ -400,6 +402,7 @@ test_single_filter() {
    wait_until --timeout=10 has_link --unicast $SIDB
    set_instance +B
    wait_until --timeout=5 has_link --broadcast $SIDA
+   set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
 }

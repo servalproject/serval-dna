@@ -418,6 +418,7 @@ int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp);
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client);
 void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port);
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const sid_t *resolved_sidp, const char *uri, const char *did, const char *name);
+int overlay_send_frame(struct internal_mdp_header *header, struct overlay_buffer *payload);
 
 void overlay_mdp_fill_legacy(
   const struct internal_mdp_header *header,

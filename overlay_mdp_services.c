@@ -222,47 +222,37 @@ int overlay_mdp_service_dnalookup(overlay_mdp_frame *mdp)
   RETURN(0);
 }
 
-int overlay_mdp_service_echo(overlay_mdp_frame *mdp)
+int overlay_mdp_service_echo(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   /* Echo is easy: we swap the sender and receiver addresses (and thus port
      numbers) and send the frame back. */
   IN();
-
-  /* Swap addresses */
-  overlay_mdp_swap_src_dst(mdp);
-  mdp->out.ttl=0;
   
   /* Prevent echo:echo connections and the resulting denial of service from triggering endless pongs. */
-  if (mdp->out.dst.port==MDP_PORT_ECHO) {
+  if (header->source_port == MDP_PORT_ECHO)
     RETURN(WHY("echo loop averted"));
-  }
-  /* If the packet was sent to broadcast, then replace broadcast address
-     with our local address. For now just responds with first local address */
-  if (is_sid_t_broadcast(mdp->out.src.sid))
-    {
-      if (my_subscriber)		  
-	mdp->out.src.sid = my_subscriber->sid;
-      else
-	/* No local addresses, so put all zeroes */
-	mdp->out.src.sid = SID_ANY;
-    }
+    
+  struct internal_mdp_header response_header;
+  bzero(&response_header, sizeof response_header);
+  
+  response_header.source = header->destination;
+  response_header.source_port = MDP_PORT_ECHO;
+  response_header.destination = header->source;
+  response_header.destination_port = header->source_port;
+  response_header.qos = header->qos;
   
   /* Always send PONGs auth-crypted so that the receipient knows
      that they are genuine, and so that we avoid the extra cost 
      of signing (which is slower than auth-crypting) */
-  int preserved=mdp->packetTypeAndFlags;
-  mdp->packetTypeAndFlags&=~(MDP_NOCRYPT|MDP_NOSIGN);
+  response_header.modifiers = OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED;
   
-  /* queue frame for delivery */
-  overlay_mdp_dispatch(mdp, NULL);
-  mdp->packetTypeAndFlags=preserved;
-  
-  /* and switch addresses back around in case the caller was planning on
-     using MDP structure again (this happens if there is a loop-back reply
-     and the frame needs sending on, as happens with broadcasts.  MDP ping
-     is a simple application where this occurs). */
-  overlay_mdp_swap_src_dst(mdp);
-  RETURN(0);
+  /* If the packet was sent to broadcast, then replace broadcast address
+     with our local address. */
+  if (!response_header.source)
+    response_header.source = my_subscriber;
+    
+  RETURN(overlay_send_frame(&response_header, payload));
+  OUT();
 }
 
 static int overlay_mdp_service_trace(overlay_mdp_frame *mdp){
@@ -372,6 +362,7 @@ static int overlay_mdp_service_manifest_requests(struct internal_mdp_header *hea
 void overlay_mdp_bind_internal_services()
 {
   mdp_bind_internal(NULL, MDP_PORT_LINKSTATE, link_receive);
+  mdp_bind_internal(NULL, MDP_PORT_ECHO, overlay_mdp_service_echo);
   mdp_bind_internal(NULL, MDP_PORT_RHIZOME_REQUEST, overlay_mdp_service_rhizomerequest);
   mdp_bind_internal(NULL, MDP_PORT_RHIZOME_MANIFEST_REQUEST, overlay_mdp_service_manifest_requests);
   mdp_bind_internal(NULL, MDP_PORT_RHIZOME_SYNC, overlay_mdp_service_rhizome_sync);
@@ -394,9 +385,6 @@ int overlay_mdp_try_internal_services(
   case MDP_PORT_DNALOOKUP:
     overlay_mdp_fill_legacy(header, payload, &mdp);
     RETURN(overlay_mdp_service_dnalookup(&mdp));
-  case MDP_PORT_ECHO:
-    overlay_mdp_fill_legacy(header, payload, &mdp);
-    RETURN(overlay_mdp_service_echo(&mdp));
   case MDP_PORT_TRACE:
     overlay_mdp_fill_legacy(header, payload, &mdp);
     RETURN(overlay_mdp_service_trace(&mdp));
