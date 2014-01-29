@@ -122,7 +122,7 @@ int overlay_mdp_service_rhizomerequest(struct internal_mdp_header *header, struc
   return rhizome_mdp_send_block(header->source, bidp, version, fileOffset, bitmap, blockLength);
 }
 
-int overlay_mdp_service_rhizomeresponse(struct overlay_buffer *payload)
+int overlay_mdp_service_rhizomeresponse(struct internal_mdp_header *UNUSED(header), struct overlay_buffer *payload)
 {
   IN();
   
@@ -366,6 +366,10 @@ void overlay_mdp_bind_internal_services()
   mdp_bind_internal(NULL, MDP_PORT_RHIZOME_REQUEST, overlay_mdp_service_rhizomerequest);
   mdp_bind_internal(NULL, MDP_PORT_RHIZOME_MANIFEST_REQUEST, overlay_mdp_service_manifest_requests);
   mdp_bind_internal(NULL, MDP_PORT_RHIZOME_SYNC, overlay_mdp_service_rhizome_sync);
+  mdp_bind_internal(NULL, MDP_PORT_RHIZOME_RESPONSE, overlay_mdp_service_rhizomeresponse);
+  mdp_bind_internal(NULL, MDP_PORT_PROBE, overlay_mdp_service_probe);
+  mdp_bind_internal(NULL, MDP_PORT_STUNREQ, overlay_mdp_service_stun_req);
+  mdp_bind_internal(NULL, MDP_PORT_STUN, overlay_mdp_service_stun);
 }
 
 int overlay_mdp_try_internal_services(
@@ -388,17 +392,6 @@ int overlay_mdp_try_internal_services(
   case MDP_PORT_TRACE:
     overlay_mdp_fill_legacy(header, payload, &mdp);
     RETURN(overlay_mdp_service_trace(&mdp));
-  case MDP_PORT_PROBE:
-    overlay_mdp_fill_legacy(header, payload, &mdp);
-    RETURN(overlay_mdp_service_probe(header, &mdp));
-  case MDP_PORT_STUNREQ:
-    overlay_mdp_fill_legacy(header, payload, &mdp);
-    RETURN(overlay_mdp_service_stun_req(&mdp));
-  case MDP_PORT_STUN:
-    overlay_mdp_fill_legacy(header, payload, &mdp);
-    RETURN(overlay_mdp_service_stun(&mdp));
-  case MDP_PORT_RHIZOME_RESPONSE:
-    RETURN(overlay_mdp_service_rhizomeresponse(payload));
   }
    
   /* Unbound socket.  We won't be sending ICMP style connection refused

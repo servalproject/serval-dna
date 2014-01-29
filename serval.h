@@ -513,9 +513,9 @@ void monitor_poll(struct sched_ent *alarm);
 void rhizome_fetch_poll(struct sched_ent *alarm);
 void rhizome_server_poll(struct sched_ent *alarm);
 
-int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp);
-int overlay_mdp_service_stun(overlay_mdp_frame *mdp);
-int overlay_mdp_service_probe(struct internal_mdp_header *header, overlay_mdp_frame *mdp);
+int overlay_mdp_service_stun_req(struct internal_mdp_header *header, struct overlay_buffer *payload);
+int overlay_mdp_service_stun(struct internal_mdp_header *header, struct overlay_buffer *payload);
+int overlay_mdp_service_probe(struct internal_mdp_header *header, struct overlay_buffer *payload);
 
 time_ms_t limit_next_allowed(struct limit_state *state);
 int limit_is_allowed(struct limit_state *state);
