@@ -109,28 +109,35 @@ void meshms_conversation_iterator_advance(struct meshms_conversation_iterator *)
  *      ...
  */
 struct meshms_message_iterator {
-  // Public fields that remain fixed for the life of the iterator.
-  uint64_t recipient_ack_offset; // offset in recipient ply of most recent ack
-  uint64_t sent_ack_offset; // offset in sender ply of most recent message acked by recipient
-  uint64_t received_read_offset; // offset in recipient ply of most recent message read by (displayed to) sender
-  // Public fields that change per message.
+  // Public fields that remain fixed for the life of the iterator:
+  const sid_t *my_sid;
+  const sid_t *their_sid;
+  uint64_t latest_ack_offset; // offset in remote (their) ply of most recent ACK
+  uint64_t latest_ack_my_offset; // offset in my ply of most recent message ACKed by them
+  uint64_t read_offset; // offset in remote (their) ply of most recent message read by me
+  // The following public fields change per message:
+  enum { MESSAGE_SENT, MESSAGE_RECEIVED, ACK_RECEIVED } type;
+  // For MESSAGE_SENT 'offset' is the byte position within the local ply
+  // (mine).  For MESSAGE_RECEIVED and ACK_RECEIVED, it is the byte position
+  // within the remote ply (theirs).
   uint64_t offset;
   const char *text; // NUL terminated text of message
-  enum { SENT, RECEIVED } direction;
   union {
-    bool_t delivered; // for SENT
-    bool_t read; // for RECEIVED
+    bool_t delivered; // for MESSAGE_SENT
+    bool_t read; // for MESSAGE_RECEIVED
+    uint64_t ack_offset; // for ACK_RECEIVED
   };
   // Private implementation -- could change, so don't use them.
+  sid_t _my_sid;
   struct meshms_conversations *_conv;
-  rhizome_manifest *_manifest_sender;
-  rhizome_manifest *_manifest_recipient;
-  struct meshms_ply_read _read_sender;
-  struct meshms_ply_read _read_recipient;
+  rhizome_manifest *_my_manifest;
+  rhizome_manifest *_their_manifest;
+  struct meshms_ply_read _my_reader;
+  struct meshms_ply_read _their_reader;
   uint64_t _end_range;
   bool_t _in_ack;
 };
-int meshms_message_iterator_open(struct meshms_message_iterator *, const sid_t *sender, const sid_t *recipient);
+int meshms_message_iterator_open(struct meshms_message_iterator *, const sid_t *me, const sid_t *them);
 void meshms_message_iterator_close(struct meshms_message_iterator *);
 int meshms_message_iterator_prev(struct meshms_message_iterator *);
 

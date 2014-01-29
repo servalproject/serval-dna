@@ -136,6 +136,7 @@ typedef struct rhizome_http_request
       size_t rowcount;
       struct meshms_message_iterator iter;
       int finished;
+      uint64_t highest_ack_offset;
     }
       msglist;
 

@@ -900,7 +900,8 @@ test_MeshmsListConversations() {
    tfw_preserve conversations1.json
    assertJq conversations1.json \
             "contains([
-               {  recipient: \"$SIDA2\",
+               {  my_sid: \"$SIDA1\",
+                  their_sid: \"$SIDA2\",
                   read: true,
                   last_message: 0,
                   read_offset: 0
@@ -908,7 +909,8 @@ test_MeshmsListConversations() {
             ])"
    assertJq conversations1.json \
             "contains([
-               {  recipient: \"$SIDA3\",
+               {  my_sid: \"$SIDA1\",
+                  their_sid: \"$SIDA3\",
                   read: false,
                   last_message: 11,
                   read_offset: 0
@@ -916,7 +918,8 @@ test_MeshmsListConversations() {
             ])"
    assertJq conversations1.json \
             "contains([
-               {  recipient: \"$SIDA4\",
+               {  my_sid: \"$SIDA1\",
+                  their_sid: \"$SIDA4\",
                   read: false,
                   last_message: 14,
                   read_offset: 0
@@ -938,7 +941,8 @@ test_MeshmsListConversations() {
    tfw_preserve conversations2.json
    assertJq conversations2.json \
             "contains([
-               {  recipient: \"$SIDA2\",
+               {  my_sid: \"$SIDA1\",
+                  their_sid: \"$SIDA2\",
                   read: true,
                   last_message: 0,
                   read_offset: 0
@@ -946,7 +950,8 @@ test_MeshmsListConversations() {
             ])"
    assertJq conversations2.json \
             "contains([
-               {  recipient: \"$SIDA3\",
+               {  my_sid: \"$SIDA1\",
+                  their_sid: \"$SIDA3\",
                   read: true,
                   last_message: 11,
                   read_offset: 11
@@ -954,7 +959,8 @@ test_MeshmsListConversations() {
             ])"
    assertJq conversations2.json \
             "contains([
-               {  recipient: \"$SIDA4\",
+               {  my_sid: \"$SIDA1\",
+                  their_sid: \"$SIDA4\",
                   read: true,
                   last_message: 14,
                   read_offset: 14
@@ -972,16 +978,17 @@ setup_MeshmsListMessages() {
          "Three watermelons"
          "Four oranges"
          "Five grapes"
+         ""
          "Six lychees"
          "Seven raspberries"
          "Eight lemons"
       )
-   direction=('>' '>' '<' '>' '>' '<' '<' '>')
-   for ((i = 0; i < ${#text[*]}; ++i)); do
+   direction=('>' '>' '<' '>' '>' 'ACK' '<' '<' '>')
+   for ((i = 0; i < ${#direction[*]}; ++i)); do
       case ${direction[$i]} in
       '>') executeOk_servald meshms send message $SIDA1 $SIDA2 "${text[$i]}";;
       '<') executeOk_servald meshms send message $SIDA2 $SIDA1 "${text[$i]}";;
-      *) error "direction[$i]=${direction[$i]}";;
+      'ACK') executeOk_servald meshms list messages $SIDA2 $SIDA1;;
       esac
    done
    executeOk_servald meshms list messages $SIDA1 $SIDA2
@@ -1000,20 +1007,27 @@ test_MeshmsListMessages() {
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/$SIDA2/messagelist.json"
    tfw_cat http.headers messagelist.json
    tfw_preserve messagelist.json
-   assert [ "$(jq '.rows | length' messagelist.json)" = 8 ]
+   assert [ "$(jq '.rows | length' messagelist.json)" = ${#direction[*]} ]
    transform_list_json messagelist.json messages.json
    tfw_preserve messages.json
-   for ((i = 0; i < ${#text[*]}; ++i)); do
+   for ((i = 0; i < ${#direction[*]}; ++i)); do
       let j=${#text[*]}-$i-1
       assertJq messages.json '(.['$i'].token | length) > 0'
-      assertJq messages.json '.['$i'].text == "'"${text[$j]}"'"'
-      assertJq messages.json '.['$i'].direction == "'"${direction[$j]}"'"'
+      assertJq messages.json '.['$i'].type == "'"${direction[$j]}"'"'
+      assertJq messages.json '.['$i'].my_sid == "'$SIDA1'"'
+      assertJq messages.json '.['$i'].their_sid == "'$SIDA2'"'
       case ${direction[$j]} in
       '>')
+         assertJq messages.json '.['$i'].text == "'"${text[$j]}"'"'
          assertJq messages.json '.['$i'].delivered == (.['$i'].offset <= '$delivered_offset')'
          ;;
       '<')
+         assertJq messages.json '.['$i'].text == "'"${text[$j]}"'"'
          assertJq messages.json '.['$i'].read == (.['$i'].offset <= '$read_offset')'
+         ;;
+      'ACK')
+         assertJq messages.json '.['$i'].text == null'
+         assertJq messages.json '.['$i'].ack_offset == '$delivered_offset
          ;;
       esac
    done
