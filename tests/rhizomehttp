@@ -30,6 +30,23 @@ assertJq() {
    assert --message="$jqscript" --dump-on-fail="$json" [ "$(jq "$jqscript" "$json")" = true ]
 }
 
+assertJqCmp() {
+   local opts=()
+   while [ $# -gt 0 ]; do
+      case "$1" in
+      --) shift; break;;
+      --*) opts+=("$1"); shift;;
+      *) break;;
+      esac
+   done
+   [ $# -eq 3 ] || error "invalid arguments"
+   local json="$1"
+   local jqscript="$2"
+   local file="$3"
+   jq --raw-output "$jqscript" "$json" >"$TFWTMP/jqcmp.tmp"
+   assert --dump-on-fail="$TFWTMP/jqcmp.tmp" --dump-on-fail="$file" "${opts[@]}" cmp "$TFWTMP/jqcmp.tmp" "$file"
+}
+
 assertJqGrep() {
    local opts=()
    while [ $# -gt 0 ]; do
@@ -968,29 +985,60 @@ test_MeshmsListConversations() {
             ])"
 }
 
+# Create a file that contains no blank lines.
+create_message_file() {
+   create_file "$1" $2
+   sed -i -e '/^$/d' "$1"
+}
+
+# Add a sequence of messages of varying sizes up to 1 KiB.
+add_messages() {
+   NMESSAGE=0
+   NSENT=0
+   NRECV=0
+   NACK=0
+   local sent_since_ack=0
+   local i n
+   local size=0
+   for ((i = 0; i < ${#1}; ++i)); do
+      local sym="${1:$i:1}"
+      let size+=379
+      let msize=size%1021
+      let n=NMESSAGE
+      case $sym in
+      '>')
+         MESSAGE[$n]=">"
+         create_message_file send$n $msize
+         executeOk_servald meshms send message $SIDA1 $SIDA2 "$(<send$n)"
+         let ++sent_since_ack
+         let ++NSENT
+         ;;
+      '<')
+         MESSAGE[$n]="<"
+         create_message_file recv$n $msize
+         executeOk_servald meshms send message $SIDA2 $SIDA1 "$(<recv$n)"
+         let ++NRECV
+         ;;
+      'A')
+         MESSAGE[$n]=ACK
+         >ack$n
+         [ $sent_since_ack -gt 0 ] || error "two ACKs in a row (at position $i)"
+         executeOk_servald meshms list messages $SIDA2 $SIDA1
+         let ++NACK
+         ;;
+      *)
+         error "invalid message symbol '$sym' (at position $i)"
+         ;;
+      esac
+      let NMESSAGE=n+1
+   done
+}
+
 doc_MeshmsListMessages="HTTP RESTful list MeshMS messages in one conversation as JSON"
 setup_MeshmsListMessages() {
    IDENTITY_COUNT=2
    setup
-   text=(
-         "One banana"
-         "Two apples"
-         "Three watermelons"
-         "Four oranges"
-         "Five grapes"
-         ""
-         "Six lychees"
-         "Seven raspberries"
-         "Eight lemons"
-      )
-   direction=('>' '>' '<' '>' '>' 'ACK' '<' '<' '>')
-   for ((i = 0; i < ${#direction[*]}; ++i)); do
-      case ${direction[$i]} in
-      '>') executeOk_servald meshms send message $SIDA1 $SIDA2 "${text[$i]}";;
-      '<') executeOk_servald meshms send message $SIDA2 $SIDA1 "${text[$i]}";;
-      'ACK') executeOk_servald meshms list messages $SIDA2 $SIDA1;;
-      esac
-   done
+   add_messages '><>>A>A<>><><><>>>A>A><<<<A<>><>>A<<>'
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    tfw_cat --stdout
    delivered_offset=$(sed -n -e '/^[0-9]\+:[0-9]\+:ACK:delivered$/{n;s/^[0-9]\+:\([0-9]\+\):>:.*/\1/p;q}' "$TFWSTDOUT")
@@ -1007,27 +1055,37 @@ test_MeshmsListMessages() {
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/$SIDA2/messagelist.json"
    tfw_cat http.headers messagelist.json
    tfw_preserve messagelist.json
-   assert [ "$(jq '.rows | length' messagelist.json)" = ${#direction[*]} ]
+   assert [ "$(jq '.rows | length' messagelist.json)" = $((NSENT + NRECV + (NACK?1:0) )) ]
    transform_list_json messagelist.json messages.json
    tfw_preserve messages.json
-   for ((i = 0; i < ${#direction[*]}; ++i)); do
-      let j=${#text[*]}-$i-1
+   seen_ack=false
+   let i=0
+   for ((j = NMESSAGE-1; j >= 0; --j)); do
+      case ${MESSAGE[$j]} in
+      'ACK') $seen_ack && continue
+      esac
       assertJq messages.json '(.['$i'].token | length) > 0'
-      assertJq messages.json '.['$i'].type == "'"${direction[$j]}"'"'
       assertJq messages.json '.['$i'].my_sid == "'$SIDA1'"'
       assertJq messages.json '.['$i'].their_sid == "'$SIDA2'"'
-      case ${direction[$j]} in
+      case ${MESSAGE[$j]} in
       '>')
-         assertJq messages.json '.['$i'].text == "'"${text[$j]}"'"'
+         assertJq messages.json '.['$i'].type == ">"'
+         assertJqCmp messages.json '.['$i'].text' send$j
          assertJq messages.json '.['$i'].delivered == (.['$i'].offset <= '$delivered_offset')'
+         let ++i
          ;;
       '<')
-         assertJq messages.json '.['$i'].text == "'"${text[$j]}"'"'
+         assertJq messages.json '.['$i'].type == "<"'
+         assertJqCmp messages.json '.['$i'].text' recv$j
          assertJq messages.json '.['$i'].read == (.['$i'].offset <= '$read_offset')'
+         let ++i
          ;;
       'ACK')
+         assertJq messages.json '.['$i'].type == "ACK"'
          assertJq messages.json '.['$i'].text == null'
          assertJq messages.json '.['$i'].ack_offset == '$delivered_offset
+         let ++i
+         seen_ack=true
          ;;
       esac
    done
