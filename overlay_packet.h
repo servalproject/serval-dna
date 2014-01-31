@@ -106,7 +106,7 @@ struct internal_mdp_header{
   mdp_port_t destination_port;
   uint8_t ttl;
   uint8_t qos;
-  uint8_t modifiers; // combination of OF_ flags, as per overlay_frame above
+  uint8_t crypt_flags; // combination of MDP_FLAG_NO_CRYPT & MDP_FLAG_NO_SIGN flags
   struct overlay_interface *receive_interface;
 };
 

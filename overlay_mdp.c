@@ -128,10 +128,10 @@ void overlay_mdp_fill_legacy(
   mdp->out.ttl = header->ttl;
   mdp->out.queue = header->qos;
   mdp->packetTypeAndFlags=MDP_TX;
-  if (!(header->modifiers&OF_CRYPTO_CIPHERED))
-    mdp->packetTypeAndFlags |= MDP_NOCRYPT;
-  if (!(header->modifiers&OF_CRYPTO_SIGNED))
-    mdp->packetTypeAndFlags |= MDP_NOSIGN;
+  if (header->crypt_flags & MDP_FLAG_NO_CRYPT)
+    mdp->packetTypeAndFlags|=MDP_NOCRYPT;
+  if (header->crypt_flags & MDP_FLAG_NO_SIGN)
+    mdp->packetTypeAndFlags|=MDP_NOSIGN;
 }
 
 static int mdp_bind_socket(const char *name)
@@ -388,8 +388,8 @@ static struct overlay_buffer *overlay_mdp_decrypt(struct internal_mdp_header *he
 
   /* Indicate MDP message type */
   struct overlay_buffer *ret=NULL;
-  switch(header->modifiers&(OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED))  {
-  case 0: 
+  switch(header->crypt_flags)  {
+  case MDP_FLAG_NO_CRYPT|MDP_FLAG_NO_SIGN: 
     /* nothing to do, b already points to the plain text */
     overlay_mdp_decode_header(header, payload);
     ret = ob_slice(payload, ob_position(payload), ob_remaining(payload));
@@ -397,11 +397,11 @@ static struct overlay_buffer *overlay_mdp_decrypt(struct internal_mdp_header *he
     break;
   
   default:
-  case OF_CRYPTO_CIPHERED:
+  case MDP_FLAG_NO_SIGN:
     WHY("decryption not implemented");
     break;
       
-  case OF_CRYPTO_SIGNED:
+  case MDP_FLAG_NO_CRYPT:
     {
       int len = ob_remaining(payload);
       if (crypto_verify_message(header->source, ob_current_ptr(payload), &len))
@@ -413,7 +413,7 @@ static struct overlay_buffer *overlay_mdp_decrypt(struct internal_mdp_header *he
       break;
     }
       
-  case OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED:
+  case 0:
     {
       //int nm=crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES;
       int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
@@ -489,8 +489,12 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f)
   header.ttl = mdp.in.ttl = f->ttl;
   header.source = f->source;
   header.destination = f->destination;
-  header.modifiers = f->modifiers;
   header.receive_interface = f->interface;
+  
+  if (!(f->modifiers & OF_CRYPTO_CIPHERED))
+    header.crypt_flags |= MDP_FLAG_NO_CRYPT;
+  if (!(f->modifiers & OF_CRYPTO_SIGNED))
+    header.crypt_flags |= MDP_FLAG_NO_SIGN;
   
   /* Get source and destination addresses */
   mdp.in.dst.sid = (f->destination) ? f->destination->sid : SID_BROADCAST;
@@ -595,13 +599,8 @@ static int overlay_saw_mdp_frame(
 	  client_header.remote.port=header->source_port;
 	  client_header.qos=header->qos;
 	  client_header.ttl=header->ttl;
-	  client_header.flags=0;
+	  client_header.flags=header->crypt_flags;
 	  
-	  if (!(header->modifiers&OF_CRYPTO_CIPHERED))
-	    client_header.flags|=MDP_FLAG_NO_CRYPT;
-	  if (!(header->modifiers&OF_CRYPTO_SIGNED))
-	    client_header.flags|=MDP_FLAG_NO_SIGN;
-    
 	  if (config.debug.mdprequests)
 	    DEBUGF("Forwarding packet to client v2 %s", alloca_socket_address(client));
 	  
@@ -810,7 +809,10 @@ int overlay_send_frame(struct internal_mdp_header *header,
   frame->ttl = header->ttl;
   frame->queue = header->qos;
   frame->type = OF_TYPE_DATA;
-  frame->modifiers = header->modifiers;
+  if (!(header->crypt_flags & MDP_FLAG_NO_CRYPT))
+    frame->modifiers |= OF_CRYPTO_CIPHERED;
+  if (!(header->crypt_flags & MDP_FLAG_NO_SIGN))
+    frame->modifiers |= OF_CRYPTO_SIGNED;
   
   // copy the plain text message into a new buffer, with the wire encoded port numbers
   struct overlay_buffer *plaintext=ob_new();
@@ -842,8 +844,8 @@ int overlay_send_frame(struct internal_mdp_header *header,
      about the crypto matters, and not compression that may be applied
      before encryption (since applying it after is useless as ciphered
      text should have maximum entropy). */
-  switch(header->modifiers) {
-  case OF_CRYPTO_SIGNED|OF_CRYPTO_CIPHERED:
+  switch(header->crypt_flags) {
+  case 0:
     if (!frame->destination){
       ob_free(plaintext);
       op_free(frame);
@@ -863,7 +865,7 @@ int overlay_send_frame(struct internal_mdp_header *header,
 #endif
     break;
       
-  case OF_CRYPTO_SIGNED:
+  case MDP_FLAG_NO_CRYPT:
     // Lets just append some space into the existing payload buffer for the signature, without copying it.
     frame->payload = plaintext;
     if (   !ob_makespace(frame->payload, SIGNATURE_BYTES)
@@ -878,7 +880,7 @@ int overlay_send_frame(struct internal_mdp_header *header,
 #endif
     break;
       
-  case 0:
+  case MDP_FLAG_NO_CRYPT|MDP_FLAG_NO_SIGN:
     /* clear text and no signature */
     frame->payload = plaintext;
     break;
@@ -981,28 +983,10 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client)
   if (config.debug.mdprequests) 
     DEBUGF("[%u] destination->sid=%s", __d, header.destination ? alloca_tohex_sid_t(header.destination->sid) : "NULL");
     
-  switch(mdp->packetTypeAndFlags&(MDP_NOCRYPT|MDP_NOSIGN)) {
-  case 0:
-    // default to encrypted and authenticated
-    header.modifiers = OF_CRYPTO_SIGNED|OF_CRYPTO_CIPHERED;
-    break;
-  case MDP_NOCRYPT: 
-    // sign it, but don't encrypt it.
-    header.modifiers = OF_CRYPTO_SIGNED;
-    break;
-  case MDP_NOSIGN|MDP_NOCRYPT:
-    // just send the payload unmodified
-    header.modifiers = 0; 
-    break;
-  case MDP_NOSIGN: 
-    /* ciphered, but not signed.
-     This means we don't use CryptoBox, but rather a more compact means
-     of representing the ciphered stream segment.
-     */
-     // fall through
-  default:
-    RETURN(WHY("Not implemented"));
-  };
+  if (mdp->packetTypeAndFlags&MDP_NOCRYPT)
+    header.crypt_flags |= MDP_FLAG_NO_CRYPT;
+  if (mdp->packetTypeAndFlags&MDP_NOSIGN)
+    header.crypt_flags |= MDP_FLAG_NO_SIGN;
   
   struct overlay_buffer *buff = ob_static(mdp->out.payload, mdp->out.payload_length);
   ob_limitsize(buff, mdp->out.payload_length);
@@ -1441,10 +1425,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
     if (!is_sid_t_broadcast(header->remote.sid))
       internal_header.destination = find_subscriber(header->remote.sid.binary, SID_SIZE, 1);
     
-    if ((header->flags & MDP_FLAG_NO_CRYPT) == 0)
-      internal_header.modifiers|=OF_CRYPTO_CIPHERED;
-    if ((header->flags & MDP_FLAG_NO_SIGN) == 0)
-      internal_header.modifiers|=OF_CRYPTO_SIGNED;
+    internal_header.crypt_flags = header->flags & (MDP_FLAG_NO_CRYPT|MDP_FLAG_NO_SIGN);
     
     // construct, encrypt, sign and queue the packet
     if (overlay_send_frame(

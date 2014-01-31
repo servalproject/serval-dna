@@ -247,7 +247,6 @@ int overlay_mdp_service_echo(struct internal_mdp_header *header, struct overlay_
   /* Always send PONGs auth-crypted so that the receipient knows
      that they are genuine, and so that we avoid the extra cost 
      of signing (which is slower than auth-crypting) */
-  response_header.modifiers = OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED;
   
   /* If the packet was sent to broadcast, then replace broadcast address
      with our local address. */
