@@ -417,7 +417,8 @@ typedef struct overlay_mdp_frame {
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp);
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client);
 void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port);
-int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const sid_t *resolved_sidp, const char *uri, const char *did, const char *name);
+int overlay_mdp_dnalookup_reply(struct subscriber *dest, mdp_port_t dest_port, 
+    const sid_t *resolved_sidp, const char *uri, const char *did, const char *name);
 int overlay_send_frame(struct internal_mdp_header *header, struct overlay_buffer *payload);
 
 void overlay_mdp_fill_legacy(
@@ -483,7 +484,7 @@ int server_probe(int *pid);
 
 int dna_helper_start();
 int dna_helper_shutdown();
-int dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const sid_t *requestorSidp);
+int dna_helper_enqueue(struct subscriber *source, mdp_port_t source_port, const char *did);
 int dna_return_resolution(overlay_mdp_frame *mdp, unsigned char *fromSid,
 			  const char *did,const char *name,const char *uri);
 int parseDnaReply(const char *buf, size_t len, char *token, char *did, char *name, char *uri, const char **bufp);

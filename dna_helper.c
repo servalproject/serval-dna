@@ -132,7 +132,8 @@ DECLARE_SCHED_ENT(reply_timeout,    sched_timeout);
 static char request_buffer[SID_STRLEN + DID_MAXSIZE + 4];
 static char *request_bufptr = NULL;
 static char *request_bufend = NULL;
-static overlay_mdp_data_frame request_mdp_data;
+static struct subscriber *request_source = NULL;
+static mdp_port_t request_port = 0;
 static char request_did[DID_MAXSIZE + 1];
 
 static int awaiting_reply = 0;
@@ -466,7 +467,7 @@ void handle_reply_line(const char *bufp, size_t len)
       else {
 	if (config.debug.dnahelper)
 	  DEBUGF("DNAHELPER reply %s", alloca_toprint(-1, bufp, len));
-	overlay_mdp_dnalookup_reply(&request_mdp_data.src, &my_subscriber->sid, uri, did, name);
+	overlay_mdp_dnalookup_reply(request_source, request_port, &my_subscriber->sid, uri, did, name);
       }
     }
   } else {
@@ -593,10 +594,10 @@ static void reply_timeout(struct sched_ent *alarm)
 }
 
 int
-dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const sid_t *requestorSidp)
+dna_helper_enqueue(struct subscriber *source, mdp_port_t source_port, const char *did)
 {
   if (config.debug.dnahelper)
-    DEBUGF("DNAHELPER request did=%s sid=%s", did, alloca_tohex_sid_t(*requestorSidp));
+    DEBUGF("DNAHELPER request did=%s sid=%s", did, alloca_tohex_sid_t(source->sid));
   if (dna_helper_pid == 0)
     return 0;
   // Only try to restart a DNA helper process if the previous one is well and truly gone.
@@ -624,7 +625,7 @@ dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const sid_t *request
   }
   char buffer[sizeof request_buffer];
   strbuf b = strbuf_local(request_bufptr == request_buffer ? buffer : request_buffer, sizeof buffer);
-  strbuf_tohex(b, SID_STRLEN, requestorSidp->binary);
+  strbuf_tohex(b, SID_STRLEN, source->sid.binary);
   strbuf_putc(b, '|');
   strbuf_puts(b, did);
   strbuf_putc(b, '|');
@@ -640,7 +641,8 @@ dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const sid_t *request
     }
     request_bufptr = request_buffer;
     request_bufend = request_buffer + strbuf_len(b);
-    request_mdp_data = mdp->out;
+    request_source = source;
+    request_port = source_port;
     strncpy(request_did, did, sizeof request_did);
     request_did[sizeof request_did - 1] = '\0';
   }

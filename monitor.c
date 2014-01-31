@@ -464,17 +464,17 @@ static int monitor_lookup_match(const struct cli_parsed *parsed, struct cli_cont
   if (!my_subscriber)
     return monitor_write_error(c,"I don't know who I am");
   
-  struct sockaddr_mdp addr={
-    .port = atoi(parsed->args[3]),
-  };
-  
-  if (str_to_sid_t(&addr.sid, sid) == -1)
+  mdp_port_t dest_port = atoi(parsed->args[3]);
+  sid_t dest;
+  if (str_to_sid_t(&dest, sid) == -1)
     return monitor_write_error(c,"Invalid SID");
+    
+  struct subscriber *destination = find_subscriber(dest.binary, sizeof(dest), 1);
   
   char uri[256];
   snprintf(uri, sizeof(uri), "sid://%s/external/%s", alloca_tohex_sid_t(my_subscriber->sid), ext);
   DEBUGF("Sending response to %s for %s", sid, uri);
-  overlay_mdp_dnalookup_reply(&addr, &my_subscriber->sid, uri, ext, name);
+  overlay_mdp_dnalookup_reply(destination, dest_port, &my_subscriber->sid, uri, ext, name);
   return 0;
 }
 

@@ -620,7 +620,8 @@ static int overlay_saw_mdp_frame(
   OUT();
 }
 
-int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const sid_t *resolved_sidp, const char *uri, const char *did, const char *name)
+int overlay_mdp_dnalookup_reply(struct subscriber *dest, mdp_port_t dest_port, 
+  const sid_t *resolved_sidp, const char *uri, const char *did, const char *name)
 {
   if (config.debug.mdprequests)
     DEBUGF("MDP_PORT_DNALOOKUP resolved_sid=%s uri=%s did=%s name=%s",
@@ -635,7 +636,9 @@ int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const sid_t *resolv
   mdpreply.out.queue=OQ_ORDINARY;
   mdpreply.out.src.sid = *resolved_sidp;
   mdpreply.out.src.port = MDP_PORT_DNALOOKUP;
-  bcopy(dstaddr, &mdpreply.out.dst, sizeof(sockaddr_mdp));
+  mdpreply.out.dst.sid = dest->sid;
+  mdpreply.out.dst.port = dest_port;
+  
   /* build reply as TOKEN|URI|DID|NAME|<NUL> */
   strbuf b = strbuf_local((char *)mdpreply.out.payload, sizeof mdpreply.out.payload);
   strbuf_tohex(b, SID_STRLEN, resolved_sidp->binary);

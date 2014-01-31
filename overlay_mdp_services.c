@@ -165,17 +165,20 @@ int overlay_mdp_service_rhizomeresponse(struct internal_mdp_header *UNUSED(heade
   OUT();
 }
 
-int overlay_mdp_service_dnalookup(overlay_mdp_frame *mdp)
+int overlay_mdp_service_dnalookup(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   IN();
   unsigned cn=0, in=0, kp=0;
   char did[64+1];
-  int pll=mdp->out.payload_length;
+  
+  int pll=ob_remaining(payload);
   if (pll>64) pll=64;
+  
   /* get did from the packet */
-  if (mdp->out.payload_length<1) {
-    RETURN(WHY("Empty DID in DNA resolution request")); }
-  bcopy(&mdp->out.payload[0],&did[0],pll);
+  if (pll<1)
+    RETURN(WHY("Empty DID in DNA resolution request"));
+  
+  ob_get_bytes(payload, (unsigned char *)did, pll);
   did[pll]=0;
   
   if (config.debug.mdprequests)
@@ -199,7 +202,7 @@ int overlay_mdp_service_dnalookup(overlay_mdp_frame *mdp)
       strbuf_tohex(b, SID_STRLEN, sidp->binary);
       strbuf_puts(b, "/local/");
       strbuf_puts(b, unpackedDid);
-      overlay_mdp_dnalookup_reply(&mdp->out.src, sidp, strbuf_str(b), unpackedDid, name);
+      overlay_mdp_dnalookup_reply(header->source, header->source_port, sidp, strbuf_str(b), unpackedDid, name);
       kp++;
       results++;
     }
@@ -214,9 +217,9 @@ int overlay_mdp_service_dnalookup(overlay_mdp_frame *mdp)
        when results become available, so this function will return
        immediately, so as not to cause blockages and delays in servald.
     */
-    dna_helper_enqueue(mdp, did, &mdp->out.src.sid);
+    dna_helper_enqueue(header->source, header->source_port, did);
     monitor_tell_formatted(MONITOR_DNAHELPER, "LOOKUP:%s:%d:%s\n", 
-			   alloca_tohex_sid_t(mdp->out.src.sid), mdp->out.src.port, 
+			   alloca_tohex_sid_t(header->source->sid), header->source_port, 
 			   did);
   }
   RETURN(0);
@@ -370,6 +373,7 @@ void overlay_mdp_bind_internal_services()
   mdp_bind_internal(NULL, MDP_PORT_PROBE, overlay_mdp_service_probe);
   mdp_bind_internal(NULL, MDP_PORT_STUNREQ, overlay_mdp_service_stun_req);
   mdp_bind_internal(NULL, MDP_PORT_STUN, overlay_mdp_service_stun);
+  mdp_bind_internal(NULL, MDP_PORT_DNALOOKUP, overlay_mdp_service_dnalookup);
 }
 
 int overlay_mdp_try_internal_services(
@@ -386,9 +390,6 @@ int overlay_mdp_try_internal_services(
   case MDP_PORT_KEYMAPREQUEST:
     overlay_mdp_fill_legacy(header, payload, &mdp);
     RETURN(keyring_mapping_request(keyring, header, &mdp));
-  case MDP_PORT_DNALOOKUP:
-    overlay_mdp_fill_legacy(header, payload, &mdp);
-    RETURN(overlay_mdp_service_dnalookup(&mdp));
   case MDP_PORT_TRACE:
     overlay_mdp_fill_legacy(header, payload, &mdp);
     RETURN(overlay_mdp_service_trace(&mdp));
