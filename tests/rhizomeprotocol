@@ -42,8 +42,8 @@ configure_servald_server() {
       set log.console.show_pid on \
       set log.console.show_time on \
       set debug.rhizome on \
+      set debug.http_server on \
       set debug.httpd on \
-      set debug.rhizome_httpd on \
       set debug.rhizome_manifest on \
       set debug.rhizome_ads on \
       set debug.rhizome_tx on \
@@ -180,7 +180,7 @@ setup_MDPTransportFailOver() {
    setup_common
    foreach_instance +A +B \
      executeOk_servald config \
-       set debug.rhizome_nohttptx 1 \
+       set debug.nohttptx 1 \
        set rhizome.mdp.enable 1
    set_instance +A
    rhizome_add_file file1 2048
@@ -583,7 +583,7 @@ setup_direct() {
       set log.console.level debug \
       set log.console.show_time on \
       set debug.rhizome on \
-      set debug.rhizome_httpd on \
+      set debug.httpd on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on
    rhizome_add_file fileB1 2000

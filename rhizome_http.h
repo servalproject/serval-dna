@@ -24,11 +24,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "meshms.h"
 #include "http_server.h"
 
-int is_rhizome_http_server_running();
+int is_httpd_server_running();
+
+#define HTTPD_PORT 4110
+#define HTTPD_PORT_MAX 4150
+
+extern uint16_t httpd_server_port;
+extern unsigned int httpd_request_count;
 
 enum list_phase { LIST_HEADER = 0, LIST_ROWS, LIST_END, LIST_DONE };
 
-typedef struct rhizome_http_request
+typedef struct httpd_request
 {
   struct http_request http; // MUST BE FIRST ELEMENT
 
@@ -57,7 +63,7 @@ typedef struct rhizome_http_request
 
   /* Finaliser for union contents (below).
    */
-  void (*finalise_union)(struct rhizome_http_request *);
+  void (*finalise_union)(struct httpd_request *);
 
   /* Mutually exclusive response arguments.
    */
@@ -155,16 +161,11 @@ typedef struct rhizome_http_request
 
   } u;
 
-} rhizome_http_request;
+} httpd_request;
 
-int rhizome_server_set_response(rhizome_http_request *r, const struct http_response *h);
-int rhizome_server_free_http_request(rhizome_http_request *r);
-int rhizome_server_http_send_bytes(rhizome_http_request *r);
-int rhizome_server_parse_http_request(rhizome_http_request *r);
-int rhizome_server_simple_http_response(rhizome_http_request *r, int result, const char *response);
-int rhizome_server_http_response(rhizome_http_request *r, int result, const char *mime_type, const char *body, uint64_t bytes);
-int rhizome_server_http_response_header(rhizome_http_request *r, int result, const char *mime_type, uint64_t bytes);
-int rhizome_http_server_start(uint16_t port_low, uint16_t port_high);
+int httpd_server_start(uint16_t port_low, uint16_t port_high);
+
+typedef int HTTP_HANDLER(httpd_request *r, const char *remainder);
 
 int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_call);
 

@@ -69,12 +69,12 @@ static struct profile_total http_server_stats = {
 };
 
 #define DEBUG_DUMP_PARSED(r) do { \
-      if (config.debug.httpd) \
+      if (config.debug.http_server) \
 	DEBUGF("%s %s HTTP/%u.%u", r->verb ? r->verb : "NULL", alloca_str_toprint(r->path), r->version_major, r->version_minor);\
     } while (0)
 
 #define DEBUG_DUMP_PARSER(r) do { \
-      if (config.debug.httpd) \
+      if (config.debug.http_server) \
 	DEBUGF("parsed %d %s cursor %d %s end %d remain %"PRIhttp_size_t, \
 	    (int)(r->parsed - r->received), alloca_toprint(-1, r->parsed, r->cursor - r->parsed), \
 	    (int)(r->cursor - r->received), alloca_toprint(50, r->cursor, r->end - r->cursor), \
@@ -1208,14 +1208,14 @@ static int http_request_parse_body_form_data(struct http_request *r)
   int at_start = 0;
   switch (r->form_data_state) {
     case START:
-      if (config.debug.httpd)
+      if (config.debug.http_server)
 	DEBUGF("START");
       // The logic here allows for a missing initial CRLF before the first boundary line.
       at_start = 1;
       r->form_data_state = PREAMBLE;
       // fall through
     case PREAMBLE: {
-	if (config.debug.httpd)
+	if (config.debug.http_server)
 	  DEBUGF("PREAMBLE");
 	char *start = r->parsed;
 	for (; at_start || _skip_to_crlf(r); at_start = 0) {
@@ -1241,7 +1241,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
       }
       return 100; // need more data
     case HEADER: {
-      if (config.debug.httpd)
+      if (config.debug.http_server)
 	DEBUGF("HEADER");
 	// If not at a CRLF, then we are skipping through an over-long header that didn't
 	// fit into the buffer.  Just discard bytes up to the next CRLF.
@@ -1365,7 +1365,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
       }
       return 400;
     case BODY:
-      if (config.debug.httpd)
+      if (config.debug.http_server)
 	DEBUGF("BODY");
       char *start = r->parsed;
       while (_skip_to_crlf(r)) {
@@ -1396,7 +1396,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
       _INVOKE_HANDLER_BUF_LEN(handle_mime_body, start, r->parsed);
       return 100; // need more data
   case EPILOGUE:
-      if (config.debug.httpd)
+      if (config.debug.http_server)
 	DEBUGF("EPILOGUE");
     r->cursor = r->end;
     assert(r->cursor >= r->parsed);

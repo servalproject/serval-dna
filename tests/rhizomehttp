@@ -103,8 +103,8 @@ set_extra_config() {
 
 set_rhizome_config() {
    executeOk_servald config \
+      set debug.http_server on \
       set debug.httpd on \
-      set debug.rhizome_httpd on \
       set debug.rhizome_manifest on \
       set debug.externalblobs on \
       set debug.rhizome on \

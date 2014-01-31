@@ -137,7 +137,7 @@ schedule(&_sched_##X); }
   }
 
   // start the HTTP server if enabled
-  rhizome_http_server_start(RHIZOME_HTTP_PORT, RHIZOME_HTTP_PORT_MAX);    
+  httpd_server_start(HTTPD_PORT, HTTPD_PORT_MAX);    
 
   // start the dna helper if configured
   dna_helper_start();

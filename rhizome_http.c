@@ -37,217 +37,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome_http.h"
 #include "overlay_interface.h"
 
-#define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
-
-typedef int HTTP_HANDLER(rhizome_http_request *r, const char *remainder);
-
-struct http_handler{
-  const char *path;
-  HTTP_HANDLER *parser;
-};
-
-static HTTP_HANDLER restful_rhizome_bundlelist_json;
-static HTTP_HANDLER restful_rhizome_newsince;
-static HTTP_HANDLER restful_rhizome_insert;
-static HTTP_HANDLER restful_rhizome_;
-static HTTP_HANDLER restful_meshms_;
-
-static HTTP_HANDLER rhizome_status_page;
-static HTTP_HANDLER rhizome_file_page;
-static HTTP_HANDLER manifest_by_prefix_page;
-static HTTP_HANDLER interface_page;
-static HTTP_HANDLER neighbour_page;
-static HTTP_HANDLER fav_icon_header;
-static HTTP_HANDLER root_page;
-
-extern HTTP_HANDLER rhizome_direct_import;
-extern HTTP_HANDLER rhizome_direct_enquiry;
-extern HTTP_HANDLER rhizome_direct_dispatch;
-
-struct http_handler paths[]={
-  {"/restful/rhizome/bundlelist.json", restful_rhizome_bundlelist_json},
-  {"/restful/rhizome/newsince/", restful_rhizome_newsince},
-  {"/restful/rhizome/insert", restful_rhizome_insert},
-  {"/restful/rhizome/", restful_rhizome_},
-  {"/restful/meshms/", restful_meshms_},
-  {"/rhizome/status", rhizome_status_page},
-  {"/rhizome/file/", rhizome_file_page},
-  {"/rhizome/import", rhizome_direct_import},
-  {"/rhizome/enquiry", rhizome_direct_enquiry},
-  {"/rhizome/manifestbyprefix/", manifest_by_prefix_page},
-  {"/rhizome/", rhizome_direct_dispatch},
-  {"/interface/", interface_page},
-  {"/neighbour/", neighbour_page},
-  {"/favicon.ico", fav_icon_header},
-  {"/", root_page},
-};
-
-static int rhizome_dispatch(struct http_request *hr)
-{
-  rhizome_http_request *r = (rhizome_http_request *) hr;
-  INFOF("RHIZOME HTTP SERVER, %s %s", r->http.verb, r->http.path);
-  r->http.response.content_generator = NULL;
-  unsigned i;
-  for (i = 0; i < NELS(paths); ++i) {
-    const char *remainder;
-    if (str_startswith(r->http.path, paths[i].path, &remainder)){
-      int result = paths[i].parser(r, remainder);
-      if (result == -1 || (result >= 200 && result < 600))
-	return result;
-      if (result == 1)
-	return 0;
-      if (result)
-	return WHYF("dispatch function for %s returned invalid result %d", paths[i].path, result);
-    }
-  }
-  return 404;
-}
-
 static HTTP_RENDERER render_manifest_headers;
 
-struct sched_ent server_alarm;
-struct profile_total server_stats = {
-  .name = "rhizome_server_poll",
-};
-
-/*
-  HTTP server and client code for rhizome transfers and rhizome direct.
-  Selection of either use is made when starting the HTTP server and
-  specifying the call-back function to use on client connections.
- */
-
-uint16_t rhizome_http_server_port = 0;
-static int rhizome_server_socket = -1;
-static int request_count=0;
-static time_ms_t rhizome_server_last_start_attempt = -1;
-
-// Format icon data using:
-//   od -vt u1 ~/Downloads/favicon.ico | cut -c9- | sed 's/  */,/g'
-unsigned char favicon_bytes[]={
-0,0,1,0,1,0,16,16,16,0,0,0,0,0,40,1
-,0,0,22,0,0,0,40,0,0,0,16,0,0,0,32,0
-,0,0,1,0,4,0,0,0,0,0,128,0,0,0,0,0
-,0,0,0,0,0,0,16,0,0,0,0,0,0,0,104,158
-,168,0,163,233,247,0,104,161,118,0,0,0,0,0,0,0
-,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-,0,0,0,0,0,0,0,0,0,0,0,0,0,0,17,17
-,17,17,17,18,34,17,17,18,34,17,17,18,34,17,17,2
-,34,17,17,18,34,17,16,18,34,1,17,17,1,17,1,17
-,1,16,1,16,17,17,17,17,1,17,16,16,17,17,17,17
-,1,17,18,34,17,17,17,16,17,17,2,34,17,17,17,16
-,17,16,18,34,17,17,17,16,17,1,17,1,17,17,17,18
-,34,17,17,16,17,17,17,18,34,17,17,18,34,17,17,18
-,34,17,17,18,34,17,17,16,17,17,17,18,34,17,17,16
-,17,17,17,17,17,0,17,1,17,17,17,17,17,17,0,0
-,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-int favicon_len=318;
-
-int is_rhizome_http_server_running()
-{
-  return rhizome_server_socket != -1;
-}
-
-/* Start the Rhizome HTTP server by creating a socket, binding it to an available port, and
-   marking it as passive.  If called repeatedly and frequently, this function will only try to start
-   the server after a certain time has elapsed since the last attempt.
-   Return -1 if an error occurs (message logged).
-   Return 0 if the server was started.
-   Return 1 if the server is already started successfully.
-   Return 2 if the server was not started because it is too soon since last failed attempt.
- */
-int rhizome_http_server_start(uint16_t port_low, uint16_t port_high)
-{
-  if (rhizome_server_socket != -1)
-    return 1;
-
-  /* Only try to start http server every five seconds. */
-  time_ms_t now = gettime_ms();
-  if (now < rhizome_server_last_start_attempt + 5000)
-    return 2;
-  rhizome_server_last_start_attempt  = now;
-  if (config.debug.rhizome_httpd)
-    DEBUGF("Starting rhizome HTTP server");
-
-  uint16_t port;
-  for (port = port_low; port <= port_high; ++port) {
-    /* Create a new socket, reusable and non-blocking. */
-    if (rhizome_server_socket == -1) {
-      rhizome_server_socket = socket(AF_INET,SOCK_STREAM,0);
-      if (rhizome_server_socket == -1) {
-	WHY_perror("socket");
-	goto error;
-      }
-      int on=1;
-      if (setsockopt(rhizome_server_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&on, sizeof(on)) == -1) {
-	WHY_perror("setsockopt(REUSEADDR)");
-	goto error;
-      }
-      if (ioctl(rhizome_server_socket, FIONBIO, (char *)&on) == -1) {
-	WHY_perror("ioctl(FIONBIO)");
-	goto error;
-      }
-    }
-    /* Bind it to the next port we want to try. */
-    struct sockaddr_in address;
-    bzero((char *) &address, sizeof(address));
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(port);
-    if (bind(rhizome_server_socket, (struct sockaddr *) &address, sizeof(address)) == -1) {
-      if (errno != EADDRINUSE) {
-	WHY_perror("bind");
-	goto error;
-      }
-    } else {
-      /* We bound to a port.  The battle is half won.  Now we have to successfully listen on that
-	port, which could also fail with EADDRINUSE, in which case we have to scrap the socket and
-	create a new one, because once bound, a socket stays bound.
-      */
-      if (listen(rhizome_server_socket, 20) != -1)
-	goto success;
-      if (errno != EADDRINUSE) {
-	WHY_perror("listen");
-	goto error;
-      }
-      close(rhizome_server_socket);
-      rhizome_server_socket = -1;
-    }
-  }
-  WHYF("No ports available in range %u to %u", RHIZOME_HTTP_PORT, RHIZOME_HTTP_PORT_MAX);
-error:
-  if (rhizome_server_socket != -1) {
-    close(rhizome_server_socket);
-    rhizome_server_socket = -1;
-  }
-  return WHY("Failed to start rhizome HTTP server");
-
-success:
-  if (config.rhizome.http.enable)
-    INFOF("RHIZOME HTTP SERVER, START port=%"PRIu16" fd=%d", port, rhizome_server_socket);
-  else
-    INFOF("HTTP SERVER (LIMITED SERVICE), START port=%"PRIu16" fd=%d", port, rhizome_server_socket);
-
-  rhizome_http_server_port = port;
-  /* Add Rhizome HTTPd server to list of file descriptors to watch */
-  server_alarm.function = rhizome_server_poll;
-  server_alarm.stats = &server_stats;
-  server_alarm.poll.fd = rhizome_server_socket;
-  server_alarm.poll.events = POLLIN;
-  watch(&server_alarm);
-  return 0;
-
-}
-
-static void finalise_union_read_state(rhizome_http_request *r)
+static void finalise_union_read_state(httpd_request *r)
 {
   rhizome_read_close(&r->u.read_state);
 }
 
-static void finalise_union_rhizome_insert(rhizome_http_request *r)
+static void finalise_union_rhizome_insert(httpd_request *r)
 {
   if (r->u.insert.manifest_text) {
     free(r->u.insert.manifest_text);
@@ -257,108 +54,15 @@ static void finalise_union_rhizome_insert(rhizome_http_request *r)
     rhizome_fail_write(&r->u.insert.write);
 }
 
-static void finalise_union_meshms_conversationlist(rhizome_http_request *r)
+static void finalise_union_meshms_conversationlist(httpd_request *r)
 {
   meshms_free_conversations(r->u.mclist.conv);
   r->u.mclist.conv = NULL;
 }
 
-static void finalise_union_meshms_messagelist(rhizome_http_request *r)
+static void finalise_union_meshms_messagelist(httpd_request *r)
 {
   meshms_message_iterator_close(&r->u.msglist.iter);
-}
-
-static void rhizome_server_finalise_http_request(struct http_request *hr)
-{
-  rhizome_http_request *r = (rhizome_http_request *) hr;
-  if (r->manifest) {
-    rhizome_manifest_free(r->manifest);
-    r->manifest = NULL;
-  }
-  if (r->finalise_union) {
-    r->finalise_union(r);
-    r->finalise_union = NULL;
-  }
-  request_count--;
-}
-
-static int rhizome_dispatch(struct http_request *);
-
-static unsigned int rhizome_http_request_uuid_counter = 0;
-
-void rhizome_server_poll(struct sched_ent *alarm)
-{
-  if (alarm->poll.revents & (POLLIN | POLLOUT)) {
-    struct sockaddr addr;
-    unsigned int addr_len = sizeof addr;
-    int sock;
-    if ((sock = accept(rhizome_server_socket, &addr, &addr_len)) == -1) {
-      if (errno && errno != EAGAIN)
-	WARN_perror("accept");
-    } else {
-      struct sockaddr_in *peerip=NULL;
-      if (addr.sa_family == AF_INET) {
-	peerip = (struct sockaddr_in *)&addr; // network order
-	INFOF("RHIZOME HTTP SERVER, ACCEPT addrlen=%u family=%u port=%u addr=%u.%u.%u.%u",
-	    addr_len, peerip->sin_family, peerip->sin_port,
-	    ((unsigned char*)&peerip->sin_addr.s_addr)[0],
-	    ((unsigned char*)&peerip->sin_addr.s_addr)[1],
-	    ((unsigned char*)&peerip->sin_addr.s_addr)[2],
-	    ((unsigned char*)&peerip->sin_addr.s_addr)[3]
-	  );
-      } else {
-	INFOF("RHIZOME HTTP SERVER, ACCEPT addrlen=%u family=%u data=%s",
-	    addr_len, addr.sa_family, alloca_tohex((unsigned char *)addr.sa_data, sizeof addr.sa_data)
-	  );
-      }
-      rhizome_http_request *request = emalloc_zero(sizeof(rhizome_http_request));
-      if (request == NULL) {
-	WHY("Cannot respond to HTTP request, out of memory");
-	close(sock);
-      } else {
-	request_count++;
-	request->uuid = rhizome_http_request_uuid_counter++;
-	if (peerip)
-	  request->http.client_sockaddr_in = *peerip;
-	request->http.handle_headers = rhizome_dispatch;
-	request->http.debug_flag = &config.debug.rhizome_httpd;
-	request->http.disable_tx_flag = &config.debug.rhizome_nohttptx;
-	request->http.finalise = rhizome_server_finalise_http_request;
-	request->http.free = free;
-	request->http.idle_timeout = RHIZOME_IDLE_TIMEOUT;
-	http_request_init(&request->http, sock);
-      }
-    }
-  }
-  if (alarm->poll.revents & (POLLHUP | POLLERR)) {
-    INFO("Error on tcp listen socket");
-  }
-}
-
-int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_call)
-{
-  IN();
-  const char *bufend = buf + len;
-  const char *p = buf;
-  size_t tail = read_since_last_call + 4;
-  if (tail < len)
-    p = bufend - tail;
-  int count = 0;
-  for (; p != bufend; ++p) {
-    switch (*p) {
-      case '\n':
-	if (++count==2)
-	  RETURN(p - buf);
-      case '\r': // ignore CR
-      case '\0': // ignore NUL (telnet inserts them)
-	break;
-      default:
-	count = 0;
-	break;
-    }
-  }
-  RETURN(0);
-  OUT();
 }
 
 static int is_from_loopback(const struct http_request *r)
@@ -425,7 +129,7 @@ static int strn_to_list_token(const char *str, uint64_t *rowidp, const char **af
 
 static HTTP_CONTENT_GENERATOR restful_rhizome_bundlelist_json_content;
 
-static int restful_rhizome_bundlelist_json(rhizome_http_request *r, const char *remainder)
+int restful_rhizome_bundlelist_json(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = "application/json";
   if (!is_rhizome_http_enabled())
@@ -448,7 +152,7 @@ static HTTP_CONTENT_GENERATOR_STRBUF_CHUNKER restful_rhizome_bundlelist_json_con
 
 static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   int ret = rhizome_list_open(&r->u.rhlist.cursor);
   if (ret == -1)
     return -1;
@@ -457,7 +161,7 @@ static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsi
   return ret;
 }
 
-static int restful_rhizome_newsince(rhizome_http_request *r, const char *remainder)
+int restful_rhizome_newsince(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = "application/json";
   if (!is_rhizome_http_enabled())
@@ -482,7 +186,7 @@ static int restful_rhizome_newsince(rhizome_http_request *r, const char *remaind
 
 static int restful_rhizome_bundlelist_json_content_chunk(struct http_request *hr, strbuf b)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   const char *headers[] = {
     ".token",
     "_id",
@@ -599,7 +303,7 @@ static int insert_mime_part_end(struct http_request *);
 static int insert_mime_part_header(struct http_request *, const struct mime_part_headers *);
 static int insert_mime_part_body(struct http_request *, char *, size_t);
 
-static int restful_rhizome_insert(rhizome_http_request *r, const char *remainder)
+int restful_rhizome_insert(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = "application/json";
   if (*remainder)
@@ -636,12 +340,12 @@ static char PART_SECRET[] = "bundle-secret";
 
 static int insert_mime_part_start(struct http_request *hr)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   assert(r->u.insert.current_part == NULL);
   return 0;
 }
 
-static int http_response_form_part(rhizome_http_request *r, const char *what, const char *partname, const char *text, size_t textlen)
+static int http_response_form_part(httpd_request *r, const char *what, const char *partname, const char *text, size_t textlen)
 {
   if (config.debug.rhizome)
     DEBUGF("%s \"%s\" form part %s", what, partname, text ? alloca_toprint(-1, text, textlen) : "");
@@ -651,7 +355,7 @@ static int http_response_form_part(rhizome_http_request *r, const char *what, co
   return 403;
 }
 
-static int insert_make_manifest(rhizome_http_request *r)
+static int insert_make_manifest(httpd_request *r)
 {
   if (!r->u.insert.received_manifest)
     return http_response_form_part(r, "Missing", PART_MANIFEST, NULL, 0);
@@ -682,7 +386,7 @@ static int insert_make_manifest(rhizome_http_request *r)
 
 static int insert_mime_part_header(struct http_request *hr, const struct mime_part_headers *h)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   if (strcmp(h->content_disposition.name, PART_AUTHOR) == 0) {
     if (r->u.insert.received_author)
       return http_response_form_part(r, "Duplicate", PART_AUTHOR, NULL, 0);
@@ -741,7 +445,7 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
   return 0;
 }
 
-static int accumulate_text(rhizome_http_request *r, const char *partname, char *textbuf, size_t textsiz, size_t *textlenp, const char *buf, size_t len)
+static int accumulate_text(httpd_request *r, const char *partname, char *textbuf, size_t textsiz, size_t *textlenp, const char *buf, size_t len)
 {
   if (len) {
     size_t newlen = *textlenp + len;
@@ -763,7 +467,7 @@ static int accumulate_text(rhizome_http_request *r, const char *partname, char *
 
 static int insert_mime_part_body(struct http_request *hr, char *buf, size_t len)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   if (r->u.insert.current_part == PART_AUTHOR) {
     accumulate_text(r, PART_AUTHOR,
 		    r->u.insert.author_hex,
@@ -818,7 +522,7 @@ static int insert_mime_part_body(struct http_request *hr, char *buf, size_t len)
 
 static int insert_mime_part_end(struct http_request *hr)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   if (r->u.insert.current_part == PART_AUTHOR) {
     if (   r->u.insert.author_hex_len != sizeof r->u.insert.author_hex
 	|| strn_to_sid_t(&r->u.insert.author, r->u.insert.author_hex, NULL) == -1
@@ -872,7 +576,7 @@ static int insert_mime_part_end(struct http_request *hr)
 
 static int restful_rhizome_insert_end(struct http_request *hr)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   if (!r->u.insert.received_manifest)
     return http_response_form_part(r, "Missing", PART_MANIFEST, NULL, 0);
   if (!r->u.insert.received_payload)
@@ -962,8 +666,8 @@ static int restful_rhizome_insert_end(struct http_request *hr)
   return 0;
 }
 
-static int rhizome_response_content_init_filehash(rhizome_http_request *r, const rhizome_filehash_t *hash);
-static int rhizome_response_content_init_payload(rhizome_http_request *r, rhizome_manifest *);
+static int rhizome_response_content_init_filehash(httpd_request *r, const rhizome_filehash_t *hash);
+static int rhizome_response_content_init_payload(httpd_request *r, rhizome_manifest *);
 
 static HTTP_CONTENT_GENERATOR rhizome_payload_content;
 
@@ -971,7 +675,7 @@ static HTTP_HANDLER restful_rhizome_bid_rhm;
 static HTTP_HANDLER restful_rhizome_bid_raw_bin;
 static HTTP_HANDLER restful_rhizome_bid_decrypted_bin;
 
-static int restful_rhizome_(rhizome_http_request *r, const char *remainder)
+int restful_rhizome_(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = "application/json";
   if (!is_rhizome_http_enabled())
@@ -1014,7 +718,7 @@ static int restful_rhizome_(rhizome_http_request *r, const char *remainder)
   return ret;
 }
 
-static int restful_rhizome_bid_rhm(rhizome_http_request *r, const char *remainder)
+static int restful_rhizome_bid_rhm(httpd_request *r, const char *remainder)
 {
   if (*remainder || r->manifest == NULL)
     return 404;
@@ -1024,7 +728,7 @@ static int restful_rhizome_bid_rhm(rhizome_http_request *r, const char *remainde
   return 1;
 }
 
-static int restful_rhizome_bid_raw_bin(rhizome_http_request *r, const char *remainder)
+static int restful_rhizome_bid_raw_bin(httpd_request *r, const char *remainder)
 {
   if (*remainder || r->manifest == NULL)
     return 404;
@@ -1039,7 +743,7 @@ static int restful_rhizome_bid_raw_bin(rhizome_http_request *r, const char *rema
   return 1;
 }
 
-static int restful_rhizome_bid_decrypted_bin(rhizome_http_request *r, const char *remainder)
+static int restful_rhizome_bid_decrypted_bin(httpd_request *r, const char *remainder)
 {
   if (*remainder || r->manifest == NULL)
     return 404;
@@ -1086,7 +790,7 @@ static HTTP_HANDLER restful_meshms_conversationlist_json;
 static HTTP_HANDLER restful_meshms_messagelist_json;
 static HTTP_HANDLER restful_meshms_newsince_messagelist_json;
 
-static int restful_meshms_(rhizome_http_request *r, const char *remainder)
+int restful_meshms_(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = "application/json";
   if (!is_rhizome_http_enabled())
@@ -1126,7 +830,7 @@ static int restful_meshms_(rhizome_http_request *r, const char *remainder)
 
 static HTTP_CONTENT_GENERATOR restful_meshms_conversationlist_json_content;
 
-static int restful_meshms_conversationlist_json(rhizome_http_request *r, const char *remainder)
+static int restful_meshms_conversationlist_json(httpd_request *r, const char *remainder)
 {
   if (*remainder)
     return 404;
@@ -1151,7 +855,7 @@ static int restful_meshms_conversationlist_json_content(struct http_request *hr,
 
 static int restful_meshms_conversationlist_json_content_chunk(struct http_request *hr, strbuf b)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   // The "my_sid" and "their_sid" per-conversation fields allow the same JSON structure to be used
   // in a future, non-SID-specific request, eg, to list all conversations for all currently open
   // identities.
@@ -1217,7 +921,7 @@ static int restful_meshms_conversationlist_json_content_chunk(struct http_reques
 
 static HTTP_CONTENT_GENERATOR restful_meshms_messagelist_json_content;
 
-static int reopen_meshms_message_iterator(rhizome_http_request *r)
+static int reopen_meshms_message_iterator(httpd_request *r)
 {
   if (!meshms_message_iterator_is_open(&r->u.msglist.iter)) {
     if (   meshms_message_iterator_open(&r->u.msglist.iter, &r->sid1, &r->sid2) == -1
@@ -1232,7 +936,7 @@ static int reopen_meshms_message_iterator(rhizome_http_request *r)
   return 0;
 }
 
-static int restful_meshms_messagelist_json(rhizome_http_request *r, const char *remainder)
+static int restful_meshms_messagelist_json(httpd_request *r, const char *remainder)
 {
   if (*remainder)
     return 404;
@@ -1246,7 +950,7 @@ static int restful_meshms_messagelist_json(rhizome_http_request *r, const char *
   return 1;
 }
 
-static int restful_meshms_newsince_messagelist_json(rhizome_http_request *r, const char *remainder)
+static int restful_meshms_newsince_messagelist_json(httpd_request *r, const char *remainder)
 {
   if (*remainder)
     return 404;
@@ -1274,7 +978,7 @@ static HTTP_CONTENT_GENERATOR_STRBUF_CHUNKER restful_meshms_messagelist_json_con
 
 static int restful_meshms_messagelist_json_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   if (reopen_meshms_message_iterator(r) == -1)
     return -1;
   return generate_http_content_from_strbuf_chunks(hr, (char *)buf, bufsz, result, restful_meshms_messagelist_json_content_chunk);
@@ -1282,7 +986,7 @@ static int restful_meshms_messagelist_json_content(struct http_request *hr, unsi
 
 static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr, strbuf b)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   // Include "my_sid" and "their_sid" per-message, so that the same JSON structure can be used by a
   // future, non-SID-specific request (eg, to get all messages for all currently open identities).
   const char *headers[] = {
@@ -1430,67 +1134,7 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
   return 0;
 }
 
-static int neighbour_page(rhizome_http_request *r, const char *remainder)
-{
-  if (r->http.verb != HTTP_VERB_GET)
-    return 405;
-  char buf[8*1024];
-  strbuf b = strbuf_local(buf, sizeof buf);
-  sid_t neighbour_sid;
-  if (str_to_sid_t(&neighbour_sid, remainder) == -1)
-    return 404;
-  struct subscriber *neighbour = find_subscriber(neighbour_sid.binary, sizeof(neighbour_sid.binary), 0);
-  if (!neighbour)
-    return 404;
-  strbuf_puts(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
-  link_neighbour_status_html(b, neighbour);
-  strbuf_puts(b, "</body></html>");
-  if (strbuf_overrun(b))
-    return -1;
-  http_request_response_static(&r->http, 200, "text/html", buf, strbuf_len(b));
-  return 1;
-}
-
-static int interface_page(rhizome_http_request *r, const char *remainder)
-{
-  if (r->http.verb != HTTP_VERB_GET)
-    return 405;
-  char buf[8*1024];
-  strbuf b=strbuf_local(buf, sizeof buf);
-  int index=atoi(remainder);
-  if (index<0 || index>=OVERLAY_MAX_INTERFACES)
-    return 404;
-  strbuf_puts(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
-  interface_state_html(b, &overlay_interfaces[index]);
-  strbuf_puts(b, "</body></html>");
-  if (strbuf_overrun(b))
-    return -1;
-  http_request_response_static(&r->http, 200, "text/html", buf, strbuf_len(b));
-  return 1;
-}
-
-static int rhizome_status_page(rhizome_http_request *r, const char *remainder)
-{
-  if (!is_rhizome_http_enabled())
-    return 403;
-  if (*remainder)
-    return 404;
-  if (r->http.verb != HTTP_VERB_GET)
-    return 405;
-  char buf[32*1024];
-  strbuf b = strbuf_local(buf, sizeof buf);
-  strbuf_puts(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
-  strbuf_sprintf(b, "%d HTTP requests<br>", request_count);
-  strbuf_sprintf(b, "%d Bundles transferring via MDP<br>", rhizome_cache_count());
-  rhizome_fetch_status_html(b);
-  strbuf_puts(b, "</body></html>");
-  if (strbuf_overrun(b))
-    return -1;
-  http_request_response_static(&r->http, 200, "text/html", buf, strbuf_len(b));
-  return 1;
-}
-
-static int rhizome_response_content_init_read_state(rhizome_http_request *r)
+static int rhizome_response_content_init_read_state(httpd_request *r)
 {
   if (r->u.read_state.length == RHIZOME_SIZE_UNSET && rhizome_read(&r->u.read_state, NULL, 0)) {
     rhizome_read_close(&r->u.read_state);
@@ -1515,7 +1159,7 @@ static int rhizome_response_content_init_read_state(rhizome_http_request *r)
   return 0;
 }
 
-static int rhizome_response_content_init_filehash(rhizome_http_request *r, const rhizome_filehash_t *hash)
+static int rhizome_response_content_init_filehash(httpd_request *r, const rhizome_filehash_t *hash)
 {
   bzero(&r->u.read_state, sizeof r->u.read_state);
   r->u.read_state.blob_fd = -1;
@@ -1539,7 +1183,7 @@ static int rhizome_response_content_init_filehash(rhizome_http_request *r, const
   return rhizome_response_content_init_read_state(r);
 }
 
-static int rhizome_response_content_init_payload(rhizome_http_request *r, rhizome_manifest *m)
+static int rhizome_response_content_init_payload(httpd_request *r, rhizome_manifest *m)
 {
   bzero(&r->u.read_state, sizeof r->u.read_state);
   r->u.read_state.blob_fd = -1;
@@ -1570,7 +1214,7 @@ static int rhizome_payload_content(struct http_request *hr, unsigned char *buf, 
   // Ask for a large buffer for all future reads.
   const size_t preferred_bufsz = 16 * blocksz;
   // Reads the next part of the payload into the supplied buffer.
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   assert(r->u.read_state.length != RHIZOME_SIZE_UNSET);
   assert(r->u.read_state.offset < r->u.read_state.length);
   uint64_t remain = r->u.read_state.length - r->u.read_state.offset;
@@ -1591,7 +1235,7 @@ static int rhizome_payload_content(struct http_request *hr, unsigned char *buf, 
   return remain ? 1 : 0;
 }
 
-static int rhizome_file_page(rhizome_http_request *r, const char *remainder)
+int rhizome_file_page(httpd_request *r, const char *remainder)
 {
   /* Stream the specified payload */
   if (!is_rhizome_http_enabled())
@@ -1614,7 +1258,7 @@ static int rhizome_file_page(rhizome_http_request *r, const char *remainder)
   return 1;
 }
 
-static int manifest_by_prefix_page(rhizome_http_request *r, const char *remainder)
+int manifest_by_prefix_page(httpd_request *r, const char *remainder)
 {
   if (!is_rhizome_http_enabled())
     return 403;
@@ -1637,17 +1281,9 @@ static int manifest_by_prefix_page(rhizome_http_request *r, const char *remainde
   return 404;
 }
 
-static int fav_icon_header(rhizome_http_request *r, const char *remainder)
-{
-  if (*remainder)
-    return 404;
-  http_request_response_static(&r->http, 200, "image/vnd.microsoft.icon", (const char *)favicon_bytes, favicon_len);
-  return 1;
-}
-
 static void render_manifest_headers(struct http_request *hr, strbuf sb)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   rhizome_manifest *m = r->manifest;
   strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Id: %s\r\n", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
   strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Version: %"PRIu64"\r\n", m->version);
@@ -1678,34 +1314,23 @@ static void render_manifest_headers(struct http_request *hr, strbuf sb)
   strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Inserttime: %"PRIu64"\r\n", m->inserttime);
 }
 
-static int root_page(rhizome_http_request *r, const char *remainder)
+int rhizome_status_page(httpd_request *r, const char *remainder)
 {
+  if (!is_rhizome_http_enabled())
+    return 403;
   if (*remainder)
     return 404;
   if (r->http.verb != HTTP_VERB_GET)
     return 405;
-  char temp[8192];
-  strbuf b = strbuf_local(temp, sizeof temp);
-  strbuf_sprintf(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>"
-	   "<h1>Hello, I'm %s*</h1><br>"
-	   "Interfaces;<br>",
-	   alloca_tohex_sid_t_trunc(my_subscriber->sid, 16));
-  int i;
-  for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
-    if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
-      strbuf_sprintf(b, "<a href=\"/interface/%d\">%d: %s, TX: %d, RX: %d</a><br>",
-	i, i, overlay_interfaces[i].name, overlay_interfaces[i].tx_count, overlay_interfaces[i].recv_count);
-  }
-  strbuf_puts(b, "Neighbours;<br>");
-  link_neighbour_short_status_html(b, "/neighbour");
-  if (is_rhizome_http_enabled()){
-    strbuf_puts(b, "<a href=\"/rhizome/status\">Rhizome Status</a><br>");
-  }
+  char buf[32*1024];
+  strbuf b = strbuf_local(buf, sizeof buf);
+  strbuf_puts(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
+  strbuf_sprintf(b, "%d HTTP requests<br>", httpd_request_count);
+  strbuf_sprintf(b, "%d Bundles transferring via MDP<br>", rhizome_cache_count());
+  rhizome_fetch_status_html(b);
   strbuf_puts(b, "</body></html>");
-  if (strbuf_overrun(b)) {
-    WHY("HTTP Root page buffer overrun");
-    return 500;
-  }
-  http_request_response_static(&r->http, 200, "text/html", temp, strbuf_len(b));
+  if (strbuf_overrun(b))
+    return -1;
+  http_request_response_static(&r->http, 200, "text/html", buf, strbuf_len(b));
   return 1;
 }

@@ -153,7 +153,7 @@ int cf_opt_rhizome_peer_from_uri(struct config_rhizome_peer *rpeer, const char *
   }
   const char *host;
   size_t hostlen;
-  uint16_t port = RHIZOME_HTTP_PORT;
+  uint16_t port = HTTPD_PORT;
   if (!str_uri_authority_hostname(auth, &host, &hostlen))
     return CFINVALID;
   str_uri_authority_port(auth, &port);

@@ -55,9 +55,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 // assumed to always be 2^n
 #define RHIZOME_CRYPT_PAGE_SIZE         4096
 
-#define RHIZOME_HTTP_PORT 4110
-#define RHIZOME_HTTP_PORT_MAX 4150
-
 /* Fundamental data type: Rhizome Bundle ID
  *
  * @author Andrew Bettison <andrew@servalproject.com>
@@ -392,7 +389,6 @@ void _rhizome_manifest_del_author(struct __sourceloc, rhizome_manifest *);
 #define     RHIZOME_SERVICE_MESHMS2  "MeshMS2"
 
 extern int64_t rhizome_space;
-extern uint16_t rhizome_http_server_port;
 
 int log2ll(uint64_t x);
 int rhizome_configure();
