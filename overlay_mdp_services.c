@@ -257,87 +257,111 @@ int overlay_mdp_service_echo(struct internal_mdp_header *header, struct overlay_
   OUT();
 }
 
-static int overlay_mdp_service_trace(overlay_mdp_frame *mdp){
+/*
+ * Trace packets are a little weird so that they can be modified by every node
+ * and so they can bypass the routing table.
+ * 
+ * The true source and destination addresses are encoded inside the payload
+ * each node that processes the packet appends their own address before forwarding it to the next hop
+ * if their SID is already in the packet, the next hop is chosen from the immediately preceeding SID in the list.
+ * otherwise the next SID is chosen based on the current routing table.
+ * 
+ * In this way the packet can follow the path defined by each node's routing table
+ * Until the packet reaches the destination, the destination is unreachable, or the packet loops around the network
+ * Once any of these end states occurs, the packet attempts to travel back to the source node, 
+ * while using the source addresses in the trace packet for guidance instead of trusting the routing table.
+ * 
+ * It is hoped that this information can be useful to better understand the current network state 
+ * in situations where a routing protocol is in development.
+ */
+
+static int overlay_mdp_service_trace(struct internal_mdp_header *header, struct overlay_buffer *payload){
   IN();
+  struct overlay_buffer *next_payload = ob_new();
+  if (!next_payload)
+    RETURN(-1);
+  ob_append_bytes(next_payload, ob_current_ptr(payload), ob_remaining(payload));
+  
   int ret=0;
-  
-  struct overlay_buffer *b = ob_static(mdp->out.payload, sizeof(mdp->out.payload));
-  ob_limitsize(b, mdp->out.payload_length);
-  
-  struct subscriber *src=NULL, *dst=NULL, *last=NULL, *next=NULL;
+  struct subscriber *src=NULL, *dst=NULL, *last=NULL;
   struct decode_context context;
   bzero(&context, sizeof context);
   
-  if (overlay_address_parse(&context, b, &src)){
-    ret=WHYF("Invalid trace packet");
+  if (header->source_port == MDP_PORT_TRACE){
+    ret=WHYF("Invalid source port");
     goto end;
   }
-  if (overlay_address_parse(&context, b, &dst)){
-    ret=WHYF("Invalid trace packet");
+  if (overlay_address_parse(&context, payload, &src)){
+    ret=WHYF("Invalid source SID");
+    goto end;
+  }
+  if (overlay_address_parse(&context, payload, &dst)){
+    ret=WHYF("Invalid destination SID");
     goto end;
   }
   if (context.invalid_addresses){
-    ret=WHYF("Invalid address in trace packet");
+    ret=WHYF("Unknown address in trace packet");
     goto end;
   }
 
   INFOF("Trace from %s to %s", alloca_tohex_sid_t(src->sid), alloca_tohex_sid_t(dst->sid));
+  struct internal_mdp_header next_header;
+  next_header = *header;
+  next_header.source = my_subscriber;
+  next_header.destination = NULL;
   
-  while(ob_remaining(b)>0){
+  while(ob_remaining(payload)>0){
     struct subscriber *trace=NULL;
-    if (overlay_address_parse(&context, b, &trace)){
-      ret=WHYF("Invalid trace packet");
+    if (overlay_address_parse(&context, payload, &trace)){
+      ret=WHYF("Invalid SID in packet payload");
       goto end;
     }
     if (context.invalid_addresses){
-      ret=WHYF("Invalid address in trace packet");
+      ret=WHYF("Unknown SID in packet payload");
       goto end;
     }
     INFOF("Via %s", alloca_tohex_sid_t(trace->sid));
     
-    if (trace->reachable==REACHABLE_SELF && !next)
+    if (trace->reachable==REACHABLE_SELF && !next_header.destination)
       // We're already in this trace, send the next packet to the node before us in the list
-      next = last;
+      next_header.destination = last;
     last = trace;
   }
   
   if (src->reachable==REACHABLE_SELF && last){
     // it came back to us, we can send the reply to our mdp client...
-    next=src;
-    mdp->out.dst.port=mdp->out.src.port;
-    mdp->out.src.port=MDP_PORT_TRACE;
+    next_header.destination=src;
+    next_header.destination_port = header->source_port;
+    next_header.source_port = MDP_PORT_TRACE;
   }
   
-  if (!next){
+  if (!next_header.destination){
     // destination is our neighbour?
     if (dst->reachable & REACHABLE_DIRECT)
-      next = dst;
+      next_header.destination = dst;
     // destination is indirect?
     else if (dst->reachable & REACHABLE_INDIRECT)
-      next = dst->next_hop;
+      next_header.destination = dst->next_hop;
     // destination is not reachable or is ourselves? bounce back to the previous node or the sender.
     else if (last)
-      next = last;
+      next_header.destination = last;
     else
-      next = src;
+      next_header.destination = src;
   }
   
-  INFOF("Next node is %s", alloca_tohex_sid_t(next->sid));
+  INFOF("Next node is %s", alloca_tohex_sid_t(next_header.destination->sid));
   
-  ob_unlimitsize(b);
   // always write a full sid into the payload
   my_subscriber->send_full=1;
-  overlay_address_append(&context, b, my_subscriber);
-  if (ob_overrun(b)) {
+  overlay_address_append(&context, next_payload, my_subscriber);
+  if (ob_overrun(next_payload)) {
     ret = WHYF("Unable to append my address to the trace");
     goto end;
   }
-  mdp->out.payload_length = ob_position(b);
-  mdp->out.src.sid = my_subscriber->sid;
-  mdp->out.dst.sid = next->sid;
-  ret = overlay_mdp_dispatch(mdp, NULL);
+  ob_flip(next_payload);
+  ret = overlay_send_frame(&next_header, next_payload);
 end:
-  ob_free(b);
+  ob_free(next_payload);
   RETURN(ret);
 }
 
@@ -373,6 +397,8 @@ void overlay_mdp_bind_internal_services()
   mdp_bind_internal(NULL, MDP_PORT_STUNREQ, overlay_mdp_service_stun_req);
   mdp_bind_internal(NULL, MDP_PORT_STUN, overlay_mdp_service_stun);
   mdp_bind_internal(NULL, MDP_PORT_DNALOOKUP, overlay_mdp_service_dnalookup);
+  mdp_bind_internal(NULL, MDP_PORT_VOMP, vomp_mdp_received);
+  mdp_bind_internal(NULL, MDP_PORT_TRACE, overlay_mdp_service_trace);
 }
 
 int overlay_mdp_try_internal_services(
@@ -383,15 +409,9 @@ int overlay_mdp_try_internal_services(
   
   // TODO convert to internal bindings
   switch(header->destination_port) {
-  case MDP_PORT_VOMP:
-    overlay_mdp_fill_legacy(header, payload, &mdp);
-    RETURN(vomp_mdp_received(&mdp));
   case MDP_PORT_KEYMAPREQUEST:
     overlay_mdp_fill_legacy(header, payload, &mdp);
     RETURN(keyring_mapping_request(keyring, header, &mdp));
-  case MDP_PORT_TRACE:
-    overlay_mdp_fill_legacy(header, payload, &mdp);
-    RETURN(overlay_mdp_service_trace(&mdp));
   }
    
   /* Unbound socket.  We won't be sending ICMP style connection refused

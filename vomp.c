@@ -30,7 +30,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "strbuf.h"
 #include "strlcpy.h"
+#include "mdp_client.h"
 #include "overlay_address.h"
+#include "overlay_buffer.h"
+#include "overlay_packet.h"
 
 /*
  Typical call state lifecycle between 2 parties.
@@ -707,19 +710,15 @@ static uint32_t to_absolute_value(uint16_t short_value, unsigned int reference_v
   return abs_value;
 }
 
-static int vomp_process_audio(struct vomp_call_state *call, overlay_mdp_frame *mdp, time_ms_t now)
+static int vomp_process_audio(struct vomp_call_state *call, struct overlay_buffer *payload, time_ms_t now)
 {
-  size_t ofs=6;
-
-  if(ofs>=mdp->in.payload_length)
+  if(ob_remaining(payload)<1)
     return 0;
   
-  int codec=mdp->in.payload[ofs++];
+  uint8_t codec=ob_get(payload);
   
-  uint16_t time = mdp->in.payload[ofs]<<8 | mdp->in.payload[ofs+1]<<0;
-  ofs+=2;
-  uint16_t sequence = mdp->in.payload[ofs]<<8 | mdp->in.payload[ofs+1]<<0;
-  ofs+=2;
+  uint16_t time = ob_get_ui16(payload);
+  uint16_t sequence = ob_get_ui16(payload);
   
   // rebuild absolute time value from short relative time.
   uint32_t decoded_time = to_absolute_value(time, call->remote_audio_clock);
@@ -739,7 +738,7 @@ static int vomp_process_audio(struct vomp_call_state *call, overlay_mdp_frame *m
 
   decoded_time=decoded_time * 20;
   
-  int audio_len = mdp->in.payload_length - ofs;
+  int audio_len = ob_remaining(payload);
   int delay=0;
   
   if (store_jitter_sample(&call->jitter, decoded_time, now, &delay))
@@ -748,7 +747,7 @@ static int vomp_process_audio(struct vomp_call_state *call, overlay_mdp_frame *m
   /* Pass audio frame to all registered listeners */
   if (monitor_socket_count)
     monitor_send_audio(call, codec, decoded_time, decoded_sequence,
-		       &mdp->in.payload[ofs],
+		       ob_current_ptr(payload),
 		       audio_len, delay);
   return 0;
 }
@@ -852,23 +851,23 @@ int vomp_hangup(struct vomp_call_state *call)
   return 0;
 }
 
-static int vomp_extract_remote_codec_list(struct vomp_call_state *call,overlay_mdp_frame *mdp)
+static int vomp_extract_remote_codec_list(struct vomp_call_state *call, struct overlay_buffer *payload)
 {
-  int ofs=6;
-  
   if (config.debug.vomp)
-    dump("codec list mdp frame", (unsigned char *)&mdp->in.payload[0],mdp->in.payload_length);
+    ob_dump(payload, "codec list mdp frame");
   
-  for (;ofs<mdp->in.payload_length && mdp->in.payload[ofs];ofs++){
-    int codec = mdp->in.payload[ofs];
+  while(ob_remaining(payload)>0){
+    uint8_t codec = ob_get(payload);
     set_codec_flag(codec, call->remote_codec_flags);
   }
+  
   if (!call->initiated_call){
-    ofs++;
-    if (ofs<mdp->in.payload_length)
-      ofs+=strlcpy(call->remote.did, (char *)(mdp->in.payload+ofs), sizeof(call->remote.did))+1;
-    if (ofs<mdp->in.payload_length)
-      ofs+=strlcpy(call->local.did, (char *)(mdp->in.payload+ofs), sizeof(call->local.did));
+    const char *p;
+    if (ob_remaining(payload)>0 && (p=ob_get_str_ptr(payload))){
+      strlcpy(call->remote.did, p, sizeof(call->remote.did));
+      if (ob_remaining(payload)>0 && (p=ob_get_str_ptr(payload)))
+	strlcpy(call->local.did, p, sizeof(call->local.did));
+    }
   }
   return 0;
 }
@@ -876,27 +875,25 @@ static int vomp_extract_remote_codec_list(struct vomp_call_state *call,overlay_m
 /* At this point we know the MDP frame is addressed to the VoMP port, but 
    we have not inspected the contents. As these frames are wire-format, we
    must pay attention to endianness. */
-int vomp_mdp_received(overlay_mdp_frame *mdp)
+int vomp_mdp_received(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   time_ms_t now = gettime_ms();
   
-  if (mdp->packetTypeAndFlags&(MDP_NOCRYPT|MDP_NOSIGN))
-    {
-      /* stream-crypted audio frame */
-      return WHY("not implemented");
-    }
-
-  /* only auth-crypted frames make it this far */
+  if (header->crypt_flags & (MDP_FLAG_NO_CRYPT | MDP_FLAG_NO_SIGN))
+    return WHY("not implemented");
+  
+  /* only auth-crypted frames are allowed */
 
   struct vomp_call_state *call=NULL;
-
-  switch(mdp->in.payload[0]) {
+  unsigned char version = ob_get(payload);
+  switch(version) {
   case VOMP_VERSION:
     {
-      unsigned int sender_session=(mdp->in.payload[1]<<8)|mdp->in.payload[2];
-      unsigned int recvr_session=(mdp->in.payload[3]<<8)|mdp->in.payload[4];
-      int recvr_state=mdp->in.payload[5]>>4;
-      int sender_state=mdp->in.payload[5]&0xf;
+      unsigned int sender_session=ob_get_ui16(payload);
+      unsigned int recvr_session=ob_get_ui16(payload);
+      unsigned char state = ob_get(payload);
+      unsigned char recvr_state=state>>4;
+      unsigned char sender_state=state&0xf;
       
       /* wants to create a call session.
        Main aim here: replay protection. An adversary should not be able to
@@ -905,10 +902,8 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
        trying to use such replays to cause a denial of service attack we need
        to be able to track multiple potential session numbers even from the
        same SID. */
-      struct subscriber *local=find_subscriber(mdp->in.dst.sid.binary, SID_SIZE, 0);
-      struct subscriber *remote=find_subscriber(mdp->in.src.sid.binary, SID_SIZE, 0);
       
-      call=vomp_find_or_create_call(remote,local,
+      call=vomp_find_or_create_call(header->source, header->destination,
 				    sender_session,recvr_session,
 				    sender_state,recvr_state);
       
@@ -945,7 +940,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	int i, found=0;
 	
 	// the other party should have given us their list of supported codecs
-	vomp_extract_remote_codec_list(call,mdp);
+	vomp_extract_remote_codec_list(call, payload);
 	
 	// make sure we have at least one codec in common
 	monitor_get_all_supported_codecs(supported_codecs);
@@ -1048,7 +1043,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	// Fall through
       case (VOMP_STATE_INCALL<<3)|VOMP_STATE_INCALL:
 	/* play any audio that they have sent us. */
-	vomp_process_audio(call,mdp,now);
+	vomp_process_audio(call, payload, now);
 	break;
 	  
       case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_NOCALL:
@@ -1083,7 +1078,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
     break;
   default:
     /* unsupported VoMP frame */
-    WHYF("Unsupported VoMP frame type = 0x%02x",mdp->in.payload[0]);
+    WHYF("Unsupported VoMP frame type = 0x%02x", version);
     break;
   }
 

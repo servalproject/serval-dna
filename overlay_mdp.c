@@ -768,6 +768,7 @@ static struct overlay_buffer * encrypt_payload(
 }
 
 // encrypt or sign the plaintext, then queue the frame for transmission.
+// Note, the position of the payload MUST be at the start of the data, the limit MUST be used to specify the end
 int overlay_send_frame(struct internal_mdp_header *header,
   struct overlay_buffer *payload)
 {
