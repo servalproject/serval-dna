@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "rhizome.h"
-#include "rhizome_http.h"
+#include "httpd.h"
 #include "conf.h"
 #include "str.h"
 #include "strbuf.h"

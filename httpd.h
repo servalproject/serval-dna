@@ -17,8 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVAL_DNA__RHIZOME_HTTP_H
-#define __SERVAL_DNA__RHIZOME_HTTP_H
+#ifndef __SERVAL_DNA__HTTPD_H
+#define __SERVAL_DNA__HTTPD_H
 
 #include "rhizome.h"
 #include "meshms.h"
@@ -181,4 +181,4 @@ struct http_response_parts {
 
 int unpack_http_response(char *response, struct http_response_parts *parts);
 
-#endif // __SERVAL_DNA__RHIZOME_HTTP_H
+#endif // __SERVAL_DNA__HTTPD_H

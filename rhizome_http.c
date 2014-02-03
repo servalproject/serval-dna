@@ -34,7 +34,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "dataformats.h"
 #include "rhizome.h"
-#include "rhizome_http.h"
+#include "httpd.h"
 #include "overlay_interface.h"
 
 static HTTP_RENDERER render_manifest_headers;
