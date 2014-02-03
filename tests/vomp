@@ -1,0 +1,76 @@
+#!/bin/bash
+
+# Tests for voice calls
+#
+# Copyright 2012 Serval Project, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+
+teardown() {
+   stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
+
+configure_servald_server() {
+   create_single_identity
+   add_servald_interface
+   executeOk_servald config \
+      set debug.mdprequests on \
+      set debug.monitor on \
+      set debug.vomp on \
+      set log.console.level DEBUG \
+      set log.console.show_time on
+}
+
+vomp_connect() {
+   executeOk_servald console < <(sleep 1 && echo "call $1 $2 $3" && sleep 3 && echo "say hello" && sleep 3 && echo "hangup")
+   tfw_cat --stdout --stderr
+   assertStdoutGrep --stdout --matches=1 "^Dialling$"
+   assertStdoutGrep --stdout --matches=1 "^Codec list"
+   assertStdoutGrep --stdout --matches=1 "^Ringing$"
+   assertStdoutGrep --stdout --matches=1 "^Picked up$"
+   assertStdoutGrep --stdout --matches=1 "^hi there$"
+   assertStdoutGrep --stdout --matches=1 "^Call ended$"
+}
+
+vomp_answer() {
+   executeOk_servald console < <(sleep 2 && echo "answer" && sleep 2 && echo "say hi there" && sleep 3 && echo "hangup")
+   tfw_cat --stdout --stderr
+   assertStdoutGrep --stdout --matches=1 "^Incoming call"
+   assertStdoutGrep --stdout --matches=1 "^Codec list"
+   assertStdoutGrep --stdout --matches=1 "^hello$"
+   assertStdoutGrep --stdout --matches=1 "^Call ended$"
+}
+
+doc_call_lifecycle="Successful call lifecycle"
+setup_call_lifecycle() {
+   setup_servald
+   assert_no_servald_processes
+   start_servald_instances +A +B
+}
+test_call_lifecycle() {
+   set_instance +A
+   fork vomp_answer
+   set_instance +B
+   fork vomp_connect $SIDA $DIDB $DIDA
+   fork_wait_all
+}
+
+runTests "$@"

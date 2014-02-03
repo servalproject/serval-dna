@@ -33,5 +33,6 @@ includeTests rhizomeprotocol
 includeTests rhizomehttp
 includeTests meshms
 includeTests directory_service
+includeTests vomp
 
 runTests "$@"

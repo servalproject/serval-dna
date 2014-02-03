@@ -475,7 +475,7 @@ static void prepare_vomp_header(
   ob_append_byte(payload, VOMP_VERSION);
   ob_append_ui16(payload, call->local.session);
   ob_append_ui16(payload, call->remote.session);
-  ob_append_ui16(payload, (call->remote.state<<4)|call->local.state);
+  ob_append_byte(payload, (call->remote.state<<4)|call->local.state);
   
   // keep trying to punch a NAT tunnel for 10s
   // note that requests are rate limited internally to one packet per second
@@ -526,6 +526,8 @@ static int vomp_send_status_remote(struct vomp_call_state *call)
   call->local.sequence++;
   
   ob_flip(payload);
+  if (config.debug.vomp)
+    ob_dump(payload, "payload");
   overlay_send_frame(&header, payload);
   ob_free(payload);
   
@@ -563,6 +565,8 @@ int vomp_received_audio(struct vomp_call_state *call, int audio_codec, int time,
   ob_append_bytes(payload, audio, audio_length);
   
   ob_flip(payload);
+  if (config.debug.vomp)
+    ob_dump(payload, "payload");
   overlay_send_frame(&header, payload);
   ob_free(payload);
   

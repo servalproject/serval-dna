@@ -64,10 +64,23 @@
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 
-int call_token=-1;
-int seen_audio=0;
-int monitor_client_fd=-1;
-struct monitor_state *monitor_state;
+static void read_lines(struct sched_ent *alarm);
+static int console_dial(const struct cli_parsed *parsed, struct cli_context *context);
+static int console_answer(const struct cli_parsed *parsed, struct cli_context *context);
+static int console_hangup(const struct cli_parsed *parsed, struct cli_context *context);
+static int console_audio(const struct cli_parsed *parsed, struct cli_context *context);
+static int console_usage(const struct cli_parsed *parsed, struct cli_context *context);
+static void console_command(char *line);
+static void monitor_read(struct sched_ent *alarm);
+
+struct cli_schema console_commands[]={
+  {console_answer,{"answer",NULL},0,"Answer an incoming phone call"},
+  {console_dial,{"call","<sid>","[<local_number>]","[<remote_extension>]",NULL},0,"Start dialling a given person"},
+  {console_hangup,{"hangup",NULL},0,"Hangup the phone line"},
+  {console_usage,{"help",NULL},0,"This usage message"},
+  {console_audio,{"say","...",NULL},0,"Send a text string to the other party"},
+  {NULL, {NULL, NULL, NULL}, 0, NULL},
+};
 
 struct line_state{
   struct sched_ent alarm;
@@ -77,20 +90,45 @@ struct line_state{
   void (*process_line)(char *line);
 };
 
+struct profile_total stdin_profile={
+  .name="read_lines",
+};
+struct line_state stdin_state={
+  .alarm = {
+    .poll = {.fd = STDIN_FILENO,.events = POLLIN},
+    .function = read_lines,
+    .stats=&stdin_profile
+  },
+  .fd=0,
+  .process_line=console_command,
+};
+struct profile_total monitor_profile={
+  .name="monitor_read",
+};
+struct sched_ent monitor_alarm={
+  .poll = {.fd = STDIN_FILENO,.events = POLLIN},
+  .function = monitor_read,
+  .stats=&monitor_profile,
+};
+
+int call_token=-1;
+int seen_audio=0;
+struct monitor_state *monitor_state;
+
 static void send_hangup(int session_id){
-  monitor_client_writeline(monitor_client_fd, "hangup %06x\n",session_id);
+  monitor_client_writeline(monitor_alarm.poll.fd, "hangup %06x\n",session_id);
 }
 static void send_ringing(int session_id){
-  monitor_client_writeline(monitor_client_fd, "ringing %06x\n",session_id);
+  monitor_client_writeline(monitor_alarm.poll.fd, "ringing %06x\n",session_id);
 }
 static void send_pickup(int session_id){
-  monitor_client_writeline(monitor_client_fd, "pickup %06x\n",session_id);
+  monitor_client_writeline(monitor_alarm.poll.fd, "pickup %06x\n",session_id);
 }
 static void send_call(const char *sid, const char *caller_id, const char *remote_ext){
-  monitor_client_writeline(monitor_client_fd, "call %s %s %s\n", sid, caller_id, remote_ext);
+  monitor_client_writeline(monitor_alarm.poll.fd, "call %s %s %s\n", sid, caller_id, remote_ext);
 }
 static void send_audio(int session_id, unsigned char *buffer, int len, int codec){
-  monitor_client_writeline_and_data(monitor_client_fd, buffer, len, "audio %06x %d\n", session_id, codec);
+  monitor_client_writeline_and_data(monitor_alarm.poll.fd, buffer, len, "audio %06x %d\n", session_id, codec);
 }
 
 static int remote_call(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
@@ -106,7 +144,7 @@ static int remote_call(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigne
   
   call_token = token;
   seen_audio = 0;
-  printf("Incoming call from %s (%s)\n",argv[3],argv[4]);
+  printf("Incoming call for %s (%s) from %s (%s)\n", argv[1], argv[2], argv[3], argv[4]);
   fflush(stdout);
   send_ringing(token);
   return 1;
@@ -116,7 +154,7 @@ static int remote_ringing(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsi
 {
   int token = strtol(argv[0], NULL, 16);
   if (call_token == token){
-    printf("They're ringing\n");
+    printf("Ringing\n");
     fflush(stdout);
   }else
     send_hangup(token);
@@ -127,7 +165,7 @@ static int remote_pickup(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsig
 {
   int token = strtol(argv[0], NULL, 16);
   if (call_token == token){
-    printf("They've picked up\n");
+    printf("Picked up\n");
     fflush(stdout);
   }else
     send_hangup(token);
@@ -169,9 +207,12 @@ static int remote_audio(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsign
       case VOMP_CODEC_TEXT:
 	data[dataLen]=0;
 	printf("%s\n",data);
-	fflush(stdout);
+	break;
+      default:
+	printf("Unhandled codec %d, len %d\n", codec, dataLen);
 	break;
     }
+    fflush(stdout);
   }else
     send_hangup(token);
   return 1;
@@ -221,6 +262,7 @@ struct monitor_command_handler console_handlers[]={
   {.command="AUDIO",         .handler=remote_audio},
   {.command="CODECS",        .handler=remote_codecs},
   {.command="INFO",          .handler=remote_print},
+  {.command="ERROR",         .handler=remote_print},
   {.command="CALLSTATUS",    .handler=remote_noop},
   {.command="KEEPALIVE",     .handler=remote_noop},
   {.command="MONITORSTATUS", .handler=remote_noop},
@@ -269,11 +311,11 @@ static int console_audio(const struct cli_parsed *parsed, struct cli_context *UN
     static struct strbuf str_buf = STRUCT_STRBUF_EMPTY;
     strbuf_init(&str_buf, buf, sizeof(buf));
     unsigned i;
-    for (i = 0; i < parsed->argc; ++i) {
-      if (i)
+    for (i = 1; i < parsed->argc; ++i) {
+      if (i>1)
 	strbuf_putc(&str_buf, ' ');
       if (parsed->args[i])
-	strbuf_toprint_quoted(&str_buf, "\"\"", parsed->args[i]);
+	strbuf_puts(&str_buf, parsed->args[i]);
       else
 	strbuf_puts(&str_buf, "NULL");
     }
@@ -282,17 +324,6 @@ static int console_audio(const struct cli_parsed *parsed, struct cli_context *UN
   }
   return 0;
 }
-
-static int console_usage(const struct cli_parsed *parsed, struct cli_context *context);
-
-struct cli_schema console_commands[]={
-  {console_answer,{"answer",NULL},0,"Answer an incoming phone call"},
-  {console_dial,{"call","<sid>","[<local_number>]","[<remote_extension>]",NULL},0,"Start dialling a given person"},
-  {console_hangup,{"hangup",NULL},0,"Hangup the phone line"},
-  {console_usage,{"help",NULL},0,"This usage message"},
-  {console_audio,{"say","...",NULL},0,"Send a text string to the other party"},
-  {NULL, {NULL, NULL, NULL}, 0, NULL},
-};
 
 static int console_usage(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
@@ -329,6 +360,15 @@ static void read_lines(struct sched_ent *alarm){
   struct line_state *state=(struct line_state *)alarm;
   set_nonblock(STDIN_FILENO);
   int bytes = read(state->alarm.poll.fd, state->line_buff + state->line_pos, sizeof(state->line_buff) - state->line_pos);
+  if (bytes<=0){
+    if (monitor_alarm.poll.fd!=-1){
+      unwatch(&monitor_alarm);
+      monitor_client_close(monitor_alarm.poll.fd, monitor_state);
+      monitor_alarm.poll.fd=-1;
+    }
+    return;
+  }
+    
   set_block(STDIN_FILENO);
   int i = state->line_pos;
   int processed=0;
@@ -355,10 +395,11 @@ static void read_lines(struct sched_ent *alarm){
 static void monitor_read(struct sched_ent *alarm){
   if (monitor_client_read(alarm->poll.fd, monitor_state, console_handlers, 
 			  sizeof(console_handlers)/sizeof(struct monitor_command_handler))<0){
-    unwatch(alarm);
-    monitor_client_close(alarm->poll.fd, monitor_state);
-    alarm->poll.fd=-1;
-    monitor_client_fd=-1;
+    if (alarm->poll.fd!=-1){
+      unwatch(alarm);
+      monitor_client_close(alarm->poll.fd, monitor_state);
+      alarm->poll.fd=-1;
+    }
   }
 }
 
@@ -366,40 +407,18 @@ int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *UNUSED
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  static struct profile_total stdin_profile={
-    .name="read_lines",
-  };
-  struct line_state stdin_state={
-    .alarm = {
-      .poll = {.fd = STDIN_FILENO,.events = POLLIN},
-      .function = read_lines,
-      .stats=&stdin_profile
-    },
-    .fd=0,
-    .process_line=console_command,
-  };
-  static struct profile_total monitor_profile={
-    .name="monitor_read",
-  };
-  struct sched_ent monitor_alarm={
-    .poll = {.fd = STDIN_FILENO,.events = POLLIN},
-    .function = monitor_read,
-    .stats=&monitor_profile,
-  };
   
-  monitor_client_fd = monitor_client_open(&monitor_state);
+  monitor_alarm.poll.fd = monitor_client_open(&monitor_state);
   
-  monitor_client_writeline(monitor_client_fd, "monitor vomp %d\n",
+  monitor_client_writeline(monitor_alarm.poll.fd, "monitor vomp %d\n",
 			   VOMP_CODEC_TEXT);
   
-  set_nonblock(monitor_client_fd);
+  set_nonblock(monitor_alarm.poll.fd);
   
-  monitor_alarm.poll.fd = monitor_client_fd;
   watch(&monitor_alarm);
-  
   watch(&stdin_state.alarm);
   
-  while(monitor_client_fd!=-1){
+  while(monitor_alarm.poll.fd!=-1){
     fd_poll();
   }
   
