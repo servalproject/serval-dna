@@ -43,8 +43,12 @@ int rhizome_mdp_send_block(struct subscriber *dest, const rhizome_bid_t *bid, ui
   if (config.debug.rhizome_tx)
     DEBUGF("Requested blocks for bid=%s, ver=%"PRIu64" @%"PRIx64" bitmap %x", alloca_tohex_rhizome_bid_t(*bid), version, fileOffset, bitmap);
     
-  overlay_mdp_frame reply;
-  bzero(&reply,sizeof(reply));
+  struct internal_mdp_header header;
+  bzero(&header, sizeof header);
+  
+  uint8_t buff[MDP_MTU];
+  struct overlay_buffer *payload = ob_static(buff, sizeof(buff));
+  
   // Reply is broadcast, so we cannot authcrypt, and signing is too time consuming
   // for low devices.  The result is that an attacker can prevent rhizome transfers
   // if they want to by injecting fake blocks.  The alternative is to not broadcast
@@ -54,57 +58,59 @@ int rhizome_mdp_send_block(struct subscriber *dest, const rhizome_bid_t *bid, ui
   // for now would seem the safest.  But that would stop us from allowing multiple
   // receivers in the special case where additional nodes begin listening in from the
   // beginning.
-  reply.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT|MDP_NOSIGN;
-  reply.out.src.sid = my_subscriber->sid;
-  reply.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
+  
+  header.crypt_flags = MDP_FLAG_NO_CRYPT | MDP_FLAG_NO_SIGN;
+  header.source = my_subscriber;
+  header.source_port = MDP_PORT_RHIZOME_RESPONSE;
   
   if (dest && (dest->reachable==REACHABLE_UNICAST || dest->reachable==REACHABLE_INDIRECT)){
     // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
-    reply.out.dst.sid = dest->sid;
+    header.destination = dest;
   }else{
     // send replies to broadcast so that others can hear blocks and record them
     // (not that preemptive listening is implemented yet).
-    reply.out.dst.sid = SID_BROADCAST;
-    reply.out.ttl=1;
+    header.ttl = 1;
   }
   
-  reply.out.dst.port=MDP_PORT_RHIZOME_RESPONSE;
-  reply.out.queue=OQ_OPPORTUNISTIC;
-  reply.out.payload[0]='B'; // reply contains blocks
-  // include 16 bytes of BID prefix for identification
-  bcopy(bid->binary, &reply.out.payload[1], 16);
-  // and version of manifest (in the correct byte order)
-  //  bcopy(&version, &reply.out.payload[1+16], sizeof(uint64_t));
-  write_uint64(&reply.out.payload[1+16],version);
+  header.destination_port = MDP_PORT_RHIZOME_RESPONSE;
+  header.qos = OQ_OPPORTUNISTIC;
   
   int i;
   for(i=0;i<32;i++){
     if (bitmap&(1<<(31-i)))
       continue;
     
-    if (overlay_queue_remaining(reply.out.queue) < 10)
+    if (overlay_queue_remaining(header.qos) < 10)
       break;
     
     // calculate and set offset of block
     uint64_t offset = fileOffset+i*blockLength;
+    ob_clear(payload);
+    ob_append_byte(payload, 'B'); // contains blocks
+    // include 16 bytes of BID prefix for identification
+    ob_append_bytes(payload, bid->binary, 16);
+    // and version of manifest (in the correct byte order)
+    ob_append_ui64_rv(payload, version);
     
-    write_uint64(&reply.out.payload[1+16+8], offset);
+    ob_append_ui64_rv(payload, offset);
     
-    ssize_t bytes_read = rhizome_read_cached(bid, version, gettime_ms()+5000, offset, &reply.out.payload[1+16+8+8], blockLength);
+    ssize_t bytes_read = rhizome_read_cached(bid, version, gettime_ms()+5000, offset, ob_current_ptr(payload), blockLength);
     if (bytes_read<=0)
       break;
     
-    reply.out.payload_length=1+16+8+8+(size_t)bytes_read;
+    ob_append_space(payload, bytes_read);
     
     // Mark the last block of the file, if required
     if ((size_t)bytes_read < blockLength)
-      reply.out.payload[0]='T';
+      ob_set(payload, 0, 'T');
     
     // send packet
-    if (overlay_mdp_dispatch(&reply, NULL))
+    ob_flip(payload);
+    if (overlay_send_frame(&header, payload))
       break;
   }
-
+  ob_free(payload);
+  
   RETURN(0);
   OUT();
 }
@@ -227,32 +233,17 @@ int overlay_mdp_service_dnalookup(struct internal_mdp_header *header, struct ove
 
 int overlay_mdp_service_echo(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
-  /* Echo is easy: we swap the sender and receiver addresses (and thus port
-     numbers) and send the frame back. */
   IN();
   
-  /* Prevent echo:echo connections and the resulting denial of service from triggering endless pongs. */
   if (header->source_port == MDP_PORT_ECHO)
-    RETURN(WHY("echo loop averted"));
+    RETURN(WHY("Prevented infinite echo loop"));
     
   struct internal_mdp_header response_header;
   bzero(&response_header, sizeof response_header);
   
-  response_header.source = header->destination;
-  response_header.source_port = MDP_PORT_ECHO;
-  response_header.destination = header->source;
-  response_header.destination_port = header->source_port;
-  response_header.qos = header->qos;
+  mdp_init_response(header, &response_header);
+  // keep all defaults
   
-  /* Always send PONGs auth-crypted so that the receipient knows
-     that they are genuine, and so that we avoid the extra cost 
-     of signing (which is slower than auth-crypting) */
-  
-  /* If the packet was sent to broadcast, then replace broadcast address
-     with our local address. */
-  if (!response_header.source)
-    response_header.source = my_subscriber;
-    
   RETURN(overlay_send_frame(&response_header, payload));
   OUT();
 }

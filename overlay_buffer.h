@@ -37,9 +37,6 @@ struct overlay_buffer {
   
   // is this an allocated buffer? can it be resized? Should it be freed?
   unsigned char * allocated;
-  
-  // length position for later patching
-  size_t var_length_offset;
 };
 
 struct overlay_buffer *_ob_new(struct __sourceloc __whence);
@@ -51,11 +48,11 @@ int _ob_checkpoint(struct __sourceloc __whence, struct overlay_buffer *b);
 int _ob_rewind(struct __sourceloc __whence, struct overlay_buffer *b);
 void _ob_limitsize(struct __sourceloc __whence, struct overlay_buffer *b, size_t bytes);
 void _ob_flip(struct __sourceloc __whence, struct overlay_buffer *b);
+void _ob_clear(struct __sourceloc __whence, struct overlay_buffer *b);
 void _ob_unlimitsize(struct __sourceloc __whence, struct overlay_buffer *b);
 ssize_t _ob_makespace(struct __sourceloc whence, struct overlay_buffer *b, size_t bytes);
 void _ob_set(struct __sourceloc __whence, struct overlay_buffer *b, size_t ofs, unsigned char byte);
 void _ob_set_ui16(struct __sourceloc __whence, struct overlay_buffer *b, size_t offset, uint16_t v);
-void _ob_patch_rfs(struct __sourceloc __whence, struct overlay_buffer *b);
 
 void _ob_append_byte(struct __sourceloc whence, struct overlay_buffer *b,unsigned char byte);
 void _ob_append_bytes(struct __sourceloc whence, struct overlay_buffer *b,const unsigned char *bytes, size_t count);
@@ -63,9 +60,12 @@ unsigned char *_ob_append_space(struct __sourceloc whence, struct overlay_buffer
 void _ob_append_ui16(struct __sourceloc whence, struct overlay_buffer *b, uint16_t v);
 void _ob_append_ui32(struct __sourceloc whence, struct overlay_buffer *b, uint32_t v);
 void _ob_append_ui64(struct __sourceloc whence, struct overlay_buffer *b, uint64_t v);
+void _ob_append_ui16_rv(struct __sourceloc whence, struct overlay_buffer *b, uint16_t v);
+void _ob_append_ui32_rv(struct __sourceloc whence, struct overlay_buffer *b, uint32_t v);
+void _ob_append_ui64_rv(struct __sourceloc whence, struct overlay_buffer *b, uint64_t v);
 void _ob_append_packed_ui32(struct __sourceloc whence, struct overlay_buffer *b, uint32_t v);
 void _ob_append_packed_ui64(struct __sourceloc whence, struct overlay_buffer *b, uint64_t v);
-void _ob_append_rfs(struct __sourceloc whence, struct overlay_buffer *b,int l);
+void _ob_append_str(struct __sourceloc whence, struct overlay_buffer *b, const char *str);
 
 #define ob_new() _ob_new(__WHENCE__)
 #define ob_static(bytes, size) _ob_static(__WHENCE__, bytes, size)
@@ -76,11 +76,11 @@ void _ob_append_rfs(struct __sourceloc whence, struct overlay_buffer *b,int l);
 #define ob_rewind(b) _ob_rewind(__WHENCE__, b)
 #define ob_limitsize(b, size) _ob_limitsize(__WHENCE__, b, size)
 #define ob_flip(b) _ob_flip(__WHENCE__, b)
+#define ob_clear(b) _ob_clear(__WHENCE__, b)
 #define ob_unlimitsize(b) _ob_unlimitsize(__WHENCE__, b)
 #define ob_makespace(b, bytes) _ob_makespace(__WHENCE__, b, bytes)
 #define ob_set(b, off, byte) _ob_set(__WHENCE__, b, off, byte)
 #define ob_set_ui16(b, off, v) _ob_set_ui16(__WHENCE__, b, off, v)
-#define ob_patch_rfs(b) _ob_patch_rfs(__WHENCE__, b)
 
 #define ob_append_byte(b, byte) _ob_append_byte(__WHENCE__, b, byte)
 #define ob_append_bytes(b, bytes, count) _ob_append_bytes(__WHENCE__, b, bytes, count)
@@ -88,9 +88,12 @@ void _ob_append_rfs(struct __sourceloc whence, struct overlay_buffer *b,int l);
 #define ob_append_ui16(b, v) _ob_append_ui16(__WHENCE__, b, v)
 #define ob_append_ui32(b, v) _ob_append_ui32(__WHENCE__, b, v)
 #define ob_append_ui64(b, v) _ob_append_ui64(__WHENCE__, b, v)
+#define ob_append_ui16_rv(b, v) _ob_append_ui16_rv(__WHENCE__, b, v)
+#define ob_append_ui32_rv(b, v) _ob_append_ui32_rv(__WHENCE__, b, v)
+#define ob_append_ui64_rv(b, v) _ob_append_ui64_rv(__WHENCE__, b, v)
 #define ob_append_packed_ui32(b, v) _ob_append_packed_ui32(__WHENCE__, b, v)
 #define ob_append_packed_ui64(b, v) _ob_append_packed_ui64(__WHENCE__, b, v)
-#define ob_append_rfs(b, l) _ob_append_rfs(__WHENCE__, b, l)
+#define ob_append_str(b, s) _ob_append_str(__WHENCE__, b, s)
 
 // get one byte, -ve number indicates failure
 int ob_peek(struct overlay_buffer *b);

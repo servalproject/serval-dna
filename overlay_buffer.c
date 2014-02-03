@@ -162,6 +162,15 @@ void _ob_flip(struct __sourceloc __whence, struct overlay_buffer *b)
   b->position = 0;
 }
 
+void _ob_clear(struct __sourceloc __whence, struct overlay_buffer *b)
+{
+  if (config.debug.overlaybuffer)
+    DEBUGF("ob_flip(b=%p) checkpointLength=0 position=0", b);
+  b->checkpointLength = 0;
+  b->position = 0;
+  ob_unlimitsize(b);
+}
+
 /* Return 1 if space is available, 0 if not.
  */
 ssize_t _ob_makespace(struct __sourceloc __whence, struct overlay_buffer *b, size_t bytes)
@@ -281,12 +290,32 @@ void _ob_append_bytes(struct __sourceloc __whence, struct overlay_buffer *b, con
   b->position += count;
 }
 
+void _ob_append_str(struct __sourceloc whence, struct overlay_buffer *b, const char *str)
+{
+  _ob_append_bytes(whence, b, (const uint8_t*)str, strlen(str)+1);
+}
+
 void _ob_append_ui16(struct __sourceloc __whence, struct overlay_buffer *b, uint16_t v)
 {
   const int bytes = 2;
   if (ob_makespace(b, bytes)) {
     b->bytes[b->position] = (v >> 8) & 0xFF;
     b->bytes[b->position+1] = v & 0xFF;
+    if (config.debug.overlaybuffer)
+      DEBUGF("ob_append_ui16(b=%p, v=%u) %p[%zd]=%s position=%zu", b, v, b->bytes, b->position, alloca_tohex(&b->bytes[b->position], bytes), b->position + bytes);
+  } else {
+    if (config.debug.overlaybuffer)
+      DEBUGF("ob_append_ui16(b=%p, v=%u) OVERRUN position=%zu", b, v, b->position + bytes);
+  }
+  b->position += bytes;
+}
+
+void _ob_append_ui16_rv(struct __sourceloc __whence, struct overlay_buffer *b, uint16_t v)
+{
+  const int bytes = 2;
+  if (ob_makespace(b, bytes)) {
+    b->bytes[b->position] = v & 0xFF;
+    b->bytes[b->position+1] = (v >> 8) & 0xFF;
     if (config.debug.overlaybuffer)
       DEBUGF("ob_append_ui16(b=%p, v=%u) %p[%zd]=%s position=%zu", b, v, b->bytes, b->position, alloca_tohex(&b->bytes[b->position], bytes), b->position + bytes);
   } else {
@@ -314,6 +343,24 @@ void _ob_append_ui32(struct __sourceloc __whence, struct overlay_buffer *b, uint
   b->position += bytes;
 }
 
+void _ob_append_ui32_rv(struct __sourceloc __whence, struct overlay_buffer *b, uint32_t v)
+{
+  const int bytes = 4;
+  if (ob_makespace(b, bytes)) {
+    b->bytes[b->position] = v & 0xFF;
+    b->bytes[b->position+1] = (v >> 8) & 0xFF;
+    b->bytes[b->position+2] = (v >> 16) & 0xFF;
+    b->bytes[b->position+3] = (v >> 24) & 0xFF;
+    if (config.debug.overlaybuffer)
+      DEBUGF("ob_append_ui32(b=%p, v=%"PRIu32") %p[%zd]=%s position=%zu",
+	  b, v, b->bytes, b->position, alloca_tohex(&b->bytes[b->position], bytes), b->position + bytes);
+  } else {
+    if (config.debug.overlaybuffer)
+      DEBUGF("ob_append_ui32(b=%p, v=%"PRIu32") OVERRUN position=%zu", b, v, b->position + bytes);
+  }
+  b->position += bytes;
+}
+
 void _ob_append_ui64(struct __sourceloc __whence, struct overlay_buffer *b, uint64_t v)
 {
   const int bytes = 8;
@@ -326,6 +373,28 @@ void _ob_append_ui64(struct __sourceloc __whence, struct overlay_buffer *b, uint
     b->bytes[b->position+5] = (v >> 16) & 0xFF;
     b->bytes[b->position+6] = (v >> 8) & 0xFF;
     b->bytes[b->position+7] = v & 0xFF;
+    if (config.debug.overlaybuffer)
+      DEBUGF("ob_append_ui64(b=%p, v=%"PRIu64") %p[%zd]=%s position=%zu",
+	  b, v, b->bytes, b->position, alloca_tohex(&b->bytes[b->position], bytes), b->position + bytes);
+  } else {
+    if (config.debug.overlaybuffer)
+      DEBUGF("ob_append_ui64(b=%p, v=%"PRIu64") OVERRUN position=%zu", b, v, b->position + bytes);
+  }
+  b->position += bytes;
+}
+
+void _ob_append_ui64_rv(struct __sourceloc __whence, struct overlay_buffer *b, uint64_t v)
+{
+  const int bytes = 8;
+  if (ob_makespace(b, bytes)) {
+    b->bytes[b->position] = v & 0xFF;
+    b->bytes[b->position+1] = (v >> 8) & 0xFF;
+    b->bytes[b->position+2] = (v >> 16) & 0xFF;
+    b->bytes[b->position+3] = (v >> 24) & 0xFF;
+    b->bytes[b->position+4] = (v >> 32) & 0xFF;
+    b->bytes[b->position+5] = (v >> 40) & 0xFF;
+    b->bytes[b->position+6] = (v >> 48) & 0xFF;
+    b->bytes[b->position+7] = (v >> 56) & 0xFF;
     if (config.debug.overlaybuffer)
       DEBUGF("ob_append_ui64(b=%p, v=%"PRIu64") %p[%zd]=%s position=%zu",
 	  b, v, b->bytes, b->position, alloca_tohex(&b->bytes[b->position], bytes), b->position + bytes);
@@ -386,13 +455,6 @@ void _ob_append_packed_ui64(struct __sourceloc __whence, struct overlay_buffer *
   } while (v != 0);
 }
 
-void _ob_append_rfs(struct __sourceloc __whence, struct overlay_buffer *b, int l)
-{
-  assert(l >= 0);
-  assert(l <= 0xffff);
-  b->var_length_offset = b->position;
-  ob_append_ui16(b, l);
-}
 
 
 /*
@@ -592,10 +654,6 @@ void _ob_set(struct __sourceloc __whence, struct overlay_buffer *b, size_t offse
     DEBUGF("ob_set(b=%p, offset=%zd, byte=0x%02x) %p[%zd]=%s", b, offset, byte, b->bytes, offset, alloca_tohex(&b->bytes[offset], bytes));
 }
 
-void _ob_patch_rfs(struct __sourceloc __whence, struct overlay_buffer *b)
-{
-  ob_set_ui16(b,b->var_length_offset,b->position - (b->var_length_offset + 2));
-}
 
 
 size_t ob_position(struct overlay_buffer *b)
@@ -642,7 +700,8 @@ int asprintable(int c)
 
 int ob_dump(struct overlay_buffer *b, char *desc)
 {
-  DEBUGF("overlay_buffer '%s' at %p (%p) : position=%zu, size=%zu", desc, b, b->bytes, b->position, b->sizeLimit);
+  DEBUGF("overlay_buffer '%s' at %p (%p) : checkpoint=%zu, position=%zu, limit=%zu, size=%zu", 
+    desc, b, b->bytes, b->checkpointLength, b->position, b->sizeLimit, b->allocSize);
   if (b->bytes) {
     if (b->sizeLimit != SIZE_MAX && b->sizeLimit > 0) {
       assert(b->position <= b->sizeLimit);

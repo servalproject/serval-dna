@@ -464,20 +464,18 @@ static struct vomp_call_state *vomp_find_or_create_call(struct subscriber *remot
   return NULL;
 }
 
-static void prepare_vomp_header(struct vomp_call_state *call, overlay_mdp_frame *mdp){
-  mdp->packetTypeAndFlags=MDP_TX;
-  mdp->out.src.sid = call->local.subscriber->sid;
-  mdp->out.src.port=MDP_PORT_VOMP;
-  mdp->out.dst.sid = call->remote.subscriber->sid;
-  mdp->out.dst.port=MDP_PORT_VOMP;
+static void prepare_vomp_header(
+  struct vomp_call_state *call, struct internal_mdp_header *header, struct overlay_buffer *payload)
+{
+  header->source = call->local.subscriber;
+  header->source_port = MDP_PORT_VOMP;
+  header->destination = call->remote.subscriber;
+  header->destination_port = MDP_PORT_VOMP;
   
-  mdp->out.payload[0]=VOMP_VERSION;
-  mdp->out.payload[1]=(call->local.session>>8)&0xff;
-  mdp->out.payload[2]=(call->local.session>>0)&0xff;
-  mdp->out.payload[3]=(call->remote.session>>8)&0xff;
-  mdp->out.payload[4]=(call->remote.session>>0)&0xff;
-  mdp->out.payload[5]=(call->remote.state<<4)|call->local.state;
-  mdp->out.payload_length=6;
+  ob_append_byte(payload, VOMP_VERSION);
+  ob_append_ui16(payload, call->local.session);
+  ob_append_ui16(payload, call->remote.session);
+  ob_append_ui16(payload, (call->remote.state<<4)|call->local.state);
   
   // keep trying to punch a NAT tunnel for 10s
   // note that requests are rate limited internally to one packet per second
@@ -491,14 +489,16 @@ static void prepare_vomp_header(struct vomp_call_state *call, overlay_mdp_frame 
 
 static int vomp_send_status_remote(struct vomp_call_state *call)
 {
-  overlay_mdp_frame mdp;
-  unsigned short  *len=&mdp.out.payload_length;
+  struct internal_mdp_header header;
+  bzero(&header, sizeof(header));
   
-  bzero(&mdp,sizeof(mdp));
-  prepare_vomp_header(call, &mdp);
-  mdp.out.queue=OQ_ORDINARY;
+  uint8_t buff[MDP_MTU];
+  struct overlay_buffer *payload = ob_static(buff, sizeof buff);
+  
+  prepare_vomp_header(call, &header, payload);
+  header.qos = OQ_ORDINARY;
+  
   if (call->local.state < VOMP_STATE_RINGINGOUT && call->remote.state < VOMP_STATE_RINGINGOUT) {
-    int didLen;
     unsigned char codecs[CODEC_FLAGS_LENGTH];
     
     /* Include the list of supported codecs */
@@ -506,33 +506,34 @@ static int vomp_send_status_remote(struct vomp_call_state *call)
     
     int i;
     for (i = 0; i < 256; ++i)
-      if (is_codec_set(i,codecs)) {
-	mdp.out.payload[(*len)++]=i;
-      }
-    mdp.out.payload[(*len)++]=0;
+      if (is_codec_set(i,codecs))
+	ob_append_byte(payload, i);
+    
+    ob_append_byte(payload, 0);
     
     /* Include src and dst phone numbers */
     if (call->initiated_call){
-      DEBUGF("Sending phone numbers %s, %s",call->local.did,call->remote.did);
-      didLen = snprintf((char *)(mdp.out.payload + *len), sizeof(mdp.out.payload) - *len, "%s", call->local.did);
-      *len+=didLen+1;
-      didLen = snprintf((char *)(mdp.out.payload + *len), sizeof(mdp.out.payload) - *len, "%s", call->remote.did);
-      *len+=didLen+1;
+      if (config.debug.vomp)
+	DEBUGF("Sending phone numbers %s, %s",call->local.did,call->remote.did);
+      ob_append_str(payload, call->local.did);
+      ob_append_str(payload, call->remote.did);
     }
     
     if (config.debug.vomp)
-      DEBUGF("mdp frame with codec list is %d bytes", mdp.out.payload_length);
+      DEBUGF("mdp frame with codec list is %zd bytes", ob_position(payload));
   }
 
   call->local.sequence++;
   
-  overlay_mdp_dispatch(&mdp, NULL);
+  ob_flip(payload);
+  overlay_send_frame(&header, payload);
+  ob_free(payload);
   
   return 0;
 }
 
 int vomp_received_audio(struct vomp_call_state *call, int audio_codec, int time, int sequence,
-			const unsigned char *audio, int audio_length)
+			const uint8_t *audio, int audio_length)
 {
   if (call->local.state!=VOMP_STATE_INCALL)
     return -1;
@@ -546,25 +547,24 @@ int vomp_received_audio(struct vomp_call_state *call, int audio_codec, int time,
   if (sequence==-1)
     sequence = call->local.sequence++;
   
-  overlay_mdp_frame mdp;
-  unsigned short  *len=&mdp.out.payload_length;
+  struct internal_mdp_header header;
+  bzero(&header, sizeof(header));
   
-  bzero(&mdp,sizeof(mdp));
-  prepare_vomp_header(call, &mdp);
+  uint8_t buff[MDP_MTU];
+  struct overlay_buffer *payload = ob_static(buff, sizeof buff);
   
-  mdp.out.payload[(*len)++]=audio_codec;
+  prepare_vomp_header(call, &header, payload);
+  header.qos = OQ_ISOCHRONOUS_VOICE;
+
+  ob_append_byte(payload, audio_codec);
   time = time / 20;
-  mdp.out.payload[(*len)++]=(time>>8)&0xff;
-  mdp.out.payload[(*len)++]=(time>>0)&0xff;
-  mdp.out.payload[(*len)++]=(sequence>>8)&0xff;
-  mdp.out.payload[(*len)++]=(sequence>>0)&0xff;
+  ob_append_ui16(payload, time);
+  ob_append_ui16(payload, sequence);
+  ob_append_bytes(payload, audio, audio_length);
   
-  bcopy(audio,&mdp.out.payload[(*len)],audio_length);
-  (*len)+=audio_length;
-    
-  mdp.out.queue=OQ_ISOCHRONOUS_VOICE;
-  
-  overlay_mdp_dispatch(&mdp, NULL);
+  ob_flip(payload);
+  overlay_send_frame(&header, payload);
+  ob_free(payload);
   
   return 0;
 }
