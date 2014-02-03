@@ -27,6 +27,7 @@ typedef struct keypair {
   size_t private_key_len;
   unsigned char *public_key;
   size_t public_key_len;
+  uint8_t verified;
 } keypair;
 
 /* Contains just the list of private:public key pairs and types,
@@ -104,7 +105,7 @@ int keyring_next_identity(const keyring_file *k, unsigned *cn, unsigned *in, uns
 int keyring_identity_find_keytype(const keyring_file *k, unsigned cn, unsigned in, unsigned keytype);
 int keyring_find_did(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp, const char *did);
 int keyring_find_sid(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp, const sid_t *sidp);
-unsigned char *keyring_find_sas_private(keyring_file *k, const sid_t *sidp, unsigned char **sas_public);
+struct keypair *keyring_find_sas_private(keyring_file *k, keyring_identity *identity);
 int keyring_send_sas_request(struct subscriber *subscriber);
 
 int keyring_commit(keyring_file *k);
@@ -116,7 +117,7 @@ int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret);
 
 unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknown_sidp);
 
-int keyring_mapping_request(keyring_file *k, struct internal_mdp_header *header, overlay_mdp_frame *req);
+int keyring_mapping_request(struct internal_mdp_header *header, struct overlay_buffer *payload);
 int keyring_send_unlock(struct subscriber *subscriber);
 void keyring_release_subscriber(keyring_file *k, const sid_t *sid);
 

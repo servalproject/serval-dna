@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "nacl.h"
 #define SIGNATURE_BYTES crypto_sign_edwards25519sha512batch_BYTES
+struct keyring_identity;
 
 int crypto_verify_signature(unsigned char *sas_key, 
 			    unsigned char *content, int content_len, 
@@ -30,7 +31,7 @@ int crypto_verify_message(struct subscriber *subscriber, unsigned char *message,
 int crypto_create_signature(unsigned char *key, 
 			    unsigned char *content, int content_len, 
 			    unsigned char *signature, int *sig_length);
-int crypto_sign_message(struct subscriber *source, unsigned char *content, size_t buffer_len, size_t *content_len);
+int crypto_sign_message(struct keyring_identity *identity, unsigned char *content, size_t buffer_len, size_t *content_len);
 int crypto_sign_compute_public_key(const unsigned char *skin, unsigned char *pk);
 
 #endif

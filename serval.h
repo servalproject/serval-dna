@@ -414,7 +414,7 @@ typedef struct overlay_mdp_frame {
 } overlay_mdp_frame;
 
 /* Server-side MDP functions */
-int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp);
+void mdp_init_response(const struct internal_mdp_header *in, struct internal_mdp_header *out);
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client);
 void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port);
 int overlay_mdp_dnalookup_reply(struct subscriber *dest, mdp_port_t dest_port, 
@@ -501,7 +501,6 @@ int overlay_packetradio_setup_port(struct overlay_interface *interface);
 void server_config_reload(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_bind_internal_services();
-int overlay_mdp_try_internal_services(struct internal_mdp_header *header, struct overlay_buffer *payload);
 int overlay_send_probe(struct subscriber *peer, struct network_destination *destination, int queue);
 int overlay_send_stun_request(struct subscriber *server, struct subscriber *request);
 void fd_periodicstats(struct sched_ent *alarm);

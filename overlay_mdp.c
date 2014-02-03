@@ -512,13 +512,14 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f)
   OUT();
 }
 
-int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp)
+void mdp_init_response(const struct internal_mdp_header *in, struct internal_mdp_header *out)
 {
-  sockaddr_mdp temp;
-  bcopy(&mdp->out.dst,&temp,sizeof(sockaddr_mdp));
-  bcopy(&mdp->out.src,&mdp->out.dst,sizeof(sockaddr_mdp));
-  bcopy(&temp,&mdp->out.src,sizeof(sockaddr_mdp));
-  return 0;
+  out->source = in->destination ? in->destination : my_subscriber;
+  out->source_port = in->destination_port;
+  out->destination = in->source;
+  out->destination_port = in->source_port;
+  out->ttl = 0;
+  out->qos = in->qos;
 }
 
 static int overlay_saw_mdp_frame(
@@ -611,8 +612,10 @@ static int overlay_saw_mdp_frame(
 	}
     }
   } else {
-    /* No socket is bound, ignore the packet ... except for magic sockets */
-    RETURN(overlay_mdp_try_internal_services(header, payload));
+    /* Unbound socket.  We won't be sending ICMP style connection refused
+       messages, partly because they are a waste of bandwidth. */
+    RETURN(WHYF("Received packet for which no listening process exists (MDP ports: src=%d, dst=%d",
+		header->source_port, header->destination_port));
   }
 
   RETURN(0);
@@ -870,7 +873,7 @@ int overlay_send_frame(struct internal_mdp_header *header,
     // Lets just append some space into the existing payload buffer for the signature, without copying it.
     frame->payload = plaintext;
     if (   !ob_makespace(frame->payload, SIGNATURE_BYTES)
-        || crypto_sign_message(frame->source, ob_ptr(frame->payload), frame->payload->allocSize, &frame->payload->position) == -1
+        || crypto_sign_message(frame->source->identity, ob_ptr(frame->payload), frame->payload->allocSize, &frame->payload->position) == -1
     ) {
       op_free(frame);
       return -1;

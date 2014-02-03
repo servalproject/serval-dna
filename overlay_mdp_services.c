@@ -399,23 +399,5 @@ void overlay_mdp_bind_internal_services()
   mdp_bind_internal(NULL, MDP_PORT_DNALOOKUP, overlay_mdp_service_dnalookup);
   mdp_bind_internal(NULL, MDP_PORT_VOMP, vomp_mdp_received);
   mdp_bind_internal(NULL, MDP_PORT_TRACE, overlay_mdp_service_trace);
-}
-
-int overlay_mdp_try_internal_services(
-  struct internal_mdp_header *header, struct overlay_buffer *payload)
-{
-  IN();
-  overlay_mdp_frame mdp;
-  
-  // TODO convert to internal bindings
-  switch(header->destination_port) {
-  case MDP_PORT_KEYMAPREQUEST:
-    overlay_mdp_fill_legacy(header, payload, &mdp);
-    RETURN(keyring_mapping_request(keyring, header, &mdp));
-  }
-   
-  /* Unbound socket.  We won't be sending ICMP style connection refused
-     messages, partly because they are a waste of bandwidth. */
-  RETURN(WHYF("Received packet for which no listening process exists (MDP ports: src=%d, dst=%d",
-	      header->source_port, header->destination_port));
+  mdp_bind_internal(NULL, MDP_PORT_KEYMAPREQUEST, keyring_mapping_request);
 }

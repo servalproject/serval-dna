@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "crypto.h"
 #include "overlay_interface.h"
 #include "overlay_packet.h"
+#include "overlay_buffer.h"
 #include "keyring.h"
 #include "dataformats.h"
 
@@ -1647,105 +1648,116 @@ int keyring_sanitise_position(const keyring_file *k, unsigned *cn, unsigned *in,
   }
 }
 
-unsigned char *keyring_find_sas_private(keyring_file *k, const sid_t *sidp, unsigned char **sas_public_out)
+struct keypair *keyring_find_sas_private(keyring_file *k, keyring_identity *identity)
 {
   IN();
-  unsigned cn=0, in=0, kp=0;
-  if (!keyring_find_sid(k,&cn,&in,&kp,sidp))
-    RETURNNULL(WHYNULL("Could not find SID in keyring, so can't find SAS"));
-  int kpi = keyring_identity_find_keytype(k, cn, in, KEYTYPE_CRYPTOSIGN);
-  if (kpi == -1)
+  assert(identity);
+  
+  struct keypair *kp = NULL;
+  unsigned kpi;
+  for (kpi = 0; kpi < identity->keypair_count; ++kpi)
+    if (identity->keypairs[kpi]->type == KEYTYPE_CRYPTOSIGN){
+      kp = identity->keypairs[kpi];
+      break;
+    }
+  
+  if (kp==NULL)
     RETURNNULL(WHYNULL("Identity lacks SAS"));
-  kp = (unsigned) kpi;
-  unsigned char *sas_private=
-    k->contexts[cn]->identities[in]->keypairs[kp]->private_key;
-  unsigned char *sas_public=
-    k->contexts[cn]->identities[in]->keypairs[kp]->public_key;
-  if (!rhizome_verify_bundle_privatekey(sas_private,sas_public)){
-    /* SAS key is invalid (perhaps because it was a pre 0.90 format one),
-       so replace it */
-    WARN("SAS key is invalid -- regenerating.");
-    crypto_sign_edwards25519sha512batch_keypair(sas_public, sas_private);
-    keyring_commit(k);
+  
+  if (!kp->verified){
+    if (!rhizome_verify_bundle_privatekey(kp->private_key,kp->public_key)){
+      /* SAS key is invalid (perhaps because it was a pre 0.90 format one),
+	 so replace it */
+      WARN("SAS key is invalid -- regenerating.");
+      crypto_sign_edwards25519sha512batch_keypair(kp->public_key, kp->private_key);
+      keyring_commit(k);
+    }
+    kp->verified=1;
   }
+  
   if (config.debug.keyring)
-    DEBUGF("Found SAS entry for %s*", alloca_tohex(sidp->binary, 7));
-  if (sas_public_out)
-    *sas_public_out = sas_public;
-  RETURN(sas_private);
+    DEBUGF("Found SAS entry");
+  
+  RETURN(kp);
   OUT();
 }
 
-static int keyring_store_sas(overlay_mdp_frame *req)
+static int keyring_store_sas(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
-  struct subscriber *subscriber = find_subscriber(req->in.src.sid.binary, SID_SIZE, 1);
-  
-  if (subscriber->sas_valid){
+  if (header->source->sas_valid){
     if (config.debug.keyring)
-      DEBUGF("Ignoring SID:SAS mapping for %s, already have one", alloca_tohex_sid_t(req->in.src.sid));
+      DEBUGF("Ignoring SID:SAS mapping for %s, already have one", alloca_tohex_sid_t(header->source->sid));
     return 0;
   }
+  size_t len = ob_remaining(payload);
   
   if (config.debug.keyring)
-    DEBUGF("Received SID:SAS mapping, %d bytes", req->out.payload_length);
+    DEBUGF("Received SID:SAS mapping, %zd bytes", len);
   
-  unsigned keytype = req->out.payload[0];
-  
-  if (keytype!=KEYTYPE_CRYPTOSIGN)
-    return WHYF("Ignoring SID:SAS mapping with unsupported key type %u", keytype);
+#define SIG_BYTES crypto_sign_edwards25519sha512batch_BYTES
 
-  if (req->out.payload_length < 1 + SAS_SIZE)
+  if (ob_remaining(payload) < SAS_SIZE + SIG_BYTES)
     return WHY("Truncated key mapping announcement?");
   
-  unsigned char plain[req->out.payload_length];
-  unsigned long long plain_len=0;
-  unsigned char *sas_public=&req->out.payload[1];
-  unsigned char *compactsignature = &req->out.payload[1+SAS_SIZE];
-  int siglen=SID_SIZE+crypto_sign_edwards25519sha512batch_BYTES;
-  unsigned char signature[siglen];
+  uint8_t plain[len];
+  unsigned long long plain_len = 0;
+  const uint8_t *sas_public = ob_get_bytes_ptr(payload, SAS_SIZE);
+  const uint8_t *compactsignature = ob_get_bytes_ptr(payload, SIG_BYTES);
+  size_t siglen=SID_SIZE+SIG_BYTES;
+  uint8_t signature[siglen];
   
   /* reconstitute signed SID for verification */
-  bcopy(compactsignature, signature, 64);
-  bcopy(req->out.src.sid.binary, signature + 64, SID_SIZE);
+  bcopy(compactsignature, signature, SIG_BYTES);
+  bcopy(header->source->sid.binary, signature + SIG_BYTES, SID_SIZE);
   int r=crypto_sign_edwards25519sha512batch_open(plain,&plain_len,
 						 signature,siglen,
 						 sas_public);
+
+#undef SIG_BYTES
+
   if (r)
     return WHY("SID:SAS mapping verification signature does not verify");
   /* These next two tests should never be able to fail, but let's just check anyway. */
   if (plain_len != SID_SIZE)
     return WHY("SID:SAS mapping signed block is wrong length");
-  if (memcmp(plain, req->out.src.sid.binary, SID_SIZE) != 0)
+  if (memcmp(plain, header->source->sid.binary, SID_SIZE) != 0)
     return WHY("SID:SAS mapping signed block is for wrong SID");
   
   /* now store it */
-  bcopy(sas_public, subscriber->sas_public, SAS_SIZE);
-  subscriber->sas_valid=1;
-  subscriber->sas_last_request=-1;
+  bcopy(sas_public, header->source->sas_public, SAS_SIZE);
+  header->source->sas_valid=1;
+  header->source->sas_last_request=-1;
   
   if (config.debug.keyring)
     DEBUGF("Stored SID:SAS mapping, SID=%s to SAS=%s",
-	   alloca_tohex_sid_t(req->out.src.sid),
-	   alloca_tohex_sas(subscriber->sas_public)
+	   alloca_tohex_sid_t(header->source->sid),
+	   alloca_tohex_sas(header->source->sas_public)
 	   );
   return 0;
 }
 
-static int keyring_respond_sas(keyring_file *k, overlay_mdp_frame *req)
+static int keyring_respond_sas(keyring_file *k, struct internal_mdp_header *header)
 {
   /* It's a request, so find the SAS for the SID the request was addressed to,
      use that to sign that SID, and then return it in an authcrypted frame. */
-  unsigned char *sas_public=NULL;
-  unsigned char *sas_priv =keyring_find_sas_private(k, &req->out.dst.sid, &sas_public);
+  struct keypair *kp = keyring_find_sas_private(k, header->destination->identity);
 
-  if ((!sas_priv)||(!sas_public))
+  if (!kp)
     return WHY("I don't have that SAS key");
-    
+  
+  struct internal_mdp_header response;
+  bzero(&response, sizeof response);
+  mdp_init_response(header, &response);
+  
+  uint8_t buff[MDP_MTU];
+  struct overlay_buffer *response_payload = ob_static(buff, sizeof buff);
+  ob_limitsize(response_payload, sizeof buff);
+  
+  ob_append_byte(response_payload, kp->type);
+  ob_append_bytes(response_payload, kp->public_key, kp->public_key_len);
+  
   unsigned long long slen;
-  /* type of key being verified */
-  req->out.payload[0]=KEYTYPE_CRYPTOSIGN;
-  /* the public key itself */
-  bcopy(sas_public,&req->out.payload[1], SAS_SIZE);
+  
   /* and a signature of the SID using the SAS key, to prove possession of
      the key.  Possession of the SID has already been established by the
      decrypting of the surrounding MDP packet.
@@ -1754,23 +1766,26 @@ static int keyring_respond_sas(keyring_file *k, overlay_mdp_frame *req)
      about doing this, however, as the mapping process is only once per session,
      not once per packet.  Unless I get excited enough to do it, that is.
   */
-  if (crypto_sign_edwards25519sha512batch(&req->out.payload[1+SAS_SIZE], &slen, req->out.dst.sid.binary, SID_SIZE, sas_priv))
+  
+  if (crypto_sign_edwards25519sha512batch(ob_current_ptr(response_payload), &slen, 
+      header->destination->sid.binary, SID_SIZE, kp->private_key))
     return WHY("crypto_sign() failed");
+    
   /* chop the SID from the end of the signature, since it can be reinserted on reception */
   slen-=SID_SIZE;
-  /* and record the full length of this */
-  req->out.payload_length = 1 + SAS_SIZE + slen;
-  overlay_mdp_swap_src_dst(req);
-  req->out.ttl=0;
-  req->packetTypeAndFlags=MDP_TX; /* crypt and sign */
-  req->out.queue=OQ_MESH_MANAGEMENT;
+  ob_append_space(response_payload, slen);
+  
   if (config.debug.keyring)
-    DEBUGF("Sending SID:SAS mapping, %d bytes, %s:%"PRImdp_port_t" -> %s:%"PRImdp_port_t,
-	  req->out.payload_length,
-	  alloca_tohex_sid_t(req->out.src.sid), req->out.src.port,
-	  alloca_tohex_sid_t(req->out.dst.sid), req->out.dst.port
+    DEBUGF("Sending SID:SAS mapping, %zd bytes, %s:%"PRImdp_port_t" -> %s:%"PRImdp_port_t,
+	  ob_position(response_payload),
+	  alloca_tohex_sid_t(header->destination->sid), header->destination_port,
+	  alloca_tohex_sid_t(header->source->sid), header->source_port
 	);
-  return overlay_mdp_dispatch(req, NULL);
+  
+  ob_flip(response_payload);
+  int ret = overlay_send_frame(&response, response_payload);
+  ob_free(response_payload);
+  return ret;
 }
 
 // someone else is claiming to be me on this network
@@ -1782,120 +1797,142 @@ int keyring_send_unlock(struct subscriber *subscriber)
   if (subscriber->reachable==REACHABLE_SELF)
     return 0;
     
-  overlay_mdp_frame mdp;
-  memset(&mdp,0,sizeof(overlay_mdp_frame));
+  struct internal_mdp_header header;
+  bzero(&header, sizeof header);
   
-  mdp.packetTypeAndFlags=MDP_TX;
-  mdp.out.queue=OQ_MESH_MANAGEMENT;
-  mdp.out.dst.sid = subscriber->sid;
-  mdp.out.dst.port=MDP_PORT_KEYMAPREQUEST;
-  mdp.out.src.port=MDP_PORT_KEYMAPREQUEST;
-  mdp.out.src.sid = my_subscriber->sid;
-  mdp.out.payload[0]=UNLOCK_REQUEST;
-  size_t len = 1;
-  if (crypto_sign_message(subscriber, mdp.out.payload, sizeof(mdp.out.payload), &len))
+  header.source = my_subscriber;
+  header.destination = subscriber;
+  header.source_port = MDP_PORT_KEYMAPREQUEST;
+  header.destination_port = MDP_PORT_KEYMAPREQUEST;
+  header.qos = OQ_MESH_MANAGEMENT;
+  
+  // use a fixed buffer so we know there's enough space for the signature
+  uint8_t buff[MDP_MTU];
+  struct overlay_buffer *response = ob_static(buff, sizeof buff);
+  ob_append_byte(response, UNLOCK_REQUEST);
+  
+  size_t len = ob_position(response);
+  if (crypto_sign_message(subscriber->identity, ob_ptr(response), sizeof(buff), &len))
     return -1;
-  mdp.out.payload_length = len;
-  return overlay_mdp_dispatch(&mdp, NULL);
+    
+  ob_append_space(response, len - ob_position(response));
+  
+  if (config.debug.keyring)
+    DEBUGF("Sending Unlock request for sid %s", alloca_tohex_sid_t(subscriber->sid));
+  ob_flip(response);
+  int ret = overlay_send_frame(&header, response);
+  ob_free(response);
+  return ret;
 }
 
 static int keyring_send_challenge(struct subscriber *source, struct subscriber *dest)
 {
-  overlay_mdp_frame mdp;
-  memset(&mdp,0,sizeof(overlay_mdp_frame));
+  struct internal_mdp_header header;
+  bzero(&header, sizeof header);
   
-  mdp.packetTypeAndFlags=MDP_TX;
-  mdp.out.queue=OQ_MESH_MANAGEMENT;
-  mdp.out.dst.sid = dest->sid;
-  mdp.out.dst.port=MDP_PORT_KEYMAPREQUEST;
-  mdp.out.src.port=MDP_PORT_KEYMAPREQUEST;
-  mdp.out.src.sid = source->sid;
-  mdp.out.payload_length=1;
-  mdp.out.payload[0]=UNLOCK_CHALLENGE;
+  header.source = source;
+  header.destination = dest;
+  header.source_port = MDP_PORT_KEYMAPREQUEST;
+  header.destination_port = MDP_PORT_KEYMAPREQUEST;
+  header.qos = OQ_MESH_MANAGEMENT;
   
   time_ms_t now = gettime_ms();
   if (source->identity->challenge_expires < now){
     source->identity->challenge_expires = now + 5000;
     urandombytes(source->identity->challenge, sizeof(source->identity->challenge));
   }
-  bcopy(source->identity->challenge, &mdp.out.payload[1], sizeof(source->identity->challenge));
-  mdp.out.payload_length+=sizeof(source->identity->challenge);
   
-  return overlay_mdp_dispatch(&mdp, NULL);
+  struct overlay_buffer *payload = ob_new();
+  ob_append_byte(payload, UNLOCK_CHALLENGE);
+  ob_append_bytes(payload, source->identity->challenge, sizeof source->identity->challenge);
+  
+  if (config.debug.keyring)
+    DEBUGF("Sending Unlock challenge for sid %s", alloca_tohex_sid_t(source->sid));
+    
+  ob_flip(payload);
+  int ret = overlay_send_frame(&header, payload);
+  ob_free(payload);
+  return ret;
 }
 
-static int keyring_respond_challenge(struct subscriber *subscriber, overlay_mdp_frame *req)
+static int keyring_respond_challenge(struct subscriber *subscriber, struct overlay_buffer *payload)
 {
   if (!subscriber->identity)
     return WHY("Cannot unlock an identity we don't have in our keyring");
   if (subscriber->reachable==REACHABLE_SELF)
     return 0;
-  overlay_mdp_frame mdp;
-  memset(&mdp,0,sizeof(overlay_mdp_frame));
+    
+  struct internal_mdp_header header;
+  bzero(&header, sizeof header);
   
-  mdp.packetTypeAndFlags=MDP_TX;
-  mdp.out.queue=OQ_MESH_MANAGEMENT;
-  mdp.out.dst.sid = subscriber->sid;
-  mdp.out.dst.port=MDP_PORT_KEYMAPREQUEST;
-  mdp.out.src.port=MDP_PORT_KEYMAPREQUEST;
-  mdp.out.src.sid = my_subscriber->sid;
-  mdp.out.payload[0]=UNLOCK_RESPONSE;
-  bcopy(&req->out.payload[1], &mdp.out.payload[1], req->out.payload_length -1);
-  size_t len = req->out.payload_length;
-  if (crypto_sign_message(subscriber, mdp.out.payload, sizeof(mdp.out.payload), &len))
+  header.source = my_subscriber;
+  header.destination = subscriber;
+  header.source_port = MDP_PORT_KEYMAPREQUEST;
+  header.destination_port = MDP_PORT_KEYMAPREQUEST;
+  header.qos = OQ_MESH_MANAGEMENT;
+  
+  uint8_t buff[MDP_MTU];
+  struct overlay_buffer *response = ob_static(buff, sizeof buff);
+  ob_append_byte(response, UNLOCK_RESPONSE);
+  ob_append_bytes(response, ob_current_ptr(payload), ob_remaining(payload));
+  
+  size_t len = ob_position(response);
+  if (crypto_sign_message(subscriber->identity, ob_ptr(response), sizeof(buff), &len))
     return -1;
-  mdp.out.payload_length=len;
-  return overlay_mdp_dispatch(&mdp, NULL);
+    
+  ob_append_space(response, len - ob_position(response));
+  if (config.debug.keyring)
+    DEBUGF("Responding to Unlock challenge for sid %s", alloca_tohex_sid_t(subscriber->sid));
+  ob_flip(response);
+  int ret = overlay_send_frame(&header, response);
+  ob_free(response);
+  return ret;
 }
 
-static int keyring_process_challenge(keyring_file *k, struct subscriber *subscriber, overlay_mdp_frame *req)
+static int keyring_process_challenge(keyring_file *k, struct subscriber *subscriber, struct overlay_buffer *payload)
 {
   time_ms_t now = gettime_ms();
   if (subscriber->identity->challenge_expires < now)
     return WHY("Identity challenge has already expired");
-  if (req->out.payload_length-1 != sizeof(subscriber->identity->challenge))
+  if (ob_remaining(payload) != sizeof(subscriber->identity->challenge))
     return WHY("Challenge was not the right size");
-  if (memcmp(&req->out.payload[1], subscriber->identity->challenge, sizeof(subscriber->identity->challenge)))
+  if (memcmp(ob_current_ptr(payload), subscriber->identity->challenge, sizeof(subscriber->identity->challenge)))
     return WHY("Challenge failed");
   keyring_release_subscriber(k, &subscriber->sid);
   return 0;
 }
 
-int keyring_mapping_request(keyring_file *k, struct internal_mdp_header *header, overlay_mdp_frame *req)
+int keyring_mapping_request(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
-  if (!k) return WHY("keyring is null");
-  if (!req) return WHY("req is null");
 
   /* The authcryption of the MDP frame proves that the SAS key is owned by the
      owner of the SID, and so is absolutely compulsory. */
-  if (req->packetTypeAndFlags&(MDP_NOCRYPT|MDP_NOSIGN)) 
+  if (header->crypt_flags&(MDP_NOCRYPT|MDP_NOSIGN)) 
     return WHY("mapping requests must be performed under authcryption");
     
-  switch(req->out.payload[0]){
+  switch(ob_get(payload)){
     case KEYTYPE_CRYPTOSIGN:
-      if (req->out.payload_length==1)
-	return keyring_respond_sas(k, req);
-      else
-	return keyring_store_sas(req);
+      if (ob_remaining(payload)==0)
+	return keyring_respond_sas(keyring, header);
+      return keyring_store_sas(header, payload);
       break;
     case UNLOCK_REQUEST:
       {
-	int len = req->out.payload_length;
-	if (crypto_verify_message(header->destination, req->out.payload, &len))
+	int len = ob_remaining(payload) +1;
+	if (crypto_verify_message(header->destination, ob_current_ptr(payload) -1, &len))
 	  return WHY("Signature check failed");
-	req->out.payload_length = len;
       }
       return keyring_send_challenge(header->destination, header->source);
     case UNLOCK_CHALLENGE:
-      return keyring_respond_challenge(header->source, req);
+      return keyring_respond_challenge(header->source, payload);
     case UNLOCK_RESPONSE:
       {
-	int len = req->out.payload_length;
-	if (crypto_verify_message(header->destination, req->out.payload, &len))
+	int len = ob_remaining(payload)+1;
+	if (crypto_verify_message(header->destination, ob_current_ptr(payload) -1, &len))
 	  return WHY("Signature check failed");
-	req->out.payload_length = len;
+	ob_limitsize(payload, ob_position(payload)+len -1);
+	return keyring_process_challenge(keyring, header->destination, payload);
       }
-      return keyring_process_challenge(k, header->destination, req);
   }
   return WHY("Not implemented");
 }
@@ -1919,25 +1956,25 @@ int keyring_send_sas_request(struct subscriber *subscriber){
     DEBUGF("Requesting SAS mapping for SID=%s", alloca_tohex_sid_t(subscriber->sid));
   
   /* request mapping (send request auth-crypted). */
-  overlay_mdp_frame mdp;
-  memset(&mdp,0,sizeof(overlay_mdp_frame));
+  struct internal_mdp_header header;
+  bzero(&header, sizeof header);
   
-  mdp.packetTypeAndFlags=MDP_TX;
-  mdp.out.queue=OQ_MESH_MANAGEMENT;
-  mdp.out.dst.sid = subscriber->sid;
-  mdp.out.dst.port=MDP_PORT_KEYMAPREQUEST;
-  mdp.out.src.port=MDP_PORT_KEYMAPREQUEST;
-  mdp.out.src.sid = my_subscriber->sid;
-  mdp.out.payload_length=1;
-  mdp.out.payload[0]=KEYTYPE_CRYPTOSIGN;
+  header.source = my_subscriber;
+  header.destination = subscriber;
+  header.source_port = MDP_PORT_KEYMAPREQUEST;
+  header.destination_port = MDP_PORT_KEYMAPREQUEST;
+  header.qos = OQ_MESH_MANAGEMENT;
   
-  if (overlay_mdp_dispatch(&mdp, NULL))
-    return WHY("Failed to send SAS resolution request");
+  struct overlay_buffer *payload = ob_new();
+  ob_append_byte(payload, KEYTYPE_CRYPTOSIGN);
+  
   if (config.debug.keyring)
-    DEBUGF("Dispatched SAS resolution request");
-  
+    DEBUGF("Sending SAS resolution request");
   subscriber->sas_last_request=now;
-  return 0;
+  ob_flip(payload);
+  int ret = overlay_send_frame(&header, payload);
+  ob_free(payload);
+  return ret;
 }
 
 int keyring_find_sid(const keyring_file *k, unsigned *cn, unsigned *in, unsigned *kp, const sid_t *sidp)

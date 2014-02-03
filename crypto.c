@@ -102,12 +102,12 @@ int crypto_create_signature(unsigned char *key,
 }
 
 // sign the hash of a message, adding the signature to the end of the message buffer.
-int crypto_sign_message(struct subscriber *source, unsigned char *content, size_t buffer_len, size_t *content_len)
+int crypto_sign_message(struct keyring_identity *identity, unsigned char *content, size_t buffer_len, size_t *content_len)
 {
   if (*content_len + SIGNATURE_BYTES > buffer_len)
     return WHYF("Insufficient space in message buffer to add signature. %zu, need %zu",buffer_len, *content_len + SIGNATURE_BYTES);
   
-  unsigned char *key=keyring_find_sas_private(keyring, &source->sid, NULL);
+  struct keypair *key = keyring_find_sas_private(keyring, identity);
   if (!key)
     return WHY("Could not find signing key");
   
@@ -116,7 +116,7 @@ int crypto_sign_message(struct subscriber *source, unsigned char *content, size_
   
   int sig_length = SIGNATURE_BYTES;
   
-  int ret=crypto_create_signature(key, hash, crypto_hash_sha512_BYTES, &content[*content_len], &sig_length);
+  int ret=crypto_create_signature(key->private_key, hash, crypto_hash_sha512_BYTES, &content[*content_len], &sig_length);
   *content_len+=sig_length;
   return ret;
 }
