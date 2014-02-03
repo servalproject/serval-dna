@@ -315,6 +315,41 @@ int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_
   OUT();
 }
 
+static int is_from_loopback(const struct http_request *r)
+{
+  return   r->client_sockaddr_in.sin_family == AF_INET
+	&& ((unsigned char*)&r->client_sockaddr_in.sin_addr.s_addr)[0] == IN_LOOPBACKNET;
+}
+
+/* Return 1 if the given authorization credentials are acceptable.
+ * Return 0 if not.
+ */
+static int is_authorized(const struct http_client_authorization *auth)
+{
+  if (auth->scheme != BASIC)
+    return 0;
+  unsigned i;
+  for (i = 0; i != config.rhizome.api.restful.users.ac; ++i) {
+    if (   strcmp(config.rhizome.api.restful.users.av[i].key, auth->credentials.basic.user) == 0
+	&& strcmp(config.rhizome.api.restful.users.av[i].value.password, auth->credentials.basic.password) == 0
+    )
+      return 1;
+  }
+  return 0;
+}
+
+int authorize(struct http_request *r)
+{
+  if (!is_from_loopback(r))
+    return 403;
+  if (!is_authorized(&r->request_header.authorization)) {
+    r->response.header.www_authenticate.scheme = BASIC;
+    r->response.header.www_authenticate.realm = "Serval Rhizome";
+    return 401;
+  }
+  return 0;
+}
+
 static int root_page(httpd_request *r, const char *remainder)
 {
   if (*remainder)

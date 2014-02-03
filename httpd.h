@@ -168,6 +168,10 @@ int httpd_server_start(uint16_t port_low, uint16_t port_high);
 typedef int HTTP_HANDLER(httpd_request *r, const char *remainder);
 
 int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_call);
+int authorize(struct http_request *r);
+int rhizome_response_content_init_filehash(httpd_request *r, const rhizome_filehash_t *hash);
+int rhizome_response_content_init_payload(httpd_request *r, rhizome_manifest *);
+HTTP_CONTENT_GENERATOR rhizome_payload_content;
 
 struct http_response_parts {
   uint16_t code;
