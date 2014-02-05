@@ -23,6 +23,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 
+#define MESHMS_MESSAGE_MAX_LEN  4095
+
 // the manifest details for one half of a conversation
 struct meshms_ply {
   rhizome_bid_t bundle_id;
@@ -65,10 +67,10 @@ struct meshms_ply_read {
   // details of the current record
   uint64_t record_end_offset;
   uint16_t record_length;
-  size_t buffer_size;
+  size_t record_size;
   char type;
   // raw record data
-  unsigned char *buffer;
+  unsigned char *record;
 };
 
 /* Fetch the list of all MeshMS conversations into a binary tree whose nodes
@@ -124,7 +126,8 @@ struct meshms_message_iterator {
   // (mine).  For MESSAGE_RECEIVED and ACK_RECEIVED, it is the byte position
   // within the remote ply (theirs).
   uint64_t offset;
-  const char *text; // NUL terminated text of message
+  const char *text; // text of UTF8 message (NUL terminated)
+  size_t text_length; // excluding terminating NUL
   union {
     bool_t delivered; // for MESSAGE_SENT
     bool_t read; // for MESSAGE_RECEIVED
@@ -144,5 +147,12 @@ int meshms_message_iterator_open(struct meshms_message_iterator *, const sid_t *
 int meshms_message_iterator_is_open(const struct meshms_message_iterator *);
 void meshms_message_iterator_close(struct meshms_message_iterator *);
 int meshms_message_iterator_prev(struct meshms_message_iterator *);
+
+/* Append a message ('message_len' bytes of UTF8 at 'message') to the sender's
+ * ply in the conversation between 'sender' and 'recipient'.  If no
+ * conversation (ply bundle) exists, then create it.  Returns 0 on success, -1
+ * on error (already logged).
+ */
+int meshms_send_message(const sid_t *sender, const sid_t *recipient, const char *message, size_t message_len);
 
 #endif // __SERVAL_DNA__MESHMS_H

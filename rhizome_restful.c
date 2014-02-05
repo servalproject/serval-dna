@@ -31,10 +31,7 @@ static void finalise_union_read_state(httpd_request *r)
 
 static void finalise_union_rhizome_insert(httpd_request *r)
 {
-  if (r->u.insert.manifest_text) {
-    free(r->u.insert.manifest_text);
-    r->u.insert.manifest_text = NULL;
-  }
+  form_buf_malloc_release(&r->u.insert.manifest);
   if (r->u.insert.write.blob_fd != -1)
     rhizome_fail_write(&r->u.insert.write);
 }
@@ -284,26 +281,16 @@ static int insert_mime_part_start(struct http_request *hr)
   return 0;
 }
 
-static int http_response_form_part(httpd_request *r, const char *what, const char *partname, const char *text, size_t textlen)
-{
-  if (config.debug.rhizome)
-    DEBUGF("%s \"%s\" form part %s", what, partname, text ? alloca_toprint(-1, text, textlen) : "");
-  strbuf msg = strbuf_alloca(100);
-  strbuf_sprintf(msg, "%s \"%s\" form part", what, partname);
-  http_request_simple_response(&r->http, 403, strbuf_str(msg));
-  return 403;
-}
-
 static int insert_make_manifest(httpd_request *r)
 {
   if (!r->u.insert.received_manifest)
     return http_response_form_part(r, "Missing", PART_MANIFEST, NULL, 0);
   if ((r->manifest = rhizome_new_manifest())) {
-    if (r->u.insert.manifest_len == 0)
+    if (r->u.insert.manifest.length == 0)
       return 0;
-    assert(r->u.insert.manifest_len <= sizeof r->manifest->manifestdata);
-    memcpy(r->manifest->manifestdata, r->u.insert.manifest_text, r->u.insert.manifest_len);
-    r->manifest->manifest_all_bytes = r->u.insert.manifest_len;
+    assert(r->u.insert.manifest.length <= sizeof r->manifest->manifestdata);
+    memcpy(r->manifest->manifestdata, r->u.insert.manifest.buffer, r->u.insert.manifest.length);
+    r->manifest->manifest_all_bytes = r->u.insert.manifest.length;
     int n = rhizome_manifest_parse(r->manifest);
     switch (n) {
       case -1:
@@ -330,19 +317,19 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     if (r->u.insert.received_author)
       return http_response_form_part(r, "Duplicate", PART_AUTHOR, NULL, 0);
     r->u.insert.current_part = PART_AUTHOR;
+    assert(r->u.insert.author_hex_len == 0);
   }
   else if (strcmp(h->content_disposition.name, PART_SECRET) == 0) {
     if (r->u.insert.received_secret)
       return http_response_form_part(r, "Duplicate", PART_SECRET, NULL, 0);
     r->u.insert.current_part = PART_SECRET;
+    assert(r->u.insert.secret_hex_len == 0);
   }
   else if (strcmp(h->content_disposition.name, PART_MANIFEST) == 0) {
     // Reject a request if it has a repeated manifest part.
     if (r->u.insert.received_manifest)
       return http_response_form_part(r, "Duplicate", PART_MANIFEST, NULL, 0);
-    assert(r->u.insert.manifest_text == NULL);
-    assert(r->u.insert.manifest_text_size == 0);
-    assert(r->u.insert.manifest_len == 0);
+    form_buf_malloc_init(&r->u.insert.manifest, MAX_MANIFEST_BYTES);
     if (   strcmp(h->content_type.type, "rhizome-manifest") != 0
 	|| strcmp(h->content_type.subtype, "text") != 0
     )
@@ -384,26 +371,6 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
   return 0;
 }
 
-static int accumulate_text(httpd_request *r, const char *partname, char *textbuf, size_t textsiz, size_t *textlenp, const char *buf, size_t len)
-{
-  if (len) {
-    size_t newlen = *textlenp + len;
-    if (newlen > textsiz) {
-      if (config.debug.rhizome)
-	DEBUGF("Form part \"%s\" too long, %zu bytes overflows maximum %zu by %zu",
-	    partname, newlen, textsiz, (size_t)(newlen - textsiz)
-	  );
-      strbuf msg = strbuf_alloca(100);
-      strbuf_sprintf(msg, "Overflow in \"%s\" form part", partname);
-      http_request_simple_response(&r->http, 403, strbuf_str(msg));
-      return 0;
-    }
-    memcpy(textbuf + *textlenp, buf, len);
-    *textlenp = newlen;
-  }
-  return 1;
-}
-
 static int insert_mime_part_body(struct http_request *hr, char *buf, size_t len)
 {
   httpd_request *r = (httpd_request *) hr;
@@ -422,24 +389,7 @@ static int insert_mime_part_body(struct http_request *hr, char *buf, size_t len)
 		    buf, len);
   }
   else if (r->u.insert.current_part == PART_MANIFEST) {
-    if (len == 0)
-      return 0;
-    size_t newlen = r->u.insert.manifest_len + len;
-    if (newlen > MAX_MANIFEST_BYTES) {
-      if (config.debug.rhizome)
-	DEBUGF("manifest too large, %zu bytes overflows maximum %zu by %zu",
-	    newlen, (size_t)MAX_MANIFEST_BYTES, (size_t)(newlen - MAX_MANIFEST_BYTES)
-	  );
-      http_request_simple_response(&r->http, 403, "Manifest size overflow");
-      return 403;
-    }
-    if (newlen > r->u.insert.manifest_text_size) {
-      if ((r->u.insert.manifest_text = erealloc(r->u.insert.manifest_text, newlen)) == NULL)
-	return 500;
-      r->u.insert.manifest_text_size = newlen;
-    }
-    memcpy(r->u.insert.manifest_text + r->u.insert.manifest_len, buf, len);
-    r->u.insert.manifest_len = newlen;
+    form_buf_malloc_accumulate(r, PART_MANIFEST, &r->u.insert.manifest, buf, len);
   }
   else if (r->u.insert.current_part == PART_PAYLOAD) {
     r->u.insert.payload_size += len;

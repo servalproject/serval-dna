@@ -1196,8 +1196,28 @@ teardown_MeshmsListMessagesNewSinceArrival() {
 }
 
 doc_MeshmsSend="HTTP RESTful send MeshMS message"
-Xtest_MeshmsSend() {
-   :
+setup_MeshmsSend() {
+   IDENTITY_COUNT=2
+   setup
+}
+test_MeshmsSend() {
+   executeOk curl \
+         --silent --fail --show-error \
+         --output sendmessage.json \
+         --basic --user harry:potter \
+         --form "message=Hello World" \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/$SIDA2/sendmessage"
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutGrep --matches=1 ':>:Hello World'
+   executeOk curl \
+         --silent --fail --show-error \
+         --output sendmessage.json \
+         --basic --user ron:weasley \
+         --form "message=Hello back!" \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutGrep --matches=1 ':>:Hello World$'
+   assertStdoutGrep --matches=1 ':<:Hello back!$'
 }
 
 runTests "$@"

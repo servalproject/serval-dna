@@ -350,6 +350,83 @@ int authorize(struct http_request *r)
   return 0;
 }
 
+int accumulate_text(httpd_request *r, const char *partname, char *textbuf, size_t textsiz, size_t *textlenp, const char *buf, size_t len)
+{
+  if (len) {
+    size_t newlen = *textlenp + len;
+    if (newlen > textsiz) {
+      if (config.debug.httpd)
+	DEBUGF("Form part \"%s\" too long, %zu bytes overflows maximum %zu by %zu",
+	    partname, newlen, textsiz, (size_t)(newlen - textsiz)
+	  );
+      strbuf msg = strbuf_alloca(100);
+      strbuf_sprintf(msg, "Overflow in \"%s\" form part", partname);
+      http_request_simple_response(&r->http, 403, strbuf_str(msg));
+      return 0;
+    }
+    memcpy(textbuf + *textlenp, buf, len);
+    *textlenp = newlen;
+  }
+  return 1;
+}
+
+int form_buf_malloc_init(struct form_buf_malloc *f, size_t size_limit)
+{
+  assert(f->buffer == NULL);
+  assert(f->buffer_alloc_size == 0);
+  assert(f->length == 0);
+  f->size_limit = size_limit;
+  return 0;
+}
+
+int form_buf_malloc_accumulate(httpd_request *r, const char *partname, struct form_buf_malloc *f, const char *buf, size_t len)
+{
+  if (len == 0)
+    return 0;
+  size_t newlen = f->length + len;
+  if (newlen > f->size_limit) {
+    if (config.debug.httpd)
+      DEBUGF("form part \"%s\" overflow, %zu bytes exceeds limit %zu by %zu",
+	  partname, newlen, f->size_limit, (size_t)(newlen - f->size_limit)
+	);
+    strbuf msg = strbuf_alloca(100);
+    strbuf_sprintf(msg, "Overflow in \"%s\" form part", partname);
+    http_request_simple_response(&r->http, 403, strbuf_str(msg));
+    return 403;
+  }
+  if (newlen > f->buffer_alloc_size) {
+    if ((f->buffer = erealloc(f->buffer, newlen)) == NULL) {
+      http_request_simple_response(&r->http, 500, NULL);
+      return 500;
+    }
+    f->buffer_alloc_size = newlen;
+  }
+  memcpy(f->buffer + f->length, buf, len);
+  f->length = newlen;
+  return 0;
+}
+
+void form_buf_malloc_release(struct form_buf_malloc *f)
+{
+  if (f->buffer) {
+    free(f->buffer);
+    f->buffer = NULL;
+  }
+  f->buffer_alloc_size = 0;
+  f->length = 0;
+  f->size_limit = 0;
+}
+
+int http_response_form_part(httpd_request *r, const char *what, const char *partname, const char *text, size_t textlen)
+{
+  if (config.debug.httpd)
+    DEBUGF("%s \"%s\" form part %s", what, partname, text ? alloca_toprint(-1, text, textlen) : "");
+  strbuf msg = strbuf_alloca(100);
+  strbuf_sprintf(msg, "%s \"%s\" form part", what, partname);
+  http_request_simple_response(&r->http, 403, strbuf_str(msg));
+  return 403;
+}
+
 static int root_page(httpd_request *r, const char *remainder)
 {
   if (*remainder)

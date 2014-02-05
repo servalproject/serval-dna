@@ -29,7 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "dataformats.h"
 
 #define MESHMS_BLOCK_TYPE_ACK 0x01
-#define MESHMS_BLOCK_TYPE_MESSAGE 0x02
+#define MESHMS_BLOCK_TYPE_MESSAGE 0x02 // NUL-terminated UTF8 string
 #define MESHMS_BLOCK_TYPE_BID_REFERENCE 0x03
 
 void meshms_free_conversations(struct meshms_conversations *conv)
@@ -206,10 +206,11 @@ static int create_ply(const sid_t *my_sid, struct meshms_conversations *conv, rh
   return 0;
 }
 
-static int append_footer(unsigned char *buffer, char type, int payload_len)
+static int append_footer(unsigned char *buffer, char type, size_t message_len)
 {
-  payload_len = (payload_len << 4) | (type&0xF);
-  write_uint16(buffer, payload_len);
+  assert(message_len <= MESHMS_MESSAGE_MAX_LEN);
+  message_len = (message_len << 4) | (type&0xF);
+  write_uint16(buffer, message_len);
   return 2;
 }
 
@@ -231,11 +232,11 @@ static int ply_read_open(struct meshms_ply_read *ply, const rhizome_bid_t *bid, 
 
 static void ply_read_close(struct meshms_ply_read *ply)
 {
-  if (ply->buffer){
-    free(ply->buffer);
-    ply->buffer=NULL;
+  if (ply->record){
+    free(ply->record);
+    ply->record=NULL;
   }
-  ply->buffer_size=0;
+  ply->record_size=0;
   ply->buff.len=0;
   rhizome_read_close(&ply->read);
 }
@@ -248,7 +249,7 @@ static int ply_read_prev(struct meshms_ply_read *ply)
   unsigned char footer[2];
   if (ply->read.offset <= sizeof footer) {
     if (config.debug.meshms)
-      DEBUGF("EOF");
+      DEBUG("EOF");
     return 1;
   }
   ply->read.offset -= sizeof footer;
@@ -271,14 +272,14 @@ static int ply_read_prev(struct meshms_ply_read *ply)
   }
   ply->read.offset -= ply->record_length + sizeof(footer);
   uint64_t record_start = ply->read.offset;
-  if (ply->buffer_size < ply->record_length){
-    ply->buffer_size = ply->record_length;
-    unsigned char *b=realloc(ply->buffer, ply->buffer_size);
+  if (ply->record_size < ply->record_length){
+    ply->record_size = ply->record_length;
+    unsigned char *b = erealloc(ply->record, ply->record_size);
     if (!b)
-      return WHY("realloc() failed");
-    ply->buffer = b;
+      return -1;
+    ply->record = b;
   }
-  read = rhizome_read_buffered(&ply->read, &ply->buff, ply->buffer, ply->record_length);
+  read = rhizome_read_buffered(&ply->read, &ply->buff, ply->record, ply->record_length);
   if (read == -1)
     return WHYF("rhizome_read_buffered() failed");
   if ((size_t) read != ply->record_length)
@@ -416,7 +417,7 @@ static int update_conversation(const sid_t *my_sid, struct meshms_conversations 
       goto end;
       
     if (ret==0){
-      if (unpack_uint(ply.buffer, ply.record_length, &previous_ack) == -1)
+      if (unpack_uint(ply.record, ply.record_length, &previous_ack) == -1)
 	previous_ack=0;
     }
     if (config.debug.meshms)
@@ -740,7 +741,7 @@ int meshms_message_iterator_open(struct meshms_message_iterator *iter, const sid
       // Find their latest ACK so we know which of my messages have been delivered.
       int r = ply_find_prev(&iter->_their_reader, MESHMS_BLOCK_TYPE_ACK);
       if (r == 0) {
-	if (unpack_uint(iter->_their_reader.buffer, iter->_their_reader.record_length, &iter->latest_ack_my_offset) == -1)
+	if (unpack_uint(iter->_their_reader.record, iter->_their_reader.record_length, &iter->latest_ack_my_offset) == -1)
 	  iter->latest_ack_my_offset = 0;
 	else
 	  iter->latest_ack_offset = iter->_their_reader.record_end_offset;
@@ -804,15 +805,23 @@ int meshms_message_iterator_prev(struct meshms_message_iterator *iter)
 	    iter->type = ACK_RECEIVED;
 	    iter->offset = iter->_their_reader.record_end_offset;
 	    iter->text = NULL;
-	    if (unpack_uint(iter->_their_reader.buffer, iter->_their_reader.record_length, &iter->ack_offset) == -1)
+	    iter->text_length = 0;
+	    if (unpack_uint(iter->_their_reader.record, iter->_their_reader.record_length, &iter->ack_offset) == -1)
 	      iter->ack_offset = 0;
 	    return 0;
 	  case MESHMS_BLOCK_TYPE_MESSAGE:
 	    iter->type = MESSAGE_RECEIVED;
 	    iter->offset = iter->_their_reader.record_end_offset;
-	    iter->text = (const char *)iter->_their_reader.buffer;
-	    iter->read = iter->_their_reader.record_end_offset <= iter->_conv->read_offset;
-	    return 0;
+	    iter->text = (const char *)iter->_their_reader.record;
+	    iter->text_length = iter->_their_reader.record_length;
+	    if (   iter->_their_reader.record_length != 0
+		&& iter->_their_reader.record[iter->_their_reader.record_length - 1] == '\0'
+	    ) { 
+	      iter->read = iter->_their_reader.record_end_offset <= iter->_conv->read_offset;
+	      return 0;
+	    }
+	    WARN("Malformed MeshMS2 ply journal, missing NUL terminator");
+	    break;
 	}
 	continue;
       }
@@ -827,11 +836,11 @@ int meshms_message_iterator_prev(struct meshms_message_iterator *iter)
 	case MESHMS_BLOCK_TYPE_ACK:
 	  // Read the received messages up to the ack'ed offset
 	  if (iter->_conv->found_their_ply) {
-	    int ofs = unpack_uint(iter->_my_reader.buffer, iter->_my_reader.record_length, (uint64_t*)&iter->_their_reader.read.offset);
+	    int ofs = unpack_uint(iter->_my_reader.record, iter->_my_reader.record_length, (uint64_t*)&iter->_their_reader.read.offset);
 	    if (ofs == -1)
 	      return WHYF("Malformed ACK");
 	    uint64_t end_range;
-	    int x = unpack_uint(iter->_my_reader.buffer + ofs, iter->_my_reader.record_length - ofs, &end_range);
+	    int x = unpack_uint(iter->_my_reader.record + ofs, iter->_my_reader.record_length - ofs, &end_range);
 	    if (x == -1)
 	      iter->_end_range = 0;
 	    else
@@ -846,12 +855,34 @@ int meshms_message_iterator_prev(struct meshms_message_iterator *iter)
 	case MESHMS_BLOCK_TYPE_MESSAGE:
 	  iter->type = MESSAGE_SENT;
 	  iter->offset = iter->_my_reader.record_end_offset;
-	  iter->text = (const char *)iter->_my_reader.buffer;
+	  iter->text = (const char *)iter->_my_reader.record;
+	  iter->text_length = iter->_my_reader.record_length;
 	  iter->delivered = iter->latest_ack_my_offset && iter->_my_reader.record_end_offset <= iter->latest_ack_my_offset;
 	  return 0;
       }
     }
   }
+  return ret;
+}
+
+int meshms_send_message(const sid_t *sender, const sid_t *recipient, const char *message, size_t message_len)
+{
+  assert(message_len != 0);
+  if (message_len > MESHMS_MESSAGE_MAX_LEN)
+    return WHY("message too long");
+  struct meshms_conversations *conv = find_or_create_conv(sender, recipient);
+  if (!conv)
+    return -1;
+  // construct a message payload
+  // TODO, new format here.
+  unsigned char buffer[message_len + 4];
+  strncpy((char*)buffer, message, message_len);
+  // ensure message is NUL terminated
+  if (message[message_len - 1] != '\0')
+    buffer[message_len++] = '\0';
+  message_len += append_footer(buffer + message_len, MESHMS_BLOCK_TYPE_MESSAGE, message_len);
+  int ret = append_meshms_buffer(sender, conv, buffer, message_len);
+  meshms_free_conversations(conv);
   return ret;
 }
 
@@ -934,21 +965,8 @@ int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context 
     return WHY("invalid sender SID");
   if (str_to_sid_t(&their_sid, their_sidhex) == -1)
     return WHY("invalid recipient SID");
-  struct meshms_conversations *conv = find_or_create_conv(&my_sid, &their_sid);
-  if (!conv) {
-    keyring_free(keyring);
-    return -1;
-  }  
-  // construct a message payload
-  int message_len = strlen(message)+1;
-  
-  // TODO, new format here.
-  unsigned char buffer[message_len+3];
-  strcpy((char*)buffer, message);  // message
-  message_len+=append_footer(buffer+message_len, MESHMS_BLOCK_TYPE_MESSAGE, message_len);
-  int ret = append_meshms_buffer(&my_sid, conv, buffer, message_len);
-  
-  meshms_free_conversations(conv);
+  // include terminating NUL
+  int ret = meshms_send_message(&my_sid, &their_sid, message, strlen(message) + 1);
   keyring_free(keyring);
   return ret;
 }

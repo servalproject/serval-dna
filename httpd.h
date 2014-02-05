@@ -34,6 +34,19 @@ extern unsigned int httpd_request_count;
 
 enum list_phase { LIST_HEADER = 0, LIST_ROWS, LIST_END, LIST_DONE };
 
+struct form_buf_malloc {
+  char *buffer;
+  size_t size_limit; // == 0 means no limit
+  size_t buffer_alloc_size;
+  size_t length;
+};
+
+struct httpd_request;
+
+int form_buf_malloc_init(struct form_buf_malloc *, size_t size_limit);
+int form_buf_malloc_accumulate(struct httpd_request *, const char *partname, struct form_buf_malloc *, const char *, size_t);
+void form_buf_malloc_release(struct form_buf_malloc *);
+
 typedef struct httpd_request
 {
   struct http_request http; // MUST BE FIRST ELEMENT
@@ -108,9 +121,7 @@ typedef struct httpd_request
       size_t force_new_text_len;
       bool_t force_new;
       // For storing the manifest text (malloc/realloc) as we receive it
-      char *manifest_text;
-      size_t manifest_text_size;
-      size_t manifest_len;
+      struct form_buf_malloc manifest;
       // For receiving the payload
       enum rhizome_payload_status payload_status;
       uint64_t payload_size;
@@ -159,6 +170,18 @@ typedef struct httpd_request
     }
       msglist;
 
+    /* For responses that send a MeshMS message.
+    */
+    struct {
+      // Which part is currently being received
+      const char *current_part;
+      // Which parts have already been received
+      bool_t received_message;
+      // The text of the message to send
+      struct form_buf_malloc message;
+    }
+      sendmsg;
+
   } u;
 
 } httpd_request;
@@ -169,6 +192,9 @@ typedef int HTTP_HANDLER(httpd_request *r, const char *remainder);
 
 int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_call);
 int authorize(struct http_request *r);
+int http_response_form_part(httpd_request *r, const char *what, const char *partname, const char *text, size_t textlen);
+int accumulate_text(httpd_request *r, const char *partname, char *textbuf, size_t textsiz, size_t *textlenp, const char *buf, size_t len);
+
 int rhizome_response_content_init_filehash(httpd_request *r, const rhizome_filehash_t *hash);
 int rhizome_response_content_init_payload(httpd_request *r, rhizome_manifest *);
 HTTP_CONTENT_GENERATOR rhizome_payload_content;

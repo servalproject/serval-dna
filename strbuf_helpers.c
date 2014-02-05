@@ -471,33 +471,46 @@ strbuf strbuf_json_boolean(strbuf sb, int boolean)
   return sb;
 }
 
+static void _json_char(strbuf sb, char c)
+{
+  if (c == '"' || c == '\\') {
+    strbuf_putc(sb, '\\');
+    strbuf_putc(sb, c);
+  }
+  else if (c == '\b')
+    strbuf_puts(sb, "\\b");
+  else if (c == '\f')
+    strbuf_puts(sb, "\\f");
+  else if (c == '\n')
+    strbuf_puts(sb, "\\n");
+  else if (c == '\r')
+    strbuf_puts(sb, "\\r");
+  else if (c == '\t')
+    strbuf_puts(sb, "\\t");
+  else if (iscntrl(c))
+    strbuf_sprintf(sb, "\\u%04X", (unsigned char) c);
+  else
+    strbuf_putc(sb, c);
+}
+
 strbuf strbuf_json_string(strbuf sb, const char *str)
 {
   if (str) {
     strbuf_putc(sb, '"');
-    for (; *str; ++str) {
-      if (*str == '"' || *str == '\\') {
-	strbuf_putc(sb, '\\');
-	strbuf_putc(sb, *str);
-      }
-      else if (*str == '\b')
-	strbuf_puts(sb, "\\b");
-      else if (*str == '\f')
-	strbuf_puts(sb, "\\f");
-      else if (*str == '\n')
-	strbuf_puts(sb, "\\n");
-      else if (*str == '\r')
-	strbuf_puts(sb, "\\r");
-      else if (*str == '\t')
-	strbuf_puts(sb, "\\t");
-      else if (iscntrl(*str))
-	strbuf_sprintf(sb, "\\u%04X", (unsigned char) *str);
-      else
-	strbuf_putc(sb, *str);
-    }
+    for (; *str; ++str)
+      _json_char(sb, *str);
     strbuf_putc(sb, '"');
   } else
     strbuf_json_null(sb);
+  return sb;
+}
+
+strbuf strbuf_json_string_len(strbuf sb, const char *str, size_t strlen)
+{
+  strbuf_putc(sb, '"');
+  for (; strlen; --strlen, ++str)
+    _json_char(sb, *str);
+  strbuf_putc(sb, '"');
   return sb;
 }
 
