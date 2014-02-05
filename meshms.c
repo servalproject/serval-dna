@@ -30,7 +30,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define MESHMS_BLOCK_TYPE_ACK 0x01
 #define MESHMS_BLOCK_TYPE_MESSAGE 0x02 // NUL-terminated UTF8 string
-#define MESHMS_BLOCK_TYPE_BID_REFERENCE 0x03
 
 void meshms_free_conversations(struct meshms_conversations *conv)
 {
