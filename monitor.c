@@ -474,7 +474,7 @@ static int monitor_lookup_match(const struct cli_parsed *parsed, struct cli_cont
   char uri[256];
   snprintf(uri, sizeof(uri), "sid://%s/external/%s", alloca_tohex_sid_t(my_subscriber->sid), ext);
   DEBUGF("Sending response to %s for %s", sid, uri);
-  overlay_mdp_dnalookup_reply(destination, dest_port, &my_subscriber->sid, uri, ext, name);
+  overlay_mdp_dnalookup_reply(destination, dest_port, my_subscriber, uri, ext, name);
   return 0;
 }
 

@@ -33,6 +33,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "str.h"
 #include "overlay_address.h"
+#include "overlay_packet.h"
+#include "overlay_buffer.h"
 #include "conf.h"
 #include "keyring.h"
 
@@ -51,26 +53,25 @@ struct sched_ent directory_alarm={
 #define DIRECTORY_UPDATE_INTERVAL 120000
 
 // send a registration packet
-static void directory_send(struct subscriber *directory_service, const sid_t *sidp, const char *did, const char *name)
+static void directory_send(struct subscriber *directory_service, struct subscriber *source, const char *did, const char *name)
 {
-  overlay_mdp_frame request;
-  
-  memset(&request, 0, sizeof(overlay_mdp_frame));
-  
-  request.packetTypeAndFlags = MDP_TX;
-  
-  request.out.src.sid = *sidp;
-  request.out.src.port=MDP_PORT_NOREPLY;
-  request.out.queue=OQ_ORDINARY;
-  
-  request.out.dst.sid = directory_service->sid;
-  request.out.dst.port=MDP_PORT_DIRECTORY;
-  request.out.payload_length = snprintf((char *)request.out.payload, sizeof(request.out.payload), 
-					"%s|%s", did, name);
   // Used by tests
   INFOF("Sending directory registration for %s*, %s, %s to %s*", 
-	alloca_tohex_sid_t_trunc(*sidp, 14), did, name, alloca_tohex_sid_t_trunc(directory_service->sid, 14));
-  overlay_mdp_dispatch(&request, NULL);
+	alloca_tohex_sid_t_trunc(source->sid, 14), did, name, alloca_tohex_sid_t_trunc(directory_service->sid, 14));
+	
+  struct internal_mdp_header header;
+  bzero(&header, sizeof header);
+  
+  header.source = source;
+  header.source_port = MDP_PORT_NOREPLY;
+  header.destination = directory_service;
+  header.destination_port = MDP_PORT_DIRECTORY;
+  header.qos = OQ_ORDINARY;
+  char buff[256];
+  struct overlay_buffer *payload = ob_static((unsigned char*)buff, sizeof buff);
+  ob_limitsize(payload, snprintf(buff, sizeof buff, "%s|%s", did, name));
+  overlay_send_frame(&header, payload);
+  ob_free(payload);
 }
 
 // send a registration packet for each unlocked identity
@@ -78,18 +79,10 @@ static void directory_send_keyring(struct subscriber *directory_service){
   unsigned cn=0, in=0, kp=0;
   for (; !keyring_sanitise_position(keyring, &cn, &in, &kp); ++kp){
     keyring_identity *i = keyring->contexts[cn]->identities[in];
-    if (i->keypairs[kp]->type == KEYTYPE_CRYPTOBOX){
-      const sid_t *sidp = (const sid_t *) i->keypairs[0]->public_key;
-      unsigned k2;
-      for(k2=0; k2 < i->keypair_count; k2++){
-	if (i->keypairs[k2]->type==KEYTYPE_DID){
-	  const char *unpackedDid = (const char *) i->keypairs[k2]->private_key;
-	  const char *name = (const char *) i->keypairs[k2]->public_key;
-	  directory_send(directory_service, sidp, unpackedDid, name);
-	  // send the first DID only
-	  break;
-	}
-      }
+    if (i->subscriber && i->keypairs[kp]->type == KEYTYPE_DID){
+      const char *unpackedDid = (const char *) i->keypairs[kp]->private_key;
+      const char *name = (const char *) i->keypairs[kp]->public_key;
+      directory_send(directory_service, i->subscriber, unpackedDid, name);
     }
   }
 }

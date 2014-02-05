@@ -467,7 +467,7 @@ void handle_reply_line(const char *bufp, size_t len)
       else {
 	if (config.debug.dnahelper)
 	  DEBUGF("DNAHELPER reply %s", alloca_toprint(-1, bufp, len));
-	overlay_mdp_dnalookup_reply(request_source, request_port, &my_subscriber->sid, uri, did, name);
+	overlay_mdp_dnalookup_reply(request_source, request_port, my_subscriber, uri, did, name);
       }
     }
   } else {

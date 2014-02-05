@@ -75,25 +75,25 @@ void rhizome_sync_status_html(struct strbuf *b, struct subscriber *subscriber)
 
 static void rhizome_sync_request(struct subscriber *subscriber, uint64_t token, unsigned char forwards)
 {
-  overlay_mdp_frame mdp;
-  bzero(&mdp,sizeof(mdp));
-
-  mdp.out.src.sid = my_subscriber->sid;
-  mdp.out.src.port=MDP_PORT_RHIZOME_SYNC;
-  mdp.out.dst.sid = subscriber->sid;
-  mdp.out.dst.port=MDP_PORT_RHIZOME_SYNC;
-  mdp.packetTypeAndFlags=MDP_TX;
-  mdp.out.queue=OQ_OPPORTUNISTIC;
-
-  struct overlay_buffer *b = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
+  struct internal_mdp_header header;
+  bzero(&header, sizeof header);
+  
+  header.source = my_subscriber;
+  header.source_port = MDP_PORT_RHIZOME_SYNC;
+  header.destination = subscriber;
+  header.destination_port = MDP_PORT_RHIZOME_SYNC;
+  header.qos = OQ_OPPORTUNISTIC;
+  
+  struct overlay_buffer *b = ob_new();
   ob_append_byte(b, MSG_TYPE_REQ);
   ob_append_byte(b, forwards);
   ob_append_packed_ui64(b, token);
 
-  mdp.out.payload_length = ob_position(b);
   if (config.debug.rhizome)
     DEBUGF("Sending request to %s for BARs from %"PRIu64" %s", alloca_tohex_sid_t(subscriber->sid), token, forwards?"forwards":"backwards");
-  overlay_mdp_dispatch(&mdp, NULL);
+    
+  ob_flip(b);
+  overlay_send_frame(&header, b);
   ob_free(b);
 }
 
@@ -103,9 +103,10 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
   time_ms_t now = gettime_ms();
 
   // send requests for manifests that we have room to fetch
-  overlay_mdp_frame mdp;
-  bzero(&mdp,sizeof(mdp));
-
+  struct internal_mdp_header header;
+  bzero(&header, sizeof header);
+  struct overlay_buffer *payload = NULL;
+  
   for (i=0;i < state->bar_count;i++){
     if (state->bars[i].next_request > now)
       continue;
@@ -126,28 +127,35 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
     if (m && m->version >= version)
       continue;
 
-    if (mdp.out.payload_length==0){
-      mdp.out.src.sid = my_subscriber->sid;
-      mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
-      mdp.out.dst.sid = subscriber->sid;
-      mdp.out.dst.port=MDP_PORT_RHIZOME_MANIFEST_REQUEST;
-      mdp.packetTypeAndFlags=MDP_TX;
-
-      mdp.out.queue=OQ_OPPORTUNISTIC;
+    if (!payload){
+      header.source = my_subscriber;
+      header.source_port = MDP_PORT_RHIZOME_RESPONSE;
+      header.destination = subscriber;
+      header.destination_port = MDP_PORT_RHIZOME_MANIFEST_REQUEST;
+      header.qos = OQ_OPPORTUNISTIC;
+      payload = ob_new();
+      ob_limitsize(payload, MDP_MTU);
     }
-    if (mdp.out.payload_length + RHIZOME_BAR_BYTES>MDP_MTU)
+
+    if (ob_remaining(payload)<RHIZOME_BAR_BYTES)
       break;
+      
     if (config.debug.rhizome)
       DEBUGF("Requesting manifest for BAR %s", alloca_tohex(state->bars[i].bar, RHIZOME_BAR_BYTES));
-    bcopy(state->bars[i].bar, &mdp.out.payload[mdp.out.payload_length], RHIZOME_BAR_BYTES);
-    mdp.out.payload_length+=RHIZOME_BAR_BYTES;
+      
+    ob_append_bytes(payload, state->bars[i].bar, RHIZOME_BAR_BYTES);
+    
     state->bars[i].next_request = now+1000;
     requests++;
     if (requests>=BARS_PER_RESPONSE)
       break;
   }
-  if (mdp.out.payload_length!=0)
-    overlay_mdp_dispatch(&mdp, NULL);
+  
+  if (payload){
+    ob_flip(payload);
+    overlay_send_frame(&header, payload);
+    ob_free(payload);
+  }
 
   // send request for more bars if we have room to cache them
   if (state->bar_count >= CACHE_BARS)
@@ -340,28 +348,19 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
   if (max_count == 0 || max_count > BARS_PER_RESPONSE)
     max_count = BARS_PER_RESPONSE;
     
-  overlay_mdp_frame mdp;
-  bzero(&mdp,sizeof(mdp));
-
-  mdp.out.src.sid = my_subscriber->sid;
-  mdp.out.src.port=MDP_PORT_RHIZOME_SYNC;
-  mdp.out.dst.port=MDP_PORT_RHIZOME_SYNC;
-  mdp.packetTypeAndFlags=MDP_TX;
-  mdp.out.queue=OQ_OPPORTUNISTIC;
-
-  if (dest){
-    mdp.out.dst.sid = dest->sid;
-  }else{
-    mdp.out.dst.sid = SID_BROADCAST;
-    mdp.packetTypeAndFlags|=(MDP_NOCRYPT|MDP_NOSIGN);
+  struct internal_mdp_header header;
+  bzero(&header, sizeof header);
+  
+  header.source = my_subscriber;
+  header.source_port = MDP_PORT_RHIZOME_SYNC;
+  header.destination = dest;
+  header.destination_port = MDP_PORT_RHIZOME_SYNC;
+  header.qos = OQ_OPPORTUNISTIC;
+  
+  if (!dest){
+    header.crypt_flags = (MDP_FLAG_NO_CRYPT|MDP_FLAG_NO_SIGN);
+    header.ttl = 1;
   }
-
-  if (!dest)
-    mdp.out.ttl=1;
-
-  struct overlay_buffer *b = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
-  ob_append_byte(b, MSG_TYPE_BARS);
-  ob_checkpoint(b);
 
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement;
@@ -377,6 +376,11 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
   sqlite3_bind_int64(statement, 1, token);
   int count=0;
   uint64_t last=0;
+
+  struct overlay_buffer *b = ob_new();
+  ob_limitsize(b, MDP_MTU);
+  ob_append_byte(b, MSG_TYPE_BARS);
+  ob_checkpoint(b);
 
   while(sqlite_step_retry(&retry, statement)==SQLITE_ROW){
     uint64_t rowid = sqlite3_column_int64(statement, 0);
@@ -438,10 +442,10 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
   sqlite3_finalize(statement);
 
   if (count){
-    mdp.out.payload_length = ob_position(b);
     if (config.debug.rhizome_ads)
       DEBUGF("Sending %d BARs from %"PRIu64" to %"PRIu64, count, token, last);
-    overlay_mdp_dispatch(&mdp, NULL);
+    ob_flip(b);
+    overlay_send_frame(&header, b);
   }
   ob_free(b);
   OUT();

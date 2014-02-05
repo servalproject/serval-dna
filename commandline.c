@@ -769,17 +769,17 @@ int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *context)
 	    WHYF("       Error message: %s", rx.error.message);
 	  } else if ((rx.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_TX) {
 	    /* Extract DID, Name, URI from response. */
-	    if (strlen((char *)rx.in.payload)<512) {
+	    if (strlen((char *)rx.out.payload)<512) {
 	      char sidhex[SID_STRLEN + 1];
 	      char did[DID_MAXSIZE + 1];
 	      char name[64];
 	      char uri[512];
-	      if ( !parseDnaReply((char *)rx.in.payload, rx.in.payload_length, sidhex, did, name, uri, NULL)
+	      if ( !parseDnaReply((char *)rx.out.payload, rx.out.payload_length, sidhex, did, name, uri, NULL)
 		|| !str_is_subscriber_id(sidhex)
 		|| !str_is_did(did)
 		|| !str_is_uri(uri)
 	      ) {
-		WHYF("Received malformed DNA reply: %s", alloca_toprint(160, (const char *)rx.in.payload, rx.in.payload_length));
+		WHYF("Received malformed DNA reply: %s", alloca_toprint(160, (const char *)rx.out.payload, rx.out.payload_length));
 	      } else {
 		/* Have we seen this response before? */
 		int i;
@@ -2884,8 +2884,8 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
     }
     
     // we might receive a late response from an ealier request on the same socket, ignore it
-    if (cmp_sid_t(&mdp_reply.in.src.sid, &dstsid) != 0) {
-      WHYF("Unexpected result from SID %s", alloca_tohex_sid_t(mdp_reply.in.src.sid));
+    if (cmp_sid_t(&mdp_reply.out.src.sid, &dstsid) != 0) {
+      WHYF("Unexpected result from SID %s", alloca_tohex_sid_t(mdp_reply.out.src.sid));
       continue;
     }
       
@@ -2894,13 +2894,13 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
       char did[DID_MAXSIZE + 1];
       char name[64];
       char uri[512];
-      if ( !parseDnaReply((char *)mdp_reply.in.payload, mdp_reply.in.payload_length, sidhex, did, name, uri, NULL)
+      if ( !parseDnaReply((char *)mdp_reply.out.payload, mdp_reply.out.payload_length, sidhex, did, name, uri, NULL)
 	  || !str_is_subscriber_id(sidhex)
 	  || !str_is_did(did)
 	  || !str_is_uri(uri)
 	  ) {
 	WHYF("Received malformed DNA reply: %s", 
-	     alloca_toprint(160, (const char *)mdp_reply.in.payload, mdp_reply.in.payload_length));
+	     alloca_toprint(160, (const char *)mdp_reply.out.payload, mdp_reply.out.payload_length));
 	continue;
       }
       

@@ -72,8 +72,6 @@ struct mdp_identity_request{
   // the request is followed by a list of SID's or NULL terminated entry pins for the remainder of the payload
 };
 
-#pragma pack(pop)
-
 struct overlay_route_record{
   sid_t sid;
   char interface_name[256];
@@ -85,12 +83,52 @@ struct overlay_mdp_scan{
   struct in_addr addr;
 };
 
+struct overlay_mdp_data_frame {
+  struct mdp_sockaddr src;
+  struct mdp_sockaddr dst;
+  uint16_t payload_length;
+  int queue;
+  int ttl;
+  unsigned char payload[MDP_MTU-100];
+};
+
+struct overlay_mdp_error {
+  unsigned int error;
+  char message[128];
+};
+
+struct overlay_mdp_addrlist {
+  int mode;
+#define OVERLAY_MDP_ADDRLIST_MAX_SID_COUNT (~(unsigned int)0)
+  unsigned int server_sid_count;
+  unsigned int first_sid;
+  unsigned int last_sid;
+  unsigned int frame_sid_count; /* how many of the following slots are populated */
+  sid_t sids[MDP_MAX_SID_REQUEST];
+};
+
+
+typedef struct overlay_mdp_frame {
+  uint16_t packetTypeAndFlags;
+  union {
+    struct overlay_mdp_data_frame out;
+    struct mdp_sockaddr bind;
+    struct overlay_mdp_addrlist addrlist;
+    struct overlay_mdp_error error;
+    char raw[MDP_MTU];
+  };
+} overlay_mdp_frame;
+
+#pragma pack(pop)
+
+
 /* low level V2 mdp interface */
 int mdp_socket(void);
 int mdp_close(int socket);
 int mdp_send(int socket, const struct mdp_header *header, const uint8_t *payload, size_t len);
 ssize_t mdp_recv(int socket, struct mdp_header *header, uint8_t *payload, ssize_t max_len);
 int mdp_poll(int socket, time_ms_t timeout_ms);
+
 
 
 /* Client-side MDP function */

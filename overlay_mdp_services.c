@@ -193,22 +193,24 @@ int overlay_mdp_service_dnalookup(struct internal_mdp_header *header, struct ove
   int results=0;
   while(keyring_find_did(keyring,&cn,&in,&kp,did))
     {
+      struct keypair *keypair = keyring->contexts[cn]->identities[in]->keypairs[kp];
       /* package DID and Name into reply (we include the DID because
 	 it could be a wild-card DID search, but the SID is implied 
 	 in the source address of our reply). */
-      if (keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key_len > DID_MAXSIZE) 
+      if (keypair->private_key_len > DID_MAXSIZE) 
 	/* skip excessively long DID records */
 	continue;
-      const sid_t *sidp = (const sid_t *) keyring->contexts[cn]->identities[in]->keypairs[0]->public_key;
-      const char *unpackedDid = (const char *) keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key;
-      const char *name = (const char *)keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key;
+      
+      struct subscriber *subscriber = keyring->contexts[cn]->identities[in]->subscriber;
+      const char *unpackedDid = (const char *) keypair->private_key;
+      const char *name = (const char *)keypair->public_key;
       // URI is sid://SIDHEX/DID
       strbuf b = strbuf_alloca(SID_STRLEN + DID_MAXSIZE + 10);
       strbuf_puts(b, "sid://");
-      strbuf_tohex(b, SID_STRLEN, sidp->binary);
+      strbuf_tohex(b, SID_STRLEN, subscriber->sid.binary);
       strbuf_puts(b, "/local/");
       strbuf_puts(b, unpackedDid);
-      overlay_mdp_dnalookup_reply(header->source, header->source_port, sidp, strbuf_str(b), unpackedDid, name);
+      overlay_mdp_dnalookup_reply(header->source, header->source_port, subscriber, strbuf_str(b), unpackedDid, name);
       kp++;
       results++;
     }

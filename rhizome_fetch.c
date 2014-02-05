@@ -27,6 +27,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "strbuf_helpers.h"
 #include "overlay_address.h"
+#include "overlay_packet.h"
+#include "overlay_buffer.h"
 #include "socket.h"
 #include "dataformats.h"
 
@@ -39,7 +41,7 @@ struct rhizome_fetch_candidate {
      Can be either IP+port for HTTP or it can be a SID 
      for MDP. */
   struct socket_address addr;
-  sid_t peer_sid;
+  const struct subscriber *peer;
 
   int priority;
 };
@@ -52,7 +54,7 @@ struct rhizome_fetch_slot {
   rhizome_manifest *manifest;
 
   struct socket_address addr;
-  sid_t peer_sid;
+  const struct subscriber *peer;
 
   int state;
 #define RHIZOME_FETCH_FREE 0
@@ -216,7 +218,7 @@ int rhizome_fetch_status_html(strbuf b)
 	fetch_state(q->active.state),
 	q->active.write_state.file_offset,
 	q->active.manifest->filesize,
-	alloca_tohex_sid_t_trunc(q->active.peer_sid, 16));
+	q->active.peer?alloca_tohex_sid_t_trunc(q->active.peer->sid, 16):"unknown");
     }else{
       strbuf_puts(b, "inactive");
     }
@@ -612,7 +614,7 @@ schedule_fetch(struct rhizome_fetch_slot *slot)
     if (config.debug.rhizome_rx)
       DEBUGF("RHIZOME HTTP REQUEST addr=%s sid=%s %s",
 	     alloca_socket_address(&slot->addr),
-	     alloca_tohex_sid_t(slot->peer_sid),
+	     slot->peer?alloca_tohex_sid_t(slot->peer->sid):"unknown",
 	     alloca_str_toprint(slot->request)
 	);
     slot->alarm.poll.fd = sock;
@@ -677,7 +679,7 @@ schedule_fetch(struct rhizome_fetch_slot *slot)
  */
 static enum rhizome_start_fetch_result
 rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, 
-  const struct socket_address *addr, const sid_t *peersidp)
+  const struct socket_address *addr, const struct subscriber *peer)
 {
   IN();
   if (slot->state != RHIZOME_FETCH_FREE)
@@ -761,7 +763,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m,
 
   /* Prepare for fetching */
   slot->addr = *addr;
-  slot->peer_sid = *peersidp;
+  slot->peer = peer;
   slot->manifest = m;
 
   enum rhizome_start_fetch_result result = schedule_fetch(slot);
@@ -781,7 +783,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m,
  */
 enum rhizome_start_fetch_result
 rhizome_fetch_request_manifest_by_prefix(const struct socket_address *addr, 
-					 const sid_t *peersidp,
+					 const struct subscriber *peer,
 					 const unsigned char *prefix, size_t prefix_length)
 {
   assert(addr);
@@ -792,7 +794,7 @@ rhizome_fetch_request_manifest_by_prefix(const struct socket_address *addr,
   /* Prepare for fetching via HTTP */
   slot->addr = *addr;
   slot->manifest = NULL;
-  slot->peer_sid = *peersidp;
+  slot->peer = peer;
   bcopy(prefix, slot->bid.binary, prefix_length);
   slot->prefix_length=prefix_length;
 
@@ -817,7 +819,7 @@ static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
     unsigned i = 0;
     struct rhizome_fetch_candidate *c;
     while (i < q->candidate_queue_size && (c = &q->candidate_queue[i])->manifest) {
-      int result = rhizome_fetch(slot, c->manifest, &c->addr, &c->peer_sid);
+      int result = rhizome_fetch(slot, c->manifest, &c->addr, c->peer);
       switch (result) {
       case SLOTBUSY:
 	OUT(); return;
@@ -890,7 +892,7 @@ int rhizome_fetch_has_queue_space(unsigned char log2_size){
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct socket_address *addr, const sid_t *peersidp)
+int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct socket_address *addr, const struct subscriber *peer)
 {
   IN();
   
@@ -994,7 +996,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   c->manifest = m;
   c->priority = priority;
   c->addr = *addr;
-  c->peer_sid = *peersidp;
+  c->peer = peer;
 
   if (config.debug.rhizome_rx) {
     DEBUG("Rhizome fetch queues:");
@@ -1109,20 +1111,19 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   // faster.  Optimising behaviour when there is no packet loss is an
   // outstanding task.
   
-  overlay_mdp_frame mdp;
-
-  bzero(&mdp,sizeof(mdp));
-  mdp.out.src.sid = my_subscriber->sid;
-  mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
-  mdp.out.dst.sid = slot->peer_sid;
-  mdp.out.dst.port=MDP_PORT_RHIZOME_REQUEST;
-  mdp.out.ttl=1;
-  mdp.packetTypeAndFlags=MDP_TX;
-
-  mdp.out.queue=OQ_ORDINARY;
-  mdp.out.payload_length= sizeof slot->bid.binary + 8 + 8 + 4 + 2;
-  bcopy(slot->bid.binary, &mdp.out.payload[0], sizeof slot->bid.binary);
-
+  struct internal_mdp_header header;
+  bzero(&header, sizeof header);
+  
+  header.source = my_subscriber;
+  header.source_port = MDP_PORT_RHIZOME_RESPONSE;
+  header.destination = (struct subscriber *)slot->peer;
+  header.destination_port = MDP_PORT_RHIZOME_REQUEST;
+  header.ttl = 1;
+  header.qos = OQ_ORDINARY;
+  
+  struct overlay_buffer *payload = ob_new();
+  ob_append_bytes(payload, slot->bid.binary, sizeof slot->bid.binary);
+  
   uint32_t bitmap=0;
   int requests=32;
   int i;
@@ -1139,20 +1140,22 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
     }
     offset+=slot->mdpRXBlockLength;
   }
-
-  write_uint64(&mdp.out.payload[sizeof slot->bid.binary], slot->bidVersion);
-  write_uint64(&mdp.out.payload[sizeof slot->bid.binary + 8], slot->write_state.file_offset);
-  write_uint32(&mdp.out.payload[sizeof slot->bid.binary + 8 + 8], bitmap);
-  write_uint16(&mdp.out.payload[sizeof slot->bid.binary + 8 + 8 + 4], slot->mdpRXBlockLength);
-
+  
+  ob_append_ui64_rv(payload, slot->bidVersion);
+  ob_append_ui64_rv(payload, slot->write_state.file_offset);
+  ob_append_ui32_rv(payload, bitmap);
+  ob_append_ui16_rv(payload, slot->mdpRXBlockLength);
+  
   if (config.debug.rhizome_tx)
     DEBUGF("src sid=%s, dst sid=%s, mdpRXWindowStart=0x%"PRIx64", slot->bidVersion=0x%"PRIx64,
-	   alloca_tohex_sid_t(mdp.out.src.sid),
-	   alloca_tohex_sid_t(mdp.out.dst.sid),
+	   alloca_tohex_sid_t(header.source->sid),
+	   alloca_tohex_sid_t(header.destination->sid),
 	   slot->write_state.file_offset,
 	   slot->bidVersion);
-
-  overlay_mdp_dispatch(&mdp, NULL);
+  
+  ob_flip(payload);
+  overlay_send_frame(&header, payload);
+  ob_free(payload);
   
   // remember when we sent the request so that we can adjust the inter-request
   // interval based on how fast the packets arrive.
@@ -1330,7 +1333,7 @@ static int rhizome_write_complete(struct rhizome_fetch_slot *slot)
 	      alloca_tohex_rhizome_filehash_t(slot->manifest->filehash));
     } else {
       INFOF("Completed MDP request from %s  for file %s",
-	    alloca_tohex_sid_t(slot->peer_sid),
+	    slot->peer?alloca_tohex_sid_t(slot->peer->sid):"unknown",
 	    alloca_tohex_rhizome_filehash_t(slot->manifest->filehash));
     }
   } else {
@@ -1353,9 +1356,9 @@ static int rhizome_write_complete(struct rhizome_fetch_slot *slot)
 	  DEBUGF("All looks good for importing manifest id=%s, addr=%s, sid=%s", 
 	    alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
 	    alloca_socket_address(&slot->addr),
-	    alloca_tohex_sid_t(slot->peer_sid));
+	    slot->peer?alloca_tohex_sid_t(slot->peer->sid):"unknown");
 	}
-	rhizome_suggest_queue_manifest_import(m, &slot->addr, &slot->peer_sid);
+	rhizome_suggest_queue_manifest_import(m, &slot->addr, slot->peer);
       }
     }
   }

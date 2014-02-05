@@ -272,8 +272,8 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, mdp_port_t port, in
     return WHYF("reply did not come from server: %s", alloca_socket_address(&recvaddr));
   
   // silently drop incoming packets for the wrong port number
-  if (port>0 && port != mdp->in.dst.port){
-    WARNF("Ignoring packet for port %"PRImdp_port_t,mdp->in.dst.port);
+  if (port>0 && port != mdp->out.dst.port){
+    WARNF("Ignoring packet for port %"PRImdp_port_t,mdp->out.dst.port);
     return -1;
   }
 
@@ -349,7 +349,10 @@ ssize_t overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
       len=(&mdp->out.payload[0]-(unsigned char *)mdp) + mdp->out.payload_length; 
       break;
     case MDP_BIND:
-      len=(&mdp->raw[0] - (char *)mdp) + sizeof(sockaddr_mdp);
+      // make sure that the compiler has actually given these two structures the same address
+      // I've seen gcc 4.8.1 on x64 fail to give elements the same address once
+      assert((void *)mdp->raw == (void *)&mdp->bind);
+      len=(&mdp->raw[0] - (char *)mdp) + sizeof(struct mdp_sockaddr);
       break;
     case MDP_SCAN:
       len=(&mdp->raw[0] - (char *)mdp) + sizeof(struct overlay_mdp_scan);

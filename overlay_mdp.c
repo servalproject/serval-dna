@@ -114,7 +114,7 @@ void overlay_mdp_clean_socket_files()
   closedir(dir);
 }
 
-void overlay_mdp_fill_legacy(
+static void overlay_mdp_fill_legacy(
   const struct internal_mdp_header *header,
   struct overlay_buffer *payload,
   overlay_mdp_frame *mdp)
@@ -485,8 +485,8 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f)
   struct internal_mdp_header header;
   bzero(&header, sizeof header);
   
-  header.qos = mdp.in.queue = f->queue;
-  header.ttl = mdp.in.ttl = f->ttl;
+  header.qos = mdp.out.queue = f->queue;
+  header.ttl = mdp.out.ttl = f->ttl;
   header.source = f->source;
   header.destination = f->destination;
   header.receive_interface = f->interface;
@@ -497,8 +497,8 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f)
     header.crypt_flags |= MDP_FLAG_NO_SIGN;
   
   /* Get source and destination addresses */
-  mdp.in.dst.sid = (f->destination) ? f->destination->sid : SID_BROADCAST;
-  mdp.in.src.sid = f->source->sid;
+  mdp.out.dst.sid = (f->destination) ? f->destination->sid : SID_BROADCAST;
+  mdp.out.src.sid = f->source->sid;
 
   /* copy crypto flags from frame so that we know if we need to decrypt or verify it */
   struct overlay_buffer *mdp_payload = overlay_mdp_decrypt(&header, f->payload);
@@ -563,6 +563,7 @@ static int overlay_saw_mdp_frame(
       case 0:
 	{
 	  overlay_mdp_frame mdp;
+	  bzero(&mdp, sizeof mdp);
 	  ob_checkpoint(payload);
 	  overlay_mdp_fill_legacy(header, payload, &mdp);
 	  ob_rewind(payload);
@@ -623,33 +624,36 @@ static int overlay_saw_mdp_frame(
 }
 
 int overlay_mdp_dnalookup_reply(struct subscriber *dest, mdp_port_t dest_port, 
-  const sid_t *resolved_sidp, const char *uri, const char *did, const char *name)
+  struct subscriber *resolved_sid, const char *uri, const char *did, const char *name)
 {
   if (config.debug.mdprequests)
     DEBUGF("MDP_PORT_DNALOOKUP resolved_sid=%s uri=%s did=%s name=%s",
-	  alloca_tohex_sid_t(*resolved_sidp),
+	  alloca_tohex_sid_t(resolved_sid->sid),
 	  alloca_str_toprint(uri),
 	  alloca_str_toprint(did),
 	  alloca_str_toprint(name)
 	);
-  overlay_mdp_frame mdpreply;
-  bzero(&mdpreply, sizeof mdpreply);
-  mdpreply.packetTypeAndFlags = MDP_TX; // outgoing MDP message
-  mdpreply.out.queue=OQ_ORDINARY;
-  mdpreply.out.src.sid = *resolved_sidp;
-  mdpreply.out.src.port = MDP_PORT_DNALOOKUP;
-  mdpreply.out.dst.sid = dest->sid;
-  mdpreply.out.dst.port = dest_port;
+  
+  struct internal_mdp_header header;
+  bzero(&header, sizeof header);
+  header.qos = OQ_ORDINARY;
+  header.source = resolved_sid;
+  header.source_port = MDP_PORT_DNALOOKUP;
+  header.destination = dest;
+  header.destination_port = dest_port;
   
   /* build reply as TOKEN|URI|DID|NAME|<NUL> */
-  strbuf b = strbuf_local((char *)mdpreply.out.payload, sizeof mdpreply.out.payload);
-  strbuf_tohex(b, SID_STRLEN, resolved_sidp->binary);
+  char buff[256];
+  strbuf b = strbuf_local(buff, sizeof buff);
+  strbuf_tohex(b, SID_STRLEN, resolved_sid->sid.binary);
   strbuf_sprintf(b, "|%s|%s|%s|", uri, did, name?name:"");
   if (strbuf_overrun(b))
     return WHY("MDP payload overrun");
-  mdpreply.out.payload_length = strbuf_len(b) + 1;
-  /* deliver reply */
-  return overlay_mdp_dispatch(&mdpreply, NULL);
+  struct overlay_buffer *payload = ob_static((unsigned char*)buff, sizeof buff);
+  ob_limitsize(payload, strlen(buff));
+  int ret = overlay_send_frame(&header, payload);
+  ob_free(payload);
+  return ret;
 }
 
 static int overlay_mdp_check_binding(struct subscriber *subscriber, mdp_port_t port,
@@ -912,7 +916,7 @@ int overlay_send_frame(struct internal_mdp_header *header,
    This is for use by the SERVER. 
    Clients should use overlay_mdp_send()
  */
-int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client)
+static int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client)
 {
   IN();
   unsigned __d = 0;
@@ -1003,7 +1007,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client)
 }
 
 static int search_subscribers(struct subscriber *subscriber, void *context){
-  overlay_mdp_addrlist *response = context;
+  struct overlay_mdp_addrlist *response = context;
   
   if (response->mode == MDP_ADDRLIST_MODE_SELF && subscriber->reachable != REACHABLE_SELF){
     return 0;
@@ -1026,7 +1030,7 @@ static int search_subscribers(struct subscriber *subscriber, void *context){
   return 0;
 }
 
-int overlay_mdp_address_list(overlay_mdp_addrlist *request, overlay_mdp_addrlist *response)
+int overlay_mdp_address_list(struct overlay_mdp_addrlist *request, struct overlay_mdp_addrlist *response)
 {
   if (config.debug.mdprequests)
     DEBUGF("MDP_GETADDRS first_sid=%u mode=%d", request->first_sid, request->mode);

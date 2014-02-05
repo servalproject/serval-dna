@@ -358,73 +358,13 @@ int parseCommandLine(struct cli_context *context, const char *argv0, int argc, c
 typedef uint32_t mdp_port_t;
 #define PRImdp_port_t "#08" PRIx32
 
-typedef struct sockaddr_mdp {
-  sid_t sid;
-  mdp_port_t port;
-} sockaddr_mdp;
-
-typedef struct overlay_mdp_data_frame {
-  sockaddr_mdp src;
-  sockaddr_mdp dst;
-  uint16_t payload_length;
-  int queue;
-  int ttl;
-  unsigned char payload[MDP_MTU-100];
-} overlay_mdp_data_frame;
-
-typedef struct overlay_mdp_error {
-  unsigned int error;
-  char message[128];
-} overlay_mdp_error;
-
-typedef struct overlay_mdp_addrlist {
-  int mode;
-#define OVERLAY_MDP_ADDRLIST_MAX_SID_COUNT (~(unsigned int)0)
-  unsigned int server_sid_count;
-  unsigned int first_sid;
-  unsigned int last_sid;
-  unsigned int frame_sid_count; /* how many of the following 59 slots are populated */
-  sid_t sids[MDP_MAX_SID_REQUEST];
-} overlay_mdp_addrlist;
-
-typedef struct overlay_mdp_nodeinfo {
-  sid_t sid;
-  int sid_prefix_length; /* must be long enough to be unique */
-  int foundP;
-  int localP;
-  int neighbourP;
-  int score;
-  int interface_number;
-  time_ms_t time_since_last_observation;
-} overlay_mdp_nodeinfo;
-
-typedef struct overlay_mdp_frame {
-  uint16_t packetTypeAndFlags;
-  union {
-    overlay_mdp_data_frame out;
-    overlay_mdp_data_frame in;
-    sockaddr_mdp bind;
-    overlay_mdp_addrlist addrlist;
-    overlay_mdp_nodeinfo nodeinfo;
-    overlay_mdp_error error;
-    /* 2048 is too large (causes EMSGSIZE errors on OSX, but probably fine on
-       Linux) */
-    char raw[MDP_MTU];
-  };
-} overlay_mdp_frame;
 
 /* Server-side MDP functions */
 void mdp_init_response(const struct internal_mdp_header *in, struct internal_mdp_header *out);
-int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client);
 void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port);
 int overlay_mdp_dnalookup_reply(struct subscriber *dest, mdp_port_t dest_port, 
-    const sid_t *resolved_sidp, const char *uri, const char *did, const char *name);
+    struct subscriber *resolved_sid, const char *uri, const char *did, const char *name);
 int overlay_send_frame(struct internal_mdp_header *header, struct overlay_buffer *payload);
-
-void overlay_mdp_fill_legacy(
-  const struct internal_mdp_header *header,
-  struct overlay_buffer *payload,
-  overlay_mdp_frame *mdp);
 
 int mdp_bind_internal(struct subscriber *subscriber, mdp_port_t port,
   int (*internal)(struct internal_mdp_header *header, struct overlay_buffer *payload));
@@ -485,8 +425,6 @@ int server_probe(int *pid);
 int dna_helper_start();
 int dna_helper_shutdown();
 int dna_helper_enqueue(struct subscriber *source, mdp_port_t source_port, const char *did);
-int dna_return_resolution(overlay_mdp_frame *mdp, unsigned char *fromSid,
-			  const char *did,const char *name,const char *uri);
 int parseDnaReply(const char *buf, size_t len, char *token, char *did, char *name, char *uri, const char **bufp);
 extern int sigPipeFlag;
 extern int sigIoFlag;

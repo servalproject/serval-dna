@@ -236,6 +236,8 @@ int overlay_send_probe(struct subscriber *peer, struct network_destination *dest
   if (destination->last_tx + destination->tick_ms > now)
     return -1;
   
+  // TODO enhance overlay_send_frame to support pre-supplied network destinations
+  
   struct overlay_frame *frame=malloc(sizeof(struct overlay_frame));
   bzero(frame,sizeof(struct overlay_frame));
   frame->type=OF_TYPE_DATA;
@@ -249,7 +251,6 @@ int overlay_send_probe(struct subscriber *peer, struct network_destination *dest
     return -1;
   }
   frame->source_full = 1;
-  // TODO call mdp payload encryption / signing without calling overlay_mdp_dispatch...
   
   overlay_mdp_encode_ports(frame->payload, MDP_PORT_ECHO, MDP_PORT_PROBE);
   
@@ -291,17 +292,14 @@ int overlay_mdp_service_stun_req(struct internal_mdp_header *header, struct over
   if (config.debug.overlayrouting)
     DEBUGF("Processing STUN request from %s", alloca_tohex_sid_t(header->source->sid));
 
-  overlay_mdp_frame reply;
-  bzero(&reply, sizeof(reply));
-  reply.packetTypeAndFlags=MDP_TX;
+  struct internal_mdp_header reply;
+  bzero(&reply, sizeof reply);
   
-  reply.out.dst.sid = header->source->sid;
-  reply.out.src.sid = header->destination?header->destination->sid:my_subscriber->sid;
-  reply.out.src.port=MDP_PORT_STUNREQ;
-  reply.out.dst.port=MDP_PORT_STUN;
-  reply.out.queue=OQ_MESH_MANAGEMENT;
+  mdp_init_response(header, &reply);
+  reply.qos = OQ_MESH_MANAGEMENT;
   
-  struct overlay_buffer *replypayload = ob_static(reply.out.payload, sizeof(reply.out.payload));
+  struct overlay_buffer *replypayload = ob_new();
+  ob_limitsize(replypayload, MDP_MTU);
   
   ob_checkpoint(replypayload);
   while (ob_remaining(payload) > 0) {
@@ -319,12 +317,12 @@ int overlay_mdp_service_stun_req(struct internal_mdp_header *header, struct over
     ob_checkpoint(replypayload);
   }
   ob_rewind(replypayload);
-  reply.out.payload_length=ob_position(replypayload);
   
-  if (reply.out.payload_length){
+  if (ob_position(replypayload)){
     if (config.debug.overlayrouting)
       DEBUGF("Sending reply");
-    overlay_mdp_dispatch(&reply, NULL);
+    ob_flip(replypayload);
+    overlay_send_frame(&reply, replypayload);
   }
   ob_free(replypayload);
   return 0;
@@ -376,23 +374,25 @@ int overlay_send_stun_request(struct subscriber *server, struct subscriber *requ
   
   request->last_stun_request=now;
   
-  overlay_mdp_frame mdp;
-  bzero(&mdp, sizeof(mdp));
-  mdp.packetTypeAndFlags=MDP_TX;
+  struct internal_mdp_header header;
+  bzero(&header, sizeof header);
+  header.source = my_subscriber;
+  header.destination = server;
   
-  mdp.out.src.sid = my_subscriber->sid;
-  mdp.out.dst.sid = server->sid;
-  mdp.out.src.port=MDP_PORT_STUN;
-  mdp.out.dst.port=MDP_PORT_STUNREQ;
-  mdp.out.queue=OQ_MESH_MANAGEMENT;
+  header.source_port = MDP_PORT_STUN;
+  header.destination_port = MDP_PORT_STUNREQ;
+  header.qos = OQ_MESH_MANAGEMENT;
   
-  struct overlay_buffer *payload = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
+  struct overlay_buffer *payload = ob_new();
+  ob_limitsize(payload, MDP_MTU);
+  
   overlay_address_append(NULL, payload, request);
   if (!ob_overrun(payload)) {
-    mdp.out.payload_length=ob_position(payload);
     if (config.debug.overlayrouting)
       DEBUGF("Sending STUN request to %s", alloca_tohex_sid_t(server->sid));
-    overlay_mdp_dispatch(&mdp, NULL);
+      
+    ob_flip(payload);
+    overlay_send_frame(&header, payload);
   }
   ob_free(payload);
   return 0;

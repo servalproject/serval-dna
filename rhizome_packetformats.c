@@ -383,7 +383,7 @@ int overlay_rhizome_saw_advertisements(struct decode_context *context, struct ov
 	DEBUG("Not seen before.");
 
       // start the fetch process!
-      rhizome_suggest_queue_manifest_import(m, &httpaddr, &f->source->sid);
+      rhizome_suggest_queue_manifest_import(m, &httpaddr, f->source);
       // the above function will free the manifest structure, make sure we don't free it again
       m=NULL;
 
@@ -399,10 +399,10 @@ next:
   if (f->source->sync_state)
     goto end;
 
-  overlay_mdp_frame mdp;
+  struct internal_mdp_header header;
+  bzero(&header, sizeof header);
   
-  bzero(&mdp,sizeof(mdp));
-  mdp.out.payload_length=0;
+  struct overlay_buffer *payload = NULL;
   
   // parse BAR's
   unsigned char *bars[50];
@@ -450,22 +450,24 @@ next:
     test_count++;
     if (rhizome_is_bar_interesting(bars[index])==1){
       // add a request for the manifest
-      if (mdp.out.payload_length==0){
-	mdp.out.src.sid = my_subscriber->sid;
-	mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
-	mdp.out.dst.sid = f->source->sid;
-	mdp.out.dst.port=MDP_PORT_RHIZOME_MANIFEST_REQUEST;
-	if (f->source->reachable&REACHABLE_DIRECT)
-	  mdp.out.ttl=1;
-	else
-	  mdp.out.ttl=64;
-	mdp.packetTypeAndFlags=MDP_TX;
+      if (!payload){
+	header.source = my_subscriber;
+	header.source_port = MDP_PORT_RHIZOME_RESPONSE;
+	header.destination = f->source;
+	header.destination_port = MDP_PORT_RHIZOME_MANIFEST_REQUEST;
 	
-	mdp.out.queue=OQ_ORDINARY;
+	if (f->source->reachable&REACHABLE_DIRECT)
+	  header.ttl=1;
+	else
+	  header.ttl=64;
+	
+	header.qos=OQ_ORDINARY;
+	
+	payload = ob_new();
       }
-      DEBUGF("Requesting manifest for BAR %s", alloca_tohex(bars[index], RHIZOME_BAR_BYTES));
-      bcopy(bars[index], &mdp.out.payload[mdp.out.payload_length], RHIZOME_BAR_BYTES);
-      mdp.out.payload_length+=RHIZOME_BAR_BYTES;
+      if (config.debug.rhizome)
+	DEBUGF("Requesting manifest for BAR %s", alloca_tohex(bars[index], RHIZOME_BAR_BYTES));
+      ob_append_bytes(payload, bars[index], RHIZOME_BAR_BYTES);
     }
   }
   
@@ -476,8 +478,11 @@ next:
   else
     lookup_time = (end_time - start_time);
 
-  if (mdp.out.payload_length>0)
-    overlay_mdp_dispatch(&mdp, NULL);
+  if (payload){
+    ob_flip(payload);
+    overlay_send_frame(&header, payload);
+    ob_free(payload);
+  }
 
 end:
   sqlite_set_tracefunc(oldfunc);

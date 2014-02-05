@@ -104,15 +104,15 @@ static void add_record(int mdp_sockfd){
   }
   
   // make sure the payload is a NULL terminated string
-  mdp.in.payload[mdp.in.payload_length]=0;
+  mdp.out.payload[mdp.out.payload_length]=0;
   
-  char *did=(char *)mdp.in.payload;
+  char *did=(char *)mdp.out.payload;
   int i=0;
-  while(i<mdp.in.payload_length && mdp.in.payload[i] && mdp.in.payload[i]!='|')
+  while(i<mdp.out.payload_length && mdp.out.payload[i] && mdp.out.payload[i]!='|')
     i++;
-  mdp.in.payload[i]=0;
-  char *name = (char *)mdp.in.payload+i+1;
-  char *sid = alloca_tohex_sid_t(mdp.in.src.sid);
+  mdp.out.payload[i]=0;
+  char *name = (char *)mdp.out.payload+i+1;
+  char *sid = alloca_tohex_sid_t(mdp.out.src.sid);
   
   // TODO check that did is a valid phone number
   
