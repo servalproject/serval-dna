@@ -621,7 +621,7 @@ setup_RhizomeInsertLarge() {
    create_file file1 50m
 }
 test_RhizomeInsertLarge() {
-   execute curl \
+   execute --timeout=120 curl \
          --silent --show-error --write-out '%{http_code}' \
          --output file1.manifest \
          --dump-header http.header \
@@ -1218,6 +1218,71 @@ test_MeshmsSend() {
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    assertStdoutGrep --matches=1 ':>:Hello World$'
    assertStdoutGrep --matches=1 ':<:Hello back!$'
+}
+
+doc_MeshmsSendMissingMessage="HTTP RESTful MeshMS send missing 'message' form part "
+setup_MeshmsSendMissingMessage() {
+   IDENTITY_COUNT=2
+   setup
+}
+test_MeshmsSendMissingMessage() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --data '' \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertJq http.body 'contains({"http_status_code": 403})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'missing.*message.*form.*part'
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutLineCount '==' 2
+}
+
+doc_MeshmsSendDuplicateMessage="HTTP RESTful MeshMS send missing 'message' form part "
+setup_MeshmsSendDuplicateMessage() {
+   IDENTITY_COUNT=2
+   setup
+}
+test_MeshmsSendDuplicateMessage() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "message=Hello one" \
+         --form "message=Hello two" \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertJq http.body 'contains({"http_status_code": 403})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'duplicate.*message.*form.*part'
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutLineCount '==' 2
+}
+
+doc_MeshmsSendNoIdentity="HTTP RESTful MeshMS send from unknown identity"
+setup_MeshmsSendNoIdentity() {
+   setup
+   SIDX=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
+}
+test_MeshmsSendNoIdentity() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "message=Hello" \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDX/$SIDA/sendmessage"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertJq http.body 'contains({"http_status_code": 403})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'identity.*unknown'
 }
 
 runTests "$@"

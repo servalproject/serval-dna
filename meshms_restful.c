@@ -208,11 +208,13 @@ static HTTP_CONTENT_GENERATOR restful_meshms_messagelist_json_content;
 
 static int reopen_meshms_message_iterator(httpd_request *r)
 {
+  enum meshms_status status;
   if (!meshms_message_iterator_is_open(&r->u.msglist.iter)) {
-    if (   meshms_message_iterator_open(&r->u.msglist.iter, &r->sid1, &r->sid2) == -1
-	|| (r->u.msglist.finished = meshms_message_iterator_prev(&r->u.msglist.iter)) == -1
+    if (   meshms_failed(status = meshms_message_iterator_open(&r->u.msglist.iter, &r->sid1, &r->sid2))
+	|| meshms_failed(status = meshms_message_iterator_prev(&r->u.msglist.iter))
     )
       return -1;
+    r->u.msglist.finished = status != MESHMS_STATUS_UPDATED;
     if (!r->u.msglist.finished) {
       r->u.msglist.latest_which_ply = r->u.msglist.iter.which_ply;
       r->u.msglist.latest_offset = r->u.msglist.iter.offset;
@@ -399,8 +401,10 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
 	  }
 	  if (!strbuf_overrun(b)) {
 	    ++r->u.msglist.rowcount;
-	    if ((r->u.msglist.finished = meshms_message_iterator_prev(&r->u.msglist.iter)) == -1)
+	    enum meshms_status status;
+	    if (meshms_failed(status = meshms_message_iterator_prev(&r->u.msglist.iter)))
 	      return -1;
+	    r->u.msglist.finished = status != MESHMS_STATUS_UPDATED;
 	  }
 	  return 1;
 	}
@@ -498,9 +502,21 @@ static int restful_meshms_sendmessage_end(struct http_request *hr)
     return http_response_form_part(r, "Missing", PART_MESSAGE, NULL, 0);
   assert(r->u.sendmsg.message.length > 0);
   assert(r->u.sendmsg.message.length <= MESHMS_MESSAGE_MAX_LEN);
-  int ret = meshms_send_message(&r->sid1, &r->sid2, r->u.sendmsg.message.buffer, r->u.sendmsg.message.length);
-  if (ret == -1)
-    return 500;
-  http_request_simple_response(&r->http, 201, "Message sent");
-  return 201;
+  enum meshms_status status = meshms_send_message(&r->sid1, &r->sid2, r->u.sendmsg.message.buffer, r->u.sendmsg.message.length);
+  switch (status) {
+    case MESHMS_STATUS_ERROR:
+      return 500;
+    case MESHMS_STATUS_OK:
+    case MESHMS_STATUS_UPDATED:
+      http_request_simple_response(&r->http, 201, "Message sent");
+      return 201;
+    case MESHMS_STATUS_SID_LOCKED:
+      http_request_simple_response(&r->http, 403, "Identity unknown");
+      return 403;
+    case MESHMS_STATUS_PROTOCOL_FAULT:
+      http_request_simple_response(&r->http, 403, "Protocol fault");
+      return 403;
+    default:
+      return 500;
+  }
 }

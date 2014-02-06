@@ -20,10 +20,33 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__MESHMS_H
 #define __SERVAL_DNA__MESHMS_H
 
+#ifndef __MESHMS_INLINE
+# if __GNUC__ && !__GNUC_STDC_INLINE__
+#  define __MESHMS_INLINE extern inline
+# else
+#  define __MESHMS_INLINE inline
+# endif
+#endif
+
 #include "serval.h"
 #include "rhizome.h"
 
 #define MESHMS_MESSAGE_MAX_LEN  4095
+
+/* The result of a MeshMS operation.  Negative indicates failure, zero or
+ * positive success.
+ */
+enum meshms_status {
+    MESHMS_STATUS_ERROR = -1, // unexpected error (underlying failure)
+    MESHMS_STATUS_OK = 0, // operation succeeded, no bundle changed
+    MESHMS_STATUS_UPDATED = 1, // operation succeeded, bundle updated
+    MESHMS_STATUS_SID_LOCKED = 2, // cannot decode or send messages for that SID
+    MESHMS_STATUS_PROTOCOL_FAULT = 4, // missing or faulty ply bundle
+};
+
+__MESHMS_INLINE int meshms_failed(enum meshms_status status) {
+    return status != MESHMS_STATUS_OK && status != MESHMS_STATUS_UPDATED;
+}
 
 // the manifest details for one half of a conversation
 struct meshms_ply {
@@ -76,7 +99,7 @@ struct meshms_ply_read {
 /* Fetch the list of all MeshMS conversations into a binary tree whose nodes
  * are all allocated by malloc(3).
  */
-int meshms_conversations_list(const sid_t *my_sid, const sid_t *their_sid, struct meshms_conversations **conv);
+enum meshms_status meshms_conversations_list(const sid_t *my_sid, const sid_t *their_sid, struct meshms_conversations **conv);
 void meshms_free_conversations(struct meshms_conversations *conv);
 
 /* For iterating over a binary tree of all MeshMS conversations, as created by
@@ -96,17 +119,20 @@ void meshms_conversation_iterator_start(struct meshms_conversation_iterator *, s
 void meshms_conversation_iterator_advance(struct meshms_conversation_iterator *);
 
 /* For iterating through the messages in a single MeshMS conversation; both
- * plys threaded (interleaved) in the order as seen by the sender.
+ * plys threaded (interleaved) in the order as seen by the sender.  The
+ * meshms_message_iterator_prev() function returns MESHMS_STATUS_UPDATED if it
+ * advances the iterator to a message, or MESHMS_STATUS_OK if there are no more
+ * messages.  Any other return value indicates failure.
  *
  *      struct meshms_message_iterator it;
- *      if (meshms_message_iterator_open(&it, &sender_sid, &recip_sid) == -1)
+ *      enum meshms_status status;
+ *      if (meshms_failed(status = meshms_message_iterator_open(&it, &sender_sid, &recip_sid)))
  *          return -1;
- *      int ret;
- *      while ((ret = meshms_message_iterator_prev(&it)) == 0) {
+ *      while ((status = meshms_message_iterator_prev(&it)) == MESHMS_STATUS_UPDATED) {
  *          ...
  *      }
  *      meshms_message_iterator_close(&it);
- *      if (ret == -1)
+ *      if (meshms_failed(status))
  *          return -1;
  *      ...
  */
@@ -143,16 +169,16 @@ struct meshms_message_iterator {
   uint64_t _end_range;
   bool_t _in_ack;
 };
-int meshms_message_iterator_open(struct meshms_message_iterator *, const sid_t *me, const sid_t *them);
+enum meshms_status meshms_message_iterator_open(struct meshms_message_iterator *, const sid_t *me, const sid_t *them);
 int meshms_message_iterator_is_open(const struct meshms_message_iterator *);
 void meshms_message_iterator_close(struct meshms_message_iterator *);
-int meshms_message_iterator_prev(struct meshms_message_iterator *);
+enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *);
 
 /* Append a message ('message_len' bytes of UTF8 at 'message') to the sender's
  * ply in the conversation between 'sender' and 'recipient'.  If no
  * conversation (ply bundle) exists, then create it.  Returns 0 on success, -1
  * on error (already logged).
  */
-int meshms_send_message(const sid_t *sender, const sid_t *recipient, const char *message, size_t message_len);
+enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipient, const char *message, size_t message_len);
 
 #endif // __SERVAL_DNA__MESHMS_H

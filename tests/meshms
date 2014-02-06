@@ -201,4 +201,21 @@ test_listConversations() {
    assertStdoutLineCount '==' 5
 }
 
+doc_sendNoIdentity="Send message from unknown identity"
+setup_sendNoIdentity() {
+   setup_servald
+   set_instance +A
+   create_identities 2
+   setup_logging
+   SIDX=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
+}
+test_sendNoIdentity() {
+   executeOk_servald meshms send message $SIDA1 $SIDX "First message"
+   execute $servald meshms send message $SIDX $SIDA1 "First reply"
+   assertExitStatus --stderr == 2
+   executeOk_servald meshms list messages $SIDA1 $SIDX
+   execute $servald meshms list messages $SIDX $SIDA1
+   assertExitStatus --stderr == 2
+}
+
 runTests "$@"
