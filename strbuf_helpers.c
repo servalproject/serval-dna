@@ -459,6 +459,31 @@ strbuf strbuf_append_quoted_string(strbuf sb, const char *str)
   return sb;
 }
 
+static void _html_char(strbuf sb, char c)
+{
+  if (c == '&')
+    strbuf_puts(sb, "&amp;");
+  else if (c == '<')
+    strbuf_puts(sb, "&lt;");
+  else if (c == '>')
+    strbuf_puts(sb, "&gt;");
+  else if (c == '"')
+    strbuf_puts(sb, "&quot;");
+  else if (c == '\'')
+    strbuf_puts(sb, "&apos;");
+  else if (iscntrl(c))
+    strbuf_sprintf(sb, "&#%u;", (unsigned char) c);
+  else
+    strbuf_putc(sb, c);
+}
+
+strbuf strbuf_html_escape(strbuf sb, const char *str, size_t strlen)
+{
+  for (; strlen; --strlen, ++str)
+    _html_char(sb, *str);
+  return sb;
+}
+
 strbuf strbuf_json_null(strbuf sb)
 {
   strbuf_puts(sb, "null");
@@ -527,6 +552,60 @@ strbuf strbuf_json_hex(strbuf sb, const unsigned char *buf, size_t len)
   } else
     strbuf_json_null(sb);
   return sb;
+}
+
+strbuf strbuf_json_atom(strbuf sb, const struct json_atom *atom)
+{
+  switch (atom->type) {
+    case JSON_NULL:
+      return strbuf_json_null(sb);
+    case JSON_BOOLEAN:
+      return strbuf_json_boolean(sb, atom->u.boolean);
+    case JSON_INTEGER:
+      strbuf_sprintf(sb, "%"PRId64, atom->u.integer);
+      return sb;
+    case JSON_STRING_NULTERM:
+      return strbuf_json_string(sb, atom->u.string.content);
+    case JSON_STRING_LENGTH:
+      return strbuf_json_string_len(sb, atom->u.string.content, atom->u.string.length);
+  }
+  abort();
+}
+
+strbuf strbuf_json_atom_as_text(strbuf sb, const struct json_atom *atom)
+{
+  switch (atom->type) {
+    case JSON_NULL:
+      return strbuf_json_null(sb);
+    case JSON_BOOLEAN:
+      return strbuf_puts(sb, atom->u.boolean ? "True" : "False");
+    case JSON_INTEGER:
+      strbuf_sprintf(sb, "%"PRId64, atom->u.integer);
+      return sb;
+    case JSON_STRING_NULTERM:
+      return strbuf_puts(sb, atom->u.string.content);
+    case JSON_STRING_LENGTH:
+      return strbuf_ncat(sb, atom->u.string.content, atom->u.string.length);
+  }
+  abort();
+}
+
+strbuf strbuf_json_atom_as_html(strbuf sb, const struct json_atom *atom)
+{
+  switch (atom->type) {
+    case JSON_NULL:
+      return strbuf_json_null(sb);
+    case JSON_BOOLEAN:
+      return strbuf_json_boolean(sb, atom->u.boolean);
+    case JSON_INTEGER:
+      strbuf_sprintf(sb, "%"PRId64, atom->u.integer);
+      return sb;
+    case JSON_STRING_NULTERM:
+      return strbuf_html_escape(sb, atom->u.string.content, strlen(atom->u.string.content));
+    case JSON_STRING_LENGTH:
+      return strbuf_html_escape(sb, atom->u.string.content, atom->u.string.length);
+  }
+  abort();
 }
 
 strbuf strbuf_append_http_ranges(strbuf sb, const struct http_range *ranges, unsigned nels)
