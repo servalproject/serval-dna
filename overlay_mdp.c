@@ -541,7 +541,8 @@ static int overlay_saw_mdp_frame(
 	 alloca_tohex_sid_t_trunc(header->source->sid, 14),
 	 header->source_port, header->destination_port);
 
-  // TODO filter by sid src (& dst?) port
+  if (allow_incoming_packet(header) == RULE_DROP)
+    return 0;
   
   for(i=0;i<MDP_MAX_BINDINGS;i++)
     {

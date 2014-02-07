@@ -45,6 +45,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define BROADCAST_LEN 8
 
+struct packet_rule;
 
 // This structure supports both our own routing protocol which can store calculation details in *node 
 // or IP4 addresses reachable via any other kind of normal layer3 routing protocol, eg olsr
@@ -84,6 +85,8 @@ struct subscriber{
   
   // private keys for local identities
   struct keyring_identity *identity;
+  
+  struct packet_rule *source_rules;
 };
 
 struct broadcast{
