@@ -1952,8 +1952,7 @@ int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context *contex
       return WHYF("Invalid <recipient: %s", recipient_hex);
     cursor.is_recipient_set = 1;
   }
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  if (rhizome_list_open(&retry, &cursor) == -1) {
+  if (rhizome_list_open(&cursor) == -1) {
     keyring_free(keyring);
     return -1;
   }
@@ -1975,7 +1974,7 @@ int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context *contex
   cli_columns(context, NELS(headers), headers);
   size_t rowcount = 0;
   int n;
-  while ((n = rhizome_list_next(&retry, &cursor)) == 1) {
+  while ((n = rhizome_list_next(&cursor)) == 1) {
     ++rowcount;
     if (rowcount <= rowoffset)
       continue;

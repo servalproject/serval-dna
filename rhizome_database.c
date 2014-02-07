@@ -1575,7 +1575,7 @@ rollback:
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_list_open(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
+int rhizome_list_open(struct rhizome_list_cursor *c)
 {
   if (config.debug.rhizome)
     DEBUGF("c=%p c->service=%s c->name=%s c->sender=%s c->recipient=%s c->rowid_since=%"PRIu64" c->_rowid_last=%"PRIu64,
@@ -1609,18 +1609,19 @@ int rhizome_list_open(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
   }
   if (strbuf_overrun(b))
     RETURN(WHYF("SQL command too long: %s", strbuf_str(b)));
-  c->_statement = sqlite_prepare(retry, strbuf_str(b));
+  c->_retry = SQLITE_RETRY_STATE_DEFAULT;
+  c->_statement = sqlite_prepare(&c->_retry, strbuf_str(b));
   if (c->_statement == NULL)
     RETURN(-1);
-  if (c->service && sqlite_bind(retry, c->_statement, NAMED|STATIC_TEXT, "@service", c->service, END) == -1)
+  if (c->service && sqlite_bind(&c->_retry, c->_statement, NAMED|STATIC_TEXT, "@service", c->service, END) == -1)
     goto failure;
-  if (c->name && sqlite_bind(retry, c->_statement, NAMED|STATIC_TEXT, "@name", c->name, END) == -1)
+  if (c->name && sqlite_bind(&c->_retry, c->_statement, NAMED|STATIC_TEXT, "@name", c->name, END) == -1)
     goto failure;
-  if (c->is_sender_set && sqlite_bind(retry, c->_statement, NAMED|SID_T, "@sender", &c->sender, END) == -1)
+  if (c->is_sender_set && sqlite_bind(&c->_retry, c->_statement, NAMED|SID_T, "@sender", &c->sender, END) == -1)
     goto failure;
-  if (c->is_recipient_set && sqlite_bind(retry, c->_statement, NAMED|SID_T, "@recipient", &c->recipient, END) == -1)
+  if (c->is_recipient_set && sqlite_bind(&c->_retry, c->_statement, NAMED|SID_T, "@recipient", &c->recipient, END) == -1)
     goto failure;
-  if (c->_rowid_last && sqlite_bind(retry, c->_statement, NAMED|INT64, "@last", c->_rowid_last, END) == -1)
+  if (c->_rowid_last && sqlite_bind(&c->_retry, c->_statement, NAMED|INT64, "@last", c->_rowid_last, END) == -1)
     goto failure;
   c->manifest = NULL;
   c->_rowid_current = 0;
@@ -1641,7 +1642,7 @@ failure:
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
+int rhizome_list_next(struct rhizome_list_cursor *c)
 {
   if (config.debug.rhizome)
     DEBUGF("c=%p c->service=%s c->name=%s c->sender=%s c->recipient=%s c->rowid_since=%"PRIu64" c->_rowid_last=%"PRIu64,
@@ -1654,7 +1655,7 @@ int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
 	c->_rowid_last
       );
   IN();
-  if (c->_statement == NULL && rhizome_list_open(retry, c) == -1)
+  if (c->_statement == NULL && rhizome_list_open(c) == -1)
     RETURN(-1);
   while (1) {
     if (c->manifest) {
@@ -1662,7 +1663,7 @@ int rhizome_list_next(sqlite_retry_state *retry, struct rhizome_list_cursor *c)
       c->_rowid_current = 0;
       c->manifest = NULL;
     }
-    if (sqlite_step_retry(retry, c->_statement) != SQLITE_ROW)
+    if (sqlite_step_retry(&c->_retry, c->_statement) != SQLITE_ROW)
       break;
     assert(sqlite3_column_count(c->_statement) == 6);
     assert(sqlite3_column_type(c->_statement, 0) == SQLITE_TEXT);

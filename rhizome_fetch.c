@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "conf.h"
 #include "rhizome.h"
+#include "httpd.h"
 #include "str.h"
 #include "strbuf_helpers.h"
 #include "overlay_address.h"

@@ -400,13 +400,13 @@ compute_filehash() {
 
 rhizome_http_server_started() {
    local logvar=LOG${1#+}
-   $GREP 'RHIZOME HTTP SERVER,.*START.*port=[0-9]' "${!logvar}"
+   $GREP 'HTTP SERVER START.*port=[0-9].*services=[^ ]*\<Rhizome\>' "${!logvar}"
 }
 
 get_rhizome_server_port() {
    local _var="$1"
    local _logvar=LOG${2#+}
-   local _port=$($SED -n -e '/RHIZOME HTTP SERVER.*START/s/.*port=\([0-9]\{1,\}\).*/\1/p' "${!_logvar}" | $SED -n '$p')
+   local _port=$($SED -n -e '/HTTP SERVER START/s/.*port=\([0-9]\{1,\}\).*services=[^ ]*\<Rhizome\>.*/\1/p' "${!_logvar}" | $SED -n '$p')
    assert --message="instance $2 Rhizome HTTP server port number is known" [ -n "$_port" ]
    if [ -n "$_var" ]; then
       eval "$_var=\$_port"

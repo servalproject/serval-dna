@@ -1,5 +1,6 @@
 /*
-Serval Distributed Numbering Architecture (DNA)
+Serval DNA Rhizome file distribution
+Copyright (C) 2010-2013 Serval Project Inc.
 Copyright (C) 2010 Paul Gardner-Stephen
  
 This program is free software; you can redistribute it and/or
@@ -26,7 +27,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "uuid.h"
 #include "str.h"
 #include "strbuf.h"
-#include "http_server.h"
 #include "nacl.h"
 
 #ifndef __RHIZOME_INLINE
@@ -54,9 +54,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 // assumed to always be 2^n
 #define RHIZOME_CRYPT_PAGE_SIZE         4096
-
-#define RHIZOME_HTTP_PORT 4110
-#define RHIZOME_HTTP_PORT_MAX 4150
 
 /* Fundamental data type: Rhizome Bundle ID
  *
@@ -392,7 +389,6 @@ void _rhizome_manifest_del_author(struct __sourceloc, rhizome_manifest *);
 #define     RHIZOME_SERVICE_MESHMS2  "MeshMS2"
 
 extern int64_t rhizome_space;
-extern uint16_t rhizome_http_server_port;
 
 int log2ll(uint64_t x);
 int rhizome_configure();
@@ -428,8 +424,6 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report);
 
 int rhizome_manifest_createid(rhizome_manifest *m);
 int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed);
-
-int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_call);
 
 typedef struct sqlite_retry_state {
   unsigned int limit; // do not retry once elapsed >= limit
@@ -689,14 +683,15 @@ struct rhizome_list_cursor {
   uint64_t rowid_since;
   // Set by calling the next() function.
   rhizome_manifest *manifest;
-  // Private state.
+  // Private state - implementation that could change.
+  sqlite_retry_state _retry;
   sqlite3_stmt *_statement;
   uint64_t _rowid_current;
   uint64_t _rowid_last; // for re-opening query
 };
 
-int rhizome_list_open(sqlite_retry_state *, struct rhizome_list_cursor *);
-int rhizome_list_next(sqlite_retry_state *, struct rhizome_list_cursor *);
+int rhizome_list_open(struct rhizome_list_cursor *);
+int rhizome_list_next(struct rhizome_list_cursor *);
 void rhizome_list_commit(struct rhizome_list_cursor *);
 void rhizome_list_release(struct rhizome_list_cursor *);
 
@@ -768,118 +763,14 @@ struct rhizome_read
   uint64_t length;
 };
 
-/* Rhizome-specific HTTP request handling.
- */
-typedef struct rhizome_http_request
-{
-  struct http_request http; // MUST BE FIRST ELEMENT
-
-  /* Identify request from others being run.  Monotonic counter feeds it.  Only
-   * used for debugging when we write post-<uuid>.log files for multi-part form
-   * requests.
-   */
-  unsigned int uuid;
-
-  /* For requests/responses that pertain to a single manifest.
-   */
-  rhizome_manifest *manifest;
-
-  /* Finaliser for union contents (below).
-   */
-  void (*finalise_union)(struct rhizome_http_request *);
-
-  /* Mutually exclusive response arguments.
-   */
-  union {
-
-    /* For receiving Rhizome Direct import request
-     */
-    struct {
-      // Which part is currently being received
-      const char *current_part;
-      // Temporary file currently current part is being written to
-      int part_fd;
-      // Which parts have already been received
-      bool_t received_manifest;
-      bool_t received_data;
-      // Name of data file supplied in part's Content-Disposition header, filename
-      // parameter (if any)
-      char data_file_name[MIME_FILENAME_MAXLEN + 1];
-    }
-      direct_import;
-
-    /* For receiving RESTful Rhizome insert request
-     */
-    struct {
-      // Which part is currently being received
-      const char *current_part;
-      // Which parts have already been received
-      bool_t received_author;
-      bool_t received_secret;
-      bool_t received_manifest;
-      bool_t received_payload;
-      // For storing the "bundle-author" hex SID as we receive it
-      char author_hex[SID_STRLEN];
-      size_t author_hex_len;
-      sid_t author;
-      // For storing the "bundle-secret" hex as we receive it
-      char secret_hex[RHIZOME_BUNDLE_KEY_STRLEN];
-      size_t secret_hex_len;
-      rhizome_bk_t bundle_secret;
-      // The "force-new" parameter
-      char force_new_text[5]; // enough for "false"
-      size_t force_new_text_len;
-      bool_t force_new;
-      // For storing the manifest text (malloc/realloc) as we receive it
-      char *manifest_text;
-      size_t manifest_text_size;
-      size_t manifest_len;
-      // For receiving the payload
-      enum rhizome_payload_status payload_status;
-      uint64_t payload_size;
-      struct rhizome_write write;
-    }
-      insert;
-
-    /* For responses that send part or all of a payload.
-    */
-    struct rhizome_read read_state;
-
-    /* For responses that list manifests.
-    */
-    struct {
-      enum { LIST_HEADER = 0, LIST_ROWS, LIST_DONE } phase;
-      uint64_t rowid_highest;
-      size_t rowcount;
-      time_ms_t end_time;
-      struct rhizome_list_cursor cursor;
-    }
-      list;
-
-  } u;
-
-} rhizome_http_request;
-
 int rhizome_received_content(const unsigned char *bidprefix,uint64_t version, 
 			     uint64_t offset, size_t count,unsigned char *bytes);
-int64_t rhizome_database_create_blob_for(const char *filehashhex_or_tempid,
-					 int64_t fileLength,int priority);
-int rhizome_server_set_response(rhizome_http_request *r, const struct http_response *h);
-int rhizome_server_free_http_request(rhizome_http_request *r);
-int rhizome_server_http_send_bytes(rhizome_http_request *r);
-int rhizome_server_parse_http_request(rhizome_http_request *r);
-int rhizome_server_simple_http_response(rhizome_http_request *r, int result, const char *response);
-int rhizome_server_http_response(rhizome_http_request *r, int result, 
-    const char *mime_type, const char *body, uint64_t bytes);
-int rhizome_server_http_response_header(rhizome_http_request *r, int result, const char *mime_type, uint64_t bytes);
-int rhizome_http_server_start(uint16_t port_low, uint16_t port_high);
 
 int is_rhizome_enabled();
 int is_rhizome_mdp_enabled();
 int is_rhizome_http_enabled();
 int is_rhizome_advertise_enabled();
 int is_rhizome_mdp_server_running();
-int is_rhizome_http_server_running();
 
 typedef struct rhizome_direct_bundle_cursor {
   /* Where the current fill started */
@@ -918,8 +809,6 @@ int rhizome_direct_get_bars(const rhizome_bid_t *bid_low,
 			    const rhizome_bid_t *bid_max,
 			    unsigned char *bars_out,
 			    int bars_requested);
-int rhizome_direct_process_post_multipart_bytes
-(rhizome_http_request *r,const char *bytes,int count);
 
 typedef struct rhizome_direct_sync_request {
   struct sched_ent alarm;
@@ -1002,18 +891,6 @@ int rhizome_any_fetch_active();
 int rhizome_any_fetch_queued();
 int rhizome_fetch_status_html(struct strbuf *b);
 int rhizome_fetch_has_queue_space(unsigned char log2_size);
-
-struct http_response_parts {
-  uint16_t code;
-  char *reason;
-  uint64_t range_start;
-  uint64_t content_length;
-  char *content_start;
-};
-
-#define HTTP_RESPONSE_CONTENT_LENGTH_UNSET UINT64_MAX
-
-int unpack_http_response(char *response, struct http_response_parts *parts);
 
 /* rhizome storage methods */
 

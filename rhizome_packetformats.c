@@ -222,7 +222,7 @@ void overlay_rhizome_advertise(struct sched_ent *alarm)
   }
   ob_limitsize(frame->payload, 800);
   ob_append_byte(frame->payload, 2);
-  ob_append_ui16(frame->payload, rhizome_http_server_port);
+  ob_append_ui16(frame->payload, httpd_server_port);
   int64_t rowid=0;
   int count = append_bars(frame->payload, &retry, 
 			  "SELECT BAR,ROWID FROM MANIFESTS ORDER BY ROWID DESC LIMIT 3", 
@@ -263,7 +263,7 @@ int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m){
     goto error;
   ob_limitsize(frame->payload, 800);
   ob_append_byte(frame->payload, HAS_PORT|HAS_MANIFESTS);
-  ob_append_ui16(frame->payload, is_rhizome_http_enabled()?rhizome_http_server_port:0);
+  ob_append_ui16(frame->payload, is_rhizome_http_enabled()? httpd_server_port : 0);
   ob_append_ui16(frame->payload, m->manifest_all_bytes);
   ob_append_bytes(frame->payload, m->manifestdata, m->manifest_all_bytes);
   ob_append_byte(frame->payload, 0xFF);
@@ -292,7 +292,7 @@ int overlay_rhizome_saw_advertisements(struct decode_context *context, struct ov
   int ad_frame_type=ob_get(f->payload);
   struct socket_address httpaddr = context->addr;
   if (httpaddr.addr.sa_family == AF_INET)
-    httpaddr.inet.sin_port = htons(RHIZOME_HTTP_PORT);
+    httpaddr.inet.sin_port = htons(HTTPD_PORT);
   rhizome_manifest *m=NULL;
 
   int (*oldfunc)() = sqlite_set_tracefunc(is_debug_rhizome_ads);

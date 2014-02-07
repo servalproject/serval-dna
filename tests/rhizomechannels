@@ -41,7 +41,7 @@ configure_servald_server() {
       set log.show_pid on \
       set log.show_time on \
       set debug.rhizome on \
-      set debug.rhizome_httpd on \
+      set debug.httpd on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
       set server.respawn_on_crash off \

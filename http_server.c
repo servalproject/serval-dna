@@ -64,17 +64,22 @@ static struct {
 #undef VERB_ENTRY
 };
 
+const char CONTENT_TYPE_TEXT[] = "text/plain";
+const char CONTENT_TYPE_HTML[] = "text/html";
+const char CONTENT_TYPE_JSON[] = "application/json";
+const char CONTENT_TYPE_BLOB[] = "application/octet-stream";
+
 static struct profile_total http_server_stats = {
   .name = "http_server_poll",
 };
 
 #define DEBUG_DUMP_PARSED(r) do { \
-      if (config.debug.httpd) \
+      if (config.debug.http_server) \
 	DEBUGF("%s %s HTTP/%u.%u", r->verb ? r->verb : "NULL", alloca_str_toprint(r->path), r->version_major, r->version_minor);\
     } while (0)
 
 #define DEBUG_DUMP_PARSER(r) do { \
-      if (config.debug.httpd) \
+      if (config.debug.http_server) \
 	DEBUGF("parsed %d %s cursor %d %s end %d remain %"PRIhttp_size_t, \
 	    (int)(r->parsed - r->received), alloca_toprint(-1, r->parsed, r->cursor - r->parsed), \
 	    (int)(r->cursor - r->received), alloca_toprint(50, r->cursor, r->end - r->cursor), \
@@ -1208,14 +1213,14 @@ static int http_request_parse_body_form_data(struct http_request *r)
   int at_start = 0;
   switch (r->form_data_state) {
     case START:
-      if (config.debug.httpd)
+      if (config.debug.http_server)
 	DEBUGF("START");
       // The logic here allows for a missing initial CRLF before the first boundary line.
       at_start = 1;
       r->form_data_state = PREAMBLE;
       // fall through
     case PREAMBLE: {
-	if (config.debug.httpd)
+	if (config.debug.http_server)
 	  DEBUGF("PREAMBLE");
 	char *start = r->parsed;
 	for (; at_start || _skip_to_crlf(r); at_start = 0) {
@@ -1241,7 +1246,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
       }
       return 100; // need more data
     case HEADER: {
-      if (config.debug.httpd)
+      if (config.debug.http_server)
 	DEBUGF("HEADER");
 	// If not at a CRLF, then we are skipping through an over-long header that didn't
 	// fit into the buffer.  Just discard bytes up to the next CRLF.
@@ -1365,7 +1370,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
       }
       return 400;
     case BODY:
-      if (config.debug.httpd)
+      if (config.debug.http_server)
 	DEBUGF("BODY");
       char *start = r->parsed;
       while (_skip_to_crlf(r)) {
@@ -1396,7 +1401,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
       _INVOKE_HANDLER_BUF_LEN(handle_mime_body, start, r->parsed);
       return 100; // need more data
   case EPILOGUE:
-      if (config.debug.httpd)
+      if (config.debug.http_server)
 	DEBUGF("EPILOGUE");
     r->cursor = r->end;
     assert(r->cursor >= r->parsed);
@@ -1785,6 +1790,50 @@ static const char *httpResultString(int response_code)
   }
 }
 
+static strbuf strbuf_status_body(strbuf sb, struct http_response *hr, const char *message)
+{
+  if (   hr->header.content_type == CONTENT_TYPE_TEXT
+      || (hr->header.content_type && strcmp(hr->header.content_type, CONTENT_TYPE_TEXT) == 0)
+  ) {
+    hr->header.content_type = CONTENT_TYPE_TEXT;
+    strbuf_sprintf(sb, "%03u %s", hr->result_code, message);
+    if (hr->result_extra_label) {
+      strbuf_puts(sb, "\r\n");
+      strbuf_puts(sb, hr->result_extra_label);
+      strbuf_puts(sb, "=");
+      strbuf_json_atom_as_text(sb, &hr->result_extra_value);
+    }
+    strbuf_puts(sb, "\r\n");
+  }
+  else if (    hr->header.content_type == CONTENT_TYPE_JSON
+           || (hr->header.content_type && strcmp(hr->header.content_type, CONTENT_TYPE_JSON) == 0)
+  ) {
+    hr->header.content_type = CONTENT_TYPE_JSON;
+    strbuf_sprintf(sb, "{\n \"http_status_code\": %u,\n \"http_status_message\": ", hr->result_code);
+    strbuf_json_string(sb, message);
+    if (hr->result_extra_label) {
+      strbuf_puts(sb, ",\n ");
+      strbuf_json_string(sb, hr->result_extra_label);
+      strbuf_puts(sb, ": ");
+      strbuf_json_atom_as_html(sb, &hr->result_extra_value);
+    }
+    strbuf_puts(sb, "\n}");
+  }
+  else {
+    hr->header.content_type = CONTENT_TYPE_HTML;
+    strbuf_sprintf(sb, "<html>\n<h1>%03u %s</h1>", hr->result_code, message);
+    if (hr->result_extra_label) {
+      strbuf_puts(sb, "\n<dl><dt>");
+      strbuf_html_escape(sb, hr->result_extra_label, strlen(hr->result_extra_label));
+      strbuf_puts(sb, "</dt><dd>");
+      strbuf_json_atom_as_html(sb, &hr->result_extra_value);
+      strbuf_puts(sb, "</dd></dl>");
+    }
+    strbuf_puts(sb, "\n</html>");
+  }
+  return sb;
+}
+
 /* Render the HTTP response into the current response buffer.  Return 1 if it fits, 0 if it does
  * not.  The buffer response_pointer may be NULL, in which case no response is rendered, but the
  * content_length is still computed
@@ -1833,16 +1882,16 @@ static int _render_response(struct http_request *r)
     }
   } else {
     // If no content is supplied at all, then render a standard, short body based solely on result
-    // code.
+    // code, consistent with the response Content-Type if already set (HTML if not set).
     assert(hr.header.content_length == CONTENT_LENGTH_UNKNOWN);
     assert(hr.header.resource_length == CONTENT_LENGTH_UNKNOWN);
     assert(hr.header.content_range_start == 0);
     assert(hr.result_code != 206);
-    strbuf cb = strbuf_alloca(100 + strlen(result_string));
-    strbuf_sprintf(cb, "<html><h1>%03u %s</h1></html>", hr.result_code, result_string);
+    strbuf cb;
+    STRBUF_ALLOCA_FIT(cb, 40 + strlen(result_string), (strbuf_status_body(cb, &hr, result_string)));
     hr.content = strbuf_str(cb);
-    hr.header.content_type = "text/html";
-    hr.header.resource_length = hr.header.content_length = strbuf_len(cb);
+    hr.header.content_length = strbuf_len(cb);
+    hr.header.resource_length = hr.header.content_length;
     hr.header.content_range_start = 0;
   }
   assert(hr.header.content_type != NULL);
@@ -2045,29 +2094,50 @@ void http_request_response_generated(struct http_request *r, int result, const c
 }
 
 /* Start sending a short response back to the client.  The result code must be either a success
- * (2xx), redirection (3xx) or client error (4xx) or server error (5xx) code.  The 'body' argument
- * may be a bare message which is enclosed in an HTML envelope to form the response content, so it
- * may contain HTML markup.  If the 'body' argument is NULL, then the response content is generated
- * automatically from the result code.
+ * (2xx), redirection (3xx) or client error (4xx) or server error (5xx) code.  The 'message'
+ * argument may be a bare message which is enclosed in an HTML envelope to form the response
+ * content, so it may contain HTML markup.  If the 'message' argument is NULL, then the response
+ * content is generated automatically from the result code.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-void http_request_simple_response(struct http_request *r, uint16_t result, const char *body)
+void http_request_simple_response(struct http_request *r, uint16_t result, const char *message)
 {
   assert(r->phase == RECEIVE);
-  strbuf h = NULL;
-  if (body) {
-    size_t html_len = strlen(body) + 40;
-    h = strbuf_alloca(html_len);
-    strbuf_sprintf(h, "<html><h1>%03u %s</h1></html>", result, body);
-  }
   r->response.result_code = result;
-  r->response.header.content_type = "text/html";
   r->response.header.content_range_start = 0;
+  strbuf h = NULL;
+  if (message)
+    STRBUF_ALLOCA_FIT(h, 40 + strlen(message), (strbuf_status_body(h, &r->response, message)));
   if (h) {
     r->response.header.resource_length = r->response.header.content_length = strbuf_len(h);
     r->response.content = strbuf_str(h);
   }
   r->response.content_generator = NULL;
   http_request_start_response(r);
+}
+
+int generate_http_content_from_strbuf_chunks(
+  struct http_request *r,
+  char *buf,
+  size_t bufsz,
+  struct http_content_generator_result *result,
+  HTTP_CONTENT_GENERATOR_STRBUF_CHUNKER *chunker
+)
+{
+  assert(bufsz > 0);
+  strbuf b = strbuf_local((char *)buf, bufsz);
+  int ret;
+  while ((ret = chunker(r, b)) != -1) {
+    if (strbuf_overrun(b)) {
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("overrun by %zu bytes", strbuf_count(b) - strbuf_len(b));
+      result->need = strbuf_count(b) + 1 - result->generated;
+      break;
+    }
+    result->generated = strbuf_len(b);
+    if (ret == 0)
+      break;
+  }
+  return ret;
 }

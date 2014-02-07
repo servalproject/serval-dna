@@ -53,6 +53,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "str.h"
 #include "rhizome.h"
+#include "httpd.h"
 #include "dataformats.h"
 
 int is_rhizome_enabled()
@@ -84,7 +85,7 @@ int is_rhizome_advertise_enabled()
   return config.rhizome.enable
     &&   config.rhizome.advertise.enable
     &&   rhizome_db
-    &&   (is_rhizome_http_server_running() || is_rhizome_mdp_server_running());
+    &&   (is_httpd_server_running() || is_rhizome_mdp_server_running());
 }
 
 int rhizome_fetch_delay_ms()

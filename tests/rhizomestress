@@ -41,7 +41,7 @@ configure_servald_server() {
       set log.file.show_pid on \
       set log.file.show_time on \
       set debug.rhizome off \
-      set debug.rhizome_httpd off \
+      set debug.httpd off \
       set debug.rhizome_tx off \
       set debug.rhizome_rx off \
       set server.respawn_on_crash off \
@@ -149,7 +149,7 @@ setup_StressRhizomeDirect() {
       executeOk_servald config \
          set log.file.show_time on \
          set debug.rhizome off \
-         set debug.rhizome_httpd off \
+         set debug.httpd off \
          set debug.rhizome_tx off \
          set debug.rhizome_rx off \
          set server.respawn_on_crash off \

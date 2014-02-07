@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "rhizome.h"
+#include "httpd.h"
 #include "conf.h"
 #include "str.h"
 #include "strbuf.h"
@@ -31,7 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "socket.h"
 
 
-static int _form_temporary_file_path(struct __sourceloc __whence, rhizome_http_request *r, char *pathbuf, size_t bufsiz, const char *field)
+static int _form_temporary_file_path(struct __sourceloc __whence, httpd_request *r, char *pathbuf, size_t bufsiz, const char *field)
 {
   strbuf b = strbuf_local(pathbuf, bufsiz);
   // TODO: use a temporary directory
@@ -45,7 +46,7 @@ static int _form_temporary_file_path(struct __sourceloc __whence, rhizome_http_r
 
 #define form_temporary_file_path(r,buf,field) _form_temporary_file_path(__WHENCE__, (r), (buf), sizeof(buf), (field))
 
-static void rhizome_direct_clear_temporary_files(rhizome_http_request *r)
+static void rhizome_direct_clear_temporary_files(httpd_request *r)
 {
   const char *fields[] = { "manifest", "data" };
   int i;
@@ -59,7 +60,7 @@ static void rhizome_direct_clear_temporary_files(rhizome_http_request *r)
 
 static int rhizome_direct_import_end(struct http_request *hr)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   if (!r->u.direct_import.received_manifest) {
     http_request_simple_response(&r->http, 400, "Missing 'manifest' part");
     return 0;
@@ -128,7 +129,7 @@ static int rhizome_direct_import_end(struct http_request *hr)
 
 int rhizome_direct_enquiry_end(struct http_request *hr)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   if (!r->u.direct_import.received_data) {
     http_request_simple_response(&r->http, 400, "Missing 'data' part");
     return 0;
@@ -188,7 +189,7 @@ int rhizome_direct_enquiry_end(struct http_request *hr)
 
 static int rhizome_direct_addfile_end(struct http_request *hr)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   // If given a file without a manifest, we should only accept if it we are configured to do so, and
   // the connection is from localhost.  Otherwise people could cause your servald to create
   // arbitrary bundles, which would be bad.
@@ -275,7 +276,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
     if (config.debug.rhizome)
       DEBUGF("Import sans-manifest appeared to succeed");
     /* Respond with the manifest that was added. */
-    http_request_response_static(&r->http, 200, "text/plain", (const char *)m->manifestdata, m->manifest_all_bytes);
+    http_request_response_static(&r->http, 200, CONTENT_TYPE_TEXT, (const char *)m->manifestdata, m->manifest_all_bytes);
     /* clean up after ourselves */
     if (mout && mout != m)
       rhizome_manifest_free(mout);
@@ -293,7 +294,7 @@ static char PART_DATA[] = "data";
 
 static int rhizome_direct_process_mime_start(struct http_request *hr)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   assert(r->u.direct_import.current_part == NULL);
   assert(r->u.direct_import.part_fd == -1);
   return 0;
@@ -301,7 +302,7 @@ static int rhizome_direct_process_mime_start(struct http_request *hr)
 
 static int rhizome_direct_process_mime_end(struct http_request *hr)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   if (r->u.direct_import.part_fd != -1) {
     if (close(r->u.direct_import.part_fd) == -1) {
       WHYF_perror("close(%d)", r->u.direct_import.part_fd);
@@ -320,7 +321,7 @@ static int rhizome_direct_process_mime_end(struct http_request *hr)
 
 static int rhizome_direct_process_mime_part_header(struct http_request *hr, const struct mime_part_headers *h)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   if (strcmp(h->content_disposition.name, PART_DATA) == 0) {
     r->u.direct_import.current_part = PART_DATA;
     strncpy(r->u.direct_import.data_file_name,
@@ -347,7 +348,7 @@ static int rhizome_direct_process_mime_part_header(struct http_request *hr, cons
 
 static int rhizome_direct_process_mime_body(struct http_request *hr, char *buf, size_t len)
 {
-  rhizome_http_request *r = (rhizome_http_request *) hr;
+  httpd_request *r = (httpd_request *) hr;
   if (r->u.direct_import.part_fd != -1) {
     if (write_all(r->u.direct_import.part_fd, buf, len) == -1) {
       http_request_simple_response(&r->http, 500, "Internal Error: Write temporary file failed");
@@ -357,7 +358,7 @@ static int rhizome_direct_process_mime_body(struct http_request *hr, char *buf, 
   return 0;
 }
 
-int rhizome_direct_import(rhizome_http_request *r, const char *remainder)
+int rhizome_direct_import(httpd_request *r, const char *remainder)
 {
   if (*remainder)
     return 404;
@@ -374,7 +375,7 @@ int rhizome_direct_import(rhizome_http_request *r, const char *remainder)
   return 1;
 }
 
-int rhizome_direct_enquiry(rhizome_http_request *r, const char *remainder)
+int rhizome_direct_enquiry(httpd_request *r, const char *remainder)
 {
   if (*remainder)
     return 404;
@@ -396,7 +397,7 @@ int rhizome_direct_enquiry(rhizome_http_request *r, const char *remainder)
  * loop-holes here, which is part of why we leave it disabled by default, but it will be sufficient
  * for testing possible uses, including integration with OpenDataKit.
  */
-int rhizome_direct_addfile(rhizome_http_request *r, const char *remainder)
+int rhizome_direct_addfile(httpd_request *r, const char *remainder)
 {
   if (*remainder)
     return 404;
@@ -423,7 +424,7 @@ int rhizome_direct_addfile(rhizome_http_request *r, const char *remainder)
   return 1;
 }
 
-int rhizome_direct_dispatch(rhizome_http_request *r, const char *UNUSED(remainder))
+int rhizome_direct_dispatch(httpd_request *r, const char *UNUSED(remainder))
 {
   if (   config.rhizome.api.addfile.uri_path[0]
       && strcmp(r->http.path, config.rhizome.api.addfile.uri_path) == 0
@@ -515,9 +516,9 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   strbuf_sprintf(content_preamble,
       "--%s\r\n"
       "Content-Disposition: form-data; name=\"data\"; filename=\"IHAVEs\"\r\n"
-      "Content-Type: application/octet-stream\r\n"
+      "Content-Type: %s\r\n"
       "\r\n",
-      boundary
+      boundary, CONTENT_TYPE_BLOB
     );
   strbuf_sprintf(content_postamble, "\r\n--%s--\r\n", boundary);
   assert(!strbuf_overrun(content_preamble));

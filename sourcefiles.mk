@@ -14,6 +14,7 @@ SERVAL_SOURCES = \
 	$(SERVAL_BASE)fdqueue.c \
 	$(SERVAL_BASE)fifo.c \
 	$(SERVAL_BASE)golay.c \
+	$(SERVAL_BASE)httpd.c \
 	$(SERVAL_BASE)http_server.c \
 	$(SERVAL_BASE)keyring.c \
 	$(SERVAL_BASE)log.c \
@@ -22,6 +23,7 @@ SERVAL_SOURCES = \
 	$(SERVAL_BASE)main.c \
 	$(SERVAL_BASE)radio_link.c \
 	$(SERVAL_BASE)meshms.c \
+	$(SERVAL_BASE)meshms_restful.c \
 	$(SERVAL_BASE)mdp_client.c \
 	$(SERVAL_BASE)mdp_net.c \
 	$(SERVAL_BASE)msp_client.c \
@@ -58,6 +60,7 @@ SERVAL_SOURCES = \
 	$(SERVAL_BASE)rhizome_direct_http.c \
 	$(SERVAL_BASE)rhizome_fetch.c \
 	$(SERVAL_BASE)rhizome_http.c \
+	$(SERVAL_BASE)rhizome_restful.c \
 	$(SERVAL_BASE)rhizome_packetformats.c \
 	$(SERVAL_BASE)rhizome_store.c \
 	$(SERVAL_BASE)rhizome_sync.c \
