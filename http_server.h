@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <limits.h>
 #include "constants.h"
 #include "strbuf.h"
+#include "strbuf_helpers.h"
 #include "fdqueue.h"
 
 /* Generic HTTP request handling.
@@ -56,13 +57,17 @@ http_size_t http_range_bytes(const struct http_range *range, unsigned nranges);
 
 #define CONTENT_LENGTH_UNKNOWN   UINT64_MAX
 
+extern const char CONTENT_TYPE_TEXT[];
+extern const char CONTENT_TYPE_HTML[];
+extern const char CONTENT_TYPE_JSON[];
+extern const char CONTENT_TYPE_BLOB[];
+
 struct mime_content_type {
   char type[64];
   char subtype[64];
   char multipart_boundary[71];
   char charset[31];
 };
-
 
 struct http_client_authorization {
   enum http_authorization_scheme { NOAUTH = 0, BASIC } scheme;
@@ -105,6 +110,8 @@ typedef int (HTTP_CONTENT_GENERATOR)(struct http_request *, unsigned char *, siz
 
 struct http_response {
   uint16_t result_code;
+  const char *result_extra_label;
+  struct json_atom result_extra_value;
   struct http_response_headers header;
   const char *content;
   HTTP_CONTENT_GENERATOR *content_generator; // callback to produce more content

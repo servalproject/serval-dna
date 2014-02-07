@@ -67,7 +67,7 @@ static HTTP_CONTENT_GENERATOR restful_rhizome_bundlelist_json_content;
 
 int restful_rhizome_bundlelist_json(httpd_request *r, const char *remainder)
 {
-  r->http.response.header.content_type = "application/json";
+  r->http.response.header.content_type = CONTENT_TYPE_JSON;
   if (!is_rhizome_http_enabled())
     return 403;
   if (*remainder)
@@ -80,7 +80,7 @@ int restful_rhizome_bundlelist_json(httpd_request *r, const char *remainder)
   r->u.rhlist.phase = LIST_HEADER;
   r->u.rhlist.rowcount = 0;
   bzero(&r->u.rhlist.cursor, sizeof r->u.rhlist.cursor);
-  http_request_response_generated(&r->http, 200, "application/json", restful_rhizome_bundlelist_json_content);
+  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_rhizome_bundlelist_json_content);
   return 1;
 }
 
@@ -99,7 +99,7 @@ static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsi
 
 int restful_rhizome_newsince(httpd_request *r, const char *remainder)
 {
-  r->http.response.header.content_type = "application/json";
+  r->http.response.header.content_type = CONTENT_TYPE_JSON;
   if (!is_rhizome_http_enabled())
     return 403;
   uint64_t rowid;
@@ -116,7 +116,7 @@ int restful_rhizome_newsince(httpd_request *r, const char *remainder)
   bzero(&r->u.rhlist.cursor, sizeof r->u.rhlist.cursor);
   r->u.rhlist.cursor.rowid_since = rowid;
   r->u.rhlist.end_time = gettime_ms() + config.rhizome.api.restful.newsince_timeout * 1000;
-  http_request_response_generated(&r->http, 200, "application/json", restful_rhizome_bundlelist_json_content);
+  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_rhizome_bundlelist_json_content);
   return 1;
 }
 
@@ -241,7 +241,7 @@ static int insert_mime_part_body(struct http_request *, char *, size_t);
 
 int restful_rhizome_insert(httpd_request *r, const char *remainder)
 {
-  r->http.response.header.content_type = "application/json";
+  r->http.response.header.content_type = CONTENT_TYPE_JSON;
   if (*remainder)
     return 404;
   if (!is_rhizome_http_enabled())
@@ -561,7 +561,7 @@ static HTTP_HANDLER restful_rhizome_bid_decrypted_bin;
 
 int restful_rhizome_(httpd_request *r, const char *remainder)
 {
-  r->http.response.header.content_type = "application/json";
+  r->http.response.header.content_type = CONTENT_TYPE_JSON;
   if (!is_rhizome_http_enabled())
     return 403;
   HTTP_HANDLER *handler = NULL;
@@ -617,13 +617,13 @@ static int restful_rhizome_bid_raw_bin(httpd_request *r, const char *remainder)
   if (*remainder || r->manifest == NULL)
     return 404;
   if (r->manifest->filesize == 0) {
-    http_request_response_static(&r->http, 200, "application/binary", "", 0);
+    http_request_response_static(&r->http, 200, CONTENT_TYPE_BLOB, "", 0);
     return 1;
   }
   int ret = rhizome_response_content_init_filehash(r, &r->manifest->filehash);
   if (ret)
     return ret;
-  http_request_response_generated(&r->http, 200, "application/binary", rhizome_payload_content);
+  http_request_response_generated(&r->http, 200, CONTENT_TYPE_BLOB, rhizome_payload_content);
   return 1;
 }
 
@@ -633,14 +633,14 @@ static int restful_rhizome_bid_decrypted_bin(httpd_request *r, const char *remai
     return 404;
   if (r->manifest->filesize == 0) {
     // TODO use Content Type from manifest (once it is implemented)
-    http_request_response_static(&r->http, 200, "application/binary", "", 0);
+    http_request_response_static(&r->http, 200, CONTENT_TYPE_BLOB, "", 0);
     return 1;
   }
   int ret = rhizome_response_content_init_payload(r, r->manifest);
   if (ret)
     return ret;
   // TODO use Content Type from manifest (once it is implemented)
-  http_request_response_generated(&r->http, 200, "application/binary", rhizome_payload_content);
+  http_request_response_generated(&r->http, 200, CONTENT_TYPE_BLOB, rhizome_payload_content);
   return 1;
 }
 

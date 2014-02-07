@@ -455,7 +455,7 @@ static int root_page(httpd_request *r, const char *remainder)
     WHY("HTTP Root page buffer overrun");
     return 500;
   }
-  http_request_response_static(&r->http, 200, "text/html", temp, strbuf_len(b));
+  http_request_response_static(&r->http, 200, CONTENT_TYPE_HTML, temp, strbuf_len(b));
   return 1;
 }
 
@@ -484,7 +484,7 @@ static int neighbour_page(httpd_request *r, const char *remainder)
   strbuf_puts(b, "</body></html>");
   if (strbuf_overrun(b))
     return -1;
-  http_request_response_static(&r->http, 200, "text/html", buf, strbuf_len(b));
+  http_request_response_static(&r->http, 200, CONTENT_TYPE_HTML, buf, strbuf_len(b));
   return 1;
 }
 
@@ -502,6 +502,6 @@ static int interface_page(httpd_request *r, const char *remainder)
   strbuf_puts(b, "</body></html>");
   if (strbuf_overrun(b))
     return -1;
-  http_request_response_static(&r->http, 200, "text/html", buf, strbuf_len(b));
+  http_request_response_static(&r->http, 200, CONTENT_TYPE_HTML, buf, strbuf_len(b));
   return 1;
 }

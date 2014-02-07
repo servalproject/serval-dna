@@ -41,7 +41,7 @@ enum meshms_status {
     MESHMS_STATUS_OK = 0, // operation succeeded, no bundle changed
     MESHMS_STATUS_UPDATED = 1, // operation succeeded, bundle updated
     MESHMS_STATUS_SID_LOCKED = 2, // cannot decode or send messages for that SID
-    MESHMS_STATUS_PROTOCOL_FAULT = 4, // missing or faulty ply bundle
+    MESHMS_STATUS_PROTOCOL_FAULT = 3, // missing or faulty ply bundle
 };
 
 __MESHMS_INLINE int meshms_failed(enum meshms_status status) {

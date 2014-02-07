@@ -64,6 +64,50 @@ static int strn_to_meshms_token(const char *str, rhizome_bid_t *bidp, uint64_t *
   return 1;
 }
 
+static int http_request_meshms_response(struct httpd_request *r, uint16_t result, const char *message, enum meshms_status status)
+{
+  r->http.response.result_extra_label = "meshms_status_code";
+  r->http.response.result_extra_value.type = JSON_INTEGER;
+  r->http.response.result_extra_value.u.integer = status;
+  switch (status) {
+    case MESHMS_STATUS_OK:
+      if (!result)
+	result = 200;
+      if (!message)
+	message = "OK";
+      break;
+    case MESHMS_STATUS_UPDATED:
+      if (!result)
+	result = 201;
+      if (!message)
+	message = "Updated";
+      break;
+    case MESHMS_STATUS_SID_LOCKED:
+      if (!result)
+	result = 403;
+      if (!message)
+	message = "Identity unknown";
+      break;
+    case MESHMS_STATUS_PROTOCOL_FAULT:
+      if (!result)
+	result = 403;
+      if (!message)
+	message = "MeshMS protocol fault";
+      break;
+    case MESHMS_STATUS_ERROR:
+      if (!result)
+	result = 500;
+      break;
+    default:
+      WHYF("Invalid MeshMS status code %d", status);
+      result = 500;
+      break;
+  }
+  assert(result != 0);
+  http_request_simple_response(&r->http, result, message);
+  return result;
+}
+
 static HTTP_HANDLER restful_meshms_conversationlist_json;
 static HTTP_HANDLER restful_meshms_messagelist_json;
 static HTTP_HANDLER restful_meshms_newsince_messagelist_json;
@@ -71,7 +115,7 @@ static HTTP_HANDLER restful_meshms_sendmessage;
 
 int restful_meshms_(httpd_request *r, const char *remainder)
 {
-  r->http.response.header.content_type = "application/json";
+  r->http.response.header.content_type = CONTENT_TYPE_JSON;
   if (!is_rhizome_http_enabled())
     return 403;
   const char *verb = HTTP_VERB_GET;
@@ -124,10 +168,11 @@ static int restful_meshms_conversationlist_json(httpd_request *r, const char *re
   r->u.mclist.phase = LIST_HEADER;
   r->u.mclist.rowcount = 0;
   r->u.mclist.conv = NULL;
-  if (meshms_conversations_list(&r->sid1, NULL, &r->u.mclist.conv))
-    return -1;
+  enum meshms_status status;
+  if (meshms_failed(status = meshms_conversations_list(&r->sid1, NULL, &r->u.mclist.conv)))
+    return http_request_meshms_response(r, 0, NULL, status);
   meshms_conversation_iterator_start(&r->u.mclist.iter, r->u.mclist.conv);
-  http_request_response_generated(&r->http, 200, "application/json", restful_meshms_conversationlist_json_content);
+  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_meshms_conversationlist_json_content);
   return 1;
 }
 
@@ -206,21 +251,21 @@ static int restful_meshms_conversationlist_json_content_chunk(struct http_reques
 
 static HTTP_CONTENT_GENERATOR restful_meshms_messagelist_json_content;
 
-static int reopen_meshms_message_iterator(httpd_request *r)
+static enum meshms_status reopen_meshms_message_iterator(httpd_request *r)
 {
-  enum meshms_status status;
   if (!meshms_message_iterator_is_open(&r->u.msglist.iter)) {
+    enum meshms_status status;
     if (   meshms_failed(status = meshms_message_iterator_open(&r->u.msglist.iter, &r->sid1, &r->sid2))
 	|| meshms_failed(status = meshms_message_iterator_prev(&r->u.msglist.iter))
     )
-      return -1;
+      return status;
     r->u.msglist.finished = status != MESHMS_STATUS_UPDATED;
     if (!r->u.msglist.finished) {
       r->u.msglist.latest_which_ply = r->u.msglist.iter.which_ply;
       r->u.msglist.latest_offset = r->u.msglist.iter.offset;
     }
   }
-  return 0;
+  return MESHMS_STATUS_OK;
 }
 
 static int restful_meshms_messagelist_json(httpd_request *r, const char *remainder)
@@ -233,7 +278,10 @@ static int restful_meshms_messagelist_json(httpd_request *r, const char *remaind
   r->u.msglist.phase = LIST_HEADER;
   r->u.msglist.token_offset = 0;
   r->u.msglist.end_time = 0;
-  http_request_response_generated(&r->http, 200, "application/json", restful_meshms_messagelist_json_content);
+  enum meshms_status status;
+  if (meshms_failed(status = reopen_meshms_message_iterator(r)))
+    return http_request_meshms_response(r, 0, NULL, status);
+  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_meshms_messagelist_json_content);
   return 1;
 }
 
@@ -245,19 +293,20 @@ static int restful_meshms_newsince_messagelist_json(httpd_request *r, const char
   r->finalise_union = finalise_union_meshms_messagelist;
   r->u.msglist.rowcount = 0;
   r->u.msglist.phase = LIST_HEADER;
-  if (reopen_meshms_message_iterator(r) == -1)
-    return -1;
+  enum meshms_status status;
+  if (meshms_failed(status = reopen_meshms_message_iterator(r)))
+    return http_request_meshms_response(r, 0, NULL, status);
   if (cmp_rhizome_bid_t(&r->bid, r->u.msglist.iter.my_ply_bid) == 0)
     r->u.msglist.token_which_ply = MY_PLY;
   else if (cmp_rhizome_bid_t(&r->bid, r->u.msglist.iter.their_ply_bid) == 0)
     r->u.msglist.token_which_ply = THEIR_PLY;
   else {
-    http_request_simple_response(&r->http, 404, "Invalid token");
+    http_request_simple_response(&r->http, 404, "Unmatched token");
     return 404;
   }
   r->u.msglist.token_offset = r->ui64;
   r->u.msglist.end_time = gettime_ms() + config.rhizome.api.restful.newsince_timeout * 1000;
-  http_request_response_generated(&r->http, 200, "application/json", restful_meshms_messagelist_json_content);
+  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_meshms_messagelist_json_content);
   return 1;
 }
 
@@ -266,7 +315,7 @@ static HTTP_CONTENT_GENERATOR_STRBUF_CHUNKER restful_meshms_messagelist_json_con
 static int restful_meshms_messagelist_json_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
 {
   httpd_request *r = (httpd_request *) hr;
-  if (reopen_meshms_message_iterator(r) == -1)
+  if (meshms_failed(reopen_meshms_message_iterator(r)))
     return -1;
   return generate_http_content_from_strbuf_chunks(hr, (char *)buf, bufsz, result, restful_meshms_messagelist_json_content_chunk);
 }
@@ -403,7 +452,7 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
 	    ++r->u.msglist.rowcount;
 	    enum meshms_status status;
 	    if (meshms_failed(status = meshms_message_iterator_prev(&r->u.msglist.iter)))
-	      return -1;
+	      return http_request_meshms_response(r, 0, NULL, status);
 	    r->u.msglist.finished = status != MESHMS_STATUS_UPDATED;
 	  }
 	  return 1;
@@ -502,21 +551,8 @@ static int restful_meshms_sendmessage_end(struct http_request *hr)
     return http_response_form_part(r, "Missing", PART_MESSAGE, NULL, 0);
   assert(r->u.sendmsg.message.length > 0);
   assert(r->u.sendmsg.message.length <= MESHMS_MESSAGE_MAX_LEN);
-  enum meshms_status status = meshms_send_message(&r->sid1, &r->sid2, r->u.sendmsg.message.buffer, r->u.sendmsg.message.length);
-  switch (status) {
-    case MESHMS_STATUS_ERROR:
-      return 500;
-    case MESHMS_STATUS_OK:
-    case MESHMS_STATUS_UPDATED:
-      http_request_simple_response(&r->http, 201, "Message sent");
-      return 201;
-    case MESHMS_STATUS_SID_LOCKED:
-      http_request_simple_response(&r->http, 403, "Identity unknown");
-      return 403;
-    case MESHMS_STATUS_PROTOCOL_FAULT:
-      http_request_simple_response(&r->http, 403, "Protocol fault");
-      return 403;
-    default:
-      return 500;
-  }
+  enum meshms_status status;
+  if (meshms_failed(status = meshms_send_message(&r->sid1, &r->sid2, r->u.sendmsg.message.buffer, r->u.sendmsg.message.length)))
+    return http_request_meshms_response(r, 0, NULL, status);
+  return http_request_meshms_response(r, 201, "Message sent", status);
 }

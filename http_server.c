@@ -64,6 +64,11 @@ static struct {
 #undef VERB_ENTRY
 };
 
+const char CONTENT_TYPE_TEXT[] = "text/plain";
+const char CONTENT_TYPE_HTML[] = "text/html";
+const char CONTENT_TYPE_JSON[] = "application/json";
+const char CONTENT_TYPE_BLOB[] = "application/octet-stream";
+
 static struct profile_total http_server_stats = {
   .name = "http_server_poll",
 };
@@ -1787,17 +1792,44 @@ static const char *httpResultString(int response_code)
 
 static strbuf strbuf_status_body(strbuf sb, struct http_response *hr, const char *message)
 {
-  if (hr->header.content_type && strcmp(hr->header.content_type, "text/plain") == 0) {
-    strbuf_sprintf(sb, "%03u %s\r\n", hr->result_code, message);
+  if (   hr->header.content_type == CONTENT_TYPE_TEXT
+      || (hr->header.content_type && strcmp(hr->header.content_type, CONTENT_TYPE_TEXT) == 0)
+  ) {
+    hr->header.content_type = CONTENT_TYPE_TEXT;
+    strbuf_sprintf(sb, "%03u %s", hr->result_code, message);
+    if (hr->result_extra_label) {
+      strbuf_puts(sb, "\r\n");
+      strbuf_puts(sb, hr->result_extra_label);
+      strbuf_puts(sb, "=");
+      strbuf_json_atom_as_text(sb, &hr->result_extra_value);
+    }
+    strbuf_puts(sb, "\r\n");
   }
-  else if (hr->header.content_type && strcmp(hr->header.content_type, "application/json") == 0) {
+  else if (    hr->header.content_type == CONTENT_TYPE_JSON
+           || (hr->header.content_type && strcmp(hr->header.content_type, CONTENT_TYPE_JSON) == 0)
+  ) {
+    hr->header.content_type = CONTENT_TYPE_JSON;
     strbuf_sprintf(sb, "{\n \"http_status_code\": %u,\n \"http_status_message\": ", hr->result_code);
     strbuf_json_string(sb, message);
-    strbuf_puts(sb, " \n}");
+    if (hr->result_extra_label) {
+      strbuf_puts(sb, ",\n ");
+      strbuf_json_string(sb, hr->result_extra_label);
+      strbuf_puts(sb, ": ");
+      strbuf_json_atom_as_html(sb, &hr->result_extra_value);
+    }
+    strbuf_puts(sb, "\n}");
   }
   else {
-    hr->header.content_type = "text/html";
-    strbuf_sprintf(sb, "<html><h1>%03u %s</h1></html>", hr->result_code, message);
+    hr->header.content_type = CONTENT_TYPE_HTML;
+    strbuf_sprintf(sb, "<html>\n<h1>%03u %s</h1>", hr->result_code, message);
+    if (hr->result_extra_label) {
+      strbuf_puts(sb, "\n<dl><dt>");
+      strbuf_html_escape(sb, hr->result_extra_label, strlen(hr->result_extra_label));
+      strbuf_puts(sb, "</dt><dd>");
+      strbuf_json_atom_as_html(sb, &hr->result_extra_value);
+      strbuf_puts(sb, "</dd></dl>");
+    }
+    strbuf_puts(sb, "\n</html>");
   }
   return sb;
 }

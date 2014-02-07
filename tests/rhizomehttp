@@ -1100,6 +1100,26 @@ test_MeshmsListMessages() {
    done
 }
 
+doc_MeshmsListMessagesNoIdentity="HTTP RESTful list MeshMS messages from unknown identity"
+setup_MeshmsListMessagesNoIdentity() {
+   setup
+   SIDX=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
+}
+test_MeshmsListMessagesNoIdentity() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDX/$SIDA/messagelist.json"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertJq http.body 'contains({"http_status_code": 403})'
+   assertJq http.body 'contains({"meshms_status_code": 2})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'identity.*unknown'
+}
+
 doc_MeshmsListMessagesNewSince="HTTP RESTful list MeshMS messages in one conversation since token as JSON"
 setup_MeshmsListMessagesNewSince() {
    IDENTITY_COUNT=2
@@ -1282,6 +1302,7 @@ test_MeshmsSendNoIdentity() {
    assertExitStatus == 0
    assertStdoutIs 403
    assertJq http.body 'contains({"http_status_code": 403})'
+   assertJq http.body 'contains({"meshms_status_code": 2})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'identity.*unknown'
 }
 

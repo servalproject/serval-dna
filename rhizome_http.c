@@ -42,7 +42,7 @@ int rhizome_file_page(httpd_request *r, const char *remainder)
   int ret = rhizome_response_content_init_filehash(r, &filehash);
   if (ret)
     return ret;
-  http_request_response_generated(&r->http, 200, "application/binary", rhizome_payload_content);
+  http_request_response_generated(&r->http, 200, CONTENT_TYPE_BLOB, rhizome_payload_content);
   return 1;
 }
 
@@ -63,7 +63,7 @@ int manifest_by_prefix_page(httpd_request *r, const char *remainder)
   if (ret == -1)
     return 500;
   if (ret == 0) {
-    http_request_response_static(&r->http, 200, "application/binary", (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes);
+    http_request_response_static(&r->http, 200, CONTENT_TYPE_BLOB, (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes);
     return 1;
   }
   return 404;
@@ -86,6 +86,6 @@ int rhizome_status_page(httpd_request *r, const char *remainder)
   strbuf_puts(b, "</body></html>");
   if (strbuf_overrun(b))
     return -1;
-  http_request_response_static(&r->http, 200, "text/html", buf, strbuf_len(b));
+  http_request_response_static(&r->http, 200, CONTENT_TYPE_HTML, buf, strbuf_len(b));
   return 1;
 }

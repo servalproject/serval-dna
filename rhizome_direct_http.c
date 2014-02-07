@@ -276,7 +276,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
     if (config.debug.rhizome)
       DEBUGF("Import sans-manifest appeared to succeed");
     /* Respond with the manifest that was added. */
-    http_request_response_static(&r->http, 200, "text/plain", (const char *)m->manifestdata, m->manifest_all_bytes);
+    http_request_response_static(&r->http, 200, CONTENT_TYPE_TEXT, (const char *)m->manifestdata, m->manifest_all_bytes);
     /* clean up after ourselves */
     if (mout && mout != m)
       rhizome_manifest_free(mout);
@@ -516,9 +516,9 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   strbuf_sprintf(content_preamble,
       "--%s\r\n"
       "Content-Disposition: form-data; name=\"data\"; filename=\"IHAVEs\"\r\n"
-      "Content-Type: application/octet-stream\r\n"
+      "Content-Type: %s\r\n"
       "\r\n",
-      boundary
+      boundary, CONTENT_TYPE_BLOB
     );
   strbuf_sprintf(content_postamble, "\r\n--%s--\r\n", boundary);
   assert(!strbuf_overrun(content_preamble));
