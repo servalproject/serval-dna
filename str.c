@@ -905,7 +905,7 @@ size_t strn_fromprint(unsigned char *dst, size_t dstsiz, const char *src, size_t
   unsigned char *const odst = dst;
   unsigned char *const edst = dst + dstsiz;
   const char *const esrc = srclen ? src + srclen : NULL;
-  while (src < esrc && *src && *src != endquote && dst < edst) {
+  while ((src < esrc || !esrc) && *src && *src != endquote && dst < edst) {
     switch (*src) {
     case '\\':
       ++src;
