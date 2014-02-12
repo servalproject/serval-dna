@@ -59,12 +59,12 @@ struct monitor_state {
   int argc;
   char *argv[MAX_ARGS];
   unsigned char *data;
-  int dataBytes;
-  int cmdBytes;
+  size_t dataBytes;
+  size_t cmdBytes;
   
   int state;
   unsigned char buffer[MONITOR_CLIENT_BUFFER_SIZE];
-  int bufferBytes;
+  size_t bufferBytes;
 };
 
 /* Open monitor interface abstract domain named socket */
@@ -140,7 +140,7 @@ int monitor_client_writeline_and_data(int fd,unsigned char *data,int bytes,char 
 int monitor_client_read(int fd, struct monitor_state *res, struct monitor_command_handler *handlers, int handler_count)
 {
   /* Read any available bytes */
-  int oldOffset = res->bufferBytes;
+  size_t oldOffset = res->bufferBytes;
   
   if (oldOffset+1>=MONITOR_CLIENT_BUFFER_SIZE)
     return WHY("Buffer full without finding command");
@@ -148,7 +148,7 @@ int monitor_client_read(int fd, struct monitor_state *res, struct monitor_comman
   if (res->bufferBytes==0)
     res->cmd = (char *)res->buffer;
   
-  int bytesRead = read(fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset);
+  ssize_t bytesRead = read(fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset);
   if (bytesRead == -1){
     switch(errno) {
       case ENOTRECOVERABLE:
@@ -161,10 +161,10 @@ int monitor_client_read(int fd, struct monitor_state *res, struct monitor_comman
 #endif
 	return 0;
     }
-    WHYF_perror("read(%d, %p, %d)", fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset);
+    WHYF_perror("read(%d, %p, %zd)", fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset);
     return -1;
   } else if (bytesRead == 0) {
-    WHYF("read(%d, %p, %d) returned %d", fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset, bytesRead);
+    WHYF("read(%d, %p, %zd) returned %zd", fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset, (size_t)bytesRead);
     return -1;
   }
   
@@ -176,7 +176,7 @@ int monitor_client_read(int fd, struct monitor_state *res, struct monitor_comman
 again:
   // wait until we have the whole command line
   if (res->state == STATE_INIT){
-    int i;
+    size_t i;
     for(i=oldOffset;i<res->bufferBytes;i++){
       if (res->buffer[i]=='\n'){
 	// skip any leading \n's
@@ -192,8 +192,8 @@ again:
 	  res->cmd++;
 	  for (; isdigit(*res->cmd); ++res->cmd)
 	    res->dataBytes = res->dataBytes * 10 + *res->cmd - '0';
-	  if (res->dataBytes<0 || res->dataBytes > MONITOR_CLIENT_BUFFER_SIZE)
-	    return WHYF("Invalid data length %d", res->dataBytes);
+	  if (res->dataBytes > MONITOR_CLIENT_BUFFER_SIZE)
+	    return WHYF("Invalid data length %zd", res->dataBytes);
 	  if (*res->cmd==':')
 	    res->cmd++;
 	}
@@ -237,7 +237,7 @@ again:
     int i;
     // call all handlers that match (yes there might be more than one)
     for (i=0;i<handler_count;i++){
-      /* since we know res->cmd is terminated with a '\n', 
+      /* since we know res->cmd is terminated with a '\0', 
        and there shouldn't be a '\n' in h->command, 
        this shouldn't run past the end of the buffer */
       if (handlers[i].handler && (!handlers[i].command || strcase_startswith(res->cmd,handlers[i].command, NULL))){
