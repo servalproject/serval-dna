@@ -218,7 +218,7 @@ static int restful_meshms_conversationlist_json_content_chunk(struct http_reques
 	if (r->u.mclist.rowcount != 0)
 	  strbuf_putc(b, ',');
 	strbuf_puts(b, "\n[");
-	strbuf_sprintf(b, "%u", r->u.mclist.rowcount);
+	strbuf_sprintf(b, "%zu", r->u.mclist.rowcount);
 	strbuf_putc(b, ',');
 	strbuf_json_hex(b, r->sid1.binary, sizeof r->sid1.binary);
 	strbuf_putc(b, ',');
