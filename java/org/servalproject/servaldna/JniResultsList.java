@@ -1,11 +1,11 @@
-package org.servalproject.servald;
+package org.servalproject.servaldna;
 
 import java.util.List;
 
 public class JniResultsList extends AbstractJniResults implements IJniResults {
 	final List<byte[]> list;
 	private byte[] empty = new byte[0];
-	JniResultsList(List<byte[]> list) {
+	public JniResultsList(List<byte[]> list) {
 		this.list = list;
 	}
 

@@ -1,4 +1,4 @@
-package org.servalproject.servald;
+package org.servalproject.servaldna;
 
 public interface IJniResults {
 	public void startResultSet(int columns);

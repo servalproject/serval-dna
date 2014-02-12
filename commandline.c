@@ -169,16 +169,16 @@ int Throw(JNIEnv *env, const char *class, const char *msg)
 /* JNI entry point to command line.  See org.servalproject.servald.ServalD class for the Java side.
    JNI method descriptor: "(Ljava/util/List;[Ljava/lang/String;)I"
 */
-JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv *env, jobject UNUSED(this), jobject outv, jobjectArray args)
+JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_rawCommand(JNIEnv *env, jobject UNUSED(this), jobject outv, jobjectArray args)
 {
   struct cli_context context;
   bzero(&context, sizeof(context));
 
   // find jni results methods
   if (!IJniResults){
-    IJniResults = (*env)->FindClass(env, "org/servalproject/servald/IJniResults");
+    IJniResults = (*env)->FindClass(env, "org/servalproject/servaldna/IJniResults");
     if (IJniResults==NULL)
-      return Throw(env, "java/lang/IllegalStateException", "Unable to locate class org.servalproject.servald.IJniResults");
+      return Throw(env, "java/lang/IllegalStateException", "Unable to locate class org.servalproject.servaldna.IJniResults");
     startResultSet = (*env)->GetMethodID(env, IJniResults, "startResultSet", "(I)V");
     if (startResultSet==NULL)
       return Throw(env, "java/lang/IllegalStateException", "Unable to locate method startResultSet");

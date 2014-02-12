@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2011 The Serval Project
+ * Copyright (C) 2012 Serval Project, Inc.
  *
  * This file is part of Serval Software (http://www.servalproject.org)
  *
@@ -18,39 +18,29 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-package org.servalproject.servald;
+package org.servalproject.servaldna;
 
-import java.util.List;
-import java.util.LinkedList;
+import java.nio.ByteBuffer;
 
-class ServalD
-{
-	int status;
-	List<byte[]> outv;
+public class FileHash extends AbstractId {
 
-	static
-	{
-		String property = System.getProperty("java.library.path");
-		System.err.println("Attempting to load libservald.so from "+property);
-		System.loadLibrary("servald");
+	public static final int BINARY_SIZE = 64;
+
+	@Override
+	public int getBinarySize() {
+		return BINARY_SIZE;
 	}
 
-	private static native int rawCommand(IJniResults outv, String[] args);
-
-	public void command(String... args)
-	{
-		this.outv = new LinkedList<byte[]>();
-		IJniResults results = new JniResultsList(outv);
-		this.status = this.rawCommand(results, args);
+	public FileHash(String hex) throws InvalidHexException {
+		super(hex);
 	}
 
-	public static void main(String[] args)
-	{
-		ServalD servald = new ServalD();
-		servald.command(args);
-		for (byte[] a: servald.outv) {
-			System.out.println(new String(a));
-		}
-		System.exit(servald.status);
+	public FileHash(ByteBuffer b) throws InvalidBinaryException {
+		super(b);
 	}
+
+	public FileHash(byte[] binary) throws InvalidBinaryException {
+		super(binary);
+	}
+
 }
