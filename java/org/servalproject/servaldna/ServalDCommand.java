@@ -29,7 +29,7 @@ public class ServalDCommand
 
 	static
 	{
-		System.loadLibrary("servald");
+		System.loadLibrary("serval");
 	}
 
 	/**

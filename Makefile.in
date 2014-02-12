@@ -148,7 +148,7 @@ COPYRIGHT_TOOL := $(call findPATH,sp-copyright-tool)
 
 # This does not build on 64 bit elf platforms as NaCL isn't built with -fPIC
 # DOC 20120615
-libservald.so: $(OBJS) version.o
+libserval.so: $(OBJS) version.o
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(OBJS) version.o $(LDFLAGS)
 
