@@ -556,30 +556,43 @@ static enum meshms_status read_known_conversations(rhizome_manifest *m, const si
       break;
     if (config.debug.meshms)
       DEBUGF("Reading existing conversation for %s", alloca_tohex_sid_t(sid));
-    if (their_sid && cmp_sid_t(&sid, their_sid) != 0)
-      continue;
-    struct meshms_conversations *ptr = add_conv(conv, &sid);
-    if (!ptr)
-      goto end;
-    unsigned char details[8*3];
+    
+    // unpack the stored details first so we know where the next record is
+    unsigned char details[12*3];
     r = rhizome_read_buffered(&read, &buff, details, sizeof details);
     if (r == -1)
       break;
     int bytes = r;
+    
+    uint64_t last_message=0;
+    uint64_t read_offset=0;
+    uint64_t their_size=0;
+    
     int ofs = 0;
-    int unpacked = unpack_uint(details, bytes, &ptr->their_last_message);
+    int unpacked = unpack_uint(details, bytes, &last_message);
     if (unpacked == -1)
       break;
     ofs += unpacked;
-    unpacked = unpack_uint(details+ofs, bytes-ofs, &ptr->read_offset);
+    unpacked = unpack_uint(details+ofs, bytes-ofs, &read_offset);
     if (unpacked == -1)
       break;
     ofs += unpacked;
-    unpacked = unpack_uint(details+ofs, bytes-ofs, &ptr->their_size);
+    unpacked = unpack_uint(details+ofs, bytes-ofs, &their_size);
     if (unpacked == -1)
       break;
     ofs += unpacked;
     read.offset += ofs - bytes;
+    
+    // skip uninteresting records
+    if (their_sid && cmp_sid_t(&sid, their_sid) != 0)
+      continue;
+    
+    struct meshms_conversations *ptr = add_conv(conv, &sid);
+    if (!ptr)
+      goto end;
+    ptr->their_last_message = last_message;
+    ptr->read_offset = read_offset;
+    ptr->their_size = their_size;
   }
 fault:
   status = MESHMS_STATUS_PROTOCOL_FAULT;

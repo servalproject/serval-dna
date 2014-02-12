@@ -46,7 +46,7 @@ public abstract class AbstractId {
 	private final byte[] binary;
 
 	public AbstractId(String hex) throws InvalidHexException {
-		if (hex.length() != getBinarySize())
+		if (hex.length() != getBinarySize()*2)
 			throw new InvalidHexException(this, "invalid length " + hex.length() + " (should be " + (getBinarySize() * 2) + ") of '" + hex + "'");
 		binary = new byte[getBinarySize()];
 		int j = 0;

@@ -199,6 +199,8 @@ test_listConversations() {
    assertStdoutGrep --stderr --matches=1 ":$SIDA3::11:11\$"
    assertStdoutGrep --stderr --matches=1 ":$SIDA4::14:14\$"
    assertStdoutLineCount '==' 5
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   executeOk_servald meshms list messages $SIDA1 $SIDA4
 }
 
 doc_sendNoIdentity="Send message from unknown identity"
