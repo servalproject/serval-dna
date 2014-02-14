@@ -2,22 +2,29 @@ Serval DNA Build and Test
 =========================
 [Serval Project], March 2013
 
-Supported Targets
------------------
+Supported Architectures
+-----------------------
 
-The [Serval DNA][] code successfully builds for the following platforms:
+These instructions will build [Serval DNA][] successfully for the following platforms:
 
- * Debian Linux, ix86 and x86\_64, kernels 2.6.x and 3.x, [gcc 4.4][] to [gcc 4.7][]
- * [Android 2.2 “Froyo”][], Arm, Linux kernels 2.6.x and 3.x, [gcc 4.4][] supplied as
-   part of [Android NDK][] Revision 7b
- * Mac OS X 10.7 “Lion”, x86\_64, [gcc 4.2][] available in [Xcode 4][] 3.2.6
- * Oracle SunOs 5.10 (Solaris), Sparc, [gcc 4.4][]
+ * Debian Linux, ix86 and x86\_64, kernels 2.6.x and 3.x, using [gcc 4.4][] to
+   [gcc 4.7][]
+ * Mac OS X 10.7 “Lion”, x86\_64, using [gcc 4.2][] available in [Xcode 4][]
+   3.2.6
+ * Oracle SunOs 5.10 (Solaris), Sparc, using [gcc 4.4][]
+
+[Serval DNA][] also runs on the following platforms, to which these build
+instructions do not apply:
+
+ * [Android 2.2 “Froyo”][], Arm, Linux kernels 2.6.x and 3.x, using [gcc 4.4][]
+   supplied as part of [Android NDK][] Revision 7b
+ * [OpenWRT][]
 
 Download
 --------
 
 Serval DNA source code is available from the [serval-dna][] repository on
-GitHub:  You can use [Git][] to download the latest version:
+GitHub.  You can use [Git][] to download the latest version:
 
     $ cd $HOME/src
     $ git clone -q git://github.com/servalproject/serval-dna.git
@@ -217,6 +224,7 @@ and may need to be changed for your particular circumstances.
 [Xcode 4]: https://developer.apple.com/xcode/
 [gcc 4.4]: http://gcc.gnu.org/gcc-4.4/
 [gcc 4.7]: http://gcc.gnu.org/gcc-4.7/
+[OpenWRT]: ./doc/OpenWRT.md
 [JNI]: http://en.wikipedia.org/wiki/Java_Native_Interface
 [Bash]: http://en.wikipedia.org/wiki/Bash_(Unix_shell)
 [GNU make]: http://www.gnu.org/software/make/
