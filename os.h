@@ -85,6 +85,21 @@ __SERVAL_DNA__OS_INLINE int bcmp(const void *s1, const void *s2, size_t n) {
 }
 #endif
 
+/* If there is no lseek64(2) system call but off_t is 64 bits, then we can use
+ * lseek(2) instead.
+ */
+#ifndef HAVE_LSEEK64
+# if SIZEOF_OFF_T != 8
+#  error "lseek64(2) system call is not available and `sizeof(off_t) is not 8"
+# endif
+# ifndef HAVE_OFF64_T
+typedef off64_t off_t
+__SERVAL_DNA__OS_INLINE off64_t lseek64(int fd, off64_t offset, int whence) {
+    return lseek(fd, offset, whence);
+}
+# endif
+#endif
+
 /* The "e" variants log the error before returning -1.
  */
 int mkdirs(const char *path, mode_t mode);

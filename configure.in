@@ -69,7 +69,14 @@ AC_CHECK_LIB(c,srandomdev)
 dnl Solaris hides nanosleep here
 AC_CHECK_LIB(rt,nanosleep)
 
-AC_CHECK_FUNCS([getpeereid bcopy bzero bcmp])
+AC_CHECK_FUNCS([getpeereid bcopy bzero bcmp lseek64])
+AC_CHECK_TYPES([off64_t], [have_off64_t=1], [have_off64_t=0])
+AC_CHECK_SIZEOF([off_t])
+
+dnl There must be a 64-bit seek(2) system call of some kind
+AS_IF([test \( "x$have_lseek64_t" = "xno" -a "x$ac_cv_sizeof_off_t" != x8 ], [
+    AC_MSG_ERROR([Missing lseek64(2) system call])
+])
 
 AC_CHECK_HEADERS(
     stdio.h \
