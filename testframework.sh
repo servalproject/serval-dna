@@ -191,7 +191,10 @@ runTests() {
       --jobs=*) _tfw_fatal "invalid option: $1";;
       -E|--stop-on-error) _tfw_stop_on_error=true;;
       -F|--stop-on-failure) _tfw_stop_on_failure=true;;
-      --timeout=*) _tfw_timeout_override="${1#*=}";;
+      --timeout=*)
+         _tfw_is_float "${1#*=}" || _tfw_fatal "invalid option: $1"
+         _tfw_timeout_override="${1#*=}"
+         ;;
       --) shift; break;;
       --*) _tfw_fatal "unsupported option: $1";;
       *) _tfw_fatal "spurious argument: $1";;
@@ -685,13 +688,18 @@ _tfw_execute() {
    local timer_pid=
    local timeout=${_tfw_timeout_override:-${_tfw_opt_timeout:-${TFW_EXECUTE_TIMEOUT:-$_tfw_default_execute_timeout}}}
    if [ -n "$timeout" ]; then
+      _tfw_is_float "$timeout" || error "invalid timeout '$timeout'"
+   fi
+   if [ -n "$timeout" ]; then
       if type pgrep >/dev/null 2>/dev/null; then
-         (
+         (  #)#(fix Vim syntax colouring
             # For some reason, set -e does not work here.  So all the following
             # commands are postfixed with || exit $?
             local executable_pid=$(pgrep -P $subshell_pid) || exit $?
             [ -n "$executable_pid" ] || exit $?
-            sleep $timeout 0 0 0 || exit $?
+            if [ -n "$timeout" ]; then
+               sleep $timeout || exit $?
+            fi
             kill -0 $executable_pid || exit $?
             tfw_log "# timeout after $timeout seconds, sending SIGABRT to pid $executable_pid ($executed)" || exit $?
             kill -ABRT $executable_pid || exit $?
@@ -835,8 +843,7 @@ _tfw_getopts() {
       execute*:--core-backtrace) _tfw_opt_core_backtrace=true;;
       @(execute*|wait_until):--timeout=@(+([0-9])?(.+([0-9]))|*([0-9]).+([0-9]))) _tfw_opt_timeout="${1#*=}";;
       @(execute*|wait_until):--timeout=*) _tfw_error "invalid value: $1";;
-      wait_until:--sleep=@(+([0-9])?(.+([0-9]))|*([0-9]).+([0-9]))) _tfw_opt_sleep="${1#*=}";;
-      wait_until:--sleep=*) _tfw_error "invalid value: $1";;
+      wait_until:--sleep=*) _tfw_is_float "${1#*=}" || _tfw_error "invalid value: $1"; _tfw_opt_sleep="${1#*=}";;
       *grep:--fixed-strings) _tfw_opt_grepopts+=(-F);;
       assertcontentgrep:--matches=+([0-9])) _tfw_opt_matches="${1#*=}";;
       assertcontentgrep:--matches=*) _tfw_error "invalid value: $1";;
@@ -866,6 +873,13 @@ _tfw_getopts() {
    esac
    _tfw_shopt_restore oo
    return 0
+}
+
+_tfw_is_float() {
+   case "$1" in
+   @(+([0-9])?(.+([0-9]))|*([0-9]).+([0-9]))) return 0;
+   esac
+   return 1
 }
 
 _tfw_matches_rexp() {
@@ -1607,7 +1621,7 @@ assertStderrGrep() {
 # Wait until a given condition is met:
 #  - can specify the timeout with --timeout=SECONDS (overridden by command-line
 #    option)
-#  - can specify the sleep interval with --sleep=SECONDS
+#  - can specify the sleep interval with --sleep=SECONDS (can be a float)
 #  - the condition is a command that is executed repeatedly until returns zero
 #    status
 # where SECONDS may be fractional, eg, 1.5
@@ -1615,14 +1629,15 @@ wait_until() {
    $_tfw_assert_noise && tfw_log "# wait_until" $(shellarg "$@")
    local start=$SECONDS
    _tfw_getopts wait_until "$@"
-   local seconds=${_tfw_timeout_override:-${_tfw_opt_timeout:-${TFW_WAIT_UNTIL_TIMEOUT:-${_tfw_default_wait_until_timeout:-1}}}}
    shift $_tfw_getopts_shift
+   local timeout=${_tfw_timeout_override:-${_tfw_opt_timeout:-${TFW_WAIT_UNTIL_TIMEOUT:-${_tfw_default_wait_until_timeout:-1}}}}
+   _tfw_is_float "$timeout" || error "invalid timeout '$timeout'"
    local sense=
    while [ "$1" = '!' ]; do
       sense="$sense !"
       shift
    done
-   sleep $seconds 0 &
+   sleep $timeout &
    local timeout_pid=$!
    while true; do
       "$@"
