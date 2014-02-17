@@ -219,10 +219,10 @@ test_EntryPinServer() {
    assertStdoutLineCount == 1
    assertStdoutGrep --fixed-strings "$SIDA"
 }
-finally_KeyringPinServer() {
+finally_EntryPinServer() {
    stop_servald_server
 }
-teardown_KeyringPinServer() {
+teardown_EntryPinServer() {
    teardown_servald
 }
 
