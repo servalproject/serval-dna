@@ -36,7 +36,7 @@ static void finalise_union_rhizome_insert(httpd_request *r)
     rhizome_fail_write(&r->u.insert.write);
 }
 
-#define LIST_TOKEN_STRLEN (BASE64_ENCODED_LEN(sizeof(uuid_t) + 8))
+#define LIST_TOKEN_STRLEN (BASE64_ENCODED_LEN(sizeof(serval_uuid_t) + 8))
 #define alloca_list_token(rowid) list_token_to_str(alloca(LIST_TOKEN_STRLEN + 1), (rowid))
 
 static char *list_token_to_str(char *buf, uint64_t rowid)
@@ -57,7 +57,7 @@ static int strn_to_list_token(const char *str, uint64_t *rowidp, const char **af
   unsigned char token[sizeof rhizome_db_uuid.u.binary + sizeof *rowidp];
   if (base64url_decode(token, sizeof token, str, 0, afterp, 0, NULL) != sizeof token)
     return 0;
-  if (cmp_uuid_t(&rhizome_db_uuid, (uuid_t *) &token) != 0)
+  if (cmp_uuid_t(&rhizome_db_uuid, (serval_uuid_t *) &token) != 0)
     return 0;
   memcpy(rowidp, token + sizeof rhizome_db_uuid.u.binary, sizeof *rowidp);
   return 1;

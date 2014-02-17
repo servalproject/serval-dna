@@ -27,7 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 # include <arpa/inet.h>
 #endif
 
-enum uuid_version uuid_get_version(const uuid_t *uuid)
+enum uuid_version uuid_get_version(const serval_uuid_t *uuid)
 {
   assert(uuid_is_valid(uuid));
   switch (ntohs(uuid->u.record.time_hi_and_version) & 0xf000) {
@@ -40,7 +40,7 @@ enum uuid_version uuid_get_version(const uuid_t *uuid)
   return UUID_VERSION_UNSUPPORTED;
 }
 
-void uuid_set_version(uuid_t *uuid, enum uuid_version version)
+void uuid_set_version(serval_uuid_t *uuid, enum uuid_version version)
 {
   uint16_t version_bits;
   switch (version) {
@@ -55,7 +55,7 @@ void uuid_set_version(uuid_t *uuid, enum uuid_version version)
   uuid->u.record.time_hi_and_version = htons((ntohs(uuid->u.record.time_hi_and_version) & 0xfff) | version_bits);
 }
 
-int uuid_generate_random(uuid_t *uuid)
+int uuid_generate_random(serval_uuid_t *uuid)
 {
   if (urandombytes(uuid->u.binary, sizeof uuid->u.binary) == -1)
     return -1;
@@ -66,7 +66,7 @@ int uuid_generate_random(uuid_t *uuid)
   return 0;
 }
 
-strbuf strbuf_uuid(strbuf sb, const uuid_t *uuid)
+strbuf strbuf_uuid(strbuf sb, const serval_uuid_t *uuid)
 {
   assert(uuid_is_valid(uuid));
   unsigned i;
@@ -82,7 +82,7 @@ strbuf strbuf_uuid(strbuf sb, const uuid_t *uuid)
   return sb;
 }
 
-char *uuid_to_str(const uuid_t *uuid, char *const dst)
+char *uuid_to_str(const serval_uuid_t *uuid, char *const dst)
 {
   strbuf b = strbuf_local(dst, UUID_STRLEN + 1);
   strbuf_uuid(b, uuid);
@@ -90,7 +90,7 @@ char *uuid_to_str(const uuid_t *uuid, char *const dst)
   return dst;
 }
 
-int str_to_uuid(const char *const str, uuid_t *uuid, const char **afterp)
+int str_to_uuid(const char *const str, serval_uuid_t *uuid, const char **afterp)
 {
   const char *end = str;
   int ret = 0;

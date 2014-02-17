@@ -408,7 +408,7 @@ int create_rhizome_datastore_dir();
 #define FORM_RHIZOME_IMPORT_PATH(buf,fmt,...) (form_rhizome_import_path((buf), sizeof(buf), (fmt), ##__VA_ARGS__))
 
 extern sqlite3 *rhizome_db;
-uuid_t rhizome_db_uuid;
+serval_uuid_t rhizome_db_uuid;
 
 int rhizome_opendb();
 int rhizome_close_db();
@@ -540,7 +540,7 @@ enum sqlbind_type {
   TOHEX,              // const unsigned char *binary, unsigned bytes
   TEXT_TOUPPER,       // const char *text,
   TEXT_LEN_TOUPPER,   // const char *text, unsigned bytes
-  UUID_T,	      // const uuid_t *uuidp
+  SERVAL_UUID_T,      // const serval_uuid_t *uuidp
   NUL = 1 << 15,      // NUL (no arg) ; NUL|INT, ...
   INDEX = 0xfade0000, // INDEX|INT, int index, ...
   NAMED = 0xdead0000  // NAMED|INT, const char *label, ...
