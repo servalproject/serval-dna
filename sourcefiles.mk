@@ -1,4 +1,5 @@
 SERVAL_SOURCES = \
+	$(SERVAL_BASE)sqlite-amalgamation-3070900/sqlite3.c \
 	$(SERVAL_BASE)cli.c \
 	$(SERVAL_BASE)commandline.c \
 	$(SERVAL_BASE)conf.c \
@@ -70,7 +71,6 @@ SERVAL_SOURCES = \
 	$(SERVAL_BASE)sha2.c \
 	$(SERVAL_BASE)sighandlers.c \
 	$(SERVAL_BASE)slip.c \
-	$(SERVAL_BASE)sqlite-amalgamation-3070900/sqlite3.c \
 	$(SERVAL_BASE)srandomdev.c \
 	$(SERVAL_BASE)str.c \
 	$(SERVAL_BASE)strbuf.c \

@@ -47,7 +47,8 @@ setup_instances() {
 }
 
 assert_keyring_list() {
-    assertStdoutLineCount --stdout --stderr '==' $1
+    unpack_stdout_list X
+    assert --stdout --stderr [ $XNROWS -eq $1 ]
     assertStdoutGrep --stderr --matches=$1 "^[0-9a-fA-F]\{64\}:[0-9*#+]*:.*\$"
     tfw_cat --stdout
 }
@@ -198,8 +199,9 @@ setup_KeyringPinServer() {
 test_KeyringPinServer() {
    start_servald_server --keyring-pin=yellow
    executeOk_servald id self
-   assertStdoutLineCount == 1
-   assertStdoutGrep --fixed-strings "$SIDA"
+   unpack_stdout_list X
+   assert --stdout --stderr [ $XNROWS -eq 1 ]
+   assert --stdout --stderr [ ${XSID[0]} = $SIDA ]
 }
 finally_KeyringPinServer() {
    stop_servald_server
@@ -216,8 +218,9 @@ setup_EntryPinServer() {
 test_EntryPinServer() {
    start_servald_server --entry-pin=yodel
    executeOk_servald id self
-   assertStdoutLineCount == 1
-   assertStdoutGrep --fixed-strings "$SIDA"
+   unpack_stdout_list X
+   assert --stdout --stderr [ $XNROWS -eq 1 ]
+   assert --stdout --stderr [ ${XSID[0]} = $SIDA ]
 }
 finally_EntryPinServer() {
    stop_servald_server
@@ -234,8 +237,9 @@ setup_KeyringEntryPinServer() {
 test_KeyringEntryPinServer() {
    start_servald_server --keyring-pin=yellow --entry-pin=yodel
    executeOk_servald id self
-   assertStdoutLineCount == 1
-   assertStdoutGrep --fixed-strings "$SIDA"
+   unpack_stdout_list X
+   assert --stdout --stderr [ $XNROWS -eq 1 ]
+   assert --stdout --stderr [ ${XSID[0]} = $SIDA ]
 }
 finally_KeyringKeyringPinServer() {
    stop_servald_server
@@ -259,32 +263,32 @@ setup_KeyringEntryPinServer() {
 }
 test_KeyringEntryPinServer() {
    executeOk_servald id self
-   assertStdoutLineCount == 1
-   assertStdoutGrep --fixed-strings "$SIDA"
+   assertStdoutLineCount == 3
+   assertStdoutGrep --matches=1 --fixed-strings "$SIDA"
    executeOk_servald id enter pin 'one'
    executeOk_servald id list
-   assertStdoutLineCount == 2
-   assertStdoutGrep --fixed-strings "sid:$SIDA"
-   assertStdoutGrep --fixed-strings "sid:$ONE"
+   assertStdoutLineCount == 4
+   assertStdoutGrep --matches=1 --fixed-strings "$SIDA"
+   assertStdoutGrep --matches=1 --fixed-strings "$ONE"
    executeOk_servald id enter pin 'two'
    executeOk_servald id list
-   assertStdoutLineCount == 4
-   assertStdoutGrep --fixed-strings "sid:$SIDA"
-   assertStdoutGrep --fixed-strings "sid:$ONE"
-   assertStdoutGrep --fixed-strings "sid:$TWOA"
-   assertStdoutGrep --fixed-strings "sid:$TWOB"
+   assertStdoutLineCount == 6
+   assertStdoutGrep --matches=1 --fixed-strings "$SIDA"
+   assertStdoutGrep --matches=1 --fixed-strings "$ONE"
+   assertStdoutGrep --matches=1 --fixed-strings "$TWOA"
+   assertStdoutGrep --matches=1 --fixed-strings "$TWOB"
    executeOk_servald id relinquish pin 'one'
    executeOk_servald id list
-   assertStdoutLineCount == 3
-   assertStdoutGrep --fixed-strings "sid:$SIDA"
-   assertStdoutGrep --fixed-strings "sid:$TWOA"
-   assertStdoutGrep --fixed-strings "sid:$TWOB"
+   assertStdoutLineCount == 5
+   assertStdoutGrep --matches=1 --fixed-strings "$SIDA"
+   assertStdoutGrep --matches=1 --fixed-strings "$TWOA"
+   assertStdoutGrep --matches=1 --fixed-strings "$TWOB"
    executeOk_servald id relinquish sid "$TWOB"
    tfw_cat --stderr
    executeOk_servald id list
-   assertStdoutLineCount == 2
-   assertStdoutGrep --fixed-strings "sid:$SIDA"
-   assertStdoutGrep --fixed-strings "sid:$TWOA"
+   assertStdoutLineCount == 4
+   assertStdoutGrep --matches=1 --fixed-strings "$SIDA"
+   assertStdoutGrep --matches=1 --fixed-strings "$TWOA"
 }
 teardown_KeyringEntryPinServer() {
    teardown_servald
@@ -306,17 +310,17 @@ setup_ListTags() {
 }
 test_ListTags() {
    executeOk_servald id list
-   assertStdoutLineCount == 3
-   assertStdoutGrep --fixed-strings "sid:$ONE"
-   assertStdoutGrep --fixed-strings "sid:$TWO"
-   assertStdoutGrep --fixed-strings "sid:$THREE"
+   assertStdoutLineCount == 5
+   assertStdoutGrep --fixed-strings "$ONE"
+   assertStdoutGrep --fixed-strings "$TWO"
+   assertStdoutGrep --fixed-strings "$THREE"
    executeOk_servald id list 'tag1'
-   assertStdoutLineCount == 2
-   assertStdoutGrep --fixed-strings "sid:$ONE"
-   assertStdoutGrep --fixed-strings "sid:$TWO"
+   assertStdoutLineCount == 4
+   assertStdoutGrep --fixed-strings "$ONE"
+   assertStdoutGrep --fixed-strings "$TWO"
    executeOk_servald id list 'tag1' 'First Value'
-   assertStdoutLineCount == 1
-   assertStdoutGrep --fixed-strings "sid:$ONE"
+   assertStdoutLineCount == 3
+   assertStdoutGrep --fixed-strings "$ONE"
 }
 teardown_ListTags() {
    teardown_servald

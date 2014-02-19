@@ -78,6 +78,57 @@ extract_stdout_keyvalue() {
    assert --message="stdout of ($executed) contains valid '$_label:' line" --stdout extract_stdout_keyvalue_optional "$@"
 }
 
+# Parse the standard result set output produced by the immediately preceding command
+# command into the following shell variables:
+#  NCOLS the number of columns
+#  NROWS the number of data rows (not counting headers)
+#  HEADER[c] the C-th header label, 0 <= C <= NCOLS-1
+#  <label>[R] where <label> is a header label with all non-alphanumerics
+#  replaced by underscore '_' and all alphas converted to upper case, eg,
+#  .author -> _AUTHOR, is the value of that column in the R-th row, 0 <=
+#  R < NROWS
+#
+# Warning: overwrites existing shell variables.  Names of overwritten shell
+# variables are derived directly from the output of the command, so cannot be
+# controlled.  If a prefix is supplied, all variables are prefixed with that.
+unpack_stdout_list() {
+   local prefix="$1"
+   {
+      local n
+      read n
+      eval ${prefix}NCOLS=\"\$n\"
+      declare -a ${prefix}HEADER
+      local -a header
+      local oIFS="$IFS"
+      IFS=:
+      read -r -a header
+      IFS="$oIFS"
+      eval ${prefix}HEADER="(\"\${header[@]}\")"
+      local hdr
+      local -a colvars=()
+      for hdr in "${header[@]}"; do
+         hdr="${hdr//[^A-Za-z0-9_]/_}"
+         # hdr="${hdr^^*}" would do in Bash-4.0 and later
+         hdr="$(echo "$hdr" | sed -e 's/.*/\U&/')"
+         colvars+=("$hdr")
+      done
+      local -a row
+      IFS=:
+      local i=0
+      while eval read -r -a row; do
+         local j=0
+         local val
+         for val in "${row[@]}"; do
+            eval ${prefix}${colvars[$j]}[$i]=\"\$val\"
+            let ++j
+         done
+         let ++i
+      done
+      IFS="$oIFS"
+      eval ${prefix}NROWS=$i
+   } < <(replayStdout)
+}
+
 # Utility function for creating servald fixtures:
 #  - set $servald variable (executable under test)
 #  - set the current instance to be "Z"
@@ -641,7 +692,6 @@ create_identities() {
       done
    done
    executeOk_servald keyring list "${servald_options[@]}"
-   assertStdoutLineCount '==' $N
    for ((i = 1; i <= N; ++i)); do
       local sidvar=SID$instance_name$i
       local didvar=DID$instance_name$i

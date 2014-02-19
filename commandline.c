@@ -128,6 +128,8 @@ static int outv_growbuf(struct cli_context *context, size_t needed)
 
 static int put_blob(struct cli_context *context, jbyte *value, jsize length){
   jbyteArray arr = NULL;
+  if (context->jni_exception)
+    return -1;
   if (value && length>0){
     arr = (*context->jni_env)->NewByteArray(context->jni_env, length);
     if (arr == NULL || (*context->jni_env)->ExceptionOccurred(context->jni_env)) {
@@ -143,7 +145,7 @@ static int put_blob(struct cli_context *context, jbyte *value, jsize length){
   (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, putBlob, arr);
   if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
     context->jni_exception = 1;
-    return WHY("Exception thrown from CallVoidMethod()");
+    return WHY("Exception thrown from CallVoidMethod(putBlob)");
   }
   if (arr)
     (*context->jni_env)->DeleteLocalRef(context->jni_env, arr);
@@ -287,6 +289,7 @@ int parseCommandLine(struct cli_context *context, const char *argv0, int argc, c
     // Load configuration so that log messages can get out.
     cf_reload_permissive();
     NOWHENCE(HINTF("Run \"%s help\" for more information.", argv0 ? argv0 : "servald"));
+    result =-1;
     break;
   default:
     // Load configuration so that log error messages can get out.
@@ -389,10 +392,13 @@ void cli_columns(struct cli_context *context, int columns, const char *names[])
 {
 #ifdef HAVE_JNI_H
   if (context && context->jni_env) {
+    if (context->jni_exception)
+      return;
+      
     (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, startResultSet, columns);
     if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
       context->jni_exception = 1;
-      WHY("Exception thrown from CallVoidMethod()");
+      WHY("Exception thrown from CallVoidMethod(startResultSet)");
       return;
     }
     int i;
@@ -405,6 +411,11 @@ void cli_columns(struct cli_context *context, int columns, const char *names[])
       }
       (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, setColumnName, i, str);
       (*context->jni_env)->DeleteLocalRef(context->jni_env, str);
+      if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+	context->jni_exception = 1;
+	WHY("Exception thrown from CallVoidMethod(setColumnName)");
+	return;
+      }
     }
     return;
   }
@@ -425,6 +436,8 @@ void cli_field_name(struct cli_context *context, const char *name, const char *d
 {
 #ifdef HAVE_JNI_H
   if (context && context->jni_env) {
+    if (context->jni_exception)
+      return;
     jstring str = (jstring)(*context->jni_env)->NewStringUTF(context->jni_env, name);
     if (str == NULL) {
       context->jni_exception = 1;
@@ -433,6 +446,11 @@ void cli_field_name(struct cli_context *context, const char *name, const char *d
     }
     (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, setColumnName, -1, str);
     (*context->jni_env)->DeleteLocalRef(context->jni_env, str);
+    if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+      context->jni_exception = 1;
+      WHY("Exception thrown from CallVoidMethod(setColumnName)");
+      return;
+    }
     return;
   }
 #endif
@@ -443,7 +461,13 @@ void cli_field_name(struct cli_context *context, const char *name, const char *d
 void cli_put_long(struct cli_context *context, int64_t value, const char *delim){
 #ifdef HAVE_JNI_H
   if (context && context->jni_env) {
+    if (context->jni_exception)
+      return;
     (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, putLong, value);
+    if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+      context->jni_exception = 1;
+      WHY("Exception thrown from CallVoidMethod(putLong)");
+    }
     return;
   }
 #endif
@@ -454,6 +478,8 @@ void cli_put_long(struct cli_context *context, int64_t value, const char *delim)
 void cli_put_string(struct cli_context *context, const char *value, const char *delim){
 #ifdef HAVE_JNI_H
   if (context && context->jni_env) {
+    if (context->jni_exception)
+      return;
     jstring str = NULL;
     if (value){
       str = (jstring)(*context->jni_env)->NewStringUTF(context->jni_env, value);
@@ -465,6 +491,10 @@ void cli_put_string(struct cli_context *context, const char *value, const char *
     }
     (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, putString, str);
     (*context->jni_env)->DeleteLocalRef(context->jni_env, str);
+    if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+      context->jni_exception = 1;
+      WHY("Exception thrown from CallVoidMethod(putLong)");
+    }
     return;
   }
 #endif
@@ -488,12 +518,14 @@ void cli_put_hexvalue(struct cli_context *context, const unsigned char *value, i
 void cli_row_count(struct cli_context *context, int rows){
 #ifdef HAVE_JNI_H
   if (context && context->jni_env) {
+    if (context->jni_exception)
+      return;
     (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, totalRowCount, rows);
     if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
       context->jni_exception = 1;
       WHY("Exception thrown from CallVoidMethod()");
-      return;
     }
+    return;
   }
 #endif
 }
@@ -713,6 +745,14 @@ int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *context)
   time_ms_t now;
   int interval=125;
   
+  const char *names[]={
+    "uri",
+    "did",
+    "name"
+  };
+  cli_columns(context, 3, names);
+  size_t rowcount = 0;
+  
   while (timeout > (now = gettime_ms())){
     if ((last_tx+interval)<now){
       lookup_send_request(mdp_sockfd, &srcsid, port, NULL, did);
@@ -750,6 +790,7 @@ int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *context)
 		  cli_put_string(context, uri, ":");
 		  cli_put_string(context, did, ":");
 		  cli_put_string(context, name, "\n");
+		  rowcount++;
 		  
 		  if (one_reply){
 		    timeout=now;
@@ -775,6 +816,7 @@ int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *context)
   }
 
   overlay_mdp_client_close(mdp_sockfd);
+  cli_row_count(context, rowcount);
   return 0;
 }
 
@@ -2102,6 +2144,15 @@ int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *contex
   keyring_file *k = keyring_open_instance_cli(parsed);
   if (!k)
     return -1;
+    
+  const char *names[]={
+    "sid",
+    "did",
+    "name"
+  };
+  cli_columns(context, 3, names);
+  size_t rowcount = 0;
+  
   unsigned cn, in;
   for (cn = 0; cn < k->context_count; ++cn)
     for (in = 0; in < k->contexts[cn]->identity_count; ++in) {
@@ -2113,9 +2164,11 @@ int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *contex
 	cli_put_string(context, alloca_tohex_sid_t(*sidp), ":");
 	cli_put_string(context, did, ":");
 	cli_put_string(context, name, "\n");
+	rowcount++;
       }
     }
   keyring_free(k);
+  cli_row_count(context, rowcount);
   return 0;
 }
 
@@ -2397,6 +2450,12 @@ int app_id_list(const struct cli_parsed *parsed, struct cli_context *context)
     goto end;
   }
   
+  const char *names[]={
+    "sid"
+  };
+  cli_columns(context, 1, names);
+  size_t rowcount=0;
+  
   time_ms_t timeout=gettime_ms()+500;
   while(1){
     struct mdp_header rev_header;
@@ -2410,8 +2469,8 @@ int app_id_list(const struct cli_parsed *parsed, struct cli_context *context)
     }
     
     if (len>=SID_SIZE){
+      rowcount++;
       sid_t *id = (sid_t*)response_payload;
-      cli_field_name(context, "sid", ":");
       cli_put_hexvalue(context, id->binary, sizeof(sid_t), "\n");
       // TODO receive and decode other details about this identity
     }
@@ -2421,7 +2480,7 @@ int app_id_list(const struct cli_parsed *parsed, struct cli_context *context)
       break;
     }
   }
-  
+  cli_row_count(context, rowcount);
 end:
   mdp_close(mdp_sock);
   return ret;
@@ -2436,8 +2495,7 @@ int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
   overlay_mdp_frame a;
   bzero(&a, sizeof(overlay_mdp_frame));
   int result;
-  int count=0;
-
+  
   a.packetTypeAndFlags=MDP_GETADDRS;
   const char *arg = parsed->labelc ? parsed->labelv[0].text : "";
   if (!strcasecmp(arg,"self"))
@@ -2452,6 +2510,12 @@ int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
 
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
     return WHY("Cannot create MDP socket");
+
+  const char *names[]={
+    "sid"
+  };
+  cli_columns(context, 1, names);
+  size_t rowcount=0;
 
   do{
     result=overlay_mdp_send(mdp_sockfd, &a, MDP_AWAITREPLY, 5000);
@@ -2470,15 +2534,14 @@ int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
     }
     unsigned i;
     for(i=0;i<a.addrlist.frame_sid_count;i++) {
-      count++;
-      cli_printf(context, "%s", alloca_tohex_sid_t(a.addrlist.sids[i]));
-      cli_delim(context, "\n");
+      rowcount++;
+      cli_put_string(context, alloca_tohex_sid_t(a.addrlist.sids[i]), "\n");
     }
     /* get ready to ask for next block of SIDs */
     a.packetTypeAndFlags=MDP_GETADDRS;
     a.addrlist.first_sid=a.addrlist.last_sid+1;
   }while(a.addrlist.frame_sid_count==MDP_MAX_SID_REQUEST);
-
+  cli_row_count(context, rowcount);
   overlay_mdp_client_close(mdp_sockfd);
   return 0;
 }
@@ -2705,6 +2768,7 @@ int app_route_print(const struct cli_parsed *parsed, struct cli_context *context
     "Next hop"
   };
   cli_columns(context, 4, names);
+  size_t rowcount=0;
   
   while(overlay_mdp_client_poll(mdp_sockfd, 200)){
     overlay_mdp_frame rx;
@@ -2743,9 +2807,11 @@ int app_route_print(const struct cli_parsed *parsed, struct cli_context *context
       cli_put_string(context, strbuf_str(b), ":");
       cli_put_string(context, p->interface_name, ":");
       cli_put_string(context, alloca_tohex_sid_t(p->neighbour), "\n");
+      rowcount++;
     }
   }
   overlay_mdp_client_close(mdp_sockfd);
+  cli_row_count(context, rowcount);
   return 0;
 }
 

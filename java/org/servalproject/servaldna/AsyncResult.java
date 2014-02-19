@@ -20,29 +20,7 @@
 
 package org.servalproject.servaldna;
 
-/**
- * Indicates an internal (coding) error in the JNI interface to servald.  Typically encountered when
- * unpacking the outv strings returned by a servald operation, and indicates that the C code in
- * servald that constructs the outv array is not consistent with the Java code that unpacks the outv
- * strings.
- */
-public class ServalDInterfaceError extends Error
-{
-	private static final long serialVersionUID = 1L;
 
-	public ServalDInterfaceError(String message, ServalDResult result) {
-		super(message + ": " + result);
-	}
-
-	public ServalDInterfaceError(String message, ServalDResult result, Throwable cause) {
-		super(message + ": " + result, cause);
-	}
-
-	public ServalDInterfaceError(ServalDResult result, Throwable cause) {
-		super("" + result, cause);
-	}
-
-	public ServalDInterfaceError(String message, Throwable cause) {
-		super(message, cause);
-	}
+public interface AsyncResult<T> {
+	public void result(T nextResult);
 }

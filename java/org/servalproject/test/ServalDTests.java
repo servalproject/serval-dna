@@ -1,13 +1,12 @@
 package org.servalproject.test;
 
 import org.servalproject.servaldna.ServalDCommand;
-import org.servalproject.servaldna.ServalDResult;
 
 import java.util.Arrays;
 
 class ServalDTests
 {
-	public static void main(String[] args)
+	public static void main(String... args)
 	{
 		try {
 			for (int i = 0; i != args.length; ++i)
@@ -22,14 +21,8 @@ class ServalDTests
 			}
 
 			while(repeatCount>0){
-				ServalDResult result = ServalDCommand.command(args);
-				System.out.print(result.status);
-				for (byte[] a: result.outv) {
-					System.out.print(":");
-					System.out.print(new String(a));
-				}
-				System.out.println("");
-
+				ServalDCommand.printCommand(""," ",args);
+				System.out.println();
 				repeatCount--;
 			}
 		}

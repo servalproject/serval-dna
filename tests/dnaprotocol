@@ -54,7 +54,7 @@ set_server_vars() {
 doc_LookupWildcard="Lookup by wildcard"
 test_LookupWildcard() {
    executeOk_servald dna lookup "*"
-   assertStdoutLineCount '==' 2
+   assertStdoutLineCount '==' 4
    assertStdoutGrep --matches=1 "^sid://$SIDA/local/$DIDA:$DIDA:$NAMEA\$"
    assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"
 }
@@ -62,7 +62,7 @@ test_LookupWildcard() {
 doc_LookupEmpty="Lookup by empty string"
 test_LookupEmpty() {
    executeOk_servald dna lookup ""
-   assertStdoutLineCount '==' 2
+   assertStdoutLineCount '==' 4
    assertStdoutGrep --matches=1 "^sid://$SIDA/local/$DIDA:$DIDA:$NAMEA\$"
    assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"
 }
@@ -70,20 +70,20 @@ test_LookupEmpty() {
 doc_LookupNonExistent="Lookup non-existent phone number"
 test_LookupNonExistent() {
    executeOk_servald dna lookup "5551234"
-   assertStdoutLineCount '==' 0
+   assertStdoutLineCount '==' 2
 }
 
 doc_LookupLocal="Lookup local phone number"
 test_LookupLocal() {
    executeOk_servald dna lookup "$DIDA"
-   assertStdoutLineCount '==' 1
+   assertStdoutLineCount '==' 3
    assertStdoutGrep --matches=1 "^sid://$SIDA/local/$DIDA:$DIDA:$NAMEA\$"
 }
 
 doc_LookupRemote="Lookup remote phone number"
 test_LookupRemote() {
    executeOk_servald dna lookup "$DIDB"
-   assertStdoutLineCount '==' 1
+   assertStdoutLineCount '==' 3
    assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"
 }
 
@@ -135,7 +135,7 @@ setup_MultiLookupHelperThree() {
 }
 test_MultiLookupHelperThree() {
    executeOk_servald dna lookup 00003
-   assertStdoutLineCount '==' 3
+   assertStdoutLineCount '==' 5
    assertStdoutGrep --matches=1 "uri:A1:00003:Name One$"
    assertStdoutGrep --matches=1 "uri:B1:00003:Name Three$"
    assertStdoutGrep --matches=1 "uri:C1:00003:Name Six$"
@@ -147,7 +147,7 @@ setup_MultiLookupHelperTwo() {
 }
 test_MultiLookupHelperTwo() {
    executeOk_servald dna lookup 00002
-   assertStdoutLineCount '==' 2
+   assertStdoutLineCount '==' 4
    assertStdoutGrep --matches=1 "uri:A2:00002:Name Two\$"
    assertStdoutGrep --matches=1 "uri:B2:00002:Name Four\$"
 }
@@ -158,7 +158,7 @@ setup_MultiLookupHelperOne() {
 }
 test_MultiLookupHelperOne() {
    executeOk_servald dna lookup 00001
-   assertStdoutLineCount '==' 1
+   assertStdoutLineCount '==' 3
    assertStdoutGrep --matches=1 "uri:B3:00001:Name Five\$"
 }
 

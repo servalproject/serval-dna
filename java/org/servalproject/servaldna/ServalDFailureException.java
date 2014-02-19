@@ -20,8 +20,6 @@
 
 package org.servalproject.servaldna;
 
-import org.servalproject.servaldna.ServalDResult;
-
 /**
  * Thrown when a request to a servald JNI method fails.  This typically means that the returned
  * status is non-zero, or some other result was returned that indicated the operation failed.
@@ -31,10 +29,6 @@ import org.servalproject.servaldna.ServalDResult;
 public class ServalDFailureException extends Exception
 {
 	private static final long serialVersionUID = 1L;
-
-	public ServalDFailureException(String message, ServalDResult result) {
-		super(message + " for command: " + result.getCommandString());
-	}
 
 	public ServalDFailureException(String message) {
 		super(message);

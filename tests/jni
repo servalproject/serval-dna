@@ -68,7 +68,7 @@ doc_Repeat="Serval JNI repeated calls in same process"
 test_Repeat() {
    executeOk --core-backtrace java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.test.ServalDTests repeat 50 'echo' 'Hello,' 'world!'
    assertStdoutLineCount '==' 50
-   assertStdoutGrep --matches=50 '^0:Hello,:world!$'
+   assertStdoutGrep --matches=50 '^Hello, world! $'
 }
 
 doc_NullArg="Serval JNI null arguments throw exception"

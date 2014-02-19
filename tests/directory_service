@@ -80,10 +80,10 @@ test_publish() {
    stop_servald_server +D
    set_instance +A
    executeOk_servald dna lookup "$DIDB"
-   assertStdoutLineCount '==' 1
+   assertStdoutLineCount '==' 3
    assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"
    executeOk_servald dna lookup "$DIDC"
-   assertStdoutLineCount '==' 2
+   assertStdoutLineCount '==' 4
    assertStdoutGrep --matches=1 "^sid://$SIDC/local/$DIDC:$DIDC:$NAMEC\$"
    assertStdoutGrep --matches=1 "^sid://$SIDD/local/$DIDD:$DIDD:$NAMED\$"
    assert_status_all_servald_servers running
@@ -147,13 +147,13 @@ test_routing() {
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDA:UNICAST:"
    executeOk_servald dna lookup "$DIDC"
-   assertStdoutLineCount '==' 1
+   assertStdoutLineCount '==' 3
    assertStdoutGrep --matches=1 "^sid://$SIDC/local/$DIDC:$DIDC:$NAMEC\$"
    set_instance +C
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDA:UNICAST:"
    executeOk_servald dna lookup "$DIDB"
-   assertStdoutLineCount '==' 1
+   assertStdoutLineCount '==' 3
    assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"
    executeOk_servald mdp ping $SIDB 3
    tfw_cat --stdout --stderr

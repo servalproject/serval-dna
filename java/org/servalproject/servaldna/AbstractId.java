@@ -96,6 +96,10 @@ public abstract class AbstractId {
 		return hashCode;
 	}
 
+	public void toByteBuffer(ByteBuffer buff){
+		buff.put(this.binary);
+	}
+
 	public String toHex(int offset, int len) {
 		StringBuilder sb = new StringBuilder();
 		for (int i = offset; i < offset + len && i < binary.length; i++) {

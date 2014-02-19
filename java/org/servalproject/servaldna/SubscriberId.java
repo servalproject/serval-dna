@@ -59,12 +59,22 @@ public class SubscriberId extends AbstractId {
 	}
 
 	public static SubscriberId broadcastSid;
+	public static SubscriberId ANY;
 	static {
 		byte buff[] = new byte[BINARY_SIZE];
 		for (int i = 0; i < BINARY_SIZE; i++)
 			buff[i] = (byte) 0xff;
 		try {
 			broadcastSid = new SubscriberId(buff);
+		} catch (InvalidBinaryException e) {
+			// TODO log error?
+		}
+
+		buff = new byte[BINARY_SIZE];
+		for (int i = 0; i < BINARY_SIZE; i++)
+			buff[i] = (byte) 0x00;
+		try {
+			ANY = new SubscriberId(buff);
 		} catch (InvalidBinaryException e) {
 			// TODO log error?
 		}

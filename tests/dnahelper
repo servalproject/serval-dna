@@ -258,150 +258,157 @@ EOF
 }
 test_ExecArgs() {
    executeOk_servald dna lookup 12345
-   assertStdoutIs -e "uri:dumb:12345:Hello, World!\n"
+   assertStdoutLineCount '==' 3
+   assertStdoutGrep --stdout --matches=1 "^uri:dumb:12345:Hello, World!\$"
 }
 
 doc_ReplyOk1="DNA helper returns one valid reply"
 test_ReplyOk1() {
    executeOk_servald dna lookup 00001
-   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\n"
+   assertStdoutLineCount '==' 3
+   assertStdoutGrep --stdout --matches=1 "^sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\$"
 }
 
 doc_ReplyOk2="DNA helper returns two valid replies"
 test_ReplyOk2() {
    executeOk_servald dna lookup 00002
-   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00002:Joe A. Bloggs\nsip://$SID_JOE_B@10.1.1.1:00002:Joe B. Bloggs\n"
+   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --matches=1 "^sip://$SID_JOE_A@10.1.1.1:00002:Joe A. Bloggs\$"
+   assertStdoutGrep --stdout --matches=1 "^sip://$SID_JOE_B@10.1.1.1:00002:Joe B. Bloggs\$"
 }
 
 doc_ReplyOk3="DNA helper returns three valid replies"
 test_ReplyOk3() {
    executeOk_servald dna lookup 00003
-   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00003:Joe A. Bloggs\nsip://$SID_JOE_B@10.1.1.1:00003:Joe B. Bloggs\nsip://$SID_JOE_C@10.1.1.1:00003:Joe C. Bloggs\n"
+   assertStdoutLineCount '==' 5
+   assertStdoutGrep --stdout --matches=1 "^sip://$SID_JOE_A@10.1.1.1:00003:Joe A. Bloggs\$"
+   assertStdoutGrep --stdout --matches=1 "^sip://$SID_JOE_B@10.1.1.1:00003:Joe B. Bloggs\$"
+   assertStdoutGrep --stdout --matches=1 "^sip://$SID_JOE_C@10.1.1.1:00003:Joe C. Bloggs\$"
 }
 
 doc_UriEmpty="DNA helper returns empty URI"
 test_UriEmpty() {
    executeOk_servald dna lookup 00004
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*empty URI'
 }
 
 doc_UriInvalid1="DNA helper returns invalid URI, missing scheme"
 test_UriInvalid1() {
    executeOk_servald dna lookup 000051
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*Bluebottle.*invalid URI'
 }
 
 doc_UriInvalid2="DNA helper returns invalid URI, invalid char"
 test_UriInvalid2() {
    executeOk_servald dna lookup 000052
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*sip://Sea goon.*invalid URI'
 }
 
 doc_UriInvalid3="DNA helper returns invalid URI, empty hierarchical part"
 test_UriInvalid3() {
    executeOk_servald dna lookup 000053
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*sip:.*invalid URI'
 }
 
 doc_TokenMismatch="DNA helper returns mismatched token"
 test_TokenMismatch() {
    executeOk_servald dna lookup 000061
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*mismatched token'
 }
 
 doc_TokenEmpty="DNA helper returns empty token"
 test_TokenEmpty() {
    executeOk_servald dna lookup 000062
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*empty token'
 }
 
 doc_TokenInvalid="DNA helper returns invalid token"
 test_TokenInvalid() {
    executeOk_servald dna lookup 000063
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*invalid token'
 }
 
 doc_TokenInvalidLong="DNA helper returns invalid token, too long"
 test_TokenInvalidLong() {
    executeOk_servald dna lookup 000064
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply.*invalid'
 }
 
 doc_TokenInvalidShort="DNA helper returns invalid token, too short"
 test_TokenInvalidShort() {
    executeOk_servald dna lookup 000065
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*invalid token'
 }
 
 doc_DidMismatch="DNA helper returns mismatched DID"
 test_DidMismatch() {
    executeOk_servald dna lookup 000071
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*mismatched DID'
 }
 
 doc_DidEmpty="DNA helper returns empty DID"
 test_DidEmpty() {
    executeOk_servald dna lookup 000072
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*empty DID'
 }
 
 doc_DidInvalid="DNA helper returns invalid DID"
 test_DidInvalid() {
    executeOk_servald dna lookup 000073
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*invalid DID'
 }
 
 doc_DidInvalidLong="DNA helper returns invalid DID, too long"
 test_DidInvalidLong() {
    executeOk_servald dna lookup 000074
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply.*invalid'
 }
 
 doc_DidInvalidShort="DNA helper returns invalid DID, too short"
 test_DidInvalidShort() {
    executeOk_servald dna lookup 000075
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*invalid DID'
 }
 
 doc_ReplyInvalidMissingDelim="DNA helper returns invalid reply, missing delimiter"
 test_ReplyInvalidMissingDelim() {
    executeOk_servald dna lookup 000081
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply.*invalid'
 }
 
 doc_ReplyInvalidLongName="DNA helper returns invalid reply, name too long"
 test_ReplyInvalidLongName() {
    executeOk_servald dna lookup 000082
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply.*invalid'
 }
 
 doc_ReplyInvalidEmpty="DNA helper returns invalid reply, empty line"
 test_ReplyInvalidEmpty() {
    executeOk_servald dna lookup 000083
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply .\\n. invalid'
 }
 
 doc_ReplyInvalidMissingNewline="DNA helper returns invalid reply, missing newline"
 test_ReplyInvalidMissingNewline() {
    executeOk_servald dna lookup 000084
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply.*spurious'
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply timeout'
 }
@@ -409,30 +416,34 @@ test_ReplyInvalidMissingNewline() {
 doc_HelperTimeout="DNA helper process takes too long to reply and is restarted"
 test_HelperTimeout() {
    executeOk_servald dna lookup 00009
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply timeout'
    assertGrep "$LOGA" 'INFO:.*DNAHELPER.*process.*terminated by signal 15'
    executeOk_servald dna lookup 00001
-   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\n"
+   assertStdoutLineCount '==' 3
+   assertStdoutGrep --stdout --matches=1 "^sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\$"
 }
 
 doc_ReplySpurious="DNA helper spurious output after DONE is ignored"
 test_ReplySpurious() {
    executeOk_servald dna lookup 00010
-   assertStdoutIs -e "sip://$SID_JOE_E@10.1.1.1:00010:Joe E. Bloggs\n"
+   assertStdoutLineCount '==' 3
+   assertStdoutGrep --stdout --matches=1 "^sip://$SID_JOE_E@10.1.1.1:00010:Joe E. Bloggs\$"
    assertGrep "$LOGA" 'WARN:.*DNAHELPER.*spurious output'
    executeOk_servald dna lookup 00001
-   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\n"
+   assertStdoutLineCount '==' 3
+   assertStdoutGrep --stdout --matches=1 "^sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\$"
 }
 
 doc_HelperDies="DNA helper process dies unexpectedly and is restarted"
 test_HelperDies() {
    executeOk_servald dna lookup 00011
-   assertStdoutIs ""
+   assertStdoutLineCount '==' 2
    assertGrep "$LOGA" 'INFO:.*DNAHELPER.*process.*exited normally with status 42'
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*goodbye cruel world\\n'
    executeOk_servald dna lookup 00001
-   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\n"
+   assertStdoutLineCount '==' 3
+   assertStdoutGrep --stdout --matches=1 "^sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\$"
 }
 
 runTests "$@"
