@@ -1213,6 +1213,7 @@ test_MeshmsListMessagesNewSinceArrival() {
 }
 teardown_MeshmsListMessagesNewSinceArrival() {
    tfw_preserve newsince{1,2,3}.json
+   teardown
 }
 
 doc_MeshmsSend="HTTP RESTful send MeshMS message"
