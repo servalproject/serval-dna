@@ -32,37 +32,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #  define UNUSED(x) x
 #endif
 
-/* Packet format:
-
-   16 bit - Magic value 0x4110
-   16 bit - Version number (0001 initially)
-   16 bit - Payload length
-   16 bit - Cipher method (0000 = clear text)
-   
-   Ciphered payload follows:
-   (needs to have no predictable data to protect against known plain-text attacks)
-   
-   64bit transaction id (random)
-   8bit - payload rotation (random, to help protect encryption from cribs)
-
-   Remainder of payload, after correcting for rotation:
-   
-   33byte did|subscriber id
-   16byte salt
-   16byte hash of PIN+salt
-   
-   Remainder of packet is interpretted as a series of operations
-
-   8 bit operation: 
-   00 = get, 01 = set, 02 = delete, 03 = update,
-   80 = decline, 81 = okay (+optional result),
-   f0 = xfer HLR record
-   fe = random padding follows (to help protect cryptography from cribs)
-   ff = end of transaction
-   
-   get - 8 bit variable value
-
-*/
 #define SID_SIZE 32 // == crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
 #define SAS_SIZE 32 // == crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
 #define DID_MINSIZE 5
@@ -97,9 +66,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 		        Upto MTU bytes of payload.
 			32 bit channel/port indicator for each end. 
 		        */
-#define OF_TYPE_DATA_VOICE 0x40 /* Voice data frame. 
-			      Limited to 255 bytes of payload. 
-			      1 byte channel/port indicator for each end */
 #define OF_TYPE_RHIZOME_ADVERT 0x50 /* Advertisment of file availability via Rhizome */
 #define OF_TYPE_PLEASEEXPLAIN 0x60 /* Request for resolution of an abbreviated address */
 

@@ -189,29 +189,29 @@ int _esocket(struct __sourceloc __whence, int domain, int type, int protocol)
   return fd;
 }
 
-int _socket_connect(struct __sourceloc __whence, int sock, const struct sockaddr *addr, socklen_t addrlen)
+int _socket_connect(struct __sourceloc __whence, int sock, const struct socket_address *addr)
 {
-  if (connect(sock, (struct sockaddr *)addr, addrlen) == -1)
-    return WHYF_perror("connect(%d,%s,%lu)", sock, alloca_sockaddr(addr, addrlen), (unsigned long)addrlen);
+  if (connect(sock, &addr->addr, addr->addrlen) == -1)
+    return WHYF_perror("connect(%d,%s,%lu)", sock, alloca_socket_address(addr), (unsigned long)addr->addrlen);
   if (config.debug.io || config.debug.verbose_io)
-    DEBUGF("connect(%d, %s, %lu)", sock, alloca_sockaddr(addr, addrlen), (unsigned long)addrlen);
+    DEBUGF("connect(%d, %s, %lu)", sock, alloca_socket_address(addr), (unsigned long)addr->addrlen);
   return 0;
 }
 
-int _socket_bind(struct __sourceloc __whence, int sock, const struct sockaddr *addr, socklen_t addrlen)
+int _socket_bind(struct __sourceloc __whence, int sock, const struct socket_address *addr)
 {
-  assert(addrlen > sizeof addr->sa_family);
-  if (addr->sa_family == AF_UNIX && ((struct sockaddr_un *)addr)->sun_path[0] != '\0') {
-    assert(((struct sockaddr_un *)addr)->sun_path[addrlen - sizeof ((struct sockaddr_un *)addr)->sun_family - 1] == '\0');
-    if (unlink(((struct sockaddr_un *)addr)->sun_path) == -1 && errno != ENOENT)
-      WARNF_perror("unlink(%s)", alloca_str_toprint(((struct sockaddr_un *)addr)->sun_path));
+  assert(addr->addrlen > sizeof addr->addr.sa_family);
+  if (addr->addr.sa_family == AF_UNIX && addr->local.sun_path[0] != '\0') {
+    assert(addr->local.sun_path[addr->addrlen - sizeof addr->local.sun_family - 1] == '\0');
+    if (unlink(addr->local.sun_path) == -1 && errno != ENOENT)
+      WARNF_perror("unlink(%s)", alloca_str_toprint(addr->local.sun_path));
     if (config.debug.io || config.debug.verbose_io)
-      DEBUGF("unlink(%s)", alloca_str_toprint(((struct sockaddr_un *)addr)->sun_path));
+      DEBUGF("unlink(%s)", alloca_str_toprint(addr->local.sun_path));
   }
-  if (bind(sock, (struct sockaddr *)addr, addrlen) == -1)
-    return WHYF_perror("bind(%d,%s,%lu)", sock, alloca_sockaddr(addr, addrlen), (unsigned long)addrlen);
+  if (bind(sock, &addr->addr, addr->addrlen) == -1)
+    return WHYF_perror("bind(%d,%s,%lu)", sock, alloca_socket_address(addr), (unsigned long)addr->addrlen);
   if (config.debug.io || config.debug.verbose_io)
-    DEBUGF("bind(%d, %s, %lu)", sock, alloca_sockaddr(addr, addrlen), (unsigned long)addrlen);
+    DEBUGF("bind(%d, %s, %lu)", sock, alloca_socket_address(addr), (unsigned long)addr->addrlen);
   return 0;
 }
 

@@ -115,7 +115,7 @@ int monitor_setup_sockets()
   struct socket_address addr;
   if (make_local_sockaddr(&addr, "monitor.socket") == -1)
     goto error;
-  if (socket_bind(sock, &addr.addr, addr.addrlen) == -1)
+  if (socket_bind(sock, &addr) == -1)
     goto error;
   if (socket_listen(sock, MAX_MONITOR_SOCKETS) == -1)
     goto error;

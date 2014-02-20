@@ -198,7 +198,7 @@ int overlay_mdp_client_socket(void)
     return -1;
   if ((mdp_sockfd = esocket(AF_UNIX, SOCK_DGRAM, 0)) == -1)
     return -1;
-  if (socket_bind(mdp_sockfd, &addr.addr, addr.addrlen) == -1) {
+  if (socket_bind(mdp_sockfd, &addr) == -1) {
     close(mdp_sockfd);
     return -1;
   }

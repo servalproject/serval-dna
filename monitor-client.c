@@ -78,7 +78,7 @@ int monitor_client_open(struct monitor_state **res)
     return -1;
   if (config.debug.monitor)
     DEBUGF("Attempting to connect to %s", alloca_socket_address(&addr));
-  if (socket_connect(fd, &addr.addr, addr.addrlen) == -1) {
+  if (socket_connect(fd, &addr) == -1) {
     close(fd);
     return -1;
   }

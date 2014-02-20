@@ -86,7 +86,7 @@ static int overlay_saw_mdp_frame(
   struct internal_mdp_header *header, 
   struct overlay_buffer *payload);
 
-static int mdp_send2(struct socket_address *client, struct mdp_header *header, 
+static int mdp_send2(const struct socket_address *client, const struct mdp_header *header, 
   const uint8_t *payload, size_t payload_len);
 
 /* Delete all UNIX socket files in instance directory. */
@@ -145,7 +145,7 @@ static int mdp_bind_socket(const char *name)
     return -1;
   if (socket_set_reuseaddr(sock, 1) == -1)
     WARN("Could not set socket to reuse addresses");
-  if (socket_bind(sock, &addr.addr, addr.addrlen) == -1) {
+  if (socket_bind(sock, &addr) == -1) {
     close(sock);
     return -1;
   }
@@ -542,7 +542,7 @@ static int overlay_saw_mdp_frame(
 	 header->source_port, header->destination_port);
 
   if (allow_incoming_packet(header) == RULE_DROP)
-    return 0;
+    RETURN(0);
   
   for(i=0;i<MDP_MAX_BINDINGS;i++)
     {
@@ -1132,33 +1132,13 @@ static void overlay_mdp_scan(struct sched_ent *alarm)
 }
 
 static int mdp_reply2(const struct socket_address *client, const struct mdp_header *header, 
-  int flags, const unsigned char *payload, int payload_len)
+  int flags, const unsigned char *payload, size_t payload_len)
 {
   struct mdp_header response_header;
   bcopy(header, &response_header, sizeof(response_header));
   response_header.flags = flags;
   
-  struct iovec iov[]={
-    {
-      .iov_base = (void *)&response_header,
-      .iov_len = sizeof(struct mdp_header)
-    },
-    {
-      .iov_base = (void *)payload,
-      .iov_len = payload_len
-    }
-  };
-  
-  struct msghdr hdr={
-    .msg_name=(void *)&client->addr,
-    .msg_namelen=client->addrlen,
-    .msg_iov=iov,
-    .msg_iovlen=2,
-  };
-  
-  if (config.debug.mdprequests)
-    DEBUGF("Replying to %s with flags %d", alloca_socket_address(client), flags);
-  return sendmsg(mdp_sock2.poll.fd, &hdr, 0);
+  return mdp_send2(client, &response_header, payload, payload_len);
 }
 
 #define mdp_reply_error(A,B)  mdp_reply2(A,B,MDP_FLAG_ERROR,NULL,0)
@@ -1301,8 +1281,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
 	mdp_bindings[i].port=0;
       }
     }
-    // should we expect clients to wait for this?
-    // mdp_reply_ok(client, header);
+    // should we expect clients to wait?
     return;
   }
   
@@ -1460,7 +1439,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
   }
 }
 
-static int mdp_send2(struct socket_address *client, struct mdp_header *header, 
+static int mdp_send2(const struct socket_address *client, const struct mdp_header *header, 
   const uint8_t *payload, size_t payload_len)
 {
   struct iovec iov[]={
@@ -1475,7 +1454,7 @@ static int mdp_send2(struct socket_address *client, struct mdp_header *header,
   };
   
   struct msghdr hdr={
-    .msg_name=&client->addr,
+    .msg_name=(struct sockaddr*)&client->addr,
     .msg_namelen=client->addrlen,
     .msg_iov=iov,
     .msg_iovlen=2,

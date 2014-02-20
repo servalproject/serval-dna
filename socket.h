@@ -49,8 +49,8 @@ struct socket_address{
 int _make_local_sockaddr(struct __sourceloc, struct socket_address *addr, const char *fmt, ...)
     __attribute__((format(printf, 3, 4)));
 int _esocket(struct __sourceloc, int domain, int type, int protocol);
-int _socket_bind(struct __sourceloc, int sock, const struct sockaddr *addr, socklen_t addrlen);
-int _socket_connect(struct __sourceloc, int sock, const struct sockaddr *addr, socklen_t addrlen);
+int _socket_bind(struct __sourceloc, int sock, const struct socket_address *addr);
+int _socket_connect(struct __sourceloc, int sock, const struct socket_address *addr);
 int _socket_listen(struct __sourceloc, int sock, int backlog);
 int _socket_set_reuseaddr(struct __sourceloc, int sock, int reuseP);
 int _socket_set_rcvbufsize(struct __sourceloc, int sock, unsigned buffer_size);
@@ -58,8 +58,8 @@ int socket_unlink_close(int sock);
 
 #define make_local_sockaddr(sockname, fmt,...) _make_local_sockaddr(__WHENCE__, (sockname), (fmt), ##__VA_ARGS__)
 #define esocket(domain, type, protocol)             _esocket(__WHENCE__, (domain), (type), (protocol))
-#define socket_bind(sock, addr, addrlen)            _socket_bind(__WHENCE__, (sock), (addr), (addrlen))
-#define socket_connect(sock, addr, addrlen)         _socket_connect(__WHENCE__, (sock), (addr), (addrlen))
+#define socket_bind(sock, addr)                     _socket_bind(__WHENCE__, (sock), (addr))
+#define socket_connect(sock, addr)                  _socket_connect(__WHENCE__, (sock), (addr))
 #define socket_listen(sock, backlog)                _socket_listen(__WHENCE__, (sock), (backlog))
 #define socket_set_reuseaddr(sock, reuseP)          _socket_set_reuseaddr(__WHENCE__, (sock), (reuseP))
 #define socket_set_rcvbufsize(sock, buffer_size)    _socket_set_rcvbufsize(__WHENCE__, (sock), (buffer_size))

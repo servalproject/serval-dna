@@ -234,7 +234,7 @@ static int msp_listener(struct msp_sock *sock, msp_state_t state, const uint8_t 
       msp_close(sock);
       return -1;
     }
-    if (socket_connect(fd, &ip_addr.addr, ip_addr.addrlen)==-1){
+    if (socket_connect(fd, &ip_addr)==-1){
       msp_close(sock);
       close(fd);
       return -1;
@@ -444,7 +444,7 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
       listen_alarm.poll.fd = esocket(PF_INET, SOCK_STREAM, 0);
       if (listen_alarm.poll.fd==-1)
 	goto end;
-      if (socket_bind(listen_alarm.poll.fd, &ip_addr.addr, ip_addr.addrlen)==-1)
+      if (socket_bind(listen_alarm.poll.fd, &ip_addr)==-1)
 	goto end;
       if (socket_listen(listen_alarm.poll.fd, 0)==-1)
 	goto end;

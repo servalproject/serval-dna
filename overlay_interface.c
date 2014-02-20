@@ -142,9 +142,9 @@ overlay_bind_socket(const struct socket_address *addr){
     return WHYF("Unsupported address %s", alloca_socket_address(addr));
   }
   
-  fd = socket(protocol, SOCK_DGRAM, 0);
+  fd = esocket(protocol, SOCK_DGRAM, 0);
   if (fd < 0)
-    return WHY_perror("Error creating socket");
+    return -1;
   
   if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) < 0) {
     WHY_perror("setsockopt(SO_REUSEADR)");
@@ -174,10 +174,8 @@ overlay_bind_socket(const struct socket_address *addr){
 #endif
 	);
   
-  if (bind(fd, &addr->addr, addr->addrlen)) {
-    WHY_perror("Bind failed");
+  if (socket_bind(fd, addr))
     goto error;
-  }
   
   return fd;
   

@@ -94,7 +94,6 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *UNUSED(inter
       overlay_rhizome_saw_advertisements(context,f);
       break;
     case OF_TYPE_DATA:
-    case OF_TYPE_DATA_VOICE:
       overlay_saw_mdp_containing_frame(f);
       break;
     case OF_TYPE_PLEASEEXPLAIN:
