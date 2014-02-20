@@ -87,5 +87,26 @@ test_help() {
    assertStdoutGrep 'Serval DNA version '
 }
 
+doc_PeerList="Get peer details via JNI"
+setup_PeerList() {
+   configure_servald_server() {
+      add_servald_interface
+   }
+   setup
+   foreach_instance +A +B create_single_identity
+   start_servald_instances +A +B
+   set_instance +A
+}
+test_PeerList() {
+   execute --core-backtrace java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.test.CommandLine 'peers'
+   assertStdoutGrep "$SIDB"
+   tfw_cat --stdout
+}
+teardown_PeerList() {
+   stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
 
 runTests "$@"

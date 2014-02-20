@@ -115,12 +115,29 @@ public class ServalDCommand
 			if (columnName.equals("tries"))
 				tries = (int)value;
 		}
+
+		@Override
+		public String toString() {
+			return "Status{" +
+					"pid=" + pid +
+					", tries=" + tries +
+					", instancePath='" + instancePath + '\'' +
+					", status='" + status + '\'' +
+					'}';
+		}
 	}
 
 	/** Start the servald server process if it is not already running.
 	 *
 	 * @author Andrew Bettison <andrew@servalproject.com>
 	 */
+	public static Status serverStart()
+			throws ServalDFailureException {
+		Status result = new Status();
+		result.setResult(command(result, "start"));
+		return result;
+	}
+
 	public static Status serverStart(String execPath)
 			throws ServalDFailureException {
 		Status result = new Status();
@@ -169,6 +186,15 @@ public class ServalDCommand
 				} catch (AbstractId.InvalidBinaryException e) {
 					e.printStackTrace();
 				}
+		}
+
+		@Override
+		public String toString() {
+			return "IdentityResult{" +
+					"did='" + did + '\'' +
+					", name='" + name + '\'' +
+					", subscriberId=" + subscriberId +
+					'}';
 		}
 	}
 
@@ -480,6 +506,7 @@ public class ServalDCommand
 		return (int)result.count;
 	}
 
+	// Note that the result values will only have a subscriber id
 	public static int idPeers(AsyncResult<IdentityResult> results) throws ServalDFailureException {
 		return idPeers(new JniResultList<IdentityResult>(results) {
 			@Override
