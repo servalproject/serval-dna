@@ -1,9 +1,16 @@
 package org.servalproject.test;
 
+import org.servalproject.servaldna.AsyncResult;
+import org.servalproject.servaldna.ChannelSelector;
+import org.servalproject.servaldna.MdpDnaLookup;
+import org.servalproject.servaldna.MdpSocket;
 import org.servalproject.servaldna.ResultList;
 import org.servalproject.servaldna.ServalDCommand;
 import org.servalproject.servaldna.ServalDFailureException;
+import org.servalproject.servaldna.SubscriberId;
 
+import java.io.IOException;
+import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -11,6 +18,10 @@ import java.util.List;
  * Created by jeremy on 20/02/14.
  */
 public class CommandLine {
+
+	static void log(String msg){
+		System.out.println(new Date().toString()+" "+msg);
+	}
 
 	static void getPeers() throws ServalDFailureException {
 		List<ServalDCommand.IdentityResult> peers = new LinkedList<ServalDCommand.IdentityResult>();
@@ -20,6 +31,20 @@ public class CommandLine {
 			ServalDCommand.IdentityResult details = ServalDCommand.reverseLookup(i.subscriberId);
 			System.out.println(details.getResult()==0?details.toString():i.toString());
 		}
+	}
+
+	static void lookup(String did) throws IOException, InterruptedException, ServalDFailureException {
+		MdpSocket.loopbackMdpPort = Integer.parseInt(System.getenv("SERVAL_MDP_INET_PORT"));
+		ChannelSelector selector = new ChannelSelector();
+		MdpDnaLookup lookup = new MdpDnaLookup(selector, new AsyncResult<ServalDCommand.LookupResult>() {
+			@Override
+			public void result(ServalDCommand.LookupResult nextResult) {
+				System.out.println(nextResult.toString());
+			}
+		});
+		lookup.sendRequest(SubscriberId.broadcastSid, did);
+		Thread.sleep(3000);
+		lookup.close();
 	}
 
 	public static void main(String... args){
@@ -35,6 +60,8 @@ public class CommandLine {
 				result=ServalDCommand.serverStop();
 			if (methodName.equals("peers"))
 				getPeers();
+			if (methodName.equals("lookup"))
+				lookup(args.length>=2 ? args[1] : "");
 
 			if (result!=null)
 				System.out.println(result.toString());

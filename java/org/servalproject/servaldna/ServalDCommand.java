@@ -233,6 +233,7 @@ public class ServalDCommand
 	}
 
 	public static class LookupResult extends JniResult {
+		public SubscriberId subscriberId;
 		public String did;
 		public String name;
 		public String uri;
@@ -245,6 +246,16 @@ public class ServalDCommand
 				this.name = value;
 			if (this.columnName.equals("uri"))
 				this.uri = value;
+		}
+
+		@Override
+		public String toString() {
+			return "LookupResult{" +
+					"subscriberId=" + subscriberId +
+					", did='" + did + '\'' +
+					", name='" + name + '\'' +
+					", uri='" + uri + '\'' +
+					'}';
 		}
 	}
 

@@ -81,6 +81,11 @@ static struct sched_ent mdp_sock2 = {
   .stats = &mdp_stats2,
   .poll={.fd = -1},
 };
+static struct sched_ent mdp_sock2_inet = {
+  .function = mdp_poll2,
+  .stats = &mdp_stats2,
+  .poll={.fd = -1},
+};
 
 static int overlay_saw_mdp_frame(
   struct internal_mdp_header *header, 
@@ -170,6 +175,28 @@ int overlay_mdp_setup_sockets()
     mdp_sock2.poll.fd = mdp_bind_socket("mdp.2.socket");
     mdp_sock2.poll.events = POLLIN;
     watch(&mdp_sock2);
+  }
+  
+  if (mdp_sock2_inet.poll.fd == -1) {
+    const char *port_str = getenv("SERVAL_MDP_INET_PORT");
+    if (port_str){
+      int fd = esocket(PF_INET, SOCK_DGRAM, 0);
+      if (fd>=0){
+	struct socket_address addr;
+	addr.addrlen = sizeof(addr.inet);
+	addr.inet.sin_family = AF_INET;
+	addr.inet.sin_port = htons(atoi(port_str));
+	addr.inet.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+	if (socket_bind(fd, &addr)==0){
+	  mdp_sock2_inet.poll.fd = fd;
+	  mdp_sock2_inet.poll.events = POLLIN;
+	  watch(&mdp_sock2_inet);
+	  INFOF("Socket mdp.2.inet: fd=%d %s", fd, alloca_socket_address(&addr));
+	}else{
+	  close(fd);
+	}
+      }
+    }
   }
   return 0;
 }
@@ -1460,8 +1487,21 @@ static int mdp_send2(const struct socket_address *client, const struct mdp_heade
     .msg_iovlen=2,
   };
   
-  if (sendmsg(mdp_sock2.poll.fd, &hdr, 0)<0)
+  int fd=-1;
+  switch(client->addr.sa_family){
+    case AF_UNIX:
+      fd = mdp_sock2.poll.fd;
+      break;
+    case AF_INET:
+      fd = mdp_sock2_inet.poll.fd;
+      break;
+  }
+  if (fd==-1)
+    return WHYF("Unhandled client family %d", client->addr.sa_family);
+  
+  if (sendmsg(fd, &hdr, 0)<0)
     return WHY_perror("sendmsg");
+  
   return 0;
 }
 
