@@ -49,8 +49,8 @@ assert_echo_works() {
 
 doc_Echo="Serval JNI echo Hello world"
 test_Echo() {
-   executeOk java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.servaldna.ServalDCommand 'echo' '-e' 'Hello,\ttab' 'world\0!'
-   assertStdoutIs -e 'Hello,\ttab\nworld\0!\n'
+   executeOk java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.test.ServalDTests 'echo' '-e' 'Hello,\ttab' 'world\0!'
+   assertStdoutIs -e 'Hello,\ttab world\0! \n'
 }
 
 doc_Delim="Serval non-JNI output delimiter environment variable"
@@ -81,7 +81,7 @@ test_NullArg() {
 
 doc_help="Serval JNI returns help text"
 test_help() {
-   execute --core-backtrace java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.servaldna.ServalDCommand 'help'
+   execute --core-backtrace java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.test.ServalDTests 'help'
    tfw_cat --stdout --stderr
    assertExitStatus '==' 0
    assertStdoutGrep 'Serval DNA version '

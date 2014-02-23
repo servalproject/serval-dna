@@ -1,11 +1,67 @@
 package org.servalproject.test;
 
+import org.servalproject.servaldna.IJniResults;
 import org.servalproject.servaldna.ServalDCommand;
+import org.servalproject.servaldna.ServalDFailureException;
 
 import java.util.Arrays;
 
 class ServalDTests
 {
+	public static int printCommand(final String fieldDelim, final String rowDelim, String... args) throws ServalDFailureException {
+		return ServalDCommand.command(new IJniResults() {
+			int columns = -1;
+			int column = -1;
+
+			@Override
+			public void startResultSet(int columns) {
+				this.columns = columns;
+			}
+
+			@Override
+			public void setColumnName(int column, String name) {
+				System.out.print(name + fieldDelim);
+				if (column >= 0 && column + 1 == columns)
+					System.out.println();
+			}
+
+			private void eol() {
+				if (columns == -1 || ++column == columns) {
+					System.out.print(rowDelim);
+					column = -1;
+				}
+			}
+
+			@Override
+			public void putString(String value) {
+				System.out.print(value);
+				eol();
+			}
+
+			@Override
+			public void putBlob(byte[] value) {
+				System.out.print(new String(value));
+				eol();
+			}
+
+			@Override
+			public void putLong(long value) {
+				System.out.print(value);
+				eol();
+			}
+
+			@Override
+			public void putDouble(double value) {
+				System.out.print(value);
+				eol();
+			}
+
+			@Override
+			public void totalRowCount(int rows) {
+			}
+		}, args);
+	}
+
 	public static void main(String... args)
 	{
 		try {
@@ -21,7 +77,7 @@ class ServalDTests
 			}
 
 			while(repeatCount>0){
-				ServalDCommand.printCommand(""," ",args);
+				printCommand("", " ", args);
 				System.out.println();
 				repeatCount--;
 			}
