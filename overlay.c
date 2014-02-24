@@ -84,10 +84,21 @@ int overlayServerMode(const struct cli_parsed *parsed)
 {
   IN();
 
-  /* In overlay mode we need to listen to all of our sockets, and also to
-     send periodic traffic. This means we need to */
-  INFO("Running in overlay mode.");
-
+  /* Setup up client API sockets before writing our PID file
+     We want clients to be able to connect to our sockets as soon 
+     as servald start has returned. But we don't want servald start
+     to take very long. 
+     Try to perform only minimal CPU or IO processing here.
+  */
+  overlay_mdp_setup_sockets();
+  monitor_setup_sockets();
+  // start the HTTP server if enabled
+  httpd_server_start(HTTPD_PORT, HTTPD_PORT_MAX);    
+ 
+  /* record PID file so that servald start can return */
+  if (server_write_pid())
+    RETURN(-1);
+  
   /* Get keyring available for use.
      Required for MDP, and very soon as a complete replacement for the
      HLR for DNA lookups, even in non-overlay mode. */
@@ -122,10 +133,6 @@ schedule(&_sched_##X); }
   /* Periodically reload configuration */
   SCHEDULE(server_config_reload, SERVER_CONFIG_RELOAD_INTERVAL_MS, SERVER_CONFIG_RELOAD_INTERVAL_MS + 100);
   
-  /* Setup up MDP & monitor interface unix domain sockets */
-  overlay_mdp_setup_sockets();
-  monitor_setup_sockets();
-  
   overlay_mdp_bind_internal_services();
   
   olsr_init_socket();
@@ -137,9 +144,6 @@ schedule(&_sched_##X); }
     if (config.rhizome.clean_on_start && !config.rhizome.clean_on_open)
       rhizome_cleanup(NULL);
   }
-
-  // start the HTTP server if enabled
-  httpd_server_start(HTTPD_PORT, HTTPD_PORT_MAX);    
 
   // start the dna helper if configured
   dna_helper_start();
@@ -159,7 +163,7 @@ schedule(&_sched_##X); }
 #undef SCHEDULE
 
   // log message used by tests to wait for the server to start
-  INFO("Server started, entering main loop");
+  INFO("Server initialised, entering main loop");
   /* Check for activitiy and respond to it */
   while(fd_poll());
 

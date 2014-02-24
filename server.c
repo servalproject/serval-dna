@@ -112,23 +112,27 @@ int server(const struct cli_parsed *parsed)
   sigaction(SIGHUP, &sig, NULL);
   sigaction(SIGINT, &sig, NULL);
 
-  /* Record PID to advertise that the server is now running */
-  char filename[1024];
-  if (!FORM_SERVAL_INSTANCE_PATH(filename, PIDFILE_NAME))
-    RETURN(-1);
-  FILE *f=fopen(filename,"w");
-  if (!f) {
-    WHY_perror("fopen");
-    RETURN(WHYF("Could not write to PID file %s", filename));
-  }
-  server_getpid = getpid();
-  fprintf(f,"%d\n", server_getpid);
-  fclose(f);
-  
   overlayServerMode(parsed);
 
   RETURN(0);
   OUT();
+}
+
+int server_write_pid()
+{
+  /* Record PID to advertise that the server is now running */
+  char filename[1024];
+  if (!FORM_SERVAL_INSTANCE_PATH(filename, PIDFILE_NAME))
+    return -1;
+  FILE *f=fopen(filename,"w");
+  if (!f) {
+    WHY_perror("fopen");
+    return WHYF("Could not write to PID file %s", filename);
+  }
+  server_getpid = getpid();
+  fprintf(f,"%d\n", server_getpid);
+  fclose(f);
+  return 0;
 }
 
 /* Called periodically by the server process in its main loop.

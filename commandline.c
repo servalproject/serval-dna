@@ -828,42 +828,6 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
   /* Process optional arguments */
   int pid=-1;
   int cpid=-1;
-#if 0
-  // It would have been nice if whoever disabled this code had left a comment as to why they didn't
-  // simply delete it altogether.  In any event, this logic is largely redundant because the Android
-  // Batphone app automatically calls "servald stop" then "servald start" (via JNI) whenever its
-  // monitor interface socket is broken.
-  // -- Andrew Bettison <andrew@servalproject.com>
-  int status=server_probe(&pid);
-  switch(status) {
-  case SERVER_NOTRESPONDING: 
-    /* server is not responding, and we have been asked to start,
-       so try to kill it?
-    */
-    WHYF("Serval process already running (pid=%d), but no responding.", pid);
-    if (pid>-1) {
-      kill(pid,SIGHUP); 
-      sleep_ms(1000);
-      status=server_probe(&pid);
-      if (status!=SERVER_NOTRUNNING) {
-	WHY("Tried to stop stuck servald process, but attempt failed.");
-	RETURN(-1);
-      }
-      WHY("Killed stuck servald process, so will try to start");
-      pid=-1;
-    }
-    break;
-  case SERVER_NOTRUNNING:
-    /* all is well */
-    break;
-  case SERVER_RUNNING:
-    /* instance running */
-    break;
-  default:
-    /* no idea what is going on, so try to start anyway */
-    break;
-  }
-#endif
   const char *execpath;
   if (cli_arg(parsed, "exec", &execpath, cli_absolute_path, NULL) == -1)
     RETURN(-1);
