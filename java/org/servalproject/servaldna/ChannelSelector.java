@@ -12,7 +12,7 @@ import java.util.Iterator;
 public class ChannelSelector {
 
 	public static abstract class Handler{
-		public abstract SelectableChannel getChannel();
+		public abstract SelectableChannel getChannel() throws IOException;
 		public abstract int getInterest();
 		public void read(){};
 		public void write(){};
@@ -38,6 +38,7 @@ public class ChannelSelector {
 									channel.keyFor(selector).cancel();
 									// force the cancelled key to be removed now
 									selector.selectNow();
+									channel.configureBlocking(true);
 								}
 							}catch (IOException e){
 								e.printStackTrace();

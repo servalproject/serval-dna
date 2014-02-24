@@ -12,8 +12,8 @@ import java.nio.channels.SelectableChannel;
  * Created by jeremy on 17/02/14.
  */
 public class MdpSocket{
-	private DatagramChannel channel;
-	private SubscriberId sid;
+	private DatagramChannel channel = null;
+	private SubscriberId sid = null;
 	private int port;
 
 	private static final InetAddress loopback;
@@ -28,37 +28,60 @@ public class MdpSocket{
 		loopback = local;
 	}
 
+	/* Create an unbound socket, may be used for other information requests before binding */
 	public MdpSocket() throws IOException {
-		this(SubscriberId.ANY, 0);
 	}
 	public MdpSocket(int port) throws IOException {
-		this(SubscriberId.ANY, port);
+		bind(SubscriberId.ANY, port);
 	}
 	public MdpSocket(SubscriberId sid, int port) throws IOException {
+		bind(sid, port);
+	}
+
+	public void bind() throws IOException {
+		bind(SubscriberId.ANY, 0);
+	}
+	public void bind(int port) throws IOException {
+		bind(SubscriberId.ANY, port);
+	}
+	public synchronized void bind(SubscriberId sid, int port) throws IOException {
 		if (loopbackMdpPort==0)
 			throw new IOException("Loopback MDP port has not been set");
-		channel = DatagramChannel.open();
-		channel.connect(new InetSocketAddress(loopback, loopbackMdpPort));
+		if (sid.equals(this.sid) && this.port == port)
+			return;
+		if (this.sid!=null)
+			throw new IOException("Socket is already bound");
+		getChannel();
+		if (!channel.isBlocking())
+			throw new IOException("Cannot bind a non-blocking socket");
 		MdpPacket packet = new MdpPacket();
 		packet.setLocalSid(sid);
 		packet.setLocalPort(port);
 		packet.setFlags(MdpPacket.MDP_FLAG_BIND);
 		packet.payload.flip();
 		packet.send(channel);
+		// should throw MdpError on bind failures
 		receive(packet);
 		try {
 			this.sid = packet.getLocalSid();
 		} catch (AbstractId.InvalidBinaryException e) {
+			e.printStackTrace();
 			throw new MdpError(e);
 		}
 		this.port = packet.getLocalPort();
 	}
 
-	public SelectableChannel getChannel(){
+	public SelectableChannel getChannel() throws IOException {
+		if (channel == null){
+			channel = DatagramChannel.open();
+			channel.connect(new InetSocketAddress(loopback, loopbackMdpPort));
+		}
 		return channel;
 	}
 
 	public void send(MdpPacket packet) throws IOException {
+		if (sid==null)
+			bind(SubscriberId.ANY, 0);
 		packet.setLocalSid(this.sid);
 		packet.setLocalPort(this.port);
 		packet.send(channel);
@@ -71,18 +94,23 @@ public class MdpSocket{
 	}
 
 	public void close() {
-		try {
-			MdpPacket p = new MdpPacket();
-			p.payload.flip();
-			p.setFlags(MdpPacket.MDP_FLAG_CLOSE);
-			send(p);
-		} catch (IOException e) {
-			e.printStackTrace();
+		if (sid!=null){
+			try {
+				MdpPacket p = new MdpPacket();
+				p.payload.flip();
+				p.setFlags(MdpPacket.MDP_FLAG_CLOSE);
+				send(p);
+			} catch (IOException e) {
+				// ignore errors due to servald stopping.
+				e.printStackTrace();
+			}
 		}
-		try {
-			channel.close();
-		} catch (IOException e) {
-			e.printStackTrace();
+		if (channel!=null){
+			try {
+				channel.close();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 		}
 	}
 

@@ -14,6 +14,7 @@ public class MdpDnaLookup extends ChannelSelector.Handler{
 
 	public MdpDnaLookup(ChannelSelector selector, AsyncResult<ServalDCommand.LookupResult> results) throws IOException {
 		socket = new MdpSocket();
+		socket.bind();
 		this.selector = selector;
 		this.results = results;
 		selector.register(this);
@@ -66,7 +67,7 @@ public class MdpDnaLookup extends ChannelSelector.Handler{
 	}
 
 	@Override
-	public SelectableChannel getChannel() {
+	public SelectableChannel getChannel() throws IOException {
 		return socket.getChannel();
 	}
 
