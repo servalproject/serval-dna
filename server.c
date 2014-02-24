@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <signal.h>
 #include <unistd.h>
 #include <time.h>
+#include <libgen.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 
@@ -131,6 +132,34 @@ int server_write_pid()
   }
   server_getpid = getpid();
   fprintf(f,"%d\n", server_getpid);
+  fclose(f);
+  return 0;
+}
+
+int server_write_proc_state(const char *path, const char *fmt, ...)
+{
+  char path_buf[400];
+  strbuf sbname = strbuf_local(path_buf, sizeof path_buf);
+  strbuf_path_join(sbname, serval_instancepath(), "proc", path, NULL);
+  if (strbuf_overrun(sbname))
+    return WHY("Buffer overrun building proc filename");
+  
+  char *name = strbuf_str(sbname);
+  
+  size_t dirsiz = strlen(name) + 1;
+  char dir_buf[dirsiz];
+  strcpy(dir_buf, name);
+  const char *dir = dirname(dir_buf); // modifies dir_buf[]
+  if (mkdirs(dir, 0700) == -1)
+    return WHY_perror("mkdirs()");
+  
+  FILE *f = fopen(name, "w");
+  
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(f, fmt, ap);
+  va_end(ap);
+  
   fclose(f);
   return 0;
 }

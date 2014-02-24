@@ -306,6 +306,7 @@ int server_pid();
 void server_save_argv(int argc, const char *const *argv);
 int server(const struct cli_parsed *parsed);
 int server_write_pid();
+int server_write_proc_state(const char *path, const char *fmt, ...);
 int server_create_stopfile();
 int server_remove_stopfile();
 int server_check_stopfile();

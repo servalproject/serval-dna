@@ -177,25 +177,42 @@ int overlay_mdp_setup_sockets()
     watch(&mdp_sock2);
   }
   
-  if (mdp_sock2_inet.poll.fd == -1) {
-    const char *port_str = getenv("SERVAL_MDP_INET_PORT");
-    if (port_str){
-      int fd = esocket(PF_INET, SOCK_DGRAM, 0);
-      if (fd>=0){
-	struct socket_address addr;
-	addr.addrlen = sizeof(addr.inet);
-	addr.inet.sin_family = AF_INET;
-	addr.inet.sin_port = htons(atoi(port_str));
-	addr.inet.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-	if (socket_bind(fd, &addr)==0){
+  if (mdp_sock2_inet.poll.fd == -1 && config.mdp.enable_inet) {
+    int fd = esocket(PF_INET, SOCK_DGRAM, 0);
+    if (fd>=0){
+      // try to find a free UDP port somewhere between 4210 & 4260
+      uint16_t start_port = 4210;
+      
+      struct socket_address addr;
+      addr.addrlen = sizeof(addr.inet);
+      addr.inet.sin_family = AF_INET;
+      addr.inet.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+      
+      const char *port_str = getenv("SERVAL_MDP_INET_PORT");
+      if (port_str)
+	start_port = atoi(port_str);
+	
+      uint16_t end_port = start_port+50;
+      uint16_t port;
+      
+      for (port = start_port; port<=end_port; port++){
+	addr.inet.sin_port = htons(port);
+	if (bind(fd, &addr.addr, addr.addrlen)!=-1){
 	  mdp_sock2_inet.poll.fd = fd;
+	  fd = -1;
 	  mdp_sock2_inet.poll.events = POLLIN;
 	  watch(&mdp_sock2_inet);
+	  server_write_proc_state("mdp_inet_port", "%d\n", port);
 	  INFOF("Socket mdp.2.inet: fd=%d %s", fd, alloca_socket_address(&addr));
-	}else{
-	  close(fd);
+	  break;
 	}
+	  
+	if (errno != EADDRINUSE)
+	  WHY_perror("bind");
       }
+      
+      if (fd!=-1)
+	close(fd);
     }
   }
   return 0;

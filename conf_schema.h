@@ -343,6 +343,7 @@ END_ARRAY(5)
 
 STRUCT(mdp)
 SUB_STRUCT(mdp_iftypelist,  iftype,)
+ATOM(bool_t,                enable_inet, 0, boolean,, "If true, allow mdp clients to connect over loopback UDP")
 END_STRUCT
 
 STRUCT(olsr)
