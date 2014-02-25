@@ -41,13 +41,13 @@ public class MdpDnaLookup extends ChannelSelector.Handler{
 			response.payload.get(bytes);
 			String resultString = new String(bytes);
 			String fields[] = resultString.split("\\|");
-			if (fields.length < 4)
-				throw new IOException("Expected 4 result fields");
+			if (fields.length < 2)
+				throw new IOException("Expected at least 2 result fields, got \""+resultString+"\"");
 			ServalDCommand.LookupResult result = new ServalDCommand.LookupResult();
 			result.subscriberId = new SubscriberId(fields[0]);
 			result.uri = fields[1];
-			result.did = fields[2];
-			result.name = fields[3];
+			result.did = (fields.length>2)?fields[2]:"";
+			result.name = (fields.length>3)?fields[3]:"";
 			results.result(result);
 		} catch (IOException e) {
 			e.printStackTrace();
