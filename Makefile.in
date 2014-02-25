@@ -85,7 +85,7 @@ INSTALL_DATA=   $(INSTALL) -m 644
 # More warnings, discover problems that only happen on some archs
 CFLAGS+=-Wextra
 # Security enhancements from Debian
-CFLAGS+=-fstack-protector --param=ssp-buffer-size=4 -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2
+CFLAGS+=-Wformat -Werror=format-security -D_FORTIFY_SOURCE=2
 
 DEFS=	@DEFS@
 

@@ -130,16 +130,33 @@ AC_CHECK_LIB(nsl,callrpc,[LDFLAGS="$LDFLAGS -lnsl"])
 AC_CHECK_LIB(socket,socket,[LDFLAGS="$LDFLAGS -lsocket"])
 AC_CHECK_LIB(dl,dlopen,[LDFLAGS="$LDFLAGS -ldl"])
 
-AC_CACHE_CHECK(linker -z relro option, libc_cv_z_relro, [dnl
+AC_CACHE_CHECK([linker -z relro option], libc_cv_z_relro, [dnl
   libc_cv_z_relro=no
-  if AC_TRY_COMMAND([${CC-cc} -v --help 2>&1|grep "z relro" 1>&AS_MESSAGE_LOG_FD])
-  then
-    if AC_TRY_COMMAND([${CC-cc} -Wl,--verbose 2>&1|grep DATA_SEGMENT_RELRO_END 1>&AS_MESSAGE_LOG_FD])
-    then
+  AS_IF([AC_TRY_COMMAND([${CC-cc} -v --help 2>&1 | grep "z relro" 1>&AS_MESSAGE_LOG_FD])], [
+    AS_IF([AC_TRY_COMMAND([${CC-cc} -Wl,--verbose 2>&1 | grep DATA_SEGMENT_RELRO_END 1>&AS_MESSAGE_LOG_FD])], [
       libc_cv_z_relro=yes
       LDFLAGS="$LDFLAGS -Wl,-z,relro"
-    fi
-  fi
+    ])
+  ])
+])
+
+dnl Stack smashing protection is not available on all platforms
+AC_MSG_CHECKING([for SSP support])
+have_ssp=0
+save_cflags="$CFLAGS"
+CFLAGS="$CFLAGS -fstack-protector --param=ssp-buffer-size=4"
+AC_LANG([C])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([])], [
+    AC_LINK_IFELSE([AC_LANG_PROGRAM([])], [
+        have_ssp=1
+    ])
+])
+AS_IF([test x"$have_ssp" = "x1"], [
+    AC_MSG_RESULT([yes])
+    AC_SUBST([HAVE_SSP],1)
+], [
+    AC_MSG_RESULT([no])
+    CFLAGS="$save_cflags"
 ])
 
 dnl Some platforms still seem to lack the basic single precision trig and power related function.
