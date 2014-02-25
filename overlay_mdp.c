@@ -202,7 +202,7 @@ int overlay_mdp_setup_sockets()
 	  fd = -1;
 	  mdp_sock2_inet.poll.events = POLLIN;
 	  watch(&mdp_sock2_inet);
-	  server_write_proc_state("mdp_inet_port", "%d\n", port);
+	  server_write_proc_state("mdp_inet_port", "%d", port);
 	  INFOF("Socket mdp.2.inet: fd=%d %s", fd, alloca_socket_address(&addr));
 	  break;
 	}

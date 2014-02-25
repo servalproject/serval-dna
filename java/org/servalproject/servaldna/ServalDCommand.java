@@ -99,6 +99,8 @@ public class ServalDCommand
 		public int tries;
 		public String instancePath;
 		public String status;
+		public int mdpInetPort;
+		public int httpPort;
 
 		@Override
 		public void putString(String value) {
@@ -106,6 +108,10 @@ public class ServalDCommand
 				instancePath=value;
 			if (columnName.equals("status"))
 				status=value;
+			if (columnName.equals("mdp_inet_port"))
+				mdpInetPort=Integer.parseInt(value);
+			if (columnName.equals("http_port"))
+				httpPort=Integer.parseInt(value);
 		}
 
 		@Override
@@ -123,6 +129,8 @@ public class ServalDCommand
 					", tries=" + tries +
 					", instancePath='" + instancePath + '\'' +
 					", status='" + status + '\'' +
+					", mdpInetPort='" + mdpInetPort + '\'' +
+					", httpPort='" + httpPort + '\'' +
 					'}';
 		}
 	}

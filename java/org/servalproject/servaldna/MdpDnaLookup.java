@@ -45,9 +45,9 @@ public class MdpDnaLookup extends ChannelSelector.Handler{
 				throw new IOException("Expected 4 result fields");
 			ServalDCommand.LookupResult result = new ServalDCommand.LookupResult();
 			result.subscriberId = new SubscriberId(fields[0]);
-			result.did = fields[1];
-			result.name = fields[2];
-			result.uri = fields[3];
+			result.uri = fields[1];
+			result.did = fields[2];
+			result.name = fields[3];
 			results.result(result);
 		} catch (IOException e) {
 			e.printStackTrace();

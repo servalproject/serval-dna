@@ -205,7 +205,7 @@ error:
   return WHY("Failed to start HTTP server");
 
 success:
-  server_write_proc_state("http_port", "%d\n", port);
+  server_write_proc_state("http_port", "%d", port);
   INFOF("HTTP SERVER START port=%"PRIu16" fd=%d services=RESTful%s%s",
       port,
       httpd_server_socket,

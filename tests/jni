@@ -124,7 +124,6 @@ setup_DnaLookup() {
    set_instance +A
 }
 test_DnaLookup() {
-   export SERVAL_MDP_INET_PORT=$(<"$SERVALINSTANCE_PATH/proc/mdp_inet_port")
    execute --timeout=10 --core-backtrace java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.test.CommandLine 'lookup'
    assertStdoutGrep "$SIDB"
    tfw_cat --stdout --stderr

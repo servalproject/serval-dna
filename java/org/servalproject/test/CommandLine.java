@@ -34,7 +34,12 @@ public class CommandLine {
 	}
 
 	static void lookup(String did) throws IOException, InterruptedException, ServalDFailureException {
-		MdpSocket.loopbackMdpPort = Integer.parseInt(System.getenv("SERVAL_MDP_INET_PORT"));
+		ServalDCommand.Status s = ServalDCommand.serverStatus();
+		System.out.println(s);
+		if (s.getResult()!=0)
+			throw new ServalDFailureException("Serval daemon isn't running");
+		System.out.println(s);
+		MdpSocket.loopbackMdpPort = s.mdpInetPort;
 		ChannelSelector selector = new ChannelSelector();
 		MdpDnaLookup lookup = new MdpDnaLookup(selector, new AsyncResult<ServalDCommand.LookupResult>() {
 			@Override

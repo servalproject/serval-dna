@@ -936,6 +936,15 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
   cli_put_string(context, serval_instancepath(), "\n");
   cli_field_name(context, "pid", ":");
   cli_put_long(context, pid, "\n");
+  char buff[256];
+  if (server_get_proc_state("http_port", buff, sizeof buff)!=-1){
+    cli_field_name(context, "http_port", ":");
+    cli_put_string(context, buff, "\n");
+  }
+  if (server_get_proc_state("mdp_inet_port", buff, sizeof buff)!=-1){
+    cli_field_name(context, "mdp_inet_port", ":");
+    cli_put_string(context, buff, "\n");
+  }
   cli_flush(context);
   /* Sleep before returning if env var is set.  This is used in testing, to simulate the situation
      on Android phones where the "start" command is invoked via the JNI interface and the calling
@@ -1017,6 +1026,15 @@ int app_server_status(const struct cli_parsed *parsed, struct cli_context *conte
   if (pid > 0) {
     cli_field_name(context, "pid", ":");
     cli_put_long(context, pid, "\n");
+    char buff[256];
+    if (server_get_proc_state("http_port", buff, sizeof buff)!=-1){
+      cli_field_name(context, "http_port", ":");
+      cli_put_string(context, buff, "\n");
+    }
+    if (server_get_proc_state("mdp_inet_port", buff, sizeof buff)!=-1){
+      cli_field_name(context, "mdp_inet_port", ":");
+      cli_put_string(context, buff, "\n");
+    }
   }
   return pid > 0 ? 0 : 1;
 }

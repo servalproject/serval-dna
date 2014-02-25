@@ -17,6 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <dirent.h>
 #include <signal.h>
 #include <unistd.h>
 #include <time.h>
@@ -136,24 +137,31 @@ int server_write_pid()
   return 0;
 }
 
-int server_write_proc_state(const char *path, const char *fmt, ...)
+static int get_proc_path(const char *path, char *buff, size_t buff_len)
 {
-  char path_buf[400];
-  strbuf sbname = strbuf_local(path_buf, sizeof path_buf);
+  strbuf sbname = strbuf_local(buff, buff_len);
   strbuf_path_join(sbname, serval_instancepath(), "proc", path, NULL);
   if (strbuf_overrun(sbname))
     return WHY("Buffer overrun building proc filename");
-  
-  char *name = strbuf_str(sbname);
-  
-  size_t dirsiz = strlen(name) + 1;
+  return 0;
+}
+
+int server_write_proc_state(const char *path, const char *fmt, ...)
+{
+  char path_buf[400];
+  if (get_proc_path(path, path_buf, sizeof path_buf)==-1)
+    return -1;
+    
+  size_t dirsiz = strlen(path_buf) + 1;
   char dir_buf[dirsiz];
-  strcpy(dir_buf, name);
+  strcpy(dir_buf, path_buf);
   const char *dir = dirname(dir_buf); // modifies dir_buf[]
   if (mkdirs(dir, 0700) == -1)
     return WHY_perror("mkdirs()");
   
-  FILE *f = fopen(name, "w");
+  FILE *f = fopen(path_buf, "w");
+  if (!f)
+    return WHY_perror("fopen()");
   
   va_list ap;
   va_start(ap, fmt);
@@ -162,6 +170,25 @@ int server_write_proc_state(const char *path, const char *fmt, ...)
   
   fclose(f);
   return 0;
+}
+
+int server_get_proc_state(const char *path, char *buff, size_t buff_len)
+{
+  char path_buf[400];
+  if (get_proc_path(path, path_buf, sizeof path_buf)==-1)
+    return -1;
+  
+  FILE *f = fopen(path_buf, "r");
+  if (!f)
+    return -1;
+  
+  int ret=0;
+  
+  if (!fgets(buff, buff_len, f))
+    ret = WHY_perror("fgets");
+  
+  fclose(f);
+  return ret;
 }
 
 /* Called periodically by the server process in its main loop.
@@ -262,6 +289,33 @@ int server_check_stopfile()
   return -1;
 }
 
+static void clean_proc()
+{
+  char path_buf[400];
+  strbuf sbname = strbuf_local(path_buf, sizeof path_buf);
+  strbuf_path_join(sbname, serval_instancepath(), "proc", NULL);
+  
+  DIR *dir;
+  struct dirent *dp;
+  if ((dir = opendir(path_buf)) == NULL) {
+    WARNF_perror("opendir(%s)", alloca_str_toprint(path_buf));
+    return;
+  }
+  while ((dp = readdir(dir)) != NULL) {
+    strbuf_reset(sbname);
+    strbuf_path_join(sbname, serval_instancepath(), "proc", dp->d_name, NULL);
+    
+    struct stat st;
+    if (lstat(path_buf, &st)) {
+      WARNF_perror("stat(%s)", path_buf);
+      continue;
+    }
+    
+    if (S_ISREG(st.st_mode))
+      unlink(path_buf);
+  }
+}
+
 void serverCleanUp()
 {
   if (serverMode){
@@ -271,6 +325,8 @@ void serverCleanUp()
   }
   
   overlay_mdp_clean_socket_files();
+  
+  clean_proc();
   
   /* Try to remove shutdown and PID files and exit */
   server_remove_stopfile();

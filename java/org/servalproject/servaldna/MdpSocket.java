@@ -60,6 +60,7 @@ public class MdpSocket{
 		packet.setFlags(MdpPacket.MDP_FLAG_BIND);
 		packet.payload.flip();
 		packet.send(channel);
+		channel.socket().setSoTimeout(5000);
 		// should throw MdpError on bind failures
 		receive(packet);
 		try {
