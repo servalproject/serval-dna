@@ -74,7 +74,7 @@ AC_CHECK_TYPES([off64_t], [have_off64_t=1], [have_off64_t=0])
 AC_CHECK_SIZEOF([off_t])
 
 dnl There must be a 64-bit seek(2) system call of some kind
-AS_IF([test \( "x$have_lseek64_t" = "xno" -a "x$ac_cv_sizeof_off_t" != x8 ], [
+AS_IF([test "x$have_lseek64_t" = "xno" -a "x$ac_cv_sizeof_off_t" != x8 ], [
     AC_MSG_ERROR([Missing lseek64(2) system call])
 ])
 
