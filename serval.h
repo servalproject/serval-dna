@@ -196,7 +196,9 @@ int strn_to_sid_t(sid_t *sid, const char *hex, const char **endp);
 #define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
 
 /*
- * INSTANCE_PATH can be set via the ./configure option --enable-instance-path=<path>
+ * INSTANCE_PATH can be set on the ./configure command line, eg:
+ *
+ *      ./configure INSTANCE_PATH=/var/local/serval/node
  */
 #ifdef INSTANCE_PATH
 #define DEFAULT_INSTANCE_PATH INSTANCE_PATH

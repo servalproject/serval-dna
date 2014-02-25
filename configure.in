@@ -10,6 +10,10 @@ AC_CANONICAL_SYSTEM
 dnl Init pkg-config
 PKG_PROG_PKG_CONFIG()
 
+dnl Specify default instance path
+AC_ARG_VAR([INSTANCE_PATH], [default instance path for servald])
+AS_IF([test "x$INSTANCE_PATH" != x], [AC_DEFINE_UNQUOTED([INSTANCE_PATH], ["$INSTANCE_PATH"], [default instance path])])
+
 dnl VoIP test app
 AC_ARG_ENABLE(voiptest,
 AS_HELP_STRING([--enable-voiptest], [Require VoIP test program (default: only build if dependencies are present)])
@@ -23,7 +27,7 @@ AS_IF([test "x$enable_voiptest" != "xno"], [
     PKG_CHECK_MODULES([SRC], [samplerate],,[have_voip=0])
     PKG_CHECK_MODULES([SPANDSP], [spandsp],,[have_voip=0])
     AC_CHECK_HEADER([codec2.h],, [have_voip=0])
-    AC_CHECK_LIB([codec2], [codec2_create], [AC_SUBST(CODEC2_LIBS, -lcodec2)], [have_voip=0])
+    AC_CHECK_LIB([codec2], [codec2_create], [AC_SUBST([CODEC2_LIBS], -lcodec2)], [have_voip=0])
 ])
 AS_IF([test "x$enable_voiptest" = "xyes" -a "x$have_voip" != "x1" ], [
     AC_MSG_ERROR([Missing VoIP dependencies])
@@ -59,9 +63,6 @@ if test -n "$JAVAC"; then
     done
     popdef([AC_MSG_ERROR])
 fi
-
-AC_ARG_ENABLE(instance-path,"Set default instance path for servald",
-				  CPPFLAGS="$CPPFLAGS -DINSTANCE_PATH=\\\"$enableval\\\"")
 
 dnl XXX Isn't this pointless? we are always linked against libc
 AC_CHECK_LIB(c,srandomdev)

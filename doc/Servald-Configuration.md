@@ -47,8 +47,8 @@ by the `SERVALINSTANCE_PATH` environment variable.  If this is not set, then
 **servald** uses a built-in default path which depends on its build-time option
 and target platform:
 
-* as specified by the `./configure --enable-instance-path=PATH` option when
-  **servald** was built from source
+* as specified by the `./configure INSTANCE_PATH=<path>` option when **servald**
+  was built from source
 * on Android `/data/data/org.servalproject/var/serval-node`
 * on other platforms `/var/serval-node`
 
