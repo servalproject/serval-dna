@@ -698,7 +698,7 @@ static int vomp_update(struct vomp_call_state *call)
   vomp_send_status_remote(call);
   
   // tell monitor clients
-  if (monitor_socket_count && monitor_client_interested(MONITOR_VOMP))
+  if (monitor_client_interested(MONITOR_VOMP))
     monitor_call_status(call);
   
   return 0;
@@ -749,10 +749,9 @@ static int vomp_process_audio(struct vomp_call_state *call, struct overlay_buffe
     return 0;
   
   /* Pass audio frame to all registered listeners */
-  if (monitor_socket_count)
-    monitor_send_audio(call, codec, decoded_time, decoded_sequence,
-		       ob_current_ptr(payload),
-		       audio_len, delay);
+  monitor_send_audio(call, codec, decoded_time, decoded_sequence,
+		     ob_current_ptr(payload),
+		     audio_len, delay);
   return 0;
 }
 
@@ -925,8 +924,7 @@ int vomp_mdp_received(struct internal_mdp_header *header, struct overlay_buffer 
       // Though we could use this information to indicate a network error.
       recvr_state = call->local.state;
       
-      if ((!monitor_socket_count)
-	  &&(!monitor_client_interested(MONITOR_VOMP)))
+      if (!monitor_client_interested(MONITOR_VOMP))
       {
 	/* No registered listener, so we cannot answer the call, so just reject
 	   it. */

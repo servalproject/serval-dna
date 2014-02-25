@@ -415,7 +415,6 @@ int monitor_announce_link(int hop_count, struct subscriber *transmitter, struct 
 int monitor_tell_clients(char *msg, int msglen, int mask);
 int monitor_tell_formatted(int mask, char *fmt, ...);
 int monitor_client_interested(int mask);
-extern int monitor_socket_count;
 
 int scrapeProcNetRoute();
 int lsif();

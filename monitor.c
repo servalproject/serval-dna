@@ -87,6 +87,7 @@ struct monitor_context {
   
   char line[MONITOR_LINE_LENGTH];
   int line_length;
+#define MONITOR_STATE_UNUSED 0
 #define MONITOR_STATE_COMMAND 1
 #define MONITOR_STATE_DATA 2
   int state;
@@ -96,7 +97,7 @@ struct monitor_context {
 };
 
 #define MAX_MONITOR_SOCKETS 8
-int monitor_socket_count=0;
+unsigned monitor_socket_count=0;
 struct monitor_context monitor_sockets[MAX_MONITOR_SOCKETS];
 
 int monitor_process_command(struct monitor_context *c);
@@ -174,22 +175,13 @@ void monitor_poll(struct sched_ent *alarm)
 }
 
 static void monitor_close(struct monitor_context *c){
-  struct monitor_context *last;
-  
-  INFO("Tearing down monitor client");
+  INFOF("Tearing down monitor client fd=%d", c->alarm.poll.fd);
   
   unwatch(&c->alarm);
   close(c->alarm.poll.fd);
   c->alarm.poll.fd=-1;
-  
-  monitor_socket_count--;
-  last = &monitor_sockets[monitor_socket_count];
-  if (last != c){
-    unwatch(&last->alarm);
-    bcopy(last, c,
-	  sizeof(struct monitor_context));
-    watch(&c->alarm);
-  }
+  c->state=MONITOR_STATE_UNUSED;
+  c->flags=0;
 }
 
 void monitor_client_poll(struct sched_ent *alarm)
@@ -312,7 +304,7 @@ static void monitor_new_client(int s) {
   ucred_t			*ucred;
 #endif
   uid_t				otheruid;
-  struct monitor_context	*c;
+  struct monitor_context	*c=NULL;
 
   if (set_nonblock(s) == -1)
     goto error;
@@ -355,13 +347,23 @@ static void monitor_new_client(int s) {
       goto error;
     }
   }
-  if (monitor_socket_count >= MAX_MONITOR_SOCKETS
-	     ||monitor_socket_count < 0) {
-    write_str(s, "\nCLOSE:All sockets busy\n");
-    goto error;
+  
+  unsigned i;
+  for (i=0;i<monitor_socket_count;i++){
+    if (monitor_sockets[i].state == MONITOR_STATE_UNUSED){
+      c = &monitor_sockets[i];
+      break;
+    }
   }
   
-  c = &monitor_sockets[monitor_socket_count++];
+  if (!c){
+    if (monitor_socket_count >= MAX_MONITOR_SOCKETS) {
+      write_str(s, "\nCLOSE:All sockets busy\n");
+      goto error;
+    }
+    
+    c = &monitor_sockets[monitor_socket_count++];
+  }
   c->alarm.function = monitor_client_poll;
   client_stats.name = "monitor_client_poll";
   c->alarm.stats=&client_stats;
