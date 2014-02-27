@@ -465,6 +465,25 @@ test_CorruptPayload() {
    wait_until grep -i "Stored file $FILEHASH" $LOGA
 }
 
+doc_MissingPayload="A missing payload should be re-fetched"
+setup_MissingPayload() {
+   setup_common
+   set_instance +A
+   executeOk_servald config set rhizome.max_blob_size 0
+   rhizome_add_file file1 1024
+   create_file file2 1024
+   start_servald_instances +A +B
+   wait_until bundle_received_by $BID:$VERSION +B
+}
+test_MissingPayload() {
+   set_instance +A
+   rm $SERVALINSTANCE_PATH/$FILEHASH
+   execute --exit-status=255 $servald rhizome extract file $BID file1a
+   stop_servald_server
+   start_servald_server
+   wait_until grep -i "Stored file $FILEHASH" $LOGA
+}
+
 doc_HttpFetchRange="Fetch a file range using HTTP GET"
 setup_HttpFetchRange() {
    setup_curl 7
