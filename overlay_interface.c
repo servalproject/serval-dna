@@ -434,7 +434,7 @@ overlay_interface_init(const char *name, struct socket_address *addr,
       break;
     case OVERLAY_INTERFACE_WIFI:
       tick_ms = 500;
-      packet_interval = 400;
+      packet_interval = 800;
       break;
     case OVERLAY_INTERFACE_UNKNOWN:
       tick_ms = 500;
