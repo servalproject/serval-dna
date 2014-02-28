@@ -99,8 +99,12 @@ esac
 cd "$repo_path" >/dev/null
 
 if [ ! -d .git ]; then
-  echo "UNKNOWN-VERSION"
-  exit 0
+   if [ -s VERSION.txt ] && [ $(cat VERSION.txt | wc -l) -eq 1 ]; then
+      cat VERSION.txt
+   else
+      echo "UNKNOWN-VERSION"
+   fi
+   exit 0
 fi
 
 get_author_label() {
