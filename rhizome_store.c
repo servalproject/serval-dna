@@ -792,6 +792,8 @@ enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const r
       if (errno == ENOENT) {
 	if (config.debug.externalblobs)
 	  DEBUGF("Stored file does not exist: %s", blob_path);
+	// make sure we remove an orphan file row
+	rhizome_delete_file(&read->id);
 	return RHIZOME_PAYLOAD_STATUS_NEW;
       }
       WHYF_perror("open(%s)", alloca_str_toprint(blob_path));

@@ -478,7 +478,7 @@ setup_MissingPayload() {
 test_MissingPayload() {
    set_instance +A
    rm $SERVALINSTANCE_PATH/$FILEHASH
-   execute --exit-status=255 $servald rhizome extract file $BID file1a
+   execute --exit-status=1 $servald rhizome extract file $BID file1a
    stop_servald_server
    start_servald_server
    wait_until grep -i "Stored file $FILEHASH" $LOGA
