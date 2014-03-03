@@ -1,8 +1,13 @@
 # Included by top-level Android.mk
 
-SERVAL_BASE=serval-dna/
-include jni/serval-dna/sourcefiles.mk
+LOCAL_PATH := $(call my-dir)
+include $(CLEAR_VARS)
+include $(LOCAL_PATH)/sourcefiles.mk
 SERVALD_SRC_FILES = $(SERVAL_SOURCES) $(ANDROIDONLY_SOURCES)
+NACL_BASE = nacl/src
+NACL_INC := $(LOCAL_PATH)/nacl/include
+include $(LOCAL_PATH)/$(NACL_BASE)/nacl.mk
+SQLITE3_INC := $(LOCAL_PATH)/sqlite-amalgamation-3070900
 
 SERVALD_LOCAL_CFLAGS = \
 	-g \
@@ -22,42 +27,23 @@ SERVALD_LOCAL_CFLAGS = \
 	-I$(SQLITE3_INC)
 
 SERVALD_LOCAL_LDLIBS = -L$(SYSROOT)/usr/lib -llog 
-SERVALD_LOCAL_STATIC_LIBRARIES = sqlite3 nacl
 
-# Build NACL
+# Build libserval.so
 include $(CLEAR_VARS)
-# Work out where NACL is
-NACL_BASE=serval-dna/nacl/src
-NACL_INC=$(LOCAL_PATH)/$(NACL_BASE)/../include
-# Find sources
-include $(LOCAL_PATH)/$(NACL_BASE)/nacl.mk
-LOCAL_MODULE:= nacl
-LOCAL_SRC_FILES:= $(NACL_SOURCES)
-LOCAL_CFLAGS += -g -I$(NACL_INC)
-include $(BUILD_STATIC_LIBRARY)
-
-# Build libservald.so
-include $(CLEAR_VARS)
-# Find SQLITE3 headers
-SQLITE3_INC=$(LOCAL_PATH)/sqlite3
-# Get the list of sources
-include $(LOCAL_PATH)/serval-dna/nacl/src/nacl.mk
-LOCAL_SRC_FILES:= $(SERVALD_SRC_FILES) $(SERVAL_BASE)version_servald.c
-LOCAL_CFLAGS += $(SERVALD_LOCAL_CFLAGS) -Iserval-dna/nacl/include
+LOCAL_SRC_FILES := $(NACL_SOURCES) $(SERVALD_SRC_FILES) version_servald.c
+LOCAL_CFLAGS += $(SERVALD_LOCAL_CFLAGS)
 LOCAL_LDLIBS := $(SERVALD_LOCAL_LDLIBS)
-LOCAL_STATIC_LIBRARIES := $(SERVALD_LOCAL_STATIC_LIBRARIES)
-LOCAL_MODULE:= serval
+LOCAL_MODULE := serval
 include $(BUILD_SHARED_LIBRARY)
 
-# Build libserval.so wrapper
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES:= serval-dna/servalwrap.c
+LOCAL_SRC_FILES:= servalwrap.c
 LOCAL_MODULE:= servald
 include $(BUILD_EXECUTABLE)
 
 # Build servald for use with gdb
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES:= $(SERVALD_SRC_FILES) $(SERVAL_BASE)version_servald.c
+LOCAL_SRC_FILES:= $(NACL_SOURCES) $(SERVALD_SRC_FILES) version_servald.c
 LOCAL_CFLAGS += $(SERVALD_LOCAL_CFLAGS)
 LOCAL_LDLIBS := $(SERVALD_LOCAL_LDLIBS)
 LOCAL_STATIC_LIBRARIES := $(SERVALD_LOCAL_STATIC_LIBRARIES)

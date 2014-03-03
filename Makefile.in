@@ -5,18 +5,17 @@ sbindir=@sbindir@
 
 NACL_BASE=	nacl/src
 include $(NACL_BASE)/nacl.mk
-SERVAL_BASE=
 include sourcefiles.mk
 include headerfiles.mk
 
 HAVE_ALSA= @HAVE_ALSA@
 ifeq (HAVE_ALSA,1)
-SERVAL_SOURCES+=	$(SERVAL_BASE)/audio_alsa.c
+SERVAL_SOURCES+=	audio_alsa.c
 endif
 
 HAVE_VOIPTEST=	@HAVE_VOIPTEST@
 ifeq ($(HAVE_VOIPTEST), 1)
-SERVAL_SOURCES+=	$(SERVAL_BASE)/pa_phone.c
+SERVAL_SOURCES+=	pa_phone.c
 VOIPTEST_CFLAGS=-DHAVE_VOIPTEST=1
 endif
 
