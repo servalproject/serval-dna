@@ -779,13 +779,7 @@ _tfw_parse_times_to_milliseconds() {
 }
 
 _tfw_assert() {
-   local sense=
-   while [ "$1" = '!' ]; do
-      sense="$sense !"
-      shift
-   done
-   "$@"
-   if [ $sense $? -ne 0 ]; then
+   if ! tfw_run "$@"; then
       _tfw_failmsg "assertion failed: ${_tfw_message:-$*}"
       _tfw_backtrace
       return 1
@@ -1618,6 +1612,27 @@ assertStderrGrep() {
    _tfw_assert_stdxxx_grep stderr "$@" || _tfw_failexit
 }
 
+# Execute the given args as a command, like the Bash 'eval' builtin but without
+# expanding the arguments.  The only difference is that leading '!' arguments
+# are stripped off and invert the exit status: non-zero becomes zero, and zero
+# becomes 1.  Also, barfs with an error if the command is missing (no args).
+# Very useful for writing functions that take a command-with-args as a predicate
+# expression, because it allows the '!' notation for inverting the sense of the
+# expression.
+tfw_run() {
+   local sense=true
+   while [ "$1" = '!' ]; do
+      sense=$($sense && echo false || echo true)
+      shift
+   done
+   [ $# -eq 0 ] && error "missing command"
+   "$@"
+   local status=$?
+   $sense && return $status
+   [ $status -eq 0 ] && return 1
+   return 0
+}
+
 # Wait until a given condition is met:
 #  - can specify the timeout with --timeout=SECONDS (overridden by command-line
 #    option)
@@ -1632,16 +1647,10 @@ wait_until() {
    shift $_tfw_getopts_shift
    local timeout=${_tfw_timeout_override:-${_tfw_opt_timeout:-${TFW_WAIT_UNTIL_TIMEOUT:-${_tfw_default_wait_until_timeout:-1}}}}
    _tfw_is_float "$timeout" || error "invalid timeout '$timeout'"
-   local sense=
-   while [ "$1" = '!' ]; do
-      sense="$sense !"
-      shift
-   done
    sleep $timeout &
    local timeout_pid=$!
    while true; do
-      "$@"
-      [ $sense $? -eq 0 ] && break
+      tfw_run "$@" && break
       if ! kill -0 $timeout_pid 2>/dev/null; then
          local end=$SECONDS
          fail "timeout after $((end - start)) seconds"

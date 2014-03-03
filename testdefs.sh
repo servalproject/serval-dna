@@ -263,7 +263,7 @@ foreach_instance() {
    local I
    for I in ${instances[*]}; do
       set_instance $I
-      if "$@"; then
+      if tfw_run "$@"; then
          case $mode in
          any) break;;
          esac
