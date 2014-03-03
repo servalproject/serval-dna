@@ -471,17 +471,20 @@ setup_MissingPayload() {
    set_instance +A
    executeOk_servald config set rhizome.max_blob_size 0
    rhizome_add_file file1 1024
-   create_file file2 1024
+   assert [ -s "$SERVALINSTANCE_PATH/$FILEHASH" ]
    start_servald_instances +A +B
    wait_until bundle_received_by $BID:$VERSION +B
-}
-test_MissingPayload() {
-   set_instance +A
    rm $SERVALINSTANCE_PATH/$FILEHASH
-   execute --exit-status=1 $servald rhizome extract file $BID file1a
+   execute --exit-status=1 --stderr $servald rhizome extract file $BID file1a
+   # TODO at the moment, the re-fetch is only triggered by restarting the
+   # daemon.  Eventually (when the Rhizome Rank is implemented), the re-fetch
+   # shoud be automatic and immediate without restarting the daemon.
    stop_servald_server
    start_servald_server
+}
+test_MissingPayload() {
    wait_until grep -i "Stored file $FILEHASH" $LOGA
+   executeOk $servald rhizome extract file $BID file1a
 }
 
 doc_HttpFetchRange="Fetch a file range using HTTP GET"
