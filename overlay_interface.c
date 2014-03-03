@@ -908,6 +908,7 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 	DEBUGF("Sending %zu byte overlay frame on %s to %s", 
 	  (size_t)len, interface->name, alloca_socket_address(&destination->address));
       
+      set_nonblock(interface->alarm.poll.fd);
       if (destination->address.addr.sa_family == AF_UNIX
 	&& !destination->unicast){
 	// find all sockets in this folder and send to them
@@ -933,6 +934,7 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 	  return -1;
 	}
       }
+      set_block(interface->alarm.poll.fd);
       ob_free(buffer);
       return 0;
     }
