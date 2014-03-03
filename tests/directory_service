@@ -38,13 +38,11 @@ teardown() {
 
 is_published() {
    tfw_log "grep \"PUBLISHED.*$1\" $instance_servald_log"
-   grep "PUBLISHED.*$1" $instance_servald_log || return 1
-   return 0
+   grep "PUBLISHED.*$1" $instance_servald_log
 }
 
 sent_directory_request() {
-   grep "Sending directory registration" $instance_servald_log || return 1
-   return 0
+   grep "Sending directory registration" $instance_servald_log
 }
 
 setup_publish() {
@@ -70,14 +68,12 @@ doc_publish="Publish and retrieve a directory entry"
 test_publish() {
    wait_until grep "DNAHELPER got STARTED ACK" $LOGA
    foreach_instance +B +C +D wait_until sent_directory_request
-   set_instance +A
    wait_until is_published $SIDB
    wait_until is_published $SIDC
    wait_until is_published $SIDD
    stop_servald_server +B
    stop_servald_server +C
    stop_servald_server +D
-   set_instance +A
    executeOk_servald dna lookup "$DIDB"
    assertStdoutLineCount '==' 3
    assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"

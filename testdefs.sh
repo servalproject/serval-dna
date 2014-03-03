@@ -189,12 +189,30 @@ push_instance() {
 }
 
 # Utility function:
+#  - push the current instance on the instance stack and set the instance to the
+#    given arg
+#  - if set_instance fails, pops the instance stack before returning
+#    set_instance's exit status
+push_and_set_instance() {
+   push_instance
+   set_instance "$@" && return 0
+   status=$?
+   pop_instance
+   return $status
+}
+
+# Utility function:
 #  - pop an instance off the instance stack
 pop_instance() {
    local n=${#instance_stack[*]}
-   [ $n -eq 0 ] && error "instance stack underflow"
+   if [ $n -eq 0 ]; then
+      error "instance stack underflow"
+      return $?
+   fi
    let --n
+   set_instance +${instance_stack[$n]}
    unset instance_stack[$n]
+   return 0
 }
 
 # Utility function:
@@ -207,6 +225,7 @@ set_instance() {
    case "$1" in
    '')
       error "missing instance name argument"
+      return 1
       ;;
    +[A-Z])
       instance_arg="${1}"
@@ -228,9 +247,11 @@ set_instance() {
       export SERVALINSTANCE_PATH="$instance_dir/servald"
       instance_servald_log="$instance_dir/servald.log"
       instance_servald_pidfile="$SERVALINSTANCE_PATH/servald.pid"
+      return 0
       ;;
    *)
       error "malformed instance name argument, must be in form +[A-Z]"
+      return 1
       ;;
    esac
 }

@@ -347,7 +347,7 @@ rhizome_http_server_started() {
 }
 
 get_rhizome_server_port() {
-   set_instance $2
+   push_and_set_instance $2 || return $?
    local _var="$1"
    local _port=$(<"$SERVALINSTANCE_PATH/proc/http_port")
    assert --message="instance $instance_name Rhizome HTTP server port number is known" [ -n "$_port" ]
@@ -355,6 +355,7 @@ get_rhizome_server_port() {
       eval "$_var=\$_port"
       tfw_log "$_var=$_port"
    fi
+   pop_instance
    return 0
 }
 
@@ -374,7 +375,7 @@ bundle_received_by() {
          $restart && rexps=() bundles=()
          restart=false
          bid="${arg%%:*}"
-         matches_rexp "$rexp_manifestid" "$bid" || error "invalid bundle ID: $bid"
+         matches_rexp "$rexp_manifestid" "$bid" || error "invalid bundle ID: $bid" || return $?
          bundles+=("$arg")
          if [ "$bid" = "$arg" ]; then
             rexps+=("RHIZOME ADD MANIFEST service=.* bid=$bid")
@@ -384,8 +385,7 @@ bundle_received_by() {
          fi
          ;;
       +[A-Z])
-         push_instance
-         tfw_nolog set_instance $arg || return $?
+         tfw_nolog push_and_set_instance $arg || return $?
          tfw_nolog assert_servald_server_status running
          for ((i = 0; i < ${#bundles[*]}; ++i)); do
             bundle="${bundles[$i]}"
@@ -488,4 +488,3 @@ assert_rhizome_received() {
       fi
    done
 }
-
