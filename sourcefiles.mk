@@ -1,25 +1,50 @@
-SERVAL_SOURCES = \
-	sqlite-amalgamation-3070900/sqlite3.c \
+# The "client" source files do not depend on "serval.h" or "rhizome.h", ie,
+# they can be linked into executables other than servald.
+SERVAL_CLIENT_SOURCES = \
+        conf.c \
+        conf_om.c \
+        conf_parse.c \
+        conf_schema.c \
+	dataformats.c \
+	fifo.c \
+        instance.c \
+	log.c \
+	log_util.c \
+	mem.c \
+	net.c \
+	os.c \
+	randombytes.c \
+	rotbuf.c \
+	socket.c \
+	srandomdev.c \
+	strbuf.c \
+	strbuf_helpers.c \
+	str.c \
+	strlcpy.c \
+	uuid.c \
+        xprintf.c
+
+# These source files are imported and do not depend on any local header files.
+# They also take a long time to compile, so their dependencies should be as
+# narrow as possible to avoid unnecessary recompilations when developers modify
+# header files.
+SQLITE3_SOURCES = \
+	sqlite-amalgamation-3070900/sqlite3.c
+
+# The source files for building the Serval DNA daemon.
+SERVAL_DAEMON_SOURCES = \
 	cli.c \
 	commandline.c \
-	conf.c \
-	conf_om.c \
-	conf_parse.c \
-	conf_schema.c \
 	crc32.c \
 	crypto.c \
-	dataformats.c \
 	directory_client.c \
 	dna_helper.c \
 	encode.c \
 	fdqueue.c \
-	fifo.c \
 	golay.c \
 	httpd.c \
 	http_server.c \
 	keyring.c \
-	log.c \
-	log_util.c \
 	lsif.c \
 	main.c \
 	radio_link.c \
@@ -29,14 +54,9 @@ SERVAL_SOURCES = \
 	mdp_net.c \
 	msp_client.c \
 	msp_proxy.c \
-	os.c \
-	mem.c \
-	instance.c \
-	socket.c \
 	monitor.c \
 	monitor-client.c \
 	monitor-cli.c \
-	net.c \
 	nonce.c \
 	overlay.c \
 	overlay_address.c \
@@ -52,7 +72,6 @@ SERVAL_SOURCES = \
 	overlay_packetformats.c \
 	overlay_payload.c \
 	performance_timing.c \
-	randombytes.c \
 	route_link.c \
 	rhizome.c \
 	rhizome_bundle.c \
@@ -66,21 +85,13 @@ SERVAL_SOURCES = \
 	rhizome_packetformats.c \
 	rhizome_store.c \
 	rhizome_sync.c \
-	rotbuf.c \
 	serval_packetvisualise.c \
 	server.c \
 	sha2.c \
 	sighandlers.c \
 	slip.c \
-	srandomdev.c \
-	str.c \
-	strbuf.c \
-	strbuf_helpers.c \
-	strlcpy.c \
-	uuid.c \
 	vomp.c \
 	vomp_console.c \
-	xprintf.c \
         fec-3.0.1/ccsds_tables.c \
 	fec-3.0.1/decode_rs_8.c \
 	fec-3.0.1/encode_rs_8.c \

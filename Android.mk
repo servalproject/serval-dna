@@ -3,7 +3,11 @@
 LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 include $(LOCAL_PATH)/sourcefiles.mk
-SERVALD_SRC_FILES = $(SERVAL_SOURCES) $(ANDROIDONLY_SOURCES)
+SERVALD_SRC_FILES = \
+    $(SQLITE3_SOURCES) \
+    $(SERVAL_CLIENT_SOURCES) \
+    $(SERVAL_DAEMON_SOURCES) \
+    $(ANDROIDONLY_SOURCES)
 NACL_BASE = nacl/src
 NACL_INC := $(LOCAL_PATH)/nacl/include
 include $(LOCAL_PATH)/$(NACL_BASE)/nacl.mk
