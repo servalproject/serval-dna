@@ -539,7 +539,7 @@ and may need to be changed for your particular circumstances.
 [Serval DNA repository]: https://github.com/servalproject/serval-dna
 [serval-tools]: https://github.com/servalproject/serval-tools
 [sp-openwrt-release]: https://github.com/servalproject/serval-tools/blob/master/doc/sp-openwrt-release.md
-[make]: http://www.gnu.org/software/make/
+[GNU make]: http://www.gnu.org/software/make/
 [getopt]: http://en.wikipedia.org/wiki/Getopt
 [util-linux]: http://en.wikipedia.org/wiki/Util-linux
 [GNU coreutils]: http://www.gnu.org/software/coreutils/
