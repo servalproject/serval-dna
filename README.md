@@ -20,15 +20,15 @@ testing Serval DNA on most Linux and some Linux-like platforms.
 Configuration
 -------------
 
-[doc/Servald-Configuration](./doc/Servald-Configuration.md) describes how to
+[doc/Servald-Configuration.md](./doc/Servald-Configuration.md) describes how to
 set up and run a Serval DNA daemon.
 
 Documentation
 -------------
 
- * [INSTALL.md](./INSTALL.md)  How to compile and install Serval DNA
+ * [INSTALL.md](./INSTALL.md) give instructions to compile and install Serval DNA
 
- * [doc/](./doc/)  Technical documentation
+ * [doc/](./doc/) contains technical documentation
 
  * The Serval DNA `help` command will print a summary of all the operations
    that servald offers:
@@ -39,16 +39,16 @@ Documentation
    * [Serval DNA overview][Serval DNA]
    * [Serval DNA development][]
 
- * [CONTRIBUTORS.md](./CONTRIBUTORS.md)  All individuals who have contributed
-   to the software
+ * [CONTRIBUTORS.md](./CONTRIBUTORS.md) lists all individuals who have
+   contributed to the software
 
 What is in this repository?
 ---------------------------
 
 This repository contains the [GNU C][] source code for the **servald**
 executable, a [test framework](./testframework.sh) and [test scripts](./tests/)
-written in [Bash][], [technical documentation](./doc/), and various support
-files for installation and configuration on various platforms.
+written in [Bash][], some [technical documentation](./doc/), and various
+support files for installation and configuration on various platforms.
 
 The **servald** executable is a multi-purpose program that can be invoked
 directly from the command line, run as a daemon process, or invoked via [JNI][]
@@ -114,11 +114,8 @@ The following protocols and services are implemented in **servald**:
    in the mesh to expose external services to mesh subscribers and vice versa
    (eg, VoIP gateways, SMS satellite links, packetised web), and to overcome
    scalability limitations of a perfectly decentralised mesh (eg, central
-   telephone directory).
-
-Most of these services are performed by a [daemon][] process called
-**servald**.  Serval Infrastructure is implemented by a separate daemon called
-**directory_service**.
+   telephone directory).  Serval Infrastructure is implemented as a daemon with
+   its own executable called **directory_service**.
 
 Copyright and licensing
 -----------------------
@@ -150,7 +147,9 @@ Entity][entity].
 [Serval Project]: http://www.servalproject.org/
 [Serval Project Wiki]: http://developer.servalproject.org/
 [Serval DNA]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:servaldna:
+[Serval DNA development]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:servaldna:development
 [Serval Mesh]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:servalmesh:
+[Serval Mesh Extender]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:meshextender:
 [Serval mesh network]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:mesh_network
 [SPI]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:spi
 [serval-dna]: https://github.com/servalproject/serval-dna
