@@ -1,9 +1,64 @@
 Serval DNA
 ==========
-[Serval Project][], December 2013
+[Serval Project][], March 2014
 
-This repository contains the source code for the “core” Serval components
-implemented in [GNU C][]:
+[Serval DNA][] is the core component of the [Serval Mesh][] app for Android and
+the [Serval Mesh Extender][] long-range mesh networking device.  It is a daemon
+process that performs all the central services of the Serval mesh network
+such as dynamic routing, encryption and authentication, file distribution,
+messaging, and voice telephony.
+
+Any device with Wi-Fi connectivity that runs the Serval DNA daemon can
+participate in the [Serval mesh network][].
+
+Download, build and test
+------------------------
+
+[INSTALL.md](./INSTALL.md) contains instructions for downloading, building and
+testing Serval DNA on most Linux and some Linux-like platforms.
+
+Configuration
+-------------
+
+[doc/Servald-Configuration](./doc/Servald-Configuration.md) describes how to
+set up and run a Serval DNA daemon.
+
+Documentation
+-------------
+
+ * [INSTALL.md](./INSTALL.md)  How to compile and install Serval DNA
+
+ * [doc/](./doc/)  Technical documentation
+
+ * The Serval DNA `help` command will print a summary of all the operations
+   that servald offers:
+
+        $ ./servald help
+
+ * the [Serval Project Wiki][] contains several pages:
+   * [Serval DNA overview][Serval DNA]
+   * [Serval DNA development][]
+
+ * [CONTRIBUTORS.md](./CONTRIBUTORS.md)  All individuals who have contributed
+   to the software
+
+What is in this repository?
+---------------------------
+
+This repository contains the [GNU C][] source code for the **servald**
+executable, a [test framework](./testframework.sh) and [test scripts](./tests/)
+written in [Bash][], [technical documentation](./doc/), and various support
+files for installation and configuration on various platforms.
+
+The **servald** executable is a multi-purpose program that can be invoked
+directly from the command line, run as a daemon process, or invoked via [JNI][]
+from within a Java program.  The **servald** executable is really many commands
+built into one; the command-line arguments select which *command* to run.  Some
+commands are stand-alone utilities, some start and stop the servald daemon
+process, some communicate with the servald daemon as an MDP client, and others
+via a two-way [pipe][] called the *monitor interface*.
+
+The following protocols and services are implemented in **servald**:
 
  * The **[Distributed Numbering Architecture (DNA)][DNA]** is the key
    innovation that makes mesh telephony viable in the absence of any
@@ -91,43 +146,12 @@ the [Serval Project Developer Agreement - Individual][individ], and
 organisations by signing the [Serval Project Developer Agreement -
 Entity][entity].
 
-Download, build and test
-------------------------
-
-Instructions for downloading, building and testing Serval DNA are in
-[INSTALL.md](./INSTALL.md).
-
-Configure
----------
-
-See [doc/Servald-Configuration](./doc/Servald-Configuration.md).
-
-More information
-----------------
-
-The **servald** executable is a multi-purpose program designed to be invoked
-directly from the command line and also via [JNI][] from within a Java program.
-The following command will print a summary of all the operations that servald
-offers:
-
-    $ servald help
-
-Some operations are self-contained, some start and stop the servald daemon
-process, some communicate with the servald daemon as an MDP client, and others
-via a two-way [pipe][] called the *monitor interface*.
-
-For more documentation, see:
-
- * the [doc/](./doc/) directory
-
- * the [Serval DNA][] page in the [Serval Project Wiki][]
-
- * [CONTRIBUTORS.md](./CONTRIBUTORS.md)  All individuals who have contributed
-   to the software.
 
 [Serval Project]: http://www.servalproject.org/
 [Serval Project Wiki]: http://developer.servalproject.org/
 [Serval DNA]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:servaldna:
+[Serval Mesh]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:servalmesh:
+[Serval mesh network]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:mesh_network
 [SPI]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:spi
 [serval-dna]: https://github.com/servalproject/serval-dna
 [batphone]: https://github.com/servalproject/batphone
@@ -150,4 +174,5 @@ For more documentation, see:
 [MeshMS]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:meshms
 [Serval Infrastructure]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:serval_infrastructure
 [JNI]: http://en.wikipedia.org/wiki/Java_Native_Interface
+[Bash]: http://en.wikipedia.org/wiki/Bash_(Unix_shell)
 [pipe]: http://www.kernel.org/doc/man-pages/online/pages/man2/pipe.2.html

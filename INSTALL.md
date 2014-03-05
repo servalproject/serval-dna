@@ -8,7 +8,7 @@ Supported Architectures
 These instructions will build [Serval DNA][] successfully for the following platforms:
 
  * Debian Linux, ix86 and x86\_64, kernels 2.6.x and 3.x, using [gcc 4.4][] to
-   [gcc 4.7][]
+   [gcc 4.8][]
  * Mac OS X 10.7 “Lion”, x86\_64, using [gcc 4.2][] available in [Xcode 4][]
    3.2.6
  * Oracle SunOs 5.10 (Solaris), Sparc, using [gcc 4.4][]
@@ -18,7 +18,8 @@ instructions do not apply:
 
  * [Android 2.2 “Froyo”][], Arm, Linux kernels 2.6.x and 3.x, using [gcc 4.4][]
    supplied as part of [Android NDK][] Revision 7b
- * [OpenWRT][]
+ * [OpenWRT][] (as used by the [Serval Mesh Extender][], the [Mesh Potato][],
+   and the [Commotion Wireless][] project)
 
 Download
 --------
@@ -225,6 +226,9 @@ and may need to be changed for your particular circumstances.
 [gcc 4.4]: http://gcc.gnu.org/gcc-4.4/
 [gcc 4.7]: http://gcc.gnu.org/gcc-4.7/
 [OpenWRT]: ./doc/OpenWRT.md
+[Serval Mesh Extender]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:meshextender:
+[Mesh Potato]: http://villagetelco.org/mesh-potato/
+[Commotion Wireless]: http://commotionwireless.net/
 [JNI]: http://en.wikipedia.org/wiki/Java_Native_Interface
 [Bash]: http://en.wikipedia.org/wiki/Bash_(Unix_shell)
 [GNU make]: http://www.gnu.org/software/make/

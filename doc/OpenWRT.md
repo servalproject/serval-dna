@@ -1,10 +1,13 @@
-Building Serval DNA for OpenWRT
-===============================
-[Serval Project], February 2014
+Serval DNA on OpenWRT
+=====================
+[Serval Project], March 2014
 
-These are instructions for building [Serval DNA][] for [OpenWRT][] 12.09
-“Attitude Adjustment” released in April, 2013 (the same release used to make
-firmware for the [Serval Mesh Extender][]).
+These are instructions for building, developing and releasing [Serval DNA][]
+for [OpenWRT][] 12.09 “Attitude Adjustment” released in April, 2013.
+
+OpenWRT release 12.09 is the one used to create firmware for the [Serval Mesh
+Extender][], so these instructions should be suitable for building a Mesh
+Extender firmware image.
 
 The OpenWRT build system
 ------------------------
@@ -19,24 +22,6 @@ Buildroot must be configured with a list of package providers called *feeds*.
 Each [OpenWRT feed][] contains a directory tree with a structure like
 `$category_name/$package_name/Makefile` that contains one [OpenWRT Makefile][]
 per package (plus optionally some OpenWRT-specific config files and patches).
-For example, a feed containing the following files provides sixteen packages:
-
-    utils/vim/Makefile
-    utils/more/Makefile
-    utils/sed/Makefile
-    devel/oprofile/Makefile
-    devel/cppunit/Makefile
-    libs/sqlite3/Makefile
-    libs/gpgme/Makefile
-    libs/openldap/Makefile
-    admin/sudo/Makefile
-    admin/gtop/Makefile
-    lang/python/Makefile
-    lang/erlang/Makefile
-    lang/ghc/Makefile
-    net/curl/Makefile
-    net/iftop/Makefile
-    net/nmap/Makefile
 
 Each [OpenWRT Makefile][] contains commands for downloading and compiling a
 single package from source.
@@ -49,9 +34,9 @@ which progresses through the following steps:
  - checks that all software tools and libraries it depends on are present,
  - on the first invocation only, runs a manual component selection and
    configuration dialog called *menuconfig*
- - for each selected package, invokes its [OpenWRT Makefile][], which downloads
-   the package's source code and cross-compiles it for the selected target
-   architecture
+ - for each selected package, invokes the package's [OpenWRT Makefile][], which
+   downloads the package's source code and cross-compiles it for the selected
+   target architecture
  - aggregates all compiled components into a firmware image
 
 During the build, continuous Internet access is required to allow downloading
@@ -99,8 +84,8 @@ The following command will install and/or upgrade all the necessary packages on
                            pkg-config gettext
     $
 
-Download OpenWRT
-----------------
+Download OpenWRT 12.09
+----------------------
 
 The [OpenWRT 12.09 Buildroot][] package is available as a [Git][] repository,
 which is the recommended way to download it:
@@ -186,7 +171,7 @@ ensure that all dependencies are met and to resolve any other build issues:
     Checking 'gnu-find'... ok.
     Checking 'getopt-extended'... ok.
     Checking 'non-root'... ok.
-    make[2]: Entering directory `/home/andrewb/serval/src/openwrt/12.09/openwrt/scripts/config'
+    make[2]: Entering directory `/home/username/12.09/openwrt/scripts/config'
     ...
 
 If all dependencies are ok, OpenWRT's interactive *menuconfig* screen will
@@ -359,6 +344,9 @@ Add all the packages from the Serval feed to the OpenWRT package menu:
     Installing all packages from feed serval.
     $
 
+Add the Serval DNA package to the OpenWRT build
+-----------------------------------------------
+
 Run *menuconfig* and select the Serval packages for building:
 
     $ make menuconfig
@@ -389,11 +377,118 @@ Exit *menuconfig*, saving the OpenWRT configuration file, then build:
 
 The [Serval DNA][] daemon is now included in the firmware image.
 
-Appendix A - Adding a package to OpenWRT
-----------------------------------------
+Appendix A - Developing Serval DNA for OpenWRT
+----------------------------------------------
 
-The [OpenWRT feed][] page gives complete instructions for adding a new package
-to OpenWRT.  In summary:
+The instructions above are not useful for a typical *edit-compile-test*
+development cycle, because before every single *compile* step, the latest edits
+would have to be committed and pushed to the package's remote repository, then
+the package's feed edited to put the new Git commit ID into the package's
+[OpenWRT Makefile][] which must then be pushed to its remote repository.  The
+OpenWRT *compile* step would then download these changes and recompile from
+scratch.  Cumbersome and inconvenient.
+
+Instead, developers should use the following files while developing, to avoid
+unnecessary Git commits, pushes and downloads:
+
+  * set up a `src-link` [OpenWRT feed][] that points to the [development
+    OpenWRT feed](../openwrt/packages/) directory, which will remove the need
+    for any uploading, downloading, or feed updating;
+
+  * this feed contains the [development OpenWRT Makefile][] which uses the Git
+    working copy instead of Git clone or Git fetch, thus avoiding the need for
+    Git commits, uploads and downloads prior to each compile.
+
+See the header comments in the [development OpenWRT Makefile][] for more
+complete instructions.
+
+Appendix B - Releasing Serval DNA for OpenWRT
+---------------------------------------------
+
+The OpenWRT Makefiles in the [Serval OpenWRT feed][] all refer to fixed,
+specific commits within the [Serval DNA repository][], either by tag name or by
+SHA1 identifier.  This means that as newer versions of Serval DNA are tested
+and released into other products (like [Batphone][]), they do not automatically
+get released to OpenWRT.  This must be done manually every single time.
+
+The [sp-openwrt-release][] script in the [Serval Tools repository][] automates
+the procedure for releasing Serval DNA for OpenWRT package (in fact, it is
+general enough to release any Serval repository as a package for OpenWRT, not
+just Serval DNA).
+
+For example, to release the HEAD of the Serval DNA repository (local clone in
+`~/src/serval-dna`) to the OpenWRT *development* feed, first make sure that
+[Serval Tools][serval-tools] are installed, then use the following
+[sp-openwrt-release][] command, which will print progress messages as it works:
+
+    $ sp-openwrt-release --commit --push development ~/src/serval-dna=HEAD
+    + cd /home/username/src/serval-dna
+    + git clone git@github.com:servalproject/openwrt-packages.git /tmp/sp-openwrt-release/openwrt-packages
+    Cloning into '/tmp/sp-openwrt-release/openwrt-packages'...
+    remote: Counting objects: 29, done.
+    remote: Compressing objects: 100% (17/17), done.
+    remote: Total 29 (delta 6), reused 9 (delta 1)
+    Receiving objects: 100% (29/29), 4.06 KiB | 0 bytes/s, done.
+    Resolving deltas: 100% (6/6), done.
+    Checking connectivity... done.
+    + cd /tmp/sp-openwrt-release/openwrt-packages
+    + git checkout development
+    Branch development set up to track remote branch development from origin.
+    Switched to a new branch 'development'
+    + git merge --ff-only origin/development
+    Already up-to-date.
+    + rm -rf /tmp/sp-openwrt-release/clone-serval-dna
+    + git clone --local --shared /home/username/serval-dna /tmp/sp-openwrt-release/clone-serval-dna
+    Cloning into '/tmp/sp-openwrt-release/clone-serval-dna'...
+    done.
+    + cd /tmp/sp-openwrt-release/clone-serval-dna
+    + git checkout --quiet HEAD
+    + cd /tmp/sp-openwrt-release/openwrt-packages
+    update openwrt-packages/net/serval-dna/Makefile:
+    PKG_VERSION        = START-2951-g7081e70
+    PKG_SOURCE_VERSION = 7081e7044fd9d5762bc124430d5f9cade0d2d52c
+    PKG_RELEASE        = 2  (was 1)
+    + cd /tmp/sp-openwrt-release/openwrt-packages
+    + git add .
+    + git commit -m Release serval-dna START-2951-g7081e70
+    [development 844af68] Release serval-dna START-2951-g7081e70
+    1 file changed, 3 insertions(+), 3 deletions(-)
+    + cd /tmp/sp-openwrt-release/openwrt-packages
+    + git push origin development
+    Counting objects: 17, done.
+    Delta compression using up to 2 threads.
+    Compressing objects: 100% (3/3), done.
+    Writing objects: 100% (5/5), 487 bytes | 0 bytes/s, done.
+    Total 5 (delta 1), reused 0 (delta 0)
+    To git@github.com:servalproject/openwrt-packages.git
+    9e77219..844af68  development -> development
+    $
+
+Instead of using `HEAD` as the commit to release, any commit can be specified
+using either a tag name or any other [Git rev][] notation for referring to
+a single commit.
+
+For more instructions, see:
+
+ * [Serval Tools README][serval-tools] for installation of the
+   [sp-openwrt-release][] utility
+
+ * [sp-openwrt-release documentation][] for more examples of using the
+   [sp-openwrt-release][] utility
+
+ * the [sp-openwrt-release][] built-in help:
+
+        $ sp-openwrt-release --help
+
+ * the [Serval OpenWRT feed][] for information about different OpenWRT release
+   branches available from the [Serval Project][]
+
+Appendix C - Adding a new package to OpenWRT
+--------------------------------------------
+
+To improve understanding of [OpenWRT 12.09 Buildroot][], it can be helpful to
+consider the steps necessary to add a new package to OpenWRT.  The [OpenWRT
+feed][] page gives complete instructions.  In summary:
 
  - the package's source code must be accessible in some conventional form such
    as a directory on the local file system, or a directory tree that can be
@@ -414,21 +509,6 @@ to OpenWRT.  In summary:
     $ ./scripts/feeds install $package_name
     $
 
-Appendix B - Developing an OpenWRT package
-------------------------------------------
-
-The instructions above are not ideal for a developer who wishes to compile the
-locally-edited source code of a package, because every time the developer
-wished to build the package, first the latest changes would have to be
-committed and pushed to the package's repository, and the package's [OpenWRT
-Makefile][] updated (with a new Git commit id) and pushed to its feed.
-
-The solution is to use a local feed which contains an [OpenWRT Makefile][] that
-uses a local directory for the package's source code (instead of a remote Git
-repository or tarball).  The Serval DNA source contains a [development OpenWRT
-Makefile](../openwrt/packages/net/serval-dna/Makefile) which contains
-instructions for its use in the header comment.
-
 About the examples
 ------------------
 
@@ -448,12 +528,17 @@ and may need to be changed for your particular circumstances.
 [OpenWRT]: http://openwrt.org/
 [OpenWRT 12.09 Buildroot]: https://dev.openwrt.org/browser/tags/attitude_adjustment_12.09
 [Serval Mesh Extender]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:meshextender:
+[Batphone]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:servalmesh:
 [OpenWRT build system]: http://wiki.openwrt.org/about/toolchain
 [OpenWRT feed]: http://wiki.openwrt.org/doc/devel/feeds
 [OpenWRT Buildroot installation HOWTO]:http://wiki.openwrt.org/doc/howto/buildroot.exigence
 [OpenWRT Makefile]: http://wiki.openwrt.org/doc/devel/packages
+[development OpenWRT Makefile]: ../openwrt/packages/net/serval-dna/Makefile
 [Serval OpenWRT feed]: https://github.com/servalproject/openwrt-packages
 [Serval OpenWRT feed README]: https://github.com/servalproject/openwrt-packages
+[Serval DNA repository]: https://github.com/servalproject/serval-dna
+[sp-openwrt-release]: https://github.com/servalproject/serval-tools/
+[Serval Tools repository]: https://github.com/servalproject/serval-tools
 [make]: http://www.gnu.org/software/make/
 [getopt]: http://en.wikipedia.org/wiki/Getopt
 [util-linux]: http://en.wikipedia.org/wiki/Util-linux
@@ -474,6 +559,7 @@ and may need to be changed for your particular circumstances.
 [Python]: http://www.python.org/
 [GNU wget]: http://www.gnu.org/software/wget/
 [Git]: http://git-scm.com/
+[Git rev]: https://www.kernel.org/pub/software/scm/git/docs/git-rev-parse.html
 [GNU tar]: http://www.gnu.org/software/tar/
 [Subversion]: http://subversion.apache.org/
 [GNU findutils]: http://www.gnu.org/software/findutils/
