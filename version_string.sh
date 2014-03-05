@@ -140,7 +140,7 @@ fi
 
 # Use the "git describe" command to form the version string and append $dirty.
 # This ugly construction is required for use on machines with bash version < 4.
-error="$(git describe --match="$version_tag_glob $refspec" 2>&1 1>/dev/null)" || true
+error="$(git describe --match="$version_tag_glob" $refspec 2>&1 1>/dev/null)" || true
 if [ -z "$error" ]; then
    echo "$(git describe --match="$version_tag_glob" $refspec)$dirty"
    exit 0
