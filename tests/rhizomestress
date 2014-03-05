@@ -44,8 +44,7 @@ configure_servald_server() {
       set debug.httpd off \
       set debug.rhizome_tx off \
       set debug.rhizome_rx off \
-      set server.respawn_on_crash off \
-      set mdp.iftype.wifi.tick_ms 500
+      set server.respawn_on_crash off
 }
 
 doc_StressRhizomeTransfer="Five nodes each sharing 26 bundles from 0B to 620K"
@@ -73,19 +72,8 @@ setup_StressRhizomeTransfer() {
    done
 }
 
-start_instance() {
-  executeOk_servald config \
-       set server.interface_path "$SERVALD_VAR" \
-       set interfaces.0.file dummy \
-       set interfaces.0.dummy_address 127.0.0.$instance_number \
-       set interfaces.0.dummy_netmask 255.255.255.224
-  start_servald_server
-}
-
 test_StressRhizomeTransfer() {
-   >$SERVALD_VAR/dummy
-   foreach_instance +A +B +C +D +E \
-      start_instance
+   start_servald_instances +A +B +C +D +E
    wait_until --timeout=600 bundle_received_by \
       ${bundlesA[*]} +B +C +D +E \
       ${bundlesB[*]} +A +C +D +E \

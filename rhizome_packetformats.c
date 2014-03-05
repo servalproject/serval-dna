@@ -290,7 +290,15 @@ int overlay_rhizome_saw_advertisements(struct decode_context *context, struct ov
     RETURN(0);
   
   int ad_frame_type=ob_get(f->payload);
-  struct socket_address httpaddr = context->addr;
+  struct socket_address httpaddr;
+  if (context->addr.addr.sa_family == AF_UNIX){
+    // try loopback http connections while testing with local sockets
+    httpaddr.inet.sin_family=AF_INET;
+    httpaddr.inet.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    httpaddr.addrlen = sizeof(httpaddr.inet);
+  }else{
+    httpaddr=context->addr;
+  }
   if (httpaddr.addr.sa_family == AF_INET)
     httpaddr.inet.sin_port = htons(HTTPD_PORT);
   rhizome_manifest *m=NULL;
