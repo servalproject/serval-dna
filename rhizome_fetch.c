@@ -206,13 +206,17 @@ int rhizome_fetch_status_html(strbuf b)
   unsigned i;
   for(i=0;i<NQUEUES;i++){
     struct rhizome_fetch_queue *q=&rhizome_fetch_queues[i];
-    unsigned used=0;
+    unsigned candidates=0;
+    uint64_t candidate_size = 0;
     unsigned j;
     for (j=0;j<q->candidate_queue_size;j++){
-      if (q->candidate_queue[j].manifest)
-	used++;
+      if (q->candidate_queue[j].manifest){
+	candidates++;
+	assert(q->candidate_queue[j].manifest->filesize != RHIZOME_SIZE_UNSET);
+	candidate_size += q->candidate_queue[j].manifest->filesize;
+      }
     }
-    strbuf_sprintf(b, "<p>Slot %u, (%u of %u): ", i, used, q->candidate_queue_size);
+    strbuf_sprintf(b, "<p>Slot %u, (%u of %u [%"PRIu64" bytes]): ", i, candidates, q->candidate_queue_size, candidate_size);
     if (q->active.state!=RHIZOME_FETCH_FREE){
       strbuf_sprintf(b, "%s %"PRIu64" of %"PRIu64" from %s*",
 	fetch_state(q->active.state),
@@ -222,17 +226,6 @@ int rhizome_fetch_status_html(strbuf b)
     }else{
       strbuf_puts(b, "inactive");
     }
-    int candidates=0;
-    uint64_t candidate_size = 0;
-    for (j=0; j< q->candidate_queue_size;j++){
-      if (q->candidate_queue[j].manifest){
-	candidates++;
-	assert(q->candidate_queue[j].manifest->filesize != RHIZOME_SIZE_UNSET);
-	candidate_size += q->candidate_queue[j].manifest->filesize;
-      }
-    }
-    if (candidates)
-      strbuf_sprintf(b, ", %d candidates [%"PRIu64" bytes]", candidates, candidate_size);
   }
   return 0;
 }
