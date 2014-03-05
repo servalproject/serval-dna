@@ -392,8 +392,7 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
 
     if (rowid>max_token){
       // a new bundle has been imported
-      if (!rhizome_is_bar_interesting(bar))
-	rhizome_sync_bundle_inserted(bar);
+      rhizome_sync_bundle_inserted(bar);
     }
 
     if (count < max_count){
