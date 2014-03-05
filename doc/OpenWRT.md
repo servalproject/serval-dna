@@ -411,10 +411,10 @@ SHA1 identifier.  This means that as newer versions of Serval DNA are tested
 and released into other products (like [Batphone][]), they do not automatically
 get released to OpenWRT.  This must be done manually every single time.
 
-The [sp-openwrt-release][] script in the [Serval Tools repository][] automates
-the procedure for releasing Serval DNA for OpenWRT package (in fact, it is
-general enough to release any Serval repository as a package for OpenWRT, not
-just Serval DNA).
+The [sp-openwrt-release][] script in the [Serval Tools repository][serval-tools]
+automates the procedure for releasing Serval DNA for OpenWRT package (in fact,
+it is general enough to update the release of any Serval repository which is
+available as a package for OpenWRT, not just Serval DNA).
 
 For example, to release the HEAD of the Serval DNA repository (local clone in
 `~/src/serval-dna`) to the OpenWRT *development* feed, first make sure that
@@ -473,8 +473,8 @@ For more instructions, see:
  * [Serval Tools README][serval-tools] for installation of the
    [sp-openwrt-release][] utility
 
- * [sp-openwrt-release documentation][] for more examples of using the
-   [sp-openwrt-release][] utility
+ * [sp-openwrt-release documentation][sp-openwrt-release] for more examples of
+   using the [sp-openwrt-release][] utility
 
  * the [sp-openwrt-release][] built-in help:
 
@@ -506,8 +506,8 @@ feed][] page gives complete instructions.  In summary:
    file, along with a simple name chosen to identify the feed;
  - the package must be installed:
 
-    $ ./scripts/feeds install $package_name
-    $
+        $ ./scripts/feeds install $package_name
+        $
 
 About the examples
 ------------------
@@ -537,8 +537,8 @@ and may need to be changed for your particular circumstances.
 [Serval OpenWRT feed]: https://github.com/servalproject/openwrt-packages
 [Serval OpenWRT feed README]: https://github.com/servalproject/openwrt-packages
 [Serval DNA repository]: https://github.com/servalproject/serval-dna
-[sp-openwrt-release]: https://github.com/servalproject/serval-tools/
-[Serval Tools repository]: https://github.com/servalproject/serval-tools
+[serval-tools]: https://github.com/servalproject/serval-tools
+[sp-openwrt-release]: https://github.com/servalproject/serval-tools/blob/master/doc/sp-openwrt-release.md
 [make]: http://www.gnu.org/software/make/
 [getopt]: http://en.wikipedia.org/wiki/Getopt
 [util-linux]: http://en.wikipedia.org/wiki/Util-linux
