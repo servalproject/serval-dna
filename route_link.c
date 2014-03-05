@@ -904,7 +904,10 @@ static void link_send(struct sched_ent *alarm)
       op_free(frame);
     else if (overlay_payload_enqueue(frame))
       op_free(frame);
-      
+    
+    time_ms_t allowed=gettime_ms()+5;
+    if (alarm->alarm < allowed)
+      alarm->alarm = allowed;
     alarm->deadline = alarm->alarm;
     schedule(alarm);
   }
