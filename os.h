@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdint.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include "log.h"
 
 #ifndef __SERVAL_DNA__OS_INLINE
 # if __GNUC__ && !__GNUC_STDC_INLINE__
@@ -103,9 +104,12 @@ __SERVAL_DNA__OS_INLINE off64_t lseek64(int fd, off64_t offset, int whence) {
 /* The "e" variants log the error before returning -1.
  */
 int mkdirs(const char *path, mode_t mode);
-int emkdirs(const char *path, mode_t mode);
 int mkdirsn(const char *path, size_t len, mode_t mode);
-int emkdirsn(const char *path, size_t len, mode_t mode);
+int _emkdirs(struct __sourceloc, const char *path, mode_t mode);
+int _emkdirsn(struct __sourceloc, const char *path, size_t len, mode_t mode);
+
+#define emkdirs(path, mode) _emkdirs(__WHENCE__, (path), (mode))
+#define emkdirsn(path, len, mode) _emkdirsn(__WHENCE__, (path), (len), (mode))
 
 void srandomdev();
 int urandombytes(unsigned char *buf, size_t len);

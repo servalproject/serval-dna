@@ -398,14 +398,14 @@ int rhizome_fetch_delay_ms();
 int rhizome_set_datastore_path(const char *path);
 
 const char *rhizome_datastore_path();
-int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...);
-int create_rhizome_datastore_dir();
+int form_rhizome_datastore_path(struct __sourceloc, char * buf, size_t bufsiz, const char *fmt, ...);
 
 /* Handy statement for forming the path of a rhizome store file in a char buffer whose declaration
  * is in scope (so that sizeof(buf) will work).  Evaluates to true if the pathname fitted into
  * the provided buffer, false (0) otherwise (after logging an error).  */
-#define FORM_RHIZOME_DATASTORE_PATH(buf,fmt,...) (form_rhizome_datastore_path((buf), sizeof(buf), (fmt), ##__VA_ARGS__))
-#define FORM_RHIZOME_IMPORT_PATH(buf,fmt,...) (form_rhizome_import_path((buf), sizeof(buf), (fmt), ##__VA_ARGS__))
+#define FORM_RHIZOME_DATASTORE_PATH(buf,fmt,...) (form_rhizome_datastore_path(__WHENCE__, (buf), sizeof(buf), (fmt), ##__VA_ARGS__))
+
+#define RHIZOME_BLOB_SUBDIR "blob"
 
 extern sqlite3 *rhizome_db;
 serval_uuid_t rhizome_db_uuid;
@@ -478,9 +478,9 @@ int rhizome_manifest_verify(rhizome_manifest *m);
 
 int rhizome_hash_file(rhizome_manifest *m, const char *path, rhizome_filehash_t *hash_out, uint64_t *size_out);
 
-void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m);
+void _rhizome_manifest_free(struct __sourceloc, rhizome_manifest *m);
 #define rhizome_manifest_free(m) _rhizome_manifest_free(__WHENCE__,m)
-rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence);
+rhizome_manifest *_rhizome_new_manifest(struct __sourceloc);
 #define rhizome_new_manifest() _rhizome_new_manifest(__WHENCE__)
 
 int rhizome_store_manifest(rhizome_manifest *m);

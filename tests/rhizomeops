@@ -357,7 +357,8 @@ setup_CorruptExternalBlob() {
    executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
    extract_manifest_id manifestid file1.manifest
    extract_manifest_filehash filehash file1.manifest
-   echo "Replacement" >$SERVALINSTANCE_PATH/$filehash
+   assert cmp file1 "$SERVALINSTANCE_PATH/blob/$filehash"
+   echo "Replacement" >"$SERVALINSTANCE_PATH/blob/$filehash"
 }
 test_CorruptExternalBlob() {
    execute --exit-status=255 $servald rhizome extract file $manifestid file1a
@@ -1081,7 +1082,8 @@ setup_ImportOwnBundle() {
    extract_manifest_filehash filehash fileB.manifest
    extract_manifest_BK BK fileB.manifest
    extract_manifest_date date fileB.manifest
-   rm -f $SERVALINSTANCE_PATH/rhizome.db
+   assert [ -e "$SERVALINSTANCE_PATH/rhizome.db" ]
+   rm -f "$SERVALINSTANCE_PATH/rhizome.db"
    executeOk_servald rhizome list
    assert_rhizome_list
 }

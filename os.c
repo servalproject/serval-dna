@@ -36,14 +36,14 @@ int mkdirs(const char *path, mode_t mode)
   return mkdirsn(path, strlen(path), mode);
 }
 
-int emkdirs(const char *path, mode_t mode)
+int _emkdirs(struct __sourceloc __whence, const char *path, mode_t mode)
 {
   if (mkdirs(path, mode) == -1)
     return WHYF_perror("mkdirs(%s,%o)", alloca_str_toprint(path), mode);
   return 0;
 }
 
-int emkdirsn(const char *path, size_t len, mode_t mode)
+int _emkdirsn(struct __sourceloc __whence, const char *path, size_t len, mode_t mode)
 {
   if (mkdirsn(path, len, mode) == -1)
     return WHYF_perror("mkdirsn(%s,%lu,%o)", alloca_toprint(-1, path, len), (unsigned long)len, mode);

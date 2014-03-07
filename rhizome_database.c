@@ -51,7 +51,7 @@ int rhizome_set_datastore_path(const char *path)
   return 0;
 }
 
-int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...)
+int form_rhizome_datastore_path(struct __sourceloc __whence, char * buf, size_t bufsiz, const char *fmt, ...)
 {
   va_list ap;
   strbuf b = strbuf_local(buf, bufsiz);
@@ -70,9 +70,10 @@ int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...)
   return 1;
 }
 
-int create_rhizome_datastore_dir()
+static int create_rhizome_datastore_dir()
 {
-  if (config.debug.rhizome) DEBUGF("mkdirs(%s, 0700)", rhizome_datastore_path());
+  if (config.debug.rhizome)
+    DEBUGF("mkdirs(%s, 0700)", rhizome_datastore_path());
   return emkdirs(rhizome_datastore_path(), 0700);
 }
 
@@ -238,23 +239,24 @@ int rhizome_opendb()
 
   IN();
   
-  if (create_rhizome_datastore_dir() == -1){
-    RETURN(WHY("No Directory"));
-  }
+  if (create_rhizome_datastore_dir() == -1)
+    RETURN(-1);
   char dbpath[1024];
-  if (!sqlite3_temp_directory){
-    if (!FORM_RHIZOME_DATASTORE_PATH(dbpath, "")){
-      RETURN(WHY("Invalid path"));
-    }
+  if (!FORM_RHIZOME_DATASTORE_PATH(dbpath, RHIZOME_BLOB_SUBDIR))
+    RETURN(-1);
+  if (emkdirs(dbpath, 0700) == -1)
+    RETURN(-1);
+  if (!sqlite3_temp_directory) {
+    if (!FORM_RHIZOME_DATASTORE_PATH(dbpath, "sqlite3tmp"))
+      RETURN(-1);
+    if (emkdirs(dbpath, 0700) == -1)
+      RETURN(-1);
     sqlite3_temp_directory = sqlite3_mprintf("%s", dbpath);
   }
-  
-  if (!FORM_RHIZOME_DATASTORE_PATH(dbpath, "rhizome.db")){
-    RETURN(WHY("Invalid path"));
-  }
-
   sqlite3_config(SQLITE_CONFIG_LOG,sqlite_log,NULL);
   
+  if (!FORM_RHIZOME_DATASTORE_PATH(dbpath, "rhizome.db"))
+    RETURN(-1);
   if (sqlite3_open(dbpath,&rhizome_db)){
     RETURN(WHYF("SQLite could not open database %s: %s", dbpath, sqlite3_errmsg(rhizome_db)));
   }
@@ -1189,7 +1191,7 @@ static int rhizome_delete_external(const rhizome_filehash_t *hashp)
 {
   // attempt to remove any external blob
   char blob_path[1024];
-  if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, alloca_tohex_rhizome_filehash_t(*hashp)))
+  if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, alloca_tohex_rhizome_filehash_t(*hashp)))
     return -1;
   if (unlink(blob_path) == -1) {
     if (errno != ENOENT)
@@ -1242,7 +1244,7 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
   time_ms_t insert_horizon_no_manifest = now - (orphan_payload_persist_ms ? atoi(orphan_payload_persist_ms) : 1000); // 1 second ago
   time_ms_t insert_horizon_not_valid = now - (invalid_payload_persist_ms ? atoi(invalid_payload_persist_ms) : 300000); // 5 minutes ago
 
-  // cleanup external blobs for unreferenced files
+  // Remove external payload files for stale, incomplete payloads.
   unsigned candidates = 0;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
       "SELECT id FROM FILES WHERE inserttime < ? AND datavalid = 0;",
@@ -1258,6 +1260,7 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
   }
   sqlite3_finalize(statement);
 
+  // Remove external payload files for old, unreferenced payloads.
   statement = sqlite_prepare_bind(&retry,
       "SELECT id FROM FILES WHERE inserttime < ? AND datavalid = 1 AND NOT EXISTS( SELECT 1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);",
       INT64, insert_horizon_no_manifest, END);
@@ -1271,10 +1274,14 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
       ++report->deleted_orphan_files;
   }
   sqlite3_finalize(statement);
-  
+
+  // TODO Iterate through all files in RHIZOME_BLOB_SUBDIR and delete any which are no longer
+  // referenced or are stale.  This could take a long time, so for scalability should be done
+  // in an incremental background task.  See GitHub issue #50.
+ 
+  // Remove payload records that are stale and incomplete or old and unreferenced.
   int ret;
   if (candidates) {
-    // clean out unreferenced files
     ret = sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,
 	"DELETE FROM FILES WHERE inserttime < ? AND datavalid = 0;",
 	INT64, insert_horizon_not_valid, END);
@@ -1286,10 +1293,11 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
     if (report && ret > 0)
       report->deleted_orphan_files += ret;
   }
-  
+
+  // Remove payload blobs that are no longer referenced.
   if ((ret = rhizome_delete_orphan_fileblobs_retry(&retry)) > 0 && report)
     report->deleted_orphan_fileblobs += ret;
-   
+
   if (config.debug.rhizome && report)
     DEBUGF("report deleted_stale_incoming_files=%u deleted_orphan_files=%u deleted_orphan_fileblobs=%u",
 	report->deleted_stale_incoming_files,

@@ -105,7 +105,7 @@ enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, cons
   }
   char blob_path[1024];
   if (file_length == RHIZOME_SIZE_UNSET || file_length > config.rhizome.max_blob_size) {
-    if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, "%"PRIu64, write->temp_id))
+    if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, "%s/%"PRIu64, RHIZOME_BLOB_SUBDIR, write->temp_id))
       return RHIZOME_PAYLOAD_STATUS_ERROR;
     if (config.debug.externalblobs)
       DEBUGF("Attempting to put blob for id='%"PRIu64"' in %s", write->temp_id, blob_path);
@@ -480,7 +480,7 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
   SHA512_End(&write->sha512_context, NULL);
 
   char blob_path[1024];
-  if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, "%"PRIu64, write->temp_id)) {
+  if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, "%s/%"PRIu64, RHIZOME_BLOB_SUBDIR, write->temp_id)) {
     WHYF("Failed to generate external blob path");
     status = RHIZOME_PAYLOAD_STATUS_ERROR;
     goto failure;
@@ -556,10 +556,8 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
 
     if (external) {
       char dest_path[1024];
-      if (!FORM_RHIZOME_DATASTORE_PATH(dest_path, alloca_tohex_rhizome_filehash_t(write->id))){
-	WHYF("Failed to generate file path");
+      if (!FORM_RHIZOME_DATASTORE_PATH(dest_path, "%s/%s", RHIZOME_BLOB_SUBDIR, alloca_tohex_rhizome_filehash_t(write->id)))
 	goto dbfailure;
-      }
       if (rename(blob_path, dest_path) == -1) {
 	WHYF_perror("rename(%s, %s)", blob_path, dest_path);
 	goto dbfailure;
@@ -785,7 +783,7 @@ enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const r
   } else {
     // No row in FILEBLOBS, look for an external blob file.
     char blob_path[1024];
-    if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, alloca_tohex_rhizome_filehash_t(read->id)))
+    if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, alloca_tohex_rhizome_filehash_t(read->id)))
       return RHIZOME_PAYLOAD_STATUS_ERROR;
     read->blob_fd = open(blob_path, O_RDONLY);
     if (read->blob_fd == -1) {

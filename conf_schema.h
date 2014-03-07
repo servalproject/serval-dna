@@ -427,7 +427,7 @@ ATOM(bool_t,                enable,         1, boolean,, "If true, server opens 
 ATOM(bool_t,                fetch,          1, boolean,, "If false, no new bundles will be fetched from peers")
 ATOM(bool_t,                clean_on_open,  0, boolean,, "If true, Rhizome database is cleaned at start of every command")
 ATOM(bool_t,                clean_on_start, 1, boolean,, "If true, Rhizome database is cleaned at start of daemon")
-STRING(256,                 datastore_path, "", absolute_path,, "Path of rhizome storage directory, absolute or relative to instance directory")
+STRING(256,                 datastore_path, "", str_nonempty,, "Path of rhizome storage directory, absolute or relative to instance directory")
 ATOM(uint64_t,              database_size,  1000000, uint64_scaled,, "Size of database in bytes")
 ATOM(uint32_t,              max_blob_size,  128 * 1024, uint32_scaled,, "Store payloads larger than this in files not SQLite blobs")
 
