@@ -568,8 +568,9 @@ setup_RhizomeInsertAnon() {
    create_file file1 1001
    executeOk_servald rhizome add file '' file1 file1.manifest
    extract_stdout_secret SECRET
-   assertGrep --matches=0 file1.manifest '^BK='
+   assert_manifest_fields file1.manifest !BK
    $SED -e '/^version=/d;/^date=/d;/^filehash=/d;/^filesize=/d' file1.manifest >file2.manifest
+   assert_manifest_fields file2.manifest !version !date !filehash !filesize
    create_file file2 1002
 }
 test_RhizomeInsertAnon() {

@@ -278,15 +278,47 @@ extract_stdout_crypt() {
 }
 
 extract_manifest() {
-   local _var="$1"
-   local _manifestfile="$2"
-   local _label="$3"
-   local _rexp="$4"
-   local _value=$($SED -n -e "/^$_label=$_rexp\$/s/^$_label=//p" "$_manifestfile")
-   assert --message="$_manifestfile contains valid '$_label=' line" \
-          --dump-on-fail="$_manifestfile" \
-          [ -n "$_value" ]
-   [ -n "$_var" ] && eval $_var="\$_value"
+   local __var="$1"
+   local __manifestfile="$2"
+   local __label="$3"
+   local __rexp="${4:-[^=]*}"
+   local __value=$($SED -n -e "/^$__label=$__rexp\$/s/^$__label=//p" "$__manifestfile")
+   [ -n "$__var" ] && eval $__var="\$__value"
+}
+
+assert_manifest_fields() {
+   local manifestfile="$1"
+   shift
+   assert --message="manifest file $manifestfile is readable" [ -r "$manifestfile" ]
+   [ $# -gt 0 ] || error "missing arguments"
+   local arg label value
+   for arg; do
+      case "$arg" in
+      !*)
+         assertGrep \
+            --matches=0 \
+            --message="$manifestfile contains no '$arg=' line" \
+            --dump-on-fail="$manifestfile" \
+            "$manifestfile" "^$arg="
+         ;;
+      *=*)
+         label="${arg%%=*}"
+         value="${arg#*=}"
+         local mvalue
+         extract_manifest mvalue "$manifestfile" "$label"
+         assert \
+            --message="$manifestfile contains '$label=$value' line" \
+            --dump-on-fail="$manifestfile" \
+            [ "$mvalue" = "$value" ]
+         ;;
+      *)
+         assertGrep \
+            --message="$manifestfile contains '$arg=' line" \
+            --dump-on-fail="$manifestfile" \
+            "$manifestfile" "^$arg="
+         ;;
+      esac
+   done
 }
 
 extract_manifest_service() {

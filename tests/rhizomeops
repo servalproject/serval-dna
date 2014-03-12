@@ -65,10 +65,13 @@ setup_AddNoAuthorNoManifest() {
    executeOk_servald rhizome list
    assert_rhizome_list
    echo "A test file" >file1
+   echo "Another test file" >file2
 }
 test_AddNoAuthorNoManifest() {
    executeOk_servald rhizome add file '' file1
    assert_stdout_add_file file1 !author !BK
+   executeOk_servald rhizome add file '' "$PWD/file2"
+   assert_stdout_add_file file2 !author !BK
 }
 
 doc_AddNoManifest="Add with no manifest file"
@@ -78,10 +81,13 @@ setup_AddNoManifest() {
    executeOk_servald rhizome list
    assert_rhizome_list
    echo "A test file" >file1
+   echo "Another test file" >file2
 }
 test_AddNoManifest() {
    executeOk_servald rhizome add file $SIDB1 file1
    assert_stdout_add_file file1
+   executeOk_servald rhizome add file $SIDB1 "$PWD/file2"
+   assert_stdout_add_file file2
 }
 
 doc_AddNoAuthor="Add with no author makes manifest without BK"
@@ -92,8 +98,8 @@ setup_AddNoAuthor() {
 }
 test_AddNoAuthor() {
    executeOk_servald rhizome add file '' file1 file1.manifest
+   assert_manifest_fields file1.manifest !BK
    assert_stdout_add_file file1 !author !BK
-   assertGrep --matches=0 file1.manifest '^BK='
 }
 
 doc_AddInvalidAuthor="Add with invalid author fails"
@@ -118,9 +124,9 @@ setup_AddNoAuthorEncrypted() {
 test_AddNoAuthorEncrypted() {
    executeOk_servald rhizome add file '' file1 file1.manifest
    tfw_cat --stdout --stderr
+   assert_manifest_fields file1.manifest !BK
    assert_stdout_add_file file1 !author !BK
    extract_stdout_secret file1_secret
-   assertGrep --matches=0 file1.manifest '^BK='
    executeOk_servald rhizome extract file $re_manifestid file1x $file1_secret
    tfw_cat --stdout --stderr
    assert diff file1 file1x
@@ -133,6 +139,7 @@ setup_AddNonExistManifest() {
    executeOk_servald rhizome list
    assert_rhizome_list
    echo "A test file" >file1
+   echo "Another test file" >file2
 }
 test_AddNonExistManifest() {
    assert --error-on-fail [ ! -e file1.manifest ]
@@ -140,8 +147,13 @@ test_AddNonExistManifest() {
    assert_stdout_add_file file1
    assert [ -r file1.manifest ]
    assert_manifest_complete file1.manifest
-   assertGrep file1.manifest '^service=file$'
-   assertGrep file1.manifest '^name=file1$'
+   assert_manifest_fields file1.manifest service=file name=file1
+   assert --error-on-fail [ ! -e file2.manifest ]
+   executeOk_servald rhizome add file $SIDB1 "$PWD/file2" file2.manifest
+   assert_stdout_add_file file2
+   assert [ -r file2.manifest ]
+   assert_manifest_complete file2.manifest
+   assert_manifest_fields file2.manifest service=file name=file2
 }
 
 doc_AddManifest="Add with minimal manifest file"
@@ -158,9 +170,7 @@ test_AddManifest() {
    tfw_cat --stdout --stderr -v file1.manifest
    assert_stdout_add_file file1 name=wah
    assert_manifest_complete file1.manifest
-   assertGrep file1.manifest '^service=file$'
-   assertGrep file1.manifest '^name=wah$'
-   assertGrep file1.manifest '^date=12345$'
+   assert_manifest_fields file1.manifest service=file name=wah date=12345
 }
 
 doc_AddEmpty="Add with empty payload"
@@ -175,9 +185,7 @@ test_AddEmpty() {
    tfw_cat --stdout --stderr -v empty.manifest
    assert_stdout_add_file --manifest=empty.manifest ''
    assert_manifest_complete empty.manifest
-   assertGrep empty.manifest '^service=file$'
-   assertGrep empty.manifest '^name=$'
-   assertGrep empty.manifest '^filesize=0$'
+   assert_manifest_fields empty.manifest service=file name= filesize=0
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 --manifest=empty.manifest ''
 }
@@ -641,9 +649,7 @@ setup_AddUpdateSameVersion() {
    strip_signatures file1_2.manifest
    $SED -i -e '/^date=/d;/^filehash=/d;/^filesize=/d' file1_2.manifest
    tfw_cat -v file1_2.manifest
-   assertGrep --matches=0 file1_2.manifest '^filehash='
-   extract_manifest_version '' file1_2.manifest # asserts has version= line
-   assertGrep file1_2.manifest '^id='
+   assert_manifest_fields file1_2.manifest !date !filehash !filesize version id
    cp file1_2.manifest file1_2.manifest.orig
 }
 test_AddUpdateSameVersion() {
@@ -665,7 +671,7 @@ setup_AddUpdateNewVersion() {
    extract_manifest_version version file1_2.manifest
    let version=version+1
    $SED -i -e "/^version=/s/=.*/=$version/" file1_2.manifest
-   assertGrep --matches=1 file1_2.manifest "^version=$version$"
+   assert_manifest_fields file1_2.manifest version="$version"
 }
 test_AddUpdateNewVersion() {
    tfw_cat -v file1_2.manifest
@@ -724,7 +730,7 @@ doc_AddUpdateAutoVersion="Add new payload to existing manifest with automatic ve
 setup_AddUpdateAutoVersion() {
    setup_AddUpdateSameVersion
    $SED -i -e '/^version=/d' file1_2.manifest
-   assertGrep --matches=0 file1_2.manifest '^version='
+   assert_manifest_fields file1_2.manifest !version
 }
 test_AddUpdateAutoVersion() {
    tfw_cat -v file1_2.manifest

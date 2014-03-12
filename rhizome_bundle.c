@@ -1139,7 +1139,9 @@ enum rhizome_bundle_status rhizome_manifest_finalise(rhizome_manifest *m, rhizom
 int rhizome_manifest_set_name_from_path(rhizome_manifest *m, const char *filepath)
 {
   const char *name = strrchr(filepath, '/');
-  if (!name)
+  if (name)
+    ++name; // skip '/'
+  else
     name = filepath;
   if (!rhizome_str_is_manifest_name(name)) {
     WARNF("invalid rhizome name %s -- not used", alloca_str_toprint(name));
