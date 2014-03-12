@@ -489,6 +489,8 @@ overlay_interface_init(const char *name, struct socket_address *addr,
   interface->alarm.stats=&interface_poll_stats;
   
   if (ifconfig->socket_type == SOCK_DGRAM){
+    if (ifconfig->drop_broadcasts || ifconfig->drop_unicasts || ifconfig->drop_packets)
+      FATALF("Invalid interface definition. We only support dropping packets on dummy file interfaces");
     interface->local_echo = 1;
     
     if (overlay_interface_init_socket(interface))

@@ -34,9 +34,7 @@ teardown() {
    report_all_servald_servers
 }
 
-# Called by start_servald_instances for each instance.
-configure_servald_server() {
-   add_servald_interface
+default_config() {
    executeOk_servald config \
       set log.console.level debug \
       set log.console.show_pid on \
@@ -50,6 +48,12 @@ configure_servald_server() {
       set debug.rhizome_rx on \
       set server.respawn_on_crash off \
       set mdp.iftype.wifi.tick_ms 500
+}
+
+# Called by start_servald_instances for each instance.
+configure_servald_server() {
+   add_servald_interface
+   default_config
 }
 
 setup_common() {
@@ -194,15 +198,18 @@ test_MDPTransportFailOver() {
 
 doc_UnicastTransfer="Rhizome over unicast MDP link"
 setup_UnicastTransfer() {
+   configure_servald_server() {
+      default_config
+      executeOk_servald config \
+         set rhizome.http.enable 0
+   }
    setup_common
-   foreach_instance +A +B \
-     executeOk_servald config \
-       set rhizome.http.enable 0
    set_instance +A
+   add_servald_interface --file
    rhizome_add_file file1 2048
    set_instance +B
+   add_servald_interface --file
    executeOk_servald config \
-      set interfaces.1.file foo \
       set interfaces.1.drop_broadcasts on
    start_servald_instances +A +B
    foreach_instance +A assert_peers_are_instances +B
@@ -297,12 +304,14 @@ test_FileTransferBigMDP() {
 
 doc_FileTransferUnreliableBigMDP="Big new bundle over unreliable MDP transport"
 setup_FileTransferUnreliableBigMDP() {
+   configure_servald_server() {
+      add_servald_interface --file
+      default_config
+      executeOk_servald config \
+         set rhizome.http.enable 0 \
+         set interfaces.1.drop_packets 10
+   }
    setup_common
-   foreach_instance +A +B \
-     executeOk_servald config \
-       set rhizome.http.enable 0 \
-       set interfaces.1.file dummy \
-       set interfaces.1.drop_packets 10
    setup_bigfile_common
 }
 test_FileTransferUnreliableBigMDP() {
