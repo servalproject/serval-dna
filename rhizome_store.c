@@ -107,25 +107,25 @@ enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, cons
   if (file_length == RHIZOME_SIZE_UNSET || file_length > config.rhizome.max_blob_size) {
     if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, "%s/%"PRIu64, RHIZOME_BLOB_SUBDIR, write->temp_id))
       return RHIZOME_PAYLOAD_STATUS_ERROR;
-    if (config.debug.externalblobs)
+    if (config.debug.rhizome_store)
       DEBUGF("Attempting to put blob for id='%"PRIu64"' in %s", write->temp_id, blob_path);
     if ((write->blob_fd = open(blob_path, O_CREAT | O_TRUNC | O_RDWR, 0664)) == -1) {
       WHYF("Failed to create payload file, id='%"PRIu64"'", write->temp_id);
       return RHIZOME_PAYLOAD_STATUS_ERROR;
     }
-    if (config.debug.externalblobs)
+    if (config.debug.rhizome_store)
       DEBUGF("Writing to new blob file %s (fd=%d)", blob_path, write->blob_fd);
   } else {
     if ((write->blob_rowid = rhizome_create_fileblob(&retry, write->temp_id, (size_t)file_length)) == 0) {
       sqlite_exec_void_retry(&retry, "ROLLBACK;", END);
       return RHIZOME_PAYLOAD_STATUS_ERROR;
     }
-    if (config.debug.rhizome_rx)
+    if (config.debug.rhizome_store)
       DEBUGF("Got rowid=%"PRId64" for id='%"PRIu64"'", write->blob_rowid, write->temp_id);
   }
   if (sqlite_exec_void_retry(&retry, "COMMIT;", END) == -1){
     if (write->blob_fd != -1) {
-      if (config.debug.externalblobs)
+      if (config.debug.rhizome_store)
          DEBUGF("Cancel write to fd %d", write->blob_fd);
       close(write->blob_fd);
       write->blob_fd=-1;
@@ -163,15 +163,12 @@ static int prepare_data(struct rhizome_write *write_state, unsigned char *buffer
 	  write_state->file_offset + write_state->tail, 
 	  write_state->key, write_state->nonce))
       return -1;
-    if (config.debug.rhizome) {
-      //dump("after encrypt", buffer, data_size);
-    }
   }
   
   SHA512_Update(&write_state->sha512_context, buffer, data_size);
   write_state->file_offset+=data_size;
   
-  if (config.debug.rhizome)
+  if (config.debug.rhizome_store)
     DEBUGF("Processed %"PRIu64" of %"PRIu64, write_state->file_offset, write_state->file_length);
   return 0;
 }
@@ -193,10 +190,8 @@ static int write_get_lock(struct rhizome_write *write_state)
 // write data to disk
 static int write_data(struct rhizome_write *write_state, uint64_t file_offset, const unsigned char *buffer, size_t data_size)
 {
-  if (config.debug.rhizome) {
+  if (config.debug.rhizome_store)
     DEBUGF("write_state->file_length=%"PRIu64" file_offset=%"PRIu64, write_state->file_length, file_offset);
-    //dump("buffer", buffer, data_size);
-  }
 
   if (data_size<=0)
     return 0;
@@ -213,7 +208,7 @@ static int write_data(struct rhizome_write *write_state, uint64_t file_offset, c
       ssize_t r = write(write_state->blob_fd, buffer + ofs, (size_t)(data_size - ofs));
       if (r == -1)
 	return WHY_perror("write");
-      if (config.debug.externalblobs)
+      if (config.debug.rhizome_store)
         DEBUGF("Wrote %zd bytes to fd %d", (size_t)r, write_state->blob_fd);
       ofs += (size_t)r;
     }
@@ -227,7 +222,7 @@ static int write_data(struct rhizome_write *write_state, uint64_t file_offset, c
   
   write_state->written_offset = file_offset + data_size;
   
-  if (config.debug.rhizome)
+  if (config.debug.rhizome_store)
     DEBUGF("Wrote %"PRIu64" of %"PRIu64, file_offset + data_size, write_state->file_length);
   return 0;
 }
@@ -253,10 +248,8 @@ static int write_release_lock(struct rhizome_write *write_state)
 // Though there is an upper bound on the amount of cached data
 int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, unsigned char *buffer, size_t data_size)
 {
-  if (config.debug.rhizome) {
+  if (config.debug.rhizome_store)
     DEBUGF("write_state->file_length=%"PRIu64" offset=%"PRIu64, write_state->file_length, offset);
-    dump("buffer", buffer, data_size);
-  }
   if (   write_state->file_length != RHIZOME_SIZE_UNSET
       && offset + data_size > write_state->file_length
   )
@@ -356,7 +349,7 @@ int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, uns
 	if (size<=0)
 	  break;
 	  
-	if (config.debug.rhizome)
+	if (config.debug.rhizome_store)
 	  DEBUGF("Caching block @%"PRId64", %zu", offset, size);
 	struct rhizome_write_buffer *i = emalloc(size + sizeof(struct rhizome_write_buffer));
 	if (!i){
@@ -432,7 +425,7 @@ int rhizome_write_file(struct rhizome_write *write, const char *filename)
 void rhizome_fail_write(struct rhizome_write *write)
 {
   if (write->blob_fd != -1){
-    if (config.debug.externalblobs)
+    if (config.debug.rhizome_store)
       DEBUGF("Closing and removing fd %d", write->blob_fd);
     close(write->blob_fd);
     write->blob_fd=-1;
@@ -464,7 +457,7 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
 
   // Once the whole file has been written, we finally know its size and hash.
   if (write->file_length == RHIZOME_SIZE_UNSET) {
-    if (config.debug.rhizome)
+    if (config.debug.rhizome_store)
       DEBUGF("Wrote %"PRIu64" bytes, set file_length", write->file_offset);
     write->file_length = write->file_offset;
   } else {
@@ -492,7 +485,7 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
   if (write->blob_fd != -1) {
     external = 1;
     if (write->file_length <= config.rhizome.max_blob_size) {
-      if (config.debug.rhizome)
+      if (config.debug.rhizome_store)
 	DEBUGF("Copying %zu bytes from external file %s into blob, id=%"PRIu64, (size_t)write->file_offset, blob_path, write->temp_id);
       int ret = 0;
       if (lseek(write->blob_fd, 0, SEEK_SET) == (off_t) -1)
@@ -507,7 +500,7 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
 	  WARNF_perror("unlink(%s)", alloca_str_toprint(blob_path));
       }
     }
-    if (config.debug.externalblobs)
+    if (config.debug.rhizome_store)
       DEBUGF("Closing fd=%d", write->blob_fd);
     close(write->blob_fd);
     write->blob_fd = -1;
@@ -532,7 +525,7 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
     // we've already got that payload, delete the new copy
     sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILEBLOBS WHERE id = ?;", UINT64_TOSTR, write->temp_id, END);
     sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILES WHERE id = ?;", UINT64_TOSTR, write->temp_id, END);
-    if (config.debug.rhizome)
+    if (config.debug.rhizome_store)
       DEBUGF("Payload id=%s already present, removed id='%"PRIu64"'", alloca_tohex_rhizome_filehash_t(write->id), write->temp_id);
   } else {
     if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1)
@@ -562,7 +555,7 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
 	WHYF_perror("rename(%s, %s)", blob_path, dest_path);
 	goto dbfailure;
       }
-      if (config.debug.externalblobs)
+      if (config.debug.rhizome_store)
 	DEBUGF("Renamed %s to %s", blob_path, dest_path);
     }else{
       if (sqlite_exec_void_retry(
@@ -577,7 +570,7 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
     }
     if (sqlite_exec_void_retry(&retry, "COMMIT;", END) == -1)
       goto dbfailure;
-    if (config.debug.rhizome)
+    if (config.debug.rhizome_store)
       DEBUGF("Stored file %s", alloca_tohex_rhizome_filehash_t(write->id));
   }
   write->blob_rowid = 0;
@@ -670,7 +663,7 @@ enum rhizome_payload_status rhizome_stat_payload_file(rhizome_manifest *m, const
   if (m->filesize == RHIZOME_SIZE_UNSET)
     rhizome_manifest_set_filesize(m, size);
   else if (size != m->filesize) {
-    if (config.debug.rhizome)
+    if (config.debug.rhizome_store)
       DEBUGF("payload file %s (size=%"PRIu64") does not match manifest[%d].filesize=%"PRIu64,
 	  alloca_str_toprint(filepath), size, m->manifest_record_number, m->filesize);
     return RHIZOME_PAYLOAD_STATUS_WRONG_SIZE;
@@ -688,7 +681,7 @@ static enum rhizome_bundle_status rhizome_write_derive_key(rhizome_manifest *m, 
   if (!rhizome_derive_payload_key(m))
     return RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL;
 
-  if (config.debug.rhizome)
+  if (config.debug.rhizome_store)
     DEBUGF("Encrypting payload contents for bid=%s, version=%"PRIu64,
 	alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
 
@@ -788,7 +781,7 @@ enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const r
     read->blob_fd = open(blob_path, O_RDONLY);
     if (read->blob_fd == -1) {
       if (errno == ENOENT) {
-	if (config.debug.externalblobs)
+	if (config.debug.rhizome_store)
 	  DEBUGF("Stored file does not exist: %s", blob_path);
 	// make sure we remove an orphan file row
 	rhizome_delete_file(&read->id);
@@ -803,7 +796,7 @@ enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const r
       return RHIZOME_PAYLOAD_STATUS_ERROR;
     }
     read->length = pos;
-    if (config.debug.externalblobs)
+    if (config.debug.rhizome_store)
       DEBUGF("Opened stored file %s as fd %d, len %"PRIx64, blob_path, read->blob_fd, read->length);
   }
   read->offset = 0;
@@ -823,7 +816,7 @@ static ssize_t rhizome_read_retry(sqlite_retry_state *retry, struct rhizome_read
     ssize_t rd = read(read_state->blob_fd, buffer, bufsz);
     if (rd == -1)
       RETURN(WHYF_perror("read(%d,%p,%zu)", read_state->blob_fd, buffer, bufsz));
-    if (config.debug.externalblobs)
+    if (config.debug.rhizome_store)
       DEBUGF("Read %zu bytes from fd=%d @%"PRIx64, (size_t) rd, read_state->blob_fd, read_state->offset);
     RETURN(rd);
   }
@@ -892,8 +885,6 @@ ssize_t rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, siz
   }
   
   if (read_state->crypt && buffer && bytes_read>0){
-    if (config.debug.rhizome)
-      dump("before decrypt", buffer, bytes_read);
     if(rhizome_crypt_xor_block(
 	buffer, bytes_read, 
 	read_state->offset + read_state->tail, 
@@ -902,10 +893,8 @@ ssize_t rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, siz
     }
   }
   read_state->offset += bytes_read;
-  if (config.debug.rhizome) {
+  if (config.debug.rhizome_store)
     DEBUGF("read %zu bytes, read_state->offset=%"PRIu64, bytes_read, read_state->offset);
-    //dump("buffer", buffer, bytes_read);
-  }
   RETURN(bytes_read);
   OUT();
 }
@@ -975,7 +964,7 @@ ssize_t rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buf
 void rhizome_read_close(struct rhizome_read *read)
 {
   if (read->blob_fd != -1) {
-    if (config.debug.externalblobs)
+    if (config.debug.rhizome_store)
       DEBUGF("Closing store fd %d", read->blob_fd);
     close(read->blob_fd);
     read->blob_fd = -1;
@@ -1183,7 +1172,7 @@ static enum rhizome_payload_status read_derive_key(rhizome_manifest *m, struct r
       WHY("Unable to decrypt bundle, valid key not found");
       return RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL;
     }
-    if (config.debug.rhizome)
+    if (config.debug.rhizome_store)
       DEBUGF("Decrypting payload contents for bid=%s version=%"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
     if (m->is_journal && m->tail > 0)
       read_state->tail = m->tail;

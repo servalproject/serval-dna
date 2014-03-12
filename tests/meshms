@@ -33,7 +33,7 @@ setup_logging() {
       set debug.meshms on \
       set debug.rhizome on \
       set debug.rhizome_manifest on \
-      set debug.externalblobs on \
+      set debug.rhizome_store on \
       set debug.rejecteddata on \
       set log.console.level debug \
       set log.console.show_time on

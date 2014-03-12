@@ -106,7 +106,7 @@ set_rhizome_config() {
       set debug.http_server on \
       set debug.httpd on \
       set debug.rhizome_manifest on \
-      set debug.externalblobs on \
+      set debug.rhizome_store on \
       set debug.rhizome on \
       set debug.verbose on \
       set log.console.level debug

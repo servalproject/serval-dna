@@ -328,7 +328,7 @@ setup_FileTransferBigMDPExtBlob() {
       executeOk_servald config \
          set rhizome.http.enable 0 \
          set rhizome.max_blob_size 0 \
-	 set debug.externalblobs 1
+	 set debug.rhizome_store 1
    setup_bigfile_common
 }
 test_FileTransferBigMDPExtBlob() {
@@ -342,7 +342,7 @@ setup_FileTransferBigHTTPExtBlob() {
       executeOk_servald config \
          set rhizome.mdp.enable 0 \
          set rhizome.max_blob_size 0 \
-	 set debug.externalblobs 1
+	 set debug.rhizome_store 1
    setup_bigfile_common
 }
 test_FileTransferBigHTTPExtBlob() {
@@ -404,7 +404,7 @@ setup_FileTransferMultiMDPExtBlob() {
       executeOk_servald config \
          set rhizome.http.enable 0 \
          set rhizome.max_blob_size 0 \
-	 set debug.externalblobs 1
+	 set debug.rhizome_store 1
    setup_multitransfer_common
 }
 test_FileTransferMultiMDPExtBlob() {
@@ -418,7 +418,7 @@ setup_FileTransferMultiHTTPExtBlob() {
       executeOk_servald config \
          set rhizome.mdp.enable 0 \
          set rhizome.max_blob_size 0 \
-	 set debug.externalblobs 1
+	 set debug.rhizome_store 1
    setup_multitransfer_common
 }
 test_FileTransferMultiHTTPExtBlob() {
@@ -450,7 +450,9 @@ doc_CorruptPayload="A corrupted payload should be re-fetched"
 setup_CorruptPayload() {
    setup_common
    set_instance +A
-   executeOk_servald config set rhizome.max_blob_size 0
+   executeOk_servald config \
+      set rhizome.max_blob_size 0 \
+      set debug.rhizome_store 1
    rhizome_add_file file1 1024
    start_servald_instances +A +B
    wait_until bundle_received_by $BID:$VERSION +B
@@ -473,7 +475,9 @@ doc_MissingPayload="A missing payload should be re-fetched"
 setup_MissingPayload() {
    setup_common
    set_instance +A
-   executeOk_servald config set rhizome.max_blob_size 0
+   executeOk_servald config \
+      set rhizome.max_blob_size 0 \
+      set debug.rhizome_store 1
    rhizome_add_file file1 1024
    assert cmp file1 "$SERVALINSTANCE_PATH/blob/$FILEHASH"
    start_servald_instances +A +B

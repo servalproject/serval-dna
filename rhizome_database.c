@@ -1198,7 +1198,7 @@ static int rhizome_delete_external(const rhizome_filehash_t *hashp)
       return WHYF_perror("unlink(%s)", alloca_str_toprint(blob_path));
     return 1;
   }
-  if (config.debug.externalblobs)
+  if (config.debug.rhizome_store)
     DEBUGF("Deleted blob file %s", blob_path);
   return 0;
 }
