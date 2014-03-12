@@ -254,16 +254,25 @@ doc_InterfacesModernDummy="Modern 'interfaces.N.file' config option"
 test_InterfacesModernDummy() {
    executeOk_servald config set interfaces.0.file dummyname
 }
-teardown_InterfacesModernDummy() {
-   tfw_cat $SERVALINSTANCE_PATH/serval.conf
-   teardown
-}
 
 doc_InterfacesModernIncompatible="Config options 'interfaces.match' and 'interfaces.file' are incompatible"
 test_InterfacesModernIncompatible() {
    executeOk_servald config set interfaces.0.match eth
    execute --stderr --core-backtrace --executable=$servald \
       config set interfaces.0.file dummy
+   assertExitStatus '==' 2
+   assert_stderr_log \
+      --warn-pattern='"interfaces\.0\..*incompatible' \
+      --error-pattern='config file.*loaded despite defects.*incompatible'
+}
+
+doc_InterfaceDropDgramIncompatible="Config options 'interfaces.drop_packets' and 'interfaces.socket_type=DGRAM' are incompatible"
+test_InterfaceDropDgramIncompatible() {
+   executeOk_servald config \
+      set interfaces.0.match eth \
+      set interfaces.0.socket_type dgram
+   execute --stderr --core-backtrace --executable=$servald \
+      config set interfaces.0.drop_packets 10
    assertExitStatus '==' 2
    assert_stderr_log \
       --warn-pattern='"interfaces\.0\..*incompatible' \

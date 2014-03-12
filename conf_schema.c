@@ -989,6 +989,20 @@ int vld_network_interface(const struct cf_om_node *parent, struct config_network
       cf_warn_missing_node(parent, "file");
       return result | CFSUB(CFINCOMPATIBLE);
     }
+    if (nifp->socket_type != SOCK_FILE){
+      int nodei_drop=-1;
+      if (nifp->drop_packets)
+	nodei_drop=cf_om_get_child(parent, "drop_packets", NULL);
+      if (nifp->drop_broadcasts)
+	nodei_drop=cf_om_get_child(parent, "drop_broadcasts", NULL);
+      if (nifp->drop_unicasts)
+	nodei_drop=cf_om_get_child(parent, "drop_unicasts", NULL);
+      if (nodei_drop!=-1){
+	int nodei_socket_type=cf_om_get_child(parent, "socket_type", NULL);
+	cf_warn_incompatible(parent->nodv[nodei_socket_type], parent->nodv[nodei_drop]);
+	return result | CFSUB(CFINCOMPATIBLE);
+      }
+    }
   }
   return result;
 }
