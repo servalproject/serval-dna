@@ -1187,11 +1187,11 @@ int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t versio
   OUT();
 }
 
-static int rhizome_delete_external(const rhizome_filehash_t *hashp)
+static int rhizome_delete_external(const char *id)
 {
   // attempt to remove any external blob
   char blob_path[1024];
-  if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, alloca_tohex_rhizome_filehash_t(*hashp)))
+  if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, id))
     return -1;
   if (unlink(blob_path) == -1) {
     if (errno != ENOENT)
@@ -1252,11 +1252,8 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     candidates++;
     const char *id = (const char *) sqlite3_column_text(statement, 0);
-    rhizome_filehash_t hash;
-    if (str_to_rhizome_filehash_t(&hash, id) == -1)
-      WARNF("invalid field FILES.id=%s -- ignored", alloca_str_toprint(id));
-    else if (rhizome_delete_external(&hash) == 0 && report)
-	++report->deleted_stale_incoming_files;
+    if (rhizome_delete_external(id) == 0 && report)
+      ++report->deleted_stale_incoming_files;
   }
   sqlite3_finalize(statement);
 
@@ -1267,10 +1264,7 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     candidates++;
     const char *id = (const char *) sqlite3_column_text(statement, 0);
-    rhizome_filehash_t hash;
-    if (str_to_rhizome_filehash_t(&hash, id) == -1)
-      WARNF("invalid field FILES.id=%s -- ignored", alloca_str_toprint(id));
-    else if (rhizome_delete_external(&hash) == 0 && report)
+    if (rhizome_delete_external(id) == 0 && report)
       ++report->deleted_orphan_files;
   }
   sqlite3_finalize(statement);
@@ -1981,7 +1975,7 @@ static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizom
 static int rhizome_delete_file_retry(sqlite_retry_state *retry, const rhizome_filehash_t *hashp)
 {
   int ret = 0;
-  rhizome_delete_external(hashp);
+  rhizome_delete_external(alloca_tohex_rhizome_filehash_t(*hashp));
   sqlite3_stmt *statement = sqlite_prepare_bind(retry, "DELETE FROM files WHERE id = ?", RHIZOME_FILEHASH_T, hashp, END);
   if (!statement || sqlite_exec_retry(retry, statement) == -1)
     ret = -1;

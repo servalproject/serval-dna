@@ -927,6 +927,7 @@ test_MeshMSAddGrow() {
       for ofilehash in "${ofilehashes[@]}"; do
          execute --exit-status=1 --stderr $servald rhizome export file "$ofilehash"
       done
+      filehash="$filehashx"
    done
 }
 
