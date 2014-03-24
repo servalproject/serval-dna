@@ -133,6 +133,7 @@ struct in_addr {
 #include <fcntl.h>
 #include <sys/stat.h>
 
+#include "instance.h"
 #include "fdqueue.h"
 #include "cli.h"
 #include "constants.h"
@@ -194,33 +195,6 @@ int str_to_sid_t(sid_t *sid, const char *hex);
 int strn_to_sid_t(sid_t *sid, const char *hex, const char **endp);
 
 #define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
-
-/*
- * INSTANCE_PATH can be set on the ./configure command line, eg:
- *
- *      ./configure INSTANCE_PATH=/var/local/serval/node
- */
-#ifdef INSTANCE_PATH
-#define DEFAULT_INSTANCE_PATH INSTANCE_PATH
-#else
-#ifdef ANDROID
-#define DEFAULT_INSTANCE_PATH "/data/data/org.servalproject/var/serval-node"
-#else
-#define DEFAULT_INSTANCE_PATH "/var/serval-node"
-#endif
-#endif
-
-/* Handy statement for forming a path to an instance file in a char buffer whose declaration
- * is in scope (so that sizeof(buf) will work).  Evaluates to true if the pathname fitted into
- * the provided buffer, false (0) otherwise (after logging an error).
- */
-#define FORM_SERVAL_INSTANCE_PATH(buf, path) (formf_serval_instance_path(__WHENCE__, buf, sizeof(buf), "%s", (path)))
-
-const char *serval_instancepath();
-int create_serval_instance_dir();
-int formf_serval_instance_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((format(printf,4,5)));
-int vformf_serval_instance_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, va_list);
-void serval_setinstancepath(const char *instancepath);
 
 #define SERVER_CONFIG_RELOAD_INTERVAL_MS	1000
 

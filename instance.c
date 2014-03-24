@@ -36,13 +36,6 @@ const char *serval_instancepath()
   return instancepath;
 }
 
-void serval_setinstancepath(const char *instancepath)
-{
-  if (thisinstancepath == NULL)
-    free(thisinstancepath);
-  thisinstancepath = strdup(instancepath);
-}
-
 int formf_serval_instance_path(struct __sourceloc __whence, char *buf, size_t bufsiz, const char *fmt, ...)
 {
   va_list ap;
