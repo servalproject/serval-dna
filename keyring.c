@@ -2020,7 +2020,7 @@ keyring_file *keyring_open_instance()
   if (!env)
     env = "serval.keyring";
   char keyringFile[1024];
-  if (!FORM_SERVAL_INSTANCE_PATH(keyringFile, env))
+  if (!FORMF_SERVAL_ETC_PATH(keyringFile, "%s", env))
     RETURN(NULL);
   // Work out if the keyring file is writeable.
   int writeable = 0;

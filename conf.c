@@ -44,7 +44,7 @@ static struct file_meta config_meta = FILE_META_UNKNOWN;
 static const char *conffile_path()
 {
   static char path[1024] = "";
-  if (!path[0] && !FORM_SERVAL_INSTANCE_PATH(path, CONFFILE_NAME))
+  if (!path[0] && !FORMF_SERVAL_ETC_PATH(path, CONFFILE_NAME))
     abort();
   return path;
 }
@@ -144,7 +144,7 @@ int cf_om_save()
     const char *path = conffile_path();
     char tempfile[1024];
     FILE *outf = NULL;
-    if (!FORM_SERVAL_INSTANCE_PATH(tempfile, "serval.conf.temp"))
+    if (!FORMF_SERVAL_ETC_PATH(tempfile, CONFFILE_NAME ".temp"))
       return -1;
     if ((outf = fopen(tempfile, "w")) == NULL)
       return WHYF_perror("fopen(%s, \"w\")", tempfile);

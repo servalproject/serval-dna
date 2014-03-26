@@ -932,8 +932,13 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
       RETURN(WHY("Server process did not start"));
     ret = 0;
   }
-  cli_field_name(context, "instancepath", ":");
-  cli_put_string(context, serval_instancepath(), "\n");
+  const char *ipath = instance_path();
+  if (ipath) {
+    cli_field_name(context, "instancepath", ":");
+    cli_put_string(context, ipath, "\n");
+  }
+  cli_field_name(context, "pidfile", ":");
+  cli_put_string(context, server_pidfile_path(), "\n");
   cli_field_name(context, "pid", ":");
   cli_put_long(context, pid, "\n");
   char buff[256];
@@ -968,9 +973,13 @@ int app_server_stop(const struct cli_parsed *parsed, struct cli_context *context
     DEBUG_cli_parsed(parsed);
   int			pid, tries, running;
   time_ms_t		timeout;
-  const char *instancepath = serval_instancepath();
-  cli_field_name(context, "instancepath", ":");
-  cli_put_string(context, instancepath, "\n");
+  const char *ipath = instance_path();
+  if (ipath) {
+    cli_field_name(context, "instancepath", ":");
+    cli_put_string(context, ipath, "\n");
+  }
+  cli_field_name(context, "pidfile", ":");
+  cli_put_string(context, server_pidfile_path(), "\n");
   pid = server_pid();
   /* Not running, nothing to stop */
   if (pid <= 0)
@@ -983,8 +992,8 @@ int app_server_stop(const struct cli_parsed *parsed, struct cli_context *context
   running = pid;
   while (running == pid) {
     if (tries >= 5) {
-      WHYF("Servald pid=%d for instance '%s' did not stop after %d SIGHUP signals",
-	   pid, instancepath, tries);
+      WHYF("Servald pid=%d (pidfile=%s) did not stop after %d SIGHUP signals",
+	   pid, server_pidfile_path(), tries);
       return 253;
     }
     ++tries;
@@ -999,7 +1008,7 @@ int app_server_stop(const struct cli_parsed *parsed, struct cli_context *context
 	break;
       }
       WHY_perror("kill");
-      WHYF("Error sending SIGHUP to Servald pid=%d for instance '%s'", pid, instancepath);
+      WHYF("Error sending SIGHUP to Servald pid=%d (pidfile %s)", pid, server_pidfile_path());
       return 252;
     }
     /* Allow a few seconds for the process to die. */
@@ -1019,8 +1028,13 @@ int app_server_status(const struct cli_parsed *parsed, struct cli_context *conte
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   int pid = server_pid();
-  cli_field_name(context, "instancepath", ":");
-  cli_put_string(context, serval_instancepath(), "\n");
+  const char *ipath = instance_path();
+  if (ipath) {
+    cli_field_name(context, "instancepath", ":");
+    cli_put_string(context, ipath, "\n");
+  }
+  cli_field_name(context, "pidfile", ":");
+  cli_put_string(context, server_pidfile_path(), "\n");
   cli_field_name(context, "status", ":");
   cli_put_string(context, pid > 0 ? "running" : "stopped", "\n");
   if (pid > 0) {
@@ -1422,6 +1436,52 @@ int app_config_get(const struct cli_parsed *parsed, struct cli_context *context)
 	cli_put_string(context, it.node->text, "\n");
       }
     }
+  }
+  return 0;
+}
+
+int app_config_paths(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  if (cf_om_reload() == -1)
+    return -1;
+  char path[1024];
+  if (FORMF_SERVAL_ETC_PATH(path, NULL)) {
+    cli_field_name(context, "SERVAL_ETC_PATH", ":");
+    cli_put_string(context, path, "\n");
+  }
+  if (FORMF_SERVAL_RUN_PATH(path, NULL)) {
+    cli_field_name(context, "SERVAL_RUN_PATH", ":");
+    cli_put_string(context, path, "\n");
+  }
+  if (FORMF_SERVAL_CACHE_PATH(path, NULL)) {
+    cli_field_name(context, "SERVAL_CACHE_PATH", ":");
+    cli_put_string(context, path, "\n");
+  }
+  strbuf sb = strbuf_local(path, sizeof path);
+  strbuf_system_log_path(sb);
+  if (!strbuf_overrun(sb)) {
+    cli_field_name(context, "SYSTEM_LOG_PATH", ":");
+    cli_put_string(context, path, "\n");
+  }
+  strbuf_reset(sb);
+  strbuf_serval_log_path(sb);
+  if (!strbuf_overrun(sb)) {
+    cli_field_name(context, "SERVAL_LOG_PATH", ":");
+    cli_put_string(context, path, "\n");
+  }
+  if (FORMF_SERVAL_TMP_PATH(path, NULL)) {
+    cli_field_name(context, "SERVAL_TMP_PATH", ":");
+    cli_put_string(context, path, "\n");
+  }
+  if (FORMF_SERVALD_PROC_PATH(path, NULL)) {
+    cli_field_name(context, "SERVALD_PROC_PATH", ":");
+    cli_put_string(context, path, "\n");
+  }
+  if (FORMF_RHIZOME_STORE_PATH(path, NULL)) {
+    cli_field_name(context, "RHIZOME_STORE_PATH", ":");
+    cli_put_string(context, path, "\n");
   }
   return 0;
 }
@@ -3019,6 +3079,8 @@ struct cli_schema command_line_options[]={
    "Del and set specified configuration variables."},
   {app_config_get,{"config","get","[<variable>]",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Get specified configuration variable."},
+  {app_config_paths,{"config","paths",NULL},CLIFLAG_PERMISSIVE_CONFIG,
+   "Dump file and directory paths."},
   {app_vomp_console,{"console",NULL}, 0,
     "Test phone call life-cycle from the console"},
   {app_meshms_conversations,{"meshms","list","conversations" KEYRING_PIN_OPTIONS, "<sid>","[<offset>]","[<count>]",NULL},0,

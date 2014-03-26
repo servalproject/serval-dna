@@ -497,14 +497,9 @@ overlay_interface_init(const char *name, struct socket_address *addr,
       return WHY("overlay_interface_init_socket() failed");
   }else{
     char read_file[1024];
-    
     interface->local_echo = interface->point_to_point?0:1;
-
-    strbuf d = strbuf_local(read_file, sizeof read_file);
-    strbuf_path_join(d, serval_instancepath(), config.server.interface_path, ifconfig->file, NULL);
-    if (strbuf_overrun(d))
-      return WHYF("interface file name overrun: %s", alloca_str_toprint(strbuf_str(d)));
-    
+    if (!FORMF_SERVAL_TMP_PATH(read_file, "%s/%s", config.server.interface_path, ifconfig->file))
+      return -1;
     if ((interface->alarm.poll.fd = open(read_file, O_APPEND|O_RDWR)) == -1) {
       if (errno == ENOENT && ifconfig->socket_type == SOCK_FILE) {
 	cleanup_ret = 1;
@@ -1071,10 +1066,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
 	{
 	  // use a local dgram socket
 	  // no abstract sockets for now
-	  strbuf d = strbuf_local(addr.local.sun_path, sizeof addr.local.sun_path);
-	  strbuf_path_join(d, serval_instancepath(), config.server.interface_path, ifconfig->file, NULL);
-	  if (strbuf_overrun(d)){
-	    WHYF("interface file name overrun: %s", alloca_str_toprint(strbuf_str(d)));
+	  if (!FORMF_SERVAL_RUN_PATH(addr.local.sun_path, "%s/%s", config.server.interface_path, ifconfig->file)) {
 	    // TODO set ifconfig->exclude to prevent spam??
 	    break;
 	  }

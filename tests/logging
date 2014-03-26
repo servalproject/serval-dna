@@ -172,7 +172,7 @@ doc_LogFileDirectoryRelative="Relative log file directory path"
 test_LogFileDirectoryRelative() {
    executeOk_servald config \
       set debug.verbose true \
-      set log.file.directory_path "blah"
+      set log.file.directory_path "../blah"
    executeOk_servald echo one
    assert --message="exactly one log file" [ $(ls -d  "$SERVALINSTANCE_PATH/blah/"*.log | wc -l) -eq 1 ]
    assertGrep "$SERVALINSTANCE_PATH/blah/"*.log '^DEBUG:.*echo:argv\[1\]="one"$'

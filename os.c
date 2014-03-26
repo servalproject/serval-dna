@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #define __SERVAL_DNA__OS_INLINE
+#include "constants.h"
 #include "os.h"
 #include "str.h"
 #include "log.h"
@@ -31,39 +32,52 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <time.h>
 #include <string.h>
 
-int mkdirs(const char *path, mode_t mode)
+void log_info_mkdir(struct __sourceloc __whence, const char *path, mode_t mode)
 {
-  return mkdirsn(path, strlen(path), mode);
+  INFOF("mkdir %s (mode %04o)", alloca_str_toprint(path), mode);
 }
 
-int _emkdirs(struct __sourceloc __whence, const char *path, mode_t mode)
+int _mkdirs(struct __sourceloc __whence, const char *path, mode_t mode, MKDIR_LOG_FUNC *logger)
 {
-  if (mkdirs(path, mode) == -1)
+  return _mkdirsn(__whence, path, strlen(path), mode, logger);
+}
+
+int _emkdirs(struct __sourceloc __whence, const char *path, mode_t mode, MKDIR_LOG_FUNC *logger)
+{
+  if (_mkdirs(__whence, path, mode, logger) == -1)
     return WHYF_perror("mkdirs(%s,%o)", alloca_str_toprint(path), mode);
   return 0;
 }
 
-int _emkdirsn(struct __sourceloc __whence, const char *path, size_t len, mode_t mode)
+int _emkdirsn(struct __sourceloc __whence, const char *path, size_t len, mode_t mode, MKDIR_LOG_FUNC *logger)
 {
-  if (mkdirsn(path, len, mode) == -1)
+  if (_mkdirsn(__whence, path, len, mode, logger) == -1)
     return WHYF_perror("mkdirsn(%s,%lu,%o)", alloca_toprint(-1, path, len), (unsigned long)len, mode);
   return 0;
 }
 
-/* This variant must not log anything, because it is used by the logging subsystem itself!
+/* This variant must not log anything itself, because it is called by the logging subsystem, and
+ * that would cause infinite recursion!
+ *
+ * The path need not be NUL terminated.
+ *
+ * The logger function pointer is usually NULL, for no logging, but may be any function the caller
+ * supplies (for example, log_info_mkdir).
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int mkdirsn(const char *path, size_t len, mode_t mode)
+int _mkdirsn(struct __sourceloc whence, const char *path, size_t len, mode_t mode, MKDIR_LOG_FUNC *logger)
 {
   if (len == 0)
     errno = EINVAL;
   else {
     char *pathfrag = alloca(len + 1);
-    strncpy(pathfrag, path, len);
-    pathfrag[len] = '\0';
-    if (mkdir(pathfrag, mode) != -1)
+    strncpy(pathfrag, path, len)[len] = '\0';
+    if (mkdir(pathfrag, mode) != -1) {
+      if (logger)
+	logger(whence, pathfrag, mode);
       return 0;
+    }
     if (errno == EEXIST) {
       DIR *d = opendir(pathfrag);
       if (d) {
@@ -78,10 +92,13 @@ int mkdirsn(const char *path, size_t len, mode_t mode)
       while (lastsep != path && *--lastsep == '/')
 	;
       if (lastsep != path) {
-	if (mkdirsn(path, lastsep - path + 1, mode) == -1)
+	if (_mkdirsn(whence, path, lastsep - path + 1, mode, logger) == -1)
 	  return -1;
-	if (mkdir(pathfrag, mode) != -1)
+	if (mkdir(pathfrag, mode) != -1) {
+	  if (logger)
+	    logger(whence, pathfrag, mode);
 	  return 0;
+	}
       }
     }
   }

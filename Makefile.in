@@ -2,6 +2,8 @@ prefix=@prefix@
 exec_prefix=@exec_prefix@
 bindir=@bindir@
 sbindir=@sbindir@
+sysconfdir=@sysconfdir@
+localstatedir=@localstatedir@
 
 NACL_BASE=	nacl/src
 include $(NACL_BASE)/nacl.mk
@@ -42,6 +44,7 @@ MDP_CLIENT_OBJS=	$(MDP_CLIENT_SRCS:.c=.o)
 LDFLAGS=@LDFLAGS@ @LIBS@ @PORTAUDIO_LIBS@ @SRC_LIBS@ @SPANDSP_LIBS@ @CODEC2_LIBS@ @PTHREAD_LIBS@
 
 CFLAGS=	-Isqlite-amalgamation-3070900 @CPPFLAGS@ @CFLAGS@ @PORTAUDIO_CFLAGS@ @SRC_CFLAGS@ @SPANDSP_CFLAGS@ @PTHREAD_CFLAGS@ $(VOIPTEST_CFLAGS) -Inacl/include
+CFLAGS+=-DSYSCONFDIR="\"$(sysconfdir)\"" -DLOCALSTATEDIR="\"$(localstatedir)\""
 CFLAGS+=-fPIC
 CFLAGS+=-Wall -Wno-unused-value
 # Solaris magic

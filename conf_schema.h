@@ -292,7 +292,7 @@ LOG_FORMAT_OPTIONS
 END_STRUCT
 
 STRUCT(log_format_file)
-STRING(256,                 directory_path, "log", str_nonempty,, "Path of directory for log files, either absolute or relative to instance directory")
+STRING(256,                 directory_path, "", str,, "Path of directory for log files, either absolute or relative to instance log directory")
 STRING(256,                 path,           "", str_nonempty,, "Path of single log file, either absolute or relative to directory_path")
 ATOM(unsigned short,        rotate,         12, ushort,, "Number of log files to rotate, zero means no deletion")
 ATOM(uint32_t,              duration,       3600, uint32_time_interval,, "Time duration of each log file, zero means one file per invocation")
