@@ -29,27 +29,23 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  *      ./configure INSTANCE_PATH=/var/local/serval/node
  *
- * This will cause servald to never use FHS paths, and always use an instance
- * path, even if the SERVALINSTANCE_PATH environment variable is not set.
- */
-#ifdef INSTANCE_PATH
-#define DEFAULT_INSTANCE_PATH INSTANCE_PATH
-#else
-
-/* On Android systems, always use an instance path (no FHS paths).
+ * This will cause servald to never use FHS paths, and always use an instance path, even if the
+ * SERVALINSTANCE_PATH environment variable is not set.
+ *
+ * On Android systems, the INSTANCE_PATH macro is set in Android.mk, so Android builds of servald
+ * always use an instance path and never fall back to FHS paths.
  */
 #ifdef ANDROID
-#define DEFAULT_INSTANCE_PATH "/data/data/org.servalproject/var/serval-node"
-#define SERVAL_ETC_PATH ""
-#define SERVAL_RUN_PATH ""
-#define SYSTEM_LOG_PATH ""
-#define SERVAL_LOG_PATH ""
-#define SERVAL_CACHE_PATH ""
-#define SERVAL_TMP_PATH ""
-#define RHIZOME_STORE_PATH ""
-#else
-#define DEFAULT_INSTANCE_PATH NULL
-#endif
+# ifndef INSTANCE_PATH
+#  error Must set INSTANCE_PATH macro on Android systems
+# endif
+# define SERVAL_ETC_PATH ""
+# define SERVAL_RUN_PATH ""
+# define SYSTEM_LOG_PATH ""
+# define SERVAL_LOG_PATH ""
+# define SERVAL_CACHE_PATH ""
+# define SERVAL_TMP_PATH ""
+# define RHIZOME_STORE_PATH ""
 #endif
 
 /* The following paths are based on the Filesystem Hierarchy Standard (FHS) 2.3
@@ -93,8 +89,10 @@ const char *instance_path()
 {
   if (!know_instancepath) {
     instancepath = getenv("SERVALINSTANCE_PATH");
+#ifdef INSTANCE_PATH
     if (instancepath == NULL)
-      instancepath = DEFAULT_INSTANCE_PATH;
+      instancepath = INSTANCE_PATH;
+#endif
     know_instancepath = 1;
   }
   return instancepath;
