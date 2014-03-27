@@ -132,18 +132,18 @@ static int put_blob(struct cli_context *context, jbyte *value, jsize length){
     return -1;
   if (value && length>0){
     arr = (*context->jni_env)->NewByteArray(context->jni_env, length);
-    if (arr == NULL || (*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+    if (arr == NULL || (*context->jni_env)->ExceptionCheck(context->jni_env)) {
       context->jni_exception = 1;
       return WHY("Exception thrown from NewByteArray()");
     }
     (*context->jni_env)->SetByteArrayRegion(context->jni_env, arr, 0, length, value);
-    if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+    if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
       context->jni_exception = 1;
       return WHYF("Exception thrown from SetByteArrayRegion()");
     }
   }
   (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, putBlob, arr);
-  if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+  if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
     context->jni_exception = 1;
     return WHY("Exception thrown from CallVoidMethod(putBlob)");
   }
@@ -219,7 +219,7 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_rawComman
   // returning.
   for (i = 0; !context.jni_exception && i < len; ++i) {
     const jstring arg = (jstring)(*env)->GetObjectArrayElement(env, args, i);
-    if ((*env)->ExceptionOccurred(env))
+    if ((*env)->ExceptionCheck(env))
       context.jni_exception = 1;
     else if (arg == NULL) {
       Throw(env, "java/lang/NullPointerException", "null element in argv");
@@ -396,7 +396,7 @@ void cli_columns(struct cli_context *context, int columns, const char *names[])
       return;
       
     (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, startResultSet, columns);
-    if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+    if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
       context->jni_exception = 1;
       WHY("Exception thrown from CallVoidMethod(startResultSet)");
       return;
@@ -411,7 +411,7 @@ void cli_columns(struct cli_context *context, int columns, const char *names[])
       }
       (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, setColumnName, i, str);
       (*context->jni_env)->DeleteLocalRef(context->jni_env, str);
-      if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+      if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
 	context->jni_exception = 1;
 	WHY("Exception thrown from CallVoidMethod(setColumnName)");
 	return;
@@ -446,7 +446,7 @@ void cli_field_name(struct cli_context *context, const char *name, const char *d
     }
     (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, setColumnName, -1, str);
     (*context->jni_env)->DeleteLocalRef(context->jni_env, str);
-    if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+    if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
       context->jni_exception = 1;
       WHY("Exception thrown from CallVoidMethod(setColumnName)");
       return;
@@ -464,7 +464,7 @@ void cli_put_long(struct cli_context *context, int64_t value, const char *delim)
     if (context->jni_exception)
       return;
     (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, putLong, value);
-    if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+    if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
       context->jni_exception = 1;
       WHY("Exception thrown from CallVoidMethod(putLong)");
     }
@@ -491,7 +491,7 @@ void cli_put_string(struct cli_context *context, const char *value, const char *
     }
     (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, putString, str);
     (*context->jni_env)->DeleteLocalRef(context->jni_env, str);
-    if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+    if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
       context->jni_exception = 1;
       WHY("Exception thrown from CallVoidMethod(putLong)");
     }
@@ -521,7 +521,7 @@ void cli_row_count(struct cli_context *context, int rows){
     if (context->jni_exception)
       return;
     (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, totalRowCount, rows);
-    if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+    if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
       context->jni_exception = 1;
       WHY("Exception thrown from CallVoidMethod()");
     }
