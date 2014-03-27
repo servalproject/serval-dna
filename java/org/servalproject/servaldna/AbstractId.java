@@ -82,6 +82,8 @@ public abstract class AbstractId {
 		// must be the exact same type with the same binary contents to be considered equal
 		if (other==null)
 			return false;
+		if (other==this)
+			return true;
 		if (other.getClass() == this.getClass()) {
 			AbstractId oBinary = (AbstractId) other;
 			for (int i = 0; i < this.binary.length; i++)
