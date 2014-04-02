@@ -95,9 +95,12 @@ static FILE *_log_file = NULL;
 static void _open_log_file(_log_iterator *);
 static void _rotate_log_file(_log_iterator *it);
 static void _flush_log_file();
-struct _log_state state_file;
-struct config_log_format config_file;
-time_t _log_file_start_time;
+static struct _log_state state_file;
+static struct config_log_format config_file;
+static struct { size_t len; mode_t mode; } mkdir_trace[10];
+static mode_t mkdir_trace_latest_mode;
+static unsigned mkdir_count;
+static time_t _log_file_start_time;
 static char _log_file_buf[8192];
 static struct strbuf _log_file_strbuf = STRUCT_STRBUF_EMPTY;
 
@@ -424,11 +427,6 @@ static void _logs_printf_nl(int level, struct __sourceloc whence, const char *fm
   va_end(ap);
 }
 
-const char *log_file_directory_path()
-{
-  return config.log.file.directory_path;
-}
-
 static void _compute_file_start_time(_log_iterator *it)
 {
   if (it->file_start_time == 0) {
@@ -440,6 +438,27 @@ static void _compute_file_start_time(_log_iterator *it)
   }
 }
 
+static void trace_mkdir(struct __sourceloc UNUSED(whence), const char *path, mode_t mode)
+{
+  if (mkdir_count < NELS(mkdir_trace)) {
+    mkdir_trace[mkdir_count].len = strlen(path);
+    mkdir_trace[mkdir_count].mode = mode;
+  }
+  ++mkdir_count;
+  mkdir_trace_latest_mode = mode;
+}
+
+static void log_mkdir_trace(const char *dir)
+{
+  unsigned i;
+  for (i = 0; i < mkdir_count && i < NELS(mkdir_trace); ++i)
+    _logs_printf_nl(LOG_LEVEL_INFO, __NOWHERE__, "Created %s (mode %04o)", alloca_toprint(-1, dir, mkdir_trace[i].len), mkdir_trace[i].mode);
+  if (mkdir_count > NELS(mkdir_trace) + 1)
+    _logs_printf_nl(LOG_LEVEL_INFO, __NOWHERE__, "Created ...");
+  if (mkdir_count > NELS(mkdir_trace))
+    _logs_printf_nl(LOG_LEVEL_INFO, __NOWHERE__, "Created %s (mode %04o)", alloca_str_toprint(dir), mkdir_trace_latest_mode);
+}
+
 static void _open_log_file(_log_iterator *it)
 {
   assert(it->state == &state_file);
@@ -448,14 +467,15 @@ static void _open_log_file(_log_iterator *it)
       _log_file_path = getenv("SERVALD_LOG_FILE");
     if (_log_file_path == NULL && !cf_limbo) {
       strbuf sbfile = strbuf_local(_log_file_path_buf, sizeof _log_file_path_buf);
-      strbuf_path_join(sbfile, serval_instancepath(), log_file_directory_path(), NULL);
+      strbuf_serval_log_path(sbfile);
+      strbuf_path_join(sbfile, config.log.file.directory_path, "", NULL); // with trailing '/'
       _compute_file_start_time(it);
       if (config.log.file.path[0]) {
 	strbuf_path_join(sbfile, config.log.file.path, NULL);
       } else {
 	struct tm tm;
 	(void)localtime_r(&it->file_start_time, &tm);
-	strbuf_append_strftime(sbfile, "/serval-%Y%m%d%H%M%S.log", &tm);
+	strbuf_append_strftime(sbfile, "serval-%Y%m%d%H%M%S.log", &tm);
       }
       if (strbuf_overrun(sbfile)) {
 	_log_file = NO_FILE;
@@ -477,16 +497,27 @@ static void _open_log_file(_log_iterator *it)
 	char _dir[dirsiz];
 	strcpy(_dir, _log_file_path);
 	const char *dir = dirname(_dir); // modifies _dir[]
-	if (mkdirs(dir, 0700) != -1 && (_log_file = fopen(_log_file_path, "a"))) {
+	mkdir_count = 0;
+	if (mkdirs_log(dir, 0700, trace_mkdir) == -1) {
+	  _log_file = NO_FILE;
+	  log_mkdir_trace(dir);
+	  _logs_printf_nl(LOG_LEVEL_WARN, __HERE__, "Cannot mkdir %s - %s [errno=%d]", alloca_str_toprint(dir), strerror(errno), errno);
+	} else if ((_log_file = fopen(_log_file_path, "a")) == NULL) {
+	  _log_file = NO_FILE;
+	  log_mkdir_trace(dir);
+	  _logs_printf_nl(LOG_LEVEL_WARN, __HERE__, "Cannot create-append %s - %s [errno=%d]", _log_file_path, strerror(errno), errno);
+	} else {
 	  setlinebuf(_log_file);
 	  memset(it->state, 0, sizeof *it->state);
 	  // The first line in every log file must be the starting time stamp.  (After that, it is up
 	  // to _log_update() to insert other mandatory messages in any suitable order.)
 	  _log_current_datetime(it, LOG_LEVEL_INFO);
+	  log_mkdir_trace(dir);
 	  _logs_printf_nl(LOG_LEVEL_INFO, __NOWHERE__, "Logging to %s (fd %d)", _log_file_path, fileno(_log_file));
 	  // Update the log symlink to point to the latest log file.
 	  strbuf sbsymlink = strbuf_alloca(400);
-	  strbuf_path_join(sbsymlink, serval_instancepath(), "serval.log", NULL);
+	  strbuf_system_log_path(sbsymlink);
+	  strbuf_path_join(sbsymlink, "serval.log", NULL);
 	  if (strbuf_overrun(sbsymlink))
 	    _logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot form log symlink name - buffer overrun");
 	  else {
@@ -556,9 +587,6 @@ static void _open_log_file(_log_iterator *it)
 	    _logs_printf_nl(LOG_LEVEL_INFO, __NOWHERE__, "Unlink %s", path);
 	    unlink(path);
 	  }
-	} else {
-	  _log_file = NO_FILE;
-	  _logs_printf_nl(LOG_LEVEL_WARN, __HERE__, "Cannot create/append %s - %s [errno=%d]", _log_file_path, strerror(errno), errno);
 	}
       }
     }
@@ -741,7 +769,7 @@ int log_backtrace(int level, struct __sourceloc whence)
   if (get_self_executable_path(execpath, sizeof execpath) == -1)
     return WHY("cannot log backtrace: own executable path unknown");
   char tempfile[MAXPATHLEN];
-  if (!FORM_SERVAL_INSTANCE_PATH(tempfile, "servalgdb.XXXXXX"))
+  if (!FORMF_SERVAL_TMP_PATH(tempfile, "servalgdb.XXXXXX"))
     return -1;
   int tmpfd = mkstemp(tempfile);
   if (tmpfd == -1)

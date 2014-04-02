@@ -204,9 +204,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
     char manifestTemplate[1024];
     manifestTemplate[0] = '\0';
     if (config.rhizome.api.addfile.manifest_template_file[0]) {
-      strbuf b = strbuf_local(manifestTemplate, sizeof manifestTemplate);
-      strbuf_path_join(b, serval_instancepath(), config.rhizome.api.addfile.manifest_template_file, NULL);
-      if (strbuf_overrun(b)) {
+      if (!FORMF_SERVAL_ETC_PATH(manifestTemplate, "%s", config.rhizome.api.addfile.manifest_template_file)) {
 	rhizome_direct_clear_temporary_files(r);
 	http_request_simple_response(&r->http, 500, "Internal Error: Template path too long");
 	return 0;

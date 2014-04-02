@@ -395,16 +395,6 @@ int rhizome_configure();
 int rhizome_enabled();
 int rhizome_fetch_delay_ms();
 
-int rhizome_set_datastore_path(const char *path);
-
-const char *rhizome_datastore_path();
-int form_rhizome_datastore_path(struct __sourceloc, char * buf, size_t bufsiz, const char *fmt, ...);
-
-/* Handy statement for forming the path of a rhizome store file in a char buffer whose declaration
- * is in scope (so that sizeof(buf) will work).  Evaluates to true if the pathname fitted into
- * the provided buffer, false (0) otherwise (after logging an error).  */
-#define FORM_RHIZOME_DATASTORE_PATH(buf,fmt,...) (form_rhizome_datastore_path(__WHENCE__, (buf), sizeof(buf), (fmt), ##__VA_ARGS__))
-
 #define RHIZOME_BLOB_SUBDIR "blob"
 
 extern sqlite3 *rhizome_db;

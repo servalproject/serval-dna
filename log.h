@@ -92,7 +92,6 @@ extern const struct __sourceloc __whence; // see above
 
 extern int serverMode;
 
-const char *log_file_directory_path();
 int create_log_file_directory();
 
 void close_log_file();

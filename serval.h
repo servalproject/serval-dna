@@ -206,7 +206,6 @@ extern char *gatewayspec;
 
 int rhizome_enabled();
 int rhizome_http_server_running();
-const char *rhizome_datastore_path();
 
 #define MAX_PEERS 1024
 extern int peer_count;
@@ -279,6 +278,8 @@ struct slip_decode_state{
 
 
 int server_pid();
+const char *_server_pidfile_path(struct __sourceloc);
+#define server_pidfile_path() (_server_pidfile_path(__WHENCE__))
 void server_save_argv(int argc, const char *const *argv);
 int server(const struct cli_parsed *parsed);
 int server_write_pid();

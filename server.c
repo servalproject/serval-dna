@@ -31,8 +31,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "overlay_interface.h"
 
+#define PROC_SUBDIR	  "proc"
 #define PIDFILE_NAME	  "servald.pid"
 #define STOPFILE_NAME	  "servald.stop"
+
+static char pidfile_path[256];
 
 #define EXEC_NARGS 20
 char *exec_args[EXEC_NARGS + 1];
@@ -49,29 +52,43 @@ void crash_handler(int signal);
  */
 int server_pid()
 {
-  const char *instancepath = serval_instancepath();
-  struct stat st;
-  if (stat(instancepath, &st) == -1)
-    return WHYF_perror("stat(%s)", alloca_str_toprint(instancepath));
-  if ((st.st_mode & S_IFMT) != S_IFDIR)
-    return WHYF("Instance path '%s' is not a directory", instancepath);
-  char filename[1024];
-  if (!FORM_SERVAL_INSTANCE_PATH(filename, PIDFILE_NAME))
+  char dirname[1024];
+  if (!FORMF_SERVAL_RUN_PATH(dirname, NULL))
     return -1;
-  FILE *f = fopen(filename, "r");
+  struct stat st;
+  if (stat(dirname, &st) == -1)
+    return WHYF_perror("stat(%s)", alloca_str_toprint(dirname));
+  if ((st.st_mode & S_IFMT) != S_IFDIR)
+    return WHYF("Not a directory: %s", dirname);
+  const char *ppath = server_pidfile_path();
+  if (ppath == NULL)
+    return -1;
+  const char *p = strrchr(ppath, '/');
+  assert(p != NULL);
+
+  FILE *f = fopen(ppath, "r");
   if (f == NULL) {
     if (errno != ENOENT)
-      return WHYF_perror("fopen(%s,\"r\")", alloca_str_toprint(filename));
+      return WHYF_perror("fopen(%s,\"r\")", alloca_str_toprint(ppath));
   } else {
     char buf[20];
     int pid = (fgets(buf, sizeof buf, f) != NULL) ? atoi(buf) : -1;
     fclose(f);
     if (pid > 0 && kill(pid, 0) != -1)
       return pid;
-    INFOF("Unlinking stale pidfile %s", filename);
-    unlink(filename);
+    INFOF("Unlinking stale pidfile %s", ppath);
+    unlink(ppath);
   }
   return 0;
+}
+
+const char *_server_pidfile_path(struct __sourceloc __whence)
+{
+  if (!pidfile_path[0]) {
+    if (!FORMF_SERVAL_RUN_PATH(pidfile_path, PIDFILE_NAME))
+      return NULL;
+  }
+  return pidfile_path;
 }
 
 void server_save_argv(int argc, const char *const *argv)
@@ -123,26 +140,22 @@ int server(const struct cli_parsed *parsed)
 int server_write_pid()
 {
   /* Record PID to advertise that the server is now running */
-  char filename[1024];
-  if (!FORM_SERVAL_INSTANCE_PATH(filename, PIDFILE_NAME))
+  const char *ppath = server_pidfile_path();
+  if (ppath == NULL)
     return -1;
-  FILE *f=fopen(filename,"w");
-  if (!f) {
-    WHY_perror("fopen");
-    return WHYF("Could not write to PID file %s", filename);
-  }
+  FILE *f = fopen(ppath, "w");
+  if (!f)
+    return WHYF_perror("fopen(%s,\"w\")", alloca_str_toprint(ppath));
   server_getpid = getpid();
   fprintf(f,"%d\n", server_getpid);
   fclose(f);
   return 0;
 }
 
-static int get_proc_path(const char *path, char *buff, size_t buff_len)
+static int get_proc_path(const char *path, char *buf, size_t bufsiz)
 {
-  strbuf sbname = strbuf_local(buff, buff_len);
-  strbuf_path_join(sbname, serval_instancepath(), "proc", path, NULL);
-  if (strbuf_overrun(sbname))
-    return WHY("Buffer overrun building proc filename");
+  if (!formf_serval_run_path(buf, bufsiz, PROC_SUBDIR "/%s", path))
+    return -1;
   return 0;
 }
 
@@ -156,7 +169,7 @@ int server_write_proc_state(const char *path, const char *fmt, ...)
   char dir_buf[dirsiz];
   strcpy(dir_buf, path_buf);
   const char *dir = dirname(dir_buf); // modifies dir_buf[]
-  if (mkdirs(dir, 0700) == -1)
+  if (mkdirs_info(dir, 0700) == -1)
     return WHY_perror("mkdirs()");
   
   FILE *f = fopen(path_buf, "w");
@@ -249,7 +262,7 @@ void server_shutdown_check(struct sched_ent *alarm)
 int server_create_stopfile()
 {
   char stopfile[1024];
-  if (!FORM_SERVAL_INSTANCE_PATH(stopfile, STOPFILE_NAME))
+  if (!FORMF_SERVAL_RUN_PATH(stopfile, STOPFILE_NAME))
     return -1;
   FILE *f;
   if ((f = fopen(stopfile, "w")) == NULL) {
@@ -263,7 +276,7 @@ int server_create_stopfile()
 int server_remove_stopfile()
 {
   char stopfile[1024];
-  if (!FORM_SERVAL_INSTANCE_PATH(stopfile, STOPFILE_NAME))
+  if (!FORMF_SERVAL_RUN_PATH(stopfile, STOPFILE_NAME))
     return -1;
   if (unlink(stopfile) == -1) {
     if (errno == ENOENT)
@@ -277,7 +290,7 @@ int server_remove_stopfile()
 int server_check_stopfile()
 {
   char stopfile[1024];
-  if (!FORM_SERVAL_INSTANCE_PATH(stopfile, STOPFILE_NAME))
+  if (!FORMF_SERVAL_RUN_PATH(stopfile, STOPFILE_NAME))
     return -1;
   int r = access(stopfile, F_OK);
   if (r == 0)
@@ -292,27 +305,23 @@ int server_check_stopfile()
 static void clean_proc()
 {
   char path_buf[400];
-  strbuf sbname = strbuf_local(path_buf, sizeof path_buf);
-  strbuf_path_join(sbname, serval_instancepath(), "proc", NULL);
-  
-  DIR *dir;
-  struct dirent *dp;
-  if ((dir = opendir(path_buf)) == NULL) {
-    WARNF_perror("opendir(%s)", alloca_str_toprint(path_buf));
-    return;
-  }
-  while ((dp = readdir(dir)) != NULL) {
-    strbuf_reset(sbname);
-    strbuf_path_join(sbname, serval_instancepath(), "proc", dp->d_name, NULL);
-    
-    struct stat st;
-    if (lstat(path_buf, &st)) {
-      WARNF_perror("stat(%s)", path_buf);
-      continue;
+  if (FORMF_SERVAL_RUN_PATH(path_buf, PROC_SUBDIR)) {
+    DIR *dir;
+    struct dirent *dp;
+    if ((dir = opendir(path_buf)) == NULL) {
+      WARNF_perror("opendir(%s)", alloca_str_toprint(path_buf));
+      return;
     }
-    
-    if (S_ISREG(st.st_mode))
-      unlink(path_buf);
+    while ((dp = readdir(dir)) != NULL) {
+      if (FORMF_SERVAL_RUN_PATH(path_buf, PROC_SUBDIR "/%s", dp->d_name)) {
+	struct stat st;
+	if (lstat(path_buf, &st) == -1)
+	  WARNF_perror("stat(%s)", path_buf);
+	else if (S_ISREG(st.st_mode))
+	  unlink(path_buf);
+      }
+    }
+    closedir(dir);
   }
 }
 

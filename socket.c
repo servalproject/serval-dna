@@ -27,9 +27,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "socket.h"
 
-/* Form the name of an AF_UNIX (local) socket in the instance directory as an absolute path.
- * Under Linux, this will create a socket name in the abstract namespace.  This permits us to use
- * local sockets on Android despite its lack of a shared writeable directory on a UFS partition.
+/* Form the name of an AF_UNIX (local) socket in the /var/run/serval (or instance) directory as an
+ * absolute path.  Under Linux, this will create a socket name in the abstract namespace.  This
+ * permits us to use local sockets on Android despite its lack of a shared writeable directory on a
+ * UFS partition.
  *
  * The absolute file name is resolved to its real path using realpath(3), to ensure that name
  * comparisons of addresses returned by recvmsg(2) can reliably be used on systems where the
@@ -47,7 +48,7 @@ int _make_local_sockaddr(struct __sourceloc __whence, struct socket_address *add
   addr->local.sun_family = AF_UNIX;
   va_list ap;
   va_start(ap, fmt);
-  int r = vformf_serval_instance_path(__WHENCE__, addr->local.sun_path, sizeof addr->local.sun_path, fmt, ap);
+  int r = vformf_serval_run_path(addr->local.sun_path, sizeof addr->local.sun_path, fmt, ap);
   va_end(ap);
   if (!r)
     return WHY("socket name overflow");

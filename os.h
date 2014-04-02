@@ -103,13 +103,27 @@ __SERVAL_DNA__OS_INLINE off64_t lseek64(int fd, off64_t offset, int whence) {
 
 /* The "e" variants log the error before returning -1.
  */
-int mkdirs(const char *path, mode_t mode);
-int mkdirsn(const char *path, size_t len, mode_t mode);
-int _emkdirs(struct __sourceloc, const char *path, mode_t mode);
-int _emkdirsn(struct __sourceloc, const char *path, size_t len, mode_t mode);
+typedef void MKDIR_LOG_FUNC(struct __sourceloc, const char *, mode_t);
+MKDIR_LOG_FUNC log_info_mkdir;
+int _mkdirs(struct __sourceloc, const char *path, mode_t mode, MKDIR_LOG_FUNC *);
+int _mkdirsn(struct __sourceloc, const char *path, size_t len, mode_t mode, MKDIR_LOG_FUNC *);
+int _emkdirs(struct __sourceloc, const char *path, mode_t mode, MKDIR_LOG_FUNC *);
+int _emkdirsn(struct __sourceloc, const char *path, size_t len, mode_t mode, MKDIR_LOG_FUNC *);
 
-#define emkdirs(path, mode) _emkdirs(__WHENCE__, (path), (mode))
-#define emkdirsn(path, len, mode) _emkdirsn(__WHENCE__, (path), (len), (mode))
+#define mkdirs_log(path, mode, func)        _mkdirs(__WHENCE__, (path), (mode), (func))
+#define mkdirsn_log(path, len, mode, func)  _mkdirsn(__WHENCE__, (path), (len), (mode), (func))
+#define emkdirs_log(path, mode, func)       _emkdirs(__WHENCE__, (path), (mode), (func))
+#define emkdirsn_log(path, len, mode, func) _emkdirsn(__WHENCE__, (path), (len), (mode), (func))
+
+#define mkdirs(path, mode)              mkdirs_log((path), (mode), NULL)
+#define mkdirsn(path, len, mode)        mkdirsn_log((path), (len), (mode), NULL)
+#define emkdirs(path, mode)             emkdirs_log((path), (mode), NULL)
+#define emkdirsn(path, len, mode)       emkdirsn_log((path), (len), (mode), NULL)
+
+#define mkdirs_info(path, mode)         mkdirs_log((path), (mode), log_info_mkdir)
+#define mkdirsn_info(path, len, mode)   mkdirsn_log((path), (len), (mode), log_info_mkdir)
+#define emkdirs_info(path, mode)        emkdirs_log((path), (mode), log_info_mkdir)
+#define emkdirsn_info(path, len, mode)  emkdirsn_log((path), (len), (mode), log_info_mkdir)
 
 void srandomdev();
 int urandombytes(unsigned char *buf, size_t len);

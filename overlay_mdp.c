@@ -97,26 +97,28 @@ static int mdp_send2(const struct socket_address *client, const struct mdp_heade
 /* Delete all UNIX socket files in instance directory. */
 void overlay_mdp_clean_socket_files()
 {
-  const char *instance_path = serval_instancepath();
-  DIR *dir;
-  struct dirent *dp;
-  if ((dir = opendir(instance_path)) == NULL) {
-    WARNF_perror("opendir(%s)", alloca_str_toprint(instance_path));
-    return;
-  }
-  while ((dp = readdir(dir)) != NULL) {
-    char path[PATH_MAX];
-    if (!FORM_SERVAL_INSTANCE_PATH(path, dp->d_name))
-      continue;
-    struct stat st;
-    if (lstat(path, &st)) {
-      WARNF_perror("stat(%s)", alloca_str_toprint(path));
-      continue;
+  char path[PATH_MAX];
+  if (FORMF_SERVAL_RUN_PATH(path, NULL)) {
+    DIR *dir;
+    struct dirent *dp;
+    if ((dir = opendir(path)) == NULL) {
+      WARNF_perror("opendir(%s)", alloca_str_toprint(path));
+      return;
     }
-    if (S_ISSOCK(st.st_mode))
-      unlink(path);
+    while ((dp = readdir(dir)) != NULL) {
+      path[0] = '\0';
+      if (!FORMF_SERVAL_RUN_PATH(path, "%s", dp->d_name))
+	continue;
+      struct stat st;
+      if (lstat(path, &st)) {
+	WARNF_perror("stat(%s)", alloca_str_toprint(path));
+	continue;
+      }
+      if (S_ISSOCK(st.st_mode))
+	unlink(path);
+    }
+    closedir(dir);
   }
-  closedir(dir);
 }
 
 static void overlay_mdp_fill_legacy(

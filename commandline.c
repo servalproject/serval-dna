@@ -132,18 +132,18 @@ static int put_blob(struct cli_context *context, jbyte *value, jsize length){
     return -1;
   if (value && length>0){
     arr = (*context->jni_env)->NewByteArray(context->jni_env, length);
-    if (arr == NULL || (*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+    if (arr == NULL || (*context->jni_env)->ExceptionCheck(context->jni_env)) {
       context->jni_exception = 1;
       return WHY("Exception thrown from NewByteArray()");
     }
     (*context->jni_env)->SetByteArrayRegion(context->jni_env, arr, 0, length, value);
-    if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+    if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
       context->jni_exception = 1;
       return WHYF("Exception thrown from SetByteArrayRegion()");
     }
   }
   (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, putBlob, arr);
-  if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+  if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
     context->jni_exception = 1;
     return WHY("Exception thrown from CallVoidMethod(putBlob)");
   }
@@ -219,7 +219,7 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_rawComman
   // returning.
   for (i = 0; !context.jni_exception && i < len; ++i) {
     const jstring arg = (jstring)(*env)->GetObjectArrayElement(env, args, i);
-    if ((*env)->ExceptionOccurred(env))
+    if ((*env)->ExceptionCheck(env))
       context.jni_exception = 1;
     else if (arg == NULL) {
       Throw(env, "java/lang/NullPointerException", "null element in argv");
@@ -396,7 +396,7 @@ void cli_columns(struct cli_context *context, int columns, const char *names[])
       return;
       
     (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, startResultSet, columns);
-    if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+    if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
       context->jni_exception = 1;
       WHY("Exception thrown from CallVoidMethod(startResultSet)");
       return;
@@ -411,7 +411,7 @@ void cli_columns(struct cli_context *context, int columns, const char *names[])
       }
       (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, setColumnName, i, str);
       (*context->jni_env)->DeleteLocalRef(context->jni_env, str);
-      if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+      if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
 	context->jni_exception = 1;
 	WHY("Exception thrown from CallVoidMethod(setColumnName)");
 	return;
@@ -446,7 +446,7 @@ void cli_field_name(struct cli_context *context, const char *name, const char *d
     }
     (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, setColumnName, -1, str);
     (*context->jni_env)->DeleteLocalRef(context->jni_env, str);
-    if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+    if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
       context->jni_exception = 1;
       WHY("Exception thrown from CallVoidMethod(setColumnName)");
       return;
@@ -464,7 +464,7 @@ void cli_put_long(struct cli_context *context, int64_t value, const char *delim)
     if (context->jni_exception)
       return;
     (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, putLong, value);
-    if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+    if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
       context->jni_exception = 1;
       WHY("Exception thrown from CallVoidMethod(putLong)");
     }
@@ -491,7 +491,7 @@ void cli_put_string(struct cli_context *context, const char *value, const char *
     }
     (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, putString, str);
     (*context->jni_env)->DeleteLocalRef(context->jni_env, str);
-    if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+    if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
       context->jni_exception = 1;
       WHY("Exception thrown from CallVoidMethod(putLong)");
     }
@@ -521,7 +521,7 @@ void cli_row_count(struct cli_context *context, int rows){
     if (context->jni_exception)
       return;
     (*context->jni_env)->CallVoidMethod(context->jni_env, context->jniResults, totalRowCount, rows);
-    if ((*context->jni_env)->ExceptionOccurred(context->jni_env)) {
+    if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
       context->jni_exception = 1;
       WHY("Exception thrown from CallVoidMethod()");
     }
@@ -932,8 +932,13 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
       RETURN(WHY("Server process did not start"));
     ret = 0;
   }
-  cli_field_name(context, "instancepath", ":");
-  cli_put_string(context, serval_instancepath(), "\n");
+  const char *ipath = instance_path();
+  if (ipath) {
+    cli_field_name(context, "instancepath", ":");
+    cli_put_string(context, ipath, "\n");
+  }
+  cli_field_name(context, "pidfile", ":");
+  cli_put_string(context, server_pidfile_path(), "\n");
   cli_field_name(context, "pid", ":");
   cli_put_long(context, pid, "\n");
   char buff[256];
@@ -968,9 +973,13 @@ int app_server_stop(const struct cli_parsed *parsed, struct cli_context *context
     DEBUG_cli_parsed(parsed);
   int			pid, tries, running;
   time_ms_t		timeout;
-  const char *instancepath = serval_instancepath();
-  cli_field_name(context, "instancepath", ":");
-  cli_put_string(context, instancepath, "\n");
+  const char *ipath = instance_path();
+  if (ipath) {
+    cli_field_name(context, "instancepath", ":");
+    cli_put_string(context, ipath, "\n");
+  }
+  cli_field_name(context, "pidfile", ":");
+  cli_put_string(context, server_pidfile_path(), "\n");
   pid = server_pid();
   /* Not running, nothing to stop */
   if (pid <= 0)
@@ -983,8 +992,8 @@ int app_server_stop(const struct cli_parsed *parsed, struct cli_context *context
   running = pid;
   while (running == pid) {
     if (tries >= 5) {
-      WHYF("Servald pid=%d for instance '%s' did not stop after %d SIGHUP signals",
-	   pid, instancepath, tries);
+      WHYF("Servald pid=%d (pidfile=%s) did not stop after %d SIGHUP signals",
+	   pid, server_pidfile_path(), tries);
       return 253;
     }
     ++tries;
@@ -999,7 +1008,7 @@ int app_server_stop(const struct cli_parsed *parsed, struct cli_context *context
 	break;
       }
       WHY_perror("kill");
-      WHYF("Error sending SIGHUP to Servald pid=%d for instance '%s'", pid, instancepath);
+      WHYF("Error sending SIGHUP to Servald pid=%d (pidfile %s)", pid, server_pidfile_path());
       return 252;
     }
     /* Allow a few seconds for the process to die. */
@@ -1019,8 +1028,13 @@ int app_server_status(const struct cli_parsed *parsed, struct cli_context *conte
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   int pid = server_pid();
-  cli_field_name(context, "instancepath", ":");
-  cli_put_string(context, serval_instancepath(), "\n");
+  const char *ipath = instance_path();
+  if (ipath) {
+    cli_field_name(context, "instancepath", ":");
+    cli_put_string(context, ipath, "\n");
+  }
+  cli_field_name(context, "pidfile", ":");
+  cli_put_string(context, server_pidfile_path(), "\n");
   cli_field_name(context, "status", ":");
   cli_put_string(context, pid > 0 ? "running" : "stopped", "\n");
   if (pid > 0) {
@@ -1422,6 +1436,52 @@ int app_config_get(const struct cli_parsed *parsed, struct cli_context *context)
 	cli_put_string(context, it.node->text, "\n");
       }
     }
+  }
+  return 0;
+}
+
+int app_config_paths(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  if (cf_om_reload() == -1)
+    return -1;
+  char path[1024];
+  if (FORMF_SERVAL_ETC_PATH(path, NULL)) {
+    cli_field_name(context, "SERVAL_ETC_PATH", ":");
+    cli_put_string(context, path, "\n");
+  }
+  if (FORMF_SERVAL_RUN_PATH(path, NULL)) {
+    cli_field_name(context, "SERVAL_RUN_PATH", ":");
+    cli_put_string(context, path, "\n");
+  }
+  if (FORMF_SERVAL_CACHE_PATH(path, NULL)) {
+    cli_field_name(context, "SERVAL_CACHE_PATH", ":");
+    cli_put_string(context, path, "\n");
+  }
+  strbuf sb = strbuf_local(path, sizeof path);
+  strbuf_system_log_path(sb);
+  if (!strbuf_overrun(sb)) {
+    cli_field_name(context, "SYSTEM_LOG_PATH", ":");
+    cli_put_string(context, path, "\n");
+  }
+  strbuf_reset(sb);
+  strbuf_serval_log_path(sb);
+  if (!strbuf_overrun(sb)) {
+    cli_field_name(context, "SERVAL_LOG_PATH", ":");
+    cli_put_string(context, path, "\n");
+  }
+  if (FORMF_SERVAL_TMP_PATH(path, NULL)) {
+    cli_field_name(context, "SERVAL_TMP_PATH", ":");
+    cli_put_string(context, path, "\n");
+  }
+  if (FORMF_SERVALD_PROC_PATH(path, NULL)) {
+    cli_field_name(context, "SERVALD_PROC_PATH", ":");
+    cli_put_string(context, path, "\n");
+  }
+  if (FORMF_RHIZOME_STORE_PATH(path, NULL)) {
+    cli_field_name(context, "RHIZOME_STORE_PATH", ":");
+    cli_put_string(context, path, "\n");
   }
   return 0;
 }
@@ -3019,6 +3079,8 @@ struct cli_schema command_line_options[]={
    "Del and set specified configuration variables."},
   {app_config_get,{"config","get","[<variable>]",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Get specified configuration variable."},
+  {app_config_paths,{"config","paths",NULL},CLIFLAG_PERMISSIVE_CONFIG,
+   "Dump file and directory paths."},
   {app_vomp_console,{"console",NULL}, 0,
     "Test phone call life-cycle from the console"},
   {app_meshms_conversations,{"meshms","list","conversations" KEYRING_PIN_OPTIONS, "<sid>","[<offset>]","[<count>]",NULL},0,

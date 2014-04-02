@@ -30,51 +30,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "keyring.h"
 
-static char rhizome_thisdatastore_path[256];
-
 static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
 static int rhizome_delete_file_retry(sqlite_retry_state *retry, const rhizome_filehash_t *hashp);
 static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
 
-const char *rhizome_datastore_path()
+static int create_rhizome_store_dir()
 {
-  if (!rhizome_thisdatastore_path[0])
-    rhizome_set_datastore_path(NULL);
-  return rhizome_thisdatastore_path;
-}
-
-int rhizome_set_datastore_path(const char *path)
-{
-  strbuf b = strbuf_local(rhizome_thisdatastore_path, sizeof rhizome_thisdatastore_path);
-  strbuf_path_join(b, serval_instancepath(), config.rhizome.datastore_path, path, NULL);
-  INFOF("Rhizome datastore path = %s", alloca_str_toprint(rhizome_thisdatastore_path));
-  return 0;
-}
-
-int form_rhizome_datastore_path(struct __sourceloc __whence, char * buf, size_t bufsiz, const char *fmt, ...)
-{
-  va_list ap;
-  strbuf b = strbuf_local(buf, bufsiz);
-  strbuf_puts(b, rhizome_datastore_path());
-  if (fmt) {
-    va_start(ap, fmt);
-    if (*strbuf_substr(b, -1) != '/')
-      strbuf_putc(b, '/');
-    strbuf_vsprintf(b, fmt, ap);
-    va_end(ap);
-  }
-  if (strbuf_overrun(b)) {
-      WHY("Path buffer overrun");
-      return 0;
-  }
-  return 1;
-}
-
-static int create_rhizome_datastore_dir()
-{
+  char rdpath[1024];
+  if (!formf_rhizome_store_path(rdpath, sizeof rdpath, "%s", config.rhizome.datastore_path))
+    return -1;
+  INFOF("Rhizome datastore path = %s", alloca_str_toprint(rdpath));
   if (config.debug.rhizome)
-    DEBUGF("mkdirs(%s, 0700)", rhizome_datastore_path());
-  return emkdirs(rhizome_datastore_path(), 0700);
+    DEBUGF("mkdirs(%s, 0700)", alloca_str_toprint(rdpath));
+  return emkdirs_info(rdpath, 0700);
 }
 
 sqlite3 *rhizome_db = NULL;
@@ -239,23 +207,23 @@ int rhizome_opendb()
 
   IN();
   
-  if (create_rhizome_datastore_dir() == -1)
+  if (create_rhizome_store_dir() == -1)
     RETURN(-1);
   char dbpath[1024];
-  if (!FORM_RHIZOME_DATASTORE_PATH(dbpath, RHIZOME_BLOB_SUBDIR))
+  if (!FORMF_RHIZOME_STORE_PATH(dbpath, RHIZOME_BLOB_SUBDIR))
     RETURN(-1);
-  if (emkdirs(dbpath, 0700) == -1)
+  if (emkdirs_info(dbpath, 0700) == -1)
     RETURN(-1);
   if (!sqlite3_temp_directory) {
-    if (!FORM_RHIZOME_DATASTORE_PATH(dbpath, "sqlite3tmp"))
+    if (!FORMF_RHIZOME_STORE_PATH(dbpath, "sqlite3tmp"))
       RETURN(-1);
-    if (emkdirs(dbpath, 0700) == -1)
+    if (emkdirs_info(dbpath, 0700) == -1)
       RETURN(-1);
     sqlite3_temp_directory = sqlite3_mprintf("%s", dbpath);
   }
   sqlite3_config(SQLITE_CONFIG_LOG,sqlite_log,NULL);
   
-  if (!FORM_RHIZOME_DATASTORE_PATH(dbpath, "rhizome.db"))
+  if (!FORMF_RHIZOME_STORE_PATH(dbpath, "rhizome.db"))
     RETURN(-1);
   if (sqlite3_open(dbpath,&rhizome_db)){
     RETURN(WHYF("SQLite could not open database %s: %s", dbpath, sqlite3_errmsg(rhizome_db)));
@@ -1191,7 +1159,7 @@ static int rhizome_delete_external(const char *id)
 {
   // attempt to remove any external blob
   char blob_path[1024];
-  if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, id))
+  if (!FORMF_RHIZOME_STORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, id))
     return -1;
   if (unlink(blob_path) == -1) {
     if (errno != ENOENT)

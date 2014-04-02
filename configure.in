@@ -14,6 +14,30 @@ dnl Specify default instance path
 AC_ARG_VAR([INSTANCE_PATH], [default instance path for servald])
 AS_IF([test "x$INSTANCE_PATH" != x], [AC_DEFINE_UNQUOTED([INSTANCE_PATH], ["$INSTANCE_PATH"], [default instance path])])
 
+dnl Specify default Serval config directory
+AC_ARG_VAR([SERVAL_ETC_PATH], [default Serval config directory])
+AS_IF([test "x$SERVAL_ETC_PATH" != x], [AC_DEFINE_UNQUOTED([SERVAL_ETC_PATH], ["$SERVAL_ETC_PATH"], [default config directory])])
+
+dnl Specify default Serval run directory
+AC_ARG_VAR([SERVAL_RUN_PATH], [default Serval run directory])
+AS_IF([test "x$SERVAL_RUN_PATH" != x], [AC_DEFINE_UNQUOTED([SERVAL_RUN_PATH], ["$SERVAL_RUN_PATH"], [default run directory])])
+
+dnl Specify default Serval log directory
+AC_ARG_VAR([SERVAL_LOG_PATH], [default Serval log directory])
+AS_IF([test "x$SERVAL_LOG_PATH" != x], [AC_DEFINE_UNQUOTED([SERVAL_LOG_PATH], ["$SERVAL_LOG_PATH"], [default log directory])])
+
+dnl Specify default system log directory
+AC_ARG_VAR([SYSTEM_LOG_PATH], [default system log directory])
+AS_IF([test "x$SYSTEM_LOG_PATH" != x], [AC_DEFINE_UNQUOTED([SYSTEM_LOG_PATH], ["$SYSTEM_LOG_PATH"], [default system log directory])])
+
+dnl Specify default Serval tmp directory
+AC_ARG_VAR([SERVAL_TMP_PATH], [default Serval tmp directory])
+AS_IF([test "x$SERVAL_TMP_PATH" != x], [AC_DEFINE_UNQUOTED([SERVAL_TMP_PATH], ["$SERVAL_TMP_PATH"], [default Serval tmp directory])])
+
+dnl Specify default Rhizome store directory
+AC_ARG_VAR([RHIZOME_STORE_PATH], [default Rhizome store directory])
+AS_IF([test "x$RHIZOME_STORE_PATH" != x], [AC_DEFINE_UNQUOTED([RHIZOME_STORE_PATH], ["$RHIZOME_STORE_PATH"], [default Rhizome store directory])])
+
 dnl VoIP test app
 AC_ARG_ENABLE(voiptest,
 AS_HELP_STRING([--enable-voiptest], [Require VoIP test program (default: only build if dependencies are present)])

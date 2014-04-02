@@ -188,9 +188,11 @@ int overlay_payload_enqueue(struct overlay_frame *p)
 
       // just drop it now
       if (p->destination_count == 0){
-        if (config.debug.verbose && config.debug.overlayframes)
-	  DEBUGF("Not transmitting, as we have no neighbours on any interface");
-	return -1;
+        if (config.debug.mdprequests)
+	  DEBUGF("Not transmitting, as we have nowhere to send it");
+	// free the packet and return success.
+	op_free(p);
+	return 0;
       }
     }
     

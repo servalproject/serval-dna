@@ -38,23 +38,6 @@ An option **VALUE** is a string of [US-ASCII][] characters, excluding newline
 
 If a VALUE does not parse correctly, it is *invalid*.
 
-Instance directory
-------------------
-
-By default, **servald** stores its configuration, keyring, and other temporary
-files in its *instance directory*.  The instance directory is set at run time
-by the `SERVALINSTANCE_PATH` environment variable.  If this is not set, then
-**servald** uses a built-in default path which depends on its build-time option
-and target platform:
-
-* as specified by the `./configure INSTANCE_PATH=<path>` option when **servald**
-  was built from source
-* on Android `/data/data/org.servalproject/var/serval-node`
-* on other platforms `/var/serval-node`
-
-**servald** will create its instance directory (and all enclosing parent
-directories) if it does not already exist.
-
 Configuration persistence
 -------------------------
 
@@ -115,22 +98,152 @@ defective file.  This means that **servald** may always be used to inspect and
 correct the configuration, and to stop a running daemon, despite a defective
 configuration file.
 
-Daemon processes
+Configuration reloading
+-----------------------
+
+A running daemon re-loads its configuration whenever the `serval.conf` file is
+changed.  It does this by periodically checking the file's size and
+modification time, and if they have changed, parses the file and updates its
+own internal copy of the configuration settings.
+
+As described above, the **servald** `start` command will not start a daemon
+process if the `serval.conf` file is defective.  However, the file may become
+defective *after* the daemon has started.
+
+In this case, the daemon will not terminate, nor load the defective file, but
+will log an error and continue execution with its internal configuration
+unchanged.  The daemon's internal configuration will no longer be consistent
+with the contents of the file.  If the daemon is stopped or killed, it cannot
+be re-started while `serval.conf` remains defective.
+
+Despite detecting a defective configuration file, the daemon continues to check
+for changes to the file, and attempts to re-load whenever it changes.  As soon
+as the defective `serval.conf` is fixed, the running daemon will load it
+successfully and continue execution with the new configuration.  The internal
+configuration and the file contents will once again be consistent.
+
+Daemon instances
 ----------------
 
-To run more than one **servald** daemon process on the same device, each daemon
-must have its own instance path (and hence its own `serval.conf`).  Set the
-`SERVALINSTANCE_PATH` environment variable to a different directory path before
-starting each daemon.
+It order to support more than one daemon running on the same host, each daemon
+can be configured to use its own *instance directory*, as follows:
 
-As described above, a defective `serval.conf` will prevent the **servald**
-`start` command from starting a daemon process.  Once the daemon is running, it
-periodically checks whether `serval.conf` has changed (by comparing size and
-modification time) and attempts to re-load it if it detects a change.  If the
-re-loaded file is defective, the daemon rejects it, logs an error, and
-continues execution with its prior configuration unchanged.  If the daemon is
-stopped or killed, it cannot be re-started while `serval.conf` remains
-defective.
+  * A daemon's instance directory can be set at run time by setting the
+    `SERVALINSTANCE_PATH` environment variable prior to starting the daemon.
+    This overrides all default paths.  Once a daemon is running, the only way
+    to change its instance directory is to stop it and start another daemon
+    with a different value for the environment variable.
+
+  * If the instance directory is not set at run time, then if **servald** was
+    built with the `./configure INSTANCE_PATH=DIR` option, then the **servald**
+    executable will use the instance directory in `DIR` by default.  The FHS
+    paths will never be used.
+
+  * On an Android system, if none of the above are used, then **servald** will
+    use the instance directory `/data/data/org.servalproject/var/serval-node`
+    by default.  The FHS paths will never be used.
+
+  * If none of the above apply, then there is no *instance directory*.
+    Instead, [FHS][] paths are used (see below).  Only one daemon can run in
+    this situation on the same host, since the single, common PID file will
+    prevent more than one being started.
+
+The main use for multiple instances on a single host is for testing, and this
+is used extensively in the automated test suite.  Deployments other than
+Android are unlikely to use an instance path, so the FHS paths are most likely
+to be used in practice.
+
+FHS paths
+---------
+
+By default, **servald** locates its files such as configuration, logs, Rhizome
+storage, etc.  in accordance with the [Filesystem Heirarchy Standard][FHS] 2.3:
+
+  * the **servald** executable is installed in `/usr/local/bin/servald`
+  * the configuration is stored in `/etc/serval/serval.conf`
+  * the keyring is stored in `/etc/serval/serval.keyring`
+  * the PID file is `/var/run/serval/servald.pid`
+  * the daemon creates its process information files under
+    `/var/run/serval/proc/`
+  * the daemon creates and rotates log files files under
+    `/var/log/serval/`
+  * the daemon creates and updates a symbolic link to the latest log file in
+    `/var/log/servald.log`
+  * the Rhizome store is in `/var/cache/serval/` (unless overridden by
+    configuration):
+    * the SQLite database is `/var/cache/serval/rhizome.db`
+    * large payloads are stored under `/var/cache/serval/blob/`
+  * the SQLite temporary directory is `/tmp/serval/sqlite3tmp/`
+  * dummy interface files are created under `/tmp/serval/` (unless overridden
+    by configuration)
+
+The **servald** `start` command will create all sub-directories within the
+standard FHS paths as needed, and any failure will cause the daemon not to
+start.
+
+The following build-time configuration options are available to alter the paths
+described above, which can help adapt **servald** to systems which use a
+different software installation convention (eg, all packages are installed
+under `/opt/packagename`) or which have a volatile `/var` directory (eg, on
+OpenWRT, `/var` is a symlink to `/tmp`):
+
+  * If **servald** is built with the `./configure --prefix=DIR` option, then
+    the executable is installed in `DIR/bin` instead of `/usr/local/bin`
+
+  * If **servald** is built with the `./configure --sysconfdir=DIR` option,
+    then it will use `DIR` in place of `/etc`
+
+  * If **servald** is built with the `./configure --localstatedir=DIR` option,
+    then it will use `DIR` in place of `/var`
+
+  * If **servald** is built with the `./configure SERVAL_ETC_PATH=DIR` option,
+    then it will use `DIR` in place of `/etc/serval`
+
+  * If **servald** is built with the `./configure SERVAL_RUN_PATH=DIR` option,
+    then it will use `DIR` in place of `/var/run/serval`
+
+  * If **servald** is built with the `./configure SYSTEM_LOG_PATH=DIR` option,
+    then it will use `DIR` in place of `/var/log`
+
+  * If **servald** is built with the `./configure SERVAL_LOG_PATH=DIR` option,
+    then it will use `DIR` in place of `/var/log/serval`
+
+  * If **servald** is built with the `./configure RHIZOME_STORE_PATH=DIR`
+    option, then it will use `DIR` in place of `/var/cache/serval` for the
+    Rhizome store
+
+  * If **servald** is built with the `./configure SERVAL_TMP_PATH=DIR` option,
+    then it will use `DIR` in place of `/tmp/serval`
+
+The **servald** `config paths` command will display all the paths in use, based
+on the built-in defaults as overridden by configuration settings and run-time
+environment variables available to the command.  This command will work even if
+configuration is defective, so is a useful diagnostic tool.
+
+Instance directory paths
+------------------------
+
+If **servald** is started with an *instance directory*, then all configuration,
+state, and temporary files are stored in or beneath that directory, denoted
+`IDIR`:
+
+  * the configuration is stored in `IDIR/serval.conf`
+  * the keyring is stored in `IDIR/serval.keyring`
+  * the PID file is `IDIR/servald.pid`
+  * the daemon creates its process information files under `IDIR/proc/`
+  * the daemon creates and rotates log files files under `IDIR/log/`
+  * the daemon creates and updates a symbolic link to the latest log file in
+    `IDIR/servald.log`
+  * the Rhizome store is in `IDIR/` (unless overridden by configuration):
+    * the SQLite database is `IDIR/rhizome.db`
+    * large payloads are stored under `IDIR/blob/`
+  * the SQLite temporary directory is `IDIR/sqlite3tmp/`
+  * dummy interface files are created under `IDIR/` (unless overridden by
+    configuration)
+
+The **servald** `start` command will create its instance directory (and all
+enclosing parent directories) if it does not already exist.  Failure will cause
+the daemon not to start.
 
 About the examples
 ------------------
@@ -300,8 +413,10 @@ All log destinations support the following configuration options:
 In addition, the *file* destination has these extra configuration options:
 
   * `log.file.directory_path`  If set, log files are created in this directory,
-    which is created if it does not exist.  This defaults to the `log`
-    directory within the instance directory.
+    which is created if it does not exist.  Relative paths are interpreted
+    relative to the `log` sub-directory of the instance directory.  The default
+    setting (empty string) causes log files to be created within the `log`
+    sub-directory of the instance directory.
 
   * `log.file.path`  If set, all log messages are appended directly to the file
     at the given path.  If the path is not absolute, it is interpreted relative
