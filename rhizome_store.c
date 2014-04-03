@@ -607,7 +607,7 @@ enum rhizome_payload_status rhizome_import_payload_from_file(rhizome_manifest *m
   // file payload is not in the store yet
   if (rhizome_write_file(&write, filepath)){
     rhizome_fail_write(&write);
-    return RHIZOME_BUNDLE_STATUS_ERROR;
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
   }
   
   return rhizome_finish_write(&write);
@@ -671,7 +671,7 @@ enum rhizome_payload_status rhizome_stat_payload_file(rhizome_manifest *m, const
   return size ? RHIZOME_PAYLOAD_STATUS_NEW : RHIZOME_PAYLOAD_STATUS_EMPTY;
 }
 
-static enum rhizome_bundle_status rhizome_write_derive_key(rhizome_manifest *m, struct rhizome_write *write)
+static enum rhizome_payload_status rhizome_write_derive_key(rhizome_manifest *m, struct rhizome_write *write)
 {
   if (m->payloadEncryption != PAYLOAD_ENCRYPTED)
     return RHIZOME_PAYLOAD_STATUS_NEW;
