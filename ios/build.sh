@@ -19,26 +19,47 @@ command -v autoreconf >/dev/null 2>&1 || { echo "In order to build this library 
 buildIOS()
 {
 	ARCH=$1
-
-	if [[ "${ARCH}" == "i386" || "${ARCH}" == "x86_64" ]]; then
+	HOST=""
+	
+	if [[ "${ARCH}" == "i386" ]]; then
+		PLATFORM="iPhoneSimulator"
+		HOST="--host=i386-apple-darwin"
+	elif [[ "${ARCH}" == "x86_64" ]]; then
 		PLATFORM="iPhoneSimulator"
 	else
 		PLATFORM="iPhoneOS"
+		HOST="--host=arm-apple-darwin"
 	fi
   
 	CROSS_TOP="${DEVELOPER}/Platforms/${PLATFORM}.platform/Developer"
 	CROSS_SDK="${PLATFORM}${SDK_VERSION}.sdk"
-	export CFLAGS="-isysroot ${CROSS_TOP}/SDKs/${CROSS_SDK} -miphoneos-version-min=${SDK_VERSION}"
-	export CC="clang -arch ${ARCH}"
+	SDKROOT="${CROSS_TOP}/SDKs/${CROSS_SDK}"
+	
+	export CFLAGS="-arch ${ARCH} -pipe -no-cpp-precomp -isysroot $SDKROOT -I$SDKROOT/usr/include -miphoneos-version-min=${SDK_VERSION}"
+	export CC="clang"
 	
 	echo "Building serval-dna for ${PLATFORM} ${SDK_VERSION} ${ARCH}"
 
-	./configure --prefix="/tmp/serval-dna-${ARCH}" --disable-voiptest #&> "/tmp/serval-dna-${ARCH}.log"
+	./configure $HOST --prefix="/tmp/serval-dna-${ARCH}" --disable-voiptest #&> "/tmp/serval-dna-${ARCH}.log"
 
 	make >> "/tmp/serval-dna-${ARCH}.log" #2>&1
 	make install >> "/tmp/serval-dna-${ARCH}.log" #2>&1
 	make clean >> "/tmp/serval-dna-${ARCH}.log" #2>&1
+	
+	# don't know why these don't get removed
+	rm directory_service.o
+	rm config_test.o
 }
+
+# remove duplicated function
+perl -p -i -e 's/^(void rotbuf_log\(struct __sourceloc __whence, int log_level, const char \*prefix, const struct rotbuf \*rb\);)/\/\/\1/' rotbuf.h
+
+# install -D doesn't work with the OS X install
+perl -p -i -e 's/^\t\$\(INSTALL_PROGRAM\) -D servald \$\(DESTDIR\)\$\(sbindir\)\/servald/\tmkdir -p \$\(DESTDIR\)\$\(sbindir\)
+\t\$\(INSTALL_PROGRAM\) servald \$\(DESTDIR\)\$\(sbindir\)\/servald/' Makefile.in
+
+# use CFLAGS when building version file to support cross-compilation
+perl -p -i -e 's/&& \$\(CC\) -c version_servald.c/&& \$\(CC\) \$\(CFLAGS\) -c version_servald.c/' Makefile.in
 
 # Generate configure
 autoreconf -f -i
@@ -46,4 +67,8 @@ autoreconf -f -i
 mkdir -p build/include/serval-dna
 rm -rf "/tmp/serval-dna-*"
 
-buildIOS "i386"
+buildIOS "armv7"
+
+# for arch in $ARCHS; do
+# 	buildIOS "${arch}"
+# done
