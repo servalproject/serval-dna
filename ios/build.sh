@@ -6,13 +6,14 @@
 #  Created by James Moore on 3/25/14.
 #  Copyright (c) 2014 The Serval Project. All rights reserved.
 
+set -x
+
 # Add the homebrew tools to the path since automake no longer is apart of Xcode
 PATH=/usr/local/bin:$PATH
-ARCHS=(arvm7 arvm7s arm64 i386 x86_64)
+ARCHS="armv7 armv7s arm64 i386 x86_64"
 SDK_VERSION=7.1
+PREFIX=$(pwd)/build
 DEVELOPER=`xcode-select -print-path`
-
-set -ex
 
 command -v autoreconf >/dev/null 2>&1 || { echo "In order to build this library you must have the autoreconf tool installed. It's available via homebrew."; exit 1; }
 
@@ -40,11 +41,11 @@ buildIOS()
 	
 	echo "Building serval-dna for ${PLATFORM} ${SDK_VERSION} ${ARCH}"
 
-	./configure $HOST --prefix="/tmp/serval-dna-${ARCH}" --disable-voiptest #&> "/tmp/serval-dna-${ARCH}.log"
+	./configure $HOST --prefix="${PREFIX}/serval-dna-${ARCH}" --disable-voiptest &> "${PREFIX}/serval-dna-${ARCH}.log"
 
-	make >> "/tmp/serval-dna-${ARCH}.log" #2>&1
-	make install >> "/tmp/serval-dna-${ARCH}.log" #2>&1
-	make clean >> "/tmp/serval-dna-${ARCH}.log" #2>&1
+	make >> "${PREFIX}/serval-dna-${ARCH}.log" 2>&1
+	make install >> "${PREFIX}/serval-dna-${ARCH}.log" 2>&1
+	make clean >> "${PREFIX}/serval-dna-${ARCH}.log" 2>&1
 	
 	# don't know why these don't get removed
 	rm directory_service.o
@@ -59,16 +60,25 @@ perl -p -i -e 's/^\t\$\(INSTALL_PROGRAM\) -D servald \$\(DESTDIR\)\$\(sbindir\)\
 \t\$\(INSTALL_PROGRAM\) servald \$\(DESTDIR\)\$\(sbindir\)\/servald/' Makefile.in
 
 # use CFLAGS when building version file to support cross-compilation
-perl -p -i -e 's/&& \$\(CC\) -c version_servald.c/&& \$\(CC\) \$\(CFLAGS\) -c version_servald.c/' Makefile.in
+# perl -p -i -e 's/&& \$\(CC\) -c version_servald.c/&& \$\(CC\) \$\(CFLAGS\) -c version_servald.c/' Makefile.in
 
 # Generate configure
 autoreconf -f -i
 
-mkdir -p build/include/serval-dna
-rm -rf "/tmp/serval-dna-*"
+#mkdir -p build/include/serval-dna
+rm -rf "${PREFIX}/serval-dna-*"
 
-buildIOS "armv7"
+for arch in ${ARCHS}; do
+	buildIOS "${arch}"
+done
 
-# for arch in $ARCHS; do
-# 	buildIOS "${arch}"
-# done
+echo "Building fat binary"
+
+lipo \
+	"${PREFIX}/serval-dna-armv7/sbin/servald" \
+	"${PREFIX}/serval-dna-armv7s/sbin/servald" \
+	"${PREFIX}/serval-dna-arm64/sbin/servald" \
+	"${PREFIX}/serval-dna-i386/sbin/servald" \
+	"${PREFIX}/serval-dna-x86_64/sbin/servald" \
+	-create -output ${PREFIX}/servald
+
