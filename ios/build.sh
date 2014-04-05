@@ -96,11 +96,9 @@ lipo \
 	"${PREFIX}/libserval-x86_64.a" \
 	-create -output ${PREFIX}/libserval.a || { echo "failed building fat library"; exit 1; }
 
-rm -rf ${PREFIX}/libserval-*
-
 echo "=> Copying Headers"
 mkdir -p ${PREFIX}/include
-cp *.h ${PREFIX}/include
+cp *.h ios/confdefs.h ${PREFIX}/include
 
 # Roll back the changes we made to these files
 if [[ -f ".git" ]]; then
