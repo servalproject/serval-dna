@@ -7,14 +7,32 @@
 	objects = {
 
 /* Begin PBXFileReference section */
+		1A09828C18F0B8E200C4652C /* libserval.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libserval.a; path = ../build/libserval.a; sourceTree = "<group>"; };
 		1A5334BE18F087CF00C7BD93 /* build.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = build.sh; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
-		1A5334B318F087B500C7BD93 = {
+		1A09828A18F0B81E00C4652C /* libserval */ = {
 			isa = PBXGroup;
 			children = (
 				1A5334BE18F087CF00C7BD93 /* build.sh */,
+				1A09828B18F0B82500C4652C /* Products */,
+			);
+			name = libserval;
+			sourceTree = "<group>";
+		};
+		1A09828B18F0B82500C4652C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				1A09828C18F0B8E200C4652C /* libserval.a */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1A5334B318F087B500C7BD93 = {
+			isa = PBXGroup;
+			children = (
+				1A09828A18F0B81E00C4652C /* libserval */,
 			);
 			sourceTree = "<group>";
 		};

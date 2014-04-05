@@ -1,8 +1,5 @@
 #!/bin/sh
 
-#  build.sh
-#  servald
-#
 #  Created by James Moore on 3/25/14.
 #  Copyright (c) 2014 The Serval Project. All rights reserved.
 
@@ -47,11 +44,11 @@ buildIOS()
 	
 	echo "=> Building libserval for ${PLATFORM} ${SDK_VERSION} ${ARCH}"
 
-	./configure $HOST --prefix="${PREFIX}/servald-${ARCH}" --disable-voiptest &> "${PREFIX}/servald-${ARCH}.log" || { echo "configure failed"; exit 1; }
+	./configure $HOST --disable-voiptest &> "${PREFIX}/libserval-${ARCH}.log" || { echo "configure failed"; exit 1; }
 
-	make libserval.a >> "${PREFIX}/servald-${ARCH}.log" 2>&1 || { echo "make failed"; exit 1; }
+	make libserval.a >> "${PREFIX}/libserval-${ARCH}.log" 2>&1 || { echo "make failed"; exit 1; }
 	cp libserval.a ${PREFIX}/libserval-${ARCH}.a
-	make clean >> "${PREFIX}/servald-${ARCH}.log" 2>&1 || { echo "make clean failed"; exit 1; }
+	make clean >> "${PREFIX}/libserval-${ARCH}.log" 2>&1 || { echo "make clean failed"; exit 1; }
 	
 	# don't know why these don't get removed
 	# rm directory_service.o
@@ -64,23 +61,19 @@ buildIOS()
 
 if [[ $ACTION == "clean" ]]; then
 	echo "=> Cleaning..."
-	if [[ -f ${PREFIX}/servald ]]; then
-		rm ${PREFIX}/servald
+	if [[ -f ${PREFIX}/libserval.a ]]; then
+		rm ${PREFIX}/libserval.a
 	fi
 	exit
 fi
 
-if [[ -f ${PREFIX}/servald ]]; then
-	echo "Servald has already been built...skipping"
+if [[ -f ${PREFIX}/libserval.a ]]; then
+	echo "libserval has already been built...skipping"
 	exit
 fi
 
 # remove duplicated function
 perl -p -i -e 's/^(void rotbuf_log\(struct __sourceloc __whence, int log_level, const char \*prefix, const struct rotbuf \*rb\);)/\/\/\1/' rotbuf.h
-
-# install -D doesn't work with the OS X install
-perl -p -i -e 's/^\t\$\(INSTALL_PROGRAM\) -D servald \$\(DESTDIR\)\$\(sbindir\)\/servald/\tmkdir -p \$\(DESTDIR\)\$\(sbindir\)
-\t\$\(INSTALL_PROGRAM\) servald \$\(DESTDIR\)\$\(sbindir\)\/servald/' Makefile.in
 
 # Generate configure
 autoreconf -f -i
