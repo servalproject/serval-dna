@@ -26,3 +26,5 @@ serval.c
 *.so
 test.*.log
 testlog
+
+build
