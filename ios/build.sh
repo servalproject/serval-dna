@@ -63,6 +63,8 @@ if [[ $ACTION == "clean" ]]; then
 	echo "=> Cleaning..."
 	if [[ -f ${PREFIX}/libserval.a ]]; then
 		rm ${PREFIX}/libserval.a
+		rm -rf ${PREFIX}/libserval-*
+		rm -rf ${PREFIX}/include
 	fi
 	exit
 fi
@@ -79,8 +81,6 @@ perl -p -i -e 's/^(void rotbuf_log\(struct __sourceloc __whence, int log_level, 
 autoreconf -f -i
 
 mkdir -p ${PREFIX}
-
-rm -rf ${PREFIX}/libserval-*
 
 for arch in ${ARCHS}; do
 	buildIOS "${arch}"
@@ -100,7 +100,6 @@ rm -rf ${PREFIX}/libserval-*
 
 echo "=> Copying Headers"
 mkdir -p ${PREFIX}/include
-
 cp *.h ${PREFIX}/include
 
 # Roll back the changes we made to these files
