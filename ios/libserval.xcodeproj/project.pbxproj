@@ -45,6 +45,7 @@
 		1A13A3D318F0C05D00A6233B /* strlcpy.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = strlcpy.h; path = ../strlcpy.h; sourceTree = "<group>"; };
 		1A13A3D418F0C05D00A6233B /* uuid.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = uuid.h; path = ../uuid.h; sourceTree = "<group>"; };
 		1A13A3D518F0C05D00A6233B /* xprintf.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = xprintf.h; path = ../xprintf.h; sourceTree = "<group>"; };
+		1A13A3D918F0CB4300A6233B /* confdefs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = confdefs.h; sourceTree = "<group>"; };
 		1A5334BE18F087CF00C7BD93 /* build.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = build.sh; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -70,6 +71,7 @@
 		1A13A3B018F0C01500A6233B /* headers */ = {
 			isa = PBXGroup;
 			children = (
+				1A13A3D918F0CB4300A6233B /* confdefs.h */,
 				1A13A3B118F0C05D00A6233B /* cli.h */,
 				1A13A3B218F0C05D00A6233B /* conf_schema.h */,
 				1A13A3B318F0C05D00A6233B /* conf.h */,
