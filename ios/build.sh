@@ -47,7 +47,7 @@ buildIOS()
 	
 	echo "=> Building servald for ${PLATFORM} ${SDK_VERSION} ${ARCH}"
 
-	./configure $HOST --prefix="${PREFIX}/servald-${ARCH}" --disable-voiptest &> "${PREFIX}/servald-${ARCH}.log"
+	./configure $HOST --prefix="${PREFIX}/servald-${ARCH}" --disable-voiptest &> "${PREFIX}/servald-${ARCH}.log" || { echo "configure failed"; exit 1; }
 
 	make >> "${PREFIX}/servald-${ARCH}.log" 2>&1
 	make install >> "${PREFIX}/servald-${ARCH}.log" 2>&1
@@ -62,6 +62,9 @@ buildIOS()
 # Start the build
 #
 
+if [[ -f ${PREFIX}/servald ]]; then
+	rm ${PREFIX}/servald
+fi
 
 # remove duplicated function
 perl -p -i -e 's/^(void rotbuf_log\(struct __sourceloc __whence, int log_level, const char \*prefix, const struct rotbuf \*rb\);)/\/\/\1/' rotbuf.h
