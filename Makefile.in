@@ -76,10 +76,10 @@ sqlite-amalgamation-3070900/sqlite3.o:	sqlite-amalgamation-3070900/sqlite3.c
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o sqlite-amalgamation-3070900/sqlite3.o
 
 version.o: *.h *.c version_string.sh VERSION.txt COPYRIGHT.txt Makefile
-	@echo CC version_servald.c
+	@echo CC $(CFLAGS) version_servald.c
 	@V=`./version_string.sh --ignore-untracked` \
 	 && C="`sed -e :a -e N -e '$$!ba' -e 's/[\\\\"]/\\\\&/g' -e 's/\\n/\\\\n/g' COPYRIGHT.txt`" \
-	 && $(CC) -c version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\"" -DSERVALD_COPYRIGHT="\"$$C\""
+	 && $(CC) $(CFLAGS) -c version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\"" -DSERVALD_COPYRIGHT="\"$$C\""
 
 VERSION.txt:
 
