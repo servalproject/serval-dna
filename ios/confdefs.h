@@ -44,7 +44,7 @@
 #define HAVE_IFADDRS_H 1
 #define HAVE_NET_ROUTE_H 1
 #define HAVE_SIGNAL_H 1
-#define HAVE_JNI_H 1
+#define HAVE_JNI_H 0
 #define HAVE_SYS_FILIO_H 1
 #define HAVE_SYS_SOCKIO_H 1
 #define HAVE_SYS_SOCKET_H 1
