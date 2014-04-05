@@ -8,44 +8,44 @@
 
 /* Begin PBXFileReference section */
 		1A09828C18F0B8E200C4652C /* libserval.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libserval.a; path = ../build/libserval.a; sourceTree = "<group>"; };
-		1A13A3B118F0C05D00A6233B /* cli.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = cli.h; path = ../cli.h; sourceTree = "<group>"; };
-		1A13A3B218F0C05D00A6233B /* conf_schema.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = conf_schema.h; path = ../conf_schema.h; sourceTree = "<group>"; };
-		1A13A3B318F0C05D00A6233B /* conf.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = conf.h; path = ../conf.h; sourceTree = "<group>"; };
-		1A13A3B418F0C05D00A6233B /* constants.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = constants.h; path = ../constants.h; sourceTree = "<group>"; };
-		1A13A3B518F0C05D00A6233B /* crypto.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = crypto.h; path = ../crypto.h; sourceTree = "<group>"; };
-		1A13A3B618F0C05D00A6233B /* dataformats.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = dataformats.h; path = ../dataformats.h; sourceTree = "<group>"; };
-		1A13A3B718F0C05D00A6233B /* fdqueue.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = fdqueue.h; path = ../fdqueue.h; sourceTree = "<group>"; };
-		1A13A3B818F0C05D00A6233B /* fifo.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = fifo.h; path = ../fifo.h; sourceTree = "<group>"; };
-		1A13A3B918F0C05D00A6233B /* golay.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = golay.h; path = ../golay.h; sourceTree = "<group>"; };
-		1A13A3BA18F0C05D00A6233B /* http_server.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = http_server.h; path = ../http_server.h; sourceTree = "<group>"; };
-		1A13A3BB18F0C05D00A6233B /* httpd.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = httpd.h; path = ../httpd.h; sourceTree = "<group>"; };
-		1A13A3BC18F0C05D00A6233B /* instance.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = instance.h; path = ../instance.h; sourceTree = "<group>"; };
-		1A13A3BD18F0C05D00A6233B /* keyring.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = keyring.h; path = ../keyring.h; sourceTree = "<group>"; };
-		1A13A3BE18F0C05D00A6233B /* log.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = log.h; path = ../log.h; sourceTree = "<group>"; };
-		1A13A3BF18F0C05D00A6233B /* mdp_client.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = mdp_client.h; path = ../mdp_client.h; sourceTree = "<group>"; };
-		1A13A3C018F0C05D00A6233B /* mem.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = mem.h; path = ../mem.h; sourceTree = "<group>"; };
-		1A13A3C118F0C05D00A6233B /* meshms.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = meshms.h; path = ../meshms.h; sourceTree = "<group>"; };
-		1A13A3C218F0C05D00A6233B /* monitor-client.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "monitor-client.h"; path = "../monitor-client.h"; sourceTree = "<group>"; };
-		1A13A3C318F0C05D00A6233B /* msp_client.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = msp_client.h; path = ../msp_client.h; sourceTree = "<group>"; };
-		1A13A3C418F0C05D00A6233B /* net.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = net.h; path = ../net.h; sourceTree = "<group>"; };
-		1A13A3C518F0C05D00A6233B /* os.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = os.h; path = ../os.h; sourceTree = "<group>"; };
-		1A13A3C618F0C05D00A6233B /* overlay_address.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = overlay_address.h; path = ../overlay_address.h; sourceTree = "<group>"; };
-		1A13A3C718F0C05D00A6233B /* overlay_buffer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = overlay_buffer.h; path = ../overlay_buffer.h; sourceTree = "<group>"; };
-		1A13A3C818F0C05D00A6233B /* overlay_interface.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = overlay_interface.h; path = ../overlay_interface.h; sourceTree = "<group>"; };
-		1A13A3C918F0C05D00A6233B /* overlay_packet.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = overlay_packet.h; path = ../overlay_packet.h; sourceTree = "<group>"; };
-		1A13A3CA18F0C05D00A6233B /* radio_link.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = radio_link.h; path = ../radio_link.h; sourceTree = "<group>"; };
-		1A13A3CB18F0C05D00A6233B /* rhizome.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = rhizome.h; path = ../rhizome.h; sourceTree = "<group>"; };
-		1A13A3CC18F0C05D00A6233B /* rotbuf.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = rotbuf.h; path = ../rotbuf.h; sourceTree = "<group>"; };
-		1A13A3CD18F0C05D00A6233B /* serval.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = serval.h; path = ../serval.h; sourceTree = "<group>"; };
-		1A13A3CE18F0C05D00A6233B /* sha2.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = sha2.h; path = ../sha2.h; sourceTree = "<group>"; };
-		1A13A3CF18F0C05D00A6233B /* socket.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = socket.h; path = ../socket.h; sourceTree = "<group>"; };
-		1A13A3D018F0C05D00A6233B /* str.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = str.h; path = ../str.h; sourceTree = "<group>"; };
-		1A13A3D118F0C05D00A6233B /* strbuf_helpers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = strbuf_helpers.h; path = ../strbuf_helpers.h; sourceTree = "<group>"; };
-		1A13A3D218F0C05D00A6233B /* strbuf.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = strbuf.h; path = ../strbuf.h; sourceTree = "<group>"; };
-		1A13A3D318F0C05D00A6233B /* strlcpy.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = strlcpy.h; path = ../strlcpy.h; sourceTree = "<group>"; };
-		1A13A3D418F0C05D00A6233B /* uuid.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = uuid.h; path = ../uuid.h; sourceTree = "<group>"; };
-		1A13A3D518F0C05D00A6233B /* xprintf.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = xprintf.h; path = ../xprintf.h; sourceTree = "<group>"; };
-		1A13A3D918F0CB4300A6233B /* confdefs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = confdefs.h; sourceTree = "<group>"; };
+		1A13A3DA18F0CD9B00A6233B /* cli.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = cli.h; path = ../build/include/cli.h; sourceTree = "<group>"; };
+		1A13A3DB18F0CD9B00A6233B /* conf_schema.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = conf_schema.h; path = ../build/include/conf_schema.h; sourceTree = "<group>"; };
+		1A13A3DC18F0CD9B00A6233B /* conf.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = conf.h; path = ../build/include/conf.h; sourceTree = "<group>"; };
+		1A13A3DD18F0CD9B00A6233B /* confdefs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = confdefs.h; path = ../build/include/confdefs.h; sourceTree = "<group>"; };
+		1A13A3DE18F0CD9B00A6233B /* constants.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = constants.h; path = ../build/include/constants.h; sourceTree = "<group>"; };
+		1A13A3DF18F0CD9B00A6233B /* crypto.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = crypto.h; path = ../build/include/crypto.h; sourceTree = "<group>"; };
+		1A13A3E018F0CD9B00A6233B /* dataformats.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = dataformats.h; path = ../build/include/dataformats.h; sourceTree = "<group>"; };
+		1A13A3E118F0CD9B00A6233B /* fdqueue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = fdqueue.h; path = ../build/include/fdqueue.h; sourceTree = "<group>"; };
+		1A13A3E218F0CD9B00A6233B /* fifo.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = fifo.h; path = ../build/include/fifo.h; sourceTree = "<group>"; };
+		1A13A3E318F0CD9B00A6233B /* golay.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = golay.h; path = ../build/include/golay.h; sourceTree = "<group>"; };
+		1A13A3E418F0CD9B00A6233B /* http_server.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = http_server.h; path = ../build/include/http_server.h; sourceTree = "<group>"; };
+		1A13A3E518F0CD9B00A6233B /* httpd.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = httpd.h; path = ../build/include/httpd.h; sourceTree = "<group>"; };
+		1A13A3E618F0CD9B00A6233B /* instance.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = instance.h; path = ../build/include/instance.h; sourceTree = "<group>"; };
+		1A13A3E718F0CD9B00A6233B /* keyring.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = keyring.h; path = ../build/include/keyring.h; sourceTree = "<group>"; };
+		1A13A3E818F0CD9B00A6233B /* log.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = log.h; path = ../build/include/log.h; sourceTree = "<group>"; };
+		1A13A3E918F0CD9B00A6233B /* mdp_client.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = mdp_client.h; path = ../build/include/mdp_client.h; sourceTree = "<group>"; };
+		1A13A3EA18F0CD9B00A6233B /* mem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = mem.h; path = ../build/include/mem.h; sourceTree = "<group>"; };
+		1A13A3EB18F0CD9B00A6233B /* meshms.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = meshms.h; path = ../build/include/meshms.h; sourceTree = "<group>"; };
+		1A13A3EC18F0CD9B00A6233B /* monitor-client.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = "monitor-client.h"; path = "../build/include/monitor-client.h"; sourceTree = "<group>"; };
+		1A13A3ED18F0CD9B00A6233B /* msp_client.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = msp_client.h; path = ../build/include/msp_client.h; sourceTree = "<group>"; };
+		1A13A3EE18F0CD9B00A6233B /* net.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = net.h; path = ../build/include/net.h; sourceTree = "<group>"; };
+		1A13A3EF18F0CD9B00A6233B /* os.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = os.h; path = ../build/include/os.h; sourceTree = "<group>"; };
+		1A13A3F018F0CD9B00A6233B /* overlay_address.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = overlay_address.h; path = ../build/include/overlay_address.h; sourceTree = "<group>"; };
+		1A13A3F118F0CD9B00A6233B /* overlay_buffer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = overlay_buffer.h; path = ../build/include/overlay_buffer.h; sourceTree = "<group>"; };
+		1A13A3F218F0CD9B00A6233B /* overlay_interface.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = overlay_interface.h; path = ../build/include/overlay_interface.h; sourceTree = "<group>"; };
+		1A13A3F318F0CD9B00A6233B /* overlay_packet.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = overlay_packet.h; path = ../build/include/overlay_packet.h; sourceTree = "<group>"; };
+		1A13A3F418F0CD9B00A6233B /* radio_link.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = radio_link.h; path = ../build/include/radio_link.h; sourceTree = "<group>"; };
+		1A13A3F518F0CD9B00A6233B /* rhizome.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = rhizome.h; path = ../build/include/rhizome.h; sourceTree = "<group>"; };
+		1A13A3F618F0CD9B00A6233B /* rotbuf.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = rotbuf.h; path = ../build/include/rotbuf.h; sourceTree = "<group>"; };
+		1A13A3F718F0CD9B00A6233B /* serval.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = serval.h; path = ../build/include/serval.h; sourceTree = "<group>"; };
+		1A13A3F818F0CD9B00A6233B /* sha2.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = sha2.h; path = ../build/include/sha2.h; sourceTree = "<group>"; };
+		1A13A3F918F0CD9B00A6233B /* socket.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = socket.h; path = ../build/include/socket.h; sourceTree = "<group>"; };
+		1A13A3FA18F0CD9B00A6233B /* str.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = str.h; path = ../build/include/str.h; sourceTree = "<group>"; };
+		1A13A3FB18F0CD9B00A6233B /* strbuf_helpers.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = strbuf_helpers.h; path = ../build/include/strbuf_helpers.h; sourceTree = "<group>"; };
+		1A13A3FC18F0CD9B00A6233B /* strbuf.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = strbuf.h; path = ../build/include/strbuf.h; sourceTree = "<group>"; };
+		1A13A3FD18F0CD9B00A6233B /* strlcpy.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = strlcpy.h; path = ../build/include/strlcpy.h; sourceTree = "<group>"; };
+		1A13A3FE18F0CD9B00A6233B /* uuid.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = uuid.h; path = ../build/include/uuid.h; sourceTree = "<group>"; };
+		1A13A3FF18F0CD9B00A6233B /* xprintf.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = xprintf.h; path = ../build/include/xprintf.h; sourceTree = "<group>"; };
 		1A5334BE18F087CF00C7BD93 /* build.sh */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.script.sh; path = build.sh; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -71,44 +71,44 @@
 		1A13A3B018F0C01500A6233B /* headers */ = {
 			isa = PBXGroup;
 			children = (
-				1A13A3D918F0CB4300A6233B /* confdefs.h */,
-				1A13A3B118F0C05D00A6233B /* cli.h */,
-				1A13A3B218F0C05D00A6233B /* conf_schema.h */,
-				1A13A3B318F0C05D00A6233B /* conf.h */,
-				1A13A3B418F0C05D00A6233B /* constants.h */,
-				1A13A3B518F0C05D00A6233B /* crypto.h */,
-				1A13A3B618F0C05D00A6233B /* dataformats.h */,
-				1A13A3B718F0C05D00A6233B /* fdqueue.h */,
-				1A13A3B818F0C05D00A6233B /* fifo.h */,
-				1A13A3B918F0C05D00A6233B /* golay.h */,
-				1A13A3BA18F0C05D00A6233B /* http_server.h */,
-				1A13A3BB18F0C05D00A6233B /* httpd.h */,
-				1A13A3BC18F0C05D00A6233B /* instance.h */,
-				1A13A3BD18F0C05D00A6233B /* keyring.h */,
-				1A13A3BE18F0C05D00A6233B /* log.h */,
-				1A13A3BF18F0C05D00A6233B /* mdp_client.h */,
-				1A13A3C018F0C05D00A6233B /* mem.h */,
-				1A13A3C118F0C05D00A6233B /* meshms.h */,
-				1A13A3C218F0C05D00A6233B /* monitor-client.h */,
-				1A13A3C318F0C05D00A6233B /* msp_client.h */,
-				1A13A3C418F0C05D00A6233B /* net.h */,
-				1A13A3C518F0C05D00A6233B /* os.h */,
-				1A13A3C618F0C05D00A6233B /* overlay_address.h */,
-				1A13A3C718F0C05D00A6233B /* overlay_buffer.h */,
-				1A13A3C818F0C05D00A6233B /* overlay_interface.h */,
-				1A13A3C918F0C05D00A6233B /* overlay_packet.h */,
-				1A13A3CA18F0C05D00A6233B /* radio_link.h */,
-				1A13A3CB18F0C05D00A6233B /* rhizome.h */,
-				1A13A3CC18F0C05D00A6233B /* rotbuf.h */,
-				1A13A3CD18F0C05D00A6233B /* serval.h */,
-				1A13A3CE18F0C05D00A6233B /* sha2.h */,
-				1A13A3CF18F0C05D00A6233B /* socket.h */,
-				1A13A3D018F0C05D00A6233B /* str.h */,
-				1A13A3D118F0C05D00A6233B /* strbuf_helpers.h */,
-				1A13A3D218F0C05D00A6233B /* strbuf.h */,
-				1A13A3D318F0C05D00A6233B /* strlcpy.h */,
-				1A13A3D418F0C05D00A6233B /* uuid.h */,
-				1A13A3D518F0C05D00A6233B /* xprintf.h */,
+				1A13A3DA18F0CD9B00A6233B /* cli.h */,
+				1A13A3DB18F0CD9B00A6233B /* conf_schema.h */,
+				1A13A3DC18F0CD9B00A6233B /* conf.h */,
+				1A13A3DD18F0CD9B00A6233B /* confdefs.h */,
+				1A13A3DE18F0CD9B00A6233B /* constants.h */,
+				1A13A3DF18F0CD9B00A6233B /* crypto.h */,
+				1A13A3E018F0CD9B00A6233B /* dataformats.h */,
+				1A13A3E118F0CD9B00A6233B /* fdqueue.h */,
+				1A13A3E218F0CD9B00A6233B /* fifo.h */,
+				1A13A3E318F0CD9B00A6233B /* golay.h */,
+				1A13A3E418F0CD9B00A6233B /* http_server.h */,
+				1A13A3E518F0CD9B00A6233B /* httpd.h */,
+				1A13A3E618F0CD9B00A6233B /* instance.h */,
+				1A13A3E718F0CD9B00A6233B /* keyring.h */,
+				1A13A3E818F0CD9B00A6233B /* log.h */,
+				1A13A3E918F0CD9B00A6233B /* mdp_client.h */,
+				1A13A3EA18F0CD9B00A6233B /* mem.h */,
+				1A13A3EB18F0CD9B00A6233B /* meshms.h */,
+				1A13A3EC18F0CD9B00A6233B /* monitor-client.h */,
+				1A13A3ED18F0CD9B00A6233B /* msp_client.h */,
+				1A13A3EE18F0CD9B00A6233B /* net.h */,
+				1A13A3EF18F0CD9B00A6233B /* os.h */,
+				1A13A3F018F0CD9B00A6233B /* overlay_address.h */,
+				1A13A3F118F0CD9B00A6233B /* overlay_buffer.h */,
+				1A13A3F218F0CD9B00A6233B /* overlay_interface.h */,
+				1A13A3F318F0CD9B00A6233B /* overlay_packet.h */,
+				1A13A3F418F0CD9B00A6233B /* radio_link.h */,
+				1A13A3F518F0CD9B00A6233B /* rhizome.h */,
+				1A13A3F618F0CD9B00A6233B /* rotbuf.h */,
+				1A13A3F718F0CD9B00A6233B /* serval.h */,
+				1A13A3F818F0CD9B00A6233B /* sha2.h */,
+				1A13A3F918F0CD9B00A6233B /* socket.h */,
+				1A13A3FA18F0CD9B00A6233B /* str.h */,
+				1A13A3FB18F0CD9B00A6233B /* strbuf_helpers.h */,
+				1A13A3FC18F0CD9B00A6233B /* strbuf.h */,
+				1A13A3FD18F0CD9B00A6233B /* strlcpy.h */,
+				1A13A3FE18F0CD9B00A6233B /* uuid.h */,
+				1A13A3FF18F0CD9B00A6233B /* xprintf.h */,
 			);
 			name = headers;
 			sourceTree = "<group>";
