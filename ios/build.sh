@@ -49,9 +49,9 @@ buildIOS()
 
 	./configure $HOST --prefix="${PREFIX}/servald-${ARCH}" --disable-voiptest &> "${PREFIX}/servald-${ARCH}.log" || { echo "configure failed"; exit 1; }
 
-	make >> "${PREFIX}/servald-${ARCH}.log" 2>&1
-	make install >> "${PREFIX}/servald-${ARCH}.log" 2>&1
-	make clean >> "${PREFIX}/servald-${ARCH}.log" 2>&1
+	make >> "${PREFIX}/servald-${ARCH}.log" 2>&1 || { echo "make failed"; exit 1; }
+	make install >> "${PREFIX}/servald-${ARCH}.log" 2>&1 || { echo "make install failed"; exit 1; }
+	make clean >> "${PREFIX}/servald-${ARCH}.log" 2>&1 || { echo "make clean failed"; exit 1; }
 	
 	# don't know why these don't get removed
 	rm directory_service.o
@@ -71,7 +71,7 @@ if [[ $ACTION == "clean" ]]; then
 fi
 
 if [[ -f ${PREFIX}/servald ]]; then
-	echo "Servald has already been build...skipping"
+	echo "Servald has already been built...skipping"
 	exit
 fi
 
