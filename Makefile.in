@@ -128,6 +128,10 @@ libserval.so: $(SERVALD_OBJS) version.o
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(SERVALD_OBJS) version.o $(LDFLAGS)
 
+libserval.a: $(SERVALD_OBJS) version.o
+	@echo AR $@
+	@$(AR) -cr $@ $(SERVALD_OBJS) version.o
+
 libmonitorclient.so: $(MONITOR_CLIENT_OBJS) version.o
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(MONITOR_CLIENT_OBJS) version.o $(LDFLAGS)

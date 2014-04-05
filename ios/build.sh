@@ -45,17 +45,17 @@ buildIOS()
 	export CFLAGS="-arch ${ARCH} -pipe -no-cpp-precomp -isysroot $SDKROOT -I$SDKROOT/usr/include -miphoneos-version-min=${SDK_VERSION}"
 	export CC="clang"
 	
-	echo "=> Building servald for ${PLATFORM} ${SDK_VERSION} ${ARCH}"
+	echo "=> Building libserval for ${PLATFORM} ${SDK_VERSION} ${ARCH}"
 
 	./configure $HOST --prefix="${PREFIX}/servald-${ARCH}" --disable-voiptest &> "${PREFIX}/servald-${ARCH}.log" || { echo "configure failed"; exit 1; }
 
-	make >> "${PREFIX}/servald-${ARCH}.log" 2>&1 || { echo "make failed"; exit 1; }
-	make install >> "${PREFIX}/servald-${ARCH}.log" 2>&1 || { echo "make install failed"; exit 1; }
+	make libserval.a >> "${PREFIX}/servald-${ARCH}.log" 2>&1 || { echo "make failed"; exit 1; }
+	cp libserval.a ${PREFIX}/libserval-${ARCH}.a
 	make clean >> "${PREFIX}/servald-${ARCH}.log" 2>&1 || { echo "make clean failed"; exit 1; }
 	
 	# don't know why these don't get removed
-	rm directory_service.o
-	rm config_test.o
+	# rm directory_service.o
+	# rm config_test.o
 }
 
 #
@@ -85,7 +85,9 @@ perl -p -i -e 's/^\t\$\(INSTALL_PROGRAM\) -D servald \$\(DESTDIR\)\$\(sbindir\)\
 # Generate configure
 autoreconf -f -i
 
-rm -rf ${PREFIX}/servald-*
+mkdir -p ${PREFIX}
+
+rm -rf ${PREFIX}/libserval-*
 
 for arch in ${ARCHS}; do
 	buildIOS "${arch}"
@@ -94,13 +96,18 @@ done
 echo "=> Building fat binary"
 
 lipo \
-	"${PREFIX}/servald-armv7/sbin/servald" \
-	"${PREFIX}/servald-armv7s/sbin/servald" \
-	"${PREFIX}/servald-arm64/sbin/servald" \
-	"${PREFIX}/servald-i386/sbin/servald" \
-	"${PREFIX}/servald-x86_64/sbin/servald" \
-	-create -output ${PREFIX}/servald
+	"${PREFIX}/libserval-armv7.a" \
+	"${PREFIX}/libserval-armv7s.a" \
+	"${PREFIX}/libserval-arm64.a" \
+	"${PREFIX}/libserval-i386.a" \
+	"${PREFIX}/libserval-x86_64.a" \
+	-create -output ${PREFIX}/libserval.a || { echo "failed building fat library"; exit 1; }
 
-rm -rf ${PREFIX}/servald-*
+rm -rf ${PREFIX}/libserval-*
+
+# if [[ -f ".git" ]]; then
+# 	git checkout -- Makefile.in
+# 	git checkout -- rotbuf.h
+# fi
 
 echo "=> Done"
