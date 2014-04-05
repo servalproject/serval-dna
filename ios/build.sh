@@ -62,8 +62,17 @@ buildIOS()
 # Start the build
 #
 
+if [[ $ACTION == "clean" ]]; then
+	echo "=> Cleaning..."
+	if [[ -f ${PREFIX}/servald ]]; then
+		rm ${PREFIX}/servald
+	fi
+	exit
+fi
+
 if [[ -f ${PREFIX}/servald ]]; then
-	rm ${PREFIX}/servald
+	echo "Servald has already been build...skipping"
+	exit
 fi
 
 # remove duplicated function
