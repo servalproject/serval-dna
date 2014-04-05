@@ -16,8 +16,8 @@
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "1A5334B818F087B500C7BD93"
                BuildableName = "servald"
-               BlueprintName = "servald"
-               ReferencedContainer = "container:servald.xcodeproj">
+               BlueprintName = "libserval"
+               ReferencedContainer = "container:libserval.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>

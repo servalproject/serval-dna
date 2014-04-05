@@ -21,17 +21,17 @@
 /* End PBXGroup section */
 
 /* Begin PBXLegacyTarget section */
-		1A5334B818F087B500C7BD93 /* servald */ = {
+		1A5334B818F087B500C7BD93 /* libserval */ = {
 			isa = PBXLegacyTarget;
 			buildArgumentsString = "$(ACTION)";
-			buildConfigurationList = 1A5334BB18F087B500C7BD93 /* Build configuration list for PBXLegacyTarget "servald" */;
+			buildConfigurationList = 1A5334BB18F087B500C7BD93 /* Build configuration list for PBXLegacyTarget "libserval" */;
 			buildPhases = (
 			);
 			buildToolPath = "$(SRCROOT)/build.sh";
 			buildWorkingDirectory = "";
 			dependencies = (
 			);
-			name = servald;
+			name = libserval;
 			passBuildSettingsInEnvironment = 0;
 			productName = servald;
 		};
@@ -44,7 +44,7 @@
 				LastUpgradeCheck = 0510;
 				ORGANIZATIONNAME = "The Serval Project";
 			};
-			buildConfigurationList = 1A5334B718F087B500C7BD93 /* Build configuration list for PBXProject "servald" */;
+			buildConfigurationList = 1A5334B718F087B500C7BD93 /* Build configuration list for PBXProject "libserval" */;
 			compatibilityVersion = "Xcode 3.2";
 			developmentRegion = English;
 			hasScannedForEncodings = 0;
@@ -55,7 +55,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				1A5334B818F087B500C7BD93 /* servald */,
+				1A5334B818F087B500C7BD93 /* libserval */,
 			);
 		};
 /* End PBXProject section */
@@ -88,7 +88,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		1A5334B718F087B500C7BD93 /* Build configuration list for PBXProject "servald" */ = {
+		1A5334B718F087B500C7BD93 /* Build configuration list for PBXProject "libserval" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				1A5334B918F087B500C7BD93 /* Debug */,
@@ -97,7 +97,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		1A5334BB18F087B500C7BD93 /* Build configuration list for PBXLegacyTarget "servald" */ = {
+		1A5334BB18F087B500C7BD93 /* Build configuration list for PBXLegacyTarget "libserval" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				1A5334BC18F087B500C7BD93 /* Debug */,
