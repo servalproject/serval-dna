@@ -101,7 +101,7 @@ mkdir -p ${PREFIX}/include
 cp *.h ios/confdefs.h ${PREFIX}/include
 
 # Roll back the changes we made to these files
-if [[ -f ".git" ]]; then
+if [[ -d ".git" ]]; then
 	git checkout -- Makefile.in
 	git checkout -- rotbuf.h
 fi
