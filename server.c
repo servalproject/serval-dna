@@ -99,7 +99,7 @@ void server_save_argv(int argc, const char *const *argv)
     exec_args[exec_argc] = NULL;
 }
 
-int server(const struct cli_parsed *parsed)
+int server()
 {
   IN();
   /* For testing, it can be very helpful to delay the start of the server process, for example to
@@ -131,7 +131,7 @@ int server(const struct cli_parsed *parsed)
   sigaction(SIGHUP, &sig, NULL);
   sigaction(SIGINT, &sig, NULL);
 
-  overlayServerMode(parsed);
+  overlayServerMode();
 
   RETURN(0);
   OUT();

@@ -226,7 +226,7 @@ int server_pid();
 const char *_server_pidfile_path(struct __sourceloc);
 #define server_pidfile_path() (_server_pidfile_path(__WHENCE__))
 void server_save_argv(int argc, const char *const *argv);
-int server(const struct cli_parsed *parsed);
+int server(void);
 int server_write_pid();
 int server_write_proc_state(const char *path, const char *fmt, ...);
 int server_get_proc_state(const char *path, char *buff, size_t buff_len);
@@ -258,7 +258,7 @@ void overlay_rhizome_advertise(struct sched_ent *alarm);
 void rhizome_sync_status_html(struct strbuf *b, struct subscriber *subscriber);
 int rhizome_cache_count();
 
-int overlayServerMode(const struct cli_parsed *parsed);
+int overlayServerMode(void);
 int overlay_payload_enqueue(struct overlay_frame *p);
 int overlay_queue_remaining(int queue);
 int overlay_queue_schedule_next(time_ms_t next_allowed_packet);

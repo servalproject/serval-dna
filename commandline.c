@@ -862,16 +862,27 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
        instance directory when it starts up.  */
     if (server_remove_stopfile() == -1)
       RETURN(-1);
+    // Open the keyring and ensure it contains at least one unlocked identity.
+    keyring = keyring_open_instance_cli(parsed);
+    if (!keyring)
+      RETURN(WHY("Could not open keyring file"));
+    if (keyring_seed(keyring) == -1) {
+      WHY("Could not seed keyring");
+      goto exit;
+    }
     overlayMode = 1;
-    if (foregroundP)
-      RETURN(server(parsed));
+    if (foregroundP) {
+      ret = server();
+      goto exit;
+    }
     const char *dir = getenv("SERVALD_SERVER_CHDIR");
     if (!dir)
       dir = config.server.chdir;
     switch (cpid = fork()) {
       case -1:
 	/* Main process.  Fork failed.  There is no child process. */
-	RETURN(WHY_perror("fork"));
+	WHY_perror("fork");
+	goto exit;
       case 0: {
 	/* Child process.  Fork then exit, to disconnect daemon from parent process, so that
 	   when daemon exits it does not live on as a zombie. N.B. Do not return from within this
@@ -912,7 +923,7 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
 	      WHYF_perror("execl(%s,\"start\",\"foreground\")", alloca_str_toprint(execpath));
 	      _exit(-1);
 	    }
-	    _exit(server(parsed));
+	    _exit(server());
 	    // NOT REACHED
 	  }
 	}
@@ -927,9 +938,11 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
       sleep_ms(200); // 5 Hz
     } while ((pid = server_pid()) == 0 && gettime_ms() < timeout);
     if (pid == -1)
-      RETURN(-1);
-    if (pid == 0)
-      RETURN(WHY("Server process did not start"));
+      goto exit;
+    if (pid == 0) {
+      WHY("Server process did not start");
+      goto exit;
+    }
     ret = 0;
   }
   const char *ipath = instance_path();
@@ -963,6 +976,9 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
       sleep_ms(milliseconds);
     }
   }
+exit:
+  keyring_free(keyring);
+  keyring = NULL;
   RETURN(ret);
   OUT();
 }
