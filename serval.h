@@ -222,37 +222,6 @@ struct broadcast;
 
 extern int overlayMode;
 
-// Specify the size of the receive buffer.
-// This effectively sets the MRU for packet radio interfaces
-// where we have to buffer packets on the receive side
-#define OVERLAY_INTERFACE_RX_BUFFER_SIZE 2048
-// TX buffer must handle FEC encoded and encapsulated data, so needs to be
-// larger.
-#define OVERLAY_INTERFACE_TX_BUFFER_SIZE (2+2048*2)
-// buffer size for reading RFD900 RSSI reports
-// (minimum length is ~87 bytes, and includes 13 numeric fields
-// each of which may presumably end up being ~10 bytes, so 256 bytes
-// should be a safe size).
-#define RSSI_TEXT_SIZE 256
-
-struct slip_decode_state{
-#define SLIP_FORMAT_SLIP 0
-#define SLIP_FORMAT_UPPER7 1
-#define SLIP_FORMAT_MAVLINK 2
-  int encapsulator;
-  int state;
-  unsigned char *src;
-  unsigned src_size;
-  char rssi_text[RSSI_TEXT_SIZE];
-  unsigned rssi_len;
-  unsigned packet_length;
-  unsigned char dst[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
-  uint32_t crc;
-  unsigned src_offset;
-  unsigned dst_offset;
-};
-
-
 int server_pid();
 const char *_server_pidfile_path(struct __sourceloc);
 #define server_pidfile_path() (_server_pidfile_path(__WHENCE__))
@@ -347,7 +316,6 @@ int directory_registration();
 int directory_service_init();
 
 int app_nonce_test(const struct cli_parsed *parsed, struct cli_context *context);
-int app_slip_test(const struct cli_parsed *parsed, struct cli_context *context);
 int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context *context);
 int app_monitor_cli(const struct cli_parsed *parsed, struct cli_context *context);
 int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *context);

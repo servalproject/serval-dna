@@ -42,6 +42,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <ifaddrs.h>
 #endif
 
+// The size of the receive buffer.  This effectively sets the MRU for packet radio interfaces where
+// we have to buffer packets on the receive side.
+#define OVERLAY_INTERFACE_RX_BUFFER_SIZE 2048
+
 int overlay_ready=0;
 overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
 int overlay_last_interface_number=-1;
