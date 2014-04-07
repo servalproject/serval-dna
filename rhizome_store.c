@@ -32,7 +32,26 @@ int rhizome_exists(const rhizome_filehash_t *hashp)
   uint64_t gotfile = 0;
   if (sqlite_exec_uint64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE id = ? and datavalid = 1;", RHIZOME_FILEHASH_T, hashp, END) != 1)
     return 0;
-  return gotfile;
+  if (gotfile==0)
+    return 0;
+  uint64_t blob_rowid;
+  if (sqlite_exec_uint64(&blob_rowid,
+      "SELECT rowid "
+      "FROM FILEBLOBS "
+      "WHERE id = ?", RHIZOME_FILEHASH_T, hashp, END) == -1)
+    return 0;
+  if (blob_rowid !=0)
+    return 1;
+  
+  // No row in FILEBLOBS, look for an external blob file.
+  char blob_path[1024];
+  if (!FORMF_RHIZOME_STORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, alloca_tohex_rhizome_filehash_t(*hashp)))
+    return 0;
+  
+  struct stat st;
+  if (stat(blob_path, &st) == -1)
+    return 0;
+  return 1;
 }
 
 /* Creates a row in the FILEBLOBS table and return the ROWID.  Returns 0 if unsuccessful (error
