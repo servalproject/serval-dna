@@ -1679,49 +1679,6 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   return status;
 }
 
-int app_slip_test(const struct cli_parsed *parsed, struct cli_context *context)
-{
-  const char *seed = NULL;
-  const char *iterations = NULL;
-  const char *duration = NULL;
-  if (   cli_arg(parsed, "--seed", &seed, cli_uint, NULL) == -1
-      || cli_arg(parsed, "--duration", &duration, cli_uint, NULL) == -1
-      || cli_arg(parsed, "--iterations", &iterations, cli_uint, NULL) == -1)
-    return -1;
-  if (seed)
-    srandom(atoi(seed));
-  int maxcount = iterations ? atoi(iterations) : duration ? 0 : 1000;
-  time_ms_t start = duration ? gettime_ms() : 0;
-  time_ms_t end = duration ? start + atoi(duration) * (time_ms_t) 1000 : 0;
-  int count;
-  for (count = 0; maxcount == 0 || count < maxcount; ++count) {    
-    if (end && gettime_ms() >= end)
-      break;
-    unsigned char bufin[8192];
-    unsigned char bufout[8192];
-    int len=1+random()%1500;
-    int i;
-    for(i=0;i<len;i++) bufin[i]=random()&0xff;
-    struct slip_decode_state state;
-    bzero(&state,sizeof state);
-    int outlen=slip_encode(SLIP_FORMAT_UPPER7,bufin,len,bufout,8192);
-    for(i=0;i<outlen;i++) upper7_decode(&state,bufout[i]);
-    uint32_t crc=Crc32_ComputeBuf( 0, state.dst, state.packet_length);
-    if (crc!=state.crc) {
-      WHYF("CRC error (%08x vs %08x)",crc,state.crc);
-      dump("input",bufin,len);
-      dump("encoded",bufout,outlen);
-      dump("decoded",state.dst,state.packet_length);
-      return 1;
-    } else { 
-      if (!(count%1000))
-	cli_printf(context, "."); cli_flush(context); 
-    }   
-  }
-  cli_printf(context, "Test passed.\n");
-  return 0;
-}
-
 int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
@@ -3174,8 +3131,6 @@ struct cli_schema command_line_options[]={
    "Run memory speed test"},
   {app_byteorder_test,{"test","byteorder",NULL}, 0,
    "Run byte order handling test"},
-  {app_slip_test,{"test","slip","[--seed=<N>]","[--duration=<seconds>|--iterations=<N>]",NULL}, 0,
-   "Run serial encapsulation test"},
   {app_msp_connection,{"msp", "listen", "[--once]", "[--forward=<local_port>]", "<port>", NULL}, 0,
   "Listen for incoming connections"},
   {app_msp_connection,{"msp", "connect", "[--once]", "[--forward=<local_port>]", "<sid>", "<port>", NULL}, 0,

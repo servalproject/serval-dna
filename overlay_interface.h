@@ -7,6 +7,20 @@
 #define INTERFACE_STATE_UP 1
 #define INTERFACE_STATE_DETECTING 2
 
+struct limit_state{
+  // length of time for a burst
+  time_ms_t burst_length;
+  // how many in a burst
+  int burst_size;
+  // how many have we sent in this burst so far
+  int sent;
+  // when can we allow another burst
+  time_ms_t next_interval;
+};
+
+time_ms_t limit_next_allowed(struct limit_state *state);
+int limit_is_allowed(struct limit_state *state);
+int limit_init(struct limit_state *state, int rate_micro_seconds);
 
 struct overlay_interface;
 

@@ -35,7 +35,6 @@ SQLITE3_SOURCES = \
 SERVAL_DAEMON_SOURCES = \
 	cli.c \
 	commandline.c \
-	crc32.c \
 	crypto.c \
 	directory_client.c \
 	dna_helper.c \
@@ -89,7 +88,6 @@ SERVAL_DAEMON_SOURCES = \
 	server.c \
 	sha2.c \
 	sighandlers.c \
-	slip.c \
 	vomp.c \
 	vomp_console.c \
         fec-3.0.1/ccsds_tables.c \

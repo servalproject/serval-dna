@@ -202,19 +202,12 @@ struct cli_parsed;
 
 extern int servalShutdown;
 
-extern char *gatewayspec;
-
 int rhizome_enabled();
 int rhizome_http_server_running();
 
 #define MAX_PEERS 1024
 extern int peer_count;
 extern struct in_addr peers[MAX_PEERS];
-
-extern char *outputtemplate;
-extern char *instrumentation_file;
-extern char *batman_socket;
-extern char *batman_peerfile;
 
 struct subscriber;
 struct decode_context;
@@ -223,26 +216,9 @@ struct overlay_interface;
 struct network_destination;
 struct internal_mdp_header;
 
-/* Make sure we have space to put bytes of the packet as we go along */
-#define CHECK_PACKET_LEN(B) {if (((*packet_len)+(B))>=packet_maxlen) { return WHY("Packet composition ran out of space."); } }
-
-struct limit_state{
-  // length of time for a burst
-  time_ms_t burst_length;
-  // how many in a burst
-  int burst_size;
-  
-  // how many have we sent in this burst so far
-  int sent;
-  // when can we allow another burst
-  time_ms_t next_interval;
-};
-
 struct overlay_buffer;
 struct overlay_frame;
 struct broadcast;
-
-#define STRUCT_SCHED_ENT_UNUSED {.poll={.fd=-1}, ._poll_index=-1,}
 
 extern int overlayMode;
 
@@ -290,8 +266,6 @@ int server_remove_stopfile();
 int server_check_stopfile();
 void overlay_mdp_clean_socket_files();
 void serverCleanUp();
-int isTransactionInCache(unsigned char *transaction_id);
-void insertTransactionInCache(unsigned char *transaction_id);
 
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
@@ -373,6 +347,7 @@ int directory_registration();
 int directory_service_init();
 
 int app_nonce_test(const struct cli_parsed *parsed, struct cli_context *context);
+int app_slip_test(const struct cli_parsed *parsed, struct cli_context *context);
 int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context *context);
 int app_monitor_cli(const struct cli_parsed *parsed, struct cli_context *context);
 int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *context);
@@ -396,12 +371,6 @@ int monitor_client_interested(int mask);
 int scrapeProcNetRoute();
 int lsif();
 int doifaddrs();
-
-#define SERVER_UNKNOWN 1
-#define SERVER_NOTRESPONDING 2
-#define SERVER_NOTRUNNING 3
-#define SERVER_RUNNING 4
-int server_probe(int *pid);
 
 int dna_helper_start();
 int dna_helper_shutdown();
@@ -436,10 +405,6 @@ int overlay_mdp_service_stun_req(struct internal_mdp_header *header, struct over
 int overlay_mdp_service_stun(struct internal_mdp_header *header, struct overlay_buffer *payload);
 int overlay_mdp_service_probe(struct internal_mdp_header *header, struct overlay_buffer *payload);
 
-time_ms_t limit_next_allowed(struct limit_state *state);
-int limit_is_allowed(struct limit_state *state);
-int limit_init(struct limit_state *state, int rate_micro_seconds);
-
 int olsr_init_socket(void);
 int olsr_send(struct overlay_frame *frame);
 
@@ -447,15 +412,8 @@ int pack_uint(unsigned char *buffer, uint64_t v);
 int measure_packed_uint(uint64_t v);
 int unpack_uint(unsigned char *buffer, int buff_size, uint64_t *v);
 
-int slip_encode(int format,
-		const unsigned char *src, int src_bytes, unsigned char *dst, int dst_len);
-int slip_decode(struct slip_decode_state *state);
-int upper7_decode(struct slip_decode_state *state,unsigned char byte);
-uint32_t Crc32_ComputeBuf( uint32_t inCrc32, const void *buf,
-			  size_t bufLen );
 void rhizome_fetch_log_short_status();
 extern char crash_handler_clue[1024];
-
 
 int link_received_duplicate(struct subscriber *subscriber, int previous_seq);
 int link_received_packet(struct decode_context *context, int sender_seq, char unicast);
