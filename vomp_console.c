@@ -70,6 +70,7 @@ static int console_answer(const struct cli_parsed *parsed, struct cli_context *c
 static int console_hangup(const struct cli_parsed *parsed, struct cli_context *context);
 static int console_audio(const struct cli_parsed *parsed, struct cli_context *context);
 static int console_usage(const struct cli_parsed *parsed, struct cli_context *context);
+static int console_quit(const struct cli_parsed *parsed, struct cli_context *context);
 static void console_command(char *line);
 static void monitor_read(struct sched_ent *alarm);
 
@@ -79,6 +80,7 @@ struct cli_schema console_commands[]={
   {console_hangup,{"hangup",NULL},0,"Hangup the phone line"},
   {console_usage,{"help",NULL},0,"This usage message"},
   {console_audio,{"say","...",NULL},0,"Send a text string to the other party"},
+  {console_quit,{"quit",NULL},0,"Exit process"},
   {NULL, {NULL, NULL, NULL}, 0, NULL},
 };
 
@@ -272,6 +274,7 @@ static int console_dial(const struct cli_parsed *parsed, struct cli_context *UNU
 {
   if (call_token!=-1){
     printf("Already in a call\n");
+    fflush(stdout);
     return 0;
   }
   const char *sid = parsed->args[1];
@@ -298,6 +301,18 @@ static int console_hangup(const struct cli_parsed *UNUSED(parsed), struct cli_co
     fflush(stdout);
   }else
     send_hangup(call_token);
+  return 0;
+}
+
+static int console_quit(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
+{
+  if (monitor_alarm.poll.fd!=-1){
+    printf("Shutting down\n");
+    fflush(stdout);
+    unwatch(&monitor_alarm);
+    monitor_client_close(monitor_alarm.poll.fd, monitor_state);
+    monitor_alarm.poll.fd=-1;
+  }
   return 0;
 }
 

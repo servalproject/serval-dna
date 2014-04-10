@@ -346,6 +346,12 @@ SUB_STRUCT(mdp_iftypelist,  iftype,)
 ATOM(bool_t,                enable_inet, 0, boolean,, "If true, allow mdp clients to connect over loopback UDP")
 END_STRUCT
 
+STRUCT(vomp)
+ATOM(int32_t,               dial_timeout_ms,    15000, int32_nonneg,, "Timeout to establish a call when dialling")
+ATOM(int32_t,               ring_timeout_ms,    30000, int32_nonneg,, "Timeout for the other user to answer")
+ATOM(int32_t,               network_timeout_ms, 30000, int32_nonneg,, "Timeout for network activity until a call will end")
+END_STRUCT
+
 STRUCT(olsr)
 ATOM(bool_t,                enable,      0, boolean,, "If true, OLSR is used for mesh routing")
 ATOM(uint16_t,              remote_port, 4130, uint16_nonzero,, "Remote port number")
@@ -494,6 +500,7 @@ SUB_STRUCT(server,          server,)
 SUB_STRUCT(monitor,         monitor,)
 SUB_STRUCT(mdp,             mdp,)
 SUB_STRUCT(dna,             dna,)
+SUB_STRUCT(vomp,            vomp,)
 SUB_STRUCT(debug,           debug,)
 SUB_STRUCT(rhizome,         rhizome,)
 SUB_STRUCT(directory,       directory,)

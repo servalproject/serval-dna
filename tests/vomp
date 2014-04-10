@@ -21,6 +21,11 @@
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
+setup() {
+   setup_servald
+   assert_no_servald_processes
+   start_servald_instances +A +B
+}
 teardown() {
    stop_all_servald_servers
    kill_all_servald_processes
@@ -35,42 +40,108 @@ configure_servald_server() {
       set debug.mdprequests on \
       set debug.monitor on \
       set debug.vomp on \
+      set vomp.dial_timeout_ms 1000 \
+      set vomp.ring_timeout_ms 5000 \
+      set vomp.network_timeout_ms 5000 \
       set log.console.level DEBUG \
       set log.console.show_time on
 }
 
-vomp_connect() {
-   executeOk_servald console < <(sleep 1 && echo "call $1 $2 $3" && sleep 3 && echo "say hello" && sleep 3 && echo "hangup")
-   tfw_cat --stdout --stderr
-   assertStdoutGrep --stdout --matches=1 "^Dialling$"
-   assertStdoutGrep --stdout --matches=1 "^Codec list"
-   assertStdoutGrep --stdout --matches=1 "^Ringing$"
-   assertStdoutGrep --stdout --matches=1 "^Picked up$"
-   assertStdoutGrep --stdout --matches=1 "^hi there$"
-   assertStdoutGrep --stdout --matches=1 "^Call ended$"
+vomp_console() {
+# Note, this might block and stall the test, but I need to predict where stdout is going to be
+# perhaps add an argument to execute?
+   $servald console <&8 >"$1"
 }
 
-vomp_answer() {
-   executeOk_servald console < <(sleep 2 && echo "answer" && sleep 2 && echo "say hi there" && sleep 3 && echo "hangup")
-   tfw_cat --stdout --stderr
-   assertStdoutGrep --stdout --matches=1 "^Incoming call"
-   assertStdoutGrep --stdout --matches=1 "^Codec list"
-   assertStdoutGrep --stdout --matches=1 "^hello$"
-   assertStdoutGrep --stdout --matches=1 "^Call ended$"
+send_cmd() {
+   tfw_log "sending $1 to $2"
+# Note, this might block and stall the test...
+   echo "$1" >> "$2"
+}
+
+init_console() {
+  eval ${instance_name}_IN="$PWD/${instance_name}_IN"
+  eval ${instance_name}_OUT="$PWD/${instance_name}_OUT"
+  mkfifo "$PWD/${instance_name}_IN"
+  exec 8<>"$PWD/${instance_name}_IN"
+  fork vomp_console "$PWD/${instance_name}_OUT"
+  exec 8>&-
+}
+
+doc_nophone="Attempt to dial a node with no phone"
+test_nophone() {
+   set_instance +A
+   init_console
+   send_cmd "call $SIDB $DIDA $DIDB" "$A_IN"
+   wait_until grep "^Call ended$" "$A_OUT"
+   send_cmd "quit" "$A_IN"
+   fork_wait_all
+   tfw_cat "$A_OUT"
+}
+
+doc_hangup="Hangup instead of answering"
+test_hangup() {
+   foreach_instance +A +B init_console
+   send_cmd "call $SIDA $DIDB $DIDA" "$B_IN"
+   wait_until grep "^Dialling$" "$B_OUT"
+   wait_until grep "^Incoming call" "$A_OUT"
+   wait_until grep "^Codec list" "$A_OUT"
+   wait_until grep "^Codec list" "$B_OUT"
+   wait_until grep "^Ringing$" "$B_OUT"
+   send_cmd "hangup" "$A_IN"
+   wait_until grep "^Call ended$" "$A_OUT"
+   wait_until grep "^Call ended$" "$B_OUT"
+   send_cmd "quit" "$A_IN"
+   send_cmd "quit" "$B_IN"
+   fork_wait_all
+   tfw_cat "$A_OUT" "$B_OUT"
+}
+
+doc_timeout="Call timeout"
+test_timeout() {
+   foreach_instance +A +B init_console
+   send_cmd "call $SIDA $DIDB $DIDA" "$B_IN"
+   wait_until grep "^Dialling$" "$B_OUT"
+   wait_until grep "^Incoming call" "$A_OUT"
+   wait_until grep "^Codec list" "$A_OUT"
+   wait_until grep "^Codec list" "$B_OUT"
+   wait_until grep "^Ringing$" "$B_OUT"
+   send_cmd "answer" "$A_IN"
+   wait_until grep "^Picked up$" "$B_OUT"
+   send_cmd "say hello" "$A_IN"
+   send_cmd "say hi there" "$B_IN"
+   wait_until grep "^hello$" "$B_OUT"
+   wait_until grep "^hi there$" "$A_OUT"
+   stop_servald_server +B
+# B's console should just quit
+   wait_until --timeout=20 grep "^Call ended$" "$A_OUT"
+   send_cmd "quit" "$A_IN"
+   fork_wait_all
+   tfw_cat "$A_OUT" "$B_OUT"
 }
 
 doc_call_lifecycle="Successful call lifecycle"
-setup_call_lifecycle() {
-   setup_servald
-   assert_no_servald_processes
-   start_servald_instances +A +B
-}
 test_call_lifecycle() {
-   set_instance +A
-   fork vomp_answer
-   set_instance +B
-   fork vomp_connect $SIDA $DIDB $DIDA
+   foreach_instance +A +B init_console
+   send_cmd "call $SIDA $DIDB $DIDA" "$B_IN"
+   wait_until grep "^Dialling$" "$B_OUT"
+   wait_until grep "^Incoming call" "$A_OUT"
+   wait_until grep "^Codec list" "$A_OUT"
+   wait_until grep "^Codec list" "$B_OUT"
+   wait_until grep "^Ringing$" "$B_OUT"
+   send_cmd "answer" "$A_IN"
+   wait_until grep "^Picked up$" "$B_OUT"
+   send_cmd "say hello" "$A_IN"
+   send_cmd "say hi there" "$B_IN"
+   wait_until grep "^hello$" "$B_OUT"
+   wait_until grep "^hi there$" "$A_OUT"
+   send_cmd "hangup" "$B_IN"
+   wait_until grep "^Call ended$" "$A_OUT"
+   wait_until grep "^Call ended$" "$B_OUT"
+   send_cmd "quit" "$A_IN"
+   send_cmd "quit" "$B_IN"
    fork_wait_all
+   tfw_cat "$A_OUT" "$B_OUT"
 }
 
 runTests "$@"
