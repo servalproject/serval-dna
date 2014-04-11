@@ -56,6 +56,7 @@
 #endif
 
 #include "serval.h"
+#include "console.h"
 #include "conf.h"
 #include "cli.h"
 #include "monitor-client.h"
@@ -64,14 +65,12 @@
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 
-static void read_lines(struct sched_ent *alarm);
 static int console_dial(const struct cli_parsed *parsed, struct cli_context *context);
 static int console_answer(const struct cli_parsed *parsed, struct cli_context *context);
 static int console_hangup(const struct cli_parsed *parsed, struct cli_context *context);
 static int console_audio(const struct cli_parsed *parsed, struct cli_context *context);
 static int console_usage(const struct cli_parsed *parsed, struct cli_context *context);
 static int console_quit(const struct cli_parsed *parsed, struct cli_context *context);
-static void console_command(char *line);
 static void monitor_read(struct sched_ent *alarm);
 
 struct cli_schema console_commands[]={
@@ -84,26 +83,6 @@ struct cli_schema console_commands[]={
   {NULL, {NULL, NULL, NULL}, 0, NULL},
 };
 
-struct line_state{
-  struct sched_ent alarm;
-  int fd;
-  char line_buff[1024];
-  int line_pos;
-  void (*process_line)(char *line);
-};
-
-struct profile_total stdin_profile={
-  .name="read_lines",
-};
-struct line_state stdin_state={
-  .alarm = {
-    .poll = {.fd = STDIN_FILENO,.events = POLLIN},
-    .function = read_lines,
-    .stats=&stdin_profile
-  },
-  .fd=0,
-  .process_line=console_command,
-};
 struct profile_total monitor_profile={
   .name="monitor_read",
 };
@@ -122,6 +101,7 @@ struct call{
 struct call *calls=NULL;
 
 struct monitor_state *monitor_state;
+struct command_state *stdin_state;
 
 static void send_hangup(int session_id){
   monitor_client_writeline(monitor_alarm.poll.fd, "hangup %06x\n",session_id);
@@ -331,13 +311,7 @@ static int console_hangup(const struct cli_parsed *UNUSED(parsed), struct cli_co
 
 static int console_quit(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
-  if (monitor_alarm.poll.fd!=-1){
-    printf("Shutting down\n");
-    fflush(stdout);
-    unwatch(&monitor_alarm);
-    monitor_client_close(monitor_alarm.poll.fd, monitor_state);
-    monitor_alarm.poll.fd=-1;
-  }
+  command_close(stdin_state);
   return 0;
 }
 
@@ -372,66 +346,6 @@ static int console_usage(const struct cli_parsed *UNUSED(parsed), struct cli_con
   return 0;
 }
 
-static void console_command(char *line){
-  char *argv[16];
-  int argc = parse_argv(line, ' ', argv, 16);
-  
-  struct cli_parsed parsed;
-  switch (cli_parse(argc, (const char *const*)argv, console_commands, &parsed)) {
-  case 0:
-    cli_invoke(&parsed, NULL);
-    break;
-  case 1:
-    printf("Unknown command, try help\n");
-    fflush(stdout);
-    break;
-  case 2:
-    printf("Ambiguous command, try help\n");
-    fflush(stdout);
-    break;
-  default:
-    printf("Error\n");
-    fflush(stdout);
-    break;
-  }
-}
-
-static void read_lines(struct sched_ent *alarm){
-  struct line_state *state=(struct line_state *)alarm;
-  set_nonblock(STDIN_FILENO);
-  int bytes = read(state->alarm.poll.fd, state->line_buff + state->line_pos, sizeof(state->line_buff) - state->line_pos);
-  if (bytes<=0){
-    if (monitor_alarm.poll.fd!=-1){
-      unwatch(&monitor_alarm);
-      monitor_client_close(monitor_alarm.poll.fd, monitor_state);
-      monitor_alarm.poll.fd=-1;
-    }
-    return;
-  }
-    
-  set_block(STDIN_FILENO);
-  int i = state->line_pos;
-  int processed=0;
-  state->line_pos+=bytes;
-  char *line_start=state->line_buff;
-  
-  for (;i<state->line_pos;i++){
-    if (state->line_buff[i]=='\n'){
-      state->line_buff[i]=0;
-      if (*line_start)
-	state->process_line(line_start);
-      processed=i+1;
-      line_start = state->line_buff + processed;
-    }
-  }
-  
-  if (processed){
-    // squash unprocessed data back to the start of the buffer
-    state->line_pos -= processed;
-    bcopy(state->line_buff, line_start, state->line_pos);
-  }
-}
-
 static void monitor_read(struct sched_ent *alarm){
   if (monitor_client_read(alarm->poll.fd, monitor_state, console_handlers, 
 			  sizeof(console_handlers)/sizeof(struct monitor_command_handler))<0){
@@ -449,6 +363,8 @@ int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *UNUSED
     DEBUG_cli_parsed(parsed);
   
   monitor_alarm.poll.fd = monitor_client_open(&monitor_state);
+  if (monitor_alarm.poll.fd==-1)
+    return -1;
   
   monitor_client_writeline(monitor_alarm.poll.fd, "monitor vomp %d\n",
 			   VOMP_CODEC_TEXT);
@@ -456,13 +372,20 @@ int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *UNUSED
   set_nonblock(monitor_alarm.poll.fd);
   
   watch(&monitor_alarm);
-  watch(&stdin_state.alarm);
+  stdin_state = command_register(console_commands, STDIN_FILENO);
   
-  while(monitor_alarm.poll.fd!=-1){
-    fd_poll();
+  while(monitor_alarm.poll.fd!=-1 && !is_command_closed(stdin_state) && fd_poll())
+    ;
+  
+  printf("Shutting down\n");
+  fflush(stdout);
+  
+  command_free(stdin_state);
+  if (monitor_alarm.poll.fd!=-1){
+    unwatch(&monitor_alarm);
+    monitor_client_close(monitor_alarm.poll.fd, monitor_state);
+    monitor_alarm.poll.fd=-1;
   }
-  
-  unwatch(&stdin_state.alarm);
   
   return 0;
 }

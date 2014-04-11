@@ -35,6 +35,7 @@ SQLITE3_SOURCES = \
 SERVAL_DAEMON_SOURCES = \
 	cli.c \
 	commandline.c \
+	console.c \
 	crypto.c \
 	directory_client.c \
 	dna_helper.c \
