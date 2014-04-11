@@ -30,6 +30,7 @@ teardown() {
    get_servald_server_pidfile && stop_servald_server
    kill_all_servald_processes
    assert_no_servald_processes
+   report_all_servald_servers
 }
 
 # make sure servald config is blank

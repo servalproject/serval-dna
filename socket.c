@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <limits.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <libgen.h>
 
 #include "serval.h"
 #include "conf.h"
@@ -204,6 +205,14 @@ int _socket_bind(struct __sourceloc __whence, int sock, const struct socket_addr
   assert(addr->addrlen > sizeof addr->addr.sa_family);
   if (addr->addr.sa_family == AF_UNIX && addr->local.sun_path[0] != '\0') {
     assert(addr->local.sun_path[addr->addrlen - sizeof addr->local.sun_family - 1] == '\0');
+    // make sure the path exists, create it if we can
+    size_t dirsiz = strlen(addr->local.sun_path) + 1;
+    char dir_buf[dirsiz];
+    strcpy(dir_buf, addr->local.sun_path);
+    const char *dir = dirname(dir_buf); // modifies dir_buf[]
+    if (mkdirs_info(dir, 0700) == -1)
+      return WHY_perror("mkdirs()");
+    // remove a previous socket
     if (unlink(addr->local.sun_path) == -1 && errno != ENOENT)
       WARNF_perror("unlink(%s)", alloca_str_toprint(addr->local.sun_path));
     if (config.debug.io || config.debug.verbose_io)
