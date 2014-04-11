@@ -1096,14 +1096,14 @@ static void vomp_process_tick(struct sched_ent *alarm)
   struct vomp_call_state *call = (struct vomp_call_state *)alarm;
 
   /* See if any calls need to be expired.
-     Allow VOMP_CALL_DIAL_TIMEOUT ms for the other party to ring / request ringing
-     Allow VOMP_CALL_RING_TIMEOUT ms for the ringing party to answer
-     Allow VOMP_CALL_NETWORK_TIMEOUT ms between received packets
+     Allow vomp.dial_timeout_ms for the other party to ring / request ringing
+     Allow vomp.ring_timeout_ms for the ringing party to answer
+     Allow vomp.network_timeout_ms between received packets
    */
   
-  if ((call->remote.state < VOMP_STATE_RINGINGOUT && call->create_time + VOMP_CALL_DIAL_TIMEOUT < now) ||
-      (call->local.state < VOMP_STATE_INCALL && call->create_time + VOMP_CALL_RING_TIMEOUT < now) ||
-      (call->last_activity+VOMP_CALL_NETWORK_TIMEOUT<now) ){
+  if ((call->remote.state < VOMP_STATE_RINGINGOUT && call->create_time + config.vomp.dial_timeout_ms < now) ||
+      (call->local.state < VOMP_STATE_INCALL && call->create_time + config.vomp.ring_timeout_ms < now) ||
+      (call->last_activity+config.vomp.network_timeout_ms<now) ){
     
     /* tell any local clients that call has died */
     call->rejection_reason=VOMP_REJECT_TIMEOUT;

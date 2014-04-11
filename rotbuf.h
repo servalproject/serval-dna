@@ -133,8 +133,6 @@ __ROTBUF_INLINE size_t rotbuf_count(struct rotbuf *rb)
   return rb->wrap ? (size_t)((rb->ebuf - rb->buf) + rb->wrap - 1) : rotbuf_position(rb);
 }
 
-void rotbuf_log(struct __sourceloc __whence, int log_level, const char *prefix, const struct rotbuf *rb);
-
 /* Advance the cursor by a given number of bytes (non negative).  Advancing the cursor over the
  * final byte in the buffer sets the 'wrap' counter to 1.  All further advances are simply added to
  * the 'wrap' counter.

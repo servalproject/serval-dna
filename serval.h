@@ -202,19 +202,12 @@ struct cli_parsed;
 
 extern int servalShutdown;
 
-extern char *gatewayspec;
-
 int rhizome_enabled();
 int rhizome_http_server_running();
 
 #define MAX_PEERS 1024
 extern int peer_count;
 extern struct in_addr peers[MAX_PEERS];
-
-extern char *outputtemplate;
-extern char *instrumentation_file;
-extern char *batman_socket;
-extern char *batman_peerfile;
 
 struct subscriber;
 struct decode_context;
@@ -223,65 +216,17 @@ struct overlay_interface;
 struct network_destination;
 struct internal_mdp_header;
 
-/* Make sure we have space to put bytes of the packet as we go along */
-#define CHECK_PACKET_LEN(B) {if (((*packet_len)+(B))>=packet_maxlen) { return WHY("Packet composition ran out of space."); } }
-
-struct limit_state{
-  // length of time for a burst
-  time_ms_t burst_length;
-  // how many in a burst
-  int burst_size;
-  
-  // how many have we sent in this burst so far
-  int sent;
-  // when can we allow another burst
-  time_ms_t next_interval;
-};
-
 struct overlay_buffer;
 struct overlay_frame;
 struct broadcast;
 
-#define STRUCT_SCHED_ENT_UNUSED {.poll={.fd=-1}, ._poll_index=-1,}
-
 extern int overlayMode;
-
-// Specify the size of the receive buffer.
-// This effectively sets the MRU for packet radio interfaces
-// where we have to buffer packets on the receive side
-#define OVERLAY_INTERFACE_RX_BUFFER_SIZE 2048
-// TX buffer must handle FEC encoded and encapsulated data, so needs to be
-// larger.
-#define OVERLAY_INTERFACE_TX_BUFFER_SIZE (2+2048*2)
-// buffer size for reading RFD900 RSSI reports
-// (minimum length is ~87 bytes, and includes 13 numeric fields
-// each of which may presumably end up being ~10 bytes, so 256 bytes
-// should be a safe size).
-#define RSSI_TEXT_SIZE 256
-
-struct slip_decode_state{
-#define SLIP_FORMAT_SLIP 0
-#define SLIP_FORMAT_UPPER7 1
-#define SLIP_FORMAT_MAVLINK 2
-  int encapsulator;
-  int state;
-  unsigned char *src;
-  unsigned src_size;
-  char rssi_text[RSSI_TEXT_SIZE];
-  unsigned rssi_len;
-  unsigned packet_length;
-  unsigned char dst[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
-  uint32_t crc;
-  unsigned src_offset;
-  unsigned dst_offset;
-};
-
 
 int server_pid();
 const char *_server_pidfile_path(struct __sourceloc);
 #define server_pidfile_path() (_server_pidfile_path(__WHENCE__))
 void server_save_argv(int argc, const char *const *argv);
-int server(const struct cli_parsed *parsed);
+int server(void);
 int server_write_pid();
 int server_write_proc_state(const char *path, const char *fmt, ...);
 int server_get_proc_state(const char *path, char *buff, size_t buff_len);
@@ -290,8 +235,6 @@ int server_remove_stopfile();
 int server_check_stopfile();
 void overlay_mdp_clean_socket_files();
 void serverCleanUp();
-int isTransactionInCache(unsigned char *transaction_id);
-void insertTransactionInCache(unsigned char *transaction_id);
 
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
@@ -315,7 +258,7 @@ void overlay_rhizome_advertise(struct sched_ent *alarm);
 void rhizome_sync_status_html(struct strbuf *b, struct subscriber *subscriber);
 int rhizome_cache_count();
 
-int overlayServerMode(const struct cli_parsed *parsed);
+int overlayServerMode(void);
 int overlay_payload_enqueue(struct overlay_frame *p);
 int overlay_queue_remaining(int queue);
 int overlay_queue_schedule_next(time_ms_t next_allowed_packet);
@@ -397,12 +340,6 @@ int scrapeProcNetRoute();
 int lsif();
 int doifaddrs();
 
-#define SERVER_UNKNOWN 1
-#define SERVER_NOTRESPONDING 2
-#define SERVER_NOTRUNNING 3
-#define SERVER_RUNNING 4
-int server_probe(int *pid);
-
 int dna_helper_start();
 int dna_helper_shutdown();
 int dna_helper_enqueue(struct subscriber *source, mdp_port_t source_port, const char *did);
@@ -436,10 +373,6 @@ int overlay_mdp_service_stun_req(struct internal_mdp_header *header, struct over
 int overlay_mdp_service_stun(struct internal_mdp_header *header, struct overlay_buffer *payload);
 int overlay_mdp_service_probe(struct internal_mdp_header *header, struct overlay_buffer *payload);
 
-time_ms_t limit_next_allowed(struct limit_state *state);
-int limit_is_allowed(struct limit_state *state);
-int limit_init(struct limit_state *state, int rate_micro_seconds);
-
 int olsr_init_socket(void);
 int olsr_send(struct overlay_frame *frame);
 
@@ -447,15 +380,8 @@ int pack_uint(unsigned char *buffer, uint64_t v);
 int measure_packed_uint(uint64_t v);
 int unpack_uint(unsigned char *buffer, int buff_size, uint64_t *v);
 
-int slip_encode(int format,
-		const unsigned char *src, int src_bytes, unsigned char *dst, int dst_len);
-int slip_decode(struct slip_decode_state *state);
-int upper7_decode(struct slip_decode_state *state,unsigned char byte);
-uint32_t Crc32_ComputeBuf( uint32_t inCrc32, const void *buf,
-			  size_t bufLen );
 void rhizome_fetch_log_short_status();
 extern char crash_handler_clue[1024];
-
 
 int link_received_duplicate(struct subscriber *subscriber, int previous_seq);
 int link_received_packet(struct decode_context *context, int sender_seq, char unicast);

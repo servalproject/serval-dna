@@ -155,22 +155,11 @@ void monitor_poll(struct sched_ent *alarm)
   /* Check for new connections */
   /* We don't care about the peer's address */
   ignored_length = 0;
-  while (
-#ifdef HAVE_LINUX_IF_H
-	 (s = accept4(alarm->poll.fd, NULL, &ignored_length,O_NONBLOCK))
-#else
-	 (s = accept(alarm->poll.fd,NULL, &ignored_length))
-#endif
-      != -1
-  ) {
+  while ((s = accept(alarm->poll.fd,NULL, &ignored_length))!= -1) {
     monitor_new_client(s);
   }
   if (errno != EAGAIN) {
-#ifdef HAVE_LINUX_IF_H
-    WHY_perror("accept4(O_NONBLOCK)");
-#else
     WHY_perror("accept");
-#endif
   }
 }
 

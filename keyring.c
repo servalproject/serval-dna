@@ -2058,10 +2058,6 @@ keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed)
    This identity will not be pin protected (initially). */
 int keyring_seed(keyring_file *k)
 {
-  if (config.debug.keyring)
-    DEBUGF("k=%p", k);
-  if (!k) return WHY("keyring is null");
-
   /* nothing to do if there is already an identity */
   unsigned cn;
   for (cn = 0; cn < k->context_count; ++cn)
@@ -2070,16 +2066,20 @@ int keyring_seed(keyring_file *k)
   int i;
   char did[65];
   /* Securely generate random telephone number */
-  urandombytes((unsigned char *)did, 11);
+  if (urandombytes((unsigned char *)did, 11) == -1)
+    return -1;
   /* Make DID start with 2 through 9, as 1 is special in many number spaces, 
      and 0 is commonly used for escaping to national or international dialling. */ 
   did[0]='2'+(((unsigned char)did[0])%8);
   /* Then add 10 more digits, which is what we do in the mobile phone software */
   for(i=1;i<11;i++) did[i]='0'+(((unsigned char)did[i])%10); did[11]=0;
   keyring_identity *id=keyring_create_identity(k,k->contexts[0],"");
-  if (!id) return WHY("Could not create new identity");
-  if (keyring_set_did(id, did, "")) return WHY("Could not set DID of new identity");
-  if (keyring_commit(k)) return WHY("Could not commit new identity to keyring file");
+  if (!id)
+    return WHY("Could not create new identity");
+  if (keyring_set_did(id, did, ""))
+    return WHY("Could not set DID of new identity");
+  if (keyring_commit(k))
+    return WHY("Could not commit new identity to keyring file");
   {
     const sid_t *sidp = NULL;
     const char *did = NULL;

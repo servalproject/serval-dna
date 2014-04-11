@@ -38,26 +38,6 @@ dnl Specify default Rhizome store directory
 AC_ARG_VAR([RHIZOME_STORE_PATH], [default Rhizome store directory])
 AS_IF([test "x$RHIZOME_STORE_PATH" != x], [AC_DEFINE_UNQUOTED([RHIZOME_STORE_PATH], ["$RHIZOME_STORE_PATH"], [default Rhizome store directory])])
 
-dnl VoIP test app
-AC_ARG_ENABLE(voiptest,
-AS_HELP_STRING([--enable-voiptest], [Require VoIP test program (default: only build if dependencies are present)])
-AS_HELP_STRING([--disable-voiptest], [Disable VoIP test program (don't test for dependencies)])dnl'
-)
-
-have_voip=0
-AS_IF([test "x$enable_voiptest" != "xno"], [
-    have_voip=1
-    PKG_CHECK_MODULES([PORTAUDIO], [portaudio-2.0],,[have_voip=0])
-    PKG_CHECK_MODULES([SRC], [samplerate],,[have_voip=0])
-    PKG_CHECK_MODULES([SPANDSP], [spandsp],,[have_voip=0])
-    AC_CHECK_HEADER([codec2.h],, [have_voip=0])
-    AC_CHECK_LIB([codec2], [codec2_create], [AC_SUBST([CODEC2_LIBS], -lcodec2)], [have_voip=0])
-])
-AS_IF([test "x$enable_voiptest" = "xyes" -a "x$have_voip" != "x1" ], [
-    AC_MSG_ERROR([Missing VoIP dependencies])
-])
-AC_SUBST([HAVE_VOIPTEST], $have_voip)
-
 dnl Check for programs.
 AC_PROG_CC
 
@@ -140,11 +120,6 @@ AC_CHECK_HEADERS(
 #include <sys/socket.h>
 #endif
 ])
-
-dnl Check for ALSA
-AC_CHECK_HEADER([alsa/asoundlib.h], [have_alsa=1], [have_alsa=0])
-AS_IF([test x"$have_alsa" = "x1"], [AC_DEFINE([HAVE_ALSA_ASOUNDLIB_H])])
-AS_IF([test x"$have_alsa" = "x1"], [AC_SUBST(HAVE_ALSA,1)], [AC_SUBST(HAVE_ALSA,0)])
 
 dnl Lazy way of checking for Linux
 AS_IF([test "x$ac_cv_header_linux_if_h" = xyes], [AC_DEFINE([USE_ABSTRACT_NAMESPACE])])

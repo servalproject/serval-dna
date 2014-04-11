@@ -1,6 +1,7 @@
 /*
-Serval Distributed Numbering Architecture (DNA)
+Serval DNA overlay network interfaces
 Copyright (C) 2010 Paul Gardner-Stephen
+Copyright (C) 2012-2013 Serval Project Inc.
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -40,6 +41,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifdef HAVE_IFADDRS_H
 #include <ifaddrs.h>
 #endif
+
+// The size of the receive buffer.  This effectively sets the MRU for packet radio interfaces where
+// we have to buffer packets on the receive side.
+#define OVERLAY_INTERFACE_RX_BUFFER_SIZE 2048
 
 int overlay_ready=0;
 overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];

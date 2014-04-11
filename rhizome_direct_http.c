@@ -722,7 +722,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 
 	  struct rhizome_read read;
 	  bzero(&read, sizeof read);
-	  enum rhizome_bundle_status pstatus = rhizome_open_read(&read, &filehash);
+	  enum rhizome_payload_status pstatus = rhizome_open_read(&read, &filehash);
 	  switch (pstatus) {
 	    case RHIZOME_PAYLOAD_STATUS_EMPTY:
 	    case RHIZOME_PAYLOAD_STATUS_STORED:

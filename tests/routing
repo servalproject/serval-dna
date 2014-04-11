@@ -253,14 +253,6 @@ test_single_p2p() {
    tfw_cat --stdout --stderr
 }
 
-doc_slip_encoding="Test slip encoding and decoding"
-setup_slip_encoding() {
-   setup_servald
-   assert_no_servald_processes
-}
-test_slip_encoding() {
-   executeOk_servald test slip --seed=1 --iterations=2000
-}
 start_fakeradio() {
    $servald_build_root/fakeradio 4 1 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
    FAKERADIO_PID=$!

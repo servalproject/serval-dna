@@ -862,16 +862,27 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
        instance directory when it starts up.  */
     if (server_remove_stopfile() == -1)
       RETURN(-1);
+    // Open the keyring and ensure it contains at least one unlocked identity.
+    keyring = keyring_open_instance_cli(parsed);
+    if (!keyring)
+      RETURN(WHY("Could not open keyring file"));
+    if (keyring_seed(keyring) == -1) {
+      WHY("Could not seed keyring");
+      goto exit;
+    }
     overlayMode = 1;
-    if (foregroundP)
-      RETURN(server(parsed));
+    if (foregroundP) {
+      ret = server();
+      goto exit;
+    }
     const char *dir = getenv("SERVALD_SERVER_CHDIR");
     if (!dir)
       dir = config.server.chdir;
     switch (cpid = fork()) {
       case -1:
 	/* Main process.  Fork failed.  There is no child process. */
-	RETURN(WHY_perror("fork"));
+	WHY_perror("fork");
+	goto exit;
       case 0: {
 	/* Child process.  Fork then exit, to disconnect daemon from parent process, so that
 	   when daemon exits it does not live on as a zombie. N.B. Do not return from within this
@@ -912,7 +923,7 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
 	      WHYF_perror("execl(%s,\"start\",\"foreground\")", alloca_str_toprint(execpath));
 	      _exit(-1);
 	    }
-	    _exit(server(parsed));
+	    _exit(server());
 	    // NOT REACHED
 	  }
 	}
@@ -927,9 +938,11 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
       sleep_ms(200); // 5 Hz
     } while ((pid = server_pid()) == 0 && gettime_ms() < timeout);
     if (pid == -1)
-      RETURN(-1);
-    if (pid == 0)
-      RETURN(WHY("Server process did not start"));
+      goto exit;
+    if (pid == 0) {
+      WHY("Server process did not start");
+      goto exit;
+    }
     ret = 0;
   }
   const char *ipath = instance_path();
@@ -963,6 +976,9 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
       sleep_ms(milliseconds);
     }
   }
+exit:
+  keyring_free(keyring);
+  keyring = NULL;
   RETURN(ret);
   OUT();
 }
@@ -1677,49 +1693,6 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   rhizome_manifest_free(m);
   keyring_free(keyring);
   return status;
-}
-
-int app_slip_test(const struct cli_parsed *parsed, struct cli_context *context)
-{
-  const char *seed = NULL;
-  const char *iterations = NULL;
-  const char *duration = NULL;
-  if (   cli_arg(parsed, "--seed", &seed, cli_uint, NULL) == -1
-      || cli_arg(parsed, "--duration", &duration, cli_uint, NULL) == -1
-      || cli_arg(parsed, "--iterations", &iterations, cli_uint, NULL) == -1)
-    return -1;
-  if (seed)
-    srandom(atoi(seed));
-  int maxcount = iterations ? atoi(iterations) : duration ? 0 : 1000;
-  time_ms_t start = duration ? gettime_ms() : 0;
-  time_ms_t end = duration ? start + atoi(duration) * (time_ms_t) 1000 : 0;
-  int count;
-  for (count = 0; maxcount == 0 || count < maxcount; ++count) {    
-    if (end && gettime_ms() >= end)
-      break;
-    unsigned char bufin[8192];
-    unsigned char bufout[8192];
-    int len=1+random()%1500;
-    int i;
-    for(i=0;i<len;i++) bufin[i]=random()&0xff;
-    struct slip_decode_state state;
-    bzero(&state,sizeof state);
-    int outlen=slip_encode(SLIP_FORMAT_UPPER7,bufin,len,bufout,8192);
-    for(i=0;i<outlen;i++) upper7_decode(&state,bufout[i]);
-    uint32_t crc=Crc32_ComputeBuf( 0, state.dst, state.packet_length);
-    if (crc!=state.crc) {
-      WHYF("CRC error (%08x vs %08x)",crc,state.crc);
-      dump("input",bufin,len);
-      dump("encoded",bufout,outlen);
-      dump("decoded",state.dst,state.packet_length);
-      return 1;
-    } else { 
-      if (!(count%1000))
-	cli_printf(context, "."); cli_flush(context); 
-    }   
-  }
-  cli_printf(context, "Test passed.\n");
-  return 0;
 }
 
 int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_context *context)
@@ -3174,15 +3147,9 @@ struct cli_schema command_line_options[]={
    "Run memory speed test"},
   {app_byteorder_test,{"test","byteorder",NULL}, 0,
    "Run byte order handling test"},
-  {app_slip_test,{"test","slip","[--seed=<N>]","[--duration=<seconds>|--iterations=<N>]",NULL}, 0,
-   "Run serial encapsulation test"},
   {app_msp_connection,{"msp", "listen", "[--once]", "[--forward=<local_port>]", "<port>", NULL}, 0,
   "Listen for incoming connections"},
   {app_msp_connection,{"msp", "connect", "[--once]", "[--forward=<local_port>]", "<sid>", "<port>", NULL}, 0,
   "Connect to a remote party"},
-#ifdef HAVE_VOIPTEST
-  {app_pa_phone,{"phone",NULL}, 0,
-   "Run phone test application"},
-#endif
   {NULL,{NULL},0,NULL}
 };

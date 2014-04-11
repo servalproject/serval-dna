@@ -170,37 +170,6 @@ Configure
 The [doc/Servald-Configuration](./doc/Servald-Configuration.md) document
 describes the configuration of Serval DNA in detail.
 
-Voice call test
----------------
-
-If the following packages are present then `./configure` will set the
-`HAVE_VOIPTEST` macro and build **servald** with its `phone` command available
-for performing voice call testing:
-
- * [Port audio](http://www.portaudio.com)
- * [Secret Rabbit Code](http://www.mega-nerd.com/SRC/) (a.k.a. Sample Rate
-   Convert) by Erik de Castro Lopo
- * [SpanDSP](http://www.soft-switch.org/) by Steve Underwood
- * [Codec2](http://www.rowetel.com/blog/?page_id=452) by Dave Rowe of Rowetel
-
-The Codec2 source code can be fetched using [Subversion][]:
-
-    $ cd $HOME/src
-    $ svn checkout https://freetel.svn.sourceforge.net/svnroot/freetel/codec2 codec2
-    $
-
-There are command-line options to control the `HAVE_VOIPTEST` macro:
-
- * To force `HAVE_VOIPTEST` to be set, and fail if the necessary packages are
-   not present, use:
-
-        $ ./configure --enable-voiptest
-
- * To force `HAVE_VOIPTEST` to be un-set (and not check for the presence of the
-   above packages), use:
-
-        $ ./configure --disable-voiptest
-
 About the examples
 ------------------
 

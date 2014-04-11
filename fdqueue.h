@@ -91,6 +91,8 @@ struct sched_ent{
   int _poll_index;
 };
 
+#define STRUCT_SCHED_ENT_UNUSED {.poll={.fd=-1}, ._poll_index=-1,}
+
 int is_scheduled(const struct sched_ent *alarm);
 int is_watching(struct sched_ent *alarm);
 int _schedule(struct __sourceloc, struct sched_ent *alarm);

@@ -70,6 +70,7 @@ static int console_answer(const struct cli_parsed *parsed, struct cli_context *c
 static int console_hangup(const struct cli_parsed *parsed, struct cli_context *context);
 static int console_audio(const struct cli_parsed *parsed, struct cli_context *context);
 static int console_usage(const struct cli_parsed *parsed, struct cli_context *context);
+static int console_quit(const struct cli_parsed *parsed, struct cli_context *context);
 static void console_command(char *line);
 static void monitor_read(struct sched_ent *alarm);
 
@@ -79,6 +80,7 @@ struct cli_schema console_commands[]={
   {console_hangup,{"hangup",NULL},0,"Hangup the phone line"},
   {console_usage,{"help",NULL},0,"This usage message"},
   {console_audio,{"say","...",NULL},0,"Send a text string to the other party"},
+  {console_quit,{"quit",NULL},0,"Exit process"},
   {NULL, {NULL, NULL, NULL}, 0, NULL},
 };
 
@@ -111,8 +113,14 @@ struct sched_ent monitor_alarm={
   .stats=&monitor_profile,
 };
 
-int call_token=-1;
-int seen_audio=0;
+struct call{
+  struct call *_next;
+  int token;
+  char ring_in;
+};
+
+struct call *calls=NULL;
+
 struct monitor_state *monitor_state;
 
 static void send_hangup(int session_id){
@@ -131,21 +139,26 @@ static void send_audio(int session_id, unsigned char *buffer, int len, int codec
   monitor_client_writeline_and_data(monitor_alarm.poll.fd, buffer, len, "audio %06x %d\n", session_id, codec);
 }
 
+static struct call* find_call(int token){
+  struct call *call = calls;
+  while(call){
+    if (call->token==token)
+      return call;
+    call=call->_next;
+  }
+  return NULL;
+}
+
 static int remote_call(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
 {
   int token = strtol(argv[0], NULL, 16);
-  
-  if (call_token != -1){
-    send_hangup(token);
-    printf("Rejected incoming call, already busy\n");
-    fflush(stdout);
-    return 1;
-  }
-  
-  call_token = token;
-  seen_audio = 0;
   printf("Incoming call for %s (%s) from %s (%s)\n", argv[1], argv[2], argv[3], argv[4]);
   fflush(stdout);
+  struct call *call = emalloc_zero(sizeof(struct call));
+  call->_next = calls;
+  calls=call;
+  call->token = token;
+  call->ring_in = 1;
   send_ringing(token);
   return 1;
 }
@@ -153,7 +166,8 @@ static int remote_call(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigne
 static int remote_ringing(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
 {
   int token = strtol(argv[0], NULL, 16);
-  if (call_token == token){
+  struct call *call=find_call(token);
+  if (call){
     printf("Ringing\n");
     fflush(stdout);
   }else
@@ -164,7 +178,8 @@ static int remote_ringing(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsi
 static int remote_pickup(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
 {
   int token = strtol(argv[0], NULL, 16);
-  if (call_token == token){
+  struct call *call=find_call(token);
+  if (call){
     printf("Picked up\n");
     fflush(stdout);
   }else
@@ -175,23 +190,30 @@ static int remote_pickup(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsig
 static int remote_dialing(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
 {
   int token = strtol(argv[0], NULL, 16);
-  if (call_token == -1){
-    call_token=token;
-    seen_audio=0;
-    printf("Dialling\n");
-    fflush(stdout);
-  }else
-    send_hangup(token);
+  struct call *call=emalloc_zero(sizeof(struct call));
+  call->token = token;
+  call->_next = calls;
+  calls = call;
+  printf("Dialling\n");
+  fflush(stdout);
   return 1;
 }
 
 static int remote_hangup(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
 {
   int token = strtol(argv[0], NULL, 16);
-  if (call_token == token){
-    printf("Call ended\n");
-    fflush(stdout);
-    call_token=-1;
+  
+  struct call **call=&calls;
+  while(*call){
+    if ((*call)->token == token){
+      printf("Call ended\n");
+      fflush(stdout);
+      struct call *p=*call;
+      call = &p->_next;
+      free(p);
+    }else{
+      call = &(*call)->_next;
+    }
   }
   return 1;
 }
@@ -199,7 +221,9 @@ static int remote_hangup(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsig
 static int remote_audio(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
 {
   int token = strtol(argv[0], NULL, 16);
-  if (call_token == token){
+  
+  struct call *call=find_call(token);
+  if (call){
     int codec = strtol(argv[1], NULL, 10);
 //    int start_time = strtol(argv[2], NULL, 10);
 //    int sequence = strtol(argv[3], NULL, 10);
@@ -221,7 +245,8 @@ static int remote_audio(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsign
 static int remote_codecs(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsigned char *UNUSED(data), int UNUSED(dataLen), void *UNUSED(context))
 {
   int token = strtol(argv[0], NULL, 16);
-  if (call_token == token){
+  struct call *call=find_call(token);
+  if (call){
     int i;
     printf("Codec list");
     for (i=1;i<argc;i++)
@@ -270,10 +295,6 @@ struct monitor_command_handler console_handlers[]={
 
 static int console_dial(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
-  if (call_token!=-1){
-    printf("Already in a call\n");
-    return 0;
-  }
   const char *sid = parsed->args[1];
   const char *local = parsed->argc >= 3 ? parsed->args[2] : "";
   const char *remote = parsed->argc >= 4 ? parsed->args[3] : "";
@@ -283,27 +304,46 @@ static int console_dial(const struct cli_parsed *parsed, struct cli_context *UNU
 
 static int console_answer(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
-  if (call_token==-1){
-    printf("No active call to answer\n");
-    fflush(stdout);
-  }else
-    send_pickup(call_token);
+  struct call *call = calls;
+  while(call){
+    if (call->ring_in){
+      send_pickup(call->token);
+      call->ring_in = 0;
+      return 0;
+    }
+    call = call->_next;
+  }
+  printf("No ringing call to answer\n");
+  fflush(stdout);
   return 0;
 }
 
 static int console_hangup(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
-  if (call_token==-1){
+  if (calls){
+    send_hangup(calls->token);
+  }else{
     printf("No call to hangup\n");
     fflush(stdout);
-  }else
-    send_hangup(call_token);
+  }
+  return 0;
+}
+
+static int console_quit(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
+{
+  if (monitor_alarm.poll.fd!=-1){
+    printf("Shutting down\n");
+    fflush(stdout);
+    unwatch(&monitor_alarm);
+    monitor_client_close(monitor_alarm.poll.fd, monitor_state);
+    monitor_alarm.poll.fd=-1;
+  }
   return 0;
 }
 
 static int console_audio(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
-  if (call_token==-1){
+  if (!calls){
     printf("No active call\n");
     fflush(stdout);
   }else{
@@ -320,7 +360,7 @@ static int console_audio(const struct cli_parsed *parsed, struct cli_context *UN
 	strbuf_puts(&str_buf, "NULL");
     }
 
-    send_audio(call_token, (unsigned char *)strbuf_str(&str_buf), strbuf_len(&str_buf), VOMP_CODEC_TEXT);
+    send_audio(calls->token, (unsigned char *)strbuf_str(&str_buf), strbuf_len(&str_buf), VOMP_CODEC_TEXT);
   }
   return 0;
 }

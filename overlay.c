@@ -80,7 +80,10 @@ int overlayMode=0;
 
 keyring_file *keyring=NULL;
 
-int overlayServerMode(const struct cli_parsed *parsed)
+/* The caller must set up the keyring before calling this function, and the keyring must contain at
+ * least one identity, otherwise MDP and routing will not work.
+ */
+int overlayServerMode()
 {
   IN();
 
@@ -99,15 +102,6 @@ int overlayServerMode(const struct cli_parsed *parsed)
   if (server_write_pid())
     RETURN(-1);
   
-  /* Get keyring available for use.
-     Required for MDP, and very soon as a complete replacement for the
-     HLR for DNA lookups, even in non-overlay mode. */
-  keyring = keyring_open_instance_cli(parsed);
-  if (!keyring)
-    RETURN(WHY("Could not open serval keyring file."));
-  /* put initial identity in if we don't have any visible */
-  keyring_seed(keyring);
-
   overlay_queue_init();
   
   /* Get the set of socket file descriptors we need to monitor.
