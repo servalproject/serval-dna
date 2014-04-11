@@ -38,21 +38,18 @@ buildIOS()
 	CROSS_TOP="${DEVELOPER}/Platforms/${PLATFORM}.platform/Developer"
 	CROSS_SDK="${PLATFORM}${SDK_VERSION}.sdk"
 	SDKROOT="${CROSS_TOP}/SDKs/${CROSS_SDK}"
-	
+
 	export CFLAGS="-arch ${ARCH} -pipe -no-cpp-precomp -isysroot $SDKROOT -I$SDKROOT/usr/include -miphoneos-version-min=${SDK_VERSION}"
 	export CC="clang"
 	
 	echo "=> Building libserval for ${PLATFORM} ${SDK_VERSION} ${ARCH}"
 
-	./configure $HOST --disable-voiptest --prefix /tmp/serval &> "${PREFIX}/libserval-${ARCH}.log" || { echo "configure failed"; exit 1; }
+	./configure $HOST --prefix /tmp/serval &> "${PREFIX}/libserval-${ARCH}.log" || { echo "configure failed"; exit 1; }
 
 	make libserval.a >> "${PREFIX}/libserval-${ARCH}.log" 2>&1 || { echo "make failed"; exit 1; }
 	cp libserval.a ${PREFIX}/libserval-${ARCH}.a
 	make clean >> "${PREFIX}/libserval-${ARCH}.log" 2>&1 || { echo "make clean failed"; exit 1; }
 	
-	# don't know why these don't get removed
-	# rm directory_service.o
-	# rm config_test.o
 }
 
 #
@@ -61,11 +58,9 @@ buildIOS()
 
 if [[ $ACTION == "clean" ]]; then
 	echo "=> Cleaning..."
-	if [[ -f ${PREFIX}/libserval.a ]]; then
-		rm ${PREFIX}/libserval.a
-		rm -rf ${PREFIX}/libserval-*
-		rm -rf ${PREFIX}/include
-	fi
+	rm ${PREFIX}/libserval.a 2>&1 /deb/null
+	rm -rf ${PREFIX}/libserval-*  2>&1 /deb/null
+	rm -rf ${PREFIX}/include 2>&1 /deb/null
 	exit
 fi
 
@@ -73,9 +68,6 @@ if [[ -f ${PREFIX}/libserval.a ]]; then
 	echo "libserval has already been built...skipping"
 	exit
 fi
-
-# remove duplicated function
-perl -p -i -e 's/^(void rotbuf_log\(struct __sourceloc __whence, int log_level, const char \*prefix, const struct rotbuf \*rb\);)/\/\/\1/' rotbuf.h
 
 # Generate configure
 autoreconf -f -i
@@ -99,11 +91,5 @@ lipo \
 echo "=> Copying Headers"
 mkdir -p ${PREFIX}/include
 cp *.h ios/confdefs.h ${PREFIX}/include
-
-# Roll back the changes we made to these files
-if [[ -d ".git" ]]; then
-	git checkout -- Makefile.in
-	git checkout -- rotbuf.h
-fi
 
 echo "=> Done"
