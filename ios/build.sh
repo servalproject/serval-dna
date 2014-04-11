@@ -58,9 +58,9 @@ buildIOS()
 
 if [[ $ACTION == "clean" ]]; then
 	echo "=> Cleaning..."
-	rm ${PREFIX}/libserval.a 2>&1 /deb/null
-	rm -rf ${PREFIX}/libserval-*  2>&1 /deb/null
-	rm -rf ${PREFIX}/include 2>&1 /deb/null
+	rm ${PREFIX}/libserval.a 2> /dev/null
+	rm -rf ${PREFIX}/libserval-* 2> /dev/null
+	rm -rf ${PREFIX}/include 2> /dev/null
 	exit
 fi
 
