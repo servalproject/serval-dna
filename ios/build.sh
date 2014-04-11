@@ -44,7 +44,7 @@ buildIOS()
 	
 	echo "=> Building libserval for ${PLATFORM} ${SDK_VERSION} ${ARCH}"
 
-	./configure $HOST --disable-voiptest &> "${PREFIX}/libserval-${ARCH}.log" || { echo "configure failed"; exit 1; }
+	./configure $HOST --disable-voiptest --prefix /tmp/serval &> "${PREFIX}/libserval-${ARCH}.log" || { echo "configure failed"; exit 1; }
 
 	make libserval.a >> "${PREFIX}/libserval-${ARCH}.log" 2>&1 || { echo "make failed"; exit 1; }
 	cp libserval.a ${PREFIX}/libserval-${ARCH}.a
