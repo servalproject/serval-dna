@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "log.h"
 #include "strbuf.h"
+#include "strbuf_helpers.h"
 
 int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len)
 {
@@ -42,6 +43,23 @@ int logDump(int level, struct __sourceloc whence, char *name, const unsigned cha
     }
   }
   return 0;
+}
+
+void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv)
+{
+  if (level != LOG_LEVEL_SILENT) {
+    struct strbuf b;
+    strbuf_init(&b, NULL, 0);
+    strbuf_append_argv(&b, argc, argv);
+    size_t len = strbuf_count(&b);
+    strbuf_init(&b, alloca(len + 1), len + 1);
+    strbuf_append_argv(&b, argc, argv);
+    
+    if (label)
+      logMessage(level, whence, "%s %s", label, strbuf_str(&b));
+    else
+      logMessage(level, whence, "%s", strbuf_str(&b));
+  }
 }
 
 const char *log_level_as_string(int level)

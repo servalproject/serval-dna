@@ -659,29 +659,6 @@ void logFlush()
     _log_flush(&it);
 }
 
-void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv)
-{
-  if (level != LOG_LEVEL_SILENT) {
-    struct strbuf b;
-    strbuf_init(&b, NULL, 0);
-    strbuf_append_argv(&b, argc, argv);
-    size_t len = strbuf_count(&b);
-    strbuf_init(&b, alloca(len + 1), len + 1);
-    strbuf_append_argv(&b, argc, argv);
-    _log_iterator it;
-    _log_iterator_start(&it);
-    _rotate_log_file(&it);
-    while (_log_iterator_next(&it, level)) {
-      _log_prefix_whence(&it, whence);
-      if (label) {
-	xputs(label, it.xpf);
-	xputc(' ', it.xpf);
-      }
-      xputs(strbuf_str(&b), it.xpf);
-    }
-  }
-}
-
 void logString(int level, struct __sourceloc whence, const char *str)
 {
   if (level != LOG_LEVEL_SILENT) {
