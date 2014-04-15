@@ -1399,7 +1399,7 @@
 					"SERVALD_COPYRIGHT=\"\\\"XXX\\\"\"",
 				);
 				"GCC_PREPROCESSOR_DEFINITIONS[sdk=iphonesimulator*]" = (
-					"LOCALSTATEDIR=\"\\\"/tmp/servald/\\\"\"",
+					"LOCALSTATEDIR=\"\\\"/tmp/servald\\\"\"",
 					"SYSCONFDIR=\"\\\"/tmp/servald/etc\\\"\"",
 					"SERVALD_VERSION=\"\\\"iOS\\\"\"",
 					"SERVALD_COPYRIGHT=\"\\\"XXX\\\"\"",
@@ -1449,7 +1449,7 @@
 					"SERVALD_COPYRIGHT=\"\\\"XXX\\\"\"",
 				);
 				"GCC_PREPROCESSOR_DEFINITIONS[sdk=iphonesimulator*]" = (
-					"LOCALSTATEDIR=\"\\\"/tmp/servald/\\\"\"",
+					"LOCALSTATEDIR=\"\\\"/tmp/servald\\\"\"",
 					"SYSCONFDIR=\"\\\"/tmp/servald/etc\\\"\"",
 					"SERVALD_VERSION=\"\\\"iOS\\\"\"",
 					"SERVALD_COPYRIGHT=\"\\\"XXX\\\"\"",
@@ -1489,6 +1489,7 @@
 				1A64162D18FADE6500A769B2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
