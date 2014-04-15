@@ -42,7 +42,6 @@
 #define HAVE_NET_IF_H 1
 #define HAVE_NETINET_IN_H 1
 #define HAVE_IFADDRS_H 1
-#define HAVE_NET_ROUTE_H 1
 #define HAVE_SIGNAL_H 1
 #define HAVE_SYS_FILIO_H 1
 #define HAVE_SYS_SOCKIO_H 1
