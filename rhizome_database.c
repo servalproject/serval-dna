@@ -289,7 +289,7 @@ int rhizome_opendb()
   if (r) {
     if (!str_to_uuid(buf, &rhizome_db_uuid, NULL)) {
       WHYF("IDENTITY table contains malformed UUID %s -- overwriting", alloca_str_toprint(buf));
-      if (uuid_generate_random(&rhizome_db_uuid) == -1)
+      if (serval_uuid_generate_random(&rhizome_db_uuid) == -1)
 	RETURN(WHY("Cannot generate new UUID for Rhizome database"));
       if (sqlite_exec_void_retry(&retry, "UPDATE IDENTITY SET uuid = ? LIMIT 1;", SERVAL_UUID_T, &rhizome_db_uuid, END) == -1)
 	RETURN(WHY("Failed to update new UUID in Rhizome database"));
@@ -297,7 +297,7 @@ int rhizome_opendb()
 	DEBUGF("Updated Rhizome database UUID to %s", alloca_uuid_str(rhizome_db_uuid));
     }
   } else if (r == 0) {
-    if (uuid_generate_random(&rhizome_db_uuid) == -1)
+    if (serval_uuid_generate_random(&rhizome_db_uuid) == -1)
       RETURN(WHY("Cannot generate UUID for Rhizome database"));
     if (sqlite_exec_void_retry(&retry, "INSERT INTO IDENTITY (uuid) VALUES (?);", SERVAL_UUID_T, &rhizome_db_uuid, END) == -1)
       RETURN(WHY("Failed to insert UUID into Rhizome database"));

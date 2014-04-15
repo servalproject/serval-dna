@@ -26,3 +26,6 @@ serval.c
 *.so
 test.*.log
 testlog
+build
+ios/libserval.xcodeproj/project.xcworkspace/xcuserdata/
+ios/libserval.xcodeproj/xcuserdata/
