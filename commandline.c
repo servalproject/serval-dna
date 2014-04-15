@@ -1160,13 +1160,13 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
     /* Now look for replies until one second has passed, and print any replies
        with appropriate information as required */
     time_ms_t now = gettime_ms();
-    time_ms_t finish = now + ((tx_count < icount || icount==0)?interval_ms:timeout_ms);
-    for (; sigIntFlag==0 && now < finish; now = gettime_ms()) {
-      time_ms_t poll_timeout_ms = finish - gettime_ms();
+    time_ms_t finish = now + ((icount == 0 || tx_count < icount) ? interval_ms : timeout_ms);
+    for (; sigIntFlag==0 && (icount == 0 || rx_count < icount) && now < finish; now = gettime_ms()) {
+      time_ms_t poll_timeout_ms = finish - now;
       
       if (mdp_poll(mdp_sockfd, poll_timeout_ms)<=0)
 	continue;
-	
+
       struct mdp_header mdp_recv_header;
       uint8_t recv_payload[12];
       ssize_t len = mdp_recv(mdp_sockfd, &mdp_recv_header, recv_payload, sizeof(recv_payload));
