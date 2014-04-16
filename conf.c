@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdio.h>
 #include <sys/stat.h>
 #include <ctype.h>
+#include <time.h>
 #include "conf.h"
 #include "log.h"
 #include "str.h"
@@ -73,9 +74,18 @@ static int cmp_meta(const struct file_meta *a, const struct file_meta *b)
 
 static int reload(const char *path, int *resultp)
 {
+  if (config.debug.config)
+    DEBUGF("path=%s", alloca_str_toprint(path));
   struct file_meta meta;
   if (get_meta(conffile_path(), &meta) == -1)
     return -1;
+  if (config.debug.config) {
+    struct tm tm;
+    (void)localtime_r(&meta.mtime, &tm);
+    DEBUGF("meta.mtime=%s meta.size=%ld", alloca_strftime("%Y/%m/%d %H:%M:%S", &tm), (long)meta.size);
+    (void)localtime_r(&conffile_meta.mtime, &tm);
+    DEBUGF("conffile_meta.mtime=%s conffile_meta.size=%ld", alloca_strftime("%Y/%m/%d %H:%M:%S", &tm), (long)conffile_meta.size);
+  }
   if (cmp_meta(&meta, &conffile_meta) == 0)
     return 0;
   if (conffile_meta.mtime != -1 && serverMode)
@@ -116,6 +126,11 @@ static int reload(const char *path, int *resultp)
       INFOF("config file %s successfully read %ld bytes", path, (long) meta.size);
   }
   conffile_meta = meta;
+  if (config.debug.config) {
+    struct tm tm;
+    (void)localtime_r(&conffile_meta.mtime, &tm);
+    DEBUGF("conffile_meta.mtime=%s conffile_meta.size=%ld", alloca_strftime("%Y/%m/%d %H:%M:%S", &tm), (long)conffile_meta.size);
+  }
   struct cf_om_node *new_root = NULL;
   *resultp = cf_om_parse(path, buf, meta.size, &new_root);
   free(buf);
@@ -165,6 +180,11 @@ int cf_om_save()
       return -1;
     INFOF("successfully wrote %s", path);
     conffile_meta = meta;
+    if (config.debug.config) {
+      struct tm tm;
+      (void)localtime_r(&conffile_meta.mtime, &tm);
+      DEBUGF("conffile_meta.mtime=%s conffile_meta.size=%ld", alloca_strftime("%Y/%m/%d %H:%M:%S", &tm), (long)conffile_meta.size);
+    }
   }
   return 0;
 }

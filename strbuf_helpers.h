@@ -148,6 +148,7 @@ strbuf strbuf_append_socket_address(strbuf sb, const struct socket_address *addr
  */
 struct tm;
 strbuf strbuf_append_strftime(strbuf sb, const char *format, const struct tm *tm);
+#define alloca_strftime(fmt,tm)    strbuf_str(strbuf_append_strftime(strbuf_alloca(40), (fmt), (tm)))
 
 /* Append a representation of a struct iovec[] array.
  * @author Andrew Bettison <andrew@servalproject.com>

@@ -229,6 +229,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 STRUCT(debug)
 ATOM(bool_t, verbose,                   0, boolean,, "")
 ATOM(bool_t, ack,                       0, boolean,, "")
+ATOM(bool_t, config,                    0, boolean,, "")
 ATOM(bool_t, dnaresponses,              0, boolean,, "")
 ATOM(bool_t, dnahelper,                 0, boolean,, "")
 ATOM(bool_t, queues,                    0, boolean,, "")
