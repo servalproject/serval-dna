@@ -45,18 +45,28 @@ struct mdp_header {
 #define BIND_PRIMARY SID_ANY
 #define BIND_ALL SID_BROADCAST
 
-#define TYPE_SID 1
-#define TYPE_PIN 2
-#define ACTION_LOCK 1
-#define ACTION_UNLOCK 2
+/* Port numbers for commands sent to the local daemon: remote.sid = SID_ANY
+ */
 
-/* Port numbers for commands sent to the local daemon*/
-
+/* Port zero has no function (acts as a no-op or /dev/null for packets sent to
+ * it).  It exists so that side effects like binding can be performed without
+ * generating any network traffic or other action.
+ */
 #define MDP_LISTEN 0
-/* lock and unlock identities from the local keyring
- * Requests start with an mdp_identity_request structure followed by a list of pins or SIDs
+
+/* Lock and unlock identities in the local keyring.
+ * Requests start with an mdp_identity_request structure followed by a list of PINs or SIDs
 */ 
 #define MDP_IDENTITY 1
+
+struct mdp_identity_request {
+  uint8_t action;
+#define ACTION_LOCK 1   // lock all the given SIDs or revoke the given PINs
+#define ACTION_UNLOCK 2 // unlock all identities with the given PINs or the identities with the given SIDs (must have already sent the relevant unrevoked PINs)
+  uint8_t type;
+#define TYPE_SID 1 // this struct is followed by a list of SIDs up to end of payload
+#define TYPE_PIN 2 // this struct is followed by a list of NULL terminated entry PINs up to end of payload
+};
 
 /* Search unlocked identities from the running daemon
  * If the request is empty, all identities will be returned
@@ -65,12 +75,6 @@ struct mdp_header {
 */
 #define MDP_SEARCH_IDS 2
 
-// an identity request is sent to port MDP_IDENTITY, sid ANY
-struct mdp_identity_request{
-  uint8_t action;
-  uint8_t type;
-  // the request is followed by a list of SID's or NULL terminated entry pins for the remainder of the payload
-};
 
 struct overlay_route_record{
   sid_t sid;
@@ -126,7 +130,7 @@ typedef struct overlay_mdp_frame {
 int mdp_socket(void);
 int mdp_close(int socket);
 int mdp_send(int socket, const struct mdp_header *header, const uint8_t *payload, size_t len);
-ssize_t mdp_recv(int socket, struct mdp_header *header, uint8_t *payload, ssize_t max_len);
+ssize_t mdp_recv(int socket, struct mdp_header *header, uint8_t *payload, size_t max_len);
 int mdp_poll(int socket, time_ms_t timeout_ms);
 
 

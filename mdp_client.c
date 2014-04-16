@@ -84,7 +84,7 @@ int mdp_send(int socket, const struct mdp_header *header, const uint8_t *payload
   return 0;
 }
 
-ssize_t mdp_recv(int socket, struct mdp_header *header, uint8_t *payload, ssize_t max_len)
+ssize_t mdp_recv(int socket, struct mdp_header *header, uint8_t *payload, size_t max_len)
 {
   /* Construct name of socket to receive from. */
   errno=0;
