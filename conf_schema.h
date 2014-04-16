@@ -279,6 +279,7 @@ ATOM(bool_t, vomp,                      0, boolean,, "")
 ATOM(bool_t, trace,                     0, boolean,, "")
 ATOM(bool_t, profiling,                 0, boolean,, "")
 ATOM(bool_t, linkstate,                 0, boolean,, "")
+ATOM(bool_t, watchdog,                  0, boolean,, "")
 END_STRUCT
 
 #define LOG_FORMAT_OPTIONS \
@@ -320,10 +321,16 @@ STRUCT_DEFAULT(log_format, android)
 ATOM_DEFAULT(show_pid,    0)
 END_STRUCT_DEFAULT
 
+STRUCT(watchdog)
+STRING(256,                 executable, "", absolute_path,, "Absolute path of watchdog executable")
+ATOM(uint32_t,              interval_ms, 60000, uint32_nonzero,, "Time interval between watchdog invocations, in milliseconds")
+END_STRUCT
+
 STRUCT(server)
 STRING(256,                 chdir,      "/", absolute_path,, "Absolute path of chdir(2) for server process")
 STRING(256,                 interface_path, "", str_nonempty,, "Path of directory containing interface files, either absolute or relative to instance directory")
 ATOM(bool_t,                respawn_on_crash, 0, boolean,, "If true, server will exec(2) itself on fatal signals, eg SEGV")
+SUB_STRUCT(watchdog,        watchdog,)
 END_STRUCT
 
 STRUCT(monitor)

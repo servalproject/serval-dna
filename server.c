@@ -65,7 +65,6 @@ int server_pid()
     return -1;
   const char *p = strrchr(ppath, '/');
   assert(p != NULL);
-
   FILE *f = fopen(ppath, "r");
   if (f == NULL) {
     if (errno != ENOENT)
@@ -222,6 +221,66 @@ void server_config_reload(struct sched_ent *alarm)
     time_ms_t now = gettime_ms();
     alarm->alarm = now + SERVER_CONFIG_RELOAD_INTERVAL_MS;
     alarm->deadline = alarm->alarm + 1000;
+    schedule(alarm);
+  }
+}
+
+/* Called periodically by the server process in its main loop.
+ */
+void server_watchdog(struct sched_ent *alarm)
+{
+  if (config.server.watchdog.executable[0]) {
+    const char *argv[2];
+    argv[0] = config.server.watchdog.executable;
+    argv[1] = NULL;
+    strbuf argv_sb = strbuf_append_argv(strbuf_alloca(1024), 1, argv);
+    switch (fork()) {
+    case 0: {
+      /* Child, should fork() again to create orphan process. */
+      pid_t watchdog_pid;
+      switch (watchdog_pid = fork()) {
+      case 0:
+	/* Grandchild, should exec() watchdog. */
+	close_log_file();
+	signal(SIGTERM, SIG_DFL);
+	close(0);
+	close(1);
+	close(2);
+	execv(config.server.watchdog.executable, (char **)argv);
+	// Don't use FATALF_perror() because we want to use _exit(2) not exit(2).
+	LOGF_perror(LOG_LEVEL_FATAL, "execv(%s, [%s])",
+	    alloca_str_toprint(config.server.watchdog.executable),
+	    strbuf_str(argv_sb)
+	  );
+	break;
+      case -1:
+	/* grandchild fork failed */
+	WHY_perror("fork");
+	break;
+      default:
+	/* Child, report grandchild's PID. */
+	if (config.debug.watchdog)
+	  LOGF(LOG_LEVEL_DEBUG, "STARTED WATCHDOG pid=%u executable=%s argv=[%s]",
+	      watchdog_pid,
+	      alloca_str_toprint(config.server.watchdog.executable),
+	      strbuf_str(argv_sb)
+	    );
+	do { _exit(0); } while (1);
+	break;
+      }
+      do { _exit(-1); } while (1);
+      break;
+    }
+    case -1:
+      /* child fork failed */
+      WHY_perror("fork");
+      break;
+    }
+  }
+  if (alarm) {
+    time_ms_t now = gettime_ms();
+    alarm->alarm = now + config.server.watchdog.interval_ms;
+    alarm->deadline = alarm->alarm + 100;
     schedule(alarm);
   }
 }

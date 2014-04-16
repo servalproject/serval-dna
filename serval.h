@@ -233,6 +233,7 @@ int server_get_proc_state(const char *path, char *buff, size_t buff_len);
 int server_create_stopfile();
 int server_remove_stopfile();
 int server_check_stopfile();
+void server_watchdog(struct sched_ent *alarm);
 void overlay_mdp_clean_socket_files();
 void serverCleanUp();
 

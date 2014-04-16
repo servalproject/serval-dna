@@ -112,14 +112,15 @@ int overlayServerMode()
      and smaller values would affect CPU and energy use, and make the simulation less realistic. */
 
 #define SCHEDULE(X, Y, D) { \
-static struct profile_total _stats_##X={.name="" #X "",}; \
-static struct sched_ent _sched_##X={\
-  .stats = &_stats_##X, \
-  .function=X,\
-}; \
-_sched_##X.alarm=(gettime_ms()+Y);\
-_sched_##X.deadline=(gettime_ms()+Y+D);\
-schedule(&_sched_##X); }
+    static struct profile_total _stats_##X = {.name="" #X "",}; \
+    static struct sched_ent _sched_##X = { \
+      .stats = &_stats_##X, \
+      .function=X, \
+    }; \
+    _sched_##X.alarm = gettime_ms() + (Y);\
+    _sched_##X.deadline = _sched_##X.alarm + (D);\
+    schedule(&_sched_##X); \
+  }
   
   /* Periodically check for server shut down */
   SCHEDULE(server_shutdown_check, 0, 100);
@@ -153,6 +154,9 @@ schedule(&_sched_##X); }
   
   /* Calculate (and possibly show) CPU usage stats periodically */
   SCHEDULE(fd_periodicstats, 3000, 500);
+
+  /* Invoke the watchdog executable periodically */
+  SCHEDULE(server_watchdog, config.server.watchdog.interval_ms, 100);
 
 #undef SCHEDULE
 

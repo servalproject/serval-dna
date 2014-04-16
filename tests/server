@@ -142,4 +142,66 @@ teardown_NoZombie() {
    assert_no_servald_processes
 }
 
+doc_ServerWatchdog="Server process invokes watchdog periodically"
+setup_ServerWatchdog() {
+   cat >watchdog <<EOF
+#!/bin/sh
+date >> $PWD/trace
+EOF
+   chmod 0550 watchdog
+   >trace
+   setup
+   executeOk_servald config \
+      set log.console.level debug \
+      set log.console.show_pid true \
+      set debug.watchdog on \
+      set server.watchdog.executable "$PWD/watchdog" \
+      set server.watchdog.interval_ms 100
+   start_servald_server
+}
+test_ServerWatchdog() {
+   wait_until --sleep=0.1 --timeout=15 line_count_at_least trace 10
+   stop_servald_server
+   assert_servald_server_no_errors
+}
+line_count_at_least() {
+   local file="$1"
+   local lines="$2"
+   [ $(wc -l <"$file") -ge "$lines" ]
+}
+
+doc_ReloadConfigAuto="Server automatically reloads configuration"
+setup_ReloadConfigAuto() {
+   cat >watchdog1 <<EOF
+#!/bin/sh
+date >> $PWD/trace1
+EOF
+   cat >watchdog2 <<EOF
+#!/bin/sh
+date >> $PWD/trace2
+EOF
+   chmod 0550 watchdog1 watchdog2
+   >trace1
+   >trace2
+   setup
+   executeOk_servald config \
+      set log.console.level debug \
+      set log.console.show_time true \
+      set log.console.show_pid true \
+      set debug.watchdog on \
+      set server.watchdog.executable "$PWD/watchdog1" \
+      set server.watchdog.interval_ms 100
+   start_servald_server
+}
+test_ReloadConfigAuto() {
+   wait_until --sleep=0.5 --timeout=15 line_count_at_least trace1 3
+   assert [ $(wc -l <trace2) -eq 0 ]
+   executeOk_servald config \
+      set server.watchdog.executable "$PWD/watchdog2"
+   tfw_cat --stderr
+   wait_until --sleep=0.5 --timeout=15 line_count_at_least trace2 3
+   stop_servald_server
+   assert_servald_server_no_errors
+}
+
 runTests "$@"
