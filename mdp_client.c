@@ -57,9 +57,8 @@ int mdp_send(int socket, const struct mdp_header *header, const uint8_t *payload
   struct socket_address addr;
   if (make_local_sockaddr(&addr, "mdp.2.socket") == -1)
     return -1;
-  
   struct fragmented_data data={
-    .fragment_count=2,
+    .fragment_count = len ? 2 : 1,
     .iov={
       {
 	.iov_base = (void*)header,
@@ -109,7 +108,7 @@ ssize_t mdp_recv(int socket, struct mdp_header *header, uint8_t *payload, ssize_
     .msg_name=&addr.addr,
     .msg_namelen=sizeof(addr.store),
     .msg_iov=iov,
-    .msg_iovlen=2,
+    .msg_iovlen= max_len ? 2 : 1,
   };
   
   ssize_t len = recvmsg(socket, &hdr, 0);
