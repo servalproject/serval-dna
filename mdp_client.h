@@ -75,6 +75,12 @@ struct mdp_identity_request {
 */
 #define MDP_SEARCH_IDS 2
 
+/* Synchronise with the daemon's configuration.
+ *
+ * Once the daemon has (re)loaded all its configuration files, so that its
+ * running (active) configuration is up to date, then sends a reply packet.
+*/
+#define MDP_SYNC_CONFIG 3
 
 struct overlay_route_record{
   sid_t sid;

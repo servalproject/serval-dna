@@ -653,7 +653,7 @@ int app_log(const struct cli_parsed *parsed, struct cli_context *UNUSED(context)
   return 0;
 }
 
-void lookup_send_request(int mdp_sockfd, const sid_t *srcsid, int srcport, const sid_t *dstsid, const char *did)
+static void lookup_send_request(int mdp_sockfd, const sid_t *srcsid, int srcport, const sid_t *dstsid, const char *did)
 {
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
@@ -1069,6 +1069,25 @@ int app_server_status(const struct cli_parsed *parsed, struct cli_context *conte
   return pid > 0 ? 0 : 1;
 }
 
+// returns -1 on error, -2 on timeout, packet length on success.
+ssize_t mdp_poll_recv(int mdp_sock, time_ms_t deadline, struct mdp_header *rev_header, unsigned char *payload, size_t buffer_size)
+{
+  time_ms_t now = gettime_ms();
+  if (now > deadline)
+    return -2;
+  int p=mdp_poll(mdp_sock, deadline - now);
+  if (p<0)
+    return WHY_perror("mdp_poll");
+  if (p==0)
+    return -2;
+  ssize_t len = mdp_recv(mdp_sock, rev_header, payload, buffer_size);
+  if (len<0)
+    return WHY_perror("mdp_recv");
+  if (rev_header->flags & MDP_FLAG_ERROR)
+    return WHY("Operation failed, check the log for more information");
+  return len;
+}
+
 int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
@@ -1368,6 +1387,33 @@ int app_config_dump(const struct cli_parsed *parsed, struct cli_context *context
   return ret == CFOK ? 0 : 1;
 }
 
+static int mdp_client_sync_config(time_ms_t timeout)
+{
+  /* Bind to MDP socket and await confirmation */
+  struct mdp_header mdp_header = {
+      .remote.port = MDP_SYNC_CONFIG,
+    };
+  int mdpsock = mdp_socket();
+  if (mdpsock == -1)
+    return WHY("cannot create MDP socket");
+  set_nonblock(mdpsock);
+  int r = mdp_send(mdpsock, &mdp_header, NULL, 0);
+  if (r == -1)
+    return -1;
+  time_ms_t deadline = gettime_ms() + timeout; // TODO add --timeout option
+  struct mdp_header rev_header;
+  do {
+    ssize_t len = mdp_poll_recv(mdpsock, deadline, &rev_header, NULL, 0);
+    if (len == -1)
+      return -1;
+    if (len == -2) {
+      WHYF("timeout while synchronising daemon configuration");
+      return -1;
+    }
+  } while (!(rev_header.flags & MDP_FLAG_CLOSE));
+  return 0;
+}
+
 int app_config_set(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
@@ -1396,7 +1442,7 @@ int app_config_set(const struct cli_parsed *parsed, struct cli_context *UNUSED(c
   unsigned i;
   for (i = 1; i < parsed->argc; ++i) {
     const char *arg = parsed->args[i];
-    int iv;
+    int iv = -1;
     if (strcmp(arg, "set") == 0) {
       if (i + 2 > parsed->argc)
 	return WHYF("malformed command at args[%d]: 'set' not followed by two arguments", i);
@@ -1407,19 +1453,48 @@ int app_config_set(const struct cli_parsed *parsed, struct cli_context *UNUSED(c
 	return WHYF("malformed command at args[%d]: 'del' not followed by one argument", i);
       var[nvar] = parsed->args[iv = ++i];
       val[nvar] = NULL;
-    } else
+    } else if (strcmp(arg, "sync") == 0)
+      var[nvar] = val[nvar] = NULL;
+    else
       return WHYF("malformed command at args[%d]: unsupported action '%s'", i, arg);
-    if (!is_configvarname(var[nvar]))
+    if (var[nvar] && !is_configvarname(var[nvar]))
       return WHYF("malformed command at args[%d]: '%s' is not a valid config option name", iv, var[nvar]);
     ++nvar;
   }
-  for (i = 0; i < nvar; ++i)
-    if (cf_om_set(&cf_om_root, var[i], val[i]) == -1)
+  int changed = 0;
+  for (i = 0; i < nvar; ++i) {
+    if (var[i]) {
+      if (cf_om_set(&cf_om_root, var[i], val[i]) == -1)
+	return -1;
+      if (val[i])
+	INFOF("config set %s %s", var[i], alloca_str_toprint(val[i]));
+      else
+	INFOF("config del %s", var[i]);
+      changed = 1;
+    } else {
+      if (changed) {
+	if (cf_om_save() == -1)
+	  return -1;
+	if (cf_reload() == -1) // logs an error if the new config is bad
+	  return 2;
+	changed = 0;
+      }
+      int pid = server_pid();
+      if (pid) {
+	INFO("config sync");
+	// TODO make timeout configurable with --timeout option.
+	if (mdp_client_sync_config(10000) == -1)
+	  return 3;
+      } else
+	INFO("config sync -- skipped, server not running");
+    }
+  }
+  if (changed) {
+    if (cf_om_save() == -1)
       return -1;
-  if (cf_om_save() == -1)
-    return -1;
-  if (cf_reload() == -1) // logs an error if the new config is bad
-    return 2;
+    if (cf_reload() == -1) // logs an error if the new config is bad
+      return 2;
+  }
   return 0;
 }
 
@@ -2337,25 +2412,6 @@ static int app_keyring_set_tag(const struct cli_parsed *parsed, struct cli_conte
   return r;
 }
 
-// returns -1 on error, -2 on timeout, packet length on success.
-ssize_t mdp_poll_recv(int mdp_sock, time_ms_t timeout, struct mdp_header *rev_header, unsigned char *payload, size_t buffer_size)
-{
-  time_ms_t now = gettime_ms();
-  if (now>timeout)
-    return -2;
-  int p=mdp_poll(mdp_sock, timeout - now);
-  if (p<0)
-    return WHY_perror("mdp_poll");
-  if (p==0)
-    return -2;
-  ssize_t len = mdp_recv(mdp_sock, rev_header, payload, buffer_size);
-  if (len<0)
-    return WHY_perror("mdp_recv");
-  if (rev_header->flags & MDP_FLAG_ERROR)
-    return WHY("Operation failed, check the log for more information");
-  return len;
-}
-
 static int handle_pins(const struct cli_parsed *parsed, struct cli_context *UNUSED(context), int revoke)
 {
   const char *pin, *sid_hex;
@@ -3044,6 +3100,8 @@ struct cli_schema command_line_options[]={
    "Set and del specified configuration variables."},
   {app_config_set,{"config","del","<variable>","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Del and set specified configuration variables."},
+  {app_config_set,{"config","sync","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
+   "Synchronise with the daemon's configuration."},
   {app_config_get,{"config","get","[<variable>]",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Get specified configuration variable."},
   {app_config_paths,{"config","paths",NULL},CLIFLAG_PERMISSIVE_CONFIG,

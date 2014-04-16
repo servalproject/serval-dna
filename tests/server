@@ -204,4 +204,52 @@ test_ReloadConfigAuto() {
    assert_servald_server_no_errors
 }
 
+doc_ReloadConfigSync="Server configuration sync"
+setup_ReloadConfigSync() {
+   cat >watchdog1 <<EOF
+#!/bin/sh
+date >> $PWD/trace1
+EOF
+   cat >watchdog2 <<EOF
+#!/bin/sh
+date >> $PWD/trace2
+EOF
+   chmod 0550 watchdog1 watchdog2
+   >trace1
+   >trace2
+   setup
+   executeOk_servald config \
+      set log.console.level debug \
+      set log.console.show_time true \
+      set log.console.show_pid true \
+      set debug.config on \
+      set debug.watchdog on \
+      set debug.mdprequests on \
+      set server.config_reload_interval_ms 600000 \
+      set server.watchdog.executable "$PWD/watchdog1" \
+      set server.watchdog.interval_ms 100
+   start_servald_server
+}
+test_ReloadConfigSync() {
+   wait_until --sleep=0.5 --timeout=15 line_count_at_least trace1 10
+   assert [ $(wc -l <trace2) -eq 0 ]
+   executeOk_servald config set server.watchdog.executable "$PWD/watchdog2"
+   tfw_cat --stderr
+   >trace1
+   wait_until --sleep=0.5 --timeout=15 line_count_at_least trace1 3
+   assert [ $(wc -l <trace2) -eq 0 ]
+   # Must let at least 1 second elapse since starting the server before doing
+   # the "config sync", otherwise the server will not detect the config file as
+   # changed and will not re-load it.
+   # TODO: make the "config set" command ensure that the config file's mtime
+   # always advances if the size does not change.
+   executeOk_servald config sync
+   tfw_cat --stderr
+   >trace1
+   wait_until --sleep=0.5 --timeout=15 line_count_at_least trace2 3
+   assert [ $(wc -l <trace1) -eq 0 ]
+   stop_servald_server
+   assert_servald_server_no_errors
+}
+
 runTests "$@"

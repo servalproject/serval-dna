@@ -1438,6 +1438,12 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
 	  DEBUGF("Processing MDP_SEARCH_IDS from %s", alloca_socket_address(client));
 	mdp_search_identities(client, header, payload);
 	break;
+      case MDP_SYNC_CONFIG:
+	if (config.debug.mdprequests)
+	  DEBUGF("Processing MDP_SYNC_CONFIG from %s", alloca_socket_address(client));
+	server_config_reload(NULL);
+	mdp_reply_ok(client, header);
+	break;
       default:
 	mdp_reply_error(client, header);
 	WHYF("Unknown command port %d", header->remote.port);
