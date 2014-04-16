@@ -219,8 +219,8 @@ void server_config_reload(struct sched_ent *alarm)
   }
   if (alarm) {
     time_ms_t now = gettime_ms();
-    alarm->alarm = now + SERVER_CONFIG_RELOAD_INTERVAL_MS;
-    alarm->deadline = alarm->alarm + 1000;
+    alarm->alarm = now + config.server.config_reload_interval_ms;
+    alarm->deadline = alarm->alarm + 100;
     schedule(alarm);
   }
 }

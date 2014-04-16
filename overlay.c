@@ -126,7 +126,7 @@ int overlayServerMode()
   SCHEDULE(server_shutdown_check, 0, 100);
   
   /* Periodically reload configuration */
-  SCHEDULE(server_config_reload, SERVER_CONFIG_RELOAD_INTERVAL_MS, SERVER_CONFIG_RELOAD_INTERVAL_MS + 100);
+  SCHEDULE(server_config_reload, config.server.config_reload_interval_ms, 100);
   
   overlay_mdp_bind_internal_services();
   

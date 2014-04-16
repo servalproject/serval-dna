@@ -196,8 +196,6 @@ int strn_to_sid_t(sid_t *sid, const char *hex, const char **endp);
 
 #define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
 
-#define SERVER_CONFIG_RELOAD_INTERVAL_MS	1000
-
 struct cli_parsed;
 
 extern int servalShutdown;
