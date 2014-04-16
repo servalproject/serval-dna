@@ -1149,14 +1149,12 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
       *seq=sequence_number;
       write_uint64(&payload[4], gettime_ms());
       int r = mdp_send(mdp_sockfd, &mdp_header, payload, sizeof(payload));
-      if (r<0){
-	WARN_perror("mdp_send");
-      }else{
+      if (r != -1) {
 	sequence_number++;
 	tx_count++;
       }
     }
-    
+
     /* Now look for replies until one second has passed, and print any replies
        with appropriate information as required */
     time_ms_t now = gettime_ms();
@@ -2397,10 +2395,8 @@ static int handle_pins(const struct cli_parsed *parsed, struct cli_context *UNUS
     len += sizeof(sid);
   }
   
-  if (!mdp_send(mdp_sock, &header, request_payload, len)){
-    WHY_perror("mdp_send");
+  if (mdp_send(mdp_sock, &header, request_payload, len) == -1)
     goto end;
-  }
   
   time_ms_t timeout=gettime_ms()+500;
   while(1){
@@ -2459,10 +2455,8 @@ int app_id_list(const struct cli_parsed *parsed, struct cli_context *context)
       goto end;
   }
   
-  if (!mdp_send(mdp_sock, &header, request_payload, len)){
-    WHY_perror("mdp_send");
+  if (mdp_send(mdp_sock, &header, request_payload, len) == -1)
     goto end;
-  }
   
   const char *names[]={
     "sid"

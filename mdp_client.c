@@ -71,8 +71,18 @@ int mdp_send(int socket, const struct mdp_header *header, const uint8_t *payload
       }
     }
   };
-  
-  return send_message(socket, &addr, &data);
+  ssize_t sent = send_message(socket, &addr, &data);
+  if (sent == -1)
+    return -1;
+  if ((size_t)sent != sizeof *header + len)
+    return WHYF("send_message(%d,%s,%s) returned %zd, expecting %zd",
+	socket,
+	alloca_socket_address(&addr),
+	alloca_fragmented_data(&data),
+	(size_t)sent,
+	sizeof *header + len
+      );
+  return 0;
 }
 
 ssize_t mdp_recv(int socket, struct mdp_header *header, uint8_t *payload, ssize_t max_len)

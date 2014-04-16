@@ -409,6 +409,11 @@ strbuf strbuf_append_socket_address(strbuf sb, const struct socket_address *addr
   return strbuf_append_sockaddr(sb, &addr->addr, addr->addrlen);
 }
 
+strbuf strbuf_append_fragmented_data(strbuf sb, const struct fragmented_data *data)
+{
+  return strbuf_append_iovec(sb, data->iov, data->fragment_count);
+}
+
 strbuf strbuf_append_strftime(strbuf sb, const char *format, const struct tm *tm)
 {
   // First, try calling strftime(3) directly on the buffer in the strbuf, if there is one and it

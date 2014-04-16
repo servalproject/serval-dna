@@ -143,6 +143,10 @@ struct socket_address;
 strbuf strbuf_append_socket_address(strbuf sb, const struct socket_address *addr);
 #define alloca_socket_address(addr)    strbuf_str(strbuf_append_socket_address(strbuf_alloca(200), (addr)))
 
+struct fragmented_data;
+strbuf strbuf_append_fragmented_data(strbuf sb, const struct fragmented_data *data);
+#define alloca_fragmented_data(data)    strbuf_str(strbuf_append_fragmented_data(strbuf_alloca(200), (data)))
+
 /* Append a strftime(3) string.
  * @author Andrew Bettison <andrew@servalproject.com>
  */
