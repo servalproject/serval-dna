@@ -282,9 +282,8 @@ ssize_t _send_message(struct __sourceloc __whence, int fd, const struct socket_a
     .msg_iov=(struct iovec*)data->iov,
     .msg_iovlen=data->fragment_count,
   };
-  
   ssize_t ret = sendmsg(fd, &hdr, 0);
-  if (ret==-1)
+  if (ret == -1 && errno != EAGAIN)
     WHYF_perror("sendmsg(%d,%s,%lu)", fd, alloca_socket_address(address), (unsigned long)address->addrlen);
   return ret;
 }

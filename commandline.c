@@ -1094,6 +1094,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   const char *sidhex, *count, *opt_timeout, *opt_interval;
+  int opt_wait_for_duplicates = 0 == cli_arg(parsed, "--wait-for-duplicates", NULL, NULL, NULL);
   if (   cli_arg(parsed, "--timeout", &opt_timeout, cli_interval_ms, "1") == -1
       || cli_arg(parsed, "--interval", &opt_interval, cli_interval_ms, "1") == -1
       || cli_arg(parsed, "SID", &sidhex, str_is_subscriber_id, "broadcast") == -1
@@ -1109,7 +1110,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   
   // assume we wont hear any responses
   int ret=1;
-  int icount=atoi(count);
+  unsigned icount = atoi(count);
   int64_t timeout_ms = 1000;
   str_to_uint64_interval_ms(opt_timeout, &timeout_ms, NULL);
   if (timeout_ms == 0)
@@ -1120,8 +1121,8 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
     interval_ms = 1000;
     
   /* First sequence number in the echo frames */
-  unsigned int firstSeq=random();
-  unsigned int sequence_number=firstSeq;
+  uint32_t firstSeq = random();
+  uint32_t sequence_number = firstSeq;
 
   int broadcast = is_sid_t_broadcast(ping_sid);
 
@@ -1147,11 +1148,21 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   cli_delim(context, "\n");
   cli_flush(context);
 
-  time_ms_t rx_mintime=-1;
-  time_ms_t rx_maxtime=-1;
-  time_ms_t rx_ms=0;
-  time_ms_t rx_times[1024];
-  int rx_count=0,tx_count=0;
+  unsigned tx_count = 0;
+  unsigned missing_pong_count = 0;
+  unsigned rx_count = 0;
+  unsigned rx_dupcount = 0;
+  unsigned rx_igncount = 0;
+  time_ms_t rx_mintime_ms = -1;
+  time_ms_t rx_maxtime_ms = -1;
+  time_ms_t rx_tottime_ms = 0;
+  struct packet_stat {
+    uint32_t sequence;
+    time_ms_t tx_time;
+    time_ms_t rx_time;
+    unsigned pong_count;
+  } stats[1024];
+  bzero(stats, sizeof stats);
 
   if (broadcast)
     WARN("broadcast ping packets will not be encrypted");
@@ -1159,87 +1170,103 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   sigIntFlag = 0;
   signal(SIGINT, sigIntHandler);
   
-  for (; sigIntFlag==0 && (icount==0 || tx_count<icount); ) {
+  while (!sigIntFlag && (icount == 0 || tx_count < icount)) {
+    time_ms_t now = gettime_ms();
     
     // send a ping packet
-    if (tx_count==0 || !(mdp_header.flags & MDP_FLAG_BIND)){
+    if (tx_count == 0 || !(mdp_header.flags & MDP_FLAG_BIND)) {
       uint8_t payload[12];
-      int *seq=(int *)payload;
-      *seq=sequence_number;
-      write_uint64(&payload[4], gettime_ms());
+      write_uint32(&payload[0], sequence_number);
+      write_uint64(&payload[4], now);
       int r = mdp_send(mdp_sockfd, &mdp_header, payload, sizeof(payload));
       if (r != -1) {
-	sequence_number++;
-	tx_count++;
+	if (config.debug.mdprequests)
+	  DEBUGF("ping seq=%lu", (unsigned long)(sequence_number - firstSeq) + 1);
+	unsigned i = (unsigned long)(sequence_number - firstSeq) % NELS(stats);
+	assert(i == tx_count % NELS(stats));
+	struct packet_stat *stat = &stats[i];
+	if (stat->tx_time && stat->pong_count == 0) {
+	  assert(missing_pong_count > 0);
+	  --missing_pong_count;
+	}
+	stat->sequence = sequence_number;
+	stat->tx_time = now;
+	stat->pong_count = 0;
+	++missing_pong_count;
+	++sequence_number;
+	++tx_count;
       }
     }
 
-    /* Now look for replies until one second has passed, and print any replies
-       with appropriate information as required */
-    time_ms_t now = gettime_ms();
-    time_ms_t finish = now + ((icount == 0 || tx_count < icount) ? interval_ms : timeout_ms);
-    for (; sigIntFlag==0 && (icount == 0 || rx_count < icount) && now < finish; now = gettime_ms()) {
+    // Now look for replies ("pongs") until one second has passed, and print any replies with
+    // appropriate information as required
+    int all_sent = icount && tx_count >= icount;
+    time_ms_t finish = now + (all_sent ? timeout_ms : interval_ms);
+    while (!sigIntFlag && now < finish && (!all_sent || opt_wait_for_duplicates || missing_pong_count)) {
       time_ms_t poll_timeout_ms = finish - now;
-      
-      if (mdp_poll(mdp_sockfd, poll_timeout_ms)<=0)
+      if (mdp_poll(mdp_sockfd, poll_timeout_ms) <= 0) {
+	now = gettime_ms();
 	continue;
+      }
 
       struct mdp_header mdp_recv_header;
       uint8_t recv_payload[12];
       ssize_t len = mdp_recv(mdp_sockfd, &mdp_recv_header, recv_payload, sizeof(recv_payload));
-      
       if (len == -1){
 	WHY_perror("mdp_recv");
 	break;
       }
-      
-      if (mdp_recv_header.flags & MDP_FLAG_ERROR){
-	WHY("Serval daemon reported an error, please check the log for more information");
+      if (mdp_recv_header.flags & MDP_FLAG_ERROR) {
+	WHY("error from daemon, please check the log for more information");
 	continue;
       }
-      
       if (mdp_recv_header.flags & MDP_FLAG_BIND){
 	// received port binding confirmation
 	mdp_header.local = mdp_recv_header.local;
 	mdp_header.flags &= ~MDP_FLAG_BIND;
 	if (config.debug.mdprequests)
-	  DEBUGF("Bound to %s:%d", alloca_tohex_sid_t(mdp_header.local.sid), mdp_header.local.port);
+	  DEBUGF("bound to %s:%d", alloca_tohex_sid_t(mdp_header.local.sid), mdp_header.local.port);
 	continue;
       }
-      
       if ((size_t)len < sizeof(recv_payload)){
 	if (config.debug.mdprequests)
-	  DEBUGF("Ignoring ping response as it is too short");
+	  DEBUGF("ignoring short pong");
 	continue;
       }
-      
-      int *rxseq=(int *)&recv_payload;
+      uint32_t rxseq = read_uint32(&recv_payload[0]);
       time_ms_t txtime = read_uint64(&recv_payload[4]);
       int hop_count = 64 - mdp_recv_header.ttl;
-      time_ms_t delay = gettime_ms() - txtime;
-      
+      now = gettime_ms();
+      time_ms_t delay = now - txtime;
+
+      struct packet_stat *stat = &stats[(unsigned long)(rxseq - firstSeq) % NELS(stats)];
+      if (stat->sequence != rxseq || stat->tx_time != txtime) {
+	if (config.debug.mdprequests)
+	  DEBUGF("ignoring spurious pong");
+	++rx_igncount;
+	stat = NULL; // old or corrupted reply (either sequence or txtime is wrong)
+      } else if (stat->pong_count++ == 0) {
+	assert(missing_pong_count > 0);
+	--missing_pong_count;
+	stat->rx_time = now;
+	rx_tottime_ms += delay;
+	++rx_count;
+	if (rx_mintime_ms > delay || rx_mintime_ms == -1)
+	  rx_mintime_ms = delay;
+	if (delay > rx_maxtime_ms)
+	  rx_maxtime_ms = delay;
+      } else
+	++rx_dupcount;
+
       cli_put_hexvalue(context, mdp_recv_header.remote.sid.binary, SID_SIZE, ": seq=");
-      cli_put_long(context, (*rxseq)-firstSeq+1, " time=");
+      cli_put_long(context, (unsigned long)(rxseq - firstSeq) + 1, " time=");
       cli_put_long(context, delay, "ms hops=");
       cli_put_long(context, hop_count, "");
-      
-      if (mdp_recv_header.flags&MDP_FLAG_NO_CRYPT)
-	cli_put_string(context, "", "");
-      else
-	cli_put_string(context, " ENCRYPTED", "");
-	
-      if (mdp_recv_header.flags&MDP_FLAG_NO_SIGN)
-	cli_put_string(context, "", "\n");
-      else
-	cli_put_string(context, " SIGNED", "\n");
+      cli_put_string(context, (mdp_recv_header.flags & MDP_FLAG_NO_CRYPT) ? "" : " ENCRYPTED", "");
+      cli_put_string(context, (mdp_recv_header.flags & MDP_FLAG_NO_SIGN) ? "" : " SIGNED", "\n");
       cli_flush(context);
-      // TODO Put duplicate pong detection here so that stats work properly.
-      rx_count++;
+
       ret=0;
-      rx_ms+=delay;
-      if (rx_mintime>delay||rx_mintime==-1) rx_mintime=delay;
-      if (delay>rx_maxtime) rx_maxtime=delay;
-      rx_times[rx_count%1024]=delay;
     }
   }
 
@@ -1248,23 +1275,34 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   mdp_close(mdp_sockfd);
   
   {
-    float rx_stddev=0;
-    float rx_mean=rx_ms*1.0/rx_count;
-    int samples=rx_count;
-    if (samples>1024) samples=1024;
-    int i;
-    for(i=0;i<samples;i++)
-      rx_stddev+=(rx_mean-rx_times[i])*(rx_mean-rx_times[i]);
-    rx_stddev/=samples;
-    rx_stddev=sqrtf(rx_stddev);
+    float rx_stddev = 0;
+    float rx_mean = rx_tottime_ms * 1.0 / rx_count;
+    unsigned tx_samples = tx_count < NELS(stats) ? tx_count : NELS(stats);
+    unsigned rx_samples = 0;
+    unsigned i;
+    for (i = 0; i < tx_samples; ++i) {
+      struct packet_stat *stat = &stats[i];
+      if (stat->pong_count) {
+	float dev = rx_mean - (stat->rx_time - stat->tx_time);
+	rx_stddev += dev * dev;
+	++rx_samples;
+      }
+    }
+    rx_stddev /= rx_samples;
+    rx_stddev = sqrtf(rx_stddev);
 
     /* XXX Report final statistics before going */
     cli_printf(context, "--- %s ping statistics ---\n", alloca_tohex_sid_t(ping_sid));
-    cli_printf(context, "%d packets transmitted, %d packets received, %3.1f%% packet loss\n",
-	   tx_count,rx_count,tx_count?(tx_count-rx_count)*100.0/tx_count:0);
-    cli_printf(context, "round-trip min/avg/max/stddev%s = %"PRId64"/%.3f/%"PRId64"/%.3f ms\n",
-	   (samples<rx_count)?" (stddev calculated from last 1024 samples)":"",
-	   rx_mintime,rx_mean,rx_maxtime,rx_stddev);
+    cli_printf(context, "%u packets transmitted, %u packets received (plus %u duplicates, %u ignored), %3.1f%% packet loss\n",
+	   tx_count,
+	   rx_count,
+	   rx_dupcount,
+	   rx_igncount,
+	   tx_count ? (tx_count - rx_count) * 100.0 / tx_count : 0
+	  );
+    if (rx_samples)
+      cli_printf(context, "round-trip min/avg/max/stddev = %"PRId64"/%.3f/%"PRId64"/%.3f ms (%u samples)\n",
+	    rx_mintime_ms, rx_mean, rx_maxtime_ms, rx_stddev, rx_samples);
     cli_delim(context, NULL);
     cli_flush(context);
   }
@@ -3088,7 +3126,7 @@ struct cli_schema command_line_options[]={
    "Stop a running daemon with instance path from SERVALINSTANCE_PATH environment variable."},
   {app_server_status,{"status",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display information about running daemon."},
-  {app_mdp_ping,{"mdp","ping","[--interval=<ms>]","[--timeout=<seconds>]","<SID>|broadcast","[<count>]",NULL}, 0,
+  {app_mdp_ping,{"mdp","ping","[--interval=<ms>]","[--timeout=<seconds>]","[--wait-for-duplicates]","<SID>|broadcast","[<count>]",NULL}, 0,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
   {app_trace,{"mdp","trace","<SID>",NULL}, 0,
    "Trace through the network to the specified node via MDP."},

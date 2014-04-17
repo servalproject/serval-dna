@@ -581,9 +581,8 @@ test_multi_interface() {
    wait_until has_link --interface "dummy2.*" $SIDA
 }
 
-# TODO assert that all packets arrive? assert that no duplicates arrive?
-doc_ping_unreliable="Ping over a 1-hop unreliable link"
-setup_ping_unreliable() {
+doc_ping_unreliable_1hop="Ping over a 1-hop unreliable link"
+setup_ping_unreliable_1hop() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B create_single_identity
@@ -593,16 +592,20 @@ setup_ping_unreliable() {
       set interfaces.1.drop_packets 40
   foreach_instance +A +B start_servald_server
 }
-test_ping_unreliable() {
+test_ping_unreliable_1hop() {
    wait_until path_exists +A +B
    wait_until path_exists +B +A
    set_instance +A
-   executeOk_servald mdp ping --interval=0.100 --timeout=3 $SIDB 100
+   executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates $SIDB 100
    tfw_cat --stdout --stderr
+   received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
+   duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
+   assert [ "$received" -eq 100 ]
+   assert [ "$duplicates" -eq 0 ]
 }
 
-doc_ping_unreliable2="Ping over a 2-hop unreliable link"
-setup_ping_unreliable2() {
+doc_ping_unreliable_2hop="Ping over a 2-hop unreliable link"
+setup_ping_unreliable_2hop() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B +C create_single_identity
@@ -616,16 +619,20 @@ setup_ping_unreliable2() {
       set interfaces.2.drop_packets 40
   foreach_instance +A +B +C start_servald_server
 }
-test_ping_unreliable2() {
+test_ping_unreliable_2hop() {
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
    set_instance +A
-   executeOk_servald mdp ping --interval=0.100 --timeout=3 $SIDC 100
+   executeOk_servald mdp ping --interval=0.200 --timeout=3 --wait-for-duplicates $SIDC 50
    tfw_cat --stdout --stderr
+   received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
+   duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
+   assert [ "$received" -eq 50 ]
+   assert [ "$duplicates" -lt 5 ]
 }
 
-doc_brping_unreliable="Broadcast ping over a 1-hop unreliable link"
-setup_brping_unreliable() {
+doc_brping_unreliable_1hop="Broadcast ping over a 1-hop unreliable link"
+setup_brping_unreliable_1hop() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B create_single_identity
@@ -635,11 +642,11 @@ setup_brping_unreliable() {
       set interfaces.1.drop_packets 20
   foreach_instance +A +B start_servald_server
 }
-test_brping_unreliable() {
+test_brping_unreliable_1hop() {
    wait_until path_exists +A +B
    wait_until path_exists +B +A
    set_instance +A
-   executeOk_servald mdp ping --interval=0.100 --timeout=2 broadcast 100
+   executeOk_servald mdp ping --interval=0.100 --timeout=2 --wait-for-duplicates broadcast 100
    tfw_cat --stdout --stderr
 }
 
@@ -669,7 +676,7 @@ test_unreliable_links() {
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
    set_instance +A
-   executeOk_servald mdp ping --interval=0.100 --timeout=3 $SIDC 30
+   executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates $SIDC 30
    tfw_cat --stdout --stderr
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
@@ -712,7 +719,7 @@ test_unreliable_links2() {
    wait_until path_exists +A +B +C +D
    wait_until path_exists +D +C +B +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDD 5
+   executeOk_servald mdp ping --timeout=3 --wait-for-duplicates $SIDD 5
    tfw_cat --stdout --stderr
 }
 
@@ -738,7 +745,7 @@ test_circle() {
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDC 1
+   executeOk_servald mdp ping --timeout=3 --wait-for-duplicates $SIDC 1
    tfw_cat --stdout --stderr
    stop_servald_server +B
    foreach_instance +A +C \
@@ -746,7 +753,7 @@ test_circle() {
    wait_until path_exists +A +H +G +F +E +D +C
    wait_until path_exists +C +D +E +F +G +H +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 $SIDC 1
+   executeOk_servald mdp ping --timeout=3 --wait-for-duplicates $SIDC 1
    tfw_cat --stdout --stderr
 }
 
@@ -774,7 +781,7 @@ test_crowded_mess() {
    wait_until has_link --via "[0-9A-F]*" $SIDA
    set_instance +A
    wait_until has_link --via "[0-9A-F]*" $SIDH
-   executeOk_servald mdp ping --timeout=3 $SIDH 1
+   executeOk_servald mdp ping --timeout=3 --wait-for-duplicates $SIDH 1
    tfw_cat --stdout --stderr
 }
 

@@ -73,14 +73,16 @@ int mdp_send(int socket, const struct mdp_header *header, const uint8_t *payload
   ssize_t sent = send_message(socket, &addr, &data);
   if (sent == -1)
     return -1;
-  if ((size_t)sent != sizeof *header + len)
-    return WHYF("send_message(%d,%s,%s) returned %zd, expecting %zd",
+  if ((size_t)sent != sizeof *header + len) {
+    errno = EMSGSIZE;
+    return WHYF("send_message(%d,%s,%s) returned %zd, expecting %zd -- setting errno = EMSGSIZE",
 	socket,
 	alloca_socket_address(&addr),
 	alloca_fragmented_data(&data),
 	(size_t)sent,
 	sizeof *header + len
       );
+  }
   return 0;
 }
 
