@@ -379,16 +379,7 @@ rhizome_http_server_started() {
 }
 
 get_rhizome_server_port() {
-   push_and_set_instance $2 || return $?
-   local _var="$1"
-   local _port=$(<"$SERVALINSTANCE_PATH/proc/http_port")
-   assert --message="instance $instance_name Rhizome HTTP server port number is known" [ -n "$_port" ]
-   if [ -n "$_var" ]; then
-      eval "$_var=\$_port"
-      tfw_log "$_var=$_port"
-   fi
-   pop_instance
-   return 0
+   get_servald_http_server_port "$@"
 }
 
 # Predicate function:

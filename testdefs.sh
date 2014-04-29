@@ -386,6 +386,28 @@ servald_start() {
 }
 
 # Utility function:
+#  - test whether the daemon's HTTP server has started
+servald_http_server_started() {
+   local logvar=LOG${1#+}
+   $GREP 'HTTP SERVER START.*port=[0-9]' "${!logvar}"
+}
+
+# Utility function:
+#  - fetch the daemon's HTTP server port number
+get_servald_http_server_port() {
+   push_and_set_instance $2 || return $?
+   local _var="$1"
+   local _port=$(<"$SERVALINSTANCE_PATH/proc/http_port")
+   assert --message="instance $instance_name HTTP server port number is known" [ -n "$_port" ]
+   if [ -n "$_var" ]; then
+      eval "$_var=\$_port"
+      tfw_log "$_var=$_port"
+   fi
+   pop_instance
+   return 0
+}
+
+# Utility function:
 #  - stop a servald server process instance in an orderly fashion
 #  - cat its log file into the test log
 stop_servald_server() {

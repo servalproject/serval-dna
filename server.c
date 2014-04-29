@@ -285,6 +285,10 @@ void server_watchdog(struct sched_ent *alarm)
   }
 }
 
+void cf_on_config_change()
+{
+}
+
 /* Called periodically by the server process in its main loop.
  */
 void server_shutdown_check(struct sched_ent *alarm)

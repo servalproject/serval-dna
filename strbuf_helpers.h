@@ -161,6 +161,26 @@ struct iovec;
 strbuf strbuf_append_iovec(strbuf sb, const struct iovec *iov, int iovcnt);
 #define alloca_iovec(iov,cnt)    strbuf_str(strbuf_append_iovec(strbuf_alloca(200), (iov), (cnt)))
 
+/* Append a representation of a time_t value.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_append_time_t(strbuf sb, time_t);
+#define alloca_time_t(t)    strbuf_str(strbuf_append_time_t(strbuf_alloca(40), (t)))
+
+/* Append a representation of a struct timespec.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+struct timespec;
+strbuf strbuf_append_timespec(strbuf sb, const struct timespec *tv);
+#define alloca_timespec(tv)    strbuf_str(strbuf_append_timespec(strbuf_alloca(50), (tv)))
+
+/* Append a representation of a struct file_meta.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+struct file_meta;
+strbuf strbuf_append_file_meta(strbuf sb, const struct file_meta *metap);
+#define alloca_file_meta(metap)    strbuf_str(strbuf_append_file_meta(strbuf_alloca(80), (metap)))
+
 /* Append a string using HTTP quoted-string format: delimited by double quotes (") and
  * internal double quotes and backslash escaped by leading backslash.
  * @author Andrew Bettison <andrew@servalproject.com>

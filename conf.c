@@ -25,15 +25,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "log.h"
 #include "str.h"
 #include "mem.h"
+#include "os.h"
 
 #define CONFFILE_NAME		  "serval.conf"
-
-struct file_meta {
-  time_t mtime;
-  off_t size;
-};
-
-#define FILE_META_UNKNOWN ((struct file_meta){ .mtime = -1, .size = -1 })
 
 struct cf_om_node *cf_om_root = NULL;
 static struct file_meta conffile_meta = FILE_META_UNKNOWN;
@@ -50,48 +44,23 @@ static const char *conffile_path()
   return path;
 }
 
-static int get_meta(const char *path, struct file_meta *metap)
-{
-  struct stat st;
-  if (stat(path, &st) == -1) {
-    if (errno != ENOENT)
-      return WHYF_perror("stat(%s)", path);
-    // Do not return FILE_META_UNKNOWN on ENOENT, otherwise reload logic breaks.  A non-existent
-    // file is treated as size == 0.
-    metap->size = 0;
-    metap->mtime = -1;
-  } else {
-    metap->size = st.st_size;
-    metap->mtime = st.st_mtime;
-  }
-  return 0;
-}
-
-static int cmp_meta(const struct file_meta *a, const struct file_meta *b)
-{
-  return a->mtime < b->mtime ? -1 : a->mtime > b->mtime ? 1 : a->size < b->size ? -1 : a->size > b->size ? 1 : 0;
-}
-
 static int reload(const char *path, int *resultp)
 {
   if (config.debug.config)
-    DEBUGF("path=%s", alloca_str_toprint(path));
+    DEBUGF("    file path=%s", alloca_str_toprint(path));
   struct file_meta meta;
-  if (get_meta(conffile_path(), &meta) == -1)
+  if (get_file_meta(conffile_path(), &meta) == -1)
     return -1;
   if (config.debug.config) {
-    struct tm tm;
-    (void)localtime_r(&meta.mtime, &tm);
-    DEBUGF("meta.mtime=%s meta.size=%ld", alloca_strftime("%Y/%m/%d %H:%M:%S", &tm), (long)meta.size);
-    (void)localtime_r(&conffile_meta.mtime, &tm);
-    DEBUGF("conffile_meta.mtime=%s conffile_meta.size=%ld", alloca_strftime("%Y/%m/%d %H:%M:%S", &tm), (long)conffile_meta.size);
+    DEBUGF("    file meta=%s", alloca_file_meta(&meta));
+    DEBUGF("conffile_meta=%s", alloca_file_meta(&conffile_meta));
   }
-  if (cmp_meta(&meta, &conffile_meta) == 0)
+  if (cmp_file_meta(&meta, &conffile_meta) == 0)
     return 0;
-  if (conffile_meta.mtime != -1 && serverMode)
+  if (conffile_meta.mtime.tv_sec != -1 && serverMode)
     INFOF("config file %s -- detected new version", conffile_path());
   char *buf = NULL;
-  if (meta.mtime == -1) {
+  if (meta.mtime.tv_sec == -1) {
     WARNF("config file %s does not exist -- using all defaults", path);
   } else if (meta.size > CONFIG_FILE_MAX_SIZE) {
     WHYF("config file %s is too big (%ju bytes exceeds limit %d)", path, (uintmax_t)meta.size, CONFIG_FILE_MAX_SIZE);
@@ -126,11 +95,8 @@ static int reload(const char *path, int *resultp)
       INFOF("config file %s successfully read %ld bytes", path, (long) meta.size);
   }
   conffile_meta = meta;
-  if (config.debug.config) {
-    struct tm tm;
-    (void)localtime_r(&conffile_meta.mtime, &tm);
-    DEBUGF("conffile_meta.mtime=%s conffile_meta.size=%ld", alloca_strftime("%Y/%m/%d %H:%M:%S", &tm), (long)conffile_meta.size);
-  }
+  if (config.debug.config)
+    DEBUGF("set conffile_meta=%s", alloca_file_meta(&conffile_meta));
   struct cf_om_node *new_root = NULL;
   *resultp = cf_om_parse(path, buf, meta.size, &new_root);
   free(buf);
@@ -157,6 +123,9 @@ int cf_om_save()
 {
   if (cf_om_root) {
     const char *path = conffile_path();
+    struct file_meta meta;
+    if (get_file_meta(path, &meta) == -1)
+      return -1;
     char tempfile[1024];
     FILE *outf = NULL;
     if (!FORMF_SERVAL_ETC_PATH(tempfile, CONFFILE_NAME ".temp"))
@@ -175,16 +144,19 @@ int cf_om_save()
       unlink(tempfile);
       return -1;
     }
-    struct file_meta meta;
-    if (get_meta(path, &meta) == -1)
+    struct file_meta newmeta;
+    int r = alter_file_meta(path, &meta, &newmeta);
+    if (r == -1)
       return -1;
-    INFOF("successfully wrote %s", path);
-    conffile_meta = meta;
-    if (config.debug.config) {
-      struct tm tm;
-      (void)localtime_r(&conffile_meta.mtime, &tm);
-      DEBUGF("conffile_meta.mtime=%s conffile_meta.size=%ld", alloca_strftime("%Y/%m/%d %H:%M:%S", &tm), (long)conffile_meta.size);
-    }
+    if (r)
+      INFOF("wrote %s; set mtime=%s", path, alloca_time_t(newmeta.mtime.tv_sec));
+    else if (cmp_file_meta(&meta, &newmeta) == 0)
+      WARNF("wrote %s; mtime not altered", path);
+    else
+      INFOF("wrote %s", path);
+    conffile_meta = newmeta;
+    if (config.debug.config)
+      DEBUGF("set conffile_meta=%s", alloca_file_meta(&conffile_meta));
   }
   return 0;
 }
@@ -199,39 +171,55 @@ int cf_init()
   return 0;
 }
 
+/* (Re-)load and parse the configuration file.
+ *
+ * The 'strict' flag controls whether this function will load a defective config file.  If nonzero,
+ * then it will not load a defective file, but will log an error and return -1.  If zero, then it
+ * will load a defective file and use the 'permissive' flag to decide what to log and return.
+ *
+ * The 'permissive' flag only applies if 'strict' is zero, and determines how this function deals
+ * with a loaded defective config file.  If 'permissive' is zero, then it logs an error and returns
+ * -1.  If nonzero, then it logs a warning and returns 0.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 static int reload_and_parse(int permissive, int strict)
 {
   int result = CFOK;
+  int changed = 0;
   if (cf_limbo)
     result = cf_dfl_config_main(&config);
   if (result == CFOK || result == CFEMPTY) {
     if (reload(conffile_path(), &result) == -1)
       result = CFERROR;
-    else if (!cf_limbo && cmp_meta(&conffile_meta, &config_meta) == 0)
+    else if (!cf_limbo && cmp_file_meta(&conffile_meta, &config_meta) == 0)
       return 0;
     else {
       config_meta = conffile_meta;
       if (result == CFOK || result == CFEMPTY) {
 	struct config_main new_config;
+	int update = 0;
 	memset(&new_config, 0, sizeof new_config);
 	result = cf_dfl_config_main(&new_config);
 	if (result == CFOK || result == CFEMPTY) {
 	  result = cf_om_root ? cf_opt_config_main(&new_config, cf_om_root) : CFEMPTY;
 	  if (result == CFOK || result == CFEMPTY) {
 	    result = CFOK;
-	    config = new_config;
+	    update = 1;
 	  } else if (result != CFERROR && !strict) {
 	    result &= ~CFEMPTY; // don't log "empty" as a problem
-	    config = new_config;
+	    update = 1;
 	  }
+	}
+	if (update && cf_cmp_config_main(&config, &new_config) != 0) {
+	  config = new_config;
+	  changed = 1;
 	}
       }
     }
   }
-  int ret = 1;
-  if (result == CFOK) {
-    logConfigChanged();
-  } else {
+  int ret = changed;
+  if (result != CFOK) {
     strbuf b = strbuf_alloca(180);
     strbuf_cf_flag_reason(b, result);
     if (strict)
@@ -241,11 +229,14 @@ static int reload_and_parse(int permissive, int strict)
 	ret = WHYF("config file %s loaded despite defects -- %s", conffile_path(), strbuf_str(b));
       else
 	WARNF("config file %s loaded despite defects -- %s", conffile_path(), strbuf_str(b));
-      logConfigChanged();
     }
   }
   cf_limbo = 0; // let log messages out
   logFlush();
+  if (changed) {
+    logConfigChanged();
+    cf_on_config_change();
+  }
   return ret;
 }
 

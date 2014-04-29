@@ -298,9 +298,9 @@ void cf_om_iter_start(struct cf_om_iterator *, const struct cf_om_node *);
 int cf_om_iter_next(struct cf_om_iterator *);
 
 struct cf_om_node *cf_om_root;
-int cf_om_load();
-int cf_om_reload();
-int cf_om_save();
+int cf_om_load(void);
+int cf_om_reload(void);
+int cf_om_save(void);
 
 /* Diagnostic functions for use in config schema parsing functions, cf_opt_xxx(). */
 
@@ -697,12 +697,14 @@ int cf_fmt_encapsulation(const char **, const short *encapp);
 extern int cf_limbo;
 extern struct config_main config;
 
-int cf_init();
-int cf_load();
-int cf_load_strict();
-int cf_load_permissive();
-int cf_reload();
-int cf_reload_strict();
-int cf_reload_permissive();
+int cf_init(void);
+int cf_load(void);
+int cf_load_strict(void);
+int cf_load_permissive(void);
+int cf_reload(void);
+int cf_reload_strict(void);
+int cf_reload_permissive(void);
+
+void cf_on_config_change(void);
 
 #endif //__SERVAL_DNA__CONF_H

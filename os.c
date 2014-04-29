@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "mem.h"
 #include "str.h"
 #include "log.h"
+#include "strbuf_helpers.h"
 
 #include <assert.h>
 #include <sys/types.h>
@@ -218,4 +219,114 @@ int malloc_read_whole_file(const char *path, unsigned char **bufp, size_t *sizp)
   if (close(fd) == -1)
     ret = WHYF_perror("close(%d)", fd);
   return ret;
+}
+
+int get_file_meta(const char *path, struct file_meta *metap)
+{
+  struct stat st;
+  if (stat(path, &st) == -1) {
+    if (errno != ENOENT)
+      return WHYF_perror("stat(%s)", path);
+    *metap = FILE_META_NONEXIST;
+  } else {
+    metap->size = st.st_size;
+    metap->mtime = st.st_mtim;
+    // Truncate to whole seconds to ensure that this code will work on file systems that only have
+    // whole-second time stamp resolution.
+    metap->mtime.tv_nsec = 0;
+  }
+  return 0;
+}
+
+static int cmp_timespec(const struct timespec *a, const struct timespec *b)
+{
+  return a->tv_sec < b->tv_sec ? -1 : a->tv_sec > b->tv_sec ? 1 : a->tv_nsec < b->tv_nsec ? -1 : a->tv_nsec > b->tv_nsec ? 1 : 0;
+}
+
+static void add_timespec(struct timespec *tv, long sec, long nsec)
+{
+  const long NANO = 1000000000;
+  tv->tv_sec += sec;
+  // Bring nsec into range -NANO < nsec < NANO.
+  if (nsec >= NANO) {
+    sec = nsec / NANO;
+    tv->tv_sec += sec;
+    nsec -= sec * NANO;
+  } else if (nsec <= -NANO) {
+    // The C standard does not define whether negative integer division truncates towards negative
+    // infinity or rounds towards zero.  So we have to use positive integer division, which always
+    // truncates towards zero.
+    sec = -nsec / NANO;
+    tv->tv_sec -= sec;
+    nsec += sec * NANO;
+  }
+  assert(nsec > -NANO);
+  assert(nsec < NANO);
+  tv->tv_nsec += nsec;
+  // Bring tv_nsec into range 0 <= tv_nsec < NANO.
+  if (tv->tv_nsec >= NANO) {
+    sec = tv->tv_nsec / NANO;
+    tv->tv_sec += sec;
+    tv->tv_nsec -= sec * NANO;
+  } else if (tv->tv_nsec < 0) {
+    sec = (-tv->tv_nsec + NANO - 1) / NANO;
+    tv->tv_sec -= sec;
+    tv->tv_nsec += sec * NANO;
+  }
+  assert(tv->tv_nsec >= 0);
+  assert(tv->tv_nsec < NANO);
+}
+
+int cmp_file_meta(const struct file_meta *a, const struct file_meta *b)
+{
+  int c = cmp_timespec(&a->mtime, &b->mtime);
+  return c ? c : a->size < b->size ? -1 : a->size > b->size ? 1 : 0;
+}
+
+/* Post-update file meta adjustment.
+ *
+ * If a file's meta information is used to detect changes to the file by polling at regular
+ * intervals, then every update to the file must guarantee to never produce the same meta
+ * information as any prior update.  The typical case is several updates in rapid succession during
+ * one second that do not change the size of the file.  The second and subsequent of these will not
+ * change the file's meta information (size or last-modified time stamp) on file systems that only
+ * have one-second timestamp resolution.
+ *
+ * This function can be called immediately after updating such a file, supplying the meta
+ * information from just prior to the update.  It will alter the file's meta information (last
+ * modified time stamp) to ensure that it differs from the prior meta information.  This typically
+ * involves advancing the file's last-modification time stamp.
+ *
+ * Returns -1 if an error occurs, 1 if it alters the file's meta information, 0 if the current meta
+ * information is already different and did not need alteration.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int alter_file_meta(const char *path, const struct file_meta *origp, struct file_meta *metap)
+{
+  long nsec = 1;
+  long sec = 0;
+  // If the file's current last-modified timestamp is not greater than its original, try bumping the
+  // original timestamp by one nanosecond, and if that does not alter the timestamp, the file system
+  // does not support nanosecond timestamps, so try bumping it by one second.
+  while (sec <= 1) {
+    struct file_meta meta;
+    if (get_file_meta(path, &meta) == -1)
+      return -1;
+    if (metap)
+      *metap = meta;
+    if (is_file_meta_nonexist(&meta) || cmp_timespec(&origp->mtime, &meta.mtime) < 0)
+      return 0;
+    meta.mtime = origp->mtime;
+    add_timespec(&meta.mtime, sec, nsec);
+    struct timespec times[2];
+    times[0].tv_sec = 0;
+    times[0].tv_nsec = UTIME_OMIT;
+    times[1] = meta.mtime;
+    if (utimensat(AT_FDCWD, path, times, 0) == -1)
+      return WHYF_perror("utimensat(AT_FDCWD,%s,[UTIME_OMIT,%s],0)", alloca_str_toprint(path), alloca_timespec(&times[1]));
+    nsec = 0;
+    ++sec;
+  }
+  return 1;
 }

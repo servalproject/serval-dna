@@ -452,6 +452,36 @@ strbuf strbuf_append_iovec(strbuf sb, const struct iovec *iov, int iovcnt)
   return sb;
 }
 
+strbuf strbuf_append_time_t(strbuf sb, time_t time)
+{
+  struct tm tm;
+  localtime_r(&time, &tm);
+  strbuf_append_strftime(sb, "%Y/%m/%d %H:%M:%S %z", &tm);
+  return sb;
+}
+
+strbuf strbuf_append_timespec(strbuf sb, const struct timespec *tv)
+{
+  if (tv->tv_sec < 0 || tv->tv_nsec < 0 || tv->tv_nsec > 999999999) {
+    strbuf_sprintf(sb, "INVALID{tv_sec=%ld,tv_nsec=%ld}", (long)tv->tv_sec, tv->tv_nsec);
+  } else {
+    struct tm tm;
+    localtime_r(&tv->tv_sec, &tm);
+    strbuf_append_strftime(sb, "%Y/%m/%d %H:%M:%S", &tm);
+    strbuf_sprintf(sb, ".%.09lu", tv->tv_nsec);
+    strbuf_append_strftime(sb, " %z", &tm);
+  }
+  return sb;
+}
+
+strbuf strbuf_append_file_meta(strbuf sb, const struct file_meta *metap)
+{
+  strbuf_puts(sb, "{ .mtime=");
+  strbuf_append_timespec(sb, &metap->mtime);
+  strbuf_sprintf(sb, ", .size=%ld }", (long)metap->size);
+  return sb;
+}
+
 strbuf strbuf_append_quoted_string(strbuf sb, const char *str)
 {
   strbuf_putc(sb, '"');

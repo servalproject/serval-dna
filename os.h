@@ -176,4 +176,31 @@ ssize_t read_whole_file(const char *path, unsigned char *buffer, size_t buffer_s
  */
 int malloc_read_whole_file(const char *path, unsigned char **bufp, size_t *sizp);
 
+/* File metadata primitives, used for detecting when a file has changed.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+struct file_meta {
+  struct timespec mtime;
+  off_t size;
+};
+
+#define FILE_META_UNKNOWN ((struct file_meta){ .mtime = { .tv_sec = -1, .tv_nsec = -1 }, .size = -1 })
+
+// A non-existent file is treated as size == 0 and an impossible modification
+// time, so that cmp_file_meta() will not compare it as equal with any existing
+// file.
+#define FILE_META_NONEXIST ((struct file_meta){ .mtime = { .tv_sec = -1, .tv_nsec = -1 }, .size = 0 })
+
+__SERVAL_DNA__OS_INLINE int is_file_meta_nonexist(const struct file_meta *m) {
+    return m->mtime.tv_sec == -1 && m->mtime.tv_nsec == -1 && m->size == 0;
+}
+
+int get_file_meta(const char *path, struct file_meta *metap);
+int cmp_file_meta(const struct file_meta *a, const struct file_meta *b);
+
+// Ensure that the metadata of a file differs from a given original metadata,
+// by bumping the file's modification time or altering its inode.
+int alter_file_meta(const char *path, const struct file_meta *origp, struct file_meta *metap);
+
 #endif //__SERVAL_DNA__OS_H

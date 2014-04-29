@@ -238,16 +238,67 @@ test_ReloadConfigSync() {
    >trace1
    wait_until --sleep=0.5 --timeout=15 line_count_at_least trace1 3
    assert [ $(wc -l <trace2) -eq 0 ]
-   # Must let at least 1 second elapse since starting the server before doing
-   # the "config sync", otherwise the server will not detect the config file as
-   # changed and will not re-load it.
-   # TODO: make the "config set" command ensure that the config file's mtime
-   # always advances if the size does not change.
    executeOk_servald config sync
    tfw_cat --stderr
    >trace1
    wait_until --sleep=0.5 --timeout=15 line_count_at_least trace2 3
    assert [ $(wc -l <trace1) -eq 0 ]
+   stop_servald_server
+   assert_servald_server_no_errors
+}
+
+doc_ReloadConfigSetSync="Server configuration always syncs after set"
+setup_ReloadConfigSetSync() {
+   setup_curl 7
+   setup
+   set_instance +A
+   create_single_identity
+   executeOk_servald config \
+      set log.console.level debug \
+      set log.console.show_time true \
+      set log.console.show_pid true \
+      set debug.config on \
+      set debug.mdprequests on \
+      set server.config_reload_interval_ms 600000 \
+      set server.motd "Abcdef"
+   conf_size=$(wc -l <"$SERVALINSTANCE_PATH/serval.conf")
+   assert [ "$conf_size" -gt 0 ]
+   start_servald_server
+   wait_until servald_http_server_started +A
+   get_servald_http_server_port PORTA +A
+}
+test_ReloadConfigSetSync() {
+   # Set the MOTD without changing the config file size and sync it, and the
+   # HTTP server returns it in the root page immediately.
+   executeOk_servald config set server.motd "Yoicks" sync
+   tfw_cat --stderr
+   assert [ $conf_size -eq $(wc -l <"$SERVALINSTANCE_PATH/serval.conf") ]
+   executeOk curl \
+         --silent --fail --show-error \
+         --output root.html \
+         --dump-header http.headers \
+         "http://$addr_localhost:$PORTA/"
+   assertGrep root.html Yoicks
+   # Set the MOTD without changing the config file size but do not sync it, and
+   # the HTTP server still returns the prior value of the MOTD.
+   executeOk_servald config set server.motd "Flarng"
+   tfw_cat --stderr
+   assert [ $conf_size -eq $(wc -l <"$SERVALINSTANCE_PATH/serval.conf") ]
+   executeOk curl \
+         --silent --fail --show-error \
+         --output root.html \
+         --dump-header http.headers \
+         "http://$addr_localhost:$PORTA/"
+   assertGrep root.html Yoicks
+   # Sync the config to the daemon, and now the HTTP server returns the new
+   # MOTD.
+   executeOk_servald config sync
+   executeOk curl \
+         --silent --fail --show-error \
+         --output root.html \
+         --dump-header http.headers \
+         "http://$addr_localhost:$PORTA/"
+   assertGrep root.html Flarng
    stop_servald_server
    assert_servald_server_no_errors
 }
