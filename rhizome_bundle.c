@@ -382,6 +382,7 @@ int rhizome_manifest_verify(rhizome_manifest *m)
   assert(m->manifest_body_bytes > 0);
   assert(m->manifest_all_bytes > 0);
   assert(m->manifest_body_bytes <= m->manifest_all_bytes);
+  assert(m->sig_count == 0);
   if (m->manifest_body_bytes == m->manifest_all_bytes)
     assert(m->manifestdata[m->manifest_body_bytes - 1] == '\0');
   // Hash the body

@@ -507,6 +507,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs)
   if (*ofs + len > m->manifest_all_bytes) {
     WARNF("Invalid signature at offset %u: type=%#02x gives len=%u that overruns manifest size",
 	*ofs, sigType, len);
+    *ofs = m->manifest_all_bytes;
     RETURN(1);
   }
   *ofs += len;
