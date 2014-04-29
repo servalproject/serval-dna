@@ -645,7 +645,7 @@ char *str_str(char *haystack, const char *needle, size_t haystack_len)
   return NULL;
 }
 
-int str_to_int32(const char *str, int base, int32_t *result, const char **afterp)
+int str_to_int32(const char *str, unsigned base, int32_t *result, const char **afterp)
 {
   if (isspace(*str))
     return 0;
@@ -661,7 +661,7 @@ int str_to_int32(const char *str, int base, int32_t *result, const char **afterp
   return 1;
 }
 
-int str_to_uint32(const char *str, int base, uint32_t *result, const char **afterp)
+int str_to_uint32(const char *str, unsigned base, uint32_t *result, const char **afterp)
 {
   if (isspace(*str))
     return 0;
@@ -677,7 +677,7 @@ int str_to_uint32(const char *str, int base, uint32_t *result, const char **afte
   return 1;
 }
 
-int str_to_int64(const char *str, int base, int64_t *result, const char **afterp)
+int str_to_int64(const char *str, unsigned base, int64_t *result, const char **afterp)
 {
   if (isspace(*str))
     return 0;
@@ -693,7 +693,7 @@ int str_to_int64(const char *str, int base, int64_t *result, const char **afterp
   return 1;
 }
 
-int str_to_uint64(const char *str, int base, uint64_t *result, const char **afterp)
+int str_to_uint64(const char *str, unsigned base, uint64_t *result, const char **afterp)
 {
   if (isspace(*str))
     return 0;
@@ -739,7 +739,7 @@ uint64_t scale_factor(const char *str, const char **afterp)
   return factor;
 }
 
-int str_to_int64_scaled(const char *str, int base, int64_t *result, const char **afterp)
+int str_to_int64_scaled(const char *str, unsigned base, int64_t *result, const char **afterp)
 {
   int64_t value;
   const char *end = str;
@@ -758,7 +758,7 @@ int str_to_int64_scaled(const char *str, int base, int64_t *result, const char *
   return 1;
 }
 
-int str_to_uint32_scaled(const char *str, int base, uint32_t *result, const char **afterp)
+int str_to_uint32_scaled(const char *str, unsigned base, uint32_t *result, const char **afterp)
 {
   uint32_t value;
   const char *end = str;
@@ -794,7 +794,7 @@ int uint32_scaled_to_str(char *str, size_t len, uint32_t value)
   return strbuf_overrun(b) ? 0 : 1;
 }
 
-int str_to_uint64_scaled(const char *str, int base, uint64_t *result, const char **afterp)
+int str_to_uint64_scaled(const char *str, unsigned base, uint64_t *result, const char **afterp)
 {
   uint64_t value;
   const char *end = str;

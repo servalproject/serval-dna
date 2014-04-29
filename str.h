@@ -380,8 +380,8 @@ int strn_str_casecmp(const char *str1, size_t len1, const char *str2);
  */
 char *str_str(char *haystack, const char *needle, size_t haystack_len);
 
-/* Parse a string as an integer in ASCII radix notation in the given 'base' (eg, base=10 means
- * decimal).
+/* Parse a NUL-terminated string as an integer in ASCII radix notation in the given 'base' (eg,
+ * base=10 means decimal).
  *
  * Returns 1 if a valid integer is parsed, storing the value in *result (unless result is NULL) and
  * storing a pointer to the immediately succeeding character in *afterp.  If afterp is NULL then
@@ -391,10 +391,10 @@ char *str_str(char *haystack, const char *needle, size_t haystack_len);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int str_to_int32(const char *str, int base, int32_t *result, const char **afterp);
-int str_to_uint32(const char *str, int base, uint32_t *result, const char **afterp);
-int str_to_int64(const char *str, int base, int64_t *result, const char **afterp);
-int str_to_uint64(const char *str, int base, uint64_t *result, const char **afterp);
+int str_to_int32(const char *str, unsigned base, int32_t *result, const char **afterp);
+int str_to_uint32(const char *str, unsigned base, uint32_t *result, const char **afterp);
+int str_to_int64(const char *str, unsigned base, int64_t *result, const char **afterp);
+int str_to_uint64(const char *str, unsigned base, uint64_t *result, const char **afterp);
 
 /* Parse a string as an integer in ASCII radix notation in the given 'base' (eg, base=10 means
  * decimal) and scale the result by a factor given by an optional suffix "scaling" character in the
@@ -410,10 +410,10 @@ int str_to_uint64(const char *str, int base, uint64_t *result, const char **afte
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int str_to_int32_scaled(const char *str, int base, int32_t *result, const char **afterp);
-int str_to_uint32_scaled(const char *str, int base, uint32_t *result, const char **afterp);
-int str_to_int64_scaled(const char *str, int base, int64_t *result, const char **afterp);
-int str_to_uint64_scaled(const char *str, int base, uint64_t *result, const char **afterp);
+int str_to_int32_scaled(const char *str, unsigned base, int32_t *result, const char **afterp);
+int str_to_uint32_scaled(const char *str, unsigned base, uint32_t *result, const char **afterp);
+int str_to_int64_scaled(const char *str, unsigned base, int64_t *result, const char **afterp);
+int str_to_uint64_scaled(const char *str, unsigned base, uint64_t *result, const char **afterp);
 uint64_t scale_factor(const char *str, const char **afterp);
 
 /* Format a string as a decimal integer in ASCII radix notation with a scale suffix character in the
