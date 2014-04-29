@@ -1278,10 +1278,12 @@ _tfw_backtrace() {
       let up=up+1
    done
    local -i i=0
-   while [ $up -lt ${#FUNCNAME[*]} -a "${BASH_SOURCE[$up]}" != "${BASH_SOURCE[0]}" ]; do
-      echo "[$i] ${FUNCNAME[$(($up-1))]}() called from ${FUNCNAME[$up]}() at line ${BASH_LINENO[$(($up-1))]} of ${BASH_SOURCE[$up]}" >&$_tfw_log_fd
+   while [ $up -lt $((${#FUNCNAME[*]} - 1)) ]; do
+      if [ "${BASH_SOURCE[$up]}" != "${BASH_SOURCE[0]}" ]; then
+         echo "[$i] ${FUNCNAME[$(($up-1))]}() called from ${FUNCNAME[$up]}() at line ${BASH_LINENO[$(($up-1))]} of ${BASH_SOURCE[$up]}" >&$_tfw_log_fd
+         let i=i+1
+      fi
       let up=up+1
-      let i=i+1
    done
    tfw_log '#-----'
 }
