@@ -663,14 +663,29 @@ int str_to_int32(const char *str, unsigned base, int32_t *result, const char **a
 
 int str_to_uint32(const char *str, unsigned base, uint32_t *result, const char **afterp)
 {
-  if (isspace(*str))
-    return 0;
-  const char *end = str;
-  errno = 0;
-  unsigned long value = strtoul(str, (char**)&end, base);
+  return strn_to_uint32(str, 0, base, result, afterp);
+}
+
+int strn_to_uint32(const char *str, size_t strlen, unsigned base, uint32_t *result, const char **afterp)
+{
+  assert(base > 0);
+  assert(base <= 16);
+  uint32_t value = 0;
+  uint32_t newvalue = 0;
+  const char *const end = str + strlen;
+  const char *s;
+  for (s = str; strlen ? s < end : *s; ++s) {
+    int digit = hexvalue(*s);
+    if (digit < 0 || (unsigned)digit >= base)
+      break;
+    newvalue = value * base + digit;
+    if (newvalue < value) // overflow
+      break;
+    value = newvalue;
+  }
   if (afterp)
-    *afterp = end;
-  if (errno == ERANGE || end == str || value > UINT32_MAX || isdigit(*end) || (!afterp && *end))
+    *afterp = s;
+  if (s == str || value > UINT32_MAX || value != newvalue || (!afterp && (strlen ? s != end : *s)))
     return 0;
   if (result)
     *result = value;

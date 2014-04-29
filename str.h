@@ -396,6 +396,19 @@ int str_to_uint32(const char *str, unsigned base, uint32_t *result, const char *
 int str_to_int64(const char *str, unsigned base, int64_t *result, const char **afterp);
 int str_to_uint64(const char *str, unsigned base, uint64_t *result, const char **afterp);
 
+/* Parse a length-bound string as an integer in ASCII radix notation in the given 'base' (eg,
+ * base=10 means decimal).
+ *
+ * Returns 1 if a valid integer is parsed, storing the value in *result (unless result is NULL) and
+ * storing a pointer to the immediately succeeding character in *afterp.  If afterp is NULL then
+ * returns 0 unless all 'strlen' characters of the string were consumed.  If no integer is parsed or
+ * if the integer overflows (too many digits), then returns 0, leaving *result unchanged and setting
+ * setting *afterp to point to the character where parsing failed.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int strn_to_uint32(const char *str, size_t strlen, unsigned base, uint32_t *result, const char **afterp);
+
 /* Parse a string as an integer in ASCII radix notation in the given 'base' (eg, base=10 means
  * decimal) and scale the result by a factor given by an optional suffix "scaling" character in the
  * set {kKmMgG}: 'k' = 1e3, 'K' = 1<<10, 'm' = 1e6, 'M' = 1<<20, 'g' = 1e9, 'G' = * 1<<30.
