@@ -437,19 +437,24 @@ static int root_page(httpd_request *r, const char *remainder)
   char temp[8192];
   strbuf b = strbuf_local(temp, sizeof temp);
   strbuf_sprintf(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>"
-	   "<h1>Hello, I'm %s*</h1><br>"
-	   "Interfaces;<br>",
+	   "<h1>Hello, I'm %s*</h1>",
 	   alloca_tohex_sid_t_trunc(my_subscriber->sid, 16));
+  if (config.server.motd[0]) {
+      strbuf_puts(b, "<p>");
+      strbuf_html_escape(b, config.server.motd, strlen(config.server.motd));
+      strbuf_puts(b, "</p>");
+  }
+  strbuf_puts(b, "Interfaces;<br />");
   int i;
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
     if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
-      strbuf_sprintf(b, "<a href=\"/interface/%d\">%d: %s, TX: %d, RX: %d</a><br>",
+      strbuf_sprintf(b, "<a href=\"/interface/%d\">%d: %s, TX: %d, RX: %d</a><br />",
 	i, i, overlay_interfaces[i].name, overlay_interfaces[i].tx_count, overlay_interfaces[i].recv_count);
   }
-  strbuf_puts(b, "Neighbours;<br>");
+  strbuf_puts(b, "Neighbours;<br />");
   link_neighbour_short_status_html(b, "/neighbour");
   if (is_rhizome_http_enabled()){
-    strbuf_puts(b, "<a href=\"/rhizome/status\">Rhizome Status</a><br>");
+    strbuf_puts(b, "<a href=\"/rhizome/status\">Rhizome Status</a><br />");
   }
   strbuf_puts(b, "</body></html>");
   if (strbuf_overrun(b)) {
