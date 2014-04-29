@@ -414,7 +414,7 @@ static int insert_mime_part_end(struct http_request *hr)
   httpd_request *r = (httpd_request *) hr;
   if (r->u.insert.current_part == PART_AUTHOR) {
     if (   r->u.insert.author_hex_len != sizeof r->u.insert.author_hex
-	|| strn_to_sid_t(&r->u.insert.author, r->u.insert.author_hex, NULL) == -1
+	|| strn_to_sid_t(&r->u.insert.author, r->u.insert.author_hex, sizeof r->u.insert.author_hex, NULL) == -1
     )
       return http_response_form_part(r, "Invalid", PART_AUTHOR, r->u.insert.author_hex, r->u.insert.author_hex_len);
     r->u.insert.received_author = 1;

@@ -28,30 +28,29 @@ int cmp_sid_t(const sid_t *a, const sid_t *b)
   return memcmp(a, b, sizeof a->binary);
 }
 
-int str_to_sid_t(sid_t *sid, const char *hex)
+int str_to_sid_t(sid_t *sidp, const char *hex)
 {
-  if (strcmp(hex, "broadcast") == 0) {
-    if (sid)
-      *sid = SID_BROADCAST;
-    return 0;
-  }
-  return sid ? fromhexstr(sid->binary, hex, sizeof sid->binary) : is_xstring(hex, SID_STRLEN) ? 0 : -1;
+  const char *end;
+  return strn_to_sid_t(sidp, hex, SIZE_MAX, &end) != -1 && *end == '\0' ? 0 : -1;
 }
 
-int strn_to_sid_t(sid_t *sid, const char *hex, const char **endp)
+int strn_to_sid_t(sid_t *sidp, const char *hex, size_t hexlen, const char **endp)
 {
-  if (str_startswith(hex, "broadcast", endp)) {
-    if (sid)
-    *sid = SID_BROADCAST;
+  if (strn_startswith(hex, hexlen, "broadcast", endp)) {
+    if (sidp)
+      *sidp = SID_BROADCAST;
     return 0;
   }
   sid_t tmp;
+  if (hexlen < sizeof tmp.binary * 2)
+    return -1;
   int n = fromhex(tmp.binary, hex, sizeof tmp.binary);
   if (n != sizeof tmp.binary)
     return -1;
-  *sid = tmp;
+  if (sidp)
+    *sidp = tmp;
   if (endp)
-    *endp = hex + sizeof sid->binary * 2;
+    *endp = hex + sizeof tmp.binary * 2;
   return 0;
 }
 

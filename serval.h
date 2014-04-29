@@ -192,7 +192,7 @@ typedef struct sid_binary {
 
 int cmp_sid_t(const sid_t *a, const sid_t *b);
 int str_to_sid_t(sid_t *sid, const char *hex);
-int strn_to_sid_t(sid_t *sid, const char *hex, const char **endp);
+int strn_to_sid_t(sid_t *sid, const char *hex, size_t hexlen, const char **endp);
 
 #define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
 

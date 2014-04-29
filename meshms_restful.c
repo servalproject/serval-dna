@@ -121,12 +121,12 @@ int restful_meshms_(httpd_request *r, const char *remainder)
   const char *verb = HTTP_VERB_GET;
   HTTP_HANDLER *handler = NULL;
   const char *end;
-  if (strn_to_sid_t(&r->sid1, remainder, &end) != -1) {
+  if (strn_to_sid_t(&r->sid1, remainder, SIZE_MAX, &end) != -1) {
     remainder = end;
     if (strcmp(remainder, "/conversationlist.json") == 0) {
       handler = restful_meshms_conversationlist_json;
       remainder = "";
-    } else if (*remainder == '/' && strn_to_sid_t(&r->sid2, remainder + 1, &end) != -1) {
+    } else if (*remainder == '/' && strn_to_sid_t(&r->sid2, remainder + 1, SIZE_MAX, &end) != -1) {
       remainder = end;
       if (strcmp(remainder, "/messagelist.json") == 0) {
 	handler = restful_meshms_messagelist_json;
