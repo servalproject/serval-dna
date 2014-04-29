@@ -20,9 +20,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __SERVAL_DNA__OS_INLINE
 #include "constants.h"
 #include "os.h"
+#include "mem.h"
 #include "str.h"
 #include "log.h"
 
+#include <assert.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -182,6 +184,15 @@ ssize_t read_symlink(const char *path, char *buf, size_t len)
 
 ssize_t read_whole_file(const char *path, unsigned char *buffer, size_t buffer_size)
 {
+  assert(buffer != NULL);
+  assert(buffer_size != 0);
+  if (malloc_read_whole_file(path, &buffer, &buffer_size) == -1)
+    return -1;
+  return buffer_size;
+}
+
+int malloc_read_whole_file(const char *path, unsigned char **bufp, size_t *sizp)
+{
   int fd = open(path, O_RDONLY);
   if (fd == -1)
     return WHYF_perror("open(%d,%s,O_RDONLY)", fd, alloca_str_toprint(path));
@@ -189,12 +200,20 @@ ssize_t read_whole_file(const char *path, unsigned char *buffer, size_t buffer_s
   struct stat stat;
   if (fstat(fd, &stat) == -1)
     ret = WHYF_perror("fstat(%d)", fd);
-  else if ((size_t)stat.st_size > buffer_size)
-    ret = WHYF("file %s (size %zu) is larger than available buffer (%zu)", alloca_str_toprint(path), (size_t)stat.st_size, buffer_size);
+  else if (*bufp != NULL && (size_t)stat.st_size > *sizp)
+    ret = WHYF("file %s (size %zu) is larger than available buffer (%zu)", alloca_str_toprint(path), (size_t)stat.st_size, *sizp);
+  else if (*bufp == NULL && *sizp && (size_t)stat.st_size > *sizp)
+    ret = WHYF("file %s (size %zu) is larger than maximum buffer (%zu)", alloca_str_toprint(path), (size_t)stat.st_size, *sizp);
   else {
-    ret = read(fd, buffer, buffer_size);
-    if (ret == -1)
-      ret = WHYF_perror("read(%d,%s,%zu)", fd, alloca_str_toprint(path), buffer_size);
+    *sizp = (size_t)stat.st_size;
+    if (*bufp == NULL && (*bufp = emalloc(*sizp)) == NULL)
+      ret = WHYF("file %s (size %zu) does not fit into memory", alloca_str_toprint(path), *sizp);
+    else {
+      assert(*bufp != NULL);
+      ret = read(fd, *bufp, *sizp);
+      if (ret == -1)
+	ret = WHYF_perror("read(%d,%s,%zu)", fd, alloca_str_toprint(path), *sizp);
+    }
   }
   if (close(fd) == -1)
     ret = WHYF_perror("close(%d)", fd);

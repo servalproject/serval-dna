@@ -166,4 +166,14 @@ ssize_t read_symlink(const char *path, char *buf, size_t len);
  */
 ssize_t read_whole_file(const char *path, unsigned char *buffer, size_t buffer_size);
 
+/* Read the whole file into a buffer.  If *bufp is NULL then uses malloc(3) to
+ * create a buffer first, the size of the file (up to a maximum of *sizp if
+ * *sizp is not zero), and assigns the address to *bufp.  If the file will not
+ * fit into the buffer or if there is an error from malloc(3) or opening or
+ * reading the file, logs an error and returns -1.  Otherwise, returns 0.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int malloc_read_whole_file(const char *path, unsigned char **bufp, size_t *sizp);
+
 #endif //__SERVAL_DNA__OS_H
