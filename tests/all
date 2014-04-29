@@ -25,6 +25,7 @@ includeTests config
 includeTests keyring
 includeTests server
 includeTests routing
+includeTests mdp
 includeTests msp
 includeTests dnahelper
 includeTests dnaprotocol

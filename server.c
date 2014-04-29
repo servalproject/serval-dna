@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "overlay_interface.h"
+#include "overlay_packet.h"
 
 #define PROC_SUBDIR	  "proc"
 #define PIDFILE_NAME	  "servald.pid"
@@ -214,7 +215,17 @@ void server_config_reload(struct sched_ent *alarm)
   case 0:
     break;
   default:
-    INFO("server config successfully reloaded");
+    INFO("server config reloaded");
+    break;
+  }
+  switch (reload_mdp_packet_rules()) {
+  case -1:
+    WARN("server continuing with prior packet filter rules");
+    break;
+  case 0:
+    break;
+  default:
+    INFO("server packet filter rules reloaded");
     break;
   }
   if (alarm) {

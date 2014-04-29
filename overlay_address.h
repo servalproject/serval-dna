@@ -85,8 +85,6 @@ struct subscriber{
   
   // private keys for local identities
   struct keyring_identity *identity;
-  
-  struct packet_rule *source_rules;
 };
 
 struct broadcast{

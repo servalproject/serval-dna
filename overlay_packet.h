@@ -22,6 +22,7 @@
 
 #include "overlay_address.h"
 #include "serval.h"
+#include "conf.h"
 
 #define FRAME_NOT_SENT -1
 #define FRAME_DONT_SEND -2
@@ -113,5 +114,7 @@ struct internal_mdp_header{
 
 int op_free(struct overlay_frame *p);
 struct overlay_frame *op_dup(struct overlay_frame *f);
+
+int reload_mdp_packet_rules(void);
 
 #endif //__SERVAL_DNA__OVERLAY_PACKET_H

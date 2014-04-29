@@ -1,0 +1,110 @@
+#!/bin/bash
+
+# Tests for MDP.
+#
+# Copyright 2014 Serval Project, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+
+teardown() {
+   stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
+
+set_filter_rules_path() {
+   >"rules$instance_name"
+   executeOk_servald config \
+      set log.console.level debug \
+      set debug.config yes \
+      set debug.mdprequests yes \
+      set debug.mdp_filter yes \
+      set mdp.filter_rules_path "$PWD/rules$instance_name"
+}
+
+setup_mdp_filters_ping() {
+   assert_no_servald_processes
+   foreach_instance +A +B +C set_filter_rules_path
+   foreach_instance +A +B +C create_single_identity
+   start_servald_instances +A +B +C
+   # Ensure that pings all work.
+   set_instance +A
+   fork executeOk_servald mdp ping --timeout=10 $SIDB 1
+   fork executeOk_servald mdp ping --timeout=10 $SIDC 1
+   set_instance +B
+   fork executeOk_servald mdp ping --timeout=10 $SIDA 1
+   fork executeOk_servald mdp ping --timeout=10 $SIDC 1
+   set_instance +C
+   fork executeOk_servald mdp ping --timeout=10 $SIDA 1
+   fork executeOk_servald mdp ping --timeout=10 $SIDB 1
+   fork_wait_all
+}
+
+doc_MDPFilterRulesDrop="MDP filter rules drop incoming and outgoing packets"
+setup_MDPFilterRulesDrop() {
+   setup_servald
+   setup_mdp_filters_ping
+}
+test_MDPFilterRulesDrop() {
+   set_instance +A
+   # Block pong responses from B to A
+   echo "drop <$SIDB:7" >>rulesA
+   # Block pong responses from A to C
+   echo "drop >$SIDC <*:7" >>rulesA
+   executeOk_servald config sync
+   fork execute_servald --exit-status=1 mdp ping --timeout=10 $SIDB 1
+   fork executeOk_servald mdp ping --timeout=10 $SIDC 1
+   set_instance +B
+   fork executeOk_servald mdp ping --timeout=10 $SIDA 1
+   fork executeOk_servald mdp ping --timeout=10 $SIDC 1
+   set_instance +C
+   fork execute_servald --exit-status=1 mdp ping --timeout=10 $SIDA 1
+   fork executeOk_servald mdp ping --timeout=10 $SIDB 1
+   fork_wait_all
+}
+
+doc_MDPFilterRulesAllow="MDP filter rules allow incoming and outgoing packets"
+setup_MDPFilterRulesAllow() {
+   setup_servald
+   setup_mdp_filters_ping
+}
+test_MDPFilterRulesAllow() {
+   set_instance +A
+   # Allow A to ping B and receive pong from B
+   echo "allow >$SIDB:7 <$SIDA; allow <$SIDB:7 >$SIDA" >>rulesA
+   # Allow A to receive ping from B and send pong to B
+   echo "allow <$SIDB >$SIDA:7; allow >$SIDB <$SIDA:7" >>rulesA
+   # Allow A to receive ping from C (but not to send pong)
+   echo "allow >*:7 <$SIDC" >>rulesA
+   # All other packets dropped
+   echo "drop all" >>rulesA
+   executeOk_servald config sync
+   fork executeOk_servald mdp ping --timeout=10 $SIDB 1
+   fork execute_servald --exit-status=1 mdp ping --timeout=10 $SIDC 1
+   set_instance +B
+   fork executeOk_servald mdp ping --timeout=10 $SIDA 1
+   fork executeOk_servald mdp ping --timeout=10 $SIDC 1
+   set_instance +C
+   fork execute_servald --exit-status=1 mdp ping --timeout=10 $SIDA 1
+   fork executeOk_servald mdp ping --timeout=10 $SIDB 1
+   fork_wait_all
+}
+
+runTests "$@"

@@ -573,8 +573,9 @@ static int overlay_saw_mdp_frame(
   struct overlay_buffer *payload)
 {
   IN();
-  int i;
-  int match=-1;
+
+  if (filter_packet(header) == RULE_DROP)
+    RETURN(0);
 
   /* Regular MDP frame addressed to us.  Look for matching port binding,
      and if available, push to client.  Else do nothing, or if we feel nice
@@ -587,9 +588,8 @@ static int overlay_saw_mdp_frame(
 	 alloca_tohex_sid_t_trunc(header->source->sid, 14),
 	 header->source_port, header->destination_port);
 
-  if (allow_incoming_packet(header) == RULE_DROP)
-    RETURN(0);
-  
+  int match=-1;
+  int i;
   for(i=0;i<MDP_MAX_BINDINGS;i++)
     {
       if (mdp_bindings[i].port!=header->destination_port)
@@ -823,8 +823,7 @@ static struct overlay_buffer * encrypt_payload(
 
 // encrypt or sign the plaintext, then queue the frame for transmission.
 // Note, the position of the payload MUST be at the start of the data, the limit MUST be used to specify the end
-int overlay_send_frame(struct internal_mdp_header *header,
-  struct overlay_buffer *payload)
+int overlay_send_frame(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   if ((!header->destination) || header->destination->reachable == REACHABLE_SELF){
     ob_checkpoint(payload);
@@ -838,6 +837,9 @@ int overlay_send_frame(struct internal_mdp_header *header,
     }
   }
   
+  if (filter_packet(header) == RULE_DROP)
+    return 0;
+
   if (header->ttl == 0) 
     header->ttl = PAYLOAD_TTL_DEFAULT;
   else if (header->ttl > PAYLOAD_TTL_MAX)

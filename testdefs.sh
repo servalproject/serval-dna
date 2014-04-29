@@ -152,6 +152,12 @@ setup_servald() {
    set_instance +Z
 }
 
+# Utility function for running servald:
+#  - executes $servald with the given arguments
+execute_servald() {
+   execute --core-backtrace --executable=$servald "$@"
+}
+
 # Utility function for running servald and asserting no errors:
 #  - executes $servald with the given arguments
 #  - asserts that standard error contains no error messages
