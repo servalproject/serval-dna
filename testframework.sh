@@ -830,7 +830,7 @@ _tfw_getopts() {
       *:--stdout) _tfw_dump_on_fail --stdout;;
       *:--stderr) _tfw_dump_on_fail --stderr;;
       assert*:--dump-on-fail=*) _tfw_dump_on_fail "${1#*=}";;
-      @(assert*|fork_wait*):--error-on-fail) _tfw_opt_error_on_fail=true;;
+      @(assert*|execute*|fork_wait*):--error-on-fail) _tfw_opt_error_on_fail=true;;
       assert*:--message=*) _tfw_message="${1#*=}";;
       execute:--exit-status=+([0-9])) _tfw_opt_exit_status="${1#*=}";;
       execute:--exit-status=*) _tfw_error "invalid value: $1";;
