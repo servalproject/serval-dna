@@ -164,7 +164,7 @@ int monitor_client_read(int fd, struct monitor_state *res, struct monitor_comman
     WHYF_perror("read(%d, %p, %zd)", fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset);
     return -1;
   } else if (bytesRead == 0) {
-    WHYF("read(%d, %p, %zd) returned %zd", fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset, (size_t)bytesRead);
+    WARNF("read(%d, %p, %zd) returned %zd", fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset, (size_t)bytesRead);
     return -1;
   }
   

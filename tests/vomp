@@ -48,100 +48,100 @@ configure_servald_server() {
 }
 
 vomp_console() {
-# Note, this might block and stall the test, but I need to predict where stdout is going to be
-# perhaps add an argument to execute?
-   $servald console <&8 >"$1"
+   local C="$instance_name"
+   mkfifo "${C}_IN"
+   exec 8<>"${C}_IN" # prevent fifo from blocking
+   executeOk_servald --stdout-file="${C}_OUT" console <"${C}_IN"
+   tfw_cat --stdout --stderr
 }
 
-send_cmd() {
-   tfw_log "sending $1 to $2"
-# Note, this might block and stall the test...
-   echo "$1" >> "$2"
+fork_vomp_console() {
+   local C="$instance_name"
+   fork %console$C vomp_console
 }
 
-init_console() {
-  eval ${instance_name}_IN="$PWD/${instance_name}_IN"
-  eval ${instance_name}_OUT="$PWD/${instance_name}_OUT"
-  mkfifo "$PWD/${instance_name}_IN"
-  exec 8<>"$PWD/${instance_name}_IN"
-  fork vomp_console "$PWD/${instance_name}_OUT"
-  exec 8>&-
+send_to_vomp_console() {
+   local C="$1"
+   local cmd="$2"
+   tfw_log "send '$cmd' to vomp console $C"
+   assert_fork_is_running %console$C
+   echo "$cmd" >>"${C}_IN"
 }
 
 doc_nophone="Attempt to dial a node with no phone"
 test_nophone() {
    set_instance +A
-   init_console
-   send_cmd "call $SIDB $DIDA $DIDB" "$A_IN"
-   wait_until --timeout=10 grep "^Call ended$" "$A_OUT"
-   send_cmd "quit" "$A_IN"
+   fork_vomp_console
+   send_to_vomp_console A "call $SIDB $DIDA $DIDB"
+   wait_until --timeout=10 grep "^Call ended$" A_OUT
+   send_to_vomp_console A "quit"
    fork_wait_all
-   tfw_cat "$A_OUT"
+   tfw_cat A_OUT
 }
 
 doc_hangup="Hangup instead of answering"
 test_hangup() {
-   foreach_instance +A +B init_console
-   send_cmd "call $SIDA $DIDB $DIDA" "$B_IN"
-   wait_until --timeout=10 grep "^Dialling$" "$B_OUT"
-   wait_until --timeout=10 grep "^Incoming call" "$A_OUT"
-   wait_until --timeout=10 grep "^Codec list" "$A_OUT"
-   wait_until --timeout=10 grep "^Codec list" "$B_OUT"
-   wait_until --timeout=10 grep "^Ringing$" "$B_OUT"
-   send_cmd "hangup" "$A_IN"
-   wait_until --timeout=10 grep "^Call ended$" "$A_OUT"
-   wait_until --timeout=10 grep "^Call ended$" "$B_OUT"
-   send_cmd "quit" "$A_IN"
-   send_cmd "quit" "$B_IN"
+   foreach_instance +A +B fork_vomp_console
+   send_to_vomp_console B "call $SIDA $DIDB $DIDA"
+   wait_until --timeout=10 grep "^Dialling$" B_OUT
+   wait_until --timeout=10 grep "^Incoming call" A_OUT
+   wait_until --timeout=10 grep "^Codec list" A_OUT
+   wait_until --timeout=10 grep "^Codec list" B_OUT
+   wait_until --timeout=10 grep "^Ringing$" B_OUT
+   send_to_vomp_console A "hangup"
+   wait_until --timeout=10 grep "^Call ended$" A_OUT
+   wait_until --timeout=10 grep "^Call ended$" B_OUT
+   send_to_vomp_console A "quit"
+   send_to_vomp_console B "quit"
    fork_wait_all
-   tfw_cat "$A_OUT" "$B_OUT"
+   tfw_cat A_OUT B_OUT
 }
 
 doc_timeout="Call timeout"
 test_timeout() {
-   foreach_instance +A +B init_console
-   send_cmd "call $SIDA $DIDB $DIDA" "$B_IN"
-   wait_until --timeout=10 grep "^Dialling$" "$B_OUT"
-   wait_until --timeout=10 grep "^Incoming call" "$A_OUT"
-   wait_until --timeout=10 grep "^Codec list" "$A_OUT"
-   wait_until --timeout=10 grep "^Codec list" "$B_OUT"
-   wait_until --timeout=10 grep "^Ringing$" "$B_OUT"
-   send_cmd "answer" "$A_IN"
-   wait_until --timeout=10 grep "^Picked up$" "$B_OUT"
-   send_cmd "say hello" "$A_IN"
-   send_cmd "say hi there" "$B_IN"
-   wait_until --timeout=10 grep "^hello$" "$B_OUT"
-   wait_until --timeout=10 grep "^hi there$" "$A_OUT"
+   foreach_instance +A +B fork_vomp_console
+   send_to_vomp_console B "call $SIDA $DIDB $DIDA"
+   wait_until --timeout=10 grep "^Dialling$" B_OUT
+   wait_until --timeout=10 grep "^Incoming call" A_OUT
+   wait_until --timeout=10 grep "^Codec list" A_OUT
+   wait_until --timeout=10 grep "^Codec list" B_OUT
+   wait_until --timeout=10 grep "^Ringing$" B_OUT
+   send_to_vomp_console A "answer"
+   wait_until --timeout=10 grep "^Picked up$" B_OUT
+   send_to_vomp_console A "say hello"
+   send_to_vomp_console B "say hi there"
+   wait_until --timeout=10 grep "^hello$" B_OUT
+   wait_until --timeout=10 grep "^hi there$" A_OUT
    stop_servald_server +B
 # B's console should just quit
-   wait_until --timeout=10 --timeout=20 grep "^Call ended$" "$A_OUT"
-   send_cmd "quit" "$A_IN"
+   wait_until --timeout=10 --timeout=20 grep "^Call ended$" A_OUT
+   send_to_vomp_console A "quit"
    fork_wait_all
-   tfw_cat "$A_OUT" "$B_OUT"
+   tfw_cat A_OUT B_OUT
 }
 
 doc_call_lifecycle="Successful call lifecycle"
 test_call_lifecycle() {
-   foreach_instance +A +B init_console
-   send_cmd "call $SIDA $DIDB $DIDA" "$B_IN"
-   wait_until --timeout=10 grep "^Dialling$" "$B_OUT"
-   wait_until --timeout=10 grep "^Incoming call" "$A_OUT"
-   wait_until --timeout=10 grep "^Codec list" "$A_OUT"
-   wait_until --timeout=10 grep "^Codec list" "$B_OUT"
-   wait_until --timeout=10 grep "^Ringing$" "$B_OUT"
-   send_cmd "answer" "$A_IN"
-   wait_until --timeout=10 grep "^Picked up$" "$B_OUT"
-   send_cmd "say hello" "$A_IN"
-   send_cmd "say hi there" "$B_IN"
-   wait_until --timeout=10 grep "^hello$" "$B_OUT"
-   wait_until --timeout=10 grep "^hi there$" "$A_OUT"
-   send_cmd "hangup" "$B_IN"
-   wait_until --timeout=10 grep "^Call ended$" "$A_OUT"
-   wait_until --timeout=10 grep "^Call ended$" "$B_OUT"
-   send_cmd "quit" "$A_IN"
-   send_cmd "quit" "$B_IN"
+   foreach_instance +A +B fork_vomp_console
+   send_to_vomp_console B "call $SIDA $DIDB $DIDA"
+   wait_until --timeout=10 grep "^Dialling$" B_OUT
+   wait_until --timeout=10 grep "^Incoming call" A_OUT
+   wait_until --timeout=10 grep "^Codec list" A_OUT
+   wait_until --timeout=10 grep "^Codec list" B_OUT
+   wait_until --timeout=10 grep "^Ringing$" B_OUT
+   send_to_vomp_console A "answer"
+   wait_until --timeout=10 grep "^Picked up$" B_OUT
+   send_to_vomp_console A "say hello"
+   send_to_vomp_console B "say hi there"
+   wait_until --timeout=10 grep "^hello$" B_OUT
+   wait_until --timeout=10 grep "^hi there$" A_OUT
+   send_to_vomp_console B "hangup"
+   wait_until --timeout=10 grep "^Call ended$" A_OUT
+   wait_until --timeout=10 grep "^Call ended$" B_OUT
+   send_to_vomp_console A "quit"
+   send_to_vomp_console B "quit"
    fork_wait_all
-   tfw_cat "$A_OUT" "$B_OUT"
+   tfw_cat A_OUT B_OUT
 }
 
 doc_concurrent="Multiple calls at once"
@@ -151,43 +151,43 @@ setup_concurrent() {
    start_servald_instances +A +B +C +D +E
 }
 test_concurrent() {
-   foreach_instance +A +B +C +D +E init_console
-   send_cmd "call $SIDB $DIDA $DIDB" "$A_IN"
-   send_cmd "call $SIDC $DIDA $DIDC" "$A_IN"
-   send_cmd "call $SIDA $DIDD $DIDA" "$D_IN"
-   send_cmd "call $SIDA $DIDE $DIDA" "$E_IN"
-   wait_until --timeout=10 grep "^Incoming call" "$A_OUT"
-   wait_until --timeout=10 grep "^Incoming call" "$B_OUT"
-   wait_until --timeout=10 grep "^Incoming call" "$C_OUT"
-   wait_until --timeout=10 grep "^Codec list" "$A_OUT"
-   wait_until --timeout=10 grep "^Codec list" "$B_OUT"
-   wait_until --timeout=10 grep "^Codec list" "$C_OUT"
-   wait_until --timeout=10 grep "^Codec list" "$D_OUT"
-   wait_until --timeout=10 grep "^Codec list" "$E_OUT"
-   wait_until --timeout=10 grep "^Ringing$" "$A_OUT"
-   wait_until --timeout=10 grep "^Ringing$" "$D_OUT"
-   wait_until --timeout=10 grep "^Ringing$" "$E_OUT"
-   send_cmd "answer" "$A_IN"
-   send_cmd "answer" "$A_IN"
-   send_cmd "answer" "$B_IN"
-   send_cmd "hangup" "$C_IN"
-   wait_until --timeout=10 grep "^Picked up$" "$A_OUT"
-   wait_until --timeout=10 grep "^Picked up$" "$D_OUT"
-   wait_until --timeout=10 grep "^Picked up$" "$E_OUT"
-   wait_until --timeout=10 grep "^Call ended$" "$C_OUT"
-   send_cmd "hangup" "$B_IN"
-   send_cmd "hangup" "$D_IN"
-   send_cmd "hangup" "$E_IN"
-   wait_until --timeout=10 grep "^Call ended$" "$B_OUT"
-   wait_until --timeout=10 grep "^Call ended$" "$D_OUT"
-   wait_until --timeout=10 grep "^Call ended$" "$E_OUT"
-   send_cmd "quit" "$A_IN"
-   send_cmd "quit" "$B_IN"
-   send_cmd "quit" "$C_IN"
-   send_cmd "quit" "$D_IN"
-   send_cmd "quit" "$E_IN"
+   foreach_instance +A +B +C +D +E fork_vomp_console
+   send_to_vomp_console A "call $SIDB $DIDA $DIDB"
+   send_to_vomp_console A "call $SIDC $DIDA $DIDC"
+   send_to_vomp_console D "call $SIDA $DIDD $DIDA"
+   send_to_vomp_console E "call $SIDA $DIDE $DIDA"
+   wait_until --timeout=10 grep "^Incoming call" A_OUT
+   wait_until --timeout=10 grep "^Incoming call" B_OUT
+   wait_until --timeout=10 grep "^Incoming call" C_OUT
+   wait_until --timeout=10 grep "^Codec list" A_OUT
+   wait_until --timeout=10 grep "^Codec list" B_OUT
+   wait_until --timeout=10 grep "^Codec list" C_OUT
+   wait_until --timeout=10 grep "^Codec list" D_OUT
+   wait_until --timeout=10 grep "^Codec list" E_OUT
+   wait_until --timeout=10 grep "^Ringing$" A_OUT
+   wait_until --timeout=10 grep "^Ringing$" D_OUT
+   wait_until --timeout=10 grep "^Ringing$" E_OUT
+   send_to_vomp_console A "answer"
+   send_to_vomp_console A "answer"
+   send_to_vomp_console B "answer"
+   send_to_vomp_console C "hangup"
+   wait_until --timeout=10 grep "^Picked up$" A_OUT
+   wait_until --timeout=10 grep "^Picked up$" D_OUT
+   wait_until --timeout=10 grep "^Picked up$" E_OUT
+   wait_until --timeout=10 grep "^Call ended$" C_OUT
+   send_to_vomp_console B "hangup"
+   send_to_vomp_console D "hangup"
+   send_to_vomp_console E "hangup"
+   wait_until --timeout=10 grep "^Call ended$" B_OUT
+   wait_until --timeout=10 grep "^Call ended$" D_OUT
+   wait_until --timeout=10 grep "^Call ended$" E_OUT
+   send_to_vomp_console A "quit"
+   send_to_vomp_console B "quit"
+   send_to_vomp_console C "quit"
+   send_to_vomp_console D "quit"
+   send_to_vomp_console E "quit"
    fork_wait_all
-   tfw_cat "$A_OUT" "$B_OUT" "$C_OUT" "$D_OUT" "$E_OUT"
+   tfw_cat A_OUT B_OUT C_OUT D_OUT E_OUT
 }
 
 runTests "$@"
