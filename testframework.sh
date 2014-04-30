@@ -1691,6 +1691,44 @@ fork() {
    $_tfw_assert_noise && tfw_log "# $desc pid=$! STARTED"
 }
 
+fork_is_running() {
+   local ret=0
+   for arg; do
+      _tfw_set_forklabel "$arg" || error "not a fork label '$arg'"
+      [ -n "$_tfw_forkid" ] || error "no such fork: %$_tfw_forklabel"
+      _tfw_fork_is_running $_tfw_forkid || ret=1
+   done
+   return $ret
+}
+
+assert_fork_is_running() {
+   _tfw_getopts assert_fork_is_running "$@"
+   shift $_tfw_getopts_shift
+   local message_opt="$_tfw_message"
+   for arg; do
+      _tfw_set_forklabel "$arg" || error "not a fork label '$arg'"
+      [ -n "$_tfw_forkid" ] || error "no such fork: %$_tfw_forklabel"
+      [ -z "$message_opt" ] && _tfw_message="fork $arg is running"
+      _tfw_assert _tfw_fork_is_running $_tfw_forkid || _tfw_failexit || return $?
+      $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
+   done
+   return 0
+}
+
+assert_fork_is_not_running() {
+   _tfw_getopts assert_fork_is_not_running "$@"
+   shift $_tfw_getopts_shift
+   local message_opt="$_tfw_message"
+   for arg; do
+      _tfw_set_forklabel "$arg" || error "not a fork label '$arg'"
+      [ -n "$_tfw_forkid" ] || error "no such fork: %$_tfw_forklabel"
+      [ -z "$message_opt" ] && _tfw_message="fork $arg is not running"
+      _tfw_assert ! _tfw_fork_is_running $_tfw_forkid || _tfw_failexit || return $?
+      $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
+   done
+   return 0
+}
+
 fork_terminate() {
    _tfw_getopts fork_terminate "$@"
    shift $_tfw_getopts_shift
@@ -1778,15 +1816,24 @@ _tfw_forkterminate() {
    kill -TERM $pid 2>/dev/null
 }
 
+_tfw_fork_is_running() {
+   local forkid="$1"
+   [ -z "$forkid" ] && return 1 # forkid never used
+   local pid=${_tfw_forked_pids[$forkid]}
+   local label=${_tfw_forked_labels[$forkid]}
+   [ -z "$pid" ] && return 1 # forkid already waited for
+   kill -0 $pid 2>/dev/null
+}
+
 _tfw_forkwait() {
    local forkid="$1"
    [ -z "$forkid" ] && return 0
    local pid=${_tfw_forked_pids[$forkid]}
    local label=${_tfw_forked_labels[$forkid]}
-   [ -z "$pid" ] && return 0
-   kill -0 $pid 2>/dev/null && return 1 # still running
+   [ -z "$pid" ] && return 0 # forkid already waited for
+   kill -0 $pid 2>/dev/null && return 1 # not killed yet
    _tfw_forked_pids[$forkid]=
-   wait $pid # should not block because process has exited
+   wait $pid # process has already exited, so should not block
    local status=$?
    local desc="fork[$forkid]${label:+ %$label}"
    $_tfw_assert_noise && tfw_log "# $desc pid=$pid EXIT status=$status"

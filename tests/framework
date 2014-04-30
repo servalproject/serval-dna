@@ -42,4 +42,27 @@ test_tfw_cmp_version() {
    execute --exit-status=0 tfw_cmp_version 1.0          1..0
 }
 
+test_fork() {
+   fork %A sleep 1000
+   fork %Z sleep 1001
+   fork %a sleep 1002
+   fork %z sleep 1003
+   fork %0 sleep 1004
+   fork %9 sleep 1005
+   assert_fork_is_running %A %Z %a %z
+   assert_fork_is_running %0 %9
+   fork_terminate %A
+   fork_terminate %a
+   fork_terminate %0
+   fork_wait %A %a
+   fork_wait %0
+   assert_fork_is_not_running %A %a %0
+   assert_fork_is_running %Z %z %9
+   fork_terminate_all
+   fork_wait %Z
+   fork_wait_all
+   assert_fork_is_not_running %A %Z %a %z
+   assert_fork_is_not_running %0 %9
+}
+
 runTests "$@"
