@@ -679,8 +679,8 @@ _tfw_execute() {
       ulimit -S -c unlimited
       rm -f core
    fi
-   export TFWSTDOUT="$_tfw_process_tmp/stdout"
-   export TFWSTDERR="$_tfw_process_tmp/stderr"
+   export TFWSTDOUT="${_tfw_stdout_file:-$_tfw_process_tmp/stdout}"
+   export TFWSTDERR="${_tfw_stderr_file:-$_tfw_process_tmp/stderr}"
    {
       time -p "$_tfw_executable" "$@" >"$TFWSTDOUT" 2>"$TFWSTDERR"
    } 2>"$_tfw_process_tmp/times" &
@@ -808,6 +808,8 @@ _tfw_getopts() {
    local context="$1"
    shift
    _tfw_executable=
+   _tfw_stdout_file=
+   _tfw_stderr_file=
    _tfw_opt_core_backtrace=false
    _tfw_message=
    _tfw_opt_dump_on_fail=()
@@ -834,6 +836,10 @@ _tfw_getopts() {
       execute:--exit-status=*) _tfw_error "invalid value: $1";;
       execute*:--executable=) _tfw_error "missing value: $1";;
       execute*:--executable=*) _tfw_executable="${1#*=}";;
+      execute*:--stdout-file=) _tfw_error "missing value: $1";;
+      execute*:--stdout-file=*) _tfw_stdout_file="${1#*=}";;
+      execute*:--stderr-file=) _tfw_error "missing value: $1";;
+      execute*:--stderr-file=*) _tfw_stderr_file="${1#*=}";;
       execute*:--core-backtrace) _tfw_opt_core_backtrace=true;;
       @(execute*|wait_until):--timeout=@(+([0-9])?(.+([0-9]))|*([0-9]).+([0-9]))) _tfw_opt_timeout="${1#*=}";;
       @(execute*|wait_until):--timeout=*) _tfw_error "invalid value: $1";;
