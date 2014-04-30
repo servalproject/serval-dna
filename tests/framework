@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Tests for Serval rhizome operations.
+# Tests for the test framework.
 #
-# Copyright 2012 Serval Project, Inc.
+# Copyright 2012-2014 Serval Project, Inc.
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -19,8 +19,6 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 source "${0%/*}/../testframework.sh"
-
-shopt -s extglob
 
 test_tfw_cmp_version() {
    execute --exit-status=1 tfw_cmp_version 1 2

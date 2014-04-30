@@ -870,10 +870,14 @@ _tfw_getopts() {
 }
 
 _tfw_is_float() {
+   local oo
+   _tfw_shopt oo -s extglob
+   local ret=1
    case "$1" in
-   @(+([0-9])?(.+([0-9]))|*([0-9]).+([0-9]))) return 0;
+   @(+([0-9])?(.+([0-9]))|*([0-9]).+([0-9]))) ret=0;;
    esac
-   return 1
+   _tfw_shopt_restore oo
+   return $ret
 }
 
 _tfw_matches_rexp() {
@@ -1745,18 +1749,22 @@ fork_wait_all() {
 }
 
 _tfw_set_forklabel() {
+   local oo
+   _tfw_shopt oo -s extglob
+   local ret=1
    case "$1" in
    '%'+([[A-Za-z0-9]))
       _tfw_forklabel="${1#%}"
       eval _tfw_forkid="\$_tfw_fork_label_$_tfw_forklabel"
-      return 0
+      ret=0
       ;;
    '%'*)
       error "malformed fork label '$1'"
-      return 0
+      ret=0
       ;;
    esac
-   return 1
+   _tfw_shopt_restore oo
+   return $ret
 }
 
 _tfw_forkterminate() {
