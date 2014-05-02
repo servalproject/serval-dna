@@ -74,6 +74,7 @@ struct network_destination {
   // sequence number of last packet sent to this destination.
   // Used to allow NACKs that can request retransmission of recent packets.
   int sequence_number;
+  int last_ack_seq;
 
   // rate limit for outgoing packets
   struct limit_state transfer_limit;

@@ -186,7 +186,8 @@ struct network_destination * new_destination(struct overlay_interface *interface
     ret->interface = interface;
     ret->resend_delay = 1000;
     ret->last_tx = TIME_NEVER_HAS;
-//    DEBUGF("Create ref %p, %d - %s", ret, ret->_ref_count, ret->interface->name);
+    ret->sequence_number = -1;
+    ret->last_ack_seq = -1;
   }
   return ret;
 }
@@ -210,24 +211,20 @@ struct network_destination * create_unicast_destination(struct socket_address *a
     ret->address = *addr;
     ret->unicast = 1;
     ret->tick_ms = interface->destination->tick_ms;
-    ret->sequence_number = -1;
   }
   return ret;
 }
 
 struct network_destination * add_destination_ref(struct network_destination *ref){
   ref->_ref_count++;
-//  DEBUGF("Add ref %p, %d - %s", ref, ref->_ref_count, ref->interface->name);
   return ref;
 }
 
 void release_destination_ref(struct network_destination *ref){
   if (ref->_ref_count<=1){
-//    DEBUGF("Free ref %p, %d - %s", ref, ref->_ref_count, ref->interface->name);
     free(ref);
   }else{
     ref->_ref_count--;
-//    DEBUGF("Drop ref %p, %d - %s", ref, ref->_ref_count, ref->interface->name);
   }
 }
 
@@ -372,7 +369,7 @@ static void update_path_score(struct neighbour *neighbour, struct link *link){
   link->calculating = 0;
 }
 
-// pick the best path to this network destination
+// pick the best path to this network end point
 static struct link * find_best_link(struct subscriber *subscriber)
 {
   IN();
@@ -589,6 +586,7 @@ static void clean_neighbours(time_ms_t now)
   while (*n_ptr){
     struct neighbour *n = *n_ptr;
     
+    // drop any inbound links that have expired
     struct link_in **list = &n->links;
     while(*list){
       struct link_in *link = *list;
@@ -604,6 +602,7 @@ static void clean_neighbours(time_ms_t now)
       }
     }
     
+    // drop any outbound links that have expired
     struct link_out **out = &n->out_links;
     int alive=0;
     while(*out){
@@ -619,7 +618,7 @@ static void clean_neighbours(time_ms_t now)
       }
     }
     
-    // when all links to a neighbour that we are routing through expire, force a routing calculation update
+    // when all links to a neighbour that we were directly routing to expire, force a routing calculation update
     struct link_state *state = get_link_state(n->subscriber);
     if (state->next_hop == n->subscriber && 
 	(n->link_in_timeout < now || !n->links || !alive) && 
@@ -726,6 +725,8 @@ static int send_legacy_self_announce_ack(struct neighbour *neighbour, struct lin
   return 0;
 }
 
+// find our neighbour's best link from them to us.
+// we only ack a single inbound link.
 static int neighbour_find_best_link(struct neighbour *n)
 {
   // TODO compare other link stats to find the best...
@@ -988,7 +989,8 @@ int link_add_destinations(struct overlay_frame *frame)
       frame->next_hop = directory_service;
     
     if (frame->next_hop->reachable==REACHABLE_NONE){
-      // if the destination is a neighbour, add all probable destinations
+      // if the destination is a network neighbour, but we haven't established any viable route yet
+      // we need to add all likely links so that we can send ack's and bootstrap the routing table
       struct neighbour *n = get_neighbour(frame->destination, 0);
       if (n){
 	struct link_out *out = n->out_links;
@@ -1014,20 +1016,22 @@ int link_add_destinations(struct overlay_frame *frame)
     
     struct neighbour *neighbour = neighbours;
     for(;neighbour;neighbour = neighbour->_next){
+      // TODO, send broadcast packets to neighbours before link establishment?
       if (neighbour->subscriber->reachable&REACHABLE_DIRECT){
 	struct network_destination *dest = neighbour->subscriber->destination;
-	// TODO set packet version per destination
+	// TODO move packet version flag to destination struct?
 	if (frame->packet_version > neighbour->subscriber->max_packet_version)
 	  frame->packet_version = neighbour->subscriber->max_packet_version;
 	
 	if (!dest->unicast){
 	  if (!dest->interface->send_broadcasts)
 	    continue;
-	  // make sure we only add broadcast interfaces once
-	  int id = dest->interface - overlay_interfaces;
+	  // make sure we only add each broadcast interface once
+	  unsigned id = dest->interface - overlay_interfaces;
 	  if (added_interface[id]){
 	    continue;
 	  }
+	  added_interface[id]=1;
 	}
 	
 	if (frame->destination_count < MAX_PACKET_DESTINATIONS)
@@ -1376,6 +1380,11 @@ int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payl
 
       // process acks / nacks
       if (ack_seq!=-1){
+	// track the latest ack from any neighbour
+	if (destination->last_ack_seq==-1 || ((ack_seq - destination->last_ack_seq)&0xFF) <= 127){
+	  destination->last_ack_seq = ack_seq;
+	}
+	
         overlay_queue_ack(header->source, destination, ack_mask, ack_seq);
 
         // did they miss our last ack?
