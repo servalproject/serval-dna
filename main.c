@@ -68,21 +68,3 @@ static void crash_handler(int signal)
   exit(-signal);
 }
 
-#if 0
-#include <execinfo.h>
-#define MAX_DEPTH 64
-int printBackTrace()
-{
-  int i,depth=0;
-  void *functions[MAX_DEPTH];
-  char **function_names;
-  
-  depth = backtrace (functions, MAX_DEPTH);
-  function_names = backtrace_symbols (functions, depth);
-     
-  for(i=0;i<depth;i++)
-    fprintf(stderr,"%s\n", function_names[i]);
-
-  return 0;
-}
-#endif

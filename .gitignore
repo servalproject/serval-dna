@@ -23,6 +23,7 @@ serval.c
 /tfw_createfile
 /fakeradio
 /config_test
+/simulator
 *.so
 test.*.log
 testlog

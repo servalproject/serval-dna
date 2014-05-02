@@ -789,39 +789,44 @@ static void overlay_interface_poll(struct sched_ent *alarm)
   }  
 }
 
-static int send_local_broadcast(int fd, const uint8_t *bytes, size_t len, struct socket_address *address)
+static int send_local_packet(int fd, const uint8_t *bytes, size_t len, const char *folder, const char *file)
 {
+  struct socket_address addr;
+  
+  strbuf d = strbuf_local(addr.local.sun_path, sizeof addr.local.sun_path);
+  strbuf_path_join(d, folder, file, NULL);
+  if (strbuf_overrun(d))
+    return WHYF("interface file name overrun: %s", alloca_str_toprint(strbuf_str(d)));
+  
+  struct stat st;
+  if (lstat(addr.local.sun_path, &st))
+    return 1;
+  if (!S_ISSOCK(st.st_mode))
+    return 1;
+    
+  addr.local.sun_family = AF_UNIX;
+  addr.addrlen = sizeof(addr.local.sun_family) + strlen(addr.local.sun_path)+1;
+  
+  ssize_t sent = sendto(fd, bytes, len, 0, 
+	    &addr.addr, addr.addrlen);
+  if (sent == -1)
+    return WHYF_perror("sendto(%d, %zu, %s)", fd, len, alloca_socket_address(&addr));
+  return 0;
+}
+
+static int send_local_broadcast(int fd, const uint8_t *bytes, size_t len, const char *folder)
+{
+  if (send_local_packet(fd, bytes, len, folder, "broadcast")==0)
+    return 0;
+    
   DIR *dir;
   struct dirent *dp;
-  if ((dir = opendir(address->local.sun_path)) == NULL) {
-    WARNF_perror("opendir(%s)", alloca_str_toprint(address->local.sun_path));
+  if ((dir = opendir(folder)) == NULL) {
+    WARNF_perror("opendir(%s)", alloca_str_toprint(folder));
     return -1;
   }
   while ((dp = readdir(dir)) != NULL) {
-    struct socket_address addr;
-    
-    strbuf d = strbuf_local(addr.local.sun_path, sizeof addr.local.sun_path);
-    strbuf_path_join(d, address->local.sun_path, dp->d_name, NULL);
-    if (strbuf_overrun(d)){
-      WHYF("interface file name overrun: %s", alloca_str_toprint(strbuf_str(d)));
-      continue;
-    }
-    
-    struct stat st;
-    if (lstat(addr.local.sun_path, &st)) {
-      WARNF_perror("stat(%s)", alloca_str_toprint(addr.local.sun_path));
-      continue;
-    }
-    
-    if (S_ISSOCK(st.st_mode)){
-      addr.local.sun_family = AF_UNIX;
-      addr.addrlen = sizeof(addr.local.sun_family) + strlen(addr.local.sun_path)+1;
-      
-      ssize_t sent = sendto(fd, bytes, len, 0, 
-		&addr.addr, addr.addrlen);
-      if (sent == -1)
-	WHYF_perror("sendto(%d, %zu, %s)", fd, len, alloca_socket_address(&addr));
-    }
+    send_local_packet(fd, bytes, len, folder, dp->d_name);
   }
   closedir(dir);
   return 0;
@@ -915,7 +920,7 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 	&& !destination->unicast){
 	// find all sockets in this folder and send to them
 	send_local_broadcast(interface->alarm.poll.fd, 
-		  bytes, (size_t)len, &destination->address);
+		  bytes, (size_t)len, destination->address.local.sun_path);
       }else{
 	ssize_t sent = sendto(interface->alarm.poll.fd, 
 		  bytes, (size_t)len, 0, 

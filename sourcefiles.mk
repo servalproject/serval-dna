@@ -97,3 +97,9 @@ SERVAL_DAEMON_SOURCES = \
 	fec-3.0.1/encode_rs_8.c \
 	fec-3.0.1/init_rs_char.c \
 	context1.c 
+
+SIMULATOR_SOURCES = cli.c conf.c conf_om.c conf_parse.c conf_schema.c \
+	console.c simulator.c socket.c fdqueue.c performance_timing.c \
+	str.c os.c mem.c net.c log_util.c strbuf.c strbuf_helpers.c \
+	dataformats.c xprintf.c instance.c limit.c version.c
+

@@ -308,28 +308,59 @@ teardown_simulate_extender() {
    tfw_cat "$SERVALD_VAR/radioerr"
 }
 
+_simulator() {
+   # TODO timeout & failure reporting?
+   executeOk --error-on-fail $servald_build_root/simulator <$SIM_IN
+   tfw_cat --stdout --stderr
+   rm $SIM_IN
+}
+start_simulator() {
+  SIM_IN="$PWD/SIM_IN"
+  mkfifo "$SIM_IN"
+  exec 8<>"$SIM_IN" # stop fifo from blocking
+  fork %simulator _simulator
+}
+simulator_command() {
+  tfw_log "$@"
+  assert_fork_is_running %simulator
+  echo "$@" >>"$SIM_IN"
+}
+simulator_quit() {
+   simulator_command quit
+   fork_wait %simulator
+}
+
 doc_multiple_nodes="Multiple nodes on one link"
 setup_multiple_nodes() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B +C +D create_single_identity
    foreach_instance +A +B +C +D add_servald_interface 1
+   start_simulator
+   simulator_command create "net" "$SERVALD_VAR/dummy1/"
    foreach_instance +A +B +C +D start_servald_server
 }
 test_multiple_nodes() {
-   wait_until path_exists +A +B
-   wait_until path_exists +A +C
-   wait_until path_exists +A +D
-   wait_until path_exists +B +A
-   wait_until path_exists +C +A
-   wait_until path_exists +D +A
+   simulator_command set "net" "latency" "100"
+   simulator_command up "net"
+   wait_until --timeout=10 path_exists +A +B
+   wait_until --timeout=5 path_exists +A +C
+   wait_until --timeout=5 path_exists +A +D
+   wait_until --timeout=5 path_exists +B +A
+   wait_until --timeout=5 path_exists +C +A
+   wait_until --timeout=5 path_exists +D +A
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
+   simulator_command set "net" "latency" "150"
    executeOk_servald mdp ping --timeout=3 $SIDC 1
    tfw_cat --stdout --stderr
+   simulator_command set "net" "latency" "200"
    executeOk_servald mdp ping --timeout=3 $SIDD 1
    tfw_cat --stdout --stderr
+}
+finally_multiple_nodes() {
+   simulator_quit
 }
 
 doc_scan="Network scan with isolated clients"
@@ -410,12 +441,14 @@ setup_broadcast_only() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
-   foreach_instance +A +B add_servald_interface --file 1
-   foreach_instance +A +B \
-      executeOk_servald config set interfaces.1.drop_unicasts 1
+   foreach_instance +A +B add_servald_interface 1
+   start_simulator
+   simulator_command create "net" "$SERVALD_VAR/dummy1/"
+   simulator_command set "net" "drop_unicast" "1"
    foreach_instance +A +B start_servald_server
 }
 test_broadcast_only() {
+   simulator_command up "net"
    set_instance +A
    wait_until has_link --broadcast $SIDB
    set_instance +B
@@ -423,6 +456,9 @@ test_broadcast_only() {
    set_instance +A
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
+}
+finally_broadcast_only() {
+   simulator_quit
 }
 
 doc_prefer_unicast="Prefer unicast packets"
@@ -535,27 +571,37 @@ doc_lose_neighbours="Lose and regain neighbours"
 setup_lose_neighbours() {
    setup_servald
    assert_no_servald_processes
+   start_simulator
+   simulator_command create "net1" "$SERVALD_VAR/dummy1/"
+   simulator_command create "net2" "$SERVALD_VAR/dummy2/"
    foreach_instance +A +B +C create_single_identity
    foreach_instance +A +B add_servald_interface 1
    foreach_instance +B +C add_servald_interface 2
    foreach_instance +A +B +C start_servald_server
 }
 test_lose_neighbours() {
+   simulator_command up "net1" "net2"
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
-   stop_servald_server +B
+   simulator_command down "net1" "net2"
    foreach_instance +A +C \
       wait_until --timeout=30 instance_offline +B
    set_instance +A
    wait_until --timeout=30 instance_offline +C
-   start_servald_server +B
+   simulator_command up "net1" "net2"
    wait_until --timeout=20 path_exists +A +B +C
    wait_until --timeout=20 path_exists +C +B +A
+}
+finally_lose_neighbours() {
+   simulator_quit
 }
 
 setup_multi_interface() {
    setup_servald
    assert_no_servald_processes
+   start_simulator
+   simulator_command create "wlan0" "$SERVALD_VAR/dummy1/"
+   simulator_command create "eth0" "$SERVALD_VAR/dummy2/"
    foreach_instance +A +B create_single_identity
    foreach_instance +A +B add_servald_interface --wifi 1
    foreach_instance +A +B add_servald_interface --ethernet 2
@@ -564,20 +610,24 @@ setup_multi_interface() {
 
 doc_multi_interface="Multiple links of different types to the same neighbour"
 test_multi_interface() {
+   simulator_command up "wlan0" "eth0"
    set_instance +A
    wait_until has_link --interface "dummy2.*" $SIDB
    set_instance +B
    wait_until has_link --interface "dummy2.*" $SIDA
    set_instance +A
-   executeOk_servald config set interfaces.2.exclude 1
+   simulator_command down "eth0"
    wait_until has_link --interface "dummy1.*" $SIDB
    set_instance +B
    wait_until has_link --interface "dummy1.*" $SIDA
    set_instance +A
-   executeOk_servald config del interfaces.2.exclude
+   simulator_command up "eth0"
    wait_until has_link --interface "dummy2.*" $SIDB
    set_instance +B
    wait_until has_link --interface "dummy2.*" $SIDA
+}
+finally_multi_interface() {
+   simulator_quit
 }
 
 doc_ping_unreliable_1hop="Ping over a 1-hop unreliable link"
@@ -585,15 +635,16 @@ setup_ping_unreliable_1hop() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B create_single_identity
-  foreach_instance +A +B add_servald_interface --file 1
-  foreach_instance +A +B \
-    executeOk_servald config \
-      set interfaces.1.drop_packets 40
+  foreach_instance +A +B add_servald_interface 1
+  start_simulator
+  simulator_command create "net" "$SERVALD_VAR/dummy1/"
+  simulator_command set "net" "drop_packets" "40"
   foreach_instance +A +B start_servald_server
 }
 test_ping_unreliable_1hop() {
-   wait_until path_exists +A +B
-   wait_until path_exists +B +A
+   simulator_command up "net"
+   wait_until --timeout=10 path_exists +A +B
+   wait_until --timeout=5 path_exists +B +A
    set_instance +A
    executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates $SIDB 100
    tfw_cat --stdout --stderr
@@ -602,23 +653,26 @@ test_ping_unreliable_1hop() {
    assert [ "$received" -ge 98 ]
    assert [ "$duplicates" -le 2 ]
 }
+finally_ping_unreliable_1hop() {
+   simulator_quit
+}
 
 doc_ping_unreliable_2hop="Ping over a 2-hop unreliable link"
 setup_ping_unreliable_2hop() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B +C create_single_identity
-  foreach_instance +A +B add_servald_interface --file 1
-  foreach_instance +A +B \
-    executeOk_servald config \
-      set interfaces.1.drop_packets 40
-  foreach_instance +B +C add_servald_interface --file 2
-  foreach_instance +B +C \
-    executeOk_servald config \
-      set interfaces.2.drop_packets 40
+  foreach_instance +A +B add_servald_interface 1
+  foreach_instance +B +C add_servald_interface 2
+  start_simulator
+  simulator_command create "net1" "$SERVALD_VAR/dummy1/"
+  simulator_command set "net1" "drop_packets" "40"
+  simulator_command create "net2" "$SERVALD_VAR/dummy2/"
+  simulator_command set "net2" "drop_packets" "40"
   foreach_instance +A +B +C start_servald_server
 }
 test_ping_unreliable_2hop() {
+   simulator_command up "net1" "net2"
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
    set_instance +A
@@ -629,24 +683,58 @@ test_ping_unreliable_2hop() {
    assert [ "$received" -ge 98 ]
    assert [ "$duplicates" -le 5 ]
 }
+finally_ping_unreliable_2hop() {
+   simulator_quit
+}
+
+# TODO implement congestion control, use this test as a basis for improving...
+doc_ping_congested="Ping flood over an unreliable and congested link"
+setup_ping_congested() {
+  setup_servald
+  assert_no_servald_processes
+  foreach_instance +A +B create_single_identity
+  foreach_instance +A +B add_servald_interface 1
+  start_simulator
+  simulator_command create "net1" "$SERVALD_VAR/dummy1/"
+  simulator_command set "net1" \
+	"drop_packets" "20" \
+	"latency" "20" \
+	"rate" "20000"
+  foreach_instance +A +B +C start_servald_server
+}
+test_ping_congested() {
+   simulator_command up "net1"
+   wait_until --timeout=10 path_exists +A +B
+   wait_until --timeout=5 path_exists +B +A
+   set_instance +A
+   executeOk_servald mdp ping --interval=0.100 --timeout=3 $SIDB 100
+   tfw_cat --stdout --stderr
+}
+finally_ping_congested() {
+   simulator_quit
+}
 
 doc_brping_unreliable_1hop="Broadcast ping over a 1-hop unreliable link"
 setup_brping_unreliable_1hop() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B create_single_identity
-  foreach_instance +A +B add_servald_interface --file 1
-  foreach_instance +A +B \
-    executeOk_servald config \
-      set interfaces.1.drop_packets 20
+  foreach_instance +A +B add_servald_interface 1
+  start_simulator
+  simulator_command create "net" "$SERVALD_VAR/dummy1/"
+  simulator_command set "net" "drop_packets" "20"
   foreach_instance +A +B start_servald_server
 }
 test_brping_unreliable_1hop() {
+   simulator_command up "net"
    wait_until path_exists +A +B
    wait_until path_exists +B +A
    set_instance +A
    executeOk_servald mdp ping --interval=0.100 --timeout=2 --wait-for-duplicates broadcast 100
    tfw_cat --stdout --stderr
+}
+finally_brping_unreliable_1hop() {
+   simulator_quit
 }
 
 doc_unreliable_links="Prefer a longer, better path vs an unreliable link"
@@ -654,24 +742,20 @@ setup_unreliable_links() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B +C create_single_identity
-  foreach_instance +A +B add_servald_interface --file 1
-  foreach_instance +B +C add_servald_interface --file 2
-  foreach_instance +A +C add_servald_interface --file 3
-  set_instance +A
-  executeOk_servald config \
-    set interfaces.1.drop_packets 5 \
-    set interfaces.3.drop_packets 70
-  set_instance +B
-  executeOk_servald config \
-    set interfaces.1.drop_packets 5 \
-    set interfaces.2.drop_packets 5
-  set_instance +C
-  executeOk_servald config \
-    set interfaces.2.drop_packets 5 \
-    set interfaces.3.drop_packets 70
+  foreach_instance +A +B add_servald_interface 1
+  foreach_instance +B +C add_servald_interface 2
+  foreach_instance +A +C add_servald_interface 3
+  start_simulator
+  simulator_command create "net1" "$SERVALD_VAR/dummy1/"
+  simulator_command create "net2" "$SERVALD_VAR/dummy2/"
+  simulator_command create "net3" "$SERVALD_VAR/dummy3/"
+  simulator_command set "net1" "drop_packets" "5"
+  simulator_command set "net2" "drop_packets" "5"
+  simulator_command set "net3" "drop_packets" "70"
   foreach_instance +A +B +C start_servald_server
 }
 test_unreliable_links() {
+   simulator_command up "net1" "net2" "net3"
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
    set_instance +A
@@ -685,43 +769,40 @@ test_unreliable_links() {
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
 }
+finally_unreliable_links() {
+   simulator_quit
+}
 
 doc_unreliable_links2="Choose the best multihop path with some unreliable links"
 setup_unreliable_links2() {
   setup_servald
   assert_no_servald_processes
   foreach_instance +A +B +C +D create_single_identity
-  foreach_instance +A +B add_servald_interface --file 1
-  foreach_instance +A +C add_servald_interface --file 2
-  foreach_instance +A +D add_servald_interface --file 3
-  foreach_instance +B +C add_servald_interface --file 4
-  foreach_instance +B +D add_servald_interface --file 5
-  foreach_instance +C +D add_servald_interface --file 6
-  set_instance +A
-  executeOk_servald config \
-    set interfaces.1.drop_packets 5 \
-    set interfaces.2.drop_packets 40 \
-    set interfaces.3.drop_packets 90
-  set_instance +B
-  executeOk_servald config \
-    set interfaces.1.drop_packets 5 \
-    set interfaces.4.drop_packets 5 \
-    set interfaces.5.drop_packets 40
-  set_instance +C
-  executeOk_servald config \
-    set interfaces.2.drop_packets 40 \
-    set interfaces.4.drop_packets 5 \
-    set interfaces.6.drop_packets 5
-  set_instance +D
-  executeOk_servald config \
-    set interfaces.3.drop_packets 90 \
-    set interfaces.5.drop_packets 40 \
-    set interfaces.6.drop_packets 5
+  foreach_instance +A +B add_servald_interface 1
+  foreach_instance +A +C add_servald_interface 2
+  foreach_instance +A +D add_servald_interface 3
+  foreach_instance +B +C add_servald_interface 4
+  foreach_instance +B +D add_servald_interface 5
+  foreach_instance +C +D add_servald_interface 6
+  start_simulator
+  simulator_command create "net1" "$SERVALD_VAR/dummy1/"
+  simulator_command create "net2" "$SERVALD_VAR/dummy2/"
+  simulator_command create "net3" "$SERVALD_VAR/dummy3/"
+  simulator_command create "net4" "$SERVALD_VAR/dummy4/"
+  simulator_command create "net5" "$SERVALD_VAR/dummy5/"
+  simulator_command create "net6" "$SERVALD_VAR/dummy6/"
+  simulator_command set "net1" "drop_packets" "5"
+  simulator_command set "net2" "drop_packets" "60"
+  simulator_command set "net3" "drop_packets" "90"
+  simulator_command set "net4" "drop_packets" "5"
+  simulator_command set "net5" "drop_packets" "60"
+  simulator_command set "net6" "drop_packets" "5"
   foreach_instance +A +B +C +D start_servald_server
 }
 test_unreliable_links2() {
-   wait_until path_exists +A +B +C +D
-   wait_until path_exists +D +C +B +A
+   simulator_command up "net1" "net2" "net3" "net4" "net5" "net6"
+   wait_until --timeout=20 path_exists +A +B +C +D
+   wait_until --timeout=20 path_exists +D +C +B +A
    set_instance +A
    executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates $SIDD 100
    tfw_cat --stdout --stderr
@@ -731,6 +812,9 @@ test_unreliable_links2() {
    assert [ "$duplicates" -le 5 ]
    wait_until --timeout=20 path_exists +A +B +C +D
    wait_until --timeout=20 path_exists +D +C +B +A
+}
+finally_unreliable_links2() {
+   simulator_quit
 }
 
 setup_circle() {

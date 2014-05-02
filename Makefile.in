@@ -29,6 +29,7 @@ SERVALD_OBJS=	        $(SERVALD_SRCS:.c=.o)
 SERVAL_DAEMON_OBJS=	$(SERVAL_DAEMON_SOURCES:.c=.o)
 MONITOR_CLIENT_OBJS=	$(MONITOR_CLIENT_SRCS:.c=.o)
 MDP_CLIENT_OBJS=	$(MDP_CLIENT_SRCS:.c=.o)
+SIMULATOR_OBJS=		$(SIMULATOR_SOURCES:.c=.o)
 
 LDFLAGS=@LDFLAGS@ @LIBS@ @PTHREAD_LIBS@
 
@@ -58,7 +59,7 @@ DEFS=	@DEFS@
 
 all:	servald libmonitorclient.so libmonitorclient.a test
 
-test:   tfw_createfile directory_service fakeradio config_test
+test:   tfw_createfile directory_service fakeradio config_test simulator
 
 sqlite-amalgamation-3070900/sqlite3.o:	sqlite-amalgamation-3070900/sqlite3.c
 	@echo CC $<
@@ -83,6 +84,7 @@ configure: $(wildcard configure.in)
 $(SERVAL_DAEMON_OBJS): $(HDRS)
 $(MONITOR_CLIENT_OBJS): $(HDRS)
 $(MDP_CLIENT_OBJS): $(HDRS)
+$(SIMULATOR_OBJS): $(HDRS)
 
 servald:	$(SERVALD_OBJS) version.o
 	@echo LINK $@
@@ -99,6 +101,10 @@ tfw_createfile: tfw_createfile.o str.o strbuf.o strbuf_helpers.o
 fakeradio: fakeradio.o
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -o $@ fakeradio.o
+
+simulator: $(SIMULATOR_OBJS)
+	@echo LINK $@
+	@$(CC) $(CFLAGS) -Wall -o $@ $(SIMULATOR_OBJS) $(LDFLAGS)
 
 config_test: config_test.o conf_om.o conf_schema.o conf_parse.o str.o strbuf.o strbuf_helpers.o mem.o dataformats.o net.o log_util.o
 	@echo LINK $@
