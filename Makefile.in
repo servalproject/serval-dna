@@ -35,7 +35,7 @@ LDFLAGS=@LDFLAGS@ @LIBS@ @PTHREAD_LIBS@
 CFLAGS=	-Isqlite-amalgamation-3070900 @CPPFLAGS@ @CFLAGS@ @PTHREAD_CFLAGS@ -Inacl/include
 CFLAGS+=-DSYSCONFDIR="\"$(sysconfdir)\"" -DLOCALSTATEDIR="\"$(localstatedir)\""
 CFLAGS+=-fPIC
-CFLAGS+=-Wall -Wno-unused-value
+CFLAGS+=-Wall -Wno-unused-value -Werror
 # Solaris magic
 CFLAGS+=-DSHA2_USE_INTTYPES_H -D_XOPEN_SOURCE=600 -D_XOPEN_SOURCE_EXTENDED=1 -D__EXTENSIONS__=1
 # OSX magic to compensate for the Solaris magic
