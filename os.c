@@ -230,7 +230,7 @@ int get_file_meta(const char *path, struct file_meta *metap)
     *metap = FILE_META_NONEXIST;
   } else {
     metap->size = st.st_size;
-    metap->mtime = st.st_mtim;
+    metap->mtime.tv_sec = st.st_mtime;
     // Truncate to whole seconds to ensure that this code will work on file systems that only have
     // whole-second time stamp resolution.
     metap->mtime.tv_nsec = 0;
@@ -319,12 +319,14 @@ int alter_file_meta(const char *path, const struct file_meta *origp, struct file
       return 0;
     meta.mtime = origp->mtime;
     add_timespec(&meta.mtime, sec, nsec);
-    struct timespec times[2];
-    times[0].tv_sec = 0;
-    times[0].tv_nsec = UTIME_OMIT;
-    times[1] = meta.mtime;
-    if (utimensat(AT_FDCWD, path, times, 0) == -1)
-      return WHYF_perror("utimensat(AT_FDCWD,%s,[UTIME_OMIT,%s],0)", alloca_str_toprint(path), alloca_timespec(&times[1]));
+    struct timeval times[2];
+    time_ms_t now = gettime_ms();
+    times[0].tv_sec = now / 1000;
+    times[0].tv_usec = (now % 1000) * 1000;
+    times[1].tv_sec = meta.mtime.tv_sec;
+    times[1].tv_usec = meta.mtime.tv_nsec / 1000;
+    if (utimes(path, times) == -1)
+      return WHYF_perror("utimes(%s,[%s,%s])", alloca_str_toprint(path), alloca_timeval(&times[0]), alloca_timeval(&times[1]));
     nsec = 0;
     ++sec;
   }

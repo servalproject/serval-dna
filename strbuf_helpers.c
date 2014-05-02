@@ -460,6 +460,31 @@ strbuf strbuf_append_time_t(strbuf sb, time_t time)
   return sb;
 }
 
+strbuf strbuf_append_time_ms_t(strbuf sb, time_ms_t ms)
+{
+  struct tm tm;
+  time_t time = ms / 1000;
+  localtime_r(&time, &tm);
+  strbuf_append_strftime(sb, "%Y/%m/%d %H:%M:%S", &tm);
+  strbuf_sprintf(sb, ".%.03u", (unsigned)(ms % 1000));
+  strbuf_append_strftime(sb, " %z", &tm);
+  return sb;
+}
+
+strbuf strbuf_append_timeval(strbuf sb, const struct timeval *tv)
+{
+  if (tv->tv_sec < 0 || tv->tv_usec < 0 || tv->tv_usec > 999999) {
+    strbuf_sprintf(sb, "INVALID{tv_sec=%ld,tv_usec=%ld}", (long)tv->tv_sec, (long)tv->tv_usec);
+  } else {
+    struct tm tm;
+    localtime_r(&tv->tv_sec, &tm);
+    strbuf_append_strftime(sb, "%Y/%m/%d %H:%M:%S", &tm);
+    strbuf_sprintf(sb, ".%.06lu", (long)tv->tv_usec);
+    strbuf_append_strftime(sb, " %z", &tm);
+  }
+  return sb;
+}
+
 strbuf strbuf_append_timespec(strbuf sb, const struct timespec *tv)
 {
   if (tv->tv_sec < 0 || tv->tv_nsec < 0 || tv->tv_nsec > 999999999) {

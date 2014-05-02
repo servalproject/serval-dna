@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 
 #include "strbuf.h"
+#include "os.h"
 
 /* Append a representation of the given chars in a given buffer (including nul
  * chars) in printable format, ie, with non-printable characters expanded to \n
@@ -161,18 +162,31 @@ struct iovec;
 strbuf strbuf_append_iovec(strbuf sb, const struct iovec *iov, int iovcnt);
 #define alloca_iovec(iov,cnt)    strbuf_str(strbuf_append_iovec(strbuf_alloca(200), (iov), (cnt)))
 
-/* Append a representation of a time_t value.
+/* Append a representation of a time_t value (second resolution).
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 strbuf strbuf_append_time_t(strbuf sb, time_t);
 #define alloca_time_t(t)    strbuf_str(strbuf_append_time_t(strbuf_alloca(40), (t)))
 
-/* Append a representation of a struct timespec.
+/* Append a representation of a time_ms_t value (millisecond resolution).
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_append_time_ms_t(strbuf sb, time_ms_t);
+#define alloca_time_ms_t(t)    strbuf_str(strbuf_append_time_ms_t(strbuf_alloca(45), (t)))
+
+/* Append a representation of a struct timeval (microsecond resolution).
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+struct timeval;
+strbuf strbuf_append_timeval(strbuf sb, const struct timeval *tv);
+#define alloca_timeval(tv)    strbuf_str(strbuf_append_timeval(strbuf_alloca(50), (tv)))
+
+/* Append a representation of a struct timespec (nanosecond resolution).
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 struct timespec;
 strbuf strbuf_append_timespec(strbuf sb, const struct timespec *tv);
-#define alloca_timespec(tv)    strbuf_str(strbuf_append_timespec(strbuf_alloca(50), (tv)))
+#define alloca_timespec(tv)    strbuf_str(strbuf_append_timespec(strbuf_alloca(55), (tv)))
 
 /* Append a representation of a struct file_meta.
  * @author Andrew Bettison <andrew@servalproject.com>
