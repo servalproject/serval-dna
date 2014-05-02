@@ -22,6 +22,36 @@
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
+_simulator() {
+   # TODO timeout & failure reporting?
+   $servald_build_root/simulator <&8 >$SIM_OUT
+}
+start_simulator() {
+  SIM_IN="$PWD/SIM_IN"
+  SIM_OUT="$PWD/SIM_OUT"
+  mkfifo "$SIM_IN"
+  exec 8<>"$SIM_IN"
+  fork %simulator _simulator
+}
+simulator_command() {
+  tfw_log "$@"
+  assert_fork_is_running %simulator
+  echo "$@" >> "$SIM_IN"
+}
+
+setup_common() {
+   setup_servald
+   assert_no_servald_processes
+   start_simulator
+   simulator_command create "net1" "$SERVALD_VAR/dummy1/"
+   simulator_command up "net1"
+}
+
+finally() {
+   simulator_command quit
+   fork_wait %simulator
+}
+
 teardown() {
    stop_all_servald_servers
    kill_all_servald_processes
@@ -41,8 +71,7 @@ configure_servald_server() {
 
 doc_connect_fail="Timeout when the connection isn't reachable"
 setup_connect_fail() {
-   setup_servald
-   assert_no_servald_processes
+   setup_common
    set_instance +B
    create_single_identity
    start_servald_instances +A
@@ -57,8 +86,7 @@ EOF
 
 doc_hello="Simple Hello World"
 setup_hello() {
-   setup_servald
-   assert_no_servald_processes
+   setup_common
    start_servald_instances +A +B
 }
 server_hello() {
@@ -83,8 +111,7 @@ EOF
 
 doc_client_no_data="Client connection with no data"
 setup_client_no_data() {
-   setup_servald
-   assert_no_servald_processes
+   setup_common
    create_file file1 64000
    start_servald_instances +A +B
 }
@@ -107,8 +134,7 @@ EOF
 
 doc_server_no_data="Server sends no data"
 setup_server_no_data() {
-   setup_servald
-   assert_no_servald_processes
+   setup_common
    create_file file1 64000
    start_servald_instances +A +B
 }
@@ -131,8 +157,7 @@ test_server_no_data() {
 
 doc_keep_alive="Keep the connection alive with no data"
 setup_keep_alive() {
-   setup_servald
-   assert_no_servald_processes
+   setup_common
    start_servald_instances +A +B
 }
 listen_pipe() {
@@ -149,14 +174,13 @@ test_keep_alive() {
    set_instance +A
    fork %listen listen_pipe
    set_instance +B
-   fork connect_pipe $SIDA
-   fork_wait %listen
+   fork %connect connect_pipe $SIDA
+   fork_wait %listen %connect
 }
 
 doc_forward="Forward TCP connections to a remote server"
 setup_forward() {
-   setup_servald
-   assert_no_servald_processes
+   setup_common
    start_servald_instances +A +B
 }
 client_forward() {
@@ -168,17 +192,16 @@ test_forward() {
    set_instance +A
    fork %listen server_hello
    set_instance +B
-   fork client_forward 2048 $SIDA
+   fork %connect client_forward 2048 $SIDA
    sleep 1
    executeOk nc -v 127.0.0.1 2048 < <(echo "Hello from the client")
    assertStdoutGrep --matches=1 "^Hello from the server$"
-   fork_wait %listen
+   fork_wait %listen %connect
 }
 
 doc_tcp_tunnel="Tunnel a tcp connection"
 setup_tcp_tunnel() {
-   setup_servald
-   assert_no_servald_processes
+   setup_common
    start_servald_instances +A +B
 }
 server_forward() {
@@ -205,8 +228,7 @@ test_tcp_tunnel() {
 
 doc_refused="TCP connection refused on forwarded stream"
 setup_refused(){
-   setup_servald
-   assert_no_servald_processes
+   setup_common
    start_servald_instances +A +B
 }
 server_refused(){
@@ -226,8 +248,7 @@ test_refused(){
 
 doc_terminate="Terminate a connection mid stream"
 setup_terminate() {
-   setup_servald
-   assert_no_servald_processes
+   setup_common
    start_servald_instances +A +B
 }
 client_terminate() {
