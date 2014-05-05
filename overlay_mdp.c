@@ -574,7 +574,7 @@ static int overlay_saw_mdp_frame(
 {
   IN();
 
-  if (filter_packet(header) == RULE_DROP)
+  if (!allow_inbound_packet(header))
     RETURN(0);
 
   /* Regular MDP frame addressed to us.  Look for matching port binding,
@@ -837,7 +837,7 @@ int overlay_send_frame(struct internal_mdp_header *header, struct overlay_buffer
     }
   }
   
-  if (filter_packet(header) == RULE_DROP)
+  if (!allow_outbound_packet(header))
     return 0;
 
   if (header->ttl == 0) 

@@ -293,7 +293,8 @@ int mdp_bind_internal(struct subscriber *subscriber, mdp_port_t port,
 int mdp_unbind_internal(struct subscriber *subscriber, mdp_port_t port,
   int (*internal)(struct internal_mdp_header *header, struct overlay_buffer *payload));
 
-int filter_packet(const struct internal_mdp_header *header);
+int allow_inbound_packet(const struct internal_mdp_header *header);
+int allow_outbound_packet(const struct internal_mdp_header *header);
 void load_mdp_packet_rules(const char *filename);
 
 struct vomp_call_state;

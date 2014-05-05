@@ -193,11 +193,4 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 // should there be a types.h to hold this?
 typedef char bool_t;
 
-#define RULE_ALLOW 0
-#define RULE_DROP (1<<0)
-#define RULE_SOURCE (1<<1)
-#define RULE_DESTINATION (1<<2)
-#define RULE_SRC_PORT (1<<3)
-#define RULE_DST_PORT (1<<4)
-
 #endif // __SERVAL_DNA__CONSTANTS_H

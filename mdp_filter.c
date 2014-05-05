@@ -29,48 +29,58 @@
 
 #define PACKET_RULES_FILE_MAX_SIZE  (32 * 1024)
 
-struct packet_rule {
-  struct subscriber *source;
-  struct subscriber *destination;
-  mdp_port_t src_start;
-  mdp_port_t src_end;
-  mdp_port_t dst_start;
-  mdp_port_t dst_end;
-  uint8_t flags;
-  struct packet_rule *next;
+struct mdp_portrange {
+  mdp_port_t port_first;
+  mdp_port_t port_last;
 };
 
+struct packet_rule {
+  struct packet_rule *next;
+  struct subscriber *local_subscriber;
+  struct subscriber *remote_subscriber;
+  struct mdp_portrange local_ports;
+  struct mdp_portrange remote_ports;
+  uint8_t flags;
+};
+
+#define RULE_DROP	  (1<<0)
+#define RULE_INBOUND	  (1<<1)
+#define RULE_OUTBOUND	  (1<<2)
+#define RULE_LOCAL_PORT	  (1<<3)
+#define RULE_REMOTE_PORT  (1<<4)
+
 #define alloca_packet_rule(r) strbuf_str(strbuf_append_packet_rule(strbuf_alloca(180), (r)))
+
+static strbuf strbuf_append_mdp_portrange(strbuf sb, const struct mdp_portrange *range)
+{
+  strbuf_sprintf(sb, ":%"PRImdp_port_t, range->port_first);
+  if (range->port_last != range->port_first)
+    strbuf_sprintf(sb, "-%"PRImdp_port_t, range->port_last);
+  return sb;
+}
 
 static strbuf strbuf_append_packet_rule(strbuf sb, const struct packet_rule *rule)
 {
   strbuf_puts(sb, rule->flags & RULE_DROP ? "drop " : "allow ");
-  size_t pos = strbuf_count(sb);
-  if (rule->flags & (RULE_SOURCE | RULE_SRC_PORT))
-    strbuf_putc(sb, '<');
-  if (rule->flags & RULE_SOURCE)
-    strbuf_puts(sb, alloca_tohex_sid_t(rule->source->sid));
-  else if (rule->flags & RULE_SRC_PORT)
-    strbuf_putc(sb, '*');
-  if (rule->flags & RULE_SRC_PORT) {
-    strbuf_sprintf(sb, ":%"PRImdp_port_t, rule->src_start);
-    if (rule->src_end != rule->src_start)
-      strbuf_sprintf(sb, "-%"PRImdp_port_t, rule->src_end);
-  }
-  if (pos != strbuf_count(sb))
+  if (rule->flags & (RULE_INBOUND | RULE_OUTBOUND)) {
+    if (rule->local_subscriber)
+      strbuf_puts(sb, alloca_tohex_sid_t(rule->local_subscriber->sid));
+    else
+      strbuf_putc(sb, '*');
+    if (rule->flags & RULE_LOCAL_PORT)
+      strbuf_append_mdp_portrange(sb, &rule->local_ports);
     strbuf_putc(sb, ' ');
-  if (rule->flags & (RULE_DESTINATION | RULE_DST_PORT))
-    strbuf_putc(sb, '>');
-  if (rule->flags & RULE_DESTINATION)
-    strbuf_puts(sb, alloca_tohex_sid_t(rule->destination->sid));
-  else if (rule->flags & RULE_DST_PORT)
-    strbuf_putc(sb, '*');
-  if (rule->flags & RULE_DST_PORT) {
-    strbuf_sprintf(sb, ":%"PRImdp_port_t, rule->dst_start);
-    if (rule->dst_end != rule->dst_start)
-      strbuf_sprintf(sb, "-%"PRImdp_port_t, rule->dst_end);
-  }
-  if (pos == strbuf_count(sb))
+    if (rule->flags & RULE_INBOUND)
+      strbuf_putc(sb, '<');
+    if (rule->flags & RULE_OUTBOUND)
+      strbuf_putc(sb, '>');
+    if (rule->remote_subscriber)
+      strbuf_puts(sb, alloca_tohex_sid_t(rule->remote_subscriber->sid));
+    else
+      strbuf_putc(sb, '*');
+    if (rule->flags & RULE_REMOTE_PORT)
+      strbuf_append_mdp_portrange(sb, &rule->remote_ports);
+  } else
     strbuf_puts(sb, "all");
   return sb;
 }
@@ -78,50 +88,52 @@ static strbuf strbuf_append_packet_rule(strbuf sb, const struct packet_rule *rul
 static struct packet_rule *packet_rules = NULL;
 static struct file_meta packet_rules_meta = FILE_META_UNKNOWN;
 
-static int match_rule(const struct internal_mdp_header *header, const struct packet_rule *rule)
-{
-#if 0
-  if (config.debug.mdp_filter)
-    DEBUGF("test packet %s:%"PRImdp_port_t"->%s:%"PRImdp_port_t" on rule: %s",
-	header->source ? alloca_tohex_sid_t(header->source->sid) : "null",
-	header->source_port,
-	header->destination ? alloca_tohex_sid_t(header->destination->sid) : "null",
-	header->destination_port,
-	alloca_packet_rule(rule)
-      );
-#endif
-  if ((rule->flags & RULE_SOURCE) && header->source != rule->source)
-    return 0;
-  if ((rule->flags & RULE_DESTINATION) && header->destination != rule->destination)
-    return 0;
-  if ((rule->flags & RULE_SRC_PORT) && 
-      (header->source_port < rule->src_start||header->source_port > rule->src_end))
-    return 0;
-  if ((rule->flags & RULE_DST_PORT) && 
-      (header->destination_port < rule->dst_start||header->destination_port > rule->dst_end))
-    return 0;
-#if 0
-  if (config.debug.mdp_filter)
-    DEBUGF("packet matches rule: %s", alloca_packet_rule(rule));
-#endif
-  return 1;
-}
-
-int filter_packet(const struct internal_mdp_header *header)
+int allow_inbound_packet(const struct internal_mdp_header *header)
 {
   const struct packet_rule *rule;
   for (rule = packet_rules; rule; rule = rule->next)
-    if (match_rule(header, rule)) {
+    if (   (   (rule->flags & RULE_INBOUND)
+	    && (rule->remote_subscriber == NULL || header->source == rule->remote_subscriber)
+	    && (!(rule->flags & RULE_REMOTE_PORT) || (header->source_port >= rule->remote_ports.port_first && header->source_port <= rule->remote_ports.port_last))
+	    && (rule->local_subscriber == NULL || header->destination == rule->local_subscriber)
+	    && (!(rule->flags & RULE_LOCAL_PORT) || (header->destination_port >= rule->local_ports.port_first && header->destination_port <= rule->local_ports.port_last))
+	   )
+	|| (rule->flags & (RULE_INBOUND | RULE_OUTBOUND)) == 0
+    ) {
       if ((rule->flags & RULE_DROP) && config.debug.mdp_filter)
-	DEBUGF("DROP packet source=%s:%"PRImdp_port_t" destination=%s:%"PRImdp_port_t,
+	DEBUGF("DROP inbound packet source=%s:%"PRImdp_port_t" destination=%s:%"PRImdp_port_t,
 	    header->source ? alloca_tohex_sid_t(header->source->sid) : "null",
 	    header->source_port,
 	    header->destination ? alloca_tohex_sid_t(header->destination->sid) : "null",
 	    header->destination_port
 	  );
-      return rule->flags & RULE_DROP;
+      return rule->flags & RULE_DROP ? 0 : 1;
     }
-  return RULE_ALLOW;
+  return 1; // allow by default
+}
+
+int allow_outbound_packet(const struct internal_mdp_header *header)
+{
+  const struct packet_rule *rule;
+  for (rule = packet_rules; rule; rule = rule->next)
+    if (   (   (rule->flags & RULE_OUTBOUND)
+	    && (rule->remote_subscriber == NULL || header->destination == rule->remote_subscriber)
+	    && (!(rule->flags & RULE_REMOTE_PORT) || (header->destination_port >= rule->remote_ports.port_first && header->destination_port <= rule->remote_ports.port_last))
+	    && (rule->local_subscriber == NULL || header->source == rule->local_subscriber)
+	    && (!(rule->flags & RULE_LOCAL_PORT) || (header->source_port >= rule->local_ports.port_first && header->source_port <= rule->local_ports.port_last))
+	   )
+	|| (rule->flags & (RULE_INBOUND | RULE_OUTBOUND)) == 0
+    ) {
+      if ((rule->flags & RULE_DROP) && config.debug.mdp_filter)
+	DEBUGF("DROP outbound packet source=%s:%"PRImdp_port_t" destination=%s:%"PRImdp_port_t,
+	    header->source ? alloca_tohex_sid_t(header->source->sid) : "null",
+	    header->source_port,
+	    header->destination ? alloca_tohex_sid_t(header->destination->sid) : "null",
+	    header->destination_port
+	  );
+      return rule->flags & RULE_DROP ? 0 : 1;
+    }
+  return 1; // allow by default
 }
 
 static void free_rule_list(struct packet_rule *rule)
@@ -151,6 +163,10 @@ typedef struct cursor {
 typedef const struct cursor *ConstCursor;
 
 typedef size_t Pin;
+
+#ifndef EOF
+#define EOF (-1)
+#endif
 
 #ifdef DEBUG_MDP_FILTER_PARSING
 
@@ -230,16 +246,17 @@ static inline size_t _preload(struct __sourceloc __whence, Cursor c, size_t n)
 #define eof(c) _eof(__WHENCE__,(c))
 static inline size_t _eof(struct __sourceloc __whence, Cursor c)
 {
+  preload(c, 1);
   assert(c->current >= c->buffer);
   assert(c->current <= c->end);
-  if (c->end == c->current)
-    preload(c, 1);
   return c->current == c->end && feof(c->stream);
 }
 
-static inline char peek(ConstCursor c)
+#define peek(c) _peek(__WHENCE__,(c))
+static inline char _peek(struct __sourceloc __whence, Cursor c)
 {
-  assert(c->current >= c->buffer);
+  if (eof(c))
+    return EOF;
   assert(c->current < c->end);
   return *c->current;
 }
@@ -348,13 +365,13 @@ static inline void _unpin(struct __sourceloc UNUSED(__whence), Cursor c, Pin p)
 /*
  * rules := optspace [ rule optspace ( sep optspace rule optspace ){0..} ]
  * sep := "\n" | ";"
- * rule := verb space pattern
+ * rule := verb space which
  * verb := "allow" | "drop"
- * pattern := "all" | srcpat optspace [ dstpat ] | dstpat optspace [ srcpat ]
- * srcpat := "<" optspace endpoint
- * dstpat := ">" optspace endpoint
- * endpoint := [ sid ] [ optspace ":" optspace portrange ]
- * sid := "*" | sidhex | "broadcast"
+ * which := "all" | pattern
+ * pattern := [ endpoint optspace ] direction optspace endpoint
+ * direction := ">" | "<" | "<>"
+ * endpoint := sidany [ optspace ":" optspace portrange ]
+ * sidany := "*" | sidhex | "broadcast"
  * sidhex := hexdigit {64}
  * portrange := port optspace [ "-" optspace port ]
  * port := hexport | decport
@@ -368,11 +385,12 @@ static inline void _unpin(struct __sourceloc UNUSED(__whence), Cursor c, Pin p)
 
 static int _space(Cursor c)
 {
-  if (eof(c) || peek(c) != ' ')
-    return 0;
-  while (!eof(c) && peek(c) == ' ')
+  int ret = 0;
+  while (peek(c) == ' ') {
     next(c);
-  return 1;
+    ret = 1;
+  }
+  return ret;
 }
 
 static int _optspace(Cursor c)
@@ -383,7 +401,7 @@ static int _optspace(Cursor c)
 
 static int _sep(Cursor c)
 {
-  if (!eof(c) && (peek(c) == '\n' || peek(c) == ';')) {
+  if (peek(c) == '\n' || peek(c) == ';') {
     next(c);
     return 1;
   }
@@ -408,26 +426,22 @@ static int _port(Cursor c, mdp_port_t *portp)
   return 0;
 }
 
-static int _portrange(Cursor c, mdp_port_t *port_start, mdp_port_t *port_end)
+static int _portrange(Cursor c, struct mdp_portrange *range)
 {
-  if (!_port(c, port_start))
+  if (!_port(c, &range->port_first))
     return 0;
-  Pin p = pin(c);
   _optspace(c);
-  if (!eof(c) && peek(c) == '-') {
+  if (peek(c) == '-') {
     next(c);
     _optspace(c);
-    if (!_port(c, port_end)) {
-      retreat(c, p);
+    if (!_port(c, &range->port_last))
       return 0;
-    }
   } else
-    *port_end = *port_start;
-  unpin(c, p);
+    range->port_last = range->port_first;
   return 1;
 }
 
-static int _endpoint(Cursor c, uint8_t *flagsp, uint8_t sid_flag, uint8_t port_flag, struct subscriber **subscr, mdp_port_t *port_start, mdp_port_t *port_end)
+static int _endpoint(Cursor c, uint8_t *flagsp, uint8_t port_flag, struct subscriber **subscr, struct mdp_portrange *portrangep)
 {
   const char *end;
   sid_t sid;
@@ -437,50 +451,46 @@ static int _endpoint(Cursor c, uint8_t *flagsp, uint8_t sid_flag, uint8_t port_f
   } else if (strn_to_sid_t(&sid, preloaded(c), available(c), &end) == 0) {
     if ((*subscr = find_subscriber(sid.binary, sizeof sid.binary, 1)) == NULL)
       return 0;
-    *flagsp |= sid_flag;
     advance_to(c, end);
   } else
     return 0;
   _optspace(c);
-  if (!eof(c) && peek(c) == ':') {
+  if (peek(c) == ':') {
     next(c);
     _optspace(c);
-    if (!_portrange(c, port_start, port_end))
+    if (!_portrange(c, portrangep))
       return 0;
     *flagsp |= port_flag;
   }
   return 1;
 }
 
-static int _srcpat(Cursor c, struct packet_rule *rule)
+static int _direction(Cursor c, uint8_t *flagsp)
 {
-  if (eof(c) || peek(c) != '<')
-    return 0;
-  next(c);
-  _optspace(c);
-  return _endpoint(c, &rule->flags, RULE_SOURCE, RULE_SRC_PORT, &rule->source, &rule->src_start, &rule->src_end);
-}
-
-static int _dstpat(Cursor c, struct packet_rule *rule)
-{
-  if (eof(c) || peek(c) != '>')
-    return 0;
-  next(c);
-  _optspace(c);
-  return _endpoint(c, &rule->flags, RULE_DESTINATION, RULE_DST_PORT, &rule->destination, &rule->dst_start, &rule->dst_end);
+  *flagsp &= ~(RULE_INBOUND | RULE_OUTBOUND);
+  if (skip(c, "<"))
+    *flagsp |= RULE_INBOUND;
+  if (skip(c, ">"))
+    *flagsp |= RULE_OUTBOUND;
+  return *flagsp & (RULE_INBOUND | RULE_OUTBOUND) ? 1 : 0;
 }
 
 static int _pattern(Cursor c, struct packet_rule *rule)
 {
-  if (eof(c))
-    return 0;
-  if (skip(c, "all"))
-    return 1;
-  if (peek(c) == '<')
-    return _srcpat(c, rule) && _optspace(c) && (peek(c) == '>' ? _dstpat(c, rule) : 1);
-  if (peek(c) == '>')
-    return _dstpat(c, rule) && _optspace(c) && (peek(c) == '<' ? _srcpat(c, rule) : 1);
-  return 0;
+  Pin p = pin(c);
+  if (_endpoint(c, &rule->flags, RULE_LOCAL_PORT, &rule->local_subscriber, &rule->local_ports)) {
+    unpin(c, p);
+    _optspace(c);
+  } else
+    retreat(c, p);
+  return _direction(c, &rule->flags)
+      && _optspace(c)
+      && _endpoint(c, &rule->flags, RULE_REMOTE_PORT, &rule->remote_subscriber, &rule->remote_ports);
+}
+
+static int _which(Cursor c, struct packet_rule *rule)
+{
+  return skip(c, "all") || _pattern(c, rule);
 }
 
 static int _verb(Cursor c, struct packet_rule *rule)
@@ -499,7 +509,7 @@ static int _rule(Cursor c, struct packet_rule **rulep)
   assert(*rulep == NULL);
   if ((*rulep = emalloc_zero(sizeof(struct packet_rule))) == NULL)
     return -1;
-  if (_verb(c, *rulep) && _optspace(c) && _pattern(c, *rulep))
+  if (_verb(c, *rulep) && _optspace(c) && _which(c, *rulep))
     return 1;
   free(*rulep);
   *rulep = NULL;
@@ -538,19 +548,22 @@ static int _rules(Cursor c, struct packet_rule **listp)
  * subscriber structs are allocated using find_subscriber() for each SID parsed in the rules.  Does
  * not alter the rules currently in force -- use set_mdp_packet_rules() for that.
  *
- * Returns NULL if the parsing fails because of either a malformed text or system failure (out of
- * memory).
+ * Returns 0 if parsing succeeds, assigning the head of the list of parsed rules to *rulep.  Returns
+ * 1 if parsing fails because of malformed text (*rulep is unchanged).  Returns -1 if parsing fails
+ * due to system failure (i/o error or out of memory).
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static struct packet_rule *parse_mdp_packet_rules(FILE *fp)
+static int parse_mdp_packet_rules(FILE *fp, struct packet_rule **rulep)
 {
   struct packet_rule *rules = NULL;
   struct cursor cursor;
   init_cursor(&cursor, fp);
   int r;
-  if ((r = _rules(&cursor, &rules)) == 1)
-    return rules;
+  if ((r = _rules(&cursor, &rules)) == 1) {
+    *rulep = rules;
+    return 0;
+  }
   if (r == -1)
     WHY("failure parsing packet filter rules");
   else if (available(&cursor))
@@ -558,7 +571,7 @@ static struct packet_rule *parse_mdp_packet_rules(FILE *fp)
   else
     WHYF("malformed packet filter rule at EOF");
   free_rule_list(rules);
-  return NULL;
+  return 1;
 }
 
 /* Clear the current packet filter rules, leaving no rules in force.
@@ -618,6 +631,7 @@ int reload_mdp_packet_rules()
     return 0; // no change since last load
   if (packet_rules_meta.mtime.tv_sec != -1 && serverMode)
     INFOF("packet rules file %s -- detected new version", rules_path);
+  int ret = 1;
   if (meta.mtime.tv_sec == -1) {
     WARNF("packet rules file %s does not exist -- allowing all packets", rules_path);
     clear_mdp_packet_rules();
@@ -633,10 +647,14 @@ int reload_mdp_packet_rules()
       WHYF_perror("fopen(%s,\"r\")", alloca_str_toprint(rules_path));
       return WHY("packet rules file not loaded");
     }
-    struct packet_rule *new_rules = parse_mdp_packet_rules(fp);
+    struct packet_rule *new_rules = NULL;
+    int r = parse_mdp_packet_rules(fp, &new_rules);
     fclose(fp);
-    set_mdp_packet_rules(new_rules);
+    if (r == 0)
+      set_mdp_packet_rules(new_rules);
+    else
+      ret = -1;
   }
   packet_rules_meta = meta;
-  return 1;
+  return ret;
 }
