@@ -25,19 +25,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/types.h>
 #include <errno.h>
 
-#define LOG_LEVEL_INVALID   (-1)
-#define LOG_LEVEL_SILENT    (0)
-#define LOG_LEVEL_DEBUG     (1)
-#define LOG_LEVEL_INFO      (2)
-#define LOG_LEVEL_HINT      (3)
-#define LOG_LEVEL_WARN      (4)
-#define LOG_LEVEL_ERROR     (5)
-#define LOG_LEVEL_FATAL     (6)
-#define LOG_LEVEL_NONE      (127)
-
-const char *log_level_as_string(int level);
-int string_to_log_level(const char *text);
-
 /*
  * Every log message identifies the location in the source code at which the
  * message was produced.  This location is represented by a struct __sourceloc,
@@ -47,7 +34,9 @@ int string_to_log_level(const char *text);
  * the cpp(1) built-in macros __FILE__, __LINE__ and __FUNCTION__ to generate
  * its elements.  The __NOWHERE__ macro creates a struct __sourceloc with NULL
  * and zero fields.  If you pass __NOWHERE__ to logMessage(), it will omit
- * location information from the log line.
+ * location information from the log line.  The __NOWHENCE__ macro creates a
+ * special source __sourceloc that logging primitives should interpret to
+ * suppress the output of the usual source-code location information.
  *
  * Sometimes, a function wants to log a message as though its caller were the
  * origin of the message.  This is typical of "primitive" type functions that
@@ -90,30 +79,52 @@ struct __sourceloc {
 
 extern const struct __sourceloc __whence; // see above
 
-extern int serverMode;
-
-int create_log_file_directory();
-
-void close_log_file();
-void disable_log_stderr();
-void logFlush();
-void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv);
-void logString(int level, struct __sourceloc whence, const char *str);
-void logMessage(int level, struct __sourceloc whence, const char *fmt, ...)
-__attribute__ (( format(printf,3,4) ));
-void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list);
-void logConfigChanged();
-int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len);
-int log_backtrace(int level, struct __sourceloc whence);
-
-struct strbuf;
-
 #define __HERE__            ((struct __sourceloc){ .file = __FILE__, .line = __LINE__, .function = __FUNCTION__ })
 #define __NOWHERE__         ((struct __sourceloc){ .file = NULL, .line = 0, .function = NULL })
 #define __NOWHENCE__        ((struct __sourceloc){ .file = "", .line = 0, .function = NULL })
-
 #define __WHENCE__          (__whence.file ? __whence : __HERE__)
 
+#ifndef __SERVAL_LOG_INLINE
+# if __GNUC__ && !__GNUC_STDC_INLINE__
+#  define __SERVAL_LOG_INLINE extern inline
+# else
+#  define __SERVAL_LOG_INLINE inline
+# endif
+#endif
+
+// Logging levels.
+#define LOG_LEVEL_INVALID   (-1)
+#define LOG_LEVEL_SILENT    (0)
+#define LOG_LEVEL_DEBUG     (1)
+#define LOG_LEVEL_INFO      (2)
+#define LOG_LEVEL_HINT      (3)
+#define LOG_LEVEL_WARN      (4)
+#define LOG_LEVEL_ERROR     (5)
+#define LOG_LEVEL_FATAL     (6)
+#define LOG_LEVEL_NONE      (127)
+const char *log_level_as_string(int level);
+int string_to_log_level(const char *text);
+
+// Log output control.
+extern int serverMode;
+void close_log_file();
+void disable_log_stderr();
+void logFlush();
+void logConfigChanged();
+
+// Logging primitives.
+void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list);
+int logBacktrace(int level, struct __sourceloc whence);
+
+__SERVAL_LOG_INLINE void logMessage(int level, struct __sourceloc whence, const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  vlogMessage(level, whence, fmt, ap);
+  va_end(ap);
+}
+
+// Useful logging primitive macros.
 #define LOGF(L,F,...)       logMessage(L, __WHENCE__, F, ##__VA_ARGS__)
 #define LOGF_perror(L,F,...) logMessage_perror(L, __WHENCE__, F, ##__VA_ARGS__)
 #define LOG_perror(L,X)     LOGF_perror(L, "%s", (X))
@@ -157,6 +168,11 @@ struct strbuf;
 
 #define dump(X,A,N)         logDump(LOG_LEVEL_DEBUG, __WHENCE__, (X), (const unsigned char *)(A), (size_t)(N))
 
-#define BACKTRACE           log_backtrace(LOG_LEVEL_FATAL, __WHENCE__)
+#define BACKTRACE           logBacktrace(LOG_LEVEL_FATAL, __WHENCE__)
+
+// Utility functions, defined in terms of above primitives.
+void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv);
+int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len);
+void logString(int level, struct __sourceloc whence, const char *str);
 
 #endif // __SERVAL_DNA__LOG_H

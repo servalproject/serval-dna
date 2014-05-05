@@ -54,11 +54,26 @@ void logArgv(int level, struct __sourceloc whence, const char *label, int argc, 
     size_t len = strbuf_count(&b);
     strbuf_init(&b, alloca(len + 1), len + 1);
     strbuf_append_argv(&b, argc, argv);
-    
     if (label)
       logMessage(level, whence, "%s %s", label, strbuf_str(&b));
     else
       logMessage(level, whence, "%s", strbuf_str(&b));
+  }
+}
+
+void logString(int level, struct __sourceloc whence, const char *str)
+{
+  if (level != LOG_LEVEL_SILENT) {
+    const char *s = str;
+    const char *p;
+    for (p = str; *p; ++p) {
+      if (*p == '\n') {
+	logMessage(level, whence, "%.*s", (int)(p - s), s);
+	s = p + 1;
+      }
+    }
+    if (p > s)
+      logMessage(level, whence, "%.*s", (int)(p - s), s);
   }
 }
 

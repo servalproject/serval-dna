@@ -36,6 +36,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <dirent.h>
 #include <assert.h>
 
+#define __SERVAL_LOG_INLINE
 #include "log.h"
 #include "net.h"
 #include "os.h"
@@ -659,44 +660,6 @@ void logFlush()
     _log_flush(&it);
 }
 
-void logString(int level, struct __sourceloc whence, const char *str)
-{
-  if (level != LOG_LEVEL_SILENT) {
-    _log_iterator it;
-    _log_iterator_start(&it);
-    _rotate_log_file(&it);
-    const char *s = str;
-    const char *p;
-    for (p = str; *p; ++p) {
-      if (*p == '\n') {
-	_log_iterator_rewind(&it);
-	while (_log_iterator_next(&it, level)) {
-	  _log_prefix_whence(&it, whence);
-	  xprintf(it.xpf, "%.*s", (int)(p - s), s);
-	}
-	s = p + 1;
-      }
-    }
-    if (p > s) {
-      _log_iterator_rewind(&it);
-      while (_log_iterator_next(&it, level)) {
-	_log_prefix_whence(&it, whence);
-	xprintf(it.xpf, "%.*s", (int)(p - s), s);
-      }
-    }
-  }
-}
-
-void logMessage(int level, struct __sourceloc whence, const char *fmt, ...)
-{
-  if (level != LOG_LEVEL_SILENT) {
-    va_list ap;
-    va_start(ap, fmt);
-    vlogMessage(level, whence, fmt, ap);
-    va_end(ap);
-  }
-}
-
 void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list ap)
 {
   if (level != LOG_LEVEL_SILENT) {
@@ -722,7 +685,7 @@ void logConfigChanged()
   logFlush();
 }
 
-int log_backtrace(int level, struct __sourceloc whence)
+int logBacktrace(int level, struct __sourceloc whence)
 {
 #ifndef NO_BACKTRACE
   _log_iterator it;
