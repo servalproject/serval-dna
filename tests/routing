@@ -599,8 +599,8 @@ test_ping_unreliable_1hop() {
    tfw_cat --stdout --stderr
    received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
-   assert [ "$received" -eq 100 ]
-   assert [ "$duplicates" -eq 0 ]
+   assert [ "$received" -ge 98 ]
+   assert [ "$duplicates" -le 2 ]
 }
 
 doc_ping_unreliable_2hop="Ping over a 2-hop unreliable link"
@@ -622,12 +622,12 @@ test_ping_unreliable_2hop() {
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
    set_instance +A
-   executeOk_servald mdp ping --interval=0.200 --timeout=3 --wait-for-duplicates $SIDC 50
+   executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates $SIDC 100
    tfw_cat --stdout --stderr
    received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
-   assert [ "$received" -eq 50 ]
-   assert [ "$duplicates" -lt 5 ]
+   assert [ "$received" -ge 98 ]
+   assert [ "$duplicates" -le 2 ]
 }
 
 doc_brping_unreliable_1hop="Broadcast ping over a 1-hop unreliable link"
@@ -675,8 +675,13 @@ test_unreliable_links() {
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
    set_instance +A
-   executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates $SIDC 30
+   executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates $SIDC 100
    tfw_cat --stdout --stderr
+   received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
+   duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
+   assert [ "$received" -ge 98 ]
+   assert [ "$duplicates" -le 5 ]
+   # make sure the path is still there.
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
 }
@@ -718,8 +723,14 @@ test_unreliable_links2() {
    wait_until path_exists +A +B +C +D
    wait_until path_exists +D +C +B +A
    set_instance +A
-   executeOk_servald mdp ping --timeout=3 --wait-for-duplicates $SIDD 5
+   executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates $SIDD 100
    tfw_cat --stdout --stderr
+   received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
+   duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
+   assert [ "$received" -ge 98 ]
+   assert [ "$duplicates" -le 5 ]
+   wait_until --timeout=20 path_exists +A +B +C +D
+   wait_until --timeout=20 path_exists +D +C +B +A
 }
 
 setup_circle() {
