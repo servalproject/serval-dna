@@ -1070,21 +1070,21 @@ int app_server_status(const struct cli_parsed *parsed, struct cli_context *conte
 }
 
 // returns -1 on error, -2 on timeout, packet length on success.
-ssize_t mdp_poll_recv(int mdp_sock, time_ms_t deadline, struct mdp_header *rev_header, unsigned char *payload, size_t buffer_size)
+static ssize_t mdp_poll_recv(int mdp_sock, time_ms_t deadline, struct mdp_header *rev_header, unsigned char *payload, size_t buffer_size)
 {
   time_ms_t now = gettime_ms();
   if (now > deadline)
     return -2;
-  int p=mdp_poll(mdp_sock, deadline - now);
-  if (p<0)
+  int p = mdp_poll(mdp_sock, deadline - now);
+  if (p == -1)
     return WHY_perror("mdp_poll");
-  if (p==0)
+  if (p == 0)
     return -2;
   ssize_t len = mdp_recv(mdp_sock, rev_header, payload, buffer_size);
-  if (len<0)
-    return WHY_perror("mdp_recv");
+  if (len == -1)
+    return -1;
   if (rev_header->flags & MDP_FLAG_ERROR)
-    return WHY("Operation failed, check the log for more information");
+    return WHY("Operation failed, check the daemon log for more information");
   return len;
 }
 
@@ -1212,10 +1212,8 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
       struct mdp_header mdp_recv_header;
       uint8_t recv_payload[12];
       ssize_t len = mdp_recv(mdp_sockfd, &mdp_recv_header, recv_payload, sizeof(recv_payload));
-      if (len == -1){
-	WHY_perror("mdp_recv");
+      if (len == -1)
 	break;
-      }
       if (mdp_recv_header.flags & MDP_FLAG_ERROR) {
 	WHY("error from daemon, please check the log for more information");
 	continue;

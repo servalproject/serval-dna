@@ -19,6 +19,8 @@
 #ifndef __SERVAL_DNA__MDP_CLIENT_H
 #define __SERVAL_DNA__MDP_CLIENT_H
 
+#include "log.h"
+
 // define 3rd party mdp API without any structure padding
 #pragma pack(push, 1)
 
@@ -131,15 +133,17 @@ typedef struct overlay_mdp_frame {
 
 #pragma pack(pop)
 
-
 /* low level V2 mdp interface */
-int mdp_socket(void);
-int mdp_close(int socket);
-int mdp_send(int socket, const struct mdp_header *header, const uint8_t *payload, size_t len);
-ssize_t mdp_recv(int socket, struct mdp_header *header, uint8_t *payload, size_t max_len);
-int mdp_poll(int socket, time_ms_t timeout_ms);
-
-
+int _mdp_socket(struct __sourceloc);
+int _mdp_close(struct __sourceloc, int socket);
+int _mdp_send(struct __sourceloc, int socket, const struct mdp_header *header, const uint8_t *payload, size_t len);
+ssize_t _mdp_recv(struct __sourceloc, int socket, struct mdp_header *header, uint8_t *payload, size_t max_len);
+int _mdp_poll(struct __sourceloc, int socket, time_ms_t timeout_ms);
+#define mdp_socket()      _mdp_socket(__WHENCE__)
+#define mdp_close(s)      _mdp_close(__WHENCE__, (s))
+#define mdp_send(s,h,p,l) _mdp_send(__WHENCE__, (s), (h), (p), (l))
+#define mdp_recv(s,h,p,l) _mdp_recv(__WHENCE__, (s), (h), (p), (l))
+#define mdp_poll(s,t)     _mdp_poll(__WHENCE__, (s), (t))
 
 /* Client-side MDP function */
 int overlay_mdp_client_socket(void);

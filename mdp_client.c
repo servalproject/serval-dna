@@ -31,13 +31,14 @@
 #include "mdp_client.h"
 #include "socket.h"
 
-int mdp_socket(void)
+int _mdp_socket(struct __sourceloc UNUSED(__whence))
 {
   // for now use the same process for creating sockets
+  // TODO make overlay_mdp_client_socket() take __whence arg
   return overlay_mdp_client_socket();
 }
 
-int mdp_close(int socket)
+int _mdp_close(struct __sourceloc __whence, int socket)
 {
   // tell the daemon to drop all bindings
   struct mdp_header header={
@@ -52,7 +53,7 @@ int mdp_close(int socket)
   return 0;
 }
 
-int mdp_send(int socket, const struct mdp_header *header, const uint8_t *payload, size_t len)
+int _mdp_send(struct __sourceloc __whence, int socket, const struct mdp_header *header, const uint8_t *payload, size_t len)
 {
   struct socket_address addr;
   if (make_local_sockaddr(&addr, "mdp.2.socket") == -1)
@@ -86,13 +87,19 @@ int mdp_send(int socket, const struct mdp_header *header, const uint8_t *payload
   return 0;
 }
 
-ssize_t mdp_recv(int socket, struct mdp_header *header, uint8_t *payload, size_t max_len)
+/* This function is designed to be used a bit like a system or library call, because it always sets
+ * errno before returning -1.  Some errno values arise from system calls, and some are synthetic,
+ * eg, to report buffer overflow or an MDP protocol error.
+ */
+ssize_t _mdp_recv(struct __sourceloc __whence, int socket, struct mdp_header *header, uint8_t *payload, size_t max_len)
 {
   /* Construct name of socket to receive from. */
-  errno=0;
   struct socket_address mdp_addr;
-  if (make_local_sockaddr(&mdp_addr, "mdp.2.socket") == -1)
-    return WHY("Failed to build socket address");
+  if (make_local_sockaddr(&mdp_addr, "mdp.2.socket") == -1) {
+    errno = EOVERFLOW;
+    WHY_perror("Failed to build socket address, setting errno=EOVERFLOW");
+    return -1;
+  }
   
   struct socket_address addr;
   struct iovec iov[]={
@@ -114,10 +121,22 @@ ssize_t mdp_recv(int socket, struct mdp_header *header, uint8_t *payload, size_t
   };
   
   ssize_t len = recvmsg(socket, &hdr, 0);
-  if (len == -1)
-    return WHYF_perror("recvmsg(%d,%p,0)", socket, &hdr);
-  if ((size_t)len < sizeof(struct mdp_header))
-    return WHYF("Received message is too short (%zu)", (size_t)len);
+  if (len == -1) {
+    // Do not log errors that are part of normal operation.
+    if (   errno != EAGAIN
+#ifdef EWOULDBLOCK
+	&& errno != EWOULDBLOCK
+#endif
+	&& errno != EINTR
+    )
+      WHYF_perror("recvmsg(%d,%p,0)", socket, &hdr);
+    return -1;
+  }
+  if ((size_t)len < sizeof(struct mdp_header)) {
+    errno = EBADMSG;
+    WHYF_perror("received message too short (%zu), setting errno=EBADMSG", (size_t)len);
+    return -1;
+  }
   addr.addrlen=hdr.msg_namelen;
   // double check that the incoming address matches the servald daemon
   if (cmp_sockaddr(&addr, &mdp_addr) != 0
@@ -125,15 +144,19 @@ ssize_t mdp_recv(int socket, struct mdp_header *header, uint8_t *payload, size_t
 	  || real_sockaddr(&addr, &addr) <= 0
 	  || cmp_sockaddr(&addr, &mdp_addr) != 0
 	 )
-  )
-    return WHYF("Received message came from %s instead of %s?",
+  ) {
+    errno = EBADMSG;
+    WARNF_perror("dropped message from %s (expecting %s), setting errno=EBADMSG",
       alloca_socket_address(&addr),
       alloca_socket_address(&mdp_addr));
+    return -1;
+  }
   return len - sizeof(struct mdp_header);
 }
 
-int mdp_poll(int socket, time_ms_t timeout_ms)
+int _mdp_poll(struct __sourceloc UNUSED(__whence), int socket, time_ms_t timeout_ms)
 {
+  // TODO make overlay_mdp_client_poll() take __whence arg
   return overlay_mdp_client_poll(socket, timeout_ms);
 }
 
