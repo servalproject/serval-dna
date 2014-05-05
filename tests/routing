@@ -29,7 +29,7 @@ interface_up() {
 
 link_matches() {
    local interface_ex=".*"
-   local link_type="\(BROADCAST\|\UNICAST\)"
+   local link_type="\(BROADCAST\|UNICAST\)"
    local via="0*"
    local sid=""
    while [ $# -ne 0 ]; do
@@ -38,6 +38,7 @@ link_matches() {
       --broadcast) link_type="BROADCAST"; shift;;
       --unicast) link_type="UNICAST"; shift;;
       --via) link_type="INDIRECT"; via="$2"; interface_ex=""; shift 2;;
+      --any) via=".*"; link_type=".*"; shift;;
       *) break;;
       esac
    done
@@ -52,6 +53,11 @@ link_matches() {
 has_link() {
    executeOk_servald route print
    link_matches $@
+}
+
+has_no_link() {
+   has_link --any $1 || return 0
+   return 1
 }
 
 path_exists() {
@@ -167,7 +173,7 @@ test_unlock_ids() {
    set_instance +A
    executeOk_servald id relinquish pin 'entry-pin'
    set_instance +B
-   wait_until --timeout=30 sid_offline $SIDX
+   wait_until --timeout=30 has_no_link $SIDX
 }
 
 doc_migrate_id="Unlocking the same identity triggers migration"
@@ -503,12 +509,6 @@ setup_offline() {
    foreach_instance +A +B +C +D start_servald_server
 }
 
-sid_offline() {
-   if ! grep "NOT REACHABLE sid=${1}" $instance_servald_log; then
-      return 1
-   fi
-}
-
 instance_offline() {
    local I N
    for I; do
@@ -516,9 +516,8 @@ instance_offline() {
       for ((N=1; 1; ++N)); do
          local sidvar=SID${I#+}$N
          [ -n "${!sidvar}" ] || break
-         if sid_offline ${!sidvar}; then
-            return 1
-         fi
+         tfw_log "Checking if $I is offline for $instance_arg"
+         has_no_link ${!sidvar} || return 1
       done
    done
 }
