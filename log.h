@@ -104,7 +104,6 @@ __attribute__ (( format(printf,3,4) ));
 void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list);
 void logConfigChanged();
 int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len);
-ssize_t get_self_executable_path(char *buf, size_t len);
 int log_backtrace(int level, struct __sourceloc whence);
 
 struct strbuf;

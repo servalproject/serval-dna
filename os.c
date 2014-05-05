@@ -332,3 +332,17 @@ int alter_file_meta(const char *path, const struct file_meta *origp, struct file
   }
   return 1;
 }
+
+ssize_t get_self_executable_path(char *buf, size_t len)
+{
+#if defined(linux)
+  return read_symlink("/proc/self/exe", buf, len);
+#elif defined (__sun__)
+  return read_symlink("/proc/self/path/a.out", buf, len);
+#elif defined (__APPLE__)
+  uint32_t bufsize = len;
+  return _NSGetExecutablePath(buf, &bufsize) == -1 && len ? -1 : bufsize;
+#else
+#error Unable to find executable path
+#endif
+}

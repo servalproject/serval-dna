@@ -203,4 +203,15 @@ int cmp_file_meta(const struct file_meta *a, const struct file_meta *b);
 // by bumping the file's modification time or altering its inode.
 int alter_file_meta(const char *path, const struct file_meta *origp, struct file_meta *metap);
 
+/* Fill the given buffer with the nul-terminated absolute path of the calling
+ * process's executable.  Logs an error and returns -1 if the executable cannot
+ * be determined or the supplied buffer is too short.  Otherwise returns the
+ * number of bytes placed in the buffer, including the terminating nul (ie,
+ * returns strlen(buf) + 1).
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+ssize_t get_self_executable_path(char *buf, size_t len);
+
 #endif //__SERVAL_DNA__OS_H
+
