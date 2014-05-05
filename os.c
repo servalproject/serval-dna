@@ -171,14 +171,14 @@ ssize_t read_symlink(const char *path, char *buf, size_t len)
   if (len == 0) {
     struct stat stat;
     if (lstat(path, &stat) == -1)
-      return WHYF_perror("lstat(%s)", path);
-    return stat.st_size;
+      return WHYF_perror("lstat(%s)", alloca_str_toprint(path));
+    return stat.st_size + 1; // allow for terminating nul
   }
   ssize_t nr = readlink(path, buf, len);
   if (nr == -1)
-    return WHYF_perror("readlink(%s,%p,%zu)", path, buf, len);
+    return WHYF_perror("readlink(%s,%p,%zu)", alloca_str_toprint(path), buf, len);
   if ((size_t)nr >= len)
-    return WHYF("buffer overrun from readlink(%s, len=%zu)", path, len);
+    return WHYF("buffer overrun from readlink(%s, len=%zu)", alloca_str_toprint(path), len);
   buf[nr] = '\0';
   return nr;
 }

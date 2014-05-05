@@ -133,12 +133,12 @@ int urandombytes(unsigned char *buf, size_t len);
  * content and the terminating nul.  If readlink(2) returns an error, then logs
  * an ERROR and returns -1.  Otherwise, returns the number of bytes read,
  * including the terminating nul, ie, returns what readlink(2) returns plus
- * one.  If the 'len' argument is given as zero, then returns the number of
- * bytes that would be read, by calling lstat(2) instead of readlink(2), plus
- * one for the terminating nul.  Beware of the following race condition: a
- * symbolic link may be altered between calling the lstat(2) and readlink(2),
- * so the following apparently overflow-proof code may still fail from a buffer
- * overflow in the second call to read_symlink():
+ * one.  If the 'len' argument is given as zero, then ignores 'buf' and returns
+ * the number of bytes that would be read, by calling lstat(2) instead of
+ * readlink(2), plus one for the terminating nul.  Beware of the following race
+ * condition: a symbolic link may be altered between calling the lstat(2) and
+ * readlink(2), so the following apparently overflow-proof code may still fail
+ * from a buffer overflow in the second call to read_symlink():
  *
  *    char *readlink_malloc(const char *path) {
  *	ssize_t len = read_symlink(path, NULL, 0);
