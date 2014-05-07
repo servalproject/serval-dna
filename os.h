@@ -61,6 +61,7 @@ typedef int64_t time_ms_t;
 
 time_ms_t gettime_ms();
 time_ms_t sleep_ms(time_ms_t milliseconds);
+struct timeval time_ms_to_timeval(time_ms_t);
 
 #ifndef HAVE_BZERO
 __SERVAL_DNA__OS_INLINE void bzero(void *buf, size_t len) {

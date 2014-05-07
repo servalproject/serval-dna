@@ -166,6 +166,14 @@ time_ms_t sleep_ms(time_ms_t milliseconds)
   return remain.tv_sec * 1000 + remain.tv_nsec / 1000000;
 }
 
+struct timeval time_ms_to_timeval(time_ms_t milliseconds)
+{
+  struct timeval tv;
+  tv.tv_sec = milliseconds / 1000;
+  tv.tv_usec = (milliseconds % 1000) * 1000;
+  return tv;
+}
+
 ssize_t read_symlink(const char *path, char *buf, size_t len)
 {
   if (len == 0) {
@@ -320,9 +328,7 @@ int alter_file_meta(const char *path, const struct file_meta *origp, struct file
     meta.mtime = origp->mtime;
     add_timespec(&meta.mtime, sec, nsec);
     struct timeval times[2];
-    time_ms_t now = gettime_ms();
-    times[0].tv_sec = now / 1000;
-    times[0].tv_usec = (now % 1000) * 1000;
+    times[0] = time_ms_to_timeval(gettime_ms());
     times[1].tv_sec = meta.mtime.tv_sec;
     times[1].tv_usec = meta.mtime.tv_nsec / 1000;
     if (utimes(path, times) == -1)
