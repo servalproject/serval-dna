@@ -40,6 +40,7 @@ struct msp_packet{
   time_ms_t sent;
   const uint8_t *payload;
   size_t len;
+  size_t offset;
 };
 
 #define MAX_WINDOW_SIZE 4
@@ -55,39 +56,131 @@ struct msp_window{
 struct msp_sock{
   struct msp_sock *_next;
   struct msp_sock *_prev;
+  unsigned salt;
   int mdp_sock;
   msp_state_t state;
   struct msp_window tx;
   struct msp_window rx;
   uint16_t previous_ack;
   time_ms_t next_ack;
-  int (*handler)(struct msp_sock *sock, msp_state_t state, const uint8_t *payload, size_t len, void *context);
+  MSP_HANDLER *handler;
   void *context;
   struct mdp_header header;
   time_ms_t timeout;
   time_ms_t next_action;
 };
 
-struct msp_sock *root=NULL;
+#define SALT_INVALID 0xdeadbeef
 
-struct msp_sock * msp_socket(int mdp_sock)
+int msp_socket_is_valid(MSP_SOCKET handle)
 {
-  struct msp_sock *ret = emalloc_zero(sizeof(struct msp_sock));
-  ret->mdp_sock = mdp_sock;
-  ret->state = MSP_STATE_UNINITIALISED;
-  ret->_next = root;
-  // TODO set base rtt to ensure that we send the first packet a few times before giving up
-  ret->tx.base_rtt = ret->tx.rtt = 0xFFFFFFFF;
-  ret->tx.last_activity = TIME_MS_NEVER_HAS;
-  ret->rx.last_activity = TIME_MS_NEVER_HAS;
-  ret->next_action = TIME_MS_NEVER_WILL;
-  ret->timeout = gettime_ms() + 10000;
-  ret->previous_ack = 0x7FFF;
-  if (root)
-    root->_prev=ret;
-  root = ret;
-  return ret;
+  // TODO Set up temporary SIGSEGV and SIGBUS handlers in case handle.ptr points to unmapped memory
+  // or is misaligned, which could happen if the handle has never been initialised or free() calls
+  // munmap(2) on unused areas.  That is an O(1) solution that involves a couple of system calls.
+  // An alternative O(n) solution without system calls would be to scan the socket linked list to
+  // see if handle.ptr is in it.  A third, O(1) solution but O(n) in memory and involving more
+  // malloc() calls would be to add a new layer of pointer indirection between handles and msp_sock
+  // structs, and zero the indirect pointer on free().
+  // 
+  // TODO also perform consistency checks on the _next and _prev pointers (requires SIGSEGV
+  // and SIGBUS handler in place).
+  return handle.ptr != NULL && handle.salt == handle.ptr->salt;
 }
+
+static inline struct msp_sock * handle_to_sock(const struct msp_handle *handle)
+{
+  assert(handle != NULL);
+  assert(handle->ptr != NULL);
+  assert(handle->salt == handle->ptr->salt); // could SEGV is handle has not been initialised
+  return handle->ptr;
+}
+
+static inline struct msp_handle sock_to_handle(struct msp_sock *sock)
+{
+  return (struct msp_handle){ .ptr = sock, .salt = sock->salt };
+}
+
+static struct msp_sock *root=NULL;
+static unsigned salt_counter = 0;
+
+MSP_SOCKET msp_socket(int mdp_sock, int flags)
+{
+  if (flags != 0) {
+    WHYF("unsupported flags = %#x", flags);
+    return MSP_SOCKET_NULL;
+  }
+  struct msp_sock *sock = emalloc_zero(sizeof(struct msp_sock));
+  if (sock == NULL)
+    return MSP_SOCKET_NULL;
+  if (++salt_counter == SALT_INVALID)
+    ++salt_counter;
+  sock->salt = salt_counter;
+  sock->mdp_sock = mdp_sock;
+  sock->state = MSP_STATE_UNINITIALISED;
+  // TODO set base rtt to ensure that we send the first packet a few times before giving up
+  sock->tx.base_rtt = sock->tx.rtt = 0xFFFFFFFF;
+  sock->tx.last_activity = TIME_MS_NEVER_HAS;
+  sock->rx.last_activity = TIME_MS_NEVER_HAS;
+  sock->next_action = TIME_MS_NEVER_WILL;
+  sock->timeout = gettime_ms() + 10000;
+  sock->previous_ack = 0x7FFF;
+  sock->_next = root;
+  if (root)
+    root->_prev = sock;
+  root = sock;
+  return sock_to_handle(sock);
+}
+
+msp_state_t msp_get_state(MSP_SOCKET handle)
+{
+  return handle_to_sock(&handle)->state;
+}
+
+int msp_socket_is_initialising(MSP_SOCKET handle)
+{
+    return msp_socket_is_valid(handle) && msp_get_state(handle) == MSP_STATE_UNINITIALISED;
+}
+
+int msp_socket_is_open(MSP_SOCKET handle)
+{
+    if (!msp_socket_is_valid(handle))
+        return 0;
+    msp_state_t state = msp_get_state(handle);
+    return (state != MSP_STATE_UNINITIALISED || handle_to_sock(&handle)->tx.packet_count != 0)
+        && !(state & MSP_STATE_CLOSED);
+}
+
+int msp_socket_is_closed(MSP_SOCKET handle)
+{
+    return !msp_socket_is_valid(handle) || (msp_get_state(handle) & MSP_STATE_CLOSED) != 0;
+}
+
+int msp_socket_is_listening(MSP_SOCKET handle)
+{
+    return msp_socket_is_valid(handle) && (msp_get_state(handle) & MSP_STATE_LISTENING);
+}
+
+int msp_socket_is_data(MSP_SOCKET handle)
+{
+    return msp_socket_is_valid(handle)
+        && ((msp_get_state(handle) & MSP_STATE_DATAOUT) || handle_to_sock(&handle)->tx.packet_count != 0);
+}
+
+int msp_socket_is_connected(MSP_SOCKET handle)
+{
+    return msp_socket_is_valid(handle) && (msp_get_state(handle) & MSP_STATE_RECEIVED_PACKET);
+}
+
+int msp_socket_is_shutdown_local(MSP_SOCKET handle)
+{
+    return msp_socket_is_valid(handle) && (msp_get_state(handle) & MSP_STATE_SHUTDOWN_LOCAL) != 0;
+}
+
+int msp_socket_is_shutdown_remote(MSP_SOCKET handle)
+{
+    return msp_socket_is_valid(handle) && (msp_get_state(handle) & MSP_STATE_SHUTDOWN_REMOTE) != 0;
+}
+
 
 unsigned msp_socket_count()
 {
@@ -175,17 +268,21 @@ static void msp_free(struct msp_sock *sock)
     sock->_next->_prev = sock->_prev;
 
   // last chance to free other resources
-  if (sock->handler)
-    sock->handler(sock, sock->state, NULL, 0, sock->context);
+  if (sock->handler) {
+    size_t nconsumed = sock->handler(sock_to_handle(sock), sock->state, NULL, 0, sock->context);
+    assert(nconsumed == 0);
+  }
     
   free_all_packets(&sock->tx);
   free_all_packets(&sock->rx);
   
+  sock->salt = SALT_INVALID; // invalidate all handles that point here
   free(sock);
 }
 
-void msp_close(struct msp_sock *sock)
+void msp_close(MSP_SOCKET handle)
 {
+  struct msp_sock *sock = handle_to_sock(&handle);
   // TODO if never sent / received, just free it
   sock->state |= MSP_STATE_CLOSED;
 }
@@ -201,40 +298,34 @@ void msp_close_all(int mdp_sock)
   }
 }
 
-int msp_set_handler(struct msp_sock *sock, 
-  int (*handler)(struct msp_sock *sock, msp_state_t state, const uint8_t *payload, size_t len, void *context), 
-  void *context)
+void msp_set_handler(MSP_SOCKET handle, MSP_HANDLER *handler, void *context)
 {
+  struct msp_sock *sock = handle_to_sock(&handle);
   sock->handler = handler;
   sock->context = context;
-  return 0;
 }
 
-msp_state_t msp_get_state(struct msp_sock *sock)
+void msp_set_local(MSP_SOCKET handle, const struct mdp_sockaddr *local)
 {
-  return sock->state;
-}
-
-int msp_set_local(struct msp_sock *sock, struct mdp_sockaddr local)
-{
+  struct msp_sock *sock = handle_to_sock(&handle);
   assert(sock->state == MSP_STATE_UNINITIALISED);
-  sock->header.local = local;
-  return 0;
+  sock->header.local = *local;
 }
 
-int msp_set_remote(struct msp_sock *sock, struct mdp_sockaddr remote)
+void msp_connect(MSP_SOCKET handle, const struct mdp_sockaddr *remote)
 {
+  struct msp_sock *sock = handle_to_sock(&handle);
   assert(sock->state == MSP_STATE_UNINITIALISED);
-  sock->header.remote = remote;
+  sock->header.remote = *remote;
   sock->state|=MSP_STATE_DATAOUT;
   // make sure we send a packet soon
   sock->next_ack = gettime_ms()+10;
   sock->next_action = sock->next_ack;
-  return 0;
 }
 
-int msp_listen(struct msp_sock *sock)
+int msp_listen(MSP_SOCKET handle)
 {
+  struct msp_sock *sock = handle_to_sock(&handle);
   assert(sock->state == MSP_STATE_UNINITIALISED);
   assert(sock->header.local.port);
   
@@ -251,14 +342,17 @@ int msp_listen(struct msp_sock *sock)
   return 0;
 }
 
-int msp_get_remote_adr(struct msp_sock *sock, struct mdp_sockaddr *remote)
+void msp_get_local(MSP_SOCKET handle, struct mdp_sockaddr *local)
 {
-  *remote = sock->header.remote;
-  return 0;
+  *local = handle_to_sock(&handle)->header.local;
 }
 
-static int add_packet(struct msp_window *window, uint16_t seq, uint8_t flags, 
-  const uint8_t *payload, size_t len)
+void msp_get_remote(MSP_SOCKET handle, struct mdp_sockaddr *remote)
+{
+  *remote = handle_to_sock(&handle)->header.remote;
+}
+
+static int add_packet(struct msp_window *window, uint16_t seq, uint8_t flags, const uint8_t *payload, size_t len)
 {
   
   struct msp_packet **insert_pos=NULL;
@@ -298,6 +392,7 @@ static int add_packet(struct msp_window *window, uint16_t seq, uint8_t flags,
   packet->seq = seq;
   packet->flags = flags;
   packet->len = len;
+  packet->offset = 0;
   
   if (payload && len){
     uint8_t *p = emalloc(len);
@@ -322,7 +417,7 @@ static int msp_send_packet(struct msp_sock *sock, struct msp_packet *packet)
       return -1;
   }
   
-  uint8_t msp_header[5];
+  uint8_t msp_header[MSP_PAYLOAD_PREAMBLE_SIZE];
 
   msp_header[0]=packet->flags;
   
@@ -417,8 +512,10 @@ static int send_ack(struct msp_sock *sock)
 }
 
 // add a packet to the transmit buffer
-int msp_send(struct msp_sock *sock, const uint8_t *payload, size_t len)
+ssize_t msp_send(MSP_SOCKET handle, const uint8_t *payload, size_t len)
 {
+  struct msp_sock *sock = handle_to_sock(&handle);
+  assert(!(sock->state&MSP_STATE_LISTENING));
   assert(sock->header.remote.port);
   assert((sock->state & MSP_STATE_SHUTDOWN_LOCAL)==0);
   
@@ -435,11 +532,13 @@ int msp_send(struct msp_sock *sock, const uint8_t *payload, size_t len)
   // TODO calculate based on congestion window
   sock->next_action = gettime_ms();
   
-  return 0;
+  return len;
 }
 
-int msp_shutdown(struct msp_sock *sock)
+int msp_shutdown(MSP_SOCKET handle)
 {
+  struct msp_sock *sock = handle_to_sock(&handle);
+  assert(!(sock->state&MSP_STATE_LISTENING));
   assert(!(sock->state&MSP_STATE_SHUTDOWN_LOCAL));
   if (sock->tx._tail && sock->tx._tail->sent==0){
     sock->tx._tail->flags |= FLAG_SHUTDOWN;
@@ -484,18 +583,23 @@ static int process_sock(struct msp_sock *sock)
       sock->state|=MSP_STATE_SHUTDOWN_REMOTE;
     
     if (sock->handler){
-      int r = sock->handler(sock, sock->state, packet->payload, packet->len, sock->context);
-      if (r==-1){
-	sock->state |= MSP_STATE_CLOSED;
-	return -1;
-      }
-      // keep the packet if the handler refused to accept it.
-      if (r){
-	sock->next_action=gettime_ms()+1;
+      if (packet->len)
+	assert(packet->offset < packet->len);
+      else
+	assert(packet->offset == 0);
+      size_t len = packet->len - packet->offset;
+      size_t nconsumed = sock->handler(sock_to_handle(sock), sock->state, packet->payload, len, sock->context);
+      assert(nconsumed <= len);
+      // stop calling the handler if nothing was consumed
+      if (nconsumed == 0 && len != 0)
 	break;
-      }
+      packet->offset += nconsumed;
+      // keep the packet if the handler has not consumed it all
+      if (packet->offset < packet->len)
+	continue;
+      assert(packet->offset == packet->len);
     }
-    
+
     p=p->_next;
     sock->rx.next_seq++;
   }
@@ -538,11 +642,12 @@ static int process_sock(struct msp_sock *sock)
   if (sock->next_action > sock->next_ack)
     sock->next_action = sock->next_ack;
   
-  if (sock->state & MSP_STATE_SHUTDOWN_LOCAL
-    && sock->state & MSP_STATE_SHUTDOWN_REMOTE
-    && sock->tx.packet_count == 0 
-    && sock->rx.packet_count == 0
-    && sock->previous_ack == sock->rx.next_seq){
+  if (   (sock->state & MSP_STATE_SHUTDOWN_LOCAL)
+      && (sock->state & MSP_STATE_SHUTDOWN_REMOTE)
+      && sock->tx.packet_count == 0 
+      && sock->rx.packet_count == 0
+      && sock->previous_ack == sock->rx.next_seq
+  ){
     sock->state |= MSP_STATE_CLOSED;
     return -1;
   }
@@ -554,16 +659,12 @@ int msp_processing(time_ms_t *next_action)
 {
   *next_action=TIME_MS_NEVER_WILL;
   struct msp_sock *sock = root;
-  time_ms_t now = gettime_ms();
   while(sock){
-    if (!(sock->state & MSP_STATE_CLOSED)
-      && sock->next_action <= now){
-      // this might cause the socket to be closed.
-      if (process_sock(sock)==0){
-	// remember the time of the next thing we need to do.
-	if (sock->next_action < *next_action)
-	  *next_action=sock->next_action;
-      }
+    if (!(sock->state & MSP_STATE_CLOSED)) {
+      // this might cause the socket to be closed
+      // remember the time of the next thing we need to do.
+      if (process_sock(sock)==0 && sock->next_action < *next_action)
+	*next_action=sock->next_action;
     }else if (sock->next_action < *next_action)
       *next_action=sock->next_action;
     if (sock->state & MSP_STATE_CLOSED){
@@ -624,11 +725,14 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
       
     if (listen && !sock){
       // create a new socket for the incoming connection
-      sock = msp_socket(listen->mdp_sock);
-      sock->header = *header;
-      // use the same handler initially
-      sock->handler = listen->handler;
-      sock->context = listen->context;
+      MSP_SOCKET handle = msp_socket(listen->mdp_sock, 0);
+      sock = handle.ptr;
+      if (sock) {
+	sock->header = *header;
+	// use the same handler initially
+	sock->handler = listen->handler;
+	sock->context = listen->context;
+      }
     }
     
     if (!sock){
@@ -659,7 +763,7 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
     && !(sock->state & MSP_STATE_SHUTDOWN_LOCAL)){
     sock->state|=MSP_STATE_DATAOUT;
     if (sock->handler)
-      sock->handler(sock, sock->state, NULL, 0, sock->context);
+      sock->handler(sock_to_handle(sock), sock->state, NULL, 0, sock->context);
   }
   
   // make sure we attempt to process packets from this sock soon
@@ -668,27 +772,23 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
   
   sock->next_action = gettime_ms();
   
-  if (len<5)
+  if (len<MSP_PAYLOAD_PREAMBLE_SIZE)
     return 0;
   
   sock->state |= MSP_STATE_RECEIVED_DATA;
   uint16_t seq = read_uint16(&payload[3]);
   
-  if (add_packet(&sock->rx, seq, flags, &payload[5], len - 5)==1)
+  if (add_packet(&sock->rx, seq, flags, &payload[MSP_PAYLOAD_PREAMBLE_SIZE], len - MSP_PAYLOAD_PREAMBLE_SIZE)==1)
     sock->next_ack = gettime_ms();
   return 0;
 }
 
 int msp_recv(int mdp_sock)
 {
-  
   struct mdp_header header;
   uint8_t payload[1200];
-  
   ssize_t len = mdp_recv(mdp_sock, &header, payload, sizeof(payload));
-  if (len<0)
+  if (len == -1)
     return -1;
-  
   return process_packet(mdp_sock, &header, payload, len);
 }
-

@@ -36,7 +36,7 @@ struct buffer{
 struct connection{
   struct sched_ent alarm_in;
   struct sched_ent alarm_out;
-  struct msp_sock *sock;
+  MSP_SOCKET sock;
   struct buffer *in;
   struct buffer *out;
   int last_state;
@@ -44,7 +44,7 @@ struct connection{
 
 int saw_error=0;
 int once =0;
-struct msp_sock *listener=NULL;
+MSP_SOCKET listener = MSP_SOCKET_NULL;
 struct mdp_sockaddr remote_addr;
 struct socket_address ip_addr;
 
@@ -98,7 +98,7 @@ const char *service_name=NULL;
 mdp_port_t service_port;
 
 static struct connection *alloc_connection(
-  struct msp_sock *sock,
+  MSP_SOCKET sock,
   int fd_in,
   void (*func_in)(struct sched_ent *alarm),
   int fd_out,
@@ -180,19 +180,19 @@ static void remote_shutdown(struct connection *conn)
   struct mdp_sockaddr remote;
   if (shutdown(conn->alarm_out.poll.fd, SHUT_WR))
     WARNF_perror("shutdown(%d)", conn->alarm_out.poll.fd);
-  msp_get_remote_adr(conn->sock, &remote);
+  msp_get_remote(conn->sock, &remote);
   INFOF(" - Connection with %s:%d remote shutdown", alloca_tohex_sid_t(remote.sid), remote.port);
 }
 
 static void local_shutdown(struct connection *conn)
 {
   struct mdp_sockaddr remote;
-  msp_get_remote_adr(conn->sock, &remote);
+  msp_get_remote(conn->sock, &remote);
   msp_shutdown(conn->sock);
   INFOF(" - Connection with %s:%d local shutdown", alloca_tohex_sid_t(remote.sid), remote.port);
 }
 
-static int msp_handler(struct msp_sock *sock, msp_state_t state, const uint8_t *payload, size_t len, void *context)
+static size_t msp_handler(MSP_SOCKET sock, msp_state_t state, const uint8_t *payload, size_t len, void *context)
 {
   struct connection *conn = context;
   if (state & MSP_STATE_ERROR)
@@ -205,7 +205,7 @@ static int msp_handler(struct msp_sock *sock, msp_state_t state, const uint8_t *
       conn->alarm_out.function(&conn->alarm_out);
     }
     if (conn->out->capacity < len + conn->out->limit)
-      return 1;
+      return 0;
     
     bcopy(payload, &conn->out->bytes[conn->out->limit], len);
     conn->out->limit+=len;
@@ -224,24 +224,25 @@ static int msp_handler(struct msp_sock *sock, msp_state_t state, const uint8_t *
   
   if (state & MSP_STATE_CLOSED){
     struct mdp_sockaddr remote;
-    msp_get_remote_adr(sock, &remote);
+    msp_get_remote(sock, &remote);
     INFOF(" - Connection with %s:%d closed", alloca_tohex_sid_t(remote.sid), remote.port);
     
-    conn->sock = NULL;
+    conn->sock = MSP_SOCKET_NULL;
     if (is_watching(&conn->alarm_in))
       unwatch(&conn->alarm_in);
     if (!is_watching(&conn->alarm_out))
       free_connection(conn);
     
+    assert(len == 0);
     return 0;
   }
   
   if (state&MSP_STATE_DATAOUT)
     try_send(conn);
-  return 0;
+  return len;
 }
 
-static int msp_listener(struct msp_sock *sock, msp_state_t state, const uint8_t *payload, size_t len, void *UNUSED(context))
+static size_t msp_listener(MSP_SOCKET sock, msp_state_t state, const uint8_t *payload, size_t len, void *UNUSED(context))
 {
   if (state & MSP_STATE_ERROR){
     WHY("Error listening for incoming connections");
@@ -253,11 +254,11 @@ static int msp_listener(struct msp_sock *sock, msp_state_t state, const uint8_t 
       if (is_watching(&mdp_sock))
 	unwatch(&mdp_sock);
     }
-    return 0;
+    return len;
   }
   
   struct mdp_sockaddr remote;
-  msp_get_remote_adr(sock, &remote);
+  msp_get_remote(sock, &remote);
   INFOF(" - New connection from %s:%d", alloca_tohex_sid_t(remote.sid), remote.port);
   int fd_in = STDIN_FILENO;
   int fd_out = STDOUT_FILENO;
@@ -266,18 +267,18 @@ static int msp_listener(struct msp_sock *sock, msp_state_t state, const uint8_t 
     int fd = esocket(PF_INET, SOCK_STREAM, 0);
     if (fd==-1){
       msp_close(sock);
-      return -1;
+      return 0;
     }
     if (socket_connect(fd, &ip_addr)==-1){
       msp_close(sock);
       close(fd);
-      return -1;
+      return 0;
     }
     fd_in = fd_out = fd;
   }
   struct connection *conn = alloc_connection(sock, fd_in, io_poll, fd_out, io_poll);
   if (!conn)
-    return -1;
+    return 0;
     
   conn->sock = sock;
   watch(&conn->alarm_in);
@@ -289,6 +290,7 @@ static int msp_listener(struct msp_sock *sock, msp_state_t state, const uint8_t 
     // stop listening after the first incoming connection
     msp_close(listener);
   }
+  assert(len == 0);
   return 0;
 }
 
@@ -390,9 +392,9 @@ static void io_poll(struct sched_ent *alarm)
       if (conn->last_state & MSP_STATE_SHUTDOWN_REMOTE)
 	remote_shutdown(conn);
     }
-    
+
     if (conn->out->limit < conn->out->capacity){
-      if (conn->sock){
+      if (!msp_socket_is_null(conn->sock)){
 	process_msp_asap();
       }else{
 	free_connection(conn);
@@ -427,8 +429,8 @@ static void listen_poll(struct sched_ent *alarm)
       return;
     }
     INFOF("- Incoming TCP connection from %s", alloca_socket_address(&addr));
-    struct msp_sock *sock = msp_socket(mdp_sock.poll.fd);
-    if (!sock)
+    MSP_SOCKET sock = msp_socket(mdp_sock.poll.fd, 0);
+    if (msp_socket_is_null(sock))
       return;
     
     struct connection *connection = alloc_connection(sock, fd, io_poll, fd, io_poll);
@@ -438,7 +440,7 @@ static void listen_poll(struct sched_ent *alarm)
     }
 
     msp_set_handler(sock, msp_handler, connection);
-    msp_set_remote(sock, remote_addr);
+    msp_connect(sock, &remote_addr);
     process_msp_asap();
     
     if (once){
@@ -472,7 +474,7 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
   }
   
   int ret=-1;
-  struct msp_sock *sock = NULL;
+  MSP_SOCKET sock = MSP_SOCKET_NULL;
   
   if (service_name){
     // listen for service discovery messages
@@ -526,19 +528,19 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
       watch(&listen_alarm);
       INFOF("- Forwarding from %s to %s:%d", alloca_socket_address(&ip_addr), alloca_tohex_sid_t(addr.sid), addr.port);
     }else{
-      sock = msp_socket(mdp_sock.poll.fd);
+      sock = msp_socket(mdp_sock.poll.fd, 0);
       once = 1;
       struct connection *conn=alloc_connection(sock, STDIN_FILENO, io_poll, STDOUT_FILENO, io_poll);
       if (!conn)
 	goto end;
       msp_set_handler(sock, msp_handler, conn);
-      msp_set_remote(sock, addr);
+      msp_connect(sock, &addr);
       INFOF("- Connecting to %s:%d", alloca_tohex_sid_t(addr.sid), addr.port);
     }
   }else{
-    sock = msp_socket(mdp_sock.poll.fd);
+    sock = msp_socket(mdp_sock.poll.fd, 0);
     msp_set_handler(sock, msp_listener, NULL);
-    msp_set_local(sock, addr);
+    msp_set_local(sock, &addr);
     
     // sock will be closed if listen fails
     if (msp_listen(sock)==-1)
@@ -565,7 +567,7 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
   sigIntFlag = 0;
   
 end:
-  listener=NULL;
+  listener = MSP_SOCKET_NULL;
   if (is_watching(&mdp_sock))
     unwatch(&mdp_sock);
   if (mdp_sock.poll.fd!=-1){
