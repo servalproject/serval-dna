@@ -171,7 +171,7 @@ static struct profile_total link_send_stats={
 static struct sched_ent link_send_alarm={
   .function = link_send,
   .stats = &link_send_stats,
-  .alarm = TIME_NEVER_WILL,
+  .alarm = TIME_MS_NEVER_WILL,
 };
 
 struct neighbour *neighbours=NULL;
@@ -185,7 +185,7 @@ struct network_destination * new_destination(struct overlay_interface *interface
     ret->encapsulation = encapsulation;
     ret->interface = interface;
     ret->resend_delay = 1000;
-    ret->last_tx = TIME_NEVER_HAS;
+    ret->last_tx = TIME_MS_NEVER_HAS;
     ret->sequence_number = -1;
     ret->last_ack_seq = -1;
   }
@@ -882,7 +882,7 @@ static int link_send_neighbours()
 // send link details
 static void link_send(struct sched_ent *alarm)
 {
-  alarm->alarm=TIME_NEVER_WILL;
+  alarm->alarm=TIME_MS_NEVER_WILL;
 
   // TODO use a separate alarm
   link_send_neighbours();

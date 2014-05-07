@@ -78,9 +78,9 @@ struct msp_sock * msp_socket(int mdp_sock)
   ret->_next = root;
   // TODO set base rtt to ensure that we send the first packet a few times before giving up
   ret->tx.base_rtt = ret->tx.rtt = 0xFFFFFFFF;
-  ret->tx.last_activity = TIME_NEVER_HAS;
-  ret->rx.last_activity = TIME_NEVER_HAS;
-  ret->next_action = TIME_NEVER_WILL;
+  ret->tx.last_activity = TIME_MS_NEVER_HAS;
+  ret->rx.last_activity = TIME_MS_NEVER_HAS;
+  ret->next_action = TIME_MS_NEVER_WILL;
   ret->timeout = gettime_ms() + 10000;
   ret->previous_ack = 0x7FFF;
   if (root)
@@ -552,7 +552,7 @@ static int process_sock(struct msp_sock *sock)
 
 int msp_processing(time_ms_t *next_action)
 {
-  *next_action=TIME_NEVER_WILL;
+  *next_action=TIME_MS_NEVER_WILL;
   struct msp_sock *sock = root;
   time_ms_t now = gettime_ms();
   while(sock){
@@ -602,7 +602,7 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
 	    DEBUGF("Bound to %s:%d", alloca_tohex_sid_t(header->local.sid), header->local.port);
 	  s->next_action = gettime_ms();
 	  if (s->state & MSP_STATE_LISTENING)
-	    s->timeout = TIME_NEVER_WILL;
+	    s->timeout = TIME_MS_NEVER_WILL;
 	  return 0;
 	}
 	
