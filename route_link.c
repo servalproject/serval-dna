@@ -1302,6 +1302,14 @@ int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payl
 	ack_mask,
 	drop_rate);
 
+    if (transmitter && transmitter!=my_subscriber && transmitter->reachable==REACHABLE_SELF){
+      // Our neighbour is talking about a path *from* a secondary SID of ours? Impossible.
+      // Maybe we decoded an abbreviation incorrectly and this indicates a SID collision.
+      // TODO add a test for this case!
+      transmitter->send_full=1;
+      continue;
+    }
+    
     if (receiver == my_subscriber){
       // track if our neighbour is using us as an immediate neighbour, if they are we need to ack / nack promptly
       neighbour->using_us = (transmitter==header->source?1:0);
@@ -1309,6 +1317,16 @@ int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payl
       // for routing, we can completely ignore any links that our neighbour is using to route to us.
       // we can always send packets to ourself :)
       continue;
+    }
+    
+    if (receiver->reachable == REACHABLE_SELF){
+      if (transmitter && transmitter!=my_subscriber){
+	// An alternative path to a secondary SID, that isn't via me? Impossible.
+	// Maybe we decoded an abbreviation incorrectly and this indicates a SID collision.
+	// TODO add a test for this case!
+	receiver->send_full=1;
+	continue;
+      }
     }
 
     struct network_destination *destination=NULL;
