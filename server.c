@@ -47,7 +47,6 @@ int servalShutdown = 0;
 static int server_getpid = 0;
 
 void signal_handler(int signal);
-void crash_handler(int signal);
 
 /** Return the PID of the currently running server process, return 0 if there is none.
  */
@@ -111,18 +110,8 @@ int server()
 
   serverMode = 1;
 
-  /* Catch crash signals so that we can log a backtrace before expiring. */
-  struct sigaction sig;
-  sig.sa_handler = crash_handler;
-  sigemptyset(&sig.sa_mask); // Don't block any signals during handler
-  sig.sa_flags = SA_NODEFER | SA_RESETHAND; // So the signal handler can kill the process by re-sending the same signal to itself
-  sigaction(SIGSEGV, &sig, NULL);
-  sigaction(SIGFPE, &sig, NULL);
-  sigaction(SIGILL, &sig, NULL);
-  sigaction(SIGBUS, &sig, NULL);
-  sigaction(SIGABRT, &sig, NULL);
-
   /* Catch SIGHUP etc so that we can respond to requests to do things, eg, shut down. */
+  struct sigaction sig;
   sig.sa_handler = signal_handler;
   sigemptyset(&sig.sa_mask); // Block the same signals during handler
   sigaddset(&sig.sa_mask, SIGHUP);
@@ -415,111 +404,24 @@ void serverCleanUp()
   server_remove_stopfile();
 }
 
-static void signame(char *buf, size_t len, int signal)
+void serverRespawn()
 {
-  const char *desc = "";
-  switch(signal) {
-#ifdef SIGHUP
-  case SIGHUP: desc = "HUP"; break;
-#endif
-#ifdef SIGINT
-  case SIGINT: desc = "INT"; break;
-#endif
-#ifdef SIGQUIT
-  case SIGQUIT: desc = "QUIT"; break;
-#endif
-#ifdef SIGILL
-  case SIGILL: desc = "ILL (not reset when caught)"; break;
-#endif
-#ifdef SIGTRAP
-  case SIGTRAP: desc = "TRAP (not reset when caught)"; break;
-#endif
-#ifdef SIGABRT
-  case SIGABRT: desc = "ABRT"; break;
-#endif
-#ifdef SIGPOLL
-  case SIGPOLL: desc = "POLL ([XSR] generated, not supported)"; break;
-#endif
-#ifdef SIGEMT
-  case SIGEMT: desc = "EMT"; break;
-#endif
-#ifdef SIGFPE
-  case SIGFPE: desc = "FPE"; break;
-#endif
-#ifdef SIGKILL
-  case SIGKILL: desc = "KILL (cannot be caught or ignored)"; break;
-#endif
-#ifdef SIGBUS
-  case SIGBUS: desc = "BUS"; break;
-#endif
-#ifdef SIGSEGV
-  case SIGSEGV: desc = "SEGV"; break;
-#endif
-#ifdef SIGSYS
-  case SIGSYS: desc = "SYS"; break;
-#endif
-#ifdef SIGPIPE
-  case SIGPIPE: desc = "PIPE"; break;
-#endif
-#ifdef SIGALRM
-  case SIGALRM: desc = "ALRM"; break;
-#endif
-#ifdef SIGTERM
-  case SIGTERM: desc = "TERM"; break;
-#endif
-#ifdef SIGURG
-  case SIGURG: desc = "URG"; break;
-#endif
-#ifdef SIGSTOP
-  case SIGSTOP: desc = "STOP"; break;
-#endif
-#ifdef SIGTSTP
-  case SIGTSTP: desc = "TSTP"; break;
-#endif
-#ifdef SIGCONT
-  case SIGCONT: desc = "CONT"; break;
-#endif
-#ifdef SIGCHLD
-  case SIGCHLD: desc = "CHLD"; break;
-#endif
-#ifdef SIGTTIN
-  case SIGTTIN: desc = "TTIN"; break;
-#endif
-#ifdef SIGTTOU
-  case SIGTTOU: desc = "TTOU"; break;
-#endif
-#ifdef SIGIO
-#if SIGIO != SIGPOLL          
-  case SIGIO: desc = "IO"; break;
-#endif
-#endif
-#ifdef SIGXCPU
-  case SIGXCPU: desc = "XCPU"; break;
-#endif
-#ifdef SIGXFSZ
-  case SIGXFSZ: desc = "XFSZ"; break;
-#endif
-#ifdef SIGVTALRM
-  case SIGVTALRM: desc = "VTALRM"; break;
-#endif
-#ifdef SIGPROF
-  case SIGPROF: desc = "PROF"; break;
-#endif
-#ifdef SIGWINCH
-  case SIGWINCH: desc = "WINCH"; break;
-#endif
-#ifdef SIGINFO
-  case SIGINFO: desc = "INFO"; break;
-#endif
-#ifdef SIGUSR1
-  case SIGUSR1: desc = "USR1"; break;
-#endif
-#ifdef SIGUSR2
-  case SIGUSR2: desc = "USR2"; break;
-#endif
+  if (serverMode && config.server.respawn_on_crash) {
+    unsigned i;
+    overlay_interface_close_all();
+    char execpath[160];
+    if (get_self_executable_path(execpath, sizeof execpath) != -1) {
+      strbuf b = strbuf_alloca(1024);
+      for (i = 0; i < exec_argc; ++i)
+	strbuf_append_shell_quotemeta(strbuf_puts(b, i ? " " : ""), exec_args[i]);
+      INFOF("Respawning %s as %s", execpath, strbuf_str(b));
+      execv(execpath, exec_args);
+      /* Quit if the exec() fails */
+      WHY_perror("execv");
+    } else {
+      WHY("Cannot respawn");
+    }
   }
-  snprintf(buf, len, "SIG%s (%d) %s", desc, signal, strsignal(signal));
-  buf[len - 1] = '\0';
 }
 
 void signal_handler(int signal)
@@ -536,47 +438,10 @@ void signal_handler(int signal)
       return;
   }
   
-  char buf[80];
-  signame(buf, sizeof(buf), signal);
-  
-  LOGF(LOG_LEVEL_FATAL, "Caught signal %s", buf);
-  LOGF(LOG_LEVEL_FATAL, "The following clue may help: %s",crash_handler_clue); 
+  LOGF(LOG_LEVEL_FATAL, "Caught signal %s", alloca_signal_name(signal));
+  LOGF(LOG_LEVEL_FATAL, "The following clue may help: %s", crash_handler_clue); 
   dump_stack(LOG_LEVEL_FATAL);
 
   serverCleanUp();
   exit(0);
-}
-
-char crash_handler_clue[1024]="no clue";
-void crash_handler(int signal)
-{
-  char buf[80];
-  signame(buf, sizeof(buf), signal);
-  LOGF(LOG_LEVEL_FATAL, "Caught signal %s", buf);
-  LOGF(LOG_LEVEL_FATAL, "The following clue may help: %s",crash_handler_clue); 
-  dump_stack(LOG_LEVEL_FATAL);
-  
-  BACKTRACE;
-  if (config.server.respawn_on_crash) {
-    unsigned i;
-    overlay_interface_close_all();
-    char execpath[160];
-    if (get_self_executable_path(execpath, sizeof execpath) != -1) {
-      strbuf b = strbuf_alloca(1024);
-      for (i = 0; i < exec_argc; ++i)
-	strbuf_append_shell_quotemeta(strbuf_puts(b, i ? " " : ""), exec_args[i]);
-      INFOF("Respawning %s as %s", execpath, strbuf_str(b));
-      execv(execpath, exec_args);
-      /* Quit if the exec() fails */
-      WHY_perror("execv");
-    } else {
-      WHY("Cannot respawn");
-    }
-  }
-  // Now die of the same signal, so that our exit status reflects the cause.
-  INFOF("Re-sending signal %d to self", signal);
-  kill(getpid(), signal);
-  // If that didn't work, then die normally.
-  INFOF("exit(%d)", -signal);
-  exit(-signal);
 }

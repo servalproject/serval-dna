@@ -318,6 +318,113 @@ strbuf strbuf_append_socket_domain(strbuf sb, int domain)
   return sb;
 }
 
+strbuf strbuf_append_signal_name(strbuf sb, int signal)
+{
+  const char *desc = "";
+  switch(signal) {
+#ifdef SIGHUP
+  case SIGHUP: desc = "HUP"; break;
+#endif
+#ifdef SIGINT
+  case SIGINT: desc = "INT"; break;
+#endif
+#ifdef SIGQUIT
+  case SIGQUIT: desc = "QUIT"; break;
+#endif
+#ifdef SIGILL
+  case SIGILL: desc = "ILL (not reset when caught)"; break;
+#endif
+#ifdef SIGTRAP
+  case SIGTRAP: desc = "TRAP (not reset when caught)"; break;
+#endif
+#ifdef SIGABRT
+  case SIGABRT: desc = "ABRT"; break;
+#endif
+#ifdef SIGPOLL
+  case SIGPOLL: desc = "POLL ([XSR] generated, not supported)"; break;
+#endif
+#ifdef SIGEMT
+  case SIGEMT: desc = "EMT"; break;
+#endif
+#ifdef SIGFPE
+  case SIGFPE: desc = "FPE"; break;
+#endif
+#ifdef SIGKILL
+  case SIGKILL: desc = "KILL (cannot be caught or ignored)"; break;
+#endif
+#ifdef SIGBUS
+  case SIGBUS: desc = "BUS"; break;
+#endif
+#ifdef SIGSEGV
+  case SIGSEGV: desc = "SEGV"; break;
+#endif
+#ifdef SIGSYS
+  case SIGSYS: desc = "SYS"; break;
+#endif
+#ifdef SIGPIPE
+  case SIGPIPE: desc = "PIPE"; break;
+#endif
+#ifdef SIGALRM
+  case SIGALRM: desc = "ALRM"; break;
+#endif
+#ifdef SIGTERM
+  case SIGTERM: desc = "TERM"; break;
+#endif
+#ifdef SIGURG
+  case SIGURG: desc = "URG"; break;
+#endif
+#ifdef SIGSTOP
+  case SIGSTOP: desc = "STOP"; break;
+#endif
+#ifdef SIGTSTP
+  case SIGTSTP: desc = "TSTP"; break;
+#endif
+#ifdef SIGCONT
+  case SIGCONT: desc = "CONT"; break;
+#endif
+#ifdef SIGCHLD
+  case SIGCHLD: desc = "CHLD"; break;
+#endif
+#ifdef SIGTTIN
+  case SIGTTIN: desc = "TTIN"; break;
+#endif
+#ifdef SIGTTOU
+  case SIGTTOU: desc = "TTOU"; break;
+#endif
+#ifdef SIGIO
+#if SIGIO != SIGPOLL          
+  case SIGIO: desc = "IO"; break;
+#endif
+#endif
+#ifdef SIGXCPU
+  case SIGXCPU: desc = "XCPU"; break;
+#endif
+#ifdef SIGXFSZ
+  case SIGXFSZ: desc = "XFSZ"; break;
+#endif
+#ifdef SIGVTALRM
+  case SIGVTALRM: desc = "VTALRM"; break;
+#endif
+#ifdef SIGPROF
+  case SIGPROF: desc = "PROF"; break;
+#endif
+#ifdef SIGWINCH
+  case SIGWINCH: desc = "WINCH"; break;
+#endif
+#ifdef SIGINFO
+  case SIGINFO: desc = "INFO"; break;
+#endif
+#ifdef SIGUSR1
+  case SIGUSR1: desc = "USR1"; break;
+#endif
+#ifdef SIGUSR2
+  case SIGUSR2: desc = "USR2"; break;
+#endif
+  }
+  strbuf_sprintf(sb, "SIG%s (%d) %s", desc, signal, strsignal(signal));
+  return sb;
+}
+
 strbuf strbuf_append_socket_type(strbuf sb, int type)
 {
   const char *typ = NULL;

@@ -733,8 +733,8 @@ int logBacktrace(int level, struct __sourceloc whence)
       _exit(-2);
     }
     close(stdout_fds[0]);
-    /* XXX: Need the cast on Solaris because it defins NULL as 0L and gcc doesn't
-     * see it as a sentinal */
+    // Need the (void*) cast on Solaris because it defines NULL as 0L and gcc doesn't accept it as a
+    // sentinal
     execlp("gdb", "gdb", "-n", "-batch", "-x", tempfile, execpath, pidstr, (void*)NULL);
     perror("execlp(\"gdb\")");
     do { _exit(-3); } while (1);
@@ -754,14 +754,14 @@ int logBacktrace(int level, struct __sourceloc whence)
     for (; p < readp; ++p)
       if (*p == '\n' || *p == '\0') {
 	*p = '\0';
-	_log_iterator_printf_nl(&it, level, __NOWHERE__, "%s", linep);
+	_log_iterator_printf_nl(&it, level, __NOWHERE__, "GDB %s", linep);
 	linep = p + 1;
       }
     if (readp >= bufe && linep == buf) {
       // Line does not fit into buffer.
       char t = bufe[-1];
       bufe[-1] = '\0';
-      _log_iterator_printf_nl(&it, level, __NOWHERE__, "%s", buf);
+      _log_iterator_printf_nl(&it, level, __NOWHERE__, "GDB %s", buf);
       buf[0] = t;
       readp = buf + 1;
     } else if (readp + 120 >= bufe && linep != buf) {
@@ -777,7 +777,7 @@ int logBacktrace(int level, struct __sourceloc whence)
     WHY_perror("read");
   if (readp > linep) {
     *readp = '\0';
-    _log_iterator_printf_nl(&it, level, __NOWHERE__, "%s", linep);
+    _log_iterator_printf_nl(&it, level, __NOWHERE__, "GDB %s", linep);
   }
   close(stdout_fds[0]);
   int status = 0;

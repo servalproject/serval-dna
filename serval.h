@@ -234,6 +234,7 @@ int server_check_stopfile();
 void server_watchdog(struct sched_ent *alarm);
 void overlay_mdp_clean_socket_files();
 void serverCleanUp();
+void serverRespawn();
 
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,

@@ -106,6 +106,12 @@ strbuf strbuf_append_argv(strbuf sb, int argc, const char *const *argv);
  */
 strbuf strbuf_append_exit_status(strbuf sb, int status);
 
+/* Append a textual description of a signal as used by kill(2) and signal(2).
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_append_signal_name(strbuf sb, int signal);
+#define alloca_signal_name(sig)    strbuf_str(strbuf_append_signal_name(strbuf_alloca(80), (sig)))
+
 /* Append a textual description of a socket domain code (AF_...).
  * @author Andrew Bettison <andrew@servalproject.com>
  */
