@@ -189,7 +189,7 @@ static int remote_hangup(char *UNUSED(cmd), int UNUSED(argc), char **argv, unsig
       printf("Call ended\n");
       fflush(stdout);
       struct call *p=*call;
-      call = &p->_next;
+      *call = p->_next;
       free(p);
     }else{
       call = &(*call)->_next;
