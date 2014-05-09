@@ -627,7 +627,7 @@ test_ping_unreliable_2hop() {
    received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    assert [ "$received" -ge 98 ]
-   assert [ "$duplicates" -le 2 ]
+   assert [ "$duplicates" -le 5 ]
 }
 
 doc_brping_unreliable_1hop="Broadcast ping over a 1-hop unreliable link"
