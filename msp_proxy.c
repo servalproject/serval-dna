@@ -573,9 +573,9 @@ end:
     mdp_close(mdp_sock.poll.fd);
     mdp_sock.poll.fd=-1;
   }
-  if (is_watching(&service_sock))
-    unwatch(&service_sock);
   if (service_sock.poll.fd!=-1){
+    if (is_watching(&service_sock))
+      unwatch(&service_sock);
     mdp_close(service_sock.poll.fd);
     service_sock.poll.fd=-1;
   }
