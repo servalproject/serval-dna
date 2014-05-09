@@ -72,6 +72,12 @@ version.o: *.h *.c version_string.sh VERSION.txt COPYRIGHT.txt Makefile
 
 VERSION.txt:
 
+Makefile: $(wildcard Makefile.in) $(wildcard configure)
+	$(warning Makefile may be out of date, please run ./configure)
+
+configure: $(wildcard configure.in)
+	$(warning configure may be out of date, please run autoreconf -f -i)
+
 %.o:	%.c
 	@echo CC $<
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
