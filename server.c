@@ -38,10 +38,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 static char pidfile_path[256];
 
-#define EXEC_NARGS 20
-char *exec_args[EXEC_NARGS + 1];
-unsigned exec_argc = 0;
-
 int servalShutdown = 0;
 
 static int server_getpid = 0;
@@ -88,14 +84,6 @@ const char *_server_pidfile_path(struct __sourceloc __whence)
       return NULL;
   }
   return pidfile_path;
-}
-
-void server_save_argv(int argc, const char *const *argv)
-{
-    /* Save our argv[] to use for relaunching */
-    for (exec_argc = 0; exec_argc < (unsigned)argc && exec_argc < EXEC_NARGS; ++exec_argc)
-      exec_args[exec_argc] = strdup(argv[exec_argc]);
-    exec_args[exec_argc] = NULL;
 }
 
 int server()
@@ -402,26 +390,6 @@ void serverCleanUp()
   
   /* Try to remove shutdown and PID files and exit */
   server_remove_stopfile();
-}
-
-void serverRespawn()
-{
-  if (serverMode && config.server.respawn_on_crash) {
-    unsigned i;
-    overlay_interface_close_all();
-    char execpath[160];
-    if (get_self_executable_path(execpath, sizeof execpath) != -1) {
-      strbuf b = strbuf_alloca(1024);
-      for (i = 0; i < exec_argc; ++i)
-	strbuf_append_shell_quotemeta(strbuf_puts(b, i ? " " : ""), exec_args[i]);
-      INFOF("Respawning %s as %s", execpath, strbuf_str(b));
-      execv(execpath, exec_args);
-      /* Quit if the exec() fails */
-      WHY_perror("execv");
-    } else {
-      WHY("Cannot respawn");
-    }
-  }
 }
 
 void signal_handler(int signal)

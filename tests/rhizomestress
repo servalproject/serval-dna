@@ -43,8 +43,7 @@ configure_servald_server() {
       set debug.rhizome off \
       set debug.httpd off \
       set debug.rhizome_tx off \
-      set debug.rhizome_rx off \
-      set server.respawn_on_crash off
+      set debug.rhizome_rx off
 }
 
 doc_StressRhizomeTransfer="Five nodes each sharing 26 bundles from 0B to 620K"
@@ -140,7 +139,6 @@ setup_StressRhizomeDirect() {
          set debug.httpd off \
          set debug.rhizome_tx off \
          set debug.rhizome_rx off \
-         set server.respawn_on_crash off \
          set mdp.iftype.wifi.tick_ms 500
       local sidvar="SID$instance_name"
       for ((n = 0; n < $files_per_instance; ++n)); do

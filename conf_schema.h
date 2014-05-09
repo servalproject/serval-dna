@@ -331,7 +331,6 @@ END_STRUCT
 STRUCT(server)
 STRING(256,                 chdir,      "/", absolute_path,, "Absolute path of chdir(2) for server process")
 STRING(256,                 interface_path, "", str_nonempty,, "Path of directory containing interface files, either absolute or relative to instance directory")
-ATOM(bool_t,                respawn_on_crash, 0, boolean,, "If true, server will exec(2) itself on fatal signals, eg SEGV")
 ATOM(uint32_t,              config_reload_interval_ms, 1000, uint32_nonzero,, "Time interval between configuration reload polls, in milliseconds")
 SUB_STRUCT(watchdog,        watchdog,)
 STRING(120,                 motd,      "", str_nonempty,, "Message Of The Day displayed on HTTPD root page")

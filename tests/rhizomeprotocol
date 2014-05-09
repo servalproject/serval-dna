@@ -46,7 +46,6 @@ default_config() {
       set debug.rhizome_ads on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
-      set server.respawn_on_crash off \
       set mdp.iftype.wifi.tick_ms 500
 }
 

@@ -44,7 +44,6 @@ configure_servald_server() {
       set debug.httpd on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
-      set server.respawn_on_crash off \
       set mdp.iftype.wifi.tick_ms 500
 }
 

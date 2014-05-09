@@ -44,7 +44,6 @@ int main(int argc, char **argv)
   signal(SIGIO,sigIoHandler);
 
   srandomdev();
-  server_save_argv(argc, (const char*const*)argv);
   cf_init();
   int status = parseCommandLine(NULL, argv[0], argc - 1, (const char*const*)&argv[1]);
 #if defined WIN32
@@ -61,7 +60,6 @@ static void crash_handler(int signal)
   LOGF(LOG_LEVEL_FATAL, "The following clue may help: %s", crash_handler_clue);
   dump_stack(LOG_LEVEL_FATAL);
   BACKTRACE;
-  serverRespawn();
   // Now die of the same signal, so that our exit status reflects the cause.
   INFOF("Re-sending signal %d to self", signal);
   kill(getpid(), signal);
