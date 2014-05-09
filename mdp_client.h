@@ -32,6 +32,7 @@ struct mdp_sockaddr {
 #define MDP_FLAG_NO_CRYPT (1<<0)
 #define MDP_FLAG_NO_SIGN (1<<1)
 #define MDP_FLAG_BIND (1<<2)
+#define MDP_FLAG_REUSE (1<<5)
 
 #define MDP_FLAG_CLOSE (1<<3)
 #define MDP_FLAG_ERROR (1<<4)

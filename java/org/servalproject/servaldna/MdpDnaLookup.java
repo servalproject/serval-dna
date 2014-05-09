@@ -1,23 +1,14 @@
 package org.servalproject.servaldna;
 
 import java.io.IOException;
-import java.nio.channels.SelectableChannel;
-import java.nio.channels.SelectionKey;
 
 /**
  * Created by jeremy on 21/02/14.
  */
-public class MdpDnaLookup extends ChannelSelector.Handler{
-	private final ChannelSelector selector;
-	private final MdpSocket socket;
-	private final AsyncResult<ServalDCommand.LookupResult> results;
+public class MdpDnaLookup extends AbstractMdpProtocol<ServalDCommand.LookupResult> {
 
 	public MdpDnaLookup(ChannelSelector selector, AsyncResult<ServalDCommand.LookupResult> results) throws IOException {
-		socket = new MdpSocket();
-		socket.bind();
-		this.selector = selector;
-		this.results = results;
-		selector.register(this);
+		super(selector, results);
 	}
 
 	public void sendRequest(SubscriberId destination, String did) throws IOException {
@@ -33,10 +24,8 @@ public class MdpDnaLookup extends ChannelSelector.Handler{
 	}
 
 	@Override
-	public void read() {
+	protected void parse(MdpPacket response) {
 		try {
-			MdpPacket response = new MdpPacket();
-			socket.receive(response);
 			byte bytes[] = new byte[response.payload.remaining()];
 			response.payload.get(bytes);
 			String resultString = new String(bytes);
@@ -54,25 +43,5 @@ public class MdpDnaLookup extends ChannelSelector.Handler{
 		} catch (AbstractId.InvalidHexException e) {
 			e.printStackTrace();
 		}
-
-	}
-
-	public void close(){
-		try {
-			selector.unregister(this);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		socket.close();
-	}
-
-	@Override
-	public SelectableChannel getChannel() throws IOException {
-		return socket.getChannel();
-	}
-
-	@Override
-	public int getInterest() {
-		return SelectionKey.OP_READ;
 	}
 }

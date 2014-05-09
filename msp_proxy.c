@@ -50,6 +50,7 @@ struct socket_address ip_addr;
 
 static int try_send(struct connection *conn);
 static void msp_poll(struct sched_ent *alarm);
+static void service_poll(struct sched_ent *alarm);
 static void listen_poll(struct sched_ent *alarm);
 static void io_poll(struct sched_ent *alarm);
 
@@ -63,6 +64,18 @@ struct sched_ent mdp_sock={
   .poll.fd = -1,
   .function = msp_poll,
   .stats = &mdp_sock_stats,
+};
+
+struct profile_total service_sock_stats={
+  .name="service_poll"
+};
+
+struct sched_ent service_sock={
+  .poll.revents = 0,
+  .poll.events = POLLIN,
+  .poll.fd = -1,
+  .function = service_poll,
+  .stats = &service_sock_stats,
 };
 
 struct profile_total io_stats={
@@ -80,6 +93,9 @@ struct sched_ent listen_alarm={
   .function = listen_poll,
   .stats = &listen_stats,
 };
+
+const char *service_name=NULL;
+mdp_port_t service_port;
 
 static struct connection *alloc_connection(
   struct msp_sock *sock,
@@ -294,6 +310,23 @@ static void msp_poll(struct sched_ent *alarm)
   }
 }
 
+static void service_poll(struct sched_ent *alarm){
+  if (alarm->poll.revents & POLLIN){
+    struct mdp_header header;
+    uint8_t payload[256];
+    
+    ssize_t len = mdp_recv(alarm->poll.fd, &header, payload, sizeof payload);
+    if (len==-1)
+      return;
+    if (header.flags & (MDP_FLAG_ERROR|MDP_FLAG_BIND))
+      return;
+    if (is_sid_t_broadcast(header.local.sid))
+      header.local.sid = SID_ANY;
+    len = snprintf((char*)payload, sizeof payload, "%s.msp.port=%d", service_name, service_port);
+    mdp_send(alarm->poll.fd, &header, payload, len);
+  }
+}
+
 static int try_send(struct connection *conn)
 {
   if (!conn->in->limit)
@@ -422,6 +455,7 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
   once = cli_arg(parsed, "--once", NULL, NULL, NULL) == 0;
 
   if ( cli_arg(parsed, "--forward", &local_port_string, cli_uint, NULL) == -1
+    || cli_arg(parsed, "--service", &service_name, NULL, NULL) == -1
     || cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, NULL) == -1
     || cli_arg(parsed, "port", &port_string, cli_uint, NULL) == -1)
     return -1;
@@ -429,7 +463,7 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
   struct mdp_sockaddr addr;
   bzero(&addr, sizeof addr);
   
-  addr.port = atoi(port_string);
+  service_port = addr.port = atoi(port_string);
   saw_error=0;
   
   if (sidhex && *sidhex){
@@ -439,6 +473,29 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
   
   int ret=-1;
   struct msp_sock *sock = NULL;
+  
+  if (service_name){
+    // listen for service discovery messages
+    service_sock.poll.fd = mdp_socket();
+    if (service_sock.poll.fd==-1)
+      goto end;
+    set_nonblock(service_sock.poll.fd);
+    watch(&service_sock);
+    // bind
+    struct mdp_header header;
+    bzero(&header, sizeof(header));
+
+    header.local.sid = BIND_PRIMARY;
+    header.local.port = MDP_PORT_SERVICE_DISCOVERY;
+    header.remote.sid = SID_ANY;
+    header.remote.port = MDP_LISTEN;
+    header.ttl = PAYLOAD_TTL_DEFAULT;
+    header.flags = MDP_FLAG_BIND|MDP_FLAG_REUSE;
+    if (mdp_send(service_sock.poll.fd, &header, NULL, 0)==-1)
+      goto end;
+    
+  }else
+    service_sock.poll.fd=-1;
   
   mdp_sock.poll.fd = mdp_socket();
   if (mdp_sock.poll.fd==-1)
@@ -514,6 +571,13 @@ end:
   if (mdp_sock.poll.fd!=-1){
     msp_close_all(mdp_sock.poll.fd);
     mdp_close(mdp_sock.poll.fd);
+    mdp_sock.poll.fd=-1;
+  }
+  if (is_watching(&service_sock))
+    unwatch(&service_sock);
+  if (service_sock.poll.fd!=-1){
+    mdp_close(service_sock.poll.fd);
+    service_sock.poll.fd=-1;
   }
   if (listen_alarm.poll.fd !=-1 && is_watching(&listen_alarm))
     unwatch(&listen_alarm);

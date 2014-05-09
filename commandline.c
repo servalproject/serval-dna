@@ -3235,7 +3235,7 @@ struct cli_schema command_line_options[]={
    "Run memory speed test"},
   {app_byteorder_test,{"test","byteorder",NULL}, 0,
    "Run byte order handling test"},
-  {app_msp_connection,{"msp", "listen", "[--once]", "[--forward=<local_port>]", "<port>", NULL}, 0,
+  {app_msp_connection,{"msp", "listen", "[--once]", "[--forward=<local_port>]", "[--service=<service_name>]", "<port>", NULL}, 0,
   "Listen for incoming connections"},
   {app_msp_connection,{"msp", "connect", "[--once]", "[--forward=<local_port>]", "<sid>", "<port>", NULL}, 0,
   "Connect to a remote party"},

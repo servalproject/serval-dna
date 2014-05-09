@@ -118,7 +118,6 @@ setup_DnaLookup() {
          set mdp.enable_inet on
    }
    setup
-   set_instance +A
    foreach_instance +A +B create_single_identity
    start_servald_instances +A +B
    set_instance +A
@@ -135,4 +134,39 @@ teardown_DnaLookup() {
    report_all_servald_servers
 }
 
+doc_serviceDiscovery="Discover network services by name"
+listen_service() {
+   executeOk_servald --timeout=20 msp listen --service=test_name 512 <<EOF
+Hi!
+EOF
+   tfw_cat --stderr
+}
+setup_serviceDiscovery() {
+   configure_servald_server() {
+      add_servald_interface
+      executeOk_servald config \
+         set debug.mdprequests on \
+         set mdp.enable_inet on \
+         set log.console.level debug
+   }
+   setup
+   set_instance +A
+   foreach_instance +A +B create_single_identity
+   start_servald_instances +A +B
+   set_instance +B
+   fork %service listen_service
+   set_instance +A
+}
+test_serviceDiscovery() {
+   execute --timeout=10 --core-backtrace java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.test.CommandLine 'service' 'test_name.*'
+   assertStdoutGrep "$SIDB"
+   assertStdoutGrep "test_name.msp.port=512"
+   tfw_cat --stdout --stderr
+}
+teardown_serviceDiscovery() {
+   stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
 runTests "$@"

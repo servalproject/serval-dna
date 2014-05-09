@@ -3,6 +3,7 @@ package org.servalproject.test;
 import org.servalproject.servaldna.AsyncResult;
 import org.servalproject.servaldna.ChannelSelector;
 import org.servalproject.servaldna.MdpDnaLookup;
+import org.servalproject.servaldna.MdpServiceLookup;
 import org.servalproject.servaldna.MdpSocket;
 import org.servalproject.servaldna.ResultList;
 import org.servalproject.servaldna.ServalDCommand;
@@ -38,7 +39,6 @@ public class CommandLine {
 		System.out.println(s);
 		if (s.getResult()!=0)
 			throw new ServalDFailureException("Serval daemon isn't running");
-		System.out.println(s);
 		MdpSocket.loopbackMdpPort = s.mdpInetPort;
 		ChannelSelector selector = new ChannelSelector();
 		MdpDnaLookup lookup = new MdpDnaLookup(selector, new AsyncResult<ServalDCommand.LookupResult>() {
@@ -48,6 +48,24 @@ public class CommandLine {
 			}
 		});
 		lookup.sendRequest(SubscriberId.broadcastSid, did);
+		Thread.sleep(3000);
+		lookup.close();
+	}
+
+	static void service(String pattern) throws IOException, InterruptedException, ServalDFailureException {
+		ServalDCommand.Status s = ServalDCommand.serverStatus();
+		System.out.println(s);
+		if (s.getResult()!=0)
+			throw new ServalDFailureException("Serval daemon isn't running");
+		MdpSocket.loopbackMdpPort = s.mdpInetPort;
+		ChannelSelector selector = new ChannelSelector();
+		MdpServiceLookup lookup = new MdpServiceLookup(selector, new AsyncResult<MdpServiceLookup.ServiceResult>() {
+			@Override
+			public void result(MdpServiceLookup.ServiceResult nextResult) {
+				System.out.println(nextResult.toString());
+			}
+		});
+		lookup.sendRequest(SubscriberId.broadcastSid, pattern);
 		Thread.sleep(3000);
 		lookup.close();
 	}
@@ -66,7 +84,9 @@ public class CommandLine {
 			if (methodName.equals("peers"))
 				getPeers();
 			if (methodName.equals("lookup"))
-				lookup(args.length>=2 ? args[1] : "");
+				lookup(args.length >= 2 ? args[1] : "");
+			if (methodName.equals("service"))
+				service(args.length >= 2 ? args[1] : "");
 
 			if (result!=null)
 				System.out.println(result.toString());

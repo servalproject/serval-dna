@@ -23,6 +23,7 @@ public class MdpPacket {
 
 	public static final int MDP_PORT_ECHO = 7;
 	public static final int MDP_PORT_DNALOOKUP = 10;
+	public static final int MDP_PORT_SERVICE_DISCOVERY = 11;
 
 	public MdpPacket(){
 		buff = ByteBuffer.allocate(MDP_MTU);
