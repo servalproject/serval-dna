@@ -180,13 +180,17 @@ int cf_om_add_child(struct cf_om_node **const parentp, const char *const key)
 
 int cf_om_get_child(const struct cf_om_node *parent, const char *key, const char *keyend)
 {
-  if (keyend == NULL)
-    keyend = key + strlen(key);
   // TODO: use binary search, since child nodes are already sorted by key
   unsigned i;
-  for (i = 0; i < parent->nodc; ++i)
-    if (memcmp(parent->nodv[i]->key, key, keyend - key) == 0 && parent->nodv[i]->key[keyend - key] == '\0')
-      return i;
+  for (i = 0; i < parent->nodc; ++i){
+    if (keyend){
+      if (strncmp(parent->nodv[i]->key, key, keyend - key)==0)
+	return i;
+    }else{
+      if (strcmp(parent->nodv[i]->key, key)==0)
+	return i;
+    }
+  }
   return -1;
 }
 
