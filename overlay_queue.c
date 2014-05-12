@@ -554,6 +554,8 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
 {
   int i, j;
   time_ms_t now = gettime_ms();
+  int rtt=0;
+  
   for (i=0;i<OQ_MAX;i++){
     struct overlay_frame *frame = overlay_tx[i].first;
 
@@ -570,21 +572,12 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
 	  char acked = (seq_delta==0 || (seq_delta <= 32 && ack_mask&(1<<(seq_delta-1))))?1:0;
 
 	  if (acked){
-	    int rtt = now - frame->destinations[j].transmit_time;
+	    int this_rtt = now - frame->destinations[j].transmit_time;
 	    // if we're on a fake network, the actual rtt can be unrealistic
-	    if (rtt <5)
-	      rtt=5;
-	    if (!destination->min_rtt || rtt < destination->min_rtt){
-	      destination->min_rtt = rtt;
-	      int delay = rtt * 2 + 40;
-	      if (delay < destination->resend_delay){
-		destination->resend_delay = delay;
-		if (config.debug.linkstate)
-		  DEBUGF("Adjusting resend delay to %d", destination->resend_delay);
-	      }
-	    }
-	    if (!destination->max_rtt || rtt > destination->max_rtt)
-	      destination->max_rtt = rtt;
+	    if (this_rtt < 10)
+	      this_rtt = 10;
+	    if (!rtt || this_rtt < rtt)
+	      rtt = this_rtt;
 	    
 	    if (config.debug.ack)
 	      DEBUGF("DROPPED DUE TO ACK: Packet %p to %s sent by seq %d, acked with seq %d", 
@@ -609,6 +602,20 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
       
       frame = frame->next;
     }
+  }
+  
+  if (rtt){
+    if (!destination->min_rtt || rtt < destination->min_rtt){
+      destination->min_rtt = rtt;
+      int delay = rtt * 2 + 40;
+      if (delay < destination->resend_delay){
+	destination->resend_delay = delay;
+	if (config.debug.linkstate)
+	  DEBUGF("Adjusting resend delay to %d", destination->resend_delay);
+      }
+    }
+    if (!destination->max_rtt || rtt > destination->max_rtt)
+      destination->max_rtt = rtt;
   }
   return 0;
 }
