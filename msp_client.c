@@ -30,6 +30,7 @@
 
 #define FLAG_SHUTDOWN (1<<0)
 #define FLAG_ACK (1<<1)
+#define RETRANSMIT_TIME 1500
 
 struct msp_packet{
   struct msp_packet *_next;
@@ -365,7 +366,7 @@ static int msp_send_packet(struct msp_sock *sock, struct msp_packet *packet)
   if (config.debug.msp)
     DEBUGF("Sent packet seq %02x len %zd (acked %02x)", packet->seq, packet->len, sock->rx.next_seq);
   sock->tx.last_activity = packet->sent = gettime_ms();
-  sock->next_ack = packet->sent + 1500;
+  sock->next_ack = packet->sent + RETRANSMIT_TIME;
   return 0;
 }
 
@@ -411,7 +412,7 @@ static int send_ack(struct msp_sock *sock)
     DEBUGF("Sent packet (acked %02x)", sock->rx.next_seq);
   sock->previous_ack = sock->rx.next_seq;
   sock->tx.last_activity = gettime_ms();
-  sock->next_ack = sock->tx.last_activity + 1500;
+  sock->next_ack = sock->tx.last_activity + RETRANSMIT_TIME;
   return 0;
 }
 
@@ -503,7 +504,7 @@ static int process_sock(struct msp_sock *sock)
   // transmit packets that can now be sent
   p = sock->tx._head;
   while(p){
-    if (p->sent==0 || p->sent + 1500 < now){
+    if (p->sent==0 || p->sent + RETRANSMIT_TIME < now){
       if (!sock->header.local.port){
 	if (sock->header.flags & MDP_FLAG_BIND)
 	  // wait until we have heard back from the daemon with our port number before sending another packet.
@@ -516,8 +517,8 @@ static int process_sock(struct msp_sock *sock)
       if (r)
 	break;
     }
-    if (sock->next_action > p->sent + 1500)
-      sock->next_action = p->sent + 1500;
+    if (sock->next_action > p->sent + RETRANSMIT_TIME)
+      sock->next_action = p->sent + RETRANSMIT_TIME;
     p=p->_next;
   }
   
