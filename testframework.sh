@@ -1760,6 +1760,7 @@ fork_wait() {
          fi
       done
       [ $running -eq 0 ] && return 0
+      sleep 1
    done
 }
 
