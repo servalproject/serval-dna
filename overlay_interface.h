@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define INTERFACE_STATE_DETECTING 2
 
 struct limit_state{
+  uint32_t rate_micro_seconds;
   // length of time for a burst
   time_ms_t burst_length;
   // how many in a burst
@@ -40,7 +41,7 @@ struct limit_state{
 
 time_ms_t limit_next_allowed(struct limit_state *state);
 int limit_is_allowed(struct limit_state *state);
-int limit_init(struct limit_state *state, int rate_micro_seconds);
+int limit_init(struct limit_state *state, uint32_t rate_micro_seconds);
 
 struct overlay_interface;
 

@@ -69,7 +69,8 @@ int limit_is_allowed(struct limit_state *state){
 }
 
 /* Initialise burst size and length based on the number we can do in one MIN_BURST */
-int limit_init(struct limit_state *state, int rate_micro_seconds){
+int limit_init(struct limit_state *state, uint32_t rate_micro_seconds){
+  state->rate_micro_seconds = rate_micro_seconds;
   if (rate_micro_seconds==0){
     state->burst_size=0;
     state->burst_length=1;
