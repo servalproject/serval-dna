@@ -226,6 +226,41 @@ test_tcp_tunnel() {
    fork_wait %listen %server %client
 }
 
+doc_slow_unreliable="Transfer 1MB over an unreliable link"
+setup_slow_unreliable() {
+   configure_servald_server() {
+      create_single_identity
+      add_servald_interface
+      executeOk_servald config \
+         set log.console.level DEBUG \
+         set log.console.show_time on
+   }
+   setup_common
+   # TODO, reduce link quality & improve MSP protocol to better utilise available bandwidth
+   simulator_command set "net1" \
+        "latency" "10" \
+        "drop_packets" "10"
+   dd if=/dev/urandom of=file1 bs=1k count=1k 2>&1
+   start_servald_instances +A +B
+}
+slow_listen() {
+   #note, must redirect stdin so we can indicate EOF
+   executeOk_servald --stdout-file=file2 msp listen 512 < <(sleep 1)
+   assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
+   tfw_cat --stderr
+}
+test_slow_unreliable() {
+   set_instance +A
+   fork %listen slow_listen
+   set_instance +B
+   executeOk_servald msp connect $SIDA 512 < file1
+   assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
+   tfw_log "execution time (ms); $realtime_ms"
+   tfw_cat --stderr
+   fork_wait %listen
+   assert diff file1 file2
+}
+
 doc_refused="TCP connection refused on forwarded stream"
 setup_refused(){
    setup_common
