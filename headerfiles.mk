@@ -4,6 +4,7 @@ HDRS=	fifo.h \
 	overlay_address.h \
 	overlay_packet.h \
 	overlay_interface.h \
+	limit.h \
 	rhizome.h \
 	httpd.h \
 	instance.h \

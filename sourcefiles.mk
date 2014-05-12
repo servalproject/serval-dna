@@ -46,6 +46,7 @@ SERVAL_DAEMON_SOURCES = \
 	http_server.c \
 	keyring.c \
 	lsif.c \
+	limit.c \
 	main.c \
 	radio_link.c \
 	meshms.c \
