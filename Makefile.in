@@ -121,6 +121,10 @@ libserval.so: $(SERVALD_OBJS) version.o
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(SERVALD_OBJS) version.o $(LDFLAGS)
 
+libmdpclient.so: $(MDP_CLIENT_OBJS) version.o
+	@echo LINK $@
+	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(MDP_CLIENT_OBJS) version.o $(LDFLAGS)
+
 libmonitorclient.so: $(MONITOR_CLIENT_OBJS) version.o
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(MONITOR_CLIENT_OBJS) version.o $(LDFLAGS)
