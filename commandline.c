@@ -300,6 +300,8 @@ int parseCommandLine(struct cli_context *context, const char *argv0, int argc, c
   /* clean up after ourselves */
   rhizome_close_db();
   free_subscribers();
+  assert(keyring==NULL);
+  
   OUT();
   
   if (config.debug.timing)
@@ -1664,6 +1666,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   
   if (rhizome_opendb() == -1){
     keyring_free(keyring);
+    keyring = NULL;
     return -1;
   }
   
@@ -1672,6 +1675,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m){
     keyring_free(keyring);
+    keyring = NULL;
     return WHY("Manifest struct could not be allocated -- not added to rhizome");
   }
   if (manifestpath && *manifestpath && access(manifestpath, R_OK) == 0) {
@@ -1684,6 +1688,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     if (rhizome_read_manifest_from_file(m, manifestpath) || m->malformed) {
       rhizome_manifest_free(m);
       keyring_free(keyring);
+      keyring = NULL;
       return WHY("Manifest file could not be loaded -- not added to rhizome");
     }
   } else if (manifestid && *manifestid) {
@@ -1693,11 +1698,13 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     if (str_to_rhizome_bid_t(&bid, manifestid) == -1) {
       rhizome_manifest_free(m);
       keyring_free(keyring);
+      keyring = NULL;
       return WHYF("Invalid bundle ID: %s", alloca_str_toprint(manifestid));
     }
     if (rhizome_retrieve_manifest(&bid, m)){
       rhizome_manifest_free(m);
       keyring_free(keyring);
+      keyring = NULL;
       return WHY("Existing manifest could not be loaded -- not added to rhizome");
     }
   } else {
@@ -1712,11 +1719,13 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   if (journal && !m->is_journal){
     rhizome_manifest_free(m);
     keyring_free(keyring);
+    keyring = NULL;
     return WHY("Existing manifest is not a journal");
   }
   if (!journal && m->is_journal) {
     rhizome_manifest_free(m);
     keyring_free(keyring);
+    keyring = NULL;
     return WHY("Existing manifest is a journal");
   }
 
@@ -1727,6 +1736,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   if (rhizome_fill_manifest(m, filepath, *authorSidHex ? &authorSid : NULL)) {
     rhizome_manifest_free(m);
     keyring_free(keyring);
+    keyring = NULL;
     return -1;
   }
 
@@ -1801,6 +1811,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   }
   rhizome_manifest_free(m);
   keyring_free(keyring);
+  keyring = NULL;
   return status;
 }
 
@@ -1881,22 +1892,26 @@ int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_context *UNUS
   if (cli_arg(parsed, "file", NULL, NULL, NULL) == 0) {
     if (!fileid){
       keyring_free(keyring);
+      keyring = NULL;
       return WHY("missing <fileid> argument");
     }
     rhizome_filehash_t hash;
     if (str_to_rhizome_filehash_t(&hash, fileid) == -1){
       keyring_free(keyring);
+      keyring = NULL;
       return WHYF("invalid <fileid> argument: %s", alloca_str_toprint(fileid));
     }
     ret = rhizome_delete_file(&hash);
   } else {
     if (!manifestid){
       keyring_free(keyring);
+      keyring = NULL;
       return WHY("missing <manifestid> argument");
     }
     rhizome_bid_t bid;
     if (str_to_rhizome_bid_t(&bid, manifestid) == -1){
       keyring_free(keyring);
+      keyring = NULL;
       return WHY("Invalid manifest ID");
     }
     if (cli_arg(parsed, "bundle", NULL, NULL, NULL) == 0)
@@ -1907,10 +1922,12 @@ int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_context *UNUS
       ret = rhizome_delete_payload(&bid);
     else{
       keyring_free(keyring);
+      keyring = NULL;
       return WHY("unrecognised command");
     }
   }
   keyring_free(keyring);
+  keyring = NULL;
   return ret;
 }
 
@@ -1960,6 +1977,7 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
   rhizome_bid_t bid;
   if (str_to_rhizome_bid_t(&bid, manifestid) == -1){
     keyring_free(keyring);
+    keyring = NULL;
     return WHY("Invalid manifest ID");
   }
   
@@ -1970,12 +1988,14 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
   rhizome_bk_t bsk;
   if (bskhex && str_to_rhizome_bk_t(&bsk, bskhex) == -1){
     keyring_free(keyring);
+    keyring = NULL;
     return WHYF("invalid bsk: \"%s\"", bskhex);
   }
 
   rhizome_manifest *m = rhizome_new_manifest();
   if (m==NULL){
     keyring_free(keyring);
+    keyring = NULL;
     return WHY("Out of manifests");
   }
   ret = rhizome_retrieve_manifest(&bid, m);
@@ -2038,6 +2058,7 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
   if (m)
     rhizome_manifest_free(m);
   keyring_free(keyring);
+  keyring = NULL;
   return ret;
 }
 
@@ -2099,6 +2120,7 @@ int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context *contex
     return -1;
   if (rhizome_opendb() == -1) {
     keyring_free(keyring);
+    keyring = NULL;
     return -1;
   }
   size_t rowlimit = atoi(limit_ascii);
@@ -2119,6 +2141,7 @@ int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context *contex
   }
   if (rhizome_list_open(&cursor) == -1) {
     keyring_free(keyring);
+    keyring = NULL;
     return -1;
   }
   const char *headers[]={
@@ -2173,6 +2196,7 @@ int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context *contex
   }
   rhizome_list_release(&cursor);
   keyring_free(keyring);
+  keyring = NULL;
   if (n == -1)
     return -1;
   cli_row_count(context, rowcount);
@@ -2386,6 +2410,7 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
   sid_t sid;
   if (str_to_sid_t(&sid, sidhex) == -1){
     keyring_free(keyring);
+    keyring = NULL;
     return WHY("str_to_sid_t() failed");
   }
 
@@ -2409,6 +2434,7 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
   }
 
   keyring_free(keyring);
+  keyring = NULL;
   return r;
 }
 
@@ -2445,6 +2471,7 @@ static int app_keyring_set_tag(const struct cli_parsed *parsed, struct cli_conte
   }
   
   keyring_free(keyring);
+  keyring = NULL;
   return r;
 }
 

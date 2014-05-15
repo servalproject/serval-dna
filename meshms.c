@@ -974,6 +974,7 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
     return -1;
   if (rhizome_opendb() == -1){
     keyring_free(keyring);
+    keyring = NULL;
     return -1;
   }
   
@@ -981,6 +982,7 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
   enum meshms_status status;
   if (meshms_failed(status = meshms_conversations_list(&sid, NULL, &conv))) {
     keyring_free(keyring);
+    keyring = NULL;
     return status;
   }
   const char *names[]={
@@ -1008,6 +1010,7 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
 
   meshms_free_conversations(conv);
   keyring_free(keyring);
+  keyring = NULL;
   return 0;
 }
 
@@ -1025,6 +1028,7 @@ int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context 
     return -1;
   if (rhizome_opendb() == -1){
     keyring_free(keyring);
+    keyring = NULL;
     return -1;
   }
   
@@ -1036,6 +1040,7 @@ int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context 
   // include terminating NUL
   enum meshms_status status = meshms_send_message(&my_sid, &their_sid, message, strlen(message) + 1);
   keyring_free(keyring);
+  keyring = NULL;
   return meshms_failed(status) ? status : 0;
 }
 
@@ -1051,21 +1056,25 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
     return -1;
   if (rhizome_opendb() == -1){
     keyring_free(keyring);
+    keyring = NULL;
     return -1;
   }
   sid_t my_sid, their_sid;
   if (str_to_sid_t(&my_sid, my_sidhex) == -1){
     keyring_free(keyring);
+    keyring = NULL;
     return WHY("invalid sender SID");
   }
   if (str_to_sid_t(&their_sid, their_sidhex) == -1){
     keyring_free(keyring);
+    keyring = NULL;
     return WHY("invalid recipient SID");
   }
   struct meshms_message_iterator iter;
   enum meshms_status status;
   if (meshms_failed(status = meshms_message_iterator_open(&iter, &my_sid, &their_sid))) {
     keyring_free(keyring);
+    keyring = NULL;
     return status;
   }
   const char *names[]={
@@ -1113,6 +1122,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
     cli_row_count(context, id);
   meshms_message_iterator_close(&iter);
   keyring_free(keyring);
+  keyring = NULL;
   return status;
 }
 
@@ -1164,6 +1174,7 @@ int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *UN
     return -1;
   if (rhizome_opendb() == -1){
     keyring_free(keyring);
+    keyring = NULL;
     return -1;
   }
   sid_t my_sid, their_sid;
@@ -1199,5 +1210,6 @@ end:
     rhizome_manifest_free(m);
   meshms_free_conversations(conv);
   keyring_free(keyring);
+  keyring = NULL;
   return status;
 }
