@@ -21,6 +21,7 @@
 package org.servalproject.servaldna;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -639,5 +640,17 @@ public class ServalDCommand
 		command("meshms", "read", "messages",
 				sender.toHex(), recipient.toHex(),
 				"" + offset);
+	}
+
+	public static Process mspTunnnelCreate(String exec, int ip_port, int msp_port) throws IOException {
+		return new ProcessBuilder(exec, "msp", "connect", "--forward="+ip_port, Integer.toString(msp_port)).start();
+	}
+
+	public static Process mspTunnnelCreate(String exec, int ip_port, String serviceName, int msp_port) throws IOException {
+		return new ProcessBuilder(exec, "msp", "connect", "--forward="+ip_port, "--service="+serviceName, Integer.toString(msp_port)).start();
+	}
+
+	public static Process mspTunnelConnect(String exec, int ip_port, SubscriberId msp_sid, int msp_port) throws IOException {
+		return new ProcessBuilder(exec, "msp", "connect", "--forward="+ip_port, msp_sid.toHex(), Integer.toString(msp_port)).start();
 	}
 }
