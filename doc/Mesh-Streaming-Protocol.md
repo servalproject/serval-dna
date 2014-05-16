@@ -14,7 +14,8 @@ carry quasi-real-time streaming data, similar to [TCP][].
 MSP was funded by a [grant][] from the [New America Foundation][NAF]'s [Open
 Technology Institute][OTI].
 
-**Copyright 2014 Serval Project Inc.**  All rights reserved.
+**Copyright 2014 Serval Project Inc.**  All rights reserved.  Licensing terms
+to be announced.
 
 Caveat
 ------
@@ -61,6 +62,10 @@ keeps the probability of first-time packet arrival relatively high.
 MSP API
 -------
 
+The MSP API is a [C language][] [API][] that an application can use to send and
+receive MSP message streams over the [Serval mesh network][] using the [Serval
+DNA][] daemon.
+
 **Note**: The MSP protocol and its API are currently provisional, and will
 evolve as development continues.  Provisional versions of MSP may not be
 compatible with successive versions, so applications developed using a
@@ -92,7 +97,7 @@ The entry points (functions), global variables and constants provided by and
 required by the MSP client library are defined in the `msp_client.h` C header
 file, which is also available as part of the [Serval DNA source code][].
 
-The MSP API builds on the underlying [MDP API][].  All compile-time and
+The MSP API builds on the underlying [MDP][] API.  All compile-time and
 run-time requirements for that API also apply.
 
 ### Threading and asychronous i/o
@@ -270,6 +275,10 @@ results* unless otherwise stated.
 
 ### MSP socket life cycle
 
+Every socket is in one of three states: *initialising*, *open* or *closed*.
+Every *open* socket is one of two types: *listening* or *data*.  Open data
+sockets are further qualified by the conditions *connected* and *shut down*.
+
 #### Initial state
 
 Every newly-created MSP socket begins in the *initialising* state.
@@ -302,7 +311,8 @@ data socket as *remotely shut down*, which means that the inbound direction of
 the connection has been stopped and no more messages will be received, but the
 outbound direction may continue.
 
-The only way to shut down an open listening socket is to close it.
+Listening sockets cannot be shut down.  The only way to stop an open listening
+socket from accepting connections is to close it.
 
 #### Closing
 
@@ -355,26 +365,35 @@ whereas the others all return 0.
 int msp_socket_is_listening(MSP_SOCKET sock);
 int msp_socket_is_data(MSP_SOCKET sock);
 ```
-`msp_socket_is_listening()` returns 1 on an *open listening* socket, 0 otherwise.
-`msp_socket_is_data()` returns 1 on an *open data* socket, 0 otherwise.
+`msp_socket_is_listening()` returns 1 on an *open listening* socket, 0
+otherwise.  `msp_socket_is_data()` returns 1 on an *open data* socket, 0
+otherwise.  These functions return 0 on a closed socket or invalid socket
+handle.
 
 #### Connection
 ```
 int msp_socket_is_connected(MSP_SOCKET sock);
 ```
 `msp_socket_is_connected()` returns 1 on an open data socket which has received
-at least one MDP packet from the remote end, 0 otherwise.
+at least one MDP packet from the remote end, 0 otherwise.  This function
+returns 0 on a closed socket or invalid socket handle.
+
 
 #### Shut down
 ```
 int msp_socket_is_shutdown_local(MSP_SOCKET sock);
 int msp_socket_is_shutdown_remote(MSP_SOCKET sock);
 ```
-These functions can only return true on a valid data socket; once a socket is
-closed and the socket's handle invalidated, they return 0.  Note that a socket
-may go into closed state without either of the shutdown predicates ever
-becoming true, because a socket can be forcefully closed before both sides of
-the connection are shut down.
+`msp_socket_is_shutdown_local()` returns 1 on an open data socket after
+`msp_shutdown()` has been called, 0 otherwise.
+`msp_socket_is_shutdown_remote()` returns 1 on an open data socket after a
+*shutdown* message has been received from the remote end and processed, so no
+more messages will be received.  These functions return 0 on a closed socket or
+invalid socket handle.
+
+Note that a data socket may go into closed state without either of the shutdown
+predicates ever becoming true, because a socket can be forcefully closed before
+both sides of the connection are shut down.
 
 ### Socket initialisation primitives
 
@@ -385,7 +404,7 @@ MSP_SOCKET msp_socket(int mdp_fd, int flags);
 Creates an MSP that uses the given MDP socket, which must remain open for at
 least the lifetime of the MSP socket.  An MDP socket cannot be used by more
 than one MSP socket, so each call to `msp_socket()` must be preceded by a call
-to `mdp_socket()`.  See the [MDP API][] for information about the
+to `mdp_socket()`.  See the [MDP][] API for information about the
 `mdp_socket()` function.
 
 The second argument to `msp_socket()` is a bit mask of flags.  At present no
@@ -861,7 +880,8 @@ results*.
 [OTI]: http://oti.newamerica.net/
 [MSP]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:msp
 [Serval mesh network]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:mesh_network
-[MDP]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:mdp
+[Serval DNA]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:servaldna:
+[MDP]: ./Mesh-Datagram-Protocol.md
 [TCP]: http://en.wikipedia.org/wiki/Transmission_Control_Protocol
 [SID]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:sid
 [MDP port]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:mdp_port_number
@@ -870,6 +890,8 @@ results*.
 [linear network coding]: http://en.wikipedia.org/wiki/Linear_network_coding
 [ACK]: http://en.wikipedia.org/wiki/Acknowledgement_(data_networks)
 [timeout]: http://en.wikipedia.org/wiki/Timeout_(computing)
+[C language]: http://en.wikipedia.org/wiki/C_(programming_language)
+[API]:http://en.wikipedia.org/wiki/Application_programming_interface
 [poll(2)]: http://man7.org/linux/man-pages/man2/poll.2.html
 [select(2)]: http://man7.org/linux/man-pages/man2/select.2.html
 [recvmsg(2)]: http://man7.org/linux/man-pages/man2/recvmsg.2.html
@@ -887,5 +909,4 @@ results*.
 [POSIX file descriptor]: http://en.wikipedia.org/wiki/File_handle
 [standard C i/o]: http://en.wikipedia.org/wiki/C_file_input/output
 [FILE pointer]: http://code-reference.com/c/keywords/file
-[MDP API]: ./Mesh-Datagram-Protocol.md
 [Serval DNA source code]: https://github.com/servalproject/serval-dna
