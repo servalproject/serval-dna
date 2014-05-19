@@ -1,5 +1,5 @@
 /*
- Mesh Streaming Protocol (MSP) API
+ Mesh Stream Protocol (MSP) API
  Copyright (C) 2013-2014 Serval Project Inc.
  
  This program is free software; you can redistribute it and/or

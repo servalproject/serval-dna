@@ -1,11 +1,11 @@
-Mesh Streaming Protocol (MSP)
-=============================
+Mesh Stream Protocol (MSP)
+==========================
 [Serval Project], May 2014
 
-The [Mesh Streaming Protocol][MSP] is a network protocol developed for the
-[Serval mesh network][], with characteristics that make it particularly
-suitable for use in Ad Hoc wireless networks, which can suffer high levels of
-packet loss due to weak signal, interference and congestion.
+The [Mesh Stream Protocol][MSP] is a network protocol developed for the [Serval
+mesh network][], with characteristics that make it particularly suitable for
+use in Ad Hoc wireless networks, which can suffer high levels of packet loss
+due to weak signal, interference and congestion.
 
 MSP provides a two-way, reliable, ordered stream of messages between a pair of
 end points, which can be used to transfer files, conduct an HTTP session, or
@@ -66,11 +66,11 @@ The MSP API is a [C language][] [API][] that an application can use to send and
 receive MSP message streams over the [Serval mesh network][] using the [Serval
 DNA][] daemon.
 
-**Note**: The MSP protocol and its API are currently provisional, and will
-evolve as development continues.  Provisional versions of MSP may not be
-compatible with successive versions, so applications developed using a
-provisional version MSP may have to be re-written, re-compiled and/or re-linked
-against a newer version of the API in order to remain interoperable.
+**Note**: MSP and its API are currently provisional, and will evolve as
+development continues.  Provisional versions of MSP may not be compatible with
+successive versions, so applications developed using a provisional version MSP
+may have to be re-written, re-compiled and/or re-linked against a newer version
+of the API in order to remain interoperable.
 
 MSP applications can operate in two modes:
  * *client* applications are started occasionally, and *connect* to remote
@@ -242,11 +242,10 @@ main() {
 ```
 
 ### `MSP_SOCKET` - MSP socket handle
-```
-MSP_SOCKET sock = MSP_SOCKET_NULL;
-int msp_socket_is_null(MSP_SOCKET sock);
-int msp_socket_is_valid(MSP_SOCKET sock);
-```
+
+    MSP_SOCKET sock = MSP_SOCKET_NULL;
+    int msp_socket_is_null(MSP_SOCKET sock);
+    int msp_socket_is_valid(MSP_SOCKET sock);
 
 Each MSP socket is represented by a [handle][] of type `MSP_SOCKET`, which can
 be assigned and copied freely, and is analagous to the [POSIX file
@@ -349,11 +348,11 @@ The following *predicate* functions can all safely be called on any MSP socket
 handle, even null and invalid handles.
 
 #### State
-```
-int msp_socket_is_initialising(MSP_SOCKET sock);
-int msp_socket_is_open(MSP_SOCKET sock);
-int msp_socket_is_closed(MSP_SOCKET sock);
-```
+
+    int msp_socket_is_initialising(MSP_SOCKET sock);
+    int msp_socket_is_open(MSP_SOCKET sock);
+    int msp_socket_is_closed(MSP_SOCKET sock);
+
 These functions are the safest way for an application to test a socket's state
 particularly when outside a handler function.  At any given time, at least one
 of the first three predicate functions above will return true on a given
@@ -361,29 +360,29 @@ socket.  `msp_socket_is_closed()` returns 1 on an invalid socket handle,
 whereas the others all return 0.
 
 #### Listening vs data
-```
-int msp_socket_is_listening(MSP_SOCKET sock);
-int msp_socket_is_data(MSP_SOCKET sock);
-```
+
+    int msp_socket_is_listening(MSP_SOCKET sock);
+    int msp_socket_is_data(MSP_SOCKET sock);
+
 `msp_socket_is_listening()` returns 1 on an *open listening* socket, 0
 otherwise.  `msp_socket_is_data()` returns 1 on an *open data* socket, 0
 otherwise.  These functions return 0 on a closed socket or invalid socket
 handle.
 
 #### Connection
-```
-int msp_socket_is_connected(MSP_SOCKET sock);
-```
+
+    int msp_socket_is_connected(MSP_SOCKET sock);
+
 `msp_socket_is_connected()` returns 1 on an open data socket which has received
 at least one MDP packet from the remote end, 0 otherwise.  This function
 returns 0 on a closed socket or invalid socket handle.
 
 
 #### Shut down
-```
-int msp_socket_is_shutdown_local(MSP_SOCKET sock);
-int msp_socket_is_shutdown_remote(MSP_SOCKET sock);
-```
+
+    int msp_socket_is_shutdown_local(MSP_SOCKET sock);
+    int msp_socket_is_shutdown_remote(MSP_SOCKET sock);
+
 `msp_socket_is_shutdown_local()` returns 1 on an open data socket after
 `msp_shutdown()` has been called, 0 otherwise.
 `msp_socket_is_shutdown_remote()` returns 1 on an open data socket after a
@@ -398,9 +397,9 @@ both sides of the connection are shut down.
 ### Socket initialisation primitives
 
 #### `msp_socket()` - Create an MSP socket
-```
-MSP_SOCKET msp_socket(int mdp_fd, int flags);
-```
+
+    MSP_SOCKET msp_socket(int mdp_fd, int flags);
+
 Creates an MSP that uses the given MDP socket, which must remain open for at
 least the lifetime of the MSP socket.  An MDP socket cannot be used by more
 than one MSP socket, so each call to `msp_socket()` must be preceded by a call
@@ -416,9 +415,9 @@ If the MSP socket is successfully created, returns a handle for a new,
 and return a null handle.
 
 #### `msp_set_local()` - Bind local identity and port
-```
-void msp_set_local(MSP_SOCKET sock, const struct msp_sockaddr *addr);
-```
+
+    void msp_set_local(MSP_SOCKET sock, const struct msp_sockaddr *addr);
+
 Sets the address of the local end point.
 
 **``sock``** must be the handle of an *initialising* socket.  Calling
@@ -448,9 +447,9 @@ port number used.  The `msp_get_local()` function reveals the resolved local
 address of an open socket, once the socket is open.
 
 #### `msp_connect()` - Connect to remote port
-```
-void msp_connect(MSP_SOCKET sock, const struct msp_sockaddr *addr);
-```
+
+    void msp_connect(MSP_SOCKET sock, const struct msp_sockaddr *addr);
+
 Turns the given *initialising* socket into an *open data* socket and sets the
 remote address to which it will connect.  An open data socket is not marked as
 *connected* until `msp_processing()` processes the first MDP packet from the
@@ -489,9 +488,9 @@ application may queue a few messages on a new open data socket using
 `msp_send()` before calling `msp_processing()`.
 
 #### `msp_listen()` - Listen for incoming MSP connections
-```
-int msp_listen(MSP_SOCKET sock);
-```
+
+    int msp_listen(MSP_SOCKET sock);
+
 Turns the given *initialising* socket into an *open listening* socket.
 
 **``sock``** must be the handle of an *initialising* socket.  Calling
@@ -519,9 +518,9 @@ The following MSP primitives may be applied to *open* sockets, and are used
 identically in the main loop of an MSP server or client (or mixed) application.
 
 #### `msp_get_mdp_socket()` - MDP socket number
-```
-int msp_get_mdp_socket(MSP_SOCKET);
-```
+
+    int msp_get_mdp_socket(MSP_SOCKET);
+
 Returns the MDP socket number that was used to create the given socket.
 
 **`sock`** must be a valid socket handle.
@@ -530,9 +529,9 @@ Returns the MDP socket number that was used to create the given socket.
 MDP socket.
 
 #### `msp_get_local()` - Local address
-```
-void msp_get_local(MSP_SOCKET sock, struct mdp_sockaddr *addr);
-```
+
+    void msp_get_local(MSP_SOCKET sock, struct mdp_sockaddr *addr);
+
 Returns the local address of the given socket.
 
 **`sock`** must be a valid socket handle.
@@ -552,9 +551,9 @@ non-zero port number, and `msp_get_local()` will henceforward return the
 resolved local address.
 
 #### `msp_get_remote()` - Remote address
-```
-void msp_get_remote(MSP_SOCKET sock, struct mdp_sockaddr *addr);
-```
+
+    void msp_get_remote(MSP_SOCKET sock, struct mdp_sockaddr *addr);
+
 Returns the remote address of the given socket.
 
 **`sock`** must be the valid handle of an *open data* socket.
@@ -571,9 +570,10 @@ connection, then `msp_get_remote()` will return the address of the remote end
 that initiated the connection.
 
 #### `msp_set_handler()` - Register MSP handler function
-```
-void msp_set_handler(MSP_SOCKET sock, MSP_HANDLER *handler, void *context);
-```
+
+    void msp_set_handler(MSP_SOCKET sock, MSP_HANDLER *handler, void *context);
+
+Sets the *handler* function and its context argument for the given socket.
 
 **``sock``** must be a valid socket handle.
 
@@ -583,15 +583,14 @@ below).
 **``context``** is saved and passed to the supplied handler function whenever
 MSP invokes it.
 
-Sets the *handler* function and its context argument for the given socket.  The
-application must call `msp_set_handler()` to set the handler function before
-`msp_processing()` is first called, and may call it again between calls to
-`msp_processing()` if desired, to change the handler function.
+The application must call `msp_set_handler()` to set the handler function
+before its first call to `msp_processing()`, and may call it again between
+calls to `msp_processing()` if desired, to change the handler function.
 
 #### `msp_get_state()` - Socket state
-```
-msp_state_t msp_get_state(MSP_SOCKET sock);
-```
+
+    msp_state_t msp_get_state(MSP_SOCKET sock);
+
 Returns the same bit mask that is passed as the **`state`** parameter to the
 handler function.
 
@@ -700,10 +699,10 @@ without having to store a mapping from socket handle to context.
     should release all resources associated with the connection.
 
   * **`MSP_STATE_ERROR`** is set if something went wrong with the connection,
-    eg, a timeout, or an unrecoverable error communicating with the Serval DNA
-    daemon, or an error condition returned by the Serval DNA daemon.  This flag
-    may be set simultaneously with the CLOSED flag unless there is received
-    data yet to be consumed (`len` is non-zero).
+    eg, a timeout, or an unrecoverable error communicating with the [Serval
+    DNA][] daemon, or an error condition returned by the [Serval DNA][] daemon.
+    This flag may be set simultaneously with the CLOSED flag unless there is
+    received data yet to be consumed (`len` is non-zero).
 
 **`payload`** and **`len`** give the bytes of a message which has been received
 in full, if `len` is non-zero.  If `len` is zero, there is no message.
@@ -722,9 +721,9 @@ messages rapidly enough, further incoming messages may fill MSP's receive queue
 and be silently dropped, causing retransmission.
 
 #### `msp_recv()` - Receive inbound message
-```
-int msp_recv(int mdp_fd);
-```
+
+    int msp_recv(int mdp_fd);
+
 Receives the next packet from the given MDP socket, and queues it on the
 appropriate MSP socket for processing.
 
@@ -751,7 +750,7 @@ call.  The errors EINTR and EAGAIN (EWOULDBLOCK on some systems) are not
 logged.
 
 If there is an internal error receiving the packet, such as a failed connection
-to the Serval DNA daemon, or if the received packet has an illegal size, an
+to the [Serval DNA][] daemon, or if the received packet has an illegal size, an
 unrecognised originating address, or malformed contents, then `msp_recv()` sets
 errno = EBADMSG, logs an error and returns -1.  It does not set the *error*
 state on any MSP socket.
@@ -767,10 +766,10 @@ too long, then `msp_recv()` sets errno = EOVERFLOW, logs an error and returns
 variable is too long.
 
 #### `msp_send()` - Queue outbound message for transmission
-```
-uint8_t payload[MSP_MESSAGE_SIZE];
-int msp_send(MSP_SOCKET sock, const uint8_t *payload, size_t len);
-```
+
+    uint8_t payload[MSP_MESSAGE_SIZE];
+    int msp_send(MSP_SOCKET sock, const uint8_t *payload, size_t len);
+
 Queues a single message for transmission.  The message is not actually sent
 until the next call to `msp_processing()`.
 
@@ -799,10 +798,10 @@ next time the MSP handler function is called with the `MSP_STATE_DATAOUT` flag
 set in the `state` argument, before re-trying the send.
 
 #### `msp_processing()` - Transmit outgoing messages, handle incoming messages
-```
-int msp_processing(ms_time_t *next_time);
-```
-Performs all pending MSP protocol logic on all open MSP connections, transmits
+
+    int msp_processing(ms_time_t *next_time);
+
+Performs all pending protocol logic on all open MSP connections, transmits
 queued outgoing packets using `mdp_send()`, and handles all received incoming
 packets by calling the handler function once per message.
 
@@ -824,9 +823,9 @@ There are three ways that an MSP socket gets closed, described below from most
 orderly to most drastic.
 
 #### `msp_shutdown()` - End of outgoing message stream
-```
-int msp_shutdown(MSP_SOCKET sock);
-```
+
+    int msp_shutdown(MSP_SOCKET sock);
+
 Queues a *shutdown* message and sets the socket's *local shutdown* condition.
 
 **``sock``** must be the handle of an *open* socket which is not in *local
@@ -846,9 +845,9 @@ has been transferred, including the *shutdown* packet from the remote end, the
 socket will close automatically during `msp_processing()`.
 
 #### `msp_close()` - Close a single MSP connection
-```
-void msp_close(MSP_SOCKET sock);
-```
+
+    void msp_close(MSP_SOCKET sock);
+
 Marks the given socket as closed.  The socket is not actually cleaned up until
 the next call to `msp_processing()`.  If called from within a handler function,
 the close takes effect as soon as the function returns.
@@ -862,9 +861,9 @@ MSP connection is finished.  The effect is as though the local end point had
 lost contact with the remote end with no warning.
 
 #### `msp_close_all()` - Close all MSP connections on a given MDP socket
-```
-msp_close_all(mdp_fd);
-```
+
+    msp_close_all(mdp_fd);
+
 Immediately closes and frees all MSP sockets associated with the given MDP
 socket.  This function is intended to be used after an application's main loop
 has terminated, and just before the application itself terminates, so it does

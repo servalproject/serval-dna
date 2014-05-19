@@ -10,14 +10,14 @@ packet loss due to weak signal, interference and congestion.
 MDP carries [datagram][] packets sent from an originating node to a single
 destination node or broadcast to all nodes, guaranteeing only that packet
 contents will be verbatim if delivered.  MDP is similar to [UDP][] in terms of
-the service it provides to applications, but unlike UDP it uses a per-hop
-[retransmission][] protocol and adaptive link-state routing to boost packet
-delivery rates, which largely immunises it from the cumulative packet loss
-effect typical of wireless networks.  This means that its end-to-end packet
-delivery rate remains usefully high despite adverse network conditions.
 
 **Copyright 2014 Serval Project Inc.**  All rights reserved.  Licensing terms
 to be announced.
+the service it provides to applications, but it uses per-hop retransmission and
+adaptive link-state routing to boost packet delivery rates, which largely
+immunises it from the cumulative packet loss effect typical of multi-hop
+wireless networks.  This means that its end-to-end, multi-hop packet delivery
+rate remains usefully high despite adverse network conditions.
 
 Overlay Mesh
 ------------
