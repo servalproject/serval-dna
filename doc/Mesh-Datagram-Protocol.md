@@ -10,9 +10,6 @@ packet loss due to weak signal, interference and congestion.
 MDP carries [datagram][] packets sent from an originating node to a single
 destination node or broadcast to all nodes, guaranteeing only that packet
 contents will be verbatim if delivered.  MDP is similar to [UDP][] in terms of
-
-**Copyright 2014 Serval Project Inc.**  All rights reserved.  Licensing terms
-to be announced.
 the service it provides to applications, but it uses per-hop retransmission and
 adaptive link-state routing to boost packet delivery rates, which largely
 immunises it from the cumulative packet loss effect typical of multi-hop
@@ -43,8 +40,14 @@ The MDP API is a [C language][] [API][] that an application can use to send and
 receive MDP packets over the [Serval mesh network][] using the
 [interface](#mdp-interface) provided by the [Serval DNA][] daemon.
 
+-----
+**Copyright 2014 Serval Project Inc.**  
+![CC-BY-4.0](./cc-by-4.0.png)
+Available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
+
 
 [Serval Project]: http://www.servalproject.org/
+[CC BY 4.0]: http://creativecommons.org/licenses/by/4.0/
 [Serval mesh network]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:mesh_network
 [Serval DNA]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:servaldna:
 [MDP]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:mdp

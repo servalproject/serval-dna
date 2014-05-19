@@ -666,8 +666,14 @@ read.  This can simulate the effects of the Fi-Fi drivers on some Android
 devices that filter out broadcast packets (to prevent the device from waking up
 unless there is traffic explicitly sent to it).
 
+-----
+**Copyright 2013 Serval Project Inc.**  
+![CC-BY-4.0](./cc-by-4.0.png)
+Available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
+
 
 [Serval Project]: http://www.servalproject.org/
+[CC BY 4.0]: http://creativecommons.org/licenses/by/4.0/
 [Serval Infrastructure]: ./Serval-Infrastructure.md
 [US-ASCII]: http://en.wikipedia.org/wiki/ASCII
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell

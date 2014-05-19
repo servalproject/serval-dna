@@ -14,9 +14,6 @@ carry quasi-real-time streaming data, similar to [TCP][].
 MSP was funded by a [grant][] from the [New America Foundation][NAF]'s [Open
 Technology Institute][OTI].
 
-**Copyright 2014 Serval Project Inc.**  All rights reserved.  Licensing terms
-to be announced.
-
 Caveat
 ------
 
@@ -872,8 +869,14 @@ not require any subsequent call to `mdp_processing()`.
 Calling `msp_close_all()` from within a handler function will have *undefined
 results*.
 
+-----
+**Copyright 2014 Serval Project Inc.**  
+![CC-BY-4.0](./cc-by-4.0.png)
+Available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
+
 
 [Serval Project]: http://www.servalproject.org/
+[CC BY 4.0]: http://creativecommons.org/licenses/by/4.0/
 [grant]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:activity:naf6
 [NAF]: http://www.newamerica.net/
 [OTI]: http://oti.newamerica.net/

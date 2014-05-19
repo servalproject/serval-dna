@@ -18,8 +18,14 @@ The source code, sample configuration and technical documentation is in the
 See the [README][] and [README-OpenBTS][] files in that repository for further
 information.
 
+-----
+**Copyright 2013 Serval Project Inc.**  
+![CC-BY-4.0](./cc-by-4.0.png)
+Available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
+
 
 [Serval Project]: http://www.servalproject.org/
+[CC BY 4.0]: http://creativecommons.org/licenses/by/4.0/
 [Commotion OpenBTS]: https://commotionwireless.net/projects/openbts
 [Serval DNA]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:servaldna:
 [integrated]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:commotion_openbts

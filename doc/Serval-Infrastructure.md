@@ -1,8 +1,8 @@
 Serval Infrastructure
 =====================
+[Serval Project][], September 2012
 
-Based on design discussions between Andrew Bettison and Jeremy Lakeman in
-September, 2012.
+Based on design discussions between Andrew Bettison and Jeremy Lakeman.
 
 In practice, these three services are built into a single daemon that can be
 deployed into a mesh at many points.
@@ -36,3 +36,12 @@ Serval Internet Routing Service (SIRS)
 
 * Forwards MDP packets to MDP nodes listening on IP addresses/ports
 * Uses SILS to resolve destination IP addresses/ports
+
+-----
+**Copyright 2014 Serval Project Inc.**  
+![CC-BY-4.0](./cc-by-4.0.png)
+Available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
+
+
+[Serval Project]: http://www.servalproject.org/
+[CC BY 4.0]: http://creativecommons.org/licenses/by/4.0/

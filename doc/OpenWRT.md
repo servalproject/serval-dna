@@ -522,8 +522,14 @@ the next line.
 The directory paths used in the examples are for illustrative purposes only,
 and may need to be changed for your particular circumstances.
 
+-----
+**Copyright 2014 Serval Project Inc.**  
+![CC-BY-4.0](./cc-by-4.0.png)
+Available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
+
 
 [Serval Project]: http://www.servalproject.org/
+[CC BY 4.0]: http://creativecommons.org/licenses/by/4.0/
 [Serval DNA]: ../README.md
 [OpenWRT]: http://openwrt.org/
 [OpenWRT 12.09 Buildroot]: https://dev.openwrt.org/browser/tags/attitude_adjustment_12.09
