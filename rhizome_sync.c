@@ -145,7 +145,7 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
       
     ob_append_bytes(payload, state->bars[i].bar, RHIZOME_BAR_BYTES);
     
-    state->bars[i].next_request = now+1000;
+    state->bars[i].next_request = now+5000;
     requests++;
     if (requests>=BARS_PER_RESPONSE)
       break;
@@ -452,6 +452,8 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
 
 int rhizome_sync_announce()
 {
+  if (!config.rhizome.enable)
+    return 0;
   int (*oldfunc)() = sqlite_set_tracefunc(is_debug_rhizome_ads);
   sync_send_response(NULL, 0, HEAD_FLAG, 5);
   sqlite_set_tracefunc(oldfunc);
@@ -460,6 +462,8 @@ int rhizome_sync_announce()
 
 int overlay_mdp_service_rhizome_sync(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
+  if (!config.rhizome.enable)
+    return 0;
   struct rhizome_sync *state = header->source->sync_state;
   if (!state){
     state = header->source->sync_state = emalloc_zero(sizeof(struct rhizome_sync));
@@ -468,7 +472,8 @@ int overlay_mdp_service_rhizome_sync(struct internal_mdp_header *header, struct 
   int type = ob_get(payload);
   switch (type){
     case MSG_TYPE_BARS:
-      sync_process_bar_list(header->source, state, payload);
+      if (config.rhizome.fetch)
+	sync_process_bar_list(header->source, state, payload);
       break;
     case MSG_TYPE_REQ:
       {
@@ -478,7 +483,8 @@ int overlay_mdp_service_rhizome_sync(struct internal_mdp_header *header, struct 
       }
       break;
   }
-  rhizome_sync_send_requests(header->source, state);
+  if (config.rhizome.fetch)
+    rhizome_sync_send_requests(header->source, state);
   return 0;
 }
 
