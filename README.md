@@ -121,9 +121,12 @@ Copyright and licensing
 -----------------------
 
 Serval DNA is [free software][] produced by the [Serval Project][] and many
-[contributors][].  It is licensed to the public under the [GNU General Public
-License version 2][GPL2].  All source code is freely available from the Serval
-Project's [serval-dna][] Git repository on [GitHub][].
+[contributors][].  Its source code is licensed to the public under the [GNU
+General Public License version 2][GPL2].  Its technical documentation is
+licensed to the public under the [Creative Commons Attribution 4.0
+International licence][CC BY 4.0].  All source code and technical documentation
+is freely available from the Serval Project's [serval-dna][] Git repository on
+[GitHub][].
 
 The copyright in most of the source code in Serval DNA is held by [Serval
 Project Inc.][SPI], a not-for-profit association incorporated in the state of
@@ -142,6 +145,11 @@ Individual developers may assign copyright in their contributions by signing
 the [Serval Project Developer Agreement - Individual][individ], and
 organisations by signing the [Serval Project Developer Agreement -
 Entity][entity].
+
+-----
+**Copyright 2014 Serval Project Inc.**  
+![CC-BY-4.0](./cc-by-4.0.png)
+This document is available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
 
 
 [Serval Project]: http://www.servalproject.org/
@@ -175,3 +183,4 @@ Entity][entity].
 [JNI]: http://en.wikipedia.org/wiki/Java_Native_Interface
 [Bash]: http://en.wikipedia.org/wiki/Bash_(Unix_shell)
 [pipe]: http://www.kernel.org/doc/man-pages/online/pages/man2/pipe.2.html
+[CC BY 4.0]: http://creativecommons.org/licenses/by/4.0/

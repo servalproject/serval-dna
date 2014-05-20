@@ -183,6 +183,11 @@ the next line.
 The directory paths used in the examples are for illustrative purposes only,
 and may need to be changed for your particular circumstances.
 
+-----
+**Copyright 2013 Serval Project Inc.**  
+![CC-BY-4.0](./cc-by-4.0.png)
+This document is available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
+
 
 [Serval Project]: http://www.servalproject.org/
 [Serval DNA]: ./README.md
@@ -204,3 +209,4 @@ and may need to be changed for your particular circumstances.
 [Git]: http://git-scm.com/
 [Subversion]: http://subversion.apache.org/
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell
+[CC BY 4.0]: http://creativecommons.org/licenses/by/4.0/
