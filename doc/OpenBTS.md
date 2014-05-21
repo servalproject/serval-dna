@@ -25,7 +25,7 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 
 
 [Serval Project]: http://www.servalproject.org/
-[CC BY 4.0]: http://creativecommons.org/licenses/by/4.0/
+[CC BY 4.0]: ../LICENSE-DOCUMENTATION.md
 [Commotion OpenBTS]: https://commotionwireless.net/projects/openbts
 [Serval DNA]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:servaldna:
 [integrated]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:commotion_openbts

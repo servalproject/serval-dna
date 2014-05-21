@@ -529,7 +529,7 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 
 
 [Serval Project]: http://www.servalproject.org/
-[CC BY 4.0]: http://creativecommons.org/licenses/by/4.0/
+[CC BY 4.0]: ../LICENSE-DOCUMENTATION.md
 [Serval DNA]: ../README.md
 [OpenWRT]: http://openwrt.org/
 [OpenWRT 12.09 Buildroot]: https://dev.openwrt.org/browser/tags/attitude_adjustment_12.09

@@ -47,7 +47,7 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 
 
 [Serval Project]: http://www.servalproject.org/
-[CC BY 4.0]: http://creativecommons.org/licenses/by/4.0/
+[CC BY 4.0]: ../LICENSE-DOCUMENTATION.md
 [Serval mesh network]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:mesh_network
 [Serval DNA]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:servaldna:
 [MDP]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:mdp

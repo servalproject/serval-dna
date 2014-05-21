@@ -40,4 +40,4 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [Serval DNA]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:servaldna:
 [Serval mesh network]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:mesh_network
 [technical documents]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:dev:techdoc
-[CC BY 4.0]: http://creativecommons.org/licenses/by/4.0/
+[CC BY 4.0]: ../LICENSE-DOCUMENTATION.md

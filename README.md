@@ -183,4 +183,4 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [JNI]: http://en.wikipedia.org/wiki/Java_Native_Interface
 [Bash]: http://en.wikipedia.org/wiki/Bash_(Unix_shell)
 [pipe]: http://www.kernel.org/doc/man-pages/online/pages/man2/pipe.2.html
-[CC BY 4.0]: http://creativecommons.org/licenses/by/4.0/
+[CC BY 4.0]: ./LICENSE-DOCUMENTATION.md
