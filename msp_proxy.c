@@ -34,6 +34,8 @@ struct buffer{
 };
 
 struct connection{
+  struct connection *_next;
+  struct connection *_prev;
   struct sched_ent alarm_in;
   struct sched_ent alarm_out;
   MSP_SOCKET sock;
@@ -43,11 +45,13 @@ struct connection{
   int last_state;
 };
 
+struct connection *connections=NULL;
 int saw_error=0;
 int once =0;
 MSP_SOCKET listener = MSP_SOCKET_NULL;
 struct mdp_sockaddr remote_addr;
 struct socket_address ip_addr;
+char quit=0;
 
 static int try_send(struct connection *conn);
 static void msp_poll(struct sched_ent *alarm);
@@ -136,6 +140,10 @@ static struct connection *alloc_connection(
   conn->in->position = conn->out->position = 0;
   conn->in->limit = conn->out->limit = 0;
   conn->in->capacity = conn->out->capacity = 1024;
+  if (connections)
+    connections->_prev = conn;
+  conn->_next = connections;
+  connections = conn;
   return conn;
 }
 
@@ -145,27 +153,37 @@ static void free_connection(struct connection *conn)
     return;
   if (!msp_socket_is_closed(conn->sock)){
     msp_set_handler(conn->sock, msp_handler, NULL);
-    msp_close(conn->sock);
+    msp_stop(conn->sock);
   }
-  if (is_watching(&conn->alarm_in))
-    unwatch(&conn->alarm_in);
-  if (is_watching(&conn->alarm_out))
-    unwatch(&conn->alarm_out);
+  
   if (conn->in)
     free(conn->in);
   if (conn->out)
     free(conn->out);
+  conn->in=NULL;
+  conn->out=NULL;
+  
+  if (is_watching(&conn->alarm_in))
+    unwatch(&conn->alarm_in);
+  if (is_watching(&conn->alarm_out))
+    unwatch(&conn->alarm_out);
+    
   if (conn->alarm_in.poll.fd!=-1)
     close(conn->alarm_in.poll.fd);
   if (conn->alarm_out.poll.fd!=-1 && conn->alarm_out.poll.fd != conn->alarm_in.poll.fd)
     close(conn->alarm_out.poll.fd);
-  conn->in=NULL;
-  conn->out=NULL;
   conn->alarm_in.poll.fd=-1;
   conn->alarm_out.poll.fd=-1;
+  
+  if (conn->_next)
+    conn->_next->_prev = conn->_prev;
+  if (conn->_prev)
+    conn->_prev->_next = conn->_next;
+  if (conn==connections)
+    connections = conn->_next;
   free(conn);
 
-  if (msp_socket_count()==0 && is_watching(&mdp_sock))
+  if (!connections && !msp_socket_is_listening(listener))
     unwatch(&mdp_sock);
 }
 
@@ -180,8 +198,10 @@ static void process_msp_asap()
 static void remote_shutdown(struct connection *conn)
 {
   struct mdp_sockaddr remote;
-  if (shutdown(conn->alarm_out.poll.fd, SHUT_WR))
-    WARNF_perror("shutdown(%d)", conn->alarm_out.poll.fd);
+  if (conn->alarm_out.poll.fd != STDOUT_FILENO){
+    if (shutdown(conn->alarm_out.poll.fd, SHUT_WR))
+      WARNF_perror("shutdown(%d)", conn->alarm_out.poll.fd);
+  }
   msp_get_remote(conn->sock, &remote);
   INFOF(" - Connection with %s:%d remote shutdown", alloca_tohex_sid_t(remote.sid), remote.port);
 }
@@ -230,13 +250,17 @@ static size_t msp_handler(MSP_SOCKET sock, msp_state_t state, const uint8_t *pay
   if (state & MSP_STATE_CLOSED){
     struct mdp_sockaddr remote;
     msp_get_remote(sock, &remote);
-    INFOF(" - Connection with %s:%d closed", alloca_tohex_sid_t(remote.sid), remote.port);
+    INFOF(" - Connection with %s:%d closed %s", 
+      alloca_tohex_sid_t(remote.sid), remote.port,
+      (state & MSP_STATE_STOPPED) ? "suddenly":"gracefully");
     
     conn->sock = MSP_SOCKET_NULL;
     if (is_watching(&conn->alarm_in))
       unwatch(&conn->alarm_in);
-    if (!is_watching(&conn->alarm_out))
+    if (!is_watching(&conn->alarm_out)){
+      // gracefully close now if we have no pending data
       free_connection(conn);
+    }
     
     assert(len == 0);
     return 0;
@@ -262,6 +286,11 @@ static size_t msp_listener(MSP_SOCKET sock, msp_state_t state, const uint8_t *pa
     return len;
   }
   
+  if (once){
+    // stop listening after the first incoming connection
+    msp_stop(listener);
+  }
+  
   struct mdp_sockaddr remote;
   msp_get_remote(sock, &remote);
   INFOF(" - New connection from %s:%d", alloca_tohex_sid_t(remote.sid), remote.port);
@@ -271,11 +300,11 @@ static size_t msp_listener(MSP_SOCKET sock, msp_state_t state, const uint8_t *pa
   if (ip_addr.addrlen){
     int fd = esocket(PF_INET, SOCK_STREAM, 0);
     if (fd==-1){
-      msp_close(sock);
+      msp_stop(sock);
       return 0;
     }
     if (socket_connect(fd, &ip_addr)==-1){
-      msp_close(sock);
+      msp_stop(sock);
       close(fd);
       return 0;
     }
@@ -290,10 +319,6 @@ static size_t msp_listener(MSP_SOCKET sock, msp_state_t state, const uint8_t *pa
   if (payload)
     return msp_handler(sock, state, payload, len, conn);
   
-  if (once){
-    // stop listening after the first incoming connection
-    msp_close(listener);
-  }
   assert(len == 0);
   return 0;
 }
@@ -366,12 +391,12 @@ static void io_poll(struct sched_ent *alarm)
 	remaining);
       if (r<0){
 	WARNF_perror("read(%d)", alarm->poll.fd);
-	alarm->poll.revents = POLLERR;
+	alarm->poll.revents |= POLLERR;
       }
       if (r==0){
 	// EOF
 	r=-1;
-	alarm->poll.revents = POLLHUP;
+	alarm->poll.revents |= POLLHUP;
       }
       if (r>0){
 	conn->in->limit+=r;
@@ -397,8 +422,10 @@ static void io_poll(struct sched_ent *alarm)
       ssize_t r = write(alarm->poll.fd, 
 	conn->out->bytes+conn->out->position,
 	data);
-      if (r < 0)
+      if (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK){
 	WARNF_perror("write(%d)", alarm->poll.fd);
+	alarm->poll.revents |= POLLERR;
+      }
       if (r > 0)
 	conn->out->position+=r;
     }
@@ -419,6 +446,7 @@ static void io_poll(struct sched_ent *alarm)
       if (!msp_socket_is_null(conn->sock)){
 	process_msp_asap();
       }else{
+	// gracefully close after flushing the last of the data
 	free_connection(conn);
       }
     }
@@ -439,7 +467,19 @@ static void io_poll(struct sched_ent *alarm)
   }
   
   if (alarm->poll.revents & POLLERR) {
-    free_connection(conn);
+    if (is_watching(&conn->alarm_in))
+      unwatch(&conn->alarm_in);
+    if (is_watching(&conn->alarm_out))
+      unwatch(&conn->alarm_out);
+    if (conn->alarm_in.poll.fd!=-1)
+      close(conn->alarm_in.poll.fd);
+    if (conn->alarm_out.poll.fd!=-1 && conn->alarm_out.poll.fd != conn->alarm_in.poll.fd)
+      close(conn->alarm_out.poll.fd);
+    conn->alarm_in.poll.fd=-1;
+    conn->alarm_in.poll.events=0;
+    conn->alarm_out.poll.fd=-1;
+    conn->alarm_out.poll.events=0;
+    msp_stop(conn->sock);
     process_msp_asap();
   }
 }
@@ -462,7 +502,7 @@ static void listen_poll(struct sched_ent *alarm)
     
     struct connection *connection = alloc_connection(sock, fd, io_poll, fd, io_poll);
     if (!connection){
-      msp_close(sock);
+      msp_stop(sock);
       return;
     }
 
@@ -476,6 +516,25 @@ static void listen_poll(struct sched_ent *alarm)
       alarm->poll.fd=-1;
     }
   }
+}
+
+void sigQuit(int UNUSED(signal))
+{
+  struct connection *c = connections;
+  while(c){
+    if (!msp_socket_is_closed(c->sock))
+      msp_stop(c->sock);
+    c->out->limit = c->out->position = 0;
+    c->in->limit = c->in->position = 0;
+    c->alarm_in.poll.events = 0;
+    c->alarm_out.poll.events = 0;
+    if (is_watching(&c->alarm_in))
+      unwatch(&c->alarm_in);
+    if (is_watching(&c->alarm_out))
+      unwatch(&c->alarm_out);
+    c=c->_next;
+  }
+  quit=1;
 }
 
 int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
@@ -584,26 +643,26 @@ int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUS
   }
   
   process_msp_asap();
-  sigIntFlag = 0;
-  signal(SIGINT, sigIntHandler);
-  signal(SIGTERM, sigIntHandler);
-  
-  while(sigIntFlag==0 && fd_poll()){
+  signal(SIGINT, sigQuit);
+  signal(SIGTERM, sigQuit);
+  quit=0;
+  while(!quit && fd_poll()){
     ;
   }
+  time_ms_t dummy;
+  msp_processing(&dummy);
   ret = saw_error;
   signal(SIGINT, SIG_DFL);
-  sigIntFlag = 0;
   
 end:
   listener = MSP_SOCKET_NULL;
-  if (is_watching(&mdp_sock))
-    unwatch(&mdp_sock);
   if (mdp_sock.poll.fd!=-1){
     msp_close_all(mdp_sock.poll.fd);
     mdp_close(mdp_sock.poll.fd);
     mdp_sock.poll.fd=-1;
   }
+  if (is_watching(&mdp_sock))
+    unwatch(&mdp_sock);
   if (service_sock.poll.fd!=-1){
     if (is_watching(&service_sock))
       unwatch(&service_sock);

@@ -36,7 +36,7 @@ the other.  In other words, an MSP message stream is a stream of bytes that
 preserves write boundaries as read boundaries.  Any application can easily use
 an MSP connection as a simple ordered byte stream, like [TCP][], by ignoring
 incoming message boundaries and buffering all input and output.  (In future, an
-MSP *buffered* mode may be provided to facilitate this.)
+MSP *buffered* mode may be provided to facilitate and optimise this usage.)
 
 [MSP][] is built on the [Mesh Datagram Protocol][MDP] which carries packets
 unreliably between the two end points.  MSP uses a combination of [sliding
@@ -320,11 +320,11 @@ handler function one last time with the CLOSED flag set.
 The `msp_processing()` function will never close a listening socket
 automatically; that must be done explicitly by the application.
 
-An application may close any open socket at any time by calling `msp_close()`.
-This will cause `msp_processing()` to stop both directions of an open data
-socket without alerting the remote end point, discard all queued messages
-locally, and invoke the socket's handler function one last time with the CLOSED
-flag set.
+An application may close any open socket at any time by calling `msp_stop()`.
+This will cause `msp_processing()` to stop the flow of data in both directions,
+discard all queued messages and alert the remote end point to do the same.
+The socket's handler function will be one last time with the CLOSED and STOPPED
+flags set.
 
 #### Finalisation
 
@@ -632,7 +632,7 @@ size_t handler_function(MSP_SOCKET sock,
         // Connection is no longer working and cannot be recovered.  Do not
         // release resources here; that will be done in the MSP_STATE_CLOSED case
         // below.
-        msp_close(sock);
+        msp_stop(sock);
     }
     if (payload && len) {
         // Process incoming message and return the number of bytes processed.
@@ -841,21 +841,23 @@ When the remote party shuts down the socket at its end and all remaining data
 has been transferred, including the *shutdown* packet from the remote end, the
 socket will close automatically during `msp_processing()`.
 
-#### `msp_close()` - Close a single MSP connection
+#### `msp_stop()` - Close a single MSP connection
 
-    void msp_close(MSP_SOCKET sock);
+    void msp_stop(MSP_SOCKET sock);
 
 Marks the given socket as closed.  The socket is not actually cleaned up until
 the next call to `msp_processing()`.  If called from within a handler function,
 the close takes effect as soon as the function returns.
 
 The next call to `msp_processing()` will immediately terminate all i/o activity
-for the socket without negotiating with or notifying the remote end, will
+for the socket sending a notification to the remote end to do the same, will
 discard all locally queued incoming and outgoing messages, and will make the
-final invocation to the socket's handler function with the CLOSED flag set.
-The remote end will have to rely on its MSP timeout logic to detect that the
-MSP connection is finished.  The effect is as though the local end point had
-lost contact with the remote end with no warning.
+final invocation to the socket's handler function with the CLOSED and STOPPED 
+flags set. 
+
+The remote end may miss the initial STOP notification due to packet loss,
+for this reason, msp_recv will also send a STOP notification in response to 
+any connection it doesn't recognise.
 
 #### `msp_close_all()` - Close all MSP connections on a given MDP socket
 
@@ -865,6 +867,11 @@ Immediately closes and frees all MSP sockets associated with the given MDP
 socket.  This function is intended to be used after an application's main loop
 has terminated, and just before the application itself terminates, so it does
 not require any subsequent call to `mdp_processing()`.
+
+No notification will be sent to any remote parties about the state of any 
+connected MSP sockets.  The remote end will have to rely on its MSP timeout 
+logic to detect that the MSP connection is finished.  The effect is as 
+though the local end point had lost contact with the remote end with no warning.
 
 Calling `msp_close_all()` from within a handler function will have *undefined
 results*.

@@ -30,6 +30,8 @@
 
 #define FLAG_SHUTDOWN (1<<0)
 #define FLAG_ACK (1<<1)
+#define FLAG_FIRST (1<<2)
+#define FLAG_STOP (1<<3)
 #define RETRANSMIT_TIME 1500
 
 struct msp_packet{
@@ -59,6 +61,7 @@ struct msp_sock{
   unsigned salt;
   int mdp_sock;
   msp_state_t state;
+  msp_state_t last_state;
   struct msp_window tx;
   struct msp_window rx;
   uint16_t previous_ack;
@@ -117,6 +120,7 @@ MSP_SOCKET msp_socket(int mdp_sock, int flags)
   sock->salt = salt_counter;
   sock->mdp_sock = mdp_sock;
   sock->state = MSP_STATE_UNINITIALISED;
+  sock->last_state = 0xFFFF;
   // TODO set base rtt to ensure that we send the first packet a few times before giving up
   sock->tx.base_rtt = sock->tx.rtt = 0xFFFFFFFF;
   sock->tx.last_activity = TIME_MS_NEVER_HAS;
@@ -220,6 +224,8 @@ static void free_all_packets(struct msp_window *window)
       free((void *)free_me->payload);
     free(free_me);
   }
+  window->_head = NULL;
+  window->packet_count=0;
 }
 
 static void free_acked_packets(struct msp_window *window, uint16_t seq)
@@ -267,24 +273,33 @@ static void msp_free(struct msp_sock *sock)
   if (sock->_next)
     sock->_next->_prev = sock->_prev;
 
-  // last chance to free other resources
-  if (sock->handler) {
-    size_t nconsumed = sock->handler(sock_to_handle(sock), sock->state, NULL, 0, sock->context);
-    assert(nconsumed == 0);
-  }
-    
   free_all_packets(&sock->tx);
   free_all_packets(&sock->rx);
   
+  // one last chance for clients to free other resources
+  if (sock->handler && sock->last_state != sock->state) {
+    size_t nconsumed = sock->handler(sock_to_handle(sock), sock->state, NULL, 0, sock->context);
+    assert(nconsumed == 0);
+  }
   sock->salt = SALT_INVALID; // invalidate all handles that point here
   free(sock);
 }
 
-void msp_close(MSP_SOCKET handle)
+void msp_stop(MSP_SOCKET handle)
 {
   struct msp_sock *sock = handle_to_sock(&handle);
-  // TODO if never sent / received, just free it
-  sock->state |= MSP_STATE_CLOSED;
+  if (sock->state & MSP_STATE_STOPPED)
+    return;
+  sock->state |= MSP_STATE_STOPPED | MSP_STATE_CLOSED;
+  // if this a connectable socket, send a stop packet
+  if (sock->header.remote.port && !(sock->state & MSP_STATE_LISTENING)){
+    uint8_t response = FLAG_STOP;
+    // we don't have a matching socket, reply with STOP flag to force breaking the connection
+    // TODO global rate limit?
+    mdp_send(sock->mdp_sock, &sock->header, &response, 1);
+    if (config.debug.msp)
+      DEBUGF("Sending STOP packet");
+  }
 }
 
 void msp_close_all(int mdp_sock)
@@ -424,6 +439,9 @@ static int msp_send_packet(struct msp_sock *sock, struct msp_packet *packet)
   // only set the ack flag if we've received a sequenced packet
   if (sock->state & MSP_STATE_RECEIVED_DATA)
     msp_header[0]|=FLAG_ACK;
+  // never received anything? set the connect flag
+  if (!(sock->state & MSP_STATE_RECEIVED_PACKET))
+    msp_header[0]|=FLAG_FIRST;
   
   write_uint16(&msp_header[1], sock->rx.next_seq);
   write_uint16(&msp_header[3], packet->seq);
@@ -459,7 +477,7 @@ static int msp_send_packet(struct msp_sock *sock, struct msp_packet *packet)
     return -1;
   }
   if (config.debug.msp)
-    DEBUGF("Sent packet seq %02x len %zd (acked %02x)", packet->seq, packet->len, sock->rx.next_seq);
+    DEBUGF("Sent packet flags %02x seq %02x len %zd (acked %02x)", msp_header[0], packet->seq, packet->len, sock->rx.next_seq);
   sock->tx.last_activity = packet->sent = gettime_ms();
   sock->next_ack = packet->sent + RETRANSMIT_TIME;
   return 0;
@@ -480,6 +498,10 @@ static int send_ack(struct msp_sock *sock)
   // (but we can indicate the existence of the connection)
   if (sock->state & MSP_STATE_RECEIVED_DATA)
     msp_header[0]|=FLAG_ACK;
+  
+  // never received anything? set the connect flag
+  if (!(sock->state & MSP_STATE_RECEIVED_PACKET))
+    msp_header[0]|=FLAG_FIRST;
     
   write_uint16(&msp_header[1], sock->rx.next_seq);
   
@@ -504,7 +526,7 @@ static int send_ack(struct msp_sock *sock)
     return -1;
   }
   if (config.debug.msp)
-    DEBUGF("Sent packet (acked %02x)", sock->rx.next_seq);
+    DEBUGF("Sent packet flags %02x (acked %02x)", msp_header[0], sock->rx.next_seq);
   sock->previous_ack = sock->rx.next_seq;
   sock->tx.last_activity = gettime_ms();
   sock->next_ack = sock->tx.last_activity + RETRANSMIT_TIME;
@@ -519,9 +541,8 @@ ssize_t msp_send(MSP_SOCKET handle, const uint8_t *payload, size_t len)
   assert(sock->header.remote.port);
   assert((sock->state & MSP_STATE_SHUTDOWN_LOCAL)==0);
   
-  if (sock->tx.packet_count > MAX_WINDOW_SIZE)
+  if ((sock->state & MSP_STATE_CLOSED) || sock->tx.packet_count > MAX_WINDOW_SIZE)
     return -1;
-  
   if (add_packet(&sock->tx, sock->tx.next_seq, 0, payload, len)==-1)
     return -1;
   
@@ -559,9 +580,8 @@ static int process_sock(struct msp_sock *sock)
   time_ms_t now = gettime_ms();
   
   if (sock->timeout < now){
-    WHY("MSP socket timed out");
     sock->state |= (MSP_STATE_CLOSED|MSP_STATE_ERROR);
-    return -1;
+    return WHY("MSP socket timed out");
   }
   
   sock->next_action = sock->timeout;
@@ -588,8 +608,10 @@ static int process_sock(struct msp_sock *sock)
       else
 	assert(packet->offset == 0);
       size_t len = packet->len - packet->offset;
-      size_t nconsumed = sock->handler(sock_to_handle(sock), sock->state, packet->payload, len, sock->context);
+      msp_state_t state = sock->state;
+      size_t nconsumed = sock->handler(sock_to_handle(sock), state, packet->payload, len, sock->context);
       assert(nconsumed <= len);
+      sock->last_state = state;
       // stop calling the handler if nothing was consumed
       if (nconsumed == 0 && len != 0)
 	break;
@@ -599,11 +621,18 @@ static int process_sock(struct msp_sock *sock)
 	continue;
       assert(packet->offset == packet->len);
     }
-
+    // no handler? just discard any data
     p=p->_next;
     sock->rx.next_seq++;
   }
   free_acked_packets(&sock->rx, sock->rx.next_seq -1);
+  
+  if (sock->handler && sock->last_state != sock->state){
+    msp_state_t state = sock->state;
+    size_t nconsumed = sock->handler(sock_to_handle(sock), state, NULL, 0, sock->context);
+    assert(nconsumed == 0);
+    sock->last_state = state;
+  }
   
   // transmit packets that can now be sent
   p = sock->tx._head;
@@ -642,9 +671,11 @@ static int process_sock(struct msp_sock *sock)
   if (sock->next_action > sock->next_ack)
     sock->next_action = sock->next_ack;
   
+  // when we've delivered all local packets
+  // and all our data packets have been acked, close.
   if (   (sock->state & MSP_STATE_SHUTDOWN_LOCAL)
       && (sock->state & MSP_STATE_SHUTDOWN_REMOTE)
-      && sock->tx.packet_count == 0 
+      && sock->tx.packet_count == 0
       && sock->rx.packet_count == 0
       && sock->previous_ack == sock->rx.next_seq
   ){
@@ -660,18 +691,17 @@ int msp_processing(time_ms_t *next_action)
   time_ms_t next=TIME_MS_NEVER_WILL;
   struct msp_sock *sock = root;
   while(sock){
-    if (!(sock->state & MSP_STATE_CLOSED)) {
-      // this might cause the socket to be closed
-      // remember the time of the next thing we need to do.
-      if (process_sock(sock)==0 && sock->next_action < next)
-	next=sock->next_action;
-    }else if (sock->next_action < next)
-      next=sock->next_action;
+    // this might cause the socket to be closed
+    // remember the time of the next thing we need to do.
+    process_sock(sock);
+    
     if (sock->state & MSP_STATE_CLOSED){
       struct msp_sock *s = sock->_next;
       msp_free(sock);
       sock=s;
     }else{
+      if (sock->next_action < next)
+	next=sock->next_action;
       sock = sock->_next;
     }
   }
@@ -681,13 +711,15 @@ int msp_processing(time_ms_t *next_action)
 
 static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t *payload, size_t len)
 {
-  // any kind of error reported by the daemon, close all related msp connections
+  // any kind of error reported by the daemon, close all related msp connections on this mdp socket
   if (header->flags & MDP_FLAG_ERROR){
     WHY("Error returned from daemon");
     msp_close_all(mdp_sock);
     return -1;
   }
-
+  
+  uint8_t flags=0;
+  
   // find or create mdp_sock...
   struct msp_sock *sock=NULL;
   {
@@ -702,9 +734,10 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
 	  s->header.flags &= ~MDP_FLAG_BIND;
 	  if (config.debug.msp)
 	    DEBUGF("Bound to %s:%d", alloca_tohex_sid_t(header->local.sid), header->local.port);
-	  s->next_action = gettime_ms();
 	  if (s->state & MSP_STATE_LISTENING)
-	    s->timeout = TIME_MS_NEVER_WILL;
+	    s->next_action = s->timeout = TIME_MS_NEVER_WILL;
+	  else
+	    s->next_action = gettime_ms();
 	  return 0;
 	}
 	
@@ -723,9 +756,20 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
       }
       s = s->_next;
     }
-      
-    if (listen && !sock){
-      // create a new socket for the incoming connection
+    
+    if (len<1)
+      return WHY("Expected at least 1 byte");
+    flags = payload[0];
+    
+    // ignore any stop packet if we have no matching connection
+    if (!sock && flags & FLAG_STOP){
+      if (config.debug.msp)
+        DEBUGF("Ignoring STOP packet, no matching connection");
+      return 0;
+    }
+    
+    if (listen && (flags&FLAG_FIRST) && !sock){
+      // create a new socket for incoming connections
       MSP_SOCKET handle = msp_socket(listen->mdp_sock, 0);
       sock = handle.ptr;
       if (sock) {
@@ -737,19 +781,29 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
     }
     
     if (!sock){
-      WARNF("Unexpected packet from %s:%d", alloca_tohex_sid_t(header->remote.sid), header->remote.port);
-      // TODO reply with shutdown ack to forcefully break the connection?
+      uint8_t response = FLAG_STOP;
+      // we don't have a matching socket, reply with STOP flag to force breaking the connection
+      // TODO global rate limit?
+      mdp_send(mdp_sock, header, &response, 1);
+      if (config.debug.msp)
+	DEBUGF("Replying to unexpected packet with STOP packet");
       return 0;
     }
   }
   
-  if (len<3)
-    return WHY("Expected at least 3 bytes");
-  
   sock->rx.last_activity = gettime_ms();
   sock->timeout = sock->rx.last_activity + 10000;
+  sock->state |= MSP_STATE_RECEIVED_PACKET;
   
-  uint8_t flags = payload[0];
+  if (flags & FLAG_STOP){
+    if (config.debug.msp)
+      DEBUGF("Closing socket due to STOP packet");
+    msp_stop(sock_to_handle(sock));
+    return 0;
+  }
+  
+  if (len<3)
+    return 0;
   
   if (flags & FLAG_ACK){
     uint16_t ack_seq = read_uint16(&payload[1]);
@@ -759,18 +813,21 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
     // TODO if their ack seq has not advanced, we may need to hurry up and retransmit a packet
   }
   
+  // we might have space for more data now
   if (sock->tx.packet_count < MAX_WINDOW_SIZE 
-    && !(sock->state & MSP_STATE_DATAOUT)
     && !(sock->state & MSP_STATE_SHUTDOWN_LOCAL)){
     sock->state|=MSP_STATE_DATAOUT;
-    if (sock->handler)
-      sock->handler(sock_to_handle(sock), sock->state, NULL, 0, sock->context);
+    // TODO Why isn't the handler getting called in the next msp_processing???
+    if (sock->handler && sock->last_state != sock->state){
+      msp_state_t state = sock->state;
+      ssize_t nconsumed = sock->handler(sock_to_handle(sock), state, NULL, 0, sock->context);
+      assert(nconsumed == 0);
+      sock->last_state = state;
+    }
   }
   
   // make sure we attempt to process packets from this sock soon
   // TODO calculate based on congestion window
-  sock->state |= MSP_STATE_RECEIVED_PACKET;
-  
   sock->next_action = gettime_ms();
   
   if (len<MSP_PAYLOAD_PREAMBLE_SIZE)

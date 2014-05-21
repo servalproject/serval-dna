@@ -66,18 +66,19 @@ server_hello() {
 Hello from the server
 EOF
    assertStdoutGrep --matches=1 "^Hello from the client$"
+   assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_cat --stderr
 }
 test_hello() {
    set_instance +A
-   fork server_hello
-   wait_until grep "Bind MDP $SIDA:512" "$instance_servald_log"
+   fork %listen server_hello
    set_instance +B
    executeOk_servald --timeout=20 msp connect $SIDA 512 <<EOF
 Hello from the client
 EOF
    assertStdoutGrep --matches=1 "^Hello from the server$"
-   fork_wait_all
+   assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
+   fork_wait %listen
 }
 
 doc_client_no_data="Client connection with no data"
@@ -89,18 +90,19 @@ setup_client_no_data() {
 }
 server_client_no_data() {
    executeOk_servald --timeout=20 msp listen 512 <file1
+   assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_cat --stderr
 }
 test_client_no_data() {
    set_instance +A
-   fork server_client_no_data
-   wait_until grep "Bind MDP $SIDA:512" "$instance_servald_log"
+   fork %listen server_client_no_data
    set_instance +B
    executeOk_servald --timeout=20 msp connect $SIDA 512 <<EOF
 EOF
+   assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_cat --stderr
    assert diff file1 "$TFWSTDOUT"
-   fork_wait_all
+   fork_wait %listen
 }
 
 doc_server_no_data="Server sends no data"
@@ -113,17 +115,18 @@ setup_server_no_data() {
 server_server_no_data() {
    executeOk_servald --timeout=20 msp listen 512 <<EOF
 EOF
+   assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_cat --stderr
    assert diff file1 "$TFWSTDOUT"
 }
 test_server_no_data() {
    set_instance +A
-   fork server_server_no_data
-   wait_until grep "Bind MDP $SIDA:512" "$instance_servald_log"
+   fork %listen server_server_no_data
    set_instance +B
    executeOk_servald --timeout=20 msp connect $SIDA 512 <file1
+   assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_cat --stderr
-   fork_wait_all
+   fork_wait %listen
 }
 
 doc_keep_alive="Keep the connection alive with no data"
@@ -134,19 +137,20 @@ setup_keep_alive() {
 }
 listen_pipe() {
    executeOk_servald msp listen 512 < <(echo "START" && sleep 20 && echo "END")
+   assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_cat --stdout --stderr
 }
 connect_pipe() {
    executeOk_servald msp connect $1 512 < <(echo "START" && sleep 20 && echo "END")
+   assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_cat --stdout --stderr
 }
 test_keep_alive() {
    set_instance +A
-   fork listen_pipe
-   wait_until --timeout=10 grep "Bind MDP $SIDA:512" "$instance_servald_log"
+   fork %listen listen_pipe
    set_instance +B
    fork connect_pipe $SIDA
-   fork_wait_all
+   fork_wait %listen
 }
 
 doc_forward="Forward TCP connections to a remote server"
@@ -157,18 +161,18 @@ setup_forward() {
 }
 client_forward() {
    executeOk --timeout=20 $servald msp connect --once --forward=$1 $2 512
+   assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_cat --stdout --stderr
 }
 test_forward() {
    set_instance +A
-   fork server_hello
-   wait_until --timeout=10 grep "Bind MDP $SIDA:512" "$instance_servald_log"
+   fork %listen server_hello
    set_instance +B
    fork client_forward 2048 $SIDA
    sleep 1
    executeOk nc -v 127.0.0.1 2048 < <(echo "Hello from the client")
    assertStdoutGrep --matches=1 "^Hello from the server$"
-   fork_wait_all
+   fork_wait %listen
 }
 
 doc_tcp_tunnel="Tunnel a tcp connection"
@@ -179,6 +183,7 @@ setup_tcp_tunnel() {
 }
 server_forward() {
    executeOk_servald msp listen --once --forward=$1 512
+   assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_cat --stderr
 }
 nc_listen() {
@@ -187,15 +192,64 @@ nc_listen() {
 }
 
 test_tcp_tunnel() {
-   fork nc_listen 6000
+   fork %listen nc_listen 6000
    set_instance +A
-   fork server_forward 6000
+   fork %server server_forward 6000
    set_instance +B
-   fork client_forward 6001 $SIDA
+   fork %client client_forward 6001 $SIDA
    sleep 1
    executeOk nc -v 127.0.0.1 6001 < <(echo "Hello from the client")
    assertStdoutGrep --matches=1 "^Hello from the server$"
-   fork_wait_all
+   fork_wait %listen %server %client
+}
+
+doc_refused="TCP connection refused on forwarded stream"
+setup_refused(){
+   setup_servald
+   assert_no_servald_processes
+   start_servald_instances +A +B
+}
+server_refused(){
+   executeOk $servald msp listen --once --forward=4001 512
+   assertStderrGrep --matches=1 " Connection refused"
+   tfw_cat --stderr
+}
+test_refused(){
+   set_instance +A
+   fork %listen server_refused
+   set_instance +B
+   executeOk_servald msp connect $SIDA 512 < <(echo "Hello")
+   assertStderrGrep --matches=1 " Connection with .* closed suddenly$"
+   tfw_cat --stdout --stderr
+   fork_wait %listen
+}
+
+doc_terminate="Terminate a connection mid stream"
+setup_terminate() {
+   setup_servald
+   assert_no_servald_processes
+   start_servald_instances +A +B
+}
+client_terminate() {
+   executeOk_servald msp connect --once --forward=3001 $SIDA 512
+   assertStderrGrep --matches=1 " Connection with .* closed suddenly$"
+   tfw_cat --stdout --stderr
+}
+server_terminate() {
+   executeOk_servald msp listen 512 < <(dd if=/dev/urandom bs=1k count=500 | hexdump -C)
+   assertStderrGrep --matches=1 " Connection with .* closed suddenly$"
+   tfw_cat --stdout --stderr
+}
+test_terminate() {
+   set_instance +A
+   fork %msplisten server_terminate
+   set_instance +B
+   fork %mspconnect client_terminate
+   sleep 1
+# todo capture nc output nicely, while still being able to terminate it
+   fork %ncconnect nc -v 127.0.0.1 3001
+   fork_terminate %ncconnect
+   fork_wait %msplisten %mspconnect %ncconnect
 }
 
 runTests "$@"

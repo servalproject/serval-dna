@@ -363,7 +363,7 @@ int fd_poll()
   /* If file descriptors are ready, then call the appropriate functions */
   if (r>0) {
     for(i=fdcount -1;i>=0;i--){
-      if (fds[i].revents) {
+      if (fd_callbacks[i] && fd_callbacks[i]->poll.fd == fds[i].fd && fds[i].revents) {
         // if any handles have POLLIN set, don't process any other handles
         if (!(fds[i].revents&POLLIN || in_count==0))
           continue;

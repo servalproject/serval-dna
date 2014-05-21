@@ -63,6 +63,7 @@ msp_state_t msp_get_state(MSP_SOCKET sock);
 #define MSP_STATE_ERROR             ((msp_state_t) (1<<6))
 // is there space for sending more data?
 #define MSP_STATE_DATAOUT           ((msp_state_t) (1<<7))
+#define MSP_STATE_STOPPED           ((msp_state_t) (1<<8))
 
 int msp_socket_is_initialising(MSP_SOCKET);
 int msp_socket_is_open(MSP_SOCKET);
@@ -87,7 +88,7 @@ int msp_listen(MSP_SOCKET sock);
 
 // close socket(s)
 int msp_shutdown(MSP_SOCKET sock);
-void msp_close(MSP_SOCKET);
+void msp_stop(MSP_SOCKET sock);
 void msp_close_all(int mdp_sock);
 
 void msp_debug(void);
