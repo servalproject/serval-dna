@@ -305,13 +305,15 @@ static void msp_poll(struct sched_ent *alarm)
     msp_recv(alarm->poll.fd);
   
   // do any timed actions that need to be done, either in response to receiving or due to a timed alarm.
-  msp_processing(&alarm->alarm);
-  if (alarm->alarm){
+  time_ms_t next;
+  msp_processing(&next);
+  unschedule(alarm);
+  if (next != TIME_MS_NEVER_WILL){
     time_ms_t now = gettime_ms();
+    alarm->alarm=next;
     if (alarm->alarm < now)
       alarm->alarm = now;
     alarm->deadline = alarm->alarm +10;
-    unschedule(alarm);
     schedule(alarm);
   }
 }

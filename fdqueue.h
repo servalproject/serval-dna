@@ -123,4 +123,6 @@ unsigned fd_depth();
 #define RETURNNULL(X) do { X; OUT(); return (NULL); } while (0)
 #define RETURNVOID do { OUT(); return; } while (0)
 
+void list_alarms();
+
 #endif // __SERVAL_DNA__FDQUEUE_H

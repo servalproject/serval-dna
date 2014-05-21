@@ -288,7 +288,7 @@ int fd_poll()
 {
   IN();
   int i, r=0;
-  int ms=60000;
+  time_ms_t ms=60000;
   time_ms_t now = gettime_ms();
   
   if (!next_alarm && !next_deadline && fdcount==0)
@@ -317,7 +317,8 @@ int fd_poll()
     call_stats.totals=&poll_stats;
     fd_func_enter(__HERE__, &call_stats);
     if (fdcount==0){
-      sleep_ms(ms);
+      if (ms)
+	sleep_ms(ms);
     }else{
       r = poll(fds, fdcount, ms);
       if (config.debug.io) {

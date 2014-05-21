@@ -657,16 +657,16 @@ static int process_sock(struct msp_sock *sock)
 
 int msp_processing(time_ms_t *next_action)
 {
-  *next_action=TIME_MS_NEVER_WILL;
+  time_ms_t next=TIME_MS_NEVER_WILL;
   struct msp_sock *sock = root;
   while(sock){
     if (!(sock->state & MSP_STATE_CLOSED)) {
       // this might cause the socket to be closed
       // remember the time of the next thing we need to do.
-      if (process_sock(sock)==0 && sock->next_action < *next_action)
-	*next_action=sock->next_action;
-    }else if (sock->next_action < *next_action)
-      *next_action=sock->next_action;
+      if (process_sock(sock)==0 && sock->next_action < next)
+	next=sock->next_action;
+    }else if (sock->next_action < next)
+      next=sock->next_action;
     if (sock->state & MSP_STATE_CLOSED){
       struct msp_sock *s = sock->_next;
       msp_free(sock);
@@ -675,6 +675,7 @@ int msp_processing(time_ms_t *next_action)
       sock = sock->_next;
     }
   }
+  *next_action=next;
   return 0;
 }
 
