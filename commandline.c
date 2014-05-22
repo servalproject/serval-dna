@@ -313,7 +313,7 @@ int parseCommandLine(struct cli_context *context, const char *argv0, int argc, c
    current output field, including any embedded nul characters.  Returns a non-negative integer on
    success, EOF on error.
  */
-int cli_write(struct cli_context *context, const unsigned char *buf, size_t len)
+int cli_write(struct cli_context *UNUSED(context), const unsigned char *buf, size_t len)
 {
 #ifdef HAVE_JNI_H
   if (context && context->jni_env) {
@@ -338,7 +338,7 @@ int cli_write(struct cli_context *context, const unsigned char *buf, size_t len)
    current output field.  The terminating null is not included.  Returns a non-negative integer on
    success, EOF on error.
  */
-int cli_puts(struct cli_context *context, const char *str)
+int cli_puts(struct cli_context *UNUSED(context), const char *str)
 {
 #ifdef HAVE_JNI_H
   if (context && context->jni_env)
@@ -351,7 +351,7 @@ int cli_puts(struct cli_context *context, const char *str)
 /* Write a formatted string to output.  If in a JNI call, then this appends the string to the
    current output field, excluding the terminating null.
  */
-void cli_printf(struct cli_context *context, const char *fmt, ...)
+void cli_printf(struct cli_context *UNUSED(context), const char *fmt, ...)
 {
   va_list ap;
 #ifdef HAVE_JNI_H
@@ -517,7 +517,7 @@ void cli_put_hexvalue(struct cli_context *context, const unsigned char *value, i
   cli_delim(context, delim);
 }
 
-void cli_row_count(struct cli_context *context, int rows){
+void cli_row_count(struct cli_context *UNUSED(context), int UNUSED(rows)){
 #ifdef HAVE_JNI_H
   if (context && context->jni_env) {
     if (context->jni_exception)
@@ -537,7 +537,7 @@ void cli_row_count(struct cli_context *context, int rows){
    JNI call, then this simply writes a newline to standard output (or the value of the
    SERVALD_OUTPUT_DELIMITER env var if set).
  */
-int cli_delim(struct cli_context *context, const char *opt)
+int cli_delim(struct cli_context *UNUSED(context), const char *opt)
 {
 #ifdef HAVE_JNI_H
   if (context && context->jni_env)
@@ -552,7 +552,7 @@ int cli_delim(struct cli_context *context, const char *opt)
 
 /* Flush the output fields if they are being written to standard output.
  */
-void cli_flush(struct cli_context *context)
+void cli_flush(struct cli_context *UNUSED(context))
 {
 #ifdef HAVE_JNI_H
   if (context && context->jni_env)
