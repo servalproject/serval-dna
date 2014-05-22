@@ -229,11 +229,13 @@ static size_t msp_handler(MSP_SOCKET sock, msp_state_t state, const uint8_t *pay
       conn->alarm_out.poll.revents=POLLOUT;
       conn->alarm_out.function(&conn->alarm_out);
     }
-    if (conn->out->capacity < len + conn->out->limit)
-      return 0;
+    if (len > conn->out->capacity - conn->out->limit)
+      len = conn->out->capacity - conn->out->limit;
     
-    bcopy(payload, &conn->out->bytes[conn->out->limit], len);
-    conn->out->limit+=len;
+    if (len){
+      bcopy(payload, &conn->out->bytes[conn->out->limit], len);
+      conn->out->limit+=len;
+    }
     conn->alarm_out.poll.events|=POLLOUT;
     watch(&conn->alarm_out);
     
@@ -246,6 +248,9 @@ static size_t msp_handler(MSP_SOCKET sock, msp_state_t state, const uint8_t *pay
     remote_shutdown(conn);
   
   conn->last_state=state;
+  
+  if (state&MSP_STATE_DATAOUT)
+    try_send(conn);
   
   if (state & MSP_STATE_CLOSED){
     struct mdp_sockaddr remote;
@@ -261,13 +266,8 @@ static size_t msp_handler(MSP_SOCKET sock, msp_state_t state, const uint8_t *pay
       // gracefully close now if we have no pending data
       free_connection(conn);
     }
-    
-    assert(len == 0);
-    return 0;
   }
   
-  if (state&MSP_STATE_DATAOUT)
-    try_send(conn);
   return len;
 }
 
