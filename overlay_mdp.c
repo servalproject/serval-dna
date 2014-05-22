@@ -1355,11 +1355,18 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
   
   // assign the next available port number
   if (header->local.port==0 && header->flags & MDP_FLAG_BIND){
-    // TODO check if the port is already bound
+    again:
+    
     if (next_port_binding > 32*1024)
       next_port_binding=256;
     else
       next_port_binding++;
+    
+    unsigned i;
+    for(i=0;i<MDP_MAX_BINDINGS;i++) {
+      if (mdp_bindings[i].port==next_port_binding)
+	goto again;
+    }
     header->local.port=next_port_binding;
   }
   
@@ -1370,7 +1377,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
   
   // find matching binding
   {
-    int i;
+    unsigned i;
     for(i=0;i<MDP_MAX_BINDINGS;i++) {
       if ((!free_slot) && mdp_bindings[i].port==0)
 	free_slot=&mdp_bindings[i];

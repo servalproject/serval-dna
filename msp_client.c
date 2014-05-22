@@ -275,6 +275,8 @@ static size_t call_handler(struct msp_sock *sock, const uint8_t *payload, size_t
   size_t nconsumed = len;
   time_ms_t now = gettime_ms();
   if (sock->handler && (len || sock->last_state != sock->state || now - sock->last_handler > HANDLER_KEEPALIVE)) {
+    // remember what we are about to call, rather than what we just called
+    // we don't want to miss a state change due to re-entrancy.
     sock->last_state = sock->state;
     sock->last_handler = now;
     nconsumed = sock->handler(sock_to_handle(sock), sock->state, payload, len, sock->context);
@@ -711,6 +713,28 @@ static int process_sock(struct msp_sock *sock)
   return 0;
 }
 
+static void msp_release(struct msp_sock *sock){
+  if (!sock->header.local.port)
+    return;
+  
+  // release mdp port binding when there are no other sockets using it.
+  struct msp_sock *o = root;
+  while(o){
+    if (o!=sock && o->mdp_sock == sock->mdp_sock && o->header.local.port == sock->header.local.port)
+      return;
+    o=o->_next;
+  }
+  
+  struct mdp_header header;
+  bzero(&header, sizeof header);
+  
+  header.local = sock->header.local;
+  header.flags = MDP_FLAG_CLOSE;
+  if (config.debug.msp)
+    DEBUGF("Releasing mdp port binding %d", header.local.port);
+  mdp_send(sock->mdp_sock, &header, NULL, 0);
+}
+
 int msp_processing(time_ms_t *next_action)
 {
   time_ms_t next=TIME_MS_NEVER_WILL;
@@ -722,6 +746,7 @@ int msp_processing(time_ms_t *next_action)
     
     if (sock->state & MSP_STATE_CLOSED){
       struct msp_sock *s = sock->_next;
+      msp_release(sock);
       msp_free(sock);
       sock=s;
     }else{
