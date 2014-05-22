@@ -955,7 +955,7 @@ _tfw_assert_stdxxx_is() {
       _tfw_error "incorrect arguments"
       return $?
    fi
-   [ -r "$_tfw_process_tmp/$qual" ] || fail "no $qual"
+   [ -r "$_tfw_process_tmp/$qual" ] || fail "no $qual" || return $?
    _tfw_get_content "$_tfw_process_tmp/$qual" || return $?
    local message="${_tfw_message:-${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$qual of ($executed) is $(shellarg "$@")}"
    echo -n "$@" >"$_tfw_process_tmp/stdxxx_is.tmp"
@@ -977,7 +977,7 @@ _tfw_assert_stdxxx_linecount() {
       _tfw_error "incorrect arguments"
       return $?
    fi
-   [ -r "$_tfw_process_tmp/$qual" ] || fail "no $qual"
+   [ -r "$_tfw_process_tmp/$qual" ] || fail "no $qual" || return $?
    local lineCount=$(( $(cat "$_tfw_process_tmp/$qual" | wc -l) + 0 ))
    [ -z "$_tfw_message" ] && _tfw_message="$qual line count ($lineCount) $*"
    _tfw_assertExpr "$lineCount" "$@" || _tfw_failexit || return $?
@@ -994,7 +994,7 @@ _tfw_assert_stdxxx_grep() {
       _tfw_error "incorrect arguments"
       return $?
    fi
-   [ -r "$_tfw_process_tmp/$qual" ] || fail "no $qual"
+   [ -r "$_tfw_process_tmp/$qual" ] || fail "no $qual" || return $?
    _tfw_get_content "$_tfw_process_tmp/$qual" || return $?
    _tfw_assert_grep "${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$qual of ($executed)" "$_tfw_process_tmp/content" "$@"
 }
@@ -1665,7 +1665,7 @@ wait_until() {
       tfw_run "$@" && break
       if ! kill -0 $timeout_pid 2>/dev/null; then
          local end=$SECONDS
-         fail "timeout after $((end - start)) seconds"
+         fail "timeout after $((end - start)) seconds" || return $?
       fi
       sleep ${_tfw_opt_sleep:-1}
    done
