@@ -6,6 +6,7 @@ include $(LOCAL_PATH)/sourcefiles.mk
 SERVALD_SRC_FILES = \
     $(SQLITE3_SOURCES) \
     $(SERVAL_CLIENT_SOURCES) \
+    $(MDP_CLIENT_SOURCES) \
     $(SERVAL_DAEMON_SOURCES) \
     $(ANDROIDONLY_SOURCES)
 NACL_BASE = nacl/src

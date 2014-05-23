@@ -22,7 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <assert.h>
 #include <libgen.h>
 
-#include "serval.h"
+#include "instance.h"
 #include "str.h"
 #include "conf.h"
 #include "log.h"

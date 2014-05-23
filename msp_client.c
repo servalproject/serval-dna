@@ -19,10 +19,11 @@
 
 #include <assert.h>
 #include <inttypes.h>
-#include "serval.h"
+#include "serval_types.h"
 #include "conf.h"
 #include "mdp_client.h"
 #include "msp_client.h"
+#include "mem.h"
 #include "str.h"
 #include "dataformats.h"
 #include "socket.h"

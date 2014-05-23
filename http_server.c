@@ -20,9 +20,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <assert.h>
 #include <inttypes.h>
 #include <time.h>
-#include "serval.h"
-#include "conf.h"
+#include "serval_types.h"
 #include "http_server.h"
+#include "sighandlers.h"
+#include "conf.h"
 #include "log.h"
 #include "str.h"
 #include "strbuf.h"

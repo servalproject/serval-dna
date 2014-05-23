@@ -51,13 +51,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <signal.h>
-#include "serval.h"
+#include "sighandlers.h"
 #include "conf.h"
 #include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
-#include "overlay_address.h"
 #include "dataformats.h"
+#include "overlay_address.h"
+#include "serval.h"
 
 /*
   The challenge with making an interface for calling an external program to 

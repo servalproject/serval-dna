@@ -46,6 +46,7 @@
   POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <inttypes.h> // for PRIu64 on Android
 #include "fdqueue.h"
 #include "conf.h"
 

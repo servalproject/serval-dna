@@ -54,11 +54,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <errno.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif
-#include <string.h>
-#include <signal.h>
 #include <sys/types.h>
 
 #ifdef WIN32
@@ -98,17 +93,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #   endif
 #endif //!WIN32
 
-#if !defined(FORASTERISK) && !defined(s_addr)
-#ifdef HAVE_ARPA_INET_H
-#include <arpa/inet.h>
-#else
-typedef uint32_t in_addr_t;
-struct in_addr {
-   in_addr_t s_addr;
-};
-#endif
-#endif
-
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
 #endif
@@ -133,6 +117,8 @@ struct in_addr {
 #include <fcntl.h>
 #include <sys/stat.h>
 
+#include "serval_types.h"
+#include "sighandlers.h"
 #include "instance.h"
 #include "fdqueue.h"
 #include "cli.h"
@@ -142,10 +128,6 @@ struct in_addr {
 #include "log.h"
 #include "net.h"
 #include "os.h"
-
-/* UDP Port numbers for various Serval services.
- The overlay mesh works over DNA */
-#define PORT_DNA 4110
 
 #define BATCH 1
 #define NONBATCH 0
@@ -170,31 +152,6 @@ struct in_addr {
 
 extern const char version_servald[];
 extern const char copyright_servald[];
-
-/* Fundamental types.
- */
-
-typedef struct sid_binary {
-    unsigned char binary[SID_SIZE];
-} sid_t;
-
-#define SID_ANY         ((sid_t){{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}})
-#define SID_BROADCAST   ((sid_t){{0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff}})
-
-// is the SID entirely 0xFF?
-#define is_sid_t_broadcast(SID) is_all_matching((SID).binary, sizeof (*(sid_t*)0).binary, 0xFF)
-
-// is the SID entirely 0x00?
-#define is_sid_t_any(SID) is_all_matching((SID).binary, sizeof (*(sid_t*)0).binary, 0)
-
-#define alloca_tohex_sid_t(sid)         alloca_tohex((sid).binary, sizeof (*(sid_t*)0).binary)
-#define alloca_tohex_sid_t_trunc(sid,strlen)  tohex((char *)alloca((strlen)+1), (strlen), (sid).binary)
-
-int cmp_sid_t(const sid_t *a, const sid_t *b);
-int str_to_sid_t(sid_t *sid, const char *hex);
-int strn_to_sid_t(sid_t *sid, const char *hex, size_t hexlen, const char **endp);
-
-#define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
 
 struct cli_parsed;
 
@@ -277,10 +234,6 @@ int rhizome_opendb();
 
 int parseCommandLine(struct cli_context *context, const char *argv0, int argc, const char *const *argv);
 
-typedef uint32_t mdp_port_t;
-#define PRImdp_port_t "#010" PRIx32
-
-
 /* Server-side MDP functions */
 void mdp_init_response(const struct internal_mdp_header *in, struct internal_mdp_header *out);
 void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port);
@@ -344,12 +297,6 @@ int dna_helper_start();
 int dna_helper_shutdown();
 int dna_helper_enqueue(struct subscriber *source, mdp_port_t source_port, const char *did);
 int parseDnaReply(const char *buf, size_t len, char *token, char *did, char *name, char *uri, const char **bufp);
-extern int sigPipeFlag;
-extern int sigIoFlag;
-extern int sigIntFlag;
-void sigPipeHandler(int signal);
-void sigIoHandler(int signal);
-void sigIntHandler(int signal);
 
 int overlay_mdp_setup_sockets();
 

@@ -1,4 +1,5 @@
 /* 
+ Interactive console primitives
  Copyright (C) 2014 Serval Project Inc.
  
  This program is free software; you can redistribute it and/or
@@ -16,10 +17,15 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#ifndef __SERVAL_DNA__CONSOLE_H
+#define __SERVAL_DNA__CONSOLE_H
+
+#include "cli.h"
+
 struct command_state;
 struct command_state *command_register(struct cli_schema *commands, int fd);
 uint8_t is_command_closed(struct command_state *state);
 void command_close(struct command_state *state);
 void command_free(struct command_state *state);
 
-
+#endif // __SERVAL_DNA__CONSOLE_H

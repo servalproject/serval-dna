@@ -46,8 +46,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
   POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <inttypes.h> // for PRIu64 on Android
 #include "fdqueue.h"
 #include "conf.h"
+#include "net.h"
 #include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"

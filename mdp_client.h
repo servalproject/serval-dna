@@ -19,6 +19,10 @@
 #ifndef __SERVAL_DNA__MDP_CLIENT_H
 #define __SERVAL_DNA__MDP_CLIENT_H
 
+#include "constants.h"
+#include "serval_types.h"
+#include "os.h"
+#include "net.h"
 #include "log.h"
 
 // define 3rd party mdp API without any structure padding

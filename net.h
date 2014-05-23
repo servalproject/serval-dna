@@ -24,7 +24,18 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h> // for struct in_addr
 #endif
+
+#if !defined(FORASTERISK) && !defined(s_addr)
+#ifdef HAVE_ARPA_INET_H
 #include <arpa/inet.h> // for in_addr_t
+#else
+typedef uint32_t in_addr_t;
+struct in_addr {
+   in_addr_t s_addr;
+};
+#endif
+#endif
+
 #include "log.h" // for __WHENCE__ and struct __sourceloc
 
 /* Build a struct in_addr from a host-byte-order integer.

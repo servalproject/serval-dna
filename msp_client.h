@@ -20,7 +20,7 @@
 #ifndef __SERVAL_DNA__MSP_CLIENT_H
 #define __SERVAL_DNA__MSP_CLIENT_H
 
-#include "constants.h"
+#include "constants.h" // for MDP_MTU
 
 #ifndef __MSP_CLIENT_INLINE
 # if __GNUC__ && !__GNUC_STDC_INLINE__

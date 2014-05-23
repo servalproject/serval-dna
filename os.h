@@ -20,11 +20,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__OS_H
 #define __SERVAL_DNA__OS_H
 
-#include <stdio.h>
+#include <sys/types.h> // for off64_t
+#include <stdio.h> // for NULL
 #include <stdlib.h>
-#include <stdint.h>
-#include <unistd.h>
-#include <sys/types.h>
+#include <stdint.h> // for int64_t
+#include <unistd.h> // for lseek()
+#ifdef HAVE_STRINGS_H
+#include <strings.h> // for bcopy()
+#endif
+#include <string.h> // for memcmp()
 #include "log.h"
 
 #ifndef __SERVAL_DNA__OS_INLINE

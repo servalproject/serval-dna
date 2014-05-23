@@ -17,7 +17,9 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
-#include "serval.h"
+#include <inttypes.h> // for PRIx64 on Android
+#include "serval_types.h"
+#include "instance.h"
 #include "overlay_address.h"
 #include "overlay_packet.h"
 #include "constants.h"

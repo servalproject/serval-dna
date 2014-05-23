@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <signal.h>
 #include <time.h>
+#include <sys/time.h>
 
 #include "mem.h"
 #include "socket.h"
@@ -108,81 +109,9 @@ struct command_state *stdin_state;
 struct network *networks=NULL;
 static void unicast_alarm(struct sched_ent *alarm);
 
-const struct __sourceloc __whence = __NOWHERE__;
-
-static const char *_trimbuildpath(const char *path)
-{
-  /* Remove common path prefix */
-  int lastsep = 0;
-  int i;
-  for (i = 0; __FILE__[i] && path[i]; ++i) {
-    if (i && path[i - 1] == '/')
-      lastsep = i;
-    if (__FILE__[i] != path[i])
-      break;
-  }
-  return &path[lastsep];
-}
-
 void cf_on_config_change()
 {
 }
-
-void logMessage(int level, struct __sourceloc whence, const char *fmt, ...)
-{
-  const char *levelstr = "UNKWN:";
-  switch (level) {
-  case LOG_LEVEL_FATAL:
-    levelstr = "FATAL:";
-    break;
-  case LOG_LEVEL_ERROR:
-    levelstr = "ERROR:";
-    break;
-  case LOG_LEVEL_INFO:
-    levelstr = "INFO:";
-    break;
-  case LOG_LEVEL_WARN:
-    levelstr = "WARN:";
-    break;
-  case LOG_LEVEL_DEBUG:
-    levelstr = "DEBUG:";
-    break;
-  }
-  
-  struct timeval tv;
-  struct tm tm;
-  gettimeofday(&tv, NULL);
-  localtime_r(&tv.tv_sec, &tm);
-  char buf[50];
-  strftime(buf, sizeof buf, "%T", &tm);
-  fprintf(stderr, "%s.%03u ", buf, (unsigned int)tv.tv_usec / 1000);
-  
-  fprintf(stderr, "%s ", levelstr);
-  if (whence.file) {
-    fprintf(stderr, "%s", _trimbuildpath(whence.file));
-    if (whence.line)
-      fprintf(stderr, ":%u", whence.line);
-    if (whence.function)
-      fprintf(stderr, ":%s()", whence.function);
-    fputc(' ', stderr);
-  } else if (whence.function) {
-    fprintf(stderr, "%s() ", whence.function);
-  }
-  va_list ap;
-  va_start(ap, fmt);
-  vfprintf(stderr, fmt, ap);
-  va_end(ap);
-  fputc('\n', stderr);
-}
-
-void logFlush()
-{
-}
-void logConfigChanged()
-{
-}
-
-int serverMode=0;
 
 static void recv_packet(int fd, struct network *network, struct peer *destination)
 {

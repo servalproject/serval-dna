@@ -20,7 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __MESHMS_INLINE
 #include <assert.h>
 #include "serval.h"
-#include "rhizome.h"
+#include "rhizome_types.h"
 #include "meshms.h"
 #include "log.h"
 #include "conf.h"

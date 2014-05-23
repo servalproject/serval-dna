@@ -36,7 +36,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <dirent.h>
 #include <assert.h>
 
-#define __SERVAL_LOG_INLINE
+#include "serval.h"
 #include "log.h"
 #include "net.h"
 #include "os.h"
@@ -47,7 +47,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "xprintf.h"
 
 int serverMode = 0;
-const struct __sourceloc __whence = __NOWHERE__;
 
 #define NO_FILE ((FILE *)1)
 

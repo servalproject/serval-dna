@@ -19,6 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <assert.h>
 #include "constants.h"
+#include "net.h"
+#include "mem.h"
 #include "log.h"
 #include "conf.h"
 

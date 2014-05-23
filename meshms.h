@@ -28,7 +28,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 # endif
 #endif
 
-#include "serval.h"
 #include "rhizome.h"
 
 #define MESHMS_MESSAGE_MAX_LEN  4095

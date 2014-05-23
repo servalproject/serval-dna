@@ -29,9 +29,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <errno.h>
 #include <time.h>
 #include <sys/time.h>
-#include <strings.h>
-#include <string.h>
 #include <unistd.h>
+#include "os.h"
 
 #define PACKET_SIZE 255
 int chars_per_ms=1;
@@ -128,25 +127,6 @@ int processCommand(struct radio_state *s)
   }
   append_bytes(s, "ERROR\r", -1);
   return 1;
-}
-
-int dump(char *name, unsigned char *addr, size_t len)
-{
-  unsigned i,j;
-  if (name)
-    fprintf(stderr,"Dump of %s\n",name);
-  for(i=0;i<len;i+=16){
-    fprintf(stderr,"  %04x :",i);
-    for(j=0;j<16&&(i+j)<len;j++) 
-      fprintf(stderr," %02x",addr[i+j]);
-    for(;j<16;j++) 
-      fprintf(stderr,"   ");
-    fprintf(stderr,"    ");
-    for(j=0;j<16&&(i+j)<len;j++)
-      fprintf(stderr,"%c",addr[i+j]>=' '&&addr[i+j]<0x7f?addr[i+j]:'.');
-    fprintf(stderr,"\n");
-  }
-  return 0;
 }
 
 static void store_char(struct radio_state *s, unsigned char c)

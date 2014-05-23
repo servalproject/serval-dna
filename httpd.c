@@ -17,11 +17,14 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <sys/ioctl.h>
 #include "serval.h"
-#include "conf.h"
 #include "httpd.h"
+#include "conf.h"
 #include "overlay_address.h"
 #include "overlay_interface.h"
+#include "mem.h"
+#include "net.h"
 
 #define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
 

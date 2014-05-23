@@ -51,9 +51,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <math.h>
 #include <string.h>
 #include <ctype.h>
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif
 #include <time.h>
 #include <unistd.h>
 #include <stdarg.h>
@@ -70,6 +67,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "str.h"
+#include "os.h"
 #include "mdp_client.h"
 #include "cli.h"
 #include "overlay_address.h"

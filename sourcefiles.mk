@@ -1,20 +1,26 @@
 # The "client" source files do not depend on "serval.h" or "rhizome.h", ie,
 # they can be linked into executables other than servald.
 SERVAL_CLIENT_SOURCES = \
+	cli.c \
         conf.c \
         conf_om.c \
         conf_parse.c \
         conf_schema.c \
+	console.c \
 	dataformats.c \
+	fdqueue.c \
 	fifo.c \
         instance.c \
-	log.c \
+	limit.c \
+	logMessage.c \
 	log_util.c \
 	mem.c \
 	net.c \
 	os.c \
+	performance_timing.c \
 	randombytes.c \
 	rotbuf.c \
+	sighandlers.c \
 	socket.c \
 	srandomdev.c \
 	strbuf.c \
@@ -22,7 +28,13 @@ SERVAL_CLIENT_SOURCES = \
 	str.c \
 	strlcpy.c \
 	uuid.c \
+	whence.c \
         xprintf.c
+
+# These objects do not belong in the Serval DNA daemon but are available for
+# client applications.
+SERVAL_LIB_SOURCES = \
+	log_stderr.c
 
 # These source files are imported and do not depend on any local header files.
 # They also take a long time to compile, so their dependencies should be as
@@ -33,26 +45,21 @@ SQLITE3_SOURCES = \
 
 # The source files for building the Serval DNA daemon.
 SERVAL_DAEMON_SOURCES = \
-	cli.c \
 	commandline.c \
-	console.c \
 	crypto.c \
 	directory_client.c \
 	dna_helper.c \
 	encode.c \
-	fdqueue.c \
 	golay.c \
 	httpd.c \
 	http_server.c \
 	keyring.c \
+	log.c \
 	lsif.c \
-	limit.c \
 	main.c \
 	radio_link.c \
 	meshms.c \
 	meshms_restful.c \
-	mdp_client.c \
-	mdp_net.c \
 	msp_client.c \
 	msp_proxy.c \
 	monitor.c \
@@ -72,7 +79,6 @@ SERVAL_DAEMON_SOURCES = \
 	overlay_olsr.c \
 	overlay_packetformats.c \
 	overlay_payload.c \
-	performance_timing.c \
 	route_link.c \
 	rhizome.c \
 	rhizome_bundle.c \
@@ -89,17 +95,20 @@ SERVAL_DAEMON_SOURCES = \
 	serval_packetvisualise.c \
 	server.c \
 	sha2.c \
-	sighandlers.c \
 	vomp.c \
 	vomp_console.c \
         fec-3.0.1/ccsds_tables.c \
 	fec-3.0.1/decode_rs_8.c \
 	fec-3.0.1/encode_rs_8.c \
 	fec-3.0.1/init_rs_char.c \
-	context1.c 
+	context1.c
 
-SIMULATOR_SOURCES = cli.c conf.c conf_om.c conf_parse.c conf_schema.c \
-	console.c simulator.c socket.c fdqueue.c performance_timing.c \
-	str.c os.c mem.c net.c log_util.c strbuf.c strbuf_helpers.c \
-	dataformats.c xprintf.c instance.c limit.c version.c
+MDP_CLIENT_SOURCES = \
+	mdp_client.c \
+        mdp_net.c
 
+SIMULATOR_SOURCES = \
+        simulator.c
+
+MONITOR_CLIENT_SRCS = \
+	monitor-client.c

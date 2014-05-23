@@ -10,26 +10,25 @@ include $(NACL_BASE)/nacl.mk
 include sourcefiles.mk
 include headerfiles.mk
 
-SERVALD_SRCS = \
-        $(SQLITE3_SOURCES) \
-        $(NACL_SOURCES) \
-        $(SERVAL_CLIENT_SOURCES) \
-        $(SERVAL_DAEMON_SOURCES)
+SERVAL_DAEMON_OBJS = \
+        $(addprefix objs_servald/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
+        $(addprefix objs_servald/, $(MDP_CLIENT_SOURCES:.c=.o)) \
+	$(addprefix objs_servald/, $(SERVAL_DAEMON_SOURCES:.c=.o))
+SERVALD_OBJS = \
+	$(addprefix objs_servald/, $(notdir $(SQLITE3_SOURCES:.c=.o))) \
+        $(addprefix objs_servald/, $(NACL_SOURCES:.c=.o)) \
+        $(SERVAL_DAEMON_OBJS)
+LIB_SERVAL_OBJS = \
+        $(addprefix objs_lib/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
+        $(addprefix objs_lib/, $(SERVAL_LIB_SOURCES:.c=.o)) \
+        $(addprefix objs_lib/, $(MDP_CLIENT_SOURCES:.c=.o))
 
-MONITOR_CLIENT_SRCS = \
-        $(SERVAL_CLIENT_SOURCES) \
-	monitor-client.c
+MONITOR_CLIENT_OBJS = \
+        $(addprefix objs_lib/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
+        $(addprefix objs_lib/, $(MONITOR_CLIENT_SRCS:.c=.o))
 
-MDP_CLIENT_SRCS = \
-        $(SERVAL_CLIENT_SOURCES) \
-	mdp_client.c \
-        mdp_net.c
-
-SERVALD_OBJS=	        $(SERVALD_SRCS:.c=.o)
-SERVAL_DAEMON_OBJS=	$(SERVAL_DAEMON_SOURCES:.c=.o)
-MONITOR_CLIENT_OBJS=	$(MONITOR_CLIENT_SRCS:.c=.o)
-MDP_CLIENT_OBJS=	$(MDP_CLIENT_SRCS:.c=.o)
-SIMULATOR_OBJS=		$(SIMULATOR_SOURCES:.c=.o)
+SIMULATOR_OBJS = \
+        $(addprefix objs/, $(SIMULATOR_SOURCES:.c=.o))
 
 LDFLAGS=@LDFLAGS@ @LIBS@ @PTHREAD_LIBS@
 
@@ -61,54 +60,75 @@ all:	servald libmonitorclient.so libmonitorclient.a test
 
 test:   tfw_createfile directory_service fakeradio config_test simulator
 
-sqlite-amalgamation-3070900/sqlite3.o:	sqlite-amalgamation-3070900/sqlite3.c
-	@echo CC $<
-	@$(CC) $(CFLAGS) $(DEFS) -c $< -o sqlite-amalgamation-3070900/sqlite3.o
-
-version.o: $(SERVALD_OBJS) version_string.sh $(wildcard VERSION.txt) COPYRIGHT.txt Makefile
-	@echo CC version_servald.c
-	@V=`./version_string.sh --ignore-untracked` \
-	 && C="`sed -e :a -e N -e '$$!ba' -e 's/[\\\\"]/\\\\&/g' -e 's/\\n/\\\\n/g' COPYRIGHT.txt`" \
-	 && $(CC) -c version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\"" -DSERVALD_COPYRIGHT="\"$$C\""
-
 Makefile: $(wildcard Makefile.in) $(wildcard configure)
 	$(warning Makefile may be out of date, please run ./configure)
 
 configure: $(wildcard configure.in)
 	$(warning configure may be out of date, please run autoreconf -f -i)
 
-%.o:	%.c
+objs/version.o: $(SERVALD_OBJS) version_string.sh $(wildcard VERSION.txt) COPYRIGHT.txt Makefile
+	@echo CC version_servald.c
+	@V=`./version_string.sh --ignore-untracked` \
+	 && C="`sed -e :a -e N -e '$$!ba' -e 's/[\\\\"]/\\\\&/g' -e 's/\\n/\\\\n/g' COPYRIGHT.txt`" \
+	 && $(CC) -c version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\"" -DSERVALD_COPYRIGHT="\"$$C\""
+
+#' <-- fixes vim syntax highlighting
+
+objs_servald/sqlite3.o: sqlite-amalgamation-3070900/sqlite3.c
+	@echo SERVALD CC $<
+	@mkdir -p $(dir $@)
+	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
+
+# No object files in source directory!
+%.o: %.c
+
+objs/%.o: %.c
 	@echo CC $<
+	@mkdir -p $(dir $@)
+	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
+
+objs_servald/%.o: %.c
+	@echo SERVALD CC $<
+	@mkdir -p $(dir $@)
+	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
+
+objs_lib/%.o: %.c
+	@echo LIB CC $<
+	@mkdir -p $(dir $@)
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
 
 $(SERVAL_DAEMON_OBJS): $(HDRS)
+$(LIB_SERVAL_OBJS): $(HDRS)
 $(MONITOR_CLIENT_OBJS): $(HDRS)
-$(MDP_CLIENT_OBJS): $(HDRS)
 $(SIMULATOR_OBJS): $(HDRS)
 
-servald:	$(SERVALD_OBJS) version.o
+servald: $(SERVALD_OBJS) objs/version.o
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ $(SERVALD_OBJS) version.o $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wall -o $@ $(SERVALD_OBJS) objs/version.o $(LDFLAGS)
 
-directory_service: $(MDP_CLIENT_OBJS) version.o directory_service.o
-	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ $(MDP_CLIENT_OBJS) version.o directory_service.o $(LDFLAGS)
+libserval.a: $(LIB_SERVAL_OBJS) objs/version.o
+	@echo AR $@
+	@$(AR) -cr $@ $(LIB_SERVAL_OBJS) objs/version.o
 
-tfw_createfile: tfw_createfile.o str.o strbuf.o strbuf_helpers.o
+directory_service: objs/directory_service.o libserval.a
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ tfw_createfile.o str.o strbuf.o strbuf_helpers.o
+	@$(CC) $(CFLAGS) -Wall -o $@ objs/directory_service.o libserval.a $(LDFLAGS)
 
-fakeradio: fakeradio.o
+tfw_createfile: objs/tfw_createfile.o libserval.a
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ fakeradio.o
+	@$(CC) $(CFLAGS) -Wall -o $@ objs/tfw_createfile.o libserval.a $(LDFLAGS)
 
-simulator: $(SIMULATOR_OBJS)
+fakeradio: objs/fakeradio.o libserval.a
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ $(SIMULATOR_OBJS) $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wall -o $@ objs/fakeradio.o libserval.a $(LDFLAGS)
 
-config_test: config_test.o conf_om.o conf_schema.o conf_parse.o str.o strbuf.o strbuf_helpers.o mem.o dataformats.o net.o log_util.o
+simulator: $(SIMULATOR_OBJS) libserval.a
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ config_test.o conf_om.o conf_schema.o conf_parse.o str.o strbuf.o strbuf_helpers.o mem.o dataformats.o net.o log_util.o $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wall -o $@ $(SIMULATOR_OBJS) libserval.a $(LDFLAGS)
+
+config_test: objs/config_test.o objs/conf_om.o objs/conf_schema.o objs/conf_parse.o libserval.a
+	@echo LINK $@
+	@$(CC) $(CFLAGS) -Wall -o $@ objs/config_test.o objs/conf_om.o objs/conf_schema.o objs/conf_parse.o libserval.a $(LDFLAGS)
 
 copyright:
 	@if [ -x "$(COPYRIGHT_TOOL)" ]; then \
@@ -123,17 +143,17 @@ COPYRIGHT_TOOL := $(call findPATH,sp-copyright-tool)
 
 # This does not build on 64 bit elf platforms as NaCL isn't built with -fPIC
 # DOC 20120615
-libserval.so: $(SERVALD_OBJS) version.o
+libserval.so: $(SERVALD_OBJS) objs/version.o
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(SERVALD_OBJS) version.o $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(SERVALD_OBJS) objs/version.o $(LDFLAGS)
 
-libmonitorclient.so: $(MONITOR_CLIENT_OBJS) version.o
+libmonitorclient.so: $(MONITOR_CLIENT_OBJS) objs/version.o
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(MONITOR_CLIENT_OBJS) version.o $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(MONITOR_CLIENT_OBJS) objs/version.o $(LDFLAGS)
 
-libmonitorclient.a: $(MONITOR_CLIENT_OBJS) version.o
+libmonitorclient.a: $(MONITOR_CLIENT_OBJS) objs/version.o
 	@echo AR $@
-	@$(AR) -cr $@ $(MONITOR_CLIENT_OBJS) version.o
+	@$(AR) -cr $@ $(MONITOR_CLIENT_OBJS) objs/version.o
 
 install: servald
 	$(INSTALL_PROGRAM) -D servald $(DESTDIR)$(sbindir)/servald
@@ -142,8 +162,8 @@ uninstall:
 	$(RM) $(DESTDIR)$(sbindir)/servald
 
 clean:
-	@$(RM) $(SERVALD_OBJS) $(MONITOR_CLIENT_OBJS) $(MDP_CLIENT_OBJS) \
-	  tfw_createfile.o version.o \
-	  fakeradio.o fakeradio \
-	  tfw_createfile servald \
-	  libservald.so libmonitorclient.so libmonitorclient.a
+	@$(RM) -r objs/* objs_servald/* objs_lib/* \
+          servald libservald.so \
+          libserval.a libmonitorclient.so libmonitorclient.a \
+	  fakeradio \
+	  tfw_createfile

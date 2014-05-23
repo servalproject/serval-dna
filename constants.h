@@ -32,12 +32,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #  define UNUSED(x) x
 #endif
 
-#define SID_SIZE 32 // == crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
-#define SAS_SIZE 32 // == crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
-#define DID_MINSIZE 5
-#define DID_MAXSIZE 32
-
-#define SID_STRLEN (SID_SIZE*2)
+// UDP Port numbers for various Serval services.
+#define PORT_DNA 4110
 
 #define OVERLAY_MAX_INTERFACES 16
 
@@ -190,8 +186,5 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define UNLOCK_REQUEST (0xF0)
 #define UNLOCK_CHALLENGE (0xF1)
 #define UNLOCK_RESPONSE (0xF2)
-
-// should there be a types.h to hold this?
-typedef char bool_t;
 
 #endif // __SERVAL_DNA__CONSTANTS_H

@@ -9,6 +9,7 @@ HDRS=	fifo.h \
 	httpd.h \
 	instance.h \
 	meshms.h \
+	serval_types.h \
 	serval.h \
 	keyring.h \
 	socket.h \
@@ -18,6 +19,7 @@ HDRS=	fifo.h \
 	mem.h \
 	os.h \
 	uuid.h \
+	sighandlers.h \
 	strbuf.h \
 	strbuf_helpers.h \
 	sha2.h \

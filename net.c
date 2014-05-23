@@ -24,7 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/socket.h>
 #include <time.h>
 
-#include "serval.h"
+#include "serval_types.h"
 #include "conf.h"
 #include "net.h"
 #include "socket.h"

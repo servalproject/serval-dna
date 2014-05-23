@@ -229,9 +229,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <arpa/inet.h>
 
 #include "constants.h"
+#include "serval_types.h"
+#include "rhizome_types.h"
 #include "strbuf.h"
-#include "serval.h"
-#include "rhizome.h"
 #include "httpd.h"
 
 #define CONFIG_FILE_MAX_SIZE        (32 * 1024)

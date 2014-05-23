@@ -21,7 +21,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/stat.h>
 #include <ctype.h>
 #include <time.h>
+#include <inttypes.h> // for PRIu64 on Android
 #include "conf.h"
+#include "instance.h"
 #include "log.h"
 #include "str.h"
 #include "mem.h"

@@ -21,10 +21,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <errno.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif
-#include <string.h>
 #include <signal.h>
 #include <sys/types.h>
 

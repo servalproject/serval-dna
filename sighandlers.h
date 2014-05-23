@@ -1,7 +1,6 @@
 /*
 Serval DNA signal handlers
 Copyright (C) 2014 Serval Project Inc.
-Copyright (C) 2012 Paul Gardner-Stephen
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -18,26 +17,15 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "constants.h"
-#include "sighandlers.h"
+#ifndef __SERVAL_DNA__SIGHANDLERS_H
+#define __SERVAL_DNA__SIGHANDLERS_H
 
-int sigPipeFlag=0;
-int sigIoFlag=0;
-int sigIntFlag=0;
+extern int sigPipeFlag;
+extern int sigIoFlag;
+extern int sigIntFlag;
 
-void sigPipeHandler(int UNUSED(signal))
-{
-  sigPipeFlag++;
-  return;
-}
+void sigPipeHandler(int signal);
+void sigIoHandler(int signal);
+void sigIntHandler(int signal);
 
-void sigIoHandler(int UNUSED(signal))
-{  
-  sigIoFlag++;
-  return;
-}
-
-void sigIntHandler(int UNUSED(signal))
-{
-  sigIntFlag++;
-}
+#endif // __SERVAL_DNA__SIGHANDLERS_H

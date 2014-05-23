@@ -21,8 +21,7 @@
 #define __SERVAL_DNA__OVERLAY_PACKET_H
 
 #include "overlay_address.h"
-#include "serval.h"
-#include "conf.h"
+#include "serval_types.h"
 
 #define FRAME_NOT_SENT -1
 #define FRAME_DONT_SEND -2

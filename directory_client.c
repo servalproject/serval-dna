@@ -30,13 +30,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  
  */
 
-#include "serval.h"
+#include "serval_types.h"
+#include "cli.h"
 #include "str.h"
 #include "overlay_address.h"
 #include "overlay_packet.h"
 #include "overlay_buffer.h"
 #include "conf.h"
 #include "keyring.h"
+#include "serval.h" // for overlay_send_frame()
 
 struct subscriber *directory_service;
 
