@@ -1345,8 +1345,8 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
     // find the matching sid from our keyring
     internal_header.source = find_subscriber(header->local.sid.binary, sizeof(header->local.sid), 0);
     if (!internal_header.source || internal_header.source->reachable != REACHABLE_SELF){
-      mdp_reply_error(client, header);
       WHY("Subscriber is not local");
+      mdp_reply_error(client, header);
       return;
     }
   }
@@ -1393,14 +1393,14 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
   
   if (header->flags & MDP_FLAG_BIND){
     if (binding){
-      mdp_reply_error(client, header);
       WHYF("Port %d already bound", header->local.port);
+      mdp_reply_error(client, header);
       return;
     }
     
     if (!free_slot){
-      mdp_reply_error(client, header);
       WHY("Max supported bindings reached");
+      mdp_reply_error(client, header);
       return;
     }
     
@@ -1431,11 +1431,10 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
 	if (!binding
 	  || binding->internal
 	  || cmp_sockaddr(&binding->client, client)!=0){
-	  mdp_reply_error(client, header);
 	  WHYF("Already bound by someone else? %s vs %s", 
 	    alloca_socket_address(&binding->client), 
 	    alloca_socket_address(client));
-	
+	  mdp_reply_error(client, header);
 	}
 	break;
       case MDP_IDENTITY:
@@ -1456,8 +1455,8 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
 	mdp_reply_ok(client, header);
 	break;
       default:
-	mdp_reply_error(client, header);
 	WHYF("Unknown command port %d", header->remote.port);
+	mdp_reply_error(client, header);
 	break;
     }
     
@@ -1468,8 +1467,8 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
       || !internal_header.source
       || header->local.port == 0 
       || cmp_sockaddr(&binding->client, client)!=0){
+      WHY("Can't send data packet, no matching port binding!");
       mdp_reply_error(client, header);
-      WHY("No matching binding found");
       return;
     }
     
