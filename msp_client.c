@@ -599,6 +599,18 @@ int msp_shutdown(MSP_SOCKET handle)
   return 0;
 }
 
+// test if there is already a socket being bound
+static int pending_bind(int fd)
+{
+  struct msp_sock *s = root;
+  while(s){
+    if (s->mdp_sock == fd && s->header.flags & MDP_FLAG_BIND)
+      return 1;
+    s=s->_next;
+  }
+  return 0;
+}
+
 static int process_sock(struct msp_sock *sock)
 {
   time_ms_t now = gettime_ms();
@@ -666,8 +678,8 @@ static int process_sock(struct msp_sock *sock)
   while(p){
     if (p->sent + RETRANSMIT_TIME < now){
       if (!sock->header.local.port){
-	if (sock->header.flags & MDP_FLAG_BIND)
-	  // wait until we have heard back from the daemon with our port number before sending another packet.
+	// if there's already a binding being processed, wait for it to complete
+	if (pending_bind(sock->mdp_sock))
 	  break;
 	sock->header.flags |= MDP_FLAG_BIND;
       }
@@ -720,7 +732,9 @@ static void msp_release(struct msp_sock *sock){
   // release mdp port binding when there are no other sockets using it.
   struct msp_sock *o = root;
   while(o){
-    if (o!=sock && o->mdp_sock == sock->mdp_sock && o->header.local.port == sock->header.local.port)
+    if (o!=sock 
+    && o->mdp_sock == sock->mdp_sock 
+    && o->header.local.port == sock->header.local.port)
       return;
     o=o->_next;
   }
@@ -729,10 +743,14 @@ static void msp_release(struct msp_sock *sock){
   bzero(&header, sizeof header);
   
   header.local = sock->header.local;
+  header.remote.sid = SID_ANY;
+  header.remote.port = MDP_LISTEN;
   header.flags = MDP_FLAG_CLOSE;
   if (config.debug.msp)
     DEBUGF("Releasing mdp port binding %d", header.local.port);
   mdp_send(sock->mdp_sock, &header, NULL, 0);
+  sock->header.local.port=0;
+  sock->header.local.sid=SID_ANY;
 }
 
 int msp_processing(time_ms_t *next_action)
