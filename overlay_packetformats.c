@@ -380,12 +380,6 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   if (config.debug.packetrx || interface->debug) {
     DEBUGF("Received on %s, len %d", interface->name, (int)len);
     DEBUG_packet_visualise("Received packet",packet,len);
-    if (config.debug.interactive_io) {
-      fprintf(stderr,"Press ENTER to continue..."); fflush(stderr);
-      char buffer[80];
-      if (!fgets(buffer,80,stdin))
-	FATAL_perror("calling fgets");
-    }
   }
   
   struct overlay_frame f;

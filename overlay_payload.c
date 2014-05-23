@@ -88,15 +88,6 @@ int overlay_frame_append_payload(struct decode_context *context, int encapsulati
 
   ob_checkpoint(b);
   
-  if (config.debug.packetconstruction){
-    DEBUGF( "+++++\nFrame from %s to %s of type 0x%02x %s:",
-	   alloca_tohex_sid_t(p->source->sid),
-	   alloca_tohex_sid_t(p->destination->sid),p->type,
-	   "append_payload stuffing into packet");
-    if (p->payload)
-      dump("payload contents", &p->payload->bytes[0], ob_position(p->payload));
-  }
-  
   struct broadcast *broadcast=NULL;
   if ((!p->destination) && !is_all_matching(p->broadcast_id.id,BROADCAST_LEN,0)){
     broadcast = &p->broadcast_id;

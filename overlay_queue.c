@@ -519,8 +519,6 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
   }
   
   if(packet->buffer){
-    if (config.debug.packetconstruction)
-      ob_dump(packet->buffer,"assembled packet");
       
     overlay_broadcast_ensemble(packet->destination, packet->buffer);
     ret=1;
