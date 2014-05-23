@@ -142,13 +142,13 @@ test_multiple_ids() {
    executeOk_servald mdp ping --timeout=3 $SIDB2 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
-   link_matches --broadcast $SIDB1
+   link_matches $SIDB1
    link_matches --via $SIDB1 $SIDB2
    set_instance +B
    executeOk_servald mdp ping --timeout=3 $SIDA2 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
-   link_matches --broadcast $SIDA1
+   link_matches $SIDA1
    link_matches --via $SIDA1 $SIDA2
 }
 
@@ -393,6 +393,9 @@ setup_single_filter() {
   set_instance +B
   executeOk_servald config \
       set interfaces.1.drop_broadcasts on
+  set_instance +A
+  executeOk_servald config \
+      set interfaces.1.drop_unicasts on
   foreach_instance +A +B start_servald_server
 }
 test_single_filter() {
@@ -442,6 +445,30 @@ test_prefer_unicast() {
    wait_until has_link --unicast $SIDB
    set_instance +B
    wait_until has_link --unicast $SIDA
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
+   set_instance +A
+   executeOk_servald mdp ping --timeout=3 $SIDB 1
+   tfw_cat --stdout --stderr
+}
+
+doc_prefer_broadcast="Prefer broadcast packets"
+setup_prefer_broadcast() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   foreach_instance +A +B add_servald_interface 1
+   foreach_instance +A +B \
+      executeOk_servald config \
+         set interfaces.1.prefer_unicast 0 \
+         set debug.overlayframes 1
+   foreach_instance +A +B start_servald_server
+}
+test_prefer_broadcast() {
+   set_instance +A
+   wait_until has_link --broadcast $SIDB
+   set_instance +B
+   wait_until has_link --broadcast $SIDA
    wait_until path_exists +A +B
    wait_until path_exists +B +A
    set_instance +A
