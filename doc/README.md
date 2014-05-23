@@ -9,6 +9,10 @@ DNA][] component of the [Serval mesh network][].
    persistent configuration system and its command-line API, the built-in
    system file paths, daemon instances and basic network configuration.
 
+ * [MDP Packet Filtering](./Mesh-Packet-Filtering.md) describes the
+   configuration options and rules file syntax for filtering incoming and
+   outgoing MDP packets.
+
  * [Tunnelling](./Tunnelling.md) describes how to tunnel IP over the Serval
    mesh network.
 
