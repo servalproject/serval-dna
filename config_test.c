@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/stat.h>
 
 #include "str.h"
+#define __SERVAL_LOG_INLINE
 #include "log.h"
 #include "conf.h"
 
@@ -124,7 +125,7 @@ static const char *_trimbuildpath(const char *path)
   return &path[lastsep];
 }
 
-void logMessage(int level, struct __sourceloc whence, const char *fmt, ...)
+void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list ap)
 {
   const char *levelstr = "UNKWN:";
   switch (level) {
@@ -145,9 +146,6 @@ void logMessage(int level, struct __sourceloc whence, const char *fmt, ...)
   } else if (whence.function) {
     fprintf(stderr, "%s() ", whence.function);
   }
-  va_list ap;
-  va_start(ap, fmt);
   vfprintf(stderr, fmt, ap);
-  va_end(ap);
   fputc('\n', stderr);
 }
