@@ -232,6 +232,7 @@ setup_slow_unreliable() {
       create_single_identity
       add_servald_interface
       executeOk_servald config \
+         set debug.msp on \
          set log.console.level DEBUG \
          set log.console.show_time on
    }
