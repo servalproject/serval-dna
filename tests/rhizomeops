@@ -43,7 +43,6 @@ set_rhizome_config() {
    executeOk_servald config \
       set debug.rhizome on \
       set debug.rhizome_manifest on \
-      set debug.rejecteddata on \
       set debug.verbose on \
       set log.console.level debug
 }
