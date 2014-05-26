@@ -3,6 +3,9 @@
 /win32/Release
 *.user
 *.ncb
+/objs
+/objs_lib
+/objs_servald
 *.o
 *.a
 *.suo
