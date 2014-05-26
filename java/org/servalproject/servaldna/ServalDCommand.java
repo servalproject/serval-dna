@@ -643,11 +643,11 @@ public class ServalDCommand
 	}
 
 	public static Process mspTunnnelCreate(String exec, int ip_port, int msp_port) throws IOException {
-		return new ProcessBuilder(exec, "msp", "connect", "--forward="+ip_port, Integer.toString(msp_port)).start();
+		return new ProcessBuilder(exec, "msp", "listen", "--forward="+ip_port, Integer.toString(msp_port)).start();
 	}
 
 	public static Process mspTunnnelCreate(String exec, int ip_port, String serviceName, int msp_port) throws IOException {
-		return new ProcessBuilder(exec, "msp", "connect", "--forward="+ip_port, "--service="+serviceName, Integer.toString(msp_port)).start();
+		return new ProcessBuilder(exec, "msp", "listen", "--forward="+ip_port, "--service="+serviceName, Integer.toString(msp_port)).start();
 	}
 
 	public static Process mspTunnelConnect(String exec, int ip_port, SubscriberId msp_sid, int msp_port) throws IOException {
