@@ -475,7 +475,7 @@ ATOM(short,                 type,            OVERLAY_INTERFACE_WIFI, interface_t
 SUB_STRUCT(mdp_iftype,      mdp,)
 ATOM(bool_t,                send_broadcasts, 1, boolean,, "If false, don't send any broadcast packets")
 ATOM(bool_t,                default_route,   0, boolean,, "If true, use this interface as a default route")
-ATOM(bool_t,                prefer_unicast,  0, boolean,, "If true, send unicast data as unicast IP packets if available")
+ATOM(bool_t,                prefer_unicast,  1, boolean,, "If true, send data as unicast IP packets if available")
 ATOM(bool_t,                debug,           0, boolean,, "If true, log details of every outgoing packet")
 ATOM(bool_t,                point_to_point,  0, boolean,, "If true, assume there will only be two devices on this interface")
 ATOM(bool_t,                ctsrts,          0, boolean,, "If true, enable CTS/RTS hardware handshaking")
