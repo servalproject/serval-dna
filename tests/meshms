@@ -34,7 +34,6 @@ setup_logging() {
       set debug.rhizome on \
       set debug.rhizome_manifest on \
       set debug.rhizome_store on \
-      set debug.rejecteddata on \
       set log.console.level debug \
       set log.console.show_time on
 }

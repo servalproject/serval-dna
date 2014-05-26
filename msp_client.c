@@ -782,8 +782,7 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
 {
   // any kind of error reported by the daemon, close all related msp connections on this mdp socket
   if (header->flags & MDP_FLAG_ERROR){
-    WHY("Error returned from daemon");
-    msp_close_all(mdp_sock);
+    WHY("Error returned from daemon!");
     return -1;
   }
   
@@ -853,6 +852,7 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
       uint8_t response = FLAG_STOP;
       // we don't have a matching socket, reply with STOP flag to force breaking the connection
       // TODO global rate limit?
+      // Note that we might recieve a queued packet after sending a MDP_FLAG_CLOSE, so this might trigger an error
       mdp_send(mdp_sock, header, &response, 1);
       if (config.debug.msp)
 	DEBUGF("Replying to unexpected packet with STOP packet");

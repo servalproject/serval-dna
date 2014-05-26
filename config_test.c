@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/stat.h>
 
 #include "str.h"
+#define __SERVAL_LOG_INLINE
 #include "log.h"
 #include "conf.h"
 
