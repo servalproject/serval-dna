@@ -609,7 +609,7 @@ static void _rotate_log_file(_log_iterator *it)
 
 static void _flush_log_file()
 {
-  if (_log_file && _log_file != NO_FILE) {
+  if (_log_file && _log_file != NO_FILE && strbuf_len(&_log_file_strbuf) != 0) {
     fprintf(_log_file, "%s%s%s",
 	strbuf_len(&_log_file_strbuf) ? strbuf_str(&_log_file_strbuf) : "",
 	strbuf_len(&_log_file_strbuf) ? "\n" : "",
@@ -619,8 +619,15 @@ static void _flush_log_file()
   }
 }
 
+/* Discard any unwritten log messages and close the log file immediately.  This should be called in
+ * any child process immediately after fork() to prevent any buffered log messages from being
+ * written twice into the log file.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 void close_log_file()
 {
+  strbuf_reset(&_log_file_strbuf);
   if (_log_file && _log_file != NO_FILE)
     fclose(_log_file);
   _log_file = NULL;

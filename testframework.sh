@@ -91,6 +91,11 @@ Options:
   -f -N   --filter=-N       Only execute tests with numbers <= N
   -f N-   --filter=N-       Only execute tests with numbers >= N
   -f ...  --filter=M,N,...  Only execute tests with number M or N or ...
+  -c      --coverage        Collect test coverage data
+  -cg     --geninfo         Invoke geninfo(1) to produce one coverage.info file
+                            per test case (requires at least one --gcno-dir)
+  -cd DIR --gcno-dir=DIR    Use test coverage GCNO files under DIR (overrides
+                            TFW_GCNO_PATH env var)
 "
 }
 
@@ -169,7 +174,8 @@ runTests() {
    _tfw_njobs=1
    _tfw_log_noise=true
    _tfw_assert_noise=true
-   _tfw_logdir_script="${TFW_LOGDIR:-$_tfw_cwd/testlog}/$_tfw_script_name"
+   _tfw_logdir="${TFW_LOGDIR:-$_tfw_cwd/testlog}"
+   _tfw_logdir_script="$_tfw_logdir/$_tfw_script_name"
    _tfw_list=false
    _tfw_trace=false
    _tfw_verbose=false
@@ -178,6 +184,9 @@ runTests() {
    _tfw_default_execute_timeout=60
    _tfw_default_wait_until_timeout=60
    _tfw_timeout_override=
+   _tfw_coverage=false
+   _tfw_geninfo=false
+   _tfw_gcno_path=()
    local allargs="$*"
    local -a filters=()
    local oo
@@ -219,6 +228,14 @@ runTests() {
          _tfw_is_float "${1#*=}" || _tfw_fatal "invalid option: $1"
          _tfw_timeout_override="${1#*=}"
          ;;
+      -c|--coverage) _tfw_coverage=true;;
+      -cg|--geninfo) _tfw_coverage=true; _tfw_geninfo=true;;
+      -cd) [ -n "$2" ] || _tfw_fatal "missing argument after option: $1"
+          _tfw_gcno_path+=("$2")
+          shift
+          ;;
+      -cd*) _tfw_gcno_path+=("${1#-?}");;
+      --gcno-dir=*) _tfw_gcno_path+=("${1#*=}");;
       --) shift; break;;
       -*) _tfw_fatal "unsupported option: $1";;
       *) _tfw_fatal "spurious argument: $1";;
@@ -228,6 +245,44 @@ runTests() {
    _tfw_shopt_restore oo
    if $_tfw_verbose && [ $_tfw_njobs -ne 1 ]; then
       _tfw_fatal "--verbose is incompatible with --jobs=$_tfw_njobs"
+   fi
+   # Handle --gcno-dir arguments, or if none given, $TFW_GCNO_PATH env var.
+   # Convert into a list of absolute directory paths.
+   if [ ${#_tfw_gcno_path[*]} -eq -0 ]; then
+      local oIFS="$IFS"
+      IFS=:
+      _tfw_gcno_path=($TFW_GCNO_PATH)
+      IFS="$oIFS"
+   else
+      local pathdir
+      for pathdir in "${_tfw_gcno_path[@]}"; do
+         [ -d "$pathdir" ] || _tfw_fatal "--gcno-dir: no such directory: '$pathdir'"
+      done
+   fi
+   _tfw_gcno_dirs=()
+   local pathdir
+   for pathdir in "${_tfw_gcno_path[@]}"; do
+      [ -d "$pathdir" ] && _tfw_gcno_dirs+=("$(abspath "$pathdir")")
+   done
+   # Handle --geninfo option.
+   if $_tfw_geninfo; then
+      if [ ${#_tfw_gcno_dirs[*]} -eq 0 ]; then
+         _tfw_fatal "--geninfo: requires at least one --gcno-dir=DIR or \$TFW_GCNO_PATH env var"
+      fi
+      _tfw_checkCommandInPATH geninfo
+      _tfw_checkCommandInPATH gcov _tfw_gcov_path
+      # Check that all source files are available.
+      _tfw_extract_source_files_from_gcno "${_tfw_gcno_dirs[@]}"
+      _tfw_coverage_source_basedir=.
+      if [ -n "$TFW_COVERAGE_SOURCE_BASE_DIR" ]; then
+         [ -d "$TFW_COVERAGE_SOURCE_BASE_DIR" ] || _tfw_fatal "--geninfo: no such directory '$TFW_COVERAGE_SOURCE_BASE_DIR' (\$TFW_COVERAGE_SOURCE_BASE_DIR)"
+         _tfw_coverage_source_basedir="$TFW_COVERAGE_SOURCE_BASE_DIR"
+      fi
+      local src
+      for src in "${_tfw_coverage_source_files[@]}"; do
+         local path="$_tfw_coverage_source_basedir/$src"
+         [ -r "$path" ] || _tfw_fatal "--geninfo: missing source file $path"
+      done
    fi
    # Enumerate all the test cases.
    _tfw_list_tests
@@ -306,6 +361,29 @@ runTests() {
          _tfw_tmp=$_tfw_tmpdir/_tfw-$_tfw_unique
          trap '_tfw_status=$?; rm -rf "$_tfw_tmp"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
          mkdir $_tfw_tmp || _tfw_fatalexit
+         # Set up test coverage data directory, which contains all the .gcno
+         # files of the executable(s) under test.  If using geninfo(1) to
+         # generate coverage info files, then link to all the source files, to
+         # ensure that temporary .gcov files are created in this directory and
+         # not in the repository's base directory (which would cause race
+         # conditions).
+         if $_tfw_coverage; then
+            export GCOV_PREFIX="$_tfw_logdir_test/gcov"
+            export GCOV_PREFIX_STRIP=0
+            mkdir "$GCOV_PREFIX" || _tfw_fatalexit
+            # Link to GCNO files.
+            if [ ${#_tfw_gcno_dirs[*]} -ne 0 ]; then
+               find "${_tfw_gcno_dirs[@]}" -type f -name '*.gcno' -print0 | cpio -0pdl --quiet "$GCOV_PREFIX"
+            fi
+            # Link source files to where geninfo(1) will always find them before
+            # finding the original source files.
+            if $_tfw_geninfo; then
+               pushd "$_tfw_coverage_source_basedir" >/dev/null || _tfw_fatalexit
+               find "${_tfw_coverage_source_files[@]}" -maxdepth 0 -print0 | cpio -0pdl --quiet "$GCOV_PREFIX"
+               popd >/dev/null
+            fi
+         fi
+         ## XXX _tfw_geninfo_initial "$scriptName/$testName" >$_tfw_tmp/log.geninfo 2>&1
          local start_time=$(_tfw_timestamp)
          local finish_time=unknown
          (  #)#<-- fixes Vim syntax highlighting
@@ -388,6 +466,17 @@ runTests() {
             fi
          } >"$_tfw_logdir_test/log.txt"
          mv "$_tfw_logdir_test" "$_tfw_logdir_test.$result"
+         _tfw_logdir_test="$_tfw_logdir_test.$result"
+         if $_tfw_geninfo; then
+            local testname=$(_tfw_string_to_identifier "$scriptName/$testName")
+            local result="$_tfw_tmp/result.info"
+            local coverage="$_tfw_logdir_test/coverage.info"
+            {
+               echo '++++++++++ log.geninfo ++++++++++'
+               _tfw_run_geninfo "$coverage" --test-name "$testname" 2>&1
+               echo '++++++++++'
+            } >>"$_tfw_logdir_test/log.txt"
+         fi
          exit 0
       ) </dev/null &
       local job=$(jobs %% 2>/dev/null | $SED -n -e '1s/^\[\([0-9]\{1,\}\)\].*/\1/p')
@@ -564,6 +653,36 @@ _tfw_echo_result() {
    esac
 }
 
+_tfw_extract_source_files_from_gcno() {
+   # This should possibly be done by creating a binary utility that knows how to
+   # disassemble GCNO files.  In the meantime, this approach seems to work:
+   # simply extract all strings from all GCNO files that match *.c or *.h.
+   local IFS='
+'
+   _tfw_coverage_source_files=($(find "$@" -type f -name '*.gcno' -print0 | xargs -0 strings | grep '\.[ch]$' | sort -u))
+}
+
+_tfw_run_geninfo() {
+   local infofile="$1"
+   shift
+   geninfo \
+      --rc lcov_tmp_dir="$_tfw_tmp" \
+      --gcov-tool "$_tfw_gcov_path" \
+      --output-file "$infofile" \
+      --no-external \
+      "$@" \
+      "$_tfw_logdir_test/gcov"
+   # Cook the absolute source file paths in the info file to refer to the
+   # original source files, not the links we placed into the gcov subdirectory
+   # in order to avoid race conditions.
+   local basedir="$(abspath "$_tfw_coverage_source_basedir")"
+   $SED -i -e "/^SF:/s:$_tfw_logdir_test/gcov:$basedir:" "$infofile"
+}
+
+_tfw_string_to_identifier() {
+   echo "$1" | $SED -e 's/\//__/g' -e 's/[^0-9a-zA-Z_]/_/g'
+}
+
 # Internal (private) functions that are not to be invoked directly from test
 # scripts.
 
@@ -716,7 +835,7 @@ _tfw_execute() {
    fi
    if [ -n "$timeout" ]; then
       if type pgrep >/dev/null 2>/dev/null; then
-         (  #)#(fix Vim syntax colouring
+         (  #)#( <<- fixes Vim syntax colouring
             # For some reason, set -e does not work here.  So all the following
             # commands are postfixed with || exit $?
             local executable_pid=$(pgrep -P $subshell_pid) || exit $?
@@ -1152,10 +1271,27 @@ _tfw_checkTerminfo() {
 }
 
 _tfw_checkCommandInPATH() {
-   case $(type -p "$1") in
+   local __var="$2"
+   local __path="$(type -p "$1")"
+   case "$__path" in
    */"${1##*/}") ;;
    *) _tfw_fatal "command not found: $1 (PATH=$PATH)"
    esac
+   [ -n "$__var" ] && eval $__var='"$__path"'
+   return 0
+}
+
+_tfw_count_path_components() {
+   local path="$1"
+   local i=0
+   while [ -n "$path" ]; do
+      case "$path" in
+      */) path="${path%/}";;
+      */*) i=$(($i + 1)); path="${path%/*}";;
+      *) i=$(($i + 1)); path=;;
+      esac
+   done
+   echo $i
 }
 
 _tfw_unpack_words() {

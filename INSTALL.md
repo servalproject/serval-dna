@@ -1,6 +1,6 @@
 Serval DNA Build and Test
 =========================
-[Serval Project], March 2013
+[Serval Project][], March 2013
 
 Supported Architectures
 -----------------------
@@ -64,7 +64,8 @@ Test dependencies:
 Build
 -----
 
-To compile Serval DNA from source, run the following commands:
+To compile a native (ie, not cross-compiled) Serval DNA from source, run the
+following commands:
 
     $ cd $HOME/src/serval-dna
     $ autoreconf -f -i
@@ -93,6 +94,9 @@ A successful session should appear something like:
     CC nacl/src/crypto_auth_hmacsha256_ref/verify.c
     CC nacl/src/crypto_auth_hmacsha512256_ref/hmac.c
     ...
+    CC cli.c
+    CC commandline.c
+    ...
     CC xprintf.c
     LINK servald
     LINK libmonitorclient.so
@@ -117,7 +121,7 @@ Built artifacts
 
 The build process produces the following artifacts:
 
-* **servald** is the main executable.
+* **servald** is the main Serval DNA executable.
 
 * **libservald.so** is a shared library built only for Android, which is linked
   into the [batphone][] Java executable at run time to provide the [JNI][]
@@ -131,17 +135,23 @@ The build process produces the following artifacts:
   entry points to functions for managing the client end of a monitor connection
   with the servald daemon.
 
+* **fakeradio** is a utility used by test scripts to simulate the serial
+  interface to the [RFD900][] packet radio used in the [Serval Mesh Extender][]
+
+* **simulator** is a utility used by test scripts for simulating wireless
+  packet transmission under different conditions.
+
+* **tfw_createfile** is a utility needed by test scripts for creating large
+  data files with unique, non-repeating content.
+
+* **config_test** is a utility that will fail to link if any external
+  dependencies creep into the configuration subsystem.
+
 Test scripts
 ------------
 
-The scripts in the [tests](./tests/) directory require [Bash][] version 3.2.48
-or later.  To run tests, simply build a native `servald` executable then invoke
-the test script.  Each test case is executed in its own self-contained
-temporary directory with its own set-up and configuration, so there is no need
-to configure anything or clean up afterwards.
-
-For example, the following command runs all the tests except long-running,
-resource-hungry “stress” tests:
+After building the native `servald` executable, run all the tests with the
+following command:
 
     $ ./tests/all
     1 [PASS.] (logging) By default, only errors and warnings are logged to stderr
@@ -156,13 +166,12 @@ resource-hungry “stress” tests:
     161 tests, 161 pass, 0 fail, 0 error
     $
 
-There are options to run tests concurrently for faster results, and to select
-subsets of test cases.  To see the options, give the `--help` option:
+Every test run writes log files into the [testlog/all](./testlog/all/)
+directory (relative to the current working directory), deleting any logs from
+the previous run.
 
-    $ ./tests/all --help
-
-Every test run writes its log files into the [testlog/all](./testlog/all/)
-directory, deleting all logs from the previous run.
+See [Serval DNA Testing](./doc/Testing.md) for more information on running and
+developing test scripts.
 
 Configure
 ---------
@@ -201,6 +210,7 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [gcc 4.7]: http://gcc.gnu.org/gcc-4.7/
 [OpenWRT]: ./doc/OpenWRT.md
 [Serval Mesh Extender]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:meshextender:
+[RFD900]: http://rfdesign.com.au/index.php/rfd900
 [Mesh Potato]: http://villagetelco.org/mesh-potato/
 [Commotion Wireless]: http://commotionwireless.net/
 [JNI]: http://en.wikipedia.org/wiki/Java_Native_Interface

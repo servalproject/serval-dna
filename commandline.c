@@ -880,32 +880,47 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
 	goto exit;
       case 0: {
 	/* Child process.  Fork then exit, to disconnect daemon from parent process, so that
-	   when daemon exits it does not live on as a zombie. N.B. Do not return from within this
-	   process; that will unroll the JNI call stack and cause havoc.  Use _exit().  */
+	   when daemon exits it does not live on as a zombie. N.B. On Android, do not return from
+	   within this process; that will unroll the JNI call stack and cause havoc -- call _exit()
+	   instead (not exit(), because we want to avoid any Java atexit(3) callbacks as well).  If
+	   _exit() is used on non-Android systems, then source code coverage does not get reported,
+	   because it relies on an atexit() callback to write the accumulated counters into .gcda
+	   files.  */
+#ifdef ANDROID
+# define EXIT_CHILD(n) _exit(n)
+#else
+# define EXIT_CHILD(n) exit(n)
+#endif
+	// Ensure that all stdio streams are flushed before forking, so that if a child calls
+	// exit(), it will not result in any buffered output being written twice to the file
+	// descriptor.
+	fflush(stdout);
+	fflush(stderr);
 	switch (fork()) {
 	  case -1:
-	    exit(WHY_perror("fork"));
+	    EXIT_CHILD(WHY_perror("fork"));
 	  case 0: {
 	    /* Grandchild process.  Close logfile (so that it gets re-opened again on demand, with
-	       our own file pointer), disable logging to stderr (about to get closed), disconnect
-	       from current directory, disconnect standard I/O streams, and start a new process
-	       session so that if we are being started by an adb shell session on an Android device,
-	       then we don't receive a SIGHUP when the adb shell process ends.  */
+	       our own file pointer), disable logging to stderr (about to get redirected to
+	       /dev/null), disconnect from current directory, disconnect standard I/O streams, and
+	       start a new process session so that if we are being started by an adb shell session
+	       on an Android device, then we don't receive a SIGHUP when the adb shell process ends.
+	     */
 	    close_log_file();
 	    disable_log_stderr();
 	    int fd;
 	    if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
-	      _exit(WHY_perror("open(\"/dev/null\")"));
+	      EXIT_CHILD(WHY_perror("open(\"/dev/null\")"));
 	    if (setsid() == -1)
-	      _exit(WHY_perror("setsid"));
+	      EXIT_CHILD(WHY_perror("setsid"));
 	    if (chdir(dir) == -1)
-	      _exit(WHYF_perror("chdir(%s)", alloca_str_toprint(dir)));
+	      EXIT_CHILD(WHYF_perror("chdir(%s)", alloca_str_toprint(dir)));
 	    if (dup2(fd, 0) == -1)
-	      _exit(WHYF_perror("dup2(%d,0)", fd));
+	      EXIT_CHILD(WHYF_perror("dup2(%d,0)", fd));
 	    if (dup2(fd, 1) == -1)
-	      _exit(WHYF_perror("dup2(%d,1)", fd));
+	      EXIT_CHILD(WHYF_perror("dup2(%d,1)", fd));
 	    if (dup2(fd, 2) == -1)
-	      _exit(WHYF_perror("dup2(%d,2)", fd));
+	      EXIT_CHILD(WHYF_perror("dup2(%d,2)", fd));
 	    if (fd > 2)
 	      (void)close(fd);
 	    /* The execpath option is provided so that a JNI call to "start" can be made which
@@ -916,14 +931,15 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
 	       sentinal. */
 	      execl(execpath, execpath, "start", "foreground", (void *)NULL);
 	      WHYF_perror("execl(%s,\"start\",\"foreground\")", alloca_str_toprint(execpath));
-	      _exit(-1);
+	      EXIT_CHILD(-1);
 	    }
-	    _exit(server());
+	    EXIT_CHILD(server());
 	    // NOT REACHED
 	  }
 	}
 	// TODO wait for server_write_pid() to signal more directly?
-	_exit(0); // Main process is waitpid()-ing for this.
+	EXIT_CHILD(0); // Main process is waitpid()-ing for this.
+#undef EXIT_CHILD
       }
     }
     /* Main process.  Wait for the child process to fork the grandchild and exit. */

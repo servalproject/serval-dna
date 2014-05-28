@@ -1,3 +1,5 @@
+# Makefile.in for Serval DNA
+# vim: noet ts=8 sts=0 sw=8
 prefix=@prefix@
 exec_prefix=@exec_prefix@
 bindir=@bindir@
@@ -10,27 +12,35 @@ include $(NACL_BASE)/nacl.mk
 include sourcefiles.mk
 include headerfiles.mk
 
+OBJSDIR_SERVALD =	objs_servald
+OBJSDIR_LIB =		objs_lib
+OBJSDIR_TOOLS =		objs
+
+OBJSDIRS =		$(OBJSDIR_SERVALD) $(OBJSDIR_LIB) $(OBJSDIR_TOOLS)
+
 SERVAL_DAEMON_OBJS = \
-        $(addprefix objs_servald/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
-        $(addprefix objs_servald/, $(MDP_CLIENT_SOURCES:.c=.o)) \
-	$(addprefix objs_servald/, $(SERVAL_DAEMON_SOURCES:.c=.o))
+	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
+	$(addprefix $(OBJSDIR_SERVALD)/, $(MDP_CLIENT_SOURCES:.c=.o)) \
+	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_DAEMON_SOURCES:.c=.o))
 SERVALD_OBJS = \
-	$(addprefix objs_servald/, $(notdir $(SQLITE3_SOURCES:.c=.o))) \
-        $(addprefix objs_servald/, $(NACL_SOURCES:.c=.o)) \
-        $(SERVAL_DAEMON_OBJS)
+	$(addprefix $(OBJSDIR_SERVALD)/, $(notdir $(SQLITE3_SOURCES:.c=.o))) \
+	$(addprefix $(OBJSDIR_SERVALD)/, $(NACL_SOURCES:.c=.o)) \
+	$(SERVAL_DAEMON_OBJS)
 LIB_SERVAL_OBJS = \
-        $(addprefix objs_lib/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
-        $(addprefix objs_lib/, $(SERVAL_LIB_SOURCES:.c=.o)) \
-        $(addprefix objs_lib/, $(MDP_CLIENT_SOURCES:.c=.o))
+	$(addprefix $(OBJSDIR_LIB)/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
+	$(addprefix $(OBJSDIR_LIB)/, $(SERVAL_LIB_SOURCES:.c=.o)) \
+	$(addprefix $(OBJSDIR_LIB)/, $(MDP_CLIENT_SOURCES:.c=.o))
 MONITOR_CLIENT_OBJS = \
-        $(addprefix objs_lib/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
-        $(addprefix objs_lib/, $(MONITOR_CLIENT_SRCS:.c=.o))
+	$(addprefix $(OBJSDIR_LIB)/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
+	$(addprefix $(OBJSDIR_LIB)/, $(MONITOR_CLIENT_SRCS:.c=.o))
 SIMULATOR_OBJS = \
-        $(addprefix objs/, $(SIMULATOR_SOURCES:.c=.o))
+	$(addprefix $(OBJSDIR_TOOLS)/, $(SIMULATOR_SOURCES:.c=.o))
+
+CC= @CC@
 
 LDFLAGS=@LDFLAGS@ @LIBS@ @PTHREAD_LIBS@
 
-CFLAGS=	-Isqlite-amalgamation-3070900 @CPPFLAGS@ @CFLAGS@ @PTHREAD_CFLAGS@ -Inacl/include
+CFLAGS= -Isqlite-amalgamation-3070900 @CPPFLAGS@ @CFLAGS@ @PTHREAD_CFLAGS@ -Inacl/include
 CFLAGS+=-DSYSCONFDIR="\"$(sysconfdir)\"" -DLOCALSTATEDIR="\"$(localstatedir)\""
 CFLAGS+=-fPIC
 CFLAGS+=-Wall -Wno-unused-value -Werror
@@ -58,41 +68,81 @@ all:	servald libmonitorclient.so libmonitorclient.a test
 
 test:   tfw_createfile directory_service fakeradio config_test simulator
 
+covzero: | is_built_with_coverage
+	@echo REMOVE all .gcda files
+	@find $(OBJSDIRS) -type f -name '*.gcda' -print0 | xargs -0 $(RM)
+
+covinit: servald-initial.info
+
+covhtml: coverage_html/index.html
+
+is_built_with_coverage:
+	@for obj in $(SERVALD_OBJS); do \
+	    gcno="$${obj%.o}.gcno" ;\
+	    if [ ! -r "$$gcno" ]; then \
+	        echo "ERROR: servald has not been compiled for code coverage; missing $$gcno" ;\
+	        exit 1 ;\
+	    fi ;\
+	done
+
+has_coverage_data: | is_built_with_coverage
+	@count=0; for obj in $(SERVALD_OBJS); do \
+	    gcda="$${obj%.o}.gcda" ;\
+	    [ -s "$$gcda" ] && count=$$(($$count + 1)) ;\
+	done ;\
+	if [ $$count -eq 0 ]; then \
+	    echo "ERROR: no code coverage data; run some tests" ;\
+	    exit 1 ;\
+	fi
+
+servald-initial.info: Makefile servald | is_built_with_coverage
+	geninfo --quiet --initial --checksum --base-directory=$(abspath .) --no-external $(OBJSDIR_SERVALD) -o $@
+
+servald-coverage.info: Makefile servald $(shell find $(OBJSDIR_SERVALD) -type f -name '*.gcda') | has_coverage_data
+	geninfo --quiet --checksum --base-directory=$(abspath .) --no-external $(OBJSDIR_SERVALD) -o $@ 2>&1 | { grep -v 'WARNING: no data found for .*\.h$$' || true; }
+	@[ -s $@ ]
+
+coverage_html/index.html: Makefile servald-initial.info servald-coverage.info
+	$(RM) -r coverage_html
+	genhtml --quiet servald-initial.info servald-coverage.info -o coverage_html
+
 Makefile: $(wildcard Makefile.in) $(wildcard configure)
 	$(warning Makefile may be out of date, please run ./configure)
 
 configure: $(wildcard configure.in)
 	$(warning configure may be out of date, please run autoreconf -f -i)
 
-objs/version.o: $(SERVALD_OBJS) version_string.sh $(wildcard VERSION.txt) COPYRIGHT.txt Makefile
+$(OBJSDIR_TOOLS)/version.o: $(SERVALD_OBJS) version_string.sh $(wildcard VERSION.txt) COPYRIGHT.txt Makefile
 	@echo CC version_servald.c
+	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
 	@V=`./version_string.sh --ignore-untracked` \
 	 && C="`sed -e :a -e N -e '$$!ba' -e 's/[\\\\"]/\\\\&/g' -e 's/\\n/\\\\n/g' COPYRIGHT.txt`" \
 	 && $(CC) -c version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\"" -DSERVALD_COPYRIGHT="\"$$C\""
 
 #' <-- fixes vim syntax highlighting
 
-objs_servald/sqlite3.o: sqlite-amalgamation-3070900/sqlite3.c Makefile
+$(OBJSDIR_SERVALD)/sqlite3.o: sqlite-amalgamation-3070900/sqlite3.c Makefile
 	@echo SERVALD CC $<
 	@mkdir -p $(dir $@)
+	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
 
 # No object files in source directory!
 %.o: %.c
 
-objs/%.o: %.c
+$(OBJSDIR_TOOLS)/%.o: %.c
 	@echo CC $<
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
 
-objs_servald/%.o: %.c
+$(OBJSDIR_SERVALD)/%.o: %.c
 	@echo SERVALD CC $<
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
 
-objs_lib/%.o: %.c
+$(OBJSDIR_LIB)/%.o: %.c
 	@echo LIB CC $<
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
@@ -103,62 +153,62 @@ $(SERVALD_OBJS): Makefile
 $(LIB_SERVAL_OBJS): $(HDRS) Makefile
 $(MONITOR_CLIENT_OBJS): $(HDRS) Makefile
 $(SIMULATOR_OBJS): $(HDRS) Makefile
-objs/directory_service.o objs/tfw_createfile.o objs/fakeradio.o \
-objs/config_test.o objs/conf_om.o objs/conf_schema.o objs/conf_parse.o libserval.a \
-        : $(HDRS) Makefile
+$(OBJSDIR_TOOLS)/directory_service.o $(OBJSDIR_TOOLS)/tfw_createfile.o $(OBJSDIR_TOOLS)/fakeradio.o \
+$(OBJSDIR_TOOLS)/config_test.o $(OBJSDIR_TOOLS)/conf_om.o $(OBJSDIR_TOOLS)/conf_schema.o $(OBJSDIR_TOOLS)/conf_parse.o libserval.a \
+	: $(HDRS) Makefile
 
-servald: $(SERVALD_OBJS) objs/version.o
+servald: $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ $(SERVALD_OBJS) objs/version.o $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wall -o $@ $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
 
-libserval.a: $(LIB_SERVAL_OBJS) objs/version.o
+libserval.a: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo AR $@
-	@$(AR) -cr $@ $(LIB_SERVAL_OBJS) objs/version.o
+	@$(AR) -cr $@ $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
 
-directory_service: objs/directory_service.o libserval.a
+directory_service: $(OBJSDIR_TOOLS)/directory_service.o libserval.a
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ objs/directory_service.o libserval.a $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wall -o $@ $(OBJSDIR_TOOLS)/directory_service.o libserval.a $(LDFLAGS)
 
-tfw_createfile: objs/tfw_createfile.o libserval.a
+tfw_createfile: $(OBJSDIR_TOOLS)/tfw_createfile.o libserval.a
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ objs/tfw_createfile.o libserval.a $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wall -o $@ $(OBJSDIR_TOOLS)/tfw_createfile.o libserval.a $(LDFLAGS)
 
-fakeradio: objs/fakeradio.o libserval.a
+fakeradio: $(OBJSDIR_TOOLS)/fakeradio.o libserval.a
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ objs/fakeradio.o libserval.a $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wall -o $@ $(OBJSDIR_TOOLS)/fakeradio.o libserval.a $(LDFLAGS)
 
 simulator: $(SIMULATOR_OBJS) libserval.a
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -o $@ $(SIMULATOR_OBJS) libserval.a $(LDFLAGS)
 
-config_test: objs/config_test.o objs/conf_om.o objs/conf_schema.o objs/conf_parse.o libserval.a
+config_test: $(OBJSDIR_TOOLS)/config_test.o $(OBJSDIR_TOOLS)/conf_om.o $(OBJSDIR_TOOLS)/conf_schema.o $(OBJSDIR_TOOLS)/conf_parse.o libserval.a
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ objs/config_test.o objs/conf_om.o objs/conf_schema.o objs/conf_parse.o libserval.a $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wall -o $@ $(OBJSDIR_TOOLS)/config_test.o $(OBJSDIR_TOOLS)/conf_om.o $(OBJSDIR_TOOLS)/conf_schema.o $(OBJSDIR_TOOLS)/conf_parse.o libserval.a $(LDFLAGS)
 
 copyright:
 	@if [ -x "$(COPYRIGHT_TOOL)" ]; then \
-            echo GENERATE COPYRIGHT.txt; \
-            $(COPYRIGHT_TOOL) -o COPYRIGHT.txt condense *.c *.h; \
-        else \
-            echo 'sp-copyright-tool is not in $$PATH; COPYRIGHT.txt not updated'; \
-        fi
+	    echo GENERATE COPYRIGHT.txt; \
+	    $(COPYRIGHT_TOOL) -o COPYRIGHT.txt condense *.c *.h; \
+	else \
+	    echo 'sp-copyright-tool is not in $$PATH; COPYRIGHT.txt not updated'; \
+	fi
 
 findPATH = $(firstword $(wildcard $(addsuffix /$(1),$(subst :, ,$(PATH)))))
 COPYRIGHT_TOOL := $(call findPATH,sp-copyright-tool)
 
 # This does not build on 64 bit elf platforms as NaCL isn't built with -fPIC
 # DOC 20120615
-libserval.so: $(SERVALD_OBJS) objs/version.o
+libserval.so: $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(SERVALD_OBJS) objs/version.o $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
 
-libmonitorclient.so: $(MONITOR_CLIENT_OBJS) objs/version.o
+libmonitorclient.so: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(MONITOR_CLIENT_OBJS) objs/version.o $(LDFLAGS)
+	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
 
-libmonitorclient.a: $(MONITOR_CLIENT_OBJS) objs/version.o
+libmonitorclient.a: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo AR $@
-	@$(AR) -cr $@ $(MONITOR_CLIENT_OBJS) objs/version.o
+	@$(AR) -cr $@ $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
 
 install: servald
 	$(INSTALL_PROGRAM) -D servald $(DESTDIR)$(sbindir)/servald
@@ -167,8 +217,8 @@ uninstall:
 	$(RM) $(DESTDIR)$(sbindir)/servald
 
 clean:
-	@$(RM) -r objs/* objs_servald/* objs_lib/* \
-          servald libservald.so \
-          libserval.a libmonitorclient.so libmonitorclient.a \
+	@$(RM) -r $(OBJSDIRS:%=%/*) \
+	  servald libservald.so \
+	  libserval.a libmonitorclient.so libmonitorclient.a \
 	  fakeradio \
 	  tfw_createfile

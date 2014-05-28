@@ -5,6 +5,12 @@ Serval DNA Technical Documentation
 This directory contains [technical documents][] that accompany the [Serval
 DNA][] component of the [Serval mesh network][].
 
+ * [Building Serval DNA](../INSTALL.md) has instructions to build a native
+   Serval DNA executable.
+
+ * [Testing Serval DNA](./Testing.md) describes the Serval DNA test scripts and
+   the test framework.
+
  * [Configuring Serval DNA](./Servald-Configuration.md) describes the
    persistent configuration system and its command-line API, the built-in
    system file paths, daemon instances and basic network configuration.
