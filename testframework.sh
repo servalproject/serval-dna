@@ -73,21 +73,24 @@ fi
 
 usage() {
    echo -n "\
-Usage: ${0##*/} [options] [--]
+Usage: $0 [options] [--]
 Options:
-   -t, --trace             Enable shell "set -x" tracing during tests, output to test log
-   -v, --verbose           Send test log to output during execution
-   -j, --jobs              Run all tests in parallel (by default runs as --jobs=1)
-   --jobs=N                Run tests in parallel, at most N at a time
-   -E, --stop-on-error     Do not execute any tests after an ERROR occurs
-   -F, --stop-on-failure   Do not execute any tests after a FAIL occurs
-   --timeout=N             Override default timeout, make it N seconds instead of 60
-   --filter=PREFIX         Only execute tests whose names start with PREFIX
-   --filter=N              Only execute test number N
-   --filter=M-N            Only execute tests with numbers in range M-N inclusive
-   --filter=-N             Only execute tests with numbers <= N
-   --filter=N-             Only execute tests with numbers >= N
-   --filter=M,N,...        Only execute tests with number M or N or ...
+  -h      --help            Print this usage message
+  -t      --trace           Log shell "set -x" trace during tests
+  -v      --verbose         Send test log to output during execution
+  -j 0    --jobs            Run all tests in parallel
+  -j N    --jobs=N          Run tests in parallel, at most N at a time (default
+                            N=1)
+  -E      --stop-on-error   Do not execute any tests after an ERROR occurs
+  -F      --stop-on-failure Do not execute any tests after a FAIL occurs
+  -t N    --timeout=N       Override default timeout, make it N seconds instead
+                            of 60
+  -f PRE  --filter=PRE      Only execute tests whose names start with PRE
+  -f N    --filter=N        Only execute test number N
+  -f M-N  --filter=M-N      Only execute tests with numbers in range M-N inclusive
+  -f -N   --filter=-N       Only execute tests with numbers <= N
+  -f N-   --filter=N-       Only execute tests with numbers >= N
+  -f ...  --filter=M,N,...  Only execute tests with number M or N or ...
 "
 }
 
@@ -181,22 +184,43 @@ runTests() {
    _tfw_shopt oo -s extglob
    while [ $# -ne 0 ]; do
       case "$1" in
-      --help) usage; exit 0;;
+      -h|--help) usage; exit 0;;
       -l|--list) _tfw_list=true;;
       -t|--trace) _tfw_trace=true;;
       -v|--verbose) _tfw_verbose=true;;
-      --filter=*) filters+=("${1#*=}");;
-      -j|--jobs) _tfw_njobs=0;;
-      --jobs=+([0-9])) _tfw_njobs="${1#*=}";;
-      --jobs=*) _tfw_fatal "invalid option: $1";;
       -E|--stop-on-error) _tfw_stop_on_error=true;;
       -F|--stop-on-failure) _tfw_stop_on_failure=true;;
+      -f) [ -n "$2" ] || _tfw_fatal "missing argument after option: $1"
+          filters+=("$2")
+          shift
+          ;;
+      -f*) filters+=("${1#-?}");;
+      --filter=*) filters+=("${1#*=}");;
+      -j) [ -n "$2" ] || _tfw_fatal "missing argument after option: $1"
+          _tfw_is_uint "${2?}" || _tfw_fatal "invalid option: $1 $2"
+          _tfw_njobs=${2?}
+          shift
+          ;;
+      -j+([0-9])) _tfw_njobs="${1#-?}";;
+      -j*) _tfw_fatal "invalid option: $1";;
+      --jobs=+([0-9])) _tfw_njobs="${1#*=}";;
+      --jobs=*) _tfw_fatal "invalid option: $1";;
+      --jobs) _tfw_njobs=0;;
+      -t) [ -n "$2" ] || _tfw_fatal "missing argument after option: $1"
+         _tfw_is_float "${2?}" || _tfw_fatal "invalid option: $1 $2"
+         _tfw_timeout_override="${2?}"
+         shift
+         ;;
+      -t*)
+         _tfw_is_float "${1#-?}" || _tfw_fatal "invalid option: $1"
+         _tfw_timeout_override="${1#-?}"
+         ;;
       --timeout=*)
          _tfw_is_float "${1#*=}" || _tfw_fatal "invalid option: $1"
          _tfw_timeout_override="${1#*=}"
          ;;
       --) shift; break;;
-      --*) _tfw_fatal "unsupported option: $1";;
+      -*) _tfw_fatal "unsupported option: $1";;
       *) _tfw_fatal "spurious argument: $1";;
       esac
       shift
@@ -264,7 +288,7 @@ runTests() {
          echo
       fi
       echo "$testPosition $testNumber $testName" NONE "$testSourceFile" >"$_tfw_results_dir/$testNumber"
-      (
+      (  #)#<-- fixes Vim syntax highlighting
          # The directory where this test's log.txt and other artifacts are
          # deposited.
          _tfw_logdir_test="$_tfw_logdir_script/$testNumber.$testName"
@@ -284,7 +308,7 @@ runTests() {
          mkdir $_tfw_tmp || _tfw_fatalexit
          local start_time=$(_tfw_timestamp)
          local finish_time=unknown
-         (
+         (  #)#<-- fixes Vim syntax highlighting
             _tfw_result=FATAL
             _tfw_stdout=5
             _tfw_stderr=5
@@ -873,6 +897,17 @@ _tfw_getopts() {
    esac
    _tfw_shopt_restore oo
    return 0
+}
+
+_tfw_is_uint() {
+   local oo
+   _tfw_shopt oo -s extglob
+   local ret=1
+   case "$1" in
+   +([0-9])) ret=0;;
+   esac
+   _tfw_shopt_restore oo
+   return $ret
 }
 
 _tfw_is_float() {
