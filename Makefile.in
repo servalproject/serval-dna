@@ -22,11 +22,9 @@ LIB_SERVAL_OBJS = \
         $(addprefix objs_lib/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
         $(addprefix objs_lib/, $(SERVAL_LIB_SOURCES:.c=.o)) \
         $(addprefix objs_lib/, $(MDP_CLIENT_SOURCES:.c=.o))
-
 MONITOR_CLIENT_OBJS = \
         $(addprefix objs_lib/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
         $(addprefix objs_lib/, $(MONITOR_CLIENT_SRCS:.c=.o))
-
 SIMULATOR_OBJS = \
         $(addprefix objs/, $(SIMULATOR_SOURCES:.c=.o))
 
@@ -74,7 +72,7 @@ objs/version.o: $(SERVALD_OBJS) version_string.sh $(wildcard VERSION.txt) COPYRI
 
 #' <-- fixes vim syntax highlighting
 
-objs_servald/sqlite3.o: sqlite-amalgamation-3070900/sqlite3.c
+objs_servald/sqlite3.o: sqlite-amalgamation-3070900/sqlite3.c Makefile
 	@echo SERVALD CC $<
 	@mkdir -p $(dir $@)
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
@@ -85,22 +83,29 @@ objs_servald/sqlite3.o: sqlite-amalgamation-3070900/sqlite3.c
 objs/%.o: %.c
 	@echo CC $<
 	@mkdir -p $(dir $@)
+	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
 
 objs_servald/%.o: %.c
 	@echo SERVALD CC $<
 	@mkdir -p $(dir $@)
+	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
 
 objs_lib/%.o: %.c
 	@echo LIB CC $<
 	@mkdir -p $(dir $@)
+	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
 
 $(SERVAL_DAEMON_OBJS): $(HDRS)
-$(LIB_SERVAL_OBJS): $(HDRS)
-$(MONITOR_CLIENT_OBJS): $(HDRS)
-$(SIMULATOR_OBJS): $(HDRS)
+$(SERVALD_OBJS): Makefile
+$(LIB_SERVAL_OBJS): $(HDRS) Makefile
+$(MONITOR_CLIENT_OBJS): $(HDRS) Makefile
+$(SIMULATOR_OBJS): $(HDRS) Makefile
+objs/directory_service.o objs/tfw_createfile.o objs/fakeradio.o \
+objs/config_test.o objs/conf_om.o objs/conf_schema.o objs/conf_parse.o libserval.a \
+        : $(HDRS) Makefile
 
 servald: $(SERVALD_OBJS) objs/version.o
 	@echo LINK $@

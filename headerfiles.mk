@@ -1,5 +1,4 @@
 HDRS=	fifo.h \
-	Makefile \
 	overlay_buffer.h \
 	overlay_address.h \
 	overlay_packet.h \
