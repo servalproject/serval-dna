@@ -806,13 +806,10 @@ int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *context)
 	    }
 	  }
 	  else WHYF("packettype=0x%x",rx.packetTypeAndFlags);
-	  if (servalShutdown) break;
 	}
       }
-      if (servalShutdown) break;
       short_timeout=125-(gettime_ms()-now);
     }
-    if (servalShutdown) break;
   }
 
   overlay_mdp_client_close(mdp_sockfd);
@@ -860,8 +857,6 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
       INFOF("Starting background server %s", execpath ? execpath : "without exec");
     /* Start the Serval process.  All server settings will be read by the server process from the
        instance directory when it starts up.  */
-    if (server_remove_stopfile() == -1)
-      RETURN(-1);
     // Open the keyring and ensure it contains at least one unlocked identity.
     keyring = keyring_open_instance_cli(parsed);
     if (!keyring)
@@ -1013,9 +1008,6 @@ int app_server_stop(const struct cli_parsed *parsed, struct cli_context *context
       return 253;
     }
     ++tries;
-    /* Create the stopfile, which causes the server process's signal handler to exit
-       instead of restarting. */
-    server_create_stopfile();
     if (kill(pid, SIGHUP) == -1) {
       // ESRCH means process is gone, possibly we are racing with another stop, or servald just
       // died voluntarily.
@@ -1033,7 +1025,6 @@ int app_server_stop(const struct cli_parsed *parsed, struct cli_context *context
       sleep_ms(200); // 5 Hz
     while ((running = server_pid()) == pid && gettime_ms() < timeout);
   }
-  server_remove_stopfile();
   cli_field_name(context, "tries", ":");
   cli_put_long(context, tries, "\n");
   return 0;

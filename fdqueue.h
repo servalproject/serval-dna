@@ -93,6 +93,26 @@ struct sched_ent{
 
 #define STRUCT_SCHED_ENT_UNUSED {.poll={.fd=-1}, ._poll_index=-1,}
 
+#define DECLARE_ALARM(X) \
+  extern struct sched_ent _sched_##X; \
+  void X(struct sched_ent *);
+
+#define DEFINE_ALARM(X) \
+  void X(struct sched_ent *); \
+  struct profile_total _stats_##X = {.name=#X,}; \
+  struct sched_ent _sched_##X = { \
+      .stats = &_stats_##X, \
+      .function=X, \
+    };
+
+#define RESCHEDULE_ALARM(X, A, D) \
+  do{\
+    unschedule(&_sched_##X); \
+    _sched_##X.alarm=(A); \
+    _sched_##X.deadline=_sched_##X.alarm+(D); \
+    schedule(&_sched_##X); \
+  }while(0)
+
 int is_scheduled(const struct sched_ent *alarm);
 int is_watching(struct sched_ent *alarm);
 int _schedule(struct __sourceloc, struct sched_ent *alarm);
@@ -123,6 +143,7 @@ unsigned fd_depth();
 #define RETURNNULL(X) do { X; OUT(); return (NULL); } while (0)
 #define RETURNVOID do { OUT(); return; } while (0)
 
+DECLARE_ALARM(fd_periodicstats);
 void list_alarms();
 
 #endif // __SERVAL_DNA__FDQUEUE_H

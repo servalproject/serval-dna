@@ -63,6 +63,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "crypto.h"
 #include "keyring.h"
 #include "socket.h"
+#include "server.h"
 
 static void overlay_mdp_poll(struct sched_ent *alarm);
 static void mdp_poll2(struct sched_ent *alarm);

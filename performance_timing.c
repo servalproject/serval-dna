@@ -207,6 +207,7 @@ int fd_showstats()
   return 0;
 }
 
+DEFINE_ALARM(fd_periodicstats);
 void fd_periodicstats(struct sched_ent *alarm)
 {
   fd_showstats();

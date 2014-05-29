@@ -75,6 +75,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include "keyring.h"
 #include "overlay_interface.h"
+#include "server.h"
 
 int overlayMode=0;
 
@@ -104,67 +105,35 @@ int overlayServerMode()
   
   overlay_queue_init();
   
-  /* Get the set of socket file descriptors we need to monitor.
-     Note that end-of-file will trigger select(), so we cannot run select() if we 
-     have any dummy interfaces running. So we do an ugly hack of just waiting no more than
-     5ms between checks if we have a dummy interface running.  This is a reasonable simulation
-     of wifi latency anyway, so we'll live with it.  Larger values will affect voice transport,
-     and smaller values would affect CPU and energy use, and make the simulation less realistic. */
-
-#define SCHEDULE(X, Y, D) { \
-    static struct profile_total _stats_##X = {.name="" #X "",}; \
-    static struct sched_ent _sched_##X = { \
-      .stats = &_stats_##X, \
-      .function=X, \
-    }; \
-    _sched_##X.alarm = gettime_ms() + (Y);\
-    _sched_##X.deadline = _sched_##X.alarm + (D);\
-    schedule(&_sched_##X); \
-  }
-  
-  /* Periodically check for server shut down */
-  SCHEDULE(server_shutdown_check, 0, 100);
-  
-  /* Periodically reload configuration */
-  SCHEDULE(server_config_reload, config.server.config_reload_interval_ms, 100);
-  
-  overlay_mdp_bind_internal_services();
-  
-  olsr_init_socket();
-
-  /* Get rhizome server started BEFORE populating fd list so that
-     the server's listen socket is in the list for poll() */
   if (is_rhizome_enabled()){
     rhizome_opendb();
     if (config.rhizome.clean_on_start && !config.rhizome.clean_on_open)
       rhizome_cleanup(NULL);
   }
 
-  // start the dna helper if configured
-  dna_helper_start();
+  time_ms_t now = gettime_ms();
   
-  // preload directory service information
-  directory_service_init();
+  /* Periodically check for server shut down */
+  RESCHEDULE_ALARM(server_shutdown_check, now, 100);
   
-  /* Periodically check for new interfaces */
-  SCHEDULE(overlay_interface_discover, 1, 100);
+  /* Periodically reload configuration */
+  RESCHEDULE_ALARM(server_config_reload, now+config.server.config_reload_interval_ms, 100);
+  
+  overlay_mdp_bind_internal_services();
+  
+  olsr_init_socket();
 
-  /* Periodically advertise bundles */
-  SCHEDULE(overlay_rhizome_advertise, 1000, 10000);
-  
   /* Calculate (and possibly show) CPU usage stats periodically */
-  SCHEDULE(fd_periodicstats, 3000, 500);
+  RESCHEDULE_ALARM(fd_periodicstats, now+3000, 500);
 
-  /* Invoke the watchdog executable periodically */
-  SCHEDULE(server_watchdog, config.server.watchdog.interval_ms, 100);
-
-#undef SCHEDULE
-
+  cf_on_config_change();
+  
   // log message used by tests to wait for the server to start
   INFO("Server initialised, entering main loop");
   /* Check for activitiy and respond to it */
-  while(fd_poll());
-
+  while(fd_poll() && (serverMode==1));
+  
+  serverCleanUp();
   RETURN(0);
   OUT();
 }

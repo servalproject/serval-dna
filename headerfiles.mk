@@ -10,6 +10,7 @@ HDRS=	fifo.h \
 	meshms.h \
 	serval_types.h \
 	serval.h \
+	server.h \
 	keyring.h \
 	socket.h \
 	cli.h \

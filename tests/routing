@@ -56,7 +56,7 @@ has_link() {
 }
 
 has_no_link() {
-   has_link --any $1 || return 0
+   has_link --any $@ || return 0
    return 1
 }
 

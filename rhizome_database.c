@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "str.h"
 #include "keyring.h"
+#include "server.h"
 
 static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
 static int rhizome_delete_file_retry(sqlite_retry_state *retry, const rhizome_filehash_t *hashp);
@@ -1529,7 +1530,7 @@ int rhizome_store_manifest(rhizome_manifest *m)
 	);
     monitor_announce_bundle(m);
     if (serverMode)
-      rhizome_sync_announce();
+      RESCHEDULE_ALARM(rhizome_sync_announce, gettime_ms(), 10000);
     return 0;
   }
 rollback:

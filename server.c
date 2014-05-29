@@ -17,6 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+
 #include <dirent.h>
 #include <signal.h>
 #include <unistd.h>
@@ -31,14 +32,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "overlay_interface.h"
 #include "overlay_packet.h"
+#include "server.h"
 
 #define PROC_SUBDIR	  "proc"
 #define PIDFILE_NAME	  "servald.pid"
 #define STOPFILE_NAME	  "servald.stop"
 
 static char pidfile_path[256];
-
-int servalShutdown = 0;
 
 static int server_getpid = 0;
 
@@ -183,6 +183,7 @@ int server_get_proc_state(const char *path, char *buff, size_t buff_len)
 
 /* Called periodically by the server process in its main loop.
  */
+DEFINE_ALARM(server_config_reload);
 void server_config_reload(struct sched_ent *alarm)
 {
   switch (cf_reload_strict()) {
@@ -215,6 +216,7 @@ void server_config_reload(struct sched_ent *alarm)
 
 /* Called periodically by the server process in its main loop.
  */
+DEFINE_ALARM(server_watchdog);
 void server_watchdog(struct sched_ent *alarm)
 {
   if (config.server.watchdog.executable[0]) {
@@ -275,22 +277,31 @@ void server_watchdog(struct sched_ent *alarm)
 
 void cf_on_config_change()
 {
+  if (!serverMode)
+    return;
+  
+  time_ms_t now = gettime_ms();
+  
+  dna_helper_start();
+  directory_service_init();
+  
+  /* Periodically check for new interfaces */
+  RESCHEDULE_ALARM(overlay_interface_discover, now, 100);
+  
+  if (link_has_neighbours())
+    // send rhizome sync periodically
+    RESCHEDULE_ALARM(rhizome_sync_announce, now+1000, 10000);
+
+  if (config.server.watchdog.executable[0])
+    RESCHEDULE_ALARM(server_watchdog, now+config.server.watchdog.interval_ms, 100);
+  
 }
 
 /* Called periodically by the server process in its main loop.
  */
+DEFINE_ALARM(server_shutdown_check);
 void server_shutdown_check(struct sched_ent *alarm)
 {
-  if (servalShutdown) {
-    INFO("Shutdown flag set -- terminating with cleanup");
-    serverCleanUp();
-    exit(0);
-  }
-  if (server_check_stopfile() == 1) {
-    INFO("Shutdown file exists -- terminating with cleanup");
-    serverCleanUp();
-    exit(0);
-  }
   /* If this server has been supplanted with another or Serval has been uninstalled, then its PID
       file will change or be unaccessible.  In this case, shut down without all the cleanup.
       Perform this check at most once per second.  */
@@ -308,49 +319,6 @@ void server_shutdown_check(struct sched_ent *alarm)
     alarm->deadline = alarm->alarm + 5000;
     schedule(alarm);
   }
-}
-
-int server_create_stopfile()
-{
-  char stopfile[1024];
-  if (!FORMF_SERVAL_RUN_PATH(stopfile, STOPFILE_NAME))
-    return -1;
-  FILE *f;
-  if ((f = fopen(stopfile, "w")) == NULL) {
-    WHY_perror("fopen");
-    return WHYF("Could not create stopfile '%s'", stopfile);
-  }
-  fclose(f);
-  return 0;
-}
-
-int server_remove_stopfile()
-{
-  char stopfile[1024];
-  if (!FORMF_SERVAL_RUN_PATH(stopfile, STOPFILE_NAME))
-    return -1;
-  if (unlink(stopfile) == -1) {
-    if (errno == ENOENT)
-      return 0;
-    WHY_perror("unlink");
-    return WHYF("Could not unlink stopfile '%s'", stopfile);
-  }
-  return 1;
-}
-
-int server_check_stopfile()
-{
-  char stopfile[1024];
-  if (!FORMF_SERVAL_RUN_PATH(stopfile, STOPFILE_NAME))
-    return -1;
-  int r = access(stopfile, F_OK);
-  if (r == 0)
-    return 1;
-  if (r == -1 && errno == ENOENT)
-    return 0;
-  WHY_perror("access");
-  WHYF("Cannot access stopfile '%s'", stopfile);
-  return -1;
 }
 
 static void clean_proc()
@@ -387,9 +355,6 @@ void serverCleanUp()
   overlay_mdp_clean_socket_files();
   
   clean_proc();
-  
-  /* Try to remove shutdown and PID files and exit */
-  server_remove_stopfile();
 }
 
 void signal_handler(int signal)
@@ -397,19 +362,20 @@ void signal_handler(int signal)
   switch (signal) {
     case SIGHUP:
     case SIGINT:
-      /* Terminate the server process.  The shutting down should be done from the main-line code
-	 rather than here, so we first try to tell the mainline code to do so.  If, however, this is
-	 not the first time we have been asked to shut down, then we will do it here. */
-      server_shutdown_check(NULL);
-      INFO("Attempting clean shutdown");
-      servalShutdown = 1;
-      return;
+      /* Trigger the server to close gracefully after any current alarm has completed. 
+         If we get a second signal, exit now.
+      */
+      if (serverMode==1){
+	INFO("Attempting clean shutdown");
+	serverMode=2;
+	return;
+      }
+    default:
+      LOGF(LOG_LEVEL_FATAL, "Caught signal %s", alloca_signal_name(signal));
+      LOGF(LOG_LEVEL_FATAL, "The following clue may help: %s", crash_handler_clue); 
+      dump_stack(LOG_LEVEL_FATAL);
   }
   
-  LOGF(LOG_LEVEL_FATAL, "Caught signal %s", alloca_signal_name(signal));
-  LOGF(LOG_LEVEL_FATAL, "The following clue may help: %s", crash_handler_clue); 
-  dump_stack(LOG_LEVEL_FATAL);
-
   serverCleanUp();
   exit(0);
 }

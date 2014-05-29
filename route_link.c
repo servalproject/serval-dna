@@ -17,6 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <assert.h>
 #include "serval.h"
 #include "overlay_address.h"
 #include "overlay_buffer.h"
@@ -25,7 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "conf.h"
 #include "keyring.h"
-#include <assert.h>
+#include "server.h"
 
 /*
 Link state routing;
@@ -255,6 +256,16 @@ static struct link_state *get_link_state(struct subscriber *subscriber)
   return subscriber->link_state;
 }
 
+static void first_neighbour_found(){
+  // send rhizome sync periodically
+  RESCHEDULE_ALARM(rhizome_sync_announce, gettime_ms()+1000, 10000);
+}
+
+static void last_neighbour_gone(){
+  // stop trying to sync rhizome
+  RESCHEDULE_ALARM(rhizome_sync_announce, TIME_MS_NEVER_WILL, 0);
+}
+
 static struct neighbour *get_neighbour(struct subscriber *subscriber, char create)
 {
   struct neighbour *n = neighbours;
@@ -264,6 +275,8 @@ static struct neighbour *get_neighbour(struct subscriber *subscriber, char creat
     n = n->_next;
   }
   if (create){
+    if (!neighbours)
+      first_neighbour_found();
     n = emalloc_zero(sizeof(struct neighbour));
     n->subscriber = subscriber;
     n->_next = neighbours;
@@ -631,6 +644,9 @@ static void clean_neighbours(time_ms_t now)
       n_ptr = &n->_next;
     }
   }
+  if (!neighbours)
+    last_neighbour_gone();
+
 }
 
 static void link_status_html(struct strbuf *b, struct subscriber *n, struct link *link)
@@ -703,6 +719,9 @@ void link_neighbour_status_html(struct strbuf *b, struct subscriber *neighbour)
   strbuf_puts(b, "Not found<br>");
 }
 
+int link_has_neighbours(){
+  return neighbours?1:0;
+}
 
 static int send_legacy_self_announce_ack(struct neighbour *neighbour, struct link_in *link, time_ms_t now){
   struct overlay_frame *frame=emalloc_zero(sizeof(struct overlay_frame));

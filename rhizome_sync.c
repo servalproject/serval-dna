@@ -467,14 +467,17 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
   OUT();
 }
 
-int rhizome_sync_announce()
+DEFINE_ALARM(rhizome_sync_announce);
+void rhizome_sync_announce(struct sched_ent *alarm)
 {
-  if (!config.rhizome.enable)
-    return 0;
+  if (!is_rhizome_advertise_enabled())
+    return;
   int (*oldfunc)() = sqlite_set_tracefunc(is_debug_rhizome_ads);
   sync_send_response(NULL, 0, HEAD_FLAG, 5);
   sqlite_set_tracefunc(oldfunc);
-  return 0;
+  alarm->alarm = gettime_ms()+config.rhizome.advertise.interval;
+  alarm->deadline = alarm->alarm+10000;
+  schedule(alarm);
 }
 
 int overlay_mdp_service_rhizome_sync(struct internal_mdp_header *header, struct overlay_buffer *payload)

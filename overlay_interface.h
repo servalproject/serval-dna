@@ -148,8 +148,8 @@ struct network_destination * add_destination_ref(struct network_destination *ref
 void release_destination_ref(struct network_destination *ref);
 int set_destination_ref(struct network_destination **ptr, struct network_destination *ref);
 
+DECLARE_ALARM(overlay_interface_discover);
 
-void overlay_interface_discover(struct sched_ent *alarm);
 int overlay_interface_register(char *name,
 			   struct socket_address *addr,
 			   struct socket_address *broadcast);

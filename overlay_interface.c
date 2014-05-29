@@ -1020,7 +1020,9 @@ overlay_interface_register(char *name,
 
   return 0;
 }
-  
+
+// poll the OS's network interfaces
+DEFINE_ALARM(overlay_interface_discover);
 void overlay_interface_discover(struct sched_ent *alarm)
 {
   /* Mark all UP interfaces as DETECTING, so we can tell which interfaces are new, and which are dead */

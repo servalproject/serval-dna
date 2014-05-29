@@ -155,8 +155,6 @@ extern const char copyright_servald[];
 
 struct cli_parsed;
 
-extern int servalShutdown;
-
 int rhizome_enabled();
 int rhizome_http_server_running();
 
@@ -185,10 +183,6 @@ int server(void);
 int server_write_pid();
 int server_write_proc_state(const char *path, const char *fmt, ...);
 int server_get_proc_state(const char *path, char *buff, size_t buff_len);
-int server_create_stopfile();
-int server_remove_stopfile();
-int server_check_stopfile();
-void server_watchdog(struct sched_ent *alarm);
 void overlay_mdp_clean_socket_files();
 void serverCleanUp();
 
@@ -210,7 +204,6 @@ int overlay_frame_append_payload(struct decode_context *context, int encapsulati
 int overlay_packet_init_header(int packet_version, int encapsulation, 
 			       struct decode_context *context, struct overlay_buffer *buff, 
 			       char unicast, char interface, int seq);
-void overlay_rhizome_advertise(struct sched_ent *alarm);
 void rhizome_sync_status_html(struct strbuf *b, struct subscriber *subscriber);
 int rhizome_cache_count();
 
@@ -301,12 +294,9 @@ int parseDnaReply(const char *buf, size_t len, char *token, char *did, char *nam
 int overlay_mdp_setup_sockets();
 
 int overlay_packetradio_setup_port(struct overlay_interface *interface);
-void server_config_reload(struct sched_ent *alarm);
-void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_bind_internal_services();
 int overlay_send_probe(struct subscriber *peer, struct network_destination *destination, int queue);
 int overlay_send_stun_request(struct subscriber *server, struct subscriber *request);
-void fd_periodicstats(struct sched_ent *alarm);
 void rhizome_check_connections(struct sched_ent *alarm);
 
 int overlay_queue_init();
@@ -344,6 +334,7 @@ int link_add_destinations(struct overlay_frame *frame);
 void link_neighbour_short_status_html(struct strbuf *b, const char *link_prefix);
 void link_neighbour_status_html(struct strbuf *b, struct subscriber *neighbour);
 int link_stop_routing(struct subscriber *subscriber);
+int link_has_neighbours();
 
 int generate_nonce(unsigned char *nonce,int bytes);
 
