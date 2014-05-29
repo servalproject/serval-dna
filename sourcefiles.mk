@@ -49,7 +49,6 @@ SERVAL_DAEMON_SOURCES = \
 	crypto.c \
 	directory_client.c \
 	dna_helper.c \
-	encode.c \
 	golay.c \
 	httpd.c \
 	http_server.c \

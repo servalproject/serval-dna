@@ -1,1 +1,0 @@
-sqlite-amalgamation-3070900/encode.c
