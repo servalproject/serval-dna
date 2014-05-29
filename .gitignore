@@ -6,7 +6,6 @@
 /objs
 /objs_lib
 /objs_servald
-*.o
 *.a
 *.suo
 .*.sw?
