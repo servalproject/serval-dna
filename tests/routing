@@ -64,7 +64,8 @@ path_exists() {
    local dest
    eval dest=\$$#
    local dest_sidvar=SID${dest#+}
-   local next_inst=$1
+   local first_inst=$1
+   local next_inst=$first_inst
    shift
    local I
    for I; do
@@ -77,6 +78,11 @@ path_exists() {
       link_matches --via ${!sidvar} ${!dest_sidvar} || return 1
       next_inst=$I
    done
+   # so we think this path should exist, check that it works
+   set_instance $first_inst
+   executeOk_servald mdp trace "${!dest_sidvar}"
+   assertStdoutGrep --matches=1 "${!dest_sidvar}"
+   tfw_cat --stdout
    return 0
 }
 
@@ -128,6 +134,8 @@ setup_multiple_ids() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_identities 2
+   SIDA=$SIDA1
+   SIDB=$SIDB1
    foreach_instance +A +B add_servald_interface 1
    foreach_instance +A +B start_servald_server
 }
@@ -337,6 +345,9 @@ setup_multiple_nodes() {
    foreach_instance +A +B +C +D add_servald_interface 1
    start_simulator
    simulator_command create "net" "$SERVALD_VAR/dummy1/"
+   # note if we need to force broadcast packets so that the routes stabilise quickly
+   foreach_instance +A +B +C +D executeOk_servald config \
+	set interfaces.1.prefer_unicast 0
    foreach_instance +A +B +C +D start_servald_server
 }
 test_multiple_nodes() {
@@ -901,6 +912,9 @@ test_crowded_mess() {
    wait_until has_link --via "[0-9A-F]*" $SIDA
    set_instance +A
    wait_until has_link --via "[0-9A-F]*" $SIDH
+   executeOk_servald mdp trace $SIDD
+   assertStdoutGrep --matches=1 $SIDD
+   tfw_cat --stdout
    executeOk_servald mdp ping --timeout=3 --wait-for-duplicates $SIDH 1
    tfw_cat --stdout --stderr
 }
