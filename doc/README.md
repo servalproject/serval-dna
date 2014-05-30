@@ -30,6 +30,10 @@ DNA][] component of the [Serval mesh network][].
    message stream protocol used in Serval Mesh networks and its C programming
    API.
 
+ * [Mesh Service Discovery](./Mesh-Service-Discovery.md) describes the protocol
+   used for discovering services available on nearby (reachable) mesh network
+   nodes.
+
  * [Serval Infrastructure](./Serval-Infrastructure.md) contains notes on plans
    for how a Serval mesh network can use the Internet to increase its reach and
    usefulness.
