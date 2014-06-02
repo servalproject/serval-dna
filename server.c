@@ -285,7 +285,7 @@ void cf_on_config_change()
   dna_helper_start();
   directory_service_init();
   
-  /* Periodically check for new interfaces */
+  // check for interfaces at least once after config change
   RESCHEDULE_ALARM(overlay_interface_discover, now, 100);
   
   if (link_has_neighbours())

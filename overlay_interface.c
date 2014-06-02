@@ -1031,7 +1031,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
     if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
       overlay_interfaces[i].state=INTERFACE_STATE_DETECTING;   
 
-  /* Register new dummy interfaces */
+  /* Register new file interfaces */
   int detect_real_interfaces = 0;
   const struct config_network_interface *ifconfig = NULL;
   for (i = 0; i < config.interfaces.ac; ++i, ifconfig = NULL) {
@@ -1123,14 +1123,17 @@ void overlay_interface_discover(struct sched_ent *alarm)
   }
 
   // Close any interfaces that have gone away.
-  for(i = 0; i < OVERLAY_MAX_INTERFACES; i++)
-    if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING) {
+  for(i = 0; i < OVERLAY_MAX_INTERFACES; i++){
+    if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING)
       overlay_interface_close(&overlay_interfaces[i]);
-    }
+  }
 
-  alarm->alarm = gettime_ms()+5000;
-  alarm->deadline = alarm->alarm + 10000;
-  schedule(alarm);
+  // if there are no real interfaces to detect, we can wait for the config file to change
+  if (detect_real_interfaces){
+    alarm->alarm = gettime_ms()+5000;
+    alarm->deadline = alarm->alarm + 10000;
+    schedule(alarm);
+  }
   return;
 }
 
