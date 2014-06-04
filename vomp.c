@@ -387,6 +387,7 @@ static struct vomp_call_state *vomp_create_call(struct subscriber *remote,
   call->last_activity=call->create_time;
   
   call->alarm.alarm = call->create_time+VOMP_CALL_STATUS_INTERVAL;
+  call->alarm.deadline = call->alarm.alarm+10;
   call->alarm.function = vomp_process_tick;
   vomp_stats.name="vomp_process_tick";
   call->alarm.stats=&vomp_stats;

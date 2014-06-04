@@ -113,18 +113,15 @@ int overlayServerMode()
 
   time_ms_t now = gettime_ms();
   
-  /* Periodically check for server shut down */
-  RESCHEDULE_ALARM(server_shutdown_check, now, 100);
-  
-  /* Periodically reload configuration */
-  RESCHEDULE_ALARM(server_config_reload, now+config.server.config_reload_interval_ms, 100);
+  // Periodically check for server shut down
+  RESCHEDULE(&ALARM_STRUCT(server_shutdown_check), now, now+30000, now);
   
   overlay_mdp_bind_internal_services();
   
   olsr_init_socket();
 
   /* Calculate (and possibly show) CPU usage stats periodically */
-  RESCHEDULE_ALARM(fd_periodicstats, now+3000, 500);
+  RESCHEDULE(&ALARM_STRUCT(fd_periodicstats), now+3000, now+30000, TIME_MS_NEVER_WILL);
 
   cf_on_config_change();
   

@@ -261,11 +261,11 @@ setup_ReloadConfigSetSync() {
       set debug.mdprequests on \
       set server.config_reload_interval_ms 600000 \
       set server.motd "Abcdef"
-   conf_size=$(wc -l <"$SERVALINSTANCE_PATH/serval.conf")
-   assert [ "$conf_size" -gt 0 ]
    start_servald_server
    wait_until servald_http_server_started +A
    get_servald_http_server_port PORTA +A
+   conf_size=$(wc -l <"$SERVALINSTANCE_PATH/serval.conf")
+   assert [ "$conf_size" -gt 0 ]
 }
 test_ReloadConfigSetSync() {
    # Set the MOTD without changing the config file size and sync it, and the

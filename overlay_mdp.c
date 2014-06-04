@@ -1170,8 +1170,8 @@ static void overlay_mdp_scan(struct sched_ent *alarm)
   }
   
   if (state->current <= state->last){
-    alarm->alarm=gettime_ms()+500;
-    schedule(alarm);
+    time_ms_t now = gettime_ms();
+    RESCHEDULE(alarm, now+500, now+500, TIME_MS_NEVER_WILL);
   }else{
     DEBUG("Scan completed");
     state->interface=NULL;
@@ -1717,10 +1717,9 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 		    interface->name, scans[i].last, scans[i].current);
 		  continue;
 		}
-		scans[i].alarm.alarm=start;
 		scans[i].alarm.function=overlay_mdp_scan;
+		RESCHEDULE(&scans[i].alarm, start, start, start+500);
 		start+=100;
-		schedule(&scans[i].alarm);
 	      }
 	    }else{
 	      struct overlay_interface *interface = overlay_interface_find(scan->addr, 1);
@@ -1734,9 +1733,8 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 		scans[i].interface = interface;
 		scans[i].current = ntohl(scan->addr.s_addr);
 		scans[i].last = ntohl(scan->addr.s_addr);
-		scans[i].alarm.alarm=start;
 		scans[i].alarm.function=overlay_mdp_scan;
-		schedule(&scans[i].alarm);
+		RESCHEDULE(&scans[i].alarm, start, start, start+500);
 	      }
 	    }
 	    

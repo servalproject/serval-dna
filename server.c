@@ -208,9 +208,10 @@ void server_config_reload(struct sched_ent *alarm)
   }
   if (alarm) {
     time_ms_t now = gettime_ms();
-    alarm->alarm = now + config.server.config_reload_interval_ms;
-    alarm->deadline = alarm->alarm + 100;
-    schedule(alarm);
+    RESCHEDULE(alarm, 
+        now+config.server.config_reload_interval_ms,
+	TIME_MS_NEVER_WILL,
+	now+config.server.config_reload_interval_ms+100);
   }
 }
 
@@ -269,9 +270,10 @@ void server_watchdog(struct sched_ent *alarm)
   }
   if (alarm) {
     time_ms_t now = gettime_ms();
-    alarm->alarm = now + config.server.watchdog.interval_ms;
-    alarm->deadline = alarm->alarm + 100;
-    schedule(alarm);
+    RESCHEDULE(alarm, 
+      now+config.server.watchdog.interval_ms, 
+      now+config.server.watchdog.interval_ms, 
+      now+100);
   }
 }
 
@@ -286,15 +288,24 @@ void cf_on_config_change()
   directory_service_init();
   
   // check for interfaces at least once after config change
-  RESCHEDULE_ALARM(overlay_interface_discover, now, 100);
+  RESCHEDULE(&ALARM_STRUCT(overlay_interface_discover), now, now, now);
   
   if (link_has_neighbours())
     // send rhizome sync periodically
-    RESCHEDULE_ALARM(rhizome_sync_announce, now+1000, 10000);
+    RESCHEDULE(&ALARM_STRUCT(rhizome_sync_announce), 
+      now+1000, now+1000, TIME_MS_NEVER_WILL);
 
   if (config.server.watchdog.executable[0])
-    RESCHEDULE_ALARM(server_watchdog, now+config.server.watchdog.interval_ms, 100);
+    RESCHEDULE(&ALARM_STRUCT(server_watchdog), 
+      now+config.server.watchdog.interval_ms, 
+      now+config.server.watchdog.interval_ms, 
+      now+100);
   
+  // Periodically check for modified configuration
+  RESCHEDULE(&ALARM_STRUCT(server_config_reload), 
+    now+config.server.config_reload_interval_ms,
+    TIME_MS_NEVER_WILL,
+    now+config.server.config_reload_interval_ms+100);
 }
 
 /* Called periodically by the server process in its main loop.
@@ -315,9 +326,7 @@ void server_shutdown_check(struct sched_ent *alarm)
     }
   }
   if (alarm){
-    alarm->alarm = now + 1000;
-    alarm->deadline = alarm->alarm + 5000;
-    schedule(alarm);
+    RESCHEDULE(alarm, now+1000, now+30000, now+5000);
   }
 }
 

@@ -1529,8 +1529,10 @@ int rhizome_store_manifest(rhizome_manifest *m)
 	  m->version
 	);
     monitor_announce_bundle(m);
-    if (serverMode)
-      RESCHEDULE_ALARM(rhizome_sync_announce, gettime_ms(), 10000);
+    if (serverMode){
+      time_ms_t now = gettime_ms();
+      RESCHEDULE(&ALARM_STRUCT(rhizome_sync_announce), now, now, TIME_MS_NEVER_WILL);
+    }
     return 0;
   }
 rollback:

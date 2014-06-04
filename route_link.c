@@ -258,12 +258,15 @@ static struct link_state *get_link_state(struct subscriber *subscriber)
 
 static void first_neighbour_found(){
   // send rhizome sync periodically
-  RESCHEDULE_ALARM(rhizome_sync_announce, gettime_ms()+1000, 10000);
+  time_ms_t now = gettime_ms();
+  RESCHEDULE(&ALARM_STRUCT(rhizome_sync_announce), 
+    now+1000, now+5000, TIME_MS_NEVER_WILL);
 }
 
 static void last_neighbour_gone(){
   // stop trying to sync rhizome
-  RESCHEDULE_ALARM(rhizome_sync_announce, TIME_MS_NEVER_WILL, 0);
+  RESCHEDULE(&ALARM_STRUCT(rhizome_sync_announce), 
+    TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
 }
 
 static struct neighbour *get_neighbour(struct subscriber *subscriber, char create)

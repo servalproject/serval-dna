@@ -77,46 +77,70 @@ struct sched_ent;
 typedef void (*ALARM_FUNCP) (struct sched_ent *alarm);
 
 struct sched_ent{
-  struct sched_ent *_next;
-  struct sched_ent *_prev;
+  struct sched_ent *_next_wake;
+  struct sched_ent *_prev_wake;
+  struct sched_ent *_next_run;
+  uint8_t _scheduled;
   
   ALARM_FUNCP function;
   void *context;
   struct pollfd poll;
+  
+  // if the CPU is awake, you can run this function after this time
+  time_ms_t run_after;
+  // wake up the CPU at this time in order to run
+  time_ms_t wake_at;
+  // run this alarm in this order. if this time has passed, don't allow other IO
+  time_ms_t run_before;
+  
   // when we should first consider the alarm
   time_ms_t alarm;
   // the order we will prioritise the alarm
   time_ms_t deadline;
+  
   struct profile_total *stats;
   int _poll_index;
 };
 
-#define STRUCT_SCHED_ENT_UNUSED {.poll={.fd=-1}, ._poll_index=-1,}
+#define STRUCT_SCHED_ENT_UNUSED {\
+  .poll={.fd=-1}, \
+  ._poll_index=-1, \
+  .run_after=TIME_MS_NEVER_WILL, \
+  .alarm=TIME_MS_NEVER_WILL, \
+  .deadline=TIME_MS_NEVER_WILL, \
+}
 
+#define ALARM_STRUCT(X) _sched_##X
 #define DECLARE_ALARM(X) \
-  extern struct sched_ent _sched_##X; \
+  extern struct sched_ent ALARM_STRUCT(X); \
   void X(struct sched_ent *);
 
 #define DEFINE_ALARM(X) \
   void X(struct sched_ent *); \
   struct profile_total _stats_##X = {.name=#X,}; \
-  struct sched_ent _sched_##X = { \
+  struct sched_ent ALARM_STRUCT(X) = { \
+      .poll={.fd=-1}, \
+      ._poll_index=-1, \
+      .run_after=TIME_MS_NEVER_WILL, \
+      .alarm=TIME_MS_NEVER_WILL, \
+      .deadline=TIME_MS_NEVER_WILL, \
       .stats = &_stats_##X, \
       .function=X, \
     };
 
-#define RESCHEDULE_ALARM(X, A, D) \
+#define RESCHEDULE(X, AFTER, WAIT, BEFORE) \
   do{\
-    unschedule(&_sched_##X); \
-    _sched_##X.alarm=(A); \
-    _sched_##X.deadline=_sched_##X.alarm+(D); \
-    schedule(&_sched_##X); \
+    unschedule(X); \
+    (X)->run_after=(AFTER); \
+    (X)->alarm=(WAIT); \
+    (X)->deadline=(BEFORE); \
+    schedule(X); \
   }while(0)
 
-int is_scheduled(const struct sched_ent *alarm);
+#define is_scheduled(X) ((X)->_scheduled)
 int is_watching(struct sched_ent *alarm);
-int _schedule(struct __sourceloc, struct sched_ent *alarm);
-int _unschedule(struct __sourceloc, struct sched_ent *alarm);
+void _schedule(struct __sourceloc, struct sched_ent *alarm);
+void _unschedule(struct __sourceloc, struct sched_ent *alarm);
 int _watch(struct __sourceloc, struct sched_ent *alarm);
 int _unwatch(struct __sourceloc, struct sched_ent *alarm);
 #define schedule(alarm)   _schedule(__WHENCE__, alarm)
