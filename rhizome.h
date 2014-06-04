@@ -639,7 +639,7 @@ struct rhizome_write
   rhizome_filehash_t id;
   uint64_t temp_id;
   char id_known;
-  
+  int priority;
   uint64_t tail;
   uint64_t file_offset;
   uint64_t written_offset;

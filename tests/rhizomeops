@@ -355,6 +355,22 @@ test_ExtractManifestFileFromExtBlob() {
    assert diff file2 file2x
 }
 
+doc_LargePayload="Export huge bundle after one add"
+setup_LargePayload() {
+   setup_servald
+   setup_rhizome
+   set_instance +A
+   executeOk_servald config set debug.rhizome_store on
+}
+test_LargePayload() {
+   rhizome_add_file file1 100000
+   executeOk_servald rhizome export bundle $BID file1x.manifest file1x
+   assert [ -e file1x.manifest ]
+   assert diff file1.manifest file1x.manifest
+   assert [ -e file1x ]
+   assert diff file1 file1x
+}
+
 doc_CorruptExternalBlob="A corrupted payload should fail to export"
 setup_CorruptExternalBlob() {
    setup_servald
