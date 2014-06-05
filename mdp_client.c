@@ -102,6 +102,7 @@ ssize_t _mdp_recv(struct __sourceloc __whence, int socket, struct mdp_header *he
   }
   
   struct socket_address addr;
+  bzero(&addr, sizeof addr);
   struct iovec iov[]={
     {
       .iov_base = (void *)header,

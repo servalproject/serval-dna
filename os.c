@@ -34,6 +34,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <dirent.h>
 #include <time.h>
 #include <string.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 
 void log_info_mkdir(struct __sourceloc __whence, const char *path, mode_t mode)
 {

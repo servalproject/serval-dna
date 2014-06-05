@@ -1547,6 +1547,7 @@ static void mdp_poll2(struct sched_ent *alarm)
     uint8_t payload[1200];
     struct mdp_header header;
     struct socket_address client;
+    bzero(&client, sizeof client);
     client.addrlen=sizeof(client.addr);
     
     struct iovec iov[]={
