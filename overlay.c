@@ -77,8 +77,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_interface.h"
 #include "server.h"
 
-int overlayMode=0;
-
 keyring_file *keyring=NULL;
 
 /* The caller must set up the keyring before calling this function, and the keyring must contain at
@@ -103,6 +101,15 @@ int overlayServerMode()
   if (server_write_pid())
     RETURN(-1);
   
+  /* For testing, it can be very helpful to delay the start of the server process, for example to
+   * check that the start/stop logic is robust.
+   */
+  const char *delay = getenv("SERVALD_SERVER_START_DELAY");
+  if (delay){
+    time_ms_t milliseconds = atoi(delay);
+    INFOF("Sleeping for %"PRId64" milliseconds", (int64_t) milliseconds);
+    sleep_ms(milliseconds);
+  }
   overlay_queue_init();
   
   if (is_rhizome_enabled()){
@@ -127,8 +134,9 @@ int overlayServerMode()
   
   // log message used by tests to wait for the server to start
   INFO("Server initialised, entering main loop");
+  
   /* Check for activitiy and respond to it */
-  while(fd_poll() && (serverMode==1));
+  while((serverMode==1) && fd_poll());
   
   serverCleanUp();
   RETURN(0);

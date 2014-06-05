@@ -173,8 +173,6 @@ struct overlay_buffer;
 struct overlay_frame;
 struct broadcast;
 
-extern int overlayMode;
-
 int server_pid();
 const char *_server_pidfile_path(struct __sourceloc);
 #define server_pidfile_path() (_server_pidfile_path(__WHENCE__))

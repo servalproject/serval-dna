@@ -89,13 +89,6 @@ const char *_server_pidfile_path(struct __sourceloc __whence)
 int server()
 {
   IN();
-  /* For testing, it can be very helpful to delay the start of the server process, for example to
-   * check that the start/stop logic is robust.
-   */
-  const char *delay = getenv("SERVALD_SERVER_START_DELAY");
-  if (delay)
-    sleep_ms(atoi(delay));
-
   serverMode = 1;
 
   /* Catch SIGHUP etc so that we can respond to requests to do things, eg, shut down. */

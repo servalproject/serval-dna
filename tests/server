@@ -109,17 +109,28 @@ test_StartStart() {
 doc_StartStopFast="Stop server before it finishes starting"
 setup_StartStopFast() {
    setup
-   export SERVALD_SERVER_START_DELAY=250
+   export SERVALD_SERVER_START_DELAY=10000
 }
 test_StartStopFast() {
    start_servald_server
    stop_servald_server
 }
 
+doc_RemovePid="Server stops when pid file removed"
+setup_RemovePid() {
+   setup
+   start_servald_server
+}
+test_RemovePid() {
+   rm $instance_servald_pidfile
+   wait_until ! kill -0 $servald_pid 2>/dev/null
+
+}
+
 doc_NoZombie="Server process does not become a zombie"
 setup_NoZombie() {
    setup
-   export SERVALD_START_POST_SLEEP=1000
+   export SERVALD_START_POST_SLEEP=10000
    servald_start &
    start_pid=$!
    wait_until get_servald_server_pidfile servald_pid
@@ -262,7 +273,6 @@ setup_ReloadConfigSetSync() {
       set server.config_reload_interval_ms 600000 \
       set server.motd "Abcdef"
    start_servald_server
-   wait_until servald_http_server_started +A
    get_servald_http_server_port PORTA +A
    conf_size=$(wc -l <"$SERVALINSTANCE_PATH/serval.conf")
    assert [ "$conf_size" -gt 0 ]

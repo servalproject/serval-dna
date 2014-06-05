@@ -865,7 +865,6 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
       WHY("Could not seed keyring");
       goto exit;
     }
-    overlayMode = 1;
     if (foregroundP) {
       ret = server();
       goto exit;
@@ -922,6 +921,7 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
 	    // NOT REACHED
 	  }
 	}
+	// TODO wait for server_write_pid() to signal more directly?
 	_exit(0); // Main process is waitpid()-ing for this.
       }
     }
@@ -965,11 +965,9 @@ int app_server_start(const struct cli_parsed *parsed, struct cli_context *contex
    */
   const char *post_sleep = getenv("SERVALD_START_POST_SLEEP");
   if (post_sleep) {
-    time_ms_t milliseconds = atof(post_sleep) * 1000;
-    if (milliseconds > 0) {
-      INFOF("Sleeping for %"PRId64" milliseconds", (int64_t) milliseconds);
-      sleep_ms(milliseconds);
-    }
+    time_ms_t milliseconds = atoi(post_sleep);
+    INFOF("Sleeping for %"PRId64" milliseconds", (int64_t) milliseconds);
+    sleep_ms(milliseconds);
   }
 exit:
   keyring_free(keyring);
