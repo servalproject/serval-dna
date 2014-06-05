@@ -57,6 +57,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdlib.h>
 #include <stdio.h>
 #include <limits.h>
+#include <signal.h>
 #ifdef HAVE_JNI_H
 #include <jni.h>
 #endif
