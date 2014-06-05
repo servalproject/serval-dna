@@ -493,6 +493,10 @@ public class ServalDCommand
 		ServalDCommand.command("config", "set", name, value);
 	}
 
+	public static void configSync() throws ServalDFailureException{
+		ServalDCommand.command("config", "sync");
+	}
+
 	public static boolean getConfigItemBoolean(String name, boolean defaultValue) {
 		try {
 			String value = getConfigItem(name);
