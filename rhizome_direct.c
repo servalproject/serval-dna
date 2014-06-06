@@ -515,6 +515,7 @@ int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context 
   if (!strcasecmp(modeName,"push")) mode=1; /* push only */
   if (!strcasecmp(modeName,"pull")) mode=2; /* pull only */
   DEBUGF("sync direction = %d",mode);
+  rhizome_opendb();
   if (parsed->args[3]) {
     struct config_rhizome_peer peer;
     const struct config_rhizome_peer *peers[1] = { &peer };

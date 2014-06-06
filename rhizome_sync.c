@@ -482,7 +482,7 @@ void rhizome_sync_announce(struct sched_ent *alarm)
 
 int overlay_mdp_service_rhizome_sync(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
-  if (!config.rhizome.enable)
+  if (!config.rhizome.enable || !rhizome_db)
     return 0;
   struct rhizome_sync *state = header->source->sync_state;
   if (!state){

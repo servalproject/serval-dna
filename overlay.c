@@ -112,12 +112,6 @@ int overlayServerMode()
   }
   overlay_queue_init();
   
-  if (is_rhizome_enabled()){
-    rhizome_opendb();
-    if (config.rhizome.clean_on_start && !config.rhizome.clean_on_open)
-      rhizome_cleanup(NULL);
-  }
-
   time_ms_t now = gettime_ms();
   
   // Periodically check for server shut down

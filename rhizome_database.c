@@ -461,8 +461,7 @@ sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, int log_level, sqlite
 {
   IN();
   sqlite3_stmt *statement = NULL;
-  if (!rhizome_db && rhizome_opendb() == -1)
-    RETURN(NULL);
+  assert(rhizome_db);
   while (1) {
     switch (sqlite3_prepare_v2(rhizome_db, sqltext, -1, &statement, NULL)) {
       case SQLITE_OK:

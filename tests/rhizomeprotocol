@@ -503,6 +503,32 @@ test_MissingPayload() {
    executeOk $servald rhizome extract file $BID file1a
 }
 
+doc_ConnectOnEnable="Enable and disable rhizome while fetching"
+setup_ConnectOnEnable(){
+   setup_common
+   set_instance +A
+   dd if=/dev/urandom of=file1 bs=1k count=1k 2>&1
+   echo x >>file1
+   rhizome_add_file file1
+   foreach_instance +A +B \
+      executeOk_servald config \
+         set rhizome.enable off
+   start_servald_instances +A +B
+}
+test_ConnectOnEnable(){
+   # TODO try to force disabling rhizome mid transfer
+   foreach_instance +A +B \
+      executeOk_servald config \
+         set rhizome.enable on \
+         sync
+   sleep 2
+   foreach_instance +A +B \
+      executeOk_servald config \
+         set rhizome.enable off \
+         sync
+   sleep 3
+}
+
 doc_HttpFetchRange="Fetch a file range using HTTP GET"
 setup_HttpFetchRange() {
    setup_curl 7
