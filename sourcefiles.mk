@@ -65,7 +65,6 @@ SERVAL_DAEMON_SOURCES = \
 	monitor-client.c \
 	monitor-cli.c \
 	nonce.c \
-	overlay.c \
 	overlay_address.c \
 	overlay_buffer.c \
 	overlay_interface.c \

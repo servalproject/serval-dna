@@ -33,10 +33,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_interface.h"
 #include "overlay_packet.h"
 #include "server.h"
+#include "keyring.h"
 
 #define PROC_SUBDIR	  "proc"
 #define PIDFILE_NAME	  "servald.pid"
 #define STOPFILE_NAME	  "servald.stop"
+
+keyring_file *keyring=NULL;
 
 static char pidfile_path[256];
 
@@ -101,7 +104,59 @@ int server()
   sigaction(SIGHUP, &sig, NULL);
   sigaction(SIGINT, &sig, NULL);
 
-  overlayServerMode();
+  /* Setup up client API sockets before writing our PID file
+     We want clients to be able to connect to our sockets as soon 
+     as servald start has returned. But we don't want servald start
+     to take very long. 
+     Try to perform only minimal CPU or IO processing here.
+  */
+  if (overlay_mdp_setup_sockets()==-1)
+    RETURN(-1);
+  
+  if (monitor_setup_sockets()==-1)
+    RETURN(-1);
+  
+  // start the HTTP server if enabled
+  if (httpd_server_start(HTTPD_PORT, HTTPD_PORT_MAX)==-1)
+    RETURN(-1);
+ 
+  /* For testing, it can be very helpful to delay the start of the server process, for example to
+   * check that the start/stop logic is robust.
+   */
+  const char *delay = getenv("SERVALD_SERVER_START_DELAY");
+  if (delay){
+    time_ms_t milliseconds = atoi(delay);
+    INFOF("Sleeping for %"PRId64" milliseconds", (int64_t) milliseconds);
+    sleep_ms(milliseconds);
+  }
+  
+  /* record PID file so that servald start can return */
+  if (server_write_pid())
+    RETURN(-1);
+  
+  overlay_queue_init();
+  
+  time_ms_t now = gettime_ms();
+  
+  // Periodically check for server shut down
+  RESCHEDULE(&ALARM_STRUCT(server_shutdown_check), now, now+30000, now);
+  
+  overlay_mdp_bind_internal_services();
+  
+  olsr_init_socket();
+
+  /* Calculate (and possibly show) CPU usage stats periodically */
+  RESCHEDULE(&ALARM_STRUCT(fd_periodicstats), now+3000, now+30000, TIME_MS_NEVER_WILL);
+
+  cf_on_config_change();
+  
+  // log message used by tests to wait for the server to start
+  INFO("Server initialised, entering main loop");
+  
+  /* Check for activitiy and respond to it */
+  while((serverMode==1) && fd_poll());
+  
+  serverCleanUp();
 
   RETURN(0);
   OUT();
@@ -322,6 +377,7 @@ void cf_on_config_change()
 DEFINE_ALARM(server_shutdown_check);
 void server_shutdown_check(struct sched_ent *alarm)
 {
+  // TODO we should watch a descriptor and quit when it closes
   /* If this server has been supplanted with another or Serval has been uninstalled, then its PID
       file will change or be unaccessible.  In this case, shut down without all the cleanup.
       Perform this check at most once per second.  */

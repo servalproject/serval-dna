@@ -170,12 +170,16 @@ int overlay_mdp_setup_sockets()
 
   if (mdp_sock.poll.fd == -1) {
     mdp_sock.poll.fd = mdp_bind_socket("mdp.socket");
+    if (mdp_sock.poll.fd == -1)
+      return -1;
     mdp_sock.poll.events = POLLIN;
     watch(&mdp_sock);
   }
   
   if (mdp_sock2.poll.fd == -1) {
     mdp_sock2.poll.fd = mdp_bind_socket("mdp.2.socket");
+    if (mdp_sock2.poll.fd == -1)
+      return -1;
     mdp_sock2.poll.events = POLLIN;
     watch(&mdp_sock2);
   }
@@ -214,8 +218,10 @@ int overlay_mdp_setup_sockets()
 	  WHY_perror("bind");
       }
       
-      if (fd!=-1)
+      if (fd!=-1){
 	close(fd);
+	return -1;
+      }
     }
   }
   return 0;
@@ -1107,7 +1113,6 @@ int overlay_mdp_address_list(struct overlay_mdp_addrlist *request, struct overla
 
 struct routing_state{
   struct socket_address *client;
-  int fd;
 };
 
 static int routing_table(struct subscriber *subscriber, void *context)

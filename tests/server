@@ -106,14 +106,25 @@ test_StartStart() {
    assert [ "$servald_pid" = "$start_pid" ]
 }
 
-doc_StartStopFast="Stop server before it finishes starting"
-setup_StartStopFast() {
+doc_StartTwice="Attempt to start the server twice at the same time"
+setup_StartTwice() {
    setup
-   export SERVALD_SERVER_START_DELAY=10000
+   export SERVALD_SERVER_START_DELAY=2000
+   set_instance +A
+   executeOk_servald config set debug.io on
 }
-test_StartStopFast() {
+start_other(){
    start_servald_server
+   echo $servald_pid > other_pid
+}
+test_StartTwice() {
+   fork %server start_other
+   start_servald_server
+   fork_wait %server
+   # both servald start commands should return success with the same PID
+   assertGrep other_pid "^$servald_pid$"
    stop_servald_server
+   assert_no_servald_processes
 }
 
 doc_RemovePid="Server stops when pid file removed"
@@ -124,7 +135,6 @@ setup_RemovePid() {
 test_RemovePid() {
    rm $instance_servald_pidfile
    wait_until ! kill -0 $servald_pid 2>/dev/null
-
 }
 
 doc_NoZombie="Server process does not become a zombie"
