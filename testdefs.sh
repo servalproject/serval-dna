@@ -387,7 +387,7 @@ start_servald_server() {
 #  - invoke "servald start" command with given args and suitable environment
 servald_start() {
    rm -r -f "$instance_dir/cache"
-   mkdir "$instance_dir/cache" || error "mkdir failed"
+   mkdir -p "$instance_dir/cache" || error "mkdir failed"
    SERVALD_SERVER_CHDIR="$instance_dir" SERVALD_LOG_FILE="$instance_servald_log" $servald start "$@"
 }
 
