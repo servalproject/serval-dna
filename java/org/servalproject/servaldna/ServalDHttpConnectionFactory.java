@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2011 The Serval Project
+ * Copyright (C) 2014 Serval Project Inc.
  *
  * This file is part of Serval Software (http://www.servalproject.org)
  *
@@ -20,18 +20,11 @@
 
 package org.servalproject.servaldna;
 
-/**
- * Thrown when a request to a servald JNI method fails.  This typically means that the returned
- * status is non-zero, or some other result was returned that indicated the operation failed.
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
-public class ServalDFailureException extends ServalDInterfaceException
-{
-	private static final long serialVersionUID = 1L;
+import java.io.IOException;
+import java.net.HttpURLConnection;
 
-	public ServalDFailureException(String message) {
-		super(message);
-	}
+public interface ServalDHttpConnectionFactory {
+
+	public HttpURLConnection newServalDHttpConnection(String path) throws ServalDInterfaceException, IOException;
 
 }

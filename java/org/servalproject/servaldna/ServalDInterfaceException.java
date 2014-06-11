@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2011 The Serval Project
+ * Copyright (C) 2014 Serval Project Inc.
  *
  * This file is part of Serval Software (http://www.servalproject.org)
  *
@@ -21,17 +21,24 @@
 package org.servalproject.servaldna;
 
 /**
- * Thrown when a request to a servald JNI method fails.  This typically means that the returned
- * status is non-zero, or some other result was returned that indicated the operation failed.
+ * Thrown when the Serval DNA interface has not behaved as expected.  This is a general class of
+ * errors, and is specialised by subclasses that represent an error returned by a server command,
+ * MDP protocol non-compliance, etc.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-public class ServalDFailureException extends ServalDInterfaceException
+public class ServalDInterfaceException extends Exception
 {
-	private static final long serialVersionUID = 1L;
-
-	public ServalDFailureException(String message) {
+	public ServalDInterfaceException(String message) {
 		super(message);
+	}
+
+	public ServalDInterfaceException(Throwable cause) {
+		super(cause);
+	}
+
+	public ServalDInterfaceException(String message, Throwable cause) {
+		super(message, cause);
 	}
 
 }
