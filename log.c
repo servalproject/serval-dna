@@ -43,7 +43,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "xprintf.h"
 
-int serverMode = 0;
+int logLevel_NoLogFileConfigured = LOG_LEVEL_INFO;
 
 #define NO_FILE ((FILE *)1)
 
@@ -487,7 +487,7 @@ static void _open_log_file(_log_iterator *it)
 	if (cf_limbo)
 	  return;
 	_log_file = NO_FILE;
-	_logs_printf_nl(serverMode ? LOG_LEVEL_WARN : LOG_LEVEL_INFO, __NOWHERE__, "No log file configured");
+	_logs_printf_nl(logLevel_NoLogFileConfigured, __NOWHERE__, "No log file configured");
       } else {
 	// Create the new log file.
 	size_t dirsiz = strlen(_log_file_path) + 1;

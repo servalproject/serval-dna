@@ -18,6 +18,7 @@
  */
 
 #include <inttypes.h> // for PRIx64 on Android
+#include "serval.h" // for serverMode
 #include "serval_types.h"
 #include "instance.h"
 #include "overlay_address.h"

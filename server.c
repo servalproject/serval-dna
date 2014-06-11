@@ -39,6 +39,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define PIDFILE_NAME	  "servald.pid"
 #define STOPFILE_NAME	  "servald.stop"
 
+int serverMode = 0;
 keyring_file *keyring=NULL;
 
 static char pidfile_path[256];
@@ -93,6 +94,9 @@ int server()
 {
   IN();
   serverMode = 1;
+
+  // Warn, not merely Info, if there is no configured log file.
+  logLevel_NoLogFileConfigured = LOG_LEVEL_WARN;
 
   /* Catch SIGHUP etc so that we can respond to requests to do things, eg, shut down. */
   struct sigaction sig;

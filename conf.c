@@ -59,7 +59,7 @@ static int reload(const char *path, int *resultp)
   }
   if (cmp_file_meta(&meta, &conffile_meta) == 0)
     return 0;
-  if (conffile_meta.mtime.tv_sec != -1 && serverMode)
+  if (conffile_meta.mtime.tv_sec != -1)
     INFOF("config file %s -- detected new version", conffile_path());
   char *buf = NULL;
   if (meta.mtime.tv_sec == -1) {
@@ -93,8 +93,8 @@ static int reload(const char *path, int *resultp)
       free(buf);
       return -1;
     }
-    if (serverMode)
-      INFOF("config file %s successfully read %ld bytes", path, (long) meta.size);
+    if (config.debug.config)
+      DEBUGF("config file %s successfully read %ld bytes", path, (long) meta.size);
   }
   conffile_meta = meta;
   if (config.debug.config)

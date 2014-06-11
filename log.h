@@ -48,7 +48,7 @@ const char *log_level_as_string(int level);
 int string_to_log_level(const char *text);
 
 // Log output control.
-extern int serverMode;
+extern int logLevel_NoLogFileConfigured;
 void close_log_file();
 void disable_log_stderr();
 void logFlush();

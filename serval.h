@@ -173,16 +173,16 @@ struct overlay_buffer;
 struct overlay_frame;
 struct broadcast;
 
+extern int serverMode;
+
 int server_pid();
 const char *_server_pidfile_path(struct __sourceloc);
 #define server_pidfile_path() (_server_pidfile_path(__WHENCE__))
 void server_save_argv(int argc, const char *const *argv);
 int server(void);
-int server_write_pid();
 int server_write_proc_state(const char *path, const char *fmt, ...);
 int server_get_proc_state(const char *path, char *buff, size_t buff_len);
 void overlay_mdp_clean_socket_files();
-void serverCleanUp();
 
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
