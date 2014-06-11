@@ -2,7 +2,7 @@
 
 # Tests for Serval DNA JNI entry points.
 #
-# Copyright 2012 Serval Project, Inc.
+# Copyright 2012-2014 Serval Project Inc.
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -20,7 +20,7 @@
 
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
-source "${0%/*}/../testconfig.sh"
+source "${0%/*}/../testdefs_java.sh"
 
 setup() {
    setup_servald
@@ -32,15 +32,6 @@ setup() {
    setup_servald_so
 }
 
-compile_java_classes() {
-   assert --message='Java compiler was detected by ./configure' [ "$JAVAC" ]
-   mkdir classes
-   assert find "$servald_source_root"/java/ -name *.java | xargs $JAVAC -Xlint:unchecked -d classes 
-   assert [ -r classes/org/servalproject/servaldna/ServalDCommand.class ]
-   assert [ -r classes/org/servalproject/servaldna/IJniResults.class ]
-   assert [ -r classes/org/servalproject/test/ServalDTests.class ]
-}
-
 # Make sure that the normal echo command-line works, without JNI.
 assert_echo_works() {
    executeOk $servald echo -e 'Hello,\ttab' 'world\0!'
@@ -49,7 +40,7 @@ assert_echo_works() {
 
 doc_Echo="Serval JNI echo Hello world"
 test_Echo() {
-   executeOk java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.test.ServalDTests 'echo' '-e' 'Hello,\ttab' 'world\0!'
+   executeJavaOk org.servalproject.test.ServalDTests 'echo' '-e' 'Hello,\ttab' 'world\0!'
    assertStdoutIs -e 'Hello,\ttab world\0! \n'
 }
 
@@ -66,14 +57,14 @@ test_Delim() {
 
 doc_Repeat="Serval JNI repeated calls in same process"
 test_Repeat() {
-   executeOk --core-backtrace java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.test.ServalDTests repeat 50 'echo' 'Hello,' 'world!'
+   executeJavaOk org.servalproject.test.ServalDTests repeat 50 'echo' 'Hello,' 'world!'
    assertStdoutLineCount '==' 50
    assertStdoutGrep --matches=50 '^Hello, world! $'
 }
 
 doc_NullArg="Serval JNI null arguments throw exception"
 test_NullArg() {
-   execute --core-backtrace java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.test.ServalDTests 'echo' '(null)'
+   executeJava org.servalproject.test.ServalDTests 'echo' '(null)'
    tfw_cat --stdout --stderr
    assertExitStatus '!=' 0
    assertStderrGrep 'NullPointerException: null element in argv'
@@ -81,13 +72,11 @@ test_NullArg() {
 
 doc_help="Serval JNI returns help text"
 test_help() {
-   execute --core-backtrace java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.test.ServalDTests 'help'
-   tfw_cat --stdout --stderr
-   assertExitStatus '==' 0
+   executeJavaOk org.servalproject.test.ServalDTests 'help'
    assertStdoutGrep 'Serval DNA version '
 }
 
-doc_PeerList="Get peer details via JNI"
+doc_PeerList="Serval JNI get peer details"
 setup_PeerList() {
    configure_servald_server() {
       add_servald_interface
@@ -98,7 +87,7 @@ setup_PeerList() {
    set_instance +A
 }
 test_PeerList() {
-   execute --core-backtrace java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.test.CommandLine 'peers'
+   executeJavaOk org.servalproject.test.CommandLine 'peers'
    assertStdoutGrep "$SIDB"
    tfw_cat --stdout
 }
@@ -109,7 +98,7 @@ teardown_PeerList() {
    report_all_servald_servers
 }
 
-doc_DnaLookup="DNA Lookup via JNI MDP API"
+doc_DnaLookup="Serval JNI DNA Lookup"
 setup_DnaLookup() {
    configure_servald_server() {
       add_servald_interface
@@ -123,9 +112,9 @@ setup_DnaLookup() {
    set_instance +A
 }
 test_DnaLookup() {
-   execute --timeout=10 --core-backtrace java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.test.CommandLine 'lookup'
-   assertStdoutGrep "$SIDB"
+   executeJavaOk --timeout=10 org.servalproject.test.CommandLine 'lookup'
    tfw_cat --stdout --stderr
+   assertStdoutGrep "$SIDB"
 }
 teardown_DnaLookup() {
    stop_all_servald_servers
@@ -134,7 +123,7 @@ teardown_DnaLookup() {
    report_all_servald_servers
 }
 
-doc_serviceDiscovery="Discover network services by name"
+doc_serviceDiscovery="Serval JNI discover network services by name"
 listen_service() {
    executeOk_servald --timeout=20 msp listen --service=test_name 512 <<EOF
 Hi!
@@ -158,9 +147,9 @@ setup_serviceDiscovery() {
    set_instance +A
 }
 test_serviceDiscovery() {
-   execute --timeout=10 --core-backtrace java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.test.CommandLine 'service' 'test_name.*'
+   executeJavaOk --timeout=10 org.servalproject.test.CommandLine 'service' 'test_name.*'
    assertStdoutGrep "$SIDB"
-   assertStdoutGrep "test_name.msp.port=512"
+   assertStdoutGrep "\<test_name\.msp\.port=512\>"
    tfw_cat --stdout --stderr
 }
 teardown_serviceDiscovery() {
@@ -169,4 +158,5 @@ teardown_serviceDiscovery() {
    assert_no_servald_processes
    report_all_servald_servers
 }
+
 runTests "$@"
