@@ -71,6 +71,8 @@ static int console_hangup(const struct cli_parsed *parsed, struct cli_context *c
 static int console_audio(const struct cli_parsed *parsed, struct cli_context *context);
 static int console_usage(const struct cli_parsed *parsed, struct cli_context *context);
 static int console_quit(const struct cli_parsed *parsed, struct cli_context *context);
+static int console_set(const struct cli_parsed *parsed, struct cli_context *context);
+static int console_clear(const struct cli_parsed *parsed, struct cli_context *context);
 static void monitor_read(struct sched_ent *alarm);
 
 struct cli_schema console_commands[]={
@@ -80,6 +82,8 @@ struct cli_schema console_commands[]={
   {console_usage,{"help",NULL},0,"This usage message"},
   {console_audio,{"say","...",NULL},0,"Send a text string to the other party"},
   {console_quit,{"quit",NULL},0,"Exit process"},
+  {console_set,{"monitor","<flag>",NULL},0,"Set an arbitrary monitor flag"},
+  {console_clear,{"ignore","<flag>",NULL},0,"Clear an arbitrary monitor flag"},
   {NULL, {NULL, NULL, NULL}, 0, NULL},
 };
 
@@ -312,6 +316,26 @@ static int console_hangup(const struct cli_parsed *UNUSED(parsed), struct cli_co
 static int console_quit(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   command_close(stdin_state);
+  return 0;
+}
+
+static int console_set(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
+{
+  const char *flag;
+  if (cli_arg(parsed, "flag", &flag, NULL, NULL) != -1){
+    monitor_client_writeline(monitor_alarm.poll.fd, "monitor %s\n",
+			     flag);
+  }
+  return 0;
+}
+
+static int console_clear(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
+{
+  const char *flag;
+  if (cli_arg(parsed, "flag", &flag, NULL, NULL) != -1){
+    monitor_client_writeline(monitor_alarm.poll.fd, "ignore %s\n",
+			     flag);
+  }
   return 0;
 }
 

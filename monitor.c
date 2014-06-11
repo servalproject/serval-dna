@@ -64,6 +64,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "monitor-client.h"
 #include "socket.h"
 #include "dataformats.h"
+#include "server.h"
 
 #ifdef HAVE_UCRED_H
 #include <ucred.h>
@@ -166,6 +167,10 @@ void monitor_poll(struct sched_ent *alarm)
 static void monitor_close(struct monitor_context *c){
   INFOF("Tearing down monitor client fd=%d", c->alarm.poll.fd);
   
+  if (serverMode && c->flags & MONITOR_QUIT){
+    INFOF("Quitting due to client disconnecting");
+    serverMode=SERVER_CLOSING;
+  }
   unwatch(&c->alarm);
   close(c->alarm.poll.fd);
   c->alarm.poll.fd=-1;
@@ -402,16 +407,18 @@ static int monitor_set(const struct cli_parsed *parsed, struct cli_context *cont
       if (codec>=0 && codec <=255)
 	set_codec_flag(codec, c->supported_codecs);
     }
-  }else if (strcase_startswith(parsed->args[1],"rhizome", NULL))
+  }else if (strcase_startswith(parsed->args[1],"rhizome", NULL)){
     c->flags|=MONITOR_RHIZOME;
-  else if (strcase_startswith(parsed->args[1],"peers", NULL)){
+  }else if (strcase_startswith(parsed->args[1],"peers", NULL)){
     c->flags|=MONITOR_PEERS;
     enum_subscribers(NULL, monitor_announce_all_peers, NULL);
-  }else if (strcase_startswith(parsed->args[1],"dnahelper", NULL))
+  }else if (strcase_startswith(parsed->args[1],"dnahelper", NULL)){
     c->flags|=MONITOR_DNAHELPER;
-  else if (strcase_startswith(parsed->args[1],"links", NULL)){
+  }else if (strcase_startswith(parsed->args[1],"links", NULL)){
     c->flags|=MONITOR_LINKS;
     link_state_announce_links();
+  }else if (strcase_startswith(parsed->args[1],"quit", NULL)){
+    c->flags|=MONITOR_QUIT;
   }else
     return monitor_write_error(c,"Unknown monitor type");
 
@@ -435,6 +442,8 @@ static int monitor_clear(const struct cli_parsed *parsed, struct cli_context *co
     c->flags&=~MONITOR_DNAHELPER;
   else if (strcase_startswith(parsed->args[1],"links", NULL))
     c->flags&=~MONITOR_LINKS;
+  else if (strcase_startswith(parsed->args[1],"quit", NULL))
+    c->flags&=~MONITOR_QUIT;
   else
     return monitor_write_error(c,"Unknown monitor type");
   

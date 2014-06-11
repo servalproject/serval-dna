@@ -19,6 +19,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__SERVER_H
 #define __SERVAL_DNA__SERVER_H
 
+#define SERVER_RUNNING 1
+#define SERVER_CLOSING 2
+
 DECLARE_ALARM(server_shutdown_check);
 DECLARE_ALARM(server_watchdog);
 DECLARE_ALARM(server_config_reload);

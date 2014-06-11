@@ -95,7 +95,7 @@ const char *_server_pidfile_path(struct __sourceloc __whence)
 int server()
 {
   IN();
-  serverMode = 1;
+  serverMode = SERVER_RUNNING;
 
   // Warn, not merely Info, if there is no configured log file.
   logLevel_NoLogFileConfigured = LOG_LEVEL_WARN;
@@ -158,16 +158,18 @@ int server()
   
   // log message used by tests to wait for the server to start
   INFO("Server initialised, entering main loop");
-  while (serverMode == 1 && fd_poll())
+  
+  /* Check for activitiy and respond to it */
+  while((serverMode==SERVER_RUNNING) && fd_poll())
     ;
   serverCleanUp();
-
+  
   /* It is safe to unlink the pidfile here without checking whether it actually contains our own
    * PID, because server_shutdown_check() will have been executed very recently (in fd_poll()), so
    * if the code reaches here, the check has been done recently.
    */
   server_unlink_pid();
-
+  serverMode = 0;
   RETURN(0);
   OUT();
 }
@@ -457,9 +459,9 @@ void signal_handler(int signal)
       /* Trigger the server to close gracefully after any current alarm has completed. 
          If we get a second signal, exit now.
       */
-      if (serverMode==1){
+      if (serverMode==SERVER_RUNNING){
 	INFO("Attempting clean shutdown");
-	serverMode=2;
+	serverMode=SERVER_CLOSING;
 	return;
       }
     default:

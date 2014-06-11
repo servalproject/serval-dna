@@ -485,6 +485,8 @@ static int monitor_announce(struct subscriber *subscriber, void *UNUSED(context)
 
 int link_state_announce_links(){
   enum_subscribers(NULL, monitor_announce, NULL);
+  // announce ourselves as unreachable, mainly so that monitor clients will always get one link back
+  monitor_announce_link(0, NULL, my_subscriber);
   return 0;
 }
 

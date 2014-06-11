@@ -150,6 +150,17 @@ test_RemovePid() {
    wait_until ! kill -0 $servald_pid 2>/dev/null
 }
 
+doc_MonitorQuit="Server stops due to monitor client disconnection"
+setup_MonitorQuit() {
+   setup
+   start_servald_server
+}
+test_MonitorQuit() {
+   executeOk_servald console < <(sleep 1 && echo "monitor quit" && sleep 1)
+   tfw_cat --stdout --stderr
+   wait_until ! kill -0 $servald_pid 2>/dev/null
+}
+
 doc_NoZombie="Server process does not become a zombie"
 setup_NoZombie() {
    setup
