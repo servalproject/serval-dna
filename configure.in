@@ -41,9 +41,6 @@ AS_IF([test "x$RHIZOME_STORE_PATH" != x], [AC_DEFINE_UNQUOTED([RHIZOME_STORE_PAT
 dnl Check for programs.
 AC_PROG_CC
 
-dnl Threading
-ACX_PTHREAD()
-
 dnl Math library functions for spandsp
 AC_CHECK_HEADERS([math.h], [INSERT_MATH_HEADER="#include <math.h>"])
 AC_CHECK_HEADERS([float.h])

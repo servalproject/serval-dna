@@ -38,10 +38,10 @@ SIMULATOR_OBJS = \
 
 CC= @CC@
 
-LDFLAGS=@LDFLAGS@ @LIBS@ @PTHREAD_LIBS@
+LDFLAGS=@LDFLAGS@ @LIBS@
 
-CFLAGS= -Isqlite-amalgamation-3070900 @CPPFLAGS@ @CFLAGS@ @PTHREAD_CFLAGS@ -Inacl/include
-CFLAGS+=-DSYSCONFDIR="\"$(sysconfdir)\"" -DLOCALSTATEDIR="\"$(localstatedir)\""
+CFLAGS= -Isqlite-amalgamation-3070900 @CPPFLAGS@ @CFLAGS@ -Inacl/include
+CFLAGS+=-DSYSCONFDIR="\"$(sysconfdir)\"" -DLOCALSTATEDIR="\"$(localstatedir)\"" -DSQLITE_THREADSAFE=0
 CFLAGS+=-fPIC
 CFLAGS+=-Wall -Wno-unused-value -Werror
 # Solaris magic
@@ -159,7 +159,7 @@ $(OBJSDIR_TOOLS)/config_test.o $(OBJSDIR_TOOLS)/conf_om.o $(OBJSDIR_TOOLS)/conf_
 
 servald: $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
+	@$(CC) -Wall -o $@ $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
 
 libserval.a: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo AR $@
@@ -167,23 +167,23 @@ libserval.a: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
 
 directory_service: $(OBJSDIR_TOOLS)/directory_service.o libserval.a
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ $(OBJSDIR_TOOLS)/directory_service.o libserval.a $(LDFLAGS)
+	@$(CC) -Wall -o $@ $(OBJSDIR_TOOLS)/directory_service.o libserval.a $(LDFLAGS)
 
 tfw_createfile: $(OBJSDIR_TOOLS)/tfw_createfile.o libserval.a
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ $(OBJSDIR_TOOLS)/tfw_createfile.o libserval.a $(LDFLAGS)
+	@$(CC) -Wall -o $@ $(OBJSDIR_TOOLS)/tfw_createfile.o libserval.a $(LDFLAGS)
 
 fakeradio: $(OBJSDIR_TOOLS)/fakeradio.o libserval.a
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ $(OBJSDIR_TOOLS)/fakeradio.o libserval.a $(LDFLAGS)
+	@$(CC) -Wall -o $@ $(OBJSDIR_TOOLS)/fakeradio.o libserval.a $(LDFLAGS)
 
 simulator: $(SIMULATOR_OBJS) libserval.a
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ $(SIMULATOR_OBJS) libserval.a $(LDFLAGS)
+	@$(CC) -Wall -o $@ $(SIMULATOR_OBJS) libserval.a $(LDFLAGS)
 
 config_test: $(OBJSDIR_TOOLS)/config_test.o $(OBJSDIR_TOOLS)/conf_om.o $(OBJSDIR_TOOLS)/conf_schema.o $(OBJSDIR_TOOLS)/conf_parse.o libserval.a
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ $(OBJSDIR_TOOLS)/config_test.o $(OBJSDIR_TOOLS)/conf_om.o $(OBJSDIR_TOOLS)/conf_schema.o $(OBJSDIR_TOOLS)/conf_parse.o libserval.a $(LDFLAGS)
+	@$(CC) -Wall -o $@ $(OBJSDIR_TOOLS)/config_test.o $(OBJSDIR_TOOLS)/conf_om.o $(OBJSDIR_TOOLS)/conf_schema.o $(OBJSDIR_TOOLS)/conf_parse.o libserval.a $(LDFLAGS)
 
 copyright:
 	@if [ -x "$(COPYRIGHT_TOOL)" ]; then \
@@ -200,11 +200,11 @@ COPYRIGHT_TOOL := $(call findPATH,sp-copyright-tool)
 # DOC 20120615
 libserval.so: $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
+	@$(CC) -Wall -shared -o $@ $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
 
 libmonitorclient.so: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
+	@$(CC) -Wall -shared -o $@ $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
 
 libmonitorclient.a: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo AR $@
