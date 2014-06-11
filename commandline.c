@@ -1024,12 +1024,11 @@ int app_server_stop(const struct cli_parsed *parsed, struct cli_context *context
     }
     ++tries;
     if (kill(pid, SIGHUP) == -1) {
-      // ESRCH means process is gone, possibly we are racing with another stop, or servald just
-      // died voluntarily.
-      if (errno == ESRCH) {
-	serverCleanUp();
+      // ESRCH means process is gone, possibly we are racing with another stop, or servald just died
+      // voluntarily.  We DO NOT call serverCleanUp() in this case (once used to!) because that
+      // would race with a starting server process.
+      if (errno == ESRCH)
 	break;
-      }
       WHY_perror("kill");
       WHYF("Error sending SIGHUP to Servald pid=%d (pidfile %s)", pid, server_pidfile_path());
       return 252;

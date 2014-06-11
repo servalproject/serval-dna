@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 
+#include <assert.h>
 #include <dirent.h>
 #include <signal.h>
 #include <unistd.h>
@@ -43,10 +44,11 @@ int serverMode = 0;
 keyring_file *keyring=NULL;
 
 static char pidfile_path[256];
-
 static int server_getpid = 0;
-
-void signal_handler(int signal);
+static int server_write_pid();
+static int server_unlink_pid();
+static void signal_handler(int signal);
+static void serverCleanUp();
 
 /** Return the PID of the currently running server process, return 0 if there is none.
  */
@@ -156,17 +158,21 @@ int server()
   
   // log message used by tests to wait for the server to start
   INFO("Server initialised, entering main loop");
-  
-  /* Check for activitiy and respond to it */
-  while((serverMode==1) && fd_poll());
-  
+  while (serverMode == 1 && fd_poll())
+    ;
   serverCleanUp();
+
+  /* It is safe to unlink the pidfile here without checking whether it actually contains our own
+   * PID, because server_shutdown_check() will have been executed very recently (in fd_poll()), so
+   * if the code reaches here, the check has been done recently.
+   */
+  server_unlink_pid();
 
   RETURN(0);
   OUT();
 }
 
-int server_write_pid()
+static int server_write_pid()
 {
   /* Record PID to advertise that the server is now running */
   const char *ppath = server_pidfile_path();
@@ -178,6 +184,17 @@ int server_write_pid()
   server_getpid = getpid();
   fprintf(f,"%d\n", server_getpid);
   fclose(f);
+  return 0;
+}
+
+static int server_unlink_pid()
+{
+  /* Remove PID file to indicate that the server is no longer running */
+  const char *ppath = server_pidfile_path();
+  if (ppath == NULL)
+    return -1;
+  if (unlink(ppath) == -1)
+    WHYF_perror("unlink(%s)", alloca_str_toprint(ppath));
   return 0;
 }
 
@@ -422,16 +439,13 @@ static void clean_proc()
   }
 }
 
-void serverCleanUp()
+static void serverCleanUp()
 {
-  if (serverMode){
-    rhizome_close_db();
-    dna_helper_shutdown();
-    overlay_interface_close_all();
-  }
-  
+  assert(serverMode);
+  rhizome_close_db();
+  dna_helper_shutdown();
+  overlay_interface_close_all();
   overlay_mdp_clean_socket_files();
-  
   clean_proc();
 }
 
