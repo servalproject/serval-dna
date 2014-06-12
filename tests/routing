@@ -604,7 +604,7 @@ test_offline() {
       wait_until --timeout=30 instance_offline +C
 }
 
-doc_lose_neighbours="Lose and regain neighbours"
+doc_lose_neighbours="Lose and regain neighbours due to turning off"
 setup_lose_neighbours() {
    setup_servald
    assert_no_servald_processes
@@ -630,6 +630,34 @@ test_lose_neighbours() {
    wait_until --timeout=20 path_exists +C +B +A
 }
 finally_lose_neighbours() {
+   simulator_quit
+}
+
+doc_interfaceBounce="Lose and regain neighbours due to disabling interface"
+setup_interfaceBounce() {
+   setup_servald
+   assert_no_servald_processes
+   start_simulator
+   simulator_command create "net1" "$SERVALD_VAR/dummy1/"
+   foreach_instance +A +B create_single_identity
+   foreach_instance +A +B add_servald_interface 1
+   foreach_instance +A +B start_servald_server
+}
+test_interfaceBounce() {
+   simulator_command up "net1"
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
+   set_instance +A
+   executeOk_servald config set interfaces.1.exclude on sync
+   wait_until --timeout=30 instance_offline +B
+   set_instance +B
+   wait_until --timeout=30 instance_offline +A
+   set_instance +A
+   executeOk_servald config del interfaces.1.exclude sync
+   wait_until path_exists +A +B
+   wait_until path_exists +B +A
+}
+finally_interfaceBounce() {
    simulator_quit
 }
 

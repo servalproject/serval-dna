@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "keyring.h"
 #include "server.h"
+#include "mdp_client.h"
 
 /*
 Link state routing;
@@ -165,6 +166,7 @@ struct link_state{
 };
 
 DEFINE_ALARM(link_send);
+static int append_link(struct subscriber *subscriber, void *context);
 
 struct neighbour *neighbours=NULL;
 int route_version=0;
@@ -252,12 +254,18 @@ static void first_neighbour_found(){
   time_ms_t now = gettime_ms();
   RESCHEDULE(&ALARM_STRUCT(rhizome_sync_announce), 
     now+1000, now+5000, TIME_MS_NEVER_WILL);
+  RESCHEDULE(&ALARM_STRUCT(link_send), 
+    now+10, now+10, now+30);
 }
 
 static void last_neighbour_gone(){
   // stop trying to sync rhizome
   RESCHEDULE(&ALARM_STRUCT(rhizome_sync_announce), 
     TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
+  RESCHEDULE(&ALARM_STRUCT(link_send), 
+    TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
+  // one last re-scan of network paths to clean up the routing table
+  enum_subscribers(NULL, append_link, NULL);
 }
 
 static struct neighbour *get_neighbour(struct subscriber *subscriber, char create)
@@ -524,13 +532,15 @@ static int append_link(struct subscriber *subscriber, void *context)
   if (subscriber == my_subscriber)
     return 0;
 
-  struct overlay_buffer *payload = context;
   struct link_state *state = get_link_state(subscriber);
-
+  struct link *best_link = find_best_link(subscriber);
+  
+  if (!context)
+    return 0;
+    
+  struct overlay_buffer *payload = context;
   time_ms_t now = gettime_ms();
 
-  struct link *best_link = find_best_link(subscriber);
-    
   if (subscriber->reachable==REACHABLE_SELF){
     if (state->next_update - 20 <= now){
       // Other entries in our keyring are always one hop away from us.
@@ -902,34 +912,40 @@ void link_send(struct sched_ent *alarm)
   
   alarm->alarm=TIME_MS_NEVER_WILL;
 
-  // TODO use a separate alarm
+  // TODO use a separate alarm?
   link_send_neighbours();
 
-  struct overlay_frame *frame=emalloc_zero(sizeof(struct overlay_frame));
-  frame->type=OF_TYPE_DATA;
-  frame->source=my_subscriber;
-  frame->ttl=1;
-  frame->queue=OQ_MESH_MANAGEMENT;
-  if ((frame->payload = ob_new()) == NULL)
+  struct overlay_buffer *payload = ob_new();
+  if (!payload){
     WHY("Cannot send link details");
-  else {
-    ob_limitsize(frame->payload, 400);
-    overlay_mdp_encode_ports(frame->payload, MDP_PORT_LINKSTATE, MDP_PORT_LINKSTATE);
-    ob_checkpoint(frame->payload);
-    size_t pos = ob_position(frame->payload);
-    enum_subscribers(NULL, append_link, frame->payload);
-    ob_rewind(frame->payload);
-    if (ob_position(frame->payload) == pos)
-      op_free(frame);
-    else if (overlay_payload_enqueue(frame))
-      op_free(frame);
+    alarm->alarm = gettime_ms()+20;
+  }else{
+    struct internal_mdp_header header;
+    bzero(&header, sizeof(header));
+    header.source = my_subscriber;
+    header.source_port = MDP_PORT_LINKSTATE;
+    header.destination_port = MDP_PORT_LINKSTATE;
+    header.ttl = 1;
+    header.qos = OQ_MESH_MANAGEMENT;
+    header.crypt_flags = MDP_FLAG_NO_CRYPT|MDP_FLAG_NO_SIGN;
+    ob_limitsize(payload, 400);
     
-    time_ms_t allowed=gettime_ms()+5;
-    if (alarm->alarm < allowed)
-      alarm->alarm = allowed;
-    alarm->deadline = alarm->alarm;
-    schedule(alarm);
+    ob_checkpoint(payload);
+    size_t pos = ob_position(payload);
+    enum_subscribers(NULL, append_link, payload);
+    ob_rewind(payload);
+    
+    if (ob_position(payload) != pos){
+      ob_flip(payload);
+      overlay_send_frame(&header, payload);
+    }
+    ob_free(payload);
   }
+  time_ms_t allowed=gettime_ms()+5;
+  if (alarm->alarm < allowed)
+    alarm->alarm = allowed;
+  alarm->deadline = alarm->alarm;
+  schedule(alarm);
 }
 
 static void update_alarm(struct __sourceloc __whence, time_ms_t limit)
@@ -1241,6 +1257,9 @@ int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payl
 {
   IN();
 
+  if (header->source == my_subscriber)
+    RETURN(0);
+  
   struct neighbour *neighbour = get_neighbour(header->source, 1);
 
   struct decode_context context;
