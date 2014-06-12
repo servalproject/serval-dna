@@ -208,13 +208,12 @@ int fd_showstats()
 }
 
 DEFINE_ALARM(fd_periodicstats);
-void fd_periodicstats(struct sched_ent *alarm)
+void fd_periodicstats(struct sched_ent *UNUSED(alarm))
 {
   fd_showstats();
-  fd_clearstats();  
-  alarm->alarm = gettime_ms()+3000;
-  alarm->deadline = alarm->alarm+1000;
-  schedule(alarm);
+  fd_clearstats();
+  time_ms_t now = gettime_ms();
+  RESCHEDULE(&ALARM_STRUCT(fd_periodicstats), now+3000, TIME_MS_NEVER_WILL, now+3500);
 }
 
 void dump_stack(int log_level)

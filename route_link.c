@@ -164,16 +164,7 @@ struct link_state{
   time_ms_t next_update;
 };
 
-static void link_send(struct sched_ent *alarm);
-
-static struct profile_total link_send_stats={
-  .name="link_send",
-};
-static struct sched_ent link_send_alarm={
-  .function = link_send,
-  .stats = &link_send_stats,
-  .alarm = TIME_MS_NEVER_WILL,
-};
+DEFINE_ALARM(link_send);
 
 struct neighbour *neighbours=NULL;
 int route_version=0;
@@ -544,7 +535,7 @@ static int append_link(struct subscriber *subscriber, void *context)
     if (state->next_update - 20 <= now){
       // Other entries in our keyring are always one hop away from us.
       if (append_link_state(payload, 0, my_subscriber, subscriber, -1, 1, -1, 0, 0)){
-        link_send_alarm.alarm = now+5;
+        ALARM_STRUCT(link_send).alarm = now+5;
         return 1;
       }
       // include information about this link every 5s
@@ -558,7 +549,7 @@ static int append_link(struct subscriber *subscriber, void *context)
     if (state->next_update - 20 <= now){
       if (append_link_state(payload, 0, state->transmitter, subscriber, -1, 
 	  best_link?best_link->link_version:-1, -1, 0, best_link?best_link->drop_rate:32)){
-        link_send_alarm.alarm = now+5;
+        ALARM_STRUCT(link_send).alarm = now+5;
         return 1;
       }
       // include information about this link every 5s
@@ -566,8 +557,8 @@ static int append_link(struct subscriber *subscriber, void *context)
     }
   }
 
-  if (state->next_update < link_send_alarm.alarm)
-    link_send_alarm.alarm = state->next_update;
+  if (state->next_update < ALARM_STRUCT(link_send).alarm)
+    ALARM_STRUCT(link_send).alarm = state->next_update;
 
   return 0;
 }
@@ -884,16 +875,16 @@ static int link_send_neighbours()
       send_neighbour_link(n);
     }
 
-    if (n->next_neighbour_update < link_send_alarm.alarm)
-      link_send_alarm.alarm = n->next_neighbour_update;
+    if (n->next_neighbour_update < ALARM_STRUCT(link_send).alarm)
+      ALARM_STRUCT(link_send).alarm = n->next_neighbour_update;
 
     struct link_out *out = n->out_links;
     while(out){
       if (out->destination->tick_ms>0 && out->destination->unicast){
 	if (out->destination->last_tx + out->destination->tick_ms < now)
 	  overlay_send_tick_packet(out->destination);
-	if (out->destination->last_tx + out->destination->tick_ms < link_send_alarm.alarm)
-	  link_send_alarm.alarm = out->destination->last_tx + out->destination->tick_ms;
+	if (out->destination->last_tx + out->destination->tick_ms < ALARM_STRUCT(link_send).alarm)
+	  ALARM_STRUCT(link_send).alarm = out->destination->last_tx + out->destination->tick_ms;
       }
       out=out->_next;
     }
@@ -904,8 +895,11 @@ static int link_send_neighbours()
 }
 
 // send link details
-static void link_send(struct sched_ent *alarm)
+void link_send(struct sched_ent *alarm)
 {
+  if (!neighbours)
+    return;
+  
   alarm->alarm=TIME_MS_NEVER_WILL;
 
   // TODO use a separate alarm
@@ -942,11 +936,8 @@ static void update_alarm(struct __sourceloc __whence, time_ms_t limit)
 {
   if (limit == 0)
     FATALF("limit == 0");
-  if (link_send_alarm.alarm>limit){
-    unschedule(&link_send_alarm);
-    link_send_alarm.alarm = limit;
-    link_send_alarm.deadline = limit+10;
-    schedule(&link_send_alarm);
+  if (ALARM_STRUCT(link_send).alarm>limit){
+    RESCHEDULE(&ALARM_STRUCT(link_send), limit, limit, limit+20);
   }
 }
 
@@ -1464,12 +1455,8 @@ int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payl
   if (changed){
     route_version++;
     neighbour->path_version ++;
-    if (link_send_alarm.alarm>now+5){
-      unschedule(&link_send_alarm);
-      link_send_alarm.alarm=now+5;
-      // read all incoming packets first
-      link_send_alarm.deadline=now+15;
-      schedule(&link_send_alarm);
+    if (ALARM_STRUCT(link_send).alarm>now+5){
+      RESCHEDULE(&ALARM_STRUCT(link_send), now+5, now+5, now+25);
     }
   }
   OUT();
@@ -1537,12 +1524,8 @@ int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now)
   if (changed){
     route_version++;
     neighbour->path_version ++;
-    if (link_send_alarm.alarm>now+5){
-      unschedule(&link_send_alarm);
-      link_send_alarm.alarm=now+5;
-      // read all incoming packets first
-      link_send_alarm.deadline=now+15;
-      schedule(&link_send_alarm);
+    if (ALARM_STRUCT(link_send).alarm>now+5){
+      RESCHEDULE(&ALARM_STRUCT(link_send), now+5, now+5, now+25);
     }
   }
 

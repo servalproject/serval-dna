@@ -809,8 +809,10 @@ static int send_local_packet(int fd, const uint8_t *bytes, size_t len, const cha
   
   ssize_t sent = sendto(fd, bytes, len, 0, 
 	    &addr.addr, addr.addrlen);
-  if (sent == -1)
-    return WHYF_perror("sendto(%d, %zu, %s)", fd, len, alloca_socket_address(&addr));
+  if (sent == -1){
+    if (errno != EAGAIN && errno != EWOULDBLOCK)
+      return WHYF_perror("sendto(%d, %zu, %s)", fd, len, alloca_socket_address(&addr));
+  }
   return 0;
 }
 
@@ -1123,9 +1125,19 @@ void overlay_interface_discover(struct sched_ent *alarm)
   }
 
   // Close any interfaces that have gone away.
+  unsigned inet_up_count=0;
   for(i = 0; i < OVERLAY_MAX_INTERFACES; i++){
     if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING)
       overlay_interface_close(&overlay_interfaces[i]);
+    if (overlay_interfaces[i].state==INTERFACE_STATE_UP &&
+      overlay_interfaces[i].address.addr.sa_family == AF_INET)
+      inet_up_count++;
+  }
+  
+  if (inet_up_count==0 && sock_any.poll.fd>0){
+    unwatch(&sock_any);
+    close(sock_any.poll.fd);
+    sock_any.poll.fd=-1;
   }
 
   // if there are no real interfaces to detect, we can wait for the config file to change

@@ -197,7 +197,7 @@ void monitor_client_poll(struct sched_ent *alarm)
 	  return;
 	}
 	bytes = read(c->alarm.poll.fd, &c->line[c->line_length], 1);
-	if (bytes < 1) {
+	if (bytes<0){
 	  switch(errno) {
 	  case EINTR:
 	  case ENOTRECOVERABLE:
@@ -210,9 +210,12 @@ void monitor_client_poll(struct sched_ent *alarm)
 	    WHY_perror("read");
 	    /* all other errors; close socket */
 	    monitor_close(c);
-	    return;
 	  }
+	  return;
 	}
+	
+	if (bytes<1)
+	  break;
 	
 	// silently skip all \r characters
 	if (c->line[c->line_length] == '\r')
