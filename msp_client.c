@@ -166,7 +166,8 @@ int msp_socket_is_closed(MSP_SOCKET handle)
 
 int msp_socket_is_listening(MSP_SOCKET handle)
 {
-    return msp_socket_is_valid(handle) && (msp_get_state(handle) & MSP_STATE_LISTENING);
+    return msp_socket_is_valid(handle) && 
+      ((msp_get_state(handle) & (MSP_STATE_CLOSED|MSP_STATE_LISTENING)) == MSP_STATE_LISTENING);
 }
 
 int msp_socket_is_data(MSP_SOCKET handle)
@@ -757,13 +758,16 @@ static void msp_release(struct msp_sock *sock){
 
 int msp_processing(time_ms_t *next_action)
 {
-  time_ms_t next=TIME_MS_NEVER_WILL;
   struct msp_sock *sock = root;
   while(sock){
     // this might cause the socket to be closed
-    // remember the time of the next thing we need to do.
     process_sock(sock);
-    
+    sock = sock->_next;
+  }
+  // Free any closed sockets and remember the time of the next thing we need to do.
+  time_ms_t next=TIME_MS_NEVER_WILL;
+  sock = root;
+  while(sock){
     if (sock->state & MSP_STATE_CLOSED){
       struct msp_sock *s = sock->_next;
       msp_release(sock);
