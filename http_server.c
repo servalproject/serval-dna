@@ -109,6 +109,7 @@ void http_request_init(struct http_request *r, int sockfd)
   r->response.header.resource_length = CONTENT_LENGTH_UNKNOWN;
   r->alarm.stats = &http_server_stats;
   r->alarm.function = http_server_poll;
+  assert(r->idle_timeout >= 0);
   if (r->idle_timeout == 0)
     r->idle_timeout = 10000; // 10 seconds
   r->alarm.poll.fd = sockfd;
@@ -126,7 +127,7 @@ static void http_request_set_idle_timeout(struct http_request *r)
 {
   assert(r->phase == RECEIVE || r->phase == TRANSMIT);
   r->alarm.alarm = gettime_ms() + r->idle_timeout;
-  r->alarm.deadline = r->alarm.alarm + r->idle_timeout;
+  r->alarm.deadline = r->alarm.alarm + 500;
   unschedule(&r->alarm);
   schedule(&r->alarm);
 }
@@ -1705,12 +1706,16 @@ static void http_server_poll(struct sched_ent *alarm)
       DEBUGF("Poll error (%s), closing connection", alloca_poll_events(alarm->poll.revents));
     http_request_finalise(r);
   }
-  else {
-    if (r->phase == RECEIVE && (alarm->poll.revents & POLLIN))
-      http_request_receive(r); // this could change the phase to TRANSMIT
-    if (r->phase == TRANSMIT && (alarm->poll.revents & POLLOUT))
-      http_request_send_response(r);
+  else if (alarm->poll.revents & POLLIN) {
+    assert((alarm->poll.revents & POLLOUT) == 0);
+    http_request_receive(r); // this could change the phase to TRANSMIT
   }
+  else if (alarm->poll.revents & POLLOUT) {
+    assert((alarm->poll.revents & POLLIN) == 0);
+    http_request_send_response(r);
+  }
+  else
+    abort(); // should not be any other POLL bits set
   // Any of the above calls could change the phase to DONE.
   if (r->phase == DONE && r->free)
     r->free(r); // after this, *r is no longer valid
