@@ -167,6 +167,7 @@ struct link_state{
 
 DEFINE_ALARM(link_send);
 static int append_link(struct subscriber *subscriber, void *context);
+static int neighbour_find_best_link(struct neighbour *n);
 
 struct neighbour *neighbours=NULL;
 int route_version=0;
@@ -725,8 +726,21 @@ void link_neighbour_status_html(struct strbuf *b, struct subscriber *neighbour)
   strbuf_puts(b, "Not found<br>");
 }
 
-int link_has_neighbours(){
+int link_has_neighbours()
+{
   return neighbours?1:0;
+}
+
+int link_interface_has_neighbours(struct overlay_interface *interface)
+{
+  struct neighbour *n = neighbours;
+  while(n){
+    neighbour_find_best_link(n);
+    if (n->best_link && n->best_link->interface == interface)
+      return 1;
+    n=n->_next;
+  }
+  return 0;
 }
 
 static int send_legacy_self_announce_ack(struct neighbour *neighbour, struct link_in *link, time_ms_t now){

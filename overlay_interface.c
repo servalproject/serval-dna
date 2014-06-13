@@ -739,8 +739,13 @@ static void overlay_interface_poll(struct sched_ent *alarm)
       
       if (now >= interface->destination->last_tx+interface->destination->tick_ms)
         overlay_send_tick_packet(interface->destination);
-	
-      alarm->alarm=interface->destination->last_tx+interface->destination->tick_ms;
+      
+      time_ms_t interval = interface->destination->tick_ms;
+      // only tick every 5s if we have no neighbours here
+      if (interval < 5000 && !link_interface_has_neighbours(interface))
+	interval = 5000;
+      
+      alarm->alarm=interface->destination->last_tx+interval;
       alarm->deadline=alarm->alarm+interface->destination->tick_ms/2;
     }
     

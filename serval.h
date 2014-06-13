@@ -333,6 +333,7 @@ void link_neighbour_short_status_html(struct strbuf *b, const char *link_prefix)
 void link_neighbour_status_html(struct strbuf *b, struct subscriber *neighbour);
 int link_stop_routing(struct subscriber *subscriber);
 int link_has_neighbours();
+int link_interface_has_neighbours(struct overlay_interface *interface);
 
 int generate_nonce(unsigned char *nonce,int bytes);
 
