@@ -61,6 +61,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "strbuf_helpers.h"
 #include "overlay_address.h"
+#include "overlay_interface.h"
 #include "monitor-client.h"
 #include "socket.h"
 #include "dataformats.h"
@@ -422,6 +423,9 @@ static int monitor_set(const struct cli_parsed *parsed, struct cli_context *cont
     link_state_announce_links();
   }else if (strcase_startswith(parsed->args[1],"quit", NULL)){
     c->flags|=MONITOR_QUIT;
+  }else if (strcase_startswith(parsed->args[1],"interface", NULL)){
+    c->flags|=MONITOR_INTERFACE;
+    overlay_interface_monitor_up();
   }else
     return monitor_write_error(c,"Unknown monitor type");
 
@@ -447,6 +451,8 @@ static int monitor_clear(const struct cli_parsed *parsed, struct cli_context *co
     c->flags&=~MONITOR_LINKS;
   else if (strcase_startswith(parsed->args[1],"quit", NULL))
     c->flags&=~MONITOR_QUIT;
+  else if (strcase_startswith(parsed->args[1],"interface", NULL))
+    c->flags&=~MONITOR_INTERFACE;
   else
     return monitor_write_error(c,"Unknown monitor type");
   

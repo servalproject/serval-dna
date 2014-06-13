@@ -60,6 +60,7 @@ static void overlay_interface_poll(struct sched_ent *alarm);
 
 static void
 overlay_interface_close(overlay_interface *interface){
+  monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%s:DOWN\n", interface->name);
   INFOF("Interface %s addr %s is down", 
 	interface->name, alloca_socket_address(&interface->address));
   if (interface->address.addr.sa_family == AF_UNIX)
@@ -81,6 +82,15 @@ void overlay_interface_close_all()
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
     if (overlay_interfaces[i].state == INTERFACE_STATE_UP)
       overlay_interface_close(&overlay_interfaces[i]);
+  }
+}
+
+void overlay_interface_monitor_up()
+{
+  unsigned i;
+  for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
+    if (overlay_interfaces[i].state == INTERFACE_STATE_UP)
+      monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%s:UP\n", overlay_interfaces[i].name);
   }
 }
 
@@ -537,6 +547,7 @@ overlay_interface_init(const char *name, struct socket_address *addr,
   interface->alarm.deadline=interface->alarm.alarm;
   schedule(&interface->alarm);
   interface->state=INTERFACE_STATE_UP;
+  monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%s:UP\n", interface->name);
   INFOF("Interface %s addr %s, is up",interface->name, alloca_socket_address(addr));
   
   directory_registration();

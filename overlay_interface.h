@@ -160,5 +160,6 @@ overlay_interface * overlay_interface_find_name(const char *name);
 int overlay_interface_compare(overlay_interface *one, overlay_interface *two);
 int overlay_broadcast_ensemble(struct network_destination *destination, struct overlay_buffer *buffer);
 void interface_state_html(struct strbuf *b, struct overlay_interface *interface);
+void overlay_interface_monitor_up();
 
 #endif // __SERVAL_DNA__OVERLAY_INTERFACE_H
