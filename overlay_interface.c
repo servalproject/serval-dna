@@ -414,6 +414,7 @@ overlay_interface_init(const char *name, struct socket_address *addr,
   interface->port = ifconfig->port;
   interface->type = ifconfig->type;
   interface->send_broadcasts = ifconfig->send_broadcasts;
+  interface->dont_route = ifconfig->dont_route;
   interface->prefer_unicast = ifconfig->prefer_unicast;
   interface->default_route = ifconfig->default_route;
   interface->socket_type = ifconfig->socket_type;

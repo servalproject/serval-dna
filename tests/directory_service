@@ -105,6 +105,7 @@ configure_node() {
       set interfaces.0.file dummy1 \
       set interfaces.0.socket_type file \
       set interfaces.0.send_broadcasts 0 \
+      set interfaces.0.dont_route 1 \
       set interfaces.0.drop_broadcasts on \
       set interfaces.0.default_route 1 \
       set interfaces.0.dummy_address 10.0.${instance_number}.1 \
@@ -141,17 +142,24 @@ test_routing() {
    set_instance +B
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDA:UNICAST:"
+   assertStdoutGrep --matches=0 "^$SIDC:"
    executeOk_servald dna lookup "$DIDC"
    assertStdoutLineCount '==' 3
    assertStdoutGrep --matches=1 "^sid://$SIDC/local/$DIDC:$DIDC:$NAMEC\$"
    set_instance +C
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDA:UNICAST:"
+   assertStdoutGrep --matches=0 "^$SIDB:"
    executeOk_servald dna lookup "$DIDB"
    assertStdoutLineCount '==' 3
    assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"
    executeOk_servald mdp ping $SIDB 3
    tfw_cat --stdout --stderr
+   executeOk_servald route print
+   tfw_cat --stdout
+   set_instance +B
+   executeOk_servald route print
+   tfw_cat --stdout
    assert_status_all_servald_servers running
 }
 

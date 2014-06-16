@@ -557,14 +557,19 @@ static int append_link(struct subscriber *subscriber, void *context)
     if (subscriber->identity)
       keyring_send_unlock(subscriber);
     
-    if (state->next_update - 20 <= now){
-      if (append_link_state(payload, 0, state->transmitter, subscriber, -1, 
-	  best_link?best_link->link_version:-1, -1, 0, best_link?best_link->drop_rate:32)){
-        ALARM_STRUCT(link_send).alarm = now+5;
-        return 1;
+    if (best_link && best_link->destination && best_link->destination->interface->dont_route){
+      // don't talk about links across interfaces with dont_route
+      state->next_update = TIME_MS_NEVER_WILL;
+    }else{
+      if (state->next_update - 20 <= now){
+	if (append_link_state(payload, 0, state->transmitter, subscriber, -1, 
+	    best_link?best_link->link_version:-1, -1, 0, best_link?best_link->drop_rate:32)){
+	  ALARM_STRUCT(link_send).alarm = now+5;
+	  return 1;
+	}
+	// include information about this link every 5s
+	state->next_update = now + 5000;
       }
-      // include information about this link every 5s
-      state->next_update = now + 5000;
     }
   }
 
@@ -895,9 +900,8 @@ static int link_send_neighbours()
   while (n){
     neighbour_find_best_link(n);
 
-    if (n->next_neighbour_update <= now){
+    if (n->next_neighbour_update <= now)
       send_neighbour_link(n);
-    }
 
     if (n->next_neighbour_update < ALARM_STRUCT(link_send).alarm)
       ALARM_STRUCT(link_send).alarm = n->next_neighbour_update;
