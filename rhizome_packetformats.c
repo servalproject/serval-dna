@@ -45,7 +45,7 @@ int log2ll(uint64_t x)
 }
 
 
-int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
+int rhizome_manifest_to_bar(rhizome_manifest *m, rhizome_bar_t *bar)
 {
   IN();
   /* BAR = Bundle Advertisement Record.
@@ -81,13 +81,14 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
 
   /* Manifest prefix */
   unsigned i;
-  for(i=0;i<RHIZOME_BAR_PREFIX_BYTES;i++) 
-    bar[RHIZOME_BAR_PREFIX_OFFSET+i]=m->cryptoSignPublic.binary[i];
+  for(i=0;i<RHIZOME_BAR_PREFIX_BYTES;i++)
+    bar->binary[RHIZOME_BAR_PREFIX_OFFSET+i]=m->cryptoSignPublic.binary[i];
   /* file length */
   assert(m->filesize != RHIZOME_SIZE_UNSET);
-  bar[RHIZOME_BAR_FILESIZE_OFFSET]=log2ll(m->filesize);
+  bar->binary[RHIZOME_BAR_FILESIZE_OFFSET]=log2ll(m->filesize);
   /* Version */
-  for(i=0;i<7;i++) bar[RHIZOME_BAR_VERSION_OFFSET+6-i]=(m->version>>(8*i))&0xff;
+  for(i=0;i<7;i++) 
+    bar->binary[RHIZOME_BAR_VERSION_OFFSET+6-i]=(m->version>>(8*i))&0xff;
 
 #if 0
   /* geo bounding box TODO: replace with bounding circle!!! */
@@ -107,34 +108,34 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
 #endif
   unsigned short v;
   int o=RHIZOME_BAR_GEOBOX_OFFSET;
-  v=(minLat+90)*(65535/180); bar[o++]=(v>>8)&0xff; bar[o++]=(v>>0)&0xff;
-  v=(minLong+180)*(65535/360); bar[o++]=(v>>8)&0xff; bar[o++]=(v>>0)&0xff;
-  v=(maxLat+90)*(65535/180); bar[o++]=(v>>8)&0xff; bar[o++]=(v>>0)&0xff;
-  v=(maxLong+180)*(65535/360); bar[o++]=(v>>8)&0xff; bar[o++]=(v>>0)&0xff;
+  v=(minLat+90)*(65535/180); bar->binary[o++]=(v>>8)&0xff; bar->binary[o++]=(v>>0)&0xff;
+  v=(minLong+180)*(65535/360); bar->binary[o++]=(v>>8)&0xff; bar->binary[o++]=(v>>0)&0xff;
+  v=(maxLat+90)*(65535/180); bar->binary[o++]=(v>>8)&0xff; bar->binary[o++]=(v>>0)&0xff;
+  v=(maxLong+180)*(65535/360); bar->binary[o++]=(v>>8)&0xff; bar->binary[o++]=(v>>0)&0xff;
 
-  bar[RHIZOME_BAR_TTL_OFFSET]=0;
+  bar->binary[RHIZOME_BAR_TTL_OFFSET]=0;
   
   RETURN(0);
   OUT();
 }
 
-uint64_t rhizome_bar_version(const unsigned char *bar)
+uint64_t rhizome_bar_version(const rhizome_bar_t *bar)
 {
   uint64_t version=0;
   int i;
   for(i=0;i<7;i++) 
-    version|=((uint64_t)(bar[RHIZOME_BAR_VERSION_OFFSET+6-i]))<<(8LL*i);
+    version|=((uint64_t)(bar->binary[RHIZOME_BAR_VERSION_OFFSET+6-i]))<<(8LL*i);
   return version;
 }
 
 /* This function only displays the first 8 bytes, and should not be used
    for comparison. */
-uint64_t rhizome_bar_bidprefix_ll(const unsigned char *bar)
+uint64_t rhizome_bar_bidprefix_ll(const rhizome_bar_t *bar)
 {
   uint64_t bidprefix=0;
   int i;
   for(i=0;i<8;i++) 
-    bidprefix|=((uint64_t)bar[RHIZOME_BAR_PREFIX_OFFSET+7-i])<<(8*i);
+    bidprefix|=((uint64_t)bar->binary[RHIZOME_BAR_PREFIX_OFFSET+7-i])<<(8*i);
   return bidprefix;
 }
 
@@ -306,28 +307,28 @@ next:
   struct overlay_buffer *payload = NULL;
   
   // parse BAR's
-  unsigned char *bars[50];
+  const rhizome_bar_t *bars[50];
   int bar_count=0;
   while(ob_remaining(f->payload)>0 && bar_count<50){
-    unsigned char *bar;
-    bars[bar_count]=bar=ob_get_bytes_ptr(f->payload, RHIZOME_BAR_BYTES);
+    const rhizome_bar_t *bar;
+    bars[bar_count]=bar=(const rhizome_bar_t *)ob_get_bytes_ptr(f->payload, RHIZOME_BAR_BYTES);
     if (!bar){
       WARNF("Expected whole BAR @%zx (only %zd bytes remain)", ob_position(f->payload), ob_remaining(f->payload));
       break;
     }
 
     // are we ignoring this manifest?
-    if (rhizome_ignore_manifest_check(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES))
+    if (rhizome_ignore_manifest_check(rhizome_bar_prefix(bar), RHIZOME_BAR_PREFIX_BYTES))
       continue;
 
     // do we have free space in a fetch queue?
-    unsigned char log2_size = bar[RHIZOME_BAR_FILESIZE_OFFSET];
+    unsigned char log2_size = rhizome_bar_log_size(bar);
     if (log2_size!=0xFF && rhizome_fetch_has_queue_space(log2_size)!=1)
       continue;
 
     uint64_t version = rhizome_bar_version(bar);
     // are we already fetching this bundle [or later]?
-    rhizome_manifest *m=rhizome_fetch_search(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
+    rhizome_manifest *m=rhizome_fetch_search(rhizome_bar_prefix(bar), RHIZOME_BAR_PREFIX_BYTES);
     if (m && m->version >= version)
       continue;
 
@@ -367,8 +368,8 @@ next:
 	payload = ob_new();
       }
       if (config.debug.rhizome)
-	DEBUGF("Requesting manifest for BAR %s", alloca_tohex(bars[index], RHIZOME_BAR_BYTES));
-      ob_append_bytes(payload, bars[index], RHIZOME_BAR_BYTES);
+	DEBUGF("Requesting manifest for BAR %s", alloca_tohex_rhizome_bar_t(bars[index]));
+      ob_append_bytes(payload, bars[index]->binary, RHIZOME_BAR_BYTES);
     }
   }
   

@@ -308,14 +308,12 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *bu
   while(them<them_count||us<us_count)
     {
       DEBUGF("them=%d, us=%d",them,us);
-      unsigned char *them_bar=&buffer[10+them*RHIZOME_BAR_BYTES];
-      unsigned char *us_bar=&usbuffer[10+us*RHIZOME_BAR_BYTES];
+      const rhizome_bar_t *their_bar = (const rhizome_bar_t *)&buffer[10+them*RHIZOME_BAR_BYTES];
+      const rhizome_bar_t *our_bar = (const rhizome_bar_t *)&usbuffer[10+us*RHIZOME_BAR_BYTES];
       int relation=0;
       if (them<them_count&&us<us_count) {
-	relation=memcmp(them_bar,us_bar,RHIZOME_BAR_COMPARE_BYTES);
+	relation=memcmp(their_bar->binary,our_bar->binary,RHIZOME_BAR_COMPARE_BYTES);
 	DEBUGF("relation = %d",relation);
-	dump("them BAR",them_bar,RHIZOME_BAR_BYTES);
-	dump("us BAR",us_bar,RHIZOME_BAR_BYTES);
       }
       else if (us==us_count) relation=-1; /* they have a bundle we don't have */
       else if (them==them_count) relation=+1; /* we have a bundle they don't have */
@@ -329,54 +327,54 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *bu
 	   Append 16-byte "please send" record consisting of 0x01 followed
 	   by the eight-byte BID prefix from the BAR. */
 	c->buffer[c->buffer_offset_bytes+c->buffer_used]=0x01; /* Please send */
-	bcopy(&buffer[10+them*RHIZOME_BAR_BYTES+RHIZOME_BAR_PREFIX_OFFSET],
+	bcopy(rhizome_bar_prefix(their_bar),
 	      &c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
 	      RHIZOME_BAR_PREFIX_BYTES);
 	c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
 	who=-1;
 	DEBUGF("They have previously unseen bundle %016"PRIx64"*",
-	       rhizome_bar_bidprefix_ll(&buffer[10+them*RHIZOME_BAR_BYTES]));
+	       rhizome_bar_bidprefix_ll(their_bar));
       } else if (relation>0) {
 	/* We have a bundle that they don't have any version of
 	   Append 16-byte "I have [newer]" record consisting of 0x02 followed
 	   by the eight-byte BID prefix from the BAR. */
 	c->buffer[c->buffer_offset_bytes+c->buffer_used]=0x02; /* I have [newer] */
-	bcopy(&usbuffer[10+us*RHIZOME_BAR_BYTES+RHIZOME_BAR_PREFIX_OFFSET],
+	bcopy(rhizome_bar_prefix(our_bar),
 	      &c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
 	      RHIZOME_BAR_PREFIX_BYTES);
 	c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
 	who=+1;
 	DEBUGF("We have previously unseen bundle %016"PRIx64"*",
-	       rhizome_bar_bidprefix_ll(&usbuffer[10+us*RHIZOME_BAR_BYTES]));
+	       rhizome_bar_bidprefix_ll(our_bar));
       } else {
 	/* We each have a version of this bundle, so see whose is newer */
-	uint64_t them_version = rhizome_bar_version(&buffer[10+them*RHIZOME_BAR_BYTES]);
-	uint64_t us_version = rhizome_bar_version(&usbuffer[10+us*RHIZOME_BAR_BYTES]);
+	uint64_t them_version = rhizome_bar_version(their_bar);
+	uint64_t us_version = rhizome_bar_version(our_bar);
 	if (them_version>us_version) {
 	  /* They have the newer version of the bundle */
 	  c->buffer[c->buffer_offset_bytes+c->buffer_used]=0x01; /* Please send */
-	  bcopy(&buffer[10+them*RHIZOME_BAR_BYTES+RHIZOME_BAR_PREFIX_OFFSET],
+	  bcopy(rhizome_bar_prefix(their_bar),
 		&c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
 		RHIZOME_BAR_PREFIX_BYTES);
 	  c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
 	  DEBUGF("They have newer version of bundle %016"PRIx64"* (%"PRIu64" versus %"PRIu64")",
-		 rhizome_bar_bidprefix_ll(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
+		 rhizome_bar_bidprefix_ll(their_bar),
 		 them_version,
 		 us_version);
 	} else if (them_version<us_version) {
 	  /* We have the newer version of the bundle */
 	  c->buffer[c->buffer_offset_bytes+c->buffer_used]=0x02; /* I have [newer] */
-	  bcopy(&usbuffer[10+us*RHIZOME_BAR_BYTES+RHIZOME_BAR_PREFIX_OFFSET],
+	  bcopy(rhizome_bar_prefix(our_bar),
 		&c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
 		RHIZOME_BAR_PREFIX_BYTES);
 	  c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
 	  DEBUGF("We have newer version of bundle %016"PRIx64"* (%"PRIu64" versus %"PRIu64")",
-		 rhizome_bar_bidprefix_ll(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
+		 rhizome_bar_bidprefix_ll(our_bar),
 		 us_version,
 		 them_version);
 	} else {
 	  DEBUGF("We both have the same version of %016"PRIx64"*",
-		 rhizome_bar_bidprefix_ll(&buffer[10+them*RHIZOME_BAR_BYTES]));
+		 rhizome_bar_bidprefix_ll(their_bar));
 	}
       }
 

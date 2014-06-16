@@ -707,6 +707,17 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	      }
 	    }
 	    break;
+	  case RHIZOME_BAR_T: {
+	      const rhizome_bar_t *barp = va_arg(ap, const rhizome_bar_t *);
+	      ++argnum;
+	      if (barp == NULL) {
+		BIND_NULL(RHIZOME_BAR_T);
+	      } else {
+		BIND_DEBUG(STATIC_BLOB, sqlite3_bind_blob, "%s,%d,SQLITE_STATIC", alloca_toprint(20, barp->binary, RHIZOME_BAR_BYTES), RHIZOME_BAR_BYTES);
+		BIND_RETRY(sqlite3_bind_blob, barp->binary, RHIZOME_BAR_BYTES, SQLITE_STATIC);
+	      }
+	    }
+	    break;
 	  case RHIZOME_FILEHASH_T: {
 	      const rhizome_filehash_t *hashp = va_arg(ap, const rhizome_filehash_t *);
 	      ++argnum;
@@ -1412,8 +1423,8 @@ int rhizome_store_manifest(rhizome_manifest *m)
     return WHY("Manifest is not signed, and I don't have the key.  Manifest might be forged or corrupt.");
 
   /* Bind BAR to data field */
-  unsigned char bar[RHIZOME_BAR_BYTES];
-  rhizome_manifest_to_bar(m,bar);
+  rhizome_bar_t bar;
+  rhizome_manifest_to_bar(m, &bar);
 
   /* Store the file (but not if it is already in the database) */
   assert(m->filesize != RHIZOME_SIZE_UNSET);
@@ -1453,7 +1464,7 @@ int rhizome_store_manifest(rhizome_manifest *m)
 	STATIC_BLOB, m->manifestdata, m->manifest_all_bytes,
 	INT64, m->version,
 	INT64, (int64_t) now,
-	STATIC_BLOB, bar, RHIZOME_BAR_BYTES,
+	RHIZOME_BAR_T, &bar,
 	INT64, m->filesize,
 	RHIZOME_FILEHASH_T|NUL, m->filesize > 0 ? &m->filehash : NULL,
 	// Only store the author if it is known to be authentic.
@@ -2062,13 +2073,9 @@ static int is_interesting(const char *id_hex, uint64_t version)
   OUT();
 }
 
-int rhizome_is_bar_interesting(const unsigned char *bar)
+int rhizome_is_bar_interesting(const rhizome_bar_t *bar)
 {
-  uint64_t version = rhizome_bar_version(bar);
-  char id_hex[RHIZOME_BAR_PREFIX_BYTES *2 + 2];
-  tohex(id_hex, RHIZOME_BAR_PREFIX_BYTES * 2, &bar[RHIZOME_BAR_PREFIX_OFFSET]);
-  strcat(id_hex, "%");
-  return is_interesting(id_hex, version);
+  return is_interesting(alloca_tohex_rhizome_bar_prefix(bar), rhizome_bar_version(bar));
 }
 
 int rhizome_is_manifest_interesting(rhizome_manifest *m)

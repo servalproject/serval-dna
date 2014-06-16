@@ -44,6 +44,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define RHIZOME_CRYPT_KEY_BYTES         crypto_stream_xsalsa20_ref_KEYBYTES
 #define RHIZOME_CRYPT_KEY_STRLEN        (RHIZOME_CRYPT_KEY_BYTES * 2)
 
+#define RHIZOME_BAR_BYTES               32
+#define RHIZOME_BAR_PREFIX_BYTES        15
+#define RHIZOME_BAR_PREFIX_OFFSET       0
+#define RHIZOME_BAR_FILESIZE_OFFSET     15
+#define RHIZOME_BAR_VERSION_OFFSET      16
+#define RHIZOME_BAR_GEOBOX_OFFSET       23
+
 // TODO  Rename MANIFEST_ID to BUNDLE_ID
 // The following constants are deprecated, use the BUNDLE_ID forms instead
 #define RHIZOME_MANIFEST_ID_BYTES       RHIZOME_BUNDLE_ID_BYTES
@@ -103,6 +110,18 @@ __RHIZOME_TYPES_INLINE int rhizome_is_bk_none(const rhizome_bk_t *bk) {
 int cmp_rhizome_bk_t(const rhizome_bk_t *a, const rhizome_bk_t *b);
 int str_to_rhizome_bk_t(rhizome_bk_t *bk, const char *hex);
 int strn_to_rhizome_bk_t(rhizome_bk_t *bk, const char *hex, const char **endp);
+
+typedef struct rhizome_bar_binary {
+    unsigned char binary[RHIZOME_BAR_BYTES];
+} rhizome_bar_t;
+
+#define rhizome_bar_prefix(X) (&(X)->binary[RHIZOME_BAR_PREFIX_OFFSET])
+#define alloca_tohex_rhizome_bar_prefix(X) alloca_tohex(&(X)->binary[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES)
+#define alloca_tohex_rhizome_bar_t(X) alloca_tohex((X)->binary, RHIZOME_BAR_BYTES)
+#define rhizome_bar_log_size(X) ((unsigned char)(X)->binary[RHIZOME_BAR_FILESIZE_OFFSET])
+#define rhizome_is_bar_none(X) is_all_matching((X)->binary, RHIZOME_BAR_BYTES, 0)
+uint64_t rhizome_bar_version(const rhizome_bar_t *bar);
+uint64_t rhizome_bar_bidprefix_ll(const rhizome_bar_t *bar);
 
 /* Fundamental data type: Rhizome payload size
  *

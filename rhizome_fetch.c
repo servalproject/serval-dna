@@ -421,7 +421,7 @@ typedef struct ignored_manifest_cache {
    a collision is exceedingly remote */
 ignored_manifest_cache ignored;
 
-int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len)
+int rhizome_ignore_manifest_check(const unsigned char *bid_prefix, int prefix_len)
 {
   if (prefix_len < RHIZOME_BAR_PREFIX_BYTES)
     FATAL("Prefix length is too short");
@@ -443,7 +443,7 @@ int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len)
   return 0;
 }
 
-int rhizome_queue_ignore_manifest(unsigned char *bid_prefix, int prefix_len, int timeout)
+int rhizome_queue_ignore_manifest(const unsigned char *bid_prefix, int prefix_len, int timeout)
 {
   if (prefix_len < RHIZOME_BAR_PREFIX_BYTES)
     FATAL("Prefix length is too short");

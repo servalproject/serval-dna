@@ -61,13 +61,7 @@ typedef struct rhizome_signature {
   size_t signatureLength;
 } rhizome_signature;
 
-#define RHIZOME_BAR_BYTES 32
 #define RHIZOME_BAR_COMPARE_BYTES 31
-#define RHIZOME_BAR_PREFIX_BYTES 15
-#define RHIZOME_BAR_PREFIX_OFFSET 0
-#define RHIZOME_BAR_FILESIZE_OFFSET 15
-#define RHIZOME_BAR_VERSION_OFFSET 16
-#define RHIZOME_BAR_GEOBOX_OFFSET 23
 #define RHIZOME_BAR_TTL_OFFSET 31
 
 #define MAX_MANIFEST_VARS 256
@@ -456,6 +450,7 @@ enum sqlbind_type {
   ZEROBLOB,	      // int bytes
   SID_T,	      // const sid_t *sidp
   RHIZOME_BID_T,      // const rhizome_bid_t *bidp
+  RHIZOME_BAR_T,      // const rhizome_bar_t *barp
   RHIZOME_FILEHASH_T, // const rhizome_filehash_t *hashp
   TOHEX,              // const unsigned char *binary, unsigned bytes
   TEXT_TOUPPER,       // const char *text,
@@ -536,10 +531,8 @@ double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_
 int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs);
 int rhizome_update_file_priority(const char *fileid);
 enum rhizome_bundle_status rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found);
-int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
-uint64_t rhizome_bar_version(const unsigned char *bar);
-uint64_t rhizome_bar_bidprefix_ll(const unsigned char *bar);
-int rhizome_is_bar_interesting(const unsigned char *bar);
+int rhizome_manifest_to_bar(rhizome_manifest *m, rhizome_bar_t *bar);
+int rhizome_is_bar_interesting(const rhizome_bar_t *bar);
 int rhizome_is_manifest_interesting(rhizome_manifest *m);
 int rhizome_retrieve_manifest(const rhizome_bid_t *bid, rhizome_manifest *m);
 int rhizome_retrieve_manifest_by_prefix(const unsigned char *prefix, unsigned prefix_len, rhizome_manifest *m);
@@ -583,8 +576,8 @@ int rhizome_secret2bk(
 int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
 			       const unsigned char *pk,rhizome_signature *out);
 int rhizome_verify_bundle_privatekey(const unsigned char *sk, const unsigned char *pk);
-int rhizome_queue_ignore_manifest(unsigned char *bid_prefix, int prefix_len, int timeout);
-int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len);
+int rhizome_queue_ignore_manifest(const unsigned char *bid_prefix, int prefix_len, int timeout);
+int rhizome_ignore_manifest_check(const unsigned char *bid_prefix, int prefix_len);
 
 /* Rhizome list cursor for iterating over all or a subset of manifests in the store.
  */

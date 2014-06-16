@@ -37,7 +37,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 struct bar_entry
 {
-  unsigned char bar[RHIZOME_BAR_BYTES];
+  rhizome_bar_t bar;
   unsigned tries;
   time_ms_t next_request;
 };
@@ -115,17 +115,17 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
     if (state->bars[i].next_request > now)
       continue;
 
-    unsigned char *prefix = &state->bars[i].bar[RHIZOME_BAR_PREFIX_OFFSET];
+    unsigned char *prefix = rhizome_bar_prefix(&state->bars[i].bar);
 
     if (rhizome_ignore_manifest_check(prefix, RHIZOME_BAR_PREFIX_BYTES))
       continue;
 
     // do we have free space now in the appropriate fetch queue?
-    unsigned char log2_size = state->bars[i].bar[RHIZOME_BAR_FILESIZE_OFFSET];
+    unsigned char log2_size = rhizome_bar_log_size(&state->bars[i].bar);
     if (log2_size!=0xFF && rhizome_fetch_has_queue_space(log2_size)!=1)
       continue;
 
-    uint64_t version = rhizome_bar_version(state->bars[i].bar);
+    uint64_t version = rhizome_bar_version(&state->bars[i].bar);
     // are we already fetching this bundle [or later]?
     rhizome_manifest *m=rhizome_fetch_search(prefix, RHIZOME_BAR_PREFIX_BYTES);
     if (m && m->version >= version){
@@ -147,16 +147,16 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
       break;
       
     if (config.debug.rhizome)
-      DEBUGF("Requesting manifest for BAR %s", alloca_tohex(state->bars[i].bar, RHIZOME_BAR_BYTES));
+      DEBUGF("Requesting manifest for BAR %s", alloca_tohex_rhizome_bar_t(&state->bars[i].bar));
       
-    ob_append_bytes(payload, state->bars[i].bar, RHIZOME_BAR_BYTES);
+    ob_append_bytes(payload, state->bars[i].bar.binary, RHIZOME_BAR_BYTES);
     
     state->bars[i].tries--;
     state->bars[i].next_request = now+5000;
     if (!state->bars[i].tries){
       // remove this BAR and shift the last BAR down to this position if required.
       if (config.debug.rhizome)
-        DEBUGF("Giving up on fetching BAR %s", alloca_tohex(state->bars[i].bar, RHIZOME_BAR_BYTES));
+        DEBUGF("Giving up on fetching BAR %s", alloca_tohex_rhizome_bar_t(&state->bars[i].bar));
       state->bar_count --;
       if (i<state->bar_count)
         state->bars[i] = state->bars[state->bar_count];
@@ -196,23 +196,23 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
 
 static int sync_bundle_inserted(struct subscriber *subscriber, void *context)
 {
-  const unsigned char *bar = context;
+  const rhizome_bar_t *bar = context;
   if (!subscriber->sync_state)
     return 0;
 
-  const unsigned char *id = &bar[RHIZOME_BAR_PREFIX_OFFSET];
+  const unsigned char *id = rhizome_bar_prefix(bar);
   uint64_t version = rhizome_bar_version(bar);
 
   struct rhizome_sync *state = subscriber->sync_state;
   int i;
   for (i=state->bar_count -1;i>=0;i--){
-    unsigned char *this_bar = state->bars[i].bar;
-    unsigned char *this_id = &this_bar[RHIZOME_BAR_PREFIX_OFFSET];
+    rhizome_bar_t *this_bar = &state->bars[i].bar;
+    unsigned char *this_id = rhizome_bar_prefix(this_bar);
     uint64_t this_version = rhizome_bar_version(this_bar);
     if (memcmp(this_id, id, RHIZOME_BAR_PREFIX_BYTES)==0 && version >= this_version){
       // remove this BAR and shift the last BAR down to this position if required.
       if (config.debug.rhizome)
-        DEBUGF("Removing BAR %s from queue", alloca_tohex(this_bar, RHIZOME_BAR_BYTES));
+        DEBUGF("Removing BAR %s from queue", alloca_tohex_rhizome_bar_t(this_bar));
       state->bar_count --;
       if (i<state->bar_count)
         state->bars[i] = state->bars[state->bar_count];
@@ -228,14 +228,14 @@ int rhizome_sync_bundle_inserted(const unsigned char *bar)
   return 0;
 }
 
-static int sync_cache_bar(struct rhizome_sync *state, unsigned char *bar, uint64_t token)
+static int sync_cache_bar(struct rhizome_sync *state, const rhizome_bar_t *bar, uint64_t token)
 {
   int ret=0;
   if (state->bar_count>=CACHE_BARS)
     return 0;
   // check the database before adding the BAR to the list
   if (token!=0 && rhizome_is_bar_interesting(bar)!=0){
-    bcopy(bar, state->bars[state->bar_count].bar, RHIZOME_BAR_BYTES);
+    state->bars[state->bar_count].bar = *bar;
     state->bars[state->bar_count].next_request = gettime_ms();
     state->bars[state->bar_count].tries = MAX_TRIES;
     state->bar_count++;
@@ -262,7 +262,7 @@ static void sync_process_bar_list(struct subscriber *subscriber, struct rhizome_
 {
   // find all interesting BARs in the payload and extend our sync range
 
-  unsigned char *bars[BARS_PER_RESPONSE];
+  const rhizome_bar_t *bars[BARS_PER_RESPONSE];
   uint64_t bar_tokens[BARS_PER_RESPONSE];
   int bar_count = 0;
   int has_before=0, has_after=0;
@@ -278,12 +278,12 @@ static void sync_process_bar_list(struct subscriber *subscriber, struct rhizome_
   
   while(ob_remaining(b)>0 && bar_count < BARS_PER_RESPONSE){
     bar_tokens[bar_count]=ob_get_packed_ui64(b);
-    bars[bar_count]=ob_get_bytes_ptr(b, RHIZOME_BAR_BYTES);
+    bars[bar_count]=(const rhizome_bar_t *)ob_get_bytes_ptr(b, RHIZOME_BAR_BYTES);
     if (!bars[bar_count])
       break;
     // allow the sender to identify the edge of the range this packet represents
     // even if there is no manifest that falls exactly on the boundary (eg deleted manifest or zero lower bound)
-    if (is_all_matching(bars[bar_count], RHIZOME_BAR_BYTES, 0))
+    if (rhizome_is_bar_none(bars[bar_count]))
       bars[bar_count]=NULL;
 
     // track the highest BAR we've seen, even if we can't sync it yet, so we know what BARs to request.
