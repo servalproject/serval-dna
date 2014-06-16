@@ -1939,6 +1939,13 @@ int app_rhizome_clean(const struct cli_parsed *parsed, struct cli_context *conte
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   int verify = cli_arg(parsed, "verify", NULL, NULL, NULL) == 0;
+  
+  /* Ensure the Rhizome database exists and is open */
+  if (create_serval_instance_dir() == -1)
+    return -1;
+  if (rhizome_opendb() == -1)
+    return -1;
+  
   if (verify)
     verify_bundles();
   struct rhizome_cleanup_report report;
@@ -1950,6 +1957,8 @@ int app_rhizome_clean(const struct cli_parsed *parsed, struct cli_context *conte
   cli_put_long(context, report.deleted_orphan_files, "\n");
   cli_field_name(context, "deleted_orphan_fileblobs", ":");
   cli_put_long(context, report.deleted_orphan_fileblobs, "\n");
+  cli_field_name(context, "deleted_orphan_manifests", ":");
+  cli_put_long(context, report.deleted_orphan_manifests, "\n");
   return 0;
 }
 

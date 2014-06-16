@@ -1238,7 +1238,7 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
 
   // Remove external payload files for old, unreferenced payloads.
   statement = sqlite_prepare_bind(&retry,
-      "SELECT id FROM FILES WHERE inserttime < ? AND datavalid = 1 AND NOT EXISTS( SELECT 1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);",
+      "SELECT id FROM FILES WHERE inserttime < ? AND NOT EXISTS( SELECT 1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);",
       INT64, insert_horizon_no_manifest, END);
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     candidates++;
@@ -1271,11 +1271,19 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
   if ((ret = rhizome_delete_orphan_fileblobs_retry(&retry)) > 0 && report)
     report->deleted_orphan_fileblobs += ret;
 
+  // delete manifests that no longer have payload files
+  ret = sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,
+      "DELETE FROM MANIFESTS WHERE inserttime < ? AND filesize > 0 AND NOT EXISTS( SELECT 1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);",
+      INT64, insert_horizon_no_manifest, END);
+  if (report && ret > 0)
+    report->deleted_orphan_manifests += ret;
+  
   if (config.debug.rhizome && report)
-    DEBUGF("report deleted_stale_incoming_files=%u deleted_orphan_files=%u deleted_orphan_fileblobs=%u",
+    DEBUGF("report deleted_stale_incoming_files=%u deleted_orphan_files=%u deleted_orphan_fileblobs=%u deleted_orphan_manifests=%u",
 	report->deleted_stale_incoming_files,
 	report->deleted_orphan_files,
-	report->deleted_orphan_fileblobs
+	report->deleted_orphan_fileblobs,
+	report->deleted_orphan_manifests
       );
   RETURN(0);
   OUT();

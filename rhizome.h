@@ -332,6 +332,7 @@ struct rhizome_cleanup_report {
     unsigned deleted_stale_incoming_files;
     unsigned deleted_orphan_files;
     unsigned deleted_orphan_fileblobs;
+    unsigned deleted_orphan_manifests;
 };
 
 int rhizome_cleanup(struct rhizome_cleanup_report *report);
