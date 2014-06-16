@@ -173,11 +173,11 @@ aggregate coverage analysis can easily be generated with no special options to
 test scripts.
 
 To generate code coverage information for [Serval DNA][], modify the standard
-[build](../INSTALL.md) procedure by adding a CFLAGS argument to the
+[build](../INSTALL.md) procedure by adding CFLAGS and LDFLAGS arguments to the
 `./configure` step:
 
     ...
-    $ ./configure CFLAGS='-g -O0 --coverage'
+    $ ./configure CFLAGS='-g -O0 --coverage' LDFLAGS='--coverage'
     $ make
     ...
 
