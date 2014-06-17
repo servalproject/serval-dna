@@ -30,6 +30,8 @@ import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.ServalDCommand;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.meshms.MeshMSConversationList;
+import org.servalproject.servaldna.meshms.MeshMSMessageList;
+import org.servalproject.servaldna.meshms.MeshMSException;
 
 public class ServalDClient implements ServalDHttpConnectionFactory
 {
@@ -86,9 +88,16 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 			throw new ServalDInterfaceException("restful password not set");
 	}
 
-	public MeshMSConversationList meshmsListConversations(SubscriberId sid) throws ServalDInterfaceException, IOException
+	public MeshMSConversationList meshmsListConversations(SubscriberId sid) throws ServalDInterfaceException, IOException, MeshMSException
 	{
 		MeshMSConversationList list = new MeshMSConversationList(this, sid);
+		list.connect();
+		return list;
+	}
+
+	public MeshMSMessageList meshmsListMessages(SubscriberId sid1, SubscriberId sid2) throws IOException, ServalDInterfaceException, MeshMSException
+	{
+		MeshMSMessageList list = new MeshMSMessageList(this, sid1, sid2);
 		list.connect();
 		return list;
 	}

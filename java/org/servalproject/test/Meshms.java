@@ -28,14 +28,18 @@ import org.servalproject.servaldna.ServalDClient;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.meshms.MeshMSConversationList;
 import org.servalproject.servaldna.meshms.MeshMSConversation;
+import org.servalproject.servaldna.meshms.MeshMSMessageList;
+import org.servalproject.servaldna.meshms.MeshMSMessage;
+import org.servalproject.servaldna.meshms.MeshMSException;
 
 public class Meshms {
 
-	static void meshms_list_conversations(SubscriberId sid, String offset, String count) throws ServalDInterfaceException, IOException, InterruptedException
+	static void meshms_list_conversations(SubscriberId sid) throws ServalDInterfaceException, IOException, InterruptedException
 	{
 		ServalDClient client = ServalDClient.newServalDClient();
-		MeshMSConversationList list = client.meshmsListConversations(sid);
+		MeshMSConversationList list = null;
 		try {
+			list = client.meshmsListConversations(sid);
 			MeshMSConversation conv;
 			while ((conv = list.nextConversation()) != null) {
 				System.out.println(
@@ -48,8 +52,44 @@ public class Meshms {
 				);
 			}
 		}
+		catch (MeshMSException e) {
+			System.out.println(e.toString());
+		}
 		finally {
-			list.close();
+			if (list != null)
+				list.close();
+		}
+		System.exit(0);
+	}
+
+	static void meshms_list_messages(SubscriberId sid1, SubscriberId sid2) throws ServalDInterfaceException, IOException, InterruptedException
+	{
+		ServalDClient client = ServalDClient.newServalDClient();
+		MeshMSMessageList list = null;
+		try {
+			list = client.meshmsListMessages(sid1, sid2);
+			System.out.println("read_offset=" + list.getReadOffset());
+			System.out.println("latest_ack_offset=" + list.getLatestAckOffset());
+			MeshMSMessage msg;
+			while ((msg = list.nextMessage()) != null) {
+				System.out.println("type=" + msg.type
+							   + ", my_sid=" + msg.mySid
+							   + ", their_sid=" + msg.theirSid
+							   + ", offset=" + msg.offset
+							   + ", token=" + msg.token
+							   + ", text=" + (msg.text == null ? null : msg.text.replace('\n', '.').replace(' ', '.'))
+							   + ", delivered=" + msg.isDelivered
+							   + ", read=" + msg.isRead
+							   + ", ack_offset=" + msg.ackOffset
+							);
+			}
+		}
+		catch (MeshMSException e) {
+			System.out.println(e.toString());
+		}
+		finally {
+			if (list != null)
+				list.close();
 		}
 		System.exit(0);
 	}
@@ -61,7 +101,9 @@ public class Meshms {
 		String methodName = args[0];
 		try {
 			if (methodName.equals("meshms-list-conversations"))
-				meshms_list_conversations(new SubscriberId(args[1]), args.length > 2 ? args[2] : null, args.length > 3 ? args[3] : null);
+				meshms_list_conversations(new SubscriberId(args[1]));
+			else if (methodName.equals("meshms-list-messages"))
+				meshms_list_messages(new SubscriberId(args[1]), new SubscriberId(args[2]));
 		} catch (Exception e) {
 			e.printStackTrace();
 			System.exit(1);

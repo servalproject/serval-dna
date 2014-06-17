@@ -30,6 +30,9 @@ import java.util.Collection;
 public class JSONTokeniser {
 	
 	PushbackReader reader;
+	Object pushedToken;
+
+	private static final boolean DUMP_JSON_TO_STDERR = false;
 
 	public enum Token {
 		START_OBJECT,
@@ -96,6 +99,22 @@ public class JSONTokeniser {
 		reader = new PushbackReader(rd);
 	}
 
+	private int _read() throws IOException
+	{
+		int n = this.reader.read();
+		if (DUMP_JSON_TO_STDERR && n != -1)
+			System.err.print((char)n);
+		return n;
+	}
+
+	private int _read(char[] buf, int offset, int length) throws IOException
+	{
+		int n = this.reader.read(buf, offset, length);
+		if (DUMP_JSON_TO_STDERR && n != -1)
+			System.err.print(new String(buf, offset, n));
+		return n;
+	}
+
 	public static void match(Object tok, Token exactly) throws SyntaxException
 	{
 		if (tok != exactly)
@@ -107,12 +126,24 @@ public class JSONTokeniser {
 		match(nextToken(), exactly);
 	}
 
-	@SuppressWarnings("unchecked")
+	public enum Narrow {
+		NO_NULL,
+		ALLOW_NULL
+	};
+
 	public static <T> T narrow(Object tok, Class<T> cls) throws UnexpectedException
+	{
+		return narrow(tok, cls, Narrow.NO_NULL);
+	}
+
+	@SuppressWarnings("unchecked")
+	public static <T> T narrow(Object tok, Class<T> cls, Narrow opts) throws UnexpectedException
 	{
 		assert !cls.isAssignableFrom(Token.class); // can only narrow to values
 		if (tok == Token.EOF)
 			throw new UnexpectedEOFException(cls);
+		if (opts == Narrow.ALLOW_NULL && (tok == null || tok == Token.NULL))
+			return null;
 		if (tok instanceof Token)
 			throw new UnexpectedTokenException(tok, cls);
 		// Convert:
@@ -124,18 +155,28 @@ public class JSONTokeniser {
 		else if (cls == Float.class && (tok instanceof Double || tok instanceof Integer))
 			tok = new Float(((Number)tok).floatValue());
 		if (cls.isInstance(tok))
-			return (T)tok;
+			return (T)tok; // unchecked cast
 		throw new UnexpectedTokenException(tok, cls);
 	}
 
 	public <T> T consume(Class<T> cls) throws SyntaxException, UnexpectedException, IOException
 	{
-		return narrow(nextToken(), cls);
+		return consume(cls, Narrow.NO_NULL);
+	}
+
+	public <T> T consume(Class<T> cls, Narrow opts) throws SyntaxException, UnexpectedException, IOException
+	{
+		return narrow(nextToken(), cls, opts);
 	}
 
 	public Object consume() throws SyntaxException, UnexpectedException, IOException
 	{
-		return consume(Object.class);
+		return consume(Object.class, Narrow.NO_NULL);
+	}
+
+	public Object consume(Narrow opts) throws SyntaxException, UnexpectedException, IOException
+	{
+		return consume(Object.class, opts);
 	}
 
 	public String consume(String exactly) throws SyntaxException, UnexpectedException, IOException
@@ -146,14 +187,24 @@ public class JSONTokeniser {
 		throw new UnexpectedTokenException(tok, exactly);
 	}
 
+	public int consumeArray(Collection<Object> collection, Narrow opts) throws SyntaxException, UnexpectedException, IOException
+	{
+		return consumeArray(collection, Object.class, opts);
+	}
+
 	public <T> int consumeArray(Collection<T> collection, Class<T> cls) throws SyntaxException, UnexpectedException, IOException
+	{
+		return consumeArray(collection, cls, Narrow.NO_NULL);
+	}
+
+	public <T> int consumeArray(Collection<T> collection, Class<T> cls, Narrow opts) throws SyntaxException, UnexpectedException, IOException
 	{
 		int added = 0;
 		consume(Token.START_ARRAY);
 		Object tok = nextToken();
 		if (tok != Token.END_ARRAY) {
 			while (true) {
-				collection.add(narrow(tok, cls));
+				collection.add(narrow(tok, cls, opts));
 				++added;
 				tok = nextToken();
 				if (tok == Token.END_ARRAY)
@@ -165,6 +216,27 @@ public class JSONTokeniser {
 		return added;
 	}
 
+	public void consumeArray(Object[] array) throws SyntaxException, UnexpectedException, IOException
+	{
+		consumeArray(array, Object.class, Narrow.NO_NULL);
+	}
+
+	public void consumeArray(Object[] array, Narrow opts) throws SyntaxException, UnexpectedException, IOException
+	{
+		consumeArray(array, Object.class, opts);
+	}
+
+	public <T> void consumeArray(T[] array, Class<T> cls, Narrow opts) throws SyntaxException, UnexpectedException, IOException
+	{
+		consume(Token.START_ARRAY);
+		for (int i = 0; i < array.length; ++i) {
+			if (i != 0)
+				consume(Token.COMMA);
+			array[i] = consume(cls, opts);
+		}
+		consume(Token.END_ARRAY);
+	}
+
 	public static boolean jsonIsToken(Object tok)
 	{
 		return tok instanceof Token || tok instanceof String || tok instanceof Double || tok instanceof Integer || tok instanceof Boolean;
@@ -172,6 +244,8 @@ public class JSONTokeniser {
 
 	public static String jsonTokenDescription(Object tok)
 	{
+		if (tok == null)
+			return "null";
 		if (tok instanceof String)
 			return "\"" + tok + "\"";
 		if (tok instanceof Number)
@@ -187,7 +261,7 @@ public class JSONTokeniser {
 		int len = 0;
 		while (len < word.length()) {
 			char[] buf = new char[word.length() - len];
-			int n = this.reader.read(buf, 0, buf.length);
+			int n = _read(buf, 0, buf.length);
 			if (n == -1)
 				throw new SyntaxException("EOF in middle of \"" + word + "\"");
 			for (int i = 0; i < n; ++i)
@@ -201,7 +275,7 @@ public class JSONTokeniser {
 		char[] buf = new char[digits];
 		int len = 0;
 		while (len < buf.length) {
-			int n = this.reader.read(buf, len, buf.length - len);
+			int n = _read(buf, len, buf.length - len);
 			if (n == -1)
 				throw new SyntaxException("EOF in middle of " + digits + " hex digits");
 			len += n;
@@ -215,10 +289,22 @@ public class JSONTokeniser {
 		}
 	}
 
+	public void pushToken(Object tok)
+	{
+		assert jsonIsToken(tok);
+		assert pushedToken == null;
+		pushedToken = tok;
+	}
+
 	public Object nextToken() throws SyntaxException, IOException
 	{
+		if (pushedToken != null) {
+			Object tok = pushedToken;
+			pushedToken = null;
+			return tok;
+		}
 		while (true) {
-			int c = this.reader.read();
+			int c = _read();
 			switch (c) {
 			case -1:
 				return Token.EOF;
@@ -255,25 +341,21 @@ public class JSONTokeniser {
 					StringBuilder sb = new StringBuilder();
 					boolean slosh = false;
 					while (true) {
-						c = this.reader.read();
+						c = _read();
 						if (c == -1)
 							throw new SyntaxException("unexpected EOF in JSON string");
 						if (slosh) {
 							switch (c) {
-							case '"': case '/': case '\\': sb.append('"'); break;
+							case '"': case '/': case '\\': sb.append((char)c); break;
 							case 'b': sb.append('\b'); break;
 							case 'f': sb.append('\f'); break;
 							case 'n': sb.append('\n'); break;
 							case 'r': sb.append('\r'); break;
 							case 't': sb.append('\t'); break;
-							case 'u':
-								
-								int code = readHex(4);
-								sb.append((char)code);
-								// fall through
-							default:
-								throw new SyntaxException("malformed JSON string");
+							case 'u': sb.append((char)readHex(4)); break;
+							default: throw new SyntaxException("malformed JSON string");
 							}
+							slosh = false;
 						}
 						else {
 							switch (c) {
@@ -303,16 +385,16 @@ public class JSONTokeniser {
 					StringBuilder sb = new StringBuilder();
 					if (c == '-') {
 						sb.append((char)c);
-						c = this.reader.read();
+						c = _read();
 					}
 					if (c == '0') {
 						sb.append((char)c);
-						c = this.reader.read();
+						c = _read();
 					}
 					else if (Character.isDigit(c)) {
 						do {
 							sb.append((char)c);
-							c = this.reader.read();
+							c = _read();
 						}
 							while (Character.isDigit(c));
 					}
@@ -322,24 +404,24 @@ public class JSONTokeniser {
 					if (c == '.') {
 						isfloat = true;
 						sb.append((char)c);
-						c = this.reader.read();
+						c = _read();
 						if (c == -1)
 							throw new SyntaxException("unexpected EOF in JSON number");
 						if (!Character.isDigit(c))
 							throw new SyntaxException("malformed JSON number");
 						do {
 							sb.append((char)c);
-							c = this.reader.read();
+							c = _read();
 						}
 							while (Character.isDigit(c));
 					}
 					if (c == 'e' || c == 'E') {
 						isfloat = true;
 						sb.append((char)c);
-						c = this.reader.read();
+						c = _read();
 						if (c == '+' || c == '-') {
 							sb.append((char)c);
-							c = this.reader.read();
+							c = _read();
 						}
 						if (c == -1)
 							throw new SyntaxException("unexpected EOF in JSON number");
@@ -347,7 +429,7 @@ public class JSONTokeniser {
 							throw new SyntaxException("malformed JSON number");
 						do {
 							sb.append((char)c);
-							c = this.reader.read();
+							c = _read();
 						}
 							while (Character.isDigit(c));
 					}

@@ -21,6 +21,7 @@
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 source "${0%/*}/../testdefs_java.sh"
+source "${0%/*}/../testdefs_meshms.sh"
 
 setup() {
    setup_servald
@@ -30,7 +31,7 @@ setup() {
    executeOk_servald config \
 	set log.console.level debug \
          set debug.httpd on
-   create_identities 5
+   create_identities 4
    configure_servald_server() {
       add_servald_interface
       executeOk_servald config \
@@ -57,6 +58,7 @@ setup_MeshmsListConversations() {
 }
 test_MeshmsListConversations() {
    executeJavaOk org.servalproject.test.Meshms meshms-list-conversations $SIDA1
+   tfw_cat --stderr
    assertStdoutLineCount '==' 3
    assertStdoutGrep "my_sid=$SIDA1, their_sid=$SIDA2, read=true, last_message=0, read_offset=0"
    assertStdoutGrep "my_sid=$SIDA1, their_sid=$SIDA3, read=false, last_message=14, read_offset=0"
@@ -67,6 +69,87 @@ test_MeshmsListConversations() {
    assertStdoutGrep "my_sid=$SIDA1, their_sid=$SIDA2, read=true, last_message=0, read_offset=0"
    assertStdoutGrep "my_sid=$SIDA1, their_sid=$SIDA3, read=true, last_message=14, read_offset=14"
    assertStdoutGrep "my_sid=$SIDA1, their_sid=$SIDA4, read=true, last_message=18, read_offset=18"
+}
+
+doc_MeshmsListMessages="Java API list MeshMS messages in one conversation"
+setup_MeshmsListMessages() {
+   setup
+   meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<A<>><>>A<<>'
+   let NROWS=NSENT+NRECV+(NACK?1:0)
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   delivered_offset=$(sed -n -e '/^[0-9]\+:[0-9]\+:ACK:delivered$/{n;s/^[0-9]\+:\([0-9]\+\):>:.*/\1/p;q}' "$TFWSTDOUT")
+   [ -z "$delivered_offset" ] && delivered_offset=0
+   read_offset=$(sed -n -e 's/^[0-9]\+:\([0-9]\+\):MARK:read$/\1/p' "$TFWSTDOUT")
+   [ -z "$read_offset" ] && read_offset=0
+   tfw_log delivered_offset="$delivered_offset" read_offset="$read_offset"
+}
+test_MeshmsListMessages() {
+   executeJavaOk org.servalproject.test.Meshms meshms-list-messages $SIDA1 $SIDA2
+   assertStdoutLineCount '==' $(($NROWS + 2))
+   assertStdoutIs --line=1 -e "read_offset=$read_offset\n"
+   assertStdoutIs --line=2 -e "latest_ack_offset=$delivered_offset\n"
+   seen_ack=false
+   let lnum=3
+   for ((j = NMESSAGE-1; j >= 0; --j)); do
+      case ${MESSAGE[$j]} in
+      'ACK') $seen_ack && continue
+      esac
+      assertStdoutGrep --line=$lnum 'token=[-_A-Za-z0-9=]\+,'
+      assertStdoutGrep --line=$lnum "my_sid=$SIDA1,"
+      assertStdoutGrep --line=$lnum "their_sid=$SIDA2,"
+      text="$(sed -n -e $lnum's/.*\<text=\([^ ]*\), .*/\1/p' "$TFWSTDOUT")"
+      offset="$(sed -n -e $lnum's/.*\<offset=\([0-9]\+\).*/\1/p' "$TFWSTDOUT")"
+      is_delivered="$(sed -n -e $lnum's/.*\<delivered=\(true\|false\).*/\1/p' "$TFWSTDOUT")"
+      is_read="$(sed -n -e $lnum's/.*\<read=\(true\|false\).*/\1/p' "$TFWSTDOUT")"
+      ack_offset="$(sed -n -e $lnum's/.*\<ack_offset=\(null\|[0-9]\+\).*/\1/p' "$TFWSTDOUT")"
+      tfw_log text="$text" offset="$offset" is_delivered="$is_delivered" is_read="$is_read" ack_offset="$ack_offset"
+      case ${MESSAGE[$j]} in
+      '>'|'<')
+         echo -n "${TEXT[$j]}" | tr ' \n' . >text_fixture
+         echo -n "$text" >text_list
+         assert --dump-on-fail=text_fixture --dump-on-fail=text_list cmp text_fixture text_list
+         assert [ "$ack_offset" = null ]
+         ;;
+      esac
+      case ${MESSAGE[$j]} in
+      '>')
+         assertStdoutGrep --line=$lnum 'type=MESSAGE_SENT,'
+         if [ "$offset" -le "$delivered_offset" ]; then
+            assert [ "$is_delivered" = true ]
+         else
+            assert [ "$is_delivered" = false ]
+         fi
+         let ++lnum
+         ;;
+      '<')
+         assertStdoutGrep --line=$lnum 'type=MESSAGE_RECEIVED,'
+         if [ "$offset" -le "$read_offset" ]; then
+            assert [ "$is_read" = true ]
+         else
+            assert [ "$is_read" = false ]
+         fi
+         let ++lnum
+         ;;
+      'ACK')
+         assertStdoutGrep --line=$lnum 'type=ACK_RECEIVED,'
+         assert [ "$text" = null ]
+         assert [ "$ack_offset" = "$delivered_offset" ]
+         seen_ack=true
+         let ++lnum
+         ;;
+      esac
+   done
+}
+
+doc_MeshmsListMessagesNoIdentity="Java API list MeshMS messages from unknown identity"
+setup_MeshmsListMessagesNoIdentity() {
+   setup
+   SIDX=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
+}
+test_MeshmsListMessagesNoIdentity() {
+   executeJavaOk org.servalproject.test.Meshms meshms-list-messages $SIDX $SIDA2
+   assertStdoutGrep 'MeshMSUnknownIdentityException'
+   tfw_cat --stdout --stderr
 }
 
 runTests "$@"
