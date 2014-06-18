@@ -2099,19 +2099,37 @@ tfw_multicolumn() {
 }
 
 # Create a file with the given size (default 0).
-# Usage: create_file [--append] <path> [<size>]
-# where: <size> is of the form Nu
+# Usage: create_file [--append] [create_file opts] [--] <path> [<size>]
+# where: if <path> is - then writes to standard output
+#        <size> is of the form Nu
 #        N is decimal integer
 #        u is one of kKmMgG (k=10^3, K=2^10, m=10^6, M=2^20, g=10^9, G=2^30)
 create_file() {
    local args=("$@")
-   case "$1" in
-   --append) shift;;
-   *) rm -f "$1";;
-   esac
-   local path="$1"
+   local opt_append=false
+   local opt_label=
+   local opts=()
+   while [ $# -ne 0 ]; do
+      case "$1" in
+      --) shift; break;;
+      --append) opt_append=true; shift;;
+      --label=*) opt_label="${1#*=}"; shift;;
+      --*) opts+=("$1"); shift;;
+      *) break;;
+      esac
+   done
+   local path="${1?}"
    local size="$2"
-   tfw_createfile --label="$path" ${size:+--size=$size} >>"$path" || error "failed command: create_file ${args[*]}"
+   case "$path" in
+   -)
+      tfw_createfile ${opt_label:+--label="$opt_label"} "${opts[@]}" ${size:+--size=$size}
+      ;;
+   *)
+      [ -z "$opt_label" ] && opt_label="$path"
+      tfw_createfile ${opt_label:+--label="$opt_label"} "${opts[@]}" ${size:+--size=$size} >>"$path"
+      ;;
+   esac
+   [ $? -eq 0 ] || error "failed command: create_file ${args[*]}"
 }
 
 # Add quotations to the given arguments to allow them to be expanded intact
