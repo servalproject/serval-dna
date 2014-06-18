@@ -167,6 +167,10 @@ enum rhizome_bundle_status rhizome_bundle_import_files(rhizome_manifest *m, rhiz
 	if (rhizome_store_manifest(m) == -1)
 	  return -1;
 	break;
+      case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+      case RHIZOME_PAYLOAD_STATUS_UNINITERESTING:
+	status = RHIZOME_BUNDLE_STATUS_DONOTWANT;
+	break;
       case RHIZOME_PAYLOAD_STATUS_ERROR:
       case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
 	return -1;

@@ -1760,6 +1760,11 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     case RHIZOME_PAYLOAD_STATUS_STORED:
     case RHIZOME_PAYLOAD_STATUS_NEW:
       break;
+    case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+    case RHIZOME_PAYLOAD_STATUS_UNINITERESTING:
+      status = RHIZOME_BUNDLE_STATUS_DONOTWANT;
+      WHY("Insufficient space to store payload");
+      break;
     case RHIZOME_PAYLOAD_STATUS_ERROR:
       status = RHIZOME_BUNDLE_STATUS_ERROR;
       break;
@@ -1804,6 +1809,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     case RHIZOME_BUNDLE_STATUS_ERROR:
     case RHIZOME_BUNDLE_STATUS_INVALID:
     case RHIZOME_BUNDLE_STATUS_FAKE:
+    case RHIZOME_BUNDLE_STATUS_DONOTWANT:
       break;
     default:
       FATALF("status=%d", status);

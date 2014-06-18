@@ -32,8 +32,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "server.h"
 
 static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
-static int rhizome_delete_file_retry(sqlite_retry_state *retry, const rhizome_filehash_t *hashp);
-static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
 
 static int create_rhizome_store_dir()
 {
@@ -48,23 +46,6 @@ static int create_rhizome_store_dir()
 
 sqlite3 *rhizome_db = NULL;
 serval_uuid_t rhizome_db_uuid;
-
-/* XXX Requires a messy join that might be slow. */
-int rhizome_manifest_priority(sqlite_retry_state *retry, const rhizome_bid_t *bidp)
-{
-  uint64_t result = 0;
-  if (sqlite_exec_uint64_retry(retry, &result,
-	"SELECT max(grouplist.priorty) FROM GROUPLIST,MANIFESTS,GROUPMEMBERSHIPS"
-	" WHERE MANIFESTS.id = ?"
-	"   AND GROUPLIST.id = GROUPMEMBERSHIPS.groupid"
-	"   AND GROUPMEMBERSHIPS.manifestid = MANIFESTS.id;",
-	RHIZOME_BID_T, bidp,
-	END
-      ) == -1
-  )
-    return -1;
-  return (int) result;
-}
 
 int is_debug_rhizome()
 {
@@ -226,6 +207,11 @@ int rhizome_opendb()
   
   if (!FORMF_RHIZOME_STORE_PATH(dbpath, "rhizome.db"))
     RETURN(-1);
+  
+  struct file_meta meta;
+  if (get_file_meta(dbpath, &meta) == -1)
+    RETURN(-1);
+  
   if (sqlite3_open(dbpath,&rhizome_db)){
     RETURN(WHYF("SQLite could not open database %s: %s", dbpath, sqlite3_errmsg(rhizome_db)));
   }
@@ -246,13 +232,38 @@ int rhizome_opendb()
   if (version<1){
     /* Create tables as required */
     sqlite_exec_void_loglevel(loglevel, "PRAGMA auto_vacuum=2;", END);
-    if (	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer,priority integer);", END) == -1
-      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, version integer,inserttime integer, filesize integer, filehash text, author text, bar blob, manifest blob);", END) == -1
-      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, length integer, highestpriority integer, datavalid integer, inserttime integer);", END) == -1
-      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS FILEBLOBS(id text not null primary key, data blob);", END) == -1
-      ||	sqlite_exec_void_retry(&retry, "DROP TABLE IF EXISTS FILEMANIFESTS;", END) == -1
-      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS GROUPMEMBERSHIPS(manifestid text not null, groupid text not null);", END) == -1
-      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS VERIFICATIONS(sid text not null, did text, name text, starttime integer, endtime integer, signature blob);", END) == -1
+    if (	sqlite_exec_void_retry(&retry, 
+		  "CREATE TABLE IF NOT EXISTS MANIFESTS("
+		      "id text not null primary key, "
+		      "version integer, "
+		      "inserttime integer, "
+		      "filesize integer, "
+		      "filehash text, "
+		      "author text, "
+		      "bar blob, "
+		      "manifest blob, "
+		      "service text, "
+		      "name text, "
+		      "sender text collate nocase, "
+		      "recipient text collate nocase, "
+		      "tail integer"
+		  ");", END) == -1
+      ||	sqlite_exec_void_retry(&retry, 
+		  "CREATE TABLE IF NOT EXISTS FILES("
+		      "id text not null primary key, "
+		      "length integer, "
+		      "datavalid integer, "
+		      "inserttime integer"
+		  ");", END) == -1
+      ||	sqlite_exec_void_retry(&retry, 
+		  "CREATE TABLE IF NOT EXISTS FILEBLOBS("
+		      "id text not null primary key, "
+		      "data blob"
+		  ");", END) == -1
+      ||	sqlite_exec_void_retry(&retry, 
+		  "CREATE TABLE IF NOT EXISTS IDENTITY("
+		      "uuid text not null"
+		  "); ", END) == -1
     ) {
       RETURN(WHY("Failed to create schema"));
     }
@@ -261,12 +272,14 @@ int rhizome_opendb()
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=1;", END);
   }
-  if (version<2){
+  if (version<2 && meta.mtime.tv_sec != -1){
+    // we need to populate these fields on upgrade from very old versions, we can simply re-insert all old manifests
+    // at some point we may deprecate upgrading the database and simply drop it and create a new one
+    // if more bundle verification is required in later upgrades, move this to the end, don't run it more than once.
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN service text;", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN name text;", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN sender text collate nocase;", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN recipient text collate nocase;", END);
-    // if more bundle verification is required in later upgrades, move this to the end, don't run it more than once.
     verify_bundles();
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=2;", END);
   }
@@ -274,14 +287,30 @@ int rhizome_opendb()
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_ID_VERSION ON MANIFESTS(id, version);", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=3;", END);
   }
-  if (version<4){
+  if (version<4 && meta.mtime.tv_sec != -1){
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN tail integer;", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=4;", END);
   }
-  if (version<5){
+  if (version<5 && meta.mtime.tv_sec != -1){
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE TABLE IF NOT EXISTS IDENTITY(uuid text not null); ", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=5;", END);
   }
+  if (version<6){
+    if (meta.mtime.tv_sec != -1){
+      // we've always been at war with eurasia
+      sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS GROUPLIST; ", END);
+      sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS GROUPMEMBERSHIPS; ", END);
+      sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS VERIFICATIONS; ", END);
+      sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS FILEMANIFESTS;", END);
+    }
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=6;", END);
+  }
+  
+  // TODO recreate tables with collate nocase on all hex columns
+
+  /* Future schema updates should be performed here. 
+   The above schema can be assumed to exist, no matter which version we upgraded from.
+   All changes should attempt to preserve all existing interesting data */
 
   char buf[UUID_STRLEN + 1];
   int r = sqlite_exec_strbuf_retry(&retry, strbuf_local(buf, sizeof buf), "SELECT uuid from IDENTITY LIMIT 1;", END);
@@ -305,12 +334,6 @@ int rhizome_opendb()
     if (config.debug.rhizome)
       DEBUGF("Set Rhizome database UUID to %s", alloca_uuid_str(rhizome_db_uuid));
   }
-
-  // TODO recreate tables with collate nocase on hex columns
-
-  /* Future schema updates should be performed here. 
-   The above schema can be assumed to exist.
-   All changes should attempt to preserve any existing data */
 
   // We can't delete a file that is being transferred in another process at this very moment...
   if (config.rhizome.clean_on_open)
@@ -877,7 +900,7 @@ int _sqlite_step(struct __sourceloc __whence, int log_level, sqlite_retry_state 
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static int _sqlite_exec(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
+int _sqlite_exec(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
 {
   if (!statement)
     return -1;
@@ -1138,21 +1161,6 @@ int _sqlite_blob_close(struct __sourceloc __whence, int log_level, sqlite3_blob 
   return 0;
 }
 
-static uint64_t rhizome_database_used_bytes()
-{
-  uint64_t db_page_size;
-  uint64_t db_page_count;
-  uint64_t db_free_page_count;
-  if (	sqlite_exec_uint64(&db_page_size, "PRAGMA page_size;", END) == -1LL
-    ||  sqlite_exec_uint64(&db_page_count, "PRAGMA page_count;", END) == -1LL
-    ||	sqlite_exec_uint64(&db_free_page_count, "PRAGMA free_count;", END) == -1LL
-  ) {
-    WHY("Cannot measure database used bytes");
-    return UINT64_MAX;
-  }
-  return db_page_size * (db_page_count - db_free_page_count);
-}
-
 int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t version, rhizome_filehash_t *hashp)
 {
   IN();
@@ -1166,47 +1174,6 @@ int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t versio
   OUT();
 }
 
-static int rhizome_delete_external(const char *id)
-{
-  // attempt to remove any external blob
-  char blob_path[1024];
-  if (!FORMF_RHIZOME_STORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, id))
-    return -1;
-  if (unlink(blob_path) == -1) {
-    if (errno != ENOENT)
-      return WHYF_perror("unlink(%s)", alloca_str_toprint(blob_path));
-    return 1;
-  }
-  if (config.debug.rhizome_store)
-    DEBUGF("Deleted blob file %s", blob_path);
-  return 0;
-}
-
-static int rhizome_delete_orphan_fileblobs_retry(sqlite_retry_state *retry)
-{
-  return sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, retry,
-      "DELETE FROM FILEBLOBS WHERE NOT EXISTS( SELECT 1 FROM FILES WHERE FILES.id = FILEBLOBS.id );",
-      END);
-}
-
-int rhizome_remove_file_datainvalid(sqlite_retry_state *retry, const rhizome_filehash_t *hashp)
-{
-  int ret = 0;
-  if (sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, retry,
-	  "DELETE FROM FILES WHERE id = ? and datavalid = 0;",
-	  RHIZOME_FILEHASH_T, hashp, END
-	) == -1
-  )
-    ret = -1;
-  if (sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, retry,
-	  "DELETE FROM FILEBLOBS WHERE id = ? AND NOT EXISTS( SELECT 1 FROM FILES WHERE FILES.id = FILEBLOBS.id );",
-	  RHIZOME_FILEHASH_T, hashp, END
-	) == -1
-  )
-    ret = -1;
-  return ret;
-}
-
 int rhizome_cleanup(struct rhizome_cleanup_report *report)
 {
   IN();
@@ -1218,20 +1185,15 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
 
   /* For testing, it helps to speed up the cleanup process. */
   const char *orphan_payload_persist_ms = getenv("SERVALD_ORPHAN_PAYLOAD_PERSIST_MS");
-  const char *invalid_payload_persist_ms = getenv("SERVALD_INVALID_PAYLOAD_PERSIST_MS");
   time_ms_t now = gettime_ms();
   time_ms_t insert_horizon_no_manifest = now - (orphan_payload_persist_ms ? atoi(orphan_payload_persist_ms) : 1000); // 1 second ago
-  time_ms_t insert_horizon_not_valid = now - (invalid_payload_persist_ms ? atoi(invalid_payload_persist_ms) : 300000); // 5 minutes ago
 
   // Remove external payload files for stale, incomplete payloads.
-  unsigned candidates = 0;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
-      "SELECT id FROM FILES WHERE inserttime < ? AND datavalid = 0;",
-      INT64, insert_horizon_not_valid, END);
+      "SELECT id FROM FILES WHERE datavalid = 0;", END);
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
-    candidates++;
     const char *id = (const char *) sqlite3_column_text(statement, 0);
-    if (rhizome_delete_external(id) == 0 && report)
+    if (rhizome_delete_file_id(id)==0 && report)
       ++report->deleted_stale_incoming_files;
   }
   sqlite3_finalize(statement);
@@ -1241,9 +1203,8 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
       "SELECT id FROM FILES WHERE inserttime < ? AND NOT EXISTS( SELECT 1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);",
       INT64, insert_horizon_no_manifest, END);
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
-    candidates++;
     const char *id = (const char *) sqlite3_column_text(statement, 0);
-    if (rhizome_delete_external(id) == 0 && report)
+    if (rhizome_delete_file_id(id)==0 && report)
       ++report->deleted_orphan_files;
   }
   sqlite3_finalize(statement);
@@ -1252,29 +1213,16 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
   // referenced or are stale.  This could take a long time, so for scalability should be done
   // in an incremental background task.  See GitHub issue #50.
  
-  // Remove payload records that are stale and incomplete or old and unreferenced.
-  int ret;
-  if (candidates) {
-    ret = sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,
-	"DELETE FROM FILES WHERE inserttime < ? AND datavalid = 0;",
-	INT64, insert_horizon_not_valid, END);
-    if (report && ret > 0)
-      report->deleted_stale_incoming_files += ret;
-    ret = sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,
-	"DELETE FROM FILES WHERE inserttime < ? AND datavalid=1 AND NOT EXISTS( SELECT 1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);",
-	INT64, insert_horizon_no_manifest, END);
-    if (report && ret > 0)
-      report->deleted_orphan_files += ret;
-  }
-
   // Remove payload blobs that are no longer referenced.
-  if ((ret = rhizome_delete_orphan_fileblobs_retry(&retry)) > 0 && report)
+  int ret = sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,
+      "DELETE FROM FILEBLOBS WHERE NOT EXISTS( SELECT 1 FROM FILES WHERE FILES.id = FILEBLOBS.id );",
+      END);
+  if (ret > 0 && report)
     report->deleted_orphan_fileblobs += ret;
 
   // delete manifests that no longer have payload files
   ret = sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,
-      "DELETE FROM MANIFESTS WHERE inserttime < ? AND filesize > 0 AND NOT EXISTS( SELECT 1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);",
-      INT64, insert_horizon_no_manifest, END);
+      "DELETE FROM MANIFESTS WHERE filesize > 0 AND NOT EXISTS( SELECT 1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);", END);
   if (report && ret > 0)
     report->deleted_orphan_manifests += ret;
   
@@ -1287,118 +1235,6 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
       );
   RETURN(0);
   OUT();
-}
-
-int rhizome_make_space(int group_priority, uint64_t bytes)
-{
-  /* Asked for impossibly large amount */
-  const size_t margin = 65536;
-  const uint64_t limit = config.rhizome.database_size > margin ? config.rhizome.database_size - margin : 1;
-  if (bytes >= limit)
-    return WHYF("bytes=%"PRIu64" is too large", bytes);
-
-  uint64_t db_used = rhizome_database_used_bytes();
-  if (db_used == UINT64_MAX)
-    return -1;
-  
-  rhizome_cleanup(NULL);
-  
-  /* If there is already enough space now, then do nothing more */
-  if (db_used + bytes <= limit)
-    return 0;
-
-  /* Okay, not enough space, so free up some. */
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
-      "SELECT id,length FROM FILES WHERE highestpriority < ? ORDER BY DESCENDING LENGTH",
-      INT, group_priority, END);
-  if (!statement)
-    return -1;
-  while (db_used + bytes > limit && sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
-    /* Make sure we can drop this blob, and if so drop it, and recalculate number of bytes required */
-    const char *id;
-    /* Get values */
-    if (sqlite3_column_type(statement, 0)==SQLITE_TEXT)
-      id = (const char *) sqlite3_column_text(statement, 0);
-    else {
-      WHY("Incorrect type in id column of files table");
-      break;
-    }
-    if (sqlite3_column_type(statement, 1)==SQLITE_INTEGER)
-      ; //length=sqlite3_column_int(statement, 1);
-    else {
-      WHY("Incorrect type in length column of files table");
-      break;
-    }
-    rhizome_filehash_t hash;
-    if (str_to_rhizome_filehash_t(&hash, id) == -1)
-      WHYF("invalid field FILES.id=%s -- ignored", alloca_str_toprint(id));
-    else {
-      /* Try to drop this file from storage, discarding any references that do not trump the
-       * priority of this request.  The query done earlier should ensure this, but it doesn't hurt
-       * to be paranoid, and it also protects against inconsistency in the database.
-       */
-      rhizome_drop_stored_file(&hash, group_priority + 1);
-      if ((db_used = rhizome_database_used_bytes()) == UINT64_MAX)
-	break;
-    }
-  }
-  sqlite3_finalize(statement);
-
-  //int64_t equal_priority_larger_file_space_used = sqlite_exec_int64("SELECT COUNT(length) FROM
-  //FILES WHERE highestpriority = ? and length > ?", INT, group_priority, INT64, bytes, END);
-  /* XXX Get rid of any equal priority files that are larger than this one */
-
-  /* XXX Get rid of any higher priority files that are not relevant in this time or location */
-
-  /* Couldn't make space */
-  return WHY("Incomplete");
-}
-
-/* Drop the specified file from storage, and any manifests that reference it, provided that none of
- * those manifests are being retained at a higher priority than the maximum specified here.
- */
-int rhizome_drop_stored_file(const rhizome_filehash_t *hashp, int maximum_priority)
-{
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare_bind(&retry, "SELECT id FROM MANIFESTS WHERE filehash = ?", RHIZOME_FILEHASH_T, hashp, END);
-  if (!statement)
-    return WHYF("Could not drop stored file id=%s", alloca_tohex_rhizome_filehash_t(*hashp));
-  int can_drop = 1;
-  while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
-    /* Find manifests for this file */
-    if (sqlite3_column_type(statement, 0) != SQLITE_TEXT) {
-      WHYF("Incorrect type in id column of manifests table");
-      break;
-    }
-    const char *q_id = (char *) sqlite3_column_text(statement, 0);
-    rhizome_bid_t bid;
-    if (str_to_rhizome_bid_t(&bid, q_id) == -1) {
-      WARNF("malformed column value MANIFESTS.id = %s -- skipped", alloca_str_toprint(q_id));
-      continue;
-    }
-    /* Check that manifest is not part of a higher priority group.
-	If so, we cannot drop the manifest or the file.
-	However, we will keep iterating, as we can still drop any other manifests pointing to this file
-	that are lower priority, and thus free up a little space. */
-    int priority = rhizome_manifest_priority(&retry, &bid);
-    if (priority == -1)
-      WHYF("Cannot drop fileid=%s due to error, bid=%s", alloca_tohex_rhizome_filehash_t(*hashp), alloca_tohex_rhizome_bid_t(bid));
-    else if (priority > maximum_priority) {
-      WHYF("Cannot drop fileid=%s due to manifest priority, bid=%s", alloca_tohex_rhizome_filehash_t(*hashp), alloca_tohex_rhizome_bid_t(bid));
-      can_drop = 0;
-    } else {
-      if (config.debug.rhizome)
-	DEBUGF("removing stale manifests, groupmemberships");
-      sqlite_exec_void_retry(&retry, "DELETE FROM MANIFESTS WHERE id = ?;", RHIZOME_BID_T, &bid, END);
-      sqlite_exec_void_retry(&retry, "DELETE FROM KEYPAIRS WHERE public = ?;", RHIZOME_BID_T, &bid, END);
-      sqlite_exec_void_retry(&retry, "DELETE FROM GROUPMEMBERSHIPS WHERE manifestid = ?;", RHIZOME_BID_T, &bid, END);
-    }
-  }
-  sqlite3_finalize(statement);
-  if (can_drop)
-    rhizome_delete_file_retry(&retry, hashp);
-  return 0;
 }
 
 /*
@@ -1419,8 +1255,7 @@ int rhizome_drop_stored_file(const rhizome_filehash_t *hashp, int maximum_priori
   The trick is to insert the blob as all zeroes using a special function, and then
   substitute bytes in the blog progressively.
 
-  We need to also need to create the appropriate row(s) in the MANIFESTS, FILES, 
-   and GROUPMEMBERSHIPS tables, and possibly GROUPLIST as well.
+  We need to also need to create the appropriate row(s) in the MANIFESTS, FILES tables.
  */
 int rhizome_store_manifest(rhizome_manifest *m)
 {
@@ -1492,52 +1327,6 @@ int rhizome_store_manifest(rhizome_manifest *m)
   stmt = NULL;
   rhizome_manifest_set_rowid(m, sqlite3_last_insert_rowid(rhizome_db));
   rhizome_manifest_set_inserttime(m, now);
-
-//  if (serverMode)
-//    rhizome_sync_bundle_inserted(bar);
-
-  // TODO remove old payload?
-  
-#if 0
-  if (rhizome_manifest_get(m,"isagroup",NULL,0)!=NULL) {
-    int closed=rhizome_manifest_get_ll(m,"closedgroup");
-    if (closed<1) closed=0;
-    int ciphered=rhizome_manifest_get_ll(m,"cipheredgroup");
-    if (ciphered<1) ciphered=0;
-    if ((stmt = sqlite_prepare_bind(&retry,
-	    "INSERT OR REPLACE INTO GROUPLIST(id,closed,ciphered,priority) VALUES (?,?,?,?);",
-	    RHIZOME_BID_T, &m->cryptoSignPublic,
-	    INT, closed,
-	    INT, ciphered,
-	    INT, RHIZOME_PRIORITY_DEFAULT,
-	    END
-	  )
-      ) == NULL
-    )
-      goto rollback;
-    if (sqlite_step_retry(&retry, stmt) == -1)
-      goto rollback;
-    sqlite3_finalize(stmt);
-    stmt = NULL;
-  }
-#endif
-
-#if 0
-  if (m->group_count > 0) {
-    if ((stmt = sqlite_prepare(&retry, "INSERT OR REPLACE INTO GROUPMEMBERSHIPS (manifestid, groupid) VALUES (?, ?);")) == NULL)
-      goto rollback;
-    unsigned i;
-    for (i=0;i<m->group_count;i++){
-      if (sqlite_bind(&retry, stmt, RHIZOME_BID_T, &m->cryptoSignPublic, TEXT, m->groups[i]) == -1)
-	goto rollback;
-      if (sqlite_step_retry(&retry, stmt) == -1)
-	goto rollback;
-      sqlite3_reset(stmt);
-    }
-    sqlite3_finalize(stmt);
-    stmt = NULL;
-  }
-#endif
 
   if (sqlite_exec_void_retry(&retry, "COMMIT;", END) != -1){
     // This message used in tests; do not modify or remove.
@@ -1753,29 +1542,6 @@ void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCoun
   (void) tohex(out, byteCount * 2, in);
 }
 
-int rhizome_update_file_priority(const char *fileid)
-{
-  /* work out the highest priority of any referrer */
-  uint64_t highestPriority = 0;
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  if (sqlite_exec_uint64_retry(&retry, &highestPriority,
-	"SELECT max(grouplist.priority) FROM MANIFESTS, GROUPMEMBERSHIPS, GROUPLIST"
-	" WHERE MANIFESTS.filehash = ?"
-	"   AND GROUPMEMBERSHIPS.manifestid = MANIFESTS.id"
-	"   AND GROUPMEMBERSHIPS.groupid = GROUPLIST.id;",
-	TEXT_TOUPPER, fileid, END
-      ) == -1
-  )
-    return -1;
-  if (sqlite_exec_void_retry(&retry,
-	"UPDATE files SET highestPriority = ? WHERE id = ?;",
-	INT64, highestPriority, TEXT_TOUPPER, fileid, END
-      ) == -1
-  )
-    return WHYF("cannot update priority for fileid=%s", fileid);
-  return 0;
-}
-
 /* Search the database for a manifest having the same name and payload content, and if the version
  * is known, having the same version.  Returns RHIZOME_BUNDLE_STATUS_DUPLICATE if a duplicate is found
  * (setting *found to point to the duplicate's manifest), returns RHIZOME_BUNDLE_STATUS_NEW if no
@@ -1961,33 +1727,6 @@ static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizom
   return sqlite3_changes(rhizome_db) ? 0 : 1;
 }
 
-static int rhizome_delete_file_retry(sqlite_retry_state *retry, const rhizome_filehash_t *hashp)
-{
-  int ret = 0;
-  rhizome_delete_external(alloca_tohex_rhizome_filehash_t(*hashp));
-  sqlite3_stmt *statement = sqlite_prepare_bind(retry, "DELETE FROM files WHERE id = ?", RHIZOME_FILEHASH_T, hashp, END);
-  if (!statement || sqlite_exec_retry(retry, statement) == -1)
-    ret = -1;
-  statement = sqlite_prepare_bind(retry, "DELETE FROM fileblobs WHERE id = ?", RHIZOME_FILEHASH_T, hashp, END);
-  if (!statement || sqlite_exec_retry(retry, statement) == -1)
-    ret = -1;
-  return ret == -1 ? -1 : sqlite3_changes(rhizome_db) ? 0 : 1;
-}
-
-static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp)
-{
-  strbuf fh = strbuf_alloca(RHIZOME_FILEHASH_STRLEN + 1);
-  int rows = sqlite_exec_strbuf_retry(retry, fh, "SELECT filehash FROM manifests WHERE id = ?", RHIZOME_BID_T, bidp, END);
-  if (rows == -1)
-    return -1;
-  rhizome_filehash_t hash;
-  if (str_to_rhizome_filehash_t(&hash, strbuf_str(fh)) == -1)
-    return WHYF("invalid field FILES.id=%s", strbuf_str(fh));
-  if (rows && rhizome_delete_file_retry(retry, &hash) == -1)
-    return -1;
-  return 0;
-}
-
 /* Remove a manifest and its bundle from the database, given its manifest ID.
  *
  * Returns 0 if manifest is found and removed and bundle was either absent or removed
@@ -1998,10 +1737,9 @@ static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const rhizome
  */
 int rhizome_delete_bundle(const rhizome_bid_t *bidp)
 {
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  if (rhizome_delete_payload_retry(&retry, bidp) == -1)
+  if (rhizome_delete_payload(bidp) == -1)
     return -1;
-  if (rhizome_delete_manifest_retry(&retry, bidp) == -1)
+  if (rhizome_delete_manifest(bidp) == -1)
     return -1;
   return 0;
 }
@@ -2019,35 +1757,6 @@ int rhizome_delete_manifest(const rhizome_bid_t *bidp)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   return rhizome_delete_manifest_retry(&retry, bidp);
-}
-
-/* Remove a bundle's payload (file) from the database, given its manifest ID, leaving its manifest
- * untouched if present.
- *
- * Returns 0 if manifest is found, its payload is found and removed
- * Returns 1 if manifest or payload is not found
- * Returns -1 on error
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
-int rhizome_delete_payload(const rhizome_bid_t *bidp)
-{
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  return rhizome_delete_payload_retry(&retry, bidp);
-}
-
-/* Remove a file from the database, given its file hash.
- *
- * Returns 0 if file is found and removed
- * Returns 1 if file is not found
- * Returns -1 on error
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
-int rhizome_delete_file(const rhizome_filehash_t *hashp)
-{
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  return rhizome_delete_file_retry(&retry, hashp);
 }
 
 static int is_interesting(const char *id_hex, uint64_t version)

@@ -552,12 +552,14 @@ schedule_fetch(struct rhizome_fetch_slot *slot)
     slot->request_len = strbuf_len(r);
     enum rhizome_payload_status status = rhizome_open_write(&slot->write_state,
 							    &slot->manifest->filehash,
-							    slot->manifest->filesize,
-							    RHIZOME_PRIORITY_DEFAULT);
+							    slot->manifest->filesize);
     switch (status) {
       case RHIZOME_PAYLOAD_STATUS_EMPTY:
       case RHIZOME_PAYLOAD_STATUS_STORED:
 	RETURN(IMPORTED);
+      case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+      case RHIZOME_PAYLOAD_STATUS_UNINITERESTING:
+	RETURN(DONOTWANT);
       case RHIZOME_PAYLOAD_STATUS_NEW:
 	break;
       case RHIZOME_PAYLOAD_STATUS_ERROR:
@@ -824,6 +826,7 @@ static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
       case SAMEBUNDLE:
       case SAMEPAYLOAD:
       case SUPERSEDED:
+      case DONOTWANT:
       case NEWERBUNDLE:
       default:
 	// Discard the candidate fetch and loop to try the next in queue.

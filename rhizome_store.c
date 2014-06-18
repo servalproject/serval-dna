@@ -76,14 +76,187 @@ static uint64_t rhizome_create_fileblob(sqlite_retry_state *retry, uint64_t id, 
   return rowid;
 }
 
-enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *expectedHashp, uint64_t file_length, int priority)
+static int rhizome_delete_external(const char *id)
+{
+  // attempt to remove any external blob
+  char blob_path[1024];
+  if (!FORMF_RHIZOME_STORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, id))
+    return -1;
+  if (unlink(blob_path) == -1) {
+    if (errno != ENOENT)
+      return WHYF_perror("unlink(%s)", alloca_str_toprint(blob_path));
+    return 1;
+  }
+  if (config.debug.rhizome_store)
+    DEBUGF("Deleted blob file %s", blob_path);
+  return 0;
+}
+
+static int rhizome_delete_file_id_retry(sqlite_retry_state *retry, const char *id)
+{
+  int ret = 0;
+  rhizome_delete_external(id);
+  sqlite3_stmt *statement = sqlite_prepare_bind(retry, "DELETE FROM fileblobs WHERE id = ?", STATIC_TEXT, id, END);
+  if (!statement || sqlite_exec_retry(retry, statement) == -1)
+    ret = -1;
+  statement = sqlite_prepare_bind(retry, "DELETE FROM files WHERE id = ?", STATIC_TEXT, id, END);
+  if (!statement || sqlite_exec_retry(retry, statement) == -1)
+    ret = -1;
+  return ret == -1 ? -1 : sqlite3_changes(rhizome_db) ? 0 : 1;
+}
+
+static int rhizome_delete_payload_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp)
+{
+  strbuf fh = strbuf_alloca(RHIZOME_FILEHASH_STRLEN + 1);
+  int rows = sqlite_exec_strbuf_retry(retry, fh, "SELECT filehash FROM manifests WHERE id = ?", RHIZOME_BID_T, bidp, END);
+  if (rows == -1)
+    return -1;
+  if (rows && rhizome_delete_file_id_retry(retry, strbuf_str(fh)) == -1)
+    return -1;
+  return 0;
+}
+
+/* Remove a bundle's payload (file) from the database, given its manifest ID, leaving its manifest
+ * untouched if present.
+ *
+ * Returns 0 if manifest is found, its payload is found and removed
+ * Returns 1 if manifest or payload is not found
+ * Returns -1 on error
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_delete_payload(const rhizome_bid_t *bidp)
+{
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  return rhizome_delete_payload_retry(&retry, bidp);
+}
+
+int rhizome_delete_file_id(const char *id)
+{
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  return rhizome_delete_file_id_retry(&retry, id);
+}
+
+/* Remove a file from the database, given its file hash.
+ *
+ * Returns 0 if file is found and removed
+ * Returns 1 if file is not found
+ * Returns -1 on error
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_delete_file(const rhizome_filehash_t *hashp)
+{
+  return rhizome_delete_file_id(alloca_tohex_rhizome_filehash_t(*hashp));
+}
+
+// TODO readonly version?
+static enum rhizome_payload_status store_make_space(uint64_t bytes)
+{
+  uint64_t external_bytes;
+  uint64_t db_page_size;
+  uint64_t db_page_count;
+  uint64_t db_free_page_count;
+  
+  // TODO limit based on free space?
+  
+  // No limit?
+  if (config.rhizome.database_size==0)
+    return RHIZOME_PAYLOAD_STATUS_NEW;
+    
+  // TODO index external_bytes calculation and/or cache result
+  
+  if (	sqlite_exec_uint64(&db_page_size, "PRAGMA page_size;", END) == -1LL
+    ||  sqlite_exec_uint64(&db_page_count, "PRAGMA page_count;", END) == -1LL
+    ||	sqlite_exec_uint64(&db_free_page_count, "PRAGMA freelist_count;", END) == -1LL
+    ||  sqlite_exec_uint64(&external_bytes, 
+	  "SELECT SUM(length) "
+	  "FROM FILES  "
+	  "WHERE NOT EXISTS( "
+	    "SELECT 1  "
+	    "FROM FILEBLOBS "
+	    "WHERE FILES.ID = FILEBLOBS.ID "
+	  ");", END) == -1LL
+  )
+    return WHY("Cannot measure database used bytes");
+  
+  if (config.rhizome.database_size < db_page_size*10)
+    return WHYF("rhizome.database_size is too small to store anything");
+  
+  const uint64_t limit = config.rhizome.database_size - db_page_size*4;
+  uint64_t db_used = external_bytes + db_page_size * (db_page_count - db_free_page_count);
+  
+  if (bytes >= limit){
+    if (config.debug.rhizome)
+      DEBUGF("Not enough space for %"PRIu64". Used; %"PRIu64" = %"PRIu64" + %"PRIu64" * (%"PRIu64" - %"PRIu64"), Limit; %"PRIu64, 
+	bytes, db_used, external_bytes, db_page_size, db_page_count, db_free_page_count, limit);
+    return RHIZOME_PAYLOAD_STATUS_TOO_BIG;
+  }
+  
+  // If there is enough space, do nothing
+  if (db_used + bytes <= limit)
+    return RHIZOME_PAYLOAD_STATUS_NEW;
+  
+  // penalise new things by 10 minutes to reduce churn
+  time_ms_t cost = gettime_ms() - 60000 - bytes;
+  
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  // query files by age, penalise larger files so they are removed earlier
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
+      "SELECT id, length, inserttime FROM FILES ORDER BY (inserttime - length)",
+      END);
+  if (!statement)
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
+    
+  while (db_used + bytes > limit && sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
+    const char *id=(const char *) sqlite3_column_text(statement, 0);
+    uint64_t length = sqlite3_column_int(statement, 1);
+    time_ms_t inserttime = sqlite3_column_int64(statement, 2);
+    
+    time_ms_t cost_existing = inserttime - length;
+    
+    if (config.debug.rhizome)
+      DEBUGF("Considering dropping file %s, size %"PRId64" cost %"PRId64" vs %"PRId64" to add %"PRId64" new bytes", 
+	id, length, cost, cost_existing, bytes);
+    // don't allow the new file, we've got more important things to store
+    if (cost < cost_existing)
+      break;
+    
+    // drop the existing content and recalculate used space
+    if (rhizome_delete_external(id)==0)
+      external_bytes -= length;
+    
+    sqlite3_stmt *s = sqlite_prepare_bind(&retry, "DELETE FROM fileblobs WHERE id = ?", STATIC_TEXT, id, END);
+    if (s)
+      sqlite_exec_retry(&retry, s);
+    s = sqlite_prepare_bind(&retry, "DELETE FROM files WHERE id = ?", STATIC_TEXT, id, END);
+    if (s)
+      sqlite_exec_retry(&retry, s);
+      
+    sqlite_exec_uint64(&db_page_count, "PRAGMA page_count;", END);
+    sqlite_exec_uint64(&db_free_page_count, "PRAGMA freelist_count;", END);
+    
+    db_used = external_bytes + db_page_size * (db_page_count - db_free_page_count);
+  }
+  sqlite3_finalize(statement);
+  
+  if (db_used + bytes <= limit)
+    return RHIZOME_PAYLOAD_STATUS_NEW;
+  
+  if (config.debug.rhizome)
+    DEBUGF("Not enough space for %"PRIu64". Used; %"PRIu64" = %"PRIu64" + %"PRIu64" * (%"PRIu64" - %"PRIu64"), Limit; %"PRIu64, 
+      bytes, db_used, external_bytes, db_page_size, db_page_count, db_free_page_count, limit);
+      
+  return RHIZOME_PAYLOAD_STATUS_UNINITERESTING;
+}
+
+enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *expectedHashp, uint64_t file_length)
 {
   if (file_length == 0)
     return RHIZOME_PAYLOAD_STATUS_EMPTY;
 
   write->blob_fd=-1;
   write->sql_blob=NULL;
-  write->priority = priority;
   
   if (expectedHashp){
     if (rhizome_exists(expectedHashp))
@@ -93,6 +266,13 @@ enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, cons
   }else{
     write->id_known=0;
   }
+  
+  if (file_length!=RHIZOME_SIZE_UNSET){
+    enum rhizome_payload_status status = store_make_space(file_length);
+    if (status != RHIZOME_PAYLOAD_STATUS_NEW)
+      return status;
+  }
+  
   time_ms_t now = gettime_ms();
   static uint64_t last_id=0;
   write->temp_id = now;
@@ -452,6 +632,9 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
     if (config.debug.rhizome_store)
       DEBUGF("Wrote %"PRIu64" bytes, set file_length", write->file_offset);
     write->file_length = write->file_offset;
+    status = store_make_space(write->file_length);
+    if (status!=RHIZOME_PAYLOAD_STATUS_NEW)
+      goto failure;
   }
   
   // flush out any remaining buffered pieces to disk
@@ -533,7 +716,7 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
   }
 
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  rhizome_remove_file_datainvalid(&retry, &write->id);
+  
   if (rhizome_exists(&write->id)) {
     // we've already got that payload, delete the new copy
     if (write->blob_rowid){
@@ -552,10 +735,9 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
 
     if (sqlite_exec_void_retry(
 	    &retry,
-	    "INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) VALUES(?,?,?,1,?);",
+	    "INSERT OR REPLACE INTO FILES(id,length,datavalid,inserttime) VALUES(?,?,1,?);",
 	    RHIZOME_FILEHASH_T, &write->id,
 	    INT64, write->file_length,
-	    INT, write->priority,
 	    INT64, gettime_ms(),
 	    END
 	  ) == -1
@@ -615,7 +797,7 @@ enum rhizome_payload_status rhizome_import_payload_from_file(rhizome_manifest *m
   struct rhizome_write write;
   bzero(&write, sizeof(write));
   
-  enum rhizome_payload_status status = rhizome_open_write(&write, &m->filehash, m->filesize, RHIZOME_PRIORITY_DEFAULT);
+  enum rhizome_payload_status status = rhizome_open_write(&write, &m->filehash, m->filesize);
   if (status != RHIZOME_PAYLOAD_STATUS_NEW)
     return status;
   
@@ -644,7 +826,7 @@ enum rhizome_payload_status rhizome_import_buffer(rhizome_manifest *m, unsigned 
   struct rhizome_write write;
   bzero(&write, sizeof(write));
   
-  enum rhizome_payload_status status = rhizome_open_write(&write, &m->filehash, m->filesize, RHIZOME_PRIORITY_DEFAULT);
+  enum rhizome_payload_status status = rhizome_open_write(&write, &m->filehash, m->filesize);
   if (status != RHIZOME_PAYLOAD_STATUS_NEW)
     return status;
   
@@ -714,8 +896,7 @@ enum rhizome_payload_status rhizome_write_open_manifest(struct rhizome_write *wr
   enum rhizome_payload_status status = rhizome_open_write(
 	  write,
 	  m->has_filehash ? &m->filehash : NULL,
-	  m->filesize,
-	  RHIZOME_PRIORITY_DEFAULT
+	  m->filesize
 	);
   if (status == RHIZOME_PAYLOAD_STATUS_NEW)
     status = rhizome_write_derive_key(m, write);
@@ -735,6 +916,8 @@ enum rhizome_payload_status rhizome_store_payload_file(rhizome_manifest *m, cons
     case RHIZOME_PAYLOAD_STATUS_NEW:
       break;
     case RHIZOME_PAYLOAD_STATUS_STORED:
+    case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+    case RHIZOME_PAYLOAD_STATUS_UNINITERESTING:
     case RHIZOME_PAYLOAD_STATUS_ERROR:
     case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
@@ -765,6 +948,8 @@ enum rhizome_payload_status rhizome_store_payload_file(rhizome_manifest *m, cons
     case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
     case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+    case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+    case RHIZOME_PAYLOAD_STATUS_UNINITERESTING:
       break;
     default:
       FATALF("status = %d", status);
@@ -1329,7 +1514,7 @@ enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *wri
   if (advance_by > 0)
     rhizome_manifest_set_tail(m, m->tail + advance_by);
   rhizome_manifest_set_version(m, m->filesize);
-  enum rhizome_payload_status status = rhizome_open_write(write, NULL, m->filesize, RHIZOME_PRIORITY_DEFAULT);
+  enum rhizome_payload_status status = rhizome_open_write(write, NULL, m->filesize);
   if (status == RHIZOME_PAYLOAD_STATUS_NEW && copy_length > 0) {
     // note that we don't need to bother decrypting the existing journal payload
     enum rhizome_payload_status rstatus = rhizome_journal_pipe(write, &m->filehash, advance_by, copy_length);

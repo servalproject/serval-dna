@@ -495,6 +495,10 @@ static int restful_rhizome_insert_end(struct http_request *hr)
 	http_request_simple_response(&r->http, 403, strbuf_str(msg));
 	return 403;
       }
+    case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+    case RHIZOME_PAYLOAD_STATUS_UNINITERESTING:
+      http_request_simple_response(&r->http, 403, "Not enough space");
+      return 403;
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
       http_request_simple_response(&r->http, 403, "Payload hash contradicts manifest");
       return 403;

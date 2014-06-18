@@ -1198,7 +1198,7 @@ test_DeleteManifest() {
    assert diff file2 file2x
    rhizome_clean
    assert [ $deleted_files = 1 ]
-   assert [ $deleted_fileblobs = 1 ]
+   assert [ $deleted_fileblobs = 0 ]
    assert [ $deleted_manifests = 0 ]
 }
 
@@ -1255,6 +1255,55 @@ test_DeleteFile() {
    assert [ $deleted_manifests = 1 ]
    executeOk_servald rhizome list
    assert_rhizome_list file{2..4}
+}
+
+doc_payloadTooBig="Fail to insert a payload that is larger than the database"
+setup_payloadTooBig() {
+   setup_servald
+   setup_rhizome
+   set_instance +A
+   executeOk_servald config set rhizome.database_size 32K
+}
+test_payloadTooBig(){
+   create_file file1 32K
+   execute $servald rhizome add file $SIDA file1 file1.manifest
+   assertExitStatus '==' 7
+}
+
+doc_payloadUninteresting="Fail to insert a payload that is uninteresting"
+setup_payloadUninteresting() {
+   setup_servald
+   setup_rhizome
+   set_instance +A
+   executeOk_servald config set rhizome.database_size 64K
+}
+test_payloadUninteresting(){
+   create_file file1 32K
+   create_file file2 32K
+   executeOk_servald rhizome add file $SIDA file1 file1.manifest
+   execute $servald rhizome add file $SIDA file2 file2.manifest
+   assertExitStatus '==' 7
+}
+
+doc_evictUninteresting="Evict a large payload to make room for smaller payloads"
+setup_evictUninteresting() {
+   setup_servald
+   setup_rhizome
+   set_instance +A
+   executeOk_servald config set rhizome.database_size 1M
+}
+test_evictUninteresting(){
+   create_file file1 512K
+   create_file file2 256K
+   create_file file3 128K
+   create_file file4 128K
+   executeOk_servald rhizome add file $SIDA file1 file1.manifest
+   executeOk_servald rhizome add file $SIDA file2 file2.manifest
+   executeOk_servald rhizome add file $SIDA file3 file3.manifest
+   executeOk_servald rhizome add file $SIDA file4 file4.manifest
+   rhizome_clean
+   executeOk_servald rhizome list
+   assert_rhizome_list file{2,3,4}
 }
 
 runTests "$@"

@@ -334,7 +334,6 @@ static enum meshms_status append_meshms_buffer(const sid_t *my_sid, struct meshm
       case 0:
 	break;
       case -1:
-	status = MESHMS_STATUS_ERROR;
 	goto end;
       default:
 	status = MESHMS_STATUS_PROTOCOL_FAULT;
@@ -346,16 +345,14 @@ static enum meshms_status append_meshms_buffer(const sid_t *my_sid, struct meshm
       goto end;
     }
   } else if (create_ply(my_sid, conv, m) == -1) {
-    status = MESHMS_STATUS_ERROR;
     goto end;
   }
   assert(m->haveSecret);
   assert(m->authorship == AUTHOR_AUTHENTIC);
   enum rhizome_payload_status pstatus = rhizome_append_journal_buffer(m, 0, buffer, len);
-  if (pstatus != RHIZOME_PAYLOAD_STATUS_NEW) {
-    status = MESHMS_STATUS_ERROR;
+  if (pstatus != RHIZOME_PAYLOAD_STATUS_NEW)
     goto end;
-  }
+  
   enum rhizome_bundle_status bstatus = rhizome_manifest_finalise(m, &mout, 1);
   if (config.debug.meshms)
     DEBUGF("bstatus=%d", bstatus);
@@ -664,17 +661,20 @@ static enum meshms_status write_known_conversations(rhizome_manifest *m, struct 
   rhizome_manifest_set_filehash(m, NULL);
 
   enum rhizome_payload_status pstatus = rhizome_write_open_manifest(&write, m);
-  if (pstatus == RHIZOME_PAYLOAD_STATUS_NEW) {
-    unsigned char version=1;
-    if (rhizome_write_buffer(&write, &version, 1) == -1)
-      goto end;
-    if (write_conversation(&write, conv) == -1)
-      goto end;
-    pstatus = rhizome_finish_write(&write);
-    if (pstatus != RHIZOME_PAYLOAD_STATUS_NEW)
-      goto end;
-    rhizome_manifest_set_filehash(m, &write.id);
-  }
+  if (pstatus!=RHIZOME_PAYLOAD_STATUS_NEW)
+    // TODO log something?
+    goto end;
+  
+  unsigned char version=1;
+  if (rhizome_write_buffer(&write, &version, 1) == -1)
+    goto end;
+  if (write_conversation(&write, conv) == -1)
+    goto end;
+  pstatus = rhizome_finish_write(&write);
+  if (pstatus != RHIZOME_PAYLOAD_STATUS_NEW)
+    goto end;
+  rhizome_manifest_set_filehash(m, &write.id);
+  
   enum rhizome_bundle_status bstatus = rhizome_manifest_finalise(m, &mout, 1);
   switch (bstatus) {
     case RHIZOME_BUNDLE_STATUS_ERROR:

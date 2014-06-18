@@ -119,6 +119,9 @@ static int rhizome_direct_import_end(struct http_request *hr)
   case RHIZOME_BUNDLE_STATUS_FAKE:
     http_request_simple_response(&r->http, 403, "Manifest not signed");
     return 0;
+  case RHIZOME_BUNDLE_STATUS_DONOTWANT:
+    http_request_simple_response(&r->http, 403, "Not enough space");
+    return 0;
   case RHIZOME_BUNDLE_STATUS_DUPLICATE:
   case RHIZOME_BUNDLE_STATUS_ERROR:
     break;
