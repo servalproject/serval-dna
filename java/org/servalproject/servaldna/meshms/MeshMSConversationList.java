@@ -69,7 +69,8 @@ public class MeshMSConversationList {
 			columnIndex_read_offset = -1;
 			rowCount = 0;
 			httpConnection = httpConnector.newServalDHttpConnection("/restful/meshms/" + sid.toHex() + "/conversationlist.json");
-			json = MeshMSCommon.connectMeshMSRestful(httpConnection);
+			httpConnection.connect();
+			json = MeshMSCommon.receiveRestfulResponse(httpConnection, HttpURLConnection.HTTP_OK);
 			json.consume(JSONTokeniser.Token.START_OBJECT);
 			json.consume("header");
 			json.consume(JSONTokeniser.Token.COLON);

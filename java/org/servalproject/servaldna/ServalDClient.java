@@ -27,9 +27,18 @@ import org.servalproject.servaldna.meshms.MeshMSMessageList;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
-import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
+import java.net.HttpURLConnection;
+import org.servalproject.codec.Base64;
+import org.servalproject.servaldna.SubscriberId;
+import org.servalproject.servaldna.ServalDCommand;
+import org.servalproject.servaldna.ServalDInterfaceException;
+import org.servalproject.servaldna.meshms.MeshMSCommon;
+import org.servalproject.servaldna.meshms.MeshMSConversationList;
+import org.servalproject.servaldna.meshms.MeshMSMessageList;
+import org.servalproject.servaldna.meshms.MeshMSException;
+import org.servalproject.servaldna.meshms.MeshMSStatus;
 
 public class ServalDClient implements ServalDHttpConnectionFactory
 {
@@ -61,6 +70,11 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 		MeshMSMessageList list = new MeshMSMessageList(this, sid1, sid2);
 		list.connect();
 		return list;
+	}
+
+	public MeshMSStatus meshmsSendMessage(SubscriberId sid1, SubscriberId sid2, String text) throws IOException, ServalDInterfaceException, MeshMSException
+	{
+		return MeshMSCommon.sendMessage(this, sid1, sid2, text);
 	}
 
 	// interface ServalDHttpConnectionFactory

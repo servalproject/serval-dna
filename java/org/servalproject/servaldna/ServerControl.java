@@ -93,6 +93,12 @@ public class ServerControl {
 		if (!isRunning())
 			throw new ServalDInterfaceException("server is not running");
 		if (client==null) {
+			/* TODO: replace the following username/password configuration with a better scheme
+			 * (outside the scope of this API) that does not require any invocations of the JNI, and
+			 * allows any application (user) on the local host to request authorisation to use the
+			 * RESTful interface.  The authorisation must then be supplied to the restful client
+			 * object before requests can be made.
+			 */
 			String restfulPassword = ServalDCommand.getConfigItem("rhizome.api.restful.users." + restfulUsername + ".password");
 			if (restfulPassword == null) {
 				String pwd = new BigInteger(130, new SecureRandom()).toString(32);

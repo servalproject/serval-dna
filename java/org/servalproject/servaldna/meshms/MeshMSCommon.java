@@ -22,51 +22,101 @@ package org.servalproject.servaldna.meshms;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.net.URL;
 import java.net.HttpURLConnection;
+import org.servalproject.servaldna.SubscriberId;
+import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
+import org.servalproject.servaldna.ServalDFailureException;
 import org.servalproject.json.JSONTokeniser;
 import org.servalproject.json.JSONInputException;
 
-class MeshMSCommon
+public class MeshMSCommon
 {
-	protected static JSONTokeniser connectMeshMSRestful(HttpURLConnection conn) throws IOException, ServalDInterfaceException, MeshMSException
+	protected static JSONTokeniser receiveRestfulResponse(HttpURLConnection conn, int expected_response_code) throws IOException, ServalDInterfaceException, MeshMSException
 	{
-		conn.connect();
 		if (!conn.getContentType().equals("application/json"))
 			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
 		if (conn.getResponseCode() == HttpURLConnection.HTTP_FORBIDDEN) {
 			JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getErrorStream(), "US-ASCII"));
-			try {
-				json.consume(JSONTokeniser.Token.START_OBJECT);
-				json.consume("http_status_code");
-				json.consume(JSONTokeniser.Token.COLON);
-				json.consume(Integer.class);
-				json.consume(JSONTokeniser.Token.COMMA);
-				json.consume("http_status_message");
-				json.consume(JSONTokeniser.Token.COLON);
-				String message = json.consume(String.class);
-				json.consume(JSONTokeniser.Token.COMMA);
-				json.consume("meshms_status_code");
-				json.consume(JSONTokeniser.Token.COLON);
-				int meshms_status = json.consume(Integer.class);
-				json.consume(JSONTokeniser.Token.END_OBJECT);
-				json.consume(JSONTokeniser.Token.EOF);
-				switch (meshms_status) {
-				case 2:
-					throw new MeshMSUnknownIdentityException(conn.getURL());
-				case 3:
-					throw new MeshMSProtocolFaultException(conn.getURL());
-				}
-				throw new ServalDInterfaceException("unexpected MeshMS status = " + meshms_status + ", \"" + message + "\"");
-			}
-			catch (JSONInputException e) {
-				throw new ServalDInterfaceException("malformed response body for HTTP status code " + conn.getResponseCode(), e);
-			}
+			Status status = decodeRestfulStatus(json);
+			throwRestfulResponseExceptions(status, conn.getURL());
+			throw new ServalDInterfaceException("unexpected MeshMS status = " + status.meshms_status + ", \"" + status.message + "\"");
 		}
-		if (conn.getResponseCode() != HttpURLConnection.HTTP_OK)
+		if (conn.getResponseCode() != expected_response_code)
 			throw new ServalDInterfaceException("unexpected HTTP response code: " + conn.getResponseCode());
 		JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getInputStream(), "US-ASCII"));
 		return json;
+	}
+
+	private static class Status {
+		public MeshMSStatus meshms_status;
+		public String message;
+	}
+
+	protected static Status decodeRestfulStatus(JSONTokeniser json) throws IOException, ServalDInterfaceException
+	{
+		try {
+			Status status = new Status();
+			json.consume(JSONTokeniser.Token.START_OBJECT);
+			json.consume("http_status_code");
+			json.consume(JSONTokeniser.Token.COLON);
+			json.consume(Integer.class);
+			json.consume(JSONTokeniser.Token.COMMA);
+			status.message = json.consume("http_status_message");
+			json.consume(JSONTokeniser.Token.COLON);
+			String message = json.consume(String.class);
+			json.consume(JSONTokeniser.Token.COMMA);
+			json.consume("meshms_status_code");
+			json.consume(JSONTokeniser.Token.COLON);
+			status.meshms_status = MeshMSStatus.fromCode(json.consume(Integer.class));
+			json.consume(JSONTokeniser.Token.END_OBJECT);
+			json.consume(JSONTokeniser.Token.EOF);
+			return status;
+		}
+		catch (JSONInputException e) {
+			throw new ServalDInterfaceException("malformed JSON status response", e);
+		}
+	}
+
+	protected static void throwRestfulResponseExceptions(Status status, URL url) throws MeshMSException, ServalDFailureException
+	{
+		switch (status.meshms_status) {
+		case OK:
+		case UPDATED:
+			break;
+		case SID_LOCKED:
+			throw new MeshMSUnknownIdentityException(url);
+		case PROTOCOL_FAULT:
+			throw new MeshMSProtocolFaultException(url);
+		case ERROR:
+			throw new ServalDFailureException("received meshms_status=ERROR(-1) from " + url);
+		}
+	}
+
+	public static MeshMSStatus sendMessage(ServalDHttpConnectionFactory connector, SubscriberId sid1, SubscriberId sid2, String text) throws IOException, ServalDInterfaceException, MeshMSException
+	{
+		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshms/" + sid1.toHex() + "/" + sid2.toHex() + "/sendmessage");
+		String boundary = Long.toHexString(System.currentTimeMillis());
+		conn.setRequestMethod("POST");
+		conn.setDoOutput(true);
+		conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+		conn.connect();
+		OutputStream ost = conn.getOutputStream();
+		PrintStream wr = new PrintStream(ost, false, "US-ASCII");
+		wr.print("--" + boundary + "\r\n");
+        wr.print("Content-Disposition: form-data; name=\"message\"\r\n");
+        wr.print("Content-Type: text/plain; charset=utf-8\r\n");
+        wr.print("\r\n");
+        wr.print(text);
+        wr.print("\r\n--" + boundary + "--\r\n");
+		wr.close();
+		JSONTokeniser json = MeshMSCommon.receiveRestfulResponse(conn, HttpURLConnection.HTTP_CREATED);
+		Status status = decodeRestfulStatus(json);
+		throwRestfulResponseExceptions(status, conn.getURL());
+		return status.meshms_status;
 	}
 
 }

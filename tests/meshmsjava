@@ -137,12 +137,28 @@ test_MeshmsListMessages() {
 }
 
 doc_MeshmsListMessagesNoIdentity="Java API list MeshMS messages from unknown identity"
-setup_MeshmsListMessagesNoIdentity() {
-   setup
-   SIDX=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
-}
 test_MeshmsListMessagesNoIdentity() {
+   SIDX=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
    executeJavaOk org.servalproject.test.Meshms meshms-list-messages $SIDX $SIDA2
+   assertStdoutGrep 'MeshMSUnknownIdentityException'
+   tfw_cat --stdout --stderr
+}
+
+doc_MeshmsSend="Java API send MeshMS message"
+test_MeshmsSend() {
+   executeJavaOk org.servalproject.test.Meshms meshms-send-message $SIDA1 $SIDA2 "Hello World"
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutGrep --matches=1 ':>:Hello World'
+   executeJavaOk org.servalproject.test.Meshms meshms-send-message $SIDA2 $SIDA1 "Hello Back!"
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutGrep --matches=1 ':>:Hello World$'
+   assertStdoutGrep --matches=1 ':<:Hello Back!$'
+}
+
+doc_MeshmsSendNoIdentity="Java API send MeshMS message from unknown identity"
+test_MeshmsSendNoIdentity() {
+   SIDX=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
+   executeJavaOk org.servalproject.test.Meshms meshms-send-message $SIDX $SIDA2 "Hello World"
    assertStdoutGrep 'MeshMSUnknownIdentityException'
    tfw_cat --stdout --stderr
 }

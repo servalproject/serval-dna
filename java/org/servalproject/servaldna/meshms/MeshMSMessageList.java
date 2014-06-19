@@ -79,7 +79,8 @@ public class MeshMSMessageList {
 			columnIndex_ack_offset = -1;
 			rowCount = 0;
 			httpConnection = httpConnector.newServalDHttpConnection("/restful/meshms/" + my_sid.toHex() + "/" + their_sid.toHex() + "/messagelist.json");
-			json = MeshMSCommon.connectMeshMSRestful(httpConnection);
+			httpConnection.connect();
+			json = MeshMSCommon.receiveRestfulResponse(httpConnection, HttpURLConnection.HTTP_OK);
 			json.consume(JSONTokeniser.Token.START_OBJECT);
 			json.consume("read_offset");
 			json.consume(JSONTokeniser.Token.COLON);

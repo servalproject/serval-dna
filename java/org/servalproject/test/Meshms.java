@@ -20,6 +20,7 @@
 
 package org.servalproject.test;
 
+import java.io.IOException;
 import org.servalproject.servaldna.ServalDClient;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.ServerControl;
@@ -29,8 +30,7 @@ import org.servalproject.servaldna.meshms.MeshMSConversationList;
 import org.servalproject.servaldna.meshms.MeshMSException;
 import org.servalproject.servaldna.meshms.MeshMSMessage;
 import org.servalproject.servaldna.meshms.MeshMSMessageList;
-
-import java.io.IOException;
+import org.servalproject.servaldna.meshms.MeshMSStatus;
 
 public class Meshms {
 
@@ -94,6 +94,19 @@ public class Meshms {
 		System.exit(0);
 	}
 
+	static void meshms_send_message(SubscriberId sid1, SubscriberId sid2, String text) throws ServalDInterfaceException, IOException, InterruptedException
+	{
+		ServalDClient client = new ServerControl().getRestfulClient();
+		try {
+			MeshMSStatus status = client.meshmsSendMessage(sid1, sid2, text);
+			System.out.println("" + status);
+		}
+		catch (MeshMSException e) {
+			System.out.println(e.toString());
+		}
+		System.exit(0);
+	}
+
 	public static void main(String... args)
 	{
 		if (args.length < 1)
@@ -104,6 +117,8 @@ public class Meshms {
 				meshms_list_conversations(new SubscriberId(args[1]));
 			else if (methodName.equals("meshms-list-messages"))
 				meshms_list_messages(new SubscriberId(args[1]), new SubscriberId(args[2]));
+			else if (methodName.equals("meshms-send-message"))
+				meshms_send_message(new SubscriberId(args[1]), new SubscriberId(args[2]), args[3]);
 		} catch (Exception e) {
 			e.printStackTrace();
 			System.exit(1);
