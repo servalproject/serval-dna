@@ -1190,7 +1190,7 @@ test_MeshmsSend() {
          --silent --fail --show-error \
          --output sendmessage.json \
          --basic --user harry:potter \
-         --form "message=Hello World" \
+         --form "message=Hello World;type=text/plain;charset=utf-8" \
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/$SIDA2/sendmessage"
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    assertStdoutGrep --matches=1 ':>:Hello World'
@@ -1198,14 +1198,14 @@ test_MeshmsSend() {
          --silent --fail --show-error \
          --output sendmessage.json \
          --basic --user ron:weasley \
-         --form "message=Hello back!" \
+         --form "message=Hello back!;type=text/plain;charset=utf-8" \
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    assertStdoutGrep --matches=1 ':>:Hello World$'
    assertStdoutGrep --matches=1 ':<:Hello back!$'
 }
 
-doc_MeshmsSendMissingMessage="HTTP RESTful MeshMS send missing 'message' form part "
+doc_MeshmsSendMissingMessage="HTTP RESTful MeshMS send missing 'message' form part"
 setup_MeshmsSendMissingMessage() {
    IDENTITY_COUNT=2
    setup
@@ -1227,7 +1227,7 @@ test_MeshmsSendMissingMessage() {
    assertStdoutLineCount '==' 2
 }
 
-doc_MeshmsSendDuplicateMessage="HTTP RESTful MeshMS send missing 'message' form part "
+doc_MeshmsSendDuplicateMessage="HTTP RESTful MeshMS send duplicate 'message' form parts"
 setup_MeshmsSendDuplicateMessage() {
    IDENTITY_COUNT=2
    setup
@@ -1238,14 +1238,102 @@ test_MeshmsSendDuplicateMessage() {
          --output http.body \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "message=Hello one" \
-         --form "message=Hello two" \
+         --form "message=Hello one;type=text/plain;charset=utf-8" \
+         --form "message=Hello two;type=text/plain;charset=utf-8" \
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
    tfw_cat http.header http.body
    assertExitStatus == 0
    assertStdoutIs 403
    assertJq http.body 'contains({"http_status_code": 403})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'duplicate.*message.*form.*part'
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutLineCount '==' 2
+}
+
+doc_MeshmsSendMessageMissingContentType="HTTP RESTful MeshMS send 'message' form part missing Content-Type"
+setup_MeshmsSendMessageMissingContentType() {
+   IDENTITY_COUNT=2
+   setup
+}
+test_MeshmsSendMessageMissingContentType() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "message=Hello there" \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertJq http.body 'contains({"http_status_code": 403})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'missing.*content.*type'
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutLineCount '==' 2
+}
+
+doc_MeshmsSendMessageUnsupportedContentType="HTTP RESTful MeshMS send 'message' form part unsupported Content-Type"
+setup_MeshmsSendMessageUnsupportedContentType() {
+   IDENTITY_COUNT=2
+   setup
+}
+test_MeshmsSendMessageUnsupportedContentType() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "message=Hello there;type=text/rich" \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertJq http.body 'contains({"http_status_code": 403})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'unsupported.*content.*type'
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutLineCount '==' 2
+}
+
+doc_MeshmsSendMessageMissingCharset="HTTP RESTful MeshMS send 'message' form part missing charset"
+setup_MeshmsSendMessageMissingCharset() {
+   IDENTITY_COUNT=2
+   setup
+}
+test_MeshmsSendMessageMissingCharset() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "message=Hello there;type=text/plain" \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertJq http.body 'contains({"http_status_code": 403})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'missing.*charset'
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   assertStdoutLineCount '==' 2
+}
+
+doc_MeshmsSendMessageUnsupportedCharset="HTTP RESTful MeshMS send 'message' form part unsupported charset"
+setup_MeshmsSendMessageUnsupportedCharset() {
+   IDENTITY_COUNT=2
+   setup
+}
+test_MeshmsSendMessageUnsupportedCharset() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "message=Hello there;type=text/plain;charset=latin-1" \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertJq http.body 'contains({"http_status_code": 403})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'unsupported.*charset'
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    assertStdoutLineCount '==' 2
 }
@@ -1261,7 +1349,7 @@ test_MeshmsSendNoIdentity() {
          --output http.body \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "message=Hello" \
+         --form "message=Hello;type=text/plain;charset=utf-8" \
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDX/$SIDA/sendmessage"
    tfw_cat http.header http.body
    assertExitStatus == 0

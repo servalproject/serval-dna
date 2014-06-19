@@ -421,6 +421,39 @@ void form_buf_malloc_release(struct form_buf_malloc *f)
   f->size_limit = 0;
 }
 
+int http_response_content_type(httpd_request *r, const char *what, const struct mime_content_type *ct)
+{
+  if (config.debug.httpd)
+    DEBUGF("%s Content-Type: %s/%s%s%s%s%s", what, ct->type, ct->subtype,
+	ct->charset[0] ? "; charset=" : "",
+	ct->charset,
+	ct->multipart_boundary[0] ? "; boundary=" : "",
+	ct->multipart_boundary
+      );
+  strbuf msg = strbuf_alloca(200);
+  strbuf_sprintf(msg, "%s Content-Type:", what);
+  if (ct->type[0])
+    strbuf_sprintf(msg, " %s", ct->type);
+  if (ct->subtype[0])
+    strbuf_sprintf(msg, "/%s", ct->subtype);
+  if (ct->charset[0])
+    strbuf_sprintf(msg, "; charset=%s", ct->charset);
+  if (ct->multipart_boundary[0])
+    strbuf_sprintf(msg, "; boundary=%s", ct->multipart_boundary);
+  http_request_simple_response(&r->http, 403, strbuf_str(msg));
+  return 403;
+}
+
+int http_response_content_disposition(httpd_request *r, const char *what, const char *type)
+{
+  if (config.debug.httpd)
+    DEBUGF("%s Content-Disposition: %s %s", what, type);
+  strbuf msg = strbuf_alloca(100);
+  strbuf_sprintf(msg, "%s Content-Disposition: %s", what, type);
+  http_request_simple_response(&r->http, 403, strbuf_str(msg));
+  return 403;
+}
+
 int http_response_form_part(httpd_request *r, const char *what, const char *partname, const char *text, size_t textlen)
 {
   if (config.debug.httpd)

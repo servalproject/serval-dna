@@ -523,6 +523,8 @@ static int send_mime_part_end(struct http_request *hr)
 static int send_mime_part_header(struct http_request *hr, const struct mime_part_headers *h)
 {
   httpd_request *r = (httpd_request *) hr;
+  if (strcmp(h->content_disposition.type, "form-data") != 0)
+    return http_response_content_disposition(r, "Unsupported", h->content_disposition.type);
   if (strcmp(h->content_disposition.name, PART_MESSAGE) == 0) {
     if (r->u.sendmsg.received_message)
       return http_response_form_part(r, "Duplicate", PART_MESSAGE, NULL, 0);
@@ -531,6 +533,14 @@ static int send_mime_part_header(struct http_request *hr, const struct mime_part
   }
   else
     return http_response_form_part(r, "Unsupported", h->content_disposition.name, NULL, 0);
+  if (!h->content_type.type[0] || !h->content_type.subtype[0])
+    return http_response_content_type(r, "Missing", &h->content_type);
+  if (strcmp(h->content_type.type, "text") != 0 || strcmp(h->content_type.subtype, "plain") != 0)
+    return http_response_content_type(r, "Unsupported", &h->content_type);
+  if (!h->content_type.charset[0])
+    return http_response_content_type(r, "Missing charset", &h->content_type);
+  if (strcmp(h->content_type.charset, "utf-8") != 0)
+    return http_response_content_type(r, "Unsupported charset", &h->content_type);
   return 0;
 }
 

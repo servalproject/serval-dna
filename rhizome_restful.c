@@ -313,6 +313,8 @@ static int insert_make_manifest(httpd_request *r)
 static int insert_mime_part_header(struct http_request *hr, const struct mime_part_headers *h)
 {
   httpd_request *r = (httpd_request *) hr;
+  if (strcmp(h->content_disposition.type, "form-data") != 0)
+    return http_response_content_disposition(r, "Unsupported", h->content_disposition.type);
   if (strcmp(h->content_disposition.name, PART_AUTHOR) == 0) {
     if (r->u.insert.received_author)
       return http_response_form_part(r, "Duplicate", PART_AUTHOR, NULL, 0);
