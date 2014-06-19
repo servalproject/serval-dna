@@ -19,6 +19,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testconfig.sh"
 
 includeTests logging
 includeTests config
@@ -35,5 +36,9 @@ includeTests rhizomehttp
 includeTests meshms
 includeTests directory_service
 includeTests vomp
+if type -p "$JAVAC" >/dev/null; then
+   includeTests jni
+   includeTests meshmsjava
+fi
 
 runTests "$@"
