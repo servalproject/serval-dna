@@ -318,18 +318,6 @@ int rhizome_opendb();
 int rhizome_close_db();
 void verify_bundles();
 
-struct rhizome_cleanup_report {
-    unsigned deleted_stale_incoming_files;
-    unsigned deleted_orphan_files;
-    unsigned deleted_orphan_fileblobs;
-    unsigned deleted_orphan_manifests;
-};
-
-int rhizome_cleanup(struct rhizome_cleanup_report *report);
-
-int rhizome_manifest_createid(rhizome_manifest *m);
-int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed);
-
 typedef struct sqlite_retry_state {
   unsigned int limit; // do not retry once elapsed >= limit
   unsigned int sleep; // number of milliseconds to sleep between retries
@@ -342,6 +330,20 @@ typedef struct sqlite_retry_state {
 sqlite_retry_state sqlite_retry_state_init(int serverLimit, int serverSleep, int otherLimit, int otherSleep);
 
 #define SQLITE_RETRY_STATE_DEFAULT sqlite_retry_state_init(-1,-1,-1,-1)
+
+struct rhizome_cleanup_report {
+    unsigned deleted_stale_incoming_files;
+    unsigned deleted_expired_files;
+    unsigned deleted_orphan_files;
+    unsigned deleted_orphan_fileblobs;
+    unsigned deleted_orphan_manifests;
+};
+
+int rhizome_cleanup(struct rhizome_cleanup_report *report);
+int rhizome_store_cleanup(struct rhizome_cleanup_report *report);
+void rhizome_vacuum_db(sqlite_retry_state *retry);
+int rhizome_manifest_createid(rhizome_manifest *m);
+int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed);
 
 struct rhizome_manifest_summary {
   rhizome_bid_t bid;

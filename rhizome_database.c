@@ -1174,6 +1174,13 @@ int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t versio
   OUT();
 }
 
+void rhizome_vacuum_db(sqlite_retry_state *retry){
+  sqlite3_stmt *statement = sqlite_prepare_bind(retry, "PRAGMA incremental_vacuum;", END);
+  if (!statement)
+    return;
+  sqlite_exec_retry(retry, statement);
+}
+
 int rhizome_cleanup(struct rhizome_cleanup_report *report)
 {
   IN();
@@ -1183,6 +1190,9 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
     bzero(report, sizeof *report);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
+  // make sure we are under our database size limit
+  rhizome_store_cleanup(report);
+  
   /* For testing, it helps to speed up the cleanup process. */
   const char *orphan_payload_persist_ms = getenv("SERVALD_ORPHAN_PAYLOAD_PERSIST_MS");
   time_ms_t now = gettime_ms();
@@ -1214,17 +1224,19 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
   // in an incremental background task.  See GitHub issue #50.
  
   // Remove payload blobs that are no longer referenced.
-  int ret = sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,
+  int ret = sqlite_exec_void_retry(&retry,
       "DELETE FROM FILEBLOBS WHERE NOT EXISTS( SELECT 1 FROM FILES WHERE FILES.id = FILEBLOBS.id );",
       END);
   if (ret > 0 && report)
     report->deleted_orphan_fileblobs += ret;
 
   // delete manifests that no longer have payload files
-  ret = sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,
+  ret = sqlite_exec_void_retry(&retry,
       "DELETE FROM MANIFESTS WHERE filesize > 0 AND NOT EXISTS( SELECT 1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);", END);
   if (report && ret > 0)
     report->deleted_orphan_manifests += ret;
+  
+  rhizome_vacuum_db(&retry);
   
   if (config.debug.rhizome && report)
     DEBUGF("report deleted_stale_incoming_files=%u deleted_orphan_files=%u deleted_orphan_fileblobs=%u deleted_orphan_manifests=%u",

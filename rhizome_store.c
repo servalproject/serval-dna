@@ -151,12 +151,13 @@ int rhizome_delete_file(const rhizome_filehash_t *hashp)
 }
 
 // TODO readonly version?
-static enum rhizome_payload_status store_make_space(uint64_t bytes)
+static enum rhizome_payload_status store_make_space(uint64_t bytes, struct rhizome_cleanup_report *report)
 {
   uint64_t external_bytes;
   uint64_t db_page_size;
   uint64_t db_page_count;
   uint64_t db_free_page_count;
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
   // TODO limit based on free space?
   
@@ -166,10 +167,10 @@ static enum rhizome_payload_status store_make_space(uint64_t bytes)
     
   // TODO index external_bytes calculation and/or cache result
   
-  if (	sqlite_exec_uint64(&db_page_size, "PRAGMA page_size;", END) == -1LL
-    ||  sqlite_exec_uint64(&db_page_count, "PRAGMA page_count;", END) == -1LL
-    ||	sqlite_exec_uint64(&db_free_page_count, "PRAGMA freelist_count;", END) == -1LL
-    ||  sqlite_exec_uint64(&external_bytes, 
+  if (	sqlite_exec_uint64_retry(&retry, &db_page_size, "PRAGMA page_size;", END) == -1LL
+    ||  sqlite_exec_uint64_retry(&retry, &db_page_count, "PRAGMA page_count;", END) == -1LL
+    ||	sqlite_exec_uint64_retry(&retry, &db_free_page_count, "PRAGMA freelist_count;", END) == -1LL
+    ||  sqlite_exec_uint64_retry(&retry, &external_bytes, 
 	  "SELECT SUM(length) "
 	  "FROM FILES  "
 	  "WHERE NOT EXISTS( "
@@ -193,6 +194,10 @@ static enum rhizome_payload_status store_make_space(uint64_t bytes)
     return RHIZOME_PAYLOAD_STATUS_TOO_BIG;
   }
   
+  // vacuum database pages if we're already using too much free space
+  if (external_bytes + db_page_size * db_page_count > limit)
+    rhizome_vacuum_db(&retry);
+  
   // If there is enough space, do nothing
   if (db_used + bytes <= limit)
     return RHIZOME_PAYLOAD_STATUS_NEW;
@@ -200,7 +205,6 @@ static enum rhizome_payload_status store_make_space(uint64_t bytes)
   // penalise new things by 10 minutes to reduce churn
   time_ms_t cost = gettime_ms() - 60000 - bytes;
   
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   // query files by age, penalise larger files so they are removed earlier
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
       "SELECT id, length, inserttime FROM FILES ORDER BY (inserttime - length)",
@@ -233,12 +237,15 @@ static enum rhizome_payload_status store_make_space(uint64_t bytes)
     if (s)
       sqlite_exec_retry(&retry, s);
       
-    sqlite_exec_uint64(&db_page_count, "PRAGMA page_count;", END);
-    sqlite_exec_uint64(&db_free_page_count, "PRAGMA freelist_count;", END);
-    
+    sqlite_exec_uint64_retry(&retry, &db_page_count, "PRAGMA page_count;", END);
+    sqlite_exec_uint64_retry(&retry, &db_free_page_count, "PRAGMA freelist_count;", END);
+    if (report)
+      report->deleted_expired_files++;
     db_used = external_bytes + db_page_size * (db_page_count - db_free_page_count);
   }
   sqlite3_finalize(statement);
+
+  rhizome_vacuum_db(&retry);
   
   if (db_used + bytes <= limit)
     return RHIZOME_PAYLOAD_STATUS_NEW;
@@ -248,6 +255,11 @@ static enum rhizome_payload_status store_make_space(uint64_t bytes)
       bytes, db_used, external_bytes, db_page_size, db_page_count, db_free_page_count, limit);
       
   return RHIZOME_PAYLOAD_STATUS_UNINITERESTING;
+}
+
+int rhizome_store_cleanup(struct rhizome_cleanup_report *report)
+{
+  return store_make_space(0, report);
 }
 
 enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *expectedHashp, uint64_t file_length)
@@ -268,7 +280,7 @@ enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, cons
   }
   
   if (file_length!=RHIZOME_SIZE_UNSET){
-    enum rhizome_payload_status status = store_make_space(file_length);
+    enum rhizome_payload_status status = store_make_space(file_length, NULL);
     if (status != RHIZOME_PAYLOAD_STATUS_NEW)
       return status;
   }
@@ -632,7 +644,7 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
     if (config.debug.rhizome_store)
       DEBUGF("Wrote %"PRIu64" bytes, set file_length", write->file_offset);
     write->file_length = write->file_offset;
-    status = store_make_space(write->file_length);
+    status = store_make_space(write->file_length, NULL);
     if (status!=RHIZOME_PAYLOAD_STATUS_NEW)
       goto failure;
   }
