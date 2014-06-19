@@ -21,6 +21,7 @@
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 source "${0%/*}/../testdefs_rhizome.sh"
+source "${0%/*}/../testdefs_meshms.sh"
 
 shopt -s extglob
 
@@ -45,6 +46,23 @@ assertJqCmp() {
    local file="$3"
    jq --raw-output "$jqscript" "$json" >"$TFWTMP/jqcmp.tmp"
    assert --dump-on-fail="$TFWTMP/jqcmp.tmp" --dump-on-fail="$file" "${opts[@]}" cmp "$TFWTMP/jqcmp.tmp" "$file"
+}
+
+assertJqIs() {
+   local opts=()
+   while [ $# -gt 0 ]; do
+      case "$1" in
+      --) shift; break;;
+      --*) opts+=("$1"); shift;;
+      *) break;;
+      esac
+   done
+   [ $# -eq 3 ] || error "invalid arguments"
+   local json="$1"
+   local jqscript="$2"
+   local text="$3"
+   local jqout="$(jq --raw-output "$jqscript" "$json")"
+   assert "${opts[@]}" [ "$jqout" = "$text" ]
 }
 
 assertJqGrep() {
@@ -989,66 +1007,11 @@ test_MeshmsListConversations() {
             ])"
 }
 
-# Create a file that contains no blank lines.
-create_message_file() {
-   create_file "$1" $2
-   sed -i -e '/^$/d' "$1"
-}
-
-# Add a sequence of messages of varying sizes up to 1 KiB.
-add_messages() {
-   local symbols="$1"
-   shift
-   local texts=("$@")
-   local sent_since_ack=0
-   local i n size msize
-   local size=0
-   for ((i = 0; i < ${#symbols}; ++i)); do
-      local sym="${symbols:$i:1}"
-      let size+=379
-      let msize=size%1021
-      let n=NMESSAGE++
-      local text="${texts[$i]}"
-      case $sym in
-      '>'|'<')
-         if [ -n "$text" ]; then
-            echo "$text" >text$n
-         else
-            create_message_file text$n $msize
-            text="$(<text$n)"
-         fi
-         ;;
-      esac
-      case $sym in
-      '>')
-         MESSAGE[$n]=">"
-         executeOk_servald meshms send message $SIDA1 $SIDA2 "$text"
-         let ++sent_since_ack
-         let ++NSENT
-         ;;
-      '<')
-         MESSAGE[$n]="<"
-         executeOk_servald meshms send message $SIDA2 $SIDA1 "$text"
-         let ++NRECV
-         ;;
-      'A')
-         MESSAGE[$n]=ACK
-         [ $i -ne 0 -a $sent_since_ack -eq 0 ] && error "two ACKs in a row (at position $i)"
-         executeOk_servald meshms list messages $SIDA2 $SIDA1
-         let ++NACK
-         ;;
-      *)
-         error "invalid message symbol '$sym' (at position $i)"
-         ;;
-      esac
-   done
-}
-
 doc_MeshmsListMessages="HTTP RESTful list MeshMS messages in one conversation as JSON"
 setup_MeshmsListMessages() {
    IDENTITY_COUNT=2
    setup
-   add_messages '><>>A>A<>><><><>>>A>A><<<<A<>><>>A<<>'
+   meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<A<>><>>A<<>'
    let NROWS=NSENT+NRECV+(NACK?1:0)
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    delivered_offset=$(sed -n -e '/^[0-9]\+:[0-9]\+:ACK:delivered$/{n;s/^[0-9]\+:\([0-9]\+\):>:.*/\1/p;q}' "$TFWSTDOUT")
@@ -1080,13 +1043,13 @@ test_MeshmsListMessages() {
       case ${MESSAGE[$j]} in
       '>')
          assertJq messages.json '.['$i'].type == ">"'
-         assertJqCmp messages.json '.['$i'].text' text$j
+         assertJqIs messages.json '.['$i'].text' "${TEXT[$j]}"
          assertJq messages.json '.['$i'].delivered == (.['$i'].offset <= '$delivered_offset')'
          let ++i
          ;;
       '<')
          assertJq messages.json '.['$i'].type == "<"'
-         assertJqCmp messages.json '.['$i'].text' text$j
+         assertJqIs messages.json '.['$i'].text' "${TEXT[$j]}"
          assertJq messages.json '.['$i'].read == (.['$i'].offset <= '$read_offset')'
          let ++i
          ;;
@@ -1129,7 +1092,7 @@ setup_MeshmsListMessagesNewSince() {
                                set rhizome.api.restful.newsince_poll_ms 500
    }
    setup
-   add_messages '><>>A>A<>><><><>>>A>A><<<<A<>><>>A<<>'
+   meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<A<>><>>A<<>'
    let NROWS=NSENT+NRECV+(NACK?1:0)
    executeOk curl \
          --silent --fail --show-error \
@@ -1181,7 +1144,7 @@ setup_MeshmsListMessagesNewSinceArrival() {
                                set rhizome.api.restful.newsince_poll_ms 500
    }
    setup
-   add_messages '><>A>'
+   meshms_add_messages $SIDA1 $SIDA2 '><>A>'
    let NROWS=NSENT+NRECV+(NACK?1:0)
    executeOk curl \
          --silent --fail --show-error \
@@ -1206,7 +1169,7 @@ test_MeshmsListMessagesNewSinceArrival() {
    done
    wait_until [ -e newsince1.json -a -e newsince2.json -a -e newsince3.json ]
    for message in '>Rumplestiltskin' 'A' '<Howdydoody' '>Eulenspiegel'; do
-      add_messages "${message:0:1}" "${message:1}"
+      meshms_add_messages $SIDA1 $SIDA2 "${message:0:1}" "${message:1}"
       wait_until --timeout=60 grepall "${message:1}" newsince{1,2,3}.json
    done
    fork_terminate_all

@@ -1,5 +1,5 @@
 # Common definitions for all test suites.
-# Copyright 2012 The Serval Project, Inc.
+# Copyright 2012 Serval Project Inc.
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -319,14 +319,6 @@ foreach_instance_with_pidfile() {
    fi
    pop_instance
    foreach_instance "${instances[@]}" "$@"
-}
-
-# Utility function for setting up servald JNI fixtures:
-#  - check that libserval.so is present
-#  - set LD_LIBRARY_PATH so that libserval.so can be found
-setup_servald_so() {
-   assert [ -r "$servald_build_root/libserval.so" ]
-   export LD_LIBRARY_PATH="$servald_build_root"
 }
 
 # Utility function for setting up a fixture with a servald server process:

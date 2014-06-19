@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2011 The Serval Project
+ * Copyright (C) 2014 Serval Project Inc.
  *
  * This file is part of Serval Software (http://www.servalproject.org)
  *
@@ -18,20 +18,29 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-package org.servalproject.servaldna;
+package org.servalproject.servaldna.meshms;
 
-/**
- * Thrown when a request to a servald JNI method fails.  This typically means that the returned
- * status is non-zero, or some other result was returned that indicated the operation failed.
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
-public class ServalDFailureException extends ServalDInterfaceException
-{
-	private static final long serialVersionUID = 1L;
+import org.servalproject.servaldna.SubscriberId;
 
-	public ServalDFailureException(String message) {
-		super(message);
+public class MeshMSConversation {
+
+	public final int _rowNumber;
+	public final int _id;
+	public final SubscriberId mySid;
+	public final SubscriberId theirSid;
+	public final boolean isRead;
+	public final int lastMessageOffset;
+	public final int readOffset;
+
+	protected MeshMSConversation(int rowNumber, int _id, SubscriberId my_sid, SubscriberId their_sid, boolean read, int last_message_offset, int read_offset)
+	{
+		this._rowNumber = rowNumber;
+		this._id = _id;
+		this.mySid = my_sid;
+		this.theirSid = their_sid;
+		this.isRead = read;
+		this.lastMessageOffset = last_message_offset;
+		this.readOffset = read_offset;
 	}
 
 }

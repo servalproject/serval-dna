@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2011 The Serval Project
+ * Copyright (C) 2014 Serval Project Inc.
  *
  * This file is part of Serval Software (http://www.servalproject.org)
  *
@@ -18,20 +18,26 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-package org.servalproject.servaldna;
+package org.servalproject.json;
 
 /**
- * Thrown when a request to a servald JNI method fails.  This typically means that the returned
- * status is non-zero, or some other result was returned that indicated the operation failed.
+ * Thrown when there is any problem with JSON input.  This exception class is subclassed to
+ * specialise it to specific causes, such as JSON syntax error, unexpected JSON token, etc.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-public class ServalDFailureException extends ServalDInterfaceException
+public class JSONInputException extends Exception
 {
-	private static final long serialVersionUID = 1L;
-
-	public ServalDFailureException(String message) {
+	public JSONInputException(String message) {
 		super(message);
+	}
+
+	public JSONInputException(Throwable cause) {
+		super(cause);
+	}
+
+	public JSONInputException(String message, Throwable cause) {
+		super(message, cause);
 	}
 
 }

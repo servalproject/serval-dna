@@ -667,6 +667,7 @@ static int _parse_authorization(struct http_request *r, struct http_client_autho
     char buf[bufsz];
     if (_parse_authorization_credentials_basic(r, &auth->credentials.basic, buf, bufsz)) {
       auth->scheme = BASIC;
+      _commit(r); // make room for following reservations
       if (   !_reserve_str(r, &auth->credentials.basic.user, auth->credentials.basic.user)
 	  || !_reserve_str(r, &auth->credentials.basic.password, auth->credentials.basic.password)
       )
@@ -974,6 +975,8 @@ static int http_request_parse_header(struct http_request *r)
       _commit(r);
       return 0;
     }
+    if (r->response.result_code)
+	return r->response.result_code;
     goto malformed;
   }
   _rewind(r);

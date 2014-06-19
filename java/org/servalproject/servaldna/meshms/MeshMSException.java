@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2011 The Serval Project
+ * Copyright (C) 2014 Serval Project Inc.
  *
  * This file is part of Serval Software (http://www.servalproject.org)
  *
@@ -18,20 +18,23 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-package org.servalproject.servaldna;
+package org.servalproject.servaldna.meshms;
+
+import java.net.URL;
 
 /**
- * Thrown when a request to a servald JNI method fails.  This typically means that the returned
- * status is non-zero, or some other result was returned that indicated the operation failed.
+ * Thrown when a MeshMS API encounters an exceptional condition.  This exception is subclassed for
+ * specific causes.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-public class ServalDFailureException extends ServalDInterfaceException
+public abstract class MeshMSException extends Exception
 {
-	private static final long serialVersionUID = 1L;
+	public final URL url;
 
-	public ServalDFailureException(String message) {
-		super(message);
+	public MeshMSException(String message, URL url) {
+		super(message + "; " + url);
+		this.url = url;
 	}
 
 }

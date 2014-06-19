@@ -1,5 +1,5 @@
-# Common definitions for rhizome test suites.
-# Copyright 2012 The Serval Project, Inc.
+# Common definitions for Rhizome test suites.
+# Copyright 2012 Serval Project Inc.
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License

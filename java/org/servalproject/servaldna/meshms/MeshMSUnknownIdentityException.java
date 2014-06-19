@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2011 The Serval Project
+ * Copyright (C) 2014 Serval Project Inc.
  *
  * This file is part of Serval Software (http://www.servalproject.org)
  *
@@ -18,20 +18,22 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-package org.servalproject.servaldna;
+package org.servalproject.servaldna.meshms;
+
+import java.net.URL;
 
 /**
- * Thrown when a request to a servald JNI method fails.  This typically means that the returned
- * status is non-zero, or some other result was returned that indicated the operation failed.
+ * Thrown when a MeshMS API method is used to request a message for an unknown identity.
+ * This is not an error in the Serval DNA interface, so it is not a subclass of
+ * ServalDInterfaceException, so the programmer must explicitly deal with it instead of just
+ * absorbing it as an interface malfunction.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-public class ServalDFailureException extends ServalDInterfaceException
+public class MeshMSUnknownIdentityException extends MeshMSException
 {
-	private static final long serialVersionUID = 1L;
-
-	public ServalDFailureException(String message) {
-		super(message);
+	public MeshMSUnknownIdentityException(URL url) {
+		super("unknown identity", url);
 	}
 
 }
