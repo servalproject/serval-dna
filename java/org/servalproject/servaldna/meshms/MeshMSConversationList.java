@@ -20,15 +20,17 @@
 
 package org.servalproject.servaldna.meshms;
 
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.util.Vector;
-import java.net.HttpURLConnection;
+import org.servalproject.json.JSONInputException;
+import org.servalproject.json.JSONTokeniser;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.SubscriberId;
-import org.servalproject.json.JSONTokeniser;
-import org.servalproject.json.JSONInputException;
+
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Vector;
 
 public class MeshMSConversationList {
 
@@ -162,4 +164,12 @@ public class MeshMSConversationList {
 		headers = null;
 	}
 
+	public List<MeshMSConversation> toList() throws ServalDInterfaceException, IOException {
+		List<MeshMSConversation> ret = new ArrayList<MeshMSConversation>();
+		MeshMSConversation item;
+		while ((item = nextConversation()) != null) {
+			ret.add(item);
+		}
+		return ret;
+	}
 }

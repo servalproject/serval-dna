@@ -48,7 +48,7 @@ public class CommandLine {
 	}
 
 	static void service(String pattern) throws IOException, InterruptedException, ServalDInterfaceException {
-		MdpServiceLookup lookup = new ServerControl().getMdpService(new ChannelSelector(), new AsyncResult<MdpServiceLookup.ServiceResult>() {
+		MdpServiceLookup lookup = new ServerControl().getMdpServiceLookup(new ChannelSelector(), new AsyncResult<MdpServiceLookup.ServiceResult>() {
 			@Override
 			public void result(MdpServiceLookup.ServiceResult nextResult) {
 				System.out.println(nextResult.toString());

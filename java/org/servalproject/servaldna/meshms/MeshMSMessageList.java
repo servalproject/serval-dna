@@ -21,6 +21,8 @@
 package org.servalproject.servaldna.meshms;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Vector;
 import java.net.HttpURLConnection;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
@@ -217,4 +219,12 @@ public class MeshMSMessageList {
 		headers = null;
 	}
 
+	public List<MeshMSMessage> toList() throws ServalDInterfaceException, IOException {
+		List<MeshMSMessage> ret = new ArrayList<MeshMSMessage>();
+		MeshMSMessage item;
+		while ((item = nextMessage()) != null) {
+			ret.add(item);
+		}
+		return ret;
+	}
 }

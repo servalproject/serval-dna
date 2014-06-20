@@ -77,7 +77,7 @@ public class ServerControl {
 		return pid!=0;
 	}
 
-	public MdpServiceLookup getMdpService(ChannelSelector selector, AsyncResult<MdpServiceLookup.ServiceResult> results) throws ServalDInterfaceException, IOException {
+	public MdpServiceLookup getMdpServiceLookup(ChannelSelector selector, AsyncResult<MdpServiceLookup.ServiceResult> results) throws ServalDInterfaceException, IOException {
 		if (!isRunning())
 			throw new ServalDInterfaceException("server is not running");
 		return new MdpServiceLookup(selector, this.loopbackMdpPort, results);
