@@ -17,10 +17,11 @@ public class MdpSocket{
 	private int port;
 
 	private static final InetAddress loopback;
-	public static int loopbackMdpPort =0;
+	private final int loopbackMdpPort;
 	static {
 		InetAddress local=null;
 		try {
+			// can't trust Inet4Address.getLocalHost() as some implementations can fail to resolve the name "loopback"
 			local = Inet4Address.getByAddress(new byte[]{127, 0, 0, 1});
 		} catch (UnknownHostException e) {
 			e.printStackTrace();
@@ -29,12 +30,15 @@ public class MdpSocket{
 	}
 
 	/* Create an unbound socket, may be used for other information requests before binding */
-	public MdpSocket() throws IOException {
+	public MdpSocket(int loopbackMdpPort) throws IOException {
+		this.loopbackMdpPort = loopbackMdpPort;
 	}
-	public MdpSocket(int port) throws IOException {
+	public MdpSocket(int loopbackMdpPort, int port) throws IOException {
+		this(loopbackMdpPort);
 		bind(SubscriberId.ANY, port);
 	}
-	public MdpSocket(SubscriberId sid, int port) throws IOException {
+	public MdpSocket(int loopbackMdpPort, SubscriberId sid, int port) throws IOException {
+		this(loopbackMdpPort);
 		bind(sid, port);
 	}
 

@@ -20,72 +20,33 @@
 
 package org.servalproject.servaldna;
 
+import org.servalproject.codec.Base64;
+import org.servalproject.servaldna.meshms.MeshMSConversationList;
+import org.servalproject.servaldna.meshms.MeshMSException;
+import org.servalproject.servaldna.meshms.MeshMSMessageList;
+
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
-import java.net.HttpURLConnection;
-import org.servalproject.codec.Base64;
-import org.servalproject.servaldna.SubscriberId;
-import org.servalproject.servaldna.ServalDCommand;
-import org.servalproject.servaldna.ServalDInterfaceException;
-import org.servalproject.servaldna.meshms.MeshMSConversationList;
-import org.servalproject.servaldna.meshms.MeshMSMessageList;
-import org.servalproject.servaldna.meshms.MeshMSException;
 
 public class ServalDClient implements ServalDHttpConnectionFactory
 {
+	private final int httpPort;
+	private final String restfulUsername;
+	private final String restfulPassword;
 
-	private static final String restfulUsername = "ServalDClient";
-	private static final String restfulPasswordDefault = "u6ng^ues%@@SabLEEEE8";
-	private static String restfulPassword;
-	protected boolean connected;
-	int httpPort;
-
-	public static ServalDClient newServalDClient()
-	{
-		return new ServalDClient();
-	}
-
-	protected ServalDClient()
-	{
-		restfulPassword = null;
-		connected = false;
-		httpPort = 0;
-	}
-
-	private void connect() throws ServalDInterfaceException
-	{
-		ensureServerRunning();
-		if (!connected) {
-			if (!fetchRestfulAuthorization())
-				createRestfulAuthorization();
-			connected = true;
-		}
-	}
-
-	private void ensureServerRunning() throws ServalDInterfaceException
-	{
-		ServalDCommand.Status s = ServalDCommand.serverStatus();
-		if (!s.status.equals("running"))
-			throw new ServalDInterfaceException("server is not running");
-		if (s.httpPort < 1 || s.httpPort > 65535)
-			throw new ServalDInterfaceException("invalid HTTP port number: " + s.httpPort);
-		httpPort = s.httpPort;
-	}
-
-	private boolean fetchRestfulAuthorization() throws ServalDInterfaceException
-	{
-		restfulPassword = ServalDCommand.getConfigItem("rhizome.api.restful.users." + restfulUsername + ".password"); 
-		return restfulPassword != null;
-	}
-
-	private void createRestfulAuthorization() throws ServalDInterfaceException
-	{
-		ServalDCommand.setConfigItem("rhizome.api.restful.users." + restfulUsername + ".password", restfulPasswordDefault); 
-		ServalDCommand.configSync();
-		if (!fetchRestfulAuthorization())
-			throw new ServalDInterfaceException("restful password not set");
+	public ServalDClient(int httpPort, String restfulUsername, String restfulPassword) throws ServalDInterfaceException {
+		if (httpPort < 1 || httpPort > 65535)
+			throw new ServalDInterfaceException("invalid HTTP port number: " + httpPort);
+		if (restfulUsername == null)
+			throw new ServalDInterfaceException("invalid HTTP username");
+		if (restfulPassword == null)
+			throw new ServalDInterfaceException("invalid HTTP password");
+		this.httpPort = httpPort;
+		this.restfulUsername = restfulUsername;
+		this.restfulPassword = restfulPassword;
 	}
 
 	public MeshMSConversationList meshmsListConversations(SubscriberId sid) throws ServalDInterfaceException, IOException, MeshMSException
@@ -105,9 +66,6 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 	// interface ServalDHttpConnectionFactory
 	public HttpURLConnection newServalDHttpConnection(String path) throws ServalDInterfaceException, IOException
 	{
-		connect();
-		assert restfulPassword != null;
-		assert httpPort != 0;
 		URL url = new URL("http", "localhost", httpPort, path);
 		URLConnection uconn = url.openConnection();
 		HttpURLConnection conn;
@@ -117,7 +75,6 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 		catch (ClassCastException e) {
 			throw new ServalDInterfaceException("URL.openConnection() returned a " + uconn.getClass().getName() + ", expecting a HttpURLConnection", e);
 		}
-		int status = 0;
 		conn.setAllowUserInteraction(false);
 		try {
 			conn.addRequestProperty("Authorization", "Basic " + Base64.encode((restfulUsername + ":" + restfulPassword).getBytes("US-ASCII")));

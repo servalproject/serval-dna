@@ -12,8 +12,8 @@ public abstract class AbstractMdpProtocol<T>  extends ChannelSelector.Handler {
 	protected final MdpSocket socket;
 	protected final AsyncResult<T> results;
 
-	public AbstractMdpProtocol(ChannelSelector selector, AsyncResult<T> results) throws IOException {
-		socket = new MdpSocket();
+	public AbstractMdpProtocol(ChannelSelector selector, int loopbackMdpPort, AsyncResult<T> results) throws IOException {
+		this.socket = new MdpSocket(loopbackMdpPort);
 		socket.bind();
 		this.selector = selector;
 		this.results = results;

@@ -20,23 +20,23 @@
 
 package org.servalproject.test;
 
-import java.lang.System;
-import java.io.IOException;
-import org.servalproject.servaldna.SubscriberId;
-
 import org.servalproject.servaldna.ServalDClient;
 import org.servalproject.servaldna.ServalDInterfaceException;
-import org.servalproject.servaldna.meshms.MeshMSConversationList;
+import org.servalproject.servaldna.ServerControl;
+import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.meshms.MeshMSConversation;
-import org.servalproject.servaldna.meshms.MeshMSMessageList;
-import org.servalproject.servaldna.meshms.MeshMSMessage;
+import org.servalproject.servaldna.meshms.MeshMSConversationList;
 import org.servalproject.servaldna.meshms.MeshMSException;
+import org.servalproject.servaldna.meshms.MeshMSMessage;
+import org.servalproject.servaldna.meshms.MeshMSMessageList;
+
+import java.io.IOException;
 
 public class Meshms {
 
 	static void meshms_list_conversations(SubscriberId sid) throws ServalDInterfaceException, IOException, InterruptedException
 	{
-		ServalDClient client = ServalDClient.newServalDClient();
+		ServalDClient client = new ServerControl().getRestfulClient();
 		MeshMSConversationList list = null;
 		try {
 			list = client.meshmsListConversations(sid);
@@ -64,7 +64,7 @@ public class Meshms {
 
 	static void meshms_list_messages(SubscriberId sid1, SubscriberId sid2) throws ServalDInterfaceException, IOException, InterruptedException
 	{
-		ServalDClient client = ServalDClient.newServalDClient();
+		ServalDClient client = new ServerControl().getRestfulClient();
 		MeshMSMessageList list = null;
 		try {
 			list = client.meshmsListMessages(sid1, sid2);

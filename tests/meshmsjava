@@ -32,11 +32,6 @@ setup() {
 	set log.console.level debug \
          set debug.httpd on
    create_identities 4
-   configure_servald_server() {
-      add_servald_interface
-      executeOk_servald config \
-         set rhizome.api.restful.users.joe.password bloggs
-   }
    start_servald_server
 }
 

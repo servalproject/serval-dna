@@ -21,8 +21,8 @@ public class MdpServiceLookup extends AbstractMdpProtocol<MdpServiceLookup.Servi
 		}
 	}
 
-	public MdpServiceLookup(ChannelSelector selector, AsyncResult<ServiceResult> results) throws IOException {
-		super(selector, results);
+	public MdpServiceLookup(ChannelSelector selector, int loopbackMdpPort, AsyncResult<ServiceResult> results) throws IOException {
+		super(selector, loopbackMdpPort, results);
 	}
 
 	public void sendRequest(SubscriberId destination, String pattern) throws IOException {

@@ -7,8 +7,8 @@ import java.io.IOException;
  */
 public class MdpDnaLookup extends AbstractMdpProtocol<ServalDCommand.LookupResult> {
 
-	public MdpDnaLookup(ChannelSelector selector, AsyncResult<ServalDCommand.LookupResult> results) throws IOException {
-		super(selector, results);
+	public MdpDnaLookup(ChannelSelector selector, int loopbackMdpPort, AsyncResult<ServalDCommand.LookupResult> results) throws IOException {
+		super(selector, loopbackMdpPort, results);
 	}
 
 	public void sendRequest(SubscriberId destination, String did) throws IOException {

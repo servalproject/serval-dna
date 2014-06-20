@@ -4,10 +4,11 @@ import org.servalproject.servaldna.AsyncResult;
 import org.servalproject.servaldna.ChannelSelector;
 import org.servalproject.servaldna.MdpDnaLookup;
 import org.servalproject.servaldna.MdpServiceLookup;
-import org.servalproject.servaldna.MdpSocket;
 import org.servalproject.servaldna.ResultList;
 import org.servalproject.servaldna.ServalDCommand;
 import org.servalproject.servaldna.ServalDFailureException;
+import org.servalproject.servaldna.ServalDInterfaceException;
+import org.servalproject.servaldna.ServerControl;
 import org.servalproject.servaldna.SubscriberId;
 
 import java.io.IOException;
@@ -34,14 +35,8 @@ public class CommandLine {
 		}
 	}
 
-	static void lookup(String did) throws IOException, InterruptedException, ServalDFailureException {
-		ServalDCommand.Status s = ServalDCommand.serverStatus();
-		System.out.println(s);
-		if (s.getResult()!=0)
-			throw new ServalDFailureException("Serval daemon isn't running");
-		MdpSocket.loopbackMdpPort = s.mdpInetPort;
-		ChannelSelector selector = new ChannelSelector();
-		MdpDnaLookup lookup = new MdpDnaLookup(selector, new AsyncResult<ServalDCommand.LookupResult>() {
+	static void lookup(String did) throws IOException, InterruptedException, ServalDInterfaceException {
+		MdpDnaLookup lookup = new ServerControl().getMdpDnaLookup(new ChannelSelector(),  new AsyncResult<ServalDCommand.LookupResult>() {
 			@Override
 			public void result(ServalDCommand.LookupResult nextResult) {
 				System.out.println(nextResult.toString());
@@ -52,14 +47,8 @@ public class CommandLine {
 		lookup.close();
 	}
 
-	static void service(String pattern) throws IOException, InterruptedException, ServalDFailureException {
-		ServalDCommand.Status s = ServalDCommand.serverStatus();
-		System.out.println(s);
-		if (s.getResult()!=0)
-			throw new ServalDFailureException("Serval daemon isn't running");
-		MdpSocket.loopbackMdpPort = s.mdpInetPort;
-		ChannelSelector selector = new ChannelSelector();
-		MdpServiceLookup lookup = new MdpServiceLookup(selector, new AsyncResult<MdpServiceLookup.ServiceResult>() {
+	static void service(String pattern) throws IOException, InterruptedException, ServalDInterfaceException {
+		MdpServiceLookup lookup = new ServerControl().getMdpService(new ChannelSelector(), new AsyncResult<MdpServiceLookup.ServiceResult>() {
 			@Override
 			public void result(MdpServiceLookup.ServiceResult nextResult) {
 				System.out.println(nextResult.toString());
