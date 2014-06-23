@@ -351,19 +351,13 @@ void server_watchdog(struct sched_ent *alarm)
 DEFINE_ALARM(rhizome_clean_db);
 void rhizome_clean_db(struct sched_ent *alarm)
 {
-  if (!config.rhizome.enable)
+  if (!config.rhizome.enable || !rhizome_db)
     return;
     
   time_ms_t now = gettime_ms();
-  if (!rhizome_db){
-    rhizome_opendb();
-    // first clean up 5 minutes after opening
-    RESCHEDULE(alarm, now + 5*60*1000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
-  }else{
-    rhizome_cleanup(NULL);
-    // clean up every 30 minutes or so
-    RESCHEDULE(alarm, now + 30*60*1000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
-  }
+  rhizome_cleanup(NULL);
+  // clean up every 30 minutes or so
+  RESCHEDULE(alarm, now + 30*60*1000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
 }
 
 void cf_on_config_change()
@@ -397,7 +391,8 @@ void cf_on_config_change()
     now+config.server.config_reload_interval_ms+100);
 
   if (config.rhizome.enable){
-    RESCHEDULE(&ALARM_STRUCT(rhizome_clean_db), now+100, now+100, TIME_MS_NEVER_WILL);
+    rhizome_opendb();
+    RESCHEDULE(&ALARM_STRUCT(rhizome_clean_db), now + 30*60*1000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
   }else if(rhizome_db){
     rhizome_close_db();
   }
