@@ -19,6 +19,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 
 #include <assert.h>
+#ifdef HAVE_SYS_STATVFS_H
+#  include <sys/statvfs.h>
+#endif
 #include "serval.h"
 #include "rhizome.h"
 #include "conf.h"
@@ -150,6 +153,43 @@ int rhizome_delete_file(const rhizome_filehash_t *hashp)
   return rhizome_delete_file_id(alloca_tohex_rhizome_filehash_t(*hashp));
 }
 
+static uint64_t store_get_free_space()
+{
+  const char *fake_space = getenv("SERVALD_FREE_SPACE");
+  if (fake_space)
+    return atol(fake_space);
+#ifdef HAVE_SYS_STATVFS_H
+  char store_path[1024];
+  if (!FORMF_RHIZOME_STORE_PATH(store_path, "rhizome.db"))
+    return UINT64_MAX;
+  struct statvfs stats;
+  if (statvfs(store_path, &stats)==-1){
+    WARNF_perror("statvfs(%s)", store_path);
+    return UINT64_MAX;
+  }
+  return stats.f_bsize * stats.f_bfree;
+#else
+  return UINT64_MAX;
+#endif
+}
+
+static uint64_t store_space_limit(uint64_t current_size)
+{
+  uint64_t limit = config.rhizome.database_size;
+  
+  if (config.rhizome.min_free_space!=0){
+    uint64_t free_space = store_get_free_space();
+    if (free_space < config.rhizome.min_free_space){
+      if (current_size + free_space < config.rhizome.min_free_space)
+	limit = 0;
+      else
+	limit = current_size + free_space - config.rhizome.min_free_space;
+    }
+  }
+  
+  return limit;
+}
+
 // TODO readonly version?
 static enum rhizome_payload_status store_make_space(uint64_t bytes, struct rhizome_cleanup_report *report)
 {
@@ -157,12 +197,11 @@ static enum rhizome_payload_status store_make_space(uint64_t bytes, struct rhizo
   uint64_t db_page_size;
   uint64_t db_page_count;
   uint64_t db_free_page_count;
+  
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
-  // TODO limit based on free space?
-  
   // No limit?
-  if (config.rhizome.database_size==0)
+  if (config.rhizome.database_size==UINT64_MAX && config.rhizome.min_free_space==0)
     return RHIZOME_PAYLOAD_STATUS_NEW;
     
   // TODO index external_bytes calculation and/or cache result
@@ -181,13 +220,10 @@ static enum rhizome_payload_status store_make_space(uint64_t bytes, struct rhizo
   )
     return WHY("Cannot measure database used bytes");
   
-  if (config.rhizome.database_size < db_page_size*10)
-    return WHYF("rhizome.database_size is too small to store anything");
-  
-  const uint64_t limit = config.rhizome.database_size - db_page_size*4;
   uint64_t db_used = external_bytes + db_page_size * (db_page_count - db_free_page_count);
+  const uint64_t limit = store_space_limit(db_used);
   
-  if (bytes >= limit){
+  if (bytes && bytes >= limit){
     if (config.debug.rhizome)
       DEBUGF("Not enough space for %"PRIu64". Used; %"PRIu64" = %"PRIu64" + %"PRIu64" * (%"PRIu64" - %"PRIu64"), Limit; %"PRIu64, 
 	bytes, db_used, external_bytes, db_page_size, db_page_count, db_free_page_count, limit);
@@ -223,7 +259,7 @@ static enum rhizome_payload_status store_make_space(uint64_t bytes, struct rhizo
       DEBUGF("Considering dropping file %s, size %"PRId64" cost %"PRId64" vs %"PRId64" to add %"PRId64" new bytes", 
 	id, length, cost, cost_existing, bytes);
     // don't allow the new file, we've got more important things to store
-    if (cost < cost_existing)
+    if (bytes && cost < cost_existing)
       break;
     
     // drop the existing content and recalculate used space
