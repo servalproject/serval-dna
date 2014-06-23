@@ -485,6 +485,21 @@ public class ServalDCommand
 		return result.toString();
 	}
 
+	public enum ConfigAction{
+		set,
+		del,
+		sync
+	};
+
+	public static void configActions(Object... arguments) throws ServalDFailureException {
+		// TODO we could verify the types and number of arguments here, though servald is about to do that anyway.
+		String args[] = new String[arguments.length+1];
+		args[0]="config";
+		for (int i=0;i<arguments.length;i++)
+			args[i+1]=arguments[i].toString();
+		ServalDCommand.command(args);
+	}
+
 	public static void deleteConfig(String name) throws ServalDFailureException {
 		ServalDCommand.command("config", "del", name);
 	}
