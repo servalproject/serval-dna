@@ -910,7 +910,6 @@ setup_MeshMSAddGrow() {
    setup_rhizome
    executeOk_servald config set rhizome.clean_on_open on
    export SERVALD_ORPHAN_PAYLOAD_PERSIST_MS=0
-   export SERVALD_INVALID_PAYLOAD_PERSIST_MS=0
    echo "Message1" >file1
    echo -e "service=MeshMS1\nsender=$SIDB1\nrecipient=$SIDB2" >file1.manifest
 }
