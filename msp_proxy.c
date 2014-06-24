@@ -299,6 +299,12 @@ static size_t msp_listener(MSP_SOCKET sock, msp_state_t state, const uint8_t *pa
     // stop listening after the first incoming connection
     msp_stop(listener);
     listener=MSP_SOCKET_NULL;
+    if (service_sock.poll.fd!=-1){
+      if (is_watching(&service_sock))
+	unwatch(&service_sock);
+      mdp_close(service_sock.poll.fd);
+      service_sock.poll.fd=-1;
+    }
   }
   
   struct mdp_sockaddr remote;

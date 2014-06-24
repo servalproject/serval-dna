@@ -92,6 +92,8 @@ AC_CHECK_HEADERS(
     sys/mman.h \
     sys/time.h \
     sys/ucred.h \
+    sys/statvfs.h \
+    sys/vfs.h \
     poll.h \
     netdb.h \
     linux/ioctl.h \

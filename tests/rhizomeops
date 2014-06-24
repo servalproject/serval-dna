@@ -910,7 +910,6 @@ setup_MeshMSAddGrow() {
    setup_rhizome
    executeOk_servald config set rhizome.clean_on_open on
    export SERVALD_ORPHAN_PAYLOAD_PERSIST_MS=0
-   export SERVALD_INVALID_PAYLOAD_PERSIST_MS=0
    echo "Message1" >file1
    echo -e "service=MeshMS1\nsender=$SIDB1\nrecipient=$SIDB2" >file1.manifest
 }
@@ -1291,8 +1290,30 @@ setup_evictUninteresting() {
    setup_rhizome
    set_instance +A
    executeOk_servald config set rhizome.database_size 1M
+   create_file file1 512K
+   create_file file2 256K
+   create_file file3 128K
+   create_file file4 128K
 }
 test_evictUninteresting(){
+   executeOk_servald rhizome add file $SIDA file1 file1.manifest
+   executeOk_servald rhizome add file $SIDA file2 file2.manifest
+   executeOk_servald rhizome add file $SIDA file3 file3.manifest
+   executeOk_servald rhizome add file $SIDA file4 file4.manifest
+   tfw_cat --stderr
+   rhizome_clean
+   assert [ $deleted_files = 0 ]
+   assert [ $deleted_fileblobs = 0 ]
+   assert [ $deleted_manifests = 1 ]
+   executeOk_servald rhizome list
+   assert_rhizome_list file{2,3,4}
+}
+
+doc_evictFreeSpace="Reduce database size due to insufficient free space"
+setup_evictFreeSpace() {
+   setup_servald
+   setup_rhizome
+   set_instance +A
    create_file file1 512K
    create_file file2 256K
    create_file file3 128K
@@ -1301,9 +1322,17 @@ test_evictUninteresting(){
    executeOk_servald rhizome add file $SIDA file2 file2.manifest
    executeOk_servald rhizome add file $SIDA file3 file3.manifest
    executeOk_servald rhizome add file $SIDA file4 file4.manifest
+}
+test_evictFreeSpace() {
+   executeOk_servald config \
+      set rhizome.min_free_space 1M
+   # only 640K free...
+   export SERVALD_FREE_SPACE=655360
    rhizome_clean
+   assert [ $deleted_files = 0 ]
+   assert [ $deleted_fileblobs = 0 ]
+   assert [ $deleted_manifests = 1 ]
    executeOk_servald rhizome list
    assert_rhizome_list file{2,3,4}
 }
-
 runTests "$@"

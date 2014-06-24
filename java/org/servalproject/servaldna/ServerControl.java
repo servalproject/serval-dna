@@ -101,12 +101,11 @@ public class ServerControl {
 			 */
 			String restfulPassword = ServalDCommand.getConfigItem("rhizome.api.restful.users." + restfulUsername + ".password");
 			if (restfulPassword == null) {
-				String pwd = new BigInteger(130, new SecureRandom()).toString(32);
-				ServalDCommand.setConfigItem("rhizome.api.restful.users." + restfulUsername + ".password", pwd);
-				ServalDCommand.configSync();
-				restfulPassword = ServalDCommand.getConfigItem("rhizome.api.restful.users." + restfulUsername + ".password");
-				if (restfulPassword == null)
-					throw new ServalDInterfaceException("Failed to set restful password");
+				restfulPassword = new BigInteger(130, new SecureRandom()).toString(32);
+				ServalDCommand.configActions(
+						ServalDCommand.ConfigAction.set, "rhizome.api.restful.users." + restfulUsername + ".password", restfulPassword,
+						ServalDCommand.ConfigAction.sync
+				);
 			}
 			client = new ServalDClient(this.httpPort, restfulUsername, restfulPassword);
 		}

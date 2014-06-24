@@ -125,7 +125,7 @@ teardown_DnaLookup() {
 
 doc_serviceDiscovery="Serval JNI discover network services by name"
 listen_service() {
-   executeOk_servald --timeout=20 msp listen --service=test_name 512 <<EOF
+   executeOk_servald --timeout=20 msp listen --once --service=test_name 512 <<EOF
 Hi!
 EOF
    tfw_cat --stderr
@@ -151,6 +151,10 @@ test_serviceDiscovery() {
    assertStdoutGrep "$SIDB"
    assertStdoutGrep "\<test_name\.msp\.port=512\>"
    tfw_cat --stdout --stderr
+   executeOk_servald --timeout=20 msp connect $SIDB 512 <<EOF
+Hi!
+EOF
+   fork_wait %service
 }
 teardown_serviceDiscovery() {
    stop_all_servald_servers
