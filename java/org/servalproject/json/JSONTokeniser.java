@@ -147,13 +147,16 @@ public class JSONTokeniser {
 		if (tok instanceof Token)
 			throw new UnexpectedTokenException(tok, cls);
 		// Convert:
-		// 		Integer --> Float or Double
+		// 		Integer --> Long or Float or Double
+		// 		Long --> Float or Double
 		// 		Float --> Double
 		// 		Double --> Float
-		if (cls == Double.class && (tok instanceof Float || tok instanceof Integer))
+		if (cls == Double.class && (tok instanceof Float || tok instanceof Long || tok instanceof Integer))
 			tok = new Double(((Number)tok).doubleValue());
-		else if (cls == Float.class && (tok instanceof Double || tok instanceof Integer))
+		else if (cls == Float.class && (tok instanceof Double || tok instanceof Long || tok instanceof Integer))
 			tok = new Float(((Number)tok).floatValue());
+		else if (cls == Long.class && tok instanceof Integer)
+			tok = new Long(((Number)tok).longValue());
 		if (cls.isInstance(tok))
 			return (T)tok; // unchecked cast
 		throw new UnexpectedTokenException(tok, cls);
@@ -239,7 +242,12 @@ public class JSONTokeniser {
 
 	public static boolean jsonIsToken(Object tok)
 	{
-		return tok instanceof Token || tok instanceof String || tok instanceof Double || tok instanceof Integer || tok instanceof Boolean;
+		return tok instanceof Token
+			|| tok instanceof String
+			|| tok instanceof Double
+			|| tok instanceof Long
+			|| tok instanceof Integer
+			|| tok instanceof Boolean;
 	}
 
 	public static String jsonTokenDescription(Object tok)
@@ -247,7 +255,7 @@ public class JSONTokeniser {
 		if (tok == null)
 			return "null";
 		if (tok instanceof String)
-			return "\"" + tok + "\"";
+			return "\"" + ((String)tok).replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
 		if (tok instanceof Number)
 			return "" + tok;
 		if (tok instanceof Boolean)
@@ -272,6 +280,7 @@ public class JSONTokeniser {
 
 	private int readHex(int digits) throws SyntaxException, IOException
 	{
+		assert digits <= 8;
 		char[] buf = new char[digits];
 		int len = 0;
 		while (len < buf.length) {
@@ -285,8 +294,8 @@ public class JSONTokeniser {
 			return Integer.valueOf(hex, 16);
 		}
 		catch (NumberFormatException e) {
-			throw new SyntaxException("expecting " + digits + " hex digits, got \"" + hex + "\"");
 		}
+		throw new SyntaxException("expecting " + digits + " hex digits, got \"" + hex + "\"");
 	}
 
 	public void pushToken(Object tok)
@@ -438,8 +447,14 @@ public class JSONTokeniser {
 					try {
 						if (isfloat)
 							return Double.parseDouble(number);
-						else
-							return Integer.parseInt(number);
+						else {
+							try {
+								return Integer.parseInt(number);
+							}
+							catch (NumberFormatException e) {
+							}
+							return Long.parseLong(number);
+						}
 					}
 					catch (NumberFormatException e) {
 						throw new SyntaxException("malformed JSON number: " + number);

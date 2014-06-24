@@ -35,23 +35,23 @@ public class MeshMSMessage {
 	public final Type type;
 	public final SubscriberId mySid;
 	public final SubscriberId theirSid;
-	public final int offset;
+	public final long offset;
 	public final String token;
 	public final String text;
 	public final boolean isDelivered;
 	public final boolean isRead;
-	public final Integer ackOffset;
+	public final Long ackOffset;
 
 	protected MeshMSMessage(int rowNumber,
 							Type type,
 							SubscriberId my_sid,
 							SubscriberId their_sid,
-							int offset,
+							long offset,
 							String token,
 							String text,
 							boolean delivered,
 							boolean read,
-							Integer ack_offset) throws ServalDInterfaceException
+							Long ack_offset) throws ServalDInterfaceException
 	{
 		if (my_sid == null)
 			throw new ServalDInterfaceException("my_sid is null");

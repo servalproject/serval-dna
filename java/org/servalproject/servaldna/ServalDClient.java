@@ -77,6 +77,21 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 		return MeshMSCommon.sendMessage(this, sid1, sid2, text);
 	}
 
+	public MeshMSStatus meshmsMarkAllConversationsRead(SubscriberId sid1) throws IOException, ServalDInterfaceException, MeshMSException
+	{
+		return MeshMSCommon.markAllConversationsRead(this, sid1);
+	}
+
+	public MeshMSStatus meshmsMarkAllMessagesRead(SubscriberId sid1, SubscriberId sid2) throws IOException, ServalDInterfaceException, MeshMSException
+	{
+		return MeshMSCommon.markAllMessagesRead(this, sid1, sid2);
+	}
+
+	public MeshMSStatus meshmsAdvanceReadOffset(SubscriberId sid1, SubscriberId sid2, long offset) throws IOException, ServalDInterfaceException, MeshMSException
+	{
+		return MeshMSCommon.advanceReadOffset(this, sid1, sid2, offset);
+	}
+
 	// interface ServalDHttpConnectionFactory
 	public HttpURLConnection newServalDHttpConnection(String path) throws ServalDInterfaceException, IOException
 	{

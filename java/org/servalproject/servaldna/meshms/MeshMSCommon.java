@@ -37,6 +37,12 @@ public class MeshMSCommon
 {
 	protected static JSONTokeniser receiveRestfulResponse(HttpURLConnection conn, int expected_response_code) throws IOException, ServalDInterfaceException, MeshMSException
 	{
+		int[] expected_response_codes = { expected_response_code };
+		return receiveRestfulResponse(conn, expected_response_codes);
+	}
+
+	protected static JSONTokeniser receiveRestfulResponse(HttpURLConnection conn, int[] expected_response_codes) throws IOException, ServalDInterfaceException, MeshMSException
+	{
 		if (!conn.getContentType().equals("application/json"))
 			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
 		if (conn.getResponseCode() == HttpURLConnection.HTTP_FORBIDDEN) {
@@ -45,10 +51,13 @@ public class MeshMSCommon
 			throwRestfulResponseExceptions(status, conn.getURL());
 			throw new ServalDInterfaceException("unexpected MeshMS status = " + status.meshms_status + ", \"" + status.message + "\"");
 		}
-		if (conn.getResponseCode() != expected_response_code)
-			throw new ServalDInterfaceException("unexpected HTTP response code: " + conn.getResponseCode());
-		JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getInputStream(), "US-ASCII"));
-		return json;
+		for (int code: expected_response_codes) {
+			if (conn.getResponseCode() == code) {
+				JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getInputStream(), "US-ASCII"));
+				return json;
+			}
+		}
+		throw new ServalDInterfaceException("unexpected HTTP response code: " + conn.getResponseCode());
 	}
 
 	private static class Status {
@@ -114,6 +123,42 @@ public class MeshMSCommon
         wr.print("\r\n--" + boundary + "--\r\n");
 		wr.close();
 		JSONTokeniser json = MeshMSCommon.receiveRestfulResponse(conn, HttpURLConnection.HTTP_CREATED);
+		Status status = decodeRestfulStatus(json);
+		throwRestfulResponseExceptions(status, conn.getURL());
+		return status.meshms_status;
+	}
+
+	public static MeshMSStatus markAllConversationsRead(ServalDHttpConnectionFactory connector, SubscriberId sid1) throws IOException, ServalDInterfaceException, MeshMSException
+	{
+		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshms/" + sid1.toHex() + "/readall");
+		conn.setRequestMethod("POST");
+		conn.connect();
+		int[] expected_response_codes = { HttpURLConnection.HTTP_OK, HttpURLConnection.HTTP_CREATED };
+		JSONTokeniser json = MeshMSCommon.receiveRestfulResponse(conn, expected_response_codes);
+		Status status = decodeRestfulStatus(json);
+		throwRestfulResponseExceptions(status, conn.getURL());
+		return status.meshms_status;
+	}
+
+	public static MeshMSStatus markAllMessagesRead(ServalDHttpConnectionFactory connector, SubscriberId sid1, SubscriberId sid2) throws IOException, ServalDInterfaceException, MeshMSException
+	{
+		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshms/" + sid1.toHex() + "/" + sid2.toHex() + "/readall");
+		conn.setRequestMethod("POST");
+		conn.connect();
+		int[] expected_response_codes = { HttpURLConnection.HTTP_OK, HttpURLConnection.HTTP_CREATED };
+		JSONTokeniser json = MeshMSCommon.receiveRestfulResponse(conn, expected_response_codes);
+		Status status = decodeRestfulStatus(json);
+		throwRestfulResponseExceptions(status, conn.getURL());
+		return status.meshms_status;
+	}
+
+	public static MeshMSStatus advanceReadOffset(ServalDHttpConnectionFactory connector, SubscriberId sid1, SubscriberId sid2, long offset) throws IOException, ServalDInterfaceException, MeshMSException
+	{
+		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshms/" + sid1.toHex() + "/" + sid2.toHex() + "/recv/" + offset + "/read");
+		conn.setRequestMethod("POST");
+		conn.connect();
+		int[] expected_response_codes = { HttpURLConnection.HTTP_OK, HttpURLConnection.HTTP_CREATED };
+		JSONTokeniser json = MeshMSCommon.receiveRestfulResponse(conn, expected_response_codes);
 		Status status = decodeRestfulStatus(json);
 		throwRestfulResponseExceptions(status, conn.getURL());
 		return status.meshms_status;

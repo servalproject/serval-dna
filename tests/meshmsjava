@@ -163,4 +163,70 @@ test_MeshmsSendNoIdentity() {
    tfw_cat --stdout --stderr
 }
 
+doc_MeshmsReadAllConversations="Java API MeshMS mark all conversations read"
+setup_MeshmsReadAllConversations() {
+   setup
+   # create 3 threads, with all permutations of incoming and outgoing messages
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
+   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
+   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message3"
+   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message4"
+   executeOk_servald meshms list conversations $SIDA1
+   assertStdoutGrep --stderr --matches=1 ":$SIDA2::0:0\$"
+   assertStdoutGrep --stderr --matches=1 ":$SIDA3:unread:11:0\$"
+   assertStdoutGrep --stderr --matches=1 ":$SIDA4:unread:14:0\$"
+}
+test_MeshmsReadAllConversations() {
+   executeJavaOk org.servalproject.test.Meshms meshms-mark-all-conversations-read $SIDA1
+   assertStdoutIs -e 'UPDATED\n'
+   executeOk_servald meshms list conversations $SIDA1
+   assertStdoutGrep --stderr --matches=1 ":$SIDA2::0:0\$"
+   assertStdoutGrep --stderr --matches=1 ":$SIDA3::11:11\$"
+   assertStdoutGrep --stderr --matches=1 ":$SIDA4::14:14\$"
+}
+
+doc_MeshmsReadAllMessages="Java API MeshMS mark all conversations read"
+setup_MeshmsReadAllMessages() {
+   setup
+   # create 3 threads, with all permutations of incoming and outgoing messages
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
+   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message3"
+   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message4"
+   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message5"
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message6"
+   executeOk_servald meshms list conversations $SIDA2
+   assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:33:0\$"
+}
+test_MeshmsReadAllMessages() {
+   executeJavaOk org.servalproject.test.Meshms meshms-mark-all-messages-read $SIDA2 $SIDA1
+   assertStdoutIs -e 'UPDATED\n'
+   executeOk_servald meshms list conversations $SIDA2
+   assertStdoutGrep --stderr --matches=1 ":$SIDA1::33:33\$"
+}
+
+doc_MeshmsReadMessage="Java API MeshMS mark a message as read"
+setup_MeshmsReadMessage() {
+   setup
+   # create 3 threads, with all permutations of incoming and outgoing messages
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
+   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message3"
+   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message4"
+   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message5"
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message6"
+   executeOk_servald meshms list conversations $SIDA2
+   assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:33:0\$"
+}
+test_MeshmsReadMessage() {
+   executeJavaOk org.servalproject.test.Meshms meshms-advance-read-offset $SIDA2 $SIDA1 22
+   assertStdoutIs -e 'UPDATED\n'
+   executeOk_servald meshms list conversations $SIDA2
+   assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:33:22\$"
+   executeJavaOk org.servalproject.test.Meshms meshms-advance-read-offset $SIDA2 $SIDA1 11
+   assertStdoutIs -e 'OK\n'
+   executeOk_servald meshms list conversations $SIDA2
+   assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:33:22\$"
+}
+
 runTests "$@"

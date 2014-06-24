@@ -107,6 +107,45 @@ public class Meshms {
 		System.exit(0);
 	}
 
+	static void meshms_mark_all_conversations_read(SubscriberId sid1) throws ServalDInterfaceException, IOException, InterruptedException
+	{
+		ServalDClient client = new ServerControl().getRestfulClient();
+		try {
+			MeshMSStatus status = client.meshmsMarkAllConversationsRead(sid1);
+			System.out.println("" + status);
+		}
+		catch (MeshMSException e) {
+			System.out.println(e.toString());
+		}
+		System.exit(0);
+	}
+
+	static void meshms_mark_all_messages_read(SubscriberId sid1, SubscriberId sid2) throws ServalDInterfaceException, IOException, InterruptedException
+	{
+		ServalDClient client = new ServerControl().getRestfulClient();
+		try {
+			MeshMSStatus status = client.meshmsMarkAllMessagesRead(sid1, sid2);
+			System.out.println("" + status);
+		}
+		catch (MeshMSException e) {
+			System.out.println(e.toString());
+		}
+		System.exit(0);
+	}
+
+	static void meshms_advance_read_offset(SubscriberId sid1, SubscriberId sid2, long offset) throws ServalDInterfaceException, IOException, InterruptedException
+	{
+		ServalDClient client = new ServerControl().getRestfulClient();
+		try {
+			MeshMSStatus status = client.meshmsAdvanceReadOffset(sid1, sid2, offset);
+			System.out.println("" + status);
+		}
+		catch (MeshMSException e) {
+			System.out.println(e.toString());
+		}
+		System.exit(0);
+	}
+
 	public static void main(String... args)
 	{
 		if (args.length < 1)
@@ -119,6 +158,12 @@ public class Meshms {
 				meshms_list_messages(new SubscriberId(args[1]), new SubscriberId(args[2]));
 			else if (methodName.equals("meshms-send-message"))
 				meshms_send_message(new SubscriberId(args[1]), new SubscriberId(args[2]), args[3]);
+			else if (methodName.equals("meshms-mark-all-conversations-read"))
+				meshms_mark_all_conversations_read(new SubscriberId(args[1]));
+			else if (methodName.equals("meshms-mark-all-messages-read"))
+				meshms_mark_all_messages_read(new SubscriberId(args[1]), new SubscriberId(args[2]));
+			else if (methodName.equals("meshms-advance-read-offset"))
+				meshms_advance_read_offset(new SubscriberId(args[1]), new SubscriberId(args[2]), Long.parseLong(args[3]));
 		} catch (Exception e) {
 			e.printStackTrace();
 			System.exit(1);

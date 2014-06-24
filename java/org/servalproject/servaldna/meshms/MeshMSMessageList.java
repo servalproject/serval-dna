@@ -38,8 +38,8 @@ public class MeshMSMessageList {
 	private SubscriberId their_sid;
 	private HttpURLConnection httpConnection;
 	private JSONTokeniser json;
-	private int	readOffset;
-	private int	latestAckOffset;
+	private long readOffset;
+	private long latestAckOffset;
 	private Vector<String> headers;
 	private int columnIndex_type;
 	private int columnIndex_my_sid;
@@ -84,11 +84,11 @@ public class MeshMSMessageList {
 			json.consume(JSONTokeniser.Token.START_OBJECT);
 			json.consume("read_offset");
 			json.consume(JSONTokeniser.Token.COLON);
-			readOffset = json.consume(Integer.class);
+			readOffset = json.consume(Long.class);
 			json.consume(JSONTokeniser.Token.COMMA);
 			json.consume("latest_ack_offset");
 			json.consume(JSONTokeniser.Token.COLON);
-			latestAckOffset = json.consume(Integer.class);
+			latestAckOffset = json.consume(Long.class);
 			json.consume(JSONTokeniser.Token.COMMA);
 			json.consume("header");
 			json.consume(JSONTokeniser.Token.COLON);
@@ -145,13 +145,13 @@ public class MeshMSMessageList {
 		}
 	}
 
-	public int getReadOffset()
+	public long getReadOffset()
 	{
 		assert json != null;
 		return readOffset;
 	}
 
-	public int getLatestAckOffset()
+	public long getLatestAckOffset()
 	{
 		assert json != null;
 		return latestAckOffset;
@@ -188,12 +188,12 @@ public class MeshMSMessageList {
 			catch (SubscriberId.InvalidHexException e) {
 				throw new ServalDInterfaceException("invalid column value: their_sid", e);
 			}
-			int offset = JSONTokeniser.narrow(row[columnIndex_offset], Integer.class);
+			long offset = JSONTokeniser.narrow(row[columnIndex_offset], Long.class);
 			String token = JSONTokeniser.narrow(row[columnIndex_token], String.class);
 			String text = JSONTokeniser.narrow(row[columnIndex_text], String.class, JSONTokeniser.Narrow.ALLOW_NULL);
 			boolean is_delivered = JSONTokeniser.narrow(row[columnIndex_delivered], Boolean.class);
 			boolean is_read = JSONTokeniser.narrow(row[columnIndex_read], Boolean.class);
-			Integer ack_offset = JSONTokeniser.narrow(row[columnIndex_ack_offset], Integer.class, JSONTokeniser.Narrow.ALLOW_NULL);
+			Long ack_offset = JSONTokeniser.narrow(row[columnIndex_ack_offset], Long.class, JSONTokeniser.Narrow.ALLOW_NULL);
 			MeshMSMessage.Type type;
 			if (typesym.equals(">"))
 				type = MeshMSMessage.Type.MESSAGE_SENT;
