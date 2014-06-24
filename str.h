@@ -380,6 +380,14 @@ int strn_str_casecmp(const char *str1, size_t len1, const char *str2);
  */
 char *str_str(char *haystack, const char *needle, size_t haystack_len);
 
+/* Returns 1 if the given nul-terminated string parses successfully as an unsigned 64-bit integer.
+ * Returns 0 if not.  This is simply a shortcut for str_to_uint32(str, 10, NULL, NULL), which is
+ * convenient for when a pointer to a predicate function is needed.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_is_uint64_decimal(const char *str);
+
 /* Parse a NUL-terminated string as an integer in ASCII radix notation in the given 'base' (eg,
  * base=10 means decimal).
  *
@@ -408,6 +416,7 @@ int str_to_uint64(const char *str, unsigned base, uint64_t *result, const char *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 int strn_to_uint32(const char *str, size_t strlen, unsigned base, uint32_t *result, const char **afterp);
+int strn_to_uint64(const char *str, size_t strlen, unsigned base, uint64_t *result, const char **afterp);
 
 /* Parse a string as an integer in ASCII radix notation in the given 'base' (eg, base=10 means
  * decimal) and scale the result by a factor given by an optional suffix "scaling" character in the

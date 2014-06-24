@@ -32,6 +32,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MESHMS_BLOCK_TYPE_ACK 0x01
 #define MESHMS_BLOCK_TYPE_MESSAGE 0x02 // NUL-terminated UTF8 string
 
+static unsigned mark_read(struct meshms_conversations *conv, const sid_t *their_sid, const uint64_t offset);
+
 void meshms_free_conversations(struct meshms_conversations *conv)
 {
   if (conv) {
@@ -681,7 +683,7 @@ static enum meshms_status write_known_conversations(rhizome_manifest *m, struct 
       // error is already logged
       break;
     case RHIZOME_BUNDLE_STATUS_NEW:
-      status = MESHMS_STATUS_OK;
+      status = MESHMS_STATUS_UPDATED;
       break;
     case RHIZOME_BUNDLE_STATUS_SAME:
     case RHIZOME_BUNDLE_STATUS_DUPLICATE:
@@ -953,6 +955,51 @@ enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipie
   return status;
 }
 
+enum meshms_status meshms_mark_read(const sid_t *sender, const sid_t *recipient, uint64_t offset)
+{
+  if (config.debug.meshms)
+    DEBUGF("sender=%s recipient=%s offset=%"PRIu64,
+	  alloca_tohex_sid_t(*sender),
+	  recipient ? alloca_tohex_sid_t(*recipient) : "NULL",
+	  offset
+	);
+  enum meshms_status status = MESHMS_STATUS_ERROR;
+  struct meshms_conversations *conv = NULL;
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (!m)
+    goto end;
+  if (meshms_failed(status = get_my_conversation_bundle(sender, m)))
+    goto end;
+  // read all conversations, so we can write them again
+  if (meshms_failed(status = read_known_conversations(m, NULL, &conv)))
+    goto end;
+  // read the full list of conversations from the database too
+  if (meshms_failed(status = get_database_conversations(sender, NULL, &conv)))
+    goto end;
+  // check if any incoming conversations need to be acked or have new messages and update the read offset
+  unsigned changed = 0;
+  if (meshms_failed(status = update_conversations(sender, conv)))
+    goto end;
+  if (status == MESHMS_STATUS_UPDATED)
+    changed = 1;
+  changed += mark_read(conv, recipient, offset);
+  if (config.debug.meshms)
+    DEBUGF("changed=%u", changed);
+  if (changed) {
+    if (meshms_failed(status = write_known_conversations(m, conv)))
+      goto end;
+    if (status != MESHMS_STATUS_UPDATED) {
+      WHYF("expecting %d (MESHMS_STATUS_UPDATED), got %s", MESHMS_STATUS_UPDATED, status);
+      status = MESHMS_STATUS_ERROR;
+    }
+  }
+end:
+  if (m)
+    rhizome_manifest_free(m);
+  meshms_free_conversations(conv);
+  return status;
+}
+
 // output the list of existing conversations for a given local identity
 int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context *context)
 {
@@ -1127,35 +1174,30 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
 }
 
 // Returns the number of read markers moved.
-static unsigned mark_read(struct meshms_conversations *conv, const sid_t *their_sid, const char *offset_str)
+static unsigned mark_read(struct meshms_conversations *conv, const sid_t *their_sid, const uint64_t offset)
 {
   unsigned ret=0;
   if (conv){
     int cmp = their_sid ? cmp_sid_t(&conv->them, their_sid) : 0;
-    if (!their_sid || cmp<0){
-      ret+=mark_read(conv->_left, their_sid, offset_str);
-    }
+    if (!their_sid || cmp<0)
+      ret += mark_read(conv->_left, their_sid, offset);
     if (!their_sid || cmp==0){
       // update read offset
-      // - never rewind
       // - never past their last message
-      uint64_t offset = conv->their_last_message;
-      if (offset_str){
-	uint64_t x = atol(offset_str);
-	if (x<offset)
-	  offset=x;
-      }
-      if (offset > conv->read_offset){
+      // - never rewind, only advance
+      uint64_t new_offset = offset;
+      if (new_offset > conv->their_last_message)
+	new_offset = conv->their_last_message;
+      if (new_offset > conv->read_offset) {
 	if (config.debug.meshms)
 	  DEBUGF("Moving read marker for %s, from %"PRId64" to %"PRId64, 
-	    alloca_tohex_sid_t(conv->them), conv->read_offset, offset);
-	conv->read_offset = offset;
+	    alloca_tohex_sid_t(conv->them), conv->read_offset, new_offset);
+	conv->read_offset = new_offset;
 	ret++;
       }
     }
-    if (!their_sid || cmp>0){
-      ret+=mark_read(conv->_right, their_sid, offset_str);
-    }
+    if (!their_sid || cmp>0)
+      ret += mark_read(conv->_right, their_sid, offset);
   }
   return ret;
 }
@@ -1165,51 +1207,40 @@ int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *UN
   const char *my_sidhex, *their_sidhex, *offset_str;
   if (cli_arg(parsed, "sender_sid", &my_sidhex, str_is_subscriber_id, "") == -1
     || cli_arg(parsed, "recipient_sid", &their_sidhex, str_is_subscriber_id, NULL) == -1
-    || cli_arg(parsed, "offset", &offset_str, NULL, NULL)==-1)
+    || cli_arg(parsed, "offset", &offset_str, str_is_uint64_decimal, NULL)==-1)
    return -1;
 
   if (create_serval_instance_dir() == -1)
     return -1;
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-  if (rhizome_opendb() == -1){
-    keyring_free(keyring);
-    keyring = NULL;
-    return -1;
-  }
+  int ret = -1;
+  if (rhizome_opendb() == -1)
+    goto done;
   sid_t my_sid, their_sid;
-  fromhex(my_sid.binary, my_sidhex, sizeof(my_sid.binary));
-  if (their_sidhex)
-    fromhex(their_sid.binary, their_sidhex, sizeof(their_sid.binary));
-
-  enum meshms_status status = MESHMS_STATUS_ERROR;
-  struct meshms_conversations *conv = NULL;
-  rhizome_manifest *m = rhizome_new_manifest();
-  if (!m)
-    goto end;
-  if (meshms_failed(status = get_my_conversation_bundle(&my_sid, m)))
-    goto end;
-  // read all conversations, so we can write them again
-  if (meshms_failed(status = read_known_conversations(m, NULL, &conv)))
-    goto end;
-  // read the full list of conversations from the database too
-  if (meshms_failed(status = get_database_conversations(&my_sid, NULL, &conv)))
-    goto end;
-  // check if any incoming conversations need to be acked or have new messages and update the read offset
-  int changed = 0;
-  if (meshms_failed(status = update_conversations(&my_sid, conv)))
-    goto end;
-  if (status == MESHMS_STATUS_UPDATED)
-    changed = 1;
-  if (mark_read(conv, their_sidhex?&their_sid:NULL, offset_str))
-    changed =1;
-  if (changed)
-    status = write_known_conversations(m, conv);
-end:
-  if (m)
-    rhizome_manifest_free(m);
-  meshms_free_conversations(conv);
+  if (str_to_sid_t(&my_sid, my_sidhex) == -1) {
+    ret = WHYF("my_sidhex=%s", my_sidhex);
+    goto done;
+  }
+  if (their_sidhex && str_to_sid_t(&their_sid, their_sidhex) == -1) {
+    ret = WHYF("their_sidhex=%s", their_sidhex);
+    goto done;
+  }
+  uint64_t offset = UINT64_MAX;
+  if (offset_str) {
+    if (!their_sidhex) {
+      ret = WHY("missing recipient_sid");
+      goto done;
+    }
+    if (!str_to_uint64(offset_str, 10, &offset, NULL)) {
+      ret = WHYF("offset_str=%s", offset_str);
+      goto done;
+    }
+  }
+  enum meshms_status status = meshms_mark_read(&my_sid, their_sidhex ? &their_sid : NULL, offset);
+  ret = (status == MESHMS_STATUS_UPDATED) ? MESHMS_STATUS_OK : status;
+done:
   keyring_free(keyring);
   keyring = NULL;
-  return status;
+  return ret;
 }

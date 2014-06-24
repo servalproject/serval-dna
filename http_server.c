@@ -97,6 +97,7 @@ static int http_request_parse_http_version(struct http_request *r);
 static int http_request_start_parsing_headers(struct http_request *r);
 static int http_request_parse_header(struct http_request *r);
 static int http_request_start_body(struct http_request *r);
+static int http_request_reject_content(struct http_request *r);
 static int http_request_parse_body_form_data(struct http_request *r);
 static void http_request_start_response(struct http_request *r);
 
@@ -1025,29 +1026,33 @@ static int http_request_start_body(struct http_request *r)
 	DEBUGF("Malformed HTTP %s request: missing Content-Length header", r->verb);
       return 411;
     }
-    if (r->request_header.content_type.type[0] == '\0') {
-      if (r->debug_flag && *r->debug_flag)
-	DEBUGF("Malformed HTTP %s request: missing Content-Type header", r->verb);
-      return 400;
-    }
-    if (   strcmp(r->request_header.content_type.type, "multipart") == 0
-	&& strcmp(r->request_header.content_type.subtype, "form-data") == 0
-    ) {
-      if (   r->request_header.content_type.multipart_boundary == NULL
-	  || r->request_header.content_type.multipart_boundary[0] == '\0'
-      ) {
+    if (r->request_header.content_length == 0) {
+      r->parser = http_request_reject_content;
+    } else {
+      if (r->request_header.content_type.type[0] == '\0') {
 	if (r->debug_flag && *r->debug_flag)
-	  DEBUGF("Malformed HTTP %s request: Content-Type %s/%s missing boundary parameter",
-	      r->verb, r->request_header.content_type.type, r->request_header.content_type.subtype);
+	  DEBUGF("Malformed HTTP %s request: missing Content-Type header", r->verb);
 	return 400;
       }
-      r->parser = http_request_parse_body_form_data;
-      r->form_data_state = START;
-    } else {
-      if (r->debug_flag && *r->debug_flag)
-	DEBUGF("Unsupported HTTP %s request: Content-Type %s not supported",
-	    r->verb, alloca_mime_content_type(&r->request_header.content_type));
-      return 415;
+      if (   strcmp(r->request_header.content_type.type, "multipart") == 0
+	  && strcmp(r->request_header.content_type.subtype, "form-data") == 0
+      ) {
+	if (   r->request_header.content_type.multipart_boundary == NULL
+	    || r->request_header.content_type.multipart_boundary[0] == '\0'
+	) {
+	  if (r->debug_flag && *r->debug_flag)
+	    DEBUGF("Malformed HTTP %s request: Content-Type %s/%s missing boundary parameter",
+		r->verb, r->request_header.content_type.type, r->request_header.content_type.subtype);
+	  return 400;
+	}
+	r->parser = http_request_parse_body_form_data;
+	r->form_data_state = START;
+      } else {
+	if (r->debug_flag && *r->debug_flag)
+	  DEBUGF("Unsupported HTTP %s request: Content-Type %s not supported",
+	      r->verb, alloca_mime_content_type(&r->request_header.content_type));
+	return 415;
+      }
     }
   }
   else {
@@ -1059,6 +1064,22 @@ static int http_request_start_body(struct http_request *r)
   if (_run_out(r))
     return 100;
   return 0;
+}
+
+/* A special content parser that rejects any content, used when a Content-Type: 0 header was
+ * received.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+static int http_request_reject_content(struct http_request *r)
+{
+  if (r->debug_flag && *r->debug_flag) {
+    if (r->request_header.content_length != CONTENT_LENGTH_UNKNOWN)
+      DEBUGF("Malformed HTTP %s request (Content-Length %"PRIhttp_size_t"): spurious content", r->verb, r->request_header.content_length);
+    else
+      DEBUGF("Malformed HTTP %s request: spurious content", r->verb);
+  }
+  return 400;
 }
 
 /* Returns 1 if a MIME delimiter is skipped, 2 if a MIME close-delimiter is skipped.
@@ -1208,7 +1229,7 @@ static int http_request_form_data_start_part(struct http_request *r, int b)
  *
  * NOTE: No support for nested/mixed parts, as that would considerably complicate the parser.  If
  * the need arises in future, we will deal with it then.  In the meantime, we will have something
- * that meets our immediate needs for Rhizome Direct and a variety of use cases.
+ * that meets our immediate needs for Rhizome Direct and the RESTful API.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */

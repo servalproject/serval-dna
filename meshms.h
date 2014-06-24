@@ -175,9 +175,25 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
 
 /* Append a message ('message_len' bytes of UTF8 at 'message') to the sender's
  * ply in the conversation between 'sender' and 'recipient'.  If no
- * conversation (ply bundle) exists, then create it.  Returns 0 on success, -1
- * on error (already logged).
+ * conversation (ply bundle) exists, then create it.  Returns
+ * MESHMS_STATUS_UPDATED on success, any other value indicates a failure or
+ * error (which is already logged).
  */
 enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipient, const char *message, size_t message_len);
+
+/* Update the read offset for one or more conversations.  Returns
+ * MESHMS_STATUS_UPDATED on success, any other value indicates a failure or
+ * error (which is already logged).
+ *
+ * If 'offset' is greater than a conversation's last-received offset, then it
+ * is clamped to the last-received offset.  This means that passing an offset
+ * of UINT64_MAX will mark the conversation as fully read, and an offset of
+ * zero will have no effect.
+ *
+ * If 'recipient' is NULL then all of the sender's conversations are marked
+ * with the given read offset.  In this case it only makes sense to pass an
+ * offest of UINT64_MAX.
+ */
+enum meshms_status meshms_mark_read(const sid_t *sender, const sid_t *recipient, uint64_t offset);
 
 #endif // __SERVAL_DNA__MESHMS_H

@@ -126,6 +126,7 @@ set_rhizome_config() {
       set debug.rhizome_manifest on \
       set debug.rhizome_store on \
       set debug.rhizome on \
+      set debug.meshms on \
       set debug.verbose on \
       set log.console.level debug
 }
@@ -1357,6 +1358,132 @@ test_MeshmsSendNoIdentity() {
    assertJq http.body 'contains({"http_status_code": 403})'
    assertJq http.body 'contains({"meshms_status_code": 2})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'identity.*unknown'
+}
+
+doc_MeshmsReadAllConversations="HTTP RESTful MeshMS mark all conversations read"
+setup_MeshmsReadAllConversations() {
+   IDENTITY_COUNT=5
+   setup
+   # create 3 threads, with all permutations of incoming and outgoing messages
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
+   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
+   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message3"
+   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message4"
+   executeOk_servald meshms list conversations $SIDA1
+   assertStdoutGrep --stderr --matches=1 ":$SIDA2::0:0\$"
+   assertStdoutGrep --stderr --matches=1 ":$SIDA3:unread:11:0\$"
+   assertStdoutGrep --stderr --matches=1 ":$SIDA4:unread:14:0\$"
+}
+test_MeshmsReadAllConversations() {
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http_body \
+         --basic --user harry:potter \
+         --request POST \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/readall"
+   tfw_cat http_body
+   assertExitStatus == 0
+   assertStdoutIs 201
+   executeOk_servald meshms list conversations $SIDA1
+   assertStdoutGrep --stderr --matches=1 ":$SIDA2::0:0\$"
+   assertStdoutGrep --stderr --matches=1 ":$SIDA3::11:11\$"
+   assertStdoutGrep --stderr --matches=1 ":$SIDA4::14:14\$"
+}
+
+doc_MeshmsPostSpuriousContent="HTTP RESTful MeshMS rejects unwanted content in POST request"
+setup_MeshmsPostSpuriousContent() {
+   IDENTITY_COUNT=2
+   setup
+   # create 3 threads, with all permutations of incoming and outgoing messages
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
+   executeOk_servald meshms send message $SIDA2 $SIDA1 "Message2"
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message3"
+   executeOk_servald meshms send message $SIDA2 $SIDA1 "Message4"
+   executeOk_servald meshms list conversations $SIDA1
+   assertStdoutGrep --stderr --matches=1 ":$SIDA2:unread:29:0\$"
+}
+test_MeshmsPostSpuriousContent() {
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http_body \
+         --basic --user harry:potter \
+         --request POST \
+         --form "offset=0" \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/readall"
+   tfw_cat http_body
+   assertExitStatus == 0
+   assertStdoutIs 400
+   assertJq http_body 'contains({"http_status_code": 400})'
+   assertJqGrep --ignore-case http_body '.http_status_message' 'content length'
+   executeOk_servald meshms list conversations $SIDA1
+   assertStdoutGrep --stderr --matches=1 ":$SIDA2:unread:29:0\$"
+}
+
+doc_MeshmsReadAllMessages="HTTP RESTful MeshMS mark all conversations read"
+setup_MeshmsReadAllMessages() {
+   IDENTITY_COUNT=5
+   setup
+   # create 3 threads, with all permutations of incoming and outgoing messages
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
+   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message3"
+   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message4"
+   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message5"
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message6"
+   executeOk_servald meshms list conversations $SIDA2
+   assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:33:0\$"
+}
+test_MeshmsReadAllMessages() {
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http_body \
+         --basic --user harry:potter \
+         --request POST \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/readall"
+   tfw_cat http_body
+   assertExitStatus == 0
+   assertStdoutIs 201
+   executeOk_servald meshms list conversations $SIDA2
+   assertStdoutGrep --stderr --matches=1 ":$SIDA1::33:33\$"
+}
+
+doc_MeshmsReadMessage="HTTP RESTful MeshMS mark a message as read"
+setup_MeshmsReadMessage() {
+   IDENTITY_COUNT=5
+   setup
+   # create 3 threads, with all permutations of incoming and outgoing messages
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
+   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message3"
+   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message4"
+   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message5"
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message6"
+   executeOk_servald meshms list conversations $SIDA2
+   assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:33:0\$"
+}
+test_MeshmsReadMessage() {
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http_body \
+         --basic --user harry:potter \
+         --request POST \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/recv/22/read"
+   tfw_cat http_body
+   assertExitStatus == 0
+   assertStdoutIs 201
+   executeOk_servald meshms list conversations $SIDA2
+   assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:33:22\$"
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output read.json \
+         --basic --user harry:potter \
+         --request POST \
+         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/recv/11/read"
+   tfw_cat read.json
+   assertExitStatus == 0
+   assertStdoutIs 200
+   executeOk_servald meshms list conversations $SIDA2
+   assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:33:22\$"
 }
 
 runTests "$@"

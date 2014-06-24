@@ -112,6 +112,9 @@ static HTTP_HANDLER restful_meshms_conversationlist_json;
 static HTTP_HANDLER restful_meshms_messagelist_json;
 static HTTP_HANDLER restful_meshms_newsince_messagelist_json;
 static HTTP_HANDLER restful_meshms_sendmessage;
+static HTTP_HANDLER restful_meshms_read_all_conversations;
+static HTTP_HANDLER restful_meshms_read_all_messages;
+static HTTP_HANDLER restful_meshms_read_to_offset;
 
 int restful_meshms_(httpd_request *r, const char *remainder)
 {
@@ -119,6 +122,7 @@ int restful_meshms_(httpd_request *r, const char *remainder)
   if (!is_rhizome_http_enabled())
     return 403;
   const char *verb = HTTP_VERB_GET;
+  http_size_t content_length = CONTENT_LENGTH_UNKNOWN;
   HTTP_HANDLER *handler = NULL;
   const char *end;
   if (strn_to_sid_t(&r->sid1, remainder, SIZE_MAX, &end) != -1) {
@@ -126,7 +130,14 @@ int restful_meshms_(httpd_request *r, const char *remainder)
     if (strcmp(remainder, "/conversationlist.json") == 0) {
       handler = restful_meshms_conversationlist_json;
       remainder = "";
-    } else if (*remainder == '/' && strn_to_sid_t(&r->sid2, remainder + 1, SIZE_MAX, &end) != -1) {
+    }
+    else if (strcmp(remainder, "/readall") == 0) {
+      handler = restful_meshms_read_all_conversations;
+      verb = HTTP_VERB_POST;
+      content_length = 0;
+      remainder = "";
+    }
+    else if (*remainder == '/' && strn_to_sid_t(&r->sid2, remainder + 1, SIZE_MAX, &end) != -1) {
       remainder = end;
       if (strcmp(remainder, "/messagelist.json") == 0) {
 	handler = restful_meshms_messagelist_json;
@@ -144,12 +155,36 @@ int restful_meshms_(httpd_request *r, const char *remainder)
 	verb = HTTP_VERB_POST;
 	remainder = "";
       }
+      else if (strcmp(remainder, "/readall") == 0) {
+	handler = restful_meshms_read_all_messages;
+	verb = HTTP_VERB_POST;
+	content_length = 0;
+	remainder = "";
+      }
+      else if (str_startswith(remainder, "/recv/", &end)) {
+	remainder = end;
+	if (str_to_uint64(remainder, 10, &r->ui64, &end)) {
+	  remainder = end;
+	  if (strcmp(remainder, "/read") == 0) {
+	    handler = restful_meshms_read_to_offset;
+	    verb = HTTP_VERB_POST;
+	    content_length = 0;
+	    remainder = "";
+	  }
+	}
+      }
     }
   }
   if (handler == NULL)
     return 404;
   if (r->http.verb != verb)
     return 405;
+  if (	 content_length != CONTENT_LENGTH_UNKNOWN
+      && r->http.request_header.content_length != CONTENT_LENGTH_UNKNOWN
+      && r->http.request_header.content_length != content_length) {
+    http_request_simple_response(&r->http, 400, "Bad content length");
+    return 400;
+  }
   int ret = authorize(&r->http);
   if (ret)
     return ret;
@@ -565,4 +600,43 @@ static int restful_meshms_sendmessage_end(struct http_request *hr)
   if (meshms_failed(status = meshms_send_message(&r->sid1, &r->sid2, r->u.sendmsg.message.buffer, r->u.sendmsg.message.length)))
     return http_request_meshms_response(r, 0, NULL, status);
   return http_request_meshms_response(r, 201, "Message sent", status);
+}
+
+static int restful_meshms_read_all_conversations(httpd_request *r, const char *remainder)
+{
+  if (*remainder)
+    return 404;
+  assert(r->finalise_union == NULL);
+  enum meshms_status status;
+  if (meshms_failed(status = meshms_mark_read(&r->sid1, NULL, UINT64_MAX)))
+    return http_request_meshms_response(r, 0, NULL, status);
+  if (status == MESHMS_STATUS_UPDATED)
+    return http_request_meshms_response(r, 201, "Read offsets updated", status);
+  return http_request_meshms_response(r, 200, "Read offsets unchanged", status);
+}
+
+static int restful_meshms_read_all_messages(httpd_request *r, const char *remainder)
+{
+  if (*remainder)
+    return 404;
+  assert(r->finalise_union == NULL);
+  enum meshms_status status;
+  if (meshms_failed(status = meshms_mark_read(&r->sid1, &r->sid2, UINT64_MAX)))
+    return http_request_meshms_response(r, 0, NULL, status);
+  if (status == MESHMS_STATUS_UPDATED)
+    return http_request_meshms_response(r, 201, "Read offset updated", status);
+  return http_request_meshms_response(r, 200, "Read offset unchanged", status);
+}
+
+static int restful_meshms_read_to_offset(httpd_request *r, const char *remainder)
+{
+  if (*remainder)
+    return 404;
+  assert(r->finalise_union == NULL);
+  enum meshms_status status;
+  if (meshms_failed(status = meshms_mark_read(&r->sid1, &r->sid2, r->ui64)))
+    return http_request_meshms_response(r, 0, NULL, status);
+  if (status == MESHMS_STATUS_UPDATED)
+    return http_request_meshms_response(r, 201, "Read offset updated", status);
+  return http_request_meshms_response(r, 200, "Read offset unchanged", status);
 }
