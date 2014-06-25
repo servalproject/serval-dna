@@ -146,8 +146,8 @@ public class MeshMSConversationList {
 				throw new ServalDInterfaceException("invalid column value: their_sid", e);
 			}
 			boolean is_read = JSONTokeniser.narrow(row[columnIndex_read], Boolean.class);
-			int last_message = JSONTokeniser.narrow(row[columnIndex_last_message], Integer.class);
-			int read_offset = JSONTokeniser.narrow(row[columnIndex_read_offset], Integer.class);
+			long last_message = JSONTokeniser.narrow(row[columnIndex_last_message], Long.class);
+			long read_offset = JSONTokeniser.narrow(row[columnIndex_read_offset], Long.class);
 			return new MeshMSConversation(rowCount++, _id, my_sid, their_sid, is_read, last_message, read_offset);
 		}
 		catch (JSONInputException e) {

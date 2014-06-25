@@ -29,10 +29,10 @@ public class MeshMSConversation {
 	public final SubscriberId mySid;
 	public final SubscriberId theirSid;
 	public final boolean isRead;
-	public final int lastMessageOffset;
-	public final int readOffset;
+	public final long lastMessageOffset;
+	public final long readOffset;
 
-	protected MeshMSConversation(int rowNumber, int _id, SubscriberId my_sid, SubscriberId their_sid, boolean read, int last_message_offset, int read_offset)
+	protected MeshMSConversation(int rowNumber, int _id, SubscriberId my_sid, SubscriberId their_sid, boolean read, long last_message_offset, long read_offset)
 	{
 		this._rowNumber = rowNumber;
 		this._id = _id;
