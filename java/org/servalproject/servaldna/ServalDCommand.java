@@ -559,6 +559,7 @@ public class ServalDCommand
 		return command(results, "id", "peers");
 	}
 
+	@Deprecated
 	public static class Conversation extends JniResult{
 		public long id;
 		public SubscriberId recipient;
@@ -593,6 +594,7 @@ public class ServalDCommand
 		}
 	}
 
+	@Deprecated
 	public static int listConversations(AsyncResult<Conversation> result, final SubscriberId sender, int offset, int numRows) throws ServalDFailureException {
 		return listConversations(new JniResultList<Conversation>(result) {
 			@Override
@@ -602,11 +604,13 @@ public class ServalDCommand
 		}, sender, offset, numRows);
 	}
 
+	@Deprecated
 	public static int listConversations(IJniResults callback, final SubscriberId sender, int offset, int numRows) throws ServalDFailureException {
 		return command(callback, "meshms", "list", "conversations",
 				sender.toHex(), ""+offset, ""+numRows);
 	}
 
+	@Deprecated
 	public static class Message extends JniResult{
 		public long id;
 		public long offset;
@@ -630,6 +634,7 @@ public class ServalDCommand
 		}
 	}
 
+	@Deprecated
 	public static int listMessages(AsyncResult<Message> result, final SubscriberId sender, final SubscriberId recipient) throws ServalDFailureException {
 		return listMessages(new JniResultList<Message>(result) {
 			@Override
@@ -639,22 +644,26 @@ public class ServalDCommand
 		}, sender, recipient);
 	}
 
+	@Deprecated
 	public static int listMessages(IJniResults callback, final SubscriberId sender, final SubscriberId recipient) throws ServalDFailureException {
 		return ServalDCommand.command(callback, "meshms", "list", "messages",
 				sender.toHex(), recipient.toHex());
 	}
 
+	@Deprecated
 	public static void sendMessage(final SubscriberId sender, final SubscriberId recipient, String message) throws ServalDFailureException {
 		command("meshms", "send", "message",
 				sender.toHex(), recipient.toHex(),
 				message);
 	}
 
+	@Deprecated
 	public static void readMessage(final SubscriberId sender, final SubscriberId recipient) throws ServalDFailureException {
 		command("meshms", "read", "messages",
 				sender.toHex(), recipient.toHex());
 	}
 
+	@Deprecated
 	public static void readMessage(final SubscriberId sender, final SubscriberId recipient, long offset) throws ServalDFailureException {
 		command("meshms", "read", "messages",
 				sender.toHex(), recipient.toHex(),
