@@ -41,8 +41,10 @@ struct overlay_frame {
   // packet queue pointers
   struct overlay_frame *prev;
   struct overlay_frame *next;
+  
   // when did we insert into the queue?
   time_ms_t enqueued_at;
+  struct __sourceloc whence;
   
   // deprecated, all future "types" should just be assigned port numbers
   unsigned int type;

@@ -830,7 +830,7 @@ static struct overlay_buffer * encrypt_payload(
 
 // encrypt or sign the plaintext, then queue the frame for transmission.
 // Note, the position of the payload MUST be at the start of the data, the limit MUST be used to specify the end
-int overlay_send_frame(struct internal_mdp_header *header, struct overlay_buffer *payload)
+int _overlay_send_frame(struct __sourceloc whence, struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   if ((!header->destination) || header->destination->reachable == REACHABLE_SELF){
     ob_checkpoint(payload);
@@ -958,7 +958,7 @@ int overlay_send_frame(struct internal_mdp_header *header, struct overlay_buffer
   if (!frame->destination && frame->ttl>1)
     overlay_broadcast_generate_address(&frame->broadcast_id);
   
-  if (overlay_payload_enqueue(frame)){
+  if (_overlay_payload_enqueue(whence, frame)){
     op_free(frame);
     return -1;
   }

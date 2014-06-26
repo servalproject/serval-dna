@@ -143,7 +143,7 @@ int overlay_queue_remaining(int queue){
   return overlay_tx[queue].maxLength - overlay_tx[queue].length;
 }
 
-int overlay_payload_enqueue(struct overlay_frame *p)
+int _overlay_payload_enqueue(struct __sourceloc whence, struct overlay_frame *p)
 {
   /* Add payload p to queue q.
    
@@ -156,6 +156,7 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   assert(p != NULL);
   assert(p->queue < OQ_MAX);
   assert(p->payload != NULL);
+  p->whence = whence;
   overlay_txqueue *queue = &overlay_tx[p->queue];
 
   if (config.debug.packettx)
@@ -331,7 +332,7 @@ overlay_calc_queue_time(struct overlay_frame *frame)
 }
 
 static void
-overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, time_ms_t now){
+overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, time_ms_t now, strbuf debug){
   struct overlay_frame *frame = queue->first;
   
   // TODO stop when the packet is nearly full?
@@ -419,6 +420,12 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  if (frame->source_full)
 	    my_subscriber->send_full=1;
 	  if (overlay_init_packet(packet, frame->packet_version, dest) != -1) {
+	    if (debug){
+	      strbuf_sprintf(debug, "building packet %s %s %d [", 
+		packet->destination->interface->name, 
+		alloca_socket_address(&packet->destination->address),
+		packet->seq);
+	    }
 	    destination_index=i;
 	    frame->destinations[i].sent_sequence = dest->sequence_number;
 	    break;
@@ -472,7 +479,8 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     }
     
     frame->transmit_count++;
-    
+    if (debug)
+      strbuf_sprintf(debug, "%d(%s), ", frame->mdp_sequence, frame->whence.function);
     if (config.debug.overlayframes){
       DEBUGF("Appended payload %p, %d type %x len %zd for %s via %s", 
 	     frame, frame->mdp_sequence,
@@ -503,10 +511,11 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 
 // fill a packet from our outgoing queues and send it
 static int
-overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
+overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now, strbuf debug) {
   IN();
   int i;
   int ret=0;
+    
   // while we're looking at queues, work out when to schedule another packet
   unschedule(&next_packet);
   next_packet.alarm=0;
@@ -515,10 +524,14 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
   for (i=0;i<OQ_MAX;i++){
     overlay_txqueue *queue=&overlay_tx[i];
     
-    overlay_stuff_packet(packet, queue, now);
+    overlay_stuff_packet(packet, queue, now, debug);
   }
   
   if(packet->buffer){
+    if (debug){
+      strbuf_sprintf(debug, "]");
+      DEBUGF("%s", strbuf_str(debug));
+    }
       
     overlay_broadcast_ensemble(packet->destination, packet->buffer);
     ret=1;
@@ -535,15 +548,25 @@ static void overlay_send_packet(struct sched_ent *UNUSED(alarm))
   struct outgoing_packet packet;
   bzero(&packet, sizeof(struct outgoing_packet));
   packet.seq=-1;
-  overlay_fill_send_packet(&packet, gettime_ms());
+  strbuf debug = config.debug.overlayframes?strbuf_alloca(256):NULL;
+  overlay_fill_send_packet(&packet, gettime_ms(), debug);
 }
 
 int overlay_send_tick_packet(struct network_destination *destination)
 {
   struct outgoing_packet packet;
   bzero(&packet, sizeof(struct outgoing_packet));
-  if (overlay_init_packet(&packet, 0, destination) != -1)
-    overlay_fill_send_packet(&packet, gettime_ms());
+  if (overlay_init_packet(&packet, 0, destination) != -1){
+    strbuf debug = NULL;
+    if (config.debug.overlayframes){
+      debug = strbuf_alloca(256);
+      strbuf_sprintf(debug, "building packet %s %s %d [", 
+	packet.destination->interface->name, 
+	alloca_socket_address(&packet.destination->address),
+	packet.seq);
+    }
+    overlay_fill_send_packet(&packet, gettime_ms(), debug);
+  }
   return 0;
 }
 

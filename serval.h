@@ -206,7 +206,8 @@ void rhizome_sync_status_html(struct strbuf *b, struct subscriber *subscriber);
 int rhizome_cache_count();
 
 int overlayServerMode(void);
-int overlay_payload_enqueue(struct overlay_frame *p);
+int _overlay_payload_enqueue(struct __sourceloc whence, struct overlay_frame *p);
+#define overlay_payload_enqueue(P) _overlay_payload_enqueue(__WHENCE__,P)
 int overlay_queue_remaining(int queue);
 int overlay_queue_schedule_next(time_ms_t next_allowed_packet);
 int overlay_send_tick_packet(struct network_destination *destination);
@@ -230,8 +231,8 @@ void mdp_init_response(const struct internal_mdp_header *in, struct internal_mdp
 void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port);
 int overlay_mdp_dnalookup_reply(struct subscriber *dest, mdp_port_t dest_port, 
     struct subscriber *resolved_sid, const char *uri, const char *did, const char *name);
-int overlay_send_frame(struct internal_mdp_header *header, struct overlay_buffer *payload);
-
+int _overlay_send_frame(struct __sourceloc whence, struct internal_mdp_header *header, struct overlay_buffer *payload);
+#define overlay_send_frame(H, P) _overlay_send_frame(__WHENCE__, H, P)
 int mdp_bind_internal(struct subscriber *subscriber, mdp_port_t port,
   int (*internal)(struct internal_mdp_header *header, struct overlay_buffer *payload));
 int mdp_unbind_internal(struct subscriber *subscriber, mdp_port_t port,
