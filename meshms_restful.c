@@ -206,7 +206,8 @@ static int restful_meshms_conversationlist_json(httpd_request *r, const char *re
   enum meshms_status status;
   if (meshms_failed(status = meshms_conversations_list(&r->sid1, NULL, &r->u.mclist.conv)))
     return http_request_meshms_response(r, 0, NULL, status);
-  meshms_conversation_iterator_start(&r->u.mclist.iter, r->u.mclist.conv);
+  if (r->u.mclist.conv != NULL)
+    meshms_conversation_iterator_start(&r->u.mclist.iter, r->u.mclist.conv);
   http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_meshms_conversationlist_json_content);
   return 1;
 }
@@ -246,7 +247,7 @@ static int restful_meshms_conversationlist_json_content_chunk(struct http_reques
 	r->u.mclist.phase = LIST_ROWS;
       return 1;
     case LIST_ROWS:
-      if (r->u.mclist.iter.current == NULL) {
+      if (r->u.mclist.conv == NULL || r->u.mclist.iter.current == NULL) {
 	r->u.mclist.phase = LIST_END;
 	// fall through...
       } else {
