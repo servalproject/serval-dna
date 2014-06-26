@@ -21,6 +21,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <assert.h>
 #ifdef HAVE_SYS_STATVFS_H
 #  include <sys/statvfs.h>
+#else
+#  if defined(HAVE_SYS_STAT_H) && defined(HAVE_SYS_VFS_H)
+#    include <sys/stat.h>
+#    include <sys/vfs.h>
+#    define statvfs statfs
+#  endif
 #endif
 #include "serval.h"
 #include "rhizome.h"
@@ -158,7 +164,7 @@ static uint64_t store_get_free_space()
   const char *fake_space = getenv("SERVALD_FREE_SPACE");
   if (fake_space)
     return atol(fake_space);
-#ifdef HAVE_SYS_STATVFS_H
+#if defined(HAVE_SYS_STATVFS_H) || (defined(HAVE_SYS_STAT_H) && defined(HAVE_SYS_VFS_H))
   char store_path[1024];
   if (!FORMF_RHIZOME_STORE_PATH(store_path, "rhizome.db"))
     return UINT64_MAX;

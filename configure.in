@@ -93,6 +93,7 @@ AC_CHECK_HEADERS(
     sys/time.h \
     sys/ucred.h \
     sys/statvfs.h \
+    sys/stat.h \
     sys/vfs.h \
     poll.h \
     netdb.h \
