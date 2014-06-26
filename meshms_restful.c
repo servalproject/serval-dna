@@ -185,7 +185,7 @@ int restful_meshms_(httpd_request *r, const char *remainder)
     http_request_simple_response(&r->http, 400, "Bad content length");
     return 400;
   }
-  int ret = authorize(&r->http);
+  int ret = authorize_restful(&r->http);
   if (ret)
     return ret;
   ret = handler(r, remainder);

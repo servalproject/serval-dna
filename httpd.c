@@ -328,7 +328,7 @@ static int is_from_loopback(const struct http_request *r)
 /* Return 1 if the given authorization credentials are acceptable.
  * Return 0 if not.
  */
-static int is_authorized(const struct http_client_authorization *auth)
+static int is_authorized_restful(const struct http_client_authorization *auth)
 {
   if (auth->scheme != BASIC)
     return 0;
@@ -342,13 +342,13 @@ static int is_authorized(const struct http_client_authorization *auth)
   return 0;
 }
 
-int authorize(struct http_request *r)
+int authorize_restful(struct http_request *r)
 {
   if (!is_from_loopback(r))
     return 403;
-  if (!is_authorized(&r->request_header.authorization)) {
+  if (!is_authorized_restful(&r->request_header.authorization)) {
     r->response.header.www_authenticate.scheme = BASIC;
-    r->response.header.www_authenticate.realm = "Serval Rhizome";
+    r->response.header.www_authenticate.realm = "Serval RESTful API";
     return 401;
   }
   return 0;

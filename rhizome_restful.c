@@ -74,7 +74,7 @@ int restful_rhizome_bundlelist_json(httpd_request *r, const char *remainder)
     return 404;
   if (r->http.verb != HTTP_VERB_GET)
     return 405;
-  int ret = authorize(&r->http);
+  int ret = authorize_restful(&r->http);
   if (ret)
     return ret;
   r->u.rhlist.phase = LIST_HEADER;
@@ -108,7 +108,7 @@ int restful_rhizome_newsince(httpd_request *r, const char *remainder)
     return 404;
   if (r->http.verb != HTTP_VERB_GET)
     return 405;
-  int ret = authorize(&r->http);
+  int ret = authorize_restful(&r->http);
   if (ret)
     return ret;
   r->u.rhlist.phase = LIST_HEADER;
@@ -248,7 +248,7 @@ int restful_rhizome_insert(httpd_request *r, const char *remainder)
     return 403;
   if (r->http.verb != HTTP_VERB_POST)
     return 405;
-  int ret = authorize(&r->http);
+  int ret = authorize_restful(&r->http);
   if (ret)
     return ret;
   // Parse the request body as multipart/form-data.
@@ -589,7 +589,7 @@ int restful_rhizome_(httpd_request *r, const char *remainder)
     return 404;
   if (r->http.verb != HTTP_VERB_GET)
     return 405;
-  int ret = authorize(&r->http);
+  int ret = authorize_restful(&r->http);
   if (ret)
     return ret;
   if ((r->manifest = rhizome_new_manifest()) == NULL)

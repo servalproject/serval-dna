@@ -81,7 +81,7 @@ test_AuthBasicMissing() {
          --dump-header http.headers \
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDA/conversationlist.json"
    assertStdoutIs '401'
-   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval Rhizome\"$CR\$"
+   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval RESTful API\"$CR\$"
    assertJq http.output 'contains({"http_status_code": 401})'
    assertJq http.output 'contains({"http_status_message": ""})'
 }
@@ -99,7 +99,7 @@ test_AuthBasicWrong() {
          --basic --user fred:nurks \
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDA/conversationlist.json"
    assertStdoutIs '401'
-   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval Rhizome\"$CR\$"
+   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval RESTful API\"$CR\$"
    assertJq http.output 'contains({"http_status_code": 401})'
    assertJq http.output 'contains({"http_status_message": ""})'
    executeOk curl \

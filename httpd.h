@@ -191,7 +191,7 @@ int httpd_server_start(uint16_t port_low, uint16_t port_high);
 typedef int HTTP_HANDLER(httpd_request *r, const char *remainder);
 
 int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_call);
-int authorize(struct http_request *r);
+int authorize_restful(struct http_request *r);
 int http_response_content_type(httpd_request *r, const char *what, const struct mime_content_type *ct);
 int http_response_content_disposition(httpd_request *r, const char *what, const char *type);
 int http_response_form_part(httpd_request *r, const char *what, const char *partname, const char *text, size_t textlen);
