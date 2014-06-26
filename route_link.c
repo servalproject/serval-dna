@@ -1137,25 +1137,26 @@ int link_received_duplicate(struct subscriber *subscriber, int payload_seq)
   if (!neighbour)
     return 0;
 
-  if (neighbour->mdp_ack_sequence != -1){
-    if (neighbour->mdp_ack_sequence == payload_seq){
+  if (neighbour->mdp_ack_sequence == -1){
+    neighbour->mdp_ack_sequence = payload_seq;
+    return 0;
+  }
+  
+  if (neighbour->mdp_ack_sequence == payload_seq)
+    return 1;
+
+  int offset = (neighbour->mdp_ack_sequence - 1 - payload_seq)&0xFF;
+  if (offset < 64){
+    if (neighbour->mdp_ack_mask & (1<<offset)){
       return 1;
     }
-
-    int offset = (neighbour->mdp_ack_sequence - 1 - payload_seq)&0xFF;
-    if (offset < 64){
-      if (neighbour->mdp_ack_mask & (1<<offset)){
-	return 1;
-      }
-      neighbour->mdp_ack_mask |= (1<<offset);
-    }else{
-      int offset = (payload_seq - neighbour->mdp_ack_sequence - 1)&0xFF;
-      neighbour->mdp_ack_mask = (neighbour->mdp_ack_mask << 1) | 1;
-      neighbour->mdp_ack_mask = neighbour->mdp_ack_mask << offset;
-      neighbour->mdp_ack_sequence = payload_seq;
-    }
-  }else
+    neighbour->mdp_ack_mask |= (1<<offset);
+  }else{
+    int offset = (payload_seq - neighbour->mdp_ack_sequence - 1)&0xFF;
+    neighbour->mdp_ack_mask = (neighbour->mdp_ack_mask << 1) | 1;
+    neighbour->mdp_ack_mask = neighbour->mdp_ack_mask << offset;
     neighbour->mdp_ack_sequence = payload_seq;
+  }
   return 0;
 }
 

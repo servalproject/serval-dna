@@ -238,13 +238,10 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
     int seq = ob_get(buffer);
     if (seq == -1)
       RETURN(WHY("Unable to read packet seq"));
-    // TODO unicast
-    if ((flags & PAYLOAD_FLAG_ONE_HOP) || !(flags & PAYLOAD_FLAG_TO_BROADCAST)){
-      if (link_received_duplicate(context->sender, seq)){
-        if (config.debug.verbose && config.debug.overlayframes)
-          DEBUG("Don't process or forward duplicate payloads");
-        forward=process=0;
-      }
+    if (link_received_duplicate(context->sender, seq)){
+      if (config.debug.verbose && config.debug.overlayframes)
+	DEBUG("Don't process or forward duplicate payloads");
+      forward=process=0;
     }
   }
   frame->modifiers=flags;

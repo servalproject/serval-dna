@@ -746,7 +746,7 @@ test_ping_unreliable_2hop() {
    received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    assert [ "$received" -ge 98 ]
-   assert [ "$duplicates" -le 5 ]
+   assert [ "$duplicates" -le 2 ]
 }
 finally_ping_unreliable_2hop() {
    simulator_quit
@@ -829,7 +829,7 @@ test_unreliable_links() {
    received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    assert [ "$received" -ge 98 ]
-   assert [ "$duplicates" -le 5 ]
+   assert [ "$duplicates" -le 2 ]
    # make sure the path is still there.
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
@@ -874,7 +874,7 @@ test_unreliable_links2() {
    received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    assert [ "$received" -ge 98 ]
-   assert [ "$duplicates" -le 5 ]
+   assert [ "$duplicates" -le 2 ]
    wait_until --timeout=20 path_exists +A +B +C +D
    wait_until --timeout=20 path_exists +D +C +B +A
 }
