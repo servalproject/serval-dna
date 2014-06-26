@@ -341,7 +341,7 @@ static int restful_meshms_newsince_messagelist_json(httpd_request *r, const char
     return 404;
   }
   r->u.msglist.token_offset = r->ui64;
-  r->u.msglist.end_time = gettime_ms() + config.rhizome.api.restful.newsince_timeout * 1000;
+  r->u.msglist.end_time = gettime_ms() + config.api.restful.newsince_timeout * 1000;
   http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_meshms_messagelist_json_content);
   return 1;
 }
@@ -402,7 +402,7 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
 	      r->u.msglist.token_which_ply = r->u.msglist.latest_which_ply;
 	      r->u.msglist.token_offset = r->u.msglist.latest_offset;
 	      meshms_message_iterator_close(&r->u.msglist.iter);
-	      time_ms_t wake_at = now + config.rhizome.api.restful.newsince_poll_ms;
+	      time_ms_t wake_at = now + config.api.restful.newsince_poll_ms;
 	      if (wake_at > r->u.msglist.end_time)
 		wake_at = r->u.msglist.end_time;
 	      http_request_pause_response(&r->http, wake_at);

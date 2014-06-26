@@ -384,15 +384,6 @@ STRUCT(rhizome_direct)
 SUB_STRUCT(peerlist,        peer,)
 END_STRUCT
 
-STRUCT(user)
-STRING(50,                  password,   "", str,, "Authentication password")
-END_STRUCT
-
-ARRAY(userlist,)
-KEY_STRING(25, str)
-VALUE_SUB_STRUCT(user)
-END_ARRAY(10)
-
 STRUCT(rhizome_api_addfile)
 STRING(64,                  uri_path,               "", absolute_path,, "URI path for HTTP add-file request")
 ATOM(struct in_addr,        allow_host,             hton_in_addr(INADDR_LOOPBACK), in_addr,, "IP address of host allowed to make HTTP add-file request")
@@ -401,15 +392,8 @@ ATOM(sid_t,                 default_author,         SID_ANY, sid,, "Author of ad
 ATOM(rhizome_bk_t,          bundle_secret_key,      RHIZOME_BK_NONE, rhizome_bk,, "Secret key of add-file bundle to try if sender not given")
 END_STRUCT
 
-STRUCT(rhizome_api_restful)
-SUB_STRUCT(userlist,        users,)
-ATOM(uint32_t,              newsince_timeout,       60, uint32_time_interval,, "Time to block while reporting new bundles")
-ATOM(uint32_t,              newsince_poll_ms,       2000, uint32_nonzero,, "Database poll interval while blocked reporting new bundles")
-END_STRUCT
-
 STRUCT(rhizome_api)
 SUB_STRUCT(rhizome_api_addfile, addfile,)
-SUB_STRUCT(rhizome_api_restful, restful,)
 END_STRUCT
 
 STRUCT(rhizome_http)
@@ -490,6 +474,25 @@ KEY_ATOM(unsigned, uint)
 VALUE_NODE_STRUCT(network_interface, network_interface)
 END_ARRAY(10)
 
+STRUCT(user)
+STRING(50,                  password,       "", str,, "Authentication password")
+END_STRUCT
+
+ARRAY(userlist,)
+KEY_STRING(25, str)
+VALUE_SUB_STRUCT(user)
+END_ARRAY(10)
+
+STRUCT(api_restful)
+SUB_STRUCT(userlist,        users,)
+ATOM(uint32_t,              newsince_timeout,       60, uint32_time_interval,, "Time to block while reporting new bundles")
+ATOM(uint32_t,              newsince_poll_ms,       2000, uint32_nonzero,, "Database poll interval while blocked reporting new bundles")
+END_STRUCT
+
+STRUCT(api)
+SUB_STRUCT(api_restful, restful,)
+END_STRUCT
+
 // The top level.
 STRUCT(main)
 NODE_STRUCT(interface_list, interfaces, interface_list,)
@@ -504,4 +507,5 @@ SUB_STRUCT(rhizome,         rhizome,)
 SUB_STRUCT(directory,       directory,)
 SUB_STRUCT(olsr,            olsr,)
 SUB_STRUCT(host_list,       hosts,)
+SUB_STRUCT(api,             api,)
 END_STRUCT

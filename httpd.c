@@ -333,9 +333,9 @@ static int is_authorized(const struct http_client_authorization *auth)
   if (auth->scheme != BASIC)
     return 0;
   unsigned i;
-  for (i = 0; i != config.rhizome.api.restful.users.ac; ++i) {
-    if (   strcmp(config.rhizome.api.restful.users.av[i].key, auth->credentials.basic.user) == 0
-	&& strcmp(config.rhizome.api.restful.users.av[i].value.password, auth->credentials.basic.password) == 0
+  for (i = 0; i != config.api.restful.users.ac; ++i) {
+    if (   strcmp(config.api.restful.users.av[i].key, auth->credentials.basic.user) == 0
+	&& strcmp(config.api.restful.users.av[i].value.password, auth->credentials.basic.password) == 0
     )
       return 1;
   }

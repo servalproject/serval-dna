@@ -115,7 +115,7 @@ int restful_rhizome_newsince(httpd_request *r, const char *remainder)
   r->u.rhlist.rowcount = 0;
   bzero(&r->u.rhlist.cursor, sizeof r->u.rhlist.cursor);
   r->u.rhlist.cursor.rowid_since = rowid;
-  r->u.rhlist.end_time = gettime_ms() + config.rhizome.api.restful.newsince_timeout * 1000;
+  r->u.rhlist.end_time = gettime_ms() + config.api.restful.newsince_timeout * 1000;
   http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_rhizome_bundlelist_json_content);
   return 1;
 }
@@ -163,7 +163,7 @@ static int restful_rhizome_bundlelist_json_content_chunk(struct http_request *hr
 	    r->u.rhlist.phase = LIST_END;
 	    return 1;
 	  }
-	  time_ms_t wake_at = now + config.rhizome.api.restful.newsince_poll_ms;
+	  time_ms_t wake_at = now + config.api.restful.newsince_poll_ms;
 	  if (wake_at > r->u.rhlist.end_time)
 	    wake_at = r->u.rhlist.end_time;
 	  http_request_pause_response(&r->http, wake_at);
