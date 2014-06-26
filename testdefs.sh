@@ -391,6 +391,13 @@ servald_http_server_started() {
 }
 
 # Utility function:
+#  - test whether the daemon's HTTP server has started
+servald_restful_http_server_started() {
+   local logvar=LOG${1#+}
+   $GREP 'HTTP SERVER START.*port=[0-9].*services=[^ ]*\<RESTful\>' "${!logvar}"
+}
+
+# Utility function:
 #  - fetch the daemon's HTTP server port number
 get_servald_http_server_port() {
    push_and_set_instance $2 || return $?
@@ -403,6 +410,10 @@ get_servald_http_server_port() {
    fi
    pop_instance
    return 0
+}
+
+get_servald_restful_http_server_port() {
+   get_servald_http_server_port "$@"
 }
 
 # Utility function:
@@ -868,25 +879,4 @@ setup_curl() {
       ;;
    esac
    fail "cannot parse output of curl --version: $ver"
-}
-
-# Setup function:
-# - ensure that version 1.2 or later of the jq(1) utility is available
-setup_jq() {
-   local minversion="${1?}"
-   local ver="$(jq --version 2>&1)"
-   case "$ver" in
-   '')
-      fail "jq(1) command is not present"
-      ;;
-   jq\ version\ *)
-      set -- $ver
-      tfw_cmp_version "$3" "$minversion"
-      case $? in
-      0|2) return 0;;
-      esac
-      fail "jq(1) version $3 is not adequate (need $minversion or higher)"
-      ;;
-   esac
-   fail "cannot parse output of jq --version: $ver"
 }

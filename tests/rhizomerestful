@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Tests for Serval DNA HTTP RESTful interface
+# Tests for Serval DNA HTTP Rhizome RESTful interface
 #
 # Copyright 2013 Serval Project, Inc.
 #
@@ -20,73 +20,16 @@
 
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
+source "${0%/*}/../testdefs_json.sh"
 source "${0%/*}/../testdefs_rhizome.sh"
-source "${0%/*}/../testdefs_meshms.sh"
 
 shopt -s extglob
-
-assertJq() {
-   local json="$1"
-   local jqscript="$2"
-   assert --message="$jqscript" --dump-on-fail="$json" [ "$(jq "$jqscript" "$json")" = true ]
-}
-
-assertJqCmp() {
-   local opts=()
-   while [ $# -gt 0 ]; do
-      case "$1" in
-      --) shift; break;;
-      --*) opts+=("$1"); shift;;
-      *) break;;
-      esac
-   done
-   [ $# -eq 3 ] || error "invalid arguments"
-   local json="$1"
-   local jqscript="$2"
-   local file="$3"
-   jq --raw-output "$jqscript" "$json" >"$TFWTMP/jqcmp.tmp"
-   assert --dump-on-fail="$TFWTMP/jqcmp.tmp" --dump-on-fail="$file" "${opts[@]}" cmp "$TFWTMP/jqcmp.tmp" "$file"
-}
-
-assertJqIs() {
-   local opts=()
-   while [ $# -gt 0 ]; do
-      case "$1" in
-      --) shift; break;;
-      --*) opts+=("$1"); shift;;
-      *) break;;
-      esac
-   done
-   [ $# -eq 3 ] || error "invalid arguments"
-   local json="$1"
-   local jqscript="$2"
-   local text="$3"
-   local jqout="$(jq --raw-output "$jqscript" "$json")"
-   assert "${opts[@]}" [ "$jqout" = "$text" ]
-}
-
-assertJqGrep() {
-   local opts=()
-   while [ $# -gt 0 ]; do
-      case "$1" in
-      --) shift; break;;
-      --*) opts+=("$1"); shift;;
-      *) break;;
-      esac
-   done
-   [ $# -eq 3 ] || error "invalid arguments"
-   local json="$1"
-   local jqscript="$2"
-   local pattern="$3"
-   jq "$jqscript" "$json" >"$TFWTMP/jqgrep.tmp"
-   assertGrep "${opts[@]}" "$TFWTMP/jqgrep.tmp" "$pattern"
-}
 
 setup() {
    CR=''
    VT='	'
    setup_curl 7
-   setup_jq 1.3
+   setup_json
    setup_servald
    set_instance +A
    set_rhizome_config
@@ -101,8 +44,8 @@ setup() {
       create_identities $IDENTITY_COUNT
    fi
    start_servald_instances +A
-   wait_until rhizome_http_server_started +A
-   get_rhizome_server_port PORTA +A
+   wait_until servald_restful_http_server_started +A
+   get_servald_restful_http_server_port PORTA +A
 }
 
 finally() {
@@ -126,7 +69,6 @@ set_rhizome_config() {
       set debug.rhizome_manifest on \
       set debug.rhizome_store on \
       set debug.rhizome on \
-      set debug.meshms on \
       set debug.verbose on \
       set log.console.level debug
 }
@@ -210,54 +152,6 @@ add_bundles() {
       fi
       [ "${ROWID[$n]}" -gt "${ROWID_MAX:-0}" ] && ROWID_MAX=${ROWID[$n]}
    done
-}
-
-transform_list_json() {
-   # The following jq(1) incantation transforms a JSON array in from the
-   # following form (which is optimised for transmission size):
-   #     {
-   #        "header":[ "label1", "label2", "label3", ... ],
-   #        "rows":[
-   #              [  row1value1, row1value2, row1value3, ... ],
-   #              [  row2value1, row2value2, row2value3, ... ],
-   #                 ...
-   #              [  rowNvalue1, rowNvalue2, rowNvalue3, ... ]
-   #           ]
-   #     }
-   #
-   # into an array of JSON objects:
-   #     [
-   #        {
-   #           "label1": row1value1,
-   #           "label2": row1value2,
-   #           "label3": row1value3,
-   #           ...
-   #        },
-   #        {
-   #           "label1": row2value1,
-   #           "label2": row2value2,
-   #           "label3": row2value3,
-   #           ...
-   #        },
-   #        ...
-   #        {
-   #           "label1": rowNvalue1,
-   #           "label2": rowNvalue2,
-   #           "label3": rowNvalue3,
-   #           ...
-   #        }
-   #     ]
-   # which is much easier to test with jq(1) expressions.
-   jq '
-         [
-            .header as $header |
-            .rows as $rows |
-            $rows | keys | .[] as $index |
-            [ $rows[$index] as $d | $d | keys | .[] as $i | {key:$header[$i], value:$d[$i]} ] |
-            from_entries |
-            .["__index"] = $index
-         ]
-      ' "$1" >"$2"
 }
 
 doc_RhizomeList="HTTP RESTful list Rhizome bundles as JSON"
@@ -660,7 +554,7 @@ test_RhizomeInsertLarge() {
    assert cmp file1 xfile1
 }
 
-doc_RhizomeInsertMissingManifest="HTTP RESTful insert missing 'manifest' form part"
+doc_RhizomeInsertMissingManifest="HTTP RESTful insert Rhizome bundle, missing 'manifest' form part"
 setup_RhizomeInsertMissingManifest() {
    setup
    echo 'File one' >file1
@@ -682,7 +576,7 @@ test_RhizomeInsertMissingManifest() {
    assert_rhizome_list
 }
 
-doc_RhizomeInsertIncorrectManifestType="HTTP RESTful insert incorrect 'manifest' content type"
+doc_RhizomeInsertIncorrectManifestType="HTTP RESTful insert Rhizome bundle, incorrect 'manifest' content type"
 setup_RhizomeInsertIncorrectManifestType() {
    setup
    echo 'File one' >file1
@@ -705,7 +599,7 @@ test_RhizomeInsertIncorrectManifestType() {
    assert_rhizome_list
 }
 
-doc_RhizomeInsertDuplicateManifest="HTTP RESTful insert duplicate 'manifest' form part"
+doc_RhizomeInsertDuplicateManifest="HTTP RESTful insert Rhizome bundle, duplicate 'manifest' form part"
 setup_RhizomeInsertDuplicateManifest() {
    setup
    echo 'File one' >file1
@@ -731,7 +625,7 @@ test_RhizomeInsertDuplicateManifest() {
    assert_rhizome_list
 }
 
-doc_RhizomeInsertJournal="HTTP RESTful insert does not support journals"
+doc_RhizomeInsertJournal="HTTP RESTful insert Rhizome bundle does not support journals"
 setup_RhizomeInsertJournal() {
    setup
    echo 'File one' >file1
@@ -755,7 +649,7 @@ test_RhizomeInsertJournal() {
    assert_rhizome_list
 }
 
-doc_RhizomeInsertMissingPayload="HTTP RESTful insert missing 'payload' form part"
+doc_RhizomeInsertMissingPayload="HTTP RESTful insert Rhizome bundle, missing 'payload' form part"
 setup_RhizomeInsertMissingPayload() {
    setup
    echo 'File one' >file1
@@ -778,7 +672,7 @@ test_RhizomeInsertMissingPayload() {
    assert_rhizome_list
 }
 
-doc_RhizomeInsertDuplicatePayload="HTTP RESTful insert duplicate 'payload' form part"
+doc_RhizomeInsertDuplicatePayload="HTTP RESTful insert Rhizome bundle, duplicate 'payload' form part"
 setup_RhizomeInsertDuplicatePayload() {
    setup
    echo 'File one' >file1
@@ -804,7 +698,7 @@ test_RhizomeInsertDuplicatePayload() {
    assert_rhizome_list
 }
 
-doc_RhizomeInsertPartOrder="HTTP RESTful insert 'payload' form part before 'manifest'"
+doc_RhizomeInsertPartOrder="HTTP RESTful insert Rhizome bundle, 'payload' form part before 'manifest'"
 setup_RhizomeInsertPartOrder() {
    setup
    echo 'File one' >file1
@@ -828,7 +722,7 @@ test_RhizomeInsertPartOrder() {
    assert_rhizome_list
 }
 
-doc_RhizomeInsertPartUnsupported="HTTP RESTful insert unsupported form part"
+doc_RhizomeInsertPartUnsupported="HTTP RESTful insert Rhizome bundle, unsupported form part"
 setup_RhizomeInsertPartUnsupported() {
    setup
    echo 'File one' >file1
@@ -854,7 +748,7 @@ test_RhizomeInsertPartUnsupported() {
    assert_rhizome_list
 }
 
-doc_RhizomeInsertIncorrectFilesize="HTTP RESTful insert with incorrect filesize"
+doc_RhizomeInsertIncorrectFilesize="HTTP RESTful insert Rhizome bundle, incorrect filesize"
 setup_RhizomeInsertIncorrectFilesize() {
    setup
    echo 'File one' >file1
@@ -892,7 +786,7 @@ test_RhizomeInsertIncorrectFilesize() {
    assert_rhizome_list
 }
 
-doc_RhizomeInsertIncorrectFilehash="HTTP RESTful insert with incorrect filehash"
+doc_RhizomeInsertIncorrectFilehash="HTTP RESTful insert Rhizome bundle, incorrect filehash"
 setup_RhizomeInsertIncorrectFilehash() {
    setup
    echo 'File one' >file1
@@ -914,576 +808,6 @@ test_RhizomeInsertIncorrectFilehash() {
    assertJqGrep --ignore-case http.body '.http_status_message' 'payload hash.*contradicts manifest'
    executeOk_servald rhizome list
    assert_rhizome_list
-}
-
-doc_MeshmsListConversations="HTTP RESTful list MeshMS conversations as JSON"
-setup_MeshmsListConversations() {
-   IDENTITY_COUNT=5
-   setup
-   # create 3 threads, with all permutations of incoming and outgoing messages
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
-   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
-   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message3"
-   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message4"
-}
-test_MeshmsListConversations() {
-   executeOk curl \
-         --silent --fail --show-error \
-         --output conversationlist1.json \
-         --dump-header http.headers \
-         --basic --user harry:potter \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/conversationlist.json"
-   tfw_cat http.headers conversationlist1.json
-   tfw_preserve conversationlist1.json
-   assert [ "$(jq '.rows | length' conversationlist1.json)" = 3 ]
-   transform_list_json conversationlist1.json conversations1.json
-   tfw_preserve conversations1.json
-   assertJq conversations1.json \
-            "contains([
-               {  my_sid: \"$SIDA1\",
-                  their_sid: \"$SIDA2\",
-                  read: true,
-                  last_message: 0,
-                  read_offset: 0
-               }
-            ])"
-   assertJq conversations1.json \
-            "contains([
-               {  my_sid: \"$SIDA1\",
-                  their_sid: \"$SIDA3\",
-                  read: false,
-                  last_message: 11,
-                  read_offset: 0
-               }
-            ])"
-   assertJq conversations1.json \
-            "contains([
-               {  my_sid: \"$SIDA1\",
-                  their_sid: \"$SIDA4\",
-                  read: false,
-                  last_message: 14,
-                  read_offset: 0
-               }
-            ])"
-   # mark all incoming messages as read
-   executeOk_servald meshms read messages $SIDA1
-   tfw_cat --stderr
-   executeOk curl \
-         --silent --fail --show-error \
-         --output conversationlist2.json \
-         --dump-header http.headers \
-         --basic --user harry:potter \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/conversationlist.json"
-   tfw_cat http.headers conversationlist2.json
-   tfw_preserve conversationlist2.json
-   assert [ "$(jq '.rows | length' conversationlist2.json)" = 3 ]
-   transform_list_json conversationlist2.json conversations2.json
-   tfw_preserve conversations2.json
-   assertJq conversations2.json \
-            "contains([
-               {  my_sid: \"$SIDA1\",
-                  their_sid: \"$SIDA2\",
-                  read: true,
-                  last_message: 0,
-                  read_offset: 0
-               }
-            ])"
-   assertJq conversations2.json \
-            "contains([
-               {  my_sid: \"$SIDA1\",
-                  their_sid: \"$SIDA3\",
-                  read: true,
-                  last_message: 11,
-                  read_offset: 11
-               }
-            ])"
-   assertJq conversations2.json \
-            "contains([
-               {  my_sid: \"$SIDA1\",
-                  their_sid: \"$SIDA4\",
-                  read: true,
-                  last_message: 14,
-                  read_offset: 14
-               }
-            ])"
-}
-
-doc_MeshmsListMessages="HTTP RESTful list MeshMS messages in one conversation as JSON"
-setup_MeshmsListMessages() {
-   IDENTITY_COUNT=2
-   setup
-   meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<A<>><>>A<<>'
-   let NROWS=NSENT+NRECV+(NACK?1:0)
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
-   delivered_offset=$(sed -n -e '/^[0-9]\+:[0-9]\+:ACK:delivered$/{n;s/^[0-9]\+:\([0-9]\+\):>:.*/\1/p;q}' "$TFWSTDOUT")
-   [ -z "$delivered_offset" ] && delivered_offset=0
-   read_offset=$(sed -n -e 's/^[0-9]\+:\([0-9]\+\):MARK:read$/\1/p' "$TFWSTDOUT")
-   [ -z "$read_offset" ] && read_offset=0
-}
-test_MeshmsListMessages() {
-   executeOk curl \
-         --silent --fail --show-error \
-         --output messagelist.json \
-         --dump-header http.headers \
-         --basic --user harry:potter \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/$SIDA2/messagelist.json"
-   tfw_cat http.headers messagelist.json
-   tfw_preserve messagelist.json
-   assert [ "$(jq '.rows | length' messagelist.json)" = $NROWS ]
-   transform_list_json messagelist.json messages.json
-   tfw_preserve messages.json
-   seen_ack=false
-   let i=0
-   for ((j = NMESSAGE-1; j >= 0; --j)); do
-      case ${MESSAGE[$j]} in
-      'ACK') $seen_ack && continue
-      esac
-      assertJq messages.json '(.['$i'].token | length) > 0'
-      assertJq messages.json '.['$i'].my_sid == "'$SIDA1'"'
-      assertJq messages.json '.['$i'].their_sid == "'$SIDA2'"'
-      case ${MESSAGE[$j]} in
-      '>')
-         assertJq messages.json '.['$i'].type == ">"'
-         assertJqIs messages.json '.['$i'].text' "${TEXT[$j]}"
-         assertJq messages.json '.['$i'].delivered == (.['$i'].offset <= '$delivered_offset')'
-         let ++i
-         ;;
-      '<')
-         assertJq messages.json '.['$i'].type == "<"'
-         assertJqIs messages.json '.['$i'].text' "${TEXT[$j]}"
-         assertJq messages.json '.['$i'].read == (.['$i'].offset <= '$read_offset')'
-         let ++i
-         ;;
-      'ACK')
-         assertJq messages.json '.['$i'].type == "ACK"'
-         assertJq messages.json '.['$i'].text == null'
-         assertJq messages.json '.['$i'].ack_offset == '$delivered_offset
-         let ++i
-         seen_ack=true
-         ;;
-      esac
-   done
-}
-
-doc_MeshmsListMessagesNoIdentity="HTTP RESTful list MeshMS messages from unknown identity"
-setup_MeshmsListMessagesNoIdentity() {
-   setup
-   SIDX=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
-}
-test_MeshmsListMessagesNoIdentity() {
-   execute curl \
-         --silent --show-error --write-out '%{http_code}' \
-         --output http.body \
-         --dump-header http.header \
-         --basic --user harry:potter \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDX/$SIDA/messagelist.json"
-   tfw_cat http.header http.body
-   assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
-   assertJq http.body 'contains({"meshms_status_code": 2})'
-   assertJqGrep --ignore-case http.body '.http_status_message' 'identity.*unknown'
-}
-
-doc_MeshmsListMessagesNewSince="HTTP RESTful list MeshMS messages in one conversation since token as JSON"
-setup_MeshmsListMessagesNewSince() {
-   IDENTITY_COUNT=2
-   set_extra_config() {
-      executeOk_servald config set rhizome.api.restful.newsince_timeout 1s \
-                               set rhizome.api.restful.newsince_poll_ms 500
-   }
-   setup
-   meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<A<>><>>A<<>'
-   let NROWS=NSENT+NRECV+(NACK?1:0)
-   executeOk curl \
-         --silent --fail --show-error \
-         --output messagelist.json \
-         --dump-header http.headers \
-         --basic --user harry:potter \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/$SIDA2/messagelist.json"
-   assert [ "$(jq '.rows | length' messagelist.json)" = $NROWS ]
-   transform_list_json messagelist.json messages.json
-   tfw_preserve messages.json
-   for ((i = 0; i < NROWS; i += 3)); do
-      token[$i]=$(jq --raw-output '.['$i'].token' messages.json)
-   done
-}
-test_MeshmsListMessagesNewSince() {
-   for ((i = 0; i < NROWS; i += 3)); do
-      # At most five requests going at once
-      [ $i -ge 15 ] && fork_wait %curl$((i-15))
-      fork %curl$i executeOk curl \
-            --silent --fail --show-error \
-            --output messagelist$i.json \
-            --dump-header http.headers$i \
-            --basic --user harry:potter \
-            "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/$SIDA2/newsince/${token[$i]}/messagelist.json"
-   done
-   fork_wait_all
-   for ((i = 0; i < NROWS; i += 3)); do
-      transform_list_json messagelist$i.json messages$i.json
-      tfw_preserve messages$i.json
-      { echo '{"a":'; cat messages.json; echo ',"b":'; cat messages$i.json; echo '}'; } >tmp.json
-      assertJq tmp.json '.a[:'$i'] == .b'
-   done
-}
-
-grepall() {
-   local pattern="$1"
-   shift
-   for file; do
-      grep "$pattern" "$file" || return $?
-   done
-   return 0
-}
-
-doc_MeshmsListMessagesNewSinceArrival="HTTP RESTful list newly arriving MeshMS messages in one conversation as JSON"
-setup_MeshmsListMessagesNewSinceArrival() {
-   IDENTITY_COUNT=2
-   set_extra_config() {
-      executeOk_servald config set rhizome.api.restful.newsince_timeout 60s \
-                               set rhizome.api.restful.newsince_poll_ms 500
-   }
-   setup
-   meshms_add_messages $SIDA1 $SIDA2 '><>A>'
-   let NROWS=NSENT+NRECV+(NACK?1:0)
-   executeOk curl \
-         --silent --fail --show-error \
-         --output messagelist.json \
-         --dump-header http.headers \
-         --basic --user harry:potter \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/$SIDA2/messagelist.json"
-   assert [ "$(jq '.rows | length' messagelist.json)" = $NROWS ]
-   transform_list_json messagelist.json messages.json
-   tfw_preserve messages.json
-   token=$(jq --raw-output '.[0].token' messages.json)
-   assert [ -n "$token" ]
-}
-test_MeshmsListMessagesNewSinceArrival() {
-   for i in 1 2 3; do
-      fork %curl$i executeOk curl \
-            --silent --fail --show-error \
-            --no-buffer \
-            --output newsince$i.json \
-            --basic --user harry:potter \
-            "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/$SIDA2/newsince/$token/messagelist.json"
-   done
-   wait_until [ -e newsince1.json -a -e newsince2.json -a -e newsince3.json ]
-   for message in '>Rumplestiltskin' 'A' '<Howdydoody' '>Eulenspiegel'; do
-      meshms_add_messages $SIDA1 $SIDA2 "${message:0:1}" "${message:1}"
-      wait_until --timeout=60 grepall "${message:1}" newsince{1,2,3}.json
-   done
-   fork_terminate_all
-   fork_wait_all
-}
-teardown_MeshmsListMessagesNewSinceArrival() {
-   tfw_preserve newsince{1,2,3}.json
-   teardown
-}
-
-doc_MeshmsSend="HTTP RESTful send MeshMS message"
-setup_MeshmsSend() {
-   IDENTITY_COUNT=2
-   setup
-}
-test_MeshmsSend() {
-   executeOk curl \
-         --silent --fail --show-error \
-         --output sendmessage.json \
-         --basic --user harry:potter \
-         --form "message=Hello World;type=text/plain;charset=utf-8" \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/$SIDA2/sendmessage"
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutGrep --matches=1 ':>:Hello World'
-   executeOk curl \
-         --silent --fail --show-error \
-         --output sendmessage.json \
-         --basic --user ron:weasley \
-         --form "message=Hello back!;type=text/plain;charset=utf-8" \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutGrep --matches=1 ':>:Hello World$'
-   assertStdoutGrep --matches=1 ':<:Hello back!$'
-}
-
-doc_MeshmsSendMissingMessage="HTTP RESTful MeshMS send missing 'message' form part"
-setup_MeshmsSendMissingMessage() {
-   IDENTITY_COUNT=2
-   setup
-}
-test_MeshmsSendMissingMessage() {
-   execute curl \
-         --silent --show-error --write-out '%{http_code}' \
-         --output http.body \
-         --dump-header http.header \
-         --basic --user harry:potter \
-         --data '' \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
-   tfw_cat http.header http.body
-   assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
-   assertJqGrep --ignore-case http.body '.http_status_message' 'missing.*message.*form.*part'
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutLineCount '==' 2
-}
-
-doc_MeshmsSendDuplicateMessage="HTTP RESTful MeshMS send duplicate 'message' form parts"
-setup_MeshmsSendDuplicateMessage() {
-   IDENTITY_COUNT=2
-   setup
-}
-test_MeshmsSendDuplicateMessage() {
-   execute curl \
-         --silent --show-error --write-out '%{http_code}' \
-         --output http.body \
-         --dump-header http.header \
-         --basic --user harry:potter \
-         --form "message=Hello one;type=text/plain;charset=utf-8" \
-         --form "message=Hello two;type=text/plain;charset=utf-8" \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
-   tfw_cat http.header http.body
-   assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
-   assertJqGrep --ignore-case http.body '.http_status_message' 'duplicate.*message.*form.*part'
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutLineCount '==' 2
-}
-
-doc_MeshmsSendMessageMissingContentType="HTTP RESTful MeshMS send 'message' form part missing Content-Type"
-setup_MeshmsSendMessageMissingContentType() {
-   IDENTITY_COUNT=2
-   setup
-}
-test_MeshmsSendMessageMissingContentType() {
-   execute curl \
-         --silent --show-error --write-out '%{http_code}' \
-         --output http.body \
-         --dump-header http.header \
-         --basic --user harry:potter \
-         --form "message=Hello there" \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
-   tfw_cat http.header http.body
-   assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
-   assertJqGrep --ignore-case http.body '.http_status_message' 'missing.*content.*type'
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutLineCount '==' 2
-}
-
-doc_MeshmsSendMessageUnsupportedContentType="HTTP RESTful MeshMS send 'message' form part unsupported Content-Type"
-setup_MeshmsSendMessageUnsupportedContentType() {
-   IDENTITY_COUNT=2
-   setup
-}
-test_MeshmsSendMessageUnsupportedContentType() {
-   execute curl \
-         --silent --show-error --write-out '%{http_code}' \
-         --output http.body \
-         --dump-header http.header \
-         --basic --user harry:potter \
-         --form "message=Hello there;type=text/rich" \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
-   tfw_cat http.header http.body
-   assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
-   assertJqGrep --ignore-case http.body '.http_status_message' 'unsupported.*content.*type'
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutLineCount '==' 2
-}
-
-doc_MeshmsSendMessageMissingCharset="HTTP RESTful MeshMS send 'message' form part missing charset"
-setup_MeshmsSendMessageMissingCharset() {
-   IDENTITY_COUNT=2
-   setup
-}
-test_MeshmsSendMessageMissingCharset() {
-   execute curl \
-         --silent --show-error --write-out '%{http_code}' \
-         --output http.body \
-         --dump-header http.header \
-         --basic --user harry:potter \
-         --form "message=Hello there;type=text/plain" \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
-   tfw_cat http.header http.body
-   assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
-   assertJqGrep --ignore-case http.body '.http_status_message' 'missing.*charset'
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutLineCount '==' 2
-}
-
-doc_MeshmsSendMessageUnsupportedCharset="HTTP RESTful MeshMS send 'message' form part unsupported charset"
-setup_MeshmsSendMessageUnsupportedCharset() {
-   IDENTITY_COUNT=2
-   setup
-}
-test_MeshmsSendMessageUnsupportedCharset() {
-   execute curl \
-         --silent --show-error --write-out '%{http_code}' \
-         --output http.body \
-         --dump-header http.header \
-         --basic --user harry:potter \
-         --form "message=Hello there;type=text/plain;charset=latin-1" \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
-   tfw_cat http.header http.body
-   assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
-   assertJqGrep --ignore-case http.body '.http_status_message' 'unsupported.*charset'
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutLineCount '==' 2
-}
-
-doc_MeshmsSendNoIdentity="HTTP RESTful MeshMS send from unknown identity"
-setup_MeshmsSendNoIdentity() {
-   setup
-   SIDX=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
-}
-test_MeshmsSendNoIdentity() {
-   execute curl \
-         --silent --show-error --write-out '%{http_code}' \
-         --output http.body \
-         --dump-header http.header \
-         --basic --user harry:potter \
-         --form "message=Hello;type=text/plain;charset=utf-8" \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDX/$SIDA/sendmessage"
-   tfw_cat http.header http.body
-   assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
-   assertJq http.body 'contains({"meshms_status_code": 2})'
-   assertJqGrep --ignore-case http.body '.http_status_message' 'identity.*unknown'
-}
-
-doc_MeshmsReadAllConversations="HTTP RESTful MeshMS mark all conversations read"
-setup_MeshmsReadAllConversations() {
-   IDENTITY_COUNT=5
-   setup
-   # create 3 threads, with all permutations of incoming and outgoing messages
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
-   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
-   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message3"
-   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message4"
-   executeOk_servald meshms list conversations $SIDA1
-   assertStdoutGrep --stderr --matches=1 ":$SIDA2::0:0\$"
-   assertStdoutGrep --stderr --matches=1 ":$SIDA3:unread:11:0\$"
-   assertStdoutGrep --stderr --matches=1 ":$SIDA4:unread:14:0\$"
-}
-test_MeshmsReadAllConversations() {
-   executeOk curl \
-         --silent --show-error --write-out '%{http_code}' \
-         --output http_body \
-         --basic --user harry:potter \
-         --request POST \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/readall"
-   tfw_cat http_body
-   assertExitStatus == 0
-   assertStdoutIs 201
-   executeOk_servald meshms list conversations $SIDA1
-   assertStdoutGrep --stderr --matches=1 ":$SIDA2::0:0\$"
-   assertStdoutGrep --stderr --matches=1 ":$SIDA3::11:11\$"
-   assertStdoutGrep --stderr --matches=1 ":$SIDA4::14:14\$"
-}
-
-doc_MeshmsPostSpuriousContent="HTTP RESTful MeshMS rejects unwanted content in POST request"
-setup_MeshmsPostSpuriousContent() {
-   IDENTITY_COUNT=2
-   setup
-   # create 3 threads, with all permutations of incoming and outgoing messages
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
-   executeOk_servald meshms send message $SIDA2 $SIDA1 "Message2"
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message3"
-   executeOk_servald meshms send message $SIDA2 $SIDA1 "Message4"
-   executeOk_servald meshms list conversations $SIDA1
-   assertStdoutGrep --stderr --matches=1 ":$SIDA2:unread:29:0\$"
-}
-test_MeshmsPostSpuriousContent() {
-   executeOk curl \
-         --silent --show-error --write-out '%{http_code}' \
-         --output http_body \
-         --basic --user harry:potter \
-         --request POST \
-         --form "offset=0" \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/readall"
-   tfw_cat http_body
-   assertExitStatus == 0
-   assertStdoutIs 400
-   assertJq http_body 'contains({"http_status_code": 400})'
-   assertJqGrep --ignore-case http_body '.http_status_message' 'content length'
-   executeOk_servald meshms list conversations $SIDA1
-   assertStdoutGrep --stderr --matches=1 ":$SIDA2:unread:29:0\$"
-}
-
-doc_MeshmsReadAllMessages="HTTP RESTful MeshMS mark all conversations read"
-setup_MeshmsReadAllMessages() {
-   IDENTITY_COUNT=5
-   setup
-   # create 3 threads, with all permutations of incoming and outgoing messages
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
-   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message3"
-   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message4"
-   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message5"
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message6"
-   executeOk_servald meshms list conversations $SIDA2
-   assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:33:0\$"
-}
-test_MeshmsReadAllMessages() {
-   executeOk curl \
-         --silent --show-error --write-out '%{http_code}' \
-         --output http_body \
-         --basic --user harry:potter \
-         --request POST \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/readall"
-   tfw_cat http_body
-   assertExitStatus == 0
-   assertStdoutIs 201
-   executeOk_servald meshms list conversations $SIDA2
-   assertStdoutGrep --stderr --matches=1 ":$SIDA1::33:33\$"
-}
-
-doc_MeshmsReadMessage="HTTP RESTful MeshMS mark a message as read"
-setup_MeshmsReadMessage() {
-   IDENTITY_COUNT=5
-   setup
-   # create 3 threads, with all permutations of incoming and outgoing messages
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message1"
-   executeOk_servald meshms send message $SIDA3 $SIDA1 "Message2"
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message3"
-   executeOk_servald meshms send message $SIDA1 $SIDA4 "Message4"
-   executeOk_servald meshms send message $SIDA4 $SIDA1 "Message5"
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message6"
-   executeOk_servald meshms list conversations $SIDA2
-   assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:33:0\$"
-}
-test_MeshmsReadMessage() {
-   executeOk curl \
-         --silent --show-error --write-out '%{http_code}' \
-         --output http_body \
-         --basic --user harry:potter \
-         --request POST \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/recv/22/read"
-   tfw_cat http_body
-   assertExitStatus == 0
-   assertStdoutIs 201
-   executeOk_servald meshms list conversations $SIDA2
-   assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:33:22\$"
-   executeOk curl \
-         --silent --show-error --write-out '%{http_code}' \
-         --output read.json \
-         --basic --user harry:potter \
-         --request POST \
-         "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/recv/11/read"
-   tfw_cat read.json
-   assertExitStatus == 0
-   assertStdoutIs 200
-   executeOk_servald meshms list conversations $SIDA2
-   assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:33:22\$"
 }
 
 runTests "$@"
