@@ -425,7 +425,7 @@ bundle_received_by() {
             fi
          done
          restart=true
-         pop_instance
+         tfw_nolog pop_instance
          ;;
       --stderr)
          for ((i = 0; i < ${#bundles[*]}; ++i)); do

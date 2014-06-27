@@ -735,7 +735,7 @@ int rhizome_payload_content(struct http_request *hr, unsigned char *buf, size_t 
   assert(r->u.read_state.offset < r->u.read_state.length);
   uint64_t remain = r->u.read_state.length - r->u.read_state.offset;
   size_t readlen = bufsz;
-  if (remain < bufsz)
+  if (remain <= bufsz)
     readlen = remain;
   else
     readlen &= ~(blocksz - 1);
