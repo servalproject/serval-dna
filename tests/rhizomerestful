@@ -115,50 +115,11 @@ teardown_AuthBasicWrong() {
    teardown
 }
 
-add_bundles() {
-   local encrypted=false
-   case "$1" in
-   --encrypted) encrypted=true; shift;;
-   esac
-   local n
-   for ((n = $1; n <= $2; ++n)); do
-      create_file file$n $((1000 + $n))
-      if $encrypted; then
-         echo "crypt=1" >file$n.manifest
-      fi
-      executeOk_servald rhizome add file $SIDA file$n file$n.manifest
-      extract_stdout_manifestid BID[$n]
-      extract_stdout_version VERSION[$n]
-      extract_stdout_filesize SIZE[$n]
-      extract_stdout_filehash HASH[$n]
-      extract_stdout_date DATE[$n]
-      extract_stdout_BK BK[$n]
-      extract_stdout_rowid ROWID[$n]
-      extract_stdout_author AUTHOR[$n]
-      extract_stdout_secret SECRET[$n]
-      extract_stdout_inserttime INSERTTIME[$n]
-      NAME[$n]=file$n
-      if $encrypted; then
-         extract_stdout_crypt CRYPT[$n]
-         assert [ "${CRYPT[$n]}" = 1 ]
-      else
-         CRYPT[$n]=
-      fi
-      executeOk_servald rhizome export file ${HASH[$n]} raw$n
-      if $encrypted; then
-         assert ! cmp file$n raw$n
-      else
-         assert cmp file$n raw$n
-      fi
-      [ "${ROWID[$n]}" -gt "${ROWID_MAX:-0}" ] && ROWID_MAX=${ROWID[$n]}
-   done
-}
-
 doc_RhizomeList="HTTP RESTful list Rhizome bundles as JSON"
 setup_RhizomeList() {
    setup
    NBUNDLES=100
-   add_bundles 0 $((NBUNDLES-1))
+   rhizome_add_bundles $SIDA 0 $((NBUNDLES-1))
    assert [ "$ROWID_MAX" -ge "$NBUNDLES" ]
 }
 test_RhizomeList() {
@@ -205,7 +166,7 @@ setup_RhizomeNewSince() {
                                set api.restful.newsince_poll_ms 500
    }
    setup
-   add_bundles 0 5
+   rhizome_add_bundles $SIDA 0 5
    executeOk curl \
          --silent --fail --show-error \
          --output bundlelist.json \
@@ -227,7 +188,7 @@ test_RhizomeNewSince() {
             "http://$addr_localhost:$PORTA/restful/rhizome/newsince/$token/bundlelist.json"
    done
    wait_until [ -e newsince1.json -a -e newsince2.json -a -e newsince3.json ]
-   add_bundles 6 10
+   rhizome_add_bundles $SIDA 6 10
    for i in 1 2 3; do
       wait_until --timeout=10 grep "${BID[10]}" newsince$i.json
    done
@@ -282,7 +243,7 @@ assert_http_response_headers() {
 doc_RhizomeManifest="HTTP RESTful fetch Rhizome manifest"
 setup_RhizomeManifest() {
    setup
-   add_bundles 0 2
+   rhizome_add_bundles $SIDA 0 2
 }
 test_RhizomeManifest() {
    for n in 0 1 2; do
@@ -304,8 +265,8 @@ test_RhizomeManifest() {
 doc_RhizomePayloadRaw="HTTP RESTful fetch Rhizome raw payload"
 setup_RhizomePayloadRaw() {
    setup
-   add_bundles 0 1
-   add_bundles --encrypted 2 3
+   rhizome_add_bundles $SIDA 0 1
+   rhizome_add_bundles --encrypted $SIDA 2 3
 }
 test_RhizomePayloadRaw() {
    for n in 0 1 2 3; do
@@ -326,8 +287,8 @@ test_RhizomePayloadRaw() {
 doc_RhizomePayloadDecrypted="HTTP RESTful fetch Rhizome decrypted payload"
 setup_RhizomePayloadDecrypted() {
    setup
-   add_bundles 0 1
-   add_bundles --encrypted 2 3
+   rhizome_add_bundles $SIDA 0 1
+   rhizome_add_bundles --encrypted $SIDA 2 3
 }
 test_RhizomePayloadDecrypted() {
    for n in 0 1 2 3; do

@@ -1,5 +1,5 @@
 # Common definitions for Rhizome test suites.
-# Copyright 2012 Serval Project Inc.
+# Copyright 2012-2014 Serval Project Inc.
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -509,5 +509,46 @@ assert_rhizome_received() {
          executeOk_servald rhizome extract file "$_id" extracted
          assert cmp "$name" extracted
       fi
+   done
+}
+
+rhizome_add_bundles() {
+   local encrypted=false
+   case "$1" in
+   --encrypted) encrypted=true; shift;;
+   esac
+   local SID="${1?}"
+   shift
+   local n
+   for ((n = $1; n <= $2; ++n)); do
+      create_file file$n $((1000 + $n))
+      if $encrypted; then
+         echo "crypt=1" >file$n.manifest
+      fi
+      executeOk_servald rhizome add file $SID file$n file$n.manifest
+      extract_stdout_manifestid BID[$n]
+      extract_stdout_version VERSION[$n]
+      extract_stdout_filesize SIZE[$n]
+      extract_stdout_filehash HASH[$n]
+      extract_stdout_date DATE[$n]
+      extract_stdout_BK BK[$n]
+      extract_stdout_rowid ROWID[$n]
+      extract_stdout_author AUTHOR[$n]
+      extract_stdout_secret SECRET[$n]
+      extract_stdout_inserttime INSERTTIME[$n]
+      NAME[$n]=file$n
+      if $encrypted; then
+         extract_stdout_crypt CRYPT[$n]
+         assert [ "${CRYPT[$n]}" = 1 ]
+      else
+         CRYPT[$n]=
+      fi
+      executeOk_servald rhizome export file ${HASH[$n]} raw$n
+      if $encrypted; then
+         assert ! cmp file$n raw$n
+      else
+         assert cmp file$n raw$n
+      fi
+      [ "${ROWID[$n]}" -gt "${ROWID_MAX:-0}" ] && ROWID_MAX=${ROWID[$n]}
    done
 }
