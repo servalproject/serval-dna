@@ -99,13 +99,13 @@ Options:
 "
 }
 
-# Internal utility for setting shopt variables and restoring their original
+# Utility functions for setting shopt variables and restoring their original
 # value:
 #     local oo
-#     _tfw_shopt oo -s extglob -u extdebug
+#     tfw_shopt oo -s extglob -u extdebug
 #     ...
-#     _tfw_shopt_restore oo
-_tfw_shopt() {
+#     tfw_shopt_restore oo
+tfw_shopt() {
    local _var="$1"
    shift
    local op=s
@@ -125,7 +125,7 @@ _tfw_shopt() {
    done
    eval $_var='"$restore"'
 }
-_tfw_shopt_restore() {
+tfw_shopt_restore() {
    local _var="$1"
    [ -n "${!_var}" ] && eval "${!_var}"
 }
@@ -138,7 +138,7 @@ declare -a _tfw_forked_pids=()
 declare -a _tfw_forked_labels=()
 
 # The rest of this file is parsed for extended glob patterns.
-_tfw_shopt _tfw_orig_shopt -s extglob
+tfw_shopt _tfw_orig_shopt -s extglob
 
 includeTests() {
    local arg
@@ -190,7 +190,7 @@ runTests() {
    local allargs="$*"
    local -a filters=()
    local oo
-   _tfw_shopt oo -s extglob
+   tfw_shopt oo -s extglob
    while [ $# -ne 0 ]; do
       case "$1" in
       -h|--help) usage; exit 0;;
@@ -242,7 +242,7 @@ runTests() {
       esac
       shift
    done
-   _tfw_shopt_restore oo
+   tfw_shopt_restore oo
    if $_tfw_verbose && [ $_tfw_njobs -ne 1 ]; then
       _tfw_fatal "--verbose is incompatible with --jobs=$_tfw_njobs"
    fi
@@ -967,7 +967,7 @@ _tfw_getopts() {
    _tfw_opt_grepopts=()
    _tfw_getopts_shift=0
    local oo
-   _tfw_shopt oo -s extglob
+   tfw_shopt oo -s extglob
    while [ $# -ne 0 ]; do
       case "$context:$1" in
       *:--stdout) _tfw_dump_on_fail --stdout;;
@@ -1014,29 +1014,29 @@ _tfw_getopts() {
       [ -z "$_tfw_executable" ] && _tfw_error "missing executable argument"
       ;;
    esac
-   _tfw_shopt_restore oo
+   tfw_shopt_restore oo
    return 0
 }
 
 _tfw_is_uint() {
    local oo
-   _tfw_shopt oo -s extglob
+   tfw_shopt oo -s extglob
    local ret=1
    case "$1" in
    +([0-9])) ret=0;;
    esac
-   _tfw_shopt_restore oo
+   tfw_shopt_restore oo
    return $ret
 }
 
 _tfw_is_float() {
    local oo
-   _tfw_shopt oo -s extglob
+   tfw_shopt oo -s extglob
    local ret=1
    case "$1" in
    @(+([0-9])?(.+([0-9]))|*([0-9]).+([0-9]))) ret=0;;
    esac
-   _tfw_shopt_restore oo
+   tfw_shopt_restore oo
    return $ret
 }
 
@@ -1173,7 +1173,7 @@ _tfw_assert_grep() {
       local ret=0
       local info="$matches match"$([ $matches -ne 1 ] && echo "es")
       local oo
-      _tfw_shopt oo -s extglob
+      tfw_shopt oo -s extglob
       case "$_tfw_opt_matches" in
       '')
          done=true
@@ -1231,7 +1231,7 @@ _tfw_assert_grep() {
          _tfw_error "unsupported value for --matches=$_tfw_opt_matches"
          ret=$?
       fi
-      _tfw_shopt_restore oo
+      tfw_shopt_restore oo
    fi
    if [ $ret -ne 0 ]; then
       _tfw_backtrace
@@ -1310,7 +1310,7 @@ _tfw_unpack_words() {
 _tfw_find_tests() {
    (
       local oo
-      _tfw_shopt oo -s extdebug
+      tfw_shopt oo -s extdebug
       local func
       for func in $(builtin declare -F | $SED -n -e '/^declare -f test_[A-Za-z]/s/^declare -f //p'); do
          local funcname
@@ -1337,7 +1337,7 @@ _tfw_find_tests() {
             echo $lineno $number $name "$path"
          done
       done
-      _tfw_shopt_restore oo
+      tfw_shopt_restore oo
    ) | sort -n -k1 -k2 | $SED -e 's/^[0-9][0-9]* [0-9][0-9]* //'
 }
 
@@ -1369,7 +1369,7 @@ _tfw_filter_predicate() {
    local -a filters=("$@")
    local ret=1
    local oo
-   _tfw_shopt oo -s extglob
+   tfw_shopt oo -s extglob
    if [ ${#filters[*]} -eq 0 ]; then
       ret=0
    else
@@ -1425,7 +1425,7 @@ _tfw_filter_predicate() {
          esac
       done
    fi
-   _tfw_shopt_restore oo
+   tfw_shopt_restore oo
    return $ret
 }
 
@@ -1966,7 +1966,7 @@ fork_wait_all() {
 
 _tfw_set_forklabel() {
    local oo
-   _tfw_shopt oo -s extglob
+   tfw_shopt oo -s extglob
    local ret=1
    case "$1" in
    '%'+([[A-Za-z0-9]))
@@ -1979,7 +1979,7 @@ _tfw_set_forklabel() {
       ret=0
       ;;
    esac
-   _tfw_shopt_restore oo
+   tfw_shopt_restore oo
    return $ret
 }
 
@@ -2191,4 +2191,4 @@ escape_grep_extended() {
 }
 
 # Restore the caller's shopt preferences before returning.
-_tfw_shopt_restore _tfw_orig_shopt
+tfw_shopt_restore _tfw_orig_shopt
