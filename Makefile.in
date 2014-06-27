@@ -64,7 +64,7 @@ DEFS=	@DEFS@
 
 .PHONY: all test clean
 
-all:	servald libmonitorclient.so libmonitorclient.a test
+all:	servald libserval.so libmonitorclient.so libmonitorclient.a test
 
 test:   tfw_createfile directory_service fakeradio config_test simulator
 
@@ -196,8 +196,6 @@ copyright:
 findPATH = $(firstword $(wildcard $(addsuffix /$(1),$(subst :, ,$(PATH)))))
 COPYRIGHT_TOOL := $(call findPATH,sp-copyright-tool)
 
-# This does not build on 64 bit elf platforms as NaCL isn't built with -fPIC
-# DOC 20120615
 libserval.so: $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
 	@$(CC) -Wall -shared -o $@ $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
