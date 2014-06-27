@@ -131,6 +131,20 @@ public class JSONTokeniser {
 		ALLOW_NULL
 	};
 
+	public static boolean supportsNarrowTo(Class cls) {
+		return cls == Boolean.class
+			|| cls == Integer.class
+			|| cls == Long.class
+			|| cls == Float.class
+			|| cls == Double.class
+			|| cls == String.class;
+	}
+
+	public static Object narrow(Object tok, Narrow opts) throws UnexpectedException
+	{
+		return narrow(tok, Object.class, opts);
+	}
+
 	public static <T> T narrow(Object tok, Class<T> cls) throws UnexpectedException
 	{
 		return narrow(tok, cls, Narrow.NO_NULL);

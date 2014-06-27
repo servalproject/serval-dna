@@ -34,6 +34,8 @@ import org.servalproject.codec.Base64;
 import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.ServalDCommand;
 import org.servalproject.servaldna.ServalDInterfaceException;
+import org.servalproject.servaldna.rhizome.RhizomeCommon;
+import org.servalproject.servaldna.rhizome.RhizomeBundleList;
 import org.servalproject.servaldna.meshms.MeshMSCommon;
 import org.servalproject.servaldna.meshms.MeshMSConversationList;
 import org.servalproject.servaldna.meshms.MeshMSMessageList;
@@ -56,6 +58,13 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 		this.httpPort = httpPort;
 		this.restfulUsername = restfulUsername;
 		this.restfulPassword = restfulPassword;
+	}
+
+	public RhizomeBundleList rhizomeListBundles() throws ServalDInterfaceException, IOException
+	{
+		RhizomeBundleList list = new RhizomeBundleList(this);
+		list.connect();
+		return list;
 	}
 
 	public MeshMSConversationList meshmsListConversations(SubscriberId sid) throws ServalDInterfaceException, IOException, MeshMSException
