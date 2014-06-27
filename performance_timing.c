@@ -104,10 +104,12 @@ struct profile_total *sort(struct profile_total *list){
   
   // split the list into two sub-lists based on the time of the first entry
   while(list){
-    if (list->total_time > first->total_time){
+    if (list->total_time > first->total_time || 
+      (list->total_time == first->total_time && list->calls > first->calls)){
       if (left_tail){
 	left_tail->_next = list;
-	if (list->total_time > left_tail->total_time)
+	if (list->total_time > left_tail->total_time || 
+	  (list->total_time == left_tail->total_time && list->calls > left_tail->calls))
 	  left_already_sorted = 0;
       }else
 	left_head=list;
@@ -115,7 +117,8 @@ struct profile_total *sort(struct profile_total *list){
     }else{
       if (right_tail){
 	right_tail->_next = list;
-	if (list->total_time > right_tail->total_time)
+	if (list->total_time > right_tail->total_time ||
+	  (list->total_time == right_tail->total_time && list->calls > right_tail->calls))
 	  right_already_sorted = 0;
       }else
 	right_head=list;
