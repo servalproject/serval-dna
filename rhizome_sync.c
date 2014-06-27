@@ -58,7 +58,7 @@ struct rhizome_sync
   time_ms_t last_response;
   time_ms_t last_new_bundle;
   // a short list of BAR's we are interested in from the last parsed message
-  struct bar_entry bars[CACHE_BARS];
+  struct bar_entry *bars;
   // how many bars are we interested in?
   int bar_count;
 };
@@ -161,6 +161,11 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
       if (i<state->bar_count)
         state->bars[i] = state->bars[state->bar_count];
       state->bars_skipped++;
+      
+      if (state->bar_count==0){
+	free(state->bars);
+	state->bars=NULL;
+      }
     }
     
     requests++;
@@ -216,6 +221,10 @@ static int sync_bundle_inserted(struct subscriber *subscriber, void *context)
       state->bar_count --;
       if (i<state->bar_count)
         state->bars[i] = state->bars[state->bar_count];
+      if (state->bar_count==0){
+	free(state->bars);
+	state->bars=NULL;
+      }
     }
   }
 
@@ -235,6 +244,12 @@ static int sync_cache_bar(struct rhizome_sync *state, const rhizome_bar_t *bar, 
     return 0;
   // check the database before adding the BAR to the list
   if (token!=0 && rhizome_is_bar_interesting(bar)!=0){
+    if (!state->bars){
+      state->bars = emalloc(sizeof(struct bar_entry) * CACHE_BARS);
+      if (!state->bars)
+	return -1;
+    }
+    
     state->bars[state->bar_count].bar = *bar;
     state->bars[state->bar_count].next_request = gettime_ms();
     state->bars[state->bar_count].tries = MAX_TRIES;
@@ -329,13 +344,19 @@ static void sync_process_bar_list(struct subscriber *subscriber, struct rhizome_
     // TODO stop if we are taking too much CPU time.
     int added=0;
     for (i=mid_point; i<bar_count; i++){
-      if (sync_cache_bar(state, bars[i], bar_tokens[i]))
+      int r=sync_cache_bar(state, bars[i], bar_tokens[i]);
+      if (r==-1)
+	return;
+      if (r==1)
 	added=1;
     }
     for (i=mid_point -1; i>=0; i--){
       if (state->bar_count >= MAX_OLD_BARS)
 	break;
-      if (sync_cache_bar(state, bars[i], bar_tokens[i]))
+      int r=sync_cache_bar(state, bars[i], bar_tokens[i]);
+      if (r==-1)
+	return;
+      if (r==1)
 	added=1;
     }
     if (config.debug.rhizome)
