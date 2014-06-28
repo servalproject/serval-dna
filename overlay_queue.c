@@ -143,7 +143,7 @@ int overlay_queue_remaining(int queue){
   return overlay_tx[queue].maxLength - overlay_tx[queue].length;
 }
 
-int _overlay_payload_enqueue(struct __sourceloc whence, struct overlay_frame *p)
+int _overlay_payload_enqueue(struct __sourceloc __whence, struct overlay_frame *p)
 {
   /* Add payload p to queue q.
    
@@ -156,7 +156,7 @@ int _overlay_payload_enqueue(struct __sourceloc whence, struct overlay_frame *p)
   assert(p != NULL);
   assert(p->queue < OQ_MAX);
   assert(p->payload != NULL);
-  p->whence = whence;
+  p->whence = __whence;
   overlay_txqueue *queue = &overlay_tx[p->queue];
 
   if (config.debug.packettx)
@@ -379,6 +379,17 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	frame->packet_version = frame->next_hop->max_packet_version;
     }
     
+    if (frame->mdp_sequence == -1){
+      frame->mdp_sequence = mdp_sequence = (mdp_sequence+1)&0xFFFF;
+    }else if(((mdp_sequence - frame->mdp_sequence)&0xFFFF) >= 64){
+      // too late, we've sent too many packets for the next hop to correctly de-duplicate
+      if (config.debug.overlayframes)
+        DEBUGF("Retransmition of frame %p mdp seq %d, is too late to be de-duplicated", 
+	  frame, frame->mdp_sequence);
+      frame = overlay_queue_remove(queue, frame);
+      continue;
+    }
+    
     int destination_index=-1;
     {
       int i;
@@ -449,17 +460,6 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
         frame = overlay_queue_remove(queue, frame);
         continue;
       }
-    }
-
-    if (frame->mdp_sequence == -1){
-      frame->mdp_sequence = mdp_sequence = (mdp_sequence+1)&0xFFFF;
-    }else if(((mdp_sequence - frame->mdp_sequence)&0xFFFF) >= 64){
-      // too late, we've sent too many packets for the next hop to correctly de-duplicate
-      if (config.debug.overlayframes)
-        DEBUGF("Retransmition of frame %p mdp seq %d, is too late to be de-duplicated", 
-	  frame, frame->mdp_sequence);
-      frame = overlay_queue_remove(queue, frame);
-      continue;
     }
     
     char will_retransmit=1;
@@ -548,7 +548,7 @@ static void overlay_send_packet(struct sched_ent *UNUSED(alarm))
   struct outgoing_packet packet;
   bzero(&packet, sizeof(struct outgoing_packet));
   packet.seq=-1;
-  strbuf debug = config.debug.overlayframes?strbuf_alloca(256):NULL;
+  strbuf debug = config.debug.packets_sent?strbuf_alloca(256):NULL;
   overlay_fill_send_packet(&packet, gettime_ms(), debug);
 }
 
@@ -558,7 +558,7 @@ int overlay_send_tick_packet(struct network_destination *destination)
   bzero(&packet, sizeof(struct outgoing_packet));
   if (overlay_init_packet(&packet, 0, destination) != -1){
     strbuf debug = NULL;
-    if (config.debug.overlayframes){
+    if (config.debug.packets_sent){
       debug = strbuf_alloca(256);
       strbuf_sprintf(debug, "building packet %s %s %d [", 
 	packet.destination->interface->name, 
