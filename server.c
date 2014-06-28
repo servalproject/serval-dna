@@ -393,6 +393,8 @@ void cf_on_config_change()
   if (config.rhizome.enable){
     rhizome_opendb();
     RESCHEDULE(&ALARM_STRUCT(rhizome_clean_db), now + 30*60*1000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
+    if (config.debug.rhizome)
+      RESCHEDULE(&ALARM_STRUCT(rhizome_fetch_status), now + 3000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
   }else if(rhizome_db){
     rhizome_close_db();
   }

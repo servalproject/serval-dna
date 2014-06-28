@@ -610,6 +610,7 @@ void rhizome_list_release(struct rhizome_list_cursor *);
 
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct socket_address *addr, const struct subscriber *peer);
 rhizome_manifest * rhizome_fetch_search(const unsigned char *id, int prefix_length);
+int rhizome_fetch_bar_queued(const rhizome_bar_t *bar);
 
 /* Rhizome file storage api */
 struct rhizome_write_buffer
@@ -835,7 +836,7 @@ int rhizome_cache_close();
 int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t version, rhizome_filehash_t *hashp);
 
 int overlay_mdp_service_rhizome_sync(struct internal_mdp_header *header, struct overlay_buffer *payload);
-int rhizome_sync_bundle_inserted(const unsigned char *bar);
+void rhizome_sync_status();
 
 DECLARE_ALARM(rhizome_fetch_status);
 #endif //__SERVAL_DNA__RHIZOME_H

@@ -311,10 +311,8 @@ next:
     if (log2_size!=0xFF && rhizome_fetch_has_queue_space(log2_size)!=1)
       continue;
 
-    uint64_t version = rhizome_bar_version(bar);
     // are we already fetching this bundle [or later]?
-    rhizome_manifest *m=rhizome_fetch_search(rhizome_bar_prefix(bar), RHIZOME_BAR_PREFIX_BYTES);
-    if (m && m->version >= version)
+    if (rhizome_fetch_bar_queued(bar))
       continue;
 
     bar_count++;

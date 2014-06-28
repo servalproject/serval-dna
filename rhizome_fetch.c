@@ -155,8 +155,10 @@ static const char * fetch_state(int state)
 DEFINE_ALARM(rhizome_fetch_status);
 void rhizome_fetch_status(struct sched_ent *alarm)
 {
+  if (!config.debug.rhizome)
+    return;
+    
   unsigned i;
-  DEBUGF("==== Fetch status");
   for(i=0;i<NQUEUES;i++){
     struct rhizome_fetch_queue *q=&rhizome_fetch_queues[i];
     unsigned candidates=0;
@@ -177,7 +179,7 @@ void rhizome_fetch_status(struct sched_ent *alarm)
       q->active.state==RHIZOME_FETCH_FREE?0:q->active.write_state.file_offset,
       q->active.manifest?q->active.manifest->filesize:0);
   }
-  
+  rhizome_sync_status();
   time_ms_t now = gettime_ms();
   RESCHEDULE(alarm, now + 3000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
 }
@@ -293,6 +295,17 @@ rhizome_manifest * rhizome_fetch_search(const unsigned char *id, int prefix_leng
   if (c)
     return c->manifest;
   return NULL;
+}
+
+int rhizome_fetch_bar_queued(const rhizome_bar_t *bar)
+{
+  const uint8_t *prefix = rhizome_bar_prefix(bar);
+  uint64_t version = rhizome_bar_version(bar);
+  
+  rhizome_manifest *m=rhizome_fetch_search(prefix, RHIZOME_BAR_PREFIX_BYTES);
+  if (m && m->version >= version)
+    return 1;
+  return 0;
 }
 
 /* Insert a candidate into a given queue at a given position.  All candidates succeeding the given
