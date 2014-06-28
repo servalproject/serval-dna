@@ -1787,15 +1787,14 @@ static int is_interesting(const char *id_hex, uint64_t version)
     RETURN(-1);
   if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
     const char *q_filehash = (const char *) sqlite3_column_text(statement, 0);
-    ret=0;
     if (q_filehash && *q_filehash) {
       rhizome_filehash_t hash;
       if (str_to_rhizome_filehash_t(&hash, q_filehash) == -1) {
 	WARNF("invalid field MANIFESTS.filehash=%s -- ignored", alloca_str_toprint(q_filehash));
-	ret = 1;
-      } else if (!rhizome_exists(&hash))
-	ret = 1;
-    }
+      } else if (rhizome_exists(&hash))
+	ret=0;
+    }else
+      ret=0;
   }
   sqlite3_finalize(statement);
   RETURN(ret);
@@ -1804,7 +1803,10 @@ static int is_interesting(const char *id_hex, uint64_t version)
 
 int rhizome_is_bar_interesting(const rhizome_bar_t *bar)
 {
-  return is_interesting(alloca_tohex_rhizome_bar_prefix(bar), rhizome_bar_version(bar));
+  char id_hex[RHIZOME_BAR_PREFIX_BYTES *2 + 2];
+  tohex(id_hex, RHIZOME_BAR_PREFIX_BYTES * 2, rhizome_bar_prefix(bar));
+  strcat(id_hex, "%");
+  return is_interesting(id_hex, rhizome_bar_version(bar));
 }
 
 int rhizome_is_manifest_interesting(rhizome_manifest *m)
