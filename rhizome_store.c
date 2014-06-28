@@ -327,12 +327,8 @@ enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, cons
       return status;
   }
   
-  time_ms_t now = gettime_ms();
-  static uint64_t last_id=0;
-  write->temp_id = now;
-  if (write->temp_id < last_id)
-    write->temp_id = last_id + 1;
-  last_id = write->temp_id;
+  static unsigned id=0;
+  write->temp_id = (getpid()<<16) + id++;
   
   write->file_length = file_length;
   write->file_offset = 0;
@@ -346,7 +342,7 @@ enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, cons
  * */
 
 // encrypt and hash data, data buffers must be passed in file order.
-static int prepare_data(struct rhizome_write *write_state, unsigned char *buffer, size_t data_size)
+static int prepare_data(struct rhizome_write *write_state, uint8_t *buffer, size_t data_size)
 {
   if (data_size <= 0)
     return WHY("No content supplied");
@@ -415,7 +411,7 @@ fail:
 }
 
 // write data to disk
-static int write_data(struct rhizome_write *write_state, uint64_t file_offset, const unsigned char *buffer, size_t data_size)
+static int write_data(struct rhizome_write *write_state, uint64_t file_offset, uint8_t *buffer, size_t data_size)
 {
   if (config.debug.rhizome_store)
     DEBUGF("write_state->file_length=%"PRIu64" file_offset=%"PRIu64, write_state->file_length, file_offset);
@@ -470,13 +466,16 @@ static int write_release_lock(struct rhizome_write *write_state)
 
 // Write data buffers in any order, the data will be cached and streamed into the database in file order. 
 // Though there is an upper bound on the amount of cached data
-int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, unsigned char *buffer, size_t data_size)
+int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, uint8_t *buffer, size_t data_size)
 {
   if (config.debug.rhizome_store)
     DEBUGF("write_state->file_length=%"PRIu64" offset=%"PRIu64, write_state->file_length, offset);
   if (   write_state->file_length != RHIZOME_SIZE_UNSET
-      && offset + data_size > write_state->file_length
-  )
+      && offset >= write_state->file_length)
+    return 0;
+    
+  if (   write_state->file_length != RHIZOME_SIZE_UNSET
+      && offset + data_size > write_state->file_length)
     data_size = write_state->file_length - offset;
   
   struct rhizome_write_buffer **ptr = &write_state->buffer_list;
@@ -514,7 +513,6 @@ int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, uns
 	ret=-1;
 	break;
       }
-      continue;
     }
     
     // if existing data should be written, do so now
@@ -545,17 +543,9 @@ int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, uns
       buffer+=delta;
     }
     
+    // no new data? we can just stop now.
     if (data_size<=0)
       break;
-    
-    // can we process the incoming data block now?
-    if (data_size>0 && offset == write_state->file_offset){
-      if (prepare_data(write_state, buffer, data_size)){
-	ret=-1;
-	break;
-      }
-      continue;
-    }
     
     if (!*ptr || offset < (*ptr)->offset){
       // found the insert position in the list
@@ -565,6 +555,14 @@ int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, uns
       if (*ptr && offset+size > (*ptr)->offset)
 	size = (*ptr)->offset - offset;
 	
+      // should we process the incoming data block now?
+      if (offset == write_state->file_offset){
+	if (prepare_data(write_state, buffer, size)){
+	  ret=-1;
+	  break;
+	}
+      }
+      
       if (should_write && offset == write_state->written_offset){
 	if (write_get_lock(write_state)){
 	  ret=-1;
@@ -612,7 +610,7 @@ int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, uns
   return ret;
 }
 
-int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffer, size_t data_size)
+int rhizome_write_buffer(struct rhizome_write *write_state, uint8_t *buffer, size_t data_size)
 {
   return rhizome_random_write(write_state, write_state->file_offset, buffer, data_size);
 }
@@ -704,12 +702,12 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
     }
   }
   
-  assert(write->file_offset <= write->file_length);
   if (write->file_offset < write->file_length) {
     WHYF("Only wrote %"PRIu64" bytes, expected %"PRIu64, write->file_offset, write->file_length);
     status = RHIZOME_PAYLOAD_STATUS_WRONG_SIZE;
     goto failure;
   }
+  assert(write->file_offset == write->file_length);
   
   if (write->file_length==0){
     // whoops, no payload, don't store anything
@@ -865,7 +863,7 @@ enum rhizome_payload_status rhizome_import_payload_from_file(rhizome_manifest *m
 }
 
 // store a whole payload from a single buffer
-enum rhizome_payload_status rhizome_import_buffer(rhizome_manifest *m, unsigned char *buffer, size_t length)
+enum rhizome_payload_status rhizome_import_buffer(rhizome_manifest *m, uint8_t *buffer, size_t length)
 {
   assert(m->filesize != RHIZOME_SIZE_UNSET);
   if (m->filesize == 0)
@@ -1018,16 +1016,18 @@ enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const r
   read->id = *hashp;
   read->blob_rowid = 0;
   read->blob_fd = -1;
-  if (sqlite_exec_uint64(&read->blob_rowid,
-      "SELECT FILEBLOBS.rowid "
-      "FROM FILEBLOBS, FILES "
-      "WHERE FILEBLOBS.id = FILES.id"
-      " AND FILES.id = ?"
-      " AND FILES.datavalid != 0", RHIZOME_FILEHASH_T, &read->id, END) == -1)
+  
+  if (sqlite_exec_uint64(&read->length,"SELECT length FROM FILES WHERE id = ?", 
+    RHIZOME_FILEHASH_T, &read->id, END) == -1)
     return RHIZOME_PAYLOAD_STATUS_ERROR;
-  if (read->blob_rowid != 0) {
-    read->length = RHIZOME_SIZE_UNSET; // discover the length on opening the db BLOB
-  } else {
+  
+  if (sqlite_exec_uint64(&read->blob_rowid,
+      "SELECT rowid "
+      "FROM FILEBLOBS "
+      "WHERE id = ?", RHIZOME_FILEHASH_T, &read->id, END) == -1)
+    return RHIZOME_PAYLOAD_STATUS_ERROR;
+  
+  if (read->blob_rowid == 0) {
     // No row in FILEBLOBS, look for an external blob file.
     char blob_path[1024];
     if (!FORMF_RHIZOME_STORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, alloca_tohex_rhizome_filehash_t(read->id)))
@@ -1049,7 +1049,10 @@ enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const r
       WHYF_perror("lseek64(%s,0,SEEK_END)", alloca_str_toprint(blob_path));
       return RHIZOME_PAYLOAD_STATUS_ERROR;
     }
-    read->length = pos;
+    if (read->length != (uint64_t)pos){
+      WHYF("Length mismatch");
+      return RHIZOME_PAYLOAD_STATUS_ERROR;
+    }
     if (config.debug.rhizome_store)
       DEBUGF("Opened stored file %s as fd %d, len %"PRIx64, blob_path, read->blob_fd, read->length);
   }
@@ -1080,8 +1083,7 @@ static ssize_t rhizome_read_retry(sqlite_retry_state *retry, struct rhizome_read
   if (sqlite_blob_open_retry(retry, "main", "FILEBLOBS", "data", read_state->blob_rowid, 0 /* read only */, &blob) == -1)
     RETURN(WHY("blob open failed"));
   assert(blob != NULL);
-  if (read_state->length == RHIZOME_SIZE_UNSET)
-    read_state->length = sqlite3_blob_bytes(blob);
+  assert(read_state->length == (uint64_t)sqlite3_blob_bytes(blob));
   // A NULL buffer skips the actual sqlite3_blob_read() call, which is useful just to work out
   // the length.
   size_t bytes_read = 0;
@@ -1582,7 +1584,7 @@ enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *wri
   return status;
 }
 
-enum rhizome_payload_status rhizome_append_journal_buffer(rhizome_manifest *m, uint64_t advance_by, unsigned char *buffer, size_t len)
+enum rhizome_payload_status rhizome_append_journal_buffer(rhizome_manifest *m, uint64_t advance_by, uint8_t *buffer, size_t len)
 {
   struct rhizome_write write;
   bzero(&write, sizeof write);

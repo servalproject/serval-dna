@@ -803,19 +803,19 @@ int rhizome_fetch_has_queue_space(unsigned char log2_size);
 
 int rhizome_exists(const rhizome_filehash_t *hashp);
 enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *expectedHashp, uint64_t file_length);
-int rhizome_write_buffer(struct rhizome_write *write_state, unsigned char *buffer, size_t data_size);
-int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, unsigned char *buffer, size_t data_size);
+int rhizome_write_buffer(struct rhizome_write *write_state, uint8_t *buffer, size_t data_size);
+int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, uint8_t *buffer, size_t data_size);
 enum rhizome_payload_status rhizome_write_open_manifest(struct rhizome_write *write, rhizome_manifest *m);
 int rhizome_write_file(struct rhizome_write *write, const char *filename);
 void rhizome_fail_write(struct rhizome_write *write);
 enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write);
 enum rhizome_payload_status rhizome_import_payload_from_file(rhizome_manifest *m, const char *filepath);
-enum rhizome_payload_status rhizome_import_buffer(rhizome_manifest *m, unsigned char *buffer, size_t length);
+enum rhizome_payload_status rhizome_import_buffer(rhizome_manifest *m, uint8_t *buffer, size_t length);
 enum rhizome_payload_status rhizome_stat_payload_file(rhizome_manifest *m, const char *filepath);
 enum rhizome_payload_status rhizome_store_payload_file(rhizome_manifest *m, const char *filepath);
 int rhizome_derive_payload_key(rhizome_manifest *m);
 
-enum rhizome_payload_status rhizome_append_journal_buffer(rhizome_manifest *m, uint64_t advance_by, unsigned char *buffer, size_t len);
+enum rhizome_payload_status rhizome_append_journal_buffer(rhizome_manifest *m, uint64_t advance_by, uint8_t *buffer, size_t len);
 enum rhizome_payload_status rhizome_append_journal_file(rhizome_manifest *m, uint64_t advance_by, const char *filename);
 enum rhizome_payload_status rhizome_journal_pipe(struct rhizome_write *write, const rhizome_filehash_t *hashp, uint64_t start_offset, uint64_t length);
 
