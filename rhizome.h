@@ -837,4 +837,5 @@ int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t versio
 int overlay_mdp_service_rhizome_sync(struct internal_mdp_header *header, struct overlay_buffer *payload);
 int rhizome_sync_bundle_inserted(const unsigned char *bar);
 
+DECLARE_ALARM(rhizome_fetch_status);
 #endif //__SERVAL_DNA__RHIZOME_H

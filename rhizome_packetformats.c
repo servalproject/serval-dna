@@ -269,21 +269,6 @@ int overlay_rhizome_saw_advertisements(struct decode_context *context, struct ov
       assert(m->version == summ.version);
       assert(m->manifest_body_bytes == summ.body_len);
       
-      // are we already fetching this bundle [or later]?
-      rhizome_manifest *mf=rhizome_fetch_search(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary);
-      if (mf && mf->version >= m->version)
-	goto next;
-	
-      if (!rhizome_is_manifest_interesting(m)) {
-	/* We already have this version or newer */
-	if (config.debug.rhizome_ads)
-	  DEBUG("We already have that manifest or newer.");
-	goto next;
-      }
-
-      if (config.debug.rhizome_ads)
-	DEBUG("Not seen before.");
-
       // start the fetch process!
       rhizome_suggest_queue_manifest_import(m, &httpaddr, f->source);
       // the above function will free the manifest structure, make sure we don't free it again
