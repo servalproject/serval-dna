@@ -9,7 +9,6 @@ SERVAL_CLIENT_SOURCES = \
 	console.c \
 	dataformats.c \
 	fdqueue.c \
-	fifo.c \
         instance.c \
 	limit.c \
 	logMessage.c \
