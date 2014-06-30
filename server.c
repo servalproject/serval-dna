@@ -169,8 +169,10 @@ int server()
    * if the code reaches here, the check has been done recently.
    */
   server_unlink_pid();
-  serverMode = 0;
-  RETURN(0);
+  
+  // note that we haven't tried to free all types of allocated memory used by the server.
+  // so it's safer to force this process to close, instead of trying to release everything.
+  exit(0);
   OUT();
 }
 
