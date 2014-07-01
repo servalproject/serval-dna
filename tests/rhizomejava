@@ -117,24 +117,55 @@ test_RhizomeList() {
    let lnum=NBUNDLES
    for ((n = 0; n != NBUNDLES; ++n)); do
       line="$(sed -n -e ${lnum}p "$TFWSTDOUT")"
-      unset_vars_with_prefix X__
-      unpack_vars X__ "$line"
+      unset_vars_with_prefix XX_
+      unpack_vars XX_ "$line"
       if [ "${ROWID[$n]}" -eq "$ROWID_MAX" ]; then
          # The first row must contain a non-null token string.
-         assert [ -n "$X____token" ]
+         assert [ -n "$XX__token" ]
          assert [ "$lnum" -eq 1 ]
       fi
-      assert [ "$X__name" = "file$n" ]
-      assert [ "$X__service" = "file" ]
-      assert [ "$X__id" = "${BID[$n]}" ]
-      assert [ "$X__version" = "${VERSION[$n]}" ]
-      assert [ "$X__filesize" = "${SIZE[$n]}" ]
-      assert [ "$X__filehash" = "${HASH[$n]}" ]
-      assert [ "$X__date" = "${DATE[$n]}" ]
-      assert [ "$X___id" = "${ROWID[$n]}" ]
-      assert [ "$X____fromhere" = "1" ]
-      assert [ "$X____author" = "$SIDA1" ]
+      assert [ "$XX_id" = "${BID[$n]}" ]
+      assert [ "$XX_version" = "${VERSION[$n]}" ]
+      assert [ "$XX_filesize" = "${SIZE[$n]}" ]
+      assert [ "$XX_filehash" = "${HASH[$n]}" ]
+      assert [ "$XX_date" = "${DATE[$n]}" ]
+      assert [ "$XX_service" = "file" ]
+      assert [ "$XX_name" = "file$n" ]
+      assert [ "$XX__rowId" = "${ROWID[$n]}" ]
+      assert [ "$XX__fromHere" = "1" ]
+      assert [ "$XX__author" = "$SIDA1" ]
+      assert [ "$XX__insertTime" = "${INSERTTIME[$n]}" ]
       let --lnum
+   done
+}
+
+assert_metadata() {
+   local n=$1
+   assertStdoutGrep --matches=1 "^id=${BID[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^version=${VERSION[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^filesize=${SIZE[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^filehash=${HASH[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^BK=${BK[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^date=${DATE[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^name=${NAME[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^service=file$CR\$"
+   assertStdoutGrep --matches=1 "^_insertTime=${INSERTTIME[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^_author=${AUTHOR[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^_secret=${SECRET[$n]}$CR\$"
+}
+
+doc_RhizomeManifest="Java API fetch Rhizome manifest"
+setup_RhizomeManifest() {
+   setup
+   rhizome_add_bundles $SIDA1 0 2
+}
+test_RhizomeManifest() {
+   for n in 0 1 2; do
+      executeJavaOk org.servalproject.test.Rhizome rhizome-manifest ${BID[$n]} bundle$n.rhm
+      tfw_cat --stdout --stderr
+      assert_metadata $n
+      tfw_cat -v file$n.manifest -v bundle$n.rhm
+      assert diff file$n.manifest bundle$n.rhm
    done
 }
 

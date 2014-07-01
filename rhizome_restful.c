@@ -595,13 +595,17 @@ int restful_rhizome_(httpd_request *r, const char *remainder)
   if ((r->manifest = rhizome_new_manifest()) == NULL)
     return 500;
   ret = rhizome_retrieve_manifest(&bid, r->manifest);
-  if (ret == -1)
+  if (ret == -1) {
+    rhizome_manifest_free(r->manifest);
+    r->manifest = NULL;
     return 500;
+  }
   if (ret == 0) {
     rhizome_authenticate_author(r->manifest);
     r->http.render_extra_headers = render_manifest_headers;
   } else {
-    assert(r->manifest == NULL);
+    rhizome_manifest_free(r->manifest);
+    r->manifest = NULL;
     assert(r->http.render_extra_headers == NULL);
   }
   ret = handler(r, remainder);

@@ -21,14 +21,33 @@
 package org.servalproject.test;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.FileOutputStream;
 import org.servalproject.servaldna.ServalDClient;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.ServerControl;
-import org.servalproject.servaldna.SubscriberId;
-import org.servalproject.servaldna.rhizome.RhizomeBundle;
+import org.servalproject.servaldna.BundleId;
+import org.servalproject.servaldna.rhizome.RhizomeManifest;
+import org.servalproject.servaldna.rhizome.RhizomeListBundle;
 import org.servalproject.servaldna.rhizome.RhizomeBundleList;
+import org.servalproject.servaldna.rhizome.RhizomeManifestBundle;
 
 public class Rhizome {
+
+	static String manifestFields(RhizomeManifest manifest, String sep)
+	{
+		return	"id=" + manifest.id + sep +
+				"version=" + manifest.version + sep +
+				"filesize=" + manifest.filesize + sep +
+				"filehash=" + manifest.filehash + sep +
+				"sender=" + manifest.sender + sep +
+				"recipient=" + manifest.recipient + sep +
+				"date=" + manifest.date + sep +
+				"service=" + manifest.service + sep +
+				"name=" + manifest.name + sep +
+				"BK=" + manifest.BK;
+	}
 
 	static void rhizome_list() throws ServalDInterfaceException, IOException, InterruptedException
 	{
@@ -36,30 +55,38 @@ public class Rhizome {
 		RhizomeBundleList list = null;
 		try {
 			list = client.rhizomeListBundles();
-			RhizomeBundle bundle;
+			RhizomeListBundle bundle;
 			while ((bundle = list.nextBundle()) != null) {
 				System.out.println(
-					"_id=" + bundle._id +
-					", .token=" + bundle._token +
-					", service=" + bundle.service +
-					", id=" + bundle.id +
-					", version=" + bundle.version +
-					", date=" + bundle.date +
-					", .inserttime=" + bundle._inserttime +
-					", .author=" + bundle._author +
-					", .fromhere=" + bundle._fromhere +
-					", filesize=" + bundle.filesize +
-					", filehash=" + bundle.filehash +
-					", sender=" + bundle.sender +
-					", recipient=" + bundle.recipient +
-					", name=" + bundle.name
-				);
+						"_rowId=" + bundle.rowId +
+						", _token=" + bundle.token +
+						", _insertTime=" + bundle.insertTime +
+						", _author=" + bundle.author +
+						", _fromHere=" + bundle.fromHere +
+						", " + manifestFields(bundle.manifest, ", ")
+					);
 			}
 		}
 		finally {
 			if (list != null)
 				list.close();
 		}
+		System.exit(0);
+	}
+
+	static void rhizome_manifest(BundleId bid, String dstpath) throws ServalDInterfaceException, IOException, InterruptedException
+	{
+		ServalDClient client = new ServerControl().getRestfulClient();
+		RhizomeManifestBundle bundle = client.rhizomeManifest(bid);
+		System.out.println(
+				"_insertTime=" + bundle.insertTime + "\n" +
+				"_author=" + bundle.author + "\n" +
+				"_secret=" + bundle.secret + "\n" +
+				manifestFields(bundle.manifest, "\n") + "\n"
+			);
+		FileOutputStream out = new FileOutputStream(dstpath);
+		out.write(bundle.manifestText());
+		out.close();
 		System.exit(0);
 	}
 
@@ -71,6 +98,8 @@ public class Rhizome {
 		try {
 			if (methodName.equals("rhizome-list"))
 				rhizome_list();
+			else if (methodName.equals("rhizome-manifest"))
+				rhizome_manifest(new BundleId(args[1]), args[2]);
 		} catch (Exception e) {
 			e.printStackTrace();
 			System.exit(1);

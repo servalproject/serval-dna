@@ -20,15 +20,47 @@
 
 package org.servalproject.servaldna.rhizome;
 
+import java.lang.reflect.InvocationTargetException;
+import java.util.Map;
+import java.util.List;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
-import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.json.JSONTokeniser;
 import org.servalproject.json.JSONInputException;
+import org.servalproject.servaldna.BundleId;
+import org.servalproject.servaldna.SubscriberId;
+import org.servalproject.servaldna.BundleSecret;
+import org.servalproject.servaldna.ServalDHttpConnectionFactory;
+import org.servalproject.servaldna.ServalDInterfaceException;
+import org.servalproject.servaldna.ServalDFailureException;
 
 public class RhizomeCommon
 {
+
+	protected static InputStream receiveResponse(HttpURLConnection conn, int expected_response_code) throws IOException, ServalDInterfaceException
+	{
+		int[] expected_response_codes = { expected_response_code };
+		return receiveResponse(conn, expected_response_codes);
+	}
+
+	protected static InputStream receiveResponse(HttpURLConnection conn, int[] expected_response_codes) throws IOException, ServalDInterfaceException
+	{
+		for (int code: expected_response_codes) {
+			if (conn.getResponseCode() == code)
+				return conn.getInputStream();
+		}
+		if (!conn.getContentType().equals("application/json"))
+			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
+		if (conn.getResponseCode() == HttpURLConnection.HTTP_FORBIDDEN) {
+			JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getErrorStream(), "US-ASCII"));
+			Status status = decodeRestfulStatus(json);
+			throw new ServalDInterfaceException("unexpected Rhizome failure, \"" + status.message + "\"");
+		}
+		throw new ServalDInterfaceException("unexpected HTTP response code: " + conn.getResponseCode());
+	}
+
 	protected static JSONTokeniser receiveRestfulResponse(HttpURLConnection conn, int expected_response_code) throws IOException, ServalDInterfaceException
 	{
 		int[] expected_response_codes = { expected_response_code };
@@ -37,20 +69,10 @@ public class RhizomeCommon
 
 	protected static JSONTokeniser receiveRestfulResponse(HttpURLConnection conn, int[] expected_response_codes) throws IOException, ServalDInterfaceException
 	{
+		InputStream in = receiveResponse(conn, expected_response_codes);
 		if (!conn.getContentType().equals("application/json"))
 			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
-		if (conn.getResponseCode() == HttpURLConnection.HTTP_FORBIDDEN) {
-			JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getErrorStream(), "US-ASCII"));
-			Status status = decodeRestfulStatus(json);
-			throw new ServalDInterfaceException("unexpected Rhizome failure, \"" + status.message + "\"");
-		}
-		for (int code: expected_response_codes) {
-			if (conn.getResponseCode() == code) {
-				JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getInputStream(), "US-ASCII"));
-				return json;
-			}
-		}
-		throw new ServalDInterfaceException("unexpected HTTP response code: " + conn.getResponseCode());
+		return new JSONTokeniser(new InputStreamReader(in, "US-ASCII"));
 	}
 
 	private static class Status {
@@ -75,6 +97,81 @@ public class RhizomeCommon
 		}
 		catch (JSONInputException e) {
 			throw new ServalDInterfaceException("malformed JSON status response", e);
+		}
+	}
+
+	public static RhizomeManifestBundle rhizomeManifest(ServalDHttpConnectionFactory connector, BundleId bid) throws IOException, ServalDInterfaceException
+	{
+		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/rhizome/" + bid.toHex() + ".rhm");
+		conn.connect();
+		InputStream in = RhizomeCommon.receiveResponse(conn, HttpURLConnection.HTTP_OK);
+		if (!conn.getContentType().equals("rhizome-manifest/text"))
+			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
+		RhizomeManifest manifest;
+		try {
+			manifest = RhizomeManifest.fromTextFormat(in);
+		}
+		catch (RhizomeManifestParseException e) {
+			throw new ServalDInterfaceException("malformed manifest from daemon", e);
+		}
+		finally {
+			in.close();
+		}
+		Map<String,List<String>> headers = conn.getHeaderFields();
+		for (Map.Entry<String,List<String>> e: headers.entrySet()) {
+			for (String v: e.getValue()) {
+				System.err.println("received header " + e.getKey() + ": " + v);
+			}
+		}
+		long insertTime = headerUnsignedLong(conn, "Serval-Rhizome-Bundle-Inserttime");
+		SubscriberId author = header(conn, "Serval-Rhizome-Bundle-Author", SubscriberId.class);
+		BundleSecret secret = header(conn, "Serval-Rhizome-Bundle-Secret", BundleSecret.class);
+		return new RhizomeManifestBundle(manifest, insertTime, author, secret);
+	}
+
+	private static String headerString(HttpURLConnection conn, String header) throws ServalDInterfaceException
+	{
+		String str = conn.getHeaderField(header);
+		if (str == null)
+			throw new ServalDInterfaceException("missing header field: " + header);
+		return str;
+	}
+
+	private static int headerInteger(HttpURLConnection conn, String header) throws ServalDInterfaceException
+	{
+		String str = headerString(conn, header);
+		try {
+			return Integer.parseInt(str);
+		}
+		catch (NumberFormatException e) {
+		}
+		throw new ServalDInterfaceException("invalid header field: " + header + ": " + str);
+	}
+
+	private static long headerUnsignedLong(HttpURLConnection conn, String header) throws ServalDInterfaceException
+	{
+		String str = headerString(conn, header);
+		try {
+			long value = Long.parseLong(str);
+			if (value >= 0)
+				return value;
+		}
+		catch (NumberFormatException e) {
+		}
+		throw new ServalDInterfaceException("invalid header field: " + header + ": " + str);
+	}
+
+	private static <T> T header(HttpURLConnection conn, String header, Class<T> cls) throws ServalDInterfaceException
+	{
+		String str = headerString(conn, header);
+		try {
+			return (T) cls.getConstructor(String.class).newInstance(str);
+		}
+		catch (InvocationTargetException e) {
+			throw new ServalDInterfaceException("invalid header field: " + header + ": " + str, e.getTargetException());
+		}
+		catch (Exception e) {
+			throw new ServalDInterfaceException("invalid header field: " + header + ": " + str, e);
 		}
 	}
 

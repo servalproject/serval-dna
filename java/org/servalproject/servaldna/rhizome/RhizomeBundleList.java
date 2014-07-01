@@ -89,7 +89,7 @@ public class RhizomeBundleList {
 		}
 	}
 
-	public RhizomeBundle nextBundle() throws ServalDInterfaceException, IOException
+	public RhizomeListBundle nextBundle() throws ServalDInterfaceException, IOException
 	{
 		try {
 			Object tok = json.nextToken();
@@ -103,22 +103,26 @@ public class RhizomeBundleList {
 			else
 				json.pushToken(tok);
 			Map<String,Object> row = table.consumeRowArray(json);
-			return new RhizomeBundle(
-				rowCount++,
-				(int)row.get("_id"),
-				(String)row.get(".token"),
-				(String)row.get("service"),
-				(BundleId)row.get("id"),
-				(long)row.get("version"),
-				(long)row.get("date"),
-				(long)row.get(".inserttime"),
-				(SubscriberId)row.get(".author"),
-				(int)row.get(".fromhere"),
-				(long)row.get("filesize"),
-				(FileHash)row.get("filehash"),
-				(SubscriberId)row.get("sender"),
-				(SubscriberId)row.get("recipient"),
-				(String)row.get("name"));
+			return new RhizomeListBundle(
+					new RhizomeManifest((BundleId)row.get("id"),
+										(long)row.get("version"),
+										(long)row.get("filesize"),
+										(FileHash)row.get("filehash"),
+										(SubscriberId)row.get("sender"),
+										(SubscriberId)row.get("recipient"),
+										null, // BK
+										null, // crypt
+										null, // tail
+										(long)row.get("date"),
+										(String)row.get("service"),
+										(String)row.get("name")),
+					rowCount++,
+					(int)row.get("_id"),
+					(String)row.get(".token"),
+					(long)row.get(".inserttime"),
+					(SubscriberId)row.get(".author"),
+					(int)row.get(".fromhere")
+				);
 		}
 		catch (JSONInputException e) {
 			throw new ServalDInterfaceException(e);
