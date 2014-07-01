@@ -161,11 +161,26 @@ setup_RhizomeManifest() {
 }
 test_RhizomeManifest() {
    for n in 0 1 2; do
-      executeJavaOk org.servalproject.test.Rhizome rhizome-manifest ${BID[$n]} bundle$n.rhm
+      executeJavaOk org.servalproject.test.Rhizome rhizome-manifest "${BID[$n]}" bundle$n.rhm
       tfw_cat --stdout --stderr
       assert_metadata $n
       tfw_cat -v file$n.manifest -v bundle$n.rhm
       assert diff file$n.manifest bundle$n.rhm
+   done
+}
+
+doc_RhizomePayloadRaw="Java API fetch Rhizome raw payload"
+setup_RhizomePayloadRaw() {
+   setup
+   rhizome_add_bundles $SIDA1 0 1
+   rhizome_add_bundles --encrypted $SIDA1 2 3
+}
+test_RhizomePayloadRaw() {
+   for n in 0 1 2 3; do
+      executeJavaOk org.servalproject.test.Rhizome rhizome-payload-raw "${BID[$n]}" raw.bin$n
+      tfw_cat --stdout --stderr
+      assert_metadata $n
+      assert cmp raw$n raw.bin$n
    done
 }
 

@@ -38,6 +38,7 @@ import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.rhizome.RhizomeCommon;
 import org.servalproject.servaldna.rhizome.RhizomeBundleList;
 import org.servalproject.servaldna.rhizome.RhizomeManifestBundle;
+import org.servalproject.servaldna.rhizome.RhizomePayloadRawBundle;
 import org.servalproject.servaldna.meshms.MeshMSCommon;
 import org.servalproject.servaldna.meshms.MeshMSConversationList;
 import org.servalproject.servaldna.meshms.MeshMSMessageList;
@@ -72,6 +73,11 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 	public RhizomeManifestBundle rhizomeManifest(BundleId bid) throws ServalDInterfaceException, IOException
 	{
 		return RhizomeCommon.rhizomeManifest(this, bid);
+	}
+
+	public RhizomePayloadRawBundle rhizomePayloadRaw(BundleId bid) throws ServalDInterfaceException, IOException
+	{
+		return RhizomeCommon.rhizomePayloadRaw(this, bid);
 	}
 
 	public MeshMSConversationList meshmsListConversations(SubscriberId sid) throws ServalDInterfaceException, IOException, MeshMSException

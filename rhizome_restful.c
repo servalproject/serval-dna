@@ -764,8 +764,24 @@ static void render_manifest_headers(struct http_request *hr, strbuf sb)
   strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Filesize: %"PRIu64"\r\n", m->filesize);
   if (m->filesize != 0)
     strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Filehash: %s\r\n", alloca_tohex_rhizome_filehash_t(m->filehash));
+  if (m->has_sender)
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Sender: %s\r\n", alloca_tohex_sid_t(m->sender));
+  if (m->has_recipient)
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Recipient: %s\r\n", alloca_tohex_sid_t(m->recipient));
   if (m->has_bundle_key)
     strbuf_sprintf(sb, "Serval-Rhizome-Bundle-BK: %s\r\n", alloca_tohex_rhizome_bk_t(m->bundle_key));
+  switch (m->payloadEncryption) {
+    case PAYLOAD_CRYPT_UNKNOWN:
+      break;
+    case PAYLOAD_CLEAR:
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Crypt: 0\r\n");
+      break;
+    case PAYLOAD_ENCRYPTED:
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Crypt: 1\r\n");
+      break;
+  }
+  if (m->is_journal)
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Tail: %"PRIu64"\r\n", m->tail);
   if (m->has_date)
     strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Date: %"PRIu64"\r\n", m->date);
   if (m->name) {

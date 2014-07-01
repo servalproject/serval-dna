@@ -20,16 +20,20 @@
 
 package org.servalproject.servaldna.rhizome;
 
+import java.lang.StringBuilder;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Map;
 import java.util.List;
 import java.io.IOException;
+import java.io.PrintStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import org.servalproject.json.JSONTokeniser;
 import org.servalproject.json.JSONInputException;
 import org.servalproject.servaldna.BundleId;
+import org.servalproject.servaldna.FileHash;
+import org.servalproject.servaldna.BundleKey;
 import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.BundleSecret;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
@@ -117,16 +121,50 @@ public class RhizomeCommon
 		finally {
 			in.close();
 		}
-		Map<String,List<String>> headers = conn.getHeaderFields();
-		for (Map.Entry<String,List<String>> e: headers.entrySet()) {
-			for (String v: e.getValue()) {
-				System.err.println("received header " + e.getKey() + ": " + v);
-			}
-		}
+		dumpHeaders(conn, System.err);
 		long insertTime = headerUnsignedLong(conn, "Serval-Rhizome-Bundle-Inserttime");
 		SubscriberId author = header(conn, "Serval-Rhizome-Bundle-Author", SubscriberId.class);
 		BundleSecret secret = header(conn, "Serval-Rhizome-Bundle-Secret", BundleSecret.class);
 		return new RhizomeManifestBundle(manifest, insertTime, author, secret);
+	}
+
+	public static RhizomePayloadRawBundle rhizomePayloadRaw(ServalDHttpConnectionFactory connector, BundleId bid) throws IOException, ServalDInterfaceException
+	{
+		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/rhizome/" + bid.toHex() + "/raw.bin");
+		conn.connect();
+		InputStream in = RhizomeCommon.receiveResponse(conn, HttpURLConnection.HTTP_OK);
+		if (!conn.getContentType().equals("application/octet-stream"))
+			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
+		dumpHeaders(conn, System.err);
+		RhizomeManifest manifest = manifestFromHeaders(conn);
+		long insertTime = headerUnsignedLong(conn, "Serval-Rhizome-Bundle-Inserttime");
+		SubscriberId author = header(conn, "Serval-Rhizome-Bundle-Author", SubscriberId.class);
+		BundleSecret secret = header(conn, "Serval-Rhizome-Bundle-Secret", BundleSecret.class);
+		return new RhizomePayloadRawBundle(manifest, in, insertTime, author, secret);
+	}
+
+	private static void dumpHeaders(HttpURLConnection conn, PrintStream out)
+	{
+		for (Map.Entry<String,List<String>> e: conn.getHeaderFields().entrySet())
+			for (String v: e.getValue())
+				out.println("received header " + e.getKey() + ": " + v);
+	}
+
+	private static RhizomeManifest manifestFromHeaders(HttpURLConnection conn) throws ServalDInterfaceException
+	{
+		BundleId id = header(conn, "Serval-Rhizome-Bundle-Id", BundleId.class);
+		long version = headerUnsignedLong(conn, "Serval-Rhizome-Bundle-Version");
+		long filesize = headerUnsignedLong(conn, "Serval-Rhizome-Bundle-Filesize");
+		FileHash filehash = filesize == 0 ? null : header(conn, "Serval-Rhizome-Bundle-Filehash", FileHash.class);
+		SubscriberId sender = headerOrNull(conn, "Serval-Rhizome-Bundle-Sender", SubscriberId.class);
+		SubscriberId recipient = headerOrNull(conn, "Serval-Rhizome-Bundle-Recipient", SubscriberId.class);
+		BundleKey BK = headerOrNull(conn, "Serval-Rhizome-Bundle-BK", BundleKey.class);
+		Integer crypt = headerIntegerOrNull(conn, "Serval-Rhizome-Bundle-Crypt");
+		Long tail = headerUnsignedLongOrNull(conn, "Serval-Rhizome-Bundle-Tail");
+		Long date = headerUnsignedLongOrNull(conn, "Serval-Rhizome-Bundle-Date");
+		String service = conn.getHeaderField("Serval-Rhizome-Bundle-Service");
+		String name = headerQuotedStringOrNull(conn, "Serval-Rhizome-Bundle-Name");
+		return new RhizomeManifest(id, version, filesize, filehash, sender, recipient, BK, crypt, tail, date, service, name);
 	}
 
 	private static String headerString(HttpURLConnection conn, String header) throws ServalDInterfaceException
@@ -137,22 +175,58 @@ public class RhizomeCommon
 		return str;
 	}
 
-	private static int headerInteger(HttpURLConnection conn, String header) throws ServalDInterfaceException
+	private static String headerQuotedStringOrNull(HttpURLConnection conn, String header) throws ServalDInterfaceException
 	{
-		String str = headerString(conn, header);
+		String quoted = conn.getHeaderField(header);
+		if (quoted == null)
+			return null;
+		if (quoted.length() == 0 || quoted.charAt(0) != '"')
+			throw new ServalDInterfaceException("malformed header field: " + header + ": missing quote at start of quoted-string");
+		boolean slosh = false;
+		boolean end = false;
+		StringBuilder b = new StringBuilder(quoted.length());
+		for (int i = 1; i < quoted.length(); ++i) {
+			char c = quoted.charAt(i);
+			if (end)
+				throw new ServalDInterfaceException("malformed header field: " + header + ": spurious character after quoted-string");
+			if (c < ' ' || c > '~')
+				throw new ServalDInterfaceException("malformed header field: " + header + ": invalid character in quoted-string");
+			if (slosh) {
+				b.append(c);
+				slosh = false;
+			}
+			else if (c == '"')
+				end = true;
+			else if (c == '\\')
+				slosh = true;
+			else
+				b.append(c);
+		}
+		if (!end)
+			throw new ServalDInterfaceException("malformed header field: " + header + ": missing quote at end of quoted-string");
+		return b.toString();
+	}
+
+	private static Integer headerIntegerOrNull(HttpURLConnection conn, String header) throws ServalDInterfaceException
+	{
+		String str = conn.getHeaderField(header);
+		if (str == null)
+			return null;
 		try {
-			return Integer.parseInt(str);
+			return Integer.valueOf(str);
 		}
 		catch (NumberFormatException e) {
 		}
 		throw new ServalDInterfaceException("invalid header field: " + header + ": " + str);
 	}
 
-	private static long headerUnsignedLong(HttpURLConnection conn, String header) throws ServalDInterfaceException
+	private static Long headerUnsignedLongOrNull(HttpURLConnection conn, String header) throws ServalDInterfaceException
 	{
-		String str = headerString(conn, header);
+		String str = conn.getHeaderField(header);
+		if (str == null)
+			return null;
 		try {
-			long value = Long.parseLong(str);
+			Long value = Long.valueOf(str);
 			if (value >= 0)
 				return value;
 		}
@@ -161,9 +235,19 @@ public class RhizomeCommon
 		throw new ServalDInterfaceException("invalid header field: " + header + ": " + str);
 	}
 
-	private static <T> T header(HttpURLConnection conn, String header, Class<T> cls) throws ServalDInterfaceException
+	private static long headerUnsignedLong(HttpURLConnection conn, String header) throws ServalDInterfaceException
 	{
-		String str = headerString(conn, header);
+		Long value = headerUnsignedLongOrNull(conn, header);
+		if (value == null)
+			throw new ServalDInterfaceException("missing header field: " + header);
+		return value;
+	}
+
+	private static <T> T headerOrNull(HttpURLConnection conn, String header, Class<T> cls) throws ServalDInterfaceException
+	{
+		String str = conn.getHeaderField(header);
+		if (str == null)
+			return null;
 		try {
 			return (T) cls.getConstructor(String.class).newInstance(str);
 		}
@@ -173,6 +257,14 @@ public class RhizomeCommon
 		catch (Exception e) {
 			throw new ServalDInterfaceException("invalid header field: " + header + ": " + str, e);
 		}
+	}
+
+	private static <T> T header(HttpURLConnection conn, String header, Class<T> cls) throws ServalDInterfaceException
+	{
+		T value = headerOrNull(conn, header, cls);
+		if (value == null)
+			throw new ServalDInterfaceException("missing header field: " + header);
+		return value;
 	}
 
 }

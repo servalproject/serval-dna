@@ -525,7 +525,7 @@ rhizome_add_bundles() {
       if $encrypted; then
          echo "crypt=1" >file$n.manifest
       fi
-      executeOk_servald rhizome add file $SID file$n file$n.manifest
+      executeOk_servald rhizome add file "$SID" file$n file$n.manifest
       extract_stdout_manifestid BID[$n]
       extract_stdout_version VERSION[$n]
       extract_stdout_filesize SIZE[$n]
