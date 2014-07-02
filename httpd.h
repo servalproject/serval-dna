@@ -60,6 +60,8 @@ typedef struct httpd_request
   /* For requests/responses that pertain to a single manifest.
    */
   rhizome_manifest *manifest;
+  enum rhizome_payload_status payload_status;
+  enum rhizome_bundle_status bundle_status;
 
   /* For requests/responses that contain one or two SIDs.
    */
@@ -123,7 +125,6 @@ typedef struct httpd_request
       // For storing the manifest text (malloc/realloc) as we receive it
       struct form_buf_malloc manifest;
       // For receiving the payload
-      enum rhizome_payload_status payload_status;
       uint64_t payload_size;
       struct rhizome_write write;
     }

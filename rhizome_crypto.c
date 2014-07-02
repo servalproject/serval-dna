@@ -600,7 +600,6 @@ int rhizome_crypt_xor_block(unsigned char *buffer, size_t buffer_size, uint64_t 
  */
 int rhizome_derive_payload_key(rhizome_manifest *m)
 {
-  // don't do anything if the manifest isn't flagged as being encrypted
   assert(m->payloadEncryption == PAYLOAD_ENCRYPTED);
   unsigned char hash[crypto_hash_sha512_BYTES];
   if (m->has_sender && m->has_recipient) {

@@ -296,7 +296,7 @@ static enum rhizome_payload_status store_make_space(uint64_t bytes, struct rhizo
     DEBUGF("Not enough space for %"PRIu64". Used; %"PRIu64" = %"PRIu64" + %"PRIu64" * (%"PRIu64" - %"PRIu64"), Limit; %"PRIu64, 
       bytes, db_used, external_bytes, db_page_size, db_page_count, db_free_page_count, limit);
       
-  return RHIZOME_PAYLOAD_STATUS_UNINITERESTING;
+  return RHIZOME_PAYLOAD_STATUS_EVICTED;
 }
 
 int rhizome_store_cleanup(struct rhizome_cleanup_report *report)
@@ -963,21 +963,23 @@ enum rhizome_payload_status rhizome_store_payload_file(rhizome_manifest *m, cons
   struct rhizome_write write;
   bzero(&write, sizeof(write));
   enum rhizome_payload_status status = rhizome_write_open_manifest(&write, m);
+  int status_ok = 0;
   switch (status) {
     case RHIZOME_PAYLOAD_STATUS_EMPTY:
     case RHIZOME_PAYLOAD_STATUS_NEW:
+      status_ok = 1;
       break;
     case RHIZOME_PAYLOAD_STATUS_STORED:
     case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
-    case RHIZOME_PAYLOAD_STATUS_UNINITERESTING:
+    case RHIZOME_PAYLOAD_STATUS_EVICTED:
     case RHIZOME_PAYLOAD_STATUS_ERROR:
     case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
     case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
       return status;
-    default:
-      FATALF("status = %d", status);
   }
+  if (!status_ok)
+    FATALF("rhizome_write_open_manifest() returned status = %d", status);
   if (rhizome_write_file(&write, filepath) == -1) {
     rhizome_fail_write(&write);
     return RHIZOME_PAYLOAD_STATUS_ERROR;
@@ -987,26 +989,24 @@ enum rhizome_payload_status rhizome_store_payload_file(rhizome_manifest *m, cons
     case RHIZOME_PAYLOAD_STATUS_EMPTY:
       assert(write.file_length == 0);
       assert(m->filesize == 0);
-      break;
+      return status;
     case RHIZOME_PAYLOAD_STATUS_NEW:
       assert(m->filesize == write.file_length);
       if (m->has_filehash)
 	assert(cmp_rhizome_filehash_t(&m->filehash, &write.id) == 0);
       else
 	rhizome_manifest_set_filehash(m, &write.id);
-      break;
+      return status;
     case RHIZOME_PAYLOAD_STATUS_ERROR:
     case RHIZOME_PAYLOAD_STATUS_STORED:
     case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
     case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
     case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
-    case RHIZOME_PAYLOAD_STATUS_UNINITERESTING:
-      break;
-    default:
-      FATALF("status = %d", status);
+    case RHIZOME_PAYLOAD_STATUS_EVICTED:
+      return status;
   }
-  return status;
+  FATALF("rhizome_finish_write() returned status = %d", status);
 }
 
 /* Return RHIZOME_PAYLOAD_STATUS_STORED if file blob found, RHIZOME_PAYLOAD_STATUS_NEW if not found.

@@ -119,9 +119,10 @@ static int rhizome_direct_import_end(struct http_request *hr)
   case RHIZOME_BUNDLE_STATUS_FAKE:
     http_request_simple_response(&r->http, 403, "Manifest not signed");
     return 0;
-  case RHIZOME_BUNDLE_STATUS_DONOTWANT:
+  case RHIZOME_BUNDLE_STATUS_NO_ROOM:
     http_request_simple_response(&r->http, 403, "Not enough space");
     return 0;
+  case RHIZOME_BUNDLE_STATUS_READONLY:
   case RHIZOME_BUNDLE_STATUS_DUPLICATE:
   case RHIZOME_BUNDLE_STATUS_ERROR:
     break;
@@ -729,17 +730,20 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  switch (pstatus) {
 	    case RHIZOME_PAYLOAD_STATUS_EMPTY:
 	    case RHIZOME_PAYLOAD_STATUS_STORED:
-	      break;
+	      goto pstatus_ok;
 	    case RHIZOME_PAYLOAD_STATUS_NEW:
 	    case RHIZOME_PAYLOAD_STATUS_ERROR:
 	    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
 	    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
 	    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+	    case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+	    case RHIZOME_PAYLOAD_STATUS_EVICTED:
 	      goto closeit;
-	    default:
-	      FATALF("pstatus = %d", pstatus);
+	    // No "default" label, so the compiler will warn us if a case is not handled.
 	  }
-
+	  FATALF("pstatus = %d", pstatus);
+	pstatus_ok:
+	  ;
 	  uint64_t read_ofs;
 	  for(read_ofs=0;read_ofs<m->filesize;){
 	    unsigned char buffer[4096];

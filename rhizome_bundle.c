@@ -1086,17 +1086,23 @@ int rhizome_manifest_dump(rhizome_manifest *m, const char *msg)
 enum rhizome_bundle_status rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout, int deduplicate)
 {
   IN();
-
+  assert(*mout == NULL);
   if (!m->finalised && !rhizome_manifest_validate(m))
     RETURN(RHIZOME_BUNDLE_STATUS_INVALID);
-
   // if a manifest was supplied with an ID, don't bother to check for a duplicate.
   // we only want to filter out added files with no existing manifest.
   if (deduplicate && m->haveSecret != EXISTING_BUNDLE_ID) {
     enum rhizome_bundle_status status = rhizome_find_duplicate(m, mout);
     switch (status) {
       case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+	assert(*mout != NULL);
+	assert(*mout != m);
+	RETURN(status);
       case RHIZOME_BUNDLE_STATUS_ERROR:
+	if (*mout != NULL && *mout != m) {
+	  rhizome_manifest_free(*mout);
+	  *mout = NULL;
+	}
 	RETURN(status);
       case RHIZOME_BUNDLE_STATUS_NEW:
 	break;
@@ -1104,6 +1110,7 @@ enum rhizome_bundle_status rhizome_manifest_finalise(rhizome_manifest *m, rhizom
 	FATALF("rhizome_find_duplicate() returned %d", status);
     }
   }
+  assert(*mout == NULL);
   *mout = m;
 
   /* Convert to final form for signing and writing to disk */

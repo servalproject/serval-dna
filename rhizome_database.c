@@ -1272,10 +1272,7 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
 int rhizome_store_manifest(rhizome_manifest *m)
 {
   assert(m->finalised);
-
-  // If we don't have the secret for this manifest, only store it if its self-signature is valid
-  if (!m->haveSecret && !m->selfSigned)
-    return WHY("Manifest is not signed, and I don't have the key.  Manifest might be forged or corrupt.");
+  assert(m->haveSecret || m->selfSigned); // should not store an invalid or fake manifest
 
   /* Bind BAR to data field */
   rhizome_bar_t bar;

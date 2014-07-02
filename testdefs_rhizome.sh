@@ -28,6 +28,8 @@ rexp_crypt='[01]'
 rexp_date='[0-9]\{1,\}'
 rexp_rowid='[0-9]\{1,\}'
 
+BID_NONEXISTENT=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
+
 assert_manifest_complete() {
    local manifest="$1"
    tfw_cat -v "$manifest"
@@ -550,5 +552,13 @@ rhizome_add_bundles() {
          assert cmp file$n raw$n
       fi
       [ "${ROWID[$n]}" -gt "${ROWID_MAX:-0}" ] && ROWID_MAX=${ROWID[$n]}
+   done
+}
+
+rhizome_delete_payload_blobs() {
+   local filehash
+   for filehash; do
+      assert --message="Rhizome external blob file exists, filehash=$filehash" [ -e "$SERVALINSTANCE_PATH/blob/$filehash" ]
+      rm -f "$SERVALINSTANCE_PATH/blob/$filehash"
    done
 }

@@ -276,6 +276,8 @@ void httpd_server_poll(struct sched_ent *alarm)
       } else {
 	++httpd_request_count;
 	request->uuid = http_request_uuid_counter++;
+	request->payload_status = INVALID_RHIZOME_PAYLOAD_STATUS;
+	request->bundle_status = INVALID_RHIZOME_BUNDLE_STATUS;
 	if (peerip)
 	  request->http.client_sockaddr_in = *peerip;
 	request->http.handle_headers = httpd_dispatch;

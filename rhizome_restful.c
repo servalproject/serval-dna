@@ -63,11 +63,93 @@ static int strn_to_list_token(const char *str, uint64_t *rowidp, const char **af
   return 1;
 }
 
+static int http_request_rhizome_response(struct httpd_request *r, uint16_t result, const char *message, const char *payload_status_message)
+{
+  uint16_t rhizome_result = 0;
+  switch (r->bundle_status) {
+    case RHIZOME_BUNDLE_STATUS_NEW:
+      rhizome_result = 201;
+      break;
+    case RHIZOME_BUNDLE_STATUS_SAME:
+    case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+    case RHIZOME_BUNDLE_STATUS_OLD:
+    case RHIZOME_BUNDLE_STATUS_NO_ROOM:
+      rhizome_result = 200;
+      break;
+    case RHIZOME_BUNDLE_STATUS_INVALID:
+    case RHIZOME_BUNDLE_STATUS_FAKE:
+    case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+    case RHIZOME_BUNDLE_STATUS_READONLY:
+      rhizome_result = 403;
+      break;
+    case RHIZOME_BUNDLE_STATUS_ERROR:
+      rhizome_result = 500;
+      break;
+  }
+  if (rhizome_result) {
+    r->http.response.result_extra[0].label = "rhizome_bundle_status_code";
+    r->http.response.result_extra[0].value.type = JSON_INTEGER;
+    r->http.response.result_extra[0].value.u.integer = r->bundle_status;
+    const char *status_message = rhizome_bundle_status_message(r->bundle_status);
+    if (status_message) {
+      r->http.response.result_extra[1].label = "rhizome_bundle_status_message";
+      r->http.response.result_extra[1].value.type = JSON_STRING_NULTERM;
+      r->http.response.result_extra[1].value.u.string.content = status_message;
+    }
+    if (rhizome_result > result) {
+      result = rhizome_result;
+      message = NULL;
+    }
+  }
+  rhizome_result = 0;
+  switch (r->payload_status) {
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+      rhizome_result = 201;
+      break;
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+    case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+    case RHIZOME_PAYLOAD_STATUS_EVICTED:
+      rhizome_result = 200;
+      break;
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      rhizome_result = 403;
+      break;
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+      rhizome_result = 500;
+      break;
+  }
+  if (rhizome_result) {
+    r->http.response.result_extra[2].label = "rhizome_payload_status_code";
+    r->http.response.result_extra[2].value.type = JSON_INTEGER;
+    r->http.response.result_extra[2].value.u.integer = r->payload_status;
+    const char *status_message = payload_status_message ? payload_status_message : rhizome_payload_status_message(r->payload_status);
+    if (status_message) {
+      r->http.response.result_extra[3].label = "rhizome_payload_status_message";
+      r->http.response.result_extra[3].value.type = JSON_STRING_NULTERM;
+      r->http.response.result_extra[3].value.u.string.content = status_message;
+    }
+    if (rhizome_result > result) {
+      result = rhizome_result;
+      message = NULL;
+    }
+  }
+  if (result == 0) {
+    result = 500;
+    message = NULL;
+  }
+  http_request_simple_response(&r->http, result, message ? message : result == 403 ? "Rhizome operation failed" : NULL);
+  return result;
+}
+
 static HTTP_CONTENT_GENERATOR restful_rhizome_bundlelist_json_content;
 
 int restful_rhizome_bundlelist_json(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = CONTENT_TYPE_JSON;
+  r->http.render_extra_headers = render_manifest_headers;
   if (!is_rhizome_http_enabled())
     return 403;
   if (*remainder)
@@ -242,6 +324,7 @@ static int insert_mime_part_body(struct http_request *, char *, size_t);
 int restful_rhizome_insert(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = CONTENT_TYPE_JSON;
+  r->http.render_extra_headers = render_manifest_headers;
   if (*remainder)
     return 404;
   if (!is_rhizome_http_enabled())
@@ -300,8 +383,7 @@ static int insert_make_manifest(httpd_request *r)
 	  return 0;
 	// fall through
       case 1:
-	http_request_simple_response(&r->http, 403, "Malformed manifest");
-	return 403;
+	return http_request_rhizome_response(r, 403, "Malformed manifest", NULL);
       default:
 	WHYF("rhizome_manifest_parse() returned %d", n);
 	break;
@@ -355,17 +437,17 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
       rhizome_manifest_set_name_from_path(r->manifest, h->content_disposition.filename);
     // Start writing the payload content into the Rhizome store.  Note: r->manifest->filesize can be
     // RHIZOME_SIZE_UNSET at this point, if the manifest did not contain a 'filesize' field.
-    r->u.insert.payload_status = rhizome_write_open_manifest(&r->u.insert.write, r->manifest);
+    r->payload_status = rhizome_write_open_manifest(&r->u.insert.write, r->manifest);
     r->u.insert.payload_size = 0;
-    switch (r->u.insert.payload_status) {
+    switch (r->payload_status) {
       case RHIZOME_PAYLOAD_STATUS_ERROR:
-	WHYF("rhizome_write_open_manifest() returned %d", r->u.insert.payload_status);
+	WHYF("rhizome_write_open_manifest() returned %d", r->payload_status);
 	return 500;
       case RHIZOME_PAYLOAD_STATUS_STORED:
 	// TODO: initialise payload hash so it can be compared with stored payload
 	break;
       default:
-	break;
+	break; // r->payload_status gets dealt with later
     }
   }
   else
@@ -395,7 +477,7 @@ static int insert_mime_part_body(struct http_request *hr, char *buf, size_t len)
   }
   else if (r->u.insert.current_part == PART_PAYLOAD) {
     r->u.insert.payload_size += len;
-    switch (r->u.insert.payload_status) {
+    switch (r->payload_status) {
       case RHIZOME_PAYLOAD_STATUS_NEW:
 	if (rhizome_write_buffer(&r->u.insert.write, (unsigned char *)buf, len) == -1)
 	  return 500;
@@ -445,19 +527,25 @@ static int insert_mime_part_end(struct http_request *hr)
       WHY("rhizome_fill_manifest() failed");
       return 500;
     }
-    if (r->manifest->is_journal) {
-      http_request_simple_response(&r->http, 403, "Insert not supported for journals");
-      return 403;
-    }
+    if (r->manifest->is_journal)
+      return http_request_rhizome_response(r, 403, "Insert not supported for journals", NULL);
     assert(r->manifest != NULL);
   }
   else if (r->u.insert.current_part == PART_PAYLOAD) {
     r->u.insert.received_payload = 1;
-    if (r->u.insert.payload_status == RHIZOME_PAYLOAD_STATUS_NEW)
-      r->u.insert.payload_status = rhizome_finish_write(&r->u.insert.write);
-    if (r->u.insert.payload_status == RHIZOME_PAYLOAD_STATUS_ERROR) {
-      WHYF("rhizome_finish_write() returned status = %d", r->u.insert.payload_status);
-      return 500;
+    switch (r->payload_status) {
+      case RHIZOME_PAYLOAD_STATUS_NEW:
+	r->payload_status = rhizome_finish_write(&r->u.insert.write);
+	if (r->payload_status == RHIZOME_PAYLOAD_STATUS_ERROR) {
+	  WHYF("rhizome_finish_write() returned status = %d", r->payload_status);
+	  return 500;
+	}
+	break;
+      case RHIZOME_PAYLOAD_STATUS_STORED:
+	// TODO: finish calculating payload hash and compare it with stored payload
+	break;
+      default:
+	break;
     }
   } else
     FATALF("current_part = %s", alloca_str_toprint(r->u.insert.current_part));
@@ -475,40 +563,40 @@ static int restful_rhizome_insert_end(struct http_request *hr)
   // Fill in the missing manifest fields and ensure payload and manifest are consistent.
   assert(r->manifest != NULL);
   assert(r->u.insert.write.file_length != RHIZOME_SIZE_UNSET);
-  switch (r->u.insert.payload_status) {
-    case RHIZOME_PAYLOAD_STATUS_ERROR:
-      return 500;
+  int status_valid = 0;
+  switch (r->payload_status) {
     case RHIZOME_PAYLOAD_STATUS_NEW:
+      status_valid = 1;
       if (r->manifest->filesize == RHIZOME_SIZE_UNSET)
 	rhizome_manifest_set_filesize(r->manifest, r->u.insert.write.file_length);
       // fall through
     case RHIZOME_PAYLOAD_STATUS_STORED:
+      status_valid = 1;
       // TODO: check that stored hash matches received payload's hash
       // fall through
     case RHIZOME_PAYLOAD_STATUS_EMPTY:
+      status_valid = 1;
       assert(r->manifest->filesize != RHIZOME_SIZE_UNSET);
       if (r->u.insert.payload_size == r->manifest->filesize)
 	break;
-      // fall through
     case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+      r->payload_status = RHIZOME_PAYLOAD_STATUS_WRONG_SIZE;
+      status_valid = 1;
       {
 	strbuf msg = strbuf_alloca(200);
 	strbuf_sprintf(msg, "Payload size (%"PRIu64") contradicts manifest (filesize=%"PRIu64")", r->u.insert.payload_size, r->manifest->filesize);
-	http_request_simple_response(&r->http, 403, strbuf_str(msg));
-	return 403;
+	return http_request_rhizome_response(r, 403, NULL, strbuf_str(msg));
       }
     case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
-    case RHIZOME_PAYLOAD_STATUS_UNINITERESTING:
-      http_request_simple_response(&r->http, 403, "Not enough space");
-      return 403;
+    case RHIZOME_PAYLOAD_STATUS_EVICTED:
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
-      http_request_simple_response(&r->http, 403, "Payload hash contradicts manifest");
-      return 403;
     case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
-      http_request_simple_response(&r->http, 403, "Missing bundle secret");
-      return 403;
-    default:
-      FATALF("payload_status = %d", r->u.insert.payload_status);
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+      return http_request_rhizome_response(r, 403, NULL, NULL);
+  }
+  if (!status_valid) {
+    WHYF("r->payload_status = %d", r->payload_status);
+    return http_request_rhizome_response(r, 500, NULL, NULL);
   }
   // Finalise the manifest and add it to the store.
   if (r->manifest->filesize) {
@@ -526,35 +614,36 @@ static int restful_rhizome_insert_end(struct http_request *hr)
     return 403;
   }
   rhizome_manifest *mout = NULL;
-  int result;
-  switch (rhizome_manifest_finalise(r->manifest, &mout, !r->u.insert.force_new)) {
+  r->bundle_status = rhizome_manifest_finalise(r->manifest, &mout, !r->u.insert.force_new);
+  int result = 500;
+  switch (r->bundle_status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
-      result = 201;
       if (mout && mout != r->manifest)
 	rhizome_manifest_free(mout);
-      mout = NULL;
+      result = 201;
       break;
     case RHIZOME_BUNDLE_STATUS_SAME:
     case RHIZOME_BUNDLE_STATUS_OLD:
     case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+      if (mout && mout != r->manifest) {
+	rhizome_manifest_free(r->manifest);
+	r->manifest = mout;
+      }
       result = 200;
       break;
     case RHIZOME_BUNDLE_STATUS_INVALID:
-      result = 403;
-      break;
+    case RHIZOME_BUNDLE_STATUS_FAKE:
+    case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+    case RHIZOME_BUNDLE_STATUS_NO_ROOM:
+    case RHIZOME_BUNDLE_STATUS_READONLY:
     case RHIZOME_BUNDLE_STATUS_ERROR:
-    default:
-      result = 500;
-      break;
+      if (mout && mout != r->manifest)
+	rhizome_manifest_free(mout);
+      return http_request_rhizome_response(r, 0, NULL, NULL);
   }
-  if (mout && mout != r->manifest) {
-    rhizome_manifest_free(r->manifest);
-    r->manifest = mout;
-  }
-  if (result >= 400)
-    return result;
+  if (result == 500)
+    FATALF("rhizome_manifest_finalise() returned status = %d", r->bundle_status);
   rhizome_authenticate_author(r->manifest);
-  r->http.render_extra_headers = render_manifest_headers;
   http_request_response_static(&r->http, result, "rhizome-manifest/text",
       (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes
     );
@@ -568,6 +657,7 @@ static HTTP_HANDLER restful_rhizome_bid_decrypted_bin;
 int restful_rhizome_(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = CONTENT_TYPE_JSON;
+  r->http.render_extra_headers = render_manifest_headers;
   if (!is_rhizome_http_enabled())
     return 403;
   HTTP_HANDLER *handler = NULL;
@@ -598,15 +688,16 @@ int restful_rhizome_(httpd_request *r, const char *remainder)
   if (ret == -1) {
     rhizome_manifest_free(r->manifest);
     r->manifest = NULL;
+    r->bundle_status = RHIZOME_BUNDLE_STATUS_ERROR;
     return 500;
   }
   if (ret == 0) {
     rhizome_authenticate_author(r->manifest);
-    r->http.render_extra_headers = render_manifest_headers;
+    r->bundle_status = RHIZOME_BUNDLE_STATUS_SAME;
   } else {
+    r->bundle_status = RHIZOME_BUNDLE_STATUS_NEW;
     rhizome_manifest_free(r->manifest);
     r->manifest = NULL;
-    assert(r->http.render_extra_headers == NULL);
   }
   ret = handler(r, remainder);
   return ret;
@@ -614,8 +705,10 @@ int restful_rhizome_(httpd_request *r, const char *remainder)
 
 static int restful_rhizome_bid_rhm(httpd_request *r, const char *remainder)
 {
-  if (*remainder || r->manifest == NULL)
+  if (*remainder)
     return 404;
+  if (r->manifest == NULL)
+    return http_request_rhizome_response(r, 404, NULL, NULL);
   http_request_response_static(&r->http, 200, "rhizome-manifest/text",
       (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes
     );
@@ -624,8 +717,10 @@ static int restful_rhizome_bid_rhm(httpd_request *r, const char *remainder)
 
 static int restful_rhizome_bid_raw_bin(httpd_request *r, const char *remainder)
 {
-  if (*remainder || r->manifest == NULL)
+  if (*remainder)
     return 404;
+  if (r->manifest == NULL)
+    return http_request_rhizome_response(r, 404, NULL, NULL);
   if (r->manifest->filesize == 0) {
     http_request_response_static(&r->http, 200, CONTENT_TYPE_BLOB, "", 0);
     return 1;
@@ -639,8 +734,10 @@ static int restful_rhizome_bid_raw_bin(httpd_request *r, const char *remainder)
 
 static int restful_rhizome_bid_decrypted_bin(httpd_request *r, const char *remainder)
 {
-  if (*remainder || r->manifest == NULL)
+  if (*remainder)
     return 404;
+  if (r->manifest == NULL)
+    return http_request_rhizome_response(r, 404, NULL, NULL);
   if (r->manifest->filesize == 0) {
     // TODO use Content Type from manifest (once it is implemented)
     http_request_response_static(&r->http, 200, CONTENT_TYPE_BLOB, "", 0);
@@ -685,22 +782,22 @@ int rhizome_response_content_init_filehash(httpd_request *r, const rhizome_fileh
   r->u.read_state.blob_fd = -1;
   assert(r->finalise_union == NULL);
   r->finalise_union = finalise_union_read_state;
-  enum rhizome_payload_status status = rhizome_open_read(&r->u.read_state, hash);
-  switch (status) {
+  r->payload_status = rhizome_open_read(&r->u.read_state, hash);
+  switch (r->payload_status) {
     case RHIZOME_PAYLOAD_STATUS_EMPTY:
     case RHIZOME_PAYLOAD_STATUS_STORED:
-      break;
+      return rhizome_response_content_init_read_state(r);
     case RHIZOME_PAYLOAD_STATUS_NEW:
-      return 404;
+      return 403;
     case RHIZOME_PAYLOAD_STATUS_ERROR:
     case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
     case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+    case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+    case RHIZOME_PAYLOAD_STATUS_EVICTED:
       return -1;
-    default:
-      FATALF("status = %d", status);
   }
-  return rhizome_response_content_init_read_state(r);
+  FATALF("rhizome_open_read() returned status = %d", r->payload_status);
 }
 
 int rhizome_response_content_init_payload(httpd_request *r, rhizome_manifest *m)
@@ -709,22 +806,22 @@ int rhizome_response_content_init_payload(httpd_request *r, rhizome_manifest *m)
   r->u.read_state.blob_fd = -1;
   assert(r->finalise_union == NULL);
   r->finalise_union = finalise_union_read_state;
-  enum rhizome_payload_status status = rhizome_open_decrypt_read(m, &r->u.read_state);
-  switch (status) {
+  r->payload_status = rhizome_open_decrypt_read(m, &r->u.read_state);
+  switch (r->payload_status) {
     case RHIZOME_PAYLOAD_STATUS_EMPTY:
     case RHIZOME_PAYLOAD_STATUS_STORED:
-      break;
+      return rhizome_response_content_init_read_state(r);
     case RHIZOME_PAYLOAD_STATUS_NEW:
-      return 404;
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      return 403;
     case RHIZOME_PAYLOAD_STATUS_ERROR:
     case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
-    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+    case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+    case RHIZOME_PAYLOAD_STATUS_EVICTED:
       return -1;
-    default:
-      FATALF("status = %d", status);
   }
-  return rhizome_response_content_init_read_state(r);
+  FATALF("rhizome_open_decrypt_read() returned status = %d", r->payload_status);
 }
 
 int rhizome_payload_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
@@ -758,49 +855,58 @@ int rhizome_payload_content(struct http_request *hr, unsigned char *buf, size_t 
 static void render_manifest_headers(struct http_request *hr, strbuf sb)
 {
   httpd_request *r = (httpd_request *) hr;
+  const char *status_message;
+  if ((status_message = rhizome_bundle_status_message(r->bundle_status))) {
+      strbuf_sprintf(sb, "Serval-Rhizome-Result-Bundle-Status-Code: %d\r\n", r->bundle_status);
+      strbuf_sprintf(sb, "Serval-Rhizome-Result-Bundle-Status-Message: %s\r\n", status_message);
+  }
+  if ((status_message = rhizome_payload_status_message(r->payload_status))) {
+      strbuf_sprintf(sb, "Serval-Rhizome-Result-Payload-Status-Code: %d\r\n", r->payload_status);
+      strbuf_sprintf(sb, "Serval-Rhizome-Result-Payload-Status-Message: %s\r\n", status_message);
+  }
   rhizome_manifest *m = r->manifest;
-  strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Id: %s\r\n", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
-  strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Version: %"PRIu64"\r\n", m->version);
-  strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Filesize: %"PRIu64"\r\n", m->filesize);
-  if (m->filesize != 0)
-    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Filehash: %s\r\n", alloca_tohex_rhizome_filehash_t(m->filehash));
-  if (m->has_sender)
-    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Sender: %s\r\n", alloca_tohex_sid_t(m->sender));
-  if (m->has_recipient)
-    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Recipient: %s\r\n", alloca_tohex_sid_t(m->recipient));
-  if (m->has_bundle_key)
-    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-BK: %s\r\n", alloca_tohex_rhizome_bk_t(m->bundle_key));
-  switch (m->payloadEncryption) {
-    case PAYLOAD_CRYPT_UNKNOWN:
-      break;
-    case PAYLOAD_CLEAR:
-      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Crypt: 0\r\n");
-      break;
-    case PAYLOAD_ENCRYPTED:
-      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Crypt: 1\r\n");
-      break;
+  if (m) {
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Id: %s\r\n", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Version: %"PRIu64"\r\n", m->version);
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Filesize: %"PRIu64"\r\n", m->filesize);
+    if (m->filesize != 0)
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Filehash: %s\r\n", alloca_tohex_rhizome_filehash_t(m->filehash));
+    if (m->has_sender)
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Sender: %s\r\n", alloca_tohex_sid_t(m->sender));
+    if (m->has_recipient)
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Recipient: %s\r\n", alloca_tohex_sid_t(m->recipient));
+    if (m->has_bundle_key)
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-BK: %s\r\n", alloca_tohex_rhizome_bk_t(m->bundle_key));
+    switch (m->payloadEncryption) {
+      case PAYLOAD_CRYPT_UNKNOWN:
+	break;
+      case PAYLOAD_CLEAR:
+	strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Crypt: 0\r\n");
+	break;
+      case PAYLOAD_ENCRYPTED:
+	strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Crypt: 1\r\n");
+	break;
+    }
+    if (m->is_journal)
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Tail: %"PRIu64"\r\n", m->tail);
+    if (m->has_date)
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Date: %"PRIu64"\r\n", m->date);
+    if (m->name) {
+      strbuf_puts(sb, "Serval-Rhizome-Bundle-Name: ");
+      strbuf_append_quoted_string(sb, m->name);
+      strbuf_puts(sb, "\r\n");
+    }
+    if (m->service)
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Service: %s\r\n", m->service);
+    assert(m->authorship != AUTHOR_LOCAL);
+    if (m->authorship == AUTHOR_AUTHENTIC)
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Author: %s\r\n", alloca_tohex_sid_t(m->author));
+    if (m->haveSecret) {
+      char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
+      rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Secret: %s\r\n", secret);
+    }
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Rowid: %"PRIu64"\r\n", m->rowid);
+    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Inserttime: %"PRIu64"\r\n", m->inserttime);
   }
-  if (m->is_journal)
-    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Tail: %"PRIu64"\r\n", m->tail);
-  if (m->has_date)
-    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Date: %"PRIu64"\r\n", m->date);
-  if (m->name) {
-    strbuf_puts(sb, "Serval-Rhizome-Bundle-Name: ");
-    strbuf_append_quoted_string(sb, m->name);
-    strbuf_puts(sb, "\r\n");
-  }
-  if (m->service)
-    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Service: %s\r\n", m->service);
-  assert(m->authorship != AUTHOR_LOCAL);
-  if (m->authorship == AUTHOR_AUTHENTIC)
-    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Author: %s\r\n", alloca_tohex_sid_t(m->author));
-  assert(m->haveSecret);
-  {
-    char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-    rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
-    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Secret: %s\r\n", secret);
-  }
-  strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Rowid: %"PRIu64"\r\n", m->rowid);
-  strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Inserttime: %"PRIu64"\r\n", m->inserttime);
 }
-

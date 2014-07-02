@@ -1840,12 +1840,14 @@ static strbuf strbuf_status_body(strbuf sb, struct http_response *hr, const char
   ) {
     hr->header.content_type = CONTENT_TYPE_TEXT;
     strbuf_sprintf(sb, "%03u %s", hr->result_code, message);
-    if (hr->result_extra_label) {
-      strbuf_puts(sb, "\r\n");
-      strbuf_puts(sb, hr->result_extra_label);
-      strbuf_puts(sb, "=");
-      strbuf_json_atom_as_text(sb, &hr->result_extra_value);
-    }
+    unsigned i;
+    for (i = 0; i < NELS(hr->result_extra); ++i)
+      if (hr->result_extra[i].label) {
+	strbuf_puts(sb, "\r\n");
+	strbuf_puts(sb, hr->result_extra[i].label);
+	strbuf_puts(sb, "=");
+	strbuf_json_atom_as_text(sb, &hr->result_extra[i].value);
+      }
     strbuf_puts(sb, "\r\n");
   }
   else if (    hr->header.content_type == CONTENT_TYPE_JSON
@@ -1854,24 +1856,28 @@ static strbuf strbuf_status_body(strbuf sb, struct http_response *hr, const char
     hr->header.content_type = CONTENT_TYPE_JSON;
     strbuf_sprintf(sb, "{\n \"http_status_code\": %u,\n \"http_status_message\": ", hr->result_code);
     strbuf_json_string(sb, message);
-    if (hr->result_extra_label) {
-      strbuf_puts(sb, ",\n ");
-      strbuf_json_string(sb, hr->result_extra_label);
-      strbuf_puts(sb, ": ");
-      strbuf_json_atom_as_html(sb, &hr->result_extra_value);
-    }
+    unsigned i;
+    for (i = 0; i < NELS(hr->result_extra); ++i)
+      if (hr->result_extra[i].label) {
+	strbuf_puts(sb, ",\n ");
+	strbuf_json_string(sb, hr->result_extra[i].label);
+	strbuf_puts(sb, ": ");
+	strbuf_json_atom(sb, &hr->result_extra[i].value);
+      }
     strbuf_puts(sb, "\n}");
   }
   else {
     hr->header.content_type = CONTENT_TYPE_HTML;
     strbuf_sprintf(sb, "<html>\n<h1>%03u %s</h1>", hr->result_code, message);
-    if (hr->result_extra_label) {
-      strbuf_puts(sb, "\n<dl><dt>");
-      strbuf_html_escape(sb, hr->result_extra_label, strlen(hr->result_extra_label));
-      strbuf_puts(sb, "</dt><dd>");
-      strbuf_json_atom_as_html(sb, &hr->result_extra_value);
-      strbuf_puts(sb, "</dd></dl>");
-    }
+    unsigned i;
+    for (i = 0; i < NELS(hr->result_extra); ++i)
+      if (hr->result_extra[i].label) {
+	strbuf_puts(sb, "\n<dl><dt>");
+	strbuf_html_escape(sb, hr->result_extra[i].label, strlen(hr->result_extra[i].label));
+	strbuf_puts(sb, "</dt><dd>");
+	strbuf_json_atom_as_html(sb, &hr->result_extra[i].value);
+	strbuf_puts(sb, "</dd></dl>");
+      }
     strbuf_puts(sb, "\n</html>");
   }
   return sb;

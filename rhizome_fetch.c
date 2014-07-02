@@ -553,10 +553,10 @@ schedule_fetch(struct rhizome_fetch_slot *slot)
       case RHIZOME_PAYLOAD_STATUS_STORED:
 	RETURN(IMPORTED);
       case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
-      case RHIZOME_PAYLOAD_STATUS_UNINITERESTING:
+      case RHIZOME_PAYLOAD_STATUS_EVICTED:
 	RETURN(DONOTWANT);
       case RHIZOME_PAYLOAD_STATUS_NEW:
-	break;
+	goto status_ok;
       case RHIZOME_PAYLOAD_STATUS_ERROR:
 	RETURN(WHY("error writing new payload"));
       case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
@@ -565,9 +565,11 @@ schedule_fetch(struct rhizome_fetch_slot *slot)
 	RETURN(WHY("payload hash does not match"));
       case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
 	RETURN(WHY("payload cannot be encrypted"));
-      default:
-	FATALF("status = %d", status);
+      // No "default" label, so the compiler will warn if a case is not handled.
     }
+    FATALF("status = %d", status);
+status_ok:
+    ;
   } else {
     strbuf r = strbuf_local(slot->request, sizeof slot->request);
     strbuf_sprintf(r, "GET /rhizome/manifestbyprefix/%s HTTP/1.0\r\n\r\n", alloca_tohex(slot->bid.binary, slot->prefix_length));

@@ -66,42 +66,39 @@ static int strn_to_meshms_token(const char *str, rhizome_bid_t *bidp, uint64_t *
 
 static int http_request_meshms_response(struct httpd_request *r, uint16_t result, const char *message, enum meshms_status status)
 {
-  r->http.response.result_extra_label = "meshms_status_code";
-  r->http.response.result_extra_value.type = JSON_INTEGER;
-  r->http.response.result_extra_value.u.integer = status;
+  r->http.response.result_extra[0].label = "meshms_status_code";
+  r->http.response.result_extra[0].value.type = JSON_INTEGER;
+  r->http.response.result_extra[0].value.u.integer = status;
+  uint16_t meshms_result = 0;
+  const char *meshms_message = NULL;
   switch (status) {
     case MESHMS_STATUS_OK:
-      if (!result)
-	result = 200;
-      if (!message)
-	message = "OK";
+      meshms_result = 200;
+      meshms_message = "OK";
       break;
     case MESHMS_STATUS_UPDATED:
-      if (!result)
-	result = 201;
-      if (!message)
-	message = "Updated";
+      meshms_result = 201;
+      meshms_message = "Updated";
       break;
     case MESHMS_STATUS_SID_LOCKED:
-      if (!result)
-	result = 403;
-      if (!message)
-	message = "Identity unknown";
+      meshms_result = 403;
+      meshms_message = "Identity unknown";
       break;
     case MESHMS_STATUS_PROTOCOL_FAULT:
-      if (!result)
-	result = 403;
-      if (!message)
-	message = "MeshMS protocol fault";
+      meshms_result = 403;
+      meshms_message = "MeshMS protocol fault";
       break;
     case MESHMS_STATUS_ERROR:
-      if (!result)
-	result = 500;
+      meshms_result = 500;
       break;
-    default:
-      WHYF("Invalid MeshMS status code %d", status);
-      result = 500;
-      break;
+  }
+  if (!meshms_result) {
+    WHYF("Invalid MeshMS status code %d", status);
+    result = 500;
+  } else if (!result) {
+    result = meshms_result;
+    if (message == NULL)
+      message = meshms_message;
   }
   assert(result != 0);
   http_request_simple_response(&r->http, result, message);

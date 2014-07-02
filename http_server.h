@@ -111,8 +111,10 @@ typedef int (HTTP_CONTENT_GENERATOR)(struct http_request *, unsigned char *, siz
 
 struct http_response {
   uint16_t result_code;
-  const char *result_extra_label;
-  struct json_atom result_extra_value;
+  struct {
+    const char *label;
+    struct json_atom value;
+  } result_extra[4];
   struct http_response_headers header;
   const char *content;
   HTTP_CONTENT_GENERATOR *content_generator; // callback to produce more content
