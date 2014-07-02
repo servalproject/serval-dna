@@ -113,12 +113,13 @@ Makefile: $(wildcard Makefile.in) $(wildcard configure)
 configure: $(wildcard configure.in)
 	$(warning configure may be out of date, please run autoreconf -f -i)
 
-$(OBJSDIR_TOOLS)/version.o: $(SERVALD_OBJS) version_string.sh $(wildcard VERSION.txt) COPYRIGHT.txt Makefile
+$(OBJSDIR_TOOLS)/version.o: $(SERVALD_OBJS) version_servald.c version_string.sh $(wildcard VERSION.txt) COPYRIGHT.txt Makefile
 	@echo CC version_servald.c
+	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
 	@V=`./version_string.sh --ignore-untracked` \
 	 && C="`sed -e :a -e N -e '$$!ba' -e 's/[\\\\"]/\\\\&/g' -e 's/\\n/\\\\n/g' COPYRIGHT.txt`" \
-	 && $(CC) -c version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\"" -DSERVALD_COPYRIGHT="\"$$C\""
+	 && $(CC) $(CFLAGS) $(DEFS) -c version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\"" -DSERVALD_COPYRIGHT="\"$$C\""
 
 #' <-- fixes vim syntax highlighting
 
