@@ -727,7 +727,7 @@ static int restful_rhizome_bid_raw_bin(httpd_request *r, const char *remainder)
   }
   int ret = rhizome_response_content_init_filehash(r, &r->manifest->filehash);
   if (ret)
-    return ret;
+    return http_request_rhizome_response(r, ret, NULL, NULL);
   http_request_response_generated(&r->http, 200, CONTENT_TYPE_BLOB, rhizome_payload_content);
   return 1;
 }
@@ -745,7 +745,7 @@ static int restful_rhizome_bid_decrypted_bin(httpd_request *r, const char *remai
   }
   int ret = rhizome_response_content_init_payload(r, r->manifest);
   if (ret)
-    return ret;
+    return http_request_rhizome_response(r, ret, NULL, NULL);
   // TODO use Content Type from manifest (once it is implemented)
   http_request_response_generated(&r->http, 200, CONTENT_TYPE_BLOB, rhizome_payload_content);
   return 1;

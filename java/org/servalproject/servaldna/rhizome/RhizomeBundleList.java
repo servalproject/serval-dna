@@ -68,7 +68,7 @@ public class RhizomeBundleList {
 		return this.json != null;
 	}
 
-	public void connect() throws IOException, ServalDInterfaceException
+	public void connect() throws IOException, ServalDInterfaceException, RhizomeException
 	{
 		try {
 			rowCount = 0;

@@ -33,6 +33,8 @@ import org.servalproject.servaldna.rhizome.RhizomeListBundle;
 import org.servalproject.servaldna.rhizome.RhizomeBundleList;
 import org.servalproject.servaldna.rhizome.RhizomeManifestBundle;
 import org.servalproject.servaldna.rhizome.RhizomePayloadRawBundle;
+import org.servalproject.servaldna.rhizome.RhizomePayloadBundle;
+import org.servalproject.servaldna.rhizome.RhizomeException;
 
 public class Rhizome {
 
@@ -68,6 +70,9 @@ public class Rhizome {
 					);
 			}
 		}
+		catch (RhizomeException e) {
+			System.out.println(e.toString());
+		}
 		finally {
 			if (list != null)
 				list.close();
@@ -77,17 +82,22 @@ public class Rhizome {
 
 	static void rhizome_manifest(BundleId bid, String dstpath) throws ServalDInterfaceException, IOException, InterruptedException
 	{
-		ServalDClient client = new ServerControl().getRestfulClient();
-		RhizomeManifestBundle bundle = client.rhizomeManifest(bid);
-		System.out.println(
-				"_insertTime=" + bundle.insertTime + "\n" +
-				"_author=" + bundle.author + "\n" +
-				"_secret=" + bundle.secret + "\n" +
-				manifestFields(bundle.manifest, "\n") + "\n"
-			);
-		FileOutputStream out = new FileOutputStream(dstpath);
-		out.write(bundle.manifestText());
-		out.close();
+		try {
+			ServalDClient client = new ServerControl().getRestfulClient();
+			RhizomeManifestBundle bundle = client.rhizomeManifest(bid);
+			System.out.println(
+					"_insertTime=" + bundle.insertTime + "\n" +
+					"_author=" + bundle.author + "\n" +
+					"_secret=" + bundle.secret + "\n" +
+					manifestFields(bundle.manifest, "\n") + "\n"
+				);
+			FileOutputStream out = new FileOutputStream(dstpath);
+			out.write(bundle.manifestText());
+			out.close();
+		}
+		catch (RhizomeException e) {
+			System.out.println(e.toString());
+		}
 		System.exit(0);
 	}
 
@@ -112,6 +122,40 @@ public class Rhizome {
 					manifestFields(bundle.manifest, "\n") + "\n"
 				);
 		}
+		catch (RhizomeException e) {
+			System.out.println(e.toString());
+		}
+		finally {
+			if (out != null)
+				out.close();
+		}
+		System.exit(0);
+	}
+
+	static void rhizome_payload_decrypted(BundleId bid, String dstpath) throws ServalDInterfaceException, IOException, InterruptedException
+	{
+		ServalDClient client = new ServerControl().getRestfulClient();
+		FileOutputStream out = new FileOutputStream(dstpath);
+		try {
+			RhizomePayloadBundle bundle = client.rhizomePayload(bid);
+			InputStream in = bundle.payloadInputStream;
+			byte[] buf = new byte[4096];
+			int n;
+			while ((n = in.read(buf)) > 0)
+				out.write(buf, 0, n);
+			in.close();
+			out.close();
+			out = null;
+			System.out.println(
+					"_insertTime=" + bundle.insertTime + "\n" +
+					"_author=" + bundle.author + "\n" +
+					"_secret=" + bundle.secret + "\n" +
+					manifestFields(bundle.manifest, "\n") + "\n"
+				);
+		}
+		catch (RhizomeException e) {
+			System.out.println(e.toString());
+		}
 		finally {
 			if (out != null)
 				out.close();
@@ -131,6 +175,8 @@ public class Rhizome {
 				rhizome_manifest(new BundleId(args[1]), args[2]);
 			else if (methodName.equals("rhizome-payload-raw"))
 				rhizome_payload_raw(new BundleId(args[1]), args[2]);
+			else if (methodName.equals("rhizome-payload-decrypted"))
+				rhizome_payload_decrypted(new BundleId(args[1]), args[2]);
 		} catch (Exception e) {
 			e.printStackTrace();
 			System.exit(1);

@@ -180,8 +180,44 @@ test_RhizomePayloadRaw() {
       executeJavaOk org.servalproject.test.Rhizome rhizome-payload-raw "${BID[$n]}" raw.bin$n
       tfw_cat --stdout --stderr
       assert_metadata $n
+   done
+   for n in 0 1 2 3; do
       assert cmp raw$n raw.bin$n
    done
+}
+
+doc_RhizomePayloadDecrypted="Java API fetch Rhizome decrypted payload"
+setup_RhizomePayloadDecrypted() {
+   setup
+   rhizome_add_bundles $SIDA1 0 1
+   rhizome_add_bundles --encrypted $SIDA1 2 3
+}
+test_RhizomePayloadDecrypted() {
+   for n in 0 1 2 3; do
+      executeJavaOk org.servalproject.test.Rhizome rhizome-payload-decrypted "${BID[$n]}" decrypted.bin$n
+      tfw_cat --stdout --stderr
+      assert_metadata $n
+   done
+   for n in 0 1 2 3; do
+      assert cmp file$n decrypted.bin$n
+   done
+}
+
+doc_RhizomePayloadDecryptedForeign="Java API cannot fetch foreign Rhizome decrypted payload"
+setup_RhizomePayloadDecryptedForeign() {
+   setup
+   rhizome_add_bundles --encrypted $SIDA1 0 0
+   set_instance +B
+   create_single_identity
+   rhizome_add_bundles --encrypted $SIDB 1 1
+   executeOk_servald rhizome export manifest "${BID[1]}" file1.manifest
+   set_instance +A
+   executeOk_servald rhizome import bundle raw1 file1.manifest
+}
+test_RhizomePayloadDecryptedForeign() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-payload-decrypted "${BID[1]}" decrypted.bin$n
+   tfw_cat --stdout --stderr
+   assertStdoutGrep RhizomeDecryptionException
 }
 
 runTests "$@"

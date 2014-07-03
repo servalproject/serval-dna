@@ -39,6 +39,8 @@ import org.servalproject.servaldna.rhizome.RhizomeCommon;
 import org.servalproject.servaldna.rhizome.RhizomeBundleList;
 import org.servalproject.servaldna.rhizome.RhizomeManifestBundle;
 import org.servalproject.servaldna.rhizome.RhizomePayloadRawBundle;
+import org.servalproject.servaldna.rhizome.RhizomePayloadBundle;
+import org.servalproject.servaldna.rhizome.RhizomeException;
 import org.servalproject.servaldna.meshms.MeshMSCommon;
 import org.servalproject.servaldna.meshms.MeshMSConversationList;
 import org.servalproject.servaldna.meshms.MeshMSMessageList;
@@ -63,21 +65,26 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 		this.restfulPassword = restfulPassword;
 	}
 
-	public RhizomeBundleList rhizomeListBundles() throws ServalDInterfaceException, IOException
+	public RhizomeBundleList rhizomeListBundles() throws ServalDInterfaceException, IOException, RhizomeException
 	{
 		RhizomeBundleList list = new RhizomeBundleList(this);
 		list.connect();
 		return list;
 	}
 
-	public RhizomeManifestBundle rhizomeManifest(BundleId bid) throws ServalDInterfaceException, IOException
+	public RhizomeManifestBundle rhizomeManifest(BundleId bid) throws ServalDInterfaceException, IOException, RhizomeException
 	{
 		return RhizomeCommon.rhizomeManifest(this, bid);
 	}
 
-	public RhizomePayloadRawBundle rhizomePayloadRaw(BundleId bid) throws ServalDInterfaceException, IOException
+	public RhizomePayloadRawBundle rhizomePayloadRaw(BundleId bid) throws ServalDInterfaceException, IOException, RhizomeException
 	{
 		return RhizomeCommon.rhizomePayloadRaw(this, bid);
+	}
+
+	public RhizomePayloadBundle rhizomePayload(BundleId bid) throws ServalDInterfaceException, IOException, RhizomeException
+	{
+		return RhizomeCommon.rhizomePayload(this, bid);
 	}
 
 	public MeshMSConversationList meshmsListConversations(SubscriberId sid) throws ServalDInterfaceException, IOException, MeshMSException

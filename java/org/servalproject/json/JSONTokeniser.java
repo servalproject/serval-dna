@@ -54,6 +54,10 @@ public class JSONTokeniser {
 
 	public static class UnexpectedException extends JSONInputException
 	{
+		public UnexpectedException(String got) {
+			super("unexpected " + got);
+		}
+
 		public UnexpectedException(String got, Class expecting) {
 			super("unexpected " + got + ", expecting " + expecting.getName());
 		}
@@ -78,6 +82,10 @@ public class JSONTokeniser {
 
 	public static class UnexpectedTokenException extends UnexpectedException
 	{
+		public UnexpectedTokenException(Object got) {
+			super(jsonTokenDescription(got));
+		}
+
 		public UnexpectedTokenException(Object got, Class expecting) {
 			super(jsonTokenDescription(got), expecting);
 		}
@@ -113,6 +121,11 @@ public class JSONTokeniser {
 		if (DUMP_JSON_TO_STDERR && n != -1)
 			System.err.print(new String(buf, offset, n));
 		return n;
+	}
+
+	public static void unexpected(Object tok) throws UnexpectedTokenException
+	{
+		throw new UnexpectedTokenException(tok);
 	}
 
 	public static void match(Object tok, Token exactly) throws SyntaxException
