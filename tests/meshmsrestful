@@ -280,8 +280,9 @@ test_MeshmsListMessagesNoIdentity() {
    assertExitStatus == 0
    assertStdoutIs 403
    assertJq http.body 'contains({"http_status_code": 403})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'meshms operation failed'
    assertJq http.body 'contains({"meshms_status_code": 2})'
-   assertJqGrep --ignore-case http.body '.http_status_message' 'identity.*unknown'
+   assertJqGrep --ignore-case http.body '.meshms_status_message' 'identity.*unknown'
 }
 
 doc_MeshmsListMessagesNewSince="HTTP RESTful list MeshMS messages in one conversation since token as JSON"
@@ -555,8 +556,9 @@ test_MeshmsSendNoIdentity() {
    assertExitStatus == 0
    assertStdoutIs 403
    assertJq http.body 'contains({"http_status_code": 403})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'meshms operation failed'
    assertJq http.body 'contains({"meshms_status_code": 2})'
-   assertJqGrep --ignore-case http.body '.http_status_message' 'identity.*unknown'
+   assertJqGrep --ignore-case http.body '.meshms_status_message' 'identity.*unknown'
 }
 
 doc_MeshmsReadAllConversations="HTTP RESTful MeshMS mark all conversations read"

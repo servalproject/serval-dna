@@ -66,42 +66,41 @@ static int strn_to_meshms_token(const char *str, rhizome_bid_t *bidp, uint64_t *
 
 static int http_request_meshms_response(struct httpd_request *r, uint16_t result, const char *message, enum meshms_status status)
 {
-  r->http.response.result_extra[0].label = "meshms_status_code";
-  r->http.response.result_extra[0].value.type = JSON_INTEGER;
-  r->http.response.result_extra[0].value.u.integer = status;
   uint16_t meshms_result = 0;
-  const char *meshms_message = NULL;
   switch (status) {
     case MESHMS_STATUS_OK:
       meshms_result = 200;
-      meshms_message = "OK";
       break;
     case MESHMS_STATUS_UPDATED:
       meshms_result = 201;
-      meshms_message = "Updated";
       break;
     case MESHMS_STATUS_SID_LOCKED:
-      meshms_result = 403;
-      meshms_message = "Identity unknown";
-      break;
     case MESHMS_STATUS_PROTOCOL_FAULT:
       meshms_result = 403;
-      meshms_message = "MeshMS protocol fault";
       break;
     case MESHMS_STATUS_ERROR:
       meshms_result = 500;
       break;
   }
-  if (!meshms_result) {
+  if (meshms_result == 0) {
     WHYF("Invalid MeshMS status code %d", status);
-    result = 500;
-  } else if (!result) {
+    meshms_result = 500;
+  }
+  r->http.response.result_extra[0].label = "meshms_status_code";
+  r->http.response.result_extra[0].value.type = JSON_INTEGER;
+  r->http.response.result_extra[0].value.u.integer = status;
+  const char *status_message = meshms_status_message(status);
+  if (status_message) {
+    r->http.response.result_extra[1].label = "meshms_status_message";
+    r->http.response.result_extra[1].value.type = JSON_STRING_NULTERM;
+    r->http.response.result_extra[1].value.u.string.content = status_message;
+  }
+  if (meshms_result > result) {
     result = meshms_result;
-    if (message == NULL)
-      message = meshms_message;
+    message = NULL;
   }
   assert(result != 0);
-  http_request_simple_response(&r->http, result, message);
+  http_request_simple_response(&r->http, result, message ? message : result == 403 ? "MeshMS operation failed" : NULL);
   return result;
 }
 

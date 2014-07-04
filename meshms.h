@@ -47,6 +47,8 @@ __MESHMS_INLINE int meshms_failed(enum meshms_status status) {
     return status != MESHMS_STATUS_OK && status != MESHMS_STATUS_UPDATED;
 }
 
+const char *meshms_status_message(enum meshms_status);
+
 // the manifest details for one half of a conversation
 struct meshms_ply {
   rhizome_bid_t bundle_id;

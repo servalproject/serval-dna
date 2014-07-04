@@ -49,7 +49,7 @@ public class MeshMSCommon
 			JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getErrorStream(), "US-ASCII"));
 			Status status = decodeRestfulStatus(json);
 			throwRestfulResponseExceptions(status, conn.getURL());
-			throw new ServalDInterfaceException("unexpected MeshMS status = " + status.meshms_status + ", \"" + status.message + "\"");
+			throw new ServalDInterfaceException("unexpected MeshMS status = " + status.meshms_status_code + ", \"" + status.meshms_status_message + "\"");
 		}
 		for (int code: expected_response_codes) {
 			if (conn.getResponseCode() == code) {
@@ -61,8 +61,10 @@ public class MeshMSCommon
 	}
 
 	private static class Status {
-		public MeshMSStatus meshms_status;
-		public String message;
+		public int http_status_code;
+		public String http_status_message;
+		public MeshMSStatus meshms_status_code;
+		public String meshms_status_message;
 	}
 
 	protected static Status decodeRestfulStatus(JSONTokeniser json) throws IOException, ServalDInterfaceException
@@ -72,15 +74,19 @@ public class MeshMSCommon
 			json.consume(JSONTokeniser.Token.START_OBJECT);
 			json.consume("http_status_code");
 			json.consume(JSONTokeniser.Token.COLON);
-			json.consume(Integer.class);
+			status.http_status_code = json.consume(Integer.class);
 			json.consume(JSONTokeniser.Token.COMMA);
-			status.message = json.consume("http_status_message");
+			json.consume("http_status_message");
 			json.consume(JSONTokeniser.Token.COLON);
-			String message = json.consume(String.class);
+			status.http_status_message = json.consume(String.class);
 			json.consume(JSONTokeniser.Token.COMMA);
 			json.consume("meshms_status_code");
 			json.consume(JSONTokeniser.Token.COLON);
-			status.meshms_status = MeshMSStatus.fromCode(json.consume(Integer.class));
+			status.meshms_status_code = MeshMSStatus.fromCode(json.consume(Integer.class));
+			json.consume(JSONTokeniser.Token.COMMA);
+			json.consume("meshms_status_message");
+			json.consume(JSONTokeniser.Token.COLON);
+			status.meshms_status_message = json.consume(String.class);
 			json.consume(JSONTokeniser.Token.END_OBJECT);
 			json.consume(JSONTokeniser.Token.EOF);
 			return status;
@@ -92,7 +98,7 @@ public class MeshMSCommon
 
 	protected static void throwRestfulResponseExceptions(Status status, URL url) throws MeshMSException, ServalDFailureException
 	{
-		switch (status.meshms_status) {
+		switch (status.meshms_status_code) {
 		case OK:
 		case UPDATED:
 			break;
@@ -101,7 +107,7 @@ public class MeshMSCommon
 		case PROTOCOL_FAULT:
 			throw new MeshMSProtocolFaultException(url);
 		case ERROR:
-			throw new ServalDFailureException("received meshms_status=ERROR(-1) from " + url);
+			throw new ServalDFailureException("received meshms_status_code=ERROR(-1) from " + url);
 		}
 	}
 
@@ -125,7 +131,7 @@ public class MeshMSCommon
 		JSONTokeniser json = MeshMSCommon.receiveRestfulResponse(conn, HttpURLConnection.HTTP_CREATED);
 		Status status = decodeRestfulStatus(json);
 		throwRestfulResponseExceptions(status, conn.getURL());
-		return status.meshms_status;
+		return status.meshms_status_code;
 	}
 
 	public static MeshMSStatus markAllConversationsRead(ServalDHttpConnectionFactory connector, SubscriberId sid1) throws IOException, ServalDInterfaceException, MeshMSException
@@ -137,7 +143,7 @@ public class MeshMSCommon
 		JSONTokeniser json = MeshMSCommon.receiveRestfulResponse(conn, expected_response_codes);
 		Status status = decodeRestfulStatus(json);
 		throwRestfulResponseExceptions(status, conn.getURL());
-		return status.meshms_status;
+		return status.meshms_status_code;
 	}
 
 	public static MeshMSStatus markAllMessagesRead(ServalDHttpConnectionFactory connector, SubscriberId sid1, SubscriberId sid2) throws IOException, ServalDInterfaceException, MeshMSException
@@ -149,7 +155,7 @@ public class MeshMSCommon
 		JSONTokeniser json = MeshMSCommon.receiveRestfulResponse(conn, expected_response_codes);
 		Status status = decodeRestfulStatus(json);
 		throwRestfulResponseExceptions(status, conn.getURL());
-		return status.meshms_status;
+		return status.meshms_status_code;
 	}
 
 	public static MeshMSStatus advanceReadOffset(ServalDHttpConnectionFactory connector, SubscriberId sid1, SubscriberId sid2, long offset) throws IOException, ServalDInterfaceException, MeshMSException
@@ -161,7 +167,7 @@ public class MeshMSCommon
 		JSONTokeniser json = MeshMSCommon.receiveRestfulResponse(conn, expected_response_codes);
 		Status status = decodeRestfulStatus(json);
 		throwRestfulResponseExceptions(status, conn.getURL());
-		return status.meshms_status;
+		return status.meshms_status_code;
 	}
 
 }
