@@ -115,7 +115,7 @@ teardown_AuthBasicWrong() {
    teardown
 }
 
-doc_RhizomeList="HTTP RESTful list Rhizome bundles as JSON"
+doc_RhizomeList="HTTP RESTful list 100 Rhizome bundles as JSON"
 setup_RhizomeList() {
    setup
    NBUNDLES=100
@@ -274,12 +274,12 @@ test_RhizomeManifestNonexist() {
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/$BID_NONEXISTENT.rhm"
    tfw_cat http.headers http.content
-   assertStdoutIs 404
+   assertStdoutIs 403
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
    assertGrep --matches=0 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Code:"
    assertGrep --matches=0 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Message:"
-   assertJq http.content 'contains({"http_status_code": 404})'
+   assertJq http.content 'contains({"http_status_code": 403})'
    assertJq http.content 'contains({"rhizome_bundle_status_code": 0})'
    assertJqGrep --ignore-case http.content '.rhizome_bundle_status_message' "bundle new to store"
 }
@@ -322,12 +322,12 @@ test_RhizomePayloadRawNonexistManifest() {
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/$BID_NONEXISTENT/raw.bin"
    tfw_cat http.headers http.content
-   assertStdoutIs 404
+   assertStdoutIs 403
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
    assertGrep --matches=0 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Code:"
    assertGrep --matches=0 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Message:"
-   assertJq http.content 'contains({"http_status_code": 404})'
+   assertJq http.content 'contains({"http_status_code": 403})'
    assertJq http.content 'contains({"rhizome_bundle_status_code": 0})'
    assertJqGrep --ignore-case http.content '.rhizome_bundle_status_message' "bundle new to store"
 }
@@ -425,12 +425,12 @@ test_RhizomePayloadDecryptedNonexistManifest() {
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/$BID_NONEXISTENT/decrypted.bin"
    tfw_cat http.headers http.content
-   assertStdoutIs 404
+   assertStdoutIs 403
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
    assertGrep --matches=0 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Code:"
    assertGrep --matches=0 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Message:"
-   assertJq http.content 'contains({"http_status_code": 404})'
+   assertJq http.content 'contains({"http_status_code": 403})'
    assertJq http.content 'contains({"rhizome_bundle_status_code": 0})'
    assertJqGrep --ignore-case http.content '.rhizome_bundle_status_message' "bundle new to store"
 }

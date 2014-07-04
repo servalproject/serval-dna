@@ -1814,6 +1814,7 @@ static const char *httpResultString(int response_code)
   switch (response_code) {
   case 200: return "OK";
   case 201: return "Created";
+  case 204: return "No Content";
   case 206: return "Partial Content";
   case 400: return "Bad Request";
   case 401: return "Unauthorized";

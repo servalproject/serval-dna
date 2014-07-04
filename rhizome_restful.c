@@ -708,7 +708,7 @@ static int restful_rhizome_bid_rhm(httpd_request *r, const char *remainder)
   if (*remainder)
     return 404;
   if (r->manifest == NULL)
-    return http_request_rhizome_response(r, 404, NULL, NULL);
+    return http_request_rhizome_response(r, 403, NULL, NULL);
   http_request_response_static(&r->http, 200, "rhizome-manifest/text",
       (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes
     );
@@ -720,7 +720,7 @@ static int restful_rhizome_bid_raw_bin(httpd_request *r, const char *remainder)
   if (*remainder)
     return 404;
   if (r->manifest == NULL)
-    return http_request_rhizome_response(r, 404, NULL, NULL);
+    return http_request_rhizome_response(r, 403, NULL, NULL);
   if (r->manifest->filesize == 0) {
     http_request_response_static(&r->http, 200, CONTENT_TYPE_BLOB, "", 0);
     return 1;
@@ -737,7 +737,7 @@ static int restful_rhizome_bid_decrypted_bin(httpd_request *r, const char *remai
   if (*remainder)
     return 404;
   if (r->manifest == NULL)
-    return http_request_rhizome_response(r, 404, NULL, NULL);
+    return http_request_rhizome_response(r, 403, NULL, NULL);
   if (r->manifest->filesize == 0) {
     // TODO use Content Type from manifest (once it is implemented)
     http_request_response_static(&r->http, 200, CONTENT_TYPE_BLOB, "", 0);

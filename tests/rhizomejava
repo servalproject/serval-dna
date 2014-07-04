@@ -31,6 +31,7 @@ setup() {
    executeOk_servald config \
 	set log.console.level debug \
         set debug.httpd on
+   set_extra_config
    create_identities 4
    start_servald_server
 }
@@ -169,6 +170,17 @@ test_RhizomeManifest() {
    done
 }
 
+doc_RhizomeManifestNonexist="Java API fetch non-existent Rhizome manifest"
+setup_RhizomeManifestNonexist() {
+   setup
+}
+test_RhizomeManifestNonexist() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-manifest "$BID_NONEXISTENT" ''
+   tfw_cat --stdout --stderr
+   assertStdoutLineCount == 1
+   assertStdoutGrep --ignore-case '^not found$'
+}
+
 doc_RhizomePayloadRaw="Java API fetch Rhizome raw payload"
 setup_RhizomePayloadRaw() {
    setup
@@ -186,6 +198,33 @@ test_RhizomePayloadRaw() {
    done
 }
 
+doc_RhizomePayloadRawNonexistManifest="Java API fetch Rhizome raw payload for non-existent manifest"
+setup_RhizomePayloadRawNonexistManifest() {
+   setup
+}
+test_RhizomePayloadRawNonexistManifest() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-payload-raw "$BID_NONEXISTENT" ''
+   tfw_cat --stdout --stderr
+   assertStdoutLineCount == 1
+   assertStdoutGrep --ignore-case '^not found$'
+}
+
+doc_RhizomePayloadRawNonexistPayload="Java API fetch non-existent Rhizome raw payload"
+setup_RhizomePayloadRawNonexistPayload() {
+   set_extra_config() {
+      executeOk_servald config set rhizome.max_blob_size 0
+   }
+   setup
+   rhizome_add_bundles $SIDA1 0 0
+   rhizome_delete_payload_blobs "${HASH[0]}"
+}
+test_RhizomePayloadRawNonexistPayload() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-payload-raw "${BID[0]}" raw.bin
+   tfw_cat --stdout --stderr
+   assertStdoutGrep --ignore-case '^no payload$'
+   assert_metadata 0
+}
+
 doc_RhizomePayloadDecrypted="Java API fetch Rhizome decrypted payload"
 setup_RhizomePayloadDecrypted() {
    setup
@@ -201,6 +240,22 @@ test_RhizomePayloadDecrypted() {
    for n in 0 1 2 3; do
       assert cmp file$n decrypted.bin$n
    done
+}
+
+doc_RhizomePayloadDecryptedNonexistManifest="Java API fetch Rhizome decrypted payload for non-existent manifest"
+setup_RhizomePayloadDecryptedNonexistManifest() {
+   set_extra_config() {
+      executeOk_servald config set rhizome.max_blob_size 0
+   }
+   setup
+   rhizome_add_bundles $SIDA1 0 0
+   rhizome_delete_payload_blobs "${HASH[0]}"
+}
+test_RhizomePayloadDecryptedNonexistManifest() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-payload-decrypted "${BID[0]}" ''
+   tfw_cat --stdout --stderr
+   assertStdoutGrep --ignore-case '^no payload$'
+   assert_metadata 0
 }
 
 doc_RhizomePayloadDecryptedForeign="Java API cannot fetch foreign Rhizome decrypted payload"

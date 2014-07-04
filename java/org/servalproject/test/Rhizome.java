@@ -85,15 +85,19 @@ public class Rhizome {
 		try {
 			ServalDClient client = new ServerControl().getRestfulClient();
 			RhizomeManifestBundle bundle = client.rhizomeManifest(bid);
-			System.out.println(
-					"_insertTime=" + bundle.insertTime + "\n" +
-					"_author=" + bundle.author + "\n" +
-					"_secret=" + bundle.secret + "\n" +
-					manifestFields(bundle.manifest, "\n") + "\n"
-				);
-			FileOutputStream out = new FileOutputStream(dstpath);
-			out.write(bundle.manifestText());
-			out.close();
+			if (bundle == null)
+				System.out.println("not found");
+			else {
+				System.out.println(
+						"_insertTime=" + bundle.insertTime + "\n" +
+						"_author=" + bundle.author + "\n" +
+						"_secret=" + bundle.secret + "\n" +
+						manifestFields(bundle.manifest, "\n") + "\n"
+					);
+				FileOutputStream out = new FileOutputStream(dstpath);
+				out.write(bundle.manifestText());
+				out.close();
+			}
 		}
 		catch (RhizomeException e) {
 			System.out.println(e.toString());
@@ -104,23 +108,32 @@ public class Rhizome {
 	static void rhizome_payload_raw(BundleId bid, String dstpath) throws ServalDInterfaceException, IOException, InterruptedException
 	{
 		ServalDClient client = new ServerControl().getRestfulClient();
-		FileOutputStream out = new FileOutputStream(dstpath);
+		FileOutputStream out = null;
 		try {
 			RhizomePayloadRawBundle bundle = client.rhizomePayloadRaw(bid);
-			InputStream in = bundle.rawPayloadInputStream;
-			byte[] buf = new byte[4096];
-			int n;
-			while ((n = in.read(buf)) > 0)
-				out.write(buf, 0, n);
-			in.close();
-			out.close();
-			out = null;
-			System.out.println(
-					"_insertTime=" + bundle.insertTime + "\n" +
-					"_author=" + bundle.author + "\n" +
-					"_secret=" + bundle.secret + "\n" +
-					manifestFields(bundle.manifest, "\n") + "\n"
-				);
+			if (bundle == null)
+				System.out.println("not found");
+			else {
+				InputStream in = bundle.rawPayloadInputStream;
+				if (in == null)
+					System.out.println("no payload");
+				else {
+					out = new FileOutputStream(dstpath);
+					byte[] buf = new byte[4096];
+					int n;
+					while ((n = in.read(buf)) > 0)
+						out.write(buf, 0, n);
+					in.close();
+					out.close();
+					out = null;
+				}
+				System.out.println(
+						"_insertTime=" + bundle.insertTime + "\n" +
+						"_author=" + bundle.author + "\n" +
+						"_secret=" + bundle.secret + "\n" +
+						manifestFields(bundle.manifest, "\n") + "\n"
+					);
+			}
 		}
 		catch (RhizomeException e) {
 			System.out.println(e.toString());
@@ -135,23 +148,32 @@ public class Rhizome {
 	static void rhizome_payload_decrypted(BundleId bid, String dstpath) throws ServalDInterfaceException, IOException, InterruptedException
 	{
 		ServalDClient client = new ServerControl().getRestfulClient();
-		FileOutputStream out = new FileOutputStream(dstpath);
+		FileOutputStream out = null;
 		try {
 			RhizomePayloadBundle bundle = client.rhizomePayload(bid);
-			InputStream in = bundle.payloadInputStream;
-			byte[] buf = new byte[4096];
-			int n;
-			while ((n = in.read(buf)) > 0)
-				out.write(buf, 0, n);
-			in.close();
-			out.close();
-			out = null;
-			System.out.println(
-					"_insertTime=" + bundle.insertTime + "\n" +
-					"_author=" + bundle.author + "\n" +
-					"_secret=" + bundle.secret + "\n" +
-					manifestFields(bundle.manifest, "\n") + "\n"
-				);
+			if (bundle == null)
+				System.out.println("not found");
+			else {
+				InputStream in = bundle.payloadInputStream;
+				if (in == null)
+					System.out.println("no payload");
+				else {
+					out = new FileOutputStream(dstpath);
+					byte[] buf = new byte[4096];
+					int n;
+					while ((n = in.read(buf)) > 0)
+						out.write(buf, 0, n);
+					in.close();
+					out.close();
+					out = null;
+				}
+				System.out.println(
+						"_insertTime=" + bundle.insertTime + "\n" +
+						"_author=" + bundle.author + "\n" +
+						"_secret=" + bundle.secret + "\n" +
+						manifestFields(bundle.manifest, "\n") + "\n"
+					);
+			}
 		}
 		catch (RhizomeException e) {
 			System.out.println(e.toString());
