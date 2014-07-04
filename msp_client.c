@@ -403,6 +403,8 @@ static int add_packet(struct msp_window *window, uint16_t seq, uint8_t flags, co
   }else{
     if (window->_tail->seq == seq){
       // ignore duplicate packets
+      if (config.debug.msp)
+	DEBUGF("Ignore duplicate packet %02x", seq);
       return 0;
     }else if (compare_wrapped_uint16(window->_tail->seq, seq)<0){
       if (compare_wrapped_uint16(window->_head->seq, seq)>0){
@@ -416,6 +418,8 @@ static int add_packet(struct msp_window *window, uint16_t seq, uint8_t flags, co
 	insert_pos = &(*insert_pos)->_next;
       if ((*insert_pos)->seq == seq){
 	// ignore duplicate packets
+	if (config.debug.msp)
+	  DEBUGF("Ignore duplicate packet %02x", seq);
 	return 0;
       }
     }
@@ -446,6 +450,8 @@ static int add_packet(struct msp_window *window, uint16_t seq, uint8_t flags, co
     bcopy(payload, p, len);
   }
   window->packet_count++;
+  if (config.debug.msp)
+    DEBUGF("Add packet %02x", seq);
   return 1;
 }
 
@@ -470,9 +476,9 @@ static int msp_send_packet(struct msp_sock *sock, struct msp_packet *packet)
   if (!(sock->state & MSP_STATE_RECEIVED_PACKET))
     msp_header[0]|=FLAG_FIRST;
   
-  write_uint16(&msp_header[1], sock->rx.next_seq);
+  write_uint16(&msp_header[1], sock->rx.next_seq -1);
   write_uint16(&msp_header[3], packet->seq);
-  sock->previous_ack = sock->rx.next_seq;
+  sock->previous_ack = sock->rx.next_seq -1;
   
   struct fragmented_data data={
     .fragment_count=3,
@@ -504,7 +510,7 @@ static int msp_send_packet(struct msp_sock *sock, struct msp_packet *packet)
     return -1;
   }
   if (config.debug.msp)
-    DEBUGF("Sent packet flags %02x seq %02x len %zd (acked %02x)", msp_header[0], packet->seq, packet->len, sock->rx.next_seq);
+    DEBUGF("Sent packet flags %02x seq %02x len %zd (acked %02x)", msp_header[0], packet->seq, packet->len, sock->rx.next_seq -1);
   sock->tx.last_activity = packet->sent = gettime_ms();
   sock->next_ack = packet->sent + RETRANSMIT_TIME;
   return 0;
@@ -530,7 +536,7 @@ static int send_ack(struct msp_sock *sock)
   if (!(sock->state & MSP_STATE_RECEIVED_PACKET))
     msp_header[0]|=FLAG_FIRST;
     
-  write_uint16(&msp_header[1], sock->rx.next_seq);
+  write_uint16(&msp_header[1], sock->rx.next_seq -1);
   
   struct fragmented_data data={
     .fragment_count=2,
@@ -553,8 +559,8 @@ static int send_ack(struct msp_sock *sock)
     return -1;
   }
   if (config.debug.msp)
-    DEBUGF("Sent packet flags %02x (acked %02x)", msp_header[0], sock->rx.next_seq);
-  sock->previous_ack = sock->rx.next_seq;
+    DEBUGF("Sent packet flags %02x (acked %02x)", msp_header[0], sock->rx.next_seq -1);
+  sock->previous_ack = sock->rx.next_seq -1;
   sock->tx.last_activity = gettime_ms();
   sock->next_ack = sock->tx.last_activity + RETRANSMIT_TIME;
   return 0;
@@ -719,7 +725,7 @@ static int process_sock(struct msp_sock *sock)
       && (sock->state & MSP_STATE_SHUTDOWN_REMOTE)
       && sock->tx.packet_count == 0
       && sock->rx.packet_count == 0
-      && sock->previous_ack == sock->rx.next_seq
+      && sock->previous_ack == sock->rx.next_seq -1
   ){
     sock->state |= MSP_STATE_CLOSED;
     return -1;
