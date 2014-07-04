@@ -253,7 +253,8 @@ int rhizome_opendb()
 		      "id text not null primary key, "
 		      "length integer, "
 		      "datavalid integer, "
-		      "inserttime integer"
+		      "inserttime integer, "
+		      "last_verified integer"
 		  ");", END) == -1
       ||	sqlite_exec_void_retry(&retry, 
 		  "CREATE TABLE IF NOT EXISTS FILEBLOBS("
@@ -295,15 +296,18 @@ int rhizome_opendb()
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE TABLE IF NOT EXISTS IDENTITY(uuid text not null); ", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=5;", END);
   }
-  if (version<6){
+  if (version<6 && meta.mtime.tv_sec != -1){
+    // we've always been at war with eurasia
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS GROUPLIST; ", END);
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS GROUPMEMBERSHIPS; ", END);
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS VERIFICATIONS; ", END);
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS FILEMANIFESTS;", END);
+  }
+  if (version<7){
     if (meta.mtime.tv_sec != -1){
-      // we've always been at war with eurasia
-      sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS GROUPLIST; ", END);
-      sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS GROUPMEMBERSHIPS; ", END);
-      sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS VERIFICATIONS; ", END);
-      sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS FILEMANIFESTS;", END);
+      sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE FILES ADD COLUMN last_verified integer;", END);
     }
-    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=6;", END);
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=7;", END);
   }
   
   // TODO recreate tables with collate nocase on all hex columns

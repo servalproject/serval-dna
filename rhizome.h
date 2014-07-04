@@ -660,7 +660,7 @@ struct rhizome_read
   
   uint64_t hash_offset;
   SHA512_CTX sha512_context;
-  char invalid;
+  char verified;
   
   uint64_t blob_rowid;
   int blob_fd;

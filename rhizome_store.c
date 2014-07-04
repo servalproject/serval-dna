@@ -785,12 +785,15 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
     if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1)
       goto dbfailure;
 
+    time_ms_t now = gettime_ms();
+    
     if (sqlite_exec_void_retry(
 	    &retry,
-	    "INSERT OR REPLACE INTO FILES(id,length,datavalid,inserttime) VALUES(?,?,1,?);",
+	    "INSERT OR REPLACE INTO FILES(id,length,datavalid,inserttime,last_verified) VALUES(?,?,1,?,?);",
 	    RHIZOME_FILEHASH_T, &write->id,
 	    INT64, write->file_length,
-	    INT64, gettime_ms(),
+	    INT64, now,
+	    INT64, now,
 	    END
 	  ) == -1
       )
@@ -1016,6 +1019,9 @@ enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const r
   read->id = *hashp;
   read->blob_rowid = 0;
   read->blob_fd = -1;
+  read->verified = 0;
+  read->offset = 0;
+  read->hash_offset = 0;
   
   if (sqlite_exec_uint64(&read->length,"SELECT length FROM FILES WHERE id = ?", 
     RHIZOME_FILEHASH_T, &read->id, END) == -1)
@@ -1056,8 +1062,6 @@ enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const r
     if (config.debug.rhizome_store)
       DEBUGF("Opened stored file %s as fd %d, len %"PRIx64, blob_path, read->blob_fd, read->length);
   }
-  read->offset = 0;
-  read->hash_offset = 0;
   SHA512_Init(&read->sha512_context);
   return RHIZOME_PAYLOAD_STATUS_STORED;
 }
@@ -1114,7 +1118,7 @@ ssize_t rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, siz
 {
   IN();
   // hash check failed, just return an error
-  if (read_state->invalid)
+  if (read_state->verified == -1)
     RETURN(-1);
 
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
@@ -1127,15 +1131,19 @@ ssize_t rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, siz
   if (read_state->hash_offset == read_state->offset && buffer && bytes_read>0){
     SHA512_Update(&read_state->sha512_context, buffer, bytes_read);
     read_state->hash_offset += bytes_read;
-    // if we hash everything and the has doesn't match, we need to delete the payload
+    
+    // if we hash everything and the hash doesn't match, we need to delete the payload
     if (read_state->hash_offset >= read_state->length){
       rhizome_filehash_t hash_out;
       SHA512_Final(hash_out.binary, &read_state->sha512_context);
       SHA512_End(&read_state->sha512_context, NULL);
       if (cmp_rhizome_filehash_t(&read_state->id, &hash_out) != 0) {
 	// hash failure, mark the payload as invalid
-	read_state->invalid = 1;
+	read_state->verified = -1;
 	RETURN(WHYF("Expected hash=%s, got %s", alloca_tohex_rhizome_filehash_t(read_state->id), alloca_tohex_rhizome_filehash_t(hash_out)));
+      }else{
+	// we read it, and it's good. Lets remember that (not fatal if the database is locked)
+	read_state->verified = 1;
       }
     }
   }
@@ -1225,9 +1233,18 @@ void rhizome_read_close(struct rhizome_read *read)
     close(read->blob_fd);
     read->blob_fd = -1;
   }
-  if (read->invalid) {
+  
+  if (read->verified==-1) {
     // delete payload!
     rhizome_delete_file(&read->id);
+  }else if(read->verified==1) {
+    // remember when we verified the file
+    time_ms_t now = gettime_ms();
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, 
+      "UPDATE FILES SET last_verified = ? WHERE id=?",
+      INT64, now, 
+      RHIZOME_FILEHASH_T, &read->id,
+      END);
   }
 }
 
