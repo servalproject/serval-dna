@@ -1358,8 +1358,12 @@ ssize_t rhizome_read_cached(const rhizome_bid_t *bidp, uint64_t version, time_ms
   // if we don't have one yet, create one and open it
   if (!entry){
     rhizome_filehash_t filehash;
-    if (rhizome_database_filehash_from_id(bidp, version, &filehash) == -1)
+    if (rhizome_database_filehash_from_id(bidp, version, &filehash) != 0){
+      if (config.debug.rhizome_store)
+	DEBUGF("Payload not found for bundle bid=%s version=%"PRIu64, 
+	  alloca_tohex_rhizome_bid_t(*bidp), version);
       return -1;
+    }
     entry = emalloc_zero(sizeof(struct cache_entry));
     if (entry == NULL)
       return -1;

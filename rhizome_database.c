@@ -1169,11 +1169,16 @@ int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t versio
 {
   IN();
   strbuf hash_sb = strbuf_alloca(RHIZOME_FILEHASH_STRLEN + 1);
-  if (	 sqlite_exec_strbuf(hash_sb, "SELECT filehash FROM MANIFESTS WHERE version = ? AND id = ?;",
-			    INT64, version, RHIZOME_BID_T, bidp, END) == -1)
+  int r = sqlite_exec_strbuf(hash_sb, "SELECT filehash FROM MANIFESTS WHERE version = ? AND id = ?;",
+			    INT64, version, RHIZOME_BID_T, bidp, END);
+  if (r == -1)
     RETURN(-1);
+  // this bundle / version was not found
+  if (r != 1)
+    RETURN(1);
   if (strbuf_overrun(hash_sb) || str_to_rhizome_filehash_t(hashp, strbuf_str(hash_sb)) == -1)
-    RETURN(WHYF("malformed file hash for bid=%s version=%"PRIu64, alloca_tohex_rhizome_bid_t(*bidp), version));
+    RETURN(WHYF("malformed file hash (%s) for bid=%s version=%"PRIu64, 
+      strbuf_str(hash_sb), alloca_tohex_rhizome_bid_t(*bidp), version));
   RETURN(0);
   OUT();
 }
