@@ -207,21 +207,16 @@ static int _matches(struct substring str, const char *text)
 }
 #endif
 
-void write_pointer(unsigned char *mem, void *v)
+static void write_pointer(unsigned char *mem, const void *v)
 {
-  uintptr_t n = (uintptr_t) v;
-  unsigned i;
-  for (i = 0; i != sizeof v; ++i)
-    mem[i] = n >> (8 * i);
+  memcpy(mem, &v, sizeof(void*));
 }
 
-void *read_pointer(const unsigned char *mem)
+static void *read_pointer(const unsigned char *mem)
 {
-  uintptr_t n = 0;
-  unsigned i;
-  for (i = 0; i != sizeof(void*); ++i)
-    n |= mem[i] << (8 * i);
-  return (void *) n;
+  void *v;
+  memcpy(&v, mem, sizeof(void*));
+  return v;
 }
 
 /* Allocate space from the start of the request buffer to hold the given substring plus a
@@ -261,6 +256,7 @@ static int _reserve(struct http_request *r, const char **resp, struct substring 
     r->response.result_code = 500;
     return 0;
   }
+  assert(r->reserved + sizeof(char**) <= str.start);
   const char ***respp = (const char ***) r->reserved;
   char *restr = (char *)(respp + 1);
   write_pointer((unsigned char*)respp, resp); // can't use *respp = resp; could cause SIGBUS if not aligned
@@ -268,6 +264,7 @@ static int _reserve(struct http_request *r, const char **resp, struct substring 
     memmove(restr, str.start, len);
   restr[len] = '\0';
   r->reserved += siz;
+  assert(r->reserved == &restr[len+1]);
   if (r->reserved > r->received)
     r->received = r->reserved;
   assert(r->received <= r->parsed);
