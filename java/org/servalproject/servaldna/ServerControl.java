@@ -27,6 +27,10 @@ public class ServerControl {
 		return instancePath;
 	}
 
+	public String getExecPath() {
+		return this.execPath;
+	}
+
 	private void setStatus(ServalDCommand.Status result){
 		loopbackMdpPort = result.mdpInetPort;
 		pid = result.pid;
