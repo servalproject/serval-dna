@@ -33,7 +33,8 @@ public enum RhizomeBundleStatus {
     INVALID(4),			// manifest is invalid
     FAKE(5),			// manifest signature not valid
     INCONSISTENT(6),	// manifest filesize/filehash does not match supplied payload
-    NO_ROOM(7)			// doesn't fit; store may contain more important bundles
+    NO_ROOM(7),			// doesn't fit; store may contain more important bundles
+    READONLY(8)			// cannot modify manifest; secret unknown
 	;
 
 	final public int code;
@@ -55,6 +56,7 @@ public enum RhizomeBundleStatus {
 		case 5: status = FAKE; break;
 		case 6: status = INCONSISTENT; break;
 		case 7: status = NO_ROOM; break;
+		case 8: status = READONLY; break;
 		default: throw new InvalidException(code);
 		}
 		assert status.code == code;

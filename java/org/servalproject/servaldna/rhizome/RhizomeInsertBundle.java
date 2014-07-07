@@ -24,34 +24,19 @@ import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.BundleSecret;
 import org.servalproject.servaldna.ServalDInterfaceException;
 
-public class RhizomeManifestBundle {
+public class RhizomeInsertBundle extends RhizomeManifestBundle {
 
-	public final Long insertTime;
-	public final Long rowId;
-	public final SubscriberId author;
-	public final BundleSecret secret;
-	public final RhizomeManifest manifest;
+	public final RhizomeBundleStatus status;
 
-	protected RhizomeManifestBundle(RhizomeManifest manifest,
-									Long rowId,
-									Long insertTime,
-									SubscriberId author,
-									BundleSecret secret)
+	protected RhizomeInsertBundle(RhizomeBundleStatus status,
+								  RhizomeManifest manifest,
+								  Long rowId,
+								  Long insertTime,
+								  SubscriberId author,
+								  BundleSecret secret)
 	{
-		this.manifest = manifest;
-		this.rowId = rowId;
-		this.insertTime = insertTime;
-		this.author = author;
-		this.secret = secret;
+		super(manifest, rowId, insertTime, author, secret);
+		this.status = status;
 	}
 
-	public byte[] manifestText() throws ServalDInterfaceException
-	{
-		try {
-			return manifest.toTextFormat();
-		}
-		catch (RhizomeManifestSizeException e) {
-			throw new ServalDInterfaceException("manifest text overflow", e);
-		}
-	}
 }

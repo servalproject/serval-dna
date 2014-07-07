@@ -29,19 +29,21 @@ public class RhizomePayloadRawBundle {
 
 	public final RhizomeManifest manifest;
 	public final InputStream rawPayloadInputStream;
-	public final long insertTime;
+	public final Long rowId;
+	public final Long insertTime;
 	public final SubscriberId author;
 	public final BundleSecret secret;
 
 	protected RhizomePayloadRawBundle(RhizomeManifest manifest,
 									  InputStream rawPayloadInputStream,
-									  long insertTime,
+									  Long rowId,
+									  Long insertTime,
 									  SubscriberId author,
 									  BundleSecret secret)
-
 	{
 		this.rawPayloadInputStream = rawPayloadInputStream;
 		this.manifest = manifest;
+		this.rowId = rowId;
 		this.insertTime = insertTime;
 		this.author = author;
 		this.secret = secret;

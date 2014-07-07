@@ -196,7 +196,7 @@ unpack_manifest_for_grep() {
    re_name=$(escape_grep_basic "${filename##*/}")
    if [ -e "$manifestname" ]; then
       re_filesize=$($SED -n -e '/^filesize=/s///p' "$manifestname")
-      if [ "$filesize" = 0 ]; then
+      if [ "$re_filesize" = 0 ]; then
          re_filehash=
       else
          re_filehash=$($SED -n -e '/^filehash=/s///p' "$manifestname")
@@ -243,8 +243,16 @@ extract_stdout_version() {
    extract_stdout_keyvalue "$1" version "$rexp_version"
 }
 
+extract_stdout_author_optional() {
+   extract_stdout_keyvalue_optional "$1" .author "$rexp_author"
+}
+
 extract_stdout_author() {
    extract_stdout_keyvalue "$1" .author "$rexp_author"
+}
+
+extract_stdout_secret_optional() {
+   extract_stdout_keyvalue_optional "$1" .secret "$rexp_bundlesecret"
 }
 
 extract_stdout_secret() {

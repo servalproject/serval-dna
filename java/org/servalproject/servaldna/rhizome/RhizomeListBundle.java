@@ -39,7 +39,6 @@ public class RhizomeListBundle {
 								long insertTime,
 								SubscriberId author,
 								int fromHere)
-
 	{
 		this.manifest = manifest;
 		this.rowNumber = rowNumber;

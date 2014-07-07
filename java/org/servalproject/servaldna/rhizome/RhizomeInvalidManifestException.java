@@ -23,9 +23,9 @@ package org.servalproject.servaldna.rhizome;
 import java.net.URL;
 
 /**
- * Thrown when a Rhizome API method is passed an invalid manifest.  This is not an error within the
- * Serval DNA interface, so it is not a subclass of ServalDInterfaceException.  The programmer must
- * explicitly deal with it instead of just absorbing it as an interface malfunction.
+ * Thrown when the Rhizome API rejects a caller-supplied manifest as invalid.  This error does not
+ * originate from the Serval DNA interface, so it is not a subclass of ServalDInterfaceException.
+ * The programmer must deal with it, and not treat it as an interface malfunction.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
@@ -33,6 +33,10 @@ public class RhizomeInvalidManifestException extends RhizomeException
 {
 	public RhizomeInvalidManifestException(URL url) {
 		super("invalid manifest", url);
+	}
+
+	public RhizomeInvalidManifestException(RhizomeIncompleteManifest manifest) {
+		super("invalid manifest");
 	}
 
 }

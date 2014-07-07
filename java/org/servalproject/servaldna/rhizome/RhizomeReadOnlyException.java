@@ -20,38 +20,18 @@
 
 package org.servalproject.servaldna.rhizome;
 
-import org.servalproject.servaldna.SubscriberId;
-import org.servalproject.servaldna.BundleSecret;
-import org.servalproject.servaldna.ServalDInterfaceException;
+import java.net.URL;
 
-public class RhizomeManifestBundle {
-
-	public final Long insertTime;
-	public final Long rowId;
-	public final SubscriberId author;
-	public final BundleSecret secret;
-	public final RhizomeManifest manifest;
-
-	protected RhizomeManifestBundle(RhizomeManifest manifest,
-									Long rowId,
-									Long insertTime,
-									SubscriberId author,
-									BundleSecret secret)
-	{
-		this.manifest = manifest;
-		this.rowId = rowId;
-		this.insertTime = insertTime;
-		this.author = author;
-		this.secret = secret;
+/**
+ * Thrown when a Rhizome API method is passed a manifest which is inconsistent with a supplied
+ * payload.  I.e., filesize or filehash does not match.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+public class RhizomeReadOnlyException extends RhizomeException
+{
+	public RhizomeReadOnlyException(URL url) {
+		super("bundle cannot be modified", url);
 	}
 
-	public byte[] manifestText() throws ServalDInterfaceException
-	{
-		try {
-			return manifest.toTextFormat();
-		}
-		catch (RhizomeManifestSizeException e) {
-			throw new ServalDInterfaceException("manifest text overflow", e);
-		}
-	}
 }

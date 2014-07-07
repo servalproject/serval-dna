@@ -32,6 +32,11 @@ public abstract class RhizomeException extends Exception
 {
 	public final URL url;
 
+	public RhizomeException(String message) {
+		super(message);
+		this.url = null;
+	}
+
 	public RhizomeException(String message, URL url) {
 		super(message + "; " + url);
 		this.url = url;

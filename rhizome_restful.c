@@ -376,16 +376,20 @@ static int insert_make_manifest(httpd_request *r)
     r->manifest->manifest_all_bytes = r->u.insert.manifest.length;
     int n = rhizome_manifest_parse(r->manifest);
     switch (n) {
-      case -1:
-	break;
       case 0:
 	if (!r->manifest->malformed)
 	  return 0;
 	// fall through
       case 1:
+	rhizome_manifest_free(r->manifest);
+	r->manifest = NULL;
+	r->bundle_status = RHIZOME_BUNDLE_STATUS_INVALID;
 	return http_request_rhizome_response(r, 403, "Malformed manifest", NULL);
       default:
 	WHYF("rhizome_manifest_parse() returned %d", n);
+	// fall through
+      case -1:
+	r->bundle_status = RHIZOME_BUNDLE_STATUS_ERROR;
 	break;
     }
   }
@@ -516,6 +520,8 @@ static int insert_mime_part_end(struct http_request *hr)
   }
   else if (r->u.insert.current_part == PART_MANIFEST) {
     r->u.insert.received_manifest = 1;
+    if (config.debug.rhizome)
+      DEBUGF("received %s = %s", PART_MANIFEST, alloca_toprint(-1, r->u.insert.manifest.buffer, r->u.insert.manifest.length));
     int result = insert_make_manifest(r);
     if (result)
       return result;
@@ -564,14 +570,14 @@ static int restful_rhizome_insert_end(struct http_request *hr)
   assert(r->manifest != NULL);
   assert(r->u.insert.write.file_length != RHIZOME_SIZE_UNSET);
   int status_valid = 0;
+  if (config.debug.rhizome)
+    DEBUGF("r->payload_status=%d", r->payload_status);
   switch (r->payload_status) {
     case RHIZOME_PAYLOAD_STATUS_NEW:
-      status_valid = 1;
       if (r->manifest->filesize == RHIZOME_SIZE_UNSET)
 	rhizome_manifest_set_filesize(r->manifest, r->u.insert.write.file_length);
       // fall through
     case RHIZOME_PAYLOAD_STATUS_STORED:
-      status_valid = 1;
       // TODO: check that stored hash matches received payload's hash
       // fall through
     case RHIZOME_PAYLOAD_STATUS_EMPTY:
@@ -579,18 +585,25 @@ static int restful_rhizome_insert_end(struct http_request *hr)
       assert(r->manifest->filesize != RHIZOME_SIZE_UNSET);
       if (r->u.insert.payload_size == r->manifest->filesize)
 	break;
+      // fall through
     case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
       r->payload_status = RHIZOME_PAYLOAD_STATUS_WRONG_SIZE;
-      status_valid = 1;
+      r->bundle_status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
       {
 	strbuf msg = strbuf_alloca(200);
 	strbuf_sprintf(msg, "Payload size (%"PRIu64") contradicts manifest (filesize=%"PRIu64")", r->u.insert.payload_size, r->manifest->filesize);
 	return http_request_rhizome_response(r, 403, NULL, strbuf_str(msg));
       }
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+      r->bundle_status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
+      return http_request_rhizome_response(r, 403, NULL, NULL);
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      r->bundle_status = RHIZOME_BUNDLE_STATUS_READONLY;
+      return http_request_rhizome_response(r, 403, "Missing bundle secret", NULL);
     case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
     case RHIZOME_PAYLOAD_STATUS_EVICTED:
-    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
-    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      r->bundle_status = RHIZOME_BUNDLE_STATUS_NO_ROOM;
+      // fall through
     case RHIZOME_PAYLOAD_STATUS_ERROR:
       return http_request_rhizome_response(r, 403, NULL, NULL);
   }
@@ -605,17 +618,24 @@ static int restful_rhizome_insert_end(struct http_request *hr)
     else
       assert(cmp_rhizome_filehash_t(&r->u.insert.write.id, &r->manifest->filehash) == 0);
   }
-  if (!rhizome_manifest_validate(r->manifest) || r->manifest->malformed) {
-    http_request_simple_response(&r->http, 403, "Manifest is malformed");
-    return 403;
+  const char *invalid_reason = rhizome_manifest_validate_reason(r->manifest);
+  if (invalid_reason) {
+    r->bundle_status = RHIZOME_BUNDLE_STATUS_INVALID;
+    return http_request_rhizome_response(r, 403, invalid_reason, NULL);
+  }
+  if (r->manifest->malformed) {
+    r->bundle_status = RHIZOME_BUNDLE_STATUS_INVALID;
+    return http_request_rhizome_response(r, 403, r->manifest->malformed, NULL);
   }
   if (!r->manifest->haveSecret) {
-    http_request_simple_response(&r->http, 403, "Missing bundle secret");
-    return 403;
+    r->bundle_status = RHIZOME_BUNDLE_STATUS_READONLY;
+    return http_request_rhizome_response(r, 403, "Missing bundle secret", NULL);
   }
   rhizome_manifest *mout = NULL;
   r->bundle_status = rhizome_manifest_finalise(r->manifest, &mout, !r->u.insert.force_new);
   int result = 500;
+  if (config.debug.rhizome)
+    DEBUGF("r->bundle_status=%d", r->bundle_status);
   switch (r->bundle_status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
       if (mout && mout != r->manifest)
@@ -639,6 +659,8 @@ static int restful_rhizome_insert_end(struct http_request *hr)
     case RHIZOME_BUNDLE_STATUS_ERROR:
       if (mout && mout != r->manifest)
 	rhizome_manifest_free(mout);
+      rhizome_manifest_free(r->manifest);
+      r->manifest = NULL;
       return http_request_rhizome_response(r, 0, NULL, NULL);
   }
   if (result == 500)

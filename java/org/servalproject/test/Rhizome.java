@@ -20,36 +20,42 @@
 
 package org.servalproject.test;
 
-import java.io.IOException;
+import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import org.servalproject.servaldna.ServalDClient;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.ServerControl;
 import org.servalproject.servaldna.BundleId;
+import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.rhizome.RhizomeManifest;
+import org.servalproject.servaldna.rhizome.RhizomeIncompleteManifest;
 import org.servalproject.servaldna.rhizome.RhizomeListBundle;
 import org.servalproject.servaldna.rhizome.RhizomeBundleList;
 import org.servalproject.servaldna.rhizome.RhizomeManifestBundle;
 import org.servalproject.servaldna.rhizome.RhizomePayloadRawBundle;
 import org.servalproject.servaldna.rhizome.RhizomePayloadBundle;
+import org.servalproject.servaldna.rhizome.RhizomeInsertBundle;
 import org.servalproject.servaldna.rhizome.RhizomeException;
+import org.servalproject.servaldna.rhizome.RhizomeManifestParseException;
 
 public class Rhizome {
 
 	static String manifestFields(RhizomeManifest manifest, String sep)
 	{
-		return	"id=" + manifest.id + sep +
-				"version=" + manifest.version + sep +
-				"filesize=" + manifest.filesize + sep +
-				"filehash=" + manifest.filehash + sep +
-				"sender=" + manifest.sender + sep +
-				"recipient=" + manifest.recipient + sep +
-				"date=" + manifest.date + sep +
-				"service=" + manifest.service + sep +
-				"name=" + manifest.name + sep +
-				"BK=" + manifest.BK;
+		return	        "id=" + manifest.id
+				+ sep + "version=" + manifest.version
+				+ sep + "filesize=" + manifest.filesize
+				+ (manifest.filesize != 0 ? sep + "filehash=" + manifest.filehash : "")
+				+ (manifest.sender != null ? sep + "sender=" + manifest.sender : "")
+				+ (manifest.recipient != null ? sep + "recipient=" + manifest.recipient : "")
+				+ (manifest.date != null ? sep + "date=" + manifest.date : "")
+				+ (manifest.service != null ? sep + "service=" + manifest.service : "")
+				+ (manifest.BK != null ? sep + "BK=" + manifest.BK : "")
+				+ (manifest.name != null ? sep + "name=" + manifest.name : "");
 	}
 
 	static void rhizome_list() throws ServalDInterfaceException, IOException, InterruptedException
@@ -61,8 +67,8 @@ public class Rhizome {
 			RhizomeListBundle bundle;
 			while ((bundle = list.nextBundle()) != null) {
 				System.out.println(
-						"_rowId=" + bundle.rowId +
-						", _token=" + bundle.token +
+						"_token=" + bundle.token +
+						", _rowId=" + bundle.rowId +
 						", _insertTime=" + bundle.insertTime +
 						", _author=" + bundle.author +
 						", _fromHere=" + bundle.fromHere +
@@ -89,9 +95,10 @@ public class Rhizome {
 				System.out.println("not found");
 			else {
 				System.out.println(
-						"_insertTime=" + bundle.insertTime + "\n" +
-						"_author=" + bundle.author + "\n" +
-						"_secret=" + bundle.secret + "\n" +
+						(bundle.rowId == null ? "" : "_rowId=" + bundle.rowId + "\n") +
+						(bundle.insertTime == null ? "" : "_insertTime=" + bundle.insertTime + "\n") +
+						(bundle.author == null ? "" : "_author=" + bundle.author + "\n") +
+						(bundle.secret == null ? "" : "_secret=" + bundle.secret + "\n") +
 						manifestFields(bundle.manifest, "\n") + "\n"
 					);
 				FileOutputStream out = new FileOutputStream(dstpath);
@@ -128,9 +135,10 @@ public class Rhizome {
 					out = null;
 				}
 				System.out.println(
-						"_insertTime=" + bundle.insertTime + "\n" +
-						"_author=" + bundle.author + "\n" +
-						"_secret=" + bundle.secret + "\n" +
+						(bundle.rowId == null ? "" : "_rowId=" + bundle.rowId + "\n") +
+						(bundle.insertTime == null ? "" : "_insertTime=" + bundle.insertTime + "\n") +
+						(bundle.author == null ? "" : "_author=" + bundle.author + "\n") +
+						(bundle.secret == null ? "" : "_secret=" + bundle.secret + "\n") +
 						manifestFields(bundle.manifest, "\n") + "\n"
 					);
 			}
@@ -168,9 +176,10 @@ public class Rhizome {
 					out = null;
 				}
 				System.out.println(
-						"_insertTime=" + bundle.insertTime + "\n" +
-						"_author=" + bundle.author + "\n" +
-						"_secret=" + bundle.secret + "\n" +
+						(bundle.rowId == null ? "" : "_rowId=" + bundle.rowId + "\n") +
+						(bundle.insertTime == null ? "" : "_insertTime=" + bundle.insertTime + "\n") +
+						(bundle.author == null ? "" : "_author=" + bundle.author + "\n") +
+						(bundle.secret == null ? "" : "_secret=" + bundle.secret + "\n") +
 						manifestFields(bundle.manifest, "\n") + "\n"
 					);
 			}
@@ -181,6 +190,43 @@ public class Rhizome {
 		finally {
 			if (out != null)
 				out.close();
+		}
+		System.exit(0);
+	}
+
+	static void rhizome_insert(String author, String manifestpath, String payloadPath, String manifestoutpath, String payloadName)
+		throws ServalDInterfaceException, IOException, InterruptedException, SubscriberId.InvalidHexException
+	{
+		ServalDClient client = new ServerControl().getRestfulClient();
+		try {
+			RhizomeIncompleteManifest manifest = RhizomeIncompleteManifest.fromTextFormat(new FileInputStream(manifestpath));
+			RhizomeInsertBundle bundle;
+			SubscriberId authorSid = author == null || author.length() == 0 ? null : new SubscriberId(author);
+			if (payloadName == null || payloadName.length() == 0)
+				payloadName = new File(payloadPath).getName();
+			if (payloadPath == null || payloadPath.length() == 0)
+				bundle = client.rhizomeInsert(authorSid, manifest);
+			else
+				bundle = client.rhizomeInsert(authorSid, manifest, new FileInputStream(payloadPath), payloadName);
+			System.out.println(
+					"_status=" + bundle.status + "\n" +
+					(bundle.rowId == null ? "" : "_rowId=" + bundle.rowId + "\n") +
+					(bundle.insertTime == null ? "" : "_insertTime=" + bundle.insertTime + "\n") +
+					(bundle.author == null ? "" : "_author=" + bundle.author + "\n") +
+					(bundle.secret == null ? "" : "_secret=" + bundle.secret + "\n") +
+					manifestFields(bundle.manifest, "\n") + "\n"
+				);
+			if (manifestoutpath != null && manifestoutpath.length() != 0) {
+				FileOutputStream out = new FileOutputStream(manifestoutpath);
+				out.write(bundle.manifestText());
+				out.close();
+			}
+		}
+		catch (RhizomeManifestParseException e) {
+			System.out.println(e.toString());
+		}
+		catch (RhizomeException e) {
+			System.out.println(e.toString());
 		}
 		System.exit(0);
 	}
@@ -199,6 +245,13 @@ public class Rhizome {
 				rhizome_payload_raw(new BundleId(args[1]), args[2]);
 			else if (methodName.equals("rhizome-payload-decrypted"))
 				rhizome_payload_decrypted(new BundleId(args[1]), args[2]);
+			else if (methodName.equals("rhizome-insert"))
+				rhizome_insert(	args[1], // author SID
+								args[2], // manifest path
+								args.length > 3 ? args[3] : null, // payload path
+								args.length > 4 ? args[4] : null, // manifest out path
+								args.length > 5 ? args[5] : null  // payload name
+							  );
 		} catch (Exception e) {
 			e.printStackTrace();
 			System.exit(1);

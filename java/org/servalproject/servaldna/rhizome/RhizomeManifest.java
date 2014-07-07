@@ -26,8 +26,10 @@ import java.util.HashSet;
 import java.io.UnsupportedEncodingException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import org.servalproject.servaldna.AbstractId;
 import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.BundleId;
@@ -56,7 +58,7 @@ public class RhizomeManifest {
 	public final String service;
 	public final String name;
 
-	private HashMap<String,String> extraFields;
+	protected HashMap<String,String> extraFields;
 	private byte[] signatureBlock;
 	private byte[] textFormat;
 
@@ -96,57 +98,49 @@ public class RhizomeManifest {
 		this.textFormat = null;
 	}
 
-	/** Return the Rhizome manifest in its text format representation.
+	protected RhizomeManifest(RhizomeIncompleteManifest m)
+	{
+		this(m.id, m.version, m.filesize, m.filehash, m.sender, m.recipient, m.BK, m.crypt, m.tail, m.date, m.service, m.name);
+	}
+
+	/** Return the Rhizome manifest in its text format representation, with the signature block at
+	 * the end if present.
 	 *
 	 * @author Andrew Bettison <andrew@servalproject.com>
 	 */
 	public byte[] toTextFormat() throws RhizomeManifestSizeException
 	{
-		if (textFormat == null) {
+		if (this.textFormat == null) {
 			try {
 				ByteArrayOutputStream os = new ByteArrayOutputStream();
-				OutputStreamWriter osw = new OutputStreamWriter(os, "US-ASCII");
-				osw.write("id=" + id.toHex() + "\n");
-				osw.write("version=" + version + "\n");
-				osw.write("filesize=" + filesize + "\n");
-				if (filehash != null)
-					osw.write("filehash=" + filehash.toHex() + "\n");
-				if (sender != null)
-					osw.write("sender=" + sender.toHex() + "\n");
-				if (recipient != null)
-					osw.write("recipient=" + recipient.toHex() + "\n");
-				if (BK != null)
-					osw.write("BK=" + BK.toHex() + "\n");
-				if (crypt != null)
-					osw.write("crypt=" + crypt + "\n");
-				if (tail != null)
-					osw.write("tail=" + tail + "\n");
-				if (date != null)
-					osw.write("date=" + date + "\n");
-				if (service != null)
-					osw.write("service=" + service + "\n");
-				if (name != null)
-					osw.write("name=" + name + "\n");
-				for (Map.Entry<String,String> e: extraFields.entrySet())
-					osw.write(e.getKey() + "=" + e.getValue() + "\n");
-				osw.flush();
-				if (signatureBlock != null) {
-					os.write(0);
-					os.write(signatureBlock);
-				}
-				osw.close();
+				toTextFormat(os);
+				os.close();
 				if (os.size() > TEXT_FORMAT_MAX_SIZE)
 					throw new RhizomeManifestSizeException("manifest text format overflow", os.size(), TEXT_FORMAT_MAX_SIZE);
-				textFormat = os.toByteArray();
+				this.textFormat = os.toByteArray();
 			}
 			catch (IOException e) {
 				// should not happen with ByteArrayOutputStream
 				return new byte[0];
 			}
 		}
-		byte[] ret = new byte[textFormat.length];
-		System.arraycopy(textFormat, 0, ret, 0, ret.length);
+		byte[] ret = new byte[this.textFormat.length];
+		System.arraycopy(this.textFormat, 0, ret, 0, ret.length);
 		return ret;
+	}
+
+	/** Write the Rhizome manifest in its text format representation to the given output stream,
+	 * with the signature block at the end if present.
+	 *
+	 * @author Andrew Bettison <andrew@servalproject.com>
+	 */
+	public void toTextFormat(OutputStream os) throws IOException
+	{
+		new RhizomeIncompleteManifest(this).toTextFormat(os);
+		if (this.signatureBlock != null) {
+			os.write(0);
+			os.write(this.signatureBlock);
+		}
 	}
 
 	/** Construct a Rhizome manifest from its text format representation.
@@ -158,7 +152,8 @@ public class RhizomeManifest {
 		return fromTextFormat(bytes, 0, bytes.length);
 	}
 
-	/** Construct a Rhizome manifest from its text format representation.
+	/** Construct a complete Rhizome manifest from its text format representation, including a
+	 * trailing signature block.
 	 *
 	 * @author Andrew Bettison <andrew@servalproject.com>
 	 */
@@ -175,95 +170,23 @@ public class RhizomeManifest {
 				break;
 			}
 		}
-		String text;
+		RhizomeIncompleteManifest im = new RhizomeIncompleteManifest();
 		try {
-			text = new String(bytes, off, proplen, "US-ASCII");
+			im.parseTextFormat(new ByteArrayInputStream(bytes, off, proplen));
 		}
-		catch (UnsupportedEncodingException e) {
-			throw new RhizomeManifestParseException(e);
+		catch (IOException e) {
 		}
-		BundleId id = null;
-		Long version = null;
-		Long filesize = null;
-		FileHash filehash = null;
-		SubscriberId sender = null;
-		SubscriberId recipient = null;
-		BundleKey BK = null;
-		Integer crypt = null;
-		Long tail = null;
-		Long date = null;
-		String service = null;
-		String name = null;
-		HashMap<String,String> extras = new HashMap<String,String>();
-		int pos = 0;
-		int lnum = 1;
-		while (pos < text.length()) {
-			int nl = text.indexOf('\n', pos);
-			if (nl == -1)
-				nl = text.length();
-			int field = pos;
-			if (!isFieldNameFirstChar(text.charAt(field)))
-				throw new RhizomeManifestParseException("invalid field name at line " + lnum + ": " + text.substring(pos, nl - pos));
-			++field;
-			while (isFieldNameChar(text.charAt(field)))
-				++field;
-			assert field < nl;
-			if (text.charAt(field) != '=')
-				throw new RhizomeManifestParseException("invalid field name at line " + lnum + ": " + text.substring(pos, nl - pos));
-			String fieldName = text.substring(pos, field);
-			String fieldValue = text.substring(field + 1, nl);
-			HashSet<String> fieldNames = new HashSet<String>(50);
-			try {
-				if (fieldNames.contains(fieldName))
-					throw new RhizomeManifestParseException("duplicate field at line " + lnum + ": " + text.substring(pos, nl - pos));
-				fieldNames.add(fieldName);
-				if (fieldName.equals("id"))
-					id = new BundleId(fieldValue);
-				else if (fieldName.equals("version"))
-					version = parseUnsignedLong(fieldValue);
-				else if (fieldName.equals("filesize"))
-					filesize = parseUnsignedLong(fieldValue);
-				else if (fieldName.equals("filehash"))
-					filehash = new FileHash(fieldValue);
-				else if (fieldName.equals("sender"))
-					sender = new SubscriberId(fieldValue);
-				else if (fieldName.equals("recipient"))
-					recipient = new SubscriberId(fieldValue);
-				else if (fieldName.equals("BK"))
-					BK = new BundleKey(fieldValue);
-				else if (fieldName.equals("crypt"))
-					crypt = Integer.parseInt(fieldValue);
-				else if (fieldName.equals("tail"))
-					tail = parseUnsignedLong(fieldValue);
-				else if (fieldName.equals("date"))
-					date = parseUnsignedLong(fieldValue);
-				else if (fieldName.equals("service"))
-					service = fieldValue;
-				else if (fieldName.equals("name"))
-					name = fieldValue;
-				else
-					extras.put(fieldName, fieldValue);
-			}
-			catch (AbstractId.InvalidHexException e) {
-				throw new RhizomeManifestParseException("invalid value at line " + lnum + ": " + text.substring(pos, nl - pos), e);
-			}
-			catch (NumberFormatException e) {
-				throw new RhizomeManifestParseException("invalid value at line " + lnum + ": " + text.substring(pos, nl - pos), e);
-			}
-			pos = nl + 1;
-		}
-		if (id == null)
+		if (im.id == null)
 			throw new RhizomeManifestParseException("missing 'id' field");
-		if (version == null)
+		if (im.version == null)
 			throw new RhizomeManifestParseException("missing 'version' field");
-		if (filesize == null)
+		if (im.filesize == null)
 			throw new RhizomeManifestParseException("missing 'filesize' field");
-		if (filesize != 0 && filehash == null)
+		if (im.filesize != 0 && im.filehash == null)
 			throw new RhizomeManifestParseException("missing 'filehash' field");
-		else if (filesize == 0 && filehash != null)
+		else if (im.filesize == 0 && im.filehash != null)
 			throw new RhizomeManifestParseException("spurious 'filehash' field");
-		RhizomeManifest m = new RhizomeManifest(id, version, filesize, filehash, sender, recipient, BK, crypt, tail, date, service, name);
-		m.extraFields = extras;
+		RhizomeManifest m = new RhizomeManifest(im);
 		m.signatureBlock = sigblock;
 		m.textFormat = new byte[len];
 		System.arraycopy(bytes, off, m.textFormat, 0, m.textFormat.length);
