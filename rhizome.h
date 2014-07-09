@@ -108,7 +108,7 @@ typedef struct rhizome_manifest
   unsigned char *signatories[MAX_MANIFEST_VARS];
   uint8_t signatureTypes[MAX_MANIFEST_VARS];
 
-  /* Set to non-zero if a manifest has been parsed that cannot be fully
+  /* Set to non-NULL if a manifest has been parsed that cannot be fully
    * understood by this version of Rhizome (probably from a future or a very
    * old past version of Rhizome).  During add (local injection), the manifest
    * should not be imported.  During extract (local decode) a warning or error
@@ -116,7 +116,7 @@ typedef struct rhizome_manifest
    * transported, imported and exported normally, as long as their signature is
    * valid.
    */
-  unsigned short malformed;
+  const char *malformed;
 
   /* Set non-zero after variables have been packed and signature blocks
    * appended.  All fields below may not be valid until the manifest has been
@@ -381,6 +381,7 @@ int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename, char 
 int rhizome_manifest_selfsign(rhizome_manifest *m);
 int rhizome_read_manifest_from_file(rhizome_manifest *m, const char *filename);
 int rhizome_manifest_validate(rhizome_manifest *m);
+const char *rhizome_manifest_validate_reason(rhizome_manifest *m);
 int rhizome_manifest_parse(rhizome_manifest *m);
 int rhizome_manifest_verify(rhizome_manifest *m);
 

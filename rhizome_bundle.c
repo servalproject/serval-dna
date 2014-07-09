@@ -427,7 +427,7 @@ static void rhizome_manifest_clear(rhizome_manifest *m)
     free(m->signatories[m->sig_count]);
     m->signatories[m->sig_count] = NULL;
   }
-  m->malformed = 0;
+  m->malformed = NULL;
   m->has_id = 0;
   m->has_filehash = 0;
   m->is_journal = 0;
@@ -542,7 +542,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
   assert(m->manifest_body_bytes == 0);
   assert(m->var_count == 0);
   assert(!m->finalised);
-  assert(!m->malformed);
+  assert(m->malformed == NULL);
   assert(!m->has_id);
   assert(!m->has_filehash);
   assert(!m->is_journal);
@@ -742,11 +742,11 @@ int rhizome_manifest_parse(rhizome_manifest *m)
 	reason = "invalid";
 	break;
       case FIELD_UNKNOWN:
-	++m->malformed;
+	m->malformed = "Unsupported field";
 	reason = "unsupported";
 	break;
       case FIELD_MALFORMED:
-	++m->malformed;
+	m->malformed = "Invalid field";
 	reason = "invalid";
 	break;
       default:
@@ -778,75 +778,62 @@ int rhizome_manifest_parse(rhizome_manifest *m)
 /* If all essential (transport) fields are present and well formed then sets the m->finalised field
  * and returns 1, otherwise returns 0.
  *
- * Increments m->malformed if any non-essential fields are missing or invalid.  It is up to the
- * caller to check the m->malformed field and decide whether or not to process a malformed manifest.
+ * Sets m->malformed if any non-essential fields are missing or invalid.  It is up to the caller to
+ * check m->malformed and decide whether or not to process a malformed manifest.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 int rhizome_manifest_validate(rhizome_manifest *m)
 {
-  int ret = 1;
-  if (!m->has_id) {
-    if (config.debug.rhizome_manifest)
-      DEBUG("Missing 'id' field");
-    ret = 0;
-  }
-  if (m->version == 0) {
-    if (config.debug.rhizome_manifest)
-      DEBUG("Missing 'version' field");
-    ret = 0;
-  }
-  if (m->filesize == RHIZOME_SIZE_UNSET) {
-    if (config.debug.rhizome_manifest)
-      DEBUG("Missing 'filesize' field");
-    ret = 0;
-  } else if (m->filesize == 0 && m->has_filehash) {
-    if (config.debug.rhizome_manifest)
-      DEBUG("Spurious 'filehash' field");
-    ret = 0;
-  } else if (m->filesize != 0 && !m->has_filehash) {
-    if (config.debug.rhizome_manifest)
-      DEBUG("Missing 'filehash' field");
-    ret = 0;
-  }
-  // Warn if expected fields are missing or invalid
-  if (m->service == NULL) {
-    if (config.debug.rhizome_manifest)
-      DEBUG("Missing 'service' field");
-    ++m->malformed;
-  }
+  return rhizome_manifest_validate_reason(m) == NULL ? 1 : 0;
+}
+
+/* If all essential (transport) fields are present and well formed then sets the m->finalised field
+ * and returns NULL, otherwise returns a pointer to a static string (not malloc(3)ed) describing the
+ * problem.
+ *
+ * If any non-essential fields are missing or invalid, then sets m->malformed to point to a static
+ * string describing the problem.  It is up to the caller to check m->malformed and decide whether
+ * or not to process a malformed manifest.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+const char *rhizome_manifest_validate_reason(rhizome_manifest *m)
+{
+  const char *reason = NULL;
+  if (!m->has_id)
+    reason = "Missing 'id' field";
+  else if (m->version == 0)
+    reason = "Missing 'version' field";
+  else if (m->filesize == RHIZOME_SIZE_UNSET)
+    reason = "Missing 'filesize' field";
+  else if (m->filesize == 0 && m->has_filehash)
+    reason = "Spurious 'filehash' field";
+  else if (m->filesize != 0 && !m->has_filehash)
+    reason = "Missing 'filehash' field";
+  if (reason && config.debug.rhizome_manifest)
+    DEBUG(reason);
+  if (m->service == NULL)
+    m->malformed = "Missing 'service' field";
   else if (strcmp(m->service, RHIZOME_SERVICE_FILE) == 0) {
-    if (m->name == NULL) {
-      if (config.debug.rhizome_manifest)
-	DEBUG("Manifest with service='" RHIZOME_SERVICE_FILE "' missing 'name' field");
-      ++m->malformed;
-    }
+    if (m->name == NULL)
+      m->malformed = "Manifest with service='" RHIZOME_SERVICE_FILE "' missing 'name' field";
   } else if (strcmp(m->service, RHIZOME_SERVICE_MESHMS) == 0 
 	  || strcmp(m->service, RHIZOME_SERVICE_MESHMS2) == 0
   ) {
-    if (!m->has_sender) {
-      if (config.debug.rhizome_manifest)
-	DEBUGF("Manifest with service='%s' missing 'sender' field", m->service);
-      ++m->malformed;
-    }
-    if (!m->has_recipient) {
-      if (config.debug.rhizome_manifest)
-	DEBUGF("Manifest with service='%s' missing 'recipient' field", m->service);
-      ++m->malformed;
-    }
+    if (!m->has_recipient)
+      m->malformed = "Manifest missing 'recipient' field";
+    else if (!m->has_sender)
+      m->malformed = "Manifest missing 'sender' field";
   }
-  else if (!rhizome_str_is_manifest_service(m->service)) {
-    if (config.debug.rhizome_manifest)
-      DEBUGF("Manifest invalid 'service' field %s", alloca_str_toprint(m->service));
-    ++m->malformed;
-  }
-  if (!m->has_date) {
-    if (config.debug.rhizome_manifest)
-      DEBUG("Missing 'date' field");
-    ++m->malformed;
-  }
-  m->finalised = ret;
-  return ret;
+  else if (!rhizome_str_is_manifest_service(m->service))
+    m->malformed = "Manifest invalid 'service' field";
+  else if (!m->has_date)
+    m->malformed = "Missing 'date' field";
+  if (m->malformed && config.debug.rhizome_manifest)
+    DEBUG(m->malformed);
+  m->finalised = (reason == NULL);
+  return reason;
 }
 
 int rhizome_read_manifest_from_file(rhizome_manifest *m, const char *filename)
