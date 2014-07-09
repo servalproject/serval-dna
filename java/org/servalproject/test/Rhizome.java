@@ -76,9 +76,6 @@ public class Rhizome {
 					);
 			}
 		}
-		catch (RhizomeException e) {
-			System.out.println(e.toString());
-		}
 		finally {
 			if (list != null)
 				list.close();
@@ -88,26 +85,21 @@ public class Rhizome {
 
 	static void rhizome_manifest(BundleId bid, String dstpath) throws ServalDInterfaceException, IOException, InterruptedException
 	{
-		try {
-			ServalDClient client = new ServerControl().getRestfulClient();
-			RhizomeManifestBundle bundle = client.rhizomeManifest(bid);
-			if (bundle == null)
-				System.out.println("not found");
-			else {
-				System.out.println(
-						(bundle.rowId == null ? "" : "_rowId=" + bundle.rowId + "\n") +
-						(bundle.insertTime == null ? "" : "_insertTime=" + bundle.insertTime + "\n") +
-						(bundle.author == null ? "" : "_author=" + bundle.author + "\n") +
-						(bundle.secret == null ? "" : "_secret=" + bundle.secret + "\n") +
-						manifestFields(bundle.manifest, "\n") + "\n"
-					);
-				FileOutputStream out = new FileOutputStream(dstpath);
-				out.write(bundle.manifestText());
-				out.close();
-			}
-		}
-		catch (RhizomeException e) {
-			System.out.println(e.toString());
+		ServalDClient client = new ServerControl().getRestfulClient();
+		RhizomeManifestBundle bundle = client.rhizomeManifest(bid);
+		if (bundle == null)
+			System.out.println("not found");
+		else {
+			System.out.println(
+					(bundle.rowId == null ? "" : "_rowId=" + bundle.rowId + "\n") +
+					(bundle.insertTime == null ? "" : "_insertTime=" + bundle.insertTime + "\n") +
+					(bundle.author == null ? "" : "_author=" + bundle.author + "\n") +
+					(bundle.secret == null ? "" : "_secret=" + bundle.secret + "\n") +
+					manifestFields(bundle.manifest, "\n") + "\n"
+				);
+			FileOutputStream out = new FileOutputStream(dstpath);
+			out.write(bundle.manifestText());
+			out.close();
 		}
 		System.exit(0);
 	}
@@ -142,9 +134,6 @@ public class Rhizome {
 						manifestFields(bundle.manifest, "\n") + "\n"
 					);
 			}
-		}
-		catch (RhizomeException e) {
-			System.out.println(e.toString());
 		}
 		finally {
 			if (out != null)

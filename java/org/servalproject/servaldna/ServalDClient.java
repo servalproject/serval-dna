@@ -43,7 +43,6 @@ import org.servalproject.servaldna.rhizome.RhizomeManifestBundle;
 import org.servalproject.servaldna.rhizome.RhizomePayloadRawBundle;
 import org.servalproject.servaldna.rhizome.RhizomePayloadBundle;
 import org.servalproject.servaldna.rhizome.RhizomeInsertBundle;
-import org.servalproject.servaldna.rhizome.RhizomeException;
 import org.servalproject.servaldna.rhizome.RhizomeInvalidManifestException;
 import org.servalproject.servaldna.rhizome.RhizomeFakeManifestException;
 import org.servalproject.servaldna.rhizome.RhizomeInconsistencyException;
@@ -74,24 +73,24 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 		this.restfulPassword = restfulPassword;
 	}
 
-	public RhizomeBundleList rhizomeListBundles() throws ServalDInterfaceException, IOException, RhizomeException
+	public RhizomeBundleList rhizomeListBundles() throws ServalDInterfaceException, IOException
 	{
 		RhizomeBundleList list = new RhizomeBundleList(this);
 		list.connect();
 		return list;
 	}
 
-	public RhizomeManifestBundle rhizomeManifest(BundleId bid) throws ServalDInterfaceException, IOException, RhizomeException
+	public RhizomeManifestBundle rhizomeManifest(BundleId bid) throws ServalDInterfaceException, IOException
 	{
 		return RhizomeCommon.rhizomeManifest(this, bid);
 	}
 
-	public RhizomePayloadRawBundle rhizomePayloadRaw(BundleId bid) throws ServalDInterfaceException, IOException, RhizomeException
+	public RhizomePayloadRawBundle rhizomePayloadRaw(BundleId bid) throws ServalDInterfaceException, IOException
 	{
 		return RhizomeCommon.rhizomePayloadRaw(this, bid);
 	}
 
-	public RhizomePayloadBundle rhizomePayload(BundleId bid) throws ServalDInterfaceException, IOException, RhizomeException
+	public RhizomePayloadBundle rhizomePayload(BundleId bid) throws ServalDInterfaceException, IOException, RhizomeDecryptionException
 	{
 		return RhizomeCommon.rhizomePayload(this, bid);
 	}

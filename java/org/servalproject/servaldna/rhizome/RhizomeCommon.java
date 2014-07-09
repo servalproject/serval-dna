@@ -107,13 +107,13 @@ public class RhizomeCommon
 			);
 	}
 
-	protected static JSONTokeniser receiveRestfulResponse(HttpURLConnection conn, int expected_response_code) throws IOException, ServalDInterfaceException, RhizomeException
+	protected static JSONTokeniser receiveRestfulResponse(HttpURLConnection conn, int expected_response_code) throws IOException, ServalDInterfaceException
 	{
 		int[] expected_response_codes = { expected_response_code };
 		return receiveRestfulResponse(conn, expected_response_codes);
 	}
 
-	protected static JSONTokeniser receiveRestfulResponse(HttpURLConnection conn, int[] expected_response_codes) throws IOException, ServalDInterfaceException, RhizomeException
+	protected static JSONTokeniser receiveRestfulResponse(HttpURLConnection conn, int[] expected_response_codes) throws IOException, ServalDInterfaceException
 	{
 		Status status = receiveResponse(conn, expected_response_codes);
 		if (!conn.getContentType().equals("application/json"))
