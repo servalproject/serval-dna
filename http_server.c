@@ -342,6 +342,14 @@ static inline void _commit(struct http_request *r)
   r->parsed = r->cursor;
 }
 
+static inline int _skip_any(struct http_request *r)
+{
+  if (_run_out(r))
+    return 0;
+  ++r->cursor;
+  return 1;
+}
+
 static inline void _skip_all(struct http_request *r)
 {
   r->cursor = r->end;
@@ -1249,16 +1257,21 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	if (config.debug.http_server)
 	  DEBUGF("PREAMBLE");
 	char *start = r->parsed;
-	for (; at_start || _skip_to_crlf(r); at_start = 0) {
-	  const char *end_preamble = r->cursor;
+	while (at_start || _skip_to_crlf(r)) {
+	  char *end_preamble = r->cursor;
 	  int b;
-	  if ((b = _skip_mime_boundary(r))) {
+	  if ((at_start || _skip_crlf(r)) && (b = _skip_mime_boundary(r))) {
 	    assert(end_preamble >= r->parsed);
-	    _INVOKE_HANDLER_BUF_LEN(handle_mime_preamble, r->parsed, end_preamble);
+	    _INVOKE_HANDLER_BUF_LEN(handle_mime_preamble, start, end_preamble);
 	    _rewind_crlf(r);
 	    _commit(r);
 	    return http_request_form_data_start_part(r, b);
 	  }
+	  if (!at_start) {
+	    r->cursor = end_preamble;
+	    _skip_any(r);
+	  }
+	  at_start = 0;
 	}
 	if (_end_of_content(r)) {
 	  if (r->debug_flag && *r->debug_flag)
