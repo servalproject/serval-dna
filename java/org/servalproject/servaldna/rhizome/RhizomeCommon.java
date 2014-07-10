@@ -337,7 +337,8 @@ public class RhizomeCommon
 
 	public static RhizomeInsertBundle rhizomeInsert(ServalDHttpConnectionFactory connector,
 													SubscriberId author,
-													RhizomeIncompleteManifest manifest)
+													RhizomeIncompleteManifest manifest,
+													BundleSecret secret)
 		throws	ServalDInterfaceException,
 				IOException,
 				RhizomeInvalidManifestException,
@@ -346,12 +347,13 @@ public class RhizomeCommon
 				RhizomeReadOnlyException,
 				RhizomeEncryptionException
 	{
-		return rhizomeInsert(connector, author, manifest, null, null);
+		return rhizomeInsert(connector, author, manifest, secret, null, null);
 	}
 
 	public static RhizomeInsertBundle rhizomeInsert(ServalDHttpConnectionFactory connector,
 													SubscriberId author,
 													RhizomeIncompleteManifest manifest,
+													BundleSecret secret,
 													InputStream payloadStream,
 													String fileName)
 		throws	ServalDInterfaceException,
@@ -377,6 +379,14 @@ public class RhizomeCommon
 			wr.print("Content-Transfer-Encoding: hex\r\n");
 			wr.print("\r\n");
 			wr.print(author.toHex());
+		}
+		if (secret != null) {
+			wr.print("\r\n--" + boundary + "\r\n");
+			wr.print("Content-Disposition: form-data; name=\"bundle-secret\"\r\n");
+			wr.print("Content-Type: rhizome/bundle-secret\r\n");
+			wr.print("Content-Transfer-Encoding: hex\r\n");
+			wr.print("\r\n");
+			wr.print(secret.toHex());
 		}
 		wr.print("\r\n--" + boundary + "\r\n");
         wr.print("Content-Disposition: form-data; name=\"manifest\"\r\n");

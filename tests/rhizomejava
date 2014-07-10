@@ -351,8 +351,7 @@ test_RhizomeInsert() {
          --author=${author[4]} file4
    for n in 1 2 3 4; do
       $SED -e '/^version=/d;/^date=/d;/^filehash=/d;/^filesize=/d;/^[^a-zA-Z]/,$d' xfile$n.manifest >nmanifest$n
-      assertGrep nmanifest$n '^id='
-      tfw_cat -v nmanifest$n
+      assert_manifest_fields nmanifest$n id !version !date !filehash !filesize
       executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' nmanifest$n nfile$n nfile$n.manifest "nfile$n"
       tfw_cat --stdout --stderr -v nfile$n.manifest
       if [ -n "${author[$n]}" ]; then
@@ -367,6 +366,31 @@ test_RhizomeInsert() {
          assertStderrGrep --ignore-case "missing bundle secret"
       fi
    done
+}
+
+doc_RhizomeInsertAnon="Java API update anonymous Rhizome bundle"
+setup_RhizomeInsertAnon() {
+   setup
+   create_file file1 1001
+   executeOk_servald rhizome add file '' file1 file1.manifest
+   extract_stdout_manifestid BID
+   extract_stdout_secret SECRET
+   assert_manifest_fields file1.manifest id !BK
+   $SED -e '/^version=/d;/^date=/d;/^filehash=/d;/^filesize=/d;/^[^a-zA-Z]/,$d' file1.manifest >file2.manifest
+   assert_manifest_fields file2.manifest id !version !date !filehash !filesize
+   create_file file2 1002
+}
+test_RhizomeInsertAnon() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' file2.manifest file2 ifile2.manifest "file2" "$SECRET"
+   tfw_cat --stdout --stderr -v ifile2.manifest
+   assertStdoutGrep '^_status=NEW$'
+   assertStdoutGrep "^id=$BID\$"
+   assertStderrGrep --matches=1 "^bundle_status_code=NEW$CR\$"
+   assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*$CR\$"
+   assertStderrGrep --matches=1 "^payload_status_code=NEW$CR\$"
+   assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload new to store.*$CR\$"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=0 --manifest=ifile2.manifest file2
 }
 
 runTests "$@"

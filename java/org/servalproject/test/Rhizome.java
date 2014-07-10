@@ -30,6 +30,7 @@ import org.servalproject.servaldna.ServalDClient;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.ServerControl;
 import org.servalproject.servaldna.BundleId;
+import org.servalproject.servaldna.BundleSecret;
 import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.rhizome.RhizomeManifest;
 import org.servalproject.servaldna.rhizome.RhizomeIncompleteManifest;
@@ -183,20 +184,31 @@ public class Rhizome {
 		System.exit(0);
 	}
 
-	static void rhizome_insert(String author, String manifestpath, String payloadPath, String manifestoutpath, String payloadName)
-		throws ServalDInterfaceException, IOException, InterruptedException, SubscriberId.InvalidHexException
+	static void rhizome_insert(	String author,
+								String manifestPath,
+								String payloadPath,
+								String manifestoutpath,
+								String payloadName,
+								String secretHex)
+		throws 	ServalDInterfaceException,
+				IOException,
+				InterruptedException,
+				SubscriberId.InvalidHexException
 	{
 		ServalDClient client = new ServerControl().getRestfulClient();
 		try {
-			RhizomeIncompleteManifest manifest = RhizomeIncompleteManifest.fromTextFormat(new FileInputStream(manifestpath));
+			RhizomeIncompleteManifest manifest = new RhizomeIncompleteManifest();
+			if (manifestPath != null && manifestPath.length() != 0)
+				manifest.parseTextFormat(new FileInputStream(manifestPath));
 			RhizomeInsertBundle bundle;
 			SubscriberId authorSid = author == null || author.length() == 0 ? null : new SubscriberId(author);
+			BundleSecret secret = secretHex == null || secretHex.length() == 0 ? null : new BundleSecret(secretHex);
 			if (payloadName == null || payloadName.length() == 0)
 				payloadName = new File(payloadPath).getName();
 			if (payloadPath == null || payloadPath.length() == 0)
-				bundle = client.rhizomeInsert(authorSid, manifest);
+				bundle = client.rhizomeInsert(authorSid, manifest, secret);
 			else
-				bundle = client.rhizomeInsert(authorSid, manifest, new FileInputStream(payloadPath), payloadName);
+				bundle = client.rhizomeInsert(authorSid, manifest, secret, new FileInputStream(payloadPath), payloadName);
 			System.out.println(
 					"_status=" + bundle.status + "\n" +
 					(bundle.rowId == null ? "" : "_rowId=" + bundle.rowId + "\n") +
@@ -239,7 +251,8 @@ public class Rhizome {
 								args[2], // manifest path
 								args.length > 3 ? args[3] : null, // payload path
 								args.length > 4 ? args[4] : null, // manifest out path
-								args.length > 5 ? args[5] : null  // payload name
+								args.length > 5 ? args[5] : null, // payload name
+								args.length > 6 ? args[6] : null  // bundle secret
 							  );
 		} catch (Exception e) {
 			e.printStackTrace();

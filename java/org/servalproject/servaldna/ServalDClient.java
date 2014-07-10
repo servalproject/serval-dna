@@ -34,6 +34,7 @@ import java.net.HttpURLConnection;
 import org.servalproject.codec.Base64;
 import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.BundleId;
+import org.servalproject.servaldna.BundleSecret;
 import org.servalproject.servaldna.ServalDCommand;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.rhizome.RhizomeCommon;
@@ -95,7 +96,7 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 		return RhizomeCommon.rhizomePayload(this, bid);
 	}
 
-	public RhizomeInsertBundle rhizomeInsert(SubscriberId author, RhizomeIncompleteManifest manifest)
+	public RhizomeInsertBundle rhizomeInsert(SubscriberId author, RhizomeIncompleteManifest manifest, BundleSecret secret)
 		throws	ServalDInterfaceException,
 				IOException,
 				RhizomeInvalidManifestException,
@@ -104,10 +105,10 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 				RhizomeReadOnlyException,
 				RhizomeEncryptionException
 	{
-		return RhizomeCommon.rhizomeInsert(this, author, manifest);
+		return RhizomeCommon.rhizomeInsert(this, author, manifest, secret);
 	}
 
-	public RhizomeInsertBundle rhizomeInsert(SubscriberId author, RhizomeIncompleteManifest manifest, InputStream payloadStream, String fileName)
+	public RhizomeInsertBundle rhizomeInsert(SubscriberId author, RhizomeIncompleteManifest manifest, BundleSecret secret, InputStream payloadStream, String fileName)
 		throws	ServalDInterfaceException,
 				IOException,
 				RhizomeInvalidManifestException,
@@ -116,7 +117,7 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 				RhizomeReadOnlyException,
 				RhizomeEncryptionException
 	{
-		return RhizomeCommon.rhizomeInsert(this, author, manifest, payloadStream, fileName);
+		return RhizomeCommon.rhizomeInsert(this, author, manifest, secret, payloadStream, fileName);
 	}
 
 	public MeshMSConversationList meshmsListConversations(SubscriberId sid) throws ServalDInterfaceException, IOException, MeshMSException
