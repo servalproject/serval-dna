@@ -355,7 +355,7 @@ static int vomp_generate_session_id()
     /* reject duplicate call session numbers */
     for(i=0;i<vomp_call_count;i++)
       if (session_id==vomp_call_states[i].local.session
-	  ||session_id==vomp_call_states[i].local.session){
+	  ||session_id==vomp_call_states[i].remote.session){
 	session_id=0;
 	break;
       }
