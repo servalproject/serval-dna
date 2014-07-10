@@ -448,4 +448,19 @@ test_RhizomeInsertEmptyUpdate() {
    assert diff xempty.manifest empty.manifest
 }
 
+doc_RhizomeInsertJournal="Java API insert Rhizome bundle does not support journals"
+setup_RhizomeInsertJournal() {
+   setup
+   echo 'File one' >file1
+   echo 'tail=0' >file1.manifest
+}
+test_RhizomeInsertJournal() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' file1.manifest file1 ifile1.manifest
+   tfw_cat --stdout --stderr
+   assertStdoutGrep ServalDNotImplementedException
+   assertStdoutGrep --ignore-case "not supported.*journal"
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
 runTests "$@"

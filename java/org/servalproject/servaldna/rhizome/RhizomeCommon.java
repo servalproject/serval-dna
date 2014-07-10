@@ -44,6 +44,7 @@ import org.servalproject.servaldna.BundleSecret;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.ServalDFailureException;
+import org.servalproject.servaldna.ServalDNotImplementedException;
 
 public class RhizomeCommon
 {
@@ -88,12 +89,15 @@ public class RhizomeCommon
 		}
 		if (!conn.getContentType().equals("application/json"))
 			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
-		if (conn.getResponseCode() == HttpURLConnection.HTTP_FORBIDDEN) {
+		if (status.http_status_code >= 300) {
 			JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getErrorStream(), "US-ASCII"));
 			decodeRestfulStatus(status, json);
-			return status;
 		}
-		throw new ServalDInterfaceException("unexpected HTTP response code: " + conn.getResponseCode());
+		if (status.http_status_code == HttpURLConnection.HTTP_FORBIDDEN)
+			return status;
+		if (status.http_status_code == HttpURLConnection.HTTP_NOT_IMPLEMENTED)
+			throw new ServalDNotImplementedException(status.http_status_message);
+		throw new ServalDInterfaceException("unexpected HTTP response: " + status.http_status_code + " " + status.http_status_message);
 	}
 
 	protected static ServalDInterfaceException unexpectedResponse(Status status)

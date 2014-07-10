@@ -536,7 +536,7 @@ static int insert_mime_part_end(struct http_request *hr)
       return 500;
     }
     if (r->manifest->is_journal)
-      return http_request_rhizome_response(r, 403, "Insert not supported for journals", NULL);
+      return http_request_rhizome_response(r, 501, "Insert not supported for journals", NULL);
     assert(r->manifest != NULL);
   }
   else if (r->u.insert.current_part == PART_PAYLOAD) {
@@ -892,10 +892,13 @@ static void render_manifest_headers(struct http_request *hr, strbuf sb)
   }
   rhizome_manifest *m = r->manifest;
   if (m) {
-    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Id: %s\r\n", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
-    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Version: %"PRIu64"\r\n", m->version);
-    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Filesize: %"PRIu64"\r\n", m->filesize);
-    if (m->filesize != 0)
+    if (m->has_id)
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Id: %s\r\n", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+    if (m->version)
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Version: %"PRIu64"\r\n", m->version);
+    if (m->filesize != RHIZOME_SIZE_UNSET)
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Filesize: %"PRIu64"\r\n", m->filesize);
+    if (m->has_filehash)
       strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Filehash: %s\r\n", alloca_tohex_rhizome_filehash_t(m->filehash));
     if (m->has_sender)
       strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Sender: %s\r\n", alloca_tohex_sid_t(m->sender));
@@ -932,7 +935,9 @@ static void render_manifest_headers(struct http_request *hr, strbuf sb)
       rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
       strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Secret: %s\r\n", secret);
     }
-    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Rowid: %"PRIu64"\r\n", m->rowid);
-    strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Inserttime: %"PRIu64"\r\n", m->inserttime);
+    if (m->rowid)
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Rowid: %"PRIu64"\r\n", m->rowid);
+    if (m->inserttime)
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Inserttime: %"PRIu64"\r\n", m->inserttime);
   }
 }

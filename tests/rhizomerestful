@@ -800,8 +800,8 @@ test_RhizomeInsertJournal() {
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 501
+   assertJq http.body 'contains({"http_status_code": 501})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'not supported.*journal'
    executeOk_servald rhizome list
    assert_rhizome_list

@@ -28,6 +28,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import org.servalproject.servaldna.ServalDClient;
 import org.servalproject.servaldna.ServalDInterfaceException;
+import org.servalproject.servaldna.ServalDNotImplementedException;
 import org.servalproject.servaldna.ServerControl;
 import org.servalproject.servaldna.BundleId;
 import org.servalproject.servaldna.BundleSecret;
@@ -227,6 +228,9 @@ public class Rhizome {
 			System.out.println(e.toString());
 		}
 		catch (RhizomeException e) {
+			System.out.println(e.toString());
+		}
+		catch (ServalDNotImplementedException e) {
 			System.out.println(e.toString());
 		}
 		System.exit(0);
