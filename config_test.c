@@ -93,9 +93,9 @@ int main(int argc, char **argv)
       DEBUGF("            ]");
       DEBUGF("   .type = %d", config.interfaces.av[j].value.type);
       DEBUGF("   .port = %u", config.interfaces.av[j].value.port);
-      DEBUGF("   .drop_broadcasts = %llu", (unsigned long long) config.interfaces.av[j].value.drop_broadcasts);
-      DEBUGF("   .drop_unicasts = %llu", (unsigned long long) config.interfaces.av[j].value.drop_unicasts);
-      DEBUGF("   .drop_packets = %llu", (unsigned long long) config.interfaces.av[j].value.drop_packets);
+      DEBUGF("   .drop_broadcasts = %d", (int) config.interfaces.av[j].value.drop_broadcasts);
+      DEBUGF("   .drop_unicasts = %d", (int) config.interfaces.av[j].value.drop_unicasts);
+      DEBUGF("   .drop_packets = %u", (unsigned) config.interfaces.av[j].value.drop_packets);
     }
     for (j = 0; j < config.hosts.ac; ++j) {
       char sidhex[SID_STRLEN + 1];
