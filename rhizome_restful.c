@@ -418,10 +418,12 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     if (r->u.insert.received_manifest)
       return http_response_form_part(r, "Duplicate", PART_MANIFEST, NULL, 0);
     form_buf_malloc_init(&r->u.insert.manifest, MAX_MANIFEST_BYTES);
-    if (   strcmp(h->content_type.type, "rhizome-manifest") != 0
-	|| strcmp(h->content_type.subtype, "text") != 0
+    if (   strcmp(h->content_type.type, "rhizome") != 0
+	|| strcmp(h->content_type.subtype, "manifest") != 0
     )
       return http_response_form_part(r, "Unsupported Content-Type in", PART_MANIFEST, NULL, 0);
+    if (strcmp(h->content_type.format, "text+binarysig") != 0)
+      return http_response_form_part(r, "Unsupported rhizome/manifest format in", PART_MANIFEST, NULL, 0);
     r->u.insert.current_part = PART_MANIFEST;
   }
   else if (strcmp(h->content_disposition.name, PART_PAYLOAD) == 0) {

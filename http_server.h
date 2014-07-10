@@ -68,6 +68,7 @@ struct mime_content_type {
   char subtype[64];
   char multipart_boundary[71];
   char charset[31];
+  char format[31];
 };
 
 struct http_client_authorization {

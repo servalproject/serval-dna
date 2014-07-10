@@ -515,7 +515,7 @@ test_RhizomeInsert() {
             --dump-header http.header$n \
             --basic --user harry:potter \
             "${authorargs[@]}" \
-            --form "manifest=@manifest$n;type=rhizome-manifest/text" \
+            --form "manifest=@manifest$n;type=rhizome/manifest;format=\"text+binarysig\"" \
             --form "payload=@file$n${payload_filename[$n]:+;filename=\"${payload_filename[$n]}\"}" \
             "http://$addr_localhost:$PORTA/restful/rhizome/insert"
       tfw_cat http.header$n file$n.manifest
@@ -579,7 +579,7 @@ test_RhizomeInsert() {
             --output nfile$n.manifest \
             --dump-header http.headers$n \
             --basic --user harry:potter \
-            --form "manifest=@nmanifest$n;type=rhizome-manifest/text" \
+            --form "manifest=@nmanifest$n;type=rhizome/manifest;format=\"text+binarysig\"" \
             --form "payload=@nfile$n;filename=\"nfile$n\"" \
             "http://$addr_localhost:$PORTA/restful/rhizome/insert"
       tfw_cat http.headers$n nfile$n.manifest
@@ -616,7 +616,7 @@ test_RhizomeInsertAnon() {
          --dump-header http.header \
          --basic --user harry:potter \
          --form "bundle-secret=$SECRET" \
-         --form "manifest=@file2.manifest;type=rhizome-manifest/text" \
+         --form "manifest=@file2.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
          --form "payload=@file2" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header ifile2.manifest
@@ -642,7 +642,7 @@ test_RhizomeInsertEmpty() {
          --output empty.manifest \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=;type=rhizome-manifest/text" \
+         --form "manifest=;type=rhizome/manifest;format=\"text+binarysig\"" \
          --form "payload=@empty;filename=\"lucky\"" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header empty.manifest
@@ -671,7 +671,7 @@ test_RhizomeInsertLarge() {
          --output file1.manifest \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=;type=rhizome-manifest/text" \
+         --form "manifest=;type=rhizome/manifest;format=\"text+binarysig\"" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header -v file1.manifest
@@ -722,7 +722,7 @@ test_RhizomeInsertIncorrectManifestType() {
          --output http.body \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=;type=rhizome-manifest/something" \
+         --form "manifest=;type=rhizome-manifest/text" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
@@ -730,6 +730,29 @@ test_RhizomeInsertIncorrectManifestType() {
    assertStdoutIs 403
    assertJq http.body 'contains({"http_status_code": 403})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'unsupported content-type.*manifest.*form.*part'
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
+doc_RhizomeInsertIncorrectManifestFormat="HTTP RESTful insert Rhizome bundle, incorrect 'manifest' content format"
+setup_RhizomeInsertIncorrectManifestFormat() {
+   setup
+   echo 'File one' >file1
+}
+test_RhizomeInsertIncorrectManifestFormat() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "manifest=;type=rhizome/manifest;format=\"text\"" \
+         --form "payload=@file1" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertJq http.body 'contains({"http_status_code": 403})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'unsupported.*format.*manifest.*form.*part'
    executeOk_servald rhizome list
    assert_rhizome_list
 }
@@ -747,8 +770,8 @@ test_RhizomeInsertDuplicateManifest() {
          --output http.body \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file1.manifest;type=rhizome-manifest/text" \
-         --form "manifest=@file2.manifest;type=rhizome-manifest/text" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "manifest=@file2.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
@@ -772,7 +795,7 @@ test_RhizomeInsertJournal() {
          --output http.body \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file1.manifest;type=rhizome-manifest/text" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
@@ -796,7 +819,7 @@ test_RhizomeInsertMissingPayload() {
          --output http.body \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file1.manifest;type=rhizome-manifest/text" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
    assertExitStatus == 0
@@ -820,7 +843,7 @@ test_RhizomeInsertDuplicatePayload() {
          --output http.body \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file1.manifest;type=rhizome-manifest/text" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
          --form "payload=@file1" \
          --form "payload=@file2" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
@@ -846,7 +869,7 @@ test_RhizomeInsertPartOrder() {
          --dump-header http.header \
          --basic --user harry:potter \
          --form "payload=@file1" \
-         --form "manifest=@file1.manifest;type=rhizome-manifest/text" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
    assertExitStatus == 0
@@ -869,7 +892,7 @@ test_RhizomeInsertPartUnsupported() {
          --output http.body \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file1.manifest;type=rhizome-manifest/text" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
          --form "payload=@file1" \
          --form "happyhappy=joyjoy" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
@@ -897,7 +920,7 @@ test_RhizomeInsertIncorrectFilesize() {
          --output http.body \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file1.manifest;type=rhizome-manifest/text" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
@@ -911,7 +934,7 @@ test_RhizomeInsertIncorrectFilesize() {
          --output http.body \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file2.manifest;type=rhizome-manifest/text" \
+         --form "manifest=@file2.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
          --form "payload=@file2" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
@@ -936,7 +959,7 @@ test_RhizomeInsertIncorrectFilehash() {
          --output http.body \
          --dump-header http.header \
          --basic --user harry:potter \
-         --form "manifest=@file1.manifest;type=rhizome-manifest/text" \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
          --form "payload=@file1" \
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body

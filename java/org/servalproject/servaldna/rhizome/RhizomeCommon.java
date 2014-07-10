@@ -373,12 +373,15 @@ public class RhizomeCommon
 		if (author != null) {
 			wr.print("\r\n--" + boundary + "\r\n");
 			wr.print("Content-Disposition: form-data; name=\"bundle-author\"\r\n");
+			wr.print("Content-Type: serval-mesh/sid\r\n");
+			wr.print("Content-Transfer-Encoding: hex\r\n");
 			wr.print("\r\n");
 			wr.print(author.toHex());
 		}
 		wr.print("\r\n--" + boundary + "\r\n");
         wr.print("Content-Disposition: form-data; name=\"manifest\"\r\n");
-        wr.print("Content-Type: rhizome-manifest/text\r\n");
+        wr.print("Content-Type: rhizome/manifest; format=\"text+binarysig\"\r\n");
+		wr.print("Content-Transfer-Encoding: binary\r\n");
         wr.print("\r\n");
 		wr.flush();
 		manifest.toTextFormat(ost);
@@ -391,6 +394,7 @@ public class RhizomeCommon
 			}
 			wr.print("\r\n");
 			wr.print("Content-Type: application/octet-stream\r\n");
+			wr.print("Content-Transfer-Encoding: binary\r\n");
 			wr.print("\r\n");
 			wr.flush();
 			byte[] buffer = new byte[4096];

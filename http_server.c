@@ -637,6 +637,17 @@ static int _parse_content_type(struct http_request *r, struct mime_content_type 
       continue;
     }
     r->cursor = start;
+    if (_skip_literal(r, "format=")) {
+      size_t n = _parse_token_or_quoted_string(r, ct->format, sizeof ct->format);
+      if (n == 0)
+	return 0;
+      if (n >= sizeof ct->format) {
+	WARNF("HTTP Content-Type format truncated: %s", alloca_str_toprint(ct->format));
+	return 0;
+      }
+      continue;
+    }
+    r->cursor = start;
     struct substring param;
     if (_skip_token(r, &param) && _skip_literal(r, "=") && _parse_token_or_quoted_string(r, NULL, 0)) {
       if (r->debug_flag && *r->debug_flag)
@@ -1337,11 +1348,10 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  char labelstr[labellen + 1];
 	  strncpy(labelstr, label.start, labellen)[labellen] = '\0';
 	  str_tolower_inplace(labelstr);
-	  const char *value = r->cursor;
 	  if (strcmp(labelstr, "content-length") == 0) {
 	    if (r->part_header.content_length != CONTENT_LENGTH_UNKNOWN) {
 	      if (r->debug_flag && *r->debug_flag)
-		DEBUGF("Skipping duplicate HTTP multipart header Content-Length: %s", alloca_toprint(50, sol, r->end - sol));
+		DEBUGF("Skipping duplicate HTTP multipart header %s", alloca_toprint(50, sol, r->end - sol));
 	      return 400;
 	    }
 	    http_size_t length;
@@ -1357,7 +1367,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  else if (strcmp(labelstr, "content-type") == 0) {
 	    if (r->part_header.content_type.type[0]) {
 	      if (r->debug_flag && *r->debug_flag)
-		DEBUGF("Skipping duplicate HTTP multipart header Content-Type: %s", alloca_toprint(50, sol, r->end - sol));
+		DEBUGF("Skipping duplicate HTTP multipart header %s", alloca_toprint(50, sol, r->end - sol));
 	      return 400;
 	    }
 	    if (_parse_content_type(r, &r->part_header.content_type) && _skip_optional_space(r) && _skip_crlf(r)) {
@@ -1371,7 +1381,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  else if (strcmp(labelstr, "content-disposition") == 0) {
 	    if (r->part_header.content_disposition.type[0]) {
 	      if (r->debug_flag && *r->debug_flag)
-		DEBUGF("Skipping duplicate HTTP multipart header Content-Disposition: %s", alloca_toprint(50, sol, r->end - sol));
+		DEBUGF("Skipping duplicate HTTP multipart header %s", alloca_toprint(50, sol, r->end - sol));
 	      return 400;
 	    }
 	    if (_parse_content_disposition(r, &r->part_header.content_disposition) && _skip_optional_space(r) && _skip_crlf(r)) {
@@ -1385,7 +1395,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  else if (_skip_to_crlf(r)) {
 	    _commit(r);
 	    if (r->debug_flag && *r->debug_flag)
-	      DEBUGF("Skip HTTP multipart header: %s: %s", alloca_str_toprint(labelstr), alloca_toprint(-1, value, value - r->cursor));
+	      DEBUGF("Skip HTTP multipart header: %s", alloca_toprint(50, sol, r->parsed - sol));
 	    return 0;
 	  }
 	}
