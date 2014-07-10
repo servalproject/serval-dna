@@ -580,11 +580,13 @@ static int restful_rhizome_insert_end(struct http_request *hr)
 	rhizome_manifest_set_filesize(r->manifest, r->u.insert.write.file_length);
       // fall through
     case RHIZOME_PAYLOAD_STATUS_STORED:
+      assert(r->manifest->filesize != RHIZOME_SIZE_UNSET);
       // TODO: check that stored hash matches received payload's hash
       // fall through
     case RHIZOME_PAYLOAD_STATUS_EMPTY:
       status_valid = 1;
-      assert(r->manifest->filesize != RHIZOME_SIZE_UNSET);
+      if (r->manifest->filesize == RHIZOME_SIZE_UNSET)
+	rhizome_manifest_set_filesize(r->manifest, 0);
       if (r->u.insert.payload_size == r->manifest->filesize)
 	break;
       // fall through

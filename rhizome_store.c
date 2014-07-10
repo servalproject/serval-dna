@@ -679,14 +679,18 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
 {
   enum rhizome_payload_status status = RHIZOME_PAYLOAD_STATUS_NEW;
   
-  // Once the whole file has been processed, we should finally know its.
+  // Once the whole file has been processed, we should finally know its length
   if (write->file_length == RHIZOME_SIZE_UNSET) {
     if (config.debug.rhizome_store)
       DEBUGF("Wrote %"PRIu64" bytes, set file_length", write->file_offset);
     write->file_length = write->file_offset;
-    status = store_make_space(write->file_length, NULL);
-    if (status!=RHIZOME_PAYLOAD_STATUS_NEW)
-      goto failure;
+    if (write->file_length == 0)
+      status = RHIZOME_PAYLOAD_STATUS_EMPTY;
+    else {
+      status = store_make_space(write->file_length, NULL);
+      if (status != RHIZOME_PAYLOAD_STATUS_NEW)
+	goto failure;
+    }
   }
   
   // flush out any remaining buffered pieces to disk
@@ -709,7 +713,7 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
   }
   assert(write->file_offset == write->file_length);
   
-  if (write->file_length==0){
+  if (write->file_length == 0) {
     // whoops, no payload, don't store anything
     if (config.debug.rhizome_store)
       DEBUGF("Ignoring empty write");

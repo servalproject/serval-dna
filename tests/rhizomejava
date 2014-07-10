@@ -393,4 +393,59 @@ test_RhizomeInsertAnon() {
    assert_rhizome_list --fromhere=0 --manifest=ifile2.manifest file2
 }
 
+doc_RhizomeInsertEmptyNew="Java API update existing Rhizome bundle to empty"
+setup_RhizomeInsertEmptyNew() {
+   setup
+   >empty
+   assert [ ! -s empty ]
+}
+test_RhizomeInsertEmptyNew() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' '' empty empty.manifest "lucky"
+   tfw_cat --stdout --stderr -v empty.manifest
+   extract_manifest_id BID empty.manifest
+   assertStdoutGrep '^_status=NEW$'
+   assertStdoutGrep "^id=$BID\$"
+   assertStdoutGrep "^filesize=0\$"
+   assertStdoutGrep --matches=0 "^filehash="
+   assertStderrGrep --matches=1 "^bundle_status_code=NEW$CR\$"
+   assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*$CR\$"
+   assertStderrGrep --matches=1 "^payload_status_code=EMPTY$CR\$"
+   assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload empty.*$CR\$"
+   executeOk_servald rhizome list
+   assert_rhizome_list empty
+   executeOk_servald rhizome extract bundle "$BID" xempty.manifest xempty
+   assert [ ! -e xempty ]
+   assert diff xempty.manifest empty.manifest
+}
+
+doc_RhizomeInsertEmptyUpdate="Java API insert new empty Rhizome bundle"
+setup_RhizomeInsertEmptyUpdate() {
+   setup
+   create_file file1 1001
+   executeOk_servald rhizome add file "$SIDA1" file1 file1.manifest
+   extract_stdout_manifestid BID
+   extract_stdout_BK BK
+   >empty
+   assert [ ! -s empty ]
+   echo "id=$BID" >iempty.manifest
+   echo "BK=$BK" >>iempty.manifest
+}
+test_RhizomeInsertEmptyUpdate() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' iempty.manifest empty empty.manifest
+   tfw_cat --stdout --stderr -v empty.manifest
+   assertStdoutGrep '^_status=NEW$'
+   assertStdoutGrep "^id=$BID\$"
+   assertStdoutGrep "^filesize=0\$"
+   assertStdoutGrep --matches=0 "^filehash="
+   assertStderrGrep --matches=1 "^bundle_status_code=NEW$CR\$"
+   assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*$CR\$"
+   assertStderrGrep --matches=1 "^payload_status_code=EMPTY$CR\$"
+   assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload empty.*$CR\$"
+   executeOk_servald rhizome list
+   assert_rhizome_list empty
+   executeOk_servald rhizome extract bundle "$BID" xempty.manifest xempty
+   assert [ ! -e xempty ]
+   assert diff xempty.manifest empty.manifest
+}
+
 runTests "$@"

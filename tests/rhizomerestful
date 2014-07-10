@@ -650,8 +650,8 @@ test_RhizomeInsertEmpty() {
    assertStdoutIs 201
    assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
    assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
-   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Code: 1$CR\$"
-   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Message: .*payload new to store.*$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Code: 0$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Message: .*payload empty.*$CR\$"
    extract_manifest_id BID empty.manifest
    executeOk_servald rhizome list
    assert_rhizome_list empty
