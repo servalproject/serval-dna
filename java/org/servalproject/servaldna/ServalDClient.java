@@ -25,6 +25,7 @@ import org.servalproject.servaldna.meshms.MeshMSConversationList;
 import org.servalproject.servaldna.meshms.MeshMSException;
 import org.servalproject.servaldna.meshms.MeshMSMessageList;
 
+import java.io.InputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URL;
@@ -32,8 +33,23 @@ import java.net.URLConnection;
 import java.net.HttpURLConnection;
 import org.servalproject.codec.Base64;
 import org.servalproject.servaldna.SubscriberId;
+import org.servalproject.servaldna.BundleId;
+import org.servalproject.servaldna.BundleSecret;
 import org.servalproject.servaldna.ServalDCommand;
 import org.servalproject.servaldna.ServalDInterfaceException;
+import org.servalproject.servaldna.rhizome.RhizomeCommon;
+import org.servalproject.servaldna.rhizome.RhizomeIncompleteManifest;
+import org.servalproject.servaldna.rhizome.RhizomeBundleList;
+import org.servalproject.servaldna.rhizome.RhizomeManifestBundle;
+import org.servalproject.servaldna.rhizome.RhizomePayloadRawBundle;
+import org.servalproject.servaldna.rhizome.RhizomePayloadBundle;
+import org.servalproject.servaldna.rhizome.RhizomeInsertBundle;
+import org.servalproject.servaldna.rhizome.RhizomeInvalidManifestException;
+import org.servalproject.servaldna.rhizome.RhizomeFakeManifestException;
+import org.servalproject.servaldna.rhizome.RhizomeInconsistencyException;
+import org.servalproject.servaldna.rhizome.RhizomeEncryptionException;
+import org.servalproject.servaldna.rhizome.RhizomeReadOnlyException;
+import org.servalproject.servaldna.rhizome.RhizomeDecryptionException;
 import org.servalproject.servaldna.meshms.MeshMSCommon;
 import org.servalproject.servaldna.meshms.MeshMSConversationList;
 import org.servalproject.servaldna.meshms.MeshMSMessageList;
@@ -56,6 +72,52 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 		this.httpPort = httpPort;
 		this.restfulUsername = restfulUsername;
 		this.restfulPassword = restfulPassword;
+	}
+
+	public RhizomeBundleList rhizomeListBundles() throws ServalDInterfaceException, IOException
+	{
+		RhizomeBundleList list = new RhizomeBundleList(this);
+		list.connect();
+		return list;
+	}
+
+	public RhizomeManifestBundle rhizomeManifest(BundleId bid) throws ServalDInterfaceException, IOException
+	{
+		return RhizomeCommon.rhizomeManifest(this, bid);
+	}
+
+	public RhizomePayloadRawBundle rhizomePayloadRaw(BundleId bid) throws ServalDInterfaceException, IOException
+	{
+		return RhizomeCommon.rhizomePayloadRaw(this, bid);
+	}
+
+	public RhizomePayloadBundle rhizomePayload(BundleId bid) throws ServalDInterfaceException, IOException, RhizomeDecryptionException
+	{
+		return RhizomeCommon.rhizomePayload(this, bid);
+	}
+
+	public RhizomeInsertBundle rhizomeInsert(SubscriberId author, RhizomeIncompleteManifest manifest, BundleSecret secret)
+		throws	ServalDInterfaceException,
+				IOException,
+				RhizomeInvalidManifestException,
+				RhizomeFakeManifestException,
+				RhizomeInconsistencyException,
+				RhizomeReadOnlyException,
+				RhizomeEncryptionException
+	{
+		return RhizomeCommon.rhizomeInsert(this, author, manifest, secret);
+	}
+
+	public RhizomeInsertBundle rhizomeInsert(SubscriberId author, RhizomeIncompleteManifest manifest, BundleSecret secret, InputStream payloadStream, String fileName)
+		throws	ServalDInterfaceException,
+				IOException,
+				RhizomeInvalidManifestException,
+				RhizomeFakeManifestException,
+				RhizomeInconsistencyException,
+				RhizomeReadOnlyException,
+				RhizomeEncryptionException
+	{
+		return RhizomeCommon.rhizomeInsert(this, author, manifest, secret, payloadStream, fileName);
 	}
 
 	public MeshMSConversationList meshmsListConversations(SubscriberId sid) throws ServalDInterfaceException, IOException, MeshMSException

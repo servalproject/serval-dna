@@ -108,7 +108,7 @@ typedef struct rhizome_manifest
   unsigned char *signatories[MAX_MANIFEST_VARS];
   uint8_t signatureTypes[MAX_MANIFEST_VARS];
 
-  /* Set to non-zero if a manifest has been parsed that cannot be fully
+  /* Set to non-NULL if a manifest has been parsed that cannot be fully
    * understood by this version of Rhizome (probably from a future or a very
    * old past version of Rhizome).  During add (local injection), the manifest
    * should not be imported.  During extract (local decode) a warning or error
@@ -116,7 +116,7 @@ typedef struct rhizome_manifest
    * transported, imported and exported normally, as long as their signature is
    * valid.
    */
-  unsigned short malformed;
+  const char *malformed;
 
   /* Set non-zero after variables have been packed and signature blocks
    * appended.  All fields below may not be valid until the manifest has been
@@ -362,25 +362,35 @@ enum rhizome_bundle_status {
     RHIZOME_BUNDLE_STATUS_INVALID = 4, // manifest is invalid
     RHIZOME_BUNDLE_STATUS_FAKE = 5, // manifest signature not valid
     RHIZOME_BUNDLE_STATUS_INCONSISTENT = 6, // manifest filesize/filehash does not match supplied payload
-    RHIZOME_BUNDLE_STATUS_DONOTWANT = 7, // Wont fit or we already have more important bundles
+    RHIZOME_BUNDLE_STATUS_NO_ROOM = 7, // doesn't fit; store may contain more important bundles
+    RHIZOME_BUNDLE_STATUS_READONLY = 8, // cannot modify manifest; secret unknown
 };
+
+#define INVALID_RHIZOME_BUNDLE_STATUS ((enum rhizome_bundle_status)-2)
+
+const char *rhizome_bundle_status_message(enum rhizome_bundle_status);
 
 enum rhizome_payload_status {
     RHIZOME_PAYLOAD_STATUS_ERROR = -1,
     RHIZOME_PAYLOAD_STATUS_EMPTY = 0, // payload is empty (zero length)
-    RHIZOME_PAYLOAD_STATUS_NEW = 1, // payload is not yet in store
+    RHIZOME_PAYLOAD_STATUS_NEW = 1, // payload is not yet in store (added)
     RHIZOME_PAYLOAD_STATUS_STORED = 2, // payload is already in store
     RHIZOME_PAYLOAD_STATUS_WRONG_SIZE = 3, // payload's size does not match manifest
     RHIZOME_PAYLOAD_STATUS_WRONG_HASH = 4, // payload's hash does not match manifest
     RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL = 5, // cannot encrypt/decrypt (payload key unknown)
     RHIZOME_PAYLOAD_STATUS_TOO_BIG = 6, // payload will never fit in our store
-    RHIZOME_PAYLOAD_STATUS_UNINITERESTING = 7, // other payloads in our store are more interesting
+    RHIZOME_PAYLOAD_STATUS_EVICTED = 7, // other payloads in our store are more important
 };
+
+#define INVALID_RHIZOME_PAYLOAD_STATUS ((enum rhizome_bundle_status)-2)
+
+const char *rhizome_payload_status_message(enum rhizome_payload_status);
 
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename, char append);
 int rhizome_manifest_selfsign(rhizome_manifest *m);
 int rhizome_read_manifest_from_file(rhizome_manifest *m, const char *filename);
 int rhizome_manifest_validate(rhizome_manifest *m);
+const char *rhizome_manifest_validate_reason(rhizome_manifest *m);
 int rhizome_manifest_parse(rhizome_manifest *m);
 int rhizome_manifest_verify(rhizome_manifest *m);
 

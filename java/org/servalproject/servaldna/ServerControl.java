@@ -103,11 +103,11 @@ public class ServerControl {
 			 * RESTful interface.  The authorisation must then be supplied to the restful client
 			 * object before requests can be made.
 			 */
-			String restfulPassword = ServalDCommand.getConfigItem("rhizome.api.restful.users." + restfulUsername + ".password");
+			String restfulPassword = ServalDCommand.getConfigItem("api.restful.users." + restfulUsername + ".password");
 			if (restfulPassword == null) {
 				restfulPassword = new BigInteger(130, new SecureRandom()).toString(32);
 				ServalDCommand.configActions(
-						ServalDCommand.ConfigAction.set, "rhizome.api.restful.users." + restfulUsername + ".password", restfulPassword,
+						ServalDCommand.ConfigAction.set, "api.restful.users." + restfulUsername + ".password", restfulPassword,
 						ServalDCommand.ConfigAction.sync
 				);
 			}

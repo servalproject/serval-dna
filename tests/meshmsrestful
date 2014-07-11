@@ -33,9 +33,9 @@ setup() {
    set_instance +A
    set_meshms_config
    executeOk_servald config \
-      set rhizome.api.restful.users.harry.password potter \
-      set rhizome.api.restful.users.ron.password weasley \
-      set rhizome.api.restful.users.hermione.password grainger
+      set api.restful.users.harry.password potter \
+      set api.restful.users.ron.password weasley \
+      set api.restful.users.hermione.password grainger
    set_extra_config
    if [ -z "$IDENTITY_COUNT" ]; then
       create_single_identity
@@ -81,7 +81,7 @@ test_AuthBasicMissing() {
          --dump-header http.headers \
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDA/conversationlist.json"
    assertStdoutIs '401'
-   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval Rhizome\"$CR\$"
+   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval RESTful API\"$CR\$"
    assertJq http.output 'contains({"http_status_code": 401})'
    assertJq http.output 'contains({"http_status_message": ""})'
 }
@@ -99,7 +99,7 @@ test_AuthBasicWrong() {
          --basic --user fred:nurks \
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDA/conversationlist.json"
    assertStdoutIs '401'
-   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval Rhizome\"$CR\$"
+   assertGrep http.headers "^WWW-Authenticate: Basic realm=\"Serval RESTful API\"$CR\$"
    assertJq http.output 'contains({"http_status_code": 401})'
    assertJq http.output 'contains({"http_status_message": ""})'
    executeOk curl \
@@ -280,16 +280,17 @@ test_MeshmsListMessagesNoIdentity() {
    assertExitStatus == 0
    assertStdoutIs 403
    assertJq http.body 'contains({"http_status_code": 403})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'meshms operation failed'
    assertJq http.body 'contains({"meshms_status_code": 2})'
-   assertJqGrep --ignore-case http.body '.http_status_message' 'identity.*unknown'
+   assertJqGrep --ignore-case http.body '.meshms_status_message' 'identity.*unknown'
 }
 
 doc_MeshmsListMessagesNewSince="HTTP RESTful list MeshMS messages in one conversation since token as JSON"
 setup_MeshmsListMessagesNewSince() {
    IDENTITY_COUNT=2
    set_extra_config() {
-      executeOk_servald config set rhizome.api.restful.newsince_timeout 1s \
-                               set rhizome.api.restful.newsince_poll_ms 500
+      executeOk_servald config set api.restful.newsince_timeout 1s \
+                               set api.restful.newsince_poll_ms 500
    }
    setup
    meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<A<>><>>A<<>'
@@ -340,8 +341,8 @@ doc_MeshmsListMessagesNewSinceArrival="HTTP RESTful list newly arriving MeshMS m
 setup_MeshmsListMessagesNewSinceArrival() {
    IDENTITY_COUNT=2
    set_extra_config() {
-      executeOk_servald config set rhizome.api.restful.newsince_timeout 60s \
-                               set rhizome.api.restful.newsince_poll_ms 500
+      executeOk_servald config set api.restful.newsince_timeout 60s \
+                               set api.restful.newsince_poll_ms 500
    }
    setup
    meshms_add_messages $SIDA1 $SIDA2 '><>A>'
@@ -555,8 +556,9 @@ test_MeshmsSendNoIdentity() {
    assertExitStatus == 0
    assertStdoutIs 403
    assertJq http.body 'contains({"http_status_code": 403})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'meshms operation failed'
    assertJq http.body 'contains({"meshms_status_code": 2})'
-   assertJqGrep --ignore-case http.body '.http_status_message' 'identity.*unknown'
+   assertJqGrep --ignore-case http.body '.meshms_status_message' 'identity.*unknown'
 }
 
 doc_MeshmsReadAllConversations="HTTP RESTful MeshMS mark all conversations read"

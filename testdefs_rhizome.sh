@@ -1,5 +1,5 @@
 # Common definitions for Rhizome test suites.
-# Copyright 2012 Serval Project Inc.
+# Copyright 2012-2014 Serval Project Inc.
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -27,6 +27,8 @@ rexp_version='[0-9]\{1,\}'
 rexp_crypt='[01]'
 rexp_date='[0-9]\{1,\}'
 rexp_rowid='[0-9]\{1,\}'
+
+BID_NONEXISTENT=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
 
 assert_manifest_complete() {
    local manifest="$1"
@@ -194,7 +196,7 @@ unpack_manifest_for_grep() {
    re_name=$(escape_grep_basic "${filename##*/}")
    if [ -e "$manifestname" ]; then
       re_filesize=$($SED -n -e '/^filesize=/s///p' "$manifestname")
-      if [ "$filesize" = 0 ]; then
+      if [ "$re_filesize" = 0 ]; then
          re_filehash=
       else
          re_filehash=$($SED -n -e '/^filehash=/s///p' "$manifestname")
@@ -241,8 +243,16 @@ extract_stdout_version() {
    extract_stdout_keyvalue "$1" version "$rexp_version"
 }
 
+extract_stdout_author_optional() {
+   extract_stdout_keyvalue_optional "$1" .author "$rexp_author"
+}
+
 extract_stdout_author() {
    extract_stdout_keyvalue "$1" .author "$rexp_author"
+}
+
+extract_stdout_secret_optional() {
+   extract_stdout_keyvalue_optional "$1" .secret "$rexp_bundlesecret"
 }
 
 extract_stdout_secret() {
@@ -509,5 +519,54 @@ assert_rhizome_received() {
          executeOk_servald rhizome extract file "$_id" extracted
          assert cmp "$name" extracted
       fi
+   done
+}
+
+rhizome_add_bundles() {
+   local encrypted=false
+   case "$1" in
+   --encrypted) encrypted=true; shift;;
+   esac
+   local SID="${1?}"
+   shift
+   local n
+   for ((n = $1; n <= $2; ++n)); do
+      create_file file$n $((1000 + $n))
+      if $encrypted; then
+         echo "crypt=1" >file$n.manifest
+      fi
+      executeOk_servald rhizome add file "$SID" file$n file$n.manifest
+      extract_stdout_manifestid BID[$n]
+      extract_stdout_version VERSION[$n]
+      extract_stdout_filesize SIZE[$n]
+      extract_stdout_filehash HASH[$n]
+      extract_stdout_date DATE[$n]
+      extract_stdout_BK BK[$n]
+      extract_stdout_rowid ROWID[$n]
+      extract_stdout_author AUTHOR[$n]
+      extract_stdout_secret SECRET[$n]
+      extract_stdout_inserttime INSERTTIME[$n]
+      NAME[$n]=file$n
+      if $encrypted; then
+         extract_stdout_crypt CRYPT[$n]
+         assert [ "${CRYPT[$n]}" = 1 ]
+      else
+         CRYPT[$n]=
+      fi
+      executeOk_servald rhizome export file ${HASH[$n]} raw$n
+      if $encrypted; then
+         assert ! cmp file$n raw$n
+      else
+         assert cmp file$n raw$n
+      fi
+      [ "${ROWID[$n]}" -gt "${ROWID_MAX:-0}" ] && ROWID_MAX=${ROWID[$n]}
+   done
+}
+
+rhizome_delete_payload_blobs() {
+   local filehash
+   for filehash; do
+      assert --message="Rhizome external blob file exists, filehash=$filehash" [ -e "$SERVALINSTANCE_PATH/blob/$filehash" ]
+      rm -f "$SERVALINSTANCE_PATH/blob/$filehash"
    done
 }

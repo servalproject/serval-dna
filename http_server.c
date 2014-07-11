@@ -339,6 +339,14 @@ static inline void _commit(struct http_request *r)
   r->parsed = r->cursor;
 }
 
+static inline int _skip_any(struct http_request *r)
+{
+  if (_run_out(r))
+    return 0;
+  ++r->cursor;
+  return 1;
+}
+
 static inline void _skip_all(struct http_request *r)
 {
   r->cursor = r->end;
@@ -621,6 +629,17 @@ static int _parse_content_type(struct http_request *r, struct mime_content_type 
 	return 0;
       if (n >= sizeof ct->multipart_boundary) {
 	WARNF("HTTP Content-Type boundary truncated: %s", alloca_str_toprint(ct->multipart_boundary));
+	return 0;
+      }
+      continue;
+    }
+    r->cursor = start;
+    if (_skip_literal(r, "format=")) {
+      size_t n = _parse_token_or_quoted_string(r, ct->format, sizeof ct->format);
+      if (n == 0)
+	return 0;
+      if (n >= sizeof ct->format) {
+	WARNF("HTTP Content-Type format truncated: %s", alloca_str_toprint(ct->format));
 	return 0;
       }
       continue;
@@ -1246,16 +1265,21 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	if (config.debug.http_server)
 	  DEBUGF("PREAMBLE");
 	char *start = r->parsed;
-	for (; at_start || _skip_to_crlf(r); at_start = 0) {
-	  const char *end_preamble = r->cursor;
+	while (at_start || _skip_to_crlf(r)) {
+	  char *end_preamble = r->cursor;
 	  int b;
-	  if ((b = _skip_mime_boundary(r))) {
+	  if ((at_start || _skip_crlf(r)) && (b = _skip_mime_boundary(r))) {
 	    assert(end_preamble >= r->parsed);
-	    _INVOKE_HANDLER_BUF_LEN(handle_mime_preamble, r->parsed, end_preamble);
+	    _INVOKE_HANDLER_BUF_LEN(handle_mime_preamble, start, end_preamble);
 	    _rewind_crlf(r);
 	    _commit(r);
 	    return http_request_form_data_start_part(r, b);
 	  }
+	  if (!at_start) {
+	    r->cursor = end_preamble;
+	    _skip_any(r);
+	  }
+	  at_start = 0;
 	}
 	if (_end_of_content(r)) {
 	  if (r->debug_flag && *r->debug_flag)
@@ -1321,11 +1345,10 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  char labelstr[labellen + 1];
 	  strncpy(labelstr, label.start, labellen)[labellen] = '\0';
 	  str_tolower_inplace(labelstr);
-	  const char *value = r->cursor;
 	  if (strcmp(labelstr, "content-length") == 0) {
 	    if (r->part_header.content_length != CONTENT_LENGTH_UNKNOWN) {
 	      if (r->debug_flag && *r->debug_flag)
-		DEBUGF("Skipping duplicate HTTP multipart header Content-Length: %s", alloca_toprint(50, sol, r->end - sol));
+		DEBUGF("Skipping duplicate HTTP multipart header %s", alloca_toprint(50, sol, r->end - sol));
 	      return 400;
 	    }
 	    http_size_t length;
@@ -1341,7 +1364,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  else if (strcmp(labelstr, "content-type") == 0) {
 	    if (r->part_header.content_type.type[0]) {
 	      if (r->debug_flag && *r->debug_flag)
-		DEBUGF("Skipping duplicate HTTP multipart header Content-Type: %s", alloca_toprint(50, sol, r->end - sol));
+		DEBUGF("Skipping duplicate HTTP multipart header %s", alloca_toprint(50, sol, r->end - sol));
 	      return 400;
 	    }
 	    if (_parse_content_type(r, &r->part_header.content_type) && _skip_optional_space(r) && _skip_crlf(r)) {
@@ -1355,7 +1378,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  else if (strcmp(labelstr, "content-disposition") == 0) {
 	    if (r->part_header.content_disposition.type[0]) {
 	      if (r->debug_flag && *r->debug_flag)
-		DEBUGF("Skipping duplicate HTTP multipart header Content-Disposition: %s", alloca_toprint(50, sol, r->end - sol));
+		DEBUGF("Skipping duplicate HTTP multipart header %s", alloca_toprint(50, sol, r->end - sol));
 	      return 400;
 	    }
 	    if (_parse_content_disposition(r, &r->part_header.content_disposition) && _skip_optional_space(r) && _skip_crlf(r)) {
@@ -1369,7 +1392,7 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  else if (_skip_to_crlf(r)) {
 	    _commit(r);
 	    if (r->debug_flag && *r->debug_flag)
-	      DEBUGF("Skip HTTP multipart header: %s: %s", alloca_str_toprint(labelstr), alloca_toprint(-1, value, value - r->cursor));
+	      DEBUGF("Skip HTTP multipart header: %s", alloca_toprint(50, sol, r->parsed - sol));
 	    return 0;
 	  }
 	}
@@ -1798,6 +1821,7 @@ static const char *httpResultString(int response_code)
   switch (response_code) {
   case 200: return "OK";
   case 201: return "Created";
+  case 204: return "No Content";
   case 206: return "Partial Content";
   case 400: return "Bad Request";
   case 401: return "Unauthorized";
@@ -1824,12 +1848,14 @@ static strbuf strbuf_status_body(strbuf sb, struct http_response *hr, const char
   ) {
     hr->header.content_type = CONTENT_TYPE_TEXT;
     strbuf_sprintf(sb, "%03u %s", hr->result_code, message);
-    if (hr->result_extra_label) {
-      strbuf_puts(sb, "\r\n");
-      strbuf_puts(sb, hr->result_extra_label);
-      strbuf_puts(sb, "=");
-      strbuf_json_atom_as_text(sb, &hr->result_extra_value);
-    }
+    unsigned i;
+    for (i = 0; i < NELS(hr->result_extra); ++i)
+      if (hr->result_extra[i].label) {
+	strbuf_puts(sb, "\r\n");
+	strbuf_puts(sb, hr->result_extra[i].label);
+	strbuf_puts(sb, "=");
+	strbuf_json_atom_as_text(sb, &hr->result_extra[i].value);
+      }
     strbuf_puts(sb, "\r\n");
   }
   else if (    hr->header.content_type == CONTENT_TYPE_JSON
@@ -1838,24 +1864,28 @@ static strbuf strbuf_status_body(strbuf sb, struct http_response *hr, const char
     hr->header.content_type = CONTENT_TYPE_JSON;
     strbuf_sprintf(sb, "{\n \"http_status_code\": %u,\n \"http_status_message\": ", hr->result_code);
     strbuf_json_string(sb, message);
-    if (hr->result_extra_label) {
-      strbuf_puts(sb, ",\n ");
-      strbuf_json_string(sb, hr->result_extra_label);
-      strbuf_puts(sb, ": ");
-      strbuf_json_atom_as_html(sb, &hr->result_extra_value);
-    }
+    unsigned i;
+    for (i = 0; i < NELS(hr->result_extra); ++i)
+      if (hr->result_extra[i].label) {
+	strbuf_puts(sb, ",\n ");
+	strbuf_json_string(sb, hr->result_extra[i].label);
+	strbuf_puts(sb, ": ");
+	strbuf_json_atom(sb, &hr->result_extra[i].value);
+      }
     strbuf_puts(sb, "\n}");
   }
   else {
     hr->header.content_type = CONTENT_TYPE_HTML;
     strbuf_sprintf(sb, "<html>\n<h1>%03u %s</h1>", hr->result_code, message);
-    if (hr->result_extra_label) {
-      strbuf_puts(sb, "\n<dl><dt>");
-      strbuf_html_escape(sb, hr->result_extra_label, strlen(hr->result_extra_label));
-      strbuf_puts(sb, "</dt><dd>");
-      strbuf_json_atom_as_html(sb, &hr->result_extra_value);
-      strbuf_puts(sb, "</dd></dl>");
-    }
+    unsigned i;
+    for (i = 0; i < NELS(hr->result_extra); ++i)
+      if (hr->result_extra[i].label) {
+	strbuf_puts(sb, "\n<dl><dt>");
+	strbuf_html_escape(sb, hr->result_extra[i].label, strlen(hr->result_extra[i].label));
+	strbuf_puts(sb, "</dt><dd>");
+	strbuf_json_atom_as_html(sb, &hr->result_extra[i].value);
+	strbuf_puts(sb, "</dd></dl>");
+      }
     strbuf_puts(sb, "\n</html>");
   }
   return sb;

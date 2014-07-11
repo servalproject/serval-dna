@@ -1761,9 +1761,9 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     case RHIZOME_PAYLOAD_STATUS_NEW:
       break;
     case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
-    case RHIZOME_PAYLOAD_STATUS_UNINITERESTING:
-      status = RHIZOME_BUNDLE_STATUS_DONOTWANT;
-      WHY("Insufficient space to store payload");
+    case RHIZOME_PAYLOAD_STATUS_EVICTED:
+      status = RHIZOME_BUNDLE_STATUS_NO_ROOM;
+      INFO("Insufficient space to store payload");
       break;
     case RHIZOME_PAYLOAD_STATUS_ERROR:
       status = RHIZOME_BUNDLE_STATUS_ERROR;
@@ -1773,12 +1773,12 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
       status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
       break;
     case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
-      status = RHIZOME_BUNDLE_STATUS_FAKE;
+      status = RHIZOME_BUNDLE_STATUS_READONLY;
       break;
     default:
       FATALF("pstatus = %d", pstatus);
   }
-  rhizome_manifest *mout = m;
+  rhizome_manifest *mout = NULL;
   if (status == RHIZOME_BUNDLE_STATUS_NEW) {
     if (!rhizome_manifest_validate(m) || m->malformed)
       status = RHIZOME_BUNDLE_STATUS_INVALID;
@@ -1790,6 +1790,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
       }
     }
   }
+  int status_valid = 0;
   switch (status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
       if (mout && mout != m)
@@ -1799,25 +1800,30 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
     case RHIZOME_BUNDLE_STATUS_SAME:
     case RHIZOME_BUNDLE_STATUS_DUPLICATE:
     case RHIZOME_BUNDLE_STATUS_OLD:
+      assert(mout != NULL);
       cli_put_manifest(context, mout);
       if (   manifestpath && *manifestpath
 	  && rhizome_write_manifest_file(mout, manifestpath, 0) == -1
       )
 	WHYF("Could not write manifest to %s", alloca_str_toprint(manifestpath));
+      status_valid = 1;
       break;
+    case RHIZOME_BUNDLE_STATUS_READONLY:
     case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
     case RHIZOME_BUNDLE_STATUS_ERROR:
     case RHIZOME_BUNDLE_STATUS_INVALID:
     case RHIZOME_BUNDLE_STATUS_FAKE:
-    case RHIZOME_BUNDLE_STATUS_DONOTWANT:
+    case RHIZOME_BUNDLE_STATUS_NO_ROOM:
+      status_valid = 1;
       break;
-    default:
-      FATALF("status=%d", status);
+    // Do not use a default: label!  With no default, if a new value is added to the enum, then the
+    // compiler will issue a warning on switch statements that do not cover all the values, which is
+    // a valuable tool for the developer.
   }
-  if (mout && mout != m) {
+  if (!status_valid)
+    FATALF("status=%d", status);
+  if (mout && mout != m)
     rhizome_manifest_free(mout);
-    m = NULL;
-  }
   rhizome_manifest_free(m);
   keyring_free(keyring);
   keyring = NULL;

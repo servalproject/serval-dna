@@ -1,0 +1,500 @@
+#!/bin/bash
+
+# Tests for Rhizome Java API.
+#
+# Copyright 2014 Serval Project Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+source "${0%/*}/../testdefs_java.sh"
+source "${0%/*}/../testdefs_rhizome.sh"
+
+setup() {
+   setup_servald
+   setup_servald_so
+   compile_java_classes
+   set_instance +A
+   executeOk_servald config \
+	set log.console.level debug \
+        set debug.httpd on \
+        set debug.rhizome on \
+        set debug.rhizome_manifest on
+   set_extra_config
+   create_identities 4
+   start_servald_server
+}
+
+set_extra_config() {
+   :
+}
+
+teardown() {
+   stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
+
+# Utility function:
+#
+#     unset_vars_with_prefix PREFIX
+#
+# Unsets all shell variables whose names starting with the given PREFIX
+unset_vars_with_prefix() {
+   local __prefix="${1?}"
+   local __varname
+   for __varname in $(declare -p | sed -n -e "s/^declare -[^ ]* \($__prefix[A-Za-z0-9_]\+\)=.*/\1/p"); do
+      unset $__varname
+   done
+}
+
+# Utility function:
+# 
+#     unpack_vars PREFIX TEXT
+#
+# parses the given TEXT which must have the form:
+#
+#     ident1=..., ident2=...., ... identN=...
+#
+# into shell variables:
+#
+#     PREFIXident1=...
+#     PREFIXident2=...
+#     ...
+#     PREFIXidentN=...
+#
+# Sets the UNPACKED_VAR_NAMES[] array variable to a list of the names of the
+# variables that were set (names include the PREFIX).
+#
+# Warning: overwrites existing shell variables.  Names of overwritten shell
+# variables are derived directly from the output of the command, so cannot be
+# controlled.  PREFIX should be used to ensure that special variables cannot
+# be clobbered by accident.
+unpack_vars() {
+   local __prefix="${1?}"
+   local __text="${2?}"
+   local __oo
+   tfw_shopt __oo -s extglob
+   UNPACKED_VAR_NAMES=()
+   while [ -n "$__text" ]; do
+      case "$__text" in
+      [A-Za-z_.]+([A-Za-z_.0-9])=*)
+         local __ident="${__text%%=*}"
+         __ident="${__ident//./__}"
+         __text="${__text#*=}"
+         local __value="${__text%%, [A-Za-z_.]+([A-Za-z_.0-9])=*}"
+         __text="${__text:${#__value}}"
+         __text="${__text#, }"
+         UNPACKED_VAR_NAMES+=("$__ident")
+         eval ${__prefix}${__ident}=\"\$__value\"
+         ;;
+      *)
+         fail "cannot unpack variable from '$__text'"
+         ;;
+      esac
+   done
+   tfw_shopt_restore __oo
+}
+
+doc_RhizomeList="Java API Rhizome list 100 bundles"
+setup_RhizomeList() {
+   setup
+   NBUNDLES=100
+   rhizome_add_bundles $SIDA1 0 $((NBUNDLES-1))
+   assert [ "$ROWID_MAX" -ge "$NBUNDLES" ]
+}
+test_RhizomeList() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-list
+   tfw_cat --stdout --stderr
+   assertStdoutLineCount == $NBUNDLES
+   let lnum=NBUNDLES
+   for ((n = 0; n != NBUNDLES; ++n)); do
+      line="$(sed -n -e ${lnum}p "$TFWSTDOUT")"
+      unset_vars_with_prefix XX_
+      unpack_vars XX_ "$line"
+      if [ "${ROWID[$n]}" -eq "$ROWID_MAX" ]; then
+         # The first row must contain a non-null token string.
+         assert [ -n "$XX__token" ]
+         assert [ "$lnum" -eq 1 ]
+      fi
+      assert [ "$XX_id" = "${BID[$n]}" ]
+      assert [ "$XX_version" = "${VERSION[$n]}" ]
+      assert [ "$XX_filesize" = "${SIZE[$n]}" ]
+      assert [ "$XX_filehash" = "${HASH[$n]}" ]
+      assert [ "$XX_date" = "${DATE[$n]}" ]
+      assert [ "$XX_service" = "file" ]
+      assert [ "$XX_name" = "file$n" ]
+      assert [ "$XX__rowId" = "${ROWID[$n]}" ]
+      assert [ "$XX__fromHere" = "1" ]
+      assert [ "$XX__author" = "$SIDA1" ]
+      assert [ "$XX__insertTime" = "${INSERTTIME[$n]}" ]
+      let --lnum
+   done
+}
+
+assert_metadata() {
+   local n=$1
+   assertStdoutGrep --matches=1 "^id=${BID[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^version=${VERSION[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^filesize=${SIZE[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^filehash=${HASH[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^BK=${BK[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^date=${DATE[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^name=${NAME[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^service=file$CR\$"
+   assertStdoutGrep --matches=1 "^_insertTime=${INSERTTIME[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^_author=${AUTHOR[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^_secret=${SECRET[$n]}$CR\$"
+}
+
+doc_RhizomeManifest="Java API fetch Rhizome manifest"
+setup_RhizomeManifest() {
+   setup
+   rhizome_add_bundles $SIDA1 0 2
+}
+test_RhizomeManifest() {
+   for n in 0 1 2; do
+      executeJavaOk org.servalproject.test.Rhizome rhizome-manifest "${BID[$n]}" bundle$n.rhm
+      tfw_cat --stdout --stderr
+      assert_metadata $n
+      ls -l file$n.manifest bundle$n.rhm
+      tfw_cat -v file$n.manifest -v bundle$n.rhm
+      assert diff file$n.manifest bundle$n.rhm
+   done
+}
+
+doc_RhizomeManifestNonexist="Java API fetch non-existent Rhizome manifest"
+setup_RhizomeManifestNonexist() {
+   setup
+}
+test_RhizomeManifestNonexist() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-manifest "$BID_NONEXISTENT" ''
+   tfw_cat --stdout --stderr
+   assertStdoutLineCount == 1
+   assertStdoutGrep --ignore-case '^not found$'
+}
+
+doc_RhizomePayloadRaw="Java API fetch Rhizome raw payload"
+setup_RhizomePayloadRaw() {
+   setup
+   rhizome_add_bundles $SIDA1 0 1
+   rhizome_add_bundles --encrypted $SIDA1 2 3
+}
+test_RhizomePayloadRaw() {
+   for n in 0 1 2 3; do
+      executeJavaOk org.servalproject.test.Rhizome rhizome-payload-raw "${BID[$n]}" raw.bin$n
+      tfw_cat --stdout --stderr
+      assert_metadata $n
+   done
+   for n in 0 1 2 3; do
+      assert cmp raw$n raw.bin$n
+   done
+}
+
+doc_RhizomePayloadRawNonexistManifest="Java API fetch Rhizome raw payload for non-existent manifest"
+setup_RhizomePayloadRawNonexistManifest() {
+   setup
+}
+test_RhizomePayloadRawNonexistManifest() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-payload-raw "$BID_NONEXISTENT" ''
+   tfw_cat --stdout --stderr
+   assertStdoutLineCount == 1
+   assertStdoutGrep --ignore-case '^not found$'
+}
+
+doc_RhizomePayloadRawNonexistPayload="Java API fetch non-existent Rhizome raw payload"
+setup_RhizomePayloadRawNonexistPayload() {
+   set_extra_config() {
+      executeOk_servald config set rhizome.max_blob_size 0
+   }
+   setup
+   rhizome_add_bundles $SIDA1 0 0
+   rhizome_delete_payload_blobs "${HASH[0]}"
+}
+test_RhizomePayloadRawNonexistPayload() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-payload-raw "${BID[0]}" raw.bin
+   tfw_cat --stdout --stderr
+   assertStdoutGrep --ignore-case '^no payload$'
+   assert_metadata 0
+}
+
+doc_RhizomePayloadDecrypted="Java API fetch Rhizome decrypted payload"
+setup_RhizomePayloadDecrypted() {
+   setup
+   rhizome_add_bundles $SIDA1 0 1
+   rhizome_add_bundles --encrypted $SIDA1 2 3
+}
+test_RhizomePayloadDecrypted() {
+   for n in 0 1 2 3; do
+      executeJavaOk org.servalproject.test.Rhizome rhizome-payload-decrypted "${BID[$n]}" decrypted.bin$n
+      tfw_cat --stdout --stderr
+      assert_metadata $n
+   done
+   for n in 0 1 2 3; do
+      assert cmp file$n decrypted.bin$n
+   done
+}
+
+doc_RhizomePayloadDecryptedNonexistManifest="Java API fetch Rhizome decrypted payload for non-existent manifest"
+setup_RhizomePayloadDecryptedNonexistManifest() {
+   set_extra_config() {
+      executeOk_servald config set rhizome.max_blob_size 0
+   }
+   setup
+   rhizome_add_bundles $SIDA1 0 0
+   rhizome_delete_payload_blobs "${HASH[0]}"
+}
+test_RhizomePayloadDecryptedNonexistManifest() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-payload-decrypted "${BID[0]}" ''
+   tfw_cat --stdout --stderr
+   assertStdoutGrep --ignore-case '^no payload$'
+   assert_metadata 0
+}
+
+doc_RhizomePayloadDecryptedForeign="Java API cannot fetch foreign Rhizome decrypted payload"
+setup_RhizomePayloadDecryptedForeign() {
+   setup
+   rhizome_add_bundles --encrypted $SIDA1 0 0
+   set_instance +B
+   create_single_identity
+   rhizome_add_bundles --encrypted $SIDB 1 1
+   executeOk_servald rhizome export manifest "${BID[1]}" file1.manifest
+   set_instance +A
+   executeOk_servald rhizome import bundle raw1 file1.manifest
+}
+test_RhizomePayloadDecryptedForeign() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-payload-decrypted "${BID[1]}" decrypted.bin$n
+   tfw_cat --stdout --stderr
+   assertStdoutGrep RhizomeDecryptionException
+}
+
+doc_RhizomeInsert="Java API insert new Rhizome bundles"
+setup_RhizomeInsert() {
+   setup
+   for n in 1 2 3 4; do
+      create_file file$n $((1000 + $n))
+      create_file nfile$n $((1100 + $n))
+      payload_filename[$n]=
+      eval author[$n]=\$SIDA$n
+      service[$n]=file
+   done
+   name[1]=elvis
+   echo "name=elvis" >manifest1
+   name[2]=file2
+   echo "crypt=1" >manifest2
+   name[3]=fintlewoodlewix
+   payload_filename[3]=fintlewoodlewix
+   >manifest3
+   name[4]=
+   author[4]=
+   service[4]=wah
+   echo -e "service=wah\ncrypt=0" >manifest4
+}
+test_RhizomeInsert() {
+   for n in 1 2 3 4; do
+      executeJavaOk org.servalproject.test.Rhizome rhizome-insert "${author[$n]}" manifest$n file$n file$n.manifest "${payload_filename[$n]}"
+      tfw_cat --stdout --stderr -v file$n.manifest
+      assertStdoutGrep '^_status=NEW$'
+      replayStdout >stdout-insert
+      extract_manifest_id BID[$n] stdout-insert
+      extract_manifest SECRET[$n] stdout-insert _secret "$rexp_bundlesecret"
+      executeOk_servald rhizome extract bundle "${BID[$n]}" xfile$n.manifest xfile$n
+      tfw_cat --stdout -v xfile$n.manifest
+      extract_stdout_rowid ROWID[$n]
+      extract_stdout_inserttime INSERTTIME[$n]
+      assertGrep stdout-insert "^_rowId=${ROWID[$n]}\$"
+      assertGrep stdout-insert "^_insertTime=${INSERTTIME[$n]}\$"
+      if extract_stdout_author_optional AUTHOR[$n]; then
+         assertGrep stdout-insert "^_author=${AUTHOR[$n]}\$"
+      else
+         assertGrep --matches=0 stdout-insert "^_author="
+      fi
+      assert diff xfile$n.manifest file$n.manifest
+      assert diff file$n xfile$n
+      unpack_manifest_for_grep xfile$n
+      assertGrep stdout-insert "^id=$re_manifestid\$"
+      assertGrep stdout-insert "^version=$re_version\$"
+      assertGrep stdout-insert "^filesize=$re_filesize\$"
+      if [ -n "$re_filehash" ]; then
+         assertGrep stdout-insert "^filehash=$re_filehash\$"
+      else
+         assertGrep --matches=0 stdout-insert "^filehash="
+      fi
+      assertGrep stdout-insert "^date=$re_date\$"
+      assertGrep stdout-insert "^service=$re_service\$"
+      if [ -n "${name[$n]}" ]; then
+         assertGrep stdout-insert "^name=$re_name\$"
+         assert [ "$re_name" = "${name[$n]}" ]
+      fi
+   done
+   executeOk_servald rhizome list
+   assert_rhizome_list \
+      --fromhere=1 \
+         --author=${author[1]} file1 \
+         --author=${author[2]} file2 \
+         --author=${author[3]} file3 \
+      --fromhere=0 \
+         --author=${author[4]} file4
+   for n in 1 2 3 4; do
+      $SED -e '/^version=/d;/^date=/d;/^filehash=/d;/^filesize=/d;/^[^a-zA-Z]/,$d' xfile$n.manifest >nmanifest$n
+      assert_manifest_fields nmanifest$n id !version !date !filehash !filesize
+      executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' nmanifest$n nfile$n nfile$n.manifest "nfile$n"
+      tfw_cat --stdout --stderr -v nfile$n.manifest
+      if [ -n "${author[$n]}" ]; then
+         assertStdoutGrep '^_status=NEW$'
+         assertStdoutGrep "^id=${BID[$n]}\$"
+         assertStderrGrep --matches=1 "^bundle_status_code=NEW$CR\$"
+         assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*$CR\$"
+         assertStderrGrep --matches=1 "^payload_status_code=NEW$CR\$"
+         assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload new to store.*$CR\$"
+      else
+         assertStdoutGrep RhizomeReadOnlyException
+         assertStderrGrep --ignore-case "missing bundle secret"
+      fi
+   done
+}
+
+doc_RhizomeInsertAnon="Java API update anonymous Rhizome bundle"
+setup_RhizomeInsertAnon() {
+   setup
+   create_file file1 1001
+   executeOk_servald rhizome add file '' file1 file1.manifest
+   extract_stdout_manifestid BID
+   extract_stdout_secret SECRET
+   assert_manifest_fields file1.manifest id !BK
+   $SED -e '/^version=/d;/^date=/d;/^filehash=/d;/^filesize=/d;/^[^a-zA-Z]/,$d' file1.manifest >file2.manifest
+   assert_manifest_fields file2.manifest id !version !date !filehash !filesize
+   create_file file2 1002
+}
+test_RhizomeInsertAnon() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' file2.manifest file2 ifile2.manifest "file2" "$SECRET"
+   tfw_cat --stdout --stderr -v ifile2.manifest
+   assertStdoutGrep '^_status=NEW$'
+   assertStdoutGrep "^id=$BID\$"
+   assertStderrGrep --matches=1 "^bundle_status_code=NEW$CR\$"
+   assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*$CR\$"
+   assertStderrGrep --matches=1 "^payload_status_code=NEW$CR\$"
+   assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload new to store.*$CR\$"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=0 --manifest=ifile2.manifest file2
+}
+
+doc_RhizomeInsertEmptyNew="Java API update existing Rhizome bundle to empty"
+setup_RhizomeInsertEmptyNew() {
+   setup
+   >empty
+   assert [ ! -s empty ]
+}
+test_RhizomeInsertEmptyNew() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' '' empty empty.manifest "lucky"
+   tfw_cat --stdout --stderr -v empty.manifest
+   extract_manifest_id BID empty.manifest
+   assertStdoutGrep '^_status=NEW$'
+   assertStdoutGrep "^id=$BID\$"
+   assertStdoutGrep "^filesize=0\$"
+   assertStdoutGrep --matches=0 "^filehash="
+   assertStderrGrep --matches=1 "^bundle_status_code=NEW$CR\$"
+   assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*$CR\$"
+   assertStderrGrep --matches=1 "^payload_status_code=EMPTY$CR\$"
+   assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload empty.*$CR\$"
+   executeOk_servald rhizome list
+   assert_rhizome_list empty
+   executeOk_servald rhizome extract bundle "$BID" xempty.manifest xempty
+   assert [ ! -e xempty ]
+   assert diff xempty.manifest empty.manifest
+}
+
+doc_RhizomeInsertEmptyUpdate="Java API insert new empty Rhizome bundle"
+setup_RhizomeInsertEmptyUpdate() {
+   setup
+   create_file file1 1001
+   executeOk_servald rhizome add file "$SIDA1" file1 file1.manifest
+   extract_stdout_manifestid BID
+   extract_stdout_BK BK
+   >empty
+   assert [ ! -s empty ]
+   echo "id=$BID" >iempty.manifest
+   echo "BK=$BK" >>iempty.manifest
+}
+test_RhizomeInsertEmptyUpdate() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' iempty.manifest empty empty.manifest
+   tfw_cat --stdout --stderr -v empty.manifest
+   assertStdoutGrep '^_status=NEW$'
+   assertStdoutGrep "^id=$BID\$"
+   assertStdoutGrep "^filesize=0\$"
+   assertStdoutGrep --matches=0 "^filehash="
+   assertStderrGrep --matches=1 "^bundle_status_code=NEW$CR\$"
+   assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*$CR\$"
+   assertStderrGrep --matches=1 "^payload_status_code=EMPTY$CR\$"
+   assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload empty.*$CR\$"
+   executeOk_servald rhizome list
+   assert_rhizome_list empty
+   executeOk_servald rhizome extract bundle "$BID" xempty.manifest xempty
+   assert [ ! -e xempty ]
+   assert diff xempty.manifest empty.manifest
+}
+
+doc_RhizomeInsertJournal="Java API insert Rhizome bundle does not support journals"
+setup_RhizomeInsertJournal() {
+   setup
+   echo 'File one' >file1
+   echo 'tail=0' >file1.manifest
+}
+test_RhizomeInsertJournal() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' file1.manifest file1 ifile1.manifest
+   tfw_cat --stdout --stderr
+   assertStdoutGrep ServalDNotImplementedException
+   assertStdoutGrep --ignore-case "not supported.*journal"
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
+doc_RhizomeInsertIncorrectFilesize="Java API insert Rhizome bundle, incorrect filesize"
+setup_RhizomeInsertIncorrectFilesize() {
+   setup
+   echo 'File one' >file1
+   echo 'filesize=6' >file1.manifest
+   echo 'File two' >file2
+   echo 'filesize=100' >file2.manifest
+}
+test_RhizomeInsertIncorrectFilesize() {
+   for n in 1 2; do
+      executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' file$n.manifest file$n ifile$n.manifest
+      tfw_cat --stdout --stderr
+      assertStdoutGrep RhizomeInconsistencyException
+      assertStdoutGrep --ignore-case 'payload size.*contradicts manifest'
+   done
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
+doc_RhizomeInsertIncorrectFilehash="Java API insert Rhizome bundle, incorrect filehash"
+setup_RhizomeInsertIncorrectFilehash() {
+   setup
+   echo 'File one' >file1
+   echo 'filehash=FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' >file1.manifest
+}
+test_RhizomeInsertIncorrectFilehash() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' file1.manifest file1 ifile1.manifest
+   tfw_cat --stdout --stderr
+   assertStdoutGrep RhizomeInconsistencyException
+   assertStdoutGrep --ignore-case 'payload hash.*contradicts manifest'
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
+runTests "$@"

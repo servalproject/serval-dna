@@ -60,6 +60,8 @@ typedef struct httpd_request
   /* For requests/responses that pertain to a single manifest.
    */
   rhizome_manifest *manifest;
+  enum rhizome_payload_status payload_status;
+  enum rhizome_bundle_status bundle_status;
 
   /* For requests/responses that contain one or two SIDs.
    */
@@ -123,7 +125,6 @@ typedef struct httpd_request
       // For storing the manifest text (malloc/realloc) as we receive it
       struct form_buf_malloc manifest;
       // For receiving the payload
-      enum rhizome_payload_status payload_status;
       uint64_t payload_size;
       struct rhizome_write write;
     }
@@ -191,7 +192,7 @@ int httpd_server_start(uint16_t port_low, uint16_t port_high);
 typedef int HTTP_HANDLER(httpd_request *r, const char *remainder);
 
 int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_call);
-int authorize(struct http_request *r);
+int authorize_restful(struct http_request *r);
 int http_response_content_type(httpd_request *r, const char *what, const struct mime_content_type *ct);
 int http_response_content_disposition(httpd_request *r, const char *what, const char *type);
 int http_response_form_part(httpd_request *r, const char *what, const char *partname, const char *text, size_t textlen);

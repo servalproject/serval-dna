@@ -1244,3 +1244,15 @@ done:
   keyring = NULL;
   return ret;
 }
+
+const char *meshms_status_message(enum meshms_status status)
+{
+  switch (status) {
+  case MESHMS_STATUS_OK:             return "OK";
+  case MESHMS_STATUS_UPDATED:        return "Updated";
+  case MESHMS_STATUS_SID_LOCKED:     return "Identity unknown";
+  case MESHMS_STATUS_PROTOCOL_FAULT: return "MeshMS protocol fault";
+  case MESHMS_STATUS_ERROR:          return "Internal error";
+  }
+  return NULL;
+}

@@ -158,31 +158,27 @@ enum rhizome_bundle_status rhizome_bundle_import_files(rhizome_manifest *m, rhiz
   )
     return RHIZOME_BUNDLE_STATUS_INVALID;
   enum rhizome_bundle_status status = rhizome_manifest_check_stored(m, mout);
-  if (status == RHIZOME_BUNDLE_STATUS_NEW) {
-    enum rhizome_payload_status pstatus = rhizome_import_payload_from_file(m, filepath);
-    switch (pstatus) {
-      case RHIZOME_PAYLOAD_STATUS_EMPTY:
-      case RHIZOME_PAYLOAD_STATUS_STORED:
-      case RHIZOME_PAYLOAD_STATUS_NEW:
-	if (rhizome_store_manifest(m) == -1)
-	  return -1;
-	break;
-      case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
-      case RHIZOME_PAYLOAD_STATUS_UNINITERESTING:
-	status = RHIZOME_BUNDLE_STATUS_DONOTWANT;
-	break;
-      case RHIZOME_PAYLOAD_STATUS_ERROR:
-      case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+  if (status != RHIZOME_BUNDLE_STATUS_NEW)
+    return status;
+  enum rhizome_payload_status pstatus = rhizome_import_payload_from_file(m, filepath);
+  switch (pstatus) {
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+      if (rhizome_store_manifest(m) == -1)
 	return -1;
-      case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
-      case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
-	status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
-	break;
-      default:
-	FATALF("pstatus = %d", pstatus);
-    }
+      return status;
+    case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+    case RHIZOME_PAYLOAD_STATUS_EVICTED:
+      return RHIZOME_BUNDLE_STATUS_NO_ROOM;
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      return -1;
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+      return RHIZOME_BUNDLE_STATUS_INCONSISTENT;
   }
-  return status;
+  FATALF("rhizome_import_payload_from_file() returned status = %d", pstatus);
 }
 
 /* Sets the bundle key "BK" field of a manifest.  Returns 1 if the field was set, 0 if not.
@@ -325,8 +321,12 @@ enum rhizome_bundle_status rhizome_manifest_check_stored(rhizome_manifest *m, rh
 
 enum rhizome_bundle_status rhizome_add_manifest(rhizome_manifest *m, rhizome_manifest **mout)
 {
-  if (config.debug.rhizome)
-    DEBUGF("rhizome_add_manifest(m=manifest[%d](%p), mout=%p)", m->manifest_record_number, m, mout);
+  if (config.debug.rhizome) {
+    if (mout == NULL)
+      DEBUGF("rhizome_add_manifest(m=manifest[%d](%p), mout=NULL)", m->manifest_record_number, m);
+    else
+      DEBUGF("rhizome_add_manifest(m=manifest[%d](%p), *mout=manifest[%d](%p))", m->manifest_record_number, m, *mout ? (*mout)->manifest_record_number : -1, *mout);
+  }
   if (!m->finalised && !rhizome_manifest_validate(m))
     return RHIZOME_BUNDLE_STATUS_INVALID;
   assert(m->finalised);
@@ -350,4 +350,37 @@ int rhizome_saw_voice_traffic()
   /* We are in "voice mode" for a second after sending a voice frame */
   rhizome_voice_timeout=gettime_ms()+1000;
   return 0;
+}
+
+const char *rhizome_bundle_status_message(enum rhizome_bundle_status status)
+{
+  switch (status) {
+    case RHIZOME_BUNDLE_STATUS_NEW:          return "Bundle new to store";
+    case RHIZOME_BUNDLE_STATUS_SAME:         return "Bundle already in store";
+    case RHIZOME_BUNDLE_STATUS_DUPLICATE:    return "Duplicate bundle already in store";
+    case RHIZOME_BUNDLE_STATUS_OLD:          return "Newer bundle already in store";
+    case RHIZOME_BUNDLE_STATUS_INVALID:      return "Invalid manifest";
+    case RHIZOME_BUNDLE_STATUS_FAKE:         return "Manifest signature does not verify";
+    case RHIZOME_BUNDLE_STATUS_INCONSISTENT: return "Manifest inconsistent with supplied payload";
+    case RHIZOME_BUNDLE_STATUS_NO_ROOM:      return "No room in store for bundle";
+    case RHIZOME_BUNDLE_STATUS_READONLY:     return "Bundle is read-only";
+    case RHIZOME_BUNDLE_STATUS_ERROR:        return "Internal error";
+  }
+  return NULL;
+}
+
+const char *rhizome_payload_status_message(enum rhizome_payload_status status)
+{
+  switch (status) {
+    case RHIZOME_PAYLOAD_STATUS_NEW:         return "Payload new to store";
+    case RHIZOME_PAYLOAD_STATUS_STORED:      return "Payload already in store";
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:       return "Payload empty";
+    case RHIZOME_PAYLOAD_STATUS_TOO_BIG:     return "Payload size exceeds store";
+    case RHIZOME_PAYLOAD_STATUS_EVICTED:     return "Payload evicted";
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:  return "Payload size contradicts manifest";
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:  return "Payload hash contradicts manifest";
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL: return "Incorrect bundle secret";
+    case RHIZOME_PAYLOAD_STATUS_ERROR:       return "Internal error";
+  }
+  return NULL;
 }

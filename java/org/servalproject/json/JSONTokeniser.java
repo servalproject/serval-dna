@@ -54,6 +54,10 @@ public class JSONTokeniser {
 
 	public static class UnexpectedException extends JSONInputException
 	{
+		public UnexpectedException(String got) {
+			super("unexpected " + got);
+		}
+
 		public UnexpectedException(String got, Class expecting) {
 			super("unexpected " + got + ", expecting " + expecting.getName());
 		}
@@ -78,6 +82,10 @@ public class JSONTokeniser {
 
 	public static class UnexpectedTokenException extends UnexpectedException
 	{
+		public UnexpectedTokenException(Object got) {
+			super(jsonTokenDescription(got));
+		}
+
 		public UnexpectedTokenException(Object got, Class expecting) {
 			super(jsonTokenDescription(got), expecting);
 		}
@@ -115,6 +123,11 @@ public class JSONTokeniser {
 		return n;
 	}
 
+	public static void unexpected(Object tok) throws UnexpectedTokenException
+	{
+		throw new UnexpectedTokenException(tok);
+	}
+
 	public static void match(Object tok, Token exactly) throws SyntaxException
 	{
 		if (tok != exactly)
@@ -130,6 +143,20 @@ public class JSONTokeniser {
 		NO_NULL,
 		ALLOW_NULL
 	};
+
+	public static boolean supportsNarrowTo(Class cls) {
+		return cls == Boolean.class
+			|| cls == Integer.class
+			|| cls == Long.class
+			|| cls == Float.class
+			|| cls == Double.class
+			|| cls == String.class;
+	}
+
+	public static Object narrow(Object tok, Narrow opts) throws UnexpectedException
+	{
+		return narrow(tok, Object.class, opts);
+	}
 
 	public static <T> T narrow(Object tok, Class<T> cls) throws UnexpectedException
 	{

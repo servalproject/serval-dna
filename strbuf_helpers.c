@@ -813,6 +813,10 @@ strbuf strbuf_append_mime_content_type(strbuf sb, const struct mime_content_type
     strbuf_puts(sb, "; boundary=");
     strbuf_append_quoted_string(sb, ct->multipart_boundary);
   }
+  if (ct->format) {
+    strbuf_puts(sb, "; format=");
+    strbuf_append_quoted_string(sb, ct->format);
+  }
   return sb;
 }
 
