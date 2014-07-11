@@ -30,8 +30,8 @@ import java.net.URL;
  */
 public class RhizomeReadOnlyException extends RhizomeException
 {
-	public RhizomeReadOnlyException(URL url) {
-		super("bundle cannot be modified", url);
+	public RhizomeReadOnlyException(String message, URL url) {
+		super(message == null ? "bundle cannot be modified" : message, url);
 	}
 
 }

@@ -31,8 +31,8 @@ import java.net.URL;
  */
 public class RhizomeInvalidManifestException extends RhizomeException
 {
-	public RhizomeInvalidManifestException(URL url) {
-		super("invalid manifest", url);
+	public RhizomeInvalidManifestException(String message, URL url) {
+		super(message == null ? "invalid manifest" : message, url);
 	}
 
 	public RhizomeInvalidManifestException(RhizomeIncompleteManifest manifest) {

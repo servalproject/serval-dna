@@ -31,8 +31,8 @@ import java.net.URL;
  */
 public class RhizomeEncryptionException extends RhizomeException
 {
-	public RhizomeEncryptionException(URL url) {
-		super("cannot encrypt payload", url);
+	public RhizomeEncryptionException(String message, URL url) {
+		super(message == null ? "cannot encrypt payload" : message, url);
 	}
 
 }

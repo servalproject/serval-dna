@@ -30,8 +30,8 @@ import java.net.URL;
  */
 public class RhizomeInconsistencyException extends RhizomeException
 {
-	public RhizomeInconsistencyException(URL url) {
-		super("manifest inconsistent with payload", url);
+	public RhizomeInconsistencyException(String message, URL url) {
+		super(message == null ? "manifest inconsistent with payload" : message, url);
 	}
 
 }

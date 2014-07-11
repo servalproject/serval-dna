@@ -29,8 +29,8 @@ import java.net.URL;
  */
 public class RhizomeFakeManifestException extends RhizomeException
 {
-	public RhizomeFakeManifestException(URL url) {
-		super("unsigned manifest", url);
+	public RhizomeFakeManifestException(String message, URL url) {
+		super(message == null ? "unsigned manifest" : message, url);
 	}
 
 }

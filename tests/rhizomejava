@@ -463,4 +463,38 @@ test_RhizomeInsertJournal() {
    assert_rhizome_list
 }
 
+doc_RhizomeInsertIncorrectFilesize="Java API insert Rhizome bundle, incorrect filesize"
+setup_RhizomeInsertIncorrectFilesize() {
+   setup
+   echo 'File one' >file1
+   echo 'filesize=6' >file1.manifest
+   echo 'File two' >file2
+   echo 'filesize=100' >file2.manifest
+}
+test_RhizomeInsertIncorrectFilesize() {
+   for n in 1 2; do
+      executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' file$n.manifest file$n ifile$n.manifest
+      tfw_cat --stdout --stderr
+      assertStdoutGrep RhizomeInconsistencyException
+      assertStdoutGrep --ignore-case 'payload size.*contradicts manifest'
+   done
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
+doc_RhizomeInsertIncorrectFilehash="Java API insert Rhizome bundle, incorrect filehash"
+setup_RhizomeInsertIncorrectFilehash() {
+   setup
+   echo 'File one' >file1
+   echo 'filehash=FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF' >file1.manifest
+}
+test_RhizomeInsertIncorrectFilehash() {
+   executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' file1.manifest file1 ifile1.manifest
+   tfw_cat --stdout --stderr
+   assertStdoutGrep RhizomeInconsistencyException
+   assertStdoutGrep --ignore-case 'payload hash.*contradicts manifest'
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
 runTests "$@"
