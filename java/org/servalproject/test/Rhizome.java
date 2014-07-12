@@ -85,6 +85,32 @@ public class Rhizome {
 		System.exit(0);
 	}
 
+	static void rhizome_list_newsince(String token) throws ServalDInterfaceException, IOException, InterruptedException
+	{
+		System.err.println("token=" + token);
+		ServalDClient client = new ServerControl().getRestfulClient();
+		RhizomeBundleList list = null;
+		try {
+			list = client.rhizomeListBundlesSince(token);
+			RhizomeListBundle bundle;
+			while ((bundle = list.nextBundle()) != null) {
+				System.out.println(
+						"_token=" + bundle.token +
+						", _rowId=" + bundle.rowId +
+						", _insertTime=" + bundle.insertTime +
+						", _author=" + bundle.author +
+						", _fromHere=" + bundle.fromHere +
+						", " + manifestFields(bundle.manifest, ", ")
+					);
+			}
+		}
+		finally {
+			if (list != null)
+				list.close();
+		}
+		System.exit(0);
+	}
+
 	static void rhizome_manifest(BundleId bid, String dstpath) throws ServalDInterfaceException, IOException, InterruptedException
 	{
 		ServalDClient client = new ServerControl().getRestfulClient();
@@ -244,6 +270,8 @@ public class Rhizome {
 		try {
 			if (methodName.equals("rhizome-list"))
 				rhizome_list();
+			else if (methodName.equals("rhizome-list-newsince"))
+				rhizome_list_newsince(args[1]);
 			else if (methodName.equals("rhizome-manifest"))
 				rhizome_manifest(new BundleId(args[1]), args[2]);
 			else if (methodName.equals("rhizome-payload-raw"))

@@ -146,6 +146,60 @@ test_RhizomeList() {
    done
 }
 
+doc_RhizomeListNewSince="Java API list Rhizome bundles since token"
+setup_RhizomeListNewSince() {
+   set_extra_config() {
+      executeOk_servald config set api.restful.newsince_timeout 60s \
+                               set api.restful.newsince_poll_ms 500
+   }
+   setup
+   rhizome_add_bundles $SIDA1 0 5
+   executeJavaOk org.servalproject.test.Rhizome rhizome-list
+   assertStdoutLineCount == 6
+   unset_vars_with_prefix XX_
+   unpack_vars XX_ "$(sed -n -e 1p "$TFWSTDOUT")"
+   token="$XX__token"
+   assert [ -n "$token" ]
+}
+test_RhizomeListNewSince() {
+   rhizome_list_newsince() {
+      runJava org.servalproject.test.Rhizome rhizome-list-newsince "$token" >newsince$i
+   }
+   for i in 1 2 3; do
+      fork %list$i rhizome_list_newsince
+   done
+   wait_until [ -e newsince1 -a -e newsince2 -a -e newsince3 ]
+   rhizome_add_bundles $SIDA1 6 10
+   for i in 1 2 3; do
+      wait_until --timeout=10 grep "${BID[10]}" newsince$i
+   done
+   fork_terminate_all
+   fork_wait_all
+   for i in 1 2 3; do
+      tfw_preserve newsince$i
+      for ((n = 0; n <= 5; ++n)); do
+         assertGrep --matches=0 newsince$i "\<id=${BID[$n]}\>"
+      done
+      for ((n = 6; n <= 10; ++n)); do
+         assertGrep --matches=1 newsince$i "\<id=${BID[$n]}\>"
+         unset_vars_with_prefix XX_
+         unpack_vars XX_ "$(sed -n -e "/\bid=${BID[$n]}\b/p" newsince$i)"
+         assert [ "$XX_id" = "${BID[$n]}" ]
+         assert [ "$XX_version" = "${VERSION[$n]}" ]
+         assert [ "$XX_filesize" = "${SIZE[$n]}" ]
+         assert [ "$XX_filehash" = "${HASH[$n]}" ]
+         assert [ "$XX_date" = "${DATE[$n]}" ]
+         assert [ "$XX_service" = "file" ]
+         assert [ "$XX_name" = "file$n" ]
+         assert [ "$XX__rowId" = "${ROWID[$n]}" ]
+         assert [ "$XX__fromHere" = "1" ]
+         assert [ "$XX__author" = "$SIDA1" ]
+         assert [ "$XX__insertTime" = "${INSERTTIME[$n]}" ]
+         assert [ -n "$XX__token" ]
+      done
+   done
+}
+
 assert_metadata() {
    local n=$1
    assertStdoutGrep --matches=1 "^id=${BID[$n]}$CR\$"

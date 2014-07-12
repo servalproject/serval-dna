@@ -45,14 +45,23 @@ _executeJava() {
       *) break;;
       esac
    done
-   "$func" "${opts[@]}" --core-backtrace java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" "$@"
+   "$func" "${opts[@]}" java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" "$@"
+}
+
+_run() {
+   tfw_log "$@"
+   "$@"
+}
+
+runJava() {
+   _executeJava _run "$@"
 }
 
 executeJava() {
-   _executeJava execute "$@"
+   _executeJava execute --core-backtrace "$@"
 }
 
 executeJavaOk() {
-   _executeJava executeOk "$@"
+   _executeJava executeOk --core-backtrace "$@"
 }
 

@@ -81,6 +81,13 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 		return list;
 	}
 
+	public RhizomeBundleList rhizomeListBundlesSince(String token) throws ServalDInterfaceException, IOException
+	{
+		RhizomeBundleList list = new RhizomeBundleList(this, token);
+		list.connect();
+		return list;
+	}
+
 	public RhizomeManifestBundle rhizomeManifest(BundleId bid) throws ServalDInterfaceException, IOException
 	{
 		return RhizomeCommon.rhizomeManifest(this, bid);

@@ -159,8 +159,8 @@ test_RhizomeList() {
    done
 }
 
-doc_RhizomeNewSince="HTTP RESTful list Rhizome bundles since token as JSON"
-setup_RhizomeNewSince() {
+doc_RhizomeListNewSince="HTTP RESTful list Rhizome bundles since token as JSON"
+setup_RhizomeListNewSince() {
    set_extra_config() {
       executeOk_servald config set api.restful.newsince_timeout 60s \
                                set api.restful.newsince_poll_ms 500
@@ -178,7 +178,7 @@ setup_RhizomeNewSince() {
    token=$(jq --raw-output '.[0][".token"]' array_of_objects.json)
    assert [ -n "$token" ]
 }
-test_RhizomeNewSince() {
+test_RhizomeListNewSince() {
    for i in 1 2 3; do
       fork %curl$i curl \
             --silent --fail --show-error \

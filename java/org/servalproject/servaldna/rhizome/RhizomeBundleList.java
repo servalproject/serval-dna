@@ -41,9 +41,15 @@ public class RhizomeBundleList {
 	private HttpURLConnection httpConnection;
 	private JSONTokeniser json;
 	private JSONTableScanner table;
+	private String sinceToken;
 	int rowCount;
 
 	public RhizomeBundleList(ServalDHttpConnectionFactory connector)
+	{
+		this(connector, null);
+	}
+
+	public RhizomeBundleList(ServalDHttpConnectionFactory connector, String since_token)
 	{
 		this.httpConnector = connector;
 		this.table = new JSONTableScanner()
@@ -61,6 +67,7 @@ public class RhizomeBundleList {
 					.addColumn("sender", SubscriberId.class, JSONTokeniser.Narrow.ALLOW_NULL)
 					.addColumn("recipient", SubscriberId.class, JSONTokeniser.Narrow.ALLOW_NULL)
 					.addColumn("name", String.class);
+		this.sinceToken = since_token;
 	}
 
 	public boolean isConnected()
@@ -72,7 +79,10 @@ public class RhizomeBundleList {
 	{
 		try {
 			rowCount = 0;
-			httpConnection = httpConnector.newServalDHttpConnection("/restful/rhizome/bundlelist.json");
+			if (this.sinceToken == null)
+				httpConnection = httpConnector.newServalDHttpConnection("/restful/rhizome/bundlelist.json");
+			else
+				httpConnection = httpConnector.newServalDHttpConnection("/restful/rhizome/newsince/" + this.sinceToken + "/bundlelist.json");
 			httpConnection.connect();
 			json = RhizomeCommon.receiveRestfulResponse(httpConnection, HttpURLConnection.HTTP_OK);
 			json.consume(JSONTokeniser.Token.START_OBJECT);
