@@ -141,6 +141,13 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 		return list;
 	}
 
+	public MeshMSMessageList meshmsListMessagesSince(SubscriberId sid1, SubscriberId sid2, String token) throws IOException, ServalDInterfaceException, MeshMSException
+	{
+		MeshMSMessageList list = new MeshMSMessageList(this, sid1, sid2, token);
+		list.connect();
+		return list;
+	}
+
 	public MeshMSStatus meshmsSendMessage(SubscriberId sid1, SubscriberId sid2, String text) throws IOException, ServalDInterfaceException, MeshMSException
 	{
 		return MeshMSCommon.sendMessage(this, sid1, sid2, text);

@@ -30,7 +30,9 @@ setup() {
    set_instance +A
    executeOk_servald config \
 	set log.console.level debug \
-         set debug.httpd on
+        set debug.httpd on \
+        set debug.meshms on
+   set_extra_config
    create_identities 4
    start_servald_server
 }
@@ -40,6 +42,10 @@ teardown() {
    kill_all_servald_processes
    assert_no_servald_processes
    report_all_servald_servers
+}
+
+set_extra_config() {
+   :
 }
 
 doc_MeshmsListConversations="Java API list MeshMS conversations"
@@ -134,6 +140,90 @@ test_MeshmsListMessages() {
          ;;
       esac
    done
+}
+
+doc_MeshmsListMessagesNewSince="Java API list MeshMS messages in one conversation since token"
+setup_MeshmsListMessagesNewSince() {
+   set_extra_config() {
+      executeOk_servald config set api.restful.newsince_timeout 1s \
+                               set api.restful.newsince_poll_ms 500
+   }
+   setup
+   meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<A<>><>>A<<>'
+   let NROWS=NSENT+NRECV+(NACK?1:0)
+   executeJavaOk org.servalproject.test.Meshms meshms-list-messages "$SIDA1" "$SIDA2"
+   tfw_cat --stdout --stderr
+   assertStdoutLineCount == $(($NROWS + 2))
+   replayStdout | sed -n -e '3,$p' >messages
+   tfw_preserve messages
+   for ((i = 0; i < NROWS; i += 3)); do
+      let lnum=i+1
+      token[$i]=$(sed -n -e $lnum's/.*\<token=\([^ ]*\), .*/\1/p' messages)
+      assert [ -n "${token[$i]}" ]
+   done
+}
+test_MeshmsListMessagesNewSince() {
+   list() {
+      executeJavaOk org.servalproject.test.Meshms meshms-list-messages-since "$SIDA1" "$SIDA2" "${token[$i]}"
+      replayStdout >messages$i
+      tfw_preserve messages$i
+   }
+   for ((i = 0; i < NROWS; i += 3)); do
+      # At most fifteen requests going at once
+      [ $i -ge 15 ] && fork_wait %list$((i-15))
+      fork %list$i list
+   done
+   fork_wait_all
+   for ((i = 0; i < NROWS; i += 3)); do
+      >tmp
+      [ $i -gt 0 ] && sed -n -e "1,${i}p" messages >tmp
+      tfw_preserve tmp
+      assert cmp tmp messages$i
+   done
+}
+
+grepall() {
+   local pattern="$1"
+   shift
+   for file; do
+      grep "$pattern" "$file" || return $?
+   done
+   return 0
+}
+
+doc_MeshmsListMessagesNewSinceArrival="Java API list newly arriving MeshMS messages in one conversation"
+setup_MeshmsListMessagesNewSinceArrival() {
+   set_extra_config() {
+      executeOk_servald config set api.restful.newsince_timeout 60s \
+                               set api.restful.newsince_poll_ms 500
+   }
+   setup
+   meshms_add_messages $SIDA1 $SIDA2 '><>A>'
+   let NROWS=NSENT+NRECV+(NACK?1:0)
+   executeJavaOk org.servalproject.test.Meshms meshms-list-messages "$SIDA1" "$SIDA2"
+   tfw_cat --stdout --stderr
+   assertStdoutLineCount == $(($NROWS + 2))
+   token=$(sed -n -e '3s/.*\<token=\([^ ]*\), .*/\1/p' "$TFWSTDOUT")
+   assert [ -n "$token" ]
+}
+test_MeshmsListMessagesNewSinceArrival() {
+   list() {
+      runJava org.servalproject.test.Meshms meshms-list-messages-since "$SIDA1" "$SIDA2" "$token" >messages$i
+   }
+   for i in 1 2 3; do
+      fork %list$i list
+   done
+   wait_until [ -e messages1 -a -e messages2 -a -e messages3 ]
+   for message in '>Rumplestiltskin' 'A' '<Howdydoody' '>Eulenspiegel'; do
+      meshms_add_messages $SIDA1 $SIDA2 "${message:0:1}" "${message:1}"
+      wait_until grepall "${message:1}" messages{1,2,3}
+   done
+   fork_terminate_all
+   fork_wait_all
+}
+teardown_MeshmsListMessagesNewSinceArrival() {
+   tfw_preserve messages{1,2,3}
+   teardown
 }
 
 doc_MeshmsListMessagesNoIdentity="Java API list MeshMS messages from unknown identity"

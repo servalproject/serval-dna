@@ -94,6 +94,36 @@ public class Meshms {
 		System.exit(0);
 	}
 
+	static void meshms_list_messages_since(SubscriberId sid1, SubscriberId sid2, String token) throws ServalDInterfaceException, IOException, InterruptedException
+	{
+		ServalDClient client = new ServerControl().getRestfulClient();
+		MeshMSMessageList list = null;
+		try {
+			list = client.meshmsListMessagesSince(sid1, sid2, token);
+			MeshMSMessage msg;
+			while ((msg = list.nextMessage()) != null) {
+				System.out.println("type=" + msg.type
+							   + ", my_sid=" + msg.mySid
+							   + ", their_sid=" + msg.theirSid
+							   + ", offset=" + msg.offset
+							   + ", token=" + msg.token
+							   + ", text=" + (msg.text == null ? null : msg.text.replace('\n', '.').replace(' ', '.'))
+							   + ", delivered=" + msg.isDelivered
+							   + ", read=" + msg.isRead
+							   + ", ack_offset=" + msg.ackOffset
+							);
+			}
+		}
+		catch (MeshMSException e) {
+			System.out.println(e.toString());
+		}
+		finally {
+			if (list != null)
+				list.close();
+		}
+		System.exit(0);
+	}
+
 	static void meshms_send_message(SubscriberId sid1, SubscriberId sid2, String text) throws ServalDInterfaceException, IOException, InterruptedException
 	{
 		ServalDClient client = new ServerControl().getRestfulClient();
@@ -156,6 +186,8 @@ public class Meshms {
 				meshms_list_conversations(new SubscriberId(args[1]));
 			else if (methodName.equals("meshms-list-messages"))
 				meshms_list_messages(new SubscriberId(args[1]), new SubscriberId(args[2]));
+			else if (methodName.equals("meshms-list-messages-since"))
+				meshms_list_messages_since(new SubscriberId(args[1]), new SubscriberId(args[2]), args[3]);
 			else if (methodName.equals("meshms-send-message"))
 				meshms_send_message(new SubscriberId(args[1]), new SubscriberId(args[2]), args[3]);
 			else if (methodName.equals("meshms-mark-all-conversations-read"))
