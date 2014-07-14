@@ -386,7 +386,7 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
       }
       strbuf_puts(b, "],\n\"rows\":[");
       if (!strbuf_overrun(b))
-	r->u.msglist.phase = r->u.msglist.finished ? LIST_END : LIST_ROWS;
+	r->u.msglist.phase = LIST_ROWS;
       return 1;
     case LIST_ROWS:
       {
