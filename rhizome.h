@@ -382,7 +382,7 @@ enum rhizome_payload_status {
     RHIZOME_PAYLOAD_STATUS_EVICTED = 7, // other payloads in our store are more important
 };
 
-#define INVALID_RHIZOME_PAYLOAD_STATUS ((enum rhizome_bundle_status)-2)
+#define INVALID_RHIZOME_PAYLOAD_STATUS ((enum rhizome_payload_status)-2)
 
 const char *rhizome_payload_status_message(enum rhizome_payload_status);
 
