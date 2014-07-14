@@ -1693,11 +1693,20 @@ int rhizome_retrieve_manifest(const rhizome_bid_t *bidp, rhizome_manifest *m)
       END);
   if (!statement)
     return -1;
-  int ret = 1;
-  if (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
-    ret = unpack_manifest_row(m, statement);
-  else if (config.debug.rhizome)
-    DEBUGF("Manifest id=%s not found", alloca_tohex_rhizome_bid_t(*bidp));
+  int ret;
+  
+  switch(sqlite_step_retry(&retry, statement)){
+    case SQLITE_ROW:
+      ret = unpack_manifest_row(m, statement);
+      break;
+    case -1:
+      ret = -1;
+      break;
+    default:
+      ret = 1;
+      if (config.debug.rhizome)
+	DEBUGF("Manifest id=%s not found", alloca_tohex_rhizome_bid_t(*bidp));
+  }
   sqlite3_finalize(statement);
   return ret;
 }

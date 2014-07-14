@@ -132,7 +132,8 @@ static enum meshms_status get_database_conversations(const sid_t *my_sid, const 
     const char *their_sid_hex = alloca_tohex_sid_t(*(their_sid ? their_sid : my_sid));
     DEBUGF("Looking for conversations for %s, %s", my_sid_hex, their_sid_hex);
   }
-  while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
+  int r;
+  while ((r=sqlite_step_retry(&retry, statement)) == SQLITE_ROW) {
     const char *id_hex = (const char *)sqlite3_column_text(statement, 0);
     uint64_t version = sqlite3_column_int64(statement, 1);
     int64_t size = sqlite3_column_int64(statement, 2);
@@ -176,6 +177,8 @@ static enum meshms_status get_database_conversations(const sid_t *my_sid, const 
     p->size = size;
   }
   sqlite3_finalize(statement);
+  if (r==-1)
+    return MESHMS_STATUS_ERROR;
   return MESHMS_STATUS_OK;
 }
 
