@@ -152,6 +152,7 @@ struct meshms_message_iterator {
   // For MESSAGE_SENT 'offset' is the byte position within the local ply
   // (mine).  For MESSAGE_RECEIVED and ACK_RECEIVED, it is the byte position
   // within the remote ply (theirs).
+  time_s_t timestamp;
   uint64_t offset;
   const char *text; // text of UTF8 message (NUL terminated)
   size_t text_length; // excluding terminating NUL

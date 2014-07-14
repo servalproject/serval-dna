@@ -155,6 +155,17 @@ time_ms_t gettime_ms()
   return nowtv.tv_sec * 1000LL + nowtv.tv_usec / 1000;
 }
 
+time_s_t gettime()
+{
+  struct timeval nowtv;
+  // If gettimeofday() fails or returns an invalid value, all else is lost!
+  if (gettimeofday(&nowtv, NULL) == -1)
+    FATAL_perror("gettimeofday");
+  if (nowtv.tv_sec < 0 || nowtv.tv_usec < 0 || nowtv.tv_usec >= 1000000)
+    FATALF("gettimeofday returned tv_sec=%ld tv_usec=%ld", (long)nowtv.tv_sec, (long)nowtv.tv_usec);
+  return nowtv.tv_sec;
+}
+
 // Returns sleep time remaining.
 time_ms_t sleep_ms(time_ms_t milliseconds)
 {

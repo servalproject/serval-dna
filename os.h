@@ -59,11 +59,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      }
  */
 typedef int64_t time_ms_t;
+typedef uint32_t time_s_t;
 #define PRItime_ms_t PRId64
 #define TIME_MS_NEVER_WILL INT64_MAX
 #define TIME_MS_NEVER_HAS INT64_MIN
 
 time_ms_t gettime_ms();
+time_s_t gettime();
 time_ms_t sleep_ms(time_ms_t milliseconds);
 struct timeval time_ms_to_timeval(time_ms_t);
 

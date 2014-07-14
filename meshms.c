@@ -31,6 +31,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define MESHMS_BLOCK_TYPE_ACK 0x01
 #define MESHMS_BLOCK_TYPE_MESSAGE 0x02 // NUL-terminated UTF8 string
+#define MESHMS_BLOCK_TYPE_TIME 0x03 // local timestamp record
 
 static unsigned mark_read(struct meshms_conversations *conv, const sid_t *their_sid, const uint64_t offset);
 
@@ -212,12 +213,20 @@ static int create_ply(const sid_t *my_sid, struct meshms_conversations *conv, rh
   return 0;
 }
 
-static int append_footer(unsigned char *buffer, char type, size_t message_len)
+static size_t append_footer(unsigned char *buffer, char type, size_t message_len)
 {
   assert(message_len <= MESHMS_MESSAGE_MAX_LEN);
   message_len = (message_len << 4) | (type&0xF);
   write_uint16(buffer, message_len);
   return 2;
+}
+
+// append a timestamp as a uint32_t with 1s precision
+static size_t append_timestamp(uint8_t *buffer)
+{
+  write_uint32(buffer, gettime());
+  size_t ofs=4;
+  return ofs+append_footer(buffer+ofs, MESHMS_BLOCK_TYPE_TIME, ofs);
 }
 
 static enum meshms_status ply_read_open(struct meshms_ply_read *ply, const rhizome_bid_t *bid, rhizome_manifest *m)
@@ -470,12 +479,13 @@ static enum meshms_status update_conversation(const sid_t *my_sid, struct meshms
   // append an ack for their message
   if (config.debug.meshms)
     DEBUGF("Creating ACK for %"PRId64" - %"PRId64, previous_ack, conv->their_last_message);
-  unsigned char buffer[24];
+  unsigned char buffer[30];
   int ofs=0;
   ofs+=pack_uint(&buffer[ofs], conv->their_last_message);
   if (previous_ack)
     ofs+=pack_uint(&buffer[ofs], conv->their_last_message - previous_ack);
   ofs+=append_footer(buffer+ofs, MESHMS_BLOCK_TYPE_ACK, ofs);
+  ofs+=append_timestamp(buffer+ofs);
   status = append_meshms_buffer(my_sid, conv, buffer, ofs);
   if (config.debug.meshms)
     DEBUGF("status=%d", status);
@@ -787,6 +797,7 @@ enum meshms_status meshms_message_iterator_open(struct meshms_message_iterator *
   iter->my_ply_bid = &iter->_conv->my_ply.bundle_id;
   iter->their_ply_bid = &iter->_conv->their_ply.bundle_id;
   iter->read_offset = iter->_conv->read_offset;
+  iter->timestamp = 0;
   // If I have never sent a message (or acked any of theirs), there are no messages in the thread.
   if (iter->_conv->found_my_ply) {
     if ((iter->_my_manifest = rhizome_new_manifest()) == NULL)
@@ -896,6 +907,14 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
 	DEBUGF("Offset %"PRId64", type %d, read_offset %"PRId64, iter->_my_reader.read.offset, iter->_my_reader.type, iter->read_offset);
       iter->which_ply = MY_PLY;
       switch (iter->_my_reader.type) {
+	case MESHMS_BLOCK_TYPE_TIME:
+	  if (iter->_my_reader.record_length<4){
+	    WARN("Malformed MeshMS2 ply journal, expected 4 byte timestamp");
+	    return MESHMS_STATUS_PROTOCOL_FAULT;
+	  }
+	  iter->timestamp = read_uint32(iter->_my_reader.record);
+	  DEBUGF("Parsed timestamp %ds old", gettime() - iter->timestamp);
+	  break;
 	case MESHMS_BLOCK_TYPE_ACK:
 	  // Read the received messages up to the ack'ed offset
 	  if (iter->_conv->found_their_ply) {
@@ -943,12 +962,13 @@ enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipie
     assert(conv != NULL);
     // construct a message payload
     // TODO, new format here.
-    unsigned char buffer[message_len + 4];
+    unsigned char buffer[message_len + 4 + 6];
     strncpy((char*)buffer, message, message_len);
     // ensure message is NUL terminated
     if (message[message_len - 1] != '\0')
       buffer[message_len++] = '\0';
     message_len += append_footer(buffer + message_len, MESHMS_BLOCK_TYPE_MESSAGE, message_len);
+    message_len+=append_timestamp(buffer + message_len);
     status = append_meshms_buffer(sender, conv, buffer, message_len);
   }
   meshms_free_conversations(conv);
@@ -1125,11 +1145,12 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
     return status;
   }
   const char *names[]={
-    "_id","offset","type","message"
+    "_id","offset","age","type","message"
   };
-  cli_columns(context, 4, names);
+  cli_columns(context, 5, names);
   bool_t marked_delivered = 0;
   bool_t marked_read = 0;
+  time_s_t now = gettime();
   int id = 0;
   while ((status = meshms_message_iterator_prev(&iter)) == MESHMS_STATUS_UPDATED) {
     switch (iter.type) {
@@ -1137,6 +1158,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
 	if (iter.delivered && !marked_delivered){
 	  cli_put_long(context, id++, ":");
 	  cli_put_long(context, iter.latest_ack_offset, ":");
+	  cli_put_long(context, iter.timestamp?(int)(now - iter.timestamp):-1, ":");
 	  cli_put_string(context, "ACK", ":");
 	  cli_put_string(context, "delivered", "\n");
 	  marked_delivered = 1;
@@ -1144,6 +1166,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
 	// TODO new message format here
 	cli_put_long(context, id++, ":");
 	cli_put_long(context, iter.offset, ":");
+	cli_put_long(context, iter.timestamp?(int)(now - iter.timestamp):-1, ":");
 	cli_put_string(context, ">", ":");
 	cli_put_string(context, iter.text, "\n");
 	break;
@@ -1153,6 +1176,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
 	if (iter.read && !marked_read) {
 	  cli_put_long(context, id++, ":");
 	  cli_put_long(context, iter.read_offset, ":");
+	  cli_put_long(context, iter.timestamp?(int)(now - iter.timestamp):-1, ":");
 	  cli_put_string(context, "MARK", ":");
 	  cli_put_string(context, "read", "\n");
 	  marked_read = 1;
@@ -1160,6 +1184,7 @@ int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context
 	// TODO new message format here
 	cli_put_long(context, id++, ":");
 	cli_put_long(context, iter.offset, ":");
+	cli_put_long(context, iter.timestamp?(int)(now - iter.timestamp):-1, ":");
 	cli_put_string(context, "<", ":");
 	cli_put_string(context, iter.text, "\n");
 	break;
