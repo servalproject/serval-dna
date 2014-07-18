@@ -20,18 +20,18 @@
 
 package org.servalproject.servaldna.meshms;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Vector;
-import java.util.Map;
-import java.net.HttpURLConnection;
+import org.servalproject.json.JSONInputException;
+import org.servalproject.json.JSONTableScanner;
+import org.servalproject.json.JSONTokeniser;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.SubscriberId;
-import org.servalproject.json.JSONTableScanner;
-import org.servalproject.json.JSONTokeniser;
-import org.servalproject.json.JSONInputException;
+
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 public class MeshMSMessageList {
 
@@ -151,11 +151,11 @@ public class MeshMSMessageList {
 							type,
 							(SubscriberId)row.get("my_sid"),
 							(SubscriberId)row.get("their_sid"),
-							(long)row.get("offset"),
+							(Long)row.get("offset"),
 							(String)row.get("token"),
 							(String)row.get("text"),
-							(boolean)row.get("delivered"),
-							(boolean)row.get("read"),
+							(Boolean)row.get("delivered"),
+							(Boolean)row.get("read"),
 							(Long)row.get("ack_offset")
 						);
 		}

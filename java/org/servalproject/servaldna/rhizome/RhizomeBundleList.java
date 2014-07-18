@@ -21,18 +21,16 @@
 package org.servalproject.servaldna.rhizome;
 
 import org.servalproject.json.JSONInputException;
-import org.servalproject.json.JSONTokeniser;
 import org.servalproject.json.JSONTableScanner;
+import org.servalproject.json.JSONTokeniser;
+import org.servalproject.servaldna.BundleId;
+import org.servalproject.servaldna.FileHash;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
-import org.servalproject.servaldna.BundleId;
 import org.servalproject.servaldna.SubscriberId;
-import org.servalproject.servaldna.FileHash;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 public class RhizomeBundleList {
@@ -115,23 +113,23 @@ public class RhizomeBundleList {
 			Map<String,Object> row = table.consumeRowArray(json);
 			return new RhizomeListBundle(
 					new RhizomeManifest((BundleId)row.get("id"),
-										(long)row.get("version"),
-										(long)row.get("filesize"),
+										(Long)row.get("version"),
+										(Long)row.get("filesize"),
 										(FileHash)row.get("filehash"),
 										(SubscriberId)row.get("sender"),
 										(SubscriberId)row.get("recipient"),
 										null, // BK
 										null, // crypt
 										null, // tail
-										(long)row.get("date"),
+										(Long)row.get("date"),
 										(String)row.get("service"),
 										(String)row.get("name")),
 					rowCount++,
-					(int)row.get("_id"),
+					(Integer)row.get("_id"),
 					(String)row.get(".token"),
-					(long)row.get(".inserttime"),
+					(Long)row.get(".inserttime"),
 					(SubscriberId)row.get(".author"),
-					(int)row.get(".fromhere")
+					(Integer)row.get(".fromhere")
 				);
 		}
 		catch (JSONInputException e) {
