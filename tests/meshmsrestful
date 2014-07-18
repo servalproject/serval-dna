@@ -372,7 +372,7 @@ test_MeshmsListMessagesNewSinceArrival() {
    wait_until [ -e newsince1.json -a -e newsince2.json -a -e newsince3.json ]
    for message in '>Rumplestiltskin' 'A' '<Howdydoody' '>Eulenspiegel'; do
       meshms_add_messages $SIDA1 $SIDA2 "${message:0:1}" "${message:1}"
-      wait_until --timeout=60 grepall "${message:1}" newsince{1,2,3}.json
+      wait_until --timeout=10 grepall "${message:1}" newsince{1,2,3}.json
    done
    fork_terminate_all
    fork_wait_all

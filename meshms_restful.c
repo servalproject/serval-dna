@@ -366,6 +366,7 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
     "text",
     "delivered",
     "read",
+    "timestamp",
     "ack_offset"
   };
   switch (r->u.msglist.phase) {
@@ -393,17 +394,18 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
 	if (   r->u.msglist.finished
 	    || (r->u.msglist.token_which_ply == r->u.msglist.iter.which_ply && r->u.msglist.iter.offset <= r->u.msglist.token_offset)
 	) {
-	    time_ms_t now;
-	    if (r->u.msglist.end_time && (now = gettime_ms()) < r->u.msglist.end_time) {
-	      r->u.msglist.token_which_ply = r->u.msglist.latest_which_ply;
-	      r->u.msglist.token_offset = r->u.msglist.latest_offset;
-	      meshms_message_iterator_close(&r->u.msglist.iter);
-	      time_ms_t wake_at = now + config.api.restful.newsince_poll_ms;
-	      if (wake_at > r->u.msglist.end_time)
-		wake_at = r->u.msglist.end_time;
-	      http_request_pause_response(&r->http, wake_at);
-	      return 0;
-	    }
+	  time_ms_t now;
+	  if (r->u.msglist.end_time && (now = gettime_ms()) < r->u.msglist.end_time) {
+	    r->u.msglist.token_which_ply = r->u.msglist.latest_which_ply;
+	    r->u.msglist.token_offset = r->u.msglist.latest_offset;
+	    meshms_message_iterator_close(&r->u.msglist.iter);
+	    time_ms_t wake_at = now + config.api.restful.newsince_poll_ms;
+	    if (wake_at > r->u.msglist.end_time)
+	      wake_at = r->u.msglist.end_time;
+	    http_request_pause_response(&r->http, wake_at);
+	    return 0;
+	  }
+	  r->u.msglist.phase = LIST_END;
 	} else {
 	  switch (r->u.msglist.iter.type) {
 	    case MESSAGE_SENT:
@@ -425,6 +427,8 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
 	      strbuf_json_boolean(b, r->u.msglist.iter.delivered);
 	      strbuf_putc(b, ',');
 	      strbuf_json_boolean(b, 0);
+	      strbuf_putc(b, ',');
+	      strbuf_sprintf(b, "%d", r->u.msglist.iter.timestamp);
 	      strbuf_putc(b, ',');
 	      strbuf_json_null(b);
 	      strbuf_puts(b, "]");
@@ -448,6 +452,8 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
 	      strbuf_json_boolean(b, 1);
 	      strbuf_putc(b, ',');
 	      strbuf_json_boolean(b, r->u.msglist.iter.read);
+	      strbuf_putc(b, ',');
+	      strbuf_sprintf(b, "%d", r->u.msglist.iter.timestamp);
 	      strbuf_putc(b, ',');
 	      strbuf_json_null(b);
 	      strbuf_puts(b, "]");
@@ -473,6 +479,8 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
 		strbuf_json_boolean(b, 1);
 		strbuf_putc(b, ',');
 		strbuf_json_boolean(b, r->u.msglist.iter.read);
+		strbuf_putc(b, ',');
+		strbuf_sprintf(b, "%d", r->u.msglist.iter.timestamp);
 		strbuf_putc(b, ',');
 		strbuf_sprintf(b, "%"PRIu64, r->u.msglist.iter.ack_offset);
 		strbuf_puts(b, "]");
