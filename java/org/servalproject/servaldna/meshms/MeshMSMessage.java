@@ -40,6 +40,7 @@ public class MeshMSMessage {
 	public final String text;
 	public final boolean isDelivered;
 	public final boolean isRead;
+	public final long timestamp;
 	public final Long ackOffset;
 
 	protected MeshMSMessage(int rowNumber,
@@ -51,6 +52,7 @@ public class MeshMSMessage {
 							String text,
 							boolean delivered,
 							boolean read,
+							long timestamp,
 							Long ack_offset) throws ServalDInterfaceException
 	{
 		if (my_sid == null)
@@ -72,6 +74,7 @@ public class MeshMSMessage {
 		this.text = text;
 		this.isDelivered = delivered;
 		this.isRead = read;
+		this.timestamp = timestamp;
 		this.ackOffset = ack_offset;
 	}
 

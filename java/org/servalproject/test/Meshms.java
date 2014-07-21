@@ -20,7 +20,6 @@
 
 package org.servalproject.test;
 
-import java.io.IOException;
 import org.servalproject.servaldna.ServalDClient;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.ServerControl;
@@ -31,6 +30,8 @@ import org.servalproject.servaldna.meshms.MeshMSException;
 import org.servalproject.servaldna.meshms.MeshMSMessage;
 import org.servalproject.servaldna.meshms.MeshMSMessageList;
 import org.servalproject.servaldna.meshms.MeshMSStatus;
+
+import java.io.IOException;
 
 public class Meshms {
 
@@ -80,6 +81,7 @@ public class Meshms {
 							   + ", text=" + (msg.text == null ? null : msg.text.replace('\n', '.').replace(' ', '.'))
 							   + ", delivered=" + msg.isDelivered
 							   + ", read=" + msg.isRead
+							   + ", timestamp=" + msg.timestamp
 							   + ", ack_offset=" + msg.ackOffset
 							);
 			}
@@ -110,6 +112,7 @@ public class Meshms {
 							   + ", text=" + (msg.text == null ? null : msg.text.replace('\n', '.').replace(' ', '.'))
 							   + ", delivered=" + msg.isDelivered
 							   + ", read=" + msg.isRead
+							   + ", timestamp=" + msg.timestamp
 							   + ", ack_offset=" + msg.ackOffset
 							);
 			}
