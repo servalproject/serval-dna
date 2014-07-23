@@ -25,11 +25,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 // Number of elements in an array (Warning: does not work if A is a pointer!).
 #define NELS(A) (sizeof (A) / sizeof *(A))
 
+// Stop OpenJDK 7 from foisting their UNUSED() macro on us in <jni_md.h>
+#ifdef UNUSED
+# undef UNUSED
+#endif
+
 // To suppress the "unused parameter" warning from -Wunused-parameter.
-#ifdef __GNUC__
-#  define UNUSED(x) x __attribute__((__unused__))
+#ifndef __has_attribute
+  #define __has_attribute(x) 0
+#endif
+#if (defined(__GNUC__)) || __has_attribute(unused)
+  #define UNUSED(x) x __attribute__((__unused__))
 #else
-#  define UNUSED(x) x
+  #define UNUSED(x) x
 #endif
 
 // UDP Port numbers for various Serval services.

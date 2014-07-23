@@ -18,11 +18,11 @@
  */
 
 #include <signal.h>
+#include "cli.h"
 #include "serval_types.h"
 #include "mdp_client.h"
 #include "msp_client.h"
 #include "fdqueue.h"
-#include "cli.h"
 #include "log.h"
 #include "mem.h"
 #include "str.h"

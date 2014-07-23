@@ -20,13 +20,12 @@
 #ifndef __SERVAL_DNA__CLI_H
 #define __SERVAL_DNA__CLI_H
 
-#include "xprintf.h"
-#include "log.h"
 #include <stdint.h>
-
 #ifdef HAVE_JNI_H
 #include <jni.h>
 #endif
+#include "xprintf.h"
+#include "log.h"
 
 #define COMMAND_LINE_MAX_LABELS   (32)
 

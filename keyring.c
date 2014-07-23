@@ -20,13 +20,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdio.h>
 #include <assert.h>
-#include "constants.h"
 #include "serval.h"
-#include "str.h"
-#include "mem.h"
-#include "rotbuf.h"
-#include "conf.h"
 #include "rhizome.h"
+#include "conf.h"
+#include "constants.h"
 #include "nacl.h"
 #include "overlay_address.h"
 #include "crypto.h"
@@ -35,6 +32,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_buffer.h"
 #include "keyring.h"
 #include "dataformats.h"
+#include "str.h"
+#include "mem.h"
+#include "rotbuf.h"
 
 static void keyring_free_keypair(keypair *kp);
 static void keyring_free_context(keyring_context *c);

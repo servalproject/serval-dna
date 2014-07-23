@@ -117,11 +117,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <fcntl.h>
 #include <sys/stat.h>
 
+#include "cli.h"
 #include "serval_types.h"
 #include "sighandlers.h"
 #include "instance.h"
 #include "fdqueue.h"
-#include "cli.h"
 #include "constants.h"
 #include "mem.h"
 #include "xprintf.h"

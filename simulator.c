@@ -24,15 +24,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <time.h>
 #include <sys/time.h>
 
+#include "console.h"
+#include "conf.h"
 #include "mem.h"
 #include "socket.h"
 #include "fdqueue.h"
 #include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
-#include "conf.h"
 #include "net.h"
-#include "console.h"
 #include "limit.h"
 
 #define MTU 1600
