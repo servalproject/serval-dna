@@ -1,0 +1,99 @@
+#!/bin/bash
+
+# Tests for Serval DNA HTTP RESTful interface
+#
+# Copyright 2013-2014 Serval Project, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+source "${0%/*}/../testdefs_json.sh"
+
+shopt -s extglob
+
+setup() {
+   CR='
+'
+   setup_curl 7
+   setup_json
+   setup_servald
+   set_instance +A
+
+   executeOk_servald config \
+      set api.restful.users.harry.password potter \
+      set api.restful.users.ron.password weasley \
+      set api.restful.users.hermione.password grainger
+   set_extra_config
+   if [ -z "$IDENTITY_COUNT" ]; then
+      create_single_identity
+   else
+      create_identities $IDENTITY_COUNT
+   fi
+   start_servald_instances +A
+   wait_until servald_restful_http_server_started +A
+   get_servald_restful_http_server_port PORTA +A
+}
+
+finally() {
+   stop_all_servald_servers
+}
+
+teardown() {
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
+
+set_extra_config() {
+   :
+}
+
+set_keyring_config() {
+   executeOk_servald config \
+      set debug.http_server on \
+      set debug.httpd on \
+      set debug.rhizome_manifest on \
+      set debug.rhizome_store on \
+      set debug.rhizome on \
+      set debug.keyring on \
+      set debug.verbose on \
+      set log.console.level debug
+}
+
+doc_keyringListIdentities="HTTP RESTful list SIDs as JSON"
+setup_keyringListIdentities() {
+   IDENTITY_COUNT=10
+   setup
+}
+
+test_keyringListIdentities() {
+   executeOk curl \
+         --silent --fail --show-error \
+         --output identitylist1.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/keyring/identities.json"
+   tfw_cat http.headers identitylist1.json
+   tfw_preserve identitylist1.json
+   
+   assert [ "$(jq '.rows | length' identitylist1.json)" = $IDENTITY_COUNT ]
+
+   assert [ "$(jq -r '.rows[0][0]' identitylist1.json)" = $SIDA1 ]
+   assert [ "$(jq -r '.rows[4][0]' identitylist1.json)" = $SIDA5 ]
+   assert [ "$(jq -r '.rows[9][0]' identitylist1.json)" = $SIDA10 ]
+}
+
+runTests "$@"
