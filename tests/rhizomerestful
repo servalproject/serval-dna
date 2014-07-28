@@ -115,6 +115,75 @@ teardown_AuthBasicWrong() {
    teardown
 }
 
+doc_CORS_Request="Allow local cross site requests, and deny remote ones"
+test_CORS_Request(){
+   executeOk curl \
+         --silent --fail --show-error --write-out '%{http_code}' \
+         --output http.output \
+         --dump-header http.headers \
+	 --header "Origin: http://localhost" \
+	 --request "OPTIONS" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   assertStdoutIs '200'
+   assertGrep http.headers "^Access-Control-Allow-Origin: http://localhost$CR\$"
+   assertGrep http.headers "^Access-Control-Allow-Methods: GET, POST, OPTIONS$CR\$"
+   assertGrep http.headers "^Access-Control-Allow-Headers: Authorization$CR\$"
+   executeOk curl \
+         --silent --fail --show-error --write-out '%{http_code}' \
+         --output http.output \
+         --dump-header http.headers \
+	 --header "Origin: http://localhost:1234" \
+	 --request "OPTIONS" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   assertStdoutIs '200'
+   assertGrep http.headers "^Access-Control-Allow-Origin: http://localhost:1234$CR\$"
+   executeOk curl \
+         --silent --fail --show-error --write-out '%{http_code}' \
+         --output http.output \
+         --dump-header http.headers \
+	 --header "Origin: null" \
+	 --request "OPTIONS" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   assertStdoutIs '200'
+   assertGrep http.headers "^Access-Control-Allow-Origin: null$CR\$"
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.output \
+         --dump-header http.headers \
+	 --header "Origin: http://malevolent.site.com" \
+	 --request "OPTIONS" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   assertStdoutIs '403'
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.output \
+         --dump-header http.headers \
+	 --header "Origin: http://localhost.malevolent.site.com" \
+	 --request "OPTIONS" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   assertStdoutIs '403'
+   executeOk curl \
+         --silent --fail --show-error --write-out '%{http_code}' \
+         --output http.output \
+         --dump-header http.headers \
+	 --header "Origin: http://localhost" \
+         --basic --user ron:weasley \
+         "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   assertStdoutIs '200'
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.output \
+         --dump-header http.headers \
+	 --header "Origin: http://malevolent.site.com" \
+         --basic --user ron:weasley \
+         "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
+   assertStdoutIs '403'
+}
+teardown_CORS_Request() {
+   tfw_cat http.headers http.output
+   teardown
+}
+
 doc_RhizomeList="HTTP RESTful list 100 Rhizome bundles as JSON"
 setup_RhizomeList() {
    setup

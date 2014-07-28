@@ -117,6 +117,9 @@ int restful_meshms_(httpd_request *r, const char *remainder)
   r->http.response.header.content_type = CONTENT_TYPE_JSON;
   if (!is_rhizome_http_enabled())
     return 403;
+  int ret = authorize_restful(&r->http);
+  if (ret)
+    return ret;
   const char *verb = HTTP_VERB_GET;
   http_size_t content_length = CONTENT_LENGTH_UNKNOWN;
   HTTP_HANDLER *handler = NULL;
@@ -173,19 +176,15 @@ int restful_meshms_(httpd_request *r, const char *remainder)
   }
   if (handler == NULL)
     return 404;
-  if (r->http.verb != verb)
-    return 405;
   if (	 content_length != CONTENT_LENGTH_UNKNOWN
       && r->http.request_header.content_length != CONTENT_LENGTH_UNKNOWN
       && r->http.request_header.content_length != content_length) {
     http_request_simple_response(&r->http, 400, "Bad content length");
     return 400;
   }
-  int ret = authorize_restful(&r->http);
-  if (ret)
-    return ret;
-  ret = handler(r, remainder);
-  return ret;
+  if (r->http.verb != verb)
+    return 405;
+  return handler(r, remainder);
 }
 
 static HTTP_CONTENT_GENERATOR restful_meshms_conversationlist_json_content;

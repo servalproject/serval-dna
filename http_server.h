@@ -90,6 +90,7 @@ struct http_request_headers {
   http_size_t content_length;
   struct mime_content_type content_type;
   unsigned short content_range_count;
+  const char *origin; // points into buffer; nul terminated
   struct http_range content_ranges[5];
   struct http_client_authorization authorization;
 };
@@ -100,6 +101,9 @@ struct http_response_headers {
   http_size_t resource_length; // size of entire resource
   const char *content_type; // "type/subtype"
   const char *boundary;
+  char allow_origin[23]; // max supported str (for now) "http://localhost:65537"
+  const char *allow_methods;
+  const char *allow_headers;
   struct http_www_authenticate www_authenticate;
 };
 

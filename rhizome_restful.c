@@ -152,13 +152,13 @@ int restful_rhizome_bundlelist_json(httpd_request *r, const char *remainder)
   r->http.render_extra_headers = render_manifest_headers;
   if (!is_rhizome_http_enabled())
     return 403;
+  int ret = authorize_restful(&r->http);
+  if (ret)
+    return ret;
   if (*remainder)
     return 404;
   if (r->http.verb != HTTP_VERB_GET)
     return 405;
-  int ret = authorize_restful(&r->http);
-  if (ret)
-    return ret;
   r->u.rhlist.phase = LIST_HEADER;
   r->u.rhlist.rowcount = 0;
   bzero(&r->u.rhlist.cursor, sizeof r->u.rhlist.cursor);
@@ -184,15 +184,15 @@ int restful_rhizome_newsince(httpd_request *r, const char *remainder)
   r->http.response.header.content_type = CONTENT_TYPE_JSON;
   if (!is_rhizome_http_enabled())
     return 403;
+  int ret = authorize_restful(&r->http);
+  if (ret)
+    return ret;
   uint64_t rowid;
   const char *end = NULL;
   if (!strn_to_list_token(remainder, &rowid, &end) || strcmp(end, "/bundlelist.json") != 0)
     return 404;
   if (r->http.verb != HTTP_VERB_GET)
     return 405;
-  int ret = authorize_restful(&r->http);
-  if (ret)
-    return ret;
   r->u.rhlist.phase = LIST_HEADER;
   r->u.rhlist.rowcount = 0;
   bzero(&r->u.rhlist.cursor, sizeof r->u.rhlist.cursor);
@@ -325,15 +325,15 @@ int restful_rhizome_insert(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = CONTENT_TYPE_JSON;
   r->http.render_extra_headers = render_manifest_headers;
-  if (*remainder)
-    return 404;
   if (!is_rhizome_http_enabled())
     return 403;
-  if (r->http.verb != HTTP_VERB_POST)
-    return 405;
   int ret = authorize_restful(&r->http);
   if (ret)
     return ret;
+  if (*remainder)
+    return 404;
+  if (r->http.verb != HTTP_VERB_POST)
+    return 405;
   // Parse the request body as multipart/form-data.
   assert(r->u.insert.current_part == NULL);
   assert(!r->u.insert.received_author);
@@ -686,6 +686,9 @@ int restful_rhizome_(httpd_request *r, const char *remainder)
   r->http.render_extra_headers = render_manifest_headers;
   if (!is_rhizome_http_enabled())
     return 403;
+  int ret = authorize_restful(&r->http);
+  if (ret)
+    return ret;
   HTTP_HANDLER *handler = NULL;
   rhizome_bid_t bid;
   const char *end;
@@ -705,9 +708,6 @@ int restful_rhizome_(httpd_request *r, const char *remainder)
     return 404;
   if (r->http.verb != HTTP_VERB_GET)
     return 405;
-  int ret = authorize_restful(&r->http);
-  if (ret)
-    return ret;
   if ((r->manifest = rhizome_new_manifest()) == NULL)
     return 500;
   ret = rhizome_retrieve_manifest(&bid, r->manifest);

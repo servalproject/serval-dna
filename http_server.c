@@ -997,6 +997,27 @@ static int http_request_parse_header(struct http_request *r)
     goto malformed;
   }
   _rewind(r);
+  if (_skip_literal_nocase(r, "Origin:")) {
+    if (r->request_header.origin) {
+      if (r->debug_flag && *r->debug_flag)
+	DEBUGF("Skipping duplicate HTTP header Origin: %s", alloca_toprint(50, sol, r->end - sol));
+      r->cursor = nextline;
+      _commit(r);
+      return 0;
+    }
+    _skip_optional_space(r);
+    struct substring origin;
+    if (_skip_word_printable(r, &origin) 
+	&& _skip_optional_space(r)
+	&& r->cursor == eol) {
+      r->cursor = nextline;
+      _commit(r);
+      _reserve(r, &r->request_header.origin, origin);
+      return 0;
+    }
+    goto malformed;
+  }
+  _rewind(r);
   if (r->debug_flag && *r->debug_flag)
     DEBUGF("Skipped HTTP request header: %s", alloca_toprint(-1, sol, eol - sol));
   r->cursor = nextline;
@@ -1979,6 +2000,14 @@ static int _render_response(struct http_request *r)
   }
   if (hr.header.content_length != CONTENT_LENGTH_UNKNOWN)
     strbuf_sprintf(sb, "Content-Length: %"PRIhttp_size_t"\r\n", hr.header.content_length);
+  
+  if (hr.header.allow_origin)
+    strbuf_sprintf(sb, "Access-Control-Allow-Origin: %s\r\n", hr.header.allow_origin);
+  if (hr.header.allow_methods)
+    strbuf_sprintf(sb, "Access-Control-Allow-Methods: %s\r\n", hr.header.allow_methods);
+  if (hr.header.allow_headers)
+    strbuf_sprintf(sb, "Access-Control-Allow-Headers: %s\r\n", hr.header.allow_headers);
+  
   const char *scheme = NULL;
   switch (hr.header.www_authenticate.scheme) {
     case NOAUTH: break;

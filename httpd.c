@@ -348,6 +348,24 @@ int authorize_restful(struct http_request *r)
 {
   if (!is_from_loopback(r))
     return 403;
+  if (r->request_header.origin){
+    const char *remainder;
+    if (strcasecmp(r->request_header.origin, "null")==0
+      || (strcase_startswith(r->request_header.origin, "http://localhost", &remainder)
+	&& (*remainder==':' || *remainder=='\0'))
+      || (strcase_startswith(r->request_header.origin, "http://127.0.0.1", &remainder)
+	&& (*remainder==':' || *remainder=='\0'))
+      ){
+      strncpy(r->response.header.allow_origin,r->request_header.origin, sizeof r->response.header.allow_origin);
+      r->response.header.allow_methods="GET, POST, OPTIONS";
+      r->response.header.allow_headers="Authorization";
+    }else
+      return 403;
+  }
+  if (r->verb == HTTP_VERB_OPTIONS){
+    http_request_simple_response(r, 200, NULL);
+    return 200;
+  }
   if (!is_authorized_restful(&r->request_header.authorization)) {
     r->response.header.www_authenticate.scheme = BASIC;
     r->response.header.www_authenticate.realm = "Serval RESTful API";
