@@ -89,7 +89,7 @@ void uuid_set_version(serval_uuid_t *valid_uuid, enum uuid_version);
 
 /* Returns -1 if error (eg, cannot open /dev/urandom), 0 if successful.
  */
-int uuid_generate_random(serval_uuid_t *dest_uuid);
+int serval_uuid_generate_random(serval_uuid_t *dest_uuid);
 
 /* Formats the given valid UUID in its canonical string representation:
  *    XXXXXXXX-VXXX-MXXX-XXXXXXXXXXXX

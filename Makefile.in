@@ -202,6 +202,7 @@ libserval.so: $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
 	@$(CC) -Wall -shared -o $@ $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
 
+
 libmonitorclient.so: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
 	@$(CC) -Wall -shared -o $@ $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)

@@ -30,3 +30,7 @@ test.*.log
 /testlog
 /coverage_html
 *.info
+build
+ios/libserval.xcodeproj/project.xcworkspace/xcuserdata/
+ios/libserval.xcodeproj/xcuserdata/
+.DS_Store
