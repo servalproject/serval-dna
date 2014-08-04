@@ -75,9 +75,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
       < INCALL
       // The client can now start sending audio
   > INCALL
-  $ INCALL [token]
+  $ ANSWERED [token]
   // The client can now start sending audio
-      $ INCALL [token]
 
   Tell any clients that the call hasn't timed out yet
   (if servald is behaving this should be redundant, if it isn't behaving how do we hangup?)
