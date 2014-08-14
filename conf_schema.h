@@ -90,7 +90,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * A schema definition is composed from the following STRUCT and ARRAY definitions:
  *
- *      STRUCT(name [, validatorfunc])
+ *      STRUCT(name) [ VALIDATOR(validatorfunc) ]
  *          element-declaration
  *          element-declaration
  *          ...
@@ -104,7 +104,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *          SUB_STRUCT(structname, element, flags [, default_label])
  *          NODE_STRUCT(structname, element, repr, flags [, default_label])
  *
- *      ARRAY(name, flags [, validatorfunc])
+ *      ARRAY(name, flags) [ VALIDATOR(validatorfunc) ]
  *          key-declaration
  *          value-declaration
  *      END_ARRAY(size)
@@ -355,7 +355,7 @@ ATOM(uint16_t,              remote_port, 4130, uint16_nonzero,, "Remote port num
 ATOM(uint16_t,              local_port,  4131, uint16_nonzero,, "Local port number")
 END_STRUCT
 
-ARRAY(argv, NO_DUPLICATES, vld_argv)
+ARRAY(argv, NO_DUPLICATES, VALIDATOR(vld_argv))
 KEY_ATOM(unsigned short, ushort_nonzero)
 VALUE_STRING(128, str)
 END_ARRAY(16)
@@ -445,7 +445,7 @@ KEY_ATOM(sid_t, sid)
 VALUE_SUB_STRUCT(host)
 END_ARRAY(32)
 
-STRUCT(network_interface, vld_network_interface)
+STRUCT(network_interface, VALIDATOR(vld_network_interface))
 ATOM(bool_t,                exclude,         0, boolean,, "If true, do not use matching interfaces")
 ATOM(struct pattern_list,   match,           PATTERN_LIST_EMPTY, pattern_list,, "Names that match network interface")
 ATOM(short,                 socket_type,     SOCK_UNSPECIFIED, socket_type,, "Type of network socket; stream, dgram or file")

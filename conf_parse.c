@@ -25,7 +25,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 
 // Generate config set-default function definitions, cf_dfl_config_NAME().
-#define STRUCT(__name, __validator...) \
+#define VALIDATOR(__validator)
+#define STRUCT(__name, __options...) \
     int cf_dfl_config_##__name(struct config_##__name *s) { \
       return cf_dfl_config_##__name##_cf_(s); \
     } \
@@ -59,7 +60,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define END_STRUCT_DEFAULT \
         return CFOK; \
     }
-#define ARRAY(__name, __flags, __validator...) \
+#define ARRAY(__name, __flags, __options...) \
     int cf_dfl_config_##__name(struct config_##__name *s) { \
       return cf_dfl_config_##__name##_cf_(s); \
     } \
@@ -76,6 +77,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VALUE_NODE_STRUCT(__structname, __eltrepr)
 #define END_ARRAY(__size)
 #include "conf_schema.h"
+#undef VALIDATOR
 #undef STRUCT
 #undef NODE
 #undef ATOM
@@ -101,7 +103,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef END_ARRAY
 
 // Generate config assign function definitions, cf_cpy_config_NAME().
-#define STRUCT(__name, __validator...) \
+#define VALIDATOR(__validator)
+#define STRUCT(__name, __options...) \
     __attribute__((unused)) static void __cf_unused_2_##__name(struct config_##__name *dst, const struct config_##__name *src) {
 #define END_STRUCT \
     }
@@ -124,7 +127,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define STRING_DEFAULT(__element, __default)
 #define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
 #define END_STRUCT_DEFAULT
-#define ARRAY(__name, __flags, __validator...)
+#define ARRAY(__name, __flags, __options...)
 #define KEY_ATOM(__type, __keyrepr)
 #define KEY_STRING(__strsize, __keyrepr)
 #define VALUE_ATOM(__type, __eltrepr)
@@ -134,6 +137,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VALUE_NODE_STRUCT(__structname, __eltrepr)
 #define END_ARRAY(__size)
 #include "conf_schema.h"
+#undef VALIDATOR
 #undef STRUCT
 #undef NODE
 #undef ATOM
@@ -171,9 +175,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define NO_DUPLICATES	|__NO_DUPLICATES
 
 // Generate parsing functions, cf_opt_config_SECTION()
-#define STRUCT(__name, __validator...) \
+#define VALIDATOR(__validator) \
+      validator = (__validator);
+#define STRUCT(__name, __options...) \
     int cf_opt_config_##__name(struct config_##__name *strct, const struct cf_om_node *node) { \
-      int (*validator)(const struct cf_om_node *, struct config_##__name *, int) = (NULL, ##__validator); \
+      int (*validator)(const struct cf_om_node *, struct config_##__name *, int) = NULL; \
+      __options \
       int result = CFEMPTY; \
       char used[node->nodc]; \
       memset(used, 0, node->nodc * sizeof used[0]);
@@ -243,11 +250,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define STRING_DEFAULT(__element, __default)
 #define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
 #define END_STRUCT_DEFAULT
-#define ARRAY(__name, __flags, __validator...) \
+#define ARRAY(__name, __flags, __options...) \
     int cf_opt_config_##__name(struct config_##__name *array, const struct cf_om_node *node) { \
       int flags = (0 __flags); \
       int (*keycmp)(const void *, const void *) = NULL; \
-      int (*validator)(const struct cf_om_node *, struct config_##__name *, int) = (NULL, ##__validator); \
+      int (*validator)(const struct cf_om_node *, struct config_##__name *, int) = NULL; \
+      __options \
       int result = CFOK; \
       unsigned i, n; \
       for (n = 0, i = 0; i < node->nodc && n < NELS(array->av); ++i) { \
@@ -322,6 +330,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VALUE_NODE_STRUCT(__structname, __eltrepr) \
       __ARRAY_VALUE(cf_dfl_config_##__structname(&array->av[n].value), cf_opt_##__eltrepr(&array->av[n].value, child))
 #include "conf_schema.h"
+#undef VALIDATOR
 #undef STRUCT
 #undef NODE
 #undef ATOM
@@ -349,7 +358,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef END_ARRAY
 
 // Generate config array search-by-key functions.
-#define STRUCT(__name, __validator...)
+#define VALIDATOR(__validator)
+#define STRUCT(__name, __options...)
 #define NODE(__type, __element, __default, __repr, __flags, __comment)
 #define ATOM(__type, __element, __default, __repr, __flags, __comment)
 #define STRING(__size, __element, __default, __repr, __flags, __comment)
@@ -363,7 +373,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define STRING_DEFAULT(__element, __default)
 #define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
 #define END_STRUCT_DEFAULT
-#define ARRAY(__name, __flags, __validator...) \
+#define ARRAY(__name, __flags, __options...) \
     int config_##__name##__get(const struct config_##__name *array,
 #define KEY_ATOM(__type, __keyrepr) \
 	  const __type *key) { \
@@ -388,6 +398,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VALUE_NODE_STRUCT(__structname, __eltrepr)
 #define END_ARRAY(__size)
 #include "conf_schema.h"
+#undef VALIDATOR
 #undef STRUCT
 #undef NODE
 #undef ATOM
@@ -413,7 +424,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef END_ARRAY
 
 // Generate config schema dump functions, cf_sch_config_NAME().
-#define STRUCT(__name, __validator...) \
+#define VALIDATOR(__validator)
+#define STRUCT(__name, __options...) \
     int cf_sch_config_##__name(struct cf_om_node **rootp) { \
       int i; \
       struct cf_om_node **childp;
@@ -460,7 +472,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define STRING_DEFAULT(__element, __default)
 #define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
 #define END_STRUCT_DEFAULT
-#define ARRAY(__name, __flags, __validator...) \
+#define ARRAY(__name, __flags, __options...) \
     int cf_sch_config_##__name(struct cf_om_node **rootp) { \
       int i; \
       struct cf_om_node **childp;
@@ -489,6 +501,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef __ADD_CHILD
 #undef __ATOM
 #undef __STRUCT
+#undef VALIDATOR
 #undef STRUCT
 #undef NODE
 #undef ATOM
@@ -514,7 +527,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef END_ARRAY
 
 // Generate formatting functions, cf_fmt_config_SECTION()
-#define STRUCT(__name, __validator...) \
+#define VALIDATOR(__validator)
+#define STRUCT(__name, __options...) \
     int cf_fmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *strct) { \
       return cf_xfmt_config_##__name(parentp, strct, NULL); \
     } \
@@ -621,7 +635,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define STRING_DEFAULT(__element, __default)
 #define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
 #define END_STRUCT_DEFAULT
-#define ARRAY(__name, __flags, __validator...) \
+#define ARRAY(__name, __flags, __options...) \
     int cf_xfmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *array, const struct config_##__name *UNUSED(dflt)) { \
       return cf_fmt_config_##__name(parentp, array); \
     } \
@@ -694,6 +708,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	ret = cf_fmt_##__eltrepr(&(*parentp)->nodv[(unsigned)n], &array->av[i].value); \
 	__ARRAY_VALUE(cf_fmt_##__eltrepr)
 #include "conf_schema.h"
+#undef VALIDATOR
 #undef STRUCT
 #undef NODE
 #undef ATOM
@@ -725,7 +740,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef END_ARRAY
 
 // Generate comparison functions, cf_cmp_config_SECTION()
-#define STRUCT(__name, __validator...) \
+#define VALIDATOR(__validator)
+#define STRUCT(__name, __options...) \
     int cf_cmp_config_##__name(const struct config_##__name *a, const struct config_##__name *b) { \
       int c;
 #define NODE(__type, __element, __default, __repr, __flags, __comment) \
@@ -757,7 +773,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define STRING_DEFAULT(__element, __default)
 #define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
 #define END_STRUCT_DEFAULT
-#define ARRAY(__name, __flags, __validator...) \
+#define ARRAY(__name, __flags, __options...) \
     int cf_cmp_config_##__name(const struct config_##__name *a, const struct config_##__name *b) { \
       int c; \
       unsigned i; \
@@ -788,6 +804,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
       return (a->ac < b->ac) ? -1 : (a->ac > b->ac) ? 1 : 0; \
     }
 #include "conf_schema.h"
+#undef VALIDATOR
 #undef STRUCT
 #undef NODE
 #undef ATOM

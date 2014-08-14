@@ -110,10 +110,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      field set to 0 if the node contains the option's default value, or 1 if the option's value
  *      differed from the default.
  *
- * If a STRUCT(NAME, VALIDATOR) or ARRAY(NAME, FLAGS, VALIDATOR) schema declaration is given a
- * validator function, then the function must have the following signature:
+ * If a STRUCT(NAME) or ARRAY(NAME, FLAGS) schema declaration contains a VALIDATOR(VALIDATOR_FUNC)
+ * declaration, then the function must have the following signature:
  *
- *  - int VALIDATOR(struct config_NAME *dest, int orig_result);
+ *  - int VALIDATOR_FUNC(struct config_NAME *dest, int orig_result);
  *
  *      A C function which validates the contents of the given C structure (struct or array) as
  *      defined in the schema.  This function is invoked by the cf_opt_config_NAME() parser function
@@ -344,7 +344,7 @@ struct pattern_list {
 #define PATTERN_LIST_EMPTY ((struct pattern_list){.patc = 0})
 
 // Generate config struct definitions, struct config_NAME.
-#define STRUCT(__name, __validator...) \
+#define STRUCT(__name, __validators...) \
     struct config_##__name {
 #define NODE(__type, __element, __default, __repr, __flags, __comment) \
         __type __element;
@@ -367,7 +367,7 @@ struct pattern_list {
 #define STRING_DEFAULT(__element, __default)
 #define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
 #define END_STRUCT_DEFAULT
-#define ARRAY(__name, __flags, __validator...) \
+#define ARRAY(__name, __flags, __validators...) \
     struct config_##__name { \
         unsigned ac; \
         struct config_##__name##__element {
@@ -414,7 +414,7 @@ struct pattern_list {
 #undef END_ARRAY
 
 // Generate config function prototypes, cf_dfl_config_NAME(), cf_sch_config_NAME(), cf_cpy_config_NAME().
-#define STRUCT(__name, __validator...) \
+#define STRUCT(__name, __validators...) \
     int cf_dfl_config_##__name(struct config_##__name *); \
     int cf_dfl_config_##__name##_cf_(struct config_##__name *); \
     int cf_sch_config_##__name(struct cf_om_node **parentp);
@@ -435,7 +435,7 @@ struct pattern_list {
 #define STRING_DEFAULT(__element, __default)
 #define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
 #define END_STRUCT_DEFAULT
-#define ARRAY(__name, __flags, __validator...) \
+#define ARRAY(__name, __flags, __validators...) \
     int cf_dfl_config_##__name(struct config_##__name *); \
     int cf_sch_config_##__name(struct cf_om_node **parentp);
 #define KEY_ATOM(__type, __keyrepr)
@@ -472,15 +472,17 @@ struct pattern_list {
 #undef END_ARRAY
 
 // Generate config parser function prototypes: cf_opt_REPR(), cf_fmt_REPR(), cf_cmp_REPR()
-#define __VALIDATOR(__name, __validator...) \
+#define VALIDATOR(__validator...) \
+    , __validator
+#define __VALIDATOR(__name, __validators...) \
     typedef int __validator_func__config_##__name##__t(const struct cf_om_node *, struct config_##__name *, int); \
-    __validator_func__config_##__name##__t __dummy__validator_func__config_##__name, ##__validator;
-#define STRUCT(__name, __validator...) \
+    __validator_func__config_##__name##__t __dummy__validator_func__config_##__name __validators;
+#define STRUCT(__name, __validators...) \
     int cf_opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
     int cf_fmt_config_##__name(struct cf_om_node **, const struct config_##__name *); \
     int cf_xfmt_config_##__name(struct cf_om_node **, const struct config_##__name *, const struct config_##__name *); \
     int cf_cmp_config_##__name(const struct config_##__name *, const struct config_##__name *); \
-    __VALIDATOR(__name, ##__validator)
+    __VALIDATOR(__name, ##__validators)
 #define NODE(__type, __element, __default, __repr, __flags, __comment) \
     int cf_opt_##__repr(__type *, const struct cf_om_node *); \
     int cf_fmt_##__repr(struct cf_om_node **, const __type *); \
@@ -511,12 +513,12 @@ struct pattern_list {
 #define STRING_DEFAULT(__element, __default)
 #define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
 #define END_STRUCT_DEFAULT
-#define ARRAY(__name, __flags, __validator...) \
+#define ARRAY(__name, __flags, __validators...) \
     int cf_opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
     int cf_fmt_config_##__name(struct cf_om_node **, const struct config_##__name *); \
     int cf_xfmt_config_##__name(struct cf_om_node **, const struct config_##__name *, const struct config_##__name *); \
     int cf_cmp_config_##__name(const struct config_##__name *, const struct config_##__name *); \
-    __VALIDATOR(__name, ##__validator)
+    __VALIDATOR(__name, ##__validators)
 #define KEY_ATOM(__type, __keyrepr) \
     int cf_opt_##__keyrepr(__type *, const char *); \
     int cf_fmt_##__keyrepr(const char **, const __type *); \
@@ -550,6 +552,7 @@ struct pattern_list {
 #define END_ARRAY(__size)
 #include "conf_schema.h"
 #undef __VALIDATOR
+#undef VALIDATOR
 #undef STRUCT
 #undef NODE
 #undef ATOM
@@ -575,7 +578,8 @@ struct pattern_list {
 #undef END_ARRAY
 
 // Generate config array search-by-key function prototypes.
-#define STRUCT(__name, __validator...)
+#define VALIDATOR(__validator...)
+#define STRUCT(__name, __validators...)
 #define NODE(__type, __element, __default, __repr, __flags, __comment)
 #define ATOM(__type, __element, __default, __repr, __flags, __comment)
 #define STRING(__size, __element, __default, __repr, __flags, __comment)
@@ -589,7 +593,7 @@ struct pattern_list {
 #define STRING_DEFAULT(__element, __default)
 #define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...)
 #define END_STRUCT_DEFAULT
-#define ARRAY(__name, __flags, __validator...) \
+#define ARRAY(__name, __flags, __validators...) \
     int config_##__name##__get(const struct config_##__name *,
 #define KEY_ATOM(__type, __keyrepr) \
         const __type *);
@@ -602,6 +606,7 @@ struct pattern_list {
 #define VALUE_NODE_STRUCT(__structname, __eltrepr)
 #define END_ARRAY(__size)
 #include "conf_schema.h"
+#undef VALIDATOR
 #undef STRUCT
 #undef NODE
 #undef ATOM
