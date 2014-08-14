@@ -361,7 +361,7 @@ ssize_t get_self_executable_path(char *buf, size_t len)
   return read_symlink("/proc/self/path/a.out", buf, len);
 #elif defined (__APPLE__)
   uint32_t bufsize = len;
-  return _NSGetExecutablePath(buf, &bufsize) == -1 && len ? -1 : bufsize;
+  return _NSGetExecutablePath(buf, &bufsize) || len == 0 ? bufsize : -1;
 #else
 #error Unable to find executable path
 #endif

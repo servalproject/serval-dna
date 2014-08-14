@@ -217,6 +217,6 @@ int golay_decode(int *errs, const uint8_t *data)
   cw=correct(cw, errs);     /* correct up to three bits */ 
   cw|=parity_bit;
   if (parity(cw))
-    *errs++;
+    ++*errs;
   return cw&0xFFF;
 } /* decode */ 

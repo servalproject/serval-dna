@@ -71,9 +71,11 @@ struct profile_total mdp_sock_stats={
 };
 
 struct sched_ent mdp_sock={
-  .poll.revents = 0,
-  .poll.events = POLLIN,
-  .poll.fd = -1,
+  .poll = {
+    .revents = 0,
+    .events = POLLIN,
+    .fd = -1
+  },
   .function = msp_poll,
   .stats = &mdp_sock_stats,
 };
@@ -83,9 +85,11 @@ struct profile_total service_sock_stats={
 };
 
 struct sched_ent service_sock={
-  .poll.revents = 0,
-  .poll.events = POLLIN,
-  .poll.fd = -1,
+  .poll = {
+    .revents = 0,
+    .events = POLLIN,
+    .fd = -1
+  },
   .function = service_poll,
   .stats = &service_sock_stats,
 };
@@ -99,9 +103,11 @@ struct profile_total listen_stats={
 };
 
 struct sched_ent listen_alarm={
-  .poll.revents = 0,
-  .poll.events = POLLIN,
-  .poll.fd = -1,
+  .poll = {
+    .revents = 0,
+    .events = POLLIN,
+    .fd = -1
+  },
   .function = listen_poll,
   .stats = &listen_stats,
 };

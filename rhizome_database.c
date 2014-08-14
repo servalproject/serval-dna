@@ -1073,7 +1073,7 @@ int _sqlite_vexec_strbuf_retry(struct __sourceloc __whence, sqlite_retry_state *
   while ((stepcode = _sqlite_step(__whence, LOG_LEVEL_ERROR, retry, statement)) == SQLITE_ROW) {
     int columncount = sqlite3_column_count(statement);
     if (columncount != 1)
-      ret - WHYF("incorrect column count %d (should be 1): %s", columncount, sqlite3_sql(statement));
+      ret = WHYF("incorrect column count %d (should be 1): %s", columncount, sqlite3_sql(statement));
     else if (++rowcount == 1)
       strbuf_puts(sb, (const char *)sqlite3_column_text(statement, 0));
   }
