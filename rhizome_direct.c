@@ -111,6 +111,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "rhizome.h"
 #include "str.h"
+#include "commandline.h"
 #include <assert.h>
 
 rhizome_direct_sync_request *rd_sync_handles[RHIZOME_DIRECT_MAX_SYNC_HANDLES];
@@ -502,7 +503,10 @@ static int rhizome_sync_with_peers(int mode, int peer_count, const struct config
   return 0;
 }
 
-int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
+DEFINE_CMD(app_rhizome_direct_sync, 0,
+  "Synchronise with the specified Rhizome Direct server.",
+  "rhizome","direct","push|pull|sync","[<url>]");
+static int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);

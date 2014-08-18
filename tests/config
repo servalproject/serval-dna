@@ -279,4 +279,22 @@ test_InterfaceDropDgramIncompatible() {
       --error-pattern='config file.*loaded despite defects.*incompatible'
 }
 
+#TODO move to another test script?
+doc_CmdUsage="Show help usage"
+test_CmdUsage() {
+   executeOk_servald help
+   tfw_cat --stdout
+   executeOk_servald help rhizome
+   tfw_cat --stdout
+   executeOk_servald help unknown command
+   tfw_cat --stdout
+#TODO assert output?
+}
+doc_CmdUnknown="Unknown command"
+test_CmdUnknown() {
+   execute $servald unknown command
+   assertExitStatus '==' 255
+   tfw_cat --stdout --stderr
+}
+
 runTests "$@"

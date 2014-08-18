@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "cli.h"
 #include "monitor-client.h"
+#include "commandline.h"
 
 int remote_print(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *UNUSED(context))
 {
@@ -49,7 +50,10 @@ struct monitor_command_handler monitor_handlers[]={
   {.command="",      .handler=remote_print},
 };
 
-int app_monitor_cli(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
+DEFINE_CMD(app_monitor_cli, 0,
+  "Interactive servald monitor interface.",
+  "monitor");
+static int app_monitor_cli(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   struct pollfd fds[2];
   struct monitor_state *state;

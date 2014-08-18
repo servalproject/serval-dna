@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "cli.h"
 #include "constants.h"
 #include "os.h"
+#include "commandline.h"
 
 int nonce_initialised=0;
 unsigned char nonce_buffer[128];
@@ -51,7 +52,10 @@ int generate_nonce(unsigned char *nonce,int bytes)
   return 0;
 }
 
-int app_nonce_test(const struct cli_parsed *UNUSED(parsed), struct cli_context *context)
+DEFINE_CMD(app_nonce_test, 0,
+  "Run nonce generation test",
+  "test","nonce");
+static int app_nonce_test(const struct cli_parsed *UNUSED(parsed), struct cli_context *context)
 {
   int i,j;
   unsigned char nonces[0x10001][32];

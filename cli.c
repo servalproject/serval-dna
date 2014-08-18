@@ -30,40 +30,44 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "dataformats.h"
 
-int cli_usage(const struct cli_schema *commands, XPRINTF xpf)
+int cli_usage(const struct cli_schema *commands, const struct cli_schema *end_commands, XPRINTF xpf)
 {
-  return cli_usage_args(0, NULL, commands, xpf);
+  return cli_usage_args(0, NULL, commands, end_commands, xpf);
 }
 
 int cli_usage_parsed(const struct cli_parsed *parsed, XPRINTF xpf)
 {
   if (parsed->varargi == -1)
-    return cli_usage(parsed->commands, xpf);
-  return cli_usage_args(parsed->argc - parsed->varargi, &parsed->args[parsed->varargi], parsed->commands, xpf);
+    return cli_usage(parsed->commands, parsed->end_commands, xpf);
+  return cli_usage_args(parsed->argc - parsed->varargi, &parsed->args[parsed->varargi], 
+    parsed->commands, parsed->end_commands, xpf);
 }
 
-int cli_usage_args(const int argc, const char *const *args, const struct cli_schema *commands, XPRINTF xpf)
+static int cli_usage_print(const int argc, const char *const *args, const struct cli_schema *command, XPRINTF xpf)
+{
+  int opt;
+  const char *word;
+  for (opt = 0; opt < argc && (word = command->words[opt]); ++opt)
+    if (strncmp(word, args[opt], strlen(args[opt])) != 0)
+      return 0;
+  for (opt = 0; (word = command->words[opt]); ++opt) {
+    if (word[0] == '|')
+      ++word;
+    xprintf(xpf, " %s", word);
+  }
+  xputc('\n', xpf);
+  if (command->description && command->description[0])
+    xprintf(xpf, "   %s\n", command->description);
+  return 1;
+}
+
+int cli_usage_args(const int argc, const char *const *args, const struct cli_schema *commands, const struct cli_schema *end_commands, XPRINTF xpf)
 {
   unsigned cmd;
   int matched_any = 0;
-  for (cmd = 0; commands[cmd].function; ++cmd) {
-    int opt;
-    const char *word;
-    int matched = 1;
-    for (opt = 0; matched && opt < argc && (word = commands[cmd].words[opt]); ++opt)
-      if (strncmp(word, args[opt], strlen(args[opt])) != 0)
-	matched = 0;
-    if (matched) {
+  for (cmd = 0; (!end_commands || &commands[cmd] < end_commands) && commands[cmd].function; ++cmd) {
+    if (cli_usage_print(argc,args,&commands[cmd],xpf)==1)
       matched_any = 1;
-      for (opt = 0; (word = commands[cmd].words[opt]); ++opt) {
-	if (word[0] == '|')
-	  ++word;
-	xprintf(xpf, " %s", word);
-      }
-      xputc('\n', xpf);
-      if (commands[cmd].description && commands[cmd].description[0])
-	xprintf(xpf, "   %s\n", commands[cmd].description);
-    }
   }
   if (!matched_any && argc) {
     strbuf b = strbuf_alloca(160);
@@ -87,15 +91,16 @@ int cli_usage_args(const int argc, const char *const *args, const struct cli_sch
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int cli_parse(const int argc, const char *const *args, const struct cli_schema *commands, struct cli_parsed *parsed)
+int cli_parse(const int argc, const char *const *args, const struct cli_schema *commands, const struct cli_schema *end_commands, struct cli_parsed *parsed)
 {
   int ambiguous = 0;
   int matched_cmd = -1;
   int cmd;
-  for (cmd = 0; commands[cmd].function; ++cmd) {
+  for (cmd = 0; (!end_commands || &commands[cmd] < end_commands) && commands[cmd].function; ++cmd) {
     struct cli_parsed cmdpa;
     memset(&cmdpa, 0, sizeof cmdpa);
     cmdpa.commands = commands;
+    cmdpa.end_commands = end_commands;
     cmdpa.cmdi = cmd;
     cmdpa.args = args;
     cmdpa.argc = argc;

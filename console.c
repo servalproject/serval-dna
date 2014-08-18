@@ -41,7 +41,7 @@ static void process_command(char *line, struct cli_schema *cli_commands){
   int argc = parse_argv(line, ' ', argv, 16);
   
   struct cli_parsed parsed;
-  switch (cli_parse(argc, (const char *const*)argv, cli_commands, &parsed)) {
+  switch (cli_parse(argc, (const char *const*)argv, cli_commands, NULL, &parsed)) {
   case 0:
     cli_invoke(&parsed, NULL);
     break;

@@ -31,6 +31,7 @@
 #include "dataformats.h"
 #include "socket.h"
 #include "conf.h"
+#include "commandline.h"
 
 struct buffer{
   size_t position;
@@ -561,7 +562,13 @@ void sigQuit(int UNUSED(signal))
   quit=1;
 }
 
-int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
+DEFINE_CMD(app_msp_connection, 0,
+  "Listen for incoming connections",
+  "msp", "listen", "[--once]", "[--forward=<local_port>]", "[--service=<service_name>]", "<port>");
+DEFINE_CMD(app_msp_connection, 0,
+  "Connect to a remote party",
+  "msp", "connect", "[--once]", "[--forward=<local_port>]", "<sid>", "<port>");
+static int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   const char *sidhex, *port_string, *local_port_string;
   once = cli_arg(parsed, "--once", NULL, NULL, NULL) == 0;

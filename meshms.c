@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strlcpy.h"
 #include "keyring.h"
 #include "dataformats.h"
+#include "commandline.h"
 
 #define MESHMS_BLOCK_TYPE_ACK 0x01
 #define MESHMS_BLOCK_TYPE_MESSAGE 0x02 // NUL-terminated UTF8 string
@@ -1024,7 +1025,10 @@ end:
 }
 
 // output the list of existing conversations for a given local identity
-int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_meshms_conversations, 0,
+  "List MeshMS threads that include <sid>",
+  "meshms","list","conversations" KEYRING_PIN_OPTIONS, "<sid>","[<offset>]","[<count>]");
+static int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context *context)
 {
   const char *sidhex, *offset_str, *count_str;
   if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1
@@ -1084,7 +1088,10 @@ int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context
   return 0;
 }
 
-int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
+DEFINE_CMD(app_meshms_send_message, 0,
+  "Send a MeshMS message from <sender_sid> to <recipient_sid>",
+  "meshms","send","message" KEYRING_PIN_OPTIONS, "<sender_sid>", "<recipient_sid>", "<payload>");
+static int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   const char *my_sidhex, *their_sidhex, *message;
   if (cli_arg(parsed, "sender_sid", &my_sidhex, str_is_subscriber_id, "") == -1
@@ -1114,7 +1121,10 @@ int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context 
   return meshms_failed(status) ? status : 0;
 }
 
-int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_meshms_list_messages, 0,
+   "List MeshMS messages between <sender_sid> and <recipient_sid>",
+   "meshms","list","messages" KEYRING_PIN_OPTIONS, "<sender_sid>","<recipient_sid>");
+static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_context *context)
 {
   const char *my_sidhex, *their_sidhex;
   if (cli_arg(parsed, "sender_sid", &my_sidhex, str_is_subscriber_id, "") == -1
@@ -1230,7 +1240,10 @@ static unsigned mark_read(struct meshms_conversations *conv, const sid_t *their_
   return ret;
 }
 
-int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
+DEFINE_CMD(app_meshms_mark_read, 0,
+  "Mark incoming messages from this recipient as read.",
+  "meshms","read","messages" KEYRING_PIN_OPTIONS, "<sender_sid>", "[<recipient_sid>]", "[<offset>]");
+static int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   const char *my_sidhex, *their_sidhex, *offset_str;
   if (cli_arg(parsed, "sender_sid", &my_sidhex, str_is_subscriber_id, "") == -1

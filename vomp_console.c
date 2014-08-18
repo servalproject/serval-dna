@@ -64,6 +64,7 @@
 #include "constants.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
+#include "commandline.h"
 
 static int console_dial(const struct cli_parsed *parsed, struct cli_context *context);
 static int console_answer(const struct cli_parsed *parsed, struct cli_context *context);
@@ -363,9 +364,9 @@ static int console_audio(const struct cli_parsed *parsed, struct cli_context *UN
   return 0;
 }
 
-static int console_usage(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
+static int console_usage(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
-  cli_usage(console_commands, XPRINTF_STDIO(stdout));
+  cli_usage_parsed(parsed, XPRINTF_STDIO(stdout));
   fflush(stdout);
   return 0;
 }
@@ -381,7 +382,10 @@ static void monitor_read(struct sched_ent *alarm){
   }
 }
 
-int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
+DEFINE_CMD(app_vomp_console, 0,
+  "Test phone call life-cycle from the console",
+  "console");
+static int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);

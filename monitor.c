@@ -596,17 +596,17 @@ int monitor_process_command(struct monitor_context *c)
   
   struct cli_parsed parsed;
   struct cli_context context={.context=c};
-  if (cli_parse(argc, (const char *const*)argv, monitor_commands, &parsed) || cli_invoke(&parsed, &context))
+  if (cli_parse(argc, (const char *const*)argv, monitor_commands, NULL, &parsed) || cli_invoke(&parsed, &context))
     return monitor_write_error(c, "Invalid command");
   return 0;
 }
 
-static int monitor_help(const struct cli_parsed *UNUSED(parsed), struct cli_context *context)
+static int monitor_help(const struct cli_parsed *parsed, struct cli_context *context)
 {
   struct monitor_context *c=context->context;
   strbuf b = strbuf_alloca(16384);
   strbuf_puts(b, "\nINFO:Usage\n");
-  cli_usage(monitor_commands, XPRINTF_STRBUF(b));
+  cli_usage_parsed(parsed, XPRINTF_STRBUF(b));
   (void)write_all(c->alarm.poll.fd, strbuf_str(b), strbuf_len(b));
   return 0;
 }

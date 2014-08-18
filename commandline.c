@@ -75,16 +75,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_buffer.h"
 #include "keyring.h"
 #include "dataformats.h"
+#include "commandline.h"
 
-extern struct cli_schema command_line_options[];
-
-int commandline_usage(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
+DEFINE_CMD(commandline_usage,CLIFLAG_PERMISSIVE_CONFIG,
+  "Display command usage.",
+  "help|-h|--help","...");
+static int commandline_usage(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   printf("Serval DNA version %s\nUsage:\n", version_servald);
   return cli_usage_parsed(parsed, XPRINTF_STDIO(stdout));
 }
 
-int version_message(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
+DEFINE_CMD(version_message,CLIFLAG_PERMISSIVE_CONFIG,
+  "Display copyright information.",
+  "version|copyright");
+static int version_message(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   printf("Serval DNA version %s\n%s\n", version_servald, copyright_servald);
   printf("\
@@ -271,7 +276,7 @@ int parseCommandLine(struct cli_context *context, const char *argv0, int argc, c
   IN();
   
   struct cli_parsed parsed;
-  int result = cli_parse(argc, args, command_line_options, &parsed);
+  int result = cli_parse(argc, args, __start_commands, __stop_commands, &parsed);
   switch (result) {
   case 0:
     // Do not run the command if the configuration does not load ok.
@@ -619,7 +624,10 @@ static void cli_put_manifest(struct cli_context *context, const rhizome_manifest
   cli_put_long(context, m->inserttime, "\n");
 }
 
-int app_echo(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_echo,CLIFLAG_PERMISSIVE_CONFIG,
+  "Output the supplied string.",
+  "echo","[-e]","[--]","...");
+static int app_echo(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -640,7 +648,10 @@ int app_echo(const struct cli_parsed *parsed, struct cli_context *context)
   return 0;
 }
 
-int app_log(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
+DEFINE_CMD(app_log,CLIFLAG_PERMISSIVE_CONFIG,
+  "Log the supplied message at given level.",
+  "log","error|warn|hint|info|debug","<message>");
+static int app_log(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -691,7 +702,10 @@ static void lookup_send_request(int mdp_sockfd, const sid_t *srcsid, int srcport
   }
 }
 
-int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_dna_lookup, 0,
+  "Lookup the subscribers (SID) with the supplied telephone number (DID).",
+  "dna","lookup","<did>","[<timeout>]");
+static int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
   if (config.debug.verbose)
@@ -818,7 +832,10 @@ int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *context)
   return 0;
 }
 
-int app_server_start(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_server_start, 0, 
+  "Start daemon with instance path from SERVALINSTANCE_PATH environment variable.",
+  "start" KEYRING_PIN_OPTIONS, "[foreground|exec <path>]");
+static int app_server_start(const struct cli_parsed *parsed, struct cli_context *context)
 {
   IN();
   if (config.debug.verbose)
@@ -993,7 +1010,10 @@ exit:
   OUT();
 }
 
-int app_server_stop(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_server_stop,CLIFLAG_PERMISSIVE_CONFIG,
+  "Stop a running daemon with instance path from SERVALINSTANCE_PATH environment variable.",
+  "stop");
+static int app_server_stop(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1044,6 +1064,9 @@ int app_server_stop(const struct cli_parsed *parsed, struct cli_context *context
   return 0;
 }
 
+DEFINE_CMD(app_server_status,CLIFLAG_PERMISSIVE_CONFIG,
+   "Display information about running daemon.",
+   "status");
 int app_server_status(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
@@ -1093,7 +1116,11 @@ static ssize_t mdp_poll_recv(int mdp_sock, time_ms_t deadline, struct mdp_header
   return len;
 }
 
-int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_mdp_ping, 0,
+  "Attempts to ping specified node via Mesh Datagram Protocol (MDP).",
+  "mdp","ping","[--interval=<ms>]","[--timeout=<seconds>]","[--wait-for-duplicates]",
+  "<SID>|broadcast","[<count>]");
+static int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
   if (config.debug.verbose)
@@ -1312,7 +1339,10 @@ int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
   return ret;
 }
 
-int app_trace(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_trace, 0,
+   "Trace through the network to the specified node via MDP.",
+   "mdp","trace","<SID>");
+static int app_trace(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
   const char *sidhex;
@@ -1385,7 +1415,10 @@ int app_trace(const struct cli_parsed *parsed, struct cli_context *context)
   return ret;
 }
 
-int app_config_schema(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_config_schema, CLIFLAG_PERMISSIVE_CONFIG,
+   "Display configuration schema.",
+   "config", "schema");
+static int app_config_schema(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1404,7 +1437,10 @@ int app_config_schema(const struct cli_parsed *parsed, struct cli_context *conte
   return 0;
 }
 
-int app_config_dump(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_config_dump, CLIFLAG_PERMISSIVE_CONFIG,
+   "Dump configuration settings.",
+   "config","dump","[--full]");
+static int app_config_dump(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1455,7 +1491,16 @@ static int mdp_client_sync_config(time_ms_t timeout)
   return 0;
 }
 
-int app_config_set(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
+DEFINE_CMD(app_config_set, CLIFLAG_PERMISSIVE_CONFIG,
+  "Set and del specified configuration variables.",
+  "config","set","<variable>","<value>","...");
+DEFINE_CMD(app_config_set, CLIFLAG_PERMISSIVE_CONFIG,
+  "Del and set specified configuration variables.",
+  "config","del","<variable>","...");
+DEFINE_CMD(app_config_set, CLIFLAG_PERMISSIVE_CONFIG,
+  "Synchronise with the daemon's configuration.",
+  "config","sync","...");
+static int app_config_set(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1539,7 +1584,10 @@ int app_config_set(const struct cli_parsed *parsed, struct cli_context *UNUSED(c
   return 0;
 }
 
-int app_config_get(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_config_get, CLIFLAG_PERMISSIVE_CONFIG,
+  "Get specified configuration variable.",
+  "config","get","[<variable>]");
+static int app_config_get(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1570,7 +1618,10 @@ int app_config_get(const struct cli_parsed *parsed, struct cli_context *context)
   return 0;
 }
 
-int app_config_paths(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_config_paths, CLIFLAG_PERMISSIVE_CONFIG,
+   "Dump file and directory paths.",
+   "config", "paths");
+static int app_config_paths(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1616,7 +1667,10 @@ int app_config_paths(const struct cli_parsed *parsed, struct cli_context *contex
   return 0;
 }
 
-int app_rhizome_hash_file(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_rhizome_hash_file, 0,
+  "Compute the Rhizome hash of a file",
+  "rhizome","hash","file","<filepath>");
+static int app_rhizome_hash_file(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1632,7 +1686,13 @@ int app_rhizome_hash_file(const struct cli_parsed *parsed, struct cli_context *c
   return 0;
 }
 
-int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_rhizome_add_file, 0,
+  "Add a file to Rhizome and optionally write its manifest to the given path",
+  "rhizome","add","file" KEYRING_PIN_OPTIONS,"[--force-new]","<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]");
+DEFINE_CMD(app_rhizome_add_file, 0,
+  "Append content to a journal bundle",
+  "rhizome", "journal", "append" KEYRING_PIN_OPTIONS, "<author_sid>", "<manifestid>", "<filepath>", "[<bsk>]");
+static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1830,7 +1890,10 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *co
   return status;
 }
 
-int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_rhizome_import_bundle, 0,
+  "Import a payload/manifest pair into Rhizome",
+  "rhizome","import","bundle","<filepath>","<manifestpath>");
+static int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1864,7 +1927,10 @@ int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_contex
   return status;
 }
 
-int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
+DEFINE_CMD(app_rhizome_append_manifest, 0,
+  "Append a manifest to the end of the file it belongs to.",
+  "rhizome", "append", "manifest", "<filepath>", "<manifestpath>");
+static int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1887,7 +1953,13 @@ int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_cont
   return ret;
 }
 
-int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
+DEFINE_CMD(app_rhizome_delete, 0,
+  "Remove the manifest, or payload, or both for the given Bundle ID from the Rhizome store",
+  "rhizome","delete","manifest|payload|bundle","<manifestid>");
+DEFINE_CMD(app_rhizome_delete, 0,
+  "Remove the file with the given hash from the Rhizome store",
+  "rhizome","delete","|file","<fileid>");
+static int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1946,7 +2018,10 @@ int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_context *UNUS
   return ret;
 }
 
-int app_rhizome_clean(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_rhizome_clean, 0,
+  "Remove stale and orphaned content from the Rhizome store",
+  "rhizome","clean","[verify]");
+static int app_rhizome_clean(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1974,7 +2049,23 @@ int app_rhizome_clean(const struct cli_parsed *parsed, struct cli_context *conte
   return 0;
 }
 
-int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_rhizome_extract, 0,
+  "Export a manifest and payload file to the given paths, without decrypting.",
+  "rhizome","export","bundle" KEYRING_PIN_OPTIONS,
+  "<manifestid>","[<manifestpath>]","[<filepath>]");
+DEFINE_CMD(app_rhizome_extract, 0,
+  "Export a manifest from Rhizome and write it to the given path",
+  "rhizome","export","manifest" KEYRING_PIN_OPTIONS,
+  "<manifestid>","[<manifestpath>]");
+DEFINE_CMD(app_rhizome_extract, 0,
+  "Extract and decrypt a manifest and file to the given paths.",
+  "rhizome","extract","bundle" KEYRING_PIN_OPTIONS,
+  "<manifestid>","[<manifestpath>]","[<filepath>]","[<bsk>]");
+DEFINE_CMD(app_rhizome_extract, 0,
+  "Extract and decrypt a file from Rhizome and write it to the given path",
+  "rhizome","extract","file" KEYRING_PIN_OPTIONS,
+  "<manifestid>","[<filepath>]","[<bsk>]");
+static int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -2086,7 +2177,10 @@ int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *con
   return ret;
 }
 
-int app_rhizome_export_file(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_rhizome_export_file, 0,
+  "Export a file from Rhizome and write it to the given path without attempting decryption",
+  "rhizome","export","file","<fileid>","[<filepath>]");
+static int app_rhizome_export_file(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -2126,7 +2220,11 @@ int app_rhizome_export_file(const struct cli_parsed *parsed, struct cli_context 
   return 0;
 }
 
-int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_rhizome_list, 0,
+  "List all manifests and files in Rhizome",
+  "rhizome","list" KEYRING_PIN_OPTIONS,
+	"[<service>]","[<name>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]");
+static int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -2227,7 +2325,10 @@ int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context *contex
   return 0;
 }
 
-int app_keyring_create(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
+DEFINE_CMD(app_keyring_create, 0,
+  "Create a new keyring file.",
+  "keyring","create");
+static int app_keyring_create(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -2238,7 +2339,10 @@ int app_keyring_create(const struct cli_parsed *parsed, struct cli_context *UNUS
   return 0;
 }
 
-int app_keyring_dump(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
+DEFINE_CMD(app_keyring_dump, 0,
+  "Dump all keyring identities that can be accessed using the specified PINs",
+  "keyring","dump" KEYRING_PIN_OPTIONS,"[--secret]","[<file>]");
+static int app_keyring_dump(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -2265,7 +2369,10 @@ int app_keyring_dump(const struct cli_parsed *parsed, struct cli_context *UNUSED
   return ret;
 }
 
-int app_keyring_load(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
+DEFINE_CMD(app_keyring_load, 0,
+  "Load identities from the given dump text and insert them into the keyring using the specified entry PINs",
+  "keyring","load" KEYRING_PIN_OPTIONS,"<file>","[<keyring-pin>]","[<entry-pin>]...");
+static int app_keyring_load(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -2308,7 +2415,10 @@ int app_keyring_load(const struct cli_parsed *parsed, struct cli_context *UNUSED
   return 0;
 }
 
-int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_keyring_list, 0,
+  "List identities that can be accessed using the supplied PINs",
+  "keyring","list" KEYRING_PIN_OPTIONS);
+static int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -2384,7 +2494,10 @@ static void cli_output_identity(struct cli_context *context, const keyring_ident
   }
 }
 
-int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_keyring_add, 0,
+  "Create a new identity in the keyring protected by the supplied PIN (empty PIN if not given)",
+  "keyring","add" KEYRING_PIN_OPTIONS,"[<pin>]");
+static int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -2417,7 +2530,10 @@ int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *context
   return 0;
 }
 
-int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_keyring_set_did, 0,
+  "Set the DID for the specified SID (must supply PIN to unlock the SID record in the keyring)",
+  "keyring", "set","did" KEYRING_PIN_OPTIONS,"<sid>","<did>","<name>");
+static int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -2462,6 +2578,9 @@ int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *con
   return r;
 }
 
+DEFINE_CMD(app_keyring_set_tag, 0,
+  "Set a named tag for the specified SID (must supply PIN to unlock the SID record in the keyring)",
+  "keyring", "set","tag" KEYRING_PIN_OPTIONS,"<sid>","<tag>","<value>");
 static int app_keyring_set_tag(const struct cli_parsed *parsed, struct cli_context *context)
 {
   const char *sidhex, *tag, *value;
@@ -2562,17 +2681,29 @@ end:
   return ret;
 }
 
+DEFINE_CMD(app_revoke_pin, 0,
+  "Unload any identities protected by this pin and drop all routes to them",
+  "id", "relinquish", "pin", "<entry-pin>");
+DEFINE_CMD(app_revoke_pin, 0,
+  "Unload a specific identity and drop all routes to it",
+  "id", "relinquish", "sid", "<sid>");
 int app_revoke_pin(const struct cli_parsed *parsed, struct cli_context *context)
 {
   return handle_pins(parsed, context, 1);
 }
 
-int app_id_pin(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_id_pin, 0,
+  "Unlock any pin protected identities and enable routing packets to them",
+  "id", "enter", "pin", "<entry-pin>");
+static int app_id_pin(const struct cli_parsed *parsed, struct cli_context *context)
 {
   return handle_pins(parsed, context, 0);
 }
 
-int app_id_list(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_id_list, 0, 
+  "Search unlocked identities based on an optional tag and value",
+  "id", "list", "[<tag>]", "[<value>]");
+static int app_id_list(const struct cli_parsed *parsed, struct cli_context *context)
 {
   const char *tag, *value;
   if (cli_arg(parsed, "tag", &tag, NULL, "") == -1 ||
@@ -2637,7 +2768,10 @@ end:
   return ret;
 }
 
-int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_id_self, 0,
+  "Return identity(s) as URIs of own node, or of known routable peers, or all known peers",
+  "id","self|peers|allpeers");
+static int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
   if (config.debug.verbose)
@@ -2697,7 +2831,10 @@ int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
   return 0;
 }
 
-int app_count_peers(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_count_peers, 0,
+  "Return a count of routable peers on the network",
+  "peer","count");
+static int app_count_peers(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
   if (config.debug.verbose)
@@ -2722,7 +2859,10 @@ int app_count_peers(const struct cli_parsed *parsed, struct cli_context *context
   return 0;
 }
 
-int app_byteorder_test(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
+DEFINE_CMD(app_byteorder_test, 0,
+  "Run byte order handling test",
+  "test","byteorder");
+static int app_byteorder_test(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   uint64_t in=0x1234;
   uint64_t out;
@@ -2738,7 +2878,10 @@ int app_byteorder_test(const struct cli_parsed *UNUSED(parsed), struct cli_conte
   return -1;
 }
 
-int app_crypt_test(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_crypt_test, 0,
+   "Run cryptography speed test",
+   "test","crypt");
+static int app_crypt_test(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -2897,7 +3040,10 @@ int app_crypt_test(const struct cli_parsed *parsed, struct cli_context *context)
   return 0;
 }
 
-int app_route_print(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_route_print, 0,
+  "Print the routing table",
+  "route","print");
+static int app_route_print(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
   if (config.debug.verbose)
@@ -2966,7 +3112,10 @@ int app_route_print(const struct cli_parsed *parsed, struct cli_context *context
   return 0;
 }
 
-int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_reverse_lookup, 0,
+  "Lookup the phone number (DID) and name of a given subscriber (SID)",
+  "reverse", "lookup", "<sid>", "[<timeout>]");
+static int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
   if (config.debug.verbose)
@@ -3072,7 +3221,10 @@ int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *cont
 }
 
 void context_switch_test(int);
-int app_mem_test(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
+DEFINE_CMD(app_mem_test, 0,
+   "Run memory speed test",
+   "test","memory");
+static int app_mem_test(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
 {
   size_t mem_size;
   size_t addr;
@@ -3123,7 +3275,10 @@ int app_mem_test(const struct cli_parsed *UNUSED(parsed), struct cli_context *UN
   return 0;
 }
 
-int app_network_scan(const struct cli_parsed *parsed, struct cli_context *context)
+DEFINE_CMD(app_network_scan, 0,
+  "Scan the network for serval peers. If no argument is supplied, all local addresses will be scanned.",
+  "scan","[<address>]");
+static int app_network_scan(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
   if (config.debug.verbose)
@@ -3154,141 +3309,3 @@ int app_network_scan(const struct cli_parsed *parsed, struct cli_context *contex
   cli_put_string(context, mdp.error.message, "\n");
   return mdp.error.error;
 }
-
-/* See cli_parse() for details of command specification syntax.
-*/
-#define KEYRING_PIN_OPTION	  ,"[--keyring-pin=<pin>]"
-#define KEYRING_ENTRY_PIN_OPTION  ,"[--entry-pin=<pin>]"
-#define KEYRING_PIN_OPTIONS	  KEYRING_PIN_OPTION KEYRING_ENTRY_PIN_OPTION "..."
-struct cli_schema command_line_options[]={
-  {commandline_usage,{"help|-h|--help","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Display command usage."},
-  {version_message,{"version|copyright"},CLIFLAG_PERMISSIVE_CONFIG,
-   "Display copyright information."},
-  {app_echo,{"echo","[-e]","[--]","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Output the supplied string."},
-  {app_log,{"log","error|warn|hint|info|debug","<message>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Log the supplied message at given level."},
-  {app_server_start,{"start" KEYRING_PIN_OPTIONS, "[foreground|exec <path>]",NULL}, 0,
-   "Start daemon with instance path from SERVALINSTANCE_PATH environment variable."},
-  {app_server_stop,{"stop",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Stop a running daemon with instance path from SERVALINSTANCE_PATH environment variable."},
-  {app_server_status,{"status",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Display information about running daemon."},
-  {app_mdp_ping,{"mdp","ping","[--interval=<ms>]","[--timeout=<seconds>]","[--wait-for-duplicates]","<SID>|broadcast","[<count>]",NULL}, 0,
-   "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
-  {app_trace,{"mdp","trace","<SID>",NULL}, 0,
-   "Trace through the network to the specified node via MDP."},
-  {app_config_schema,{"config","schema",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Display configuration schema."},
-  {app_config_dump,{"config","dump","[--full]",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Dump configuration settings."},
-  {app_config_set,{"config","set","<variable>","<value>","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Set and del specified configuration variables."},
-  {app_config_set,{"config","del","<variable>","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Del and set specified configuration variables."},
-  {app_config_set,{"config","sync","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Synchronise with the daemon's configuration."},
-  {app_config_get,{"config","get","[<variable>]",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Get specified configuration variable."},
-  {app_config_paths,{"config","paths",NULL},CLIFLAG_PERMISSIVE_CONFIG,
-   "Dump file and directory paths."},
-  {app_vomp_console,{"console",NULL}, 0,
-    "Test phone call life-cycle from the console"},
-  {app_meshms_conversations,{"meshms","list","conversations" KEYRING_PIN_OPTIONS, "<sid>","[<offset>]","[<count>]",NULL},0,
-   "List MeshMS threads that include <sid>"},
-  {app_meshms_list_messages,{"meshms","list","messages" KEYRING_PIN_OPTIONS, "<sender_sid>","<recipient_sid>",NULL},0,
-   "List MeshMS messages between <sender_sid> and <recipient_sid>"},
-  {app_meshms_send_message,{"meshms","send","message" KEYRING_PIN_OPTIONS, "<sender_sid>", "<recipient_sid>", "<payload>",NULL},0,
-   "Send a MeshMS message from <sender_sid> to <recipient_sid>"},
-  {app_meshms_mark_read,{"meshms","read","messages" KEYRING_PIN_OPTIONS, "<sender_sid>", "[<recipient_sid>]", "[<offset>]",NULL},0,
-   "Mark incoming messages from this recipient as read."},
-  {app_rhizome_append_manifest, {"rhizome", "append", "manifest", "<filepath>", "<manifestpath>", NULL}, 0,
-    "Append a manifest to the end of the file it belongs to."},
-  {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL}, 0,
-   "Compute the Rhizome hash of a file"},
-  {app_rhizome_add_file,{"rhizome","add","file" KEYRING_PIN_OPTIONS,"[--force-new]","<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]",NULL}, 0,
-	"Add a file to Rhizome and optionally write its manifest to the given path"},
-  {app_rhizome_add_file, {"rhizome", "journal", "append" KEYRING_PIN_OPTIONS, "<author_sid>", "<manifestid>", "<filepath>", "[<bsk>]", NULL}, 0,
-	"Append content to a journal bundle"},
-  {app_rhizome_import_bundle,{"rhizome","import","bundle","<filepath>","<manifestpath>",NULL}, 0,
-	"Import a payload/manifest pair into Rhizome"},
-  {app_rhizome_list,{"rhizome","list" KEYRING_PIN_OPTIONS,
-	"[<service>]","[<name>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL}, 0,
-	"List all manifests and files in Rhizome"},
-  {app_rhizome_extract,{"rhizome","export","bundle" KEYRING_PIN_OPTIONS,
-	"<manifestid>","[<manifestpath>]","[<filepath>]",NULL}, 0,
-	"Export a manifest and payload file to the given paths, without decrypting."},
-  {app_rhizome_extract,{"rhizome","export","manifest" KEYRING_PIN_OPTIONS,
-	"<manifestid>","[<manifestpath>]",NULL}, 0,
-	"Export a manifest from Rhizome and write it to the given path"},
-  {app_rhizome_export_file,{"rhizome","export","file","<fileid>","[<filepath>]",NULL}, 0,
-	"Export a file from Rhizome and write it to the given path without attempting decryption"},
-  {app_rhizome_extract,{"rhizome","extract","bundle" KEYRING_PIN_OPTIONS,
-	"<manifestid>","[<manifestpath>]","[<filepath>]","[<bsk>]",NULL}, 0,
-	"Extract and decrypt a manifest and file to the given paths."},
-  {app_rhizome_extract,{"rhizome","extract","file" KEYRING_PIN_OPTIONS,
-	"<manifestid>","[<filepath>]","[<bsk>]",NULL}, 0,
-        "Extract and decrypt a file from Rhizome and write it to the given path"},
-  {app_rhizome_delete,{"rhizome","delete","manifest|payload|bundle","<manifestid>",NULL}, 0,
-	"Remove the manifest, or payload, or both for the given Bundle ID from the Rhizome store"},
-  {app_rhizome_delete,{"rhizome","delete","|file","<fileid>",NULL}, 0,
-	"Remove the file with the given hash from the Rhizome store"},
-  {app_rhizome_direct_sync,{"rhizome","direct","sync","[<url>]",NULL}, 0,
-	"Synchronise with the specified Rhizome Direct server. Return when done."},
-  {app_rhizome_direct_sync,{"rhizome","direct","push","[<url>]",NULL}, 0,
-	"Deliver all new content to the specified Rhizome Direct server. Return when done."},
-  {app_rhizome_direct_sync,{"rhizome","direct","pull","[<url>]",NULL}, 0,
-	"Fetch all new content from the specified Rhizome Direct server. Return when done."},
-  {app_rhizome_clean,{"rhizome","clean","[verify]",NULL}, 0,
-	"Remove stale and orphaned content from the Rhizome store"},
-  {app_keyring_create,{"keyring","create",NULL}, 0,
-   "Create a new keyring file."},
-  {app_keyring_dump,{"keyring","dump" KEYRING_PIN_OPTIONS,"[--secret]","[<file>]",NULL}, 0,
-   "Dump all keyring identities that can be accessed using the specified PINs"},
-  {app_keyring_load,{"keyring","load" KEYRING_PIN_OPTIONS,"<file>","[<keyring-pin>]","[<entry-pin>]...",NULL}, 0,
-   "Load identities from the given dump text and insert them into the keyring using the specified entry PINs"},
-  {app_keyring_list,{"keyring","list" KEYRING_PIN_OPTIONS,NULL}, 0,
-   "List identities that can be accessed using the supplied PINs"},
-  {app_keyring_add,{"keyring","add" KEYRING_PIN_OPTIONS,"[<pin>]",NULL}, 0,
-   "Create a new identity in the keyring protected by the supplied PIN (empty PIN if not given)"},
-  {app_keyring_set_did,{"keyring", "set","did" KEYRING_PIN_OPTIONS,"<sid>","<did>","<name>",NULL}, 0,
-   "Set the DID for the specified SID (must supply PIN to unlock the SID record in the keyring)"},
-  {app_keyring_set_tag,{"keyring", "set","tag" KEYRING_PIN_OPTIONS,"<sid>","<tag>","<value>",NULL}, 0,
-   "Set a named tag for the specified SID (must supply PIN to unlock the SID record in the keyring)"},
-  {app_id_list, {"id", "list", "[<tag>]", "[<value>]", NULL}, 0, 
-   "Search unlocked identities based on an optional tag and value"},
-  {app_id_self,{"id","self|peers|allpeers",NULL}, 0,
-   "Return identity(s) as URIs of own node, or of known routable peers, or all known peers"},
-  {app_id_pin, {"id", "enter", "pin", "<entry-pin>", NULL}, 0,
-   "Unlock any pin protected identities and enable routing packets to them"},
-  {app_revoke_pin, {"id", "relinquish", "pin", "<entry-pin>", NULL}, 0,
-   "Unload any identities protected by this pin and drop all routes to them"},
-  {app_revoke_pin, {"id", "relinquish", "sid", "<sid>", NULL}, 0,
-   "Unload a specific identity and drop all routes to it"},
-  {app_route_print, {"route","print",NULL}, 0,
-  "Print the routing table"},
-  {app_network_scan, {"scan","[<address>]",NULL}, 0,
-    "Scan the network for serval peers. If no argument is supplied, all local addresses will be scanned."},
-  {app_count_peers,{"peer","count",NULL}, 0,
-    "Return a count of routable peers on the network"},
-  {app_dna_lookup,{"dna","lookup","<did>","[<timeout>]",NULL}, 0,
-   "Lookup the subscribers (SID) with the supplied telephone number (DID)."},
-  {app_reverse_lookup, {"reverse", "lookup", "<sid>", "[<timeout>]", NULL}, 0,
-    "Lookup the phone number (DID) and name of a given subscriber (SID)"},
-  {app_monitor_cli,{"monitor",NULL}, 0,
-   "Interactive servald monitor interface."},
-  {app_crypt_test,{"test","crypt",NULL}, 0,
-   "Run cryptography speed test"},
-  {app_nonce_test,{"test","nonce",NULL}, 0,
-   "Run nonce generation test"},
-  {app_mem_test,{"test","memory",NULL}, 0,
-   "Run memory speed test"},
-  {app_byteorder_test,{"test","byteorder",NULL}, 0,
-   "Run byte order handling test"},
-  {app_msp_connection,{"msp", "listen", "[--once]", "[--forward=<local_port>]", "[--service=<service_name>]", "<port>", NULL}, 0,
-  "Listen for incoming connections"},
-  {app_msp_connection,{"msp", "connect", "[--once]", "[--forward=<local_port>]", "<sid>", "<port>", NULL}, 0,
-  "Connect to a remote party"},
-  {NULL,{NULL},0,NULL}
-};
