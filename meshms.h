@@ -80,6 +80,12 @@ struct meshms_conversations {
   uint64_t read_offset;
   // our cached value for the last known size of their ply
   uint64_t their_size;
+  
+  enum meshms_peer_status{
+    PEER_REQUESTING=0,
+    PEER_ALLOWED,
+    PEER_BLOCKED,
+  } peer_status;
 };
 
 // cursor state for reading one half of a conversation
