@@ -61,12 +61,40 @@ static int cli_usage_print(const int argc, const char *const *args, const struct
   return 1;
 }
 
+static int cmp_command(const void *one, const void *two)
+{
+  const struct cli_schema *cone = *(const struct cli_schema **)one;
+  const struct cli_schema *ctwo = *(const struct cli_schema **)two;
+  unsigned i;
+  for (i=0; ; i++){
+    if (!cone->words[i] || !ctwo->words[i]){
+      if (cone->words[i])
+	return 1;
+      if (ctwo->words[i])
+	return -1;
+      return 0;
+    }
+    int r = strcmp(cone->words[i],ctwo->words[i]);
+    if (r)
+      return r;
+  }
+}
+
 int cli_usage_args(const int argc, const char *const *args, const struct cli_schema *commands, const struct cli_schema *end_commands, XPRINTF xpf)
 {
+  unsigned count;
+  for (count=0; (!end_commands || &commands[count] < end_commands) && commands[count].function; ++count)
+    ;
+    
+  const struct cli_schema *cmds[count];
   unsigned cmd;
-  int matched_any = 0;
-  for (cmd = 0; (!end_commands || &commands[cmd] < end_commands) && commands[cmd].function; ++cmd) {
-    if (cli_usage_print(argc,args,&commands[cmd],xpf)==1)
+  for (cmd = 0; cmd < count; cmd++)
+    cmds[cmd] = &commands[cmd];
+  
+  qsort(cmds, count, sizeof(struct cli_schema *), cmp_command);
+  unsigned matched_any = 0;
+  for (cmd = 0; cmd < count; cmd++){
+    if (cli_usage_print(argc,args,cmds[cmd],xpf)==1)
       matched_any = 1;
   }
   if (!matched_any && argc) {
