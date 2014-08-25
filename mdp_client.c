@@ -161,6 +161,25 @@ int _mdp_poll(struct __sourceloc UNUSED(__whence), int socket, time_ms_t timeout
   return overlay_mdp_client_poll(socket, timeout_ms);
 }
 
+// returns -1 on error, -2 on timeout, packet length on success.
+ssize_t mdp_poll_recv(int mdp_sock, time_ms_t deadline, struct mdp_header *rev_header, unsigned char *payload, size_t buffer_size)
+{
+  time_ms_t now = gettime_ms();
+  if (now > deadline)
+    return -2;
+  int p = mdp_poll(mdp_sock, deadline - now);
+  if (p == -1)
+    return WHY_perror("mdp_poll");
+  if (p == 0)
+    return -2;
+  ssize_t len = mdp_recv(mdp_sock, rev_header, payload, buffer_size);
+  if (len == -1)
+    return -1;
+  if (rev_header->flags & MDP_FLAG_ERROR)
+    return WHY("Operation failed, check the daemon log for more information");
+  return len;
+}
+
 int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp, int flags, int timeout_ms)
 {
   if (mdp_sockfd == -1)

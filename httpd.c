@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_interface.h"
 #include "mem.h"
 #include "net.h"
+#include "server.h"
 
 #define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
 

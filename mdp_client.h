@@ -144,6 +144,7 @@ int _mdp_close(struct __sourceloc, int socket);
 int _mdp_send(struct __sourceloc, int socket, const struct mdp_header *header, const uint8_t *payload, size_t len);
 ssize_t _mdp_recv(struct __sourceloc, int socket, struct mdp_header *header, uint8_t *payload, size_t max_len);
 int _mdp_poll(struct __sourceloc, int socket, time_ms_t timeout_ms);
+ssize_t mdp_poll_recv(int mdp_sock, time_ms_t deadline, struct mdp_header *rev_header, unsigned char *payload, size_t buffer_size);
 #define mdp_socket()      _mdp_socket(__WHENCE__)
 #define mdp_close(s)      _mdp_close(__WHENCE__, (s))
 #define mdp_send(s,h,p,l) _mdp_send(__WHENCE__, (s), (h), (p), (l))

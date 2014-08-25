@@ -749,6 +749,30 @@ void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_p
     ob_append_packed_ui32(plaintext, src_port);
 }
 
+static int nonce_initialised=0;
+static uint8_t nonce_buffer[128];
+
+static int generate_nonce(uint8_t *nonce, size_t bytes)
+{
+  if (bytes<1||bytes>128) return -1;
+  if (!nonce_initialised) {
+    if (urandombytes(nonce_buffer,128))
+      return -1;
+    nonce_initialised=1;
+  }
+
+  // Increment nonce
+  unsigned i;
+  for(i=0;i<128;i++){
+    uint8_t b=nonce_buffer[i]+1;
+    nonce_buffer[i]=b;
+    if (b) break;
+  }
+
+  bcopy(nonce_buffer,nonce,bytes);
+  return 0;
+}
+
 static struct overlay_buffer * encrypt_payload(
   struct subscriber *source, 
   struct subscriber *dest, 

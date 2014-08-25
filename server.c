@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <libgen.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 
 #include "serval.h"
 #include "conf.h"
@@ -35,6 +36,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_packet.h"
 #include "server.h"
 #include "keyring.h"
+#include "commandline.h"
 
 #define PROC_SUBDIR	  "proc"
 #define PIDFILE_NAME	  "servald.pid"
@@ -49,6 +51,9 @@ static int server_write_pid();
 static int server_unlink_pid();
 static void signal_handler(int signal);
 static void serverCleanUp();
+static const char *_server_pidfile_path(struct __sourceloc __whence);
+#define server_pidfile_path() (_server_pidfile_path(__WHENCE__))
+void server_shutdown_check(struct sched_ent *alarm);
 
 /** Return the PID of the currently running server process, return 0 if there is none.
  */
@@ -83,7 +88,8 @@ int server_pid()
   return 0;
 }
 
-const char *_server_pidfile_path(struct __sourceloc __whence)
+#define server_pidfile_path() (_server_pidfile_path(__WHENCE__))
+static const char *_server_pidfile_path(struct __sourceloc __whence)
 {
   if (!pidfile_path[0]) {
     if (!FORMF_SERVAL_RUN_PATH(pidfile_path, PIDFILE_NAME))
@@ -92,7 +98,7 @@ const char *_server_pidfile_path(struct __sourceloc __whence)
   return pidfile_path;
 }
 
-int server()
+static int server()
 {
   IN();
   serverMode = SERVER_RUNNING;
@@ -458,7 +464,7 @@ static void serverCleanUp()
   clean_proc();
 }
 
-void signal_handler(int signal)
+static void signal_handler(int signal)
 {
   switch (signal) {
     case SIGHUP:
@@ -479,4 +485,269 @@ void signal_handler(int signal)
   
   serverCleanUp();
   exit(0);
+}
+
+DEFINE_CMD(app_server_start, 0, 
+  "Start daemon with instance path from SERVALINSTANCE_PATH environment variable.",
+  "start" KEYRING_PIN_OPTIONS, "[foreground|exec <path>]");
+static int app_server_start(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  IN();
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  /* Process optional arguments */
+  int pid=-1;
+  int cpid=-1;
+  const char *execpath;
+  if (cli_arg(parsed, "exec", &execpath, cli_absolute_path, NULL) == -1)
+    RETURN(-1);
+  int foregroundP = cli_arg(parsed, "foreground", NULL, NULL, NULL) == 0;
+#ifdef HAVE_JNI_H
+  if (context && context->jni_env && execpath == NULL)
+    RETURN(WHY("Must supply \"exec <path>\" arguments when invoked via JNI"));
+#endif
+  /* Create the instance directory if it does not yet exist */
+  if (create_serval_instance_dir() == -1)
+    RETURN(-1);
+  /* Now that we know our instance path, we can ask for the default set of
+     network interfaces that we will take interest in. */
+  if (config.interfaces.ac == 0)
+    NOWHENCE(WARN("No network interfaces configured (empty 'interfaces' config option)"));
+  if (pid == -1)
+    pid = server_pid();
+  if (pid < 0)
+    RETURN(-1);
+  int ret = -1;
+  // If the pidfile identifies this process, it probably means we are re-spawning after a SEGV, so
+  // go ahead and do the fork/exec.
+  if (pid > 0 && pid != getpid()) {
+    WARNF("Server already running (pid=%d)", pid);
+    ret = 10;
+  } else {
+    if (foregroundP)
+      INFOF("Foreground server process %s", execpath ? execpath : "without exec");
+    else
+      INFOF("Starting background server %s", execpath ? execpath : "without exec");
+    /* Start the Serval process.  All server settings will be read by the server process from the
+       instance directory when it starts up.  */
+    // Open the keyring and ensure it contains at least one unlocked identity.
+    keyring = keyring_open_instance_cli(parsed);
+    if (!keyring)
+      RETURN(WHY("Could not open keyring file"));
+    if (keyring_seed(keyring) == -1) {
+      WHY("Could not seed keyring");
+      goto exit;
+    }
+    if (foregroundP) {
+      ret = server();
+      goto exit;
+    }
+    const char *dir = getenv("SERVALD_SERVER_CHDIR");
+    if (!dir)
+      dir = config.server.chdir;
+    switch (cpid = fork()) {
+      case -1:
+	/* Main process.  Fork failed.  There is no child process. */
+	WHY_perror("fork");
+	goto exit;
+      case 0: {
+	/* Child process.  Fork then exit, to disconnect daemon from parent process, so that
+	   when daemon exits it does not live on as a zombie. N.B. On Android, do not return from
+	   within this process; that will unroll the JNI call stack and cause havoc -- call _exit()
+	   instead (not exit(), because we want to avoid any Java atexit(3) callbacks as well).  If
+	   _exit() is used on non-Android systems, then source code coverage does not get reported,
+	   because it relies on an atexit() callback to write the accumulated counters into .gcda
+	   files.  */
+#ifdef ANDROID
+# define EXIT_CHILD(n) _exit(n)
+#else
+# define EXIT_CHILD(n) exit(n)
+#endif
+	// Ensure that all stdio streams are flushed before forking, so that if a child calls
+	// exit(), it will not result in any buffered output being written twice to the file
+	// descriptor.
+	fflush(stdout);
+	fflush(stderr);
+	switch (fork()) {
+	  case -1:
+	    EXIT_CHILD(WHY_perror("fork"));
+	  case 0: {
+	    /* Grandchild process.  Close logfile (so that it gets re-opened again on demand, with
+	       our own file pointer), disable logging to stderr (about to get redirected to
+	       /dev/null), disconnect from current directory, disconnect standard I/O streams, and
+	       start a new process session so that if we are being started by an adb shell session
+	       on an Android device, then we don't receive a SIGHUP when the adb shell process ends.
+	     */
+	    close_log_file();
+	    disable_log_stderr();
+	    int fd;
+	    if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
+	      EXIT_CHILD(WHY_perror("open(\"/dev/null\")"));
+	    if (setsid() == -1)
+	      EXIT_CHILD(WHY_perror("setsid"));
+	    if (chdir(dir) == -1)
+	      EXIT_CHILD(WHYF_perror("chdir(%s)", alloca_str_toprint(dir)));
+	    if (dup2(fd, 0) == -1)
+	      EXIT_CHILD(WHYF_perror("dup2(%d,0)", fd));
+	    if (dup2(fd, 1) == -1)
+	      EXIT_CHILD(WHYF_perror("dup2(%d,1)", fd));
+	    if (dup2(fd, 2) == -1)
+	      EXIT_CHILD(WHYF_perror("dup2(%d,2)", fd));
+	    if (fd > 2)
+	      (void)close(fd);
+	    /* The execpath option is provided so that a JNI call to "start" can be made which
+	       creates a new server daemon process with the correct argv[0].  Otherwise, the servald
+	       process appears as a process with argv[0] = "org.servalproject". */
+	    if (execpath) {
+	    /* Need the cast on Solaris because it defines NULL as 0L and gcc doesn't see it as a
+	       sentinal. */
+	      execl(execpath, execpath, "start", "foreground", (void *)NULL);
+	      WHYF_perror("execl(%s,\"start\",\"foreground\")", alloca_str_toprint(execpath));
+	      EXIT_CHILD(-1);
+	    }
+	    EXIT_CHILD(server());
+	    // NOT REACHED
+	  }
+	}
+	// TODO wait for server_write_pid() to signal more directly?
+	EXIT_CHILD(0); // Main process is waitpid()-ing for this.
+#undef EXIT_CHILD
+      }
+    }
+    /* Main process.  Wait for the child process to fork the grandchild and exit. */
+    waitpid(cpid, NULL, 0);
+    /* Allow a few seconds for the grandchild process to report for duty. */
+    time_ms_t timeout = gettime_ms() + 5000;
+    do {
+      sleep_ms(200); // 5 Hz
+    } while ((pid = server_pid()) == 0 && gettime_ms() < timeout);
+    if (pid == -1)
+      goto exit;
+    if (pid == 0) {
+      WHY("Server process did not start");
+      goto exit;
+    }
+    ret = 0;
+  }
+  const char *ipath = instance_path();
+  if (ipath) {
+    cli_field_name(context, "instancepath", ":");
+    cli_put_string(context, ipath, "\n");
+  }
+  cli_field_name(context, "pidfile", ":");
+  cli_put_string(context, server_pidfile_path(), "\n");
+  cli_field_name(context, "pid", ":");
+  cli_put_long(context, pid, "\n");
+  char buff[256];
+  if (server_get_proc_state("http_port", buff, sizeof buff)!=-1){
+    cli_field_name(context, "http_port", ":");
+    cli_put_string(context, buff, "\n");
+  }
+  if (server_get_proc_state("mdp_inet_port", buff, sizeof buff)!=-1){
+    cli_field_name(context, "mdp_inet_port", ":");
+    cli_put_string(context, buff, "\n");
+  }
+  cli_flush(context);
+  /* Sleep before returning if env var is set.  This is used in testing, to simulate the situation
+     on Android phones where the "start" command is invoked via the JNI interface and the calling
+     process does not die.
+   */
+  const char *post_sleep = getenv("SERVALD_START_POST_SLEEP");
+  if (post_sleep) {
+    time_ms_t milliseconds = atoi(post_sleep);
+    INFOF("Sleeping for %"PRId64" milliseconds", (int64_t) milliseconds);
+    sleep_ms(milliseconds);
+  }
+exit:
+  keyring_free(keyring);
+  keyring = NULL;
+  RETURN(ret);
+  OUT();
+}
+
+DEFINE_CMD(app_server_stop,CLIFLAG_PERMISSIVE_CONFIG,
+  "Stop a running daemon with instance path from SERVALINSTANCE_PATH environment variable.",
+  "stop");
+static int app_server_stop(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  int			pid, tries, running;
+  time_ms_t		timeout;
+  const char *ipath = instance_path();
+  if (ipath) {
+    cli_field_name(context, "instancepath", ":");
+    cli_put_string(context, ipath, "\n");
+  }
+  cli_field_name(context, "pidfile", ":");
+  cli_put_string(context, server_pidfile_path(), "\n");
+  pid = server_pid();
+  /* Not running, nothing to stop */
+  if (pid <= 0)
+    return 1;
+  INFOF("Stopping server (pid=%d)", pid);
+  /* Set the stop file and signal the process */
+  cli_field_name(context, "pid", ":");
+  cli_put_long(context, pid, "\n");
+  tries = 0;
+  running = pid;
+  while (running == pid) {
+    if (tries >= 5) {
+      WHYF("Servald pid=%d (pidfile=%s) did not stop after %d SIGHUP signals",
+	   pid, server_pidfile_path(), tries);
+      return 253;
+    }
+    ++tries;
+    if (kill(pid, SIGHUP) == -1) {
+      // ESRCH means process is gone, possibly we are racing with another stop, or servald just died
+      // voluntarily.  We DO NOT call serverCleanUp() in this case (once used to!) because that
+      // would race with a starting server process.
+      if (errno == ESRCH)
+	break;
+      WHY_perror("kill");
+      WHYF("Error sending SIGHUP to Servald pid=%d (pidfile %s)", pid, server_pidfile_path());
+      return 252;
+    }
+    /* Allow a few seconds for the process to die. */
+    timeout = gettime_ms() + 2000;
+    do
+      sleep_ms(200); // 5 Hz
+    while ((running = server_pid()) == pid && gettime_ms() < timeout);
+  }
+  cli_field_name(context, "tries", ":");
+  cli_put_long(context, tries, "\n");
+  return 0;
+}
+
+DEFINE_CMD(app_server_status,CLIFLAG_PERMISSIVE_CONFIG,
+   "Display information about running daemon.",
+   "status");
+static int app_server_status(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  int pid = server_pid();
+  const char *ipath = instance_path();
+  if (ipath) {
+    cli_field_name(context, "instancepath", ":");
+    cli_put_string(context, ipath, "\n");
+  }
+  cli_field_name(context, "pidfile", ":");
+  cli_put_string(context, server_pidfile_path(), "\n");
+  cli_field_name(context, "status", ":");
+  cli_put_string(context, pid > 0 ? "running" : "stopped", "\n");
+  if (pid > 0) {
+    cli_field_name(context, "pid", ":");
+    cli_put_long(context, pid, "\n");
+    char buff[256];
+    if (server_get_proc_state("http_port", buff, sizeof buff)!=-1){
+      cli_field_name(context, "http_port", ":");
+      cli_put_string(context, buff, "\n");
+    }
+    if (server_get_proc_state("mdp_inet_port", buff, sizeof buff)!=-1){
+      cli_field_name(context, "mdp_inet_port", ":");
+      cli_put_string(context, buff, "\n");
+    }
+  }
+  return pid > 0 ? 0 : 1;
 }

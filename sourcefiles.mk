@@ -45,6 +45,11 @@ SQLITE3_SOURCES = \
 # The source files for building the Serval DNA daemon.
 SERVAL_DAEMON_SOURCES = \
 	commandline.c \
+        conf_cli.c \
+	rhizome_cli.c \
+	keyring_cli.c \
+	network_cli.c \
+	test_cli.c \
 	crypto.c \
 	directory_client.c \
 	dna_helper.c \
@@ -63,7 +68,6 @@ SERVAL_DAEMON_SOURCES = \
 	monitor.c \
 	monitor-client.c \
 	monitor-cli.c \
-	nonce.c \
 	overlay_address.c \
 	overlay_buffer.c \
 	overlay_interface.c \

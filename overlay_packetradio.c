@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "conf.h"
 #include "overlay_interface.h"
+#include "server.h"
 
 int overlay_packetradio_setup_port(overlay_interface *interface)
 {

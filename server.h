@@ -28,4 +28,10 @@ DECLARE_ALARM(server_config_reload);
 DECLARE_ALARM(rhizome_sync_announce);
 DECLARE_ALARM(fd_periodicstats);
 
+extern int serverMode;
+
+int server_pid();
+int server_write_proc_state(const char *path, const char *fmt, ...);
+int server_get_proc_state(const char *path, char *buff, size_t buff_len);
+
 #endif // __SERVAL_DNA__SERVER_H

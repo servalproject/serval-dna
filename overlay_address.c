@@ -35,6 +35,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_buffer.h"
 #include "overlay_interface.h"
 #include "overlay_packet.h"
+#include "server.h"
 
 #define MAX_BPIS 1024
 #define BPI_MASK 0x3ff

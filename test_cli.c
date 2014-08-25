@@ -1,0 +1,262 @@
+/*
+ Serval testing command line functions
+ Copyright (C) 2014 Serval Project Inc.
+ 
+ This program is free software; you can redistribute it and/or
+ modify it under the terms of the GNU General Public License
+ as published by the Free Software Foundation; either version 2
+ of the License, or (at your option) any later version.
+ 
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ 
+ You should have received a copy of the GNU General Public License
+ along with this program; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ */
+
+#include "serval_types.h"
+#include "dataformats.h"
+#include "os.h"
+#include "cli.h"
+#include "conf.h"
+#include "commandline.h"
+
+DEFINE_CMD(app_byteorder_test, 0,
+  "Run byte order handling test",
+  "test","byteorder");
+static int app_byteorder_test(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
+{
+  uint64_t in=0x1234;
+  uint64_t out;
+
+  unsigned char bytes[8];
+
+  write_uint64(&bytes[0],in);
+  out=read_uint64(&bytes[0]);
+  if (in!=out)
+    cli_printf(context,"Byte order mangled (0x%016"PRIx64" should have been %016"PRIx64")\n",
+	       out,in);
+  else cli_printf(context,"Byte order preserved.\n");
+  return -1;
+}
+
+DEFINE_CMD(app_crypt_test, 0,
+   "Run cryptography speed test",
+   "test","crypt");
+static int app_crypt_test(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
+  unsigned char k[crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES];
+
+  unsigned char plain_block[65536];
+
+  urandombytes(nonce,sizeof(nonce));
+  urandombytes(k,sizeof(k));
+
+  int len,i;
+
+  cli_printf(context, "Benchmarking CryptoBox Auth-Cryption:\n");
+  int count=1024;
+  for(len=16;len<=16384;len*=2) {
+    time_ms_t start = gettime_ms();
+    for (i=0;i<count;i++) {
+      bzero(&plain_block[0],crypto_box_curve25519xsalsa20poly1305_ZEROBYTES);
+      crypto_box_curve25519xsalsa20poly1305_afternm
+	(plain_block,plain_block,len,nonce,k);
+    }
+    time_ms_t end = gettime_ms();
+    double each=(end - start) * 1.0 / i;
+    cli_printf(context, "%d bytes - %d tests took %"PRId64"ms - mean time = %.2fms\n",
+	   len, i, (int64_t)(end - start), each);
+    /* Auto-reduce number of repeats so that it doesn't take too long on the phone */
+    if (each>1.00) count/=2;
+  }
+
+
+  cli_printf(context, "Benchmarking CryptoSign signature verification:\n");
+  {
+
+    unsigned char sign_pk[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+    unsigned char sign_sk[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
+    if (crypto_sign_edwards25519sha512batch_keypair(sign_pk,sign_sk))
+      return WHY("crypto_sign_curve25519xsalsa20poly1305_keypair() failed.\n");
+
+    unsigned char plainTextIn[1024];
+    unsigned char cipherText[1024];
+    unsigned char plainTextOut[1024];
+    unsigned long long cipherLen=0;
+    unsigned long long plainLenOut;
+    bzero(plainTextIn,1024);
+    bzero(cipherText,1024);
+    snprintf((char *)&plainTextIn[0],1024,"%s","No casaba melons allowed in the lab.");
+    int plainLenIn=64;
+
+    time_ms_t start = gettime_ms();
+    for(i=0;i<10;i++) {
+      int r=crypto_sign_edwards25519sha512batch(cipherText,&cipherLen,
+					      plainTextIn,plainLenIn,
+					      sign_sk);
+      if (r)
+        return WHY("crypto_sign_edwards25519sha512batch() failed.\n");
+    }
+
+    time_ms_t end=gettime_ms();
+    cli_printf(context, "mean signature generation time = %.2fms\n",
+  	   (end-start)*1.0/i);
+    start = gettime_ms();
+
+    for(i=0;i<10;i++) {
+      bzero(&plainTextOut,1024); plainLenOut=0;
+      int r=crypto_sign_edwards25519sha512batch_open(plainTextOut,&plainLenOut,
+						 &cipherText[0],cipherLen,
+						 sign_pk);
+      if (r)
+	return WHYF("crypto_sign_edwards25519sha512batch_open() failed (r=%d, i=%d).\n",
+		r,i);
+    }
+    end = gettime_ms();
+    cli_printf(context, "mean signature verification time = %.2fms\n",
+	   (end-start)*1.0/i);
+  }
+
+  /* We can't do public signing with a crypto_box key, but we should be able to
+     do shared-secret generation using crypto_sign keys. */
+  {
+    cli_printf(context, "Testing supercop-20120525 Ed25519 CryptoSign implementation:\n");
+
+    unsigned char sign1_pk[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+    unsigned char sign1_sk[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
+    if (crypto_sign_edwards25519sha512batch_keypair(sign1_pk,sign1_sk))
+      return WHY("crypto_sign_edwards25519sha512batch_keypair() failed.\n");
+
+    /* Try calculating public key from secret key */
+    unsigned char pk[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+
+    /* New Ed25519 implementation has public key as 2nd half of private key. */
+    bcopy(&sign1_sk[32],pk,32);
+
+    if (memcmp(pk, sign1_pk, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)) {
+      WHY("Could not calculate public key from private key.\n");
+      dump("calculated",&pk,sizeof(pk));
+      dump("original",&sign1_pk,sizeof(sign1_pk));
+    } else
+      cli_printf(context, "Can calculate public key from private key.\n");
+
+    /* Now use a pre-tested keypair and make sure that we can sign and verify with
+       it, and that the signatures are as expected. */
+    
+    unsigned char key[64]={
+      0xf6,0x70,0x6b,0x8a,0x4e,0x1e,0x4b,0x01,
+      0x11,0x56,0x85,0xac,0x63,0x46,0x67,0x5f,
+      0xc1,0x44,0xcf,0xdf,0x98,0x5c,0x2b,0x8b,
+      0x18,0xff,0x70,0x9c,0x12,0x71,0x48,0xb9,
+
+      0x32,0x2a,0x88,0xba,0x9c,0xdd,0xed,0x35,
+      0x8f,0x01,0x18,0xf7,0x60,0x1b,0xfb,0x80,
+      0xaf,0xce,0x74,0xe0,0x85,0x39,0xac,0x13,
+      0x15,0xf6,0x79,0xaa,0x68,0xef,0x5d,0xc6};
+
+    unsigned char plainTextIn[1024];
+    unsigned char plainTextOut[1024];
+    unsigned char cipherText[1024];
+    unsigned long long cipherLen=0;
+    unsigned long long plainLenOut;
+    bzero(plainTextIn,1024);
+    bzero(cipherText,1024);
+    snprintf((char *)&plainTextIn[0],1024,"%s","No casaba melons allowed in the lab.");
+    int plainLenIn=64;
+
+    int r=crypto_sign_edwards25519sha512batch(cipherText,&cipherLen,
+					  plainTextIn,plainLenIn,
+					  key);
+    if (r)
+      return WHY("crypto_sign_edwards25519sha512batch() failed.\n");
+  
+    dump("signature",cipherText,cipherLen);
+   
+    unsigned char casabamelons[128]={
+      0xa4,0xea,0xd0,0x7f,0x11,0x65,0x28,0x3f,0x90,0x45,0x87,0xbf,0xe5,0xb9,0x15,0x2a,0x9a,0x2d,0x99,0x35,0x0d,0x0e,0x7b,0xb0,0xcd,0x15,0x2e,0xe8,0xeb,0xb3,0xc2,0xb1,0x13,0x8e,0xe3,0x82,0x55,0x6c,0x6e,0x34,0x44,0xe4,0xbc,0xa3,0xd5,0xe0,0x7a,0x6a,0x67,0x61,0xda,0x79,0x67,0xb6,0x1c,0x2e,0x48,0xc7,0x28,0x5b,0xd8,0xd0,0x54,0x0c,0x4e,0x6f,0x20,0x63,0x61,0x73,0x61,0x62,0x61,0x20,0x6d,0x65,0x6c,0x6f,0x6e,0x73,0x20,0x61,0x6c,0x6c,0x6f,0x77,0x65,0x64,0x20,0x69,0x6e,0x20,0x74,0x68,0x65,0x20,0x6c,0x61,0x62,0x2e,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    };
+    
+    if (cipherLen!=128||memcmp(casabamelons, cipherText, 128)) {
+      WHY("Computed signature for stored key+message does not match expected value.\n");
+      dump("expected signature",casabamelons,sizeof(casabamelons));
+    }
+  
+    bzero(&plainTextOut,1024); plainLenOut=0;
+    r=crypto_sign_edwards25519sha512batch_open(plainTextOut,&plainLenOut,
+					       &casabamelons[0],128,
+					       /* the public key, which is the 2nd
+						  half of the secret key. */
+					       &key[32]);
+    if (r)
+      WHY("Cannot open rearranged ref/ version of signature.\n");
+    else
+      cli_printf(context, "Signature open fine.\n");
+
+  }
+  
+  return 0;
+}
+
+void context_switch_test(int);
+DEFINE_CMD(app_mem_test, 0,
+   "Run memory speed test",
+   "test","memory");
+static int app_mem_test(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
+{
+  size_t mem_size;
+  size_t addr;
+  uint64_t count;
+
+
+  // First test context switch speed
+  context_switch_test(1);
+
+  for(mem_size=1024;mem_size<=(128*1024*1024);mem_size*=2) {
+    uint8_t *mem=malloc(mem_size);
+    if (!mem) {
+      fprintf(stderr,"Could not allocate %zdKB memory -- stopping test.\n",mem_size/1024);
+      return -1;
+    }
+
+    // Fill memory with random stuff so that we don't have memory page-in
+    // delays when doing the reads
+    for(addr=0;addr<mem_size;addr++) mem[addr]=random()&0xff;
+    
+    time_ms_t end_time=gettime_ms()+100;
+    uint64_t total=0;
+    size_t mem_mask=mem_size-1;
+
+    for(count=0;gettime_ms()<end_time;count++) {
+      addr=random()&mem_mask;
+      total+=mem[addr];
+    }
+    printf("Memory size = %8zdKB : %"PRId64" random  reads per second (irrelevant sum is %016"PRIx64")\n",
+	   mem_size/1024,count*10,
+	   /* use total so that compiler doesn't optimise away our memory accesses */
+	   total);
+
+    end_time=gettime_ms()+100;
+    for(count=0;gettime_ms()<end_time;count++) {
+      addr=random()&mem_mask;
+      mem[addr]=3;
+    }
+    printf("Memory size = %8zdKB : %"PRId64" random writes per second (irrelevant sum is %016"PRIx64")\n",
+	   mem_size/1024,count*10,
+	   /* use total so that compiler doesn't optimise away our memory accesses */
+	   total);
+
+
+    free(mem);
+  }
+
+  return 0;
+}
+
