@@ -98,7 +98,7 @@ esac
 
 cd "$repo_path" >/dev/null
 
-if [ ! -d .git ]; then
+if [ ! -e .git ]; then
    if [ -s VERSION.txt ] && [ $(cat VERSION.txt | wc -l) -eq 1 ]; then
       cat VERSION.txt
    else
