@@ -38,6 +38,7 @@ struct item{
 };
 
 struct item *root=NULL;
+static uint8_t allow_duplicates = 1;
 
 static struct item *create_item(const char *key){
   struct item *ret=calloc(1,sizeof(struct item));
@@ -62,7 +63,7 @@ static struct item *find_item(const char *key){
   return NULL;
 }
 
-static void add_item(char *key, char *value){
+static int add_item(const char *key, const char *value){
   struct item *item = root, **last_ptr=&root;
   while(item){
     int c=strcmp(item->key, key);
@@ -70,8 +71,9 @@ static void add_item(char *key, char *value){
       c=strcmp(item->value, value);
       if (c==0){
 	item->expires = gettime_ms()+1200000;
-	return;
-      }
+	return 1;
+      }else if(!allow_duplicates)
+	return -1;
     }
     if (c<0){
       last_ptr = &item->_left;
@@ -87,38 +89,47 @@ static void add_item(char *key, char *value){
   item->value[sizeof(item->value) -1]=0;
   // expire after 20 minutes
   item->expires = gettime_ms()+1200000;
-  // used by tests
-  fprintf(stderr, "PUBLISHED \"%s\" = \"%s\"\n", key, value);
+  return 0;
 }
 
-static void add_record(int mdp_sockfd){
-  int ttl;
-  overlay_mdp_frame mdp;
+static int add_record(int mdp_sockfd){
+  struct mdp_header header;
+  uint8_t payload[MDP_MTU];
   
-  if (overlay_mdp_recv(mdp_sockfd, &mdp, MDP_PORT_DIRECTORY, &ttl))
-    return;
+  ssize_t len = mdp_recv(mdp_sockfd, &header, payload, sizeof payload);
+  if (len==-1)
+    return WHY_perror("mdp_recv");
   
-  if (mdp.packetTypeAndFlags&MDP_NOCRYPT){
-    fprintf(stderr, "Only encrypted packets will be considered for publishing\n");
-    return;
-  }
+  if (header.flags & (MDP_FLAG_NO_CRYPT|MDP_FLAG_NO_SIGN))
+    return WHY("Only encrypted packets will be considered for publishing\n");
   
   // make sure the payload is a NULL terminated string
-  mdp.out.payload[mdp.out.payload_length]=0;
+  payload[len]=0;
   
-  char *did=(char *)mdp.out.payload;
-  int i=0;
-  while(i<mdp.out.payload_length && mdp.out.payload[i] && mdp.out.payload[i]!='|')
+  const char *did=(const char *)payload;
+  unsigned i=0;
+  while(i<len && payload[i] && payload[i]!='|')
     i++;
-  mdp.out.payload[i]=0;
-  char *name = (char *)mdp.out.payload+i+1;
-  char *sid = alloca_tohex_sid_t(mdp.out.src.sid);
+  payload[i]=0;
+  const char *name = (const char *)payload+i+1;
+  const char *sid = alloca_tohex_sid_t(header.remote.sid);
   
   // TODO check that did is a valid phone number
   
   char url[256];
   snprintf(url, sizeof(url), "sid://%s/local/%s|%s|%s", sid, did, did, name);
-  add_item(did, url);
+  
+  // TODO only add whitelisted entries
+  
+  int r=add_item(did, url);
+  if (r==0){
+    // used by tests
+    fprintf(stderr, "PUBLISHED \"%s\" = \"%s\"\n", did, url);
+  }
+  uint8_t response = (r==-1 ? 0:1);
+  if (mdp_send(mdp_sockfd, &header, &response, sizeof response)==-1)
+    return WHY_perror("mdp_send");
+  return 0;
 }
 
 static void respond(char *token, struct item *item, char *key){
@@ -188,20 +199,14 @@ int main(void){
   struct pollfd fds[2];
   int mdp_sockfd;
 
-  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+  if ((mdp_sockfd = mdp_socket()) < 0)
     return WHY("Cannot create MDP socket");
 
   // bind for incoming directory updates
-  sid_t srcsid;
-    
-  if (overlay_mdp_getmyaddr(mdp_sockfd, 0, &srcsid)) {
-    overlay_mdp_client_close(mdp_sockfd);
-    return WHY("Could not get local address");
-  }
-  if (overlay_mdp_bind(mdp_sockfd, &srcsid, MDP_PORT_DIRECTORY)) {
-    overlay_mdp_client_close(mdp_sockfd);
-    return WHY("Could not bind to MDP socket");
-  }
+  struct mdp_sockaddr local_addr = {.sid = BIND_PRIMARY, .port = MDP_PORT_DIRECTORY};
+  
+  if (mdp_bind(mdp_sockfd, &local_addr)==-1)
+    return WHY_perror("mdp_bind");
   
   fds[0].fd = STDIN_FILENO;
   fds[0].events = POLLIN;
@@ -224,6 +229,6 @@ int main(void){
     }
   }
   
-  overlay_mdp_client_close(mdp_sockfd);
+  mdp_close(mdp_sockfd);
   return 0;
 }

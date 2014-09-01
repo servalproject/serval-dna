@@ -155,6 +155,28 @@ ssize_t _mdp_recv(struct __sourceloc __whence, int socket, struct mdp_header *he
   return len - sizeof(struct mdp_header);
 }
 
+int _mdp_bind(struct __sourceloc __whence, int socket, struct mdp_sockaddr *local_addr)
+{
+  struct mdp_header mdp_header;
+  bzero(&mdp_header, sizeof(mdp_header));
+
+  mdp_header.local = *local_addr;
+  mdp_header.remote.port = MDP_LISTEN;
+  mdp_header.remote.sid = SID_ANY;
+  mdp_header.flags = MDP_FLAG_BIND;
+  
+  if (_mdp_send(__whence, socket, &mdp_header, NULL, 0)==-1)
+    return -1;
+  if (_mdp_recv(__whence, socket, &mdp_header, NULL, 0)==-1)
+    return -1;
+  if (mdp_header.flags & MDP_FLAG_ERROR){
+    errno = EBADMSG;
+    return -1;
+  }
+  *local_addr = mdp_header.local;
+  return 0;
+}
+
 int _mdp_poll(struct __sourceloc UNUSED(__whence), int socket, time_ms_t timeout_ms)
 {
   // TODO make overlay_mdp_client_poll() take __whence arg

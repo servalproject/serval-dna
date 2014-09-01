@@ -145,11 +145,14 @@ int _mdp_send(struct __sourceloc, int socket, const struct mdp_header *header, c
 ssize_t _mdp_recv(struct __sourceloc, int socket, struct mdp_header *header, uint8_t *payload, size_t max_len);
 int _mdp_poll(struct __sourceloc, int socket, time_ms_t timeout_ms);
 ssize_t mdp_poll_recv(int mdp_sock, time_ms_t deadline, struct mdp_header *rev_header, unsigned char *payload, size_t buffer_size);
+int _mdp_bind(struct __sourceloc __whence, int socket, struct mdp_sockaddr *local_addr);
+
 #define mdp_socket()      _mdp_socket(__WHENCE__)
 #define mdp_close(s)      _mdp_close(__WHENCE__, (s))
 #define mdp_send(s,h,p,l) _mdp_send(__WHENCE__, (s), (h), (p), (l))
 #define mdp_recv(s,h,p,l) _mdp_recv(__WHENCE__, (s), (h), (p), (l))
 #define mdp_poll(s,t)     _mdp_poll(__WHENCE__, (s), (t))
+#define mdp_bind(s,a)     _mdp_bind(__WHENCE__, (s), (a))
 
 /* Client-side MDP function */
 int overlay_mdp_client_socket(void);
