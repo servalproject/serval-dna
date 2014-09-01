@@ -23,6 +23,12 @@
 #include <stdint.h>
 #ifdef HAVE_JNI_H
 #include <jni.h>
+
+// Stop OpenJDK 7 from foisting their UNUSED() macro on us in <jni_md.h>
+#ifdef UNUSED
+# undef UNUSED
+#endif
+
 #endif
 #include "xprintf.h"
 #include "log.h"

@@ -18,12 +18,12 @@
  */
 
 #include <stdio.h>
+#include "cli.h"
 #include "serval_types.h"
 #include "dataformats.h"
 #include "os.h"
 #include "conf.h"
 #include "mdp_client.h"
-#include "cli.h"
 #include "commandline.h"
 #include "keyring.h"
 

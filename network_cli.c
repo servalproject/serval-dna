@@ -21,10 +21,10 @@
 #include <stdint.h>
 #include <signal.h>
 #include <math.h>
+#include "cli.h"
 #include "dataformats.h"
 #include "mdp_client.h"
 #include "conf.h"
-#include "cli.h"
 #include "commandline.h"
 #include "sighandlers.h"
 
