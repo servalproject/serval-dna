@@ -1273,13 +1273,15 @@ static int mdp_process_identity_request(struct socket_address *client, struct md
 	  mdp_reply_error(client, header);
 	  return WHY("Unknown request type");
 	}
-	int unlock_count=0;
+	unsigned unlock_count=0;
 	while(1){
 	  const char *pin = ob_get_str_ptr(payload);
 	  if (!pin)
 	    break;
 	  unlock_count += keyring_enter_pin(keyring, pin);
 	}
+	if (unlock_count && directory_service)
+	  directory_registration();
       }
       break;
     default:

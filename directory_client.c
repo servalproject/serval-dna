@@ -79,9 +79,9 @@ static void directory_send(struct subscriber *directory_service, struct subscrib
 // send a registration packet for each unlocked identity
 static void directory_send_keyring(struct subscriber *directory_service){
   unsigned cn=0, in=0, kp=0;
-  for (; !keyring_sanitise_position(keyring, &cn, &in, &kp); ++kp){
+  for (; keyring_next_keytype(keyring, &cn, &in, &kp, KEYTYPE_DID); ++kp){
     keyring_identity *i = keyring->contexts[cn]->identities[in];
-    if (i->subscriber && i->keypairs[kp]->type == KEYTYPE_DID){
+    if (i->subscriber && i->subscriber->reachable == REACHABLE_SELF){
       const char *unpackedDid = (const char *) i->keypairs[kp]->private_key;
       const char *name = (const char *) i->keypairs[kp]->public_key;
       directory_send(directory_service, i->subscriber, unpackedDid, name);
@@ -89,23 +89,10 @@ static void directory_send_keyring(struct subscriber *directory_service){
   }
 }
 
-static int load_directory_config()
-{
-  if (!directory_service && !is_sid_t_any(config.directory.service)) {
-    directory_service = find_subscriber(config.directory.service.binary, SID_SIZE, 1);
-    if (!directory_service)
-      return WHYF("Failed to create subscriber record");
-    // used by tests
-    INFOF("ADD DIRECTORY SERVICE %s", alloca_tohex_sid_t(directory_service->sid));
-  }
-  // always attempt to reload the address, may depend on DNS resolution
-  return load_subscriber_address(directory_service);
-}
-
 static void directory_update(struct sched_ent *alarm){
-  load_directory_config();
-  
   if (directory_service){
+    // always attempt to reload the address, may depend on DNS resolution
+    load_subscriber_address(directory_service);
     if (directory_service->reachable & REACHABLE){
       directory_send_keyring(directory_service);
       
@@ -119,6 +106,17 @@ static void directory_update(struct sched_ent *alarm){
 }
 
 int directory_service_init(){
+  if (is_sid_t_any(config.directory.service)) {
+    directory_service = NULL;
+  }else{
+    directory_service = find_subscriber(config.directory.service.binary, SID_SIZE, 1);
+    if (!directory_service){
+      WHYF("Failed to create subscriber record");
+    }else{
+      // used by tests
+      INFOF("ADD DIRECTORY SERVICE %s", alloca_tohex_sid_t(directory_service->sid));
+    }
+  }
   directory_update(&directory_alarm);
   return 0;
 }
