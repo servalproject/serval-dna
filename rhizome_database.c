@@ -876,10 +876,10 @@ int _sqlite_step(struct __sourceloc __whence, int log_level, sqlite_retry_state 
 	  sqlite3_reset(statement);
 	  break; // back to sqlite3_step()
 	}
+	ret = stepcode;
 	// fall through...
       default:
 	LOGF(log_level, "query failed (%d), %s: %s", stepcode, sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
-	ret = -1;
 	statement = NULL;
 	break;
     }
@@ -1339,7 +1339,7 @@ int rhizome_store_manifest(rhizome_manifest *m)
       )
   ) == NULL)
     goto rollback;
-  if (sqlite_step_retry(&retry, stmt) == -1)
+  if (!sqlite_code_ok(sqlite_step_retry(&retry, stmt)))
     goto rollback;
   sqlite3_finalize(stmt);
   stmt = NULL;
@@ -1455,13 +1455,14 @@ int rhizome_list_next(struct rhizome_list_cursor *c)
   IN();
   if (c->_statement == NULL && rhizome_list_open(c) == -1)
     RETURN(-1);
+  int r=0;
   while (1) {
     if (c->manifest) {
       rhizome_manifest_free(c->manifest);
       c->_rowid_current = 0;
       c->manifest = NULL;
     }
-    if (sqlite_step_retry(&c->_retry, c->_statement) != SQLITE_ROW)
+    if ((r=sqlite_step_retry(&c->_retry, c->_statement)) != SQLITE_ROW)
       break;
     assert(sqlite3_column_count(c->_statement) == 6);
     assert(sqlite3_column_type(c->_statement, 0) == SQLITE_TEXT);
@@ -1526,7 +1527,7 @@ int rhizome_list_next(struct rhizome_list_cursor *c)
     RETURN(1);
   }
   assert(c->_rowid_current == 0);
-  RETURN(0);
+  RETURN(sqlite_code_ok(r)?0:-1);
   OUT();
 }
 
@@ -1601,7 +1602,8 @@ enum rhizome_bundle_status rhizome_find_duplicate(const rhizome_manifest *m, rhi
     sqlite_bind(&retry, statement, INDEX|SID_T, ++field, &m->recipient, END);
 
   int rows = 0;
-  while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
+  int r=0;
+  while ((r=sqlite_step_retry(&retry, statement)) == SQLITE_ROW) {
     ++rows;
     if (config.debug.rhizome)
       DEBUGF("Row %d", rows);
@@ -1647,11 +1649,21 @@ next:
       rhizome_manifest_free(blob_m);
   }
   sqlite3_finalize(statement);
+  if (!sqlite_code_ok(r))
+    ret=-1;
   return ret;
 }
 
-static int unpack_manifest_row(rhizome_manifest *m, sqlite3_stmt *statement)
+static enum rhizome_bundle_status unpack_manifest_row(sqlite_retry_state *retry, rhizome_manifest *m, sqlite3_stmt *statement)
 {
+  int r=sqlite_step_retry(retry, statement);
+  if (sqlite_code_busy(r))
+    return RHIZOME_BUNDLE_STATUS_BUSY;
+  if (!sqlite_code_ok(r))
+    return RHIZOME_BUNDLE_STATUS_ERROR;
+  if (r!=SQLITE_ROW)
+    return RHIZOME_BUNDLE_STATUS_NEW;
+  
   const char *q_id = (const char *) sqlite3_column_text(statement, 0);
   const char *q_blob = (char *) sqlite3_column_blob(statement, 1);
   uint64_t q_version = sqlite3_column_int64(statement, 2);
@@ -1674,17 +1686,18 @@ static int unpack_manifest_row(rhizome_manifest *m, sqlite3_stmt *statement)
     WARNF("Version mismatch, manifest is %"PRIu64", database is %"PRIu64, m->version, q_version);
   rhizome_manifest_set_rowid(m, q_rowid);
   rhizome_manifest_set_inserttime(m, q_inserttime);
-  return 0;
+  return RHIZOME_BUNDLE_STATUS_SAME;
 }
 
 /* Retrieve a manifest from the database, given its Bundle ID.
  *
- * Returns 0 if manifest is found
- * Returns 1 if manifest is not found
- * Returns -1 on error
+ * Returns RHIZOME_BUNDLE_STATUS_SAME if manifest is found
+ * Returns RHIZOME_BUNDLE_STATUS_NEW if manifest is not found
+ * Returns RHIZOME_BUNDLE_STATUS_ERROR on error
+ * Returns RHIZOME_BUNDLE_STATUS_BUSY if the database is locked
  * Caller is responsible for allocating and freeing rhizome_manifest
  */
-int rhizome_retrieve_manifest(const rhizome_bid_t *bidp, rhizome_manifest *m)
+enum rhizome_bundle_status rhizome_retrieve_manifest(const rhizome_bid_t *bidp, rhizome_manifest *m)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
@@ -1692,33 +1705,21 @@ int rhizome_retrieve_manifest(const rhizome_bid_t *bidp, rhizome_manifest *m)
       RHIZOME_BID_T, bidp,
       END);
   if (!statement)
-    return -1;
-  int ret;
-  
-  switch(sqlite_step_retry(&retry, statement)){
-    case SQLITE_ROW:
-      ret = unpack_manifest_row(m, statement);
-      break;
-    case -1:
-      ret = -1;
-      break;
-    default:
-      ret = 1;
-      if (config.debug.rhizome)
-	DEBUGF("Manifest id=%s not found", alloca_tohex_rhizome_bid_t(*bidp));
-  }
+    return RHIZOME_BUNDLE_STATUS_ERROR;
+  enum rhizome_bundle_status ret = unpack_manifest_row(&retry, m, statement);
   sqlite3_finalize(statement);
   return ret;
 }
 
 /* Retrieve any manifest from the database whose Bundle ID starts with the given prefix.
  *
- * Returns 0 if a manifest is found
- * Returns 1 if no manifest is found
- * Returns -1 on error
+ * Returns RHIZOME_BUNDLE_STATUS_SAME if manifest is found
+ * Returns RHIZOME_BUNDLE_STATUS_NEW if manifest is not found
+ * Returns RHIZOME_BUNDLE_STATUS_ERROR on error
+ * Returns RHIZOME_BUNDLE_STATUS_BUSY if the database is locked
  * Caller is responsible for allocating and freeing rhizome_manifest
  */
-int rhizome_retrieve_manifest_by_prefix(const unsigned char *prefix, unsigned prefix_len, rhizome_manifest *m)
+enum rhizome_bundle_status rhizome_retrieve_manifest_by_prefix(const unsigned char *prefix, unsigned prefix_len, rhizome_manifest *m)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   const unsigned prefix_strlen = prefix_len * 2;
@@ -1731,12 +1732,8 @@ int rhizome_retrieve_manifest_by_prefix(const unsigned char *prefix, unsigned pr
       TEXT, like,
       END);
   if (!statement)
-    return -1;
-  int ret = 1;
-  if (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
-    ret = unpack_manifest_row(m, statement);
-  else
-    INFOF("Manifest with id prefix=`%s` not found", like);
+    return RHIZOME_BUNDLE_STATUS_ERROR;
+  enum rhizome_bundle_status ret = unpack_manifest_row(&retry, m, statement);
   sqlite3_finalize(statement);
   return ret;
 }
@@ -1789,7 +1786,6 @@ int rhizome_delete_manifest(const rhizome_bid_t *bidp)
 static int is_interesting(const char *id_hex, uint64_t version)
 {
   IN();
-  int ret=1;
 
   // do we have this bundle [or later]?
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
@@ -1800,7 +1796,9 @@ static int is_interesting(const char *id_hex, uint64_t version)
     END);
   if (!statement)
     RETURN(-1);
-  if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
+  int ret=1;
+  int r = sqlite_step_retry(&retry, statement);
+  if (r == SQLITE_ROW){
     const char *q_filehash = (const char *) sqlite3_column_text(statement, 0);
     if (q_filehash && *q_filehash) {
       rhizome_filehash_t hash;
@@ -1810,7 +1808,10 @@ static int is_interesting(const char *id_hex, uint64_t version)
 	ret=0;
     }else
       ret=0;
-  }
+  }else if(sqlite_code_ok(r))
+    ret=1;
+  else
+    ret=-1;
   sqlite3_finalize(statement);
   RETURN(ret);
   OUT();

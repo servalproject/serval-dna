@@ -83,6 +83,7 @@ static int http_request_rhizome_response(struct httpd_request *r, uint16_t resul
       rhizome_result = 403;
       break;
     case RHIZOME_BUNDLE_STATUS_ERROR:
+    case RHIZOME_BUNDLE_STATUS_BUSY:
       rhizome_result = 500;
       break;
   }
@@ -661,6 +662,7 @@ static int restful_rhizome_insert_end(struct http_request *hr)
     case RHIZOME_BUNDLE_STATUS_NO_ROOM:
     case RHIZOME_BUNDLE_STATUS_READONLY:
     case RHIZOME_BUNDLE_STATUS_ERROR:
+    case RHIZOME_BUNDLE_STATUS_BUSY:
       if (mout && mout != r->manifest)
 	rhizome_manifest_free(mout);
       rhizome_manifest_free(r->manifest);
@@ -710,23 +712,21 @@ int restful_rhizome_(httpd_request *r, const char *remainder)
     return 405;
   if ((r->manifest = rhizome_new_manifest()) == NULL)
     return 500;
-  ret = rhizome_retrieve_manifest(&bid, r->manifest);
-  if (ret == -1) {
-    rhizome_manifest_free(r->manifest);
-    r->manifest = NULL;
-    r->bundle_status = RHIZOME_BUNDLE_STATUS_ERROR;
-    return 500;
+  r->bundle_status = rhizome_retrieve_manifest(&bid, r->manifest);
+  switch(r->bundle_status){
+    case RHIZOME_BUNDLE_STATUS_SAME:
+      rhizome_authenticate_author(r->manifest);
+      break;
+    case RHIZOME_BUNDLE_STATUS_NEW:
+      rhizome_manifest_free(r->manifest);
+      r->manifest = NULL;
+      break;
+    default:
+      rhizome_manifest_free(r->manifest);
+      r->manifest = NULL;
+      return 500;
   }
-  if (ret == 0) {
-    rhizome_authenticate_author(r->manifest);
-    r->bundle_status = RHIZOME_BUNDLE_STATUS_SAME;
-  } else {
-    r->bundle_status = RHIZOME_BUNDLE_STATUS_NEW;
-    rhizome_manifest_free(r->manifest);
-    r->manifest = NULL;
-  }
-  ret = handler(r, remainder);
-  return ret;
+  return handler(r, remainder);
 }
 
 static int restful_rhizome_bid_rhm(httpd_request *r, const char *remainder)

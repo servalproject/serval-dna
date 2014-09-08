@@ -59,14 +59,15 @@ int manifest_by_prefix_page(httpd_request *r, const char *remainder)
     return 404; // not found
   if ((r->manifest = rhizome_new_manifest()) == NULL)
     return 500;
-  int ret = rhizome_retrieve_manifest_by_prefix(prefix.binary, prefix_len, r->manifest);
-  if (ret == -1)
-    return 500;
-  if (ret == 0) {
-    http_request_response_static(&r->http, 200, CONTENT_TYPE_BLOB, (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes);
-    return 1;
+  switch(rhizome_retrieve_manifest_by_prefix(prefix.binary, prefix_len, r->manifest)){
+    case RHIZOME_BUNDLE_STATUS_SAME:
+      http_request_response_static(&r->http, 200, CONTENT_TYPE_BLOB, (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes);
+      return 1;
+    case RHIZOME_BUNDLE_STATUS_NEW:
+      return 404;
+    default:
+      return 500;
   }
-  return 404;
 }
 
 int rhizome_status_page(httpd_request *r, const char *remainder)

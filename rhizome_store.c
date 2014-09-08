@@ -253,8 +253,9 @@ static enum rhizome_payload_status store_make_space(uint64_t bytes, struct rhizo
       END);
   if (!statement)
     return RHIZOME_PAYLOAD_STATUS_ERROR;
-    
-  while (db_used + bytes > limit && sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
+  
+  int r=0;
+  while (db_used + bytes > limit && (r=sqlite_step_retry(&retry, statement)) == SQLITE_ROW) {
     const char *id=(const char *) sqlite3_column_text(statement, 0);
     uint64_t length = sqlite3_column_int(statement, 1);
     time_ms_t inserttime = sqlite3_column_int64(statement, 2);
@@ -291,12 +292,15 @@ static enum rhizome_payload_status store_make_space(uint64_t bytes, struct rhizo
   
   if (db_used + bytes <= limit)
     return RHIZOME_PAYLOAD_STATUS_NEW;
-  
-  if (config.debug.rhizome)
-    DEBUGF("Not enough space for %"PRIu64". Used; %"PRIu64" = %"PRIu64" + %"PRIu64" * (%"PRIu64" - %"PRIu64"), Limit; %"PRIu64, 
-      bytes, db_used, external_bytes, db_page_size, db_page_count, db_free_page_count, limit);
-      
-  return RHIZOME_PAYLOAD_STATUS_EVICTED;
+    
+  if (sqlite_code_ok(r)){
+    if (config.debug.rhizome)
+      DEBUGF("Not enough space for %"PRIu64". Used; %"PRIu64" = %"PRIu64" + %"PRIu64" * (%"PRIu64" - %"PRIu64"), Limit; %"PRIu64, 
+	bytes, db_used, external_bytes, db_page_size, db_page_count, db_free_page_count, limit);
+	
+    return RHIZOME_PAYLOAD_STATUS_EVICTED;
+  }
+  return RHIZOME_PAYLOAD_STATUS_ERROR;
 }
 
 int rhizome_store_cleanup(struct rhizome_cleanup_report *report)

@@ -71,21 +71,25 @@ int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed)
   struct signing_key key;
   if (generate_keypair(seed, &key))
     return -1;
-  int ret = rhizome_retrieve_manifest(&key.Public, m);
-  if (ret == -1)
-    return -1;
-  if (ret == 1) {
-    // manifest not retrieved
-    rhizome_manifest_set_id(m, &key.Public); // zerofills m->cryptoSignSecret
-    m->haveSecret = NEW_BUNDLE_ID;
-  } else {
-    m->haveSecret = EXISTING_BUNDLE_ID;
+  
+  switch(rhizome_retrieve_manifest(&key.Public, m)){
+    case RHIZOME_BUNDLE_STATUS_NEW: 
+      // manifest not retrieved
+      rhizome_manifest_set_id(m, &key.Public); // zerofills m->cryptoSignSecret
+      m->haveSecret = NEW_BUNDLE_ID;
+      break;
+    case RHIZOME_BUNDLE_STATUS_SAME:
+      m->haveSecret = EXISTING_BUNDLE_ID;
+      break;
+    default:
+      return -1;
   }
+  
   bcopy(key.Private, m->cryptoSignSecret, sizeof m->cryptoSignSecret);
   // Disabled for performance, these asserts should nevertheless always hold.
   //assert(cmp_rhizome_bid_t(&m->cryptoSignPublic, &key.Public) == 0);
   //assert(memcmp(m->cryptoSignPublic.binary, m->cryptoSignSecret + RHIZOME_BUNDLE_KEY_BYTES, sizeof m->cryptoSignPublic.binary) == 0);
-  return ret;
+  return 0;
 }
 
 /* Given a Rhizome Secret (RS) and bundle ID (BID), XOR a bundle key 'bkin' (private or public) with

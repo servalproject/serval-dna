@@ -520,7 +520,7 @@ schedule_fetch(struct rhizome_fetch_slot *slot)
       // if we're fetching a journal bundle, work out how many bytes we have of a previous version
       // and therefore what range of bytes we should ask for
       slot->previous = rhizome_new_manifest();
-      if (rhizome_retrieve_manifest(&slot->manifest->cryptoSignPublic, slot->previous)){
+      if (rhizome_retrieve_manifest(&slot->manifest->cryptoSignPublic, slot->previous)!=RHIZOME_BUNDLE_STATUS_SAME){
 	rhizome_manifest_free(slot->previous);
 	slot->previous=NULL;
       // check that the new journal is valid and has some overlapping bytes

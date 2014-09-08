@@ -283,39 +283,30 @@ enum rhizome_bundle_status rhizome_manifest_check_stored(rhizome_manifest *m, rh
   rhizome_manifest *stored_m = rhizome_new_manifest();
   if (stored_m == NULL)
     return -1;
-  int n = rhizome_retrieve_manifest(&m->cryptoSignPublic, stored_m);
-  switch (n) {
-    case -1:
+  enum rhizome_bundle_status result = rhizome_retrieve_manifest(&m->cryptoSignPublic, stored_m);
+  if (result==RHIZOME_BUNDLE_STATUS_SAME){
+    const char *what = "same as";
+    if (m->version < stored_m->version) {
+      result = RHIZOME_BUNDLE_STATUS_OLD;
+      what = "older than";
+    }
+    if (m->version > stored_m->version) {
+      what = "newer than";
+      result = RHIZOME_BUNDLE_STATUS_NEW;
+    }
+    if (config.debug.rhizome)
+      DEBUGF("Bundle %s:%"PRIu64" is %s stored version %"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, what, stored_m->version);
+    if (mout)
+      *mout = stored_m;
+    else
       rhizome_manifest_free(stored_m);
-      return -1;
-    case 1:
-      if (config.debug.rhizome)
-	DEBUGF("No stored manifest with id=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
-      rhizome_manifest_free(stored_m);
-      if (mout)
-	*mout = m;
-      return RHIZOME_BUNDLE_STATUS_NEW;
-    case 0:
-      break;
-    default:
-      FATALF("rhizome_retrieve_manifest() returned %d", n);
-  }
-  if (mout)
-    *mout = stored_m;
-  else
+  }else{
     rhizome_manifest_free(stored_m);
-  enum rhizome_bundle_status result = RHIZOME_BUNDLE_STATUS_NEW;
-  const char *what = "newer than";
-  if (m->version < stored_m->version) {
-    result = RHIZOME_BUNDLE_STATUS_OLD;
-    what = "older than";
+    if (config.debug.rhizome)
+      DEBUGF("No stored manifest with id=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+    if (mout)
+      *mout = m;
   }
-  if (m->version == stored_m->version) {
-    return RHIZOME_BUNDLE_STATUS_SAME;
-    what = "same as";
-  }
-  if (config.debug.rhizome)
-    DEBUGF("Bundle %s:%"PRIu64" is %s stored version %"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, what, stored_m->version);
   return result;
 }
 
@@ -364,6 +355,7 @@ const char *rhizome_bundle_status_message(enum rhizome_bundle_status status)
     case RHIZOME_BUNDLE_STATUS_INCONSISTENT: return "Manifest inconsistent with supplied payload";
     case RHIZOME_BUNDLE_STATUS_NO_ROOM:      return "No room in store for bundle";
     case RHIZOME_BUNDLE_STATUS_READONLY:     return "Bundle is read-only";
+    case RHIZOME_BUNDLE_STATUS_BUSY:         return "Internal error";
     case RHIZOME_BUNDLE_STATUS_ERROR:        return "Internal error";
   }
   return NULL;

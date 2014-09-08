@@ -367,7 +367,7 @@ static int overlay_mdp_service_manifest_requests(struct internal_mdp_header *hea
     rhizome_manifest *m = rhizome_new_manifest();
     if (!m)
       return WHY("Unable to allocate manifest");
-    if (!rhizome_retrieve_manifest_by_prefix(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES, m)){
+    if (rhizome_retrieve_manifest_by_prefix(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES, m)==RHIZOME_BUNDLE_STATUS_SAME){
       rhizome_advertise_manifest(header->source, m);
       // pre-emptively send the payload if it will fit in a single packet
       if (m->filesize > 0 && m->filesize <= 1024)

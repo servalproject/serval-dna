@@ -125,6 +125,7 @@ static int rhizome_direct_import_end(struct http_request *hr)
   case RHIZOME_BUNDLE_STATUS_READONLY:
   case RHIZOME_BUNDLE_STATUS_DUPLICATE:
   case RHIZOME_BUNDLE_STATUS_ERROR:
+  case RHIZOME_BUNDLE_STATUS_BUSY:
     break;
   }
   http_request_simple_response(&r->http, 500, "Internal Error: Rhizome import failed");

@@ -180,7 +180,7 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
       keyring = NULL;
       return WHYF("Invalid bundle ID: %s", alloca_str_toprint(manifestid));
     }
-    if (rhizome_retrieve_manifest(&bid, m)){
+    if (rhizome_retrieve_manifest(&bid, m) != RHIZOME_BUNDLE_STATUS_SAME){
       rhizome_manifest_free(m);
       keyring_free(keyring);
       keyring = NULL;
@@ -290,6 +290,7 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
     case RHIZOME_BUNDLE_STATUS_INVALID:
     case RHIZOME_BUNDLE_STATUS_FAKE:
     case RHIZOME_BUNDLE_STATUS_NO_ROOM:
+    case RHIZOME_BUNDLE_STATUS_BUSY:
       status_valid = 1;
       break;
     // Do not use a default: label!  With no default, if a new value is added to the enum, then the
@@ -529,7 +530,13 @@ static int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_conte
     keyring = NULL;
     return WHY("Out of manifests");
   }
-  ret = rhizome_retrieve_manifest(&bid, m);
+  
+  switch(rhizome_retrieve_manifest(&bid, m)){
+    case RHIZOME_BUNDLE_STATUS_NEW: ret=1; break;
+    case RHIZOME_BUNDLE_STATUS_SAME: ret=0; break;
+    default: ret=-1; break;
+  }
+  
   if (ret==0){
     assert(m->finalised);
     if (bskhex)

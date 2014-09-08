@@ -178,7 +178,7 @@ static enum meshms_status get_database_conversations(const sid_t *my_sid, const 
     p->size = size;
   }
   sqlite3_finalize(statement);
-  if (r==-1)
+  if (!sqlite_code_ok(r))
     return MESHMS_STATUS_ERROR;
   return MESHMS_STATUS_OK;
 }
@@ -238,12 +238,14 @@ static enum meshms_status ply_read_open(struct meshms_ply_read *ply, const rhizo
   if (config.debug.meshms)
     DEBUGF("Opening ply %s", alloca_tohex_rhizome_bid_t(*bid));
   switch (rhizome_retrieve_manifest(bid, m)) {
-    case 0:
+    case RHIZOME_BUNDLE_STATUS_SAME:
       break;
-    case -1:
-      return MESHMS_STATUS_ERROR;
-    default: // bundle not found
+    case RHIZOME_BUNDLE_STATUS_NEW: // bundle not found
       return MESHMS_STATUS_PROTOCOL_FAULT;
+    case RHIZOME_BUNDLE_STATUS_BUSY:
+      // TODO
+    default:
+      return MESHMS_STATUS_ERROR;
   }
   enum rhizome_payload_status pstatus = rhizome_open_decrypt_read(m, &ply->read);
   if (config.debug.meshms)
@@ -346,12 +348,15 @@ static enum meshms_status append_meshms_buffer(const sid_t *my_sid, struct meshm
     goto end;
   if (conv->found_my_ply){
     switch (rhizome_retrieve_manifest(&conv->my_ply.bundle_id, m)) {
-      case 0:
+      case RHIZOME_BUNDLE_STATUS_SAME:
 	break;
-      case -1:
-	goto end;
-      default:
+      case RHIZOME_BUNDLE_STATUS_NEW: // bundle not found
 	status = MESHMS_STATUS_PROTOCOL_FAULT;
+	goto end;
+      case RHIZOME_BUNDLE_STATUS_BUSY:
+	// TODO
+      default:
+	status = MESHMS_STATUS_ERROR;
 	goto end;
     }
     rhizome_authenticate_author(m);

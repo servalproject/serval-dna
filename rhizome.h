@@ -364,6 +364,7 @@ enum rhizome_bundle_status {
     RHIZOME_BUNDLE_STATUS_INCONSISTENT = 6, // manifest filesize/filehash does not match supplied payload
     RHIZOME_BUNDLE_STATUS_NO_ROOM = 7, // doesn't fit; store may contain more important bundles
     RHIZOME_BUNDLE_STATUS_READONLY = 8, // cannot modify manifest; secret unknown
+    RHIZOME_BUNDLE_STATUS_BUSY = 9, // the database is currently busy
 };
 
 #define INVALID_RHIZOME_BUNDLE_STATUS ((enum rhizome_bundle_status)-2)
@@ -425,7 +426,7 @@ int rhizome_sign_hash(rhizome_manifest *m, rhizome_signature *out);
 
 __RHIZOME_INLINE int sqlite_code_ok(int code)
 {
-  return code == SQLITE_OK || code == SQLITE_DONE;
+  return code == SQLITE_OK || code == SQLITE_DONE || code == SQLITE_ROW;
 }
 
 __RHIZOME_INLINE int sqlite_code_busy(int code)
@@ -537,8 +538,8 @@ enum rhizome_bundle_status rhizome_find_duplicate(const rhizome_manifest *m, rhi
 int rhizome_manifest_to_bar(rhizome_manifest *m, rhizome_bar_t *bar);
 int rhizome_is_bar_interesting(const rhizome_bar_t *bar);
 int rhizome_is_manifest_interesting(rhizome_manifest *m);
-int rhizome_retrieve_manifest(const rhizome_bid_t *bid, rhizome_manifest *m);
-int rhizome_retrieve_manifest_by_prefix(const unsigned char *prefix, unsigned prefix_len, rhizome_manifest *m);
+enum rhizome_bundle_status rhizome_retrieve_manifest(const rhizome_bid_t *bid, rhizome_manifest *m);
+enum rhizome_bundle_status rhizome_retrieve_manifest_by_prefix(const unsigned char *prefix, unsigned prefix_len, rhizome_manifest *m);
 int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m);
 int rhizome_delete_bundle(const rhizome_bid_t *bidp);
 int rhizome_delete_manifest(const rhizome_bid_t *bidp);
