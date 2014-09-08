@@ -30,18 +30,28 @@
 struct cli_schema;
 struct cli_context;
 
+#ifdef __APPLE__
+#define SECTION(X) section("__DATA,__" X )
+#define SECTION_START(X) __asm("section$start$__DATA$__" X)
+#define SECTION_END(X) __asm("section$end$__DATA$__" X)
+#else
+#define SECTION(X) section(X)
+#define SECTION_START(X)
+#define SECTION_END(X)
+#endif
+
 #define DEFINE_CMD(FUNC, FLAGS, HELP, WORD1, ...) \
   static int FUNC(const struct cli_parsed *parsed, struct cli_context *context); \
   struct cli_schema _APPEND2(FUNC, __LINE__) \
-    __attribute__((used,aligned(sizeof(void *)),section("commands"))) = {\
+    __attribute__((used,aligned(sizeof(void *)),SECTION("commands"))) = {\
   .function = FUNC, \
   .words = {WORD1, ##__VA_ARGS__, NULL}, \
   .flags = FLAGS, \
   .description = HELP\
   }
 
-extern struct cli_schema __start_commands[];
-extern struct cli_schema __stop_commands[];
+extern struct cli_schema __start_commands[] SECTION_START("commands");
+extern struct cli_schema __stop_commands[]  SECTION_END("commands");
 
 #define CMD_COUNT (__stop_commands - __start_commands)
 
