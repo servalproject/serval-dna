@@ -502,10 +502,6 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
   if (cli_arg(parsed, "exec", &execpath, cli_absolute_path, NULL) == -1)
     RETURN(-1);
   int foregroundP = cli_arg(parsed, "foreground", NULL, NULL, NULL) == 0;
-#ifdef HAVE_JNI_H
-  if (context && context->jni_env && execpath == NULL)
-    RETURN(WHY("Must supply \"exec <path>\" arguments when invoked via JNI"));
-#endif
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     RETURN(-1);
@@ -558,11 +554,8 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
 	   _exit() is used on non-Android systems, then source code coverage does not get reported,
 	   because it relies on an atexit() callback to write the accumulated counters into .gcda
 	   files.  */
-#ifdef ANDROID
-# define EXIT_CHILD(n) _exit(n)
-#else
-# define EXIT_CHILD(n) exit(n)
-#endif
+	if (config.debug.verbose)
+	  DEBUG("Child Process");
 	// Ensure that all stdio streams are flushed before forking, so that if a child calls
 	// exit(), it will not result in any buffered output being written twice to the file
 	// descriptor.
@@ -570,7 +563,7 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
 	fflush(stderr);
 	switch (fork()) {
 	  case -1:
-	    EXIT_CHILD(WHY_perror("fork"));
+	    exit(WHY_perror("fork"));
 	  case 0: {
 	    /* Grandchild process.  Close logfile (so that it gets re-opened again on demand, with
 	       our own file pointer), disable logging to stderr (about to get redirected to
@@ -578,21 +571,23 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
 	       start a new process session so that if we are being started by an adb shell session
 	       on an Android device, then we don't receive a SIGHUP when the adb shell process ends.
 	     */
+	    if (config.debug.verbose)
+	      DEBUG("Grand-Child Process, reopening log");
 	    close_log_file();
 	    disable_log_stderr();
 	    int fd;
 	    if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
-	      EXIT_CHILD(WHY_perror("open(\"/dev/null\")"));
+	      exit(WHY_perror("open(\"/dev/null\")"));
 	    if (setsid() == -1)
-	      EXIT_CHILD(WHY_perror("setsid"));
+	      exit(WHY_perror("setsid"));
 	    if (chdir(dir) == -1)
-	      EXIT_CHILD(WHYF_perror("chdir(%s)", alloca_str_toprint(dir)));
-	    if (dup2(fd, 0) == -1)
-	      EXIT_CHILD(WHYF_perror("dup2(%d,0)", fd));
-	    if (dup2(fd, 1) == -1)
-	      EXIT_CHILD(WHYF_perror("dup2(%d,1)", fd));
-	    if (dup2(fd, 2) == -1)
-	      EXIT_CHILD(WHYF_perror("dup2(%d,2)", fd));
+	      exit(WHYF_perror("chdir(%s)", alloca_str_toprint(dir)));
+	    if (dup2(fd, STDIN_FILENO) == -1)
+	      exit(WHYF_perror("dup2(%d,stdin)", fd));
+	    if (dup2(fd, STDOUT_FILENO) == -1)
+	      exit(WHYF_perror("dup2(%d,stdout)", fd));
+	    if (dup2(fd, STDERR_FILENO) == -1)
+	      exit(WHYF_perror("dup2(%d,stderr)", fd));
 	    if (fd > 2)
 	      (void)close(fd);
 	    /* The execpath option is provided so that a JNI call to "start" can be made which
@@ -601,17 +596,18 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
 	    if (execpath) {
 	    /* Need the cast on Solaris because it defines NULL as 0L and gcc doesn't see it as a
 	       sentinal. */
-	      execl(execpath, execpath, "start", "foreground", (void *)NULL);
-	      WHYF_perror("execl(%s,\"start\",\"foreground\")", alloca_str_toprint(execpath));
-	      EXIT_CHILD(-1);
+	      if (config.debug.verbose)
+		DEBUGF("Calling execl %s start foreground", execpath);
+	      execl(execpath, "servald", "start", "foreground", (void *)NULL);
+	      WHYF_perror("execl(%s, \"servald\", \"start\", \"foreground\")", alloca_str_toprint(execpath));
+	      exit(-1);
 	    }
-	    EXIT_CHILD(server());
-	    // NOT REACHED
+	    exit(server());
+	    // UNREACHABLE
 	  }
 	}
 	// TODO wait for server_write_pid() to signal more directly?
-	EXIT_CHILD(0); // Main process is waitpid()-ing for this.
-#undef EXIT_CHILD
+	exit(0); // Main process is waitpid()-ing for this.
       }
     }
     /* Main process.  Wait for the child process to fork the grandchild and exit. */
