@@ -256,10 +256,8 @@ static int _reserve(struct http_request *r, const char **resp, struct substring 
     r->response.result_code = 500;
     return 0;
   }
-  assert(r->reserved + sizeof(char**) <= str.start);
   const char ***respp = (const char ***) r->reserved;
   char *restr = (char *)(respp + 1);
-  write_pointer((unsigned char*)respp, resp); // can't use *respp = resp; could cause SIGBUS if not aligned
   if (restr != str.start)
     memmove(restr, str.start, len);
   restr[len] = '\0';
@@ -268,6 +266,9 @@ static int _reserve(struct http_request *r, const char **resp, struct substring 
   if (r->reserved > r->received)
     r->received = r->reserved;
   assert(r->received <= r->parsed);
+  // Only store the pointer _after_ the memmove() above, to avoid overwriting part of the source
+  // string before we copy it, in the case that the source string is located within r->buffer[].
+  write_pointer((unsigned char*)respp, resp); // can't use *respp = resp; could cause SIGBUS if not aligned
   *resp = restr;
   return 1;
 }
