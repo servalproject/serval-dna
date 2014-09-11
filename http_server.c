@@ -256,7 +256,7 @@ static int _reserve(struct http_request *r, const char **resp, struct substring 
     r->response.result_code = 500;
     return 0;
   }
-  assert(r->reserved + sizeof(char**) <= str.start);
+//  assert(r->reserved + sizeof(char**) <= str.start);
   const char ***respp = (const char ***) r->reserved;
   char *restr = (char *)(respp + 1);
   write_pointer((unsigned char*)respp, resp); // can't use *respp = resp; could cause SIGBUS if not aligned
