@@ -97,18 +97,19 @@ static int add_record(int mdp_sockfd){
   uint8_t payload[MDP_MTU];
   
   ssize_t len = mdp_recv(mdp_sockfd, &header, payload, sizeof payload);
-  if (len==-1)
+  if (len == -1)
     return WHY_perror("mdp_recv");
   
   if (header.flags & (MDP_FLAG_NO_CRYPT|MDP_FLAG_NO_SIGN))
     return WHY("Only encrypted packets will be considered for publishing\n");
   
   // make sure the payload is a NULL terminated string
-  payload[len]=0;
+  assert((size_t)len < sizeof payload);
+  payload[(size_t)len]=0;
   
   const char *did=(const char *)payload;
   unsigned i=0;
-  while(i<len && payload[i] && payload[i]!='|')
+  while (i<(size_t)len && payload[i] && payload[i]!='|')
     i++;
   payload[i]=0;
   const char *name = (const char *)payload+i+1;
