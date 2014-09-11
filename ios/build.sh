@@ -15,18 +15,18 @@ fi
 PATH=/usr/local/bin:$PATH
 ARCHS="armv7 armv7s arm64 i386 x86_64"
 SDK_VERSION=7.1
-PREFIX=$(pwd)/build
 DEVELOPER=`xcode-select -print-path`
 SYMROOT="build"
 
-command -v autoreconf >/dev/null 2>&1 || { echo "In order to build this library you must have the autoreconf tool installed. It's available via homebrew."; exit 1; }
+command -v autoreconf >/dev/null 2>&1 || {
+	echo "In order to build this library you must have the autoreconf tool installed. It's available via homebrew.";
+	exit 1;
+}
 
 buildIOS()
 {
 	ARCH=$1
 	HOST=""
-  PREFIX="/tmp/servald"
-	
 	if [[ "${ARCH}" == "i386" ]]; then
 		PLATFORM="iPhoneSimulator"
 		HOST="--host=i386-apple-darwin"
@@ -35,7 +35,6 @@ buildIOS()
 	else
 		PLATFORM="iPhoneOS"
 		HOST="--host=arm-apple-darwin"
-    PREFIX="/Library/servald"
 	fi
   
 	CROSS_TOP="${DEVELOPER}/Platforms/${PLATFORM}.platform/Developer"
@@ -48,7 +47,7 @@ buildIOS()
 	echo "=> Building libserval for ${PLATFORM} ${SDK_VERSION} ${ARCH}"
 
 	LOG_PATH="${SYMROOT}/libserval-${ARCH}.log"
-	./configure $HOST --prefix $PREFIX &> "$LOG_PATH" || { echo "configure failed; see $LOG_PATH"; exit 1; }
+	./configure $HOST &> "$LOG_PATH" || { echo "configure failed; see $LOG_PATH"; exit 1; }
 
 	make libserval.a >> "$LOG_PATH" 2>&1 || { echo "make failed; see $LOG_PATH"; exit 1; }
 	cp libserval.a ${SYMROOT}/libserval-${ARCH}.a
