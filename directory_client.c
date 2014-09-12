@@ -117,6 +117,7 @@ int directory_service_init(){
       INFOF("ADD DIRECTORY SERVICE %s", alloca_tohex_sid_t(directory_service->sid));
     }
   }
+  unschedule(&directory_alarm);
   directory_update(&directory_alarm);
   return 0;
 }

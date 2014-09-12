@@ -295,7 +295,7 @@ int overlay_mdp_service_stun(struct internal_mdp_header *header, struct overlay_
     addr.inet.sin_addr.s_addr = ob_get_ui32(payload);
     addr.inet.sin_port = ob_get_ui16(payload);
     
-    if (!subscriber || (subscriber->reachable!=REACHABLE_NONE))
+    if (!subscriber || (subscriber->reachable&REACHABLE_DIRECT))
       continue;
     
     struct network_destination *destination = create_unicast_destination(&addr, NULL);

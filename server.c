@@ -655,6 +655,7 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
     sleep_ms(milliseconds);
   }
 exit:
+  serverMode = 0;
   keyring_free(keyring);
   keyring = NULL;
   RETURN(ret);
