@@ -27,5 +27,6 @@ void exit(int status)
 {
   if (config.debug.verbose)
     DEBUGF("Calling _exit(%d)", status);
+  fflush(stdout);
   _exit(status);
 }
