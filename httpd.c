@@ -358,6 +358,7 @@ int authorize_restful(struct http_request *r)
 	&& (*remainder==':' || *remainder=='\0'))
       || (strcase_startswith(r->request_header.origin, "http://127.0.0.1", &remainder)
 	&& (*remainder==':' || *remainder=='\0'))
+      || (strcase_startswith(r->request_header.origin, "file://", &remainder))
       ){
       strncpy(r->response.header.allow_origin,r->request_header.origin, sizeof r->response.header.allow_origin);
       r->response.header.allow_methods="GET, POST, OPTIONS";
