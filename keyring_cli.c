@@ -196,6 +196,39 @@ static void cli_output_identity(struct cli_context *context, const keyring_ident
   }
 }
 
+DEFINE_CMD(app_keyring_list2, 0, "List the full details of identities that can be accessed using the supplied PINs", 
+  "keyring", "list", "--full" KEYRING_PIN_OPTIONS);
+static int app_keyring_list2(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  keyring_file *k = keyring_open_instance_cli(parsed);
+  if (!k)
+    return -1;
+  unsigned cn, in;
+  for (cn = 0; cn < k->context_count; ++cn)
+    for (in = 0; in < k->contexts[cn]->identity_count; ++in){
+      const keyring_identity *id=k->contexts[cn]->identities[in];
+      unsigned i;
+      unsigned fields=0;
+      // count the number of fields that we will output
+      for (i=0;i<id->keypair_count;i++){
+	keypair *kp=id->keypairs[i];
+	if (kp->type==KEYTYPE_CRYPTOBOX || kp->type==KEYTYPE_PUBLIC_TAG)
+	  fields++;
+	if (kp->type==KEYTYPE_DID){
+	  if (strlen((char*)kp->private_key))
+	    fields++;
+	  if (strlen((char*)kp->public_key))
+	    fields++;
+	}
+      }
+      cli_field_name(context, "fields", ":");
+      cli_put_long(context, fields, "\n");
+      cli_output_identity(context, id);
+    }
+  keyring_free(k);
+  return 0;
+}
+
 DEFINE_CMD(app_keyring_add, 0,
   "Create a new identity in the keyring protected by the supplied PIN (empty PIN if not given)",
   "keyring","add" KEYRING_PIN_OPTIONS,"[<pin>]");

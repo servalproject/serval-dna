@@ -172,19 +172,22 @@ public class ServalDCommand
 		public String did;
 		public String name;
 		public SubscriberId subscriberId;
+		public Map<String, String> tags = new HashMap<String, String>();
 
 		@Override
 		public void putString(String value) {
 			if (this.columnName.equals("did"))
 				this.did = value;
-			if (this.columnName.equals("name"))
+			else if (this.columnName.equals("name"))
 				this.name = value;
-			if (this.columnName.equals("sid"))
+			else if (this.columnName.equals("sid"))
 				try {
 					this.subscriberId = new SubscriberId(value);
 				} catch (AbstractId.InvalidHexException e) {
 					e.printStackTrace();
 				}
+			else
+				tags.put(columnName, value);
 		}
 
 		@Override
@@ -223,16 +226,49 @@ public class ServalDCommand
 
 	public static int keyringList(final AsyncResult<IdentityResult> results) throws ServalDFailureException
 	{
-		return keyringList(new JniResultList<IdentityResult>(results) {
+		// FIXME, this is a little hacky as the number of tags is unknown so we don't have a fixed number of columns
+		return keyringList(new AbstractJniResults() {
+			IdentityResult id = null;
+			long fields=0;
+			String columnName;
+
 			@Override
-			public IdentityResult create() {
-				return new IdentityResult();
+			public void putBlob(byte[] value) {
+			}
+
+			@Override
+			public void setColumnName(int i, String name) {
+				columnName = name;
+			}
+
+			@Override
+			public void putLong(long value) {
+				if (columnName.equals("fields")){
+					fields=value;
+					id = new IdentityResult();
+				}
+			}
+
+			@Override
+			public void putString(String value) {
+				id.setColumnName(0, columnName);
+				id.putString(value);
+				if (fields--==0){
+					results.result(id);
+					id=null;
+				}
 			}
 		});
 	}
 
 	public static int keyringList(IJniResults results) throws ServalDFailureException{
 		return command(results, "keyring", "list");
+	}
+
+	public static IdentityResult keyringSetTag(SubscriberId sid, String tag, String value) throws ServalDFailureException {
+		IdentityResult result = new IdentityResult();
+		command(result, "keyring", "set", "tag", sid.toHex(), tag, value);
+		return result;
 	}
 
 	public static IdentityResult reverseLookup(final SubscriberId sid) throws ServalDFailureException {
