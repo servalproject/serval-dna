@@ -31,6 +31,10 @@ public class ServerControl {
 		return this.execPath;
 	}
 
+	public int getLoopbackMdpPort() {
+		return loopbackMdpPort;
+	}
+
 	private void setStatus(ServalDCommand.Status result){
 		loopbackMdpPort = result.mdpInetPort;
 		pid = result.pid;
