@@ -35,6 +35,15 @@ public abstract class AbstractMdpProtocol<T>  extends ChannelSelector.Handler {
 		socket.close();
 	}
 
+	public void rebind() throws IOException {
+		selector.unregister(this);
+		try{
+			socket.rebind();
+		}finally{
+			selector.register(this);
+		}
+	}
+
 	protected abstract void parse(MdpPacket response);
 
 	@Override

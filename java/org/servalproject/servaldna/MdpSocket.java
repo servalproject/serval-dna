@@ -51,6 +51,8 @@ public class MdpSocket{
 	public synchronized void bind(SubscriberId sid, int port) throws IOException {
 		if (loopbackMdpPort==0)
 			throw new IOException("Loopback MDP port has not been set");
+		if (sid==null)
+			throw new NullPointerException();
 		if (sid.equals(this.sid) && this.port == port)
 			return;
 		if (this.sid!=null)
@@ -78,6 +80,14 @@ public class MdpSocket{
 			}
 		}
 		this.port = packet.getLocalPort();
+	}
+
+	public void rebind() throws IOException{
+		if (this.sid==null)
+			return;
+		SubscriberId sid = this.sid;
+		this.sid=null;
+		bind(sid, this.port);
 	}
 
 	public SelectableChannel getChannel() throws IOException {
@@ -114,6 +124,7 @@ public class MdpSocket{
 				// ignore errors due to servald stopping.
 				e.printStackTrace();
 			}
+			sid = null;
 		}
 		if (channel!=null){
 			try {
