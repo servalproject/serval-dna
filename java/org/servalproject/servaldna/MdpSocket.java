@@ -67,11 +67,15 @@ public class MdpSocket{
 		channel.socket().setSoTimeout(5000);
 		// should throw MdpError on bind failures
 		receive(packet);
-		try {
-			this.sid = packet.getLocalSid();
-		} catch (AbstractId.InvalidBinaryException e) {
-			e.printStackTrace();
-			throw new MdpError(e);
+		if (sid.isBroadcast()){
+			this.sid = sid;
+		}else{
+			try {
+				this.sid = packet.getLocalSid();
+			} catch (AbstractId.InvalidBinaryException e) {
+				e.printStackTrace();
+				throw new MdpError(e);
+			}
 		}
 		this.port = packet.getLocalPort();
 	}
@@ -87,7 +91,8 @@ public class MdpSocket{
 	public void send(MdpPacket packet) throws IOException {
 		if (sid==null)
 			bind(SubscriberId.ANY, 0);
-		packet.setLocalSid(this.sid);
+		if (!this.sid.isBroadcast())
+			packet.setLocalSid(this.sid);
 		packet.setLocalPort(this.port);
 		packet.send(channel);
 	}

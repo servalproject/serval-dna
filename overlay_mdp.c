@@ -1414,11 +1414,12 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
       if ((!free_slot) && mdp_bindings[i].port==0)
 	free_slot=&mdp_bindings[i];
       
-      if (mdp_bindings[i].port == header->local.port 
-	&& mdp_bindings[i].subscriber == internal_header.source){
-	
-	binding = &mdp_bindings[i];
-	break;
+      if (mdp_bindings[i].port == header->local.port){
+	if (mdp_bindings[i].subscriber == internal_header.source){
+	  binding = &mdp_bindings[i];
+	  break;
+	}else if(!mdp_bindings[i].subscriber)
+	  binding = &mdp_bindings[i];
       }
     }
   }
@@ -1463,8 +1464,8 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
 	if (!binding
 	  || binding->internal
 	  || cmp_sockaddr(&binding->client, client)!=0){
-	  WHYF("Already bound by someone else? %s vs %s", 
-	    alloca_socket_address(&binding->client), 
+	  WHYF("That port is not bound by you %s vs %s", 
+	    binding?alloca_socket_address(&binding->client):"(none)", 
 	    alloca_socket_address(client));
 	  mdp_reply_error(client, header);
 	}
@@ -1499,7 +1500,9 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
       || !internal_header.source
       || header->local.port == 0 
       || cmp_sockaddr(&binding->client, client)!=0){
-      WHY("Can't send data packet, no matching port binding!");
+      WHYF("Can't send data packet, no matching port binding for %s:%d!", 
+	alloca_tohex_sid_t(header->local.sid),
+	header->local.port);
       mdp_reply_error(client, header);
       return;
     }

@@ -227,7 +227,7 @@ public class ServalDCommand
 	public static int keyringList(final AsyncResult<IdentityResult> results) throws ServalDFailureException
 	{
 		// FIXME, this is a little hacky as the number of tags is unknown so we don't have a fixed number of columns
-		return keyringList(new AbstractJniResults() {
+		return command(new AbstractJniResults() {
 			IdentityResult id = null;
 			long fields=0;
 			String columnName;
@@ -253,12 +253,12 @@ public class ServalDCommand
 			public void putString(String value) {
 				id.setColumnName(0, columnName);
 				id.putString(value);
-				if (fields--==0){
+				if (--fields==0){
 					results.result(id);
 					id=null;
 				}
 			}
-		});
+		}, "keyring", "list", "--full");
 	}
 
 	public static int keyringList(IJniResults results) throws ServalDFailureException{

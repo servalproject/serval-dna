@@ -13,11 +13,14 @@ public abstract class AbstractMdpProtocol<T>  extends ChannelSelector.Handler {
 	protected final AsyncResult<T> results;
 
 	public AbstractMdpProtocol(ChannelSelector selector, int loopbackMdpPort, AsyncResult<T> results) throws IOException {
-		this(selector, loopbackMdpPort, results, 0);
+		this(selector, loopbackMdpPort, results, SubscriberId.ANY, 0);
 	}
 	public AbstractMdpProtocol(ChannelSelector selector, int loopbackMdpPort, AsyncResult<T> results, int port) throws IOException {
+		this(selector, loopbackMdpPort, results, SubscriberId.ANY, port);
+	}
+	public AbstractMdpProtocol(ChannelSelector selector, int loopbackMdpPort, AsyncResult<T> results, SubscriberId sid, int port) throws IOException {
 		this.socket = new MdpSocket(loopbackMdpPort);
-		socket.bind(port);
+		socket.bind(sid, port);
 		this.selector = selector;
 		this.results = results;
 		selector.register(this);
