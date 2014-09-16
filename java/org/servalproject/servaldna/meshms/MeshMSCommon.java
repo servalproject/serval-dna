@@ -20,18 +20,19 @@
 
 package org.servalproject.servaldna.meshms;
 
+import org.servalproject.json.JSONInputException;
+import org.servalproject.json.JSONTokeniser;
+import org.servalproject.servaldna.ServalDFailureException;
+import org.servalproject.servaldna.ServalDHttpConnectionFactory;
+import org.servalproject.servaldna.ServalDInterfaceException;
+import org.servalproject.servaldna.SubscriberId;
+
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintStream;
-import java.net.URL;
 import java.net.HttpURLConnection;
-import org.servalproject.servaldna.SubscriberId;
-import org.servalproject.servaldna.ServalDHttpConnectionFactory;
-import org.servalproject.servaldna.ServalDInterfaceException;
-import org.servalproject.servaldna.ServalDFailureException;
-import org.servalproject.json.JSONTokeniser;
-import org.servalproject.json.JSONInputException;
+import java.net.URL;
 
 public class MeshMSCommon
 {
@@ -43,7 +44,7 @@ public class MeshMSCommon
 
 	protected static JSONTokeniser receiveRestfulResponse(HttpURLConnection conn, int[] expected_response_codes) throws IOException, ServalDInterfaceException, MeshMSException
 	{
-		if (!conn.getContentType().equals("application/json"))
+		if (!"application/json".equals(conn.getContentType()))
 			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
 		if (conn.getResponseCode() == HttpURLConnection.HTTP_FORBIDDEN) {
 			JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getErrorStream(), "US-ASCII"));
