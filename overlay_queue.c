@@ -373,10 +373,6 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	      frame->destinations[i].destination->unicast?"unicast":"broadcast",
 	      frame->destinations[i].destination->interface->name);
       }
-      
-      // degrade packet version if required to reach the destination
-      if (frame->packet_version > frame->next_hop->max_packet_version)
-	frame->packet_version = frame->next_hop->max_packet_version;
     }
     
     if (frame->mdp_sequence == -1){
@@ -404,6 +400,10 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  remove_destination(frame, i);
 	  continue;
 	}
+	// degrade packet version if required to reach the destination
+	if (frame->destinations[i].next_hop 
+	  && frame->packet_version > frame->destinations[i].next_hop->max_packet_version)
+	  frame->packet_version = frame->destinations[i].next_hop->max_packet_version;
 	
 	if (frame->destinations[i].transmit_time && 
 	  frame->destinations[i].transmit_time + frame->destinations[i].destination->resend_delay > now)
@@ -466,28 +466,29 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     if (frame->packet_version<1 || frame->resend<=0 || packet->seq==-1)
       will_retransmit=0;
     
-    if (overlay_frame_append_payload(&packet->context, packet->destination->encapsulation, frame, packet->buffer, will_retransmit)){
+    if (overlay_frame_append_payload(&packet->context, packet->destination->encapsulation, frame, 
+	frame->destinations[destination_index].next_hop, packet->buffer, will_retransmit)){
       // payload was not queued, delay the next attempt slightly
       frame->delay_until = now + 5;
       goto skip;
     }
     
+    frame->transmit_count++;
+    
     {
       struct packet_destination *dest = &frame->destinations[destination_index];
       dest->sent_sequence = dest->destination->sequence_number;
       dest->transmit_time = now;
+      if (debug)
+	strbuf_sprintf(debug, "%d(%s), ", frame->mdp_sequence, frame->whence.function);
+      if (config.debug.overlayframes)
+	DEBUGF("Appended payload %p, %d type %x len %zd for %s via %s", 
+	       frame, frame->mdp_sequence,
+	       frame->type, ob_position(frame->payload),
+	       frame->destination?alloca_tohex_sid_t(frame->destination->sid):"All",
+	       dest->next_hop?alloca_tohex_sid_t(dest->next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
     }
     
-    frame->transmit_count++;
-    if (debug)
-      strbuf_sprintf(debug, "%d(%s), ", frame->mdp_sequence, frame->whence.function);
-    if (config.debug.overlayframes){
-      DEBUGF("Appended payload %p, %d type %x len %zd for %s via %s", 
-	     frame, frame->mdp_sequence,
-	     frame->type, ob_position(frame->payload),
-	     frame->destination?alloca_tohex_sid_t(frame->destination->sid):"All",
-	     frame->next_hop?alloca_tohex_sid_t(frame->next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
-    }
     
     // dont retransmit if we aren't sending sequence numbers, or we've been asked not to
     if (!will_retransmit){
@@ -588,7 +589,7 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
 	  
       if (j>=0){
 	int frame_seq = frame->destinations[j].sent_sequence;
-	if (frame_seq >=0 && (frame->next_hop == neighbour || !frame->destination)){
+	if (frame_seq >=0 && (frame->destinations[j].next_hop == neighbour || !frame->destination)){
 	  int seq_delta = (ack_seq - frame_seq)&0xFF;
 	  char acked = (seq_delta==0 || (seq_delta <= 32 && ack_mask&(1<<(seq_delta-1))))?1:0;
 

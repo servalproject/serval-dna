@@ -188,8 +188,8 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface,
 int overlay_frame_process(struct overlay_interface *interface, struct overlay_frame *f);
 
 int overlay_frame_append_payload(struct decode_context *context, int encapsulation,
-				 struct overlay_frame *p, struct overlay_buffer *b,
-				 char will_retransmit);
+				 struct overlay_frame *p, struct subscriber *next_hop, 
+				 struct overlay_buffer *b, char will_retransmit);
 int overlay_packet_init_header(int packet_version, int encapsulation, 
 			       struct decode_context *context, struct overlay_buffer *buff, 
 			       char unicast, char interface, int seq);

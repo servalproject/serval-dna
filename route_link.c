@@ -1027,17 +1027,17 @@ struct link_in * get_neighbour_link(struct neighbour *neighbour, struct overlay_
 int link_add_destinations(struct overlay_frame *frame)
 {
   if (frame->destination){
-    frame->next_hop = frame->destination;
+    struct subscriber *next_hop = frame->destination;
     
     // if the destination is unreachable, but we have a reachable directory service
     // forward it through the directory service
-    if (frame->next_hop->reachable==REACHABLE_NONE
+    if (next_hop->reachable==REACHABLE_NONE
       && directory_service 
-      && frame->next_hop!=directory_service
+      && next_hop!=directory_service
       && directory_service->reachable&REACHABLE)
-      frame->next_hop = directory_service;
+      next_hop = directory_service;
     
-    if (frame->next_hop->reachable==REACHABLE_NONE){
+    if (next_hop->reachable==REACHABLE_NONE){
       // if the destination is a network neighbour, but we haven't established any viable route yet
       // we need to add all likely links so that we can send ack's and bootstrap the routing table
       struct neighbour *n = get_neighbour(frame->destination, 0);
@@ -1045,19 +1045,25 @@ int link_add_destinations(struct overlay_frame *frame)
 	struct link_out *out = n->out_links;
 	time_ms_t now = gettime_ms();
 	while(out){
-	  if (out->timeout>=now && frame->destination_count < MAX_PACKET_DESTINATIONS)
-	    frame->destinations[frame->destination_count++].destination = add_destination_ref(out->destination);
+	  if (out->timeout>=now && frame->destination_count < MAX_PACKET_DESTINATIONS){
+	    unsigned dest = frame->destination_count++;
+	    frame->destinations[dest].destination = add_destination_ref(out->destination);
+	    frame->destinations[dest].next_hop = next_hop;
+	  }
 	  out = out->_next;
 	}
       }
     }
     
-    if ((frame->next_hop->reachable&REACHABLE)==REACHABLE_INDIRECT)
-      frame->next_hop = frame->next_hop->next_hop;
+    if ((next_hop->reachable&REACHABLE)==REACHABLE_INDIRECT)
+      next_hop = next_hop->next_hop;
     
-    if (frame->next_hop->reachable&REACHABLE_DIRECT){
-      if (frame->destination_count < MAX_PACKET_DESTINATIONS)
-	frame->destinations[frame->destination_count++].destination=add_destination_ref(frame->next_hop->destination);
+    if (next_hop->reachable&REACHABLE_DIRECT){
+      if (frame->destination_count < MAX_PACKET_DESTINATIONS){
+	unsigned dest = frame->destination_count++;
+	frame->destinations[dest].destination=add_destination_ref(next_hop->destination);
+	frame->destinations[dest].next_hop = next_hop;
+      }
     }    
   }else{
     char added_interface[OVERLAY_MAX_INTERFACES];

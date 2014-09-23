@@ -35,6 +35,8 @@ struct packet_destination{
   time_ms_t transmit_time;
   // the actual out going stream for this packet
   struct network_destination *destination;
+  // next hop in the route
+  struct subscriber *next_hop;
 };
 
 struct overlay_frame {
