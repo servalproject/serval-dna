@@ -205,7 +205,7 @@ ssize_t mdp_poll_recv(int mdp_sock, time_ms_t deadline, struct mdp_header *rev_h
 int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp, int flags, int timeout_ms)
 {
   if (mdp_sockfd == -1)
-    return -1;
+    return WHY("Invalid socket descriptor");
   // Minimise frame length to save work and prevent accidental disclosure of memory contents.
   ssize_t len = overlay_mdp_relevant_bytes(mdp);
   if (len == -1)
@@ -213,7 +213,7 @@ int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp, int flags, int time
   /* Construct name of socket to send to. */
   struct socket_address addr;
   if (make_local_sockaddr(&addr, "mdp.socket") == -1)
-    return -1;
+    return WHY("Failed to make socket address");
   // Send to that socket
   set_nonblock(mdp_sockfd);
   ssize_t result = sendto(mdp_sockfd, mdp, (size_t)len, 0, &addr.addr, addr.addrlen);
@@ -437,7 +437,6 @@ ssize_t overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
       /* This formulation is used so that we don't copy any bytes after the
        end of the string, to avoid information leaks */
       len=(&mdp->error.message[0]-(char *)mdp) + strlen(mdp->error.message)+1;      
-      if (mdp->error.error) INFOF("mdp return/error code: %d:%s",mdp->error.error,mdp->error.message);
       break;
     default:
       return WHY("Illegal MDP frame type.");

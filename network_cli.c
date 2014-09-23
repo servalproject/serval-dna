@@ -278,33 +278,39 @@ static int app_trace(const struct cli_parsed *parsed, struct cli_context *contex
     return WHY("Could not bind to MDP socket");
   }
   
-  overlay_mdp_frame mdp;
-  bzero(&mdp, sizeof(mdp));
-  
-  mdp.out.src.sid = srcsid;
-  mdp.out.dst.sid = srcsid;
-  mdp.out.src.port=port;
-  mdp.out.dst.port=MDP_PORT_TRACE;
-  mdp.packetTypeAndFlags=MDP_TX;
-  struct overlay_buffer *b = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
-  ob_append_byte(b, SID_SIZE);
-  ob_append_bytes(b, srcsid.binary, SID_SIZE);
-  ob_append_byte(b, SID_SIZE);
-  ob_append_bytes(b, dstsid.binary, SID_SIZE);
+  cli_printf(context, "Tracing the network path from %s to %s", 
+	alloca_tohex_sid_t(srcsid), alloca_tohex_sid_t(dstsid));
+  cli_delim(context, "\n");
+  cli_flush(context);
+  // TODO keep sending packets till we get a response?
   int ret;
-  if (ob_overrun(b))
-    ret = WHY("overlay buffer overrun");
-  else {
+  unsigned i;
+  overlay_mdp_frame mdp;
+  for (i=0;i<10;i++){
+    bzero(&mdp, sizeof(mdp));
+    
+    mdp.out.src.sid = srcsid;
+    mdp.out.dst.sid = srcsid;
+    mdp.out.src.port=port;
+    mdp.out.dst.port=MDP_PORT_TRACE;
+    mdp.packetTypeAndFlags=MDP_TX;
+    struct overlay_buffer *b = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
+    ob_append_byte(b, SID_SIZE);
+    ob_append_bytes(b, srcsid.binary, SID_SIZE);
+    ob_append_byte(b, SID_SIZE);
+    ob_append_bytes(b, dstsid.binary, SID_SIZE);
+    if (ob_overrun(b)){
+      ret = WHY("overlay buffer overrun");
+      break;
+    }
     mdp.out.payload_length = ob_position(b);
-    cli_printf(context, "Tracing the network path from %s to %s", 
-	  alloca_tohex_sid_t(srcsid), alloca_tohex_sid_t(dstsid));
-    cli_delim(context, "\n");
-    cli_flush(context);
-    ret = overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 5000);
-    if (ret)
-      WHYF("overlay_mdp_send returned %d", ret);
+    ret = overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 500);
+    ob_free(b);
+    if (ret==0)
+      break;
   }
-  ob_free(b);
+  if (ret)
+    WHYF("overlay_mdp_send returned %d, %s", ret, mdp.error.message);
   if (ret == 0) {
     int offset=0;
     {
