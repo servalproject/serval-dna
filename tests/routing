@@ -829,9 +829,7 @@ test_unreliable_links() {
    tfw_cat --stdout --stderr
    received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
-   # note this is currently too forgiving as the route may flip
-   # we need to improve this!
-   assert [ "$received" -ge 80 ]
+   assert [ "$received" -ge 98 ]
    assert [ "$duplicates" -le 2 ]
    # make sure the path is still there.
    wait_until path_exists +A +B +C
@@ -876,9 +874,7 @@ test_unreliable_links2() {
    tfw_cat --stdout --stderr
    received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
-   # note this is currently too forgiving as the route may flip
-   # we need to improve this!
-   assert [ "$received" -ge 50 ]
+   assert [ "$received" -ge 98 ]
    assert [ "$duplicates" -le 2 ]
    wait_until --timeout=20 path_exists +A +B +C +D
    wait_until --timeout=20 path_exists +D +C +B +A
