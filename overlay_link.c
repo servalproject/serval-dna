@@ -305,10 +305,6 @@ int overlay_mdp_service_stun(struct internal_mdp_header *header, struct overlay_
 }
 
 int overlay_send_stun_request(struct subscriber *server, struct subscriber *request){
-  if ((!server) || (!request))
-    return -1;
-  if (!(server->reachable&REACHABLE))
-    return -1;
   // don't bother with a stun request if the peer is already reachable directly
   if (request->reachable&REACHABLE_DIRECT)
     return -1;
@@ -318,27 +314,67 @@ int overlay_send_stun_request(struct subscriber *server, struct subscriber *requ
     return -1;
   
   request->last_stun_request=now;
-  
-  struct internal_mdp_header header;
-  bzero(&header, sizeof header);
-  header.source = my_subscriber;
-  header.destination = server;
-  
-  header.source_port = MDP_PORT_STUN;
-  header.destination_port = MDP_PORT_STUNREQ;
-  header.qos = OQ_MESH_MANAGEMENT;
-  
-  struct overlay_buffer *payload = ob_new();
-  ob_limitsize(payload, MDP_MTU);
-  
-  overlay_address_append(NULL, payload, request);
-  if (!ob_overrun(payload)) {
-    if (config.debug.overlayrouting)
-      DEBUGF("Sending STUN request to %s", alloca_tohex_sid_t(server->sid));
-      
+  // If two people are behind the same NAT, but can't hear broadcast packets
+  // and the NAT doesn't allow internal packets to bounce back based on public addresses
+  // we need to tell the remote party all of our private addresses
+  // so we can send them an unrequested stun response to provoke a probe packet
+  if (request->reachable&REACHABLE || (server && server->reachable & REACHABLE)){
+    struct internal_mdp_header header;
+    bzero(&header, sizeof header);
+    header.source = my_subscriber;
+    header.destination = request;
+    header.source_port = MDP_PORT_STUNREQ;
+    header.destination_port = MDP_PORT_STUN;
+    header.qos = OQ_MESH_MANAGEMENT;
+    
+    struct overlay_buffer *payload = ob_new();
+    ob_limitsize(payload, MDP_MTU);
+    
+    unsigned i;
+    for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
+      if (overlay_interfaces[i].state == INTERFACE_STATE_UP 
+	&& overlay_interfaces[i].address.addr.sa_family == AF_INET){
+	
+	overlay_address_append(NULL, payload, my_subscriber);
+	ob_append_ui32(payload, overlay_interfaces[i].address.inet.sin_addr.s_addr);
+	ob_append_ui16(payload, overlay_interfaces[i].address.inet.sin_port);
+	if (ob_overrun(payload)){
+	  ob_rewind(payload);
+	  break;
+	}
+	ob_checkpoint(payload);
+      }
+    }
+    
     ob_flip(payload);
+    if (config.debug.overlayrouting)
+      DEBUGF("Sending STUN response to %s for my private addresses", alloca_tohex_sid_t(request->sid));
     overlay_send_frame(&header, payload);
+    ob_free(payload);
   }
-  ob_free(payload);
+  
+  if (server && server->reachable & REACHABLE){
+    struct internal_mdp_header header;
+    bzero(&header, sizeof header);
+    header.source = my_subscriber;
+    header.destination = server;
+    
+    header.source_port = MDP_PORT_STUN;
+    header.destination_port = MDP_PORT_STUNREQ;
+    header.qos = OQ_MESH_MANAGEMENT;
+    
+    struct overlay_buffer *payload = ob_new();
+    ob_limitsize(payload, MDP_MTU);
+    
+    overlay_address_append(NULL, payload, request);
+    if (!ob_overrun(payload)) {
+      if (config.debug.overlayrouting)
+	DEBUGF("Sending STUN request to %s", alloca_tohex_sid_t(server->sid));
+	
+      ob_flip(payload);
+      overlay_send_frame(&header, payload);
+    }
+    ob_free(payload);
+  }
   return 0;
 }

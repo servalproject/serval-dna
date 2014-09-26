@@ -190,4 +190,42 @@ test_concurrent() {
    tfw_cat A_OUT B_OUT C_OUT D_OUT E_OUT
 }
 
+doc_stun="Setup a unicast link during call establishment"
+setup_stun() {
+   configure_servald_server() {
+      executeOk_servald config \
+         set debug.overlayrouting on \
+         set debug.linkstate on \
+         set debug.verbose on \
+         set vomp.dial_timeout_ms 1000 \
+         set vomp.ring_timeout_ms 5000 \
+         set vomp.network_timeout_ms 5000 \
+         set log.console.level DEBUG \
+         set log.console.show_time on
+   }
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B +C create_single_identity
+   foreach_instance +A +B +C add_servald_interface --file 1
+   foreach_instance +A +B \
+      executeOk_servald config \
+         set interfaces.1.drop_broadcasts on
+   start_servald_instances +A +B +C
+}
+has_unicast_link() {
+   executeOk_servald route print
+   tfw_cat --stdout
+   if ! grep "^${SIDB}:UNICAST:dummy1:0*\$" $_tfw_tmp/stdout; then
+      return 1
+   fi
+}
+test_stun() {
+   set_instance +A
+   executeOk_servald route print
+   assertGrep --matches=1 $_tfw_tmp/stdout "^${SIDB}:INDIRECT::${SIDC}\$"
+   test_call_lifecycle
+   set_instance +A
+   wait_until --timeout=10 has_unicast_link
+}
+
 runTests "$@"
