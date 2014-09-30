@@ -361,7 +361,13 @@ ssize_t get_self_executable_path(char *buf, size_t len)
   return read_symlink("/proc/self/path/a.out", buf, len);
 #elif defined (__APPLE__)
   uint32_t bufsize = len;
-  return _NSGetExecutablePath(buf, &bufsize) || len == 0 ? bufsize : -1;
+  // OSX complains if the ? : operator returns fields with different signedness
+  // so we cast the uint32_t bufsize to signed.  We should really check to make
+  // sure that _NSGetExecutablePath doesn't return a value in bufsize that would
+  // be negative when cast.
+  ssize_t s = _NSGetExecutablePath(buf, &bufsize);
+  assert(((int32_t)bufsize)>=0);
+  return ( s || len == 0 ) ? (int32_t)bufsize : -1;
 #else
 #error Unable to find executable path
 #endif
