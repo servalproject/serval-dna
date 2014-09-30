@@ -49,6 +49,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define OVERLAY_INTERFACE_WIFI 2
 #define OVERLAY_INTERFACE_PACKETRADIO 3
 
+#define RADIO_TYPE_RFD900 0
+#define RADIO_TYPE_RFM69 1
+
 #define OQ_ISOCHRONOUS_VOICE 0
 #define OQ_MESH_MANAGEMENT 1
 #define OQ_ISOCHRONOUS_VIDEO 2

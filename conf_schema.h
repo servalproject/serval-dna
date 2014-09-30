@@ -458,6 +458,7 @@ ATOM(bool_t,                drop_broadcasts, 0, boolean,, "If true, drop all inc
 ATOM(bool_t,                drop_unicasts,   0, boolean,, "If true, drop all incoming unicast packets")
 ATOM(uint16_t,              drop_packets,    0, uint16_nonzero,, "Percentage of incoming packets that should be dropped for testing purposes")
 ATOM(short,                 type,            OVERLAY_INTERFACE_WIFI, interface_type,, "Type of network interface")
+ATOM(short,                 radiotype,       RADIO_TYPE_RFD900, radio_type,, "Type of packet radio interface")
 SUB_STRUCT(mdp_iftype,      mdp,)
 ATOM(bool_t,                send_broadcasts, 1, boolean,, "If false, don't send any broadcast packets")
 ATOM(bool_t,                default_route,   0, boolean,, "If true, use this interface as a default route")

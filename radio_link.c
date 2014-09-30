@@ -154,7 +154,7 @@ int radio_link_free(struct overlay_interface *interface)
 {
   if (interface->radio_link_state){
     free(interface->radio_link_state);
-    interface->radio_link_state=NULL;
+    interface->radio_link_state=NULL;  
   }
   return 0;
 }

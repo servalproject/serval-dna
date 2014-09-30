@@ -708,6 +708,39 @@ int cf_fmt_interface_type(const char **textp, const short *typep)
   return CFOK;
 }
 
+int cf_opt_radio_type(short *typep, const char *text)
+{
+  if (strcasecmp(text, "rfd900") == 0) {
+    *typep = RADIO_TYPE_RFD900;
+    return CFOK;
+  }
+  if (strcasecmp(text, "rfm69") == 0) {
+    *typep = RADIO_TYPE_RFM69;
+    return CFOK;
+  }
+  return CFINVALID;
+}
+
+int cf_fmt_radio_type(const char **textp, const short *typep)
+{
+  const char *t = NULL;
+  switch (*typep) {
+    case RADIO_TYPE_RFD900:	t = "rfd900"; break;
+    case RADIO_TYPE_RFM69:	t = "rfm69"; break;
+  }
+  if (!t)
+    return CFINVALID;
+  *textp = str_edup(t);
+  return CFOK;
+}
+
+int cf_cmp_radio_type(const short *a, const short *b)
+{
+  return *a < *b ? -1 : *a > *b ? 1 : 0;
+}
+
+
+
 int cf_cmp_interface_type(const short *a, const short *b)
 {
   return *a < *b ? -1 : *a > *b ? 1 : 0;
