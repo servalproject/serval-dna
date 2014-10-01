@@ -798,7 +798,7 @@ int vomp_dial(struct subscriber *local, struct subscriber *remote, const char *l
    and potentially handle call-routing, e.g., if it is a gateway.
    */
   if (config.debug.vomp)
-    DEBUG("Dialing");
+    DEBUGF("Dialing %s:%s", alloca_tohex_sid_t(remote->sid), remote_did);
   
   if (vomp_call_count>=VOMP_MAX_CALLS)
     return WHY("All call slots in use");
@@ -861,6 +861,8 @@ static int vomp_extract_remote_codec_list(struct vomp_call_state *call, struct o
   
   while(ob_remaining(payload)>0){
     uint8_t codec = ob_get(payload);
+    if (!codec)
+      break;
     set_codec_flag(codec, call->remote_codec_flags);
   }
   
