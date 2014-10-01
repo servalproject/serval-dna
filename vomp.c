@@ -64,7 +64,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
       // inform client about the call request
       $ CALLFROM [token] [mySid] [myDid] [TheirSid] [TheirDid]
       // Note that we may need to wait for other external processes
-      // before a phone is actually ringing 
+      // before a phone is actually ringing and we may jump straight to answering the call
       # RING [token]
       < RINGIN
   // All good, there's a phone out there ringing, you can indicate that to the user
@@ -671,9 +671,8 @@ static int vomp_update_remote_state(struct vomp_call_state *call, int new_state)
       monitor_tell_formatted(MONITOR_VOMP, "\nRINGING:%06x\n", call->local.session);
       break;
     case VOMP_STATE_INCALL:
-      if (call->remote.state==VOMP_STATE_RINGINGIN){
+      if (call->initiated_call)
 	monitor_tell_formatted(MONITOR_VOMP, "\nANSWERED:%06x\n", call->local.session);
-      }
       break;
   }
   
@@ -994,6 +993,8 @@ int vomp_mdp_received(struct internal_mdp_header *header, struct overlay_buffer 
 	  
 	if (call->initiated_call){
 	  // hey, quit it, we were trying to call you.
+	  if (config.debug.vomp)
+	    DEBUGF("Rejecting call, invalid state transition");
 	  call->rejection_reason=VOMP_REJECT_BUSY;
 	  recvr_state=VOMP_STATE_CALLENDED;
 	}else{
@@ -1012,6 +1013,8 @@ int vomp_mdp_received(struct internal_mdp_header *header, struct overlay_buffer 
 	if (call->initiated_call){
 	  recvr_state=VOMP_STATE_RINGINGOUT;
 	}else{
+	  if (config.debug.vomp)
+	    DEBUGF("Rejecting call, invalid state transition");
 	  recvr_state=VOMP_STATE_CALLENDED;
 	}
 	break;
