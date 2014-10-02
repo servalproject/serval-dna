@@ -180,12 +180,9 @@ dna_helper_close_pipes()
 int
 dna_helper_start()
 {
+  dna_helper_shutdown();
   if (!config.dna.helper.executable[0]) {
-    /* Check if we have a helper configured. If not, then set
-     dna_helper_pid to magic value of 0 so that we don't waste time
-     in future looking up the dna helper configuration value. */
     INFO("DNAHELPER none configured");
-    dna_helper_pid = 0;
     return 0;
   }
   
@@ -194,7 +191,6 @@ dna_helper_start()
   
   const char *mysid = alloca_tohex_sid_t(my_subscriber->sid);
   
-  dna_helper_close_pipes();
   int stdin_fds[2], stdout_fds[2], stderr_fds[2];
   if (pipe(stdin_fds) == -1)
     return WHY_perror("pipe");
