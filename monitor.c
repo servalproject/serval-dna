@@ -140,8 +140,10 @@ error:
   return -1;
 }
 
-int monitor_write_error(struct monitor_context *c, const char *error){
+#define monitor_write_error(C,E) _monitor_write_error(__WHENCE__, C, E)
+static int _monitor_write_error(struct __sourceloc __whence, struct monitor_context *c, const char *error){
   char msg[256];
+  WHY(error);
   snprintf(msg, sizeof(msg), "\nERROR:%s\n", error);
   write_str(c->alarm.poll.fd, msg);
   return -1;
