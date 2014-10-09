@@ -421,6 +421,7 @@ overlay_interface_init(const char *name, struct socket_address *addr,
   interface->socket_type = ifconfig->socket_type;
   interface->uartbps = ifconfig->uartbps;
   interface->ctsrts = ifconfig->ctsrts;
+  interface->radiotype = ifconfig->radiotype;
   set_destination_ref(&interface->destination, NULL);
   interface->destination = new_destination(interface, ifconfig->encapsulation);
   

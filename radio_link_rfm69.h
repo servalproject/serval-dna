@@ -52,7 +52,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 int radio_link_rfm69_free(struct overlay_interface *interface);
 int radio_link_rfm69_init(struct overlay_interface *interface);
 int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c);
-int radio_link_rfm69_callback(struct overlay_interface *interface);
+int radio_link_rfm69_tx(struct overlay_interface *interface);
 void radio_link_rfm69_state_html(struct strbuf *b, struct overlay_interface *interface);
 int radio_link_rfm69_is_busy(struct overlay_interface *interface);
 int radio_link_rfm69_queue_packet(struct overlay_interface *interface, struct overlay_buffer *buffer);

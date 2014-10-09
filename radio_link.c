@@ -62,7 +62,7 @@ int radio_link_free(struct overlay_interface *interface)
       return radio_link_rfd900_free(interface);
       break;
     case RADIO_TYPE_RFM69:
-//		return radio_link_rfm69_free(interface);
+        return radio_link_rfm69_free(interface);
       break;
     }
   return 0;
@@ -77,7 +77,7 @@ int radio_link_init(struct overlay_interface *interface)
       return radio_link_rfd900_init(interface);
       break;
     case RADIO_TYPE_RFM69:
-//		return radio_link_rfm69_init(interface);
+        return radio_link_rfm69_init(interface);
       break;
     }
   return 0;
@@ -92,7 +92,7 @@ void radio_link_state_html(struct strbuf *b, struct overlay_interface *interface
       radio_link_rfd900_state_html(b, interface);
       break;
     case RADIO_TYPE_RFM69:
-//		radio_link_rfm69_state_html(b, interface);
+      radio_link_rfm69_state_html(b, interface);
       break;
     }
 }
@@ -106,7 +106,7 @@ int radio_link_is_busy(struct overlay_interface *interface)
       return radio_link_rfd900_is_busy(interface);
       break;
     case RADIO_TYPE_RFM69:
-//		return radio_link_rfm69_is_busy(interface);
+      return radio_link_rfm69_is_busy(interface);
       break;
     }
   return 0;
@@ -121,7 +121,7 @@ int radio_link_queue_packet(struct overlay_interface *interface, struct overlay_
       return radio_link_rfd900_queue_packet(interface, buffer);
       break;
     case RADIO_TYPE_RFM69:
-//		return radio_link_rfm69_queue_packet(interface, buffer);
+      return radio_link_rfm69_queue_packet(interface, buffer);
       break;
     }
   return 0;
@@ -138,7 +138,7 @@ int radio_link_tx(struct overlay_interface *interface)
       return radio_link_rfd900_tx(interface);
       break;
     case RADIO_TYPE_RFM69:
-//		return radio_link_rfm69_callback(interface);
+      return radio_link_rfm69_tx(interface);
       break;
     }
   return 0;
@@ -155,7 +155,7 @@ int radio_link_decode(struct overlay_interface *interface, uint8_t c)
       return radio_link_rfd900_decode(interface, c);
       break;
     case RADIO_TYPE_RFM69:
-//		return radio_link_rfm69_decode(interface, c);
+      return radio_link_rfm69_decode(interface, c);
       break;
     }
   RETURN(0);
