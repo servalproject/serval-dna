@@ -49,10 +49,33 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define RFM69_LINK_MTU 60
 
+//main states
+#define RFM69_STATE_IDLE 0
+#define RFM69_STATE_RX 1
+#define RFM69_STATE_TX 2
+#define RFM69_STATE_WAIT_OK 3
+#define RFM69_STATE_CONFIGURATION 4
+#define RFM69_STATE_WAIT_COMMAND_OK 5
+#define RFM69_STATE_ERROR 6
+
+//receive parser states
+#define RFM69_P_STATE_WAIT_FOR_START 0
+#define RFM69_P_STATE_START_FOUND 1
+#define RFM69_P_STATE_RSSI_FOUND 2
+#define RFM69_P_STATE_READING 3
+
+#define PACKET_START '{'
+#define PACKET_END '}'
+
+//MDP_MTU / RFM69_LINK_MTU = 21
+#define RFM69_MAX_PACKET_BLOCK_COUNT 21
+
+#define suppress_warning(X) if(X){}
+
 int radio_link_rfm69_free(struct overlay_interface *interface);
 int radio_link_rfm69_init(struct overlay_interface *interface);
 int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c);
-int radio_link_rfm69_tx(struct overlay_interface *interface);
+int radio_link_rfm69_callback(struct overlay_interface *interface);
 void radio_link_rfm69_state_html(struct strbuf *b, struct overlay_interface *interface);
 int radio_link_rfm69_is_busy(struct overlay_interface *interface);
 int radio_link_rfm69_queue_packet(struct overlay_interface *interface, struct overlay_buffer *buffer);

@@ -129,7 +129,7 @@ int radio_link_queue_packet(struct overlay_interface *interface, struct overlay_
 
 // write a new link layer packet to interface->txbuffer
 // consuming more bytes from the next interface->tx_packet if required
-int radio_link_tx(struct overlay_interface *interface)
+int radio_link_callback(struct overlay_interface *interface)
 {
   switch (interface->radiotype)
     {
@@ -138,7 +138,7 @@ int radio_link_tx(struct overlay_interface *interface)
       return radio_link_rfd900_tx(interface);
       break;
     case RADIO_TYPE_RFM69:
-      return radio_link_rfm69_tx(interface);
+      return radio_link_rfm69_callback(interface);
       break;
     }
   return 0;

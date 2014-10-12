@@ -52,28 +52,13 @@
 #include "radio_link.h"
 #include "radio_link_rfm69.h"
 
-//main states
-#define RFM69_STATE_IDLE 0
-#define RFM69_STATE_RX 1
-#define RFM69_STATE_TX 2
-#define RFM69_STATE_WAIT_OK 3
-
-//receive parser states
-#define RFM69_P_STATE_WAIT_FOR_START 0
-#define RFM69_P_STATE_START_FOUND 1
-#define RFM69_P_STATE_RSSI_FOUND 2
-#define RFM69_P_STATE_READING 3
-
-#define PACKET_START '{'
-#define PACKET_END '}'
-
-//MDP_MTU / RFM69_LINK_MTU = 21
-#define RFM69_MAX_PACKET_BLOCK_COUNT 21
-
-#define suppress_warning(X) if(X){}
-
 int main_state = RFM69_STATE_IDLE;
 int parser_state = RFM69_P_STATE_WAIT_FOR_START;
+
+uint8_t modemmode;
+uint8_t txpower;
+float frequency;
+uint8_t key[16];
 
 int
 radio_link_rfm69_free(struct overlay_interface *interface)
@@ -86,12 +71,92 @@ radio_link_rfm69_free(struct overlay_interface *interface)
   return 0;
 }
 
+//void radio_link_rfm69_command_timeout(struct overlay_interface *interface)
+//{
+//  //we reached this point because we hit the timeout while waiting for "OK" after a command
+//  WHY("Was not able to get an OK from the radio.");
+//  main_state = RFM69_STATE_ERROR;
+//}
+
+//void radio_link_rfm69_command_to_radio(struct overlay_interface *interface)
+//{
+//  IN();
+//
+//  unschedule(&interface->alarm);
+//  interface->alarm.alarm = 0;
+//
+//  struct radio_link_state *rstate = interface->radio_link_state;
+//
+//  int written = 0;
+//
+//  //try to write (more) data of the command to the radio
+//  while (rstate->tx_bytes)
+//    {
+//      if (config.debug.radio_link)
+//        DEBUGF("Try to write %d bytes to radio...", rstate->tx_bytes);
+//      written = write(interface->alarm.poll.fd, &rstate->txbuffer[rstate->tx_pos], rstate->tx_bytes);
+//      if (config.debug.radio_link)
+//        DEBUGF("Was able to write %d bytes.", written);
+//
+//      //was there a problem to write all the data (command) straight to the radio?
+//      //(was the OS serial buffer full?)
+//      if (written <= 0)
+//        {
+//          //ask the scheduler to call back if there is a chance to write more data
+//          //(there is a bit of space in the OS serial buffer again)
+//          interface->alarm.poll.events |= POLLOUT;
+//          if (config.debug.radio_link)
+//            DEBUG("Tell scheduler to call back if there is a chance to write more of the command.");
+//
+//          //stop writing for now but set watch
+//          watch(&interface->alarm);
+//          RETURNVOID;
+//        }
+//
+//      //update the count of data (packet command) we have written to the radio
+//      rstate->tx_bytes -= written;
+//      rstate->tx_pos += written;
+//    }
+//
+//  //tell the scheduler to stop calling us if there space in the buffer
+//  interface->alarm.poll.events &= ~POLLOUT;
+//
+//  //packet command is written
+//
+//  //cleanup
+//  rstate->tx_bytes = 0;
+//  rstate->tx_pos = 0;
+//
+//  //tell the scheduler to call us in 2 sec.
+//  //if the state is still WAIT_OK we won't wait
+//  //any longer and give up
+//  interface->alarm.alarm = gettime_ms() + 2000;
+//  schedule(&interface->alarm);
+//
+//  main_state = RFM69_STATE_WAIT_COMMAND_OK;
+//  watch(&interface->alarm);
+//  OUT();
+//}
+
+//int
+//radio_link_rfm69_read_configuration(struct overlay_interface *interface)
+//{
+//
+//}
+
 int
 radio_link_rfm69_init(struct overlay_interface *interface)
 {
   interface->radio_link_state = emalloc_zero(sizeof(struct radio_link_state));
+  struct radio_link_state *rstate = interface->radio_link_state;
+
+  radio_link_rfm69_cleanup_and_idle_state(interface);
 
   //TODO: send AT commands to setup radio
+  //TODO: read current configuration
+//  sprintf(rstate->txbuffer, "ATC\n");
+//  rstate->tx_pos = 0;
+//  rstate->tx_bytes = 4;
 
   return 0;
 }
@@ -130,7 +195,7 @@ radio_link_rfm69_queue_packet(struct overlay_interface *interface,
   ob_flip(buffer);
   link_state->tx_packet = buffer;
   main_state = RFM69_STATE_TX;
-  radio_link_rfm69_tx(interface);
+  radio_link_rfm69_callback(interface);
 
   return 0;
 }
@@ -145,7 +210,9 @@ radio_link_rfm69_cleanup_and_idle_state(struct overlay_interface *interface)
   parser_state = RFM69_P_STATE_WAIT_FOR_START;
 
   //drop the buffers (cleanup)
-  ob_free(rstate->tx_packet);
+  if(rstate->tx_packet){
+      ob_free(rstate->tx_packet);
+  }
   rstate->tx_packet = NULL;
 
   rstate->tx_bytes = 0;
@@ -370,6 +437,7 @@ radio_link_rfm69_process_ok(struct overlay_interface *interface, uint8_t c)
     {
       //TODO: tell the scheduler to call back the transmission method.
       interface->alarm.alarm = gettime_ms();
+      schedule(&interface->alarm);
       main_state = RFM69_STATE_TX;
     }
   OUT();
@@ -503,6 +571,9 @@ radio_link_rfm69_send_packet(struct overlay_interface *interface)
       rstate->payload_offset = 0;
       rstate->payload_start = 0;
 
+      //tell the scheduler to call us in 2 sec.
+      //it the state is still WAIT_OK we won't wait
+      //any longer and give up
       interface->alarm.alarm = gettime_ms() + 2000;
       schedule(&interface->alarm);
 
@@ -514,9 +585,9 @@ radio_link_rfm69_send_packet(struct overlay_interface *interface)
   OUT();
 }
 
-// write a new link layer packet to interface->txbuffer
+//state machine callback function
 int
-radio_link_rfm69_tx(struct overlay_interface *interface)
+radio_link_rfm69_callback(struct overlay_interface *interface)
 {
   IN();
   switch (main_state)
@@ -528,8 +599,14 @@ radio_link_rfm69_tx(struct overlay_interface *interface)
       break;
     case RFM69_STATE_WAIT_OK:
       //this should only happen if the a timeout occurred while waiting for "OK"
+      //hint: it could mean there was a packet received while waiting for the OK
+      //(so we should give up)
       radio_link_rfm69_cleanup_and_idle_state(interface);
       break;
+//    case RFM69_STATE_WAIT_COMMAND_OK:
+//    case RFM69_STATE_CONFIGURATION:
+//      radio_link_rfm69_command_to_radio(interface);
+//      break;
     default:
       WHYF("TX was called in a incorrect state.");
       break;

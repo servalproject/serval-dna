@@ -754,7 +754,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     
     switch(interface->socket_type){
       case SOCK_STREAM:
-	radio_link_tx(interface);
+	radio_link_callback(interface);
 	return;
       case SOCK_DGRAM:
 	break;
@@ -775,7 +775,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
   if (alarm->poll.revents & POLLOUT){
     switch(interface->socket_type){
       case SOCK_STREAM:
-	radio_link_tx(interface);
+	radio_link_callback(interface);
 	return;
       case SOCK_DGRAM:
       case SOCK_FILE:
@@ -793,7 +793,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
 	interface_read_stream(interface);
 	// if we read a valid heartbeat packet, we may be able to write more bytes now.
 	if (interface->state==INTERFACE_STATE_UP){
-	  radio_link_tx(interface);
+	  radio_link_callback(interface);
 	  return;
 	}
 	break;
