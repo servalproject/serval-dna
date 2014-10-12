@@ -152,10 +152,10 @@ int radio_link_decode(struct overlay_interface *interface, uint8_t c)
     {
     default:
     case RADIO_TYPE_RFD900:
-      return radio_link_rfd900_decode(interface, c);
+      RETURN(radio_link_rfd900_decode(interface, c));
       break;
     case RADIO_TYPE_RFM69:
-      return radio_link_rfm69_decode(interface, c);
+      RETURN(radio_link_rfm69_decode(interface, c));
       break;
     }
   RETURN(0);

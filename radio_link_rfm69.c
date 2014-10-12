@@ -484,8 +484,6 @@ void radio_link_rfm69_send_packet(struct overlay_interface *interface)
 int radio_link_rfm69_callback(struct overlay_interface *interface)
 {
   IN();
-  DEBUG("in here");
-  DEBUGF("main_state: %d", main_state);
   switch (main_state)
     {
     case RFM69_STATE_IDLE:
@@ -499,6 +497,9 @@ int radio_link_rfm69_callback(struct overlay_interface *interface)
       //(so we should give up)
       radio_link_rfm69_cleanup_and_idle_state(interface);
       break;
+    case RFM69_STATE_RX:
+      DEBUG("Callback in RX_STATE.");
+      break;
     default:
       WHYF("TX was called in a incorrect state.");
       break;
@@ -509,7 +510,6 @@ int radio_link_rfm69_callback(struct overlay_interface *interface)
 int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c)
 {
   IN();
-  DEBUGF("main_state: %d, c:\t%c", main_state, c);
   struct radio_link_state *rstate = interface->radio_link_state;
 
   switch (main_state)
