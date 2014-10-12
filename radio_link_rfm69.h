@@ -80,4 +80,6 @@ void radio_link_rfm69_state_html(struct strbuf *b, struct overlay_interface *int
 int radio_link_rfm69_is_busy(struct overlay_interface *interface);
 int radio_link_rfm69_queue_packet(struct overlay_interface *interface, struct overlay_buffer *buffer);
 
+void radio_link_rfm69_cleanup_and_idle_state(struct overlay_interface *interface);
+
 #endif //__SERVAL_DNA___RADIO_LINK_RFM69_H

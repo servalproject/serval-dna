@@ -75,6 +75,7 @@ int radio_link_rfm69_init(struct overlay_interface *interface)
 {
   IN();
   interface->radio_link_state = emalloc_zero(sizeof(struct radio_link_state));
+  radio_link_rfm69_cleanup_and_idle_state(interface);
   RETURN(0);
 }
 
@@ -126,7 +127,9 @@ void radio_link_rfm69_cleanup_and_idle_state(struct overlay_interface *interface
   parser_state = RFM69_P_STATE_WAIT_FOR_START;
 
   //drop the buffers (cleanup)
-  ob_free(rstate->tx_packet);
+  if(rstate->tx_packet){
+      ob_free(rstate->tx_packet);
+  }
   rstate->tx_packet = NULL;
 
   rstate->tx_bytes = 0;
@@ -160,10 +163,10 @@ void radio_link_rfm69_assemble_mdp_packet(struct overlay_interface *interface)
   //is this the start packet?
   if (rstate->packet_length == 0)
     {
-      //start packet format: <count of packets>
+      //start packet format: <start><rssi><length><count of packets><end>
       if (rstate->payload_length == 1)
         {
-          rstate->seq = rstate->payload[0];
+          rstate->seq = rstate->payload[3];
 
           if (rstate->seq > RFM69_MAX_PACKET_BLOCK_COUNT)
             {
@@ -182,10 +185,11 @@ void radio_link_rfm69_assemble_mdp_packet(struct overlay_interface *interface)
         }
     }
 
+  //packet format: <start><rssi><length><data><end>
   //inner data format: <sequence number (packets remaining)><data>
 
   //is the sequence number correct?
-  if (rstate->seq != rstate->payload[0])
+  if (rstate->seq != rstate->payload[3])
     {
       //NO!
       if (config.debug.radio_link)
@@ -195,8 +199,8 @@ void radio_link_rfm69_assemble_mdp_packet(struct overlay_interface *interface)
     }
 
   //bcopy(src, dst, len);
-  //first byte is the seq#, so miss that out
-  bcopy(&rstate->payload[1], &rstate->dst[rstate->packet_length], rstate->payload_length - 1);
+  //first bytes are <start><rssi><length<sequence number (packets remaining)>, so miss them out
+  bcopy(&rstate->payload[3], &rstate->dst[rstate->packet_length], rstate->payload_length - 1);
   rstate->packet_length += rstate->payload_length - 1;
 
   //update the seq#
