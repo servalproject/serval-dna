@@ -49,6 +49,8 @@ ifdef SERVALD_WRAP
   include $(CLEAR_VARS)
   LOCAL_SRC_FILES:= servalwrap.c
   LOCAL_MODULE:= servald
+  LOCAL_CFLAGS += -fPIE
+  LOCAL_LDFLAGS += -fPIE -pie
   include $(BUILD_EXECUTABLE)
 endif
 
@@ -60,5 +62,7 @@ ifdef SERVALD_SIMPLE
   LOCAL_LDLIBS := $(SERVALD_LOCAL_LDLIBS)
   LOCAL_STATIC_LIBRARIES := $(SERVALD_LOCAL_STATIC_LIBRARIES)
   LOCAL_MODULE:= servaldsimple
+  LOCAL_CFLAGS += -fPIE
+  LOCAL_LDFLAGS += -fPIE -pie
   include $(BUILD_EXECUTABLE)
 endif
