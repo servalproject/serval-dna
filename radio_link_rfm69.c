@@ -48,7 +48,6 @@
 #include "conf.h"
 #include "overlay_buffer.h"
 #include "overlay_interface.h"
-#include "golay.h"
 #include "radio_link.h"
 #include "radio_link_rfm69.h"
 
@@ -120,10 +119,10 @@ int radio_link_rfm69_free(struct overlay_interface *interface)
 {
   IN();
   if (interface->radio_link_state)
-    {
+  {
       free(interface->radio_link_state);
       interface->radio_link_state = NULL;
-    }
+  }
   RETURN(0);
 }
 
@@ -149,7 +148,7 @@ int radio_link_rfm69_is_busy(struct overlay_interface *interface)
 {
   IN();
   if (config.debug.radio_link)
-    DEBUGF("busy: %d", ((main_state != RFM69_STATE_IDLE) || (!interface->radio_link_state->version[0])) ? 1 : 0);
+    DEBUGF("busy: %d", ((main_state != RFM69_STATE_IDLE) || (!interface->radio_link_state->version[0])));
   RETURN ((main_state != RFM69_STATE_IDLE) || (!interface->radio_link_state->version[0]));
 }
 
@@ -159,14 +158,10 @@ int radio_link_rfm69_queue_packet(struct overlay_interface *interface, struct ov
   struct radio_link_state *link_state = interface->radio_link_state;
 
   if (config.debug.radio_link)
-    DEBUG("Palim !!!!");
-  RETURN(0);
+    DEBUG("A new MDP packet is tried to be queued.");
 
   if (!link_state->version[0])
   {
-      interface->alarm.poll.events &= ~POLLOUT;
-      watch(&interface->alarm);
-
       ob_free(buffer);
       RETURN(WHYF("Cannot use the interface until the version string was received to make sure the radio is working."));
   }
@@ -179,6 +174,7 @@ int radio_link_rfm69_queue_packet(struct overlay_interface *interface, struct ov
 
   if (config.debug.radio_link)
     DEBUG("Got a new MDP packet. Will try to send it.");
+
   // prepare the buffer for reading
   ob_flip(buffer);
   link_state->tx_packet = buffer;
@@ -202,7 +198,8 @@ void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *interface)
   struct radio_link_state *rstate = interface->radio_link_state;
 
   if (config.debug.radio_link)
-    DEBUG("TROLOLO.");
+    DEBUG("Will send command.");
+
   //wait for radio init (version string detected)
   if(!rstate->version[0])
   {
@@ -215,6 +212,7 @@ void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *interface)
   //busy?
   if(radio_link_rfm69_send_cmd_with_timeout_result == 2)
   {
+      WHY("Busy with another command.");
       RETURNVOID;
   }
   radio_link_rfm69_send_cmd_with_timeout_result = 2;
@@ -237,11 +235,11 @@ void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *interface)
           //ask the scheduler to call back if there is a chance to write more data
           //(there is a bit of space in the OS serial buffer again)
           interface->alarm.poll.events |= POLLOUT;
+
           if (config.debug.radio_link)
             DEBUG("Tell scheduler to call back if there is a chance to write more of the command.");
 
           //stop writing for now but set watch
-          schedule(&radio_link_rfm69_send_cmd_alarm);
           watch(&interface->alarm);
           RETURNVOID;
       }
@@ -269,8 +267,11 @@ void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *interface)
 
   //set timeout
   radio_link_rfm69_send_cmd_alarm.alarm = gettime_ms() + RFM69_CMD_TIMEOUT;
-  watch(&interface->alarm);
+  if(is_scheduled(&radio_link_rfm69_send_cmd_alarm)) {
+      unschedule(&radio_link_rfm69_send_cmd_alarm);
+  }
   schedule(&radio_link_rfm69_send_cmd_alarm);
+  watch(&interface->alarm);
   RETURNVOID;
 }
 
@@ -320,10 +321,6 @@ void radio_link_rfm69_assemble_mdp_packet(struct overlay_interface *interface)
   //is this the start packet?
   if (rstate->packet_length == 0 && rstate->seq == 0)
   {
-      rstate->last_packet = gettime_ms();
-      interface->alarm.alarm = rstate->last_packet + 1000;
-      schedule(&interface->alarm);
-
       //start packet format: <rssi><length><count of packets>
       if (rstate->payload_length == 1)
       {
@@ -460,14 +457,18 @@ void radio_link_rfm69_send_packet(struct overlay_interface *interface)
   struct radio_link_state *rstate = interface->radio_link_state;
 
   if (config.debug.radio_link)
-    DEBUG("TXTXTX");
+    DEBUG("Will try to send the MDP packet.");
 
   //last command OK?
   if(radio_link_rfm69_send_cmd_with_timeout_result == 1)
   {
+      if (config.debug.radio_link)
+        DEBUG("Packet command was successful.");
       //everything done?
       if (ob_remaining(rstate->tx_packet) == 0)
       {
+          if (config.debug.radio_link)
+            DEBUG("Finished to send MDP packet.");
           radio_link_rfm69_cleanup_and_idle_state(interface);
           RETURNVOID;
       }
@@ -498,7 +499,7 @@ int radio_link_rfm69_callback(struct overlay_interface *interface)
   struct radio_link_state *rstate = interface->radio_link_state;
 
   if (config.debug.radio_link)
-    DEBUGF("main_state: %d", main_state);
+    DEBUGF("Radio callback was called with state ID %d", main_state);
 
   if (!rstate->version[0])
   {
@@ -506,7 +507,7 @@ int radio_link_rfm69_callback(struct overlay_interface *interface)
       watch(&interface->alarm);
 
       if (config.debug.radio_link)
-        DEBUG("NO VERSION STRING YET.");
+        DEBUG("Radio is not ready. No version string received yet.");
       //no version string received, so radio is not up yet
 
       RETURN(0);
@@ -553,6 +554,9 @@ int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c)
   //buffer full?
   if(inputPosition == RFM69_MAX_INPUT_LENGTH - 1)
   {
+      if (config.debug.radio_link)
+        DEBUG("Read line buffer was full. Had to drop the first byte.");
+
       //drop one byte
       bcopy(&inputBuffer[1], inputBuffer, RFM69_MAX_INPUT_LENGTH - 1);
   }
@@ -569,11 +573,12 @@ int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c)
           main_state = RFM69_STATE_RX;
           radio_link_rfm69_rx_timeout_result = 1;
 
-          //set timeout
+          //reset timeout
           if(is_scheduled(&radio_link_rfm69_rx_timeout_alarm)) {
               unschedule(&radio_link_rfm69_rx_timeout_alarm);
           }
 
+          //set new timeout
           radio_link_rfm69_rx_timeout_alarm.alarm = gettime_ms() + RFM69_RX_TIMEOUT;
           schedule(&radio_link_rfm69_rx_timeout_alarm);
 
@@ -622,9 +627,7 @@ int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c)
           strbuf_sprintf(b, "%s", inputBuffer);
 
           if (config.debug.radio_link)
-          {
-              DEBUGF("Got the version string '%s'", rstate->version);
-          }
+            DEBUGF("Got the version string '%s'", rstate->version);
           overlay_queue_schedule_next(gettime_ms());
       }
       else
