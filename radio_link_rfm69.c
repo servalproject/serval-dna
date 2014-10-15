@@ -52,6 +52,23 @@
 #include "radio_link.h"
 #include "radio_link_rfm69.h"
 
+//main states
+#define RFM69_STATE_IDLE 0
+#define RFM69_STATE_RX 1
+#define RFM69_STATE_TX 2
+#define RFM69_STATE_WAIT_OK 3
+#define RFM69_STATE_CONFIGURATION 4
+#define RFM69_STATE_WAIT_COMMAND_OK 5
+#define RFM69_STATE_ERROR 6
+
+#define PACKET_START '{'
+#define PACKET_END '}'
+
+//MDP_MTU / RFM69_LINK_MTU = 21
+#define RFM69_MAX_PACKET_BLOCK_COUNT 21
+
+#define suppress_warning(X) if(X){}
+
 int main_state = RFM69_STATE_IDLE;
 
 uint8_t modemmode;
@@ -63,6 +80,41 @@ uint8_t key[16];
 uint8_t inputBuffer[RFM69_MAX_INPUT_LENGTH];
 uint8_t inputPosition;
 
+void radio_link_rfm69_cleanup_and_idle_state(struct overlay_interface *interface);
+
+//maximal time (in ms) to wait for an OK
+#define RFM69_CMD_TIMEOUT 2000
+
+//maximal time (in ms) to wait for a transmission to be received
+#define RFM69_RX_TIMEOUT 2000
+
+int8_t radio_link_rfm69_rx_timeout_result;
+void radio_link_rfm69_rx_timeout_callback(struct sched_ent *);
+struct profile_total _stats_radio_link_rfm69_rx_timeout_callback = {.name="radio_link_rfm69_rx_timeout_callback",};
+struct sched_ent radio_link_rfm69_rx_timeout_alarm = {
+    .poll={.fd=-1},
+    ._poll_index=-1,
+    .run_after=(9223372036854775807LL),
+    .alarm=(9223372036854775807LL),
+    .deadline=(9223372036854775807LL),
+    .stats = &_stats_radio_link_rfm69_rx_timeout_callback,
+    .function=radio_link_rfm69_rx_timeout_callback,
+};
+
+void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *);
+
+int8_t radio_link_rfm69_send_cmd_with_timeout_result = 1;
+void radio_link_rfm69_send_cmd_with_timeout_callback(struct sched_ent *);
+struct profile_total _stats_radio_link_rfm69_send_cmd_with_timeout_callback = {.name="radio_link_rfm69_send_cmd_with_timeout_callback",};
+struct sched_ent radio_link_rfm69_send_cmd_alarm = {
+    .poll={.fd=-1},
+    ._poll_index=-1,
+    .run_after=(9223372036854775807LL),
+    .alarm=(9223372036854775807LL),
+    .deadline=(9223372036854775807LL),
+    .stats = &_stats_radio_link_rfm69_send_cmd_with_timeout_callback,
+    .function=radio_link_rfm69_send_cmd_with_timeout_callback,
+};
 
 int radio_link_rfm69_free(struct overlay_interface *interface)
 {
