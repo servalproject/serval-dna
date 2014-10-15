@@ -55,10 +55,9 @@
 #define RFM69_STATE_IDLE 0
 #define RFM69_STATE_RX 1
 #define RFM69_STATE_TX 2
-#define RFM69_STATE_WAIT_OK 3
+#define RFM69_STATE_SEND_COMMAND 3
 #define RFM69_STATE_CONFIGURATION 4
 #define RFM69_STATE_WAIT_COMMAND_OK 5
-#define RFM69_STATE_ERROR 6
 
 #define PACKET_START '{'
 #define PACKET_END '}'
@@ -85,7 +84,8 @@ void radio_link_rfm69_cleanup_and_idle_state(struct overlay_interface *interface
 #define RFM69_CMD_TIMEOUT 2000
 
 //maximal time (in ms) to wait for a transmission to be received
-#define RFM69_RX_TIMEOUT 2000
+#define RFM69_RX_TIMEOUT 5000
+#define RFM69_HEARTBEAT 500
 
 int8_t radio_link_rfm69_rx_timeout_result;
 void radio_link_rfm69_rx_timeout_callback(struct sched_ent *);
@@ -102,7 +102,7 @@ struct sched_ent radio_link_rfm69_rx_timeout_alarm = {
 
 void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *);
 
-int8_t radio_link_rfm69_send_cmd_with_timeout_result = 1;
+int8_t radio_link_rfm69_send_cmd_with_timeout_result = 0;
 void radio_link_rfm69_send_cmd_with_timeout_callback(struct sched_ent *);
 struct profile_total _stats_radio_link_rfm69_send_cmd_with_timeout_callback = {.name="radio_link_rfm69_send_cmd_with_timeout_callback",};
 struct sched_ent radio_link_rfm69_send_cmd_alarm = {
@@ -147,9 +147,10 @@ void radio_link_rfm69_state_html(struct strbuf *b, struct overlay_interface *int
 int radio_link_rfm69_is_busy(struct overlay_interface *interface)
 {
   IN();
+  uint8_t result = ((main_state != RFM69_STATE_IDLE) || (!interface->radio_link_state->version[0]));
   if (config.debug.radio_link)
-    DEBUGF("busy: %d", ((main_state != RFM69_STATE_IDLE) || (!interface->radio_link_state->version[0])));
-  RETURN ((main_state != RFM69_STATE_IDLE) || (!interface->radio_link_state->version[0]));
+    DEBUGF("busy: %d", result);
+  RETURN(result);
 }
 
 int radio_link_rfm69_queue_packet(struct overlay_interface *interface, struct overlay_buffer *buffer)
@@ -197,9 +198,6 @@ void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *interface)
   IN();
   struct radio_link_state *rstate = interface->radio_link_state;
 
-  if (config.debug.radio_link)
-    DEBUG("Will send command.");
-
   //wait for radio init (version string detected)
   if(!rstate->version[0])
   {
@@ -208,6 +206,10 @@ void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *interface)
       //no version string received, so radio is not up yet
       RETURNVOID;
   }
+
+  main_state = RFM69_STATE_SEND_COMMAND;
+  if (config.debug.radio_link)
+    DEBUG("Will send command.");
 
   //busy?
   if(radio_link_rfm69_send_cmd_with_timeout_result == 2)
@@ -263,8 +265,10 @@ void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *interface)
   rstate->payload_offset = 0;
   rstate->payload_start = 0;
 
-  main_state = RFM69_STATE_WAIT_OK;
+  main_state = RFM69_STATE_WAIT_COMMAND_OK;
 
+  if (config.debug.radio_link)
+    DEBUGF("Packet command was fully written to the radio. Now wait for OK %d ms.", RFM69_CMD_TIMEOUT);
   //set timeout
   radio_link_rfm69_send_cmd_alarm.alarm = gettime_ms() + RFM69_CMD_TIMEOUT;
   if(is_scheduled(&radio_link_rfm69_send_cmd_alarm)) {
@@ -455,13 +459,12 @@ void radio_link_rfm69_send_packet(struct overlay_interface *interface)
 {
   IN();
   struct radio_link_state *rstate = interface->radio_link_state;
-
-  if (config.debug.radio_link)
-    DEBUG("Will try to send the MDP packet.");
+  main_state = RFM69_STATE_TX;
 
   //last command OK?
   if(radio_link_rfm69_send_cmd_with_timeout_result == 1)
   {
+      radio_link_rfm69_send_cmd_with_timeout_result = 0;
       if (config.debug.radio_link)
         DEBUG("Packet command was successful.");
       //everything done?
@@ -473,13 +476,15 @@ void radio_link_rfm69_send_packet(struct overlay_interface *interface)
           RETURNVOID;
       }
   }
-  else
+  else if(radio_link_rfm69_send_cmd_with_timeout_result == -1)
   {
+      radio_link_rfm69_send_cmd_with_timeout_result = 0;
       radio_link_rfm69_cleanup_and_idle_state(interface);
       if (config.debug.radio_link)
         DEBUG("Last TX command was not successful. Give up.");
       RETURNVOID;
   }
+
   //create a new packet command
   //transmit format: <start packet><packet 1><packet 2>...<packet n>
   //start packet format: <start><length><count of packets><end>
@@ -488,6 +493,7 @@ void radio_link_rfm69_send_packet(struct overlay_interface *interface)
   if (main_state == RFM69_STATE_TX && (ob_remaining(rstate->tx_packet) > 0) && rstate->tx_bytes == 0)
   {
       radio_link_rfm69_create_next_packet_cmd(interface);
+      radio_link_rfm69_send_cmd_with_timeout(interface);
   }
   OUT();
 }
@@ -497,6 +503,18 @@ int radio_link_rfm69_callback(struct overlay_interface *interface)
 {
   IN();
   struct radio_link_state *rstate = interface->radio_link_state;
+
+//  list_alarms();
+
+  if(is_scheduled(&interface->alarm)) {
+      unschedule(&interface->alarm);
+  }
+
+  //set new timeout
+  time_ms_t now = gettime_ms();
+  interface->alarm.deadline = now + RFM69_HEARTBEAT;
+  interface->alarm.alarm = now + RFM69_HEARTBEAT;
+  schedule(&interface->alarm);
 
   if (config.debug.radio_link)
     DEBUGF("Radio callback was called with state ID %d", main_state);
@@ -531,6 +549,9 @@ int radio_link_rfm69_callback(struct overlay_interface *interface)
           if (config.debug.radio_link)
             DEBUG("RX timed out.");
       }
+      break;
+    case RFM69_STATE_SEND_COMMAND:
+      radio_link_rfm69_send_cmd_with_timeout(interface);
       break;
     default:
       break;
@@ -610,6 +631,7 @@ int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c)
 
           unschedule(&radio_link_rfm69_send_cmd_alarm);
           radio_link_rfm69_send_cmd_with_timeout_result = 1;
+          main_state = RFM69_STATE_IDLE;
       }
       else if (strcase_startswith((const char *)inputBuffer, "ERROR", NULL))
       {
@@ -618,6 +640,7 @@ int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c)
             DEBUG("Got an 'ERROR'.");
           unschedule(&radio_link_rfm69_send_cmd_alarm);
           radio_link_rfm69_send_cmd_with_timeout_result = -1;
+          main_state = RFM69_STATE_IDLE;
       }
       else if (strcase_startswith((const char *)inputBuffer, "RFM69HW", NULL))
       {
