@@ -53,12 +53,16 @@
 #include "radio_link_rfm69.h"
 
 int main_state = RFM69_STATE_IDLE;
-int parser_state = RFM69_P_STATE_WAIT_FOR_START;
 
 uint8_t modemmode;
 uint8_t txpower;
 float frequency;
 uint8_t key[16];
+
+#define RFM69_MAX_INPUT_LENGTH 256
+uint8_t inputBuffer[RFM69_MAX_INPUT_LENGTH];
+uint8_t inputPosition;
+
 
 int radio_link_rfm69_free(struct overlay_interface *interface)
 {
@@ -83,6 +87,7 @@ void radio_link_rfm69_state_html(struct strbuf *b, struct overlay_interface *int
 {
   IN();
   struct radio_link_state *state = interface->radio_link_state;
+  strbuf_sprintf(b, "version: %s<br>", state->version);
   strbuf_sprintf(b, "last packet RSSI: %ddB<br>", state->radio_rssi);
   //TODO: provide the current configuration of the radio
   OUT();
@@ -91,8 +96,9 @@ void radio_link_rfm69_state_html(struct strbuf *b, struct overlay_interface *int
 int radio_link_rfm69_is_busy(struct overlay_interface *interface)
 {
   IN();
-  suppress_warning(interface);
-  RETURN(main_state != RFM69_STATE_IDLE);
+  if (config.debug.radio_link)
+    DEBUGF("busy: %d", ((main_state != RFM69_STATE_IDLE) || (!interface->radio_link_state->version[0])) ? 1 : 0);
+  RETURN ((main_state != RFM69_STATE_IDLE) || (!interface->radio_link_state->version[0]));
 }
 
 int radio_link_rfm69_queue_packet(struct overlay_interface *interface, struct overlay_buffer *buffer)
@@ -100,11 +106,24 @@ int radio_link_rfm69_queue_packet(struct overlay_interface *interface, struct ov
   IN();
   struct radio_link_state *link_state = interface->radio_link_state;
 
-  if (link_state->tx_packet)
-    {
+  if (config.debug.radio_link)
+    DEBUG("Palim !!!!");
+  RETURN(0);
+
+  if (!link_state->version[0])
+  {
+      interface->alarm.poll.events &= ~POLLOUT;
+      watch(&interface->alarm);
+
+      ob_free(buffer);
+      RETURN(WHYF("Cannot use the interface until the version string was received to make sure the radio is working."));
+  }
+
+  if (link_state->tx_packet || radio_link_rfm69_send_cmd_with_timeout_result == 2)
+  {
       ob_free(buffer);
       RETURN(WHYF("Cannot send two packets to a stream at the same time"));
-    }
+  }
 
   if (config.debug.radio_link)
     DEBUG("Got a new MDP packet. Will try to send it.");
@@ -117,6 +136,92 @@ int radio_link_rfm69_queue_packet(struct overlay_interface *interface, struct ov
   RETURN(0);
 }
 
+void radio_link_rfm69_send_cmd_with_timeout_callback(struct sched_ent *alarm) {
+  //wait for 'OK' timed out
+  if(is_scheduled(alarm)) {
+      unschedule(alarm);
+  }
+  radio_link_rfm69_send_cmd_with_timeout_result = -1;
+}
+
+void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *interface)
+{
+  IN();
+  struct radio_link_state *rstate = interface->radio_link_state;
+
+  if (config.debug.radio_link)
+    DEBUG("TROLOLO.");
+  //wait for radio init (version string detected)
+  if(!rstate->version[0])
+  {
+      if (config.debug.radio_link)
+        DEBUG("NO VERSION STRING YET.");
+      //no version string received, so radio is not up yet
+      RETURNVOID;
+  }
+
+  //busy?
+  if(radio_link_rfm69_send_cmd_with_timeout_result == 2)
+  {
+      RETURNVOID;
+  }
+  radio_link_rfm69_send_cmd_with_timeout_result = 2;
+
+  int written = 0;
+
+  //try to write command
+  while (rstate->tx_bytes)
+  {
+      if (config.debug.radio_link)
+        DEBUGF("Try to write %d bytes to radio...", rstate->tx_bytes);
+      written = write(interface->alarm.poll.fd, &rstate->txbuffer[rstate->tx_pos], rstate->tx_bytes);
+      if (config.debug.radio_link)
+        DEBUGF("Was able to write %d bytes.", written);
+
+      //was there a problem to write all the data straight to the radio?
+      //(was the OS serial buffer full?)
+      if (written <= 0)
+      {
+          //ask the scheduler to call back if there is a chance to write more data
+          //(there is a bit of space in the OS serial buffer again)
+          interface->alarm.poll.events |= POLLOUT;
+          if (config.debug.radio_link)
+            DEBUG("Tell scheduler to call back if there is a chance to write more of the command.");
+
+          //stop writing for now but set watch
+          schedule(&radio_link_rfm69_send_cmd_alarm);
+          watch(&interface->alarm);
+          RETURNVOID;
+      }
+
+      //update the count of data we have written to the radio
+      rstate->tx_bytes -= written;
+      rstate->tx_pos += written;
+  }
+
+  //tell the scheduler to stop calling us if there space in the buffer
+  interface->alarm.poll.events &= ~POLLOUT;
+
+  //*** command is written ***
+
+  //cleanup
+  rstate->tx_bytes = 0;
+  rstate->tx_pos = 0;
+
+  //now wait for "OK"
+  rstate->payload_length = 0;
+  rstate->payload_offset = 0;
+  rstate->payload_start = 0;
+
+  main_state = RFM69_STATE_WAIT_OK;
+
+  //set timeout
+  radio_link_rfm69_send_cmd_alarm.alarm = gettime_ms() + RFM69_CMD_TIMEOUT;
+  watch(&interface->alarm);
+  schedule(&radio_link_rfm69_send_cmd_alarm);
+  RETURNVOID;
+}
+
 void radio_link_rfm69_cleanup_and_idle_state(struct overlay_interface *interface)
 {
   IN();
@@ -124,7 +229,6 @@ void radio_link_rfm69_cleanup_and_idle_state(struct overlay_interface *interface
 
   //reset states
   main_state = RFM69_STATE_IDLE;
-  parser_state = RFM69_P_STATE_WAIT_FOR_START;
 
   //drop the buffers (cleanup)
   if(rstate->tx_packet){
@@ -151,251 +255,146 @@ void radio_link_rfm69_assemble_mdp_packet(struct overlay_interface *interface)
 {
   //transmit format: <start packet><packet 1><packet 2>...<packet n>
   IN();
+
   struct radio_link_state *rstate = interface->radio_link_state;
 
   if (rstate->payload_length < 1)
-    {
+  {
       WHYF("Packets need to be long enough. Expected %d but got %d.", 1, rstate->payload_length);
       radio_link_rfm69_cleanup_and_idle_state(interface);
       RETURNVOID;
-    }
+  }
 
   //is this the start packet?
-  if (rstate->packet_length == 0)
-    {
-      //start packet format: <start><rssi><length><count of packets><end>
+  if (rstate->packet_length == 0 && rstate->seq == 0)
+  {
+      rstate->last_packet = gettime_ms();
+      interface->alarm.alarm = rstate->last_packet + 1000;
+      schedule(&interface->alarm);
+
+      //start packet format: <rssi><length><count of packets>
       if (rstate->payload_length == 1)
-        {
-          rstate->seq = rstate->payload[3];
+      {
+          //this is the count of packets we have to expect
+          rstate->seq = rstate->payload[2];
 
           if (rstate->seq > RFM69_MAX_PACKET_BLOCK_COUNT)
-            {
+          {
               if (config.debug.radio_link)
                 DEBUGF("Got a (start) packet with a to large packet count. The maximum allowed is %d but got %d.", RFM69_MAX_PACKET_BLOCK_COUNT, rstate->seq);
               radio_link_rfm69_cleanup_and_idle_state(interface);
               RETURNVOID;
-            }
-        }
+          }
+          if (config.debug.radio_link)
+            DEBUGF("Got a (start) packet. We expect %d packets to come.", rstate->seq);
+          RETURNVOID;
+      }
       else
-        {
+      {
           if (config.debug.radio_link)
             DEBUGF("Got a (start) packet with a wrong length. Expected %d but got %d.", 1, rstate->payload_length);
           radio_link_rfm69_cleanup_and_idle_state(interface);
           RETURNVOID;
-        }
-    }
+      }
+  }
 
-  //packet format: <start><rssi><length><data><end>
+  //packet format: <rssi><length><data>
   //inner data format: <sequence number (packets remaining)><data>
 
+  //update the seq#
+  rstate->seq--;
   //is the sequence number correct?
-  if (rstate->seq != rstate->payload[3])
-    {
+  if (rstate->seq != rstate->payload[2])
+  {
       //NO!
       if (config.debug.radio_link)
         DEBUGF("Got a packet with a wrong sequence number. Expected %d but got %d.", rstate->seq, rstate->payload[4]);
       radio_link_rfm69_cleanup_and_idle_state(interface);
       RETURNVOID;
-    }
+  }
 
   //bcopy(src, dst, len);
-  //first bytes are <start><rssi><length<sequence number (packets remaining)>, so miss them out
+  //first bytes are <rssi><length><sequence number (packets remaining)>, so miss them out
   bcopy(&rstate->payload[3], &rstate->dst[rstate->packet_length], rstate->payload_length - 1);
   rstate->packet_length += rstate->payload_length - 1;
 
-  //update the seq#
-  rstate->seq--;
-
   //did we received all expected packets?
   if (rstate->seq == 0)
-    {
+  {
       //hand the data over to serval
       packetOkOverlay(interface, rstate->dst, rstate->packet_length, NULL);
 
       //cleanup
       radio_link_rfm69_cleanup_and_idle_state(interface);
-    }
+  }
   OUT();
 }
 
-void radio_link_rfm69_receive_packet(struct overlay_interface *interface, uint8_t c)
-{
-  IN();
-  struct radio_link_state *rstate = interface->radio_link_state;
-
-  //transmit format: <start packet><packet 1><packet 2>...<packet n>
-  //start packet format: <start><rssi><length><count of packets><end>
-  //packet format: <start><rssi><length><data><end>
-  //inner data format: <sequence number (packets remaining)><data>
-  rstate->payload[rstate->payload_offset] = c;
-
-  switch (parser_state)
-    {
-    default:
-    case RFM69_P_STATE_WAIT_FOR_START:
-      if (rstate->payload[rstate->payload_offset] == PACKET_START)
-        {
-          parser_state = RFM69_P_STATE_START_FOUND;
-          rstate->payload_offset++;
-        }
-      break;
-    case RFM69_P_STATE_START_FOUND:
-      //will read RSSI now
-      parser_state = RFM69_P_STATE_RSSI_FOUND;
-      rstate->radio_rssi = rstate->payload[rstate->payload_offset];
-      rstate->payload_offset++;
-      break;
-    case RFM69_P_STATE_RSSI_FOUND:
-      //check length
-      if (rstate->payload[rstate->payload_offset] <= RFM69_LINK_MTU)
-        {
-          //OK!!!
-          //will read length now
-          parser_state = RFM69_P_STATE_READING;
-          rstate->payload_length = rstate->payload[rstate->payload_offset];
-          rstate->payload_offset++;
-        }
-      else
-        {
-          //ERROR!!!
-          if (config.debug.radio_link)
-            DEBUGF("Packet length was to big. Maximum size is %d but got %d. Reset state machine. Give up.", RFM69_LINK_MTU, rstate->payload[rstate->payload_offset]);
-          radio_link_rfm69_cleanup_and_idle_state(interface);
-          break;
-        }
-      break;
-    case RFM69_P_STATE_READING:
-      //will read 'length' number of bytes now
-
-      //end sign correct --> to long?
-      //packet format: <start(1 byte)><rssi(1 byte)><length(1 byte)><data(length*bytes)><end(1 byte)>
-      if (rstate->payload_offset == rstate->payload_length + 3)
-        {
-          parser_state = RFM69_P_STATE_WAIT_FOR_START;
-          if (rstate->payload[rstate->payload_offset] == PACKET_END)
-            {
-              //valid packet received
-              //add packet to assemble MDP packet
-              radio_link_rfm69_assemble_mdp_packet(interface);
-            }
-          else
-            {
-              if (config.debug.radio_link)
-                DEBUGF("Packet end sign incorrect. Expected %c but got %c. Reset state machine.", PACKET_END, rstate->payload[rstate->payload_offset]);
-              radio_link_rfm69_cleanup_and_idle_state(interface);
-            }
-
-          //cleanup and prepare for next packet
-          parser_state = RFM69_P_STATE_WAIT_FOR_START;
-
-          rstate->payload_length = 0;
-          rstate->payload_start = 0;
-          rstate->payload_offset = 0;
-          break;
-        }
-      else
-        {
-          rstate->payload_offset++;
-        }
-      break;
-    }
-  OUT();
-}
-
-void radio_link_rfm69_process_ok(struct overlay_interface *interface, uint8_t c)
-{
-  IN();
-  struct radio_link_state *rstate = interface->radio_link_state;
-
-  rstate->payload[rstate->payload_offset] = c;
-
-  //do we have all we need?
-  //OK format: "OK\r\n"
-  if (rstate->payload_offset == 3)
-    {
-      //is it "OK"?
-      if (rstate->payload[0] == 'O' && rstate->payload[1] == 'K')
-        {
-          //got "OK"
-          if (config.debug.radio_link)
-            DEBUG("Got an 'OK'.");
-        }
-      else
-        {
-          //ERROR!!!
-          if (config.debug.radio_link)
-            DEBUG(
-                "No 'OK' received. Give up. Reset. Hint: It is may has been arrived a packet.");
-          radio_link_rfm69_cleanup_and_idle_state(interface);
-          RETURNVOID;
-        }
-    }
-  rstate->payload_offset++;
-
-  //everything done?
-  if (ob_remaining(rstate->tx_packet) == 0)
-    {
-      radio_link_rfm69_cleanup_and_idle_state(interface);
-    }
-  else
-    {
-      //TODO: tell the scheduler to call back the transmission method.
-      interface->alarm.alarm = gettime_ms();
-//      schedule(&interface->alarm);
-      main_state = RFM69_STATE_TX;
-    }
-  OUT();
-}
-
-int radio_link_rfm69_create_next_packet(struct overlay_interface *interface)
+int radio_link_rfm69_create_next_packet_cmd(struct overlay_interface *interface)
 {
   //transmit format: <start packet><packet 1><packet 2>...<packet n>
-  //start packet format: <start><count of packets><end>
-  //packet format: <start><data><end>
+  //start packet format: <start><length><count of packets><end>
+  //packet format: <start><length><data><end>
   //inner data format: <sequence number (packets remaining)><data>
 
   IN();
   struct radio_link_state *rstate = interface->radio_link_state;
 
   if (rstate->seq == 0)
-    {
+  {
       //first packet
       //how many radio packets/chunks will we need to send the MDP packet?
-      rstate->seq = ((unsigned) ((ob_remaining(rstate->tx_packet) + ((RFM69_LINK_MTU - 1) / 2)) / (RFM69_LINK_MTU - 1)));
+      rstate->seq = (ob_remaining(rstate->tx_packet) / (RFM69_LINK_MTU - 1));
+      if(ob_remaining(rstate->tx_packet) % RFM69_LINK_MTU)
+      {
+          rstate->seq++;
+      }
+
+      if (config.debug.radio_link)
+        DEBUGF("We got a MDP packet with %d bytes. Our MTU is %d. So we will try to send %d packet commands to the radio (1 start packet + %d data packets).", ob_remaining(rstate->tx_packet), RFM69_LINK_MTU, rstate->seq + 1, rstate->seq);
 
       //return header packet
       rstate->txbuffer[0] = '{';
-      //start packet format: <start><count of packets><end>
-      rstate->txbuffer[1] = rstate->seq;
-      rstate->txbuffer[2] = '}';
+      //start packet format: <start><length><count of packets><end>
+      rstate->txbuffer[1] = 1;
+      rstate->txbuffer[2] = rstate->seq;
+      rstate->txbuffer[3] = '}';
+      rstate->txbuffer[4] = '\r';
 
-      rstate->tx_bytes = 3;
+      rstate->tx_bytes = 5;
       rstate->tx_pos = 0;
       RETURN(0);
-    }
+  }
 
   //how many radio packets/chunks will we need to send the MDP packet?
-  rstate->seq = ((unsigned) ((ob_remaining(rstate->tx_packet) + ((RFM69_LINK_MTU - 1) / 2)) / (RFM69_LINK_MTU - 1)));
-
-  rstate->txbuffer[0] = '{';
-
-  //first data byte is the seq#
-  rstate->txbuffer[1] = rstate->seq;
+  rstate->seq--;
 
   unsigned count;
   if (ob_remaining(rstate->tx_packet) > RFM69_LINK_MTU - 1)
-    {
+  {
       count = RFM69_LINK_MTU - 1;
-    }
+  }
   else
-    {
+  {
       count = ob_remaining(rstate->tx_packet);
-    }
+  }
 
-  ob_get_bytes(rstate->tx_packet, &rstate->txbuffer[2], count);
+  rstate->txbuffer[0] = '{';
 
-  rstate->txbuffer[count + 2] = '}';
-  rstate->tx_bytes = count + 2;
+  //first byte is the length
+  //length is # of <data> so <seq# (1)><MDP data>
+  rstate->txbuffer[1] = count + 1;
+
+  //first data byte is the seq#
+  rstate->txbuffer[2] = rstate->seq;
+
+  ob_get_bytes(rstate->tx_packet, &rstate->txbuffer[3], count);
+  rstate->tx_bytes = count + 3;
+
+  rstate->txbuffer[rstate->tx_bytes] = '}';
+  rstate->tx_bytes++;
+  rstate->txbuffer[rstate->tx_bytes] = '\r';
+  rstate->tx_bytes++;
   rstate->tx_pos = 0;
 
   if (config.debug.radio_link)
@@ -406,81 +405,37 @@ int radio_link_rfm69_create_next_packet(struct overlay_interface *interface)
 void radio_link_rfm69_send_packet(struct overlay_interface *interface)
 {
   IN();
-
-  unschedule(&interface->alarm);
-  interface->alarm.alarm = 0;
-
   struct radio_link_state *rstate = interface->radio_link_state;
 
-  int written = 0;
+  if (config.debug.radio_link)
+    DEBUG("TXTXTX");
 
+  //last command OK?
+  if(radio_link_rfm69_send_cmd_with_timeout_result == 1)
+  {
+      //everything done?
+      if (ob_remaining(rstate->tx_packet) == 0)
+      {
+          radio_link_rfm69_cleanup_and_idle_state(interface);
+          RETURNVOID;
+      }
+  }
+  else
+  {
+      radio_link_rfm69_cleanup_and_idle_state(interface);
+      if (config.debug.radio_link)
+        DEBUG("Last TX command was not successful. Give up.");
+      RETURNVOID;
+  }
   //create a new packet command
   //transmit format: <start packet><packet 1><packet 2>...<packet n>
-  //start packet command format: <start><count of packets><end>
-  //packet command format: <start><data><end>
+  //start packet format: <start><length><count of packets><end>
+  //packet format: <start><length><data><end>
   //inner data format: <sequence number (packets remaining)><data>
-  if (rstate->tx_packet && rstate->tx_bytes == 0)
-    {
-      radio_link_rfm69_create_next_packet(interface);
-    }
-
-  //try to write (more) data (packet command)
-  while (rstate->tx_bytes)
-    {
-      if (config.debug.radio_link)
-        DEBUGF("Try to write %d bytes to radio...", rstate->tx_bytes);
-      written = write(interface->alarm.poll.fd, &rstate->txbuffer[rstate->tx_pos], rstate->tx_bytes);
-      if (config.debug.radio_link)
-        DEBUGF("Was able to write %d bytes.", written);
-
-      //was there a problem to write all the data (packet command) straight to the radio?
-      //(was the OS serial buffer full?)
-      if (written <= 0)
-        {
-          //ask the scheduler to call back if there is a chance to write more data (packet command)
-          //(there is a bit of space in the OS serial buffer again)
-          interface->alarm.poll.events |= POLLOUT;
-          if (config.debug.radio_link)
-            DEBUG("Tell scheduler to call back if there is a chance to write more of the packet command.");
-
-          //stop writing for now but set watch
-          watch(&interface->alarm);
-          RETURNVOID;
-        }
-
-      //update the count of data (packet command) we have written to the radio
-      rstate->tx_bytes -= written;
-      rstate->tx_pos += written;
-    }
-
-  //tell the scheduler to stop calling us if there space in the buffer
-  interface->alarm.poll.events &= ~POLLOUT;
-
-  //only if we got called to write something
-  if (main_state == RFM69_STATE_TX)
-    {
-      //packet command is written
-
-      //cleanup
-      rstate->tx_bytes = 0;
-      rstate->tx_pos = 0;
-
-      //now wait for "OK"
-      rstate->payload_length = 0;
-      rstate->payload_offset = 0;
-      rstate->payload_start = 0;
-
-      //tell the scheduler to call us in 2 sec.
-      //it the state is still WAIT_OK we won't wait
-      //any longer and give up
-      interface->alarm.alarm = gettime_ms() + 2000;
-      schedule(&interface->alarm);
-
-      main_state = RFM69_STATE_WAIT_OK;
-    }
-
-  watch(&interface->alarm);
-//  schedule(&interface->alarm);
+  if (main_state == RFM69_STATE_TX && (ob_remaining(rstate->tx_packet) > 0) && rstate->tx_bytes == 0)
+  {
+      radio_link_rfm69_create_next_packet_cmd(interface);
+  }
   OUT();
 }
 
@@ -488,27 +443,54 @@ void radio_link_rfm69_send_packet(struct overlay_interface *interface)
 int radio_link_rfm69_callback(struct overlay_interface *interface)
 {
   IN();
+  struct radio_link_state *rstate = interface->radio_link_state;
+
+  if (config.debug.radio_link)
+    DEBUGF("main_state: %d", main_state);
+
+  if (!rstate->version[0])
+  {
+      interface->alarm.poll.events &= ~POLLOUT;
+      watch(&interface->alarm);
+
+      if (config.debug.radio_link)
+        DEBUG("NO VERSION STRING YET.");
+      //no version string received, so radio is not up yet
+
+      RETURN(0);
+  }
+
   switch (main_state)
-    {
+  {
     case RFM69_STATE_IDLE:
       /* no break */
     case RFM69_STATE_TX:
-      radio_link_rfm69_send_packet(interface);
-      break;
-    case RFM69_STATE_WAIT_OK:
-      //this should only happen if the a timeout occurred while waiting for "OK"
-      //hint: it could mean there was a packet received while waiting for the OK
-      //(so we should give up)
-      radio_link_rfm69_cleanup_and_idle_state(interface);
+      if(rstate->tx_packet) {
+          radio_link_rfm69_send_packet(interface);
+      }
       break;
     case RFM69_STATE_RX:
-      DEBUG("Callback in RX_STATE.");
+      if(radio_link_rfm69_rx_timeout_result == -1)
+      {
+          //give up on receiving
+          main_state = RFM69_STATE_IDLE;
+          rstate->packet_length = 0;
+          if (config.debug.radio_link)
+            DEBUG("RX timed out.");
+      }
       break;
     default:
-      WHYF("TX was called in a incorrect state.");
       break;
-    }
+  }
   RETURN(0);
+}
+
+void radio_link_rfm69_rx_timeout_callback(struct sched_ent *alarm) {
+  if(is_scheduled(alarm)) {
+      unschedule(alarm);
+  }
+  //give up on receiving this transmission
+  radio_link_rfm69_rx_timeout_result = -1;
 }
 
 int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c)
@@ -516,24 +498,103 @@ int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c)
   IN();
   struct radio_link_state *rstate = interface->radio_link_state;
 
-  switch (main_state)
-    {
-    case RFM69_STATE_IDLE:
-      main_state = RFM69_STATE_RX;
-      parser_state = RFM69_P_STATE_WAIT_FOR_START;
-      rstate->payload_length = 0;
-      rstate->payload_offset = 0;
-      rstate->payload_start = 0;
-      /* no break */
-    case RFM69_STATE_RX:
-      radio_link_rfm69_receive_packet(interface, c);
-      break;
-    case RFM69_STATE_WAIT_OK:
-      radio_link_rfm69_process_ok(interface, c);
-      break;
-    default:
-      WHYF("RX was called in a incorrect state.");
-      break;
-    }
+  //buffer full?
+  if(inputPosition == RFM69_MAX_INPUT_LENGTH - 1)
+  {
+      //drop one byte
+      bcopy(&inputBuffer[1], inputBuffer, RFM69_MAX_INPUT_LENGTH - 1);
+  }
+
+  inputBuffer[inputPosition] = c;
+  if(inputPosition > 1 && inputBuffer[inputPosition - 1] == '\r' && inputBuffer[inputPosition] == '\n')
+  {
+      //is it a packet?
+      if(inputBuffer[0] == PACKET_START && inputBuffer[inputPosition - 2] == PACKET_END)
+      {
+          //PACKET!!!
+          if (config.debug.radio_link)
+            DEBUG("Got an PACKET.");
+          main_state = RFM69_STATE_RX;
+          radio_link_rfm69_rx_timeout_result = 1;
+
+          //set timeout
+          if(is_scheduled(&radio_link_rfm69_rx_timeout_alarm)) {
+              unschedule(&radio_link_rfm69_rx_timeout_alarm);
+          }
+
+          radio_link_rfm69_rx_timeout_alarm.alarm = gettime_ms() + RFM69_RX_TIMEOUT;
+          schedule(&radio_link_rfm69_rx_timeout_alarm);
+
+          //transmit format: <start packet><packet 1><packet 2>...<packet n>
+          //start packet format: <start><rssi (hex)><length (hex)><count of packets (hex)><end>\r\n
+          //packet format: <start><rssi (hex)><length (hex)><data (hex)><end>\r\n
+          //inner data format: <sequence number (packets remaining) (hex)><data (hex)>
+
+          //parse hex
+          fromhex(rstate->payload, (const char *)&inputBuffer[1], (inputPosition + 1 - 4) / 2 );
+
+          //will read length now
+          rstate->payload_length = rstate->payload[1];
+
+          //TODO: check length
+
+          //read RSSI
+          rstate->radio_rssi = rstate->payload[0];
+
+          //valid packet received
+          //add packet to assemble MDP packet
+          radio_link_rfm69_assemble_mdp_packet(interface);
+      }
+      else if (strcase_startswith((const char *)inputBuffer, "OK", NULL))
+      {
+          //got "OK"
+          if (config.debug.radio_link)
+            DEBUG("Got an 'OK'.");
+
+          unschedule(&radio_link_rfm69_send_cmd_alarm);
+          radio_link_rfm69_send_cmd_with_timeout_result = 1;
+      }
+      else if (strcase_startswith((const char *)inputBuffer, "ERROR", NULL))
+      {
+          //got "ERROR"
+          if (config.debug.radio_link)
+            DEBUG("Got an 'ERROR'.");
+          unschedule(&radio_link_rfm69_send_cmd_alarm);
+          radio_link_rfm69_send_cmd_with_timeout_result = -1;
+      }
+      else if (strcase_startswith((const char *)inputBuffer, "RFM69HW", NULL))
+      {
+          //got an version string
+          strbuf b = strbuf_local(rstate->version, 256);
+          inputBuffer[inputPosition - 1] = '\0';
+          strbuf_sprintf(b, "%s", inputBuffer);
+
+          if (config.debug.radio_link)
+          {
+              DEBUGF("Got the version string '%s'", rstate->version);
+          }
+          overlay_queue_schedule_next(gettime_ms());
+      }
+      else
+      {
+          //got an unexpected line
+          if (config.debug.radio_link)
+          {
+              if(inputPosition == RFM69_MAX_INPUT_LENGTH - 1)
+              {
+                  inputBuffer[inputPosition - 1] = '\0';
+              }
+              else
+              {
+                  inputBuffer[RFM69_MAX_INPUT_LENGTH - 2] = '\0';
+              }
+
+              DEBUGF("Got an unexpected line '%s'", inputBuffer);
+          }
+      }
+      inputPosition = 0;
+      RETURN(0);
+  }
+  inputPosition++;
   RETURN(0);
 }

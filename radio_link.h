@@ -66,6 +66,7 @@ struct radio_link_state {
 	uint8_t txbuffer[LINK_MTU];
 	int tx_bytes;
 	int tx_pos;
+	char version[256];
 };
 
 int radio_link_free(struct overlay_interface *interface);

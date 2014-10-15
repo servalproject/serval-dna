@@ -58,12 +58,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define RFM69_STATE_WAIT_COMMAND_OK 5
 #define RFM69_STATE_ERROR 6
 
-//receive parser states
-#define RFM69_P_STATE_WAIT_FOR_START 0
-#define RFM69_P_STATE_START_FOUND 1
-#define RFM69_P_STATE_RSSI_FOUND 2
-#define RFM69_P_STATE_READING 3
-
 #define PACKET_START '{'
 #define PACKET_END '}'
 
@@ -82,4 +76,37 @@ int radio_link_rfm69_queue_packet(struct overlay_interface *interface, struct ov
 
 void radio_link_rfm69_cleanup_and_idle_state(struct overlay_interface *interface);
 
+//maximal time (in ms) to wait for an OK
+#define RFM69_CMD_TIMEOUT 2000
+
+//maximal time (in ms) to wait for a transmission to be received
+#define RFM69_RX_TIMEOUT 2000
+
+int8_t radio_link_rfm69_rx_timeout_result;
+void radio_link_rfm69_rx_timeout_callback(struct sched_ent *);
+struct profile_total _stats_radio_link_rfm69_rx_timeout_callback = {.name="radio_link_rfm69_rx_timeout_callback",};
+struct sched_ent radio_link_rfm69_rx_timeout_alarm = {
+    .poll={.fd=-1},
+    ._poll_index=-1,
+    .run_after=(9223372036854775807LL),
+    .alarm=(9223372036854775807LL),
+    .deadline=(9223372036854775807LL),
+    .stats = &_stats_radio_link_rfm69_rx_timeout_callback,
+    .function=radio_link_rfm69_rx_timeout_callback,
+};
+
+void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *interface);
+
+int8_t radio_link_rfm69_send_cmd_with_timeout_result = 1;
+void radio_link_rfm69_send_cmd_with_timeout_callback(struct sched_ent *);
+struct profile_total _stats_radio_link_rfm69_send_cmd_with_timeout_callback = {.name="radio_link_rfm69_send_cmd_with_timeout_callback",};
+struct sched_ent radio_link_rfm69_send_cmd_alarm = {
+    .poll={.fd=-1},
+    ._poll_index=-1,
+    .run_after=(9223372036854775807LL),
+    .alarm=(9223372036854775807LL),
+    .deadline=(9223372036854775807LL),
+    .stats = &_stats_radio_link_rfm69_send_cmd_with_timeout_callback,
+    .function=radio_link_rfm69_send_cmd_with_timeout_callback,
+};
 #endif //__SERVAL_DNA___RADIO_LINK_RFM69_H
