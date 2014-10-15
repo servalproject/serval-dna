@@ -374,11 +374,24 @@ void radio_link_rfm69_assemble_mdp_packet(struct overlay_interface *interface)
   //did we received all expected packets?
   if (rstate->seq == 0)
   {
+      if (config.debug.radio_link)
+        DEBUG("MDP packet complete. Hand it over to serval.");
       //hand the data over to serval
       packetOkOverlay(interface, rstate->dst, rstate->packet_length, NULL);
 
+      main_state = RFM69_STATE_IDLE;
+      //reset timeout
+      if(is_scheduled(&radio_link_rfm69_rx_timeout_alarm)) {
+          unschedule(&radio_link_rfm69_rx_timeout_alarm);
+      }
+
       //cleanup
-      radio_link_rfm69_cleanup_and_idle_state(interface);
+      rstate->seq = 0;
+      rstate->packet_length = 0;
+
+      rstate->payload_length = 0;
+      rstate->payload_start = 0;
+      rstate->payload_offset = 0;
   }
   OUT();
 }
