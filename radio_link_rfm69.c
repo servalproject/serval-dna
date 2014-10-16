@@ -81,7 +81,7 @@ uint8_t inputBuffer[RFM69_MAX_INPUT_LENGTH];
 uint8_t inputPosition;
 
 //maximal time (in ms) to wait for an OK
-#define RFM69_CMD_TIMEOUT 150
+#define RFM69_CMD_TIMEOUT 1000
 
 //maximal time (in ms) to wait for a transmission to be received
 #define RFM69_RX_TIMEOUT 3000
@@ -117,14 +117,12 @@ struct sched_ent radio_link_rfm69_send_cmd_alarm = {
 
 static void radio_link_rfm69_set_callback_alarm(struct overlay_interface *interface, time_ms_t timestamp)
 {
-  if(is_scheduled(&interface->alarm)) {
-      unschedule(&interface->alarm);
+  if(!is_scheduled(&interface->alarm)) {
+    //set new timeout
+    interface->alarm.deadline = timestamp + 100;
+    interface->alarm.alarm = timestamp;
+    schedule(&interface->alarm);
   }
-
-  //set new timeout
-  interface->alarm.deadline = timestamp;
-  interface->alarm.alarm = timestamp;
-  schedule(&interface->alarm);
 }
 
 int radio_link_rfm69_free(struct overlay_interface *interface)
@@ -158,7 +156,24 @@ void radio_link_rfm69_state_html(struct strbuf *b, struct overlay_interface *int
 int radio_link_rfm69_is_busy(struct overlay_interface *interface)
 {
   IN();
-  uint8_t result = ((main_state != RFM69_STATE_IDLE) || (!interface->radio_link_state->version[0]));
+  uint8_t result;
+  if(!interface->radio_link_state->version[0] || interface->radio_link_state->tx_bytes)
+  {
+      result = 1;
+  }
+  else if(main_state == RFM69_STATE_IDLE || main_state == RFM69_STATE_RX || main_state == RFM69_STATE_WAIT_COMMAND_OK || main_state == RFM69_STATE_WAIT_COMMAND_OK_AND_RX)
+  {
+      result = 0;
+  }
+  else if(main_state == RFM69_STATE_TX || main_state == RFM69_STATE_SEND_COMMAND || main_state == RFM69_STATE_RX_THEN_SEND_COMMAND)
+  {
+      result = 1;
+  }
+  else
+  {
+      result = 0;
+  }
+
   if (config.debug.radio_link)
     DEBUGF("busy: %d", result);
   RETURN(result);
@@ -178,7 +193,7 @@ int radio_link_rfm69_queue_packet(struct overlay_interface *interface, struct ov
       RETURN(WHYF("Cannot use the interface until the version string was received to make sure the radio is working."));
   }
 
-  if (link_state->tx_packet || radio_link_rfm69_send_cmd_with_timeout_result == 2)
+  if (link_state->tx_packet)
   {
       ob_free(buffer);
       RETURN(WHYF("Cannot send two packets to a stream at the same time"));
@@ -190,6 +205,9 @@ int radio_link_rfm69_queue_packet(struct overlay_interface *interface, struct ov
   // prepare the buffer for reading
   ob_flip(buffer);
   link_state->tx_packet = buffer;
+
+  if(main_state == RFM69_STATE_IDLE)
+    main_state = RFM69_STATE_TX;
 
   radio_link_rfm69_set_callback_alarm(interface, gettime_ms());
   RETURN(0);
@@ -499,20 +517,6 @@ static void radio_link_rfm69_send_packet(struct overlay_interface *interface)
       radio_link_rfm69_send_cmd_with_timeout_result = 0;
       if (config.debug.radio_link)
         DEBUG("Packet command was successful.");
-      //everything done?
-      if (ob_remaining(rstate->tx_packet) == 0)
-      {
-          if (config.debug.radio_link)
-            DEBUG("Finished to send MDP packet.");
-          radio_link_rfm69_cleanup_tx_state_machine(interface);
-
-          ob_free(rstate->tx_packet);
-          rstate->tx_packet=NULL;
-          overlay_queue_schedule_next(gettime_ms());
-
-          main_state = RFM69_STATE_IDLE;
-          RETURNVOID;
-      }
   }
   else if(radio_link_rfm69_send_cmd_with_timeout_result == -1)
   {
@@ -520,9 +524,28 @@ static void radio_link_rfm69_send_packet(struct overlay_interface *interface)
 
       //reset state machine and try to send the same packet again
       radio_link_rfm69_cleanup_tx_state_machine(interface);
+//      ob_free(rstate->tx_packet);
+//      rstate->tx_packet=NULL;
+//      overlay_queue_schedule_next(gettime_ms());
+
       main_state = RFM69_STATE_IDLE;
       if (config.debug.radio_link)
         DEBUG("Last TX command was not successful. Give up.");
+      RETURNVOID;
+  }
+
+  //everything done?
+  if (ob_remaining(rstate->tx_packet) == 0)
+  {
+      if (config.debug.radio_link)
+        DEBUG("Finished to send MDP packet.");
+      radio_link_rfm69_cleanup_tx_state_machine(interface);
+
+      ob_free(rstate->tx_packet);
+      rstate->tx_packet=NULL;
+      overlay_queue_schedule_next(gettime_ms());
+
+      main_state = RFM69_STATE_IDLE;
       RETURNVOID;
   }
 
@@ -568,9 +591,14 @@ int radio_link_rfm69_callback(struct overlay_interface *interface)
     case RFM69_STATE_IDLE:
       /* no break */
     case RFM69_STATE_TX:
+      DEBUGF("tx_packet %d, remaining %d, tx_bytes %d, result %d", rstate->tx_packet ? 1:0, rstate->tx_packet ? ob_remaining(rstate->tx_packet) : 23532, rstate->tx_bytes, radio_link_rfm69_send_cmd_with_timeout_result);
       if(rstate->tx_packet)
       {
           radio_link_rfm69_send_packet(interface);
+      }
+      else
+      {
+          main_state = RFM69_STATE_IDLE;
       }
       break;
     case RFM69_STATE_RX:
