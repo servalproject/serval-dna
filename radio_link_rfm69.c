@@ -87,20 +87,8 @@ uint8_t inputPosition;
 #define RFM69_RX_TIMEOUT 3000
 #define RFM69_HEARTBEAT 500
 
-void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *);
-
-int8_t radio_link_rfm69_send_cmd_with_timeout_result = 0;
-void radio_link_rfm69_send_cmd_with_timeout_callback(struct sched_ent *);
-struct profile_total _stats_radio_link_rfm69_send_cmd_with_timeout_callback = {.name="radio_link_rfm69_send_cmd_with_timeout_callback",};
-struct sched_ent radio_link_rfm69_send_cmd_alarm = {
-    .poll={.fd=-1},
-    ._poll_index=-1,
-    .run_after=(9223372036854775807LL),
-    .alarm=(9223372036854775807LL),
-    .deadline=(9223372036854775807LL),
-    .stats = &_stats_radio_link_rfm69_send_cmd_with_timeout_callback,
-    .function=radio_link_rfm69_send_cmd_with_timeout_callback,
-};
+time_ms_t radio_link_rfm69_last_cmd;
+int8_t radio_link_rfm69_send_cmd_with_timeout_result;
 
 static void radio_link_rfm69_set_callback_alarm(struct overlay_interface *interface, time_ms_t timestamp)
 {
@@ -144,15 +132,15 @@ int radio_link_rfm69_is_busy(struct overlay_interface *interface)
 {
   IN();
   uint8_t result;
-  if(!interface->radio_link_state->version[0] || interface->radio_link_state->tx_bytes)
+  if(!interface->radio_link_state->version[0])
   {
       result = 1;
   }
-  else if(main_state == RFM69_STATE_IDLE || main_state == RFM69_STATE_RX || main_state == RFM69_STATE_WAIT_COMMAND_OK || main_state == RFM69_STATE_WAIT_COMMAND_OK_AND_RX)
+  else if(main_state == RFM69_STATE_IDLE || main_state == RFM69_STATE_RX)
   {
       result = 0;
   }
-  else if(main_state == RFM69_STATE_TX || main_state == RFM69_STATE_SEND_COMMAND || main_state == RFM69_STATE_RX_THEN_SEND_COMMAND)
+  else if(main_state == RFM69_STATE_TX || main_state == RFM69_STATE_SEND_COMMAND || main_state == RFM69_STATE_RX_THEN_SEND_COMMAND || main_state == RFM69_STATE_WAIT_COMMAND_OK || main_state == RFM69_STATE_WAIT_COMMAND_OK_AND_RX)
   {
       result = 1;
   }
@@ -200,14 +188,6 @@ int radio_link_rfm69_queue_packet(struct overlay_interface *interface, struct ov
   RETURN(0);
 }
 
-void radio_link_rfm69_send_cmd_with_timeout_callback(struct sched_ent *alarm) {
-  //wait for 'OK' timed out
-  if(is_scheduled(alarm)) {
-      unschedule(alarm);
-  }
-  radio_link_rfm69_send_cmd_with_timeout_result = -1;
-}
-
 void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *interface)
 {
   IN();
@@ -222,17 +202,16 @@ void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *interface)
       RETURNVOID;
   }
 
-  main_state = RFM69_STATE_SEND_COMMAND;
-  if (config.debug.radio_link)
-    DEBUG("Will send command.");
-
   //busy?
-  if(radio_link_rfm69_send_cmd_with_timeout_result == 2)
+  if(main_state == RFM69_STATE_SEND_COMMAND || main_state == RFM69_STATE_RX_THEN_SEND_COMMAND || main_state == RFM69_STATE_WAIT_COMMAND_OK || main_state == RFM69_STATE_WAIT_COMMAND_OK_AND_RX)
   {
       WHY("Busy with another command.");
       RETURNVOID;
   }
-  radio_link_rfm69_send_cmd_with_timeout_result = 2;
+
+  main_state = RFM69_STATE_SEND_COMMAND;
+  if (config.debug.radio_link)
+    DEBUG("Will send command.");
 
   int written = 0;
 
@@ -284,12 +263,9 @@ void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *interface)
 
   if (config.debug.radio_link)
     DEBUGF("Packet command was fully written to the radio. Now wait for OK %d ms.", RFM69_CMD_TIMEOUT);
-  //set timeout
-  radio_link_rfm69_send_cmd_alarm.alarm = gettime_ms() + RFM69_CMD_TIMEOUT;
-  if(is_scheduled(&radio_link_rfm69_send_cmd_alarm)) {
-      unschedule(&radio_link_rfm69_send_cmd_alarm);
-  }
-  schedule(&radio_link_rfm69_send_cmd_alarm);
+  //update watch clock
+  radio_link_rfm69_send_cmd_with_timeout_result = 0;
+  radio_link_rfm69_last_cmd = gettime_ms();
   watch(&interface->alarm);
   RETURNVOID;
 }
@@ -513,7 +489,7 @@ static void radio_link_rfm69_send_packet(struct overlay_interface *interface)
 
       main_state = RFM69_STATE_IDLE;
       if (config.debug.radio_link)
-        DEBUG("Last TX command was not successful. Give up.");
+        DEBUG("Last TX command was not successful (ERROR or timeout). Give up.");
       RETURNVOID;
   }
 
@@ -609,6 +585,10 @@ int radio_link_rfm69_callback(struct overlay_interface *interface)
       radio_link_rfm69_send_cmd_with_timeout(interface);
       break;
     case RFM69_STATE_WAIT_COMMAND_OK:
+      if(radio_link_rfm69_last_cmd == 0 && gettime_ms() > radio_link_rfm69_last_cmd + RFM69_CMD_TIMEOUT)
+      {
+          radio_link_rfm69_send_cmd_with_timeout_result = -1;
+      }
       break;
     default:
       break;
@@ -681,7 +661,6 @@ int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c)
           if (config.debug.radio_link)
             DEBUG("Got an 'OK'.");
 
-          unschedule(&radio_link_rfm69_send_cmd_alarm);
           radio_link_rfm69_send_cmd_with_timeout_result = 1;
           if(main_state == RFM69_STATE_WAIT_COMMAND_OK_AND_RX){
               main_state = RFM69_STATE_RX;
@@ -696,7 +675,6 @@ int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c)
           //got "ERROR"
           if (config.debug.radio_link)
             DEBUG("Got an 'ERROR'.");
-          unschedule(&radio_link_rfm69_send_cmd_alarm);
           radio_link_rfm69_send_cmd_with_timeout_result = -1;
           if(main_state == RFM69_STATE_WAIT_COMMAND_OK_AND_RX){
               main_state = RFM69_STATE_RX;
