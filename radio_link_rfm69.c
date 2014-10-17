@@ -132,22 +132,12 @@ int radio_link_rfm69_is_busy(struct overlay_interface *interface)
 {
   IN();
   uint8_t result;
-  if(!interface->radio_link_state->version[0])
+  if(!interface->radio_link_state->version[0] || main_state == RFM69_STATE_TX || main_state == RFM69_STATE_SEND_COMMAND || main_state == RFM69_STATE_RX_THEN_SEND_COMMAND || main_state == RFM69_STATE_WAIT_COMMAND_OK || main_state == RFM69_STATE_WAIT_COMMAND_OK_AND_RX)
   {
       result = 1;
   }
-  else if(main_state == RFM69_STATE_IDLE || main_state == RFM69_STATE_RX)
-  {
-      result = 0;
-  }
-  else if(main_state == RFM69_STATE_TX || main_state == RFM69_STATE_SEND_COMMAND || main_state == RFM69_STATE_RX_THEN_SEND_COMMAND || main_state == RFM69_STATE_WAIT_COMMAND_OK || main_state == RFM69_STATE_WAIT_COMMAND_OK_AND_RX)
-  {
-      result = 1;
-  }
-  else
-  {
-      result = 0;
-  }
+
+  result = 0;
 
   if (config.debug.radio_link)
     DEBUGF("busy: %d", result);
@@ -203,7 +193,7 @@ void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *interface)
   }
 
   //busy?
-  if(main_state == RFM69_STATE_SEND_COMMAND || main_state == RFM69_STATE_RX_THEN_SEND_COMMAND || main_state == RFM69_STATE_WAIT_COMMAND_OK || main_state == RFM69_STATE_WAIT_COMMAND_OK_AND_RX)
+  if(main_state == RFM69_STATE_TX || main_state == RFM69_STATE_SEND_COMMAND || main_state == RFM69_STATE_RX_THEN_SEND_COMMAND || main_state == RFM69_STATE_WAIT_COMMAND_OK || main_state == RFM69_STATE_WAIT_COMMAND_OK_AND_RX)
   {
       WHY("Busy with another command.");
       RETURNVOID;
@@ -371,9 +361,13 @@ static void radio_link_rfm69_assemble_mdp_packet(struct overlay_interface *inter
       {
           main_state = RFM69_STATE_WAIT_COMMAND_OK;
       }
-      else
+      else if(main_state == RFM69_STATE_RX)
       {
           main_state = RFM69_STATE_IDLE;
+      }
+      else
+      {
+          WHY("The state machine is in a broken state!!!");
       }
 
       //cleanup
@@ -513,11 +507,9 @@ static void radio_link_rfm69_send_packet(struct overlay_interface *interface)
   //start packet format: <start><length><count of packets><end>
   //packet format: <start><length><data><end>
   //inner data format: <sequence number (packets remaining)><data>
-  if (main_state == RFM69_STATE_TX && (ob_remaining(rstate->tx_packet) > 0) && rstate->tx_bytes == 0)
-  {
-      radio_link_rfm69_create_next_packet_cmd(interface);
-      radio_link_rfm69_send_cmd_with_timeout(interface);
-  }
+  radio_link_rfm69_create_next_packet_cmd(interface);
+  radio_link_rfm69_send_cmd_with_timeout(interface);
+  main_state = RFM69_STATE_SEND_COMMAND;
   OUT();
 }
 
@@ -555,26 +547,30 @@ int radio_link_rfm69_callback(struct overlay_interface *interface)
       {
           radio_link_rfm69_send_packet(interface);
       }
-      else
-      {
-          main_state = RFM69_STATE_IDLE;
-      }
       break;
+    case RFM69_STATE_RX_THEN_SEND_COMMAND:
+      /* no break */
+    case RFM69_STATE_WAIT_COMMAND_OK_AND_RX:
+      /* no break */
     case RFM69_STATE_RX:
       if(rstate->last_packet > gettime_ms() + RFM69_RX_TIMEOUT)
       {
           //give up on receiving
+          if(main_state == RFM69_STATE_RX_THEN_SEND_COMMAND)
+          {
+              main_state = RFM69_STATE_SEND_COMMAND;
+          }
           if(main_state == RFM69_STATE_WAIT_COMMAND_OK_AND_RX)
           {
               main_state = RFM69_STATE_WAIT_COMMAND_OK;
           }
-          else if(main_state == RFM69_STATE_RX_THEN_SEND_COMMAND)
+          else if(main_state == RFM69_STATE_RX)
           {
-              main_state = RFM69_STATE_SEND_COMMAND;
+              main_state = RFM69_STATE_IDLE;
           }
           else
           {
-              main_state = RFM69_STATE_IDLE;
+              WHY("The state machine is in a broken state!!!");
           }
           radio_link_rfm69_cleanup_rx_state_machine(interface);
           if (config.debug.radio_link)
@@ -588,6 +584,11 @@ int radio_link_rfm69_callback(struct overlay_interface *interface)
       if(radio_link_rfm69_last_cmd == 0 && gettime_ms() > radio_link_rfm69_last_cmd + RFM69_CMD_TIMEOUT)
       {
           radio_link_rfm69_send_cmd_with_timeout_result = -1;
+      }
+
+      if(radio_link_rfm69_send_cmd_with_timeout_result == 1 || radio_link_rfm69_send_cmd_with_timeout_result == -1)
+      {
+          main_state = RFM69_STATE_IDLE;
       }
       break;
     default:
@@ -627,9 +628,13 @@ int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c)
           {
               main_state = RFM69_STATE_RX_THEN_SEND_COMMAND;
           }
-          else
+          else if(main_state == RFM69_STATE_IDLE)
           {
               main_state = RFM69_STATE_RX;
+          }
+          else
+          {
+              WHY("The state machine is in a broken state!!!");
           }
 
           rstate->last_packet = gettime_ms();
@@ -662,13 +667,6 @@ int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c)
             DEBUG("Got an 'OK'.");
 
           radio_link_rfm69_send_cmd_with_timeout_result = 1;
-          if(main_state == RFM69_STATE_WAIT_COMMAND_OK_AND_RX){
-              main_state = RFM69_STATE_RX;
-          }
-          else
-          {
-              main_state = RFM69_STATE_IDLE;
-          }
       }
       else if (strcase_startswith((const char *)inputBuffer, "ERROR", NULL))
       {
@@ -676,13 +674,6 @@ int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c)
           if (config.debug.radio_link)
             DEBUG("Got an 'ERROR'.");
           radio_link_rfm69_send_cmd_with_timeout_result = -1;
-          if(main_state == RFM69_STATE_WAIT_COMMAND_OK_AND_RX){
-              main_state = RFM69_STATE_RX;
-          }
-          else
-          {
-              main_state = RFM69_STATE_IDLE;
-          }
       }
       else if (strcase_startswith((const char *)inputBuffer, "RFM69HW", NULL))
       {
