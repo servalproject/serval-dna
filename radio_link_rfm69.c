@@ -87,19 +87,6 @@ uint8_t inputPosition;
 #define RFM69_RX_TIMEOUT 3000
 #define RFM69_HEARTBEAT 500
 
-int8_t radio_link_rfm69_rx_timeout_result;
-void radio_link_rfm69_rx_timeout_callback(struct sched_ent *);
-struct profile_total _stats_radio_link_rfm69_rx_timeout_callback = {.name="radio_link_rfm69_rx_timeout_callback",};
-struct sched_ent radio_link_rfm69_rx_timeout_alarm = {
-    .poll={.fd=-1},
-    ._poll_index=-1,
-    .run_after=(9223372036854775807LL),
-    .alarm=(9223372036854775807LL),
-    .deadline=(9223372036854775807LL),
-    .stats = &_stats_radio_link_rfm69_rx_timeout_callback,
-    .function=radio_link_rfm69_rx_timeout_callback,
-};
-
 void radio_link_rfm69_send_cmd_with_timeout(struct overlay_interface *);
 
 int8_t radio_link_rfm69_send_cmd_with_timeout_result = 0;
@@ -412,10 +399,6 @@ static void radio_link_rfm69_assemble_mdp_packet(struct overlay_interface *inter
       {
           main_state = RFM69_STATE_IDLE;
       }
-      //reset timeout
-      if(is_scheduled(&radio_link_rfm69_rx_timeout_alarm)) {
-          unschedule(&radio_link_rfm69_rx_timeout_alarm);
-      }
 
       //cleanup
       rstate->seq = 0;
@@ -602,7 +585,7 @@ int radio_link_rfm69_callback(struct overlay_interface *interface)
       }
       break;
     case RFM69_STATE_RX:
-      if(radio_link_rfm69_rx_timeout_result == -1)
+      if(rstate->last_packet > gettime_ms() + RFM69_RX_TIMEOUT)
       {
           //give up on receiving
           if(main_state == RFM69_STATE_WAIT_COMMAND_OK_AND_RX)
@@ -631,14 +614,6 @@ int radio_link_rfm69_callback(struct overlay_interface *interface)
       break;
   }
   RETURN(0);
-}
-
-void radio_link_rfm69_rx_timeout_callback(struct sched_ent *alarm) {
-  if(is_scheduled(alarm)) {
-      unschedule(alarm);
-  }
-  //give up on receiving this transmission
-  radio_link_rfm69_rx_timeout_result = -1;
 }
 
 int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c)
@@ -677,17 +652,8 @@ int radio_link_rfm69_decode(struct overlay_interface *interface, uint8_t c)
               main_state = RFM69_STATE_RX;
           }
 
-          radio_link_rfm69_rx_timeout_result = 1;
+          rstate->last_packet = gettime_ms();
           radio_link_rfm69_cleanup_tx_state_machine(interface);
-
-          //reset timeout
-          if(is_scheduled(&radio_link_rfm69_rx_timeout_alarm)) {
-              unschedule(&radio_link_rfm69_rx_timeout_alarm);
-          }
-
-          //set new timeout
-          radio_link_rfm69_rx_timeout_alarm.alarm = gettime_ms() + RFM69_RX_TIMEOUT;
-          schedule(&radio_link_rfm69_rx_timeout_alarm);
 
           //transmit format: <start packet><packet 1><packet 2>...<packet n>
           //start packet format: <start><rssi (hex)><length (hex)><count of packets (hex)><end>\r\n
