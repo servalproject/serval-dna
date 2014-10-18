@@ -1,0 +1,8 @@
+language: c
+compiler:
+  - gcc
+  - clang
+os:
+  - linux
+install: sudo apt-get install jq curl && jq --version && curl --version
+script: autoconf && ./configure && make && tests/all -j5
