@@ -1189,7 +1189,7 @@ static struct link_out *create_out_link(struct neighbour *neighbour, overlay_int
 	alloca_tohex_sid_t(neighbour->subscriber->sid),
 	interface->name);
     time_ms_t now = gettime_ms();
-    ret->timeout = now + ret->destination->tick_ms * 3;
+    ret->timeout = now + ret->destination->tick_ms * 10;
     update_alarm(__WHENCE__, now + 5);
   }
   return ret;
@@ -1264,7 +1264,7 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
     if (neighbour->next_neighbour_update > now + 10)
       neighbour->next_neighbour_update = now + 10;
   }
-  link->link_timeout = now + (context->interface->destination->tick_ms *5);
+  link->link_timeout = now + (context->interface->destination->tick_ms *10);
 
   // force an update soon when we need to promptly ack packets
   if (neighbour->using_us && link->ack_counter <=0){

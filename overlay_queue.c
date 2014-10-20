@@ -64,7 +64,7 @@ int overlay_queue_init(){
   int i;
   for(i=0;i<OQ_MAX;i++) {
     overlay_tx[i].maxLength=100;
-    overlay_tx[i].latencyTarget=1000; /* Keep packets in queue for 1 second by default */
+    overlay_tx[i].latencyTarget=2000; /* Keep packets in queue for 1 second by default */
     overlay_tx[i].small_packet_grace_interval = 5;
   }
   /* expire voice/video call packets much sooner, as they just aren't any use if late */
