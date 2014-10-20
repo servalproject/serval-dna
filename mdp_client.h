@@ -106,7 +106,10 @@ struct overlay_mdp_data_frame {
   uint16_t payload_length;
   int queue;
   int ttl;
-  unsigned char payload[MDP_MTU-100];
+  union{
+    unsigned char payload[MDP_MTU-100];
+    struct overlay_route_record route_record;
+  };
 };
 
 struct overlay_mdp_error {
