@@ -459,7 +459,7 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
     
     int ofs=0;
     while(ofs + sizeof(struct overlay_route_record) <= rx.out.payload_length){
-      struct overlay_route_record *p=(struct overlay_route_record *)&rx.out.payload[ofs];
+      struct overlay_route_record *p=&rx.out.route_record;
       ofs+=sizeof(struct overlay_route_record);
       
       if (p->reachable==REACHABLE_NONE)

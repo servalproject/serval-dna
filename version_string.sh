@@ -154,7 +154,7 @@ case "$error" in
 *[Nn]'o tags can describe'* | \
 *[Cc]'annot describe'* )
    if [ -n "$default_tag" ]; then
-      commit=$(git rev-list --abbrev-commit --max-count 1 ${refspec:-HEAD})
+      commit=$(git rev-list --abbrev-commit --max-count=1 ${refspec:-HEAD})
       count=$(( $(git rev-list ${refspec:-HEAD} | wc -l) - 1 ))
       echo "$default_tag-$count-g$commit$dirty"
       exit 0

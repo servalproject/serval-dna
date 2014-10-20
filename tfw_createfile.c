@@ -113,8 +113,8 @@ int main(int argc, char **argv)
     unsigned remain = size - offset - 1;
     if (remain > sizeof buf)
       remain = sizeof buf;
-    fwrite(buf, remain, 1, stdout);
-    fputc('\n', stdout);
+    int r=fwrite(buf, remain, 1, stdout);
+    r=fputc('\n', stdout);
     offset += remain + 1;
     if (bounce <= n || bounce >= bouncemax)
       bouncedelta *= -1;

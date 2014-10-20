@@ -1145,7 +1145,7 @@ static int routing_table(struct subscriber *subscriber, void *context)
   overlay_mdp_frame reply;
   bzero(&reply, sizeof(overlay_mdp_frame));
   
-  struct overlay_route_record *r=(struct overlay_route_record *)&reply.out.payload;
+  struct overlay_route_record *r=&reply.out.route_record;
   reply.packetTypeAndFlags=MDP_TX;
   reply.out.payload_length=sizeof(struct overlay_route_record);
   r->sid = subscriber->sid;
