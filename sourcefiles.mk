@@ -61,6 +61,8 @@ SERVAL_DAEMON_SOURCES = \
 	lsif.c \
 	main.c \
 	radio_link.c \
+	radio_link_rfd900.c \
+	radio_link_rfm69.c \
 	meshms.c \
 	meshms_restful.c \
 	msp_client.c \

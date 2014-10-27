@@ -119,6 +119,7 @@ typedef struct overlay_interface {
 
   unsigned int uartbps; // set serial port speed (which might be different from link speed)
   int ctsrts; // enabled hardware flow control if non-zero
+  int radiotype; // the type of radio link
 
   struct network_destination *destination;
 

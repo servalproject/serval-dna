@@ -421,6 +421,7 @@ overlay_interface_init(const char *name, struct socket_address *addr,
   interface->socket_type = ifconfig->socket_type;
   interface->uartbps = ifconfig->uartbps;
   interface->ctsrts = ifconfig->ctsrts;
+  interface->radiotype = ifconfig->radiotype;
   set_destination_ref(&interface->destination, NULL);
   interface->destination = new_destination(interface, ifconfig->encapsulation);
   
@@ -753,7 +754,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     
     switch(interface->socket_type){
       case SOCK_STREAM:
-	radio_link_tx(interface);
+	radio_link_callback(interface);
 	return;
       case SOCK_DGRAM:
 	break;
@@ -774,7 +775,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
   if (alarm->poll.revents & POLLOUT){
     switch(interface->socket_type){
       case SOCK_STREAM:
-	radio_link_tx(interface);
+	radio_link_callback(interface);
 	return;
       case SOCK_DGRAM:
       case SOCK_FILE:
@@ -792,7 +793,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
 	interface_read_stream(interface);
 	// if we read a valid heartbeat packet, we may be able to write more bytes now.
 	if (interface->state==INTERFACE_STATE_UP){
-	  radio_link_tx(interface);
+	  radio_link_callback(interface);
 	  return;
 	}
 	break;
