@@ -58,12 +58,7 @@ struct meshms_ply {
 };
 
 struct meshms_conversations {
-  // binary tree
-  struct meshms_conversations *_left;
-  struct meshms_conversations *_right;
-  // keeping a pointer to parent node here means the traversal iterator does not need a stack, so
-  // there is no fixed limit on the tree depth
-  struct meshms_conversations *_parent;
+  struct meshms_conversations *_next;
   
   // who are we talking to?
   sid_t them;

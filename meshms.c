@@ -38,12 +38,10 @@ static unsigned mark_read(struct meshms_conversations *conv, const sid_t *their_
 
 void meshms_free_conversations(struct meshms_conversations *conv)
 {
-  if (conv) {
-    if (conv->_parent && conv != conv->_parent->_left && conv != conv->_parent->_right)
-      WHYF("deformed MeshMS conversation tree");
-    meshms_free_conversations(conv->_left);
-    meshms_free_conversations(conv->_right);
-    free(conv);
+  while(conv){
+    struct meshms_conversations *n = conv;
+    conv = conv->_next;
+    free(n);
   }
 }
 
@@ -92,22 +90,19 @@ static enum meshms_status get_my_conversation_bundle(const sid_t *my_sidp, rhizo
 static struct meshms_conversations *add_conv(struct meshms_conversations **conv, const sid_t *them)
 {
   struct meshms_conversations **ptr = conv;
-  struct meshms_conversations *parent = NULL;
   while (*ptr) {
     int cmp = cmp_sid_t(&(*ptr)->them, them);
     if (cmp == 0)
-      break;
-    parent = *ptr;
-    if (cmp < 0)
-      ptr = &(*ptr)->_left;
-    else
-      ptr = &(*ptr)->_right;
+      return *ptr;
+    ptr=&(*ptr)->_next;
   }
-  if (*ptr == NULL && (*ptr = emalloc_zero(sizeof(struct meshms_conversations))) != NULL) {
-    (*ptr)->_parent = parent;
-    (*ptr)->them = *them;
+  struct meshms_conversations *n = emalloc_zero(sizeof(struct meshms_conversations));
+  if (n){
+    n->them = *them;
+    n->_next = *conv;
+    *conv = n;
   }
-  return *ptr;
+  return n;
 }
 
 // find matching conversations
@@ -511,25 +506,28 @@ end:
 }
 
 // update conversations, and return MESHMS_STATUS_UPDATED if the conversation index should be saved
-static enum meshms_status update_conversations(const sid_t *my_sid, struct meshms_conversations *conv)
+static enum meshms_status update_conversations(const sid_t *my_sid, struct meshms_conversations **conv)
 {
   enum meshms_status rstatus = MESHMS_STATUS_OK;
-  if (conv) {
-    enum meshms_status status;
-    if (meshms_failed(status = update_conversations(my_sid, conv->_left)))
-      return status;
-    if (status == MESHMS_STATUS_UPDATED)
-      rstatus = MESHMS_STATUS_UPDATED;
-    if (conv->their_size != conv->their_ply.size) {
-      if (meshms_failed(status = update_conversation(my_sid, conv)))
+  struct meshms_conversations **ptr = conv;
+  while (*ptr) {
+    struct meshms_conversations *n = *ptr;
+    if (n->their_size != n->their_ply.size) {
+      enum meshms_status status;
+      if (meshms_failed(status = update_conversation(my_sid, n)))
 	return status;
-      if (status == MESHMS_STATUS_UPDATED)
+      if (status == MESHMS_STATUS_UPDATED){
 	rstatus = MESHMS_STATUS_UPDATED;
+	if (config.debug.meshms)
+	  DEBUGF("Bumping conversation from %s", alloca_tohex_sid_t(n->them));
+	// bump to head of list
+	*ptr = n->_next;
+	n->_next = *conv;
+	*conv = n;
+	continue;
+      }
     }
-    if (meshms_failed(status = update_conversations(my_sid, conv->_right)))
-      return status;
-    if (status == MESHMS_STATUS_UPDATED)
-      rstatus = MESHMS_STATUS_UPDATED;
+    ptr = &(*ptr)->_next;
   }
   return rstatus;
 }
@@ -541,6 +539,7 @@ static enum meshms_status read_known_conversations(rhizome_manifest *m, const si
   if (m->haveSecret==NEW_BUNDLE_ID)
     return MESHMS_STATUS_OK;
 
+  struct meshms_conversations **ptr = conv;
   struct rhizome_read read;
   bzero(&read, sizeof(read));
   struct rhizome_read_buffer buff;
@@ -563,6 +562,7 @@ static enum meshms_status read_known_conversations(rhizome_manifest *m, const si
     WARNF("Expected version 1 (got 0x%02x)", version);
     goto fault;
   }
+  
   while (1) {
     sid_t sid;
     r = rhizome_read_buffered(&read, &buff, sid.binary, sizeof sid.binary);
@@ -605,12 +605,17 @@ static enum meshms_status read_known_conversations(rhizome_manifest *m, const si
     if (their_sid && cmp_sid_t(&sid, their_sid) != 0)
       continue;
     
-    struct meshms_conversations *ptr = add_conv(conv, &sid);
-    if (!ptr)
+    struct meshms_conversations *n = emalloc_zero(sizeof(struct meshms_conversations));
+    if (!n)
       goto end;
-    ptr->their_last_message = last_message;
-    ptr->read_offset = read_offset;
-    ptr->their_size = their_size;
+    
+    *ptr = n;
+    ptr = &n->_next;
+    
+    n->them = sid;
+    n->their_last_message = last_message;
+    n->read_offset = read_offset;
+    n->their_size = their_size;
   }
 fault:
   status = MESHMS_STATUS_PROTOCOL_FAULT;
@@ -622,42 +627,42 @@ end:
 static ssize_t write_conversation(struct rhizome_write *write, struct meshms_conversations *conv)
 {
   size_t len=0;
-  if (!conv)
-    return len;
-  {
-    unsigned char buffer[sizeof(conv->them) + (8*3)];
-    if (write)
-      bcopy(conv->them.binary, buffer, sizeof(conv->them));
-    len+=sizeof(conv->them);
-    if (write){
-      len+=pack_uint(&buffer[len], conv->their_last_message);
-      len+=pack_uint(&buffer[len], conv->read_offset);
-      len+=pack_uint(&buffer[len], conv->their_size);
-      int ret=rhizome_write_buffer(write, buffer, len);
-      if (ret == -1)
-	return ret;
-    }else{
-      len+=measure_packed_uint(conv->their_last_message);
-      len+=measure_packed_uint(conv->read_offset);
-      len+=measure_packed_uint(conv->their_size);
-    }
-    if (config.debug.meshms)
-      DEBUGF("len %s, %"PRId64", %"PRId64", %"PRId64" = %zu", 
-	alloca_tohex_sid_t(conv->them),
-	conv->their_last_message,
-	conv->read_offset,
-	conv->their_size,
-	len);
+  unsigned char buffer[sizeof(conv->them) + (8*3)];
+  if (write)
+    bcopy(conv->them.binary, buffer, sizeof(conv->them));
+  len+=sizeof(conv->them);
+  if (write){
+    len+=pack_uint(&buffer[len], conv->their_last_message);
+    len+=pack_uint(&buffer[len], conv->read_offset);
+    len+=pack_uint(&buffer[len], conv->their_size);
+    int ret=rhizome_write_buffer(write, buffer, len);
+    if (ret == -1)
+      return ret;
+  }else{
+    len+=measure_packed_uint(conv->their_last_message);
+    len+=measure_packed_uint(conv->read_offset);
+    len+=measure_packed_uint(conv->their_size);
   }
-  // write the two child nodes
-  ssize_t ret = write_conversation(write, conv->_left);
-  if (ret == -1)
-    return ret;
-  len += (size_t) ret;
-  ret = write_conversation(write, conv->_right);
-  if (ret == -1)
-    return ret;
-  len += (size_t) ret;
+  if (config.debug.meshms)
+    DEBUGF("len %s, %"PRId64", %"PRId64", %"PRId64" = %zu", 
+      alloca_tohex_sid_t(conv->them),
+      conv->their_last_message,
+      conv->read_offset,
+      conv->their_size,
+      len);
+  return len;
+}
+
+static ssize_t write_conversations(struct rhizome_write *write, struct meshms_conversations *conv)
+{
+  ssize_t len=0;
+  while(conv){
+    ssize_t this_len = write_conversation(write, conv);
+    if (this_len==-1)
+      return this_len;
+    len+=this_len;
+    conv = conv->_next;
+  }
   return len;
 }
 
@@ -672,7 +677,7 @@ static enum meshms_status write_known_conversations(rhizome_manifest *m, struct 
   // TODO rebalance tree...
   
   // measure the final payload first
-  ssize_t len=write_conversation(NULL, conv);
+  ssize_t len=write_conversations(NULL, conv);
   if (len == -1)
     goto end;
   
@@ -689,7 +694,7 @@ static enum meshms_status write_known_conversations(rhizome_manifest *m, struct 
   unsigned char version=1;
   if (rhizome_write_buffer(&write, &version, 1) == -1)
     goto end;
-  if (write_conversation(&write, conv) == -1)
+  if (write_conversations(&write, conv) == -1)
     goto end;
   pstatus = rhizome_finish_write(&write);
   if (pstatus != RHIZOME_PAYLOAD_STATUS_NEW)
@@ -748,7 +753,7 @@ enum meshms_status meshms_conversations_list(const sid_t *my_sid, const sid_t *t
     goto end;
   if (meshms_failed(status = get_database_conversations(my_sid, their_sid, conv)))
     goto end;
-  if ((status = update_conversations(my_sid, *conv)) == MESHMS_STATUS_UPDATED && their_sid == NULL)
+  if ((status = update_conversations(my_sid, conv)) == MESHMS_STATUS_UPDATED && their_sid == NULL)
     status = write_known_conversations(m, *conv);
 end:
   rhizome_manifest_free(m);
@@ -763,11 +768,7 @@ end:
  */
 void meshms_conversation_iterator_start(struct meshms_conversation_iterator *it, struct meshms_conversations *conv)
 {
-  assert(conv->_parent == NULL); // can only iterate over whole tree
   it->current = conv;
-  // infix traversal; descend to the leftmost leaf and start there
-  while (it->current->_left)
-    it->current = it->current->_left;
 }
 
 /* Advance to the next conversation in the tree.
@@ -777,20 +778,7 @@ void meshms_conversation_iterator_start(struct meshms_conversation_iterator *it,
 void meshms_conversation_iterator_advance(struct meshms_conversation_iterator *it)
 {
   assert(it->current != NULL); // do not call on a finished iterator
-  if (it->current->_right) {
-    it->current = it->current->_right;
-    while (it->current->_left)
-      it->current = it->current->_left;
-  }
-  else {
-    while (1) {
-      struct meshms_conversations *conv = it->current;
-      it->current = it->current->_parent;
-      if (it->current == NULL || conv == it->current->_left)
-	break;
-      assert(conv == it->current->_right);
-    }
-  }
+  it->current = it->current->_next;
 }
 
 enum meshms_status meshms_message_iterator_open(struct meshms_message_iterator *iter, const sid_t *me, const sid_t *them)
@@ -1007,7 +995,7 @@ enum meshms_status meshms_mark_read(const sid_t *sender, const sid_t *recipient,
     goto end;
   // check if any incoming conversations need to be acked or have new messages and update the read offset
   unsigned changed = 0;
-  if (meshms_failed(status = update_conversations(sender, conv)))
+  if (meshms_failed(status = update_conversations(sender, &conv)))
     goto end;
   if (status == MESHMS_STATUS_UPDATED)
     changed = 1;
@@ -1220,10 +1208,8 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
 static unsigned mark_read(struct meshms_conversations *conv, const sid_t *their_sid, const uint64_t offset)
 {
   unsigned ret=0;
-  if (conv){
+  while (conv){
     int cmp = their_sid ? cmp_sid_t(&conv->them, their_sid) : 0;
-    if (!their_sid || cmp<0)
-      ret += mark_read(conv->_left, their_sid, offset);
     if (!their_sid || cmp==0){
       // update read offset
       // - never past their last message
@@ -1238,9 +1224,10 @@ static unsigned mark_read(struct meshms_conversations *conv, const sid_t *their_
 	conv->read_offset = new_offset;
 	ret++;
       }
+      if (their_sid)
+	break;
     }
-    if (!their_sid || cmp>0)
-      ret += mark_read(conv->_right, their_sid, offset);
+    conv = conv->_next;
   }
   return ret;
 }

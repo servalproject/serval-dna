@@ -165,6 +165,34 @@ test_MessageThreading() {
    assertStdoutLineCount '==' 7
 }
 
+doc_reorderList="New incoming messages force the conversation to the top"
+setup_reorderList() {
+   setup_servald
+   set_instance +A
+   create_identities 5
+   setup_logging
+}
+test_reorderList() {
+   # new incoming messages should bump to the top
+   executeOk_servald meshms send message $SIDA4 $SIDA1 "Bump"
+   executeOk_servald meshms list conversations $SIDA1
+   assertStdoutGrep --stderr --matches=1 "^0:$SIDA4:unread:"
+   executeOk_servald meshms send message $SIDA3 $SIDA1 "Bump"
+   executeOk_servald meshms list conversations $SIDA1
+   assertStdoutGrep --stderr --matches=1 "^0:$SIDA3:unread:"
+   assertStdoutGrep --stderr --matches=1 "^1:$SIDA4:unread:"
+   executeOk_servald meshms send message $SIDA2 $SIDA1 "Bump"
+   executeOk_servald meshms list conversations $SIDA1
+   assertStdoutGrep --stderr --matches=1 "^0:$SIDA2:unread:"
+   assertStdoutGrep --stderr --matches=1 "^1:$SIDA3:unread:"
+   assertStdoutGrep --stderr --matches=1 "^2:$SIDA4:unread:"
+   executeOk_servald meshms send message $SIDA4 $SIDA1 "Bump"
+   executeOk_servald meshms list conversations $SIDA1
+   assertStdoutGrep --stderr --matches=1 "^0:$SIDA4:unread:"
+   assertStdoutGrep --stderr --matches=1 "^1:$SIDA2:unread:"
+   assertStdoutGrep --stderr --matches=1 "^2:$SIDA3:unread:"
+}
+
 doc_listConversations="List multiple conversations, with different numbers of messages"
 setup_listConversations() {
    setup_servald
