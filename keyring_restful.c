@@ -100,55 +100,57 @@ static int restful_keyring_identitylist_json_content_chunk(struct http_request *
       strbuf_puts(b, "{\n\"header\":[");
       unsigned i;
       for (i = 0; i != NELS(headers); ++i) {
-  if (i)
-    strbuf_putc(b, ',');
-  strbuf_json_string(b, headers[i]);
+	if (i)
+	  strbuf_putc(b, ',');
+	strbuf_json_string(b, headers[i]);
       }
       strbuf_puts(b, "],\n\"rows\":[");
       if (!strbuf_overrun(b))
-  r->u.sidlist.phase = LIST_ROWS;
+	r->u.sidlist.phase = LIST_ROWS;
       return 1;
+      
     case LIST_ROWS:
-  if (r->u.sidlist.cn != 0 || r->u.sidlist.in != 0)
-    strbuf_putc(b, ',');
+      if (r->u.sidlist.cn != 0 || r->u.sidlist.in != 0)
+	strbuf_putc(b, ',');
 
-  if (keyring->context_count == 0 || keyring->contexts[r->u.sidlist.cn]->identity_count == 0) {
-    r->u.sidlist.phase = LIST_END;
-    return 1;
-  }
-
-  const sid_t *sidp = NULL;
-  const char *did = NULL;
-  const char *name = NULL;
-  keyring_identity_extract(keyring->contexts[r->u.sidlist.cn]->identities[r->u.sidlist.in], &sidp, &did, &name);
-  if (sidp || did) {
-    strbuf_puts(b, "\n[");
-    strbuf_json_string(b, alloca_tohex_sid_t(*sidp));
-    strbuf_puts(b, ",");
-    strbuf_json_string(b, did);
-    strbuf_puts(b, ",");
-    strbuf_json_string(b, name);
-    strbuf_puts(b, "]");
-  }
-
-  if (!strbuf_overrun(b)) {
-    ++r->u.sidlist.in;
-    if (r->u.sidlist.in >= keyring->contexts[r->u.sidlist.cn]->identity_count) {
-      r->u.sidlist.in = 0;
-
-      ++r->u.sidlist.cn;
-      if (r->u.sidlist.cn >= keyring->context_count) {
-        r->u.sidlist.phase = LIST_END;
+      if (keyring->context_count == 0 || keyring->contexts[r->u.sidlist.cn]->identity_count == 0) {
+	r->u.sidlist.phase = LIST_END;
+	return 1;
       }
-    }
-  }
-  return 1;
-      // }
-      // fall through...
+
+      const sid_t *sidp = NULL;
+      const char *did = NULL;
+      const char *name = NULL;
+      keyring_identity_extract(keyring->contexts[r->u.sidlist.cn]->identities[r->u.sidlist.in], &sidp, &did, &name);
+      if (sidp || did) {
+	strbuf_puts(b, "\n[");
+	strbuf_json_string(b, alloca_tohex_sid_t(*sidp));
+	strbuf_puts(b, ",");
+	strbuf_json_string(b, did);
+	strbuf_puts(b, ",");
+	strbuf_json_string(b, name);
+	strbuf_puts(b, "]");
+      }
+
+      if (!strbuf_overrun(b)) {
+	++r->u.sidlist.in;
+	if (r->u.sidlist.in >= keyring->contexts[r->u.sidlist.cn]->identity_count) {
+	  r->u.sidlist.in = 0;
+
+	  ++r->u.sidlist.cn;
+	  if (r->u.sidlist.cn >= keyring->context_count) {
+	    r->u.sidlist.phase = LIST_END;
+	  }
+	}
+      }
+      return 1;
+      
     case LIST_END:
       strbuf_puts(b, "\n]\n}\n");
-      if (!strbuf_overrun(b))
-  r->u.sidlist.phase = LIST_DONE;
+      if (strbuf_overrun(b))
+	return 1;
+      
+      r->u.sidlist.phase = LIST_DONE;
       // fall through...
     case LIST_DONE:
       return 0;
