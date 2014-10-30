@@ -134,6 +134,15 @@ typedef struct httpd_request
     */
     struct rhizome_read read_state;
 
+    /* For responses that list SIDs.
+    */
+    struct {
+      enum list_phase phase;
+      unsigned cn;
+      unsigned in;
+    }
+      sidlist;
+
     /* For responses that list manifests.
     */
     struct {

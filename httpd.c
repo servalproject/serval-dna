@@ -39,6 +39,7 @@ HTTP_HANDLER restful_rhizome_newsince;
 HTTP_HANDLER restful_rhizome_insert;
 HTTP_HANDLER restful_rhizome_;
 HTTP_HANDLER restful_meshms_;
+HTTP_HANDLER restful_keyring_;
 
 HTTP_HANDLER rhizome_status_page;
 HTTP_HANDLER rhizome_file_page;
@@ -59,6 +60,7 @@ struct http_handler paths[]={
   {"/restful/rhizome/insert", restful_rhizome_insert},
   {"/restful/rhizome/", restful_rhizome_},
   {"/restful/meshms/", restful_meshms_},
+  {"/restful/keyring/", restful_keyring_},
   {"/rhizome/status", rhizome_status_page},
   {"/rhizome/file/", rhizome_file_page},
   {"/rhizome/import", rhizome_direct_import},
