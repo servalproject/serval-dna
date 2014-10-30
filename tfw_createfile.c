@@ -52,6 +52,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <errno.h>
 #include <string.h>
 #include <stdarg.h>
+#include <assert.h>
 #include "str.h"
 
 static const char *argv0 = "test_createfile";
@@ -113,8 +114,8 @@ int main(int argc, char **argv)
     unsigned remain = size - offset - 1;
     if (remain > sizeof buf)
       remain = sizeof buf;
-    int r=fwrite(buf, remain, 1, stdout);
-    r=fputc('\n', stdout);
+    assert(fwrite(buf, remain, 1, stdout)==remain);
+    assert(fputc('\n', stdout)!=EOF);
     offset += remain + 1;
     if (bounce <= n || bounce >= bouncemax)
       bouncedelta *= -1;
