@@ -111,7 +111,12 @@ int scrapeProcNetRoute()
       addr.inet.sin_addr.s_addr=strtol(dest,NULL,16);
       struct in_addr netmask = {.s_addr=strtol(mask,NULL,16)};
       broadcast.inet.sin_addr.s_addr=addr.inet.sin_addr.s_addr | ~netmask.s_addr;
-      overlay_interface_register(name,&addr,&broadcast);
+
+      struct socket_address netmask_addr;
+      netmask_addr.inet.sin_family=AF_INET;
+      netmask_addr.inet.sin_addr.s_addr=netmask.s_addr;
+
+      overlay_interface_register(name,&addr,&netmask_addr,&broadcast);
     }
     line[0] = '\0';
     if (fgets(line,1024,f) == NULL)
