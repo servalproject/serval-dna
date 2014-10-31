@@ -78,13 +78,13 @@ static void directory_send(struct subscriber *directory_service, struct subscrib
 
 // send a registration packet for each unlocked identity
 static void directory_send_keyring(struct subscriber *directory_service){
-  unsigned cn=0, in=0, kp=0;
-  for (; keyring_next_keytype(keyring, &cn, &in, &kp, KEYTYPE_DID); ++kp){
-    keyring_identity *i = keyring->contexts[cn]->identities[in];
-    if (i->subscriber && i->subscriber->reachable == REACHABLE_SELF){
-      const char *unpackedDid = (const char *) i->keypairs[kp]->private_key;
-      const char *name = (const char *) i->keypairs[kp]->public_key;
-      directory_send(directory_service, i->subscriber, unpackedDid, name);
+  keyring_iterator it;
+  keyring_iterator_start(keyring, &it);
+  while(keyring_next_keytype(&it, KEYTYPE_DID)){
+    if (it.identity->subscriber && it.identity->subscriber->reachable == REACHABLE_SELF){
+      const char *unpackedDid = (const char *) it.keypair->private_key;
+      const char *name = (const char *) it.keypair->public_key;
+      directory_send(directory_service, it.identity->subscriber, unpackedDid, name);
     }
   }
 }

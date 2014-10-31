@@ -1226,13 +1226,14 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
 int rhizome_lookup_author(rhizome_manifest *m)
 {
   IN();
-  unsigned cn, in, kp;
+  keyring_iterator it;
+  
   switch (m->authorship) {
     case AUTHOR_NOT_CHECKED:
       if (config.debug.rhizome)
 	DEBUGF("manifest[%d] lookup author=%s", m->manifest_record_number, alloca_tohex_sid_t(m->author));
-      cn = 0, in = 0, kp = 0;
-      if (keyring_find_sid(keyring, &cn, &in, &kp, &m->author)) {
+      keyring_iterator_start(keyring, &it);
+      if (keyring_find_sid(&it, &m->author)) {
 	if (config.debug.rhizome)
 	  DEBUGF("found author");
 	m->authorship = AUTHOR_LOCAL;
@@ -1243,8 +1244,8 @@ int rhizome_lookup_author(rhizome_manifest *m)
       if (m->has_sender) {
 	if (config.debug.rhizome)
 	  DEBUGF("manifest[%d] lookup sender=%s", m->manifest_record_number, alloca_tohex_sid_t(m->sender));
-	cn = 0, in = 0, kp = 0;
-	if (keyring_find_sid(keyring, &cn, &in, &kp, &m->sender)) {
+	keyring_iterator_start(keyring, &it);
+	if (keyring_find_sid(&it, &m->sender)) {
 	  if (config.debug.rhizome)
 	    DEBUGF("found sender");
 	  rhizome_manifest_set_author(m, &m->sender);

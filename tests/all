@@ -32,11 +32,12 @@ includeTests dnahelper
 includeTests dnaprotocol
 includeTests rhizomeops
 includeTests rhizomeprotocol
-includeTests rhizomerestful
 includeTests meshms
-includeTests meshmsrestful
 includeTests directory_service
 includeTests vomp
+includeTests rhizomerestful
+includeTests keyringrestful
+includeTests meshmsrestful
 if type -p "$JAVAC" >/dev/null; then
    includeTests jni
    includeTests rhizomejava

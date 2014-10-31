@@ -48,15 +48,16 @@ void meshms_free_conversations(struct meshms_conversations *conv)
 static enum meshms_status get_my_conversation_bundle(const sid_t *my_sidp, rhizome_manifest *m)
 {
   /* Find our private key */
-  unsigned cn=0, in=0, kp=0;
-  if (!keyring_find_sid(keyring,&cn,&in,&kp,my_sidp))
+  keyring_iterator it;
+  keyring_iterator_start(keyring, &it);
+  
+  if (!keyring_find_sid(&it, my_sidp))
     return MESHMS_STATUS_SID_LOCKED;
 
   char seed[1024];
   snprintf(seed, sizeof(seed), 
     "incorrection%sconcentrativeness", 
-	alloca_tohex(keyring->contexts[cn]->identities[in]
-	->keypairs[kp]->private_key, crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES));
+	alloca_tohex(it.keypair->private_key, crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES));
 	
   if (rhizome_get_bundle_from_seed(m, seed) == -1)
     return MESHMS_STATUS_ERROR;

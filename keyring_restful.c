@@ -70,8 +70,7 @@ static int restful_keyring_identitylist_json(httpd_request *r, const char *remai
     return 404;
 
   r->u.sidlist.phase = LIST_HEADER;
-  r->u.sidlist.cn = 0;
-  r->u.sidlist.in = 0;
+  keyring_iterator_start(keyring, &r->u.sidlist.it);
 
   http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_keyring_identitylist_json_content);
   return 1;
@@ -105,23 +104,21 @@ static int restful_keyring_identitylist_json_content_chunk(struct http_request *
 	strbuf_json_string(b, headers[i]);
       }
       strbuf_puts(b, "],\n\"rows\":[");
-      if (!strbuf_overrun(b))
-	r->u.sidlist.phase = LIST_ROWS;
+      if (!strbuf_overrun(b)){
+	r->u.sidlist.phase = LIST_FIRST;
+	if (!keyring_next_identity(&r->u.sidlist.it))
+	  r->u.sidlist.phase = LIST_END;
+      }
       return 1;
       
     case LIST_ROWS:
-      if (r->u.sidlist.cn != 0 || r->u.sidlist.in != 0)
-	strbuf_putc(b, ',');
-
-      if (keyring->context_count == 0 || keyring->contexts[r->u.sidlist.cn]->identity_count == 0) {
-	r->u.sidlist.phase = LIST_END;
-	return 1;
-      }
-
+      strbuf_putc(b, ',');
+    case LIST_FIRST:
+      r->u.sidlist.phase = LIST_ROWS;
       const sid_t *sidp = NULL;
       const char *did = NULL;
       const char *name = NULL;
-      keyring_identity_extract(keyring->contexts[r->u.sidlist.cn]->identities[r->u.sidlist.in], &sidp, &did, &name);
+      keyring_identity_extract(r->u.sidlist.it.identity, &sidp, &did, &name);
       if (sidp || did) {
 	strbuf_puts(b, "\n[");
 	strbuf_json_string(b, alloca_tohex_sid_t(*sidp));
@@ -133,15 +130,8 @@ static int restful_keyring_identitylist_json_content_chunk(struct http_request *
       }
 
       if (!strbuf_overrun(b)) {
-	++r->u.sidlist.in;
-	if (r->u.sidlist.in >= keyring->contexts[r->u.sidlist.cn]->identity_count) {
-	  r->u.sidlist.in = 0;
-
-	  ++r->u.sidlist.cn;
-	  if (r->u.sidlist.cn >= keyring->context_count) {
-	    r->u.sidlist.phase = LIST_END;
-	  }
-	}
+	if (!keyring_next_identity(&r->u.sidlist.it))
+	  r->u.sidlist.phase = LIST_END;
       }
       return 1;
       

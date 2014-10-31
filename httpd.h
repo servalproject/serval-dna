@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __SERVAL_DNA__HTTPD_H
 
 #include "rhizome.h"
+#include "keyring.h"
 #include "meshms.h"
 #include "http_server.h"
 
@@ -32,7 +33,7 @@ int is_httpd_server_running();
 extern uint16_t httpd_server_port;
 extern unsigned int httpd_request_count;
 
-enum list_phase { LIST_HEADER = 0, LIST_ROWS, LIST_END, LIST_DONE };
+enum list_phase { LIST_HEADER = 0, LIST_FIRST, LIST_ROWS, LIST_END, LIST_DONE };
 
 struct form_buf_malloc {
   char *buffer;
@@ -138,8 +139,7 @@ typedef struct httpd_request
     */
     struct {
       enum list_phase phase;
-      unsigned cn;
-      unsigned in;
+      keyring_iterator it;
     }
       sidlist;
 

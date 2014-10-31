@@ -239,15 +239,19 @@ static int restful_meshms_conversationlist_json_content_chunk(struct http_reques
       }
       strbuf_puts(b, "],\n\"rows\":[");
       if (!strbuf_overrun(b))
-	r->u.mclist.phase = LIST_ROWS;
+	r->u.mclist.phase = LIST_FIRST;
       return 1;
+
     case LIST_ROWS:
+    case LIST_FIRST:
       if (r->u.mclist.conv == NULL || r->u.mclist.iter.current == NULL) {
 	r->u.mclist.phase = LIST_END;
 	// fall through...
       } else {
-	if (r->u.mclist.rowcount != 0)
+	if (r->u.mclist.phase==LIST_ROWS)
 	  strbuf_putc(b, ',');
+	else
+	  r->u.mclist.phase=LIST_ROWS;
 	strbuf_puts(b, "\n[");
 	strbuf_sprintf(b, "%zu", r->u.mclist.rowcount);
 	strbuf_putc(b, ',');
@@ -388,6 +392,7 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
       if (!strbuf_overrun(b))
 	r->u.msglist.phase = LIST_ROWS;
       return 1;
+    case LIST_FIRST:
     case LIST_ROWS:
       {
 	if (   r->u.msglist.finished

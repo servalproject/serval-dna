@@ -174,7 +174,8 @@ int overlay_mdp_service_rhizomeresponse(struct internal_mdp_header *UNUSED(heade
 int overlay_mdp_service_dnalookup(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   IN();
-  unsigned cn=0, in=0, kp=0;
+  keyring_iterator it;
+  keyring_iterator_start(keyring, &it);
   char did[64+1];
   
   int pll=ob_remaining(payload);
@@ -191,19 +192,18 @@ int overlay_mdp_service_dnalookup(struct internal_mdp_header *header, struct ove
     DEBUG("MDP_PORT_DNALOOKUP");
   
   int results=0;
-  while(keyring_find_did(keyring,&cn,&in,&kp,did))
+  while(keyring_find_did(&it, did))
     {
-      struct keypair *keypair = keyring->contexts[cn]->identities[in]->keypairs[kp];
       /* package DID and Name into reply (we include the DID because
 	 it could be a wild-card DID search, but the SID is implied 
 	 in the source address of our reply). */
-      if (keypair->private_key_len > DID_MAXSIZE) 
+      if (it.keypair->private_key_len > DID_MAXSIZE) 
 	/* skip excessively long DID records */
 	continue;
       
-      struct subscriber *subscriber = keyring->contexts[cn]->identities[in]->subscriber;
-      const char *unpackedDid = (const char *) keypair->private_key;
-      const char *name = (const char *)keypair->public_key;
+      struct subscriber *subscriber = it.identity->subscriber;
+      const char *unpackedDid = (const char *) it.keypair->private_key;
+      const char *name = (const char *)it.keypair->public_key;
       // URI is sid://SIDHEX/DID
       strbuf b = strbuf_alloca(SID_STRLEN + DID_MAXSIZE + 10);
       strbuf_puts(b, "sid://");
@@ -211,7 +211,6 @@ int overlay_mdp_service_dnalookup(struct internal_mdp_header *header, struct ove
       strbuf_puts(b, "/local/");
       strbuf_puts(b, unpackedDid);
       overlay_mdp_dnalookup_reply(header->source, header->source_port, subscriber, strbuf_str(b), unpackedDid, name);
-      kp++;
       results++;
     }
   if (!results) {

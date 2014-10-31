@@ -235,6 +235,8 @@ static int restful_rhizome_bundlelist_json_content_chunk(struct http_request *hr
       if (!strbuf_overrun(b))
 	r->u.rhlist.phase = LIST_ROWS;
       return 1;
+      
+    case LIST_FIRST:
     case LIST_ROWS:
       {
 	int ret = rhizome_list_next(&r->u.rhlist.cursor);

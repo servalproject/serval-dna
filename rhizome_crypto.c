@@ -192,25 +192,26 @@ int rhizome_secret2bk(
 enum rhizome_secret_disposition find_rhizome_secret(const sid_t *authorSidp, size_t *rs_len, const unsigned char **rs)
 {
   IN();
-  unsigned cn=0, in=0, kp=0;
-  if (!keyring_find_sid(keyring,&cn,&in,&kp, authorSidp)) {
+  keyring_iterator it;
+  keyring_iterator_start(keyring, &it);
+  
+  if (!keyring_find_sid(&it, authorSidp)) {
     if (config.debug.rhizome)
       DEBUGF("identity sid=%s is not in keyring", alloca_tohex_sid_t(*authorSidp));
     RETURN(IDENTITY_NOT_FOUND);
   }
-  int kpi = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
-  if (kpi == -1) {
+  keypair *kp=keyring_identity_keytype(it.identity, KEYTYPE_RHIZOME);
+  if (!kp) {
     WARNF("Identity sid=%s has no Rhizome Secret", alloca_tohex_sid_t(*authorSidp));
     RETURN(IDENTITY_HAS_NO_RHIZOME_SECRET);
   }
-  kp = (unsigned)kpi;
-  int rslen = keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key_len;
+  int rslen = kp->private_key_len;
   assert(rslen >= 16);
   assert(rslen <= 1024);
   if (rs_len)
     *rs_len = rslen;
   if (rs)
-    *rs = keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key;
+    *rs = kp->private_key;
   RETURN(FOUND_RHIZOME_SECRET);
 }
 
@@ -354,28 +355,31 @@ void rhizome_find_bundle_author_and_secret(rhizome_manifest *m)
   assert(is_sid_t_any(m->author));
   if (!m->has_bundle_key)
     RETURNVOID;
-  unsigned cn = 0, in = 0, kp = 0;
-  for (; keyring_next_identity(keyring, &cn, &in, &kp); ++kp) {
-    const sid_t *authorSidp = (const sid_t *) keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key;
-    //if (config.debug.rhizome) DEBUGF("try author identity sid=%s", alloca_tohex_sid_t(*authorSidp));
-    int rkp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
-    if (rkp != -1) {
-      size_t rs_len = keyring->contexts[cn]->identities[in]->keypairs[rkp]->private_key_len;
-      if (rs_len < 16 || rs_len > 1024) {
-	WHYF("invalid Rhizome Secret: length=%zu", rs_len);
-	m->authorship = AUTHENTICATION_ERROR;
-	RETURNVOID;
-      }
-      const unsigned char *rs = keyring->contexts[cn]->identities[in]->keypairs[rkp]->private_key;
-      unsigned char *secretp = m->cryptoSignSecret;
-      if (m->haveSecret)
-	secretp = alloca(sizeof m->cryptoSignSecret);
-      if (rhizome_bk2secret(&m->cryptoSignPublic, rs, rs_len, m->bundle_key.binary, secretp) == 0) {
-	if (m->haveSecret) {
-	  if (memcmp(secretp, m->cryptoSignSecret, sizeof m->cryptoSignSecret) != 0)
-	    FATALF("Bundle secret does not match derived secret");
-	} else
-	  m->haveSecret = EXISTING_BUNDLE_ID;
+  
+  keyring_iterator it;
+  keyring_iterator_start(keyring, &it);
+  keypair *kp;
+  while((kp=keyring_next_keytype(&it, KEYTYPE_RHIZOME))){
+    size_t rs_len = kp->private_key_len;
+    if (rs_len < 16 || rs_len > 1024) {
+      // should a bad key be fatal??
+      WARNF("invalid Rhizome Secret: length=%zu", rs_len);
+      continue;
+    }
+    const unsigned char *rs = kp->private_key;
+    unsigned char *secretp = m->cryptoSignSecret;
+    if (m->haveSecret)
+      secretp = alloca(sizeof m->cryptoSignSecret);
+    if (rhizome_bk2secret(&m->cryptoSignPublic, rs, rs_len, m->bundle_key.binary, secretp) == 0) {
+      if (m->haveSecret) {
+	if (memcmp(secretp, m->cryptoSignSecret, sizeof m->cryptoSignSecret) != 0)
+	  FATALF("Bundle secret does not match derived secret");
+      } else
+	m->haveSecret = EXISTING_BUNDLE_ID;
+      
+      keypair *kp_sid = keyring_identity_keytype(it.identity, KEYTYPE_CRYPTOBOX);
+      if (kp_sid){
+	const sid_t *authorSidp = (const sid_t *) kp_sid->public_key;
 	if (config.debug.rhizome)
 	  DEBUGF("found bundle author sid=%s", alloca_tohex_sid_t(*authorSidp));
 	rhizome_manifest_set_author(m, authorSidp);
@@ -387,8 +391,9 @@ void rhizome_find_bundle_author_and_secret(rhizome_manifest *m)
 	      SID_T, &m->author,
 	      INT64, m->rowid,
 	      END);
-	RETURNVOID; // bingo
       }
+      
+      RETURNVOID; // bingo
     }
   }
   assert(m->authorship == ANONYMOUS);
@@ -608,10 +613,12 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
   unsigned char hash[crypto_hash_sha512_BYTES];
   if (m->has_sender && m->has_recipient) {
     unsigned char *nm_bytes=NULL;
-    unsigned cn=0, in=0, kp=0;
-    if (!keyring_find_sid(keyring, &cn, &in, &kp, &m->sender)){
-      cn=in=kp=0;
-      if (!keyring_find_sid(keyring, &cn, &in, &kp, &m->recipient)){
+    keyring_iterator it;
+    keyring_iterator_start(keyring, &it);
+    
+    if (!keyring_find_sid(&it, &m->sender)){
+      keyring_iterator_start(keyring, &it);
+      if (!keyring_find_sid(&it, &m->recipient)){
 	WARNF("Neither sender=%s nor recipient=%s is in keyring",
 	    alloca_tohex_sid_t(m->sender),
 	    alloca_tohex_sid_t(m->recipient));
