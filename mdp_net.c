@@ -29,7 +29,7 @@ ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl, s
   iov[0].iov_len=bufferlen;
   bzero(&msg,sizeof(msg));
   msg.msg_name = &recvaddr->store;
-  msg.msg_namelen = recvaddr->addrlen;
+  msg.msg_namelen = sizeof(recvaddr->store);
   msg.msg_iov = &iov[0];
   msg.msg_iovlen = 1;
   msg.msg_control = cmsgcmsg;
