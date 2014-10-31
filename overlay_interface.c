@@ -214,18 +214,43 @@ overlay_interface * overlay_interface_get_default(){
 overlay_interface * overlay_interface_find(struct in_addr addr, int return_default){
   int i;
   overlay_interface *ret = NULL;
+
+
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
     if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
       continue;
     
     if (overlay_interfaces[i].address.addr.sa_family == AF_INET
       && (overlay_interfaces[i].netmask.s_addr & addr.s_addr) == (overlay_interfaces[i].netmask.s_addr & overlay_interfaces[i].address.inet.sin_addr.s_addr)){
+
+      if (config.debug.overlayinterfaces) {
+	DEBUGF("Found interface #%d for in_addr=0x%08x, interface mask=0x%08x, interface addr=0x%08x\n",
+	       i,
+	       addr.s_addr,
+	       overlay_interfaces[i].netmask.s_addr,
+	       overlay_interfaces[i].address.inet.sin_addr.s_addr);
+      }
+
       return &overlay_interfaces[i];
+    } else {
+      if (config.debug.overlayinterfaces) {
+	DEBUGF("in_addr=0x%08x is not from interface #%d (interface mask=0x%08x, interface addr=0x%08x)\n",
+	       addr.s_addr,i,
+	       overlay_interfaces[i].netmask.s_addr,
+	       overlay_interfaces[i].address.inet.sin_addr.s_addr);
+      }
     }
     
     // check if this is a default interface
-    if (return_default && overlay_interfaces[i].default_route)
+    if (return_default && overlay_interfaces[i].default_route) {
       ret=&overlay_interfaces[i];
+      if (config.debug.overlayinterfaces) {
+	DEBUGF("in_addr=0x%08x is being deemed to default-route interface #%d (interface mask=0x%08x, interface addr=0x%08x)\n",
+	       addr.s_addr,i,
+	       overlay_interfaces[i].netmask.s_addr,
+	       overlay_interfaces[i].address.inet.sin_addr.s_addr);
+      }
+    }
   }
   
   return ret;
