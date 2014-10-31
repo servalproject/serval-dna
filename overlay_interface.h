@@ -153,6 +153,7 @@ DECLARE_ALARM(overlay_interface_discover);
 
 int overlay_interface_register(char *name,
 			   struct socket_address *addr,
+			   struct socket_address *netmask,
 			   struct socket_address *broadcast);
 void overlay_interface_close_all();
 overlay_interface * overlay_interface_get_default();

@@ -411,6 +411,7 @@ overlay_interface_init_socket(overlay_interface *interface)
  */
 static int
 overlay_interface_init(const char *name, struct socket_address *addr, 
+		       struct socket_address *netmask,
 		       struct socket_address *broadcast,
 		       const struct config_network_interface *ifconfig)
 {
@@ -533,6 +534,10 @@ overlay_interface_init(const char *name, struct socket_address *addr,
   if (ifconfig->socket_type == SOCK_DGRAM){
     if (ifconfig->drop_broadcasts || ifconfig->drop_unicasts || ifconfig->drop_packets)
       FATALF("Invalid interface definition. We only support dropping packets on dummy file interfaces");
+    if (netmask)
+      interface->netmask = netmask->inet.sin_addr;
+    else
+      interface->netmask = ifconfig->dummy_netmask;
     interface->local_echo = 1;
     
     if (overlay_interface_init_socket(interface))
@@ -1002,6 +1007,7 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 int
 overlay_interface_register(char *name,
 			   struct socket_address *addr,
+			   struct socket_address *netmask,
 			   struct socket_address *broadcast)
 {
   // Find the matching non-dummy interface rule.
@@ -1039,6 +1045,7 @@ overlay_interface_register(char *name,
   if (config.debug.overlayinterfaces) {
     // note, inet_ntop doesn't seem to behave on android
     DEBUGF("%s address: %s", name, alloca_socket_address(addr));
+    DEBUGF("%s netmask: %s", name, alloca_socket_address(netmask));
     DEBUGF("%s broadcast address: %s", name, alloca_socket_address(broadcast));
   }
 
@@ -1059,7 +1066,7 @@ overlay_interface_register(char *name,
   }
   
   /* New interface, so register it */
-  if (overlay_interface_init(name, addr, broadcast, ifconfig))
+  if (overlay_interface_init(name, addr, netmask, broadcast, ifconfig))
     return WHYF("Could not initialise newly seen interface %s", name);
   else if (config.debug.overlayinterfaces) 
     DEBUGF("Registered interface %s", name);
@@ -1100,8 +1107,9 @@ void overlay_interface_discover(struct sched_ent *alarm)
     
     if (j >= OVERLAY_MAX_INTERFACES) {
       // New file interface, so register it.
-      struct socket_address addr, broadcast;
+      struct socket_address addr, netmask, broadcast;
       bzero(&addr, sizeof addr);
+      bzero(&netmask, sizeof addr);
       bzero(&broadcast, sizeof broadcast);
       
       switch(ifconfig->socket_type){
@@ -1111,6 +1119,11 @@ void overlay_interface_discover(struct sched_ent *alarm)
 	addr.inet.sin_family=AF_INET;
 	addr.inet.sin_port=htons(ifconfig->port);
 	addr.inet.sin_addr=ifconfig->dummy_address;
+
+	netmask.addrlen=sizeof addr.inet;
+	netmask.inet.sin_family=AF_INET;
+	netmask.inet.sin_port=htons(ifconfig->port);
+	netmask.inet.sin_addr.s_addr=ifconfig->dummy_netmask.s_addr;
 	
 	broadcast.addrlen=sizeof addr.inet;
 	broadcast.inet.sin_family=AF_INET;
@@ -1118,7 +1131,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
 	broadcast.inet.sin_addr.s_addr=ifconfig->dummy_address.s_addr | ~ifconfig->dummy_netmask.s_addr;
       // Fallthrough
       case SOCK_STREAM:
-	overlay_interface_init(ifconfig->file, &addr, &broadcast, ifconfig);
+	overlay_interface_init(ifconfig->file, &addr, NULL, &broadcast, ifconfig);
 	break;
       case SOCK_DGRAM:
 	{
@@ -1141,7 +1154,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
 	  
 	  DEBUGF("Attempting to bind local socket w. addr %s, broadcast %s",
 	    alloca_socket_address(&addr), alloca_socket_address(&broadcast));
-	  overlay_interface_init(ifconfig->file, &addr, &broadcast, ifconfig);
+	  overlay_interface_init(ifconfig->file, &addr, &netmask, &broadcast, ifconfig);
 	  break;
 	}
       }

@@ -196,7 +196,11 @@ lsif(void) {
     
     broadcast.inet.sin_addr.s_addr=addr.inet.sin_addr.s_addr | ~netmask.s_addr;
     
-    overlay_interface_register(ifr->ifr_name, &addr, &broadcast);
+    struct socket_address netmask_addr;
+    netmask_addr.inet.sin_family=AF_INET;
+    netmask_addr.inet.sin_addr.s_addr=netmask.s_addr;
+    
+    overlay_interface_register(ifr->ifr_name, &addr, &netmask_addr, &broadcast);
     nInterfaces++;
   }
   
@@ -247,9 +251,14 @@ doifaddrs(void) {
     bcopy(ifa->ifa_addr, &addr.addr, addr.addrlen);
     
     netmask = ((struct sockaddr_in *)ifa->ifa_netmask)->sin_addr;
+
+    struct socket_address netmask_addr;
+    netmask_addr.inet.sin_family=AF_INET;
+    netmask_addr.inet.sin_addr.s_addr=netmask.s_addr;
+
     broadcast.inet.sin_addr.s_addr=addr.inet.sin_addr.s_addr | ~netmask.s_addr;
 
-    overlay_interface_register(name, &addr, &broadcast);
+    overlay_interface_register(name, &addr, &netmask_addr, &broadcast);
   }
   freeifaddrs(ifaddr);
 
