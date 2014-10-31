@@ -113,6 +113,7 @@ int scrapeProcNetRoute()
       broadcast.inet.sin_addr.s_addr=addr.inet.sin_addr.s_addr | ~netmask.s_addr;
 
       struct socket_address netmask_addr;
+      netmask_addr.addrlen = sizeof(netmask_addr.inet);
       netmask_addr.inet.sin_family=AF_INET;
       netmask_addr.inet.sin_addr.s_addr=netmask.s_addr;
 
@@ -202,6 +203,7 @@ lsif(void) {
     broadcast.inet.sin_addr.s_addr=addr.inet.sin_addr.s_addr | ~netmask.s_addr;
     
     struct socket_address netmask_addr;
+    netmask_addr.addrlen = sizeof(netmask_addr.inet);
     netmask_addr.inet.sin_family=AF_INET;
     netmask_addr.inet.sin_addr.s_addr=netmask.s_addr;
     
