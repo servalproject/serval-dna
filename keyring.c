@@ -38,7 +38,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "server.h"
 
 static void keyring_free_keypair(keypair *kp);
-static void keyring_free_context(keyring_context *c);
 static void keyring_free_identity(keyring_identity *id);
 static int keyring_identity_mac(const keyring_identity *id, unsigned char *pkrsalt, unsigned char *mac);
 
@@ -59,7 +58,7 @@ static int _keyring_open(keyring_file *k, const char *path, const char *mode)
 /*
  * Open keyring file, read BAM and create initial context using the stored salt.
  */
-keyring_file *keyring_open(const char *path, int writeable)
+keyring_file *keyring_open(const char *path, int writeable, const char *pin)
 {
   /* Allocate structure */
   keyring_file *k = emalloc_zero(sizeof(keyring_file));
@@ -152,24 +151,17 @@ keyring_file *keyring_open(const char *path, int writeable)
        (other keyring salts may be provided later on, resulting in
        multiple contexts being loaded) */
     if (!offset) {
-      k->contexts = emalloc_zero(sizeof(keyring_context));
-      if (!k->contexts) {
-	WHYF("Could not allocate keyring_context for keyring file %s", path);
-	keyring_free(k);
-	return NULL;
-      }
-      // First context is always with null keyring PIN.
-      k->contexts->KeyRingPin = str_edup("");
-      k->contexts->KeyRingSaltLen=KEYRING_PAGE_SIZE-KEYRING_BAM_BYTES;
-      k->contexts->KeyRingSalt = emalloc(k->contexts->KeyRingSaltLen);
-      if (!k->contexts->KeyRingSalt) {
+      k->KeyRingPin = str_edup(pin);
+      k->KeyRingSaltLen=KEYRING_PAGE_SIZE-KEYRING_BAM_BYTES;
+      k->KeyRingSalt = emalloc(k->KeyRingSaltLen);
+      if (!k->KeyRingSalt) {
 	WHYF("Could not allocate keyring_context->salt for keyring file %s", path);
 	keyring_free(k);
 	return NULL;
       }
-      r = fread(k->contexts->KeyRingSalt, k->contexts->KeyRingSaltLen, 1, k->file);
+      r = fread(k->KeyRingSalt, k->KeyRingSaltLen, 1, k->file);
       if (r!=1) {
-	WHYF_perror("fread(%p, %d, 1, %s)", k->contexts->KeyRingSalt, k->contexts->KeyRingSaltLen, alloca_str_toprint(path));
+	WHYF_perror("fread(%p, %d, 1, %s)", k->KeyRingSalt, k->KeyRingSaltLen, alloca_str_toprint(path));
 	WHYF("Could not read salt from keyring file %s", path);
 	keyring_free(k);
 	return NULL;
@@ -191,33 +183,17 @@ void keyring_iterator_start(keyring_file *k, keyring_iterator *it)
   it->file = k;
 }
 
-keyring_context * keyring_next_context(keyring_iterator *it)
-{
-  assert(it->file);
-  if (!it->context){
-    it->context = it->file->contexts;
-  }else{
-    it->context = it->context->next;
-  }
-  
-  if (it->context && it->context->identities){
-    it->identity = it->context->identities;
-    it->keypair = it->identity->keypairs;
-  }else{
-    it->identity = NULL;
-    it->keypair = NULL;
-  }
-  return it->context;
-}
-
 keyring_identity * keyring_next_identity(keyring_iterator *it)
 {
-  if (it->identity)
+  assert(it->file);
+  if (!it->identity)
+    it->identity=it->file->identities;
+  else
     it->identity=it->identity->next;
   if (it->identity)
     it->keypair = it->identity->keypairs;
   else
-    keyring_next_context(it);
+    it->keypair = NULL;
   return it->identity;
 }
 
@@ -285,6 +261,12 @@ static void add_subscriber(keyring_identity *id, keypair *kp)
   }
 }
 
+static void wipestr(char *str)
+{
+  while (*str)
+    *str++ = ' ';
+}
+
 void keyring_free(keyring_file *k)
 {
   if (!k) return;
@@ -304,12 +286,26 @@ void keyring_free(keyring_file *k)
     free(last_bam);
   }
 
-  /* Free contexts (including subordinate identities and dynamically allocated salt strings).
+  /* Free dynamically allocated salt strings.
      Don't forget to overwrite any private data. */
-  while(k->contexts){
-    keyring_context *c=k->contexts;
-    k->contexts=c->next;
-    keyring_free_context(c);
+  if (k->KeyRingPin) {
+    /* Wipe pin from local memory before freeing. */
+    wipestr(k->KeyRingPin);
+    free(k->KeyRingPin);
+    k->KeyRingPin = NULL;
+  }
+  if (k->KeyRingSalt) {
+    bzero(k->KeyRingSalt,k->KeyRingSaltLen);
+    free(k->KeyRingSalt);
+    k->KeyRingSalt = NULL;
+    k->KeyRingSaltLen = 0;
+  }
+  
+  /* Wipe out any loaded identities */
+  while(k->identities){
+    keyring_identity *i = k->identities;
+    k->identities=i->next;
+    keyring_free_identity(i);
   }
   
   /* Wipe everything, just to be sure. */
@@ -319,17 +315,11 @@ void keyring_free(keyring_file *k)
   return;
 }
 
-static void wipestr(char *str)
-{
-  while (*str)
-    *str++ = ' ';
-}
-
 int keyring_release_identity(keyring_iterator *it)
 {
   assert(it->identity);
   
-  keyring_identity **i=&it->context->identities;
+  keyring_identity **i=&it->file->identities;
   while(*i){
     if ((*i)==it->identity){
       (*i) = it->identity->next;
@@ -338,7 +328,7 @@ int keyring_release_identity(keyring_iterator *it)
       if (it->identity)
 	it->keypair = it->identity->keypairs;
       else
-	keyring_next_context(it);
+	it->keypair = NULL;
       return 0;
     }
     i=&(*i)->next;
@@ -356,36 +346,6 @@ int keyring_release_subscriber(keyring_file *k, const sid_t *sid)
   if (it.identity->subscriber == my_subscriber)
     return WHYF("Cannot release my main subscriber");
   return keyring_release_identity(&it);
-}
-
-static void keyring_free_context(keyring_context *c)
-{
-  if (!c) return;
-
-  if (c->KeyRingPin) {
-    /* Wipe pin from local memory before freeing. */
-    wipestr(c->KeyRingPin);
-    free(c->KeyRingPin);
-    c->KeyRingPin = NULL;
-  }
-  if (c->KeyRingSalt) {
-    bzero(c->KeyRingSalt,c->KeyRingSaltLen);
-    free(c->KeyRingSalt);
-    c->KeyRingSalt = NULL;
-    c->KeyRingSaltLen = 0;
-  }
-  
-  /* Wipe out any loaded identities */
-  while(c->identities){
-    keyring_identity *i = c->identities;
-    c->identities=i->next;
-    keyring_free_identity(i);
-  }
-
-  /* Make sure any private data is wiped out */
-  bzero(c,sizeof(keyring_context));
-  free(c);
-  return;
 }
 
 void keyring_free_identity(keyring_identity *id)
@@ -406,49 +366,6 @@ void keyring_free_identity(keyring_identity *id)
   bzero(id,sizeof(keyring_identity));
   free(id);
   return;
-}
-
-/* Create a new keyring context for the loaded keyring file.  Returns the index of the context.  We
- * don't need to load any identities etc, as that happens when we enter an identity pin.  If the pin
- * is NULL, it is assumed to be blank.  The pin does NOT have to be numeric, and has no practical
- * length limitation, as it is used as an input into a hashing function.  But for sanity sake, let's
- * limit it to 16KB.
- */
-static keyring_context * keyring_enter_keyringpin(keyring_file *k, const char *pin)
-{
-  if (config.debug.keyring)
-    DEBUGF("k=%p pin=%s", k, alloca_str_toprint(pin));
-  if (!k){
-    WHY("k is null");
-    return NULL;
-  }
-  if (!k->contexts){
-    WHY("Cannot enter PIN without keyring salt being available");
-    return NULL;
-  }
-  
-  keyring_context *c = k->contexts;
-  while(c){
-    if (strcmp(c->KeyRingPin, pin) == 0)
-      return c;
-    c=c->next;
-  }
-  
-  c = emalloc_zero(sizeof(keyring_context));
-  if (c == NULL)
-    return NULL;
-  /* Store pin and copy salt from the zeroeth context */
-  c->KeyRingSaltLen = k->contexts->KeyRingSaltLen;
-  if (	 ((c->KeyRingPin = str_edup(pin ? pin : "")) == NULL)
-      || ((c->KeyRingSalt = emalloc(c->KeyRingSaltLen)) == NULL)
-  ) {
-    keyring_free_context(c);
-    return NULL;
-  }
-  bcopy(k->contexts->KeyRingSalt, c->KeyRingSalt, c->KeyRingSaltLen);
-  c->next = k->contexts;
-  k->contexts = c;
-  return c;
 }
 
 /*
@@ -1246,11 +1163,10 @@ static int keyring_identity_mac(const keyring_identity *id, unsigned char *pkrsa
  * munged, we then need to verify that the slot is valid, and if so unpack the details of the
  * identity.
  */
-static int keyring_decrypt_pkr(keyring_file *k, keyring_context *cx, const char *pin, int slot_number)
+static int keyring_decrypt_pkr(keyring_file *k, const char *pin, int slot_number)
 {
   if (config.debug.keyring)
-    DEBUGF("k=%p, cx=%p pin=%s slot_number=%d", k, cx, alloca_str_toprint(pin), slot_number);
-  assert(cx);
+    DEBUGF("k=%p, pin=%s slot_number=%d", k, alloca_str_toprint(pin), slot_number);
   unsigned char slot[KEYRING_PAGE_SIZE];
   keyring_identity *id=NULL;
 
@@ -1260,7 +1176,7 @@ static int keyring_decrypt_pkr(keyring_file *k, keyring_context *cx, const char 
   if (fread(slot, KEYRING_PAGE_SIZE, 1, k->file) != 1)
     return WHY_perror("fread");
   /* 2. Decrypt data from slot. */
-  if (keyring_munge_block(slot, KEYRING_PAGE_SIZE, cx->KeyRingSalt, cx->KeyRingSaltLen, cx->KeyRingPin, pin)) {
+  if (keyring_munge_block(slot, KEYRING_PAGE_SIZE, k->KeyRingSalt, k->KeyRingSaltLen, k->KeyRingPin, pin)) {
     WHYF("keyring_munge_block() failed, slot=%u", slot_number);
     goto kdp_safeexit;
   }
@@ -1288,7 +1204,7 @@ static int keyring_decrypt_pkr(keyring_file *k, keyring_context *cx, const char 
     add_subscriber(id, kp);
   
   /* All fine, so add the id into the context and return. */
-  keyring_identity **i=&cx->identities;
+  keyring_identity **i=&k->identities;
   while(*i)
     i=&(*i)->next;
   *i=id;
@@ -1315,15 +1231,11 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
 
   // Check if PIN is already entered.
   int identitiesFound=0;
-  keyring_context *c=k->contexts;
-  while(c){
-    keyring_identity *id = c->identities;
-    while(id){
-      if (strcmp(id->PKRPin, pin) == 0)
-	identitiesFound++;
-      id=id->next;
-    }
-    c=c->next;
+  keyring_identity *id = k->identities;
+  while(id){
+    if (strcmp(id->PKRPin, pin) == 0)
+      identitiesFound++;
+    id=id->next;
   }
   if (identitiesFound)
     RETURN(identitiesFound);
@@ -1349,12 +1261,8 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
       if (b->bitmap[byte]&(1<<bit)) {
 	/* Slot is occupied, so check it.
 	    We have to check it for each keyring context (ie keyring pin) */
-	keyring_context *c=k->contexts;
-	while(c){
-	  if (keyring_decrypt_pkr(k, c, pin, slot) == 0)
-	    ++identitiesFound;
-	  c=c->next;
-	}
+	if (keyring_decrypt_pkr(k, pin, slot) == 0)
+	  ++identitiesFound;
       }
     }
   }
@@ -1396,10 +1304,10 @@ static unsigned find_free_slot(const keyring_file *k)
   return 0;
 }
 
-static int keyring_commit_identity(keyring_file *k, keyring_context *cx, keyring_identity *id)
+static int keyring_commit_identity(keyring_file *k, keyring_identity *id)
 {
   keypair *kp=find_keypair_sid(id);
-  keyring_identity **i=&cx->identities;
+  keyring_identity **i=&k->identities;
   while(*i){
     if (cmp_keypair(kp, find_keypair_sid(*i))==0)
       return 0;
@@ -1416,14 +1324,13 @@ static int keyring_commit_identity(keyring_file *k, keyring_context *cx, keyring
  * PKR is packed and written to a hithero unallocated slot which is then marked full.  Requires an
  * explicit call to keyring_commit()
 */
-keyring_identity *keyring_create_identity(keyring_file *k, keyring_context *c, const char *pin)
+keyring_identity *keyring_create_identity(keyring_file *k, const char *pin)
 {
   if (config.debug.keyring)
     DEBUGF("k=%p", k);
   /* Check obvious abort conditions early */
   if (!k) { WHY("keyring is NULL"); return NULL; }
   if (!k->bam) { WHY("keyring lacks BAM (not to be confused with KAPOW)"); return NULL; }
-  if (!c) { WHY("keyring context is NULL"); return NULL; }
 
   if (!pin) pin="";
 
@@ -1456,7 +1363,7 @@ keyring_identity *keyring_create_identity(keyring_file *k, keyring_context *c, c
   assert(id->keypairs);
 
   /* Mark slot as occupied and internalise new identity. */
-  keyring_commit_identity(k, c, id);
+  keyring_commit_identity(k, id);
 
   /* Everything went fine */
   return id;
@@ -1473,8 +1380,6 @@ int keyring_commit(keyring_file *k)
     DEBUGF("k=%p", k);
   if (!k)
     return WHY("keyring was NULL");
-  if (!k->contexts)
-    return WHY("keyring has no contexts");
   unsigned errorCount = 0;
   /* Write all BAMs */
   keyring_bam *b;
@@ -1485,8 +1390,8 @@ int keyring_commit(keyring_file *k)
     } else if (fwrite(b->bitmap, KEYRING_BAM_BYTES, 1, k->file) != 1) {
       WHYF_perror("fwrite(%p, %ld, 1, %d)", b->bitmap, (long)KEYRING_BAM_BYTES, fileno(k->file));
       errorCount++;
-    } else if (fwrite(k->contexts->KeyRingSalt, k->contexts->KeyRingSaltLen, 1, k->file)!=1) {
-      WHYF_perror("fwrite(%p, %ld, 1, %d)", k->contexts->KeyRingSalt, (long)k->contexts->KeyRingSaltLen, fileno(k->file));
+    } else if (fwrite(k->KeyRingSalt, k->KeyRingSaltLen, 1, k->file)!=1) {
+      WHYF_perror("fwrite(%p, %ld, 1, %d)", k->KeyRingSalt, (long)k->KeyRingSaltLen, fileno(k->file));
       errorCount++;
     }
   }
@@ -1505,8 +1410,8 @@ int keyring_commit(keyring_file *k)
       /* Now crypt and store block */
       /* Crypt */
       if (keyring_munge_block(pkr, KEYRING_PAGE_SIZE, 
-	it.context->KeyRingSalt, it.context->KeyRingSaltLen, 
-	it.context->KeyRingPin, it.identity->PKRPin)) {
+	it.file->KeyRingSalt, it.file->KeyRingSaltLen, 
+	it.file->KeyRingPin, it.identity->PKRPin)) {
 	WHY("keyring_munge_block() failed");
 	errorCount++;
       } else {
@@ -1514,7 +1419,7 @@ int keyring_commit(keyring_file *k)
 	off_t file_offset = KEYRING_PAGE_SIZE * it.identity->slot;
 	if (file_offset == 0) {
 	  if (config.debug.keyring)
-	    DEBUGF("ID cx=%p id=%p has slot=0", it.context, it.identity);
+	    DEBUGF("ID id=%p has slot=0", it.identity);
 	} else if (fseeko(k->file, file_offset, SEEK_SET) == -1) {
 	  WHYF_perror("fseeko(%d, %ld, SEEK_SET)", fileno(k->file), (long)file_offset);
 	  errorCount++;
@@ -2021,7 +1926,7 @@ void keyring_identity_extract(const keyring_identity *id, const sid_t **sidp, co
   }
 }
 
-keyring_file *keyring_open_instance()
+keyring_file *keyring_open_instance(const char *pin)
 {
   keyring_file *k = NULL;
   IN();
@@ -2040,7 +1945,7 @@ keyring_file *keyring_open_instance()
   bool_t readonly_b;
   if (readonly_env == NULL || cf_opt_boolean(&readonly_b, readonly_env) != CFOK || !readonly_b)
       writeable = 1;
-  if ((k = keyring_open(keyringFile, writeable)) == NULL)
+  if ((k = keyring_open(keyringFile, writeable, pin)) == NULL)
     RETURN(NULL);
   RETURN(k);
   OUT();
@@ -2049,12 +1954,10 @@ keyring_file *keyring_open_instance()
 keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed)
 {
   IN();
-  keyring_file *k = keyring_open_instance();
-  if (k == NULL)
-    RETURN(NULL);
   const char *kpin = NULL;
   cli_arg(parsed, "--keyring-pin", &kpin, NULL, "");
-  if (!keyring_enter_keyringpin(k, kpin))
+  keyring_file *k = keyring_open_instance(kpin);
+  if (k == NULL)
     RETURN(NULL);
   // Always open all PIN-less entries.
   keyring_enter_pin(k, "");
@@ -2072,12 +1975,8 @@ keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed)
 int keyring_seed(keyring_file *k)
 {
   /* nothing to do if there is already an identity */
-  keyring_context *c=k->contexts;
-  while(c){
-    if (c->identities)
-      return 0;
-    c=c->next;
-  }
+  if (k->identities)
+    return 0;
   int i;
   char did[65];
   /* Securely generate random telephone number */
@@ -2088,7 +1987,7 @@ int keyring_seed(keyring_file *k)
   did[0]='2'+(((unsigned char)did[0])%8);
   /* Then add 10 more digits, which is what we do in the mobile phone software */
   for(i=1;i<11;i++) did[i]='0'+(((unsigned char)did[i])%10); did[11]=0;
-  keyring_identity *id=keyring_create_identity(k,k->contexts,"");
+  keyring_identity *id=keyring_create_identity(k,"");
   if (!id)
     return WHY("Could not create new identity");
   if (keyring_set_did(id, did, ""))
@@ -2234,11 +2133,8 @@ int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret)
   return 0;
 }
 
-int keyring_load(keyring_file *k, const char *keyring_pin, unsigned entry_pinc, const char **entry_pinv, FILE *input)
+int keyring_load(keyring_file *k, unsigned entry_pinc, const char **entry_pinv, FILE *input)
 {
-  keyring_context *cx = keyring_enter_keyringpin(k, keyring_pin);
-  if (!cx)
-    return -1;
   clearerr(input);
   char line[1024];
   unsigned pini = 0;
@@ -2280,7 +2176,7 @@ int keyring_load(keyring_file *k, const char *keyring_pin, unsigned entry_pinc, 
     if (id == NULL || idn != last_idn) {
       last_idn = idn;
       if (id)
-	keyring_commit_identity(k, cx, id);
+	keyring_commit_identity(k, id);
       if ((id = emalloc_zero(sizeof(keyring_identity))) == NULL) {
 	keyring_free_keypair(kp);
 	return -1;
@@ -2300,7 +2196,7 @@ int keyring_load(keyring_file *k, const char *keyring_pin, unsigned entry_pinc, 
       keyring_free_keypair(kp);
   }
   if (id)
-    keyring_commit_identity(k, cx, id);
+    keyring_commit_identity(k, id);
   if (ferror(input))
     return WHYF_perror("fscanf");
   return 0;

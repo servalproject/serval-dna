@@ -407,7 +407,7 @@ setup_LoadPins() {
 }
 test_LoadPins() {
    set_instance +B
-   executeOk_servald keyring load dA krpin pin1 '' pin3
+   executeOk_servald keyring load --keyring-pin=krpin dA pin1 '' pin3
    executeOk_servald keyring dump --secret dBA
    tfw_cat dBA
    assert cmp dB dBA
@@ -424,10 +424,6 @@ test_LoadPins() {
             ;;
          esac
       done < dA
-      while read line; do
-         assertGrep --fixed-strings dBA "${line#[0-9]}"
-         let ++n
-      done < dB
       assert [ $(cat dBA | wc -l) -eq $n ]
    done
 }

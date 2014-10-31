@@ -194,22 +194,22 @@ setup_migrate_id() {
    executeOk_servald keyring dump --entry-pin=entry-pin --secret sidx
    tfw_cat sidx
    set_instance +B
-   executeOk_servald keyring load sidx '' 'entry-pin'
+   executeOk_servald keyring load sidx 'entry-pin'
    foreach_instance +A +B create_single_identity
    foreach_instance +A +B add_servald_interface 1
    foreach_instance +A +B start_servald_server
 }
 test_migrate_id() {
-   wait_until path_exists +A +B
-   wait_until path_exists +B +A
+   wait_until --timeout=10 path_exists +A +B
+   wait_until --timeout=10 path_exists +B +A
    set_instance +A
    executeOk_servald id enter pin 'entry-pin'
    set_instance +B
-   wait_until has_link --via $SIDA $SIDX
+   wait_until --timeout=10 has_link --via $SIDA $SIDX
    set_instance +B
    executeOk_servald id enter pin 'entry-pin'
    set_instance +A
-   wait_until --timeout=30 has_link --via $SIDB $SIDX
+   wait_until --timeout=10 has_link --via $SIDB $SIDX
 }
 
 doc_single_mdp="Use single MDP per packet encapsulation"

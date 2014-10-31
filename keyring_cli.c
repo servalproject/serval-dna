@@ -34,7 +34,7 @@ static int app_keyring_create(const struct cli_parsed *parsed, struct cli_contex
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  keyring_file *k = keyring_open_instance();
+  keyring_file *k = keyring_open_instance("");
   if (!k)
     return -1;
   keyring_free(k);
@@ -73,16 +73,13 @@ static int app_keyring_dump(const struct cli_parsed *parsed, struct cli_context 
 
 DEFINE_CMD(app_keyring_load, 0,
   "Load identities from the given dump text and insert them into the keyring using the specified entry PINs",
-  "keyring","load" KEYRING_PIN_OPTIONS,"<file>","[<keyring-pin>]","[<entry-pin>]...");
+  "keyring","load" KEYRING_PIN_OPTIONS,"<file>","[<entry-pin>]...");
 static int app_keyring_load(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   const char *path;
   if (cli_arg(parsed, "file", &path, cli_path_regular, NULL) == -1)
-    return -1;
-  const char *kpin;
-  if (cli_arg(parsed, "keyring-pin", &kpin, NULL, "") == -1)
     return -1;
   unsigned pinc = 0;
   unsigned i;
@@ -105,7 +102,7 @@ static int app_keyring_load(const struct cli_parsed *parsed, struct cli_context 
     keyring_free(k);
     return -1;
   }
-  if (keyring_load(k, kpin, pinc, pinv, fp) == -1) {
+  if (keyring_load(k, pinc, pinv, fp) == -1) {
     keyring_free(k);
     return -1;
   }
@@ -245,8 +242,7 @@ static int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *
     return -1;
   keyring_enter_pin(k, pin);
   
-  assert(k->contexts);
-  const keyring_identity *id = keyring_create_identity(k, k->contexts, pin);
+  const keyring_identity *id = keyring_create_identity(k, pin);
   if (id == NULL) {
     keyring_free(k);
     return WHY("Could not create new identity");
