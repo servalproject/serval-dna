@@ -114,7 +114,16 @@ int main(int argc, char **argv)
     unsigned remain = size - offset - 1;
     if (remain > sizeof buf)
       remain = sizeof buf;
-    assert(fwrite(buf, remain, 1, stdout)==remain);
+    
+    {
+      size_t off=0;
+      while(off<remain){
+	ssize_t wrote = fwrite(buf+off, 1, remain - off, stdout);
+	if (wrote<0)
+	  fatal("write error: %s [errno=%d]", strerror(errno), errno);
+	off+=wrote;
+      }
+    }
     assert(fputc('\n', stdout)!=EOF);
     offset += remain + 1;
     if (bounce <= n || bounce >= bouncemax)
