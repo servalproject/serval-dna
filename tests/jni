@@ -62,12 +62,10 @@ test_Repeat() {
    assertStdoutGrep --matches=50 '^Hello, world! $'
 }
 
-doc_NullArg="Serval JNI null arguments throw exception"
+doc_NullArg="Serval JNI null arguments dont throw exception"
 test_NullArg() {
-   executeJava org.servalproject.test.ServalDTests 'echo' '(null)'
+   executeJavaOk org.servalproject.test.ServalDTests 'echo' '(null)'
    tfw_cat --stdout --stderr
-   assertExitStatus '!=' 0
-   assertStderrGrep 'NullPointerException: null element in argv'
 }
 
 doc_help="Serval JNI returns help text"

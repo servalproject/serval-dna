@@ -220,7 +220,7 @@ public class ServalDCommand
 	public static IdentityResult keyringSetDidName(SubscriberId sid, String did, String name) throws ServalDFailureException
 	{
 		IdentityResult result = new IdentityResult();
-		command(result, "keyring","set","did", sid.toHex(), did==null?"":did, name==null?"":name);
+		command(result, "keyring","set","did", sid.toHex(), did, name);
 		return result;
 	}
 
@@ -385,7 +385,6 @@ public class ServalDCommand
 	public static ManifestResult rhizomeAddFile(File payloadPath, File manifestPath, SubscriberId author, String pin)
 			throws ServalDFailureException
 	{
-
 		List<String> args = new LinkedList<String>();
 		args.add("rhizome");
 		args.add("add");
@@ -394,11 +393,11 @@ public class ServalDCommand
 			args.add("--entry-pin");
 			args.add(pin);
 		}
-		args.add(author == null ? "" : author.toHex());
+		args.add(author == null ? null : author.toHex());
 		if (payloadPath != null)
 			args.add(payloadPath.getAbsolutePath());
 		else if (manifestPath != null)
-			args.add("");
+			args.add(null);
 		if (manifestPath != null)
 			args.add(manifestPath.getAbsolutePath());
 

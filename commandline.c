@@ -83,12 +83,12 @@ static int put_blob(struct cli_context *context, jbyte *value, jsize length){
   jbyteArray arr = NULL;
   if (context->jni_exception)
     return -1;
+  arr = (*context->jni_env)->NewByteArray(context->jni_env, length);
+  if (arr == NULL || (*context->jni_env)->ExceptionCheck(context->jni_env)) {
+    context->jni_exception = 1;
+    return WHY("Exception thrown from NewByteArray()");
+  }
   if (value && length>0){
-    arr = (*context->jni_env)->NewByteArray(context->jni_env, length);
-    if (arr == NULL || (*context->jni_env)->ExceptionCheck(context->jni_env)) {
-      context->jni_exception = 1;
-      return WHY("Exception thrown from NewByteArray()");
-    }
     (*context->jni_env)->SetByteArrayRegion(context->jni_env, arr, 0, length, value);
     if ((*context->jni_env)->ExceptionCheck(context->jni_env)) {
       context->jni_exception = 1;
@@ -121,6 +121,39 @@ int Throw(JNIEnv *env, const char *class, const char *msg)
   return -1;
 }
 
+int initJniTypes(JNIEnv *env)
+{
+  if (IJniResults)
+    return 0;
+  
+  IJniResults = (*env)->FindClass(env, "org/servalproject/servaldna/IJniResults");
+  if (IJniResults==NULL)
+    return Throw(env, "java/lang/IllegalStateException", "Unable to locate class org.servalproject.servaldna.IJniResults");
+  startResultSet = (*env)->GetMethodID(env, IJniResults, "startResultSet", "(I)V");
+  if (startResultSet==NULL)
+    return Throw(env, "java/lang/IllegalStateException", "Unable to locate method startResultSet");
+  setColumnName = (*env)->GetMethodID(env, IJniResults, "setColumnName", "(ILjava/lang/String;)V");
+  if (setColumnName==NULL)
+    return Throw(env, "java/lang/IllegalStateException", "Unable to locate method setColumnName");
+  putString = (*env)->GetMethodID(env, IJniResults, "putString", "(Ljava/lang/String;)V");
+  if (putString==NULL)
+    return Throw(env, "java/lang/IllegalStateException", "Unable to locate method putString");
+  putBlob = (*env)->GetMethodID(env, IJniResults, "putBlob", "([B)V");
+  if (putBlob==NULL)
+    return Throw(env, "java/lang/IllegalStateException", "Unable to locate method putBlob");
+  putLong = (*env)->GetMethodID(env, IJniResults, "putLong", "(J)V");
+  if (putLong==NULL)
+    return Throw(env, "java/lang/IllegalStateException", "Unable to locate method putLong");
+  putDouble = (*env)->GetMethodID(env, IJniResults, "putDouble", "(D)V");
+  if (putDouble==NULL)
+    return Throw(env, "java/lang/IllegalStateException", "Unable to locate method putDouble");
+  totalRowCount = (*env)->GetMethodID(env, IJniResults, "totalRowCount", "(I)V");
+  if (totalRowCount==NULL)
+    return Throw(env, "java/lang/IllegalStateException", "Unable to locate method totalRowCount");
+    
+  return 0;
+}
+
 /* JNI entry point to command line.  See org.servalproject.servald.ServalD class for the Java side.
    JNI method descriptor: "(Ljava/util/List;[Ljava/lang/String;)I"
 */
@@ -129,34 +162,11 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_rawComman
   struct cli_context context;
   bzero(&context, sizeof(context));
 
+  int r;
   // find jni results methods
-  if (!IJniResults){
-    IJniResults = (*env)->FindClass(env, "org/servalproject/servaldna/IJniResults");
-    if (IJniResults==NULL)
-      return Throw(env, "java/lang/IllegalStateException", "Unable to locate class org.servalproject.servaldna.IJniResults");
-    startResultSet = (*env)->GetMethodID(env, IJniResults, "startResultSet", "(I)V");
-    if (startResultSet==NULL)
-      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method startResultSet");
-    setColumnName = (*env)->GetMethodID(env, IJniResults, "setColumnName", "(ILjava/lang/String;)V");
-    if (setColumnName==NULL)
-      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method setColumnName");
-    putString = (*env)->GetMethodID(env, IJniResults, "putString", "(Ljava/lang/String;)V");
-    if (putString==NULL)
-      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method putString");
-    putBlob = (*env)->GetMethodID(env, IJniResults, "putBlob", "([B)V");
-    if (putBlob==NULL)
-      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method putBlob");
-    putLong = (*env)->GetMethodID(env, IJniResults, "putLong", "(J)V");
-    if (putLong==NULL)
-      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method putLong");
-    putDouble = (*env)->GetMethodID(env, IJniResults, "putDouble", "(D)V");
-    if (putDouble==NULL)
-      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method putDouble");
-    totalRowCount = (*env)->GetMethodID(env, IJniResults, "totalRowCount", "(I)V");
-    if (totalRowCount==NULL)
-      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method totalRowCount");
-  }
-
+  if ((r=initJniTypes(env))!=0)
+    return r;
+    
   unsigned char status = 0; // to match what the shell gets: 0..255
 
   // Construct argv, argc from this method's arguments.
@@ -164,26 +174,23 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_rawComman
   const char **argv = alloca(sizeof(char*) * (len + 1));
   if (argv == NULL)
     return Throw(env, "java/lang/OutOfMemoryError", "alloca() returned NULL");
+  bzero(argv, sizeof(char*) * (len + 1));
   jsize i;
-  for (i = 0; i <= len; ++i)
-    argv[i] = NULL;
   int argc = len;
   // From now on, in case of an exception we have to free some resources before
   // returning.
+  static const char *EMPTY="";
+  
   for (i = 0; !context.jni_exception && i < len; ++i) {
     const jstring arg = (jstring)(*env)->GetObjectArrayElement(env, args, i);
-    if ((*env)->ExceptionCheck(env))
+    if ((*env)->ExceptionCheck(env)){
       context.jni_exception = 1;
-    else if (arg == NULL) {
-      Throw(env, "java/lang/NullPointerException", "null element in argv");
-      context.jni_exception = 1;
-    }
-    else {
-      const char *str = (*env)->GetStringUTFChars(env, arg, NULL);
-      if (str == NULL)
+    }else if (arg == NULL) {
+      argv[i] = EMPTY;
+    } else {
+      argv[i] = (*env)->GetStringUTFChars(env, arg, NULL);
+      if (argv[i] == NULL)
 	context.jni_exception = 1;
-      else
-	argv[i] = str;
     }
   }
   if (!context.jni_exception) {
@@ -201,9 +208,10 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_rawComman
 
   // Release argv Java string buffers.
   for (i = 0; i < len; ++i) {
-    if (argv[i]) {
+    if (argv[i] && argv[i]!=EMPTY) {
       const jstring arg = (jstring)(*env)->GetObjectArrayElement(env, args, i);
-      (*env)->ReleaseStringUTFChars(env, arg, argv[i]);
+      if (arg)
+	(*env)->ReleaseStringUTFChars(env, arg, argv[i]);
     }
   }
 
