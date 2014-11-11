@@ -42,6 +42,7 @@ setup() {
    else
       create_identities $IDENTITY_COUNT
    fi
+   export SERVALD_RHIZOME_DB_RETRY_LIMIT_MS=60000
    start_servald_instances +A
    wait_until servald_restful_http_server_started +A
    get_servald_restful_http_server_port PORTA +A
@@ -342,8 +343,8 @@ doc_MeshmsListMessagesNewSinceArrival="HTTP RESTful list newly arriving MeshMS m
 setup_MeshmsListMessagesNewSinceArrival() {
    IDENTITY_COUNT=2
    set_extra_config() {
-      executeOk_servald config set api.restful.newsince_timeout 60s \
-                               set api.restful.newsince_poll_ms 500
+      executeOk_servald config set api.restful.newsince_timeout 360s \
+                               set api.restful.newsince_poll_ms 1000
    }
    setup
    meshms_add_messages $SIDA1 $SIDA2 '><>A>'
@@ -372,7 +373,12 @@ test_MeshmsListMessagesNewSinceArrival() {
    wait_until [ -e newsince1.json -a -e newsince2.json -a -e newsince3.json ]
    for message in '>Rumplestiltskin' 'A' '<Howdydoody' '>Eulenspiegel'; do
       meshms_add_messages $SIDA1 $SIDA2 "${message:0:1}" "${message:1}"
-      wait_until --timeout=10 grepall "${message:1}" newsince{1,2,3}.json
+      case ${message:0:1} in
+      '<'|'>') waitfor="${message:1}";;
+      'A') waitfor="ACK";;
+      *) error "message=${message}";;
+      esac
+      wait_until grepall "$waitfor" newsince{1,2,3}.json
    done
    fork_terminate_all
    fork_wait_all

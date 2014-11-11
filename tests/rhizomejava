@@ -35,6 +35,7 @@ setup() {
         set debug.rhizome_manifest on
    set_extra_config
    create_identities 4
+   export SERVALD_RHIZOME_DB_RETRY_LIMIT_MS=60000
    start_servald_server
 }
 
@@ -150,7 +151,7 @@ doc_RhizomeListNewSince="Java API list Rhizome bundles since token"
 setup_RhizomeListNewSince() {
    set_extra_config() {
       executeOk_servald config set api.restful.newsince_timeout 60s \
-                               set api.restful.newsince_poll_ms 500
+                               set api.restful.newsince_poll_ms 1000
    }
    setup
    rhizome_add_bundles $SIDA1 0 5

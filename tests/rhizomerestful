@@ -43,6 +43,7 @@ setup() {
    else
       create_identities $IDENTITY_COUNT
    fi
+   export SERVALD_RHIZOME_DB_RETRY_LIMIT_MS=60000
    start_servald_instances +A
    wait_until servald_restful_http_server_started +A
    get_servald_restful_http_server_port PORTA +A
@@ -232,7 +233,7 @@ doc_RhizomeListNewSince="HTTP RESTful list Rhizome bundles since token as JSON"
 setup_RhizomeListNewSince() {
    set_extra_config() {
       executeOk_servald config set api.restful.newsince_timeout 60s \
-                               set api.restful.newsince_poll_ms 500
+                               set api.restful.newsince_poll_ms 1000
    }
    setup
    rhizome_add_bundles $SIDA 0 5
@@ -259,7 +260,7 @@ test_RhizomeListNewSince() {
    wait_until [ -e newsince1.json -a -e newsince2.json -a -e newsince3.json ]
    rhizome_add_bundles $SIDA 6 10
    for i in 1 2 3; do
-      wait_until --timeout=10 grep "${BID[10]}" newsince$i.json
+      wait_until grep "${BID[10]}" newsince$i.json
    done
    fork_terminate_all
    fork_wait_all

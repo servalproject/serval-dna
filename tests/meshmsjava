@@ -34,6 +34,7 @@ setup() {
         set debug.meshms on
    set_extra_config
    create_identities 4
+   export SERVALD_RHIZOME_DB_RETRY_LIMIT_MS=60000
    start_servald_server
 }
 
@@ -195,7 +196,7 @@ doc_MeshmsListMessagesNewSinceArrival="Java API list newly arriving MeshMS messa
 setup_MeshmsListMessagesNewSinceArrival() {
    set_extra_config() {
       executeOk_servald config set api.restful.newsince_timeout 60s \
-                               set api.restful.newsince_poll_ms 500
+                               set api.restful.newsince_poll_ms 1000
    }
    setup
    meshms_add_messages $SIDA1 $SIDA2 '><>A>'

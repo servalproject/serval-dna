@@ -46,6 +46,7 @@ static int create_rhizome_store_dir()
 
 sqlite3 *rhizome_db = NULL;
 serval_uuid_t rhizome_db_uuid;
+static time_ms_t rhizomeRetryLimit = -1;
 
 int is_debug_rhizome()
 {
@@ -218,6 +219,9 @@ int rhizome_opendb()
   sqlite3_trace(rhizome_db, sqlite_trace_callback, NULL);
   sqlite3_profile(rhizome_db, sqlite_profile_callback, NULL);
   int loglevel = (config.debug.rhizome) ? LOG_LEVEL_DEBUG : LOG_LEVEL_SILENT;
+
+  const char *env = getenv("SERVALD_RHIZOME_DB_RETRY_LIMIT_MS");
+  rhizomeRetryLimit = env ? atoi(env) : -1;
 
   /* Read Rhizome configuration */
   if (config.debug.rhizome)
@@ -414,7 +418,7 @@ int rhizome_close_db()
 sqlite_retry_state sqlite_retry_state_init(int serverLimit, int serverSleep, int otherLimit, int otherSleep)
 {
   return (sqlite_retry_state){
-      .limit = serverMode ? (serverLimit < 0 ? 50 : serverLimit) : (otherLimit < 0 ? 5000 : otherLimit),
+      .limit = rhizomeRetryLimit >= 0 ? rhizomeRetryLimit : serverMode ? (serverLimit < 0 ? 50 : serverLimit) : (otherLimit < 0 ? 5000 : otherLimit),
       .sleep = serverMode ? (serverSleep < 0 ? 10 : serverSleep) : (otherSleep < 0 ? 100 : otherSleep),
       .elapsed = 0,
       .start = -1,
