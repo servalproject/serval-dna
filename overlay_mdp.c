@@ -92,7 +92,7 @@ static int overlay_saw_mdp_frame(
   struct internal_mdp_header *header, 
   struct overlay_buffer *payload);
 
-static int mdp_send2(const struct socket_address *client, const struct mdp_header *header, 
+static int mdp_send2(struct __sourceloc, const struct socket_address *client, const struct mdp_header *header, 
   const uint8_t *payload, size_t payload_len);
 
 /* Delete all UNIX socket files in instance directory. */
@@ -663,7 +663,7 @@ static int overlay_saw_mdp_frame(
 	  size_t len = ob_remaining(payload);
 	  const uint8_t *ptr = ob_get_bytes_ptr(payload, len);
 	  
-	  RETURN(mdp_send2(client, &client_header, ptr, len));
+	  RETURN(mdp_send2(__WHENCE__, client, &client_header, ptr, len));
 	}
     }
   } else {
@@ -1209,18 +1209,17 @@ static void overlay_mdp_scan(struct sched_ent *alarm)
   }
 }
 
-static int mdp_reply2(const struct socket_address *client, const struct mdp_header *header, 
+static int mdp_reply2(struct __sourceloc __whence, const struct socket_address *client, const struct mdp_header *header, 
   int flags, const unsigned char *payload, size_t payload_len)
 {
   struct mdp_header response_header;
   bcopy(header, &response_header, sizeof(response_header));
   response_header.flags = flags;
-  
-  return mdp_send2(client, &response_header, payload, payload_len);
+  return mdp_send2(__WHENCE__, client, &response_header, payload, payload_len);
 }
 
-#define mdp_reply_error(A,B)  mdp_reply2(A,B,MDP_FLAG_ERROR,NULL,0)
-#define mdp_reply_ok(A,B)  mdp_reply2(A,B,MDP_FLAG_CLOSE,NULL,0)
+#define mdp_reply_error(A,B)  mdp_reply2(__WHENCE__,(A),(B),MDP_FLAG_ERROR,NULL,0)
+#define mdp_reply_ok(A,B)  mdp_reply2(__WHENCE__,(A),(B),MDP_FLAG_CLOSE,NULL,0)
 
 static int mdp_process_identity_request(struct socket_address *client, struct mdp_header *header, 
   struct overlay_buffer *payload)
@@ -1335,7 +1334,7 @@ static int mdp_search_identities(struct socket_address *client, struct mdp_heade
      
     // TODO return other details of this identity
      
-    mdp_reply2(client, header, 0, reply_payload, ofs);
+    mdp_reply2(__WHENCE__, client, header, 0, reply_payload, ofs);
   }
   mdp_reply_ok(client, header);
   return 0;
@@ -1452,7 +1451,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
     binding->version=1;
     
     // tell the client what we actually bound (with flags & MDP_FLAG_BIND still set)
-    mdp_reply2(client, header, MDP_FLAG_BIND, NULL, 0);
+    mdp_reply2(__WHENCE__, client, header, MDP_FLAG_BIND, NULL, 0);
   }
   
   if (is_sid_t_any(header->remote.sid)){
@@ -1535,7 +1534,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
   }
 }
 
-static int mdp_send2(const struct socket_address *client, const struct mdp_header *header, 
+static int mdp_send2(struct __sourceloc __whence, const struct socket_address *client, const struct mdp_header *header, 
   const uint8_t *payload, size_t payload_len)
 {
   struct iovec iov[]={
