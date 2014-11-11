@@ -167,10 +167,13 @@ typedef struct httpd_request
     /* For responses that list MeshMS messages in a single conversation.
     */
     struct {
-      enum meshms_which_ply token_which_ply;
-      uint64_t token_offset;
-      enum meshms_which_ply latest_which_ply;
-      uint64_t latest_offset;
+      struct newsince_position {
+        enum meshms_which_ply which_ply;
+        uint64_t offset;
+      }
+        token,
+        current,
+        latest;
       time_ms_t end_time;
       uint64_t highest_ack_offset;
       enum list_phase phase;

@@ -66,7 +66,7 @@ public class MeshMSMessageList {
 					.addColumn("text", String.class, JSONTokeniser.Narrow.ALLOW_NULL)
 					.addColumn("delivered", Boolean.class)
 					.addColumn("read", Boolean.class)
-					.addColumn("timestamp", Long.class)
+					.addColumn("timestamp", Long.class, JSONTokeniser.Narrow.ALLOW_NULL)
 					.addColumn("ack_offset", Long.class, JSONTokeniser.Narrow.ALLOW_NULL);
 	}
 

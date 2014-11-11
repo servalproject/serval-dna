@@ -880,6 +880,7 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
 	    iter->text_length = 0;
 	    if (unpack_uint(iter->_their_reader.record, iter->_their_reader.record_length, &iter->ack_offset) == -1)
 	      iter->ack_offset = 0;
+	    iter->read = 0;
 	    return status;
 	  case MESHMS_BLOCK_TYPE_MESSAGE:
 	    iter->type = MESSAGE_RECEIVED;

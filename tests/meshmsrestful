@@ -325,8 +325,11 @@ test_MeshmsListMessagesNewSince() {
    for ((i = 0; i < NROWS; i += 3)); do
       transform_list_json messagelist$i.json messages$i.json
       tfw_preserve messages$i.json
-      { echo '{"a":'; cat messages.json; echo ',"b":'; cat messages$i.json; echo '}'; } >tmp.json
-      assertJq tmp.json '.a[:'$i'] == .b'
+      { echo '{"a":'; jq '.[:'$i']' messages.json; echo ',"b":'; cat messages$i.json; echo '}'; } >tmp.json
+      # If an ACK is new since the token, then it will be in its correct place
+      # in messages$i.json, otherwise the ACK will appear in messages$i.json
+      # anyway.
+      assertJq tmp.json '.a == (if .a | contains([{type:"ACK"}]) then .b else .b | map(select(.type != "ACK")) end)'
    done
 }
 
@@ -363,7 +366,7 @@ setup_MeshmsListMessagesNewSinceArrival() {
 }
 test_MeshmsListMessagesNewSinceArrival() {
    for i in 1 2 3; do
-      fork %curl$i executeOk curl \
+      fork %curl$i executeOk --timeout=360 curl \
             --silent --fail --show-error \
             --no-buffer \
             --output newsince$i.json \

@@ -142,7 +142,7 @@ struct meshms_message_iterator {
   uint64_t latest_ack_my_offset; // offset in my ply of most recent message ACKed by them
   uint64_t read_offset; // offset in remote (their) ply of most recent message read by me
   // The following public fields change per message:
-  enum meshms_which_ply { MY_PLY, THEIR_PLY } which_ply;
+  enum meshms_which_ply { NEITHER_PLY, MY_PLY, THEIR_PLY } which_ply;
   enum { MESSAGE_SENT, MESSAGE_RECEIVED, ACK_RECEIVED } type;
   // For MESSAGE_SENT 'offset' is the byte position within the local ply
   // (mine).  For MESSAGE_RECEIVED and ACK_RECEIVED, it is the byte position

@@ -179,6 +179,9 @@ test_MeshmsListMessagesNewSince() {
       >tmp
       [ $i -gt 0 ] && sed -n -e "1,${i}p" messages >tmp
       tfw_preserve tmp
+      # If tmp contains an ACK_RECEIVED, then so should messages$i.  Otherwise,
+      # ignore any ACK_RECEIVED in messages$i.
+      grep -q 'type=ACK_RECEIVED' tmp || sed -i -e '/type=ACK_RECEIVED/d' messages$i
       assert cmp tmp messages$i
    done
 }
@@ -217,7 +220,12 @@ test_MeshmsListMessagesNewSinceArrival() {
    wait_until [ -e messages1 -a -e messages2 -a -e messages3 ]
    for message in '>Rumplestiltskin' 'A' '<Howdydoody' '>Eulenspiegel'; do
       meshms_add_messages $SIDA1 $SIDA2 "${message:0:1}" "${message:1}"
-      wait_until grepall "${message:1}" messages{1,2,3}
+      case ${message:0:1} in
+      '<'|'>') waitfor="${message:1}";;
+      'A') waitfor="ACK";;
+      *) error "message=${message}";;
+      esac
+      wait_until grepall "$waitfor" messages{1,2,3}
    done
    fork_terminate_all
    fork_wait_all
