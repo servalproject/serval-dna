@@ -5,6 +5,7 @@ HDRS=	fifo.h \
 	overlay_interface.h \
 	commandline.h \
 	limit.h \
+	rhizome_types.h \
 	rhizome.h \
 	httpd.h \
 	instance.h \

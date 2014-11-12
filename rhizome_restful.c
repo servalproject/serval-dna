@@ -414,7 +414,7 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     if (r->u.insert.received_secret)
       return http_response_form_part(r, "Duplicate", PART_SECRET, NULL, 0);
     r->u.insert.current_part = PART_SECRET;
-    assert(r->u.insert.secret_hex_len == 0);
+    assert(r->u.insert.secret_text_len == 0);
   }
   else if (strcmp(h->content_disposition.name, PART_MANIFEST) == 0) {
     // Reject a request if it has a repeated manifest part.
@@ -476,9 +476,9 @@ static int insert_mime_part_body(struct http_request *hr, char *buf, size_t len)
   }
   else if (r->u.insert.current_part == PART_SECRET) {
     accumulate_text(r, PART_SECRET,
-		    r->u.insert.secret_hex,
-		    sizeof r->u.insert.secret_hex,
-		    &r->u.insert.secret_hex_len,
+		    r->u.insert.secret_text,
+		    sizeof r->u.insert.secret_text,
+		    &r->u.insert.secret_text_len,
 		    buf, len);
   }
   else if (r->u.insert.current_part == PART_MANIFEST) {
@@ -515,10 +515,8 @@ static int insert_mime_part_end(struct http_request *hr)
       DEBUGF("received %s = %s", PART_AUTHOR, alloca_tohex_sid_t(r->u.insert.author));
   }
   else if (r->u.insert.current_part == PART_SECRET) {
-    if (   r->u.insert.secret_hex_len != sizeof r->u.insert.secret_hex
-	|| strn_to_rhizome_bk_t(&r->u.insert.bundle_secret, r->u.insert.secret_hex, NULL) == -1
-    )
-      return http_response_form_part(r, "Invalid", PART_SECRET, r->u.insert.secret_hex, r->u.insert.secret_hex_len);
+    if (strn_to_rhizome_bsk_t(&r->u.insert.bundle_secret, r->u.insert.secret_text, r->u.insert.secret_text_len) == -1)
+      return http_response_form_part(r, "Invalid", PART_SECRET, r->u.insert.secret_text, r->u.insert.secret_text_len);
     r->u.insert.received_secret = 1;
     if (config.debug.rhizome)
       DEBUGF("received %s = %s", PART_SECRET, alloca_tohex_rhizome_bk_t(r->u.insert.bundle_secret));

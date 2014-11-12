@@ -374,9 +374,9 @@ int cli_optional_sid(const char *arg)
   return !arg[0] || str_is_subscriber_id(arg);
 }
 
-int cli_optional_bundle_key(const char *arg)
+int cli_optional_bundle_secret_key(const char *arg)
 {
-  return !arg[0] || str_to_rhizome_bk_t(NULL, arg) != -1;
+  return !arg[0] || str_to_rhizome_bsk_t(NULL, arg) != -1;
 }
 
 int cli_manifestid(const char *arg)

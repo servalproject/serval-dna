@@ -141,6 +141,25 @@ int strn_to_rhizome_bk_t(rhizome_bk_t *bkp, const char *hex, const char **endp)
   return 0;
 }
 
+int str_to_rhizome_bsk_t(rhizome_bk_t *bskp, const char *text)
+{
+  return strn_to_rhizome_bsk_t(bskp, text, strlen(text));
+}
+
+int strn_to_rhizome_bsk_t(rhizome_bk_t *bskp, const char *text, size_t textlen)
+{
+  if (textlen > 0 && text[0] == '#') {
+    if (textlen <= 1)
+      return -1; // missing pass phrase
+    if (textlen > RHIZOME_BUNDLE_SECRET_MAX_STRLEN + 1)
+      return -1; // pass phrase too long
+    if (bskp)
+      strn_digest_passphrase(bskp->binary, sizeof bskp->binary, text, textlen);
+    return 0;
+  }
+  return strn_to_rhizome_bk_t(bskp, text, NULL);
+}
+
 int rhizome_strn_is_bundle_crypt_key(const char *key)
 {
   return is_xsubstring(key, RHIZOME_CRYPT_KEY_STRLEN);

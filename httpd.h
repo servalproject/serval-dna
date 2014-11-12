@@ -116,8 +116,8 @@ typedef struct httpd_request
       size_t author_hex_len;
       sid_t author;
       // For storing the "bundle-secret" hex as we receive it
-      char secret_hex[RHIZOME_BUNDLE_KEY_STRLEN];
-      size_t secret_hex_len;
+      char secret_text[RHIZOME_BUNDLE_SECRET_MAX_STRLEN];
+      size_t secret_text_len;
       rhizome_bk_t bundle_secret;
       // The "force-new" parameter
       char force_new_text[5]; // enough for "false"

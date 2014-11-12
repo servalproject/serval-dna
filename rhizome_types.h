@@ -44,6 +44,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define RHIZOME_CRYPT_KEY_BYTES         crypto_stream_xsalsa20_ref_KEYBYTES
 #define RHIZOME_CRYPT_KEY_STRLEN        (RHIZOME_CRYPT_KEY_BYTES * 2)
 
+#define RHIZOME_PASSPHRASE_MAX_STRLEN   80
+
+#if RHIZOME_PASSPHRASE_MAX_STRLEN > RHIZOME_BUNDLE_KEY_STRLEN
+# define RHIZOME_BUNDLE_SECRET_MAX_STRLEN    RHIZOME_PASSPHRASE_MAX_STRLEN
+#else
+# define RHIZOME_BUNDLE_SECRET_MAX_STRLEN    RHIZOME_BUNDLE_KEY_STRLEN
+#endif
+
 #define RHIZOME_BAR_BYTES               32
 #define RHIZOME_BAR_PREFIX_BYTES        15
 #define RHIZOME_BAR_PREFIX_OFFSET       0
@@ -91,7 +99,7 @@ int cmp_rhizome_filehash_t(const rhizome_filehash_t *a, const rhizome_filehash_t
 int str_to_rhizome_filehash_t(rhizome_filehash_t *fh, const char *hex);
 int strn_to_rhizome_filehash_t(rhizome_filehash_t *fh, const char *hex, const char **endp);
 
-/* Fundamental data type: Rhizome Bundle Key
+/* Fundamental data type: Rhizome Bundle Key (BK)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
@@ -108,8 +116,17 @@ __RHIZOME_TYPES_INLINE int rhizome_is_bk_none(const rhizome_bk_t *bk) {
 
 #define alloca_tohex_rhizome_bk_t(bk) alloca_tohex((bk).binary, sizeof (*(rhizome_bk_t*)0).binary)
 int cmp_rhizome_bk_t(const rhizome_bk_t *a, const rhizome_bk_t *b);
+
+// The BK field can only be in hex format
 int str_to_rhizome_bk_t(rhizome_bk_t *bk, const char *hex);
 int strn_to_rhizome_bk_t(rhizome_bk_t *bk, const char *hex, const char **endp);
+
+// The Bundle Secret can be given as hex or as a passphrase
+int str_to_rhizome_bsk_t(rhizome_bk_t *bsk, const char *text);
+int strn_to_rhizome_bsk_t(rhizome_bk_t *bsk, const char *text, size_t textlen);
+
+/* Fundamental data type: Rhizome BAR 
+ */
 
 typedef struct rhizome_bar_binary {
     unsigned char binary[RHIZOME_BAR_BYTES];

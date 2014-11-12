@@ -120,7 +120,7 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
     return -1;
   cli_arg(parsed, "manifestpath", &manifestpath, NULL, "");
   cli_arg(parsed, "manifestid", &manifestid, NULL, "");
-  if (cli_arg(parsed, "bsk", &bskhex, cli_optional_bundle_key, NULL) == -1)
+  if (cli_arg(parsed, "bsk", &bskhex, cli_optional_bundle_secret_key, NULL) == -1)
     return -1;
 
   sid_t authorSid;
@@ -490,7 +490,7 @@ static int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_conte
   if (   cli_arg(parsed, "manifestid", &manifestid, cli_manifestid, "") == -1
       || cli_arg(parsed, "manifestpath", &manifestpath, NULL, "") == -1
       || cli_arg(parsed, "filepath", &filepath, NULL, "") == -1
-      || cli_arg(parsed, "bsk", &bskhex, cli_optional_bundle_key, NULL) == -1)
+      || cli_arg(parsed, "bsk", &bskhex, cli_optional_bundle_secret_key, NULL) == -1)
     return -1;
   
   int extract = strcasecmp(parsed->args[1], "extract")==0;
