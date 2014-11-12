@@ -26,6 +26,7 @@ SERVAL_CLIENT_SOURCES = \
 	strbuf_helpers.c \
 	str.c \
 	strlcpy.c \
+        sha2.c \
 	uuid.c \
 	whence.c \
         xprintf.c
@@ -96,7 +97,6 @@ SERVAL_DAEMON_SOURCES = \
 	rhizome_sync.c \
 	serval_packetvisualise.c \
 	server.c \
-	sha2.c \
 	vomp.c \
 	vomp_console.c \
         fec-3.0.1/ccsds_tables.c \

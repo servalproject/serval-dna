@@ -21,6 +21,7 @@
 #include "str.h"
 #include "strbuf_helpers.h"
 #include "constants.h"
+#include "sha2.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -973,6 +974,24 @@ size_t strn_fromprint(unsigned char *dst, size_t dstsiz, const char *src, size_t
   if (afterp)
     *afterp = src;
   return dst - odst;
+}
+
+void str_digest_passphrase(unsigned char *dstBinary, size_t dstlen, const char *passphrase)
+{
+  return strn_digest_passphrase(dstBinary, dstlen, passphrase, strlen(passphrase));
+}
+
+void strn_digest_passphrase(unsigned char *dstBinary, size_t dstlen, const char *passphrase, size_t passlen)
+{
+  assert(dstlen <= SERVAL_PASSPHRASE_DIGEST_MAX_BINARY);
+  SHA512_CTX context;
+  static const char salt1[] = "Sago pudding";
+  static const char salt2[] = "Rhubarb pie";
+  SHA512_Init(&context);
+  SHA512_Update(&context, (unsigned char *)salt1, sizeof salt1 - 1);
+  SHA512_Update(&context, (unsigned char *)passphrase, passlen);
+  SHA512_Update(&context, (unsigned char *)salt2, sizeof salt2 - 1);
+  SHA512_Final_Len(dstBinary, dstlen, &context);
 }
 
 /* Return true if the string resembles a URI.

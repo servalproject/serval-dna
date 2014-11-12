@@ -286,6 +286,18 @@ size_t strn_fromprint(unsigned char *dst, size_t dstsiz, const char *src, size_t
 #define alloca_str_toprint_quoted(str, quotes)  toprint_str((char *)alloca(toprint_str_len((str), (quotes)) + 1), -1, (str), (quotes))
 #define alloca_str_toprint(str)  alloca_str_toprint_quoted(str, "``")
 
+/* -------------------- Pass phrases -------------------- */
+
+#define SERVAL_PASSPHRASE_DIGEST_MAX_BINARY 64
+
+/* Digest a pass phrase into binary data of at most
+ * SERVAL_PASSPHRASE_DIGEST_MAX_BINARY bytes using a strong one-way function.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+void str_digest_passphrase(unsigned char *dstBinary, size_t dstlen, const char *passphrase);
+void strn_digest_passphrase(unsigned char *dstBinary, size_t dstlen, const char *passphrase, size_t passlen);
+
 /* -------------------- Useful string primitives -------------------- */
 
 /* Like strchr(3), but only looks for 'c' in the first 'n' characters of 's', stopping at the first
