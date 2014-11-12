@@ -795,8 +795,10 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     
     unschedule(alarm);
     if (alarm->alarm!=-1 && interface->state==INTERFACE_STATE_UP) {
-      if (alarm->alarm < now)
+      if (alarm->alarm < now) {
         alarm->alarm = now;
+	alarm->deadline = alarm->alarm + interface->destination->tick_ms / 2;
+      }
       schedule(alarm);
     }
   }
