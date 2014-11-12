@@ -380,6 +380,8 @@ int strn_str_casecmp(const char *str1, size_t len1, const char *str2);
  */
 char *str_str(char *haystack, const char *needle, size_t haystack_len);
 
+/* -------------------- Numeric strings -------------------- */
+
 /* Returns 1 if the given nul-terminated string parses successfully as an unsigned 64-bit integer.
  * Returns 0 if not.  This is simply a shortcut for str_to_uint32(str, 10, NULL, NULL), which is
  * convenient for when a pointer to a predicate function is needed.
@@ -462,6 +464,8 @@ int uint64_scaled_to_str(char *str, size_t len, uint64_t value);
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 int str_to_uint64_interval_ms(const char *str, int64_t *result, const char **afterp);
+
+/* -------------------- URI strings -------------------- */
 
 /* Return true if the string resembles a nul-terminated URI.
  * Based on RFC-3986 generic syntax, assuming nothing about the hierarchical part.
@@ -552,6 +556,7 @@ int str_uri_authority_password(const char *auth, const char **partp, size_t *len
 int str_uri_authority_hostname(const char *auth, const char **partp, size_t *lenp);
 int str_uri_authority_port(const char *auth, uint16_t *portp);
 
+/* -------------------- Command-line strings -------------------- */
 
 int parse_argv(char *cmdline, char delim, char **argv, int max_argv);
 
