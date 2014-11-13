@@ -782,6 +782,33 @@ test_AddServiceUnsupported() {
    tfw_cat --stdout --stderr
 }
 
+doc_AddUpdateNoAuthorWithPassphrase="Add and update authorless bundle with only secret passphrase"
+setup_AddUpdateNoAuthorWithPassphrase() {
+   setup_servald
+   setup_rhizome
+   create_file file1 1k
+   create_file file1_2 2k
+   pass='On the Ning Nang Nong'
+}
+test_AddUpdateNoAuthorWithPassphrase() {
+   executeOk_servald rhizome add file '' file1 file1.manifest "#$pass"
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file1 !.author '!BK'
+   assert_manifest_complete file1.manifest
+   extract_manifest_id BID file1.manifest
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=0 file1
+   executeOk_servald rhizome add file '' file1_2 file1_2.manifest "#$pass"
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file1_2 !.author '!BK'
+   assert_manifest_complete file1_2.manifest
+   extract_manifest_id BID2 file1.manifest
+   assert [ "$BID" = "$BID2" ]
+   executeOk_servald rhizome extract file $BID file1x
+   tfw_cat --stdout --stderr
+   assert diff file1_2 file1x
+}
+
 doc_EncryptedPayload="Add and extract an encrypted payload"
 setup_EncryptedPayload() {
    setup_servald

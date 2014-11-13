@@ -112,7 +112,7 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  const char *filepath, *manifestpath, *manifestid, *authorSidHex, *bskhex;
+  const char *filepath, *manifestpath, *manifestid, *authorSidHex, *bsktext;
 
   int force_new = 0 == cli_arg(parsed, "--force-new", NULL, NULL, NULL);
   cli_arg(parsed, "filepath", &filepath, NULL, "");
@@ -120,20 +120,19 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
     return -1;
   cli_arg(parsed, "manifestpath", &manifestpath, NULL, "");
   cli_arg(parsed, "manifestid", &manifestid, NULL, "");
-  if (cli_arg(parsed, "bsk", &bskhex, cli_optional_bundle_secret_key, NULL) == -1)
+  if (cli_arg(parsed, "bsk", &bsktext, cli_optional_bundle_secret_key, NULL) == -1)
     return -1;
 
   sid_t authorSid;
   if (authorSidHex[0] && str_to_sid_t(&authorSid, authorSidHex) == -1)
     return WHYF("invalid author_sid: %s", authorSidHex);
-  rhizome_bk_t bsk;
   
   // treat empty string the same as null
-  if (bskhex && !*bskhex)
-    bskhex=NULL;
-  
-  if (bskhex && str_to_rhizome_bk_t(&bsk, bskhex) == -1)
-    return WHYF("invalid bsk: \"%s\"", bskhex);
+  if (bsktext && !*bsktext)
+    bsktext = NULL;
+  rhizome_bk_t bsk;
+  if (bsktext && str_to_rhizome_bsk_t(&bsk, bsktext) == -1)
+    return WHYF("invalid bsk: \"%s\"", bsktext);
   
   int journal = strcasecmp(parsed->args[1], "journal")==0;
 
@@ -143,19 +142,16 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
   
-  if (rhizome_opendb() == -1){
-    keyring_free(keyring);
-    keyring = NULL;
-    return -1;
-  }
+  int ret = -1;
+  rhizome_manifest *m = NULL;
+  if (rhizome_opendb() == -1)
+    goto finish;
   
   /* Create a new manifest that will represent the file.  If a manifest file was supplied, then read
    * it, otherwise create a blank manifest. */
-  rhizome_manifest *m = rhizome_new_manifest();
-  if (!m){
-    keyring_free(keyring);
-    keyring = NULL;
-    return WHY("Manifest struct could not be allocated -- not added to rhizome");
+  if ((m = rhizome_new_manifest()) == NULL){
+    ret = WHY("Manifest struct could not be allocated -- not added to rhizome");
+    goto finish;
   }
   if (manifestpath && *manifestpath && access(manifestpath, R_OK) == 0) {
     if (config.debug.rhizome)
@@ -165,26 +161,20 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
        trying to write it out. However, we do insist that whatever we load is
        parsed okay and not malformed. */
     if (rhizome_read_manifest_from_file(m, manifestpath) || m->malformed) {
-      rhizome_manifest_free(m);
-      keyring_free(keyring);
-      keyring = NULL;
-      return WHY("Manifest file could not be loaded -- not added to rhizome");
+      ret = WHY("Manifest file could not be loaded -- not added to rhizome");
+      goto finish;
     }
   } else if (manifestid && *manifestid) {
     if (config.debug.rhizome)
       DEBUGF("Reading manifest from database");
     rhizome_bid_t bid;
     if (str_to_rhizome_bid_t(&bid, manifestid) == -1) {
-      rhizome_manifest_free(m);
-      keyring_free(keyring);
-      keyring = NULL;
-      return WHYF("Invalid bundle ID: %s", alloca_str_toprint(manifestid));
+      ret = WHYF("Invalid bundle ID: %s", alloca_str_toprint(manifestid));
+      goto finish;
     }
-    if (rhizome_retrieve_manifest(&bid, m) != RHIZOME_BUNDLE_STATUS_SAME){
-      rhizome_manifest_free(m);
-      keyring_free(keyring);
-      keyring = NULL;
-      return WHY("Existing manifest could not be loaded -- not added to rhizome");
+    if (rhizome_retrieve_manifest(&bid, m) != RHIZOME_BUNDLE_STATUS_SAME) {
+      ret = WHY("Existing manifest could not be loaded -- not added to rhizome");
+      goto finish;
     }
   } else {
     if (config.debug.rhizome)
@@ -196,64 +186,80 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
   }
 
   if (journal && !m->is_journal){
-    rhizome_manifest_free(m);
-    keyring_free(keyring);
-    keyring = NULL;
-    return WHY("Existing manifest is not a journal");
+    ret = WHY("Existing manifest is not a journal");
+    goto finish;
   }
   if (!journal && m->is_journal) {
-    rhizome_manifest_free(m);
-    keyring_free(keyring);
-    keyring = NULL;
-    return WHY("Existing manifest is a journal");
+    ret = WHY("Existing manifest is a journal");
+    goto finish;
   }
 
-  if (bskhex)
-    rhizome_apply_bundle_secret(m, &bsk);
+  if (bsktext) {
+    if (m->has_id) {
+      if (!rhizome_apply_bundle_secret(m, &bsk)) {
+	ret = WHY("Supplied bundle secret does not match Bundle Id");
+	goto finish;
+      }
+    } else {
+      if (rhizome_new_bundle_from_secret(m, &bsk) == -1) {
+	ret = WHY("Failed to create bundle from given secret");
+	goto finish;
+      }
+    }
+  }
   if (m->service == NULL)
     rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
-  if (rhizome_fill_manifest(m, filepath, *authorSidHex ? &authorSid : NULL)) {
-    rhizome_manifest_free(m);
-    keyring_free(keyring);
-    keyring = NULL;
-    return -1;
-  }
+  if (rhizome_fill_manifest(m, filepath, *authorSidHex ? &authorSid : NULL))
+    goto finish;
 
-  enum rhizome_bundle_status status = RHIZOME_BUNDLE_STATUS_NEW;
   enum rhizome_payload_status pstatus;
   if (journal){
     pstatus = rhizome_append_journal_file(m, 0, filepath);
+    if (config.debug.rhizome)
+      DEBUGF("rhizome_append_journal_file() returned %d %s", pstatus, rhizome_payload_status_message(pstatus));
   } else {
     pstatus = rhizome_stat_payload_file(m, filepath);
+    if (config.debug.rhizome)
+      DEBUGF("rhizome_stat_payload_file() returned %d %s", pstatus, rhizome_payload_status_message(pstatus));
     assert(m->filesize != RHIZOME_SIZE_UNSET);
     if (pstatus == RHIZOME_PAYLOAD_STATUS_NEW) {
       assert(m->filesize > 0);
       pstatus = rhizome_store_payload_file(m, filepath);
+      if (config.debug.rhizome)
+	DEBUGF("rhizome_store_payload_file() returned %d %s", pstatus, rhizome_payload_status_message(pstatus));
     }
   }
+  enum rhizome_bundle_status status = RHIZOME_BUNDLE_STATUS_ERROR;
+  int pstatus_valid = 0;
   switch (pstatus) {
     case RHIZOME_PAYLOAD_STATUS_EMPTY:
     case RHIZOME_PAYLOAD_STATUS_STORED:
     case RHIZOME_PAYLOAD_STATUS_NEW:
+      pstatus_valid = 1;
+      status = RHIZOME_BUNDLE_STATUS_NEW;
       break;
     case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
     case RHIZOME_PAYLOAD_STATUS_EVICTED:
+      pstatus_valid = 1;
       status = RHIZOME_BUNDLE_STATUS_NO_ROOM;
       INFO("Insufficient space to store payload");
       break;
     case RHIZOME_PAYLOAD_STATUS_ERROR:
+      pstatus_valid = 1;
       status = RHIZOME_BUNDLE_STATUS_ERROR;
       break;
     case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+      pstatus_valid = 1;
       status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
       break;
     case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      pstatus_valid = 1;
       status = RHIZOME_BUNDLE_STATUS_READONLY;
       break;
-    default:
-      FATALF("pstatus = %d", pstatus);
   }
+  if (!pstatus_valid)
+    FATALF("pstatus = %d", pstatus);
   rhizome_manifest *mout = NULL;
   if (status == RHIZOME_BUNDLE_STATUS_NEW) {
     if (!rhizome_manifest_validate(m) || m->malformed)
@@ -301,10 +307,12 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
     FATALF("status=%d", status);
   if (mout && mout != m)
     rhizome_manifest_free(mout);
+  ret = status;
+finish:
   rhizome_manifest_free(m);
   keyring_free(keyring);
   keyring = NULL;
-  return status;
+  return ret;
 }
 
 DEFINE_CMD(app_rhizome_import_bundle, 0,
@@ -486,11 +494,11 @@ static int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_conte
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  const char *manifestpath, *filepath, *manifestid, *bskhex;
+  const char *manifestpath, *filepath, *manifestid, *bsktext;
   if (   cli_arg(parsed, "manifestid", &manifestid, cli_manifestid, "") == -1
       || cli_arg(parsed, "manifestpath", &manifestpath, NULL, "") == -1
       || cli_arg(parsed, "filepath", &filepath, NULL, "") == -1
-      || cli_arg(parsed, "bsk", &bskhex, cli_optional_bundle_secret_key, NULL) == -1)
+      || cli_arg(parsed, "bsk", &bsktext, cli_optional_bundle_secret_key, NULL) == -1)
     return -1;
   
   int extract = strcasecmp(parsed->args[1], "extract")==0;
@@ -504,31 +512,28 @@ static int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_conte
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
   
+  rhizome_manifest *m = NULL;
   int ret=0;
   
   rhizome_bid_t bid;
-  if (str_to_rhizome_bid_t(&bid, manifestid) == -1){
-    keyring_free(keyring);
-    keyring = NULL;
-    return WHY("Invalid manifest ID");
+  if (str_to_rhizome_bid_t(&bid, manifestid) == -1) {
+    ret = WHY("Invalid manifest ID");
+    goto finish;
   }
   
   // treat empty string the same as null
-  if (bskhex && !*bskhex)
-    bskhex=NULL;
+  if (bsktext && !*bsktext)
+    bsktext = NULL;
   
   rhizome_bk_t bsk;
-  if (bskhex && str_to_rhizome_bk_t(&bsk, bskhex) == -1){
-    keyring_free(keyring);
-    keyring = NULL;
-    return WHYF("invalid bsk: \"%s\"", bskhex);
+  if (bsktext && str_to_rhizome_bsk_t(&bsk, bsktext) == -1) {
+    ret = WHYF("invalid bsk: \"%s\"", bsktext);
+    goto finish;
   }
 
-  rhizome_manifest *m = rhizome_new_manifest();
-  if (m==NULL){
-    keyring_free(keyring);
-    keyring = NULL;
-    return WHY("Out of manifests");
+  if ((m = rhizome_new_manifest()) == NULL) {
+    ret = WHY("Out of manifests");
+    goto finish;
   }
   
   switch(rhizome_retrieve_manifest(&bid, m)){
@@ -539,7 +544,7 @@ static int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_conte
   
   if (ret==0){
     assert(m->finalised);
-    if (bskhex)
+    if (bsktext)
       rhizome_apply_bundle_secret(m, &bsk);
     rhizome_authenticate_author(m);
     assert(m->authorship != AUTHOR_LOCAL);
@@ -593,8 +598,8 @@ static int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_conte
     default:
       FATALF("pstatus = %d", pstatus);
   }
-  if (m)
-    rhizome_manifest_free(m);
+finish:
+  rhizome_manifest_free(m);
   keyring_free(keyring);
   keyring = NULL;
   return ret;

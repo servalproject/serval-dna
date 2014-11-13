@@ -35,7 +35,6 @@ assert_manifest_complete() {
    tfw_cat -v "$manifest"
    assertGrep "$manifest" "^service=$rexp_service\$"
    assertGrep "$manifest" "^id=$rexp_manifestid\$"
-   assertGrep "$manifest" "^BK=$rexp_bundlekey\$"
    assertGrep "$manifest" "^date=$rexp_date\$"
    assertGrep "$manifest" "^version=$rexp_version\$"
    assertGrep "$manifest" "^filesize=$rexp_filesize\$"

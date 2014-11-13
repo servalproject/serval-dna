@@ -42,19 +42,15 @@ int rhizome_manifest_createid(rhizome_manifest *m)
   return 0;
 }
 
-struct signing_key{
+struct signing_key {
   unsigned char Private[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
   rhizome_bid_t Public;
 };
 
-/* generate a keypair from a given seed string */
-static int generate_keypair(const char *seed, struct signing_key *key)
+/* generate a keypair from a given secret key */
+static int generate_keypair_from_secret(const rhizome_bk_t *bsk, struct signing_key *key)
 {
-  unsigned char hash[crypto_hash_sha512_BYTES];
-  crypto_hash_sha512(hash, (unsigned char *)seed, strlen(seed));
-  
-  // The first 256 bits (32 bytes) of the hash will be used as the private key of the BID.
-  bcopy(hash, key->Private, sizeof key->Private);
+  bcopy(bsk->binary, key->Private, sizeof bsk->binary); // first 32 bytes
   if (crypto_sign_compute_public_key(key->Private, key->Public.binary) == -1)
     return WHY("Could not generate public key");
   // The last 32 bytes of the private key should be identical to the public key.  This is what
@@ -68,15 +64,24 @@ static int generate_keypair(const char *seed, struct signing_key *key)
  * Then either fetch it from the database or initialise a new empty manifest */
 int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed)
 {
-  struct signing_key key;
-  if (generate_keypair(seed, &key))
+  union {
+    unsigned char hash[crypto_hash_sha512_BYTES];
+    rhizome_bk_t bsk;
+  } u;
+  crypto_hash_sha512(u.hash, (unsigned char *)seed, strlen(seed));
+  // The first 256 bits (32 bytes) of the hash will be used as the private key of the BID.
+  return rhizome_get_bundle_from_secret(m, &u.bsk);
+}
+
+/* Generate a bundle id deterministically from the given bundle secret key.
+ * Then either fetch it from the database or initialise a new empty manifest
+ */
+int rhizome_get_bundle_from_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
+{
+  if (rhizome_new_bundle_from_secret(m, bsk) == -1)
     return -1;
-  
-  switch(rhizome_retrieve_manifest(&key.Public, m)){
+  switch (rhizome_retrieve_manifest(&m->cryptoSignPublic, m)) {
     case RHIZOME_BUNDLE_STATUS_NEW: 
-      // manifest not retrieved
-      rhizome_manifest_set_id(m, &key.Public); // zerofills m->cryptoSignSecret
-      m->haveSecret = NEW_BUNDLE_ID;
       break;
     case RHIZOME_BUNDLE_STATUS_SAME:
       m->haveSecret = EXISTING_BUNDLE_ID;
@@ -84,7 +89,19 @@ int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed)
     default:
       return -1;
   }
-  
+  return 0;
+}
+
+/* Generate a bundle id deterministically from the given bundle secret key.
+ * Then initialise a new empty manifest.
+ */
+int rhizome_new_bundle_from_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
+{
+  struct signing_key key;
+  if (generate_keypair_from_secret(bsk, &key))
+    return -1;
+  rhizome_manifest_set_id(m, &key.Public); // zerofills m->cryptoSignSecret
+  m->haveSecret = NEW_BUNDLE_ID;
   bcopy(key.Private, m->cryptoSignSecret, sizeof m->cryptoSignSecret);
   // Disabled for performance, these asserts should nevertheless always hold.
   //assert(cmp_rhizome_bid_t(&m->cryptoSignPublic, &key.Public) == 0);
