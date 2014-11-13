@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "log.h"
 #include "conf.h"
 #include "crypto.h"
+#include "strbuf.h"
 #include "strlcpy.h"
 #include "keyring.h"
 #include "dataformats.h"
@@ -54,12 +55,12 @@ static enum meshms_status get_my_conversation_bundle(const sid_t *my_sidp, rhizo
   if (!keyring_find_sid(&it, my_sidp))
     return MESHMS_STATUS_SID_LOCKED;
 
-  char seed[1024];
-  snprintf(seed, sizeof(seed), 
-    "incorrection%sconcentrativeness", 
-	alloca_tohex(it.keypair->private_key, crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES));
-	
-  if (rhizome_get_bundle_from_seed(m, seed) == -1)
+  strbuf sb = strbuf_alloca(1024);
+  strbuf_puts(sb, "incorrection");
+  strbuf_tohex(sb, crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES * 2, it.keypair->private_key);
+  strbuf_puts(sb, "concentrativeness");
+  assert(!strbuf_overrun(sb));
+  if (rhizome_get_bundle_from_seed(m, strbuf_str(sb)) == -1)
     return MESHMS_STATUS_ERROR;
   
   // always consider the content encrypted, we don't need to rely on the manifest itself.
