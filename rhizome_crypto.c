@@ -233,58 +233,65 @@ enum rhizome_secret_disposition find_rhizome_secret(const sid_t *authorSidp, siz
 }
 
 /* Attempt to authenticate the authorship of the given bundle, and set the 'authorship' element
- * accordingly.  If the manifest has nk BK field, then no authentication can be performed.
+ * accordingly.  If the manifest has no BK field, then no authentication can be performed.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 void rhizome_authenticate_author(rhizome_manifest *m)
 {
   IN();
-  if (!m->has_bundle_key)
+  if (config.debug.rhizome)
+    DEBUGF("authenticate author for bid=%s", m->has_id ? alloca_tohex_rhizome_bid_t(m->cryptoSignPublic) : "(none)");
+  if (!m->has_bundle_key) {
+    if (config.debug.rhizome)
+      DEBUG("   no BK field");
     RETURNVOID;
+  }
   switch (m->authorship) {
     case ANONYMOUS:
+      if (config.debug.rhizome)
+	DEBUGF("   manifest[%d] author unknown", m->manifest_record_number);
       rhizome_find_bundle_author_and_secret(m);
       break;
     case AUTHOR_NOT_CHECKED:
     case AUTHOR_LOCAL: {
 	if (config.debug.rhizome)
-	  DEBUGF("manifest[%d] authenticate author=%s", m->manifest_record_number, alloca_tohex_sid_t(m->author));
+	  DEBUGF("   manifest[%d] authenticate author=%s", m->manifest_record_number, alloca_tohex_sid_t(m->author));
 	size_t rs_len;
 	const unsigned char *rs;
 	enum rhizome_secret_disposition d = find_rhizome_secret(&m->author, &rs_len, &rs);
 	switch (d) {
 	  case FOUND_RHIZOME_SECRET:
 	    if (config.debug.rhizome)
-	      DEBUGF("author has Rhizome secret");
+	      DEBUGF("   author has Rhizome secret");
 	    switch (rhizome_bk2secret(&m->cryptoSignPublic, rs, rs_len, m->bundle_key.binary, m->cryptoSignSecret)) {
 	      case 0:
 		if (config.debug.rhizome)
-		  DEBUGF("authentic");
+		  DEBUGF("   is authentic");
 		m->authorship = AUTHOR_AUTHENTIC;
 		if (!m->haveSecret)
 		  m->haveSecret = EXISTING_BUNDLE_ID;
 		break;
 	      case -1:
 		if (config.debug.rhizome)
-		  DEBUGF("error");
+		  DEBUGF("   error");
 		m->authorship = AUTHENTICATION_ERROR;
 		break;
 	      default:
 		if (config.debug.rhizome)
-		  DEBUGF("impostor");
+		  DEBUGF("   author is impostor");
 		m->authorship = AUTHOR_IMPOSTOR;
 		break;
 	    }
 	    break;
 	  case IDENTITY_NOT_FOUND:
 	    if (config.debug.rhizome)
-	      DEBUGF("author not found");
+	      DEBUGF("   author not found");
 	    m->authorship = AUTHOR_UNKNOWN;
 	    break;
 	  case IDENTITY_HAS_NO_RHIZOME_SECRET:
 	    if (config.debug.rhizome)
-	      DEBUGF("author has no Rhizome secret");
+	      DEBUGF("   author has no Rhizome secret");
 	    m->authorship = AUTHENTICATION_ERROR;
 	    break;
 	  default:
@@ -340,9 +347,6 @@ int rhizome_apply_bundle_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
 /* Discover if the given manifest was created (signed) by any unlocked identity currently in the
  * keyring.
  *
- * This function must only be called if the bundle secret is not known.  If it is known, then
- * use 
- *
  * If the authorship is already known (ie, not ANONYMOUS) then returns without changing anything.
  * That means this function can be called several times on the same manifest, but will only perform
  * any work the first time.
@@ -367,16 +371,23 @@ int rhizome_apply_bundle_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
 void rhizome_find_bundle_author_and_secret(rhizome_manifest *m)
 {
   IN();
-  if (m->authorship != ANONYMOUS)
+  if (config.debug.rhizome)
+    DEBUGF("Finding author and secret for bid=%s", m->has_id ? alloca_tohex_rhizome_bid_t(m->cryptoSignPublic) : "(none)");
+  if (m->authorship != ANONYMOUS) {
+    if (config.debug.rhizome)
+      DEBUGF("   bundle is anonymous");
     RETURNVOID;
+  }
   assert(is_sid_t_any(m->author));
-  if (!m->has_bundle_key)
+  if (!m->has_bundle_key) {
+    if (config.debug.rhizome)
+      DEBUGF("   bundle has no BK field");
     RETURNVOID;
-  
+  }
   keyring_iterator it;
   keyring_iterator_start(keyring, &it);
   keypair *kp;
-  while((kp=keyring_next_keytype(&it, KEYTYPE_RHIZOME))){
+  while ((kp = keyring_next_keytype(&it, KEYTYPE_RHIZOME))) {
     size_t rs_len = kp->private_key_len;
     if (rs_len < 16 || rs_len > 1024) {
       // should a bad key be fatal??
@@ -393,12 +404,11 @@ void rhizome_find_bundle_author_and_secret(rhizome_manifest *m)
 	  FATALF("Bundle secret does not match derived secret");
       } else
 	m->haveSecret = EXISTING_BUNDLE_ID;
-      
       keypair *kp_sid = keyring_identity_keytype(it.identity, KEYTYPE_CRYPTOBOX);
-      if (kp_sid){
+      if (kp_sid) {
 	const sid_t *authorSidp = (const sid_t *) kp_sid->public_key;
 	if (config.debug.rhizome)
-	  DEBUGF("found bundle author sid=%s", alloca_tohex_sid_t(*authorSidp));
+	  DEBUGF("   found bundle author sid=%s", alloca_tohex_sid_t(*authorSidp));
 	rhizome_manifest_set_author(m, authorSidp);
 	m->authorship = AUTHOR_AUTHENTIC;
 	// if this bundle is already in the database, update the author.
@@ -409,13 +419,12 @@ void rhizome_find_bundle_author_and_secret(rhizome_manifest *m)
 	      INT64, m->rowid,
 	      END);
       }
-      
       RETURNVOID; // bingo
     }
   }
   assert(m->authorship == ANONYMOUS);
   if (config.debug.rhizome)
-    DEBUG("bundle author not found");
+    DEBUG("   bundle author not found");
   OUT();
 }
 

@@ -809,6 +809,35 @@ test_AddUpdateNoAuthorWithPassphrase() {
    assert diff file1_2 file1x
 }
 
+doc_AddUpdateWithPassphrase="Add and update bundle using secret passphrase"
+setup_AddUpdateWithPassphrase() {
+   setup_servald
+   setup_rhizome
+   create_file file1 1k
+   create_file file1_2 2k
+   pass='On the Ning Nang Nong'
+}
+test_AddUpdateWithPassphrase() {
+   executeOk_servald rhizome add file $SIDB1 file1 file1.manifest "#$pass"
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file1 .author=$SIDB1
+   assert_manifest_complete file1.manifest
+   extract_manifest_id BID file1.manifest
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 file1
+   executeOk_servald rhizome add file $SIDB1 file1_2 file1_2.manifest "#$pass"
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file1_2 .author=$SIDB1
+   assert_manifest_complete file1_2.manifest
+   extract_manifest_id BID2 file1.manifest
+   assert [ "$BID" = "$BID2" ]
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 file1_2
+   executeOk_servald rhizome extract file $BID file1x
+   tfw_cat --stdout --stderr
+   assert diff file1_2 file1x
+}
+
 doc_EncryptedPayload="Add and extract an encrypted payload"
 setup_EncryptedPayload() {
    setup_servald

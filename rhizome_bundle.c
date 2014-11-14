@@ -1166,34 +1166,63 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
   else if (m->has_sender)
     rhizome_manifest_set_author(m, &m->sender);
 
-  /* Set the bundle ID (public key) and secret key.
+  /* Fill in the bundle secret and bundle ID.
    */
-  if (!m->haveSecret && !m->has_id) {
+  int valid_haveSecret = 0;
+  switch (m->haveSecret) {
+  case SECRET_UNKNOWN:
+    valid_haveSecret = 1;
+    // If the Bundle Id is already known, then derive the bundle secret from BK if known.
+    // If there is no Bundle Id, then create a new bundle Id and secret from scratch.
+    if (m->has_id) {
+      if (config.debug.rhizome)
+	DEBUGF("discover secret for bundle bid=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+      rhizome_authenticate_author(m);
+      break;
+    }
     if (config.debug.rhizome)
       DEBUG("creating new bundle");
     if (rhizome_manifest_createid(m) == -1)
       return WHY("Could not bind manifest to an ID");
-    if (m->authorship != ANONYMOUS)
+    // fall through to set the BK field...
+  case NEW_BUNDLE_ID:
+    valid_haveSecret = 1;
+    assert(m->has_id);
+    if (m->authorship != ANONYMOUS) {
+      if (config.debug.rhizome)
+	DEBUGF("set BK field for bid=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
       rhizome_manifest_add_bundle_key(m); // set the BK field
-  } else {
+    }
+    break;
+  case EXISTING_BUNDLE_ID:
+    valid_haveSecret = 1;
+    // If modifying an existing bundle, try to discover the bundle secret key and the author.
+    assert(m->has_id);
     if (config.debug.rhizome)
       DEBUGF("modifying existing bundle bid=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
-    // Modifying an existing bundle.  Try to discover the bundle secret key and the author.
     rhizome_authenticate_author(m);
     // TODO assert that new version > old version?
   }
+  if (!valid_haveSecret)
+    FATALF("haveSecret = %d", m->haveSecret);
 
+  /* Service field must already be set.
+   */
   if (m->service == NULL)
     return WHYF("missing 'service'");
   if (config.debug.rhizome)
     DEBUGF("manifest service=%s", m->service);
 
+  /* Fill in 'date' field to current time unless already set.
+   */
   if (!m->has_date) {
     rhizome_manifest_set_date(m, (int64_t) gettime_ms());
     if (config.debug.rhizome)
       DEBUGF("missing 'date', set default date=%"PRItime_ms_t, m->date);
   }
 
+  /* Fill in 'name' field if service=file.
+   */
   if (strcasecmp(RHIZOME_SERVICE_FILE, m->service) == 0) {
     if (m->name) {
       if (config.debug.rhizome)
@@ -1204,7 +1233,9 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
       DEBUGF("manifest missing 'name'");
   }
 
-  // Anything sent from one person to another should be considered private and encrypted by default.
+  /* Fill in 'crypt' field.  Anything sent from one person to another should be considered private
+   * and encrypted by default.
+   */
   if (   m->payloadEncryption == PAYLOAD_CRYPT_UNKNOWN
       && m->has_sender
       && m->has_recipient
