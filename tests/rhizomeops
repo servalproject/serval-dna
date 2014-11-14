@@ -671,8 +671,8 @@ test_AddUpdateSameVersion() {
    # Try to add another file using an existing manifest Id and Version, should
    # fail and update the manifest file to show existing bundle's manifest.
    tfw_cat -v file1_2.manifest
-   execute --exit-status=1 $servald rhizome add file $SIDB1 file1_2 file1_2.manifest
-   assertExitStatus --stderr '!=' 0
+   execute $servald rhizome add file $SIDB1 file1_2 file1_2.manifest
+   assertExitStatus --stderr '==' 1
    tfw_cat -v file1_2.manifest file1.manifest
    assert cmp file1_2.manifest file1.manifest
    # And rhizome store should be unchanged.
