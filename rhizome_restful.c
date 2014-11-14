@@ -528,8 +528,19 @@ static int insert_mime_part_end(struct http_request *hr)
     int result = insert_make_manifest(r);
     if (result)
       return result;
-    if (r->manifest->has_id && r->u.insert.received_secret)
-      rhizome_apply_bundle_secret(r->manifest, &r->u.insert.bundle_secret);
+    if (r->u.insert.received_secret) {
+      if (r->manifest->has_id) {
+	if (!rhizome_apply_bundle_secret(r->manifest, &r->u.insert.bundle_secret)) {
+	  http_request_simple_response(&r->http, 403, "Secret does not match Bundle Id");
+	  return 403;
+	}
+      } else {
+	if (rhizome_new_bundle_from_secret(r->manifest, &r->u.insert.bundle_secret) == -1) {
+	  WHY("Failed to create bundle from secret");
+	  return 500;
+	}
+      }
+    }
     if (r->manifest->service == NULL)
       rhizome_manifest_set_service(r->manifest, RHIZOME_SERVICE_FILE);
     if (rhizome_fill_manifest(r->manifest, NULL, r->u.insert.received_author ? &r->u.insert.author: NULL) == -1) {

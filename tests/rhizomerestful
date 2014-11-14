@@ -116,7 +116,7 @@ teardown_AuthBasicWrong() {
    teardown
 }
 
-doc_CORS_Request="Allow local cross site requests, and deny remote ones"
+doc_CORS_Request="HTTP RESTful allow local cross site requests, and deny remote ones"
 test_CORS_Request(){
    executeOk curl \
          --silent --fail --show-error --write-out '%{http_code}' \
@@ -698,6 +698,126 @@ test_RhizomeInsertAnon() {
    assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Message: .*payload new to store.*$CR\$"
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 --manifest=ifile2.manifest file2
+}
+
+doc_RhizomeInsertAnonPassphrase="HTTP RESTful insert and update anonymous Rhizome bundle with passphrase secret"
+setup_RhizomeInsertAnonPassphrase() {
+   setup
+   create_file file1 1001
+   create_file file2 1002
+   pass="This Too Shall Pass"
+}
+test_RhizomeInsertAnonPassphrase() {
+   # Create the bundle with file1
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output ifile1.manifest \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "bundle-secret=#$pass" \
+         --form "manifest=;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "payload=@file1" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header ifile1.manifest
+   assertExitStatus == 0
+   assertStdoutIs 201
+   assert_manifest_complete ifile1.manifest
+   assert_manifest_fields ifile1.manifest !BK
+   extract_manifest_id BID ifile1.manifest
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Code: 1$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Message: .*payload new to store.*$CR\$"
+   assertGrep --matches=0 --ignore-case http.header "^Serval-Rhizome-Bundle-BK:"
+   extract_http_header SECRET http.header Serval-Rhizome-Bundle-Secret "$rexp_bundlesecret"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=0 --manifest=ifile1.manifest file1
+   # Update the bundle to file2
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output ifile2.manifest \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "bundle-secret=#$pass" \
+         --form "manifest=;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "payload=@file2" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header ifile2.manifest
+   assertExitStatus == 0
+   assertStdoutIs 201
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Code: 1$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Message: .*payload new to store.*$CR\$"
+   assertGrep --matches=0 --ignore-case http.header "^Serval-Rhizome-Bundle-BK:"
+   assert_manifest_complete ifile2.manifest
+   assert_manifest_fields ifile2.manifest !BK
+   extract_manifest_id BID2 ifile2.manifest
+   assert [ "$BID" = "$BID2" ]
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=0 --manifest=ifile2.manifest file2
+}
+
+doc_RhizomeInsertPassphrase="HTTP RESTful insert and update Rhizome bundle with passphrase secret"
+setup_RhizomeInsertPassphrase() {
+   setup
+   create_file file1 1001
+   create_file file2 1002
+   pass="This Too Shall Pass"
+}
+test_RhizomeInsertPassphrase() {
+   # Create the bundle with file1
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output ifile1.manifest \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "bundle-author=$SIDA" \
+         --form "bundle-secret=#$pass" \
+         --form "manifest=;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "payload=@file1" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header ifile1.manifest
+   assertExitStatus == 0
+   assertStdoutIs 201
+   assert_manifest_complete ifile1.manifest
+   extract_manifest_id BID ifile1.manifest
+   extract_manifest_BK BK ifile1.manifest
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Code: 1$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Message: .*payload new to store.*$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Bundle-BK: $BK$CR\$"
+   extract_http_header SECRET http.header Serval-Rhizome-Bundle-Secret "$rexp_bundlesecret"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --manifest=ifile1.manifest file1
+   # Update the bundle to file2
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output ifile2.manifest \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "bundle-author=$SIDA" \
+         --form "bundle-secret=#$pass" \
+         --form "manifest=;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "payload=@file2" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header ifile2.manifest
+   assertExitStatus == 0
+   assertStdoutIs 201
+   assert_manifest_complete ifile2.manifest
+   extract_manifest_id BID2 ifile2.manifest
+   extract_manifest_BK BK2 ifile2.manifest
+   assert [ "$BID" = "$BID2" ]
+   assert [ "$BK" = "$BK2" ]
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Code: 1$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Message: .*payload new to store.*$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Bundle-BK: $BK$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Bundle-Secret: $SECRET$CR\$"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --manifest=ifile2.manifest file2
 }
 
 doc_RhizomeInsertEmpty="HTTP RESTful insert empty Rhizome bundle"
