@@ -143,12 +143,12 @@ assert_stdout_add_file() {
    if [ "$re_crypt" = 1 ]; then
       opt_filehash=false
    fi
-   fieldnames='service|manifestid|author|secret|BK|filesize|filehash|name'
+   fieldnames='service|manifestid|.author|.secret|BK|filesize|filehash|name'
    for arg; do
       case "$arg" in
       !+($fieldnames))
          fieldname="${arg#!}"
-         eval opt_$fieldname=false
+         eval opt_${fieldname#.}=false
          ;;
       +($fieldnames)=*)
          value="${arg#*=}"
@@ -177,7 +177,7 @@ assert_stdout_add_file() {
 assert_stdout_import_bundle() {
    # Output of "import bundle" is the same as "add file" but without the secret
    # or author fields.
-   assert_stdout_add_file "$@" '!secret' '!author'
+   assert_stdout_add_file "$@" '!.secret' '!.author'
 }
 
 unpack_manifest_for_grep() {
