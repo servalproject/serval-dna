@@ -58,6 +58,7 @@ typedef struct rhizome_signature {
 
 #define MAX_MANIFEST_VARS 256
 #define MAX_MANIFEST_BYTES 8192
+#define MAX_MANIFEST_FIELD_LABEL_LEN 80
 
 typedef struct rhizome_manifest
 {
@@ -293,6 +294,22 @@ void _rhizome_manifest_set_rowid(struct __sourceloc, rhizome_manifest *, uint64_
 void _rhizome_manifest_set_inserttime(struct __sourceloc, rhizome_manifest *, time_ms_t);
 void _rhizome_manifest_set_author(struct __sourceloc, rhizome_manifest *, const sid_t *);
 void _rhizome_manifest_del_author(struct __sourceloc, rhizome_manifest *);
+
+enum rhizome_manifest_parse_status {
+    RHIZOME_MANIFEST_ERROR = -1,          // unrecoverable error while constructing manifest
+    RHIZOME_MANIFEST_OK = 0,              // field parsed ok; manifest updated
+    RHIZOME_MANIFEST_SYNTAX_ERROR = 1,    // field label violates syntax
+    RHIZOME_MANIFEST_DUPLICATE_FIELD = 2, // field is already set in manifest
+    RHIZOME_MANIFEST_INVALID = 3,         // core field value does not parse
+    RHIZOME_MANIFEST_MALFORMED = 4,       // non-core field value does not parse
+    RHIZOME_MANIFEST_OVERFLOW = 5,        // maximum field count exceeded
+};
+
+enum rhizome_manifest_parse_status
+    rhizome_manifest_parse_field(rhizome_manifest *m,
+                                 const char *field_label, size_t field_label_len,
+                                 const char *field_value, size_t field_value_len);
+int rhizome_manifest_remove_field(rhizome_manifest *, const char *field_label, size_t field_label_len);
 
 /* Supported service identifiers.  These go in the 'service' field of every
  * manifest, and indicate which application must be used to process the bundle

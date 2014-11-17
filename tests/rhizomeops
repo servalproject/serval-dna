@@ -89,6 +89,24 @@ test_AddNoManifest() {
    assert_stdout_add_file file2
 }
 
+doc_AddManifestFieldUnsupported="Add with unsupported manifest field"
+setup_AddManifestFieldUnsupported() {
+   setup_servald
+   setup_rhizome
+   executeOk_servald rhizome list
+   assert_rhizome_list
+   echo "A test file" >file1
+   echo "Another test file" >file2
+   echo "bogus=one" >file1.manifest
+}
+test_AddManifestFieldUnsupported() {
+   executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
+   assert_stdout_add_file file1
+   tfw_cat -v file1.manifest
+   assert_manifest_complete file1.manifest
+   assert_manifest_fields file1.manifest bogus=one
+}
+
 doc_AddNoAuthor="Add with no author makes manifest without BK"
 setup_AddNoAuthor() {
    setup_servald
@@ -388,7 +406,7 @@ test_CorruptExternalBlob() {
    tfw_cat --stderr
 }
 
-doc_ExtractManifestToStdout="Export manifest to output field"
+doc_ExtractManifestToStdout="Export manifest to standard output"
 setup_ExtractManifestToStdout() {
    setup_servald
    setup_rhizome
