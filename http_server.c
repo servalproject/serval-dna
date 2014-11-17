@@ -176,8 +176,9 @@ int http_request_set_response_bufsize(struct http_request *r, size_t bufsiz)
 
 void http_request_finalise(struct http_request *r)
 {
+  IN();
   if (r->phase == DONE)
-    return;
+    RETURNVOID;
   assert(r->phase == RECEIVE || r->phase == TRANSMIT || r->phase == PAUSE);
   unschedule(&r->alarm);
   if (r->phase != PAUSE)
@@ -189,6 +190,7 @@ void http_request_finalise(struct http_request *r)
   r->finalise = NULL;
   http_request_free_response_buffer(r);
   r->phase = DONE;
+  OUT();
 }
 
 struct substring {
@@ -1506,6 +1508,7 @@ static ssize_t http_request_read(struct http_request *r, char *buf, size_t len)
 
 static void http_request_receive(struct http_request *r)
 {
+  IN();
   assert(r->phase == RECEIVE);
   const char *const bufend = r->buffer + sizeof r->buffer;
   assert(r->end <= bufend);
@@ -1534,7 +1537,7 @@ static void http_request_receive(struct http_request *r)
     if (r->debug_flag && *r->debug_flag)
       DEBUG("Buffer size reached, reporting overflow");
     http_request_simple_response(r, 431, NULL);
-    return;
+    RETURNVOID;
   }
   // Read up to the end of available buffer space or the end of content, whichever is first.  Read
   // as many bytes as possible into the unused buffer space.  Any read error closes the connection
@@ -1544,13 +1547,13 @@ static void http_request_receive(struct http_request *r)
     assert(room <= r->request_content_remaining);
   ssize_t bytes = http_request_read(r, (char *)r->end, room);
   if (bytes == -1)
-    return;
+    RETURNVOID;
   assert((size_t) bytes <= room);
   // If no data was read, then just return to polling.  Don't drop the connection on an empty read,
   // because that drops connections when they shouldn't, including during testing.  The inactivity
   // timeout will drop inactive connections.
   if (bytes == 0)
-    return;
+    RETURNVOID;
   r->end += (size_t) bytes;
   if (r->request_content_remaining != CONTENT_LENGTH_UNKNOWN)
     r->request_content_remaining -= (size_t) bytes;
@@ -1586,7 +1589,7 @@ static void http_request_receive(struct http_request *r)
       if (r->phase != RECEIVE)
 	break;
       if (result == 100)
-	return; // needs more data; poll again
+	RETURNVOID; // needs more data; poll again
       if (result == 0 && r->parsed == oldparsed && r->parser == oldparser) {
 	if (r->debug_flag && *r->debug_flag)
 	  DEBUG("Internal failure parsing HTTP request: parser function did not advance");
@@ -1608,18 +1611,19 @@ static void http_request_receive(struct http_request *r)
       if (r->debug_flag && *r->debug_flag)
 	DEBUG("Unrecoverable error parsing HTTP request, closing connection");
       http_request_finalise(r);
-      return;
+      RETURNVOID;
     }
   }
   if (r->phase != RECEIVE) {
     assert(r->response.result_code != 0);
-    return;
+    RETURNVOID;
   }
   if (r->response.result_code == 0) {
     WHY("No HTTP response set, using 500 Server Error");
     r->response.result_code = 500;
   }
   http_request_start_response(r);
+  OUT();
 }
 
 /* Write the current contents of the response buffer to the HTTP socket.  When no more bytes can be
@@ -1631,6 +1635,7 @@ static void http_request_receive(struct http_request *r)
  */
 static void http_request_send_response(struct http_request *r)
 {
+  IN();
   assert(r->phase == TRANSMIT);
   while (1) {
     if (r->response_length != CONTENT_LENGTH_UNKNOWN)
@@ -1651,7 +1656,7 @@ static void http_request_send_response(struct http_request *r)
       r->response_buffer_sent = r->response_buffer_length = 0;
     if (r->phase == PAUSE) {
       if (unsent == 0)
-	return; // nothing to send
+	RETURNVOID; // nothing to send
     } else if (r->response.content_generator) {
       // If the buffer is smaller than the content generator needs, and it contains no unsent
       // content, then allocate a larger buffer.
@@ -1660,7 +1665,7 @@ static void http_request_send_response(struct http_request *r)
 	  WHYF("HTTP response truncated at offset=%"PRIhttp_size_t" due to insufficient buffer space",
 	      r->response_sent);
 	  http_request_finalise(r);
-	  return;
+	  RETURNVOID;
 	}
       }
       // If there are some sent bytes at the start of the buffer and only a few unsent bytes, then
@@ -1687,7 +1692,7 @@ static void http_request_send_response(struct http_request *r)
 	if (ret == -1) {
 	  WHY("Content generation error, closing connection");
 	  http_request_finalise(r);
-	  return;
+	  RETURNVOID;
 	}
 	assert(result.generated <= unfilled);
 	r->response_buffer_length += result.generated;
@@ -1695,7 +1700,7 @@ static void http_request_send_response(struct http_request *r)
 	if (result.generated == 0 && result.need <= unfilled && r->phase != PAUSE) {
 	  WHYF("HTTP response generator produced no content at offset %"PRIhttp_size_t" (ret=%d)", r->response_sent, ret);
 	  http_request_finalise(r);
-	  return;
+	  RETURNVOID;
 	}
 	if (r->debug_flag && *r->debug_flag)
 	  DEBUGF("Generated HTTP %zu bytes of content, need %zu bytes of buffer (ret=%d)", result.generated, result.need, ret);
@@ -1707,7 +1712,7 @@ static void http_request_send_response(struct http_request *r)
       WHYF("HTTP response generator finished prematurely at offset %"PRIhttp_size_t"/%"PRIhttp_size_t" (%"PRIhttp_size_t" bytes remaining)",
 	  r->response_sent, r->response_length, remaining);
       http_request_finalise(r);
-      return;
+      RETURNVOID;
     } else if (unsent == 0)
       break;
     assert(unsent > 0);
@@ -1722,17 +1727,17 @@ static void http_request_send_response(struct http_request *r)
       if (r->debug_flag && *r->debug_flag)
 	DEBUG("HTTP socket write error, closing connection");
       http_request_finalise(r);
-      return;
+      RETURNVOID;
     }
     if (sigPipeFlag) {
       if (r->debug_flag && *r->debug_flag)
 	DEBUG("Received SIGPIPE on HTTP socket write, closing connection");
       http_request_finalise(r);
-      return;
+      RETURNVOID;
     }
     // If we wrote nothing, go back to polling.
     if (written == 0)
-      return;
+      RETURNVOID;
     r->response_sent += (size_t) written;
     r->response_buffer_sent += (size_t) written;
     assert(r->response_sent <= r->response_length);
@@ -1745,11 +1750,12 @@ static void http_request_send_response(struct http_request *r)
       http_request_set_idle_timeout(r);
     // If we wrote less than we tried, then go back to polling, otherwise keep generating content.
     if ((size_t) written < (size_t) unsent)
-      return;
+      RETURNVOID;
   }
   if (r->debug_flag && *r->debug_flag)
     DEBUG("Done, closing connection");
   http_request_finalise(r);
+  OUT();
 }
 
 static void http_server_poll(struct sched_ent *alarm)
@@ -2084,6 +2090,7 @@ static size_t http_request_drain(struct http_request *r)
 
 static void http_request_start_response(struct http_request *r)
 {
+  IN();
   assert(r->phase == RECEIVE);
   _release_reserved(r);
   if (r->response.content || r->response.content_generator) {
@@ -2095,14 +2102,14 @@ static void http_request_start_response(struct http_request *r)
   if (r->disable_tx_flag && *r->disable_tx_flag) {
     INFO("HTTP transmit disabled, closing connection");
     http_request_finalise(r);
-    return;
+    RETURNVOID;
   }
   // Drain the rest of the request that has not been received yet (eg, if sending an error response
   // provoked while parsing the early part of a partially-received request).  If a read error
   // occurs, the connection is closed so the phase changes to DONE.
   http_request_drain(r);
   if (r->phase != RECEIVE)
-    return;
+    RETURNVOID;
   // Ensure conformance to HTTP standards.
   if (r->response.result_code == 401 && r->response.header.www_authenticate.scheme == NOAUTH) {
     WHY("HTTP 401 response missing WWW-Authenticate header, sending 500 Server Error instead");
@@ -2122,7 +2129,7 @@ static void http_request_start_response(struct http_request *r)
     if (r->response_buffer == NULL) {
       WHY("Cannot render HTTP 500 Server Error response, closing connection");
       http_request_finalise(r);
-      return;
+      RETURNVOID;
     }
   }
   r->response_buffer_need = 0;
@@ -2132,6 +2139,7 @@ static void http_request_start_response(struct http_request *r)
   r->phase = TRANSMIT;
   r->alarm.poll.events = POLLOUT;
   watch(&r->alarm);
+  OUT();
 }
 
 void http_request_pause_response(struct http_request *r, time_ms_t until)
