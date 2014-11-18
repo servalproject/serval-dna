@@ -140,7 +140,7 @@ setup_AddNoAuthorEncrypted() {
 }
 test_AddNoAuthorEncrypted() {
    executeOk_servald rhizome add file '' file1 file1.manifest
-   tfw_cat --stdout --stderr
+   tfw_cat --stdout --stderr -v file1.manifest
    assert_manifest_fields file1.manifest !BK
    assert_stdout_add_file file1 !.author !BK
    extract_stdout_secret file1_secret
