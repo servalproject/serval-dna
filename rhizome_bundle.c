@@ -988,6 +988,31 @@ rhizome_manifest_parse_field(rhizome_manifest *m, const char *field_label, size_
   return status;
 }
 
+/* Remove the field with the given label from the manifest.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_manifest_remove_field(rhizome_manifest *m, const char *field_label, size_t field_label_len)
+{
+  if (!rhizome_manifest_field_label_is_valid(field_label, field_label_len)) {
+    if (config.debug.rhizome_manifest)
+      DEBUGF("Invalid manifest field name: %s", alloca_toprint(100, field_label, field_label_len));
+    return 0;
+  }
+  const char *label = alloca_strndup(field_label, field_label_len);
+  struct rhizome_manifest_field_descriptor *desc = NULL;
+  unsigned i;
+  for (i = 0; desc == NULL && i < NELS(rhizome_manifest_fields); ++i)
+    if (strcasecmp(label, rhizome_manifest_fields[i].label) == 0)
+      desc = &rhizome_manifest_fields[i];
+  if (!desc)
+    return rhizome_manifest_del(m, label);
+  if (!desc->test(m))
+    return 0;
+  desc->unset(m);
+  return 1;
+}
+
 /* If all essential (transport) fields are present and well formed then sets the m->finalised field
  * and returns 1, otherwise returns 0.
  *

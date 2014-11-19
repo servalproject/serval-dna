@@ -104,7 +104,7 @@ static int app_rhizome_hash_file(const struct cli_parsed *parsed, struct cli_con
 
 DEFINE_CMD(app_rhizome_add_file, 0,
   "Add a file to Rhizome and optionally write its manifest to the given path",
-  "rhizome","add","file" KEYRING_PIN_OPTIONS,"[--force-new]","<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]");
+  "rhizome","add","file" KEYRING_PIN_OPTIONS,"[--force-new]","<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]","...");
 DEFINE_CMD(app_rhizome_add_file, 0,
   "Append content to a journal bundle",
   "rhizome", "journal", "append" KEYRING_PIN_OPTIONS, "<author_sid>", "<manifestid>", "<filepath>", "[<bsk>]");
@@ -134,6 +134,42 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
   if (bsktext && str_to_rhizome_bsk_t(&bsk, bsktext) == -1)
     return WHYF("invalid bsk: \"%s\"", bsktext);
   
+  unsigned nfields = (parsed->varargi == -1) ? 0 : parsed->argc - (unsigned)parsed->varargi;
+  struct field {
+    const char *label;
+    size_t labellen;
+    const char *value;
+    size_t valuelen;
+  }
+    fields[nfields];
+  if (nfields) {
+    assert(parsed->varargi >= 0);
+    unsigned i;
+    for (i = 0; i < nfields; ++i) {
+      struct field *field = &fields[i];
+      unsigned n = (unsigned)parsed->varargi + i;
+      assert(n < parsed->argc);
+      const char *arg = parsed->args[n];
+      size_t arglen = strlen(arg);
+      const char *eq;
+      if (arglen > 0 && arg[0] == '!') {
+	  field->label = arg + 1;
+	  field->labellen = arglen - 1;
+	  field->value = NULL;
+      } else if ((eq = strchr(arg, '='))) {
+	  field->label = arg;
+	  field->labellen = eq - arg;
+	  field->value = eq + 1;
+	  field->valuelen = (arg + arglen) - field->value;
+      } else
+	return WHYF("invalid manifest field argument: %s", alloca_str_toprint(arg));
+      if (!rhizome_manifest_field_label_is_valid(field->label, field->labellen))
+	return WHYF("invalid manifest field label: %s", alloca_toprint(-1, field->label, field->labellen));
+      if (field->value && !rhizome_manifest_field_value_is_valid(field->value, field->valuelen))
+	return WHYF("invalid manifest field value: %s", alloca_toprint(-1, field->value, field->valuelen));
+    }
+  }
+
   int journal = strcasecmp(parsed->args[1], "journal")==0;
 
   if (create_serval_instance_dir() == -1)
@@ -192,6 +228,43 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
   if (!journal && m->is_journal) {
     ret = WHY("Existing manifest is a journal");
     goto finish;
+  }
+
+  if (nfields) {
+    unsigned i;
+    for (i = 0; i != nfields; ++i) {
+      struct field *field = &fields[i];
+      rhizome_manifest_remove_field(m, field->label, field->labellen);
+      if (field->value) {
+	const char *label = alloca_strndup(field->label, field->labellen);
+	enum rhizome_manifest_parse_status status = rhizome_manifest_parse_field(m, field->label, field->labellen, field->value, field->valuelen);
+	int status_ok = 0;
+	switch (status) {
+	  case RHIZOME_MANIFEST_ERROR:
+	    ret = WHY("Fatal error while updating manifest field");
+	    goto finish;
+	  case RHIZOME_MANIFEST_OK:
+	    status_ok = 1;
+	    break;
+	  case RHIZOME_MANIFEST_SYNTAX_ERROR:
+	    ret = WHYF("Manifest syntax error: %s=%s", label, alloca_toprint(-1, field->value, field->valuelen));
+	    goto finish;
+	  case RHIZOME_MANIFEST_DUPLICATE_FIELD:
+	    abort(); // should not happen, field was removed first
+	  case RHIZOME_MANIFEST_INVALID:
+	    ret = WHYF("Manifest invalid field: %s=%s", label, alloca_toprint(-1, field->value, field->valuelen));
+	    goto finish;
+	  case RHIZOME_MANIFEST_MALFORMED:
+	    ret = WHYF("Manifest malformed field: %s=%s", label, alloca_toprint(-1, field->value, field->valuelen));
+	    goto finish;
+	  case RHIZOME_MANIFEST_OVERFLOW:
+	    ret = WHYF("Too many fields in manifest at: %s=%s", label, alloca_toprint(-1, field->value, field->valuelen));
+	    goto finish;
+	}
+	if (!status_ok)
+	  FATALF("status = %d", status);
+      }
+    }
   }
 
   if (bsktext) {

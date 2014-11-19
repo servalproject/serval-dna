@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Tests for Serval rhizome operations.
+# Tests for Serval rhizome command-line operations.
 #
-# Copyright 2012 Serval Project, Inc.
+# Copyright 2012-2014 Serval Project, Inc.
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -107,6 +107,23 @@ test_AddManifestFieldUnsupported() {
    assert_manifest_fields file1.manifest bogus=one
 }
 
+doc_AddManifestFieldUnsupportedArgs="Add with unsupported manifest field argument"
+setup_AddManifestFieldUnsupportedArgs() {
+   setup_servald
+   setup_rhizome
+   executeOk_servald rhizome list
+   assert_rhizome_list
+   echo "A test file" >file1
+   echo "Another test file" >file2
+}
+test_AddManifestFieldUnsupportedArgs() {
+   executeOk_servald rhizome add file $SIDB1 file1 file1.manifest '' bogus=two
+   assert_stdout_add_file file1
+   tfw_cat -v file1.manifest
+   assert_manifest_complete file1.manifest
+   assert_manifest_fields file1.manifest bogus=two
+}
+
 doc_AddNoAuthor="Add with no author makes manifest without BK"
 setup_AddNoAuthor() {
    setup_servald
@@ -184,6 +201,22 @@ setup_AddManifest() {
 }
 test_AddManifest() {
    executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
+   tfw_cat --stdout --stderr -v file1.manifest
+   assert_stdout_add_file file1 name=wah
+   assert_manifest_complete file1.manifest
+   assert_manifest_fields file1.manifest service=file name=wah date=12345
+}
+
+doc_AddManifestArgs="Add with minimal manifest from arguments"
+setup_AddManifestArgs() {
+   setup_servald
+   setup_rhizome
+   executeOk_servald rhizome list
+   assert_rhizome_list
+   echo "A test file" >file1
+}
+test_AddManifestArgs() {
+   executeOk_servald rhizome add file $SIDB1 file1 file1.manifest '' name=wah date=12345
    tfw_cat --stdout --stderr -v file1.manifest
    assert_stdout_add_file file1 name=wah
    assert_manifest_complete file1.manifest
@@ -389,7 +422,7 @@ test_LargePayload() {
    assert diff file1 file1x
 }
 
-doc_CorruptExternalBlob="A corrupted payload should fail to export"
+doc_CorruptExternalBlob="Corrupted payload fails to export"
 setup_CorruptExternalBlob() {
    setup_servald
    setup_rhizome
@@ -769,6 +802,25 @@ test_AddUpdateAutoVersion() {
    tfw_cat -v file1_2.manifest
    sleep 0.001 # Ensure that at least one millisecond has elapsed
    executeOk_servald rhizome add file $SIDB1 file1_2 file1_2.manifest
+   assert_manifest_newer file1.manifest file1_2.manifest
+   # Rhizome store contents reflect new payload.
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 file1_2 file2
+}
+
+doc_AddUpdateArgs="Update existing bundle using manifest args"
+setup_AddUpdateArgs() {
+   setup_AddDeDuplicate
+   extract_manifest_id BID file1.manifest
+   cp file1.manifest file1_2.manifest
+}
+test_AddUpdateArgs() {
+   sleep 0.001 # Ensure that at least one millisecond has elapsed
+   executeOk_servald rhizome add file $SIDB1 file1_2 file1_2.manifest '' !version !filesize !filehash !date
+   assert_stdout_add_file file1_2 name=file1
+   assert_manifest_fields file1_2.manifest name=file1
+   extract_manifest_id BID2 file1_2.manifest
+   assert [ $BID = $BID2 ]
    assert_manifest_newer file1.manifest file1_2.manifest
    # Rhizome store contents reflect new payload.
    executeOk_servald rhizome list
