@@ -36,7 +36,18 @@
 
 /* -------------------- Useful functions and macros -------------------- */
 
-#define alloca_strdup(str)  strcpy(alloca(strlen(str) + 1), (str))
+#define alloca_strdup(str)       strcpy(alloca(strlen(str) + 1), (str))
+#define alloca_strndup(str,len)  strncpy_nul(alloca((len) + 1), (str), (len) + 1)
+
+/* Like strncpy(3) but ensures the string is nul terminated.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+__SERVAL_DNA__STR_INLINE char *strncpy_nul(char *dst, const char *src, size_t n)
+{
+  strncpy(dst, src, n - 1)[n - 1] = '\0';
+  return dst;
+}
 
 int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value);
 
