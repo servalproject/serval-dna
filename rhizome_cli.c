@@ -1,5 +1,5 @@
 /*
- Serval Rhizome command line functions
+ Serval DNA - Rhizome command line interface
  Copyright (C) 2014 Serval Project Inc.
  
  This program is free software; you can redistribute it and/or

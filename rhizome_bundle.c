@@ -1,6 +1,7 @@
 /*
-Serval Distributed Numbering Architecture (DNA)
+Serval DNA - Rhizome manifest operations
 Copyright (C) 2010 Paul Gardner-Stephen
+Copyright (C) 2013-2014 Serval Project Inc.
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License

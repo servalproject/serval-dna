@@ -1,5 +1,6 @@
 /*
-Serval Distributed Numbering Architecture (DNA)
+Serval DNA - Rhizome cryptographic operations
+Copyright (C) 2014 Serval Project Inc.
 Copyright (C) 2010 Paul Gardner-Stephen
  
 This program is free software; you can redistribute it and/or

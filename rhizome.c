@@ -1,5 +1,5 @@
 /*
-Serval DNA Rhizome file distribution
+Serval DNA - Rhizome entry points
 Copyright (C) 2012-2013 Serval Project Inc.
 Copyright (C) 2011-2012 Paul Gardner-Stephen
  
