@@ -1703,6 +1703,8 @@ static enum rhizome_bundle_status unpack_manifest_row(sqlite_retry_state *retry,
  */
 enum rhizome_bundle_status rhizome_retrieve_manifest(const rhizome_bid_t *bidp, rhizome_manifest *m)
 {
+  if (config.debug.rhizome)
+    DEBUGF("retrieve manifest bid=%s", bidp ? alloca_tohex_rhizome_bid_t(*bidp) : "<NULL>");
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
       "SELECT id, manifest, version, inserttime, author, rowid FROM manifests WHERE id = ?",
