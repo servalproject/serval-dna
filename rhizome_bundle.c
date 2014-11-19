@@ -473,14 +473,15 @@ int rhizome_manifest_inspect(const char *buf, size_t len, struct rhizome_manifes
   int has_bid = 0;
   int has_version = 0;
   const char *begin = buf;
+  const char *eol = NULL;
   enum { Label, Value, Error } state = Label;
   const char *p;
   for (p = buf; state != Error && p < end && *p; ++p)
     switch (state) {
       case Label:
 	if (*p == '=') {
-	  if (p == begin)
-	    state = Error; // nil field name
+	  if (!rhizome_manifest_field_label_is_valid(begin, p - begin))
+	    state = Error; // bad field name
 	  else {
 	    int *has = NULL;
 	    if (p == begin + 2 && strncmp(begin, "id", 2) == 0)
@@ -497,12 +498,14 @@ int rhizome_manifest_inspect(const char *buf, size_t len, struct rhizome_manifes
 	      }
 	    }
 	  }
-	} else if (!(p == begin ? isalpha(*p) : isalnum(*p)))
-	  state = Error; // bad field name
+	}
 	break;
       case Value:
-	if (*p == '\n') {
-	  const char *eol = p[-1] == '\r' ? p - 1 : p;
+	if (*p == '\r' && !eol)
+	  eol = p;
+	else if (*p == '\n') {
+	  if (!eol)
+	    eol = p;
 	  if (has_bid == 1) {
 	    const char *e;
 	    if (strn_to_rhizome_bid_t(&summ->bid, begin, &e) == 0 && e == eol)
@@ -519,8 +522,10 @@ int rhizome_manifest_inspect(const char *buf, size_t len, struct rhizome_manifes
 	  if (state == Value) {
 	    state = Label;
 	    begin = p + 1;
+	    eol = NULL;
 	  }
-	}
+	} else if (eol)
+	  state = Error; // CR not followed by LF
 	break;
       default:
 	abort();
@@ -883,6 +888,30 @@ static struct rhizome_manifest_field_descriptor {
         { "crypt",	0, _rhizome_manifest_test_crypt,	_rhizome_manifest_unset_crypt,		_rhizome_manifest_parse_crypt },
     };
 
+int rhizome_manifest_field_label_is_valid(const char *field_label, size_t field_label_len)
+{
+  if (field_label_len == 0 || field_label_len > MAX_MANIFEST_FIELD_LABEL_LEN)
+    return 0;
+  if (!isalpha(field_label[0]))
+    return 0;
+  unsigned i;
+  for (i = 1; i != field_label_len; ++i)
+    if (!isalnum(field_label[i]))
+      return 0;
+  return 1;
+}
+
+int rhizome_manifest_field_value_is_valid(const char *field_value, size_t field_value_len)
+{
+  if (field_value_len >= MAX_MANIFEST_BYTES)
+    return 0;
+  unsigned i;
+  for (i = 0; i < field_value_len; ++i)
+    if (field_value[i] == '\0' || field_value[i] == '\r' || field_value[i] == '\n')
+      return 0;
+  return 1;
+}
+
 /* Parse a single Rhizome manifest field.  Used for incremental construction or modification of
  * manifests.
  *
@@ -916,38 +945,21 @@ enum rhizome_manifest_parse_status
 rhizome_manifest_parse_field(rhizome_manifest *m, const char *field_label, size_t field_label_len, const char *field_value, size_t field_value_len)
 {
   // Syntax check on field label.
-  int ok = field_label_len > 0
-        && field_label_len <= MAX_MANIFEST_FIELD_LABEL_LEN
-        && isalpha(field_label[0]);
-  unsigned i;
-  for (i = 1; ok && i < field_label_len; ++i)
-    if (!isalnum(field_label[i]))
-      ok = 0;
-  if (!ok) {
+  if (!rhizome_manifest_field_label_is_valid(field_label, field_label_len)) {
     if (config.debug.rhizome_manifest)
-      DEBUGF("Invalid manifest field name: %s", alloca_toprint(-1, field_label, field_label_len));
+      DEBUGF("Invalid manifest field name: %s", alloca_toprint(100, field_label, field_label_len));
     return RHIZOME_MANIFEST_SYNTAX_ERROR;
   }
   const char *label = alloca_strndup(field_label, field_label_len);
   // Sanity and syntax check on field value.
-  if (field_value_len > MAX_MANIFEST_BYTES) {
+  if (!rhizome_manifest_field_value_is_valid(field_value, field_value_len)) {
     if (config.debug.rhizome_manifest)
-      DEBUGF("Manifest field value too long: %s=%s", label, alloca_toprint(100, field_value, field_value_len));
-    free((char *)label);
-    return RHIZOME_MANIFEST_SYNTAX_ERROR;
-  }
-  ok = 1;
-  for (i = 0; ok && i < field_value_len; ++i)
-    if (field_label[i] == '\0' || field_label[i] == '\r' || field_label[i] == '\n')
-      ok = 0;
-  if (!ok) {
-    if (config.debug.rhizome_manifest)
-      DEBUGF("Invalid manifest field value: %s=%s", label, alloca_toprint(-1, field_value, field_value_len));
-    free((char *)label);
+      DEBUGF("Invalid manifest field value: %s=%s", label, alloca_toprint(100, field_value, field_value_len));
     return RHIZOME_MANIFEST_SYNTAX_ERROR;
   }
   const char *value = alloca_strndup(field_value, field_value_len);
   struct rhizome_manifest_field_descriptor *desc = NULL;
+  unsigned i;
   for (i = 0; desc == NULL && i < NELS(rhizome_manifest_fields); ++i)
     if (strcasecmp(label, rhizome_manifest_fields[i].label) == 0)
       desc = &rhizome_manifest_fields[i];

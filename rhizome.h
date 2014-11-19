@@ -305,6 +305,8 @@ enum rhizome_manifest_parse_status {
     RHIZOME_MANIFEST_OVERFLOW = 5,        // maximum field count exceeded
 };
 
+int rhizome_manifest_field_label_is_valid(const char *field_label, size_t field_label_len);
+int rhizome_manifest_field_value_is_valid(const char *field_value, size_t field_value_len);
 enum rhizome_manifest_parse_status
     rhizome_manifest_parse_field(rhizome_manifest *m,
                                  const char *field_label, size_t field_label_len,
