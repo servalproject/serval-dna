@@ -194,7 +194,13 @@ typedef struct httpd_request
       struct form_buf_malloc message;
     }
       sendmsg;
-
+      
+    
+    struct {
+      int fd;
+      size_t offset;
+    }
+      file;
   } u;
 
 } httpd_request;
@@ -208,6 +214,7 @@ int authorize_restful(struct http_request *r);
 int http_response_content_type(httpd_request *r, const char *what, const struct mime_content_type *ct);
 int http_response_content_disposition(httpd_request *r, const char *what, const char *type);
 int http_response_form_part(httpd_request *r, const char *what, const char *partname, const char *text, size_t textlen);
+int http_response_init_content_range(httpd_request *r, size_t resource_length);
 int accumulate_text(httpd_request *r, const char *partname, char *textbuf, size_t textsiz, size_t *textlenp, const char *buf, size_t len);
 
 int rhizome_response_content_init_filehash(httpd_request *r, const rhizome_filehash_t *hash);

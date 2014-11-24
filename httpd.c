@@ -33,6 +33,7 @@ static HTTP_HANDLER root_page;
 static HTTP_HANDLER fav_icon_header;
 static HTTP_HANDLER interface_page;
 static HTTP_HANDLER neighbour_page;
+static HTTP_HANDLER static_page;
 
 HTTP_HANDLER restful_rhizome_bundlelist_json;
 HTTP_HANDLER restful_rhizome_newsince;
@@ -67,6 +68,7 @@ struct http_handler paths[]={
   {"/rhizome/enquiry", rhizome_direct_enquiry},
   {"/rhizome/manifestbyprefix/", manifest_by_prefix_page},
   {"/rhizome/", rhizome_direct_dispatch},
+  {"/static/", static_page},
   {"/interface/", interface_page},
   {"/neighbour/", neighbour_page},
   {"/favicon.ico", fav_icon_header},
@@ -488,6 +490,23 @@ int http_response_form_part(httpd_request *r, const char *what, const char *part
   return 403;
 }
 
+int http_response_init_content_range(httpd_request *r, size_t resource_length)
+{
+  r->http.response.header.resource_length = resource_length;
+  if (r->http.request_header.content_range_count == 1) {
+    struct http_range closed;
+    unsigned n = http_range_close(&closed, r->http.request_header.content_ranges, 1, resource_length);
+    if (n == 0 || http_range_bytes(&closed, 1) == 0)
+      return 416; // Request Range Not Satisfiable
+    r->http.response.header.content_range_start = closed.first;
+    r->http.response.header.content_length = closed.last - closed.first + 1;
+  }else{
+    r->http.response.header.content_range_start = 0;
+    r->http.response.header.content_length = resource_length;
+  }
+  return 0;
+}
+
 static int root_page(httpd_request *r, const char *remainder)
 {
   if (*remainder)
@@ -569,5 +588,60 @@ static int interface_page(httpd_request *r, const char *remainder)
   if (strbuf_overrun(b))
     return -1;
   http_request_response_static(&r->http, 200, CONTENT_TYPE_HTML, buf, strbuf_len(b));
+  return 1;
+}
+
+static void finalise_union_close_file(httpd_request *r)
+{
+  if (r->u.file.fd==-1)
+    return;
+  close(r->u.file.fd);
+  r->u.file.fd=-1;
+}
+
+static int static_file_generator(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
+{
+  struct httpd_request *r=(struct httpd_request *)hr;
+  uint64_t remain = r->http.response.header.content_length + r->http.response.header.content_range_start - r->u.file.offset;
+  if (bufsz < remain)
+    remain = bufsz;
+  ssize_t bytes = read(r->u.file.fd, buf, remain);
+  if (bytes == -1)
+    return -1;
+  r->u.file.offset+=bytes;
+  result->generated = bytes;
+  return (r->u.file.offset >= r->http.response.header.content_length + r->http.response.header.content_range_start)?0:1;
+}
+
+static int static_page(httpd_request *r, const char *remainder)
+{
+  if (r->http.verb != HTTP_VERB_GET)
+    return 405;
+  char path[PATH_MAX];
+  
+  if (!*remainder)
+    remainder="index.html";
+  if (FORMF_SERVAL_ETC_PATH(path, "static/%s", remainder)==0)
+    return 500;
+  struct stat stat;
+  if (lstat(path, &stat))
+    return 404;
+  
+  r->u.file.fd = open(path, O_RDONLY);
+  if (r->u.file.fd==-1)
+    return 404;
+  
+  r->finalise_union=finalise_union_close_file;
+  
+  // TODO find extension and set content type properly
+  http_response_init_content_range(r, stat.st_size);
+  if (r->http.response.header.content_range_start){
+    if (lseek64(r->u.file.fd, r->http.response.header.content_range_start, SEEK_SET)){
+      WARNF_perror("lseek(%s)", path);
+      return 500;
+    }
+  }
+  r->u.file.offset=r->http.response.header.content_range_start;
+  http_request_response_generated(&r->http, 200, CONTENT_TYPE_HTML, static_file_generator);
   return 1;
 }

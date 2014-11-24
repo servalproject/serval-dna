@@ -795,22 +795,10 @@ static int rhizome_response_content_init_read_state(httpd_request *r)
     return 404;
   }
   assert(r->u.read_state.length != RHIZOME_SIZE_UNSET);
-  r->http.response.header.resource_length = r->u.read_state.length;
-  if (r->http.request_header.content_range_count > 0) {
-    assert(r->http.request_header.content_range_count == 1);
-    struct http_range closed;
-    unsigned n = http_range_close(&closed, r->http.request_header.content_ranges, 1, r->u.read_state.length);
-    if (n == 0 || http_range_bytes(&closed, 1) == 0)
-      return 416; // Request Range Not Satisfiable
-    r->http.response.header.content_range_start = closed.first;
-    r->http.response.header.content_length = closed.last - closed.first + 1;
-    r->u.read_state.offset = closed.first;
-  } else {
-    r->http.response.header.content_range_start = 0;
-    r->http.response.header.content_length = r->http.response.header.resource_length;
-    r->u.read_state.offset = 0;
-  }
-  return 0;
+  int ret = http_response_init_content_range(r, r->u.read_state.length);
+  if (ret==0)
+    r->u.read_state.offset = r->http.response.header.content_range_start;
+  return ret;
 }
 
 int rhizome_response_content_init_filehash(httpd_request *r, const rhizome_filehash_t *hash)
