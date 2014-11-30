@@ -107,13 +107,17 @@ coverage_html/index.html: Makefile servald-initial.info servald-coverage.info
 	$(RM) -r coverage_html
 	genhtml --quiet servald-initial.info servald-coverage.info -o coverage_html
 
-Makefile: $(wildcard Makefile.in) $(wildcard configure)
-	$(warning Makefile may be out of date, please run ./configure)
+.PRECIOUS: Makefile
+Makefile: Makefile.in config.status
+	$(warning Makefile may be out of date, please run ./config.status)
 
-configure: $(wildcard configure.in)
+config.status: configure
+	$(warning config.status may be out of date, please run ./configure)
+
+configure: configure.in
 	$(warning configure may be out of date, please run autoreconf -f -i)
 
-$(OBJSDIR_TOOLS)/version.o: $(SERVALD_OBJS) version_servald.c version_string.sh $(wildcard VERSION.txt) COPYRIGHT.txt Makefile
+$(OBJSDIR_TOOLS)/version.o: $(SERVALD_OBJS) version_servald.c version_string.sh $(wildcard VERSION.txt) COPYRIGHT.txt
 	@echo CC version_servald.c
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
