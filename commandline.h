@@ -67,4 +67,6 @@ void cli_put_string(struct cli_context *context, const char *value, const char *
 void cli_put_hexvalue(struct cli_context *context, const unsigned char *value, int length, const char *delim);
 int cli_write(struct cli_context *context, const unsigned char *buf, size_t len);
 
+void cli_cleanup();
+
 #endif

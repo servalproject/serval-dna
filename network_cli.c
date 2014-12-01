@@ -27,6 +27,10 @@
 #include "conf.h"
 #include "commandline.h"
 #include "sighandlers.h"
+#include "instance.h"
+#include "serval.h"
+#include "overlay_buffer.h"
+
 
 DEFINE_CMD(app_mdp_ping, 0,
   "Attempts to ping specified node via Mesh Datagram Protocol (MDP).",
@@ -529,4 +533,279 @@ static int app_network_scan(const struct cli_parsed *parsed, struct cli_context 
     return -1;
   cli_put_string(context, mdp.error.message, "\n");
   return mdp.error.error;
+}
+
+static void lookup_send_request(int mdp_sockfd, const sid_t *srcsid, int srcport, const sid_t *dstsid, const char *did)
+{
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
+
+  /* set source address to the local address and port */
+  mdp.out.src.port = srcport;
+  mdp.out.src.sid = *srcsid;
+
+  /* Send to destination address and DNA lookup port */
+  if (dstsid) {
+    /* Send an encrypted unicast packet */
+    mdp.packetTypeAndFlags=MDP_TX;
+    mdp.out.dst.sid = *dstsid;
+  }else{
+    /* Send a broadcast packet, flooding across the local mesh network */
+    mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT;
+    mdp.out.dst.sid = SID_BROADCAST;
+  }
+  mdp.out.dst.port=MDP_PORT_DNALOOKUP;
+
+  /* put DID into packet */
+  bcopy(did,&mdp.out.payload[0],strlen(did)+1);
+  mdp.out.payload_length=strlen(did)+1;
+
+  overlay_mdp_send(mdp_sockfd, &mdp, 0, 0);
+
+  /* Also send an encrypted unicast request to a configured directory service */
+  if (!dstsid){
+    if (!is_sid_t_any(config.directory.service)) {
+      mdp.out.dst.sid = config.directory.service;
+      mdp.packetTypeAndFlags=MDP_TX;
+      overlay_mdp_send(mdp_sockfd, &mdp,0,0);
+    }
+  }
+}
+
+DEFINE_CMD(app_dna_lookup, 0,
+  "Lookup the subscribers (SID) with the supplied telephone number (DID).",
+  "dna","lookup","<did>","[<timeout>]");
+static int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  int mdp_sockfd;
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+
+  /* Create the instance directory if it does not yet exist */
+  if (create_serval_instance_dir() == -1)
+    return -1;
+
+  int uri_count=0;
+#define MAXREPLIES 256
+#define MAXURILEN 256
+  char uris[MAXREPLIES][MAXURILEN];
+
+  const char *did, *delay;
+  if (cli_arg(parsed, "did", &did, cli_lookup_did, "*") == -1)
+    return -1;
+  if (cli_arg(parsed, "timeout", &delay, NULL, "3000") == -1)
+    return -1;
+
+  int idelay=atoi(delay);
+  int one_reply=0;
+
+  // Ugly hack, if timeout is negative, stop after first reply
+  if (idelay<0){
+    one_reply=1;
+    idelay=-idelay;
+  }
+
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+    return WHY("Cannot create MDP socket");
+
+  /* Bind to MDP socket and await confirmation */
+  sid_t srcsid;
+  mdp_port_t port=32768+(random()&32767);
+  if (overlay_mdp_getmyaddr(mdp_sockfd, 0, &srcsid)) {
+    overlay_mdp_client_close(mdp_sockfd);
+    return WHY("Could not get local address");
+  }
+  if (overlay_mdp_bind(mdp_sockfd, &srcsid, port)) {
+    overlay_mdp_client_close(mdp_sockfd);
+    return WHY("Could not bind to MDP socket");
+  }
+
+  /* use MDP to send the lookup request to MDP_PORT_DNALOOKUP, and wait for
+     replies. */
+
+  /* Now repeatedly send resolution request and collect results until we reach
+     timeout. */
+  time_ms_t timeout = gettime_ms() + idelay;
+  time_ms_t last_tx = 0;
+  time_ms_t now;
+  int interval=125;
+
+  const char *names[]={
+    "uri",
+    "did",
+    "name"
+  };
+  cli_columns(context, 3, names);
+  size_t rowcount = 0;
+
+  while (timeout > (now = gettime_ms())){
+    if ((last_tx+interval)<now){
+      lookup_send_request(mdp_sockfd, &srcsid, port, NULL, did);
+      last_tx=now;
+      interval+=interval>>1;
+    }
+    time_ms_t short_timeout=125;
+    while(short_timeout>0) {
+      if (overlay_mdp_client_poll(mdp_sockfd, short_timeout)){
+	overlay_mdp_frame rx;
+	int ttl;
+	if (overlay_mdp_recv(mdp_sockfd, &rx, port, &ttl)==0){
+	  if (rx.packetTypeAndFlags==MDP_ERROR){
+	    WHYF("       Error message: %s", rx.error.message);
+	  } else if ((rx.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_TX) {
+	    /* Extract DID, Name, URI from response. */
+	    if (strlen((char *)rx.out.payload)<512) {
+	      char sidhex[SID_STRLEN + 1];
+	      char did[DID_MAXSIZE + 1];
+	      char name[64];
+	      char uri[512];
+	      if ( !parseDnaReply((char *)rx.out.payload, rx.out.payload_length, sidhex, did, name, uri, NULL)
+		|| !str_is_subscriber_id(sidhex)
+		|| !str_is_did(did)
+		|| !str_is_uri(uri)
+	      ) {
+		WHYF("Received malformed DNA reply: %s", alloca_toprint(160, (const char *)rx.out.payload, rx.out.payload_length));
+	      } else {
+		/* Have we seen this response before? */
+		int i;
+		for(i=0;i<uri_count;i++)
+		  if (!strcmp(uri,uris[i])) break;
+		if (i==uri_count) {
+		  /* Not previously seen, so report it */
+		  cli_put_string(context, uri, ":");
+		  cli_put_string(context, did, ":");
+		  cli_put_string(context, name, "\n");
+		  rowcount++;
+
+		  if (one_reply){
+		    timeout=now;
+		    short_timeout=0;
+		  }
+
+		  /* Remember that we have seen it */
+		  if (uri_count<MAXREPLIES&&strlen(uri)<MAXURILEN) {
+		    strcpy(uris[uri_count++],uri);
+		  }
+		}
+	      }
+	    }
+	  }
+	  else WHYF("packettype=0x%x",rx.packetTypeAndFlags);
+	}
+      }
+      short_timeout=125-(gettime_ms()-now);
+    }
+  }
+
+  overlay_mdp_client_close(mdp_sockfd);
+  cli_row_count(context, rowcount);
+  return 0;
+}
+
+DEFINE_CMD(app_reverse_lookup, 0,
+  "Lookup the phone number (DID) and name of a given subscriber (SID)",
+  "reverse", "lookup", "<sid>", "[<timeout>]");
+static int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  int mdp_sockfd;
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  const char *sidhex, *delay;
+  if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1)
+    return -1;
+  if (cli_arg(parsed, "timeout", &delay, NULL, "3000") == -1)
+    return -1;
+
+  mdp_port_t port=32768+(random()&0xffff);
+
+  sid_t srcsid;
+  sid_t dstsid;
+
+  if (str_to_sid_t(&dstsid, sidhex) == -1)
+    return WHY("str_to_sid_t() failed");
+
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+    return WHY("Cannot create MDP socket");
+
+  if (overlay_mdp_getmyaddr(mdp_sockfd, 0, &srcsid)){
+    overlay_mdp_client_close(mdp_sockfd);
+    return WHY("Unable to get my address");
+  }
+  if (overlay_mdp_bind(mdp_sockfd, &srcsid, port)){
+    overlay_mdp_client_close(mdp_sockfd);
+    return WHY("Unable to bind port");
+  }
+
+  time_ms_t now = gettime_ms();
+  time_ms_t timeout = now + atoi(delay);
+  time_ms_t next_send = now;
+  overlay_mdp_frame mdp_reply;
+
+  while (now < timeout){
+    now=gettime_ms();
+
+    if (now >= next_send){
+      /* Send a unicast packet to this node, asking for any did */
+      lookup_send_request(mdp_sockfd, &srcsid, port, &dstsid, "");
+      next_send+=125;
+      continue;
+    }
+
+    time_ms_t poll_timeout = (next_send>timeout?timeout:next_send) - now;
+    if (overlay_mdp_client_poll(mdp_sockfd, poll_timeout)<=0)
+      continue;
+
+    int ttl=-1;
+    if (overlay_mdp_recv(mdp_sockfd, &mdp_reply, port, &ttl))
+      continue;
+
+    if ((mdp_reply.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR){
+      // TODO log error?
+      continue;
+    }
+
+    if (mdp_reply.packetTypeAndFlags!=MDP_TX) {
+      WHYF("MDP returned an unexpected message (type=0x%x)",
+	   mdp_reply.packetTypeAndFlags);
+
+      if (mdp_reply.packetTypeAndFlags==MDP_ERROR)
+	WHYF("MDP message is return/error: %d:%s",
+	     mdp_reply.error.error,mdp_reply.error.message);
+      continue;
+    }
+
+    // we might receive a late response from an ealier request on the same socket, ignore it
+    if (cmp_sid_t(&mdp_reply.out.src.sid, &dstsid) != 0) {
+      WHYF("Unexpected result from SID %s", alloca_tohex_sid_t(mdp_reply.out.src.sid));
+      continue;
+    }
+
+    {
+      char sidhex[SID_STRLEN + 1];
+      char did[DID_MAXSIZE + 1];
+      char name[64];
+      char uri[512];
+      if ( !parseDnaReply((char *)mdp_reply.out.payload, mdp_reply.out.payload_length, sidhex, did, name, uri, NULL)
+	  || !str_is_subscriber_id(sidhex)
+	  || !str_is_did(did)
+	  || !str_is_uri(uri)
+	  ) {
+	WHYF("Received malformed DNA reply: %s",
+	     alloca_toprint(160, (const char *)mdp_reply.out.payload, mdp_reply.out.payload_length));
+	continue;
+      }
+
+      /* Got a good DNA reply, copy it into place and stop polling */
+      cli_field_name(context, "sid", ":");
+      cli_put_string(context, sidhex, "\n");
+      cli_field_name(context, "did", ":");
+      cli_put_string(context, did, "\n");
+      cli_field_name(context, "name", ":");
+      cli_put_string(context, name, "\n");
+      overlay_mdp_client_close(mdp_sockfd);
+      return 0;
+    }
+  }
+  overlay_mdp_client_close(mdp_sockfd);
+  return 1;
 }

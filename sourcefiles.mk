@@ -50,7 +50,6 @@ SERVAL_DAEMON_SOURCES = \
 	rhizome_cli.c \
 	keyring_cli.c \
 	network_cli.c \
-	test_cli.c \
 	crypto.c \
 	directory_client.c \
 	dna_helper.c \
@@ -102,9 +101,15 @@ SERVAL_DAEMON_SOURCES = \
         fec-3.0.1/ccsds_tables.c \
 	fec-3.0.1/decode_rs_8.c \
 	fec-3.0.1/encode_rs_8.c \
-	fec-3.0.1/init_rs_char.c \
-	context1.c
+	fec-3.0.1/init_rs_char.c
 
+TEST_SOURCES = \
+	commandline.c \
+	main.c \
+	test_cli.c \
+	log_stderr.c \
+	context1.c
+	
 MDP_CLIENT_SOURCES = \
 	mdp_client.c \
         mdp_net.c

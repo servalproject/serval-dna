@@ -51,7 +51,7 @@ static int reload(const char *path, int *resultp)
   if (config.debug.config)
     DEBUGF("    file path=%s", alloca_str_toprint(path));
   struct file_meta meta;
-  if (get_file_meta(conffile_path(), &meta) == -1)
+  if (get_file_meta(path, &meta) == -1)
     return -1;
   if (config.debug.config) {
     DEBUGF("    file meta=%s", alloca_file_meta(&meta));
@@ -60,7 +60,7 @@ static int reload(const char *path, int *resultp)
   if (cmp_file_meta(&meta, &conffile_meta) == 0)
     return 0;
   if (conffile_meta.mtime.tv_sec != -1)
-    INFOF("config file %s -- detected new version", conffile_path());
+    INFOF("config file %s -- detected new version", path);
   char *buf = NULL;
   if (meta.mtime.tv_sec == -1) {
     WARNF("config file %s does not exist -- using all defaults", path);

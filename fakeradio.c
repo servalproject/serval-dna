@@ -60,14 +60,7 @@ struct radio_state {
 #define STATE_PLUSPLUSPLUS 3
 #define STATE_COMMAND 4
 
-int64_t gettime_ms()
-{
-  struct timeval nowtv;
-  // If gettimeofday() fails or returns an invalid value, all else is lost!
-  if (gettimeofday(&nowtv, NULL) == -1)
-    perror("gettimeofday");
-  return nowtv.tv_sec * 1000LL + nowtv.tv_usec / 1000;
-}
+void cf_on_config_change(){}
 
 void log_time(){
   struct timeval tv;

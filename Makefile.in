@@ -18,6 +18,17 @@ OBJSDIR_TOOLS =		objs
 
 OBJSDIRS =		$(OBJSDIR_SERVALD) $(OBJSDIR_LIB) $(OBJSDIR_TOOLS)
 
+ALL_SOURCES = \
+	$(SERVAL_CLIENT_SOURCES) \
+	$(MDP_CLIENT_SOURCES) \
+	$(SERVAL_DAEMON_SOURCES) \
+	$(NACL_SOURCES) \
+	$(TEST_SOURCES) \
+	$(SERVAL_LIB_SOURCES) \
+	$(MONITOR_CLIENT_SRCS) \
+	$(SIMULATOR_SOURCES) \
+	$(SQLITE3_SOURCES)
+	
 SERVAL_DAEMON_OBJS = \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(MDP_CLIENT_SOURCES:.c=.o)) \
@@ -26,6 +37,10 @@ SERVALD_OBJS = \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(notdir $(SQLITE3_SOURCES:.c=.o))) \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(NACL_SOURCES:.c=.o)) \
 	$(SERVAL_DAEMON_OBJS)
+TEST_OBJS = \
+	$(addprefix $(OBJSDIR_SERVALD)/, $(TEST_SOURCES:.c=.o)) \
+	$(addprefix $(OBJSDIR_SERVALD)/, $(NACL_SOURCES:.c=.o)) \
+	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_CLIENT_SOURCES:.c=.o))
 LIB_SERVAL_OBJS = \
 	$(addprefix $(OBJSDIR_LIB)/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
 	$(addprefix $(OBJSDIR_LIB)/, $(SERVAL_LIB_SOURCES:.c=.o)) \
@@ -67,7 +82,7 @@ DEFS=	@DEFS@
 
 all:	servald libserval.so libmonitorclient.so libmonitorclient.a test
 
-test:   tfw_createfile directory_service fakeradio config_test simulator
+test:   tfw_createfile directory_service fakeradio simulator serval-tests
 
 covzero: | is_built_with_coverage
 	@echo REMOVE all .gcda files
@@ -117,7 +132,7 @@ config.status: configure
 configure: configure.in
 	$(warning configure may be out of date, please run autoreconf -f -i)
 
-$(OBJSDIR_TOOLS)/version.o: $(SERVALD_OBJS) version_servald.c version_string.sh $(wildcard VERSION.txt) COPYRIGHT.txt
+$(OBJSDIR_TOOLS)/version.o: $(ALL_SOURCES) $(HDRS) version_servald.c version_string.sh $(wildcard VERSION.txt) COPYRIGHT.txt
 	@echo CC version_servald.c
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
@@ -159,13 +174,14 @@ $(SERVALD_OBJS): Makefile
 $(LIB_SERVAL_OBJS): $(HDRS) Makefile
 $(MONITOR_CLIENT_OBJS): $(HDRS) Makefile
 $(SIMULATOR_OBJS): $(HDRS) Makefile
-$(OBJSDIR_TOOLS)/directory_service.o $(OBJSDIR_TOOLS)/tfw_createfile.o $(OBJSDIR_TOOLS)/fakeradio.o \
-$(OBJSDIR_TOOLS)/config_test.o $(OBJSDIR_TOOLS)/conf_om.o $(OBJSDIR_TOOLS)/conf_schema.o $(OBJSDIR_TOOLS)/conf_parse.o libserval.a \
-	: $(HDRS) Makefile
 
 servald: $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
 	@$(CC) -Wall -o $@ $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
+
+serval-tests: $(TEST_OBJS) $(OBJSDIR_TOOLS)/version.o
+	@echo LINK $@
+	@$(CC) -Wall -o $@ $(TEST_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
 
 libserval.a: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo AR $@
@@ -186,10 +202,6 @@ fakeradio: $(OBJSDIR_TOOLS)/fakeradio.o libserval.a
 simulator: $(SIMULATOR_OBJS) libserval.a
 	@echo LINK $@
 	@$(CC) -Wall -o $@ $(SIMULATOR_OBJS) libserval.a $(LDFLAGS)
-
-config_test: $(OBJSDIR_TOOLS)/config_test.o $(OBJSDIR_TOOLS)/conf_om.o $(OBJSDIR_TOOLS)/conf_schema.o $(OBJSDIR_TOOLS)/conf_parse.o libserval.a
-	@echo LINK $@
-	@$(CC) -Wall -o $@ $(OBJSDIR_TOOLS)/config_test.o $(OBJSDIR_TOOLS)/conf_om.o $(OBJSDIR_TOOLS)/conf_schema.o $(OBJSDIR_TOOLS)/conf_parse.o libserval.a $(LDFLAGS)
 
 copyright:
 	@if [ -x "$(COPYRIGHT_TOOL)" ]; then \

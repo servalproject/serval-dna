@@ -23,7 +23,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "constants.h"
 #include "os.h" // for time_ms_t
 #include "socket.h"
-#include "overlay_buffer.h" // for struct overlay_buffer
 
 // not reachable
 #define REACHABLE_NONE 0
@@ -48,6 +47,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define BROADCAST_LEN 8
 
 struct packet_rule;
+struct overlay_buffer;
 
 // This structure supports both our own routing protocol which can store calculation details in *node 
 // or IP4 addresses reachable via any other kind of normal layer3 routing protocol, eg olsr

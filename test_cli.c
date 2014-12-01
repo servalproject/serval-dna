@@ -17,12 +17,24 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#include <stdlib.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <sys/stat.h>
+
 #include "serval_types.h"
 #include "dataformats.h"
 #include "os.h"
 #include "cli.h"
 #include "conf.h"
 #include "commandline.h"
+#include "mem.h"
+
+void cli_cleanup(){}
+void cf_on_config_change(){}
 
 DEFINE_CMD(app_byteorder_test, 0,
   "Run byte order handling test",
@@ -257,6 +269,83 @@ static int app_mem_test(const struct cli_parsed *UNUSED(parsed), struct cli_cont
     free(mem);
   }
 
+  return 0;
+}
+
+DEFINE_CMD(app_config_test, 0,
+   "Load a test config file and log various fields",
+   "config","test","<file>");
+static int app_config_test(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
+{
+  const char *filename;
+  if (cli_arg(parsed, "file", &filename, NULL, NULL)==-1)
+    return -1;
+
+  int fd = open(filename, O_RDONLY);
+  if (fd == -1)
+    return WHY_perror("open");
+  struct stat st;
+  fstat(fd, &st);
+  char *buf = emalloc(st.st_size);
+  if (!buf)
+    return -1;
+  if (read(fd, buf, st.st_size) != st.st_size)
+    return WHY_perror("read");
+  struct cf_om_node *root = NULL;
+  int ret = cf_om_parse(filename, buf, st.st_size, &root);
+  close(fd);
+  DEBUGF("ret = %s", strbuf_str(strbuf_cf_flags(strbuf_alloca(128), ret)));
+  //cf_dump_node(root, 0);
+  struct config_main config;
+  memset(&config, 0, sizeof config);
+  cf_dfl_config_main(&config);
+  int result = root ? cf_opt_config_main(&config, root) : CFEMPTY;
+  cf_om_free_node(&root);
+  free(buf);
+  DEBUGF("result = %s", strbuf_str(strbuf_cf_flags(strbuf_alloca(128), result)));
+  DEBUGF("config.log.file.path = %s", alloca_str_toprint(config.log.file.path));
+  DEBUGF("config.log.file.show_pid = %d", config.log.file.show_pid);
+  DEBUGF("config.log.file.show_time = %d", config.log.file.show_time);
+  DEBUGF("config.server.chdir = %s", alloca_str_toprint(config.server.chdir));
+  DEBUGF("config.debug.verbose = %d", config.debug.verbose);
+  DEBUGF("config.directory.service = %s", alloca_tohex_sid_t(config.directory.service));
+  DEBUGF("config.rhizome.api.addfile.allow_host = %s", inet_ntoa(config.rhizome.api.addfile.allow_host));
+  unsigned j;
+  for (j = 0; j < config.mdp.iftype.ac; ++j) {
+    DEBUGF("config.mdp.iftype.%u", config.mdp.iftype.av[j].key);
+    DEBUGF("   .tick_ms = %u", config.mdp.iftype.av[j].value.tick_ms);
+  }
+  for (j = 0; j < config.dna.helper.argv.ac; ++j) {
+    DEBUGF("config.dna.helper.argv.%u=%s", config.dna.helper.argv.av[j].key, config.dna.helper.argv.av[j].value);
+  }
+  for (j = 0; j < config.rhizome.direct.peer.ac; ++j) {
+    DEBUGF("config.rhizome.direct.peer.%s", config.rhizome.direct.peer.av[j].key);
+    DEBUGF("   .protocol = %s", alloca_str_toprint(config.rhizome.direct.peer.av[j].value.protocol));
+    DEBUGF("   .host = %s", alloca_str_toprint(config.rhizome.direct.peer.av[j].value.host));
+    DEBUGF("   .port = %u", config.rhizome.direct.peer.av[j].value.port);
+  }
+  for (j = 0; j < config.interfaces.ac; ++j) {
+    DEBUGF("config.interfaces.%u", config.interfaces.av[j].key);
+    DEBUGF("   .exclude = %d", config.interfaces.av[j].value.exclude);
+    DEBUGF("   .match = [");
+    unsigned k;
+    for (k = 0; k < config.interfaces.av[j].value.match.patc; ++k)
+      DEBUGF("             %s", alloca_str_toprint(config.interfaces.av[j].value.match.patv[k]));
+    DEBUGF("            ]");
+    DEBUGF("   .type = %d", config.interfaces.av[j].value.type);
+    DEBUGF("   .port = %u", config.interfaces.av[j].value.port);
+    DEBUGF("   .drop_broadcasts = %d", (int) config.interfaces.av[j].value.drop_broadcasts);
+    DEBUGF("   .drop_unicasts = %d", (int) config.interfaces.av[j].value.drop_unicasts);
+    DEBUGF("   .drop_packets = %u", (unsigned) config.interfaces.av[j].value.drop_packets);
+  }
+  for (j = 0; j < config.hosts.ac; ++j) {
+    char sidhex[SID_STRLEN + 1];
+    tohex(sidhex, SID_STRLEN, config.hosts.av[j].key.binary);
+    DEBUGF("config.hosts.%s", sidhex);
+    DEBUGF("   .interface = %s", alloca_str_toprint(config.hosts.av[j].value.interface));
+    DEBUGF("   .address = %s", inet_ntoa(config.hosts.av[j].value.address));
+    DEBUGF("   .port = %u", config.hosts.av[j].value.port);
+  }
   return 0;
 }
 

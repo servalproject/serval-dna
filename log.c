@@ -17,6 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <libgen.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
@@ -29,7 +30,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdint.h>
-#include <libgen.h>
 #include <dirent.h>
 #include <assert.h>
 
@@ -401,14 +401,6 @@ static void _log_iterator_vprintf_nl(_log_iterator *it, int level, struct __sour
   }
 }
 
-static void _log_iterator_printf_nl(_log_iterator *it, int level, struct __sourceloc whence, const char *fmt, ...)
-{
-  va_list ap;
-  va_start(ap, fmt);
-  _log_iterator_vprintf_nl(it, level, whence, fmt, ap);
-  va_end(ap);
-}
-
 static void _logs_vprintf_nl(int level, struct __sourceloc whence, const char *fmt, va_list ap)
 {
   _log_iterator it;
@@ -688,108 +680,3 @@ void logConfigChanged()
   logFlush();
 }
 
-int logBacktrace(int level, struct __sourceloc whence)
-{
-#ifndef NO_BACKTRACE
-  _log_iterator it;
-  _log_iterator_start(&it);
-  _rotate_log_file(&it);
-  char execpath[MAXPATHLEN];
-  if (get_self_executable_path(execpath, sizeof execpath) == -1)
-    return WHY("cannot log backtrace: own executable path unknown");
-  char tempfile[MAXPATHLEN];
-  if (!FORMF_SERVAL_TMP_PATH(tempfile, "servalgdb.XXXXXX"))
-    return -1;
-  int tmpfd = mkstemp(tempfile);
-  if (tmpfd == -1)
-    return WHYF_perror("mkstemp(%s)", alloca_str_toprint(tempfile));
-  if (write_str(tmpfd, "backtrace\n") == -1) {
-    close(tmpfd);
-    unlink(tempfile);
-    return -1;
-  }
-  if (close(tmpfd) == -1) {
-    WHY_perror("close");
-    unlink(tempfile);
-    return -1;
-  }
-  char pidstr[12];
-  snprintf(pidstr, sizeof pidstr, "%jd", (intmax_t)getpid());
-  int stdout_fds[2];
-  if (pipe(stdout_fds) == -1)
-    return WHY_perror("pipe");
-  pid_t child_pid;
-  switch (child_pid = fork()) {
-  case -1: // error
-    WHY_perror("fork");
-    close(stdout_fds[0]);
-    close(stdout_fds[1]);
-    return WHY("cannot log backtrace: fork failed");
-  case 0: // child
-    if (dup2(stdout_fds[1], 1) == -1 || dup2(stdout_fds[1], 2) == -1) {
-      perror("dup2");
-      _exit(-1);
-    }
-    close(0);
-    if (open("/dev/null", O_RDONLY) != 0) {
-      perror("open(\"/dev/null\")");
-      _exit(-2);
-    }
-    close(stdout_fds[0]);
-    // Need the (void*) cast on Solaris because it defines NULL as 0L and gcc doesn't accept it as a
-    // sentinal
-    execlp("gdb", "gdb", "-n", "-batch", "-x", tempfile, execpath, pidstr, (void*)NULL);
-    perror("execlp(\"gdb\")");
-    do { _exit(-3); } while (1);
-    break;
-  }
-  // parent
-  close(stdout_fds[1]);
-  _log_iterator_printf_nl(&it, level, whence, "GDB BACKTRACE");
-  char buf[1024];
-  char *const bufe = buf + sizeof buf;
-  char *linep = buf;
-  char *readp = buf;
-  ssize_t nr;
-  while ((nr = read(stdout_fds[0], readp, bufe - readp)) > 0) {
-    char *p = readp;
-    readp = readp + nr;
-    for (; p < readp; ++p)
-      if (*p == '\n' || *p == '\0') {
-	*p = '\0';
-	_log_iterator_printf_nl(&it, level, __NOWHERE__, "GDB %s", linep);
-	linep = p + 1;
-      }
-    if (readp >= bufe && linep == buf) {
-      // Line does not fit into buffer.
-      char t = bufe[-1];
-      bufe[-1] = '\0';
-      _log_iterator_printf_nl(&it, level, __NOWHERE__, "GDB %s", buf);
-      buf[0] = t;
-      readp = buf + 1;
-    } else if (readp + 120 >= bufe && linep != buf) {
-      // Buffer low on space.
-      if (linep < readp)
-	memmove(buf, linep, readp - linep);
-      readp -= linep - buf;
-      linep = buf;
-    }
-    // Invariant: readp < bufe
-  }
-  if (nr == -1)
-    WHY_perror("read");
-  if (readp > linep) {
-    *readp = '\0';
-    _log_iterator_printf_nl(&it, level, __NOWHERE__, "GDB %s", linep);
-  }
-  close(stdout_fds[0]);
-  int status = 0;
-  if (waitpid(child_pid, &status, 0) == -1)
-    WHY_perror("waitpid");
-  strbuf b = strbuf_local(buf, sizeof buf);
-  strbuf_append_exit_status(b, status);
-  _log_iterator_printf_nl(&it, level, __NOWHERE__, "gdb %s", buf);
-  unlink(tempfile);
-#endif
-  return 0;
-}
