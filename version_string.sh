@@ -98,7 +98,7 @@ esac
 
 cd "$repo_path" >/dev/null
 
-if [ ! -e .git ]; then
+if test "z$(git rev-parse --is-bare-repository 2>/dev/null)" != zfalse; then
    if [ -s VERSION.txt ] && [ $(cat VERSION.txt | wc -l) -eq 1 ]; then
       cat VERSION.txt
    else
@@ -138,30 +138,21 @@ if [ -n "$dirty" ] && ! $allow_modified; then
    exit 3
 fi
 
-# Use the "git describe" command to form the version string and append $dirty.
-# This ugly construction is required for use on machines with bash version < 4.
-error="$(git describe --match="$version_tag_glob" $refspec 2>&1 1>/dev/null)" || true
-if [ -z "$error" ]; then
-   echo "$(git describe --match="$version_tag_glob" $refspec)$dirty"
+# Use the "git describe" command to form the version string
+if version="$(git describe --match="$version_tag_glob" $refspec 2>/dev/null)"; then
+   echo "${version}${dirty}"
    exit 0
 fi
 
 # If the describe failed because there are no annotated version tags in the
 # ancestry, and we know a default tag, then we synthesize the version string
 # ourselves.
-case "$error" in
-*[Nn]'o names found'* | \
-*[Nn]'o tags can describe'* | \
-*[Cc]'annot describe'* )
-   if [ -n "$default_tag" ]; then
-      commit=$(git rev-list --abbrev-commit --max-count=1 ${refspec:-HEAD})
-      count=$(( $(git rev-list ${refspec:-HEAD} | wc -l) - 1 ))
-      echo "$default_tag-$count-g$commit$dirty"
-      exit 0
-   fi
-   ;;
-esac
+if [ -n "$default_tag" ]; then
+   commit=$(git rev-list --abbrev-commit --max-count=1 ${refspec:-HEAD})
+   count=$(( $(git rev-list ${refspec:-HEAD} | wc -l) - 1 ))
+   echo "$default_tag-$count-g$commit$dirty"
+   exit 0
+fi
 
 echo "$ME: cannot form version string for repository: $(pwd -P)" >&2
-echo "$ME: git returned: ${error#fatal: }" >&2
 exit 2
