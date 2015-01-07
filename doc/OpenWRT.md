@@ -539,7 +539,7 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [OpenWRT feed]: http://wiki.openwrt.org/doc/devel/feeds
 [OpenWRT Buildroot installation HOWTO]:http://wiki.openwrt.org/doc/howto/buildroot.exigence
 [OpenWRT Makefile]: http://wiki.openwrt.org/doc/devel/packages
-[development OpenWRT Makefile]: ../openwrt/packages/net/serval-dna/Makefile
+[development OpenWRT Makefile]: ../openwrt/packages/serval-dna/Makefile
 [Serval OpenWRT feed]: https://github.com/servalproject/openwrt-packages
 [Serval OpenWRT feed README]: https://github.com/servalproject/openwrt-packages
 [Serval DNA repository]: https://github.com/servalproject/serval-dna
