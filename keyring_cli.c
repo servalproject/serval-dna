@@ -397,7 +397,7 @@ static int handle_pins(const struct cli_parsed *parsed, struct cli_context *UNUS
   if (mdp_send(mdp_sock, &header, request_payload, len) == -1)
     goto end;
   
-  time_ms_t timeout=gettime_ms()+500;
+  time_ms_t timeout=gettime_ms()+5000;
   while(1){
     struct mdp_header rev_header;
     unsigned char response_payload[1600];
@@ -475,7 +475,7 @@ static int app_id_list(const struct cli_parsed *parsed, struct cli_context *cont
   cli_columns(context, 1, names);
   size_t rowcount=0;
   
-  time_ms_t timeout=gettime_ms()+500;
+  time_ms_t timeout=gettime_ms()+5000;
   while(1){
     struct mdp_header rev_header;
     unsigned char response_payload[1600];
