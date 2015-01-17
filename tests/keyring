@@ -60,6 +60,7 @@ test_KeyringCreate() {
     executeOk_servald keyring list
     assert_keyring_list 2
     executeOk_servald keyring create
+    executeOk_servald keyring list
     assert_keyring_list 0
 }
 
