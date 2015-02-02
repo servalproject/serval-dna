@@ -20,6 +20,7 @@ config.status
 /nacl/naclinc.txt
 /nacl/nacllib.txt
 /servald
+/serval-tests
 /directory_service
 /tfw_createfile
 /fakeradio
