@@ -425,7 +425,8 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
 	|| strcmp(h->content_type.subtype, "manifest") != 0
     )
       return http_response_form_part(r, "Unsupported Content-Type in", PART_MANIFEST, NULL, 0);
-    if (strcmp(h->content_type.format, "text+binarysig") != 0)
+    if ((strcmp(h->content_type.format, "text+binarysig") != 0)
+        &&strlen(h->content_type.format))
       return http_response_form_part(r, "Unsupported rhizome/manifest format in", PART_MANIFEST, NULL, 0);
     r->u.insert.current_part = PART_MANIFEST;
   }
