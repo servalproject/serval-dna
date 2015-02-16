@@ -96,6 +96,7 @@ unpack_stdout_list() {
    {
       local n
       read n
+      assertExpr --stdout --message="line 1: malformed list" "$n" '~' '^[0-9]\+$'
       eval ${prefix}NCOLS=\"\$n\"
       declare -a ${prefix}HEADER
       local -a header
@@ -103,6 +104,7 @@ unpack_stdout_list() {
       IFS=:
       read -r -a header
       IFS="$oIFS"
+      assertExpr --stdout --message="line 2: malformed list" "${#header[*]}" == "$n"
       eval ${prefix}HEADER="(\"\${header[@]}\")"
       local hdr
       local -a colvars=()
@@ -126,7 +128,7 @@ unpack_stdout_list() {
       done
       IFS="$oIFS"
       eval ${prefix}NROWS=$i
-   } < <(replayStdout)
+   } <"$TFWSTDOUT"
 }
 
 # Utility function for creating servald fixtures:
