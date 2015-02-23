@@ -34,7 +34,7 @@ static int app_keyring_create(const struct cli_parsed *parsed, struct cli_contex
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  keyring_file *k = keyring_open_instance("");
+  keyring_file *k = keyring_create_instance();
   if (!k)
     return -1;
   keyring_free(k);
@@ -102,7 +102,7 @@ static int app_keyring_load(const struct cli_parsed *parsed, struct cli_context 
     keyring_free(k);
     return -1;
   }
-  if (keyring_load(k, pinc, pinv, fp) == -1) {
+  if (keyring_load_from_dump(k, pinc, pinv, fp) == -1) {
     keyring_free(k);
     return -1;
   }

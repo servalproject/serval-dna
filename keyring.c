@@ -37,6 +37,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rotbuf.h"
 #include "server.h"
 
+static keyring_file *keyring_open_or_create(const char *path, int writeable);
+static int keyring_initialise(keyring_file *k);
+static int keyring_load(keyring_file *k, const char *pin);
+static keyring_file *keyring_open_create_instance(const char *pin, int force_create);
 static void keyring_free_keypair(keypair *kp);
 static void keyring_free_identity(keyring_identity *id);
 static int keyring_identity_mac(const keyring_identity *id, unsigned char *pkrsalt, unsigned char *mac);
@@ -56,9 +60,9 @@ static int _keyring_open(keyring_file *k, const char *path, const char *mode)
 }
 
 /*
- * Open keyring file, read BAM and create initial context using the stored salt.
+ * Open keyring file and  detect its size.
  */
-keyring_file *keyring_open(const char *path, int writeable, const char *pin)
+static keyring_file *keyring_open_or_create(const char *path, int writeable)
 {
   /* Allocate structure */
   keyring_file *k = emalloc_zero(sizeof(keyring_file));
@@ -87,65 +91,54 @@ keyring_file *keyring_open(const char *path, int writeable, const char *pin)
     keyring_free(k);
     return NULL;
   }
-  k->file_size=ftello(k->file);
-  if (k->file_size<KEYRING_PAGE_SIZE) {
-    /* Uninitialised, so write 2KB of zeroes, 
-       followed by 2KB of random bytes as salt. */
-    if (fseeko(k->file, 0, SEEK_SET)) {
-      WHYF_perror("fseeko(%s, 0, SEEK_END)", alloca_str_toprint(path));
-      keyring_free(k);
-      return NULL;
-    }
-    unsigned char buffer[KEYRING_PAGE_SIZE];
-    bzero(&buffer[0],KEYRING_BAM_BYTES);
-    if (fwrite(buffer, 2048, 1, k->file)!=1) {
-      WHYF_perror("fwrite(%p, 2048, 1, %s)", buffer, alloca_str_toprint(path));
-      WHY("Could not write empty bitmap in fresh keyring file");
-      keyring_free(k);
-      return NULL;
-    }
-    if (urandombytes(&buffer[0],KEYRING_PAGE_SIZE-KEYRING_BAM_BYTES)) {
-      WHYF("Could not get random keyring salt to put in fresh keyring file %s", path);
-      keyring_free(k);
-      return NULL;
-    }
-    if (fwrite(buffer, KEYRING_PAGE_SIZE - KEYRING_BAM_BYTES, 1, k->file) != 1) {
-      WHYF_perror("fwrite(%p, %lu, 1, %s)", buffer, (long)(KEYRING_PAGE_SIZE - KEYRING_BAM_BYTES), alloca_str_toprint(path));
-      WHYF("Could not write keyring salt in fresh keyring file");
-      keyring_free(k);
-      return NULL;
-    }
-    k->file_size=KEYRING_PAGE_SIZE;
-  }
+  k->file_size = ftello(k->file);
+  return k;
+}
 
+/*
+ * Write initial content of keyring file (erasing anything already there).
+ */
+static int keyring_initialise(keyring_file *k)
+{
+  // Write 2KB of zeroes, followed by 2KB of random bytes as salt.
+  if (fseeko(k->file, 0, SEEK_SET))
+    return WHYF_perror("fseeko(%d, 0, SEEK_SET)", fileno(k->file));
+  unsigned char buffer[KEYRING_PAGE_SIZE];
+  bzero(&buffer[0], KEYRING_BAM_BYTES);
+  if (urandombytes(&buffer[KEYRING_BAM_BYTES], KEYRING_PAGE_SIZE - KEYRING_BAM_BYTES))
+    return WHYF("Could not generate random keyring salt");
+  if (fwrite(buffer, KEYRING_PAGE_SIZE, 1, k->file) != 1) {
+    WHYF_perror("fwrite(%p, %zu, 1, %d)", buffer, KEYRING_PAGE_SIZE - KEYRING_BAM_BYTES, fileno(k->file));
+    return WHYF("Could not write page into keyring file");
+  }
+  k->file_size = KEYRING_PAGE_SIZE;
+  return 0;
+}
+
+/*
+ * Read the BAM and create initial context using the stored salt.
+ */
+static int keyring_load(keyring_file *k, const char *pin)
+{
   /* Read BAMs for each slab in the file */
   keyring_bam **b=&k->bam;
-  off_t offset=0;
-  while(offset<k->file_size) {
-    /* Read bitmap from slab.
-       Also, if offset is zero, read the salt */
-    if (fseeko(k->file,offset,SEEK_SET)) {
-      WHYF_perror("fseeko(%s, %ld, SEEK_SET)", alloca_str_toprint(path), (long)offset);
-      WHY("Could not seek to BAM in keyring file");
-      keyring_free(k);
-      return NULL;
+  size_t offset = 0;
+  while (offset < k->file_size) {
+    /* Read bitmap from slab.  If offset is zero, read the salt */
+    if (fseeko(k->file, (off_t)offset, SEEK_SET)) {
+      WHYF_perror("fseeko(%d, %zd, SEEK_SET)", fileno(k->file), offset);
+      return WHY("Could not seek to BAM in keyring file");
     }
     *b = emalloc_zero(sizeof(keyring_bam));
-    if (!(*b)) {
-      WHYF("Could not allocate keyring_bam structure for key ring file %s", path);
-      keyring_free(k);
-      return NULL;
-    }
-    (*b)->file_offset=offset;
+    if (!*b)
+      return WHYF("Could not allocate keyring_bam structure");
+    (*b)->file_offset = offset;
     /* Read bitmap */
-    int r=fread((*b)->bitmap, KEYRING_BAM_BYTES, 1, k->file);
-    if (r!=1) {
-      WHYF_perror("fread(%p, %ld, 1, %s)", (*b)->bitmap, (long)KEYRING_BAM_BYTES, alloca_str_toprint(path));
-      WHYF("Could not read BAM from keyring file");
-      keyring_free(k);
-      return NULL;
+    int r = fread((*b)->bitmap, KEYRING_BAM_BYTES, 1, k->file);
+    if (r != 1) {
+      WHYF_perror("fread(%p, %zd, 1, %d)", (*b)->bitmap, KEYRING_BAM_BYTES, fileno(k->file));
+      return WHYF("Could not read BAM from keyring file");
     }
-
     /* Read salt if this is the first bitmap block.
        We setup a context for this self-supplied key-ring salt.
        (other keyring salts may be provided later on, resulting in
@@ -154,26 +147,19 @@ keyring_file *keyring_open(const char *path, int writeable, const char *pin)
       k->KeyRingPin = str_edup(pin);
       k->KeyRingSaltLen=KEYRING_PAGE_SIZE-KEYRING_BAM_BYTES;
       k->KeyRingSalt = emalloc(k->KeyRingSaltLen);
-      if (!k->KeyRingSalt) {
-	WHYF("Could not allocate keyring_context->salt for keyring file %s", path);
-	keyring_free(k);
-	return NULL;
-      }
+      if (!k->KeyRingSalt)
+	return WHYF("Could not allocate keyring_context->salt");
       r = fread(k->KeyRingSalt, k->KeyRingSaltLen, 1, k->file);
       if (r!=1) {
-	WHYF_perror("fread(%p, %d, 1, %s)", k->KeyRingSalt, k->KeyRingSaltLen, alloca_str_toprint(path));
-	WHYF("Could not read salt from keyring file %s", path);
-	keyring_free(k);
-	return NULL;
+	WHYF_perror("fread(%p, %d, 1, %d)", k->KeyRingSalt, k->KeyRingSaltLen, fileno(k->file));
+	return WHYF("Could not read salt from keyring file");
       }
     }
-
     /* Skip to next slab, and find next bam pointer. */
-    offset+=KEYRING_PAGE_SIZE*(KEYRING_BAM_BYTES<<3);
-    b=&(*b)->next;
+    offset += KEYRING_PAGE_SIZE * (KEYRING_BAM_BYTES << 3);
+    b = &(*b)->next;
   }
-
-  return k;
+  return 0;
 }
 
 void keyring_iterator_start(keyring_file *k, keyring_iterator *it)
@@ -1245,11 +1231,11 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
     /* slot zero is the BAM and salt, so skip it */
     if (slot&(KEYRING_BAM_BITS-1)) {
       /* Not a BAM slot, so examine */
-      off_t file_offset=slot*KEYRING_PAGE_SIZE;
+      size_t file_offset = slot * KEYRING_PAGE_SIZE;
 
       /* See if this part of the keyring file is organised */
       keyring_bam *b=k->bam;
-      while (b&&(file_offset>=b->file_offset+KEYRING_SLAB_SIZE))
+      while (b && (file_offset >= b->file_offset + KEYRING_SLAB_SIZE))
 	b=b->next;
       if (!b) continue;
 
@@ -1926,7 +1912,17 @@ void keyring_identity_extract(const keyring_identity *id, const sid_t **sidp, co
   }
 }
 
+keyring_file *keyring_create_instance()
+{
+  return keyring_open_create_instance("", 1);
+}
+
 keyring_file *keyring_open_instance(const char *pin)
+{
+  return keyring_open_create_instance(pin, 0);
+}
+
+static keyring_file *keyring_open_create_instance(const char *pin, int force_create)
 {
   keyring_file *k = NULL;
   IN();
@@ -1940,13 +1936,19 @@ keyring_file *keyring_open_instance(const char *pin)
   if (!FORMF_SERVAL_ETC_PATH(keyringFile, "%s", env))
     RETURN(NULL);
   // Work out if the keyring file is writeable.
-  int writeable = 0;
   const char *readonly_env = getenv("SERVALD_KEYRING_READONLY");
   bool_t readonly_b;
-  if (readonly_env == NULL || cf_opt_boolean(&readonly_b, readonly_env) != CFOK || !readonly_b)
-      writeable = 1;
-  if ((k = keyring_open(keyringFile, writeable, pin)) == NULL)
+  int writeable = readonly_env == NULL || cf_opt_boolean(&readonly_b, readonly_env) != CFOK || !readonly_b;
+  if ((k = keyring_open_or_create(keyringFile, writeable)) == NULL)
     RETURN(NULL);
+  if ((force_create || k->file_size < KEYRING_PAGE_SIZE) && keyring_initialise(k) == -1) {
+    keyring_free(k);
+    return NULL;
+  }
+  if (keyring_load(k, pin) == -1) {
+    keyring_free(k);
+    return NULL;
+  }
   RETURN(k);
   OUT();
 }
@@ -2133,7 +2135,7 @@ int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret)
   return 0;
 }
 
-int keyring_load(keyring_file *k, unsigned entry_pinc, const char **entry_pinv, FILE *input)
+int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **entry_pinv, FILE *input)
 {
   clearerr(input);
   char line[1024];

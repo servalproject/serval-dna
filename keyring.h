@@ -49,12 +49,12 @@ typedef struct keyring_identity {
   keypair *keypairs;
 } keyring_identity;
 
-#define KEYRING_PAGE_SIZE 4096LL
-#define KEYRING_BAM_BYTES 2048LL
+#define KEYRING_PAGE_SIZE ((size_t)4096)
+#define KEYRING_BAM_BYTES ((size_t)2048)
 #define KEYRING_BAM_BITS (KEYRING_BAM_BYTES<<3)
 #define KEYRING_SLAB_SIZE (KEYRING_PAGE_SIZE*KEYRING_BAM_BITS)
 typedef struct keyring_bam {
-  off_t file_offset;
+  size_t file_offset;
   unsigned char bitmap[KEYRING_BAM_BYTES];
   struct keyring_bam *next;
 } keyring_bam;
@@ -66,7 +66,7 @@ typedef struct keyring_file {
   int KeyRingSaltLen;
   keyring_identity *identities;
   FILE *file;
-  off_t file_size;
+  size_t file_size;
 } keyring_file;
 
 typedef struct keyring_iterator{
@@ -100,8 +100,7 @@ int keyring_release_identity(keyring_iterator *it);
 extern keyring_file *keyring;
 
 /* Public calls to keyring management */
-keyring_file *keyring_open(const char *path, int writeable, const char *pin);
-keyring_file *keyring_open_instance(const char *pin);
+keyring_file *keyring_create_instance();
 keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed);
 int keyring_enter_pin(keyring_file *k, const char *pin);
 int keyring_set_did(keyring_identity *id, const char *did, const char *name);
@@ -112,7 +111,7 @@ int keyring_commit(keyring_file *k);
 keyring_identity *keyring_create_identity(keyring_file *k, const char *pin);
 int keyring_seed(keyring_file *k);
 void keyring_identity_extract(const keyring_identity *id, const sid_t **sidp, const char **didp, const char **namep);
-int keyring_load(keyring_file *k, unsigned entry_pinc, const char **entry_pinv, FILE *input);
+int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **entry_pinv, FILE *input);
 int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret);
 
 unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknown_sidp);
