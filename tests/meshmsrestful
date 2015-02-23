@@ -381,7 +381,7 @@ test_MeshmsListMessagesNewSinceArrival() {
       'A') waitfor="ACK";;
       *) error "message=${message}";;
       esac
-      wait_until grepall "$waitfor" newsince{1,2,3}.json
+      wait_until --timeout=120 grepall "$waitfor" newsince{1,2,3}.json
    done
    fork_terminate_all
    fork_wait_all
