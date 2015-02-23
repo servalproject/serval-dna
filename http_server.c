@@ -1739,12 +1739,14 @@ static void http_request_send_response(struct http_request *r)
     if (written == 0)
       RETURNVOID;
     r->response_sent += (size_t) written;
-    r->response_buffer_sent += (size_t) written;
     assert(r->response_sent <= r->response_length);
-    assert(r->response_buffer_sent <= r->response_buffer_length);
-    if (r->debug_flag && *r->debug_flag)
+    if (r->debug_flag && *r->debug_flag) {
       DEBUGF("Wrote %zu bytes to HTTP socket, total %"PRIhttp_size_t", remaining=%"PRIhttp_size_t,
 	  (size_t) written, r->response_sent, r->response_length - r->response_sent);
+      DEBUGF("%s", alloca_toprint(-1, r->response_buffer + r->response_buffer_sent, unsent));
+    }
+    r->response_buffer_sent += (size_t) written;
+    assert(r->response_buffer_sent <= r->response_buffer_length);
     // Reset inactivity timer.
     if (r->phase != PAUSE)
       http_request_set_idle_timeout(r);
