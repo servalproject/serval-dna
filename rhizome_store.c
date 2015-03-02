@@ -1588,18 +1588,20 @@ enum rhizome_payload_status rhizome_journal_pipe(struct rhizome_write *write, co
 }
 
 // open an existing journal bundle, advance the head pointer, duplicate the existing content and get ready to add more.
-enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m, uint64_t advance_by, uint64_t new_size)
+enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m, uint64_t advance_by, uint64_t append_size)
 {
-  assert(m->filesize != RHIZOME_SIZE_UNSET);
-  assert(m->filesize + new_size > 0);
   assert(m->is_journal);
+  assert(m->filesize != RHIZOME_SIZE_UNSET);
   assert(advance_by <= m->filesize);
   uint64_t copy_length = m->filesize - advance_by;
-  rhizome_manifest_set_filesize(m, m->filesize + new_size - advance_by);
+  uint64_t new_filesize = RHIZOME_SIZE_UNSET;
+  if (append_size != RHIZOME_SIZE_UNSET) {
+    assert(m->filesize + append_size > m->filesize); // no wraparound
+    new_filesize = m->filesize + append_size - advance_by;
+  }
   if (advance_by > 0)
     rhizome_manifest_set_tail(m, m->tail + advance_by);
-  rhizome_manifest_set_version(m, m->filesize);
-  enum rhizome_payload_status status = rhizome_open_write(write, NULL, m->filesize);
+  enum rhizome_payload_status status = rhizome_open_write(write, NULL, new_filesize);
   if (status == RHIZOME_PAYLOAD_STATUS_NEW && copy_length > 0) {
     // note that we don't need to bother decrypting the existing journal payload
     enum rhizome_payload_status rstatus = rhizome_journal_pipe(write, &m->filehash, advance_by, copy_length);
@@ -1611,6 +1613,15 @@ enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *wri
   if (status != RHIZOME_PAYLOAD_STATUS_NEW)
     rhizome_fail_write(write);
   return status;
+}
+
+// Call to finish any write started with rhizome_write_open_journal()
+static void rhizome_finish_journal(struct rhizome_write *write, rhizome_manifest *m)
+{
+  assert(m->is_journal);
+  rhizome_manifest_set_filesize(m, write->file_length);
+  rhizome_manifest_set_version(m, write->file_length);
+  rhizome_manifest_set_filehash(m, &write->id);
 }
 
 enum rhizome_payload_status rhizome_append_journal_buffer(rhizome_manifest *m, uint64_t advance_by, uint8_t *buffer, size_t len)
@@ -1629,7 +1640,7 @@ enum rhizome_payload_status rhizome_append_journal_buffer(rhizome_manifest *m, u
     rhizome_fail_write(&write);
     return status;
   }
-  rhizome_manifest_set_filehash(m, &write.id);
+  rhizome_finish_journal(&write, m);
   return status;
 }
 
@@ -1652,6 +1663,6 @@ enum rhizome_payload_status rhizome_append_journal_file(rhizome_manifest *m, uin
     rhizome_fail_write(&write);
     return status;
   }
-  rhizome_manifest_set_filehash(m, &write.id);
+  rhizome_finish_journal(&write, m);
   return status;
 }

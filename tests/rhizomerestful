@@ -2,7 +2,7 @@
 
 # Tests for Serval DNA HTTP Rhizome RESTful interface
 #
-# Copyright 2013 Serval Project, Inc.
+# Copyright 2013-2015 Serval Project, Inc.
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -27,7 +27,7 @@ shopt -s extglob
 
 setup() {
    CR=''
-   VT='	'
+   HT='	'
    setup_curl 7
    setup_json
    setup_servald
@@ -539,7 +539,7 @@ extract_http_header() {
    local __headerfile="$2"
    local __header="$3"
    local __rexp="$4"
-   local __value=$($SED -n -e "/^$__header:[ $VT]*$__rexp$CR\$/s/^$__header:[ $VT]*\(.*\)$CR\$/\1/p" "$__headerfile")
+   local __value=$($SED -n -e "/^$__header:[ $HT]*$__rexp$CR\$/s/^$__header:[ $HT]*\(.*\)$CR\$/\1/p" "$__headerfile")
    assert --message="$__headerfile contains valid '$__header' header" \
           --dump-on-fail="$__headerfile" \
           [ -n "$__value" ]
@@ -1160,6 +1160,66 @@ test_RhizomeInsertIncorrectFilehash() {
    assertJqGrep --ignore-case http.body '.rhizome_payload_status_message' 'payload hash.*contradicts manifest'
    executeOk_servald rhizome list
    assert_rhizome_list
+}
+
+doc_RhizomeAppendJournalCreate="HTTP RESTful append creates new Rhizome journal "
+setup_RhizomeAppendJournalCreate() {
+   setup
+   echo 'File one' >file1
+   file1_size=$(cat file1 | wc -c)
+   >manifest1
+   echo "service=anything" >>manifest1
+   echo "filesize=$file1_size" >>manifest1
+   echo "name=hoopla" >>manifest1
+}
+test_RhizomeAppendJournalCreate() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output file1.manifest \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "bundle-author=$SIDA" \
+         --form "manifest=@manifest1;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "payload=@file1" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/append"
+   tfw_cat http.header file1.manifest
+   assertExitStatus == 0
+   assertStdoutIs 201
+   extract_http_header H_BID http.header Serval-Rhizome-Bundle-Id "$rexp_manifestid"
+   extract_http_header H_VERSION http.header Serval-Rhizome-Bundle-Version "$rexp_version"
+   extract_http_header H_SIZE http.header Serval-Rhizome-Bundle-Filesize "$rexp_filesize"
+   extract_http_header H_HASH http.header Serval-Rhizome-Bundle-Filehash "$rexp_filehash"
+   extract_http_header H_DATE http.header Serval-Rhizome-Bundle-Date "$rexp_date"
+   extract_http_header H_ROWID http.header Serval-Rhizome-Bundle-Rowid "$rexp_rowid"
+   extract_http_header H_INSERTTIME http.header Serval-Rhizome-Bundle-Inserttime "$rexp_date"
+   extract_http_header H_SECRET http.header Serval-Rhizome-Bundle-Secret "$rexp_bundlesecret"
+   extract_http_header H_SERVICE http.header Serval-Rhizome-Bundle-Service ".*"
+   extract_http_header H_NAME http.header Serval-Rhizome-Bundle-Name ".*"
+   http_unquote_string H_NAME
+   extract_http_header H_BK http.header$n Serval-Rhizome-Bundle-BK "$rexp_bundlekey"
+   extract_http_header H_AUTHOR http.header$n Serval-Rhizome-Bundle-Author "$rexp_bundlekey"
+   assert [ $H_SIZE -eq $file1_size ]
+   assert [ "$H_SERVICE" = anything ]
+   assert [ "$H_NAME" = hoopla ]
+   assert [ "$H_AUTHOR" = $SIDA ]
+   extract_manifest_id BID file1.manifest
+   extract_manifest_version VERSION file1.manifest
+   extract_manifest_filesize SIZE file1.manifest
+   extract_manifest_filehash HASH file1.manifest
+   extract_manifest_date DATE file1.manifest
+   extract_manifest_service SERVICE file1.manifest
+   extract_manifest_name NAME file1.manifest
+   extract_manifest_BK BK file1.manifest
+   assert [ "$BID" = "$H_BID" ]
+   assert [ "$VERSION" = "$H_VERSION" ]
+   assert [ "$SIZE" = "$H_SIZE" ]
+   assert [ "$HASH" = "$H_HASH" ]
+   assert [ "$DATE" = "$H_DATE" ]
+   assert [ "$SERVICE" = "$H_SERVICE" ]
+   assert [ "$NAME" = "$H_NAME" ]
+   assert [ "$BK" = "$H_BK" ]
+   executeOk_servald rhizome list
+   assert_rhizome_list file1
 }
 
 runTests "$@"

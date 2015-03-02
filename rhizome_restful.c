@@ -1,6 +1,6 @@
 /*
 Serval DNA Rhizome HTTP RESTful interface
-Copyright (C) 2013,2014 Serval Project Inc.
+Copyright (C) 2013-2015 Serval Project Inc.
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -355,6 +355,12 @@ int restful_rhizome_insert(httpd_request *r, const char *remainder)
   return 1;
 }
 
+int restful_rhizome_append(httpd_request *r, const char *remainder)
+{
+  r->u.insert.is_append = 1;
+  return restful_rhizome_insert(r, remainder);
+}
+
 static char PART_MANIFEST[] = "manifest";
 static char PART_PAYLOAD[] = "payload";
 static char PART_AUTHOR[] = "bundle-author";
@@ -445,20 +451,30 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
 	&& *h->content_disposition.filename
     )
       rhizome_manifest_set_name_from_path(r->manifest, h->content_disposition.filename);
-    // Start writing the payload content into the Rhizome store.  Note: r->manifest->filesize can be
-    // RHIZOME_SIZE_UNSET at this point, if the manifest did not contain a 'filesize' field.
-    r->payload_status = rhizome_write_open_manifest(&r->u.insert.write, r->manifest);
-    r->u.insert.payload_size = 0;
-    switch (r->payload_status) {
-      case RHIZOME_PAYLOAD_STATUS_ERROR:
+    // Start writing the payload content into the Rhizome store.
+    if (r->u.insert.is_append) {
+      r->payload_status = rhizome_write_open_journal(&r->u.insert.write, r->manifest, 0, RHIZOME_SIZE_UNSET);
+      if (r->payload_status == RHIZOME_PAYLOAD_STATUS_ERROR) {
+	WHYF("rhizome_write_open_journal() returned %d", r->payload_status);
+	return 500;
+      }
+    } else {
+      // Note: r->manifest->filesize can be RHIZOME_SIZE_UNSET at this point, if the manifest did
+      // not contain a 'filesize' field.
+      r->payload_status = rhizome_write_open_manifest(&r->u.insert.write, r->manifest);
+      if (r->payload_status == RHIZOME_PAYLOAD_STATUS_ERROR) {
 	WHYF("rhizome_write_open_manifest() returned %d", r->payload_status);
 	return 500;
+      }
+    }
+    switch (r->payload_status) {
       case RHIZOME_PAYLOAD_STATUS_STORED:
 	// TODO: initialise payload hash so it can be compared with stored payload
 	break;
       default:
 	break; // r->payload_status gets dealt with later
     }
+    r->u.insert.payload_size = 0;
   }
   else
     return http_response_form_part(r, "Unsupported", h->content_disposition.name, NULL, 0);
@@ -548,9 +564,13 @@ static int insert_mime_part_end(struct http_request *hr)
       WHY("rhizome_fill_manifest() failed");
       return 500;
     }
-    if (r->manifest->is_journal)
-      return http_request_rhizome_response(r, 403, "Insert not supported for journals", NULL);
     assert(r->manifest != NULL);
+    if (r->u.insert.is_append) {
+      if (r->manifest->filesize == RHIZOME_SIZE_UNSET)
+	rhizome_manifest_set_filesize(r->manifest, 0);
+      if (!r->manifest->is_journal)
+	rhizome_manifest_set_tail(r->manifest, 0);
+    }
   }
   else if (r->u.insert.current_part == PART_PAYLOAD) {
     r->u.insert.received_payload = 1;
@@ -583,6 +603,10 @@ static int restful_rhizome_insert_end(struct http_request *hr)
     return http_response_form_part(r, "Missing", PART_PAYLOAD, NULL, 0);
   // Fill in the missing manifest fields and ensure payload and manifest are consistent.
   assert(r->manifest != NULL);
+  if (!r->u.insert.is_append && r->manifest->is_journal)
+    return http_request_rhizome_response(r, 403, "Insert not supported for journals", NULL);
+  else if (r->u.insert.is_append && !r->manifest->is_journal)
+    return http_request_rhizome_response(r, 403, "Append not supported for non-journals", NULL);
   assert(r->u.insert.write.file_length != RHIZOME_SIZE_UNSET);
   int status_valid = 0;
   if (config.debug.rhizome)
@@ -629,6 +653,8 @@ static int restful_rhizome_insert_end(struct http_request *hr)
     return http_request_rhizome_response(r, 500, NULL, NULL);
   }
   // Finalise the manifest and add it to the store.
+  if (r->u.insert.is_append)
+    rhizome_manifest_set_version(r->manifest, r->manifest->filesize);
   if (r->manifest->filesize) {
     if (!r->manifest->has_filehash)
       rhizome_manifest_set_filehash(r->manifest, &r->u.insert.write.id);
