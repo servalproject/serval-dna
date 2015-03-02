@@ -974,15 +974,15 @@ test_BroadcastNotEncrypted() {
    assert diff file1 file1y
 }
 
-doc_JournalAdd="Create and append to a journal"
-setup_JournalAdd() {
+doc_JournalAppend="Create and append to a journal"
+setup_JournalAppend() {
    setup_servald
    setup_rhizome
    echo "Part One" > file1
    echo "Part Two" > file2
    cat file1 file2 > file
 }
-test_JournalAdd() {
+test_JournalAppend() {
    executeOk_servald rhizome journal append $SIDB1 "" file1
    tfw_cat --stdout --stderr
    assert_stdout_add_file file1
@@ -994,7 +994,21 @@ test_JournalAdd() {
    assert diff file filex
 }
 
-doc_JournalAddUpdate="Cannot update a journal"
+doc_JournalAddCreate="Cannot create a journal using file add"
+setup_JournalAddCreate() {
+   setup_servald
+   setup_rhizome
+   echo "Part One" > file1
+   echo "tail=0" >file1.manifest
+}
+test_JournalAddCreate() {
+   # TODO: servald should return a status code reserved for this case, instead
+   # of the generic 255 error
+   execute --exit-status=255 $servald rhizome add file $SIDB1 file1 file1.manifest
+   tfw_cat --stdout --stderr
+}
+
+doc_JournalAddUpdate="Cannot update a journal using file add"
 setup_JournalAddUpdate() {
    setup_servald
    setup_rhizome
@@ -1028,6 +1042,8 @@ setup_AppendFile() {
    extract_stdout_keyvalue BID 'manifestid' '[0-9A-F]\+'
 }
 test_AppendFile() {
+   # TODO: servald should return a status code reserved for this case, instead
+   # of the generic 255 error
    execute --exit-status=255 $servald rhizome journal append $SIDB1 $BID file2
    tfw_cat --stdout --stderr
 }
