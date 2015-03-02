@@ -153,6 +153,7 @@ assert_stdout_add_file() {
          value="${arg#*=}"
          fieldname="${arg%%=*}"
          assertStdoutGrep --matches=1 "^$fieldname:$value\$"
+         eval opt_${fieldname#.}=false
          ;;
       *)
          error "unsupported argument: $arg"
