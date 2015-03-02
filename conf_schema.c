@@ -760,6 +760,10 @@ int cf_opt_socket_type(short *typep, const char *text)
     *typep = SOCK_FILE;
     return CFOK;
   }
+  if (strcasecmp(text, "external") == 0) {
+    *typep = SOCK_EXT;
+    return CFOK;
+  }
   return CFINVALID;
 }
 
@@ -1018,7 +1022,7 @@ int vld_network_interface(const struct cf_om_node *parent, struct config_network
       return result | CFINCOMPLETE;
     }
   } else {
-    if (nifp->socket_type != SOCK_DGRAM && !nifp->file[0]){
+    if (nifp->socket_type != SOCK_DGRAM && nifp->socket_type != SOCK_EXT && !nifp->file[0]){
       cf_warn_missing_node(parent, "file");
       return result | CFSUB(CFINCOMPATIBLE);
     }

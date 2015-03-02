@@ -89,6 +89,17 @@ struct mdp_identity_request {
 */
 #define MDP_SYNC_CONFIG 3
 
+/* External interface implementation
+ * 
+ * Messages used for talking to a client application that implements a network 
+ * interface that isn't based on simple file descriptors
+ * eg android bluetooth & wifi-direct
+*/
+#define MDP_INTERFACE 4
+#define MDP_INTERFACE_UP 0
+#define MDP_INTERFACE_DOWN 1
+#define MDP_INTERFACE_RECV 2
+
 struct overlay_route_record{
   sid_t sid;
   char interface_name[256];

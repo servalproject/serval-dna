@@ -41,6 +41,7 @@ struct socket_address{
     struct sockaddr_un local; // name "unix" is a predefined macro
     struct sockaddr_in inet;
     struct sockaddr_storage store;
+    uint8_t raw[255];
   };
 };
 

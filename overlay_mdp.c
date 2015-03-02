@@ -1110,7 +1110,7 @@ static int search_subscribers(struct subscriber *subscriber, void *context){
   return 0;
 }
 
-int overlay_mdp_address_list(struct overlay_mdp_addrlist *request, struct overlay_mdp_addrlist *response)
+static int overlay_mdp_address_list(struct overlay_mdp_addrlist *request, struct overlay_mdp_addrlist *response)
 {
   if (config.debug.mdprequests)
     DEBUGF("MDP_GETADDRS first_sid=%u mode=%d", request->first_sid, request->mode);
@@ -1340,6 +1340,110 @@ static int mdp_search_identities(struct socket_address *client, struct mdp_heade
   return 0;
 }
 
+const char *external_name="ext"; // TODO?
+
+int mdp_send_external_packet(struct overlay_interface *interface, struct socket_address *address, const uint8_t *payload, size_t len)
+{
+  struct mdp_header header;
+  bzero(&header, sizeof header);
+  header.remote.port = MDP_INTERFACE;
+  uint8_t addrlen = address->addrlen;
+  
+  struct iovec iov[]={
+    {
+      .iov_base = (void *)&header,
+      .iov_len = sizeof(struct mdp_header)
+    },
+    {
+      .iov_base = (void *)&addrlen,
+      .iov_len = sizeof addrlen
+    },
+    {
+      .iov_base = (void *)&address->raw,
+      .iov_len = addrlen
+    },
+    {
+      .iov_base = (void *)payload,
+      .iov_len = len
+    }
+  };
+  
+  struct msghdr hdr={
+    .msg_name=&interface->address.addr,
+    .msg_namelen=interface->address.addrlen,
+    .msg_iov=iov,
+    .msg_iovlen=4,
+  };
+  
+  int fd=-1;
+  switch(interface->address.addr.sa_family){
+    case AF_UNIX:
+      fd = mdp_sock2.poll.fd;
+      break;
+    case AF_INET:
+      fd = mdp_sock2_inet.poll.fd;
+      break;
+  }
+  if (fd==-1)
+    return WHYF("Unhandled client family %d", interface->address.addr.sa_family);
+  
+  if (sendmsg(fd, &hdr, 0)<0)
+    return WHY_perror("sendmsg");
+  
+  return 0;
+}
+
+static void mdp_interface_packet(struct socket_address *client, struct mdp_header *UNUSED(header), 
+  struct overlay_buffer *payload){
+  int msg_type = ob_get(payload);
+  switch (msg_type){
+    case MDP_INTERFACE_UP:{
+      struct config_network_interface ifconfig;
+      cf_dfl_config_network_interface(&ifconfig);
+      
+      struct cf_om_node *conf_node = NULL;
+      int result = cf_om_parse(external_name, (char*)ob_current_ptr(payload), ob_remaining(payload), &conf_node);
+      if (result == CFOK || result == CFEMPTY){
+	result = conf_node ? cf_opt_config_network_interface(&ifconfig, conf_node) : CFEMPTY;
+      }
+      
+      if (result == CFOK || result == CFEMPTY){
+	if (ifconfig.socket_type != SOCK_EXT){
+	  // TODO log nice warning, pick right result code
+	  result |= CFSUB(CFUNSUPPORTED);
+	}
+      }
+      
+      if (result == CFOK || result == CFEMPTY){
+	struct overlay_interface *interface=overlay_interface_find_name_addr(external_name, client);
+	if (!interface){
+	  overlay_interface_init(external_name, client, NULL, NULL, &ifconfig);
+	}else{
+	  if (overlay_interface_configure(interface, &ifconfig)==-1)
+	    overlay_interface_close(interface);
+	}
+      }
+    }break;
+    case MDP_INTERFACE_DOWN:{
+      struct overlay_interface *interface=overlay_interface_find_name_addr(external_name, client);
+      if (interface)
+	overlay_interface_close(interface);
+    }break;
+    case MDP_INTERFACE_RECV:{
+      struct overlay_interface *interface=overlay_interface_find_name_addr(external_name, client);
+      if (interface){
+	struct socket_address addr;
+	addr.addrlen = ob_get(payload);
+	if (addr.addrlen > sizeof(addr))
+	  break; // TODO errors
+	bcopy(ob_get_bytes_ptr(payload, addr.addrlen), addr.raw, addr.addrlen);
+	packetOkOverlay(interface, ob_current_ptr(payload), ob_remaining(payload), &addr);
+      }
+      break;
+    }
+  }
+}
+
 static void mdp_process_packet(struct socket_address *client, struct mdp_header *header, 
   struct overlay_buffer *payload)
 {
@@ -1484,6 +1588,11 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
 	  DEBUGF("Processing MDP_SYNC_CONFIG from %s", alloca_socket_address(client));
 	server_config_reload(NULL);
 	mdp_reply_ok(client, header);
+	break;
+      case MDP_INTERFACE:
+	if (config.debug.mdprequests)
+	  DEBUGF("Processing MDP_INTERFACE from %s", alloca_socket_address(client));
+	mdp_interface_packet(client, header, payload);
 	break;
       default:
 	WHYF("Unknown command port %d", header->remote.port);

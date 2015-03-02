@@ -184,6 +184,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 // force state packet interval
 #define VOMP_CALL_STATUS_INTERVAL 1000
 
+// mdp client interface
+#define SOCK_EXT 0xFE
+// dummy file interface
 #define SOCK_FILE 0xFF
 #define SOCK_UNSPECIFIED 0
 

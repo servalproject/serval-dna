@@ -143,13 +143,22 @@ typedef struct overlay_interface {
  */
 extern overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
 
-struct network_destination * new_destination(struct overlay_interface *interface, char encapsulation);
+struct network_destination * new_destination(struct overlay_interface *interface);
 struct network_destination * create_unicast_destination(struct socket_address *addr, struct overlay_interface *interface);
 struct network_destination * add_destination_ref(struct network_destination *ref);
 void release_destination_ref(struct network_destination *ref);
 int set_destination_ref(struct network_destination **ptr, struct network_destination *ref);
 
 DECLARE_ALARM(overlay_interface_discover);
+
+struct config_network_interface;
+int overlay_interface_configure(struct overlay_interface *interface, const struct config_network_interface *ifconfig);
+int
+overlay_interface_init(const char *name, struct socket_address *addr, 
+		       struct socket_address *netmask,
+		       struct socket_address *broadcast,
+		       const struct config_network_interface *ifconfig);
+void overlay_interface_close(overlay_interface *interface);
 
 int overlay_interface_register(char *name,
 			   struct socket_address *addr,
@@ -159,6 +168,7 @@ void overlay_interface_close_all();
 overlay_interface * overlay_interface_get_default();
 overlay_interface * overlay_interface_find(struct in_addr addr, int return_default);
 overlay_interface * overlay_interface_find_name(const char *name);
+overlay_interface * overlay_interface_find_name_addr(const char *name, struct socket_address *addr);
 int overlay_interface_compare(overlay_interface *one, overlay_interface *two);
 int overlay_broadcast_ensemble(struct network_destination *destination, struct overlay_buffer *buffer);
 void interface_state_html(struct strbuf *b, struct overlay_interface *interface);

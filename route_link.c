@@ -172,12 +172,11 @@ static int neighbour_find_best_link(struct neighbour *n);
 struct neighbour *neighbours=NULL;
 int route_version=0;
 
-struct network_destination * new_destination(struct overlay_interface *interface, char encapsulation){
+struct network_destination * new_destination(struct overlay_interface *interface){
   assert(interface);
   struct network_destination *ret = emalloc_zero(sizeof(struct network_destination));
   if (ret){
     ret->_ref_count=1;
-    ret->encapsulation = encapsulation;
     ret->interface = interface;
     ret->resend_delay = 1000;
     ret->last_tx = TIME_MS_NEVER_HAS;
@@ -201,8 +200,9 @@ struct network_destination * create_unicast_destination(struct socket_address *a
   if (addr->addr.sa_family == AF_INET && (addr->inet.sin_addr.s_addr==0 || addr->inet.sin_port==0))
     return NULL;
   
-  struct network_destination *ret = new_destination(interface, ENCAP_OVERLAY);
+  struct network_destination *ret = new_destination(interface);
   if (ret){
+    ret->encapsulation = ENCAP_OVERLAY;
     ret->address = *addr;
     ret->unicast = 1;
     ret->tick_ms = interface->destination->tick_ms;

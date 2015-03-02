@@ -174,6 +174,7 @@ struct overlay_frame;
 struct broadcast;
 
 void overlay_mdp_clean_socket_files();
+int mdp_send_external_packet(struct overlay_interface *interface, struct socket_address *address, const uint8_t *payload, size_t len);
 
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,

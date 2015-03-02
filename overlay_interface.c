@@ -59,22 +59,27 @@ struct profile_total sock_any_stats;
 
 static void overlay_interface_poll(struct sched_ent *alarm);
 
-static void
-overlay_interface_close(overlay_interface *interface){
+void overlay_interface_close(overlay_interface *interface)
+{
+  if (interface->alarm.poll.fd>=0){
+    if (interface->address.addr.sa_family == AF_UNIX)
+      unlink(interface->address.local.sun_path);
+    if (is_watching(&interface->alarm))
+      unwatch(&interface->alarm);
+    close(interface->alarm.poll.fd);
+    interface->alarm.poll.fd=-1;
+  }
+  
+  unschedule(&interface->alarm);
+  if (interface->radio_link_state)
+    radio_link_free(interface);
+  interface->state=INTERFACE_STATE_DOWN;
+  
   monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%s:DOWN\n", interface->name);
   INFOF("Interface %s addr %s is down", 
 	interface->name, alloca_socket_address(&interface->address));
-  if (interface->address.addr.sa_family == AF_UNIX)
-    unlink(interface->address.local.sun_path);
+  
   link_interface_down(interface);
-  unschedule(&interface->alarm);
-  if (is_watching(&interface->alarm))
-    unwatch(&interface->alarm);
-  close(interface->alarm.poll.fd);
-  if (interface->radio_link_state)
-    radio_link_free(interface);
-  interface->alarm.poll.fd=-1;
-  interface->state=INTERFACE_STATE_DOWN;
 }
 
 void overlay_interface_close_all()
@@ -133,6 +138,12 @@ void interface_state_html(struct strbuf *b, struct overlay_interface *interface)
       break;
     case SOCK_FILE:
       strbuf_puts(b, "Socket: File<br>");
+      break;
+    case SOCK_EXT:
+      {
+	strbuf_puts(b, "Socket: External<br>");
+	strbuf_sprintf(b, "Client: %s<br>", alloca_socket_address(&interface->address));
+      }
       break;
   }
   strbuf_sprintf(b, "TX: %d<br>", interface->tx_count);
@@ -265,6 +276,22 @@ overlay_interface * overlay_interface_find_name(const char *name){
     if (strcasecmp(name, overlay_interfaces[i].name) == 0)
       return &overlay_interfaces[i];
   }
+  return NULL;
+}
+
+// find an interface by name and address
+overlay_interface * overlay_interface_find_name_addr(const char *name, struct socket_address *addr){
+  int i;
+  for(i = 0; i < OVERLAY_MAX_INTERFACES; i++){
+    if (overlay_interfaces[i].state==INTERFACE_STATE_DOWN)
+      continue;
+    
+    if (cmp_sockaddr(addr, &overlay_interfaces[i].address)==0
+      && (!name || strcasecmp(overlay_interfaces[i].name, name)==0)){
+      return &overlay_interfaces[i];
+    }
+  }
+  
   return NULL;
 }
 
@@ -405,61 +432,28 @@ overlay_interface_init_socket(overlay_interface *interface)
   return 0;
 }
 
-/* Returns 0 if interface is successfully added.
- * Returns 1 if interface is not added (eg, dummy file does not exist).
- * Returns -1 in case of error (misconfiguration or system error).
- */
-static int
-overlay_interface_init(const char *name, struct socket_address *addr, 
-		       struct socket_address *netmask,
-		       struct socket_address *broadcast,
-		       const struct config_network_interface *ifconfig)
+int overlay_interface_configure(struct overlay_interface *interface, const struct config_network_interface *ifconfig)
 {
-  int cleanup_ret = -1;
-
-  int interface_id=-1;
-  int i;
-  for (i=0; i<OVERLAY_MAX_INTERFACES; i++){
-    if (overlay_interfaces[i].state==INTERFACE_STATE_DOWN){
-      interface_id=i;
-      break;
-    }
-  }
-  if (interface_id==-1)
-    return WHY("Too many interfaces -- Increase OVERLAY_MAX_INTERFACES");
-
-  overlay_interface *const interface = &overlay_interfaces[interface_id];
-  bzero(interface, sizeof(overlay_interface));
-  interface->state=INTERFACE_STATE_DOWN;
-  
-  strncpy(interface->name, name, sizeof interface->name);
-  
   // copy ifconfig values
   interface->drop_broadcasts = ifconfig->drop_broadcasts;
   interface->drop_unicasts = ifconfig->drop_unicasts;
   interface->drop_packets = ifconfig->drop_packets;
-  interface->port = ifconfig->port;
   interface->type = ifconfig->type;
   interface->send_broadcasts = ifconfig->send_broadcasts;
   interface->dont_route = ifconfig->dont_route;
   interface->prefer_unicast = ifconfig->prefer_unicast;
   interface->default_route = ifconfig->default_route;
+  interface->destination->encapsulation = ifconfig->encapsulation;
+  interface->port = ifconfig->port;
   interface->socket_type = ifconfig->socket_type;
   interface->uartbps = ifconfig->uartbps;
   interface->ctsrts = ifconfig->ctsrts;
-  set_destination_ref(&interface->destination, NULL);
-  interface->destination = new_destination(interface, ifconfig->encapsulation);
+  interface->point_to_point = ifconfig->point_to_point;
+  interface->debug = ifconfig->debug;
   
   /* Pick a reasonable default MTU.
      This will ultimately get tuned by the bandwidth and other properties of the interface */
   interface->mtu = 1200;
-  interface->point_to_point = ifconfig->point_to_point;
-  
-  interface->alarm.poll.fd=0;
-  interface->debug = ifconfig->debug;
-  interface->tx_count=0;
-  interface->recv_count=0;
-
   // How often do we announce ourselves on this interface?
   int tick_ms=-1;
   int packet_interval=-1;
@@ -505,72 +499,125 @@ overlay_interface_init(const char *name, struct socket_address *addr,
     reachable_timeout_ms = ifconfig->mdp.reachable_timeout_ms;
   
   if (packet_interval<0)
-    return WHYF("Invalid packet interval %d specified for interface %s", packet_interval, name);
+    return WHYF("Invalid packet interval %d specified for interface %s", packet_interval, interface->name);
   if (packet_interval==0){
-    INFOF("Interface %s is not sending any traffic!", name);
+    INFOF("Interface %s is not sending any traffic!", interface->name);
     tick_ms=0;
   }else if (!interface->send_broadcasts){
-    INFOF("Interface %s is not sending any broadcast traffic!", name);
+    INFOF("Interface %s is not sending any broadcast traffic!", interface->name);
   }else if (tick_ms==0)
-    INFOF("Interface %s is running tickless", name);
+    INFOF("Interface %s is running tickless", interface->name);
   
   if (tick_ms<0)
-    return WHYF("No tick interval specified for interface %s", name);
+    return WHYF("No tick interval specified for interface %s", interface->name);
 
   interface->destination->tick_ms = tick_ms;
   interface->destination->reachable_timeout_ms = reachable_timeout_ms >= 0 ? reachable_timeout_ms : tick_ms > 0 ? tick_ms * 5 : 2500;
   
   limit_init(&interface->destination->transfer_limit, packet_interval);
+  
+  return 0;
+}
+
+/* Returns 0 if interface is successfully added.
+ * Returns 1 if interface is not added (eg, dummy file does not exist).
+ * Returns -1 in case of error (misconfiguration or system error).
+ */
+int
+overlay_interface_init(const char *name, struct socket_address *addr, 
+		       struct socket_address *netmask,
+		       struct socket_address *broadcast,
+		       const struct config_network_interface *ifconfig)
+{
+  int cleanup_ret = -1;
+
+  int interface_id=-1;
+  int i;
+  for (i=0; i<OVERLAY_MAX_INTERFACES; i++){
+    if (overlay_interfaces[i].state==INTERFACE_STATE_DOWN){
+      interface_id=i;
+      break;
+    }
+  }
+  if (interface_id==-1)
+    return WHY("Too many interfaces -- Increase OVERLAY_MAX_INTERFACES");
+
+  overlay_interface *const interface = &overlay_interfaces[interface_id];
+  
+  bzero(interface, sizeof(overlay_interface));
+  interface->state=INTERFACE_STATE_DOWN;
+  
+  strncpy(interface->name, name, sizeof interface->name);
+  
+  set_destination_ref(&interface->destination, NULL);
+  interface->destination = new_destination(interface);
+  
+  if (overlay_interface_configure(interface, ifconfig)==-1)
+    return -1;
+  
+  interface->alarm.poll.fd=0;
+  interface->tx_count=0;
+  interface->recv_count=0;
 
   if (addr)
     interface->address = *addr;
   if (broadcast)
     interface->destination->address = *broadcast;
-  
   interface->alarm.function = overlay_interface_poll;
   interface_poll_stats.name="overlay_interface_poll";
   interface->alarm.stats=&interface_poll_stats;
   
-  if (ifconfig->socket_type == SOCK_DGRAM){
-    if (ifconfig->drop_broadcasts || ifconfig->drop_unicasts || ifconfig->drop_packets)
-      FATALF("Invalid interface definition. We only support dropping packets on dummy file interfaces");
-    if (netmask)
-      interface->netmask = netmask->inet.sin_addr;
-    else
-      interface->netmask = ifconfig->dummy_netmask;
-    interface->local_echo = 1;
-    
-    if (overlay_interface_init_socket(interface))
-      return WHY("overlay_interface_init_socket() failed");
-  }else{
-    char read_file[1024];
-    interface->local_echo = interface->point_to_point?0:1;
-    if (!FORMF_SERVAL_TMP_PATH(read_file, "%s/%s", config.server.interface_path, ifconfig->file))
-      return -1;
-    if ((interface->alarm.poll.fd = open(read_file, O_APPEND|O_RDWR)) == -1) {
-      if (errno == ENOENT && ifconfig->socket_type == SOCK_FILE) {
-	cleanup_ret = 1;
-	WARNF("dummy interface not enabled: %s does not exist", alloca_str_toprint(read_file));
-      } else {
-	cleanup_ret = WHYF_perror("file interface not enabled: open(%s, O_APPEND|O_RDWR)", alloca_str_toprint(read_file));
-      }
-      goto cleanup;
-    }
-    
-    if (ifconfig->type==OVERLAY_INTERFACE_PACKETRADIO)
-      overlay_packetradio_setup_port(interface);
-    
-    switch (ifconfig->socket_type) {
+  switch(ifconfig->socket_type){
+    case SOCK_DGRAM:
+      if (ifconfig->drop_broadcasts || ifconfig->drop_unicasts || ifconfig->drop_packets)
+	FATALF("Invalid interface definition. We only support dropping packets on dummy file interfaces");
+      if (netmask)
+	interface->netmask = netmask->inet.sin_addr;
+      else
+	interface->netmask = ifconfig->dummy_netmask;
+      interface->local_echo = 1;
+      
+      if (overlay_interface_init_socket(interface))
+	return WHY("overlay_interface_init_socket() failed");
+      break;
+      
+    case SOCK_EXT:
+      interface->local_echo = 0;
+      interface->alarm.poll.fd = -1;
+      break;
+      
     case SOCK_STREAM:
-      radio_link_init(interface);
-      interface->alarm.poll.events=POLLIN|POLLOUT;
-      watch(&interface->alarm);
-
-      break;
     case SOCK_FILE:
-      /* Seek to end of file as initial reading point */
-      interface->recv_offset = lseek(interface->alarm.poll.fd,0,SEEK_END);
-      break;
+    {
+      char read_file[1024];
+      interface->local_echo = interface->point_to_point?0:1;
+      if (!FORMF_SERVAL_TMP_PATH(read_file, "%s/%s", config.server.interface_path, ifconfig->file))
+	return -1;
+      if ((interface->alarm.poll.fd = open(read_file, O_APPEND|O_RDWR)) == -1) {
+	if (errno == ENOENT && ifconfig->socket_type == SOCK_FILE) {
+	  cleanup_ret = 1;
+	  WARNF("dummy interface not enabled: %s does not exist", alloca_str_toprint(read_file));
+	} else {
+	  cleanup_ret = WHYF_perror("file interface not enabled: open(%s, O_APPEND|O_RDWR)", alloca_str_toprint(read_file));
+	}
+	goto cleanup;
+      }
+      
+      if (ifconfig->type==OVERLAY_INTERFACE_PACKETRADIO)
+	overlay_packetradio_setup_port(interface);
+      
+      switch (ifconfig->socket_type) {
+      case SOCK_STREAM:
+	radio_link_init(interface);
+	interface->alarm.poll.events=POLLIN|POLLOUT;
+	watch(&interface->alarm);
+	break;
+	
+      case SOCK_FILE:
+	/* Seek to end of file as initial reading point */
+	interface->recv_offset = lseek(interface->alarm.poll.fd,0,SEEK_END);
+	break;
+      }
     }
   }
   
@@ -786,6 +833,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
 	radio_link_tx(interface);
 	return;
       case SOCK_DGRAM:
+      case SOCK_EXT:
 	break;
       case SOCK_FILE:
 	interface_read_file(interface);
@@ -808,6 +856,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
       case SOCK_STREAM:
 	radio_link_tx(interface);
 	return;
+      case SOCK_EXT:
       case SOCK_DGRAM:
       case SOCK_FILE:
 	//XXX error? fatal?
@@ -830,6 +879,8 @@ static void overlay_interface_poll(struct sched_ent *alarm)
 	break;
       case SOCK_FILE:
 	interface_read_file(interface);
+	break;
+      case SOCK_EXT:
 	break;
     }
   }
@@ -903,9 +954,11 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
     return WHYF("Cannot send to interface %s as it is down", interface->name);
   }
 
-  if (interface->debug)
-    DEBUGF("Sending on %s, len %zu: %s", interface->name, len, alloca_tohex(bytes, len>64?64:len));
-
+  if (config.debug.overlayinterfaces || interface->debug)
+    DEBUGF("Sending %zu byte overlay frame on %s to %s [%s]", 
+      (size_t)len, interface->name, alloca_socket_address(&destination->address),
+      alloca_tohex(bytes, len>64?64:len));
+      
   interface->tx_count++;
   
   switch(interface->socket_type){
@@ -960,13 +1013,14 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 	return WHYF("only wrote %d of %d bytes", (int)nwrite, (int)sizeof(packet));
       return 0;
     }
-      
+    case SOCK_EXT:
+    {
+      mdp_send_external_packet(interface, &destination->address, bytes, (size_t)len);
+      ob_free(buffer);
+      return 0;
+    }
     case SOCK_DGRAM:
     {
-      if (config.debug.overlayinterfaces) 
-	DEBUGF("Sending %zu byte overlay frame on %s to %s", 
-	  (size_t)len, interface->name, alloca_socket_address(&destination->address));
-      
       set_nonblock(interface->alarm.poll.fd);
       if (destination->address.addr.sa_family == AF_UNIX
 	&& !destination->unicast){
@@ -1051,20 +1105,12 @@ overlay_interface_register(char *name,
     DEBUGF("%s broadcast address: %s", name, alloca_socket_address(broadcast));
   }
 
-  /* Search in the exist list of interfaces */
-  for(i = 0; i < OVERLAY_MAX_INTERFACES; i++){
-    if (overlay_interfaces[i].state==INTERFACE_STATE_DOWN)
-      continue;
-    
-    if (strcasecmp(overlay_interfaces[i].name, name)==0
-      && cmp_sockaddr(addr, &overlay_interfaces[i].address)==0){
-      
-      // mark this interface as still alive
-      if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING)
-	overlay_interfaces[i].state=INTERFACE_STATE_UP;
-	
-      return 0;
-    }
+  struct overlay_interface *interface = overlay_interface_find_name_addr(name, addr);
+  if (interface){
+    // mark this interface as still alive
+    if (interface->state == INTERFACE_STATE_DETECTING)
+      interface->state = INTERFACE_STATE_UP;
+    return 0;
   }
   
   /* New interface, so register it */
@@ -1134,6 +1180,9 @@ void overlay_interface_discover(struct sched_ent *alarm)
       // Fallthrough
       case SOCK_STREAM:
 	overlay_interface_init(ifconfig->file, &addr, NULL, &broadcast, ifconfig);
+	break;
+      case SOCK_EXT:
+	// FAIL?
 	break;
       case SOCK_DGRAM:
 	{
