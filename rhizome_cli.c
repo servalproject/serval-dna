@@ -222,10 +222,12 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
   }
 
   if (journal && !m->is_journal){
+    // TODO: return a special status code for this case
     ret = WHY("Existing manifest is not a journal");
     goto finish;
   }
   if (!journal && m->is_journal) {
+    // TODO: return a special status code for this case
     ret = WHY("Existing manifest is a journal");
     goto finish;
   }

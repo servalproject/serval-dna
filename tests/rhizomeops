@@ -994,7 +994,29 @@ test_JournalAdd() {
    assert diff file filex
 }
 
-doc_AppendFile="Attempting to append to a non-journal fails"
+doc_JournalAddUpdate="Cannot update a journal"
+setup_JournalAddUpdate() {
+   setup_servald
+   setup_rhizome
+   echo "Part One" > file1
+   executeOk_servald rhizome journal append $SIDB1 "" file1
+   assert_stdout_add_file file1
+   extract_stdout_keyvalue BID 'manifestid' '[0-9A-F]\+'
+   executeOk_servald rhizome extract bundle $BID file1x.manifest file1x
+   assert diff file1 file1x
+   extract_manifest_version version file1x.manifest
+   let version=version+1
+   $SED -i -e "/^version=/s/=.*/=$version/" file1x.manifest
+   assert_manifest_fields file1x.manifest version="$version"
+}
+test_JournalAddUpdate() {
+   # TODO: servald should return a status code reserved for this case, instead
+   # of the generic 255 error
+   execute --exit-status=255 $servald rhizome add file $SIDB1 file1x file1x.manifest
+   tfw_cat --stdout --stderr
+}
+
+doc_AppendFile="Cannot append to a non-journal"
 setup_AppendFile() {
    setup_servald
    setup_rhizome
