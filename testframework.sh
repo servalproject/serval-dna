@@ -436,6 +436,11 @@ runTests() {
             $_tfw_trace && set -x
             test_$testName
             set +x
+            case $_tfw_phase in
+            testcase-setup) _tfw_error "test terminated within fixture (missing a end_fixture call?)";;
+            testcase);;
+            *) _tfw_fatal "internal error: _tfw_phase=$_tfw_phase";;
+            esac
             _tfw_result=PASS
             exit 0
          ) <&- 5>&1 5>&2 6>"$_tfw_tmp/log.stdout" 1>&6 2>"$_tfw_tmp/log.stderr" 7>"$_tfw_tmp/log.xtrace"
@@ -1434,7 +1439,6 @@ _tfw_filter_predicate() {
 # or teardown is treated as an error, not a failure.
 
 _tfw_failmsg() {
-   # A failure during setup or teardown is treated as an error.
    case $_tfw_phase in
    testcase|finalise)
       if ! $_tfw_opt_error_on_fail; then
@@ -1443,6 +1447,7 @@ _tfw_failmsg() {
       fi
       ;;
    esac
+   # A failure during setup or teardown is treated as an error.
    tfw_log "ERROR: $*"
 }
 
@@ -1561,6 +1566,25 @@ teardown() {
 }
 
 # The following functions are essential for writing test cases and fixtures.
+
+# Within a test_xxx() function, commands executed between begin_fixture and
+# end_fixture invocations are treated as setup, not test, so that a failure
+# results in ERROR not FAIL.
+begin_fixture() {
+   case $_tfw_phase in
+   testcase) _tfw_phase=testcase-setup;;
+   testcase-setup) _tfw_error "begin_fixture: already in fixture (missing a prior end_fixture call?)";;
+   *) _tfw_error "begin_fixture: not allowed here (only in test_xxx functions)";;
+   esac
+}
+
+end_fixture() {
+   case $_tfw_phase in
+   testcase-setup) _tfw_phase=testcase;;
+   testcase) _tfw_error "end_fixture: not in fixture (missing a prior begin_fixture call?)";;
+   *) _tfw_error "end_fixture: not allowed here (only in test_xxx functions)";;
+   esac
+}
 
 # Executes its arguments as a command in the current shell process (not in a
 # child process), so that side effects like functions setting variables will
