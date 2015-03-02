@@ -549,7 +549,7 @@ static int insert_mime_part_end(struct http_request *hr)
       return 500;
     }
     if (r->manifest->is_journal)
-      return http_request_rhizome_response(r, 501, "Insert not supported for journals", NULL);
+      return http_request_rhizome_response(r, 403, "Insert not supported for journals", NULL);
     assert(r->manifest != NULL);
   }
   else if (r->u.insert.current_part == PART_PAYLOAD) {
