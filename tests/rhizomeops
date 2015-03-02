@@ -1295,6 +1295,48 @@ test_ImportCombinedBundle() {
    assert diff fileA fileAx
 }
 
+doc_ImportJournal="Import a journal bundle"
+setup_ImportJournal() {
+   setup_servald
+   setup_rhizome
+   echo "Part One" > file1
+   echo "Part Two2" > file2
+   cat file1 file2 >file3
+   set_instance +A
+   executeOk_servald rhizome journal append $SIDA1 "" file1
+   assert_stdout_add_file file1
+   extract_stdout_keyvalue BID 'manifestid' '[0-9A-F]\+'
+   executeOk_servald rhizome extract bundle $BID file1x.manifest file1x
+   assert diff file1 file1x
+}
+test_ImportJournal() {
+   # Import a journal bundle from a foreign instance.
+   set_instance +B
+   executeOk_servald rhizome import bundle file1x file1x.manifest
+   assert_stdout_import_bundle file1x
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=0 file1x
+   # Try to import the same journal bundle again, exit status 1 means bundle is
+   # already in store.
+   execute --exit-status=1 --stdout --stderr $servald rhizome import bundle file1x file1x.manifest
+   assert_stdout_import_bundle file1x
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=0 file1x
+   # Grow the journal and import it again.
+   begin_fixture
+   set_instance +A
+   executeOk_servald rhizome journal append $SIDA1 $BID file2
+   assert_stdout_add_file file3 manifestid=$BID name=file1
+   executeOk_servald rhizome extract bundle $BID file3x.manifest file3x
+   assert diff file3 file3x
+   end_fixture
+   set_instance +B
+   executeOk_servald rhizome import bundle file3x file3x.manifest
+   assert_stdout_import_bundle file3x
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=0 file3x
+}
+
 setup_delete() {
    setup_servald
    setup_rhizome

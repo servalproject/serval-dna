@@ -407,6 +407,8 @@ static int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli
   enum rhizome_bundle_status status = rhizome_bundle_import_files(m, &m_out, manifestpath, filepath);
   switch (status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
+      cli_put_manifest(context, m);
+      break;
     case RHIZOME_BUNDLE_STATUS_SAME:
     case RHIZOME_BUNDLE_STATUS_DUPLICATE:
     case RHIZOME_BUNDLE_STATUS_OLD:
