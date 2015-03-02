@@ -1196,7 +1196,7 @@ test_MeshMSListFilter() {
    assert_rhizome_list --fromhere=1 file4
 }
 
-doc_ImportForeignBundle="Can import a bundle created by another instance"
+doc_ImportForeignBundle="Import a bundle created by another instance"
 setup_ImportForeignBundle() {
    setup_servald
    setup_rhizome
@@ -1216,7 +1216,7 @@ test_ImportForeignBundle() {
    assert_rhizome_list --fromhere=0 fileA
 }
 
-doc_ImportOwnBundle="Can import a bundle created by same instance"
+doc_ImportOwnBundle="Import a bundle created by same instance"
 setup_ImportOwnBundle() {
    setup_servald
    setup_rhizome
@@ -1267,6 +1267,8 @@ test_ImportOwnBundle() {
 
 doc_ImportCombinedBundle="Create and import combined bundle"
 setup_ImportCombinedBundle() {
+   # A "combined bundle" is a single file consisting of a payload with its
+   # manifest appended to the end.
    setup_servald
    setup_rhizome
    set_instance +A
@@ -1278,7 +1280,9 @@ setup_ImportCombinedBundle() {
    extract_manifest_filesize filesize fileA.manifest
 }
 test_ImportCombinedBundle() {
+   # Create the combined bundle
    executeOk_servald rhizome append manifest fileA fileA.manifest
+   # Import the combined bundle
    set_instance +B
    executeOk_servald rhizome import bundle fileA fileA
    assertStdoutGrep --matches=1 "^service:file$"
