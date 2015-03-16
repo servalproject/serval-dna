@@ -455,7 +455,7 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     if (r->u.insert.is_append) {
       r->payload_status = rhizome_write_open_journal(&r->u.insert.write, r->manifest, 0, RHIZOME_SIZE_UNSET);
       if (r->payload_status == RHIZOME_PAYLOAD_STATUS_ERROR) {
-	WHYF("rhizome_write_open_journal() returned %d", r->payload_status);
+	WHYF("rhizome_write_open_journal() returned %s", rhizome_payload_status_message(r->payload_status));
 	return 500;
       }
     } else {
@@ -463,7 +463,7 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
       // not contain a 'filesize' field.
       r->payload_status = rhizome_write_open_manifest(&r->u.insert.write, r->manifest);
       if (r->payload_status == RHIZOME_PAYLOAD_STATUS_ERROR) {
-	WHYF("rhizome_write_open_manifest() returned %d", r->payload_status);
+	WHYF("rhizome_write_open_manifest() returned %s", rhizome_payload_status_message(r->payload_status));
 	return 500;
       }
     }
@@ -553,7 +553,7 @@ static int insert_mime_part_end(struct http_request *hr)
 	}
       } else {
 	if (rhizome_new_bundle_from_secret(r->manifest, &r->u.insert.bundle_secret) == -1) {
-	  WHY("Failed to create bundle from secret");
+	  http_request_simple_response(&r->http, 500, "Internal error: Failed to create bundle from secret");
 	  return 500;
 	}
       }
