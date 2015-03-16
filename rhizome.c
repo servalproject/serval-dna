@@ -310,6 +310,29 @@ enum rhizome_bundle_status rhizome_manifest_check_stored(rhizome_manifest *m, rh
   return result;
 }
 
+/* Insert the manifest 'm' into the Rhizome store.  This function encapsulates all the invariants
+ * that a manifest must satisfy before it is allowed into the store, so it is used by both the sync
+ * protocol and the application layer.
+ *
+ *  - If the manifest is not valid then returns RHIZOME_BUNDLE_STATUS_INVALID.  A valid manifest is
+ *    one with all the core (transport) fields present and consistent ('id', 'version', 'filesize',
+ *    'filehash', 'tail'), all mandatory application fields present and consistent ('service',
+ *    'date') and any other service-dependent mandatory fields present (eg, 'sender', 'recipient').
+ *
+ *  - If the manifest's signature does not verify, then returns RHIZOME_BUNDLE_STATUS_FAKE.
+ *
+ *  - If the manifest has a payload (filesize != 0) but the payload is not present in the store
+ *    (filehash), then returns an internal error RHIZOME_BUNDLE_STATUS_ERROR (-1).
+ *
+ *  - If the store will not accept the manifest because there is already the same or a newer
+ *    manifest in the store, then returns RHIZOME_BUNDLE_STATUS_SAME or RHIZOME_BUNDLE_STATUS_OLD.
+ *
+ * This function then attempts to store the manifest.  If this fails due to an internal error,
+ * then returns RHIZOME_BUNDLE_STATUS_ERROR (-1), otherwise returns RHIZOME_BUNDLE_STATUS_NEW to
+ * indicate that the manifest was successfully stored.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 enum rhizome_bundle_status rhizome_add_manifest(rhizome_manifest *m, rhizome_manifest **mout)
 {
   if (config.debug.rhizome) {
