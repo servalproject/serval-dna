@@ -276,7 +276,7 @@ int radio_link_tx(struct overlay_interface *interface)
   
   unschedule(&interface->alarm);
   interface->alarm.alarm = 0;
-  time_ms_t next_tick = interface->destination->last_tx+interface->destination->tick_ms;
+  time_ms_t next_tick = interface->destination->last_tx+interface->destination->ifconfig.tick_ms;
   time_ms_t now = gettime_ms();
   
   while(1){

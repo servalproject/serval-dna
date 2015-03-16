@@ -218,7 +218,9 @@ setup_single_mdp() {
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
    foreach_instance +A +B add_servald_interface 1
-   foreach_instance +A +B executeOk_servald config set interfaces.1.encapsulation single
+   foreach_instance +A +B executeOk_servald config \
+	set interfaces.1.broadcast.encapsulation single \
+	set interfaces.1.unicast.encapsulation single
    foreach_instance +A +B start_servald_server
 }
 test_single_mdp() {
@@ -235,7 +237,9 @@ setup_mismatched_encap() {
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
    foreach_instance +A +B add_servald_interface 1
-   foreach_instance +A executeOk_servald config set interfaces.1.encapsulation single
+   foreach_instance +A executeOk_servald config \
+	set interfaces.1.broadcast.encapsulation single \
+	set interfaces.1.unicast.encapsulation single
    foreach_instance +A +B start_servald_server
 }
 test_mismatched_encap() {
@@ -254,7 +258,8 @@ setup_single_p2p() {
    foreach_instance +A +B add_servald_interface 1
    foreach_instance +A +B \
      executeOk_servald config \
-       set interfaces.1.encapsulation single \
+       set interfaces.1.broadcast.encapsulation single \
+       set interfaces.1.unicast.send off \
        set interfaces.1.point_to_point on
    foreach_instance +A +B start_servald_server
 }
@@ -295,9 +300,9 @@ setup_simulate_extender() {
          set debug.packetradio on \
          set debug.radio_link on \
          set interfaces.1.type CATEAR \
-         set interfaces.1.mdp.tick_ms 5000 \
+         set interfaces.1.broadcast.tick_ms 5000 \
          set interfaces.1.socket_type STREAM \
-         set interfaces.1.encapsulation SINGLE \
+         set interfaces.1.broadcast.encapsulation SINGLE \
          set interfaces.1.point_to_point on
    foreach_instance +A +B start_servald_server
 }
@@ -313,6 +318,27 @@ teardown_simulate_extender() {
    tfw_log "Killing fakeradio, pid=$FAKERADIO_PID"
    kill $FAKERADIO_PID
    tfw_cat "$SERVALD_VAR/radioerr"
+}
+
+doc_lowband_broadcast="Link detection over very low bandwith links"
+setup_lowband_broadcast() {
+   setup_servald
+   foreach_instance +A +B create_single_identity
+   foreach_instance +A +B add_servald_interface 1
+   foreach_instance +A +B executeOk_servald config \
+	set interfaces.1.broadcast.packet_interval 10000000 \
+	set interfaces.1.broadcast.tick_ms 15000 \
+	set interfaces.1.broadcast.mtu 180 \
+	set interfaces.1.broadcast.route off \
+	set interfaces.1.unicast.send off
+   foreach_instance +A +B start_servald_server
+}
+test_lowband_broadcast() {
+   #wait_until path_exists +A +B
+   #wait_until path_exists +B +A
+   set_instance +A
+   executeOk_servald mdp ping --interval=5 --timeout=30 $SIDB 5
+   tfw_cat --stdout --stderr
 }
 
 _simulator() {
@@ -381,7 +407,7 @@ setup_scan() {
   foreach_instance +A +B +C add_servald_interface --file 1
   foreach_instance +A +B +C \
     executeOk_servald config \
-      set interfaces.1.drop_broadcasts on
+      set interfaces.1.broadcast.drop on
   foreach_instance +A +B +C start_servald_server
   foreach_instance +A +B +C \
     wait_until interface_up
@@ -433,10 +459,10 @@ setup_single_filter() {
   foreach_instance +A +B add_servald_interface --file 1
   set_instance +B
   executeOk_servald config \
-      set interfaces.1.drop_broadcasts on
+      set interfaces.1.broadcast.drop on
   set_instance +A
   executeOk_servald config \
-      set interfaces.1.drop_unicasts on
+      set interfaces.1.unicast.drop on
   foreach_instance +A +B start_servald_server
 }
 test_single_filter() {
@@ -559,11 +585,11 @@ setup_unicast_route() {
   foreach_instance +C +D add_servald_interface --file 3
   set_instance +A
   executeOk_servald config \
-      set interfaces.1.drop_broadcasts on
+      set interfaces.1.broadcast.drop on
   set_instance +C
   executeOk_servald config \
-      set interfaces.2.drop_broadcasts on \
-      set interfaces.3.drop_broadcasts on
+      set interfaces.2.broadcast.drop on \
+      set interfaces.3.broadcast.drop on
   foreach_instance +A +B +C +D start_servald_server
 }
 test_unicast_route() {
@@ -929,9 +955,6 @@ setup_crowded_mess() {
    foreach_instance +D +F add_servald_interface 5
    foreach_instance +E +G add_servald_interface 6
    foreach_instance +F +G +H add_servald_interface 7
-   foreach_instance +A +B +C +D +E +F +G +H \
-      executeOk_servald config \
-         set mdp.iftype.wifi.reachable_timeout_ms 60000
    foreach_instance +A +B +C +D +E +F +G +H start_servald_server
 }
 

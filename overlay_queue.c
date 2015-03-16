@@ -241,9 +241,9 @@ overlay_init_packet(struct outgoing_packet *packet, int packet_version,
     packet->seq=-1;
   else
     packet->seq = destination->sequence_number = (destination->sequence_number + 1) & 0xFFFF;
-  ob_limitsize(packet->buffer, destination->interface->mtu);
+  ob_limitsize(packet->buffer, destination->ifconfig.mtu);
   int i = destination->interface - overlay_interfaces;
-  if (overlay_packet_init_header(packet_version, destination->encapsulation, 
+  if (overlay_packet_init_header(packet_version, destination->ifconfig.encapsulation, 
 				 &packet->context, packet->buffer, 
 				 destination->unicast, 
 				 i, packet->seq) == -1
@@ -355,7 +355,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     if (frame->delay_until > now)
       goto skip;
 
-    if (packet->buffer && packet->destination->encapsulation==ENCAP_SINGLE)
+    if (packet->buffer && packet->destination->ifconfig.encapsulation==ENCAP_SINGLE)
       goto skip;
       
     // quickly skip payloads that have no chance of fitting
@@ -423,7 +423,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  if (radio_link_is_busy(dest->interface))
 	    continue;
 	    
-	  // can we send a packet on this interface now?
+	  // can we send a packet to this destination now?
 	  if (limit_is_allowed(&dest->transfer_limit))
 	    continue;
       
@@ -466,7 +466,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     if (frame->packet_version<1 || frame->resend<=0 || packet->seq==-1)
       will_retransmit=0;
     
-    if (overlay_frame_append_payload(&packet->context, packet->destination->encapsulation, frame, 
+    if (overlay_frame_append_payload(&packet->context, packet->destination->ifconfig.encapsulation, frame, 
 	frame->destinations[destination_index].next_hop, packet->buffer, will_retransmit)){
       // payload was not queued, delay the next attempt slightly
       frame->delay_until = now + 5;

@@ -31,7 +31,7 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   if (tcgetattr(interface->alarm.poll.fd, &t))
     WHY_perror("Failed to get terminal parameters");
   speed_t baud_rate;
-  switch(interface->uartbps){
+  switch(interface->ifconfig.uartbps){
   case 0: baud_rate = B0; break;
   case 50: baud_rate = B50; break;
   case 75: baud_rate = B75; break;
@@ -77,10 +77,10 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   
   // Enable/disable CTS/RTS flow control
 #ifndef CNEW_RTSCTS
-  if (interface->ctsrts) t.c_cflag |= CRTSCTS;
+  if (interface->ifconfig.ctsrts) t.c_cflag |= CRTSCTS;
   else t.c_cflag &= ~CRTSCTS;
 #else
-  if (interface->ctsrts) t.c_cflag |= CNEW_RTSCTS;
+  if (interface->ifconfig.ctsrts) t.c_cflag |= CNEW_RTSCTS;
   else t.c_cflag &= ~CNEW_RTSCTS;
 #endif
 

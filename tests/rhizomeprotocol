@@ -45,8 +45,7 @@ default_config() {
       set debug.rhizome_manifest on \
       set debug.rhizome_ads on \
       set debug.rhizome_tx on \
-      set debug.rhizome_rx on \
-      set mdp.iftype.wifi.tick_ms 500
+      set debug.rhizome_rx on
 }
 
 # Called by start_servald_instances for each instance.
@@ -209,7 +208,7 @@ setup_UnicastTransfer() {
    set_instance +B
    add_servald_interface --file
    executeOk_servald config \
-      set interfaces.1.drop_broadcasts on
+      set interfaces.1.broadcast.drop on
    start_servald_instances +A +B
    foreach_instance +A assert_peers_are_instances +B
    foreach_instance +B assert_peers_are_instances +A
@@ -775,9 +774,9 @@ start_radio_instance() {
       set log.console.show_pid on \
       set log.console.show_time on \
       set interfaces.1.type CATEAR \
-      set interfaces.1.mdp.tick_ms 5000 \
+      set interfaces.1.broadcast.tick_ms 5000 \
       set interfaces.1.socket_type STREAM \
-      set interfaces.1.encapsulation SINGLE \
+      set interfaces.1.broadcast.encapsulation SINGLE \
       set interfaces.1.point_to_point on
    start_servald_server
    wait_until interface_up

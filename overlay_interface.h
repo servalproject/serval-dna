@@ -47,9 +47,8 @@ struct network_destination {
   
   char packet_version;
   
-  // should we aggregate packets, or send one at a time
-  char encapsulation;
-
+  struct config_mdp_iftype ifconfig;
+  
   // time last packet was sent
   time_ms_t last_tx;
   
@@ -64,25 +63,6 @@ struct network_destination {
 
   // rate limit for outgoing packets
   struct limit_state transfer_limit;
-
-  /* Number of milli-seconds per tick for this interface, which is basically
-   * related to the     the typical TX range divided by the maximum expected
-   * speed of nodes in the network.  This means that short-range communications
-   * has a higher bandwidth requirement than long-range communications because
-   * the tick interval has to be shorter to still allow fast-convergence time
-   * to allow for mobility.
-   *
-   * For wifi (nominal range 100m) it is usually 500ms.
-   * For ~100K ISM915MHz (nominal range 1000m) it will probably be about 5000ms.
-   * For ~10K ISM915MHz (nominal range ~3000m) it will probably be about 15000ms.
-   *
-   * These figures will be refined over time, and we will allow people to set
-   * them per-interface.
-   */
-  unsigned tick_ms;
-
-  // Number of milliseconds of no packets until we assume the link is dead.
-  unsigned reachable_timeout_ms;
 };
 
 typedef struct overlay_interface {
@@ -97,33 +77,12 @@ typedef struct overlay_interface {
   
   struct radio_link_state *radio_link_state;
 
-  // copy of ifconfig flags
-  uint16_t drop_packets;
-  char drop_broadcasts;
-  char drop_unicasts;
-  int port;
-  int type;
-  int socket_type;
-  char send_broadcasts;
-  char dont_route;
-  char prefer_unicast;
-  /* Not necessarily the real MTU, but the largest frame size we are willing to TX.
-   For radio links the actual maximum and the maximum that is likely to be delivered reliably are
-   potentially two quite different values. */
-  int mtu;
-  // can we use this interface for routes to addresses in other subnets?
-  int default_route;
-  // should we log more debug info on this interace? eg hex dumps of packets
-  char debug;
+  struct config_network_interface ifconfig;
+  
   char local_echo;
-
-  unsigned int uartbps; // set serial port speed (which might be different from link speed)
-  int ctsrts; // enabled hardware flow control if non-zero
 
   struct network_destination *destination;
 
-  // can we assume that we will only receive packets from one device?
-  char point_to_point;
   struct subscriber *other_device;
   
   // the actual address of the interface.
@@ -151,8 +110,12 @@ int set_destination_ref(struct network_destination **ptr, struct network_destina
 
 DECLARE_ALARM(overlay_interface_discover);
 
+struct config_mdp_iftype;
+int overlay_destination_configure(struct network_destination *dest, const struct config_mdp_iftype *ifconfig);
+
 struct config_network_interface;
 int overlay_interface_configure(struct overlay_interface *interface, const struct config_network_interface *ifconfig);
+
 int
 overlay_interface_init(const char *name, struct socket_address *addr, 
 		       struct socket_address *netmask,

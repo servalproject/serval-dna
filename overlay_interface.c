@@ -110,7 +110,7 @@ void interface_state_html(struct strbuf *b, struct overlay_interface *interface)
       strbuf_puts(b, "Interface Down");
       return;
   }
-  switch(interface->type){
+  switch(interface->ifconfig.type){
     case OVERLAY_INTERFACE_PACKETRADIO:
       strbuf_puts(b, "Type: Packet Radio<br>");
       radio_link_state_html(b, interface);
@@ -125,7 +125,7 @@ void interface_state_html(struct strbuf *b, struct overlay_interface *interface)
     case OVERLAY_INTERFACE_UNKNOWN:
       strbuf_puts(b, "Type: Unknown<br>");
   }
-  switch(interface->socket_type){
+  switch(interface->ifconfig.socket_type){
     case SOCK_STREAM:
       strbuf_puts(b, "Socket: Stream<br>");
       break;
@@ -215,7 +215,7 @@ error:
 overlay_interface * overlay_interface_get_default(){
   int i;
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
-    if (overlay_interfaces[i].state==INTERFACE_STATE_UP && overlay_interfaces[i].default_route)
+    if (overlay_interfaces[i].state==INTERFACE_STATE_UP && overlay_interfaces[i].ifconfig.default_route)
       return &overlay_interfaces[i];
   }
   return NULL;
@@ -253,7 +253,7 @@ overlay_interface * overlay_interface_find(struct in_addr addr, int return_defau
     }
     
     // check if this is a default interface
-    if (return_default && overlay_interfaces[i].default_route) {
+    if (return_default && overlay_interfaces[i].ifconfig.default_route) {
       ret=&overlay_interfaces[i];
       if (config.debug.overlayinterfaces) {
 	DEBUGF("in_addr=0x%08x is being deemed to default-route interface #%d (interface mask=0x%08x, interface addr=0x%08x)\n",
@@ -314,8 +314,8 @@ int overlay_interface_compare(overlay_interface *one, overlay_interface *two)
 {
   if (one==two)
     return 0;
-  int p1 = interface_type_priority(one->type);
-  int p2 = interface_type_priority(two->type);
+  int p1 = interface_type_priority(one->ifconfig.type);
+  int p2 = interface_type_priority(two->ifconfig.type);
   if (p1<p2)
     return -1;
   if (p2<p1)
@@ -414,7 +414,7 @@ overlay_interface_init_socket(overlay_interface *interface)
    But there may be some platforms that need some other combination for everything to work.
    */
   
-  overlay_interface_init_any(interface->port);
+  overlay_interface_init_any(interface->ifconfig.port);
   
   interface->alarm.poll.fd = overlay_bind_socket(&interface->address);
       
@@ -432,35 +432,15 @@ overlay_interface_init_socket(overlay_interface *interface)
   return 0;
 }
 
-int overlay_interface_configure(struct overlay_interface *interface, const struct config_network_interface *ifconfig)
+int overlay_destination_configure(struct network_destination *dest, const struct config_mdp_iftype *ifconfig)
 {
-  // copy ifconfig values
-  interface->drop_broadcasts = ifconfig->drop_broadcasts;
-  interface->drop_unicasts = ifconfig->drop_unicasts;
-  interface->drop_packets = ifconfig->drop_packets;
-  interface->type = ifconfig->type;
-  interface->send_broadcasts = ifconfig->send_broadcasts;
-  interface->dont_route = ifconfig->dont_route;
-  interface->prefer_unicast = ifconfig->prefer_unicast;
-  interface->default_route = ifconfig->default_route;
-  interface->destination->encapsulation = ifconfig->encapsulation;
-  interface->port = ifconfig->port;
-  interface->socket_type = ifconfig->socket_type;
-  interface->uartbps = ifconfig->uartbps;
-  interface->ctsrts = ifconfig->ctsrts;
-  interface->point_to_point = ifconfig->point_to_point;
-  interface->debug = ifconfig->debug;
-  
-  /* Pick a reasonable default MTU.
-     This will ultimately get tuned by the bandwidth and other properties of the interface */
-  interface->mtu = 1200;
+  dest->ifconfig = *ifconfig;
   // How often do we announce ourselves on this interface?
   int tick_ms=-1;
   int packet_interval=-1;
-  int reachable_timeout_ms = -1;
-
+  
   // hard coded defaults:
-  switch (ifconfig->type) {
+  switch(dest->interface->ifconfig.type){
     case OVERLAY_INTERFACE_PACKETRADIO:
       tick_ms = 15000;
       packet_interval = 1000;
@@ -478,44 +458,46 @@ int overlay_interface_configure(struct overlay_interface *interface, const struc
       packet_interval = 100;
       break;
   }
-  // configurable defaults per interface
-  {
-    int i = config_mdp_iftypelist__get(&config.mdp.iftype, &ifconfig->type);
-    if (i != -1){
-      if (config.mdp.iftype.av[i].value.tick_ms>=0)
-	tick_ms = config.mdp.iftype.av[i].value.tick_ms;
-      if (config.mdp.iftype.av[i].value.packet_interval>=0)
-	packet_interval=config.mdp.iftype.av[i].value.packet_interval;
-      if (config.mdp.iftype.av[i].value.reachable_timeout_ms >= 0)
-	reachable_timeout_ms = config.mdp.iftype.av[i].value.reachable_timeout_ms;
-    }
-  }
-  // specific value for this interface
-  if (ifconfig->mdp.tick_ms>=0)
-    tick_ms = ifconfig->mdp.tick_ms;
-  if (ifconfig->mdp.packet_interval>=0)
-    packet_interval=ifconfig->mdp.packet_interval;
-  if (ifconfig->mdp.reachable_timeout_ms >= 0)
-    reachable_timeout_ms = ifconfig->mdp.reachable_timeout_ms;
   
-  if (packet_interval<0)
-    return WHYF("Invalid packet interval %d specified for interface %s", packet_interval, interface->name);
-  if (packet_interval==0){
-    INFOF("Interface %s is not sending any traffic!", interface->name);
-    tick_ms=0;
-  }else if (!interface->send_broadcasts){
-    INFOF("Interface %s is not sending any broadcast traffic!", interface->name);
-  }else if (tick_ms==0)
-    INFOF("Interface %s is running tickless", interface->name);
+  if (dest->ifconfig.tick_ms<0)
+    dest->ifconfig.tick_ms = tick_ms;
+  if (dest->ifconfig.packet_interval<0)
+    dest->ifconfig.packet_interval = packet_interval;
+    
+  if (dest->ifconfig.packet_interval<0)
+    return WHYF("Invalid packet interval %d specified for destination", 
+      dest->ifconfig.packet_interval);
+  if (dest->ifconfig.packet_interval==0){
+    INFOF("Destination is not sending any traffic!");
+    dest->ifconfig.tick_ms=0;
+  }else if (!dest->ifconfig.send){
+    INFOF("Destination is not sending any traffic!");
+  }else if (dest->ifconfig.tick_ms==0)
+    INFOF("Destination is running tickless");
   
-  if (tick_ms<0)
-    return WHYF("No tick interval specified for interface %s", interface->name);
+  if (dest->ifconfig.tick_ms<0)
+    return WHYF("No tick interval specified for destination");
+    
+  if (dest->ifconfig.reachable_timeout_ms<0)
+    dest->ifconfig.reachable_timeout_ms = tick_ms>0 ? tick_ms * 5 : 2500;
+  
+  if (dest->ifconfig.mtu < 400)
+    dest->ifconfig.encapsulation=ENCAP_SINGLE;
+    
+  limit_init(&dest->transfer_limit, dest->ifconfig.packet_interval);
+  
+  return 0;
+}
 
-  interface->destination->tick_ms = tick_ms;
-  interface->destination->reachable_timeout_ms = reachable_timeout_ms >= 0 ? reachable_timeout_ms : tick_ms > 0 ? tick_ms * 5 : 2500;
+int overlay_interface_configure(struct overlay_interface *interface, const struct config_network_interface *ifconfig)
+{
+  // copy ifconfig values
+  interface->ifconfig = *ifconfig;
+  overlay_destination_configure(interface->destination, &interface->ifconfig.broadcast);
   
-  limit_init(&interface->destination->transfer_limit, packet_interval);
-  
+  if (ifconfig->socket_type==SOCK_STREAM)
+    interface->ifconfig.unicast.send=0;
+    
   return 0;
 }
 
@@ -569,7 +551,7 @@ overlay_interface_init(const char *name, struct socket_address *addr,
   
   switch(ifconfig->socket_type){
     case SOCK_DGRAM:
-      if (ifconfig->drop_broadcasts || ifconfig->drop_unicasts || ifconfig->drop_packets)
+      if (ifconfig->broadcast.drop || ifconfig->unicast.drop || ifconfig->drop_packets)
 	FATALF("Invalid interface definition. We only support dropping packets on dummy file interfaces");
       if (netmask)
 	interface->netmask = netmask->inet.sin_addr;
@@ -590,7 +572,7 @@ overlay_interface_init(const char *name, struct socket_address *addr,
     case SOCK_FILE:
     {
       char read_file[1024];
-      interface->local_echo = interface->point_to_point?0:1;
+      interface->local_echo = ifconfig->point_to_point?0:1;
       if (!FORMF_SERVAL_TMP_PATH(read_file, "%s/%s", config.server.interface_path, ifconfig->file))
 	return -1;
       if ((interface->alarm.poll.fd = open(read_file, O_APPEND|O_RDWR)) == -1) {
@@ -694,21 +676,21 @@ struct file_packet{
 };
 
 static int should_drop(struct overlay_interface *interface, struct socket_address *addr){
-  if (interface->drop_packets>=100)
+  if (interface->ifconfig.drop_packets>=100)
     return 1;
   
   if (cmp_sockaddr(addr, &interface->address)==0){
-    if (interface->drop_unicasts)
+    if (interface->ifconfig.unicast.drop)
       return 1;
   }else if (cmp_sockaddr(addr, &interface->destination->address)==0){
-    if (interface->drop_broadcasts)
+    if (interface->ifconfig.broadcast.drop)
       return 1;
   }else
     return 1;
   
-  if (interface->drop_packets <= 0)
+  if (interface->ifconfig.drop_packets <= 0)
     return 0;
-  if (rand()%100 >= interface->drop_packets)
+  if (rand()%100 >= interface->ifconfig.drop_packets)
     return 0;
   return 1;
 }
@@ -812,23 +794,23 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     alarm->alarm=-1;
     
     if (interface->state==INTERFACE_STATE_UP 
-      && interface->destination->tick_ms>0
-      && interface->send_broadcasts
+      && interface->destination->ifconfig.tick_ms>0
+      && interface->destination->ifconfig.send
       && !radio_link_is_busy(interface)){
       
-      if (now >= interface->destination->last_tx+interface->destination->tick_ms)
+      if (now >= interface->destination->last_tx+interface->destination->ifconfig.tick_ms)
         overlay_send_tick_packet(interface->destination);
       
-      time_ms_t interval = interface->destination->tick_ms;
+      time_ms_t interval = interface->destination->ifconfig.tick_ms;
       // only tick every 5s if we have no neighbours here
       if (interval < 5000 && !link_interface_has_neighbours(interface))
 	interval = 5000;
       
       alarm->alarm=interface->destination->last_tx+interval;
-      alarm->deadline=alarm->alarm+interface->destination->tick_ms/2;
+      alarm->deadline=alarm->alarm+interface->destination->ifconfig.tick_ms/2;
     }
     
-    switch(interface->socket_type){
+    switch(interface->ifconfig.socket_type){
       case SOCK_STREAM:
 	radio_link_tx(interface);
 	return;
@@ -845,14 +827,14 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     if (alarm->alarm!=-1 && interface->state==INTERFACE_STATE_UP) {
       if (alarm->alarm < now) {
         alarm->alarm = now;
-	alarm->deadline = alarm->alarm + interface->destination->tick_ms / 2;
+	alarm->deadline = alarm->alarm + interface->destination->ifconfig.tick_ms / 2;
       }
       schedule(alarm);
     }
   }
   
   if (alarm->poll.revents & POLLOUT){
-    switch(interface->socket_type){
+    switch(interface->ifconfig.socket_type){
       case SOCK_STREAM:
 	radio_link_tx(interface);
 	return;
@@ -865,7 +847,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
   }
   
   if (alarm->poll.revents & POLLIN) {
-    switch(interface->socket_type){
+    switch(interface->ifconfig.socket_type){
       case SOCK_DGRAM:
 	interface_read_dgram(interface);
 	break;
@@ -954,14 +936,14 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
     return WHYF("Cannot send to interface %s as it is down", interface->name);
   }
 
-  if (config.debug.overlayinterfaces || interface->debug)
+  if (config.debug.overlayinterfaces || interface->ifconfig.debug)
     DEBUGF("Sending %zu byte overlay frame on %s to %s [%s]", 
       (size_t)len, interface->name, alloca_socket_address(&destination->address),
       alloca_tohex(bytes, len>64?64:len));
       
   interface->tx_count++;
   
-  switch(interface->socket_type){
+  switch(interface->ifconfig.socket_type){
     case SOCK_STREAM:
       return radio_link_queue_packet(interface, buffer);
       
@@ -1145,7 +1127,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
     }
     unsigned j;
     for (j = 0; j < OVERLAY_MAX_INTERFACES; j++){
-      if (overlay_interfaces[j].socket_type == ifconfig->socket_type && 
+      if (overlay_interfaces[j].ifconfig.socket_type == ifconfig->socket_type && 
 	  strcasecmp(overlay_interfaces[j].name, ifconfig->file) == 0 && 
 	  overlay_interfaces[j].state==INTERFACE_STATE_DETECTING){
 	overlay_interfaces[j].state=INTERFACE_STATE_UP;

@@ -104,9 +104,9 @@ configure_node() {
       set debug.overlayframes Yes \
       set interfaces.0.file dummy1 \
       set interfaces.0.socket_type file \
-      set interfaces.0.send_broadcasts 0 \
-      set interfaces.0.dont_route 1 \
-      set interfaces.0.drop_broadcasts on \
+      set interfaces.0.broadcast.send off \
+      set interfaces.0.broadcast.drop on \
+      set interfaces.0.unicast.route off \
       set interfaces.0.default_route 1 \
       set interfaces.0.dummy_address 10.0.${instance_number}.1 \
       set interfaces.0.dummy_netmask 255.255.255.0

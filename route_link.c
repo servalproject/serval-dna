@@ -19,12 +19,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <assert.h>
 #include "serval.h"
+#include "conf.h"
 #include "overlay_address.h"
 #include "overlay_buffer.h"
 #include "overlay_interface.h"
 #include "overlay_packet.h"
 #include "str.h"
-#include "conf.h"
 #include "keyring.h"
 #include "server.h"
 #include "mdp_client.h"
@@ -199,13 +199,13 @@ struct network_destination * create_unicast_destination(struct socket_address *a
   }
   if (addr->addr.sa_family == AF_INET && (addr->inet.sin_addr.s_addr==0 || addr->inet.sin_port==0))
     return NULL;
-  
+  if (!interface->ifconfig.unicast.send)
+    return NULL;
   struct network_destination *ret = new_destination(interface);
   if (ret){
-    ret->encapsulation = ENCAP_OVERLAY;
     ret->address = *addr;
     ret->unicast = 1;
-    ret->tick_ms = interface->destination->tick_ms;
+    overlay_destination_configure(ret, &interface->ifconfig.unicast);
   }
   return ret;
 }
@@ -557,8 +557,9 @@ static int append_link(struct subscriber *subscriber, void *context)
     if (subscriber->identity)
       keyring_send_unlock(subscriber);
     
-    if (best_link && best_link->destination && best_link->destination->interface->dont_route){
-      // don't talk about links across interfaces with dont_route
+    if (best_link && best_link->destination 
+      && !best_link->destination->ifconfig.route){
+      // never mention links we shouldn't advertise
       state->next_update = TIME_MS_NEVER_WILL;
     }else{
       if (state->next_update - 20 <= now){
@@ -884,7 +885,7 @@ static int send_neighbour_link(struct neighbour *n)
     n->best_link->ack_counter = ACK_WINDOW;
     n->last_update = now;
   }
-  n->next_neighbour_update = n->last_update + n->best_link->interface->destination->tick_ms;
+  n->next_neighbour_update = n->last_update + n->best_link->interface->destination->ifconfig.tick_ms;
   if (config.debug.ack)
     DEBUGF("Next update for %s in %"PRId64"ms", alloca_tohex_sid_t(n->subscriber->sid), n->next_neighbour_update - gettime_ms());
   OUT();
@@ -908,11 +909,11 @@ static int link_send_neighbours()
 
     struct link_out *out = n->out_links;
     while(out){
-      if (out->destination->tick_ms>0 && out->destination->unicast){
-	if (out->destination->last_tx + out->destination->tick_ms < now)
+      if (out->destination->ifconfig.tick_ms>0 && out->destination->unicast){
+	if (out->destination->last_tx + out->destination->ifconfig.tick_ms < now)
 	  overlay_send_tick_packet(out->destination);
-	if (out->destination->last_tx + out->destination->tick_ms < ALARM_STRUCT(link_send).alarm)
-	  ALARM_STRUCT(link_send).alarm = out->destination->last_tx + out->destination->tick_ms;
+	if (out->destination->last_tx + out->destination->ifconfig.tick_ms < ALARM_STRUCT(link_send).alarm)
+	  ALARM_STRUCT(link_send).alarm = out->destination->last_tx + out->destination->ifconfig.tick_ms;
       }
       out=out->_next;
     }
@@ -995,7 +996,7 @@ struct link_in * get_neighbour_link(struct neighbour *neighbour, struct overlay_
 {
   struct link_in *link = neighbour->links;
   if (unicast){
-    if (interface->prefer_unicast)
+    if (interface->ifconfig.prefer_unicast)
       unicast=1;
     else
       unicast=-1;
@@ -1071,26 +1072,35 @@ int link_add_destinations(struct overlay_frame *frame)
     
     struct neighbour *neighbour = neighbours;
     for(;neighbour;neighbour = neighbour->_next){
-      // TODO, send broadcast packets to neighbours before link establishment?
       if (neighbour->subscriber->reachable&REACHABLE_DIRECT){
 	struct network_destination *dest = neighbour->subscriber->destination;
+	
 	// TODO move packet version flag to destination struct?
 	if (frame->packet_version > neighbour->subscriber->max_packet_version)
 	  frame->packet_version = neighbour->subscriber->max_packet_version;
 	
 	if (!dest->unicast){
-	  if (!dest->interface->send_broadcasts)
-	    continue;
 	  // make sure we only add each broadcast interface once
 	  unsigned id = dest->interface - overlay_interfaces;
-	  if (added_interface[id]){
+	  if (added_interface[id])
 	    continue;
-	  }
 	  added_interface[id]=1;
 	}
 	
 	if (frame->destination_count < MAX_PACKET_DESTINATIONS)
 	  frame->destinations[frame->destination_count++].destination=add_destination_ref(dest);
+	
+      }else if(!(neighbour->subscriber->reachable & REACHABLE)){
+	// send broadcast packets to neighbours before link establishment
+	struct link_out *out = neighbour->out_links;
+	time_ms_t now = gettime_ms();
+	while(out){
+	  if (out->timeout>=now && frame->destination_count < MAX_PACKET_DESTINATIONS){
+	    unsigned dest = frame->destination_count++;
+	    frame->destinations[dest].destination = add_destination_ref(out->destination);
+	  }
+	  out = out->_next;
+	}
       }
     }
   }
@@ -1175,23 +1185,29 @@ int link_unicast_ack(struct subscriber *UNUSED(subscriber), struct overlay_inter
 
 static struct link_out *create_out_link(struct neighbour *neighbour, overlay_interface *interface, struct socket_address *addr, char unicast)
 {
+  struct network_destination *dest = NULL;
+  if (unicast)
+    dest = create_unicast_destination(addr, interface);
+  else
+    dest = add_destination_ref(interface->destination);
+  if (!dest)
+    return NULL;
+    
   struct link_out *ret=emalloc_zero(sizeof(struct link_out));
-  if (ret){
-    ret->_next=neighbour->out_links;
-    neighbour->out_links=ret;
-    if (unicast)
-      ret->destination = create_unicast_destination(addr, interface);
-    else
-      ret->destination = add_destination_ref(interface->destination);
-    if (config.debug.linkstate)
-      DEBUGF("LINK STATE; Create possible %s link_out for neighbour %s on interface %s", 
-	unicast?"unicast":"broadcast",
-	alloca_tohex_sid_t(neighbour->subscriber->sid),
-	interface->name);
-    time_ms_t now = gettime_ms();
-    ret->timeout = now + ret->destination->tick_ms * 3;
-    update_alarm(__WHENCE__, now + 5);
-  }
+  if (!ret)
+    return NULL;
+    
+  ret->_next=neighbour->out_links;
+  neighbour->out_links=ret;
+  ret->destination=dest;
+  if (config.debug.linkstate)
+    DEBUGF("LINK STATE; Create possible %s link_out for neighbour %s on interface %s", 
+      unicast?"unicast":"broadcast",
+      alloca_tohex_sid_t(neighbour->subscriber->sid),
+      interface->name);
+  time_ms_t now = gettime_ms();
+  ret->timeout = now + ret->destination->ifconfig.tick_ms * 3;
+  update_alarm(__WHENCE__, now + 5);
   return ret;
 }
 
@@ -1264,7 +1280,7 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
     if (neighbour->next_neighbour_update > now + 10)
       neighbour->next_neighbour_update = now + 10;
   }
-  link->link_timeout = now + (context->interface->destination->tick_ms *5);
+  link->link_timeout = now + (context->interface->destination->ifconfig.tick_ms *5);
 
   // force an update soon when we need to promptly ack packets
   if (neighbour->using_us && link->ack_counter <=0){
@@ -1411,13 +1427,14 @@ int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payl
       if (!out){
 	if (flags&FLAG_UNICAST)
 	  continue;
-	else
-	  out = create_out_link(neighbour, interface, NULL, 0);
+	out = create_out_link(neighbour, interface, NULL, 0);
+	if (!out)
+	  continue;
       }
       // start sending sequence numbers when our neighbour has acked a packet
       if (out->destination->sequence_number<0)
 	out->destination->sequence_number=0;
-      out->timeout=now + out->destination->tick_ms * 5;
+      out->timeout=now + out->destination->ifconfig.tick_ms * 5;
       destination = out->destination;
       
     }else if(transmitter == my_subscriber){
@@ -1450,7 +1467,7 @@ int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payl
 	changed = 1;
 	version++;
       }
-      neighbour->link_in_timeout = now + interface->destination->reachable_timeout_ms;
+      neighbour->link_in_timeout = now + interface->destination->ifconfig.reachable_timeout_ms;
 
       if (drop_rate != link->drop_rate || transmitter != link->transmitter)
 	version++;
@@ -1560,10 +1577,10 @@ int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now)
 
   // track the incoming link so we remember to send broadcasts
   struct link_in *nl = get_neighbour_link(neighbour, frame->interface, iface, 0);
-  nl->link_timeout = now + (link->destination->tick_ms *5);
+  nl->link_timeout = now + (link->destination->ifconfig.tick_ms *5);
 
   neighbour->legacy_protocol = 1;
-  neighbour->link_in_timeout = now + link->destination->reachable_timeout_ms;
+  neighbour->link_in_timeout = now + link->destination->ifconfig.reachable_timeout_ms;
 
   if (changed){
     route_version++;

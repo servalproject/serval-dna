@@ -49,7 +49,7 @@ int overlay_packet_init_header(int packet_version, int encapsulation,
   ob_append_byte(buff, packet_version);
   ob_append_byte(buff, encapsulation);
   
-  if (   context->interface->point_to_point 
+  if (   context->interface->ifconfig.point_to_point 
       && context->interface->other_device 
       && packet_version>=1
   )
@@ -262,7 +262,7 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
   IN();
   
   context->interface = interface;
-  if (interface->point_to_point && interface->other_device)
+  if (interface->ifconfig.point_to_point && interface->other_device)
     context->point_to_point_device = interface->other_device;
   
   context->sender_interface = 0;
@@ -302,7 +302,7 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
     if (context->packet_version > context->sender->max_packet_version)
       context->sender->max_packet_version=context->packet_version;
     
-    if (interface->point_to_point && interface->other_device!=context->sender){
+    if (interface->ifconfig.point_to_point && interface->other_device!=context->sender){
       INFOF("Established point to point link with %s on %s", alloca_tohex_sid_t(context->sender->sid), interface->name);
       context->point_to_point_device = context->interface->other_device = context->sender;
     }
@@ -374,7 +374,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
      the source having received the frame from elsewhere.
   */
 
-  if (config.debug.packetrx || interface->debug) {
+  if (config.debug.packetrx || interface->ifconfig.debug) {
     DEBUGF("Received on %s, len %d", interface->name, (int)len);
     DEBUG_packet_visualise("Received packet",packet,len);
   }

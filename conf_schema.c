@@ -1030,10 +1030,10 @@ int vld_network_interface(const struct cf_om_node *parent, struct config_network
       int nodei_drop=-1;
       if (nifp->drop_packets)
 	nodei_drop=cf_om_get_child(parent, "drop_packets", NULL);
-      if (nifp->drop_broadcasts)
-	nodei_drop=cf_om_get_child(parent, "drop_broadcasts", NULL);
-      if (nifp->drop_unicasts)
-	nodei_drop=cf_om_get_child(parent, "drop_unicasts", NULL);
+      if (nifp->broadcast.drop)
+	nodei_drop=cf_om_get_child(parent, "broadcast", NULL);
+      if (nifp->unicast.drop)
+	nodei_drop=cf_om_get_child(parent, "unicast", NULL);
       if (nodei_drop!=-1){
 	int nodei_socket_type=cf_om_get_child(parent, "socket_type", NULL);
 	cf_warn_incompatible(parent->nodv[nodei_socket_type], parent->nodv[nodei_drop]);

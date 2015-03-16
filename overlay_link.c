@@ -174,14 +174,10 @@ overlay_mdp_service_probe(struct internal_mdp_header *header, struct overlay_buf
 }
 
 int overlay_send_probe(struct subscriber *peer, struct network_destination *destination, int queue){
-  // never send unicast probes over a stream interface
-  if (destination->interface->socket_type==SOCK_STREAM)
-    return 0;
-  
   time_ms_t now = gettime_ms();
   // though unicast probes don't typically use the same network destination, 
   // we should still try to throttle when we can
-  if (destination->last_tx + destination->tick_ms > now)
+  if (destination->last_tx + destination->ifconfig.tick_ms > now)
     return -1;
   
   // TODO enhance overlay_send_frame to support pre-supplied network destinations

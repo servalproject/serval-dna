@@ -138,8 +138,7 @@ setup_StressRhizomeDirect() {
          set debug.rhizome off \
          set debug.httpd off \
          set debug.rhizome_tx off \
-         set debug.rhizome_rx off \
-         set mdp.iftype.wifi.tick_ms 500
+         set debug.rhizome_rx off
       local sidvar="SID$instance_name"
       for ((n = 0; n < $files_per_instance; ++n)); do
          create_file file-$i-$n 10000
