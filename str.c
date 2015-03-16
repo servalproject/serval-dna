@@ -893,6 +893,19 @@ int str_to_uint64_interval_ms(const char *str, int64_t *result, const char **aft
   return 1;
 }
 
+/* Compute the length of the string produced by sprintf(fmt, ...).
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t sprintf_len(const char *fmt, ...)
+{
+  strbuf b = strbuf_local(NULL, 0);
+  va_list ap;
+  va_start(ap, fmt);
+  strbuf_vsprintf(b, fmt, ap);
+  va_end(ap);
+  return strbuf_count(b);
+}
+
 /* Format a buffer of data as a printable representation, eg: "Abc\x0b\n\0", for display
    in log messages.
    @author Andrew Bettison <andrew@servalproject.com>
@@ -904,9 +917,7 @@ char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcByt
   return dstStr;
 }
 
-/* Compute the length of the string produced by toprint().  If dstStrLen == -1 then returns the
-   exact number of characters in the printable representation (excluding the terminating nul),
-   otherwise returns dstStrLen.
+/* Compute the length of the string produced by toprint().
    @author Andrew Bettison <andrew@servalproject.com>
  */
 size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2])
