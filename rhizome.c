@@ -93,6 +93,140 @@ int rhizome_fetch_delay_ms()
   return config.rhizome.fetch_delay_ms;
 }
 
+/* Create a manifest structure to accompany adding a file to Rhizome or appending to a journal.
+ * This function is used by all application-facing APIs (eg, CLI, RESTful HTTP).  It differs from
+ * the import operation in that if the caller does not supply a complete, signed manifest then this
+ * operation will create it using the fields supplied.  Also, the caller can supply a clear-text
+ * payload with the 'crypt=1' field to cause it to be stored encrypted.
+ *
+ * - 'm' must point to a manifest structure into which any supplied partial manifest has already
+ *   been parsed.  If the caller supplied no (partial) manifest at all, then the manifest 'm' will
+ *   be blank.
+ *
+ * - 'bsk' must point to a supplied bundle secret parameter, or NULL if none was supplied.
+ *
+ * - if 'appending' is true then the new bundle will be a journal bundle, otherwise it will be a
+ *   normal bundle.  Any existing manifest must be consistent; eg, an append will fail if a bundle
+ *   with the same Bundle Id already exists in the store and is not a journal.
+ *
+ * - 'author' must point to a supplied author parameter, or NULL if none was supplied.
+ *
+ * - 'file_path' can point to a supplied payload file name (eg, if the payload was read from a named
+ *   file), or can be NULL.  If not NULL, then the file's name will be used to fill in the 'name'
+ *   field of the manifest if it was not explicitly supplied in 'm' or in the existing manifest.
+ *
+ * If the add is successful, modifies '*mout' to point to the constructed Manifest, which might be
+ * 'm' or might be another manifest, and returns NULL.  It is the caller's responsibility to free
+ * '*mout'.
+ *
+ * If the add fails for any reason, returns a pointer to a nul-terminated text string that describes
+ * the reason, and does not alter '*mout'.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+const char * rhizome_bundle_add_file(int appending,
+				     rhizome_manifest *m,
+				     rhizome_manifest **mout,
+				     const rhizome_bk_t *bsk,
+				     const sid_t *author,
+				     const char *file_path
+				    )
+{
+  const char *reason = NULL;
+  rhizome_manifest *existing_manifest = NULL;
+  rhizome_manifest *new_manifest = NULL;
+  assert(m != NULL);
+  // Caller must not supply a malformed manifest (but an invalid one is okay because missing
+  // fields will be filled in, so we don't check validity here).
+  assert(!m->malformed);
+  if (m->has_id) {
+    if (config.debug.rhizome)
+      DEBUGF("Reading manifest from database: id=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+    if ((existing_manifest = rhizome_new_manifest()) == NULL) {
+      WHY(reason = "Manifest struct could not be allocated");
+      goto error;
+    }
+    enum rhizome_bundle_status status = rhizome_retrieve_manifest(&m->cryptoSignPublic, existing_manifest);
+    switch (status) {
+    case RHIZOME_BUNDLE_STATUS_NEW:
+      // No manifest with that bundle ID exists in the store, so we are building a bundle from
+      // scratch.
+      rhizome_manifest_free(existing_manifest);
+      existing_manifest = NULL;
+      break;
+    case RHIZOME_BUNDLE_STATUS_SAME:
+      // Found a manifest with the same bundle ID.  Overwrite it with the supplied manifest.
+      if (rhizome_manifest_overwrite(existing_manifest, m) == -1) {
+	WHY(reason = "Existing manifest could not be overwritten");
+	goto error;
+      }
+      new_manifest = existing_manifest;
+      existing_manifest = NULL;
+      break;
+    case RHIZOME_BUNDLE_STATUS_BUSY:
+      WHY(reason = "Existing manifest not retrieved due to Rhizome store locking");
+      goto error;
+    case RHIZOME_BUNDLE_STATUS_ERROR:
+      WHY(reason = "Error retrieving existing manifest from Rhizome store");
+      goto error;
+    case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+    case RHIZOME_BUNDLE_STATUS_OLD:
+    case RHIZOME_BUNDLE_STATUS_INVALID:
+    case RHIZOME_BUNDLE_STATUS_FAKE:
+    case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+    case RHIZOME_BUNDLE_STATUS_NO_ROOM:
+    case RHIZOME_BUNDLE_STATUS_READONLY:
+      FATALF("rhizome_retrieve_manifest() returned %s", rhizome_bundle_status_message(status));
+    }
+  }
+  // If no existing bundle has been identified, we are building a bundle from scratch.
+  if (!new_manifest) {
+    new_manifest = m;
+    // A new journal manifest needs these fields set so that the first append can succeed.
+    if (appending) {
+      rhizome_manifest_set_filesize(new_manifest, 0);
+      rhizome_manifest_set_tail(new_manifest, 0);
+    }
+  }
+  if (appending && !m->is_journal){
+    // TODO: return a special status code for this case
+    WHY(reason = "Cannot append to a non-journal");
+    goto error;
+  }
+  if (!appending && m->is_journal) {
+    // TODO: return a special status code for this case
+    WHY(reason = "Cannot add a journal bundle (use append instead)");
+    goto error;
+  }
+  if (bsk) {
+    if (new_manifest->has_id) {
+      if (!rhizome_apply_bundle_secret(new_manifest, bsk)) {
+	WHY(reason = "Supplied bundle secret does not match Bundle Id");
+	goto error;
+      }
+    } else {
+      if (rhizome_new_bundle_from_secret(new_manifest, bsk) == -1) {
+	WHY(reason = "Failed to create bundle from given secret");
+	goto error;
+      }
+    }
+  }
+  // TODO: one day there will be no default service, but for now if no service
+  // is specified, it defaults to 'file' (file sharing).
+  if (m->service == NULL)
+    rhizome_manifest_set_service(new_manifest, RHIZOME_SERVICE_FILE);
+  if ((reason = rhizome_fill_manifest(new_manifest, file_path, author ? author : NULL)) != NULL)
+    goto error;
+  *mout = new_manifest;
+  return NULL;
+error:
+  if (new_manifest && new_manifest != m && new_manifest != existing_manifest)
+    rhizome_manifest_free(new_manifest);
+  if (existing_manifest)
+    rhizome_manifest_free(existing_manifest);
+  return reason;
+}
+
 /* Import a bundle from a pair of files, one containing the manifest and the optional other
  * containing the payload.  The work is all done by rhizome_bundle_import() and
  * rhizome_store_manifest().

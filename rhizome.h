@@ -426,6 +426,7 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc);
 
 int rhizome_store_manifest(rhizome_manifest *m);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);
+const char * rhizome_bundle_add_file(int appending, rhizome_manifest *m, rhizome_manifest **mout, const rhizome_bk_t *bsk, const sid_t *author, const char *file_path);
 int rhizome_bundle_import_files(rhizome_manifest *m, rhizome_manifest **m_out, const char *manifest_path, const char *filepath);
 
 int rhizome_manifest_set_name_from_path(rhizome_manifest *m, const char *filepath);
