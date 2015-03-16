@@ -1602,16 +1602,24 @@ enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *wri
   if (advance_by > 0)
     rhizome_manifest_set_tail(m, m->tail + advance_by);
   enum rhizome_payload_status status = rhizome_open_write(write, NULL, new_filesize);
+  if (config.debug.rhizome)
+    DEBUGF("rhizome_open_write() returned %s", rhizome_payload_status_message(status));
   if (status == RHIZOME_PAYLOAD_STATUS_NEW && copy_length > 0) {
-    // note that we don't need to bother decrypting the existing journal payload
+    // we don't need to bother decrypting the existing journal payload
     enum rhizome_payload_status rstatus = rhizome_journal_pipe(write, &m->filehash, advance_by, copy_length);
+    if (config.debug.rhizome)
+      DEBUGF("rhizome_journal_pipe() returned %s", rhizome_payload_status_message(rstatus));
     if (rstatus != RHIZOME_PAYLOAD_STATUS_STORED)
       status = RHIZOME_PAYLOAD_STATUS_ERROR;
   }
-  if (status == RHIZOME_PAYLOAD_STATUS_NEW)
+  if (status == RHIZOME_PAYLOAD_STATUS_NEW) {
     status = rhizome_write_derive_key(m, write);
-  if (status != RHIZOME_PAYLOAD_STATUS_NEW)
+    if (config.debug.rhizome)
+      DEBUGF("rhizome_write_derive_key() returned %s", rhizome_payload_status_message(status));
+  }
+  if (status != RHIZOME_PAYLOAD_STATUS_NEW) {
     rhizome_fail_write(write);
+  }
   return status;
 }
 
