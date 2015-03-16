@@ -1476,9 +1476,14 @@ int rhizome_manifest_set_name_from_path(rhizome_manifest *m, const char *filepat
  *  - use the given author SID, or the 'sender' if present, as the author
  *  - create an ID if there is none, otherwise authenticate the existing one
  *  - if service is file, then use the payload file's basename for "name"
+ *
+ * Return NULL if successful, otherwise a pointer to a static text string describing the reason for
+ * the failure.
  */
-int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp)
+const char * rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp)
 {
+  const char *reason = NULL;
+
   /* Set version of manifest from current time if not already set. */
   if (m->version == 0)
     rhizome_manifest_set_version(m, gettime_ms());
@@ -1507,8 +1512,10 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
     }
     if (config.debug.rhizome)
       DEBUG("creating new bundle");
-    if (rhizome_manifest_createid(m) == -1)
-      return WHY("Could not bind manifest to an ID");
+    if (rhizome_manifest_createid(m) == -1) {
+      WHY(reason = "Could not bind manifest to an ID");
+      return reason;
+    }
     // fall through to set the BK field...
   case NEW_BUNDLE_ID:
     valid_haveSecret = 1;
@@ -1533,8 +1540,10 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
 
   /* Service field must already be set.
    */
-  if (m->service == NULL)
-    return WHYF("missing 'service'");
+  if (m->service == NULL) {
+    WHYF(reason = "Missing 'service' field");
+    return reason;
+  }
   if (config.debug.rhizome)
     DEBUGF("manifest service=%s", m->service);
 
@@ -1571,7 +1580,7 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
     rhizome_manifest_set_crypt(m, PAYLOAD_ENCRYPTED);
   }
 
-  return 0;
+  return NULL;
 }
 
 /* Work out the authorship status of the bundle without performing any cryptographic checks.

@@ -560,8 +560,9 @@ static int insert_mime_part_end(struct http_request *hr)
     }
     if (r->manifest->service == NULL)
       rhizome_manifest_set_service(r->manifest, RHIZOME_SERVICE_FILE);
-    if (rhizome_fill_manifest(r->manifest, NULL, r->u.insert.received_author ? &r->u.insert.author: NULL) == -1) {
-      WHY("rhizome_fill_manifest() failed");
+    const char *reason = rhizome_fill_manifest(r->manifest, NULL, r->u.insert.received_author ? &r->u.insert.author: NULL);
+    if (reason != NULL) {
+      http_request_simple_response(&r->http, 500, alloca_sprintf(-1, "Internal error: %s", reason));
       return 500;
     }
     assert(r->manifest != NULL);
