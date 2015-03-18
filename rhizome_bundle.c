@@ -156,6 +156,11 @@ void _rhizome_manifest_set_version(struct __sourceloc __whence, rhizome_manifest
   m->finalised = 0;
 }
 
+void _rhizome_manifest_del_version(struct __sourceloc __whence, rhizome_manifest *m)
+{
+  _rhizome_manifest_set_version(__whence, m, 0);
+}
+
 void _rhizome_manifest_set_filesize(struct __sourceloc __whence, rhizome_manifest *m, uint64_t size)
 {
   if (size == RHIZOME_SIZE_UNSET) {
@@ -166,6 +171,11 @@ void _rhizome_manifest_set_filesize(struct __sourceloc __whence, rhizome_manifes
   }
   m->filesize = size;
   m->finalised = 0;
+}
+
+void _rhizome_manifest_del_filesize(struct __sourceloc __whence, rhizome_manifest *m)
+{
+  _rhizome_manifest_set_filesize(__whence, m, RHIZOME_SIZE_UNSET);
 }
 
 /* Must always set file size before setting the file hash, to avoid assertion failures.
@@ -185,6 +195,11 @@ void _rhizome_manifest_set_filehash(struct __sourceloc __whence, rhizome_manifes
   m->finalised = 0;
 }
 
+void _rhizome_manifest_del_filehash(struct __sourceloc __whence, rhizome_manifest *m)
+{
+  _rhizome_manifest_set_filehash(__whence, m, NULL);
+}
+
 void _rhizome_manifest_set_tail(struct __sourceloc __whence, rhizome_manifest *m, uint64_t tail)
 {
   if (tail == RHIZOME_SIZE_UNSET) {
@@ -193,9 +208,9 @@ void _rhizome_manifest_set_tail(struct __sourceloc __whence, rhizome_manifest *m
   } else {
     const char *v = rhizome_manifest_set_ui64(m, "tail", tail);
     assert(v); // TODO: remove known manifest fields from vars[]
-    m->tail = tail;
     m->is_journal = 1;
   }
+  m->tail = tail;
   m->finalised = 0;
 }
 

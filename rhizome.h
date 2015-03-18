@@ -251,8 +251,11 @@ typedef struct rhizome_manifest
  */
 #define rhizome_manifest_set_id(m,v)            _rhizome_manifest_set_id(__WHENCE__,(m),(v))
 #define rhizome_manifest_set_version(m,v)       _rhizome_manifest_set_version(__WHENCE__,(m),(v))
+#define rhizome_manifest_del_version(m)         _rhizome_manifest_del_version(__WHENCE__,(m))
 #define rhizome_manifest_set_filesize(m,v)      _rhizome_manifest_set_filesize(__WHENCE__,(m),(v))
+#define rhizome_manifest_del_filesize(m)        _rhizome_manifest_del_filesize(__WHENCE__,(m))
 #define rhizome_manifest_set_filehash(m,v)      _rhizome_manifest_set_filehash(__WHENCE__,(m),(v))
+#define rhizome_manifest_del_filehash(m)        _rhizome_manifest_del_filehash(__WHENCE__,(m))
 #define rhizome_manifest_set_tail(m,v)          _rhizome_manifest_set_tail(__WHENCE__,(m),(v))
 #define rhizome_manifest_set_bundle_key(m,v)    _rhizome_manifest_set_bundle_key(__WHENCE__,(m),(v))
 #define rhizome_manifest_del_bundle_key(m)      _rhizome_manifest_del_bundle_key(__WHENCE__,(m))
@@ -274,8 +277,11 @@ typedef struct rhizome_manifest
 
 void _rhizome_manifest_set_id(struct __sourceloc, rhizome_manifest *, const rhizome_bid_t *);
 void _rhizome_manifest_set_version(struct __sourceloc, rhizome_manifest *, uint64_t);
+void _rhizome_manifest_del_version(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_filesize(struct __sourceloc, rhizome_manifest *, uint64_t);
+void _rhizome_manifest_del_filesize(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_filehash(struct __sourceloc, rhizome_manifest *, const rhizome_filehash_t *);
+void _rhizome_manifest_del_filehash(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_tail(struct __sourceloc, rhizome_manifest *, uint64_t);
 void _rhizome_manifest_set_bundle_key(struct __sourceloc, rhizome_manifest *, const rhizome_bk_t *);
 void _rhizome_manifest_del_bundle_key(struct __sourceloc, rhizome_manifest *);

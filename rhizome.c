@@ -99,15 +99,17 @@ int rhizome_fetch_delay_ms()
  * operation will create it using the fields supplied.  Also, the caller can supply a clear-text
  * payload with the 'crypt=1' field to cause it to be stored encrypted.
  *
+ * - if 'appending' is true then the new bundle will be a journal bundle, otherwise it will be a
+ *   normal bundle.  Any existing manifest must be consistent; eg, an append will fail if a bundle
+ *   with the same Bundle Id already exists in the store and is not a journal.
+ *
  * - 'm' must point to a manifest structure into which any supplied partial manifest has already
  *   been parsed.  If the caller supplied no (partial) manifest at all, then the manifest 'm' will
  *   be blank.
  *
- * - 'bsk' must point to a supplied bundle secret parameter, or NULL if none was supplied.
+ * - 'mout' must point to a manifest pointer which is updated to hold the constructed manifest.
  *
- * - if 'appending' is true then the new bundle will be a journal bundle, otherwise it will be a
- *   normal bundle.  Any existing manifest must be consistent; eg, an append will fail if a bundle
- *   with the same Bundle Id already exists in the store and is not a journal.
+ * - 'bsk' must point to a supplied bundle secret parameter, or NULL if none was supplied.
  *
  * - 'author' must point to a supplied author parameter, or NULL if none was supplied.
  *
@@ -155,7 +157,13 @@ const char * rhizome_bundle_add_file(int appending,
       existing_manifest = NULL;
       break;
     case RHIZOME_BUNDLE_STATUS_SAME:
-      // Found a manifest with the same bundle ID.  Overwrite it with the supplied manifest.
+      // Found a manifest with the same bundle ID.  Unset its 'version', 'filesize' and 'filehash'
+      // fields unless appending, then overwrite it with the supplied manifest.
+      if (!appending) {
+	rhizome_manifest_del_version(existing_manifest);
+	rhizome_manifest_del_filesize(existing_manifest);
+	rhizome_manifest_del_filehash(existing_manifest);
+      }
       if (rhizome_manifest_overwrite(existing_manifest, m) == -1) {
 	WHY(reason = "Existing manifest could not be overwritten");
 	goto error;
@@ -182,18 +190,21 @@ const char * rhizome_bundle_add_file(int appending,
   // If no existing bundle has been identified, we are building a bundle from scratch.
   if (!new_manifest) {
     new_manifest = m;
-    // A new journal manifest needs these fields set so that the first append can succeed.
+    // A new journal manifest needs the 'filesize' and 'tail' fields set so that the first append can
+    // succeed.
     if (appending) {
-      rhizome_manifest_set_filesize(new_manifest, 0);
-      rhizome_manifest_set_tail(new_manifest, 0);
+      if (new_manifest->filesize == RHIZOME_SIZE_UNSET)
+	rhizome_manifest_set_filesize(new_manifest, 0);
+      if (new_manifest->tail == RHIZOME_SIZE_UNSET)
+	rhizome_manifest_set_tail(new_manifest, 0);
     }
   }
-  if (appending && !m->is_journal){
+  if (appending && !new_manifest->is_journal){
     // TODO: return a special status code for this case
     WHY(reason = "Cannot append to a non-journal");
     goto error;
   }
-  if (!appending && m->is_journal) {
+  if (!appending && new_manifest->is_journal) {
     // TODO: return a special status code for this case
     WHY(reason = "Cannot add a journal bundle (use append instead)");
     goto error;

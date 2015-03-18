@@ -765,17 +765,29 @@ test_AddUpdateDiscoverAuthor() {
 
 doc_AddUpdateNoAuthor="Cannot add new payload to authorless manifest"
 setup_AddUpdateNoAuthor() {
-   setup_AddUpdateNewVersion
-   $SED -i -e '/^BK=/d' file1_2.manifest
+   setup_servald
+   setup_rhizome
+   executeOk_servald rhizome list
+   assert_rhizome_list
+   echo "A test file" >file1
+   echo "A test file, second version" >file1_2
+   # Add first file
+   executeOk_servald rhizome add file '' file1 file1.manifest
+   extract_stdout_secret file1_secret
+   assert_manifest_fields file1.manifest !BK
+   # Create second manifest
+   cp file1.manifest file1_2.manifest
+   strip_signatures file1_2.manifest
+   $SED -i -e '/^date=/d;/^filehash=/d;/^filesize=/d;/^version=/d' file1_2.manifest
+   tfw_cat -v file1_2.manifest
 }
 test_AddUpdateNoAuthor() {
-   tfw_cat -v file1_2.manifest
    execute $servald rhizome add file $SIDB1 file1_2 file1_2.manifest
    tfw_cat --stderr
    assertExitStatus '!=' 0
-   # Rhizome store contents have old payload, with the original author.
+   # Rhizome store contents still have old payload
    executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
+   assert_rhizome_list --fromhere=0 file1
 }
 
 doc_AddUpdateNoAuthorWithSecret="Add new payload to authorless manifest with bundle secret"
@@ -783,13 +795,12 @@ setup_AddUpdateNoAuthorWithSecret() {
    setup_AddUpdateNoAuthor
 }
 test_AddUpdateNoAuthorWithSecret() {
-   tfw_cat -v file1_2.manifest
    executeOk_servald rhizome add file $SIDB1 file1_2 file1_2.manifest "$file1_secret"
    tfw_cat --stderr
    # Rhizome store contents have new payload, but it has lost its author (no BK
    # field any more).
    executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=0 file1_2 --fromhere=1 --author=$SIDB1 file2
+   assert_rhizome_list --fromhere=0 file1_2
 }
 
 doc_AddUpdateAutoVersion="Add new payload to existing manifest with automatic version"
