@@ -1220,6 +1220,8 @@ test_RhizomeAppendJournalCreate() {
    assert [ "$BK" = "$H_BK" ]
    executeOk_servald rhizome list
    assert_rhizome_list file1
+   executeOk_servald rhizome extract file "$BID" file1x
+   assert --message="extracted payload is correct" diff file1 file1x
 }
 
 runTests "$@"

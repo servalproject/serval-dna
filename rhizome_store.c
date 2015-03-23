@@ -1603,19 +1603,36 @@ enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *wri
     rhizome_manifest_set_tail(m, m->tail + advance_by);
   enum rhizome_payload_status status = rhizome_open_write(write, NULL, new_filesize);
   if (config.debug.rhizome)
-    DEBUGF("rhizome_open_write() returned %s", rhizome_payload_status_message(status));
+    DEBUGF("rhizome_open_write() returned %d %s", status, rhizome_payload_status_message(status));
   if (status == RHIZOME_PAYLOAD_STATUS_NEW && copy_length > 0) {
     // we don't need to bother decrypting the existing journal payload
     enum rhizome_payload_status rstatus = rhizome_journal_pipe(write, &m->filehash, advance_by, copy_length);
     if (config.debug.rhizome)
-      DEBUGF("rhizome_journal_pipe() returned %s", rhizome_payload_status_message(rstatus));
-    if (rstatus != RHIZOME_PAYLOAD_STATUS_STORED)
+      DEBUGF("rhizome_journal_pipe() returned %d %s", rstatus, rhizome_payload_status_message(rstatus));
+    int rstatus_valid = 0;
+    switch (rstatus) {
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+      rstatus_valid = 1;
+      break;
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+    case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+    case RHIZOME_PAYLOAD_STATUS_EVICTED:
+      rstatus_valid = 1;
       status = RHIZOME_PAYLOAD_STATUS_ERROR;
+      break;
+    }
+    if (!rstatus_valid)
+      FATALF("rstatus = %d", rstatus);
   }
   if (status == RHIZOME_PAYLOAD_STATUS_NEW) {
     status = rhizome_write_derive_key(m, write);
     if (config.debug.rhizome)
-      DEBUGF("rhizome_write_derive_key() returned %s", rhizome_payload_status_message(status));
+      DEBUGF("rhizome_write_derive_key() returned %d %s", status, rhizome_payload_status_message(status));
   }
   if (status != RHIZOME_PAYLOAD_STATUS_NEW) {
     rhizome_fail_write(write);
