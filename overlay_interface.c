@@ -398,6 +398,26 @@ static int overlay_interface_init_any(int port)
   return 0;
 }
 
+static void calc_next_tick(struct overlay_interface *interface)
+{
+  if (!interface->destination->ifconfig.tick_ms){
+    interface->alarm.deadline=interface->alarm.alarm=TIME_MS_NEVER_WILL;
+    return;
+  }
+  time_ms_t interval = interface->destination->ifconfig.tick_ms;
+  // only tick every 5s if we have no neighbours here
+  if (interval < 5000 && !link_interface_has_neighbours(interface))
+    interval = 5000;
+  
+  time_ms_t next_tick = interface->destination->last_tx+interval;
+  time_ms_t next_allowed = limit_next_allowed(&interface->destination->transfer_limit);
+  if (next_tick < next_allowed)
+    next_tick = next_allowed;
+  
+  interface->alarm.alarm = next_tick;
+  interface->alarm.deadline=interface->alarm.alarm+interface->destination->ifconfig.tick_ms/2;
+}
+
 static int
 overlay_interface_init_socket(overlay_interface *interface)
 {
@@ -472,6 +492,7 @@ int overlay_destination_configure(struct network_destination *dest, const struct
     dest->ifconfig.tick_ms=0;
   }else if (!dest->ifconfig.send){
     INFOF("Destination is not sending any traffic!");
+    dest->ifconfig.tick_ms=0;
   }else if (dest->ifconfig.tick_ms==0)
     INFOF("Destination is running tickless");
   
@@ -481,8 +502,6 @@ int overlay_destination_configure(struct network_destination *dest, const struct
   if (dest->ifconfig.reachable_timeout_ms<0)
     dest->ifconfig.reachable_timeout_ms = tick_ms>0 ? tick_ms * 5 : 2500;
   
-  if (dest->ifconfig.mtu < 400)
-    dest->ifconfig.encapsulation=ENCAP_SINGLE;
     
   limit_init(&dest->transfer_limit, dest->ifconfig.packet_interval);
   
@@ -497,7 +516,12 @@ int overlay_interface_configure(struct overlay_interface *interface, const struc
   
   if (ifconfig->socket_type==SOCK_STREAM)
     interface->ifconfig.unicast.send=0;
-    
+  
+  // schedule the first tick asap
+  unschedule(&interface->alarm);
+  calc_next_tick(interface);
+  schedule(&interface->alarm);
+  
   return 0;
 }
 
@@ -534,9 +558,6 @@ overlay_interface_init(const char *name, struct socket_address *addr,
   set_destination_ref(&interface->destination, NULL);
   interface->destination = new_destination(interface);
   
-  if (overlay_interface_configure(interface, ifconfig)==-1)
-    return -1;
-  
   interface->alarm.poll.fd=0;
   interface->tx_count=0;
   interface->recv_count=0;
@@ -548,6 +569,9 @@ overlay_interface_init(const char *name, struct socket_address *addr,
   interface->alarm.function = overlay_interface_poll;
   interface_poll_stats.name="overlay_interface_poll";
   interface->alarm.stats=&interface_poll_stats;
+  
+  if (overlay_interface_configure(interface, ifconfig)==-1)
+    return -1;
   
   switch(ifconfig->socket_type){
     case SOCK_DGRAM:
@@ -603,10 +627,6 @@ overlay_interface_init(const char *name, struct socket_address *addr,
     }
   }
   
-  // schedule the first tick asap
-  interface->alarm.alarm=gettime_ms();
-  interface->alarm.deadline=interface->alarm.alarm;
-  schedule(&interface->alarm);
   interface->state=INTERFACE_STATE_UP;
   monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%s:UP\n", interface->name);
   INFOF("Interface %s addr %s, is up",interface->name, alloca_socket_address(addr));
@@ -801,13 +821,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
       if (now >= interface->destination->last_tx+interface->destination->ifconfig.tick_ms)
         overlay_send_tick_packet(interface->destination);
       
-      time_ms_t interval = interface->destination->ifconfig.tick_ms;
-      // only tick every 5s if we have no neighbours here
-      if (interval < 5000 && !link_interface_has_neighbours(interface))
-	interval = 5000;
-      
-      alarm->alarm=interface->destination->last_tx+interval;
-      alarm->deadline=alarm->alarm+interface->destination->ifconfig.tick_ms/2;
+      calc_next_tick(interface);
     }
     
     switch(interface->ifconfig.socket_type){

@@ -69,14 +69,28 @@ public class Base64 {
 
 	public static byte[] decode(String value)
 	{
-		int len = value.length()/4 * 3;
+		int strlen = value.length();
 		if (value.endsWith("=="))
-			len -=2;
-		else if(value.endsWith("="))
-			len --;
+			strlen-=2;
+		else if (value.endsWith("="))
+			strlen--;
+
+		int len = (strlen+3)/4 * 3;
+		switch(strlen%4){
+			case 0:
+				break;
+			case 1:
+			case 2:
+				len -=2;
+				break;
+			case 3:
+				len --;
+				break;
+		}
+
 		byte ret[] = new byte[len];
 		int pos=0;
-		for (int i=0;i<value.length();i++){
+		for (int i=0;i<strlen;i++){
 			if (value.charAt(i)=='=')
 				break;
 			int val = charSet.indexOf(value.charAt(i));
