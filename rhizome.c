@@ -216,10 +216,7 @@ const char * rhizome_bundle_add_file(int appending,
 	goto error;
       }
     } else {
-      if (rhizome_new_bundle_from_secret(new_manifest, bsk) == -1) {
-	WHY(reason = "Failed to create bundle from given secret");
-	goto error;
-      }
+      rhizome_new_bundle_from_secret(new_manifest, bsk);
     }
   }
   // TODO: one day there will be no default service, but for now if no service
