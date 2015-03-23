@@ -117,24 +117,44 @@ int rhizome_fetch_delay_ms()
  *   file), or can be NULL.  If not NULL, then the file's name will be used to fill in the 'name'
  *   field of the manifest if it was not explicitly supplied in 'm' or in the existing manifest.
  *
+ * - 'nassignments' and 'assignments' describe an array of field assignments that override the
+ *   fields supplied in 'm' and also the fields in any existing manifest with the same Bundle Id.
+ *
+ * - 'reason' may either be NULL or points to a strbuf to which descriptive text is appended if the
+ *   manifest creation fails.
+ *
  * If the add is successful, modifies '*mout' to point to the constructed Manifest, which might be
- * 'm' or might be another manifest, and returns NULL.  It is the caller's responsibility to free
+ * 'm' or might be another manifest, and returns 0.  It is the caller's responsibility to free
  * '*mout'.
  *
- * If the add fails for any reason, returns a pointer to a nul-terminated text string that describes
- * the reason, and does not alter '*mout'.
+ * If the add fails because of invalid field settings that violate Rhizome semantics (eg, a missing
+ * mandatory field, a malformed field name or value), then if 'reason' is not NULL, appends a text
+ * string to the 'reason' strbuf that describes the cause of the failure, does not alter '*mout',
+ * and returns 1.
+ *
+ * If the add fails because of a recoverable error (eg, database locking) then if 'reason' is not
+ * NULL, appends a text string to the 'reason' strbuf that describes the cause of the failure, does
+ * not alter '*mout', and returns 2.
+ *
+ * If the add fails because of an unrecoverable error (eg, out of memory, i/o failure)
+ * then if 'reason' is not NULL, appends a text string to the 'reason' strbuf that describes the
+ * cause of the failure, does not alter '*mout', and returns -1.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-const char * rhizome_bundle_add_file(int appending,
-				     rhizome_manifest *m,
-				     rhizome_manifest **mout,
-				     const rhizome_bk_t *bsk,
-				     const sid_t *author,
-				     const char *file_path
-				    )
+enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
+                                                       rhizome_manifest *m,
+                                                       rhizome_manifest **mout,
+                                                       const rhizome_bk_t *bsk,
+                                                       const sid_t *author,
+                                                       const char *file_path,
+                                                       unsigned nassignments,
+                                                       const struct rhizome_manifest_field_assignment *assignments,
+                                                       strbuf reason
+                                                      )
 {
-  const char *reason = NULL;
+  const char *cause = NULL;
+  enum rhizome_add_file_result result = RHIZOME_ADD_FILE_ERROR;
   rhizome_manifest *existing_manifest = NULL;
   rhizome_manifest *new_manifest = NULL;
   assert(m != NULL);
@@ -145,7 +165,7 @@ const char * rhizome_bundle_add_file(int appending,
     if (config.debug.rhizome)
       DEBUGF("Reading manifest from database: id=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
     if ((existing_manifest = rhizome_new_manifest()) == NULL) {
-      WHY(reason = "Manifest struct could not be allocated");
+      WHY(cause = "Manifest struct could not be allocated");
       goto error;
     }
     enum rhizome_bundle_status status = rhizome_retrieve_manifest(&m->cryptoSignPublic, existing_manifest);
@@ -160,22 +180,23 @@ const char * rhizome_bundle_add_file(int appending,
       // Found a manifest with the same bundle ID.  Unset its 'version', 'filesize' and 'filehash'
       // fields unless appending, then overwrite it with the supplied manifest.
       if (!appending) {
-	rhizome_manifest_del_version(existing_manifest);
-	rhizome_manifest_del_filesize(existing_manifest);
-	rhizome_manifest_del_filehash(existing_manifest);
+        rhizome_manifest_del_version(existing_manifest);
+        rhizome_manifest_del_filesize(existing_manifest);
+        rhizome_manifest_del_filehash(existing_manifest);
       }
       if (rhizome_manifest_overwrite(existing_manifest, m) == -1) {
-	WHY(reason = "Existing manifest could not be overwritten");
-	goto error;
+        WHY(cause = "Existing manifest could not be overwritten");
+        goto error;
       }
       new_manifest = existing_manifest;
       existing_manifest = NULL;
       break;
     case RHIZOME_BUNDLE_STATUS_BUSY:
-      WHY(reason = "Existing manifest not retrieved due to Rhizome store locking");
+      WARN(cause = "Existing manifest not retrieved due to Rhizome store locking");
+      result = RHIZOME_ADD_FILE_BUSY;
       goto error;
     case RHIZOME_BUNDLE_STATUS_ERROR:
-      WHY(reason = "Error retrieving existing manifest from Rhizome store");
+      WHY(cause = "Error retrieving existing manifest from Rhizome store");
       goto error;
     case RHIZOME_BUNDLE_STATUS_DUPLICATE:
     case RHIZOME_BUNDLE_STATUS_OLD:
@@ -194,26 +215,87 @@ const char * rhizome_bundle_add_file(int appending,
     // succeed.
     if (appending) {
       if (new_manifest->filesize == RHIZOME_SIZE_UNSET)
-	rhizome_manifest_set_filesize(new_manifest, 0);
+        rhizome_manifest_set_filesize(new_manifest, 0);
       if (new_manifest->tail == RHIZOME_SIZE_UNSET)
-	rhizome_manifest_set_tail(new_manifest, 0);
+        rhizome_manifest_set_tail(new_manifest, 0);
     }
   }
-  if (appending && !new_manifest->is_journal){
-    // TODO: return a special status code for this case
-    WHY(reason = "Cannot append to a non-journal");
+  // Apply the field assignments, overriding the existing manifest fields.
+  if (nassignments) {
+    unsigned i;
+    for (i = 0; i != nassignments; ++i) {
+      const struct rhizome_manifest_field_assignment *asg = &assignments[i];
+      rhizome_manifest_remove_field(new_manifest, asg->label, asg->labellen);
+      if (asg->value) {
+        const char *label = alloca_strndup(asg->label, asg->labellen);
+        enum rhizome_manifest_parse_status status = rhizome_manifest_parse_field(new_manifest, asg->label, asg->labellen, asg->value, asg->valuelen);
+        int status_ok = 0;
+        switch (status) {
+          case RHIZOME_MANIFEST_ERROR:
+            WHYF("Fatal error updating manifest field");
+            if (reason)
+              strbuf_sprintf(reason, "Fatal error updating manifest field: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
+            goto error;
+          case RHIZOME_MANIFEST_OK:
+            status_ok = 1;
+            break;
+          case RHIZOME_MANIFEST_SYNTAX_ERROR:
+            if (config.debug.rhizome)
+              DEBUGF("Manifest syntax error: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
+            if (reason)
+              strbuf_sprintf(reason, "Manifest syntax error: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
+            result = RHIZOME_ADD_FILE_INVALID;
+            goto error;
+          case RHIZOME_MANIFEST_DUPLICATE_FIELD:
+            // We already deleted the field, so if this happens, its a nasty bug
+            FATALF("Duplicate field should not occur: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
+          case RHIZOME_MANIFEST_INVALID:
+            if (config.debug.rhizome)
+              DEBUGF("Manifest invalid field: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
+            if (reason)
+              strbuf_sprintf(reason, "Manifest invalid field: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
+            result = RHIZOME_ADD_FILE_INVALID;
+            goto error;
+          case RHIZOME_MANIFEST_MALFORMED:
+            if (config.debug.rhizome)
+              DEBUGF("Manifest malformed field: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
+            if (reason)
+              strbuf_sprintf(reason, "Manifest malformed field: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
+            result = RHIZOME_ADD_FILE_INVALID;
+            goto error;
+          case RHIZOME_MANIFEST_OVERFLOW:
+            if (config.debug.rhizome)
+              DEBUGF("Too many fields in manifest at: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
+            if (reason)
+              strbuf_sprintf(reason, "Too many fields in manifest at: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
+            result = RHIZOME_ADD_FILE_INVALID;
+            goto error;
+        }
+        if (!status_ok)
+          FATALF("status = %d", status);
+      }
+    }
+  }
+  if (appending && !new_manifest->is_journal) {
+    cause = "Cannot append to a non-journal";
+    if (config.debug.rhizome)
+      DEBUG(cause);
+    result = RHIZOME_ADD_FILE_REQUIRES_JOURNAL;
     goto error;
   }
   if (!appending && new_manifest->is_journal) {
-    // TODO: return a special status code for this case
-    WHY(reason = "Cannot add a journal bundle (use append instead)");
+    cause = "Cannot add a journal bundle (use append instead)";
+    if (config.debug.rhizome)
+      DEBUG(cause);
+    result = RHIZOME_ADD_FILE_INVALID_FOR_JOURNAL;
     goto error;
   }
   if (bsk) {
     if (new_manifest->has_id) {
       if (!rhizome_apply_bundle_secret(new_manifest, bsk)) {
-	WHY(reason = "Supplied bundle secret does not match Bundle Id");
-	goto error;
+        WHY(cause = "Supplied bundle secret does not match Bundle Id");
+        result = RHIZOME_ADD_FILE_WRONG_SECRET;
+        goto error;
       }
     } else {
       rhizome_new_bundle_from_secret(new_manifest, bsk);
@@ -221,18 +303,23 @@ const char * rhizome_bundle_add_file(int appending,
   }
   // TODO: one day there will be no default service, but for now if no service
   // is specified, it defaults to 'file' (file sharing).
-  if (m->service == NULL)
+  if (new_manifest->service == NULL) {
+    WARNF("Manifest 'service' field not supplied - setting to '%s'", RHIZOME_SERVICE_FILE);
     rhizome_manifest_set_service(new_manifest, RHIZOME_SERVICE_FILE);
-  if ((reason = rhizome_fill_manifest(new_manifest, file_path, author ? author : NULL)) != NULL)
+  }
+  if ((cause = rhizome_fill_manifest(new_manifest, file_path, author ? author : NULL)) != NULL)
     goto error;
   *mout = new_manifest;
-  return NULL;
+  return RHIZOME_ADD_FILE_OK;
 error:
+  assert(result != RHIZOME_ADD_FILE_OK);
+  if (cause && reason)
+    strbuf_puts(reason, cause);
   if (new_manifest && new_manifest != m && new_manifest != existing_manifest)
     rhizome_manifest_free(new_manifest);
   if (existing_manifest)
     rhizome_manifest_free(existing_manifest);
-  return reason;
+  return result;
 }
 
 /* Import a bundle from a pair of files, one containing the manifest and the optional other

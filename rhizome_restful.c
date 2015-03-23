@@ -357,7 +357,7 @@ int restful_rhizome_insert(httpd_request *r, const char *remainder)
 
 int restful_rhizome_append(httpd_request *r, const char *remainder)
 {
-  r->u.insert.is_append = 1;
+  r->u.insert.appending = 1;
   return restful_rhizome_insert(r, remainder);
 }
 
@@ -377,32 +377,67 @@ static int insert_make_manifest(httpd_request *r)
 {
   if (!r->u.insert.received_manifest)
     return http_response_form_part(r, "Missing", PART_MANIFEST, NULL, 0);
-  if ((r->manifest = rhizome_new_manifest())) {
-    if (r->u.insert.manifest.length == 0)
-      return 0;
-    assert(r->u.insert.manifest.length <= sizeof r->manifest->manifestdata);
-    memcpy(r->manifest->manifestdata, r->u.insert.manifest.buffer, r->u.insert.manifest.length);
-    r->manifest->manifest_all_bytes = r->u.insert.manifest.length;
-    int n = rhizome_manifest_parse(r->manifest);
-    switch (n) {
-      case 0:
-	if (!r->manifest->malformed)
-	  return 0;
-	// fall through
-      case 1:
-	rhizome_manifest_free(r->manifest);
-	r->manifest = NULL;
-	r->bundle_status = RHIZOME_BUNDLE_STATUS_INVALID;
-	return http_request_rhizome_response(r, 403, "Malformed manifest", NULL);
-      default:
-	WHYF("rhizome_manifest_parse() returned %d", n);
-	// fall through
-      case -1:
-	r->bundle_status = RHIZOME_BUNDLE_STATUS_ERROR;
+  if ((r->manifest = rhizome_new_manifest()) == NULL)
+    return http_request_rhizome_response(r, 500, "Internal Error: Out of manifests", NULL);
+  assert(r->u.insert.manifest.length <= sizeof r->manifest->manifestdata);
+  memcpy(r->manifest->manifestdata, r->u.insert.manifest.buffer, r->u.insert.manifest.length);
+  r->manifest->manifest_all_bytes = r->u.insert.manifest.length;
+  int n = rhizome_manifest_parse(r->manifest);
+  switch (n) {
+    case 0:
+      if (!r->manifest->malformed)
 	break;
-    }
+      // fall through
+    case 1:
+      rhizome_manifest_free(r->manifest);
+      r->manifest = NULL;
+      r->bundle_status = RHIZOME_BUNDLE_STATUS_INVALID;
+      return http_request_rhizome_response(r, 403, "Malformed manifest", NULL);
+    default:
+      WHYF("rhizome_manifest_parse() returned %d", n);
+      // fall through
+    case -1:
+      r->bundle_status = RHIZOME_BUNDLE_STATUS_ERROR;
+      break;
   }
-  return 500;
+  rhizome_manifest *mout = NULL;
+  char message[150];
+  enum rhizome_add_file_result result = rhizome_manifest_add_file(r->u.insert.appending, r->manifest, &mout,
+								  r->u.insert.received_secret ? &r->u.insert.bundle_secret : NULL,
+								  r->u.insert.received_author ? &r->u.insert.author: NULL,
+								  NULL, 0, NULL, strbuf_local(message, sizeof message));
+  int result_valid = 0;
+  switch (result) {
+  case RHIZOME_ADD_FILE_ERROR:
+    return http_request_rhizome_response(r, 500, message, NULL);
+  case RHIZOME_ADD_FILE_OK:
+    result_valid = 1;
+    break;
+  case RHIZOME_ADD_FILE_INVALID:
+    r->bundle_status = RHIZOME_BUNDLE_STATUS_INVALID; // TODO separate enum for CLI return codes
+    return http_request_rhizome_response(r, 403, message, NULL);
+  case RHIZOME_ADD_FILE_BUSY:
+    r->bundle_status = RHIZOME_BUNDLE_STATUS_BUSY; // TODO separate enum for CLI return codes
+    return http_request_rhizome_response(r, 403, message, NULL);
+  case RHIZOME_ADD_FILE_REQUIRES_JOURNAL:
+    r->bundle_status = RHIZOME_BUNDLE_STATUS_INVALID; // TODO separate enum for CLI return codes
+    return http_request_rhizome_response(r, 403, message, NULL);
+  case RHIZOME_ADD_FILE_INVALID_FOR_JOURNAL:
+    r->bundle_status = RHIZOME_BUNDLE_STATUS_INVALID; // TODO separate enum for CLI return codes
+    return http_request_rhizome_response(r, 403, message, NULL);
+  case RHIZOME_ADD_FILE_WRONG_SECRET:
+    r->bundle_status = RHIZOME_BUNDLE_STATUS_READONLY; // TODO separate enum for CLI return codes
+    return http_request_rhizome_response(r, 403, message, NULL);
+  }
+  if (!result_valid)
+    FATALF("result = %d", result);
+  assert(mout != NULL);
+  if (mout != r->manifest) {
+    rhizome_manifest_free(r->manifest);
+    r->manifest = mout;
+  }
+  assert(r->manifest != NULL);
+  return 0;
 }
 
 static int insert_mime_part_header(struct http_request *hr, const struct mime_part_headers *h)
@@ -452,10 +487,10 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     )
       rhizome_manifest_set_name_from_path(r->manifest, h->content_disposition.filename);
     // Start writing the payload content into the Rhizome store.
-    if (r->u.insert.is_append) {
+    if (r->u.insert.appending) {
       r->payload_status = rhizome_write_open_journal(&r->u.insert.write, r->manifest, 0, RHIZOME_SIZE_UNSET);
       if (r->payload_status == RHIZOME_PAYLOAD_STATUS_ERROR) {
-	WHYF("rhizome_write_open_journal() returned %s", rhizome_payload_status_message(r->payload_status));
+	WHYF("rhizome_write_open_journal() returned %d %s", r->payload_status, rhizome_payload_status_message(r->payload_status));
 	return 500;
       }
     } else {
@@ -463,7 +498,7 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
       // not contain a 'filesize' field.
       r->payload_status = rhizome_write_open_manifest(&r->u.insert.write, r->manifest);
       if (r->payload_status == RHIZOME_PAYLOAD_STATUS_ERROR) {
-	WHYF("rhizome_write_open_manifest() returned %s", rhizome_payload_status_message(r->payload_status));
+	WHYF("rhizome_write_open_manifest() returned %d %s", r->payload_status, rhizome_payload_status_message(r->payload_status));
 	return 500;
       }
     }
@@ -545,33 +580,6 @@ static int insert_mime_part_end(struct http_request *hr)
     int result = insert_make_manifest(r);
     if (result)
       return result;
-    if (r->u.insert.received_secret) {
-      if (r->manifest->has_id) {
-	if (!rhizome_apply_bundle_secret(r->manifest, &r->u.insert.bundle_secret)) {
-	  http_request_simple_response(&r->http, 403, "Secret does not match Bundle Id");
-	  return 403;
-	}
-      } else {
-	if (rhizome_new_bundle_from_secret(r->manifest, &r->u.insert.bundle_secret) == -1) {
-	  http_request_simple_response(&r->http, 500, "Internal error: Failed to create bundle from secret");
-	  return 500;
-	}
-      }
-    }
-    if (r->manifest->service == NULL)
-      rhizome_manifest_set_service(r->manifest, RHIZOME_SERVICE_FILE);
-    const char *reason = rhizome_fill_manifest(r->manifest, NULL, r->u.insert.received_author ? &r->u.insert.author: NULL);
-    if (reason != NULL) {
-      http_request_simple_response(&r->http, 500, alloca_sprintf(-1, "Internal error: %s", reason));
-      return 500;
-    }
-    assert(r->manifest != NULL);
-    if (r->u.insert.is_append) {
-      if (r->manifest->filesize == RHIZOME_SIZE_UNSET)
-	rhizome_manifest_set_filesize(r->manifest, 0);
-      if (!r->manifest->is_journal)
-	rhizome_manifest_set_tail(r->manifest, 0);
-    }
   }
   else if (r->u.insert.current_part == PART_PAYLOAD) {
     r->u.insert.received_payload = 1;
@@ -604,10 +612,6 @@ static int restful_rhizome_insert_end(struct http_request *hr)
     return http_response_form_part(r, "Missing", PART_PAYLOAD, NULL, 0);
   // Fill in the missing manifest fields and ensure payload and manifest are consistent.
   assert(r->manifest != NULL);
-  if (!r->u.insert.is_append && r->manifest->is_journal)
-    return http_request_rhizome_response(r, 403, "Insert not supported for journals", NULL);
-  else if (r->u.insert.is_append && !r->manifest->is_journal)
-    return http_request_rhizome_response(r, 403, "Append not supported for non-journals", NULL);
   assert(r->u.insert.write.file_length != RHIZOME_SIZE_UNSET);
   int status_valid = 0;
   if (config.debug.rhizome)
@@ -654,8 +658,9 @@ static int restful_rhizome_insert_end(struct http_request *hr)
     return http_request_rhizome_response(r, 500, NULL, NULL);
   }
   // Finalise the manifest and add it to the store.
-  if (r->u.insert.is_append)
+  if (r->u.insert.appending)
     rhizome_manifest_set_version(r->manifest, r->manifest->filesize);
+
   if (r->manifest->filesize) {
     if (!r->manifest->has_filehash)
       rhizome_manifest_set_filehash(r->manifest, &r->u.insert.write.id);

@@ -1014,8 +1014,8 @@ setup_JournalAddCreate() {
 }
 test_JournalAddCreate() {
    # TODO: servald should return a status code reserved for this case, instead
-   # of the generic 255 error
-   execute --exit-status=255 $servald rhizome add file $SIDB1 file1 file1.manifest
+   # of the 4 error (which means "invalid manifest")
+   execute --exit-status=4 $servald rhizome add file $SIDB1 file1 file1.manifest
    tfw_cat --stdout --stderr
 }
 
@@ -1036,8 +1036,8 @@ setup_JournalAddUpdate() {
 }
 test_JournalAddUpdate() {
    # TODO: servald should return a status code reserved for this case, instead
-   # of the generic 255 error
-   execute --exit-status=255 $servald rhizome add file $SIDB1 file1x file1x.manifest
+   # of the 4 error (which means "invalid manifest")
+   execute --exit-status=4 $servald rhizome add file $SIDB1 file1x file1x.manifest
    tfw_cat --stdout --stderr
 }
 
@@ -1054,8 +1054,8 @@ setup_AppendFile() {
 }
 test_AppendFile() {
    # TODO: servald should return a status code reserved for this case, instead
-   # of the generic 255 error
-   execute --exit-status=255 $servald rhizome journal append $SIDB1 $BID file2
+   # of the 4 error (which means "invalid manifest")
+   execute --exit-status=4 $servald rhizome journal append $SIDB1 $BID file2
    tfw_cat --stdout --stderr
 }
 

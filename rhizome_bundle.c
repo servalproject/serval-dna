@@ -1496,7 +1496,7 @@ int rhizome_manifest_set_name_from_path(rhizome_manifest *m, const char *filepat
  *  - if service is file, then use the payload file's basename for "name"
  *
  * Return NULL if successful, otherwise a pointer to a static text string describing the reason for
- * the failure.
+ * the failure (always an internal/unrecoverable error).
  */
 const char * rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp)
 {
@@ -1563,7 +1563,7 @@ const char * rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, co
     return reason;
   }
   if (config.debug.rhizome)
-    DEBUGF("manifest service=%s", m->service);
+    DEBUGF("manifest contains service=%s", m->service);
 
   /* Fill in 'date' field to current time unless already set.
    */

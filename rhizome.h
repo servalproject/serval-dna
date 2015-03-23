@@ -301,6 +301,10 @@ void _rhizome_manifest_set_inserttime(struct __sourceloc, rhizome_manifest *, ti
 void _rhizome_manifest_set_author(struct __sourceloc, rhizome_manifest *, const sid_t *);
 void _rhizome_manifest_del_author(struct __sourceloc, rhizome_manifest *);
 
+#define rhizome_manifest_overwrite(dstm,srcm)   _rhizome_manifest_overwrite(__WHENCE__,(dstm),(srcm))
+
+int _rhizome_manifest_overwrite(struct __sourceloc, rhizome_manifest *m, const rhizome_manifest *srcm);
+
 enum rhizome_manifest_parse_status {
     RHIZOME_MANIFEST_ERROR = -1,          // unrecoverable error while constructing manifest
     RHIZOME_MANIFEST_OK = 0,              // field parsed ok; manifest updated
@@ -311,7 +315,21 @@ enum rhizome_manifest_parse_status {
     RHIZOME_MANIFEST_OVERFLOW = 5,        // maximum field count exceeded
 };
 
-int rhizome_manifest_overwrite(rhizome_manifest *m, const rhizome_manifest *srcm);
+/* This structure represents a manifest field assignment as received by the API
+ * operations "add file" or "journal append" or any other operation that takes an
+ * existing manifest and modifies it to produce a new one.
+ *
+ * The 'label' and 'value' strings are pointer-length instead of NUL terminated,
+ * to allow them to refer directly to fragments of an existing, larger text
+ * without requiring the caller to allocate new strings to hold them.
+ */
+struct rhizome_manifest_field_assignment {
+    const char *label;
+    size_t labellen;
+    const char *value;
+    size_t valuelen;
+};
+
 int rhizome_manifest_field_label_is_valid(const char *field_label, size_t field_label_len);
 int rhizome_manifest_field_value_is_valid(const char *field_value, size_t field_value_len);
 enum rhizome_manifest_parse_status
@@ -432,7 +450,26 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc);
 
 int rhizome_store_manifest(rhizome_manifest *m);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);
-const char * rhizome_bundle_add_file(int appending, rhizome_manifest *m, rhizome_manifest **mout, const rhizome_bk_t *bsk, const sid_t *author, const char *file_path);
+
+enum rhizome_add_file_result {
+    RHIZOME_ADD_FILE_ERROR = -1,
+    RHIZOME_ADD_FILE_OK = 0, // manifest created successfully
+    RHIZOME_ADD_FILE_INVALID, // manifest not created due to invalid input
+    RHIZOME_ADD_FILE_BUSY, // manifest not created because database busy
+    RHIZOME_ADD_FILE_REQUIRES_JOURNAL, // operation is only valid for a journal
+    RHIZOME_ADD_FILE_INVALID_FOR_JOURNAL, // operation is not valid for a journal
+    RHIZOME_ADD_FILE_WRONG_SECRET, // incorrect bundle secret supplied
+};
+enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
+			      rhizome_manifest *m,
+			      rhizome_manifest **mout,
+			      const rhizome_bk_t *bsk,
+			      const sid_t *author,
+			      const char *file_path,
+			      unsigned nassignments,
+			      const struct rhizome_manifest_field_assignment *assignments,
+			      strbuf reason
+			     );
 int rhizome_bundle_import_files(rhizome_manifest *m, rhizome_manifest **m_out, const char *manifest_path, const char *filepath);
 
 int rhizome_manifest_set_name_from_path(rhizome_manifest *m, const char *filepath);

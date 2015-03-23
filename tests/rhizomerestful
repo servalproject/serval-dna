@@ -992,7 +992,7 @@ test_RhizomeInsertJournal() {
    assertExitStatus == 0
    assertStdoutIs 403
    assertJq http.body 'contains({"http_status_code": 403})'
-   assertJqGrep --ignore-case http.body '.http_status_message' 'not supported.*journal'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'cannot add.*journal'
    executeOk_servald rhizome list
    assert_rhizome_list
 }

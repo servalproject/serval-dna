@@ -105,7 +105,7 @@ typedef struct httpd_request
      */
     struct {
       // If this is really a (journal) append request
-      bool_t is_append;
+      bool_t appending;
       // Which part is currently being received
       const char *current_part;
       // Which parts have already been received

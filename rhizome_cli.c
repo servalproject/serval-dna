@@ -142,18 +142,12 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
     return WHYF("invalid BSK: \"%s\"", bsktext);
   
   unsigned nfields = (parsed->varargi == -1) ? 0 : parsed->argc - (unsigned)parsed->varargi;
-  struct field {
-    const char *label;
-    size_t labellen;
-    const char *value;
-    size_t valuelen;
-  }
-    fields[nfields];
+  struct rhizome_manifest_field_assignment fields[nfields];
   if (nfields) {
     assert(parsed->varargi >= 0);
     unsigned i;
     for (i = 0; i < nfields; ++i) {
-      struct field *field = &fields[i];
+      struct rhizome_manifest_field_assignment *field = &fields[i];
       unsigned n = (unsigned)parsed->varargi + i;
       assert(n < parsed->argc);
       const char *arg = parsed->args[n];
@@ -209,42 +203,6 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
       goto finish;
     }
   }
-  if (nfields) {
-    unsigned i;
-    for (i = 0; i != nfields; ++i) {
-      struct field *field = &fields[i];
-      rhizome_manifest_remove_field(m, field->label, field->labellen);
-      if (field->value) {
-	const char *label = alloca_strndup(field->label, field->labellen);
-	enum rhizome_manifest_parse_status status = rhizome_manifest_parse_field(m, field->label, field->labellen, field->value, field->valuelen);
-	int status_ok = 0;
-	switch (status) {
-	  case RHIZOME_MANIFEST_ERROR:
-	    ret = WHY("Fatal error while updating manifest field");
-	    goto finish;
-	  case RHIZOME_MANIFEST_OK:
-	    status_ok = 1;
-	    break;
-	  case RHIZOME_MANIFEST_SYNTAX_ERROR:
-	    ret = WHYF("Manifest syntax error: %s=%s", label, alloca_toprint(-1, field->value, field->valuelen));
-	    goto finish;
-	  case RHIZOME_MANIFEST_DUPLICATE_FIELD:
-	    abort(); // should not happen, field was removed first
-	  case RHIZOME_MANIFEST_INVALID:
-	    ret = WHYF("Manifest invalid field: %s=%s", label, alloca_toprint(-1, field->value, field->valuelen));
-	    goto finish;
-	  case RHIZOME_MANIFEST_MALFORMED:
-	    ret = WHYF("Manifest malformed field: %s=%s", label, alloca_toprint(-1, field->value, field->valuelen));
-	    goto finish;
-	  case RHIZOME_MANIFEST_OVERFLOW:
-	    ret = WHYF("Too many fields in manifest at: %s=%s", label, alloca_toprint(-1, field->value, field->valuelen));
-	    goto finish;
-	}
-	if (!status_ok)
-	  FATALF("status = %d", status);
-      }
-    }
-  }
 
   /* If a manifest ID (bundle ID) was supplied on the command line, first ensure it does not
    * contradict any manifest ID present in the supplied manifest file, then insert it into the
@@ -262,10 +220,38 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
   /* Create an in-memory manifest for the file being added.
    */
   rhizome_manifest *mout = NULL;
-  if (rhizome_bundle_add_file(appending, m, &mout, bsktext ? &bsk : NULL, authorSidHex ? &authorSid : NULL, filepath) != NULL) {
-    ret = WHY("Cannot create manifest -- not added");
+  enum rhizome_add_file_result result = rhizome_manifest_add_file(appending, m, &mout,
+								  bsktext ? &bsk : NULL,
+								  authorSidHex ? &authorSid : NULL,
+								  filepath,
+								  nfields, fields,
+								  NULL);
+  int result_valid = 0;
+  switch (result) {
+  case RHIZOME_ADD_FILE_ERROR:
+    ret = -1;
+    goto finish;
+  case RHIZOME_ADD_FILE_OK:
+    result_valid = 1;
+    break;
+  case RHIZOME_ADD_FILE_INVALID:
+    ret = RHIZOME_BUNDLE_STATUS_INVALID; // TODO separate enum for CLI return codes
+    goto finish;
+  case RHIZOME_ADD_FILE_BUSY:
+    ret = RHIZOME_BUNDLE_STATUS_BUSY; // TODO separate enum for CLI return codes
+    goto finish;
+  case RHIZOME_ADD_FILE_REQUIRES_JOURNAL:
+    ret = RHIZOME_BUNDLE_STATUS_INVALID; // TODO separate enum for CLI return codes
+    goto finish;
+  case RHIZOME_ADD_FILE_INVALID_FOR_JOURNAL:
+    ret = RHIZOME_BUNDLE_STATUS_INVALID; // TODO separate enum for CLI return codes
+    goto finish;
+  case RHIZOME_ADD_FILE_WRONG_SECRET:
+    ret = RHIZOME_BUNDLE_STATUS_READONLY; // TODO separate enum for CLI return codes
     goto finish;
   }
+  if (!result_valid)
+    FATALF("result = %d", result);
   assert(mout != NULL);
   if (mout != m) {
     rhizome_manifest_free(m);
