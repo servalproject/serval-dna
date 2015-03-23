@@ -512,8 +512,9 @@ setup_RhizomeInsertJournal() {
 test_RhizomeInsertJournal() {
    executeJavaOk org.servalproject.test.Rhizome rhizome-insert '' file1.manifest file1 ifile1.manifest
    tfw_cat --stdout --stderr
-   assertStdoutGrep ServalDNotImplementedException
-   assertStdoutGrep --ignore-case "not supported.*journal"
+   # TODO: need special exception for this case, not RhizomeInvalidManifestException
+   assertStdoutGrep RhizomeInvalidManifestException
+   assertStderrGrep --ignore-case "cannot add.*journal"
    executeOk_servald rhizome list
    assert_rhizome_list
 }
