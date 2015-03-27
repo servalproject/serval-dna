@@ -124,7 +124,7 @@ int restful_meshms_(httpd_request *r, const char *remainder)
   http_size_t content_length = CONTENT_LENGTH_UNKNOWN;
   HTTP_HANDLER *handler = NULL;
   const char *end;
-  if (strn_to_sid_t(&r->sid1, remainder, SIZE_MAX, &end) != -1) {
+  if (parse_sid_t(&r->sid1, remainder, -1, &end) != -1) {
     remainder = end;
     if (strcmp(remainder, "/conversationlist.json") == 0) {
       handler = restful_meshms_conversationlist_json;
@@ -136,7 +136,7 @@ int restful_meshms_(httpd_request *r, const char *remainder)
       content_length = 0;
       remainder = "";
     }
-    else if (*remainder == '/' && strn_to_sid_t(&r->sid2, remainder + 1, SIZE_MAX, &end) != -1) {
+    else if (*remainder == '/' && parse_sid_t(&r->sid2, remainder + 1, -1, &end) != -1) {
       remainder = end;
       if (strcmp(remainder, "/messagelist.json") == 0) {
 	handler = restful_meshms_messagelist_json;

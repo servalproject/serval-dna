@@ -563,8 +563,9 @@ int str_startswith(const char *str, const char *substring, const char **afterp)
   return 1;
 }
 
-int strn_startswith(const char *str, size_t len, const char *substring, const char **afterp)
+int strn_startswith(const char *str, ssize_t len, const char *substring, const char **afterp)
 {
+  // if len == -1 then str must be nul terminated
   while (len && *substring && *substring == *str)
     --len, ++substring, ++str;
   if (*substring)

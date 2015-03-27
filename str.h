@@ -371,9 +371,11 @@ int str_startswith(const char *str, const char *substring, const char **afterp);
  * sub-string.  If so, return 1 and, if afterp is not NULL, set *afterp to point to the character
  * immediately following the substring.  Otherwise return 0.
  *
+ * If len == -1 then is equivalent to str_startswith().
+ *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int strn_startswith(const char *str, size_t len, const char *substring, const char **afterp);
+int strn_startswith(const char *str, ssize_t len, const char *substring, const char **afterp);
 
 /* Case-insensitive form of str_startswith().
  * @author Andrew Bettison <andrew@servalproject.com>

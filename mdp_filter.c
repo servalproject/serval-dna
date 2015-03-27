@@ -452,7 +452,7 @@ static int _endpoint(Cursor c, uint8_t *flagsp, uint8_t port_flag, struct subscr
   preload(c, SID_STRLEN);
   if (skip(c, "*")) {
     *subscr = NULL;
-  } else if (strn_to_sid_t(&sid, preloaded(c), available(c), &end) == 0) {
+  } else if (parse_sid_t(&sid, preloaded(c), available(c), &end) == 0) {
     if ((*subscr = find_subscriber(sid.binary, sizeof sid.binary, 1)) == NULL)
       return 0;
     advance_to(c, end);

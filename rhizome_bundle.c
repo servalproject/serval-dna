@@ -524,7 +524,7 @@ int rhizome_manifest_inspect(const char *buf, size_t len, struct rhizome_manifes
 	    eol = p;
 	  if (has_bid == 1) {
 	    const char *e;
-	    if (strn_to_rhizome_bid_t(&summ->bid, begin, &e) == 0 && e == eol)
+	    if (parse_rhizome_bid_t(&summ->bid, begin, eol - begin, &e) == 0 && e == eol)
 	      has_bid = 2;
 	    else
 	      state = Error; // invalid "id" field
