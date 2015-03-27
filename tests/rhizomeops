@@ -999,6 +999,26 @@ test_BroadcastNotEncrypted() {
    assert diff file1 file1y
 }
 
+doc_AddReuseManifest="Add --bundle copies fields from existing manifest"
+setup_AddReuseManifest() {
+   B_IDENTITY_COUNT=1
+   setup_servald
+   setup_rhizome
+   echo "First content" >file1
+   echo "Second content" >file1a
+   echo -e "service=wazoo\nunexpected=true\nrecipient=$SIDB1\nnothing=here" >file1.manifest
+   executeOk_servald rhizome add file $SIDA file1 file1.manifest
+   tfw_cat --stderr
+   extract_stdout_manifestid BID
+}
+test_AddReuseManifest() {
+   executeOk_servald rhizome add file --bundle=$BID $SIDA file1a file1a.manifest '' !nothing something=there
+   tfw_cat --stderr
+   assert_manifest_fields file1a.manifest service=wazoo unexpected=true recipient=$SIDB1 !nothing something=there
+   executeOk_servald rhizome export bundle $BID file1ax.manifest file1ax
+   assert diff file1a file1ax
+}
+
 doc_JournalAppend="Create and append to a journal"
 setup_JournalAppend() {
    setup_servald

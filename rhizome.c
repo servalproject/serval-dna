@@ -109,6 +109,8 @@ int rhizome_fetch_delay_ms()
  *
  * - 'mout' must point to a manifest pointer which is updated to hold the constructed manifest.
  *
+ * - 'bid' must point to a supplied bundle id parameter, or NULL if none was supplied.
+ *
  * - 'bsk' must point to a supplied bundle secret parameter, or NULL if none was supplied.
  *
  * - 'author' must point to a supplied author parameter, or NULL if none was supplied.
@@ -145,6 +147,7 @@ int rhizome_fetch_delay_ms()
 enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
                                                        rhizome_manifest *m,
                                                        rhizome_manifest **mout,
+                                                       const rhizome_bid_t *bid,
                                                        const rhizome_bk_t *bsk,
                                                        const sid_t *author,
                                                        const char *file_path,
@@ -161,14 +164,14 @@ enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
   // Caller must not supply a malformed manifest (but an invalid one is okay because missing
   // fields will be filled in, so we don't check validity here).
   assert(!m->malformed);
-  if (m->has_id) {
+  if (bid) {
     if (config.debug.rhizome)
-      DEBUGF("Reading manifest from database: id=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+      DEBUGF("Reading manifest from database: id=%s", alloca_tohex_rhizome_bid_t(*bid));
     if ((existing_manifest = rhizome_new_manifest()) == NULL) {
       WHY(cause = "Manifest struct could not be allocated");
       goto error;
     }
-    enum rhizome_bundle_status status = rhizome_retrieve_manifest(&m->cryptoSignPublic, existing_manifest);
+    enum rhizome_bundle_status status = rhizome_retrieve_manifest(bid, existing_manifest);
     switch (status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
       // No manifest with that bundle ID exists in the store, so we are building a bundle from

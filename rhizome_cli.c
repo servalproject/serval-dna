@@ -104,22 +104,22 @@ static int app_rhizome_hash_file(const struct cli_parsed *parsed, struct cli_con
 
 DEFINE_CMD(app_rhizome_add_file, 0,
   "Add a file to Rhizome and optionally write its manifest to the given path",
-  "rhizome","add","file" KEYRING_PIN_OPTIONS,"[--force-new]","<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]","...");
+  "rhizome","add","file" KEYRING_PIN_OPTIONS,"[--bundle=<bundleid>]","[--force-new]","<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]","...");
 DEFINE_CMD(app_rhizome_add_file, 0,
   "Append content to a journal bundle",
-  "rhizome", "journal", "append" KEYRING_PIN_OPTIONS, "<author_sid>", "<manifestid>", "<filepath>", "[<bsk>]");
+  "rhizome", "journal", "append" KEYRING_PIN_OPTIONS, "<author_sid>", "<bundleid>", "<filepath>", "[<bsk>]");
 static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  const char *filepath, *manifestpath, *manifestIdHex, *authorSidHex, *bsktext;
+  const char *filepath, *manifestpath, *bundleIdHex, *authorSidHex, *bsktext;
 
   int force_new = 0 == cli_arg(parsed, "--force-new", NULL, NULL, NULL);
   cli_arg(parsed, "filepath", &filepath, NULL, "");
   if (cli_arg(parsed, "author_sid", &authorSidHex, cli_optional_sid, "") == -1)
     return -1;
   cli_arg(parsed, "manifestpath", &manifestpath, NULL, "");
-  cli_arg(parsed, "manifestid", &manifestIdHex, NULL, "");
+  cli_arg(parsed, "--bundle", &bundleIdHex, cli_bid, "") == 0 || cli_arg(parsed, "bundleid", &bundleIdHex, cli_optional_bid, "");
   if (cli_arg(parsed, "bsk", &bsktext, cli_optional_bundle_secret_key, NULL) == -1)
     return -1;
 
@@ -130,10 +130,10 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
     return WHYF("invalid author_sid: %s", authorSidHex);
   
   rhizome_bid_t bid;
-  if (!manifestIdHex || !*manifestIdHex)
-    manifestIdHex = NULL;
-  else if (str_to_rhizome_bid_t(&bid, manifestIdHex) == -1)
-    return WHYF("Invalid bundle ID: %s", alloca_str_toprint(manifestIdHex));
+  if (!bundleIdHex || !*bundleIdHex)
+    bundleIdHex = NULL;
+  else if (str_to_rhizome_bid_t(&bid, bundleIdHex) == -1)
+    return WHYF("Invalid bundle ID: %s", alloca_str_toprint(bundleIdHex));
 
   rhizome_bk_t bsk;
   if (!bsktext || !*bsktext)
@@ -184,7 +184,7 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
   if (rhizome_opendb() == -1)
     goto finish;
   
-  /* Create a manifest in memory that to accompany the added file.  Initially the manifest is blank.
+  /* Create a manifest in memory that to describe the added file.  Initially the manifest is blank.
    * If a manifest file is supplied, then read and parse it, barfing if it contains any duplicate
    * fields or invalid values.  If it successfully parses, then overwrite it with any command-line
    * manifest field settings, overriding the values parsed from the file.  Barf if any of these new
@@ -204,23 +204,11 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
     }
   }
 
-  /* If a manifest ID (bundle ID) was supplied on the command line, first ensure it does not
-   * contradict any manifest ID present in the supplied manifest file, then insert it into the
-   * manifest.
-   */
-  if (manifestIdHex) {
-    if (!m->has_id)
-      rhizome_manifest_set_id(m, &bid);
-    else if (cmp_rhizome_bid_t(&m->cryptoSignPublic, &bid) != 0) {
-      ret = WHYF("manifestid=%s does not match manifest id=%s", manifestIdHex, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
-      goto finish;
-    }
-  }
-
   /* Create an in-memory manifest for the file being added.
    */
   rhizome_manifest *mout = NULL;
   enum rhizome_add_file_result result = rhizome_manifest_add_file(appending, m, &mout,
+								  bundleIdHex ? &bid : NULL,
 								  bsktext ? &bsk : NULL,
 								  authorSidHex ? &authorSid : NULL,
 								  filepath,

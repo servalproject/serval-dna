@@ -463,6 +463,7 @@ enum rhizome_add_file_result {
 enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
 			      rhizome_manifest *m,
 			      rhizome_manifest **mout,
+                              const rhizome_bid_t *bid,
 			      const rhizome_bk_t *bsk,
 			      const sid_t *author,
 			      const char *file_path,

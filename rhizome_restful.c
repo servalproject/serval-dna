@@ -403,6 +403,7 @@ static int insert_make_manifest(httpd_request *r)
   rhizome_manifest *mout = NULL;
   char message[150];
   enum rhizome_add_file_result result = rhizome_manifest_add_file(r->u.insert.appending, r->manifest, &mout,
+								  NULL,
 								  r->u.insert.received_secret ? &r->u.insert.bundle_secret : NULL,
 								  r->u.insert.received_author ? &r->u.insert.author: NULL,
 								  NULL, 0, NULL, strbuf_local(message, sizeof message));
