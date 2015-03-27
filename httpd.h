@@ -111,6 +111,7 @@ typedef struct httpd_request
       // Which parts have already been received
       bool_t received_author;
       bool_t received_secret;
+      bool_t received_bundleid;
       bool_t received_manifest;
       bool_t received_payload;
       // For storing the "bundle-author" hex SID as we receive it
@@ -121,6 +122,9 @@ typedef struct httpd_request
       char secret_text[RHIZOME_BUNDLE_SECRET_MAX_STRLEN];
       size_t secret_text_len;
       rhizome_bk_t bundle_secret;
+      // For storing the "bundle-id" hex as we receive it
+      char bid_text[RHIZOME_BUNDLE_ID_STRLEN];
+      size_t bid_text_len;
       // The "force-new" parameter
       char force_new_text[5]; // enough for "false"
       size_t force_new_text_len;

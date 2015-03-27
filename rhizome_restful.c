@@ -341,6 +341,7 @@ int restful_rhizome_insert(httpd_request *r, const char *remainder)
   assert(r->u.insert.current_part == NULL);
   assert(!r->u.insert.received_author);
   assert(!r->u.insert.received_secret);
+  assert(!r->u.insert.received_bundleid);
   assert(!r->u.insert.received_manifest);
   assert(!r->u.insert.received_payload);
   bzero(&r->u.insert.write, sizeof r->u.insert.write);
@@ -363,6 +364,7 @@ int restful_rhizome_append(httpd_request *r, const char *remainder)
 
 static char PART_MANIFEST[] = "manifest";
 static char PART_PAYLOAD[] = "payload";
+static char PART_BUNDLEID[] = "bundle-id";
 static char PART_AUTHOR[] = "bundle-author";
 static char PART_SECRET[] = "bundle-secret";
 
@@ -403,7 +405,7 @@ static int insert_make_manifest(httpd_request *r)
   rhizome_manifest *mout = NULL;
   char message[150];
   enum rhizome_add_file_result result = rhizome_manifest_add_file(r->u.insert.appending, r->manifest, &mout,
-								  NULL,
+								  r->u.insert.received_bundleid ? &r->bid: NULL,
 								  r->u.insert.received_secret ? &r->u.insert.bundle_secret : NULL,
 								  r->u.insert.received_author ? &r->u.insert.author: NULL,
 								  NULL, 0, NULL, strbuf_local(message, sizeof message));
@@ -457,6 +459,12 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
       return http_response_form_part(r, "Duplicate", PART_SECRET, NULL, 0);
     r->u.insert.current_part = PART_SECRET;
     assert(r->u.insert.secret_text_len == 0);
+  }
+  else if (strcmp(h->content_disposition.name, PART_BUNDLEID) == 0) {
+    if (r->u.insert.received_bundleid)
+      return http_response_form_part(r, "Duplicate", PART_BUNDLEID, NULL, 0);
+    r->u.insert.current_part = PART_BUNDLEID;
+    assert(r->u.insert.bid_text_len == 0);
   }
   else if (strcmp(h->content_disposition.name, PART_MANIFEST) == 0) {
     // Reject a request if it has a repeated manifest part.
@@ -534,6 +542,13 @@ static int insert_mime_part_body(struct http_request *hr, char *buf, size_t len)
 		    &r->u.insert.secret_text_len,
 		    buf, len);
   }
+  else if (r->u.insert.current_part == PART_BUNDLEID) {
+    accumulate_text(r, PART_BUNDLEID,
+		    r->u.insert.bid_text,
+		    sizeof r->u.insert.bid_text,
+		    &r->u.insert.bid_text_len,
+		    buf, len);
+  }
   else if (r->u.insert.current_part == PART_MANIFEST) {
     form_buf_malloc_accumulate(r, PART_MANIFEST, &r->u.insert.manifest, buf, len);
   }
@@ -573,6 +588,13 @@ static int insert_mime_part_end(struct http_request *hr)
     r->u.insert.received_secret = 1;
     if (config.debug.rhizome)
       DEBUGF("received %s = %s", PART_SECRET, alloca_tohex_rhizome_bk_t(r->u.insert.bundle_secret));
+  }
+  else if (r->u.insert.current_part == PART_BUNDLEID) {
+    if (strn_to_rhizome_bid_t(&r->bid, r->u.insert.bid_text, r->u.insert.bid_text_len) == -1)
+      return http_response_form_part(r, "Invalid", PART_BUNDLEID, r->u.insert.secret_text, r->u.insert.secret_text_len);
+    r->u.insert.received_bundleid = 1;
+    if (config.debug.rhizome)
+      DEBUGF("received %s = %s", PART_BUNDLEID, alloca_tohex_rhizome_bid_t(r->bid));
   }
   else if (r->u.insert.current_part == PART_MANIFEST) {
     r->u.insert.received_manifest = 1;
