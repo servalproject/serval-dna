@@ -451,18 +451,27 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
   if (strcmp(h->content_disposition.name, PART_AUTHOR) == 0) {
     if (r->u.insert.received_author)
       return http_response_form_part(r, "Duplicate", PART_AUTHOR, NULL, 0);
+    // Reject a request if this parameter comes after the manifest part.
+    if (r->u.insert.received_manifest)
+      return http_response_form_part(r, "Spurious", PART_AUTHOR, NULL, 0);
     r->u.insert.current_part = PART_AUTHOR;
     assert(r->u.insert.author_hex_len == 0);
   }
   else if (strcmp(h->content_disposition.name, PART_SECRET) == 0) {
     if (r->u.insert.received_secret)
       return http_response_form_part(r, "Duplicate", PART_SECRET, NULL, 0);
+    // Reject a request if this parameter comes after the manifest part.
+    if (r->u.insert.received_manifest)
+      return http_response_form_part(r, "Spurious", PART_SECRET, NULL, 0);
     r->u.insert.current_part = PART_SECRET;
     assert(r->u.insert.secret_text_len == 0);
   }
   else if (strcmp(h->content_disposition.name, PART_BUNDLEID) == 0) {
     if (r->u.insert.received_bundleid)
       return http_response_form_part(r, "Duplicate", PART_BUNDLEID, NULL, 0);
+    // Reject a request if this parameter comes after the manifest part.
+    if (r->u.insert.received_manifest)
+      return http_response_form_part(r, "Spurious", PART_BUNDLEID, NULL, 0);
     r->u.insert.current_part = PART_BUNDLEID;
     assert(r->u.insert.bid_text_len == 0);
   }
