@@ -1189,6 +1189,7 @@ test_RhizomeAppendJournalCreate() {
    extract_http_header H_VERSION http.header Serval-Rhizome-Bundle-Version "$rexp_version"
    extract_http_header H_SIZE http.header Serval-Rhizome-Bundle-Filesize "$rexp_filesize"
    extract_http_header H_HASH http.header Serval-Rhizome-Bundle-Filehash "$rexp_filehash"
+   extract_http_header H_TAIL http.header Serval-Rhizome-Bundle-Tail "$rexp_tail"
    extract_http_header H_DATE http.header Serval-Rhizome-Bundle-Date "$rexp_date"
    extract_http_header H_ROWID http.header Serval-Rhizome-Bundle-Rowid "$rexp_rowid"
    extract_http_header H_INSERTTIME http.header Serval-Rhizome-Bundle-Inserttime "$rexp_date"
@@ -1206,6 +1207,7 @@ test_RhizomeAppendJournalCreate() {
    extract_manifest_version VERSION file1.manifest
    extract_manifest_filesize SIZE file1.manifest
    extract_manifest_filehash HASH file1.manifest
+   extract_manifest_tail TAIL file1.manifest
    extract_manifest_date DATE file1.manifest
    extract_manifest_service SERVICE file1.manifest
    extract_manifest_name NAME file1.manifest
@@ -1214,6 +1216,7 @@ test_RhizomeAppendJournalCreate() {
    assert [ "$VERSION" = "$H_VERSION" ]
    assert [ "$SIZE" = "$H_SIZE" ]
    assert [ "$HASH" = "$H_HASH" ]
+   assert [ "$TAIL" = "$H_TAIL" ]
    assert [ "$DATE" = "$H_DATE" ]
    assert [ "$SERVICE" = "$H_SERVICE" ]
    assert [ "$NAME" = "$H_NAME" ]

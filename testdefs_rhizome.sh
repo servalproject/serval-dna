@@ -23,6 +23,7 @@ rexp_bundlekey='[0-9a-fA-F]\{64\}'
 rexp_bundlesecret="$rexp_bundlekey"
 rexp_filehash='[0-9a-fA-F]\{128\}'
 rexp_filesize='[0-9]\{1,\}'
+rexp_tail='[0-9]\{1,\}'
 rexp_version='[0-9]\{1,\}'
 rexp_crypt='[01]'
 rexp_date='[0-9]\{1,\}'
@@ -193,6 +194,7 @@ unpack_manifest_for_grep() {
    re_recipient="\($rexp_sid\)\{0,1\}"
    re_filesize="$rexp_filesize"
    re_filehash="\($rexp_filehash\)\{0,1\}"
+   re_tail="$rexp_tail"
    re_name=$(escape_grep_basic "${filename##*/}")
    if [ -e "$manifestname" ]; then
       re_filesize=$($SED -n -e '/^filesize=/s///p' "$manifestname")
@@ -206,6 +208,7 @@ unpack_manifest_for_grep() {
       re_service=$(escape_grep_basic "$re_service")
       re_manifestid=$($SED -n -e '/^id=/s///p' "$manifestname")
       re_version=$($SED -n -e '/^version=/s///p' "$manifestname")
+      re_tail=$($SED -n -e '/^tail=/s///p' "$manifestname")
       re_date=$($SED -n -e '/^date=/s///p' "$manifestname")
       re_crypt=$($SED -n -e '/^crypt=/s///p' "$manifestname")
       re_name=$($SED -n -e '/^name=/s///p' "$manifestname")
@@ -283,6 +286,10 @@ extract_stdout_filehash() {
    extract_stdout_keyvalue "$1" filehash "$rexp_filehash"
 }
 
+extract_stdout_tail() {
+   extract_stdout_keyvalue "$1" tail "$rexp_tail"
+}
+
 extract_stdout_crypt() {
    extract_stdout_keyvalue "$1" crypt "$rexp_crypt"
 }
@@ -345,6 +352,10 @@ extract_manifest_BK() {
 
 extract_manifest_filesize() {
    extract_manifest "$1" "$2" filesize "$rexp_filesize"
+}
+
+extract_manifest_tail() {
+   extract_manifest "$1" "$2" tail "$rexp_tail"
 }
 
 extract_manifest_filehash() {
