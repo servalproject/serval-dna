@@ -164,6 +164,20 @@ enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
   // Caller must not supply a malformed manifest (but an invalid one is okay because missing
   // fields will be filled in, so we don't check validity here).
   assert(!m->malformed);
+  // If appending to a journal, caller must not supply 'version', 'filesize' or 'filehash' fields,
+  // because these will be calculated by the journal append logic.
+  if (appending) {
+    if (m->version)
+      DEBUG(cause = "Cannot set 'version' field in journal append");
+    else if (m->filesize != RHIZOME_SIZE_UNSET)
+      DEBUG(cause = "Cannot set 'filesize' field in journal append");
+    else if (m->has_filehash)
+      DEBUG(cause = "Cannot set 'filehash' field in journal append");
+    if (cause) {
+      result = RHIZOME_ADD_FILE_INVALID_FOR_JOURNAL;
+      goto error;
+    }
+  }
   if (bid) {
     if (config.debug.rhizome)
       DEBUGF("Reading manifest from database: id=%s", alloca_tohex_rhizome_bid_t(*bid));
@@ -180,8 +194,11 @@ enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
       existing_manifest = NULL;
       break;
     case RHIZOME_BUNDLE_STATUS_SAME:
-      // Found a manifest with the same bundle ID.  Unset its 'version', 'filesize' and 'filehash'
-      // fields unless appending, then overwrite it with the supplied manifest.
+      // Found a manifest with the same bundle ID.  If appending to a journal, then keep the
+      // existing 'version', 'filesize' and 'filehash' (so they can be verified when the existing
+      // payload is copied) and don't allow the supplied manifest to overwrite them.  If not a
+      // journal, then unset the 'version', 'filesize' and 'filehash' fields, then overwrite the
+      // existing manifest with the supplied manifest.
       if (!appending) {
         rhizome_manifest_del_version(existing_manifest);
         rhizome_manifest_del_filesize(existing_manifest);

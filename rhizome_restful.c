@@ -615,20 +615,9 @@ static int insert_mime_part_end(struct http_request *hr)
   }
   else if (r->u.insert.current_part == PART_PAYLOAD) {
     r->u.insert.received_payload = 1;
-    switch (r->payload_status) {
-      case RHIZOME_PAYLOAD_STATUS_NEW:
-	r->payload_status = rhizome_finish_write(&r->u.insert.write);
-	if (r->payload_status == RHIZOME_PAYLOAD_STATUS_ERROR) {
-	  WHYF("rhizome_finish_write() returned status = %d", r->payload_status);
-	  return 500;
-	}
-	break;
-      case RHIZOME_PAYLOAD_STATUS_STORED:
-	// TODO: finish calculating payload hash and compare it with stored payload
-	break;
-      default:
-	break;
-    }
+    if (config.debug.rhizome)
+      DEBUGF("received %s, %zd bytes", PART_PAYLOAD, r->u.insert.payload_size);
+    r->payload_status = rhizome_finish_write(&r->u.insert.write);
   } else
     FATALF("current_part = %s", alloca_str_toprint(r->u.insert.current_part));
   r->u.insert.current_part = NULL;
@@ -644,61 +633,69 @@ static int restful_rhizome_insert_end(struct http_request *hr)
     return http_response_form_part(r, "Missing", PART_PAYLOAD, NULL, 0);
   // Fill in the missing manifest fields and ensure payload and manifest are consistent.
   assert(r->manifest != NULL);
-  assert(r->u.insert.write.file_length != RHIZOME_SIZE_UNSET);
-  int status_valid = 0;
   if (config.debug.rhizome)
-    DEBUGF("r->payload_status=%d", r->payload_status);
+    DEBUGF("r->payload_status=%d %s", r->payload_status, rhizome_payload_status_message(r->payload_status));
+  assert(r->u.insert.write.file_length != RHIZOME_SIZE_UNSET);
+  if (r->u.insert.appending) {
+    // For journal appends, the user cannot supply a 'filesize' field.  This will have been caught
+    // by previous logic.  The existing manifest should have a 'filesize' field.  The new payload
+    // size should be the sum of 'filesize' and the appended portion.
+    assert(r->manifest->is_journal);
+    assert(r->manifest->filesize != RHIZOME_SIZE_UNSET);
+    if (config.debug.rhizome)
+      DEBUGF("file_length=%"PRIu64" filesize=%"PRIu64" payload_size=%"PRIu64,
+	  r->u.insert.write.file_length,
+	  r->manifest->filesize,
+	  r->u.insert.payload_size);
+    if (r->u.insert.write.file_length != r->manifest->filesize + r->u.insert.payload_size)
+      r->payload_status = RHIZOME_PAYLOAD_STATUS_WRONG_SIZE;
+  } else {
+    // The Rhizome CLI 'add file' operation allows the user to supply a 'filesize' field which is
+    // smaller than the supplied file, for convenience, to allow only the first part of a file to be
+    // added as a payload.  But the RESTful interface doesn't allow that.
+    assert(!r->manifest->is_journal);
+    if (r->manifest->filesize != RHIZOME_SIZE_UNSET && r->u.insert.payload_size != r->manifest->filesize)
+      r->payload_status = RHIZOME_PAYLOAD_STATUS_WRONG_SIZE;
+  }
+  r->payload_status = rhizome_finish_store(&r->u.insert.write, r->manifest, r->payload_status);
+  int status_valid = 0;
   switch (r->payload_status) {
     case RHIZOME_PAYLOAD_STATUS_NEW:
-      if (r->manifest->filesize == RHIZOME_SIZE_UNSET)
-	rhizome_manifest_set_filesize(r->manifest, r->u.insert.write.file_length);
-      // fall through
     case RHIZOME_PAYLOAD_STATUS_STORED:
-      assert(r->manifest->filesize != RHIZOME_SIZE_UNSET);
-      // TODO: check that stored hash matches received payload's hash
-      // fall through
     case RHIZOME_PAYLOAD_STATUS_EMPTY:
       status_valid = 1;
-      if (r->manifest->filesize == RHIZOME_SIZE_UNSET)
-	rhizome_manifest_set_filesize(r->manifest, 0);
-      if (r->u.insert.payload_size == r->manifest->filesize)
-	break;
-      // fall through
+      break;
     case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
-      r->payload_status = RHIZOME_PAYLOAD_STATUS_WRONG_SIZE;
       r->bundle_status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
       {
 	strbuf msg = strbuf_alloca(200);
 	strbuf_sprintf(msg, "Payload size (%"PRIu64") contradicts manifest (filesize=%"PRIu64")", r->u.insert.payload_size, r->manifest->filesize);
-	return http_request_rhizome_response(r, 403, NULL, strbuf_str(msg));
+	return http_request_rhizome_response(r, 403, "Inconsistent filesize", strbuf_str(msg));
       }
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
       r->bundle_status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
-      return http_request_rhizome_response(r, 403, NULL, NULL);
+      {
+	strbuf msg = strbuf_alloca(200);
+	strbuf_sprintf(msg, "Payload hash (%s) contradicts manifest (filehash=%s)",
+	    alloca_tohex_rhizome_filehash_t(r->u.insert.write.id),
+	    alloca_tohex_rhizome_filehash_t(r->manifest->filehash));
+	return http_request_rhizome_response(r, 403, "Inconsistent filehash", strbuf_str(msg));
+      }
     case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
       r->bundle_status = RHIZOME_BUNDLE_STATUS_READONLY;
       return http_request_rhizome_response(r, 403, "Missing bundle secret", NULL);
     case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+      r->bundle_status = RHIZOME_BUNDLE_STATUS_NO_ROOM;
+      return http_request_rhizome_response(r, 403, "Bundle too big", NULL);
     case RHIZOME_PAYLOAD_STATUS_EVICTED:
       r->bundle_status = RHIZOME_BUNDLE_STATUS_NO_ROOM;
-      // fall through
+      return http_request_rhizome_response(r, 403, "Bundle evicted", NULL);
     case RHIZOME_PAYLOAD_STATUS_ERROR:
-      return http_request_rhizome_response(r, 403, NULL, NULL);
+      return http_request_rhizome_response(r, 500, NULL, NULL);
   }
-  if (!status_valid) {
-    WHYF("r->payload_status = %d", r->payload_status);
-    return http_request_rhizome_response(r, 500, NULL, NULL);
-  }
+  if (!status_valid)
+    FATALF("rhizome_finish_store() returned status = %d", r->payload_status);
   // Finalise the manifest and add it to the store.
-  if (r->u.insert.appending)
-    rhizome_manifest_set_version(r->manifest, r->manifest->filesize);
-
-  if (r->manifest->filesize) {
-    if (!r->manifest->has_filehash)
-      rhizome_manifest_set_filehash(r->manifest, &r->u.insert.write.id);
-    else
-      assert(cmp_rhizome_filehash_t(&r->u.insert.write.id, &r->manifest->filehash) == 0);
-  }
   const char *invalid_reason = rhizome_manifest_validate_reason(r->manifest);
   if (invalid_reason) {
     r->bundle_status = RHIZOME_BUNDLE_STATUS_INVALID;

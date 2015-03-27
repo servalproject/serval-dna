@@ -891,6 +891,7 @@ enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *wri
 int rhizome_write_file(struct rhizome_write *write, const char *filename);
 void rhizome_fail_write(struct rhizome_write *write);
 enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write);
+enum rhizome_payload_status rhizome_finish_store(struct rhizome_write *write, rhizome_manifest *m, enum rhizome_payload_status status);
 enum rhizome_payload_status rhizome_import_payload_from_file(rhizome_manifest *m, const char *filepath);
 enum rhizome_payload_status rhizome_import_buffer(rhizome_manifest *m, uint8_t *buffer, size_t length);
 enum rhizome_payload_status rhizome_stat_payload_file(rhizome_manifest *m, const char *filepath);
