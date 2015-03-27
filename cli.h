@@ -102,7 +102,7 @@ int cli_path_regular(const char *arg);
 int cli_absolute_path(const char *arg);
 int cli_optional_sid(const char *arg);
 int cli_optional_bundle_secret_key(const char *arg);
-int cli_manifestid(const char *arg);
+int cli_bid(const char *arg);
 int cli_fileid(const char *arg);
 int cli_optional_bundle_crypt_key(const char *arg);
 int cli_interval_ms(const char *arg);

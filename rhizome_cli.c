@@ -438,7 +438,7 @@ static int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_contex
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   const char *manifestid, *fileid;
-  if (cli_arg(parsed, "manifestid", &manifestid, cli_manifestid, NULL) == -1)
+  if (cli_arg(parsed, "manifestid", &manifestid, cli_bid, NULL) == -1)
     return -1;
   if (cli_arg(parsed, "fileid", &fileid, cli_fileid, NULL) == -1)
     return -1;
@@ -544,7 +544,7 @@ static int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_conte
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   const char *manifestpath, *filepath, *manifestid, *bsktext;
-  if (   cli_arg(parsed, "manifestid", &manifestid, cli_manifestid, "") == -1
+  if (   cli_arg(parsed, "manifestid", &manifestid, cli_bid, "") == -1
       || cli_arg(parsed, "manifestpath", &manifestpath, NULL, "") == -1
       || cli_arg(parsed, "filepath", &filepath, NULL, "") == -1
       || cli_arg(parsed, "bsk", &bsktext, cli_optional_bundle_secret_key, NULL) == -1)
