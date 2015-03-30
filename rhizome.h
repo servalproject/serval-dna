@@ -416,6 +416,7 @@ enum rhizome_bundle_status {
 #define INVALID_RHIZOME_BUNDLE_STATUS ((enum rhizome_bundle_status)-2)
 
 const char *rhizome_bundle_status_message(enum rhizome_bundle_status);
+const char *rhizome_bundle_status_message_nonnull(enum rhizome_bundle_status);
 
 enum rhizome_payload_status {
     RHIZOME_PAYLOAD_STATUS_ERROR = -1,
@@ -432,6 +433,7 @@ enum rhizome_payload_status {
 #define INVALID_RHIZOME_PAYLOAD_STATUS ((enum rhizome_payload_status)-2)
 
 const char *rhizome_payload_status_message(enum rhizome_payload_status);
+const char *rhizome_payload_status_message_nonnull(enum rhizome_payload_status);
 
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename, char append);
 int rhizome_manifest_selfsign(rhizome_manifest *m);

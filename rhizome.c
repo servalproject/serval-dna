@@ -616,6 +616,12 @@ const char *rhizome_bundle_status_message(enum rhizome_bundle_status status)
   return NULL;
 }
 
+const char *rhizome_bundle_status_message_nonnull(enum rhizome_bundle_status status)
+{
+  const char *message = rhizome_bundle_status_message(status);
+  return message ? message : "Invalid";
+}
+
 const char *rhizome_payload_status_message(enum rhizome_payload_status status)
 {
   switch (status) {
@@ -630,4 +636,10 @@ const char *rhizome_payload_status_message(enum rhizome_payload_status status)
     case RHIZOME_PAYLOAD_STATUS_ERROR:       return "Internal error";
   }
   return NULL;
+}
+
+const char *rhizome_payload_status_message_nonnull(enum rhizome_payload_status status)
+{
+  const char *message = rhizome_payload_status_message(status);
+  return message ? message : "Invalid";
 }
