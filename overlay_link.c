@@ -120,7 +120,7 @@ int load_subscriber_address(struct subscriber *subscriber)
   if (*hostc->interface){
     interface = overlay_interface_find_name(hostc->interface);
     if (!interface)
-      return WHY("Can't fund configured interface");
+      return WHY("Can't find configured interface");
   }
   struct socket_address addr;
   bzero(&addr, sizeof(addr));
@@ -178,7 +178,7 @@ int overlay_send_probe(struct subscriber *peer, struct network_destination *dest
   // though unicast probes don't typically use the same network destination, 
   // we should still try to throttle when we can
   if (destination->last_tx + destination->ifconfig.tick_ms > now)
-    return -1;
+    return WHY("Throttling probe packet");
   
   // TODO enhance overlay_send_frame to support pre-supplied network destinations
   

@@ -102,10 +102,13 @@ configure_node() {
       set log.console.show_time on \
       set debug.mdprequests Yes \
       set debug.overlayframes Yes \
+      set debug.overlayinterfaces Yes \
+      set debug.linkstate Yes \
       set interfaces.0.file dummy1 \
       set interfaces.0.socket_type file \
       set interfaces.0.broadcast.send off \
       set interfaces.0.broadcast.drop on \
+      set interfaces.0.broadcast.reachable_timeout_ms 10000 \
       set interfaces.0.unicast.route off \
       set interfaces.0.default_route 1 \
       set interfaces.0.dummy_address 10.0.${instance_number}.1 \
@@ -127,9 +130,10 @@ setup_routing() {
       executeOk_servald config \
          set directory.service $SIDA \
          set hosts.$SIDA.address 10.0.1.1
-   foreach_instance +A +B +C start_routing_instance
    set_instance +A
+   start_routing_instance
    wait_until grep "DNAHELPER got STARTED ACK" $instance_servald_log
+   foreach_instance +B +C start_routing_instance
 }
 
 doc_routing="Ping via relay node"

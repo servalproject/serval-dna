@@ -400,19 +400,24 @@ static int overlay_interface_init_any(int port)
 
 static void calc_next_tick(struct overlay_interface *interface)
 {
-  if (!interface->destination->ifconfig.tick_ms){
-    interface->alarm.deadline=interface->alarm.alarm=TIME_MS_NEVER_WILL;
-    return;
-  }
   time_ms_t interval = interface->destination->ifconfig.tick_ms;
   // only tick every 5s if we have no neighbours here
   if (interval < 5000 && !link_interface_has_neighbours(interface))
     interval = 5000;
   
   time_ms_t next_tick = interface->destination->last_tx+interval;
+  if (!interface->destination->ifconfig.tick_ms){
+    next_tick=TIME_MS_NEVER_WILL;
+  }
   time_ms_t next_allowed = limit_next_allowed(&interface->destination->transfer_limit);
   if (next_tick < next_allowed)
     next_tick = next_allowed;
+  
+  if (interface->ifconfig.socket_type==SOCK_FILE){
+    time_ms_t next_read = gettime_ms()+10;
+    if (next_tick > next_read)
+      next_tick = next_read;
+  }
   
   interface->alarm.alarm = next_tick;
   interface->alarm.deadline=interface->alarm.alarm+interface->destination->ifconfig.tick_ms/2;
@@ -725,12 +730,13 @@ static void interface_read_file(struct overlay_interface *interface)
   off_t length = lseek(interface->alarm.poll.fd, (off_t)0, SEEK_END);
   if (interface->recv_offset > length)
     FATALF("File shrunk? It shouldn't shrink! Ever");
-  int new_packets = (length - interface->recv_offset) / sizeof packet;
-  if (new_packets > 20)
-    WARNF("Getting behind, there are %d unread packets (%"PRId64" vs %"PRId64")", 
-	new_packets, (int64_t)interface->recv_offset, (int64_t)length);
-  
+    
   if (interface->recv_offset<length){
+    int new_packets = (length - interface->recv_offset) / sizeof packet;
+    if (new_packets > 20)
+      WARNF("Getting behind, there are %d unread packets (%"PRId64" vs %"PRId64")", 
+	  new_packets, (int64_t)interface->recv_offset, (int64_t)length);
+  
     if (lseek(interface->alarm.poll.fd,interface->recv_offset,SEEK_SET) == -1){
       WHY_perror("lseek");
       OUT();
@@ -772,14 +778,14 @@ static void interface_read_file(struct overlay_interface *interface)
    otherwise we'll dominate the scheduler without accomplishing anything */
   time_ms_t now = gettime_ms();
   if (interface->recv_offset>=length){
-    if (interface->alarm.alarm == -1 || now + 5 < interface->alarm.alarm){
+    if (now + 5 < interface->alarm.alarm){
       interface->alarm.alarm = now + 5;
       interface->alarm.deadline = interface->alarm.alarm + 500;
     }
   }else{
     /* keep reading new packets as fast as possible, 
      but don't completely prevent other high priority alarms */
-    if (interface->alarm.alarm == -1 || now < interface->alarm.alarm){
+    if (now < interface->alarm.alarm){
       interface->alarm.alarm = now;
       interface->alarm.deadline = interface->alarm.alarm + 100;
     }
@@ -811,7 +817,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
   time_ms_t now = gettime_ms();
     
   if (alarm->poll.revents==0){
-    alarm->alarm=-1;
+    alarm->alarm=TIME_MS_NEVER_WILL;
     
     if (interface->state==INTERFACE_STATE_UP 
       && interface->destination->ifconfig.tick_ms>0
@@ -838,7 +844,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     }
     
     unschedule(alarm);
-    if (alarm->alarm!=-1 && interface->state==INTERFACE_STATE_UP) {
+    if (alarm->alarm!=TIME_MS_NEVER_WILL && interface->state==INTERFACE_STATE_UP) {
       if (alarm->alarm < now) {
         alarm->alarm = now;
 	alarm->deadline = alarm->alarm + interface->destination->ifconfig.tick_ms / 2;
@@ -988,16 +994,16 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 	    return WHY_perror("lseek");
 	  DEBUGF("Write to interface %s at offset unknown: src_addr=%s dst_addr=%s pid=%d length=%d",
 		interface->name,
-		alloca_sockaddr(&packet.src_addr, sizeof packet.src_addr),
-		alloca_sockaddr(&packet.dst_addr, sizeof packet.dst_addr),
+		alloca_socket_address(&packet.src_addr),
+		alloca_socket_address(&packet.dst_addr),
 		packet.pid,
 		packet.payload_length
 	      );
 	} else
 	  DEBUGF("Write to interface %s at offset=%"PRId64": src_addr=%s dst_addr=%s pid=%d length=%d",
 		interface->name, (int64_t)fsize,
-		alloca_sockaddr(&packet.src_addr, sizeof packet.src_addr),
-		alloca_sockaddr(&packet.dst_addr, sizeof packet.dst_addr),
+		alloca_socket_address(&packet.src_addr),
+		alloca_socket_address(&packet.dst_addr),
 		packet.pid,
 		packet.payload_length
 	      );

@@ -276,6 +276,10 @@ int overlay_queue_schedule_next(time_ms_t next_allowed_packet){
 }
 
 void frame_remove_destination(struct overlay_frame *frame, int i){
+  if (config.debug.overlayframes)
+    DEBUGF("Remove %s destination on interface %s", 
+	frame->destinations[i].destination->unicast?"unicast":"broadcast",
+	frame->destinations[i].destination->interface->name);
   release_destination_ref(frame->destinations[i].destination);
   frame->destination_count --;
   if (i<frame->destination_count)
@@ -289,8 +293,8 @@ void frame_add_destination(struct overlay_frame *frame, struct subscriber *next_
   frame->destinations[i].destination=add_destination_ref(dest);
   frame->destinations[i].next_hop = next_hop;
   frame->destinations[i].sent_sequence=-1;
-  if (config.debug.verbose && config.debug.overlayframes)
-    DEBUGF("Sending %s on interface %s", 
+  if (config.debug.overlayframes)
+    DEBUGF("Add %s destination on interface %s", 
 	frame->destinations[i].destination->unicast?"unicast":"broadcast",
 	frame->destinations[i].destination->interface->name);
 }
@@ -400,6 +404,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  continue;
 	}
 	if (frame->enqueued_at + dest->ifconfig.transmit_timeout_ms < now){
+	  WARNF("Skipping packet destination due to timeout"); 
 	  frame_remove_destination(frame, i);
 	  continue;
 	}

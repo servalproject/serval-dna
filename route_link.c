@@ -1091,18 +1091,15 @@ int link_add_destinations(struct overlay_frame *frame)
 	  added_interface[id]=1;
 	}
 	
-	if (frame->destination_count < MAX_PACKET_DESTINATIONS)
-	  frame->destinations[frame->destination_count++].destination=add_destination_ref(dest);
+	frame_add_destination(frame, NULL, dest);
 	
       }else if(!(neighbour->subscriber->reachable & REACHABLE)){
 	// send broadcast packets to neighbours before link establishment
 	struct link_out *out = neighbour->out_links;
 	time_ms_t now = gettime_ms();
 	while(out){
-	  if (out->timeout>=now && frame->destination_count < MAX_PACKET_DESTINATIONS){
-	    unsigned dest = frame->destination_count++;
-	    frame->destinations[dest].destination = add_destination_ref(out->destination);
-	  }
+	  if (out->timeout>=now)
+	    frame_add_destination(frame, NULL, out->destination);
 	  out = out->_next;
 	}
       }
@@ -1210,7 +1207,7 @@ static struct link_out *create_out_link(struct neighbour *neighbour, overlay_int
       alloca_tohex_sid_t(neighbour->subscriber->sid),
       interface->name);
   time_ms_t now = gettime_ms();
-  ret->timeout = now + ret->destination->ifconfig.tick_ms * 3;
+  ret->timeout = now + ret->destination->ifconfig.reachable_timeout_ms;
   update_alarm(__WHENCE__, now + 5);
   return ret;
 }
@@ -1284,7 +1281,7 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
     if (neighbour->next_neighbour_update > now + 10)
       neighbour->next_neighbour_update = now + 10;
   }
-  link->link_timeout = now + (context->interface->destination->ifconfig.tick_ms *5);
+  link->link_timeout = now + context->interface->destination->ifconfig.reachable_timeout_ms;
 
   // force an update soon when we need to promptly ack packets
   if (neighbour->using_us && link->ack_counter <=0){
@@ -1438,7 +1435,7 @@ int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payl
       // start sending sequence numbers when our neighbour has acked a packet
       if (out->destination->sequence_number<0)
 	out->destination->sequence_number=0;
-      out->timeout=now + out->destination->ifconfig.tick_ms * 5;
+      out->timeout=now + out->destination->ifconfig.reachable_timeout_ms;
       destination = out->destination;
       
     }else if(transmitter == my_subscriber){
@@ -1581,7 +1578,7 @@ int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now)
 
   // track the incoming link so we remember to send broadcasts
   struct link_in *nl = get_neighbour_link(neighbour, frame->interface, iface, 0);
-  nl->link_timeout = now + (link->destination->ifconfig.tick_ms *5);
+  nl->link_timeout = now + (link->destination->ifconfig.reachable_timeout_ms);
 
   neighbour->legacy_protocol = 1;
   neighbour->link_in_timeout = now + link->destination->ifconfig.reachable_timeout_ms;

@@ -165,7 +165,7 @@ static int server()
   olsr_init_socket();
 
   /* Calculate (and possibly show) CPU usage stats periodically */
-  RESCHEDULE(&ALARM_STRUCT(fd_periodicstats), now+3000, now+30000, TIME_MS_NEVER_WILL);
+  RESCHEDULE(&ALARM_STRUCT(fd_periodicstats), now+3000, TIME_MS_NEVER_WILL, now+3500);
 
   cf_on_config_change();
   

@@ -414,7 +414,7 @@ setup_scan() {
 test_scan() {
    set_instance +A
    executeOk_servald scan
-   wait_until scan_completed
+   wait_until --timeout=10 scan_completed
    wait_until --timeout=10 has_seen_instances +B +C
    executeOk_servald route print
    link_matches --unicast $SIDB
