@@ -973,13 +973,13 @@ test_RhizomeInsertDuplicateManifest() {
    assert_rhizome_list
 }
 
-doc_RhizomeInsertJournal="HTTP RESTful insert Rhizome bundle does not accept journals"
-setup_RhizomeInsertJournal() {
+doc_RhizomeJournalInsert="HTTP RESTful insert Rhizome bundle does not accept journals"
+setup_RhizomeJournalInsert() {
    setup
    echo 'File one' >file1
    echo 'tail=0' >file1.manifest
 }
-test_RhizomeInsertJournal() {
+test_RhizomeJournalInsert() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
@@ -1162,8 +1162,8 @@ test_RhizomeInsertIncorrectFilehash() {
    assert_rhizome_list
 }
 
-doc_RhizomeAppendJournalCreate="HTTP RESTful append creates new Rhizome journal "
-setup_RhizomeAppendJournalCreate() {
+doc_RhizomeJournalAppend="HTTP RESTful journal create and append"
+setup_RhizomeJournalAppend() {
    setup
    echo 'File one' >file1
    file1_size=$(cat file1 | wc -c)
@@ -1172,7 +1172,7 @@ setup_RhizomeAppendJournalCreate() {
    echo "filesize=$file1_size" >>manifest1
    echo "name=hoopla" >>manifest1
 }
-test_RhizomeAppendJournalCreate() {
+test_RhizomeJournalAppend() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output file1.manifest \
