@@ -1238,14 +1238,14 @@ int manifest_first_free=-1;
 struct __sourceloc manifest_alloc_whence[MAX_RHIZOME_MANIFESTS];
 struct __sourceloc manifest_free_whence[MAX_RHIZOME_MANIFESTS];
 
-static void _log_manifest_trace(struct __sourceloc __whence, const char *operation)
+static unsigned _count_free_manifests()
 {
-  int count_free = 0;
+  unsigned count_free = 0;
   unsigned i;
   for (i = 0; i != MAX_RHIZOME_MANIFESTS; ++i)
     if (manifest_free[i])
       ++count_free;
-  DEBUGF("%s(): count_free = %d", operation, count_free);
+  return count_free;
 }
 
 rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence)
@@ -1292,7 +1292,8 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence)
   for (; manifest_first_free < MAX_RHIZOME_MANIFESTS && !manifest_free[manifest_first_free]; ++manifest_first_free)
     ;
 
-  if (config.debug.manifests) _log_manifest_trace(__whence, __FUNCTION__);
+  if (config.debug.rhizome_manifest)
+    DEBUGF("NEW manifest[%d], count_free=%u", m->manifest_record_number, _count_free_manifests());
 
   // Set global defaults for a manifest (which are not zero)
   rhizome_manifest_clear(m);
@@ -1306,12 +1307,12 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
   int mid=m->manifest_record_number;
 
   if (m!=&manifests[mid])
-    FATALF("%s(): asked to free manifest %p, which claims to be manifest slot #%d (%p), but isn't",
+    FATALF("%s(): manifest at %p claims to be manifest[%d] (%p) but isn't",
 	  __FUNCTION__, m, mid, &manifests[mid]
       );
 
   if (manifest_free[mid])
-    FATALF("%s(): asked to free manifest slot #%d (%p), which was already freed at %s:%d:%s()",
+    FATALF("%s(): manifest[%d] (%p) was already freed at %s:%d:%s()",
 	  __FUNCTION__, mid, m,
 	  manifest_free_whence[mid].file,
 	  manifest_free_whence[mid].line,
@@ -1331,7 +1332,8 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
   manifest_free_whence[mid]=__whence;
   if (mid<manifest_first_free) manifest_first_free=mid;
 
-  if (config.debug.manifests) _log_manifest_trace(__whence, __FUNCTION__);
+  if (config.debug.rhizome_manifest)
+    DEBUGF("FREE manifest[%d], count_free=%u", m->manifest_record_number, _count_free_manifests());
 
   return;
 }
