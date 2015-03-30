@@ -64,7 +64,7 @@ int overlay_queue_init(){
   int i;
   for(i=0;i<OQ_MAX;i++) {
     overlay_tx[i].maxLength=100;
-    overlay_tx[i].latencyTarget=1000; /* Keep packets in queue for 1 second by default */
+    overlay_tx[i].latencyTarget=0; // no QOS time limit by default
     overlay_tx[i].small_packet_grace_interval = 5;
   }
   /* expire voice/video call packets much sooner, as they just aren't any use if late */
@@ -73,7 +73,7 @@ int overlay_queue_init(){
 
   overlay_tx[OQ_ISOCHRONOUS_VIDEO].latencyTarget=200;
 
-  overlay_tx[OQ_OPPORTUNISTIC].small_packet_grace_interval = 20;
+  overlay_tx[OQ_OPPORTUNISTIC].small_packet_grace_interval = 100;
   return 0;
 }
 
@@ -159,10 +159,6 @@ int _overlay_payload_enqueue(struct __sourceloc __whence, struct overlay_frame *
   p->whence = __whence;
   overlay_txqueue *queue = &overlay_tx[p->queue];
 
-  if (config.debug.packettx)
-    DEBUGF("Enqueuing packet for %s* (q[%d].length = %d)",
-	   p->destination?alloca_tohex_sid_t_trunc(p->destination->sid, 14): alloca_tohex(p->broadcast_id.id, BROADCAST_LEN),
-	   p->queue, queue->length);
   
   if (ob_overrun(p->payload))
     return WHY("Packet content overrun -- not queueing");
@@ -351,7 +347,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
   
   // TODO stop when the packet is nearly full?
   while(frame){
-    if (frame->enqueued_at + queue->latencyTarget < now){
+    if (queue->latencyTarget!=0 && frame->enqueued_at + queue->latencyTarget < now){
       if (config.debug.overlayframes)
 	DEBUGF("Dropping frame type %x (length %zu) for %s due to expiry timeout", 
 	       frame->type, frame->payload->checkpointLength,
@@ -400,6 +396,10 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  FATALF("Destination interface %d is NULL", i);
 	if (dest->interface->state!=INTERFACE_STATE_UP){
 	  // remove this destination
+	  frame_remove_destination(frame, i);
+	  continue;
+	}
+	if (frame->enqueued_at + dest->ifconfig.transmit_timeout_ms < now){
 	  frame_remove_destination(frame, i);
 	  continue;
 	}

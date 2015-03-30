@@ -331,6 +331,7 @@ ATOM(int32_t,               mtu,             1200, int32_nonneg,, "Maximum trans
 ATOM(int32_t,               tick_ms,         -1, int32_nonneg,, "Keep alive interval")
 ATOM(int32_t,               packet_interval, -1, int32_nonneg,, "Minimum interval between packets in microseconds")
 ATOM(int32_t,               reachable_timeout_ms, -1, int32_nonneg,, "Inactivity timeout after which node considered unreachable")
+ATOM(int32_t,               transmit_timeout_ms, 1000, int32_nonneg,, "Maximum duration to hold a packet before transmission")
 ATOM(bool_t,                drop,            0, boolean,, "If true, drop all incoming packets")
 ATOM(bool_t,                send,            1, boolean,, "If false, don't send any packets")
 ATOM(bool_t,                route,           1, boolean,, "If false, do not advertise any links")

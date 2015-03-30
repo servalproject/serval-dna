@@ -320,24 +320,23 @@ teardown_simulate_extender() {
    tfw_cat "$SERVALD_VAR/radioerr"
 }
 
-doc_lowband_broadcast="Link detection over very low bandwith links"
+doc_lowband_broadcast="Link detection over low bandwith links"
 setup_lowband_broadcast() {
    setup_servald
    foreach_instance +A +B create_single_identity
    foreach_instance +A +B add_servald_interface 1
    foreach_instance +A +B executeOk_servald config \
-	set interfaces.1.broadcast.packet_interval 10000000 \
+	set interfaces.1.broadcast.packet_interval 2000000 \
+	set interfaces.1.broadcast.transmit_timeout_ms 6200 \
 	set interfaces.1.broadcast.tick_ms 15000 \
-	set interfaces.1.broadcast.mtu 180 \
+	set interfaces.1.broadcast.mtu 210 \
 	set interfaces.1.broadcast.route off \
 	set interfaces.1.unicast.send off
    foreach_instance +A +B start_servald_server
 }
 test_lowband_broadcast() {
-   #wait_until path_exists +A +B
-   #wait_until path_exists +B +A
    set_instance +A
-   executeOk_servald mdp ping --interval=5 --timeout=30 $SIDB 5
+   executeOk_servald mdp ping --interval=3 --timeout=6 $SIDB 3
    tfw_cat --stdout --stderr
 }
 
