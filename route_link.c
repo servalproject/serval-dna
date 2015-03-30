@@ -912,8 +912,11 @@ static int link_send_neighbours()
       if (out->destination->ifconfig.tick_ms>0 && out->destination->unicast){
 	if (out->destination->last_tx + out->destination->ifconfig.tick_ms < now)
 	  overlay_send_tick_packet(out->destination);
-	if (out->destination->last_tx + out->destination->ifconfig.tick_ms < ALARM_STRUCT(link_send).alarm)
-	  ALARM_STRUCT(link_send).alarm = out->destination->last_tx + out->destination->ifconfig.tick_ms;
+	if (out->destination->last_tx + out->destination->ifconfig.tick_ms < ALARM_STRUCT(link_send).alarm){
+	  time_ms_t next_tick = out->destination->last_tx + out->destination->ifconfig.tick_ms;
+	  time_ms_t next_allowed = limit_next_allowed(&out->destination->transfer_limit);
+	  ALARM_STRUCT(link_send).alarm = next_tick < next_allowed ? next_tick : next_allowed;
+	}
       }
       out=out->_next;
     }
@@ -1038,7 +1041,7 @@ int link_add_destinations(struct overlay_frame *frame)
       && directory_service->reachable&REACHABLE)
       next_hop = directory_service;
     
-    if (next_hop->reachable==REACHABLE_NONE){
+    if (next_hop->reachable==REACHABLE_NONE && frame->destination_count==0){
       // if the destination is a network neighbour, but we haven't established any viable route yet
       // we need to add all likely links so that we can send ack's and bootstrap the routing table
       struct neighbour *n = get_neighbour(frame->destination, 0);
@@ -1046,11 +1049,8 @@ int link_add_destinations(struct overlay_frame *frame)
 	struct link_out *out = n->out_links;
 	time_ms_t now = gettime_ms();
 	while(out){
-	  if (out->timeout>=now && frame->destination_count < MAX_PACKET_DESTINATIONS){
-	    unsigned dest = frame->destination_count++;
-	    frame->destinations[dest].destination = add_destination_ref(out->destination);
-	    frame->destinations[dest].next_hop = next_hop;
-	  }
+	  if (out->timeout>=now && frame->destination_count < MAX_PACKET_DESTINATIONS)
+	    frame_add_destination(frame, next_hop, out->destination);
 	  out = out->_next;
 	}
       }
@@ -1060,13 +1060,17 @@ int link_add_destinations(struct overlay_frame *frame)
       next_hop = next_hop->next_hop;
     
     if (next_hop->reachable&REACHABLE_DIRECT){
-      if (frame->destination_count < MAX_PACKET_DESTINATIONS){
-	unsigned dest = frame->destination_count++;
-	frame->destinations[dest].destination=add_destination_ref(next_hop->destination);
-	frame->destinations[dest].next_hop = next_hop;
+      unsigned i;
+      // do nothing if this packet is already going the right way
+      // or remove any stale destinations
+      for (i=frame->destination_count;i>0;i--){
+	if (frame->destinations[i-1].destination == next_hop->destination)
+	  return 0;
+	frame_remove_destination(frame, i-1);
       }
-    }    
-  }else{
+      frame_add_destination(frame, next_hop, next_hop->destination);
+    }
+  }else if (frame->destination_count==0){
     char added_interface[OVERLAY_MAX_INTERFACES];
     bzero(added_interface, sizeof(added_interface));
     

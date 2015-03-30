@@ -476,11 +476,11 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
     frame->ttl=1;// how will this work with olsr??
     if (context->interface){
       frame->destination = destination;
-      frame->destinations[frame->destination_count++].destination=add_destination_ref(context->interface->destination);
+      frame_add_destination(frame, NULL, context->interface->destination);
       
       struct network_destination *dest = create_unicast_destination(&context->addr, context->interface);
       if (dest)
-	frame->destinations[frame->destination_count++].destination=dest;
+	frame_add_destination(frame, NULL, dest);
     
     }else{
       FATAL("This context doesn't have an interface?");

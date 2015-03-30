@@ -178,7 +178,8 @@ int _overlay_payload_enqueue(struct __sourceloc __whence, struct overlay_frame *
     p->packet_version=1;
 
   if (config.debug.verbose && config.debug.overlayframes)
-    DEBUGF("Enqueue packet %p", p);
+    DEBUGF("Enqueue packet to %s",
+	p->destination?alloca_tohex_sid_t_trunc(p->destination->sid, 14): "broadcast");
   
   if (p->destination_count==0){
     if (!p->destination){
@@ -278,11 +279,24 @@ int overlay_queue_schedule_next(time_ms_t next_allowed_packet){
   return 0;  
 }
 
-static void remove_destination(struct overlay_frame *frame, int i){
+void frame_remove_destination(struct overlay_frame *frame, int i){
   release_destination_ref(frame->destinations[i].destination);
   frame->destination_count --;
   if (i<frame->destination_count)
     frame->destinations[i]=frame->destinations[frame->destination_count];
+}
+
+void frame_add_destination(struct overlay_frame *frame, struct subscriber *next_hop, struct network_destination *dest){
+  if (frame->destination_count >= MAX_PACKET_DESTINATIONS)
+    return;
+  unsigned i = frame->destination_count++;
+  frame->destinations[i].destination=add_destination_ref(dest);
+  frame->destinations[i].next_hop = next_hop;
+  frame->destinations[i].sent_sequence=-1;
+  if (config.debug.verbose && config.debug.overlayframes)
+    DEBUGF("Sending %s on interface %s", 
+	frame->destinations[i].destination->unicast?"unicast":"broadcast",
+	frame->destinations[i].destination->interface->name);
 }
 
 // update the alarm time and return 1 if changed
@@ -359,21 +373,10 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       goto skip;
       
     // quickly skip payloads that have no chance of fitting
-    if (packet->buffer && ob_limit(frame->payload) > ob_remaining(packet->buffer))
+    if (packet->buffer && ob_position(frame->payload) > ob_remaining(packet->buffer))
       goto skip;
     
-    if (frame->destination_count==0 && frame->destination){
-      link_add_destinations(frame);
-      
-      int i=0;
-      for (i=0;i<frame->destination_count;i++){
-	frame->destinations[i].sent_sequence=-1;
-	if (config.debug.verbose && config.debug.overlayframes)
-	  DEBUGF("Sending %s on interface %s", 
-	      frame->destinations[i].destination->unicast?"unicast":"broadcast",
-	      frame->destinations[i].destination->interface->name);
-      }
-    }
+    link_add_destinations(frame);
     
     if (frame->mdp_sequence == -1){
       frame->mdp_sequence = mdp_sequence = (mdp_sequence+1)&0xFFFF;
@@ -397,7 +400,13 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  FATALF("Destination interface %d is NULL", i);
 	if (dest->interface->state!=INTERFACE_STATE_UP){
 	  // remove this destination
-	  remove_destination(frame, i);
+	  frame_remove_destination(frame, i);
+	  continue;
+	}
+	if (ob_position(frame->payload) > (unsigned)dest->ifconfig.mtu){
+	  WARNF("Skipping packet destination as size %zu > destination mtu %zd", 
+	  ob_position(frame->payload), dest->ifconfig.mtu);
+	  frame_remove_destination(frame, i);
 	  continue;
 	}
 	// degrade packet version if required to reach the destination
@@ -494,14 +503,12 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     if (!will_retransmit){
       if (config.debug.overlayframes)
 	DEBUGF("Not waiting for retransmission (%d, %d, %d)", frame->packet_version, frame->resend, packet->seq);
-      remove_destination(frame, destination_index);
+      frame_remove_destination(frame, destination_index);
       if (frame->destination_count==0){
 	frame = overlay_queue_remove(queue, frame);
 	continue;
       }
     }
-    
-    // TODO recalc route on retransmittion??
     
   skip:
     // if we can't send the payload now, check when we should try next
@@ -610,7 +617,7 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
 	      frame = overlay_queue_remove(&overlay_tx[i], frame);
 	      continue;
 	    }
-	    remove_destination(frame, j);
+	    frame_remove_destination(frame, j);
 	    
 	  }else if (seq_delta < 128 && frame->destination && frame->delay_until>now){
 	    // retransmit asap

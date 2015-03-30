@@ -189,9 +189,8 @@ int overlay_send_probe(struct subscriber *peer, struct network_destination *dest
   frame->destination = peer;
   frame->ttl=1;
   frame->queue=queue;
-  unsigned dest = frame->destination_count++;
-  frame->destinations[dest].destination=add_destination_ref(destination);
-  frame->destinations[dest].next_hop = peer;
+  frame_add_destination(frame, peer, destination);
+
   if ((frame->payload = ob_new()) == NULL) {
     op_free(frame);
     return -1;

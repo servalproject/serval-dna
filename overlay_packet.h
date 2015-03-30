@@ -119,5 +119,7 @@ int op_free(struct overlay_frame *p);
 struct overlay_frame *op_dup(struct overlay_frame *f);
 
 int reload_mdp_packet_rules(void);
+void frame_remove_destination(struct overlay_frame *frame, int i);
+void frame_add_destination(struct overlay_frame *frame, struct subscriber *next_hop, struct network_destination *dest);
 
 #endif //__SERVAL_DNA__OVERLAY_PACKET_H
