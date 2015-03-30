@@ -311,10 +311,6 @@ static int app_config_test(const struct cli_parsed *UNUSED(parsed), struct cli_c
   DEBUGF("config.directory.service = %s", alloca_tohex_sid_t(config.directory.service));
   DEBUGF("config.rhizome.api.addfile.allow_host = %s", inet_ntoa(config.rhizome.api.addfile.allow_host));
   unsigned j;
-  for (j = 0; j < config.mdp.iftype.ac; ++j) {
-    DEBUGF("config.mdp.iftype.%u", config.mdp.iftype.av[j].key);
-    DEBUGF("   .tick_ms = %u", config.mdp.iftype.av[j].value.tick_ms);
-  }
   for (j = 0; j < config.dna.helper.argv.ac; ++j) {
     DEBUGF("config.dna.helper.argv.%u=%s", config.dna.helper.argv.av[j].key, config.dna.helper.argv.av[j].value);
   }
@@ -334,8 +330,8 @@ static int app_config_test(const struct cli_parsed *UNUSED(parsed), struct cli_c
     DEBUGF("            ]");
     DEBUGF("   .type = %d", config.interfaces.av[j].value.type);
     DEBUGF("   .port = %u", config.interfaces.av[j].value.port);
-    DEBUGF("   .drop_broadcasts = %d", (int) config.interfaces.av[j].value.drop_broadcasts);
-    DEBUGF("   .drop_unicasts = %d", (int) config.interfaces.av[j].value.drop_unicasts);
+    DEBUGF("   .broadcast.drop = %d", (int) config.interfaces.av[j].value.broadcast.drop);
+    DEBUGF("   .unicast.drop = %d", (int) config.interfaces.av[j].value.unicast.drop);
     DEBUGF("   .drop_packets = %u", (unsigned) config.interfaces.av[j].value.drop_packets);
   }
   for (j = 0; j < config.hosts.ac; ++j) {
