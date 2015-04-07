@@ -257,12 +257,13 @@ static int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *con
 
 DEFINE_CMD(app_trace, 0,
    "Trace through the network to the specified node via MDP.",
-   "mdp","trace","<SID>");
+   "mdp","trace","[--timeout=<seconds>]","<SID>");
 static int app_trace(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
-  const char *sidhex;
-  if (cli_arg(parsed, "SID", &sidhex, str_is_subscriber_id, NULL) == -1)
+  const char *sidhex, *opt_timeout;
+  if (   cli_arg(parsed, "--timeout", &opt_timeout, cli_interval_ms, "5") == -1
+      || cli_arg(parsed, "SID", &sidhex, str_is_subscriber_id, NULL) == -1)
     return -1;
   
   sid_t srcsid;
@@ -270,6 +271,11 @@ static int app_trace(const struct cli_parsed *parsed, struct cli_context *contex
   if (str_to_sid_t(&dstsid, sidhex) == -1)
     return WHY("str_to_sid_t() failed");
 
+  int64_t timeout_ms = 5000;
+  str_to_uint64_interval_ms(opt_timeout, &timeout_ms, NULL);
+  if (timeout_ms == 0)
+    timeout_ms = 60 * 60000; // 1 hour...
+    
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
     return WHY("Cannot create MDP socket");
   mdp_port_t port=32768+(random()&32767);
@@ -287,10 +293,10 @@ static int app_trace(const struct cli_parsed *parsed, struct cli_context *contex
   cli_delim(context, "\n");
   cli_flush(context);
   // TODO keep sending packets till we get a response?
-  int ret;
-  unsigned i;
+  int ret=0;
+  time_ms_t end = gettime_ms() + timeout_ms;
   overlay_mdp_frame mdp;
-  for (i=0;i<10;i++){
+  do{
     bzero(&mdp, sizeof(mdp));
     
     mdp.out.src.sid = srcsid;
@@ -310,9 +316,8 @@ static int app_trace(const struct cli_parsed *parsed, struct cli_context *contex
     mdp.out.payload_length = ob_position(b);
     ret = overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 500);
     ob_free(b);
-    if (ret==0)
-      break;
-  }
+  }while(ret && gettime_ms() < end);
+  
   if (ret)
     WHYF("overlay_mdp_send returned %d, %s", ret, mdp.error.message);
   if (ret == 0) {

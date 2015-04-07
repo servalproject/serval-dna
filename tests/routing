@@ -80,7 +80,7 @@ path_exists() {
    done
    # so we think this path should exist, check that it works
    set_instance $first_inst
-   executeOk_servald mdp trace "${!dest_sidvar}"
+   executeOk_servald mdp trace --timeout=20 "${!dest_sidvar}"
 #   assertStdoutGrep "^[0-9]+:${!dest_sidvar}\$"
    tfw_cat --stdout
    return 0
