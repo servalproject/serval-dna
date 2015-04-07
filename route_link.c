@@ -796,7 +796,7 @@ static int neighbour_find_best_link(struct neighbour *n)
 
   if (n->best_link != best_link){
     n->best_link = best_link;
-    n->next_neighbour_update = gettime_ms()+5;
+    n->next_neighbour_update = gettime_ms()+20;
     if (config.debug.linkstate){
       if (best_link){
 	DEBUGF("LINK STATE; best link from neighbour %s is %s on interface %s", 
@@ -1136,8 +1136,9 @@ int link_state_ack_soon(struct subscriber *subscriber)
   if (neighbour->using_us 
     && subscriber->reachable & REACHABLE_DIRECT 
     && subscriber->destination){
-    if (neighbour->next_neighbour_update > now + 40 + subscriber->destination->min_rtt){
-      neighbour->next_neighbour_update = now + 40 + subscriber->destination->min_rtt;
+    time_ms_t update_time = now + subscriber->destination->resend_delay/3;
+    if (neighbour->next_neighbour_update > update_time){
+      neighbour->next_neighbour_update = update_time;
       if (config.debug.ack)
 	DEBUGF("Asking for next ACK Real Soon Now");
     }
@@ -1488,11 +1489,11 @@ int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payl
 	  if (seq_delta <= 32 && (seq_delta==0 || ack_mask&(1<<(seq_delta-1)))){
 	    neighbour->last_update_seq = -1;
 	  }else if(seq_delta < 128){
-	    // send another ack asap
+	    // send another ack soon
 	    if (config.debug.ack)
 	      DEBUGF("LINK STATE; neighbour %s missed ack %d, queue another", 
 		alloca_tohex_sid_t(header->source->sid), neighbour->last_update_seq);
-	    neighbour->next_neighbour_update=now+5;
+	    neighbour->next_neighbour_update=now+10;
 	    update_alarm(__WHENCE__, neighbour->next_neighbour_update);
 	  }
         }
