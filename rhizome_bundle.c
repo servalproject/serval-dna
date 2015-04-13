@@ -1434,9 +1434,12 @@ enum rhizome_bundle_status rhizome_manifest_finalise(rhizome_manifest *m, rhizom
   assert(*mout == NULL);
   if (!m->finalised && !rhizome_manifest_validate(m))
     RETURN(RHIZOME_BUNDLE_STATUS_INVALID);
-  // if a manifest was supplied with an ID, don't bother to check for a duplicate.
-  // we only want to filter out added files with no existing manifest.
-  if (deduplicate && m->haveSecret != EXISTING_BUNDLE_ID) {
+  // The duplicate detection logic exists to filter out files repeatedly added with no existing
+  // manifest (ie, "de-bounce" for the "Add File" user interface action).
+  // 1. If a manifest was supplied with a bundle ID, don't check for a duplicate.
+  // 2. Never perform duplicate detection on journals (the first append does not supply a bundle ID,
+  //    but all subsequent appends supply a bundle ID, so are caught by case (1)).
+  if (deduplicate && m->haveSecret != EXISTING_BUNDLE_ID && !m->is_journal) {
     enum rhizome_bundle_status status = rhizome_find_duplicate(m, mout);
     switch (status) {
       case RHIZOME_BUNDLE_STATUS_DUPLICATE:
