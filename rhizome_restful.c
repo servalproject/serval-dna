@@ -68,10 +68,10 @@ static int http_request_rhizome_response(struct httpd_request *r, uint16_t resul
   uint16_t rhizome_result = 0;
   switch (r->bundle_status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
-      rhizome_result = 201;
-      break;
     case RHIZOME_BUNDLE_STATUS_SAME:
     case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+      rhizome_result = 201;
+      break;
     case RHIZOME_BUNDLE_STATUS_OLD:
     case RHIZOME_BUNDLE_STATUS_NO_ROOM:
       rhizome_result = 200;
@@ -105,10 +105,10 @@ static int http_request_rhizome_response(struct httpd_request *r, uint16_t resul
   rhizome_result = 0;
   switch (r->payload_status) {
     case RHIZOME_PAYLOAD_STATUS_NEW:
-      rhizome_result = 201;
-      break;
     case RHIZOME_PAYLOAD_STATUS_STORED:
     case RHIZOME_PAYLOAD_STATUS_EMPTY:
+      rhizome_result = 201;
+      break;
     case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
     case RHIZOME_PAYLOAD_STATUS_EVICTED:
       rhizome_result = 200;
@@ -727,7 +727,7 @@ static int restful_rhizome_insert_end(struct http_request *hr)
 	rhizome_manifest_free(r->manifest);
 	r->manifest = mout;
       }
-      result = 200;
+      result = 201;
       break;
     case RHIZOME_BUNDLE_STATUS_INVALID:
     case RHIZOME_BUNDLE_STATUS_FAKE:
