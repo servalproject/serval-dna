@@ -1162,7 +1162,7 @@ test_RhizomeInsertIncorrectFilehash() {
    assert_rhizome_list
 }
 
-doc_RhizomeJournalAppend="HTTP RESTful journal create and append"
+doc_RhizomeJournalAppend="HTTP RESTful Rhizome journal create and append"
 setup_RhizomeJournalAppend() {
    setup
    echo 'File one' >file1
@@ -1187,6 +1187,10 @@ test_RhizomeJournalAppend() {
          "http://$addr_localhost:$PORTA/restful/rhizome/append"
    tfw_cat http.header file1.manifest
    assertExitStatus == 0
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Code: 1$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Message: .*payload new to store.*$CR\$"
    assertStdoutIs 201
    extract_http_header H_BID http.header Serval-Rhizome-Bundle-Id "$rexp_manifestid"
    extract_http_header H_VERSION http.header Serval-Rhizome-Bundle-Version "$rexp_version"
@@ -1231,7 +1235,7 @@ test_RhizomeJournalAppend() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output file2.manifest \
-         --dump-header http.header \
+         --dump-header http.headers \
          --basic --user harry:potter \
          --form "bundle-id=$BID" \
          --form "bundle-author=$SIDA" \
@@ -1241,6 +1245,11 @@ test_RhizomeJournalAppend() {
    tfw_cat http.header file2.manifest
    assertExitStatus == 0
    assertStdoutIs 201
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Code: 1$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Message: .*payload new to store.*$CR\$"
+}
 }
 
 runTests "$@"
