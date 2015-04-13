@@ -973,13 +973,13 @@ test_RhizomeInsertDuplicateManifest() {
    assert_rhizome_list
 }
 
-doc_RhizomeJournalInsert="HTTP RESTful insert Rhizome bundle does not accept journals"
-setup_RhizomeJournalInsert() {
+doc_RhizomeInsertJournalForbidden="HTTP RESTful insert Rhizome bundle does not accept journals"
+setup_RhizomeInsertJournalForbidden() {
    setup
    echo 'File one' >file1
    echo 'tail=0' >file1.manifest
 }
-test_RhizomeJournalInsert() {
+test_RhizomeInsertJournalForbidden() {
    execute curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
@@ -1310,6 +1310,35 @@ test_RhizomeJournalAppendSharedPayload() {
    assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Message: .*payload already in store.*$CR\$"
    assert [ $(ls "$SERVALINSTANCE_PATH/blob" | wc -l) -eq 2 ]
 }
+
+doc_RhizomeAppendNonJournalForbidden="HTTP RESTful Rhizome cannot append to non-journal"
+setup_RhizomeAppendNonJournalForbidden() {
+   setup
+   echo "File One" > file1
+   echo "File Two" > file2
+   >file2.manifest
+   executeOk_servald rhizome add file $SIDA file1 file1.manifest
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file1
+   extract_stdout_manifestid BID
+}
+test_RhizomeAppendNonJournalForbidden() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "bundle-id=$BID" \
+         --form "manifest=@file2.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "payload=@file2" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/append"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 403
+   assertJq http.body 'contains({"http_status_code": 403})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'cannot append.*non.*journal'
+   executeOk_servald rhizome list
+   assert_rhizome_list file1
 }
 
 runTests "$@"
