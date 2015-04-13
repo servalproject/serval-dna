@@ -283,6 +283,11 @@ __SERVAL_DNA__STR_INLINE int hexvalue(char c) {
   return isxdigit(c) ? _serval_ctype_1[(unsigned char) c] & _SERVAL_CTYPE_1_HEX_MASK : -1;
 }
 
+/* -------------------- In-line string formatting -------------------- */
+
+size_t sprintf_len(const char *fmt, ...);
+#define alloca_sprintf(dstlen, fmt,...) strbuf_str(strbuf_sprintf(strbuf_alloca((dstlen) == -1 ? sprintf_len((fmt), ##__VA_ARGS__) + 1 : (size_t)(dstlen)), (fmt), ##__VA_ARGS__))
+
 /* -------------------- Printable string representation -------------------- */
 
 char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes, const char quotes[2]);
@@ -366,9 +371,11 @@ int str_startswith(const char *str, const char *substring, const char **afterp);
  * sub-string.  If so, return 1 and, if afterp is not NULL, set *afterp to point to the character
  * immediately following the substring.  Otherwise return 0.
  *
+ * If len == -1 then is equivalent to str_startswith().
+ *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int strn_startswith(const char *str, size_t len, const char *substring, const char **afterp);
+int strn_startswith(const char *str, ssize_t len, const char *substring, const char **afterp);
 
 /* Case-insensitive form of str_startswith().
  * @author Andrew Bettison <andrew@servalproject.com>

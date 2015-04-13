@@ -1,6 +1,6 @@
 /*
 Serval DNA Rhizome HTTP RESTful interface
-Copyright (C) 2013,2014 Serval Project Inc.
+Copyright (C) 2013-2015 Serval Project Inc.
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -68,10 +68,10 @@ static int http_request_rhizome_response(struct httpd_request *r, uint16_t resul
   uint16_t rhizome_result = 0;
   switch (r->bundle_status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
-      rhizome_result = 201;
-      break;
     case RHIZOME_BUNDLE_STATUS_SAME:
     case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+      rhizome_result = 201;
+      break;
     case RHIZOME_BUNDLE_STATUS_OLD:
     case RHIZOME_BUNDLE_STATUS_NO_ROOM:
       rhizome_result = 200;
@@ -105,10 +105,10 @@ static int http_request_rhizome_response(struct httpd_request *r, uint16_t resul
   rhizome_result = 0;
   switch (r->payload_status) {
     case RHIZOME_PAYLOAD_STATUS_NEW:
-      rhizome_result = 201;
-      break;
     case RHIZOME_PAYLOAD_STATUS_STORED:
     case RHIZOME_PAYLOAD_STATUS_EMPTY:
+      rhizome_result = 201;
+      break;
     case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
     case RHIZOME_PAYLOAD_STATUS_EVICTED:
       rhizome_result = 200;
@@ -341,6 +341,7 @@ int restful_rhizome_insert(httpd_request *r, const char *remainder)
   assert(r->u.insert.current_part == NULL);
   assert(!r->u.insert.received_author);
   assert(!r->u.insert.received_secret);
+  assert(!r->u.insert.received_bundleid);
   assert(!r->u.insert.received_manifest);
   assert(!r->u.insert.received_payload);
   bzero(&r->u.insert.write, sizeof r->u.insert.write);
@@ -355,8 +356,15 @@ int restful_rhizome_insert(httpd_request *r, const char *remainder)
   return 1;
 }
 
+int restful_rhizome_append(httpd_request *r, const char *remainder)
+{
+  r->u.insert.appending = 1;
+  return restful_rhizome_insert(r, remainder);
+}
+
 static char PART_MANIFEST[] = "manifest";
 static char PART_PAYLOAD[] = "payload";
+static char PART_BUNDLEID[] = "bundle-id";
 static char PART_AUTHOR[] = "bundle-author";
 static char PART_SECRET[] = "bundle-secret";
 
@@ -371,32 +379,68 @@ static int insert_make_manifest(httpd_request *r)
 {
   if (!r->u.insert.received_manifest)
     return http_response_form_part(r, "Missing", PART_MANIFEST, NULL, 0);
-  if ((r->manifest = rhizome_new_manifest())) {
-    if (r->u.insert.manifest.length == 0)
-      return 0;
-    assert(r->u.insert.manifest.length <= sizeof r->manifest->manifestdata);
-    memcpy(r->manifest->manifestdata, r->u.insert.manifest.buffer, r->u.insert.manifest.length);
-    r->manifest->manifest_all_bytes = r->u.insert.manifest.length;
-    int n = rhizome_manifest_parse(r->manifest);
-    switch (n) {
-      case 0:
-	if (!r->manifest->malformed)
-	  return 0;
-	// fall through
-      case 1:
-	rhizome_manifest_free(r->manifest);
-	r->manifest = NULL;
-	r->bundle_status = RHIZOME_BUNDLE_STATUS_INVALID;
-	return http_request_rhizome_response(r, 403, "Malformed manifest", NULL);
-      default:
-	WHYF("rhizome_manifest_parse() returned %d", n);
-	// fall through
-      case -1:
-	r->bundle_status = RHIZOME_BUNDLE_STATUS_ERROR;
+  if ((r->manifest = rhizome_new_manifest()) == NULL)
+    return http_request_rhizome_response(r, 500, "Internal Error: Out of manifests", NULL);
+  assert(r->u.insert.manifest.length <= sizeof r->manifest->manifestdata);
+  memcpy(r->manifest->manifestdata, r->u.insert.manifest.buffer, r->u.insert.manifest.length);
+  r->manifest->manifest_all_bytes = r->u.insert.manifest.length;
+  int n = rhizome_manifest_parse(r->manifest);
+  switch (n) {
+    case 0:
+      if (!r->manifest->malformed)
 	break;
-    }
+      // fall through
+    case 1:
+      rhizome_manifest_free(r->manifest);
+      r->manifest = NULL;
+      r->bundle_status = RHIZOME_BUNDLE_STATUS_INVALID;
+      return http_request_rhizome_response(r, 403, "Malformed manifest", NULL);
+    default:
+      WHYF("rhizome_manifest_parse() returned %d", n);
+      // fall through
+    case -1:
+      r->bundle_status = RHIZOME_BUNDLE_STATUS_ERROR;
+      break;
   }
-  return 500;
+  rhizome_manifest *mout = NULL;
+  char message[150];
+  enum rhizome_add_file_result result = rhizome_manifest_add_file(r->u.insert.appending, r->manifest, &mout,
+								  r->u.insert.received_bundleid ? &r->bid: NULL,
+								  r->u.insert.received_secret ? &r->u.insert.bundle_secret : NULL,
+								  r->u.insert.received_author ? &r->u.insert.author: NULL,
+								  NULL, 0, NULL, strbuf_local(message, sizeof message));
+  int result_valid = 0;
+  switch (result) {
+  case RHIZOME_ADD_FILE_ERROR:
+    return http_request_rhizome_response(r, 500, message, NULL);
+  case RHIZOME_ADD_FILE_OK:
+    result_valid = 1;
+    break;
+  case RHIZOME_ADD_FILE_INVALID:
+    r->bundle_status = RHIZOME_BUNDLE_STATUS_INVALID; // TODO separate enum for CLI return codes
+    return http_request_rhizome_response(r, 403, message, NULL);
+  case RHIZOME_ADD_FILE_BUSY:
+    r->bundle_status = RHIZOME_BUNDLE_STATUS_BUSY; // TODO separate enum for CLI return codes
+    return http_request_rhizome_response(r, 403, message, NULL);
+  case RHIZOME_ADD_FILE_REQUIRES_JOURNAL:
+    r->bundle_status = RHIZOME_BUNDLE_STATUS_INVALID; // TODO separate enum for CLI return codes
+    return http_request_rhizome_response(r, 403, message, NULL);
+  case RHIZOME_ADD_FILE_INVALID_FOR_JOURNAL:
+    r->bundle_status = RHIZOME_BUNDLE_STATUS_INVALID; // TODO separate enum for CLI return codes
+    return http_request_rhizome_response(r, 403, message, NULL);
+  case RHIZOME_ADD_FILE_WRONG_SECRET:
+    r->bundle_status = RHIZOME_BUNDLE_STATUS_READONLY; // TODO separate enum for CLI return codes
+    return http_request_rhizome_response(r, 403, message, NULL);
+  }
+  if (!result_valid)
+    FATALF("result = %d", result);
+  assert(mout != NULL);
+  if (mout != r->manifest) {
+    rhizome_manifest_free(r->manifest);
+    r->manifest = mout;
+  }
+  assert(r->manifest != NULL);
+  return 0;
 }
 
 static int insert_mime_part_header(struct http_request *hr, const struct mime_part_headers *h)
@@ -407,14 +451,29 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
   if (strcmp(h->content_disposition.name, PART_AUTHOR) == 0) {
     if (r->u.insert.received_author)
       return http_response_form_part(r, "Duplicate", PART_AUTHOR, NULL, 0);
+    // Reject a request if this parameter comes after the manifest part.
+    if (r->u.insert.received_manifest)
+      return http_response_form_part(r, "Spurious", PART_AUTHOR, NULL, 0);
     r->u.insert.current_part = PART_AUTHOR;
     assert(r->u.insert.author_hex_len == 0);
   }
   else if (strcmp(h->content_disposition.name, PART_SECRET) == 0) {
     if (r->u.insert.received_secret)
       return http_response_form_part(r, "Duplicate", PART_SECRET, NULL, 0);
+    // Reject a request if this parameter comes after the manifest part.
+    if (r->u.insert.received_manifest)
+      return http_response_form_part(r, "Spurious", PART_SECRET, NULL, 0);
     r->u.insert.current_part = PART_SECRET;
     assert(r->u.insert.secret_text_len == 0);
+  }
+  else if (strcmp(h->content_disposition.name, PART_BUNDLEID) == 0) {
+    if (r->u.insert.received_bundleid)
+      return http_response_form_part(r, "Duplicate", PART_BUNDLEID, NULL, 0);
+    // Reject a request if this parameter comes after the manifest part.
+    if (r->u.insert.received_manifest)
+      return http_response_form_part(r, "Spurious", PART_BUNDLEID, NULL, 0);
+    r->u.insert.current_part = PART_BUNDLEID;
+    assert(r->u.insert.bid_text_len == 0);
   }
   else if (strcmp(h->content_disposition.name, PART_MANIFEST) == 0) {
     // Reject a request if it has a repeated manifest part.
@@ -445,20 +504,30 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
 	&& *h->content_disposition.filename
     )
       rhizome_manifest_set_name_from_path(r->manifest, h->content_disposition.filename);
-    // Start writing the payload content into the Rhizome store.  Note: r->manifest->filesize can be
-    // RHIZOME_SIZE_UNSET at this point, if the manifest did not contain a 'filesize' field.
-    r->payload_status = rhizome_write_open_manifest(&r->u.insert.write, r->manifest);
-    r->u.insert.payload_size = 0;
-    switch (r->payload_status) {
-      case RHIZOME_PAYLOAD_STATUS_ERROR:
-	WHYF("rhizome_write_open_manifest() returned %d", r->payload_status);
+    // Start writing the payload content into the Rhizome store.
+    if (r->u.insert.appending) {
+      r->payload_status = rhizome_write_open_journal(&r->u.insert.write, r->manifest, 0, RHIZOME_SIZE_UNSET);
+      if (r->payload_status == RHIZOME_PAYLOAD_STATUS_ERROR) {
+	WHYF("rhizome_write_open_journal() returned %d %s", r->payload_status, rhizome_payload_status_message(r->payload_status));
 	return 500;
+      }
+    } else {
+      // Note: r->manifest->filesize can be RHIZOME_SIZE_UNSET at this point, if the manifest did
+      // not contain a 'filesize' field.
+      r->payload_status = rhizome_write_open_manifest(&r->u.insert.write, r->manifest);
+      if (r->payload_status == RHIZOME_PAYLOAD_STATUS_ERROR) {
+	WHYF("rhizome_write_open_manifest() returned %d %s", r->payload_status, rhizome_payload_status_message(r->payload_status));
+	return 500;
+      }
+    }
+    switch (r->payload_status) {
       case RHIZOME_PAYLOAD_STATUS_STORED:
 	// TODO: initialise payload hash so it can be compared with stored payload
 	break;
       default:
 	break; // r->payload_status gets dealt with later
     }
+    r->u.insert.payload_size = 0;
   }
   else
     return http_response_form_part(r, "Unsupported", h->content_disposition.name, NULL, 0);
@@ -480,6 +549,13 @@ static int insert_mime_part_body(struct http_request *hr, char *buf, size_t len)
 		    r->u.insert.secret_text,
 		    sizeof r->u.insert.secret_text,
 		    &r->u.insert.secret_text_len,
+		    buf, len);
+  }
+  else if (r->u.insert.current_part == PART_BUNDLEID) {
+    accumulate_text(r, PART_BUNDLEID,
+		    r->u.insert.bid_text,
+		    sizeof r->u.insert.bid_text,
+		    &r->u.insert.bid_text_len,
 		    buf, len);
   }
   else if (r->u.insert.current_part == PART_MANIFEST) {
@@ -508,7 +584,7 @@ static int insert_mime_part_end(struct http_request *hr)
   httpd_request *r = (httpd_request *) hr;
   if (r->u.insert.current_part == PART_AUTHOR) {
     if (   r->u.insert.author_hex_len != sizeof r->u.insert.author_hex
-	|| strn_to_sid_t(&r->u.insert.author, r->u.insert.author_hex, sizeof r->u.insert.author_hex, NULL) == -1
+	|| strn_to_sid_t(&r->u.insert.author, r->u.insert.author_hex, sizeof r->u.insert.author_hex) == -1
     )
       return http_response_form_part(r, "Invalid", PART_AUTHOR, r->u.insert.author_hex, r->u.insert.author_hex_len);
     r->u.insert.received_author = 1;
@@ -522,6 +598,13 @@ static int insert_mime_part_end(struct http_request *hr)
     if (config.debug.rhizome)
       DEBUGF("received %s = %s", PART_SECRET, alloca_tohex_rhizome_bk_t(r->u.insert.bundle_secret));
   }
+  else if (r->u.insert.current_part == PART_BUNDLEID) {
+    if (strn_to_rhizome_bid_t(&r->bid, r->u.insert.bid_text, r->u.insert.bid_text_len) == -1)
+      return http_response_form_part(r, "Invalid", PART_BUNDLEID, r->u.insert.secret_text, r->u.insert.secret_text_len);
+    r->u.insert.received_bundleid = 1;
+    if (config.debug.rhizome)
+      DEBUGF("received %s = %s", PART_BUNDLEID, alloca_tohex_rhizome_bid_t(r->bid));
+  }
   else if (r->u.insert.current_part == PART_MANIFEST) {
     r->u.insert.received_manifest = 1;
     if (config.debug.rhizome)
@@ -529,45 +612,12 @@ static int insert_mime_part_end(struct http_request *hr)
     int result = insert_make_manifest(r);
     if (result)
       return result;
-    if (r->u.insert.received_secret) {
-      if (r->manifest->has_id) {
-	if (!rhizome_apply_bundle_secret(r->manifest, &r->u.insert.bundle_secret)) {
-	  http_request_simple_response(&r->http, 403, "Secret does not match Bundle Id");
-	  return 403;
-	}
-      } else {
-	if (rhizome_new_bundle_from_secret(r->manifest, &r->u.insert.bundle_secret) == -1) {
-	  WHY("Failed to create bundle from secret");
-	  return 500;
-	}
-      }
-    }
-    if (r->manifest->service == NULL)
-      rhizome_manifest_set_service(r->manifest, RHIZOME_SERVICE_FILE);
-    if (rhizome_fill_manifest(r->manifest, NULL, r->u.insert.received_author ? &r->u.insert.author: NULL) == -1) {
-      WHY("rhizome_fill_manifest() failed");
-      return 500;
-    }
-    if (r->manifest->is_journal)
-      return http_request_rhizome_response(r, 403, "Insert not supported for journals", NULL);
-    assert(r->manifest != NULL);
   }
   else if (r->u.insert.current_part == PART_PAYLOAD) {
     r->u.insert.received_payload = 1;
-    switch (r->payload_status) {
-      case RHIZOME_PAYLOAD_STATUS_NEW:
-	r->payload_status = rhizome_finish_write(&r->u.insert.write);
-	if (r->payload_status == RHIZOME_PAYLOAD_STATUS_ERROR) {
-	  WHYF("rhizome_finish_write() returned status = %d", r->payload_status);
-	  return 500;
-	}
-	break;
-      case RHIZOME_PAYLOAD_STATUS_STORED:
-	// TODO: finish calculating payload hash and compare it with stored payload
-	break;
-      default:
-	break;
-    }
+    if (config.debug.rhizome)
+      DEBUGF("received %s, %zd bytes", PART_PAYLOAD, r->u.insert.payload_size);
+    r->payload_status = rhizome_finish_write(&r->u.insert.write);
   } else
     FATALF("current_part = %s", alloca_str_toprint(r->u.insert.current_part));
   r->u.insert.current_part = NULL;
@@ -583,58 +633,69 @@ static int restful_rhizome_insert_end(struct http_request *hr)
     return http_response_form_part(r, "Missing", PART_PAYLOAD, NULL, 0);
   // Fill in the missing manifest fields and ensure payload and manifest are consistent.
   assert(r->manifest != NULL);
-  assert(r->u.insert.write.file_length != RHIZOME_SIZE_UNSET);
-  int status_valid = 0;
   if (config.debug.rhizome)
-    DEBUGF("r->payload_status=%d", r->payload_status);
+    DEBUGF("r->payload_status=%d %s", r->payload_status, rhizome_payload_status_message(r->payload_status));
+  assert(r->u.insert.write.file_length != RHIZOME_SIZE_UNSET);
+  if (r->u.insert.appending) {
+    // For journal appends, the user cannot supply a 'filesize' field.  This will have been caught
+    // by previous logic.  The existing manifest should have a 'filesize' field.  The new payload
+    // size should be the sum of 'filesize' and the appended portion.
+    assert(r->manifest->is_journal);
+    assert(r->manifest->filesize != RHIZOME_SIZE_UNSET);
+    if (config.debug.rhizome)
+      DEBUGF("file_length=%"PRIu64" filesize=%"PRIu64" payload_size=%"PRIu64,
+	  r->u.insert.write.file_length,
+	  r->manifest->filesize,
+	  r->u.insert.payload_size);
+    if (r->u.insert.write.file_length != r->manifest->filesize + r->u.insert.payload_size)
+      r->payload_status = RHIZOME_PAYLOAD_STATUS_WRONG_SIZE;
+  } else {
+    // The Rhizome CLI 'add file' operation allows the user to supply a 'filesize' field which is
+    // smaller than the supplied file, for convenience, to allow only the first part of a file to be
+    // added as a payload.  But the RESTful interface doesn't allow that.
+    assert(!r->manifest->is_journal);
+    if (r->manifest->filesize != RHIZOME_SIZE_UNSET && r->u.insert.payload_size != r->manifest->filesize)
+      r->payload_status = RHIZOME_PAYLOAD_STATUS_WRONG_SIZE;
+  }
+  r->payload_status = rhizome_finish_store(&r->u.insert.write, r->manifest, r->payload_status);
+  int status_valid = 0;
   switch (r->payload_status) {
     case RHIZOME_PAYLOAD_STATUS_NEW:
-      if (r->manifest->filesize == RHIZOME_SIZE_UNSET)
-	rhizome_manifest_set_filesize(r->manifest, r->u.insert.write.file_length);
-      // fall through
     case RHIZOME_PAYLOAD_STATUS_STORED:
-      assert(r->manifest->filesize != RHIZOME_SIZE_UNSET);
-      // TODO: check that stored hash matches received payload's hash
-      // fall through
     case RHIZOME_PAYLOAD_STATUS_EMPTY:
       status_valid = 1;
-      if (r->manifest->filesize == RHIZOME_SIZE_UNSET)
-	rhizome_manifest_set_filesize(r->manifest, 0);
-      if (r->u.insert.payload_size == r->manifest->filesize)
-	break;
-      // fall through
+      break;
     case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
-      r->payload_status = RHIZOME_PAYLOAD_STATUS_WRONG_SIZE;
       r->bundle_status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
       {
 	strbuf msg = strbuf_alloca(200);
 	strbuf_sprintf(msg, "Payload size (%"PRIu64") contradicts manifest (filesize=%"PRIu64")", r->u.insert.payload_size, r->manifest->filesize);
-	return http_request_rhizome_response(r, 403, NULL, strbuf_str(msg));
+	return http_request_rhizome_response(r, 403, "Inconsistent filesize", strbuf_str(msg));
       }
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
       r->bundle_status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
-      return http_request_rhizome_response(r, 403, NULL, NULL);
+      {
+	strbuf msg = strbuf_alloca(200);
+	strbuf_sprintf(msg, "Payload hash (%s) contradicts manifest (filehash=%s)",
+	    alloca_tohex_rhizome_filehash_t(r->u.insert.write.id),
+	    alloca_tohex_rhizome_filehash_t(r->manifest->filehash));
+	return http_request_rhizome_response(r, 403, "Inconsistent filehash", strbuf_str(msg));
+      }
     case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
       r->bundle_status = RHIZOME_BUNDLE_STATUS_READONLY;
       return http_request_rhizome_response(r, 403, "Missing bundle secret", NULL);
     case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+      r->bundle_status = RHIZOME_BUNDLE_STATUS_NO_ROOM;
+      return http_request_rhizome_response(r, 403, "Bundle too big", NULL);
     case RHIZOME_PAYLOAD_STATUS_EVICTED:
       r->bundle_status = RHIZOME_BUNDLE_STATUS_NO_ROOM;
-      // fall through
+      return http_request_rhizome_response(r, 403, "Bundle evicted", NULL);
     case RHIZOME_PAYLOAD_STATUS_ERROR:
-      return http_request_rhizome_response(r, 403, NULL, NULL);
+      return http_request_rhizome_response(r, 500, NULL, NULL);
   }
-  if (!status_valid) {
-    WHYF("r->payload_status = %d", r->payload_status);
-    return http_request_rhizome_response(r, 500, NULL, NULL);
-  }
+  if (!status_valid)
+    FATALF("rhizome_finish_store() returned status = %d", r->payload_status);
   // Finalise the manifest and add it to the store.
-  if (r->manifest->filesize) {
-    if (!r->manifest->has_filehash)
-      rhizome_manifest_set_filehash(r->manifest, &r->u.insert.write.id);
-    else
-      assert(cmp_rhizome_filehash_t(&r->u.insert.write.id, &r->manifest->filehash) == 0);
-  }
   const char *invalid_reason = rhizome_manifest_validate_reason(r->manifest);
   if (invalid_reason) {
     r->bundle_status = RHIZOME_BUNDLE_STATUS_INVALID;
@@ -666,7 +727,7 @@ static int restful_rhizome_insert_end(struct http_request *hr)
 	rhizome_manifest_free(r->manifest);
 	r->manifest = mout;
       }
-      result = 200;
+      result = 201;
       break;
     case RHIZOME_BUNDLE_STATUS_INVALID:
     case RHIZOME_BUNDLE_STATUS_FAKE:
@@ -706,7 +767,7 @@ int restful_rhizome_(httpd_request *r, const char *remainder)
   HTTP_HANDLER *handler = NULL;
   rhizome_bid_t bid;
   const char *end;
-  if (strn_to_rhizome_bid_t(&bid, remainder, &end) != -1) {
+  if (parse_rhizome_bid_t(&bid, remainder, -1, &end) != -1) {
     if (strcmp(end, ".rhm") == 0) {
       handler = restful_rhizome_bid_rhm;
       remainder = "";

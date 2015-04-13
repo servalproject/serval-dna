@@ -38,6 +38,7 @@ static HTTP_HANDLER static_page;
 HTTP_HANDLER restful_rhizome_bundlelist_json;
 HTTP_HANDLER restful_rhizome_newsince;
 HTTP_HANDLER restful_rhizome_insert;
+HTTP_HANDLER restful_rhizome_append;
 HTTP_HANDLER restful_rhizome_;
 HTTP_HANDLER restful_meshms_;
 HTTP_HANDLER restful_keyring_;
@@ -59,6 +60,7 @@ struct http_handler paths[]={
   {"/restful/rhizome/bundlelist.json", restful_rhizome_bundlelist_json},
   {"/restful/rhizome/newsince/", restful_rhizome_newsince},
   {"/restful/rhizome/insert", restful_rhizome_insert},
+  {"/restful/rhizome/append", restful_rhizome_append},
   {"/restful/rhizome/", restful_rhizome_},
   {"/restful/meshms/", restful_meshms_},
   {"/restful/keyring/", restful_keyring_},

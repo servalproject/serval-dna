@@ -156,6 +156,11 @@ void _rhizome_manifest_set_version(struct __sourceloc __whence, rhizome_manifest
   m->finalised = 0;
 }
 
+void _rhizome_manifest_del_version(struct __sourceloc __whence, rhizome_manifest *m)
+{
+  _rhizome_manifest_set_version(__whence, m, 0);
+}
+
 void _rhizome_manifest_set_filesize(struct __sourceloc __whence, rhizome_manifest *m, uint64_t size)
 {
   if (size == RHIZOME_SIZE_UNSET) {
@@ -166,6 +171,11 @@ void _rhizome_manifest_set_filesize(struct __sourceloc __whence, rhizome_manifes
   }
   m->filesize = size;
   m->finalised = 0;
+}
+
+void _rhizome_manifest_del_filesize(struct __sourceloc __whence, rhizome_manifest *m)
+{
+  _rhizome_manifest_set_filesize(__whence, m, RHIZOME_SIZE_UNSET);
 }
 
 /* Must always set file size before setting the file hash, to avoid assertion failures.
@@ -185,6 +195,11 @@ void _rhizome_manifest_set_filehash(struct __sourceloc __whence, rhizome_manifes
   m->finalised = 0;
 }
 
+void _rhizome_manifest_del_filehash(struct __sourceloc __whence, rhizome_manifest *m)
+{
+  _rhizome_manifest_set_filehash(__whence, m, NULL);
+}
+
 void _rhizome_manifest_set_tail(struct __sourceloc __whence, rhizome_manifest *m, uint64_t tail)
 {
   if (tail == RHIZOME_SIZE_UNSET) {
@@ -193,9 +208,9 @@ void _rhizome_manifest_set_tail(struct __sourceloc __whence, rhizome_manifest *m
   } else {
     const char *v = rhizome_manifest_set_ui64(m, "tail", tail);
     assert(v); // TODO: remove known manifest fields from vars[]
-    m->tail = tail;
     m->is_journal = 1;
   }
+  m->tail = tail;
   m->finalised = 0;
 }
 
@@ -509,7 +524,7 @@ int rhizome_manifest_inspect(const char *buf, size_t len, struct rhizome_manifes
 	    eol = p;
 	  if (has_bid == 1) {
 	    const char *e;
-	    if (strn_to_rhizome_bid_t(&summ->bid, begin, &e) == 0 && e == eol)
+	    if (parse_rhizome_bid_t(&summ->bid, begin, eol - begin, &e) == 0 && e == eol)
 	      has_bid = 2;
 	    else
 	      state = Error; // invalid "id" field
@@ -664,17 +679,22 @@ int rhizome_manifest_parse(rhizome_manifest *m)
   OUT();
 }
 
-typedef int MANIFEST_FIELD_TESTER(rhizome_manifest *);
-typedef void MANIFEST_FIELD_UNSETTER(rhizome_manifest *);
+typedef int MANIFEST_FIELD_TESTER(const rhizome_manifest *);
+typedef void MANIFEST_FIELD_UNSETTER(struct __sourceloc, rhizome_manifest *);
+typedef void MANIFEST_FIELD_COPIER(struct __sourceloc, rhizome_manifest *, const rhizome_manifest *);
 typedef int MANIFEST_FIELD_PARSER(rhizome_manifest *, const char *);
 
-static int _rhizome_manifest_test_id(rhizome_manifest *m)
+static int _rhizome_manifest_test_id(const rhizome_manifest *m)
 {
   return m->has_id;
 }
-static void _rhizome_manifest_unset_id(rhizome_manifest *m)
+static void _rhizome_manifest_unset_id(struct __sourceloc __whence, rhizome_manifest *m)
 {
   rhizome_manifest_set_id(m, NULL);
+}
+static void _rhizome_manifest_copy_id(struct __sourceloc __whence, rhizome_manifest *m, const rhizome_manifest *srcm)
+{
+  rhizome_manifest_set_id(m, srcm->has_id ? &srcm->cryptoSignPublic : NULL);
 }
 static int _rhizome_manifest_parse_id(rhizome_manifest *m, const char *text)
 {
@@ -685,13 +705,17 @@ static int _rhizome_manifest_parse_id(rhizome_manifest *m, const char *text)
   return 1;
 }
 
-static int _rhizome_manifest_test_version(rhizome_manifest *m)
+static int _rhizome_manifest_test_version(const rhizome_manifest *m)
 {
   return m->version != 0;
 }
-static void _rhizome_manifest_unset_version(rhizome_manifest *m)
+static void _rhizome_manifest_unset_version(struct __sourceloc __whence, rhizome_manifest *m)
 {
-  m->version = 0;
+  rhizome_manifest_del_version(m);
+}
+static void _rhizome_manifest_copy_version(struct __sourceloc __whence, rhizome_manifest *m, const rhizome_manifest *srcm)
+{
+  rhizome_manifest_set_version(m, srcm->version);
 }
 static int _rhizome_manifest_parse_version(rhizome_manifest *m, const char *text)
 {
@@ -702,13 +726,17 @@ static int _rhizome_manifest_parse_version(rhizome_manifest *m, const char *text
   return 1;
 }
 
-static int _rhizome_manifest_test_filehash(rhizome_manifest *m)
+static int _rhizome_manifest_test_filehash(const rhizome_manifest *m)
 {
   return m->has_filehash;
 }
-static void _rhizome_manifest_unset_filehash(rhizome_manifest *m)
+static void _rhizome_manifest_unset_filehash(struct __sourceloc __whence, rhizome_manifest *m)
 {
   rhizome_manifest_set_filehash(m, NULL);
+}
+static void _rhizome_manifest_copy_filehash(struct __sourceloc __whence, rhizome_manifest *m, const rhizome_manifest *srcm)
+{
+  rhizome_manifest_set_filehash(m, srcm->has_filehash ? &srcm->filehash : NULL);
 }
 static int _rhizome_manifest_parse_filehash(rhizome_manifest *m, const char *text)
 {
@@ -719,13 +747,17 @@ static int _rhizome_manifest_parse_filehash(rhizome_manifest *m, const char *tex
   return 1;
 }
 
-static int _rhizome_manifest_test_filesize(rhizome_manifest *m)
+static int _rhizome_manifest_test_filesize(const rhizome_manifest *m)
 {
   return m->filesize != RHIZOME_SIZE_UNSET;
 }
-static void _rhizome_manifest_unset_filesize(rhizome_manifest *m)
+static void _rhizome_manifest_unset_filesize(struct __sourceloc __whence, rhizome_manifest *m)
 {
   rhizome_manifest_set_filesize(m, RHIZOME_SIZE_UNSET);
+}
+static void _rhizome_manifest_copy_filesize(struct __sourceloc __whence, rhizome_manifest *m, const rhizome_manifest *srcm)
+{
+  rhizome_manifest_set_filesize(m, srcm->filesize);
 }
 static int _rhizome_manifest_parse_filesize(rhizome_manifest *m, const char *text)
 {
@@ -736,13 +768,17 @@ static int _rhizome_manifest_parse_filesize(rhizome_manifest *m, const char *tex
   return 1;
 }
 
-static int _rhizome_manifest_test_tail(rhizome_manifest *m)
+static int _rhizome_manifest_test_tail(const rhizome_manifest *m)
 {
   return m->is_journal;
 }
-static void _rhizome_manifest_unset_tail(rhizome_manifest *m)
+static void _rhizome_manifest_unset_tail(struct __sourceloc __whence, rhizome_manifest *m)
 {
   rhizome_manifest_set_tail(m, RHIZOME_SIZE_UNSET);
+}
+static void _rhizome_manifest_copy_tail(struct __sourceloc __whence, rhizome_manifest *m, const rhizome_manifest *srcm)
+{
+  rhizome_manifest_set_tail(m, srcm->tail);
 }
 static int _rhizome_manifest_parse_tail(rhizome_manifest *m, const char *text)
 {
@@ -753,13 +789,17 @@ static int _rhizome_manifest_parse_tail(rhizome_manifest *m, const char *text)
   return 1;
 }
 
-static int _rhizome_manifest_test_BK(rhizome_manifest *m)
+static int _rhizome_manifest_test_BK(const rhizome_manifest *m)
 {
   return m->has_bundle_key;
 }
-static void _rhizome_manifest_unset_BK(rhizome_manifest *m)
+static void _rhizome_manifest_unset_BK(struct __sourceloc __whence, rhizome_manifest *m)
 {
-  m->has_bundle_key = 0;
+  rhizome_manifest_del_bundle_key(m);
+}
+static void _rhizome_manifest_copy_BK(struct __sourceloc __whence, rhizome_manifest *m, const rhizome_manifest *srcm)
+{
+  rhizome_manifest_set_bundle_key(m, srcm->has_bundle_key ? &srcm->bundle_key : NULL);
 }
 static int _rhizome_manifest_parse_BK(rhizome_manifest *m, const char *text)
 {
@@ -770,13 +810,17 @@ static int _rhizome_manifest_parse_BK(rhizome_manifest *m, const char *text)
   return 1;
 }
 
-static int _rhizome_manifest_test_service(rhizome_manifest *m)
+static int _rhizome_manifest_test_service(const rhizome_manifest *m)
 {
   return m->service != NULL;
 }
-static void _rhizome_manifest_unset_service(rhizome_manifest *m)
+static void _rhizome_manifest_unset_service(struct __sourceloc __whence, rhizome_manifest *m)
 {
   rhizome_manifest_del_service(m);
+}
+static void _rhizome_manifest_copy_service(struct __sourceloc __whence, rhizome_manifest *m, const rhizome_manifest *srcm)
+{
+  rhizome_manifest_set_service(m, srcm->service);
 }
 static int _rhizome_manifest_parse_service(rhizome_manifest *m, const char *text)
 {
@@ -786,13 +830,20 @@ static int _rhizome_manifest_parse_service(rhizome_manifest *m, const char *text
   return 1;
 }
 
-static int _rhizome_manifest_test_date(rhizome_manifest *m)
+static int _rhizome_manifest_test_date(const rhizome_manifest *m)
 {
   return m->has_date;
 }
-static void _rhizome_manifest_unset_date(rhizome_manifest *m)
+static void _rhizome_manifest_unset_date(struct __sourceloc __whence, rhizome_manifest *m)
 {
   rhizome_manifest_del_date(m);
+}
+static void _rhizome_manifest_copy_date(struct __sourceloc __whence, rhizome_manifest *m, const rhizome_manifest *srcm)
+{
+  if (srcm->has_date)
+    rhizome_manifest_set_date(m, srcm->date);
+  else
+    rhizome_manifest_del_date(m);
 }
 static int _rhizome_manifest_parse_date(rhizome_manifest *m, const char *text)
 {
@@ -803,13 +854,17 @@ static int _rhizome_manifest_parse_date(rhizome_manifest *m, const char *text)
   return 1;
 }
 
-static int _rhizome_manifest_test_sender(rhizome_manifest *m)
+static int _rhizome_manifest_test_sender(const rhizome_manifest *m)
 {
   return m->has_sender;
 }
-static void _rhizome_manifest_unset_sender(rhizome_manifest *m)
+static void _rhizome_manifest_unset_sender(struct __sourceloc __whence, rhizome_manifest *m)
 {
   rhizome_manifest_set_sender(m, NULL);
+}
+static void _rhizome_manifest_copy_sender(struct __sourceloc __whence, rhizome_manifest *m, const rhizome_manifest *srcm)
+{
+  rhizome_manifest_set_sender(m, srcm->has_sender ? &srcm->sender : NULL);
 }
 static int _rhizome_manifest_parse_sender(rhizome_manifest *m, const char *text)
 {
@@ -820,13 +875,17 @@ static int _rhizome_manifest_parse_sender(rhizome_manifest *m, const char *text)
   return 1;
 }
 
-static int _rhizome_manifest_test_recipient(rhizome_manifest *m)
+static int _rhizome_manifest_test_recipient(const rhizome_manifest *m)
 {
   return m->has_recipient;
 }
-static void _rhizome_manifest_unset_recipient(rhizome_manifest *m)
+static void _rhizome_manifest_unset_recipient(struct __sourceloc __whence, rhizome_manifest *m)
 {
   rhizome_manifest_set_recipient(m, NULL);
+}
+static void _rhizome_manifest_copy_recipient(struct __sourceloc __whence, rhizome_manifest *m, const rhizome_manifest *srcm)
+{
+  rhizome_manifest_set_recipient(m, srcm->has_recipient ? &srcm->recipient : NULL);
 }
 static int _rhizome_manifest_parse_recipient(rhizome_manifest *m, const char *text)
 {
@@ -837,13 +896,17 @@ static int _rhizome_manifest_parse_recipient(rhizome_manifest *m, const char *te
   return 1;
 }
 
-static int _rhizome_manifest_test_name(rhizome_manifest *m)
+static int _rhizome_manifest_test_name(const rhizome_manifest *m)
 {
   return m->name != NULL;
 }
-static void _rhizome_manifest_unset_name(rhizome_manifest *m)
+static void _rhizome_manifest_unset_name(struct __sourceloc __whence, rhizome_manifest *m)
 {
   rhizome_manifest_del_name(m);
+}
+static void _rhizome_manifest_copy_name(struct __sourceloc __whence, rhizome_manifest *m, const rhizome_manifest *srcm)
+{
+  rhizome_manifest_set_name(m, srcm->name);
 }
 static int _rhizome_manifest_parse_name(rhizome_manifest *m, const char *text)
 {
@@ -851,13 +914,17 @@ static int _rhizome_manifest_parse_name(rhizome_manifest *m, const char *text)
   return 1;
 }
 
-static int _rhizome_manifest_test_crypt(rhizome_manifest *m)
+static int _rhizome_manifest_test_crypt(const rhizome_manifest *m)
 {
   return m->payloadEncryption != PAYLOAD_CRYPT_UNKNOWN;
 }
-static void _rhizome_manifest_unset_crypt(rhizome_manifest *m)
+static void _rhizome_manifest_unset_crypt(struct __sourceloc __whence, rhizome_manifest *m)
 {
   rhizome_manifest_set_crypt(m, PAYLOAD_CRYPT_UNKNOWN);
+}
+static void _rhizome_manifest_copy_crypt(struct __sourceloc __whence, rhizome_manifest *m, const rhizome_manifest *srcm)
+{
+  rhizome_manifest_set_crypt(m, srcm->payloadEncryption);
 }
 static int _rhizome_manifest_parse_crypt(rhizome_manifest *m, const char *text)
 {
@@ -872,22 +939,64 @@ static struct rhizome_manifest_field_descriptor {
     int core;
     MANIFEST_FIELD_TESTER *test;
     MANIFEST_FIELD_UNSETTER *unset;
+    MANIFEST_FIELD_COPIER *copy;
     MANIFEST_FIELD_PARSER *parse;
 }
     rhizome_manifest_fields[] = {
-        { "id",		1, _rhizome_manifest_test_id,		_rhizome_manifest_unset_id,		_rhizome_manifest_parse_id },
-        { "version",	1, _rhizome_manifest_test_version,	_rhizome_manifest_unset_version,	_rhizome_manifest_parse_version },
-        { "filehash",	1, _rhizome_manifest_test_filehash,	_rhizome_manifest_unset_filehash,	_rhizome_manifest_parse_filehash },
-        { "filesize",	1, _rhizome_manifest_test_filesize,	_rhizome_manifest_unset_filesize,	_rhizome_manifest_parse_filesize },
-        { "tail",	1, _rhizome_manifest_test_tail,		_rhizome_manifest_unset_tail,		_rhizome_manifest_parse_tail },
-        { "BK",		0, _rhizome_manifest_test_BK,		_rhizome_manifest_unset_BK,		_rhizome_manifest_parse_BK },
-        { "service",	0, _rhizome_manifest_test_service,	_rhizome_manifest_unset_service,	_rhizome_manifest_parse_service },
-        { "date",	0, _rhizome_manifest_test_date,		_rhizome_manifest_unset_date,		_rhizome_manifest_parse_date },
-        { "sender",	0, _rhizome_manifest_test_sender,	_rhizome_manifest_unset_sender,		_rhizome_manifest_parse_sender },
-        { "recipient",	0, _rhizome_manifest_test_recipient,	_rhizome_manifest_unset_recipient,	_rhizome_manifest_parse_recipient },
-        { "name",	0, _rhizome_manifest_test_name,		_rhizome_manifest_unset_name,		_rhizome_manifest_parse_name },
-        { "crypt",	0, _rhizome_manifest_test_crypt,	_rhizome_manifest_unset_crypt,		_rhizome_manifest_parse_crypt },
+#define FIELD(CORE, NAME) \
+        { #NAME, CORE, _rhizome_manifest_test_ ## NAME, _rhizome_manifest_unset_ ## NAME, _rhizome_manifest_copy_ ## NAME, _rhizome_manifest_parse_ ## NAME }
+	FIELD(1, id),
+	FIELD(1, version),
+	FIELD(1, filehash),
+	FIELD(1, filesize),
+	FIELD(1, tail),
+	FIELD(0, BK),
+	FIELD(0, service),
+	FIELD(0, date),
+	FIELD(0, sender),
+	FIELD(0, recipient),
+	FIELD(0, name),
+	FIELD(0, crypt),
+#undef FIELD
     };
+
+static struct rhizome_manifest_field_descriptor *get_rhizome_manifest_field_descriptor(const char *label)
+{
+  unsigned i;
+  for (i = 0; i < NELS(rhizome_manifest_fields); ++i)
+    if (strcasecmp(label, rhizome_manifest_fields[i].label) == 0)
+      return &rhizome_manifest_fields[i];
+  return NULL;
+}
+
+/* Overwrite a Rhizome manifest with fields from another.  Used in the "add bundle" application API
+ * when the application supplies a partial manifest to override or add to existing manifest fields.
+ *
+ * Returns -1 if a field in the destination manifest cannot be overwritten for an unrecoverable
+ * reason, eg, out of memory or too many variables, leaving the destination manifest in an undefined
+ * state.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int _rhizome_manifest_overwrite(struct __sourceloc __whence, rhizome_manifest *m, const rhizome_manifest *srcm)
+{
+  unsigned i;
+  for (i = 0; i < NELS(rhizome_manifest_fields); ++i) {
+      struct rhizome_manifest_field_descriptor *desc = &rhizome_manifest_fields[i];
+      if (desc->test(srcm)) {
+	if (config.debug.rhizome_manifest)
+	  DEBUGF("COPY manifest[%d].%s to:", srcm->manifest_record_number, desc->label);
+	desc->copy(__whence, m, srcm);
+      }
+  }
+  for (i = 0; i < srcm->var_count; ++i) {
+    struct rhizome_manifest_field_descriptor *desc = get_rhizome_manifest_field_descriptor(srcm->vars[i]);
+    if (!desc)
+      if (_rhizome_manifest_set(__whence, m, srcm->vars[i], srcm->values[i]) == NULL)
+	return -1;
+  }
+  return 0;
+}
 
 int rhizome_manifest_field_label_is_valid(const char *field_label, size_t field_label_len)
 {
@@ -959,11 +1068,7 @@ rhizome_manifest_parse_field(rhizome_manifest *m, const char *field_label, size_
     return RHIZOME_MANIFEST_SYNTAX_ERROR;
   }
   const char *value = alloca_strndup(field_value, field_value_len);
-  struct rhizome_manifest_field_descriptor *desc = NULL;
-  unsigned i;
-  for (i = 0; desc == NULL && i < NELS(rhizome_manifest_fields); ++i)
-    if (strcasecmp(label, rhizome_manifest_fields[i].label) == 0)
-      desc = &rhizome_manifest_fields[i];
+  struct rhizome_manifest_field_descriptor *desc = get_rhizome_manifest_field_descriptor(label);
   enum rhizome_manifest_parse_status status = RHIZOME_MANIFEST_OK;
   assert(m->var_count <= NELS(m->vars));
   if (desc ? desc->test(m) : rhizome_manifest_get(m, label) != NULL) {
@@ -980,7 +1085,7 @@ rhizome_manifest_parse_field(rhizome_manifest *m, const char *field_label, size_
 	DEBUGF("Manifest field parse failed at %s=%s", label, alloca_toprint(100, field_value, field_value_len));
       status = desc->core ? RHIZOME_MANIFEST_INVALID : RHIZOME_MANIFEST_MALFORMED;
     }
-  } else if ((rhizome_manifest_set(m, label, value)) == NULL)
+  } else if (rhizome_manifest_set(m, label, value) == NULL)
     status = RHIZOME_MANIFEST_ERROR;
   if (status != RHIZOME_MANIFEST_OK) {
     if (config.debug.rhizome_manifest)
@@ -1010,7 +1115,7 @@ int rhizome_manifest_remove_field(rhizome_manifest *m, const char *field_label, 
     return rhizome_manifest_del(m, label);
   if (!desc->test(m))
     return 0;
-  desc->unset(m);
+  desc->unset(__WHENCE__, m);
   return 1;
 }
 
@@ -1133,14 +1238,14 @@ int manifest_first_free=-1;
 struct __sourceloc manifest_alloc_whence[MAX_RHIZOME_MANIFESTS];
 struct __sourceloc manifest_free_whence[MAX_RHIZOME_MANIFESTS];
 
-static void _log_manifest_trace(struct __sourceloc __whence, const char *operation)
+static unsigned _count_free_manifests()
 {
-  int count_free = 0;
+  unsigned count_free = 0;
   unsigned i;
   for (i = 0; i != MAX_RHIZOME_MANIFESTS; ++i)
     if (manifest_free[i])
       ++count_free;
-  DEBUGF("%s(): count_free = %d", operation, count_free);
+  return count_free;
 }
 
 rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence)
@@ -1187,7 +1292,8 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence)
   for (; manifest_first_free < MAX_RHIZOME_MANIFESTS && !manifest_free[manifest_first_free]; ++manifest_first_free)
     ;
 
-  if (config.debug.manifests) _log_manifest_trace(__whence, __FUNCTION__);
+  if (config.debug.rhizome_manifest)
+    DEBUGF("NEW manifest[%d], count_free=%u", m->manifest_record_number, _count_free_manifests());
 
   // Set global defaults for a manifest (which are not zero)
   rhizome_manifest_clear(m);
@@ -1201,12 +1307,12 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
   int mid=m->manifest_record_number;
 
   if (m!=&manifests[mid])
-    FATALF("%s(): asked to free manifest %p, which claims to be manifest slot #%d (%p), but isn't",
+    FATALF("%s(): manifest at %p claims to be manifest[%d] (%p) but isn't",
 	  __FUNCTION__, m, mid, &manifests[mid]
       );
 
   if (manifest_free[mid])
-    FATALF("%s(): asked to free manifest slot #%d (%p), which was already freed at %s:%d:%s()",
+    FATALF("%s(): manifest[%d] (%p) was already freed at %s:%d:%s()",
 	  __FUNCTION__, mid, m,
 	  manifest_free_whence[mid].file,
 	  manifest_free_whence[mid].line,
@@ -1226,7 +1332,8 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
   manifest_free_whence[mid]=__whence;
   if (mid<manifest_first_free) manifest_first_free=mid;
 
-  if (config.debug.manifests) _log_manifest_trace(__whence, __FUNCTION__);
+  if (config.debug.rhizome_manifest)
+    DEBUGF("FREE manifest[%d], count_free=%u", m->manifest_record_number, _count_free_manifests());
 
   return;
 }
@@ -1327,9 +1434,12 @@ enum rhizome_bundle_status rhizome_manifest_finalise(rhizome_manifest *m, rhizom
   assert(*mout == NULL);
   if (!m->finalised && !rhizome_manifest_validate(m))
     RETURN(RHIZOME_BUNDLE_STATUS_INVALID);
-  // if a manifest was supplied with an ID, don't bother to check for a duplicate.
-  // we only want to filter out added files with no existing manifest.
-  if (deduplicate && m->haveSecret != EXISTING_BUNDLE_ID) {
+  // The duplicate detection logic exists to filter out files repeatedly added with no existing
+  // manifest (ie, "de-bounce" for the "Add File" user interface action).
+  // 1. If a manifest was supplied with a bundle ID, don't check for a duplicate.
+  // 2. Never perform duplicate detection on journals (the first append does not supply a bundle ID,
+  //    but all subsequent appends supply a bundle ID, so are caught by case (1)).
+  if (deduplicate && m->haveSecret != EXISTING_BUNDLE_ID && !m->is_journal) {
     enum rhizome_bundle_status status = rhizome_find_duplicate(m, mout);
     switch (status) {
       case RHIZOME_BUNDLE_STATUS_DUPLICATE:
@@ -1389,9 +1499,14 @@ int rhizome_manifest_set_name_from_path(rhizome_manifest *m, const char *filepat
  *  - use the given author SID, or the 'sender' if present, as the author
  *  - create an ID if there is none, otherwise authenticate the existing one
  *  - if service is file, then use the payload file's basename for "name"
+ *
+ * Return NULL if successful, otherwise a pointer to a static text string describing the reason for
+ * the failure (always an internal/unrecoverable error).
  */
-int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp)
+const char * rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp)
 {
+  const char *reason = NULL;
+
   /* Set version of manifest from current time if not already set. */
   if (m->version == 0)
     rhizome_manifest_set_version(m, gettime_ms());
@@ -1420,8 +1535,10 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
     }
     if (config.debug.rhizome)
       DEBUG("creating new bundle");
-    if (rhizome_manifest_createid(m) == -1)
-      return WHY("Could not bind manifest to an ID");
+    if (rhizome_manifest_createid(m) == -1) {
+      WHY(reason = "Could not bind manifest to an ID");
+      return reason;
+    }
     // fall through to set the BK field...
   case NEW_BUNDLE_ID:
     valid_haveSecret = 1;
@@ -1446,10 +1563,12 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
 
   /* Service field must already be set.
    */
-  if (m->service == NULL)
-    return WHYF("missing 'service'");
+  if (m->service == NULL) {
+    WHYF(reason = "Missing 'service' field");
+    return reason;
+  }
   if (config.debug.rhizome)
-    DEBUGF("manifest service=%s", m->service);
+    DEBUGF("manifest contains service=%s", m->service);
 
   /* Fill in 'date' field to current time unless already set.
    */
@@ -1484,7 +1603,7 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
     rhizome_manifest_set_crypt(m, PAYLOAD_ENCRYPTED);
   }
 
-  return 0;
+  return NULL;
 }
 
 /* Work out the authorship status of the bundle without performing any cryptographic checks.

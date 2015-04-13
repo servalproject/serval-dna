@@ -32,27 +32,38 @@ int cmp_sid_t(const sid_t *a, const sid_t *b)
 
 int str_to_sid_t(sid_t *sidp, const char *hex)
 {
-  const char *end;
-  return strn_to_sid_t(sidp, hex, SIZE_MAX, &end) != -1 && *end == '\0' ? 0 : -1;
+  return parse_sid_t(sidp, hex, -1, NULL); // checks for nul terminator
 }
 
-int strn_to_sid_t(sid_t *sidp, const char *hex, size_t hexlen, const char **endp)
+int strn_to_sid_t(sid_t *sidp, const char *hex, size_t hexlen)
 {
-  if (strn_startswith(hex, hexlen, "broadcast", endp)) {
+  return parse_sid_t(sidp, hex, hexlen, NULL); // does not check for nul terminator
+}
+
+int parse_sid_t(sid_t *sidp, const char *hex, ssize_t hexlen, const char **endp)
+{
+  const char *end = NULL;
+  if (strn_startswith(hex, hexlen, "broadcast", &end)) {
+    if (endp)
+      *endp = end;
+    else if (hexlen == -1 && *end != '\0')
+      return -1;
     if (sidp)
       *sidp = SID_BROADCAST;
     return 0;
   }
-  sid_t tmp;
-  if (hexlen < sizeof tmp.binary * 2)
+  if (hexlen != -1 && hexlen != SID_STRLEN)
     return -1;
+  sid_t tmp;
   int n = fromhex(tmp.binary, hex, sizeof tmp.binary);
   if (n != sizeof tmp.binary)
     return -1;
+  if (endp)
+    *endp = hex + SID_STRLEN;
+  else if (hexlen == -1 && hex[SID_STRLEN] != '\0')
+    return -1;
   if (sidp)
     *sidp = tmp;
-  if (endp)
-    *endp = hex + sizeof tmp.binary * 2;
   return 0;
 }
 
@@ -84,19 +95,28 @@ int cmp_rhizome_bid_t(const rhizome_bid_t *a, const rhizome_bid_t *b)
 
 int str_to_rhizome_bid_t(rhizome_bid_t *bid, const char *hex)
 {
-  return bid ? fromhexstr(bid->binary, hex, sizeof bid->binary) : is_xstring(hex, RHIZOME_BUNDLE_ID_STRLEN) ? 0 : -1;
+  return parse_rhizome_bid_t(bid, hex, -1, NULL); // checks for nul terminator
 }
 
-int strn_to_rhizome_bid_t(rhizome_bid_t *bid, const char *hex, const char **endp)
+int strn_to_rhizome_bid_t(rhizome_bid_t *bid, const char *hex, size_t hexlen)
 {
+  return parse_rhizome_bid_t(bid, hex, hexlen, NULL); // does not check for nul terminator
+}
+
+int parse_rhizome_bid_t(rhizome_bid_t *bid, const char *hex, ssize_t hexlen, const char **endp)
+{
+  if (hexlen != -1 && hexlen != RHIZOME_BUNDLE_ID_STRLEN)
+    return -1;
   rhizome_bid_t tmp;
   int n = fromhex(tmp.binary, hex, sizeof tmp.binary);
   if (n != sizeof tmp.binary)
     return -1;
+  if (endp)
+    *endp = hex + RHIZOME_BUNDLE_ID_STRLEN;
+  else if (hexlen == -1 && hex[RHIZOME_BUNDLE_ID_STRLEN] != '\0')
+    return -1;
   if (bid)
     *bid = tmp;
-  if (endp)
-    *endp = hex + sizeof tmp.binary * 2;
   return 0;
 }
 
@@ -107,37 +127,55 @@ int cmp_rhizome_filehash_t(const rhizome_filehash_t *a, const rhizome_filehash_t
 
 int str_to_rhizome_filehash_t(rhizome_filehash_t *hashp, const char *hex)
 {
-  return hashp ? fromhexstr(hashp->binary, hex, sizeof hashp->binary) : is_xstring(hex, RHIZOME_FILEHASH_STRLEN) ? 0 : -1;
+  return parse_rhizome_filehash_t(hashp, hex, -1, NULL); // checks for nul terminator
 }
 
-int strn_to_rhizome_filehash_t(rhizome_filehash_t *hashp, const char *hex, const char **endp)
+int strn_to_rhizome_filehash_t(rhizome_filehash_t *hashp, const char *hex, size_t hexlen)
 {
+  return parse_rhizome_filehash_t(hashp, hex, hexlen, NULL); // does not check for nul terminator
+}
+
+int parse_rhizome_filehash_t(rhizome_filehash_t *hashp, const char *hex, ssize_t hexlen, const char **endp)
+{
+  if (hexlen != -1 && hexlen != RHIZOME_FILEHASH_STRLEN)
+    return -1;
   rhizome_filehash_t tmp;
   int n = fromhex(tmp.binary, hex, sizeof tmp.binary);
   if (n != sizeof tmp.binary)
     return -1;
+  if (endp)
+    *endp = hex + RHIZOME_FILEHASH_STRLEN;
+  else if (hexlen == -1 && hex[RHIZOME_FILEHASH_STRLEN] != '\0')
+    return -1;
   if (hashp)
     *hashp = tmp;
-  if (endp)
-    *endp = hex + sizeof tmp.binary * 2;
   return 0;
 }
 
 int str_to_rhizome_bk_t(rhizome_bk_t *bkp, const char *hex)
 {
-  return bkp ? fromhexstr(bkp->binary, hex, sizeof bkp->binary) : is_xstring(hex, RHIZOME_BUNDLE_KEY_STRLEN) ? 0 : -1;
+  return parse_rhizome_bk_t(bkp, hex, -1, NULL); // checks for nul terminator
 }
 
-int strn_to_rhizome_bk_t(rhizome_bk_t *bkp, const char *hex, const char **endp)
+int strn_to_rhizome_bk_t(rhizome_bk_t *bkp, const char *hex, size_t hexlen)
 {
+  return parse_rhizome_bk_t(bkp, hex, hexlen, NULL); // does not check for nul terminator
+}
+
+int parse_rhizome_bk_t(rhizome_bk_t *bkp, const char *hex, ssize_t hexlen, const char **endp)
+{
+  if (hexlen != -1 && hexlen != RHIZOME_BUNDLE_KEY_STRLEN)
+    return -1;
   rhizome_bk_t tmp;
   int n = fromhex(tmp.binary, hex, sizeof tmp.binary);
   if (n != sizeof tmp.binary)
     return -1;
+  if (endp)
+    *endp = hex + RHIZOME_BUNDLE_KEY_STRLEN;
+  else if (hexlen == -1 && hex[RHIZOME_BUNDLE_KEY_STRLEN] != '\0')
+    return -1;
   if (bkp)
     *bkp = tmp;
-  if (endp)
-    *endp = hex + sizeof tmp.binary * 2;
   return 0;
 }
 
@@ -157,7 +195,7 @@ int strn_to_rhizome_bsk_t(rhizome_bk_t *bskp, const char *text, size_t textlen)
       strn_digest_passphrase(bskp->binary, sizeof bskp->binary, text, textlen);
     return 0;
   }
-  return strn_to_rhizome_bk_t(bskp, text, NULL);
+  return strn_to_rhizome_bk_t(bskp, text, textlen);
 }
 
 int rhizome_strn_is_bundle_crypt_key(const char *key)

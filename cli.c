@@ -379,9 +379,14 @@ int cli_optional_bundle_secret_key(const char *arg)
   return !arg[0] || str_to_rhizome_bsk_t(NULL, arg) != -1;
 }
 
-int cli_manifestid(const char *arg)
+int cli_bid(const char *arg)
 {
   return str_to_rhizome_bid_t(NULL, arg) != -1;
+}
+
+int cli_optional_bid(const char *arg)
+{
+  return !arg[0] || str_to_rhizome_bid_t(NULL, arg) != -1;
 }
 
 int cli_fileid(const char *arg)

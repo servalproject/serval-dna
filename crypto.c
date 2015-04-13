@@ -121,7 +121,7 @@ int crypto_sign_message(struct keyring_identity *identity, unsigned char *conten
   return ret;
 }
 
-int crypto_sign_compute_public_key(const unsigned char *skin, unsigned char *pk)
+void crypto_sign_compute_public_key(const unsigned char *skin, unsigned char *pk)
 {
   IN();
   unsigned char h[64];
@@ -135,6 +135,5 @@ int crypto_sign_compute_public_key(const unsigned char *skin, unsigned char *pk)
   ge_scalarmult_base(&A,h);
   ge_p3_tobytes(pk,&A);
 
-  RETURN(0);
   OUT();
 }

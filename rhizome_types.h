@@ -80,7 +80,8 @@ typedef struct rhizome_bid_binary {
 #define alloca_tohex_rhizome_bid_t(bid) alloca_tohex((bid).binary, sizeof (*(rhizome_bid_t*)0).binary)
 int cmp_rhizome_bid_t(const rhizome_bid_t *a, const rhizome_bid_t *b);
 int str_to_rhizome_bid_t(rhizome_bid_t *bid, const char *hex);
-int strn_to_rhizome_bid_t(rhizome_bid_t *bid, const char *hex, const char **endp);
+int strn_to_rhizome_bid_t(rhizome_bid_t *bid, const char *hex, size_t hexlen);
+int parse_rhizome_bid_t(rhizome_bid_t *bid, const char *hex, ssize_t hexlen, const char **endp);
 
 /* Fundamental data type: Rhizome File Hash
  *
@@ -97,7 +98,8 @@ typedef struct rhizome_filehash_binary {
 #define alloca_tohex_rhizome_filehash_t(fh) alloca_tohex((fh).binary, sizeof (*(rhizome_filehash_t*)0).binary)
 int cmp_rhizome_filehash_t(const rhizome_filehash_t *a, const rhizome_filehash_t *b);
 int str_to_rhizome_filehash_t(rhizome_filehash_t *fh, const char *hex);
-int strn_to_rhizome_filehash_t(rhizome_filehash_t *fh, const char *hex, const char **endp);
+int strn_to_rhizome_filehash_t(rhizome_filehash_t *fh, const char *hex, size_t hexlen);
+int parse_rhizome_filehash_t(rhizome_filehash_t *fh, const char *hex, ssize_t hexlen, const char **endp);
 
 /* Fundamental data type: Rhizome Bundle Key (BK)
  *
@@ -119,7 +121,8 @@ int cmp_rhizome_bk_t(const rhizome_bk_t *a, const rhizome_bk_t *b);
 
 // The BK field can only be in hex format
 int str_to_rhizome_bk_t(rhizome_bk_t *bk, const char *hex);
-int strn_to_rhizome_bk_t(rhizome_bk_t *bk, const char *hex, const char **endp);
+int strn_to_rhizome_bk_t(rhizome_bk_t *bk, const char *hex, size_t hexlen);
+int parse_rhizome_bk_t(rhizome_bk_t *bk, const char *hex, ssize_t hexlen, const char **endp);
 
 // The Bundle Secret can be given as hex or as a passphrase
 int str_to_rhizome_bsk_t(rhizome_bk_t *bsk, const char *text);

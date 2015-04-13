@@ -251,8 +251,11 @@ typedef struct rhizome_manifest
  */
 #define rhizome_manifest_set_id(m,v)            _rhizome_manifest_set_id(__WHENCE__,(m),(v))
 #define rhizome_manifest_set_version(m,v)       _rhizome_manifest_set_version(__WHENCE__,(m),(v))
+#define rhizome_manifest_del_version(m)         _rhizome_manifest_del_version(__WHENCE__,(m))
 #define rhizome_manifest_set_filesize(m,v)      _rhizome_manifest_set_filesize(__WHENCE__,(m),(v))
+#define rhizome_manifest_del_filesize(m)        _rhizome_manifest_del_filesize(__WHENCE__,(m))
 #define rhizome_manifest_set_filehash(m,v)      _rhizome_manifest_set_filehash(__WHENCE__,(m),(v))
+#define rhizome_manifest_del_filehash(m)        _rhizome_manifest_del_filehash(__WHENCE__,(m))
 #define rhizome_manifest_set_tail(m,v)          _rhizome_manifest_set_tail(__WHENCE__,(m),(v))
 #define rhizome_manifest_set_bundle_key(m,v)    _rhizome_manifest_set_bundle_key(__WHENCE__,(m),(v))
 #define rhizome_manifest_del_bundle_key(m)      _rhizome_manifest_del_bundle_key(__WHENCE__,(m))
@@ -274,8 +277,11 @@ typedef struct rhizome_manifest
 
 void _rhizome_manifest_set_id(struct __sourceloc, rhizome_manifest *, const rhizome_bid_t *);
 void _rhizome_manifest_set_version(struct __sourceloc, rhizome_manifest *, uint64_t);
+void _rhizome_manifest_del_version(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_filesize(struct __sourceloc, rhizome_manifest *, uint64_t);
+void _rhizome_manifest_del_filesize(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_filehash(struct __sourceloc, rhizome_manifest *, const rhizome_filehash_t *);
+void _rhizome_manifest_del_filehash(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_tail(struct __sourceloc, rhizome_manifest *, uint64_t);
 void _rhizome_manifest_set_bundle_key(struct __sourceloc, rhizome_manifest *, const rhizome_bk_t *);
 void _rhizome_manifest_del_bundle_key(struct __sourceloc, rhizome_manifest *);
@@ -295,6 +301,10 @@ void _rhizome_manifest_set_inserttime(struct __sourceloc, rhizome_manifest *, ti
 void _rhizome_manifest_set_author(struct __sourceloc, rhizome_manifest *, const sid_t *);
 void _rhizome_manifest_del_author(struct __sourceloc, rhizome_manifest *);
 
+#define rhizome_manifest_overwrite(dstm,srcm)   _rhizome_manifest_overwrite(__WHENCE__,(dstm),(srcm))
+
+int _rhizome_manifest_overwrite(struct __sourceloc, rhizome_manifest *m, const rhizome_manifest *srcm);
+
 enum rhizome_manifest_parse_status {
     RHIZOME_MANIFEST_ERROR = -1,          // unrecoverable error while constructing manifest
     RHIZOME_MANIFEST_OK = 0,              // field parsed ok; manifest updated
@@ -303,6 +313,21 @@ enum rhizome_manifest_parse_status {
     RHIZOME_MANIFEST_INVALID = 3,         // core field value does not parse
     RHIZOME_MANIFEST_MALFORMED = 4,       // non-core field value does not parse
     RHIZOME_MANIFEST_OVERFLOW = 5,        // maximum field count exceeded
+};
+
+/* This structure represents a manifest field assignment as received by the API
+ * operations "add file" or "journal append" or any other operation that takes an
+ * existing manifest and modifies it to produce a new one.
+ *
+ * The 'label' and 'value' strings are pointer-length instead of NUL terminated,
+ * to allow them to refer directly to fragments of an existing, larger text
+ * without requiring the caller to allocate new strings to hold them.
+ */
+struct rhizome_manifest_field_assignment {
+    const char *label;
+    size_t labellen;
+    const char *value;
+    size_t valuelen;
 };
 
 int rhizome_manifest_field_label_is_valid(const char *field_label, size_t field_label_len);
@@ -364,7 +389,7 @@ void rhizome_vacuum_db(sqlite_retry_state *retry);
 int rhizome_manifest_createid(rhizome_manifest *m);
 int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed);
 int rhizome_get_bundle_from_secret(rhizome_manifest *m, const rhizome_bk_t *bsk);
-int rhizome_new_bundle_from_secret(rhizome_manifest *m, const rhizome_bk_t *bsk);
+void rhizome_new_bundle_from_secret(rhizome_manifest *m, const rhizome_bk_t *bsk);
 
 struct rhizome_manifest_summary {
   rhizome_bid_t bid;
@@ -391,6 +416,7 @@ enum rhizome_bundle_status {
 #define INVALID_RHIZOME_BUNDLE_STATUS ((enum rhizome_bundle_status)-2)
 
 const char *rhizome_bundle_status_message(enum rhizome_bundle_status);
+const char *rhizome_bundle_status_message_nonnull(enum rhizome_bundle_status);
 
 enum rhizome_payload_status {
     RHIZOME_PAYLOAD_STATUS_ERROR = -1,
@@ -407,6 +433,7 @@ enum rhizome_payload_status {
 #define INVALID_RHIZOME_PAYLOAD_STATUS ((enum rhizome_payload_status)-2)
 
 const char *rhizome_payload_status_message(enum rhizome_payload_status);
+const char *rhizome_payload_status_message_nonnull(enum rhizome_payload_status);
 
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename, char append);
 int rhizome_manifest_selfsign(rhizome_manifest *m);
@@ -425,10 +452,31 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc);
 
 int rhizome_store_manifest(rhizome_manifest *m);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);
+
+enum rhizome_add_file_result {
+    RHIZOME_ADD_FILE_ERROR = -1,
+    RHIZOME_ADD_FILE_OK = 0, // manifest created successfully
+    RHIZOME_ADD_FILE_INVALID, // manifest not created due to invalid input
+    RHIZOME_ADD_FILE_BUSY, // manifest not created because database busy
+    RHIZOME_ADD_FILE_REQUIRES_JOURNAL, // operation is only valid for a journal
+    RHIZOME_ADD_FILE_INVALID_FOR_JOURNAL, // operation is not valid for a journal
+    RHIZOME_ADD_FILE_WRONG_SECRET, // incorrect bundle secret supplied
+};
+enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
+			      rhizome_manifest *m,
+			      rhizome_manifest **mout,
+                              const rhizome_bid_t *bid,
+			      const rhizome_bk_t *bsk,
+			      const sid_t *author,
+			      const char *file_path,
+			      unsigned nassignments,
+			      const struct rhizome_manifest_field_assignment *assignments,
+			      strbuf reason
+			     );
 int rhizome_bundle_import_files(rhizome_manifest *m, rhizome_manifest **m_out, const char *manifest_path, const char *filepath);
 
 int rhizome_manifest_set_name_from_path(rhizome_manifest *m, const char *filepath);
-int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp);
+const char * rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp);
 
 int rhizome_apply_bundle_secret(rhizome_manifest *, const rhizome_bk_t *);
 int rhizome_manifest_add_bundle_key(rhizome_manifest *);
@@ -839,9 +887,11 @@ enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, cons
 int rhizome_write_buffer(struct rhizome_write *write_state, uint8_t *buffer, size_t data_size);
 int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, uint8_t *buffer, size_t data_size);
 enum rhizome_payload_status rhizome_write_open_manifest(struct rhizome_write *write, rhizome_manifest *m);
+enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m, uint64_t advance_by, uint64_t append_size);
 int rhizome_write_file(struct rhizome_write *write, const char *filename);
 void rhizome_fail_write(struct rhizome_write *write);
 enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write);
+enum rhizome_payload_status rhizome_finish_store(struct rhizome_write *write, rhizome_manifest *m, enum rhizome_payload_status status);
 enum rhizome_payload_status rhizome_import_payload_from_file(rhizome_manifest *m, const char *filepath);
 enum rhizome_payload_status rhizome_import_buffer(rhizome_manifest *m, uint8_t *buffer, size_t length);
 enum rhizome_payload_status rhizome_stat_payload_file(rhizome_manifest *m, const char *filepath);

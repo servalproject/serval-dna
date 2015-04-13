@@ -47,16 +47,14 @@ struct signing_key {
 };
 
 /* generate a keypair from a given secret key */
-static int generate_keypair_from_secret(const rhizome_bk_t *bsk, struct signing_key *key)
+static void generate_keypair_from_secret(const rhizome_bk_t *bsk, struct signing_key *key)
 {
   bcopy(bsk->binary, key->Private, sizeof bsk->binary); // first 32 bytes
-  if (crypto_sign_compute_public_key(key->Private, key->Public.binary) == -1)
-    return WHY("Could not generate public key");
+  crypto_sign_compute_public_key(key->Private, key->Public.binary);
   // The last 32 bytes of the private key should be identical to the public key.  This is what
   // crypto_sign_edwards25519sha512batch_keypair() returns, and there is code that depends on it.
   // TODO: Refactor the Rhizome private/public keypair to eliminate this duplication.
   bcopy(key->Public.binary, key->Private + RHIZOME_BUNDLE_KEY_BYTES, sizeof key->Public.binary);
-  return 0;
 }
 
 /* Generate a new empty manifest from the given keypair.
@@ -90,8 +88,7 @@ int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed)
 int rhizome_get_bundle_from_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
 {
   struct signing_key key;
-  if (generate_keypair_from_secret(bsk, &key))
-    return -1;
+  generate_keypair_from_secret(bsk, &key);
   switch (rhizome_retrieve_manifest(&key.Public, m)) {
     case RHIZOME_BUNDLE_STATUS_NEW: 
       rhizome_new_bundle_from_keypair(m, &key);
@@ -109,13 +106,11 @@ int rhizome_get_bundle_from_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
 /* Generate a bundle id deterministically from the given bundle secret key.
  * Then initialise a new empty manifest.
  */
-int rhizome_new_bundle_from_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
+void rhizome_new_bundle_from_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
 {
   struct signing_key key;
-  if (generate_keypair_from_secret(bsk, &key))
-    return -1;
+  generate_keypair_from_secret(bsk, &key);
   rhizome_new_bundle_from_keypair(m, &key);
-  return 0;
 }
 
 /* Given a Rhizome Secret (RS) and bundle ID (BID), XOR a bundle key 'bkin' (private or public) with
@@ -446,10 +441,8 @@ int rhizome_verify_bundle_privatekey(const unsigned char *sk, const unsigned cha
 {
   IN();
   rhizome_bid_t pk;
-  if (crypto_sign_compute_public_key(sk, pk.binary) == -1)
-    RETURN(0);
-  int ret = bcmp(pkin, pk.binary, sizeof pk.binary) == 0;
-  RETURN(ret);
+  crypto_sign_compute_public_key(sk, pk.binary);
+  RETURN(bcmp(pkin, pk.binary, sizeof pk.binary) == 0);
 }
 
 int rhizome_sign_hash(rhizome_manifest *m, rhizome_signature *out)

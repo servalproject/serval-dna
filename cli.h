@@ -80,16 +80,30 @@ int cli_usage_args(const int argc, const char *const *args, const struct cli_sch
 int cli_usage_parsed(const struct cli_parsed *parsed, XPRINTF xpf);
 int cli_parse(const int argc, const char *const *args, const struct cli_schema *commands, const struct cli_schema *end_commands, struct cli_parsed *parsed);
 int cli_invoke(const struct cli_parsed *parsed, struct cli_context *context);
-int _cli_arg(struct __sourceloc __whence, const struct cli_parsed *parsed, char *label, const char **dst, int (*validator)(const char *arg), char *defaultvalue);
 
+/* First, assign 'defaultvalue' to '*dst', to guarantee that '*dst' is in a
+ * known state regardless of the return value and provide the caller with an
+ * alternative way to check if an argument was found.
+ *
+ * Then, if there is an argument labelled 'label' present on the 'parsed'
+ * command line:
+ *  - if a validator function was supplied (not NULL) and it returns false (0)
+ *    when invoked on '*dst', return -1, otherwise
+ *  - assign the argument's value as a NUL-terminated string to '*dst' and
+ *    return 0.
+ *
+ * Otherwise, there is no argument labelled 'label', so return 1.
+ */
 #define cli_arg(parsed, label, dst, validator, defaultvalue) _cli_arg(__WHENCE__, parsed, label, dst, validator, defaultvalue)
+int _cli_arg(struct __sourceloc __whence, const struct cli_parsed *parsed, char *label, const char **dst, int (*validator)(const char *arg), char *defaultvalue);
 
 int cli_lookup_did(const char *text);
 int cli_path_regular(const char *arg);
 int cli_absolute_path(const char *arg);
 int cli_optional_sid(const char *arg);
 int cli_optional_bundle_secret_key(const char *arg);
-int cli_manifestid(const char *arg);
+int cli_bid(const char *arg);
+int cli_optional_bid(const char *arg);
 int cli_fileid(const char *arg);
 int cli_optional_bundle_crypt_key(const char *arg);
 int cli_interval_ms(const char *arg);

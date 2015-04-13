@@ -32,6 +32,6 @@ int crypto_create_signature(unsigned char *key,
 			    unsigned char *content, int content_len, 
 			    unsigned char *signature, int *sig_length);
 int crypto_sign_message(struct keyring_identity *identity, unsigned char *content, size_t buffer_len, size_t *content_len);
-int crypto_sign_compute_public_key(const unsigned char *skin, unsigned char *pk);
+void crypto_sign_compute_public_key(const unsigned char *skin, unsigned char *pk);
 
 #endif

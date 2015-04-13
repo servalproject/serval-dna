@@ -101,16 +101,16 @@ strbuf strbuf_putc(strbuf sb, char ch)
   return sb;
 }
 
-int strbuf_sprintf(strbuf sb, const char *fmt, ...)
+strbuf strbuf_sprintf(strbuf sb, const char *fmt, ...)
 {
   va_list ap;
   va_start(ap, fmt);
-  int n = strbuf_vsprintf(sb, fmt, ap);
+  strbuf_vsprintf(sb, fmt, ap);
   va_end(ap);
-  return n;
+  return sb;
 }
 
-int strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap)
+strbuf strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap)
 {
   int n;
   if (sb->start && !sb->end) {
@@ -126,7 +126,7 @@ int strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap)
   }
   if (n != -1)
     sb->current += n;
-  return n;
+  return sb;
 }
 
 char *strbuf_substr(const_strbuf sb, int offset)

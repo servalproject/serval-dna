@@ -353,7 +353,7 @@ strbuf strbuf_putc(strbuf sb, char ch);
 
 
 /** Append the results of sprintf(fmt,...) to the string buffer, truncating if
- * necessary to avoid buffer overrun.  Return sprintf()'s return value.
+ * necessary to avoid buffer overrun.  Return a pointer to the strbuf.
  *
  * This is equivalent to char tmp[...]; sprintf(tmp, fmt, ...); strbuf_puts(tmp);
  * assuming that tmp[] is large enough to contain the entire string produced by
@@ -361,8 +361,8 @@ strbuf strbuf_putc(strbuf sb, char ch);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int strbuf_sprintf(strbuf sb, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
-int strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap);
+strbuf strbuf_sprintf(strbuf sb, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+strbuf strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap);
 
 
 /** Return a pointer to the current nul-terminated string in the strbuf.

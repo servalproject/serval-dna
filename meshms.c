@@ -69,8 +69,8 @@ static enum meshms_status get_my_conversation_bundle(const sid_t *my_sidp, rhizo
   if (m->haveSecret == NEW_BUNDLE_ID) {
     rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
     rhizome_manifest_set_name(m, "");
-    if (rhizome_fill_manifest(m, NULL, my_sidp) == -1)
-      return WHY("Invalid manifest");
+    if (rhizome_fill_manifest(m, NULL, my_sidp) != NULL)
+      return WHY("Invalid conversation manifest");
     if (config.debug.meshms) {
       char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
       rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
@@ -205,7 +205,7 @@ static int create_ply(const sid_t *my_sid, struct meshms_conversations *conv, rh
   rhizome_manifest_set_recipient(m, &conv->them);
   rhizome_manifest_set_filesize(m, 0);
   rhizome_manifest_set_tail(m, 0);
-  if (rhizome_fill_manifest(m, NULL, my_sid))
+  if (rhizome_fill_manifest(m, NULL, my_sid) != NULL)
     return -1;
   assert(m->haveSecret);
   assert(m->payloadEncryption == PAYLOAD_ENCRYPTED);

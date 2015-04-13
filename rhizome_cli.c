@@ -104,49 +104,50 @@ static int app_rhizome_hash_file(const struct cli_parsed *parsed, struct cli_con
 
 DEFINE_CMD(app_rhizome_add_file, 0,
   "Add a file to Rhizome and optionally write its manifest to the given path",
-  "rhizome","add","file" KEYRING_PIN_OPTIONS,"[--force-new]","<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]","...");
+  "rhizome","add","file" KEYRING_PIN_OPTIONS,"[--bundle=<bundleid>]","[--force-new]","<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]","...");
 DEFINE_CMD(app_rhizome_add_file, 0,
   "Append content to a journal bundle",
-  "rhizome", "journal", "append" KEYRING_PIN_OPTIONS, "<author_sid>", "<manifestid>", "<filepath>", "[<bsk>]");
+  "rhizome", "journal", "append" KEYRING_PIN_OPTIONS, "<author_sid>", "<bundleid>", "<filepath>", "[<bsk>]");
 static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  const char *filepath, *manifestpath, *manifestid, *authorSidHex, *bsktext;
+  const char *filepath, *manifestpath, *bundleIdHex, *authorSidHex, *bsktext;
 
   int force_new = 0 == cli_arg(parsed, "--force-new", NULL, NULL, NULL);
   cli_arg(parsed, "filepath", &filepath, NULL, "");
   if (cli_arg(parsed, "author_sid", &authorSidHex, cli_optional_sid, "") == -1)
     return -1;
   cli_arg(parsed, "manifestpath", &manifestpath, NULL, "");
-  cli_arg(parsed, "manifestid", &manifestid, NULL, "");
+  cli_arg(parsed, "--bundle", &bundleIdHex, cli_bid, "") == 0 || cli_arg(parsed, "bundleid", &bundleIdHex, cli_optional_bid, "");
   if (cli_arg(parsed, "bsk", &bsktext, cli_optional_bundle_secret_key, NULL) == -1)
     return -1;
 
   sid_t authorSid;
-  if (authorSidHex[0] && str_to_sid_t(&authorSid, authorSidHex) == -1)
+  if (!authorSidHex || !*authorSidHex)
+    authorSidHex = NULL;
+  else if (str_to_sid_t(&authorSid, authorSidHex) == -1)
     return WHYF("invalid author_sid: %s", authorSidHex);
   
-  // treat empty string the same as null
-  if (bsktext && !*bsktext)
-    bsktext = NULL;
+  rhizome_bid_t bid;
+  if (!bundleIdHex || !*bundleIdHex)
+    bundleIdHex = NULL;
+  else if (str_to_rhizome_bid_t(&bid, bundleIdHex) == -1)
+    return WHYF("Invalid bundle ID: %s", alloca_str_toprint(bundleIdHex));
+
   rhizome_bk_t bsk;
-  if (bsktext && str_to_rhizome_bsk_t(&bsk, bsktext) == -1)
-    return WHYF("invalid bsk: \"%s\"", bsktext);
+  if (!bsktext || !*bsktext)
+    bsktext = NULL;
+  else if (str_to_rhizome_bsk_t(&bsk, bsktext) == -1)
+    return WHYF("invalid BSK: \"%s\"", bsktext);
   
   unsigned nfields = (parsed->varargi == -1) ? 0 : parsed->argc - (unsigned)parsed->varargi;
-  struct field {
-    const char *label;
-    size_t labellen;
-    const char *value;
-    size_t valuelen;
-  }
-    fields[nfields];
+  struct rhizome_manifest_field_assignment fields[nfields];
   if (nfields) {
     assert(parsed->varargi >= 0);
     unsigned i;
     for (i = 0; i < nfields; ++i) {
-      struct field *field = &fields[i];
+      struct rhizome_manifest_field_assignment *field = &fields[i];
       unsigned n = (unsigned)parsed->varargi + i;
       assert(n < parsed->argc);
       const char *arg = parsed->args[n];
@@ -170,7 +171,7 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
     }
   }
 
-  int journal = strcasecmp(parsed->args[1], "journal")==0;
+  int appending = strcasecmp(parsed->args[1], "journal")==0;
 
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -183,112 +184,72 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
   if (rhizome_opendb() == -1)
     goto finish;
   
-  /* Create a new manifest that will represent the file.  If a manifest file was supplied, then read
-   * it, otherwise create a blank manifest. */
+  /* Create a manifest in memory that to describe the added file.  Initially the manifest is blank.
+   * If a manifest file is supplied, then read and parse it, barfing if it contains any duplicate
+   * fields or invalid values.  If it successfully parses, then overwrite it with any command-line
+   * manifest field settings, overriding the values parsed from the file.  Barf if any of these new
+   * values are malformed.  We don't validate the resulting manifest, it order to allow the user to
+   * supply an incomplete manifest.  Any missing fields will be filled in later.
+   */
   if ((m = rhizome_new_manifest()) == NULL){
-    ret = WHY("Manifest struct could not be allocated -- not added to rhizome");
+    ret = WHY("Manifest struct could not be allocated -- not added");
     goto finish;
   }
   if (manifestpath && *manifestpath && access(manifestpath, R_OK) == 0) {
     if (config.debug.rhizome)
       DEBUGF("reading manifest from %s", manifestpath);
-    /* Don't verify the manifest, because it will fail if it is incomplete.
-       This is okay, because we fill in any missing bits and sanity check before
-       trying to write it out. However, we do insist that whatever we load is
-       parsed okay and not malformed. */
     if (rhizome_read_manifest_from_file(m, manifestpath) || m->malformed) {
       ret = WHY("Manifest file could not be loaded -- not added to rhizome");
       goto finish;
     }
-  } else if (manifestid && *manifestid) {
-    if (config.debug.rhizome)
-      DEBUGF("Reading manifest from database");
-    rhizome_bid_t bid;
-    if (str_to_rhizome_bid_t(&bid, manifestid) == -1) {
-      ret = WHYF("Invalid bundle ID: %s", alloca_str_toprint(manifestid));
-      goto finish;
-    }
-    if (rhizome_retrieve_manifest(&bid, m) != RHIZOME_BUNDLE_STATUS_SAME) {
-      ret = WHY("Existing manifest could not be loaded -- not added to rhizome");
-      goto finish;
-    }
-  } else {
-    if (config.debug.rhizome)
-      DEBUGF("Creating new manifest");
-    if (journal) {
-      rhizome_manifest_set_filesize(m, 0);
-      rhizome_manifest_set_tail(m, 0);
-    }
   }
 
-  if (journal && !m->is_journal){
-    // TODO: return a special status code for this case
-    ret = WHY("Existing manifest is not a journal");
+  /* Create an in-memory manifest for the file being added.
+   */
+  rhizome_manifest *mout = NULL;
+  enum rhizome_add_file_result result = rhizome_manifest_add_file(appending, m, &mout,
+								  bundleIdHex ? &bid : NULL,
+								  bsktext ? &bsk : NULL,
+								  authorSidHex ? &authorSid : NULL,
+								  filepath,
+								  nfields, fields,
+								  NULL);
+  int result_valid = 0;
+  switch (result) {
+  case RHIZOME_ADD_FILE_ERROR:
+    ret = -1;
+    goto finish;
+  case RHIZOME_ADD_FILE_OK:
+    result_valid = 1;
+    break;
+  case RHIZOME_ADD_FILE_INVALID:
+    ret = RHIZOME_BUNDLE_STATUS_INVALID; // TODO separate enum for CLI return codes
+    goto finish;
+  case RHIZOME_ADD_FILE_BUSY:
+    ret = RHIZOME_BUNDLE_STATUS_BUSY; // TODO separate enum for CLI return codes
+    goto finish;
+  case RHIZOME_ADD_FILE_REQUIRES_JOURNAL:
+    ret = RHIZOME_BUNDLE_STATUS_INVALID; // TODO separate enum for CLI return codes
+    goto finish;
+  case RHIZOME_ADD_FILE_INVALID_FOR_JOURNAL:
+    ret = RHIZOME_BUNDLE_STATUS_INVALID; // TODO separate enum for CLI return codes
+    goto finish;
+  case RHIZOME_ADD_FILE_WRONG_SECRET:
+    ret = RHIZOME_BUNDLE_STATUS_READONLY; // TODO separate enum for CLI return codes
     goto finish;
   }
-  if (!journal && m->is_journal) {
-    // TODO: return a special status code for this case
-    ret = WHY("Existing manifest is a journal");
-    goto finish;
+  if (!result_valid)
+    FATALF("result = %d", result);
+  assert(mout != NULL);
+  if (mout != m) {
+    rhizome_manifest_free(m);
+    m = mout;
   }
+  mout = NULL;
 
-  if (nfields) {
-    unsigned i;
-    for (i = 0; i != nfields; ++i) {
-      struct field *field = &fields[i];
-      rhizome_manifest_remove_field(m, field->label, field->labellen);
-      if (field->value) {
-	const char *label = alloca_strndup(field->label, field->labellen);
-	enum rhizome_manifest_parse_status status = rhizome_manifest_parse_field(m, field->label, field->labellen, field->value, field->valuelen);
-	int status_ok = 0;
-	switch (status) {
-	  case RHIZOME_MANIFEST_ERROR:
-	    ret = WHY("Fatal error while updating manifest field");
-	    goto finish;
-	  case RHIZOME_MANIFEST_OK:
-	    status_ok = 1;
-	    break;
-	  case RHIZOME_MANIFEST_SYNTAX_ERROR:
-	    ret = WHYF("Manifest syntax error: %s=%s", label, alloca_toprint(-1, field->value, field->valuelen));
-	    goto finish;
-	  case RHIZOME_MANIFEST_DUPLICATE_FIELD:
-	    abort(); // should not happen, field was removed first
-	  case RHIZOME_MANIFEST_INVALID:
-	    ret = WHYF("Manifest invalid field: %s=%s", label, alloca_toprint(-1, field->value, field->valuelen));
-	    goto finish;
-	  case RHIZOME_MANIFEST_MALFORMED:
-	    ret = WHYF("Manifest malformed field: %s=%s", label, alloca_toprint(-1, field->value, field->valuelen));
-	    goto finish;
-	  case RHIZOME_MANIFEST_OVERFLOW:
-	    ret = WHYF("Too many fields in manifest at: %s=%s", label, alloca_toprint(-1, field->value, field->valuelen));
-	    goto finish;
-	}
-	if (!status_ok)
-	  FATALF("status = %d", status);
-      }
-    }
-  }
-
-  if (bsktext) {
-    if (m->has_id) {
-      if (!rhizome_apply_bundle_secret(m, &bsk)) {
-	ret = WHY("Supplied bundle secret does not match Bundle Id");
-	goto finish;
-      }
-    } else {
-      if (rhizome_new_bundle_from_secret(m, &bsk) == -1) {
-	ret = WHY("Failed to create bundle from given secret");
-	goto finish;
-      }
-    }
-  }
-  if (m->service == NULL)
-    rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
-  if (rhizome_fill_manifest(m, filepath, *authorSidHex ? &authorSid : NULL))
-    goto finish;
-
+  // Insert the payload into the Rhizome store.
   enum rhizome_payload_status pstatus;
-  if (journal){
+  if (appending) {
     pstatus = rhizome_append_journal_file(m, 0, filepath);
     if (config.debug.rhizome)
       DEBUGF("rhizome_append_journal_file() returned %d %s", pstatus, rhizome_payload_status_message(pstatus));
@@ -335,7 +296,6 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
   }
   if (!pstatus_valid)
     FATALF("pstatus = %d", pstatus);
-  rhizome_manifest *mout = NULL;
   if (status == RHIZOME_BUNDLE_STATUS_NEW) {
     if (!rhizome_manifest_validate(m) || m->malformed)
       status = RHIZOME_BUNDLE_STATUS_INVALID;
@@ -466,7 +426,7 @@ static int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_contex
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   const char *manifestid, *fileid;
-  if (cli_arg(parsed, "manifestid", &manifestid, cli_manifestid, NULL) == -1)
+  if (cli_arg(parsed, "manifestid", &manifestid, cli_bid, NULL) == -1)
     return -1;
   if (cli_arg(parsed, "fileid", &fileid, cli_fileid, NULL) == -1)
     return -1;
@@ -572,7 +532,7 @@ static int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_conte
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   const char *manifestpath, *filepath, *manifestid, *bsktext;
-  if (   cli_arg(parsed, "manifestid", &manifestid, cli_manifestid, "") == -1
+  if (   cli_arg(parsed, "manifestid", &manifestid, cli_bid, "") == -1
       || cli_arg(parsed, "manifestpath", &manifestpath, NULL, "") == -1
       || cli_arg(parsed, "filepath", &filepath, NULL, "") == -1
       || cli_arg(parsed, "bsk", &bsktext, cli_optional_bundle_secret_key, NULL) == -1)

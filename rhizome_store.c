@@ -310,6 +310,9 @@ int rhizome_store_cleanup(struct rhizome_cleanup_report *report)
 
 enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *expectedHashp, uint64_t file_length)
 {
+  if (config.debug.rhizome_store)
+    DEBUGF("file_length=%"PRIu64, file_length);
+
   if (file_length == 0)
     return RHIZOME_PAYLOAD_STATUS_EMPTY;
 
@@ -681,6 +684,9 @@ void rhizome_fail_write(struct rhizome_write *write)
 
 enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
 {
+  if (config.debug.rhizome_store)
+    DEBUGF("blob_fd=%d file_offset=%"PRIu64"", write->blob_fd, write->file_offset);
+
   enum rhizome_payload_status status = RHIZOME_PAYLOAD_STATUS_NEW;
   
   // Once the whole file has been processed, we should finally know its length
@@ -789,6 +795,7 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
     }
     if (config.debug.rhizome_store)
       DEBUGF("Payload id=%s already present, removed id='%"PRIu64"'", alloca_tohex_rhizome_filehash_t(write->id), write->temp_id);
+    status = RHIZOME_PAYLOAD_STATUS_STORED;
   }else{
     if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1)
       goto dbfailure;
@@ -991,33 +998,11 @@ enum rhizome_payload_status rhizome_store_payload_file(rhizome_manifest *m, cons
   }
   if (!status_ok)
     FATALF("rhizome_write_open_manifest() returned status = %d", status);
-  if (rhizome_write_file(&write, filepath) == -1) {
-    rhizome_fail_write(&write);
-    return RHIZOME_PAYLOAD_STATUS_ERROR;
-  }
-  status = rhizome_finish_write(&write);
-  switch (status) {
-    case RHIZOME_PAYLOAD_STATUS_EMPTY:
-      assert(write.file_length == 0);
-      assert(m->filesize == 0);
-      return status;
-    case RHIZOME_PAYLOAD_STATUS_NEW:
-      assert(m->filesize == write.file_length);
-      if (m->has_filehash)
-	assert(cmp_rhizome_filehash_t(&m->filehash, &write.id) == 0);
-      else
-	rhizome_manifest_set_filehash(m, &write.id);
-      return status;
-    case RHIZOME_PAYLOAD_STATUS_ERROR:
-    case RHIZOME_PAYLOAD_STATUS_STORED:
-    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
-    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
-    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
-    case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
-    case RHIZOME_PAYLOAD_STATUS_EVICTED:
-      return status;
-  }
-  FATALF("rhizome_finish_write() returned status = %d", status);
+  if (rhizome_write_file(&write, filepath) == -1)
+    status = RHIZOME_PAYLOAD_STATUS_ERROR;
+  else
+    status = rhizome_finish_write(&write);
+  return rhizome_finish_store(&write, m, status);
 }
 
 /* Return RHIZOME_PAYLOAD_STATUS_STORED if file blob found, RHIZOME_PAYLOAD_STATUS_NEW if not found.
@@ -1588,28 +1573,120 @@ enum rhizome_payload_status rhizome_journal_pipe(struct rhizome_write *write, co
 }
 
 // open an existing journal bundle, advance the head pointer, duplicate the existing content and get ready to add more.
-enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m, uint64_t advance_by, uint64_t new_size)
+enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m, uint64_t advance_by, uint64_t append_size)
 {
-  assert(m->filesize != RHIZOME_SIZE_UNSET);
-  assert(m->filesize + new_size > 0);
   assert(m->is_journal);
+  assert(m->filesize != RHIZOME_SIZE_UNSET);
   assert(advance_by <= m->filesize);
   uint64_t copy_length = m->filesize - advance_by;
-  rhizome_manifest_set_filesize(m, m->filesize + new_size - advance_by);
+  uint64_t new_filesize = RHIZOME_SIZE_UNSET;
+  if (append_size != RHIZOME_SIZE_UNSET) {
+    assert(m->filesize + append_size > m->filesize); // no wraparound
+    new_filesize = m->filesize + append_size - advance_by;
+  }
   if (advance_by > 0)
     rhizome_manifest_set_tail(m, m->tail + advance_by);
-  rhizome_manifest_set_version(m, m->filesize);
-  enum rhizome_payload_status status = rhizome_open_write(write, NULL, m->filesize);
+  enum rhizome_payload_status status = rhizome_open_write(write, NULL, new_filesize);
+  if (config.debug.rhizome)
+    DEBUGF("rhizome_open_write() returned %d %s", status, rhizome_payload_status_message(status));
   if (status == RHIZOME_PAYLOAD_STATUS_NEW && copy_length > 0) {
-    // note that we don't need to bother decrypting the existing journal payload
+    // we don't need to bother decrypting the existing journal payload
     enum rhizome_payload_status rstatus = rhizome_journal_pipe(write, &m->filehash, advance_by, copy_length);
-    if (rstatus != RHIZOME_PAYLOAD_STATUS_STORED)
-      status = RHIZOME_PAYLOAD_STATUS_ERROR;
+    if (config.debug.rhizome)
+      DEBUGF("rhizome_journal_pipe() returned %d %s", rstatus, rhizome_payload_status_message(rstatus));
+    int rstatus_valid = 0;
+    switch (rstatus) {
+    case RHIZOME_PAYLOAD_STATUS_EMPTY:
+    case RHIZOME_PAYLOAD_STATUS_NEW:
+    case RHIZOME_PAYLOAD_STATUS_STORED:
+      rstatus_valid = 1;
+      break;
+    case RHIZOME_PAYLOAD_STATUS_ERROR:
+    case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+      rstatus_valid = 1;
+      status = rstatus;
+      break;
+    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+    case RHIZOME_PAYLOAD_STATUS_EVICTED:
+      // rhizome_journal_pipe() should not return any of these codes
+      FATALF("rhizome_journal_pipe() returned %d %s", rstatus, rhizome_payload_status_message(rstatus));
+    }
+    if (!rstatus_valid)
+      FATALF("rstatus = %d", rstatus);
   }
-  if (status == RHIZOME_PAYLOAD_STATUS_NEW)
+  if (status == RHIZOME_PAYLOAD_STATUS_NEW) {
     status = rhizome_write_derive_key(m, write);
-  if (status != RHIZOME_PAYLOAD_STATUS_NEW)
+    if (config.debug.rhizome)
+      DEBUGF("rhizome_write_derive_key() returned %d %s", status, rhizome_payload_status_message(status));
+  }
+  if (status != RHIZOME_PAYLOAD_STATUS_NEW) {
     rhizome_fail_write(write);
+  }
+  return status;
+}
+
+// Call to finish any payload store operation
+enum rhizome_payload_status rhizome_finish_store(struct rhizome_write *write, rhizome_manifest *m, enum rhizome_payload_status status)
+{
+  if (config.debug.rhizome)
+    DEBUGF("write=%p m=manifest[%d], status=%d %s", write, m->manifest_record_number, status, rhizome_payload_status_message_nonnull(status));
+  switch (status) {
+  case RHIZOME_PAYLOAD_STATUS_NEW:
+    break;
+  default:
+    break;
+  }
+  int status_valid = 0;
+  switch (status) {
+  case RHIZOME_PAYLOAD_STATUS_EMPTY:
+    status_valid = 1;
+    assert(write->file_length == 0);
+    break;
+  case RHIZOME_PAYLOAD_STATUS_NEW:
+    assert(write->file_length != RHIZOME_SIZE_UNSET);
+    status_valid = 1;
+    break;
+  case RHIZOME_PAYLOAD_STATUS_STORED:
+    assert(write->file_length != RHIZOME_SIZE_UNSET);
+    status_valid = 1;
+    // TODO: check that stored hash matches received payload's hash
+    break;
+  case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+  case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+  case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+  case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+  case RHIZOME_PAYLOAD_STATUS_EVICTED:
+  case RHIZOME_PAYLOAD_STATUS_ERROR:
+    status_valid = 1;
+    rhizome_fail_write(write);
+    return status;
+  }
+  if (!status_valid)
+    FATALF("status = %d", status);
+  // Fill in missing manifest fields and check consistency with existing fields.
+  if (m->is_journal || m->filesize == RHIZOME_SIZE_UNSET)
+    rhizome_manifest_set_filesize(m, write->file_length);
+  else if (m->filesize != write->file_length) {
+    if (config.debug.rhizome)
+      DEBUGF("m->filesize=%"PRIu64", write->file_length=%"PRIu64, m->filesize, write->file_length);
+    return RHIZOME_PAYLOAD_STATUS_WRONG_SIZE;
+  }
+  if (m->is_journal)
+    rhizome_manifest_set_version(m, m->filesize);
+  if (m->filesize) {
+    if (m->is_journal || !m->has_filehash)
+      rhizome_manifest_set_filehash(m, &write->id);
+    else if (cmp_rhizome_filehash_t(&write->id, &m->filehash) != 0) {
+      if (config.debug.rhizome)
+	DEBUGF("m->filehash=%s, write->id=%s", alloca_tohex_rhizome_filehash_t(m->filehash), alloca_tohex_rhizome_filehash_t(write->id));
+      return RHIZOME_PAYLOAD_STATUS_WRONG_HASH;
+    }
+  } else if (m->is_journal)
+    rhizome_manifest_del_filehash(m);
+  else if (m->has_filehash)
+    return RHIZOME_PAYLOAD_STATUS_WRONG_HASH;
   return status;
 }
 
@@ -1620,17 +1697,11 @@ enum rhizome_payload_status rhizome_append_journal_buffer(rhizome_manifest *m, u
   enum rhizome_payload_status status = rhizome_write_open_journal(&write, m, advance_by, (uint64_t) len);
   if (status != RHIZOME_PAYLOAD_STATUS_NEW)
     return status;
-  if (buffer && len && rhizome_write_buffer(&write, buffer, len) == -1) {
-    rhizome_fail_write(&write);
-    return RHIZOME_PAYLOAD_STATUS_ERROR;
-  }
-  status = rhizome_finish_write(&write);
-  if (status != RHIZOME_PAYLOAD_STATUS_NEW) {
-    rhizome_fail_write(&write);
-    return status;
-  }
-  rhizome_manifest_set_filehash(m, &write.id);
-  return status;
+  if (buffer && len && rhizome_write_buffer(&write, buffer, len) == -1)
+    status = RHIZOME_PAYLOAD_STATUS_ERROR;
+  else
+    status = rhizome_finish_write(&write);
+  return rhizome_finish_store(&write, m, status);
 }
 
 enum rhizome_payload_status rhizome_append_journal_file(rhizome_manifest *m, uint64_t advance_by, const char *filename)
@@ -1643,15 +1714,9 @@ enum rhizome_payload_status rhizome_append_journal_file(rhizome_manifest *m, uin
   enum rhizome_payload_status status = rhizome_write_open_journal(&write, m, advance_by, stat.st_size);
   if (status != RHIZOME_PAYLOAD_STATUS_NEW)
     return status;
-  if (stat.st_size != 0 && rhizome_write_file(&write, filename) == -1) {
-    rhizome_fail_write(&write);
-    return RHIZOME_PAYLOAD_STATUS_ERROR;
-  }
-  status = rhizome_finish_write(&write);
-  if (status != RHIZOME_PAYLOAD_STATUS_NEW) {
-    rhizome_fail_write(&write);
-    return status;
-  }
-  rhizome_manifest_set_filehash(m, &write.id);
-  return status;
+  if (stat.st_size != 0 && rhizome_write_file(&write, filename) == -1)
+    status = RHIZOME_PAYLOAD_STATUS_ERROR;
+  else
+    status = rhizome_finish_write(&write);
+  return rhizome_finish_store(&write, m, status);
 }
