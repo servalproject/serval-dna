@@ -1039,6 +1039,40 @@ test_JournalAppend() {
    assert diff file filex
 }
 
+doc_JournalAppendSharedPayload="Journal append produces a shared payload"
+setup_JournalAppendSharedPayload() {
+   setup_servald
+   setup_rhizome
+   executeOk_servald config set rhizome.max_blob_size 0
+   create_file file1 101
+   >manifest1
+   create_file file2 102
+   >manifest2
+   cat file1 file2 >file12
+   executeOk_servald rhizome add file '' file1
+   extract_stdout_filehash HASH1
+   assert cmp file1 "$SERVALINSTANCE_PATH/blob/$HASH1"
+   executeOk_servald rhizome add file '' file12
+   extract_stdout_filehash HASH12
+   assert cmp file12 "$SERVALINSTANCE_PATH/blob/$HASH12"
+   assert [ $(ls "$SERVALINSTANCE_PATH/blob" | wc -l) -eq 2 ]
+}
+test_JournalAppendSharedPayload() {
+   executeOk_servald rhizome journal append $SIDA "" file1
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file1
+   extract_stdout_filehash addedhash
+   assert [ $addedhash = $HASH1 ]
+   assert [ $(ls "$SERVALINSTANCE_PATH/blob" | wc -l) -eq 2 ]
+   extract_stdout_manifestid BID
+   executeOk_servald rhizome journal append $SIDA $BID file2
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file12 !name
+   extract_stdout_filehash addedhash
+   assert [ $addedhash = $HASH12 ]
+   assert [ $(ls "$SERVALINSTANCE_PATH/blob" | wc -l) -eq 2 ]
+}
+
 doc_JournalAddCreate="Cannot create a journal using file add"
 setup_JournalAddCreate() {
    setup_servald

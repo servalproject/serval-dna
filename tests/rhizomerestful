@@ -1250,6 +1250,66 @@ test_RhizomeJournalAppend() {
    assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Code: 1$CR\$"
    assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Message: .*payload new to store.*$CR\$"
 }
+
+doc_RhizomeJournalAppendSharedPayload="HTTP RESTful Rhizome journal append with shared payload"
+setup_RhizomeJournalAppendSharedPayload() {
+   set_extra_config() {
+      executeOk_servald config set rhizome.max_blob_size 0
+   }
+   setup
+   echo 'File one' >file1
+   >manifest1
+   echo 'File two two' >file2
+   >manifest2
+   cat file1 file2 >file12
+   executeOk_servald rhizome add file '' file1
+   extract_stdout_filehash HASH1
+   assert cmp file1 "$SERVALINSTANCE_PATH/blob/$HASH1"
+   executeOk_servald rhizome add file '' file12
+   extract_stdout_filehash HASH12
+   assert cmp file12 "$SERVALINSTANCE_PATH/blob/$HASH12"
+   assert [ $(ls "$SERVALINSTANCE_PATH/blob" | wc -l) -eq 2 ]
+}
+test_RhizomeJournalAppendSharedPayload() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output file1.manifest \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "bundle-author=$SIDA" \
+         --form "manifest=@manifest1;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "payload=@file1" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/append"
+   tfw_cat http.header file1.manifest
+   assertExitStatus == 0
+   assertStdoutIs 201
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Bundle-Filehash: $HASH1$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Code: 2$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Message: .*payload already in store.*$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Message: .*payload already in store.*$CR\$"
+   assert [ $(ls "$SERVALINSTANCE_PATH/blob" | wc -l) -eq 2 ]
+   extract_http_header BID http.header Serval-Rhizome-Bundle-Id "$rexp_manifestid"
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output file2.manifest \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "bundle-id=$BID" \
+         --form "manifest=@manifest2;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "payload=@file2" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/append"
+   tfw_cat http.header file2.manifest
+   assertExitStatus == 0
+   assertStdoutIs 201
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Bundle-Filehash: $HASH12$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Code: 2$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Message: .*payload already in store.*$CR\$"
+   assert [ $(ls "$SERVALINSTANCE_PATH/blob" | wc -l) -eq 2 ]
+}
 }
 
 runTests "$@"
