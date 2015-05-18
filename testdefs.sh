@@ -783,7 +783,7 @@ add_servald_interface() {
          set interfaces.$INTERFACE.dummy_address 127.0.$INTERFACE.$instance_number \
          set interfaces.$INTERFACE.dummy_netmask 255.255.255.224
    else
-      mkdir "$SERVALD_VAR/dummy$INTERFACE/"
+      mkdir -p "$SERVALD_VAR/dummy$INTERFACE/"
       executeOk_servald config \
          set server.interface_path $SERVALD_VAR \
          set interfaces.$INTERFACE.socket_type $SOCKET_TYPE \
