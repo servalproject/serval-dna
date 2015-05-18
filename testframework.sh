@@ -829,6 +829,7 @@ _tfw_execute() {
    fi
    export TFWSTDOUT="${_tfw_stdout_file:-$_tfw_process_tmp/stdout}"
    export TFWSTDERR="${_tfw_stderr_file:-$_tfw_process_tmp/stderr}"
+   echo "$executed" >"$_tfw_process_tmp/executing"
    {
       time -p "$_tfw_executable" "$@" >"$TFWSTDOUT" 2>"$TFWSTDERR"
    } 2>"$_tfw_process_tmp/times" &
@@ -874,6 +875,7 @@ _tfw_execute() {
       done
       wait $timer_pid
    fi
+   rm -f "$_tfw_process_tmp/executing"
    # Deal with core dump.
    if $_tfw_opt_core_backtrace && [ -s core ]; then
       tfw_core_backtrace "$_tfw_executable" core
@@ -2048,6 +2050,15 @@ _tfw_forkwait() {
    if $_tfw_trace; then
       echo "++++++++++ $desc log.xtrace ++++++++++"
       cat $_tfw_tmp/fork-$forkid/log.xtrace
+      echo "++++++++++"
+   fi
+   if [ -s $_tfw_tmp/fork-$forkid/executing ]; then
+      local executed="$(cat $_tfw_tmp/fork-$forkid/executing)"
+      echo "++++++++++ $desc stdout of ($executed) ++++++++++"
+      cat $_tfw_tmp/fork-$forkid/stdout
+      echo "++++++++++"
+      echo "++++++++++ $desc stderr of ($executed) ++++++++++"
+      cat $_tfw_tmp/fork-$forkid/stderr
       echo "++++++++++"
    fi
    case $status in
