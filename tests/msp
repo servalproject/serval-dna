@@ -194,7 +194,7 @@ test_forward() {
    set_instance +B
    fork %connect client_forward 2048 $SIDA
    sleep 1
-   executeOk nc -v 127.0.0.1 2048 < <(echo "Hello from the client")
+   executeOk nc -q 30 -v 127.0.0.1 2048 < <(echo "Hello from the client")
    assertStdoutGrep --matches=1 "^Hello from the server$"
    fork_wait %listen %connect
 }
@@ -210,10 +210,9 @@ server_forward() {
    tfw_cat --stderr
 }
 nc_listen() {
-   execute nc -v -l $1 < <(echo "Hello from the server")
+   execute nc -q -1 -v -l -p $1 < <(echo "Hello from the server")
    tfw_cat --stdout --stderr
 }
-
 test_tcp_tunnel() {
    fork %listen nc_listen 6000
    set_instance +A
@@ -221,7 +220,8 @@ test_tcp_tunnel() {
    set_instance +B
    fork %client client_forward 6001 $SIDA
    sleep 1
-   executeOk nc -v 127.0.0.1 6001 < <(echo "Hello from the client")
+   executeOk nc -q 10 -v 127.0.0.1 6001 < <(echo "Hello from the client")
+   tfw_cat --stdout --stderr
    assertStdoutGrep --matches=1 "^Hello from the server$"
    fork_wait %listen %server %client
 }
@@ -304,7 +304,7 @@ test_terminate() {
    fork %mspconnect client_terminate
    sleep 1
 # todo capture nc output nicely, while still being able to terminate it
-   fork %ncconnect nc -v 127.0.0.1 3001
+   fork %ncconnect nc -q 0 -v 127.0.0.1 3001
    fork_terminate %ncconnect
    fork_wait %msplisten %mspconnect %ncconnect
 }
