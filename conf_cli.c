@@ -87,19 +87,26 @@ static int mdp_client_sync_config(time_ms_t timeout)
   set_nonblock(mdpsock);
   int r = mdp_send(mdpsock, &mdp_header, NULL, 0);
   if (r == -1)
-    return -1;
+    goto end;
   time_ms_t deadline = gettime_ms() + timeout; // TODO add --timeout option
   struct mdp_header rev_header;
   do {
     ssize_t len = mdp_poll_recv(mdpsock, deadline, &rev_header, NULL, 0);
-    if (len == -1)
-      return -1;
+    if (len == -1){
+      r = -1;
+      goto end;
+    }
     if (len == -2) {
       WHYF("timeout while synchronising daemon configuration");
-      return -1;
+      r = -1;
+      goto end;
     }
   } while (!(rev_header.flags & MDP_FLAG_CLOSE));
-  return 0;
+  r = 0;
+  
+end:
+  mdp_close(mdpsock);
+  return r;
 }
 
 DEFINE_CMD(app_config_set, CLIFLAG_PERMISSIVE_CONFIG,
