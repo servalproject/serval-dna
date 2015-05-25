@@ -1,5 +1,5 @@
 /*
- Copyright (C) 2014 Serval Project Inc.
+ Copyright (C) 2014,2015 Serval Project Inc.
  
  This program is free software; you can redistribute it and/or
  modify it under the terms of the GNU General Public License
@@ -19,39 +19,30 @@
 #ifndef __SERVAL_DNA__COMMANDLINE_H
 #define __SERVAL_DNA__COMMANDLINE_H
 
+#include "section.h"
+
 #define KEYRING_PIN_OPTION	  ,"[--keyring-pin=<pin>]"
 #define KEYRING_ENTRY_PIN_OPTION  ,"[--entry-pin=<pin>]"
 #define KEYRING_PIN_OPTIONS	  KEYRING_PIN_OPTION KEYRING_ENTRY_PIN_OPTION "..."
 
-// macros are weird sometimes ....
-#define _APPEND(X,Y) X ## Y
-#define _APPEND2(X,Y) _APPEND(X,Y)
-
 struct cli_schema;
 struct cli_context;
 
-#ifdef __APPLE__
-#define SECTION(X) section("__DATA,__" X )
-#define SECTION_START(X) __asm("section$start$__DATA$__" X)
-#define SECTION_END(X) __asm("section$end$__DATA$__" X)
-#else
-#define SECTION(X) section(X)
-#define SECTION_START(X)
-#define SECTION_END(X)
-#endif
+// macros are weird sometimes ....
+#define __APPEND_(X,Y) X ## Y
+#define _APPEND(X,Y) __APPEND_(X,Y)
 
 #define DEFINE_CMD(FUNC, FLAGS, HELP, WORD1, ...) \
   static int FUNC(const struct cli_parsed *parsed, struct cli_context *context); \
-  struct cli_schema _APPEND2(FUNC, __LINE__) \
-    __attribute__((used,aligned(sizeof(void *)),SECTION("commands"))) = {\
-  .function = FUNC, \
-  .words = {WORD1, ##__VA_ARGS__, NULL}, \
-  .flags = FLAGS, \
-  .description = HELP\
+  static struct cli_schema _APPEND(FUNC, __LINE__) IN_SECTION(commands) = {\
+    .function = FUNC, \
+    .words = {WORD1, ##__VA_ARGS__, NULL}, \
+    .flags = FLAGS, \
+    .description = HELP \
   }
 
-extern struct cli_schema __start_commands[] SECTION_START("commands");
-extern struct cli_schema __stop_commands[]  SECTION_END("commands");
+extern struct cli_schema __start_commands[] SECTION_START(commands);
+extern struct cli_schema __stop_commands[]  SECTION_STOP(commands);
 
 #define CMD_COUNT (__stop_commands - __start_commands)
 

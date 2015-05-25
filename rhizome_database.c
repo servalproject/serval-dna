@@ -1357,6 +1357,7 @@ int rhizome_store_manifest(rhizome_manifest *m)
 	  alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
 	  m->version
 	);
+    CALL_TRIGGER(rhizome_bundle_added, m);
     monitor_announce_bundle(m);
     if (serverMode){
       time_ms_t now = gettime_ms();
@@ -1371,6 +1372,18 @@ rollback:
   sqlite_exec_void_retry(&retry, "ROLLBACK;", END);
   return -1;
 }
+
+static void trigger_rhizome_bundle_added_debug(rhizome_manifest *m)
+{
+  if (config.debug.rhizome)
+    DEBUGF("TRIGGER rhizome_bundle_added service=%s bid=%s version=%"PRIu64,
+	    m->service ? m->service : "NULL",
+	    alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
+	    m->version
+	);
+}
+
+DEFINE_TRIGGER(rhizome_bundle_added, trigger_rhizome_bundle_added_debug)
 
 /* The cursor struct must be zerofilled and the query parameters optionally filled in prior to
  * calling this function.

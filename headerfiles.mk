@@ -3,6 +3,8 @@ HDRS=	fifo.h \
 	overlay_address.h \
 	overlay_packet.h \
 	overlay_interface.h \
+	section.h \
+	trigger.h \
 	commandline.h \
 	limit.h \
 	rhizome_types.h \

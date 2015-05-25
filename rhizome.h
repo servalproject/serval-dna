@@ -31,6 +31,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "uuid.h"
 #include "str.h"
 #include "strbuf.h"
+#include "trigger.h"
 
 #ifndef __RHIZOME_INLINE
 # if __GNUC__ && !__GNUC_STDC_INLINE__
@@ -880,7 +881,7 @@ int rhizome_any_fetch_queued();
 int rhizome_fetch_status_html(struct strbuf *b);
 int rhizome_fetch_has_queue_space(unsigned char log2_size);
 
-/* rhizome storage methods */
+/* Rhizome storage methods */
 
 int rhizome_exists(const rhizome_filehash_t *hashp);
 enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, const rhizome_filehash_t *expectedHashp, uint64_t file_length);
@@ -921,4 +922,9 @@ int overlay_mdp_service_rhizome_sync(struct internal_mdp_header *header, struct 
 void rhizome_sync_status();
 
 DECLARE_ALARM(rhizome_fetch_status);
+
+/* Rhizome triggers */
+
+DECLARE_TRIGGER(rhizome_bundle_added, rhizome_manifest*)
+
 #endif //__SERVAL_DNA__RHIZOME_H
