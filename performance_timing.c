@@ -50,8 +50,8 @@
 #include "fdqueue.h"
 #include "conf.h"
 
-struct profile_total *stats_head=NULL;
-struct call_stats *current_call=NULL;
+__thread struct profile_total *stats_head=NULL;
+__thread struct call_stats *current_call=NULL;
 
 void fd_clearstat(struct profile_total *s){
   s->max_time = 0;

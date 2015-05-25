@@ -37,16 +37,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "server.h"
 #include "keyring.h"
 #include "commandline.h"
+#include "mdp_client.h"
 
 #define PROC_SUBDIR	  "proc"
 #define PIDFILE_NAME	  "servald.pid"
 #define STOPFILE_NAME	  "servald.stop"
 
-int serverMode = 0;
-keyring_file *keyring=NULL;
+__thread int serverMode = 0;
+__thread keyring_file *keyring=NULL;
 
 static char pidfile_path[256];
 static int server_getpid = 0;
+static int server_bind();
+static void server_loop();
+static int server();
 static int server_write_pid();
 static int server_unlink_pid();
 static void signal_handler(int signal);
@@ -105,9 +109,142 @@ static const char *_server_pidfile_path(struct __sourceloc __whence)
   return pidfile_path;
 }
 
-static int server()
+#ifdef HAVE_JNI_H
+
+JNIEnv *server_env=NULL;
+jclass IJniServer= NULL;
+jmethodID aboutToWait, wokeUp, started;
+jobject JniCallback;
+
+JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_server(
+  JNIEnv *env, jobject UNUSED(this), jobject callback, jobject keyring_pin, jobjectArray entry_pins)
 {
-  IN();
+  if (!IJniServer){
+    IJniServer = (*env)->FindClass(env, "org/servalproject/servaldna/IJniServer");
+    if (IJniServer==NULL)
+      return Throw(env, "java/lang/IllegalStateException", "Unable to locate class org.servalproject.servaldna.IJniServer");
+    // make sure the interface class cannot be garbage collected between invocations
+    IJniServer = (jclass)(*env)->NewGlobalRef(env, IJniServer);
+    if (IJniServer==NULL)
+      return Throw(env, "java/lang/IllegalStateException", "Unable to create global ref to class org.servalproject.servaldna.IJniServer");
+    aboutToWait = (*env)->GetMethodID(env, IJniServer, "aboutToWait", "(JJJ)J");
+    if (aboutToWait==NULL)
+      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method aboutToWait");
+    wokeUp = (*env)->GetMethodID(env, IJniServer, "wokeUp", "()V");
+    if (wokeUp==NULL)
+      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method wokeUp");
+    started = (*env)->GetMethodID(env, IJniServer, "started", "(Ljava/lang/String;III)V");
+    if (started==NULL)
+      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method started");
+  }
+  
+  int pid = server_pid();
+  if (pid < 0)
+    return -1;
+  if (pid>0)
+    return 1;
+  
+  int ret = -1;
+  {
+    const char *cpin = keyring_pin?(*env)->GetStringUTFChars(env, keyring_pin, NULL):NULL;
+    if (cpin != NULL){
+      keyring = keyring_open_instance(cpin);
+      (*env)->ReleaseStringUTFChars(env, keyring_pin, cpin);
+    }else{
+      keyring = keyring_open_instance("");
+    }
+  }
+  
+  // Always open all PIN-less entries.
+  keyring_enter_pin(keyring, "");
+  if (entry_pins){
+    jsize len = (*env)->GetArrayLength(env, entry_pins);
+    jsize i;
+    for (i = 0; i < len; ++i) {
+      const jstring pin = (jstring)(*env)->GetObjectArrayElement(env, entry_pins, i);
+      if ((*env)->ExceptionCheck(env))
+	goto end;
+      const char *cpin = (*env)->GetStringUTFChars(env, pin, NULL);
+      if (cpin != NULL){
+	keyring_enter_pin(keyring, cpin);
+	(*env)->ReleaseStringUTFChars(env, pin, cpin);
+      }
+    }
+  }
+  
+  if (keyring_seed(keyring) == -1)
+    goto end;
+  
+  if (server_env)
+    goto end;
+  
+  server_env = env;
+  JniCallback = (*env)->NewGlobalRef(env, callback);
+  
+  ret = server_bind();
+  
+  if (ret==-1)
+    goto end;
+  
+  {
+    jstring str = (jstring)(*env)->NewStringUTF(env, instance_path());
+    (*env)->CallVoidMethod(env, callback, started, str, getpid(), mdp_loopback_port, httpd_server_port);
+    (*env)->DeleteLocalRef(env, str);
+  }
+  
+  server_loop();
+  
+end:
+  
+  server_env=NULL;
+  if (JniCallback){
+    (*env)->DeleteGlobalRef(env, JniCallback);
+    JniCallback = NULL;
+  }
+  
+  if (keyring)
+    keyring_free(keyring);
+  keyring = NULL;
+  
+  return ret;
+}
+
+static time_ms_t waiting(time_ms_t now, time_ms_t next_run, time_ms_t next_wakeup)
+{
+  if (server_env && JniCallback){
+    jlong r = (*server_env)->CallLongMethod(server_env, JniCallback, aboutToWait, (jlong)now, (jlong)next_run, (jlong)next_wakeup);
+    // stop the server if there are any issues
+    if ((*server_env)->ExceptionCheck(server_env)){
+      serverMode=SERVER_CLOSING;
+      INFO("Stopping server due to exception");
+      return now;
+    }
+    return r;
+  }
+  return next_wakeup;
+}
+
+static void wokeup()
+{
+  if (server_env && JniCallback){
+    (*server_env)->CallVoidMethod(server_env, JniCallback, wokeUp);
+    // stop the server if there are any issues
+    if ((*server_env)->ExceptionCheck(server_env)){
+      INFO("Stopping server due to exception");
+      serverMode=SERVER_CLOSING;
+    }
+  }
+}
+
+#else
+
+#define waiting NULL
+#define wokeup NULL
+
+#endif
+
+static int server_bind()
+{
   serverMode = SERVER_RUNNING;
 
   // Warn, not merely Info, if there is no configured log file.
@@ -129,16 +266,22 @@ static int server()
      to take very long. 
      Try to perform only minimal CPU or IO processing here.
   */
-  if (overlay_mdp_setup_sockets()==-1)
-    RETURN(-1);
+  if (overlay_mdp_setup_sockets()==-1){
+    serverMode = 0;
+    return -1;
+  }
   
-  if (monitor_setup_sockets()==-1)
-    RETURN(-1);
+  if (monitor_setup_sockets()==-1){
+    serverMode = 0;
+    return -1;
+  }
   
   // start the HTTP server if enabled
-  if (httpd_server_start(HTTPD_PORT, HTTPD_PORT_MAX)==-1)
-    RETURN(-1);
- 
+  if (httpd_server_start(HTTPD_PORT, HTTPD_PORT_MAX)==-1){
+    serverMode = 0;
+    return -1;
+  }
+  
   /* For testing, it can be very helpful to delay the start of the server process, for example to
    * check that the start/stop logic is robust.
    */
@@ -150,9 +293,11 @@ static int server()
   }
   
   /* record PID file so that servald start can return */
-  if (server_write_pid())
-    RETURN(-1);
-  
+  if (server_write_pid()){
+    serverMode = 0;
+    return -1;
+  }
+    
   overlay_queue_init();
   
   time_ms_t now = gettime_ms();
@@ -167,13 +312,18 @@ static int server()
   /* Calculate (and possibly show) CPU usage stats periodically */
   RESCHEDULE(&ALARM_STRUCT(fd_periodicstats), now+3000, TIME_MS_NEVER_WILL, now+3500);
 
+  return 0;
+}
+
+static void server_loop()
+{
   cf_on_config_change();
   
   // log message used by tests to wait for the server to start
-  INFO("Server initialised, entering main loop");
+  INFOF("Server initialised, entering main loop");
   
   /* Check for activitiy and respond to it */
-  while((serverMode==SERVER_RUNNING) && fd_poll())
+  while((serverMode==SERVER_RUNNING) && fd_poll2(waiting, wokeup))
     ;
   serverCleanUp();
   
@@ -182,6 +332,16 @@ static int server()
    * if the code reaches here, the check has been done recently.
    */
   server_unlink_pid();
+  serverMode = 0;
+}
+
+static int server()
+{
+  IN();
+  if (server_bind()==-1)
+    RETURN(-1);
+  
+  server_loop();
   
   // note that we haven't tried to free all types of allocated memory used by the server.
   // so it's safer to force this process to close, instead of trying to release everything.
@@ -191,16 +351,21 @@ static int server()
 
 static int server_write_pid()
 {
+  server_write_proc_state("http_port", "%d", httpd_server_port);
+  server_write_proc_state("mdp_inet_port", "%d", mdp_loopback_port);
+  
   /* Record PID to advertise that the server is now running */
   const char *ppath = server_pidfile_path();
   if (ppath == NULL)
     return -1;
+  
   FILE *f = fopen(ppath, "w");
   if (!f)
     return WHYF_perror("fopen(%s,\"w\")", alloca_str_toprint(ppath));
   server_getpid = getpid();
   fprintf(f,"%d\n", server_getpid);
   fclose(f);
+  
   return 0;
 }
 
@@ -503,7 +668,6 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   /* Process optional arguments */
-  int pid=-1;
   int cpid=-1;
   const char *execpath;
   if (cli_arg(parsed, "exec", &execpath, cli_absolute_path, NULL) == -1)
@@ -516,8 +680,7 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
      network interfaces that we will take interest in. */
   if (config.interfaces.ac == 0)
     NOWHENCE(WARN("No network interfaces configured (empty 'interfaces' config option)"));
-  if (pid == -1)
-    pid = server_pid();
+  int pid = server_pid();
   if (pid < 0)
     RETURN(-1);
   int ret = -1;

@@ -44,7 +44,7 @@ static int create_rhizome_store_dir()
   return emkdirs_info(rdpath, 0700);
 }
 
-sqlite3 *rhizome_db = NULL;
+__thread sqlite3 *rhizome_db = NULL;
 serval_uuid_t rhizome_db_uuid;
 static time_ms_t rhizomeRetryLimit = -1;
 

@@ -28,7 +28,7 @@ DECLARE_ALARM(server_config_reload);
 DECLARE_ALARM(rhizome_sync_announce);
 DECLARE_ALARM(fd_periodicstats);
 
-extern int serverMode;
+extern __thread int serverMode;
 
 int server_pid();
 int server_write_proc_state(const char *path, const char *fmt, ...);

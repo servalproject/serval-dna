@@ -65,6 +65,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "socket.h"
 #include "server.h"
 
+uint16_t mdp_loopback_port;
+
 static void overlay_mdp_poll(struct sched_ent *alarm);
 static void mdp_poll2(struct sched_ent *alarm);
 static int overlay_mdp_releasebindings(struct socket_address *client);
@@ -120,6 +122,7 @@ void overlay_mdp_clean_socket_files()
     }
     closedir(dir);
   }
+  mdp_loopback_port=0;
 }
 
 static void overlay_mdp_fill_legacy(
@@ -209,8 +212,10 @@ int overlay_mdp_setup_sockets()
 	  fd = -1;
 	  mdp_sock2_inet.poll.events = POLLIN;
 	  watch(&mdp_sock2_inet);
-	  server_write_proc_state("mdp_inet_port", "%d", port);
+	  mdp_loopback_port = port;
+	  
 	  INFOF("Socket mdp.2.inet: fd=%d %s", fd, alloca_socket_address(&addr));
+	  
 	  break;
 	}
 	  

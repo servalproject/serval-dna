@@ -215,13 +215,6 @@ error:
   return WHY("Failed to start HTTP server");
 
 success:
-  server_write_proc_state("http_port", "%d", port);
-  INFOF("HTTP SERVER START port=%"PRIu16" fd=%d services=RESTful%s%s",
-      port,
-      httpd_server_socket,
-      config.rhizome.http.enable ? ",Rhizome" : "",
-      config.rhizome.api.addfile.uri_path[0] ? ",RhizomeDirect" : ""
-    );
   httpd_server_port = port;
   /* Add Rhizome HTTPd server to list of file descriptors to watch */
   server_alarm.function = httpd_server_poll;
@@ -229,6 +222,14 @@ success:
   server_alarm.poll.fd = httpd_server_socket;
   server_alarm.poll.events = POLLIN;
   watch(&server_alarm);
+  
+  INFOF("HTTP SERVER START port=%"PRIu16" fd=%d services=RESTful%s%s",
+      httpd_server_port,
+      httpd_server_socket,
+      config.rhizome.http.enable ? ",Rhizome" : "",
+      config.rhizome.api.addfile.uri_path[0] ? ",RhizomeDirect" : ""
+    );
+ 
   return 0;
 }
 

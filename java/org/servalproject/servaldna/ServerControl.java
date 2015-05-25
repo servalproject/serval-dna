@@ -35,6 +35,17 @@ public class ServerControl {
 		return loopbackMdpPort;
 	}
 
+	public int getPid() {
+		return pid;
+	}
+
+	protected void setStatus(String instancePath, int pid, int mdpInetPort, int httpPort){
+		this.instancePath = instancePath;
+		this.pid = pid;
+		this.loopbackMdpPort = mdpInetPort;
+		this.httpPort = httpPort;
+	}
+
 	private void setStatus(ServalDCommand.Status result){
 		loopbackMdpPort = result.mdpInetPort;
 		pid = result.pid;
@@ -42,7 +53,7 @@ public class ServerControl {
 		instancePath = result.instancePath;
 	}
 
-	private void clearStatus(){
+	protected void clearStatus(){
 		loopbackMdpPort = 0;
 		pid = 0;
 		httpPort = 0;

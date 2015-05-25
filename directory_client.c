@@ -40,7 +40,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "keyring.h"
 #include "serval.h" // for overlay_send_frame()
 
-struct subscriber *directory_service;
+__thread struct subscriber *directory_service;
 
 static void directory_update(struct sched_ent *alarm);
 

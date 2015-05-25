@@ -355,7 +355,7 @@ int rhizome_fetch_delay_ms();
 
 #define RHIZOME_BLOB_SUBDIR "blob"
 
-extern sqlite3 *rhizome_db;
+extern __thread sqlite3 *rhizome_db;
 serval_uuid_t rhizome_db_uuid;
 
 int rhizome_opendb();

@@ -33,7 +33,7 @@ public abstract class MeshMSException extends Exception
 	public final URL url;
 
 	public MeshMSException(String message, URL url) {
-		super(message + "; " + url);
+		super(message + "; " + (url==null?"(null)":url));
 		this.url = url;
 	}
 

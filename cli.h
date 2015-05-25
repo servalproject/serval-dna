@@ -28,8 +28,9 @@
 #ifdef UNUSED
 # undef UNUSED
 #endif
-
+int Throw(JNIEnv *env, const char *class, const char *msg);
 #endif
+
 #include "xprintf.h"
 #include "log.h"
 

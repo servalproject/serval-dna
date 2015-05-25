@@ -147,7 +147,8 @@ int _unwatch(struct __sourceloc, struct sched_ent *alarm);
 #define unschedule(alarm) _unschedule(__WHENCE__, alarm)
 #define watch(alarm)      _watch(__WHENCE__, alarm)
 #define unwatch(alarm)    _unwatch(__WHENCE__, alarm)
-int fd_poll();
+int fd_poll2(time_ms_t (*waiting)(time_ms_t, time_ms_t, time_ms_t), void (*wokeup)());
+#define fd_poll() fd_poll2(NULL, NULL)
 
 /* function timing routines */
 int fd_clearstats();

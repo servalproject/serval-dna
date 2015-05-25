@@ -272,6 +272,7 @@ int dna_helper_shutdown();
 int dna_helper_enqueue(struct subscriber *source, mdp_port_t source_port, const char *did);
 int parseDnaReply(const char *buf, size_t len, char *token, char *did, char *name, char *uri, const char **bufp);
 
+extern uint16_t mdp_loopback_port;
 int overlay_mdp_setup_sockets();
 
 int overlay_packetradio_setup_port(struct overlay_interface *interface);

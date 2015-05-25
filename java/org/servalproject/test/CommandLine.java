@@ -2,6 +2,7 @@ package org.servalproject.test;
 
 import org.servalproject.servaldna.AsyncResult;
 import org.servalproject.servaldna.ChannelSelector;
+import org.servalproject.servaldna.IJniServer;
 import org.servalproject.servaldna.MdpDnaLookup;
 import org.servalproject.servaldna.MdpServiceLookup;
 import org.servalproject.servaldna.ResultList;
@@ -59,6 +60,58 @@ public class CommandLine {
 		lookup.close();
 	}
 
+	private static Runnable server = new Runnable() {
+		@Override
+		public void run() {
+			try {
+				ServalDCommand.server(new IJniServer() {
+					@Override
+					public long aboutToWait(long now, long nextRun, long nextWake) {
+						if (stopNow)
+							throw new ServerStopped();
+						return nextWake;
+					}
+
+					@Override
+					public void wokeUp() {
+						if (stopNow)
+							throw new ServerStopped();
+					}
+
+					@Override
+					public void started(String instancePath, int pid, int mdpPort, int httpPort) {
+						System.out.println("Started instance " + instancePath);
+						synchronized (server) {
+							server.notifyAll();
+						}
+					}
+				}, "", new String[]{""});
+			}catch (ServerStopped e){
+
+			}
+		}
+	};
+
+	private static class ServerStopped extends RuntimeException{}
+
+	private static boolean stopNow = false;
+
+	private static void server() throws InterruptedException, ServalDFailureException {
+		System.out.println("Starting server thread");
+		Thread serverThread = new Thread(server, "server");
+		serverThread.start();
+
+		synchronized (server){
+			server.wait();
+		}
+
+		Thread.sleep(500);
+		stopNow = true;
+		ServalDCommand.configSync();
+
+		serverThread.join();
+	}
+
 	public static void main(String... args){
 		if (args.length<1)
 			return;
@@ -66,6 +119,8 @@ public class CommandLine {
 		try {
 			String methodName = args[0];
 			Object result=null;
+			if (methodName.equals("server"))
+				server();
 			if (methodName.equals("start"))
 				result=ServalDCommand.serverStart();
 			if (methodName.equals("stop"))

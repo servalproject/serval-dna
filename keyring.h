@@ -97,10 +97,11 @@ int keyring_release_identity(keyring_iterator *it);
 #define KEYTYPE_PUBLIC_TAG 0x05
 
 /* handle to keyring file for use in running instance */
-extern keyring_file *keyring;
+extern __thread keyring_file *keyring;
 
 /* Public calls to keyring management */
 keyring_file *keyring_create_instance();
+keyring_file *keyring_open_instance(const char *pin);
 keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed);
 int keyring_enter_pin(keyring_file *k, const char *pin);
 int keyring_set_did(keyring_identity *id, const char *did, const char *name);

@@ -129,6 +129,10 @@ int initJniTypes(JNIEnv *env)
   IJniResults = (*env)->FindClass(env, "org/servalproject/servaldna/IJniResults");
   if (IJniResults==NULL)
     return Throw(env, "java/lang/IllegalStateException", "Unable to locate class org.servalproject.servaldna.IJniResults");
+  // make sure the interface class cannot be garbage collected between invocations in the same process
+  IJniResults = (jclass)(*env)->NewGlobalRef(env, IJniResults);
+  if (IJniResults==NULL)
+    return Throw(env, "java/lang/IllegalStateException", "Unable to create global ref to class org.servalproject.servaldna.IJniResults");
   startResultSet = (*env)->GetMethodID(env, IJniResults, "startResultSet", "(I)V");
   if (startResultSet==NULL)
     return Throw(env, "java/lang/IllegalStateException", "Unable to locate method startResultSet");

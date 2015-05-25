@@ -161,4 +161,15 @@ teardown_serviceDiscovery() {
    report_all_servald_servers
 }
 
+doc_servaldThread="Start servald in a JVM thread"
+setup_servaldThread() {
+   setup
+   set_instance +A
+   create_single_identity
+}
+test_servaldThread() {
+   executeJavaOk --timeout=10 org.servalproject.test.CommandLine 'server'
+   tfw_cat --stdout --stderr
+}
+
 runTests "$@"

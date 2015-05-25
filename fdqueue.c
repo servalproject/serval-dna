@@ -55,13 +55,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 
 #define MAX_WATCHED_FDS 128
-struct pollfd fds[MAX_WATCHED_FDS];
-int fdcount=0;
-struct sched_ent *fd_callbacks[MAX_WATCHED_FDS];
+__thread struct pollfd fds[MAX_WATCHED_FDS];
+__thread int fdcount=0;
+__thread struct sched_ent *fd_callbacks[MAX_WATCHED_FDS];
 
-struct sched_ent *wake_list=NULL;
-struct sched_ent *run_soon=NULL;
-struct sched_ent *run_now=NULL;
+__thread struct sched_ent *wake_list=NULL;
+__thread struct sched_ent *run_soon=NULL;
+__thread struct sched_ent *run_now=NULL;
 
 struct profile_total poll_stats={NULL,0,"Idle (in poll)",0,0,0,0};
 
@@ -324,7 +324,8 @@ static void call_alarm(struct sched_ent *alarm, int revents)
   OUT();
 }
 
-int fd_poll()
+
+int fd_poll2(time_ms_t (*waiting)(time_ms_t, time_ms_t, time_ms_t), void (*wokeup)())
 {
   IN();
   
@@ -338,30 +339,48 @@ int fd_poll()
     RETURN(1);
   }
   
-  time_ms_t ms;
-  if (run_now){
-    ms=0;
-  }else if (wake_list){
-    ms = (wake_list->wake_at - gettime_ms());
-    if (ms<0)
-      ms = 0;
-  }else if(fdcount==0){
-    // nothing to do? we need to return instead of waiting forever.
+  if (!run_now && !wake_list && fdcount==0)
     RETURN(0);
-  }else{
-    ms =-1;
+  
+  time_ms_t wait;
+  
+  if (run_now)
+    wait = 0;
+  else {
+    time_ms_t next_run=TIME_MS_NEVER_WILL;
+    if(run_soon)
+      next_run = run_soon->run_after;
+    
+    time_ms_t next_wake=TIME_MS_NEVER_WILL;
+    if (wake_list)
+      next_wake = wake_list->wake_at;
+    
+    time_ms_t wait_until;
+    time_ms_t now = gettime_ms();
+    
+    if (waiting)
+      wait_until = waiting(now, next_run, next_wake);
+    else
+      wait_until = next_wake;
+    
+    if (wait_until==TIME_MS_NEVER_WILL)
+      wait = -1;
+    else if (wait_until < now)
+      wait = 0;
+    else
+      wait = wait_until - now;
   }
   
   // check for IO and/or wait for the next wake_at
   int r=0;
-  if (fdcount || ms>0){
+  if (fdcount || wait>0){
     struct call_stats call_stats;
     call_stats.totals=&poll_stats;
     fd_func_enter(__HERE__, &call_stats);
     if (fdcount==0){
-      sleep_ms(ms);
+      sleep_ms(wait);
     }else{
-      r = poll(fds, fdcount, ms);
+      r = poll(fds, fdcount, wait);
       if (config.debug.io) {
 	strbuf b = strbuf_alloca(1024);
 	int i;
@@ -373,17 +392,20 @@ int fd_poll()
 	  strbuf_puts(b, "->");
 	  strbuf_append_poll_events(b, fds[i].revents);
 	}
-	DEBUGF("poll(fds=(%s), fdcount=%d, ms=%d) -> %d", strbuf_str(b), fdcount, ms, r);
+	DEBUGF("poll(fds=(%s), fdcount=%d, ms=%d) -> %d", strbuf_str(b), fdcount, wait, r);
       }
     }
     fd_func_exit(__HERE__, &call_stats);
   }
   
+  if (wokeup && !run_now)
+    wokeup();
+  
   move_run_list();
   
   // We don't want a single alarm to be able to reschedule itself and starve all IO
   // So we only check for new overdue alarms if we attempted to sleep
-  if (ms && run_now && run_now->run_before <= gettime_ms())
+  if (wait && run_now && run_now->run_before <= gettime_ms())
     RETURN(1);
   
   // process all watched IO handles once (we need to be fair)

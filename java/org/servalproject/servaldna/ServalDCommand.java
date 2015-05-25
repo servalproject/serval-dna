@@ -68,6 +68,8 @@ public class ServalDCommand
 	 */
 	private static native int rawCommand(IJniResults results, String[] args);
 
+	public static native int server(IJniServer callback, String keyringPin, String[] entryPins);
+
 	/**
 	 * Common entry point into servald command line.
 	 *

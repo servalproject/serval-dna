@@ -58,9 +58,9 @@ struct tree_node{
   };
 };
 
-static struct tree_node root;
+static __thread struct tree_node root;
 
-struct subscriber *my_subscriber=NULL;
+__thread struct subscriber *my_subscriber=NULL;
 
 static unsigned char get_nibble(const unsigned char *sidp, int pos)
 {
