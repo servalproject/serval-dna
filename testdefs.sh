@@ -402,7 +402,8 @@ servald_restful_http_server_started() {
 # Utility function:
 #  - fetch the daemon's HTTP server port number
 get_servald_http_server_port() {
-   push_and_set_instance $2 || return $?
+   local _instance="$2"
+   [ -z "$_instance" ] || push_and_set_instance $_instance || return $?
    local _var="$1"
    local _port=$(<"$SERVALINSTANCE_PATH/proc/http_port")
    assert --message="instance $instance_name HTTP server port number is known" [ -n "$_port" ]
@@ -410,7 +411,7 @@ get_servald_http_server_port() {
       eval "$_var=\$_port"
       tfw_log "$_var=$_port"
    fi
-   pop_instance
+   [ -z "$_instance" ] || pop_instance
    return 0
 }
 

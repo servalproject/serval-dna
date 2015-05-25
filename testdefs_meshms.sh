@@ -20,6 +20,46 @@ meshms_create_message() {
    create_file --label="$1" - $2 | sed -e '/^$/d'
 }
 
+MESHMS_USE_RESTFUL=false
+
+meshms_use_restful() {
+   setup_curl 7
+   MESHMS_USE_RESTFUL=true
+   MESHMS_RESTFUL_USER="$1"
+   MESHMS_RESTFUL_PASSWORD="$2"
+   get_servald_restful_http_server_port MESHMS_RESTFUL_PORT
+}
+
+meshms_list_messages() {
+   local sid_sender=${1?}
+   local sid_recipient=${2?}
+   if $MESHMS_USE_RESTFUL; then
+      executeOk curl \
+            --silent --fail --show-error \
+            --output meshms_list_messages.json \
+            --basic --user "$MESHMS_RESTFUL_USER:$MESHMS_RESTFUL_PASSWORD" \
+            "http://$addr_localhost:$MESHMS_RESTFUL_PORT/restful/meshms/$sid_sender/$sid_recipient/messagelist.json"
+   else
+      executeOk_servald meshms list messages $sid_sender $sid_recipient
+   fi
+}
+
+meshms_send_message() {
+   local sid_sender=${1?}
+   local sid_recipient=${2?}
+   local text="${3?}"
+   if $MESHMS_USE_RESTFUL; then
+      executeOk curl \
+            --silent --fail --show-error \
+            --output meshms_send_message.json \
+            --basic --user "$MESHMS_RESTFUL_USER:$MESHMS_RESTFUL_PASSWORD" \
+            --form "message=$text;type=text/plain;charset=utf-8" \
+            "http://$addr_localhost:$MESHMS_RESTFUL_PORT/restful/meshms/$sid_sender/$sid_recipient/sendmessage"
+   else
+      executeOk_servald meshms send message $sid_sender $sid_recipient "$text"
+   fi
+}
+
 # Add a sequence of messages of varying sizes up to 1 KiB.
 meshms_add_messages() {
    local sid1="${1?}"
@@ -48,19 +88,19 @@ meshms_add_messages() {
       case $sym in
       '>')
          MESSAGE[$n]=">"
-         executeOk_servald meshms send message $sid1 $sid2 "${TEXT[$n]}"
+         meshms_send_message $sid1 $sid2 "${TEXT[$n]}"
          let ++sent_since_ack
          let ++NSENT
          ;;
       '<')
          MESSAGE[$n]="<"
-         executeOk_servald meshms send message $sid2 $sid1 "${TEXT[$n]}"
+         meshms_send_message $sid2 $sid1 "${TEXT[$n]}"
          let ++NRECV
          ;;
       'A')
          MESSAGE[$n]=ACK
          [ $i -ne 0 -a $sent_since_ack -eq 0 ] && error "two ACKs in a row (at position $i)"
-         executeOk_servald meshms list messages $sid2 $sid1
+         meshms_send_messages $sid2 $sid1
          let ++NACK
          ;;
       *)

@@ -199,9 +199,13 @@ doc_MeshmsListMessagesNewSinceArrival="Java API list newly arriving MeshMS messa
 setup_MeshmsListMessagesNewSinceArrival() {
    set_extra_config() {
       executeOk_servald config set api.restful.newsince_timeout 360s \
-                               set api.restful.newsince_poll_ms 1000
+                               set api.restful.newsince_poll_ms 1000 \
+                               set api.restful.users.harry.password potter
    }
    setup
+   # Use REST interface to send messages, not CLI, in order to avoid a database
+   # locking storm
+   meshms_use_restful harry potter
    meshms_add_messages $SIDA1 $SIDA2 '><>A>'
    let NROWS=NSENT+NRECV+(NACK?1:0)
    executeJavaOk org.servalproject.test.Meshms meshms-list-messages "$SIDA1" "$SIDA2"

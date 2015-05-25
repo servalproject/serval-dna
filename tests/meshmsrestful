@@ -350,6 +350,9 @@ setup_MeshmsListMessagesNewSinceArrival() {
                                set api.restful.newsince_poll_ms 1000
    }
    setup
+   # Use REST interface to send messages, not CLI, in order to avoid a database
+   # locking storm
+   meshms_use_restful harry potter
    meshms_add_messages $SIDA1 $SIDA2 '><>A>'
    let NROWS=NSENT+NRECV+(NACK?1:0)
    executeOk curl \
