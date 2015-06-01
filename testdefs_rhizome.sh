@@ -533,6 +533,16 @@ assert_rhizome_received() {
    done
 }
 
+RHIZOME_USE_RESTFUL=false
+
+rhizome_use_restful() {
+   setup_curl 7
+   RHIZOME_USE_RESTFUL=true
+   RHIZOME_RESTFUL_USER="$1"
+   RHIZOME_RESTFUL_PASSWORD="$2"
+   get_servald_restful_http_server_port RHIZOME_RESTFUL_PORT
+}
+
 # Extract a value from an HTTP header
 extract_http_header() {
    local __var="$1"
@@ -563,28 +573,59 @@ rhizome_add_bundles() {
    local n
    for ((n = $1; n <= $2; ++n)); do
       create_file file$n $((1000 + $n))
+      >file$n.manifest
       if $encrypted; then
-         echo "crypt=1" >file$n.manifest
+         echo "crypt=1" >>file$n.manifest
       fi
-      executeOk_servald rhizome add file "$SID" file$n file$n.manifest
-      extract_stdout_manifestid BID[$n]
-      extract_stdout_version VERSION[$n]
-      extract_stdout_filesize SIZE[$n]
-      extract_stdout_filehash HASH[$n]
-      extract_stdout_date DATE[$n]
-      extract_stdout_BK BK[$n]
-      extract_stdout_rowid ROWID[$n]
-      extract_stdout_author AUTHOR[$n]
-      extract_stdout_secret SECRET[$n]
-      extract_stdout_inserttime INSERTTIME[$n]
+      if $RHIZOME_USE_RESTFUL; then
+         executeOk curl \
+               --silent --fail --show-error \
+               --output "file$n.manifest" \
+               --dump-header http.header$n \
+               --basic --user "$RHIZOME_RESTFUL_USER:$RHIZOME_RESTFUL_PASSWORD" \
+               --form "bundle-author=$SID" \
+               --form "manifest=@file$n.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+               --form "payload=@file$n" \
+               "http://$addr_localhost:$RHIZOME_RESTFUL_PORT/restful/rhizome/insert"
+         tfw_cat --stderr http.header$n -v file$n.manifest
+         extract_http_header BID[$n] http.header$n Serval-Rhizome-Bundle-Id "$rexp_manifestid"
+         extract_http_header VERSION[$n] http.header$n Serval-Rhizome-Bundle-Version "$rexp_version"
+         extract_http_header SIZE[$n] http.header$n Serval-Rhizome-Bundle-Filesize "$rexp_filesize"
+         extract_http_header HASH[$n] http.header$n Serval-Rhizome-Bundle-Filehash "$rexp_filehash"
+         extract_http_header DATE[$n] http.header$n Serval-Rhizome-Bundle-Date "$rexp_date"
+         extract_http_header BK[$n] http.header$n Serval-Rhizome-Bundle-BK "$rexp_bundlekey"
+         extract_http_header ROWID[$n] http.header$n Serval-Rhizome-Bundle-Rowid "$rexp_rowid"
+         extract_http_header AUTHOR[$n] http.header$n Serval-Rhizome-Bundle-Author "$rexp_sid"
+         extract_http_header SECRET[$n] http.header$n Serval-Rhizome-Bundle-Secret "$rexp_bundlesecret"
+         extract_http_header INSERTTIME[$n] http.header$n Serval-Rhizome-Bundle-Inserttime "$rexp_date"
+         if $encrypted; then
+            extract_http_header CRYPT[$n] http.header$n Serval-Rhizome-Bundle-Crypt "$rexp_crypt"
+         else
+            CRYPT[$n]=
+         fi
+      else
+         executeOk_servald rhizome add file "$SID" file$n file$n.manifest
+         extract_stdout_manifestid BID[$n]
+         extract_stdout_version VERSION[$n]
+         extract_stdout_filesize SIZE[$n]
+         extract_stdout_filehash HASH[$n]
+         extract_stdout_date DATE[$n]
+         extract_stdout_BK BK[$n]
+         extract_stdout_rowid ROWID[$n]
+         extract_stdout_author AUTHOR[$n]
+         extract_stdout_secret SECRET[$n]
+         extract_stdout_inserttime INSERTTIME[$n]
+         if $encrypted; then
+            extract_stdout_crypt CRYPT[$n]
+         else
+            CRYPT[$n]=
+         fi
+      fi
       NAME[$n]=file$n
       if $encrypted; then
-         extract_stdout_crypt CRYPT[$n]
          assert [ "${CRYPT[$n]}" = 1 ]
-      else
-         CRYPT[$n]=
       fi
-      executeOk_servald rhizome export file ${HASH[$n]} raw$n
+      executeOk_servald rhizome export file "${HASH[$n]}" raw$n
       if $encrypted; then
          assert ! cmp file$n raw$n
       else

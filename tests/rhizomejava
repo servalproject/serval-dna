@@ -151,9 +151,13 @@ doc_RhizomeListNewSince="Java API list Rhizome bundles since token"
 setup_RhizomeListNewSince() {
    set_extra_config() {
       executeOk_servald config set api.restful.newsince_timeout 60s \
-                               set api.restful.newsince_poll_ms 1000
+                               set api.restful.newsince_poll_ms 1000 \
+                               set api.restful.users.harry.password potter
    }
    setup
+   # Use REST interface to add bundles, not CLI, in order to avoid a database
+   # locking storm
+   rhizome_use_restful harry potter
    rhizome_add_bundles $SIDA1 0 5
    executeJavaOk org.servalproject.test.Rhizome rhizome-list
    assertStdoutLineCount == 6

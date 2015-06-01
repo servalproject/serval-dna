@@ -234,6 +234,9 @@ setup_RhizomeListNewSince() {
                                set api.restful.newsince_poll_ms 1000
    }
    setup
+   # Use REST interface to add bundles, not CLI, in order to avoid a database
+   # locking storm
+   rhizome_use_restful harry potter
    rhizome_add_bundles $SIDA 0 5
    executeOk curl \
          --silent --fail --show-error \
