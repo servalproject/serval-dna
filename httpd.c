@@ -105,7 +105,6 @@ struct profile_total server_stats = {
 };
 
 uint16_t httpd_server_port = 0;
-unsigned int httpd_request_count = 0;
 
 static int httpd_server_socket = -1;
 static time_ms_t httpd_server_last_start_attempt = -1;
@@ -233,9 +232,37 @@ success:
   return 0;
 }
 
+static int httpd_dispatch(struct http_request *);
+
+static unsigned int http_request_uuid_counter = 0;
+static httpd_request * current_httpd_requests = NULL;
+unsigned int httpd_request_count = 0;
+
 static void httpd_server_finalise_http_request(struct http_request *hr)
 {
   httpd_request *r = (httpd_request *) hr;
+  if (config.debug.httpd)
+    DEBUGF("httpd_request_count=%u current_httpd_requests=%p r=%p r->next=%p r->prev=%p", httpd_request_count, current_httpd_requests, r, r->next, r->prev);
+  if (r->next) {
+    assert(httpd_request_count >= 2);
+    assert(r->next->prev == r);
+    r->next->prev = r->prev;
+  }
+  if (r->prev) {
+    assert(httpd_request_count >= 2);
+    assert(r->prev->next == r);
+    r->prev->next = r->next;
+  }
+  else {
+    assert(current_httpd_requests == r);
+    current_httpd_requests = r->next;
+  }
+  r->next = r->prev = NULL;
+  assert(httpd_request_count > 0);
+  --httpd_request_count;
+  if (current_httpd_requests == NULL) {
+    assert(httpd_request_count == 0);
+  }
   if (r->manifest) {
     rhizome_manifest_free(r->manifest);
     r->manifest = NULL;
@@ -244,13 +271,7 @@ static void httpd_server_finalise_http_request(struct http_request *hr)
     r->finalise_union(r);
     r->finalise_union = NULL;
   }
-  if (httpd_request_count)
-    --httpd_request_count;
 }
-
-static int httpd_dispatch(struct http_request *);
-
-static unsigned int http_request_uuid_counter = 0;
 
 void httpd_server_poll(struct sched_ent *alarm)
 {
@@ -282,6 +303,13 @@ void httpd_server_poll(struct sched_ent *alarm)
 	WHY("Cannot respond to HTTP request, out of memory");
 	close(sock);
       } else {
+	request->next = current_httpd_requests;
+	request->prev = NULL;
+	if (current_httpd_requests) {
+	  assert(httpd_request_count > 0);
+	  current_httpd_requests->prev = request;
+	}
+	current_httpd_requests = request;
 	++httpd_request_count;
 	request->uuid = http_request_uuid_counter++;
 	request->payload_status = INVALID_RHIZOME_PAYLOAD_STATUS;
@@ -302,6 +330,18 @@ void httpd_server_poll(struct sched_ent *alarm)
     INFO("Error on tcp listen socket");
   }
 }
+
+static void trigger_rhizome_bundle_added(rhizome_manifest *m)
+{
+  httpd_request *r;
+  for (r = current_httpd_requests; r; r = r->next) {
+    if (r->trigger_rhizome_bundle_added) {
+      (*r->trigger_rhizome_bundle_added)(r, m);
+    }
+  }
+}
+
+DEFINE_TRIGGER(rhizome_bundle_added, trigger_rhizome_bundle_added)
 
 int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_call)
 {

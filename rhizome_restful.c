@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 
 static HTTP_RENDERER render_manifest_headers;
+static void on_rhizome_bundle_added(httpd_request *r, rhizome_manifest *m);
 
 static void finalise_union_read_state(httpd_request *r)
 {
@@ -199,8 +200,14 @@ int restful_rhizome_newsince(httpd_request *r, const char *remainder)
   bzero(&r->u.rhlist.cursor, sizeof r->u.rhlist.cursor);
   r->u.rhlist.cursor.rowid_since = rowid;
   r->u.rhlist.end_time = gettime_ms() + config.api.restful.newsince_timeout * 1000;
+  r->trigger_rhizome_bundle_added = on_rhizome_bundle_added;
   http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_rhizome_bundlelist_json_content);
   return 1;
+}
+
+static void on_rhizome_bundle_added(httpd_request *r, rhizome_manifest *UNUSED(m))
+{
+  http_request_resume_response(&r->http);
 }
 
 static int restful_rhizome_bundlelist_json_content_chunk(struct http_request *hr, strbuf b)
@@ -235,7 +242,6 @@ static int restful_rhizome_bundlelist_json_content_chunk(struct http_request *hr
       if (!strbuf_overrun(b))
 	r->u.rhlist.phase = LIST_ROWS;
       return 1;
-      
     case LIST_FIRST:
     case LIST_ROWS:
       {
@@ -248,10 +254,7 @@ static int restful_rhizome_bundlelist_json_content_chunk(struct http_request *hr
 	    r->u.rhlist.phase = LIST_END;
 	    return 1;
 	  }
-	  time_ms_t wake_at = now + config.api.restful.newsince_poll_ms;
-	  if (wake_at > r->u.rhlist.end_time)
-	    wake_at = r->u.rhlist.end_time;
-	  http_request_pause_response(&r->http, wake_at);
+	  http_request_pause_response(&r->http, r->u.rhlist.end_time);
 	  return 0;
 	}
 	rhizome_manifest *m = r->u.rhlist.cursor.manifest;

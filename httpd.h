@@ -52,6 +52,11 @@ typedef struct httpd_request
 {
   struct http_request http; // MUST BE FIRST ELEMENT
 
+  /* Doubly-linked list of current requests.  Used to pass triggers to requests.
+   */
+  struct httpd_request *next;
+  struct httpd_request *prev;
+
   /* Identify request from others being run.  Monotonic counter feeds it.  Only
    * used for debugging when we write post-<uuid>.log files for multi-part form
    * requests.
@@ -76,6 +81,10 @@ typedef struct httpd_request
   /* For requests/responses that contain a 64-bit unsigned integer (eg, SQLite ROWID, byte offset).
    */
   uint64_t ui64;
+
+  /* Trigger function for Rhizome bundle added.
+   */
+  void (*trigger_rhizome_bundle_added)(struct httpd_request *, rhizome_manifest *);
 
   /* Finaliser for union contents (below).
    */

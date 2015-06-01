@@ -146,8 +146,7 @@ test_MeshmsListMessages() {
 doc_MeshmsListMessagesNewSince="Java API list MeshMS messages in one conversation since token"
 setup_MeshmsListMessagesNewSince() {
    set_extra_config() {
-      executeOk_servald config set api.restful.newsince_timeout 1s \
-                               set api.restful.newsince_poll_ms 500
+      executeOk_servald config set api.restful.newsince_timeout 1s
    }
    setup
    meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<A<>><>>A<<>'
@@ -199,7 +198,6 @@ doc_MeshmsListMessagesNewSinceArrival="Java API list newly arriving MeshMS messa
 setup_MeshmsListMessagesNewSinceArrival() {
    set_extra_config() {
       executeOk_servald config set api.restful.newsince_timeout 360s \
-                               set api.restful.newsince_poll_ms 1000 \
                                set api.restful.users.harry.password potter
    }
    setup

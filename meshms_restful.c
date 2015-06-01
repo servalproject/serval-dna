@@ -22,6 +22,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "httpd.h"
 #include "strbuf_helpers.h"
 
+static void on_rhizome_bundle_added(httpd_request *r, rhizome_manifest *m);
+
 static void finalise_union_meshms_conversationlist(httpd_request *r)
 {
   meshms_free_conversations(r->u.mclist.conv);
@@ -327,6 +329,7 @@ static int restful_meshms_newsince_messagelist_json(httpd_request *r, const char
     return 404;
   assert(r->finalise_union == NULL);
   r->finalise_union = finalise_union_meshms_messagelist;
+  r->trigger_rhizome_bundle_added = on_rhizome_bundle_added;
   r->u.msglist.rowcount = 0;
   r->u.msglist.phase = LIST_HEADER;
   enum meshms_status status;
@@ -345,6 +348,14 @@ static int restful_meshms_newsince_messagelist_json(httpd_request *r, const char
   r->u.msglist.current = r->u.msglist.token;
   http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_meshms_messagelist_json_content);
   return 1;
+}
+
+static void on_rhizome_bundle_added(httpd_request *r, rhizome_manifest *m)
+{
+  // TODO select on sender and/or recipient fields
+  if (strcmp(m->service, RHIZOME_SERVICE_MESHMS2) == 0) {
+    http_request_resume_response(&r->http);
+  }
 }
 
 static HTTP_CONTENT_GENERATOR_STRBUF_CHUNKER restful_meshms_messagelist_json_content_chunk;
@@ -411,10 +422,7 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
 	      ++r->u.msglist.rowcount;
 	    r->u.msglist.token = r->u.msglist.latest;
 	    meshms_message_iterator_close(&r->u.msglist.iter);
-	    time_ms_t wake_at = now + config.api.restful.newsince_poll_ms;
-	    if (wake_at > r->u.msglist.end_time)
-	      wake_at = r->u.msglist.end_time;
-	    http_request_pause_response(&r->http, wake_at);
+	    http_request_pause_response(&r->http, r->u.msglist.end_time);
 	    return 0;
 	  }
 	  r->u.msglist.phase = LIST_END;

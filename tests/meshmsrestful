@@ -290,8 +290,7 @@ doc_MeshmsListMessagesNewSince="HTTP RESTful list MeshMS messages in one convers
 setup_MeshmsListMessagesNewSince() {
    IDENTITY_COUNT=2
    set_extra_config() {
-      executeOk_servald config set api.restful.newsince_timeout 1s \
-                               set api.restful.newsince_poll_ms 500
+      executeOk_servald config set api.restful.newsince_timeout 1s
    }
    setup
    meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<A<>><>>A<<>'
@@ -345,8 +344,7 @@ doc_MeshmsListMessagesNewSinceArrival="HTTP RESTful list newly arriving MeshMS m
 setup_MeshmsListMessagesNewSinceArrival() {
    IDENTITY_COUNT=2
    set_extra_config() {
-      executeOk_servald config set api.restful.newsince_timeout 360s \
-                               set api.restful.newsince_poll_ms 1000
+      executeOk_servald config set api.restful.newsince_timeout 60s
    }
    setup
    # Use REST interface to send messages, not CLI, in order to avoid a database
