@@ -26,7 +26,6 @@ source "${0%/*}/../testdefs_meshms.sh"
 shopt -s extglob
 
 setup() {
-   CR=''
    setup_curl 7
    setup_json
    setup_servald

@@ -25,13 +25,10 @@ source "${0%/*}/../testdefs_json.sh"
 shopt -s extglob
 
 setup() {
-   CR='
-'
    setup_curl 7
    setup_json
    setup_servald
    set_instance +A
-
    executeOk_servald config \
       set api.restful.users.harry.password potter \
       set api.restful.users.ron.password weasley \

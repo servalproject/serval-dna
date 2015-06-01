@@ -27,6 +27,10 @@ addr_localhost="127.0.0.1"
 
 declare -a instance_stack=()
 
+# Some useful string constants.
+CR=''
+HT='	'
+
 # Some useful regular expressions.  These must work in grep(1) as basic
 # expressions, and also in sed(1).
 rexp_sid='[0-9a-fA-F]\{64\}'

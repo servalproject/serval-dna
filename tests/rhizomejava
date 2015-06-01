@@ -203,17 +203,17 @@ test_RhizomeListNewSince() {
 
 assert_metadata() {
    local n=$1
-   assertStdoutGrep --matches=1 "^id=${BID[$n]}$CR\$"
-   assertStdoutGrep --matches=1 "^version=${VERSION[$n]}$CR\$"
-   assertStdoutGrep --matches=1 "^filesize=${SIZE[$n]}$CR\$"
-   assertStdoutGrep --matches=1 "^filehash=${HASH[$n]}$CR\$"
-   assertStdoutGrep --matches=1 "^BK=${BK[$n]}$CR\$"
-   assertStdoutGrep --matches=1 "^date=${DATE[$n]}$CR\$"
-   assertStdoutGrep --matches=1 "^name=${NAME[$n]}$CR\$"
-   assertStdoutGrep --matches=1 "^service=file$CR\$"
-   assertStdoutGrep --matches=1 "^_insertTime=${INSERTTIME[$n]}$CR\$"
-   assertStdoutGrep --matches=1 "^_author=${AUTHOR[$n]}$CR\$"
-   assertStdoutGrep --matches=1 "^_secret=${SECRET[$n]}$CR\$"
+   assertStdoutGrep --matches=1 "^id=${BID[$n]}\$"
+   assertStdoutGrep --matches=1 "^version=${VERSION[$n]}\$"
+   assertStdoutGrep --matches=1 "^filesize=${SIZE[$n]}\$"
+   assertStdoutGrep --matches=1 "^filehash=${HASH[$n]}\$"
+   assertStdoutGrep --matches=1 "^BK=${BK[$n]}\$"
+   assertStdoutGrep --matches=1 "^date=${DATE[$n]}\$"
+   assertStdoutGrep --matches=1 "^name=${NAME[$n]}\$"
+   assertStdoutGrep --matches=1 "^service=file\$"
+   assertStdoutGrep --matches=1 "^_insertTime=${INSERTTIME[$n]}\$"
+   assertStdoutGrep --matches=1 "^_author=${AUTHOR[$n]}\$"
+   assertStdoutGrep --matches=1 "^_secret=${SECRET[$n]}\$"
 }
 
 doc_RhizomeManifest="Java API fetch Rhizome manifest"
@@ -412,10 +412,10 @@ test_RhizomeInsert() {
       if [ -n "${author[$n]}" ]; then
          assertStdoutGrep '^_status=NEW$'
          assertStdoutGrep "^id=${BID[$n]}\$"
-         assertStderrGrep --matches=1 "^bundle_status_code=NEW$CR\$"
-         assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*$CR\$"
-         assertStderrGrep --matches=1 "^payload_status_code=NEW$CR\$"
-         assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload new to store.*$CR\$"
+         assertStderrGrep --matches=1 "^bundle_status_code=NEW\$"
+         assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*\$"
+         assertStderrGrep --matches=1 "^payload_status_code=NEW\$"
+         assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload new to store.*\$"
       else
          assertStdoutGrep RhizomeReadOnlyException
          assertStderrGrep --ignore-case "missing bundle secret"
@@ -440,10 +440,10 @@ test_RhizomeInsertAnon() {
    tfw_cat --stdout --stderr -v ifile2.manifest
    assertStdoutGrep '^_status=NEW$'
    assertStdoutGrep "^id=$BID\$"
-   assertStderrGrep --matches=1 "^bundle_status_code=NEW$CR\$"
-   assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*$CR\$"
-   assertStderrGrep --matches=1 "^payload_status_code=NEW$CR\$"
-   assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload new to store.*$CR\$"
+   assertStderrGrep --matches=1 "^bundle_status_code=NEW\$"
+   assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*\$"
+   assertStderrGrep --matches=1 "^payload_status_code=NEW\$"
+   assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload new to store.*\$"
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 --manifest=ifile2.manifest file2
 }
@@ -462,10 +462,10 @@ test_RhizomeInsertEmptyNew() {
    assertStdoutGrep "^id=$BID\$"
    assertStdoutGrep "^filesize=0\$"
    assertStdoutGrep --matches=0 "^filehash="
-   assertStderrGrep --matches=1 "^bundle_status_code=NEW$CR\$"
-   assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*$CR\$"
-   assertStderrGrep --matches=1 "^payload_status_code=EMPTY$CR\$"
-   assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload empty.*$CR\$"
+   assertStderrGrep --matches=1 "^bundle_status_code=NEW\$"
+   assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*\$"
+   assertStderrGrep --matches=1 "^payload_status_code=EMPTY\$"
+   assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload empty.*\$"
    executeOk_servald rhizome list
    assert_rhizome_list empty
    executeOk_servald rhizome extract bundle "$BID" xempty.manifest xempty
@@ -492,10 +492,10 @@ test_RhizomeInsertEmptyUpdate() {
    assertStdoutGrep "^id=$BID\$"
    assertStdoutGrep "^filesize=0\$"
    assertStdoutGrep --matches=0 "^filehash="
-   assertStderrGrep --matches=1 "^bundle_status_code=NEW$CR\$"
-   assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*$CR\$"
-   assertStderrGrep --matches=1 "^payload_status_code=EMPTY$CR\$"
-   assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload empty.*$CR\$"
+   assertStderrGrep --matches=1 "^bundle_status_code=NEW\$"
+   assertStderrGrep --matches=1 --ignore-case "^bundle_status_message=.*bundle new to store.*\$"
+   assertStderrGrep --matches=1 "^payload_status_code=EMPTY\$"
+   assertStderrGrep --matches=1 --ignore-case "^payload_status_message=.*payload empty.*\$"
    executeOk_servald rhizome list
    assert_rhizome_list empty
    executeOk_servald rhizome extract bundle "$BID" xempty.manifest xempty

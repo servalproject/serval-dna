@@ -26,8 +26,6 @@ source "${0%/*}/../testdefs_rhizome.sh"
 shopt -s extglob
 
 setup() {
-   CR=''
-   HT='	'
    setup_curl 7
    setup_json
    setup_servald
