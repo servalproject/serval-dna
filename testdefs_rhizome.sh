@@ -533,6 +533,26 @@ assert_rhizome_received() {
    done
 }
 
+# Extract a value from an HTTP header
+extract_http_header() {
+   local __var="$1"
+   local __headerfile="$2"
+   local __header="$3"
+   local __rexp="$4"
+   local __value=$($SED -n -e "/^$__header:[ $HT]*$__rexp$CR\$/s/^$__header:[ $HT]*\(.*\)$CR\$/\1/p" "$__headerfile")
+   assert --message="$__headerfile contains valid '$__header' header" \
+          --dump-on-fail="$__headerfile" \
+          [ -n "$__value" ]
+   [ -n "$__var" ] && eval $__var=\"\$__value\"
+}
+
+# Parse an HTTP quoted-string
+http_unquote_string() {
+   local __var="$1"
+   local __unq="$(eval echo '"${'$__var'}"' | sed -e 's/^"//' -e 's/"$//' -e 's/\\\(.\)/\1/g')"
+   eval $__var=\"\$__unq\"
+}
+
 rhizome_add_bundles() {
    local encrypted=false
    case "$1" in

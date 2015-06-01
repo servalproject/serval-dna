@@ -532,24 +532,6 @@ test_RhizomePayloadDecryptedNonexistPayload() {
    assertJqGrep --ignore-case http.content '.rhizome_payload_status_message' "payload new to store"
 }
 
-extract_http_header() {
-   local __var="$1"
-   local __headerfile="$2"
-   local __header="$3"
-   local __rexp="$4"
-   local __value=$($SED -n -e "/^$__header:[ $HT]*$__rexp$CR\$/s/^$__header:[ $HT]*\(.*\)$CR\$/\1/p" "$__headerfile")
-   assert --message="$__headerfile contains valid '$__header' header" \
-          --dump-on-fail="$__headerfile" \
-          [ -n "$__value" ]
-   [ -n "$__var" ] && eval $__var=\"\$__value\"
-}
-
-http_unquote_string() {
-   local __var="$1"
-   local __unq="$(eval echo '"${'$__var'}"' | sed -e 's/^"//' -e 's/"$//' -e 's/\\\(.\)/\1/g')"
-   eval $__var=\"\$__unq\"
-}
-
 doc_RhizomeInsert="HTTP RESTful insert new Rhizome bundles"
 setup_RhizomeInsert() {
    IDENTITY_COUNT=3
