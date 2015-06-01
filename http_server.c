@@ -1628,8 +1628,8 @@ static void http_request_receive(struct http_request *r)
 
 /* Write the current contents of the response buffer to the HTTP socket.  When no more bytes can be
  * written, return so that socket polling can continue.  Once all bytes are sent, if there is a
- * content generator function, invoke it to put more content in the response buffer, and write that
- * content.
+ * content generator function and the request is not paused, invoke it to put more content in the
+ * response buffer, and write that content.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
@@ -1655,8 +1655,12 @@ static void http_request_send_response(struct http_request *r)
     if (unsent == 0)
       r->response_buffer_sent = r->response_buffer_length = 0;
     if (r->phase == PAUSE) {
-      if (unsent == 0)
-	RETURNVOID; // nothing to send
+      // If the generator has paused the request, keep polling i/o for output until the response
+      // buffer is all sent, then stop polling i/o.
+      if (unsent == 0) {
+	unwatch(&r->alarm);
+	RETURNVOID; // nothing left to send
+      }
     } else if (r->response.content_generator) {
       // If the buffer is smaller than the content generator needs, and it contains no unsent
       // content, then allocate a larger buffer.
@@ -1760,15 +1764,55 @@ static void http_request_send_response(struct http_request *r)
   OUT();
 }
 
+static void _http_request_start_transmitting(struct http_request *r)
+{
+  assert(r->phase == RECEIVE || r->phase == PAUSE);
+  r->phase = TRANSMIT;
+  r->alarm.poll.events = POLLOUT;
+  watch(&r->alarm);
+  http_request_set_idle_timeout(r);
+}
+
+/* Generator functions can call this method to "pause" processing of the response until a given real
+ * time.  Once paused, all existing buffered output will be sent but the generator function will not
+ * be called until the pause time has been reached.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+void http_request_pause_response(struct http_request *r, time_ms_t until)
+{
+  if (r->debug_flag && *r->debug_flag)
+    DEBUGF("Pausing response for %.3f sec", (double)(until - gettime_ms()) / 1000.0);
+  assert(r->phase == TRANSMIT);
+  r->phase = PAUSE;
+  r->alarm.alarm = until;
+  r->alarm.deadline = until + r->idle_timeout;
+  unschedule(&r->alarm);
+  schedule(&r->alarm);
+}
+
+/* This method can be called to "un-pause" a paused response.  If the response is not currently
+ * paused, then this has no effect.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+void http_request_resume_response(struct http_request *r)
+{
+  if (r->phase == PAUSE) {
+    if (r->debug_flag && *r->debug_flag)
+      DEBUGF("Resuming paused response for %.3f sec early", (double)(r->alarm.alarm - gettime_ms()) / 1000.0);
+    _http_request_start_transmitting(r);
+  }
+}
+
 static void http_server_poll(struct sched_ent *alarm)
 {
   struct http_request *r = (struct http_request *) alarm;
   if (alarm->poll.revents == 0) {
+    // Called due to alarm: if paused then resume polling for output, otherwise the inactivity
+    // (idle) timeout has occurred, so terminate the response.
     if (r->phase == PAUSE) {
-      r->phase = TRANSMIT;
-      r->alarm.poll.events = POLLOUT;
-      watch(&r->alarm);
-      http_request_set_idle_timeout(r);
+      http_request_resume_response(r);
     } else {
       if (r->debug_flag && *r->debug_flag)
 	DEBUGF("Timeout, closing connection");
@@ -1782,11 +1826,11 @@ static void http_server_poll(struct sched_ent *alarm)
   }
   else if (alarm->poll.revents & POLLIN) {
     assert((alarm->poll.revents & POLLOUT) == 0);
-    http_request_receive(r); // this could change the phase to TRANSMIT
+    http_request_receive(r); // could change the phase to TRANSMIT or DONE
   }
   else if (alarm->poll.revents & POLLOUT) {
     assert((alarm->poll.revents & POLLIN) == 0);
-    http_request_send_response(r);
+    http_request_send_response(r); // could change the phase to PAUSE or DONE
   }
   else
     abort(); // should not be any other POLL bits set
@@ -2138,23 +2182,8 @@ static void http_request_start_response(struct http_request *r)
   r->response_sent = 0;
   if (r->debug_flag && *r->debug_flag)
     DEBUGF("Sending HTTP response: %s", alloca_toprint(160, (const char *)r->response_buffer, r->response_buffer_length));
-  r->phase = TRANSMIT;
-  r->alarm.poll.events = POLLOUT;
-  watch(&r->alarm);
+  _http_request_start_transmitting(r);
   OUT();
-}
-
-void http_request_pause_response(struct http_request *r, time_ms_t until)
-{
-  if (r->debug_flag && *r->debug_flag)
-    DEBUGF("Pausing response for %.3f sec", (double)(until - gettime_ms()) / 1000.0);
-  assert(r->phase == TRANSMIT);
-  r->phase = PAUSE;
-  r->alarm.alarm = until;
-  r->alarm.deadline = until + r->idle_timeout;
-  unwatch(&r->alarm);
-  unschedule(&r->alarm);
-  schedule(&r->alarm);
 }
 
 /* Start sending a static (pre-computed) response back to the client.  The response's Content-Type
