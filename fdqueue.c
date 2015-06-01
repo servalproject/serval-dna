@@ -339,48 +339,57 @@ int fd_poll2(time_ms_t (*waiting)(time_ms_t, time_ms_t, time_ms_t), void (*wokeu
     RETURN(1);
   }
   
+  // return 0 when there's nothing to do, it doesn't make sense to wait for infinity
   if (!run_now && !wake_list && fdcount==0)
     RETURN(0);
   
-  time_ms_t wait;
+  time_ms_t now = gettime_ms();
+  time_ms_t wait_until=TIME_MS_NEVER_WILL;
+  uint8_t called_waiting = 0;
   
-  if (run_now)
-    wait = 0;
-  else {
+  if (run_now){
+    wait_until = now;
+  }else{
     time_ms_t next_run=TIME_MS_NEVER_WILL;
     if(run_soon)
       next_run = run_soon->run_after;
     
-    time_ms_t next_wake=TIME_MS_NEVER_WILL;
     if (wake_list)
-      next_wake = wake_list->wake_at;
-    
-    time_ms_t wait_until;
-    time_ms_t now = gettime_ms();
-    
-    if (waiting)
-      wait_until = waiting(now, next_run, next_wake);
-    else
-      wait_until = next_wake;
-    
-    if (wait_until==TIME_MS_NEVER_WILL)
-      wait = -1;
-    else if (wait_until < now)
-      wait = 0;
-    else
-      wait = wait_until - now;
+      wait_until = wake_list->wake_at;
+      
+    if (waiting && wait_until > now){
+      wait_until = waiting(now, next_run, wait_until);
+      now = gettime_ms();
+      called_waiting = 1;
+    }
   }
   
   // check for IO and/or wait for the next wake_at
+  int wait=0;
   int r=0;
-  if (fdcount || wait>0){
+  
+  {
     struct call_stats call_stats;
     call_stats.totals=&poll_stats;
-    fd_func_enter(__HERE__, &call_stats);
-    if (fdcount==0){
-      sleep_ms(wait);
-    }else{
+    
+    if (wait_until==TIME_MS_NEVER_WILL)
+      wait = -1;
+    else if (wait_until <= now)
+      wait = 0;
+    else
+      wait = wait_until - now;
+    
+    if (fdcount){
+      if (config.debug.io)
+	DEBUGF("Calling poll with %dms wait", wait);
+	
+      fd_func_enter(__HERE__, &call_stats);
       r = poll(fds, fdcount, wait);
+      fd_func_exit(__HERE__, &call_stats);
+      
+      if (r==-1 && errno!=EINTR)
+	WHY_perror("poll");
+      
       if (config.debug.io) {
 	strbuf b = strbuf_alloca(1024);
 	int i;
@@ -394,11 +403,16 @@ int fd_poll2(time_ms_t (*waiting)(time_ms_t, time_ms_t, time_ms_t), void (*wokeu
 	}
 	DEBUGF("poll(fds=(%s), fdcount=%d, ms=%d) -> %d", strbuf_str(b), fdcount, wait, r);
       }
+      
+    }else if(wait>0){
+      fd_func_enter(__HERE__, &call_stats);
+      sleep_ms(wait);
+      fd_func_exit(__HERE__, &call_stats);
+      
     }
-    fd_func_exit(__HERE__, &call_stats);
   }
   
-  if (wokeup && !run_now)
+  if (wokeup && called_waiting)
     wokeup();
   
   move_run_list();

@@ -252,13 +252,24 @@ static int server_bind()
 
   /* Catch SIGHUP etc so that we can respond to requests to do things, eg, shut down. */
   struct sigaction sig;
+  bzero(&sig, sizeof sig);
+  
+  sig.sa_flags = 0;
   sig.sa_handler = signal_handler;
   sigemptyset(&sig.sa_mask); // Block the same signals during handler
   sigaddset(&sig.sa_mask, SIGHUP);
   sigaddset(&sig.sa_mask, SIGINT);
-  sig.sa_flags = 0;
+  sigaddset(&sig.sa_mask, SIGIO);
+  
+#ifdef ANDROID
+// batphone depends on this constant to wake up the scheduler
+// break the build if it changes.
+  assert(SIGIO==29);
+#endif
+  
   sigaction(SIGHUP, &sig, NULL);
   sigaction(SIGINT, &sig, NULL);
+  sigaction(SIGIO, &sig, NULL);
 
   /* Setup up client API sockets before writing our PID file
      We want clients to be able to connect to our sockets as soon 
@@ -303,7 +314,7 @@ static int server_bind()
   time_ms_t now = gettime_ms();
   
   // Periodically check for server shut down
-  RESCHEDULE(&ALARM_STRUCT(server_shutdown_check), now, now+30000, now);
+  RESCHEDULE(&ALARM_STRUCT(server_shutdown_check), now, TIME_MS_NEVER_WILL, now);
   
   overlay_mdp_bind_internal_services();
   
@@ -599,7 +610,7 @@ void server_shutdown_check(struct sched_ent *alarm)
     }
   }
   if (alarm){
-    RESCHEDULE(alarm, now+1000, now+30000, now+1100);
+    RESCHEDULE(alarm, now+1000, TIME_MS_NEVER_WILL, now+1100);
   }
 }
 
@@ -639,6 +650,9 @@ static void serverCleanUp()
 static void signal_handler(int signal)
 {
   switch (signal) {
+    case SIGIO:
+      // noop to break out of poll
+      return;
     case SIGHUP:
     case SIGINT:
       /* Trigger the server to close gracefully after any current alarm has completed. 
