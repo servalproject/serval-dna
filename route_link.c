@@ -915,7 +915,7 @@ static int link_send_neighbours()
 	if (out->destination->last_tx + out->destination->ifconfig.tick_ms < ALARM_STRUCT(link_send).alarm){
 	  time_ms_t next_tick = out->destination->last_tx + out->destination->ifconfig.tick_ms;
 	  time_ms_t next_allowed = limit_next_allowed(&out->destination->transfer_limit);
-	  ALARM_STRUCT(link_send).alarm = next_tick < next_allowed ? next_tick : next_allowed;
+	  ALARM_STRUCT(link_send).alarm = next_tick < next_allowed ? next_allowed : next_tick ;
 	}
       }
       out=out->_next;
