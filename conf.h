@@ -700,7 +700,7 @@ int cf_opt_encapsulation(short *encapp, const char *text);
 int cf_fmt_encapsulation(const char **, const short *encapp);
 
 extern int cf_limbo;
-extern struct config_main config;
+extern __thread struct config_main config;
 
 int cf_init(void);
 int cf_load(void);

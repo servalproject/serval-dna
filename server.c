@@ -144,7 +144,10 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_server(
   if (pid>0)
     return 1;
   
+  cf_reload_strict();
+  
   int ret = -1;
+  
   {
     const char *cpin = keyring_pin?(*env)->GetStringUTFChars(env, keyring_pin, NULL):NULL;
     if (cpin != NULL){

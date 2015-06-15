@@ -32,11 +32,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define CONFFILE_NAME		  "serval.conf"
 
 struct cf_om_node *cf_om_root = NULL;
-static struct file_meta conffile_meta = FILE_META_UNKNOWN;
+static __thread struct file_meta conffile_meta = FILE_META_UNKNOWN;
 
 int cf_limbo = 1;
-struct config_main config;
-static struct file_meta config_meta = FILE_META_UNKNOWN;
+__thread struct config_main config;
+static __thread struct file_meta config_meta = FILE_META_UNKNOWN;
 
 static const char *conffile_path()
 {
