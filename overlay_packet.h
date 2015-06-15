@@ -53,11 +53,11 @@ struct overlay_frame {
   // encrypted? signed?
   unsigned int modifiers;
   
-  unsigned char ttl;
+  uint8_t ttl;
   // Which QOS queue?
-  unsigned char queue;
-  // Should we keep trying until acked?
-  char resend;
+  uint8_t queue;
+  // How many times should we retransmit?
+  int8_t resend;
   
   // callback and context just before packet sending
   void *send_context;
@@ -108,6 +108,7 @@ struct internal_mdp_header{
   mdp_port_t source_port;
   struct subscriber *destination;
   mdp_port_t destination_port;
+  int8_t resend;
   uint8_t ttl;
   uint8_t qos;
   uint8_t crypt_flags; // combination of MDP_FLAG_NO_CRYPT & MDP_FLAG_NO_SIGN flags

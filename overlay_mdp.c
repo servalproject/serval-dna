@@ -902,6 +902,8 @@ int _overlay_send_frame(struct __sourceloc whence, struct internal_mdp_header *h
   frame->ttl = header->ttl;
   frame->queue = header->qos;
   frame->type = OF_TYPE_DATA;
+  frame->resend = header->resend;
+  
   if (!(header->crypt_flags & MDP_FLAG_NO_CRYPT))
     frame->modifiers |= OF_CRYPTO_CIPHERED;
   if (!(header->crypt_flags & MDP_FLAG_NO_SIGN))

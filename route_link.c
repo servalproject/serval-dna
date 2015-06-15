@@ -849,7 +849,7 @@ static int send_neighbour_link(struct neighbour *n)
 
     frame->send_hook = neighbour_link_sent;
     frame->send_context = n->subscriber;
-    frame->resend=-1;
+    frame->resend = -1;
 
     if (n->subscriber->reachable & REACHABLE){
       frame->destination = n->subscriber;
@@ -950,6 +950,8 @@ void link_send(struct sched_ent *alarm)
     header.ttl = 1;
     header.qos = OQ_MESH_MANAGEMENT;
     header.crypt_flags = MDP_FLAG_NO_CRYPT|MDP_FLAG_NO_SIGN;
+    header.resend = -1;
+    
     ob_limitsize(payload, 400);
     
     ob_checkpoint(payload);
