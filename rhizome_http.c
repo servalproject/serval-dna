@@ -81,7 +81,7 @@ int rhizome_status_page(httpd_request *r, const char *remainder)
   char buf[32*1024];
   strbuf b = strbuf_local(buf, sizeof buf);
   strbuf_puts(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
-  strbuf_sprintf(b, "%d HTTP requests<br>", httpd_request_count);
+  strbuf_sprintf(b, "%d HTTP requests<br>", current_httpd_request_count);
   strbuf_sprintf(b, "%d Bundles transferring via MDP<br>", rhizome_cache_count());
   rhizome_fetch_status_html(b);
   strbuf_puts(b, "</body></html>");

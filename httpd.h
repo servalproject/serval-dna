@@ -31,7 +31,7 @@ int is_httpd_server_running();
 #define HTTPD_PORT_MAX 4210
 
 extern uint16_t httpd_server_port;
-extern unsigned int httpd_request_count;
+extern unsigned int current_httpd_request_count;
 
 enum list_phase { LIST_HEADER = 0, LIST_FIRST, LIST_ROWS, LIST_END, LIST_DONE };
 

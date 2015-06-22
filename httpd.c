@@ -236,20 +236,20 @@ static int httpd_dispatch(struct http_request *);
 
 static unsigned int http_request_uuid_counter = 0;
 static httpd_request * current_httpd_requests = NULL;
-unsigned int httpd_request_count = 0;
+unsigned int current_httpd_request_count = 0;
 
 static void httpd_server_finalise_http_request(struct http_request *hr)
 {
   httpd_request *r = (httpd_request *) hr;
   if (config.debug.httpd)
-    DEBUGF("httpd_request_count=%u current_httpd_requests=%p r=%p r->next=%p r->prev=%p", httpd_request_count, current_httpd_requests, r, r->next, r->prev);
+    DEBUGF("current_httpd_request_count=%u current_httpd_requests=%p r=%p r->next=%p r->prev=%p", current_httpd_request_count, current_httpd_requests, r, r->next, r->prev);
   if (r->next) {
-    assert(httpd_request_count >= 2);
+    assert(current_httpd_request_count >= 2);
     assert(r->next->prev == r);
     r->next->prev = r->prev;
   }
   if (r->prev) {
-    assert(httpd_request_count >= 2);
+    assert(current_httpd_request_count >= 2);
     assert(r->prev->next == r);
     r->prev->next = r->next;
   }
@@ -258,10 +258,10 @@ static void httpd_server_finalise_http_request(struct http_request *hr)
     current_httpd_requests = r->next;
   }
   r->next = r->prev = NULL;
-  assert(httpd_request_count > 0);
-  --httpd_request_count;
+  assert(current_httpd_request_count > 0);
+  --current_httpd_request_count;
   if (current_httpd_requests == NULL) {
-    assert(httpd_request_count == 0);
+    assert(current_httpd_request_count == 0);
   }
   if (r->manifest) {
     rhizome_manifest_free(r->manifest);
@@ -306,11 +306,11 @@ void httpd_server_poll(struct sched_ent *alarm)
 	request->next = current_httpd_requests;
 	request->prev = NULL;
 	if (current_httpd_requests) {
-	  assert(httpd_request_count > 0);
+	  assert(current_httpd_request_count > 0);
 	  current_httpd_requests->prev = request;
 	}
 	current_httpd_requests = request;
-	++httpd_request_count;
+	++current_httpd_request_count;
 	request->uuid = http_request_uuid_counter++;
 	request->payload_status = INVALID_RHIZOME_PAYLOAD_STATUS;
 	request->bundle_status = INVALID_RHIZOME_BUNDLE_STATUS;
