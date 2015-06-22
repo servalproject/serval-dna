@@ -34,6 +34,7 @@ SERVAL_CLIENT_SOURCES = \
 # These objects do not belong in the Serval DNA daemon but are available for
 # client applications.
 SERVAL_LIB_SOURCES = \
+	log_context.c \
 	log_stderr.c
 
 # These source files are imported and do not depend on any local header files.
@@ -107,6 +108,7 @@ TEST_SOURCES = \
 	commandline.c \
 	main.c \
 	test_cli.c \
+	log_context.c \
 	log_stderr.c \
 	context1.c
 	

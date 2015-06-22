@@ -314,6 +314,8 @@ static void call_alarm(struct sched_ent *alarm, int revents)
   
   alarm->poll.revents = revents;
   alarm->function(alarm);
+
+  strbuf_reset(&log_context);
   
   if (call_stats.totals)
     fd_func_exit(__HERE__, &call_stats);

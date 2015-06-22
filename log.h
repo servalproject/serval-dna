@@ -54,6 +54,10 @@ void disable_log_stderr();
 void logFlush();
 void logConfigChanged();
 
+// Logging context string.
+struct strbuf;
+extern struct strbuf log_context;
+
 // Logging primitives.
 void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list);
 int logBacktrace(int level, struct __sourceloc whence);

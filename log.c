@@ -101,6 +101,11 @@ static time_t _log_file_start_time;
 static char _log_file_buf[8192];
 static struct strbuf _log_file_strbuf = STRUCT_STRBUF_EMPTY;
 
+/* The log context is a string that can be set as a prefix to all subsequent log messages.
+ */
+static char _log_context[16];
+struct strbuf log_context = STRUCT_STRBUF_INIT_STATIC(_log_context);
+
 #ifdef ANDROID
 /* Static variables for sending log output to the Android log.
  *
@@ -206,6 +211,28 @@ static void _log_prefix_level(_log_iterator *it, int level)
   xprintf(it->xpf, "%-6.6s", levelstr);
 }
 
+static void _log_prefix_context(_log_iterator *it)
+{
+  if (it->config->show_pid)
+    xprintf(it->xpf, "[%5u] ", getpid());
+  if (it->config->show_time) {
+    if (it->tv.tv_sec == 0) {
+      xputs("NOTIME______ ", it->xpf);
+    } else {
+      char buf[50];
+      if (strftime(buf, sizeof buf, "%T", &it->tm) == 0)
+	xputs("EMPTYTIME___ ", it->xpf);
+      else
+	xprintf(it->xpf, "%s.%03u ", buf, (unsigned int)it->tv.tv_usec / 1000);
+    }
+  }
+  if (_log_context[0]) {
+    xputs("[", it->xpf);
+    xputs(_log_context, it->xpf);
+    xputs("] ", it->xpf);
+  }
+}
+
 static void _log_prefix(_log_iterator *it, int level)
 {
   if (it->config == &config_file) {
@@ -228,19 +255,7 @@ static void _log_prefix(_log_iterator *it, int level)
   }
   else
     abort();
-  if (it->config->show_pid)
-    xprintf(it->xpf, "[%5u] ", getpid());
-  if (it->config->show_time) {
-    if (it->tv.tv_sec == 0) {
-      xputs("NOTIME______ ", it->xpf);
-    } else {
-      char buf[50];
-      if (strftime(buf, sizeof buf, "%T", &it->tm) == 0)
-	xputs("EMPTYTIME___ ", it->xpf);
-      else
-	xprintf(it->xpf, "%s.%03u ", buf, (unsigned int)it->tv.tv_usec / 1000);
-    }
-  }
+  _log_prefix_context(it);
 }
 
 static void _log_prefix_whence(_log_iterator *it, struct __sourceloc whence)

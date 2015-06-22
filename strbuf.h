@@ -110,6 +110,20 @@ struct strbuf {
  */
 #define STRUCT_STRBUF_EMPTY ((struct strbuf){NULL, NULL, NULL})
 
+/* Constant for initialising a struct strbuf to a static backing buffer:
+ *      char buf[n];
+ *      struct strbuf ssb = STRUCT_STRBUF_INIT_STATIC(buf);
+ * Immediately following this assignment, the following properties hold:
+ *      strbuf_is_empty(&ssb)
+ *      strbuf_len(&ssb) == 0
+ *      strbuf_count(&ssb) == 0
+ *      strbuf_str(&ssb) == buf
+ *      strbuf_size(sb) == n
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+#define STRUCT_STRBUF_INIT_STATIC(B) ((struct strbuf){(B), (B) + sizeof(B) - 1, (B)})
+
 typedef struct strbuf *strbuf;
 typedef const struct strbuf *const_strbuf;
 
