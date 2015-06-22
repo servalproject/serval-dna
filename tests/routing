@@ -342,7 +342,7 @@ test_lowband_broadcast() {
 
 _simulator() {
    # TODO timeout & failure reporting?
-   executeOk --error-on-fail $servald_build_root/simulator <$SIM_IN
+   executeOk --timeout=120 --error-on-fail $servald_build_root/simulator <$SIM_IN
    tfw_cat --stdout --stderr
    rm $SIM_IN
 }
@@ -855,7 +855,7 @@ test_unreliable_links() {
    received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    assert [ "$received" -ge 20 ]
-   assert [ "$duplicates" -le 2 ]
+   assert [ "$duplicates" -le 10 ]
    # make sure the path is still there.
    wait_until path_exists +A +B +C
    wait_until path_exists +C +B +A
@@ -901,7 +901,7 @@ test_unreliable_links2() {
    received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    assert [ "$received" -ge 20 ]
-   assert [ "$duplicates" -le 2 ]
+   assert [ "$duplicates" -le 10 ]
    wait_until --timeout=20 path_exists +A +B +C +D
    wait_until --timeout=20 path_exists +D +C +B +A
 }

@@ -209,7 +209,7 @@ setup_stun() {
    foreach_instance +A +B +C add_servald_interface --file 1
    foreach_instance +A +B \
       executeOk_servald config \
-         set interfaces.1.drop_broadcasts on
+         set interfaces.1.broadcast.drop on
    start_servald_instances +A +B +C
 }
 has_unicast_link() {

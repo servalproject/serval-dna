@@ -197,6 +197,8 @@ int _overlay_payload_enqueue(struct __sourceloc __whence, struct overlay_frame *
     // allow the packet to be resent
     if (p->resend == 0)
       p->resend = 1;
+  }else{
+    p->manual_destinations = 1;
   }
   
   int i=0;
@@ -254,7 +256,7 @@ overlay_init_packet(struct outgoing_packet *packet, int packet_version,
     DEBUGF("Creating %d packet for interface %s, seq %d, %s", 
       packet_version,
       destination->interface->name, destination->sequence_number,
-      destination->unicast?"unicast":"broadcast");
+      alloca_socket_address(&destination->address));
   return 0;
 }
 
@@ -376,7 +378,8 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     if (packet->buffer && ob_position(frame->payload) > ob_remaining(packet->buffer))
       goto skip;
     
-    link_add_destinations(frame);
+    if (!frame->manual_destinations)
+      link_add_destinations(frame);
     
     if(frame->mdp_sequence != -1 && ((mdp_sequence - frame->mdp_sequence)&0xFFFF) >= 64){
       // too late, we've sent too many packets for the next hop to correctly de-duplicate
@@ -467,7 +470,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     
     if (frame->send_hook){
       // last minute check if we really want to send this frame, or track when we sent it
-      if (frame->send_hook(frame, packet->seq, frame->send_context)){
+      if (frame->send_hook(frame, packet->destination, packet->seq, frame->send_context)){
         // drop packet
         frame = overlay_queue_remove(queue, frame);
         continue;

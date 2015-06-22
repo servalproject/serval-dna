@@ -308,9 +308,10 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
     }
     
     if (config.debug.overlayframes)
-      DEBUGF("Received %s packet seq %d from %s on %s", 
+      DEBUGF("Received %s packet seq %d from %s on %s %s", 
 	packet_flags & PACKET_UNICAST?"unicast":"broadcast",
-	sender_seq, alloca_tohex_sid_t(context->sender->sid), interface->name);
+	sender_seq, alloca_tohex_sid_t(context->sender->sid), 
+	interface->name, alloca_socket_address(addr));
   }
   
   link_received_packet(context, sender_seq, packet_flags & PACKET_UNICAST);

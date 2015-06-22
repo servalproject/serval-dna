@@ -727,8 +727,8 @@ static int vomp_process_audio(struct vomp_call_state *call, struct overlay_buffe
   uint32_t decoded_time = to_absolute_value(time, call->remote_audio_clock);
   uint32_t decoded_sequence = to_absolute_value(sequence, call->remote.sequence);
   
-  if (call->remote_audio_clock < decoded_time &&
-    call->remote.sequence < decoded_sequence){
+  if (call->remote_audio_clock <= decoded_time &&
+    call->remote.sequence <= decoded_sequence){
     call->remote_audio_clock = decoded_time;
     call->remote.sequence = decoded_sequence;
   }else if (call->remote_audio_clock < decoded_time ||

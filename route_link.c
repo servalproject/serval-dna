@@ -813,15 +813,18 @@ static int neighbour_find_best_link(struct neighbour *n)
   return 0;
 }
 
-static int neighbour_link_sent(struct overlay_frame *UNUSED(frame), int sequence, void *context)
+static int neighbour_link_sent(struct overlay_frame *frame, struct network_destination *destination, int sequence, void *context)
 {
+  frame->resend = -1;
   struct subscriber *subscriber = context;
   struct neighbour *neighbour = get_neighbour(subscriber, 0);
   if (!neighbour)
     return 0;
   neighbour->last_update_seq = sequence;
   if ((config.debug.linkstate && config.debug.verbose)||config.debug.ack)
-    DEBUGF("LINK STATE; ack sent to neighbour %s in seq %d", alloca_tohex_sid_t(subscriber->sid), sequence);
+    DEBUGF("LINK STATE; ack sent to neighbour %s via %s, in seq %d", 
+      alloca_tohex_sid_t(subscriber->sid), 
+      alloca_socket_address(&destination->address), sequence);
   return 0;
 }
 
@@ -851,10 +854,11 @@ static int send_neighbour_link(struct neighbour *n)
     frame->send_context = n->subscriber;
     frame->resend = -1;
 
-    if (n->subscriber->reachable & REACHABLE){
+    if (n->subscriber->reachable & REACHABLE_DIRECT){
+      // let normal packet routing decisions pick the best link
       frame->destination = n->subscriber;
     }else{
-      // no routing decision yet? send this packet to all probable destinations.
+      // not an immediate neighbour yet? send this packet to all probable destinations.
       if ((config.debug.linkstate && config.debug.verbose)|| config.debug.ack)
 	DEBUGF("Sending link state ack to all possibilities");
       struct link_out *out = n->out_links;
@@ -1063,11 +1067,11 @@ int link_add_destinations(struct overlay_frame *frame)
     
     if (next_hop->reachable&REACHABLE_DIRECT){
       unsigned i;
-      // do nothing if this packet is already going the right way
-      // or remove any stale destinations
       for (i=frame->destination_count;i>0;i--){
+	// do nothing if this packet is already going the right way
 	if (frame->destinations[i-1].destination == next_hop->destination)
 	  return 0;
+	// remove any stale destinations where the initial packet was not acked
 	frame_remove_destination(frame, i-1);
       }
       frame_add_destination(frame, next_hop, next_hop->destination);

@@ -324,14 +324,16 @@ static int app_trace(const struct cli_parsed *parsed, struct cli_context *contex
     int offset=0;
     {
       // skip the first two sid's
-      int len = mdp.out.payload[offset++];
+      uint len = mdp.out.payload[offset++];
       offset+=len;
-      len = mdp.out.payload[offset++];
-      offset+=len;
+      if (offset<mdp.out.payload_length){
+	len = mdp.out.payload[offset++];
+	offset+=len;
+      }
     }
     int i=0;
     while(offset<mdp.out.payload_length){
-      int len = mdp.out.payload[offset++];
+      uint len = mdp.out.payload[offset++];
       cli_put_long(context, i, ":");
       cli_put_string(context, alloca_tohex(&mdp.out.payload[offset], len), "\n");
       offset+=len;
