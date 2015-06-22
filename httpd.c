@@ -283,6 +283,8 @@ void httpd_server_poll(struct sched_ent *alarm)
       if (errno && errno != EAGAIN)
 	WARN_perror("accept");
     } else {
+      ++http_request_uuid_counter;
+      strbuf_sprintf(&log_context, "httpd/%u", http_request_uuid_counter);
       struct sockaddr_in *peerip=NULL;
       if (addr.sa_family == AF_INET) {
 	peerip = (struct sockaddr_in *)&addr; // network order
@@ -311,11 +313,11 @@ void httpd_server_poll(struct sched_ent *alarm)
 	}
 	current_httpd_requests = request;
 	++current_httpd_request_count;
-	request->uuid = http_request_uuid_counter++;
 	request->payload_status = INVALID_RHIZOME_PAYLOAD_STATUS;
 	request->bundle_status = INVALID_RHIZOME_BUNDLE_STATUS;
 	if (peerip)
 	  request->http.client_sockaddr_in = *peerip;
+	request->http.uuid = http_request_uuid_counter;
 	request->http.handle_headers = httpd_dispatch;
 	request->http.debug_flag = &config.debug.httpd;
 	request->http.disable_tx_flag = &config.debug.nohttptx;

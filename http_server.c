@@ -1808,6 +1808,7 @@ void http_request_resume_response(struct http_request *r)
 static void http_server_poll(struct sched_ent *alarm)
 {
   struct http_request *r = (struct http_request *) alarm;
+  strbuf_sprintf(&log_context, "httpd/%u", r->uuid);
   if (alarm->poll.revents == 0) {
     // Called due to alarm: if paused then resume polling for output, otherwise the inactivity
     // (idle) timeout has occurred, so terminate the response.

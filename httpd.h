@@ -57,12 +57,6 @@ typedef struct httpd_request
   struct httpd_request *next;
   struct httpd_request *prev;
 
-  /* Identify request from others being run.  Monotonic counter feeds it.  Only
-   * used for debugging when we write post-<uuid>.log files for multi-part form
-   * requests.
-   */
-  unsigned int uuid;
-
   /* For requests/responses that pertain to a single manifest.
    */
   rhizome_manifest *manifest;

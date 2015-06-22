@@ -180,6 +180,10 @@ struct http_request {
   enum http_request_phase { RECEIVE, TRANSMIT, PAUSE, DONE } phase;
   void (*finalise)(struct http_request *);
   void (*free)(void*);
+  // Identify request from others being run.  Monotonic counter feeds it.  Only
+  // used for debugging when we write post-<uuid>.log files for multi-part form
+  // requests.
+  unsigned int uuid;
   // These can be set up to point to config flags, to allow debug to be
   // enabled indpendently for different instances HTTP server instances
   // that use this code.
