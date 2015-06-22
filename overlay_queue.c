@@ -378,9 +378,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     
     link_add_destinations(frame);
     
-    if (frame->mdp_sequence == -1){
-      frame->mdp_sequence = mdp_sequence = (mdp_sequence+1)&0xFFFF;
-    }else if(((mdp_sequence - frame->mdp_sequence)&0xFFFF) >= 64){
+    if(frame->mdp_sequence != -1 && ((mdp_sequence - frame->mdp_sequence)&0xFFFF) >= 64){
       // too late, we've sent too many packets for the next hop to correctly de-duplicate
       if (config.debug.overlayframes)
         DEBUGF("Retransmition of frame %p mdp seq %d, is too late to be de-duplicated", 
@@ -474,6 +472,10 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
         frame = overlay_queue_remove(queue, frame);
         continue;
       }
+    }
+    
+    if (frame->mdp_sequence == -1){
+      frame->mdp_sequence = mdp_sequence = (mdp_sequence+1)&0xFFFF;
     }
     
     char will_retransmit=1;

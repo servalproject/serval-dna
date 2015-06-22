@@ -1167,14 +1167,19 @@ int link_received_duplicate(struct subscriber *subscriber, int payload_seq)
 
   int offset = (neighbour->mdp_ack_sequence - 1 - payload_seq)&0xFF;
   if (offset < 64){
-    if (neighbour->mdp_ack_mask & (1<<offset)){
+    if (neighbour->mdp_ack_mask & (1ull<<offset)){
       return 1;
     }
-    neighbour->mdp_ack_mask |= (1<<offset);
+    neighbour->mdp_ack_mask |= (1ull<<offset);
   }else{
     int offset = (payload_seq - neighbour->mdp_ack_sequence - 1)&0xFF;
-    neighbour->mdp_ack_mask = (neighbour->mdp_ack_mask << 1) | 1;
-    neighbour->mdp_ack_mask = neighbour->mdp_ack_mask << offset;
+    if (offset>=64){
+      neighbour->mdp_ack_mask = 0;
+      DEBUGF("Jump in neighbour mdp seq (%d -> %d)",neighbour->mdp_ack_sequence,payload_seq);
+    }else{
+      neighbour->mdp_ack_mask = (neighbour->mdp_ack_mask << 1) | 1;
+      neighbour->mdp_ack_mask = neighbour->mdp_ack_mask << offset;
+    }
     neighbour->mdp_ack_sequence = payload_seq;
   }
   return 0;
@@ -1183,7 +1188,7 @@ int link_received_duplicate(struct subscriber *subscriber, int payload_seq)
 // remote peer has confirmed hearing a recent unicast packet
 int link_unicast_ack(struct subscriber *UNUSED(subscriber), struct overlay_interface *UNUSED(interface), struct socket_address *UNUSED(addr))
 {
-  // TODO find / create network destination, keep it alive
+  // NOOP, the packet arrival has already been tracked
   return 0;
 }
 
@@ -1255,7 +1260,7 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
         if (config.debug.verbose && config.debug.linkstate)
           DEBUGF("LINK STATE; late seq %d from %s on %s", 
 	    sender_seq, alloca_tohex_sid_t(context->sender->sid), context->interface->name);
-	link->ack_mask |= (1<<offset);
+	link->ack_mask |= (1ull<<offset);
       }else{
         link->ack_mask = (link->ack_mask << 1) | 1;
         while(1){
@@ -1269,7 +1274,7 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
 	  link->ack_mask = link->ack_mask << 1;
 	  link->ack_counter --;
 
-	  // we may need to nack promptly
+	  // we need to nack promptly
 	  if (neighbour->using_us && link==neighbour->best_link){
 	    neighbour->next_neighbour_update = now + 5;
 	  }
@@ -1488,7 +1493,7 @@ int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payl
         // did they miss our last ack?
         if (neighbour->last_update_seq!=-1){
 	  int seq_delta = (ack_seq - neighbour->last_update_seq)&0xFF;
-	  if (seq_delta <= 32 && (seq_delta==0 || ack_mask&(1<<(seq_delta-1)))){
+	  if (seq_delta <= 32 && (seq_delta==0 || ack_mask&(1ull<<(seq_delta-1)))){
 	    neighbour->last_update_seq = -1;
 	  }else if(seq_delta < 128){
 	    // send another ack soon
