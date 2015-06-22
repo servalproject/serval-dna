@@ -56,6 +56,12 @@ strbuf strbuf_toprint_quoted_len(strbuf sb, const char quotes[2], const char *bu
  */
 strbuf strbuf_toprint_quoted(strbuf sb, const char quotes[2], const char *str);
 
+/* Append a symbolic representation of a struct __sourceloc.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+struct __sourceloc;
+strbuf strbuf_append_sourceloc(strbuf sb, struct __sourceloc);
+
 /* Join Unix file path segments together with separator characters '/' to form
  * a complete path.  Any segment that starts with '/' is taken as the start of
  * an absolute path, and all prior segments are discarded.

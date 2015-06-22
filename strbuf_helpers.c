@@ -67,6 +67,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "str.h"
 #include "socket.h"
+#include "whence.h"
 
 static inline strbuf _toprint(strbuf sb, char c)
 {
@@ -149,6 +150,12 @@ strbuf strbuf_toprint_quoted(strbuf sb, const char quotes[2], const char *str)
   if (quotes && quotes[1])
     strbuf_putc(sb, quotes[1]);
   return _overrun_quote(sb, quotes ? quotes[1] : '\0', "...");
+}
+
+strbuf strbuf_append_sourceloc(strbuf sb, struct __sourceloc loc)
+{
+  xprint_sourceloc(XPRINTF_STRBUF(sb), loc);
+  return sb;
 }
 
 strbuf strbuf_path_join(strbuf sb, ...)

@@ -243,31 +243,11 @@ static void _log_prefix(_log_iterator *it, int level)
   }
 }
 
-static const char *_trimbuildpath(const char *path)
-{
-  /* Remove common path prefix */
-  int lastsep = 0;
-  int i;
-  for (i = 0; __FILE__[i] && path[i]; ++i) {
-    if (i && path[i - 1] == '/')
-      lastsep = i;
-    if (__FILE__[i] != path[i])
-      break;
-  }
-  return &path[lastsep];
-}
-
 static void _log_prefix_whence(_log_iterator *it, struct __sourceloc whence)
 {
-  if (whence.file && whence.file[0]) {
-    xprintf(it->xpf, "%s", _trimbuildpath(whence.file));
-    if (whence.line)
-      xprintf(it->xpf, ":%u", whence.line);
-    if (whence.function)
-      xprintf(it->xpf, ":%s()", whence.function);
+  if ((whence.file && whence.file[0]) || (whence.function && whence.function[0])) {
+    xprint_sourceloc(it->xpf, whence);
     xputs("  ", it->xpf);
-  } else if (whence.function && whence.function[0]) {
-    xprintf(it->xpf, "%s()  ", whence.function);
   }
 }
 

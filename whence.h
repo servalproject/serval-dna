@@ -20,6 +20,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __SERVAL_DNA__WHENCE_H
 
 #include <stdio.h> // for NULL
+#include <alloca.h>
+#include "xprintf.h"
 
 /*
  * Every log message identifies the location in the source code at which the
@@ -79,5 +81,12 @@ extern const struct __sourceloc __whence; // see above
 #define __NOWHERE__         ((struct __sourceloc){ .file = NULL, .line = 0, .function = NULL })
 #define __NOWHENCE__        ((struct __sourceloc){ .file = "", .line = 0, .function = NULL })
 #define __WHENCE__          (__whence.file ? __whence : __HERE__)
+
+void xprint_sourceloc(XPRINTF, struct __sourceloc);
+
+#define alloca_str_sourceloc(s) (sourceloc_tostr(alloca(sourceloc_tostr_len(s) + 1), (s)))
+
+extern char *sourceloc_tostr(char *dstStr, ssize_t dstBufSiz, struct __sourceloc);
+extern size_t sourceloc_tostr_len(struct __sourceloc);
 
 #endif // __SERVAL_DNA__WHENCE_H
