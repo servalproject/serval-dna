@@ -306,6 +306,7 @@ END_STRUCT_DEFAULT
 
 STRUCT_DEFAULT(log_format, android)
 ATOM_DEFAULT(show_pid,    0)
+ATOM_DEFAULT(show_time,   0)
 END_STRUCT_DEFAULT
 
 STRUCT(watchdog)
