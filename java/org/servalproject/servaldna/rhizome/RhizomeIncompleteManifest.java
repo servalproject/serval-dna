@@ -82,7 +82,7 @@ public class RhizomeIncompleteManifest {
 	 */
 	public void toTextFormat(OutputStream os) throws IOException
 	{
-		OutputStreamWriter osw = new OutputStreamWriter(os, "US-ASCII");
+		OutputStreamWriter osw = new OutputStreamWriter(os, "UTF-8");
 		if (id != null)
 			osw.write("id=" + id.toHex() + "\n");
 		if (version != null)
@@ -161,7 +161,7 @@ public class RhizomeIncompleteManifest {
 	public void parseTextFormat(InputStream in) throws IOException, RhizomeManifestParseException
 	{
 		try {
-			InputStreamReader inr = new InputStreamReader(in, "US-ASCII");
+			InputStreamReader inr = new InputStreamReader(in, "UTF-8");
 			int pos = 0;
 			int lnum = 1;
 			int eq = -1;

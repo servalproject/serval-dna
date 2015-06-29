@@ -663,7 +663,35 @@ strbuf strbuf_json_boolean(strbuf sb, int boolean)
   return sb;
 }
 
-static void _json_char(strbuf sb, char c)
+static const uint32_t offsetsFromUTF8[6] = {
+  0x00000000UL, 0x00003080UL, 0x000E2080UL,
+  0x03C82080UL, 0xFA082080UL, 0x82082080UL
+};
+
+// is start of UTF sequence
+static uint8_t isutf(char c) {
+  return (c & 0xC0) != 0x80;
+}
+
+static uint32_t u8_nextchar(const char *s, unsigned *i)
+{
+  if (!s[*i])
+    return 0;
+    
+  uint32_t ch = 0;
+  int sz = 0;
+
+  do {
+    ch <<= 6;
+    ch += (unsigned char)s[(*i)++];
+    sz++;
+  } while (s[*i] && !isutf(s[*i]));
+  ch -= offsetsFromUTF8[sz-1];
+
+  return ch;
+}
+
+static void _json_char(strbuf sb, uint32_t c)
 {
   if (c == '"' || c == '\\') {
     strbuf_putc(sb, '\\');
@@ -679,8 +707,8 @@ static void _json_char(strbuf sb, char c)
     strbuf_puts(sb, "\\r");
   else if (c == '\t')
     strbuf_puts(sb, "\\t");
-  else if (iscntrl(c))
-    strbuf_sprintf(sb, "\\u%04X", (unsigned char) c);
+  else if (c>0x7f || iscntrl(c))
+    strbuf_sprintf(sb, "\\u%04X", c);
   else
     strbuf_putc(sb, c);
 }
@@ -689,8 +717,10 @@ strbuf strbuf_json_string(strbuf sb, const char *str)
 {
   if (str) {
     strbuf_putc(sb, '"');
-    for (; *str; ++str)
-      _json_char(sb, *str);
+    unsigned pos=0;
+    uint32_t c;
+    while((c = u8_nextchar(str, &pos)))
+      _json_char(sb, c);
     strbuf_putc(sb, '"');
   } else
     strbuf_json_null(sb);
@@ -699,10 +729,15 @@ strbuf strbuf_json_string(strbuf sb, const char *str)
 
 strbuf strbuf_json_string_len(strbuf sb, const char *str, size_t strlen)
 {
-  strbuf_putc(sb, '"');
-  for (; strlen; --strlen, ++str)
-    _json_char(sb, *str);
-  strbuf_putc(sb, '"');
+  if (str && strlen){
+    strbuf_putc(sb, '"');
+    unsigned pos=0;
+    uint32_t c;
+    while(pos<strlen && (c = u8_nextchar(str, &pos)))
+      _json_char(sb, c);
+    strbuf_putc(sb, '"');
+  } else
+    strbuf_json_null(sb);
   return sb;
 }
 

@@ -90,7 +90,7 @@ public class RhizomeCommon
 		if (!conn.getContentType().equals("application/json"))
 			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
 		if (status.http_status_code >= 300) {
-			JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getErrorStream(), "US-ASCII"));
+			JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getErrorStream(), "UTF-8"));
 			decodeRestfulStatus(status, json);
 		}
 		if (status.http_status_code == HttpURLConnection.HTTP_FORBIDDEN)
@@ -123,7 +123,7 @@ public class RhizomeCommon
 		Status status = receiveResponse(conn, expected_response_codes);
 		if (!conn.getContentType().equals("application/json"))
 			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
-		return new JSONTokeniser(new InputStreamReader(status.input_stream, "US-ASCII"));
+		return new JSONTokeniser(new InputStreamReader(status.input_stream, "UTF-8"));
 	}
 
 	protected static void decodeHeaderBundleStatus(Status status, HttpURLConnection conn) throws ServalDInterfaceException
@@ -382,7 +382,7 @@ public class RhizomeCommon
 		conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
 		conn.connect();
 		OutputStream ost = conn.getOutputStream();
-		PrintStream wr = new PrintStream(ost, false, "US-ASCII");
+		PrintStream wr = new PrintStream(ost, false, "UTF-8");
 		wr.print(new Object(){}.getClass().getEnclosingClass().getName());
 		if (author != null) {
 			wr.print("\r\n--" + boundary + "\r\n");

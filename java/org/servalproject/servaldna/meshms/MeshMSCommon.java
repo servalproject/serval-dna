@@ -47,14 +47,14 @@ public class MeshMSCommon
 		if (!"application/json".equals(conn.getContentType()))
 			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
 		if (conn.getResponseCode() == HttpURLConnection.HTTP_FORBIDDEN) {
-			JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getErrorStream(), "US-ASCII"));
+			JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getErrorStream(), "UTF-8"));
 			Status status = decodeRestfulStatus(json);
 			throwRestfulResponseExceptions(status, conn.getURL());
 			throw new ServalDInterfaceException("unexpected MeshMS status = " + status.meshms_status_code + ", \"" + status.meshms_status_message + "\"");
 		}
 		for (int code: expected_response_codes) {
 			if (conn.getResponseCode() == code) {
-				JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getInputStream(), "US-ASCII"));
+				JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getInputStream(), "UTF-8"));
 				return json;
 			}
 		}
@@ -121,7 +121,7 @@ public class MeshMSCommon
 		conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
 		conn.connect();
 		OutputStream ost = conn.getOutputStream();
-		PrintStream wr = new PrintStream(ost, false, "US-ASCII");
+		PrintStream wr = new PrintStream(ost, false, "UTF-8");
 		wr.print("--" + boundary + "\r\n");
         wr.print("Content-Disposition: form-data; name=\"message\"\r\n");
         wr.print("Content-Type: text/plain; charset=utf-8\r\n");

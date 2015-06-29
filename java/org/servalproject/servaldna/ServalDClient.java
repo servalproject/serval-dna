@@ -182,7 +182,7 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 		}
 		conn.setAllowUserInteraction(false);
 		try {
-			conn.addRequestProperty("Authorization", "Basic " + Base64.encode((restfulUsername + ":" + restfulPassword).getBytes("US-ASCII")));
+			conn.addRequestProperty("Authorization", "Basic " + Base64.encode((restfulUsername + ":" + restfulPassword).getBytes("UTF-8")));
 		}
 		catch (UnsupportedEncodingException e) {
 			throw new ServalDInterfaceException("invalid RESTful password", e);
