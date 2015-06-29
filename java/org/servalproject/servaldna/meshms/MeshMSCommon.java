@@ -80,15 +80,18 @@ public class MeshMSCommon
 			json.consume("http_status_message");
 			json.consume(JSONTokeniser.Token.COLON);
 			status.http_status_message = json.consume(String.class);
-			json.consume(JSONTokeniser.Token.COMMA);
-			json.consume("meshms_status_code");
-			json.consume(JSONTokeniser.Token.COLON);
-			status.meshms_status_code = MeshMSStatus.fromCode(json.consume(Integer.class));
-			json.consume(JSONTokeniser.Token.COMMA);
-			json.consume("meshms_status_message");
-			json.consume(JSONTokeniser.Token.COLON);
-			status.meshms_status_message = json.consume(String.class);
-			json.consume(JSONTokeniser.Token.END_OBJECT);
+			Object tok = json.nextToken();
+			if (tok == JSONTokeniser.Token.COMMA) {
+				json.consume("meshms_status_code");
+				json.consume(JSONTokeniser.Token.COLON);
+				status.meshms_status_code = MeshMSStatus.fromCode(json.consume(Integer.class));
+				json.consume(JSONTokeniser.Token.COMMA);
+				json.consume("meshms_status_message");
+				json.consume(JSONTokeniser.Token.COLON);
+				status.meshms_status_message = json.consume(String.class);
+				tok = json.nextToken();
+			}
+			json.match(tok, JSONTokeniser.Token.END_OBJECT);
 			json.consume(JSONTokeniser.Token.EOF);
 			return status;
 		}
@@ -99,6 +102,9 @@ public class MeshMSCommon
 
 	protected static void throwRestfulResponseExceptions(Status status, URL url) throws MeshMSException, ServalDFailureException
 	{
+		if (status.meshms_status_code == null) {
+			throw new ServalDFailureException("missing meshms_status_code from " + url);
+		}
 		switch (status.meshms_status_code) {
 		case OK:
 		case UPDATED:

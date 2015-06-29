@@ -49,14 +49,17 @@ set_extra_config() {
    :
 }
 
-doc_MeshmsDisabled="Java API failure when rhizome is disabled"
+doc_MeshmsDisabled="Java API fails when rhizome is disabled"
 setup_MeshmsDisabled() {
    setup
    executeOk_servald config set rhizome.enable off sync
 }
 test_MeshmsDisabled() {
-   executeJavaOk org.servalproject.test.Meshms meshms-list-conversations $SIDA1
+   executeJava org.servalproject.test.Meshms meshms-list-conversations $SIDA1
    tfw_cat --stdout --stderr
+   assertExitStatus != 0
+   assertStderrGrep ServalDFailureException
+   assertStderrGrep --ignore-case 'missing meshms_status_code'
 }
 
 doc_MeshmsListConversations="Java API list MeshMS conversations"
