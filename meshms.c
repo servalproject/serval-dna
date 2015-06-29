@@ -785,6 +785,11 @@ void meshms_conversation_iterator_advance(struct meshms_conversation_iterator *i
 
 enum meshms_status meshms_message_iterator_open(struct meshms_message_iterator *iter, const sid_t *me, const sid_t *them)
 {
+  if (config.debug.meshms)
+    DEBUGF("iter=%p me=%s them=%s", iter,
+	  me ? alloca_tohex_sid_t(*me) : "NULL",
+	  them ? alloca_tohex_sid_t(*them) : "NULL"
+	);
   enum meshms_status status;
   bzero(iter, sizeof *iter);
   if (meshms_failed(status = find_or_create_conv(me, them, &iter->_conv)))
@@ -842,6 +847,8 @@ int meshms_message_iterator_is_open(const struct meshms_message_iterator *iter)
 
 void meshms_message_iterator_close(struct meshms_message_iterator *iter)
 {
+  if (config.debug.meshms)
+    DEBUGF("iter=%p", iter);
   if (iter->_my_manifest) {
     ply_read_close(&iter->_my_reader);
     rhizome_manifest_free(iter->_my_manifest);

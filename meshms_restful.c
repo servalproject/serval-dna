@@ -290,6 +290,10 @@ static HTTP_CONTENT_GENERATOR restful_meshms_messagelist_json_content;
 
 static enum meshms_status reopen_meshms_message_iterator(httpd_request *r)
 {
+  if (r->u.msglist.dirty) {
+    meshms_message_iterator_close(&r->u.msglist.iter);
+    r->u.msglist.dirty = 0;
+  }
   if (!meshms_message_iterator_is_open(&r->u.msglist.iter)) {
     enum meshms_status status;
     if (   meshms_failed(status = meshms_message_iterator_open(&r->u.msglist.iter, &r->sid1, &r->sid2))
@@ -352,9 +356,13 @@ static int restful_meshms_newsince_messagelist_json(httpd_request *r, const char
 
 static void on_rhizome_bundle_added(httpd_request *r, rhizome_manifest *m)
 {
-  // TODO select on sender and/or recipient fields
   if (strcmp(m->service, RHIZOME_SERVICE_MESHMS2) == 0) {
-    http_request_resume_response(&r->http);
+    if (   (cmp_sid_t(&m->sender, &r->sid1) == 0 && cmp_sid_t(&m->recipient, &r->sid2) == 0)
+	|| (cmp_sid_t(&m->sender, &r->sid2) == 0 && cmp_sid_t(&m->recipient, &r->sid1) == 0)
+    ) {
+      r->u.msglist.dirty = 1;
+      http_request_resume_response(&r->http);
+    }
   }
 }
 

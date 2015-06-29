@@ -188,6 +188,7 @@ typedef struct httpd_request
       enum list_phase phase;
       size_t rowcount;
       struct meshms_message_iterator iter;
+      unsigned dirty;
       int finished;
     }
       msglist;
