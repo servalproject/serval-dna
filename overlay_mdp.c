@@ -312,8 +312,7 @@ static int overlay_mdp_releasebindings(struct socket_address *client)
 static int overlay_mdp_process_bind_request(struct subscriber *subscriber, mdp_port_t port,
 				     int flags, struct socket_address *client)
 {
-  if (config.debug.mdprequests) 
-    DEBUGF("Bind request %s:%"PRImdp_port_t, subscriber ? alloca_tohex_sid_t(subscriber->sid) : "NULL", port);
+  DEBUGF(mdprequests, "Bind request %s:%"PRImdp_port_t, subscriber ? alloca_tohex_sid_t(subscriber->sid) : "NULL", port);
   
   if (port == 0){
     return WHYF("Port %d cannot be bound", port);
@@ -595,8 +594,7 @@ static int overlay_saw_mdp_frame(
      more prudent path.
   */
 
-  if (config.debug.mdprequests) 
-    DEBUGF("Received packet (MDP ports: src=%s*:%"PRImdp_port_t", dst=%"PRImdp_port_t")",
+  DEBUGF(mdprequests, "Received packet (MDP ports: src=%s*:%"PRImdp_port_t", dst=%"PRImdp_port_t")",
 	 alloca_tohex_sid_t_trunc(header->source->sid, 14),
 	 header->source_port, header->destination_port);
 
@@ -631,8 +629,7 @@ static int overlay_saw_mdp_frame(
 	  if (len < 0)
 	    RETURN(WHY("unsupported MDP packet type"));
 	  struct socket_address *client = &mdp_bindings[match].client;
-	  if (config.debug.mdprequests) 
-	    DEBUGF("Forwarding packet to client %s", alloca_socket_address(client));
+	  DEBUGF(mdprequests, "Forwarding packet to client %s", alloca_socket_address(client));
 	  ssize_t r = sendto(mdp_sock.poll.fd, &mdp, len, 0, &client->addr, client->addrlen);
 	  if (r == -1){
 	    WHYF_perror("sendto(fd=%d,len=%zu,addr=%s)", mdp_sock.poll.fd, (size_t)len, alloca_socket_address(client));
@@ -662,8 +659,7 @@ static int overlay_saw_mdp_frame(
 	  client_header.ttl=header->ttl;
 	  client_header.flags=header->crypt_flags;
 	  
-	  if (config.debug.mdprequests)
-	    DEBUGF("Forwarding packet to client v2 %s", alloca_socket_address(client));
+	  DEBUGF(mdprequests, "Forwarding packet to client v2 %s", alloca_socket_address(client));
 	  
 	  size_t len = ob_remaining(payload);
 	  const uint8_t *ptr = ob_get_bytes_ptr(payload, len);
@@ -685,12 +681,11 @@ static int overlay_saw_mdp_frame(
 int overlay_mdp_dnalookup_reply(struct subscriber *dest, mdp_port_t dest_port, 
   struct subscriber *resolved_sid, const char *uri, const char *did, const char *name)
 {
-  if (config.debug.mdprequests)
-    DEBUGF("MDP_PORT_DNALOOKUP resolved_sid=%s uri=%s did=%s name=%s",
-	  alloca_tohex_sid_t(resolved_sid->sid),
-	  alloca_str_toprint(uri),
-	  alloca_str_toprint(did),
-	  alloca_str_toprint(name)
+  DEBUGF(mdprequests, "MDP_PORT_DNALOOKUP resolved_sid=%s uri=%s did=%s name=%s",
+	 alloca_tohex_sid_t(resolved_sid->sid),
+	 alloca_str_toprint(uri),
+	 alloca_str_toprint(did),
+	 alloca_str_toprint(name)
 	);
   
   struct internal_mdp_header header;
@@ -835,8 +830,8 @@ static struct overlay_buffer * encrypt_payload(
   }
   
 #if 0
-  if (config.debug.crypto) {
-    DEBUG("authcrypted mdp frame");
+  if (IF_DEBUG(crypto)) {
+    DEBUG(crypto, "authcrypted mdp frame");
     dump("nm",k,crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
     dump("plain text",plain,sizeof(plain));
     dump("nonce",nonce,nb);
@@ -850,7 +845,7 @@ static struct overlay_buffer * encrypt_payload(
   bcopy(&cipher_text[cz],&cipher_text[0],cipher_len-cz);
   ret->position-=cz;
 #if 0
-  if (config.debug.crypto)
+  if (IF_DEBUG(crypto))
     dump("frame", &ret->bytes[0], ret->position);
 #endif
   
@@ -867,8 +862,7 @@ int _overlay_send_frame(struct __sourceloc whence, struct internal_mdp_header *h
     ob_rewind(payload);
     if (header->destination) {
       /* Is local, and is not broadcast, so shouldn't get sent out on the wire. */
-      if (config.debug.mdprequests) 
-	DEBUGF("Local packet, not transmitting");
+      DEBUGF(mdprequests, "Local packet, not transmitting");
       return 0;
     }
   }
@@ -887,10 +881,9 @@ int _overlay_send_frame(struct __sourceloc whence, struct internal_mdp_header *h
   if (!header->source)
     return WHYF("No source specified");
   
-  if (config.debug.mdprequests)
-    DEBUGF("Attempting to queue mdp packet from %s:%d to %s:%d",
-      alloca_tohex_sid_t(header->source->sid), header->source_port, 
-      header->destination?alloca_tohex_sid_t(header->destination->sid):"broadcast", header->destination_port);
+  DEBUGF(mdprequests, "Attempting to queue mdp packet from %s:%d to %s:%d",
+         alloca_tohex_sid_t(header->source->sid), header->source_port, 
+         header->destination?alloca_tohex_sid_t(header->destination->sid):"broadcast", header->destination_port);
       
   /* Prepare the overlay frame for dispatch */
   struct overlay_frame *frame = emalloc_zero(sizeof(struct overlay_frame));
@@ -924,18 +917,15 @@ int _overlay_send_frame(struct __sourceloc whence, struct internal_mdp_header *h
   }
   
   if (ob_overrun(plaintext)) {
-    if (config.debug.mdprequests) 
-      DEBUGF("Frame overrun: position=%zu allocSize=%zu sizeLimit=%zu",
-	  plaintext->position, plaintext->allocSize, plaintext->sizeLimit);
+    DEBUGF(mdprequests, "Frame overrun: position=%zu allocSize=%zu sizeLimit=%zu",
+	   plaintext->position, plaintext->allocSize, plaintext->sizeLimit);
     op_free(frame);
     ob_free(plaintext);
     return -1;
   }
-  if (config.debug.mdprequests) {
-    DEBUGF("Send frame %zu bytes", ob_position(plaintext));
-    if (config.debug.verbose)
-      dump("Frame plaintext", ob_ptr(plaintext), ob_position(plaintext));
-  }
+  DEBUGF(mdprequests, "Send frame %zu bytes", ob_position(plaintext));
+  if (IF_DEBUG(mdprequests) && IF_DEBUG(verbose))
+    dump("Frame plaintext", ob_ptr(plaintext), ob_position(plaintext));
   
   /* Work out the disposition of the frame->  For now we are only worried
      about the crypto matters, and not compression that may be applied
@@ -957,7 +947,7 @@ int _overlay_send_frame(struct __sourceloc whence, struct internal_mdp_header *h
       return -1;
     }
 #if 0
-    if (config.debug.crypto)
+    if (IF_DEBUG(crypto))
       dump("Frame signed ciphertext", ob_ptr(frame->payload), ob_position(frame->payload));
 #endif
     break;
@@ -972,7 +962,7 @@ int _overlay_send_frame(struct __sourceloc whence, struct internal_mdp_header *h
       return -1;
     }
 #if 0
-    if (config.debug.crypto)
+    if (IF_DEBUG(crypto))
       dump("Frame signed plaintext", ob_ptr(frame->payload), ob_position(frame->payload));
 #endif
     break;
@@ -1008,16 +998,13 @@ int _overlay_send_frame(struct __sourceloc whence, struct internal_mdp_header *h
 static int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *client)
 {
   IN();
-  unsigned __d = 0;
-  if (config.debug.mdprequests) {
-    __d = fd_depth();
-    DEBUGF("[%u] src=%s*:%"PRImdp_port_t", dst=%s*:%"PRImdp_port_t", recv=%s",
+  unsigned __d = IF_DEBUG(mdprequests) ? fd_depth() : 0;
+  DEBUGF(mdprequests, "[%u] src=%s*:%"PRImdp_port_t", dst=%s*:%"PRImdp_port_t", recv=%s",
 	   __d,
 	   alloca_tohex_sid_t_trunc(mdp->out.src.sid, 14), mdp->out.src.port,
 	   alloca_tohex_sid_t_trunc(mdp->out.dst.sid, 14), mdp->out.dst.port,
 	   client ? alloca_socket_address(client) : "NULL"
 	);
-  }
 
   if (mdp->out.payload_length > sizeof(mdp->out.payload))
     FATAL("Payload length is past the end of the buffer");
@@ -1059,8 +1046,7 @@ static int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *c
   
   /* Work out if destination is broadcast or not */
   if (is_sid_t_broadcast(mdp->out.dst.sid)){
-    if (config.debug.mdprequests) 
-      DEBUGF("[%u] Broadcast packet", __d);
+    DEBUGF(mdprequests, "[%u] Broadcast packet", __d);
     /* broadcast packets cannot be encrypted, so complain if MDP_NOCRYPT
      flag is not set. Also, MDP_NOSIGN must also be applied, until
      NaCl cryptobox keys can be used for signing. */	
@@ -1077,8 +1063,7 @@ static int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *c
     RETURN(overlay_mdp_reply_error(mdp_sock.poll.fd, client, 9, "TTL out of range"));
   }
   
-  if (config.debug.mdprequests) 
-    DEBUGF("[%u] destination->sid=%s", __d, header.destination ? alloca_tohex_sid_t(header.destination->sid) : "NULL");
+  DEBUGF(mdprequests, "[%u] destination->sid=%s", __d, header.destination ? alloca_tohex_sid_t(header.destination->sid) : "NULL");
     
   if (mdp->packetTypeAndFlags&MDP_NOCRYPT)
     header.crypt_flags |= MDP_FLAG_NO_CRYPT;
@@ -1121,8 +1106,7 @@ static int search_subscribers(struct subscriber *subscriber, void *context){
 
 static int overlay_mdp_address_list(struct overlay_mdp_addrlist *request, struct overlay_mdp_addrlist *response)
 {
-  if (config.debug.mdprequests)
-    DEBUGF("MDP_GETADDRS first_sid=%u mode=%d", request->first_sid, request->mode);
+  DEBUGF(mdprequests, "MDP_GETADDRS first_sid=%u mode=%d", request->first_sid, request->mode);
   
   /* Prepare reply packet */
   response->mode = request->mode;
@@ -1134,13 +1118,12 @@ static int overlay_mdp_address_list(struct overlay_mdp_addrlist *request, struct
   
   response->last_sid = response->first_sid + response->frame_sid_count - 1;
   
-  if (config.debug.mdprequests)
-    DEBUGF("reply MDP_ADDRLIST first_sid=%u last_sid=%u frame_sid_count=%u server_sid_count=%u",
-	   response->first_sid,
-	   response->last_sid,
-	   response->frame_sid_count,
-	   response->server_sid_count
-	   );
+  DEBUGF(mdprequests, "reply MDP_ADDRLIST first_sid=%u last_sid=%u frame_sid_count=%u server_sid_count=%u",
+	 response->first_sid,
+	 response->last_sid,
+	 response->frame_sid_count,
+	 response->server_sid_count
+	);
   return 0;
 }
 
@@ -1211,7 +1194,7 @@ static void overlay_mdp_scan(struct sched_ent *alarm)
     time_ms_t now = gettime_ms();
     RESCHEDULE(alarm, now+500, now+500, TIME_MS_NEVER_WILL);
   }else{
-    DEBUG("Scan completed");
+    DEBUG(mdprequests, "Scan completed");
     state->interface=NULL;
     state->current=0;
     state->last=0;
@@ -1320,18 +1303,15 @@ static int mdp_search_identities(struct socket_address *client, struct mdp_heade
   
   while(1){
     if (value_len){
-      if (config.debug.mdprequests)
-	DEBUGF("Looking for next %s tag & value", tag);
+      DEBUGF(mdprequests, "Looking for next %s tag & value", tag);
       if (!keyring_find_public_tag_value(&it, tag, value, value_len))
 	break;
     }else if(tag){
-      if (config.debug.mdprequests)
-	DEBUGF("Looking for next %s tag", tag);
+      DEBUGF(mdprequests, "Looking for next %s tag", tag);
       if (!keyring_find_public_tag(&it, tag, NULL, NULL))
 	break;
     }else{
-      if (config.debug.mdprequests)
-	DEBUGF("Looking for next identity");
+      DEBUGF(mdprequests, "Looking for next identity");
       if (!keyring_next_identity(&it))
 	break;
     }
@@ -1464,11 +1444,10 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
     for(i=0;i<MDP_MAX_BINDINGS;i++) {
       if (mdp_bindings[i].port!=0 
 	&& cmp_sockaddr(&mdp_bindings[i].client, client)==0){
-	if (config.debug.mdprequests)
-	  DEBUGF("Unbind MDP %s:%d from %s", 
-	    mdp_bindings[i].subscriber?alloca_tohex_sid_t(mdp_bindings[i].subscriber->sid):"All",
-	    mdp_bindings[i].port,
-	    alloca_socket_address(client));
+	DEBUGF(mdprequests, "Unbind MDP %s:%d from %s", 
+	       mdp_bindings[i].subscriber?alloca_tohex_sid_t(mdp_bindings[i].subscriber->sid):"All",
+	       mdp_bindings[i].port,
+	       alloca_socket_address(client));
 	mdp_bindings[i].port=0;
       }
     }
@@ -1548,11 +1527,10 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
       return;
     }
     
-    if (config.debug.mdprequests)
-      DEBUGF("Bind MDP %s:%d to %s", 
-	alloca_tohex_sid_t(header->local.sid),
-	header->local.port,
-	alloca_socket_address(client));
+    DEBUGF(mdprequests, "Bind MDP %s:%d to %s", 
+	   alloca_tohex_sid_t(header->local.sid),
+	   header->local.port,
+	   alloca_socket_address(client));
     
     // claim binding
     binding = free_slot;
@@ -1582,25 +1560,21 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
 	}
 	break;
       case MDP_IDENTITY:
-	if (config.debug.mdprequests)
-	  DEBUGF("Processing MDP_IDENTITY from %s", alloca_socket_address(client));
+	DEBUGF(mdprequests, "Processing MDP_IDENTITY from %s", alloca_socket_address(client));
 	mdp_process_identity_request(client, header, payload);
 	break;
       // seach unlocked identities
       case MDP_SEARCH_IDS:
-	if (config.debug.mdprequests)
-	  DEBUGF("Processing MDP_SEARCH_IDS from %s", alloca_socket_address(client));
+	DEBUGF(mdprequests, "Processing MDP_SEARCH_IDS from %s", alloca_socket_address(client));
 	mdp_search_identities(client, header, payload);
 	break;
       case MDP_SYNC_CONFIG:
-	if (config.debug.mdprequests)
-	  DEBUGF("Processing MDP_SYNC_CONFIG from %s", alloca_socket_address(client));
+	DEBUGF(mdprequests, "Processing MDP_SYNC_CONFIG from %s", alloca_socket_address(client));
 	server_config_reload(NULL);
 	mdp_reply_ok(client, header);
 	break;
       case MDP_INTERFACE:
-	if (config.debug.mdprequests)
-	  DEBUGF("Processing MDP_INTERFACE from %s", alloca_socket_address(client));
+	DEBUGF(mdprequests, "Processing MDP_INTERFACE from %s", alloca_socket_address(client));
 	mdp_interface_packet(client, header, payload);
 	break;
       default:
@@ -1642,11 +1616,10 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
     && !binding->internal
     && header->flags & MDP_FLAG_CLOSE
     && cmp_sockaddr(&binding->client, client)==0){
-    if (config.debug.mdprequests)
-      DEBUGF("Unbind MDP %s:%d from %s", 
-	binding->subscriber?alloca_tohex_sid_t(binding->subscriber->sid):"All",
-	binding->port,
-	alloca_socket_address(client));
+    DEBUGF(mdprequests, "Unbind MDP %s:%d from %s", 
+	   binding->subscriber?alloca_tohex_sid_t(binding->subscriber->sid):"All",
+	   binding->port,
+	   alloca_socket_address(client));
     binding->port=0;
     binding=NULL;
   }
@@ -1767,14 +1740,12 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 
 	switch (mdp_type) {
 	case MDP_GOODBYE:
-	  if (config.debug.mdprequests)
-	    DEBUGF("MDP_GOODBYE from %s", alloca_socket_address(&client));
+	  DEBUGF(mdprequests, "MDP_GOODBYE from %s", alloca_socket_address(&client));
 	  overlay_mdp_releasebindings(&client);
 	  return;
 	    
 	case MDP_ROUTING_TABLE:
-	  if (config.debug.mdprequests)
-	    DEBUGF("MDP_ROUTING_TABLE from %s", alloca_socket_address(&client));
+	  DEBUGF(mdprequests, "MDP_ROUTING_TABLE from %s", alloca_socket_address(&client));
 	  {
 	    struct routing_state state={
 	      .client = &client,
@@ -1786,8 +1757,7 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 	  return;
 	
 	case MDP_GETADDRS:
-	  if (config.debug.mdprequests)
-	    DEBUGF("MDP_GETADDRS from %s", alloca_socket_address(&client));
+	  DEBUGF(mdprequests, "MDP_GETADDRS from %s", alloca_socket_address(&client));
 	  {
 	    overlay_mdp_frame mdpreply;
 	    bzero(&mdpreply, sizeof(overlay_mdp_frame));
@@ -1803,8 +1773,7 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 	  break;
 	    
 	case MDP_TX: /* Send payload (and don't treat it as system privileged) */
-	  if (config.debug.mdprequests)
-	    DEBUGF("MDP_TX from %s", alloca_socket_address(&client));
+	  DEBUGF(mdprequests, "MDP_TX from %s", alloca_socket_address(&client));
 	    
 	  // Dont allow mdp clients to send very high priority payloads
 	  if (mdp->out.queue<=OQ_MESH_MANAGEMENT)
@@ -1814,8 +1783,7 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 	  break;
 	    
 	case MDP_BIND: /* Bind to port */
-	  if (config.debug.mdprequests)
-	    DEBUGF("MDP_BIND from %s", alloca_socket_address(&client));
+	  DEBUGF(mdprequests, "MDP_BIND from %s", alloca_socket_address(&client));
 	  {
 	    struct subscriber *subscriber=NULL;
 	    /* Make sure source address is either all zeros (listen on all), or a valid
@@ -1842,8 +1810,7 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 	  break;
 	    
 	case MDP_SCAN:
-	  if (config.debug.mdprequests)
-	    DEBUGF("MDP_SCAN from %s", alloca_socket_address(&client));
+	  DEBUGF(mdprequests, "MDP_SCAN from %s", alloca_socket_address(&client));
 	  {
 	    struct overlay_mdp_scan *scan = (struct overlay_mdp_scan *)&mdp->raw;
 	    time_ms_t start=gettime_ms();

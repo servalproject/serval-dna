@@ -168,19 +168,18 @@ enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
   // because these will be calculated by the journal append logic.
   if (appending) {
     if (m->version)
-      DEBUG(cause = "Cannot set 'version' field in journal append");
+      DEBUG(rhizome, cause = "Cannot set 'version' field in journal append");
     else if (m->filesize != RHIZOME_SIZE_UNSET)
-      DEBUG(cause = "Cannot set 'filesize' field in journal append");
+      DEBUG(rhizome, cause = "Cannot set 'filesize' field in journal append");
     else if (m->has_filehash)
-      DEBUG(cause = "Cannot set 'filehash' field in journal append");
+      DEBUG(rhizome, cause = "Cannot set 'filehash' field in journal append");
     if (cause) {
       result = RHIZOME_ADD_FILE_INVALID_FOR_JOURNAL;
       goto error;
     }
   }
   if (bid) {
-    if (config.debug.rhizome)
-      DEBUGF("Reading manifest from database: id=%s", alloca_tohex_rhizome_bid_t(*bid));
+    DEBUGF(rhizome, "Reading manifest from database: id=%s", alloca_tohex_rhizome_bid_t(*bid));
     if ((existing_manifest = rhizome_new_manifest()) == NULL) {
       WHY(cause = "Manifest struct could not be allocated");
       goto error;
@@ -260,8 +259,7 @@ enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
             status_ok = 1;
             break;
           case RHIZOME_MANIFEST_SYNTAX_ERROR:
-            if (config.debug.rhizome)
-              DEBUGF("Manifest syntax error: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
+	    DEBUGF(rhizome, "Manifest syntax error: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
             if (reason)
               strbuf_sprintf(reason, "Manifest syntax error: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
             result = RHIZOME_ADD_FILE_INVALID;
@@ -270,22 +268,19 @@ enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
             // We already deleted the field, so if this happens, its a nasty bug
             FATALF("Duplicate field should not occur: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
           case RHIZOME_MANIFEST_INVALID:
-            if (config.debug.rhizome)
-              DEBUGF("Manifest invalid field: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
+	    DEBUGF(rhizome, "Manifest invalid field: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
             if (reason)
               strbuf_sprintf(reason, "Manifest invalid field: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
             result = RHIZOME_ADD_FILE_INVALID;
             goto error;
           case RHIZOME_MANIFEST_MALFORMED:
-            if (config.debug.rhizome)
-              DEBUGF("Manifest malformed field: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
+	    DEBUGF(rhizome, "Manifest malformed field: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
             if (reason)
               strbuf_sprintf(reason, "Manifest malformed field: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
             result = RHIZOME_ADD_FILE_INVALID;
             goto error;
           case RHIZOME_MANIFEST_OVERFLOW:
-            if (config.debug.rhizome)
-              DEBUGF("Too many fields in manifest at: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
+	    DEBUGF(rhizome, "Too many fields in manifest at: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
             if (reason)
               strbuf_sprintf(reason, "Too many fields in manifest at: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
             result = RHIZOME_ADD_FILE_INVALID;
@@ -298,15 +293,13 @@ enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
   }
   if (appending && !new_manifest->is_journal) {
     cause = "Cannot append to a non-journal";
-    if (config.debug.rhizome)
-      DEBUG(cause);
+    DEBUG(rhizome, cause);
     result = RHIZOME_ADD_FILE_REQUIRES_JOURNAL;
     goto error;
   }
   if (!appending && new_manifest->is_journal) {
     cause = "Cannot add a journal bundle (use append instead)";
-    if (config.debug.rhizome)
-      DEBUG(cause);
+    DEBUG(rhizome, cause);
     result = RHIZOME_ADD_FILE_INVALID_FOR_JOURNAL;
     goto error;
   }
@@ -348,10 +341,9 @@ error:
  */
 enum rhizome_bundle_status rhizome_bundle_import_files(rhizome_manifest *m, rhizome_manifest **mout, const char *manifest_path, const char *filepath)
 {
-  if (config.debug.rhizome)
-    DEBUGF("(manifest_path=%s, filepath=%s)",
-	manifest_path ? alloca_str_toprint(manifest_path) : "NULL",
-	filepath ? alloca_str_toprint(filepath) : "NULL");
+  DEBUGF(rhizome, "(manifest_path=%s, filepath=%s)",
+	 manifest_path ? alloca_str_toprint(manifest_path) : "NULL",
+	 filepath ? alloca_str_toprint(filepath) : "NULL");
   
   size_t buffer_len = 0;
   int ret = 0;
@@ -543,16 +535,14 @@ enum rhizome_bundle_status rhizome_manifest_check_stored(rhizome_manifest *m, rh
       what = "newer than";
       result = RHIZOME_BUNDLE_STATUS_NEW;
     }
-    if (config.debug.rhizome)
-      DEBUGF("Bundle %s:%"PRIu64" is %s stored version %"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, what, stored_m->version);
+    DEBUGF(rhizome, "Bundle %s:%"PRIu64" is %s stored version %"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, what, stored_m->version);
     if (mout)
       *mout = stored_m;
     else
       rhizome_manifest_free(stored_m);
   }else{
     rhizome_manifest_free(stored_m);
-    if (config.debug.rhizome)
-      DEBUGF("No stored manifest with id=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+    DEBUGF(rhizome, "No stored manifest with id=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
     if (mout)
       *mout = m;
   }
@@ -584,12 +574,10 @@ enum rhizome_bundle_status rhizome_manifest_check_stored(rhizome_manifest *m, rh
  */
 enum rhizome_bundle_status rhizome_add_manifest(rhizome_manifest *m, rhizome_manifest **mout)
 {
-  if (config.debug.rhizome) {
-    if (mout == NULL)
-      DEBUGF("rhizome_add_manifest(m=manifest[%d](%p), mout=NULL)", m->manifest_record_number, m);
-    else
-      DEBUGF("rhizome_add_manifest(m=manifest[%d](%p), *mout=manifest[%d](%p))", m->manifest_record_number, m, *mout ? (*mout)->manifest_record_number : -1, *mout);
-  }
+  if (mout == NULL)
+    DEBUGF(rhizome, "rhizome_add_manifest(m=manifest[%d](%p), mout=NULL)", m->manifest_record_number, m);
+  else
+    DEBUGF(rhizome, "rhizome_add_manifest(m=manifest[%d](%p), *mout=manifest[%d](%p))", m->manifest_record_number, m, *mout ? (*mout)->manifest_record_number : -1, *mout);
   if (!m->finalised && !rhizome_manifest_validate(m))
     return RHIZOME_BUNDLE_STATUS_INVALID;
   assert(m->finalised);

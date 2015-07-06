@@ -104,13 +104,13 @@ int allow_inbound_packet(const struct internal_mdp_header *header)
 	   )
 	|| (rule->flags & (RULE_INBOUND | RULE_OUTBOUND)) == 0
     ) {
-      if ((rule->flags & RULE_DROP) && config.debug.mdp_filter)
-	DEBUGF("DROP inbound packet source=%s:%"PRImdp_port_t" destination=%s:%"PRImdp_port_t,
-	    header->source ? alloca_tohex_sid_t(header->source->sid) : "null",
-	    header->source_port,
-	    header->destination ? alloca_tohex_sid_t(header->destination->sid) : "null",
-	    header->destination_port
-	  );
+      if (rule->flags & RULE_DROP)
+	DEBUGF(mdp_filter, "DROP inbound packet source=%s:%"PRImdp_port_t" destination=%s:%"PRImdp_port_t,
+	       header->source ? alloca_tohex_sid_t(header->source->sid) : "null",
+	       header->source_port,
+	       header->destination ? alloca_tohex_sid_t(header->destination->sid) : "null",
+	       header->destination_port
+	      );
       return rule->flags & RULE_DROP ? 0 : 1;
     }
   return 1; // allow by default
@@ -128,13 +128,13 @@ int allow_outbound_packet(const struct internal_mdp_header *header)
 	   )
 	|| (rule->flags & (RULE_INBOUND | RULE_OUTBOUND)) == 0
     ) {
-      if ((rule->flags & RULE_DROP) && config.debug.mdp_filter)
-	DEBUGF("DROP outbound packet source=%s:%"PRImdp_port_t" destination=%s:%"PRImdp_port_t,
-	    header->source ? alloca_tohex_sid_t(header->source->sid) : "null",
-	    header->source_port,
-	    header->destination ? alloca_tohex_sid_t(header->destination->sid) : "null",
-	    header->destination_port
-	  );
+      if (rule->flags & RULE_DROP)
+	DEBUGF(mdp_filter, "DROP outbound packet source=%s:%"PRImdp_port_t" destination=%s:%"PRImdp_port_t,
+	       header->source ? alloca_tohex_sid_t(header->source->sid) : "null",
+	       header->source_port,
+	       header->destination ? alloca_tohex_sid_t(header->destination->sid) : "null",
+	       header->destination_port
+	      );
       return rule->flags & RULE_DROP ? 0 : 1;
     }
   return 1; // allow by default
@@ -208,8 +208,7 @@ static inline size_t available(ConstCursor c)
 static inline size_t _preload(struct __sourceloc __whence, Cursor c, size_t n)
 {
 #ifdef DEBUG_MDP_FILTER_PARSING
-  if (config.debug.mdp_filter)
-    DEBUGF("preload(cursor=%s, n=%zu)", alloca_cursor_state(c), n);
+  DEBUGF(mdp_filter, "preload(cursor=%s, n=%zu)", alloca_cursor_state(c), n);
 #endif
   assert(c->current >= c->buffer);
   assert(c->current <= c->end);
@@ -276,8 +275,7 @@ static inline const char *preloaded(ConstCursor c)
 static inline char _skip(struct __sourceloc __whence, Cursor c, const char *text)
 {
 #ifdef DEBUG_MDP_FILTER_PARSING
-  if (config.debug.mdp_filter)
-    DEBUGF("skip(cursor=%s, text=%s)", alloca_cursor_state(c), alloca_str_toprint(text));
+  DEBUGF(mdp_filter, "skip(cursor=%s, text=%s)", alloca_cursor_state(c), alloca_str_toprint(text));
 #endif
   size_t textlen = strlen(text);
   preload(c, textlen);
@@ -290,8 +288,7 @@ static inline char _skip(struct __sourceloc __whence, Cursor c, const char *text
 static inline void _next(struct __sourceloc UNUSED(__whence), Cursor c)
 {
 #ifdef DEBUG_MDP_FILTER_PARSING
-  if (config.debug.mdp_filter)
-    DEBUGF("next(cursor=%s)", alloca_cursor_state(c));
+  DEBUGF(mdp_filter, "next(cursor=%s)", alloca_cursor_state(c));
 #endif
   assert(c->current >= c->buffer);
   assert(c->current < c->end);
@@ -302,8 +299,7 @@ static inline void _next(struct __sourceloc UNUSED(__whence), Cursor c)
 static inline void _advance_to(struct __sourceloc UNUSED(__whence), Cursor c, const char *pos)
 {
 #ifdef DEBUG_MDP_FILTER_PARSING
-  if (config.debug.mdp_filter)
-    DEBUGF("advance_to(cursor=%s, pos=%d)", alloca_cursor_state(c), (int)(pos - c->buffer));
+  DEBUGF(mdp_filter, "advance_to(cursor=%s, pos=%d)", alloca_cursor_state(c), (int)(pos - c->buffer));
 #endif
   assert(pos >= c->current);
   assert(pos <= c->end);
@@ -314,8 +310,7 @@ static inline void _advance_to(struct __sourceloc UNUSED(__whence), Cursor c, co
 static inline Pin _pin(struct __sourceloc UNUSED(__whence), Cursor c)
 {
 #ifdef DEBUG_MDP_FILTER_PARSING
-  if (config.debug.mdp_filter)
-    DEBUGF("pin(cursor=%s)", alloca_cursor_state(c));
+  DEBUGF(mdp_filter, "pin(cursor=%s)", alloca_cursor_state(c));
 #endif
   assert(c->current >= c->buffer);
   assert(c->current < c->end);
@@ -331,8 +326,7 @@ static inline Pin _pin(struct __sourceloc UNUSED(__whence), Cursor c)
 static inline void _retreat(struct __sourceloc UNUSED(__whence), Cursor c, Pin p)
 {
 #ifdef DEBUG_MDP_FILTER_PARSING
-  if (config.debug.mdp_filter)
-    DEBUGF("retreat(cursor=%s, p=%zu)", alloca_cursor_state(c), p);
+  DEBUGF(mdp_filter, "retreat(cursor=%s, p=%zu)", alloca_cursor_state(c), p);
 #endif
   assert(c->current >= c->buffer);
   assert(c->current <= c->end);
@@ -351,8 +345,7 @@ static inline void _retreat(struct __sourceloc UNUSED(__whence), Cursor c, Pin p
 static inline void _unpin(struct __sourceloc UNUSED(__whence), Cursor c, Pin p)
 {
 #ifdef DEBUG_MDP_FILTER_PARSING
-  if (config.debug.mdp_filter)
-    DEBUGF("unpin(cursor=%s, p=%zu)", alloca_cursor_state(c), p);
+  DEBUGF(mdp_filter, "unpin(cursor=%s, p=%zu)", alloca_cursor_state(c), p);
 #endif
   assert(c->current >= c->buffer);
   assert(c->current <= c->end);
@@ -586,8 +579,7 @@ static void clear_mdp_packet_rules()
 {
   free_rule_list(packet_rules);
   packet_rules = NULL;
-  if (config.debug.mdp_filter)
-    DEBUG("cleared packet filter rules");
+  DEBUG(mdp_filter, "cleared packet filter rules");
 }
 
 /* Replace the current packet filter rules with the given new list of rules.
@@ -598,11 +590,11 @@ static void set_mdp_packet_rules(struct packet_rule *rules)
 {
   clear_mdp_packet_rules();
   packet_rules = rules;
-  if (config.debug.mdp_filter && packet_rules) {
-    DEBUG("set new packet filter rules:");
+  if (IF_DEBUG(mdp_filter) && packet_rules) {
+    DEBUG(mdp_filter, "set new packet filter rules:");
     const struct packet_rule *rule;
     for (rule = packet_rules; rule; rule = rule->next)
-      DEBUGF("   %s", alloca_packet_rule(rule));
+      DEBUGF(mdp_filter, "   %s", alloca_packet_rule(rule));
   }
 }
 
@@ -622,15 +614,12 @@ int reload_mdp_packet_rules()
   char rules_path[1024];
   if (!FORMF_SERVAL_ETC_PATH(rules_path, "%s", config.mdp.filter_rules_path))
     return -1;
-  if (config.debug.mdp_filter)
-    DEBUGF("        file path=%s", alloca_str_toprint(rules_path));
+  DEBUGF(mdp_filter, "        file path=%s", alloca_str_toprint(rules_path));
   struct file_meta meta;
   if (get_file_meta(rules_path, &meta) == -1)
     return -1;
-  if (config.debug.mdp_filter) {
-    DEBUGF("        file meta=%s", alloca_file_meta(&meta));
-    DEBUGF("packet_rules_meta=%s", alloca_file_meta(&packet_rules_meta));
-  }
+  DEBUGF(mdp_filter, "        file meta=%s", alloca_file_meta(&meta));
+  DEBUGF(mdp_filter, "packet_rules_meta=%s", alloca_file_meta(&packet_rules_meta));
   if (cmp_file_meta(&meta, &packet_rules_meta) == 0)
     return 0; // no change since last load
   if (packet_rules_meta.mtime.tv_sec != -1 && serverMode)

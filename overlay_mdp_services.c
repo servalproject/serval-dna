@@ -40,8 +40,7 @@ int rhizome_mdp_send_block(struct subscriber *dest, const rhizome_bid_t *bid, ui
   if (blockLength<=0 || blockLength>1024)
     RETURN(WHYF("Invalid block length %d", blockLength));
 
-  if (config.debug.rhizome_tx)
-    DEBUGF("Requested blocks for bid=%s, ver=%"PRIu64" @%"PRIx64" bitmap %x", alloca_tohex_rhizome_bid_t(*bid), version, fileOffset, bitmap);
+  DEBUGF(rhizome_tx, "Requested blocks for bid=%s, ver=%"PRIu64" @%"PRIx64" bitmap %x", alloca_tohex_rhizome_bid_t(*bid), version, fileOffset, bitmap);
     
   struct internal_mdp_header header;
   bzero(&header, sizeof header);
@@ -134,8 +133,7 @@ int overlay_mdp_service_rhizomeresponse(struct internal_mdp_header *UNUSED(heade
   
   int type=ob_get(payload);
 
-  if (config.debug.rhizome_mdp_rx)
-    DEBUGF("Received Rhizome over MDP block, type=%02x",type);
+  DEBUGF(rhizome_mdp_rx, "Received Rhizome over MDP block, type=%02x",type);
 
   switch (type) {
   case 'B': /* data block */
@@ -149,9 +147,8 @@ int overlay_mdp_service_rhizomeresponse(struct internal_mdp_header *UNUSED(heade
       size_t count = ob_remaining(payload);
       unsigned char *bytes=ob_current_ptr(payload);
       
-      if (config.debug.rhizome_mdp_rx)
-	DEBUGF("bidprefix=%02x%02x%02x%02x*, offset=%"PRId64", count=%zu",
-	       bidprefix[0],bidprefix[1],bidprefix[2],bidprefix[3],offset,count);
+      DEBUGF(rhizome_mdp_rx, "bidprefix=%02x%02x%02x%02x*, offset=%"PRId64", count=%zu",
+	     bidprefix[0],bidprefix[1],bidprefix[2],bidprefix[3],offset,count);
 
       /* Now see if there is a slot that matches.  If so, then
 	 see if the bytes are in the window, and write them.
@@ -188,8 +185,7 @@ int overlay_mdp_service_dnalookup(struct internal_mdp_header *header, struct ove
   ob_get_bytes(payload, (unsigned char *)did, pll);
   did[pll]=0;
   
-  if (config.debug.mdprequests)
-    DEBUG("MDP_PORT_DNALOOKUP");
+  DEBUG(mdprequests, "MDP_PORT_DNALOOKUP");
   
   int results=0;
   while(keyring_find_did(&it, did))

@@ -216,8 +216,7 @@ static void remote_shutdown(struct connection *conn)
       WARNF_perror("shutdown(%d)", conn->alarm_out.poll.fd);
   }
   msp_get_remote(conn->sock, &remote);
-  if (config.debug.msp)
-    DEBUGF(" - Connection with %s:%d remote shutdown", alloca_tohex_sid_t(remote.sid), remote.port);
+  DEBUGF(msp, " - Connection with %s:%d remote shutdown", alloca_tohex_sid_t(remote.sid), remote.port);
 }
 
 static void local_shutdown(struct connection *conn)
@@ -225,8 +224,7 @@ static void local_shutdown(struct connection *conn)
   struct mdp_sockaddr remote;
   msp_get_remote(conn->sock, &remote);
   msp_shutdown(conn->sock);
-  if (config.debug.msp)
-    DEBUGF(" - Connection with %s:%d local shutdown", alloca_tohex_sid_t(remote.sid), remote.port);
+  DEBUGF(msp, " - Connection with %s:%d local shutdown", alloca_tohex_sid_t(remote.sid), remote.port);
 }
 
 static size_t msp_handler(MSP_SOCKET sock, msp_state_t state, const uint8_t *payload, size_t len, void *context)
@@ -270,8 +268,7 @@ static size_t msp_handler(MSP_SOCKET sock, msp_state_t state, const uint8_t *pay
   if (state & MSP_STATE_CLOSED){
     struct mdp_sockaddr remote;
     msp_get_remote(sock, &remote);
-    if (config.debug.msp)
-      DEBUGF(" - Connection with %s:%d closed %s", 
+    DEBUGF(msp, " - Connection with %s:%d closed %s", 
 	alloca_tohex_sid_t(remote.sid), remote.port,
 	(state & MSP_STATE_STOPPED) ? "suddenly":"gracefully");
     
@@ -316,8 +313,7 @@ static size_t msp_listener(MSP_SOCKET sock, msp_state_t state, const uint8_t *pa
   
   struct mdp_sockaddr remote;
   msp_get_remote(sock, &remote);
-  if (config.debug.msp)
-    DEBUGF(" - New connection from %s:%d", alloca_tohex_sid_t(remote.sid), remote.port);
+  DEBUGF(msp, " - New connection from %s:%d", alloca_tohex_sid_t(remote.sid), remote.port);
   int fd_in = STDIN_FILENO;
   int fd_out = STDOUT_FILENO;
   
@@ -518,8 +514,7 @@ static void listen_poll(struct sched_ent *alarm)
       WHYF_perror("accept(%d)", alarm->poll.fd);
       return;
     }
-    if (config.debug.msp)
-      DEBUGF("- Incoming TCP connection from %s", alloca_socket_address(&addr));
+    DEBUGF(msp, "- Incoming TCP connection from %s", alloca_socket_address(&addr));
     watch(&mdp_sock);
     MSP_SOCKET sock = msp_socket(mdp_sock.poll.fd, 0);
     if (msp_socket_is_null(sock))
@@ -642,8 +637,7 @@ static int app_msp_connection(const struct cli_parsed *parsed, struct cli_contex
       if (socket_listen(listen_alarm.poll.fd, 0)==-1)
 	goto end;
       watch(&listen_alarm);
-      if (config.debug.msp)
-	DEBUGF("- Forwarding from %s to %s:%d", alloca_socket_address(&ip_addr), alloca_tohex_sid_t(addr.sid), addr.port);
+      DEBUGF(msp, "- Forwarding from %s to %s:%d", alloca_socket_address(&ip_addr), alloca_tohex_sid_t(addr.sid), addr.port);
     }else{
       watch(&mdp_sock);
       sock = msp_socket(mdp_sock.poll.fd, 0);
@@ -653,8 +647,7 @@ static int app_msp_connection(const struct cli_parsed *parsed, struct cli_contex
 	goto end;
       msp_set_handler(sock, msp_handler, conn);
       msp_connect(sock, &addr);
-      if (config.debug.msp)
-	DEBUGF("- Connecting to %s:%d", alloca_tohex_sid_t(addr.sid), addr.port);
+      DEBUGF(msp, "- Connecting to %s:%d", alloca_tohex_sid_t(addr.sid), addr.port);
     }
   }else{
     watch(&mdp_sock);
@@ -668,12 +661,10 @@ static int app_msp_connection(const struct cli_parsed *parsed, struct cli_contex
     
     listener=sock;
     if (local_port_string){
-      if (config.debug.msp)
-	DEBUGF("- Forwarding from port %d to %s", addr.port, alloca_socket_address(&ip_addr));
+      DEBUGF(msp, "- Forwarding from port %d to %s", addr.port, alloca_socket_address(&ip_addr));
     }else{
       once = 1;
-      if (config.debug.msp)
-	DEBUGF(" - Listening on port %d", addr.port);
+      DEBUGF(msp, " - Listening on port %d", addr.port);
     }
   }
   

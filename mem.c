@@ -71,19 +71,19 @@ char *_str_edup(struct __sourceloc __whence, const char *str)
 void *_serval_debug_malloc(unsigned int bytes, struct __sourceloc __whence)
 {
   void *r=malloc(bytes+SDM_GUARD_AFTER);
-  DEBUGF("malloc(%d) -> %p", bytes, r); 
+  _DEBUGF("malloc(%d) -> %p", bytes, r); 
   return r;
 }
 
 void *_serval_debug_calloc(unsigned int bytes, unsigned int count, struct __sourceloc __whence)
 {
   void *r=calloc((bytes*count)+SDM_GUARD_AFTER,1);
-  DEBUGF("calloc(%d,%d) -> %p", bytes, count, r); 
+  _DEBUGF("calloc(%d,%d) -> %p", bytes, count, r); 
   return r;
 }
 
 void _serval_debug_free(void *p, struct __sourceloc __whence)
 {
   free(p);
-  DEBUGF("free(%p)", p); 
+  _DEBUGF("free(%p)", p); 
 }

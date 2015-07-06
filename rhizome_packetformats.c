@@ -163,9 +163,8 @@ int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m){
   ob_append_byte(frame->payload, 0xFF);
   if (overlay_payload_enqueue(frame) == -1)
     goto error;
-  if (config.debug.rhizome_ads)
-    DEBUGF("Advertising manifest %s %"PRIu64" to %s", 
-      alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, dest?alloca_tohex_sid_t(dest->sid):"broadcast");
+  DEBUGF(rhizome_ads, "Advertising manifest %s %"PRIu64" to %s", 
+         alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, dest?alloca_tohex_sid_t(dest->sid):"broadcast");
   return 0;
 error:
   op_free(frame);
@@ -226,27 +225,23 @@ int overlay_rhizome_saw_advertisements(struct decode_context *context, struct ov
       // Briefly inspect the manifest to see if it looks interesting.
       struct rhizome_manifest_summary summ;
       if (!rhizome_manifest_inspect((char *)data, manifest_length, &summ)) {
-	if (config.debug.rhizome_ads)
-	  DEBUG("Ignoring manifest that looks malformed");
+	DEBUG(rhizome_ads, "Ignoring manifest that looks malformed");
 	goto next;
       }
       
-      if (config.debug.rhizome_ads)
-	DEBUGF("manifest id=%s version=%"PRIu64, alloca_tohex_rhizome_bid_t(summ.bid), summ.version);
+      DEBUGF(rhizome_ads, "manifest id=%s version=%"PRIu64, alloca_tohex_rhizome_bid_t(summ.bid), summ.version);
 
       // If it looks like there is no signature at all, ignore the announcement but don't brown-list
       // the manifest ID, so that we will still process other offers of the same manifest with
       // signatures.
       if (summ.body_len == manifest_length) {
-	if (config.debug.rhizome_ads)
-	  DEBUG("Ignoring manifest announcment with no signature");
+	DEBUG(rhizome_ads, "Ignoring manifest announcment with no signature");
 	goto next;
       }
 
       if (rhizome_ignore_manifest_check(summ.bid.binary, sizeof summ.bid.binary)){
 	/* Ignoring manifest that has caused us problems recently */
-	if (config.debug.rhizome_ads)
-	  DEBUGF("Ignoring manifest with errors bid=%s", alloca_tohex_rhizome_bid_t(summ.bid));
+	DEBUGF(rhizome_ads, "Ignoring manifest with errors bid=%s", alloca_tohex_rhizome_bid_t(summ.bid));
 	goto next;
       }
 
@@ -350,8 +345,7 @@ next:
 	
 	payload = ob_new();
       }
-      if (config.debug.rhizome)
-	DEBUGF("Requesting manifest for BAR %s", alloca_tohex_rhizome_bar_t(bars[index]));
+      DEBUGF(rhizome, "Requesting manifest for BAR %s", alloca_tohex_rhizome_bar_t(bars[index]));
       ob_append_bytes(payload, bars[index]->binary, RHIZOME_BAR_BYTES);
     }
   }

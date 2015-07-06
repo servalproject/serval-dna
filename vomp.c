@@ -349,7 +349,7 @@ static int vomp_generate_session_id()
     if (urandombytes((unsigned char *)&session_id, sizeof session_id))
       return WHY("Insufficient entropy");
     session_id&=VOMP_SESSION_MASK;
-    if (config.debug.vomp) DEBUGF("session=0x%08x",session_id);
+    DEBUGF(vomp, "session=0x%08x",session_id);
     unsigned i;
     /* reject duplicate call session numbers */
     for(i=0;i<vomp_call_count;i++)
@@ -391,8 +391,7 @@ static struct vomp_call_state *vomp_create_call(struct subscriber *remote,
   vomp_stats.name="vomp_process_tick";
   call->alarm.stats=&vomp_stats;
   schedule(&call->alarm);
-  if (config.debug.vomp)
-    DEBUGF("Returning new call #%d",local_session);
+  DEBUGF(vomp, "Returning new call #%d",local_session);
   return call;
 }
 
@@ -404,8 +403,7 @@ static struct vomp_call_state *vomp_find_or_create_call(struct subscriber *remot
 					  int recvr_state)
 {
   struct vomp_call_state *call;
-  if (config.debug.vomp)
-    DEBUGF("%u calls already in progress.",vomp_call_count);
+  DEBUGF(vomp, "%u calls already in progress.",vomp_call_count);
   unsigned i;
   for(i=0;i<vomp_call_count;i++)
     {
@@ -413,11 +411,10 @@ static struct vomp_call_state *vomp_find_or_create_call(struct subscriber *remot
       
       /* do the fast comparison first, and only if that matches proceed to
 	 the slower SID comparisons */
-      if (config.debug.vomp)
-	DEBUGF("asking for %06x:%06x, this call %06x:%06x",
-		sender_session,recvr_session,
-		call->remote.session,
-		call->local.session);
+      DEBUGF(vomp, "asking for %06x:%06x, this call %06x:%06x",
+	     sender_session,recvr_session,
+	     call->remote.session,
+	     call->local.session);
 
       int checked=0;
       if (call->remote.session&&sender_session) { 
@@ -440,12 +437,10 @@ static struct vomp_call_state *vomp_find_or_create_call(struct subscriber *remot
       if (!call->remote.session) 
 	call->remote.session=sender_session;
 
-      if (config.debug.vomp) {
-	DEBUGF("%06x:%06x matches call #%d %06x:%06x",
-		sender_session,recvr_session,i,
-		call->remote.session,
-		call->local.session);
-      }
+      DEBUGF(vomp, "%06x:%06x matches call #%d %06x:%06x",
+	     sender_session,recvr_session,i,
+	     call->remote.session,
+	     call->local.session);
       
       return call;
     }
@@ -513,20 +508,18 @@ static int vomp_send_status_remote(struct vomp_call_state *call)
     
     /* Include src and dst phone numbers */
     if (call->initiated_call){
-      if (config.debug.vomp)
-	DEBUGF("Sending phone numbers %s, %s",call->local.did,call->remote.did);
+      DEBUGF(vomp, "Sending phone numbers %s, %s",call->local.did,call->remote.did);
       ob_append_str(payload, call->local.did);
       ob_append_str(payload, call->remote.did);
     }
     
-    if (config.debug.vomp)
-      DEBUGF("mdp frame with codec list is %zd bytes", ob_position(payload));
+    DEBUGF(vomp, "mdp frame with codec list is %zd bytes", ob_position(payload));
   }
 
   call->local.sequence++;
   
   ob_flip(payload);
-  if (config.debug.vomp)
+  if (IF_DEBUG(vomp))
     ob_dump(payload, "payload");
   overlay_send_frame(&header, payload);
   ob_free(payload);
@@ -565,7 +558,7 @@ int vomp_received_audio(struct vomp_call_state *call, int audio_codec, int time,
   ob_append_bytes(payload, audio, audio_length);
   
   ob_flip(payload);
-  if (config.debug.vomp)
+  if (IF_DEBUG(vomp))
     ob_dump(payload, "payload");
   overlay_send_frame(&header, payload);
   ob_free(payload);
@@ -591,7 +584,7 @@ static int monitor_call_status(struct vomp_call_state *call)
 static int monitor_send_audio(struct vomp_call_state *call, int audio_codec, int time, int sequence, 
 		       const unsigned char *audio, int audio_length, int delay)
 {
-  if (0) DEBUGF("Tell call monitor about audio for call %06x:%06x",
+  if (0) DEBUGF(vomp, "Tell call monitor about audio for call %06x:%06x",
 		call->local.session,call->remote.session);
   char msg[1024 + MAX_AUDIO_BYTES];
   /* All commands followed by binary data start with *len:, so that 
@@ -688,8 +681,7 @@ static int vomp_update(struct vomp_call_state *call)
   if (call->last_sent_status==combined_status)
     return 0;
   
-  if (config.debug.vomp)
-    DEBUGF("Call state changed to %d %d, sending updates",call->local.state, call->remote.state);
+  DEBUGF(vomp, "Call state changed to %d %d, sending updates",call->local.state, call->remote.state);
   
   call->last_sent_status=combined_status;
   
@@ -757,8 +749,7 @@ static int vomp_process_audio(struct vomp_call_state *call, struct overlay_buffe
 int vomp_ringing(struct vomp_call_state *call){
   if (call){
     if ((!call->initiated_call) && call->local.state<VOMP_STATE_RINGINGIN && call->remote.state==VOMP_STATE_RINGINGOUT){
-      if (config.debug.vomp)
-	DEBUGF("RING RING!");
+      DEBUGF(vomp, "RING RING!");
       vomp_update_local_state(call, VOMP_STATE_RINGINGIN);
       vomp_update(call);
     }else
@@ -769,8 +760,7 @@ int vomp_ringing(struct vomp_call_state *call){
 
 static int vomp_call_destroy(struct vomp_call_state *call)
 {
-  if (config.debug.vomp)
-    DEBUGF("Destroying call %06x:%06x [%s,%s]", call->local.session, call->remote.session, call->local.did,call->remote.did);
+  DEBUGF(vomp, "Destroying call %06x:%06x [%s,%s]", call->local.session, call->remote.session, call->local.did,call->remote.did);
   
   /* now release the call structure */
   unsigned i = (call - vomp_call_states);
@@ -796,8 +786,7 @@ int vomp_dial(struct subscriber *local, struct subscriber *remote, const char *l
    These need to be passed to the node being called to provide caller id,
    and potentially handle call-routing, e.g., if it is a gateway.
    */
-  if (config.debug.vomp)
-    DEBUGF("Dialing %s:%s", alloca_tohex_sid_t(remote->sid), remote_did);
+  DEBUGF(vomp, "Dialing %s:%s", alloca_tohex_sid_t(remote->sid), remote_did);
   
   if (vomp_call_count>=VOMP_MAX_CALLS)
     return WHY("All call slots in use");
@@ -828,8 +817,7 @@ int vomp_dial(struct subscriber *local, struct subscriber *remote, const char *l
 int vomp_pickup(struct vomp_call_state *call)
 {
   if (call){
-    if (config.debug.vomp)
-      DEBUG("Picking up");
+    DEBUG(vomp, "Picking up");
     if (call->local.state<=VOMP_STATE_RINGINGIN && call->remote.state==VOMP_STATE_RINGINGOUT){
       vomp_update_local_state(call, VOMP_STATE_INCALL);
       call->create_time=gettime_ms();
@@ -845,8 +833,7 @@ int vomp_pickup(struct vomp_call_state *call)
 int vomp_hangup(struct vomp_call_state *call)
 {
   if (call){
-    if (config.debug.vomp)
-      DEBUG("Hanging up");
+    DEBUG(vomp, "Hanging up");
     vomp_update_local_state(call, VOMP_STATE_CALLENDED);
     vomp_update(call);
   }
@@ -855,7 +842,7 @@ int vomp_hangup(struct vomp_call_state *call)
 
 static int vomp_extract_remote_codec_list(struct vomp_call_state *call, struct overlay_buffer *payload)
 {
-  if (config.debug.vomp)
+  if (IF_DEBUG(vomp))
     ob_dump(payload, "codec list mdp frame");
   
   while(ob_remaining(payload)>0){
@@ -914,8 +901,8 @@ int vomp_mdp_received(struct internal_mdp_header *header, struct overlay_buffer 
       if (!call)
 	return WHY("Unable to find or create call");
       
-      if (!recvr_session && (config.debug.vomp))
-	DEBUG("recvr_session==0, created call");
+      if (!recvr_session)
+	DEBUG(vomp, "recvr_session==0, created call");
       
       // stale packet or forgery attempt? Should we just drop it?
       if (sender_state < call->remote.state)
@@ -993,8 +980,7 @@ int vomp_mdp_received(struct internal_mdp_header *header, struct overlay_buffer 
 	  
 	if (call->initiated_call){
 	  // hey, quit it, we were trying to call you.
-	  if (config.debug.vomp)
-	    DEBUGF("Rejecting call, invalid state transition");
+	  DEBUGF(vomp, "Rejecting call, invalid state transition");
 	  call->rejection_reason=VOMP_REJECT_BUSY;
 	  recvr_state=VOMP_STATE_CALLENDED;
 	}else{
@@ -1013,8 +999,7 @@ int vomp_mdp_received(struct internal_mdp_header *header, struct overlay_buffer 
 	if (call->initiated_call){
 	  recvr_state=VOMP_STATE_RINGINGOUT;
 	}else{
-	  if (config.debug.vomp)
-	    DEBUGF("Rejecting call, invalid state transition");
+	  DEBUGF(vomp, "Rejecting call, invalid state transition");
 	  recvr_state=VOMP_STATE_CALLENDED;
 	}
 	break;

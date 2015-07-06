@@ -72,8 +72,7 @@ int monitor_client_open(struct monitor_state **res)
   struct socket_address addr;
   if (make_local_sockaddr(&addr, "monitor.socket") == -1)
     return -1;
-  if (config.debug.monitor)
-    DEBUGF("Attempting to connect to %s", alloca_socket_address(&addr));
+  DEBUGF(monitor, "Attempting to connect to %s", alloca_socket_address(&addr));
   if (socket_connect(fd, &addr) == -1) {
     close(fd);
     return -1;
@@ -86,8 +85,7 @@ int monitor_client_open(struct monitor_state **res)
 int monitor_client_close(int fd, struct monitor_state *res){
   free(res);
   close(fd);
-  if (config.debug.monitor)
-    DEBUGF("Closed fd %d", fd);
+  DEBUGF(monitor, "Closed fd %d", fd);
   return 0;
 }
 
@@ -104,8 +102,8 @@ int monitor_client_writeline(int fd,char *fmt, ...)
   n=vsnprintf(msg, sizeof(msg), fmt, ap);
   va_end(ap);
   
-  if (config.debug.monitor)
-    dump("Writing to monitor", msg, n);
+  if (IF_DEBUG(monitor))
+    dump("{monitor} Writing to monitor", msg, n);
     
   return write(fd,msg,n);
 }
@@ -128,8 +126,8 @@ int monitor_client_writeline_and_data(int fd,unsigned char *data,int bytes,char 
   
   bcopy(data,out+n,bytes);
   n+=bytes;
-  if (config.debug.monitor)
-    dump("Writing to monitor", out, n);
+  if (IF_DEBUG(monitor))
+    dump("{monitor} Writing to monitor", out, n);
   return write(fd,out,n);
 }
 
@@ -164,8 +162,8 @@ int monitor_client_read(int fd, struct monitor_state *res, struct monitor_comman
     return -1;
   }
   
-  if (config.debug.monitor)
-    dump("Read from monitor", res->buffer + oldOffset, bytesRead);
+  if (IF_DEBUG(monitor))
+    dump("{monitor} Read from monitor", res->buffer + oldOffset, bytesRead);
     
   res->bufferBytes+=bytesRead;
 

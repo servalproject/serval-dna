@@ -60,8 +60,7 @@ DEFINE_CMD(app_crypt_test, 0,
    "test","crypt");
 static int app_crypt_test(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
   unsigned char k[crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES];
 
@@ -294,7 +293,7 @@ static int app_config_test(const struct cli_parsed *UNUSED(parsed), struct cli_c
   struct cf_om_node *root = NULL;
   int ret = cf_om_parse(filename, buf, st.st_size, &root);
   close(fd);
-  DEBUGF("ret = %s", strbuf_str(strbuf_cf_flags(strbuf_alloca(128), ret)));
+  DEBUGF(verbose, "ret = %s", strbuf_str(strbuf_cf_flags(strbuf_alloca(128), ret)));
   //cf_dump_node(root, 0);
   struct config_main config;
   memset(&config, 0, sizeof config);
@@ -302,45 +301,45 @@ static int app_config_test(const struct cli_parsed *UNUSED(parsed), struct cli_c
   int result = root ? cf_opt_config_main(&config, root) : CFEMPTY;
   cf_om_free_node(&root);
   free(buf);
-  DEBUGF("result = %s", strbuf_str(strbuf_cf_flags(strbuf_alloca(128), result)));
-  DEBUGF("config.log.file.path = %s", alloca_str_toprint(config.log.file.path));
-  DEBUGF("config.log.file.show_pid = %d", config.log.file.show_pid);
-  DEBUGF("config.log.file.show_time = %d", config.log.file.show_time);
-  DEBUGF("config.server.chdir = %s", alloca_str_toprint(config.server.chdir));
-  DEBUGF("config.debug.verbose = %d", config.debug.verbose);
-  DEBUGF("config.directory.service = %s", alloca_tohex_sid_t(config.directory.service));
-  DEBUGF("config.rhizome.api.addfile.allow_host = %s", inet_ntoa(config.rhizome.api.addfile.allow_host));
+  DEBUGF(verbose, "result = %s", strbuf_str(strbuf_cf_flags(strbuf_alloca(128), result)));
+  DEBUGF(verbose, "config.log.file.path = %s", alloca_str_toprint(config.log.file.path));
+  DEBUGF(verbose, "config.log.file.show_pid = %d", config.log.file.show_pid);
+  DEBUGF(verbose, "config.log.file.show_time = %d", config.log.file.show_time);
+  DEBUGF(verbose, "config.server.chdir = %s", alloca_str_toprint(config.server.chdir));
+  DEBUGF(verbose, "config.debug.verbose = %d", config.debug.verbose);
+  DEBUGF(verbose, "config.directory.service = %s", alloca_tohex_sid_t(config.directory.service));
+  DEBUGF(verbose, "config.rhizome.api.addfile.allow_host = %s", inet_ntoa(config.rhizome.api.addfile.allow_host));
   unsigned j;
   for (j = 0; j < config.dna.helper.argv.ac; ++j) {
-    DEBUGF("config.dna.helper.argv.%u=%s", config.dna.helper.argv.av[j].key, config.dna.helper.argv.av[j].value);
+    DEBUGF(verbose, "config.dna.helper.argv.%u=%s", config.dna.helper.argv.av[j].key, config.dna.helper.argv.av[j].value);
   }
   for (j = 0; j < config.rhizome.direct.peer.ac; ++j) {
-    DEBUGF("config.rhizome.direct.peer.%s", config.rhizome.direct.peer.av[j].key);
-    DEBUGF("   .protocol = %s", alloca_str_toprint(config.rhizome.direct.peer.av[j].value.protocol));
-    DEBUGF("   .host = %s", alloca_str_toprint(config.rhizome.direct.peer.av[j].value.host));
-    DEBUGF("   .port = %u", config.rhizome.direct.peer.av[j].value.port);
+    DEBUGF(verbose, "config.rhizome.direct.peer.%s", config.rhizome.direct.peer.av[j].key);
+    DEBUGF(verbose, "   .protocol = %s", alloca_str_toprint(config.rhizome.direct.peer.av[j].value.protocol));
+    DEBUGF(verbose, "   .host = %s", alloca_str_toprint(config.rhizome.direct.peer.av[j].value.host));
+    DEBUGF(verbose, "   .port = %u", config.rhizome.direct.peer.av[j].value.port);
   }
   for (j = 0; j < config.interfaces.ac; ++j) {
-    DEBUGF("config.interfaces.%u", config.interfaces.av[j].key);
-    DEBUGF("   .exclude = %d", config.interfaces.av[j].value.exclude);
-    DEBUGF("   .match = [");
+    DEBUGF(verbose, "config.interfaces.%u", config.interfaces.av[j].key);
+    DEBUGF(verbose, "   .exclude = %d", config.interfaces.av[j].value.exclude);
+    DEBUGF(verbose, "   .match = [");
     unsigned k;
     for (k = 0; k < config.interfaces.av[j].value.match.patc; ++k)
-      DEBUGF("             %s", alloca_str_toprint(config.interfaces.av[j].value.match.patv[k]));
-    DEBUGF("            ]");
-    DEBUGF("   .type = %d", config.interfaces.av[j].value.type);
-    DEBUGF("   .port = %u", config.interfaces.av[j].value.port);
-    DEBUGF("   .broadcast.drop = %d", (int) config.interfaces.av[j].value.broadcast.drop);
-    DEBUGF("   .unicast.drop = %d", (int) config.interfaces.av[j].value.unicast.drop);
-    DEBUGF("   .drop_packets = %u", (unsigned) config.interfaces.av[j].value.drop_packets);
+      DEBUGF(verbose, "             %s", alloca_str_toprint(config.interfaces.av[j].value.match.patv[k]));
+    DEBUGF(verbose, "            ]");
+    DEBUGF(verbose, "   .type = %d", config.interfaces.av[j].value.type);
+    DEBUGF(verbose, "   .port = %u", config.interfaces.av[j].value.port);
+    DEBUGF(verbose, "   .broadcast.drop = %d", (int) config.interfaces.av[j].value.broadcast.drop);
+    DEBUGF(verbose, "   .unicast.drop = %d", (int) config.interfaces.av[j].value.unicast.drop);
+    DEBUGF(verbose, "   .drop_packets = %u", (unsigned) config.interfaces.av[j].value.drop_packets);
   }
   for (j = 0; j < config.hosts.ac; ++j) {
     char sidhex[SID_STRLEN + 1];
     tohex(sidhex, SID_STRLEN, config.hosts.av[j].key.binary);
-    DEBUGF("config.hosts.%s", sidhex);
-    DEBUGF("   .interface = %s", alloca_str_toprint(config.hosts.av[j].value.interface));
-    DEBUGF("   .address = %s", inet_ntoa(config.hosts.av[j].value.address));
-    DEBUGF("   .port = %u", config.hosts.av[j].value.port);
+    DEBUGF(verbose, "config.hosts.%s", sidhex);
+    DEBUGF(verbose, "   .interface = %s", alloca_str_toprint(config.hosts.av[j].value.interface));
+    DEBUGF(verbose, "   .address = %s", inet_ntoa(config.hosts.av[j].value.address));
+    DEBUGF(verbose, "   .port = %u", config.hosts.av[j].value.port);
   }
   return 0;
 }

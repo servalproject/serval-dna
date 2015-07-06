@@ -88,8 +88,7 @@ DEFINE_CMD(app_rhizome_hash_file, 0,
   "rhizome","hash","file","<filepath>");
 static int app_rhizome_hash_file(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   /* compute hash of file. We do this without a manifest, so it will necessarily
      return the hash of the file unencrypted. */
   const char *filepath;
@@ -110,8 +109,7 @@ DEFINE_CMD(app_rhizome_add_file, 0,
   "rhizome", "journal", "append" KEYRING_PIN_OPTIONS, "<author_sid>", "<bundleid>", "<filepath>", "[<bsk>]");
 static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   const char *filepath, *manifestpath, *bundleIdHex, *authorSidHex, *bsktext;
 
   int force_new = 0 == cli_arg(parsed, "--force-new", NULL, NULL, NULL);
@@ -196,8 +194,7 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
     goto finish;
   }
   if (manifestpath && *manifestpath && access(manifestpath, R_OK) == 0) {
-    if (config.debug.rhizome)
-      DEBUGF("reading manifest from %s", manifestpath);
+    DEBUGF(rhizome, "reading manifest from %s", manifestpath);
     if (rhizome_read_manifest_from_file(m, manifestpath) || m->malformed) {
       ret = WHY("Manifest file could not be loaded -- not added to rhizome");
       goto finish;
@@ -251,18 +248,15 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
   enum rhizome_payload_status pstatus;
   if (appending) {
     pstatus = rhizome_append_journal_file(m, 0, filepath);
-    if (config.debug.rhizome)
-      DEBUGF("rhizome_append_journal_file() returned %d %s", pstatus, rhizome_payload_status_message(pstatus));
+    DEBUGF(rhizome, "rhizome_append_journal_file() returned %d %s", pstatus, rhizome_payload_status_message(pstatus));
   } else {
     pstatus = rhizome_stat_payload_file(m, filepath);
-    if (config.debug.rhizome)
-      DEBUGF("rhizome_stat_payload_file() returned %d %s", pstatus, rhizome_payload_status_message(pstatus));
+    DEBUGF(rhizome, "rhizome_stat_payload_file() returned %d %s", pstatus, rhizome_payload_status_message(pstatus));
     assert(m->filesize != RHIZOME_SIZE_UNSET);
     if (pstatus == RHIZOME_PAYLOAD_STATUS_NEW) {
       assert(m->filesize > 0);
       pstatus = rhizome_store_payload_file(m, filepath);
-      if (config.debug.rhizome)
-	DEBUGF("rhizome_store_payload_file() returned %d %s", pstatus, rhizome_payload_status_message(pstatus));
+      DEBUGF(rhizome, "rhizome_store_payload_file() returned %d %s", pstatus, rhizome_payload_status_message(pstatus));
     }
   }
   enum rhizome_bundle_status status = RHIZOME_BUNDLE_STATUS_ERROR;
@@ -355,8 +349,7 @@ DEFINE_CMD(app_rhizome_import_bundle, 0,
   "rhizome","import","bundle","<filepath>","<manifestpath>");
 static int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   const char *filepath, *manifestpath;
   cli_arg(parsed, "filepath", &filepath, NULL, "");
   cli_arg(parsed, "manifestpath", &manifestpath, NULL, "");
@@ -394,8 +387,7 @@ DEFINE_CMD(app_rhizome_append_manifest, 0,
   "rhizome", "append", "manifest", "<filepath>", "<manifestpath>");
 static int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   const char *manifestpath, *filepath;
   if ( cli_arg(parsed, "manifestpath", &manifestpath, NULL, "") == -1
     || cli_arg(parsed, "filepath", &filepath, NULL, "") == -1)
@@ -423,8 +415,7 @@ DEFINE_CMD(app_rhizome_delete, 0,
   "rhizome","delete","|file","<fileid>");
 static int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   const char *manifestid, *fileid;
   if (cli_arg(parsed, "manifestid", &manifestid, cli_bid, NULL) == -1)
     return -1;
@@ -485,8 +476,7 @@ DEFINE_CMD(app_rhizome_clean, 0,
   "rhizome","clean","[verify]");
 static int app_rhizome_clean(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   int verify = cli_arg(parsed, "verify", NULL, NULL, NULL) == 0;
   
   /* Ensure the Rhizome database exists and is open */
@@ -529,8 +519,7 @@ DEFINE_CMD(app_rhizome_extract, 0,
   "<manifestid>","[<filepath>]","[<bsk>]");
 static int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   const char *manifestpath, *filepath, *manifestid, *bsktext;
   if (   cli_arg(parsed, "manifestid", &manifestid, cli_bid, "") == -1
       || cli_arg(parsed, "manifestpath", &manifestpath, NULL, "") == -1
@@ -647,8 +636,7 @@ DEFINE_CMD(app_rhizome_export_file, 0,
   "rhizome","export","file","<fileid>","[<filepath>]");
 static int app_rhizome_export_file(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   const char *fileid, *filepath;
   if (   cli_arg(parsed, "filepath", &filepath, NULL, "") == -1
       || cli_arg(parsed, "fileid", &fileid, cli_fileid, NULL) == -1)
@@ -691,8 +679,7 @@ DEFINE_CMD(app_rhizome_list, 0,
 	"[<service>]","[<name>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]");
 static int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   const char *service = NULL, *name = NULL, *sender_hex = NULL, *recipient_hex = NULL, *offset_ascii = NULL, *limit_ascii = NULL;
   cli_arg(parsed, "service", &service, NULL, "");
   cli_arg(parsed, "name", &name, NULL, "");

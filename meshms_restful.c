@@ -591,8 +591,7 @@ static int send_mime_part_end(struct http_request *hr)
     if (r->u.sendmsg.message.length == 0)
       return http_response_form_part(r, "Invalid (empty)", PART_MESSAGE, NULL, 0);
     r->u.sendmsg.received_message = 1;
-    if (config.debug.httpd)
-      DEBUGF("received %s = %s", PART_MESSAGE, alloca_toprint(-1, r->u.sendmsg.message.buffer, r->u.sendmsg.message.length));
+    DEBUGF(httpd, "received %s = %s", PART_MESSAGE, alloca_toprint(-1, r->u.sendmsg.message.buffer, r->u.sendmsg.message.length));
   } else
     FATALF("current_part = %s", alloca_str_toprint(r->u.sendmsg.current_part));
   r->u.sendmsg.current_part = NULL;

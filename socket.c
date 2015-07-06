@@ -187,8 +187,7 @@ int _esocket(struct __sourceloc __whence, int domain, int type, int protocol)
   int fd;
   if ((fd = socket(domain, type, protocol)) == -1)
     return WHYF_perror("socket(%s, %s, 0)", alloca_socket_domain(domain), alloca_socket_type(type));
-  if (config.debug.io || config.debug.verbose_io)
-    DEBUGF("socket(%s, %s, 0) -> %d", alloca_socket_domain(domain), alloca_socket_type(type), fd);
+  DEBUGF2(io, verbose_io, "socket(%s, %s, 0) -> %d", alloca_socket_domain(domain), alloca_socket_type(type), fd);
   return fd;
 }
 
@@ -196,8 +195,7 @@ int _socket_connect(struct __sourceloc __whence, int sock, const struct socket_a
 {
   if (connect(sock, &addr->addr, addr->addrlen) == -1)
     return WHYF_perror("connect(%d,%s,%lu)", sock, alloca_socket_address(addr), (unsigned long)addr->addrlen);
-  if (config.debug.io || config.debug.verbose_io)
-    DEBUGF("connect(%d, %s, %lu)", sock, alloca_socket_address(addr), (unsigned long)addr->addrlen);
+  DEBUGF2(io, verbose_io, "connect(%d, %s, %lu)", sock, alloca_socket_address(addr), (unsigned long)addr->addrlen);
   return 0;
 }
 
@@ -216,13 +214,11 @@ int _socket_bind(struct __sourceloc __whence, int sock, const struct socket_addr
     // remove a previous socket
     if (unlink(addr->local.sun_path) == -1 && errno != ENOENT)
       WARNF_perror("unlink(%s)", alloca_str_toprint(addr->local.sun_path));
-    if (config.debug.io || config.debug.verbose_io)
-      DEBUGF("unlink(%s)", alloca_str_toprint(addr->local.sun_path));
+    DEBUGF2(io, verbose_io, "unlink(%s)", alloca_str_toprint(addr->local.sun_path));
   }
   if (bind(sock, &addr->addr, addr->addrlen) == -1)
     return WHYF_perror("bind(%d,%s,%lu)", sock, alloca_socket_address(addr), (unsigned long)addr->addrlen);
-  if (config.debug.io || config.debug.verbose_io)
-    DEBUGF("bind(%d, %s, %lu)", sock, alloca_socket_address(addr), (unsigned long)addr->addrlen);
+  DEBUGF2(io, verbose_io, "bind(%d, %s, %lu)", sock, alloca_socket_address(addr), (unsigned long)addr->addrlen);
   return 0;
 }
 
@@ -230,8 +226,7 @@ int _socket_listen(struct __sourceloc __whence, int sock, int backlog)
 {
   if (listen(sock, backlog) == -1)
     return WHYF_perror("listen(%d,%d)", sock, backlog);
-  if (config.debug.io || config.debug.verbose_io)
-    DEBUGF("listen(%d, %d)", sock, backlog);
+  DEBUGF2(io, verbose_io, "listen(%d, %d)", sock, backlog);
   return 0;
 }
 
@@ -241,8 +236,7 @@ int _socket_set_reuseaddr(struct __sourceloc __whence, int sock, int reuseP)
     WARNF_perror("setsockopt(%d,SOL_SOCKET,SO_REUSEADDR,&%d,%u)", sock, reuseP, (unsigned)sizeof reuseP);
     return -1;
   }
-  if (config.debug.io || config.debug.verbose_io)
-    DEBUGF("setsockopt(%d, SOL_SOCKET, SO_REUSEADDR, &%d, %u)", sock, reuseP, (unsigned)sizeof reuseP);
+  DEBUGF2(io, verbose_io, "setsockopt(%d, SOL_SOCKET, SO_REUSEADDR, &%d, %u)", sock, reuseP, (unsigned)sizeof reuseP);
   return 0;
 }
 
@@ -252,8 +246,7 @@ int _socket_set_rcvbufsize(struct __sourceloc __whence, int sock, unsigned buffe
     WARNF_perror("setsockopt(%d,SOL_SOCKET,SO_RCVBUF,&%u,%u)", sock, buffer_size, (unsigned)sizeof buffer_size);
     return -1;
   }
-  if (config.debug.io || config.debug.verbose_io)
-    DEBUGF("setsockopt(%d, SOL_SOCKET, SO_RCVBUF, &%u, %u)", sock, buffer_size, (unsigned)sizeof buffer_size);
+  DEBUGF2(io, verbose_io, "setsockopt(%d, SOL_SOCKET, SO_RCVBUF, &%u, %u)", sock, buffer_size, (unsigned)sizeof buffer_size);
   return 0;
 }
 

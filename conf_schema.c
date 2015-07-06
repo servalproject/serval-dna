@@ -910,7 +910,7 @@ int cf_cmp_pattern_list(const struct pattern_list *a, const struct pattern_list 
  */
 static int cf_opt_network_interface_legacy(struct config_network_interface *nifp, const char *text)
 {
-  //DEBUGF("%s text=%s", __FUNCTION__, alloca_str_toprint(text));
+  //DEBUGF(config, "%s text=%s", __FUNCTION__, alloca_str_toprint(text));
   struct config_network_interface nif;
   cf_dfl_config_network_interface(&nif);
   if (text[0] != '+' && text[0] != '-')

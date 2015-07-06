@@ -591,35 +591,30 @@ static int insert_mime_part_end(struct http_request *hr)
     )
       return http_response_form_part(r, "Invalid", PART_AUTHOR, r->u.insert.author_hex, r->u.insert.author_hex_len);
     r->u.insert.received_author = 1;
-    if (config.debug.rhizome)
-      DEBUGF("received %s = %s", PART_AUTHOR, alloca_tohex_sid_t(r->u.insert.author));
+    DEBUGF(rhizome, "received %s = %s", PART_AUTHOR, alloca_tohex_sid_t(r->u.insert.author));
   }
   else if (r->u.insert.current_part == PART_SECRET) {
     if (strn_to_rhizome_bsk_t(&r->u.insert.bundle_secret, r->u.insert.secret_text, r->u.insert.secret_text_len) == -1)
       return http_response_form_part(r, "Invalid", PART_SECRET, r->u.insert.secret_text, r->u.insert.secret_text_len);
     r->u.insert.received_secret = 1;
-    if (config.debug.rhizome)
-      DEBUGF("received %s = %s", PART_SECRET, alloca_tohex_rhizome_bk_t(r->u.insert.bundle_secret));
+    DEBUGF(rhizome, "received %s = %s", PART_SECRET, alloca_tohex_rhizome_bk_t(r->u.insert.bundle_secret));
   }
   else if (r->u.insert.current_part == PART_BUNDLEID) {
     if (strn_to_rhizome_bid_t(&r->bid, r->u.insert.bid_text, r->u.insert.bid_text_len) == -1)
       return http_response_form_part(r, "Invalid", PART_BUNDLEID, r->u.insert.secret_text, r->u.insert.secret_text_len);
     r->u.insert.received_bundleid = 1;
-    if (config.debug.rhizome)
-      DEBUGF("received %s = %s", PART_BUNDLEID, alloca_tohex_rhizome_bid_t(r->bid));
+    DEBUGF(rhizome, "received %s = %s", PART_BUNDLEID, alloca_tohex_rhizome_bid_t(r->bid));
   }
   else if (r->u.insert.current_part == PART_MANIFEST) {
     r->u.insert.received_manifest = 1;
-    if (config.debug.rhizome)
-      DEBUGF("received %s = %s", PART_MANIFEST, alloca_toprint(-1, r->u.insert.manifest.buffer, r->u.insert.manifest.length));
+    DEBUGF(rhizome, "received %s = %s", PART_MANIFEST, alloca_toprint(-1, r->u.insert.manifest.buffer, r->u.insert.manifest.length));
     int result = insert_make_manifest(r);
     if (result)
       return result;
   }
   else if (r->u.insert.current_part == PART_PAYLOAD) {
     r->u.insert.received_payload = 1;
-    if (config.debug.rhizome)
-      DEBUGF("received %s, %zd bytes", PART_PAYLOAD, r->u.insert.payload_size);
+    DEBUGF(rhizome, "received %s, %zd bytes", PART_PAYLOAD, r->u.insert.payload_size);
     r->payload_status = rhizome_finish_write(&r->u.insert.write);
   } else
     FATALF("current_part = %s", alloca_str_toprint(r->u.insert.current_part));
@@ -636,8 +631,7 @@ static int restful_rhizome_insert_end(struct http_request *hr)
     return http_response_form_part(r, "Missing", PART_PAYLOAD, NULL, 0);
   // Fill in the missing manifest fields and ensure payload and manifest are consistent.
   assert(r->manifest != NULL);
-  if (config.debug.rhizome)
-    DEBUGF("r->payload_status=%d %s", r->payload_status, rhizome_payload_status_message(r->payload_status));
+  DEBUGF(rhizome, "r->payload_status=%d %s", r->payload_status, rhizome_payload_status_message(r->payload_status));
   assert(r->u.insert.write.file_length != RHIZOME_SIZE_UNSET);
   if (r->u.insert.appending) {
     // For journal appends, the user cannot supply a 'filesize' field.  This will have been caught
@@ -645,8 +639,7 @@ static int restful_rhizome_insert_end(struct http_request *hr)
     // size should be the sum of 'filesize' and the appended portion.
     assert(r->manifest->is_journal);
     assert(r->manifest->filesize != RHIZOME_SIZE_UNSET);
-    if (config.debug.rhizome)
-      DEBUGF("file_length=%"PRIu64" filesize=%"PRIu64" payload_size=%"PRIu64,
+    DEBUGF(rhizome, "file_length=%"PRIu64" filesize=%"PRIu64" payload_size=%"PRIu64,
 	  r->u.insert.write.file_length,
 	  r->manifest->filesize,
 	  r->u.insert.payload_size);
@@ -715,8 +708,7 @@ static int restful_rhizome_insert_end(struct http_request *hr)
   rhizome_manifest *mout = NULL;
   r->bundle_status = rhizome_manifest_finalise(r->manifest, &mout, !r->u.insert.force_new);
   int result = 500;
-  if (config.debug.rhizome)
-    DEBUGF("r->bundle_status=%d", r->bundle_status);
+  DEBUGF(rhizome, "r->bundle_status=%d", r->bundle_status);
   switch (r->bundle_status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
       if (mout && mout != r->manifest)

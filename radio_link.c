@@ -262,8 +262,7 @@ static int build_heartbeat(struct radio_link_state *link_state)
   link_state->txbuffer[15]=0x05;
   golay_encode(&link_state->txbuffer[14]);
   link_state->tx_bytes = count + RADIO_CRC_LENGTH + RADIO_HEADER_LENGTH;
-  if (config.debug.radio_link)
-    DEBUGF("Produced heartbeat");
+  DEBUGF(radio_link, "Produced heartbeat");
   
   return 0;
 }
@@ -359,11 +358,10 @@ static int parse_heartbeat(struct radio_link_state *state, const unsigned char *
       state->next_tx_allowed = gettime_ms();
     if (free_bytes>720)
       state->next_heartbeat=gettime_ms()+1000;
-    if (config.debug.packetradio)
-      INFOF("Link budget = %+ddB, remote link budget = %+ddB, buffer space = %d%% (approx %d)",
-	    state->radio_rssi,
-	    state->remote_rssi,
-	    free_space, free_bytes);
+    DEBUGF(packetradio, "Link budget = %+ddB, remote link budget = %+ddB, buffer space = %d%% (approx %d)",
+	   state->radio_rssi,
+	   state->remote_rssi,
+	   free_space, free_bytes);
     return 1;
   }
   return 0;
@@ -379,8 +377,7 @@ static int radio_link_parse(struct overlay_interface *interface, struct radio_li
     int errs=0;
     int tail = golay_decode(&errs, &payload[14]);
     if (tail == 0x555){
-      if (config.debug.radio_link)
-	DEBUGF("Decoded remote heartbeat request");
+      DEBUGF(radio_link, "Decoded remote heartbeat request");
       return 1;
     }
     return 0;
@@ -390,27 +387,24 @@ static int radio_link_parse(struct overlay_interface *interface, struct radio_li
   
   int errors=decode_rs_8(&payload[4], NULL, 0, FEC_MAX_BYTES - data_bytes);
   if (errors==-1){
-    if (config.debug.radio_link)
-      DEBUGF("Reed-Solomon error correction failed");
+    DEBUGF(radio_link, "Reed-Solomon error correction failed");
     return 0;
   }
   *backtrack=errors;
   data_bytes -= 2;
   int seq=payload[4]&0x3f;
   
-  if (config.debug.radio_link){
-    DEBUGF("Received RS protected message, len: %zd, errors: %d, seq: %d, flags:%s%s", 
-      data_bytes,
-      errors,
-      seq,
-      payload[4]&0x40?" start":"",
-      payload[4]&0x80?" end":"");
-  }
+  DEBUGF(radio_link, "Received RS protected message, len: %zd, errors: %d, seq: %d, flags:%s%s", 
+         data_bytes,
+         errors,
+         seq,
+         payload[4]&0x40?" start":"",
+         payload[4]&0x80?" end":""
+	);
   
   if (seq != ((state->seq+1)&0x3f)){
     // reject partial packet if we missed a sequence number
-    if (config.debug.radio_link) 
-      DEBUGF("Rejecting packet, sequence jumped from %d to %d", state->seq, seq);
+    DEBUGF(radio_link, "Rejecting packet, sequence jumped from %d to %d", state->seq, seq);
     state->packet_length=sizeof(state->dst)+1;
   }
   
@@ -421,8 +415,7 @@ static int radio_link_parse(struct overlay_interface *interface, struct radio_li
   
   state->seq=payload[4]&0x3f;
   if (state->packet_length + data_bytes > sizeof(state->dst)){
-    if (config.debug.radio_link)
-      DEBUG("Fragmented packet is too long or a previous piece was missed - discarding");
+    DEBUG(radio_link, "Fragmented packet is too long or a previous piece was missed - discarding");
     state->packet_length=sizeof(state->dst)+1;
     return 1;
   }
@@ -431,8 +424,7 @@ static int radio_link_parse(struct overlay_interface *interface, struct radio_li
   state->packet_length+=data_bytes;
     
   if (payload[4]&0x80) {
-    if (config.debug.radio_link) 
-      DEBUGF("PDU Complete (length=%zd)",state->packet_length);
+    DEBUGF(radio_link, "PDU Complete (length=%zd)",state->packet_length);
     
     packetOkOverlay(interface, state->dst, state->packet_length, NULL);
     state->packet_length=sizeof(state->dst)+1;
@@ -453,8 +445,8 @@ static int decode_length(struct radio_link_state *state, unsigned char *p)
   if (length!=17 && (length <= FEC_LENGTH || length > LINK_MTU))
     return -1;
   
-  if (config.debug.radio_link && (errs || state->payload_length!=*p))
-    DEBUGF("Decoded length %u to %zu with %d errs", *p, length, errs);
+  if (errs || state->payload_length!=*p)
+    DEBUGF(radio_link, "Decoded length %u to %zu with %d errs", *p, length, errs);
   
   state->payload_length=length;
   return 0;
@@ -468,8 +460,7 @@ int radio_link_decode(struct overlay_interface *interface, uint8_t c)
   
   if (state->payload_start + state->payload_offset >= sizeof state->payload){
     // drop one byte if we run out of space
-    if (config.debug.radio_link)
-      DEBUGF("Dropped %02x, buffer full", state->payload[0]);
+    DEBUGF(radio_link, "Dropped %02x, buffer full", state->payload[0]);
     bcopy(state->payload+1, state->payload, sizeof(state->payload) -1);
     state->payload_start--;
   }
@@ -523,8 +514,8 @@ int radio_link_decode(struct overlay_interface *interface, uint8_t c)
       // Since we know we've synced with the remote party, 
       // and there's nothing we can do about any earlier data
       // throw away everything before the end of this packet
-      if (state->payload_start && config.debug.radio_link)
-	dump("Skipped", state->payload, state->payload_start);
+      if (state->payload_start && IF_DEBUG(radio_link))
+	dump("{radio_link} Skipped", state->payload, state->payload_start);
       
       // If the packet is truncated by less than 16 bytes, RS protection should be enough to recover the packet, 
       // but we may need to examine the last few bytes to find the start of the next packet.

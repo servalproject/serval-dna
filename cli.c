@@ -138,7 +138,7 @@ int cli_parse(const int argc, const char *const *args, const struct cli_schema *
     int arg = 0;
     unsigned opt = 0;
     while ((pattern = commands[cmd].words[opt])) {
-      //DEBUGF("cmd=%d opt=%d pattern='%s' args[arg=%d]='%s'", cmd, opt, pattern, arg, arg < argc ? args[arg] : "");
+      //DEBUGF(cli, "cmd=%d opt=%d pattern='%s' args[arg=%d]='%s'", cmd, opt, pattern, arg, arg < argc ? args[arg] : "");
       unsigned patlen = strlen(pattern);
       if (cmdpa.varargi != -1)
 	return WHYF("Internal error: commands[%d].word[%d]=\"%s\" - more words not allowed after \"...\"", cmd, opt, commands[cmd].words[opt]);
@@ -279,7 +279,7 @@ int cli_parse(const int argc, const char *const *args, const struct cli_schema *
 	  ++opt;
       }
     }
-    //DEBUGF("cmd=%d opt=%d args[arg=%d]='%s'", cmd, opt, arg, arg < argc ? args[arg] : "");
+    //DEBUGF(cli, "cmd=%d opt=%d args[arg=%d]='%s'", cmd, opt, arg, arg < argc ? args[arg] : "");
     if (!pattern && arg == argc) {
       /* A match!  We got through the command definition with no internal errors and all literal
       args matched and we have a proper number of args.  If we have multiple matches, then note
@@ -309,9 +309,9 @@ int cli_parse(const int argc, const char *const *args, const struct cli_schema *
   return 0;
 }
 
-void _debug_cli_parsed(struct __sourceloc __whence, const struct cli_parsed *parsed)
+void _debug_cli_parsed(struct __sourceloc __whence, const char *tag, const struct cli_parsed *parsed)
 {
-  DEBUG_argv("command", parsed->argc, parsed->args);
+  _DEBUG_argv(tag, parsed->argc, parsed->args);
   strbuf b = strbuf_alloca(1024);
   unsigned i;
   for (i = 0; i < parsed->labelc; ++i) {
@@ -320,7 +320,7 @@ void _debug_cli_parsed(struct __sourceloc __whence, const struct cli_parsed *par
   }
   if (parsed->varargi >= 0)
     strbuf_sprintf(b, " varargi=%d", parsed->varargi); 
-  DEBUGF("parsed%s", strbuf_str(b));
+  _DEBUGF(tag, "parsed%s", strbuf_str(b));
 }
 
 int cli_invoke(const struct cli_parsed *parsed, struct cli_context *context)

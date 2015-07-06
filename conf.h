@@ -702,6 +702,8 @@ int cf_fmt_encapsulation(const char **, const short *encapp);
 extern int cf_limbo;
 extern __thread struct config_main config;
 
+#define IF_DEBUG(flagname) (config.debug.flagname)
+
 int cf_init(void);
 int cf_load(void);
 int cf_load_strict(void);

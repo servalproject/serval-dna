@@ -101,7 +101,7 @@ static void directory_update(struct sched_ent *alarm){
       alarm->deadline = alarm->alarm + 10000;
       schedule(alarm);
     }else
-      DEBUGF("Directory service is not reachable");
+      INFOF("Directory service is not reachable");
   }
 }
 

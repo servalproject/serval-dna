@@ -185,7 +185,7 @@ struct http_request {
   // requests.
   unsigned int uuid;
   // These can be set up to point to config flags, to allow debug to be
-  // enabled indpendently for different instances HTTP server instances
+  // enabled independently for different instances HTTP server instances
   // that use this code.
   bool_t *debug_flag;
   bool_t *disable_tx_flag;

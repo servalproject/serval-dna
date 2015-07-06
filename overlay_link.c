@@ -48,20 +48,19 @@ int set_reachable(struct subscriber *subscriber,
   subscriber->next_hop = next_hop;
   
   // These log messages are for use in tests.  Changing them may break test scripts.
-  if (config.debug.overlayrouting || config.debug.linkstate) {
+  if (IF_DEBUG(overlayrouting) || IF_DEBUG(linkstate)) {
     switch (reachable) {
       case REACHABLE_NONE:
-	DEBUGF("NOT REACHABLE sid=%s", alloca_tohex_sid_t(subscriber->sid));
+	_DEBUGF("NOT REACHABLE sid=%s", alloca_tohex_sid_t(subscriber->sid));
 	break;
       case REACHABLE_INDIRECT:
-	DEBUGF("REACHABLE INDIRECTLY sid=%s, via %s", 
-	  alloca_tohex_sid_t(subscriber->sid), alloca_tohex_sid_t(next_hop->sid));
+	_DEBUGF("REACHABLE INDIRECTLY sid=%s, via %s", alloca_tohex_sid_t(subscriber->sid), alloca_tohex_sid_t(next_hop->sid));
 	break;
       case REACHABLE_UNICAST:
-	DEBUGF("REACHABLE VIA UNICAST sid=%s, on %s ", alloca_tohex_sid_t(subscriber->sid), destination->interface->name);
+	_DEBUGF("REACHABLE VIA UNICAST sid=%s, on %s ", alloca_tohex_sid_t(subscriber->sid), destination->interface->name);
 	break;
       case REACHABLE_BROADCAST:
-	DEBUGF("REACHABLE VIA BROADCAST sid=%s, on %s ", alloca_tohex_sid_t(subscriber->sid), destination->interface->name);
+	_DEBUGF("REACHABLE VIA BROADCAST sid=%s, on %s ", alloca_tohex_sid_t(subscriber->sid), destination->interface->name);
 	break;
     }
   }
@@ -95,8 +94,7 @@ int resolve_name(const char *name, struct in_addr *addr){
   
   if (addresses->ai_addr->sa_family==AF_INET){
     *addr = ((struct sockaddr_in *)addresses->ai_addr)->sin_addr;
-    if (config.debug.overlayrouting)
-      DEBUGF("Resolved %s into %s", name, inet_ntoa(*addr));
+    DEBUGF(overlayrouting, "Resolved %s into %s", name, inet_ntoa(*addr));
     
   }else
     ret=WHY("Ignoring non IPv4 address");
@@ -137,8 +135,7 @@ int load_subscriber_address(struct subscriber *subscriber)
       return 1;
     }
   }
-  if (config.debug.overlayrouting)
-    DEBUGF("Loaded address %s for %s", alloca_socket_address(&addr), alloca_tohex_sid_t(subscriber->sid));
+  DEBUGF(overlayrouting, "Loaded address %s for %s", alloca_socket_address(&addr), alloca_tohex_sid_t(subscriber->sid));
   struct network_destination *destination = create_unicast_destination(&addr, interface);
   if (!destination)
     return -1;
@@ -156,8 +153,7 @@ overlay_mdp_service_probe(struct internal_mdp_header *header, struct overlay_buf
     WARN("Probe packets should be returned from remote echo port");
     RETURN(-1);
   }
-  if (config.debug.overlayrouting)
-    DEBUGF("Received probe response from %s", alloca_tohex_sid_t(header->source->sid));
+  DEBUGF(overlayrouting, "Received probe response from %s", alloca_tohex_sid_t(header->source->sid));
   
   if (header->source->reachable == REACHABLE_SELF)
     RETURN(0);
@@ -208,11 +204,11 @@ int overlay_send_probe(struct subscriber *peer, struct network_destination *dest
     op_free(frame);
     return -1;
   }
-  if (config.debug.overlayrouting)
-    DEBUGF("Queued probe packet on interface %s to %s for %s", 
+  DEBUGF(overlayrouting, "Queued probe packet on interface %s to %s for %s", 
 	 destination->interface->name, 
 	 alloca_socket_address(&destination->address), 
-	 peer?alloca_tohex_sid_t(peer->sid):"ANY");
+	 peer?alloca_tohex_sid_t(peer->sid):"ANY"
+	);
   return 0;
 }
 
@@ -226,18 +222,15 @@ static void overlay_append_unicast_address(struct subscriber *subscriber, struct
     overlay_address_append(NULL, buff, subscriber);
     ob_append_ui32(buff, subscriber->destination->address.inet.sin_addr.s_addr);
     ob_append_ui16(buff, subscriber->destination->address.inet.sin_port);
-    if (config.debug.overlayrouting)
-      DEBUGF("Added STUN info for %s", alloca_tohex_sid_t(subscriber->sid));
+    DEBUGF(overlayrouting, "Added STUN info for %s", alloca_tohex_sid_t(subscriber->sid));
   }else{
-    if (config.debug.overlayrouting)
-      DEBUGF("Unable to give address of %s, %d", alloca_tohex_sid_t(subscriber->sid),subscriber->reachable);
+    DEBUGF(overlayrouting, "Unable to give address of %s, %d", alloca_tohex_sid_t(subscriber->sid),subscriber->reachable);
   }
 }
 
 int overlay_mdp_service_stun_req(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
-  if (config.debug.overlayrouting)
-    DEBUGF("Processing STUN request from %s", alloca_tohex_sid_t(header->source->sid));
+  DEBUGF(overlayrouting, "Processing STUN request from %s", alloca_tohex_sid_t(header->source->sid));
 
   struct internal_mdp_header reply;
   bzero(&reply, sizeof reply);
@@ -254,8 +247,7 @@ int overlay_mdp_service_stun_req(struct internal_mdp_header *header, struct over
     if (overlay_address_parse(NULL, payload, &subscriber))
       break;
     if (!subscriber){
-      if (config.debug.overlayrouting)
-	DEBUGF("Unknown subscriber");
+      DEBUGF(overlayrouting, "Unknown subscriber");
       continue;
     }
     overlay_append_unicast_address(subscriber, replypayload);
@@ -266,8 +258,7 @@ int overlay_mdp_service_stun_req(struct internal_mdp_header *header, struct over
   ob_rewind(replypayload);
   
   if (ob_position(replypayload)){
-    if (config.debug.overlayrouting)
-      DEBUGF("Sending reply");
+    DEBUGF(overlayrouting, "Sending reply");
     ob_flip(replypayload);
     overlay_send_frame(&reply, replypayload);
   }
@@ -277,8 +268,7 @@ int overlay_mdp_service_stun_req(struct internal_mdp_header *header, struct over
 
 int overlay_mdp_service_stun(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
-  if (config.debug.overlayrouting)
-    DEBUGF("Processing STUN info from %s", alloca_tohex_sid_t(header->source->sid));
+  DEBUGF(overlayrouting, "Processing STUN info from %s", alloca_tohex_sid_t(header->source->sid));
 
   while(ob_remaining(payload)>0){
     struct subscriber *subscriber=NULL;
@@ -352,8 +342,7 @@ int overlay_send_stun_request(struct subscriber *server, struct subscriber *requ
     }
     
     ob_flip(payload);
-    if (config.debug.overlayrouting)
-      DEBUGF("Sending STUN response to %s for my private addresses", alloca_tohex_sid_t(request->sid));
+    DEBUGF(overlayrouting, "Sending STUN response to %s for my private addresses", alloca_tohex_sid_t(request->sid));
     overlay_send_frame(&header, payload);
     ob_free(payload);
   }
@@ -373,8 +362,7 @@ int overlay_send_stun_request(struct subscriber *server, struct subscriber *requ
     
     overlay_address_append(NULL, payload, request);
     if (!ob_overrun(payload)) {
-      if (config.debug.overlayrouting)
-	DEBUGF("Sending STUN request to %s", alloca_tohex_sid_t(server->sid));
+      DEBUGF(overlayrouting, "Sending STUN request to %s", alloca_tohex_sid_t(server->sid));
 	
       ob_flip(payload);
       overlay_send_frame(&header, payload);

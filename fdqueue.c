@@ -72,22 +72,22 @@ void list_alarms()
   time_ms_t now = gettime_ms();
   struct sched_ent *alarm;
   
-  DEBUG("Run now;");
+  _DEBUG("Run now;");
   for (alarm = run_now; alarm; alarm=alarm->_next_run)
-    DEBUGF("%p %s deadline in %"PRId64"ms", alarm->function, alloca_alarm_name(alarm), alarm->run_before - now);
+    _DEBUGF("%p %s deadline in %"PRId64"ms", alarm->function, alloca_alarm_name(alarm), alarm->run_before - now);
     
-  DEBUG("Run soon;");
+  _DEBUG("Run soon;");
   for (alarm = run_soon; alarm; alarm=alarm->_next_run)
-    DEBUGF("%p %s run in %"PRId64"ms", alarm->function, alloca_alarm_name(alarm), alarm->run_after - now);
+    _DEBUGF("%p %s run in %"PRId64"ms", alarm->function, alloca_alarm_name(alarm), alarm->run_after - now);
   
-  DEBUG("Wake at;");
+  _DEBUG("Wake at;");
   for (alarm = wake_list; alarm; alarm = alarm->_next_wake)
-    DEBUGF("%p %s wake in %"PRId64"ms", alarm->function, alloca_alarm_name(alarm), alarm->wake_at - now);
+    _DEBUGF("%p %s wake in %"PRId64"ms", alarm->function, alloca_alarm_name(alarm), alarm->wake_at - now);
   
-  DEBUG("File handles;");
+  _DEBUG("File handles;");
   int i;
   for (i = 0; i < fdcount; ++i)
-    DEBUGF("%s watching #%d for %x", alloca_alarm_name(fd_callbacks[i]), fds[i].fd, fds[i].events);
+    _DEBUGF("%s watching #%d for %x", alloca_alarm_name(fd_callbacks[i]), fds[i].fd, fds[i].events);
 }
 
 static void insert_run_now(struct sched_ent *alarm)
@@ -173,8 +173,7 @@ static void move_run_list(){
     run_soon = run_soon->_next_run;
     remove_wake_list(alarm);
     insert_run_now(alarm);
-    if (config.debug.io)
-      DEBUGF("Moved %s from run_soon to run_now", alloca_alarm_name(alarm));
+    DEBUGF(io, "Moved %s from run_soon to run_now", alloca_alarm_name(alarm));
   }
 }
 
@@ -189,9 +188,9 @@ void _schedule(struct __sourceloc __whence, struct sched_ent *alarm)
   if (alarm->run_after == TIME_MS_NEVER_WILL || alarm->run_after==0)
     alarm->run_after = alarm->wake_at;
   
-  if (config.debug.io){
+  if (IF_DEBUG(io)){
     time_ms_t now = gettime_ms();
-    DEBUGF("schedule(alarm=%s) run_after=%.3f wake_at=%.3f run_before=%.3f",
+    DEBUGF(io, "schedule(alarm=%s) run_after=%.3f wake_at=%.3f run_before=%.3f",
 	  alloca_alarm_name(alarm),
 	  (double)(alarm->run_after - now) / 1000,
 	  (double)(alarm->wake_at - now) / 1000,
@@ -225,8 +224,7 @@ void _unschedule(struct __sourceloc __whence, struct sched_ent *alarm)
   if (!is_scheduled(alarm))
     return;
     
-  if (config.debug.io)
-    DEBUGF("unschedule(alarm=%s)", alloca_alarm_name(alarm));
+  DEBUGF(io, "unschedule(alarm=%s)", alloca_alarm_name(alarm));
 
   remove_run_list(alarm, &run_now);
   remove_run_list(alarm, &run_soon);
@@ -238,8 +236,7 @@ void _unschedule(struct __sourceloc __whence, struct sched_ent *alarm)
 // start watching a file handle, call this function again if you wish to change the event mask
 int _watch(struct __sourceloc __whence, struct sched_ent *alarm)
 {
-  if (config.debug.io)
-    DEBUGF("watch(alarm=%s)", alloca_alarm_name(alarm));
+  DEBUGF(io, "watch(alarm=%s)", alloca_alarm_name(alarm));
   if (!alarm->stats)
     WARN("watch() called without supplying an alarm name");
 
@@ -250,11 +247,9 @@ int _watch(struct __sourceloc __whence, struct sched_ent *alarm)
   
   if (alarm->_poll_index>=0 && fd_callbacks[alarm->_poll_index]==alarm){
     // updating event flags
-    if (config.debug.io)
-      DEBUGF("Updating watch %s, #%d for %s", alloca_alarm_name(alarm), alarm->poll.fd, alloca_poll_events(alarm->poll.events));
+    DEBUGF(io, "Updating watch %s, #%d for %s", alloca_alarm_name(alarm), alarm->poll.fd, alloca_poll_events(alarm->poll.events));
   }else{
-    if (config.debug.io)
-      DEBUGF("Adding watch %s, #%d for %s", alloca_alarm_name(alarm), alarm->poll.fd, alloca_poll_events(alarm->poll.events));
+    DEBUGF(io, "Adding watch %s, #%d for %s", alloca_alarm_name(alarm), alarm->poll.fd, alloca_poll_events(alarm->poll.events));
     if (fdcount>=MAX_WATCHED_FDS)
       return WHY("Too many file handles to watch");
     fd_callbacks[fdcount]=alarm;
@@ -276,8 +271,7 @@ int is_watching(struct sched_ent *alarm)
 // stop watching a file handle
 int _unwatch(struct __sourceloc __whence, struct sched_ent *alarm)
 {
-  if (config.debug.io)
-    DEBUGF("unwatch(alarm=%s)", alloca_alarm_name(alarm));
+  DEBUGF(io, "unwatch(alarm=%s)", alloca_alarm_name(alarm));
 
   int index = alarm->_poll_index;
   if (index <0 || fds[index].fd!=alarm->poll.fd)
@@ -293,8 +287,7 @@ int _unwatch(struct __sourceloc __whence, struct sched_ent *alarm)
   fds[fdcount].fd=-1;
   fd_callbacks[fdcount]=NULL;
   alarm->_poll_index=-1;
-  if (config.debug.io)
-    DEBUGF("%s stopped watching #%d for %s", alloca_alarm_name(alarm), alarm->poll.fd, alloca_poll_events(alarm->poll.events));
+  DEBUGF(io, "%s stopped watching #%d for %s", alloca_alarm_name(alarm), alarm->poll.fd, alloca_poll_events(alarm->poll.events));
   return 0;
 }
 
@@ -306,8 +299,7 @@ static void call_alarm(struct sched_ent *alarm, int revents)
   struct call_stats call_stats;
   call_stats.totals = alarm->stats;
   
-  if (config.debug.io)
-    DEBUGF("Calling alarm/callback %p %s", alarm, alloca_alarm_name(alarm));
+  DEBUGF(io, "Calling alarm/callback %p %s", alarm, alloca_alarm_name(alarm));
 
   if (call_stats.totals)
     fd_func_enter(__HERE__, &call_stats);
@@ -320,8 +312,7 @@ static void call_alarm(struct sched_ent *alarm, int revents)
   if (call_stats.totals)
     fd_func_exit(__HERE__, &call_stats);
 
-  if (config.debug.io)
-    DEBUGF("Alarm %p returned",alarm);
+  DEBUGF(io, "Alarm %p returned",alarm);
 
   OUT();
 }
@@ -382,8 +373,7 @@ int fd_poll2(time_ms_t (*waiting)(time_ms_t, time_ms_t, time_ms_t), void (*wokeu
       wait = wait_until - now;
     
     if (fdcount){
-      if (config.debug.io)
-	DEBUGF("Calling poll with %dms wait", wait);
+      DEBUGF(io, "Calling poll with %dms wait", wait);
 	
       fd_func_enter(__HERE__, &call_stats);
       r = poll(fds, fdcount, wait);
@@ -392,7 +382,7 @@ int fd_poll2(time_ms_t (*waiting)(time_ms_t, time_ms_t, time_ms_t), void (*wokeu
       if (r==-1 && errno!=EINTR)
 	WHY_perror("poll");
       
-      if (config.debug.io) {
+      if (IF_DEBUG(io)) {
 	strbuf b = strbuf_alloca(1024);
 	int i;
 	for (i = 0; i < fdcount; ++i) {
@@ -403,7 +393,7 @@ int fd_poll2(time_ms_t (*waiting)(time_ms_t, time_ms_t, time_ms_t), void (*wokeu
 	  strbuf_puts(b, "->");
 	  strbuf_append_poll_events(b, fds[i].revents);
 	}
-	DEBUGF("poll(fds=(%s), fdcount=%d, ms=%d) -> %d", strbuf_str(b), fdcount, wait, r);
+	DEBUGF(io, "poll(fds=(%s), fdcount=%d, ms=%d) -> %d", strbuf_str(b), fdcount, wait, r);
       }
       
     }else if(wait>0){

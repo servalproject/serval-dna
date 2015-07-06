@@ -515,12 +515,11 @@ void server_watchdog(struct sched_ent *alarm)
 	break;
       default:
 	/* Child, report grandchild's PID. */
-	if (config.debug.watchdog)
-	  LOGF(LOG_LEVEL_DEBUG, "STARTED WATCHDOG pid=%u executable=%s argv=[%s]",
-	      watchdog_pid,
-	      alloca_str_toprint(config.server.watchdog.executable),
-	      strbuf_str(argv_sb)
-	    );
+	DEBUGF(watchdog, "STARTED WATCHDOG pid=%u executable=%s argv=[%s]",
+	       watchdog_pid,
+	       alloca_str_toprint(config.server.watchdog.executable),
+	       strbuf_str(argv_sb)
+	      );
 	do { _exit(0); } while (1);
 	break;
       }
@@ -587,7 +586,7 @@ void cf_on_config_change()
   if (config.rhizome.enable){
     rhizome_opendb();
     RESCHEDULE(&ALARM_STRUCT(rhizome_clean_db), now + 30*60*1000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
-    if (config.debug.rhizome)
+    if (IF_DEBUG(rhizome))
       RESCHEDULE(&ALARM_STRUCT(rhizome_fetch_status), now + 3000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
   }else if(rhizome_db){
     rhizome_close_db();
@@ -682,8 +681,7 @@ DEFINE_CMD(app_server_start, 0,
 static int app_server_start(const struct cli_parsed *parsed, struct cli_context *context)
 {
   IN();
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   /* Process optional arguments */
   int cpid=-1;
   const char *execpath;
@@ -741,8 +739,7 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
 	   _exit() is used on non-Android systems, then source code coverage does not get reported,
 	   because it relies on an atexit() callback to write the accumulated counters into .gcda
 	   files.  */
-	if (config.debug.verbose)
-	  DEBUG("Child Process");
+	DEBUG(verbose, "Child Process");
 	// Ensure that all stdio streams are flushed before forking, so that if a child calls
 	// exit(), it will not result in any buffered output being written twice to the file
 	// descriptor.
@@ -758,8 +755,7 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
 	       start a new process session so that if we are being started by an adb shell session
 	       on an Android device, then we don't receive a SIGHUP when the adb shell process ends.
 	     */
-	    if (config.debug.verbose)
-	      DEBUG("Grand-Child Process, reopening log");
+	    DEBUG(verbose, "Grand-Child Process, reopening log");
 	    close_log_file();
 	    disable_log_stderr();
 	    int fd;
@@ -783,8 +779,7 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
 	    if (execpath) {
 	    /* Need the cast on Solaris because it defines NULL as 0L and gcc doesn't see it as a
 	       sentinal. */
-	      if (config.debug.verbose)
-		DEBUGF("Calling execl %s start foreground", execpath);
+	      DEBUGF(verbose, "Calling execl %s start foreground", execpath);
 	      execl(execpath, "servald", "start", "foreground", (void *)NULL);
 	      WHYF_perror("execl(%s, \"servald\", \"start\", \"foreground\")", alloca_str_toprint(execpath));
 	      exit(-1);
@@ -854,8 +849,7 @@ DEFINE_CMD(app_server_stop,CLIFLAG_PERMISSIVE_CONFIG,
   "stop");
 static int app_server_stop(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   int			pid, tries, running;
   time_ms_t		timeout;
   const char *ipath = instance_path();
@@ -908,8 +902,7 @@ DEFINE_CMD(app_server_status,CLIFLAG_PERMISSIVE_CONFIG,
    "status");
 static int app_server_status(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   int pid = server_pid();
   const char *ipath = instance_path();
   if (ipath) {

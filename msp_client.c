@@ -205,18 +205,20 @@ unsigned msp_socket_count()
 
 void msp_debug()
 {
-  time_ms_t now = gettime_ms();
-  struct msp_sock *p=root;
-  DEBUGF("Msp sockets;");
-  while(p){
-    DEBUGF("State %d, from %s:%d to %s:%d, next %"PRId64"ms, ack %"PRId64"ms timeout %"PRId64"ms", 
-      p->state, 
-      alloca_tohex_sid_t(p->header.local.sid), p->header.local.port, 
-      alloca_tohex_sid_t(p->header.remote.sid), p->header.remote.port,
-      (p->next_action - now),
-      (p->next_ack - now),
-      (p->timeout - now));
-    p=p->_next;
+  if (IF_DEBUG(msp)) {
+    time_ms_t now = gettime_ms();
+    struct msp_sock *p=root;
+    DEBUGF(msp, "Msp sockets;");
+    while(p){
+      DEBUGF(msp, "State %d, from %s:%d to %s:%d, next %"PRId64"ms, ack %"PRId64"ms timeout %"PRId64"ms", 
+	p->state, 
+	alloca_tohex_sid_t(p->header.local.sid), p->header.local.port, 
+	alloca_tohex_sid_t(p->header.remote.sid), p->header.remote.port,
+	(p->next_action - now),
+	(p->next_ack - now),
+	(p->timeout - now));
+      p=p->_next;
+    }
   }
 }
 
@@ -264,8 +266,7 @@ static void free_acked_packets(struct msp_window *window, uint16_t seq)
     window->rtt = rtt;
     if (window->base_rtt > rtt)
       window->base_rtt = rtt;
-    if (config.debug.msp)
-      DEBUGF("ACK %x, RTT %u-%u, base %u", seq, rtt, rtt_max, window->base_rtt);
+    DEBUGF(msp, "ACK %x, RTT %u-%u, base %u", seq, rtt, rtt_max, window->base_rtt);
   }
   if (!p)
     window->_tail = NULL;
@@ -323,8 +324,7 @@ void msp_stop(MSP_SOCKET handle)
     // we don't have a matching socket, reply with STOP flag to force breaking the connection
     // TODO global rate limit?
     mdp_send(sock->mdp_sock, &sock->header, &response, 1);
-    if (config.debug.msp)
-      DEBUGF("Sending STOP packet");
+    DEBUGF(msp, "Sending STOP packet");
   }
 }
 
@@ -403,8 +403,7 @@ static int add_packet(struct msp_window *window, uint16_t seq, uint8_t flags, co
   }else{
     if (window->_tail->seq == seq){
       // ignore duplicate packets
-      if (config.debug.msp)
-	DEBUGF("Ignore duplicate packet %02x", seq);
+      DEBUGF(msp, "Ignore duplicate packet %02x", seq);
       return 0;
     }else if (compare_wrapped_uint16(window->_tail->seq, seq)<0){
       if (compare_wrapped_uint16(window->_head->seq, seq)>0){
@@ -418,8 +417,7 @@ static int add_packet(struct msp_window *window, uint16_t seq, uint8_t flags, co
 	insert_pos = &(*insert_pos)->_next;
       if ((*insert_pos)->seq == seq){
 	// ignore duplicate packets
-	if (config.debug.msp)
-	  DEBUGF("Ignore duplicate packet %02x", seq);
+	DEBUGF(msp, "Ignore duplicate packet %02x", seq);
 	return 0;
       }
     }
@@ -450,8 +448,7 @@ static int add_packet(struct msp_window *window, uint16_t seq, uint8_t flags, co
     bcopy(payload, p, len);
   }
   window->packet_count++;
-  if (config.debug.msp)
-    DEBUGF("Add packet %02x", seq);
+  DEBUGF(msp, "Add packet %02x", seq);
   return 1;
 }
 
@@ -509,8 +506,7 @@ static int msp_send_packet(struct msp_sock *sock, struct msp_packet *packet)
     msp_close_all(sock->mdp_sock);
     return -1;
   }
-  if (config.debug.msp)
-    DEBUGF("Sent packet flags %02x seq %02x len %zd (acked %02x)", msp_header[0], packet->seq, packet->len, sock->rx.next_seq -1);
+  DEBUGF(msp, "Sent packet flags %02x seq %02x len %zd (acked %02x)", msp_header[0], packet->seq, packet->len, sock->rx.next_seq -1);
   sock->tx.last_activity = packet->sent = gettime_ms();
   sock->next_ack = packet->sent + RETRANSMIT_TIME;
   return 0;
@@ -558,8 +554,7 @@ static int send_ack(struct msp_sock *sock)
       msp_close_all(sock->mdp_sock);
     return -1;
   }
-  if (config.debug.msp)
-    DEBUGF("Sent packet flags %02x (acked %02x)", msp_header[0], sock->rx.next_seq -1);
+  DEBUGF(msp, "Sent packet flags %02x (acked %02x)", msp_header[0], sock->rx.next_seq -1);
   sock->previous_ack = sock->rx.next_seq -1;
   sock->tx.last_activity = gettime_ms();
   sock->next_ack = sock->tx.last_activity + RETRANSMIT_TIME;
@@ -755,8 +750,7 @@ static void msp_release(struct msp_sock *sock){
   header.remote.sid = SID_ANY;
   header.remote.port = MDP_LISTEN;
   header.flags = MDP_FLAG_CLOSE;
-  if (config.debug.msp)
-    DEBUGF("Releasing mdp port binding %d", header.local.port);
+  DEBUGF(msp, "Releasing mdp port binding %d", header.local.port);
   mdp_send(sock->mdp_sock, &header, NULL, 0);
   sock->header.local.port=0;
   sock->header.local.sid=SID_ANY;
@@ -811,8 +805,7 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
 	  // process bind response from the daemon
 	  s->header.local = header->local;
 	  s->header.flags &= ~MDP_FLAG_BIND;
-	  if (config.debug.msp)
-	    DEBUGF("Bound to %s:%d", alloca_tohex_sid_t(header->local.sid), header->local.port);
+	  DEBUGF(msp, "Bound to %s:%d", alloca_tohex_sid_t(header->local.sid), header->local.port);
 	  if (s->state & MSP_STATE_LISTENING)
 	    s->next_action = s->timeout = TIME_MS_NEVER_WILL;
 	  else
@@ -842,8 +835,7 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
     
     // ignore any stop packet if we have no matching connection
     if (!sock && flags & FLAG_STOP){
-      if (config.debug.msp)
-        DEBUGF("Ignoring STOP packet, no matching connection");
+      DEBUGF(msp, "Ignoring STOP packet, no matching connection");
       return 0;
     }
     
@@ -865,8 +857,7 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
       // TODO global rate limit?
       // Note that we might recieve a queued packet after sending a MDP_FLAG_CLOSE, so this might trigger an error
       mdp_send(mdp_sock, header, &response, 1);
-      if (config.debug.msp)
-	DEBUGF("Replying to unexpected packet with STOP packet");
+      DEBUGF(msp, "Replying to unexpected packet with STOP packet");
       return 0;
     }
   }
@@ -876,8 +867,7 @@ static int process_packet(int mdp_sock, struct mdp_header *header, const uint8_t
   sock->state |= MSP_STATE_RECEIVED_PACKET;
   
   if (flags & FLAG_STOP){
-    if (config.debug.msp)
-      DEBUGF("Closing socket due to STOP packet");
+    DEBUGF(msp, "Closing socket due to STOP packet");
     msp_stop(sock_to_handle(sock));
     return 0;
   }

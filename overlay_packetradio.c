@@ -90,11 +90,11 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   if (tcsetattr(interface->alarm.poll.fd, TCSANOW, &t))
     WHY_perror("Failed to set terminal parameters");
   
-  if (config.debug.packetradio) {
+  if (IF_DEBUG(packetradio)) {
     tcgetattr(interface->alarm.poll.fd, &t);
     int in_speed=cfgetispeed(&t);
     int out_speed=cfgetospeed(&t);
-    DEBUGF("uart speed reported as %d/%d",in_speed,out_speed);
+    DEBUGF(packetradio, "uart speed reported as %d/%d",in_speed,out_speed);
   }
   
   set_nonblock(interface->alarm.poll.fd);

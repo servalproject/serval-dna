@@ -387,8 +387,7 @@ DEFINE_CMD(app_vomp_console, 0,
   "console");
 static int app_vomp_console(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   
   monitor_alarm.poll.fd = monitor_client_open(&monitor_state);
   if (monitor_alarm.poll.fd==-1)

@@ -100,8 +100,8 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *UNUSED(inter
       process_explain(f);
       break;
     default:
-      if (config.debug.verbose && config.debug.overlayframes)
-	DEBUGF("Overlay type f->type=0x%x not supported", f->type);
+      if (IF_DEBUG(verbose))
+	DEBUGF(overlayframes, "Overlay type f->type=0x%x not supported", f->type);
   }
   RETURN(0);
   OUT();
@@ -111,13 +111,13 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *UNUSED(inter
 int overlay_forward_payload(struct overlay_frame *f){
   IN();
   if (f->ttl == 0){
-    if (config.debug.verbose && config.debug.overlayframes)
-      DEBUGF("NOT FORWARDING, due to ttl=0");
+    if (IF_DEBUG(verbose))
+      DEBUGF(overlayframes, "NOT FORWARDING, due to ttl=0");
     RETURN(0);
   }
   
-  if (config.debug.verbose && config.debug.overlayframes)
-    DEBUGF("Forwarding payload for %s, ttl=%u",
+  if (IF_DEBUG(verbose))
+    DEBUGF(overlayframes, "Forwarding payload for %s, ttl=%u",
 	  (f->destination?alloca_tohex_sid_t(f->destination->sid):"broadcast"),
 	  (unsigned)f->ttl);
 
@@ -164,8 +164,8 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
       RETURN(WHY("Unable to parse payload source"));
     if (!frame->source || frame->source->reachable==REACHABLE_SELF){
       process=forward=0;
-      if (config.debug.verbose && config.debug.overlayframes)
-	DEBUGF("Ignoring my packet (or unparsable source)");
+      if (IF_DEBUG(verbose))
+	DEBUGF(overlayframes, "Ignoring my packet (or unparsable source)");
     }
   }
   
@@ -175,13 +175,13 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
 	RETURN(WHY("Unable to read broadcast address"));
       if (overlay_broadcast_drop_check(&frame->broadcast_id)){
 	process=forward=0;
-	if (config.debug.verbose && config.debug.overlayframes)
-	  DEBUGF("Ignoring duplicate broadcast (%s)", alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
+	if (IF_DEBUG(verbose))
+	  DEBUGF(overlayframes, "Ignoring duplicate broadcast (%s)", alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
       }
       if (link_state_should_forward_broadcast(context->sender)==0){
 	forward=0;
-	if (config.debug.verbose && config.debug.overlayframes)
-	  DEBUGF("Not forwarding broadcast (%s), as we aren't a relay in the senders routing table", alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
+	if (IF_DEBUG(verbose))
+	  DEBUGF(overlayframes, "Not forwarding broadcast (%s), as we aren't a relay in the senders routing table", alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
       }
     }
     frame->destination=NULL;
@@ -192,8 +192,8 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
     
     if (!frame->destination || frame->destination->reachable!=REACHABLE_SELF){
       process=0;
-      if (config.debug.verbose && config.debug.overlayframes)
-	DEBUGF("Don't process packet not addressed to me");
+      if (IF_DEBUG(verbose))
+	DEBUGF(overlayframes, "Don't process packet not addressed to me");
     }
     
     if (!(flags & PAYLOAD_FLAG_ONE_HOP)){
@@ -203,8 +203,8 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
       
       if (!(*nexthop) || (*nexthop)->reachable!=REACHABLE_SELF){
 	forward=0;
-	if (config.debug.verbose && config.debug.overlayframes)
-	  DEBUGF("Don't forward packet not addressed to me");
+	if (IF_DEBUG(verbose))
+	  DEBUGF(overlayframes, "Don't forward packet not addressed to me");
       }
     }
   }
@@ -222,8 +222,8 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
     --frame->ttl;
   if (frame->ttl == 0) {
     forward = 0;
-    if (config.debug.verbose && config.debug.overlayframes)
-      DEBUGF("NOT FORWARDING, due to ttl=0");
+    if (IF_DEBUG(verbose))
+      DEBUGF(overlayframes, "NOT FORWARDING, due to ttl=0");
   }
   
   if (flags & PAYLOAD_FLAG_LEGACY_TYPE){
@@ -239,8 +239,8 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
     if (seq == -1)
       RETURN(WHY("Unable to read packet seq"));
     if (link_received_duplicate(context->sender, seq)){
-      if (config.debug.verbose && config.debug.overlayframes)
-	DEBUG("Don't process or forward duplicate payloads");
+      if (IF_DEBUG(verbose))
+	DEBUG(overlayframes, "Don't process or forward duplicate payloads");
       forward=process=0;
     }
   }
@@ -249,8 +249,8 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
   
   // if we can't understand one of the addresses, skip processing the payload
   if ((forward||process)&&context->invalid_addresses){
-    if (config.debug.verbose && config.debug.overlayframes)
-      DEBUG("Don't process or forward with invalid addresses");
+    if (IF_DEBUG(verbose))
+      DEBUG(overlayframes, "Don't process or forward with invalid addresses");
     forward=process=0;
   }
   RETURN(forward|process);
@@ -294,8 +294,8 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
 
   if (context->sender){
     if (context->sender->reachable==REACHABLE_SELF){
-      if (config.debug.verbose && config.debug.overlayframes)
-	DEBUG("Completely ignore packets I sent");
+      if (IF_DEBUG(verbose))
+	DEBUG(overlayframes, "Completely ignore packets I sent");
       RETURN(1);
     }
     
@@ -307,8 +307,7 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
       context->point_to_point_device = context->interface->other_device = context->sender;
     }
     
-    if (config.debug.overlayframes)
-      DEBUGF("Received %s packet seq %d from %s on %s %s", 
+    DEBUGF(overlayframes, "Received %s packet seq %d from %s on %s %s", 
 	packet_flags & PACKET_UNICAST?"unicast":"broadcast",
 	sender_seq, alloca_tohex_sid_t(context->sender->sid), 
 	interface->name, alloca_socket_address(addr));
@@ -375,8 +374,8 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
      the source having received the frame from elsewhere.
   */
 
-  if (config.debug.packetrx || interface->ifconfig.debug) {
-    DEBUGF("Received on %s, len %d", interface->name, (int)len);
+  if (IF_DEBUG(packetrx) || interface->ifconfig.debug) {
+    _DEBUGF("Received on %s, len %d", interface->name, (int)len);
     DEBUG_packet_visualise("Received packet",packet,len);
   }
   
@@ -423,8 +422,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	payload_len = ob_get_ui16(b);
 	if (payload_len > ob_remaining(b)){
 	  unsigned char *current = ob_ptr(b)+ob_position(b);
-
-	  if (config.debug.overlayframes)
+	  if (IF_DEBUG(overlayframes))
 	    dump("Payload Header", header_start, current - header_start);
 	  ret = WHYF("Invalid payload length (%zd)", payload_len);
 	  goto end;
@@ -434,14 +432,14 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 
     int next_payload = ob_position(b) + payload_len;
     
-    if (config.debug.overlayframes){
-      DEBUGF("Received payload type %x, len %zd", f.type, payload_len);
-      DEBUGF("Payload from %s", f.source?alloca_tohex_sid_t(f.source->sid):"NULL");
-      DEBUGF("Payload to %s", (f.destination?alloca_tohex_sid_t(f.destination->sid):"broadcast"));
+    if (IF_DEBUG(overlayframes)) {
+      DEBUGF(overlayframes, "Received payload type %x, len %zd", f.type, payload_len);
+      DEBUGF(overlayframes, "Payload from %s", f.source?alloca_tohex_sid_t(f.source->sid):"NULL");
+      DEBUGF(overlayframes, "Payload to %s", (f.destination?alloca_tohex_sid_t(f.destination->sid):"broadcast"));
       if (!is_all_matching(f.broadcast_id.id, BROADCAST_LEN, 0))
-	DEBUGF("Broadcast id %s", alloca_tohex(f.broadcast_id.id, BROADCAST_LEN));
+	DEBUGF(overlayframes, "Broadcast id %s", alloca_tohex(f.broadcast_id.id, BROADCAST_LEN));
       if (nexthop)
-	DEBUGF("Next hop %s", alloca_tohex_sid_t(nexthop->sid));
+	DEBUGF(overlayframes, "Next hop %s", alloca_tohex_sid_t(nexthop->sid));
     }
     
     if (header_valid!=0){

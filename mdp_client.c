@@ -395,12 +395,12 @@ int overlay_mdp_getmyaddr(int mdp_sockfd, unsigned index, sid_t *sidp)
   int result=overlay_mdp_send(mdp_sockfd,&a,MDP_AWAITREPLY,5000);
   if (result) {
     if (a.packetTypeAndFlags == MDP_ERROR)
-      DEBUGF("MDP Server error #%d: '%s'", a.error.error, a.error.message);
+      WARNF("MDP Server error #%d: '%s'", a.error.error, a.error.message);
     return WHY("Failed to get local address list");
   }
   if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST)
     return WHY("MDP Server returned something other than an address list");
-  if (0) DEBUGF("local addr 0 = %s",alloca_tohex_sid_t(a.addrlist.sids[0]));
+  if (0) WARNF("local addr 0 = %s",alloca_tohex_sid_t(a.addrlist.sids[0]));
   *sidp = a.addrlist.sids[0];
   return 0;
 }

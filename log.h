@@ -79,6 +79,8 @@ __SERVAL_LOG_INLINE void logMessage(int level, struct __sourceloc whence, const 
 
 #define NOWHENCE(LOGSTMT)   do { const struct __sourceloc __whence = __NOWHENCE__; LOGSTMT; } while (0)
 
+#define BACKTRACE           logBacktrace(LOG_LEVEL_FATAL, __WHENCE__)
+
 #define FATALF(F,...)       do { LOGF(LOG_LEVEL_FATAL, F, ##__VA_ARGS__); abort(); exit(-1); } while (1)
 #define FATAL(X)            FATALF("%s", (X))
 #define FATALF_perror(F,...) FATALF(F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
@@ -104,17 +106,27 @@ __SERVAL_LOG_INLINE void logMessage(int level, struct __sourceloc whence, const 
 #define INFOF(F,...)        LOGF(LOG_LEVEL_INFO, F, ##__VA_ARGS__)
 #define INFO(X)             INFOF("%s", (X))
 
-#define DEBUGF(F,...)       LOGF(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
-#define DEBUG(X)            DEBUGF("%s", (X))
-#define DEBUGF_perror(F,...) LOGF_perror(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
-#define DEBUG_perror(X)     DEBUGF_perror("%s", (X))
-#define D                   (DEBUG("D"), 1)
-#define T                   (config.debug.trace ? DEBUG("T") : 1)
-#define DEBUG_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_DEBUG, __WHENCE__, (X), (ARGC), (ARGV))
+#define _DEBUGF(F,...)           LOGF(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
+#define _DEBUG(X)                _DEBUGF("%s", (X))
+#define _DEBUGF_perror(F,...)    LOGF_perror(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
+#define _DEBUG_perror(X)         _DEBUGF_perror("%s", (X))
+#define _DEBUG_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_DEBUG, __WHENCE__, (X), (ARGC), (ARGV))
+
+#define _DEBUGF_TAG(TAG,F,...)            _DEBUGF("{%s} " F, (TAG), ##__VA_ARGS__)
+#define _DEBUGF_TAG_perror(TAG,F,...)     _DEBUGF_perror("{%s} " F, (TAG), ##__VA_ARGS__)
+#define _DEBUGF_TAG_argv(TAG,X,ARGC,ARGV) _DEBUGF_argv("{" TAG "} " X, (ARGC), (ARGV))
+
+#define DEBUGF(FLAG,F,...)           do { if (IF_DEBUG(FLAG)) _DEBUGF_TAG(#FLAG, F, ##__VA_ARGS__); } while (0)
+#define DEBUGF2(FLAG1,FLAG2,F,...)   do { if (IF_DEBUG(FLAG1) || IF_DEBUG(FLAG2)) _DEBUGF_TAG((IF_DEBUG(FLAG1) ? #FLAG1 : #FLAG2), F, ##__VA_ARGS__); } while (0)
+#define DEBUG(FLAG,X)                DEBUGF(FLAG, "%s", (X))
+#define DEBUGF_perror(FLAG,F,...)    do { if (IF_DEBUG(FLAG)) _DEBUGF_TAG_perror(#FLAG, F, ##__VA_ARGS__); } while (0)
+#define DEBUG_perror(FLAG,X)         DEBUGF_perror(FLAG, "%s", (X))
+#define DEBUG_argv(FLAG,X,ARGC,ARGV) do { if (IF_DEBUG(FLAG)) _DEBUG_TAG_argv(#FLAG, X, (ARGC), (ARGV)); } while (0)
 
 #define dump(X,A,N)         logDump(LOG_LEVEL_DEBUG, __WHENCE__, (X), (const unsigned char *)(A), (size_t)(N))
 
-#define BACKTRACE           logBacktrace(LOG_LEVEL_FATAL, __WHENCE__)
+#define D                   (DEBUG("D"), 1)
+#define T                   (IF_DEBUG(trace) ? (DEBUG("T"), 1) : 1)
 
 // Utility functions, defined in terms of above primitives.
 void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv);

@@ -157,8 +157,7 @@ int httpd_server_start(uint16_t port_low, uint16_t port_high)
   if (now < httpd_server_last_start_attempt + 5000)
     return 2;
   httpd_server_last_start_attempt  = now;
-  if (config.debug.httpd)
-    DEBUGF("Starting HTTP server");
+  DEBUGF(httpd, "Starting HTTP server");
 
   uint16_t port;
   for (port = port_low; port <= port_high; ++port) {
@@ -241,8 +240,7 @@ unsigned int current_httpd_request_count = 0;
 static void httpd_server_finalise_http_request(struct http_request *hr)
 {
   httpd_request *r = (httpd_request *) hr;
-  if (config.debug.httpd)
-    DEBUGF("current_httpd_request_count=%u current_httpd_requests=%p r=%p r->next=%p r->prev=%p", current_httpd_request_count, current_httpd_requests, r, r->next, r->prev);
+  DEBUGF(httpd, "current_httpd_request_count=%u current_httpd_requests=%p r=%p r->next=%p r->prev=%p", current_httpd_request_count, current_httpd_requests, r, r->next, r->prev);
   if (r->next) {
     assert(current_httpd_request_count >= 2);
     assert(r->next->prev == r);
@@ -430,10 +428,9 @@ int accumulate_text(httpd_request *r, const char *partname, char *textbuf, size_
   if (len) {
     size_t newlen = *textlenp + len;
     if (newlen > textsiz) {
-      if (config.debug.httpd)
-	DEBUGF("Form part \"%s\" too long, %zu bytes overflows maximum %zu by %zu",
-	    partname, newlen, textsiz, (size_t)(newlen - textsiz)
-	  );
+      DEBUGF(httpd, "Form part \"%s\" too long, %zu bytes overflows maximum %zu by %zu",
+	     partname, newlen, textsiz, (size_t)(newlen - textsiz)
+	);
       strbuf msg = strbuf_alloca(100);
       strbuf_sprintf(msg, "Overflow in \"%s\" form part", partname);
       http_request_simple_response(&r->http, 403, strbuf_str(msg));
@@ -460,10 +457,9 @@ int form_buf_malloc_accumulate(httpd_request *r, const char *partname, struct fo
     return 0;
   size_t newlen = f->length + len;
   if (newlen > f->size_limit) {
-    if (config.debug.httpd)
-      DEBUGF("form part \"%s\" overflow, %zu bytes exceeds limit %zu by %zu",
-	  partname, newlen, f->size_limit, (size_t)(newlen - f->size_limit)
-	);
+    DEBUGF(httpd, "form part \"%s\" overflow, %zu bytes exceeds limit %zu by %zu",
+	   partname, newlen, f->size_limit, (size_t)(newlen - f->size_limit)
+      );
     strbuf msg = strbuf_alloca(100);
     strbuf_sprintf(msg, "Overflow in \"%s\" form part", partname);
     http_request_simple_response(&r->http, 403, strbuf_str(msg));
@@ -494,12 +490,11 @@ void form_buf_malloc_release(struct form_buf_malloc *f)
 
 int http_response_content_type(httpd_request *r, const char *what, const struct mime_content_type *ct)
 {
-  if (config.debug.httpd)
-    DEBUGF("%s Content-Type: %s/%s%s%s%s%s", what, ct->type, ct->subtype,
-	ct->charset[0] ? "; charset=" : "",
-	ct->charset,
-	ct->multipart_boundary[0] ? "; boundary=" : "",
-	ct->multipart_boundary
+  DEBUGF(httpd, "%s Content-Type: %s/%s%s%s%s%s", what, ct->type, ct->subtype,
+	 ct->charset[0] ? "; charset=" : "",
+	 ct->charset,
+	 ct->multipart_boundary[0] ? "; boundary=" : "",
+	 ct->multipart_boundary
       );
   strbuf msg = strbuf_alloca(200);
   strbuf_sprintf(msg, "%s Content-Type:", what);
@@ -517,8 +512,7 @@ int http_response_content_type(httpd_request *r, const char *what, const struct 
 
 int http_response_content_disposition(httpd_request *r, const char *what, const char *type)
 {
-  if (config.debug.httpd)
-    DEBUGF("%s Content-Disposition: %s %s", what, type);
+  DEBUGF(httpd, "%s Content-Disposition: %s %s", what, type);
   strbuf msg = strbuf_alloca(100);
   strbuf_sprintf(msg, "%s Content-Disposition: %s", what, type);
   http_request_simple_response(&r->http, 403, strbuf_str(msg));
@@ -527,8 +521,7 @@ int http_response_content_disposition(httpd_request *r, const char *what, const 
 
 int http_response_form_part(httpd_request *r, const char *what, const char *partname, const char *text, size_t textlen)
 {
-  if (config.debug.httpd)
-    DEBUGF("%s \"%s\" form part %s", what, partname, text ? alloca_toprint(-1, text, textlen) : "");
+  DEBUGF(httpd, "%s \"%s\" form part %s", what, partname, text ? alloca_toprint(-1, text, textlen) : "");
   strbuf msg = strbuf_alloca(100);
   strbuf_sprintf(msg, "%s \"%s\" form part", what, partname);
   http_request_simple_response(&r->http, 403, strbuf_str(msg));

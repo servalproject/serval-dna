@@ -132,9 +132,9 @@ static int cf_om_make_child(struct cf_om_node **const parentp, const char *const
       c = strncmp(key, child->key, keylen);
       if (c == 0 && child->key[keylen])
 	c = -1;
-      //DEBUGF("   m=%u n=%u i=%u child->key=%s c=%d", m, n, i, alloca_str_toprint(child->key), c);
+      //DEBUGF(config, "   m=%u n=%u i=%u child->key=%s c=%d", m, n, i, alloca_str_toprint(child->key), c);
       if (c == 0) {
-	//DEBUGF("   found i=%u", i);
+	//DEBUGF(config, "   found i=%u", i);
 	return i;
       }
       if (c > 0)
@@ -159,7 +159,7 @@ static int cf_om_make_child(struct cf_om_node **const parentp, const char *const
   for (j = (*parentp)->nodc - 1; j > i; --j)
     (*parentp)->nodv[j] = (*parentp)->nodv[j-1];
   (*parentp)->nodv[i] = child;
-  //DEBUGF("   insert i=%u", i);
+  //DEBUGF(config, "   insert i=%u", i);
   return i;
 }
 
@@ -237,7 +237,7 @@ int cf_om_parse(const char *source, const char *buf, size_t len, struct cf_om_no
     nextline = lend + 1;
     if (lend > line && lend[-1] == '\r')
       --lend;
-    //DEBUGF("lineno=%u %s", lineno, alloca_toprint(-1, line, lend - line));
+    //DEBUGF(config, "lineno=%u %s", lineno, alloca_toprint(-1, line, lend - line));
     if (line[0] == '#')
       continue; // skip comment lines
     const char *p;
@@ -293,7 +293,7 @@ int cf_om_parse(const char *source, const char *buf, size_t len, struct cf_om_no
 void cf_om_free_node(struct cf_om_node **nodep)
 {
   if (*nodep) {
-    //DEBUGF("%s text=%s nodc=%d", (*nodep)->fullkey, alloca_str_toprint((*nodep)->text), (*nodep)->nodc);
+    //DEBUGF(config, "%s text=%s nodc=%d", (*nodep)->fullkey, alloca_str_toprint((*nodep)->text), (*nodep)->nodc);
     while ((*nodep)->nodc)
       cf_om_free_node(&(*nodep)->nodv[--(*nodep)->nodc]);
     if ((*nodep)->fullkey) {
@@ -312,9 +312,9 @@ void cf_om_free_node(struct cf_om_node **nodep)
 void cf_om_dump_node(const struct cf_om_node *node, int indent)
 {
   if (node == NULL)
-    DEBUGF("%*sNULL", indent * 3, "");
+    _DEBUGF("%*sNULL", indent * 3, "");
   else {
-    DEBUGF("%*s%s:%u fullkey=%s key=%s text=%s", indent * 3, "",
+    _DEBUGF("%*s%s:%u fullkey=%s key=%s text=%s", indent * 3, "",
 	node->source ? node->source : "NULL",
 	node->line_number,
 	alloca_str_toprint(node->fullkey),
@@ -330,15 +330,15 @@ void cf_om_dump_node(const struct cf_om_node *node, int indent)
 int cf_om_match(const char *pattern, const struct cf_om_node *node)
 {
   if (node == NULL) {
-    //DEBUGF("pattern='%s' node=NULL", pattern);
+    //DEBUGF(config, "pattern='%s' node=NULL", pattern);
     return 0;
   }
   if (node->fullkey == NULL) {
-    //DEBUGF("pattern='%s' node->fullkey=NULL", pattern);
+    //DEBUGF(config, "pattern='%s' node->fullkey=NULL", pattern);
     return 0;
   }
   /*
-  DEBUGF("pattern='%s' node->fullkey=%s node->nodc=%d node->text=%s",
+  DEBUGF(config, "pattern='%s' node->fullkey=%s node->nodc=%d node->text=%s",
       pattern,
       alloca_str_toprint(node->fullkey),
       node->nodc,
@@ -353,7 +353,7 @@ int cf_om_match(const char *pattern, const struct cf_om_node *node)
   const char *const fullkeyend = node->fullkey + strlen(node->fullkey);
   const char *keyend = NULL;
   const char *patend = pat;
-  //DEBUGF("   pat=%s key=%s", alloca_str_toprint(pat), alloca_str_toprint(key));
+  //DEBUGF(config, "   pat=%s key=%s", alloca_str_toprint(pat), alloca_str_toprint(key));
   while (pat < pattern_end && key <= fullkeyend && (keyend = cf_find_keyend(key, fullkeyend)) && (patend = cf_find_keypattern_end(pat, pattern_end))) {
     if (pat[0] == '*') {
       if (pat[1] == '*')
@@ -370,9 +370,9 @@ int cf_om_match(const char *pattern, const struct cf_om_node *node)
       ++pat;
     if (*key)
       ++key;
-    //DEBUGF("   pat=%s key=%s", alloca_str_toprint(pat), alloca_str_toprint(key));
+    //DEBUGF(config, "   pat=%s key=%s", alloca_str_toprint(pat), alloca_str_toprint(key));
   }
-  //DEBUGF("   patend=%s keyend=%s", alloca_str_toprint(patend), alloca_str_toprint(keyend));
+  //DEBUGF(config, "   patend=%s keyend=%s", alloca_str_toprint(patend), alloca_str_toprint(keyend));
   return patend == NULL ? -1 : keyend && keyend == fullkeyend && pat == pattern_end;
 }
 

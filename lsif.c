@@ -80,7 +80,7 @@
 */
 int scrapeProcNetRoute()
 {
-  if (config.debug.overlayinterfaces) DEBUG("called");
+  DEBUG(overlayinterfaces, "called");
 
   FILE *f=fopen("/proc/net/route","r");
   if (!f)
@@ -146,7 +146,7 @@ lsif(void) {
   bzero(&addr, sizeof(addr));
   bzero(&broadcast, sizeof(broadcast));
   
-  if (config.debug.overlayinterfaces) DEBUG("called");
+  DEBUG(overlayinterfaces, "called");
 
   /* Get a socket handle. */
   sck = socket(PF_INET, SOCK_DGRAM, 0);
@@ -176,7 +176,7 @@ lsif(void) {
 
     /* We're only interested in IPv4 addresses */
     if (ifr->ifr_ifru.ifru_addr.sa_family != AF_INET) {
-      if (config.debug.overlayinterfaces) DEBUGF("Skipping non-AF_INET address on %s", ifr->ifr_name);
+      DEBUGF(overlayinterfaces, "Skipping non-AF_INET address on %s", ifr->ifr_name);
       continue;
     }
     
@@ -189,7 +189,7 @@ lsif(void) {
     
     /* Not broadcast? Not interested.. */
     if ((ifr->ifr_ifru.ifru_flags & IFF_BROADCAST) == 0) {
-      if (config.debug.overlayinterfaces) DEBUGF("Skipping non-broadcast address on %s", ifr->ifr_name);
+      DEBUGF(overlayinterfaces, "Skipping non-broadcast address on %s", ifr->ifr_name);
       continue;
     }
     
@@ -211,7 +211,7 @@ lsif(void) {
     nInterfaces++;
   }
   
-  if (config.debug.overlayinterfaces) DEBUGF("Examined %u interface addresses", nInterfaces);
+  DEBUGF(overlayinterfaces, "Examined %u interface addresses", nInterfaces);
 
   close(sck); 
   return 0;
@@ -229,7 +229,7 @@ doifaddrs(void) {
   bzero(&addr, sizeof(addr));
   bzero(&broadcast, sizeof(broadcast));
   
-  if (config.debug.overlayinterfaces) DEBUGF("called");
+  DEBUGF(overlayinterfaces, "called");
   
   if (getifaddrs(&ifaddr) == -1)
     return WHY_perror("getifaddr()");
@@ -243,13 +243,13 @@ doifaddrs(void) {
     
     /* We're only interested in IPv4 addresses */
     if (ifa->ifa_addr->sa_family != AF_INET) {
-      if (config.debug.overlayinterfaces) DEBUGF("Skipping non-AF_INET address on %s", ifa->ifa_name);
+      DEBUGF(overlayinterfaces, "Skipping non-AF_INET address on %s", ifa->ifa_name);
       continue;
     }
     
     /* Not broadcast? Not interested.. */
     if ((ifa->ifa_flags & IFF_BROADCAST) == 0) {
-      if (config.debug.overlayinterfaces) DEBUGF("Skipping non-broadcast address on %s", ifa->ifa_name);
+      DEBUGF(overlayinterfaces, "Skipping non-broadcast address on %s", ifa->ifa_name);
       continue;
     }
 

@@ -25,8 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 void _exit(int status);
 void exit(int status)
 {
-  if (config.debug.verbose)
-    DEBUGF("Calling _exit(%d)", status);
+  DEBUGF(verbose, "Calling _exit(%d)", status);
   fflush(stdout);
   _exit(status);
 }

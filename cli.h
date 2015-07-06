@@ -72,9 +72,9 @@ struct cli_parsed {
   int varargi; // -1 means no var args
 };
 
-void _debug_cli_parsed(struct __sourceloc __whence, const struct cli_parsed *parsed);
+void _debug_cli_parsed(struct __sourceloc __whence, const char *tag, const struct cli_parsed *parsed);
 
-#define DEBUG_cli_parsed(parsed) _debug_cli_parsed(__WHENCE__, parsed)
+#define DEBUG_cli_parsed(TAG,parsed) _debug_cli_parsed(__WHENCE__, "{" #TAG "}", parsed)
 
 int cli_usage(const struct cli_schema *commands, const struct cli_schema *end_commands, XPRINTF xpf);
 int cli_usage_args(const int argc, const char *const *args, const struct cli_schema *commands, const struct cli_schema *end_commands, XPRINTF xpf);

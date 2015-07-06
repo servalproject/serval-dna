@@ -39,8 +39,7 @@ static int create_rhizome_store_dir()
   if (!formf_rhizome_store_path(rdpath, sizeof rdpath, "%s", config.rhizome.datastore_path))
     return -1;
   INFOF("Rhizome datastore path = %s", alloca_str_toprint(rdpath));
-  if (config.debug.rhizome)
-    DEBUGF("mkdirs(%s, 0700)", alloca_str_toprint(rdpath));
+  DEBUGF(rhizome, "mkdirs(%s, 0700)", alloca_str_toprint(rdpath));
   return emkdirs_info(rdpath, 0700);
 }
 
@@ -50,12 +49,12 @@ static time_ms_t rhizomeRetryLimit = -1;
 
 int is_debug_rhizome()
 {
-  return config.debug.rhizome;
+  return IF_DEBUG(rhizome);
 }
 
 int is_debug_rhizome_ads()
 {
-  return config.debug.rhizome_ads;
+  return IF_DEBUG(rhizome_ads);
 }
 
 static int (*sqlite_trace_func)() = is_debug_rhizome;
@@ -142,8 +141,7 @@ void verify_bundles()
 	ret = rhizome_store_manifest(m);
       }
       if (ret) {
-	if (config.debug.rhizome)
-	  DEBUGF("Removing invalid manifest entry @%lld", rowid);
+	DEBUGF(rhizome, "Removing invalid manifest entry @%lld", rowid);
 	sqlite_exec_void_retry(&retry, "DELETE FROM MANIFESTS WHERE ROWID = ?;", INT64, rowid, END);
       }
       rhizome_manifest_free(m);
@@ -218,14 +216,13 @@ int rhizome_opendb()
   }
   sqlite3_trace(rhizome_db, sqlite_trace_callback, NULL);
   sqlite3_profile(rhizome_db, sqlite_profile_callback, NULL);
-  int loglevel = (config.debug.rhizome) ? LOG_LEVEL_DEBUG : LOG_LEVEL_SILENT;
+  int loglevel = IF_DEBUG(rhizome) ? LOG_LEVEL_DEBUG : LOG_LEVEL_SILENT;
 
   const char *env = getenv("SERVALD_RHIZOME_DB_RETRY_LIMIT_MS");
   rhizomeRetryLimit = env ? atoi(env) : -1;
 
   /* Read Rhizome configuration */
-  if (config.debug.rhizome)
-    DEBUGF("Rhizome will use %"PRIu64"B of storage for its database.", (uint64_t) config.rhizome.database_size);
+  DEBUGF(rhizome, "Rhizome will use %"PRIu64"B of storage for its database.", (uint64_t) config.rhizome.database_size);
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
@@ -331,16 +328,14 @@ int rhizome_opendb()
 	RETURN(WHY("Cannot generate new UUID for Rhizome database"));
       if (sqlite_exec_void_retry(&retry, "UPDATE IDENTITY SET uuid = ? LIMIT 1;", SERVAL_UUID_T, &rhizome_db_uuid, END) == -1)
 	RETURN(WHY("Failed to update new UUID in Rhizome database"));
-      if (config.debug.rhizome)
-	DEBUGF("Updated Rhizome database UUID to %s", alloca_uuid_str(rhizome_db_uuid));
+      DEBUGF(rhizome, "Updated Rhizome database UUID to %s", alloca_uuid_str(rhizome_db_uuid));
     }
   } else if (r == 0) {
     if (uuid_generate_random(&rhizome_db_uuid) == -1)
       RETURN(WHY("Cannot generate UUID for Rhizome database"));
     if (sqlite_exec_void_retry(&retry, "INSERT INTO IDENTITY (uuid) VALUES (?);", SERVAL_UUID_T, &rhizome_db_uuid, END) == -1)
       RETURN(WHY("Failed to insert UUID into Rhizome database"));
-    if (config.debug.rhizome)
-      DEBUGF("Set Rhizome database UUID to %s", alloca_uuid_str(rhizome_db_uuid));
+    DEBUGF(rhizome, "Set Rhizome database UUID to %s", alloca_uuid_str(rhizome_db_uuid));
   }
 
   // We can't delete a file that is being transferred in another process at this very moment...
@@ -538,7 +533,7 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	LOGF(log_level, "at bind arg %u, illegal index=%d: %s", argnum, index, sqlite3_sql(statement));
 	return -1;
       }
-      if (config.debug.rhizome)
+      if (IF_DEBUG(rhizome))
 	strbuf_sprintf((ext = strbuf_alloca(35)), "|INDEX(%d)", index);
     } else if ((typ & 0xffff0000) == NAMED) {
       typ &= 0xffff;
@@ -549,7 +544,7 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	LOGF(log_level, "at bind arg %u, no parameter named %s in query: %s", argnum, alloca_str_toprint(name), sqlite3_sql(statement));
 	return -1;
       }
-      if (config.debug.rhizome) {
+      if (IF_DEBUG(rhizome)) {
 	ext = strbuf_alloca(30 + toprint_str_len(name, "\"\""));
 	strbuf_puts(ext, "|NAMED(");
 	strbuf_toprint_quoted(ext, "\"\"", name);
@@ -557,15 +552,14 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
       }
     } else if ((typ & 0xffff0000) == 0) {
       index = ++index_counter;
-      if (config.debug.rhizome)
+      if (IF_DEBUG(rhizome))
 	ext = strbuf_alloca(10);
     } else {
       FATALF("at bind arg %u, unsupported bind code typ=0x%08x: %s", argnum, typ, sqlite3_sql(statement));
       return -1;
     }
 #define BIND_DEBUG(TYP,FUNC,ARGFMT,...) \
-	if (config.debug.rhizome_sql_bind) \
-	  DEBUGF("%s%s %s(%d," ARGFMT ") %s", #TYP, strbuf_str(ext), #FUNC, index, ##__VA_ARGS__, sqlite3_sql(statement))
+	DEBUGF(rhizome_sql_bind, "%s%s %s(%d," ARGFMT ") %s", #TYP, strbuf_str(ext), #FUNC, index, ##__VA_ARGS__, sqlite3_sql(statement))
 #define BIND_RETRY(FUNC, ...) \
 	do { \
 	  switch (FUNC(statement, index, ##__VA_ARGS__)) { \
@@ -597,7 +591,7 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	BIND_RETRY(sqlite3_bind_null);
 	break;
       default:
-	if ((typ & NUL) && config.debug.rhizome)
+	if ((typ & NUL) && IF_DEBUG(rhizome))
 	  strbuf_puts(ext, "|NUL");
 	switch (typ & ~NUL) {
 	  case INT: {
@@ -918,7 +912,7 @@ int _sqlite_exec(struct __sourceloc __whence, int log_level, sqlite_retry_state 
     ++rowcount;
   sqlite3_finalize(statement);
   if (sqlite_trace_func())
-    DEBUGF("rowcount=%d changes=%d", rowcount, sqlite3_changes(rhizome_db));
+    _DEBUGF("rowcount=%d changes=%d", rowcount, sqlite3_changes(rhizome_db));
   return sqlite_code_ok(stepcode) ? rowcount : -1;
 }
 
@@ -997,7 +991,7 @@ static int _sqlite_vexec_uint64(struct __sourceloc __whence, sqlite_retry_state 
   if (!sqlite_code_ok(stepcode) || ret == -1)
     return -1;
   if (sqlite_trace_func())
-    DEBUGF("rowcount=%d changes=%d result=%"PRIu64, rowcount, sqlite3_changes(rhizome_db), *result);
+    _DEBUGF("rowcount=%d changes=%d result=%"PRIu64, rowcount, sqlite3_changes(rhizome_db), *result);
   return rowcount;
 }
 
@@ -1197,7 +1191,7 @@ void rhizome_vacuum_db(sqlite_retry_state *retry){
 int rhizome_cleanup(struct rhizome_cleanup_report *report)
 {
   IN();
-  if (config.debug.rhizome && report == NULL)
+  if (IF_DEBUG(rhizome) && report == NULL)
     report = alloca(sizeof *report);
   if (report)
     bzero(report, sizeof *report);
@@ -1251,13 +1245,13 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report)
   
   rhizome_vacuum_db(&retry);
   
-  if (config.debug.rhizome && report)
-    DEBUGF("report deleted_stale_incoming_files=%u deleted_orphan_files=%u deleted_orphan_fileblobs=%u deleted_orphan_manifests=%u",
-	report->deleted_stale_incoming_files,
-	report->deleted_orphan_files,
-	report->deleted_orphan_fileblobs,
-	report->deleted_orphan_manifests
-      );
+  if (report)
+    DEBUGF(rhizome, "report deleted_stale_incoming_files=%u deleted_orphan_files=%u deleted_orphan_fileblobs=%u deleted_orphan_manifests=%u",
+	   report->deleted_stale_incoming_files,
+	   report->deleted_orphan_files,
+	   report->deleted_orphan_fileblobs,
+	   report->deleted_orphan_manifests
+	  );
   RETURN(0);
   OUT();
 }
@@ -1375,11 +1369,10 @@ rollback:
 
 static void trigger_rhizome_bundle_added_debug(rhizome_manifest *m)
 {
-  if (config.debug.rhizome)
-    DEBUGF("TRIGGER rhizome_bundle_added service=%s bid=%s version=%"PRIu64,
-	    m->service ? m->service : "NULL",
-	    alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
-	    m->version
+  DEBUGF(rhizome, "TRIGGER rhizome_bundle_added service=%s bid=%s version=%"PRIu64,
+	 m->service ? m->service : "NULL",
+	 alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
+	 m->version
 	);
 }
 
@@ -1392,16 +1385,15 @@ DEFINE_TRIGGER(rhizome_bundle_added, trigger_rhizome_bundle_added_debug)
  */
 int rhizome_list_open(struct rhizome_list_cursor *c)
 {
-  if (config.debug.rhizome)
-    DEBUGF("c=%p c->service=%s c->name=%s c->sender=%s c->recipient=%s c->rowid_since=%"PRIu64" c->_rowid_last=%"PRIu64,
-	c,
-	alloca_str_toprint(c->service),
-	alloca_str_toprint(c->name),
-	c->is_sender_set ? alloca_tohex_sid_t(c->sender) : "UNSET",
-	c->is_recipient_set ? alloca_tohex_sid_t(c->recipient) : "UNSET",
-	c->rowid_since,
-	c->_rowid_last
-      );
+  DEBUGF(rhizome, "c=%p c->service=%s c->name=%s c->sender=%s c->recipient=%s c->rowid_since=%"PRIu64" c->_rowid_last=%"PRIu64,
+	 c,
+	 alloca_str_toprint(c->service),
+	 alloca_str_toprint(c->name),
+	 c->is_sender_set ? alloca_tohex_sid_t(c->sender) : "UNSET",
+	 c->is_recipient_set ? alloca_tohex_sid_t(c->recipient) : "UNSET",
+	 c->rowid_since,
+	 c->_rowid_last
+        );
   IN();
   strbuf b = strbuf_alloca(1024);
   strbuf_sprintf(b, "SELECT id, manifest, version, inserttime, author, rowid FROM manifests WHERE 1=1");
@@ -1459,16 +1451,15 @@ failure:
  */
 int rhizome_list_next(struct rhizome_list_cursor *c)
 {
-  if (config.debug.rhizome)
-    DEBUGF("c=%p c->service=%s c->name=%s c->sender=%s c->recipient=%s c->rowid_since=%"PRIu64" c->_rowid_last=%"PRIu64,
-	c,
-	alloca_str_toprint(c->service),
-	alloca_str_toprint(c->name),
-	c->is_sender_set ? alloca_tohex_sid_t(c->sender) : "UNSET",
-	c->is_recipient_set ? alloca_tohex_sid_t(c->recipient) : "UNSET",
-	c->rowid_since,
-	c->_rowid_last
-      );
+  DEBUGF(rhizome, "c=%p c->service=%s c->name=%s c->sender=%s c->recipient=%s c->rowid_since=%"PRIu64" c->_rowid_last=%"PRIu64,
+	 c,
+	 alloca_str_toprint(c->service),
+	 alloca_str_toprint(c->name),
+	 c->is_sender_set ? alloca_tohex_sid_t(c->sender) : "UNSET",
+	 c->is_recipient_set ? alloca_tohex_sid_t(c->recipient) : "UNSET",
+	 c->rowid_since,
+	 c->_rowid_last
+        );
   IN();
   if (c->_statement == NULL && rhizome_list_open(c) == -1)
     RETURN(-1);
@@ -1550,9 +1541,8 @@ int rhizome_list_next(struct rhizome_list_cursor *c)
 
 void rhizome_list_commit(struct rhizome_list_cursor *c)
 {
-  if (config.debug.rhizome)
-    DEBUGF("c=%p c->rowid_since=%"PRIu64" c->_rowid_current=%"PRIu64" c->_rowid_last=%"PRIu64,
-	c, c->rowid_since, c->_rowid_current, c->_rowid_last);
+  DEBUGF(rhizome, "c=%p c->rowid_since=%"PRIu64" c->_rowid_current=%"PRIu64" c->_rowid_last=%"PRIu64,
+	 c, c->rowid_since, c->_rowid_current, c->_rowid_last);
   assert(c->_rowid_current != 0);
   if (c->_rowid_last == 0 || (c->rowid_since ? c->_rowid_current > c->_rowid_last : c->_rowid_current < c->_rowid_last))
     c->_rowid_last = c->_rowid_current;
@@ -1560,8 +1550,7 @@ void rhizome_list_commit(struct rhizome_list_cursor *c)
 
 void rhizome_list_release(struct rhizome_list_cursor *c)
 {
-  if (config.debug.rhizome)
-    DEBUGF("c=%p", c);
+  DEBUGF(rhizome, "c=%p", c);
   if (c->manifest) {
     rhizome_manifest_free(c->manifest);
     c->_rowid_current = 0;
@@ -1622,8 +1611,7 @@ enum rhizome_bundle_status rhizome_find_duplicate(const rhizome_manifest *m, rhi
   int r=0;
   while ((r=sqlite_step_retry(&retry, statement)) == SQLITE_ROW) {
     ++rows;
-    if (config.debug.rhizome)
-      DEBUGF("Row %d", rows);
+    DEBUGF(rhizome, "Row %d", rows);
     rhizome_manifest *blob_m = rhizome_new_manifest();
     if (blob_m == NULL) {
       ret = WHY("Out of manifests");
@@ -1657,8 +1645,7 @@ enum rhizome_bundle_status rhizome_find_duplicate(const rhizome_manifest *m, rhi
     if (m->authorship != AUTHOR_AUTHENTIC)
       goto next;
     *found = blob_m;
-    if (config.debug.rhizome)
-      DEBUGF("Found duplicate payload, %s", q_manifestid);
+    DEBUGF(rhizome, "Found duplicate payload, %s", q_manifestid);
     ret = RHIZOME_BUNDLE_STATUS_DUPLICATE;
     break;
 next:
@@ -1716,8 +1703,7 @@ static enum rhizome_bundle_status unpack_manifest_row(sqlite_retry_state *retry,
  */
 enum rhizome_bundle_status rhizome_retrieve_manifest(const rhizome_bid_t *bidp, rhizome_manifest *m)
 {
-  if (config.debug.rhizome)
-    DEBUGF("retrieve manifest bid=%s", bidp ? alloca_tohex_rhizome_bid_t(*bidp) : "<NULL>");
+  DEBUGF(rhizome, "retrieve manifest bid=%s", bidp ? alloca_tohex_rhizome_bid_t(*bidp) : "<NULL>");
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
       "SELECT id, manifest, version, inserttime, author, rowid FROM manifests WHERE id = ?",

@@ -217,8 +217,7 @@ enum rhizome_secret_disposition find_rhizome_secret(const sid_t *authorSidp, siz
   keyring_iterator_start(keyring, &it);
   
   if (!keyring_find_sid(&it, authorSidp)) {
-    if (config.debug.rhizome)
-      DEBUGF("identity sid=%s is not in keyring", alloca_tohex_sid_t(*authorSidp));
+    DEBUGF(rhizome, "identity sid=%s is not in keyring", alloca_tohex_sid_t(*authorSidp));
     RETURN(IDENTITY_NOT_FOUND);
   }
   keypair *kp=keyring_identity_keytype(it.identity, KEYTYPE_RHIZOME);
@@ -244,58 +243,48 @@ enum rhizome_secret_disposition find_rhizome_secret(const sid_t *authorSidp, siz
 void rhizome_authenticate_author(rhizome_manifest *m)
 {
   IN();
-  if (config.debug.rhizome)
-    DEBUGF("authenticate author for bid=%s", m->has_id ? alloca_tohex_rhizome_bid_t(m->cryptoSignPublic) : "(none)");
+  DEBUGF(rhizome, "authenticate author for bid=%s", m->has_id ? alloca_tohex_rhizome_bid_t(m->cryptoSignPublic) : "(none)");
   if (!m->has_bundle_key) {
-    if (config.debug.rhizome)
-      DEBUG("   no BK field");
+    DEBUG(rhizome, "   no BK field");
     RETURNVOID;
   }
   switch (m->authorship) {
     case ANONYMOUS:
-      if (config.debug.rhizome)
-	DEBUGF("   manifest[%d] author unknown", m->manifest_record_number);
+      DEBUGF(rhizome, "   manifest[%d] author unknown", m->manifest_record_number);
       rhizome_find_bundle_author_and_secret(m);
       break;
     case AUTHOR_NOT_CHECKED:
     case AUTHOR_LOCAL: {
-	if (config.debug.rhizome)
-	  DEBUGF("   manifest[%d] authenticate author=%s", m->manifest_record_number, alloca_tohex_sid_t(m->author));
+	DEBUGF(rhizome, "   manifest[%d] authenticate author=%s", m->manifest_record_number, alloca_tohex_sid_t(m->author));
 	size_t rs_len;
 	const unsigned char *rs;
 	enum rhizome_secret_disposition d = find_rhizome_secret(&m->author, &rs_len, &rs);
 	switch (d) {
 	  case FOUND_RHIZOME_SECRET:
-	    if (config.debug.rhizome)
-	      DEBUGF("   author has Rhizome secret");
+	    DEBUGF(rhizome, "   author has Rhizome secret");
 	    switch (rhizome_bk2secret(&m->cryptoSignPublic, rs, rs_len, m->bundle_key.binary, m->cryptoSignSecret)) {
 	      case 0:
-		if (config.debug.rhizome)
-		  DEBUGF("   is authentic");
+		DEBUGF(rhizome, "   is authentic");
 		m->authorship = AUTHOR_AUTHENTIC;
 		if (!m->haveSecret)
 		  m->haveSecret = EXISTING_BUNDLE_ID;
 		break;
 	      case -1:
-		if (config.debug.rhizome)
-		  DEBUGF("   error");
+		DEBUGF(rhizome, "   error");
 		m->authorship = AUTHENTICATION_ERROR;
 		break;
 	      default:
-		if (config.debug.rhizome)
-		  DEBUGF("   author is impostor");
+		DEBUGF(rhizome, "   author is impostor");
 		m->authorship = AUTHOR_IMPOSTOR;
 		break;
 	    }
 	    break;
 	  case IDENTITY_NOT_FOUND:
-	    if (config.debug.rhizome)
-	      DEBUGF("   author not found");
+	    DEBUGF(rhizome, "   author not found");
 	    m->authorship = AUTHOR_UNKNOWN;
 	    break;
 	  case IDENTITY_HAS_NO_RHIZOME_SECRET:
-	    if (config.debug.rhizome)
-	      DEBUGF("   author has no Rhizome secret");
+	    DEBUGF(rhizome, "   author has no Rhizome secret");
 	    m->authorship = AUTHENTICATION_ERROR;
 	    break;
 	  default:
@@ -329,16 +318,14 @@ void rhizome_authenticate_author(rhizome_manifest *m)
 int rhizome_apply_bundle_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
 {
   IN();
-  if (config.debug.rhizome)
-    DEBUGF("manifest[%d] bsk=%s", m->manifest_record_number, bsk ? alloca_tohex_rhizome_bk_t(*bsk) : "NULL");
+  DEBUGF(rhizome, "manifest[%d] bsk=%s", m->manifest_record_number, bsk ? alloca_tohex_rhizome_bk_t(*bsk) : "NULL");
   assert(m->haveSecret == SECRET_UNKNOWN);
   assert(is_all_matching(m->cryptoSignSecret, sizeof m->cryptoSignSecret, 0));
   assert(m->has_id);
   assert(bsk != NULL);
   assert(!rhizome_is_bk_none(bsk));
   if (rhizome_verify_bundle_privatekey(bsk->binary, m->cryptoSignPublic.binary)) {
-    if (config.debug.rhizome)
-      DEBUG("bundle secret verifies ok");
+    DEBUG(rhizome, "bundle secret verifies ok");
     bcopy(bsk->binary, m->cryptoSignSecret, sizeof bsk->binary);
     bcopy(m->cryptoSignPublic.binary, m->cryptoSignSecret + sizeof bsk->binary, sizeof m->cryptoSignPublic.binary);
     m->haveSecret = EXISTING_BUNDLE_ID;
@@ -375,17 +362,14 @@ int rhizome_apply_bundle_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
 void rhizome_find_bundle_author_and_secret(rhizome_manifest *m)
 {
   IN();
-  if (config.debug.rhizome)
-    DEBUGF("Finding author and secret for bid=%s", m->has_id ? alloca_tohex_rhizome_bid_t(m->cryptoSignPublic) : "(none)");
+  DEBUGF(rhizome, "Finding author and secret for bid=%s", m->has_id ? alloca_tohex_rhizome_bid_t(m->cryptoSignPublic) : "(none)");
   if (m->authorship != ANONYMOUS) {
-    if (config.debug.rhizome)
-      DEBUGF("   bundle is anonymous");
+    DEBUGF(rhizome, "   bundle is anonymous");
     RETURNVOID;
   }
   assert(is_sid_t_any(m->author));
   if (!m->has_bundle_key) {
-    if (config.debug.rhizome)
-      DEBUGF("   bundle has no BK field");
+    DEBUGF(rhizome, "   bundle has no BK field");
     RETURNVOID;
   }
   keyring_iterator it;
@@ -411,8 +395,7 @@ void rhizome_find_bundle_author_and_secret(rhizome_manifest *m)
       keypair *kp_sid = keyring_identity_keytype(it.identity, KEYTYPE_CRYPTOBOX);
       if (kp_sid) {
 	const sid_t *authorSidp = (const sid_t *) kp_sid->public_key;
-	if (config.debug.rhizome)
-	  DEBUGF("   found bundle author sid=%s", alloca_tohex_sid_t(*authorSidp));
+	DEBUGF(rhizome, "   found bundle author sid=%s", alloca_tohex_sid_t(*authorSidp));
 	rhizome_manifest_set_author(m, authorSidp);
 	m->authorship = AUTHOR_AUTHENTIC;
 	// if this bundle is already in the database, update the author.
@@ -427,8 +410,7 @@ void rhizome_find_bundle_author_and_secret(rhizome_manifest *m)
     }
   }
   assert(m->authorship == ANONYMOUS);
-  if (config.debug.rhizome)
-    DEBUG("   bundle author not found");
+  DEBUG(rhizome, "   bundle author not found");
   OUT();
 }
 
@@ -535,8 +517,7 @@ static int rhizome_manifest_lookup_signature_validity(const unsigned char *hash,
 int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs)
 {
   IN();
-  if (config.debug.rhizome_manifest)
-    DEBUGF("*ofs=%u m->manifest_all_bytes=%zu", *ofs, m->manifest_all_bytes);
+  DEBUGF(rhizome_manifest, "*ofs=%u m->manifest_all_bytes=%zu", *ofs, m->manifest_all_bytes);
   assert((*ofs) < m->manifest_all_bytes);
   const unsigned char *sig = m->manifestdata + *ofs;
   uint8_t sigType = m->manifestdata[*ofs];
@@ -568,8 +549,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs)
 	RETURN(-1);
       bcopy(sig + 1 + 64, m->signatories[m->sig_count], crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
       m->sig_count++;
-      if (config.debug.rhizome)
-	DEBUG("Signature verified");
+      DEBUG(rhizome, "Signature verified");
       RETURN(0);
     }
   }
@@ -653,17 +633,15 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
 	return 0;
       }
       nm_bytes = keyring_get_nm_bytes(&m->recipient, &m->sender);
-      if (config.debug.rhizome)
-	DEBUGF("derived payload key from recipient=%s* to sender=%s*",
-	      alloca_tohex_sid_t_trunc(m->recipient, 7),
-	      alloca_tohex_sid_t_trunc(m->sender, 7)
+      DEBUGF(rhizome, "derived payload key from recipient=%s* to sender=%s*",
+	     alloca_tohex_sid_t_trunc(m->recipient, 7),
+	     alloca_tohex_sid_t_trunc(m->sender, 7)
 	    );
     }else{
       nm_bytes = keyring_get_nm_bytes(&m->sender, &m->recipient);
-      if (config.debug.rhizome)
-	DEBUGF("derived payload key from sender=%s* to recipient=%s*",
-	      alloca_tohex_sid_t_trunc(m->sender, 7),
-	      alloca_tohex_sid_t_trunc(m->recipient, 7)
+      DEBUGF(rhizome, "derived payload key from sender=%s* to recipient=%s*",
+	     alloca_tohex_sid_t_trunc(m->sender, 7),
+	     alloca_tohex_sid_t_trunc(m->recipient, 7)
 	    );
     }
     assert(nm_bytes != NULL);
@@ -674,15 +652,13 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
       WHY("Cannot derive payload key because bundle secret is unknown");
       return 0;
     }
-    if (config.debug.rhizome)
-      DEBUGF("derived payload key from bundle secret bsk=%s", alloca_tohex(m->cryptoSignSecret, sizeof m->cryptoSignSecret));
+    DEBUGF(rhizome, "derived payload key from bundle secret bsk=%s", alloca_tohex(m->cryptoSignSecret, sizeof m->cryptoSignSecret));
     unsigned char raw_key[9+crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]="sasquatch";
     bcopy(m->cryptoSignSecret, &raw_key[9], crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
     crypto_hash_sha512(hash, raw_key, sizeof(raw_key));
   }
   bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
-  if (config.debug.rhizome_manifest)
-    DEBUGF("SET manifest[%d].payloadKey = %s", m->manifest_record_number, alloca_tohex(m->payloadKey, sizeof m->payloadKey));
+  DEBUGF(rhizome_manifest, "SET manifest[%d].payloadKey = %s", m->manifest_record_number, alloca_tohex(m->payloadKey, sizeof m->payloadKey));
 
   // journal bundles must always have the same nonce, regardless of version.
   // otherwise, generate nonce from version#bundle id#version;
@@ -691,12 +667,10 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
   write_uint64(&raw_nonce[0], nonce_version);
   bcopy(m->cryptoSignPublic.binary, &raw_nonce[8], sizeof m->cryptoSignPublic.binary);
   write_uint64(&raw_nonce[8 + sizeof m->cryptoSignPublic.binary], nonce_version);
-  if (config.debug.rhizome)
-    DEBUGF("derived payload nonce from bid=%s version=%"PRIu64, alloca_tohex_sid_t(m->cryptoSignPublic), nonce_version);
+  DEBUGF(rhizome, "derived payload nonce from bid=%s version=%"PRIu64, alloca_tohex_sid_t(m->cryptoSignPublic), nonce_version);
   crypto_hash_sha512(hash, raw_nonce, sizeof(raw_nonce));
   bcopy(hash, m->payloadNonce, sizeof(m->payloadNonce));
-  if (config.debug.rhizome_manifest)
-    DEBUGF("SET manifest[%d].payloadNonce = %s", m->manifest_record_number, alloca_tohex(m->payloadNonce, sizeof m->payloadNonce));
+  DEBUGF(rhizome_manifest, "SET manifest[%d].payloadNonce = %s", m->manifest_record_number, alloca_tohex(m->payloadNonce, sizeof m->payloadNonce));
 
   return 1;
 }

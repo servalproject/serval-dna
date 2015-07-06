@@ -48,15 +48,12 @@ static const char *conffile_path()
 
 static int reload(const char *path, int *resultp)
 {
-  if (config.debug.config)
-    DEBUGF("    file path=%s", alloca_str_toprint(path));
+  DEBUGF(config, "    file path=%s", alloca_str_toprint(path));
   struct file_meta meta;
   if (get_file_meta(path, &meta) == -1)
     return -1;
-  if (config.debug.config) {
-    DEBUGF("    file meta=%s", alloca_file_meta(&meta));
-    DEBUGF("conffile_meta=%s", alloca_file_meta(&conffile_meta));
-  }
+  DEBUGF(config, "    file meta=%s", alloca_file_meta(&meta));
+  DEBUGF(config, "conffile_meta=%s", alloca_file_meta(&conffile_meta));
   if (cmp_file_meta(&meta, &conffile_meta) == 0)
     return 0;
   if (conffile_meta.mtime.tv_sec != -1)
@@ -93,12 +90,10 @@ static int reload(const char *path, int *resultp)
       free(buf);
       return -1;
     }
-    if (config.debug.config)
-      DEBUGF("config file %s successfully read %ld bytes", path, (long) meta.size);
+    DEBUGF(config, "config file %s successfully read %ld bytes", path, (long) meta.size);
   }
   conffile_meta = meta;
-  if (config.debug.config)
-    DEBUGF("set conffile_meta=%s", alloca_file_meta(&conffile_meta));
+  DEBUGF(config, "set conffile_meta=%s", alloca_file_meta(&conffile_meta));
   struct cf_om_node *new_root = NULL;
   *resultp = cf_om_parse(path, buf, meta.size, &new_root);
   free(buf);
@@ -157,8 +152,7 @@ int cf_om_save()
     else
       INFOF("wrote %s", path);
     conffile_meta = newmeta;
-    if (config.debug.config)
-      DEBUGF("set conffile_meta=%s", alloca_file_meta(&conffile_meta));
+    DEBUGF(config, "set conffile_meta=%s", alloca_file_meta(&conffile_meta));
   }
   return 0;
 }

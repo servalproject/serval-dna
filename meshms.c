@@ -71,15 +71,11 @@ static enum meshms_status get_my_conversation_bundle(const sid_t *my_sidp, rhizo
     rhizome_manifest_set_name(m, "");
     if (rhizome_fill_manifest(m, NULL, my_sidp) != NULL)
       return WHY("Invalid conversation manifest");
-    if (config.debug.meshms) {
-      char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-      rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
-      // The 'meshms' automated test depends on this message; do not alter.
-      DEBUGF("MESHMS CONVERSATION BUNDLE bid=%s secret=%s",
-	    alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
-	    secret
+    // The 'meshms' automated test depends on this message; do not alter.
+    DEBUGF(meshms, "MESHMS CONVERSATION BUNDLE bid=%s secret=%s",
+	   alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
+	   alloca_tohex(m->cryptoSignSecret, RHIZOME_BUNDLE_KEY_BYTES)
 	  );
-    }
   } else {
     if (strcmp(m->service, RHIZOME_SERVICE_FILE) != 0) {
       WARNF("Invalid conversations manifest, service=%s but should be %s", m->service, RHIZOME_SERVICE_FILE);
@@ -125,11 +121,10 @@ static enum meshms_status get_database_conversations(const sid_t *my_sid, const 
     );
   if (!statement)
     return MESHMS_STATUS_ERROR;
-  if (config.debug.meshms) {
-    const char *my_sid_hex = alloca_tohex_sid_t(*my_sid);
-    const char *their_sid_hex = alloca_tohex_sid_t(*(their_sid ? their_sid : my_sid));
-    DEBUGF("Looking for conversations for %s, %s", my_sid_hex, their_sid_hex);
-  }
+  DEBUGF(meshms, "Looking for conversations for %s, %s",
+	 alloca_tohex_sid_t(*my_sid),
+	 alloca_tohex_sid_t(*(their_sid ? their_sid : my_sid))
+	);
   int r;
   while ((r=sqlite_step_retry(&retry, statement)) == SQLITE_ROW) {
     const char *id_hex = (const char *)sqlite3_column_text(statement, 0);
@@ -138,8 +133,7 @@ static enum meshms_status get_database_conversations(const sid_t *my_sid, const 
     int64_t tail = sqlite3_column_int64(statement, 3);
     const char *sender = (const char *)sqlite3_column_text(statement, 4);
     const char *recipient = (const char *)sqlite3_column_text(statement, 5);
-    if (config.debug.meshms)
-      DEBUGF("found id %s, sender %s, recipient %s", id_hex, sender, recipient);
+    DEBUGF(meshms, "found id %s, sender %s, recipient %s", id_hex, sender, recipient);
     rhizome_bid_t bid;
     if (str_to_rhizome_bid_t(&bid, id_hex) == -1) {
       WHYF("invalid Bundle ID hex: %s -- skipping", alloca_str_toprint(id_hex));
@@ -196,10 +190,10 @@ static enum meshms_status find_or_create_conv(const sid_t *my_sid, const sid_t *
 
 static int create_ply(const sid_t *my_sid, struct meshms_conversations *conv, rhizome_manifest *m)
 {
-  if (config.debug.meshms)
-    DEBUGF("Creating ply for my_sid=%s them=%s",
-	alloca_tohex_sid_t(conv->them),
-	alloca_tohex_sid_t(*my_sid));
+  DEBUGF(meshms, "Creating ply for my_sid=%s them=%s",
+	 alloca_tohex_sid_t(conv->them),
+	 alloca_tohex_sid_t(*my_sid)
+	);
   rhizome_manifest_set_service(m, RHIZOME_SERVICE_MESHMS2);
   rhizome_manifest_set_sender(m, my_sid);
   rhizome_manifest_set_recipient(m, &conv->them);
@@ -232,8 +226,7 @@ static size_t append_timestamp(uint8_t *buffer)
 
 static enum meshms_status ply_read_open(struct meshms_ply_read *ply, const rhizome_bid_t *bid, rhizome_manifest *m)
 {
-  if (config.debug.meshms)
-    DEBUGF("Opening ply %s", alloca_tohex_rhizome_bid_t(*bid));
+  DEBUGF(meshms, "Opening ply %s", alloca_tohex_rhizome_bid_t(*bid));
   switch (rhizome_retrieve_manifest(bid, m)) {
     case RHIZOME_BUNDLE_STATUS_SAME:
       break;
@@ -245,8 +238,7 @@ static enum meshms_status ply_read_open(struct meshms_ply_read *ply, const rhizo
       return MESHMS_STATUS_ERROR;
   }
   enum rhizome_payload_status pstatus = rhizome_open_decrypt_read(m, &ply->read);
-  if (config.debug.meshms)
-    DEBUGF("pstatus=%d", pstatus);
+  DEBUGF(meshms, "pstatus=%d", pstatus);
   if (pstatus == RHIZOME_PAYLOAD_STATUS_NEW) {
     WARNF("Payload was not found for manifest %s, %"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
     return MESHMS_STATUS_PROTOCOL_FAULT;
@@ -279,8 +271,7 @@ static enum meshms_status ply_read_prev(struct meshms_ply_read *ply)
   ply->record_end_offset = ply->read.offset;
   unsigned char footer[2];
   if (ply->read.offset <= sizeof footer) {
-    if (config.debug.meshms)
-      DEBUG("EOF");
+    DEBUG(meshms, "EOF");
     return MESHMS_STATUS_OK;
   }
   ply->read.offset -= sizeof footer;
@@ -297,12 +288,10 @@ static enum meshms_status ply_read_prev(struct meshms_ply_read *ply)
   ply->record_length=read_uint16(footer);
   ply->type = ply->record_length & 0xF;
   ply->record_length = ply->record_length>>4;
-  if (config.debug.meshms)
-    DEBUGF("Found record %d, length %d @%"PRId64, ply->type, ply->record_length, ply->record_end_offset);
+  DEBUGF(meshms, "Found record %d, length %d @%"PRId64, ply->type, ply->record_length, ply->record_end_offset);
   // need to allow for advancing the tail and cutting a message in half.
   if (ply->record_length + sizeof footer > ply->read.offset){
-    if (config.debug.meshms)
-      DEBUGF("EOF");
+    DEBUGF(meshms, "EOF");
     return MESHMS_STATUS_OK;
   }
   ply->read.offset -= ply->record_length + sizeof(footer);
@@ -371,8 +360,7 @@ static enum meshms_status append_meshms_buffer(const sid_t *my_sid, struct meshm
     goto end;
   
   enum rhizome_bundle_status bstatus = rhizome_manifest_finalise(m, &mout, 1);
-  if (config.debug.meshms)
-    DEBUGF("bstatus=%d", bstatus);
+  DEBUGF(meshms, "bstatus=%d", bstatus);
   switch (bstatus) {
     case RHIZOME_BUNDLE_STATUS_ERROR:
       // error has already been logged
@@ -415,8 +403,7 @@ end:
 // return MESHMS_STATUS_UPDATED if the conversation index needs to be saved.
 static enum meshms_status update_conversation(const sid_t *my_sid, struct meshms_conversations *conv)
 {
-  if (config.debug.meshms)
-    DEBUG("Checking if conversation needs to be acked");
+  DEBUG(meshms, "Checking if conversation needs to be acked");
     
   // Nothing to be done if they have never sent us anything
   if (!conv->found_their_ply)
@@ -430,8 +417,7 @@ static enum meshms_status update_conversation(const sid_t *my_sid, struct meshms
   struct meshms_ply_read ply;
   bzero(&ply, sizeof(ply));
   enum meshms_status status = MESHMS_STATUS_ERROR;
-  if (config.debug.meshms)
-    DEBUG("Locating their last message");
+  DEBUG(meshms, "Locating their last message");
   if (meshms_failed(status = ply_read_open(&ply, &conv->their_ply.bundle_id, m_theirs)))
     goto end;
   if (meshms_failed(status = ply_find_prev(&ply, MESHMS_BLOCK_TYPE_MESSAGE)))
@@ -443,16 +429,14 @@ static enum meshms_status update_conversation(const sid_t *my_sid, struct meshms
   }
     
   conv->their_last_message = ply.record_end_offset;
-  if (config.debug.meshms)
-    DEBUGF("Found last message @%"PRId64, conv->their_last_message);
+  DEBUGF(meshms, "Found last message @%"PRId64, conv->their_last_message);
   ply_read_close(&ply);
   
   // find our previous ack
   uint64_t previous_ack = 0;
   
   if (conv->found_my_ply){
-    if (config.debug.meshms)
-      DEBUG("Locating our previous ack");
+    DEBUG(meshms, "Locating our previous ack");
       
     m_ours = rhizome_new_manifest();
     if (!m_ours) {
@@ -468,12 +452,10 @@ static enum meshms_status update_conversation(const sid_t *my_sid, struct meshms
 	previous_ack=0;
       status = MESHMS_STATUS_OK;
     }
-    if (config.debug.meshms)
-      DEBUGF("Previous ack is %"PRId64, previous_ack);
+    DEBUGF(meshms, "Previous ack is %"PRId64, previous_ack);
     ply_read_close(&ply);
   }else{
-    if (config.debug.meshms)
-      DEBUGF("No outgoing ply");
+    DEBUGF(meshms, "No outgoing ply");
     status = MESHMS_STATUS_PROTOCOL_FAULT;
   }
   if (previous_ack >= conv->their_last_message){
@@ -483,8 +465,7 @@ static enum meshms_status update_conversation(const sid_t *my_sid, struct meshms
   }
 
   // append an ack for their message
-  if (config.debug.meshms)
-    DEBUGF("Creating ACK for %"PRId64" - %"PRId64, previous_ack, conv->their_last_message);
+  DEBUGF(meshms, "Creating ACK for %"PRId64" - %"PRId64, previous_ack, conv->their_last_message);
   unsigned char buffer[30];
   int ofs=0;
   ofs+=pack_uint(&buffer[ofs], conv->their_last_message);
@@ -493,8 +474,7 @@ static enum meshms_status update_conversation(const sid_t *my_sid, struct meshms
   ofs+=append_footer(buffer+ofs, MESHMS_BLOCK_TYPE_ACK, ofs);
   ofs+=append_timestamp(buffer+ofs);
   status = append_meshms_buffer(my_sid, conv, buffer, ofs);
-  if (config.debug.meshms)
-    DEBUGF("status=%d", status);
+  DEBUGF(meshms, "status=%d", status);
 end:
   ply_read_close(&ply);
   if (m_ours)
@@ -520,8 +500,7 @@ static enum meshms_status update_conversations(const sid_t *my_sid, struct meshm
 	return status;
       if (status == MESHMS_STATUS_UPDATED){
 	rstatus = MESHMS_STATUS_UPDATED;
-	if (config.debug.meshms)
-	  DEBUGF("Bumping conversation from %s", alloca_tohex_sid_t(n->them));
+	DEBUGF(meshms, "Bumping conversation from %s", alloca_tohex_sid_t(n->them));
 	// bump to head of list
 	*ptr = n->_next;
 	n->_next = *conv;
@@ -574,8 +553,7 @@ static enum meshms_status read_known_conversations(rhizome_manifest *m, const si
     }
     if (r != sizeof sid.binary)
       break;
-    if (config.debug.meshms)
-      DEBUGF("Reading existing conversation for %s", alloca_tohex_sid_t(sid));
+    DEBUGF(meshms, "Reading existing conversation for %s", alloca_tohex_sid_t(sid));
     
     // unpack the stored details first so we know where the next record is
     unsigned char details[12*3];
@@ -645,13 +623,13 @@ static ssize_t write_conversation(struct rhizome_write *write, struct meshms_con
     len+=measure_packed_uint(conv->read_offset);
     len+=measure_packed_uint(conv->their_size);
   }
-  if (config.debug.meshms)
-    DEBUGF("len %s, %"PRId64", %"PRId64", %"PRId64" = %zu", 
-      alloca_tohex_sid_t(conv->them),
-      conv->their_last_message,
-      conv->read_offset,
-      conv->their_size,
-      len);
+  DEBUGF(meshms, "len %s, %"PRId64", %"PRId64", %"PRId64" = %zu",
+         alloca_tohex_sid_t(conv->them),
+         conv->their_last_message,
+         conv->read_offset,
+         conv->their_size,
+         len
+	);
   return len;
 }
 
@@ -759,8 +737,7 @@ enum meshms_status meshms_conversations_list(const sid_t *my_sid, const sid_t *t
     status = write_known_conversations(m, *conv);
 end:
   rhizome_manifest_free(m);
-  if (config.debug.meshms)
-    DEBUGF("status=%d", status);
+  DEBUGF(meshms, "status=%d", status);
   return status;
 }
 
@@ -785,10 +762,9 @@ void meshms_conversation_iterator_advance(struct meshms_conversation_iterator *i
 
 enum meshms_status meshms_message_iterator_open(struct meshms_message_iterator *iter, const sid_t *me, const sid_t *them)
 {
-  if (config.debug.meshms)
-    DEBUGF("iter=%p me=%s them=%s", iter,
-	  me ? alloca_tohex_sid_t(*me) : "NULL",
-	  them ? alloca_tohex_sid_t(*them) : "NULL"
+  DEBUGF(meshms, "iter=%p me=%s them=%s", iter,
+	 me ? alloca_tohex_sid_t(*me) : "NULL",
+	 them ? alloca_tohex_sid_t(*them) : "NULL"
 	);
   enum meshms_status status;
   bzero(iter, sizeof *iter);
@@ -821,15 +797,13 @@ enum meshms_status meshms_message_iterator_open(struct meshms_message_iterator *
 	  iter->latest_ack_my_offset = 0;
 	else
 	  iter->latest_ack_offset = iter->_their_reader.record_end_offset;
-	if (config.debug.meshms)
-	  DEBUGF("Found their last ack @%"PRId64, iter->latest_ack_my_offset);
+	DEBUGF(meshms, "Found their last ack @%"PRId64, iter->latest_ack_my_offset);
       }
       // Re-seek to end of their ply.
       iter->_their_reader.read.offset = iter->_their_reader.read.length;
     }
   } else {
-    if (config.debug.meshms)
-      DEBUGF("Did not find sender's ply; no messages in thread");
+    DEBUGF(meshms, "Did not find sender's ply; no messages in thread");
   }
   iter->_in_ack = 0;
   return MESHMS_STATUS_OK;
@@ -847,8 +821,7 @@ int meshms_message_iterator_is_open(const struct meshms_message_iterator *iter)
 
 void meshms_message_iterator_close(struct meshms_message_iterator *iter)
 {
-  if (config.debug.meshms)
-    DEBUGF("iter=%p", iter);
+  DEBUGF(meshms, "iter=%p", iter);
   if (iter->_my_manifest) {
     ply_read_close(&iter->_my_reader);
     rhizome_manifest_free(iter->_my_manifest);
@@ -874,8 +847,7 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
   enum meshms_status status = MESHMS_STATUS_UPDATED;
   while (status == MESHMS_STATUS_UPDATED) {
     if (iter->_in_ack) {
-      if (config.debug.meshms)
-	DEBUGF("Reading other log from %"PRId64", to %"PRId64, iter->_their_reader.read.offset, iter->_end_range);
+      DEBUGF(meshms, "Reading other log from %"PRId64", to %"PRId64, iter->_their_reader.read.offset, iter->_end_range);
       if (meshms_failed(status = ply_read_prev(&iter->_their_reader)))
 	break;
       iter->which_ply = THEIR_PLY;
@@ -910,8 +882,7 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
       status = MESHMS_STATUS_UPDATED;
     }
     else if ((status = ply_read_prev(&iter->_my_reader)) == MESHMS_STATUS_UPDATED) {
-      if (config.debug.meshms)
-	DEBUGF("Offset %"PRId64", type %d, read_offset %"PRId64, iter->_my_reader.read.offset, iter->_my_reader.type, iter->read_offset);
+      DEBUGF(meshms, "Offset %"PRId64", type %d, read_offset %"PRId64, iter->_my_reader.read.offset, iter->_my_reader.type, iter->read_offset);
       iter->which_ply = MY_PLY;
       switch (iter->_my_reader.type) {
 	case MESHMS_BLOCK_TYPE_TIME:
@@ -920,7 +891,7 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
 	    return MESHMS_STATUS_PROTOCOL_FAULT;
 	  }
 	  iter->timestamp = read_uint32(iter->_my_reader.record);
-	  DEBUGF("Parsed timestamp %ds old", gettime() - iter->timestamp);
+	  DEBUGF(meshms, "Parsed timestamp %ds old", gettime() - iter->timestamp);
 	  break;
 	case MESHMS_BLOCK_TYPE_ACK:
 	  // Read the received messages up to the ack'ed offset
@@ -984,11 +955,10 @@ enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipie
 
 enum meshms_status meshms_mark_read(const sid_t *sender, const sid_t *recipient, uint64_t offset)
 {
-  if (config.debug.meshms)
-    DEBUGF("sender=%s recipient=%s offset=%"PRIu64,
-	  alloca_tohex_sid_t(*sender),
-	  recipient ? alloca_tohex_sid_t(*recipient) : "NULL",
-	  offset
+  DEBUGF(meshms, "sender=%s recipient=%s offset=%"PRIu64,
+	 alloca_tohex_sid_t(*sender),
+	 recipient ? alloca_tohex_sid_t(*recipient) : "NULL",
+	 offset
 	);
   enum meshms_status status = MESHMS_STATUS_ERROR;
   struct meshms_conversations *conv = NULL;
@@ -1010,8 +980,7 @@ enum meshms_status meshms_mark_read(const sid_t *sender, const sid_t *recipient,
   if (status == MESHMS_STATUS_UPDATED)
     changed = 1;
   changed += mark_read(conv, recipient, offset);
-  if (config.debug.meshms)
-    DEBUGF("changed=%u", changed);
+  DEBUGF(meshms, "changed=%u", changed);
   if (changed) {
     if (meshms_failed(status = write_known_conversations(m, conv)))
       goto end;
@@ -1228,9 +1197,9 @@ static unsigned mark_read(struct meshms_conversations *conv, const sid_t *their_
       if (new_offset > conv->their_last_message)
 	new_offset = conv->their_last_message;
       if (new_offset > conv->read_offset) {
-	if (config.debug.meshms)
-	  DEBUGF("Moving read marker for %s, from %"PRId64" to %"PRId64, 
-	    alloca_tohex_sid_t(conv->them), conv->read_offset, new_offset);
+	DEBUGF(meshms, "Moving read marker for %s, from %"PRId64" to %"PRId64, 
+	       alloca_tohex_sid_t(conv->them), conv->read_offset, new_offset
+	      );
 	conv->read_offset = new_offset;
 	ret++;
       }

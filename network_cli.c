@@ -39,8 +39,7 @@ DEFINE_CMD(app_mdp_ping, 0,
 static int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   const char *sidhex, *count, *opt_timeout, *opt_interval;
   int opt_wait_for_duplicates = 0 == cli_arg(parsed, "--wait-for-duplicates", NULL, NULL, NULL);
   if (   cli_arg(parsed, "--timeout", &opt_timeout, cli_interval_ms, "1") == -1
@@ -128,8 +127,7 @@ static int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *con
       write_uint64(&payload[4], now);
       int r = mdp_send(mdp_sockfd, &mdp_header, payload, sizeof(payload));
       if (r != -1) {
-	if (config.debug.mdprequests)
-	  DEBUGF("ping seq=%lu", (unsigned long)(sequence_number - firstSeq) + 1);
+	DEBUGF(mdprequests, "ping seq=%lu", (unsigned long)(sequence_number - firstSeq) + 1);
 	unsigned i = (unsigned long)(sequence_number - firstSeq) % NELS(stats);
 	assert(i == tx_count % NELS(stats));
 	struct packet_stat *stat = &stats[i];
@@ -170,13 +168,11 @@ static int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *con
 	// received port binding confirmation
 	mdp_header.local = mdp_recv_header.local;
 	mdp_header.flags &= ~MDP_FLAG_BIND;
-	if (config.debug.mdprequests)
-	  DEBUGF("bound to %s:%d", alloca_tohex_sid_t(mdp_header.local.sid), mdp_header.local.port);
+	DEBUGF(mdprequests, "bound to %s:%d", alloca_tohex_sid_t(mdp_header.local.sid), mdp_header.local.port);
 	continue;
       }
       if ((size_t)len < sizeof(recv_payload)){
-	if (config.debug.mdprequests)
-	  DEBUGF("ignoring short pong");
+	DEBUGF(mdprequests, "ignoring short pong");
 	continue;
       }
       uint32_t rxseq = read_uint32(&recv_payload[0]);
@@ -187,8 +183,7 @@ static int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *con
 
       struct packet_stat *stat = &stats[(unsigned long)(rxseq - firstSeq) % NELS(stats)];
       if (stat->sequence != rxseq || stat->tx_time != txtime) {
-	if (config.debug.mdprequests)
-	  DEBUGF("ignoring spurious pong");
+	DEBUGF(mdprequests, "ignoring spurious pong");
 	++rx_igncount;
 	stat = NULL; // old or corrupted reply (either sequence or txtime is wrong)
       } else if (stat->pong_count++ == 0) {
@@ -350,8 +345,7 @@ DEFINE_CMD(app_id_self, 0,
 static int app_id_self(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   /* List my own identities */
   overlay_mdp_frame a;
   bzero(&a, sizeof(overlay_mdp_frame));
@@ -413,8 +407,7 @@ DEFINE_CMD(app_count_peers, 0,
 static int app_count_peers(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
 
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
     return WHY("Cannot create MDP socket");
@@ -441,8 +434,7 @@ DEFINE_CMD(app_route_print, 0,
 static int app_route_print(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
     
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
     return WHY("Cannot create MDP socket");
@@ -513,8 +505,7 @@ DEFINE_CMD(app_network_scan, 0,
 static int app_network_scan(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
   
@@ -585,8 +576,7 @@ DEFINE_CMD(app_dna_lookup, 0,
 static int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
 
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
@@ -715,8 +705,7 @@ DEFINE_CMD(app_reverse_lookup, 0,
 static int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_context *context)
 {
   int mdp_sockfd;
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   const char *sidhex, *delay;
   if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1)
     return -1;

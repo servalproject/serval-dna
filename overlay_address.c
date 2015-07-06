@@ -110,8 +110,7 @@ void free_subscribers()
 struct subscriber *_find_subscriber(struct __sourceloc __whence, const unsigned char *sidp, int len, int create)
 {
   IN();
-  if (config.debug.subscriber)
-    DEBUGF("find_subscriber(sid=%s, create=%d)", alloca_tohex(sidp, len), create);
+  DEBUGF(subscriber, "find_subscriber(sid=%s, create=%d)", alloca_tohex(sidp, len), create);
   struct tree_node *ptr = &root;
   int pos=0;
   if (len!=SID_SIZE)
@@ -127,10 +126,9 @@ struct subscriber *_find_subscriber(struct __sourceloc __whence, const unsigned 
 	ptr->subscribers[nibble] = ret;
 	ret->sid = *(const sid_t *)sidp;
 	ret->abbreviate_len = pos;
-	if (config.debug.subscriber)
-	  DEBUGF("set node[%.*s].subscribers[%c]=%p (sid=%s, abbrev_len=%d)",
-		pos - 1, alloca_tohex(sidp, len), hexdigit_upper[nibble],
-		ret, alloca_tohex_sid_t(ret->sid), ret->abbreviate_len
+	DEBUGF(subscriber, "set node[%.*s].subscribers[%c]=%p (sid=%s, abbrev_len=%d)",
+	       pos - 1, alloca_tohex(sidp, len), hexdigit_upper[nibble],
+	       ret, alloca_tohex_sid_t(ret->sid), ret->abbreviate_len
 	      );
       }
       goto done;
@@ -150,25 +148,22 @@ struct subscriber *_find_subscriber(struct __sourceloc __whence, const unsigned 
 	ret = NULL;
 	goto done;
       }
-      if (config.debug.subscriber)
-	DEBUGF("create node[%.*s]", pos, alloca_tohex(sidp, len));
+      DEBUGF(subscriber, "create node[%.*s]", pos, alloca_tohex(sidp, len));
       ptr->tree_nodes[nibble] = new;
       ptr->is_tree |= (1<<nibble);
       ptr = new;
       nibble = get_nibble(ret->sid.binary, pos);
       ptr->subscribers[nibble] = ret;
       ret->abbreviate_len = pos + 1;
-      if (config.debug.subscriber)
-	DEBUGF("set node[%.*s].subscribers[%c]=%p(sid=%s, abbrev_len=%d)",
-	    pos, alloca_tohex(sidp, len), hexdigit_upper[nibble],
-	    ret, alloca_tohex_sid_t(ret->sid), ret->abbreviate_len
-	  );
+      DEBUGF(subscriber, "set node[%.*s].subscribers[%c]=%p(sid=%s, abbrev_len=%d)",
+	     pos, alloca_tohex(sidp, len), hexdigit_upper[nibble],
+	     ret, alloca_tohex_sid_t(ret->sid), ret->abbreviate_len
+	    );
       // then go around the loop again to compare the next nibble against the sid until we find an empty slot.
     }
   } while(pos < len*2);
 done:
-  if (config.debug.subscriber)
-    DEBUGF("find_subscriber() return %p", ret);
+  DEBUGF(subscriber, "find_subscriber() return %p", ret);
   RETURN(ret);
 }
 
@@ -239,13 +234,11 @@ int overlay_broadcast_drop_check(struct broadcast *addr)
   bpi_index&=BPI_MASK;
   
   if (memcmp(bpilist[bpi_index].id, addr->id, BROADCAST_LEN)){
-    if (config.debug.broadcasts)
-      DEBUGF("BPI %s is new", alloca_tohex(addr->id, BROADCAST_LEN));
+    DEBUGF(broadcasts, "BPI %s is new", alloca_tohex(addr->id, BROADCAST_LEN));
     bcopy(addr->id, bpilist[bpi_index].id, BROADCAST_LEN);
     return 0; /* don't drop */
   }else{
-    if (config.debug.broadcasts)
-      DEBUGF("BPI %s is a duplicate", alloca_tohex(addr->id, BROADCAST_LEN));
+    DEBUGF(broadcasts, "BPI %s is a duplicate", alloca_tohex(addr->id, BROADCAST_LEN));
     return 1; /* drop frame because we have seen this BPI recently */
   }
 }
@@ -313,8 +306,7 @@ static int add_explain_response(struct subscriber *subscriber, void *context)
   // the header of this packet must include our full sid.
   if (subscriber->reachable==REACHABLE_SELF){
     if (subscriber==my_subscriber){
-      if (config.debug.subscriber)
-	DEBUGF("Explaining SELF sid=%s", alloca_tohex_sid_t(subscriber->sid));
+      DEBUGF(subscriber, "Explaining SELF sid=%s", alloca_tohex_sid_t(subscriber->sid));
       response->please_explain->source_full=1;
       return 0;
     }
@@ -322,8 +314,7 @@ static int add_explain_response(struct subscriber *subscriber, void *context)
   }
   
   // add the whole subscriber id to the payload, stop if we run out of space
-  if (config.debug.subscriber)
-    DEBUGF("Explaining sid=%s", alloca_tohex_sid_t(subscriber->sid));
+  DEBUGF(subscriber, "Explaining sid=%s", alloca_tohex_sid_t(subscriber->sid));
   ob_checkpoint(response->please_explain->payload);
   ob_append_byte(response->please_explain->payload, SID_SIZE);
   ob_append_bytes(response->please_explain->payload, subscriber->sid.binary, SID_SIZE);
@@ -532,7 +523,6 @@ int process_explain(struct overlay_frame *frame)
   }
   if (context.please_explain)
     send_please_explain(&context, frame->destination, frame->source);
-  else if (config.debug.subscriber)
-    DEBUG("No explain responses");
+  DEBUG(subscriber, "No explain responses");
   return 0;
 }

@@ -142,7 +142,7 @@ rhizome_direct_sync_request
 
   if (rd_sync_handle_count>=RHIZOME_DIRECT_MAX_SYNC_HANDLES)
     {
-      DEBUGF("Too many Rhizome Direct synchronisation policies.");
+      WARN("Too many Rhizome Direct synchronisation policies.");
       return NULL;
     }
 
@@ -191,26 +191,26 @@ int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r)
 
   if (r->cursor->size_high>=r->cursor->limit_size_high)
     {
-      DEBUG("Out of bins");
+      DEBUG(rhizome_direct, "Out of bins");
       if (cmp_rhizome_bid_t(&r->cursor->bid_low, &r->cursor->limit_bid_high) >= 0) {
-	DEBUG("out of BIDs");
+	DEBUG(rhizome_direct, "out of BIDs");
 	/* Sync has finished.
 	    The transport may have initiated one or more transfers, so
 	    we cannot declare the sync complete until we know the transport
 	    has finished transferring. */
 	if (!r->bundle_transfers_in_progress) {
 	  /* seems that all is done */
-	  DEBUG("All done");
+	  DEBUG(rhizome_direct, "All done");
 	  return rhizome_direct_conclude_sync_request(r);
 	} else 
-	DEBUG("Stuck on in-progress transfers");
+	DEBUG(rhizome_direct, "Stuck on in-progress transfers");
       } else
-	DEBUGF("bid_low<limit_bid_high");
+	DEBUGF(rhizome_direct, "bid_low<limit_bid_high");
     }
 
   int count=rhizome_direct_bundle_iterator_fill(r->cursor,-1);
 
-  DEBUGF("Got %d BARs",count);
+  DEBUGF(rhizome_direct, "Got %d BARs",count);
   
   r->dispatch_function(r);
 
@@ -229,22 +229,22 @@ int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r)
   */
 
   if (r->interval==0) {
-    DEBUG("concluding one-shot");
+    DEBUG(rhizome_direct, "concluding one-shot");
     int i;
     for(i=0;i<rd_sync_handle_count;i++)
       if (r==rd_sync_handles[i])
 	{
-	  DEBUG("Found it");
+	  DEBUG(rhizome_direct, "Found it");
 	  rhizome_direct_bundle_iterator_free(&r->cursor);
 	  free(r);
 	  
 	  if (i!=rd_sync_handle_count-1)
 	    rd_sync_handles[i]=rd_sync_handles[rd_sync_handle_count-1];
 	  rd_sync_handle_count--;
-	  DEBUGF("handle count=%d",rd_sync_handle_count);
+	  DEBUGF(rhizome_direct, "handle count=%d",rd_sync_handle_count);
 	  return 0;
 	}    
-    DEBUGF("Couldn't find sync request handle in list.");
+    DEBUGF(rhizome_direct, "Couldn't find sync request handle in list.");
     return -1;
   }
   
@@ -282,17 +282,17 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *bu
   assert(c!=NULL);
   if (rhizome_direct_bundle_iterator_unpickle_range(c,buffer,10))
     {
-      DEBUGF("Couldn't unpickle range");
+      DEBUGF(rhizome_direct, "Couldn't unpickle range");
       rhizome_direct_bundle_iterator_free(&c);
       return NULL;
     }
-  DEBUGF("unpickled size_high=%"PRId64", limit_size_high=%"PRId64,
+  DEBUGF(rhizome_direct, "unpickled size_high=%"PRId64", limit_size_high=%"PRId64,
 	 c->size_high,c->limit_size_high);
-  DEBUGF("c->buffer_size=%zu",c->buffer_size);
+  DEBUGF(rhizome_direct, "c->buffer_size=%zu",c->buffer_size);
 
   /* Get our list of BARs for the same cursor range */
   int us_count=rhizome_direct_bundle_iterator_fill(c,-1);
-  DEBUGF("Found %d manifests in that range",us_count);
+  DEBUGF(rhizome_direct, "Found %d manifests in that range",us_count);
   
   /* Transfer to a temporary buffer, so that we can overwrite
      the cursor's buffer with the response data. */
@@ -305,21 +305,21 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *bu
      smaller than the 32 bytes used by BARs, therefore the response will never be
      bigger than the request, and so we don't need to worry about overflows. */
   int them=0,us=0;
-  DEBUGF("themcount=%d, uscount=%d",them_count,us_count);
+  DEBUGF(rhizome_direct, "themcount=%d, uscount=%d",them_count,us_count);
   while(them<them_count||us<us_count)
     {
-      DEBUGF("them=%d, us=%d",them,us);
+      DEBUGF(rhizome_direct, "them=%d, us=%d",them,us);
       const rhizome_bar_t *their_bar = (const rhizome_bar_t *)&buffer[10+them*RHIZOME_BAR_BYTES];
       const rhizome_bar_t *our_bar = (const rhizome_bar_t *)&usbuffer[10+us*RHIZOME_BAR_BYTES];
       int relation=0;
       if (them<them_count&&us<us_count) {
 	relation=memcmp(their_bar->binary,our_bar->binary,RHIZOME_BAR_COMPARE_BYTES);
-	DEBUGF("relation = %d",relation);
+	DEBUGF(rhizome_direct, "relation = %d",relation);
       }
       else if (us==us_count) relation=-1; /* they have a bundle we don't have */
       else if (them==them_count) relation=+1; /* we have a bundle they don't have */
       else {
-	DEBUGF("This should never happen.");
+	DEBUGF(rhizome_direct, "This should never happen.");
 	break;
       }
       int who=0;
@@ -333,7 +333,7 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *bu
 	      RHIZOME_BAR_PREFIX_BYTES);
 	c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
 	who=-1;
-	DEBUGF("They have previously unseen bundle %016"PRIx64"*",
+	DEBUGF(rhizome_direct, "They have previously unseen bundle %016"PRIx64"*",
 	       rhizome_bar_bidprefix_ll(their_bar));
       } else if (relation>0) {
 	/* We have a bundle that they don't have any version of
@@ -345,7 +345,7 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *bu
 	      RHIZOME_BAR_PREFIX_BYTES);
 	c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
 	who=+1;
-	DEBUGF("We have previously unseen bundle %016"PRIx64"*",
+	DEBUGF(rhizome_direct, "We have previously unseen bundle %016"PRIx64"*",
 	       rhizome_bar_bidprefix_ll(our_bar));
       } else {
 	/* We each have a version of this bundle, so see whose is newer */
@@ -358,7 +358,7 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *bu
 		&c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
 		RHIZOME_BAR_PREFIX_BYTES);
 	  c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
-	  DEBUGF("They have newer version of bundle %016"PRIx64"* (%"PRIu64" versus %"PRIu64")",
+	  DEBUGF(rhizome_direct, "They have newer version of bundle %016"PRIx64"* (%"PRIu64" versus %"PRIu64")",
 		 rhizome_bar_bidprefix_ll(their_bar),
 		 them_version,
 		 us_version);
@@ -369,12 +369,12 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *bu
 		&c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
 		RHIZOME_BAR_PREFIX_BYTES);
 	  c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
-	  DEBUGF("We have newer version of bundle %016"PRIx64"* (%"PRIu64" versus %"PRIu64")",
+	  DEBUGF(rhizome_direct, "We have newer version of bundle %016"PRIx64"* (%"PRIu64" versus %"PRIu64")",
 		 rhizome_bar_bidprefix_ll(our_bar),
 		 us_version,
 		 them_version);
 	} else {
-	  DEBUGF("We both have the same version of %016"PRIx64"*",
+	  DEBUGF(rhizome_direct, "We both have the same version of %016"PRIx64"*",
 		 rhizome_bar_bidprefix_ll(their_bar));
 	}
       }
@@ -452,7 +452,7 @@ rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix, size_t 
 	goto error;
       }
       
-      DEBUGF("Read manifest");
+      DEBUGF(rhizome_direct, "Read manifest");
       sqlite3_blob_close(blob);
       sqlite3_finalize(statement);
       return m;
@@ -464,7 +464,7 @@ rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix, size_t 
     }
   else 
     {
-      DEBUGF("no matching manifests");
+      DEBUGF(rhizome_direct, "no matching manifests");
       sqlite3_finalize(statement);
       return NULL;
     }
@@ -493,7 +493,7 @@ static int rhizome_sync_with_peers(int mode, int peer_count, const struct config
     if (strbuf_overrun(h))
       return WHYF("Rhizome Direct host name too long: %s", alloca_str_toprint(peer->host));
     state->port = peer->port;
-    DEBUGF("Rhizome direct peer is %s://%s:%d", peer->protocol, state->host, state->port);
+    DEBUGF(rhizome_direct, "Rhizome direct peer is %s://%s:%d", peer->protocol, state->host, state->port);
     rhizome_direct_sync_request *s = rhizome_direct_new_sync_request(rhizome_direct_http_dispatch, 65536, 0, mode, state);
     rhizome_direct_start_sync_request(s);
     if (rd_sync_handle_count > 0)
@@ -508,15 +508,14 @@ DEFINE_CMD(app_rhizome_direct_sync, 0,
   "rhizome","direct","push|pull|sync","[<url>]");
 static int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   /* Attempt to connect with a remote Rhizome Direct instance,
      and negotiate which BARs to synchronise. */
   const char *modeName = (parsed->argc >= 3 ? parsed->args[2] : "sync");
   int mode=3; /* two-way sync */
   if (!strcasecmp(modeName,"push")) mode=1; /* push only */
   if (!strcasecmp(modeName,"pull")) mode=2; /* pull only */
-  DEBUGF("sync direction = %d",mode);
+  DEBUGF(rhizome_direct, "sync direction = %d",mode);
   rhizome_opendb();
   if (parsed->args[3]) {
     struct config_rhizome_peer peer;
@@ -530,7 +529,7 @@ static int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_c
       return WHYF("Invalid peer URI %s -- %s", alloca_str_toprint(parsed->args[3]), strbuf_str(b));
     }
   } else if (config.rhizome.direct.peer.ac == 0) {
-    DEBUG("No rhizome direct peers were configured or supplied");
+    DEBUG(rhizome_direct, "No rhizome direct peers were configured or supplied");
     return -1;
   } else {
     const struct config_rhizome_peer *peers[config.rhizome.direct.peer.ac];
@@ -597,7 +596,7 @@ int rhizome_direct_bundle_iterator_pickle_range(rhizome_direct_bundle_cursor *r,
   pickled[0]=ltwov;
   for(v=0;v<4;v++) pickled[1+v]=r->start_bid_low.binary[v];
   v=r->size_high;
-  DEBUGF("pickling size_high=%"PRId64,r->size_high);
+  DEBUGF(rhizome_direct, "pickling size_high=%"PRId64,r->size_high);
   ltwov=0;
   while(v>1) { ltwov++; v=v>>1; }
   pickled[1+4]=ltwov;
@@ -612,7 +611,7 @@ int rhizome_direct_bundle_iterator_unpickle_range(rhizome_direct_bundle_cursor *
 {
   assert(r);
   if (pickle_buffer_size!=10) {
-    DEBUGF("pickled rhizome direct cursor ranges should be 10 bytes.");
+    DEBUGF(rhizome_direct, "pickled rhizome direct cursor ranges should be 10 bytes.");
     return -1;
   }
 
@@ -657,7 +656,7 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
   if (max_bars==-1)
     max_bars=(c->buffer_size-c->buffer_offset_bytes)/RHIZOME_BAR_BYTES;
 
-  DEBUGF("Iterating cursor size high %"PRId64"..%"PRId64", max_bars=%d",
+  DEBUGF(rhizome_direct, "Iterating cursor size high %"PRId64"..%"PRId64", max_bars=%d",
 	 c->size_high,c->limit_size_high,max_bars);
 
   while (bundles_stuffed<max_bars&&c->size_high<=c->limit_size_high) 
@@ -688,7 +687,7 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
 	c->size_low=c->size_high+1;
 	c->size_high*=2;
 	if (c->size_high<=1024) c->size_low=0;
-	DEBUGF("size=%"PRId64"..%"PRId64,c->size_low,c->size_high);
+	DEBUGF(rhizome_direct, "size=%"PRId64"..%"PRId64,c->size_low,c->size_high);
 	/* Record that we covered to the end of that size bin */
 	c->bid_high = RHIZOME_BID_MAX;
 	if (c->size_high>c->limit_size_high)
@@ -774,7 +773,7 @@ int rhizome_direct_get_bars(const rhizome_bid_t *bidp_low,
 	int ret;
 	int64_t filesize = sqlite3_column_int64(statement, 3);
 	if (filesize<size_low||filesize>size_high) {
-	  DEBUGF("WEIRDNESS ALERT: filesize=%"PRId64", but query was: %s", filesize, sqlite3_sql(statement));
+	  DEBUGF(rhizome_direct, "WEIRDNESS ALERT: filesize=%"PRId64", but query was: %s", filesize, sqlite3_sql(statement));
 	  break;
 	} 
 	int64_t rowid = sqlite3_column_int64(statement, 1);
@@ -789,8 +788,7 @@ int rhizome_direct_get_bars(const rhizome_bid_t *bidp_low,
 	
 	int blob_bytes=sqlite3_blob_bytes(blob);
 	if (blob_bytes!=RHIZOME_BAR_BYTES) {
-	  if (config.debug.rhizome)
-	    DEBUG("Found a BAR that is the wrong size - ignoring");
+	  DEBUG(rhizome_direct, "Found a BAR that is the wrong size - ignoring");
 	  sqlite3_blob_close(blob);
 	  blob=NULL;
 	  continue;

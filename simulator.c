@@ -152,7 +152,7 @@ static void recv_packet(int fd, struct network *network, struct peer *destinatio
     peer=peer->_next;
   }
   if (!peer) {
-    DEBUGF("New peer %s", alloca_socket_address(&addr));
+    DEBUGF(verbose, "New peer %s", alloca_socket_address(&addr));
     struct socket_address unicast_addr;
     unicast_addr.local.sun_family=AF_UNIX;
     strbuf d = strbuf_local(unicast_addr.local.sun_path, sizeof unicast_addr.local.sun_path);
@@ -382,8 +382,7 @@ static void crash_handler(int signal)
 {
   LOGF(LOG_LEVEL_FATAL, "Caught signal %s", alloca_signal_name(signal));
   dump_stack(LOG_LEVEL_FATAL);
-// TODO Move logBackTrace to log utils?
-//  BACKTRACE;
+  BACKTRACE;
   // Now die of the same signal, so that our exit status reflects the cause.
   INFOF("Re-sending signal %d to self", signal);
   kill(getpid(), signal);
@@ -506,11 +505,11 @@ static int console_up(const struct cli_parsed *parsed, struct cli_context *UNUSE
 
     n->up = 1;
     INFOF("Network %s is now up", n->name);
-    DEBUGF("Minimum latency %dms", (int)n->latency);
-    DEBUGF("Will drop %d%% of packets", n->drop_packets);
-    DEBUGF("Will %s broadcast packets", n->drop_broadcast?"drop":"allow");
-    DEBUGF("Will %s unicast packets", n->drop_unicast?"drop":"allow");
-    DEBUGF("Allowing a maximum of %d packets every %"PRId64"ms",
+    DEBUGF(verbose, "Minimum latency %dms", (int)n->latency);
+    DEBUGF(verbose, "Will drop %d%% of packets", n->drop_packets);
+    DEBUGF(verbose, "Will %s broadcast packets", n->drop_broadcast?"drop":"allow");
+    DEBUGF(verbose, "Will %s unicast packets", n->drop_unicast?"drop":"allow");
+    DEBUGF(verbose, "Allowing a maximum of %d packets every %"PRId64"ms",
 	  n->limit.burst_size,
 	  n->limit.burst_length);
   }
@@ -596,12 +595,12 @@ int main()
   {
     struct network *n = networks;
     while(n) {
-      DEBUGF("Closing network %s, TX %d RX %d", n->name, n->tx_count, n->rx_count);
+      DEBUGF(verbose, "Closing network %s, TX %d RX %d", n->name, n->tx_count, n->rx_count);
       unwatch(&n->alarm);
       socket_unlink_close(n->alarm.poll.fd);
       struct peer *p = n->peer_list;
       while(p) {
-	DEBUGF("Closing peer proxy socket, TX %d RX %d", p->tx_count, p->rx_count);
+	DEBUGF(verbose, "Closing peer proxy socket, TX %d RX %d", p->tx_count, p->rx_count);
 	unwatch(&p->alarm);
 	socket_unlink_close(p->alarm.poll.fd);
 	struct peer *f = p;

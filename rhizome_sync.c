@@ -82,7 +82,7 @@ static int sync_status(struct subscriber *subscriber, void *UNUSED(context))
   if (!subscriber->sync_state)
     return 0;
   struct rhizome_sync *state=subscriber->sync_state;
-  DEBUGF("%s seen %u BARs [%"PRId64" to %"PRId64" of %"PRId64"], %d interesting, %d skipped",
+  DEBUGF(rhizome_sync, "%s seen %u BARs [%"PRId64" to %"PRId64" of %"PRId64"], %d interesting, %d skipped",
     alloca_tohex_sid_t(subscriber->sid),
     state->bars_seen,
     state->sync_start,
@@ -114,8 +114,7 @@ static void rhizome_sync_request(struct subscriber *subscriber, uint64_t token, 
   ob_append_byte(b, forwards);
   ob_append_packed_ui64(b, token);
 
-  if (config.debug.rhizome_sync)
-    DEBUGF("Sending request to %s for BARs from %"PRIu64" %s", alloca_tohex_sid_t(subscriber->sid), token, forwards?"forwards":"backwards");
+  DEBUGF(rhizome_sync, "Sending request to %s for BARs from %"PRIu64" %s", alloca_tohex_sid_t(subscriber->sid), token, forwards?"forwards":"backwards");
     
   ob_flip(b);
   overlay_send_frame(&header, b);
@@ -164,8 +163,7 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
     if (ob_remaining(payload)<RHIZOME_BAR_BYTES)
       break;
       
-    if (config.debug.rhizome_sync)
-      DEBUGF("Requesting manifest for BAR %s", alloca_tohex_rhizome_bar_t(&state->bars[i].bar));
+    DEBUGF(rhizome_sync, "Requesting manifest for BAR %s", alloca_tohex_rhizome_bar_t(&state->bars[i].bar));
       
     ob_append_bytes(payload, state->bars[i].bar.binary, RHIZOME_BAR_BYTES);
     
@@ -173,8 +171,7 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
     state->bars[i].next_request = now+5000;
     if (!state->bars[i].tries){
       // remove this BAR and shift the last BAR down to this position if required.
-      if (config.debug.rhizome_sync)
-        DEBUGF("Giving up on fetching BAR %s", alloca_tohex_rhizome_bar_t(&state->bars[i].bar));
+      DEBUGF(rhizome_sync, "Giving up on fetching BAR %s", alloca_tohex_rhizome_bar_t(&state->bars[i].bar));
       state->bar_count --;
       if (i<state->bar_count)
         state->bars[i] = state->bars[state->bar_count];
@@ -210,8 +207,7 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
     }else if(!state->sync_complete){
       state->sync_complete = 1;
       state->completed = gettime_ms();
-      if (config.debug.rhizome_sync)
-        DEBUGF("BAR sync with %s complete", alloca_tohex_sid_t(subscriber->sid));
+      DEBUGF(rhizome_sync, "BAR sync with %s complete", alloca_tohex_sid_t(subscriber->sid));
     }
     state->next_request = now+5000;
   }
@@ -234,8 +230,7 @@ static int sync_bundle_inserted(struct subscriber *subscriber, void *context)
     uint64_t this_version = rhizome_bar_version(this_bar);
     if (memcmp(this_id, id, RHIZOME_BAR_PREFIX_BYTES)==0 && version >= this_version){
       // remove this BAR and shift the last BAR down to this position if required.
-      if (config.debug.rhizome_sync)
-        DEBUGF("Removing BAR %s from queue", alloca_tohex_rhizome_bar_t(this_bar));
+      DEBUGF(rhizome_sync, "Removing BAR %s from queue", alloca_tohex_rhizome_bar_t(this_bar));
       state->bar_count --;
       if (i<state->bar_count)
         state->bars[i] = state->bars[state->bar_count];
@@ -268,8 +263,7 @@ static int sync_cache_bar(struct rhizome_sync *state, const rhizome_bar_t *bar, 
 	return -1;
     }
     
-    if (config.debug.rhizome_sync)
-      DEBUGF("Remembering BAR %s", alloca_tohex_rhizome_bar_t(bar));
+    DEBUGF(rhizome_sync, "Remembering BAR %s", alloca_tohex_rhizome_bar_t(bar));
     
     state->bars[state->bar_count].bar = *bar;
     state->bars[state->bar_count].next_request = gettime_ms();
@@ -351,8 +345,7 @@ static void sync_process_bar_list(struct subscriber *subscriber, struct rhizome_
 
   if (bar_count>0 && state->sync_end == 0 && bar_tokens[0]>=bar_tokens[bar_count -1]){
     // make sure we start syncing from the end
-    if (config.debug.rhizome_sync)
-      DEBUGF("Starting BAR sync with %s", alloca_tohex_sid_t(subscriber->sid));
+    DEBUGF(rhizome_sync, "Starting BAR sync with %s", alloca_tohex_sid_t(subscriber->sid));
     state->sync_start = state->sync_end = state->highest_seen;
     mid_point=0;
   }
@@ -380,8 +373,7 @@ static void sync_process_bar_list(struct subscriber *subscriber, struct rhizome_
       if (r==1)
 	added=1;
     }
-    if (config.debug.rhizome_sync)
-      DEBUGF("Synced %"PRIu64" - %"PRIu64" with %s", state->sync_start, state->sync_end, alloca_tohex_sid_t(subscriber->sid));
+    DEBUGF(rhizome_sync, "Synced %"PRIu64" - %"PRIu64" with %s", state->sync_start, state->sync_end, alloca_tohex_sid_t(subscriber->sid));
     if (added)
       state->next_request = gettime_ms();
   }
@@ -500,8 +492,7 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
   sqlite3_finalize(statement);
 
   if (count){
-    if (config.debug.rhizome_sync)
-      DEBUGF("Sending %d BARs from %"PRIu64" to %"PRIu64, count, token, last);
+    DEBUGF(rhizome_sync, "Sending %d BARs from %"PRIu64" to %"PRIu64, count, token, last);
     ob_flip(b);
     overlay_send_frame(&header, b);
   }

@@ -41,10 +41,9 @@ ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl, s
     return WHYF_perror("recvmsg(%d,%p,0)", sock, &msg);
   
 #if 0
-  if (config.debug.packetrx) {
-    DEBUGF("recvmsg returned %d (flags=%d, msg_controllen=%d)", (int) len, msg.msg_flags, (int)msg.msg_controllen);
+  DEBUGF(packetrx, "recvmsg returned %d (flags=%d, msg_controllen=%d)", (int) len, msg.msg_flags, (int)msg.msg_controllen);
+  if (IF_DEBUG(packetrx))
     dump("received data", buffer, len);
-  }
 #endif
   
   if (len > 0) {
@@ -54,17 +53,13 @@ ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl, s
 	  && ((cmsg->cmsg_type == IP_RECVTTL) || (cmsg->cmsg_type == IP_TTL))
 	  && cmsg->cmsg_len
       ) {
-	if (config.debug.packetrx)
-	  DEBUGF("  TTL (%p) data location resolves to %p", ttl,CMSG_DATA(cmsg));
+	DEBUGF(packetrx, "  TTL (%p) data location resolves to %p", ttl,CMSG_DATA(cmsg));
 	if (CMSG_DATA(cmsg)) {
 	  *ttl = *(unsigned char *) CMSG_DATA(cmsg);
-	  if (config.debug.packetrx)
-	    DEBUGF("  TTL of packet is %d", *ttl);
+	  DEBUGF(packetrx, "  TTL of packet is %d", *ttl);
 	} 
       } else {
-	if (config.debug.packetrx)
-	  DEBUGF("I didn't expect to see level=%02x, type=%02x",
-		 cmsg->cmsg_level,cmsg->cmsg_type);
+	DEBUGF(packetrx, "I didn't expect to see level=%02x, type=%02x", cmsg->cmsg_level,cmsg->cmsg_type);
       }	 
     }
   }

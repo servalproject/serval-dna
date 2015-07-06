@@ -31,8 +31,7 @@ DEFINE_CMD(app_config_schema, CLIFLAG_PERMISSIVE_CONFIG,
    "config", "schema");
 static int app_config_schema(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   struct cf_om_node *root = NULL;
   if (cf_sch_config_main(&root) == -1) {
     cf_om_free_node(&root);
@@ -53,8 +52,7 @@ DEFINE_CMD(app_config_dump, CLIFLAG_PERMISSIVE_CONFIG,
    "config","dump","[--full]");
 static int app_config_dump(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   int full = 0 == cli_arg(parsed, "--full", NULL, NULL, NULL);
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -120,8 +118,7 @@ DEFINE_CMD(app_config_set, CLIFLAG_PERMISSIVE_CONFIG,
   "config","sync","...");
 static int app_config_set(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   if (create_serval_instance_dir() == -1)
     return -1;
   // <kludge>
@@ -207,8 +204,7 @@ DEFINE_CMD(app_config_get, CLIFLAG_PERMISSIVE_CONFIG,
   "config","get","[<variable>]");
 static int app_config_get(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   const char *var;
   if (cli_arg(parsed, "variable", &var, is_configvarpattern, NULL) == -1)
     return -1;
@@ -241,8 +237,7 @@ DEFINE_CMD(app_config_paths, CLIFLAG_PERMISSIVE_CONFIG,
    "config", "paths");
 static int app_config_paths(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   if (cf_om_reload() == -1)
     return -1;
   char path[1024];

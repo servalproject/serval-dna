@@ -132,7 +132,7 @@ overlay_queue_dump(overlay_txqueue *q)
     }
     f=f->prev;
   }
-  DEBUG(strbuf_str(b));
+  _DEBUG(strbuf_str(b));
   return 0;
 }
 #endif
@@ -173,9 +173,9 @@ int _overlay_payload_enqueue(struct __sourceloc __whence, struct overlay_frame *
   if (p->packet_version<=0)
     p->packet_version=1;
 
-  if (config.debug.verbose && config.debug.overlayframes)
-    DEBUGF("Enqueue packet to %s",
-	p->destination?alloca_tohex_sid_t_trunc(p->destination->sid, 14): "broadcast");
+  if (IF_DEBUG(verbose))
+    DEBUGF(overlayframes, "Enqueue packet to %s",
+	   p->destination?alloca_tohex_sid_t_trunc(p->destination->sid, 14): "broadcast");
   
   if (p->destination_count==0){
     if (!p->destination){
@@ -186,8 +186,7 @@ int _overlay_payload_enqueue(struct __sourceloc __whence, struct overlay_frame *
 
       // just drop it now
       if (p->destination_count == 0){
-        if (config.debug.mdprequests)
-	  DEBUGF("Not transmitting, as we have nowhere to send it");
+	DEBUGF(mdprequests, "Not transmitting, as we have nowhere to send it");
 	// free the packet and return success.
 	op_free(p);
 	return 0;
@@ -204,10 +203,10 @@ int _overlay_payload_enqueue(struct __sourceloc __whence, struct overlay_frame *
   int i=0;
   for (i=0;i<p->destination_count;i++){
     p->destinations[i].sent_sequence=-1;
-    if (config.debug.verbose && config.debug.overlayframes)
-      DEBUGF("Sending %s on interface %s", 
-	  p->destinations[i].destination->unicast?"unicast":"broadcast",
-	  p->destinations[i].destination->interface->name);
+    if (IF_DEBUG(verbose))
+      DEBUGF(overlayframes, "Sending %s on interface %s", 
+	     p->destinations[i].destination->unicast?"unicast":"broadcast",
+	     p->destinations[i].destination->interface->name);
   }
   
   struct overlay_frame *l=queue->last;
@@ -252,11 +251,11 @@ overlay_init_packet(struct outgoing_packet *packet, int packet_version,
     return -1;
   }
   packet->header_length = ob_position(packet->buffer);
-  if (config.debug.overlayframes)
-    DEBUGF("Creating %d packet for interface %s, seq %d, %s", 
-      packet_version,
-      destination->interface->name, destination->sequence_number,
-      alloca_socket_address(&destination->address));
+  DEBUGF(overlayframes, "Creating %d packet for interface %s, seq %d, %s", 
+	 packet_version,
+	 destination->interface->name, destination->sequence_number,
+	 alloca_socket_address(&destination->address)
+	);
   return 0;
 }
 
@@ -278,10 +277,10 @@ int overlay_queue_schedule_next(time_ms_t next_allowed_packet){
 }
 
 void frame_remove_destination(struct overlay_frame *frame, int i){
-  if (config.debug.overlayframes)
-    DEBUGF("Remove %s destination on interface %s", 
-	frame->destinations[i].destination->unicast?"unicast":"broadcast",
-	frame->destinations[i].destination->interface->name);
+  DEBUGF(overlayframes, "Remove %s destination on interface %s", 
+	 frame->destinations[i].destination->unicast?"unicast":"broadcast",
+	 frame->destinations[i].destination->interface->name
+	);
   release_destination_ref(frame->destinations[i].destination);
   frame->destination_count --;
   if (i<frame->destination_count)
@@ -295,10 +294,10 @@ void frame_add_destination(struct overlay_frame *frame, struct subscriber *next_
   frame->destinations[i].destination=add_destination_ref(dest);
   frame->destinations[i].next_hop = next_hop;
   frame->destinations[i].sent_sequence=-1;
-  if (config.debug.overlayframes)
-    DEBUGF("Add %s destination on interface %s", 
-	frame->destinations[i].destination->unicast?"unicast":"broadcast",
-	frame->destinations[i].destination->interface->name);
+  DEBUGF(overlayframes, "Add %s destination on interface %s", 
+	 frame->destinations[i].destination->unicast?"unicast":"broadcast",
+	 frame->destinations[i].destination->interface->name
+	);
 }
 
 // update the alarm time and return 1 if changed
@@ -354,10 +353,10 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
   // TODO stop when the packet is nearly full?
   while(frame){
     if (queue->latencyTarget!=0 && frame->enqueued_at + queue->latencyTarget < now){
-      if (config.debug.overlayframes)
-	DEBUGF("Dropping frame type %x (length %zu) for %s due to expiry timeout", 
-	       frame->type, frame->payload->checkpointLength,
-	       frame->destination?alloca_tohex_sid_t(frame->destination->sid):"All");
+      DEBUGF(overlayframes, "Dropping frame type %x (length %zu) for %s due to expiry timeout", 
+	     frame->type, frame->payload->checkpointLength,
+	     frame->destination?alloca_tohex_sid_t(frame->destination->sid):"All"
+	    );
       frame = overlay_queue_remove(queue, frame);
       continue;
     }
@@ -383,9 +382,8 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     
     if(frame->mdp_sequence != -1 && ((mdp_sequence - frame->mdp_sequence)&0xFFFF) >= 64){
       // too late, we've sent too many packets for the next hop to correctly de-duplicate
-      if (config.debug.overlayframes)
-        DEBUGF("Retransmition of frame %p mdp seq %d, is too late to be de-duplicated", 
-	  frame, frame->mdp_sequence);
+      DEBUGF(overlayframes, "Retransmition of frame %p mdp seq %d, is too late to be de-duplicated", 
+	     frame, frame->mdp_sequence);
       frame = overlay_queue_remove(queue, frame);
       continue;
     }
@@ -500,19 +498,18 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       dest->transmit_time = now;
       if (debug)
 	strbuf_sprintf(debug, "%d(%s), ", frame->mdp_sequence, frame->whence.function);
-      if (config.debug.overlayframes)
-	DEBUGF("Appended payload %p, %d type %x len %zd for %s via %s", 
-	       frame, frame->mdp_sequence,
-	       frame->type, ob_position(frame->payload),
-	       frame->destination?alloca_tohex_sid_t(frame->destination->sid):"All",
-	       dest->next_hop?alloca_tohex_sid_t(dest->next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
+      DEBUGF(overlayframes, "Appended payload %p, %d type %x len %zd for %s via %s", 
+	     frame, frame->mdp_sequence,
+	     frame->type, ob_position(frame->payload),
+	     frame->destination?alloca_tohex_sid_t(frame->destination->sid):"All",
+	     dest->next_hop?alloca_tohex_sid_t(dest->next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN)
+	    );
     }
     
     
     // dont retransmit if we aren't sending sequence numbers, or we've been asked not to
     if (!will_retransmit){
-      if (config.debug.overlayframes)
-	DEBUGF("Not waiting for retransmission (%d, %d, %d)", frame->packet_version, frame->resend, packet->seq);
+      DEBUGF(overlayframes, "Not waiting for retransmission (%d, %d, %d)", frame->packet_version, frame->resend, packet->seq);
       frame_remove_destination(frame, destination_index);
       if (frame->destination_count==0){
 	frame = overlay_queue_remove(queue, frame);
@@ -548,7 +545,7 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now, strbuf d
   if(packet->buffer){
     if (debug){
       strbuf_sprintf(debug, "]");
-      DEBUGF("%s", strbuf_str(debug));
+      _DEBUGF("%s", strbuf_str(debug));
     }
       
     overlay_broadcast_ensemble(packet->destination, packet->buffer);
@@ -566,7 +563,7 @@ static void overlay_send_packet(struct sched_ent *UNUSED(alarm))
   struct outgoing_packet packet;
   bzero(&packet, sizeof(struct outgoing_packet));
   packet.seq=-1;
-  strbuf debug = config.debug.packets_sent?strbuf_alloca(256):NULL;
+  strbuf debug = IF_DEBUG(packets_sent) ? strbuf_alloca(256) : NULL;
   overlay_fill_send_packet(&packet, gettime_ms(), debug);
 }
 
@@ -576,7 +573,7 @@ int overlay_send_tick_packet(struct network_destination *destination)
   bzero(&packet, sizeof(struct outgoing_packet));
   if (overlay_init_packet(&packet, 0, destination) != -1){
     strbuf debug = NULL;
-    if (config.debug.packets_sent){
+    if (IF_DEBUG(packets_sent)) {
       debug = strbuf_alloca(256);
       strbuf_sprintf(debug, "building packet %s %s %d [", 
 	packet.destination->interface->name, 
@@ -618,9 +615,8 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
 	    if (!rtt || this_rtt < rtt)
 	      rtt = this_rtt;
 	    
-	    if (config.debug.ack)
-	      DEBUGF("DROPPED DUE TO ACK: Packet %p to %s sent by seq %d, acked with seq %d", 
-		frame, alloca_tohex_sid_t(neighbour->sid), frame_seq, ack_seq);
+	    DEBUGF(ack, "DROPPED DUE TO ACK: Packet %p to %s sent by seq %d, acked with seq %d", 
+		   frame, alloca_tohex_sid_t(neighbour->sid), frame_seq, ack_seq);
 		
 	    // drop packets that don't need to be retransmitted
 	    if (frame->destination || frame->destination_count<=1){
@@ -631,8 +627,7 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
 	    
 	  }else if (seq_delta < 128 && frame->destination && frame->delay_until>now){
 	    // retransmit asap
-	    if (config.debug.ack)
-	      DEBUGF("RE-TX DUE TO NACK: Requeue packet %p to %s sent by seq %d due to ack of seq %d", frame, alloca_tohex_sid_t(neighbour->sid), frame_seq, ack_seq);
+	    DEBUGF(ack, "RE-TX DUE TO NACK: Requeue packet %p to %s sent by seq %d due to ack of seq %d", frame, alloca_tohex_sid_t(neighbour->sid), frame_seq, ack_seq);
 	    frame->delay_until = now;
 	    overlay_calc_queue_time(frame);
 	  }
@@ -649,8 +644,7 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
       int delay = rtt * 2 + 40;
       if (delay < destination->resend_delay){
 	destination->resend_delay = delay;
-	if (config.debug.linkstate)
-	  DEBUGF("Adjusting resend delay to %d", destination->resend_delay);
+	DEBUGF(linkstate, "Adjusting resend delay to %d", destination->resend_delay);
       }
     }
     if (!destination->max_rtt || rtt > destination->max_rtt)

@@ -78,11 +78,10 @@ static int rhizome_direct_import_end(struct http_request *hr)
     http_request_simple_response(&r->http, 500, "Internal Error: Buffer overrun");
     return 0;
   }
-  if (config.debug.rhizome)
-    DEBUGF("Call rhizome_bundle_import_files(%s, %s)",
-	alloca_str_toprint(manifest_path),
-	alloca_str_toprint(payload_path)
-      );
+  DEBUGF(rhizome, "Call rhizome_bundle_import_files(%s, %s)",
+	 alloca_str_toprint(manifest_path),
+	 alloca_str_toprint(payload_path)
+        );
   enum rhizome_bundle_status status = 0;
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
@@ -144,8 +143,7 @@ int rhizome_direct_enquiry_end(struct http_request *hr)
     http_request_simple_response(&r->http, 500, "Internal Error: Buffer overrun");
     return 0;
   }
-  if (config.debug.rhizome)
-    DEBUGF("Call rhizome_direct_fill_response(%s)", alloca_str_toprint(data_path));
+  DEBUGF(rhizome, "Call rhizome_direct_fill_response(%s)", alloca_str_toprint(data_path));
   /* Read data buffer in, pass to rhizome direct for comparison with local
       rhizome database, and send back responses. */
   int fd = open(data_path, O_RDONLY);
@@ -204,8 +202,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
       http_request_simple_response(&r->http, 500, "Internal Error: Buffer overrun");
       return 0;
     }
-    if (config.debug.rhizome)
-      DEBUGF("Call rhizome_store_payload_file(%s)", alloca_str_toprint(payload_path));
+    DEBUGF(rhizome, "Call rhizome_store_payload_file(%s)", alloca_str_toprint(payload_path));
     char manifestTemplate[1024];
     manifestTemplate[0] = '\0';
     if (config.rhizome.api.addfile.manifest_template_file[0]) {
@@ -219,8 +216,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
 	http_request_simple_response(&r->http, 500, "Internal Error: Cannot read template");
 	return 0;
       }
-      if (config.debug.rhizome)
-	DEBUGF("Using manifest template %s", alloca_str_toprint(manifestTemplate));
+      DEBUGF(rhizome, "Using manifest template %s", alloca_str_toprint(manifestTemplate));
     }
     rhizome_manifest *m = rhizome_new_manifest();
     if (!m) {
@@ -277,8 +273,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
       http_request_simple_response(&r->http, 500, "Internal Error: Could not finalise manifest");
       return 0;
     }
-    if (config.debug.rhizome)
-      DEBUGF("Import sans-manifest appeared to succeed");
+    DEBUGF(rhizome, "Import sans-manifest appeared to succeed");
     /* Respond with the manifest that was added. */
     http_request_response_static(&r->http, 200, CONTENT_TYPE_TEXT, (const char *)m->manifestdata, m->manifest_all_bytes);
     /* clean up after ourselves */
@@ -446,8 +441,7 @@ static int receive_http_response(int sock, char *buffer, size_t buffer_len, stru
 	return WHYF_perror("read(%d, %p, %d)", sock, &buffer[len], (int)(buffer_len - len));
       len += (size_t)count;
   } while (len < buffer_len && count != 0 && !is_http_header_complete(buffer, len, len));
-  if (config.debug.rhizome_rx)
-    DEBUGF("Received HTTP response %s", alloca_toprint(-1, buffer, len));
+  DEBUGF(rhizome_rx, "Received HTTP response %s", alloca_toprint(-1, buffer, len));
   if (unpack_http_response(buffer, parts) == -1)
     return -1;
   if (parts->code != 200 && parts->code != 201) {
@@ -455,12 +449,10 @@ static int receive_http_response(int sock, char *buffer, size_t buffer_len, stru
     return -1;
   }
   if (parts->content_length == HTTP_RESPONSE_CONTENT_LENGTH_UNSET) {
-    if (config.debug.rhizome_rx)
-      DEBUGF("Invalid HTTP reply: missing Content-Length header");
+    DEBUGF(rhizome_rx, "Invalid HTTP reply: missing Content-Length header");
     return -1;
   }
-  if (config.debug.rhizome_rx)
-    DEBUGF("content_length=%"PRIu64, parts->content_length);
+  DEBUGF(rhizome_rx, "content_length=%"PRIu64, parts->content_length);
   return len - (parts->content_start - buffer);
 }
 
@@ -476,8 +468,7 @@ static int fill_buffer(int sock, unsigned char *buffer, int len, int buffer_size
 
 void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 {
-  if (config.debug.rhizome_tx)
-    DEBUGF("Dispatch size_high=%"PRId64,r->cursor->size_high);
+  DEBUGF(rhizome_tx, "Dispatch size_high=%"PRId64,r->cursor->size_high);
   rhizome_direct_transport_state_http *state = r->transport_specific_state;
 
   int sock=socket(AF_INET, SOCK_STREAM, 0);
@@ -489,8 +480,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   struct hostent *hostent;
   hostent = gethostbyname(state->host);
   if (!hostent) {
-    if (config.debug.rhizome_tx)
-      DEBUGF("could not resolve hostname");
+    DEBUGF(rhizome_tx, "could not resolve hostname");
     goto end;
   }
 
@@ -544,8 +534,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   int len = strbuf_len(request);
   int sent=0;
   while(sent<len) {
-    if (config.debug.rhizome_tx)
-      DEBUGF("write(%d, %s, %d)", sock, alloca_toprint(-1, &buffer[sent], len-sent), len-sent);
+    DEBUGF(rhizome_tx, "write(%d, %s, %d)", sock, alloca_toprint(-1, &buffer[sent], len-sent), len-sent);
     int count=write(sock,&buffer[sent],len-sent);
     if (count == -1) {
       if (errno==EPIPE) goto rx;
@@ -575,8 +564,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   len = strbuf_len(request);
   sent=0;
   while(sent<len) {
-    if (config.debug.rhizome_tx)
-      DEBUGF("write(%d, %s, %d)", sock, alloca_toprint(-1, &buffer[sent], len-sent), len-sent);
+    DEBUGF(rhizome_tx, "write(%d, %s, %d)", sock, alloca_toprint(-1, &buffer[sent], len-sent), len-sent);
     int count=write(sock,&buffer[sent],len-sent);
     if (count == -1) {
       if (errno==EPIPE) goto rx;
@@ -636,8 +624,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	   Then as noted above, we can use that to pull the file down using
 	   existing routines.
 	*/
-	if (config.debug.rhizome_tx)
-	  DEBUGF("Fetching manifest %s* @ 0x%x",alloca_tohex(&actionlist[i], 1+RHIZOME_BAR_PREFIX_BYTES),i);
+	DEBUGF(rhizome_tx, "Fetching manifest %s* @ 0x%x",alloca_tohex(&actionlist[i], 1+RHIZOME_BAR_PREFIX_BYTES),i);
 	if (!rhizome_fetch_request_manifest_by_prefix(&addr, NULL, &actionlist[i+1], RHIZOME_BAR_PREFIX_BYTES))
 	  {
 	    /* Fetching the manifest, and then using it to see if we want to
@@ -659,12 +646,10 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	}
 
 	/* Get filehash and size from manifest if present */
-	if (config.debug.rhizome_tx) {
-	  DEBUGF("bundle id = %s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
-	  DEBUGF("bundle filehash = %s", alloca_tohex_rhizome_filehash_t(m->filehash));
-	  DEBUGF("file size = %"PRId64, m->filesize);
-	  DEBUGF("version = %"PRIu64, m->version);
-	}
+	DEBUGF(rhizome_tx, "bundle id = %s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+	DEBUGF(rhizome_tx, "bundle filehash = %s", alloca_tohex_rhizome_filehash_t(m->filehash));
+	DEBUGF(rhizome_tx, "file size = %"PRId64, m->filesize);
+	DEBUGF(rhizome_tx, "version = %"PRIu64, m->version);
 
 	/* We now have everything we need to compose the POST request and send it.
 	 */
@@ -682,8 +667,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  "Content-Type: application/octet-stream\r\n"
 	  "\r\n";
 	/* Work out what the content length should be */
-	if (config.debug.rhizome_tx)
-	  DEBUGF("manifest_all_bytes=%zu, manifest_body_bytes=%zu", m->manifest_all_bytes, m->manifest_body_bytes);
+	DEBUGF(rhizome_tx, "manifest_all_bytes=%zu, manifest_body_bytes=%zu", m->manifest_all_bytes, m->manifest_body_bytes);
 	assert(m->filesize != RHIZOME_SIZE_UNSET);
 	size_t content_length =
 	    strlen(template2) - 2 /* minus 2 for the "%s" that gets replaced */
@@ -702,13 +686,11 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 
 	sock=socket(AF_INET, SOCK_STREAM, 0);
 	if (sock==-1) {
-	  if (config.debug.rhizome_tx)
-	    DEBUGF("could not open socket");
+	  DEBUGF(rhizome_tx, "could not open socket");
 	  goto closeit;
 	}
 	if (connect(sock,&addr.addr,addr.addrlen) == -1) {
-	  if (config.debug.rhizome_tx)
-	    DEBUGF("Could not connect to remote");
+	  DEBUGF(rhizome_tx, "Could not connect to remote");
 	  goto closeit;
 	}
 
@@ -809,14 +791,11 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   rhizome_direct_bundle_cursor *c=rhizome_direct_bundle_iterator(10);
   assert(c!=NULL);
   if (rhizome_direct_bundle_iterator_unpickle_range(c,(unsigned char *)&p[0],10)) {
-    if (config.debug.rhizome_tx)
-      DEBUGF("Couldn't unpickle range. This should never happen.  Assuming near and far cursor ranges match.");
+    DEBUGF(rhizome_tx, "Couldn't unpickle range. This should never happen.  Assuming near and far cursor ranges match.");
   }
   else {
-    if (config.debug.rhizome_tx) {
-      DEBUGF("unpickled size_high=%"PRId64", limit_size_high=%"PRId64, c->size_high, c->limit_size_high);
-      DEBUGF("c->buffer_size=%d",c->buffer_size);
-    }
+    DEBUGF(rhizome_tx, "unpickled size_high=%"PRId64", limit_size_high=%"PRId64, c->size_high, c->limit_size_high);
+    DEBUGF(rhizome_tx, "c->buffer_size=%d",c->buffer_size);
     r->cursor->size_low=c->limit_size_high;
     /* Set tail of BID to all high, as we assume the far end has returned all
        BIDs with the specified prefix. */

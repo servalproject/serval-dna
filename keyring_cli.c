@@ -32,8 +32,7 @@ DEFINE_CMD(app_keyring_create, 0,
   "keyring","create");
 static int app_keyring_create(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   keyring_file *k = keyring_create_instance();
   if (!k)
     return -1;
@@ -46,8 +45,7 @@ DEFINE_CMD(app_keyring_dump, 0,
   "keyring","dump" KEYRING_PIN_OPTIONS,"[--secret]","[<file>]");
 static int app_keyring_dump(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   const char *path;
   if (cli_arg(parsed, "file", &path, cli_path_regular, NULL) == -1)
     return -1;
@@ -76,8 +74,7 @@ DEFINE_CMD(app_keyring_load, 0,
   "keyring","load" KEYRING_PIN_OPTIONS,"<file>","[<entry-pin>]...");
 static int app_keyring_load(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   const char *path;
   if (cli_arg(parsed, "file", &path, cli_path_regular, NULL) == -1)
     return -1;
@@ -119,8 +116,7 @@ DEFINE_CMD(app_keyring_list, 0,
   "keyring","list" KEYRING_PIN_OPTIONS);
 static int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   keyring_file *k = keyring_open_instance_cli(parsed);
   if (!k)
     return -1;
@@ -233,8 +229,7 @@ DEFINE_CMD(app_keyring_add, 0,
   "keyring","add" KEYRING_PIN_OPTIONS,"[<pin>]");
 static int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   const char *pin;
   cli_arg(parsed, "pin", &pin, NULL, "");
   keyring_file *k = keyring_open_instance_cli(parsed);
@@ -269,8 +264,7 @@ DEFINE_CMD(app_keyring_set_did, 0,
   "keyring", "set","did" KEYRING_PIN_OPTIONS,"<sid>","<did>","<name>");
 static int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   const char *sidhex, *did, *name;
   
   if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1 ||

@@ -266,7 +266,7 @@ int parseCommandLine(struct cli_context *context, const char *argv0, int argc, c
   
   OUT();
   
-  if (config.debug.timing)
+  if (IF_DEBUG(timing))
     fd_showstats();
   return result;
 }
@@ -528,14 +528,12 @@ DEFINE_CMD(app_echo,CLIFLAG_PERMISSIVE_CONFIG,
   "echo","[-e]","[--]","...");
 static int app_echo(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   int escapes = !cli_arg(parsed, "-e", NULL, NULL, NULL);
   unsigned i;
   for (i = parsed->varargi; i < parsed->argc; ++i) {
     const char *arg = parsed->args[i];
-    if (config.debug.verbose)
-      DEBUGF("echo:argv[%d]=\"%s\"", i, arg);
+    DEBUGF(verbose, "echo:argv[%d]=\"%s\"", i, arg);
     if (escapes) {
       unsigned char buf[strlen(arg)];
       size_t len = strn_fromprint(buf, sizeof buf, arg, 0, '\0', NULL);
@@ -552,8 +550,7 @@ DEFINE_CMD(app_log,CLIFLAG_PERMISSIVE_CONFIG,
   "log","error|warn|hint|info|debug","<message>");
 static int app_log(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
-  if (config.debug.verbose)
-    DEBUG_cli_parsed(parsed);
+  DEBUG_cli_parsed(verbose, parsed);
   assert(parsed->argc == 3);
   const char *lvl = parsed->args[1];
   const char *msg = parsed->args[2];

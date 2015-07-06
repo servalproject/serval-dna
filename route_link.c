@@ -289,8 +289,7 @@ static struct neighbour *get_neighbour(struct subscriber *subscriber, char creat
     n->rtt = 120;
     n->next_neighbour_update = gettime_ms() + 10;
     neighbours = n;
-    if (config.debug.linkstate)
-      DEBUGF("LINK STATE; new neighbour %s", alloca_tohex_sid_t(n->subscriber->sid));
+    DEBUGF(linkstate, "LINK STATE; new neighbour %s", alloca_tohex_sid_t(n->subscriber->sid));
   }
   return n;
 }
@@ -372,12 +371,12 @@ static void update_path_score(struct neighbour *neighbour, struct link *link){
   if (link->drop_rate>2)
     drop_rate += link->drop_rate;
 
-  if (config.debug.verbose && config.debug.linkstate && hop_count != link->hop_count)
-    DEBUGF("LINK STATE; path score to %s via %s version %d = %d",
-	alloca_tohex_sid_t(link->receiver->sid),
-	alloca_tohex_sid_t(neighbour->subscriber->sid),
-	neighbour->path_version,
-	hop_count);
+  if (hop_count != link->hop_count && IF_DEBUG(verbose))
+    DEBUGF(linkstate, "LINK STATE; path score to %s via %s version %d = %d",
+	   alloca_tohex_sid_t(link->receiver->sid),
+	   alloca_tohex_sid_t(neighbour->subscriber->sid),
+	   neighbour->path_version,
+	   hop_count);
 
   link->hop_count = hop_count;
   link->path_version = neighbour->path_version;
@@ -462,8 +461,7 @@ next:
     subscriber->reachable=REACHABLE_SELF;
     changed = 1;
     best_link = NULL;
-    if (config.debug.overlayrouting || config.debug.linkstate)
-      DEBUGF("REACHABLE via self %s", alloca_tohex_sid_t(subscriber->sid));
+    DEBUGF2(overlayrouting, linkstate, "REACHABLE via self %s", alloca_tohex_sid_t(subscriber->sid));
   }
   
   if (changed){
@@ -582,8 +580,8 @@ static int append_link(struct subscriber *subscriber, void *context)
 
 static void free_neighbour(struct neighbour **neighbour_ptr){
   struct neighbour *n = *neighbour_ptr;
-  if (config.debug.linkstate && config.debug.verbose)
-    DEBUGF("LINK STATE; all links from neighbour %s have died", alloca_tohex_sid_t(n->subscriber->sid));
+  if (IF_DEBUG(verbose))
+    DEBUGF(linkstate, "LINK STATE; all links from neighbour %s have died", alloca_tohex_sid_t(n->subscriber->sid));
 
   struct link_in *link = n->links;
   while(link){
@@ -617,10 +615,9 @@ static void clean_neighbours(time_ms_t now)
     while(*list){
       struct link_in *link = *list;
       if (link->interface->state!=INTERFACE_STATE_UP || link->link_timeout < now){
-        if (config.debug.linkstate)
-          DEBUGF("LINK STATE; link expired from neighbour %s on interface %s", 
-            alloca_tohex_sid_t(n->subscriber->sid),
-            link->interface->name);
+	DEBUGF(linkstate, "LINK STATE; link expired from neighbour %s on interface %s",
+	       alloca_tohex_sid_t(n->subscriber->sid),
+	       link->interface->name);
         *list=link->_next;
         free(link);
       }else{
@@ -797,16 +794,14 @@ static int neighbour_find_best_link(struct neighbour *n)
   if (n->best_link != best_link){
     n->best_link = best_link;
     n->next_neighbour_update = gettime_ms()+20;
-    if (config.debug.linkstate){
-      if (best_link){
-	DEBUGF("LINK STATE; best link from neighbour %s is %s on interface %s", 
-	  alloca_tohex_sid_t(n->subscriber->sid),
-	  best_link->unicast?"unicast":"broadcast",
-	  best_link->interface->name);
-      }else{
-	DEBUGF("LINK STATE; no best link from neighbour %s", 
-	  alloca_tohex_sid_t(n->subscriber->sid));
-      }
+    if (best_link) {
+      DEBUGF(linkstate, "LINK STATE; best link from neighbour %s is %s on interface %s",
+	     alloca_tohex_sid_t(n->subscriber->sid),
+	     best_link->unicast?"unicast":"broadcast",
+	     best_link->interface->name);
+    } else {
+      DEBUGF(linkstate, "LINK STATE; no best link from neighbour %s",
+	     alloca_tohex_sid_t(n->subscriber->sid));
     }
   }
 
@@ -821,10 +816,10 @@ static int neighbour_link_sent(struct overlay_frame *frame, struct network_desti
   if (!neighbour)
     return 0;
   neighbour->last_update_seq = sequence;
-  if ((config.debug.linkstate && config.debug.verbose)||config.debug.ack)
-    DEBUGF("LINK STATE; ack sent to neighbour %s via %s, in seq %d", 
-      alloca_tohex_sid_t(subscriber->sid), 
-      alloca_socket_address(&destination->address), sequence);
+  if (IF_DEBUG(verbose) || IF_DEBUG(ack))
+    DEBUGF2(linkstate, ack, "LINK STATE; ack sent to neighbour %s via %s, in seq %d",
+	    alloca_tohex_sid_t(subscriber->sid),
+	    alloca_socket_address(&destination->address), sequence);
   return 0;
 }
 
@@ -859,8 +854,8 @@ static int send_neighbour_link(struct neighbour *n)
       frame->destination = n->subscriber;
     }else{
       // not an immediate neighbour yet? send this packet to all probable destinations.
-      if ((config.debug.linkstate && config.debug.verbose)|| config.debug.ack)
-	DEBUGF("Sending link state ack to all possibilities");
+      if (IF_DEBUG(verbose) || IF_DEBUG(ack))
+	DEBUGF2(linkstate, ack, "Sending link state ack to all possibilities");
       struct link_out *out = n->out_links;
       while(out){
 	if (out->timeout >= now)
@@ -878,8 +873,7 @@ static int send_neighbour_link(struct neighbour *n)
     else
       flags|=FLAG_BROADCAST;
 
-    if (config.debug.ack)
-      DEBUGF("LINK STATE; Sending ack to %s for seq %d", alloca_tohex_sid_t(n->subscriber->sid), n->best_link->ack_sequence);
+    DEBUGF(ack, "LINK STATE; Sending ack to %s for seq %d", alloca_tohex_sid_t(n->subscriber->sid), n->best_link->ack_sequence);
     
     append_link_state(frame->payload, flags, n->subscriber, my_subscriber, n->best_link->neighbour_interface, 1,
 	              n->best_link->ack_sequence, n->best_link->ack_mask, -1);
@@ -890,8 +884,7 @@ static int send_neighbour_link(struct neighbour *n)
     n->last_update = now;
   }
   n->next_neighbour_update = n->last_update + n->best_link->interface->destination->ifconfig.tick_ms;
-  if (config.debug.ack)
-    DEBUGF("Next update for %s in %"PRId64"ms", alloca_tohex_sid_t(n->subscriber->sid), n->next_neighbour_update - gettime_ms());
+  DEBUGF(ack, "Next update for %s in %"PRId64"ms", alloca_tohex_sid_t(n->subscriber->sid), n->next_neighbour_update - gettime_ms());
   OUT();
   return 0;
 }
@@ -1024,12 +1017,11 @@ struct link_in * get_neighbour_link(struct neighbour *neighbour, struct overlay_
   link->ack_sequence = -1;
   link->ack_mask = 0;
   link->_next = neighbour->links;
-  if (config.debug.linkstate)
-    DEBUGF("LINK STATE; new possible %s link from neighbour %s on interface %s/%d", 
-      unicast?"unicast":"broadcast",
-      alloca_tohex_sid_t(neighbour->subscriber->sid),
-      interface->name,
-      sender_interface);
+  DEBUGF(linkstate, "LINK STATE; new possible %s link from neighbour %s on interface %s/%d",
+	 unicast?"unicast":"broadcast",
+	 alloca_tohex_sid_t(neighbour->subscriber->sid),
+	 interface->name,
+	 sender_interface);
   neighbour->links = link;
   return link;
 }
@@ -1145,8 +1137,7 @@ int link_state_ack_soon(struct subscriber *subscriber)
     time_ms_t update_time = now + subscriber->destination->resend_delay/3;
     if (neighbour->next_neighbour_update > update_time){
       neighbour->next_neighbour_update = update_time;
-      if (config.debug.ack)
-	DEBUGF("Asking for next ACK Real Soon Now");
+      DEBUGF(ack, "Asking for next ACK Real Soon Now");
     }
     update_alarm(__WHENCE__, neighbour->next_neighbour_update);
   }
@@ -1179,7 +1170,7 @@ int link_received_duplicate(struct subscriber *subscriber, int payload_seq)
     int offset = (payload_seq - neighbour->mdp_ack_sequence - 1)&0xFF;
     if (offset>=64){
       neighbour->mdp_ack_mask = 0;
-      DEBUGF("Jump in neighbour mdp seq (%d -> %d)",neighbour->mdp_ack_sequence,payload_seq);
+      DEBUGF(ack, "Jump in neighbour mdp seq (%d -> %d)",neighbour->mdp_ack_sequence,payload_seq);
     }else{
       neighbour->mdp_ack_mask = (neighbour->mdp_ack_mask << 1) | 1;
       neighbour->mdp_ack_mask = neighbour->mdp_ack_mask << offset;
@@ -1213,11 +1204,10 @@ static struct link_out *create_out_link(struct neighbour *neighbour, overlay_int
   ret->_next=neighbour->out_links;
   neighbour->out_links=ret;
   ret->destination=dest;
-  if (config.debug.linkstate)
-    DEBUGF("LINK STATE; Create possible %s link_out for neighbour %s on interface %s", 
-      unicast?"unicast":"broadcast",
-      alloca_tohex_sid_t(neighbour->subscriber->sid),
-      interface->name);
+  DEBUGF(linkstate, "LINK STATE; Create possible %s link_out for neighbour %s on interface %s",
+	 unicast?"unicast":"broadcast",
+	 alloca_tohex_sid_t(neighbour->subscriber->sid),
+	 interface->name);
   time_ms_t now = gettime_ms();
   ret->timeout = now + ret->destination->ifconfig.reachable_timeout_ms;
   update_alarm(__WHENCE__, now + 5);
@@ -1261,9 +1251,9 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
     if (link->ack_sequence != -1){
       int offset = (link->ack_sequence - 1 - sender_seq)&0xFF;
       if (offset < 64){
-        if (config.debug.verbose && config.debug.linkstate)
-          DEBUGF("LINK STATE; late seq %d from %s on %s", 
-	    sender_seq, alloca_tohex_sid_t(context->sender->sid), context->interface->name);
+	if (IF_DEBUG(verbose))
+          DEBUGF(linkstate, "LINK STATE; late seq %d from %s on %s",
+		 sender_seq, alloca_tohex_sid_t(context->sender->sid), context->interface->name);
 	link->ack_mask |= (1ull<<offset);
       }else{
         link->ack_mask = (link->ack_mask << 1) | 1;
@@ -1272,9 +1262,9 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
 	  if (link->ack_sequence == sender_seq)
 	    break;
 	  // missed a packet? send a link state soon
-          if ((config.debug.verbose && config.debug.linkstate)||config.debug.ack)
-            DEBUGF("LINK STATE; missed seq %d from %s on %s", 
-	      link->ack_sequence, alloca_tohex_sid_t(context->sender->sid), context->interface->name);
+	  if (IF_DEBUG(verbose) || IF_DEBUG(ack))
+            DEBUGF2(linkstate, ack, "LINK STATE; missed seq %d from %s on %s",
+		    link->ack_sequence, alloca_tohex_sid_t(context->sender->sid), context->interface->name);
 	  link->ack_mask = link->ack_mask << 1;
 	  link->ack_counter --;
 
@@ -1380,15 +1370,15 @@ int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payl
     if (context.invalid_addresses)
       continue;
 
-    if ((config.debug.verbose && config.debug.linkstate)||config.debug.ack)
-      DEBUGF("LINK STATE; record - %d, %s, %s, %d, %d, %x, %d",
-	flags,
-	receiver?alloca_tohex_sid_t(receiver->sid):"NULL",
-	transmitter?alloca_tohex_sid_t(transmitter->sid):"NULL",
-	interface_id,
-	ack_seq,
-	ack_mask,
-	drop_rate);
+    if (IF_DEBUG(verbose) || IF_DEBUG(ack))
+      DEBUGF2(linkstate, ack, "LINK STATE; record - %d, %s, %s, %d, %d, %x, %d",
+	      flags,
+	      receiver?alloca_tohex_sid_t(receiver->sid):"NULL",
+	      transmitter?alloca_tohex_sid_t(transmitter->sid):"NULL",
+	      interface_id,
+	      ack_seq,
+	      ack_mask,
+	      drop_rate);
 
     if (transmitter && transmitter!=my_subscriber && transmitter->reachable==REACHABLE_SELF){
       // Our neighbour is talking about a path *from* a secondary SID of ours? Impossible.
@@ -1501,9 +1491,8 @@ int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payl
 	    neighbour->last_update_seq = -1;
 	  }else if(seq_delta < 128){
 	    // send another ack soon
-	    if (config.debug.ack)
-	      DEBUGF("LINK STATE; neighbour %s missed ack %d, queue another", 
-		alloca_tohex_sid_t(header->source->sid), neighbour->last_update_seq);
+	    DEBUGF(ack, "LINK STATE; neighbour %s missed ack %d, queue another",
+		   alloca_tohex_sid_t(header->source->sid), neighbour->last_update_seq);
 	    neighbour->next_neighbour_update=now+10;
 	    update_alarm(__WHENCE__, neighbour->next_neighbour_update);
 	  }
@@ -1573,8 +1562,7 @@ int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now)
 
   if (!neighbour->legacy_protocol){
     changed = 1;
-    if (config.debug.linkstate)
-      DEBUGF("LINK STATE; new legacy neighbour %s", alloca_tohex_sid_t(frame->source->sid));
+    DEBUGF(linkstate, "LINK STATE; new legacy neighbour %s", alloca_tohex_sid_t(frame->source->sid));
   }
   if (neighbour->link_in_timeout < now)
     changed = 1;

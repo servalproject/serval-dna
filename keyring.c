@@ -47,14 +47,12 @@ static int keyring_identity_mac(const keyring_identity *id, unsigned char *pkrsa
 
 static int _keyring_open(keyring_file *k, const char *path, const char *mode)
 {
-  if (config.debug.keyring)
-    DEBUGF("opening %s in \"%s\" mode", alloca_str_toprint(path), mode);
+  DEBUGF(keyring, "opening %s in \"%s\" mode", alloca_str_toprint(path), mode);
   k->file = fopen(path, mode);
   if (!k->file) {
     if (errno != EPERM && errno != ENOENT)
       return WHYF_perror("fopen(%s, \"%s\")", alloca_str_toprint(path), mode);
-    if (config.debug.keyring)
-      DEBUGF("cannot open %s in \"%s\" mode", alloca_str_toprint(path), mode);
+    DEBUGF(keyring, "cannot open %s in \"%s\" mode", alloca_str_toprint(path), mode);
   }
   return 0;
 }
@@ -366,8 +364,7 @@ static int keyring_munge_block(
   unsigned char *KeyRingSalt, int KeyRingSaltLen,
   const char *KeyRingPin, const char *PKRPin)
 {
-  if (config.debug.keyring)
-    DEBUGF("KeyRingPin=%s PKRPin=%s", alloca_str_toprint(KeyRingPin), alloca_str_toprint(PKRPin));
+  DEBUGF(keyring, "KeyRingPin=%s PKRPin=%s", alloca_str_toprint(KeyRingPin), alloca_str_toprint(PKRPin));
   int exit_code=1;
   unsigned char hashKey[crypto_hash_sha512_BYTES];
   unsigned char hashNonce[crypto_hash_sha512_BYTES];
@@ -899,8 +896,7 @@ static int keyring_pack_identity(const keyring_identity *id, unsigned char packe
     if (packer == NULL) {
       WARNF("no packer function for key type 0x%02x(%s), omitted from keyring file", ktype, kts);
     } else {
-      if (config.debug.keyring)
-	DEBUGF("pack key type = 0x%02x(%s)", ktype, kts);
+      DEBUGF(keyring, "pack key type = 0x%02x(%s)", ktype, kts);
       // First byte is the key type code.
       rotbuf_putc(&rbuf, ktype);
       // The next two bytes are the key pair length, for forward compatibility: so older software can
@@ -1058,8 +1054,7 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
       break;
     }
     if (keypair_len > rotbuf_remain(&rbuf)) {
-      if (config.debug.keyring)
-	DEBUGF("invalid keypair length %zu", keypair_len);
+      DEBUGF(keyring, "invalid keypair length %zu", keypair_len);
       keyring_free_identity(id);
       return NULL;
     }
@@ -1072,12 +1067,10 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
     }
     struct rotbuf rbstart = rbuf;
     if (ktype < NELS(keytypes) && kt->unpacker) {
-      if (config.debug.keyring)
-	DEBUGF("unpack key type = 0x%02x(%s) at offset %u", ktype, keytype_str(ktype, "unknown"), (int)rotbuf_position(&rbo));
+      DEBUGF(keyring, "unpack key type = 0x%02x(%s) at offset %u", ktype, keytype_str(ktype, "unknown"), (int)rotbuf_position(&rbo));
       if (kt->unpacker(kp, &rbuf, keypair_len) != 0) {
 	// If there is an error, it is probably an empty slot.
-	if (config.debug.keyring)
-	  DEBUGF("key type 0x%02x does not unpack", ktype);
+	DEBUGF(keyring, "key type 0x%02x does not unpack", ktype);
 	keyring_free_keypair(kp);
 	keyring_free_identity(id);
 	return NULL;
@@ -1087,15 +1080,13 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
       if (unpacked != keypair_len) {
 	// If the number of bytes unpacked does not match the keypair length, it is probably an
 	// empty slot.
-	if (config.debug.keyring)
-	  DEBUGF("key type 0x%02x unpacked wrong length (unpacked %u, expecting %u)", ktype, (int)unpacked, (int)keypair_len);
+	DEBUGF(keyring, "key type 0x%02x unpacked wrong length (unpacked %u, expecting %u)", ktype, (int)unpacked, (int)keypair_len);
 	keyring_free_keypair(kp);
 	keyring_free_identity(id);
 	return NULL;
       }
     } else {
-      if (config.debug.keyring)
-	DEBUGF("unsupported key type 0x%02x at offset %u, reading %u bytes as private key", ktype, (unsigned)rotbuf_position(&rbo), (unsigned)kp->private_key_len);
+      DEBUGF(keyring, "unsupported key type 0x%02x at offset %u, reading %u bytes as private key", ktype, (unsigned)rotbuf_position(&rbo), (unsigned)kp->private_key_len);
       assert(kp->public_key_len == 0);
       assert(kp->public_key == NULL);
       rotbuf_getbuf(&rbuf, kp->private_key, kp->private_key_len);
@@ -1107,13 +1098,11 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
   }
   // If the buffer offset overshot, we got an invalid keypair code and length combination.
   if (rbuf.wrap > 1) {
-    if (config.debug.keyring)
-      DEBUGF("slot overrun by %u bytes", rbuf.wrap - 1);
+    DEBUGF(keyring, "slot overrun by %u bytes", rbuf.wrap - 1);
     keyring_free_identity(id);
     return NULL;
   }
-  if (config.debug.keyring)
-    DEBUGF("unpacked key pairs");
+  DEBUGF(keyring, "unpacked key pairs");
   return id;
 }
 
@@ -1151,8 +1140,7 @@ static int keyring_identity_mac(const keyring_identity *id, unsigned char *pkrsa
  */
 static int keyring_decrypt_pkr(keyring_file *k, const char *pin, int slot_number)
 {
-  if (config.debug.keyring)
-    DEBUGF("k=%p, pin=%s slot_number=%d", k, alloca_str_toprint(pin), slot_number);
+  DEBUGF(keyring, "k=%p, pin=%s slot_number=%d", k, alloca_str_toprint(pin), slot_number);
   unsigned char slot[KEYRING_PAGE_SIZE];
   keyring_identity *id=NULL;
 
@@ -1167,8 +1155,7 @@ static int keyring_decrypt_pkr(keyring_file *k, const char *pin, int slot_number
     goto kdp_safeexit;
   }
   /* 3. Unpack contents of slot into a new identity in the provided context. */
-  if (config.debug.keyring)
-    DEBUGF("unpack slot %u", slot_number);
+  DEBUGF(keyring, "unpack slot %u", slot_number);
   if (((id = keyring_unpack_identity(slot, pin)) == NULL) || !id->keypairs)
     goto kdp_safeexit; // Not a valid slot
   id->slot = slot_number;
@@ -1210,8 +1197,7 @@ static int keyring_decrypt_pkr(keyring_file *k, const char *pin, int slot_number
 int keyring_enter_pin(keyring_file *k, const char *pin)
 {
   IN();
-  if (config.debug.keyring)
-    DEBUGF("k=%p, pin=%s", k, alloca_str_toprint(pin));
+  DEBUGF(keyring, "k=%p, pin=%s", k, alloca_str_toprint(pin));
   if (!k) RETURN(-1);
   if (!pin) pin="";
 
@@ -1312,8 +1298,7 @@ static int keyring_commit_identity(keyring_file *k, keyring_identity *id)
 */
 keyring_identity *keyring_create_identity(keyring_file *k, const char *pin)
 {
-  if (config.debug.keyring)
-    DEBUGF("k=%p", k);
+  DEBUGF(keyring, "k=%p", k);
   /* Check obvious abort conditions early */
   if (!k) { WHY("keyring is NULL"); return NULL; }
   if (!k->bam) { WHY("keyring lacks BAM (not to be confused with KAPOW)"); return NULL; }
@@ -1362,8 +1347,7 @@ keyring_identity *keyring_create_identity(keyring_file *k, const char *pin)
 
 int keyring_commit(keyring_file *k)
 {
-  if (config.debug.keyring)
-    DEBUGF("k=%p", k);
+  DEBUGF(keyring, "k=%p", k);
   if (!k)
     return WHY("keyring was NULL");
   unsigned errorCount = 0;
@@ -1404,8 +1388,7 @@ int keyring_commit(keyring_file *k)
 	/* Store */
 	off_t file_offset = KEYRING_PAGE_SIZE * it.identity->slot;
 	if (file_offset == 0) {
-	  if (config.debug.keyring)
-	    DEBUGF("ID id=%p has slot=0", it.identity);
+	  DEBUGF(keyring, "ID id=%p has slot=0", it.identity);
 	} else if (fseeko(k->file, file_offset, SEEK_SET) == -1) {
 	  WHYF_perror("fseeko(%d, %ld, SEEK_SET)", fileno(k->file), (long)file_offset);
 	  errorCount++;
@@ -1433,8 +1416,7 @@ int keyring_set_did(keyring_identity *id, const char *did, const char *name)
   keypair *kp = id->keypairs;
   while(kp){
     if (kp->type==KEYTYPE_DID){
-      if (config.debug.keyring)
-	DEBUG("Identity already contains DID");
+      DEBUG(keyring, "Identity already contains DID");
       break;
     }
     kp=kp->next;
@@ -1445,8 +1427,7 @@ int keyring_set_did(keyring_identity *id, const char *did, const char *name)
     if ((kp = keyring_alloc_keypair(KEYTYPE_DID, 0)) == NULL)
       return -1;
     keyring_identity_add_keypair(id, kp);
-    if (config.debug.keyring)
-      DEBUG("Created DID record for identity");
+    DEBUG(keyring, "Created DID record for identity");
   }
 
   /* Store DID unpacked for ease of searching */
@@ -1461,9 +1442,9 @@ int keyring_set_did(keyring_identity *id, const char *did, const char *name)
   bcopy(name,&kp->public_key[0],len);
   bzero(&kp->public_key[len],64-len);
 
-  if (config.debug.keyring){
-    dump("storing did",&kp->private_key[0],32);
-    dump("storing name",&kp->public_key[0],64);
+  if (IF_DEBUG(keyring)) {
+    dump("{keyring} storing did",&kp->private_key[0],32);
+    dump("{keyring} storing name",&kp->public_key[0],64);
   }
   return 0;
 }
@@ -1508,8 +1489,7 @@ int keyring_set_public_tag(keyring_identity *id, const char *name, const unsigne
       keyring_unpack_tag(kp->public_key, kp->public_key_len, 
 	  &tag_name, &tag_value, &tag_length)==0 &&
       strcmp(tag_name, name)==0) {
-      if (config.debug.keyring)
-	DEBUG("Found existing public tag");
+      DEBUG(keyring, "Found existing public tag");
       break;
     }
     kp = kp->next;
@@ -1517,8 +1497,7 @@ int keyring_set_public_tag(keyring_identity *id, const char *name, const unsigne
   
   /* allocate if needed */
   if (!kp){
-    if (config.debug.keyring)
-      DEBUGF("Creating new public tag");
+    DEBUGF(keyring, "Creating new public tag");
     if ((kp = keyring_alloc_keypair(KEYTYPE_PUBLIC_TAG, 0)) == NULL)
       return -1;
     keyring_identity_add_keypair(id, kp);
@@ -1535,8 +1514,8 @@ int keyring_set_public_tag(keyring_identity *id, const char *name, const unsigne
   if (keyring_pack_tag(kp->public_key, &kp->public_key_len, name, value, length))
     return -1;
   
-  if (config.debug.keyring)
-    dump("New tag", kp->public_key, kp->public_key_len);
+  if (IF_DEBUG(keyring))
+    dump("{keyring} New tag", kp->public_key, kp->public_key_len);
   return 0;
 }
 
@@ -1587,8 +1566,7 @@ struct keypair *keyring_find_sas_private(keyring_file *k, keyring_identity *iden
     kp->verified=1;
   }
   
-  if (config.debug.keyring)
-    DEBUGF("Found SAS entry");
+  DEBUGF(keyring, "Found SAS entry");
   
   RETURN(kp);
   OUT();
@@ -1597,14 +1575,12 @@ struct keypair *keyring_find_sas_private(keyring_file *k, keyring_identity *iden
 static int keyring_store_sas(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   if (header->source->sas_valid){
-    if (config.debug.keyring)
-      DEBUGF("Ignoring SID:SAS mapping for %s, already have one", alloca_tohex_sid_t(header->source->sid));
+    DEBUGF(keyring, "Ignoring SID:SAS mapping for %s, already have one", alloca_tohex_sid_t(header->source->sid));
     return 0;
   }
   size_t len = ob_remaining(payload);
   
-  if (config.debug.keyring)
-    DEBUGF("Received SID:SAS mapping, %zd bytes", len);
+  DEBUGF(keyring, "Received SID:SAS mapping, %zd bytes", len);
   
 #define SIG_BYTES crypto_sign_edwards25519sha512batch_BYTES
 
@@ -1640,11 +1616,10 @@ static int keyring_store_sas(struct internal_mdp_header *header, struct overlay_
   header->source->sas_valid=1;
   header->source->sas_last_request=-1;
   
-  if (config.debug.keyring)
-    DEBUGF("Stored SID:SAS mapping, SID=%s to SAS=%s",
-	   alloca_tohex_sid_t(header->source->sid),
-	   alloca_tohex_sas(header->source->sas_public)
-	   );
+  DEBUGF(keyring, "Stored SID:SAS mapping, SID=%s to SAS=%s",
+	 alloca_tohex_sid_t(header->source->sid),
+	 alloca_tohex_sas(header->source->sas_public)
+	);
   return 0;
 }
 
@@ -1687,12 +1662,11 @@ static int keyring_respond_sas(keyring_file *k, struct internal_mdp_header *head
   slen-=SID_SIZE;
   ob_append_space(response_payload, slen);
   
-  if (config.debug.keyring)
-    DEBUGF("Sending SID:SAS mapping, %zd bytes, %s:%"PRImdp_port_t" -> %s:%"PRImdp_port_t,
-	  ob_position(response_payload),
-	  alloca_tohex_sid_t(header->destination->sid), header->destination_port,
-	  alloca_tohex_sid_t(header->source->sid), header->source_port
-	);
+  DEBUGF(keyring, "Sending SID:SAS mapping, %zd bytes, %s:%"PRImdp_port_t" -> %s:%"PRImdp_port_t,
+	 ob_position(response_payload),
+	 alloca_tohex_sid_t(header->destination->sid), header->destination_port,
+	 alloca_tohex_sid_t(header->source->sid), header->source_port
+        );
   
   ob_flip(response_payload);
   int ret = overlay_send_frame(&response, response_payload);
@@ -1729,8 +1703,7 @@ int keyring_send_unlock(struct subscriber *subscriber)
     
   ob_append_space(response, len - ob_position(response));
   
-  if (config.debug.keyring)
-    DEBUGF("Sending Unlock request for sid %s", alloca_tohex_sid_t(subscriber->sid));
+  DEBUGF(keyring, "Sending Unlock request for sid %s", alloca_tohex_sid_t(subscriber->sid));
   ob_flip(response);
   int ret = overlay_send_frame(&header, response);
   ob_free(response);
@@ -1758,8 +1731,7 @@ static int keyring_send_challenge(struct subscriber *source, struct subscriber *
   ob_append_byte(payload, UNLOCK_CHALLENGE);
   ob_append_bytes(payload, source->identity->challenge, sizeof source->identity->challenge);
   
-  if (config.debug.keyring)
-    DEBUGF("Sending Unlock challenge for sid %s", alloca_tohex_sid_t(source->sid));
+  DEBUGF(keyring, "Sending Unlock challenge for sid %s", alloca_tohex_sid_t(source->sid));
     
   ob_flip(payload);
   int ret = overlay_send_frame(&header, payload);
@@ -1793,8 +1765,7 @@ static int keyring_respond_challenge(struct subscriber *subscriber, struct overl
     return -1;
     
   ob_append_space(response, len - ob_position(response));
-  if (config.debug.keyring)
-    DEBUGF("Responding to Unlock challenge for sid %s", alloca_tohex_sid_t(subscriber->sid));
+  DEBUGF(keyring, "Responding to Unlock challenge for sid %s", alloca_tohex_sid_t(subscriber->sid));
   ob_flip(response);
   int ret = overlay_send_frame(&header, response);
   ob_free(response);
@@ -1856,16 +1827,14 @@ int keyring_send_sas_request(struct subscriber *subscriber){
   time_ms_t now = gettime_ms();
   
   if (now < subscriber->sas_last_request + 100){
-    if (config.debug.keyring)
-      INFO("Too soon to ask for SAS mapping again");
+    DEBUG(keyring, "Too soon to ask for SAS mapping again");
     return 0;
   }
   
   if (!my_subscriber)
     return WHY("couldn't request SAS (I don't know who I am)");
   
-  if (config.debug.keyring)
-    DEBUGF("Requesting SAS mapping for SID=%s", alloca_tohex_sid_t(subscriber->sid));
+  DEBUGF(keyring, "Requesting SAS mapping for SID=%s", alloca_tohex_sid_t(subscriber->sid));
   
   /* request mapping (send request auth-crypted). */
   struct internal_mdp_header header;
@@ -1880,8 +1849,7 @@ int keyring_send_sas_request(struct subscriber *subscriber){
   struct overlay_buffer *payload = ob_new();
   ob_append_byte(payload, KEYTYPE_CRYPTOSIGN);
   
-  if (config.debug.keyring)
-    DEBUGF("Sending SAS resolution request");
+  DEBUGF(keyring, "Sending SAS resolution request");
   subscriber->sas_last_request=now;
   ob_flip(payload);
   int ret = overlay_send_frame(&header, payload);
@@ -2164,7 +2132,7 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
     const char *ktypestr = &line[i];
     line[j] = '\0';
     const char *content = &line[j + 1];
-    //DEBUGF("n=%d i=%u ktypestr=%s j=%u content=%s", n, i, alloca_str_toprint(ktypestr), j, alloca_str_toprint(content));
+    //DEBUGF(keyring, "n=%d i=%u ktypestr=%s j=%u content=%s", n, i, alloca_str_toprint(ktypestr), j, alloca_str_toprint(content));
     keypair *kp = keyring_alloc_keypair(ktype, 0);
     if (kp == NULL)
       return -1;

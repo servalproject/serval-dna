@@ -234,33 +234,30 @@ overlay_interface * overlay_interface_find(struct in_addr addr, int return_defau
     if (overlay_interfaces[i].address.addr.sa_family == AF_INET
       && (overlay_interfaces[i].netmask.s_addr & addr.s_addr) == (overlay_interfaces[i].netmask.s_addr & overlay_interfaces[i].address.inet.sin_addr.s_addr)){
 
-      if (config.debug.overlayinterfaces) {
-	DEBUGF("Found interface #%d for in_addr=0x%08x, interface mask=0x%08x, interface addr=0x%08x\n",
-	       i,
-	       addr.s_addr,
-	       overlay_interfaces[i].netmask.s_addr,
-	       overlay_interfaces[i].address.inet.sin_addr.s_addr);
-      }
+      DEBUGF(overlayinterfaces, "Found interface #%d for in_addr=0x%08x, interface mask=0x%08x, interface addr=0x%08x\n",
+	     i,
+	     addr.s_addr,
+	     overlay_interfaces[i].netmask.s_addr,
+	     overlay_interfaces[i].address.inet.sin_addr.s_addr
+	    );
 
       return &overlay_interfaces[i];
     } else {
-      if (config.debug.overlayinterfaces) {
-	DEBUGF("in_addr=0x%08x is not from interface #%d (interface mask=0x%08x, interface addr=0x%08x)\n",
-	       addr.s_addr,i,
-	       overlay_interfaces[i].netmask.s_addr,
-	       overlay_interfaces[i].address.inet.sin_addr.s_addr);
-      }
+      DEBUGF(overlayinterfaces, "in_addr=0x%08x is not from interface #%d (interface mask=0x%08x, interface addr=0x%08x)\n",
+	     addr.s_addr,i,
+	     overlay_interfaces[i].netmask.s_addr,
+	     overlay_interfaces[i].address.inet.sin_addr.s_addr
+	    );
     }
     
     // check if this is a default interface
     if (return_default && overlay_interfaces[i].ifconfig.default_route) {
       ret=&overlay_interfaces[i];
-      if (config.debug.overlayinterfaces) {
-	DEBUGF("in_addr=0x%08x is being deemed to default-route interface #%d (interface mask=0x%08x, interface addr=0x%08x)\n",
-	       addr.s_addr,i,
-	       overlay_interfaces[i].netmask.s_addr,
-	       overlay_interfaces[i].address.inet.sin_addr.s_addr);
-      }
+      DEBUGF(overlayinterfaces, "in_addr=0x%08x is being deemed to default-route interface #%d (interface mask=0x%08x, interface addr=0x%08x)\n",
+	     addr.s_addr,i,
+	     overlay_interfaces[i].netmask.s_addr,
+	     overlay_interfaces[i].address.inet.sin_addr.s_addr
+	    );
     }
   }
   
@@ -354,8 +351,7 @@ overlay_interface_read_any(struct sched_ent *alarm)
     
     /* Drop the packet if we don't find a match */
     if (!interface){
-      if (config.debug.overlayinterfaces)
-	DEBUGF("Could not find matching interface for packet received from %s", inet_ntoa(recvaddr.inet.sin_addr));
+      DEBUGF(overlayinterfaces, "Could not find matching interface for packet received from %s", inet_ntoa(recvaddr.inet.sin_addr));
       return;
     }
     packetOkOverlay(interface, packet, plen, &recvaddr);
@@ -448,8 +444,7 @@ overlay_interface_init_socket(overlay_interface *interface)
     return WHYF("Failed to bind interface %s", interface->name);
   }
   
-  if (config.debug.packetrx || config.debug.io)
-    DEBUGF("Bound to %s", alloca_socket_address(&interface->address));
+  DEBUGF2(packetrx, io, "Bound to %s", alloca_socket_address(&interface->address));
 
   interface->alarm.poll.events=POLLIN;
   watch(&interface->alarm);
@@ -751,21 +746,19 @@ static void interface_read_file(struct overlay_interface *interface)
     }
     
     if (nread == sizeof packet) {
-      if (config.debug.overlayinterfaces)
-	DEBUGF("Read from interface %s (filesize=%"PRId64") at offset=%"PRId64": src_addr=%s dst_addr=%s pid=%d length=%d",
-	      interface->name, (int64_t)length, (int64_t)interface->recv_offset,
-	      alloca_socket_address(&packet.src_addr),
-	      alloca_socket_address(&packet.dst_addr),
-	      packet.pid,
-	      packet.payload_length
+      DEBUGF(overlayinterfaces, "Read from interface %s (filesize=%"PRId64") at offset=%"PRId64": src_addr=%s dst_addr=%s pid=%d length=%d",
+	     interface->name, (int64_t)length, (int64_t)interface->recv_offset,
+	     alloca_socket_address(&packet.src_addr),
+	     alloca_socket_address(&packet.dst_addr),
+	     packet.pid,
+	     packet.payload_length
 	    );
       interface->recv_offset += nread;
       if (should_drop(interface, &packet.dst_addr) || (packet.pid == getpid() && !interface->local_echo)){
-	if (config.debug.packetrx)
-	  DEBUGF("Ignoring packet from pid=%d src_addr=%s dst_addr=%s",
-		packet.pid,
-		alloca_socket_address(&packet.src_addr),
-		alloca_socket_address(&packet.dst_addr)
+	DEBUGF(overlayinterfaces, "Ignoring packet from pid=%d src_addr=%s dst_addr=%s",
+	       packet.pid,
+	       alloca_socket_address(&packet.src_addr),
+	       alloca_socket_address(&packet.dst_addr)
 	      );
       }else{
 	packetOkOverlay(interface, packet.payload, packet.payload_length, &packet.src_addr);
@@ -946,8 +939,8 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
   struct overlay_interface *interface = destination->interface;
   destination->last_tx = gettime_ms();
   
-  if (config.debug.packettx){
-    DEBUGF("Sending this packet via interface %s (len=%zu)",interface->name, len);
+  if (IF_DEBUG(packettx)) {
+    DEBUGF(packettx, "Sending this packet via interface %s (len=%zu)",interface->name, len);
     DEBUG_packet_visualise(NULL, bytes, len);
   }
 
@@ -956,10 +949,11 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
     return WHYF("Cannot send to interface %s as it is down", interface->name);
   }
 
-  if (config.debug.overlayinterfaces || interface->ifconfig.debug)
-    DEBUGF("Sending %zu byte overlay frame on %s to %s [%s]", 
-      (size_t)len, interface->name, alloca_socket_address(&destination->address),
-      alloca_tohex(bytes, len>64?64:len));
+  if (IF_DEBUG(overlayinterfaces) || interface->ifconfig.debug)
+    _DEBUGF_TAG("overlayinterfaces", "Sending %zu byte overlay frame on %s to %s [%s]", 
+		(size_t)len, interface->name, alloca_socket_address(&destination->address),
+		alloca_tohex(bytes, len>64?64:len)
+	       );
       
   interface->tx_count++;
   
@@ -985,14 +979,14 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
       /* This lseek() is unneccessary because the dummy file is opened in O_APPEND mode.  It's
        only purpose is to find out the offset to print in the DEBUG statement.  It is vulnerable
        to a race condition with other processes appending to the same file. */
-      if (config.debug.overlayinterfaces) {
+      if (IF_DEBUG(overlayinterfaces)) {
 	off_t fsize = lseek(interface->alarm.poll.fd, (off_t) 0, SEEK_END);
 	if (fsize == -1) {
 	  /* Don't complain if the seek fails because we are writing to a pipe or device that does
 	    not support seeking. */
 	  if (errno != ESPIPE)
 	    return WHY_perror("lseek");
-	  DEBUGF("Write to interface %s at offset unknown: src_addr=%s dst_addr=%s pid=%d length=%d",
+	  DEBUGF(overlayinterfaces, "Write to interface %s at offset unknown: src_addr=%s dst_addr=%s pid=%d length=%d",
 		interface->name,
 		alloca_socket_address(&packet.src_addr),
 		alloca_socket_address(&packet.dst_addr),
@@ -1000,7 +994,7 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 		packet.payload_length
 	      );
 	} else
-	  DEBUGF("Write to interface %s at offset=%"PRId64": src_addr=%s dst_addr=%s pid=%d length=%d",
+	  DEBUGF(overlayinterfaces, "Write to interface %s at offset=%"PRId64": src_addr=%s dst_addr=%s pid=%d length=%d",
 		interface->name, (int64_t)fsize,
 		alloca_socket_address(&packet.src_addr),
 		alloca_socket_address(&packet.dst_addr),
@@ -1085,13 +1079,11 @@ overlay_interface_register(char *name,
     }
   }
   if (ifconfig == NULL) {
-    if (config.debug.overlayinterfaces)
-      DEBUGF("Interface %s does not match any rule", name);
+    DEBUGF(overlayinterfaces, "Interface %s does not match any rule", name);
     return 0;
   }
   if (ifconfig->exclude) {
-    if (config.debug.overlayinterfaces)
-      DEBUGF("Interface %s is explicitly excluded", name);
+    DEBUGF(overlayinterfaces, "Interface %s is explicitly excluded", name);
     return 0;
   }
   
@@ -1100,12 +1092,10 @@ overlay_interface_register(char *name,
   if (broadcast->addr.sa_family==AF_INET)
     broadcast->inet.sin_port = htons(ifconfig->port);
 
-  if (config.debug.overlayinterfaces) {
-    // note, inet_ntop doesn't seem to behave on android
-    DEBUGF("%s address: %s", name, alloca_socket_address(addr));
-    DEBUGF("%s netmask: %s", name, alloca_socket_address(netmask));
-    DEBUGF("%s broadcast address: %s", name, alloca_socket_address(broadcast));
-  }
+  // note, inet_ntop doesn't seem to behave on android
+  DEBUGF(overlayinterfaces, "%s address: %s", name, alloca_socket_address(addr));
+  DEBUGF(overlayinterfaces, "%s netmask: %s", name, alloca_socket_address(netmask));
+  DEBUGF(overlayinterfaces, "%s broadcast address: %s", name, alloca_socket_address(broadcast));
 
   struct overlay_interface *interface = overlay_interface_find_name_addr(name, addr);
   if (interface){
@@ -1118,9 +1108,8 @@ overlay_interface_register(char *name,
   /* New interface, so register it */
   if (overlay_interface_init(name, addr, netmask, broadcast, ifconfig))
     return WHYF("Could not initialise newly seen interface %s", name);
-  else if (config.debug.overlayinterfaces) 
-    DEBUGF("Registered interface %s", name);
 
+  DEBUGF(overlayinterfaces, "Registered interface %s", name);
   return 0;
 }
 
@@ -1205,8 +1194,8 @@ void overlay_interface_discover(struct sched_ent *alarm)
 	    broadcast.local.sun_path[len--]='\0';
 	  broadcast.addrlen = sizeof addr.local.sun_family + len + 2;
 	  
-	  DEBUGF("Attempting to bind local socket w. addr %s, broadcast %s",
-	    alloca_socket_address(&addr), alloca_socket_address(&broadcast));
+	  INFOF("Attempting to bind local socket w. addr %s, broadcast %s",
+	        alloca_socket_address(&addr), alloca_socket_address(&broadcast));
 	  overlay_interface_init(ifconfig->file, &addr, &netmask, &broadcast, ifconfig);
 	  break;
 	}
