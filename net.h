@@ -36,7 +36,7 @@ struct in_addr {
 #endif
 #endif
 
-#include "log.h" // for __WHENCE__ and struct __sourceloc
+#include "whence.h" // for __WHENCE__ and struct __sourceloc
 
 /* Build a struct in_addr from a host-byte-order integer.
  *

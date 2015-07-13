@@ -32,7 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #   endif
 #endif
 
-#include "log.h"
+#include "whence.h"
 
 struct socket_address{
   socklen_t addrlen;
