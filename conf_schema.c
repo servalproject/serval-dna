@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <arpa/inet.h>
 
 #include "log.h"
+#include "debug.h"
 #include "mem.h"
 #include "str.h"
 #include "strbuf.h"

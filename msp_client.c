@@ -29,6 +29,7 @@
 #include "dataformats.h"
 #include "socket.h"
 #include "log.h"
+#include "debug.h"
 
 #define FLAG_SHUTDOWN (1<<0)
 #define FLAG_ACK (1<<1)

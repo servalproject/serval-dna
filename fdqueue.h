@@ -54,6 +54,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 #include "os.h"
 #include "log.h"
+#include "debug.h"
 
 struct profile_total {
   struct profile_total *_next;

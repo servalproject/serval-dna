@@ -32,6 +32,7 @@ HDRS=	fifo.h \
 	crypto.h \
 	dataformats.h \
 	log.h \
+	debug.h \
 	net.h \
 	fdqueue.h \
 	http_server.h \

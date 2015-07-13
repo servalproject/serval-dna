@@ -18,7 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <stdio.h>
-#include "log.h"
+#include "debug.h"
 #include "conf.h"
 
 // We don't want to call any at_exit functions from the dalvik VM

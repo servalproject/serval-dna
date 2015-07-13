@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2012 Serval Project Inc.
+Copyright (C) 2012-2015 Serval Project Inc.
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -106,6 +106,9 @@ __SERVAL_LOG_INLINE void logMessage(int level, struct __sourceloc whence, const 
 #define INFOF(F,...)        LOGF(LOG_LEVEL_INFO, F, ##__VA_ARGS__)
 #define INFO(X)             INFOF("%s", (X))
 
+// log.h provides these macros for writing messages at DEBUG level, so applications can
+// define their own DEBUG() and DEBUGF() macros; see "debug.h" as the prime example.
+
 #define _DEBUGF(F,...)           LOGF(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
 #define _DEBUG(X)                _DEBUGF("%s", (X))
 #define _DEBUGF_perror(F,...)    LOGF_perror(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
@@ -116,17 +119,7 @@ __SERVAL_LOG_INLINE void logMessage(int level, struct __sourceloc whence, const 
 #define _DEBUGF_TAG_perror(TAG,F,...)     _DEBUGF_perror("{%s} " F, (TAG), ##__VA_ARGS__)
 #define _DEBUGF_TAG_argv(TAG,X,ARGC,ARGV) _DEBUGF_argv("{" TAG "} " X, (ARGC), (ARGV))
 
-#define DEBUGF(FLAG,F,...)           do { if (IF_DEBUG(FLAG)) _DEBUGF_TAG(#FLAG, F, ##__VA_ARGS__); } while (0)
-#define DEBUGF2(FLAG1,FLAG2,F,...)   do { if (IF_DEBUG(FLAG1) || IF_DEBUG(FLAG2)) _DEBUGF_TAG((IF_DEBUG(FLAG1) ? #FLAG1 : #FLAG2), F, ##__VA_ARGS__); } while (0)
-#define DEBUG(FLAG,X)                DEBUGF(FLAG, "%s", (X))
-#define DEBUGF_perror(FLAG,F,...)    do { if (IF_DEBUG(FLAG)) _DEBUGF_TAG_perror(#FLAG, F, ##__VA_ARGS__); } while (0)
-#define DEBUG_perror(FLAG,X)         DEBUGF_perror(FLAG, "%s", (X))
-#define DEBUG_argv(FLAG,X,ARGC,ARGV) do { if (IF_DEBUG(FLAG)) _DEBUG_TAG_argv(#FLAG, X, (ARGC), (ARGV)); } while (0)
-
 #define dump(X,A,N)         logDump(LOG_LEVEL_DEBUG, __WHENCE__, (X), (const unsigned char *)(A), (size_t)(N))
-
-#define D                   (DEBUG("D"), 1)
-#define T                   (IF_DEBUG(trace) ? (DEBUG("T"), 1) : 1)
 
 // Utility functions, defined in terms of above primitives.
 void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv);

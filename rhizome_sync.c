@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_packet.h"
 #include "mdp_client.h"
 #include "log.h"
+#include "debug.h"
 #include "conf.h"
 
 #define MSG_TYPE_BARS 0

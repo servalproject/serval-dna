@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include "crypto.h"
 #include "log.h"
+#include "debug.h"
 #include "keyring.h"
 #include "dataformats.h"
 

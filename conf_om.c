@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "strbuf.h"
 #include "log.h"
+#include "debug.h"
 #include "conf.h"
 
 static const char *cf_find_keyend(const char *const key, const char *const fullkeyend)

@@ -24,6 +24,7 @@
 #include "msp_client.h"
 #include "fdqueue.h"
 #include "log.h"
+#include "debug.h"
 #include "mem.h"
 #include "str.h"
 #include "strbuf.h"

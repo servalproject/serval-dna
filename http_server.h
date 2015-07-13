@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <limits.h>
 #include "serval_types.h"
+#include "debug.h"
 #include "net.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
@@ -184,11 +185,10 @@ struct http_request {
   // used for debugging when we write post-<uuid>.log files for multi-part form
   // requests.
   unsigned int uuid;
-  // These can be set up to point to config flags, to allow debug to be
-  // enabled independently for different instances HTTP server instances
-  // that use this code.
-  bool_t *debug_flag;
-  bool_t *disable_tx_flag;
+  // These indirect debug flags allow different instances of HTTP servers to
+  // control their debug output independently of each other.
+  struct idebug debug;
+  struct idebug disable_tx;
   // The following are used for parsing the HTTP request.
   time_ms_t initiate_time; // time connection was initiated
   time_ms_t idle_timeout; // disconnect if no bytes received for this long

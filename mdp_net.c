@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "socket.h"
 #include "conf.h"
 #include "log.h"
+#include "debug.h"
 
 ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl, struct socket_address *recvaddr)
 {

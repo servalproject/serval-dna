@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "net.h"
 #include "mem.h"
 #include "log.h"
+#include "debug.h"
 #include "conf.h"
 
 // Generate config set-default function definitions, cf_dfl_config_NAME().

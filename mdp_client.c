@@ -21,6 +21,7 @@
 #include <sys/stat.h>
 #include "conf.h"
 #include "log.h"
+#include "debug.h"
 #include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
