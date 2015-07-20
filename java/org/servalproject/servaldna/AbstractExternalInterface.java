@@ -12,6 +12,7 @@ import java.nio.channels.SelectionKey;
 public abstract class AbstractExternalInterface  extends ChannelSelector.Handler {
 	private final ChannelSelector selector;
 	protected final MdpSocket socket;
+	private boolean isUp = false;
 
 	public AbstractExternalInterface(ChannelSelector selector, int loopbackMdpPort) throws IOException {
 		this.socket = new MdpSocket(loopbackMdpPort);
@@ -41,9 +42,11 @@ public abstract class AbstractExternalInterface  extends ChannelSelector.Handler
 		packet.payload.put(config.getBytes());
 		packet.payload.flip();
 		packet.send((DatagramChannel)socket.getChannel());
+		isUp = true;
 	}
 
 	public void down() throws IOException {
+		isUp = false;
 		MdpPacket packet = new MdpPacket();
 		packet.setRemotePort(MDP_INTERFACE);
 		packet.payload.put((byte) MDP_INTERFACE_DOWN);
@@ -55,6 +58,9 @@ public abstract class AbstractExternalInterface  extends ChannelSelector.Handler
 		receivedPacket(recvaddr, recvbytes, 0, recvbytes==null?0:recvbytes.length);
 	}
 	public void receivedPacket(byte recvaddr[], byte recvbytes[], int offset, int len) throws IOException {
+		if (!isUp)
+			return;
+
 		MdpPacket packet = new MdpPacket();
 		packet.setRemotePort(MDP_INTERFACE);
 		packet.payload.put((byte) MDP_INTERFACE_RECV);
@@ -73,6 +79,8 @@ public abstract class AbstractExternalInterface  extends ChannelSelector.Handler
 		try {
 			MdpPacket response = new MdpPacket();
 			socket.receive(response);
+			if (!isUp)
+				return;
 			int addrlen = response.payload.get() & 0xFF;
 			byte addr[]=null;
 			if (addrlen>0) {

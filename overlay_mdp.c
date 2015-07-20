@@ -1667,7 +1667,7 @@ static int mdp_send2(struct __sourceloc __whence, const struct socket_address *c
 static void mdp_poll2(struct sched_ent *alarm)
 {
   if (alarm->poll.revents & POLLIN) {
-    uint8_t payload[1200];
+    uint8_t payload[1400];
     struct mdp_header header;
     struct socket_address client;
     bzero(&client, sizeof client);

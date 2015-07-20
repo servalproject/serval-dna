@@ -12,7 +12,7 @@ public class MdpPacket {
 	private ByteBuffer buff;
 	public ByteBuffer payload;
 
-	private static final int MDP_MTU = 1200;
+	private static final int MDP_MTU = 1400;
 	private static final int HEADER_LEN = 32+4+32+4+1+1+1;
 
 	public static final byte MDP_FLAG_NO_CRYPT = (1<<0);
@@ -26,7 +26,7 @@ public class MdpPacket {
 	public static final int MDP_PORT_SERVICE_DISCOVERY = 11;
 
 	public MdpPacket(){
-		buff = ByteBuffer.allocate(MDP_MTU);
+		buff = ByteBuffer.allocate(MDP_MTU + HEADER_LEN);
 		buff.order(ByteOrder.nativeOrder());
 		buff.position(HEADER_LEN);
 		payload = buff.slice();
