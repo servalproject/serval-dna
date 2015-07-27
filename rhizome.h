@@ -925,6 +925,6 @@ DECLARE_ALARM(rhizome_fetch_status);
 
 /* Rhizome triggers */
 
-DECLARE_TRIGGER(rhizome_bundle_added, rhizome_manifest*)
+DECLARE_TRIGGER(rba, rhizome_manifest*)
 
 #endif //__SERVAL_DNA__RHIZOME_H

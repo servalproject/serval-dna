@@ -26,16 +26,16 @@
 
 #define DECLARE_TRIGGER(TRIG, ...) \
     typedef void TRIGGER_FUNC_##TRIG (__VA_ARGS__); \
-    extern TRIGGER_FUNC_##TRIG *__start___trigger_section_##TRIG[] SECTION_START(trigger_##TRIG); \
-    extern TRIGGER_FUNC_##TRIG *__stop___trigger_section_##TRIG[] SECTION_STOP(trigger_##TRIG);
+    extern TRIGGER_FUNC_##TRIG *__start___ts_##TRIG[] SECTION_START(trigger_##TRIG); \
+    extern TRIGGER_FUNC_##TRIG *__stop___ts_##TRIG[] SECTION_STOP(trigger_##TRIG);
 
 #define DEFINE_TRIGGER(TRIG, FUNC) \
-    TRIGGER_FUNC_##TRIG * __trigger_##FUNC IN_SECTION(__trigger_section_##TRIG) = FUNC;
+    TRIGGER_FUNC_##TRIG * __trigger_##FUNC IN_SECTION(__ts_##TRIG) = FUNC;
 
 #define CALL_TRIGGER(TRIG, ...) \
     do { \
         TRIGGER_FUNC_##TRIG **__trig; \
-        for (__trig = __start___trigger_section_##TRIG; __trig < __stop___trigger_section_##TRIG; ++__trig) \
+        for (__trig = __start___ts_##TRIG; __trig < __stop___ts_##TRIG; ++__trig) \
             (**__trig)(__VA_ARGS__); \
     } while (0);
 
