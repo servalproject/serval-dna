@@ -1047,8 +1047,7 @@ static int http_request_start_body(struct http_request *r)
       if (   strcmp(r->request_header.content_type.type, "multipart") == 0
 	  && strcmp(r->request_header.content_type.subtype, "form-data") == 0
       ) {
-	if (   r->request_header.content_type.multipart_boundary == NULL
-	    || r->request_header.content_type.multipart_boundary[0] == '\0'
+	if (   r->request_header.content_type.multipart_boundary[0] == '\0'
 	) {
 	  IDEBUGF(r->debug, "Malformed HTTP %s request: Content-Type %s/%s missing boundary parameter",
 		r->verb, r->request_header.content_type.type, r->request_header.content_type.subtype);
