@@ -238,7 +238,7 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
     int seq = ob_get(buffer);
     if (seq == -1)
       RETURN(WHY("Unable to read packet seq"));
-    if (link_received_duplicate(context->sender, seq)){
+    if (link_received_duplicate(context, seq)){
       if (IF_DEBUG(verbose))
 	DEBUG(overlayframes, "Don't process or forward duplicate payloads");
       forward=process=0;
@@ -313,9 +313,7 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
 	interface->name, alloca_socket_address(addr));
   }
   
-  link_received_packet(context, sender_seq, packet_flags & PACKET_UNICAST);
-  
-  RETURN(0);
+  RETURN(link_received_packet(context, sender_seq, packet_flags & PACKET_UNICAST));
   OUT();
 }
 
