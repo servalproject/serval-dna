@@ -29,6 +29,7 @@ setup() {
    setup_json
    setup_servald
    set_instance +A
+   set_keyring_config
    executeOk_servald config \
       set api.restful.users.harry.password potter \
       set api.restful.users.ron.password weasley \
@@ -60,7 +61,6 @@ set_extra_config() {
 
 set_keyring_config() {
    executeOk_servald config \
-      set debug.http_server on \
       set debug.httpd on \
       set debug.rhizome_manifest on \
       set debug.rhizome_store on \
@@ -70,27 +70,46 @@ set_keyring_config() {
       set log.console.level debug
 }
 
-doc_keyringListIdentities="HTTP RESTful list SIDs as JSON"
-setup_keyringListIdentities() {
+doc_keyringList="HTTP RESTful list keyring identities as JSON"
+setup_keyringList() {
    IDENTITY_COUNT=10
    setup
 }
-
-test_keyringListIdentities() {
+test_keyringList() {
    executeOk curl \
          --silent --fail --show-error \
-         --output identitylist1.json \
+         --output list.json \
          --dump-header http.headers \
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/keyring/identities.json"
-   tfw_cat http.headers identitylist1.json
-   tfw_preserve identitylist1.json
-   
-   assert [ "$(jq '.rows | length' identitylist1.json)" = $IDENTITY_COUNT ]
+   tfw_cat http.headers list.json
+   tfw_preserve list.json
+   assert [ "$(jq '.rows | length' list.json)" = $IDENTITY_COUNT ]
+   assert [ "$(jq -r '.rows[0][0]' list.json)" = $SIDA1 ]
+   assert [ "$(jq -r '.rows[4][0]' list.json)" = $SIDA5 ]
+   assert [ "$(jq -r '.rows[9][0]' list.json)" = $SIDA10 ]
+}
 
-   assert [ "$(jq -r '.rows[0][0]' identitylist1.json)" = $SIDA1 ]
-   assert [ "$(jq -r '.rows[4][0]' identitylist1.json)" = $SIDA5 ]
-   assert [ "$(jq -r '.rows[9][0]' identitylist1.json)" = $SIDA10 ]
+doc_keyringAdd="HTTP RESTful add keyring identity with empty PIN"
+setup_keyringAdd() {
+   IDENTITY_COUNT=2
+   setup
+}
+test_keyringAdd() {
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output add.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/keyring/add"
+   tfw_cat http.headers add.json
+   tfw_preserve add.json
+   assertStdoutIs '200'
+   SID="$(jq -r '.sid' add.json)"
+   assert matches_rexp "^${rexp_sid}$" "$SID"
+   executeOk_servald keyring list
+   assert_keyring_list 3
+   assertStdoutGrep --stderr --matches=1 "^$SID::\$"
 }
 
 runTests "$@"

@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define alloca_keyring_token(bid, offset) keyring_    token_to_str(alloca(keyring_TOKEN_STRLEN + 1), (bid), (offset))
 
 static HTTP_HANDLER restful_keyring_identitylist_json;
+static HTTP_HANDLER restful_keyring_add;
 
 int restful_keyring_(httpd_request *r, const char *remainder)
 {
@@ -40,13 +41,16 @@ int restful_keyring_(httpd_request *r, const char *remainder)
   const char *verb = HTTP_VERB_GET;
   http_size_t content_length = CONTENT_LENGTH_UNKNOWN;
   HTTP_HANDLER *handler = NULL;
-  
   if (strcmp(remainder, "identities.json") == 0) {
     handler = restful_keyring_identitylist_json;
     verb = HTTP_VERB_GET;
     remainder = "";
   }
-
+  else if (strcmp(remainder, "add") == 0) {
+    handler = restful_keyring_add;
+    verb = HTTP_VERB_GET;
+    remainder = "";
+  }
   if (handler == NULL)
     return 404;
   if (	 content_length != CONTENT_LENGTH_UNKNOWN
@@ -60,16 +64,20 @@ int restful_keyring_(httpd_request *r, const char *remainder)
   return handler(r, remainder);
 }
 
+static int http_request_keyring_response(struct httpd_request *r, uint16_t result, const char *message)
+{
+  http_request_simple_response(&r->http, result, message);
+  return result;
+}
+
 static HTTP_CONTENT_GENERATOR restful_keyring_identitylist_json_content;
 
 static int restful_keyring_identitylist_json(httpd_request *r, const char *remainder)
 {
   if (*remainder)
     return 404;
-
   r->u.sidlist.phase = LIST_HEADER;
   keyring_iterator_start(keyring, &r->u.sidlist.it);
-
   http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_keyring_identitylist_json_content);
   return 1;
 }
@@ -147,3 +155,25 @@ static int restful_keyring_identitylist_json_content_chunk(struct http_request *
   return 0;
 }
 
+static int restful_keyring_add(httpd_request *r, const char *remainder)
+{
+  if (*remainder)
+    return 404;
+  const keyring_identity *id = keyring_create_identity(keyring, "");
+  if (id == NULL)
+    return http_request_keyring_response(r, 501, "Could not create identity");
+  const sid_t *sidp = NULL;
+  const char *did = "";
+  const char *name = "";
+  keyring_identity_extract(id, &sidp, &did, &name);
+  if (!sidp)
+    return http_request_keyring_response(r, 501, "New identity has no SID");
+  if (keyring_commit(keyring) == -1)
+    return http_request_keyring_response(r, 501, "Could not store new identity");
+  strbuf s = strbuf_alloca(200);
+  strbuf_puts(s, "{\n \"sid\":");
+  strbuf_json_hex(s, sidp->binary, sizeof sidp->binary);
+  strbuf_puts(s, "\n}");
+  http_request_response_static(&r->http, 200, CONTENT_TYPE_JSON, strbuf_str(s), strbuf_len(s));
+  return 1;
+}

@@ -759,6 +759,14 @@ create_identities() {
    done
 }
 
+# Assertion function:
+# - asserts that the list contains N identities that have the correct format
+assert_keyring_list() {
+   unpack_stdout_list __X
+   assert --stdout --stderr [ $__XNROWS -eq $1 ]
+   assertStdoutGrep --stderr --matches=$1 "^$rexp_sid:\($rexp_did\)\?:.*\$"
+}
+
 # Utility function, to be overridden as needed:
 #  - set up the configuration immediately prior to starting a servald server process
 #  - called by start_servald_instances
