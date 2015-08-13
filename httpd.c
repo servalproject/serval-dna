@@ -108,7 +108,7 @@ int is_httpd_server_running()
    Return 1 if the server is already started successfully.
    Return 2 if the server was not started because it is too soon since last failed attempt.
  */
-int httpd_server_start(uint16_t port_low, uint16_t port_high)
+int httpd_server_start(const uint16_t port_low, const uint16_t port_high)
 {
   if (httpd_server_socket != -1)
     return 1;
@@ -124,9 +124,9 @@ int httpd_server_start(uint16_t port_low, uint16_t port_high)
   for (port = port_low; port <= port_high; ++port) {
     /* Create a new socket, reusable and non-blocking. */
     if (httpd_server_socket == -1) {
-      httpd_server_socket = socket(AF_INET,SOCK_STREAM,0);
+      httpd_server_socket = socket(AF_INET, SOCK_STREAM, 0);
       if (httpd_server_socket == -1) {
-	WHY_perror("socket");
+	WHY_perror("socket(AF_INET, SOCK_STREAM, 0)");
 	goto error;
       }
       int on=1;
@@ -165,7 +165,7 @@ int httpd_server_start(uint16_t port_low, uint16_t port_high)
       httpd_server_socket = -1;
     }
   }
-  WHYF("No ports available in range %u to %u", HTTPD_PORT, HTTPD_PORT_MAX);
+  WHYF("No ports available in range %u to %u", port_low, port_high);
 error:
   if (httpd_server_socket != -1) {
     close(httpd_server_socket);
@@ -182,7 +182,7 @@ success:
   server_alarm.poll.events = POLLIN;
   watch(&server_alarm);
   
-  INFOF("HTTP SERVER START port=%"PRIu16" fd=%d services=RESTful%s%s",
+  INFOF("HTTP SERVER START port=%u fd=%d services=RESTful%s%s",
       httpd_server_port,
       httpd_server_socket,
       config.rhizome.http.enable ? ",Rhizome" : "",

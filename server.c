@@ -291,11 +291,11 @@ static int server_bind()
   }
   
   // start the HTTP server if enabled
-  if (httpd_server_start(HTTPD_PORT, HTTPD_PORT_MAX)==-1){
+  if (httpd_server_start(config.rhizome.http.port, config.rhizome.http.port + HTTPD_PORT_RANGE)==-1) {
     serverMode = 0;
     return -1;
-  }
-  
+  } 
+
   /* For testing, it can be very helpful to delay the start of the server process, for example to
    * check that the start/stop logic is robust.
    */
