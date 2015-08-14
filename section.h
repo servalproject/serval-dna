@@ -22,15 +22,22 @@
 /* Macros for creating named linkage sections.
  */
 
+#define SECTION_START(X) __start_##X
+#define SECTION_END(X) __stop_##X
+
 #ifdef __APPLE__
-#define _SECTION_ATTRIBUTE(X) section("__DATA,__" #X )
-#define SECTION_START(X) __asm("section$start$__DATA$__" #X)
-#define SECTION_STOP(X) __asm("section$end$__DATA$__" #X)
+
+#define _SECTION_ATTRIBUTE(X) section("__DATA,__"#X)
+#define DECLARE_SECTION(TYPE, X) \
+  extern TYPE SECTION_START(X)[] __asm("section$start$__DATA$__" #X);\
+  extern TYPE SECTION_END(X)[] __asm("section$end$__DATA$__" #X)
 #else
 #define _SECTION_ATTRIBUTE(X) section(#X)
-#define SECTION_START(X)
-#define SECTION_STOP(X)
+#define DECLARE_SECTION(TYPE, X) \
+  extern TYPE SECTION_START(X)[];\
+  extern TYPE SECTION_END(X)[]
 #endif
+
 
 #define IN_SECTION(name) __attribute__((used,aligned(sizeof(void *)),_SECTION_ATTRIBUTE(name)))
 
