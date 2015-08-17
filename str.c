@@ -81,6 +81,112 @@ size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstsiz, const char *srcHex
   return dstBinary - dstorig;
 }
 
+static size_t _uri_encodev(int www_form, char *const dstUrienc, ssize_t dstsiz, struct iovec ** iovp, int *iovcntp)
+{
+  char * dst = dstUrienc;
+  char * const dstend = dstUrienc + dstsiz;
+  while (*iovcntp && (dstsiz == -1 || dst < dstend)) {
+    if ((*iovp)->iov_len == 0) {
+      --*iovcntp;
+      ++*iovp;
+    } else {
+      unsigned char c = *(unsigned char *)(*iovp)->iov_base;
+      if (www_form && c == ' ') {
+	if (dstUrienc)
+	  *dst = '+';
+	++dst;
+      } else if (is_uri_char_unreserved(c)) {
+	if (dstUrienc)
+	  *dst = c;
+	++dst;
+      } else if (dst + 3 <= dstend) {
+	if (dstUrienc) {
+	  dst[0] = '%';
+	  dst[1] = hexdigit_upper[c & 0xf];
+	  dst[2] = hexdigit_upper[c >> 4];
+	}
+	dst += 3;
+      } else {
+	break;
+      }
+      ++(*iovp)->iov_base;
+      --(*iovp)->iov_len;
+    }
+  }
+  return dst - dstUrienc;
+}
+
+static size_t _uri_encode(int www_form, char *const dstUrienc, ssize_t dstsiz, const char *src, size_t srclen, const char **afterp)
+{
+  struct iovec _iov;
+  _iov.iov_base = (void *) src;
+  _iov.iov_len = srclen;
+  struct iovec *iov = &_iov;
+  int ioc = 1;
+  size_t encoded = _uri_encodev(www_form, dstUrienc, dstsiz, &iov, &ioc);
+  if (afterp)
+    *afterp = _iov.iov_base;
+  return encoded;
+}
+
+size_t uri_encode(char *const dstUrienc, ssize_t dstsiz, const char *src, size_t srclen, const char **afterp)
+{
+  return _uri_encode(0, dstUrienc, dstsiz, src, srclen, afterp);
+}
+
+size_t www_form_uri_encode(char *const dstUrienc, ssize_t dstsiz, const char *src, size_t srclen, const char **afterp)
+{
+  return _uri_encode(1, dstUrienc, dstsiz, src, srclen, afterp);
+}
+
+size_t uri_encodev(char *const dstUrienc, ssize_t dstsiz, struct iovec ** iovp, int *iovcntp)
+{
+  return _uri_encodev(0, dstUrienc, dstsiz, iovp, iovcntp);
+}
+
+size_t www_form_uri_encodev(char *const dstUrienc, ssize_t dstsiz, struct iovec ** iovp, int *iovcntp)
+{
+  return _uri_encodev(1, dstUrienc, dstsiz, iovp, iovcntp);
+}
+
+static size_t _uri_decode(int www_form, char *const dstOrig, ssize_t dstsiz, const char *srcUrienc, size_t srclen, const char **afterp)
+{
+  char *dst = dstOrig;
+  char *const dstend = dst + dstsiz;
+  while (srclen && (dstsiz == -1 || dst < dstend)) {
+    if (www_form && *srcUrienc == '+') {
+      if (dstOrig)
+	*dst = ' ';
+      ++srcUrienc;
+      --srclen;
+    } else if (srclen >= 3 && srcUrienc[0] == '%' && isxdigit(srcUrienc[1]) && isxdigit(srcUrienc[2])) {
+      if (dstOrig)
+	*dst = (hexvalue(srcUrienc[1]) << 4) + hexvalue(srcUrienc[2]);
+      srcUrienc += 3;
+      srclen -= 3;
+    } else {
+      if (dstOrig)
+	*dst = *srcUrienc;
+      ++srcUrienc;
+      --srclen;
+    }
+    ++dst;
+  }
+  if (afterp)
+    *afterp = srcUrienc;
+  return dst - dstOrig;
+}
+
+size_t uri_decode(char *const dst, ssize_t dstsiz, const char *srcUrienc, size_t srclen, const char **afterp)
+{
+  return _uri_decode(0, dst, dstsiz, srcUrienc, srclen, afterp);
+}
+
+size_t www_form_uri_decode(char *const dst, ssize_t dstsiz, const char *srcUrienc, size_t srclen, const char **afterp)
+{
+  return _uri_decode(1, dst, dstsiz, srcUrienc, srclen, afterp);
+}
+
 const char base64_symbols[65] = {
   'A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P',
   'Q','R','S','T','U','V','W','X','Y','Z','a','b','c','d','e','f',

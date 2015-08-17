@@ -495,7 +495,55 @@ int uint64_scaled_to_str(char *str, size_t len, uint64_t value);
  */
 int str_to_uint64_interval_ms(const char *str, int64_t *result, const char **afterp);
 
-/* -------------------- URI strings -------------------- */
+/* -------------------- URI encoding and decoding -------------------- */
+
+/* Encode up to 'srclen' bytes of byte data (or up to first nul if 'srclen' == -1) at 'src' into at
+ * most 'dstsiz' bytes of URI-encoded (or www-form-urlencoded) representation at 'dstUrienc'.  If
+ * 'dstsiz' is -1 or 'dstUrienc' is NULL, does not write any encoded bytes, but still counts them.
+ * If 'afterp' is not NULL, then sets *afterp to point to the source byte immediately following the
+ * last character encoded.  A "%xx" sequence will never be partially encoded; if all the "%xx" does
+ * not fit within the destination buffer, then none of it is produced.
+ *
+ *
+ * Returns the total number of encoded bytes written at 'dstUrienc'.
+ *
+ * Can be used to count encoded bytes without actually encoding, eg:
+ *
+ *    uri_encode(NULL, -1, buf, buflen, NULL);
+ *
+ * The uri_encodev() and www_form_uri_encodev() functions are a multi-buffer gather variants,
+ * analagous to readv(2) and writev(2).  Modifies the supplied *iovp, *iovcntp parameters and the
+ * iovec structures at (*iovp)[...] to represent the remaining source bytes not encoded.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t uri_encode(char *const dstUrienc, ssize_t dstsiz, const char *src, size_t srclen, const char **afterp);
+size_t www_form_uri_encode(char *const dstUrienc, ssize_t dstsiz, const char *src, size_t srclen, const char **afterp);
+
+size_t uri_encodev(char *const dstUrienc, ssize_t dstsiz, struct iovec **iovp, int *iovcntp); // modifies *iovp, (*iovp)[...] and *iovcntp
+size_t www_form_uri_encodev(char *const dstUrienc, ssize_t dstsiz, struct iovec **iovp, int *iovcntp); // modifies *iovp, (*iovp)[...] and *iovcntp
+
+/* Decode up to 'srclen' bytes of URI-encoded (or www-form-urlencoded) data at 'srcUrienc' into at
+ * most 'dstsiz' bytes at 'dst'.  If 'dstsiz' is -1 or 'dst' is NULL, then does not write any
+ * decoded bytes, but still counts them.  If 'afterp' is not NULL, then sets *afterp to point to the
+ * source byte immediately following the last byte decoded.
+ *
+ * Returns the total number of decoded bytes written at 'dst'.
+ *
+ * Can be used to decode in-place, eg:
+ *
+ *    uri_decode((char *)buf, n, (const unsigned char *)buf, n, NULL);
+ *
+ * Can be used to count decoded bytes without actually decoding, eg:
+ *
+ *    uri_decode(NULL, -1, buf, buflen, NULL);
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t uri_decode(char *const dst, ssize_t dstsiz, const char *srcUrienc, size_t srclen, const char **afterp);
+size_t www_form_uri_decode(char *const dst, ssize_t dstsiz, const char *srcUrienc, size_t srclen, const char **afterp);
+
+/* -------------------- URI parsing -------------------- */
 
 /* Return true if the string resembles a nul-terminated URI.
  * Based on RFC-3986 generic syntax, assuming nothing about the hierarchical part.
