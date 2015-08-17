@@ -60,11 +60,11 @@ int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
   return -1;
 }
 
-size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *srcHex, const char **afterHex)
+size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstsiz, const char *srcHex, const char **afterHex)
 {
   unsigned char *dstorig = dstBinary;
-  unsigned char *dstend = dstBinary + dstlen;
-  while (dstlen == -1 || dstBinary < dstend) {
+  unsigned char *dstend = dstBinary + dstsiz;
+  while (dstsiz == -1 || dstBinary < dstend) {
     int high = hexvalue(srcHex[0]);
     if (high == -1)
       break;
@@ -988,14 +988,14 @@ size_t strn_fromprint(unsigned char *dst, size_t dstsiz, const char *src, size_t
   return dst - odst;
 }
 
-void str_digest_passphrase(unsigned char *dstBinary, size_t dstlen, const char *passphrase)
+void str_digest_passphrase(unsigned char *dstBinary, size_t dstsiz, const char *passphrase)
 {
-  return strn_digest_passphrase(dstBinary, dstlen, passphrase, strlen(passphrase));
+  return strn_digest_passphrase(dstBinary, dstsiz, passphrase, strlen(passphrase));
 }
 
-void strn_digest_passphrase(unsigned char *dstBinary, size_t dstlen, const char *passphrase, size_t passlen)
+void strn_digest_passphrase(unsigned char *dstBinary, size_t dstsiz, const char *passphrase, size_t passlen)
 {
-  assert(dstlen <= SERVAL_PASSPHRASE_DIGEST_MAX_BINARY);
+  assert(dstsiz <= SERVAL_PASSPHRASE_DIGEST_MAX_BINARY);
   SHA512_CTX context;
   static const char salt1[] = "Sago pudding";
   static const char salt2[] = "Rhubarb pie";
@@ -1003,7 +1003,7 @@ void strn_digest_passphrase(unsigned char *dstBinary, size_t dstlen, const char 
   SHA512_Update(&context, (unsigned char *)salt1, sizeof salt1 - 1);
   SHA512_Update(&context, (unsigned char *)passphrase, passlen);
   SHA512_Update(&context, (unsigned char *)salt2, sizeof salt2 - 1);
-  SHA512_Final_Len(dstBinary, dstlen, &context);
+  SHA512_Final_Len(dstBinary, dstsiz, &context);
 }
 
 /* Return true if the string resembles a URI.

@@ -126,7 +126,7 @@ int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *src, const char **afterp);
+size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstsiz, const char *src, const char **afterp);
 
 /* -------------------- Base64 encoding and decoding -------------------- */
 
@@ -286,7 +286,7 @@ __SERVAL_DNA__STR_INLINE int hexvalue(char c) {
 /* -------------------- In-line string formatting -------------------- */
 
 size_t sprintf_len(const char *fmt, ...);
-#define alloca_sprintf(dstlen, fmt,...) strbuf_str(strbuf_sprintf(strbuf_alloca((dstlen) == -1 ? sprintf_len((fmt), ##__VA_ARGS__) + 1 : (size_t)(dstlen)), (fmt), ##__VA_ARGS__))
+#define alloca_sprintf(dstsiz, fmt,...) strbuf_str(strbuf_sprintf(strbuf_alloca((dstsiz) == -1 ? sprintf_len((fmt), ##__VA_ARGS__) + 1 : (size_t)(dstsiz)), (fmt), ##__VA_ARGS__))
 
 /* -------------------- Printable string representation -------------------- */
 
@@ -296,8 +296,8 @@ size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2]);
 size_t toprint_str_len(const char *srcStr, const char quotes[2]);
 size_t strn_fromprint(unsigned char *dst, size_t dstsiz, const char *src, size_t srclen, char endquote, const char **afterp);
 
-#define alloca_toprint_quoted(dstlen,buf,len,quotes)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((const char *)(buf),(len), (quotes)) + 1 : (size_t)(dstlen)), (size_t)(dstlen), (const char *)(buf), (len), (quotes))
-#define alloca_toprint(dstlen,buf,len)  alloca_toprint_quoted(dstlen,buf,len,"``")
+#define alloca_toprint_quoted(dstsiz,buf,len,quotes)  toprint((char *)alloca((dstsiz) == -1 ? toprint_len((const char *)(buf),(len), (quotes)) + 1 : (size_t)(dstsiz)), (size_t)(dstsiz), (const char *)(buf), (len), (quotes))
+#define alloca_toprint(dstsiz,buf,len)  alloca_toprint_quoted(dstsiz,buf,len,"``")
 
 #define alloca_str_toprint_quoted(str, quotes)  toprint_str((char *)alloca(toprint_str_len((str), (quotes)) + 1), -1, (str), (quotes))
 #define alloca_str_toprint(str)  alloca_str_toprint_quoted(str, "``")
@@ -311,8 +311,8 @@ size_t strn_fromprint(unsigned char *dst, size_t dstsiz, const char *src, size_t
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-void str_digest_passphrase(unsigned char *dstBinary, size_t dstlen, const char *passphrase);
-void strn_digest_passphrase(unsigned char *dstBinary, size_t dstlen, const char *passphrase, size_t passlen);
+void str_digest_passphrase(unsigned char *dstBinary, size_t dstsiz, const char *passphrase);
+void strn_digest_passphrase(unsigned char *dstBinary, size_t dstsiz, const char *passphrase, size_t passlen);
 
 /* -------------------- Useful string primitives -------------------- */
 
