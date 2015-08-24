@@ -1198,7 +1198,6 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
 {
   IN();
   DEBUGF(keyring, "k=%p, pin=%s", k, alloca_str_toprint(pin));
-  if (!k) RETURN(-1);
   if (!pin) pin="";
 
   // Check if PIN is already entered.
@@ -1300,7 +1299,6 @@ keyring_identity *keyring_create_identity(keyring_file *k, const char *pin)
 {
   DEBUGF(keyring, "k=%p", k);
   /* Check obvious abort conditions early */
-  if (!k) { WHY("keyring is NULL"); return NULL; }
   if (!k->bam) { WHY("keyring lacks BAM (not to be confused with KAPOW)"); return NULL; }
 
   if (!pin) pin="";
@@ -1348,8 +1346,6 @@ keyring_identity *keyring_create_identity(keyring_file *k, const char *pin)
 int keyring_commit(keyring_file *k)
 {
   DEBUGF(keyring, "k=%p", k);
-  if (!k)
-    return WHY("keyring was NULL");
   unsigned errorCount = 0;
   /* Write all BAMs */
   keyring_bam *b;
@@ -1408,10 +1404,6 @@ int keyring_commit(keyring_file *k)
 
 int keyring_set_did(keyring_identity *id, const char *did, const char *name)
 {
-  if (!id) return WHY("id is null");
-  if (!did) return WHY("did is null");
-  if (!name) name="Mr. Smith";
-
   /* Find where to put it */
   keypair *kp = id->keypairs;
   while(kp){
