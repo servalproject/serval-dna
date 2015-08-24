@@ -189,4 +189,89 @@ test_keyringAddPin() {
    assertJq ids.json 'contains([{"sid": "'$SIDA1'"}])'
 }
 
+doc_keyringSetDidName="HTTP RESTful set DID and name"
+setup_keyringSetDidName() {
+   IDENTITY_COUNT=2
+   setup
+}
+test_keyringSetDidName() {
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output set.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/keyring/$SIDA1/set?did=987654321&name=Joe%20Bloggs"
+   tfw_cat http.headers set.json
+   tfw_preserve set.json
+   assertStdoutIs '200'
+   assertJq set.json 'contains({"sid": "'$SIDA1'"})'
+   assertJq set.json 'contains({"did": "987654321"})'
+   assertJq set.json 'contains({"name": "Joe Bloggs"})'
+   executeOk_servald keyring list
+   assert_keyring_list 2
+   assertStdoutGrep --stderr --matches=1 "^$SIDA1:987654321:Joe Bloggs\$"
+}
+
+doc_keyringSetDidNamePin="HTTP RESTful set DID and name with PIN"
+setup_keyringSetDidNamePin() {
+   IDENTITY_COUNT=2
+   PINA1=xyzabc
+   setup
+}
+test_keyringSetDidNamePin() {
+   # First try with no PIN, and make sure it fails
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output set1.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/keyring/$SIDA1/set?did=111222333&name=Nobody"
+   tfw_cat http.headers set1.json
+   tfw_preserve set1.json
+   assertStdoutIs '404'
+   # Enter incorrect PIN, and make sure it fails
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output set2.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/keyring/$SIDA1/set?did=444555666&name=Anybody"
+   tfw_cat http.headers set2.json
+   tfw_preserve set2.json
+   assertStdoutIs '404'
+   # Then try with correct PIN, and make sure it succeeds
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output set3.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/keyring/$SIDA1/set?did=987654321&name=Joe%20Bloggs&pin=xyzabc"
+   tfw_cat http.headers set3.json
+   tfw_preserve set3.json
+   assertStdoutIs '200'
+   assertJq set3.json 'contains({"sid": "'$SIDA1'"})'
+   assertJq set3.json 'contains({"did": "987654321"})'
+   assertJq set3.json 'contains({"name": "Joe Bloggs"})'
+   executeOk_servald keyring list --entry-pin=xyzabc
+   assert_keyring_list 2
+   assertStdoutGrep --stderr --matches=1 "^$SIDA1:987654321:Joe Bloggs\$"
+   # Finally, try again with no PIN, and make sure it succeeds (server has
+   # internalised the PIN supplied in the last request)
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output set4.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/keyring/$SIDA1/set?did=321321321&name=Fred+Nurks"
+   tfw_cat http.headers set4.json
+   tfw_preserve set4.json
+   assertStdoutIs '200'
+   assertJq set4.json 'contains({"sid": "'$SIDA1'"})'
+   assertJq set4.json 'contains({"did": "321321321"})'
+   assertJq set4.json 'contains({"name": "Fred Nurks"})'
+   executeOk_servald keyring list --entry-pin=xyzabc
+   assert_keyring_list 2
+   assertStdoutGrep --stderr --matches=1 "^$SIDA1:321321321:Fred Nurks\$"
+}
+
 runTests "$@"

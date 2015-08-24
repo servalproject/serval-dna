@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 static HTTP_HANDLER restful_keyring_identitylist_json;
 static HTTP_HANDLER restful_keyring_add;
+static HTTP_HANDLER restful_keyring_set;
 
 int restful_keyring_(httpd_request *r, const char *remainder)
 {
@@ -41,6 +42,7 @@ int restful_keyring_(httpd_request *r, const char *remainder)
   const char *verb = HTTP_VERB_GET;
   http_size_t content_length = CONTENT_LENGTH_UNKNOWN;
   HTTP_HANDLER *handler = NULL;
+  const char *end;
   if (strcmp(remainder, "identities.json") == 0) {
     handler = restful_keyring_identitylist_json;
     verb = HTTP_VERB_GET;
@@ -50,6 +52,13 @@ int restful_keyring_(httpd_request *r, const char *remainder)
     handler = restful_keyring_add;
     verb = HTTP_VERB_GET;
     remainder = "";
+  }
+  else if (parse_sid_t(&r->sid1, remainder, -1, &end) != -1) {
+    remainder = end;
+    if (strcmp(remainder, "/set") == 0) {
+      handler = restful_keyring_set;
+      remainder = "";
+    }
   }
   if (handler == NULL)
     return 404;
@@ -199,4 +208,24 @@ static int restful_keyring_add(httpd_request *r, const char *remainder)
   if (keyring_commit(keyring) == -1)
     return http_request_keyring_response(r, 501, "Could not store new identity");
   return http_request_keyring_response_identity(r, 200, CONTENT_TYPE_JSON, id);
+}
+
+static int restful_keyring_set(httpd_request *r, const char *remainder)
+{
+  if (*remainder)
+    return 404;
+  const char *pin = http_request_get_query_param(&r->http, "pin");
+  const char *did = http_request_get_query_param(&r->http, "did");
+  const char *name = http_request_get_query_param(&r->http, "name");
+  if (pin)
+    keyring_enter_pin(keyring, pin);
+  keyring_iterator it;
+  keyring_iterator_start(keyring, &it);
+  if (!keyring_find_sid(&it, &r->sid1))
+    return http_request_keyring_response(r, 404, NULL);
+  if (keyring_set_did(it.identity, did ? did : "", name ? name : "") == -1)
+    return http_request_keyring_response(r, 501, "Could not set identity DID/Name");
+  if (keyring_commit(keyring) == -1)
+    return http_request_keyring_response(r, 501, "Could not store new identity");
+  return http_request_keyring_response_identity(r, 200, CONTENT_TYPE_JSON, it.identity);
 }
