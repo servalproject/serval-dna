@@ -27,9 +27,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define keyring_TOKEN_STRLEN (BASE64_ENCODED_LEN(sizeof(rhizome_bid_t) + sizeof(uint64_t)))
 #define alloca_keyring_token(bid, offset) keyring_    token_to_str(alloca(keyring_TOKEN_STRLEN + 1), (bid), (offset))
 
+DECLARE_HANDLER("/restful/keyring/", restful_keyring_);
+
 static HTTP_HANDLER restful_keyring_identitylist_json;
 
-int restful_keyring_(httpd_request *r, const char *remainder)
+static int restful_keyring_(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = CONTENT_TYPE_JSON;
   if (!is_rhizome_http_enabled())

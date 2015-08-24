@@ -31,6 +31,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "socket.h"
 
+DECLARE_HANDLER("/rhizome/import", rhizome_direct_import);
+DECLARE_HANDLER("/rhizome/enquiry", rhizome_direct_enquiry);
+DECLARE_HANDLER("/rhizome/", rhizome_direct_dispatch);
 
 static int _form_temporary_file_path(struct __sourceloc __whence, httpd_request *r, char *pathbuf, size_t bufsiz, const char *field)
 {
@@ -357,7 +360,7 @@ static int rhizome_direct_process_mime_body(struct http_request *hr, char *buf, 
   return 0;
 }
 
-int rhizome_direct_import(httpd_request *r, const char *remainder)
+static int rhizome_direct_import(httpd_request *r, const char *remainder)
 {
   if (*remainder)
     return 404;
@@ -374,7 +377,7 @@ int rhizome_direct_import(httpd_request *r, const char *remainder)
   return 1;
 }
 
-int rhizome_direct_enquiry(httpd_request *r, const char *remainder)
+static int rhizome_direct_enquiry(httpd_request *r, const char *remainder)
 {
   if (*remainder)
     return 404;
@@ -423,7 +426,7 @@ int rhizome_direct_addfile(httpd_request *r, const char *remainder)
   return 1;
 }
 
-int rhizome_direct_dispatch(httpd_request *r, const char *UNUSED(remainder))
+static int rhizome_direct_dispatch(httpd_request *r, const char *UNUSED(remainder))
 {
   if (   config.rhizome.api.addfile.uri_path[0]
       && strcmp(r->http.path, config.rhizome.api.addfile.uri_path) == 0

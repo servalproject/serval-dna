@@ -219,6 +219,20 @@ int httpd_server_start(uint16_t port_low, uint16_t port_high);
 
 typedef int HTTP_HANDLER(httpd_request *r, const char *remainder);
 
+struct http_handler {
+  const char *path;
+  HTTP_HANDLER *parser;
+};
+
+DECLARE_SECTION(struct http_handler, httpd);
+
+#define DECLARE_HANDLER(PATH, FUNC) \
+  static HTTP_HANDLER FUNC;\
+  static struct http_handler __##FUNC IN_SECTION(httpd) = {\
+    .path=PATH,\
+    .parser=FUNC\
+  }
+
 int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_call);
 int authorize_restful(struct http_request *r);
 int http_response_content_type(httpd_request *r, const char *what, const struct mime_content_type *ct);
