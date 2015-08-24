@@ -70,6 +70,36 @@ static int http_request_keyring_response(struct httpd_request *r, uint16_t resul
   return result;
 }
 
+static int http_request_keyring_response_identity(struct httpd_request *r, uint16_t result, const char *message, const keyring_identity *id)
+{
+  const sid_t *sidp = NULL;
+  const char *did = NULL;
+  const char *name = NULL;
+  keyring_identity_extract(id, &sidp, &did, &name);
+  if (!sidp)
+    return http_request_keyring_response(r, 501, "Identity has no SID");
+  unsigned i = 0;
+  if (sidp) {
+    r->http.response.result_extra[i].label = "sid";
+    r->http.response.result_extra[i].value.type = JSON_STRING_NULTERM;
+    r->http.response.result_extra[i].value.u.string.content = alloca_tohex_sid_t(*sidp);
+    ++i;
+  }
+  if (did) {
+    r->http.response.result_extra[i].label = "did";
+    r->http.response.result_extra[i].value.type = JSON_STRING_NULTERM;
+    r->http.response.result_extra[i].value.u.string.content = did;
+    ++i;
+  }
+  if (name) {
+    r->http.response.result_extra[i].label = "name";
+    r->http.response.result_extra[i].value.type = JSON_STRING_NULTERM;
+    r->http.response.result_extra[i].value.u.string.content = name;
+    ++i;
+  }
+  return http_request_keyring_response(r, result, message);
+}
+
 static HTTP_CONTENT_GENERATOR restful_keyring_identitylist_json_content;
 
 static int restful_keyring_identitylist_json(httpd_request *r, const char *remainder)
@@ -166,18 +196,7 @@ static int restful_keyring_add(httpd_request *r, const char *remainder)
   const keyring_identity *id = keyring_create_identity(keyring, pin ? pin : "");
   if (id == NULL)
     return http_request_keyring_response(r, 501, "Could not create identity");
-  const sid_t *sidp = NULL;
-  const char *did = "";
-  const char *name = "";
-  keyring_identity_extract(id, &sidp, &did, &name);
-  if (!sidp)
-    return http_request_keyring_response(r, 501, "New identity has no SID");
   if (keyring_commit(keyring) == -1)
     return http_request_keyring_response(r, 501, "Could not store new identity");
-  strbuf s = strbuf_alloca(200);
-  strbuf_puts(s, "{\n \"sid\":");
-  strbuf_json_hex(s, sidp->binary, sizeof sidp->binary);
-  strbuf_puts(s, "\n}");
-  http_request_response_static(&r->http, 200, CONTENT_TYPE_JSON, strbuf_str(s), strbuf_len(s));
-  return 1;
+  return http_request_keyring_response_identity(r, 200, CONTENT_TYPE_JSON, id);
 }

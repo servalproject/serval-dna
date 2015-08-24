@@ -153,20 +153,21 @@ test_keyringAdd() {
    assertStdoutGrep --stderr --matches=1 "^$SID::\$"
 }
 
-doc_keyringAddPin="HTTP RESTful add keyring identity with non-empty PIN"
+doc_keyringAddPin="HTTP RESTful add keyring identity with PIN"
 setup_keyringAddPin() {
    IDENTITY_COUNT=2
    setup
 }
 test_keyringAddPin() {
    executeOk curl \
-         --silent --fail --show-error \
+         --silent --show-error --write-out '%{http_code}' \
          --output add.json \
          --dump-header http.headers \
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/keyring/add?pin=1234"
    tfw_cat http.headers add.json
    tfw_preserve add.json
+   assertStdoutIs '200'
    SID="$(jq -r '.sid' add.json)"
    executeOk_servald keyring list
    assert_keyring_list 2
@@ -174,6 +175,18 @@ test_keyringAddPin() {
    executeOk_servald keyring list --entry-pin=1234
    assert_keyring_list 3
    assertStdoutGrep --stderr --matches=1 "^$SID::\$"
+   # Now the server has internalised the PIN, so the new identity appears in the
+   # list
+   executeOk curl \
+         --silent --fail --show-error \
+         --output list.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/keyring/identities.json"
+   tfw_cat http.headers list.json
+   tfw_preserve list.json
+   transform_list_json list.json ids.json
+   assertJq ids.json 'contains([{"sid": "'$SIDA1'"}])'
 }
 
 runTests "$@"
