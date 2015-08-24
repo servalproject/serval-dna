@@ -159,7 +159,8 @@ static int restful_keyring_add(httpd_request *r, const char *remainder)
 {
   if (*remainder)
     return 404;
-  const keyring_identity *id = keyring_create_identity(keyring, "");
+  const char *pin = http_request_get_query_param(&r->http, "pin");
+  const keyring_identity *id = keyring_create_identity(keyring, pin ? pin : "");
   if (id == NULL)
     return http_request_keyring_response(r, 501, "Could not create identity");
   const sid_t *sidp = NULL;
