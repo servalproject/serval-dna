@@ -1265,6 +1265,7 @@ static void set_slot(keyring_file *k, unsigned slot, int bitvalue)
 
 /* Find free slot in keyring.  Slot 0 in any slab is the BAM and possible keyring salt, so only
  * search for space in slots 1 and above.  TODO: Extend to handle more than one slab!
+ * TODO: random search to avoid predictability of used slots!
  */
 static unsigned find_free_slot(const keyring_file *k)
 {

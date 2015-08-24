@@ -85,6 +85,10 @@ test_keyringList() {
    tfw_cat http.headers list.json
    tfw_preserve list.json
    assert [ "$(jq '.rows | length' list.json)" = $IDENTITY_COUNT ]
+   # TODO: these tests only work because the listed order of identities is the
+   # order of creation, which makes locked identities easy to attack.  When the
+   # random search TODO in keyring.c:find_free_slot() is done, then these tests
+   # should fail.
    assert [ "$(jq -r '.rows[0][0]' list.json)" = $SIDA1 ]
    assert [ "$(jq -r '.rows[4][0]' list.json)" = $SIDA5 ]
    assert [ "$(jq -r '.rows[9][0]' list.json)" = $SIDA10 ]
