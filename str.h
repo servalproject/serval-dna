@@ -126,7 +126,7 @@ int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstlen, const char *src, const char **afterp);
+size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstsiz, const char *src, const char **afterp);
 
 /* -------------------- Base64 encoding and decoding -------------------- */
 
@@ -286,7 +286,7 @@ __SERVAL_DNA__STR_INLINE int hexvalue(char c) {
 /* -------------------- In-line string formatting -------------------- */
 
 size_t sprintf_len(const char *fmt, ...);
-#define alloca_sprintf(dstlen, fmt,...) strbuf_str(strbuf_sprintf(strbuf_alloca((dstlen) == -1 ? sprintf_len((fmt), ##__VA_ARGS__) + 1 : (size_t)(dstlen)), (fmt), ##__VA_ARGS__))
+#define alloca_sprintf(dstsiz, fmt,...) strbuf_str(strbuf_sprintf(strbuf_alloca((dstsiz) == -1 ? sprintf_len((fmt), ##__VA_ARGS__) + 1 : (size_t)(dstsiz)), (fmt), ##__VA_ARGS__))
 
 /* -------------------- Printable string representation -------------------- */
 
@@ -296,8 +296,8 @@ size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2]);
 size_t toprint_str_len(const char *srcStr, const char quotes[2]);
 size_t strn_fromprint(unsigned char *dst, size_t dstsiz, const char *src, size_t srclen, char endquote, const char **afterp);
 
-#define alloca_toprint_quoted(dstlen,buf,len,quotes)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((const char *)(buf),(len), (quotes)) + 1 : (size_t)(dstlen)), (size_t)(dstlen), (const char *)(buf), (len), (quotes))
-#define alloca_toprint(dstlen,buf,len)  alloca_toprint_quoted(dstlen,buf,len,"``")
+#define alloca_toprint_quoted(dstsiz,buf,len,quotes)  toprint((char *)alloca((dstsiz) == -1 ? toprint_len((const char *)(buf),(len), (quotes)) + 1 : (size_t)(dstsiz)), (size_t)(dstsiz), (const char *)(buf), (len), (quotes))
+#define alloca_toprint(dstsiz,buf,len)  alloca_toprint_quoted(dstsiz,buf,len,"``")
 
 #define alloca_str_toprint_quoted(str, quotes)  toprint_str((char *)alloca(toprint_str_len((str), (quotes)) + 1), -1, (str), (quotes))
 #define alloca_str_toprint(str)  alloca_str_toprint_quoted(str, "``")
@@ -311,8 +311,8 @@ size_t strn_fromprint(unsigned char *dst, size_t dstsiz, const char *src, size_t
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-void str_digest_passphrase(unsigned char *dstBinary, size_t dstlen, const char *passphrase);
-void strn_digest_passphrase(unsigned char *dstBinary, size_t dstlen, const char *passphrase, size_t passlen);
+void str_digest_passphrase(unsigned char *dstBinary, size_t dstsiz, const char *passphrase);
+void strn_digest_passphrase(unsigned char *dstBinary, size_t dstsiz, const char *passphrase, size_t passlen);
 
 /* -------------------- Useful string primitives -------------------- */
 
@@ -495,7 +495,55 @@ int uint64_scaled_to_str(char *str, size_t len, uint64_t value);
  */
 int str_to_uint64_interval_ms(const char *str, int64_t *result, const char **afterp);
 
-/* -------------------- URI strings -------------------- */
+/* -------------------- URI encoding and decoding -------------------- */
+
+/* Encode up to 'srclen' bytes of byte data (or up to first nul if 'srclen' == -1) at 'src' into at
+ * most 'dstsiz' bytes of URI-encoded (or www-form-urlencoded) representation at 'dstUrienc'.  If
+ * 'dstsiz' is -1 or 'dstUrienc' is NULL, does not write any encoded bytes, but still counts them.
+ * If 'afterp' is not NULL, then sets *afterp to point to the source byte immediately following the
+ * last character encoded.  A "%xx" sequence will never be partially encoded; if all the "%xx" does
+ * not fit within the destination buffer, then none of it is produced.
+ *
+ *
+ * Returns the total number of encoded bytes written at 'dstUrienc'.
+ *
+ * Can be used to count encoded bytes without actually encoding, eg:
+ *
+ *    uri_encode(NULL, -1, buf, buflen, NULL);
+ *
+ * The uri_encodev() and www_form_uri_encodev() functions are a multi-buffer gather variants,
+ * analagous to readv(2) and writev(2).  Modifies the supplied *iovp, *iovcntp parameters and the
+ * iovec structures at (*iovp)[...] to represent the remaining source bytes not encoded.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t uri_encode(char *const dstUrienc, ssize_t dstsiz, const char *src, size_t srclen, const char **afterp);
+size_t www_form_uri_encode(char *const dstUrienc, ssize_t dstsiz, const char *src, size_t srclen, const char **afterp);
+
+size_t uri_encodev(char *const dstUrienc, ssize_t dstsiz, struct iovec **iovp, int *iovcntp); // modifies *iovp, (*iovp)[...] and *iovcntp
+size_t www_form_uri_encodev(char *const dstUrienc, ssize_t dstsiz, struct iovec **iovp, int *iovcntp); // modifies *iovp, (*iovp)[...] and *iovcntp
+
+/* Decode up to 'srclen' bytes of URI-encoded (or www-form-urlencoded) data at 'srcUrienc' into at
+ * most 'dstsiz' bytes at 'dst'.  If 'dstsiz' is -1 or 'dst' is NULL, then does not write any
+ * decoded bytes, but still counts them.  If 'afterp' is not NULL, then sets *afterp to point to the
+ * source byte immediately following the last byte decoded.
+ *
+ * Returns the total number of decoded bytes written at 'dst'.
+ *
+ * Can be used to decode in-place, eg:
+ *
+ *    uri_decode((char *)buf, n, (const unsigned char *)buf, n, NULL);
+ *
+ * Can be used to count decoded bytes without actually decoding, eg:
+ *
+ *    uri_decode(NULL, -1, buf, buflen, NULL);
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t uri_decode(char *const dst, ssize_t dstsiz, const char *srcUrienc, size_t srclen, const char **afterp);
+size_t www_form_uri_decode(char *const dst, ssize_t dstsiz, const char *srcUrienc, size_t srclen, const char **afterp);
+
+/* -------------------- URI parsing -------------------- */
 
 /* Return true if the string resembles a nul-terminated URI.
  * Based on RFC-3986 generic syntax, assuming nothing about the hierarchical part.
