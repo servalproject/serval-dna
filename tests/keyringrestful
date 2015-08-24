@@ -94,7 +94,44 @@ test_keyringList() {
    assert [ "$(jq -r '.rows[9][0]' list.json)" = $SIDA10 ]
 }
 
-doc_keyringAdd="HTTP RESTful add keyring identity with empty PIN"
+doc_keyringListPin="HTTP RESTful list keyring identities as JSON, with PIN"
+setup_keyringListPin() {
+   IDENTITY_COUNT=3
+   PINA1='wif waf'
+   setup
+}
+test_keyringListPin() {
+   # First, list without supplying the PIN
+   executeOk curl \
+         --silent --fail --show-error \
+         --output list1.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/keyring/identities.json"
+   tfw_cat http.headers list1.json
+   tfw_preserve list1.json
+   transform_list_json list1.json ids1.json
+   assert [ "$(jq 'length' ids1.json)" = $((IDENTITY_COUNT-1)) ]
+   assertJq ids1.json 'contains([{"sid": "'$SIDA1'"}]) | not'
+   assertJq ids1.json 'contains([{"sid": "'$SIDA2'"}])'
+   assertJq ids1.json 'contains([{"sid": "'$SIDA3'"}])'
+   # Then, list supplying the PIN
+   executeOk curl \
+         --silent --fail --show-error \
+         --output list2.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/keyring/identities.json?pin=wif+waf"
+   tfw_cat http.headers list2.json
+   tfw_preserve list2.json
+   transform_list_json list2.json ids2.json
+   assert [ "$(jq 'length' ids2.json)" = $IDENTITY_COUNT ]
+   assertJq ids2.json 'contains([{"sid": "'$SIDA1'"}])'
+   assertJq ids2.json 'contains([{"sid": "'$SIDA2'"}])'
+   assertJq ids2.json 'contains([{"sid": "'$SIDA3'"}])'
+}
+
+doc_keyringAdd="HTTP RESTful add keyring identity"
 setup_keyringAdd() {
    IDENTITY_COUNT=2
    setup

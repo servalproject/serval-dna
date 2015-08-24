@@ -76,6 +76,9 @@ static int restful_keyring_identitylist_json(httpd_request *r, const char *remai
 {
   if (*remainder)
     return 404;
+  const char *pin = http_request_get_query_param(&r->http, "pin");
+  if (pin)
+    keyring_enter_pin(keyring, pin);
   r->u.sidlist.phase = LIST_HEADER;
   keyring_iterator_start(keyring, &r->u.sidlist.it);
   http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_keyring_identitylist_json_content);
