@@ -1351,7 +1351,7 @@ int rhizome_store_manifest(rhizome_manifest *m)
 	  alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
 	  m->version
 	);
-    CALL_TRIGGER(rhizome_bundle_added, m);
+    CALL_TRIGGER(bundle_add, m);
     monitor_announce_bundle(m);
     if (serverMode){
       time_ms_t now = gettime_ms();
@@ -1376,7 +1376,7 @@ static void trigger_rhizome_bundle_added_debug(rhizome_manifest *m)
 	);
 }
 
-DEFINE_TRIGGER(rhizome_bundle_added, trigger_rhizome_bundle_added_debug)
+DEFINE_TRIGGER(bundle_add, trigger_rhizome_bundle_added_debug)
 
 /* The cursor struct must be zerofilled and the query parameters optionally filled in prior to
  * calling this function.

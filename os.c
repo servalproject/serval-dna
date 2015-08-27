@@ -100,11 +100,16 @@ int _mkdirsn(struct __sourceloc whence, const char *path, size_t len, mode_t mod
       if (lastsep != path) {
 	if (_mkdirsn(whence, path, lastsep - path + 1, mode, logger) == -1)
 	  return -1;
-	if (mkdir(pathfrag, mode) != -1) {
-	  if (logger)
-	    logger(whence, pathfrag, mode);
-	  return 0;
+	
+	if (mkdir(pathfrag, mode) == -1) {
+	  if (errno==EEXIST)
+	    return 0;
+	  return -1;
 	}
+	
+	if (logger)
+	  logger(whence, pathfrag, mode);
+	return 0;
       }
     }
   }

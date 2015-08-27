@@ -97,6 +97,7 @@ SERVAL_DAEMON_SOURCES = \
 	rhizome_sync.c \
 	serval_packetvisualise.c \
 	server.c \
+	server_httpd.c \
 	vomp.c \
 	vomp_console.c \
         fec-3.0.1/ccsds_tables.c \
