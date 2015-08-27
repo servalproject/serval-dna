@@ -1146,9 +1146,9 @@ int link_state_ack_soon(struct subscriber *subscriber)
 }
 
 // our neighbour is sending a duplicate frame, did we see the original?
-int link_received_duplicate(struct decode_context *context, int payload_seq)
+int link_received_duplicate(struct subscriber *subscriber, int payload_seq)
 {
-  struct neighbour *neighbour = get_neighbour(context->sender, 0);
+  struct neighbour *neighbour = get_neighbour(subscriber, 0);
   if (!neighbour)
     return 0;
 
@@ -1244,20 +1244,13 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
 
   create_out_links(neighbour, context->interface, &context->addr);
 
+  link->ack_counter --;
+
   // for now we'll use a simple time based link up/down flag + dropped packet count
   if (sender_seq >=0){
     if (link->ack_sequence != -1){
       int offset = (link->ack_sequence - 1 - sender_seq)&0xFF;
       if (offset < 64){
-	if (link->ack_mask & (1ull<<offset)){
-	  // received duplicate frame?
-	  if (IF_DEBUG(verbose))
-	    DEBUGF(linkstate, "LINK STATE; duplicate seq %d from %s on %s",
-		   sender_seq, alloca_tohex_sid_t(context->sender->sid), context->interface->name);
-	  return 1;
-	}
-	  
-	// packets were re-ordered?
 	if (IF_DEBUG(verbose))
           DEBUGF(linkstate, "LINK STATE; late seq %d from %s on %s",
 		 sender_seq, alloca_tohex_sid_t(context->sender->sid), context->interface->name);
@@ -1292,7 +1285,6 @@ int link_received_packet(struct decode_context *context, int sender_seq, char un
   }
   link->link_timeout = now + context->interface->destination->ifconfig.reachable_timeout_ms;
 
-  link->ack_counter --;
   // force an update soon when we need to promptly ack packets
   if (neighbour->using_us && link->ack_counter <=0){
     neighbour_find_best_link(neighbour);

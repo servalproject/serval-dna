@@ -1,6 +1,6 @@
 /* 
-Serval Rhizome foundation types and constants
-Copyright (C) 2012-2015 Serval Project Inc.
+Serval Rhizome foundation types
+Copyright (C) 2012-2014 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -149,9 +149,5 @@ uint64_t rhizome_bar_bidprefix_ll(const rhizome_bar_t *bar);
  */
 
 #define RHIZOME_SIZE_UNSET    UINT64_MAX
-
-/* Rhizome constants
- */
-
 
 #endif // __SERVAL_DNA__RHIZOME_TYPES_H

@@ -46,6 +46,13 @@ setup_instances() {
    done
 }
 
+assert_keyring_list() {
+    unpack_stdout_list X
+    assert --stdout --stderr [ $XNROWS -eq $1 ]
+    assertStdoutGrep --stderr --matches=$1 "^[0-9a-fA-F]\{64\}:[0-9*#+]*:.*\$"
+    tfw_cat --stdout
+}
+
 doc_KeyringCreate="Create keyring destroys existing keys"
 test_KeyringCreate() {
     executeOk_servald keyring add ''

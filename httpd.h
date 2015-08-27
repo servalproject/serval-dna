@@ -20,15 +20,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__HTTPD_H
 #define __SERVAL_DNA__HTTPD_H
 
-#include "http_server.h"
+#include "rhizome.h"
 #include "keyring.h"
 #include "meshms.h"
-#include "os.h"
+#include "http_server.h"
 
 int is_httpd_server_running();
 
-#define HTTPD_PORT_DEFAULT 4110
-#define HTTPD_PORT_RANGE 100
+#define HTTPD_PORT 4110
+#define HTTPD_PORT_MAX 4210
 
 extern uint16_t httpd_server_port;
 extern unsigned int current_httpd_request_count;
@@ -215,23 +215,9 @@ typedef struct httpd_request
 
 } httpd_request;
 
-int httpd_server_start(const uint16_t port_low, const uint16_t port_high);
+int httpd_server_start(uint16_t port_low, uint16_t port_high);
 
 typedef int HTTP_HANDLER(httpd_request *r, const char *remainder);
-
-struct http_handler {
-  const char *path;
-  HTTP_HANDLER *parser;
-};
-
-DECLARE_SECTION(struct http_handler, httpd);
-
-#define DECLARE_HANDLER(PATH, FUNC) \
-  static HTTP_HANDLER FUNC;\
-  static struct http_handler __##FUNC IN_SECTION(httpd) = {\
-    .path=PATH,\
-    .parser=FUNC\
-  }
 
 int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_call);
 int authorize_restful(struct http_request *r);

@@ -237,7 +237,7 @@ int parseCommandLine(struct cli_context *context, const char *argv0, int argc, c
   IN();
   
   struct cli_parsed parsed;
-  int result = cli_parse(argc, args, SECTION_START(commands), SECTION_END(commands), &parsed);
+  int result = cli_parse(argc, args, __start_commands, __stop_commands, &parsed);
   switch (result) {
   case 0:
     // Do not run the command if the configuration does not load ok.

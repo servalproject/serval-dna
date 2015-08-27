@@ -702,8 +702,6 @@ create_single_identity() {
 #  - pass [args...] to the keyring add
 #  - if variables DID{I}{1..N} and/or NAME{I}{1..N} are already set, then use
 #    them to set the DIDs and names of each identity
-#  - if variables PIN{I}{1..N} are already set, then use them as the --entry-pin
-#    option to set the DIDs and names of each identity
 #  - assert that all SIDs are unique
 #  - assert that all SIDs appear in keyring list
 #  - set variables SID{I}{1..N} to SIDs of identities, eg, SIDA1, SIDA2...
@@ -725,19 +723,11 @@ create_identities() {
    shift
    local i j
    for ((i = 1; i <= N; ++i)); do
-      local pinvar=PIN$instance_name$i
-      local pin="${!pinvar}"
-      servald_options+=(${pin:+--entry-pin="$pin"})
-   done
-   for ((i = 1; i <= N; ++i)); do
-      local pinvar=PIN$instance_name$i
+      executeOk_servald keyring add "${servald_options[@]}"
+      assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
       local sidvar=SID$instance_name$i
       local didvar=DID$instance_name$i
       local namevar=NAME$instance_name$i
-      local pin="${!pinvar}"
-      [ -n "$pin" ] && tfw_log "$pinvar=$(shellarg "$pin")"
-      executeOk_servald keyring add "${servald_options[@]}" "$pin"
-      assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
       extract_stdout_keyvalue $sidvar sid "$rexp_sid"
       tfw_log "$sidvar=${!sidvar}"
       # If the DID and/or NAME is already specified in the variables, then use
@@ -767,14 +757,6 @@ create_identities() {
       local re_name=$(escape_grep_basic "${!namevar}")
       assertStdoutGrep --matches=1 "^${!sidvar}:${!didvar}:${re_name}\$"
    done
-}
-
-# Assertion function:
-# - asserts that the list contains N identities that have the correct format
-assert_keyring_list() {
-   unpack_stdout_list __X
-   assert --stdout --stderr [ $__XNROWS -eq $1 ]
-   assertStdoutGrep --stderr --matches=$1 "^$rexp_sid:\($rexp_did\)\?:.*\$"
 }
 
 # Utility function, to be overridden as needed:

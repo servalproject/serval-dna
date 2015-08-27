@@ -23,11 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "strbuf.h"
 
-DECLARE_HANDLER("/rhizome/status", rhizome_status_page);
-DECLARE_HANDLER("/rhizome/file/", rhizome_file_page);
-DECLARE_HANDLER("/rhizome/manifestbyprefix/", manifest_by_prefix_page);
-
-static int rhizome_file_page(httpd_request *r, const char *remainder)
+int rhizome_file_page(httpd_request *r, const char *remainder)
 {
   /* Stream the specified payload */
   if (!is_rhizome_http_enabled())
@@ -50,7 +46,7 @@ static int rhizome_file_page(httpd_request *r, const char *remainder)
   return 1;
 }
 
-static int manifest_by_prefix_page(httpd_request *r, const char *remainder)
+int manifest_by_prefix_page(httpd_request *r, const char *remainder)
 {
   if (!is_rhizome_http_enabled())
     return 403;
@@ -74,7 +70,7 @@ static int manifest_by_prefix_page(httpd_request *r, const char *remainder)
   }
 }
 
-static int rhizome_status_page(httpd_request *r, const char *remainder)
+int rhizome_status_page(httpd_request *r, const char *remainder)
 {
   if (!is_rhizome_http_enabled())
     return 403;

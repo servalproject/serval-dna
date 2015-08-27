@@ -22,8 +22,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "httpd.h"
 #include "strbuf_helpers.h"
 
-DECLARE_HANDLER("/restful/meshms/", restful_meshms_);
-
 static void on_rhizome_bundle_added(httpd_request *r, rhizome_manifest *m);
 
 static void finalise_union_meshms_conversationlist(httpd_request *r)
@@ -116,7 +114,7 @@ static HTTP_HANDLER restful_meshms_read_all_conversations;
 static HTTP_HANDLER restful_meshms_read_all_messages;
 static HTTP_HANDLER restful_meshms_read_to_offset;
 
-static int restful_meshms_(httpd_request *r, const char *remainder)
+int restful_meshms_(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = CONTENT_TYPE_JSON;
   if (!is_rhizome_http_enabled())

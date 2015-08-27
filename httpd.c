@@ -18,43 +18,82 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <sys/ioctl.h>
+#include "serval.h"
 #include "httpd.h"
+#include "conf.h"
+#include "overlay_address.h"
+#include "overlay_interface.h"
 #include "mem.h"
 #include "net.h"
-#include "conf.h"
+#include "server.h"
 
 #define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
+
+static HTTP_HANDLER root_page;
+static HTTP_HANDLER fav_icon_header;
+static HTTP_HANDLER interface_page;
+static HTTP_HANDLER neighbour_page;
+static HTTP_HANDLER static_page;
+
+HTTP_HANDLER restful_rhizome_bundlelist_json;
+HTTP_HANDLER restful_rhizome_newsince;
+HTTP_HANDLER restful_rhizome_insert;
+HTTP_HANDLER restful_rhizome_append;
+HTTP_HANDLER restful_rhizome_;
+HTTP_HANDLER restful_meshms_;
+HTTP_HANDLER restful_keyring_;
+
+HTTP_HANDLER rhizome_status_page;
+HTTP_HANDLER rhizome_file_page;
+HTTP_HANDLER manifest_by_prefix_page;
+
+HTTP_HANDLER rhizome_direct_import;
+HTTP_HANDLER rhizome_direct_enquiry;
+HTTP_HANDLER rhizome_direct_dispatch;
+
+struct http_handler {
+  const char *path;
+  HTTP_HANDLER *parser;
+};
+
+struct http_handler paths[]={
+  {"/restful/rhizome/bundlelist.json", restful_rhizome_bundlelist_json},
+  {"/restful/rhizome/newsince/", restful_rhizome_newsince},
+  {"/restful/rhizome/insert", restful_rhizome_insert},
+  {"/restful/rhizome/append", restful_rhizome_append},
+  {"/restful/rhizome/", restful_rhizome_},
+  {"/restful/meshms/", restful_meshms_},
+  {"/restful/keyring/", restful_keyring_},
+  {"/rhizome/status", rhizome_status_page},
+  {"/rhizome/file/", rhizome_file_page},
+  {"/rhizome/import", rhizome_direct_import},
+  {"/rhizome/enquiry", rhizome_direct_enquiry},
+  {"/rhizome/manifestbyprefix/", manifest_by_prefix_page},
+  {"/rhizome/", rhizome_direct_dispatch},
+  {"/static/", static_page},
+  {"/interface/", interface_page},
+  {"/neighbour/", neighbour_page},
+  {"/favicon.ico", fav_icon_header},
+  {"/", root_page},
+};
 
 static int httpd_dispatch(struct http_request *hr)
 {
   httpd_request *r = (httpd_request *) hr;
   INFOF("HTTP SERVER, %s %s", r->http.verb, r->http.path);
   r->http.response.content_generator = NULL;
-  
-  struct http_handler *handler, *parser=NULL;
-  const char *remainder=NULL;
-  size_t match_len=0;
-  
-  for (handler = SECTION_START(httpd); handler < SECTION_END(httpd); ++handler) {
-    size_t path_len = strlen(handler->path);
-    if (parser && path_len < match_len)
-      continue;
-    
-    const char *p;
-    if (str_startswith(r->http.path, handler->path, &p)){
-      match_len = path_len;
-      parser = handler;
-      remainder = p;
+  unsigned i;
+  for (i = 0; i < NELS(paths); ++i) {
+    const char *remainder;
+    if (str_startswith(r->http.path, paths[i].path, &remainder)){
+      int result = paths[i].parser(r, remainder);
+      if (result == -1 || (result >= 200 && result < 600))
+	return result;
+      if (result == 1)
+	return 0;
+      if (result)
+	return WHYF("dispatch function for %s returned invalid result %d", paths[i].path, result);
     }
-  }
-  if (parser){
-    int result = parser->parser(r, remainder);
-    if (result == -1 || (result >= 200 && result < 600))
-      return result;
-    if (result == 1)
-      return 0;
-    if (result)
-      return WHYF("dispatch function for %s returned invalid result %d", parser->path, result);
   }
   return 404;
 }
@@ -108,7 +147,7 @@ int is_httpd_server_running()
    Return 1 if the server is already started successfully.
    Return 2 if the server was not started because it is too soon since last failed attempt.
  */
-int httpd_server_start(const uint16_t port_low, const uint16_t port_high)
+int httpd_server_start(uint16_t port_low, uint16_t port_high)
 {
   if (httpd_server_socket != -1)
     return 1;
@@ -124,9 +163,9 @@ int httpd_server_start(const uint16_t port_low, const uint16_t port_high)
   for (port = port_low; port <= port_high; ++port) {
     /* Create a new socket, reusable and non-blocking. */
     if (httpd_server_socket == -1) {
-      httpd_server_socket = socket(AF_INET, SOCK_STREAM, 0);
+      httpd_server_socket = socket(AF_INET,SOCK_STREAM,0);
       if (httpd_server_socket == -1) {
-	WHY_perror("socket(AF_INET, SOCK_STREAM, 0)");
+	WHY_perror("socket");
 	goto error;
       }
       int on=1;
@@ -165,7 +204,7 @@ int httpd_server_start(const uint16_t port_low, const uint16_t port_high)
       httpd_server_socket = -1;
     }
   }
-  WHYF("No ports available in range %u to %u", port_low, port_high);
+  WHYF("No ports available in range %u to %u", HTTPD_PORT, HTTPD_PORT_MAX);
 error:
   if (httpd_server_socket != -1) {
     close(httpd_server_socket);
@@ -182,7 +221,7 @@ success:
   server_alarm.poll.events = POLLIN;
   watch(&server_alarm);
   
-  INFOF("HTTP SERVER START port=%u fd=%d services=RESTful%s%s",
+  INFOF("HTTP SERVER START port=%"PRIu16" fd=%d services=RESTful%s%s",
       httpd_server_port,
       httpd_server_socket,
       config.rhizome.http.enable ? ",Rhizome" : "",
@@ -504,4 +543,143 @@ int http_response_init_content_range(httpd_request *r, size_t resource_length)
     r->http.response.header.content_length = resource_length;
   }
   return 0;
+}
+
+static int root_page(httpd_request *r, const char *remainder)
+{
+  if (*remainder)
+    return 404;
+  if (r->http.verb != HTTP_VERB_GET)
+    return 405;
+  char temp[8192];
+  strbuf b = strbuf_local(temp, sizeof temp);
+  strbuf_sprintf(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>"
+	   "<h1>Hello, I'm %s*</h1>",
+	   alloca_tohex_sid_t_trunc(my_subscriber->sid, 16));
+  if (config.server.motd[0]) {
+      strbuf_puts(b, "<p>");
+      strbuf_html_escape(b, config.server.motd, strlen(config.server.motd));
+      strbuf_puts(b, "</p>");
+  }
+  strbuf_puts(b, "Interfaces;<br />");
+  int i;
+  for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
+    if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
+      strbuf_sprintf(b, "<a href=\"/interface/%d\">%d: %s, TX: %d, RX: %d</a><br />",
+	i, i, overlay_interfaces[i].name, overlay_interfaces[i].tx_count, overlay_interfaces[i].recv_count);
+  }
+  strbuf_puts(b, "Neighbours;<br />");
+  link_neighbour_short_status_html(b, "/neighbour");
+  if (is_rhizome_http_enabled()){
+    strbuf_puts(b, "<a href=\"/rhizome/status\">Rhizome Status</a><br />");
+  }
+  strbuf_puts(b, "</body></html>");
+  if (strbuf_overrun(b)) {
+    WHY("HTTP Root page buffer overrun");
+    return 500;
+  }
+  http_request_response_static(&r->http, 200, CONTENT_TYPE_HTML, temp, strbuf_len(b));
+  return 1;
+}
+
+static int fav_icon_header(httpd_request *r, const char *remainder)
+{
+  if (*remainder)
+    return 404;
+  http_request_response_static(&r->http, 200, "image/vnd.microsoft.icon", (const char *)favicon_bytes, favicon_len);
+  return 1;
+}
+
+static int neighbour_page(httpd_request *r, const char *remainder)
+{
+  if (r->http.verb != HTTP_VERB_GET)
+    return 405;
+  char buf[8*1024];
+  strbuf b = strbuf_local(buf, sizeof buf);
+  sid_t neighbour_sid;
+  if (str_to_sid_t(&neighbour_sid, remainder) == -1)
+    return 404;
+  struct subscriber *neighbour = find_subscriber(neighbour_sid.binary, sizeof(neighbour_sid.binary), 0);
+  if (!neighbour)
+    return 404;
+  strbuf_puts(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
+  link_neighbour_status_html(b, neighbour);
+  strbuf_puts(b, "</body></html>");
+  if (strbuf_overrun(b))
+    return -1;
+  http_request_response_static(&r->http, 200, CONTENT_TYPE_HTML, buf, strbuf_len(b));
+  return 1;
+}
+
+static int interface_page(httpd_request *r, const char *remainder)
+{
+  if (r->http.verb != HTTP_VERB_GET)
+    return 405;
+  char buf[8*1024];
+  strbuf b=strbuf_local(buf, sizeof buf);
+  int index=atoi(remainder);
+  if (index<0 || index>=OVERLAY_MAX_INTERFACES)
+    return 404;
+  strbuf_puts(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
+  interface_state_html(b, &overlay_interfaces[index]);
+  strbuf_puts(b, "</body></html>");
+  if (strbuf_overrun(b))
+    return -1;
+  http_request_response_static(&r->http, 200, CONTENT_TYPE_HTML, buf, strbuf_len(b));
+  return 1;
+}
+
+static void finalise_union_close_file(httpd_request *r)
+{
+  if (r->u.file.fd==-1)
+    return;
+  close(r->u.file.fd);
+  r->u.file.fd=-1;
+}
+
+static int static_file_generator(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
+{
+  struct httpd_request *r=(struct httpd_request *)hr;
+  uint64_t remain = r->http.response.header.content_length + r->http.response.header.content_range_start - r->u.file.offset;
+  if (bufsz < remain)
+    remain = bufsz;
+  ssize_t bytes = read(r->u.file.fd, buf, remain);
+  if (bytes == -1)
+    return -1;
+  r->u.file.offset+=bytes;
+  result->generated = bytes;
+  return (r->u.file.offset >= r->http.response.header.content_length + r->http.response.header.content_range_start)?0:1;
+}
+
+static int static_page(httpd_request *r, const char *remainder)
+{
+  if (r->http.verb != HTTP_VERB_GET)
+    return 405;
+  char path[PATH_MAX];
+  
+  if (!*remainder)
+    remainder="index.html";
+  if (FORMF_SERVAL_ETC_PATH(path, "static/%s", remainder)==0)
+    return 500;
+  struct stat stat;
+  if (lstat(path, &stat))
+    return 404;
+  
+  r->u.file.fd = open(path, O_RDONLY);
+  if (r->u.file.fd==-1)
+    return 404;
+  
+  r->finalise_union=finalise_union_close_file;
+  
+  // TODO find extension and set content type properly
+  http_response_init_content_range(r, stat.st_size);
+  if (r->http.response.header.content_range_start){
+    if (lseek64(r->u.file.fd, r->http.response.header.content_range_start, SEEK_SET)){
+      WARNF_perror("lseek(%s)", path);
+      return 500;
+    }
+  }
+  r->u.file.offset=r->http.response.header.content_range_start;
+  http_request_response_generated(&r->http, 200, CONTENT_TYPE_HTML, static_file_generator);
+  return 1;
 }

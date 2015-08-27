@@ -193,7 +193,7 @@ int overlay_rhizome_saw_advertisements(struct decode_context *context, struct ov
     httpaddr=context->addr;
   }
   if (httpaddr.addr.sa_family == AF_INET)
-    httpaddr.inet.sin_port = HTTPD_PORT_DEFAULT;
+    httpaddr.inet.sin_port = htons(HTTPD_PORT);
   rhizome_manifest *m=NULL;
 
   int (*oldfunc)() = sqlite_set_tracefunc(is_debug_rhizome_ads);

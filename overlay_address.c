@@ -458,14 +458,15 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   if (!context->sender)
     frame->source_full=1;
   
-  frame->destination = destination;
   if (destination){
     frame->ttl = PAYLOAD_TTL_DEFAULT; // MAX?
+    frame->destination = destination;
     frame->source_full=1;
   }else{
     // send both a broadcast & unicast response out the same interface this packet arrived on.
     frame->ttl=1;// how will this work with olsr??
     if (context->interface){
+      frame->destination = destination;
       frame_add_destination(frame, NULL, context->interface->destination);
       
       struct network_destination *dest = create_unicast_destination(&context->addr, context->interface);

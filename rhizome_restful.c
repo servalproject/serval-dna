@@ -22,12 +22,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "httpd.h"
 #include "strbuf_helpers.h"
 
-DECLARE_HANDLER("/restful/rhizome/bundlelist.json", restful_rhizome_bundlelist_json);
-DECLARE_HANDLER("/restful/rhizome/newsince/", restful_rhizome_newsince);
-DECLARE_HANDLER("/restful/rhizome/insert", restful_rhizome_insert);
-DECLARE_HANDLER("/restful/rhizome/append", restful_rhizome_append);
-DECLARE_HANDLER("/restful/rhizome/", restful_rhizome_);
-
 static HTTP_RENDERER render_manifest_headers;
 static void on_rhizome_bundle_added(httpd_request *r, rhizome_manifest *m);
 
@@ -154,7 +148,7 @@ static int http_request_rhizome_response(struct httpd_request *r, uint16_t resul
 
 static HTTP_CONTENT_GENERATOR restful_rhizome_bundlelist_json_content;
 
-static int restful_rhizome_bundlelist_json(httpd_request *r, const char *remainder)
+int restful_rhizome_bundlelist_json(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = CONTENT_TYPE_JSON;
   r->http.render_extra_headers = render_manifest_headers;
@@ -187,7 +181,7 @@ static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsi
   return ret;
 }
 
-static int restful_rhizome_newsince(httpd_request *r, const char *remainder)
+int restful_rhizome_newsince(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = CONTENT_TYPE_JSON;
   if (!is_rhizome_http_enabled())
@@ -333,7 +327,7 @@ static int insert_mime_part_end(struct http_request *);
 static int insert_mime_part_header(struct http_request *, const struct mime_part_headers *);
 static int insert_mime_part_body(struct http_request *, char *, size_t);
 
-static int restful_rhizome_insert(httpd_request *r, const char *remainder)
+int restful_rhizome_insert(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = CONTENT_TYPE_JSON;
   r->http.render_extra_headers = render_manifest_headers;
@@ -365,7 +359,7 @@ static int restful_rhizome_insert(httpd_request *r, const char *remainder)
   return 1;
 }
 
-static int restful_rhizome_append(httpd_request *r, const char *remainder)
+int restful_rhizome_append(httpd_request *r, const char *remainder)
 {
   r->u.insert.appending = 1;
   return restful_rhizome_insert(r, remainder);
@@ -756,7 +750,7 @@ static HTTP_HANDLER restful_rhizome_bid_rhm;
 static HTTP_HANDLER restful_rhizome_bid_raw_bin;
 static HTTP_HANDLER restful_rhizome_bid_decrypted_bin;
 
-static int restful_rhizome_(httpd_request *r, const char *remainder)
+int restful_rhizome_(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = CONTENT_TYPE_JSON;
   r->http.render_extra_headers = render_manifest_headers;

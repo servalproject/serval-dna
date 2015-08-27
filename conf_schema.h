@@ -373,7 +373,7 @@ END_STRUCT
 STRUCT(rhizome_peer)
 STRING(25,                  protocol,   "http", protocol,, "Protocol name")
 STRING(256,                 host,       "", str_nonempty, MANDATORY, "Host name or IP address")
-ATOM(uint16_t,              port,       HTTPD_PORT_DEFAULT, uint16_nonzero,, "Port number")
+ATOM(uint16_t,              port,       HTTPD_PORT, uint16_nonzero,, "Port number")
 END_STRUCT
 
 ARRAY(peerlist,)
@@ -399,7 +399,6 @@ END_STRUCT
 
 STRUCT(rhizome_http)
 ATOM(bool_t,                enable,     1, boolean,, "If true, Rhizome HTTP server is started")
-ATOM(uint16_t,              port,       HTTPD_PORT_DEFAULT, uint16_nonzero,, "Port number for Rhizome HTTP server")
 END_STRUCT
 
 STRUCT(rhizome_mdp)

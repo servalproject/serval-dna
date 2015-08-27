@@ -288,9 +288,8 @@ void frame_remove_destination(struct overlay_frame *frame, int i){
 }
 
 void frame_add_destination(struct overlay_frame *frame, struct subscriber *next_hop, struct network_destination *dest){
-  if ((!dest->ifconfig.send)||frame->destination_count >= MAX_PACKET_DESTINATIONS)
+  if (frame->destination_count >= MAX_PACKET_DESTINATIONS)
     return;
-  
   unsigned i = frame->destination_count++;
   frame->destinations[i].destination=add_destination_ref(dest);
   frame->destinations[i].next_hop = next_hop;
