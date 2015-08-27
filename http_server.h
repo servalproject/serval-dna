@@ -196,6 +196,11 @@ struct http_request {
   // The parsed HTTP request is accumulated into the following fields.
   const char *verb; // points to nul terminated static string, "GET", "PUT", etc.
   const char *path; // points into buffer; nul terminated
+  struct query_parameter {
+    const char *name; // points into buffer; nul terminated
+    const char *value; // points into buffer; nul terminated
+  }
+    query_parameters[10]; // can make this as big as needed, but not dynamic
   uint8_t version_major; // m from from HTTP/m.n
   uint8_t version_minor; // n from HTTP/m.n
   struct http_request_headers request_header;
@@ -236,5 +241,12 @@ struct http_request {
   // This buffer is used during RECEIVE and TRANSMIT phase.
   char buffer[8 * 1024];
 };
+
+/* Return the nul-terminated string value of a given query parameter: NULL if
+ * no such parameter was supplied; HTTP_REQUEST_PARAM_NOVALUE if the parameter
+ * was supplied without an '=value' part.
+ */
+const char *http_request_get_query_param(struct http_request *r, const char *name);
+extern const char HTTP_REQUEST_PARAM_NOVALUE[];
 
 #endif // __SERVAL_DNA__HTTP_SERVER_H

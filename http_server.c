@@ -114,8 +114,9 @@ void http_request_init(struct http_request *r, int sockfd)
   r->alarm.poll.events = POLLIN;
   r->phase = RECEIVE;
   r->reserved = r->buffer;
-  // Put aside a few bytes for reserving strings, so that the path can be reserved ok.
-  r->received = r->end = r->parsed = r->cursor = r->buffer + 32;
+  // Put aside a few bytes for reserving strings, so that the path and query parameters can be
+  // reserved ok.
+  r->received = r->end = r->parsed = r->cursor = r->buffer + sizeof(void*) * (1 + NELS(r->query_parameters));
   r->parser = http_request_parse_verb;
   watch(&r->alarm);
   http_request_set_idle_timeout(r);
@@ -215,11 +216,9 @@ static void *read_pointer(const unsigned char *mem)
   return v;
 }
 
-/* Allocate space from the start of the request buffer to hold the given substring plus a
+/* Allocate space from the start of the request buffer to hold a given number of bytes plus a
  * terminating NUL.  Enough bytes must have already been marked as parsed in order to make room,
- * otherwise the reservation fails and returns 0.  If successful, copies the substring plus a
- * terminating NUL into the reserved space, places a pointer to the reserved area into '*resp', and
- * returns 1.
+ * otherwise the reservation fails and returns 0.  If successful, returns 1.
  *
  * Keeps a copy to the pointer 'resp', so that when the reserved area is released, all pointers into
  * it can be set to NULL automatically.  This provides some safety: if the pointer is accidentally
@@ -229,14 +228,11 @@ static void *read_pointer(const unsigned char *mem)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static int _reserve(struct http_request *r, const char **resp, struct substring str)
+static int _reserve(struct http_request *r, const char **resp, const char *src, size_t len, void (*mover)(char *, const char *, size_t))
 {
   // Reserved string pointer must lie within this http_request struct.
   assert((char*)resp >= (char*)r);
   assert((char*)resp < (char*)(r + 1));
-  size_t len = str.end - str.start;
-  // Substring must contain no NUL chars.
-  assert(strnchr(str.start, len, '\0') == NULL);
   char *reslim = r->buffer + sizeof r->buffer - 1024; // always leave this much unreserved space
   assert(r->reserved <= reslim);
   size_t siz = sizeof(char**) + len + 1;
@@ -245,17 +241,15 @@ static int _reserve(struct http_request *r, const char **resp, struct substring 
     return 0;
   }
   if (r->reserved + siz > r->parsed) {
-    WARNF("Error during HTTP parsing, unparsed content %s would be overwritten by reserving %s",
-	alloca_toprint(30, r->parsed, r->end - r->parsed),
-	alloca_substring_toprint(str)
+    WARNF("Error during HTTP parsing, unparsed content %s would be overwritten by reserving %zu bytes",
+	alloca_toprint(30, r->parsed, r->end - r->parsed), len + 1
       );
     r->response.result_code = 500;
     return 0;
   }
   const char ***respp = (const char ***) r->reserved;
   char *restr = (char *)(respp + 1);
-  if (restr != str.start)
-    memmove(restr, str.start, len);
+  mover(restr, src, len);
   restr[len] = '\0';
   r->reserved += siz;
   assert(r->reserved == &restr[len+1]);
@@ -269,6 +263,25 @@ static int _reserve(struct http_request *r, const char **resp, struct substring 
   return 1;
 }
 
+static void _mover_mem(char *dst, const char *src, size_t len)
+{
+  if (dst != src)
+    memmove(dst, src, len);
+}
+
+/* Allocate space from the start of the request buffer to hold the given substring plus a
+ * terminating NUL.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+static int _reserve_substring(struct http_request *r, const char **resp, struct substring str)
+{
+  size_t len = str.end - str.start;
+  // Substring must contain no NUL chars.
+  assert(strnchr(str.start, len, '\0') == NULL);
+  return _reserve(r, resp, str.start, len, _mover_mem);
+}
+
 /* The same as _reserve(), but takes a NUL-terminated string as a source argument instead of a
  * substring.
  *
@@ -276,8 +289,26 @@ static int _reserve(struct http_request *r, const char **resp, struct substring 
  */
 static int _reserve_str(struct http_request *r, const char **resp, const char *str)
 {
-  struct substring sub = { .start = str, .end = str + strlen(str) };
-  return _reserve(r, resp, sub);
+  return _reserve(r, resp, str, strlen(str), _mover_mem);
+}
+
+/* The same as _reserve(), but decodes the source bytes using www-form-urlencoding.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+static void _mover_www_form_uri_decode(char *, const char *, size_t);
+static int _reserve_www_form_uriencoded(struct http_request *r, const char **resp, struct substring str)
+{
+  assert(str.end > str.start);
+  const char *after = NULL;
+  size_t len = www_form_uri_decode(NULL, -1, (char *)str.start, str.end - str.start, &after);
+  assert(len <= (size_t)(str.end - str.start)); // decoded must not be longer than encoded
+  assert(after == str.end);
+  return _reserve(r, resp, str.start, len, _mover_www_form_uri_decode);
+}
+static void _mover_www_form_uri_decode(char *dst, const char *src, size_t len)
+{
+  www_form_uri_decode(dst, len, src, -1, NULL);
 }
 
 /* Release all the strings reserved by _reserve(), returning the space to the request buffer, and
@@ -457,17 +488,17 @@ static inline int _skip_space(struct http_request *r)
   return r->cursor > start;
 }
 
-static size_t _skip_word_printable(struct http_request *r, struct substring *str)
+static size_t _skip_word_printable(struct http_request *r, struct substring *str, char until)
 {
-  if (_run_out(r) || isspace(*r->cursor) || !isprint(*r->cursor))
+  if (_run_out(r) || isspace(*r->cursor) || !isprint(*r->cursor) || *r->cursor == until)
     return 0;
   const char *start = r->cursor;
-  for (++r->cursor; !_run_out(r) && !isspace(*r->cursor) && isprint(*r->cursor); ++r->cursor)
+  for (++r->cursor; !_run_out(r) && !isspace(*r->cursor) && isprint(*r->cursor) && *r->cursor != until; ++r->cursor)
     ;
   if (_run_out(r))
     return 0;
   assert(r->cursor > start);
-  assert(isspace(*r->cursor));
+  assert(isspace(*r->cursor) || *r->cursor == until);
   if (str) {
     str->start = start;
     str->end = r->cursor;
@@ -782,17 +813,69 @@ static int http_request_parse_path(struct http_request *r)
   // Parse path: word immediately following verb, delimited by spaces.
   assert(r->path == NULL);
   struct substring path;
-  if (!(_skip_word_printable(r, &path) && _skip_literal(r, " "))) {
+  struct {
+    struct substring name;
+    struct substring value;
+  } params[NELS(r->query_parameters)];
+  unsigned count = 0;
+  if (_skip_word_printable(r, &path, '?')) {
+    struct substring param;
+    while (   count < NELS(params)
+	   && (_skip_literal(r, "?") || _skip_literal(r, "&"))
+	   && _skip_word_printable(r, &param, '&')
+    ) {
+      const char *eq = strnchr(param.start, param.end - param.start, '=');
+      params[count].name.start = param.start;
+      if (eq) {
+	params[count].name.end = eq;
+	params[count].value.start = eq + 1;
+	params[count].value.end = param.end;
+      } else {
+	params[count].name.end = param.end;
+	params[count].value.start = NULL;
+	params[count].value.end = NULL;
+      }
+      IDEBUGF(r->debug, "Query parameter: %s%s%s",
+	  alloca_substring_toprint(params[count].name),
+	  params[count].value.start ? "=" : "",
+	  params[count].value.start ? alloca_substring_toprint(params[count].value) : ""
+	);
+      ++count;
+    }
+  }
+  if (!_skip_literal(r, " ")) {
     if (_run_out(r))
       return 100; // read more and try again
-    IDEBUGF(r->debug, "Malformed HTTP %s request at path: %s", r->verb, alloca_toprint(20, r->parsed, r->end - r->parsed));
+    if (count == NELS(params))
+      IDEBUGF(r->debug, "Unsupported HTTP %s request, too many query parameters: %s", r->verb, alloca_toprint(20, r->parsed, r->end - r->parsed));
+    else
+      IDEBUGF(r->debug, "Malformed HTTP %s request at path: %s", r->verb, alloca_toprint(20, r->parsed, r->end - r->parsed));
     return 400;
   }
   _commit(r);
-  if (!_reserve(r, &r->path, path))
+  if (!_reserve_www_form_uriencoded(r, &r->path, path))
     return 0; // error
+  unsigned i;
+  for (i = 0; i != count; ++i) {
+    if (!_reserve_www_form_uriencoded(r, &r->query_parameters[i].name, params[i].name))
+      return 0; // error
+    if (params[i].value.start && !_reserve_www_form_uriencoded(r, &r->query_parameters[i].value, params[i].value))
+      return 0; // error
+  }
   r->parser = http_request_parse_http_version;
   return 0;
+}
+
+const char HTTP_REQUEST_PARAM_NOVALUE[] = "";
+
+const char *http_request_get_query_param(struct http_request *r, const char *name)
+{
+  unsigned i;
+  for (i = 0; i != NELS(r->query_parameters) && r->query_parameters[i].name; ++i) {
+    if (strcmp(r->query_parameters[i].name, name) == 0)
+      return r->query_parameters[i].value ? r->query_parameters[i].value : HTTP_REQUEST_PARAM_NOVALUE;
+  }
+  return NULL;
 }
 
 /* If parsing completes, then sets r->parser to the next parsing function and returns 0.  If parsing
@@ -986,12 +1069,12 @@ static int http_request_parse_header(struct http_request *r)
     }
     _skip_optional_space(r);
     struct substring origin;
-    if (_skip_word_printable(r, &origin) 
+    if (_skip_word_printable(r, &origin, ' ') 
 	&& _skip_optional_space(r)
 	&& r->cursor == eol) {
       r->cursor = nextline;
       _commit(r);
-      _reserve(r, &r->request_header.origin, origin);
+      _reserve_substring(r, &r->request_header.origin, origin);
       return 0;
     }
     goto malformed;

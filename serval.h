@@ -302,7 +302,7 @@ int unpack_uint(unsigned char *buffer, int buff_size, uint64_t *v);
 void rhizome_fetch_log_short_status();
 extern char crash_handler_clue[1024];
 
-int link_received_duplicate(struct subscriber *subscriber, int previous_seq);
+int link_received_duplicate(struct decode_context *context, int payload_seq);
 int link_received_packet(struct decode_context *context, int sender_seq, char unicast);
 int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payload);
 void link_explained(struct subscriber *subscriber);

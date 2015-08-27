@@ -204,12 +204,8 @@ int create_serval_instance_dir()
 {
   int ret = 0;
   char path[PATH_MAX];
-  if (FORMF_SERVAL_ETC_PATH(path, NULL) && emkdirs_info(path, 0755) == -1)
-    ret = -1;
-  if (FORMF_SERVAL_RUN_PATH(path, NULL) && emkdirs_info(path, 0700) == -1)
-    ret = -1;
-  if (FORMF_SERVAL_CACHE_PATH(path, NULL) && emkdirs_info(path, 0700) == -1)
-    ret = -1;
+  // emkdire_info can log if paths don't exist, which will also try to create paths...
+  // so try to create logging folders first
   strbuf sb = strbuf_local(path, sizeof path);
   strbuf_system_log_path(sb);
   if (!strbuf_overrun(sb) && emkdirs_info(path, 0700) == -1)
@@ -217,6 +213,12 @@ int create_serval_instance_dir()
   strbuf_reset(sb);
   strbuf_serval_log_path(sb);
   if (!strbuf_overrun(sb) && emkdirs_info(path, 0700) == -1)
+    ret = -1;
+  if (FORMF_SERVAL_ETC_PATH(path, NULL) && emkdirs_info(path, 0755) == -1)
+    ret = -1;
+  if (FORMF_SERVAL_RUN_PATH(path, NULL) && emkdirs_info(path, 0700) == -1)
+    ret = -1;
+  if (FORMF_SERVAL_CACHE_PATH(path, NULL) && emkdirs_info(path, 0700) == -1)
     ret = -1;
   if (FORMF_SERVAL_TMP_PATH(path, NULL) && emkdirs_info(path, 0700) == -1)
     ret = -1;

@@ -41,10 +41,9 @@ struct cli_context;
     .description = HELP \
   }
 
-extern struct cli_schema __start_commands[] SECTION_START(commands);
-extern struct cli_schema __stop_commands[]  SECTION_STOP(commands);
+DECLARE_SECTION(struct cli_schema, commands);
 
-#define CMD_COUNT (__stop_commands - __start_commands)
+#define CMD_COUNT (SECTION_START(commands) - SECTION_END(commands))
 
 void cli_flush(struct cli_context *context);
 int cli_delim(struct cli_context *context, const char *opt);
