@@ -226,8 +226,20 @@ strbuf strbuf_json_boolean(strbuf sb, int boolean);
 strbuf strbuf_json_string(strbuf sb, const char *str); // str can be NULL
 strbuf strbuf_json_string_len(strbuf sb, const char *str, size_t strlen); // str cannot be NULL
 strbuf strbuf_json_hex(strbuf sb, const unsigned char *buf, size_t len);
+struct json_key_value {
+    const char *key;
+    struct json_atom *value;
+};
 struct json_atom {
-    enum json_atomic_type { JSON_NULL, JSON_BOOLEAN, JSON_INTEGER, JSON_STRING_NULTERM, JSON_STRING_LENGTH } type;
+    enum json_atomic_type {
+        JSON_NULL,
+        JSON_BOOLEAN,           // u.boolean
+        JSON_INTEGER,           // u.integer
+        JSON_STRING_NULTERM,    // u.string.content (nul terminated)
+        JSON_STRING_LENGTH,     // u.string.content[0 .. u.string.length-1]
+        JSON_OBJECT,            // u.object.itemv[0 .. u.object.itemc].key .value
+        JSON_ARRAY,             // u.array.itemv[0 .. u.object.itemc]
+    } type;
     union {
         int boolean;
         int64_t integer;
@@ -235,11 +247,19 @@ struct json_atom {
             const char *content;
             size_t length;
         } string;
+        struct {
+            size_t itemc;
+            struct json_key_value *itemv;
+        } object;
+        struct {
+            size_t itemc;
+            struct json_atom **itemv;
+        } array;
     } u;
 };
 strbuf strbuf_json_atom(strbuf sb, const struct json_atom *);
 strbuf strbuf_json_atom_as_html(strbuf sb, const struct json_atom *);
-strbuf strbuf_json_atom_as_text(strbuf sb, const struct json_atom *);
+strbuf strbuf_json_atom_as_text(strbuf sb, const struct json_atom *, const char *eol);
 
 /* Append a representation of a struct http_range[] array.
  * @author Andrew Bettison <andrew@servalproject.com>

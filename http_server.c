@@ -1937,7 +1937,7 @@ static strbuf strbuf_status_body(strbuf sb, struct http_response *hr, const char
 	strbuf_puts(sb, "\r\n");
 	strbuf_puts(sb, hr->result_extra[i].label);
 	strbuf_puts(sb, "=");
-	strbuf_json_atom_as_text(sb, &hr->result_extra[i].value);
+	strbuf_json_atom_as_text(sb, &hr->result_extra[i].value, "\r\n");
       }
     strbuf_puts(sb, "\r\n");
   }

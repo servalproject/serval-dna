@@ -777,11 +777,43 @@ strbuf strbuf_json_atom(strbuf sb, const struct json_atom *atom)
       return strbuf_json_string(sb, atom->u.string.content);
     case JSON_STRING_LENGTH:
       return strbuf_json_string_len(sb, atom->u.string.content, atom->u.string.length);
+    case JSON_OBJECT: {
+	strbuf_putc(sb, '{');
+	size_t i;
+	for (i = 0; i != atom->u.object.itemc; ++i) {
+	  if (i)
+	    strbuf_putc(sb, ',');
+	  strbuf_json_string(sb, atom->u.object.itemv[i].key);
+	  strbuf_putc(sb, ':');
+	  strbuf_json_atom(sb, atom->u.object.itemv[i].value);
+	}
+	strbuf_putc(sb, '}');
+	return sb;
+      }
+    case JSON_ARRAY: {
+	strbuf_putc(sb, '[');
+	size_t i;
+	for (i = 0; i != atom->u.array.itemc; ++i) {
+	  if (i)
+	    strbuf_putc(sb, ',');
+	  strbuf_json_atom(sb, atom->u.array.itemv[i]);
+	}
+	strbuf_putc(sb, ']');
+	return sb;
+      }
   }
   abort();
 }
 
-strbuf strbuf_json_atom_as_text(strbuf sb, const struct json_atom *atom)
+static strbuf strbuf_puts_repeat(strbuf sb, const char *text, size_t repeat)
+{
+  size_t i;
+  for (i = 0; i != repeat; ++i)
+    strbuf_puts(sb, text);
+  return sb;
+}
+
+static strbuf strbuf_json_atom_as_text_indented(strbuf sb, const struct json_atom *atom, const char *eol, const char *tab, unsigned indent)
 {
   switch (atom->type) {
     case JSON_NULL:
@@ -795,8 +827,41 @@ strbuf strbuf_json_atom_as_text(strbuf sb, const struct json_atom *atom)
       return strbuf_puts(sb, atom->u.string.content);
     case JSON_STRING_LENGTH:
       return strbuf_ncat(sb, atom->u.string.content, atom->u.string.length);
+    case JSON_OBJECT: {
+	strbuf_puts(sb, "{");
+	size_t i;
+	for (i = 0; i != atom->u.object.itemc; ++i) {
+	  strbuf_puts(sb, eol);
+	  strbuf_puts_repeat(sb, tab, indent);
+	  strbuf_puts(sb, atom->u.object.itemv[i].key);
+	  strbuf_puts(sb, ": ");
+	  strbuf_json_atom_as_text_indented(sb, atom->u.object.itemv[i].value, eol, tab, indent + 1);
+	}
+	if (i) {
+	  strbuf_puts(sb, eol);
+	  strbuf_puts_repeat(sb, tab, indent);
+	}
+	strbuf_puts(sb, "}");
+	return sb;
+      }
+    case JSON_ARRAY: {
+	strbuf_puts(sb, "[");
+	size_t i;
+	for (i = 0; i != atom->u.array.itemc; ++i) {
+	  if (i)
+	    strbuf_puts(sb, ", ");
+	  strbuf_json_atom_as_text_indented(sb, atom->u.array.itemv[i], eol, tab, indent + 1);
+	}
+	strbuf_puts(sb, "]");
+	return sb;
+      }
   }
   abort();
+}
+
+strbuf strbuf_json_atom_as_text(strbuf sb, const struct json_atom *atom, const char *eol)
+{
+  return strbuf_json_atom_as_text_indented(sb, atom, eol, "   ", 0);
 }
 
 strbuf strbuf_json_atom_as_html(strbuf sb, const struct json_atom *atom)
@@ -813,6 +878,30 @@ strbuf strbuf_json_atom_as_html(strbuf sb, const struct json_atom *atom)
       return strbuf_html_escape(sb, atom->u.string.content, strlen(atom->u.string.content));
     case JSON_STRING_LENGTH:
       return strbuf_html_escape(sb, atom->u.string.content, atom->u.string.length);
+    case JSON_OBJECT: {
+	strbuf_puts(sb, "<dl>");
+	size_t i;
+	for (i = 0; i != atom->u.object.itemc; ++i) {
+	strbuf_puts(sb, "\n<dt>");
+	  strbuf_html_escape(sb, atom->u.object.itemv[i].key, strlen(atom->u.object.itemv[i].key));
+	  strbuf_puts(sb, "</dt><dd>");
+	  strbuf_json_atom_as_html(sb, atom->u.object.itemv[i].value);
+	  strbuf_puts(sb, "</dd>");
+	}
+	strbuf_puts(sb, "\n</dl>");
+	return sb;
+      }
+    case JSON_ARRAY: {
+	strbuf_puts(sb, "<ol>");
+	size_t i;
+	for (i = 0; i != atom->u.array.itemc; ++i) {
+	  strbuf_puts(sb, "\n<li>");
+	  strbuf_json_atom_as_html(sb, atom->u.array.itemv[i]);
+	  strbuf_puts(sb, "</li>");
+	}
+	strbuf_puts(sb, "\n</ol>");
+	return sb;
+      }
   }
   abort();
 }
