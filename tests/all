@@ -35,11 +35,12 @@ includeTests rhizomeprotocol
 includeTests meshms
 includeTests directory_service
 includeTests vomp
-includeTests rhizomerestful
 includeTests keyringrestful
+includeTests rhizomerestful
 includeTests meshmsrestful
 if type -p "$JAVAC" >/dev/null; then
    includeTests jni
+   includeTests keyringjava
    includeTests rhizomejava
    includeTests meshmsjava
 fi

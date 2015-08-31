@@ -20,11 +20,49 @@
 
 package org.servalproject.servaldna;
 
+import java.lang.Iterable;
+import java.lang.StringBuilder;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.HttpURLConnection;
 
 public interface ServalDHttpConnectionFactory {
 
+	public static class QueryParam
+	{
+		public final String key;
+		public final String value;
+		public QueryParam(String key, String value) {
+			this.key = key;
+			this.value = value;
+		}
+
+		public void uri_encode(StringBuilder str) throws UnsupportedEncodingException {
+			uri_encode_string(str, this.key);
+			if (this.value != null) {
+				str.append('=');
+				uri_encode_string(str, this.value);
+			}
+		}
+
+		static private void uri_encode_string(StringBuilder str, String text) throws UnsupportedEncodingException {
+			for (byte b : text.getBytes("UTF-8")) {
+				if (	(b >= '0' && b <= '9')
+					||	(b >= 'A' && b <= 'Z')
+					||	(b >= 'a' && b <= 'z')
+					||  b == '_' || b == '.' || b == '-' || b == '~') {
+					str.appendCodePoint(b);
+				} else {
+					str.append('%');
+					str.append(Character.forDigit((b >> 4) % 16, 16));
+					str.append(Character.forDigit(b % 16, 16));
+				}
+			}
+		}
+	}
+
 	public HttpURLConnection newServalDHttpConnection(String path) throws ServalDInterfaceException, IOException;
+
+	public HttpURLConnection newServalDHttpConnection(String path, Iterable<QueryParam> query_params) throws ServalDInterfaceException, IOException;
 
 }

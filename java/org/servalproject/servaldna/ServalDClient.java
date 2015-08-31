@@ -25,6 +25,8 @@ import org.servalproject.servaldna.meshms.MeshMSConversationList;
 import org.servalproject.servaldna.meshms.MeshMSException;
 import org.servalproject.servaldna.meshms.MeshMSMessageList;
 
+import java.lang.Iterable;
+import java.util.Vector;
 import java.io.InputStream;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
@@ -37,6 +39,9 @@ import org.servalproject.servaldna.BundleId;
 import org.servalproject.servaldna.BundleSecret;
 import org.servalproject.servaldna.ServalDCommand;
 import org.servalproject.servaldna.ServalDInterfaceException;
+import org.servalproject.servaldna.keyring.KeyringCommon;
+import org.servalproject.servaldna.keyring.KeyringIdentity;
+import org.servalproject.servaldna.keyring.KeyringIdentityList;
 import org.servalproject.servaldna.rhizome.RhizomeCommon;
 import org.servalproject.servaldna.rhizome.RhizomeIncompleteManifest;
 import org.servalproject.servaldna.rhizome.RhizomeBundleList;
@@ -72,6 +77,18 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 		this.httpPort = httpPort;
 		this.restfulUsername = restfulUsername;
 		this.restfulPassword = restfulPassword;
+	}
+
+	public KeyringIdentityList keyringListIdentities(String pin) throws ServalDInterfaceException, IOException
+	{
+		KeyringIdentityList list = new KeyringIdentityList(this);
+		list.connect(pin);
+		return list;
+	}
+
+	public KeyringIdentity keyringSetDidName(SubscriberId sid, String did, String name, String pin) throws ServalDInterfaceException, IOException
+	{
+		return KeyringCommon.setDidName(this, sid, did, name, pin);
 	}
 
 	public RhizomeBundleList rhizomeListBundles() throws ServalDInterfaceException, IOException
@@ -171,7 +188,20 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 	// interface ServalDHttpConnectionFactory
 	public HttpURLConnection newServalDHttpConnection(String path) throws ServalDInterfaceException, IOException
 	{
-		URL url = new URL("http", "localhost", httpPort, path);
+		return newServalDHttpConnection(path, new Vector<QueryParam>());
+	}
+
+	// interface ServalDHttpConnectionFactory
+	public HttpURLConnection newServalDHttpConnection(String path, Iterable<QueryParam> query_params) throws ServalDInterfaceException, IOException
+	{
+		StringBuilder str = new StringBuilder();
+		char sep = '?';
+		for (QueryParam param : query_params) {
+			str.append(sep);
+			param.uri_encode(str);
+			sep = '&';
+		}
+		URL url = new URL("http://localhost:" + httpPort + path + str.toString());
 		URLConnection uconn = url.openConnection();
 		HttpURLConnection conn;
 		try {
