@@ -26,7 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_buffer.h"
 #include "overlay_interface.h"
 #include "overlay_packet.h"
-
+#include "route_link.h"
 
 struct sockaddr_in loopback;
 
@@ -260,7 +260,7 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
 int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface *interface, 
 			struct socket_address *addr, struct overlay_buffer *buffer){
   IN();
-  
+
   context->interface = interface;
   if (interface->ifconfig.point_to_point && interface->other_device)
     context->point_to_point_device = interface->other_device;
@@ -422,7 +422,10 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	  unsigned char *current = ob_ptr(b)+ob_position(b);
 	  if (IF_DEBUG(overlayframes))
 	    dump("Payload Header", header_start, current - header_start);
-	  ret = WHYF("Invalid payload length (%zd)", payload_len);
+	  ret = WHYF("Payload length %zd suggests frame should be %zd bytes, but was only %zd", 
+	             payload_len, ob_position(b)+payload_len, len);
+	  
+	  // TODO signal reduced MTU?
 	  goto end;
 	}
 	break;

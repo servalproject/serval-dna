@@ -5,6 +5,7 @@
 #include "overlay_address.h"
 #include "overlay_interface.h"
 #include "os.h"
+#include "route_link.h"
 
 DECLARE_HANDLER("/static/", static_page);
 DECLARE_HANDLER("/interface/", interface_page);

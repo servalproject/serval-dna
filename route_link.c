@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "keyring.h"
 #include "server.h"
 #include "mdp_client.h"
+#include "route_link.h"
 
 /*
 Link state routing;
@@ -746,6 +747,22 @@ int link_interface_has_neighbours(struct overlay_interface *interface)
   return 0;
 }
 
+int link_destination_has_neighbours(struct network_destination *dest)
+{
+  struct neighbour *n = neighbours;
+  time_ms_t now = gettime_ms();
+  while(n){
+    struct link_out *l = n->out_links;
+    while(l){
+      if (l->destination == dest && l->timeout >= now)
+	return 1;
+      l=l->_next;
+    }
+    n=n->_next;
+  }
+  return 0;
+}
+
 static int send_legacy_self_announce_ack(struct neighbour *neighbour, struct link_in *link, time_ms_t now){
   struct overlay_frame *frame=emalloc_zero(sizeof(struct overlay_frame));
   frame->type = OF_TYPE_SELFANNOUNCE_ACK;
@@ -1232,7 +1249,7 @@ static void create_out_links(struct neighbour *neighbour, overlay_interface *int
 }
 
 // track stats for receiving packets from this neighbour
-int link_received_packet(struct decode_context *context, int sender_seq, char unicast)
+int link_received_packet(struct decode_context *context, int sender_seq, uint8_t unicast)
 {
   if (!context->sender)
     return 0;

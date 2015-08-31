@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_packet.h"
 #include "keyring.h"
 #include "strbuf_helpers.h"
+#include "route_link.h"
 
 int set_reachable(struct subscriber *subscriber, 
   struct network_destination *destination, struct subscriber *next_hop){

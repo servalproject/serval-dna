@@ -38,6 +38,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "radio_link.h"
 #include "server.h"
+#include "route_link.h"
 
 #ifdef HAVE_IFADDRS_H
 #include <ifaddrs.h>

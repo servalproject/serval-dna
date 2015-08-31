@@ -26,6 +26,7 @@
 #include "radio_link.h"
 #include "str.h"
 #include "strbuf.h"
+#include "route_link.h"
 
 typedef struct overlay_txqueue {
   struct overlay_frame *first;

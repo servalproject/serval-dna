@@ -38,6 +38,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "keyring.h"
 #include "commandline.h"
 #include "mdp_client.h"
+#include "route_link.h"
 
 #define PROC_SUBDIR	  "proc"
 #define PIDFILE_NAME	  "servald.pid"

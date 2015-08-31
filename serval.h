@@ -302,21 +302,4 @@ int unpack_uint(unsigned char *buffer, int buff_size, uint64_t *v);
 void rhizome_fetch_log_short_status();
 extern char crash_handler_clue[1024];
 
-int link_received_duplicate(struct decode_context *context, int payload_seq);
-int link_received_packet(struct decode_context *context, int sender_seq, char unicast);
-int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payload);
-void link_explained(struct subscriber *subscriber);
-void link_interface_down(struct overlay_interface *interface);
-int link_state_announce_links();
-int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now);
-int link_state_ack_soon(struct subscriber *sender);
-int link_state_should_forward_broadcast(struct subscriber *transmitter);
-int link_unicast_ack(struct subscriber *subscriber, struct overlay_interface *interface, struct socket_address *addr);
-int link_add_destinations(struct overlay_frame *frame);
-void link_neighbour_short_status_html(struct strbuf *b, const char *link_prefix);
-void link_neighbour_status_html(struct strbuf *b, struct subscriber *neighbour);
-int link_stop_routing(struct subscriber *subscriber);
-int link_has_neighbours();
-int link_interface_has_neighbours(struct overlay_interface *interface);
-
 #endif // __SERVAL_DNA__SERVAL_H
