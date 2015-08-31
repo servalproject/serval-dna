@@ -35,6 +35,11 @@ DECLARE_HANDLER("/rhizome/import", rhizome_direct_import);
 DECLARE_HANDLER("/rhizome/enquiry", rhizome_direct_enquiry);
 DECLARE_HANDLER("/rhizome/", rhizome_direct_dispatch);
 
+static char PART_MANIFEST[] = "manifest";
+static char PART_PAYLOAD[] = "payload";
+// TODO: "data" is deprecated in favour of "payload" to match the restful API
+static char PART_DATA[] = "data";
+
 static int _form_temporary_file_path(struct __sourceloc __whence, httpd_request *r, char *pathbuf, size_t bufsiz, const char *field)
 {
   // TODO: use a temporary directory
@@ -46,7 +51,7 @@ static int _form_temporary_file_path(struct __sourceloc __whence, httpd_request 
 
 static void rhizome_direct_clear_temporary_files(httpd_request *r)
 {
-  const char *fields[] = { "manifest", "data" };
+  const char *fields[] = { PART_MANIFEST, PART_PAYLOAD };
   int i;
   for (i = 0; i != NELS(fields); ++i) {
     char path[1024];
@@ -70,8 +75,8 @@ static int rhizome_direct_import_end(struct http_request *hr)
   /* Got a bundle to import */
   char manifest_path[512];
   char payload_path[512];
-  if (   form_temporary_file_path(r, manifest_path, "manifest") == -1
-      || form_temporary_file_path(r, payload_path, "data") == -1
+  if (   form_temporary_file_path(r, manifest_path, PART_MANIFEST) == -1
+      || form_temporary_file_path(r, payload_path, PART_PAYLOAD) == -1
   ) {
     http_request_simple_response(&r->http, 500, "Internal Error: Buffer overrun");
     return 0;
@@ -137,7 +142,7 @@ int rhizome_direct_enquiry_end(struct http_request *hr)
     return 0;
   }
   char data_path[512];
-  if (form_temporary_file_path(r, data_path, "data") == -1) {
+  if (form_temporary_file_path(r, data_path, PART_PAYLOAD) == -1) {
     http_request_simple_response(&r->http, 500, "Internal Error: Buffer overrun");
     return 0;
   }
@@ -196,7 +201,7 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
   // arbitrary bundles, which would be bad.
   if (!r->u.direct_import.received_manifest) {
     char payload_path[512];
-    if (form_temporary_file_path(r, payload_path, "data") == -1) {
+    if (form_temporary_file_path(r, payload_path, PART_PAYLOAD) == -1) {
       http_request_simple_response(&r->http, 500, "Internal Error: Buffer overrun");
       return 0;
     }
@@ -286,9 +291,6 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
   }
 }
 
-static char PART_MANIFEST[] = "manifest";
-static char PART_DATA[] = "data";
-
 static int rhizome_direct_process_mime_start(struct http_request *hr)
 {
   httpd_request *r = (httpd_request *) hr;
@@ -312,6 +314,8 @@ static int rhizome_direct_process_mime_end(struct http_request *hr)
     r->u.direct_import.received_manifest = 1;
   else if (r->u.direct_import.current_part == PART_DATA)
     r->u.direct_import.received_data = 1;
+  else if (r->u.direct_import.current_part == PART_PAYLOAD)
+    r->u.direct_import.received_data = 1;
   r->u.direct_import.current_part = NULL;
   return 0;
 }
@@ -319,8 +323,10 @@ static int rhizome_direct_process_mime_end(struct http_request *hr)
 static int rhizome_direct_process_mime_part_header(struct http_request *hr, const struct mime_part_headers *h)
 {
   httpd_request *r = (httpd_request *) hr;
-  if (strcmp(h->content_disposition.name, PART_DATA) == 0) {
-    r->u.direct_import.current_part = PART_DATA;
+  if ((strcmp(h->content_disposition.name, PART_PAYLOAD) == 0)
+      ||(strcmp(h->content_disposition.name, PART_DATA) == 0))
+    {
+    r->u.direct_import.current_part = PART_PAYLOAD;
     strncpy(r->u.direct_import.data_file_name,
 	    h->content_disposition.filename,
 	    sizeof r->u.direct_import.data_file_name)
