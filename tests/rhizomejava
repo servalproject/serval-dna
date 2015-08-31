@@ -50,67 +50,6 @@ teardown() {
    report_all_servald_servers
 }
 
-# Utility function:
-#
-#     unset_vars_with_prefix PREFIX
-#
-# Unsets all shell variables whose names starting with the given PREFIX
-unset_vars_with_prefix() {
-   local __prefix="${1?}"
-   local __varname
-   for __varname in $(declare -p | sed -n -e "s/^declare -[^ ]* \($__prefix[A-Za-z0-9_]\+\)=.*/\1/p"); do
-      unset $__varname
-   done
-}
-
-# Utility function:
-# 
-#     unpack_vars PREFIX TEXT
-#
-# parses the given TEXT which must have the form:
-#
-#     ident1=..., ident2=...., ... identN=...
-#
-# into shell variables:
-#
-#     PREFIXident1=...
-#     PREFIXident2=...
-#     ...
-#     PREFIXidentN=...
-#
-# Sets the UNPACKED_VAR_NAMES[] array variable to a list of the names of the
-# variables that were set (names include the PREFIX).
-#
-# Warning: overwrites existing shell variables.  Names of overwritten shell
-# variables are derived directly from the output of the command, so cannot be
-# controlled.  PREFIX should be used to ensure that special variables cannot
-# be clobbered by accident.
-unpack_vars() {
-   local __prefix="${1?}"
-   local __text="${2?}"
-   local __oo
-   tfw_shopt __oo -s extglob
-   UNPACKED_VAR_NAMES=()
-   while [ -n "$__text" ]; do
-      case "$__text" in
-      [A-Za-z_.]+([A-Za-z_.0-9])=*)
-         local __ident="${__text%%=*}"
-         __ident="${__ident//./__}"
-         __text="${__text#*=}"
-         local __value="${__text%%, [A-Za-z_.]+([A-Za-z_.0-9])=*}"
-         __text="${__text:${#__value}}"
-         __text="${__text#, }"
-         UNPACKED_VAR_NAMES+=("$__ident")
-         eval ${__prefix}${__ident}=\"\$__value\"
-         ;;
-      *)
-         fail "cannot unpack variable from '$__text'"
-         ;;
-      esac
-   done
-   tfw_shopt_restore __oo
-}
-
 doc_RhizomeList="Java API Rhizome list 100 bundles"
 setup_RhizomeList() {
    setup
