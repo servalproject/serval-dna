@@ -138,13 +138,6 @@ struct in_addr;
 strbuf strbuf_append_in_addr(strbuf sb, const struct in_addr *addr);
 #define alloca_in_addr(addr)    strbuf_str(strbuf_append_in_addr(strbuf_alloca(16), (const struct in_addr *)(addr)))
 
-/* Append a textual description of a struct sockaddr_in.
- * @author Andrew Bettison <andrew@servalproject.com>
- */
-struct sockaddr_in;
-strbuf strbuf_append_sockaddr_in(strbuf sb, const struct sockaddr_in *addr);
-#define alloca_sockaddr_in(addr)    strbuf_str(strbuf_append_sockaddr_in(strbuf_alloca(45), (const struct sockaddr_in *)(addr)))
-
 /* Append a textual description of a struct sockaddr.
  * @author Andrew Bettison <andrew@servalproject.com>
  */

@@ -63,6 +63,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <arpa/inet.h>
 #endif
 #include <sys/uio.h>
+#include <sys/socket.h>
+#include <netdb.h>
 #include "http_server.h"
 #include "strbuf_helpers.h"
 #include "str.h"
@@ -468,15 +470,6 @@ strbuf strbuf_append_in_addr(strbuf sb, const struct in_addr *addr)
   return sb;
 }
 
-strbuf strbuf_append_sockaddr_in(strbuf sb, const struct sockaddr_in *addr)
-{
-  assert(addr->sin_family == AF_INET);
-  strbuf_puts(sb, "AF_INET:");
-  strbuf_append_in_addr(sb, &addr->sin_addr);
-  strbuf_sprintf(sb, ":%u", ntohs(addr->sin_port));
-  return sb;
-}
-
 strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t addrlen)
 {
   switch (addr->sa_family) {
@@ -497,13 +490,20 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
       }
     }
     break;
-  case AF_INET: {
-      const struct sockaddr_in *addr_in = (const struct sockaddr_in *) addr;
-      strbuf_append_sockaddr_in(sb, addr_in);
-      if (addrlen != sizeof(struct sockaddr_in))
-	strbuf_sprintf(sb, " (addrlen=%d should be %zd)", (int)addrlen, sizeof(struct sockaddr_in));
+  case AF_INET:
+  case AF_INET6:{
+    char name[INET6_ADDRSTRLEN];
+    char service[6];
+    
+    if (getnameinfo(addr, addrlen, name, sizeof name, service, sizeof service, NI_NUMERICHOST|NI_NUMERICSERV)==0){
+      strbuf_sprintf(sb, "%s:%s:%s", 
+	addr->sa_family==AF_INET?"AF_INET":"AF_INET6", 
+	name, 
+	service);
+      break;
     }
-    break;
+    // fall through
+  }
   default: {
       strbuf_append_socket_domain(sb, addr->sa_family);
       size_t len = addrlen > sizeof addr->sa_family ? addrlen - sizeof addr->sa_family : 0;
