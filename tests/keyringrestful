@@ -62,9 +62,6 @@ set_extra_config() {
 set_keyring_config() {
    executeOk_servald config \
       set debug.httpd on \
-      set debug.rhizome_manifest on \
-      set debug.rhizome_store on \
-      set debug.rhizome on \
       set debug.keyring on \
       set debug.verbose on \
       set log.console.level debug
@@ -146,7 +143,7 @@ test_keyringAdd() {
    tfw_cat http.headers add.json
    tfw_preserve add.json
    assertStdoutIs '200'
-   SID="$(jq -r '.sid' add.json)"
+   SID="$(jq -r '.identity.sid' add.json)"
    assert matches_rexp "^${rexp_sid}$" "$SID"
    executeOk_servald keyring list
    assert_keyring_list 3
@@ -168,7 +165,7 @@ test_keyringAddPin() {
    tfw_cat http.headers add.json
    tfw_preserve add.json
    assertStdoutIs '200'
-   SID="$(jq -r '.sid' add.json)"
+   SID="$(jq -r '.identity.sid' add.json)"
    executeOk_servald keyring list
    assert_keyring_list 2
    assertStdoutGrep --stderr --matches=0 "^$SID::\$"
@@ -204,9 +201,7 @@ test_keyringSetDidName() {
    tfw_cat http.headers set.json
    tfw_preserve set.json
    assertStdoutIs '200'
-   assertJq set.json 'contains({"sid": "'$SIDA1'"})'
-   assertJq set.json 'contains({"did": "987654321"})'
-   assertJq set.json 'contains({"name": "Joe Bloggs"})'
+   assertJq set.json 'contains({"identity": {"sid": "'$SIDA1'", "did": "987654321", "name": "Joe Bloggs"}})'
    executeOk_servald keyring list
    assert_keyring_list 2
    assertStdoutGrep --stderr --matches=1 "^$SIDA1:987654321:Joe Bloggs\$"
@@ -249,9 +244,7 @@ test_keyringSetDidNamePin() {
    tfw_cat http.headers set3.json
    tfw_preserve set3.json
    assertStdoutIs '200'
-   assertJq set3.json 'contains({"sid": "'$SIDA1'"})'
-   assertJq set3.json 'contains({"did": "987654321"})'
-   assertJq set3.json 'contains({"name": "Joe Bloggs"})'
+   assertJq set3.json 'contains({"identity": {"sid": "'$SIDA1'", "did": "987654321", "name": "Joe Bloggs"}})'
    executeOk_servald keyring list --entry-pin=xyzabc
    assert_keyring_list 2
    assertStdoutGrep --stderr --matches=1 "^$SIDA1:987654321:Joe Bloggs\$"
@@ -266,9 +259,7 @@ test_keyringSetDidNamePin() {
    tfw_cat http.headers set4.json
    tfw_preserve set4.json
    assertStdoutIs '200'
-   assertJq set4.json 'contains({"sid": "'$SIDA1'"})'
-   assertJq set4.json 'contains({"did": "321321321"})'
-   assertJq set4.json 'contains({"name": "Fred Nurks"})'
+   assertJq set4.json 'contains({"identity": {"sid": "'$SIDA1'", "did": "321321321", "name": "Fred Nurks"}})'
    executeOk_servald keyring list --entry-pin=xyzabc
    assert_keyring_list 2
    assertStdoutGrep --stderr --matches=1 "^$SIDA1:321321321:Fred Nurks\$"

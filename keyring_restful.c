@@ -89,25 +89,34 @@ static int http_request_keyring_response_identity(struct httpd_request *r, uint1
   keyring_identity_extract(id, &sidp, &did, &name);
   if (!sidp)
     return http_request_keyring_response(r, 501, "Identity has no SID");
-  unsigned i = 0;
-  if (sidp) {
-    r->http.response.result_extra[i].label = "sid";
-    r->http.response.result_extra[i].value.type = JSON_STRING_NULTERM;
-    r->http.response.result_extra[i].value.u.string.content = alloca_tohex_sid_t(*sidp);
-    ++i;
-  }
+  struct json_atom json_id;
+  struct json_key_value json_id_kv[3];
+  struct json_atom json_sid;
+  struct json_atom json_did;
+  struct json_atom json_name;
+  json_id.type = JSON_OBJECT;
+  json_id.u.object.itemc = 1;
+  json_id.u.object.itemv = json_id_kv;
+  json_id_kv[0].key = "sid";
+  json_id_kv[0].value = &json_sid;
+  json_sid.type = JSON_STRING_NULTERM;
+  json_sid.u.string.content = alloca_tohex_sid_t(*sidp);
   if (did) {
-    r->http.response.result_extra[i].label = "did";
-    r->http.response.result_extra[i].value.type = JSON_STRING_NULTERM;
-    r->http.response.result_extra[i].value.u.string.content = did;
-    ++i;
+    json_id_kv[json_id.u.object.itemc].key = "did";
+    json_id_kv[json_id.u.object.itemc].value = &json_did;
+    ++json_id.u.object.itemc;
+    json_did.type = JSON_STRING_NULTERM;
+    json_did.u.string.content = did;
   }
   if (name) {
-    r->http.response.result_extra[i].label = "name";
-    r->http.response.result_extra[i].value.type = JSON_STRING_NULTERM;
-    r->http.response.result_extra[i].value.u.string.content = name;
-    ++i;
+    json_id_kv[json_id.u.object.itemc].key = "name";
+    json_id_kv[json_id.u.object.itemc].value = &json_name;
+    ++json_id.u.object.itemc;
+    json_name.type = JSON_STRING_NULTERM;
+    json_name.u.string.content = name;
   }
+  r->http.response.result_extra[0].label = "identity";
+  r->http.response.result_extra[0].value = json_id;
   return http_request_keyring_response(r, result, message);
 }
 
