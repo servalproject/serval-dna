@@ -37,14 +37,9 @@ DECLARE_HANDLER("/rhizome/", rhizome_direct_dispatch);
 
 static int _form_temporary_file_path(struct __sourceloc __whence, httpd_request *r, char *pathbuf, size_t bufsiz, const char *field)
 {
-  strbuf b = strbuf_local(pathbuf, bufsiz);
   // TODO: use a temporary directory
-  strbuf_sprintf(b, "rhizomedirect.%d.%s", r->http.alarm.poll.fd, field);
-  if (strbuf_overrun(b)) {
-    WHYF("Rhizome Direct pathname overflow: %s", alloca_str_toprint(pathbuf));
-    return -1;
-  }
-  return 0;
+  return formf_serval_tmp_path(pathbuf, bufsiz,
+			       "rhizomedirect.%d.%s", r->http.alarm.poll.fd, field);
 }
 
 #define form_temporary_file_path(r,buf,field) _form_temporary_file_path(__WHENCE__, (r), (buf), sizeof(buf), (field))
