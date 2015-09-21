@@ -312,9 +312,8 @@ static int rhizome_direct_process_mime_end(struct http_request *hr)
   }
   if (r->u.direct_import.current_part == PART_MANIFEST)
     r->u.direct_import.received_manifest = 1;
-  else if (r->u.direct_import.current_part == PART_DATA)
-    r->u.direct_import.received_data = 1;
-  else if (r->u.direct_import.current_part == PART_PAYLOAD)
+  else if (   r->u.direct_import.current_part == PART_DATA
+	   || r->u.direct_import.current_part == PART_PAYLOAD)
     r->u.direct_import.received_data = 1;
   r->u.direct_import.current_part = NULL;
   return 0;
@@ -323,9 +322,9 @@ static int rhizome_direct_process_mime_end(struct http_request *hr)
 static int rhizome_direct_process_mime_part_header(struct http_request *hr, const struct mime_part_headers *h)
 {
   httpd_request *r = (httpd_request *) hr;
-  if ((strcmp(h->content_disposition.name, PART_PAYLOAD) == 0)
-      ||(strcmp(h->content_disposition.name, PART_DATA) == 0))
-    {
+  if (   strcmp(h->content_disposition.name, PART_PAYLOAD) == 0
+      || strcmp(h->content_disposition.name, PART_DATA) == 0
+  ) {
     r->u.direct_import.current_part = PART_PAYLOAD;
     strncpy(r->u.direct_import.data_file_name,
 	    h->content_disposition.filename,
@@ -337,7 +336,7 @@ static int rhizome_direct_process_mime_part_header(struct http_request *hr, cons
   } else
     return 0;
   char path[512];
-  if (form_temporary_file_path(r, path, h->content_disposition.name) == -1) {
+  if (form_temporary_file_path(r, path, r->u.direct_import.current_part) == -1) {
     http_request_simple_response(&r->http, 500, "Internal Error: Buffer overrun");
     return 0;
   }
