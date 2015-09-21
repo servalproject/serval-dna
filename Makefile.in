@@ -173,6 +173,8 @@ $(SERVAL_DAEMON_OBJS): $(HDRS)
 $(SERVALD_OBJS): Makefile
 $(LIB_SERVAL_OBJS): $(HDRS) Makefile
 $(TEST_OBJS): $(HDRS) Makefile
+$(OBJSDIR_TOOLS)/tfw_createfile.o: str.h Makefile
+$(OBJSDIR_TOOLS)/directory_service.o: $(HDRS) Makefile
 $(MONITOR_CLIENT_OBJS): $(HDRS) Makefile
 $(SIMULATOR_OBJS): $(HDRS) Makefile
 
