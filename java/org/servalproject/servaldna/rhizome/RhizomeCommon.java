@@ -93,10 +93,16 @@ public class RhizomeCommon
 			JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getErrorStream(), "UTF-8"));
 			decodeRestfulStatus(status, json);
 		}
-		if (status.http_status_code == HttpURLConnection.HTTP_FORBIDDEN)
+		switch (status.http_status_code) {
+		case HttpURLConnection.HTTP_FORBIDDEN: // for crypto failure (missing secret)
+		case HttpURLConnection.HTTP_NOT_FOUND: // for unknown BID
+		case 422: // Unprocessable Entity, for invalid/malformed manifest
+		case 423: // Locked, for database busy
+		case 429: // Too Many Requests, for out of manifests
 			return status;
-		if (status.http_status_code == HttpURLConnection.HTTP_NOT_IMPLEMENTED)
+		case HttpURLConnection.HTTP_NOT_IMPLEMENTED:
 			throw new ServalDNotImplementedException(status.http_status_message);
+		}
 		throw new ServalDInterfaceException("unexpected HTTP response: " + status.http_status_code + " " + status.http_status_message);
 	}
 

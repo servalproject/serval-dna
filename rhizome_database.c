@@ -1658,6 +1658,14 @@ next:
   return ret;
 }
 
+/* Unpacks a database MANIFESTS table row into a manifest structure.
+ *
+ * Returns RHIZOME_BUNDLE_STATUS_SAME if unpack succeeds
+ * Returns RHIZOME_BUNDLE_STATUS_NEW if manifest is not found
+ * Returns RHIZOME_BUNDLE_STATUS_ERROR on error
+ * Returns RHIZOME_BUNDLE_STATUS_BUSY if the database is locked
+ * Caller is responsible for allocating and freeing rhizome_manifest
+ */
 static enum rhizome_bundle_status unpack_manifest_row(sqlite_retry_state *retry, rhizome_manifest *m, sqlite3_stmt *statement)
 {
   int r=sqlite_step_retry(retry, statement);

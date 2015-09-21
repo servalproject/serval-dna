@@ -344,12 +344,13 @@ test_RhizomeManifestNonexist() {
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/$BID_NONEXISTENT.rhm"
    tfw_cat http.headers http.content
-   assertStdoutIs 403
+   assertStdoutIs 404
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
    assertGrep --matches=0 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Code:"
    assertGrep --matches=0 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Message:"
-   assertJq http.content 'contains({"http_status_code": 403})'
+   assertJq http.content 'contains({"http_status_code": 404})'
+   assertJq http.content 'contains({"http_status_message": "Bundle not found"})'
    assertJq http.content 'contains({"rhizome_bundle_status_code": 0})'
    assertJqGrep --ignore-case http.content '.rhizome_bundle_status_message' "bundle new to store"
 }
@@ -392,12 +393,13 @@ test_RhizomePayloadRawNonexistManifest() {
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/$BID_NONEXISTENT/raw.bin"
    tfw_cat http.headers http.content
-   assertStdoutIs 403
+   assertStdoutIs 404
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
    assertGrep --matches=0 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Code:"
    assertGrep --matches=0 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Message:"
-   assertJq http.content 'contains({"http_status_code": 403})'
+   assertJq http.content 'contains({"http_status_code": 404})'
+   assertJq http.content 'contains({"http_status_message": "Bundle not found"})'
    assertJq http.content 'contains({"rhizome_bundle_status_code": 0})'
    assertJqGrep --ignore-case http.content '.rhizome_bundle_status_message' "bundle new to store"
 }
@@ -419,12 +421,13 @@ test_RhizomePayloadRawNonexistPayload() {
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/${BID[0]}/raw.bin"
    tfw_cat http.headers http.content
-   assertStdoutIs 403
+   assertStdoutIs 404
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Code: 1$CR\$"
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle already in store.*$CR\$"
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Code: 1$CR\$"
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Message: .*payload new to store.*$CR\$"
-   assertJq http.content 'contains({"http_status_code": 403})'
+   assertJq http.content 'contains({"http_status_code": 404})'
+   assertJq http.content 'contains({"http_status_message": "Payload not found"})'
    assertJq http.content 'contains({"rhizome_bundle_status_code": 1})'
    assertJqGrep --ignore-case http.content '.rhizome_bundle_status_message' "bundle already in store"
    assertJq http.content 'contains({"rhizome_payload_status_code": 1})'
@@ -495,12 +498,13 @@ test_RhizomePayloadDecryptedNonexistManifest() {
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/$BID_NONEXISTENT/decrypted.bin"
    tfw_cat http.headers http.content
-   assertStdoutIs 403
+   assertStdoutIs 404
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
    assertGrep --matches=0 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Code:"
    assertGrep --matches=0 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Message:"
-   assertJq http.content 'contains({"http_status_code": 403})'
+   assertJq http.content 'contains({"http_status_code": 404})'
+   assertJq http.content 'contains({"http_status_message": "Bundle not found"})'
    assertJq http.content 'contains({"rhizome_bundle_status_code": 0})'
    assertJqGrep --ignore-case http.content '.rhizome_bundle_status_message' "bundle new to store"
 }
@@ -522,12 +526,13 @@ test_RhizomePayloadDecryptedNonexistPayload() {
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/${BID[0]}/decrypted.bin"
    tfw_cat http.headers http.content
-   assertStdoutIs 403
+   assertStdoutIs 404
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Code: 1$CR\$"
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle already in store.*$CR\$"
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Code: 1$CR\$"
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Message: .*payload new to store.*$CR\$"
-   assertJq http.content 'contains({"http_status_code": 403})'
+   assertJq http.content 'contains({"http_status_code": 404})'
+   assertJq http.content 'contains({"http_status_message": "Payload not found"})'
    assertJq http.content 'contains({"rhizome_bundle_status_code": 1})'
    assertJqGrep --ignore-case http.content '.rhizome_bundle_status_message' "bundle already in store"
    assertJq http.content 'contains({"rhizome_payload_status_code": 1})'
@@ -972,8 +977,9 @@ test_RhizomeInsertJournalForbidden() {
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 422
+   assertJq http.body 'contains({"http_status_code": 422})'
+   assertJq http.body 'contains({"http_status_message": "Cannot add a journal bundle (use append instead)"})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'cannot add.*journal'
    executeOk_servald rhizome list
    assert_rhizome_list
@@ -1097,8 +1103,9 @@ test_RhizomeInsertIncorrectFilesize() {
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 422
+   assertJq http.body 'contains({"http_status_code": 422})'
+   assertJq http.body 'contains({"http_status_message": "Inconsistent filesize"})'
    assertJq http.body 'contains({"rhizome_payload_status_code": 3})'
    assertJqGrep --ignore-case http.body '.rhizome_payload_status_message' 'payload size.*contradicts manifest'
    execute curl \
@@ -1111,8 +1118,9 @@ test_RhizomeInsertIncorrectFilesize() {
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 422
+   assertJq http.body 'contains({"http_status_code": 422})'
+   assertJq http.body 'contains({"http_status_message": "Inconsistent filesize"})'
    assertJq http.body 'contains({"rhizome_payload_status_code": 3})'
    assertJqGrep --ignore-case http.body '.rhizome_payload_status_message' 'payload size.*contradicts manifest'
    executeOk_servald rhizome list
@@ -1136,8 +1144,9 @@ test_RhizomeInsertIncorrectFilehash() {
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 422
+   assertJq http.body 'contains({"http_status_code": 422})'
+   assertJq http.body 'contains({"http_status_message": "Inconsistent filehash"})'
    assertJq http.body 'contains({"rhizome_payload_status_code": 4})'
    assertJqGrep --ignore-case http.body '.rhizome_payload_status_message' 'payload hash.*contradicts manifest'
    executeOk_servald rhizome list
@@ -1316,8 +1325,9 @@ test_RhizomeAppendNonJournalForbidden() {
          "http://$addr_localhost:$PORTA/restful/rhizome/append"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 422
+   assertJq http.body 'contains({"http_status_code": 422})'
+   assertJq http.body 'contains({"http_status_message": "Cannot append to a non-journal"})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'cannot append.*non.*journal'
    executeOk_servald rhizome list
    assert_rhizome_list file1

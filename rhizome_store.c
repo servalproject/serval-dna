@@ -979,7 +979,9 @@ enum rhizome_payload_status rhizome_store_payload_file(rhizome_manifest *m, cons
   return rhizome_finish_store(&write, m, status);
 }
 
-/* Return RHIZOME_PAYLOAD_STATUS_STORED if file blob found, RHIZOME_PAYLOAD_STATUS_NEW if not found.
+/* Returns RHIZOME_PAYLOAD_STATUS_STORED if file blob found
+ * Returns RHIZOME_PAYLOAD_STATUS_NEW if not found
+ * Returns RHIZOME_PAYLOAD_STATUS_ERROR if unexpected error
  */
 enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const rhizome_filehash_t *hashp)
 {

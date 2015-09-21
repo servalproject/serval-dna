@@ -107,22 +107,22 @@ static int rhizome_direct_import_end(struct http_request *hr)
     http_request_simple_response(&r->http, 201, "Bundle succesfully imported");
     return 0;
   case RHIZOME_BUNDLE_STATUS_SAME:
-    http_request_simple_response(&r->http, 200, "Bundle already imported");
+    http_request_simple_response(&r->http, 200, "Bundle already imported"); // OK
     return 0;
   case RHIZOME_BUNDLE_STATUS_OLD:
-    http_request_simple_response(&r->http, 403, "Newer bundle already stored");
+    http_request_simple_response(&r->http, 202, "Newer bundle already stored"); // Accepted
     return 0;
   case RHIZOME_BUNDLE_STATUS_INVALID:
-    http_request_simple_response(&r->http, 403, "Manifest is invalid");
+    http_request_simple_response(&r->http, 422, "Manifest is invalid"); // Unprocessable Entity
     return 0;
   case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
-    http_request_simple_response(&r->http, 403, "Manifest is inconsistent with file");
+    http_request_simple_response(&r->http, 422, "Manifest is inconsistent with file"); // Unprocessable Entity
     return 0;
   case RHIZOME_BUNDLE_STATUS_FAKE:
-    http_request_simple_response(&r->http, 403, "Manifest not signed");
+    http_request_simple_response(&r->http, 403, "Manifest not signed"); // Forbidden
     return 0;
   case RHIZOME_BUNDLE_STATUS_NO_ROOM:
-    http_request_simple_response(&r->http, 403, "Not enough space");
+    http_request_simple_response(&r->http, 202, "Not enough space"); // Accepted
     return 0;
   case RHIZOME_BUNDLE_STATUS_READONLY:
   case RHIZOME_BUNDLE_STATUS_DUPLICATE:

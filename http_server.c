@@ -1118,7 +1118,7 @@ static int http_request_start_body(struct http_request *r)
   else if (r->verb == HTTP_VERB_POST) {
     if (r->request_header.content_length == CONTENT_LENGTH_UNKNOWN) {
       IDEBUGF(r->debug, "Malformed HTTP %s request: missing Content-Length header", r->verb);
-      return 411;
+      return 411; // Length Required
     }
     if (r->request_header.content_length == 0) {
       r->parser = http_request_reject_content;
@@ -1142,7 +1142,7 @@ static int http_request_start_body(struct http_request *r)
       } else {
 	IDEBUGF(r->debug, "Unsupported HTTP %s request: Content-Type %s not supported",
 	      r->verb, alloca_mime_content_type(&r->request_header.content_type));
-	return 415;
+	return 415; // Unsupported Media Type
       }
     }
   }
@@ -1917,6 +1917,9 @@ static const char *httpResultString(int response_code)
   case 414: return "Request-URI Too Long";
   case 415: return "Unsupported Media Type";
   case 416: return "Requested Range Not Satisfiable";
+  case 422: return "Unprocessable Entity";
+  case 423: return "Locked";
+  case 429: return "Too Many Requests";
   case 431: return "Request Header Fields Too Large";
   case 500: return "Internal Server Error";
   case 501: return "Not Implemented";
