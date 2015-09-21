@@ -139,8 +139,8 @@ size_t strn_fromhex(unsigned char *dstBinary, ssize_t dstsiz, const char *src, c
 
 /* Array of encoding symbols.  Entry [64] is the pad character (usually '=').
  */
-const char base64_symbols[65];
-const char base64url_symbols[65];
+extern const char base64_symbols[65];
+extern const char base64url_symbols[65];
 
 /* Encode 'srcBytes' bytes of binary data at 'srcBinary' into Base64 representation at 'dstBase64'
  * (or Base64-URL representation at 'dstBase64url'), which must point to at least
