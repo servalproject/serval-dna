@@ -1941,34 +1941,11 @@ int keyring_seed(keyring_file *k)
   /* nothing to do if there is already an identity */
   if (k->identities)
     return 0;
-  int i;
-  char did[65];
-  /* Securely generate random telephone number */
-  if (urandombytes((unsigned char *)did, 11) == -1)
-    return -1;
-  /* Make DID start with 2 through 9, as 1 is special in many number spaces, 
-     and 0 is commonly used for escaping to national or international dialling. */ 
-  did[0]='2'+(((unsigned char)did[0])%8);
-  /* Then add 10 more digits, which is what we do in the mobile phone software */
-  for(i=1;i<11;i++) did[i]='0'+(((unsigned char)did[i])%10); did[11]=0;
   keyring_identity *id=keyring_create_identity(k,"");
   if (!id)
     return WHY("Could not create new identity");
-  if (keyring_set_did(id, did, ""))
-    return WHY("Could not set DID of new identity");
   if (keyring_commit(k))
     return WHY("Could not commit new identity to keyring file");
-  {
-    const sid_t *sidp = NULL;
-    const char *did = NULL;
-    const char *name = NULL;
-    keyring_identity_extract(id, &sidp, &did, &name);
-    INFOF("Seeded keyring with identity: did=%s name=%s sid=%s",
-	did ? did : "(null)",
-	alloca_str_toprint(name),
-	sidp ? alloca_tohex_sid_t(*sidp) : "(null)"
-      );
-  }
   return 0;
 }
 
