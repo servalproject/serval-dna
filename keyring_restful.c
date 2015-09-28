@@ -36,8 +36,6 @@ static HTTP_HANDLER restful_keyring_set;
 static int restful_keyring_(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = CONTENT_TYPE_JSON;
-  if (!is_rhizome_http_enabled())
-    return 403;
   int ret = authorize_restful(&r->http);
   if (ret)
     return ret;
