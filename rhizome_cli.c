@@ -751,17 +751,27 @@ static int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context 
       cli_put_long(context, m->version, ":");
       cli_put_long(context, m->has_date ? m->date : 0, ":");
       cli_put_long(context, m->inserttime, ":");
+      // The 'fromhere' flag indicates if the author is a known (unlocked) identity in the local
+      // keyring.  The values are 0 (no), 1 (yes), 2 (yes and cryptographically verified).  In the
+      // implementation below, the 0 value (no) is redundant, because it only occurs when the
+      // 'author' column is null, but in future the author SID might be reported for non-local
+      // authors, so clients should only use 'fromhere != 0', never 'author != null', to detect
+      // local authorship.
+      int fromhere = 0;
       switch (m->authorship) {
-	case AUTHOR_LOCAL:
 	case AUTHOR_AUTHENTIC:
+	  fromhere = 2;
 	  cli_put_hexvalue(context, m->author.binary, sizeof m->author.binary, ":");
-	  cli_put_long(context, 1, ":");
+	  break;
+	case AUTHOR_LOCAL:
+	  fromhere = 1;
+	  cli_put_hexvalue(context, m->author.binary, sizeof m->author.binary, ":");
 	  break;
 	default:
 	  cli_put_string(context, NULL, ":");
-	  cli_put_long(context, 0, ":");
 	  break;
       }
+      cli_put_long(context, fromhere, ":");
       cli_put_long(context, m->filesize, ":");
       cli_put_hexvalue(context, m->filesize ? m->filehash.binary : NULL, sizeof m->filehash.binary, ":");
       cli_put_hexvalue(context, m->has_sender ? m->sender.binary : NULL, sizeof m->sender.binary, ":");

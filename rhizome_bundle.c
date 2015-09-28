@@ -1587,8 +1587,10 @@ int rhizome_lookup_author(rhizome_manifest *m)
 {
   IN();
   keyring_iterator it;
-  
   switch (m->authorship) {
+    case AUTHOR_LOCAL:
+    case AUTHOR_AUTHENTIC:
+      RETURN(1);
     case AUTHOR_NOT_CHECKED:
       DEBUGF(rhizome, "manifest[%d] lookup author=%s", m->manifest_record_number, alloca_tohex_sid_t(m->author));
       keyring_iterator_start(keyring, &it);
@@ -1609,13 +1611,11 @@ int rhizome_lookup_author(rhizome_manifest *m)
 	  RETURN(1);
 	}
       }
+      // fall through
     case AUTHENTICATION_ERROR:
     case AUTHOR_UNKNOWN:
     case AUTHOR_IMPOSTOR:
       RETURN(0);
-    case AUTHOR_LOCAL:
-    case AUTHOR_AUTHENTIC:
-      RETURN(1);
   }
   FATALF("m->authorship = %d", m->authorship);
   RETURN(0);

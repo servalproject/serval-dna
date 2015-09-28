@@ -551,10 +551,22 @@ convey optional fields that are present in the bundle's manifest:
     Serval-Rhizome-Bundle-Name: <quotedstring>
     Serval-Rhizome-Bundle-Date: <integer>
 
-If the bundle's author, as verified by its signature, is present in the keyring,
-then the following HTTP header is present:
+All single-bundle operations, unless otherwise specified, attempt to deduce the
+bundle's author by finding whether the manifest's signature could be re-created
+using a Rhizome Secret from a currently unlocked identity in the keyring.  If
+the manifest `sender` field is present or the author has been cached in the
+Rhizome database, then only that identity is tried, otherwise every single
+identity in the keyring is tested.  If a signing identity is found, then the
+following HTTP header is present:
 
     Serval-Rhizome-Bundle-Author: <hex64sid>
+
+(Note that there is no manifest “author” field, and the “sender” field is
+optional, in order to support anonymous bundles.  This is why the author must
+be deduced in this fashion.  Serval DNA caches the authors it discovers, to
+avoid redundant re-testing of all keyring identities, but cached authors are
+not automatically treated as verified when read from the Rhizome database,
+because the database can be altered by external means.)
 
 If the bundle's secret is known, either because it was supplied in the request
 or was deduced from the manifest's Bundle Key (BK) field and the author's
@@ -681,21 +693,37 @@ table](#json-table) format with the following columns:
    store.  This field is created using the local system clock, so comparisons
    with the `date` field cannot be relied upon as having any meaning.
 
-*  `.author` - the [SID][] of the local (unlocked) identity that (allegedly)
-   created the bundle; either a string containing 64 hexadecimal digits, or
-   *null* if the author cannot be deduced (the manifest lacks a *BK* field) or
-   is not an [unlocked identity](#get-restful-keyring-identities-json).   For
-   performance reasons bundle authorship is not verified when listing bundles,
-   because that would impose unreasonable CPU and battery load (regenerating
-   the cryptographic signature of every single manifest in the list), so the
-   [bundle fetch request](#get-restful-rhizome-bid.rhm) and similar
-   single-bundle requests which do perform a signature authorship check may
-   return a different `Serval-Rhizome-Bundle-Author` header; in particular if
-   the manifest was not signed by the alleged author then that header will be
-   absent.
+*  `.author` - the [SID][] of the local (unlocked) identity that created the
+   bundle; either a string containing 64 hexadecimal digits, or *null* if the
+   author cannot be deduced (the manifest lacks a *BK* field) or is not an
+   [unlocked identity](#get-restful-keyring-identities-json).  In the case of
+   *null*, the `.fromhere` field will be 0 (“not authored here”).  In the case
+   of a SID, the `.fromhere` indicates whether authorship was absent, likely or
+   certain.
 
-*  `.fromhere` - a boolean flag that is set if the `.author` field is
-   non-*null*; an integer either 1 or 0.
+*  `.fromhere` - an integer flag that indicates whether the bundle was authored
+   on the local device:
+
+   *  `0` (“absent”) means the bundle was not authored by any identity on this
+      device, which could be because either:
+      *  the author's identity is not unlocked in the local keyring, or
+      *  the author's identity is in the local keyring but does not verify
+         cryptographically as the author.
+
+   *  `1` (“likely”) means the author whose [SID][] is given in the `.author`
+      field is present in the local keyring but authorship (the manifest's
+      signature) has not been cryptographically verified, so attempting to
+      update this bundle may yet fail.  This is the usual value for most
+      bundles in a list because cryptographic verification is not performed
+      while listing bundles, since it is slow and costly in CPU and battery.
+
+   *  `2` (“certain”) means the author whose [SID][] is given in the `.author`
+      field is present in the local keyring and has been cryptographically
+      verified as the true author of the bundle, so it is possible to update
+      this bundle.  This value will usually only be returned for
+      locally-authored bundles that have recently been examined individually
+      (eg, [GET /restful/rhizome/BID.rhm](#get-restful-rhizome-bid-rhm)), if
+      Serval DNA has cached the result of the verification in memory.
 
 *  `filesize` - the number of bytes in the bundle's payload; an integer zero or
    positive with a maximum value of 2^64 − 1.

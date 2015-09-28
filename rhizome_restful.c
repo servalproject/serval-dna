@@ -299,17 +299,29 @@ static int restful_rhizome_bundlelist_json_content_chunk(struct http_request *hr
 	  strbuf_json_null(b);
 	strbuf_putc(b, ',');
 	strbuf_sprintf(b, "%"PRItime_ms_t",", m->inserttime);
+	// The 'fromhere' flag indicates if the author is a known (unlocked) identity in the local
+	// keyring.  The values are 0 (no), 1 (yes), 2 (yes and cryptographically verified).  In the
+	// implementation below, the 0 value (no) is redundant, because it only occurs when the
+	// 'author' column is null, but in future the author SID might be reported for non-local
+	// authors, so clients should only use 'fromhere != 0', never 'author != null', to detect
+	// local authorship.
+	int fromhere = 0;
 	switch (m->authorship) {
-	  case AUTHOR_LOCAL:
 	  case AUTHOR_AUTHENTIC:
+	    fromhere = 2;
 	    strbuf_json_hex(b, m->author.binary, sizeof m->author.binary);
-	    strbuf_puts(b, ",1,");
+	    break;
+	  case AUTHOR_LOCAL:
+	    fromhere = 1;
+	    strbuf_json_hex(b, m->author.binary, sizeof m->author.binary);
 	    break;
 	  default:
 	    strbuf_json_null(b);
-	    strbuf_puts(b, ",1,");
 	    break;
 	}
+	strbuf_putc(b, ',');
+	strbuf_sprintf(b, "%d", fromhere);
+	strbuf_putc(b, ',');
 	strbuf_sprintf(b, "%"PRIu64, m->filesize);
 	strbuf_putc(b, ',');
 	strbuf_json_hex(b, m->filesize ? m->filehash.binary : NULL, sizeof m->filehash.binary);
