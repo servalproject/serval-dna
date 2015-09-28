@@ -936,15 +936,15 @@ strbuf strbuf_append_mime_content_type(strbuf sb, const struct mime_content_type
   strbuf_puts(sb, ct->type);
   strbuf_putc(sb, '/');
   strbuf_puts(sb, ct->subtype);
-  if (ct->charset) {
+  if (strlen(ct->charset) > 0) {
     strbuf_puts(sb, "; charset=");
     strbuf_append_quoted_string(sb, ct->charset);
   }
-  if (ct->multipart_boundary) {
+  if (strlen(ct->multipart_boundary) > 0) {
     strbuf_puts(sb, "; boundary=");
     strbuf_append_quoted_string(sb, ct->multipart_boundary);
   }
-  if (ct->format) {
+  if (strlen(ct->format) > 0) {
     strbuf_puts(sb, "; format=");
     strbuf_append_quoted_string(sb, ct->format);
   }
@@ -954,11 +954,11 @@ strbuf strbuf_append_mime_content_type(strbuf sb, const struct mime_content_type
 strbuf strbuf_append_mime_content_disposition(strbuf sb, const struct mime_content_disposition *cd)
 {
   strbuf_puts(sb, cd->type);
-  if (cd->name) {
+  if (strlen(cd->name) > 0) {
     strbuf_puts(sb, "; name=");
     strbuf_append_quoted_string(sb, cd->name);
   }
-  if (cd->filename) {
+  if (strlen(cd->filename) > 0) {
     strbuf_puts(sb, "; filename=");
     strbuf_append_quoted_string(sb, cd->filename);
   }
