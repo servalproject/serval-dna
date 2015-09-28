@@ -1190,7 +1190,7 @@ static int http_request_start_body(struct http_request *r)
   else {
     IDEBUGF(r->debug, "Unsupported HTTP %s request", r->verb);
     r->parser = NULL;
-    return 501;
+    return 405; // Method Not Allowed
   }
   if (_run_out(r))
     return 100;
