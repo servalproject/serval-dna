@@ -1130,8 +1130,7 @@ static int http_request_start_body(struct http_request *r)
       if (   strcmp(r->request_header.content_type.type, "multipart") == 0
 	  && strcmp(r->request_header.content_type.subtype, "form-data") == 0
       ) {
-	if (   r->request_header.content_type.multipart_boundary == NULL
-	    || r->request_header.content_type.multipart_boundary[0] == '\0'
+	if (   r->request_header.content_type.multipart_boundary[0] == '\0'
 	) {
 	  IDEBUGF(r->debug, "Malformed HTTP %s request: Content-Type %s/%s missing boundary parameter",
 		r->verb, r->request_header.content_type.type, r->request_header.content_type.subtype);
@@ -2067,7 +2066,7 @@ static int _render_response(struct http_request *r)
   if (hr.header.content_length != CONTENT_LENGTH_UNKNOWN)
     strbuf_sprintf(sb, "Content-Length: %"PRIhttp_size_t"\r\n", hr.header.content_length);
   
-  if (hr.header.allow_origin)
+  if (strlen(hr.header.allow_origin) > 0)
     strbuf_sprintf(sb, "Access-Control-Allow-Origin: %s\r\n", hr.header.allow_origin);
   if (hr.header.allow_methods)
     strbuf_sprintf(sb, "Access-Control-Allow-Methods: %s\r\n", hr.header.allow_methods);
