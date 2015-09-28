@@ -170,6 +170,7 @@ public class ServalDCommand
 		return result;
 	}
 
+	@Deprecated
 	public static class IdentityResult extends JniResult {
 		public String did;
 		public String name;
@@ -212,6 +213,7 @@ public class ServalDCommand
 		}
 	}
 
+	@Deprecated
 	public static IdentityResult keyringAdd()
 			throws ServalDFailureException {
 		IdentityResult result = new IdentityResult();
@@ -219,6 +221,7 @@ public class ServalDCommand
 		return result;
 	}
 
+	@Deprecated
 	public static IdentityResult keyringSetDidName(SubscriberId sid, String did, String name) throws ServalDFailureException
 	{
 		IdentityResult result = new IdentityResult();
@@ -226,6 +229,7 @@ public class ServalDCommand
 		return result;
 	}
 
+	@Deprecated
 	public static int keyringList(final AsyncResult<IdentityResult> results) throws ServalDFailureException
 	{
 		// FIXME, this is a little hacky as the number of tags is unknown so we don't have a fixed number of columns
@@ -263,6 +267,7 @@ public class ServalDCommand
 		}, "keyring", "list", "--full");
 	}
 
+	@Deprecated
 	public static int keyringList(IJniResults results) throws ServalDFailureException{
 		return command(results, "keyring", "list");
 	}
@@ -273,6 +278,7 @@ public class ServalDCommand
 		return result;
 	}
 
+	@Deprecated
 	public static IdentityResult reverseLookup(final SubscriberId sid) throws ServalDFailureException {
 		IdentityResult result = new IdentityResult();
 		command(result, "reverse", "lookup", sid.toHex());
@@ -306,6 +312,7 @@ public class ServalDCommand
 		}
 	}
 
+	@Deprecated
 	public static int dnaLookup(AsyncResult<LookupResult> results, String did, int timeout) throws ServalDFailureException {
 		return dnaLookup(new JniResultList<LookupResult>(results) {
 			@Override
@@ -315,9 +322,11 @@ public class ServalDCommand
 		}, did, timeout);
 	}
 
+	@Deprecated
 	public static int dnaLookup(IJniResults results, String did, int timeout) throws ServalDFailureException {
 		return command(results, "dna", "lookup", did, Integer.toString(timeout));
 	}
+
 	public static class ManifestResult extends JniResult{
 		public BundleId manifestId;
 		public long version;
@@ -583,6 +592,7 @@ public class ServalDCommand
 	}
 
 	// Note that the result values will only have a subscriber id
+	@Deprecated
 	public static int idPeers(AsyncResult<IdentityResult> results) throws ServalDFailureException {
 		return idPeers(new JniResultList<IdentityResult>(results) {
 			@Override
@@ -592,6 +602,7 @@ public class ServalDCommand
 		});
 	}
 
+	@Deprecated
 	public static int idPeers(IJniResults results) throws ServalDFailureException {
 		return command(results, "id", "peers");
 	}

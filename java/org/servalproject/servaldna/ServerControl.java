@@ -85,27 +85,30 @@ public class ServerControl {
 		start();
 	}
 
-	public boolean isRunning() throws ServalDFailureException {
-		ServalDCommand.Status s = ServalDCommand.serverStatus();
-
-		if (s.status.equals("running")) {
-			setStatus(s);
-		}else{
-			clearStatus();
+	public boolean isRunning() {
+		try {
+			ServalDCommand.Status s = ServalDCommand.serverStatus();
+			if (s.status.equals("running")) {
+				setStatus(s);
+				return pid!=0;
+			}
+		} catch (ServalDFailureException e) {
+			// ignore
 		}
+		clearStatus();
 		return pid!=0;
 	}
 
 	public MdpServiceLookup getMdpServiceLookup(ChannelSelector selector, AsyncResult<MdpServiceLookup.ServiceResult> results) throws ServalDInterfaceException, IOException {
 		if (!isRunning())
 			throw new ServalDInterfaceException("server is not running");
-		return new MdpServiceLookup(selector, this.loopbackMdpPort, results);
+		return new MdpServiceLookup(selector, getLoopbackMdpPort(), results);
 	}
 
 	public MdpDnaLookup getMdpDnaLookup(ChannelSelector selector, AsyncResult<ServalDCommand.LookupResult> results) throws ServalDInterfaceException, IOException {
 		if (!isRunning())
 			throw new ServalDInterfaceException("server is not running");
-		return new MdpDnaLookup(selector, this.loopbackMdpPort, results);
+		return new MdpDnaLookup(selector, getLoopbackMdpPort(), results);
 	}
 
 	public ServalDClient getRestfulClient() throws ServalDInterfaceException {
