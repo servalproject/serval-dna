@@ -503,19 +503,19 @@ static inline int _skip_space(struct http_request *r)
 
 static size_t _skip_word_printable(struct http_request *r, struct substring *str, char until)
 {
+  const char *start = r->cursor;
+  if (str)
+    str->start = str->end = start;
   if (_run_out(r) || isspace(*r->cursor) || !isprint(*r->cursor) || *r->cursor == until)
     return 0;
-  const char *start = r->cursor;
   for (++r->cursor; !_run_out(r) && !isspace(*r->cursor) && isprint(*r->cursor) && *r->cursor != until; ++r->cursor)
     ;
   if (_run_out(r))
     return 0;
   assert(r->cursor > start);
   assert(isspace(*r->cursor) || *r->cursor == until);
-  if (str) {
-    str->start = start;
+  if (str)
     str->end = r->cursor;
-  }
   return r->cursor - start;
 }
 
@@ -598,6 +598,11 @@ static inline int _parse_http_size_t(struct http_request *r, http_size_t *szp)
 static inline int _parse_uint32(struct http_request *r, uint32_t *uint32p)
 {
   return !_run_out(r) && isdigit(*r->cursor) && str_to_uint32(r->cursor, 10, uint32p, (const char **)&r->cursor);
+}
+
+static inline int _parse_uint16(struct http_request *r, uint16_t *uint16p)
+{
+  return !_run_out(r) && isdigit(*r->cursor) && str_to_uint16(r->cursor, 10, uint16p, (const char **)&r->cursor);
 }
 
 static unsigned _parse_ranges(struct http_request *r, struct http_range *range, unsigned nrange)
@@ -746,6 +751,43 @@ static int _parse_authorization(struct http_request *r, struct http_client_autho
   }
   IDEBUGF(r->debug, "Malformed HTTP Authorization header: %s", alloca_toprint(50, r->parsed, r->end - r->parsed));
   return 0;
+}
+
+static int _parse_origin(struct http_request *r, struct http_origin *origin, size_t header_bytes)
+{
+  char *start = r->cursor;
+  char *end = start + header_bytes;
+  if (_skip_literal(r, "http://")) {
+    origin->scheme = "http";
+  } else if (_skip_literal(r, "https://")) {
+    origin->scheme = "https";
+  } else if (_skip_literal(r, "file://")) {
+    origin->scheme = "file";
+  } else {
+    IDEBUGF(r->debug, "Ignoring HTTP Origin with unsupported URI scheme: %s", alloca_toprint(50, start, header_bytes));
+    r->cursor = end;
+    return 1;
+  }
+  origin->hostname = "";
+  origin->port = 0;
+  struct substring hostname;
+  if (_skip_word_printable(r, &hostname, '/') > 0) {
+    const char *port = hostname.end - 1;
+    while (port > hostname.start && isdigit(*port))
+      --port;
+    if (port >= hostname.start && *port == ':' && port < hostname.end - 1) {
+      const char *e = NULL;
+      if (port && port + 1 < r->cursor && str_to_uint16(port + 1, 10, &origin->port, &e)) {
+	assert(e == r->cursor);
+	hostname.end = port;
+      }
+    }
+    assert(hostname.end > hostname.start);
+    if (!_reserve_substring(r, &origin->hostname, hostname))
+      return 0; // error
+  }
+  _skip_literal(r, "/");
+  return 1;
 }
 
 static int _parse_quoted_rfc822_time(struct http_request *r, time_t *timep)
@@ -1069,27 +1111,28 @@ static int http_request_parse_header(struct http_request *r)
       return 0;
     }
     if (r->response.result_code)
-	return r->response.result_code;
+      return r->response.result_code;
     goto malformed;
   }
   _rewind(r);
   if (_skip_literal_nocase(r, "Origin:")) {
-    if (r->request_header.origin) {
+    if (r->request_header.origin.scheme) {
       IDEBUGF(r->debug, "Skipping duplicate HTTP header Origin: %s", alloca_toprint(50, sol, r->end - sol));
       r->cursor = nextline;
       _commit(r);
       return 0;
     }
     _skip_optional_space(r);
-    struct substring origin;
-    if (_skip_word_printable(r, &origin, ' ') 
+    if (   _parse_origin(r, &r->request_header.origin, eol - r->cursor)
 	&& _skip_optional_space(r)
-	&& r->cursor == eol) {
+	&& r->cursor == eol
+    ) {
       r->cursor = nextline;
       _commit(r);
-      _reserve_substring(r, &r->request_header.origin, origin);
       return 0;
     }
+    if (r->response.result_code)
+      return r->response.result_code;
     goto malformed;
   }
   _rewind(r);

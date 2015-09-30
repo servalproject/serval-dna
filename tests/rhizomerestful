@@ -137,15 +137,6 @@ test_CORS_Request(){
    assertStdoutIs '200'
    assertGrep http.headers "^Access-Control-Allow-Origin: http://localhost:1234$CR\$"
    executeOk curl \
-         --silent --fail --show-error --write-out '%{http_code}' \
-         --output http.output \
-         --dump-header http.headers \
-	 --header "Origin: null" \
-	 --request "OPTIONS" \
-         "http://$addr_localhost:$PORTA/restful/rhizome/bundlelist.json"
-   assertStdoutIs '200'
-   assertGrep http.headers "^Access-Control-Allow-Origin: null$CR\$"
-   executeOk curl \
          --silent --show-error --write-out '%{http_code}' \
          --output http.output \
          --dump-header http.headers \

@@ -357,20 +357,39 @@ int authorize_restful(struct http_request *r)
 {
   if (!is_from_loopback(r))
     return 403;
-  if (r->request_header.origin){
-    const char *remainder;
-    if (strcasecmp(r->request_header.origin, "null")==0
-      || (strcase_startswith(r->request_header.origin, "http://localhost", &remainder)
-	&& (*remainder==':' || *remainder=='\0'))
-      || (strcase_startswith(r->request_header.origin, "http://127.0.0.1", &remainder)
-	&& (*remainder==':' || *remainder=='\0'))
-      || (strcase_startswith(r->request_header.origin, "file://", &remainder))
-      ){
-      strncpy(r->response.header.allow_origin,r->request_header.origin, sizeof r->response.header.allow_origin);
-      r->response.header.allow_methods="GET, POST, OPTIONS";
-      r->response.header.allow_headers="Authorization";
-    }else
+  if (r->request_header.origin.hostname) {
+    assert(r->request_header.origin.scheme);
+    if (   (   (   strcmp(r->request_header.origin.scheme, "http") == 0
+	        || strcmp(r->request_header.origin.scheme, "https") == 0
+	       )
+	    && (   strcmp(r->request_header.origin.hostname, "localhost") == 0
+	        || strcmp(r->request_header.origin.hostname, "127.0.0.1") == 0
+	       )
+	   )
+	|| (   strcmp(r->request_header.origin.scheme, "file") == 0
+	    && (   strcmp(r->request_header.origin.hostname, "localhost") == 0
+	        || strcmp(r->request_header.origin.hostname, "127.0.0.1") == 0
+	        || strcmp(r->request_header.origin.hostname, "") == 0
+	       )
+	   )
+    ) {
+      strbuf sb = strbuf_local(r->response.header.allow_origin, sizeof r->response.header.allow_origin);
+      strbuf_puts(sb, r->request_header.origin.scheme);
+      strbuf_puts(sb, "://");
+      strbuf_puts(sb, r->request_header.origin.hostname);
+      if (r->request_header.origin.port) {
+	strbuf_sprintf(sb, ":%u", r->request_header.origin.port);
+      }
+      if (!strbuf_overrun(sb)) {
+	r->response.header.allow_methods = "GET, POST, OPTIONS";
+	r->response.header.allow_headers = "Authorization";
+      } else {
+	r->response.header.allow_origin[0] = '\0';
+	return 403;
+      }
+    } else {
       return 403;
+    }
   }
   if (r->verb == HTTP_VERB_OPTIONS){
     http_request_simple_response(r, 200, NULL);
