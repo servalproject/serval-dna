@@ -431,6 +431,7 @@ int str_is_uint64_decimal(const char *str);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
+int str_to_uint16(const char *str, unsigned base, uint16_t *result, const char **afterp);
 int str_to_int32(const char *str, unsigned base, int32_t *result, const char **afterp);
 int str_to_uint32(const char *str, unsigned base, uint32_t *result, const char **afterp);
 int str_to_int64(const char *str, unsigned base, int64_t *result, const char **afterp);
@@ -447,6 +448,7 @@ int str_to_uint64(const char *str, unsigned base, uint64_t *result, const char *
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
+int strn_to_uint16(const char *str, size_t strlen, unsigned base, uint16_t *result, const char **afterp);
 int strn_to_uint32(const char *str, size_t strlen, unsigned base, uint32_t *result, const char **afterp);
 int strn_to_uint64(const char *str, size_t strlen, unsigned base, uint64_t *result, const char **afterp);
 
