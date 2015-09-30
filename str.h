@@ -196,9 +196,9 @@ char *to_base64url_str(char *dstBase64url, const unsigned char *srcBinary, size_
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 size_t base64_decode(unsigned char *dstBinary, size_t dstsiz, const char *const srcBase64, size_t srclen,
-                     const char **afterp, int flags, int (*skip_pred)(char));
+                     const char **afterp, int flags, int (*skip_pred)(int));
 size_t base64url_decode(unsigned char *dstBinary, size_t dstsiz, const char *const srcBase64url, size_t srclen,
-                        const char **afterp, int flags, int (*skip_pred)(char));
+                        const char **afterp, int flags, int (*skip_pred)(int));
 
 #define B64_CONSUME_ALL (1 << 0)
 
@@ -220,40 +220,40 @@ extern uint8_t _serval_ctype_0[UINT8_MAX];
 extern uint8_t _serval_ctype_1[UINT8_MAX];
 extern uint8_t _serval_ctype_2[UINT8_MAX];
 
-__SERVAL_DNA__STR_INLINE int is_http_char(char c) {
+__SERVAL_DNA__STR_INLINE int is_http_char(int c) {
   return isascii(c);
 }
 
-__SERVAL_DNA__STR_INLINE int is_http_ctl(char c) {
+__SERVAL_DNA__STR_INLINE int is_http_ctl(int c) {
   return iscntrl(c);
 }
 
-__SERVAL_DNA__STR_INLINE int is_base64_digit(char c) {
-  return (_serval_ctype_0[(unsigned char) c] & _SERVAL_CTYPE_0_BASE64) != 0;
+__SERVAL_DNA__STR_INLINE int is_base64_digit(int c) {
+  return (_serval_ctype_0[(uint8_t) c] & _SERVAL_CTYPE_0_BASE64) != 0;
 }
 
-__SERVAL_DNA__STR_INLINE int is_base64url_digit(char c) {
-  return (_serval_ctype_0[(unsigned char) c] & _SERVAL_CTYPE_0_BASE64URL) != 0;
+__SERVAL_DNA__STR_INLINE int is_base64url_digit(int c) {
+  return (_serval_ctype_0[(uint8_t) c] & _SERVAL_CTYPE_0_BASE64URL) != 0;
 }
 
-__SERVAL_DNA__STR_INLINE int is_base64_pad(char c) {
+__SERVAL_DNA__STR_INLINE int is_base64_pad(int c) {
   return c == '=';
 }
 
-__SERVAL_DNA__STR_INLINE int is_base64url_pad(char c) {
+__SERVAL_DNA__STR_INLINE int is_base64url_pad(int c) {
   return c == '=';
 }
 
 __SERVAL_DNA__STR_INLINE uint8_t base64_digit(char c) {
-  return _serval_ctype_0[(unsigned char) c] & _SERVAL_CTYPE_0_BASE64_MASK;
+  return _serval_ctype_0[(uint8_t) c] & _SERVAL_CTYPE_0_BASE64_MASK;
 }
 
 __SERVAL_DNA__STR_INLINE uint8_t base64url_digit(char c) {
-  return _serval_ctype_0[(unsigned char) c] & _SERVAL_CTYPE_0_BASE64_MASK;
+  return _serval_ctype_0[(uint8_t) c] & _SERVAL_CTYPE_0_BASE64_MASK;
 }
 
-__SERVAL_DNA__STR_INLINE int is_multipart_boundary(char c) {
-  return (_serval_ctype_2[(unsigned char) c] & _SERVAL_CTYPE_2_MULTIPART_BOUNDARY) != 0;
+__SERVAL_DNA__STR_INLINE int is_multipart_boundary(int c) {
+  return (_serval_ctype_2[(uint8_t) c] & _SERVAL_CTYPE_2_MULTIPART_BOUNDARY) != 0;
 }
 
 __SERVAL_DNA__STR_INLINE int is_valid_multipart_boundary_string(const char *s)
@@ -266,11 +266,11 @@ __SERVAL_DNA__STR_INLINE int is_valid_multipart_boundary_string(const char *s)
   return s[-1] != ' ';
 }
 
-__SERVAL_DNA__STR_INLINE int is_http_separator(char c) {
-  return (_serval_ctype_1[(unsigned char) c] & _SERVAL_CTYPE_1_HTTP_SEPARATOR) != 0;
+__SERVAL_DNA__STR_INLINE int is_http_separator(int c) {
+  return (_serval_ctype_1[(uint8_t) c] & _SERVAL_CTYPE_1_HTTP_SEPARATOR) != 0;
 }
 
-__SERVAL_DNA__STR_INLINE int is_http_token(char c) {
+__SERVAL_DNA__STR_INLINE int is_http_token(int c) {
   return is_http_char(c) && !is_http_ctl(c) && !is_http_separator(c);
 }
 
@@ -279,8 +279,8 @@ __SERVAL_DNA__STR_INLINE int is_http_token(char c) {
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-__SERVAL_DNA__STR_INLINE int hexvalue(char c) {
-  return isxdigit(c) ? _serval_ctype_1[(unsigned char) c] & _SERVAL_CTYPE_1_HEX_MASK : -1;
+__SERVAL_DNA__STR_INLINE int hexvalue(int c) {
+  return isxdigit(c) ? _serval_ctype_1[(uint8_t) c] & _SERVAL_CTYPE_1_HEX_MASK : -1;
 }
 
 /* -------------------- In-line string formatting -------------------- */
@@ -554,16 +554,16 @@ size_t www_form_uri_decode(char *const dst, ssize_t dstsiz, const char *srcUrien
  */
 int str_is_uri(const char *uri);
 
-__SERVAL_DNA__STR_INLINE int is_uri_char_scheme(char c) {
-  return (_serval_ctype_1[(unsigned char) c] & _SERVAL_CTYPE_1_URI_SCHEME) != 0;
+__SERVAL_DNA__STR_INLINE int is_uri_char_scheme(int c) {
+  return (_serval_ctype_1[(uint8_t) c] & _SERVAL_CTYPE_1_URI_SCHEME) != 0;
 }
 
-__SERVAL_DNA__STR_INLINE int is_uri_char_unreserved(char c) {
-  return (_serval_ctype_1[(unsigned char) c] & _SERVAL_CTYPE_1_URI_UNRESERVED) != 0;
+__SERVAL_DNA__STR_INLINE int is_uri_char_unreserved(int c) {
+  return (_serval_ctype_1[(uint8_t) c] & _SERVAL_CTYPE_1_URI_UNRESERVED) != 0;
 }
 
-__SERVAL_DNA__STR_INLINE int is_uri_char_reserved(char c) {
-  return (_serval_ctype_1[(unsigned char) c] & _SERVAL_CTYPE_1_URI_RESERVED) != 0;
+__SERVAL_DNA__STR_INLINE int is_uri_char_reserved(int c) {
+  return (_serval_ctype_1[(uint8_t) c] & _SERVAL_CTYPE_1_URI_RESERVED) != 0;
 }
 
 /* Return true if the string resembles a URI scheme without the terminating colon.

@@ -375,6 +375,21 @@ static inline int _skip_any(struct http_request *r)
   return 1;
 }
 
+static inline int _skip_if(struct http_request *r, int (*predicate)(int))
+{
+  if (_run_out(r) || !predicate(*r->cursor))
+    return 0;
+  ++r->cursor;
+  return 1;
+}
+
+static inline int _skip_while(struct http_request *r, int (*predicate)(int))
+{
+  while (!_run_out(r) && predicate(*r->cursor))
+    ++r->cursor;
+  return 1;
+}
+
 static inline void _skip_all(struct http_request *r)
 {
   r->cursor = r->end;
@@ -469,16 +484,14 @@ static int _skip_literal_nocase(struct http_request *r, const char *literal)
   return *literal == '\0';
 }
 
-static int is_http_space(char c)
+static int is_http_space(int c)
 {
   return c == ' ' || c == '\t';
 }
 
 static int _skip_optional_space(struct http_request *r)
 {
-  while (!_run_out(r) && is_http_space(*r->cursor))
-    ++r->cursor;
-  return 1;
+  return _skip_while(r, is_http_space);
 }
 
 static inline int _skip_space(struct http_request *r)

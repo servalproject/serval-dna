@@ -282,8 +282,8 @@ char *to_base64url_str(char *const dstBase64, const unsigned char *srcBinary, si
 }
 
 static size_t _base64_decode(unsigned char *dstBinary, size_t dstsiz, const char *const srcBase64, size_t srclen,
-                     const char **afterp, int flags, int (*skip_pred)(char),
-		     int (*isdigit_pred)(char), int (*ispad_pred)(char), uint8_t (*todigit)(char)
+                     const char **afterp, int flags, int (*skip_pred)(int),
+		     int (*isdigit_pred)(int), int (*ispad_pred)(int), uint8_t (*todigit)(char)
 		  )
 {
   uint8_t buf = 0;
@@ -358,14 +358,14 @@ static size_t _base64_decode(unsigned char *dstBinary, size_t dstsiz, const char
 }
 
 size_t base64_decode(unsigned char *dstBinary, size_t dstsiz, const char *const srcBase64, size_t srclen,
-                     const char **afterp, int flags, int (*skip_pred)(char))
+                     const char **afterp, int flags, int (*skip_pred)(int))
 {
   return _base64_decode(dstBinary, dstsiz, srcBase64, srclen, afterp, flags, skip_pred, is_base64_digit, is_base64_pad, base64_digit);
 }
 
 
 size_t base64url_decode(unsigned char *dstBinary, size_t dstsiz, const char *const srcBase64, size_t srclen,
-                        const char **afterp, int flags, int (*skip_pred)(char))
+                        const char **afterp, int flags, int (*skip_pred)(int))
 {
   return _base64_decode(dstBinary, dstsiz, srcBase64, srclen, afterp, flags, skip_pred, is_base64url_digit, is_base64url_pad, base64url_digit);
 }
