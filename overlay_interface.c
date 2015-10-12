@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <assert.h>
 #include <time.h>
 #include <fnmatch.h>
+
 #include "serval.h"
 #include "conf.h"
 #include "net.h"
@@ -40,9 +41,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "server.h"
 #include "route_link.h"
 
-#ifdef HAVE_IFADDRS_H
-#include <ifaddrs.h>
-#endif
+
 
 // The size of the receive buffer.  This effectively sets the MRU for packet radio interfaces where
 // we have to buffer packets on the receive side.
@@ -59,6 +58,7 @@ struct socket_address sock_any_addr;
 struct profile_total sock_any_stats;
 
 static void overlay_interface_poll(struct sched_ent *alarm);
+static int inet_up_count=0;
 
 void overlay_interface_close(overlay_interface *interface)
 {
@@ -67,6 +67,17 @@ void overlay_interface_close(overlay_interface *interface)
       unlink(interface->address.local.sun_path);
     if (is_watching(&interface->alarm))
       unwatch(&interface->alarm);
+      
+    if (interface->address.addr.sa_family == AF_INET && 
+	inet_up_count>0 &&
+	--inet_up_count==0 && 
+	sock_any.poll.fd>0){
+      
+      unwatch(&sock_any);
+      close(sock_any.poll.fd);
+      sock_any.poll.fd=-1;
+    }
+    
     close(interface->alarm.poll.fd);
     interface->alarm.poll.fd=-1;
   }
@@ -293,6 +304,21 @@ overlay_interface * overlay_interface_find_name_addr(const char *name, struct so
   return NULL;
 }
 
+// find an interface by name and socket type
+overlay_interface * overlay_interface_find_name_type(const char *name, int socket_type){
+  int i;
+  for(i = 0; i < OVERLAY_MAX_INTERFACES; i++){
+    if (overlay_interfaces[i].state==INTERFACE_STATE_DOWN)
+      continue;
+    
+    if (strcasecmp(overlay_interfaces[i].name, name)==0 && 
+      overlay_interfaces[i].ifconfig.socket_type == socket_type)
+      return &overlay_interfaces[i];
+  }
+  
+  return NULL;
+}
+
 static int interface_type_priority(int type)
 {
   switch(type){
@@ -365,8 +391,20 @@ overlay_interface_read_any(struct sched_ent *alarm)
   }  
 }
 
-// bind a socket to INADDR_ANY:port
-// for now, we don't have a graceful close for this interface but it should go away when the process dies
+/*
+bind a socket to INADDR_ANY:port
+
+On linux you can bind to the broadcast address to receive broadcast packets per interface [or subnet],
+but then you can't receive unicast packets on the same socket.
+
+On osx, you can only receive broadcast packets if you bind to INADDR_ANY.
+
+So the most portable way to do this is to bind to each interface's IP address for sending broadcasts 
+and receiving unicasts, and bind a separate socket to INADDR_ANY just for receiving broadcast packets.
+
+Sending packets from INADDR_ANY would probably work, but gives us less control over which interfaces are sending packets.
+But there may be some platforms that need some other combination for everything to work.
+*/
 static int overlay_interface_init_any(int port)
 {
   if (sock_any.poll.fd>0){
@@ -423,20 +461,6 @@ static void calc_next_tick(struct overlay_interface *interface)
 static int
 overlay_interface_init_socket(overlay_interface *interface)
 {
-  /*
-   On linux you can bind to the broadcast address to receive broadcast packets per interface [or subnet],
-   but then you can't receive unicast packets on the same socket.
-   
-   On osx, you can only receive broadcast packets if you bind to INADDR_ANY.
-   
-   So the most portable way to do this is to bind to each interface's IP address for sending broadcasts 
-   and receiving unicasts, and bind a separate socket to INADDR_ANY just for receiving broadcast packets.
-   
-   Sending packets from INADDR_ANY would probably work, but gives us less control over which interfaces are sending packets.
-   But there may be some platforms that need some other combination for everything to work.
-   */
-  
-  overlay_interface_init_any(interface->ifconfig.port);
   
   interface->alarm.poll.fd = overlay_bind_socket(&interface->address);
       
@@ -531,9 +555,10 @@ int overlay_interface_configure(struct overlay_interface *interface, const struc
  * Returns -1 in case of error (misconfiguration or system error).
  */
 int
-overlay_interface_init(const char *name, struct socket_address *addr, 
-		       struct socket_address *netmask,
-		       struct socket_address *broadcast,
+overlay_interface_init(const char *name, 
+		       const struct socket_address *addr, 
+		       const struct socket_address *netmask,
+		       const struct socket_address *broadcast,
 		       const struct config_network_interface *ifconfig)
 {
   int cleanup_ret = -1;
@@ -578,10 +603,7 @@ overlay_interface_init(const char *name, struct socket_address *addr,
     case SOCK_DGRAM:
       if (ifconfig->broadcast.drop || ifconfig->unicast.drop || ifconfig->drop_packets)
 	FATALF("Invalid interface definition. We only support dropping packets on dummy file interfaces");
-      if (netmask)
-	interface->netmask = netmask->inet.sin_addr;
-      else
-	interface->netmask = ifconfig->dummy_netmask;
+      interface->netmask = netmask->inet.sin_addr;
       interface->local_echo = 1;
       
       if (overlay_interface_init_socket(interface))
@@ -1056,30 +1078,52 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
   }
 }
 
-/* Register the real interface, or update the existing interface registration. */
-int
-overlay_interface_register(char *name,
-			   struct socket_address *addr,
-			   struct socket_address *netmask,
-			   struct socket_address *broadcast)
+static const struct config_network_interface *find_interface_config(const char *name, int socket_type)
 {
-  // Find the matching non-dummy interface rule.
-  const struct config_network_interface *ifconfig = NULL;
+  // Find a matching non-dummy interface rule.
   unsigned i;
-  for (i = 0; i < config.interfaces.ac; ++i, ifconfig = NULL) {
-    ifconfig = &config.interfaces.av[i].value;
-    if (ifconfig->socket_type==SOCK_DGRAM) {
+  for (i = 0; i < config.interfaces.ac; ++i) {
+    const struct config_network_interface *ifconfig = &config.interfaces.av[i].value;
+    if (ifconfig->socket_type==socket_type) {
       unsigned j;
       for (j = 0; j < ifconfig->match.patc; ++j){
 	if (fnmatch(ifconfig->match.patv[j], name, 0) == 0)
-	  break;
+	  return ifconfig;
       }
-      
-      if (j < ifconfig->match.patc)
-	break;
     }
   }
-  if (ifconfig == NULL) {
+  return NULL;
+}
+
+static int interface_unregister(const char *name, 
+			   struct socket_address *addr
+)
+{
+  // Find the matching non-dummy interface rule.
+  const struct config_network_interface *ifconfig = find_interface_config(name, SOCK_DGRAM);
+  if (!ifconfig)
+    return 0;
+    
+  if (addr->addr.sa_family==AF_INET)
+    addr->inet.sin_port = htons(ifconfig->port);
+  
+  struct overlay_interface *interface = overlay_interface_find_name_addr(name, addr);
+  if (interface)
+    overlay_interface_close(interface);
+    
+  return 0;
+}
+
+/* Register the real interface, or update the existing interface registration. */
+int
+overlay_interface_register(const char *name,
+			   struct socket_address *addr,
+			   const struct socket_address *netmask,
+			   struct socket_address *broadcast)
+{
+  // Find the matching non-dummy interface rule.
+  const struct config_network_interface *ifconfig = find_interface_config(name, SOCK_DGRAM);
+  if (!ifconfig) {
     DEBUGF(overlayinterfaces, "Interface %s does not match any rule", name);
     return 0;
   }
@@ -1093,160 +1137,321 @@ overlay_interface_register(char *name,
   if (broadcast->addr.sa_family==AF_INET)
     broadcast->inet.sin_port = htons(ifconfig->port);
 
-  // note, inet_ntop doesn't seem to behave on android
-  DEBUGF(overlayinterfaces, "%s address: %s", name, alloca_socket_address(addr));
-  DEBUGF(overlayinterfaces, "%s netmask: %s", name, alloca_socket_address(netmask));
-  DEBUGF(overlayinterfaces, "%s broadcast address: %s", name, alloca_socket_address(broadcast));
-
   struct overlay_interface *interface = overlay_interface_find_name_addr(name, addr);
-  if (interface){
-    // mark this interface as still alive
-    if (interface->state == INTERFACE_STATE_DETECTING)
-      interface->state = INTERFACE_STATE_UP;
+  // nothing to do if a matching interface is already up
+  if (interface)
     return 0;
-  }
-  
+    
   /* New interface, so register it */
   if (overlay_interface_init(name, addr, netmask, broadcast, ifconfig))
     return WHYF("Could not initialise newly seen interface %s", name);
 
-  DEBUGF(overlayinterfaces, "Registered interface %s", name);
+  overlay_interface_init_any(ifconfig->port);
+  inet_up_count++;
+  
   return 0;
 }
+
+#ifdef HAVE_LINUX_NETLINK_H
+
+DEFINE_ALARM(netlink_poll);
+void netlink_poll(struct sched_ent *alarm)
+{
+  uint8_t buff[4096];
+  ssize_t len = recv(alarm->poll.fd, buff, sizeof buff, 0);
+  if (len<=0)
+    return;
+    
+  DEBUGF(overlayinterfaces, "recv(%d) len %u", alarm->poll.fd, len);
+    
+  struct nlmsghdr *nlh = (struct nlmsghdr *)buff;
+  for (nlh = (struct nlmsghdr *)buff; (NLMSG_OK (nlh, len)) && (nlh->nlmsg_type != NLMSG_DONE); nlh = NLMSG_NEXT(nlh, len)){
+    
+    switch(nlh->nlmsg_type){
+      case RTM_NEWADDR:
+      case RTM_DELADDR:
+      {
+	struct ifaddrmsg *ifa = (struct ifaddrmsg *) NLMSG_DATA (nlh);
+	
+	// ignore loopback addresses
+	if (ifa->ifa_scope == RT_SCOPE_HOST)
+	  continue;
+	  
+	struct rtattr *rth = IFA_RTA (ifa);
+	int rtl = IFA_PAYLOAD (nlh);
+	
+	// ifa->ifa_family;
+	// ifa->ifa_prefixlen;
+	const char *name=NULL;
+	
+	struct socket_address addr, broadcast, netmask_addr;
+	bzero(&addr, sizeof(addr));
+	bzero(&broadcast, sizeof(broadcast));
+	bzero(&netmask_addr, sizeof(netmask_addr));
+	
+	addr.addr.sa_family = broadcast.addr.sa_family = netmask_addr.addr.sa_family = ifa->ifa_family;
+	
+	if (ifa->ifa_family == AF_INET){
+	  addr.addrlen = broadcast.addrlen = netmask_addr.addrlen = sizeof(addr.inet);
+	}else{
+	  DEBUGF(overlayinterfaces, "Ignoring family %d", ifa->ifa_family);
+	  continue;
+	}
+	
+	for (;rtl && RTA_OK (rth, rtl); rth = RTA_NEXT (rth,rtl)){
+	  void *data = RTA_DATA(rth);
+	  
+	  switch(rth->rta_type){
+	    case IFA_LOCAL:
+	      addr.inet.sin_addr.s_addr = *((uint32_t *)data);
+	      break;
+	    case IFA_LABEL:
+	      name = RTA_DATA(rth);
+	      break;
+	    case IFA_BROADCAST:
+	      broadcast.inet.sin_addr.s_addr = *((uint32_t *)data);
+	      break;
+	  }
+	}
+	
+	if (!name){
+	  WARNF_perror("Interface name not provided by IFA_LABEL");
+	  continue;
+	}
+	
+	{
+	  //calculate netmask
+	  unsigned prefix = ifa->ifa_prefixlen;
+	  if (prefix>32) 
+	    prefix=32;
+	  char *c = (char *)&netmask_addr.inet.sin_addr.s_addr;
+	  unsigned i;
+	  for (i=0;i<(prefix/8);i++)
+	    *c++ = 0xFF;
+	  if (prefix %8)
+	    *c = 0xFF << (8 - (prefix %8));
+	}
+	
+	if (nlh->nlmsg_type==RTM_NEWADDR){
+	  DEBUGF(overlayinterfaces, "New addr %s, %s, %s, %s", 
+	    name,
+	    alloca_socket_address(&addr),
+	    alloca_socket_address(&broadcast),
+	    alloca_socket_address(&netmask_addr)
+	  );
+	  overlay_interface_register(name, &addr, &netmask_addr, &broadcast);
+	}else if (nlh->nlmsg_type==RTM_DELADDR){
+	  DEBUGF(overlayinterfaces, "Del addr %s, %s", 
+	    name,
+	    alloca_socket_address(&addr)
+	  );
+	  interface_unregister(name, &addr);
+	}
+	break;
+      }
+    }
+  }
+}
+
+static int netlink_socket()
+{
+  int sock = esocket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
+  if (sock<0)
+    return -1;
+    
+  struct sockaddr_nl addr;
+  memset (&addr,0,sizeof(addr));
+  addr.nl_family = AF_NETLINK;
+  addr.nl_groups = RTMGRP_IPV4_IFADDR;
+  
+  if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) == -1)
+    return WHYF_perror("bind(%d,AF_NETLINK,%lu)", sock, (unsigned long)sizeof(addr));
+    
+  DEBUGF(overlayinterfaces, "bind(%d,AF_NETLINK,%lu)", sock, (unsigned long)sizeof(addr));
+  
+  return sock;
+}
+
+static int netlink_send_get(int fd)
+{
+  struct {
+    struct nlmsghdr n;
+    struct ifaddrmsg r;
+  } req;
+  
+  memset(&req, 0, sizeof(req));
+  req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
+  req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ROOT;
+  req.n.nlmsg_type = RTM_GETADDR;
+  req.r.ifa_family = AF_INET;
+  struct rtattr *rta = (struct rtattr *)(((char *)&req) + NLMSG_ALIGN(req.n.nlmsg_len));
+  rta->rta_len = RTA_LENGTH(4);
+  
+  if (send(fd, &req, req.n.nlmsg_len, 0)<0)
+    return WHYF_perror("send(%d)", fd);
+  
+  DEBUG(overlayinterfaces, "Sent RTM_GETADDR");
+  return 0;
+}
+
+// send a request to the kernel to get all interface addresses now
+// eg on config change
+static int netlink_init()
+{
+  struct sched_ent *alarm=&ALARM_STRUCT(netlink_poll);
+  if (!is_watching(alarm)){
+    alarm->poll.fd = netlink_socket();
+    if (alarm->poll.fd<0)
+      return -1;
+    
+    alarm->poll.events = POLLIN;
+    watch(alarm);
+  }
+  
+  return netlink_send_get(alarm->poll.fd);
+}
+
+#else
 
 // poll the OS's network interfaces
 DEFINE_ALARM(overlay_interface_discover);
 void overlay_interface_discover(struct sched_ent *alarm)
 {
-  /* Mark all UP interfaces as DETECTING, so we can tell which interfaces are new, and which are dead */
-  unsigned i;
-  for (i = 0; i < OVERLAY_MAX_INTERFACES; i++)
-    if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
-      overlay_interfaces[i].state=INTERFACE_STATE_DETECTING;   
-
-  /* Register new file interfaces */
-  int detect_real_interfaces = 0;
-  const struct config_network_interface *ifconfig = NULL;
-  for (i = 0; i < config.interfaces.ac; ++i, ifconfig = NULL) {
-    ifconfig = &config.interfaces.av[i].value;
-    if (ifconfig->exclude)
-      continue;
-    if (!*ifconfig->file) {
-      detect_real_interfaces = 1;
-      continue;
-    }
-    unsigned j;
-    for (j = 0; j < OVERLAY_MAX_INTERFACES; j++){
-      if (overlay_interfaces[j].ifconfig.socket_type == ifconfig->socket_type && 
-	  strcasecmp(overlay_interfaces[j].name, ifconfig->file) == 0 && 
-	  overlay_interfaces[j].state==INTERFACE_STATE_DETECTING){
-	overlay_interfaces[j].state=INTERFACE_STATE_UP;
-	break;
-      }
-    }
-    
-    if (j >= OVERLAY_MAX_INTERFACES) {
-      // New file interface, so register it.
-      struct socket_address addr, netmask, broadcast;
-      bzero(&addr, sizeof addr);
-      bzero(&netmask, sizeof addr);
-      bzero(&broadcast, sizeof broadcast);
-      
-      switch(ifconfig->socket_type){
-      case SOCK_FILE:
-	// use a fake inet address
-	addr.addrlen=sizeof addr.inet;
-	addr.inet.sin_family=AF_INET;
-	addr.inet.sin_port=htons(ifconfig->port);
-	addr.inet.sin_addr=ifconfig->dummy_address;
-
-	netmask.addrlen=sizeof addr.inet;
-	netmask.inet.sin_family=AF_INET;
-	netmask.inet.sin_port=htons(ifconfig->port);
-	netmask.inet.sin_addr.s_addr=ifconfig->dummy_netmask.s_addr;
-	
-	broadcast.addrlen=sizeof addr.inet;
-	broadcast.inet.sin_family=AF_INET;
-	broadcast.inet.sin_port=htons(ifconfig->port);
-	broadcast.inet.sin_addr.s_addr=ifconfig->dummy_address.s_addr | ~ifconfig->dummy_netmask.s_addr;
-      // Fallthrough
-      case SOCK_STREAM:
-	overlay_interface_init(ifconfig->file, &addr, NULL, &broadcast, ifconfig);
-	break;
-      case SOCK_EXT:
-	// FAIL?
-	break;
-      case SOCK_DGRAM:
-	{
-	  // use a local dgram socket
-	  // no abstract sockets for now
-	  if (!FORMF_SERVAL_RUN_PATH(addr.local.sun_path, "%s/%s", config.server.interface_path, ifconfig->file)) {
-	    // TODO set ifconfig->exclude to prevent spam??
-	    break;
-	  }
-	  unlink(addr.local.sun_path);
-	  addr.local.sun_family=AF_UNIX;
-	  size_t len = strlen(addr.local.sun_path);
-	  
-	  addr.addrlen=sizeof addr.local.sun_family + len + 1;
-	  
-	  broadcast = addr;
-	  while(len && broadcast.local.sun_path[len]!='/')
-	    broadcast.local.sun_path[len--]='\0';
-	  broadcast.addrlen = sizeof addr.local.sun_family + len + 2;
-	  
-	  INFOF("Attempting to bind local socket w. addr %s, broadcast %s",
-	        alloca_socket_address(&addr), alloca_socket_address(&broadcast));
-	  overlay_interface_init(ifconfig->file, &addr, &netmask, &broadcast, ifconfig);
-	  break;
-	}
-      }
-    }
-  }
-
   // Register new real interfaces
-  if (detect_real_interfaces) {
-    int no_route = 1;
+  int no_route = 1;
 #ifdef HAVE_IFADDRS_H
-    if (no_route != 0)
-      no_route = doifaddrs();
+  if (no_route != 0)
+    no_route = doifaddrs();
 #endif
 #ifdef SIOCGIFCONF
-    if (no_route != 0)
-      no_route = lsif();
+  if (no_route != 0)
+    no_route = lsif();
 #endif
 #ifdef linux
-    if (no_route != 0)
-      no_route = scrapeProcNetRoute();
+  if (no_route != 0)
+    no_route = scrapeProcNetRoute();
 #endif
-    if (no_route != 0) {
-      FATAL("Unable to get any interface information");
-    }
+  if (no_route != 0) {
+    FATAL("Unable to get any interface information");
   }
 
-  // Close any interfaces that have gone away.
-  unsigned inet_up_count=0;
-  for(i = 0; i < OVERLAY_MAX_INTERFACES; i++){
-    if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING)
-      overlay_interface_close(&overlay_interfaces[i]);
-    if (overlay_interfaces[i].state==INTERFACE_STATE_UP &&
-      overlay_interfaces[i].address.addr.sa_family == AF_INET)
-      inet_up_count++;
+  alarm->alarm = gettime_ms()+5000;
+  alarm->deadline = alarm->alarm + 10000;
+  schedule(alarm);
+}
+
+#endif
+
+static void file_interface_init(const struct config_network_interface *ifconfig)
+{
+  struct socket_address addr, netmask, broadcast;
+  bzero(&addr, sizeof addr);
+  bzero(&netmask, sizeof addr);
+  bzero(&broadcast, sizeof broadcast);
+  
+  switch(ifconfig->socket_type){
+  case SOCK_FILE:
+    // use a fake inet address
+    addr.addrlen=sizeof addr.inet;
+    addr.inet.sin_family=AF_INET;
+    addr.inet.sin_port=htons(ifconfig->port);
+    addr.inet.sin_addr=ifconfig->dummy_address;
+
+    netmask.addrlen=sizeof addr.inet;
+    netmask.inet.sin_family=AF_INET;
+    netmask.inet.sin_port=htons(ifconfig->port);
+    netmask.inet.sin_addr=ifconfig->dummy_netmask;
+    
+    broadcast.addrlen=sizeof addr.inet;
+    broadcast.inet.sin_family=AF_INET;
+    broadcast.inet.sin_port=htons(ifconfig->port);
+    broadcast.inet.sin_addr.s_addr=ifconfig->dummy_address.s_addr | ~ifconfig->dummy_netmask.s_addr;
+    break;
+    
+  case SOCK_STREAM:
+    break;
+    
+  case SOCK_DGRAM:
+    {
+      // use a local dgram socket
+      // no abstract sockets for now
+      if (!FORMF_SERVAL_RUN_PATH(addr.local.sun_path, "%s/%s", config.server.interface_path, ifconfig->file))
+	return;
+      
+      unlink(addr.local.sun_path);
+      addr.local.sun_family=AF_UNIX;
+      size_t len = strlen(addr.local.sun_path);
+      
+      addr.addrlen=sizeof addr.local.sun_family + len + 1;
+      
+      broadcast = addr;
+      while(len && broadcast.local.sun_path[len]!='/')
+	broadcast.local.sun_path[len--]='\0';
+      broadcast.addrlen = sizeof addr.local.sun_family + len + 2;
+      break;
+    }
+    
+  default:
+    // ignore
+    return;
   }
   
-  if (inet_up_count==0 && sock_any.poll.fd>0){
-    unwatch(&sock_any);
-    close(sock_any.poll.fd);
-    sock_any.poll.fd=-1;
-  }
+  overlay_interface_init(ifconfig->file, &addr, &netmask, &broadcast, ifconfig);
+}
 
-  // if there are no real interfaces to detect, we can wait for the config file to change
-  if (detect_real_interfaces){
-    alarm->alarm = gettime_ms()+5000;
-    alarm->deadline = alarm->alarm + 10000;
-    schedule(alarm);
+void overlay_interface_config_change()
+{
+  unsigned i;
+  int real_interface = 0;
+  
+  // bring down any interface that no longer matches configuration
+  for (i = 0; i < OVERLAY_MAX_INTERFACES; i++){
+    if (overlay_interfaces[i].state!=INTERFACE_STATE_UP ||
+      overlay_interfaces[i].ifconfig.socket_type == SOCK_EXT)
+      continue;
+	
+    const struct config_network_interface *ifconfig = find_interface_config(
+      overlay_interfaces[i].name, 
+      overlay_interfaces[i].ifconfig.socket_type
+    );
+    
+    if (!ifconfig || ifconfig->exclude){
+      overlay_interface_close(&overlay_interfaces[i]);
+      continue;
+    }
   }
-  return;
+  
+  // create dummy file or AF_UNIX interfaces
+  for (i = 0; i < config.interfaces.ac; ++i) {
+    const struct config_network_interface *ifconfig = &config.interfaces.av[i].value;
+    if (ifconfig->exclude)
+      continue;
+    
+    // ignore real interfaces, we'll deal with them later
+    if (!*ifconfig->file) {
+      real_interface = 1;
+      continue;
+    }
+    
+    overlay_interface *interface = overlay_interface_find_name_type(ifconfig->file, ifconfig->socket_type);
+    // ignore interfaces that are already up
+    if (interface)
+      continue;
+    
+    // New file interface, so register it.
+    file_interface_init(ifconfig);
+  }
+  
+  if (real_interface){
+#ifdef HAVE_LINUX_NETLINK_H
+    // start listening for network changes & request current interface addresses
+    netlink_init();
+#else
+    // re-check all interfaces periodically
+    time_ms_t now = gettime_ms();
+    RESCHEDULE(&ALARM_STRUCT(overlay_interface_discover), now, now, now);
+#endif
+  }
 }
 
 void logServalPacket(int level, struct __sourceloc __whence, const char *message, const unsigned char *packet, size_t len) {

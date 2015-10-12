@@ -74,9 +74,8 @@
 #ifdef linux
 /* for when all other options fail, as can happen on Android,
    if the permissions for the socket-based method are broken.
-   Down side is that it while it gets the interface name and
-   broadcast, it doesn't get the local address for that
-   interface. 
+   While it gets the interface name and broadcast, it doesn't 
+   get the local address for that interface. 
 */
 int scrapeProcNetRoute()
 {
@@ -97,27 +96,26 @@ int scrapeProcNetRoute()
   if (fgets(line,1024,f) == NULL)
     return WHYF_perror("fgets(%p,1024,\"/proc/net/route\")", line);
     
-  struct socket_address addr, broadcast;
+  struct socket_address addr, broadcast, netmask;
   bzero(&addr, sizeof(addr));
   bzero(&broadcast, sizeof(broadcast));
+  bzero(&netmask, sizeof(netmask));
+  
   addr.addrlen = sizeof(addr.inet);
   addr.inet.sin_family = AF_INET;
   broadcast.addrlen = sizeof(addr.inet);
   broadcast.inet.sin_family = AF_INET;
+  netmask.addrlen = sizeof(netmask.inet);
+  netmask.inet.sin_family=AF_INET;
   
   while(line[0]) {
     int r;
     if ((r=sscanf(line,"%s %s %*s %*s %*s %*s %*s %s",name,dest,mask))==3) {
       addr.inet.sin_addr.s_addr=strtol(dest,NULL,16);
-      struct in_addr netmask = {.s_addr=strtol(mask,NULL,16)};
-      broadcast.inet.sin_addr.s_addr=addr.inet.sin_addr.s_addr | ~netmask.s_addr;
+      netmask.inet.sin_addr.s_addr=strtol(mask,NULL,16);
+      broadcast.inet.sin_addr.s_addr=addr.inet.sin_addr.s_addr | ~netmask.inet.sin_addr.s_addr;
 
-      struct socket_address netmask_addr;
-      netmask_addr.addrlen = sizeof(netmask_addr.inet);
-      netmask_addr.inet.sin_family=AF_INET;
-      netmask_addr.inet.sin_addr.s_addr=netmask.s_addr;
-
-      overlay_interface_register(name,&addr,&netmask_addr,&broadcast);
+      overlay_interface_register(name,&addr,&netmask,&broadcast);
     }
     line[0] = '\0';
     if (fgets(line,1024,f) == NULL)
@@ -141,10 +139,10 @@ lsif(void) {
   struct ifconf   ifc;
   int             sck;
   struct ifreq    *ifr;
-  struct in_addr  netmask;
-  struct socket_address addr, broadcast;
+  struct socket_address addr, broadcast, netmask;
   bzero(&addr, sizeof(addr));
   bzero(&broadcast, sizeof(broadcast));
+  bzero(&netmask, sizeof(netmask));
   
   DEBUG(overlayinterfaces, "called");
 
@@ -198,16 +196,13 @@ lsif(void) {
       WHY_perror("ioctl(SIOCGIFNETMASK)");
       continue;
     }
-    netmask = ((struct sockaddr_in *)&ifr->ifr_ifru.ifru_addr)->sin_addr;
     
-    broadcast.inet.sin_addr.s_addr=addr.inet.sin_addr.s_addr | ~netmask.s_addr;
+    netmask.addrlen = sizeof(netmask.inet);
+    bcopy(&ifr->ifr_ifru.ifru_addr, &netmask.inet, sizeof(netmask.inet));
     
-    struct socket_address netmask_addr;
-    netmask_addr.addrlen = sizeof(netmask_addr.inet);
-    netmask_addr.inet.sin_family=AF_INET;
-    netmask_addr.inet.sin_addr.s_addr=netmask.s_addr;
+    broadcast.inet.sin_addr.s_addr=addr.inet.sin_addr.s_addr | ~netmask.inet.sin_addr.s_addr;
     
-    overlay_interface_register(ifr->ifr_name, &addr, &netmask_addr, &broadcast);
+    overlay_interface_register(ifr->ifr_name, &addr, &netmask, &broadcast);
     nInterfaces++;
   }
   
@@ -224,21 +219,18 @@ int
 doifaddrs(void) {
   struct ifaddrs	*ifaddr, *ifa;
   char 			*name;
-  struct socket_address	addr, broadcast;
-  struct in_addr	netmask;
+  struct socket_address	addr, broadcast, netmask;
   bzero(&addr, sizeof(addr));
   bzero(&broadcast, sizeof(broadcast));
+  bzero(&netmask, sizeof(netmask));
   
   DEBUGF(overlayinterfaces, "called");
   
   if (getifaddrs(&ifaddr) == -1)
     return WHY_perror("getifaddr()");
 
-  broadcast.addrlen = sizeof(addr.inet);
-  broadcast.inet.sin_family = AF_INET;
-  
   for (ifa = ifaddr; ifa != NULL ; ifa = ifa->ifa_next) {
-    if (!ifa->ifa_addr || !ifa->ifa_netmask)
+    if (!ifa->ifa_addr || !ifa->ifa_netmask || !ifa->ifa_broadaddr)
       continue;
     
     /* We're only interested in IPv4 addresses */
@@ -254,22 +246,16 @@ doifaddrs(void) {
     }
 
     name = ifa->ifa_name;
-    addr.addrlen = sizeof(addr.inet);
-    bcopy(ifa->ifa_addr, &addr.addr, addr.addrlen);
+    broadcast.addrlen = netmask.addrlen = addr.addrlen = sizeof(addr.inet);
     
-    netmask = ((struct sockaddr_in *)ifa->ifa_netmask)->sin_addr;
+    bcopy(ifa->ifa_addr, &addr.inet, addr.addrlen);
+    bcopy(ifa->ifa_netmask, &netmask.inet, netmask.addrlen);
+    bcopy(ifa->ifa_broadaddr, &broadcast.inet, broadcast.addrlen);
 
-    struct socket_address netmask_addr;
-    netmask_addr.inet.sin_family=AF_INET;
-    netmask_addr.inet.sin_addr.s_addr=netmask.s_addr;
-
-    broadcast.inet.sin_addr.s_addr=addr.inet.sin_addr.s_addr | ~netmask.s_addr;
-
-    overlay_interface_register(name, &addr, &netmask_addr, &broadcast);
+    overlay_interface_register(name, &addr, &netmask, &broadcast);
   }
   freeifaddrs(ifaddr);
 
   return 0;
 }
 #endif
-

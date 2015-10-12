@@ -26,7 +26,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define INTERFACE_STATE_DOWN 0
 #define INTERFACE_STATE_UP 1
-#define INTERFACE_STATE_DETECTING 2
 
 struct overlay_interface;
 
@@ -107,8 +106,7 @@ struct network_destination * create_unicast_destination(struct socket_address *a
 struct network_destination * add_destination_ref(struct network_destination *ref);
 void release_destination_ref(struct network_destination *ref);
 int set_destination_ref(struct network_destination **ptr, struct network_destination *ref);
-
-DECLARE_ALARM(overlay_interface_discover);
+void overlay_interface_config_change();
 
 struct config_mdp_iftype;
 int overlay_destination_configure(struct network_destination *dest, const struct config_mdp_iftype *ifconfig);
@@ -117,15 +115,16 @@ struct config_network_interface;
 int overlay_interface_configure(struct overlay_interface *interface, const struct config_network_interface *ifconfig);
 
 int
-overlay_interface_init(const char *name, struct socket_address *addr, 
-		       struct socket_address *netmask,
-		       struct socket_address *broadcast,
+overlay_interface_init(const char *name, 
+		       const struct socket_address *addr, 
+		       const struct socket_address *netmask,
+		       const struct socket_address *broadcast,
 		       const struct config_network_interface *ifconfig);
 void overlay_interface_close(overlay_interface *interface);
 
-int overlay_interface_register(char *name,
+int overlay_interface_register(const char *name,
 			   struct socket_address *addr,
-			   struct socket_address *netmask,
+			   const struct socket_address *netmask,
 			   struct socket_address *broadcast);
 void overlay_interface_close_all();
 overlay_interface * overlay_interface_get_default();

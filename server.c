@@ -564,8 +564,7 @@ void cf_on_config_change()
   dna_helper_start();
   directory_service_init();
   
-  // check for interfaces at least once after config change
-  RESCHEDULE(&ALARM_STRUCT(overlay_interface_discover), now, now, now);
+  overlay_interface_config_change();
   
   if (link_has_neighbours())
     // send rhizome sync periodically
