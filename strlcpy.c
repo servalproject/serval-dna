@@ -1,24 +1,30 @@
 /*
- * ANSI C version of strlcpy
- * Based on the NetBSD strlcpy man page.
- *
- * Nathan Myers <ncm-nospam@cantrip.org>, 2003/06/03
- * Placed in the public domain.
- */
+  Copyright (C) 2015 Serval Project Inc.
+
+  This program is free software; you can redistribute it and/or
+  modify it under the terms of the GNU General Public License
+  as published by the Free Software Foundation; either version 2
+  of the License, or (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, write to the Free Software
+  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
+
 
 #ifndef HAVE_STRLCPY
 
-#include <stdlib.h>  /* for size_t */
-#include <string.h>  /* for strlen, memcpy */
+#include "str.h"
 
-size_t
-strlcpy(char *dst, const char *src, size_t size) {
-        const size_t len = strlen(src);
-        if (size != 0) {
-                memcpy(dst, src, (len > size - 1) ? size - 1 : len);
-                dst[size - 1] = 0;
-        }
-        return len;
+size_t strlcpy(char *dst, const char *src, size_t size)
+{
+  strncpy_nul(dst, src, size);
+  return strlen(src);
 }
 
 #endif

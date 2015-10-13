@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 2012 Serval Project Inc.
+  Copyright (C) 2012,2015 Serval Project Inc.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License
@@ -20,10 +20,15 @@
 #ifndef __STRLCPY_H__
 #define __STRLCPY_H__
 
+// Do not use strlcpy() in Serval DNA source code, use strncpy_nul() or
+// buf_strncpy_nul() from "str.h" instead.  This strlcpy() is provided only
+// because it is needed by sqlite3.c.
+
 #ifdef HAVE_STRLCPY
-#include <string.h>
+#  include <string.h>
 #else
-size_t	strlcpy(char *dst, const char *src, size_t sz);
+#  include <stdlib.h>  // for size_t
+size_t strlcpy(char *dst, const char *src, size_t sz);
 #endif
 
 #endif

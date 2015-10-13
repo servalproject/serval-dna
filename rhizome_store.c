@@ -31,7 +31,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 #include "conf.h"
-#include "strlcpy.h"
 
 #define RHIZOME_BUFFER_MAXIMUM_SIZE (1024*1024)
 
