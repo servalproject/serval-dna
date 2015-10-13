@@ -279,9 +279,9 @@ test_MeshmsListMessagesNoIdentity() {
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDX/$SIDA/messagelist.json"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
-   assertJqGrep --ignore-case http.body '.http_status_message' 'meshms operation failed'
+   assertStdoutIs 419
+   assertJq http.body 'contains({"http_status_code": 419})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'identity locked'
    assertJq http.body 'contains({"meshms_status_code": 2})'
    assertJqGrep --ignore-case http.body '.meshms_status_message' 'identity.*unknown'
 }
@@ -431,8 +431,8 @@ test_MeshmsSendMissingMessage() {
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 400
+   assertJq http.body 'contains({"http_status_code": 400})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'missing.*message.*form.*part'
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    assertStdoutLineCount '==' 2
@@ -454,8 +454,8 @@ test_MeshmsSendDuplicateMessage() {
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 400
+   assertJq http.body 'contains({"http_status_code": 400})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'duplicate.*message.*form.*part'
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    assertStdoutLineCount '==' 2
@@ -476,8 +476,8 @@ test_MeshmsSendMessageMissingContentType() {
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 400
+   assertJq http.body 'contains({"http_status_code": 400})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'missing.*content.*type'
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    assertStdoutLineCount '==' 2
@@ -498,8 +498,8 @@ test_MeshmsSendMessageUnsupportedContentType() {
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 415
+   assertJq http.body 'contains({"http_status_code": 415})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'unsupported.*content.*type'
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    assertStdoutLineCount '==' 2
@@ -520,8 +520,8 @@ test_MeshmsSendMessageMissingCharset() {
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 400
+   assertJq http.body 'contains({"http_status_code": 400})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'missing.*charset'
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    assertStdoutLineCount '==' 2
@@ -542,8 +542,8 @@ test_MeshmsSendMessageUnsupportedCharset() {
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDA2/$SIDA1/sendmessage"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 415
+   assertJq http.body 'contains({"http_status_code": 415})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'unsupported.*charset'
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    assertStdoutLineCount '==' 2
@@ -564,9 +564,9 @@ test_MeshmsSendNoIdentity() {
          "http://$addr_localhost:$PORTA/restful/meshms/$SIDX/$SIDA/sendmessage"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
-   assertJqGrep --ignore-case http.body '.http_status_message' 'meshms operation failed'
+   assertStdoutIs 419
+   assertJq http.body 'contains({"http_status_code": 419})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'identity locked'
    assertJq http.body 'contains({"meshms_status_code": 2})'
    assertJqGrep --ignore-case http.body '.meshms_status_message' 'identity.*unknown'
 }

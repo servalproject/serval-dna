@@ -22,9 +22,10 @@ This document describes the second of these, the [HTTP REST][] API.
 
 ### Protocol and port
 
-The Serval DNA [HTTP REST][] API is an [HTTP 1.0][] server that accepts
+The Serval DNA [HTTP REST][] API is an [HTTP 1.0][] server that only accepts
 requests on the loopback interface (IPv4 address 127.0.0.1), TCP port 4110.  It
-rejects requests that do not originate on the local host.
+rejects requests that do not originate on the local host, by replying
+[403](#forbidden).
 
 ### Security
 
@@ -73,9 +74,9 @@ An HTTP REST request is a normal [HTTP 1.0][] [GET](#get) or [POST](#post):
 
 #### GET
 
-A **GET** request consists of an initial "GET" line, followed by zero or more
-header lines, followed by a blank line.  As usual for HTTP, all lines are
-terminated by an ASCII CR-LF sequence.
+A **GET** request consists of an initial "GET" line containing the *path* and
+*HTTP version*, followed by zero or more header lines, followed by a blank
+line.  As usual for HTTP, all lines are terminated by an ASCII CR-LF sequence.
 
 For example:
 
@@ -158,7 +159,7 @@ unless otherwise documented.
 Some responses contain non-standard HTTP headers as part of the result they
 return to the client; for example, [Rhizome response headers](#rhizome-response-headers).
 
-### Response status codes
+### Response status code
 
 The HTTP REST API response uses the [HTTP status code][] to indicate the
 outcome of the request as follows:
@@ -204,8 +205,12 @@ fetched entity forms the body of the response) if the request supplied a
 
 #### 400 Bad Request
 
-The HTTP request was malformed (incorrect syntax), and should not be repeated
-without modifications.
+The HTTP request was malformed, and should not be repeated without
+modifications.  This could be for several reasons:
+- invalid syntax in the request header block
+- a `POST` request MIME part is missing, duplicated or out of order
+- a `POST` request was given an unsupported MIME part
+- a `POST` request MIME part has missing or malformed content
 
 #### 401 Unauthorized
 
@@ -225,8 +230,8 @@ the missing credential:
 
 #### 403 Forbidden
 
-The request failed because the caller does not possess the necessary
-cryptographic secret.
+The request failed because the server does not accept requests from the
+originating host.
 
 #### 404 Not Found
 
@@ -254,15 +259,34 @@ path that only supports [POST](#post), or vice versa.
 A `POST` request did not supply a [Content-Length](#request-content-length)
 header.
 
+#### 414 Request-URI Too Long
+
+The request failed because the [HTTP request URI][] was too long.  The server
+persists the path and a few other pieces of the request in a fixed size request
+buffer, and this response is triggered if the collective size of these does not
+leave enough buffer for receiving the remainder of the request.
+
 #### 415 Unsupported Media Type
 
-The `POST` request [Content-Type](#request-content-type) header specified
-an unsupported media type.
+A `POST` request failed because of an unsupported content type, which could be
+for several reasons:
+- the request's [Content-Type](#request-content-type) header specified an
+  unsupported media type
+- a MIME part Content-Disposition was not “form-data”
+- a MIME part Content-Type was unsupported
+- a MIME part Content-Type specified an unsupported charset
 
 #### 416 Requested Range Not Satisfiable
 
 The [Range](#request-range) header specified a range whose start position falls
 outside the size of the requested entity.
+
+#### 419 Authentication Timeout
+
+The request failed because the server does not possess and cannot derive the
+necessary cryptographic secret or credential.  For example, updating a Rhizome
+bundle without providing the bundle secret.  This code is not part of the HTTP
+standard.
 
 #### 422 Unprocessable Entity
 
@@ -288,14 +312,15 @@ development situations.
 The request cannot be performed because a necessary resource is temporarily
 unavailable due to a high volume of concurrent requests.
 
-This code was originally used by Rhizome operations if the server's manifest
-table ran out of free manifests, which would only happen if there were many
-concurrent Rhizome requests holding manifest structures open in server memory.
-It may be used for any resource that is occupied by running requests.
+The original use of this code was for Rhizome operations if the server's
+manifest table ran out of free manifests, which would only happen if there were
+many concurrent Rhizome requests holding manifest structures open in server
+memory.
 
-If [Serval DNA][] is ever limited to service only a few HTTP requests at a
-time, then this code will be returned to new requests that would exceed the
-limit.
+This code may also be used to indicate temporary exhaustion of other finite
+resources.  For example, if [Serval DNA][] is ever limited to service only a
+few HTTP requests at a time, then this code will be returned to new requests
+that would exceed the limit.
 
 #### 431 Request Header Fields Too Large
 
@@ -326,6 +351,32 @@ following cases:
 
 - a request [Range](#request-range) header specifies a multi range
 
+#### Cross-Origin Resource Sharing (CORS)
+
+To support client-side JavaScript applications, Serval DNA has a limited
+implementation of [Cross-Origin Resource Sharing][CORS].  If a request contains
+an **Origin** header with either “null” or a single URI with scheme “http” or
+“https” or “file”, hostname “localhost” or “127.0.0.1” (or empty in the case of
+a “file” scheme), and optionally any port number, then the response will
+contain three **Access-Control** headers granting permission for other pages on
+the same site to access resources in the returned response.
+
+For example, given the request:
+
+    GET /restful/keyring/identities.json HTTP/1.0
+    Origin: http://localhost:8080/
+    ...
+    
+Serval DNA will respond:
+
+    HTTP/1.0 200 OK
+    Access-Control-Allow-Origin: http://localhost:8080
+    Access-Control-Allow-Methods: GET, POST, OPTIONS
+    Access-Control-Allow-Headers: Authorization
+    ...
+
+[CORS]: http://www.w3.org/TR/cors/
+
 #### JSON result
 
 All responses that convey no special content return the following *JSON result*
@@ -343,8 +394,8 @@ line of the response.
 The `http_status_message` field is usually the same as the *reason phrase* text
 that follows the code in the first line of the HTTP response.  This reason
 phrase may be a [standard phrase][status code], or it may be more explanatory;
-for example, *403 Forbidden* responses from Rhizome use the phrase, “Rhizome
-operation failed”.
+for example, some *404* responses from Rhizome have phrases like, “Bundle not
+found”, “Payload not found”, etc.
 
 Some responses augment the *JSON result* object with extra fields; for example,
 [Rhizome JSON result](#rhizome-json-result).
@@ -544,20 +595,21 @@ All Rhizome operations that involve fetching and/or inserting a single manifest
 into the Rhizome store return a *bundle status code*, which describes the
 outcome of the operation.  Some codes have different meanings in the context of
 a fetch or an insertion, and some codes can only be produced by insertions.
+The bundle status code determines the [HTTP response code](#response-status-code).
 
-| code | meaning                                                                         |
-|:----:|:------------------------------------------------------------------------------- |
-|  -1  | internal error                                                                  |
-|   0  | "new"; (fetch) bundle not found; (insert) bundle added to store                 |
-|   1  | "same"; (fetch) bundle found; (insert) bundle already in store                  |
-|   2  | "duplicate"; (insert only) duplicate bundle already in store                    |
-|   3  | "old"; (insert only) newer version of bundle already in store                   |
-|   4  | "invalid"; (insert only) manifest is invalid                                    |
-|   5  | "fake"; (insert only) manifest signature is invalid                             |
-|   6  | "inconsistent"; (insert only) manifest filesize/filehash does not match payload |
-|   7  | "no room"; (insert only) doesn't fit; store may contain more important bundles  |
-|   8  | "readonly"; (insert only) cannot modify manifest because secret is unknown      |
-|   9  | "busy"; Rhizome store database is currently busy (re-try)                       |
+| code | HTTP | meaning                                                                         |
+|:----:|:----:|:------------------------------------------------------------------------------- |
+|  -1  |  500 | internal error                                                                  |
+|   0  |  201 | "new"; (fetch) bundle not found; (insert) bundle added to store                 |
+|   1  |  200 | "same"; (fetch) bundle found; (insert) bundle already in store                  |
+|   2  |  200 | "duplicate"; (insert only) duplicate bundle already in store                    |
+|   3  |  202 | "old"; (insert only) newer version of bundle already in store                   |
+|   4  |  422 | "invalid"; (insert only) manifest is invalid                                    |
+|   5  |  419 | "fake"; (insert only) manifest signature is invalid                             |
+|   6  |  422 | "inconsistent"; (insert only) manifest filesize/filehash does not match payload |
+|   7  |  202 | "no room"; (insert only) doesn't fit; store may contain more important bundles  |
+|   8  |  419 | "readonly"; (insert only) cannot modify manifest because secret is unknown      |
+|   9  |  423 | "busy"; Rhizome store database is currently busy (re-try)                       |
 
 #### Bundle status message
 
@@ -574,19 +626,21 @@ into the Rhizome store return a *payload status code*, which describes the
 outcome of the payload operation, and elaborates on the the reason for the
 accompanying *bundle status code*.  Some codes have different meanings in the
 context of a fetch or an insertion, and some codes can only be produced by
-insertions.
+insertions.  The payload status code overrides the [HTTP response
+code](#response-status-code) derived from the [bundle status
+code](#bundle-status-code) if it is numerically higher.
 
-| code | meaning                                                               |
-|:----:|:--------------------------------------------------------------------- |
-|  -1  | internal error                                                        |
-|   0  | empty payload (zero length)                                           |
-|   1  | (fetch) payload not found; (insert) payload added to store            |
-|   2  | (fetch) payload found; (insert) payload already in store              |
-|   3  | payload size does not match manifest *filesize* field                 |
-|   4  | payload hash does not match manifest *filehash* field                 |
-|   5  | payload key unknown: (fetch) cannot decrypt; (insert) cannot encrypt  |
-|   6  | (insert only) payload is too big to fit in store                      |
-|   7  | (insert only) payload evicted; other payloads are ranked higher       |
+| code | HTTP | meaning                                                               |
+|:----:|:----:|:--------------------------------------------------------------------- |
+|  -1  |  500 | internal error                                                        |
+|   0  |  201 | empty payload (zero length)                                           |
+|   1  |  201 | (fetch) payload not found; (insert) payload added to store            |
+|   2  |  200 | (fetch) payload found; (insert) payload already in store              |
+|   3  |  422 | payload size does not match manifest *filesize* field                 |
+|   4  |  422 | payload hash does not match manifest *filehash* field                 |
+|   5  |  419 | payload key unknown: (fetch) cannot decrypt; (insert) cannot encrypt  |
+|   6  |  202 | (insert only) payload is too big to fit in store                      |
+|   7  |  202 | (insert only) payload evicted; other payloads are ranked higher       |
 
 #### Payload status message
 
@@ -685,7 +739,7 @@ be *200 OK* and:
    nul (0) byte followed by the manifest's binary signature
 
 If the **manifest is not found** in the local Rhizome store, then the response
-will be *403 Forbidden* and:
+will be *404 Bundle not found* and:
 *  the [bundle status code](#bundle-status-code) will be 0
 *  the [payload status code](#payload-status-code), if present in the response,
    is not relevant, so must be ignored
@@ -715,22 +769,22 @@ then the response will be *200 OK* and:
    if the payload is encrypted (the manifest's `crypt` field is 1) then the
    payload is not decrypted
 
-If the **manifest is found** in the local Rhizome store but the **payload is
-not found**, then the response will be *403 Forbidden* and:
-*  the [bundle status code](#bundle-status-code) will be 1
-*  the [payload status code](#payload-status-code) will be 1
-*  the [Rhizome response bundle headers](#rhizome-response-bundle-headers) give
-   information about the found manifest
-*  the response's content is the [Rhizome JSON result](#rhizome-json-result)
-   object
-
 If the **manifest is not found** in the local Rhizome store, then the response
-will be *403 Forbidden* and:
+will be *404 Bundle not found* and:
 *  the [bundle status code](#bundle-status-code) will be 0
 *  the [payload status code](#payload-status-code), if present in the response,
    is not relevant, so must be ignored
 *  the [Rhizome response bundle headers](#rhizome-response-bundle-headers) are
    absent from the response
+*  the response's content is the [Rhizome JSON result](#rhizome-json-result)
+   object
+
+If the **manifest is found** in the local Rhizome store but the **payload is
+not found**, then the response will be *404 Payload not found* and:
+*  the [bundle status code](#bundle-status-code) will be 1
+*  the [payload status code](#payload-status-code) will be 1
+*  the [Rhizome response bundle headers](#rhizome-response-bundle-headers) give
+   information about the found manifest
 *  the response's content is the [Rhizome JSON result](#rhizome-json-result)
    object
 

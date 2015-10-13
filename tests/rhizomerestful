@@ -479,7 +479,7 @@ test_RhizomePayloadDecryptedForeign() {
          --basic --user harry:potter \
          "http://$addr_localhost:$PORTA/restful/rhizome/${BID[1]}/decrypted.bin"
    tfw_cat http.headers$n decrypted.bin$n
-   assertStdoutIs 403
+   assertStdoutIs 419
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Code: 1$CR\$"
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle already in store.*$CR\$"
    assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Code: 5$CR\$"
@@ -648,8 +648,8 @@ test_RhizomeInsert() {
          assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Code: 1$CR\$"
          assertGrep --matches=1 --ignore-case http.headers$n "^Serval-Rhizome-Result-Payload-Status-Message: .*payload new to store.*$CR\$"
       else
-         assertStdoutIs 403
-         assertJq nfile$n.manifest 'contains({"http_status_code": 403})'
+         assertStdoutIs 419
+         assertJq nfile$n.manifest 'contains({"http_status_code": 419})'
          assertJqGrep --ignore-case nfile$n.manifest '.http_status_message' "missing bundle secret"
       fi
    done
@@ -881,8 +881,8 @@ test_RhizomeInsertMissingManifest() {
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 400
+   assertJq http.body 'contains({"http_status_code": 400})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'missing.*manifest.*form.*part'
    executeOk_servald rhizome list
    assert_rhizome_list
@@ -904,8 +904,8 @@ test_RhizomeInsertIncorrectManifestType() {
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 415
+   assertJq http.body 'contains({"http_status_code": 415})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'unsupported content-type.*manifest.*form.*part'
    executeOk_servald rhizome list
    assert_rhizome_list
@@ -927,8 +927,8 @@ test_RhizomeInsertIncorrectManifestFormat() {
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 415
+   assertJq http.body 'contains({"http_status_code": 415})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'unsupported.*format.*manifest.*form.*part'
    executeOk_servald rhizome list
    assert_rhizome_list
@@ -953,8 +953,8 @@ test_RhizomeInsertDuplicateManifest() {
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 400
+   assertJq http.body 'contains({"http_status_code": 400})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'duplicate.*manifest.*form.*part'
    executeOk_servald rhizome list
    assert_rhizome_list
@@ -1001,8 +1001,8 @@ test_RhizomeInsertMissingPayload() {
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 400
+   assertJq http.body 'contains({"http_status_code": 400})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'missing.*payload.*form.*part'
    executeOk_servald rhizome list
    assert_rhizome_list
@@ -1027,8 +1027,8 @@ test_RhizomeInsertDuplicatePayload() {
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 400
+   assertJq http.body 'contains({"http_status_code": 400})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'duplicate.*payload.*form.*part'
    executeOk_servald rhizome list
    assert_rhizome_list
@@ -1051,8 +1051,8 @@ test_RhizomeInsertPartOrder() {
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 400
+   assertJq http.body 'contains({"http_status_code": 400})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'missing.*manifest.*form.*part'
    executeOk_servald rhizome list
    assert_rhizome_list
@@ -1076,8 +1076,8 @@ test_RhizomeInsertPartUnsupported() {
          "http://$addr_localhost:$PORTA/restful/rhizome/insert"
    tfw_cat http.header http.body
    assertExitStatus == 0
-   assertStdoutIs 403
-   assertJq http.body 'contains({"http_status_code": 403})'
+   assertStdoutIs 400
+   assertJq http.body 'contains({"http_status_code": 400})'
    assertJqGrep --ignore-case http.body '.http_status_message' 'unsupported.*form.*part'
    assertJqGrep http.body '.http_status_message' 'happyhappy'
    executeOk_servald rhizome list

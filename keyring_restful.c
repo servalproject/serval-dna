@@ -1,6 +1,6 @@
 /*
 Serval DNA HTTP RESTful interface
-Copyright (C) 2013,2014 Serval Project Inc.
+Copyright (C) 2013-2015 Serval Project Inc.
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -86,7 +86,7 @@ static int http_request_keyring_response_identity(struct httpd_request *r, uint1
   const char *name = NULL;
   keyring_identity_extract(id, &sidp, &did, &name);
   if (!sidp)
-    return http_request_keyring_response(r, 501, "Identity has no SID");
+    return http_request_keyring_response(r, 500, "Identity has no SID");
   struct json_atom json_id;
   struct json_key_value json_id_kv[3];
   struct json_atom json_sid;
@@ -213,9 +213,9 @@ static int restful_keyring_add(httpd_request *r, const char *remainder)
   const char *pin = http_request_get_query_param(&r->http, "pin");
   const keyring_identity *id = keyring_create_identity(keyring, pin ? pin : "");
   if (id == NULL)
-    return http_request_keyring_response(r, 501, "Could not create identity");
+    return http_request_keyring_response(r, 500, "Could not create identity");
   if (keyring_commit(keyring) == -1)
-    return http_request_keyring_response(r, 501, "Could not store new identity");
+    return http_request_keyring_response(r, 500, "Could not store new identity");
   return http_request_keyring_response_identity(r, 200, CONTENT_TYPE_JSON, id);
 }
 
@@ -231,10 +231,10 @@ static int restful_keyring_set(httpd_request *r, const char *remainder)
   keyring_iterator it;
   keyring_iterator_start(keyring, &it);
   if (!keyring_find_sid(&it, &r->sid1))
-    return http_request_keyring_response(r, 404, NULL);
+    return http_request_keyring_response(r, 404, "Identity not found");
   if (keyring_set_did(it.identity, did ? did : "", name ? name : "") == -1)
-    return http_request_keyring_response(r, 501, "Could not set identity DID/Name");
+    return http_request_keyring_response(r, 500, "Could not set identity DID/Name");
   if (keyring_commit(keyring) == -1)
-    return http_request_keyring_response(r, 501, "Could not store new identity");
+    return http_request_keyring_response(r, 500, "Could not store new identity");
   return http_request_keyring_response_identity(r, 200, CONTENT_TYPE_JSON, it.identity);
 }

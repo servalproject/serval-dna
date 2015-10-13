@@ -96,6 +96,7 @@ public class RhizomeCommon
 		switch (status.http_status_code) {
 		case HttpURLConnection.HTTP_FORBIDDEN: // for crypto failure (missing secret)
 		case HttpURLConnection.HTTP_NOT_FOUND: // for unknown BID
+		case 419: // Authentication Timeout, for missing secret
 		case 422: // Unprocessable Entity, for invalid/malformed manifest
 		case 423: // Locked, for database busy
 		case 429: // Too Many Requests, for out of manifests

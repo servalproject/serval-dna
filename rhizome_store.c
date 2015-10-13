@@ -813,6 +813,7 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
     }
     if (sqlite_exec_void_retry(&retry, "COMMIT;", END) == -1)
       goto dbfailure;
+    // A test case in tests/rhizomeprotocol depends on this debug message:
     DEBUGF(rhizome_store, "Stored file %s", alloca_tohex_rhizome_filehash_t(write->id));
   }
   write->blob_rowid = 0;

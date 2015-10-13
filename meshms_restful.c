@@ -71,16 +71,22 @@ static int strn_to_meshms_token(const char *str, rhizome_bid_t *bidp, uint64_t *
 static int http_request_meshms_response(struct httpd_request *r, uint16_t result, const char *message, enum meshms_status status)
 {
   uint16_t meshms_result = 0;
+  const char *meshms_message = NULL;
   switch (status) {
     case MESHMS_STATUS_OK:
       meshms_result = 200;
       break;
     case MESHMS_STATUS_UPDATED:
-      meshms_result = 201;
+      meshms_result = 201; // Created
+      meshms_message = "Updated";
       break;
     case MESHMS_STATUS_SID_LOCKED:
+      meshms_result = 419; // Authentication Timeout
+      meshms_message = "Identity locked";
+      break;
     case MESHMS_STATUS_PROTOCOL_FAULT:
-      meshms_result = 403;
+      meshms_result = 500;
+      meshms_message = "MeshMS protocol fault";
       break;
     case MESHMS_STATUS_ERROR:
       meshms_result = 500;
@@ -101,10 +107,10 @@ static int http_request_meshms_response(struct httpd_request *r, uint16_t result
   }
   if (meshms_result > result) {
     result = meshms_result;
-    message = NULL;
+    message = meshms_message;
   }
   assert(result != 0);
-  http_request_simple_response(&r->http, result, message ? message : result == 403 ? "MeshMS operation failed" : NULL);
+  http_request_simple_response(&r->http, result, message);
   return result;
 }
 
@@ -120,7 +126,7 @@ static int restful_meshms_(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = CONTENT_TYPE_JSON;
   if (!is_rhizome_http_enabled())
-    return 403;
+    return 404;
   int ret = authorize_restful(&r->http);
   if (ret)
     return ret;
@@ -591,7 +597,7 @@ static int send_mime_part_end(struct http_request *hr)
   httpd_request *r = (httpd_request *) hr;
   if (r->u.sendmsg.current_part == PART_MESSAGE) {
     if (r->u.sendmsg.message.length == 0)
-      return http_response_form_part(r, "Invalid (empty)", PART_MESSAGE, NULL, 0);
+      return http_response_form_part(r, 400, "Invalid (empty)", PART_MESSAGE, NULL, 0);
     r->u.sendmsg.received_message = 1;
     DEBUGF(httpd, "received %s = %s", PART_MESSAGE, alloca_toprint(-1, r->u.sendmsg.message.buffer, r->u.sendmsg.message.length));
   } else
@@ -604,23 +610,23 @@ static int send_mime_part_header(struct http_request *hr, const struct mime_part
 {
   httpd_request *r = (httpd_request *) hr;
   if (strcmp(h->content_disposition.type, "form-data") != 0)
-    return http_response_content_disposition(r, "Unsupported", h->content_disposition.type);
+    return http_response_content_disposition(r, 415, "Unsupported", h->content_disposition.type);
   if (strcmp(h->content_disposition.name, PART_MESSAGE) == 0) {
     if (r->u.sendmsg.received_message)
-      return http_response_form_part(r, "Duplicate", PART_MESSAGE, NULL, 0);
+      return http_response_form_part(r, 400, "Duplicate", PART_MESSAGE, NULL, 0);
     r->u.sendmsg.current_part = PART_MESSAGE;
     form_buf_malloc_init(&r->u.sendmsg.message, MESHMS_MESSAGE_MAX_LEN);
   }
   else
-    return http_response_form_part(r, "Unsupported", h->content_disposition.name, NULL, 0);
+    return http_response_form_part(r, 415, "Unsupported", h->content_disposition.name, NULL, 0);
   if (!h->content_type.type[0] || !h->content_type.subtype[0])
-    return http_response_content_type(r, "Missing", &h->content_type);
+    return http_response_content_type(r, 400, "Missing", &h->content_type);
   if (strcmp(h->content_type.type, "text") != 0 || strcmp(h->content_type.subtype, "plain") != 0)
-    return http_response_content_type(r, "Unsupported", &h->content_type);
+    return http_response_content_type(r, 415, "Unsupported", &h->content_type);
   if (!h->content_type.charset[0])
-    return http_response_content_type(r, "Missing charset", &h->content_type);
+    return http_response_content_type(r, 400, "Missing charset", &h->content_type);
   if (strcmp(h->content_type.charset, "utf-8") != 0)
-    return http_response_content_type(r, "Unsupported charset", &h->content_type);
+    return http_response_content_type(r, 415, "Unsupported charset", &h->content_type);
   return 0;
 }
 
@@ -638,7 +644,7 @@ static int restful_meshms_sendmessage_end(struct http_request *hr)
 {
   httpd_request *r = (httpd_request *) hr;
   if (!r->u.sendmsg.received_message)
-    return http_response_form_part(r, "Missing", PART_MESSAGE, NULL, 0);
+    return http_response_form_part(r, 400, "Missing", PART_MESSAGE, NULL, 0);
   assert(r->u.sendmsg.message.length > 0);
   assert(r->u.sendmsg.message.length <= MESHMS_MESSAGE_MAX_LEN);
   enum meshms_status status;

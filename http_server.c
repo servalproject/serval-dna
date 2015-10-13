@@ -237,7 +237,7 @@ static int _reserve(struct http_request *r, const char **resp, const char *src, 
   assert(r->reserved <= reslim);
   size_t siz = sizeof(char**) + len + 1;
   if (r->reserved + siz > reslim) {
-    r->response.result_code = 414;
+    r->response.result_code = 414; // Request-URI Too Long
     return 0;
   }
   if (r->reserved + siz > r->parsed) {
@@ -1972,6 +1972,7 @@ static const char *http_reason_phrase(int response_code)
   case 414: return "Request-URI Too Long";
   case 415: return "Unsupported Media Type";
   case 416: return "Requested Range Not Satisfiable";
+  case 419: return "Authentication Timeout";
   case 422: return "Unprocessable Entity";
   case 423: return "Locked";
   case 429: return "Too Many Requests";

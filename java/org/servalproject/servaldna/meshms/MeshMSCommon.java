@@ -46,7 +46,9 @@ public class MeshMSCommon
 	{
 		if (!"application/json".equals(conn.getContentType()))
 			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
-		if (conn.getResponseCode() == HttpURLConnection.HTTP_FORBIDDEN) {
+		switch (conn.getResponseCode()) {
+		case HttpURLConnection.HTTP_NOT_FOUND:
+		case 419: // Authentication Timeout, for missing secret
 			JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getErrorStream(), "UTF-8"));
 			Status status = decodeRestfulStatus(json);
 			throwRestfulResponseExceptions(status, conn.getURL());

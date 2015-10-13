@@ -357,36 +357,28 @@ int authorize_restful(struct http_request *r)
 {
   if (!is_from_loopback(r))
     return 403;
-  if (r->request_header.origin.hostname) {
-    assert(r->request_header.origin.scheme);
-    if (   (   (   strcmp(r->request_header.origin.scheme, "http") == 0
-	        || strcmp(r->request_header.origin.scheme, "https") == 0
-	       )
+  // If a CORS Origin: header was supplied, then if it specifies a local site, then respond with
+  // Access-Control-Allow-Origin and Access-Control-Allow-Methods headers that permit other pages in
+  // the same local site to request this page, otherwise respond with 403 Forbidden.
+  if (r->request_header.origin.null || r->request_header.origin.scheme[0]) {
+    if (   r->request_header.origin.null
+	|| (   (   strcmp(r->request_header.origin.scheme, "http") == 0
+		|| strcmp(r->request_header.origin.scheme, "https") == 0
+		)
 	    && (   strcmp(r->request_header.origin.hostname, "localhost") == 0
-	        || strcmp(r->request_header.origin.hostname, "127.0.0.1") == 0
-	       )
-	   )
+		|| strcmp(r->request_header.origin.hostname, "127.0.0.1") == 0
+		)
+	    )
 	|| (   strcmp(r->request_header.origin.scheme, "file") == 0
 	    && (   strcmp(r->request_header.origin.hostname, "localhost") == 0
-	        || strcmp(r->request_header.origin.hostname, "127.0.0.1") == 0
-	        || strcmp(r->request_header.origin.hostname, "") == 0
-	       )
-	   )
+		|| strcmp(r->request_header.origin.hostname, "127.0.0.1") == 0
+		|| strcmp(r->request_header.origin.hostname, "") == 0
+		)
+	    )
     ) {
-      strbuf sb = strbuf_local(r->response.header.allow_origin, sizeof r->response.header.allow_origin);
-      strbuf_puts(sb, r->request_header.origin.scheme);
-      strbuf_puts(sb, "://");
-      strbuf_puts(sb, r->request_header.origin.hostname);
-      if (r->request_header.origin.port) {
-	strbuf_sprintf(sb, ":%u", r->request_header.origin.port);
-      }
-      if (!strbuf_overrun(sb)) {
-	r->response.header.allow_methods = "GET, POST, OPTIONS";
-	r->response.header.allow_headers = "Authorization";
-      } else {
-	r->response.header.allow_origin[0] = '\0';
-	return 403;
-      }
+      r->response.header.allow_origin = r->request_header.origin;
+      r->response.header.allow_methods = "GET, POST, OPTIONS";
+      r->response.header.allow_headers = "Authorization";
     } else {
       return 403;
     }
@@ -413,7 +405,7 @@ int accumulate_text(httpd_request *r, const char *partname, char *textbuf, size_
 	);
       strbuf msg = strbuf_alloca(100);
       strbuf_sprintf(msg, "Overflow in \"%s\" form part", partname);
-      http_request_simple_response(&r->http, 403, strbuf_str(msg));
+      http_request_simple_response(&r->http, 400, strbuf_str(msg));
       return 0;
     }
     memcpy(textbuf + *textlenp, buf, len);
@@ -442,8 +434,8 @@ int form_buf_malloc_accumulate(httpd_request *r, const char *partname, struct fo
       );
     strbuf msg = strbuf_alloca(100);
     strbuf_sprintf(msg, "Overflow in \"%s\" form part", partname);
-    http_request_simple_response(&r->http, 403, strbuf_str(msg));
-    return 403;
+    http_request_simple_response(&r->http, 400, strbuf_str(msg));
+    return 400;
   }
   if (newlen > f->buffer_alloc_size) {
     if ((f->buffer = erealloc(f->buffer, newlen)) == NULL) {
@@ -468,7 +460,7 @@ void form_buf_malloc_release(struct form_buf_malloc *f)
   f->size_limit = 0;
 }
 
-int http_response_content_type(httpd_request *r, const char *what, const struct mime_content_type *ct)
+int http_response_content_type(httpd_request *r, uint16_t result, const char *what, const struct mime_content_type *ct)
 {
   DEBUGF(httpd, "%s Content-Type: %s/%s%s%s%s%s", what, ct->type, ct->subtype,
 	 ct->charset[0] ? "; charset=" : "",
@@ -486,26 +478,26 @@ int http_response_content_type(httpd_request *r, const char *what, const struct 
     strbuf_sprintf(msg, "; charset=%s", ct->charset);
   if (ct->multipart_boundary[0])
     strbuf_sprintf(msg, "; boundary=%s", ct->multipart_boundary);
-  http_request_simple_response(&r->http, 403, strbuf_str(msg));
-  return 403;
+  http_request_simple_response(&r->http, result, strbuf_str(msg));
+  return result;
 }
 
-int http_response_content_disposition(httpd_request *r, const char *what, const char *type)
+int http_response_content_disposition(httpd_request *r, uint16_t result, const char *what, const char *type)
 {
   DEBUGF(httpd, "%s Content-Disposition: %s %s", what, type);
   strbuf msg = strbuf_alloca(100);
   strbuf_sprintf(msg, "%s Content-Disposition: %s", what, type);
-  http_request_simple_response(&r->http, 403, strbuf_str(msg));
-  return 403;
+  http_request_simple_response(&r->http, result, strbuf_str(msg)); // Unsupported Media Type
+  return result;
 }
 
-int http_response_form_part(httpd_request *r, const char *what, const char *partname, const char *text, size_t textlen)
+int http_response_form_part(httpd_request *r, uint16_t result, const char *what, const char *partname, const char *text, size_t textlen)
 {
   DEBUGF(httpd, "%s \"%s\" form part %s", what, partname, text ? alloca_toprint(-1, text, textlen) : "");
   strbuf msg = strbuf_alloca(100);
   strbuf_sprintf(msg, "%s \"%s\" form part", what, partname);
-  http_request_simple_response(&r->http, 403, strbuf_str(msg));
-  return 403;
+  http_request_simple_response(&r->http, result, strbuf_str(msg)); // Unsupported Media Type
+  return result;
 }
 
 int http_response_init_content_range(httpd_request *r, size_t resource_length)
