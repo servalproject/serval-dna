@@ -206,7 +206,7 @@ int create_serval_instance_dir()
   char path[PATH_MAX];
   // emkdire_info can log if paths don't exist, which will also try to create paths...
   // so try to create logging folders first
-  strbuf sb = strbuf_local(path, sizeof path);
+  strbuf sb = strbuf_local_buf(path);
   strbuf_system_log_path(sb);
   if (!strbuf_overrun(sb) && emkdirs_info(path, 0700) == -1)
     ret = -1;

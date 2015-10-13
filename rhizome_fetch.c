@@ -511,7 +511,7 @@ schedule_fetch(struct rhizome_fetch_slot *slot)
     slot->manifest->dataFileName = NULL;
     slot->manifest->dataFileUnlinkOnFree = 0;
     
-    strbuf r = strbuf_local(slot->request, sizeof slot->request);
+    strbuf r = strbuf_local_buf(slot->request);
     strbuf_sprintf(r, "GET /rhizome/file/%s HTTP/1.0\r\n", alloca_tohex_rhizome_filehash_t(slot->manifest->filehash));
     
     if (slot->manifest->is_journal){
@@ -569,7 +569,7 @@ schedule_fetch(struct rhizome_fetch_slot *slot)
 status_ok:
     ;
   } else {
-    strbuf r = strbuf_local(slot->request, sizeof slot->request);
+    strbuf r = strbuf_local_buf(slot->request);
     strbuf_sprintf(r, "GET /rhizome/manifestbyprefix/%s HTTP/1.0\r\n\r\n", alloca_tohex(slot->bid.binary, slot->prefix_length));
     if (strbuf_overrun(r))
       RETURN(WHY("request overrun"));

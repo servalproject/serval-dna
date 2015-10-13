@@ -698,7 +698,7 @@ int overlay_mdp_dnalookup_reply(struct subscriber *dest, mdp_port_t dest_port,
   
   /* build reply as TOKEN|URI|DID|NAME|<NUL> */
   char buff[256];
-  strbuf b = strbuf_local(buff, sizeof buff);
+  strbuf b = strbuf_local_buf(buff);
   strbuf_tohex(b, SID_STRLEN, resolved_sid->sid.binary);
   strbuf_sprintf(b, "|%s|%s|%s|", uri, did, name?name:"");
   if (strbuf_overrun(b))

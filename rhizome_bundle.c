@@ -1325,7 +1325,7 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
 static int rhizome_manifest_pack_variables(rhizome_manifest *m)
 {
   assert(m->var_count <= NELS(m->vars));
-  strbuf sb = strbuf_local((char*)m->manifestdata, sizeof m->manifestdata);
+  strbuf sb = strbuf_local_buf(m->manifestdata);
   unsigned i;
   for (i = 0; i < m->var_count; ++i) {
     strbuf_puts(sb, m->vars[i]);

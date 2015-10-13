@@ -253,7 +253,7 @@ static int app_config_paths(const struct cli_parsed *parsed, struct cli_context 
     cli_field_name(context, "SERVAL_CACHE_PATH", ":");
     cli_put_string(context, path, "\n");
   }
-  strbuf sb = strbuf_local(path, sizeof path);
+  strbuf sb = strbuf_local_buf(path);
   strbuf_system_log_path(sb);
   if (!strbuf_overrun(sb)) {
     cli_field_name(context, "SYSTEM_LOG_PATH", ":");

@@ -912,7 +912,7 @@ static int send_local_packet(int fd, const uint8_t *bytes, size_t len, const cha
 {
   struct socket_address addr;
   
-  strbuf d = strbuf_local(addr.local.sun_path, sizeof addr.local.sun_path);
+  strbuf d = strbuf_local_buf(addr.local.sun_path);
   strbuf_path_join(d, folder, file, NULL);
   if (strbuf_overrun(d))
     return WHYF("interface file name overrun: %s", alloca_str_toprint(strbuf_str(d)));

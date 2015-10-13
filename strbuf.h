@@ -220,13 +220,27 @@ typedef const struct strbuf *const_strbuf;
  *          strbuf b = strbuf_local(buf, len);
  *          strbuf_puts(b, "some text");
  *          strbuf_puts(b, " some more text");
- *          printf("%s\n", strbuf_str(b));
  *      }
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 #define strbuf_local(buf,len) strbuf_init(alloca(SIZEOF_STRBUF), (buf), (len))
 
+/** Convenience variant of the strbuf_local() macro that computes the 'len'
+ * parameter from 'sizeof buf'.
+ *
+ *      void print_integer(int value) {
+ *          char temp[20];
+ *          strbuf b = strbuf_local_buf(temp);
+ *          strbuf_puts(b, "[");
+ *          strbuf_sprintf(b, "%d", value);
+ *          strbuf_puts(b, "]");
+ *          printf("%s\n", temp);
+ *      }
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+#define strbuf_local_buf(buf) strbuf_local((char*)(buf), sizeof (buf))
 
 /** Initialise a strbuf with a caller-supplied backing buffer.  The current
  * backing buffer and its contents are forgotten, and all strbuf operations

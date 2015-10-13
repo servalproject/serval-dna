@@ -503,7 +503,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   char boundary[20];
   char buffer[8192];
 
-  strbuf bb = strbuf_local(boundary, sizeof boundary);
+  strbuf bb = strbuf_local_buf(boundary);
   strbuf_sprintf(bb, "%08lx%08lx", random(), random());
   assert(!strbuf_overrun(bb));
   strbuf content_preamble = strbuf_alloca(200);
@@ -522,7 +522,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 		     + r->cursor->buffer_offset_bytes
 		     + r->cursor->buffer_used
 		     + strbuf_len(content_postamble);
-  strbuf request = strbuf_local(buffer, sizeof buffer);
+  strbuf request = strbuf_local_buf(buffer);
   strbuf_sprintf(request,
       "POST /rhizome/enquiry HTTP/1.0\r\n"
       "Content-Length: %d\r\n"

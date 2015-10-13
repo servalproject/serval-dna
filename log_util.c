@@ -37,7 +37,7 @@ int logDump(int level, struct __sourceloc whence, char *name, const unsigned cha
     if (name)
       logMessage(level, whence, "Dump of %s", name);
     for(i = 0; i < len; i += 16) {
-      strbuf b = strbuf_local(buf, sizeof buf);
+      strbuf b = strbuf_local_buf(buf);
       strbuf_sprintf(b, "  %04zx :", i);
       int j;
       for (j = 0; j < 16 && i + j < len; j++)
@@ -208,7 +208,7 @@ int logBacktrace(int level, struct __sourceloc whence)
   int status = 0;
   if (waitpid(child_pid, &status, 0) == -1)
     WHY_perror("waitpid");
-  strbuf b = strbuf_local(buf, sizeof buf);
+  strbuf b = strbuf_local_buf(buf);
   strbuf_append_exit_status(b, status);
   logMessage(level, __NOWHERE__, "gdb %s", buf);
   unlink(tempfile);

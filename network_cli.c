@@ -470,7 +470,7 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
 
       cli_put_string(context, alloca_tohex_sid_t(p->sid), ":");
       char flags[32];
-      strbuf b = strbuf_local(flags, sizeof flags);
+      strbuf b = strbuf_local_buf(flags);
       
       switch (p->reachable){
 	case REACHABLE_SELF:

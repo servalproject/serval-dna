@@ -488,7 +488,7 @@ static int rhizome_sync_with_peers(int mode, int peer_count, const struct config
     const struct config_rhizome_peer *peer = peers[peer_number];
     if (strcasecmp(peer->protocol, "http") != 0)
       return WHYF("Unsupported Rhizome Direct protocol %s", alloca_str_toprint(peer->protocol));
-    strbuf h = strbuf_local(state->host, sizeof state->host);
+    strbuf h = strbuf_local_buf(state->host);
     strbuf_puts(h, peer->host);
     if (strbuf_overrun(h))
       return WHYF("Rhizome Direct host name too long: %s", alloca_str_toprint(peer->host));

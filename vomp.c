@@ -618,7 +618,7 @@ static int vomp_update_local_state(struct vomp_call_state *call, int new_state){
     unsigned char our_codecs[CODEC_FLAGS_LENGTH];
     char msg[256];
     monitor_get_all_supported_codecs(our_codecs);
-    strbuf b = strbuf_local(msg, sizeof msg);
+    strbuf b = strbuf_local_buf(msg);
     strbuf_sprintf(b, "\nCODECS:%06x", call->local.session);
     
     for (i = 0; i < 256; ++i){

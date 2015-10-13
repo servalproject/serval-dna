@@ -83,7 +83,7 @@ static int rhizome_status_page(httpd_request *r, const char *remainder)
   if (r->http.verb != HTTP_VERB_GET)
     return 405;
   char buf[32*1024];
-  strbuf b = strbuf_local(buf, sizeof buf);
+  strbuf b = strbuf_local_buf(buf);
   strbuf_puts(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>");
   strbuf_sprintf(b, "%d HTTP requests<br>", current_httpd_request_count);
   strbuf_sprintf(b, "%d Bundles transferring via MDP<br>", rhizome_cache_count());

@@ -21,7 +21,7 @@ static int root_page(httpd_request *r, const char *remainder)
   if (r->http.verb != HTTP_VERB_GET)
     return 405;
   char temp[8192];
-  strbuf b = strbuf_local(temp, sizeof temp);
+  strbuf b = strbuf_local_buf(temp);
   strbuf_sprintf(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>"
 	   "<h1>Hello, I'm %s*</h1>",
 	   alloca_tohex_sid_t_trunc(my_subscriber->sid, 16));
@@ -64,7 +64,7 @@ static int neighbour_page(httpd_request *r, const char *remainder)
   if (r->http.verb != HTTP_VERB_GET)
     return 405;
   char buf[8*1024];
-  strbuf b = strbuf_local(buf, sizeof buf);
+  strbuf b = strbuf_local_buf(buf);
   sid_t neighbour_sid;
   if (str_to_sid_t(&neighbour_sid, remainder) == -1)
     return 404;
@@ -85,7 +85,7 @@ static int interface_page(httpd_request *r, const char *remainder)
   if (r->http.verb != HTTP_VERB_GET)
     return 405;
   char buf[8*1024];
-  strbuf b=strbuf_local(buf, sizeof buf);
+  strbuf b=strbuf_local_buf(buf);
   int index=atoi(remainder);
   if (index<0 || index>=OVERLAY_MAX_INTERFACES)
     return 404;

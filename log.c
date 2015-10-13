@@ -450,7 +450,7 @@ static void _open_log_file(_log_iterator *it)
     if (_log_file_path == NULL)
       _log_file_path = getenv("SERVALD_LOG_FILE");
     if (_log_file_path == NULL && !cf_limbo) {
-      strbuf sbfile = strbuf_local(_log_file_path_buf, sizeof _log_file_path_buf);
+      strbuf sbfile = strbuf_local_buf(_log_file_path_buf);
       strbuf_serval_log_path(sbfile);
       strbuf_path_join(sbfile, config.log.file.directory_path, "", NULL); // with trailing '/'
       _compute_file_start_time(it);

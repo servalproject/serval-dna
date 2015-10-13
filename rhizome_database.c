@@ -318,7 +318,7 @@ int rhizome_opendb()
    All changes should attempt to preserve all existing interesting data */
 
   char buf[UUID_STRLEN + 1];
-  int r = sqlite_exec_strbuf_retry(&retry, strbuf_local(buf, sizeof buf), "SELECT uuid from IDENTITY LIMIT 1;", END);
+  int r = sqlite_exec_strbuf_retry(&retry, strbuf_local_buf(buf), "SELECT uuid from IDENTITY LIMIT 1;", END);
   if (r == -1)
     RETURN(-1);
   if (r) {
@@ -1579,7 +1579,7 @@ enum rhizome_bundle_status rhizome_find_duplicate(const rhizome_manifest *m, rhi
   if (m->service == NULL)
     return WHY("Manifest has no service");
   char sqlcmd[1024];
-  strbuf b = strbuf_local(sqlcmd, sizeof sqlcmd);
+  strbuf b = strbuf_local_buf(sqlcmd);
   strbuf_puts(b, "SELECT id, manifest, author FROM manifests WHERE filesize = ? AND service = ?");
   assert(m->filesize != RHIZOME_SIZE_UNSET);
   if (m->filesize > 0)

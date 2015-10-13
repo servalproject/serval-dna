@@ -155,7 +155,7 @@ static void recv_packet(int fd, struct network *network, struct peer *destinatio
     DEBUGF(verbose, "New peer %s", alloca_socket_address(&addr));
     struct socket_address unicast_addr;
     unicast_addr.local.sun_family=AF_UNIX;
-    strbuf d = strbuf_local(unicast_addr.local.sun_path, sizeof unicast_addr.local.sun_path);
+    strbuf d = strbuf_local_buf(unicast_addr.local.sun_path);
     static unsigned peerid=0;
     strbuf_sprintf(d, "%s/peer%d", network->path, peerid++);
     if (strbuf_overrun(d)) {
@@ -413,7 +413,7 @@ static int console_create(const struct cli_parsed *parsed, struct cli_context *U
   struct socket_address addr;
   addr.local.sun_family=AF_UNIX;
 
-  strbuf b = strbuf_local(addr.local.sun_path, sizeof addr.local.sun_path);
+  strbuf b = strbuf_local_buf(addr.local.sun_path);
   strbuf_path_join(b, path, "broadcast", NULL);
   if (strbuf_overrun(b))
     return WHY("Path too long");
