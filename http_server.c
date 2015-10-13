@@ -269,6 +269,7 @@ static void _mover_mem(char *dst, const char *src, size_t len)
     memmove(dst, src, len);
 }
 
+#if 0
 /* Allocate space from the start of the request buffer to hold the given substring plus a
  * terminating NUL.
  *
@@ -281,6 +282,7 @@ static int _reserve_substring(struct http_request *r, const char **resp, struct 
   assert(strnchr(str.start, len, '\0') == NULL);
   return _reserve(r, resp, str.start, len, _mover_mem);
 }
+#endif
 
 /* The same as _reserve(), but takes a NUL-terminated string as a source argument instead of a
  * substring.
@@ -744,21 +746,18 @@ static int _parse_origin(struct http_request *r, struct http_origin *origin, siz
 {
   char *start = r->cursor;
   char *end = start + header_bytes;
-  if (_skip_literal(r, "http://")) {
-    origin->scheme = "http";
-  } else if (_skip_literal(r, "https://")) {
-    origin->scheme = "https";
-  } else if (_skip_literal(r, "file://")) {
-    origin->scheme = "file";
-  } else {
-    IDEBUGF(r->debug, "Ignoring HTTP Origin with unsupported URI scheme: %s", alloca_toprint(50, start, header_bytes));
-    r->cursor = end;
+  bzero(origin, sizeof *origin);
+  if (_skip_literal(r, "null") && (r->cursor == end || _skip_space(r))) {
+    origin->null = 1;
     return 1;
   }
-  origin->hostname = "";
-  origin->port = 0;
+  r->cursor = start;
+  struct substring scheme;
   struct substring hostname;
-  if (_skip_word_printable(r, &hostname, '/') > 0) {
+  if (	 _skip_word_printable(r, &scheme, ':')
+      && _skip_literal(r, "://")
+      && _skip_word_printable(r, &hostname, '/')
+  ) {
     const char *port = hostname.end - 1;
     while (port > hostname.start && isdigit(*port))
       --port;
@@ -770,8 +769,15 @@ static int _parse_origin(struct http_request *r, struct http_origin *origin, siz
       }
     }
     assert(hostname.end > hostname.start);
-    if (!_reserve_substring(r, &origin->hostname, hostname))
-      return 0; // error
+    strbuf sb = strbuf_local_buf(origin->scheme);
+    strbuf_ncat(sb, scheme.start, scheme.end - scheme.start);
+    strbuf sh = strbuf_local_buf(origin->hostname);
+    strbuf_ncat(sh, hostname.start, hostname.end - hostname.start);
+    if (strbuf_overrun(sb) || strbuf_overrun(sh)) {
+      IDEBUGF(r->debug, "Ignoring HTTP Origin with over-long scheme: %s", alloca_toprint(50, start, header_bytes));
+      r->cursor = end;
+      return 1;
+    }
   }
   _skip_literal(r, "/");
   return 1;
@@ -1103,7 +1109,7 @@ static int http_request_parse_header(struct http_request *r)
   }
   _rewind(r);
   if (_skip_literal_nocase(r, "Origin:")) {
-    if (r->request_header.origin.scheme) {
+    if (r->request_header.origin.null || r->request_header.origin.scheme[0]) {
       IDEBUGF(r->debug, "Skipping duplicate HTTP header Origin: %s", alloca_toprint(50, sol, r->end - sol));
       r->cursor = nextline;
       _commit(r);
@@ -2117,14 +2123,24 @@ static int _render_response(struct http_request *r)
   }
   if (hr.header.content_length != CONTENT_LENGTH_UNKNOWN)
     strbuf_sprintf(sb, "Content-Length: %"PRIhttp_size_t"\r\n", hr.header.content_length);
-  
-  if (hr.header.allow_origin)
-    strbuf_sprintf(sb, "Access-Control-Allow-Origin: %s\r\n", hr.header.allow_origin);
+  if (hr.header.allow_origin.null || hr.header.allow_origin.scheme[0]) {
+    strbuf_puts(sb, "Access-Control-Allow-Origin: ");
+    if (hr.header.allow_origin.null) {
+      strbuf_puts(sb, "null");
+    } else {
+      assert(hr.header.allow_origin.hostname[0]);
+      strbuf_puts(sb, hr.header.allow_origin.scheme);
+      strbuf_puts(sb, "://");
+      strbuf_puts(sb, hr.header.allow_origin.hostname);
+      if (hr.header.allow_origin.port)
+	strbuf_sprintf(sb, ":%u", hr.header.allow_origin.port);
+    }
+    strbuf_puts(sb, "\r\n");
+  }
   if (hr.header.allow_methods)
     strbuf_sprintf(sb, "Access-Control-Allow-Methods: %s\r\n", hr.header.allow_methods);
   if (hr.header.allow_headers)
     strbuf_sprintf(sb, "Access-Control-Allow-Headers: %s\r\n", hr.header.allow_headers);
-  
   const char *scheme = NULL;
   switch (hr.header.www_authenticate.scheme) {
     case NOAUTH: break;

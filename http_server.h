@@ -88,8 +88,9 @@ struct http_www_authenticate {
 };
 
 struct http_origin {
-  const char *scheme;
-  const char *hostname;
+  uint8_t null;
+  char scheme[10]; // enough for "https"
+  char hostname[40]; // enough for "localhost"
   uint16_t port;
 };
 
@@ -108,7 +109,7 @@ struct http_response_headers {
   http_size_t resource_length; // size of entire resource
   const char *content_type; // "type/subtype"
   const char *boundary;
-  char allow_origin[24]; // max supported str (for now) "https://localhost:65537"
+  struct http_origin allow_origin;
   const char *allow_methods;
   const char *allow_headers;
   struct http_www_authenticate www_authenticate;
