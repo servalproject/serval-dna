@@ -42,8 +42,7 @@ static uint8_t allow_duplicates = 1;
 
 static struct item *create_item(const char *key){
   struct item *ret=calloc(1,sizeof(struct item));
-  strncpy(ret->key,key,sizeof(ret->key));
-  ret->key[sizeof(ret->key) -1]=0;
+  buf_strncpy_nul(ret->key, key);
   return ret;
 }
 
@@ -85,8 +84,8 @@ static int add_item(const char *key, const char *value){
   
   *last_ptr = item = create_item(key);
   
-  strncpy(item->value,value,sizeof(item->value));
-  item->value[sizeof(item->value) -1]=0;
+  buf_strncpy_nul(item->value, value);
+
   // expire after 20 minutes
   item->expires = gettime_ms()+1200000;
   return 0;

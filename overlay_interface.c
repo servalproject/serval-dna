@@ -579,7 +579,7 @@ overlay_interface_init(const char *name,
   bzero(interface, sizeof(overlay_interface));
   interface->state=INTERFACE_STATE_DOWN;
   
-  strncpy(interface->name, name, sizeof interface->name);
+  buf_strncpy_nul(interface->name, name);
   
   set_destination_ref(&interface->destination, NULL);
   interface->destination = new_destination(interface);

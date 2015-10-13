@@ -38,6 +38,7 @@
 
 #define alloca_strdup(str)       strcpy(alloca(strlen(str) + 1), (str))
 #define alloca_strndup(str,len)  strncpy_nul(alloca((len) + 1), (str), (len) + 1)
+#define buf_strncpy_nul(buf,str) strncpy_nul((buf), (str), sizeof(buf))
 
 /* Like strncpy(3) but ensures the string is nul terminated.
  *
