@@ -117,7 +117,8 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
   if (cli_arg(parsed, "author_sid", &authorSidHex, cli_optional_sid, "") == -1)
     return -1;
   cli_arg(parsed, "manifestpath", &manifestpath, NULL, "");
-  cli_arg(parsed, "--bundle", &bundleIdHex, cli_bid, "") == 0 || cli_arg(parsed, "bundleid", &bundleIdHex, cli_optional_bid, "");
+  if (cli_arg(parsed, "--bundle", &bundleIdHex, cli_bid, "") != 0)
+    cli_arg(parsed, "bundleid", &bundleIdHex, cli_optional_bid, "");
   if (cli_arg(parsed, "bsk", &bsktext, cli_optional_bundle_secret_key, NULL) == -1)
     return -1;
 

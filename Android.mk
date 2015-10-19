@@ -16,7 +16,7 @@ SQLITE3_INC := $(LOCAL_PATH)/sqlite-amalgamation-3070900
 
 SERVALD_LOCAL_CFLAGS = \
 	-g \
-	-Wall -Wno-unused-value -Werror \
+	-Wall -Wno-unused-variable -Wno-unused-value -Werror \
         -DSERVALD_VERSION="\"Android\"" -DSERVALD_COPYRIGHT="\"Android\"" \
         -DINSTANCE_PATH="\"/data/data/org.servalproject/var/serval-node\"" \
         -DSHELL -DPACKAGE_NAME=\"\" -DPACKAGE_TARNAME=\"\" -DPACKAGE_VERSION=\"\" \

@@ -1547,7 +1547,7 @@ struct keypair *keyring_find_sas_private(keyring_file *k, keyring_identity *iden
   
   keypair *kp = keyring_identity_keytype(identity, KEYTYPE_CRYPTOSIGN);
   if (kp==NULL)
-    RETURNNULL(WHYNULL("Identity lacks SAS"));
+    RETURN(WHYNULL("Identity lacks SAS"));
   
   if (!kp->verified){
     if (!rhizome_verify_bundle_privatekey(kp->private_key,kp->public_key)){
@@ -1991,7 +1991,7 @@ unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknow
   keyring_iterator it;
   keyring_iterator_start(keyring, &it);
   if (!keyring_find_sid(&it, known_sidp))
-    RETURNNULL(WHYNULL("known key is not in fact known."));
+    RETURN(WHYNULL("known key is not in fact known."));
 
   /* work out where to store it */
   if (nm_slots_used<NM_CACHE_SLOTS) {

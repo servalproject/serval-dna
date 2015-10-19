@@ -375,14 +375,6 @@ static inline int _skip_any(struct http_request *r)
   return 1;
 }
 
-static inline int _skip_if(struct http_request *r, int (*predicate)(int))
-{
-  if (_run_out(r) || !predicate(*r->cursor))
-    return 0;
-  ++r->cursor;
-  return 1;
-}
-
 static inline int _skip_while(struct http_request *r, int (*predicate)(int))
 {
   while (!_run_out(r) && predicate(*r->cursor))
@@ -598,11 +590,6 @@ static inline int _parse_http_size_t(struct http_request *r, http_size_t *szp)
 static inline int _parse_uint32(struct http_request *r, uint32_t *uint32p)
 {
   return !_run_out(r) && isdigit(*r->cursor) && str_to_uint32(r->cursor, 10, uint32p, (const char **)&r->cursor);
-}
-
-static inline int _parse_uint16(struct http_request *r, uint16_t *uint16p)
-{
-  return !_run_out(r) && isdigit(*r->cursor) && str_to_uint16(r->cursor, 10, uint16p, (const char **)&r->cursor);
 }
 
 static unsigned _parse_ranges(struct http_request *r, struct http_range *range, unsigned nrange)

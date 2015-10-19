@@ -1095,25 +1095,6 @@ static const struct config_network_interface *find_interface_config(const char *
   return NULL;
 }
 
-static int interface_unregister(const char *name, 
-			   struct socket_address *addr
-)
-{
-  // Find the matching non-dummy interface rule.
-  const struct config_network_interface *ifconfig = find_interface_config(name, SOCK_DGRAM);
-  if (!ifconfig)
-    return 0;
-    
-  if (addr->addr.sa_family==AF_INET)
-    addr->inet.sin_port = htons(ifconfig->port);
-  
-  struct overlay_interface *interface = overlay_interface_find_name_addr(name, addr);
-  if (interface)
-    overlay_interface_close(interface);
-    
-  return 0;
-}
-
 /* Register the real interface, or update the existing interface registration. */
 int
 overlay_interface_register(const char *name,
@@ -1153,6 +1134,25 @@ overlay_interface_register(const char *name,
 }
 
 #ifdef HAVE_LINUX_NETLINK_H
+
+static int interface_unregister(const char *name, 
+			   struct socket_address *addr
+)
+{
+  // Find the matching non-dummy interface rule.
+  const struct config_network_interface *ifconfig = find_interface_config(name, SOCK_DGRAM);
+  if (!ifconfig)
+    return 0;
+    
+  if (addr->addr.sa_family==AF_INET)
+    addr->inet.sin_port = htons(ifconfig->port);
+  
+  struct overlay_interface *interface = overlay_interface_find_name_addr(name, addr);
+  if (interface)
+    overlay_interface_close(interface);
+    
+  return 0;
+}
 
 DEFINE_ALARM(netlink_poll);
 void netlink_poll(struct sched_ent *alarm)

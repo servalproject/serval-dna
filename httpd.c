@@ -236,7 +236,7 @@ void httpd_server_poll(struct sched_ent *alarm)
 {
   if (alarm->poll.revents & (POLLIN | POLLOUT)) {
     struct sockaddr addr;
-    unsigned int addr_len = sizeof addr;
+    socklen_t addr_len = sizeof addr;
     int sock;
     if ((sock = accept(httpd_server_socket, &addr, &addr_len)) == -1) {
       if (errno && errno != EAGAIN)
