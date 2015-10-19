@@ -1376,7 +1376,7 @@ static void trigger_rhizome_bundle_added_debug(rhizome_manifest *m)
 	);
 }
 
-DEFINE_TRIGGER(bundle_add, trigger_rhizome_bundle_added_debug)
+DEFINE_TRIGGER(bundle_add, trigger_rhizome_bundle_added_debug);
 
 /* The cursor struct must be zerofilled and the query parameters optionally filled in prior to
  * calling this function.
