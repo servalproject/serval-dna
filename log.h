@@ -70,12 +70,19 @@ __SERVAL_LOG_INLINE void logMessage(int level, struct __sourceloc whence, const 
   va_end(ap);
 }
 
+__SERVAL_LOG_INLINE int logErrorAndReturnNegativeOne(struct __sourceloc whence, const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  vlogMessage(LOG_LEVEL_ERROR, whence, fmt, ap);
+  va_end(ap);
+  return -1;
+}
+
 // Useful logging primitive macros.
 #define LOGF(L,F,...)       logMessage(L, __WHENCE__, F, ##__VA_ARGS__)
-#define LOGF_perror(L,F,...) logMessage_perror(L, __WHENCE__, F, ##__VA_ARGS__)
+#define LOGF_perror(L,F,...) logMessage(L, __WHENCE__, F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
 #define LOG_perror(L,X)     LOGF_perror(L, "%s", (X))
-
-#define logMessage_perror(L,whence,F,...) (logMessage(L, whence, F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno))
 
 #define NOWHENCE(LOGSTMT)   do { const struct __sourceloc __whence = __NOWHENCE__; LOGSTMT; } while (0)
 
@@ -86,11 +93,9 @@ __SERVAL_LOG_INLINE void logMessage(int level, struct __sourceloc whence, const 
 #define FATALF_perror(F,...) FATALF(F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
 #define FATAL_perror(X)     FATALF_perror("%s", (X))
 
-#define WHYF(F,...)         (LOGF(LOG_LEVEL_ERROR, F, ##__VA_ARGS__), -1)
+#define WHYF(F,...)         logErrorAndReturnNegativeOne(__WHENCE__, F, ##__VA_ARGS__)
 #define WHY(X)              WHYF("%s", (X))
-#define WHYFNULL(F,...)     (LOGF(LOG_LEVEL_ERROR, F, ##__VA_ARGS__), NULL)
-#define WHYNULL(X)          (WHYFNULL("%s", (X)))
-#define WHYF_perror(F,...)  (LOGF_perror(LOG_LEVEL_ERROR, F, ##__VA_ARGS__), -1)
+#define WHYF_perror(F,...)  WHYF(F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
 #define WHY_perror(X)       WHYF_perror("%s", (X))
 #define WHY_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_ERROR, __WHENCE__, (X), (ARGC), (ARGV))
 

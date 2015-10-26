@@ -92,8 +92,10 @@ static const char *_rhizome_manifest_set(struct __sourceloc __whence, rhizome_ma
       m->values[i] = ret;
       return ret;
     }
-  if (m->var_count >= NELS(m->vars))
-    return WHYNULL("no more manifest vars");
+  if (m->var_count >= NELS(m->vars)) {
+    WHY("no more manifest vars");
+    return NULL;
+  }
   if ((m->vars[m->var_count] = str_edup(var)) == NULL)
     return NULL;
   const char *ret = m->values[m->var_count] = str_edup(value);
