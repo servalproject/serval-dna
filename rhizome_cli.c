@@ -103,14 +103,14 @@ static int app_rhizome_hash_file(const struct cli_parsed *parsed, struct cli_con
 
 DEFINE_CMD(app_rhizome_add_file, 0,
   "Add a file to Rhizome and optionally write its manifest to the given path",
-  "rhizome","add","file" KEYRING_PIN_OPTIONS,"[--bundle=<bundleid>]","[--force-new]","<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]","...");
+  "rhizome","add","file" KEYRING_PIN_OPTIONS,"[--bundle=<bundleid>]","[--sender=<sender_sid>]","[--recipient=<recipient_sid>]","[--force-new]","<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]","...");
 DEFINE_CMD(app_rhizome_add_file, 0,
   "Append content to a journal bundle",
   "rhizome", "journal", "append" KEYRING_PIN_OPTIONS, "<author_sid>", "<bundleid>", "<filepath>", "[<bsk>]");
 static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_context *context)
 {
   DEBUG_cli_parsed(verbose, parsed);
-  const char *filepath, *manifestpath, *bundleIdHex, *authorSidHex, *bsktext;
+  const char *filepath, *manifestpath, *bundleIdHex, *authorSidHex, *senderSidHex, *recipientSidHex, *bsktext;
 
   int force_new = 0 == cli_arg(parsed, "--force-new", NULL, NULL, NULL);
   cli_arg(parsed, "filepath", &filepath, NULL, "");
@@ -121,12 +121,27 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
     cli_arg(parsed, "bundleid", &bundleIdHex, cli_optional_bid, "");
   if (cli_arg(parsed, "bsk", &bsktext, cli_optional_bundle_secret_key, NULL) == -1)
     return -1;
+    
+  cli_arg(parsed, "--sender", &senderSidHex, cli_optional_sid, "") == 0 || cli_arg(parsed, "sender_sid", &senderSidHex, cli_optional_sid, "");
+  cli_arg(parsed, "--recipient", &recipientSidHex, cli_optional_sid, "") == 0 || cli_arg(parsed, "recipient_sid", &recipientSidHex, cli_optional_sid, "");
 
   sid_t authorSid;
   if (!authorSidHex || !*authorSidHex)
     authorSidHex = NULL;
   else if (str_to_sid_t(&authorSid, authorSidHex) == -1)
     return WHYF("invalid author_sid: %s", authorSidHex);
+  
+  sid_t senderSid;
+  if (!senderSidHex || !*senderSidHex)
+    senderSidHex = NULL;
+  else if (str_to_sid_t(&senderSid, senderSidHex) == -1)
+    return WHYF("invalid sender_sid: %s", senderSidHex);
+  
+  sid_t recipientSid;
+  if (!recipientSidHex || !*recipientSidHex)
+    recipientSidHex = NULL;
+  else if (str_to_sid_t(&recipientSid, recipientSidHex) == -1)
+    return WHYF("invalid recipient_sid: %s", recipientSidHex);
   
   rhizome_bid_t bid;
   if (!bundleIdHex || !*bundleIdHex)
@@ -202,6 +217,11 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
     }
   }
 
+  if(senderSidHex)
+    rhizome_manifest_set_sender(m, &senderSid);
+  if(recipientSidHex)
+    rhizome_manifest_set_recipient(m, &recipientSid);
+  
   /* Create an in-memory manifest for the file being added.
    */
   rhizome_manifest *mout = NULL;
