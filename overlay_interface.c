@@ -223,6 +223,23 @@ error:
   return -1;
 }
 
+static int overlay_bind_interface(overlay_interface *interface){
+  if (interface->alarm.poll.fd>=0)
+    return 0;
+    
+  // We might hear about an interface coming up, after the address is assigned, 
+  // but before the routing table is updated.
+  // So this bind might fail, which is ok. We just need to try again.
+  interface->alarm.poll.fd = overlay_bind_socket(&interface->address);
+  if (interface->alarm.poll.fd<0)
+    return -1;
+    
+  DEBUGF2(packetrx, io, "Bound to %s", alloca_socket_address(&interface->address));
+  interface->alarm.poll.events=POLLIN;
+  watch(&interface->alarm);
+  return 0;
+}
+
 // find an interface marked for use as a default internet route
 overlay_interface * overlay_interface_get_default(){
   int i;
@@ -452,29 +469,14 @@ static void calc_next_tick(struct overlay_interface *interface)
     time_ms_t next_read = gettime_ms()+10;
     if (next_tick > next_read)
       next_tick = next_read;
+  }else if(interface->ifconfig.socket_type==SOCK_DGRAM && interface->alarm.poll.fd<0){
+    time_ms_t bind_again = gettime_ms()+50;
+    if (next_tick > bind_again)
+      next_tick = bind_again;
   }
   
   interface->alarm.alarm = next_tick;
   interface->alarm.deadline=interface->alarm.alarm+interface->destination->ifconfig.tick_ms/2;
-}
-
-static int
-overlay_interface_init_socket(overlay_interface *interface)
-{
-  
-  interface->alarm.poll.fd = overlay_bind_socket(&interface->address);
-      
-  if (interface->alarm.poll.fd<0){
-    interface->state=INTERFACE_STATE_DOWN;
-    return WHYF("Failed to bind interface %s", interface->name);
-  }
-  
-  DEBUGF2(packetrx, io, "Bound to %s", alloca_socket_address(&interface->address));
-
-  interface->alarm.poll.events=POLLIN;
-  watch(&interface->alarm);
-  
-  return 0;
 }
 
 int overlay_destination_configure(struct network_destination *dest, const struct config_mdp_iftype *ifconfig)
@@ -581,10 +583,9 @@ overlay_interface_init(const char *name,
   
   buf_strncpy_nul(interface->name, name);
   
-  set_destination_ref(&interface->destination, NULL);
   interface->destination = new_destination(interface);
   
-  interface->alarm.poll.fd=0;
+  interface->alarm.poll.fd=-1;
   interface->tx_count=0;
   interface->recv_count=0;
 
@@ -596,9 +597,6 @@ overlay_interface_init(const char *name,
   interface_poll_stats.name="overlay_interface_poll";
   interface->alarm.stats=&interface_poll_stats;
   
-  if (overlay_interface_configure(interface, ifconfig)==-1)
-    return -1;
-  
   switch(ifconfig->socket_type){
     case SOCK_DGRAM:
       if (ifconfig->broadcast.drop || ifconfig->unicast.drop || ifconfig->drop_packets)
@@ -606,13 +604,11 @@ overlay_interface_init(const char *name,
       interface->netmask = netmask->inet.sin_addr;
       interface->local_echo = 1;
       
-      if (overlay_interface_init_socket(interface))
-	return WHY("overlay_interface_init_socket() failed");
+      overlay_bind_interface(interface);
       break;
       
     case SOCK_EXT:
       interface->local_echo = 0;
-      interface->alarm.poll.fd = -1;
       break;
       
     case SOCK_STREAM:
@@ -649,6 +645,9 @@ overlay_interface_init(const char *name,
       }
     }
   }
+  
+  if (overlay_interface_configure(interface, ifconfig)==-1)
+    return -1;
   
   interface->state=INTERFACE_STATE_UP;
   monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%s:UP\n", interface->name);
@@ -835,14 +834,18 @@ static void overlay_interface_poll(struct sched_ent *alarm)
   if (alarm->poll.revents==0){
     alarm->alarm=TIME_MS_NEVER_WILL;
     
-    if (interface->state==INTERFACE_STATE_UP 
-      && interface->destination->ifconfig.tick_ms>0
-      && interface->destination->ifconfig.send
-      && !radio_link_is_busy(interface)){
+    if (interface->state==INTERFACE_STATE_UP && !radio_link_is_busy(interface)){
       
-      if (now >= interface->destination->last_tx+interface->destination->ifconfig.tick_ms)
-        overlay_send_tick_packet(interface->destination);
+      // if we couldn't initially bind to our dgram socket, try again now
+      if (interface->ifconfig.socket_type!=SOCK_DGRAM 
+          || overlay_bind_interface(interface)==0){
+	
+	if (interface->destination->ifconfig.tick_ms>0
+	    && interface->destination->ifconfig.send
+	    && now >= interface->destination->last_tx+interface->destination->ifconfig.tick_ms)
+	  overlay_send_tick_packet(interface->destination);
       
+      }
       calc_next_tick(interface);
     }
     
@@ -1040,6 +1043,10 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
     }
     case SOCK_DGRAM:
     {
+      // check that we have bound the interface
+      if (overlay_bind_interface(interface)==-1)
+	return -1;
+      
       set_nonblock(interface->alarm.poll.fd);
       if (destination->address.addr.sa_family == AF_UNIX
 	&& !destination->unicast){
