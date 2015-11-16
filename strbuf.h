@@ -224,7 +224,11 @@ typedef const struct strbuf *const_strbuf;
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-#define strbuf_local(buf,len) strbuf_init(alloca(SIZEOF_STRBUF), (buf), (len))
+#ifdef __GNUC__
+#define strbuf_local(buf,len) __strbuf_init_chk(alloca(SIZEOF_STRBUF), (char*)(buf), (len), __builtin_object_size((buf), 1))
+#else
+#define strbuf_local(buf,len) strbuf_init(alloca(SIZEOF_STRBUF), (char*)(buf), (len))
+#endif
 
 /** Convenience variant of the strbuf_local() macro that computes the 'len'
  * parameter from 'sizeof buf'.
@@ -292,10 +296,23 @@ size_t __buffer_arg_is_not_array() __attribute__ ((error("argument to strbuf_loc
  * If the 'size' argument is zero, then strbuf does not write into its backing
  * buffer, not even a terminating nul.
  *
+ * The __strbuf_init_chk() function calls strbuf_init() after ensuring that if
+ * the given buffer's size is known at compile time (chk != -1) and the strbuf
+ * is not being initialised to "indefinite" length (size != -1) then the given
+ * size does not exceed the size of the buffer (size <= chk).
+ * https://gcc.gnu.org/onlinedocs/gcc/Object-Size-Checking.html#Object-Size-Checking
+ *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 strbuf strbuf_init(strbuf sb, char *buffer, ssize_t size);
 
+#ifdef __GNUC__
+__STRBUF_INLINE strbuf __strbuf_init_chk(strbuf sb, char *buffer, ssize_t size, size_t chk) {
+    if (chk != (size_t)-1 && size != (ssize_t)-1)
+        assert((size_t)size <= chk); // buffer overflow
+    return strbuf_init(sb, buffer, size);
+}
+#endif
 
 /** Initialise a strbuf and its backing buffer inside the caller-supplied
  * buffer of the given size.  If the 'size' argument is less than
