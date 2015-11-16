@@ -35,8 +35,8 @@ strbuf strbuf_init(strbuf sb, char *buffer, ssize_t size)
 strbuf strbuf_reset(strbuf sb)
 {
   sb->current = sb->start;
-  if (sb->start)
-    *sb->start = '\0';
+  if (sb->current && (!sb->end || (sb->current <= sb->end)))
+    *sb->current = '\0';
   return sb;
 }
 
