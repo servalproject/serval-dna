@@ -132,6 +132,25 @@ typedef const struct strbuf *const_strbuf;
 #define SIZEOF_STRBUF (sizeof(struct strbuf))
 
 /** Convenience macro for allocating a strbuf and its backing buffer on the
+ * heap using a single call to malloc(3).
+ *
+ *      strbuf func1() {
+ *          strbuf b = strbuf_malloc(1024);
+ *          strbuf_puts(b, "some text");
+ *          strbuf_puts(b, " some more text");
+ *          return b;
+ *      }
+ *      strbuf func2() {
+ *          strbuf b = func1();
+ *          printf("%s\n", strbuf_str(b));
+ *          free(b);
+ *      }
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+#define strbuf_malloc(size) strbuf_make(malloc(SIZEOF_STRBUF + (size)), SIZEOF_STRBUF + (size))
+
+/** Convenience macro for allocating a strbuf and its backing buffer on the
  * stack within the calling function.  The returned strbuf is only valid for
  * the duration of the function, so it must not be returned.  See alloca(3) for
  * more information.
