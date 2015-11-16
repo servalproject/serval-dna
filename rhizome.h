@@ -414,6 +414,8 @@ enum rhizome_bundle_status {
     RHIZOME_BUNDLE_STATUS_BUSY = 9, // the database is currently busy
 };
 
+// Useful for initialising a variable then checking later that it was set to a
+// valid value (typically FATAL if not).
 #define INVALID_RHIZOME_BUNDLE_STATUS ((enum rhizome_bundle_status)-2)
 
 const char *rhizome_bundle_status_message(enum rhizome_bundle_status);
@@ -431,6 +433,8 @@ enum rhizome_payload_status {
     RHIZOME_PAYLOAD_STATUS_EVICTED = 7, // other payloads in our store are more important
 };
 
+// Useful for initialising a variable then checking later that it was set to a
+// valid value (typically FATAL if not).
 #define INVALID_RHIZOME_PAYLOAD_STATUS ((enum rhizome_payload_status)-2)
 
 const char *rhizome_payload_status_message(enum rhizome_payload_status);
