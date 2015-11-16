@@ -1,6 +1,6 @@
 /*
 Serval string buffer primitives
-Copyright (C) 2012 Serval Project Inc.
+Copyright (C) 2012-2015 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -238,9 +238,39 @@ typedef const struct strbuf *const_strbuf;
  *          printf("%s\n", temp);
  *      }
  *
+ * WARNING: 'buf' must name a char[] array, not a char* pointer.  The following
+ * code is wrong:
+ *
+ *      char *p = malloc(50);
+ *      ...
+ *      strbuf b = strbuf_local_buf(p); // ERROR!
+ *
+ * In the above example, sizeof(p) will be 8 (4 on 32-bit architectures) which
+ * is NOT the size of the buffer that p points to (50), and not the desired
+ * effect: the string in strbuf b will be limited to 7 chars in length.  If the
+ * buffer pointed to by p were less than 8 in size, then appending to strbuf b
+ * would cause memory corruption and a likely SIGSEGV.
+ *
+ * If compiled with the GNU C compiler, then the above example would result in
+ * an error at compile time.
+ *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-#define strbuf_local_buf(buf) strbuf_local((char*)(buf), sizeof (buf))
+#ifdef __GNUC__
+#define strbuf_local_buf(buf) strbuf_local((char*)(buf), (sizeof(buf) == __builtin_object_size(buf, 1)) ? sizeof(buf) : __buffer_arg_is_not_array())
+#else
+#define strbuf_local_buf(buf) strbuf_local((char*)(buf), sizeof(buf))
+#endif
+
+#ifdef __GNUC__
+// If the following error occurs at compile time or this function is not found
+// at link time, it means that the argument passed to strbuf_local_buf() was
+// not an array whose size is known at compile time.  The most common cause of
+// this is passing a pointer as the argument.  The solution is to use
+// strbuf_local(b, len) instead of strbuf_local_buf(b), and supply the length
+// of the buffer explicitly.
+size_t __buffer_arg_is_not_array() __attribute__ ((error("argument to strbuf_local_buf() must be an array not a pointer")));
+#endif
 
 /** Initialise a strbuf with a caller-supplied backing buffer.  The current
  * backing buffer and its contents are forgotten, and all strbuf operations
