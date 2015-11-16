@@ -42,7 +42,7 @@ strbuf strbuf_reset(strbuf sb)
 
 strbuf strbuf_ncat(strbuf sb, const char *text, size_t len)
 {
-  if (sb->start && (!sb->end || (sb->current < sb->end))) {
+  if (len && sb->start && (!sb->end || (sb->current < sb->end))) {
     register size_t n = sb->end ? min(sb->end - sb->current, len) : len;
     char *c;
     for (c = sb->current; n && (*c = *text); --n, ++c, ++text)
