@@ -20,7 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __STRBUF_H__
 #define __STRBUF_H__
 
-/*
+/**
     A strbuf provides a convenient set of primitives for assembling a
     nul-terminated string in a fixed-size, caller-provided backing buffer,
     using a sequence of append operations.
@@ -98,7 +98,7 @@ struct strbuf {
     char *current;
 };
 
-/* Static constant for initialising a struct strbuf to empty:
+/** Static constant for initialising a struct strbuf to empty:
  *      struct strbuf ssb = STRUCT_STRBUF_EMPTY;
  * Immediately following this assignment, the following properties hold:
  *      strbuf_is_empty(&ssb)
@@ -110,7 +110,7 @@ struct strbuf {
  */
 #define STRUCT_STRBUF_EMPTY ((struct strbuf){NULL, NULL, NULL})
 
-/* Constant for initialising a struct strbuf to a static backing buffer:
+/** Constant for initialising a struct strbuf to a static backing buffer:
  *      char buf[n];
  *      struct strbuf ssb = STRUCT_STRBUF_INIT_STATIC(buf);
  * Immediately following this assignment, the following properties hold:
@@ -176,6 +176,9 @@ typedef const struct strbuf *const_strbuf;
  *
  *      strbuf b;
  *      STRBUF_ALLOCA_FIT(b, 20, (strbuf_append_variable_content(b, ...)));
+ *
+ * WARNING: this macro expands its third argument twice, so the third argument
+ * must have no side effects.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
@@ -352,7 +355,6 @@ __STRBUF_INLINE strbuf strbuf_make(char *buffer, size_t size) {
   return size < SIZEOF_STRBUF ? NULL : strbuf_init((strbuf) buffer, buffer + SIZEOF_STRBUF, size - SIZEOF_STRBUF);
 }
 
-
 /** Reset a strbuf.  The current position is set to the start of the buffer, so
  * the next append will write at the start of the buffer.  The prior contents
  * of the buffer are forgotten and will be overwritten.
@@ -365,7 +367,6 @@ __STRBUF_INLINE strbuf strbuf_make(char *buffer, size_t size) {
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 strbuf strbuf_reset(strbuf sb);
-
 
 /** Append a nul-terminated string to the strbuf up to a maximum number,
  * truncating if necessary to avoid buffer overrun, and terminating with a nul
@@ -389,7 +390,6 @@ strbuf strbuf_reset(strbuf sb);
  */
 strbuf strbuf_ncat(strbuf sb, const char *text, size_t len);
 
-
 /** Append a nul-terminated string to the strbuf, truncating if necessary to
  * avoid buffer overrun.  Return a pointer to the strbuf so that concatenations
  * can be chained in a single line: strbuf_puts(strbuf_puts(sb, "a"), "b");
@@ -408,7 +408,6 @@ strbuf strbuf_ncat(strbuf sb, const char *text, size_t len);
  */
 strbuf strbuf_puts(strbuf sb, const char *text);
 
-
 /** Append binary data strbuf, as up to 'len' characters of uppercase
  * hexadecimal format, truncating if necessary to avoid buffer overrun.  Return
  * a pointer to the strbuf.
@@ -425,7 +424,6 @@ strbuf strbuf_puts(strbuf sb, const char *text);
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 strbuf strbuf_tohex(strbuf sb, size_t strlen, const unsigned char *data);
-
 
 /** Append a single character to the strbuf if there is space, and place a
  * terminating nul after it.  Return a pointer to the strbuf so that
@@ -445,7 +443,6 @@ strbuf strbuf_tohex(strbuf sb, size_t strlen, const unsigned char *data);
  */
 strbuf strbuf_putc(strbuf sb, char ch);
 
-
 /** Append the results of sprintf(fmt,...) to the string buffer, truncating if
  * necessary to avoid buffer overrun.  Return a pointer to the strbuf.
  *
@@ -457,7 +454,6 @@ strbuf strbuf_putc(strbuf sb, char ch);
  */
 strbuf strbuf_sprintf(strbuf sb, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 strbuf strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap);
-
 
 /** Return a pointer to the current nul-terminated string in the strbuf.
  *
@@ -471,7 +467,6 @@ __STRBUF_INLINE char *strbuf_str(const_strbuf sb) {
   return sb->start;
 }
 
-
 /** Return a pointer to the nul-terminator at the end of the string in the
  * strbuf.
  *
@@ -480,7 +475,6 @@ __STRBUF_INLINE char *strbuf_str(const_strbuf sb) {
 __STRBUF_INLINE char *strbuf_end(const_strbuf sb) {
   return sb->end && sb->current > sb->end ? sb->end : sb->current;
 }
-
 
 /** Return a pointer to the substring starting at a given offset.  If the
  * offset is negative, then it is taken from the end of the string, ie, the
@@ -492,7 +486,6 @@ __STRBUF_INLINE char *strbuf_end(const_strbuf sb) {
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 char *strbuf_substr(const_strbuf sb, int offset);
-
 
 /** Truncate the string in the strbuf to a given offset.  If the offset is
  * negative, then it is taken from the end of the string, ie, the length of the
@@ -526,7 +519,6 @@ char *strbuf_substr(const_strbuf sb, int offset);
  */
 strbuf strbuf_trunc(strbuf sb, int offset);
 
-
 /** Return true if the given strbuf is "empty", ie, not modified since being
  * initialised to STRUCT_STRBUF_EMPTY or with strbuf_init(sb, NULL, 0);
  *
@@ -535,7 +527,6 @@ strbuf strbuf_trunc(strbuf sb, int offset);
 __STRBUF_INLINE size_t strbuf_is_empty(const_strbuf sb) {
   return sb->start == NULL && sb->end == NULL && sb->current == NULL;
 }
-
 
 /** Return the size of the backing buffer.  Return -1 if the buffer is of
  * undefined size.
@@ -549,7 +540,6 @@ __STRBUF_INLINE ssize_t strbuf_size(const_strbuf sb) {
   return sb->end ? sb->end - sb->start + 1 : -1;
 }
 
-
 /** Return length of current string in the strbuf, not counting the terminating
  * nul.
  *
@@ -560,7 +550,6 @@ __STRBUF_INLINE ssize_t strbuf_size(const_strbuf sb) {
 __STRBUF_INLINE size_t strbuf_len(const_strbuf sb) {
   return strbuf_end(sb) - sb->start;
 }
-
 
 /** Return remaining space in the strbuf, not counting the terminating nul.
  * Return SIZE_MAX if the strbuf is of undefined size.
@@ -583,7 +572,6 @@ __STRBUF_INLINE size_t strbuf_remaining(const_strbuf sb) {
 __STRBUF_INLINE size_t strbuf_count(const_strbuf sb) {
   return sb->current - sb->start;
 }
-
 
 /** Return true iff the strbuf has been overrun, ie, any appended string has
  * been truncated since strbuf_init().
