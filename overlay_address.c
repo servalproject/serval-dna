@@ -259,7 +259,7 @@ void overlay_address_append(struct decode_context *context, struct overlay_buffe
       && !subscriber->send_full
       && subscriber == my_subscriber
       && context->point_to_point_device
-      && (context->encoding_header==0 || !context->interface->local_echo))
+      && ((context->flags & DECODE_FLAG_ENCODING_HEADER)==0 || !context->interface->local_echo))
     ob_append_byte(b, OA_CODE_P2P_ME);
   else if (context && subscriber==context->sender)
     ob_append_byte(b, OA_CODE_SELF);
@@ -271,7 +271,7 @@ void overlay_address_append(struct decode_context *context, struct overlay_buffe
       subscriber->send_full=0;
     }else{
       len=(subscriber->abbreviate_len+2)/2;
-      if (context && context->encoding_header)
+      if (context && (context->flags & DECODE_FLAG_ENCODING_HEADER))
 	len++;
       if (len>SID_SIZE)
 	len=SID_SIZE;
@@ -341,33 +341,34 @@ static int find_subscr_buffer(struct decode_context *context, struct overlay_buf
   
   if (!subscriber){
     WARN("Could not resolve address, no buffer supplied");
-    context->invalid_addresses=1;
+    context->flags|=DECODE_FLAG_INVALID_ADDRESS;
     return 0;
   }
   
   *subscriber=find_subscriber(id, len, 1);
   
   if (!*subscriber){
-    context->invalid_addresses=1;
+    context->flags|=DECODE_FLAG_INVALID_ADDRESS;
     
-    // generate a please explain in the passed in context
-    
-    // add the abbreviation you told me about
-    if (!context->please_explain){
-      context->please_explain = calloc(sizeof(struct overlay_frame),1);
-      if ((context->please_explain->payload = ob_new()) == NULL)
-	return -1;
-      ob_limitsize(context->please_explain->payload, MDP_MTU);
+    if ((context->flags & DECODE_FLAG_DONT_EXPLAIN) == 0){
+      // generate a please explain in the passed in context
+      
+      // add the abbreviation you told me about
+      if (!context->please_explain){
+	context->please_explain = calloc(sizeof(struct overlay_frame),1);
+	if ((context->please_explain->payload = ob_new()) == NULL)
+	  return -1;
+	ob_limitsize(context->please_explain->payload, MDP_MTU);
+      }
+      
+      // And I'll tell you about any subscribers I know that match this abbreviation, 
+      // so you don't try to use an abbreviation that's too short in future.
+      walk_tree(&root, 0, id, len, id, len, add_explain_response, context);
+      
+      INFOF("Asking for explanation of %s", alloca_tohex(id, len));
+      ob_append_byte(context->please_explain->payload, len);
+      ob_append_bytes(context->please_explain->payload, id, len);
     }
-    
-    // And I'll tell you about any subscribers I know that match this abbreviation, 
-    // so you don't try to use an abbreviation that's too short in future.
-    walk_tree(&root, 0, id, len, id, len, add_explain_response, context);
-    
-    INFOF("Asking for explanation of %s", alloca_tohex(id, len));
-    ob_append_byte(context->please_explain->payload, len);
-    ob_append_bytes(context->please_explain->payload, id, len);
-    
   }else{
     if (context)
       context->previous=*subscriber;
@@ -395,7 +396,7 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
 	context->previous=my_subscriber;
       }else{
 	WHYF("Could not resolve address on %s, this isn't a configured point to point link", context->interface->name);
-	context->invalid_addresses=1;
+	context->flags|=DECODE_FLAG_INVALID_ADDRESS;
       }
       return 0;
 
@@ -404,24 +405,26 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
         *subscriber=context->point_to_point_device;
 	context->previous=*subscriber;
       }else{
-	// add the abbreviation you told me about
-	if (!context->please_explain){
-	  context->please_explain = calloc(sizeof(struct overlay_frame),1);
-	  if ((context->please_explain->payload = ob_new()) == NULL)
-	    return -1;
-	  ob_limitsize(context->please_explain->payload, MDP_MTU);
+	if ((context->flags & DECODE_FLAG_DONT_EXPLAIN) == 0){
+	  // add the abbreviation you told me about
+	  if (!context->please_explain){
+	    context->please_explain = calloc(sizeof(struct overlay_frame),1);
+	    if ((context->please_explain->payload = ob_new()) == NULL)
+	      return -1;
+	    ob_limitsize(context->please_explain->payload, MDP_MTU);
+	  }
+	  
+	  INFOF("Asking for explanation of YOU");
+	  ob_append_byte(context->please_explain->payload, OA_CODE_P2P_YOU);
 	}
-	
-	INFOF("Asking for explanation of YOU");
-	ob_append_byte(context->please_explain->payload, OA_CODE_P2P_YOU);
-	context->invalid_addresses=1;
+	context->flags|=DECODE_FLAG_INVALID_ADDRESS;
       }
       return 0;
 
     case OA_CODE_SELF:
       if (!context->sender){
 	INFO("Could not resolve address, sender has not been set");
-	context->invalid_addresses=1;
+	context->flags|=DECODE_FLAG_INVALID_ADDRESS;
       }else{
 	*subscriber=context->sender;
 	context->previous=context->sender;
@@ -431,7 +434,7 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
     case OA_CODE_PREVIOUS:
       if (!context->previous){
 	INFO("Unable to decode previous address");
-	context->invalid_addresses=1;
+	context->flags|=DECODE_FLAG_INVALID_ADDRESS;
       }else{
 	*subscriber=context->previous;
       }

@@ -1338,8 +1338,6 @@ int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payl
   char changed = 0;
 
   while(ob_remaining(payload)>0){
-    context.invalid_addresses=0;
-
     struct subscriber *receiver=NULL, *transmitter=NULL;
     struct overlay_interface *interface = NULL;
     size_t start_pos = ob_position(payload);
@@ -1350,6 +1348,10 @@ int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payl
     int flags = ob_get(payload);
     if (flags<0)
       break;
+      
+    // If the link is dead, and we don't understand the SID, don't ask about it.
+    // We don't want or need to know.
+    context.flags = (flags & FLAG_NO_PATH)?DECODE_FLAG_DONT_EXPLAIN:0;
     if (overlay_address_parse(&context, payload, &receiver))
       break;
     int version = ob_get(payload);
@@ -1392,7 +1394,7 @@ int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payl
     // jump to the position of the next record, even if there's more data we don't understand
     payload->position = start_pos + length;
 
-    if (context.invalid_addresses)
+    if (context.flags & DECODE_FLAG_INVALID_ADDRESS)
       continue;
 
     if (IF_DEBUG(verbose) || IF_DEBUG(ack))

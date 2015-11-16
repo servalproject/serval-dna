@@ -54,10 +54,10 @@ int overlay_packet_init_header(int packet_version, int encapsulation,
       && packet_version>=1
   )
     context->point_to_point_device = context->interface->other_device;
-  context->encoding_header=1;
+  context->flags = DECODE_FLAG_ENCODING_HEADER;
   overlay_address_append(context, buff, my_subscriber);
   
-  context->encoding_header=0;
+  context->flags = 0;
   context->sender = my_subscriber;
   
   int flags=0;
@@ -156,7 +156,7 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
   
   if (flags & PAYLOAD_FLAG_SENDER_SAME){
     if (!context->sender)
-      context->invalid_addresses=1;
+      context->flags |= DECODE_FLAG_INVALID_ADDRESS;
     frame->source = context->sender;
   }else{
     int ret=overlay_address_parse(context, buffer, &frame->source);
@@ -248,7 +248,7 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
   frame->packet_version = context->packet_version;
   
   // if we can't understand one of the addresses, skip processing the payload
-  if ((forward||process)&&context->invalid_addresses){
+  if ((forward||process)&& (context->flags & DECODE_FLAG_INVALID_ADDRESS)){
     if (IF_DEBUG(verbose))
       DEBUG(overlayframes, "Don't process or forward with invalid addresses");
     forward=process=0;
@@ -397,7 +397,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   interface->recv_count++;
   
   while(ob_remaining(b)>0){
-    context.invalid_addresses=0;
+    context.flags = 0;
     struct subscriber *nexthop=NULL;
     bzero(f.broadcast_id.id, BROADCAST_LEN);
     

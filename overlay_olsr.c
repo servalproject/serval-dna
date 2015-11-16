@@ -171,7 +171,7 @@ static void parse_frame(struct overlay_buffer *buff){
   if (overlay_address_parse(&context, buff, &context.sender))
     goto end;
   
-  if (context.invalid_addresses)
+  if (context.flags & DECODE_FLAG_INVALID_ADDRESS)
     goto end;
   
   // locate the interface we should send outgoing unicast packets to
@@ -184,7 +184,7 @@ static void parse_frame(struct overlay_buffer *buff){
   if (overlay_address_parse(&context, buff, &frame.source))
     goto end;
   
-  if (context.invalid_addresses)
+  if (context.flags & DECODE_FLAG_INVALID_ADDRESS)
     goto end;
   
   // read source broadcast id
@@ -192,7 +192,7 @@ static void parse_frame(struct overlay_buffer *buff){
   if (overlay_broadcast_parse(buff, &frame.broadcast_id))
     goto end;
   
-  if (context.invalid_addresses)
+  if (context.flags & DECODE_FLAG_INVALID_ADDRESS)
     goto end;
   
   frame.modifiers=ob_get(buff);

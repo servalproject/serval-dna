@@ -630,7 +630,7 @@ test_offline() {
       wait_until --timeout=30 instance_offline +C
 }
 
-doc_lose_neighbours="Lose and regain neighbours due to turning off"
+doc_lose_neighbours="Lose and regain neighbours due to network timeout"
 setup_lose_neighbours() {
    setup_servald
    assert_no_servald_processes
@@ -685,6 +685,35 @@ test_interfaceBounce() {
 }
 finally_interfaceBounce() {
    simulator_quit
+}
+
+doc_noLinkPollution="Don't ask for explanation of links to dead nodes"
+setup_noLinkPollution() {
+   setup_servald
+   assert_no_servald_processes
+   start_simulator
+   simulator_command create "net1" "$SERVALD_VAR/dummy1/"
+# TODO re-roll identities until there's no possible SID prefix collision?
+   foreach_instance +A +B +C +D create_single_identity
+   foreach_instance +A +B +C +D add_servald_interface 1
+   foreach_instance +A +B +C start_servald_server
+   simulator_command up "net1"
+   wait_until path_exists +A +B
+   wait_until path_exists +A +C
+   foreach_instance +B +C stop_servald_server
+   set_instance +A
+   wait_until --timeout=30 instance_offline +B
+   wait_until --timeout=30 instance_offline +C
+   set_instance +D
+   start_servald_server
+   wait_until path_exists +A +D
+   wait_until path_exists +D +A
+}
+test_noLinkPollution() {
+   set_instance +D
+   executeOk_servald id allpeers
+   tfw_cat --stdout
+   assertStdoutLineCount '==' 3
 }
 
 setup_multi_interface() {

@@ -93,18 +93,17 @@ struct broadcast{
   unsigned char id[BROADCAST_LEN];
 };
 
+#define DECODE_FLAG_ENCODING_HEADER (1<<0)
+#define DECODE_FLAG_INVALID_ADDRESS (1<<1)
+#define DECODE_FLAG_DONT_EXPLAIN (1<<2)
+
 struct decode_context{
   struct overlay_interface *interface;
   int sender_interface;
   int packet_version;
   int encapsulation;
   struct socket_address addr;
-  union{
-    // only valid while decoding
-    int invalid_addresses;
-    // only valid while encoding
-    int encoding_header;
-  };
+  uint8_t flags;
   struct overlay_frame *please_explain;
   struct subscriber *sender;
   struct subscriber *previous;

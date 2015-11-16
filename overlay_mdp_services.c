@@ -289,7 +289,7 @@ static int overlay_mdp_service_trace(struct internal_mdp_header *header, struct 
     ret=WHYF("Invalid destination SID");
     goto end;
   }
-  if (context.invalid_addresses){
+  if (context.flags & DECODE_FLAG_INVALID_ADDRESS){
     ret=WHYF("Unknown address in trace packet");
     goto end;
   }
@@ -306,7 +306,7 @@ static int overlay_mdp_service_trace(struct internal_mdp_header *header, struct 
       ret=WHYF("Invalid SID in packet payload");
       goto end;
     }
-    if (context.invalid_addresses){
+    if (context.flags & DECODE_FLAG_INVALID_ADDRESS){
       ret=WHYF("Unknown SID in packet payload");
       goto end;
     }
