@@ -18,11 +18,11 @@
 
 #include <stdio.h>
 
-#include "fdqueue.h"
-#include "str.h"
 #include "cli.h"
-#include "net.h"
 #include "mem.h"
+#include "net.h"
+#include "str.h"
+#include "fdqueue.h"
 #include "console.h"
 
 struct command_state{

@@ -38,6 +38,7 @@ HDRS=	fifo.h \
 	fdqueue.h \
 	http_server.h \
 	xprintf.h \
+	features.h \
 	constants.h \
 	monitor-client.h \
 	mdp_client.h \

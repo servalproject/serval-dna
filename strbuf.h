@@ -20,6 +20,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __STRBUF_H__
 #define __STRBUF_H__
 
+#include "features.h"
+
 /**
     A strbuf provides a convenient set of primitives for assembling a
     nul-terminated string in a fixed-size, caller-provided backing buffer,
@@ -277,25 +279,25 @@ typedef const struct strbuf *const_strbuf;
  * buffer pointed to by p were less than 8 in size, then appending to strbuf b
  * would cause memory corruption and a likely SIGSEGV.
  *
- * If compiled with the GNU C compiler, then the above example would result in
- * an error at compile time.
+ * If compiled with the GNU C compiler (or equivalent, like Clang), then the
+ * above example would produce a build error (see below).  However, if the
+ * compiler does not support __attribute__((alloc_size(n)) (such as Clang 3.5),
+ * then the check is not performed, because it would also cause errors for
+ * perfectly legitimate uses, eg, strbuf_local_buf(a->buf).
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-#ifdef __GNUC__
-#define strbuf_local_buf(buf) strbuf_local((char*)(buf), (sizeof(buf) == __builtin_object_size(buf, 1)) ? sizeof(buf) : __buffer_arg_is_not_array())
+#if defined(__GNUC__) && defined(HAVE_FUNC_ATTRIBUTE_ALLOC_SIZE)
+#   define strbuf_local_buf(buf) strbuf_local((char*)(buf), (sizeof(buf) == __builtin_object_size(buf, 1)) ? sizeof(buf) : __buffer_arg_is_not_array())
+    // If the following error occurs at compile time or this function is not
+    // resolved at link time, it means that the argument to strbuf_local_buf()
+    // was not an array whose size is known at compile time.  The most common
+    // cause of this is passing a pointer as the argument.  The solution is to
+    // use strbuf_local(b, len) instead of strbuf_local_buf(b), and supply the
+    // length of the buffer explicitly.
+    size_t __buffer_arg_is_not_array() __attribute__ ((__ATTRIBUTE_error("argument to strbuf_local_buf() must be an array not a pointer")));
 #else
-#define strbuf_local_buf(buf) strbuf_local((char*)(buf), sizeof(buf))
-#endif
-
-#ifdef __GNUC__
-// If the following error occurs at compile time or this function is not found
-// at link time, it means that the argument passed to strbuf_local_buf() was
-// not an array whose size is known at compile time.  The most common cause of
-// this is passing a pointer as the argument.  The solution is to use
-// strbuf_local(b, len) instead of strbuf_local_buf(b), and supply the length
-// of the buffer explicitly.
-size_t __buffer_arg_is_not_array() __attribute__ ((error("argument to strbuf_local_buf() must be an array not a pointer")));
+#   define strbuf_local_buf(buf) strbuf_local((char*)(buf), sizeof(buf))
 #endif
 
 /** Initialise a strbuf with a caller-supplied backing buffer.  The current
@@ -452,7 +454,7 @@ strbuf strbuf_putc(strbuf sb, char ch);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-strbuf strbuf_sprintf(strbuf sb, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+strbuf strbuf_sprintf(strbuf sb, const char *fmt, ...) __attribute__((__ATTRIBUTE_format(printf, 2, 3)));
 strbuf strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap);
 
 /** Return a pointer to the current nul-terminated string in the strbuf.

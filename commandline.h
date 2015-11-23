@@ -19,6 +19,7 @@
 #ifndef __SERVAL_DNA__COMMANDLINE_H
 #define __SERVAL_DNA__COMMANDLINE_H
 
+#include "features.h"
 #include "section.h"
 
 #define KEYRING_PIN_OPTION	  ,"[--keyring-pin=<pin>]"
@@ -48,7 +49,7 @@ DECLARE_SECTION(struct cli_schema, commands);
 void cli_flush(struct cli_context *context);
 int cli_delim(struct cli_context *context, const char *opt);
 int cli_puts(struct cli_context *context, const char *str);
-void cli_printf(struct cli_context *context, const char *fmt, ...) __attribute__ (( format(printf,2,3) ));
+void cli_printf(struct cli_context *context, const char *fmt, ...) __attribute__ (( __ATTRIBUTE_format(printf,2,3) ));
 void cli_columns(struct cli_context *context, int columns, const char *names[]);
 void cli_row_count(struct cli_context *context, int rows);
 void cli_field_name(struct cli_context *context, const char *name, const char *delim);

@@ -25,21 +25,29 @@
 #define SECTION_START(X) __start_##X
 #define SECTION_END(X) __stop_##X
 
-#ifdef __APPLE__
-
-#define _SECTION_ATTRIBUTE(X) section("__DATA,__"#X)
-#define DECLARE_SECTION(TYPE, X) \
-  extern TYPE SECTION_START(X)[] __asm("section$start$__DATA$__" #X);\
-  extern TYPE SECTION_END(X)[] __asm("section$end$__DATA$__" #X)
-#else
-#define _SECTION_ATTRIBUTE(X) section(#X)
-#define DECLARE_SECTION(TYPE, X) \
-  extern TYPE SECTION_START(X)[];\
-  extern TYPE SECTION_END(X)[]
+#ifndef HAVE_VAR_ATTRIBUTE_SECTION
+#error "Compiler does not support __attribute__(section())"
+#endif
+#ifndef HAVE_FUNC_ATTRIBUTE_ALIGNED
+#error "Compiler does not support __attribute__(aligned())"
+#endif
+#ifndef HAVE_FUNC_ATTRIBUTE_USED
+#error "Compiler does not support __attribute__(used)"
 #endif
 
+#ifdef __APPLE__
+#   define _SECTION_ATTRIBUTE(X) __section__("__DATA,__"#X)
+#   define DECLARE_SECTION(TYPE, X) \
+        extern TYPE SECTION_START(X)[] __asm("section$start$__DATA$__" #X);\
+        extern TYPE SECTION_END(X)[] __asm("section$end$__DATA$__" #X)
+#else // !__APPLE__
+#   define _SECTION_ATTRIBUTE(X) __section__(#X)
+#   define DECLARE_SECTION(TYPE, X) \
+        extern TYPE SECTION_START(X)[];\
+        extern TYPE SECTION_END(X)[]
+#endif // !__APPLE__
 
-#define IN_SECTION(name) __attribute__((used,aligned(sizeof(void *)),_SECTION_ATTRIBUTE(name)))
+#define IN_SECTION(name) __attribute__((__used__, __aligned__(sizeof(void *)), _SECTION_ATTRIBUTE(name)))
 
 #endif // __SERVAL_DNA__SECTION_H
 

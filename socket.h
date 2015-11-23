@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #   endif
 #endif
 
+#include "features.h"
 #include "whence.h"
 
 struct socket_address{
@@ -48,7 +49,7 @@ struct socket_address{
 /* Basic socket operations.
  */
 int _make_local_sockaddr(struct __sourceloc, struct socket_address *addr, const char *fmt, ...)
-    __attribute__((format(printf, 3, 4)));
+    __attribute__((__ATTRIBUTE_format(printf, 3, 4)));
 int _esocket(struct __sourceloc, int domain, int type, int protocol);
 int _socket_bind(struct __sourceloc, int sock, const struct socket_address *addr);
 int _socket_connect(struct __sourceloc, int sock, const struct socket_address *addr);

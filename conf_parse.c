@@ -46,7 +46,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
         return CFOK; \
     }
 #define STRUCT_ASSIGN(__substructname, __structname) \
-    __attribute__((unused)) static void __cf_unused_1_##__substructname(struct config_##__substructname *s) {
+    __attribute__((__ATTRIBUTE_unused)) static void __cf_unused_1_##__substructname(struct config_##__substructname *s) {
 #define END_STRUCT_ASSIGN \
     }
 #define STRUCT_DEFAULT(__name, __dfllabel) \
@@ -106,7 +106,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 // Generate config assign function definitions, cf_cpy_config_NAME().
 #define VALIDATOR(__validator)
 #define STRUCT(__name, __options...) \
-    __attribute__((unused)) static void __cf_unused_2_##__name(struct config_##__name *dst, const struct config_##__name *src) {
+    __attribute__((__ATTRIBUTE_unused)) static void __cf_unused_2_##__name(struct config_##__name *dst, const struct config_##__name *src) {
 #define END_STRUCT \
     }
 #define STRUCT_ASSIGN(__substructname, __structname) \
@@ -240,7 +240,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
       return result; \
     }
 #define STRUCT_ASSIGN(__substructname, __structname) \
-    __attribute__((unused)) static int __cf_unused_3_##__substructname(struct config_##__substructname *strct, const struct cf_om_node *node) { \
+    __attribute__((__ATTRIBUTE_unused)) static int __cf_unused_3_##__substructname(struct config_##__substructname *strct, const struct cf_om_node *node) { \
       int result = 0; \
       char used[0];
 #define END_STRUCT_ASSIGN \
@@ -462,7 +462,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
         return 0; \
     }
 #define STRUCT_ASSIGN(__substructname, __structname) \
-    __attribute__((unused)) static int __cf_unused_4_##__substructname(struct cf_om_node **rootp) { \
+    __attribute__((__ATTRIBUTE_unused)) static int __cf_unused_4_##__substructname(struct cf_om_node **rootp) { \
       int i; \
       struct cf_om_node **childp;
 #define END_STRUCT_ASSIGN \
@@ -625,7 +625,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
       return result; \
     }
 #define STRUCT_ASSIGN(__substructname, __structname) \
-    __attribute__((unused)) static int __cf_unused_5_##__substructname(struct cf_om_node **parentp, const struct config_##__substructname *strct, const struct config_##__substructname *dflt) { \
+    __attribute__((__ATTRIBUTE_unused)) static int __cf_unused_5_##__substructname(struct cf_om_node **parentp, const struct config_##__substructname *strct, const struct config_##__substructname *dflt) { \
       int result = 0; \
       int ret;
 #define END_STRUCT_ASSIGN \
@@ -764,7 +764,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
       return 0; \
     }
 #define STRUCT_ASSIGN(__substructname, __structname) \
-    __attribute__((unused)) static int __cf__unused_6_##__substructname(const struct config_##__substructname *a, const struct config_##__substructname *b) { \
+    __attribute__((__ATTRIBUTE_unused)) static int __cf__unused_6_##__substructname(const struct config_##__substructname *a, const struct config_##__substructname *b) { \
       int c;
 #define END_STRUCT_ASSIGN \
       return 0; \

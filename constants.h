@@ -1,5 +1,5 @@
 /*
-Copyright (C) 2012 Serval Project Inc.
+Copyright (C) 2012-2015 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -18,22 +18,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #ifndef __SERVAL_DNA__CONSTANTS_H
 #define __SERVAL_DNA__CONSTANTS_H
-
-/* Useful macros not specific to Serval DNA
- */
-
-// Number of elements in an array (Warning: does not work if A is a pointer!).
-#define NELS(A) (sizeof (A) / sizeof *(A))
-
-// To suppress the "unused parameter" warning from -Wunused-parameter.
-#ifndef __has_attribute
-  #define __has_attribute(x) 0
-#endif
-#if (defined(__GNUC__)) || __has_attribute(unused)
-  #define UNUSED(x) x __attribute__((__unused__))
-#else
-  #define UNUSED(x) x
-#endif
 
 // UDP Port numbers for various Serval services.
 #define PORT_DNA 4110

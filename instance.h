@@ -20,19 +20,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__INSTANCE_H
 #define __SERVAL_DNA__INSTANCE_H
 
+#include "features.h"
 #include "whence.h"
 #include "strbuf.h"
 
 const char *instance_path(); // returns NULL if not using an instance path
 int create_serval_instance_dir();
 
-int _formf_serval_etc_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((format(printf,4,5)));
-int _formf_serval_run_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((format(printf,4,5)));
+int _formf_serval_etc_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((__ATTRIBUTE_format(printf,4,5)));
+int _formf_serval_run_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((__ATTRIBUTE_format(printf,4,5)));
 int _vformf_serval_run_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, va_list);
-int _formf_serval_cache_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((format(printf,4,5)));
-int _formf_serval_tmp_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((format(printf,4,5)));
-int _formf_servald_proc_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((format(printf,4,5)));
-int _formf_rhizome_store_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((format(printf,4,5)));
+int _formf_serval_cache_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((__ATTRIBUTE_format(printf,4,5)));
+int _formf_serval_tmp_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((__ATTRIBUTE_format(printf,4,5)));
+int _formf_servald_proc_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((__ATTRIBUTE_format(printf,4,5)));
+int _formf_rhizome_store_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((__ATTRIBUTE_format(printf,4,5)));
 
 #define formf_serval_etc_path(buf,bufsz,fmt,...)     _formf_serval_etc_path(__WHENCE__, buf, bufsz, fmt, ##__VA_ARGS__)
 #define formf_serval_run_path(buf,bufsz,fmt,...)     _formf_serval_run_path(__WHENCE__, buf, bufsz, fmt, ##__VA_ARGS__)

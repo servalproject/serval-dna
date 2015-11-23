@@ -7,6 +7,16 @@ CPPFLAGS=-D_GNU_SOURCE
 dnl Set $host_os, which is needed by javac detection.
 AC_CANONICAL_SYSTEM
 
+dnl Various GCC function and variable attributes
+AX_GCC_FUNC_ATTRIBUTE(aligned)
+AX_GCC_FUNC_ATTRIBUTE(alloc_size)
+AX_GCC_FUNC_ATTRIBUTE(error)
+AX_GCC_FUNC_ATTRIBUTE(format)
+AX_GCC_FUNC_ATTRIBUTE(malloc)
+AX_GCC_FUNC_ATTRIBUTE(unused)
+AX_GCC_FUNC_ATTRIBUTE(used)
+AX_GCC_VAR_ATTRIBUTE(section)
+
 dnl Init pkg-config
 PKG_PROG_PKG_CONFIG()
 

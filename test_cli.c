@@ -25,10 +25,10 @@
 #include <poll.h>
 #include <sys/stat.h>
 
+#include "cli.h"
 #include "serval_types.h"
 #include "dataformats.h"
 #include "os.h"
-#include "cli.h"
 #include "conf.h"
 #include "commandline.h"
 #include "mem.h"
