@@ -38,20 +38,20 @@ void _serval_debug_free(void *p, struct __sourceloc whence);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-void *_emalloc(struct __sourceloc, size_t bytes) __attribute__ ((malloc, alloc_size(2), returns_nonnull));
+void *_emalloc(struct __sourceloc, size_t bytes) __attribute__ ((malloc, alloc_size(2)));
 
 /* Equivalent to realloc(3), but logs an error before returning NULL.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-void *_erealloc(struct __sourceloc __whence, void *ptr, size_t bytes) __attribute__ ((alloc_size(3), returns_nonnull));
+void *_erealloc(struct __sourceloc __whence, void *ptr, size_t bytes) __attribute__ ((alloc_size(3)));
 
 /* Equivalent to malloc(3) followed by memset(3) to zerofill, but logs an error
  * before returning NULL.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-void *_emalloc_zero(struct __sourceloc, size_t bytes) __attribute__ ((malloc, alloc_size(2), returns_nonnull));
+void *_emalloc_zero(struct __sourceloc, size_t bytes) __attribute__ ((malloc, alloc_size(2)));
 
 /* Equivalent to strdup(3)/strndup(3), but logs an error before returning NULL.
  *
@@ -60,8 +60,8 @@ void *_emalloc_zero(struct __sourceloc, size_t bytes) __attribute__ ((malloc, al
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-char *_str_edup(struct __sourceloc, const char *str) __attribute__ ((malloc, returns_nonnull));
-char *_strn_edup(struct __sourceloc, const char *str, size_t len) __attribute__ ((malloc, returns_nonnull));
+char *_str_edup(struct __sourceloc, const char *str) __attribute__ ((malloc));
+char *_strn_edup(struct __sourceloc, const char *str, size_t len) __attribute__ ((malloc));
 
 #define emalloc(bytes)       _emalloc(__HERE__, (bytes))
 #define erealloc(ptr, bytes) _erealloc(__HERE__, (ptr), (bytes))
