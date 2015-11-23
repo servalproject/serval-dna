@@ -38,21 +38,31 @@ void _serval_debug_free(void *p, struct __sourceloc whence);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
+#if defined(__GNUC__) && !defined(__clang__)
 void *_emalloc(struct __sourceloc, size_t bytes) __attribute__ ((malloc, alloc_size(2), returns_nonnull));
+#else
+void *_emalloc(struct __sourceloc, size_t bytes) __attribute__ ((malloc));
+#endif
 
 /* Equivalent to realloc(3), but logs an error before returning NULL.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
+#if defined(__GNUC__) && !defined(__clang__)
 void *_erealloc(struct __sourceloc __whence, void *ptr, size_t bytes) __attribute__ ((alloc_size(3), returns_nonnull));
-
+#else
+void *_erealloc(struct __sourceloc __whence, void *ptr, size_t bytes);
+#endif
 /* Equivalent to malloc(3) followed by memset(3) to zerofill, but logs an error
  * before returning NULL.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
+#if defined(__GNUC__) && !defined(__clang__)
 void *_emalloc_zero(struct __sourceloc, size_t bytes) __attribute__ ((malloc, alloc_size(2), returns_nonnull));
-
+#else
+void *_emalloc_zero(struct __sourceloc, size_t bytes) __attribute__ ((malloc));
+#endif
 /* Equivalent to strdup(3)/strndup(3), but logs an error before returning NULL.
  *
  * Why aren't these in str.h?  Because str.c must not depend on log.h/log.c!  str.c is used in link

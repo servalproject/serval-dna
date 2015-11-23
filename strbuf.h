@@ -282,13 +282,13 @@ typedef const struct strbuf *const_strbuf;
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-#ifdef __GNUC__
+#if defined(__GNUC__) && !defined(__clang__)
 #define strbuf_local_buf(buf) strbuf_local((char*)(buf), (sizeof(buf) == __builtin_object_size(buf, 1)) ? sizeof(buf) : __buffer_arg_is_not_array())
 #else
 #define strbuf_local_buf(buf) strbuf_local((char*)(buf), sizeof(buf))
 #endif
 
-#ifdef __GNUC__
+#if defined(__GNUC__) && !defined(__clang__)
 // If the following error occurs at compile time or this function is not found
 // at link time, it means that the argument passed to strbuf_local_buf() was
 // not an array whose size is known at compile time.  The most common cause of
