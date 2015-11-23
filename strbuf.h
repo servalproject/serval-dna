@@ -282,7 +282,7 @@ typedef const struct strbuf *const_strbuf;
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-#if defined(__GNUC__) && !defined(__clang__)
+#if defined(__GNUC__) && !defined(__clang__) && !defined(ANDROID)
 #define strbuf_local_buf(buf) strbuf_local((char*)(buf), (sizeof(buf) == __builtin_object_size(buf, 1)) ? sizeof(buf) : __buffer_arg_is_not_array())
 #else
 #define strbuf_local_buf(buf) strbuf_local((char*)(buf), sizeof(buf))

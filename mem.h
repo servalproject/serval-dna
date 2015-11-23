@@ -38,7 +38,7 @@ void _serval_debug_free(void *p, struct __sourceloc whence);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-#if defined(__GNUC__) && !defined(__clang__)
+#if defined(__GNUC__) && !defined(__clang__) && !defined(ANDROID)
 void *_emalloc(struct __sourceloc, size_t bytes) __attribute__ ((malloc, alloc_size(2), returns_nonnull));
 #else
 void *_emalloc(struct __sourceloc, size_t bytes) __attribute__ ((malloc));
@@ -48,7 +48,7 @@ void *_emalloc(struct __sourceloc, size_t bytes) __attribute__ ((malloc));
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-#if defined(__GNUC__) && !defined(__clang__)
+#if defined(__GNUC__) && !defined(__clang__) && !defined(ANDROID)
 void *_erealloc(struct __sourceloc __whence, void *ptr, size_t bytes) __attribute__ ((alloc_size(3), returns_nonnull));
 #else
 void *_erealloc(struct __sourceloc __whence, void *ptr, size_t bytes);
@@ -58,7 +58,7 @@ void *_erealloc(struct __sourceloc __whence, void *ptr, size_t bytes);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-#if defined(__GNUC__) && !defined(__clang__)
+#if defined(__GNUC__) && !defined(__clang__) && !defined(ANDROID)
 void *_emalloc_zero(struct __sourceloc, size_t bytes) __attribute__ ((malloc, alloc_size(2), returns_nonnull));
 #else
 void *_emalloc_zero(struct __sourceloc, size_t bytes) __attribute__ ((malloc));
@@ -70,8 +70,13 @@ void *_emalloc_zero(struct __sourceloc, size_t bytes) __attribute__ ((malloc));
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
+#if defined(__GNUC__) && !defined(__clang__) && !defined(ANDROID)
 char *_str_edup(struct __sourceloc, const char *str) __attribute__ ((malloc, returns_nonnull));
 char *_strn_edup(struct __sourceloc, const char *str, size_t len) __attribute__ ((malloc, returns_nonnull));
+#else
+char *_str_edup(struct __sourceloc, const char *str) __attribute__ ((malloc));
+char *_strn_edup(struct __sourceloc, const char *str, size_t len) __attribute__ ((malloc));
+#endif
 
 #define emalloc(bytes)       _emalloc(__HERE__, (bytes))
 #define erealloc(ptr, bytes) _erealloc(__HERE__, (ptr), (bytes))
