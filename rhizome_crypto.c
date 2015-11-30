@@ -243,10 +243,6 @@ void rhizome_authenticate_author(rhizome_manifest *m)
 {
   IN();
   DEBUGF(rhizome, "authenticate author for bid=%s", m->has_id ? alloca_tohex_rhizome_bid_t(m->cryptoSignPublic) : "(none)");
-  if (!m->has_bundle_key) {
-    DEBUG(rhizome, "   no BK field");
-    RETURNVOID;
-  }
   switch (m->authorship) {
     case ANONYMOUS:
       DEBUGF(rhizome, "   manifest[%d] author unknown", m->manifest_record_number);

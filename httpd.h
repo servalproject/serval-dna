@@ -61,7 +61,7 @@ typedef struct httpd_request
    */
   rhizome_manifest *manifest;
   enum rhizome_payload_status payload_status;
-  enum rhizome_bundle_status bundle_status;
+  struct rhizome_bundle_result bundle_result;
 
   /* For requests/responses that contain one or two SIDs.
    */

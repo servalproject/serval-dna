@@ -808,7 +808,7 @@ setup_AddUpdateNoAuthorWithSecret() {
    setup_AddUpdateNoAuthor
 }
 test_AddUpdateNoAuthorWithSecret() {
-   executeOk_servald rhizome add file $SIDA file1_2 file1_2.manifest "$file1_secret"
+   executeOk_servald rhizome add file '' file1_2 file1_2.manifest "$file1_secret"
    tfw_cat --stderr
    # Rhizome store contents have new payload, but it has lost its author (no BK
    # field any more).
@@ -1083,7 +1083,7 @@ setup_JournalAddCreate() {
 test_JournalAddCreate() {
    # TODO: servald should return a status code reserved for this case, instead
    # of the 4 error (which means "invalid manifest")
-   execute --exit-status=4 $servald rhizome add file $SIDA file1 file1.manifest
+   execute --exit-status=4 --stderr $servald rhizome add file $SIDA file1 file1.manifest
    tfw_cat --stdout --stderr
 }
 

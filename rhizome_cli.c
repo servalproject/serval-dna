@@ -180,6 +180,7 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
   
   int ret = -1;
   rhizome_manifest *m = NULL;
+  struct rhizome_bundle_result result = INVALID_RHIZOME_BUNDLE_RESULT;
   if (rhizome_opendb() == -1)
     goto finish;
   
@@ -205,39 +206,16 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
   /* Create an in-memory manifest for the file being added.
    */
   rhizome_manifest *mout = NULL;
-  enum rhizome_add_file_result result = rhizome_manifest_add_file(appending, m, &mout,
-								  bundleIdHex ? &bid : NULL,
-								  bsktext ? &bsk : NULL,
-								  authorSidHex ? &authorSid : NULL,
-								  filepath,
-								  nfields, fields,
-								  NULL);
-  int result_valid = 0;
-  switch (result) {
-  case RHIZOME_ADD_FILE_ERROR:
-    ret = -1;
-    goto finish;
-  case RHIZOME_ADD_FILE_OK:
-    result_valid = 1;
-    break;
-  case RHIZOME_ADD_FILE_INVALID:
-    ret = RHIZOME_BUNDLE_STATUS_INVALID; // TODO separate enum for CLI return codes
-    goto finish;
-  case RHIZOME_ADD_FILE_BUSY:
-    ret = RHIZOME_BUNDLE_STATUS_BUSY; // TODO separate enum for CLI return codes
-    goto finish;
-  case RHIZOME_ADD_FILE_REQUIRES_JOURNAL:
-    ret = RHIZOME_BUNDLE_STATUS_INVALID; // TODO separate enum for CLI return codes
-    goto finish;
-  case RHIZOME_ADD_FILE_INVALID_FOR_JOURNAL:
-    ret = RHIZOME_BUNDLE_STATUS_INVALID; // TODO separate enum for CLI return codes
-    goto finish;
-  case RHIZOME_ADD_FILE_WRONG_SECRET:
-    ret = RHIZOME_BUNDLE_STATUS_READONLY; // TODO separate enum for CLI return codes
+  result = rhizome_manifest_add_file(appending, m, &mout,
+				     bundleIdHex ? &bid : NULL,
+				     bsktext ? &bsk : NULL,
+				     authorSidHex ? &authorSid : NULL,
+				     filepath,
+				     nfields, fields);
+  if (result.status != RHIZOME_BUNDLE_STATUS_NEW) {
+    ret = result.status; // TODO separate enum for CLI return codes
     goto finish;
   }
-  if (!result_valid)
-    FATALF("result = %d", result);
   assert(mout != NULL);
   if (mout != m) {
     rhizome_manifest_free(m);
@@ -260,50 +238,50 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
       DEBUGF(rhizome, "rhizome_store_payload_file() returned %d %s", pstatus, rhizome_payload_status_message(pstatus));
     }
   }
-  enum rhizome_bundle_status status = RHIZOME_BUNDLE_STATUS_ERROR;
+  rhizome_bundle_result_free(&result);
   int pstatus_valid = 0;
   switch (pstatus) {
     case RHIZOME_PAYLOAD_STATUS_EMPTY:
     case RHIZOME_PAYLOAD_STATUS_STORED:
     case RHIZOME_PAYLOAD_STATUS_NEW:
       pstatus_valid = 1;
-      status = RHIZOME_BUNDLE_STATUS_NEW;
+      result.status = RHIZOME_BUNDLE_STATUS_NEW;
       break;
     case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
     case RHIZOME_PAYLOAD_STATUS_EVICTED:
       pstatus_valid = 1;
-      status = RHIZOME_BUNDLE_STATUS_NO_ROOM;
+      result.status = RHIZOME_BUNDLE_STATUS_NO_ROOM;
       INFO("Insufficient space to store payload");
       break;
     case RHIZOME_PAYLOAD_STATUS_ERROR:
       pstatus_valid = 1;
-      status = RHIZOME_BUNDLE_STATUS_ERROR;
+      result.status = RHIZOME_BUNDLE_STATUS_ERROR;
       break;
     case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
       pstatus_valid = 1;
-      status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
+      result.status = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
       break;
     case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
       pstatus_valid = 1;
-      status = RHIZOME_BUNDLE_STATUS_READONLY;
+      result.status = RHIZOME_BUNDLE_STATUS_READONLY;
       break;
   }
   if (!pstatus_valid)
     FATALF("pstatus = %d", pstatus);
-  if (status == RHIZOME_BUNDLE_STATUS_NEW) {
+  if (result.status == RHIZOME_BUNDLE_STATUS_NEW) {
     if (!rhizome_manifest_validate(m) || m->malformed)
-      status = RHIZOME_BUNDLE_STATUS_INVALID;
+      result.status = RHIZOME_BUNDLE_STATUS_INVALID;
     else {
-      status = rhizome_manifest_finalise(m, &mout, !force_new);
+      result.status = rhizome_manifest_finalise(m, &mout, !force_new);
       if (mout && mout != m && !rhizome_manifest_validate(mout)) {
 	WHYF("Stored manifest id=%s is invalid -- overwriting", alloca_tohex_rhizome_bid_t(mout->cryptoSignPublic));
-	status = RHIZOME_BUNDLE_STATUS_NEW;
+	result.status = RHIZOME_BUNDLE_STATUS_NEW;
       }
     }
   }
   int status_valid = 0;
-  switch (status) {
+  switch (result.status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
       if (mout && mout != m)
 	rhizome_manifest_free(mout);
@@ -334,11 +312,12 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
     // a valuable tool for the developer.
   }
   if (!status_valid)
-    FATALF("status=%d", status);
+    FATALF("result.status=%d", result.status);
   if (mout && mout != m)
     rhizome_manifest_free(mout);
-  ret = status;
+  ret = result.status;
 finish:
+  rhizome_bundle_result_free(&result);
   rhizome_manifest_free(m);
   keyring_free(keyring);
   keyring = NULL;

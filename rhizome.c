@@ -1,6 +1,6 @@
 /*
 Serval DNA - Rhizome entry points
-Copyright (C) 2012-2013 Serval Project Inc.
+Copyright (C) 2012-2015 Serval Project Inc.
 Copyright (C) 2011-2012 Paul Gardner-Stephen
  
 This program is free software; you can redistribute it and/or
@@ -52,9 +52,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "conf.h"
 #include "str.h"
+#include "strbuf_helpers.h"
+#include "mem.h"
 #include "rhizome.h"
 #include "httpd.h"
 #include "dataformats.h"
+#include "log.h"
+#include "debug.h"
 
 int is_rhizome_enabled()
 {
@@ -144,7 +148,7 @@ int rhizome_fetch_delay_ms()
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
+struct rhizome_bundle_result rhizome_manifest_add_file(int appending,
                                                        rhizome_manifest *m,
                                                        rhizome_manifest **mout,
                                                        const rhizome_bid_t *bid,
@@ -152,12 +156,9 @@ enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
                                                        const sid_t *author,
                                                        const char *file_path,
                                                        unsigned nassignments,
-                                                       const struct rhizome_manifest_field_assignment *assignments,
-                                                       strbuf reason
-                                                      )
+                                                       const struct rhizome_manifest_field_assignment *assignments)
 {
-  const char *cause = NULL;
-  enum rhizome_add_file_result result = RHIZOME_ADD_FILE_ERROR;
+  struct rhizome_bundle_result result = INVALID_RHIZOME_BUNDLE_RESULT; // must be set before returning
   rhizome_manifest *existing_manifest = NULL;
   rhizome_manifest *new_manifest = NULL;
   assert(m != NULL);
@@ -167,25 +168,27 @@ enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
   // If appending to a journal, caller must not supply 'version', 'filesize' or 'filehash' fields,
   // because these will be calculated by the journal append logic.
   if (appending) {
-    if (m->version)
-      DEBUG(rhizome, cause = "Cannot set 'version' field in journal append");
-    else if (m->filesize != RHIZOME_SIZE_UNSET)
-      DEBUG(rhizome, cause = "Cannot set 'filesize' field in journal append");
-    else if (m->has_filehash)
-      DEBUG(rhizome, cause = "Cannot set 'filehash' field in journal append");
-    if (cause) {
-      result = RHIZOME_ADD_FILE_INVALID_FOR_JOURNAL;
+    if (m->version) {
+      result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_INVALID, "Cannot set 'version' field in journal append");
+      goto error;
+    }
+    else if (m->filesize != RHIZOME_SIZE_UNSET) {
+      result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_INVALID, "Cannot set 'filesize' field in journal append");
+      goto error;
+    }
+    else if (m->has_filehash) {
+      result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_INVALID, "Cannot set 'filehash' field in journal append");
       goto error;
     }
   }
   if (bid) {
     DEBUGF(rhizome, "Reading manifest from database: id=%s", alloca_tohex_rhizome_bid_t(*bid));
     if ((existing_manifest = rhizome_new_manifest()) == NULL) {
-      WHY(cause = "Manifest struct could not be allocated");
+      result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_ERROR, "Manifest struct could not be allocated");
       goto error;
     }
-    enum rhizome_bundle_status status = rhizome_retrieve_manifest(bid, existing_manifest);
-    switch (status) {
+    result.status = rhizome_retrieve_manifest(bid, existing_manifest);
+    switch (result.status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
       // No manifest with that bundle ID exists in the store, so we are building a bundle from
       // scratch.
@@ -204,18 +207,20 @@ enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
         rhizome_manifest_del_filehash(existing_manifest);
       }
       if (rhizome_manifest_overwrite(existing_manifest, m) == -1) {
-        WHY(cause = "Existing manifest could not be overwritten");
+	result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_ERROR,
+					      "Existing manifest could not be overwritten");
         goto error;
       }
       new_manifest = existing_manifest;
       existing_manifest = NULL;
       break;
     case RHIZOME_BUNDLE_STATUS_BUSY:
-      WARN(cause = "Existing manifest not retrieved due to Rhizome store locking");
-      result = RHIZOME_ADD_FILE_BUSY;
+      result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_BUSY,
+					    "Existing manifest not retrieved due to Rhizome store locking");
       goto error;
     case RHIZOME_BUNDLE_STATUS_ERROR:
-      WHY(cause = "Error retrieving existing manifest from Rhizome store");
+      result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_BUSY,
+					    "Error retrieving existing manifest from Rhizome store");
       goto error;
     case RHIZOME_BUNDLE_STATUS_DUPLICATE:
     case RHIZOME_BUNDLE_STATUS_OLD:
@@ -224,7 +229,7 @@ enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
     case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
     case RHIZOME_BUNDLE_STATUS_NO_ROOM:
     case RHIZOME_BUNDLE_STATUS_READONLY:
-      FATALF("rhizome_retrieve_manifest() returned %s", rhizome_bundle_status_message(status));
+      FATALF("rhizome_retrieve_manifest() returned %s", rhizome_bundle_status_message(result.status));
     }
   }
   // If no existing bundle has been identified, we are building a bundle from scratch.
@@ -250,41 +255,37 @@ enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
         enum rhizome_manifest_parse_status status = rhizome_manifest_parse_field(new_manifest, asg->label, asg->labellen, asg->value, asg->valuelen);
         int status_ok = 0;
         switch (status) {
-          case RHIZOME_MANIFEST_ERROR:
-            WHYF("Fatal error updating manifest field");
-            if (reason)
-              strbuf_sprintf(reason, "Fatal error updating manifest field: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
-            goto error;
-          case RHIZOME_MANIFEST_OK:
-            status_ok = 1;
-            break;
-          case RHIZOME_MANIFEST_SYNTAX_ERROR:
-	    DEBUGF(rhizome, "Manifest syntax error: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
-            if (reason)
-              strbuf_sprintf(reason, "Manifest syntax error: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
-            result = RHIZOME_ADD_FILE_INVALID;
-            goto error;
-          case RHIZOME_MANIFEST_DUPLICATE_FIELD:
-            // We already deleted the field, so if this happens, its a nasty bug
-            FATALF("Duplicate field should not occur: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
-          case RHIZOME_MANIFEST_INVALID:
-	    DEBUGF(rhizome, "Manifest invalid field: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
-            if (reason)
-              strbuf_sprintf(reason, "Manifest invalid field: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
-            result = RHIZOME_ADD_FILE_INVALID;
-            goto error;
-          case RHIZOME_MANIFEST_MALFORMED:
-	    DEBUGF(rhizome, "Manifest malformed field: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
-            if (reason)
-              strbuf_sprintf(reason, "Manifest malformed field: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
-            result = RHIZOME_ADD_FILE_INVALID;
-            goto error;
-          case RHIZOME_MANIFEST_OVERFLOW:
-	    DEBUGF(rhizome, "Too many fields in manifest at: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
-            if (reason)
-              strbuf_sprintf(reason, "Too many fields in manifest at: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
-            result = RHIZOME_ADD_FILE_INVALID;
-            goto error;
+	case RHIZOME_MANIFEST_ERROR:
+	  result = rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_ERROR,
+						  "Error updating manifest field: %s=%s",
+						  label, alloca_toprint(-1, asg->value, asg->valuelen));
+	  goto error;
+	case RHIZOME_MANIFEST_OK:
+	  status_ok = 1;
+	  break;
+	case RHIZOME_MANIFEST_SYNTAX_ERROR:
+	  result = rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_INVALID,
+						  "Manifest syntax error: %s=%s",
+						  label, alloca_toprint(-1, asg->value, asg->valuelen));
+	  goto error;
+	case RHIZOME_MANIFEST_DUPLICATE_FIELD:
+	  // We already deleted the field, so if this happens, its a logic bug.
+	  FATALF("Duplicate field should not occur: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
+	case RHIZOME_MANIFEST_INVALID:
+	  result = rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_INVALID,
+						  "Manifest invalid field: %s=%s",
+						  label, alloca_toprint(-1, asg->value, asg->valuelen));
+	  goto error;
+	case RHIZOME_MANIFEST_MALFORMED:
+	  result = rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_INVALID,
+						  "Manifest malformed field: %s=%s",
+						  label, alloca_toprint(-1, asg->value, asg->valuelen));
+	  goto error;
+	case RHIZOME_MANIFEST_OVERFLOW:
+	  result = rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_INVALID,
+						  "Too many fields in manifest at: %s=%s",
+						  label, alloca_toprint(-1, asg->value, asg->valuelen));
+	  goto error;
         }
         if (!status_ok)
           FATALF("status = %d", status);
@@ -292,22 +293,20 @@ enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
     }
   }
   if (appending && !new_manifest->is_journal) {
-    cause = "Cannot append to a non-journal";
-    DEBUG(rhizome, cause);
-    result = RHIZOME_ADD_FILE_REQUIRES_JOURNAL;
+    result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_INVALID,
+					  "Cannot append to a non-journal");
     goto error;
   }
   if (!appending && new_manifest->is_journal) {
-    cause = "Cannot add a journal bundle (use append instead)";
-    DEBUG(rhizome, cause);
-    result = RHIZOME_ADD_FILE_INVALID_FOR_JOURNAL;
+    result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_INVALID,
+					  "Cannot add a journal bundle (use append instead)");
     goto error;
   }
   if (bsk) {
     if (new_manifest->has_id) {
       if (!rhizome_apply_bundle_secret(new_manifest, bsk)) {
-        WHY(cause = "Supplied bundle secret does not match Bundle Id");
-        result = RHIZOME_ADD_FILE_WRONG_SECRET;
+	result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_READONLY,
+					      "Supplied bundle secret does not match Bundle Id");
         goto error;
       }
     } else {
@@ -320,19 +319,29 @@ enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
     WARNF("Manifest 'service' field not supplied - setting to '%s'", RHIZOME_SERVICE_FILE);
     rhizome_manifest_set_service(new_manifest, RHIZOME_SERVICE_FILE);
   }
-  if ((cause = rhizome_fill_manifest(new_manifest, file_path, author ? author : NULL)) != NULL)
-    goto error;
-  *mout = new_manifest;
-  return RHIZOME_ADD_FILE_OK;
+  result = rhizome_fill_manifest(new_manifest, file_path, author);
 error:
-  assert(result != RHIZOME_ADD_FILE_OK);
-  if (cause && reason)
-    strbuf_puts(reason, cause);
-  if (new_manifest && new_manifest != m && new_manifest != existing_manifest)
-    rhizome_manifest_free(new_manifest);
-  if (existing_manifest)
-    rhizome_manifest_free(existing_manifest);
-  return result;
+  switch (result.status) {
+  case RHIZOME_BUNDLE_STATUS_NEW:
+    *mout = new_manifest;
+    return result;
+  case RHIZOME_BUNDLE_STATUS_ERROR:
+  case RHIZOME_BUNDLE_STATUS_SAME:
+  case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+  case RHIZOME_BUNDLE_STATUS_OLD:
+  case RHIZOME_BUNDLE_STATUS_INVALID:
+  case RHIZOME_BUNDLE_STATUS_FAKE:
+  case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+  case RHIZOME_BUNDLE_STATUS_NO_ROOM:
+  case RHIZOME_BUNDLE_STATUS_READONLY:
+  case RHIZOME_BUNDLE_STATUS_BUSY:
+    if (new_manifest && new_manifest != m && new_manifest != existing_manifest)
+      rhizome_manifest_free(new_manifest);
+    if (existing_manifest)
+      rhizome_manifest_free(existing_manifest);
+    return result;
+  }
+  FATALF("result.status = %d", (int)result.status);
 }
 
 /* Import a bundle from a pair of files, one containing the manifest and the optional other
@@ -647,4 +656,134 @@ const char *rhizome_payload_status_message_nonnull(enum rhizome_payload_status s
 {
   const char *message = rhizome_payload_status_message(status);
   return message ? message : "Invalid";
+}
+
+void rhizome_bundle_result_free(struct rhizome_bundle_result *resultp)
+{
+  if (resultp->free) {
+    resultp->free((void *)resultp->message);
+  }
+  *resultp = INVALID_RHIZOME_BUNDLE_RESULT;
+}
+
+static const char *rhizome_bundle_status_symbol(enum rhizome_bundle_status status)
+{
+  switch (status) {
+    case RHIZOME_BUNDLE_STATUS_NEW:          return "NEW";
+    case RHIZOME_BUNDLE_STATUS_SAME:         return "SAME";
+    case RHIZOME_BUNDLE_STATUS_DUPLICATE:    return "DUPLICATE";
+    case RHIZOME_BUNDLE_STATUS_OLD:          return "OLD";
+    case RHIZOME_BUNDLE_STATUS_INVALID:      return "INVALID";
+    case RHIZOME_BUNDLE_STATUS_FAKE:         return "FAKE";
+    case RHIZOME_BUNDLE_STATUS_INCONSISTENT: return "INCONSISTENT";
+    case RHIZOME_BUNDLE_STATUS_NO_ROOM:      return "NO_ROOM";
+    case RHIZOME_BUNDLE_STATUS_READONLY:     return "READONLY";
+    case RHIZOME_BUNDLE_STATUS_BUSY:         return "BUSY";
+    case RHIZOME_BUNDLE_STATUS_ERROR:        return "ERROR";
+  }
+  FATALF("status=%d", (int)status);
+}
+
+static void log_rhizome_bundle_result(struct __sourceloc __whence, struct rhizome_bundle_result result)
+{
+  switch (result.status) {
+    case RHIZOME_BUNDLE_STATUS_NEW:
+    case RHIZOME_BUNDLE_STATUS_SAME:
+    case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+    case RHIZOME_BUNDLE_STATUS_OLD:
+    case RHIZOME_BUNDLE_STATUS_INVALID:
+    case RHIZOME_BUNDLE_STATUS_FAKE:
+    case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+    case RHIZOME_BUNDLE_STATUS_NO_ROOM:
+    case RHIZOME_BUNDLE_STATUS_READONLY:
+      DEBUG(rhizome, alloca_rhizome_bundle_result(result));
+      return;
+    case RHIZOME_BUNDLE_STATUS_BUSY:
+      WARN(alloca_rhizome_bundle_result(result));
+      return;
+    case RHIZOME_BUNDLE_STATUS_ERROR:
+      WHY(alloca_rhizome_bundle_result(result));
+      return;
+  }
+  FATAL(alloca_rhizome_bundle_result(result));
+}
+
+
+struct rhizome_bundle_result _rhizome_bundle_result(struct __sourceloc __whence, enum rhizome_bundle_status status)
+{
+  struct rhizome_bundle_result result = INVALID_RHIZOME_BUNDLE_RESULT;
+  result.status = status;
+  log_rhizome_bundle_result(__whence, result);
+  return result;
+}
+
+struct rhizome_bundle_result _rhizome_bundle_result_static(struct __sourceloc __whence, enum rhizome_bundle_status status, const char *message)
+{
+  struct rhizome_bundle_result result = INVALID_RHIZOME_BUNDLE_RESULT;
+  result.status = status;
+  result.message = message;
+  log_rhizome_bundle_result(__whence, result);
+  return result;
+}
+
+struct rhizome_bundle_result _rhizome_bundle_result_strdup(struct __sourceloc __whence, enum rhizome_bundle_status status, const char *message)
+{
+  assert(message != NULL);
+  struct rhizome_bundle_result result = INVALID_RHIZOME_BUNDLE_RESULT;
+  result.status = status;
+  result.message = str_edup(message);
+  result.free = free;
+  log_rhizome_bundle_result(__whence, result);
+  return result;
+}
+
+struct rhizome_bundle_result _rhizome_bundle_result_sprintf(struct __sourceloc __whence, enum rhizome_bundle_status status, const char *fmt, ...)
+{
+  struct rhizome_bundle_result result = INVALID_RHIZOME_BUNDLE_RESULT;
+  result.status = status;
+  va_list ap;
+  va_start(ap, fmt);
+  strbuf sb;
+  STRBUF_ALLOCA_FIT(sb, 200, (strbuf_vsprintf(sb, fmt, ap)));
+  va_end(ap);
+  result.message = str_edup(strbuf_str(sb));
+  result.free = free;
+  log_rhizome_bundle_result(__whence, result);
+  return result;
+}
+
+const char *rhizome_bundle_result_message(struct rhizome_bundle_result result)
+{
+  return result.message ? result.message : rhizome_bundle_status_message(result.status);
+}
+
+const char *rhizome_bundle_result_message_nonnull(struct rhizome_bundle_result result)
+{
+  return result.message ? result.message : rhizome_bundle_status_message_nonnull(result.status);
+}
+
+strbuf strbuf_append_rhizome_bundle_result(strbuf sb, struct rhizome_bundle_result result)
+{
+  switch (result.status) {
+  case RHIZOME_BUNDLE_STATUS_NEW:
+  case RHIZOME_BUNDLE_STATUS_SAME:
+  case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+  case RHIZOME_BUNDLE_STATUS_OLD:
+  case RHIZOME_BUNDLE_STATUS_INVALID:
+  case RHIZOME_BUNDLE_STATUS_FAKE:
+  case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+  case RHIZOME_BUNDLE_STATUS_NO_ROOM:
+  case RHIZOME_BUNDLE_STATUS_READONLY:
+  case RHIZOME_BUNDLE_STATUS_BUSY:
+  case RHIZOME_BUNDLE_STATUS_ERROR:
+    strbuf_puts(sb, "RHIZOME_BUNDLE_STATUS_");
+    strbuf_puts(sb, rhizome_bundle_status_symbol(result.status));
+    if (result.message) {
+      strbuf_puts(sb, " ");
+      strbuf_toprint_quoted(sb, "``", result.message);
+    }
+    return sb;
+  }
+  strbuf_sprintf(sb, "Invalid rhizome_bundle_status (%d)", (int)result.status);
+  return sb;
 }

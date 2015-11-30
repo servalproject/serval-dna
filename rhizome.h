@@ -421,6 +421,40 @@ enum rhizome_bundle_status {
 const char *rhizome_bundle_status_message(enum rhizome_bundle_status);
 const char *rhizome_bundle_status_message_nonnull(enum rhizome_bundle_status);
 
+// Encapsulate a status enum value and an optional text message to assist with
+// diagnostics.  Useful as a return value from functions that can fail in all
+// sorts of ways.
+struct rhizome_bundle_result {
+    enum rhizome_bundle_status status;
+    const char *message;
+    void (*free)(void *); // call r.free(r.message) before destroying r
+};
+
+#define INVALID_RHIZOME_BUNDLE_RESULT ((struct rhizome_bundle_result){ .status = INVALID_RHIZOME_BUNDLE_STATUS, .message = NULL, .free = NULL })
+
+// Call this before discarding a struct rhizome_bundle_result.
+void rhizome_bundle_result_free(struct rhizome_bundle_result *);
+
+// Convenience functions for constructing a struct rhizome_bundle_result and
+// logging errors and debug messages in the process.
+struct rhizome_bundle_result _rhizome_bundle_result(struct __sourceloc, enum rhizome_bundle_status);
+struct rhizome_bundle_result _rhizome_bundle_result_static(struct __sourceloc, enum rhizome_bundle_status, const char *);
+struct rhizome_bundle_result _rhizome_bundle_result_strdup(struct __sourceloc, enum rhizome_bundle_status, const char *);
+struct rhizome_bundle_result _rhizome_bundle_result_sprintf(struct __sourceloc, enum rhizome_bundle_status, const char *fmt, ...);
+
+#define rhizome_bundle_result(status)                   _rhizome_bundle_result(__WHENCE__, status)
+#define rhizome_bundle_result_static(status, str)       _rhizome_bundle_result_static(__WHENCE__, status, str);
+#define rhizome_bundle_result_strdup(status, str)       _rhizome_bundle_result_strdup(__WHENCE__, status, str);
+#define rhizome_bundle_result_sprintf(status, fmt, ...) _rhizome_bundle_result_sprintf(__WHENCE__, status, fmt, ## __VA_ARGS__);
+
+// Functions for extracting information from a struct rhizome_bundle_result.
+const char *rhizome_bundle_result_message(struct rhizome_bundle_result); // NULL only if invalid
+const char *rhizome_bundle_result_message_nonnull(struct rhizome_bundle_result);
+
+// Function to assist logging struct rhizome_bundle_result.
+#define alloca_rhizome_bundle_result(result)            strbuf_str(strbuf_append_rhizome_bundle_result(strbuf_alloca(50 + (result.message ? strlen(result.message) : 0)), result))
+strbuf strbuf_append_rhizome_bundle_result(strbuf, struct rhizome_bundle_result);
+
 enum rhizome_payload_status {
     RHIZOME_PAYLOAD_STATUS_ERROR = -1,
     RHIZOME_PAYLOAD_STATUS_EMPTY = 0, // payload is empty (zero length)
@@ -458,30 +492,19 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc);
 int rhizome_store_manifest(rhizome_manifest *m);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);
 
-enum rhizome_add_file_result {
-    RHIZOME_ADD_FILE_ERROR = -1,
-    RHIZOME_ADD_FILE_OK = 0, // manifest created successfully
-    RHIZOME_ADD_FILE_INVALID, // manifest not created due to invalid input
-    RHIZOME_ADD_FILE_BUSY, // manifest not created because database busy
-    RHIZOME_ADD_FILE_REQUIRES_JOURNAL, // operation is only valid for a journal
-    RHIZOME_ADD_FILE_INVALID_FOR_JOURNAL, // operation is not valid for a journal
-    RHIZOME_ADD_FILE_WRONG_SECRET, // incorrect bundle secret supplied
-};
-enum rhizome_add_file_result rhizome_manifest_add_file(int appending,
-			      rhizome_manifest *m,
-			      rhizome_manifest **mout,
-                              const rhizome_bid_t *bid,
-			      const rhizome_bk_t *bsk,
-			      const sid_t *author,
-			      const char *file_path,
-			      unsigned nassignments,
-			      const struct rhizome_manifest_field_assignment *assignments,
-			      strbuf reason
-			     );
+struct rhizome_bundle_result rhizome_manifest_add_file(int appending,
+                                                       rhizome_manifest *m,
+                                                       rhizome_manifest **mout,
+                                                       const rhizome_bid_t *bid,
+                                                       const rhizome_bk_t *bsk,
+                                                       const sid_t *author,
+                                                       const char *file_path,
+                                                       unsigned nassignments,
+                                                       const struct rhizome_manifest_field_assignment *assignments);
 int rhizome_bundle_import_files(rhizome_manifest *m, rhizome_manifest **m_out, const char *manifest_path, const char *filepath);
 
 int rhizome_manifest_set_name_from_path(rhizome_manifest *m, const char *filepath);
-const char * rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp);
+struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp);
 
 int rhizome_apply_bundle_secret(rhizome_manifest *, const rhizome_bk_t *);
 int rhizome_manifest_add_bundle_key(rhizome_manifest *);

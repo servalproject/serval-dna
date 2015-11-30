@@ -248,13 +248,15 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
     if (m->service == NULL)
       rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
     const sid_t *author = is_sid_t_any(config.rhizome.api.addfile.default_author) ? NULL : &config.rhizome.api.addfile.default_author;
-    const char *reason = rhizome_fill_manifest(m, r->u.direct_import.data_file_name, author);
-    if (reason) {
+    struct rhizome_bundle_result result = rhizome_fill_manifest(m, r->u.direct_import.data_file_name, author);
+    if (result.status != RHIZOME_BUNDLE_STATUS_NEW) {
       rhizome_manifest_free(m);
       rhizome_direct_clear_temporary_files(r);
-      http_request_simple_response(&r->http, 500, alloca_sprintf(-1, "Internal Error: %s", reason));
+      http_request_simple_response(&r->http, 500, result.message);
+      rhizome_bundle_result_free(&result);
       return 0;
     }
+    rhizome_bundle_result_free(&result);
     rhizome_manifest_set_crypt(m, PAYLOAD_CLEAR);
     // import file contents
     // TODO, stream file into database

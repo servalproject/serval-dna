@@ -1480,13 +1480,13 @@ int rhizome_manifest_set_name_from_path(rhizome_manifest *m, const char *filepat
  *  - create an ID if there is none, otherwise authenticate the existing one
  *  - if service is file, then use the payload file's basename for "name"
  *
- * Return NULL if successful, otherwise a pointer to a static text string describing the reason for
- * the failure (always an internal/unrecoverable error).
+ * Return a rhizome_bundle_status code together with a pointer to a text string describing the
+ * reason for the failure (always an internal/unrecoverable error).  The string is accompanied by a
+ * pointer to a "free" method (eg, free(3)) that must be called to release the string before the
+ * pointer is discarded.
  */
-const char * rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp)
+struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp)
 {
-  const char *reason = NULL;
-
   /* Set version of manifest from current time if not already set. */
   if (m->version == 0)
     rhizome_manifest_set_version(m, gettime_ms());
@@ -1513,8 +1513,7 @@ const char * rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, co
     // If there is no Bundle Id, then create a new bundle Id and secret from scratch.
     DEBUG(rhizome, "creating new bundle");
     if (rhizome_manifest_createid(m) == -1) {
-      WHY(reason = "Could not bind manifest to an ID");
-      return reason;
+      return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_ERROR, "Could not bind manifest to an ID");
     }
     // fall through to set the BK field...
   case NEW_BUNDLE_ID:
@@ -1540,12 +1539,32 @@ const char * rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, co
   }
   if (!valid_haveSecret)
     FATALF("haveSecret = %d", m->haveSecret);
+  int valid_authorship = 0;
+  switch (m->authorship) {
+  case ANONYMOUS:
+    assert(!authorSidp);
+    valid_authorship = 1;
+    break;
+  case AUTHOR_AUTHENTIC:
+    valid_authorship = 1;
+    break;
+  case AUTHOR_UNKNOWN:
+    return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_READONLY, "Author is not in keyring");
+  case AUTHOR_IMPOSTOR:
+    return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_READONLY, "Incorrect author");
+  case AUTHOR_NOT_CHECKED:
+  case AUTHOR_LOCAL:
+    FATALF("logic error (bug): m->authorship = %d", m->authorship);
+  case AUTHENTICATION_ERROR:
+    return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_ERROR, "Error authenticating author");
+  }
+  if (!valid_authorship)
+    FATALF("m->authorship = %d", (int)m->authorship);
 
   /* Service field must already be set.
    */
   if (m->service == NULL) {
-    WHYF(reason = "Missing 'service' field");
-    return reason;
+    return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_INVALID, "Missing 'service' field");
   }
   DEBUGF(rhizome, "manifest contains service=%s", m->service);
 
@@ -1579,7 +1598,7 @@ const char * rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, co
     rhizome_manifest_set_crypt(m, PAYLOAD_ENCRYPTED);
   }
 
-  return NULL;
+  return rhizome_bundle_result(RHIZOME_BUNDLE_STATUS_NEW);
 }
 
 /* Work out the authorship status of the bundle without performing any cryptographic checks.
