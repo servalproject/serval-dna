@@ -1637,8 +1637,10 @@ enum rhizome_payload_status rhizome_finish_store(struct rhizome_write *write, rh
     DEBUGF(rhizome, "m->filesize=%"PRIu64", write->file_length=%"PRIu64, m->filesize, write->file_length);
     return RHIZOME_PAYLOAD_STATUS_WRONG_SIZE;
   }
-  if (m->is_journal)
-    rhizome_manifest_set_version(m, m->filesize);
+  if (m->is_journal) {
+    // TODO ensure new version is greater than previous version
+    rhizome_manifest_set_version(m, m->tail + m->filesize);
+  }
   if (m->filesize) {
     if (m->is_journal || !m->has_filehash)
       rhizome_manifest_set_filehash(m, &write->id);

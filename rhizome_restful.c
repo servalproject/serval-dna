@@ -478,6 +478,7 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     // Reject a request if this parameter comes after the manifest part.
     if (r->u.insert.received_manifest)
       return http_response_form_part(r, 400, "Spurious", PART_AUTHOR, NULL, 0);
+    // TODO enforce correct content type
     r->u.insert.current_part = PART_AUTHOR;
     assert(r->u.insert.author_hex_len == 0);
   }
@@ -487,6 +488,7 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     // Reject a request if this parameter comes after the manifest part.
     if (r->u.insert.received_manifest)
       return http_response_form_part(r, 400, "Spurious", PART_SECRET, NULL, 0);
+    // TODO enforce correct content type
     r->u.insert.current_part = PART_SECRET;
     assert(r->u.insert.secret_text_len == 0);
   }
@@ -496,6 +498,7 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     // Reject a request if this parameter comes after the manifest part.
     if (r->u.insert.received_manifest)
       return http_response_form_part(r, 400, "Spurious", PART_BUNDLEID, NULL, 0);
+    // TODO enforce correct content type
     r->u.insert.current_part = PART_BUNDLEID;
     assert(r->u.insert.bid_text_len == 0);
   }
@@ -521,6 +524,7 @@ static int insert_mime_part_header(struct http_request *hr, const struct mime_pa
     if (!r->u.insert.received_manifest)
       return http_response_form_part(r, 400, "Missing", PART_MANIFEST, NULL, 0);
     assert(r->manifest != NULL);
+    // TODO enforce correct content type
     r->u.insert.current_part = PART_PAYLOAD;
     // If the manifest does not contain a 'name' field, then assign it from the payload filename.
     if (   strcasecmp(RHIZOME_SERVICE_FILE, r->manifest->service) == 0
