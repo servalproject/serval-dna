@@ -1491,13 +1491,12 @@ const char * rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, co
   if (m->version == 0)
     rhizome_manifest_set_version(m, gettime_ms());
 
-  /* Set the manifest's author.  This must be done before binding to a new ID (below).  If no author
-   * was specified, then the manifest's "sender" field is used, if present.
+  /* Set the manifest's author.  This must be done before binding to a new ID (below).  If the
+   * 'authorSidp' parameter was not set, then don't use the 'sender' field here, as we only want to
+   * authenticate an explicitly supplied author, not the sender.
    */
   if (authorSidp)
     rhizome_manifest_set_author(m, authorSidp);
-  else if (m->has_sender)
-    rhizome_manifest_set_author(m, &m->sender);
 
   /* Fill in the bundle secret and bundle ID.
    */
@@ -1506,12 +1505,12 @@ const char * rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, co
   case SECRET_UNKNOWN:
     valid_haveSecret = 1;
     // If the Bundle Id is already known, then derive the bundle secret from BK if known.
-    // If there is no Bundle Id, then create a new bundle Id and secret from scratch.
     if (m->has_id) {
       DEBUGF(rhizome, "discover secret for bundle bid=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
       rhizome_authenticate_author(m);
       break;
     }
+    // If there is no Bundle Id, then create a new bundle Id and secret from scratch.
     DEBUG(rhizome, "creating new bundle");
     if (rhizome_manifest_createid(m) == -1) {
       WHY(reason = "Could not bind manifest to an ID");
@@ -1521,9 +1520,14 @@ const char * rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, co
   case NEW_BUNDLE_ID:
     valid_haveSecret = 1;
     assert(m->has_id);
+    // If no 'authorSidp' parameter was supplied but the manifest has a 'sender' field, then use the
+    // sender as the author.
+    if (m->authorship == ANONYMOUS && m->has_sender)
+      rhizome_manifest_set_author(m, &m->sender);
+    // If we know the author then set the BK field.
     if (m->authorship != ANONYMOUS) {
       DEBUGF(rhizome, "set BK field for bid=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
-      rhizome_manifest_add_bundle_key(m); // set the BK field
+      rhizome_manifest_add_bundle_key(m);
     }
     break;
   case EXISTING_BUNDLE_ID:
