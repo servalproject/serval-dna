@@ -465,6 +465,7 @@ setup_CorruptPayload() {
    wait_until bundle_received_by $BID:$VERSION +B
    assert cmp file1 "$SERVALINSTANCE_PATH/blob/$FILEHASH"
    create_file file2 1024
+   assert --error-on-fail ! cmp file1 file2
    cp file2 "$SERVALINSTANCE_PATH/blob/$FILEHASH"
    execute --exit-status=255 $servald rhizome extract file $BID file1a
    # TODO at the moment, the re-fetch is only triggered by restarting the
