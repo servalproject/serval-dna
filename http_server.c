@@ -237,14 +237,14 @@ static int _reserve(struct http_request *r, const char **resp, const char *src, 
   assert(r->reserved <= reslim);
   size_t siz = sizeof(char**) + len + 1;
   if (r->reserved + siz > reslim) {
-    r->response.result_code = 414; // Request-URI Too Long
+    r->response.status_code = 414; // Request-URI Too Long
     return 0;
   }
   if (r->reserved + siz > r->parsed) {
     WHYF("Error during HTTP parsing, unparsed content %s would be overwritten by reserving %zu bytes",
 	 alloca_toprint(30, r->parsed, r->end - r->parsed), len + 1
         );
-    r->response.result_code = 500;
+    r->response.status_code = 500;
     return 0;
   }
   const char ***respp = (const char ***) r->reserved;
@@ -1103,8 +1103,8 @@ static int http_request_parse_header(struct http_request *r)
       _commit(r);
       return 0;
     }
-    if (r->response.result_code)
-      return r->response.result_code;
+    if (r->response.status_code)
+      return r->response.status_code;
     goto malformed;
   }
   _rewind(r);
@@ -1124,8 +1124,8 @@ static int http_request_parse_header(struct http_request *r)
       _commit(r);
       return 0;
     }
-    if (r->response.result_code)
-      return r->response.result_code;
+    if (r->response.status_code)
+      return r->response.status_code;
     goto malformed;
   }
   _rewind(r);
@@ -1666,14 +1666,14 @@ static void http_request_receive(struct http_request *r)
       }
     }
     if (result >= 200 && result < 600) {
-      assert(r->response.result_code == 0 || r->response.result_code == result);
-      r->response.result_code = result;
+      assert(r->response.status_code == 0 || r->response.status_code == result);
+      r->response.status_code = result;
     } else if (result) {
       WHYF("Internal failure parsing HTTP request: invalid result code %d", result);
       DEBUG_DUMP_PARSER(r);
-      r->response.result_code = 500;
+      r->response.status_code = 500;
     }
-    if (r->response.result_code)
+    if (r->response.status_code)
       break;
     if (result == -1) {
       WHY("Unrecoverable error parsing HTTP request, closing connection");
@@ -1683,13 +1683,13 @@ static void http_request_receive(struct http_request *r)
     }
   }
   if (r->phase != RECEIVE) {
-    assert(r->response.result_code != 0);
+    assert(r->response.status_code != 0);
     RETURNVOID;
   }
-  if (r->response.result_code == 0) {
+  if (r->response.status_code == 0) {
     WHY("No HTTP response set, using 500 Server Error");
     DEBUG_DUMP_PARSER(r);
-    r->response.result_code = 500;
+    r->response.status_code = 500;
   }
   http_request_start_response(r);
   OUT();
@@ -1985,13 +1985,13 @@ static const char *http_reason_phrase(int response_code)
   }
 }
 
-static strbuf strbuf_status_body(strbuf sb, struct http_response *hr, const char *reason_phrase)
+static strbuf strbuf_status_body(strbuf sb, struct http_response *hr)
 {
   if (   hr->header.content_type == CONTENT_TYPE_TEXT
       || (hr->header.content_type && strcmp(hr->header.content_type, CONTENT_TYPE_TEXT) == 0)
   ) {
     hr->header.content_type = CONTENT_TYPE_TEXT;
-    strbuf_sprintf(sb, "%03u %s", hr->result_code, reason_phrase);
+    strbuf_sprintf(sb, "%03u %s", hr->status_code, hr->reason);
     unsigned i;
     for (i = 0; i < NELS(hr->result_extra); ++i)
       if (hr->result_extra[i].label) {
@@ -2006,8 +2006,8 @@ static strbuf strbuf_status_body(strbuf sb, struct http_response *hr, const char
            || (hr->header.content_type && strcmp(hr->header.content_type, CONTENT_TYPE_JSON) == 0)
   ) {
     hr->header.content_type = CONTENT_TYPE_JSON;
-    strbuf_sprintf(sb, "{\n \"http_status_code\": %u,\n \"http_status_message\": ", hr->result_code);
-    strbuf_json_string(sb, reason_phrase);
+    strbuf_sprintf(sb, "{\n \"http_status_code\": %u,\n \"http_status_message\": ", hr->status_code);
+    strbuf_json_string(sb, hr->reason);
     unsigned i;
     for (i = 0; i < NELS(hr->result_extra); ++i)
       if (hr->result_extra[i].label) {
@@ -2020,7 +2020,7 @@ static strbuf strbuf_status_body(strbuf sb, struct http_response *hr, const char
   }
   else {
     hr->header.content_type = CONTENT_TYPE_HTML;
-    strbuf_sprintf(sb, "<html>\n<h1>%03u %s</h1>", hr->result_code, reason_phrase);
+    strbuf_sprintf(sb, "<html>\n<h1>%03u %s</h1>", hr->status_code, hr->reason);
     strbuf_puts(sb, "\n<dl>");
     unsigned i;
     for (i = 0; i < NELS(hr->result_extra); ++i)
@@ -2045,12 +2045,13 @@ static strbuf strbuf_status_body(strbuf sb, struct http_response *hr, const char
 static int _render_response(struct http_request *r)
 {
   struct http_response hr = r->response;
-  assert(hr.result_code >= 100);
-  assert(hr.result_code < 600);
+  assert(hr.status_code >= 100);
+  assert(hr.status_code < 600);
   // Status code 401 must be accompanied by a WWW-Authenticate header.
-  if (hr.result_code == 401)
+  if (hr.status_code == 401)
     assert(hr.header.www_authenticate.scheme != NOAUTH);
-  const char *reason_phrase = http_reason_phrase(hr.result_code);
+  if (!hr.reason)
+    hr.reason = http_reason_phrase(hr.status_code);
   strbuf sb = strbuf_local(r->response_buffer, r->response_buffer_size);
   // Cannot specify both static (pre-rendered) content AND generated content.
   assert(!(hr.content && hr.content_generator));
@@ -2079,8 +2080,8 @@ static int _render_response(struct http_request *r)
 	&& hr.header.content_length > 0
 	&& hr.header.content_length < hr.header.resource_length
     ) {
-      if (hr.result_code == 200)
-	hr.result_code = 206; // Partial Content
+      if (hr.status_code == 200)
+	hr.status_code = 206; // Partial Content
     }
   } else {
     // If no content has been supplied at all, then render a standard, short body based solely on
@@ -2088,9 +2089,9 @@ static int _render_response(struct http_request *r)
     assert(hr.header.content_length == CONTENT_LENGTH_UNKNOWN);
     assert(hr.header.resource_length == CONTENT_LENGTH_UNKNOWN);
     assert(hr.header.content_range_start == 0);
-    assert(hr.result_code != 206);
+    assert(hr.status_code != 206);
     strbuf cb;
-    STRBUF_ALLOCA_FIT(cb, 40 + strlen(reason_phrase), (strbuf_status_body(cb, &hr, reason_phrase)));
+    STRBUF_ALLOCA_FIT(cb, 40 + strlen(hr.reason), (strbuf_status_body(cb, &hr)));
     hr.content = strbuf_str(cb);
     hr.header.content_length = strbuf_len(cb);
     hr.header.resource_length = hr.header.content_length;
@@ -2098,7 +2099,7 @@ static int _render_response(struct http_request *r)
   }
   assert(hr.header.content_type != NULL);
   assert(hr.header.content_type[0]);
-  strbuf_sprintf(sb, "HTTP/1.0 %03u %s\r\n", hr.result_code, reason_phrase);
+  strbuf_sprintf(sb, "HTTP/1.0 %03u %s\r\n", hr.status_code, hr.reason);
   strbuf_sprintf(sb, "Content-Type: %s", hr.header.content_type);
   if (hr.header.boundary) {
     strbuf_puts(sb, "; boundary=");
@@ -2108,7 +2109,7 @@ static int _render_response(struct http_request *r)
       strbuf_puts(sb, hr.header.boundary);
   }
   strbuf_puts(sb, "\r\n");
-  if (hr.result_code == 206) {
+  if (hr.status_code == 206) {
     // Must only use result code 206 (Partial Content) if the content is in fact less than the whole
     // resource length.
     assert(hr.header.content_length != CONTENT_LENGTH_UNKNOWN);
@@ -2148,7 +2149,7 @@ static int _render_response(struct http_request *r)
     case BASIC: scheme = "Basic"; break;
   }
   if (scheme) {
-    assert(hr.result_code == 401);
+    assert(hr.status_code == 401);
     strbuf_sprintf(sb, "WWW-Authenticate: %s realm=", scheme);
     strbuf_append_quoted_string(sb, hr.header.www_authenticate.realm);
     strbuf_puts(sb, "\r\n");
@@ -2238,9 +2239,9 @@ static void http_request_start_response(struct http_request *r)
   if (r->phase != RECEIVE)
     RETURNVOID;
   // Ensure conformance to HTTP standards.
-  if (r->response.result_code == 401 && r->response.header.www_authenticate.scheme == NOAUTH) {
+  if (r->response.status_code == 401 && r->response.header.www_authenticate.scheme == NOAUTH) {
     WHY("HTTP 401 response missing WWW-Authenticate header, sending 500 Server Error instead");
-    r->response.result_code = 500;
+    r->response.status_code = 500;
     r->response.content = NULL;
     r->response.content_generator = NULL;
   }
@@ -2249,7 +2250,7 @@ static void http_request_start_response(struct http_request *r)
   http_request_render_response(r);
   if (r->response_buffer == NULL) {
     WHY("Cannot render HTTP response, sending 500 Server Error instead");
-    r->response.result_code = 500;
+    r->response.status_code = 500;
     r->response.content = NULL;
     r->response.content_generator = NULL;
     http_request_render_response(r);
@@ -2278,7 +2279,7 @@ void http_request_response_static(struct http_request *r, int result, const char
   assert(r->phase == RECEIVE);
   assert(mime_type != NULL);
   assert(mime_type[0]);
-  r->response.result_code = result;
+  r->response.status_code = result;
   r->response.header.content_type = mime_type;
   r->response.header.content_range_start = 0;
   r->response.header.content_length = r->response.header.resource_length = bytes;
@@ -2292,7 +2293,7 @@ void http_request_response_generated(struct http_request *r, int result, const c
   assert(r->phase == RECEIVE);
   assert(mime_type != NULL);
   assert(mime_type[0]);
-  r->response.result_code = result;
+  r->response.status_code = result;
   r->response.header.content_type = mime_type;
   r->response.content = NULL;
   r->response.content_generator = generator;
@@ -2301,20 +2302,27 @@ void http_request_response_generated(struct http_request *r, int result, const c
 
 /* Start sending a short response back to the client.  The result code must be either a success
  * (2xx), redirection (3xx) or client error (4xx) or server error (5xx) code.  The 'reason_phrase'
- * argument can be text which will be enclosed in either a JSON, HTML or plain text envelope to form
- * the response content, so it should contain any special markup (eg, HTML).  If the 'reason_phrase'
- * argument is NULL, then the reason phrase will be generated automatically from the result code.
+ * argument is an optional, nul-terminated string which will be placed in the first line of the
+ * response, after the status code, and also enclosed in either a JSON, HTML or plain text envelope
+ * to form the response content, so it should contain any special markup (eg, HTML).  If the
+ * 'reason_phrase' argument is NULL, then the reason phrase will be generated automatically from the
+ * result code.
+ *
+ * This function copies the 'reason_phrase' string into the outgoing response buffer before it
+ * returns, and makes no further use of the string pointer, so the caller can construct the string
+ * in any way, including as an auto array of char, or allocated on the stack using alloca(3).
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 void http_request_simple_response(struct http_request *r, uint16_t result, const char *reason_phrase)
 {
   assert(r->phase == RECEIVE);
-  r->response.result_code = result;
+  r->response.status_code = result;
+  r->response.reason = reason_phrase;
   r->response.header.content_range_start = 0;
   strbuf h = NULL;
-  if (reason_phrase)
-    STRBUF_ALLOCA_FIT(h, 40 + strlen(reason_phrase), (strbuf_status_body(h, &r->response, reason_phrase)));
+  if (r->response.reason)
+    STRBUF_ALLOCA_FIT(h, 40 + strlen(r->response.reason), (strbuf_status_body(h, &r->response)));
   if (h) {
     r->response.header.resource_length = r->response.header.content_length = strbuf_len(h);
     r->response.content = strbuf_str(h);

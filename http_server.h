@@ -123,7 +123,8 @@ struct http_content_generator_result {
 typedef int (HTTP_CONTENT_GENERATOR)(struct http_request *, unsigned char *, size_t, struct http_content_generator_result *);
 
 struct http_response {
-  uint16_t result_code;
+  uint16_t status_code;
+  const char *reason;
   struct {
     const char *label;
     struct json_atom value;
