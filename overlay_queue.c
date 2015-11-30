@@ -65,7 +65,7 @@ int overlay_queue_init(){
   int i;
   for(i=0;i<OQ_MAX;i++) {
     overlay_tx[i].maxLength=100;
-    overlay_tx[i].latencyTarget=0; // no QOS time limit by default
+    overlay_tx[i].latencyTarget=0; // no QOS time limit by default, depend on per destination timeouts
     overlay_tx[i].small_packet_grace_interval = 5;
   }
   /* expire voice/video call packets much sooner, as they just aren't any use if late */
@@ -355,8 +355,8 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
   // TODO stop when the packet is nearly full?
   while(frame){
     if (queue->latencyTarget!=0 && frame->enqueued_at + queue->latencyTarget < now){
-      DEBUGF(overlayframes, "Dropping frame type %x (length %zu) for %s due to expiry timeout", 
-	     frame->type, frame->payload->checkpointLength,
+      DEBUGF(ack,"Dropping frame (%p) type %x (length %zu) for %s due to expiry timeout", 
+	     frame, frame->type, frame->payload->checkpointLength,
 	     frame->destination?alloca_tohex_sid_t(frame->destination->sid):"All"
 	    );
       frame = overlay_queue_remove(queue, frame);
@@ -405,7 +405,10 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  continue;
 	}
 	if (frame->enqueued_at + dest->ifconfig.transmit_timeout_ms < now){
-	  WARNF("Skipping packet destination due to timeout"); 
+	  DEBUGF(ack,"Dropping %p, %s packet destination for %s sent w. seq %d, %dms ago", 
+	    frame, dest->unicast?"unicast":"broadcast",
+	    frame->whence.function, frame->destinations[i].sent_sequence,
+	    (int)(gettime_ms() - frame->destinations[i].transmit_time));
 	  frame_remove_destination(frame, i);
 	  continue;
 	}
