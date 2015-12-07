@@ -79,6 +79,7 @@ static enum meshms_status get_my_conversation_bundle(const sid_t *my_sidp, rhizo
     case RHIZOME_BUNDLE_STATUS_INVALID:
     case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
       WHYF("Error creating conversation manifest: %s", alloca_rhizome_bundle_result(result));
+      rhizome_bundle_result_free(&result);
       return MESHMS_STATUS_ERROR;
     case RHIZOME_BUNDLE_STATUS_BUSY:
       // TODO
@@ -86,9 +87,11 @@ static enum meshms_status get_my_conversation_bundle(const sid_t *my_sidp, rhizo
     case RHIZOME_BUNDLE_STATUS_FAKE:
     case RHIZOME_BUNDLE_STATUS_NO_ROOM:
       WARNF("Cannot create conversation manifest: %s", alloca_rhizome_bundle_result(result));
+      rhizome_bundle_result_free(&result);
       return MESHMS_STATUS_PROTOCOL_FAULT;
     case RHIZOME_BUNDLE_STATUS_READONLY:
       INFOF("Cannot create conversation manifest: %s", alloca_rhizome_bundle_result(result));
+      rhizome_bundle_result_free(&result);
       return MESHMS_STATUS_SID_LOCKED;
     }
     // The 'meshms' automated test depends on this message; do not alter.
@@ -96,6 +99,7 @@ static enum meshms_status get_my_conversation_bundle(const sid_t *my_sidp, rhizo
 	   alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
 	   alloca_tohex(m->cryptoSignSecret, RHIZOME_BUNDLE_KEY_BYTES)
 	  );
+    rhizome_bundle_result_free(&result);
   } else {
     if (strcmp(m->service, RHIZOME_SERVICE_FILE) != 0) {
       WARNF("Invalid conversations manifest, service=%s but should be %s", m->service, RHIZOME_SERVICE_FILE);
@@ -229,17 +233,21 @@ static enum meshms_status create_ply(const sid_t *my_sid, struct meshms_conversa
   case RHIZOME_BUNDLE_STATUS_INVALID:
   case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
     WHYF("Error creating ply manifest: %s", alloca_rhizome_bundle_result(result));
+    rhizome_bundle_result_free(&result);
     return MESHMS_STATUS_ERROR;
   case RHIZOME_BUNDLE_STATUS_OLD:
   case RHIZOME_BUNDLE_STATUS_FAKE:
   case RHIZOME_BUNDLE_STATUS_NO_ROOM:
   case RHIZOME_BUNDLE_STATUS_BUSY:
     WARNF("Cannot create ply manifest: %s", alloca_rhizome_bundle_result(result));
+    rhizome_bundle_result_free(&result);
     return MESHMS_STATUS_PROTOCOL_FAULT;
   case RHIZOME_BUNDLE_STATUS_READONLY:
     INFOF("Cannot create ply manifest: %s", alloca_rhizome_bundle_result(result));
+    rhizome_bundle_result_free(&result);
     return MESHMS_STATUS_SID_LOCKED;
   }
+  rhizome_bundle_result_free(&result);
   assert(m->haveSecret);
   assert(m->payloadEncryption == PAYLOAD_ENCRYPTED);
   conv->my_ply.bundle_id = m->cryptoSignPublic;
