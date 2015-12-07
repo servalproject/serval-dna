@@ -722,13 +722,13 @@ static int restful_rhizome_insert_end(struct http_request *hr)
   rhizome_manifest *mout = NULL;
   rhizome_bundle_result_free(&r->bundle_result);
   r->bundle_result.status = rhizome_manifest_finalise(r->manifest, &mout, !r->u.insert.force_new);
-  int result = 500;
+  int http_status = 500;
   DEBUGF(rhizome, "r->bundle_result = %s", alloca_rhizome_bundle_result(r->bundle_result));
   switch (r->bundle_result.status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
       if (mout && mout != r->manifest)
 	rhizome_manifest_free(mout);
-      result = 201;
+      http_status = 201;
       break;
     case RHIZOME_BUNDLE_STATUS_SAME:
     case RHIZOME_BUNDLE_STATUS_OLD:
@@ -737,7 +737,7 @@ static int restful_rhizome_insert_end(struct http_request *hr)
 	rhizome_manifest_free(r->manifest);
 	r->manifest = mout;
       }
-      result = 201;
+      http_status = 201;
       break;
     case RHIZOME_BUNDLE_STATUS_ERROR:
       r->bundle_result.message = "Error in manifest finalise";
@@ -754,10 +754,10 @@ static int restful_rhizome_insert_end(struct http_request *hr)
       r->manifest = NULL;
       return http_request_rhizome_response(r, 0, NULL);
   }
-  if (result == 500)
+  if (http_status == 500)
     FATALF("rhizome_manifest_finalise() returned status = %d", r->bundle_result.status);
   rhizome_authenticate_author(r->manifest);
-  http_request_response_static(&r->http, result, "rhizome-manifest/text",
+  http_request_response_static(&r->http, http_status, "rhizome-manifest/text",
       (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes
     );
   return 0;
