@@ -28,6 +28,8 @@ addr_localhost="127.0.0.1"
 declare -a instance_stack=()
 
 # Some useful string constants.
+LF='
+'
 CR=''
 HT='	'
 
