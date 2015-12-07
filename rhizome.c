@@ -741,11 +741,8 @@ struct rhizome_bundle_result _rhizome_bundle_result_sprintf(struct __sourceloc _
 {
   struct rhizome_bundle_result result = INVALID_RHIZOME_BUNDLE_RESULT;
   result.status = status;
-  va_list ap;
-  va_start(ap, fmt);
   strbuf sb;
-  STRBUF_ALLOCA_FIT(sb, 200, (strbuf_vsprintf(sb, fmt, ap)));
-  va_end(ap);
+  STRBUF_ALLOCA_FIT(sb, 200, strbuf_va_printf(sb, fmt));
   result.message = str_edup(strbuf_str(sb));
   result.free = free;
   log_rhizome_bundle_result(__whence, result);
