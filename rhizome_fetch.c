@@ -471,7 +471,7 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
 	 m->manifest_all_bytes, m->sig_count, m->filesize);
   if (IF_DEBUG(rhizome_rx))
     dump("manifest", m->manifestdata, m->manifest_all_bytes);
-  enum rhizome_bundle_status status = rhizome_add_manifest(m, NULL);
+  enum rhizome_bundle_status status = rhizome_add_manifest_to_store(m, NULL);
   switch (status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
       return 0;
@@ -483,7 +483,7 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
     case RHIZOME_BUNDLE_STATUS_INVALID:
       return -1;
     default:
-      FATALF("rhizome_add_manifest() returned %d", status);
+      FATALF("rhizome_add_manifest_to_store() returned %d", status);
   }
 }
 
@@ -750,7 +750,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m,
   // If the payload is already available, no need to fetch, so import now.
   if (result == IMPORTED) {
     DEBUGF(rhizome_rx, "   fetch not started - payload already present, so importing instead");
-    if (rhizome_add_manifest(m, NULL) == -1)
+    if (rhizome_add_manifest_to_store(m, NULL) == -1)
       RETURN(WHY("add manifest failed"));
   }
   RETURN(result);

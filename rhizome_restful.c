@@ -91,6 +91,7 @@ static int http_request_rhizome_response(struct httpd_request *r, uint16_t http_
       break;
     case RHIZOME_BUNDLE_STATUS_INVALID:
     case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+    case RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG:
       rhizome_http_status = 422; // Unprocessable Entity
       break;
     case RHIZOME_BUNDLE_STATUS_BUSY:
@@ -453,6 +454,7 @@ static int insert_make_manifest(httpd_request *r)
   case RHIZOME_BUNDLE_STATUS_BUSY:
   case RHIZOME_BUNDLE_STATUS_FAKE:
   case RHIZOME_BUNDLE_STATUS_READONLY:
+  case RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG:
   case RHIZOME_BUNDLE_STATUS_ERROR:
     return http_request_rhizome_response(r, 0, NULL);
   }
@@ -654,7 +656,7 @@ static int restful_rhizome_insert_end(struct http_request *hr)
   assert(r->u.insert.write.file_length != RHIZOME_SIZE_UNSET);
   if (r->u.insert.appending) {
     // For journal appends, the user cannot supply a 'filesize' field.  This will have been caught
-    // by previous logic.  The existing manifest should have a 'filesize' field.  The new payload
+    // by previous logic.  The manifest should also have a 'filesize' field by now.  The new payload
     // size should be the sum of 'filesize' and the appended portion.
     assert(r->manifest->is_journal);
     assert(r->manifest->filesize != RHIZOME_SIZE_UNSET);
@@ -721,9 +723,8 @@ static int restful_rhizome_insert_end(struct http_request *hr)
   }
   rhizome_manifest *mout = NULL;
   rhizome_bundle_result_free(&r->bundle_result);
-  r->bundle_result.status = rhizome_manifest_finalise(r->manifest, &mout, !r->u.insert.force_new);
+  r->bundle_result = rhizome_manifest_finalise(r->manifest, &mout, !r->u.insert.force_new);
   int http_status = 500;
-  DEBUGF(rhizome, "r->bundle_result = %s", alloca_rhizome_bundle_result(r->bundle_result));
   switch (r->bundle_result.status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
       if (mout && mout != r->manifest)
@@ -740,7 +741,8 @@ static int restful_rhizome_insert_end(struct http_request *hr)
       http_status = 201;
       break;
     case RHIZOME_BUNDLE_STATUS_ERROR:
-      r->bundle_result.message = "Error in manifest finalise";
+      rhizome_bundle_result_free(&r->bundle_result);
+      r->bundle_result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_ERROR, "Error in manifest finalise");
       // fall through
     case RHIZOME_BUNDLE_STATUS_INVALID:
     case RHIZOME_BUNDLE_STATUS_FAKE:
@@ -748,6 +750,7 @@ static int restful_rhizome_insert_end(struct http_request *hr)
     case RHIZOME_BUNDLE_STATUS_NO_ROOM:
     case RHIZOME_BUNDLE_STATUS_READONLY:
     case RHIZOME_BUNDLE_STATUS_BUSY:
+    case RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG:
       if (mout && mout != r->manifest)
 	rhizome_manifest_free(mout);
       rhizome_manifest_free(r->manifest);
@@ -755,7 +758,7 @@ static int restful_rhizome_insert_end(struct http_request *hr)
       return http_request_rhizome_response(r, 0, NULL);
   }
   if (http_status == 500)
-    FATALF("rhizome_manifest_finalise() returned status = %d", r->bundle_result.status);
+    FATALF("rhizome_manifest_finalise() returned status=%d", r->bundle_result.status);
   rhizome_authenticate_author(r->manifest);
   http_request_response_static(&r->http, http_status, "rhizome-manifest/text",
       (const char *)r->manifest->manifestdata, r->manifest->manifest_all_bytes
@@ -971,6 +974,7 @@ static void render_manifest_headers(struct http_request *hr, strbuf sb)
     case RHIZOME_BUNDLE_STATUS_NO_ROOM:
     case RHIZOME_BUNDLE_STATUS_READONLY:
     case RHIZOME_BUNDLE_STATUS_BUSY:
+    case RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG:
     case RHIZOME_BUNDLE_STATUS_ERROR:
       strbuf_sprintf(sb, "Serval-Rhizome-Result-Bundle-Status-Code: %d\r\n", r->bundle_result.status);
       strbuf_puts(sb, "Serval-Rhizome-Result-Bundle-Status-Message: ");

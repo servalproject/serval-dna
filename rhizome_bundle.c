@@ -1322,9 +1322,10 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
   return;
 }
 
-/* Convert variable list into manifest text body and compute the hash.  Do not sign.
+/* Converts the variable list into manifest text body and computes the hash.  Does not sign.
+ * Returns 0 if successful, -1 if the result exceeds the manifest size limit.
  */
-static int rhizome_manifest_pack_variables(rhizome_manifest *m)
+static struct rhizome_bundle_result rhizome_manifest_pack_variables(rhizome_manifest *m)
 {
   assert(m->var_count <= NELS(m->vars));
   strbuf sb = strbuf_local_buf(m->manifestdata);
@@ -1335,42 +1336,47 @@ static int rhizome_manifest_pack_variables(rhizome_manifest *m)
     strbuf_puts(sb, m->values[i]);
     strbuf_putc(sb, '\n');
   }
-  if (strbuf_overrun(sb))
-    return WHYF("Manifest overflow: body of %zu bytes exceeds limit of %zu", strbuf_count(sb) + 1, sizeof m->manifestdata);
+  if (strbuf_overrun(sb)) {
+    return rhizome_bundle_result_sprintf(
+	RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG,
+	"Manifest too big: body of %zu bytes exceeds limit of %zu",
+	strbuf_count(sb) + 1, sizeof m->manifestdata);
+  }
   m->manifest_body_bytes = strbuf_len(sb) + 1;
   DEBUGF(rhizome, "Repacked variables into manifest: %zu bytes", m->manifest_body_bytes);
   m->manifest_all_bytes = m->manifest_body_bytes;
   m->selfSigned = 0;
-  return 0;
+  return rhizome_bundle_result(RHIZOME_BUNDLE_STATUS_NEW);
 }
 
 /* Sign this manifest using it's own BID secret key.  Manifest must not already be signed.
  * Manifest body hash must already be computed.
  */
-int rhizome_manifest_selfsign(rhizome_manifest *m)
+static struct rhizome_bundle_result rhizome_manifest_selfsign(rhizome_manifest *m)
 {
   assert(m->manifest_body_bytes > 0);
   assert(m->manifest_body_bytes <= sizeof m->manifestdata);
   assert(m->manifestdata[m->manifest_body_bytes - 1] == '\0');
   assert(m->manifest_body_bytes == m->manifest_all_bytes); // no signature yet
   if (!m->haveSecret)
-    return WHY("Need private key to sign manifest");
+    return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_READONLY, "Missing bundle secret");
   crypto_hash_sha512(m->manifesthash, m->manifestdata, m->manifest_body_bytes);
   rhizome_signature sig;
   if (rhizome_sign_hash(m, &sig) == -1)
-    return WHY("rhizome_sign_hash() failed");
+    return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_ERROR, "rhizome_sign_hash() failed");
   assert(sig.signatureLength > 0);
   /* Append signature to end of manifest data */
-  if (sig.signatureLength + m->manifest_body_bytes > sizeof m->manifestdata)
-    return WHYF("Manifest overflow: body %zu + signature %zu bytes exceeds limit of %zu",
-		m->manifest_body_bytes,
-		sig.signatureLength,
-		sizeof m->manifestdata
-	      );
+  if (sig.signatureLength + m->manifest_body_bytes > sizeof m->manifestdata) {
+    return rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG,
+	    "Manifest too big: body of %zu + signature of %zu bytes exceeds limit of %zu",
+	    m->manifest_body_bytes,
+	    sig.signatureLength,
+	    sizeof m->manifestdata);
+  }
   bcopy(sig.signature, m->manifestdata + m->manifest_body_bytes, sig.signatureLength);
   m->manifest_all_bytes = m->manifest_body_bytes + sig.signatureLength;
   m->selfSigned = 1;
-  return 0;
+  return rhizome_bundle_result(RHIZOME_BUNDLE_STATUS_NEW);
 }
 
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *path, char append)
@@ -1410,12 +1416,15 @@ int rhizome_manifest_dump(rhizome_manifest *m, const char *msg)
   return 0;
 }
 
-enum rhizome_bundle_status rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout, int deduplicate)
+struct rhizome_bundle_result rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout, int deduplicate)
 {
   IN();
   assert(*mout == NULL);
-  if (!m->finalised && !rhizome_manifest_validate(m))
-    RETURN(RHIZOME_BUNDLE_STATUS_INVALID);
+  if (!m->finalised) {
+    const char *reason = rhizome_manifest_validate_reason(m);
+    if (reason)
+      RETURN(rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_INVALID, reason));
+  }
   // The duplicate detection logic exists to filter out files repeatedly added with no existing
   // manifest (ie, "de-bounce" for the "Add File" user interface action).
   // 1. If a manifest was supplied with a bundle ID, don't check for a duplicate.
@@ -1427,13 +1436,13 @@ enum rhizome_bundle_status rhizome_manifest_finalise(rhizome_manifest *m, rhizom
       case RHIZOME_BUNDLE_STATUS_DUPLICATE:
 	assert(*mout != NULL);
 	assert(*mout != m);
-	RETURN(status);
+	RETURN(rhizome_bundle_result(status));
       case RHIZOME_BUNDLE_STATUS_ERROR:
 	if (*mout != NULL && *mout != m) {
 	  rhizome_manifest_free(*mout);
 	  *mout = NULL;
 	}
-	RETURN(status);
+	RETURN(rhizome_bundle_result(status));
       case RHIZOME_BUNDLE_STATUS_NEW:
 	break;
       default:
@@ -1444,18 +1453,22 @@ enum rhizome_bundle_status rhizome_manifest_finalise(rhizome_manifest *m, rhizom
   *mout = m;
 
   /* Convert to final form for signing and writing to disk */
-  if (rhizome_manifest_pack_variables(m))
-    RETURN(WHY("Could not convert manifest to wire format"));
+  struct rhizome_bundle_result result = rhizome_manifest_pack_variables(m);
+  if (result.status != RHIZOME_BUNDLE_STATUS_NEW)
+    RETURN(result);
+  rhizome_bundle_result_free(&result);
 
   /* Sign it */
   assert(!m->selfSigned);
-  if (rhizome_manifest_selfsign(m))
-    RETURN(WHY("Could not sign manifest"));
-  assert(m->selfSigned);
+  result = rhizome_manifest_selfsign(m);
+  if (result.status == RHIZOME_BUNDLE_STATUS_NEW) {
+    assert(m->selfSigned);
+    rhizome_bundle_result_free(&result);
+    /* mark manifest as finalised */
+    result.status = rhizome_add_manifest_to_store(m, mout);
+  }
 
-  /* mark manifest as finalised */
-  enum rhizome_bundle_status status = rhizome_add_manifest(m, mout);
-  RETURN(status);
+  RETURN(result);
   OUT();
 }
 

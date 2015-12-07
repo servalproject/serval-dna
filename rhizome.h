@@ -412,6 +412,7 @@ enum rhizome_bundle_status {
     RHIZOME_BUNDLE_STATUS_NO_ROOM = 7, // doesn't fit; store may contain more important bundles
     RHIZOME_BUNDLE_STATUS_READONLY = 8, // cannot modify manifest; secret unknown
     RHIZOME_BUNDLE_STATUS_BUSY = 9, // the database is currently busy
+    RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG = 10, // manifest + signature exceeds size limit
 };
 
 // Useful for initialising a variable then checking later that it was set to a
@@ -443,8 +444,8 @@ struct rhizome_bundle_result _rhizome_bundle_result_strdup(struct __sourceloc, e
 struct rhizome_bundle_result _rhizome_bundle_result_sprintf(struct __sourceloc, enum rhizome_bundle_status, const char *fmt, ...);
 
 #define rhizome_bundle_result(status)                   _rhizome_bundle_result(__WHENCE__, status)
-#define rhizome_bundle_result_static(status, str)       _rhizome_bundle_result_static(__WHENCE__, status, str);
-#define rhizome_bundle_result_strdup(status, str)       _rhizome_bundle_result_strdup(__WHENCE__, status, str);
+#define rhizome_bundle_result_static(status, str)       _rhizome_bundle_result_static(__WHENCE__, status, str)
+#define rhizome_bundle_result_strdup(status, str)       _rhizome_bundle_result_strdup(__WHENCE__, status, str)
 #define rhizome_bundle_result_sprintf(status, fmt, ...) _rhizome_bundle_result_sprintf(__WHENCE__, status, fmt, ## __VA_ARGS__);
 
 // Functions for extracting information from a struct rhizome_bundle_result.
@@ -475,7 +476,6 @@ const char *rhizome_payload_status_message(enum rhizome_payload_status);
 const char *rhizome_payload_status_message_nonnull(enum rhizome_payload_status);
 
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename, char append);
-int rhizome_manifest_selfsign(rhizome_manifest *m);
 int rhizome_read_manifest_from_file(rhizome_manifest *m, const char *filename);
 int rhizome_manifest_validate(rhizome_manifest *m);
 const char *rhizome_manifest_validate_reason(rhizome_manifest *m);
@@ -513,9 +513,9 @@ void rhizome_find_bundle_author_and_secret(rhizome_manifest *m);
 int rhizome_lookup_author(rhizome_manifest *m);
 void rhizome_authenticate_author(rhizome_manifest *m);
 
-enum rhizome_bundle_status rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **m_out, int deduplicate);
+struct rhizome_bundle_result rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **m_out, int deduplicate);
 enum rhizome_bundle_status rhizome_manifest_check_stored(rhizome_manifest *m, rhizome_manifest **m_out);
-enum rhizome_bundle_status rhizome_add_manifest(rhizome_manifest *m_in, rhizome_manifest **m_out);
+enum rhizome_bundle_status rhizome_add_manifest_to_store(rhizome_manifest *m_in, rhizome_manifest **m_out);
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount);
 int rhizome_find_privatekey(rhizome_manifest *m);

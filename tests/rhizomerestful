@@ -888,6 +888,30 @@ test_RhizomeInsertMissingManifest() {
    assert_rhizome_list
 }
 
+doc_RhizomeInsertManifestOverflow="HTTP RESTful insert Rhizome bundle, 'manifest' form part overflow"
+setup_RhizomeInsertManifestOverflow() {
+   setup
+   echo 'File one' >file1
+   { echo -n 'foo='; create_file --omit="$LF" - 8185; echo; } >file1.manifest
+}
+test_RhizomeInsertManifestOverflow() {
+   execute curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output http.body \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "manifest=@file1.manifest;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "payload=@file1" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header http.body
+   assertExitStatus == 0
+   assertStdoutIs 422
+   assertJq http.body 'contains({"http_status_code": 422})'
+   assertJqGrep --ignore-case http.body '.http_status_message' 'manifest.*too.*big'
+   executeOk_servald rhizome list
+   assert_rhizome_list
+}
+
 doc_RhizomeInsertIncorrectManifestType="HTTP RESTful insert Rhizome bundle, incorrect 'manifest' content type"
 setup_RhizomeInsertIncorrectManifestType() {
    setup

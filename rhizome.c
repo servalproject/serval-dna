@@ -229,6 +229,7 @@ struct rhizome_bundle_result rhizome_manifest_add_file(int appending,
     case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
     case RHIZOME_BUNDLE_STATUS_NO_ROOM:
     case RHIZOME_BUNDLE_STATUS_READONLY:
+    case RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG:
       FATALF("rhizome_retrieve_manifest() returned %s", rhizome_bundle_status_message(result.status));
     }
   }
@@ -325,16 +326,7 @@ error:
   case RHIZOME_BUNDLE_STATUS_NEW:
     *mout = new_manifest;
     return result;
-  case RHIZOME_BUNDLE_STATUS_ERROR:
-  case RHIZOME_BUNDLE_STATUS_SAME:
-  case RHIZOME_BUNDLE_STATUS_DUPLICATE:
-  case RHIZOME_BUNDLE_STATUS_OLD:
-  case RHIZOME_BUNDLE_STATUS_INVALID:
-  case RHIZOME_BUNDLE_STATUS_FAKE:
-  case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
-  case RHIZOME_BUNDLE_STATUS_NO_ROOM:
-  case RHIZOME_BUNDLE_STATUS_READONLY:
-  case RHIZOME_BUNDLE_STATUS_BUSY:
+  default:
     if (new_manifest && new_manifest != m && new_manifest != existing_manifest)
       rhizome_manifest_free(new_manifest);
     if (existing_manifest)
@@ -490,7 +482,7 @@ int rhizome_manifest_add_bundle_key(rhizome_manifest *m)
   rhizome_manifest_del_bundle_key(m);
   switch (m->authorship) {
     case AUTHOR_UNKNOWN:
-      WHYF("Cannot set BK because author=%s is not in keyring", alloca_tohex_sid_t(m->author));
+      INFOF("Cannot set BK because author=%s is not in keyring", alloca_tohex_sid_t(m->author));
       break;
     case AUTHENTICATION_ERROR:
       WHY("Cannot set BK due to error");
@@ -581,12 +573,12 @@ enum rhizome_bundle_status rhizome_manifest_check_stored(rhizome_manifest *m, rh
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-enum rhizome_bundle_status rhizome_add_manifest(rhizome_manifest *m, rhizome_manifest **mout)
+enum rhizome_bundle_status rhizome_add_manifest_to_store(rhizome_manifest *m, rhizome_manifest **mout)
 {
   if (mout == NULL)
-    DEBUGF(rhizome, "rhizome_add_manifest(m=manifest[%d](%p), mout=NULL)", m->manifest_record_number, m);
+    DEBUGF(rhizome, "%s(m=manifest[%d](%p), mout=NULL)", __func__, m->manifest_record_number, m);
   else
-    DEBUGF(rhizome, "rhizome_add_manifest(m=manifest[%d](%p), *mout=manifest[%d](%p))", m->manifest_record_number, m, *mout ? (*mout)->manifest_record_number : -1, *mout);
+    DEBUGF(rhizome, "%s(m=manifest[%d](%p), *mout=manifest[%d](%p))", __func__, m->manifest_record_number, m, *mout ? (*mout)->manifest_record_number : -1, *mout);
   if (!m->finalised && !rhizome_manifest_validate(m))
     return RHIZOME_BUNDLE_STATUS_INVALID;
   assert(m->finalised);
@@ -597,7 +589,7 @@ enum rhizome_bundle_status rhizome_add_manifest(rhizome_manifest *m, rhizome_man
     return WHY("Payload has not been stored");
   enum rhizome_bundle_status status = rhizome_manifest_check_stored(m, mout);
   if (status == RHIZOME_BUNDLE_STATUS_NEW && rhizome_store_manifest(m) == -1)
-    return -1;
+    status = RHIZOME_BUNDLE_STATUS_ERROR;
   return status;
 }
 
@@ -615,17 +607,18 @@ int rhizome_saw_voice_traffic()
 const char *rhizome_bundle_status_message(enum rhizome_bundle_status status)
 {
   switch (status) {
-    case RHIZOME_BUNDLE_STATUS_NEW:          return "Bundle new to store";
-    case RHIZOME_BUNDLE_STATUS_SAME:         return "Bundle already in store";
-    case RHIZOME_BUNDLE_STATUS_DUPLICATE:    return "Duplicate bundle already in store";
-    case RHIZOME_BUNDLE_STATUS_OLD:          return "Newer bundle already in store";
-    case RHIZOME_BUNDLE_STATUS_INVALID:      return "Invalid manifest";
-    case RHIZOME_BUNDLE_STATUS_FAKE:         return "Manifest signature does not verify";
-    case RHIZOME_BUNDLE_STATUS_INCONSISTENT: return "Manifest inconsistent with supplied payload";
-    case RHIZOME_BUNDLE_STATUS_NO_ROOM:      return "No room in store for bundle";
-    case RHIZOME_BUNDLE_STATUS_READONLY:     return "Bundle is read-only";
-    case RHIZOME_BUNDLE_STATUS_BUSY:         return "Internal error";
-    case RHIZOME_BUNDLE_STATUS_ERROR:        return "Internal error";
+    case RHIZOME_BUNDLE_STATUS_NEW:		 return "Bundle new to store";
+    case RHIZOME_BUNDLE_STATUS_SAME:		 return "Bundle already in store";
+    case RHIZOME_BUNDLE_STATUS_DUPLICATE:	 return "Duplicate bundle already in store";
+    case RHIZOME_BUNDLE_STATUS_OLD:		 return "Newer bundle already in store";
+    case RHIZOME_BUNDLE_STATUS_INVALID:		 return "Invalid manifest";
+    case RHIZOME_BUNDLE_STATUS_FAKE:		 return "Manifest signature does not verify";
+    case RHIZOME_BUNDLE_STATUS_INCONSISTENT:	 return "Manifest inconsistent with supplied payload";
+    case RHIZOME_BUNDLE_STATUS_NO_ROOM:		 return "No room in store for bundle";
+    case RHIZOME_BUNDLE_STATUS_READONLY:	 return "Bundle is read-only";
+    case RHIZOME_BUNDLE_STATUS_BUSY:		 return "Internal error";
+    case RHIZOME_BUNDLE_STATUS_ERROR:		 return "Internal error";
+    case RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG: return "Manifest too big";
   }
   return NULL;
 }
@@ -669,17 +662,18 @@ void rhizome_bundle_result_free(struct rhizome_bundle_result *resultp)
 static const char *rhizome_bundle_status_symbol(enum rhizome_bundle_status status)
 {
   switch (status) {
-    case RHIZOME_BUNDLE_STATUS_NEW:          return "NEW";
-    case RHIZOME_BUNDLE_STATUS_SAME:         return "SAME";
-    case RHIZOME_BUNDLE_STATUS_DUPLICATE:    return "DUPLICATE";
-    case RHIZOME_BUNDLE_STATUS_OLD:          return "OLD";
-    case RHIZOME_BUNDLE_STATUS_INVALID:      return "INVALID";
-    case RHIZOME_BUNDLE_STATUS_FAKE:         return "FAKE";
-    case RHIZOME_BUNDLE_STATUS_INCONSISTENT: return "INCONSISTENT";
-    case RHIZOME_BUNDLE_STATUS_NO_ROOM:      return "NO_ROOM";
-    case RHIZOME_BUNDLE_STATUS_READONLY:     return "READONLY";
-    case RHIZOME_BUNDLE_STATUS_BUSY:         return "BUSY";
-    case RHIZOME_BUNDLE_STATUS_ERROR:        return "ERROR";
+    case RHIZOME_BUNDLE_STATUS_NEW:		 return "NEW";
+    case RHIZOME_BUNDLE_STATUS_SAME:		 return "SAME";
+    case RHIZOME_BUNDLE_STATUS_DUPLICATE:	 return "DUPLICATE";
+    case RHIZOME_BUNDLE_STATUS_OLD:		 return "OLD";
+    case RHIZOME_BUNDLE_STATUS_INVALID:		 return "INVALID";
+    case RHIZOME_BUNDLE_STATUS_FAKE:		 return "FAKE";
+    case RHIZOME_BUNDLE_STATUS_INCONSISTENT:	 return "INCONSISTENT";
+    case RHIZOME_BUNDLE_STATUS_NO_ROOM:		 return "NO_ROOM";
+    case RHIZOME_BUNDLE_STATUS_READONLY:	 return "READONLY";
+    case RHIZOME_BUNDLE_STATUS_BUSY:		 return "BUSY";
+    case RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG: return "MANIFEST_TOO_BIG";
+    case RHIZOME_BUNDLE_STATUS_ERROR:		 return "ERROR";
   }
   FATALF("status=%d", (int)status);
 }
@@ -696,6 +690,7 @@ static void log_rhizome_bundle_result(struct __sourceloc __whence, struct rhizom
     case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
     case RHIZOME_BUNDLE_STATUS_NO_ROOM:
     case RHIZOME_BUNDLE_STATUS_READONLY:
+    case RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG:
       DEBUG(rhizome, alloca_rhizome_bundle_result(result));
       return;
     case RHIZOME_BUNDLE_STATUS_BUSY:
@@ -772,6 +767,7 @@ strbuf strbuf_append_rhizome_bundle_result(strbuf sb, struct rhizome_bundle_resu
   case RHIZOME_BUNDLE_STATUS_NO_ROOM:
   case RHIZOME_BUNDLE_STATUS_READONLY:
   case RHIZOME_BUNDLE_STATUS_BUSY:
+  case RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG:
   case RHIZOME_BUNDLE_STATUS_ERROR:
     strbuf_puts(sb, "RHIZOME_BUNDLE_STATUS_");
     strbuf_puts(sb, rhizome_bundle_status_symbol(result.status));

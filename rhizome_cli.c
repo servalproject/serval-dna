@@ -273,10 +273,12 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
     if (!rhizome_manifest_validate(m) || m->malformed)
       result.status = RHIZOME_BUNDLE_STATUS_INVALID;
     else {
-      result.status = rhizome_manifest_finalise(m, &mout, !force_new);
+      rhizome_bundle_result_free(&result);
+      result = rhizome_manifest_finalise(m, &mout, !force_new);
       if (mout && mout != m && !rhizome_manifest_validate(mout)) {
-	WHYF("Stored manifest id=%s is invalid -- overwriting", alloca_tohex_rhizome_bid_t(mout->cryptoSignPublic));
-	result.status = RHIZOME_BUNDLE_STATUS_NEW;
+	  WHYF("Stored manifest id=%s is invalid -- overwriting", alloca_tohex_rhizome_bid_t(mout->cryptoSignPublic));
+	  rhizome_bundle_result_free(&result);
+	  result = rhizome_bundle_result(RHIZOME_BUNDLE_STATUS_NEW);
       }
     }
   }
@@ -305,6 +307,7 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
     case RHIZOME_BUNDLE_STATUS_FAKE:
     case RHIZOME_BUNDLE_STATUS_NO_ROOM:
     case RHIZOME_BUNDLE_STATUS_BUSY:
+    case RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG:
       status_valid = 1;
       break;
     // Do not use a default: label!  With no default, if a new value is added to the enum, then the

@@ -61,6 +61,42 @@ static void rhizome_direct_clear_temporary_files(httpd_request *r)
   }
 }
 
+static void http_request_rhizome_bundle_status_response(httpd_request *r, struct rhizome_bundle_result result, rhizome_manifest *m)
+{
+  int http_status = 500;
+  switch (result.status) {
+  case RHIZOME_BUNDLE_STATUS_NEW:
+    http_status = 201; // Created
+    break;
+  case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+  case RHIZOME_BUNDLE_STATUS_SAME:
+    http_status = 200; // OK
+    break;
+  case RHIZOME_BUNDLE_STATUS_OLD:
+  case RHIZOME_BUNDLE_STATUS_NO_ROOM:
+    http_status = 202; // Accepted
+    break;
+  case RHIZOME_BUNDLE_STATUS_INVALID:
+  case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+  case RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG:
+    http_status = 422; // Unprocessable Entity
+    break;
+  case RHIZOME_BUNDLE_STATUS_BUSY:
+    http_status = 423; // Locked
+    break;
+  case RHIZOME_BUNDLE_STATUS_READONLY:
+  case RHIZOME_BUNDLE_STATUS_FAKE:
+    http_status = 419; // Authentication Timeout
+    break;
+  case RHIZOME_BUNDLE_STATUS_ERROR:
+    break;
+  }
+  if (m)
+    http_request_response_static(&r->http, http_status, CONTENT_TYPE_TEXT, (const char *)m->manifestdata, m->manifest_all_bytes);
+  else
+    http_request_simple_response(&r->http, http_status, rhizome_bundle_result_message(result));
+}
+
 static int rhizome_direct_import_end(struct http_request *hr)
 {
   httpd_request *r = (httpd_request *) hr;
@@ -85,52 +121,17 @@ static int rhizome_direct_import_end(struct http_request *hr)
 	 alloca_str_toprint(manifest_path),
 	 alloca_str_toprint(payload_path)
         );
-  enum rhizome_bundle_status status = 0;
   rhizome_manifest *m = rhizome_new_manifest();
-  if (!m)
-    status = WHY("Out of manifests");
-  else {
-    status = rhizome_bundle_import_files(m, NULL, manifest_path, payload_path);
-    rhizome_manifest_free(m);
+  if (!m) {
+    http_request_simple_response(&r->http, 429, "Manifest table full"); // Too Many Requests
+    return 0;
   }
+  struct rhizome_bundle_result result = INVALID_RHIZOME_BUNDLE_RESULT;
+  result.status = rhizome_bundle_import_files(m, NULL, manifest_path, payload_path);
+  rhizome_manifest_free(m);
   rhizome_direct_clear_temporary_files(r);
-  /* report back to caller.
-    200 = ok, which is probably appropriate for when we already had the bundle.
-    201 = content created, which is probably appropriate for when we successfully
-    import a bundle (or if we already have it).
-    403 = forbidden, which might be appropriate if we refuse to accept it, e.g.,
-    the import fails due to malformed data etc.
-    (should probably also indicate if we have a newer version if possible)
-  */
-  switch (status) {
-  case RHIZOME_BUNDLE_STATUS_NEW:
-    http_request_simple_response(&r->http, 201, "Bundle succesfully imported");
-    return 0;
-  case RHIZOME_BUNDLE_STATUS_SAME:
-    http_request_simple_response(&r->http, 200, "Bundle already imported"); // OK
-    return 0;
-  case RHIZOME_BUNDLE_STATUS_OLD:
-    http_request_simple_response(&r->http, 202, "Newer bundle already stored"); // Accepted
-    return 0;
-  case RHIZOME_BUNDLE_STATUS_INVALID:
-    http_request_simple_response(&r->http, 422, "Manifest is invalid"); // Unprocessable Entity
-    return 0;
-  case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
-    http_request_simple_response(&r->http, 422, "Manifest is inconsistent with file"); // Unprocessable Entity
-    return 0;
-  case RHIZOME_BUNDLE_STATUS_FAKE:
-    http_request_simple_response(&r->http, 403, "Manifest not signed"); // Forbidden
-    return 0;
-  case RHIZOME_BUNDLE_STATUS_NO_ROOM:
-    http_request_simple_response(&r->http, 202, "Not enough space"); // Accepted
-    return 0;
-  case RHIZOME_BUNDLE_STATUS_READONLY:
-  case RHIZOME_BUNDLE_STATUS_DUPLICATE:
-  case RHIZOME_BUNDLE_STATUS_ERROR:
-  case RHIZOME_BUNDLE_STATUS_BUSY:
-    break;
-  }
-  http_request_simple_response(&r->http, 500, "Internal Error: Rhizome import failed");
+  http_request_rhizome_bundle_status_response(r, result, NULL);
+  rhizome_bundle_result_free(&result);
   return 0;
 }
 
@@ -242,50 +243,34 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
       http_request_simple_response(&r->http, 500, "Internal Error: Could not store file");
       return 0;
     }
-    // If manifest template did not specify a service field, then by default it is "file".
     if (!rhizome_is_bk_none(&config.rhizome.api.addfile.bundle_secret_key))
       rhizome_apply_bundle_secret(m, &config.rhizome.api.addfile.bundle_secret_key);
+    // If manifest template did not specify a service field, then by default it is "file".
     if (m->service == NULL)
       rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
     const sid_t *author = is_sid_t_any(config.rhizome.api.addfile.default_author) ? NULL : &config.rhizome.api.addfile.default_author;
     struct rhizome_bundle_result result = rhizome_fill_manifest(m, r->u.direct_import.data_file_name, author);
-    if (result.status != RHIZOME_BUNDLE_STATUS_NEW) {
-      rhizome_manifest_free(m);
-      rhizome_direct_clear_temporary_files(r);
-      http_request_simple_response(&r->http, 500, result.message);
+    rhizome_manifest *mout = NULL;
+    if (result.status == RHIZOME_BUNDLE_STATUS_NEW) {
       rhizome_bundle_result_free(&result);
-      return 0;
-    }
-    rhizome_bundle_result_free(&result);
-    rhizome_manifest_set_crypt(m, PAYLOAD_CLEAR);
-    // import file contents
-    // TODO, stream file into database
-    assert(m->filesize != RHIZOME_SIZE_UNSET);
-    if (m->filesize > 0) {
-      if (rhizome_store_payload_file(m, payload_path) != RHIZOME_PAYLOAD_STATUS_NEW) {
-	rhizome_manifest_free(m);
-	rhizome_direct_clear_temporary_files(r);
-	http_request_simple_response(&r->http, 500, "Internal Error: Could not store file");
-	return 0;
+      rhizome_manifest_set_crypt(m, PAYLOAD_CLEAR);
+      // import file contents
+      // TODO, stream file into database
+      assert(m->filesize != RHIZOME_SIZE_UNSET);
+      if (m->filesize == 0 || rhizome_store_payload_file(m, payload_path) == RHIZOME_PAYLOAD_STATUS_NEW) {
+	result = rhizome_manifest_finalise(m, &mout, 1);
+	if (mout)
+	  DEBUGF(rhizome, "Import sans-manifest appeared to succeed");
       }
     }
-    rhizome_manifest *mout = NULL;
-    if (rhizome_manifest_finalise(m, &mout, 1) == -1) {
-      if (mout && mout != m)
-	rhizome_manifest_free(mout);
-      rhizome_manifest_free(m);
-      rhizome_direct_clear_temporary_files(r);
-      http_request_simple_response(&r->http, 500, "Internal Error: Could not finalise manifest");
-      return 0;
-    }
-    DEBUGF(rhizome, "Import sans-manifest appeared to succeed");
     /* Respond with the manifest that was added. */
-    http_request_response_static(&r->http, 200, CONTENT_TYPE_TEXT, (const char *)m->manifestdata, m->manifest_all_bytes);
-    /* clean up after ourselves */
+    http_request_rhizome_bundle_status_response(r, result, mout);
+    /* Clean up after ourselves. */
+    rhizome_bundle_result_free(&result);
+    rhizome_direct_clear_temporary_files(r);
     if (mout && mout != m)
       rhizome_manifest_free(mout);
     rhizome_manifest_free(m);
-    rhizome_direct_clear_temporary_files(r);
     return 0;
   } else {
     http_request_simple_response(&r->http, 501, "Not Implemented: Rhizome add with manifest");
