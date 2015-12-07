@@ -611,6 +611,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
       ++p;
     if (p == end || *p != '=') {
       DEBUGF(rhizome_manifest, "Invalid manifest line %u: %s", line_number, alloca_toprint(-1, plabel, p - plabel + 1));
+      ++invalid;
       break;
     }
     assert(p < end);
@@ -620,6 +621,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
       ++p;
     if (p >= end || *p != '\n') {
       DEBUGF(rhizome_manifest, "Missing manifest newline at line %u: %s", line_number, alloca_toprint(-1, plabel, p - plabel));
+      ++invalid;
       break;
     }
     const char *const eol = (p > pvalue && p[-1] == '\r') ? p - 1 : p;
@@ -657,7 +659,7 @@ int rhizome_manifest_parse(rhizome_manifest *m)
     assert(p < end);
     assert(*p == '\n');
   }
-  if ((p < end && *p) || has_invalid_core || has_duplicate) {
+  if ((p < end && *p) || invalid || has_invalid_core || has_duplicate) {
     rhizome_manifest_clear(m);
     RETURN(1);
   }
