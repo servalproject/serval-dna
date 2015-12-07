@@ -72,9 +72,10 @@ static void fatal(const char *fmt, ...)
   exit(1);
 }
 
-static inline char stripe(int i)
+static inline char stripe(int i, const char *omit)
 {
-  return (i >= ' ' && i <= '~') ? i : '.';
+  char c = (i >= ' ' && i <= '~') ? i : '.';
+  return strchr(omit, c) ? '.' : c;
 }
 
 int main(int argc, char **argv)
@@ -82,6 +83,7 @@ int main(int argc, char **argv)
   argv0 = argv[0];
   uint64_t size = 0;
   const char *label = "";
+  const char *omit = "";
   int i;
   for (i = 1; i < argc; ++i) {
     const char *arg = argv[i];
@@ -91,20 +93,25 @@ int main(int argc, char **argv)
     }
     else if (str_startswith(arg, "--label=", &arg))
       label = arg;
+    else if (str_startswith(arg, "--omit=", &arg)) {
+      omit = arg;
+      if (strchr(omit, '.'))
+	fatal("illegal --omit= argument, must not contain '.': %s", arg);
+    }
     else
       fatal("unrecognised argument: %s", arg);
   }
   uint64_t offset = 0;
   char buf[127];
   for (i = 0; i != sizeof buf; ++i)
-    buf[i] = stripe(i);
+    buf[i] = stripe(i, omit);
   const size_t labellen = strlen(label);
   unsigned bouncemax = labellen < sizeof buf ? sizeof buf - labellen : sizeof buf;
   unsigned bounce = 3;
   int bouncedelta = 1;
   while (!ferror(stdout) && offset < size) {
     unsigned n = sprintf(buf, "%"PRId64, offset);
-    buf[n] = stripe(n);
+    buf[n] = stripe(n, omit);
     size_t labelsiz = labellen;
     if (labelsiz && bounce < sizeof buf) {
       if (labelsiz > sizeof buf - bounce)
@@ -124,15 +131,17 @@ int main(int argc, char **argv)
 	off+=wrote;
       }
     }
-    assert(fputc('\n', stdout)!=EOF);
+    char eol = strchr(omit, '\n') ? '.' : '\n';
+    if (fputc(eol, stdout) == EOF)
+      fatal("write error: %s [errno=%d]", strerror(errno), errno);
     offset += remain + 1;
     if (bounce <= n || bounce >= bouncemax)
       bouncedelta *= -1;
     if (labelsiz) {
       if (bouncedelta > 0)
-	buf[bounce] = stripe(bounce);
+	buf[bounce] = stripe(bounce, omit);
       else
-	buf[bounce + labelsiz - 1] = stripe(bounce + labelsiz - 1);
+	buf[bounce + labelsiz - 1] = stripe(bounce + labelsiz - 1, omit);
     }
     bounce += bouncedelta;
   }
