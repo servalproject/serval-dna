@@ -314,7 +314,7 @@ void _cf_warn_node_value(struct __sourceloc __whence, const struct cf_om_node *n
 void _cf_warn_no_array(struct __sourceloc __whence, const struct cf_om_node *node, int reason);
 void _cf_warn_unsupported_node(struct __sourceloc __whence, const struct cf_om_node *node);
 void _cf_warn_unsupported_children(struct __sourceloc __whence, const struct cf_om_node *parent);
-void _cf_warn_list_overflow(struct __sourceloc __whence, const struct cf_om_node *node);
+void _cf_warn_list_overflow(struct __sourceloc __whence, const struct cf_om_node *node, const char *fmt, ...);
 void _cf_warn_incompatible(struct __sourceloc __whence, const struct cf_om_node *node, const struct cf_om_node *orig);
 void _cf_warn_incompatible_children(struct __sourceloc __whence, const struct cf_om_node *parent);
 void _cf_warn_array_key(struct __sourceloc __whence, const struct cf_om_node *node, int reason);
@@ -330,7 +330,7 @@ void _cf_warn_array_value(struct __sourceloc __whence, const struct cf_om_node *
 #define cf_warn_no_array(node, reason)	     _cf_warn_no_array(__WHENCE__, node, reason)
 #define cf_warn_unsupported_node(node)	     _cf_warn_unsupported_node(__WHENCE__, node)
 #define cf_warn_unsupported_children(parent) _cf_warn_unsupported_children(__WHENCE__, parent)
-#define cf_warn_list_overflow(node)	     _cf_warn_list_overflow(__WHENCE__, node)
+#define cf_warn_list_overflow(node, fmt, ...) _cf_warn_list_overflow(__WHENCE__, node, fmt, ##__VA_ARGS__)
 #define cf_warn_incompatible(node, orig)     _cf_warn_incompatible(__WHENCE__, node, orig)
 #define cf_warn_incompatible_children(parent) _cf_warn_incompatible_children(__WHENCE__, parent)
 #define cf_warn_array_key(node, reason)	     _cf_warn_array_key(__WHENCE__, node, reason)

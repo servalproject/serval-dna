@@ -302,7 +302,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	assert(n == NELS(array->av)); \
 	result |= CFARRAYOVERFLOW; \
 	for (; i < node->nodc; ++i) \
-	  cf_warn_list_overflow(node->nodv[i]); \
+	  cf_warn_list_overflow(node->nodv[i], "list overflow, only %zu elements allowed", NELS(array->av)); \
       } \
       array->ac = n; \
       qsort(array->av, array->ac, sizeof array->av[0], (int (*)(const void *, const void *)) keycmp); \

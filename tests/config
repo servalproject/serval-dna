@@ -279,6 +279,26 @@ test_InterfaceDropDgramIncompatible() {
       --error-pattern='config file.*loaded despite defects.*incompatible'
 }
 
+doc_TooManyValues="Too many config values"
+setup_TooManyArgs() {
+   setup_servald
+   for i in {0..9}; do
+      executeOk_servald config set "interfaces.$i.match" "eth$i"
+   done
+}
+test_TooManyArgs() {
+   execute --stderr --executable=$servald config \
+      set "interfaces.99.match" "eth11" \
+      set "interfaces.99.exclude" "on" \
+      set "interfaces.99.port" "1234" \
+      set "interfaces.99.broadcast.send" "on" \
+      set "interfaces.99.broadcast.route" "on" \
+      set "interfaces.99.unicast.send" "on" \
+      set "interfaces.99.unicast.route" "on"
+   tfw_cat --stdout --stderr
+   assertExitStatus '==' 2
+}
+
 #TODO move to another test script?
 doc_CmdUsage="Show help usage"
 test_CmdUsage() {

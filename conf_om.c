@@ -493,7 +493,10 @@ void _cf_warn_childrenv(struct __sourceloc __whence, const struct cf_om_node *pa
 {
   unsigned i;
   for (i = 0; i < parent->nodc; ++i) {
-    _cf_warn_nodev(__whence, parent->nodv[i], NULL, fmt, ap);
+    va_list ap1;
+    va_copy(ap1, ap);
+    _cf_warn_nodev(__whence, parent->nodv[i], NULL, fmt, ap1);
+    va_end(ap1);
     _cf_warn_childrenv(__whence, parent->nodv[i], fmt, ap);
   }
 }
@@ -673,8 +676,13 @@ void _cf_warn_array_value(struct __sourceloc __whence, const struct cf_om_node *
     _cf_warn_node(__whence, node, NULL, "array element -- %s", strbuf_str(b));
 }
 
-void _cf_warn_list_overflow(struct __sourceloc __whence, const struct cf_om_node *node)
+void _cf_warn_list_overflow(struct __sourceloc __whence, const struct cf_om_node *node, const char *fmt, ...)
 {
-  _cf_warn_node(__whence, node, NULL, "list overflow");
-  _cf_warn_children(__whence, node, "list overflow");
+  va_list ap;
+  va_start(ap, fmt);
+  _cf_warn_nodev(__whence, node, NULL, fmt, ap);
+  va_end(ap);
+  va_start(ap, fmt);
+  _cf_warn_childrenv(__whence, node, fmt, ap);
+  va_end(ap);
 }
