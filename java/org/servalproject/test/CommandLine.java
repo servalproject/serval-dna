@@ -23,7 +23,7 @@ import java.util.List;
 public class CommandLine {
 
 	static void log(String msg){
-		System.out.println(new Date().toString()+" "+msg);
+		System.err.println(new Date().toString()+" "+msg);
 	}
 
 	static void getPeers() throws ServalDFailureException {
@@ -32,7 +32,7 @@ public class CommandLine {
 
 		for(ServalDCommand.IdentityResult i:peers){
 			ServalDCommand.IdentityResult details = ServalDCommand.reverseLookup(i.subscriberId);
-			System.out.println(details.getResult()==0?details.toString():i.toString());
+			System.err.println(details.getResult()==0?details.toString():i.toString());
 		}
 	}
 
@@ -40,7 +40,7 @@ public class CommandLine {
 		MdpDnaLookup lookup = new ServerControl().getMdpDnaLookup(new ChannelSelector(),  new AsyncResult<ServalDCommand.LookupResult>() {
 			@Override
 			public void result(ServalDCommand.LookupResult nextResult) {
-				System.out.println(nextResult.toString());
+				System.err.println(nextResult.toString());
 			}
 		});
 		lookup.sendRequest(SubscriberId.broadcastSid, did);
@@ -52,7 +52,7 @@ public class CommandLine {
 		MdpServiceLookup lookup = new ServerControl().getMdpServiceLookup(new ChannelSelector(), new AsyncResult<MdpServiceLookup.ServiceResult>() {
 			@Override
 			public void result(MdpServiceLookup.ServiceResult nextResult) {
-				System.out.println(nextResult.toString());
+				System.err.println(nextResult.toString());
 			}
 		});
 		lookup.sendRequest(SubscriberId.broadcastSid, pattern);
@@ -63,53 +63,45 @@ public class CommandLine {
 	private static Runnable server = new Runnable() {
 		@Override
 		public void run() {
-			try {
-				ServalDCommand.server(new IJniServer() {
-					@Override
-					public long aboutToWait(long now, long nextRun, long nextWake) {
-						if (stopNow)
-							throw new ServerStopped();
-						return nextWake;
-					}
+			ServalDCommand.server(new IJniServer() {
+				@Override
+				public long aboutToWait(long now, long nextRun, long nextWake) {
+					return nextWake;
+				}
 
-					@Override
-					public void wokeUp() {
-						if (stopNow)
-							throw new ServerStopped();
-					}
+				@Override
+				public void wokeUp() {
+				}
 
-					@Override
-					public void started(String instancePath, int pid, int mdpPort, int httpPort) {
-						System.out.println("Started instance " + instancePath);
-						synchronized (server) {
-							server.notifyAll();
-						}
+				@Override
+				public void started(String instancePath, int pid, int mdpPort, int httpPort) {
+					System.err.println("Started instance " + instancePath);
+					synchronized (server) {
+						server.notifyAll();
 					}
-				}, "", new String[]{""});
-			}catch (ServerStopped e){
-
-			}
+				}
+			}, "", new String[]{""});
 		}
 	};
 
 	private static class ServerStopped extends RuntimeException{}
 
-	private static boolean stopNow = false;
-
 	private static void server() throws InterruptedException, ServalDFailureException {
-		System.out.println("Starting server thread");
+		System.err.println("Starting server thread");
 		Thread serverThread = new Thread(server, "server");
 		serverThread.start();
 
-		synchronized (server){
+		System.err.println("Waiting for server to start");
+		synchronized (server) {
 			server.wait();
 		}
 
 		Thread.sleep(500);
-		stopNow = true;
 		ServalDCommand.configSync();
+		Thread.sleep(500);
 
-		serverThread.join();
+		// Note, we don't really support stopping the server cleanly from within the JVM.
+		System.exit(0);
 	}
 
 	public static void main(String... args){
@@ -133,7 +125,7 @@ public class CommandLine {
 				service(args.length >= 2 ? args[1] : "");
 
 			if (result!=null)
-				System.out.println(result.toString());
+				System.err.println(result.toString());
 
 		} catch (Exception e) {
 			e.printStackTrace();
