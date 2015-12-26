@@ -1159,6 +1159,11 @@ static int interface_unregister(const char *name,
   return 0;
 }
 
+#undef NLSMSG_OK
+#define NLMSG_OK(nlh,len) ((len) >= (int)sizeof(struct nlmsghdr) && \
+                            (nlh)->nlmsg_len >= sizeof(struct nlmsghdr) && \
+                            (nlh)->nlmsg_len <= (len))
+
 DEFINE_ALARM(netlink_poll);
 void netlink_poll(struct sched_ent *alarm)
 {
