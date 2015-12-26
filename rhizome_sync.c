@@ -397,6 +397,7 @@ static uint64_t max_token=0;
 static void sync_send_response(struct subscriber *dest, int forwards, uint64_t token, int max_count)
 {
   IN();
+    
   if (max_count == 0 || max_count > BARS_PER_RESPONSE)
     max_count = BARS_PER_RESPONSE;
     
@@ -422,8 +423,10 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
     statement = sqlite_prepare(&retry, "SELECT rowid, bar FROM manifests WHERE rowid <= ? ORDER BY rowid DESC");
   }
 
-  if (!statement)
+  if (!statement) {
+    OUT();
     return;
+  }
 
   sqlite3_bind_int64(statement, 1, token);
   int count=0;
