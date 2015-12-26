@@ -1179,7 +1179,7 @@ void netlink_poll(struct sched_ent *alarm)
     
   struct nlmsghdr *nlh = (struct nlmsghdr *)buff;
   for (nlh = (struct nlmsghdr *)buff;
-       (NLMSG_OK (nlh, len))
+       (NLMSG_OK (nlh, (int)len))
 	 && (nlh->nlmsg_type != NLMSG_DONE);
        nlh = NLMSG_NEXT(nlh, len)){
     
