@@ -1159,8 +1159,7 @@ static int interface_unregister(const char *name,
   return 0;
 }
 
-#undef NLSMSG_OK
-#define NLMSG_OK(nlh,len) ((int)(len) >= (int)sizeof(struct nlmsghdr) && \
+#define NLMSG_OK_OPENWRTSAFE(nlh,len) ((int)(len) >= (int)sizeof(struct nlmsghdr) && \
 			   (int)(nlh)->nlmsg_len >= (int)sizeof(struct nlmsghdr) && \
 			   (int)(nlh)->nlmsg_len <= (int)(len))
 
