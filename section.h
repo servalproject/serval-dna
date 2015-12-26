@@ -26,13 +26,13 @@
 #define SECTION_END(X) __stop_##X
 
 #ifndef HAVE_VAR_ATTRIBUTE_SECTION
-#error "Compiler does not support __attribute__(section())"
+// #error "Compiler does not support __attribute__(section())"
 #endif
 #ifndef HAVE_FUNC_ATTRIBUTE_ALIGNED
-#error "Compiler does not support __attribute__(aligned())"
+// #error "Compiler does not support __attribute__(aligned())"
 #endif
 #ifndef HAVE_FUNC_ATTRIBUTE_USED
-#error "Compiler does not support __attribute__(used)"
+// #error "Compiler does not support __attribute__(used)"
 #endif
 
 #ifdef __APPLE__
