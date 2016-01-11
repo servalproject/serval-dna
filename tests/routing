@@ -696,6 +696,7 @@ setup_noLinkPollution() {
 # TODO re-roll identities until there's no possible SID prefix collision?
    foreach_instance +A +B +C +D create_single_identity
    foreach_instance +A +B +C +D add_servald_interface 1
+   foreach_instance +A +B +C +D executeOk_servald config set debug.subscriber on
    foreach_instance +A +B +C start_servald_server
    simulator_command up "net1"
    wait_until path_exists +A +B
@@ -713,7 +714,9 @@ test_noLinkPollution() {
    set_instance +D
    executeOk_servald id allpeers
    tfw_cat --stdout
-   assertStdoutLineCount '==' 3
+# The test is considered a success if D doesn't find out about BOTH B and C
+# There is still a chance that 3 ID's will have the same 16 bit prefix, but those are fairly slim odds
+   assertStdoutLineCount '<' 5
 }
 
 setup_multi_interface() {

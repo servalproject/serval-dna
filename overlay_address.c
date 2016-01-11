@@ -111,7 +111,6 @@ void free_subscribers()
 struct subscriber *_find_subscriber(struct __sourceloc __whence, const unsigned char *sidp, int len, int create)
 {
   IN();
-  DEBUGF(subscriber, "find_subscriber(sid=%s, create=%d)", alloca_tohex(sidp, len), create);
   struct tree_node *ptr = &root;
   int pos=0;
   if (len!=SID_SIZE)
@@ -127,10 +126,7 @@ struct subscriber *_find_subscriber(struct __sourceloc __whence, const unsigned 
 	ptr->subscribers[nibble] = ret;
 	ret->sid = *(const sid_t *)sidp;
 	ret->abbreviate_len = pos;
-	DEBUGF(subscriber, "set node[%.*s].subscribers[%c]=%p (sid=%s, abbrev_len=%d)",
-	       pos - 1, alloca_tohex(sidp, len), hexdigit_upper[nibble],
-	       ret, alloca_tohex_sid_t(ret->sid), ret->abbreviate_len
-	      );
+	DEBUGF(subscriber, "Storing %s, abbrev_len=%d", alloca_tohex_sid_t(ret->sid), ret->abbreviate_len);
       }
       goto done;
     }else{
@@ -140,6 +136,8 @@ struct subscriber *_find_subscriber(struct __sourceloc __whence, const unsigned 
 	goto done;
       // if we need to insert this subscriber, we have to make a new tree node first
       if (!create) {
+	if (len != SID_SIZE)
+	  DEBUGF(subscriber, "Prefix %s is not unique", alloca_tohex(sidp, len));
 	ret = NULL;
 	goto done;
       }
@@ -149,22 +147,17 @@ struct subscriber *_find_subscriber(struct __sourceloc __whence, const unsigned 
 	ret = NULL;
 	goto done;
       }
-      DEBUGF(subscriber, "create node[%.*s]", pos, alloca_tohex(sidp, len));
       ptr->tree_nodes[nibble] = new;
       ptr->is_tree |= (1<<nibble);
       ptr = new;
       nibble = get_nibble(ret->sid.binary, pos);
       ptr->subscribers[nibble] = ret;
       ret->abbreviate_len = pos + 1;
-      DEBUGF(subscriber, "set node[%.*s].subscribers[%c]=%p(sid=%s, abbrev_len=%d)",
-	     pos, alloca_tohex(sidp, len), hexdigit_upper[nibble],
-	     ret, alloca_tohex_sid_t(ret->sid), ret->abbreviate_len
-	    );
+      DEBUGF(subscriber, "Bumped %s, abbrev_len=%d", alloca_tohex_sid_t(ret->sid), ret->abbreviate_len);
       // then go around the loop again to compare the next nibble against the sid until we find an empty slot.
     }
   } while(pos < len*2);
 done:
-  DEBUGF(subscriber, "find_subscriber() return %p", ret);
   RETURN(ret);
 }
 
@@ -179,21 +172,20 @@ static int walk_tree(struct tree_node *node, int pos,
 	      int(*callback)(struct subscriber *, void *), void *context){
   int i=0, e=16;
   
-  if (start && pos < start_len*2){
+  if (start && pos < start_len*2)
     i=get_nibble(start,pos);
-  }
   
-  if (end && pos < end_len*2){
+  if (end && pos < end_len*2)
     e=get_nibble(end,pos) +1;
-  }
   
   for (;i<e;i++){
     if (node->is_tree & (1<<i)){
       if (walk_tree(node->tree_nodes[i], pos+1, start, start_len, end, end_len, callback, context))
 	return 1;
     }else if(node->subscribers[i]){
-      if (callback(node->subscribers[i], context))
-	return 1;
+      if (!start || memcmp(start, node->subscribers[i]->sid.binary, start_len)>=0)
+	if (callback(node->subscribers[i], context))
+	  return 1;
     }
     // stop comparing the start sid after looking at the first branch of the tree
     start=NULL;
@@ -330,27 +322,22 @@ static int add_explain_response(struct subscriber *subscriber, void *context)
 
 static int find_subscr_buffer(struct decode_context *context, struct overlay_buffer *b, int len, struct subscriber **subscriber)
 {
-  if (len<=0 || len>SID_SIZE){
+  assert(subscriber);
+  if (len<=0 || len>SID_SIZE)
     return WHYF("Invalid abbreviation length %d", len);
-  }
   
   unsigned char *id = ob_get_bytes_ptr(b, len);
-  if (!id){
+  if (!id)
     return WHY("Not enough space in buffer to parse address");
-  }
-  
-  if (!subscriber){
-    WARN("Could not resolve address, no buffer supplied");
-    context->flags|=DECODE_FLAG_INVALID_ADDRESS;
-    return 0;
-  }
   
   *subscriber=find_subscriber(id, len, 1);
   
   if (!*subscriber){
     context->flags|=DECODE_FLAG_INVALID_ADDRESS;
     
-    if ((context->flags & DECODE_FLAG_DONT_EXPLAIN) == 0){
+    if (context->flags & DECODE_FLAG_DONT_EXPLAIN){
+      DEBUGF(subscriber, "Ignoring prefix %s", alloca_tohex(id, len));
+    }else{
       // generate a please explain in the passed in context
       
       // add the abbreviation you told me about
@@ -365,7 +352,7 @@ static int find_subscr_buffer(struct decode_context *context, struct overlay_buf
       // so you don't try to use an abbreviation that's too short in future.
       walk_tree(&root, 0, id, len, id, len, add_explain_response, context);
       
-      INFOF("Asking for explanation of %s", alloca_tohex(id, len));
+      DEBUGF(subscriber, "Asking for explanation of %s", alloca_tohex(id, len));
       ob_append_byte(context->please_explain->payload, len);
       ob_append_bytes(context->please_explain->payload, id, len);
     }
@@ -414,7 +401,7 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
 	    ob_limitsize(context->please_explain->payload, MDP_MTU);
 	  }
 	  
-	  INFOF("Asking for explanation of YOU");
+	  DEBUGF(subscriber, "Asking for explanation of YOU");
 	  ob_append_byte(context->please_explain->payload, OA_CODE_P2P_YOU);
 	}
 	context->flags|=DECODE_FLAG_INVALID_ADDRESS;
@@ -423,7 +410,7 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
 
     case OA_CODE_SELF:
       if (!context->sender){
-	INFO("Could not resolve address, sender has not been set");
+	DEBUGF(subscriber, "Could not resolve address, sender has not been set");
 	context->flags|=DECODE_FLAG_INVALID_ADDRESS;
       }else{
 	*subscriber=context->sender;
@@ -433,7 +420,7 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
       
     case OA_CODE_PREVIOUS:
       if (!context->previous){
-	INFO("Unable to decode previous address");
+	DEBUGF(subscriber, "Unable to decode previous address");
 	context->flags|=DECODE_FLAG_INVALID_ADDRESS;
       }else{
 	*subscriber=context->previous;
@@ -516,16 +503,16 @@ int process_explain(struct overlay_frame *frame)
     if (len==SID_SIZE){
       // This message is also used to inform people of previously unknown subscribers
       // make sure we know this one
-      INFOF("Storing explain response for %s", alloca_tohex(sid, len));
+      DEBUGF(subscriber, "Storing explain response for %s", alloca_tohex(sid, len));
       find_subscriber(sid,len,1);
     }else{
       // reply to the sender with all subscribers that match this abbreviation
-      INFOF("Sending explain responses for %s", alloca_tohex(sid, len));
+      DEBUGF(subscriber, "Sending explain responses for %s", alloca_tohex(sid, len));
       walk_tree(&root, 0, sid, len, sid, len, add_explain_response, &context);
     }
   }
   if (context.please_explain)
     send_please_explain(&context, frame->destination, frame->source);
-  DEBUG(subscriber, "No explain responses");
+  DEBUG(subscriber, "No explain responses?");
   return 0;
 }
