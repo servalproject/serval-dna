@@ -1301,6 +1301,8 @@ static int netlink_send_get()
   rta->rta_len = RTA_LENGTH(4);
   
   int fd = ALARM_STRUCT(netlink_poll).poll.fd;
+  if (fd<0)
+    return -1;
   if (send(fd, &req, req.n.nlmsg_len, 0)<0)
     return WHYF_perror("send(%d)", fd);
   
@@ -1416,7 +1418,8 @@ static void file_interface_init(const struct config_network_interface *ifconfig)
 static void rescan_soon(){
 #ifdef HAVE_LINUX_NETLINK_H
   // start listening for network changes & request current interface addresses
-  netlink_init();
+  if (netlink_init()<0)
+    return;
   netlink_send_get();
 #else
   // re-check all interfaces periodically

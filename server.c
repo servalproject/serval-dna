@@ -58,7 +58,6 @@ static void signal_handler(int signal);
 static void serverCleanUp();
 static const char *_server_pidfile_path(struct __sourceloc __whence);
 #define server_pidfile_path() (_server_pidfile_path(__WHENCE__))
-void server_shutdown_check(struct sched_ent *alarm);
 
 void cli_cleanup(){
   /* clean up after ourselves */
@@ -246,6 +245,25 @@ static void wokeup()
 #define wokeup NULL
 
 #endif
+
+DEFINE_ALARM(server_shutdown_check);
+void server_shutdown_check(struct sched_ent *alarm)
+{
+  // TODO we should watch a descriptor and quit when it closes
+  /* If this server has been supplanted with another or Serval has been uninstalled, then its PID
+      file will change or be unaccessible.  In this case, shut down without all the cleanup.
+      Perform this check at most once per second.  */
+  static time_ms_t server_pid_time_ms = 0;
+  time_ms_t now = gettime_ms();
+  if (server_pid_time_ms == 0 || now - server_pid_time_ms > 1000) {
+    server_pid_time_ms = now;
+    if (server_pid() != server_getpid) {
+      WARNF("Server pid file no longer contains pid=%d -- shutting down without cleanup", server_getpid);
+      exit(1);
+    }
+  }
+  RESCHEDULE(alarm, now+1000, TIME_MS_NEVER_WILL, now+1100);
+}
 
 static int server_bind()
 {
@@ -472,13 +490,11 @@ void server_config_reload(struct sched_ent *alarm)
     INFO("server packet filter rules reloaded");
     break;
   }
-  if (alarm) {
-    time_ms_t now = gettime_ms();
-    RESCHEDULE(alarm, 
-        now+config.server.config_reload_interval_ms,
-	TIME_MS_NEVER_WILL,
-	now+config.server.config_reload_interval_ms+100);
-  }
+  time_ms_t now = gettime_ms();
+  RESCHEDULE(alarm, 
+      now+config.server.config_reload_interval_ms,
+      TIME_MS_NEVER_WILL,
+      now+config.server.config_reload_interval_ms+100);
 }
 
 /* Called periodically by the server process in its main loop.
@@ -592,29 +608,6 @@ void cf_on_config_change()
       RESCHEDULE(&ALARM_STRUCT(rhizome_fetch_status), now + 3000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
   }else if(rhizome_db){
     rhizome_close_db();
-  }
-}
-
-/* Called periodically by the server process in its main loop.
- */
-DEFINE_ALARM(server_shutdown_check);
-void server_shutdown_check(struct sched_ent *alarm)
-{
-  // TODO we should watch a descriptor and quit when it closes
-  /* If this server has been supplanted with another or Serval has been uninstalled, then its PID
-      file will change or be unaccessible.  In this case, shut down without all the cleanup.
-      Perform this check at most once per second.  */
-  static time_ms_t server_pid_time_ms = 0;
-  time_ms_t now = gettime_ms();
-  if (server_pid_time_ms == 0 || now - server_pid_time_ms > 1000) {
-    server_pid_time_ms = now;
-    if (server_pid() != server_getpid) {
-      WARNF("Server pid file no longer contains pid=%d -- shutting down without cleanup", server_getpid);
-      exit(1);
-    }
-  }
-  if (alarm){
-    RESCHEDULE(alarm, now+1000, TIME_MS_NEVER_WILL, now+1100);
   }
 }
 

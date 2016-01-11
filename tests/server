@@ -93,6 +93,20 @@ test_StartLocalNoErrors() {
    tfw_cat "$instance_servald_log"
 }
 
+doc_StartRealNoErrors="Starting server with real interface config gives no errors"
+setup_StartRealNoErrors() {
+   setup
+   executeOk_servald config \
+	set interfaces.0.match BAD0 \
+	set interfaces.1.match BAD1 \
+	set interfaces.2.match BAD2
+}
+test_StartRealNoErrors() {
+   start_servald_server
+   assert_servald_server_no_errors
+   tfw_cat "$instance_servald_log"
+}
+
 doc_StartStart="Start server while already running"
 setup_StartStart() {
    setup
