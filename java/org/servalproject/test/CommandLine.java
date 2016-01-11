@@ -32,7 +32,7 @@ public class CommandLine {
 
 		for(ServalDCommand.IdentityResult i:peers){
 			ServalDCommand.IdentityResult details = ServalDCommand.reverseLookup(i.subscriberId);
-			System.err.println(details.getResult()==0?details.toString():i.toString());
+			System.out.println(details.getResult()==0?details.toString():i.toString());
 		}
 	}
 
@@ -40,7 +40,7 @@ public class CommandLine {
 		MdpDnaLookup lookup = new ServerControl().getMdpDnaLookup(new ChannelSelector(),  new AsyncResult<ServalDCommand.LookupResult>() {
 			@Override
 			public void result(ServalDCommand.LookupResult nextResult) {
-				System.err.println(nextResult.toString());
+				System.out.println(nextResult.toString());
 			}
 		});
 		lookup.sendRequest(SubscriberId.broadcastSid, did);
@@ -52,7 +52,7 @@ public class CommandLine {
 		MdpServiceLookup lookup = new ServerControl().getMdpServiceLookup(new ChannelSelector(), new AsyncResult<MdpServiceLookup.ServiceResult>() {
 			@Override
 			public void result(MdpServiceLookup.ServiceResult nextResult) {
-				System.err.println(nextResult.toString());
+				System.out.println(nextResult.toString());
 			}
 		});
 		lookup.sendRequest(SubscriberId.broadcastSid, pattern);

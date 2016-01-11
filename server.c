@@ -490,11 +490,13 @@ void server_config_reload(struct sched_ent *alarm)
     INFO("server packet filter rules reloaded");
     break;
   }
-  time_ms_t now = gettime_ms();
-  RESCHEDULE(alarm, 
-      now+config.server.config_reload_interval_ms,
-      TIME_MS_NEVER_WILL,
-      now+config.server.config_reload_interval_ms+100);
+  if (alarm){
+    time_ms_t now = gettime_ms();
+    RESCHEDULE(alarm, 
+	now+config.server.config_reload_interval_ms,
+	TIME_MS_NEVER_WILL,
+	now+config.server.config_reload_interval_ms+100);
+  }
 }
 
 /* Called periodically by the server process in its main loop.
