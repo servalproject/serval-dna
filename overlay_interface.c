@@ -1178,7 +1178,7 @@ void netlink_poll(struct sched_ent *alarm)
   DEBUGF(overlayinterfaces, "recv(%d) len %u", alarm->poll.fd, len);
     
   struct nlmsghdr *nlh = (struct nlmsghdr *)buff;
-  for (nlh = (struct nlmsghdr *)buff; (NLMSG_OK (nlh, len)) && (nlh->nlmsg_type != NLMSG_DONE); nlh = NLMSG_NEXT(nlh, len)){
+  for (nlh = (struct nlmsghdr *)buff; (NLMSG_OK (nlh, (size_t)len)) && (nlh->nlmsg_type != NLMSG_DONE); nlh = NLMSG_NEXT(nlh, len)){
     
     switch(nlh->nlmsg_type){
       case RTM_NEWADDR:
