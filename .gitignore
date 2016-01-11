@@ -12,6 +12,7 @@
 VERSION.txt
 /configure
 /autom4te.cache
+/aclocal.m4
 Makefile
 testconfig.sh
 config.log

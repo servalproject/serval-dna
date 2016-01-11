@@ -15,6 +15,9 @@ DNA][] component of the [Serval mesh network][].
    persistent configuration system and its command-line API, the built-in
    system file paths, daemon instances and basic network configuration.
 
+ * [Notes for Developers](./Development.md) contains information of use to
+   developers of Serval DNA and to those experiencing build problems.
+
  * [MDP Packet Filtering](./Mesh-Packet-Filtering.md) describes the
    configuration options and rules file syntax for filtering incoming and
    outgoing MDP packets.

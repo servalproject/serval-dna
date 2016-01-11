@@ -1,14 +1,7 @@
 The Autoconf macros in this directory were copied from the GNU Autoconf Archive
-http://www.gnu.org/software/autoconf-archive/
+http://www.gnu.org/software/autoconf-archive/, and modified as needed.
 
-To use them, simply concatenate them all into the aclocal.m4 file in the
-project root directory:
+The autoreconf(1) command generates an aclocal.m4 file, which includes all the
+files in this directory that define macros that are used by configure.in.
 
-    cd batphone/jni/servald
-    cat m4/* >aclocal.m4
-
-Then you can run autoconf with no special arguments:
-
-    autoconf
-    ./configure
-    make
+See INSTALL.md for more information.

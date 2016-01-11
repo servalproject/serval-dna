@@ -68,7 +68,7 @@ To compile a native (ie, not cross-compiled) Serval DNA from source, run the
 following commands:
 
     $ cd $HOME/src/serval-dna
-    $ autoreconf -f -i
+    $ autoreconf -f -i -I m4
     $ ./configure
     $ make
     $
@@ -76,7 +76,8 @@ following commands:
 A successful session should appear something like:
 
     $ cd $HOME/src/serval-dna
-    $ autoreconf -f -i
+    $ autoreconf -f -i -I m4
+    aclocal: warning: autoconf input should be named 'configure.ac', not 'configure.in'
     $ ./configure
     checking build system type... i686-pc-linux-gnu
     checking host system type... i686-pc-linux-gnu
@@ -109,12 +110,15 @@ On Solaris, the system `make` command may not be GNU Make, and the system
 `cc` command may not be GNU Gcc.  The following may work:
 
     $ cd $HOME/src/serval-dna
-    $ autoreconf -f -i
+    $ autoreconf -f -i -I m4
     $ CC=gcc
     $ export CC
     $ ./configure
     $ gmake
     $
+
+In the event of a build failure, first consult the [Notes for
+Developers](./doc/Development.md), then [contact the Serval Project][].
 
 Built artifacts
 ---------------
@@ -176,8 +180,9 @@ developing test scripts.
 Configure
 ---------
 
-The [doc/Servald-Configuration](./doc/Servald-Configuration.md) document
-describes the configuration of Serval DNA in detail.
+Before running `servald`, it must be configured correctly.  The
+[doc/Servald-Configuration](./doc/Servald-Configuration.md) document describes
+the configuration of Serval DNA in detail.
 
 About the examples
 ------------------
@@ -210,6 +215,7 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [gcc 4.7]: http://gcc.gnu.org/gcc-4.7/
 [OpenWRT]: ./doc/OpenWRT.md
 [Serval Mesh Extender]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:meshextender:
+[contact the Serval Project]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:contact
 [RFD900]: http://rfdesign.com.au/index.php/rfd900
 [Mesh Potato]: http://villagetelco.org/mesh-potato/
 [Commotion Wireless]: http://commotionwireless.net/

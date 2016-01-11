@@ -14,14 +14,17 @@ participate in the [Serval mesh network][].
 Download, build and test
 ------------------------
 
-[INSTALL.md](./INSTALL.md) contains instructions for downloading, building and
-testing Serval DNA on most Linux and some Linux-like platforms.
+ * [INSTALL.md](./INSTALL.md) contains instructions for downloading, building
+   and testing Serval DNA on most Linux and some Linux-like platforms.
+
+ * [Notes for Developers](./doc/Development.md) contains useful information for
+   developers of Serval DNA, which may also help resolve build issues.
 
 Configuration
 -------------
 
-[doc/Servald-Configuration.md](./doc/Servald-Configuration.md) describes how to
-set up and run a Serval DNA daemon.
+ * [doc/Servald-Configuration.md](./doc/Servald-Configuration.md) describes how
+   to set up and run a Serval DNA daemon.
 
 Documentation
 -------------
