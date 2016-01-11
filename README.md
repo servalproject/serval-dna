@@ -45,6 +45,12 @@ Documentation
  * [CONTRIBUTORS.md](./CONTRIBUTORS.md) lists all individuals who have
    contributed to the software
 
+Bugs and issues
+---------------
+
+ * Bugs can be reported and inspected using the [GitHub issue tracker][Serval
+   DNA issues].
+
 What is in this repository?
 ---------------------------
 
@@ -66,48 +72,50 @@ The following protocols and services are implemented in **servald**:
  * The **[Distributed Numbering Architecture (DNA)][DNA]** is the key
    innovation that makes mesh telephony viable in the absence of any
    infrastructure, eg, in the aftermath of a natural disaster or in remote
-   locations.  It is a protocol carried over MDP (see below) that allows any
-   device to ask its neighboring devices for a phone number (DID).  Such a
-   request will propagate through the mesh, and any device may respond with the
-   identity (SID) of a subscriber who has “claimed” that DID.
+   locations.  DNA is a protocol carried over MDP (see below) that asks many
+   devices at once if they will answer a phone number (DID).  A device will
+   respond with its own subscriber identity (SID) if its user has “claimed”
+   that DID.   This allows phone calls to be established over the mesh using
+   conventional phone numbers.
 
- * The **[Serval Keyring][]** is a flat file containing all the user identities on
-   a single device.  Each identity is a set of elliptic curve secret
+ * The **[Serval Keyring][]** is a flat file containing all the user identities
+   on a single device.  Each identity is a set of elliptic curve secret
    cryptographic keys that belong to a single “mesh subscriber”, indexed by the
-   subscriber's 256-bit public key, called a SID.  Each identity in the keyring is
-   locked by its own user-chosen password (called a PIN in the code and
+   subscriber's 256-bit public key, called a SID.  Each identity in the keyring
+   is locked by its own user-chosen password (called a PIN in the code and
    documentation), using elliptic curve cryptography to protect locked entries
    from theft or tampering, and steganography to allow the user to plausibly
-   deny the existence of any locked identity.
+   deny the existence of locked identities.
 
  * The **[Mesh Datagram Protocol (MDP)][MDP]** is Serval's own layer 3 protocol
    designed for secure mesh networking.  It is completely independent of
-   Internet protocols such as IP and UDP, but for the time being is implemented
-   as an “overlay” network based on UDP/IP because that is the interface that
-   Linux and other operating systems provide for sending data over WiFi.
-   However, MDP could easily be implemented directly over a layer 2 data link
-   such as WiFi or Ethernet MAC.  MDP uses subscribers' public keys (SID) as
-   source and destination addresses, and has a 32-bit port number analogous to
-   the 16-bit port number used in TCP/IP.
+   Internet protocols such as IP and UDP, although for the time being it is
+   implemented as an “overlay” network based on UDP/IP because that is the
+   interface that Linux and other operating systems provide for sending data
+   over Wi-Fi.  However, MDP could easily be implemented directly over a layer
+   2 data link such as Wi-Fi or Ethernet MAC.  MDP uses subscribers' public
+   keys (SID) as source and destination addresses, has a 32-bit port number
+   analogous to the 16-bit port number used in TCP/IP, and encrypts all packet
+   contents by default, using the public key (SID) of the destination.
 
- * The **[Voice over Mesh Protocol (VoMP)][VoMP]** is Serval's own call negotiation
-   and two-way audio streaming protocol used to implement mesh voice calls.  It
-   is analogous to SIP/RTS, which is the dominant protocol used to implement
-   Voice over Internet Protocol, but VoMP is designed for the variable and
+ * The **[Voice over Mesh Protocol (VoMP)][VoMP]** is Serval's own call
+   negotiation and two-way audio streaming protocol used to implement mesh
+   voice calls.  It fills the same role as SIP/RTS, the dominant protocol used
+   for Voice over Internet Protocol, but VoMP is designed for the variable and
    unstable conditions of wireless mesh networks.  VoMP's session state model
    and signalling can handle packet loss, mid-call re-routing and re-connection
    where SIP would fail.  VoMP's audio streaming can encapsulate many codecs
    and even DTMF (dialpad button) signalling.
 
- * The **[Rhizome][]** content distribution service is a storage engine implemented
-   using SQLite and a content-exchange protocol based on MDP and HTTP for the
-   pervasive dissemination of content like images, videos, documents, software
-   upgrades, etc.  Each piece of content in Rhizome is called a “bundle”, which
-   has two parts: a *manifest* that describes the content, and the *payload*,
-   which is the content itself.  Each bundle has its own unique cryptographic
-   identifier that allows any recipient to verify that it has not been tampered
-   with.  A bundle's payload may be encrypted by the author so that only the
-   designated recipient can read it.
+ * **[Rhizome][]** is a content storage and distribution service implemented
+   using SQLite and a content-exchange protocol based on MDP.  It can be used
+   to disseminate content like images, videos, documents, software upgrades,
+   etc.  Each piece of content in Rhizome is called a “bundle”, which has two
+   parts: a *manifest* that describes the content, and the *payload*, which is
+   the content itself.  Each bundle has its own unique cryptographic identifier
+   that allows any recipient to verify that it has not been tampered with.  A
+   bundle's payload may be encrypted by the author so that only the designated
+   recipient can read it.
 
  * The **[MeshMS][]** messaging service sends short text messages using Rhizome
    as its transport.  Each message thread is stored and carried in a pair of
@@ -118,7 +126,7 @@ The following protocols and services are implemented in **servald**:
    (eg, VoIP gateways, SMS satellite links, packetised web), and to overcome
    scalability limitations of a perfectly decentralised mesh (eg, central
    telephone directory).  Serval Infrastructure is implemented as a daemon with
-   its own executable called **directory_service**.
+   its own executable called `directory_service`.
 
 Copyright and licensing
 -----------------------
@@ -165,6 +173,7 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [SPI]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:spi
 [serval-dna]: https://github.com/servalproject/serval-dna
 [batphone]: https://github.com/servalproject/batphone
+[Serval DNA issues]: https://github.com/servalproject/serval-dna/issues
 [issue #28]: https://github.com/servalproject/serval-dna/issues/28
 [GNU C]: http://gcc.gnu.org/
 [daemon]: http://en.wikipedia.org/wiki/Daemon_(computing)

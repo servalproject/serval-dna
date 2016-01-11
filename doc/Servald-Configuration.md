@@ -61,6 +61,9 @@ Blank lines are ignored, as are lines beginning with the comment character `#`.
 VALUE is parsed very strictly: all spaces are significant.  A leading or
 trailing space in VALUE can cause a numerical option to be invalid.
 
+The order of the lines in the file has no significance.  Changing the order of
+lines will produce exactly the same result.
+
 Invalid configuration
 ---------------------
 
