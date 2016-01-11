@@ -30,6 +30,7 @@
 #    deprecated
 #    mode
 #    packed
+#    section   (added 23 Nov 2015, Serval Project)
 #    tls_model
 #    unused
 #    used
@@ -39,7 +40,7 @@
 #    dllexport
 #    init_priority
 #
-#   Unsuppored variable attributes will be tested against a global integer
+#   Unsupported variable attributes will be tested against a global integer
 #   variable and without any arguments given to the attribute itself; the
 #   result of this check might be wrong or meaningless so use with care.
 #
@@ -83,6 +84,9 @@ AC_DEFUN([AX_GCC_VAR_ATTRIBUTE], [
                         int baz __attribute__(($1));
                     };
                 ],
+                [section], [
+                    int foo __attribute__(($1("a"))) = 0;
+                ],
                 [tls_model], [
                     __thread int bar1 __attribute__(($1("global-dynamic")));
                     __thread int bar2 __attribute__(($1("local-dynamic")));
@@ -112,7 +116,7 @@ AC_DEFUN([AX_GCC_VAR_ATTRIBUTE], [
                     bar b __attribute__(($1(65535/2)));
                 ],
                 [
-                 m4_warn([syntax], [Unsupported attribute $1, the test may fail])
+                 m4_warn([syntax], [Unsupported attribute "$1", the test may fail])
                  int foo __attribute__(($1));
                 ]
             )], [

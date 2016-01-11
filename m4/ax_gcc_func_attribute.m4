@@ -53,6 +53,7 @@
 #    nothrow
 #    optimize
 #    pure
+#    returns_nonnull (added 23 Nov 2015, Serval Project)
 #    unused
 #    used
 #    visibility
@@ -61,7 +62,7 @@
 #    weak
 #    weakref
 #
-#   Unsuppored function attributes will be tested with a prototype returning
+#   Unsupported function attributes will be tested with a prototype returning
 #   an int and not accepting any arguments and the result of the check might
 #   be wrong or meaningless so use with care.
 #
@@ -175,6 +176,9 @@ AC_DEFUN([AX_GCC_FUNC_ATTRIBUTE], [
                 [pure], [
                     int foo( void ) __attribute__(($1));
                 ],
+                [returns_nonnull], [
+                    char * foo( void ) __attribute__(($1));
+                ],
                 [unused], [
                     int foo( void ) __attribute__(($1));
                 ],
@@ -201,7 +205,7 @@ AC_DEFUN([AX_GCC_FUNC_ATTRIBUTE], [
                     static int bar( void ) __attribute__(($1("foo")));
                 ],
                 [
-                 m4_warn([syntax], [Unsupported attribute $1, the test may fail])
+                 m4_warn([syntax], [Unsupported attribute "$1", the test may fail])
                  int foo( void ) __attribute__(($1));
                 ]
             )], [])
