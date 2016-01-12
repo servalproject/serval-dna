@@ -1103,6 +1103,11 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
     keyring_free_identity(id);
     return NULL;
   }
+  if (!id->keypairs || id->keypairs->type != KEYTYPE_CRYPTOBOX) {
+    DEBUGF(keyring, "first keypair is not type CRYPTOBOX");
+    keyring_free_identity(id);
+    return NULL;
+  }
   DEBUGF(keyring, "unpacked key pairs");
   return id;
 }
@@ -1166,9 +1171,11 @@ static int keyring_decrypt_pkr(keyring_file *k, const char *pin, int slot_number
     goto kdp_safeexit;
   /* compare hash to record */
   if (memcmp(hash, &slot[PKR_SALT_BYTES], crypto_hash_sha512_BYTES)) {
-    WHYF("slot %u is not valid (MAC mismatch)", slot_number);
-    dump("computed",hash,crypto_hash_sha512_BYTES);
-    dump("stored",&slot[PKR_SALT_BYTES],crypto_hash_sha512_BYTES);
+    DEBUGF(keyring, "slot %u is not valid (MAC mismatch)", slot_number);
+    if (IF_DEBUG(keyring)){
+      dump("computed",hash,crypto_hash_sha512_BYTES);
+      dump("stored",&slot[PKR_SALT_BYTES],crypto_hash_sha512_BYTES);
+    }
     goto kdp_safeexit;
   }
   
