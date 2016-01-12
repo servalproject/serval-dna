@@ -153,7 +153,7 @@ struct subscriber *_find_subscriber(struct __sourceloc __whence, const unsigned 
       nibble = get_nibble(ret->sid.binary, pos);
       ptr->subscribers[nibble] = ret;
       ret->abbreviate_len = pos + 1;
-      DEBUGF(subscriber, "Bumped %s, abbrev_len=%d", alloca_tohex_sid_t(ret->sid), ret->abbreviate_len);
+      DEBUGF(subscriber, "Bumped %s, abbrev_len=%d (+ %p)", alloca_tohex_sid_t(ret->sid), ret->abbreviate_len, ptr);
       // then go around the loop again to compare the next nibble against the sid until we find an empty slot.
     }
   } while(pos < len*2);
@@ -167,25 +167,20 @@ done:
  if the callback returns non-zero, the process will stop.
  */
 static int walk_tree(struct tree_node *node, int pos, 
-	      unsigned char *start, int start_len, 
-	      unsigned char *end, int end_len,
+	      const struct subscriber *start,
 	      int(*callback)(struct subscriber *, void *), void *context){
   int i=0, e=16;
   
-  if (start && pos < start_len*2)
-    i=get_nibble(start,pos);
-  
-  if (end && pos < end_len*2)
-    e=get_nibble(end,pos) +1;
+  if (start)
+    i=get_nibble(start->sid.binary, pos);
   
   for (;i<e;i++){
     if (node->is_tree & (1<<i)){
-      if (walk_tree(node->tree_nodes[i], pos+1, start, start_len, end, end_len, callback, context))
+      if (walk_tree(node->tree_nodes[i], pos+1, start, callback, context))
 	return 1;
     }else if(node->subscribers[i]){
-      if (!start || memcmp(start, node->subscribers[i]->sid.binary, start_len)>=0)
-	if (callback(node->subscribers[i], context))
-	  return 1;
+      if (callback(node->subscribers[i], context))
+	return 1;
     }
     // stop comparing the start sid after looking at the first branch of the tree
     start=NULL;
@@ -193,12 +188,33 @@ static int walk_tree(struct tree_node *node, int pos,
   return 0;
 }
 
+// walk the sub-tree for all subscribers that exactly match this id/len prefix.
+static void prefix_matches(uint8_t *id, unsigned len, 
+			   int(*callback)(struct subscriber *, void *), void *context)
+{
+  struct tree_node *node = &root;
+  unsigned pos=0;
+  DEBUGF(subscriber, "Looking for %s", alloca_tohex(id, len));
+  for (; node && pos<len*2; pos++){
+    int i=get_nibble(id, pos);
+    DEBUGF(subscriber, "Nibble %d = %d, node %p, is tree %d", pos, i, node, node->is_tree & (1<<i));
+    if ((node->is_tree & (1<<i))==0){
+      if (node->subscribers[i] && memcmp(node->subscribers[i]->sid.binary, id, len)==0)
+	callback(node->subscribers[i], context);
+      return;
+    }
+    node = node->tree_nodes[i];
+  }
+  DEBUGF(subscriber, "Walking from %p", node);
+  walk_tree(node, pos+1, NULL, callback, context);
+}
+
 /*
  walk the tree, starting at start inclusive, calling the supplied callback function
  */
 void enum_subscribers(struct subscriber *start, int(*callback)(struct subscriber *, void *), void *context)
 {
-  walk_tree(&root, 0, start->sid.binary, SID_SIZE, NULL, 0, callback, context);
+  walk_tree(&root, 0, start, callback, context);
 }
 
 // generate a new random broadcast address
@@ -350,7 +366,7 @@ static int find_subscr_buffer(struct decode_context *context, struct overlay_buf
       
       // And I'll tell you about any subscribers I know that match this abbreviation, 
       // so you don't try to use an abbreviation that's too short in future.
-      walk_tree(&root, 0, id, len, id, len, add_explain_response, context);
+      prefix_matches(id, len, add_explain_response, context);
       
       DEBUGF(subscriber, "Asking for explanation of %s", alloca_tohex(id, len));
       ob_append_byte(context->please_explain->payload, len);
@@ -508,7 +524,7 @@ int process_explain(struct overlay_frame *frame)
     }else{
       // reply to the sender with all subscribers that match this abbreviation
       DEBUGF(subscriber, "Sending explain responses for %s", alloca_tohex(sid, len));
-      walk_tree(&root, 0, sid, len, sid, len, add_explain_response, &context);
+      prefix_matches(sid, len, add_explain_response, &context);
     }
   }
   if (context.please_explain)
