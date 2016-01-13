@@ -900,7 +900,15 @@ static int send_neighbour_link(struct neighbour *n)
     n->best_link->ack_counter = ACK_WINDOW;
     n->last_update = now;
   }
-  n->next_neighbour_update = n->last_update + n->best_link->interface->destination->ifconfig.tick_ms;
+  {
+    struct overlay_interface *i = n->best_link->interface;
+    int delay = 0;
+    if (n->best_link->unicast)
+      delay = i->ifconfig.unicast.tick_ms;
+    if (delay==0)
+      delay = i->destination->ifconfig.tick_ms;
+    n->next_neighbour_update = n->last_update + delay;
+  }
   DEBUGF(ack, "Next update for %s in %"PRId64"ms", alloca_tohex_sid_t(n->subscriber->sid), n->next_neighbour_update - gettime_ms());
   OUT();
   return 0;
