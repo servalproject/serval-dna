@@ -380,12 +380,8 @@ overlay_interface_read_any(struct sched_ent *alarm)
     
     /* Read only one UDP packet per call to share resources more fairly, and also
      enable stats to accurately count packets received */
-    plen = recvwithttl(alarm->poll.fd, packet, sizeof(packet), &recvttl, &recvaddr);
+    plen = recv_message(alarm->poll.fd, &recvaddr, &recvttl, packet, sizeof(packet));
     if (plen == -1) {
-      WHYF_perror("recvwithttl(%d,%p,%zu,&%d,%p(%s))",
-	    alarm->poll.fd, packet, sizeof packet, recvttl,
-	    &recvaddr, alloca_socket_address(&recvaddr)
-	  );
       unwatch(alarm);
       close(alarm->poll.fd);
       return;
@@ -683,12 +679,8 @@ static void interface_read_dgram(struct overlay_interface *interface)
   /* Read only one UDP packet per call to share resources more fairly, and also
    enable stats to accurately count packets received */
   int recvttl=1;
-  plen = recvwithttl(interface->alarm.poll.fd,packet, sizeof(packet), &recvttl, &recvaddr);
+  plen = recv_message(interface->alarm.poll.fd, &recvaddr, &recvttl, packet, sizeof(packet));
   if (plen == -1) {
-    WHYF_perror("recvwithttl(%d,%p,%zu,&%d,%p(%s))",
-	  interface->alarm.poll.fd, packet, sizeof packet, recvttl,
-	  &recvaddr, alloca_socket_address(&recvaddr)
-	);
     overlay_interface_close(interface);
     return;
   }

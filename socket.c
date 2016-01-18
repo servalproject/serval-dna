@@ -84,6 +84,7 @@ int _make_local_sockaddr(struct __sourceloc __whence, struct socket_address *add
  */
 int real_sockaddr(const struct socket_address *src_addr, struct socket_address *dst_addr)
 {
+  DEBUGF2(io, verbose_io, "real_sockaddr(src_addr=%p %s, dst_addr=%p)", src_addr, alloca_socket_address(src_addr), dst_addr);
   assert(src_addr->addrlen > sizeof src_addr->local.sun_family);
   size_t src_path_len = src_addr->addrlen - sizeof src_addr->local.sun_family;
   if (	 src_addr->addrlen >= sizeof src_addr->local.sun_family + 1
@@ -103,8 +104,10 @@ int real_sockaddr(const struct socket_address *src_addr, struct socket_address *
     ) {
       memcpy(dst_addr->local.sun_path, real_path, real_path_len);
       dst_addr->addrlen = real_path_len + sizeof dst_addr->local.sun_family;
+      DEBUGF2(io, verbose_io, "   --> return %s", alloca_socket_address(dst_addr));
       return 1;
     }
+    DEBUGF2(io, verbose_io, "real_path=%s", alloca_str_toprint(real_path));
   }
   if (dst_addr != src_addr){
     memcpy(&dst_addr->addr, &src_addr->addr, src_addr->addrlen);
@@ -280,20 +283,61 @@ ssize_t _send_message(struct __sourceloc __whence, int fd, const struct socket_a
   ssize_t ret = sendmsg(fd, &hdr, 0);
   if (ret == -1 && errno != EAGAIN)
     WHYF_perror("sendmsg(%d,%s,%lu)", fd, alloca_socket_address(address), (unsigned long)address->addrlen);
+  DEBUGF(verbose_io, "sendmsg(%d, %s, %lu)", fd, alloca_socket_address(address), (unsigned long)address->addrlen);
   return ret;
 }
 
-ssize_t _recv_message(struct __sourceloc __whence, int fd, struct socket_address *address, struct fragmented_data *data)
+ssize_t _recv_message_frag(struct __sourceloc __whence, int fd, struct socket_address *address, int *ttl, struct fragmented_data *data)
 {
-  struct msghdr hdr={
-    .msg_name=(void *)&address->addr,
-    .msg_namelen=address->addrlen,
-    .msg_iov=data->iov,
-    .msg_iovlen=data->fragment_count,
+  struct cmsghdr cmsgs[16];
+  struct msghdr msg = {
+    .msg_name       = (void *)&address->addr,
+    .msg_namelen    = address->addrlen,
+    .msg_iov        = data->iov,
+    .msg_iovlen     = data->fragment_count,
+    .msg_control    = cmsgs,
+    .msg_controllen = sizeof cmsgs,
+    .msg_flags      = 0
   };
-  ssize_t ret = recvmsg(fd, &hdr, 0);
-  if (ret==-1)
-    WHYF_perror("recvmsg(%d,%s,%lu)", fd, alloca_socket_address(address), (unsigned long)address->addrlen);
-  address->addrlen = hdr.msg_namelen;
+  bzero(&address->addr, address->addrlen);
+  ssize_t ret = recvmsg(fd, &msg, 0);
+  if (ret == -1 && errno != EAGAIN && errno != EWOULDBLOCK)
+    WHYF_perror("recvmsg(%d,{name=%p,namelen=%u,iov=%s,control=%p,controllen=%u},0)",
+	  fd, &address->addr, (unsigned) address->addrlen,
+          alloca_iovec(data->iov, data->fragment_count),
+          cmsgs, (unsigned) sizeof cmsgs);
+  address->addrlen = msg.msg_namelen;
+  if (ttl && ret > 0) {
+    struct cmsghdr *cmsg;
+    for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+      if (   cmsg->cmsg_level == IPPROTO_IP
+	  && ((cmsg->cmsg_type == IP_RECVTTL) || (cmsg->cmsg_type == IP_TTL))
+	  && cmsg->cmsg_len
+      ) {
+	DEBUGF(verbose_io, "  TTL (%p) data location resolves to %p", ttl, CMSG_DATA(cmsg));
+	if (CMSG_DATA(cmsg)) {
+	  *ttl = *(unsigned char *) CMSG_DATA(cmsg);
+	  DEBUGF(verbose_io, "  TTL of packet is %d", *ttl);
+	}
+      } else {
+	DEBUGF(verbose_io, "  unexpected level=%02x, type=%02x", cmsg->cmsg_level, cmsg->cmsg_type);
+      }
+    }
+  }
+  DEBUGF(verbose_io, "recvmsg(%d) -> %zd, flags=%x, address=%s ttl=%d",
+         fd,
+         ret,
+         msg.msg_flags,
+         alloca_socket_address(address),
+         ttl ? *ttl : -1);
   return ret;
+}
+
+ssize_t _recv_message(struct __sourceloc __whence, int fd, struct socket_address *address, int *ttl, unsigned char *buffer, size_t buflen)
+{
+  struct fragmented_data data;
+  data.fragment_count = 1;
+  data.iov[0].iov_base = buffer;
+  data.iov[0].iov_len = buflen;
+  return _recv_message_frag(__whence, fd, address, ttl, &data);
 }

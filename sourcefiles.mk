@@ -113,10 +113,9 @@ TEST_SOURCES = \
 	log_context.c \
 	log_stderr.c \
 	context1.c
-	
+
 MDP_CLIENT_SOURCES = \
-	mdp_client.c \
-        mdp_net.c
+	mdp_client.c
 
 SIMULATOR_SOURCES = \
         simulator.c

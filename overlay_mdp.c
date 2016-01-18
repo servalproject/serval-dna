@@ -1717,18 +1717,10 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 {
   if (alarm->poll.revents & POLLIN) {
     unsigned char buffer[16384];
-    int ttl;
+    int ttl = -1;
     struct socket_address client;
     client.addrlen = sizeof client.store;
-
-    ttl=-1;
-    
-    ssize_t len = recvwithttl(alarm->poll.fd,buffer,sizeof(buffer),&ttl, &client);
-    if (len == -1)
-      WHYF_perror("recvwithttl(%d,%p,%zu,&%d,%p(%s))",
-	    alarm->poll.fd, buffer, sizeof buffer, ttl,
-	    &client, alloca_socket_address(&client)
-	  );
+    ssize_t len = recv_message(alarm->poll.fd, &client, &ttl, buffer, sizeof(buffer));
 
     if ((size_t)len > 0) {
       if (client.addrlen <= sizeof(sa_family_t))
