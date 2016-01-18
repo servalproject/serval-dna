@@ -35,6 +35,7 @@ SERVAL_CLIENT_SOURCES = \
 # client applications.
 SERVAL_LIB_SOURCES = \
 	log_context.c \
+	log_on_config_change.c \
 	log_stderr.c
 
 # These source files are imported and do not depend on any local header files.

@@ -47,6 +47,7 @@ LIB_SERVAL_OBJS = \
 	$(addprefix $(OBJSDIR_LIB)/, $(MDP_CLIENT_SOURCES:.c=.o))
 MONITOR_CLIENT_OBJS = \
 	$(addprefix $(OBJSDIR_LIB)/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
+	$(addprefix $(OBJSDIR_LIB)/, $(SERVAL_LIB_SOURCES:.c=.o)) \
 	$(addprefix $(OBJSDIR_LIB)/, $(MONITOR_CLIENT_SRCS:.c=.o))
 SIMULATOR_OBJS = \
 	$(addprefix $(OBJSDIR_TOOLS)/, $(SIMULATOR_SOURCES:.c=.o))

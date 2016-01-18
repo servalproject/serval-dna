@@ -30,7 +30,8 @@
 #    deprecated
 #    mode
 #    packed
-#    section   (added 23 Nov 2015, Serval Project)
+#    section      (added 23 Nov 2015, Serval Project)
+#    section_seg  (added 18 Jan 2016, Serval Project)
 #    tls_model
 #    unused
 #    used
@@ -86,6 +87,9 @@ AC_DEFUN([AX_GCC_VAR_ATTRIBUTE], [
                 ],
                 [section], [
                     int foo __attribute__(($1("a"))) = 0;
+                ],
+                [section_seg], [
+                    int foo __attribute__((section("a,b"))) = 0;
                 ],
                 [tls_model], [
                     __thread int bar1 __attribute__(($1("global-dynamic")));
