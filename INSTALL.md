@@ -47,8 +47,9 @@ Mandatory dependencies:
  * socket library `libsocket` and headers
  * dynamic link library `libdl` and header `<dlfcn.h>`
  * Native Posix Threads Library `libpthread` and header `<pthread.h>`
- * Autoconf 2.67 or later
  * on Solaris, the realtime library `librt` (for the `nanosleep()` function)
+ * Autoconf 2.67-2.69 (2.70 may work but has not been tested)
+ * Automake 1.15
 
 Optional:
 
