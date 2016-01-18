@@ -13,7 +13,7 @@ public class ServerControl {
 	private int loopbackMdpPort;
 	private int httpPort=0;
 	private int pid;
-	private static final String restfulUsername="ServalDClient";
+	public static final String restfulUsername="ServalDClient";
 	private ServalDClient client;
 
 	public ServerControl(){

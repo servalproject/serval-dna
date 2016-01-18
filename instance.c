@@ -18,11 +18,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <stdlib.h>
+#ifdef HAVE_JNI_H
+#include <jni.h>
+
+// Stop OpenJDK 7 from foisting their UNUSED() macro on us in <jni_md.h>
+#ifdef UNUSED
+# undef UNUSED
+#endif
+#endif
 #include "instance.h"
 #include "str.h"
 #include "os.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
+
 
 /*
  * A default INSTANCE_PATH can be set on the ./configure command line, eg:
@@ -36,9 +45,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * always use an instance path and never fall back to FHS paths.
  */
 #ifdef ANDROID
-# ifndef INSTANCE_PATH
-#  error Must set INSTANCE_PATH macro on Android systems
-# endif
 # define SERVAL_ETC_PATH ""
 # define SERVAL_RUN_PATH ""
 # define SYSTEM_LOG_PATH ""
@@ -97,6 +103,19 @@ const char *instance_path()
   }
   return instancepath;
 }
+
+#ifdef HAVE_JNI_H
+JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_setInstancePath(
+  JNIEnv *env, jobject UNUSED(this), jobject path)
+{
+  const char *cpath = (*env)->GetStringUTFChars(env, path, NULL);
+  instancepath = strdup(cpath);
+  know_instancepath = 1;
+  (*env)->ReleaseStringUTFChars(env, path, cpath);
+  return (jint)0;
+}
+
+#endif
 
 static int vformf_path(struct __sourceloc __whence, strbuf b, const char *syspath, const char *fmt, va_list ap)
 {

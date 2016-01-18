@@ -70,6 +70,8 @@ public class ServalDCommand
 
 	public static native int server(IJniServer callback, String keyringPin, String[] entryPins);
 
+	public static native int setInstancePath(String path);
+
 	/**
 	 * Common entry point into servald command line.
 	 *
