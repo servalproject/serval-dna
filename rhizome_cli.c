@@ -355,6 +355,7 @@ static int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli
     case RHIZOME_BUNDLE_STATUS_ERROR:
     case RHIZOME_BUNDLE_STATUS_INVALID:
     case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+    case RHIZOME_BUNDLE_STATUS_NO_ROOM:
       break;
     default:
       FATALF("rhizome_bundle_import_files() returned %d", status);
