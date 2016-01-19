@@ -28,7 +28,7 @@ setup_servald_so() {
 compile_java_classes() {
    assert --message='Java compiler was detected by ./configure' type -p "$JAVAC" >/dev/null
    mkdir classes
-   assert find "$servald_source_root"/java/ -name *.java | xargs $JAVAC -Xlint:unchecked -d classes
+   assert find "$servald_source_root"/java* -name *.java | xargs $JAVAC -Xlint:unchecked -d classes
    assert [ -r classes/org/servalproject/servaldna/ServalDCommand.class ]
    assert [ -r classes/org/servalproject/servaldna/IJniResults.class ]
    assert [ -r classes/org/servalproject/test/ServalDTests.class ]
