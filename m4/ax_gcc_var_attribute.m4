@@ -86,10 +86,14 @@ AC_DEFUN([AX_GCC_VAR_ATTRIBUTE], [
                     };
                 ],
                 [section], [
-                    int foo __attribute__(($1("a"))) = 0;
+                    int foo __attribute__(($1("name"))) = 0;
+                    extern int __start_name[];
+                    extern int __stop_name[];
                 ],
                 [section_seg], [
-                    int foo __attribute__((section("a,b"))) = 0;
+                    int foo __attribute__((section("__DATA,name"))) = 0;
+                    extern __start_name[] __asm("section$start$__DATA$__name");
+                    extern __stop_name[] __asm("section$stop$__DATA$__name");
                 ],
                 [tls_model], [
                     __thread int bar1 __attribute__(($1("global-dynamic")));
