@@ -524,8 +524,10 @@ int overlay_destination_configure(struct network_destination *dest, const struct
     return WHYF("No tick interval specified for destination");
     
   if (dest->ifconfig.reachable_timeout_ms<0)
-    dest->ifconfig.reachable_timeout_ms = tick_ms>0 ? tick_ms * 5 : 2500;
-  
+    dest->ifconfig.reachable_timeout_ms = dest->ifconfig.tick_ms>0 ? dest->ifconfig.tick_ms * 5 : 2500;
+  DEBUGF(linkstate, "Configured destination, tick %d, reachable %d", 
+    dest->ifconfig.tick_ms,
+    dest->ifconfig.reachable_timeout_ms);
     
   limit_init(&dest->transfer_limit, dest->ifconfig.packet_interval);
   

@@ -106,20 +106,22 @@ int resolve_name(const char *name, struct in_addr *addr){
 }
 
 // load a unicast address from configuration
-int load_subscriber_address(struct subscriber *subscriber)
+struct network_destination *load_subscriber_address(struct subscriber *subscriber)
 {
-  if (!subscriber || subscriber->reachable&REACHABLE)
-    return 0;
+  if (!subscriber || subscriber->reachable != REACHABLE_NONE)
+    return NULL;
   int i = config_host_list__get(&config.hosts, &subscriber->sid);
   // No unicast configuration? just return.
   if (i == -1)
-    return 1;
+    return NULL;
   const struct config_host *hostc = &config.hosts.av[i].value;
   overlay_interface *interface = NULL;
   if (*hostc->interface){
     interface = overlay_interface_find_name(hostc->interface);
-    if (!interface)
-      return WHY("Can't find configured interface");
+    if (!interface){
+      WARNF("Can't find configured interface %s", hostc->interface);
+      return NULL;
+    }
   }
   struct socket_address addr;
   bzero(&addr, sizeof(addr));
@@ -130,19 +132,14 @@ int load_subscriber_address(struct subscriber *subscriber)
   if (addr.inet.sin_addr.s_addr==INADDR_NONE){
     if (interface || overlay_interface_get_default()){
       if (resolve_name(hostc->host, &addr.inet.sin_addr))
-	return -1;
+	return NULL;
     }else{
       // interface isnt up yet
-      return 1;
+      return NULL;
     }
   }
   DEBUGF(overlayrouting, "Loaded address %s for %s", alloca_socket_address(&addr), alloca_tohex_sid_t(subscriber->sid));
-  struct network_destination *destination = create_unicast_destination(&addr, interface);
-  if (!destination)
-    return -1;
-  int ret=overlay_send_probe(subscriber, destination, OQ_MESH_MANAGEMENT);
-  release_destination_ref(destination);
-  return ret;
+  return create_unicast_destination(&addr, interface);
 }
 
 /* Collection of unicast echo responses to detect working links */

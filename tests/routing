@@ -445,6 +445,39 @@ test_scan_one() {
    tfw_cat --stdout --stderr
 }
 
+setup_fixedAddress() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   foreach_instance +A +B executeOk_servald config \
+      set server.interface_path "$SERVALD_VAR" \
+      set interfaces.0.file dummy1 \
+      set interfaces.0.socket_type file \
+      set interfaces.0.type wifi \
+      set interfaces.0.broadcast.send off \
+      set interfaces.0.broadcast.drop on \
+      set interfaces.0.default_route 1 \
+      set interfaces.0.dummy_netmask 255.255.255.0
+   set_instance +A
+   executeOk_servald config \
+      set hosts.$SIDB.address 10.0.2.1 \
+      set interfaces.0.dummy_address 10.0.1.1
+   set_instance +B
+   executeOk_servald config \
+      set interfaces.0.dummy_address 10.0.2.1
+   touch "$SERVALD_VAR/dummy1"
+   foreach_instance +A +B start_servald_server
+   foreach_instance +A +B \
+      wait_until interface_up
+}
+doc_fixedAddress="Establish a link from a configured fixed address"
+test_fixedAddress() {
+   set_instance +A
+   executeOk_servald mdp ping --timeout=3 $SIDB 5
+   tfw_cat --stdout
+   wait_until path_exists +A +B
+}
+
 scan_completed() {
   $GREP "Scan completed" $instance_servald_log || return 1
   return 0

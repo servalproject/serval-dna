@@ -1079,6 +1079,15 @@ int link_add_destinations(struct overlay_frame *frame)
       }
     }
     
+    if (next_hop->reachable==REACHABLE_NONE && frame->destination_count==0){
+      // check config for a hardcoded address
+      struct network_destination *destination = load_subscriber_address(frame->destination);
+      if (destination){
+	frame_add_destination(frame, next_hop, destination);
+	release_destination_ref(destination);
+      }
+    }
+    
     if ((next_hop->reachable&REACHABLE)==REACHABLE_INDIRECT)
       next_hop = next_hop->next_hop;
     

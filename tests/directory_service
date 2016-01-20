@@ -105,6 +105,7 @@ configure_node() {
       set debug.overlayinterfaces Yes \
       set debug.linkstate Yes \
       set interfaces.0.file dummy1 \
+      set interfaces.0.type wifi \
       set interfaces.0.socket_type file \
       set interfaces.0.broadcast.send off \
       set interfaces.0.broadcast.drop on \

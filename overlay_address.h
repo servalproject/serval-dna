@@ -118,7 +118,7 @@ struct subscriber *_find_subscriber(struct __sourceloc, const unsigned char *sid
 
 void enum_subscribers(struct subscriber *start, int(*callback)(struct subscriber *, void *), void *context);
 int set_reachable(struct subscriber *subscriber, struct network_destination *destination, struct subscriber *next_hop);
-int load_subscriber_address(struct subscriber *subscriber);
+struct network_destination *load_subscriber_address(struct subscriber *subscriber);
 
 int process_explain(struct overlay_frame *frame);
 int overlay_broadcast_drop_check(struct broadcast *addr);
