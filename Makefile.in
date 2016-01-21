@@ -75,7 +75,13 @@ INSTALL_DATA=   $(INSTALL) -m 644
 # More warnings, discover problems that only happen on some archs
 CFLAGS+=-Wextra
 # Security enhancements from Debian
-CFLAGS+=-Wformat -Werror=format-security -D_FORTIFY_SOURCE=2
+CFLAGS+=-Wformat -Werror=format-security
+
+# Set D_FORTIFY_SOURCE if not set yet.
+ifeq (,$(findstring D_FORTIFY_SOURCE,$(CFLAGS)))
+    # D_FORTIFY_SOURCE is not set
+    CFLAGS += -D_FORTIFY_SOURCE=2
+endif
 
 DEFS=	@DEFS@
 
