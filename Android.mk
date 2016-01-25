@@ -12,7 +12,7 @@ SERVALD_SRC_FILES = \
 NACL_BASE = nacl/src
 NACL_INC := $(LOCAL_PATH)/nacl/include
 include $(LOCAL_PATH)/$(NACL_BASE)/nacl.mk
-SQLITE3_INC := $(LOCAL_PATH)/sqlite-amalgamation-3070900
+SQLITE3_INC := $(LOCAL_PATH)/sqlite-amalgamation-3100200
 
 SERVALD_LOCAL_CFLAGS = \
 	-g \

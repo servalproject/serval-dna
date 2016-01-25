@@ -43,7 +43,7 @@ SERVAL_LIB_SOURCES = \
 # narrow as possible to avoid unnecessary recompilations when developers modify
 # header files.
 SQLITE3_SOURCES = \
-	sqlite-amalgamation-3070900/sqlite3.c
+	sqlite-amalgamation-3100200/sqlite3.c
 
 # The source files for building the Serval DNA daemon.
 SERVAL_DAEMON_SOURCES = \

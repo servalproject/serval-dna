@@ -56,7 +56,7 @@ CC= @CC@
 
 LDFLAGS=@LDFLAGS@ @LIBS@
 
-CFLAGS= -Isqlite-amalgamation-3070900 @CPPFLAGS@ @CFLAGS@ -Inacl/include
+CFLAGS= -Isqlite-amalgamation-3100200 @CPPFLAGS@ @CFLAGS@ -Inacl/include
 CFLAGS+=-DSYSCONFDIR="\"$(sysconfdir)\"" -DLOCALSTATEDIR="\"$(localstatedir)\""
 CFLAGS+=-DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_DATETIME_FUNCS -DSQLITE_OMIT_COMPILEOPTION_DIAGS -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_OMIT_VIRTUALTABLE -DSQLITE_OMIT_AUTHORIZATION
 CFLAGS+=-fPIC
@@ -143,7 +143,7 @@ $(OBJSDIR_TOOLS)/version.o: $(ALL_SOURCES) $(HDRS) version_servald.c version_str
 
 #' <-- fixes vim syntax highlighting
 
-$(OBJSDIR_SERVALD)/sqlite3.o: sqlite-amalgamation-3070900/sqlite3.c Makefile
+$(OBJSDIR_SERVALD)/sqlite3.o: sqlite-amalgamation-3100200/sqlite3.c Makefile
 	@echo SERVALD CC $<
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
