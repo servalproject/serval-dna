@@ -732,9 +732,7 @@ struct rhizome_write_buffer
 
 struct rhizome_write
 {
-  rhizome_filehash_t id;
   uint64_t temp_id;
-  char id_known;
   uint64_t tail;
   uint64_t file_offset;
   uint64_t written_offset;
@@ -742,14 +740,17 @@ struct rhizome_write
   struct rhizome_write_buffer *buffer_list;
   size_t buffer_size;
   
-  int crypt;
-  unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
-  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
-  
-  SHA512_CTX sha512_context;
+  struct crypto_hash_sha512_state sha512_context;
   uint64_t blob_rowid;
   int blob_fd;
   sqlite3_blob *sql_blob;
+  
+  rhizome_filehash_t id;
+  uint8_t id_known;
+  uint8_t crypt;
+  
+  unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
+  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
 };
 
 struct rhizome_read_buffer{
@@ -760,15 +761,8 @@ struct rhizome_read_buffer{
 
 struct rhizome_read
 {
-  rhizome_filehash_t id;
-  
-  int crypt;
-  unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
-  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
-  
   uint64_t hash_offset;
-  SHA512_CTX sha512_context;
-  char verified;
+  struct crypto_hash_sha512_state sha512_context;
   
   uint64_t blob_rowid;
   int blob_fd;
@@ -776,6 +770,12 @@ struct rhizome_read
   uint64_t tail;
   uint64_t offset;
   uint64_t length;
+  
+  int8_t verified;
+  uint8_t crypt;
+  rhizome_filehash_t id;
+  unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
+  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
 };
 
 int rhizome_received_content(const unsigned char *bidprefix,uint64_t version, 

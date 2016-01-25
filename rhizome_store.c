@@ -333,7 +333,7 @@ enum rhizome_payload_status rhizome_open_write(struct rhizome_write *write, cons
   write->file_length = file_length;
   write->file_offset = 0;
   write->written_offset = 0;
-  SHA512_Init(&write->sha512_context);
+  crypto_hash_sha512_init(&write->sha512_context);
   return RHIZOME_PAYLOAD_STATUS_NEW;
 }
 
@@ -362,7 +362,7 @@ static int prepare_data(struct rhizome_write *write_state, uint8_t *buffer, size
       return -1;
   }
   
-  SHA512_Update(&write_state->sha512_context, buffer, data_size);
+  crypto_hash_sha512_update(&write_state->sha512_context, buffer, data_size);
   write_state->file_offset+=data_size;
   
   DEBUGF(rhizome_store, "Processed %"PRIu64" of %"PRIu64, write_state->file_offset, write_state->file_length);
@@ -711,8 +711,7 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
   }
     
   rhizome_filehash_t hash_out;
-  SHA512_Final(hash_out.binary, &write->sha512_context);
-  SHA512_End(&write->sha512_context, NULL);
+  crypto_hash_sha512_final(&write->sha512_context, hash_out.binary);
 
   if (write->id_known) {
     if (cmp_rhizome_filehash_t(&write->id, &hash_out) != 0) {
@@ -1029,7 +1028,7 @@ enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const r
     }
     DEBUGF(rhizome_store, "Opened stored file %s as fd %d, len %"PRIx64, blob_path, read->blob_fd, read->length);
   }
-  SHA512_Init(&read->sha512_context);
+  crypto_hash_sha512_init(&read->sha512_context);
   return RHIZOME_PAYLOAD_STATUS_STORED;
 }
 
@@ -1095,14 +1094,13 @@ ssize_t rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, siz
 
   // hash the payload as we go, but only if we happen to read the payload data in order
   if (read_state->hash_offset == read_state->offset && buffer && bytes_read>0){
-    SHA512_Update(&read_state->sha512_context, buffer, bytes_read);
+    crypto_hash_sha512_update(&read_state->sha512_context, buffer, bytes_read);
     read_state->hash_offset += bytes_read;
     
     // if we hash everything and the hash doesn't match, we need to delete the payload
     if (read_state->hash_offset >= read_state->length){
       rhizome_filehash_t hash_out;
-      SHA512_Final(hash_out.binary, &read_state->sha512_context);
-      SHA512_End(&read_state->sha512_context, NULL);
+      crypto_hash_sha512_final(&read_state->sha512_context, hash_out.binary);
       if (cmp_rhizome_filehash_t(&read_state->id, &hash_out) != 0) {
 	// hash failure, mark the payload as invalid
 	read_state->verified = -1;

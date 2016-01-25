@@ -1133,14 +1133,16 @@ void str_digest_passphrase(unsigned char *dstBinary, size_t dstsiz, const char *
 void strn_digest_passphrase(unsigned char *dstBinary, size_t dstsiz, const char *passphrase, size_t passlen)
 {
   assert(dstsiz <= SERVAL_PASSPHRASE_DIGEST_MAX_BINARY);
-  SHA512_CTX context;
+  crypto_hash_sha512_state context;
   static const char salt1[] = "Sago pudding";
   static const char salt2[] = "Rhubarb pie";
-  SHA512_Init(&context);
-  SHA512_Update(&context, (unsigned char *)salt1, sizeof salt1 - 1);
-  SHA512_Update(&context, (unsigned char *)passphrase, passlen);
-  SHA512_Update(&context, (unsigned char *)salt2, sizeof salt2 - 1);
-  SHA512_Final_Len(dstBinary, dstsiz, &context);
+  crypto_hash_sha512_init(&context);
+  crypto_hash_sha512_update(&context, (unsigned char *)salt1, sizeof salt1 - 1);
+  crypto_hash_sha512_update(&context, (unsigned char *)passphrase, passlen);
+  crypto_hash_sha512_update(&context, (unsigned char *)salt2, sizeof salt2 - 1);
+  unsigned char hash[crypto_hash_sha512_BYTES];
+  crypto_hash_sha512_final(&context, hash);
+  bcopy(hash, dstBinary, dstsiz);
 }
 
 /* Return true if the string resembles a URI.
