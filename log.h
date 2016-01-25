@@ -50,7 +50,7 @@ int string_to_log_level(const char *text);
 // Log output control.
 extern int logLevel_NoLogFileConfigured;
 void close_log_file();
-void disable_log_stderr();
+void redirect_stderr_to_log();
 void logFlush();
 void logConfigChanged();
 

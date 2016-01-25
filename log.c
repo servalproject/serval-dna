@@ -498,6 +498,11 @@ static void _open_log_file(_log_iterator *it)
 	  _log_current_datetime(it, LOG_LEVEL_INFO);
 	  log_mkdir_trace(dir);
 	  _logs_printf_nl(LOG_LEVEL_INFO, __NOWHERE__, "Logging to %s (fd %d)", _log_file_path, fileno(_log_file));
+	  
+	  // if stderr should be redirected
+	  if (logfile_stderr == NO_FILE)
+	    dup2(fileno(_log_file),STDERR_FILENO);
+	  
 	  // Update the log symlink to point to the latest log file.
 	  strbuf sbsymlink = strbuf_alloca(400);
 	  strbuf_system_log_path(sbsymlink);
@@ -634,7 +639,7 @@ static void _flush_log_stderr()
     fflush(logfile_stderr);
 }
 
-void disable_log_stderr()
+void redirect_stderr_to_log()
 {
   if (logfile_stderr && logfile_stderr != NO_FILE) {
     fflush(logfile_stderr);

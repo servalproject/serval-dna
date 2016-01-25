@@ -754,7 +754,6 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
 	     */
 	    DEBUG(verbose, "Grand-Child Process, reopening log");
 	    close_log_file();
-	    disable_log_stderr();
 	    int fd;
 	    if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
 	      exit(WHY_perror("open(\"/dev/null\")"));
@@ -770,6 +769,7 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
 	      exit(WHYF_perror("dup2(%d,stderr)", fd));
 	    if (fd > 2)
 	      (void)close(fd);
+	    redirect_stderr_to_log();
 	    /* The execpath option is provided so that a JNI call to "start" can be made which
 	       creates a new server daemon process with the correct argv[0].  Otherwise, the servald
 	       process appears as a process with argv[0] = "org.servalproject". */
