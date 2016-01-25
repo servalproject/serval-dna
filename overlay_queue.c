@@ -610,7 +610,7 @@ int overlay_queue_ack(struct subscriber *neighbour, struct network_destination *
 	int frame_seq = frame->destinations[j].sent_sequence;
 	if (frame_seq >=0 && (frame->destinations[j].next_hop == neighbour || !frame->destination)){
 	  int seq_delta = (ack_seq - frame_seq)&0xFF;
-	  char acked = (seq_delta==0 || (seq_delta <= 32 && ack_mask&(1<<(seq_delta-1))))?1:0;
+	  char acked = (seq_delta==0 || (seq_delta <= 32 && ack_mask&((uint32_t)1<<(seq_delta-1))))?1:0;
 
 	  if (acked){
 	    int this_rtt = now - frame->destinations[j].transmit_time;

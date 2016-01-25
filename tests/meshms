@@ -28,6 +28,7 @@ teardown() {
    stop_all_servald_servers
    kill_all_servald_processes
    assert_no_servald_processes
+   report_all_servald_servers
 }
 
 setup_logging() {

@@ -474,17 +474,18 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
 {
   switch (addr->sa_family) {
   case AF_UNIX: {
+      struct sockaddr_un *addr_un = (struct sockaddr_un *)addr;
       strbuf_puts(sb, "AF_UNIX:");
       size_t len = addrlen > sizeof addr->sa_family ? addrlen - sizeof addr->sa_family : 0;
-      if (addr->sa_data[0]) {
-	strbuf_toprint_quoted_len(sb, "\"\"", addr->sa_data, len);
+      if (addr_un->sun_path[0]) {
+	strbuf_toprint_quoted_len(sb, "\"\"", addr_un->sun_path, len);
 	if (len < 2)
 	  strbuf_sprintf(sb, " (addrlen=%d too short)", (int)addrlen);
-	if (len == 0 || addr->sa_data[len - 1] != '\0')
+	if (len == 0 || addr_un->sun_path[len - 1] != '\0')
 	  strbuf_sprintf(sb, " (addrlen=%d, no nul terminator)", (int)addrlen);
       } else {
 	strbuf_puts(sb, "abstract ");
-	strbuf_toprint_quoted_len(sb, "\"\"", addr->sa_data, len);
+	strbuf_toprint_quoted_len(sb, "\"\"", addr_un->sun_path, len);
 	if (len == 0)
 	  strbuf_sprintf(sb, " (addrlen=%d too short)", (int)addrlen);
       }

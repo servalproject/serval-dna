@@ -78,7 +78,7 @@ int rhizome_mdp_send_block(struct subscriber *dest, const rhizome_bid_t *bid, ui
   
   int i;
   for(i=0;i<32;i++){
-    if (bitmap&(1<<(31-i)))
+    if (bitmap&(1u<<(31-i)))
       continue;
     
     if (overlay_queue_remaining(header.qos) < 10)

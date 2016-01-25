@@ -251,8 +251,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define CFUNSUPPORTED       (1<<7)
 #define CF__SUB_SHIFT       16
 #define CFSUB(f)            ((f) << CF__SUB_SHIFT)
-#define CF__SUBFLAGS        CFSUB(~0)
-#define CF__FLAGS           (~0 & ~CF__SUBFLAGS)
+#define CF__FLAGS           (0xFFFF)
+#define CF__SUBFLAGS        (~CF__FLAGS)
 
 strbuf strbuf_cf_flags(strbuf, int);
 strbuf strbuf_cf_flag_reason(strbuf sb, int flags);
@@ -268,7 +268,7 @@ struct cf_om_node {
     const char *key; // points inside fullkey, do not free()
     const char *text; // malloc()
     size_t nodc;
-    struct cf_om_node *nodv[10]; // malloc()
+    struct cf_om_node *nodv[0]; // malloc()
 };
 
 int is_configvarname(const char *);

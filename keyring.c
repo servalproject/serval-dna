@@ -1038,7 +1038,6 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
     unsigned char ktype = rotbuf_getc(&rbuf);
     if (rbuf.wrap || ktype == 0x00)
       break; // End of data, stop looking
-    const struct keytype *kt = &keytypes[ktype];
     size_t keypair_len;
     // No length bytes after the original four key types, for backward compatibility.  All other key
     // types are followed by a two-byte keypair length.
@@ -1047,7 +1046,7 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
     case KEYTYPE_CRYPTOSIGN:
     case KEYTYPE_RHIZOME:
     case KEYTYPE_DID:
-      keypair_len = kt->packed_size;
+      keypair_len = keytypes[ktype].packed_size;
       break;
     default:
       keypair_len = rotbuf_getc(&rbuf) << 8;
@@ -1067,9 +1066,9 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
       return NULL;
     }
     struct rotbuf rbstart = rbuf;
-    if (ktype < NELS(keytypes) && kt->unpacker) {
+    if (ktype < NELS(keytypes) && keytypes[ktype].unpacker) {
       DEBUGF(keyring, "unpack key type = 0x%02x(%s) at offset %u", ktype, keytype_str(ktype, "unknown"), (int)rotbuf_position(&rbo));
-      if (kt->unpacker(kp, &rbuf, keypair_len) != 0) {
+      if (keytypes[ktype].unpacker(kp, &rbuf, keypair_len) != 0) {
 	// If there is an error, it is probably an empty slot.
 	DEBUGF(keyring, "key type 0x%02x does not unpack", ktype);
 	keyring_free_keypair(kp);

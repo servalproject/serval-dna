@@ -1282,6 +1282,7 @@ static int netlink_send_get()
   struct {
     struct nlmsghdr n;
     struct ifaddrmsg r;
+    uint8_t alignment_padding[64];
   } req;
   
   memset(&req, 0, sizeof(req));

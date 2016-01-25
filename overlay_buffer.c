@@ -219,7 +219,8 @@ ssize_t _ob_makespace(struct __sourceloc __whence, struct overlay_buffer *b, siz
 #endif
   if (!new)
     return 0;
-  bcopy(b->bytes,new,b->position);
+  if (b->position)
+    bcopy(b->bytes,new,b->position);
   if (b->allocated) {
     assert(b->allocated == b->bytes);
     free(b->allocated);
@@ -490,7 +491,7 @@ uint32_t ob_get_ui32(struct overlay_buffer *b)
 {
   if (test_offset(b, 4))
     return 0xFFFFFFFF; // ... unsigned
-  uint32_t ret = b->bytes[b->position] << 24
+  uint32_t ret = (unsigned)b->bytes[b->position] << 24
 	| b->bytes[b->position +1] << 16
 	| b->bytes[b->position +2] << 8
 	| b->bytes[b->position +3];
@@ -505,7 +506,7 @@ uint32_t ob_get_ui32_rv(struct overlay_buffer *b)
   uint32_t ret = b->bytes[b->position]
 	| b->bytes[b->position +1] << 8
 	| b->bytes[b->position +2] << 16
-	| b->bytes[b->position +3] << 24;
+	| (unsigned)b->bytes[b->position +3] << 24;
   b->position+=4;
   return ret;
 }

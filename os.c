@@ -182,7 +182,7 @@ time_ms_t sleep_ms(time_ms_t milliseconds)
   delay.tv_nsec = (milliseconds % 1000) * 1000000;
   if (nanosleep(&delay, &remain) == -1 && errno != EINTR)
     FATALF_perror("nanosleep(tv_sec=%ld, tv_nsec=%ld)", delay.tv_sec, delay.tv_nsec);
-  return remain.tv_sec * 1000 + remain.tv_nsec / 1000000;
+  return remain.tv_sec * 1000ull + remain.tv_nsec / 1000000;
 }
 
 struct timeval time_ms_to_timeval(time_ms_t milliseconds)
