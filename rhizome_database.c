@@ -1495,10 +1495,9 @@ int rhizome_list_next(struct rhizome_list_cursor *c)
     uint64_t q_version = sqlite3_column_int64(c->_statement, 2);
     int64_t q_inserttime = sqlite3_column_int64(c->_statement, 3);
     const char *q_author = (const char *) sqlite3_column_text(c->_statement, 4);
-    sid_t *author = NULL;
+    sid_t author;
     if (q_author) {
-      author = alloca(sizeof *author);
-      if (str_to_sid_t(author, q_author) == -1) {
+      if (str_to_sid_t(&author, q_author) == -1) {
 	WHYF("MANIFESTS row id=%s has invalid author column %s -- skipped", q_manifestid, alloca_str_toprint(q_author));
 	continue;
       }
@@ -1519,8 +1518,8 @@ int rhizome_list_next(struct rhizome_list_cursor *c)
 	  q_manifestid, q_version, m->version);
       continue;
     }
-    if (author)
-      rhizome_manifest_set_author(m, author);
+    if (q_author)
+      rhizome_manifest_set_author(m, &author);
     rhizome_manifest_set_rowid(m, q_rowid);
     rhizome_manifest_set_inserttime(m, q_inserttime);
     if (c->service && !(m->service && strcasecmp(c->service, m->service) == 0))

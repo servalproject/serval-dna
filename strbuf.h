@@ -19,7 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #ifndef __STRBUF_H__
 #define __STRBUF_H__
-
+#include <stddef.h>
 #include "features.h"
 
 /**
@@ -133,6 +133,17 @@ typedef const struct strbuf *const_strbuf;
  */
 #define SIZEOF_STRBUF (sizeof(struct strbuf))
 
+
+// clang doesn't force the allignment of alloca() which can lead to undefined behaviour. eg SIGBUS
+// TODO write autoconf test for this
+#ifdef __clang__
+  #define __ALIGNMENT_OF(T) offsetof( struct { char x; T dummy; }, dummy)
+  #define alloca_aligned(size, T) (void*)((uintptr_t)alloca(size+__ALIGNMENT_OF(T)-1)+__ALIGNMENT_OF(T)-1 & ~(__ALIGNMENT_OF(T)-1) )
+#else
+  #define alloca_aligned(size, T) alloca(size)
+#endif
+
+
 /** Convenience macro for allocating a strbuf and its backing buffer on the
  * heap using a single call to malloc(3).
  *
@@ -166,7 +177,7 @@ typedef const struct strbuf *const_strbuf;
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-#define strbuf_alloca(size) strbuf_make(alloca(SIZEOF_STRBUF + (size)), SIZEOF_STRBUF + (size))
+#define strbuf_alloca(size) strbuf_make(alloca_aligned(SIZEOF_STRBUF + (size), strbuf), SIZEOF_STRBUF + (size))
 
 /** Convenience macro that calls strbuf_alloca() to allocate a large enough
  * buffer to hold the entire content produced by a given expression that

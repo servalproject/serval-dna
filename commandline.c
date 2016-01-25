@@ -175,10 +175,10 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_rawComman
 
   // Construct argv, argc from this method's arguments.
   jsize len = (*env)->GetArrayLength(env, args);
-  const char **argv = alloca(sizeof(char*) * (len + 1));
-  if (argv == NULL)
-    return Throw(env, "java/lang/OutOfMemoryError", "alloca() returned NULL");
-  bzero(argv, sizeof(char*) * (len + 1));
+  
+  const char *argv[len+1];
+  bzero(argv, sizeof(argv));
+  
   jsize i;
   int argc = len;
   // From now on, in case of an exception we have to free some resources before
