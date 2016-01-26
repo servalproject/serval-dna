@@ -9,9 +9,11 @@ These instructions will build [Serval DNA][] successfully for the following plat
 
  * Debian Linux, ix86 and x86\_64, kernels 2.6.x and 3.x, using [gcc 4.4][] to
    [gcc 4.8][]
- * Mac OS X 10.7 “Lion”, x86\_64, using [gcc 4.2][] available in [Xcode 4][]
-   3.2.6
- * Oracle SunOs 5.10 (Solaris), Sparc, using [gcc 4.4][]
+ * Mac OS X x86\_64, releases 10.7 “Lion” to 10.11 “El Capitan”, using [gcc
+   4.2][] available in [Xcode][] versions 3.2 to 7.2, and GNU tools available
+   from [homebrew][]
+ * Oracle SunOs 5.10 (Solaris), Sparc, using [gcc 4.4][] and GNU tools
+   installed
 
 [Serval DNA][] also runs on the following platforms, to which these build
 instructions do not apply:
@@ -59,8 +61,13 @@ Optional:
 Test dependencies:
 
  * bash 3.2.48 or later
+ * GNU grep, sed and awk (on OSX and Solaris, as ggrep, gsed and gawk)
  * jq 1.3 or later
  * curl
+
+The GNU grep, sed and awk programs can be installed on OSX using the
+[homebrew][] package manager.  The [Notes for Developers](./doc/Development.md)
+give more details.
 
 Build
 -----
@@ -211,7 +218,7 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [Android 2.2 “Froyo”]: http://developer.android.com/about/versions/android-2.2-highlights.html
 [Android NDK]: http://developer.android.com/tools/sdk/ndk/index.html
 [gcc 4.2]: http://gcc.gnu.org/gcc-4.2/
-[Xcode 4]: https://developer.apple.com/xcode/
+[Xcode]: https://developer.apple.com/xcode/
 [gcc 4.4]: http://gcc.gnu.org/gcc-4.4/
 [gcc 4.7]: http://gcc.gnu.org/gcc-4.7/
 [OpenWRT]: ./doc/OpenWRT.md
@@ -226,4 +233,5 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [Git]: http://git-scm.com/
 [Subversion]: http://subversion.apache.org/
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell
+[homebrew]: http://brew.sh/
 [CC BY 4.0]: ./LICENSE-DOCUMENTATION.md

@@ -59,6 +59,53 @@ suppress most of these messages from the output of [aclocal][] and
     aclocal: warning: autoconf input should be named 'configure.ac', not 'configure.in'
     $
 
+Apple OSX
+---------
+
+The [OSX grep(1)][] , [OSX sed(1)][] and [OSX awk(1)][] tools provided by Apple
+OSX are the BSD variants.  The test scripts require the GNU variants with the
+names *ggrep*, *gsed* and *gawk*, which can be installed on OSX using the
+[homebrew][] package manager:
+
+    $ brew install grep
+    ==> Installing grep from homebrew/dupes
+    ==> Installing dependencies for homebrew/dupes/grep: pcre
+    ==> Installing homebrew/dupes/grep dependency: pcre
+    ==> Downloading https://homebrew.bintray.com/bottles/pcre-8.38.el_capitan.bottle.tar.gz
+    ==> Pouring pcre-8.38.el_capitan.bottle.tar.gz
+    /usr/local/Cellar/pcre/8.38: 146 files, 5.4M
+    ==> Installing homebrew/dupes/grep
+    ==> Downloading https://homebrew.bintray.com/bottles-dupes/grep-2.22.el_capitan.bottle.tar.gz
+    ==> Pouring grep-2.22.el_capitan.bottle.tar.gz
+    ==> Caveats
+    The command has been installed with the prefix "g".
+    If you do not want the prefix, install using the "with-default-names" option.
+    ==> Summary
+    /usr/local/Cellar/grep/2.22: 14 files, 756.5K
+
+    $ brew install gnu-sed
+    ==> Downloading https://homebrew.bintray.com/bottles/gnu-sed-4.2.2.el_capitan.bottle.2.tar.gz
+    ==> Pouring gnu-sed-4.2.2.el_capitan.bottle.2.tar.gz
+    tar: Failed to set default locale
+    ==> Caveats
+    The command has been installed with the prefix "g".
+    If you do not want the prefix, install using the "with-default-names" option.
+    If you need to use these commands with their normal names, you
+    can add a "gnubin" directory to your PATH from your bashrc like:
+    PATH="/usr/local/opt/gnu-sed/libexec/gnubin:$PATH"
+    Additionally, you can access their man pages with normal names if you add
+    the "gnuman" directory to your MANPATH from your bashrc as well:
+    MANPATH="/usr/local/opt/gnu-sed/libexec/gnuman:$MANPATH"
+    ==> Summary
+    /usr/local/Cellar/gnu-sed/4.2.2: 9 files, 452K
+
+    $ brew install gawk
+    ==> Downloading https://homebrew.bintray.com/bottles/gawk-4.1.3.el_capitan.bottle.tar.gz
+    ==> Pouring gawk-4.1.3.el_capitan.bottle.tar.gz
+    /usr/local/Cellar/gawk/4.1.3: 63 files, 3.2M
+
+    $
+
 About the examples
 ------------------
 
@@ -89,4 +136,8 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [build]: ../INSTALL.md
 [aclocal]: https://www.gnu.org/software/automake/manual/html_node/aclocal-Invocation.html
 [autoreconf]: https://www.gnu.org/savannah-checkouts/gnu/autoconf/manual/autoconf.html#autoreconf-Invocation
+[OSX grep(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/grep.1.html
+[OSX sed(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/sed.1.html
+[OSX awk(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/awk.1.html
+[homebrew]: http://brew.sh/
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell

@@ -59,17 +59,18 @@ SED=sed
 GREP=grep
 TSFMT='+%Y-%m-%d %H:%M:%S'
 
-SYSTYPE=`uname -s`
-if [ $SYSTYPE = "SunOS" ]; then
+SYSTYPE="$(uname -s)"
+case "$SYSTYPE" in
+SunOS | Darwin)
     AWK=gawk
     SED=gsed
     GREP=ggrep
-fi
-
-if [ $SYSTYPE = "Linux" ]; then
+    ;;
+Linux)
     # Get nanosecond resolution
     TSFMT='+%Y-%m-%d %H:%M:%S.%N'
-fi
+    ;;
+esac
 
 usage() {
    echo -n "\

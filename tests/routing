@@ -44,7 +44,7 @@ link_matches() {
    done
    sid="$1"
    tfw_log "Looking for link ${sid}, ${link_type}, ${interface_ex}, ${via}"
-   if ! grep "^${sid}:${link_type}:${interface_ex}:${via}\$" $_tfw_tmp/stdout; then
+   if ! $GREP "^${sid}:${link_type}:${interface_ex}:${via}\$" $_tfw_tmp/stdout; then
       tfw_log "Link not found"
       return 1
    fi
@@ -276,9 +276,9 @@ start_fakeradio() {
    $servald_build_root/fakeradio 4 1 > "$SERVALD_VAR/radioout" 2> "$SERVALD_VAR/radioerr" &
    FAKERADIO_PID=$!
    wait_until $GREP "^right:" "$SERVALD_VAR/radioout"
-   local _line=`head "$SERVALD_VAR/radioout" -n 1`
+   local _line=`head -n 1 "$SERVALD_VAR/radioout"`
    END1="${_line#*:}"
-   _line=`tail "$SERVALD_VAR/radioout" -n 1`
+   _line=`tail -n 1 "$SERVALD_VAR/radioout"`
    END2="${_line#*:}"
    tfw_log "Started fakeradio pid=$FAKERADIO_PID, end1=$END1, end2=$END2"
 }
@@ -446,7 +446,7 @@ test_scan_one() {
 }
 
 scan_completed() {
-  grep "Scan completed" $instance_servald_log || return 1
+  $GREP "Scan completed" $instance_servald_log || return 1
   return 0
 }
 
@@ -771,8 +771,8 @@ test_ping_unreliable_1hop() {
    set_instance +A
    executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates $SIDB 100
    tfw_cat --stdout --stderr
-   received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
-   duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
+   received=$($SED -n -e 's/.*\<\([0-9][0-9]*\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
+   duplicates=$($SED -n -e 's/.*\<\([0-9][0-9]*\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    assert [ "$received" -ge 98 ]
    assert [ "$duplicates" -le 2 ]
 }
@@ -801,8 +801,8 @@ test_ping_unreliable_2hop() {
    set_instance +A
    executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates $SIDC 100
    tfw_cat --stdout --stderr
-   received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
-   duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
+   received=$($SED -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
+   duplicates=$($SED -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    assert [ "$received" -ge 98 ]
    assert [ "$duplicates" -le 5 ]
 }
@@ -884,8 +884,8 @@ test_unreliable_links() {
    set_instance +A
    executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates $SIDC 50
    tfw_cat --stdout --stderr
-   received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
-   duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
+   received=$($SED -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
+   duplicates=$($SED -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    assert [ "$received" -ge 20 ]
    assert [ "$duplicates" -le 10 ]
    # make sure the path is still there.
@@ -930,8 +930,8 @@ test_unreliable_links2() {
    set_instance +A
    executeOk_servald mdp ping --interval=0.100 --timeout=3 --wait-for-duplicates $SIDD 50
    tfw_cat --stdout --stderr
-   received=$(sed -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
-   duplicates=$(sed -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
+   received=$($SED -n -e 's/.*\<\([0-9]\+\) packets received.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
+   duplicates=$($SED -n -e 's/.*\<\([0-9]\+\) duplicates.*/\1/p' "$TFWSTDOUT") || error "malformed ping output"
    assert [ "$received" -ge 20 ]
    assert [ "$duplicates" -le 10 ]
    wait_until --timeout=20 path_exists +A +B +C +D

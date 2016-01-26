@@ -117,7 +117,7 @@ unpack_stdout_list() {
       for hdr in "${header[@]}"; do
          hdr="${hdr//[^A-Za-z0-9_]/_}"
          # hdr="${hdr^^*}" would do in Bash-4.0 and later
-         hdr="$(echo "$hdr" | sed -e 's/.*/\U&/')"
+         hdr="$(echo "$hdr" | tr a-z A-Z)"
          colvars+=("$hdr")
       done
       local -a row
