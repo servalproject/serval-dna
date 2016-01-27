@@ -68,7 +68,7 @@ ssize_t _read_nonblock(int fd, void *buf, size_t len, struct __sourceloc __whenc
 #if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
       case EWOULDBLOCK:
 #endif
-	return 0;
+	return -2;
     }
     return WHYF_perror("read_nonblock: read(%d,%p,%lu)", fd, buf, (unsigned long)len);
   }

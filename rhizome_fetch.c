@@ -607,7 +607,7 @@ status_ok:
 	  );
     slot->alarm.poll.fd = sock;
     /* Watch for activity on the socket */
-    slot->alarm.poll.events = POLLIN|POLLOUT;
+    slot->alarm.poll.events = POLLOUT;
     watch(&slot->alarm);
     /* And schedule a timeout alarm */
     unschedule(&slot->alarm);
@@ -1428,7 +1428,6 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
     case RHIZOME_FETCH_RXFILE: {
       /* Keep reading until we have the promised amount of data */
       unsigned char buffer[8192];
-      sigPipeFlag = 0;
       errno=0;
       int bytes = read_nonblock(slot->alarm.poll.fd, buffer, sizeof buffer);
       /* If we got some data, see if we have found the end of the HTTP request */
@@ -1439,29 +1438,20 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	slot->alarm.alarm=gettime_ms() + config.rhizome.idle_timeout;
 	slot->alarm.deadline = slot->alarm.alarm + config.rhizome.idle_timeout;
 	schedule(&slot->alarm);
-	return;
-      } else {
-	if (errno!=EAGAIN) {
-	  DEBUGF(rhizome_rx, "Empty read, closing connection: received %"PRIu64" of %"PRIu64" bytes",
-		 slot->write_state.file_offset,
-		 slot->write_state.file_length);
-	  rhizome_fetch_switch_to_mdp(slot);
-	}
-	return;
-      }
-      if (sigPipeFlag) {
-	DEBUG(rhizome_rx, "Received SIGPIPE, closing connection");
+      } else if (bytes==0 || bytes==-1){
+	DEBUGF(rhizome_rx, "Empty read, closing connection: received %"PRIu64" of %"PRIu64" bytes",
+	       slot->write_state.file_offset,
+	       slot->write_state.file_length);
 	rhizome_fetch_switch_to_mdp(slot);
-	return;
       }
+      return;
     }
-      break;
     case RHIZOME_FETCH_RXHTTPHEADERS: {
       /* Keep reading until we have two CR/LFs in a row */
-      sigPipeFlag = 0;
+      errno=0;
       int bytes = read_nonblock(slot->alarm.poll.fd, &slot->request[slot->request_len], 1024 - slot->request_len - 1);
-      /* If we got some data, see if we have found the end of the HTTP reply */
-      if (bytes > 0) {
+      if (bytes>0){
+	/* If we got some data, see if we have found the end of the HTTP reply */
 	// reset timeout
 	unschedule(&slot->alarm);
 	slot->alarm.alarm = gettime_ms() + config.rhizome.idle_timeout;
@@ -1515,6 +1505,9 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	    return;
 	  }
 	}
+      }else if (bytes==0 || bytes==-1){
+	rhizome_fetch_switch_to_mdp(slot);
+	return;
       }
       break;
       default:

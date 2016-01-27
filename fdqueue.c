@@ -299,8 +299,13 @@ static void call_alarm(struct sched_ent *alarm, int revents)
   struct call_stats call_stats;
   call_stats.totals = alarm->stats;
   
-  DEBUGF(io, "Calling alarm/callback %p %s", alarm, alloca_alarm_name(alarm));
-
+  DEBUGF(io, "Calling alarm/callback %p %s with revents %x%s%s%s%s", 
+    alarm, alloca_alarm_name(alarm), revents,
+    revents&POLLIN?" POLLIN":"",
+    revents&POLLOUT?" POLLOUT":"",
+    revents&POLLERR?" POLLERR":"",
+    revents&POLLHUP?" POLLHUP":""
+  );
   if (call_stats.totals)
     fd_func_enter(__HERE__, &call_stats);
   

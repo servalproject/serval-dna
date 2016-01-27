@@ -1565,8 +1565,8 @@ static ssize_t http_request_read(struct http_request *r, char *buf, size_t len)
 {
   sigPipeFlag = 0;
   ssize_t bytes = read_nonblock(r->alarm.poll.fd, buf, len);
-  if (bytes == -1) {
-    IDEBUG(r->debug, "HTTP socket read error, closing connection");
+  if (bytes == -1 || bytes == 0) {
+    IDEBUG(r->debug, "HTTP EOF or socket read error, closing connection");
     http_request_finalise(r);
     return -1;
   }
@@ -1617,7 +1617,7 @@ static void http_request_receive(struct http_request *r)
   if (r->request_content_remaining != CONTENT_LENGTH_UNKNOWN)
     assert(room <= r->request_content_remaining);
   ssize_t bytes = http_request_read(r, (char *)r->end, room);
-  if (bytes == -1)
+  if (bytes <0)
     RETURNVOID;
   assert((size_t) bytes <= room);
   // If no data was read, then just return to polling.  Don't drop the connection on an empty read,
@@ -2211,7 +2211,7 @@ static size_t http_request_drain(struct http_request *r)
   char buf[8192];
   size_t drained = 0;
   ssize_t bytes;
-  while ((bytes = http_request_read(r, buf, sizeof buf)) != -1 && bytes != 0)
+  while ((bytes = http_request_read(r, buf, sizeof buf)) >0)
     drained += (size_t) bytes;
   return drained;
 }

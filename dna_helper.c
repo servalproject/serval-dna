@@ -496,6 +496,11 @@ static void monitor_replies(struct sched_ent *alarm)
 	reply_bufend = reply_buffer;
 	discarding_until_nl = 1;
       }
+    } else if(nread==0 || nread==-1){
+      close(dna_helper_stdout);
+      dna_helper_stdout = -1;
+      unwatch(&sched_replies);
+      sched_replies.poll.fd = -1;
     }
   }
   if (sched_replies.poll.revents & (POLLHUP | POLLERR | POLLNVAL)) {
@@ -520,6 +525,12 @@ static void monitor_errors(struct sched_ent *alarm)
     ssize_t nread = read_nonblock(sched_errors.poll.fd, buffer, sizeof buffer);
     if (nread > 0)
       WHYF("DNAHELPER stderr %s", alloca_toprint(-1, buffer, nread));
+    if (nread==0 || nread==-1){
+      close(dna_helper_stderr);
+      dna_helper_stderr = -1;
+      unwatch(&sched_errors);
+      sched_errors.poll.fd = -1;
+    }
   }
   if (sched_errors.poll.revents & (POLLHUP | POLLERR | POLLNVAL)) {
     DEBUGF(dnahelper, "DNAHELPER closing stderr fd=%d", dna_helper_stderr);
