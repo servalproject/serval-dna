@@ -143,11 +143,15 @@ $(OBJSDIR_TOOLS)/version.o: $(ALL_SOURCES) $(HDRS) version_servald.c version_str
 
 #' <-- fixes vim syntax highlighting
 
+# Compile SQLITE as a special case, because it is imported source code.
+# Instead of fixing warnings case-by-case in the sqlite.c source code, simply
+# suppress the classes of warnings that cause compilation errors with
+# -Werror.
 $(OBJSDIR_SERVALD)/sqlite3.o: sqlite-amalgamation-3100200/sqlite3.c Makefile
 	@echo SERVALD CC $<
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
-	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
+	@$(CC) $(CFLAGS) -Wno-unused-value -Wno-empty-body $(DEFS) -c $< -o $@
 
 # No object files in source directory!
 %.o: %.c
