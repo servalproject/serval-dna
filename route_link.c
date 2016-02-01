@@ -903,7 +903,7 @@ static int send_neighbour_link(struct neighbour *n)
   {
     struct overlay_interface *i = n->best_link->interface;
     int delay = 0;
-    if (n->best_link->unicast)
+    if (n->best_link->unicast && i->ifconfig.unicast.tick_ms>0)
       delay = i->ifconfig.unicast.tick_ms;
     if (delay==0)
       delay = i->destination->ifconfig.tick_ms;
