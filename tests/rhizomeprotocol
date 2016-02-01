@@ -463,6 +463,8 @@ setup_CorruptPayload() {
    rhizome_add_file file1 1024
    start_servald_instances +A +B
    wait_until bundle_received_by $BID:$VERSION +B
+   set_instance +A
+   stop_servald_server
    assert cmp file1 "$SERVALINSTANCE_PATH/blob/$FILEHASH"
    create_file file2 1024
    assert --error-on-fail ! cmp file1 file2
@@ -471,7 +473,6 @@ setup_CorruptPayload() {
    # TODO at the moment, the re-fetch is only triggered by restarting the
    # daemon.  Eventually (when the Rhizome Rank is implemented), the re-fetch
    # shoud be automatic and immediate without restarting the daemon.
-   stop_servald_server
    start_servald_server
 }
 test_CorruptPayload() {
@@ -490,12 +491,13 @@ setup_MissingPayload() {
    assert cmp file1 "$SERVALINSTANCE_PATH/blob/$FILEHASH"
    start_servald_instances +A +B
    wait_until bundle_received_by $BID:$VERSION +B
+   set_instance +A
+   stop_servald_server
    rm -f "$SERVALINSTANCE_PATH/blob/$FILEHASH"
    execute --exit-status=1 --stderr $servald rhizome extract file $BID file1a
    # TODO at the moment, the re-fetch is only triggered by restarting the
    # daemon.  Eventually (when the Rhizome Rank is implemented), the re-fetch
    # shoud be automatic and immediate without restarting the daemon.
-   stop_servald_server
    start_servald_server
 }
 test_MissingPayload() {
