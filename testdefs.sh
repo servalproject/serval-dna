@@ -884,17 +884,16 @@ instances_see_each_other() {
 # - ensure that the given version of the curl(1) utility is available
 # - remove all proxy settings
 setup_curl() {
+   CURL=$(type -P curl) || error "curl(1) command is not present"
    local minversion="${1?}"
-   local ver="$(curl --version | tr '\n' ' ')" 
+   local ver="$("$CURL" --version | tr '\n' ' ')"
    case "$ver" in
-   '')
-      fail "curl(1) command is not present"
-      ;;
    curl\ *\ Protocols:*\ http\ *)
       set -- $ver
-      tfw_cmp_version "$2" 7
+      tfw_cmp_version "$2" "$minversion"
       case $? in
       0|2)
+         export CURL
          unset http_proxy
          unset HTTP_PROXY
          unset HTTPS_PROXY
@@ -902,7 +901,17 @@ setup_curl() {
          return 0
          ;;
       esac
-      fail "curl(1) version $2 is not adequate (expecting $minversion or higher)"
+      error "$CURL version $2 is not adequate (expecting $minversion or higher)"
+      ;;
+   esac
+   error "cannot parse output of $CURL --version: $ver"
+}
+
+# Guard function:
+CURL=
+curl() {
+   [ -x "$CURL" ] || error "missing call to setup_curl in the fixture"
+   "$CURL" "$@"
 }
 
 # Setup function:
