@@ -292,12 +292,12 @@ setup_terminate() {
 }
 client_terminate() {
    executeOk_servald msp connect --once --forward=3001 $SIDA 512
-   assertStderrGrep --matches=1 " Connection with .* closed suddenly$"
+   assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_cat --stdout --stderr
 }
 server_terminate() {
    executeOk_servald msp listen 512 < <(dd if=/dev/urandom bs=1k count=500 | hexdump -C)
-   assertStderrGrep --matches=1 " Connection with .* closed suddenly$"
+   assertStderrGrep --matches=1 " Connection with .* closed gracefully$"
    tfw_cat --stdout --stderr
 }
 test_terminate() {
