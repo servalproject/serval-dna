@@ -903,7 +903,39 @@ setup_curl() {
          ;;
       esac
       fail "curl(1) version $2 is not adequate (expecting $minversion or higher)"
+}
+
+# Setup function:
+# - ensure that the netcat6 nc6(1) utility is available
+setup_netcat6() {
+   NETCAT6=$(type -P nc6) || error "nc6(1) command is not present"
+   local minversion="${1:-1.0}"
+   local ver="$("$NETCAT6" --version | tr '\n' ' ')"
+   case "$ver" in
+   nc6\ version\ *)
+      set -- $ver
+      tfw_cmp_version "$3" "$minversion"
+      case $? in
+      0|2)
+         export NETCAT6
+         return 0
+         ;;
+      esac
+      error "$NETCAT6 version $3 is not adequate (expecting $minversion or higher)"
       ;;
    esac
-   fail "cannot parse output of curl --version: $ver"
+   error "cannot parse output of $NETCAT6 --version: $ver"
+}
+
+# Guard functions.
+NETCAT6=
+nc6() {
+   [ -x "$NETCAT6" ] || error "missing call to setup_netcat6 in the fixture"
+   "$NETCAT6" "$@"
+}
+nc() {
+   error "do not use nc; instead use nc6(1) after calling setup_netcat6 in the fixture"
+}
+netcat() {
+   error "do not use netcat; instead use nc6(1) after calling setup_netcat6 in the fixture"
 }

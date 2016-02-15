@@ -181,6 +181,7 @@ test_keep_alive() {
 doc_forward="Forward TCP connections to a remote server"
 setup_forward() {
    setup_common
+   setup_netcat6
    start_servald_instances +A +B
 }
 client_forward() {
@@ -194,7 +195,7 @@ test_forward() {
    set_instance +B
    fork %connect client_forward 2048 $SIDA
    sleep 1
-   executeOk nc -q 30 -v 127.0.0.1 2048 < <(echo "Hello from the client")
+   executeOk nc6 -q 30 -v 127.0.0.1 2048 < <(echo "Hello from the client")
    assertStdoutGrep --matches=1 "^Hello from the server$"
    fork_wait %listen %connect
 }
@@ -202,6 +203,7 @@ test_forward() {
 doc_tcp_tunnel="Tunnel a tcp connection"
 setup_tcp_tunnel() {
    setup_common
+   setup_netcat6
    start_servald_instances +A +B
 }
 server_forward() {
@@ -210,7 +212,7 @@ server_forward() {
    tfw_cat --stderr
 }
 nc_listen() {
-   execute nc -q -1 -v -l -p $1 < <(echo "Hello from the server")
+   execute nc6 -q -1 -v -l -p $1 < <(echo "Hello from the server")
    tfw_cat --stdout --stderr
 }
 test_tcp_tunnel() {
@@ -220,7 +222,7 @@ test_tcp_tunnel() {
    set_instance +B
    fork %client client_forward 6001 $SIDA
    sleep 1
-   executeOk nc -q 10 -v 127.0.0.1 6001 < <(echo "Hello from the client")
+   executeOk nc6 -q 10 -v 127.0.0.1 6001 < <(echo "Hello from the client")
    tfw_cat --stdout --stderr
    assertStdoutGrep --matches=1 "^Hello from the server$"
    fork_wait %listen %server %client
@@ -285,6 +287,7 @@ test_refused(){
 doc_terminate="Terminate a connection mid stream"
 setup_terminate() {
    setup_common
+   setup_netcat6
    start_servald_instances +A +B
 }
 client_terminate() {
@@ -303,8 +306,8 @@ test_terminate() {
    set_instance +B
    fork %mspconnect client_terminate
    sleep 1
-# todo capture nc output nicely, while still being able to terminate it
-   fork %ncconnect nc -q 0 -v 127.0.0.1 3001
+# todo capture nc6 output nicely, while still being able to terminate it
+   fork %ncconnect nc6 -q 0 -v 127.0.0.1 3001
    fork_terminate %ncconnect
    fork_wait %msplisten %mspconnect %ncconnect
 }
