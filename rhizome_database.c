@@ -38,8 +38,7 @@ static int create_rhizome_store_dir()
   char rdpath[1024];
   if (!formf_rhizome_store_path(rdpath, sizeof rdpath, "%s", config.rhizome.datastore_path))
     return -1;
-  INFOF("Rhizome datastore path = %s", alloca_str_toprint(rdpath));
-  DEBUGF(rhizome, "mkdirs(%s, 0700)", alloca_str_toprint(rdpath));
+  DEBUGF(rhizome, "Rhizome datastore path = %s", alloca_str_toprint(rdpath));
   return emkdirs_info(rdpath, 0700);
 }
 

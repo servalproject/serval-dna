@@ -395,7 +395,7 @@ public class ServalDCommand
 		}
 	}
 
-	public static ManifestResult rhizomeAddFile(File payloadPath, File manifestPath, SubscriberId author, String pin)
+	public static ManifestResult rhizomeAddFile(File payloadPath, File manifestPath, BundleId bid, SubscriberId author, String pin, String... fieldValues)
 			throws ServalDFailureException
 	{
 		List<String> args = new LinkedList<String>();
@@ -406,13 +406,16 @@ public class ServalDCommand
 			args.add("--entry-pin");
 			args.add(pin);
 		}
+		if (bid != null)
+			args.add("--bundle="+bid.toHex());
 		args.add(author == null ? null : author.toHex());
-		if (payloadPath != null)
-			args.add(payloadPath.getAbsolutePath());
-		else if (manifestPath != null)
-			args.add(null);
-		if (manifestPath != null)
-			args.add(manifestPath.getAbsolutePath());
+
+		args.add(payloadPath == null ? null : payloadPath.getAbsolutePath());
+		args.add(manifestPath == null ? null : manifestPath.getAbsolutePath());
+		args.add(null);
+
+		for(String f : fieldValues)
+			args.add(f);
 
 		ManifestResult result = new ManifestResult();
 		result.setResult(command(result, args.toArray(new String[args.size()])));
