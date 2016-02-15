@@ -19,12 +19,10 @@
 # - ensure that a given version or later of the jq(1) utility is available
 # - for use in setup (fixture) functions
 setup_jq() {
+   JQ=$(type -P jq) || error "jq(1) command is not present"
    local minversion="${1?}"
-   local ver="$(jq --version 2>&1)"
+   local ver="$("$JQ" --version 2>&1)"
    case "$ver" in
-   '')
-      fail "jq(1) command is not present"
-      ;;
    jq-*)
       local oIFS="$IFS"
       IFS='-'
@@ -37,14 +35,24 @@ setup_jq() {
       jqversion="$3"
       ;;
    *)
-      fail "cannot parse output of jq --version: $ver"
+      error "cannot parse output of jq --version: $ver"
       ;;
    esac
    tfw_cmp_version "$jqversion" "$minversion"
    case $? in
-   0|2) return 0;;
+   0|2)
+      export JQ
+      return 0
+      ;;
    esac
-   fail "jq(1) version $jqversion is not adequate (need $minversion or higher)"
+   error "jq(1) version $jqversion is not adequate (need $minversion or higher)"
+}
+
+# Guard function:
+JQ=
+jq() {
+   [ -x "$JQ" ] || error "missing call to setup_jq or setup_jsonin the fixture"
+   "$JQ" "$@"
 }
 
 # Setup function:
