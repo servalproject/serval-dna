@@ -309,6 +309,10 @@ static int rhizome_direct_process_mime_end(struct http_request *hr)
 static int rhizome_direct_process_mime_part_header(struct http_request *hr, const struct mime_part_headers *h)
 {
   httpd_request *r = (httpd_request *) hr;
+  if (!h->content_disposition.type[0])
+    return http_response_content_disposition(r, 415, "Missing", h->content_disposition.type);
+  if (strcmp(h->content_disposition.type, "form-data") != 0)
+    return http_response_content_disposition(r, 415, "Unsupported", h->content_disposition.type);
   if (   strcmp(h->content_disposition.name, PART_PAYLOAD) == 0
       || strcmp(h->content_disposition.name, PART_DATA) == 0
   ) {

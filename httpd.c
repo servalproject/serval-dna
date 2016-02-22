@@ -485,9 +485,16 @@ int http_response_content_type(httpd_request *r, uint16_t result, const char *wh
 
 int http_response_content_disposition(httpd_request *r, uint16_t result, const char *what, const char *type)
 {
-  DEBUGF(httpd, "%s Content-Disposition: %s %s", what, type);
+  DEBUGF(httpd, "%s Content-Disposition%s%s", what,
+	 type && type[0] ? ": " : "",
+	 type && type[0] ? type : " header"
+	);
   strbuf msg = strbuf_alloca(100);
-  strbuf_sprintf(msg, "%s Content-Disposition: %s", what, type);
+  strbuf_sprintf(msg, "%s Content-Disposition", what);
+  if (type && type[0])
+    strbuf_sprintf(msg, ": %s", type);
+  else
+    strbuf_puts(msg, " header");
   http_request_simple_response(&r->http, result, strbuf_str(msg)); // Unsupported Media Type
   return result;
 }
