@@ -39,9 +39,12 @@ DNA][] component of the [Serval mesh network][].
    message stream protocol used in Serval Mesh networks and its C programming
    API.
 
- * [Serval DNA REST API](./Servald-REST-API.md) describes the HTTP REST API
-   that applications can use to access Serval's application-layer protocols
-   such as Rhizome and MeshMS.
+ * [REST API](./REST-API.md) describes the common features of the various HTTP
+   REST APIs through which applications access the services of the Serval mesh
+   network, including:
+    * [Keyring REST API](./REST-API-Keyring.md) -- identity management
+    * [Rhizome REST API](./REST-API-Rhizome.md) -- decentralised content distribution
+    * [MeshMS REST API](./REST-API-MeshMS.md) -- secure, one-to-one messaging
 
  * [Cooee](./Cooee.md) describes the protocol used for discovering services
    available on nearby (reachable) mesh network nodes.
