@@ -192,12 +192,12 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [individ]: http://developer.servalproject.org/files/serval_project_inc-individual.pdf
 [entity]: http://developer.servalproject.org/files/serval_project_inc-entity.pdf
 [DNA]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:dna
-[Serval Keyring]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:keyring
-[MDP]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:mdp
+[Serval Keyring]: ./doc/REST-API-Keyring.md
+[MDP]: ./doc/Mesh-Datagram-Protocol.md
 [VoMP]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:vomp
-[Rhizome]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:rhizome
 [MeshMS]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:meshms
-[Serval Infrastructure]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:serval_infrastructure
+[Rhizome]: ./doc/REST-API-Rhizome.md
+[Serval Infrastructure]: ./doc/Serval-Infrastructure.md
 [JNI]: http://en.wikipedia.org/wiki/Java_Native_Interface
 [Bash]: http://en.wikipedia.org/wiki/Bash_(Unix_shell)
 [pipe]: http://www.kernel.org/doc/man-pages/online/pages/man2/pipe.2.html

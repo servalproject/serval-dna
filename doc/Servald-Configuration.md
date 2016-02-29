@@ -1,13 +1,29 @@
 Configuring Serval DNA
 ======================
-[Serval Project][], April 2013
+[Serval Project][], March 2016
 
+Introduction
+------------
+
+The [Serval DNA][] daemon, also called **servald**, is designed to operate in a
+wide variety of environments (GNU/Linux, Android, Solaris, iOS) with different
+kinds of network links (Wi-Fi, Ethernet, packet radio, dummy), different levels
+of resources (CPU, memory, persistent storage) and for different purposes
+(development, testing, deployment).
+
+In order to adapt to all of these requirements, **servald** can be *configured*
+to adjust its behaviour in the following areas:
+
+  * [file system layout](#file-system-layout)
+  * [logging](#logging)
+  * [network interfaces](#network-interfaces)
+  * [Rhizome][]
 
 Configuration options
 ---------------------
 
-The **servald** configuration is an unordered set of LABEL=VALUE pairs called
-*options*.  For example:
+The [Serval DNA][] configuration is expressed as an unordered set of
+textual LABEL=VALUE pairs called *options*.  For example:
 
     debug.verbose=true
     interfaces.0.file=/var/tmp/serval/dummy
@@ -128,36 +144,42 @@ configuration and the file contents will once again be consistent.
 Daemon instances
 ----------------
 
-It order to support more than one daemon running on the same host, each daemon
-can be configured to use its own *instance directory*, as follows:
+It order to support more than one [Serval DNA][] daemon running on the same
+host, each daemon can be configured to use its own *instance directory*, as
+follows:
 
-  * A daemon's instance directory can be set at run time by setting the
-    `SERVALINSTANCE_PATH` environment variable prior to starting the daemon.
-    This overrides all default paths.  Once a daemon is running, the only way
-    to change its instance directory is to stop it and start another daemon
+  * A daemon's [instance directory](#instance-directory) can be set at run time
+    by setting the `SERVALINSTANCE_PATH` environment variable prior to starting
+    the daemon.  This overrides the daemon's [standard file system
+    layout](#standard-file-system-layout).  Once a daemon is running, the only
+    way to change its instance directory is to stop it and start another daemon
     with a different value for the environment variable.
 
-  * If the instance directory is not set at run time, then if **servald** was
-    built with the `./configure INSTANCE_PATH=DIR` option, then the **servald**
-    executable will use the instance directory in `DIR` by default.  The [FHS
-    paths](#fhs-paths) will never be used.
+  * If no [instance directory](#instance-directory) is set at run time, then if
+    **servald** was built with the `./configure INSTANCE_PATH=DIR` option, then
+    the **servald** executable will use the instance directory in `DIR` by
+    default, not the [standard file system layout](#standard-file-system-layout).
 
   * On an Android system, if none of the above are used, then **servald** will
-    use the instance directory `/data/data/org.servalproject/var/serval-node`
-    by default.  The [FHS paths](#fhs-paths) will never be used.
+    use the [instance directory](#instance-directory)
+    `/data/data/org.servalproject/var/serval-node`, not the [standard file
+    system layout](#standard-file-system-layout).
 
-  * If none of the above apply, then there is no *instance directory*.
-    Instead, [FHS paths](#fhs-paths) are used.  Only one daemon can run in this
-    situation on the same host, since the single, common PID file will prevent
+  * If none of the above apply, then the daemon uses the [standard file system
+    layout](#standard-file-system-layout).  Only one daemon can run with the
+    standard layout on a host, since the single, common PID file will prevent
     more than one being started.
 
-The main use for multiple instances on a single host is for testing, and this
-is used extensively in the automated test suite.  Deployments other than
-Android are unlikely to use an instance path, so the [FHS paths](#fhs-paths)
-are most likely to be used in practice.
+The main use for multiple instances on a single host is for testing, and so the
+[instance directory](#instance-directory) is used extensively in the [automated
+tests][].  Environments other than Android are unlikely to use an instance
+path, so the [standard file system layout](#standard-file-system-layout) is
+most likely to be used in most other deployments.
 
-FHS paths
----------
+File system layout
+------------------
+
+### Standard file system layout
 
 By default, **servald** locates its files such as configuration, logs, Rhizome
 storage, etc.  in accordance with the [Filesystem Heirarchy Standard][FHS] 2.3:
@@ -223,8 +245,7 @@ on the built-in defaults as overridden by configuration settings and run-time
 environment variables available to the command.  This command will work even if
 configuration is defective, so is a useful diagnostic tool.
 
-Instance directory paths
-------------------------
+### Instance directory
 
 If **servald** is started with an *instance directory*, then all configuration,
 state, and temporary files are stored in or beneath that directory, denoted
@@ -507,26 +528,43 @@ where:
  * IN\_ADDR is an Internet address as accepted by [inet_aton(3)][], ie,
    `N.N.N.N` where `N` is an integer in the range 0 to 255.
 
-The `match` and `file` options are mutually incompatible.  If both are set, it
-is an error; the interface rule is omitted from the configuration and
-`serval.conf` is treated as defective (see above).  If neither are set, it is
-also an error.
+Exactly one of the [match](#match) and [file](#file) options must be set on an
+interface.  If neither or both are set, it is an error; the whole interface
+rule is omitted from the configuration and `serval.conf` is treated as
+defective (see above).
+
+### `match`
 
 If a rule specifies a `match` option, then each PATTERN is applied to the names
 of the real system interfaces using the [fnmatch(3)][] standard library
-function.  If any PATTERN matches, then the rule's `exclude` option is checked:
-if true, then the interface is not activated, otherwise a socket on that system
-interface is opened and the interface's `socket_type` is set to `dgram`.  (It
-is invalid to explicitly set `socket_type` to other than `dgram` for a match
-interface.)
+function.  If any PATTERN matches, then the rule's [exclude](#exclude) option
+is checked: if true, then the interface is not activated, otherwise a socket on
+that system interface is opened and the interface's
+[socket\_type](#socket_type) is implicitly set to `dgram`.  (It is invalid to
+explicitly set `socket_type` to other than `dgram` for a match interface.)
 
-If a rule specifies a `file` path, then an interface is created *if the given
-file exists*.  The interface's `socket_type` determines how the file is written
-and read:
+### `exclude`
 
-  * `file` (the default) creates a “dummy” interface for closed communication
-    with other **servald** daemons on the same host -- see below.  If the file
-    does not exist, a warning is logged and the interface is not activated.
+If a rule sets its a `exclude` option to *true*, then the interface will never
+be activated.  This can be useful for writing negative [match](#match) rules to
+exclude specific interface names before a final match-all rule.
+
+### `file`
+
+If a rule specifies a `file` path, then an interface is created *only if the
+given file exists*.  The rule's [exclude](#exclude) option is ignored.  The
+interface's [socket\_type](#socket_type) determines how the file is written and
+read.
+
+### `socket_type`
+
+An interface's `socket_type` determines how the its socket file descriptor is
+written and read: descriptor is written and read:
+
+  * `file` (the default) creates a [dummy interface](#dummy-interface) for
+    closed communication with other **servald** daemons on the same host.  If
+    the dummy file does not exist, a warning is logged and the interface is not
+    activated.
 
   * `stream` reads and writes the file as though it were a [character special
     device][].  If the file does not exist, an error is logged and the
@@ -534,12 +572,17 @@ and read:
 
   * `dgram` is not valid for a file interface.
 
-The `type` option only affects the default settings the `packet_interval` and
-`mdp_tick_ms` options, for convenience.  In future it may also change the way
-the interface behaves, for example, an `ethernet` interface may automatically
-assume that broadcast packets will be filtered out, so will start using MDP
-unicast protocols immediately rather than waiting to detect that broadcast
-packets are not acknowledged.
+### `type`
+
+The `type` option affects the default settings of the
+[packet\_interval](#packet_interval) and [mdp\_tick\_ms](#mdp_tick_ms) options,
+for convenience.  In future it may also change the way the interface behaves,
+for example, an `ethernet` interface may automatically assume that broadcast
+packets will be filtered out, so will start using MDP unicast protocols
+immediately rather than waiting to detect that broadcast packets are not
+acknowledged.
+
+### `packet_interval`
 
 The `packet_interval` option controls the maximum rate at which packets are
 tramsmitted on the interface.  It sets the *average* interval, in microseconds,
@@ -548,37 +591,49 @@ transmit a packet, then packets will be sent at maximum speed with no
 intervening delay.  Otherwise, delays are inserted between packets as needed to
 keep to the average.
 
+### `mdp_tick_ms`
+
 The `mdp_tick_ms` option controls the time interval, in milliseconds, between
 MDB broadcast announcements on the interface.  If set to zero, it disables MDP
 announcements altogether on the interface (called “tickless” mode).  If not
 set, then the value of the `mdp.iftype.IFTYPE.tick_ms` option is used.  If that
 is not set, then **servald** uses a built-in interval that depends on the
-IFTYPE.
+[type](#type).
 
-The `encapsulation` option controls how MDP packets are written to the
+### `encapsulation`
+
+The `encapsulation` option controls how [MDP message][]s are written to the
 interface's socket:
-  * `overlay` (the default) stuffs as many MDP packets as it can into each
-    [UDP][] frame, to avoid wasting bandwidth on conventional [Wi-Fi][]
-    interfaces which have a fixed packet size (the [IEEE 802.11][] [MTU][])
-    over the air;
-  * `single` sends each MDP packet on its own to the socket using [SLIP][]
+
+  * `overlay` (the default) aggregates as many messages as possible into
+    [overlay packet][]s that fit into each [UDP][] packet, in order to take
+    full advantage of the bandwidth on conventional [Wi-Fi][] interfaces which
+    have a fixed packet size (the [IEEE 802.11][] [MTU][]) over the air;
+
+  * `single` sends each [MDP message][] on its own to the socket using [SLIP][]
     encoding, and is suited to data links with a variable packet size on the
     air (eg, a serial connection to a [packet radio][] modem).
 
-The `default_route` option, if true, causes all MDP packets with an unresolved
-recipient address (SID) to be sent to this interface instead of just dropped.
-This will allow the node to use [Serval Infrastructure][] to route its packets.
-Many interfaces may have the `default_route` set to true, but only the first
-one will be used as the default route.
+### `default_route`
+
+The `default_route` option, if true, causes all [MDP message][]s with an
+unresolved [recipient][] address ([SID][]) to be sent to this interface instead
+of just dropped.  This will allow the node to use [Serval Infrastructure][] to
+route its packets.  Many interfaces may have the `default_route` set to true,
+but only the first one will be used as the default route.
+
+### `prefer_unicast`
 
 The `prefer_unicast` option, if true, causes the interface to send to unicast
 IP addresses instead of the broadcast IP address if both have been observed to
 reach the destination.
 
-The `send_broadcasts` option, if false, prevents the interface from sending any
-broadcast packets whenever a recipient address (SID) cannot be resolved to an
-interface.  Normally, any MDP packet to an unresolvable recipient gets
-broadcast on all active interfaces.
+### `send_broadcasts`
+
+Normally, any [MDP message][] with an unresolvable [recipient][] gets broadcast
+on all active interfaces.  The `send_broadcasts` option, if *false*, prevents
+the interface from sending any broadcast packets whenever a recipient address
+(SID) cannot be resolved to an interface.
 
 Network interface “legacy” syntax
 ---------------------------------
@@ -620,8 +675,8 @@ eventually be deprecated and removed.  The “legacy” interfaces configuration
 incompatible with the modern form; an instance that uses one cannot use the
 other.
 
-Dummy network interface
------------------------
+Dummy interface
+---------------
 
 Sometimes it is helpful to run an isolated group of connected **servald**
 instances on a single machine for testing purposes.  To make this possible,
@@ -671,15 +726,23 @@ unless there is traffic explicitly sent to it).
 
 -----
 **Copyright 2013 Serval Project Inc.**  
+**Copyright 2016 Flinders University**  
 ![CC-BY-4.0](./cc-by-4.0.png)
 Available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
 
 
 [Serval Project]: http://www.servalproject.org/
 [CC BY 4.0]: ../LICENSE-DOCUMENTATION.md
+[Serval DNA]: ../README.md
+[SID]: ./REST-API-Keyring.md#serval-id
 [Serval Infrastructure]: ./Serval-Infrastructure.md
+[Rhizome]: ./REST-API-Rhizome.md
+[recipient]: ./Mesh-Datagram-Protocol.md#recipient
+[MDP message]: ./Mesh-Datagram-Protocol.md#mdp-message
+[overlay packet]: ./Mesh-Datagram-Protocol.md#overlay-packet
 [US-ASCII]: http://en.wikipedia.org/wiki/ASCII
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell
+[FHS]: https://en.wikipedia.org/wiki/Filesystem_Hierarchy_Standard
 [isspace(3)]: http://linux.die.net/man/3/isspace
 [shell wildcard]: http://www.kernel.org/doc/man-pages/online/pages/man7/glob.7.html
 [open(2)]: http://www.kernel.org/doc/man-pages/online/pages/man2/open.2.html
@@ -695,3 +758,4 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [packet radio]: http://en.wikipedia.org/wiki/Packet_radio
 [character special device]: http://en.wikipedia.org/wiki/Device_file#Character_devices
 [FHS]: https://en.wikipedia.org/wiki/Filesystem_Hierarchy_Standard
+[automated tests]: ./Testing.md
