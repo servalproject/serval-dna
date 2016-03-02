@@ -104,7 +104,9 @@ struct overlay_route_record{
   sid_t sid;
   char interface_name[256];
   int reachable;
+  int hop_count;
   sid_t neighbour;
+  sid_t prior_hop;
 };
 
 struct overlay_mdp_scan{

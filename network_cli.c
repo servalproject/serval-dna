@@ -449,9 +449,10 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
     "Subscriber id",
     "Routing flags",
     "Interface",
-    "Next hop"
+    "Next hop",
+    "Prior hop"
   };
-  cli_columns(context, 4, names);
+  cli_columns(context, 5, names);
   size_t rowcount=0;
   
   while(overlay_mdp_client_poll(mdp_sockfd, 200)){
@@ -490,7 +491,14 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
       }
       cli_put_string(context, strbuf_str(b), ":");
       cli_put_string(context, p->interface_name, ":");
-      cli_put_string(context, alloca_tohex_sid_t(p->neighbour), "\n");
+      if (is_sid_t_any(p->neighbour))
+	cli_put_string(context, "", ":");
+      else
+	cli_put_string(context, alloca_tohex_sid_t(p->neighbour), ":");
+      if (is_sid_t_any(p->prior_hop))
+	cli_put_string(context, "", "\n");
+      else
+	cli_put_string(context, alloca_tohex_sid_t(p->prior_hop), "\n");
       rowcount++;
     }
   }

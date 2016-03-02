@@ -44,7 +44,7 @@ link_matches() {
    done
    sid="$1"
    tfw_log "Looking for link ${sid}, ${link_type}, ${interface_ex}, ${via}"
-   if ! $GREP "^${sid}:${link_type}:${interface_ex}:${via}\$" $_tfw_tmp/stdout; then
+   if ! $GREP "^${sid}:${link_type}:${interface_ex}:${via}:" $_tfw_tmp/stdout; then
       tfw_log "Link not found"
       return 1
    fi

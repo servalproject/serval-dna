@@ -1142,9 +1142,13 @@ static int routing_table(struct subscriber *subscriber, void *context)
   reply.out.payload_length=sizeof(struct overlay_route_record);
   r->sid = subscriber->sid;
   r->reachable = subscriber->reachable;
+  r->hop_count = subscriber->hop_count;
   
-  if (subscriber->reachable==REACHABLE_INDIRECT && subscriber->next_hop)
+  if (subscriber->next_hop)
     r->neighbour = subscriber->next_hop->sid;
+  if (subscriber->prior_hop)
+    r->prior_hop = subscriber->prior_hop->sid;
+  
   if (subscriber->reachable & REACHABLE_DIRECT 
     && subscriber->destination 
     && subscriber->destination->interface)

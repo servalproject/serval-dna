@@ -30,13 +30,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "route_link.h"
 
 int set_reachable(struct subscriber *subscriber, 
-  struct network_destination *destination, struct subscriber *next_hop){
+  struct network_destination *destination, struct subscriber *next_hop,
+  int hop_count, struct subscriber *prior_hop){
   
   int reachable = REACHABLE_NONE;
   if (destination)
     reachable = destination->unicast?REACHABLE_UNICAST:REACHABLE_BROADCAST;
   else if(next_hop)
     reachable = REACHABLE_INDIRECT;
+  
+  subscriber->hop_count = hop_count;
+  subscriber->prior_hop = prior_hop;
   
   if (subscriber->reachable==reachable 
     && subscriber->next_hop==next_hop 

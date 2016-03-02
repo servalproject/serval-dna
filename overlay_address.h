@@ -72,6 +72,8 @@ struct subscriber{
 
   // if indirect, who is the next hop?
   struct subscriber *next_hop;
+  int hop_count;
+  struct subscriber *prior_hop;
   
   // if direct, or unicast, where do we send packets?
   struct network_destination *destination;
@@ -117,7 +119,7 @@ struct subscriber *_find_subscriber(struct __sourceloc, const unsigned char *sid
 #define find_subscriber(sid, len, create) _find_subscriber(__WHENCE__, sid, len, create)
 
 void enum_subscribers(struct subscriber *start, int(*callback)(struct subscriber *, void *), void *context);
-int set_reachable(struct subscriber *subscriber, struct network_destination *destination, struct subscriber *next_hop);
+int set_reachable(struct subscriber *subscriber, struct network_destination *destination, struct subscriber *next_hop, int hop_count, struct subscriber *prior_hop);
 struct network_destination *load_subscriber_address(struct subscriber *subscriber);
 
 int process_explain(struct overlay_frame *frame);

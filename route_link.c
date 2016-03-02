@@ -455,7 +455,7 @@ next:
   if (next_hop == subscriber)
     next_hop = NULL;
   
-  if (set_reachable(subscriber, destination, next_hop))
+  if (set_reachable(subscriber, destination, next_hop, best_hop_count, transmitter))
     changed = 1;
   
   if (subscriber->identity && subscriber->reachable == REACHABLE_NONE){
