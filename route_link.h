@@ -42,7 +42,6 @@ int link_received_duplicate(struct decode_context *context, int payload_seq);
 int link_received_packet(struct decode_context *context, int sender_seq, uint8_t unicast);
 int link_unicast_ack(struct subscriber *subscriber, struct overlay_interface *interface, struct socket_address *addr);
 void link_explained(struct subscriber *subscriber);
-void link_interface_down(struct overlay_interface *interface);
 int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now);
 
 #endif

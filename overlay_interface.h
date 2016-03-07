@@ -136,4 +136,6 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 void interface_state_html(struct strbuf *b, struct overlay_interface *interface);
 void overlay_interface_monitor_up();
 
+DECLARE_TRIGGER(iupdown, struct overlay_interface *);
+
 #endif // __SERVAL_DNA__OVERLAY_INTERFACE_H

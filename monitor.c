@@ -685,3 +685,14 @@ int monitor_tell_formatted(int mask, char *fmt, ...){
   monitor_tell_clients(msg, n, mask);
   return 0;
 }
+
+static void monitor_interface_change(struct overlay_interface *interface){
+  if (interface->state==INTERFACE_STATE_UP)
+    monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%s:UP\n", interface->name);
+  else if(interface->state==INTERFACE_STATE_DOWN)
+    monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%s:DOWN\n", interface->name);
+}
+
+DEFINE_TRIGGER(iupdown, monitor_interface_change);
+
+

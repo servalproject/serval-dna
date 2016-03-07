@@ -137,3 +137,8 @@ int directory_registration(){
   return 0;
 }
 
+static void interface_change(struct overlay_interface *UNUSED(interface)){
+  directory_registration();
+}
+
+DEFINE_TRIGGER(iupdown, interface_change);

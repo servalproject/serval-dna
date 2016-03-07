@@ -1580,10 +1580,12 @@ void link_explained(struct subscriber *subscriber)
   update_alarm(__WHENCE__, now + 5);
 }
 
-void link_interface_down(struct overlay_interface *UNUSED(interface))
+static void link_interface_change(struct overlay_interface *UNUSED(interface))
 {
   clean_neighbours(gettime_ms());
 }
+
+DEFINE_TRIGGER(iupdown, link_interface_change);
 
 /* if an ancient node on the network uses their old protocol to tell us that they can hear us;
   - send the same format back at them

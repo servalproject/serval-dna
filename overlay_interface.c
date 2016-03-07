@@ -88,11 +88,10 @@ void overlay_interface_close(overlay_interface *interface)
     radio_link_free(interface);
   interface->state=INTERFACE_STATE_DOWN;
   
-  monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%s:DOWN\n", interface->name);
   INFOF("Interface %s addr %s is down", 
 	interface->name, alloca_socket_address(&interface->address));
+  CALL_TRIGGER(iupdown, interface);
   
-  link_interface_down(interface);
 }
 
 void overlay_interface_close_all()
@@ -649,15 +648,12 @@ overlay_interface_init(const char *name,
     return -1;
   
   interface->state=INTERFACE_STATE_UP;
-  monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%s:UP\n", interface->name);
   INFOF("Interface %s addr %s, is up",interface->name, alloca_socket_address(addr));
-  
-  directory_registration();
-  
   INFOF("Allowing a maximum of %d packets every %"PRId64"ms",
         interface->destination->transfer_limit.burst_size,
         interface->destination->transfer_limit.burst_length);
-
+  
+  CALL_TRIGGER(iupdown, interface);
   return 0;
   
 cleanup:
