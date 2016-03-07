@@ -515,7 +515,8 @@ void rhizome_sync_announce(struct sched_ent *alarm)
   schedule(alarm);
 }
 
-int overlay_mdp_service_rhizome_sync(struct internal_mdp_header *header, struct overlay_buffer *payload)
+DEFINE_BINDING(MDP_PORT_RHIZOME_SYNC, overlay_mdp_service_rhizome_sync);
+static int overlay_mdp_service_rhizome_sync(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   if (!config.rhizome.enable || !rhizome_db)
     return 0;

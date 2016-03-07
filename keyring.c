@@ -1787,7 +1787,8 @@ static int keyring_process_challenge(keyring_file *k, struct subscriber *subscri
   return 0;
 }
 
-int keyring_mapping_request(struct internal_mdp_header *header, struct overlay_buffer *payload)
+DEFINE_BINDING(MDP_PORT_KEYMAPREQUEST, keyring_mapping_request);
+static int keyring_mapping_request(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
 
   /* The authcryption of the MDP frame proves that the SAS key is owned by the

@@ -22,6 +22,7 @@
 
 #include "overlay_address.h"
 #include "serval_types.h"
+#include "section.h"
 
 #define FRAME_NOT_SENT -1
 #define FRAME_DONT_SEND -2
@@ -125,5 +126,27 @@ struct overlay_frame *op_dup(struct overlay_frame *f);
 int reload_mdp_packet_rules(void);
 void frame_remove_destination(struct overlay_frame *frame, int i);
 void frame_add_destination(struct overlay_frame *frame, struct subscriber *next_hop, struct network_destination *dest);
+
+void mdp_init_response(const struct internal_mdp_header *in, struct internal_mdp_header *out);
+void overlay_mdp_encode_ports(struct overlay_buffer *plaintext, mdp_port_t dst_port, mdp_port_t src_port);
+int overlay_mdp_dnalookup_reply(struct subscriber *dest, mdp_port_t dest_port, 
+    struct subscriber *resolved_sid, const char *uri, const char *did, const char *name);
+
+int _overlay_send_frame(struct __sourceloc whence, struct internal_mdp_header *header, struct overlay_buffer *payload);
+#define overlay_send_frame(H, P) _overlay_send_frame(__WHENCE__, H, P)
+
+struct internal_binding{
+  mdp_port_t port;
+  int (*function)(struct internal_mdp_header *header, struct overlay_buffer *payload);
+};
+
+DECLARE_SECTION(struct internal_binding, bindings);
+
+#define DEFINE_BINDING(PORT, FUNC) \
+  static int FUNC(struct internal_mdp_header *, struct overlay_buffer *);\
+  static struct internal_binding BIND ## FUNC IN_SECTION(bindings) = { \
+    .port = PORT, \
+    .function = FUNC, \
+  }
 
 #endif //__SERVAL_DNA__OVERLAY_PACKET_H

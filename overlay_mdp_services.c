@@ -34,7 +34,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "dataformats.h"
 #include "route_link.h"
 
-int rhizome_mdp_send_block(struct subscriber *dest, const rhizome_bid_t *bid, uint64_t version, uint64_t fileOffset, uint32_t bitmap, uint16_t blockLength)
+static int rhizome_mdp_send_block(struct subscriber *dest, const rhizome_bid_t *bid, uint64_t version, uint64_t fileOffset, uint32_t bitmap, uint16_t blockLength)
 {
   IN();
   if (!is_rhizome_mdp_server_running())
@@ -116,7 +116,8 @@ int rhizome_mdp_send_block(struct subscriber *dest, const rhizome_bid_t *bid, ui
   OUT();
 }
 
-int overlay_mdp_service_rhizomerequest(struct internal_mdp_header *header, struct overlay_buffer *payload)
+DEFINE_BINDING(MDP_PORT_RHIZOME_REQUEST, overlay_mdp_service_rhizomerequest);
+static int overlay_mdp_service_rhizomerequest(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   const rhizome_bid_t *bidp = (const rhizome_bid_t *) ob_get_bytes_ptr(payload, sizeof bidp->binary);
   // Note, was originally built using read_uint64 which has reverse byte order of ob_get_ui64
@@ -129,7 +130,8 @@ int overlay_mdp_service_rhizomerequest(struct internal_mdp_header *header, struc
   return rhizome_mdp_send_block(header->source, bidp, version, fileOffset, bitmap, blockLength);
 }
 
-int overlay_mdp_service_rhizomeresponse(struct internal_mdp_header *UNUSED(header), struct overlay_buffer *payload)
+DEFINE_BINDING(MDP_PORT_RHIZOME_RESPONSE, overlay_mdp_service_rhizomeresponse);
+static int overlay_mdp_service_rhizomeresponse(struct internal_mdp_header *UNUSED(header), struct overlay_buffer *payload)
 {
   IN();
   
@@ -170,7 +172,8 @@ int overlay_mdp_service_rhizomeresponse(struct internal_mdp_header *UNUSED(heade
   OUT();
 }
 
-int overlay_mdp_service_dnalookup(struct internal_mdp_header *header, struct overlay_buffer *payload)
+DEFINE_BINDING(MDP_PORT_DNALOOKUP, overlay_mdp_service_dnalookup);
+static int overlay_mdp_service_dnalookup(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   IN();
   keyring_iterator it;
@@ -230,7 +233,8 @@ int overlay_mdp_service_dnalookup(struct internal_mdp_header *header, struct ove
   RETURN(0);
 }
 
-int overlay_mdp_service_echo(struct internal_mdp_header *header, struct overlay_buffer *payload)
+DEFINE_BINDING(MDP_PORT_ECHO, overlay_mdp_service_echo);
+static int overlay_mdp_service_echo(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   IN();
   
@@ -265,6 +269,7 @@ int overlay_mdp_service_echo(struct internal_mdp_header *header, struct overlay_
  * in situations where a routing protocol is in development.
  */
 
+DEFINE_BINDING(MDP_PORT_TRACE, overlay_mdp_service_trace);
 static int overlay_mdp_service_trace(struct internal_mdp_header *header, struct overlay_buffer *payload){
   IN();
   struct overlay_buffer *next_payload = ob_new();
@@ -355,6 +360,7 @@ end:
   RETURN(ret);
 }
 
+DEFINE_BINDING(MDP_PORT_RHIZOME_MANIFEST_REQUEST, overlay_mdp_service_manifest_requests);
 static int overlay_mdp_service_manifest_requests(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   while (ob_remaining(payload)) {
@@ -375,19 +381,3 @@ static int overlay_mdp_service_manifest_requests(struct internal_mdp_header *hea
   return 0;
 }
 
-void overlay_mdp_bind_internal_services()
-{
-  mdp_bind_internal(NULL, MDP_PORT_LINKSTATE, link_receive);
-  mdp_bind_internal(NULL, MDP_PORT_ECHO, overlay_mdp_service_echo);
-  mdp_bind_internal(NULL, MDP_PORT_RHIZOME_REQUEST, overlay_mdp_service_rhizomerequest);
-  mdp_bind_internal(NULL, MDP_PORT_RHIZOME_MANIFEST_REQUEST, overlay_mdp_service_manifest_requests);
-  mdp_bind_internal(NULL, MDP_PORT_RHIZOME_SYNC, overlay_mdp_service_rhizome_sync);
-  mdp_bind_internal(NULL, MDP_PORT_RHIZOME_RESPONSE, overlay_mdp_service_rhizomeresponse);
-  mdp_bind_internal(NULL, MDP_PORT_PROBE, overlay_mdp_service_probe);
-  mdp_bind_internal(NULL, MDP_PORT_STUNREQ, overlay_mdp_service_stun_req);
-  mdp_bind_internal(NULL, MDP_PORT_STUN, overlay_mdp_service_stun);
-  mdp_bind_internal(NULL, MDP_PORT_DNALOOKUP, overlay_mdp_service_dnalookup);
-  mdp_bind_internal(NULL, MDP_PORT_VOMP, vomp_mdp_received);
-  mdp_bind_internal(NULL, MDP_PORT_TRACE, overlay_mdp_service_trace);
-  mdp_bind_internal(NULL, MDP_PORT_KEYMAPREQUEST, keyring_mapping_request);
-}

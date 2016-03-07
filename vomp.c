@@ -865,7 +865,8 @@ static int vomp_extract_remote_codec_list(struct vomp_call_state *call, struct o
 /* At this point we know the MDP frame is addressed to the VoMP port, but 
    we have not inspected the contents. As these frames are wire-format, we
    must pay attention to endianness. */
-int vomp_mdp_received(struct internal_mdp_header *header, struct overlay_buffer *payload)
+DEFINE_BINDING(MDP_PORT_VOMP, vomp_mdp_received);
+static int vomp_mdp_received(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   time_ms_t now = gettime_ms();
   

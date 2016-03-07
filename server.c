@@ -338,8 +338,6 @@ static int server_bind()
   // Periodically check for server shut down
   RESCHEDULE(&ALARM_STRUCT(server_shutdown_check), now, TIME_MS_NEVER_WILL, now);
   
-  overlay_mdp_bind_internal_services();
-  
   olsr_init_socket();
 
   /* Calculate (and possibly show) CPU usage stats periodically */

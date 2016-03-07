@@ -147,8 +147,8 @@ struct network_destination *load_subscriber_address(struct subscriber *subscribe
 }
 
 /* Collection of unicast echo responses to detect working links */
-int
-overlay_mdp_service_probe(struct internal_mdp_header *header, struct overlay_buffer *payload)
+DEFINE_BINDING(MDP_PORT_PROBE, overlay_mdp_service_probe);
+static int overlay_mdp_service_probe(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   IN();
   if (header->source_port!=MDP_PORT_ECHO){
@@ -230,7 +230,8 @@ static void overlay_append_unicast_address(struct subscriber *subscriber, struct
   }
 }
 
-int overlay_mdp_service_stun_req(struct internal_mdp_header *header, struct overlay_buffer *payload)
+DEFINE_BINDING(MDP_PORT_STUNREQ, overlay_mdp_service_stun_req);
+static int overlay_mdp_service_stun_req(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   DEBUGF(overlayrouting, "Processing STUN request from %s", alloca_tohex_sid_t(header->source->sid));
 
@@ -268,7 +269,8 @@ int overlay_mdp_service_stun_req(struct internal_mdp_header *header, struct over
   return 0;
 }
 
-int overlay_mdp_service_stun(struct internal_mdp_header *header, struct overlay_buffer *payload)
+DEFINE_BINDING(MDP_PORT_STUN, overlay_mdp_service_stun);
+static int overlay_mdp_service_stun(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   DEBUGF(overlayrouting, "Processing STUN info from %s", alloca_tohex_sid_t(header->source->sid));
 

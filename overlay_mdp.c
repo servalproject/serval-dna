@@ -239,7 +239,6 @@ struct mdp_binding{
   struct subscriber *subscriber;
   mdp_port_t port;
   int version;
-  int (*internal)(struct internal_mdp_header *header, struct overlay_buffer *payload);
   struct socket_address client;
   time_ms_t binding_time;
 };
@@ -373,57 +372,6 @@ static int overlay_mdp_process_bind_request(struct subscriber *subscriber, mdp_p
   mdp_bindings[free].client.addrlen = client->addrlen;
   memcpy(&mdp_bindings[free].client.addr, &client->addr, client->addrlen);
   mdp_bindings[free].binding_time=gettime_ms();
-  return 0;
-}
-
-int mdp_bind_internal(struct subscriber *subscriber, mdp_port_t port,
-  int (*internal)(struct internal_mdp_header *header, struct overlay_buffer *payload))
-{
-  
-  int i;
-  struct mdp_binding *free_slot=NULL;
-  
-  if (!mdp_bindings_initialised) {
-    /* Mark all slots as unused */
-    int i;
-    for(i=0;i<MDP_MAX_BINDINGS;i++)
-      mdp_bindings[i].port=0;
-    mdp_bindings_initialised=1;
-  }
-  
-  for(i=0;i<MDP_MAX_BINDINGS;i++) {
-    if ((!free_slot) && mdp_bindings[i].port==0)
-      free_slot=&mdp_bindings[i];
-    
-    if (mdp_bindings[i].port == port 
-      && mdp_bindings[i].subscriber == subscriber)
-      return WHYF("Internal binding for port %d failed, port already in use", port);
-  }
-  
-  if (!free_slot)
-    return WHYF("Internal binding for port %d failed, no free slots", port);
-    
-  free_slot->subscriber=subscriber;
-  free_slot->port=port;
-  free_slot->version=1;
-  free_slot->internal=internal;
-  free_slot->binding_time=gettime_ms();
-  return 0;
-}
-
-int mdp_unbind_internal(struct subscriber *subscriber, mdp_port_t port,
-  int (*internal)(struct internal_mdp_header *header, struct overlay_buffer *payload))
-{
-  int i;
-  for(i=0;i<MDP_MAX_BINDINGS;i++) {
-    if (mdp_bindings[i].port == port
-      && mdp_bindings[i].subscriber == subscriber
-      && mdp_bindings[i].internal == internal){
-      mdp_bindings[i].port=0;
-      mdp_bindings[i].subscriber=NULL;
-      mdp_bindings[i].internal=NULL;
-    }
-  }
   return 0;
 }
 
@@ -646,9 +594,6 @@ static int overlay_saw_mdp_frame(
 	}
       case 1:
 	{
-	  if (mdp_bindings[match].internal)
-	    RETURN(mdp_bindings[match].internal(header, payload));
-	    
 	  struct socket_address *client = &mdp_bindings[match].client;
 	  struct mdp_header client_header;
 	  client_header.local.sid=header->destination?header->destination->sid:SID_BROADCAST;
@@ -668,6 +613,14 @@ static int overlay_saw_mdp_frame(
 	}
     }
   } else {
+    
+    // look for a compile time defined internal binding
+    struct internal_binding *binding;
+    for (binding = SECTION_START(bindings); binding < SECTION_END(bindings); ++binding) {
+      if (binding->port == header->destination_port)
+	RETURN(binding->function(header, payload));
+    }
+    
     /* Unbound socket.  We won't be sending ICMP style connection refused
        messages, partly because they are a waste of bandwidth. */
     RETURN(WHYF("Received packet for which no listening process exists (MDP ports: src=%d, dst=%d",
@@ -1555,7 +1508,6 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
       case MDP_LISTEN:
 	// double check that this binding belongs to this connection
 	if (!binding
-	  || binding->internal
 	  || cmp_sockaddr(&binding->client, client)!=0){
 	  WHYF("That port is not bound by you %s vs %s", 
 	    binding?alloca_socket_address(&binding->client):"(none)", 
@@ -1590,7 +1542,6 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
   }else{
     // double check that this binding belongs to this connection
     if (!binding
-      || binding->internal
       || !internal_header.source
       || header->local.port == 0 
       || cmp_sockaddr(&binding->client, client)!=0){
@@ -1617,7 +1568,6 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
   
   // remove binding
   if (binding 
-    && !binding->internal
     && header->flags & MDP_FLAG_CLOSE
     && cmp_sockaddr(&binding->client, client)==0){
     DEBUGF(mdprequests, "Unbind MDP %s:%d from %s", 

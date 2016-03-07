@@ -1339,7 +1339,8 @@ int link_received_packet(struct decode_context *context, int sender_seq, uint8_t
 }
 
 // parse incoming link details
-int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payload)
+DEFINE_BINDING(MDP_PORT_LINKSTATE, link_receive);
+static int link_receive(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   IN();
 

@@ -945,7 +945,6 @@ int rhizome_cache_close();
 
 int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t version, rhizome_filehash_t *hashp);
 
-int overlay_mdp_service_rhizome_sync(struct internal_mdp_header *header, struct overlay_buffer *payload);
 void rhizome_sync_status();
 
 DECLARE_ALARM(rhizome_fetch_status);
