@@ -428,7 +428,7 @@ int rhizome_manifest_verify(rhizome_manifest *m)
   if (m->manifest_body_bytes == m->manifest_all_bytes)
     assert(m->manifestdata[m->manifest_body_bytes - 1] == '\0');
   // Hash the body
-  crypto_hash_sha512(m->manifesthash, m->manifestdata, m->manifest_body_bytes);
+  crypto_hash_sha512(m->manifesthash.binary, m->manifestdata, m->manifest_body_bytes);
   // Read signature blocks
   unsigned ofs = m->manifest_body_bytes;
   while (ofs < m->manifest_all_bytes) {
@@ -1359,7 +1359,7 @@ static struct rhizome_bundle_result rhizome_manifest_selfsign(rhizome_manifest *
   assert(m->manifest_body_bytes == m->manifest_all_bytes); // no signature yet
   if (!m->haveSecret)
     return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_READONLY, "Missing bundle secret");
-  crypto_hash_sha512(m->manifesthash, m->manifestdata, m->manifest_body_bytes);
+  crypto_hash_sha512(m->manifesthash.binary, m->manifestdata, m->manifest_body_bytes);
   rhizome_signature sig;
   if (rhizome_sign_hash(m, &sig) == -1)
     return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_ERROR, "rhizome_sign_hash() failed");

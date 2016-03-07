@@ -237,7 +237,7 @@ typedef struct rhizome_manifest
   size_t manifest_body_bytes;
   size_t manifest_all_bytes;
   unsigned char manifestdata[MAX_MANIFEST_BYTES];
-  unsigned char manifesthash[crypto_hash_sha512_BYTES];
+  rhizome_filehash_t manifesthash;
 
 } rhizome_manifest;
 

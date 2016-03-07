@@ -470,7 +470,7 @@ int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
 {
   IN();
   unsigned char signatureBuffer[crypto_sign_edwards25519sha512batch_BYTES + crypto_hash_sha512_BYTES];
-  unsigned char *hash = m->manifesthash;
+  unsigned char *hash = m->manifesthash.binary;
   unsigned long long sigLen = 0;
   int mLen = crypto_hash_sha512_BYTES;
   int r = crypto_sign_edwards25519sha512batch(signatureBuffer, &sigLen, &hash[0], mLen, sk);
@@ -568,7 +568,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m, unsigned *ofs)
     {
       assert(len == 97);
       /* Reconstitute signature block */
-      int r = rhizome_manifest_lookup_signature_validity(m->manifesthash, sig + 1, 96);
+      int r = rhizome_manifest_lookup_signature_validity(m->manifesthash.binary, sig + 1, 96);
       if (r) {
 	WARN("Signature verification failed");
 	RETURN(4);

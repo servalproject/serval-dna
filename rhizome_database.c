@@ -231,6 +231,8 @@ int rhizome_opendb()
   
   if (version<1){
     /* Create tables as required */
+    // Note that this will create the current schema
+    // further additional columns should be skipped.
     sqlite_exec_void_loglevel(loglevel, "PRAGMA auto_vacuum=2;", END);
     if (	sqlite_exec_void_retry(&retry, 
 		  "CREATE TABLE IF NOT EXISTS MANIFESTS("
@@ -246,7 +248,8 @@ int rhizome_opendb()
 		      "name text, "
 		      "sender text collate nocase, "
 		      "recipient text collate nocase, "
-		      "tail integer"
+		      "tail integer, "
+		      "manifest_hash text collate nocase"
 		  ");", END) == -1
       ||	sqlite_exec_void_retry(&retry, 
 		  "CREATE TABLE IF NOT EXISTS FILES("
@@ -274,14 +277,10 @@ int rhizome_opendb()
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=1;", END);
   }
   if (version<2 && meta.mtime.tv_sec != -1){
-    // we need to populate these fields on upgrade from very old versions, we can simply re-insert all old manifests
-    // at some point we may deprecate upgrading the database and simply drop it and create a new one
-    // if more bundle verification is required in later upgrades, move this to the end, don't run it more than once.
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN service text;", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN name text;", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN sender text collate nocase;", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN recipient text collate nocase;", END);
-    verify_bundles();
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=2;", END);
   }
   if (version<3){
@@ -303,11 +302,21 @@ int rhizome_opendb()
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS VERIFICATIONS; ", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DROP TABLE IF EXISTS FILEMANIFESTS;", END);
   }
-  if (version<7){
-    if (meta.mtime.tv_sec != -1){
-      sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE FILES ADD COLUMN last_verified integer;", END);
-    }
+  if (version<7 && meta.mtime.tv_sec != -1){
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE FILES ADD COLUMN last_verified integer;", END);
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=7;", END);
+  }
+  
+  if (version<8){
+    if (meta.mtime.tv_sec != -1)
+      sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN manifest_hash text collate nocase;", END);
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFEST_HASH ON MANIFESTS(manifest_hash);", END);
+
+    // we need to populate fields on upgrade from older versions, we can simply re-insert all old manifests
+    // if more bundle verification is required in later upgrades, move this to the end, don't run it more than once.
+    verify_bundles();
+    
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=8;", END);
   }
   
   // TODO recreate tables with collate nocase on all hex columns
@@ -1314,9 +1323,10 @@ int rhizome_store_manifest(rhizome_manifest *m)
 	  "name,"
 	  "sender,"
 	  "recipient,"
-	  "tail"
+	  "tail,"
+	  "manifest_hash"
 	") VALUES("
-	  "?,?,?,?,?,?,?,?,?,?,?,?,?"
+	  "?,?,?,?,?,?,?,?,?,?,?,?,?,?"
 	");",
 	RHIZOME_BID_T, &m->cryptoSignPublic,
 	STATIC_BLOB, m->manifestdata, m->manifest_all_bytes,
@@ -1332,6 +1342,7 @@ int rhizome_store_manifest(rhizome_manifest *m)
 	SID_T|NUL, m->has_sender ? &m->sender : NULL,
 	SID_T|NUL, m->has_recipient ? &m->recipient : NULL,
 	INT64, m->tail,
+	RHIZOME_FILEHASH_T, &m->manifesthash,
 	END
       )
   ) == NULL)
