@@ -215,14 +215,14 @@ setup_stun() {
 has_unicast_link() {
    executeOk_servald route print
    tfw_cat --stdout
-   if ! grep "^${SIDB}:UNICAST:dummy1:0*\$" $_tfw_tmp/stdout; then
+   if ! grep "^${SIDB}:UNICAST:dummy1:" $_tfw_tmp/stdout; then
       return 1
    fi
 }
 test_stun() {
    set_instance +A
    executeOk_servald route print
-   assertGrep --matches=1 $_tfw_tmp/stdout "^${SIDB}:INDIRECT::${SIDC}\$"
+   assertGrep --matches=1 $_tfw_tmp/stdout "^${SIDB}:INDIRECT::${SIDC}"
    test_call_lifecycle
    set_instance +A
    wait_until --timeout=10 has_unicast_link
