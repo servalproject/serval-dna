@@ -245,11 +245,14 @@ static int sync_bundle_inserted(struct subscriber *subscriber, void *context)
   return 0;
 }
 
-static int rhizome_sync_bundle_inserted(const rhizome_bar_t *bar)
+static void rhizome_sync_bundle_inserted(rhizome_manifest *m)
 {
-  enum_subscribers(NULL, sync_bundle_inserted, (void *)bar);
-  return 0;
+  rhizome_bar_t bar;
+  rhizome_manifest_to_bar(m, &bar);
+  enum_subscribers(NULL, sync_bundle_inserted, (void *)&bar);
 }
+
+DEFINE_TRIGGER(bundle_add, rhizome_sync_bundle_inserted);
 
 static int sync_cache_bar(struct rhizome_sync *state, const rhizome_bar_t *bar, uint64_t token)
 {
@@ -444,11 +447,6 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
 
     if (bar_size != RHIZOME_BAR_BYTES)
       continue;
-
-    if (rowid>max_token){
-      // a new bundle has been imported
-      rhizome_sync_bundle_inserted((const rhizome_bar_t *)bar);
-    }
 
     if (count < max_count){
       // make sure we include the exact rowid that was requested, even if we just deleted / replaced the manifest
