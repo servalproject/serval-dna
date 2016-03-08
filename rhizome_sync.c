@@ -65,6 +65,8 @@ struct rhizome_sync
   int bar_count;
 };
 
+DEFINE_ALARM(rhizome_sync_announce);
+
 void rhizome_sync_status_html(struct strbuf *b, struct subscriber *subscriber)
 {
   if (!subscriber->sync_state)
@@ -251,6 +253,13 @@ static void rhizome_sync_bundle_inserted(rhizome_manifest *m)
   rhizome_bar_t bar;
   rhizome_manifest_to_bar(m, &bar);
   enum_subscribers(NULL, sync_bundle_inserted, (void *)&bar);
+  
+  if (link_has_neighbours()){
+    struct sched_ent *alarm = &ALARM_STRUCT(rhizome_sync_announce);
+    time_ms_t now = gettime_ms();
+    if (alarm->alarm > now+50)
+      RESCHEDULE(alarm, now+50, now+50, TIME_MS_NEVER_WILL);
+  }
 }
 
 DEFINE_TRIGGER(bundle_add, rhizome_sync_bundle_inserted);
@@ -448,7 +457,11 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
 
     if (bar_size != RHIZOME_BAR_BYTES)
       continue;
-
+      
+    // TODO call trigger bundle_add??
+    if (rowid>max_token)
+      enum_subscribers(NULL, sync_bundle_inserted, (void *)bar);
+    
     if (count < max_count){
       // make sure we include the exact rowid that was requested, even if we just deleted / replaced the manifest
       if (count==0 && rowid!=token){
@@ -503,7 +516,6 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
   OUT();
 }
 
-DEFINE_ALARM(rhizome_sync_announce);
 void rhizome_sync_announce(struct sched_ent *alarm)
 {
   if (!is_rhizome_advertise_enabled())
@@ -522,8 +534,8 @@ static void neighbour_changed(struct subscriber *UNUSED(neighbour), uint8_t UNUS
   
   if (count>0){
     time_ms_t now = gettime_ms();
-    if (alarm->alarm > now+1000)
-      RESCHEDULE(alarm, now+1000, now+5000, TIME_MS_NEVER_WILL);
+    if (alarm->alarm == TIME_MS_NEVER_WILL)
+      RESCHEDULE(alarm, now+50, now+50, TIME_MS_NEVER_WILL);
   }else{
     RESCHEDULE(alarm, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
   }
