@@ -648,7 +648,6 @@ int rhizome_delete_file(const rhizome_filehash_t *hashp);
 #define RHIZOME_VERIFY 1
 
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
-int monitor_announce_bundle(rhizome_manifest *m);
 enum rhizome_secret_disposition {
     FOUND_RHIZOME_SECRET = 0,
     IDENTITY_NOT_FOUND,

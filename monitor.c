@@ -614,7 +614,7 @@ static int monitor_help(const struct cli_parsed *parsed, struct cli_context *con
   return 0;
 }
 
-int monitor_announce_bundle(rhizome_manifest *m)
+static void monitor_announce_bundle(rhizome_manifest *m)
 {
   char msg[1024];
   int len = snprintf(msg,1024,"\n*%zd:BUNDLE:%s\n",
@@ -624,8 +624,8 @@ int monitor_announce_bundle(rhizome_manifest *m)
   len+=m->manifest_all_bytes;
   msg[len++]='\n';
   monitor_tell_clients(msg, len, MONITOR_RHIZOME);
-  return 0;
 }
+DEFINE_TRIGGER(bundle_add, monitor_announce_bundle);
 
 int monitor_announce_peer(const sid_t *sidp)
 {
