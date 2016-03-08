@@ -254,6 +254,17 @@ test_AddEmpty() {
    assert_rhizome_list --fromhere=1 --author=$SIDA --manifest=empty.manifest ''
 }
 
+doc_AddMissing="Attempt to add a file and manifest that don't exist"
+setup_AddMissing() {
+   setup_servald
+   setup_rhizome
+}
+test_AddMissing() {
+   execute $servald rhizome add file $SIDA 'file1' 'file1.manifest'
+   tfw_cat --stdout --stderr
+   assertExitStatus '==' 255
+}
+
 doc_AddThenList="List contains one file after one add"
 setup_AddThenList() {
    setup_servald
