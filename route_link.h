@@ -44,4 +44,6 @@ int link_unicast_ack(struct subscriber *subscriber, struct overlay_interface *in
 void link_explained(struct subscriber *subscriber);
 int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now);
 
+DECLARE_TRIGGER(nbr_change, struct subscriber *neighbour, uint8_t found, unsigned count);
+
 #endif

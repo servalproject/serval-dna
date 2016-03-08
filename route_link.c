@@ -171,6 +171,7 @@ static int append_link(struct subscriber *subscriber, void *context);
 static int neighbour_find_best_link(struct neighbour *n);
 
 struct neighbour *neighbours=NULL;
+unsigned neighbour_count=0;
 int route_version=0;
 
 struct network_destination * new_destination(struct overlay_interface *interface){
@@ -251,25 +252,6 @@ static struct link_state *get_link_state(struct subscriber *subscriber)
   return subscriber->link_state;
 }
 
-static void first_neighbour_found(){
-  // send rhizome sync periodically
-  time_ms_t now = gettime_ms();
-  RESCHEDULE(&ALARM_STRUCT(rhizome_sync_announce), 
-    now+1000, now+5000, TIME_MS_NEVER_WILL);
-  RESCHEDULE(&ALARM_STRUCT(link_send), 
-    now+10, now+10, now+30);
-}
-
-static void last_neighbour_gone(){
-  // stop trying to sync rhizome
-  RESCHEDULE(&ALARM_STRUCT(rhizome_sync_announce), 
-    TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
-  RESCHEDULE(&ALARM_STRUCT(link_send), 
-    TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
-  // one last re-scan of network paths to clean up the routing table
-  enum_subscribers(NULL, append_link, NULL);
-}
-
 static struct neighbour *get_neighbour(struct subscriber *subscriber, char create)
 {
   struct neighbour *n = neighbours;
@@ -279,8 +261,6 @@ static struct neighbour *get_neighbour(struct subscriber *subscriber, char creat
     n = n->_next;
   }
   if (create){
-    if (!neighbours)
-      first_neighbour_found();
     n = emalloc_zero(sizeof(struct neighbour));
     n->subscriber = subscriber;
     n->_next = neighbours;
@@ -290,7 +270,14 @@ static struct neighbour *get_neighbour(struct subscriber *subscriber, char creat
     n->rtt = 120;
     n->next_neighbour_update = gettime_ms() + 10;
     neighbours = n;
+    neighbour_count++;
+    
+    if (neighbour_count==1){
+      time_ms_t now = gettime_ms();
+      RESCHEDULE(&ALARM_STRUCT(link_send), now+10, now+10, now+30);
+    }
     DEBUGF(linkstate, "LINK STATE; new neighbour %s", alloca_tohex_sid_t(n->subscriber->sid));
+    CALL_TRIGGER(nbr_change, subscriber, 1, neighbour_count);
   }
   return n;
 }
@@ -610,6 +597,7 @@ static void clean_neighbours(time_ms_t now)
   struct neighbour **n_ptr = &neighbours;
   while (*n_ptr){
     struct neighbour *n = *n_ptr;
+    struct subscriber *subscriber = n->subscriber;
     
     // drop any inbound links that have expired
     struct link_in **list = &n->links;
@@ -617,7 +605,7 @@ static void clean_neighbours(time_ms_t now)
       struct link_in *link = *list;
       if (link->interface->state!=INTERFACE_STATE_UP || link->link_timeout < now){
 	DEBUGF(linkstate, "LINK STATE; link expired from neighbour %s on interface %s",
-	       alloca_tohex_sid_t(n->subscriber->sid),
+	       alloca_tohex_sid_t(subscriber->sid),
 	       link->interface->name);
         *list=link->_next;
         free(link);
@@ -643,21 +631,26 @@ static void clean_neighbours(time_ms_t now)
     }
     
     // when all links to a neighbour that we were directly routing to expire, force a routing calculation update
-    struct link_state *state = get_link_state(n->subscriber);
-    if (state->next_hop == n->subscriber && 
+    struct link_state *state = get_link_state(subscriber);
+    if (state->next_hop == subscriber && 
 	(n->link_in_timeout < now || !n->links || !alive) && 
 	state->route_version == route_version)
       route_version++;
       
     if (!n->links || !alive){
       free_neighbour(n_ptr);
+      neighbour_count--;
+      CALL_TRIGGER(nbr_change, subscriber, 0, neighbour_count);
+      if (neighbour_count==0){
+	// one last re-scan of network paths to clean up the routing table
+	enum_subscribers(NULL, append_link, NULL);
+	RESCHEDULE(&ALARM_STRUCT(link_send), 
+	  TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
+      }
     }else{
       n_ptr = &n->_next;
     }
   }
-  if (!neighbours)
-    last_neighbour_gone();
-
 }
 
 static void link_status_html(struct strbuf *b, struct subscriber *n, struct link *link)

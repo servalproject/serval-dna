@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "log.h"
 #include "debug.h"
 #include "conf.h"
+#include "route_link.h"
 
 #define MSG_TYPE_BARS 0
 #define MSG_TYPE_REQ 1
@@ -514,6 +515,20 @@ void rhizome_sync_announce(struct sched_ent *alarm)
   alarm->deadline = alarm->alarm+10000;
   schedule(alarm);
 }
+
+static void neighbour_changed(struct subscriber *UNUSED(neighbour), uint8_t UNUSED(found), unsigned count)
+{
+  struct sched_ent *alarm = &ALARM_STRUCT(rhizome_sync_announce);
+  
+  if (count>0){
+    time_ms_t now = gettime_ms();
+    if (alarm->alarm > now+1000)
+      RESCHEDULE(alarm, now+1000, now+5000, TIME_MS_NEVER_WILL);
+  }else{
+    RESCHEDULE(alarm, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
+  }
+}
+DEFINE_TRIGGER(nbr_change, neighbour_changed);
 
 DEFINE_BINDING(MDP_PORT_RHIZOME_SYNC, overlay_mdp_service_rhizome_sync);
 static int overlay_mdp_service_rhizome_sync(struct internal_mdp_header *header, struct overlay_buffer *payload)
