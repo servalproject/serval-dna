@@ -583,7 +583,19 @@ static int overlay_mdp_service_rhizome_sync(struct internal_mdp_header *header, 
 {
   if (!config.rhizome.enable || !rhizome_db)
     return 0;
+    
   struct rhizome_sync *state = header->source->sync_state;
+  
+  if (header->source->sync_version>0){
+    if (state){
+      if (state->bars)
+	free(state->bars);
+      free(state);
+      header->source->sync_state=NULL;
+    }
+    return 0;
+  }
+  
   if (!state){
     state = header->source->sync_state = emalloc_zero(sizeof(struct rhizome_sync));
     state->start_time=gettime_ms();

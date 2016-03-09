@@ -9,6 +9,7 @@ HDRS=	fifo.h \
 	limit.h \
 	rhizome_types.h \
 	rhizome.h \
+	sync_keys.h \
 	httpd.h \
 	instance.h \
 	meshms.h \

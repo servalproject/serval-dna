@@ -1759,6 +1759,25 @@ enum rhizome_bundle_status rhizome_retrieve_manifest_by_prefix(const unsigned ch
   return ret;
 }
 
+enum rhizome_bundle_status rhizome_retrieve_manifest_by_hash_prefix(const uint8_t *prefix, unsigned prefix_len, rhizome_manifest *m)
+{
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  const unsigned prefix_strlen = prefix_len * 2;
+  char like[prefix_strlen + 2];
+  tohex(like, prefix_strlen, prefix);
+  like[prefix_strlen] = '%';
+  like[prefix_strlen + 1] = '\0';
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
+      "SELECT id, manifest, version, inserttime, author, rowid FROM manifests WHERE manifest_hash like ?",
+      TEXT, like,
+      END);
+  if (!statement)
+    return RHIZOME_BUNDLE_STATUS_ERROR;
+  enum rhizome_bundle_status ret = unpack_manifest_row(&retry, m, statement);
+  sqlite3_finalize(statement);
+  return ret;
+}
+
 static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp)
 {
   sqlite3_stmt *statement = sqlite_prepare_bind(retry,
