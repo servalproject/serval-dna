@@ -65,6 +65,9 @@ msp_state_t msp_get_state(MSP_SOCKET sock);
 #define MSP_STATE_DATAOUT           ((msp_state_t) (1<<7))
 #define MSP_STATE_STOPPED           ((msp_state_t) (1<<8))
 
+// stream timeout
+#define MSP_TIMEOUT 10000
+
 int msp_socket_is_initialising(MSP_SOCKET);
 int msp_socket_is_open(MSP_SOCKET);
 int msp_socket_is_closed(MSP_SOCKET);
