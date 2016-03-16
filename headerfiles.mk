@@ -43,5 +43,6 @@ HDRS=	fifo.h \
 	mdp_client.h \
 	msp_client.h \
 	msp_common.h \
+	msp_server.h \
 	radio_link.h \
 	sqlite-amalgamation-3100200/sqlite3.h

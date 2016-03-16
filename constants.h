@@ -139,6 +139,29 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
    Multiple replies can be used to respond with more. */
 #define MDP_MAX_SID_REQUEST 59
 
+
+#define MSP_PAYLOAD_PREAMBLE_SIZE  5
+#define MSP_MESSAGE_SIZE           1024
+//should be something like this...; (MDP_MTU - MSP_PAYLOAD_PREAMBLE_SIZE)
+
+#define MSP_STATE_UNINITIALISED     (0)
+#define MSP_STATE_LISTENING         (1<<0)
+#define MSP_STATE_RECEIVED_DATA     (1<<1)
+#define MSP_STATE_RECEIVED_PACKET   (1<<2)
+#define MSP_STATE_SHUTDOWN_LOCAL    (1<<3)
+#define MSP_STATE_SHUTDOWN_REMOTE   (1<<4)
+// this connection is about to be free'd, release any other resources or references to the state
+#define MSP_STATE_CLOSED            (1<<5)
+// something has gone wrong somewhere
+#define MSP_STATE_ERROR             (1<<6)
+// is there space for sending more data?
+#define MSP_STATE_DATAOUT           (1<<7)
+#define MSP_STATE_STOPPED           (1<<8)
+
+// stream timeout
+#define MSP_TIMEOUT 10000
+
+
 /* Maximum amount of audio to cram into a VoMP audio packet.
    More lets us include preemptive retransmissions.
    Less reduces the chance of packets getting lost, and reduces

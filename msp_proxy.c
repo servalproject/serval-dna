@@ -263,7 +263,7 @@ static size_t msp_handler(MSP_SOCKET sock, msp_state_t state, const uint8_t *pay
   
   conn->last_state=state;
   
-  if (state&MSP_STATE_DATAOUT)
+  if (state & MSP_STATE_DATAOUT)
     try_send(conn);
   
   if (state & MSP_STATE_CLOSED){

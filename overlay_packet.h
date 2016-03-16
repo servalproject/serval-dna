@@ -20,8 +20,8 @@
 #ifndef __SERVAL_DNA__OVERLAY_PACKET_H
 #define __SERVAL_DNA__OVERLAY_PACKET_H
 
-#include "overlay_address.h"
 #include "serval_types.h"
+#include "overlay_address.h"
 #include "section.h"
 
 #define FRAME_NOT_SENT -1

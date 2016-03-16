@@ -442,6 +442,8 @@ static int process_sock(struct msp_sock *sock)
   }
   
   call_handler(sock, NULL, 0);
+  
+  sock->stream.next_action = sock->stream.timeout;
   if (sock->handler && sock->stream.next_action > sock->last_handler + HANDLER_KEEPALIVE)
     sock->stream.next_action = sock->last_handler + HANDLER_KEEPALIVE;
   
@@ -499,18 +501,6 @@ static int process_sock(struct msp_sock *sock)
   if (sock->stream.next_action > sock->stream.next_ack)
     sock->stream.next_action = sock->stream.next_ack;
   
-  // when we've delivered all local packets
-  // and all our data packets have been acked, close.
-  if (   (sock->stream.state & MSP_STATE_SHUTDOWN_LOCAL)
-      && (sock->stream.state & MSP_STATE_SHUTDOWN_REMOTE)
-      && sock->stream.tx.packet_count == 0
-      && sock->stream.rx.packet_count == 0
-      && sock->stream.previous_ack == sock->stream.rx.next_seq -1
-  ){
-    sock->stream.state |= MSP_STATE_CLOSED;
-    return -1;
-  }
-    
   return 0;
 }
 

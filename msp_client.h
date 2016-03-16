@@ -30,9 +30,6 @@
 # endif
 #endif
 
-#define MSP_PAYLOAD_PREAMBLE_SIZE  5
-#define MSP_MESSAGE_SIZE           (MDP_MTU - MSP_MESSAGE_PREAMBLE_SIZE)
-
 typedef uint16_t msp_state_t;
 
 struct msp_sock;
@@ -51,22 +48,6 @@ int msp_socket_is_valid(MSP_SOCKET);
 
 // socket lifecycle
 msp_state_t msp_get_state(MSP_SOCKET sock);
-#define MSP_STATE_UNINITIALISED     ((msp_state_t) 0)
-#define MSP_STATE_LISTENING         ((msp_state_t) (1<<0))
-#define MSP_STATE_RECEIVED_DATA     ((msp_state_t) (1<<1))
-#define MSP_STATE_RECEIVED_PACKET   ((msp_state_t) (1<<2))
-#define MSP_STATE_SHUTDOWN_LOCAL    ((msp_state_t) (1<<3))
-#define MSP_STATE_SHUTDOWN_REMOTE   ((msp_state_t) (1<<4))
-// this connection is about to be free'd, release any other resources or references to the state
-#define MSP_STATE_CLOSED            ((msp_state_t) (1<<5))
-// something has gone wrong somewhere
-#define MSP_STATE_ERROR             ((msp_state_t) (1<<6))
-// is there space for sending more data?
-#define MSP_STATE_DATAOUT           ((msp_state_t) (1<<7))
-#define MSP_STATE_STOPPED           ((msp_state_t) (1<<8))
-
-// stream timeout
-#define MSP_TIMEOUT 10000
 
 int msp_socket_is_initialising(MSP_SOCKET);
 int msp_socket_is_open(MSP_SOCKET);

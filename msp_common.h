@@ -9,6 +9,8 @@
 #define RETRANSMIT_TIME 1500
 #define HANDLER_KEEPALIVE 1000
 
+typedef uint16_t msp_state_t;
+
 struct msp_packet{
   struct msp_packet *_next;
   uint16_t seq;
@@ -183,7 +185,7 @@ static size_t msp_write_preamble(uint8_t *header, struct msp_stream *stream, str
   DEBUGF(msp, "With packet flags %02x seq %02x len %zd", 
     header[0], packet->seq, packet->len);
   packet->sent = stream->tx.last_activity;
-  return 5;
+  return MSP_PAYLOAD_PREAMBLE_SIZE;
 }
 
 static ssize_t msp_stream_send(struct msp_stream *stream, const uint8_t *payload, size_t len)
@@ -231,9 +233,20 @@ static int msp_stream_process(struct msp_stream *stream)
     stream->state |= (MSP_STATE_CLOSED|MSP_STATE_ERROR);
     return WHY("MSP socket timed out");
   }
-  stream->next_action = stream->timeout;
+  
   if (stream->state & MSP_STATE_LISTENING)
     return 1;
+  
+  // when we've delivered all local packets
+  // and all our data packets have been acked, close.
+  if (   (stream->state & MSP_STATE_SHUTDOWN_LOCAL)
+      && (stream->state & MSP_STATE_SHUTDOWN_REMOTE)
+      && stream->tx.packet_count == 0
+      && stream->rx.packet_count == 0
+      && stream->previous_ack == stream->rx.next_seq -1
+  )
+    stream->state |= MSP_STATE_CLOSED;
+
   return 0;
 }
 
@@ -261,6 +274,16 @@ static void msp_consume_packet(struct msp_stream *stream, struct msp_packet *pac
   
   free_acked_packets(&stream->rx, stream->rx.next_seq);
   stream->rx.next_seq++;
+  
+  // when we've delivered all local packets
+  // and all our data packets have been acked, close.
+  if (   (stream->state & MSP_STATE_SHUTDOWN_LOCAL)
+      && (stream->state & MSP_STATE_SHUTDOWN_REMOTE)
+      && stream->tx.packet_count == 0
+      && stream->rx.packet_count == 0
+      && stream->previous_ack == stream->rx.next_seq -1
+  )
+    stream->state |= MSP_STATE_CLOSED;
 }
 
 static int msp_process_packet(struct msp_stream *stream, const uint8_t *payload, size_t len)
@@ -310,9 +333,10 @@ static int msp_process_packet(struct msp_stream *stream, const uint8_t *payload,
   
   stream->state |= MSP_STATE_RECEIVED_DATA;
   uint16_t seq = read_uint16(&payload[3]);
-  
-  if (add_packet(&stream->rx, seq, flags, &payload[MSP_PAYLOAD_PREAMBLE_SIZE], len - MSP_PAYLOAD_PREAMBLE_SIZE)==1)
-    stream->next_ack = now;
+  if (compare_wrapped_uint16(seq, stream->rx.next_seq)>=0){
+    if (add_packet(&stream->rx, seq, flags, &payload[MSP_PAYLOAD_PREAMBLE_SIZE], len - MSP_PAYLOAD_PREAMBLE_SIZE)==1)
+      stream->next_ack = now;
+  }
   
   return 0;
 }
