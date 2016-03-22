@@ -25,16 +25,16 @@
 #define SECTION_START(X) __start_##X
 #define SECTION_END(X) __stop_##X
 
-#if defined(HAVE_VAR_ATTRIBUTE_SECTION_SEG)
-#   define _SECTION_ATTRIBUTE(X) __section__("__DATA,__"#X)
-#   define DECLARE_SECTION(TYPE, X) \
-        extern TYPE SECTION_START(X)[] __asm("section$start$__DATA$__" #X);\
-        extern TYPE SECTION_END(X)[] __asm("section$end$__DATA$__" #X)
-#elif defined(HAVE_VAR_ATTRIBUTE_SECTION)
+#if defined(HAVE_VAR_ATTRIBUTE_SECTION)
 #   define _SECTION_ATTRIBUTE(X) __section__(#X)
 #   define DECLARE_SECTION(TYPE, X) \
         extern TYPE SECTION_START(X)[];\
         extern TYPE SECTION_END(X)[]
+#elif defined(HAVE_VAR_ATTRIBUTE_SECTION_SEG)
+#   define _SECTION_ATTRIBUTE(X) __section__("__DATA,__"#X)
+#   define DECLARE_SECTION(TYPE, X) \
+        extern TYPE SECTION_START(X)[] __asm("section$start$__DATA$__" #X);\
+        extern TYPE SECTION_END(X)[] __asm("section$end$__DATA$__" #X)
 #else
 #error "Compiler does not support __attribute__(section())"
 #endif
