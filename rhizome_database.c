@@ -1778,6 +1778,52 @@ enum rhizome_bundle_status rhizome_retrieve_manifest_by_hash_prefix(const uint8_
   return ret;
 }
 
+enum rhizome_bundle_status rhizome_retrieve_bar_by_hash_prefix(const uint8_t *prefix, unsigned prefix_len, rhizome_bar_t *bar)
+{
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  const unsigned prefix_strlen = prefix_len * 2;
+  char like[prefix_strlen + 2];
+  tohex(like, prefix_strlen, prefix);
+  like[prefix_strlen] = '%';
+  like[prefix_strlen + 1] = '\0';
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
+      "SELECT bar FROM manifests WHERE manifest_hash like ?",
+      TEXT, like,
+      END);
+  if (!statement)
+    return RHIZOME_BUNDLE_STATUS_ERROR;
+  enum rhizome_bundle_status ret;
+  
+  int r=sqlite_step_retry(&retry, statement);
+  if (sqlite_code_busy(r)){
+    ret = RHIZOME_BUNDLE_STATUS_BUSY;
+    goto end;
+  }
+  if (!sqlite_code_ok(r)){
+    ret = RHIZOME_BUNDLE_STATUS_ERROR;
+    goto end;
+  }
+  if (r!=SQLITE_ROW){
+    ret = RHIZOME_BUNDLE_STATUS_NEW;
+    goto end;
+  }
+  
+  const uint8_t *db_bar = sqlite3_column_blob(statement, 0);
+  size_t bar_size = sqlite3_column_bytes(statement, 0);
+
+  if (bar_size != RHIZOME_BAR_BYTES){
+    ret = RHIZOME_BUNDLE_STATUS_ERROR;
+    goto end;
+  }
+  
+  bcopy(db_bar, bar, RHIZOME_BAR_BYTES);
+  ret = RHIZOME_BUNDLE_STATUS_SAME;
+  
+end:
+  sqlite3_finalize(statement);
+  return ret;
+}
+
 static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp)
 {
   sqlite3_stmt *statement = sqlite_prepare_bind(retry,

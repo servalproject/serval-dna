@@ -66,6 +66,7 @@ struct subscriber{
   
   // rhizome sync state
   struct rhizome_sync *sync_state;
+  struct rhizome_sync_keys *sync_keys_state;
   uint8_t sync_version;
 
   // result of routing calculations;

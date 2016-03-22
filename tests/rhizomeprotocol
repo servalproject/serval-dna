@@ -46,7 +46,8 @@ default_config() {
       set debug.rhizome_ads on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
-      set debug.rhizome_sync_keys on
+      set debug.rhizome_sync_keys on \
+      set debug.msp on
 }
 
 # Called by start_servald_instances for each instance.
@@ -88,50 +89,6 @@ setup_FileTransfer() {
 }
 test_FileTransfer() {
    receive_and_update_bundle
-}
-
-doc_ManyFiles="Synchronise many small files, with some files in common"
-setup_ManyFiles() {
-   setup_common
-   bundlesA=()
-   bundlesB=()
-
-   for i in `seq 1 20`
-   do
-      tfw_log "Adding common file-$i"
-      set_instance +A
-      create_file file-$i 1000
-      executeOk_servald rhizome add file "${!sidvar}" file-$i file-$i.manifest
-      set_instance +B
-      executeOk_servald rhizome import bundle file-$i file-$i.manifest
-   done
-
-   for i in `seq 1 10`
-   do
-      set_instance +A
-      tfw_log "Adding fileA-$i"
-      create_file fileA-$i 1000
-      tfw_nolog executeOk_servald rhizome add file "${!sidvar}" fileA-$i fileA-$i.manifest
-      tfw_nolog extract_stdout_manifestid BID
-      tfw_nolog extract_stdout_version VERSION
-      bundlesA+=($BID:$VERSION)
-
-      set_instance +B
-      tfw_log "Adding fileB-$i"
-      create_file fileB-$i 1000
-      tfw_nolog executeOk_servald rhizome add file "${!sidvar}" fileB-$i fileB-$i.manifest
-      tfw_nolog extract_stdout_manifestid BID
-      tfw_nolog extract_stdout_version VERSION
-      bundlesB+=($BID:$VERSION)
-   done
-
-   start_servald_instances +A +B
-   foreach_instance +A assert_peers_are_instances +B
-   foreach_instance +B assert_peers_are_instances +A
-}
-
-test_ManyFiles() {
-   wait_until bundle_received_by ${bundlesA[*]} +B ${bundlesB[*]} +A
 }
 
 doc_EncryptedTransfer="Encrypted payload can be opened by destination"
@@ -887,4 +844,54 @@ teardown_SimulatedRadio2() {
    tfw_cat "$SERVALD_VAR/radioerr"
 }
 
+doc_ManyFiles="Synchronise many small files, with some files in common"
+setup_ManyFiles() {
+   setup_servald
+   foreach_instance +A +B +C +D create_single_identity
+   bundlesA=()
+   bundlesB=()
+   bundlesC=()
+   bundlesD=()
+
+   for i in `seq 1 5`
+   do
+      tfw_log "Adding common file-$i"
+      tfw_nolog set_instance +A
+      create_file file-$i 100
+      tfw_nolog executeOk_servald rhizome add file "${!sidvar}" file-$i file-$i.manifest
+      tfw_nolog set_instance +B
+      tfw_nolog executeOk_servald rhizome import bundle file-$i file-$i.manifest
+      tfw_nolog set_instance +C
+      tfw_nolog executeOk_servald rhizome import bundle file-$i file-$i.manifest
+      tfw_nolog set_instance +D
+      tfw_nolog executeOk_servald rhizome import bundle file-$i file-$i.manifest
+   done
+   for i in A B C D
+   do
+      eval "bundles$i=()"
+      set_instance +$i
+      for j in `seq 1 3`
+      do
+         tfw_log "Adding file$i-$j"
+         create_file file$i-$j $(( $j * 500 ))
+         tfw_nolog executeOk_servald rhizome add file "${!sidvar}" file$i-$j file$i-$j.manifest
+         tfw_nolog extract_stdout_manifestid BID
+         tfw_nolog extract_stdout_version VERSION
+         eval "bundles$i+=(\$BID:\$VERSION)"
+      done
+   done
+
+   start_servald_instances +A +B +C +D
+}
+
+test_ManyFiles() {
+   wait_until --timeout=15 bundle_received_by \
+	${bundlesB[*]} ${bundlesC[*]} ${bundlesD[*]} +A \
+	${bundlesA[*]} ${bundlesC[*]} ${bundlesD[*]} +B \
+	${bundlesA[*]} ${bundlesB[*]} ${bundlesD[*]} +C \
+	${bundlesA[*]} ${bundlesB[*]} ${bundlesC[*]} +D
+}
+
 runTests "$@"
+
+

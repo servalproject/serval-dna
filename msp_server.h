@@ -24,8 +24,9 @@ struct subscriber * msp_remote_peer(struct msp_server_state *state);
 int msp_can_send(struct msp_server_state *state);
 
 int msp_iterator_open(struct msp_server_state **root, struct msp_iterator *iterator);
-time_ms_t msp_iterator_close(struct msp_iterator *iterator);
 struct msp_server_state * msp_process_next(struct msp_iterator *iterator);
+struct msp_server_state * msp_next_closed(struct msp_iterator *iterator);
+time_ms_t msp_iterator_close(struct msp_iterator *iterator);
 
 int msp_send_packet(struct msp_server_state *state, const uint8_t *payload, size_t len);
 int msp_shutdown_stream(struct msp_server_state *state);

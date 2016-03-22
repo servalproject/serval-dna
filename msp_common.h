@@ -29,6 +29,7 @@ struct msp_window{
   uint32_t rtt;
   uint16_t next_seq; // seq of next expected TX or RX packet.
   time_ms_t last_activity;
+  time_ms_t last_packet;
   struct msp_packet *_head, *_tail;
 };
 
@@ -48,7 +49,9 @@ static void msp_stream_init(struct msp_stream *stream)
   // TODO set base rtt to ensure that we send the first packet a few times before giving up
   stream->tx.base_rtt = stream->tx.rtt = 0xFFFFFFFF;
   stream->tx.last_activity = TIME_MS_NEVER_HAS;
+  stream->tx.last_packet = TIME_MS_NEVER_HAS;
   stream->rx.last_activity = TIME_MS_NEVER_HAS;
+  stream->rx.last_packet = TIME_MS_NEVER_HAS;
   stream->next_action = TIME_MS_NEVER_WILL;
   stream->timeout = gettime_ms() + 10000;
   stream->previous_ack = 0x7FFF;
@@ -184,7 +187,7 @@ static size_t msp_write_preamble(uint8_t *header, struct msp_stream *stream, str
   
   DEBUGF(msp, "With packet flags %02x seq %02x len %zd", 
     header[0], packet->seq, packet->len);
-  packet->sent = stream->tx.last_activity;
+  packet->sent = stream->tx.last_packet = stream->tx.last_activity;
   return MSP_PAYLOAD_PREAMBLE_SIZE;
 }
 
@@ -333,6 +336,7 @@ static int msp_process_packet(struct msp_stream *stream, const uint8_t *payload,
   
   stream->state |= MSP_STATE_RECEIVED_DATA;
   uint16_t seq = read_uint16(&payload[3]);
+  stream->rx.last_packet = stream->rx.last_activity;
   if (compare_wrapped_uint16(seq, stream->rx.next_seq)>=0){
     if (add_packet(&stream->rx, seq, flags, &payload[MSP_PAYLOAD_PREAMBLE_SIZE], len - MSP_PAYLOAD_PREAMBLE_SIZE)==1)
       stream->next_ack = now;

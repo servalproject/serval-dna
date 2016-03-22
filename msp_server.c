@@ -83,6 +83,26 @@ time_ms_t msp_iterator_close(struct msp_iterator *iterator)
   return next_action;
 }
 
+struct msp_server_state * msp_next_closed(struct msp_iterator *iterator)
+{
+  struct msp_server_state *ptr = iterator->_next;
+  while(1){
+    if (ptr){
+      ptr = ptr->_next;
+    }else{
+      ptr = *iterator->_root;
+    }
+    if (!ptr){
+      iterator->_next = ptr;
+      return NULL;
+    }
+    if (ptr->stream.state & MSP_STATE_CLOSED){
+      iterator->_next = ptr;
+      return ptr;
+    }
+  }
+}
+
 static void send_frame(struct msp_server_state *state, struct overlay_buffer *payload)
 {
   struct internal_mdp_header response_header;
@@ -126,23 +146,26 @@ struct msp_server_state * msp_process_next(struct msp_iterator *iterator)
   while(1){
     if (ptr){
       struct msp_packet *packet = ptr->stream.tx._head;
-      ptr->stream.next_action = ptr->stream.timeout;
+      time_ms_t next_packet = TIME_MS_NEVER_WILL;
       
+      ptr->stream.next_action = ptr->stream.timeout;
       while(packet){
-	if (packet->sent + RETRANSMIT_TIME < now)
+	if (packet->sent + RETRANSMIT_TIME <= now)
 	  // (re)transmit this packet
 	  send_packet(ptr, packet);
 	
-	if (ptr->stream.next_action > packet->sent + RETRANSMIT_TIME)
-	  ptr->stream.next_action = packet->sent + RETRANSMIT_TIME;
+	if (next_packet > packet->sent + RETRANSMIT_TIME)
+	  next_packet = packet->sent + RETRANSMIT_TIME;
 	  
 	packet=packet->_next;
       }
       
       // should we send an ack now without sending a payload?
-      if (now > ptr->stream.next_ack)
+      if (now >= ptr->stream.next_ack)
 	send_ack(ptr);
       
+      if (ptr->stream.next_action > next_packet)
+        ptr->stream.next_action = next_packet;
       if (ptr->stream.next_action > ptr->stream.next_ack)
 	ptr->stream.next_action = ptr->stream.next_ack;
 

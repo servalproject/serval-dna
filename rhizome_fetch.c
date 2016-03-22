@@ -1110,7 +1110,7 @@ static int pipe_journal(struct rhizome_fetch_slot *slot){
   assert(slot->previous->tail != RHIZOME_SIZE_UNSET);
   assert(slot->previous->filesize != RHIZOME_SIZE_UNSET);
   uint64_t start = slot->manifest->tail - slot->previous->tail + slot->write_state.file_offset;
-  uint64_t length = slot->previous->filesize - slot->manifest->tail - slot->write_state.file_offset;
+  uint64_t length = slot->previous->filesize - start;
   
   // of course there might not be any overlap
   if (start < slot->previous->filesize && length>0){
