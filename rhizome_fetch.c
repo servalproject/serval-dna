@@ -506,10 +506,6 @@ schedule_fetch(struct rhizome_fetch_slot *slot)
     slot->bid = slot->manifest->cryptoSignPublic;
     slot->prefix_length = sizeof slot->bid.binary;
     slot->bidVersion = slot->manifest->version;
-    /* Don't provide a filename, because we will stream the file straight into
-       the database. */
-    slot->manifest->dataFileName = NULL;
-    slot->manifest->dataFileUnlinkOnFree = 0;
     
     strbuf r = strbuf_local_buf(slot->request);
     strbuf_sprintf(r, "GET /rhizome/file/%s HTTP/1.0\r\n", alloca_tohex_rhizome_filehash_t(slot->manifest->filehash));

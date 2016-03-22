@@ -913,8 +913,8 @@ enum rhizome_payload_status rhizome_stat_payload_file(rhizome_manifest *m, const
   if (m->filesize == RHIZOME_SIZE_UNSET)
     rhizome_manifest_set_filesize(m, size);
   else if (size != m->filesize) {
-    DEBUGF(rhizome_store, "payload file %s (size=%"PRIu64") does not match manifest[%d].filesize=%"PRIu64,
-	   alloca_str_toprint(filepath), size, m->manifest_record_number, m->filesize);
+    DEBUGF(rhizome_store, "payload file %s (size=%"PRIu64") does not match manifest %p filesize=%"PRIu64,
+	   alloca_str_toprint(filepath), size, m, m->filesize);
     return RHIZOME_PAYLOAD_STATUS_WRONG_SIZE;
   }
   return size ? RHIZOME_PAYLOAD_STATUS_NEW : RHIZOME_PAYLOAD_STATUS_EMPTY;
@@ -1602,7 +1602,7 @@ enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *wri
 // Call to finish any payload store operation
 enum rhizome_payload_status rhizome_finish_store(struct rhizome_write *write, rhizome_manifest *m, enum rhizome_payload_status status)
 {
-  DEBUGF(rhizome, "write=%p m=manifest[%d], status=%d %s", write, m->manifest_record_number, status, rhizome_payload_status_message_nonnull(status));
+  DEBUGF(rhizome, "write=%p m=manifest %p, status=%d %s", write, m, status, rhizome_payload_status_message_nonnull(status));
   switch (status) {
   case RHIZOME_PAYLOAD_STATUS_NEW:
     break;

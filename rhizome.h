@@ -57,7 +57,6 @@ extern time_ms_t rhizome_voice_timeout;
 
 typedef struct rhizome_manifest
 {
-  int manifest_record_number;
 
   /* CryptoSign key pair for this manifest.  The public key is the Bundle ID
    * (aka Manifest ID).
@@ -125,10 +124,6 @@ typedef struct rhizome_manifest
    */
   bool_t selfSigned;
 
-  /* If set, unlink(2) the associated file when freeing the manifest.
-   */
-  bool_t dataFileUnlinkOnFree;
-
   /* Set if the ID field (cryptoSignPublic) contains a bundle ID.
    */
   bool_t has_id;
@@ -169,9 +164,6 @@ typedef struct rhizome_manifest
     AUTHOR_IMPOSTOR, // author is a local identity but fails verification
     AUTHOR_AUTHENTIC // a local identity is the verified author
   } authorship;
-
-  /* Absolute path of the file associated with the manifest */
-  const char *dataFileName;
 
   /* Whether the paylaod is encrypted or not */
   enum rhizome_manifest_crypt {
@@ -694,10 +686,6 @@ int rhizome_list_next(struct rhizome_list_cursor *);
 void rhizome_list_commit(struct rhizome_list_cursor *);
 void rhizome_list_release(struct rhizome_list_cursor *);
 
-/* one manifest is required per candidate, plus a few spare.
-   so MAX_RHIZOME_MANIFESTS must be > MAX_CANDIDATES. 
-*/
-#define MAX_RHIZOME_MANIFESTS 40
 #define MAX_CANDIDATES 32
 
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct socket_address *addr, const struct subscriber *peer);

@@ -673,9 +673,9 @@ enum rhizome_bundle_status rhizome_manifest_check_stored(rhizome_manifest *m, rh
 enum rhizome_bundle_status rhizome_add_manifest_to_store(rhizome_manifest *m, rhizome_manifest **mout)
 {
   if (mout == NULL)
-    DEBUGF(rhizome, "%s(m=manifest[%d](%p), mout=NULL)", __func__, m->manifest_record_number, m);
+    DEBUGF(rhizome, "%s(m=manifest %p, mout=NULL)", __func__, m);
   else
-    DEBUGF(rhizome, "%s(m=manifest[%d](%p), *mout=manifest[%d](%p))", __func__, m->manifest_record_number, m, *mout ? (*mout)->manifest_record_number : -1, *mout);
+    DEBUGF(rhizome, "%s(m=manifest %p, *mout=manifest %p)", __func__, m, *mout);
   if (!m->finalised && !rhizome_manifest_validate(m))
     return RHIZOME_BUNDLE_STATUS_INVALID;
   assert(m->finalised);

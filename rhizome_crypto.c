@@ -220,12 +220,12 @@ void rhizome_authenticate_author(rhizome_manifest *m)
   DEBUGF(rhizome, "authenticate author for bid=%s", m->has_id ? alloca_tohex_rhizome_bid_t(m->cryptoSignPublic) : "(none)");
   switch (m->authorship) {
     case ANONYMOUS:
-      DEBUGF(rhizome, "   manifest[%d] author unknown", m->manifest_record_number);
+      DEBUGF(rhizome, "   manifest %p author unknown", m);
       rhizome_find_bundle_author_and_secret(m);
       RETURNVOID;
     case AUTHOR_NOT_CHECKED:
     case AUTHOR_LOCAL: {
-	DEBUGF(rhizome, "   manifest[%d] authenticate author=%s", m->manifest_record_number, alloca_tohex_sid_t(m->author));
+	DEBUGF(rhizome, "   manifest %p authenticate author=%s", m, alloca_tohex_sid_t(m->author));
 	size_t rs_len;
 	const unsigned char *rs;
 	enum rhizome_secret_disposition d = find_rhizome_secret(&m->author, &rs_len, &rs);
@@ -283,7 +283,7 @@ void rhizome_authenticate_author(rhizome_manifest *m)
 int rhizome_apply_bundle_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
 {
   IN();
-  DEBUGF(rhizome, "manifest[%d] bsk=%s", m->manifest_record_number, bsk ? alloca_tohex_rhizome_bk_t(*bsk) : "NULL");
+  DEBUGF(rhizome, "manifest %p bsk=%s", m, bsk ? alloca_tohex_rhizome_bk_t(*bsk) : "NULL");
   assert(m->haveSecret == SECRET_UNKNOWN);
   assert(is_all_matching(m->cryptoSignSecret, sizeof m->cryptoSignSecret, 0));
   assert(m->has_id);
@@ -621,7 +621,7 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
     crypto_hash_sha512(hash, raw_key, sizeof(raw_key));
   }
   bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
-  DEBUGF(rhizome_manifest, "SET manifest[%d].payloadKey = %s", m->manifest_record_number, alloca_tohex(m->payloadKey, sizeof m->payloadKey));
+  DEBUGF(rhizome_manifest, "SET manifest %p payloadKey = %s", m, alloca_tohex(m->payloadKey, sizeof m->payloadKey));
 
   // journal bundles must always have the same nonce, regardless of version.
   // otherwise, generate nonce from version#bundle id#version;
@@ -633,7 +633,7 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
   DEBUGF(rhizome, "derived payload nonce from bid=%s version=%"PRIu64, alloca_tohex_sid_t(m->cryptoSignPublic), nonce_version);
   crypto_hash_sha512(hash, raw_nonce, sizeof(raw_nonce));
   bcopy(hash, m->payloadNonce, sizeof(m->payloadNonce));
-  DEBUGF(rhizome_manifest, "SET manifest[%d].payloadNonce = %s", m->manifest_record_number, alloca_tohex(m->payloadNonce, sizeof m->payloadNonce));
+  DEBUGF(rhizome_manifest, "SET manifest %p payloadNonce = %s", m, alloca_tohex(m->payloadNonce, sizeof m->payloadNonce));
 
   return 1;
 }
