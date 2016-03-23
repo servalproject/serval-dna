@@ -297,7 +297,7 @@ struct cf_om_iterator {
 void cf_om_iter_start(struct cf_om_iterator *, const struct cf_om_node *);
 int cf_om_iter_next(struct cf_om_iterator *);
 
-struct cf_om_node *cf_om_root;
+extern struct cf_om_node *cf_om_root;
 int cf_om_load(void);
 int cf_om_reload(void);
 int cf_om_save(void);
