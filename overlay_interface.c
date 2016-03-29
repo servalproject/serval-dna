@@ -215,6 +215,8 @@ overlay_bind_socket(const struct socket_address *addr){
   
   if (socket_bind(fd, addr))
     goto error;
+    
+  set_nonblock(fd);
   
   return fd;
   
@@ -1070,7 +1072,6 @@ int overlay_broadcast_ensemble(struct network_destination *destination, struct o
 	  return -1;
 	}
       }
-      set_block(interface->alarm.poll.fd);
       ob_free(buffer);
       return 0;
     }

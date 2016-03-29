@@ -62,7 +62,6 @@ static void process_command(char *line, struct cli_schema *cli_commands){
 
 static void read_lines(struct sched_ent *alarm){
   struct command_state *state=(struct command_state *)alarm;
-  set_nonblock(alarm->poll.fd);
   ssize_t bytes = read(alarm->poll.fd, state->line_buff + state->line_pos, sizeof(state->line_buff) - state->line_pos);
   if (bytes<=0){
     // EOF?
@@ -70,7 +69,6 @@ static void read_lines(struct sched_ent *alarm){
     alarm->poll.fd=-1;
     return;
   }
-  set_block(alarm->poll.fd);
   size_t i = state->line_pos;
   size_t processed=0;
   state->line_pos+=bytes;

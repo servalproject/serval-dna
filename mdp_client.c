@@ -216,9 +216,7 @@ int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp, int flags, int time
   if (make_local_sockaddr(&addr, "mdp.socket") == -1)
     return WHY("Failed to make socket address");
   // Send to that socket
-  set_nonblock(mdp_sockfd);
   ssize_t result = sendto(mdp_sockfd, mdp, (size_t)len, 0, &addr.addr, addr.addrlen);
-  set_block(mdp_sockfd);
   if ((size_t)result != (size_t)len) {
     if (result == -1)
       WHYF_perror("sendto(fd=%d,len=%zu,addr=%s)", mdp_sockfd, (size_t)len, alloca_socket_address(&addr));
@@ -322,10 +320,8 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, mdp_port_t port, in
   recvaddr.addrlen = sizeof recvaddr.store;
   ssize_t len;
   mdp->packetTypeAndFlags = 0;
-  set_nonblock(mdp_sockfd);
 
   len = recv_message(mdp_sockfd, &recvaddr, ttl, (unsigned char *)mdp, sizeof(overlay_mdp_frame));
-  set_block(mdp_sockfd);
   if (len <= 0)
     return -1; // no packet received
 

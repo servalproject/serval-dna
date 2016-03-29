@@ -243,6 +243,7 @@ void httpd_server_poll(struct sched_ent *alarm)
       if (errno && errno != EAGAIN)
 	WARN_perror("accept");
     } else {
+      set_nonblock(sock);
       ++http_request_uuid_counter;
       strbuf_sprintf(&log_context, "httpd/%u", http_request_uuid_counter);
       struct sockaddr_in *peerip=NULL;

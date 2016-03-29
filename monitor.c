@@ -662,10 +662,7 @@ int monitor_tell_clients(char *msg, int msglen, int mask)
   for(i=monitor_socket_count -1;i>=0;i--) {
     if (monitor_sockets[i].flags & mask) {
       // DEBUG("Writing AUDIOPACKET to client");
-      if ( set_nonblock(monitor_sockets[i].alarm.poll.fd) == -1
-	|| write_all_nonblock(monitor_sockets[i].alarm.poll.fd, msg, msglen) == -1
-	|| set_block(monitor_sockets[i].alarm.poll.fd) == -1
-      ) {
+      if ( write_all_nonblock(monitor_sockets[i].alarm.poll.fd, msg, msglen) == -1) {
 	INFOF("Tearing down monitor client #%d", i);
 	monitor_close(&monitor_sockets[i]);
       }

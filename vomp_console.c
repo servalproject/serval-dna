@@ -396,6 +396,7 @@ static int app_vomp_console(const struct cli_parsed *parsed, struct cli_context 
   monitor_client_writeline(monitor_alarm.poll.fd, "monitor vomp %d\n",
 			   VOMP_CODEC_TEXT);
   
+  set_nonblock(STDIN_FILENO);
   set_nonblock(monitor_alarm.poll.fd);
   
   watch(&monitor_alarm);
