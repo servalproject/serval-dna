@@ -301,8 +301,8 @@ int cf_cmp_int32_rs232baudrate(const int32_t *a, const int32_t *b)
 static int cf_fmt_int32(const char **textp, const int32_t *intp)
 {
   char buf[12];
-  sprintf(buf, "%d", *intp);
-  *textp = str_edup(buf);
+  int n = sprintf(buf, "%d", *intp);
+  *textp = strn_edup(buf, n);
   return CFOK;
 }
 
@@ -314,8 +314,8 @@ int cf_cmp_int32(const int32_t *a, const int32_t *b)
 static int cf_fmt_uint32(const char **textp, const uint32_t *uintp)
 {
   char buf[12];
-  sprintf(buf, "%u", *uintp);
-  *textp = str_edup(buf);
+  int n = sprintf(buf, "%u", *uintp);
+  *textp = strn_edup(buf, n);
   return CFOK;
 }
 
@@ -491,8 +491,8 @@ int cf_opt_ushort(unsigned short *ushortp, const char *text)
 int cf_fmt_ushort(const char **textp, const unsigned short *ushortp)
 {
   char buf[12];
-  sprintf(buf, "%u", (unsigned int) *ushortp);
-  *textp = str_edup(buf);
+  int n=sprintf(buf, "%u", (unsigned int) *ushortp);
+  *textp = strn_edup(buf, n);
   return CFOK;
 }
 
@@ -602,8 +602,8 @@ int cf_opt_uint16(uint16_t *uintp, const char *text)
 int cf_fmt_uint16(const char **textp, const uint16_t *uintp)
 {
   char buf[12];
-  sprintf(buf, "%u", (unsigned int) *uintp);
-  *textp = str_edup(buf);
+  int n = sprintf(buf, "%u", (unsigned int) *uintp);
+  *textp = strn_edup(buf, n);
   return CFOK;
 }
 
