@@ -1361,7 +1361,8 @@ int rhizome_store_manifest(rhizome_manifest *m)
 	  alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
 	  m->version
 	);
-    CALL_TRIGGER(bundle_add, m);
+    if (serverMode)
+      CALL_TRIGGER(bundle_add, m);
     return 0;
   }
 rollback:
