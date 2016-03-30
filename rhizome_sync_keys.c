@@ -184,7 +184,8 @@ static void sync_send_peer(struct rhizome_sync_keys *sync_state)
   // so we will still request a high rank item even if there is a low ranked item being received
   struct transfers **ptr = &sync_state->queue;
   size_t requested_bytes = 0;
-  
+  time_ms_t now = gettime_ms();
+
   while((*ptr) && msp_can_send(sync_state->connection) && requested_bytes < MAX_REQUEST_BYTES){
     struct transfers *msg = *ptr;
     if (msg->state == STATE_RECV_PAYLOAD){
@@ -328,6 +329,11 @@ static void sync_send_peer(struct rhizome_sync_keys *sync_state)
       msp_send_packet(sync_state->connection, ob_ptr(payload), ob_position(payload));
     ob_free(payload);
   }
+
+  if (now - msp_last_packet(sync_state->connection) > 5000){
+    DEBUGF(rhizome_sync_keys, "Closing idle connection");
+    msp_shutdown_stream(sync_state->connection);
+  }
 }
 
 DEFINE_ALARM(sync_send);
@@ -351,9 +357,24 @@ void sync_send(struct sched_ent *alarm)
     struct msp_server_state *connection = msp_next_closed(&iterator);
     if (!connection)
       break;
+    
     struct subscriber *peer = msp_remote_peer(connection);
+    struct rhizome_sync_keys *sync_state = get_peer_sync_state(peer);
+    
     DEBUGF(rhizome_sync_keys, "Connection closed %s", alloca_tohex_sid_t(peer->sid));
-    // TODO if the msp connection breaks before sync complete, free the full sync state
+    
+    // drop all transfer records
+    while(sync_state->queue){
+      struct transfers *msg = sync_state->queue;
+      sync_state->queue = msg->next;
+      clear_transfer(msg);
+      free(msg);
+    }
+    
+    sync_state->connection = NULL;
+    // eg connection timeout; drop all sync state
+    if (msp_get_error(connection))
+      sync_free_peer_state(sync_tree, peer);
   }
   
   time_ms_t next_action = msp_iterator_close(&iterator);
@@ -757,8 +778,8 @@ static int sync_keys_recv(struct internal_mdp_header *header, struct overlay_buf
 	if (!packet)
 	  break;
 	struct overlay_buffer *recv_payload = msp_unpack(connection_state, packet);
-	
-	process_transfer_message(sync_state, recv_payload);
+	if (recv_payload)
+	  process_transfer_message(sync_state, recv_payload);
 	msp_consumed(connection_state, packet, recv_payload);
       }
       
@@ -774,7 +795,7 @@ static int sync_keys_recv(struct internal_mdp_header *header, struct overlay_buf
   return 0;
 }
 
-static void sync_neighbour_changed(struct subscriber *UNUSED(neighbour), uint8_t UNUSED(found), unsigned count)
+static void sync_neighbour_changed(struct subscriber *neighbour, uint8_t found, unsigned count)
 {
   struct sched_ent *alarm = &ALARM_STRUCT(sync_send_keys);
   
@@ -788,7 +809,13 @@ static void sync_neighbour_changed(struct subscriber *UNUSED(neighbour), uint8_t
     DEBUG(rhizome_sync_keys,"Stop queueing messages");
     RESCHEDULE(alarm, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
   }
-  // nuke sync state for this peer now?
+  
+  if (!found){
+    struct rhizome_sync_keys *sync_state = get_peer_sync_state(neighbour);
+    // if there's no connection, there shouldn't be any items in the transfer queue
+    if (sync_state->connection)
+      msp_stop_stream(sync_state->connection);
+  }
 }
 DEFINE_TRIGGER(nbr_change, sync_neighbour_changed);
 

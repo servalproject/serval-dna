@@ -19,9 +19,12 @@ struct msp_server_state * msp_find_and_process(struct msp_server_state **root, c
 struct msp_packet *msp_recv_next(struct msp_server_state *state);
 struct overlay_buffer *msp_unpack(struct msp_server_state *state, struct msp_packet *packet);
 void msp_consumed(struct msp_server_state *state, struct msp_packet *packet, struct overlay_buffer *payload);
+
 time_ms_t msp_next_action(struct msp_server_state *state);
+time_ms_t msp_last_packet(struct msp_server_state *state);
 struct subscriber * msp_remote_peer(struct msp_server_state *state);
 int msp_can_send(struct msp_server_state *state);
+int msp_get_error(struct msp_server_state *state);
 
 int msp_iterator_open(struct msp_server_state **root, struct msp_iterator *iterator);
 struct msp_server_state * msp_process_next(struct msp_iterator *iterator);
@@ -30,5 +33,6 @@ time_ms_t msp_iterator_close(struct msp_iterator *iterator);
 
 int msp_send_packet(struct msp_server_state *state, const uint8_t *payload, size_t len);
 int msp_shutdown_stream(struct msp_server_state *state);
+void msp_stop_stream(struct msp_server_state *state);
 
 #endif

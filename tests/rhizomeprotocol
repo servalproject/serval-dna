@@ -853,7 +853,7 @@ setup_ManyFiles() {
    bundlesC=()
    bundlesD=()
 
-   for i in `seq 1 5`
+   for i in `seq 1 10`
    do
       tfw_log "Adding common file-$i"
       tfw_nolog set_instance +A
@@ -870,7 +870,7 @@ setup_ManyFiles() {
    do
       eval "bundles$i=()"
       set_instance +$i
-      for j in `seq 1 3`
+      for j in `seq 1 10`
       do
          tfw_log "Adding file$i-$j"
          create_file file$i-$j $(( $j * 500 ))
@@ -885,7 +885,7 @@ setup_ManyFiles() {
 }
 
 test_ManyFiles() {
-   wait_until --timeout=15 bundle_received_by \
+   wait_until --timeout=30 bundle_received_by \
 	${bundlesB[*]} ${bundlesC[*]} ${bundlesD[*]} +A \
 	${bundlesA[*]} ${bundlesC[*]} ${bundlesD[*]} +B \
 	${bundlesA[*]} ${bundlesB[*]} ${bundlesD[*]} +C \
@@ -893,5 +893,4 @@ test_ManyFiles() {
 }
 
 runTests "$@"
-
 

@@ -199,6 +199,20 @@ int msp_shutdown_stream(struct msp_server_state *state)
   return 0;
 }
 
+void msp_stop_stream(struct msp_server_state *state)
+{
+  if (state->stream.state & MSP_STATE_STOPPED)
+    return;
+  state->stream.state |= MSP_STATE_STOPPED | MSP_STATE_CLOSED;
+  state->stream.state &= ~MSP_STATE_DATAOUT;
+  free_all_packets(&state->stream.tx);
+
+  uint8_t response = FLAG_STOP;
+  struct overlay_buffer *payload = ob_static(&response, 1);
+  ob_limitsize(payload, 1);
+  send_frame(state, payload);
+}
+
 struct msp_server_state * msp_find_and_process(struct msp_server_state **root, const struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   if (ob_remaining(payload)<1){
@@ -263,9 +277,20 @@ time_ms_t msp_next_action(struct msp_server_state *state)
   return state->stream.next_action;
 }
 
+time_ms_t msp_last_packet(struct msp_server_state *state)
+{
+  return state->stream.rx.last_packet > state->stream.tx.last_packet ? state->stream.rx.last_packet : state->stream.tx.last_packet;
+}
+
+
 struct subscriber * msp_remote_peer(struct msp_server_state *state)
 {
   return state->remote_sid;
+}
+
+int msp_get_error(struct msp_server_state *state)
+{
+  return (state->stream.state & (MSP_STATE_ERROR|MSP_STATE_STOPPED)) ? 1 : 0;
 }
 
 int msp_can_send(struct msp_server_state *state)
