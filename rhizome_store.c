@@ -609,23 +609,29 @@ int rhizome_write_buffer(struct rhizome_write *write_state, uint8_t *buffer, siz
 /* If file_length is known, then expects file to be at least file_length in size, ignoring anything
  * longer than that.  Returns 0 if successful, -1 if error (logged).
  */
-int rhizome_write_file(struct rhizome_write *write, const char *filename)
+int rhizome_write_file(struct rhizome_write *write, const char *filename, off_t offset, uint64_t length)
 {
   int fd = open(filename, O_RDONLY);
   if (fd == -1)
     return WHYF_perror("open(%s,O_RDONLY)", alloca_str_toprint(filename));
   unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];
   int ret=0;
-  while (write->file_length == RHIZOME_SIZE_UNSET || write->file_offset < write->file_length) {
+  if (offset){
+    if (lseek(fd, offset, SEEK_SET)==-1)
+      return WHYF_perror("lseek(%d,%zu,SEEK_SET)", fd, (unsigned long long)offset);
+  }
+  if (length == RHIZOME_SIZE_UNSET || length > write->file_length)
+    length = write->file_length;
+  while (length == RHIZOME_SIZE_UNSET || write->file_offset < length) {
     size_t size = sizeof buffer;
-    if (write->file_length != RHIZOME_SIZE_UNSET && write->file_offset + size > write->file_length)
-      size = write->file_length - write->file_offset;
+    if (length != RHIZOME_SIZE_UNSET && write->file_offset + size > length)
+      size = length - write->file_offset;
     ssize_t r = read(fd, buffer, size);
     if (r == -1) {
       ret = WHYF_perror("read(%d,%p,%zu)", fd, buffer, size);
       break;
     }
-    if (write->file_length != RHIZOME_SIZE_UNSET && (size_t) r != size) {
+    if (length != RHIZOME_SIZE_UNSET && (size_t) r != size) {
       ret = WHYF("file truncated - read(%d,%p,%zu) returned %zu", fd, buffer, size, (size_t) r);
       break;
     }
@@ -847,7 +853,7 @@ enum rhizome_payload_status rhizome_import_payload_from_file(rhizome_manifest *m
     return status;
   
   // file payload is not in the store yet
-  if (rhizome_write_file(&write, filepath)){
+  if (rhizome_write_file(&write, filepath, 0, RHIZOME_SIZE_UNSET)){
     rhizome_fail_write(&write);
     return RHIZOME_PAYLOAD_STATUS_ERROR;
   }
@@ -971,7 +977,7 @@ enum rhizome_payload_status rhizome_store_payload_file(rhizome_manifest *m, cons
   }
   if (!status_ok)
     FATALF("rhizome_write_open_manifest() returned status = %d", status);
-  if (rhizome_write_file(&write, filepath) == -1)
+  if (rhizome_write_file(&write, filepath, 0, RHIZOME_SIZE_UNSET) == -1)
     status = RHIZOME_PAYLOAD_STATUS_ERROR;
   else
     status = rhizome_finish_write(&write);
@@ -1382,7 +1388,7 @@ static int write_file(struct rhizome_read *read, const char *filepath){
   while((ret=rhizome_read(read, buffer, sizeof(buffer)))>0){
     if (fd!=-1){
       if (write(fd,buffer,ret)!=ret) {
-	ret = WHY("Failed to write data to file");
+	ret = WHY_perror("Failed to write data to file");
 	break;
       }
     }
@@ -1677,7 +1683,7 @@ enum rhizome_payload_status rhizome_append_journal_file(rhizome_manifest *m, uin
   enum rhizome_payload_status status = rhizome_write_open_journal(&write, m, advance_by, stat.st_size);
   if (status != RHIZOME_PAYLOAD_STATUS_NEW)
     return status;
-  if (stat.st_size != 0 && rhizome_write_file(&write, filename) == -1)
+  if (stat.st_size != 0 && rhizome_write_file(&write, filename, 0, RHIZOME_SIZE_UNSET) == -1)
     status = RHIZOME_PAYLOAD_STATUS_ERROR;
   else
     status = rhizome_finish_write(&write);

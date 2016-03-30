@@ -340,87 +340,184 @@ error:
  * containing the payload.  The work is all done by rhizome_bundle_import() and
  * rhizome_store_manifest().
  */
-enum rhizome_bundle_status rhizome_bundle_import_files(rhizome_manifest *m, rhizome_manifest **mout, const char *manifest_path, const char *filepath)
+enum rhizome_bundle_status rhizome_bundle_import_files(rhizome_manifest *m, rhizome_manifest **mout, const char *manifest_path, const char *filepath, int zip_comment)
 {
-  DEBUGF(rhizome, "(manifest_path=%s, filepath=%s)",
+  DEBUGF(rhizome, "(manifest_path=%s, filepath=%s, zip_comment=%d)",
 	 manifest_path ? alloca_str_toprint(manifest_path) : "NULL",
-	 filepath ? alloca_str_toprint(filepath) : "NULL");
+	 filepath ? alloca_str_toprint(filepath) : "NULL",
+	 zip_comment);
   
-  size_t buffer_len = 0;
-  int ret = 0;
-  
-  // manifest has been appended to the end of the file.
-  if (strcmp(manifest_path, filepath)==0){
-    unsigned char marker[4];
-    FILE *f = fopen(filepath, "r");
-    
-    if (f == NULL)
-      return WHYF_perror("Could not open manifest file %s for reading.", filepath);
-    if (fseek(f, -sizeof(marker), SEEK_END))
-      ret=WHY_perror("Unable to seek to end of file");
-    if (ret==0){
-      ret = fread(marker, 1, sizeof(marker), f);
-      if (ret==sizeof(marker))
-	ret=0;
-      else
-	ret=WHY_perror("Unable to read end of manifest marker");
-    }
-    if (ret==0){
-      if (marker[2]!=0x41 || marker[3]!=0x10)
-	ret=WHYF("Expected 0x4110 marker at end of file");
-    }
-    if (ret==0){
-      buffer_len = read_uint16(marker);
-      if (buffer_len < 1 || buffer_len > MAX_MANIFEST_BYTES)
-	ret=WHYF("Invalid manifest length %zu", buffer_len);
-    }
-    if (ret==0){
-      if (fseek(f, -(buffer_len+sizeof(marker)), SEEK_END))
-	ret=WHY_perror("Unable to seek to end of file");
-    }
-    if (ret == 0 && fread(m->manifestdata, buffer_len, 1, f) != 1) {
-      if (ferror(f))
-	ret = WHYF("fread(%p,%zu,1,%s) error", m->manifestdata, buffer_len, alloca_str_toprint(filepath));
-      else if (feof(f))
-	ret = WHYF("fread(%p,%zu,1,%s) hit end of file", m->manifestdata, buffer_len, alloca_str_toprint(filepath));
-    }
-    fclose(f);
-  } else {
-    ssize_t size = read_whole_file(manifest_path, m->manifestdata, sizeof m->manifestdata);
-    if (size == -1)
-      ret = -1;
-    buffer_len = (size_t) size;
+  enum rhizome_bundle_status ret;
+  int single_file = strcmp(manifest_path, filepath)==0;
+
+  int fd = open(manifest_path, O_RDONLY);
+  if (fd == -1)
+    return WHYF_perror("Could not open manifest file %s for reading.", filepath);
+
+  off_t file_len = lseek(fd, 0, SEEK_END);
+  if (file_len==-1){
+    ret=WHY_perror("Unable to determine file length");
+    goto end;
   }
-  if (ret)
-    return ret;
-  m->manifest_all_bytes = buffer_len;
+
+  uint8_t buff[MAX_MANIFEST_BYTES + 22];
+  off_t read_len = sizeof buff;
+
+  if (read_len > file_len)
+    read_len = file_len;
+
+  if (lseek(fd, -read_len, SEEK_END)==-1){
+    ret=WHYF_perror("lseek(%d, %d, SEEK_END) - Failed to seek to near the end of %s, len %u", fd, (int)-read_len, manifest_path, (int)file_len);
+    goto end;
+  }
+
+  if (read(fd, buff, read_len)!=read_len){
+    ret=WHYF_perror("Failed to read %u bytes of the manifest", (int)read_len);
+    goto end;
+  }
+  uint8_t *manifest_ptr;
+
+  // manifest has been appended to the end of the file.
+  if (single_file){
+    if (zip_comment){
+      // scan backwards for EOCD marker 0x504b0506
+      uint8_t *EOCD = &buff[read_len - 22];
+      while(EOCD){
+	if (EOCD[0]==0x50 && EOCD[1]==0x4b && EOCD[2]==0x05 && EOCD[3]==0x06)
+	  break;
+	EOCD--;
+      }
+
+      if (!EOCD){
+	ret=WHY("Expected zip EOCD marker 0x504b0506 near end of file");
+	goto end;
+      }
+
+      m->manifest_all_bytes = EOCD[20] | (EOCD[21]<<8);
+      manifest_ptr = &EOCD[22];
+
+    }else{
+      if (buff[read_len-2]!=0x41 || buff[read_len-1]!=0x10){
+	ret=WHYF("Expected 0x4110 marker at end of file");
+	goto end;
+      }
+      m->manifest_all_bytes = read_uint16(&buff[read_len-4]);
+      manifest_ptr = &buff[read_len - m->manifest_all_bytes - 4];
+    }
+  }else{
+    manifest_ptr = buff;
+    m->manifest_all_bytes = read_len;
+  }
+
+  if (m->manifest_all_bytes < 1 || m->manifest_all_bytes > MAX_MANIFEST_BYTES){
+    ret=WHYF("Invalid manifest length %zu", m->manifest_all_bytes);
+    goto end;
+  }
+  if (manifest_ptr < buff || manifest_ptr + m->manifest_all_bytes > buff + read_len){
+    ret=WHY("Invalid manifest offset");
+    goto end;
+  }
+  bcopy(manifest_ptr, m->manifestdata, m->manifest_all_bytes);
+
   if (   rhizome_manifest_parse(m) == -1
       || !rhizome_manifest_validate(m)
       || !rhizome_manifest_verify(m)
-  )
-    return RHIZOME_BUNDLE_STATUS_INVALID;
-  enum rhizome_bundle_status status = rhizome_manifest_check_stored(m, mout);
-  if (status != RHIZOME_BUNDLE_STATUS_NEW)
-    return status;
-  enum rhizome_payload_status pstatus = rhizome_import_payload_from_file(m, filepath);
+  ){
+    ret = RHIZOME_BUNDLE_STATUS_INVALID;
+    goto end;
+  }
+
+  ret = rhizome_manifest_check_stored(m, mout);
+  if (ret != RHIZOME_BUNDLE_STATUS_NEW)
+    goto end;
+
+  enum rhizome_payload_status pstatus = RHIZOME_PAYLOAD_STATUS_EMPTY;
+  if (m->filesize > 0){
+
+    if (single_file){
+      if (lseek(fd, 0, SEEK_SET)==-1){
+	ret=WHY_perror("Unable to seek to start of file");
+	goto end;
+      }
+    }else{
+      close(fd);
+      fd = open(filepath, O_RDONLY);
+      if (fd==-1)
+	return WHYF_perror("Could not open payload file %s for reading.", filepath);
+    }
+
+    /* Import the file, checking the hash as we go */
+    struct rhizome_write write;
+    bzero(&write, sizeof(write));
+
+    pstatus = rhizome_open_write(&write, &m->filehash, m->filesize);
+    if (pstatus == RHIZOME_PAYLOAD_STATUS_NEW){
+      off_t read_len = m->filesize;
+      uint8_t payload_buffer[RHIZOME_CRYPT_PAGE_SIZE];
+      if (zip_comment)
+	read_len -=2;
+      while(write.file_offset < (uint64_t)read_len){
+	size_t size = sizeof payload_buffer;
+	if (write.file_offset + size > (uint64_t)read_len)
+	  size = read_len - write.file_offset;
+	ssize_t r = read(fd, payload_buffer, size);
+	if (r == -1) {
+	  ret = WHYF_perror("read(%d,%p,%zu)", fd, payload_buffer, size);
+	  rhizome_fail_write(&write);
+	  goto end;
+	}
+	if ((size_t) r != size) {
+	  ret = WHYF("file truncated - read(%d,%p,%zu) returned %zu", fd, payload_buffer, size, (size_t) r);
+	  rhizome_fail_write(&write);
+	  goto end;
+	}
+	if (r && rhizome_write_buffer(&write, payload_buffer, (size_t) r)) {
+	  ret = -1;
+	  rhizome_fail_write(&write);
+	  goto end;
+	}
+      }
+
+      if (zip_comment){
+	uint8_t comment_len[2] = {0,0};
+	if (rhizome_write_buffer(&write, comment_len, sizeof comment_len)){
+	  ret = -1;
+	  rhizome_fail_write(&write);
+	  goto end;
+	}
+      }
+
+      pstatus = rhizome_finish_write(&write);
+    }
+
+  }
+
   switch (pstatus) {
     case RHIZOME_PAYLOAD_STATUS_EMPTY:
     case RHIZOME_PAYLOAD_STATUS_STORED:
     case RHIZOME_PAYLOAD_STATUS_NEW:
       if (rhizome_store_manifest(m) == -1)
-	return -1;
-      return status;
+	ret = -1;
+      break;
     case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
     case RHIZOME_PAYLOAD_STATUS_EVICTED:
-      return RHIZOME_BUNDLE_STATUS_NO_ROOM;
+      ret = RHIZOME_BUNDLE_STATUS_NO_ROOM;
+      break;
     case RHIZOME_PAYLOAD_STATUS_ERROR:
     case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
-      return -1;
+      ret = -1;
+      break;
     case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
     case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
-      return RHIZOME_BUNDLE_STATUS_INCONSISTENT;
+      ret = RHIZOME_BUNDLE_STATUS_INCONSISTENT;
+      break;
+    default:
+      FATALF("rhizome_import_payload_from_file() returned status = %d", pstatus);
   }
-  FATALF("rhizome_import_payload_from_file() returned status = %d", pstatus);
+
+end:
+  close(fd);
+  return ret;
 }
 
 /* Sets the bundle key "BK" field of a manifest.  Returns 1 if the field was set, 0 if not.

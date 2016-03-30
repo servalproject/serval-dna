@@ -17,6 +17,7 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#include <fcntl.h>
 #include "cli.h"
 #include "conf.h"
 #include "keyring.h"
@@ -101,9 +102,59 @@ static int app_rhizome_hash_file(const struct cli_parsed *parsed, struct cli_con
   return 0;
 }
 
+static int append_manifest_zip_comment(const char *filepath, rhizome_manifest *m)
+{
+  int fd = open(filepath, O_RDWR);
+  if (fd==-1)
+    return WHYF_perror("open(%s,O_RDWR)", alloca_str_toprint(filepath));
+  int ret=0;
+  uint8_t EOCD[22];
+
+  if (lseek(fd, -(sizeof EOCD), SEEK_END)==-1){
+    ret = WHYF_perror("lseek(%d,%d,SEEK_END)", fd, -(sizeof EOCD));
+    goto end;
+  }
+
+  if (read(fd, EOCD, sizeof EOCD)==-1){
+    ret = WHYF_perror("read(%d,%p,%zu)", fd, EOCD, sizeof EOCD);
+    goto end;
+  }
+
+  if(EOCD[20] || EOCD[21]){
+    ret = WHYF("Expected 0x00 0x00 at end of file, found 0x%02x 0x%02x", EOCD[20], EOCD[21]);
+    goto end;
+  }
+
+  if(EOCD[0]!=0x50 || EOCD[1]!=0x4b || EOCD[2]!=0x05 || EOCD[3]!=0x06){
+    ret = WHYF("Expected zip EOCD marker 0x504b0506 near end of file");
+    goto end;
+  }
+
+  if (lseek(fd, -2, SEEK_END)==-1){
+    ret = WHYF_perror("lseek(%d,-2,SEEK_END)", fd);
+    goto end;
+  }
+
+  uint8_t len[2];
+  len[0]=m->manifest_all_bytes & 0xFF;
+  len[1]=(m->manifest_all_bytes >> 8)& 0xFF;
+  if (write(fd, len, sizeof len)==-1){
+    ret = WHYF_perror("write(%d,%p,2)", fd, len);
+    goto end;
+  }
+  if (write(fd, m->manifestdata, m->manifest_all_bytes)==-1){
+    ret = WHYF_perror("write(%d,%p,%d)", fd, m->manifestdata, m->manifest_all_bytes);
+    goto end;
+  }
+
+end:
+  close(fd);
+  return ret;
+}
+
 DEFINE_CMD(app_rhizome_add_file, 0,
   "Add a file to Rhizome and optionally write its manifest to the given path",
-  "rhizome","add","file" KEYRING_PIN_OPTIONS,"[--bundle=<bundleid>]","[--force-new]","<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]","...");
+  "rhizome","add","file" KEYRING_PIN_OPTIONS,"[--zip-comment]","[--bundle=<bundleid>]","[--force-new]","<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]","...");
 DEFINE_CMD(app_rhizome_add_file, 0,
   "Append content to a journal bundle",
   "rhizome", "journal", "append" KEYRING_PIN_OPTIONS, "<author_sid>", "<bundleid>", "<filepath>", "[<bsk>]");
@@ -121,6 +172,7 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
     cli_arg(parsed, "bundleid", &bundleIdHex, cli_optional_bid, "");
   if (cli_arg(parsed, "bsk", &bsktext, cli_optional_bundle_secret_key, NULL) == -1)
     return -1;
+  int zip_comment = 0 == cli_arg(parsed, "--zip-comment", NULL, NULL, NULL);
 
   sid_t authorSid;
   if (!authorSidHex || !*authorSidHex)
@@ -294,6 +346,10 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
     case RHIZOME_BUNDLE_STATUS_OLD:
       assert(mout != NULL);
       cli_put_manifest(context, mout);
+
+      if (zip_comment)
+	append_manifest_zip_comment(filepath, mout);
+
       if (   manifestpath && *manifestpath
 	  && rhizome_write_manifest_file(mout, manifestpath, 0) == -1
       )
@@ -329,20 +385,22 @@ finish:
 
 DEFINE_CMD(app_rhizome_import_bundle, 0,
   "Import a payload/manifest pair into Rhizome",
-  "rhizome","import","bundle","<filepath>","<manifestpath>");
+  "rhizome","import","bundle","[--zip-comment]","<filepath>","<manifestpath>");
 static int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli_context *context)
 {
   DEBUG_cli_parsed(verbose, parsed);
   const char *filepath, *manifestpath;
   cli_arg(parsed, "filepath", &filepath, NULL, "");
   cli_arg(parsed, "manifestpath", &manifestpath, NULL, "");
+  int zip_comment = 0 == cli_arg(parsed, "--zip-comment", NULL, NULL, NULL);
+
   if (rhizome_opendb() == -1)
     return -1;
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     return WHY("Out of manifests.");
   rhizome_manifest *m_out = NULL;
-  enum rhizome_bundle_status status = rhizome_bundle_import_files(m, &m_out, manifestpath, filepath);
+  enum rhizome_bundle_status status = rhizome_bundle_import_files(m, &m_out, manifestpath, filepath, zip_comment);
   switch (status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
       cli_put_manifest(context, m);
@@ -368,7 +426,7 @@ static int app_rhizome_import_bundle(const struct cli_parsed *parsed, struct cli
 
 DEFINE_CMD(app_rhizome_append_manifest, 0,
   "Append a manifest to the end of the file it belongs to.",
-  "rhizome", "append", "manifest", "<filepath>", "<manifestpath>");
+  "rhizome", "append", "manifest", "[--zip-comment]", "<filepath>", "<manifestpath>");
 static int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   DEBUG_cli_parsed(verbose, parsed);
@@ -376,6 +434,8 @@ static int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct c
   if ( cli_arg(parsed, "manifestpath", &manifestpath, NULL, "") == -1
     || cli_arg(parsed, "filepath", &filepath, NULL, "") == -1)
     return -1;
+  int zip_comment = 0 == cli_arg(parsed, "--zip-comment", NULL, NULL, NULL);
+
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     return WHY("Out of manifests.");
@@ -384,8 +444,12 @@ static int app_rhizome_append_manifest(const struct cli_parsed *parsed, struct c
       && rhizome_manifest_validate(m)
       && rhizome_manifest_verify(m)
   ) {
-    if (rhizome_write_manifest_file(m, filepath, 1) != -1)
-      ret = 0;
+    if (zip_comment){
+      append_manifest_zip_comment(filepath, m);
+    }else{
+      if (rhizome_write_manifest_file(m, filepath, 1) != -1)
+	ret = 0;
+    }
   }
   rhizome_manifest_free(m);
   return ret;
@@ -488,7 +552,7 @@ static int app_rhizome_clean(const struct cli_parsed *parsed, struct cli_context
 DEFINE_CMD(app_rhizome_extract, 0,
   "Export a manifest and payload file to the given paths, without decrypting.",
   "rhizome","export","bundle" KEYRING_PIN_OPTIONS,
-  "<manifestid>","[<manifestpath>]","[<filepath>]");
+  "[--zip-comment]","<manifestid>","[<manifestpath>]","[<filepath>]");
 DEFINE_CMD(app_rhizome_extract, 0,
   "Export a manifest from Rhizome and write it to the given path",
   "rhizome","export","manifest" KEYRING_PIN_OPTIONS,
@@ -512,7 +576,8 @@ static int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_conte
     return -1;
   
   int extract = strcasecmp(parsed->args[1], "extract")==0;
-  
+  int zip_comment = 0 == cli_arg(parsed, "--zip-comment", NULL, NULL, NULL);
+
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -577,13 +642,18 @@ static int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_conte
     }
   }
   
+  if (ret==0 && zip_comment && pstatus == RHIZOME_PAYLOAD_STATUS_STORED){
+    if (append_manifest_zip_comment(filepath, m) == -1)
+      ret = -1;
+  }
+
   if (ret==0 && manifestpath && *manifestpath){
     if (strcmp(manifestpath, "-") == 0) {
       // always extract a manifest to stdout, even if writing the file itself failed.
       cli_field_name(context, "manifest", ":");
       cli_write(context, m->manifestdata, m->manifest_all_bytes);
       cli_delim(context, "\n");
-    } else {
+    } else if (!zip_comment) {
       int append = (strcmp(manifestpath, filepath)==0)?1:0;
       // don't write out the manifest if we were asked to append it and writing the file failed.
       if (!append || (pstatus == RHIZOME_PAYLOAD_STATUS_EMPTY || pstatus == RHIZOME_PAYLOAD_STATUS_STORED)) {

@@ -1431,6 +1431,34 @@ test_ImportCombinedBundle() {
    assert diff fileA fileAx
 }
 
+doc_ImportCombinedZipBundle="Create and import combined zip bundle"
+setup_ImportCombinedZipBundle() {
+   # A "combined bundle" is a single file consisting of a payload with its
+   # manifest appended to the end.
+   setup_servald
+   setup_rhizome
+   echo "Hello from A" >fileA
+   zip fileA.zip fileA
+}
+test_ImportCombinedZipBundle() {
+   # Create the combined bundle
+   executeOk_servald rhizome add file --zip-comment $SIDA fileA.zip fileA.manifest
+   extract_manifest_id manifestid fileA.manifest
+   extract_manifest_filehash filehash fileA.manifest
+   extract_manifest_filesize filesize fileA.manifest
+   # Import the combined bundle
+   set_instance +B
+   executeOk_servald rhizome import bundle --zip-comment fileA.zip fileA.zip
+   assertStdoutGrep --matches=1 "^service:file$"
+   assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
+   assertStdoutGrep --matches=1 "^filehash:$filehash\$"
+   assertStdoutGrep --matches=1 "^filesize:$filesize\$"
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=0 fileA.zip
+   executeOk_servald rhizome export bundle --zip-comment $manifestid fileAx.zip fileAx.zip
+   assert diff fileA.zip fileAx.zip
+}
+
 doc_ImportJournal="Import a journal bundle"
 setup_ImportJournal() {
    B_IDENTITY_COUNT=1

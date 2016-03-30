@@ -456,11 +456,27 @@ public class ServalDCommand
 		return result;
 	}
 
+	public static ManifestResult rhizomeImportZipBundle(File payloadFile) throws ServalDFailureException {
+		ManifestResult result = new ManifestResult();
+		result.setResult(command(result, "rhizome", "import", "bundle", "--zip-comment",
+				payloadFile.getAbsolutePath(), payloadFile.getAbsolutePath()));
+		return result;
+	}
+
 	public static ManifestResult rhizomeExtractBundle(BundleId manifestId, File manifestFile, File payloadFile) throws ServalDFailureException{
 		ManifestResult result = new ManifestResult();
 		result.setResult(command(result, "rhizome", "extract", "bundle",
 				manifestId.toHex(),
 				manifestFile == null ? "-" : manifestFile.getAbsolutePath(),
+				payloadFile.getAbsolutePath()));
+		return result;
+	}
+
+	public static ManifestResult rhizomeExportZipBundle(BundleId manifestId, File payloadFile) throws ServalDFailureException{
+		ManifestResult result = new ManifestResult();
+		result.setResult(command(result, "rhizome", "export", "bundle", "--zip-comment",
+				manifestId.toHex(),
+				payloadFile.getAbsolutePath(),
 				payloadFile.getAbsolutePath()));
 		return result;
 	}

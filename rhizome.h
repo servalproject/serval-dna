@@ -501,7 +501,7 @@ struct rhizome_bundle_result rhizome_manifest_add_file(int appending,
                                                        const char *file_path,
                                                        unsigned nassignments,
                                                        const struct rhizome_manifest_field_assignment *assignments);
-int rhizome_bundle_import_files(rhizome_manifest *m, rhizome_manifest **m_out, const char *manifest_path, const char *filepath);
+int rhizome_bundle_import_files(rhizome_manifest *m, rhizome_manifest **m_out, const char *manifest_path, const char *filepath, int zip_files);
 
 int rhizome_manifest_set_name_from_path(rhizome_manifest *m, const char *filepath);
 struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp);
@@ -915,7 +915,7 @@ int rhizome_write_buffer(struct rhizome_write *write_state, uint8_t *buffer, siz
 int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, uint8_t *buffer, size_t data_size);
 enum rhizome_payload_status rhizome_write_open_manifest(struct rhizome_write *write, rhizome_manifest *m);
 enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m, uint64_t advance_by, uint64_t append_size);
-int rhizome_write_file(struct rhizome_write *write, const char *filename);
+int rhizome_write_file(struct rhizome_write *write, const char *filename, off_t offset, uint64_t length);
 void rhizome_fail_write(struct rhizome_write *write);
 enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write);
 enum rhizome_payload_status rhizome_finish_store(struct rhizome_write *write, rhizome_manifest *m, enum rhizome_payload_status status);

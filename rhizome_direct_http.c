@@ -127,7 +127,7 @@ static int rhizome_direct_import_end(struct http_request *hr)
     return 0;
   }
   struct rhizome_bundle_result result = INVALID_RHIZOME_BUNDLE_RESULT;
-  result.status = rhizome_bundle_import_files(m, NULL, manifest_path, payload_path);
+  result.status = rhizome_bundle_import_files(m, NULL, manifest_path, payload_path, 0);
   rhizome_manifest_free(m);
   rhizome_direct_clear_temporary_files(r);
   http_request_rhizome_bundle_status_response(r, result, NULL);
