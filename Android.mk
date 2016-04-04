@@ -18,6 +18,7 @@ SERVALD_LOCAL_CFLAGS = \
 	-g \
 	-Wall -Wno-unused-variable -Wno-unused-value -Werror \
         -DSERVALD_VERSION="\"Android\"" -DSERVALD_COPYRIGHT="\"Android\"" \
+	-DINSTANCE_PATH="\"/data/data/org.servalproject/var/serval-node\"" \
         -DSHELL -DPACKAGE_NAME=\"\" -DPACKAGE_TARNAME=\"\" -DPACKAGE_VERSION=\"\" \
         -DPACKAGE_STRING=\"\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" \
 	-DHAVE_FUNC_ATTRIBUTE_ERROR=1 \
