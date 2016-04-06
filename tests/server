@@ -141,29 +141,6 @@ test_StartTwice() {
    assert_no_servald_processes
 }
 
-doc_RemovePid="Server stops when pid file removed"
-setup_RemovePid() {
-   setup
-   # Set a watchdog alarm to ensure that the daemon wakes regularly, so the
-   # pidfile is checked quickly, otherwise the daemon will wait 30 seconds
-   # before waking itself to check.
-   >watchdog
-   chmod 0550 watchdog
-   executeOk_servald config \
-      set log.console.level debug \
-      set log.console.show_time true \
-      set log.console.show_pid true \
-      set debug.io true \
-      set debug.watchdog on \
-      set server.watchdog.executable "$PWD/watchdog" \
-      set server.watchdog.interval_ms 100
-   start_servald_server
-}
-test_RemovePid() {
-   rm $instance_servald_pidfile
-   wait_until ! kill -0 $servald_pid 2>/dev/null
-}
-
 doc_MonitorQuit="Server stops due to monitor client disconnection"
 setup_MonitorQuit() {
    setup
