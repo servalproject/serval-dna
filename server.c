@@ -157,9 +157,9 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_server(
   
   int pid = server_pid();
   if (pid < 0)
-    return -1;
+    return Throw(env, "java/lang/IllegalStateException", "Failed to read server pid "+pid);
   if (pid>0)
-    return 1;
+    return Throw(env, "java/lang/IllegalStateException", "Server already running on pid "+pid);
   
   cf_reload_strict();
   
@@ -192,20 +192,26 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_server(
     }
   }
   
-  if (keyring_seed(keyring) == -1)
+  if (keyring_seed(keyring) == -1){
+    Throw(env, "java/lang/IllegalStateException", "Failed to seed keyring");
     goto end;
+  }
   
-  if (server_env)
+  if (server_env){
+    Throw(env, "java/lang/IllegalStateException", "Server java env variable already set");
     goto end;
+  }
   
   server_env = env;
   JniCallback = (*env)->NewGlobalRef(env, callback);
   
   ret = server_bind();
   
-  if (ret==-1)
+  if (ret==-1){
+    Throw(env, "java/lang/IllegalStateException", "Failed to bind sockets");
     goto end;
-  
+  }
+
   {
     jstring str = (jstring)(*env)->NewStringUTF(env, instance_path());
     (*env)->CallVoidMethod(env, callback, started, str, getpid(), mdp_loopback_port, httpd_server_port);
