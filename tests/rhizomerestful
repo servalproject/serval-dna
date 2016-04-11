@@ -655,6 +655,29 @@ test_RhizomeInsert() {
    done
 }
 
+doc_RhizomeInsertBoundaries="HTTP RESTful insert of various payload lengths"
+setup_RhizomeInsertBoundaries() {
+   setup
+}
+test_RhizomeInsertBoundaries() {
+   for n in `seq 1 10`
+   do
+      create_file file$n $((7200 + ($n * 50)))
+      >manifest$n
+      execute curl \
+            --silent --show-error --write-out '%{http_code}' \
+            --output file$n.manifest \
+            --dump-header http.header$n \
+            --basic --user harry:potter \
+            --form "manifest=@manifest$n;type=rhizome/manifest;format=\"text+binarysig\"" \
+            --form "payload=@file$n" \
+            "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+      tfw_cat http.header$n file$n.manifest
+      assertExitStatus == 0
+      assertStdoutIs 201
+   done
+}
+
 doc_RhizomeInsertAnon="HTTP RESTful update anonymous Rhizome bundle"
 setup_RhizomeInsertAnon() {
    setup

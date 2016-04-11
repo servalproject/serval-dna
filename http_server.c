@@ -1221,12 +1221,14 @@ static int http_request_reject_content(struct http_request *r)
  */
 static int _skip_mime_boundary(struct http_request *r)
 {
-  if (!_skip_literal(r, "--") || !_skip_literal(r, r->request_header.content_type.multipart_boundary))
-    return 0;
-  if (_skip_literal(r, "--") && _skip_crlf(r))
-    return 2;
-  if (_skip_crlf(r))
-    return 1;
+  if (_skip_literal(r, "--") && _skip_literal(r, r->request_header.content_type.multipart_boundary)){
+    char *ptr = r->cursor;
+    if (_skip_literal(r, "--") && _skip_crlf(r))
+      return 2;
+    r->cursor = ptr;
+    if (_skip_crlf(r))
+      return 1;
+  }
   return 0;
 }
 
@@ -1389,6 +1391,11 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	    _commit(r);
 	    return http_request_form_data_start_part(r, b);
 	  }
+	  // if we hit the end of the buffer in the middle of the mime boundary, rewind to the crlf & wait for more data
+	  if (_run_out(r)){
+	    r->cursor = end_preamble;
+	    break;
+	  }
 	  if (!at_start) {
 	    r->cursor = end_preamble;
 	    _skip_any(r);
@@ -1532,6 +1539,11 @@ static int http_request_parse_body_form_data(struct http_request *r)
 	  // that way).
 	  _INVOKE_HANDLER_BUF_LEN(handle_mime_body, start, end_body); // excluding CRLF at end
 	  return http_request_form_data_start_part(r, b);
+	}
+	// if we hit the end of the buffer in the middle of the mime boundary, rewind to the crlf & wait for more data
+	if (_run_out(r)){
+	  r->cursor = end_body;
+	  break;
 	}
       }
       if (_end_of_content(r)) {
