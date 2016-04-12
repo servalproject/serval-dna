@@ -157,9 +157,9 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_server(
   
   int pid = server_pid();
   if (pid < 0)
-    return Throw(env, "java/lang/IllegalStateException", "Failed to read server pid "+pid);
+    return Throw(env, "java/lang/IllegalStateException", "Failed to read server pid ");
   if (pid>0)
-    return Throw(env, "java/lang/IllegalStateException", "Server already running on pid "+pid);
+    return Throw(env, "java/lang/IllegalStateException", "Server already running on pid ");
   
   cf_reload_strict();
   
