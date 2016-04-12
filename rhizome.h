@@ -48,12 +48,6 @@ extern time_ms_t rhizome_voice_timeout;
 
 #define RHIZOME_IDLE_TIMEOUT 20000
 
-typedef struct rhizome_signature {
-  unsigned char signature[crypto_sign_edwards25519sha512batch_BYTES
-			  +crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES+1];
-  size_t signatureLength;
-} rhizome_signature;
-
 #define RHIZOME_BAR_COMPARE_BYTES 31
 #define RHIZOME_BAR_TTL_OFFSET 31
 
@@ -69,7 +63,7 @@ typedef struct rhizome_manifest
    * (aka Manifest ID).
    */
   rhizome_bid_t cryptoSignPublic;
-  unsigned char cryptoSignSecret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
+  unsigned char cryptoSignSecret[crypto_sign_SECRETKEYBYTES];
 
   /* Whether cryptoSignSecret is correct (ie, bundle secret is known)
    */
@@ -186,7 +180,7 @@ typedef struct rhizome_manifest
         PAYLOAD_ENCRYPTED
     } payloadEncryption;
   unsigned char payloadKey[RHIZOME_CRYPT_KEY_BYTES];
-  unsigned char payloadNonce[crypto_stream_xsalsa20_NONCEBYTES];
+  unsigned char payloadNonce[crypto_box_NONCEBYTES];
 
   /* From the "date" field, if present.  The number of milliseconds since 1970
    * when the bundle was last modified.
@@ -519,7 +513,6 @@ enum rhizome_bundle_status rhizome_add_manifest_to_store(rhizome_manifest *m_in,
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount);
 int rhizome_find_privatekey(rhizome_manifest *m);
-int rhizome_sign_hash(rhizome_manifest *m, rhizome_signature *out);
 
 __RHIZOME_INLINE int sqlite_code_ok(int code)
 {
@@ -654,28 +647,20 @@ enum rhizome_secret_disposition {
     IDENTITY_HAS_NO_RHIZOME_SECRET,
 };
 enum rhizome_secret_disposition find_rhizome_secret(const sid_t *authorSidp, size_t *rs_len, const unsigned char **rs);
-int rhizome_bk_xor_stream(
-  const rhizome_bid_t *bidp,
-  const unsigned char *rs,
-  const size_t rs_len,
-  unsigned char *xor_stream,
-  int xor_stream_byte_count);
 int rhizome_bk2secret(
   const rhizome_bid_t *bidp,
   const unsigned char *rs, const size_t rs_len,
   /* The BK need only be the length of the secret half of the secret key */
   const unsigned char bkin[RHIZOME_BUNDLE_KEY_BYTES],
-  unsigned char secret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]
+  unsigned char secret[crypto_sign_SECRETKEYBYTES]
 		      );
 int rhizome_secret2bk(
   const rhizome_bid_t *bidp,
   const unsigned char *rs, const size_t rs_len,
   /* The BK need only be the length of the secret half of the secret key */
   unsigned char bkout[RHIZOME_BUNDLE_KEY_BYTES],
-  const unsigned char secret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]
+  const unsigned char secret[crypto_sign_SECRETKEYBYTES]
 );
-int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
-			       const unsigned char *pk,rhizome_signature *out);
 int rhizome_verify_bundle_privatekey(const unsigned char *sk, const unsigned char *pk);
 int rhizome_queue_ignore_manifest(const unsigned char *bid_prefix, int prefix_len, int timeout);
 int rhizome_ignore_manifest_check(const unsigned char *bid_prefix, int prefix_len);
@@ -749,7 +734,7 @@ struct rhizome_write
   uint8_t crypt;
   
   unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
-  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
+  unsigned char nonce[crypto_box_NONCEBYTES];
 };
 
 struct rhizome_read_buffer{
@@ -774,7 +759,7 @@ struct rhizome_read
   uint8_t crypt;
   rhizome_filehash_t id;
   unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
-  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
+  unsigned char nonce[crypto_box_NONCEBYTES];
 };
 
 int rhizome_received_content(const unsigned char *bidprefix,uint64_t version, 

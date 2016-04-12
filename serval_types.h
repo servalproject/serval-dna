@@ -32,8 +32,8 @@ typedef char bool_t;
 /* Serval ID (aka Subscriber ID)
  */
 
-#define SID_SIZE 32 // == crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
-#define SAS_SIZE 32 // == crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
+#define SID_SIZE 32 // == crypto_sign_PUBLICKEYBYTES
+#define SAS_SIZE 32 // == crypto_sign_PUBLICKEYBYTES
 
 #define SID_STRLEN (SID_SIZE*2)
 

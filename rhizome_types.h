@@ -23,8 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/types.h>
 #include <stdint.h>
 #include <limits.h>
-#include "nacl.h"
-#include "sha2.h"
+#include "sodium.h"
 #include "str.h"
 
 #ifndef __RHIZOME_TYPES_INLINE
@@ -35,13 +34,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 # endif
 #endif
 
-#define RHIZOME_BUNDLE_ID_BYTES         crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
+#define RHIZOME_BUNDLE_ID_BYTES         crypto_sign_PUBLICKEYBYTES
 #define RHIZOME_BUNDLE_ID_STRLEN        (RHIZOME_BUNDLE_ID_BYTES * 2)
-#define RHIZOME_BUNDLE_KEY_BYTES        (crypto_sign_edwards25519sha512batch_SECRETKEYBYTES - crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)
+#define RHIZOME_BUNDLE_KEY_BYTES        (crypto_sign_SECRETKEYBYTES - crypto_sign_PUBLICKEYBYTES)
 #define RHIZOME_BUNDLE_KEY_STRLEN       (RHIZOME_BUNDLE_KEY_BYTES * 2)
 #define RHIZOME_FILEHASH_BYTES          crypto_hash_sha512_BYTES
 #define RHIZOME_FILEHASH_STRLEN         (RHIZOME_FILEHASH_BYTES * 2)
-#define RHIZOME_CRYPT_KEY_BYTES         crypto_stream_xsalsa20_ref_KEYBYTES
+#define RHIZOME_CRYPT_KEY_BYTES         crypto_box_SECRETKEYBYTES
 #define RHIZOME_CRYPT_KEY_STRLEN        (RHIZOME_CRYPT_KEY_BYTES * 2)
 
 #define RHIZOME_PASSPHRASE_MAX_STRLEN   80

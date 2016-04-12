@@ -186,7 +186,10 @@ int rhizome_opendb()
   }
 
   IN();
-  
+
+  if (sodium_init()==-1)
+    RETURN(WHY("Failed to initialise libsodium"));
+
   if (create_rhizome_store_dir() == -1)
     RETURN(-1);
   char dbpath[1024];

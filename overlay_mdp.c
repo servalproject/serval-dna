@@ -408,7 +408,7 @@ static struct overlay_buffer *overlay_mdp_decrypt(struct internal_mdp_header *he
       
   case MDP_FLAG_NO_CRYPT:
     {
-      int len = ob_remaining(payload);
+      size_t len = ob_remaining(payload);
       if (crypto_verify_message(header->source, ob_current_ptr(payload), &len))
 	break;
       
@@ -420,53 +420,39 @@ static struct overlay_buffer *overlay_mdp_decrypt(struct internal_mdp_header *he
       
   case 0:
     {
-      //int nm=crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES;
-      int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
-      int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
-      int cz=crypto_box_curve25519xsalsa20poly1305_BOXZEROBYTES;
-      
       unsigned char *k=keyring_get_nm_bytes(&header->destination->sid, &header->source->sid);
       if (!k){
 	WHY("I don't have the private key required to decrypt that");
 	break;
       }
-      
-      unsigned char *nonce=ob_get_bytes_ptr(payload, nb);
+
+      unsigned char *nonce=ob_get_bytes_ptr(payload, crypto_box_NONCEBYTES);
       if (!nonce){
-	WHYF("Expected %d bytes of nonce", nb);
+	WHYF("Expected %d bytes of nonce", crypto_box_NONCEBYTES);
 	break;
       }
       
       int cipher_len=ob_remaining(payload);
+      if (cipher_len < (int)crypto_box_MACBYTES){
+	WHYF("Expected at least %d bytes of cipher text", crypto_box_MACBYTES);
+	break;
+      }
       unsigned char *cipher_text=ob_get_bytes_ptr(payload, cipher_len);
-      if (!cipher_text){
-	WHYF("Expected %d bytes of cipher text", cipher_len);
-	break;
-      }
-      
+
       struct overlay_buffer *plaintext = ob_new();
-      if (!ob_makespace(plaintext, cipher_len+cz)){
+      if (!ob_makespace(plaintext, cipher_len - crypto_box_MACBYTES)){
 	ob_free(plaintext);
 	break;
       }
-      ob_limitsize(plaintext, cipher_len+cz);
-      
-      unsigned char *plain_block = ob_ptr(plaintext);
-      
-      bzero(plain_block, cz);
-      bcopy(cipher_text, &plain_block[cz], cipher_len);
-      cipher_len+=cz;
-      
-      if (crypto_box_curve25519xsalsa20poly1305_open_afternm
-	  (plain_block,plain_block,cipher_len,nonce,k)) {
+      ob_limitsize(plaintext, cipher_len - crypto_box_MACBYTES);
+
+      if (crypto_box_open_easy_afternm(ob_ptr(plaintext), cipher_text, cipher_len, nonce, k)) {
 	ob_free(plaintext);
-	WHYF("crypto_box_open_afternm() failed (from %s, to %s, len %d)",
+	WHYF("crypto_box_open_easy_afternm() failed (from %s, to %s, len %d)",
 		    alloca_tohex_sid_t(header->source->sid), alloca_tohex_sid_t(header->destination->sid), cipher_len);
 	break;
       }
-      
-      // consume leading zero bytes
-      ob_get_bytes_ptr(plaintext, zb);
+
       overlay_mdp_decode_header(header, plaintext);
       ret=plaintext;
       break;
@@ -730,34 +716,20 @@ static struct overlay_buffer * encrypt_payload(
   struct subscriber *source, 
   struct subscriber *dest, 
   const unsigned char *buffer,
-  int cipher_len)
+  size_t msg_len)
 {
-  int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
-  int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
-  int cz=crypto_box_curve25519xsalsa20poly1305_BOXZEROBYTES;
-  
-  // generate plain message with leading zero bytes and get ready to cipher it
-  // TODO, add support for leading zero's in overlay_buffer's, so we don't need to copy the plain text
-  unsigned char plain[zb+cipher_len];
-  
-  /* zero bytes */
-  bzero(&plain[0],zb);
-  bcopy(buffer,&plain[zb],cipher_len);
-  
-  cipher_len+=zb;
-  
   struct overlay_buffer *ret = ob_new();
   if (ret == NULL)
     return NULL;
   
-  unsigned char *nonce = ob_append_space(ret, nb+cipher_len);
+  unsigned char *nonce = ob_append_space(ret, msg_len + crypto_box_NONCEBYTES + crypto_box_MACBYTES);
   if (!nonce){
     ob_free(ret);
     return NULL;
   }
-  unsigned char *cipher_text = nonce + nb;
+  unsigned char *cipher_text = nonce + crypto_box_NONCEBYTES;
 
-  if (generate_nonce(nonce,nb)){
+  if (generate_nonce(nonce, crypto_box_NONCEBYTES)){
     ob_free(ret);
     WHY("generate_nonce() failed to generate nonce");
     return NULL;
@@ -774,33 +746,12 @@ static struct overlay_buffer * encrypt_payload(
     WHY("could not compute Curve25519(NxM)");
     return NULL;
   }
-  
   /* Actually authcrypt the payload */
-  if (crypto_box_curve25519xsalsa20poly1305_afternm(cipher_text, plain,cipher_len, nonce, k)) {
+  if (crypto_box_easy_afternm(cipher_text, buffer, msg_len, nonce, k)) {
     ob_free(ret);
-    WHY("crypto_box_afternm() failed");
+    WHY("crypto_box_easy_afternm() failed");
     return NULL;
   }
-  
-#if 0
-  if (IF_DEBUG(crypto)) {
-    DEBUG(crypto, "authcrypted mdp frame");
-    dump("nm",k,crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
-    dump("plain text",plain,sizeof(plain));
-    dump("nonce",nonce,nb);
-    dump("cipher text",cipher_text,cipher_len);
-  }
-#endif
-  
-  /* now shuffle down to get rid of the temporary space that crypto_box uses. 
-   TODO extend overlay buffer so we don't need this.
-   */
-  bcopy(&cipher_text[cz],&cipher_text[0],cipher_len-cz);
-  ret->position-=cz;
-#if 0
-  if (IF_DEBUG(crypto))
-    dump("frame", &ret->bytes[0], ret->position);
-#endif
   
   return ret;
 }

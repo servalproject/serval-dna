@@ -24,7 +24,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include "conf.h"
 #include "constants.h"
-#include "nacl.h"
 #include "overlay_address.h"
 #include "crypto.h"
 #include "overlay_interface.h"
@@ -49,6 +48,8 @@ static int keyring_identity_mac(const keyring_identity *id, unsigned char *pkrsa
 static int _keyring_open(keyring_file *k, const char *path, const char *mode)
 {
   DEBUGF(keyring, "opening %s in \"%s\" mode", alloca_str_toprint(path), mode);
+  if (sodium_init()==-1)
+    return WHY("Failed to initialise libsodium");
   k->file = fopen(path, mode);
   if (!k->file) {
     if (errno != EPERM && errno != ENOENT)
@@ -377,10 +378,10 @@ static int keyring_munge_block(
   unsigned char *PKRSalt=&block[0];
   int PKRSaltLen=32;
 
-#if crypto_stream_xsalsa20_KEYBYTES>crypto_hash_sha512_BYTES
+#if crypto_box_SECRETKEYBYTES>crypto_hash_sha512_BYTES
 #error crypto primitive key size too long -- hash needs to be expanded
 #endif
-#if crypto_stream_xsalsa20_NONCEBYTES>crypto_hash_sha512_BYTES
+#if crypto_box_NONCEBYTES>crypto_hash_sha512_BYTES
 #error crypto primitive nonce size too long -- hash needs to be expanded
 #endif
 
@@ -458,7 +459,7 @@ static void create_cryptobox(keypair *kp)
   /* Filter out public keys that start with 0x0, as they are reserved for address
      abbreviation. */
   do {
-    crypto_box_curve25519xsalsa20poly1305_keypair(kp->public_key, kp->private_key);
+    crypto_box_keypair(kp->public_key, kp->private_key);
   } while (kp->public_key[0] < 0x10);
 }
 
@@ -475,12 +476,12 @@ static void create_cryptobox(keypair *kp)
  */
 static void _derive_scalarmult_public(unsigned char *public, const unsigned char *private)
 {
-  crypto_scalarmult_curve25519_base(public, private);
+  crypto_scalarmult_base(public, private);
 }
 
 static void create_cryptosign(keypair *kp)
 {
-  crypto_sign_edwards25519sha512batch_keypair(kp->public_key, kp->private_key);
+  crypto_sign_keypair(kp->public_key, kp->private_key);
 }
 
 static void create_rhizome(keypair *kp)
@@ -747,9 +748,9 @@ const struct keytype keytypes[] = {
       /* Only the private key is stored, and the public key (SID) is derived from the private key
        * when the keyring is read.
        */
-      .private_key_size = crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES,
-      .public_key_size = crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES,
-      .packed_size = crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES,
+      .private_key_size = crypto_box_SECRETKEYBYTES,
+      .public_key_size = crypto_box_PUBLICKEYBYTES,
+      .packed_size = crypto_box_SECRETKEYBYTES,
       .creator = create_cryptobox,
       .packer = pack_private_only,
       .unpacker = unpack_cryptobox,
@@ -762,9 +763,9 @@ const struct keytype keytypes[] = {
        * invoke that function risks incompatibility with future releases of NaCl, so instead the
        * public key is stored redundantly in the keyring.
        */
-      .private_key_size = crypto_sign_edwards25519sha512batch_SECRETKEYBYTES,
-      .public_key_size = crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES,
-      .packed_size = crypto_sign_edwards25519sha512batch_SECRETKEYBYTES + crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES,
+      .private_key_size = crypto_sign_SECRETKEYBYTES,
+      .public_key_size = crypto_sign_PUBLICKEYBYTES,
+      .packed_size = crypto_sign_SECRETKEYBYTES + crypto_sign_PUBLICKEYBYTES,
       .creator = create_cryptosign,
       .packer = pack_private_public,
       .unpacker = unpack_private_public,
@@ -1562,7 +1563,7 @@ struct keypair *keyring_find_sas_private(keyring_file *k, keyring_identity *iden
       /* SAS key is invalid (perhaps because it was a pre 0.90 format one),
 	 so replace it */
       WARN("SAS key is invalid -- regenerating.");
-      crypto_sign_edwards25519sha512batch_keypair(kp->public_key, kp->private_key);
+      crypto_sign_keypair(kp->public_key, kp->private_key);
       keyring_commit(k);
     }
     kp->verified=1;
@@ -1584,34 +1585,14 @@ static int keyring_store_sas(struct internal_mdp_header *header, struct overlay_
   
   DEBUGF(keyring, "Received SID:SAS mapping, %zd bytes", len);
   
-#define SIG_BYTES crypto_sign_edwards25519sha512batch_BYTES
-
-  if (ob_remaining(payload) < SAS_SIZE + SIG_BYTES)
+  if (ob_remaining(payload) < SAS_SIZE + crypto_sign_BYTES)
     return WHY("Truncated key mapping announcement?");
   
-  uint8_t plain[len];
-  unsigned long long plain_len = 0;
   const uint8_t *sas_public = ob_get_bytes_ptr(payload, SAS_SIZE);
-  const uint8_t *compactsignature = ob_get_bytes_ptr(payload, SIG_BYTES);
-  size_t siglen=SID_SIZE+SIG_BYTES;
-  uint8_t signature[siglen];
-  
-  /* reconstitute signed SID for verification */
-  bcopy(compactsignature, signature, SIG_BYTES);
-  bcopy(header->source->sid.binary, signature + SIG_BYTES, SID_SIZE);
-  int r=crypto_sign_edwards25519sha512batch_open(plain,&plain_len,
-						 signature,siglen,
-						 sas_public);
+  const uint8_t *compactsignature = ob_get_bytes_ptr(payload, crypto_sign_BYTES);
 
-#undef SIG_BYTES
-
-  if (r)
+  if (crypto_sign_verify_detached(compactsignature, header->source->sid.binary, SID_SIZE, sas_public))
     return WHY("SID:SAS mapping verification signature does not verify");
-  /* These next two tests should never be able to fail, but let's just check anyway. */
-  if (plain_len != SID_SIZE)
-    return WHY("SID:SAS mapping signed block is wrong length");
-  if (memcmp(plain, header->source->sid.binary, SID_SIZE) != 0)
-    return WHY("SID:SAS mapping signed block is for wrong SID");
   
   /* now store it */
   bcopy(sas_public, header->source->sas_public, SAS_SIZE);
@@ -1644,26 +1625,11 @@ static int keyring_respond_sas(keyring_file *k, struct internal_mdp_header *head
   
   ob_append_byte(response_payload, kp->type);
   ob_append_bytes(response_payload, kp->public_key, kp->public_key_len);
-  
-  unsigned long long slen;
-  
-  /* and a signature of the SID using the SAS key, to prove possession of
-     the key.  Possession of the SID has already been established by the
-     decrypting of the surrounding MDP packet.
-     XXX - We could chop the SID out of the middle of the signed block here,
-     just as we do for signed MDP packets to save 32 bytes.  We won't worry
-     about doing this, however, as the mapping process is only once per session,
-     not once per packet.  Unless I get excited enough to do it, that is.
-  */
-  
-  if (crypto_sign_edwards25519sha512batch(ob_current_ptr(response_payload), &slen, 
-      header->destination->sid.binary, SID_SIZE, kp->private_key))
+  uint8_t *sig = ob_append_space(response_payload, crypto_sign_BYTES);
+
+  if (crypto_sign_detached(sig, NULL, header->destination->sid.binary, SID_SIZE, kp->private_key))
     return WHY("crypto_sign() failed");
     
-  /* chop the SID from the end of the signature, since it can be reinserted on reception */
-  slen-=SID_SIZE;
-  ob_append_space(response_payload, slen);
-  
   DEBUGF(keyring, "Sending SID:SAS mapping, %zd bytes, %s:%"PRImdp_port_t" -> %s:%"PRImdp_port_t,
 	 ob_position(response_payload),
 	 alloca_tohex_sid_t(header->destination->sid), header->destination_port,
@@ -1804,7 +1770,7 @@ static int keyring_mapping_request(struct internal_mdp_header *header, struct ov
       break;
     case UNLOCK_REQUEST:
       {
-	int len = ob_remaining(payload) +1;
+	size_t len = ob_remaining(payload) +1;
 	if (crypto_verify_message(header->destination, ob_current_ptr(payload) -1, &len))
 	  return WHY("Signature check failed");
       }
@@ -1813,7 +1779,7 @@ static int keyring_mapping_request(struct internal_mdp_header *header, struct ov
       return keyring_respond_challenge(header->source, payload);
     case UNLOCK_RESPONSE:
       {
-	int len = ob_remaining(payload)+1;
+	size_t len = ob_remaining(payload)+1;
 	if (crypto_verify_message(header->destination, ob_current_ptr(payload) -1, &len))
 	  return WHY("Signature check failed");
 	ob_limitsize(payload, ob_position(payload)+len -1);
@@ -1974,7 +1940,7 @@ struct nm_record {
   /* 96 bytes per record */
   sid_t known_key;
   sid_t unknown_key;
-  unsigned char nm_bytes[crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES];
+  unsigned char nm_bytes[crypto_box_BEFORENMBYTES];
 };
 
 unsigned nm_slots_used=0;
@@ -2014,9 +1980,10 @@ unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknow
   /* calculate and store */
   nm_cache[i].known_key = *known_sidp;
   nm_cache[i].unknown_key = *unknown_sidp;
-  crypto_box_curve25519xsalsa20poly1305_beforenm(nm_cache[i].nm_bytes,
-						 unknown_sidp->binary,
-						 it.keypair->private_key);
+  if (crypto_box_beforenm(nm_cache[i].nm_bytes, unknown_sidp->binary, it.keypair->private_key)){
+    WHY("crypto_box_beforenm failed");
+    RETURN(NULL);
+  }
   RETURN(nm_cache[i].nm_bytes);
   OUT();
 }

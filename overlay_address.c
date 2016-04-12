@@ -349,6 +349,9 @@ static int find_subscr_buffer(struct decode_context *context, struct overlay_buf
   *subscriber=find_subscriber(id, len, 1);
   
   if (!*subscriber){
+    if (!context)
+      return WHYF("Unable to decode %s, with no context", alloca_tohex(id, len));
+
     context->flags|=DECODE_FLAG_INVALID_ADDRESS;
     
     if (context->flags & DECODE_FLAG_DONT_EXPLAIN){

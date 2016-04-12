@@ -445,7 +445,7 @@ int rhizome_manifest_verify(rhizome_manifest *m)
   }
   if (memcmp(m->signatories[0], m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary) != 0) {
     DEBUGF(rhizome_manifest, "Manifest id does not match first signature block (signature key is %s)",
-	   alloca_tohex(m->signatories[0], crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)
+	   alloca_tohex(m->signatories[0], crypto_sign_PUBLICKEYBYTES)
 	  );
     m->selfSigned = 0;
     return 0;
@@ -1359,21 +1359,23 @@ static struct rhizome_bundle_result rhizome_manifest_selfsign(rhizome_manifest *
   assert(m->manifest_body_bytes == m->manifest_all_bytes); // no signature yet
   if (!m->haveSecret)
     return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_READONLY, "Missing bundle secret");
-  crypto_hash_sha512(m->manifesthash.binary, m->manifestdata, m->manifest_body_bytes);
-  rhizome_signature sig;
-  if (rhizome_sign_hash(m, &sig) == -1)
-    return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_ERROR, "rhizome_sign_hash() failed");
-  assert(sig.signatureLength > 0);
-  /* Append signature to end of manifest data */
-  if (sig.signatureLength + m->manifest_body_bytes > sizeof m->manifestdata) {
+
+  size_t sigLen = 1 + crypto_sign_BYTES + crypto_sign_PUBLICKEYBYTES;
+  if (sizeof m->manifestdata - m->manifest_body_bytes < sigLen)
     return rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG,
 	    "Manifest too big: body of %zu + signature of %zu bytes exceeds limit of %zu",
 	    m->manifest_body_bytes,
-	    sig.signatureLength,
+	    sigLen,
 	    sizeof m->manifestdata);
-  }
-  bcopy(sig.signature, m->manifestdata + m->manifest_body_bytes, sig.signatureLength);
-  m->manifest_all_bytes = m->manifest_body_bytes + sig.signatureLength;
+
+  crypto_hash_sha512(m->manifesthash.binary, m->manifestdata, m->manifest_body_bytes);
+  uint8_t *p = &m->manifestdata[m->manifest_body_bytes];
+  *p++ = 0x17; // CryptoSign
+  if (crypto_sign_detached(p, NULL, m->manifesthash.binary, sizeof m->manifesthash.binary, m->cryptoSignSecret))
+    return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_ERROR, "crypto_sign_detached() failed");
+  p+=crypto_sign_BYTES;
+  bcopy(m->cryptoSignPublic.binary, p, crypto_sign_BYTES);
+  m->manifest_all_bytes = m->manifest_body_bytes + sigLen;
   m->selfSigned = 1;
   return rhizome_bundle_result(RHIZOME_BUNDLE_STATUS_NEW);
 }

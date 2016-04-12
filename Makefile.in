@@ -7,8 +7,6 @@ sbindir=@sbindir@
 sysconfdir=@sysconfdir@
 localstatedir=@localstatedir@
 
-NACL_BASE=	nacl/src
-include $(NACL_BASE)/nacl.mk
 include sourcefiles.mk
 include headerfiles.mk
 
@@ -22,7 +20,6 @@ ALL_SOURCES = \
 	$(SERVAL_CLIENT_SOURCES) \
 	$(MDP_CLIENT_SOURCES) \
 	$(SERVAL_DAEMON_SOURCES) \
-	$(NACL_SOURCES) \
 	$(TEST_SOURCES) \
 	$(SERVAL_LIB_SOURCES) \
 	$(MONITOR_CLIENT_SRCS) \
@@ -35,11 +32,9 @@ SERVAL_DAEMON_OBJS = \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_DAEMON_SOURCES:.c=.o))
 SERVALD_OBJS = \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(notdir $(SQLITE3_SOURCES:.c=.o))) \
-	$(addprefix $(OBJSDIR_SERVALD)/, $(NACL_SOURCES:.c=.o)) \
 	$(SERVAL_DAEMON_OBJS)
 TEST_OBJS = \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(TEST_SOURCES:.c=.o)) \
-	$(addprefix $(OBJSDIR_SERVALD)/, $(NACL_SOURCES:.c=.o)) \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_CLIENT_SOURCES:.c=.o))
 LIB_SERVAL_OBJS = \
 	$(addprefix $(OBJSDIR_LIB)/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
@@ -56,7 +51,7 @@ CC= @CC@
 
 LDFLAGS=@LDFLAGS@ @LIBS@
 
-CFLAGS= -Isqlite-amalgamation-3100200 @CPPFLAGS@ @CFLAGS@ -Inacl/include
+CFLAGS= -Isqlite-amalgamation-3100200 @CPPFLAGS@ @CFLAGS@
 CFLAGS+=-DSYSCONFDIR="\"$(sysconfdir)\"" -DLOCALSTATEDIR="\"$(localstatedir)\""
 CFLAGS+=-DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_DATETIME_FUNCS -DSQLITE_OMIT_COMPILEOPTION_DIAGS -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_OMIT_VIRTUALTABLE -DSQLITE_OMIT_AUTHORIZATION
 CFLAGS+=-fPIC

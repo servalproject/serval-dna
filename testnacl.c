@@ -34,8 +34,8 @@ struct agent {
   unsigned char box_pk[crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES];
   unsigned char box_sk[crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES];
 
-  unsigned char sign_pk[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
-  unsigned char sign_sk[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
+  unsigned char sign_pk[crypto_sign_PUBLICKEYBYTES];
+  unsigned char sign_sk[crypto_sign_SECRETKEYBYTES];
 };
 
 struct agent *newAgent()

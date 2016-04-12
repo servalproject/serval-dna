@@ -27,7 +27,6 @@ HDRS=	fifo.h \
 	sighandlers.h \
 	strbuf.h \
 	strbuf_helpers.h \
-	sha2.h \
 	conf.h \
 	conf_schema.h \
 	crypto.h \

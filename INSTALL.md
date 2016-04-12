@@ -99,9 +99,8 @@ A successful session should appear something like:
     config.status: creating Makefile
     config.status: creating testconfig.sh
     $ make
-    CC nacl/src/crypto_auth_hmacsha256_ref/hmac.c
-    CC nacl/src/crypto_auth_hmacsha256_ref/verify.c
-    CC nacl/src/crypto_auth_hmacsha512256_ref/hmac.c
+    SERVALD CC conf.c
+    SERVALD CC cli.c
     ...
     CC cli.c
     CC commandline.c

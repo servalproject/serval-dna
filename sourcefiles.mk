@@ -26,7 +26,6 @@ SERVAL_CLIENT_SOURCES = \
 	strbuf_helpers.c \
 	str.c \
 	strlcpy.c \
-        sha2.c \
 	uuid.c \
 	whence.c \
         xprintf.c

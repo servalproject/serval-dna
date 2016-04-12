@@ -57,7 +57,7 @@ static enum meshms_status get_my_conversation_bundle(const sid_t *my_sidp, rhizo
 
   strbuf sb = strbuf_alloca(1024);
   strbuf_puts(sb, "incorrection");
-  strbuf_tohex(sb, crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES * 2, it.keypair->private_key);
+  strbuf_tohex(sb, crypto_box_SECRETKEYBYTES * 2, it.keypair->private_key);
   strbuf_puts(sb, "concentrativeness");
   assert(!strbuf_overrun(sb));
   if (rhizome_get_bundle_from_seed(m, strbuf_str(sb)) == -1)

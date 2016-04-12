@@ -21,7 +21,7 @@
 #include "str.h"
 #include "strbuf_helpers.h"
 #include "constants.h"
-#include "sha2.h"
+#include "sodium.h"
 
 #include <stdlib.h>
 #include <stdio.h>
