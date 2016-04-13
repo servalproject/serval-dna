@@ -695,8 +695,7 @@ static int generate_nonce(uint8_t *nonce, size_t bytes)
 {
   if (bytes<1||bytes>128) return -1;
   if (!nonce_initialised) {
-    if (urandombytes(nonce_buffer,128))
-      return -1;
+    randombytes_buf(nonce_buffer,128);
     nonce_initialised=1;
   }
 
@@ -1341,7 +1340,23 @@ static void mdp_interface_packet(struct socket_address *client, struct mdp_heade
   }
 }
 
-static void mdp_process_packet(struct socket_address *client, struct mdp_header *header, 
+static mdp_port_t get_next_port(){
+  again:
+
+  if (next_port_binding > 32*1024)
+    next_port_binding=256;
+  else
+    next_port_binding++;
+
+  unsigned i;
+  for(i=0;i<MDP_MAX_BINDINGS;i++) {
+    if (mdp_bindings[i].port==next_port_binding)
+      goto again;
+  }
+  return next_port_binding;
+}
+
+static void mdp_process_packet(struct socket_address *client, struct mdp_header *header,
   struct overlay_buffer *payload)
 {
   struct internal_mdp_header internal_header;
@@ -1385,19 +1400,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
   
   // assign the next available port number
   if (header->local.port==0 && header->flags & MDP_FLAG_BIND){
-    again:
-    
-    if (next_port_binding > 32*1024)
-      next_port_binding=256;
-    else
-      next_port_binding++;
-    
-    unsigned i;
-    for(i=0;i<MDP_MAX_BINDINGS;i++) {
-      if (mdp_bindings[i].port==next_port_binding)
-	goto again;
-    }
-    header->local.port=next_port_binding;
+    header->local.port=get_next_port();
   }
   
   internal_header.source_port = header->local.port;

@@ -66,8 +66,8 @@ static int app_crypt_test(const struct cli_parsed *parsed, struct cli_context *c
 
   unsigned char plain_block[65536];
 
-  urandombytes(nonce,sizeof(nonce));
-  urandombytes(k,sizeof(k));
+  randombytes_buf(nonce,sizeof(nonce));
+  randombytes_buf(k,sizeof(k));
 
   int len,i;
 

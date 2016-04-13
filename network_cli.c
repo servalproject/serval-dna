@@ -68,6 +68,11 @@ static int app_mdp_ping(const struct cli_parsed *parsed, struct cli_context *con
     interval_ms = 1000;
     
   /* First sequence number in the echo frames */
+  {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    srandom((getpid() << 16) ^ tv.tv_sec ^ tv.tv_usec);
+  }
   uint32_t firstSeq = random();
   uint32_t sequence_number = firstSeq;
 
@@ -623,6 +628,11 @@ static int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *c
     return WHY("Cannot create MDP socket");
 
   /* Bind to MDP socket and await confirmation */
+  {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    srandom((getpid() << 16) ^ tv.tv_sec ^ tv.tv_usec);
+  }
   sid_t srcsid;
   mdp_port_t port=32768+(random()&32767);
   if (overlay_mdp_getmyaddr(mdp_sockfd, 0, &srcsid)) {
@@ -729,6 +739,11 @@ static int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_contex
   if (cli_arg(parsed, "timeout", &delay, NULL, "3000") == -1)
     return -1;
 
+  {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    srandom((getpid() << 16) ^ tv.tv_sec ^ tv.tv_usec);
+  }
   mdp_port_t port=32768+(random()&0xffff);
 
   sid_t srcsid;

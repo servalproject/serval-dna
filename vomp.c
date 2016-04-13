@@ -134,7 +134,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VOMP_REJECT_BUSY 3
 #define VOMP_REJECT_TIMEOUT 4
 
-#define VOMP_SESSION_MASK 0xffff
 #define VOMP_MAX_CALLS 16
 
 #define VOMP_VERSION 0x02
@@ -142,8 +141,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 struct vomp_call_half {
   struct subscriber *subscriber;
   char did[64];
-  unsigned char state;
-  unsigned int session;
+  uint8_t state;
+  uint16_t session;
   unsigned int sequence;
 };
 
@@ -331,7 +330,7 @@ int is_codec_set(int codec, unsigned char *flags){
   return flags[codec >> 3] & (1<<(codec & 7));
 }
 
-struct vomp_call_state *vomp_find_call_by_session(unsigned int session_token)
+struct vomp_call_state *vomp_find_call_by_session(uint16_t session_token)
 {
   unsigned i;
   for(i=0;i<vomp_call_count;i++)
@@ -340,14 +339,12 @@ struct vomp_call_state *vomp_find_call_by_session(unsigned int session_token)
   return NULL;
 }
 
-static int vomp_generate_session_id()
+static uint16_t vomp_generate_session_id()
 {
-  unsigned int session_id=0;
+  uint16_t session_id=0;
   while (!session_id)
   {
-    if (urandombytes((unsigned char *)&session_id, sizeof session_id))
-      return WHY("Insufficient entropy");
-    session_id&=VOMP_SESSION_MASK;
+    session_id = randombytes_random() & 0xFFFF;
     DEBUGF(vomp, "session=0x%08x",session_id);
     unsigned i;
     /* reject duplicate call session numbers */
@@ -363,8 +360,8 @@ static int vomp_generate_session_id()
 
 static struct vomp_call_state *vomp_create_call(struct subscriber *remote,
 				  struct subscriber *local,
-				  unsigned int remote_session,
-				  unsigned int local_session)
+				  uint16_t remote_session,
+				  uint16_t local_session)
 {
   if (!local_session)
     local_session=vomp_generate_session_id();
@@ -396,8 +393,8 @@ static struct vomp_call_state *vomp_create_call(struct subscriber *remote,
 
 static struct vomp_call_state *vomp_find_or_create_call(struct subscriber *remote,
 					  struct subscriber *local,
-					  unsigned int sender_session,
-					  unsigned int recvr_session,
+					  uint16_t sender_session,
+					  uint16_t recvr_session,
 					  int sender_state,
 					  int recvr_state)
 {
@@ -880,11 +877,11 @@ static int vomp_mdp_received(struct internal_mdp_header *header, struct overlay_
   switch(version) {
   case VOMP_VERSION:
     {
-      unsigned int sender_session=ob_get_ui16(payload);
-      unsigned int recvr_session=ob_get_ui16(payload);
-      unsigned char state = ob_get(payload);
-      unsigned char recvr_state=state>>4;
-      unsigned char sender_state=state&0xf;
+      uint16_t sender_session=ob_get_ui16(payload);
+      uint16_t recvr_session=ob_get_ui16(payload);
+      uint8_t state = ob_get(payload);
+      uint8_t recvr_state=state>>4;
+      uint8_t sender_state=state&0xf;
       
       /* wants to create a call session.
        Main aim here: replay protection. An adversary should not be able to

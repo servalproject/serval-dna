@@ -226,7 +226,7 @@ struct vomp_call_state;
 
 void set_codec_flag(int codec, unsigned char *flags);
 
-struct vomp_call_state *vomp_find_call_by_session(unsigned int session_token);
+struct vomp_call_state *vomp_find_call_by_session(uint16_t session_token);
 int vomp_parse_dtmf_digit(char c);
 int vomp_dial(struct subscriber *local, struct subscriber *remote, const char *local_did, const char *remote_did);
 int vomp_pickup(struct vomp_call_state *call);

@@ -17,11 +17,9 @@ SERVAL_CLIENT_SOURCES = \
 	net.c \
 	os.c \
 	performance_timing.c \
-	randombytes.c \
 	rotbuf.c \
 	sighandlers.c \
 	socket.c \
-	srandomdev.c \
 	strbuf.c \
 	strbuf_helpers.c \
 	str.c \

@@ -105,8 +105,7 @@ static int keyring_initialise(keyring_file *k)
     return WHYF_perror("fseeko(%d, 0, SEEK_SET)", fileno(k->file));
   unsigned char buffer[KEYRING_PAGE_SIZE];
   bzero(&buffer[0], KEYRING_BAM_BYTES);
-  if (urandombytes(&buffer[KEYRING_BAM_BYTES], KEYRING_PAGE_SIZE - KEYRING_BAM_BYTES))
-    return WHYF("Could not generate random keyring salt");
+  randombytes_buf(&buffer[KEYRING_BAM_BYTES], KEYRING_PAGE_SIZE - KEYRING_BAM_BYTES);
   if (fwrite(buffer, KEYRING_PAGE_SIZE, 1, k->file) != 1) {
     WHYF_perror("fwrite(%p, %zu, 1, %d)", buffer, KEYRING_PAGE_SIZE - KEYRING_BAM_BYTES, fileno(k->file));
     return WHYF("Could not write page into keyring file");
@@ -486,7 +485,7 @@ static void create_cryptosign(keypair *kp)
 
 static void create_rhizome(keypair *kp)
 {
-  urandombytes(kp->private_key, kp->private_key_len);
+  randombytes_buf(kp->private_key, kp->private_key_len);
 }
 
 static int pack_private_only(const keypair *kp, struct rotbuf *rb)
@@ -852,8 +851,7 @@ static int keyring_pack_identity(const keyring_identity *id, unsigned char packe
 {
   /* Convert an identity to a KEYRING_PAGE_SIZE bytes long block that consists of 32 bytes of random
    * salt, a 64 byte (512 bit) message authentication code (MAC) and the list of key pairs. */
-  if (urandombytes(packed, PKR_SALT_BYTES) == -1)
-    return WHY("Could not generate salt");
+  randombytes_buf(packed, PKR_SALT_BYTES);
   /* Calculate MAC */
   if (keyring_identity_mac(id, packed /* pkr salt */, packed + PKR_SALT_BYTES /* write mac in after salt */) == -1)
     return -1;
@@ -861,11 +859,9 @@ static int keyring_pack_identity(const keyring_identity *id, unsigned char packe
    * likely deducible, e.g., the location of the trailing 0x00 byte can probably be guessed with
    * confidence.  Payload rotation will frustrate this attack.
    */
-  uint16_t rotation;
-  if (urandombytes((unsigned char *)&rotation, sizeof rotation) == -1)
-    return WHY("urandombytes() failed to generate random rotation");
-#ifdef NO_ROTATION
-  rotation=0;
+  uint16_t rotation = 0;
+#ifndef NO_ROTATION
+  rotation=randombytes_random();
 #endif
   // The two bytes immediately following the MAC describe the rotation offset.
   packed[PKR_SALT_BYTES + PKR_MAC_BYTES] = rotation >> 8;
@@ -946,16 +942,14 @@ static int keyring_pack_identity(const keyring_identity *id, unsigned char packe
     unsigned char *buf;
     size_t len;
     while (rotbuf_next_chunk(&rbuf, &buf, &len))
-      if (urandombytes(buf, len))
-	return WHY("urandombytes() failed to back-fill packed identity block");
+      randombytes_buf(buf, len);
   }
   return 0;
 scram:
   /* Randomfill the entire slot to erase any secret keys that may have found their way into it, to
    * avoid leaking sensitive information out through a possibly re-used memory buffer.
    */
-  if (urandombytes(packed, KEYRING_PAGE_SIZE) == -1)
-    WHY("urandombytes() failed to in-fill packed identity block");
+  randombytes_buf(packed, KEYRING_PAGE_SIZE);
   return -1;
 }
 
@@ -1692,7 +1686,7 @@ static int keyring_send_challenge(struct subscriber *source, struct subscriber *
   time_ms_t now = gettime_ms();
   if (source->identity->challenge_expires < now){
     source->identity->challenge_expires = now + 5000;
-    urandombytes(source->identity->challenge, sizeof(source->identity->challenge));
+    randombytes_buf(source->identity->challenge, sizeof(source->identity->challenge));
   }
   
   struct overlay_buffer *payload = ob_new();
@@ -1974,7 +1968,7 @@ unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknow
   if (nm_slots_used<NM_CACHE_SLOTS) {
     i=nm_slots_used; nm_slots_used++; 
   } else {
-    i=random()%NM_CACHE_SLOTS;
+    i=randombytes_uniform(NM_CACHE_SLOTS);
   }
 
   /* calculate and store */

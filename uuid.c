@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "uuid.h"
 #include "os.h"
 #include "str.h"
+#include "sodium.h"
 
 #include <assert.h>
 #ifdef HAVE_ARPA_INET_H
@@ -57,8 +58,7 @@ void uuid_set_version(serval_uuid_t *uuid, enum uuid_version version)
 
 int uuid_generate_random(serval_uuid_t *uuid)
 {
-  if (urandombytes(uuid->u.binary, sizeof uuid->u.binary) == -1)
-    return -1;
+  randombytes_buf(uuid->u.binary, sizeof uuid->u.binary);
   // The following discards 6 random bits.
   uuid->u.record.clock_seq_hi_and_reserved &= 0x3f;
   uuid->u.record.clock_seq_hi_and_reserved |= 0x80;

@@ -44,7 +44,6 @@ int main(int argc, char **argv)
   signal(SIGPIPE,sigPipeHandler);
   signal(SIGIO,sigIoHandler);
 
-  srandomdev();
   cf_init();
   int status = parseCommandLine(NULL, argv[0], argc - 1, (const char*const*)&argv[1]);
 #if defined WIN32

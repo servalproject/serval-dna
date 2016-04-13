@@ -132,9 +132,6 @@ int _emkdirsn(struct __sourceloc, const char *path, size_t len, mode_t mode, MKD
 #define emkdirs_info(path, mode)        emkdirs_log((path), (mode), log_info_mkdir)
 #define emkdirsn_info(path, len, mode)  emkdirsn_log((path), (len), (mode), log_info_mkdir)
 
-void srandomdev();
-int urandombytes(unsigned char *buf, size_t len);
-
 /* Read the symbolic link into the supplied buffer and add a terminating nul.
  * Logs an ERROR and returns -1 if the buffer is too short to hold the link
  * content and the terminating nul.  If readlink(2) returns an error, then logs

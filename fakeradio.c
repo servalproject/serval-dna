@@ -430,7 +430,11 @@ int main(int argc,char **argv)
     if (argc>=2) 
       ber=calc_ber(atof(argv[2]));
   }
-
+  {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    srandom((getpid() << 16) ^ tv.tv_sec ^ tv.tv_usec);
+  }
   struct pollfd fds[2];
   struct radio_state radios[2];
   

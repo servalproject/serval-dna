@@ -266,10 +266,8 @@ int overlay_mdp_client_socket(void)
   /* Create local per-client socket to MDP server (connection is always local) */
   int mdp_sockfd;
   struct socket_address addr;
-  uint32_t random_value;
-  if (urandombytes((unsigned char *)&random_value, sizeof random_value) == -1)
-    return WHY("urandombytes() failed");
-  if (make_local_sockaddr(&addr, "mdp.client.%u.%08lx.socket", getpid(), (unsigned long)random_value) == -1)
+  static unsigned seq = 0;
+  if (make_local_sockaddr(&addr, "mdp.client.%u.%08x.socket", getpid(), ++seq) == -1)
     return -1;
   if ((mdp_sockfd = esocket(AF_UNIX, SOCK_DGRAM, 0)) == -1)
     return -1;
