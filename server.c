@@ -70,6 +70,9 @@ void cli_cleanup(){
  */
 int server_pid()
 {
+  // Note that if we close another handle on the same file, our lock will disappear.
+  if (server_getpid == getpid())
+    return server_getpid;
   char dirname[1024];
   if (!FORMF_SERVAL_RUN_PATH(dirname, NULL))
     return -1;
