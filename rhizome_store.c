@@ -451,8 +451,10 @@ static int write_release_lock(struct rhizome_write *write_state)
   if (write_state->sql_blob){
     ret = sqlite_blob_close(write_state->sql_blob);
     sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-    if (sqlite_exec_void_retry(&retry, "COMMIT;", END) == -1)
+    if (sqlite_exec_void_retry(&retry, "COMMIT;", END) == -1){
+      sqlite_exec_void_retry(&retry, "ROLLBACK;", END);
       ret=-1;
+    }
     write_state->sql_blob=NULL;
   }
   return ret;
