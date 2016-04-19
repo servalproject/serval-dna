@@ -859,7 +859,7 @@ int _overlay_send_frame(struct __sourceloc whence, struct internal_mdp_header *h
     // Lets just append some space into the existing payload buffer for the signature, without copying it.
     frame->payload = plaintext;
     if (   !ob_makespace(frame->payload, SIGNATURE_BYTES)
-        || crypto_sign_message(frame->source->identity, ob_ptr(frame->payload), frame->payload->allocSize, &frame->payload->position) == -1
+        || keyring_sign_message(frame->source->identity, ob_ptr(frame->payload), frame->payload->allocSize, &frame->payload->position) == -1
     ) {
       op_free(frame);
       return -1;

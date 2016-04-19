@@ -22,9 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "sodium.h"
 #define SIGNATURE_BYTES crypto_sign_BYTES
-struct keyring_identity;
 
 int crypto_verify_message(struct subscriber *subscriber, unsigned char *message, size_t *message_len);
-int crypto_sign_message(struct keyring_identity *identity, unsigned char *content, size_t buffer_len, size_t *content_len);
 
 #endif

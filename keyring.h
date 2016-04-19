@@ -81,7 +81,8 @@ keypair * keyring_next_key(keyring_iterator *it);
 keypair * keyring_next_keytype(keyring_iterator *it, unsigned keytype);
 keypair *keyring_identity_keytype(keyring_identity *id, unsigned keytype);
 keypair *keyring_find_did(keyring_iterator *it, const char *did);
-keypair *keyring_find_sid(keyring_iterator *it, const sid_t *sidp);
+int keyring_find_sid(keyring_iterator *it, const sid_t *sidp);
+const sid_t *keyring_identity_sid(const keyring_identity *id);
 
 void keyring_free(keyring_file *k);
 int keyring_release_identity(keyring_iterator *it);
@@ -96,6 +97,9 @@ int keyring_release_identity(keyring_iterator *it);
 /* Arbitrary name / value pairs */
 #define KEYTYPE_PUBLIC_TAG 0x05
 
+// Combined signing / encryption key data
+#define KEYTYPE_CRYPTOCOMBINED 0x06
+
 /* handle to keyring file for use in running instance */
 extern __thread keyring_file *keyring;
 
@@ -105,7 +109,7 @@ keyring_file *keyring_open_instance(const char *pin);
 keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed);
 int keyring_enter_pin(keyring_file *k, const char *pin);
 int keyring_set_did(keyring_identity *id, const char *did, const char *name);
-struct keypair *keyring_find_sas_private(keyring_file *k, keyring_identity *identity);
+int keyring_sign_message(struct keyring_identity *identity, unsigned char *content, size_t buffer_len, size_t *content_len);
 int keyring_send_sas_request(struct subscriber *subscriber);
 
 int keyring_commit(keyring_file *k);

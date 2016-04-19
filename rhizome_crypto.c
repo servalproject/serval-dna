@@ -395,12 +395,10 @@ void rhizome_find_bundle_author_and_secret(rhizome_manifest *m)
 	continue; // don't try the same identity again
       if (rhizome_secret_yields_bundle_secret(m, kp->private_key, kp->private_key_len)) {
 	DEBUGF(rhizome, "   found matching Rhizome secret!");
-	keypair *kp_sid = keyring_identity_keytype(it.identity, KEYTYPE_CRYPTOBOX);
-	if (kp_sid)
-	  author_sidp = (const sid_t *) kp_sid->public_key;
-	else
-	  DEBUGF(rhizome, "   ... but its identity has no SID");
-	break;
+	author_sidp = keyring_identity_sid(it.identity);
+	if (author_sidp)
+	  break;
+	DEBUGF(rhizome, "   ... but its identity has no SID");
       }
     }
   }

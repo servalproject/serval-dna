@@ -45,6 +45,16 @@ static void keyring_free_keypair(keypair *kp);
 static void keyring_free_identity(keyring_identity *id);
 static int keyring_identity_mac(const keyring_identity *id, unsigned char *pkrsalt, unsigned char *mac);
 
+struct combined_pk{
+  uint8_t sign_key[crypto_sign_PUBLICKEYBYTES];
+  sid_t box_key;
+};
+
+struct combined_sk{
+  uint8_t sign_key[crypto_sign_SECRETKEYBYTES];
+  uint8_t box_key[crypto_box_SECRETKEYBYTES];
+};
+
 static int _keyring_open(keyring_file *k, const char *path, const char *mode)
 {
   DEBUGF(keyring, "opening %s in \"%s\" mode", alloca_str_toprint(path), mode);
@@ -206,7 +216,6 @@ keypair *keyring_identity_keytype(keyring_identity *id, unsigned keytype)
     kp=kp->next;
   return kp;
 }
-#define find_keypair_sid(X) keyring_identity_keytype((X),KEYTYPE_CRYPTOBOX)
 
 keypair *keyring_find_did(keyring_iterator *it, const char *did)
 {
@@ -222,20 +231,53 @@ keypair *keyring_find_did(keyring_iterator *it, const char *did)
   return NULL;
 }
 
-keypair *keyring_find_sid(keyring_iterator *it, const sid_t *sidp)
+static int keyring_find_box(keyring_iterator *it, const sid_t *sidp, const uint8_t **sk)
 {
   keypair *kp;
-  while((kp=keyring_next_keytype(it, KEYTYPE_CRYPTOBOX))){
-    if (memcmp(sidp->binary, kp->public_key, SID_SIZE) == 0)
-      return kp;
+  while((kp=keyring_next_key(it))){
+    if (kp->type == KEYTYPE_CRYPTOBOX){
+      if (memcmp(sidp->binary, kp->public_key, SID_SIZE) == 0){
+	if (sk)
+	  *sk = kp->private_key;
+	return 1;
+      }
+    }else if(kp->type == KEYTYPE_CRYPTOCOMBINED){
+      struct combined_pk *pk = (struct combined_pk *)kp->public_key;
+      if (memcmp(sidp->binary, pk->box_key.binary, SID_SIZE) == 0){
+	if (sk){
+	  struct combined_sk *secret = (struct combined_sk *)kp->private_key;
+	  *sk = secret->box_key;
+	}
+	return 1;
+      }
+    }
+  }
+  return 0;
+}
+
+int keyring_find_sid(keyring_iterator *it, const sid_t *sidp)
+{
+  return keyring_find_box(it, sidp, NULL);
+}
+
+const sid_t *keyring_identity_sid(const keyring_identity *id)
+{
+  keypair *kp=id->keypairs;
+  while(kp){
+    if (kp->type == KEYTYPE_CRYPTOBOX)
+      return (const sid_t *)kp->public_key;
+    if (kp->type == KEYTYPE_CRYPTOCOMBINED){
+      struct combined_pk *pk = (struct combined_pk *)kp->public_key;
+      return &pk->box_key;
+    }
+    kp=kp->next;
   }
   return NULL;
 }
 
-static void add_subscriber(keyring_identity *id, keypair *kp)
+static void add_subscriber(keyring_identity *id, const sid_t *sid)
 {
-  assert(kp->type == KEYTYPE_CRYPTOBOX);
-  id->subscriber = find_subscriber(kp->public_key, SID_SIZE, 1);
+  id->subscriber = find_subscriber(sid->binary, SID_SIZE, 1);
   if (id->subscriber) {
     if (id->subscriber->reachable == REACHABLE_NONE){
       id->subscriber->reachable = REACHABLE_SELF;
@@ -438,6 +480,7 @@ static const char *keytype_str(unsigned ktype, const char *unknown)
   case KEYTYPE_RHIZOME: return "RHIZOME";
   case KEYTYPE_DID: return "DID";
   case KEYTYPE_PUBLIC_TAG: return "PUBLIC_TAG";
+  case KEYTYPE_CRYPTOCOMBINED: return "CRYPTOCOMBINED";
   default: return unknown;
   }
 }
@@ -453,39 +496,40 @@ struct keytype {
   int (*loader)(keypair *, const char *);
 };
 
-static void create_cryptobox(keypair *kp)
-{
-  /* Filter out public keys that start with 0x0, as they are reserved for address
-     abbreviation. */
-  do {
-    crypto_box_keypair(kp->public_key, kp->private_key);
-  } while (kp->public_key[0] < 0x10);
-}
-
-/* Compute public key from private key.
- *
- * Public key calculation as below is taken from section 3 of:
- * http://cr.yp.to/highspeed/naclcrypto-20090310.pdf
- *
- * This can take a while on a mobile phone since it involves a scalarmult operation, so searching
- * through all slots for a pin could take a while (perhaps 1 second per pin:slot cominbation).  This
- * is both good and bad.  The other option is to store the public key as well, which would make
- * entering a pin faster, but would also make trying an incorrect pin faster, thus simplifying some
- * brute-force attacks.  We need to make a decision between speed/convenience and security here.
- */
-static void _derive_scalarmult_public(unsigned char *public, const unsigned char *private)
-{
-  crypto_scalarmult_base(public, private);
-}
-
-static void create_cryptosign(keypair *kp)
-{
-  crypto_sign_keypair(kp->public_key, kp->private_key);
-}
-
 static void create_rhizome(keypair *kp)
 {
   randombytes_buf(kp->private_key, kp->private_key_len);
+}
+
+static void create_cryptocombined(keypair *kp)
+{
+  struct combined_pk *pk = (struct combined_pk *)kp->public_key;
+  struct combined_sk *sk = (struct combined_sk *)kp->private_key;
+  crypto_sign_ed25519_keypair(pk->sign_key, sk->sign_key);
+  crypto_sign_ed25519_sk_to_curve25519(sk->box_key, sk->sign_key);
+  crypto_scalarmult_base(pk->box_key.binary, sk->box_key);
+}
+
+static int pack_cryptocombined(const keypair *kp, struct rotbuf *rb)
+{
+  uint8_t seed[crypto_sign_SEEDBYTES];
+  struct combined_sk *sk = (struct combined_sk *)kp->private_key;
+  crypto_sign_ed25519_sk_to_seed(seed, sk->sign_key);
+  rotbuf_putbuf(rb, seed, sizeof seed);
+  return 0;
+}
+
+static int unpack_cryptocombined(keypair *kp, struct rotbuf *rb, size_t key_length)
+{
+  uint8_t seed[crypto_sign_SEEDBYTES];
+  struct combined_pk *pk = (struct combined_pk *)kp->public_key;
+  struct combined_sk *sk = (struct combined_sk *)kp->private_key;
+  assert(key_length == sizeof seed);
+  rotbuf_getbuf(rb, seed, sizeof seed);
+  crypto_sign_ed25519_seed_keypair(pk->sign_key, sk->sign_key, seed);
+  crypto_sign_ed25519_sk_to_curve25519(sk->box_key, sk->sign_key);
+  crypto_scalarmult_base(pk->box_key.binary, sk->box_key);
+  return 0;
 }
 
 static int pack_private_only(const keypair *kp, struct rotbuf *rb)
@@ -599,7 +643,7 @@ static int load_cryptobox(keypair *kp, const char *text)
 {
   if (load_private(kp, text) == -1)
     return -1;
-  _derive_scalarmult_public(kp->public_key, kp->private_key);
+  crypto_scalarmult_base(kp->public_key, kp->private_key);
   return 0;
 }
 
@@ -648,6 +692,8 @@ static int unpack_private_only(keypair *kp, struct rotbuf *rb, size_t key_length
     kp->private_key_len = key_length;
     if ((kp->private_key = emalloc(kp->private_key_len))==NULL)
       return -1;
+  }else{
+    assert(kp->private_key_len == key_length);
   }
   rotbuf_getbuf(rb, kp->private_key, kp->private_key_len);
   return 0;
@@ -659,6 +705,8 @@ static int unpack_public_only(keypair *kp, struct rotbuf *rb, size_t key_length)
     kp->public_key_len = key_length;
     if ((kp->public_key = emalloc(kp->public_key_len))==NULL)
       return -1;
+  }else{
+    assert(kp->public_key_len == key_length);
   }
   rotbuf_getbuf(rb, kp->public_key, kp->public_key_len);
   return 0;
@@ -669,7 +717,7 @@ static int unpack_cryptobox(keypair *kp, struct rotbuf *rb, size_t key_length)
   assert(key_length == kp->private_key_len);
   rotbuf_getbuf(rb, kp->private_key, kp->private_key_len);
   if (!rb->wrap)
-    _derive_scalarmult_public(kp->public_key, kp->private_key);
+    crypto_scalarmult_base(kp->public_key, kp->private_key);
   return 0;
 }
 
@@ -750,7 +798,7 @@ const struct keytype keytypes[] = {
       .private_key_size = crypto_box_SECRETKEYBYTES,
       .public_key_size = crypto_box_PUBLICKEYBYTES,
       .packed_size = crypto_box_SECRETKEYBYTES,
-      .creator = create_cryptobox,
+      .creator = NULL, // deprecated
       .packer = pack_private_only,
       .unpacker = unpack_cryptobox,
       .dumper = dump_private_public,
@@ -765,7 +813,7 @@ const struct keytype keytypes[] = {
       .private_key_size = crypto_sign_SECRETKEYBYTES,
       .public_key_size = crypto_sign_PUBLICKEYBYTES,
       .packed_size = crypto_sign_SECRETKEYBYTES + crypto_sign_PUBLICKEYBYTES,
-      .creator = create_cryptosign,
+      .creator = NULL, // deprecated
       .packer = pack_private_public,
       .unpacker = unpack_private_public,
       .dumper = dump_private_public,
@@ -806,7 +854,17 @@ const struct keytype keytypes[] = {
       .unpacker = unpack_public_only,
       .dumper = dump_private_public,
       .loader = load_unknown
-    }
+    },
+  [KEYTYPE_CRYPTOCOMBINED] = {
+      .private_key_size = sizeof (struct combined_sk),
+      .public_key_size = sizeof (struct combined_pk),
+      .packed_size = crypto_sign_SEEDBYTES,
+      .creator = create_cryptocombined,
+      .packer = pack_cryptocombined,
+      .unpacker = unpack_cryptocombined,
+      .dumper = dump_private_public,
+      .loader = load_private_public
+  }
   // ADD MORE KEY TYPES HERE
 };
 
@@ -1061,30 +1119,29 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
       return NULL;
     }
     struct rotbuf rbstart = rbuf;
-    if (ktype < NELS(keytypes) && keytypes[ktype].unpacker) {
-      DEBUGF(keyring, "unpack key type = 0x%02x(%s) at offset %u", ktype, keytype_str(ktype, "unknown"), (int)rotbuf_position(&rbo));
-      if (keytypes[ktype].unpacker(kp, &rbuf, keypair_len) != 0) {
-	// If there is an error, it is probably an empty slot.
-	DEBUGF(keyring, "key type 0x%02x does not unpack", ktype);
-	keyring_free_keypair(kp);
-	keyring_free_identity(id);
-	return NULL;
-      }
-      // Ensure that the correct number of bytes was consumed.
-      size_t unpacked = rotbuf_delta(&rbstart, &rbuf);
-      if (unpacked != keypair_len) {
-	// If the number of bytes unpacked does not match the keypair length, it is probably an
-	// empty slot.
-	DEBUGF(keyring, "key type 0x%02x unpacked wrong length (unpacked %u, expecting %u)", ktype, (int)unpacked, (int)keypair_len);
-	keyring_free_keypair(kp);
-	keyring_free_identity(id);
-	return NULL;
-      }
-    } else {
-      DEBUGF(keyring, "unsupported key type 0x%02x at offset %u, reading %u bytes as private key", ktype, (unsigned)rotbuf_position(&rbo), (unsigned)kp->private_key_len);
-      assert(kp->public_key_len == 0);
-      assert(kp->public_key == NULL);
-      rotbuf_getbuf(&rbuf, kp->private_key, kp->private_key_len);
+    int (*unpacker)(keypair *, struct rotbuf *, size_t) = NULL;
+    if (ktype < NELS(keytypes))
+      unpacker = keytypes[ktype].unpacker;
+    else
+      unpacker = unpack_private_only;
+
+    DEBUGF(keyring, "unpack key type = 0x%02x(%s) at offset %u", ktype, keytype_str(ktype, "unknown"), (int)rotbuf_position(&rbo));
+    if (unpacker(kp, &rbuf, keypair_len) != 0) {
+      // If there is an error, it is probably an empty slot.
+      DEBUGF(keyring, "key type 0x%02x does not unpack", ktype);
+      keyring_free_keypair(kp);
+      keyring_free_identity(id);
+      return NULL;
+    }
+    // Ensure that the correct number of bytes was consumed.
+    size_t unpacked = rotbuf_delta(&rbstart, &rbuf);
+    if (unpacked != keypair_len) {
+      // If the number of bytes unpacked does not match the keypair length, it is probably an
+      // empty slot.
+      DEBUGF(keyring, "key type 0x%02x unpacked wrong length (unpacked %u, expecting %u)", ktype, (int)unpacked, (int)keypair_len);
+      keyring_free_keypair(kp);
+      keyring_free_identity(id);
+      return NULL;
     }
     // Got a valid key pair!  Sort the key pairs by (key type, public key, private key) and weed
     // out duplicates.
@@ -1097,8 +1154,8 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
     keyring_free_identity(id);
     return NULL;
   }
-  if (!id->keypairs || id->keypairs->type != KEYTYPE_CRYPTOBOX) {
-    DEBUGF(keyring, "first keypair is not type CRYPTOBOX");
+  if (!keyring_identity_sid(id)) {
+    DEBUGF(keyring, "identity does not have a SID");
     keyring_free_identity(id);
     return NULL;
   }
@@ -1122,10 +1179,17 @@ static int keyring_identity_mac(const keyring_identity *id, unsigned char *pkrsa
   }
   APPEND(&pkrsalt[0], 32);
   keypair *kp=id->keypairs;
-  if (!kp || kp->type != KEYTYPE_CRYPTOBOX)
-    return WHY("first keypair is not type CRYPTOBOX");
-  APPEND(kp->private_key, kp->private_key_len);
-  APPEND(kp->public_key, kp->public_key_len);
+  uint8_t found = 0;
+  while(kp){
+    if (kp->type == KEYTYPE_CRYPTOBOX || kp->type == KEYTYPE_CRYPTOCOMBINED){
+      APPEND(kp->private_key, kp->private_key_len);
+      APPEND(kp->public_key, kp->public_key_len);
+      found = 1;
+    }
+    kp = kp->next;
+  }
+  if (!found)
+    return WHY("Identity does not have a primary key");
   APPEND(id->PKRPin, strlen(id->PKRPin));
 #undef APPEND
   crypto_hash_sha512(mac, work, ofs);
@@ -1174,9 +1238,11 @@ static int keyring_decrypt_pkr(keyring_file *k, const char *pin, int slot_number
   }
   
   // Add any unlocked subscribers to our memory table, flagged as local SIDs.
-  keypair *kp=keyring_identity_keytype(id, KEYTYPE_CRYPTOBOX);
-  if (kp)
-    add_subscriber(id, kp);
+  {
+    const sid_t *sid = keyring_identity_sid(id);
+    if (sid)
+      add_subscriber(id, sid);
+  }
   
   /* All fine, so add the id into the context and return. */
   keyring_identity **i=&k->identities;
@@ -1280,16 +1346,20 @@ static unsigned find_free_slot(const keyring_file *k)
 
 static int keyring_commit_identity(keyring_file *k, keyring_identity *id)
 {
-  keypair *kp=find_keypair_sid(id);
-  keyring_identity **i=&k->identities;
-  while(*i){
-    if (cmp_keypair(kp, find_keypair_sid(*i))==0)
-      return 0;
-    i=&(*i)->next;
-  }
+  const sid_t *sid=keyring_identity_sid(id);
+  // Do nothing if an identity with this sid already exists
+  keyring_iterator it;
+  keyring_iterator_start(k, &it);
+  if (keyring_find_sid(&it, sid))
+    return 0;
   set_slot(k, id->slot, 1);
+
+  keyring_identity **i=&k->identities;
+  while(*i)
+    i=&(*i)->next;
+
   *i=id;
-  add_subscriber(id, kp);
+  add_subscriber(id, sid);
   return 1;
 }
 
@@ -1541,32 +1611,66 @@ keypair * keyring_find_public_tag_value(keyring_iterator *it, const char *name, 
   return NULL;
 }
 
-struct keypair *keyring_find_sas_private(keyring_file *k, keyring_identity *identity)
+static int keyring_find_sign_key(keyring_file *k, keyring_identity *identity, const uint8_t **sk, const uint8_t **pk)
 {
   IN();
   assert(identity);
-  
-  keypair *kp = keyring_identity_keytype(identity, KEYTYPE_CRYPTOSIGN);
-  if (kp==NULL) {
-    WHY("Identity lacks SAS");
-    RETURN(NULL);
-  }
-  
-  if (!kp->verified){
-    if (!rhizome_verify_bundle_privatekey(kp->private_key,kp->public_key)){
-      /* SAS key is invalid (perhaps because it was a pre 0.90 format one),
-	 so replace it */
-      WARN("SAS key is invalid -- regenerating.");
-      crypto_sign_keypair(kp->public_key, kp->private_key);
-      keyring_commit(k);
+
+  keypair *kp=identity->keypairs;
+  while(kp){
+    if (kp->type == KEYTYPE_CRYPTOSIGN){
+      if (!kp->verified){
+	if (!rhizome_verify_bundle_privatekey(kp->private_key,kp->public_key)){
+	  /* SAS key is invalid (perhaps because it was a pre 0.90 format one),
+	     so replace it */
+	  WARN("SAS key is invalid -- regenerating.");
+	  crypto_sign_keypair(kp->public_key, kp->private_key);
+	  keyring_commit(k);
+	}
+	kp->verified=1;
+      }
+      DEBUGF(keyring, "Found SAS entry");
+      if (sk)
+	*sk = kp->private_key;
+      if (pk)
+	*pk = kp->public_key;
+      RETURN(0);
+    }else if (kp->type == KEYTYPE_CRYPTOCOMBINED){
+      DEBUGF(keyring, "Found combined key");
+      if (sk){
+	struct combined_sk *secret = (struct combined_sk *)kp->private_key;
+	*sk = secret->sign_key;
+      }
+      if (pk){
+	struct combined_pk *secret = (struct combined_pk *)kp->public_key;
+	*pk = secret->sign_key;
+      }
+      RETURN(0);
     }
-    kp->verified=1;
+    kp=kp->next;
   }
-  
-  DEBUGF(keyring, "Found SAS entry");
-  
-  RETURN(kp);
+  RETURN(WHY("Identity lacks SAS"));
   OUT();
+}
+
+// sign the hash of a message, adding the signature to the end of the message buffer.
+int keyring_sign_message(struct keyring_identity *identity, unsigned char *content, size_t buffer_len, size_t *content_len)
+{
+  if (*content_len + SIGNATURE_BYTES > buffer_len)
+    return WHYF("Insufficient space in message buffer to add signature. %zu, need %zu",buffer_len, *content_len + SIGNATURE_BYTES);
+
+  const uint8_t *sk = NULL;
+  if (keyring_find_sign_key(keyring, identity, &sk, NULL)==-1)
+    return -1;
+
+  unsigned char hash[crypto_hash_sha512_BYTES];
+  crypto_hash_sha512(hash, content, *content_len);
+
+  if (crypto_sign_detached(&content[*content_len], NULL, hash, crypto_hash_sha512_BYTES, sk))
+    return WHY("Signing failed");
+
+  *content_len += SIGNATURE_BYTES;
+  return 0;
 }
 
 static int keyring_store_sas(struct internal_mdp_header *header, struct overlay_buffer *payload)
@@ -1602,13 +1706,13 @@ static int keyring_store_sas(struct internal_mdp_header *header, struct overlay_
 
 static int keyring_respond_sas(keyring_file *k, struct internal_mdp_header *header)
 {
+  const uint8_t *sk = NULL;
+  const uint8_t *pk = NULL;
+  if (keyring_find_sign_key(k, header->destination->identity, &sk, &pk)==-1)
+    return -1;
+
   /* It's a request, so find the SAS for the SID the request was addressed to,
      use that to sign that SID, and then return it in an authcrypted frame. */
-  struct keypair *kp = keyring_find_sas_private(k, header->destination->identity);
-
-  if (!kp)
-    return WHY("I don't have that SAS key");
-  
   struct internal_mdp_header response;
   bzero(&response, sizeof response);
   mdp_init_response(header, &response);
@@ -1617,11 +1721,11 @@ static int keyring_respond_sas(keyring_file *k, struct internal_mdp_header *head
   struct overlay_buffer *response_payload = ob_static(buff, sizeof buff);
   ob_limitsize(response_payload, sizeof buff);
   
-  ob_append_byte(response_payload, kp->type);
-  ob_append_bytes(response_payload, kp->public_key, kp->public_key_len);
+  ob_append_byte(response_payload, KEYTYPE_CRYPTOSIGN);
+  ob_append_bytes(response_payload, pk, crypto_sign_PUBLICKEYBYTES);
   uint8_t *sig = ob_append_space(response_payload, crypto_sign_BYTES);
 
-  if (crypto_sign_detached(sig, NULL, header->destination->sid.binary, SID_SIZE, kp->private_key))
+  if (crypto_sign_detached(sig, NULL, header->destination->sid.binary, SID_SIZE, sk))
     return WHY("crypto_sign() failed");
     
   DEBUGF(keyring, "Sending SID:SAS mapping, %zd bytes, %s:%"PRImdp_port_t" -> %s:%"PRImdp_port_t,
@@ -1660,7 +1764,7 @@ int keyring_send_unlock(struct subscriber *subscriber)
   ob_append_byte(response, UNLOCK_REQUEST);
   
   size_t len = ob_position(response);
-  if (crypto_sign_message(subscriber->identity, ob_ptr(response), sizeof(buff), &len))
+  if (keyring_sign_message(subscriber->identity, ob_ptr(response), sizeof(buff), &len))
     return -1;
     
   ob_append_space(response, len - ob_position(response));
@@ -1723,7 +1827,7 @@ static int keyring_respond_challenge(struct subscriber *subscriber, struct overl
   ob_append_bytes(response, ob_current_ptr(payload), ob_remaining(payload));
   
   size_t len = ob_position(response);
-  if (crypto_sign_message(subscriber->identity, ob_ptr(response), sizeof(buff), &len))
+  if (keyring_sign_message(subscriber->identity, ob_ptr(response), sizeof(buff), &len))
     return -1;
     
   ob_append_space(response, len - ob_position(response));
@@ -1822,21 +1926,24 @@ int keyring_send_sas_request(struct subscriber *subscriber){
 
 void keyring_identity_extract(const keyring_identity *id, const sid_t **sidp, const char **didp, const char **namep)
 {
-  int todo = (sidp ? 1 : 0) | (didp ? 2 : 0) | (namep ? 4 : 0);
   keypair *kp=id->keypairs;
   while(kp){
     switch (kp->type) {
     case KEYTYPE_CRYPTOBOX:
       if (sidp)
 	*sidp = (const sid_t *)kp->public_key;
-      todo &= ~1;
       break;
     case KEYTYPE_DID:
       if (didp)
 	*didp = (const char *) kp->private_key;
       if (namep)
 	*namep = (const char *) kp->public_key;
-      todo &= ~6;
+      break;
+    case KEYTYPE_CRYPTOCOMBINED:
+      if (sidp){
+	struct combined_pk *pk = (struct combined_pk *)kp->public_key;
+	*sidp = &pk->box_key;
+      }
       break;
     }
     kp=kp->next;
@@ -1959,7 +2066,8 @@ unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknow
      in fact a known key */
   keyring_iterator it;
   keyring_iterator_start(keyring, &it);
-  if (!keyring_find_sid(&it, known_sidp)) {
+  const uint8_t *sk;
+  if (!keyring_find_box(&it, known_sidp, &sk)) {
     WHY("known key is not in fact known.");
     RETURN(NULL);
   }
@@ -1974,7 +2082,7 @@ unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknow
   /* calculate and store */
   nm_cache[i].known_key = *known_sidp;
   nm_cache[i].unknown_key = *unknown_sidp;
-  if (crypto_box_beforenm(nm_cache[i].nm_bytes, unknown_sidp->binary, it.keypair->private_key)){
+  if (crypto_box_beforenm(nm_cache[i].nm_bytes, unknown_sidp->binary, sk)){
     WHY("crypto_box_beforenm failed");
     RETURN(NULL);
   }
