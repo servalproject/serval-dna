@@ -261,7 +261,6 @@ static int app_trace(const struct cli_parsed *parsed, struct cli_context *contex
       || cli_arg(parsed, "SID", &sidhex, str_is_subscriber_id, NULL) == -1)
     return -1;
   
-  sid_t srcsid;
   sid_t dstsid;
   if (str_to_sid_t(&dstsid, sidhex) == -1)
     return WHY("str_to_sid_t() failed");
@@ -270,72 +269,82 @@ static int app_trace(const struct cli_parsed *parsed, struct cli_context *contex
   str_to_uint64_interval_ms(opt_timeout, &timeout_ms, NULL);
   if (timeout_ms == 0)
     timeout_ms = 60 * 60000; // 1 hour...
-    
-  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+
+  if ((mdp_sockfd = mdp_socket()) < 0)
     return WHY("Cannot create MDP socket");
-  mdp_port_t port=32768+(random()&32767);
-  if (overlay_mdp_getmyaddr(mdp_sockfd, 0, &srcsid)) {
-    overlay_mdp_client_close(mdp_sockfd);
-    return WHY("Could not get local address");
-  }
-  if (overlay_mdp_bind(mdp_sockfd, &srcsid, port)) {
-    overlay_mdp_client_close(mdp_sockfd);
-    return WHY("Could not bind to MDP socket");
-  }
-  
+
+  int ret=-1;
+
+  struct mdp_header mdp_header;
+  bzero(&mdp_header, sizeof mdp_header);
+
+  mdp_header.local.sid = BIND_PRIMARY;
+
+  if (mdp_bind(mdp_sockfd, &mdp_header.local))
+    goto end;
+
+  mdp_header.qos = OQ_MESH_MANAGEMENT;
+  mdp_header.ttl = PAYLOAD_TTL_DEFAULT;
+  mdp_header.remote.sid = mdp_header.local.sid;
+  mdp_header.remote.port = MDP_PORT_TRACE;
+
   cli_printf(context, "Tracing the network path from %s to %s", 
-	alloca_tohex_sid_t(srcsid), alloca_tohex_sid_t(dstsid));
+    alloca_tohex_sid_t(mdp_header.local.sid),
+    alloca_tohex_sid_t(dstsid));
+
   cli_delim(context, "\n");
   cli_flush(context);
-  // TODO keep sending packets till we get a response?
-  int ret=0;
-  time_ms_t end = gettime_ms() + timeout_ms;
-  overlay_mdp_frame mdp;
-  do{
-    bzero(&mdp, sizeof(mdp));
-    
-    mdp.out.src.sid = srcsid;
-    mdp.out.dst.sid = srcsid;
-    mdp.out.src.port=port;
-    mdp.out.dst.port=MDP_PORT_TRACE;
-    mdp.packetTypeAndFlags=MDP_TX;
-    struct overlay_buffer *b = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
+  time_ms_t end_time = gettime_ms() + timeout_ms;
+  uint8_t payload[MDP_MTU];
+  struct overlay_buffer *b = ob_static(payload, sizeof payload);
+
+  while(1){
+    ob_clear(b);
+    ob_limitsize(b,sizeof payload);
     ob_append_byte(b, SID_SIZE);
-    ob_append_bytes(b, srcsid.binary, SID_SIZE);
+    ob_append_bytes(b, mdp_header.local.sid.binary, SID_SIZE);
     ob_append_byte(b, SID_SIZE);
     ob_append_bytes(b, dstsid.binary, SID_SIZE);
     if (ob_overrun(b)){
       ret = WHY("overlay buffer overrun");
+      goto end;
+    }
+    size_t len = ob_position(b);
+
+    if (mdp_send(mdp_sockfd, &mdp_header, payload, len))
+      goto end;
+
+    ssize_t recv_len = mdp_poll_recv(mdp_sockfd, gettime_ms()+500, &mdp_header, payload, sizeof payload);
+    if (recv_len>0){
+      ob_clear(b);
+      ob_limitsize(b,recv_len);
+      uint8_t len = ob_get(b);
+      ob_get_bytes_ptr(b, len);
+      len = ob_get(b);
+      ob_get_bytes_ptr(b, len);
+      // TODO Compare SID's?
+
+      int i=0;
+      while(ob_remaining(b)>0){
+	len = ob_get(b);
+	cli_put_long(context, i, ":");
+	uint8_t *sid = ob_get_bytes_ptr(b, len);
+	cli_put_string(context, alloca_tohex(sid, len), "\n");
+	i++;
+      }
+      ret = 0;
       break;
     }
-    mdp.out.payload_length = ob_position(b);
-    ret = overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 500);
-    ob_free(b);
-  }while(ret && gettime_ms() < end);
-  
-  if (ret)
-    WHYF("overlay_mdp_send returned %d, %s", ret, mdp.error.message);
-  if (ret == 0) {
-    int offset=0;
-    {
-      // skip the first two sid's
-      uint len = mdp.out.payload[offset++];
-      offset+=len;
-      if (offset<mdp.out.payload_length){
-	len = mdp.out.payload[offset++];
-	offset+=len;
-      }
-    }
-    int i=0;
-    while(offset<mdp.out.payload_length){
-      uint len = mdp.out.payload[offset++];
-      cli_put_long(context, i, ":");
-      cli_put_string(context, alloca_tohex(&mdp.out.payload[offset], len), "\n");
-      offset+=len;
-      i++;
+
+    if (gettime_ms()>=end_time){
+      WHY("Timeout waiting for a response");
+      goto end;
     }
   }
-  overlay_mdp_client_close(mdp_sockfd);
+
+
+end:
+  mdp_close(mdp_sockfd);
   return ret;
 }
 

@@ -154,7 +154,7 @@ void _ob_flip(struct __sourceloc __whence, struct overlay_buffer *b)
 
 void _ob_clear(struct __sourceloc __whence, struct overlay_buffer *b)
 {
-  DEBUGF(overlaybuffer, "ob_flip(b=%p) checkpointLength=0 position=0", b);
+  DEBUGF(overlaybuffer, "ob_clear(b=%p) checkpointLength=0 position=0", b);
   b->checkpointLength = 0;
   b->position = 0;
   ob_unlimitsize(b);
