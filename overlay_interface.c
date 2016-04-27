@@ -108,7 +108,7 @@ void overlay_interface_monitor_up()
   unsigned i;
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
     if (overlay_interfaces[i].state == INTERFACE_STATE_UP)
-      monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%s:UP\n", overlay_interfaces[i].name);
+      monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%u:%s:UP\n", i, overlay_interfaces[i].name);
   }
 }
 

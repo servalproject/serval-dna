@@ -684,10 +684,11 @@ int monitor_tell_formatted(int mask, char *fmt, ...){
 }
 
 static void monitor_interface_change(struct overlay_interface *interface){
+  unsigned i = interface - overlay_interfaces;
   if (interface->state==INTERFACE_STATE_UP)
-    monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%s:UP\n", interface->name);
+    monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%u:%s:UP\n", i, interface->name);
   else if(interface->state==INTERFACE_STATE_DOWN)
-    monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%s:DOWN\n", interface->name);
+    monitor_tell_formatted(MONITOR_INTERFACE, "\nINTERFACE:%u:%s:DOWN\n", i, interface->name);
 }
 
 DEFINE_TRIGGER(iupdown, monitor_interface_change);
