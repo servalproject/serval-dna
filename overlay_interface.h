@@ -129,7 +129,6 @@ int overlay_interface_register(const char *name,
 void overlay_interface_close_all();
 overlay_interface * overlay_interface_get_default();
 overlay_interface * overlay_interface_find(struct in_addr addr, int return_default);
-overlay_interface * overlay_interface_find_name(const char *name);
 overlay_interface * overlay_interface_find_name_addr(const char *name, struct socket_address *addr);
 int overlay_interface_compare(overlay_interface *one, overlay_interface *two);
 int overlay_broadcast_ensemble(struct network_destination *destination, struct overlay_buffer *buffer);

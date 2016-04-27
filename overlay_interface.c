@@ -295,26 +295,15 @@ overlay_interface * overlay_interface_find(struct in_addr addr, int return_defau
   return ret;
 }
 
-// find an interface by name
-overlay_interface * overlay_interface_find_name(const char *name){
-  int i;
-  for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
-    if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
-      continue;
-    if (strcasecmp(name, overlay_interfaces[i].name) == 0)
-      return &overlay_interfaces[i];
-  }
-  return NULL;
-}
-
-// find an interface by name and address
+// find an interface by name and/or exact address
 overlay_interface * overlay_interface_find_name_addr(const char *name, struct socket_address *addr){
   int i;
+  assert(name || addr);
   for(i = 0; i < OVERLAY_MAX_INTERFACES; i++){
     if (overlay_interfaces[i].state==INTERFACE_STATE_DOWN)
       continue;
     
-    if (cmp_sockaddr(addr, &overlay_interfaces[i].address)==0
+    if ((!addr || cmp_sockaddr(addr, &overlay_interfaces[i].address)==0)
       && (!name || strcasecmp(overlay_interfaces[i].name, name)==0)){
       return &overlay_interfaces[i];
     }
