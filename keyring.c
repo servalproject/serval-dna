@@ -1298,12 +1298,23 @@ static int keyring_commit_identity(keyring_file *k, keyring_identity *id)
   return 1;
 }
 
+
+int keyring_key_prefix_mismatch(keypair *kp, const char *prefix)
+{
+  if (!prefix[0]) return 0;
+  char hex[5];
+  snprintf(hex,5,"%02x%02x",kp->public_key[0],kp->public_key[1]);
+  int r=strncasecmp(hex,prefix,strlen(prefix));
+  return r;
+}
+
 /* Create a new identity in the specified context (which supplies the keyring pin) with the
  * specified PKR pin.  The crypto_box and crypto_sign key pairs are automatically created, and the
  * PKR is packed and written to a hithero unallocated slot which is then marked full.  Requires an
  * explicit call to keyring_commit()
 */
-keyring_identity *keyring_create_identity(keyring_file *k, const char *pin)
+keyring_identity *keyring_create_identity(keyring_file *k, const char *pin,
+					  const char *prefix)
 {
   DEBUGF(keyring, "k=%p", k);
   /* Check obvious abort conditions early */
@@ -1326,14 +1337,28 @@ keyring_identity *keyring_create_identity(keyring_file *k, const char *pin)
     goto kci_safeexit;
   }
 
-  /* Allocate key pairs */
+  /* Allocate key pairs.
+     The prefix input allows rejection of keys until the public key matches a 
+     given prefix.  The prefix lenth is not allowed to be more than 16 bits to
+     prevent abuse and excessive compromising of security.
+   */
   unsigned ktype;
   for (ktype = 1; ktype < NELS(keytypes); ++ktype) {
     if (keytypes[ktype].creator) {
-      keypair *kp = keyring_alloc_keypair(ktype, 0);
+      keypair *kp = NULL;
+      while (kp==NULL) {
+	kp = keyring_alloc_keypair(ktype, 0);
+	if (kp == NULL)
+	  goto kci_safeexit;
+	keytypes[ktype].creator(kp);
+	if (kp->public_key&&
+	    keyring_key_prefix_mismatch(kp,prefix)) {
+	  keyring_free_keypair(kp);
+	  kp=NULL;
+	} 
+      }
       if (kp == NULL)
 	goto kci_safeexit;
-      keytypes[ktype].creator(kp);
       keyring_identity_add_keypair(id, kp);
     }
   }
@@ -1950,7 +1975,7 @@ int keyring_seed(keyring_file *k)
   /* nothing to do if there is already an identity */
   if (k->identities)
     return 0;
-  keyring_identity *id=keyring_create_identity(k,"");
+  keyring_identity *id=keyring_create_identity(k,"","");
   if (!id)
     return WHY("Could not create new identity");
   if (keyring_commit(k))

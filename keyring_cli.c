@@ -226,18 +226,20 @@ static int app_keyring_list2(const struct cli_parsed *parsed, struct cli_context
 
 DEFINE_CMD(app_keyring_add, 0,
   "Create a new identity in the keyring protected by the supplied PIN (empty PIN if not given)",
-  "keyring","add" KEYRING_PIN_OPTIONS,"[<pin>]");
+	   "keyring","add" KEYRING_PIN_OPTIONS,"[<pin>]","[<prefix>]");
 static int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *context)
 {
   DEBUG_cli_parsed(verbose, parsed);
   const char *pin;
   cli_arg(parsed, "pin", &pin, NULL, "");
+  const char *prefix;
+  cli_arg(parsed, "prefix", &prefix, NULL, "");
   keyring_file *k = keyring_open_instance_cli(parsed);
   if (!k)
     return -1;
   keyring_enter_pin(k, pin);
   
-  const keyring_identity *id = keyring_create_identity(k, pin);
+  const keyring_identity *id = keyring_create_identity(k, pin, prefix);
   if (id == NULL) {
     keyring_free(k);
     return WHY("Could not create new identity");
