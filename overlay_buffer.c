@@ -166,7 +166,7 @@ ssize_t _ob_makespace(struct __sourceloc __whence, struct overlay_buffer *b, siz
 {
   assert(b != NULL);
   DEBUGF(overlaybuffer, "ob_makespace(b=%p, bytes=%zd) b->bytes=%p b->position=%zu b->allocSize=%zu",
-	 b, bytes, b->bytes, b->position, b->allocSize);
+	 b, bytes, b->bytes, b->position, b->allocSize);  
   if (b->position)
     assert(b->bytes != NULL);
   if (b->position + bytes > b->sizeLimit) {
@@ -236,7 +236,11 @@ ssize_t _ob_makespace(struct __sourceloc __whence, struct overlay_buffer *b, siz
 void _ob_append_byte(struct __sourceloc __whence, struct overlay_buffer *b, unsigned char byte)
 {
   const int bytes = 1;
+  assert(b != NULL);
   if (ob_makespace(b, bytes)) {
+    assert(b->bytes != NULL);
+    assert(b->position >= 0);
+    assert(b->position < b->allocSize);
     b->bytes[b->position] = byte;
     DEBUGF(overlaybuffer, "ob_append_byte(b=%p, byte=0x%02x) %p[%zd]=%02x position=%zu", b, byte, b->bytes, b->position, byte, b->position + bytes);
   } else {
