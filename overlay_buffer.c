@@ -239,7 +239,6 @@ void _ob_append_byte(struct __sourceloc __whence, struct overlay_buffer *b, unsi
   assert(b != NULL);
   if (ob_makespace(b, bytes)) {
     assert(b->bytes != NULL);
-    assert(b->position >= 0);
     assert(b->position < b->allocSize);
     b->bytes[b->position] = byte;
     DEBUGF(overlaybuffer, "ob_append_byte(b=%p, byte=0x%02x) %p[%zd]=%02x position=%zu", b, byte, b->bytes, b->position, byte, b->position + bytes);
