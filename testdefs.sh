@@ -733,12 +733,14 @@ create_identities() {
    done
    for ((i = 1; i <= N; ++i)); do
       local pinvar=PIN$instance_name$i
+      local sidprefixvar=SIDPREFIX$instance_name$i
       local sidvar=SID$instance_name$i
       local didvar=DID$instance_name$i
       local namevar=NAME$instance_name$i
       local pin="${!pinvar}"
+      local sidprefix="${!sidprefixvar}"
       [ -n "$pin" ] && tfw_log "$pinvar=$(shellarg "$pin")"
-      executeOk_servald keyring add "${servald_options[@]}" "$pin"
+      executeOk_servald keyring add "${servald_options[@]}" "$pin" "$sidprefix"
       assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
       extract_stdout_keyvalue $sidvar sid "$rexp_sid"
       tfw_log "$sidvar=${!sidvar}"

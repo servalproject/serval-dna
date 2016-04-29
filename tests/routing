@@ -160,6 +160,70 @@ test_multiple_ids() {
    link_matches --via $SIDA1 $SIDA2
 }
 
+doc_multiple_ids_same_prefix="Route between multiple identities with same SID prefix"
+setup_multiple_ids_same_prefix() {
+   setup_servald
+   assert_no_servald_processes
+   SIDPREFIXA1=42
+   SIDPREFIXB1=42
+   SIDPREFIXC1=42
+   SIDPREFIXD1=42
+   foreach_instance +A +B +C +D create_identities 1
+   SIDA=$SIDA1
+   SIDB=$SIDB1
+   SIDC=$SIDC1
+   SIDD=$SIDD1
+   foreach_instance +A +B add_servald_interface 1
+   foreach_instance +B +C add_servald_interface 2
+   foreach_instance +C +D add_servald_interface 3
+   foreach_instance +A +B +C +D start_servald_server
+}
+test_multiple_ids_same_prefix() {
+   set_instance +A
+   wait_until --timeout=10 path_exists +A +B
+   set_instance +B
+   wait_until --timeout=10 path_exists +B +A
+   wait_until --timeout=10 path_exists +B +C
+   set_instance +C
+   wait_until --timeout=10 path_exists +C +B
+   wait_until --timeout=10 path_exists +C +D
+   set_instance +D
+   wait_until --timeout=10 path_exists +D +C
+   set_instance +A
+   executeOk_servald mdp ping --timeout=3 $SIDB1 1
+   tfw_cat --stdout --stderr
+   executeOk_servald mdp ping --timeout=3 $SIDC1 1
+   tfw_cat --stdout --stderr
+   executeOk_servald mdp ping --timeout=3 $SIDD1 1
+   tfw_cat --stdout --stderr
+   executeOk_servald route print
+   set_instance +B
+   executeOk_servald mdp ping --timeout=3 $SIDA1 1
+   tfw_cat --stdout --stderr
+   executeOk_servald mdp ping --timeout=3 $SIDC1 1
+   tfw_cat --stdout --stderr
+   executeOk_servald mdp ping --timeout=3 $SIDD1 1
+   tfw_cat --stdout --stderr
+   executeOk_servald route print
+   set_instance +C
+   executeOk_servald mdp ping --timeout=3 $SIDA1 1
+   tfw_cat --stdout --stderr
+   executeOk_servald mdp ping --timeout=3 $SIDB1 1
+   tfw_cat --stdout --stderr
+   executeOk_servald mdp ping --timeout=3 $SIDD1 1
+   tfw_cat --stdout --stderr
+   executeOk_servald route print
+   set_instance +D
+   executeOk_servald mdp ping --timeout=3 $SIDA1 1
+   tfw_cat --stdout --stderr
+   executeOk_servald mdp ping --timeout=3 $SIDB1 1
+   tfw_cat --stdout --stderr
+   executeOk_servald mdp ping --timeout=3 $SIDC1 1
+   tfw_cat --stdout --stderr
+   executeOk_servald route print
+}
+
+
 doc_unlock_ids="Routes appear and disappear as identities are [un]locked"
 setup_unlock_ids() {
    setup_servald
