@@ -174,7 +174,7 @@ struct neighbour *neighbours=NULL;
 unsigned neighbour_count=0;
 int route_version=0;
 
-struct network_destination * new_destination(struct overlay_interface *interface){
+struct network_destination * _new_destination(struct __sourceloc __whence, struct overlay_interface *interface){
   assert(interface);
   struct network_destination *ret = emalloc_zero(sizeof(struct network_destination));
   if (ret){
@@ -184,11 +184,12 @@ struct network_destination * new_destination(struct overlay_interface *interface
     ret->last_tx = TIME_MS_NEVER_HAS;
     ret->sequence_number = -1;
     ret->last_ack_seq = -1;
+    DEBUGF(ref_counts, "Created destination %p refs %u", ret, ret->_ref_count);
   }
   return ret;
 }
 
-struct network_destination * create_unicast_destination(struct socket_address *addr, struct overlay_interface *interface){
+struct network_destination * _create_unicast_destination(struct __sourceloc whence, struct socket_address *addr, struct overlay_interface *interface){
   if (!interface && addr->addr.sa_family == AF_INET)
     interface = overlay_interface_find(addr->inet.sin_addr, 1);
   if (!interface){
@@ -203,7 +204,7 @@ struct network_destination * create_unicast_destination(struct socket_address *a
     return NULL;
   if (!interface->ifconfig.unicast.send)
     return NULL;
-  struct network_destination *ret = new_destination(interface);
+  struct network_destination *ret = _new_destination(whence, interface);
   if (ret){
     ret->address = *addr;
     ret->unicast = 1;
@@ -212,26 +213,29 @@ struct network_destination * create_unicast_destination(struct socket_address *a
   return ret;
 }
 
-struct network_destination * add_destination_ref(struct network_destination *ref){
+struct network_destination * _add_destination_ref(struct __sourceloc __whence, struct network_destination *ref){
   ref->_ref_count++;
+  DEBUGF(ref_counts, "Added destination %p refs %u", ref, ref->_ref_count);
   return ref;
 }
 
-void release_destination_ref(struct network_destination *ref){
+void _release_destination_ref(struct __sourceloc __whence, struct network_destination *ref){
   if (ref->_ref_count<=1){
+    DEBUGF(ref_counts, "Released destination %p refs %u", ref, ref->_ref_count);
     free(ref);
   }else{
     ref->_ref_count--;
+    DEBUGF(ref_counts, "Decremented destination %p refs %u", ref, ref->_ref_count);
   }
 }
 
-int set_destination_ref(struct network_destination **ptr, struct network_destination *ref){
+int _set_destination_ref(struct __sourceloc __whence, struct network_destination **ptr, struct network_destination *ref){
   if (ref==*ptr)
     return 0;
   if (ref)
-    add_destination_ref(ref);
+    _add_destination_ref(__whence, ref);
   if (*ptr)
-    release_destination_ref(*ptr);
+    _release_destination_ref(__whence, *ptr);
   *ptr = ref;
   return 1;
 }

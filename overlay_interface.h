@@ -101,11 +101,18 @@ typedef struct overlay_interface {
  */
 extern overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
 
-struct network_destination * new_destination(struct overlay_interface *interface);
-struct network_destination * create_unicast_destination(struct socket_address *addr, struct overlay_interface *interface);
-struct network_destination * add_destination_ref(struct network_destination *ref);
-void release_destination_ref(struct network_destination *ref);
-int set_destination_ref(struct network_destination **ptr, struct network_destination *ref);
+struct network_destination * _new_destination(struct __sourceloc __whence, struct overlay_interface *interface);
+struct network_destination * _create_unicast_destination(struct __sourceloc __whence, struct socket_address *addr, struct overlay_interface *interface);
+struct network_destination * _add_destination_ref(struct __sourceloc __whence, struct network_destination *ref);
+void _release_destination_ref(struct __sourceloc __whence, struct network_destination *ref);
+int _set_destination_ref(struct __sourceloc __whence, struct network_destination **ptr, struct network_destination *ref);
+
+#define new_destination(I) _new_destination(__WHENCE__, I)
+#define create_unicast_destination(A, I) _create_unicast_destination(__WHENCE__, A, I)
+#define add_destination_ref(R) _add_destination_ref(__WHENCE__, R)
+#define release_destination_ref(R) _release_destination_ref(__WHENCE__, R)
+#define set_destination_ref(P, R) _set_destination_ref(__WHENCE__, P, R)
+
 void overlay_interface_config_change();
 
 struct config_mdp_iftype;

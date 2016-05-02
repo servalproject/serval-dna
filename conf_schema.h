@@ -268,6 +268,7 @@ ATOM(bool_t, vomp,                      0, boolean,, "")
 ATOM(bool_t, profiling,                 0, boolean,, "")
 ATOM(bool_t, linkstate,                 0, boolean,, "")
 ATOM(bool_t, watchdog,                  0, boolean,, "")
+ATOM(bool_t, ref_counts,                0, boolean,, "")
 END_STRUCT
 
 #define LOG_FORMAT_OPTIONS \
