@@ -187,34 +187,11 @@ ssize_t _ob_makespace(struct __sourceloc __whence, struct overlay_buffer *b, siz
     newSize+=1024-(newSize&1023);
   if (newSize>65536 && (newSize&65535))
     newSize+=65536-(newSize&65535);
+  if (newSize > b->sizeLimit)
+    newSize = b->sizeLimit;
+  assert(newSize >= b->position + bytes);
   DEBUGF(overlaybuffer, "realloc(b->bytes=%p, newSize=%zu)", b->bytes, newSize);
-  /* XXX OSX realloc() seems to be able to corrupt things if the heap is not happy when calling realloc(), making debugging memory corruption much harder.
-    So will do a three-stage malloc,bcopy,free to see if we can tease bugs out that way. */
-  /*
-    unsigned char *r=realloc(b->bytes,newSize);
-    if (!r) return WHY("realloc() failed");
-    b->bytes=r; 
-  */
-#ifdef MALLOC_PARANOIA
-#warning adding lots of padding to try to catch overruns
-  if (b->bytes) {
-    int i;
-    int corrupt=0;
-    for(i=0;i<4096;i++) if (b->bytes[b->allocSize+i]!=0xbd) corrupt++;
-    if (corrupt) {
-      WHYF("!!!!!! %d corrupted bytes in overrun catch tray", corrupt);
-      dump("overrun catch tray",&b->bytes[b->allocSize],4096);
-      sleep_ms(36000000);
-    }
-  }
-  unsigned char *new = emalloc(newSize+4096);
-  {
-    int i;
-    for(i=0;i<4096;i++) new[newSize+i]=0xbd;
-  }
-#else
   unsigned char *new = emalloc(newSize);
-#endif
   if (!new)
     return 0;
   if (b->position)
