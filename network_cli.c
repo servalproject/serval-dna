@@ -318,8 +318,9 @@ static int app_trace(const struct cli_parsed *parsed, struct cli_context *contex
 
     if (mdp_send(mdp_sockfd, &mdp_header, payload, len))
       goto end;
-
     ssize_t recv_len = mdp_poll_recv(mdp_sockfd, gettime_ms()+500, &mdp_header, payload, sizeof payload);
+    if (recv_len == -1)
+      break;
     if (recv_len>0){
       ob_clear(b);
       ob_limitsize(b,recv_len);
