@@ -164,7 +164,7 @@ static void recv_packet(int fd, struct network *network, struct peer *destinatio
       return;
     }
 
-    unicast_addr.addrlen=sizeof unicast_addr.local.sun_family + strlen(unicast_addr.local.sun_path) + 1;
+    unicast_addr.addrlen=sizeof unicast_addr.local - sizeof unicast_addr.local.sun_path + strlen(unicast_addr.local.sun_path) + 1;
 
     peer = emalloc_zero(sizeof(struct peer));
     if (!peer) {

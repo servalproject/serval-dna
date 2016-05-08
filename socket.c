@@ -55,7 +55,7 @@ int _make_local_sockaddr(struct __sourceloc __whence, struct socket_address *add
   va_end(ap);
   if (!r)
     return WHY("socket name overflow");
-  addr->addrlen=sizeof addr->local.sun_family + strlen(addr->local.sun_path) + 1;
+  addr->addrlen=sizeof addr->local - sizeof addr->local.sun_path + strlen(addr->local.sun_path) + 1;
 // TODO perform real path transformation in making the serval instance path
 //  if (real_sockaddr(addr, addr) == -1)
 //    return -1;
@@ -292,14 +292,14 @@ ssize_t _recv_message_frag(struct __sourceloc __whence, int fd, struct socket_ad
   struct cmsghdr cmsgs[16];
   struct msghdr msg = {
     .msg_name       = (void *)&address->addr,
-    .msg_namelen    = address->addrlen,
+    .msg_namelen    = sizeof(address->raw),
     .msg_iov        = data->iov,
     .msg_iovlen     = data->fragment_count,
     .msg_control    = cmsgs,
     .msg_controllen = sizeof cmsgs,
     .msg_flags      = 0
   };
-  bzero(&address->addr, address->addrlen);
+  bzero(address, sizeof(struct socket_address));
   ssize_t ret = recvmsg(fd, &msg, 0);
   if (ret == -1 && errno != EAGAIN && errno != EWOULDBLOCK)
     WHYF_perror("recvmsg(%d,{name=%p,namelen=%u,iov=%s,control=%p,controllen=%u},0)",
