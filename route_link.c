@@ -452,28 +452,10 @@ next:
     DEBUGF2(overlayrouting, linkstate, "REACHABLE via self %s", alloca_tohex_sid_t(subscriber->sid));
   }
   
-  if (changed){
-    monitor_announce_link(best_hop_count, transmitter, subscriber);
+  if (changed)
     state->next_update = now+5;
-  }
 
   RETURN(best_link);
-}
-
-static int monitor_announce(struct subscriber *subscriber, void *UNUSED(context))
-{
-  if (subscriber->reachable & REACHABLE){
-    struct link_state *state = get_link_state(subscriber);
-    monitor_announce_link(state->hop_count, state->transmitter, subscriber);
-  }
-  return 0;
-}
-
-int link_state_announce_links(){
-  enum_subscribers(NULL, monitor_announce, NULL);
-  // announce ourselves as unreachable, mainly so that monitor clients will always get one link back
-  monitor_announce_link(0, NULL, my_subscriber);
-  return 0;
 }
 
 static int append_link_state(struct overlay_buffer *payload, char flags, 

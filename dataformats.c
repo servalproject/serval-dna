@@ -67,6 +67,15 @@ int parse_sid_t(sid_t *sidp, const char *hex, ssize_t hexlen, const char **endp)
   return 0;
 }
 
+int sid_get_special_type(const sid_t *sid)
+{
+  if (is_all_matching(sid->binary, SID_SIZE -1, 0))
+    return sid->binary[SID_SIZE -1];
+  if (is_all_matching(sid->binary, SID_SIZE, 0xFF))
+    return SID_TYPE_BROADCAST;
+  return -1;
+}
+
 int str_is_subscriber_id(const char *sid)
 {
   size_t len = 0;

@@ -40,6 +40,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_interface.h"
 #include "keyring.h"
 #include "serval.h" // for overlay_send_frame()
+#include "route_link.h"
 
 __thread struct subscriber *directory_service;
 
@@ -142,3 +143,10 @@ static void interface_change(struct overlay_interface *UNUSED(interface)){
 }
 
 DEFINE_TRIGGER(iupdown, interface_change);
+
+static void directory_link_changed(struct subscriber *subscriber, int UNUSED(prior_reachable)){
+  if (subscriber==directory_service)
+    directory_registration();
+}
+
+DEFINE_TRIGGER(link_change, directory_link_changed);

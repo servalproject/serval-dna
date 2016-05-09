@@ -64,6 +64,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "keyring.h"
 #include "socket.h"
 #include "server.h"
+#include "route_link.h"
 
 uint16_t mdp_loopback_port;
 
@@ -99,8 +100,9 @@ struct mdp_binding{
   time_ms_t binding_time;
 };
 
-struct mdp_binding *mdp_bindings=NULL;
-mdp_port_t next_port_binding=256;
+static struct mdp_binding *mdp_bindings=NULL;
+static mdp_port_t next_port_binding=256;
+static struct subscriber internal[0];
 
 static int overlay_saw_mdp_frame(
   struct internal_mdp_header *header, 
@@ -140,6 +142,18 @@ static int free_dead_clients(){
   has_dead_clients=1;
   return 0;
 }
+
+static int mdp_reply2(struct __sourceloc __whence, const struct socket_address *client, const struct mdp_header *header,
+  int flags, const uint8_t *payload, size_t payload_len)
+{
+  struct mdp_header response_header;
+  bcopy(header, &response_header, sizeof(response_header));
+  response_header.flags = flags;
+  return mdp_send2(__WHENCE__, client, &response_header, payload, payload_len);
+}
+
+#define mdp_reply_error(A,B)  mdp_reply2(__WHENCE__,(A),(B),MDP_FLAG_ERROR,NULL,0)
+#define mdp_reply_ok(A,B)  mdp_reply2(__WHENCE__,(A),(B),MDP_FLAG_CLOSE,NULL,0)
 
 /* Delete all UNIX socket files in instance directory. */
 void overlay_mdp_clean_socket_files()
@@ -555,6 +569,7 @@ static int send_packet_to_client(
     case 1:
       {
 	struct mdp_header client_header;
+	bzero(&client_header, sizeof(client_header));
 	client_header.local.sid=header->destination?header->destination->sid:SID_BROADCAST;
 	client_header.local.port=header->destination_port;
 	client_header.remote.sid=header->source->sid;
@@ -1041,36 +1056,59 @@ static int overlay_mdp_address_list(struct overlay_mdp_addrlist *request, struct
 }
 
 struct routing_state{
+  struct mdp_header *header;
   struct socket_address *client;
 };
 
+static void send_route(struct subscriber *subscriber, struct socket_address *client, struct mdp_header *header)
+{
+  uint8_t payload[MDP_MTU];
+  struct overlay_buffer *b = ob_static(payload, sizeof payload);
+  ob_limitsize(b, sizeof payload);
+  ob_append_bytes(b, subscriber->sid.binary, SID_SIZE);
+  ob_append_byte(b, subscriber->reachable);
+  if (subscriber->reachable & REACHABLE){
+    ob_append_byte(b, subscriber->hop_count);
+    if (subscriber->hop_count>1){
+      ob_append_bytes(b, subscriber->next_hop->sid.binary, SID_SIZE);
+      if (subscriber->hop_count>2){
+	ob_append_bytes(b, subscriber->prior_hop->sid.binary, SID_SIZE);
+      }
+    }else{
+      ob_append_byte(b, subscriber->destination->interface - overlay_interfaces);
+      ob_append_str(b, subscriber->destination->interface->name);
+    }
+  }
+  assert(!ob_overrun(b));
+  mdp_reply2(__WHENCE__, client, header, 0, payload, ob_position(b));
+  ob_free(b);
+}
+
 static int routing_table(struct subscriber *subscriber, void *context)
 {
-  struct routing_state *state = (struct routing_state *)context;
-  overlay_mdp_frame reply;
-  bzero(&reply, sizeof(overlay_mdp_frame));
-  
-  struct overlay_route_record *r=&reply.out.route_record;
-  reply.packetTypeAndFlags=MDP_TX;
-  reply.out.payload_length=sizeof(struct overlay_route_record);
-  r->sid = subscriber->sid;
-  r->reachable = subscriber->reachable;
-  r->hop_count = subscriber->hop_count;
-  
-  if (subscriber->next_hop)
-    r->neighbour = subscriber->next_hop->sid;
-  if (subscriber->prior_hop)
-    r->prior_hop = subscriber->prior_hop->sid;
-  
-  if (subscriber->reachable & REACHABLE_DIRECT 
-    && subscriber->destination 
-    && subscriber->destination->interface)
-    strcpy(r->interface_name, subscriber->destination->interface->name);
-  else
-    r->interface_name[0]=0;
-  overlay_mdp_reply(mdp_sock.poll.fd, state->client, &reply);
+  if (subscriber->reachable != REACHABLE_NONE){
+    struct routing_state *state = (struct routing_state *)context;
+    send_route(subscriber, state->client, state->header);
+  }
   return 0;
 }
+
+static void send_route_changed(struct subscriber *subscriber, int UNUSED(prior_reachable)){
+  struct mdp_header header;
+  bzero(&header, sizeof(header));
+  header.local.sid = SID_INTERNAL;
+  header.local.port = MDP_ROUTE_TABLE;
+  header.remote.port = MDP_ROUTE_TABLE;
+
+  struct mdp_binding *b = mdp_bindings;
+  while(b){
+    if (b->port == MDP_ROUTE_TABLE && b->subscriber == internal){
+      send_route(subscriber, &b->client, &header);
+    }
+    b=b->_next;
+  }
+}
+DEFINE_TRIGGER(link_change, send_route_changed);
 
 struct scan_state{
   struct sched_ent alarm;
@@ -1117,18 +1155,6 @@ static void overlay_mdp_scan(struct sched_ent *alarm)
     state->last=0;
   }
 }
-
-static int mdp_reply2(struct __sourceloc __whence, const struct socket_address *client, const struct mdp_header *header, 
-  int flags, const unsigned char *payload, size_t payload_len)
-{
-  struct mdp_header response_header;
-  bcopy(header, &response_header, sizeof(response_header));
-  response_header.flags = flags;
-  return mdp_send2(__WHENCE__, client, &response_header, payload, payload_len);
-}
-
-#define mdp_reply_error(A,B)  mdp_reply2(__WHENCE__,(A),(B),MDP_FLAG_ERROR,NULL,0)
-#define mdp_reply_ok(A,B)  mdp_reply2(__WHENCE__,(A),(B),MDP_FLAG_CLOSE,NULL,0)
 
 static int mdp_process_identity_request(struct socket_address *client, struct mdp_header *header, 
   struct overlay_buffer *payload)
@@ -1382,23 +1408,30 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
   }
   
   // find local sid
-  if (is_sid_t_broadcast(header->local.sid)){
-    // leave source NULL to indicate listening on all local SID's
-    // note that attempting anything else will fail
-  }else if (is_sid_t_any(header->local.sid)){
-    // leaving the sid blank indicates that we should use our main identity
-    internal_header.source = my_subscriber;
-    header->local.sid = my_subscriber->sid;
-  }else{
-    // find the matching sid from our keyring
-    internal_header.source = find_subscriber(header->local.sid.binary, sizeof(header->local.sid), 0);
-    if (!internal_header.source || internal_header.source->reachable != REACHABLE_SELF){
-      WHY("Subscriber is not local");
-      mdp_reply_error(client, header);
-      return;
-    }
+  int sid_type;
+  switch(sid_type=sid_get_special_type(&header->local.sid)){
+    case SID_TYPE_ANY:
+      // leaving the sid blank indicates that we should use our main identity
+      internal_header.source = my_subscriber;
+      header->local.sid = my_subscriber->sid;
+      break;
+    case SID_TYPE_INTERNAL:
+      internal_header.source = internal;
+      header->flags |= MDP_FLAG_REUSE;
+    case SID_TYPE_BROADCAST:
+      // leave source NULL to indicate listening on all local SID's
+      // note that attempting anything else will fail
+      break;
+    default:
+      // find the matching sid from our keyring
+      internal_header.source = find_subscriber(header->local.sid.binary, sizeof(header->local.sid), 0);
+      if (!internal_header.source || internal_header.source->reachable != REACHABLE_SELF){
+	WHY("Subscriber is not local");
+	mdp_reply_error(client, header);
+	return;
+      }
   }
-  
+
   struct mdp_binding **pclient_binding=NULL;
   struct mdp_binding *client_binding=NULL;
   struct mdp_binding *conflicting_binding=NULL;
@@ -1500,6 +1533,17 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
 	DEBUGF(mdprequests, "Processing MDP_INTERFACE from %s", alloca_socket_address(client));
 	mdp_interface_packet(client, header, payload);
 	break;
+      case MDP_ROUTE_TABLE:
+	DEBUGF(mdprequests, "Processing MDP_ROUTING_TABLE from %s", alloca_socket_address(client));
+	{
+	  struct routing_state state={
+	    .client = client,
+	    .header = header
+	  };
+	  enum_subscribers(NULL, routing_table, &state);
+	  mdp_reply_ok(client, header);
+	}
+	break;
       default:
 	WHYF("Unknown command port %d", header->remote.port);
 	mdp_reply_error(client, header);
@@ -1507,6 +1551,12 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
     }
     
   }else{
+    if (sid_type == SID_TYPE_INTERNAL || sid_type == SID_TYPE_BROADCAST){
+      WHYF("Can't send data packet from a special SID");
+      mdp_reply_error(client, header);
+      return;
+    }
+
     // double check that you have a binding
     if (!client_binding){
       WHYF("Can't send data packet, %s:%d is not bound to %s!",
@@ -1661,18 +1711,6 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 	  mark_dead_client(&client);
 	  return;
 	    
-	case MDP_ROUTING_TABLE:
-	  DEBUGF(mdprequests, "MDP_ROUTING_TABLE from %s", alloca_socket_address(&client));
-	  {
-	    struct routing_state state={
-	      .client = &client,
-	    };
-	    
-	    enum_subscribers(NULL, routing_table, &state);
-	    
-	  }
-	  return;
-	
 	case MDP_GETADDRS:
 	  DEBUGF(mdprequests, "MDP_GETADDRS from %s", alloca_socket_address(&client));
 	  {

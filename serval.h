@@ -243,9 +243,6 @@ int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 
 int monitor_setup_sockets();
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
-int monitor_announce_peer(const sid_t *sidp);
-int monitor_announce_unreachable_peer(const sid_t *sidp);
-int monitor_announce_link(int hop_count, struct subscriber *transmitter, struct subscriber *receiver);
 int monitor_tell_clients(char *msg, int msglen, int mask);
 int monitor_tell_formatted(int mask, char *fmt, ...);
 int monitor_client_interested(int mask);

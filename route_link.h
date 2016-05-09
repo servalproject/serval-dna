@@ -28,7 +28,6 @@ struct overlay_frame;
 struct decode_context;
 struct internal_mdp_header;
 
-int link_state_announce_links();
 void link_neighbour_short_status_html(struct strbuf *b, const char *link_prefix);
 void link_neighbour_status_html(struct strbuf *b, struct subscriber *neighbour);
 int link_has_neighbours();
@@ -45,5 +44,6 @@ void link_explained(struct subscriber *subscriber);
 int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now);
 
 DECLARE_TRIGGER(nbr_change, struct subscriber *neighbour, uint8_t found, unsigned count);
+DECLARE_TRIGGER(link_change, struct subscriber *subscriber, int prior_reachable);
 
 #endif

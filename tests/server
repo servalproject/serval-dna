@@ -46,6 +46,8 @@ setup_StartCreateInstanceDir() {
 test_StartCreateInstanceDir() {
    executeOk $servald start
    assert [ -d "$SERVALINSTANCE_PATH" ]
+   executeOk $servald stop
+   tfw_cat --stdout --stderr
 }
 
 doc_StartLogfile="Starting server gives no errors"

@@ -394,10 +394,24 @@ void monitor_get_all_supported_codecs(unsigned char *codecs){
   }
 }
 
+static void monitor_announce_peer(struct subscriber *subscriber, int prior_reachable)
+{
+  monitor_tell_formatted(MONITOR_LINKS, "\nLINK:%d:%s:%s\n",
+    subscriber->hop_count,
+    subscriber->prior_hop ? alloca_tohex_sid_t(subscriber->prior_hop->sid) : "",
+    alloca_tohex_sid_t(subscriber->sid));
+
+  if ((prior_reachable & REACHABLE) && (!(subscriber->reachable & REACHABLE)))
+    monitor_tell_formatted(MONITOR_PEERS, "\nOLDPEER:%s\n", alloca_tohex_sid_t(subscriber->sid));
+  if ((!(prior_reachable & REACHABLE)) && (subscriber->reachable & REACHABLE))
+    monitor_tell_formatted(MONITOR_PEERS, "\nNEWPEER:%s\n", alloca_tohex_sid_t(subscriber->sid));
+}
+DEFINE_TRIGGER(link_change, monitor_announce_peer);
+
 static int monitor_announce_all_peers(struct subscriber *subscriber, void *UNUSED(context))
 {
   if (subscriber->reachable&REACHABLE)
-    monitor_announce_peer(&subscriber->sid);
+    monitor_announce_peer(subscriber, REACHABLE_NONE);
   return 0;
 }
 
@@ -423,7 +437,7 @@ static int monitor_set(const struct cli_parsed *parsed, struct cli_context *cont
     c->flags|=MONITOR_DNAHELPER;
   }else if (strcase_startswith(parsed->args[1],"links", NULL)){
     c->flags|=MONITOR_LINKS;
-    link_state_announce_links();
+    enum_subscribers(NULL, monitor_announce_all_peers, NULL);
   }else if (strcase_startswith(parsed->args[1],"quit", NULL)){
     c->flags|=MONITOR_QUIT;
   }else if (strcase_startswith(parsed->args[1],"interface", NULL)){
@@ -626,24 +640,6 @@ static void monitor_announce_bundle(rhizome_manifest *m)
   monitor_tell_clients(msg, len, MONITOR_RHIZOME);
 }
 DEFINE_TRIGGER(bundle_add, monitor_announce_bundle);
-
-int monitor_announce_peer(const sid_t *sidp)
-{
-  return monitor_tell_formatted(MONITOR_PEERS, "\nNEWPEER:%s\n", alloca_tohex_sid_t(*sidp));
-}
-
-int monitor_announce_unreachable_peer(const sid_t *sidp)
-{
-  return monitor_tell_formatted(MONITOR_PEERS, "\nOLDPEER:%s\n", alloca_tohex_sid_t(*sidp));
-}
-
-int monitor_announce_link(int hop_count, struct subscriber *transmitter, struct subscriber *receiver)
-{
-  return monitor_tell_formatted(MONITOR_LINKS, "\nLINK:%d:%s:%s\n", 
-    hop_count,
-    transmitter ? alloca_tohex_sid_t(transmitter->sid) : "",
-    alloca_tohex_sid_t(receiver->sid));
-}
 
 // test if any monitor clients are interested in a particular type of event
 int monitor_client_interested(int mask){

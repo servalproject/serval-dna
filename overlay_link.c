@@ -73,15 +73,8 @@ int set_reachable(struct subscriber *subscriber,
   /* Pre-emptively send a sas request */
   if (!subscriber->sas_valid && reachable&REACHABLE)
     keyring_send_sas_request(subscriber);
-  
-  // Hacky layering violation... send our identity to a directory service
-  if (subscriber==directory_service)
-    directory_registration();
-  
-  if ((old_value & REACHABLE) && (!(reachable & REACHABLE)))
-    monitor_announce_unreachable_peer(&subscriber->sid);
-  if ((!(old_value & REACHABLE)) && (reachable & REACHABLE))
-    monitor_announce_peer(&subscriber->sid);
+
+  CALL_TRIGGER(link_change, subscriber, old_value);
   
   return 1;
 }
