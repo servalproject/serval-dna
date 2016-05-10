@@ -53,13 +53,16 @@ struct connection{
   int last_state;
 };
 
-struct connection *connections=NULL;
-int saw_error=0;
-int once =0;
-MSP_SOCKET listener = MSP_SOCKET_NULL;
-struct mdp_sockaddr remote_addr;
-struct socket_address ip_addr;
-char quit=0;
+struct proxy_state{
+  struct connection *connections;
+  int saw_error;
+  int once;
+  MSP_SOCKET listener;
+  struct mdp_sockaddr remote_addr;
+  struct socket_address ip_addr;
+  char quit;
+};
+static struct proxy_state *proxy_state;
 
 static int try_send(struct connection *conn);
 static void msp_poll(struct sched_ent *alarm);
@@ -154,10 +157,10 @@ static struct connection *alloc_connection(
   conn->in->position = conn->out->position = 0;
   conn->in->limit = conn->out->limit = 0;
   conn->in->capacity = conn->out->capacity = 1024;
-  if (connections)
-    connections->_prev = conn;
-  conn->_next = connections;
-  connections = conn;
+  if (proxy_state->connections)
+    proxy_state->connections->_prev = conn;
+  conn->_next = proxy_state->connections;
+  proxy_state->connections = conn;
   return conn;
 }
 
@@ -193,11 +196,11 @@ static void free_connection(struct connection *conn)
     conn->_next->_prev = conn->_prev;
   if (conn->_prev)
     conn->_prev->_next = conn->_next;
-  if (conn==connections)
-    connections = conn->_next;
+  if (conn==proxy_state->connections)
+    proxy_state->connections = conn->_next;
   free(conn);
 
-  if (!connections && !msp_socket_is_listening(listener))
+  if (!proxy_state->connections && !msp_socket_is_listening(proxy_state->listener))
     unwatch(&mdp_sock);
 }
 
@@ -235,7 +238,7 @@ static size_t msp_handler(MSP_SOCKET sock, msp_state_t state, const uint8_t *pay
     return 0;
   
   if (state & MSP_STATE_ERROR)
-    saw_error=1;
+    proxy_state->saw_error=1;
     
   if (payload && len){
     if (conn->out->limit){
@@ -300,10 +303,10 @@ static size_t msp_listener(MSP_SOCKET sock, msp_state_t state, const uint8_t *pa
     return len;
   }
   
-  if (once){
+  if (proxy_state->once){
     // stop listening after the first incoming connection
-    msp_stop(listener);
-    listener=MSP_SOCKET_NULL;
+    msp_stop(proxy_state->listener);
+    proxy_state->listener=MSP_SOCKET_NULL;
     if (service_sock.poll.fd!=-1){
       if (is_watching(&service_sock))
 	unwatch(&service_sock);
@@ -318,13 +321,13 @@ static size_t msp_listener(MSP_SOCKET sock, msp_state_t state, const uint8_t *pa
   int fd_in = STDIN_FILENO;
   int fd_out = STDOUT_FILENO;
   
-  if (ip_addr.addrlen){
+  if (proxy_state->ip_addr.addrlen){
     int fd = esocket(PF_INET, SOCK_STREAM, 0);
     if (fd==-1){
       msp_stop(sock);
       return 0;
     }
-    if (socket_connect(fd, &ip_addr)==-1){
+    if (socket_connect(fd, &proxy_state->ip_addr)==-1){
       msp_stop(sock);
       close(fd);
       return 0;
@@ -528,10 +531,10 @@ static void listen_poll(struct sched_ent *alarm)
     }
 
     msp_set_handler(sock, msp_handler, connection);
-    msp_connect(sock, &remote_addr);
+    msp_connect(sock, &proxy_state->remote_addr);
     process_msp_asap();
     
-    if (once){
+    if (proxy_state->once){
       unwatch(alarm);
       close(alarm->poll.fd);
       alarm->poll.fd=-1;
@@ -541,7 +544,7 @@ static void listen_poll(struct sched_ent *alarm)
 
 void sigQuit(int UNUSED(signal))
 {
-  struct connection *c = connections;
+  struct connection *c = proxy_state->connections;
   while(c){
     if (!msp_socket_is_closed(c->sock))
       msp_stop(c->sock);
@@ -555,7 +558,7 @@ void sigQuit(int UNUSED(signal))
       unwatch(&c->alarm_out);
     c=c->_next;
   }
-  quit=1;
+  proxy_state->quit=1;
 }
 
 DEFINE_CMD(app_msp_connection, 0,
@@ -567,7 +570,13 @@ DEFINE_CMD(app_msp_connection, 0,
 static int app_msp_connection(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   const char *sidhex, *port_string, *local_port_string;
-  once = cli_arg(parsed, "--once", NULL, NULL, NULL) == 0;
+
+  struct proxy_state state;
+  bzero(&state, sizeof state);
+  state.listener = MSP_SOCKET_NULL;
+  proxy_state = &state;
+
+  proxy_state->once = cli_arg(parsed, "--once", NULL, NULL, NULL) == 0;
 
   if ( cli_arg(parsed, "--forward", &local_port_string, cli_uint, NULL) == -1
     || cli_arg(parsed, "--service", &service_name, NULL, NULL) == -1
@@ -579,7 +588,7 @@ static int app_msp_connection(const struct cli_parsed *parsed, struct cli_contex
   bzero(&addr, sizeof addr);
   
   service_port = addr.port = atoi(port_string);
-  saw_error=0;
+  proxy_state->saw_error=0;
   
   if (sidhex && *sidhex){
     if (str_to_sid_t(&addr.sid, sidhex) == -1)
@@ -618,31 +627,31 @@ static int app_msp_connection(const struct cli_parsed *parsed, struct cli_contex
   
   set_nonblock(STDIN_FILENO);
   set_nonblock(STDOUT_FILENO);
-  bzero(&ip_addr, sizeof ip_addr);
+  bzero(&proxy_state->ip_addr, sizeof proxy_state->ip_addr);
   
   if (local_port_string){
-    ip_addr.addrlen = sizeof(ip_addr.inet);
-    ip_addr.inet.sin_family = AF_INET;
-    ip_addr.inet.sin_port = htons(atoi(local_port_string));
-    ip_addr.inet.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    proxy_state->ip_addr.addrlen = sizeof(proxy_state->ip_addr.inet);
+    proxy_state->ip_addr.inet.sin_family = AF_INET;
+    proxy_state->ip_addr.inet.sin_port = htons(atoi(local_port_string));
+    proxy_state->ip_addr.inet.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   }
   
   if (sidhex && *sidhex){
     if (local_port_string){
-      remote_addr = addr;
+      proxy_state->remote_addr = addr;
       listen_alarm.poll.fd = esocket(PF_INET, SOCK_STREAM, 0);
       if (listen_alarm.poll.fd==-1)
 	goto end;
-      if (socket_bind(listen_alarm.poll.fd, &ip_addr)==-1)
+      if (socket_bind(listen_alarm.poll.fd, &proxy_state->ip_addr)==-1)
 	goto end;
       if (socket_listen(listen_alarm.poll.fd, 0)==-1)
 	goto end;
       watch(&listen_alarm);
-      DEBUGF(msp, "- Forwarding from %s to %s:%d", alloca_socket_address(&ip_addr), alloca_tohex_sid_t(addr.sid), addr.port);
+      DEBUGF(msp, "- Forwarding from %s to %s:%d", alloca_socket_address(&proxy_state->ip_addr), alloca_tohex_sid_t(addr.sid), addr.port);
     }else{
       watch(&mdp_sock);
       sock = msp_socket(mdp_sock.poll.fd, 0);
-      once = 1;
+      proxy_state->once = 1;
       struct connection *conn=alloc_connection(sock, STDIN_FILENO, io_poll, STDOUT_FILENO, io_poll);
       if (!conn)
 	goto end;
@@ -660,11 +669,11 @@ static int app_msp_connection(const struct cli_parsed *parsed, struct cli_contex
     if (msp_listen(sock)==-1)
       goto end;
     
-    listener=sock;
+    proxy_state->listener=sock;
     if (local_port_string){
-      DEBUGF(msp, "- Forwarding from port %d to %s", addr.port, alloca_socket_address(&ip_addr));
+      DEBUGF(msp, "- Forwarding from port %d to %s", addr.port, alloca_socket_address(&proxy_state->ip_addr));
     }else{
-      once = 1;
+      proxy_state->once = 1;
       DEBUGF(msp, " - Listening on port %d", addr.port);
     }
   }
@@ -672,17 +681,17 @@ static int app_msp_connection(const struct cli_parsed *parsed, struct cli_contex
   process_msp_asap();
   signal(SIGINT, sigQuit);
   signal(SIGTERM, sigQuit);
-  quit=0;
-  while(!quit && fd_poll()){
+  proxy_state->quit=0;
+  while(!proxy_state->quit && fd_poll()){
     ;
   }
   time_ms_t dummy;
   msp_processing(&dummy);
-  ret = saw_error;
+  ret = proxy_state->saw_error;
   signal(SIGINT, SIG_DFL);
   
 end:
-  listener = MSP_SOCKET_NULL;
+  proxy_state->listener = MSP_SOCKET_NULL;
   if (mdp_sock.poll.fd!=-1){
     msp_close_all(mdp_sock.poll.fd);
     mdp_close(mdp_sock.poll.fd);
