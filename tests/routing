@@ -301,6 +301,7 @@ setup_simulate_extender() {
          set debug.radio_link on \
          set interfaces.1.type CATEAR \
          set interfaces.1.broadcast.tick_ms 5000 \
+         set interfaces.1.idle_tick_ms 5000 \
          set interfaces.1.socket_type STREAM \
          set interfaces.1.broadcast.encapsulation SINGLE \
          set interfaces.1.point_to_point on
@@ -329,6 +330,7 @@ setup_lowband_broadcast() {
 	set interfaces.1.broadcast.packet_interval 2000000 \
 	set interfaces.1.broadcast.transmit_timeout_ms 6200 \
 	set interfaces.1.broadcast.tick_ms 15000 \
+	set interfaces.1.idle_tick_ms 30000 \
 	set interfaces.1.broadcast.mtu 210 \
 	set interfaces.1.broadcast.route off \
 	set interfaces.1.unicast.send off

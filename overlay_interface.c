@@ -439,11 +439,13 @@ static int overlay_interface_init_any(int port)
 
 static void calc_next_tick(struct overlay_interface *interface)
 {
-  time_ms_t interval = interface->destination->ifconfig.tick_ms;
-  // only tick every 5s if we have no neighbours here
-  if (interval < 5000 && !link_interface_has_neighbours(interface))
-    interval = 5000;
-  
+  int interval;
+  if (link_interface_has_neighbours(interface))
+    interval = interface->destination->ifconfig.tick_ms;
+  else
+    // tick slower if we have no neighbours
+    interval = interface->ifconfig.idle_tick_ms;
+
   time_ms_t next_tick = interface->destination->last_tx+interval;
   if (!interface->destination->ifconfig.tick_ms){
     next_tick=TIME_MS_NEVER_WILL;

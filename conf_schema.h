@@ -461,6 +461,7 @@ ATOM(short,                 type,            OVERLAY_INTERFACE_WIFI, interface_t
 ATOM(short,                 radiotype,       RADIO_TYPE_RFD900, radio_type,, "Type of packet radio interface")
 SUB_STRUCT(mdp_iftype,      broadcast,)
 SUB_STRUCT(mdp_iftype,      unicast,)
+ATOM(int32_t,               idle_tick_ms,    5000, int32_nonneg,, "Tick interval when no peers are present")
 ATOM(bool_t,                default_route,   0, boolean,, "If true, use this interface as a default route")
 ATOM(bool_t,                prefer_unicast,  1, boolean,, "If true, send data as unicast IP packets if available")
 ATOM(bool_t,                debug,           0, boolean,, "If true, log details of every outgoing packet")
