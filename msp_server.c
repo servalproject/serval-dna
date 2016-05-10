@@ -16,12 +16,15 @@ struct msp_server_state{
   mdp_port_t local_port;
   struct subscriber *remote_sid;
   mdp_port_t remote_port;
+  uint8_t ttl;
+  uint8_t qos;
 };
 
 static struct msp_server_state *msp_create(
   struct msp_server_state **root, 
   struct subscriber *remote_sid, mdp_port_t remote_port,
-  struct subscriber *local_sid, mdp_port_t local_port)
+  struct subscriber *local_sid, mdp_port_t local_port,
+  uint8_t ttl, uint8_t qos)
 {
   struct msp_server_state *state = (struct msp_server_state *)emalloc_zero(sizeof(struct msp_server_state));
   msp_stream_init(&state->stream);
@@ -29,6 +32,8 @@ static struct msp_server_state *msp_create(
   state->remote_port = remote_port;
   state->local_sid = local_sid;
   state->local_port = local_port;
+  state->ttl = ttl;
+  state->qos = qos;
   state->_next = (*root);
   (*root) = state;
   return state;
@@ -37,7 +42,8 @@ static struct msp_server_state *msp_create(
 struct msp_server_state * msp_find_or_connect(
   struct msp_server_state **root, 
   struct subscriber *remote_sid, mdp_port_t remote_port,
-  struct subscriber *local_sid, mdp_port_t local_port)
+  struct subscriber *local_sid, mdp_port_t local_port,
+  uint8_t qos)
 {
   struct msp_server_state *state = (*root);
   
@@ -48,7 +54,7 @@ struct msp_server_state * msp_find_or_connect(
   }
   
   if (!state){
-    state = msp_create(root, remote_sid, remote_port, local_sid, local_port);
+    state = msp_create(root, remote_sid, remote_port, local_sid, local_port, PAYLOAD_TTL_DEFAULT, qos);
     state->stream.state|=MSP_STATE_DATAOUT;
     // make sure we send a FIRST packet soon
     state->stream.next_action = state->stream.next_ack = gettime_ms()+10;
@@ -112,7 +118,8 @@ static void send_frame(struct msp_server_state *state, struct overlay_buffer *pa
   response_header.source_port = state->local_port;
   response_header.destination = state->remote_sid;
   response_header.destination_port = state->remote_port;
-  
+  response_header.qos = state->qos;
+  response_header.ttl = state->ttl;
   overlay_send_frame(&response_header, payload);
   ob_free(payload);
 }
@@ -230,8 +237,8 @@ struct msp_server_state * msp_find_and_process(struct msp_server_state **root, c
   
   int flags = ob_peek(payload);
   if (!state && (flags & FLAG_FIRST))
-    state = msp_create(root, header->source, header->source_port, header->destination, header->destination_port);
-    
+    state = msp_create(root, header->source, header->source_port, header->destination, header->destination_port, PAYLOAD_TTL_DEFAULT, header->qos);
+
   if (!state){
     if (!(flags & FLAG_STOP)){
       struct internal_mdp_header response_header;
@@ -282,15 +289,19 @@ time_ms_t msp_last_packet(struct msp_server_state *state)
   return state->stream.rx.last_packet > state->stream.tx.last_packet ? state->stream.rx.last_packet : state->stream.tx.last_packet;
 }
 
+unsigned msp_queued_packet_count(struct msp_server_state *state)
+{
+  return state->stream.rx.packet_count + state->stream.tx.packet_count;
+}
 
 struct subscriber * msp_remote_peer(struct msp_server_state *state)
 {
   return state->remote_sid;
 }
 
-int msp_get_error(struct msp_server_state *state)
+msp_state_t msp_get_connection_state(struct msp_server_state *state)
 {
-  return (state->stream.state & (MSP_STATE_ERROR|MSP_STATE_STOPPED)) ? 1 : 0;
+  return state->stream.state;
 }
 
 int msp_can_send(struct msp_server_state *state)
