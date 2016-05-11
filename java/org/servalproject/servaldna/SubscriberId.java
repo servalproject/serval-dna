@@ -60,6 +60,7 @@ public class SubscriberId extends AbstractId {
 
 	public static SubscriberId broadcastSid;
 	public static SubscriberId ANY;
+	public static SubscriberId Internal;
 	static {
 		byte buff[] = new byte[BINARY_SIZE];
 		for (int i = 0; i < BINARY_SIZE; i++)
@@ -67,7 +68,6 @@ public class SubscriberId extends AbstractId {
 		try {
 			broadcastSid = new SubscriberId(buff);
 		} catch (InvalidBinaryException e) {
-			// TODO log error?
 		}
 
 		buff = new byte[BINARY_SIZE];
@@ -76,7 +76,15 @@ public class SubscriberId extends AbstractId {
 		try {
 			ANY = new SubscriberId(buff);
 		} catch (InvalidBinaryException e) {
-			// TODO log error?
+		}
+
+		buff = new byte[BINARY_SIZE];
+		for (int i = 0; i < BINARY_SIZE - 1; i++)
+			buff[i] = (byte) 0x00;
+		buff[BINARY_SIZE - 1] = 1;
+		try {
+			Internal = new SubscriberId(buff);
+		} catch (InvalidBinaryException e) {
 		}
 	}
 }

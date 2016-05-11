@@ -542,6 +542,12 @@ public class ServalDCommand
 		return results;
 	}
 
+	public static ConfigItems getConfig() throws ServalDFailureException {
+		ConfigItems results = new ConfigItems();
+		results.setResult(command(results, "config", "get"));
+		return results;
+	}
+
 	public static String getConfigItem(String name) throws ServalDFailureException{
 		Object result = getConfig(name).values.get(name);
 		if (result == null)
