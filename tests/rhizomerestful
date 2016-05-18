@@ -567,6 +567,7 @@ test_RhizomeInsert() {
       authorargs=()
       [ -n "${author[$n]}" ] && authorargs=(--form "bundle-author=${author[$n]}")
       execute curl \
+            -H "Expect:" \
             --silent --show-error --write-out '%{http_code}' \
             --output file$n.manifest \
             --dump-header http.header$n \
@@ -632,6 +633,7 @@ test_RhizomeInsert() {
    for n in 1 2 3 4; do
       $SED -e '/^version=/d;/^date=/d;/^filehash=/d;/^filesize=/d' xfile$n.manifest >nmanifest$n
       execute curl \
+            -H "Expect:" \
             --silent --show-error --write-out '%{http_code}' \
             --output nfile$n.manifest \
             --dump-header http.headers$n \
@@ -665,6 +667,7 @@ test_RhizomeInsertBoundaries() {
       create_file file$n $((7200 + ($n * 50)))
       >manifest$n
       execute curl \
+            -H "Expect:" \
             --silent --show-error --write-out '%{http_code}' \
             --output file$n.manifest \
             --dump-header http.header$n \
@@ -691,6 +694,7 @@ setup_RhizomeInsertAnon() {
 }
 test_RhizomeInsertAnon() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output ifile2.manifest \
          --dump-header http.header \
@@ -720,6 +724,7 @@ setup_RhizomeInsertAnonPassphrase() {
 test_RhizomeInsertAnonPassphrase() {
    # Create the bundle with file1
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output ifile1.manifest \
          --dump-header http.header \
@@ -744,6 +749,7 @@ test_RhizomeInsertAnonPassphrase() {
    assert_rhizome_list --fromhere=0 --manifest=ifile1.manifest file1
    # Update the bundle to file2
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output ifile2.manifest \
          --dump-header http.header \
@@ -778,6 +784,7 @@ setup_RhizomeInsertPassphrase() {
 test_RhizomeInsertPassphrase() {
    # Create the bundle with file1
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output ifile1.manifest \
          --dump-header http.header \
@@ -803,6 +810,7 @@ test_RhizomeInsertPassphrase() {
    assert_rhizome_list --fromhere=1 --manifest=ifile1.manifest file1
    # Update the bundle to file2
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output ifile2.manifest \
          --dump-header http.header \
@@ -838,6 +846,7 @@ setup_RhizomeInsertEmpty() {
 }
 test_RhizomeInsertEmpty() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output empty.manifest \
          --dump-header http.header \
@@ -867,6 +876,7 @@ setup_RhizomeInsertLarge() {
 }
 test_RhizomeInsertLarge() {
    execute --timeout=120 curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output file1.manifest \
          --dump-header http.header \
@@ -896,6 +906,7 @@ setup_RhizomeInsertMissingManifest() {
 }
 test_RhizomeInsertMissingManifest() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -919,6 +930,7 @@ setup_RhizomeInsertManifestOverflow() {
 }
 test_RhizomeInsertManifestOverflow() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -942,6 +954,7 @@ setup_RhizomeInsertIncorrectManifestType() {
 }
 test_RhizomeInsertIncorrectManifestType() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -965,6 +978,7 @@ setup_RhizomeInsertIncorrectManifestFormat() {
 }
 test_RhizomeInsertIncorrectManifestFormat() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -990,6 +1004,7 @@ setup_RhizomeInsertDuplicateManifest() {
 }
 test_RhizomeInsertDuplicateManifest() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -1015,6 +1030,7 @@ setup_RhizomeInsertJournalForbidden() {
 }
 test_RhizomeInsertJournalForbidden() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -1040,6 +1056,7 @@ setup_RhizomeInsertMissingPayload() {
 }
 test_RhizomeInsertMissingPayload() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -1064,6 +1081,7 @@ setup_RhizomeInsertDuplicatePayload() {
 }
 test_RhizomeInsertDuplicatePayload() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -1089,6 +1107,7 @@ setup_RhizomeInsertPartOrder() {
 }
 test_RhizomeInsertPartOrder() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -1113,6 +1132,7 @@ setup_RhizomeInsertPartUnsupported() {
 }
 test_RhizomeInsertPartUnsupported() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -1141,6 +1161,7 @@ setup_RhizomeInsertIncorrectFilesize() {
 }
 test_RhizomeInsertIncorrectFilesize() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -1156,6 +1177,7 @@ test_RhizomeInsertIncorrectFilesize() {
    assertJq http.body 'contains({"rhizome_payload_status_code": 3})'
    assertJqGrep --ignore-case http.body '.rhizome_payload_status_message' 'payload size.*contradicts manifest'
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -1182,6 +1204,7 @@ setup_RhizomeInsertIncorrectFilehash() {
 }
 test_RhizomeInsertIncorrectFilehash() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -1215,6 +1238,7 @@ setup_RhizomeJournalAppend() {
 }
 test_RhizomeJournalAppend() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output file1.manifest \
          --dump-header http.header \
@@ -1271,6 +1295,7 @@ test_RhizomeJournalAppend() {
    executeOk_servald rhizome extract file "$BID" file1x
    assert --message="extracted payload is correct" diff file1 file1x
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output file2.manifest \
          --dump-header http.headers \
@@ -1310,6 +1335,7 @@ setup_RhizomeJournalAppendSharedPayload() {
 }
 test_RhizomeJournalAppendSharedPayload() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output file1.manifest \
          --dump-header http.header \
@@ -1330,6 +1356,7 @@ test_RhizomeJournalAppendSharedPayload() {
    assert [ $(ls "$SERVALINSTANCE_PATH/blob" | wc -l) -eq 2 ]
    extract_http_header BID http.header Serval-Rhizome-Bundle-Id "$rexp_manifestid"
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output file2.manifest \
          --dump-header http.header \
@@ -1362,6 +1389,7 @@ setup_RhizomeAppendNonJournalForbidden() {
 }
 test_RhizomeAppendNonJournalForbidden() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \

@@ -50,6 +50,7 @@ meshms_send_message() {
    local text="${3?}"
    if $MESHMS_USE_RESTFUL; then
       executeOk curl \
+            -H "Expect:" \
             --silent --fail --show-error \
             --output meshms_send_message.json \
             --basic --user "$MESHMS_RESTFUL_USER:$MESHMS_RESTFUL_PASSWORD" \

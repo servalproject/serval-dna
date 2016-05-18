@@ -596,6 +596,7 @@ EOF
 }
 test_HttpImport() {
    executeOk curl \
+	 -H "Expect:" \
          --silent --fail --show-error \
          --output http.output \
          --dump-header http.headers \
@@ -623,7 +624,11 @@ setup_HttpAddLocal() {
 }
 test_HttpAddLocal() {
    echo 'File file1' >file1
-   executeOk curl --silent --form 'data=@file1' "http://${addr_localhost}:$PORTA/rhizome/secretaddfile" --output file1.manifest
+   executeOk curl \
+	-H "Expect:" \
+	--silent \
+	--form 'data=@file1' "http://${addr_localhost}:$PORTA/rhizome/secretaddfile" \
+	--output file1.manifest
    assert_manifest_complete file1.manifest
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 file1

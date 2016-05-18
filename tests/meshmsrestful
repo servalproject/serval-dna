@@ -398,6 +398,7 @@ setup_MeshmsSend() {
 }
 test_MeshmsSend() {
    executeOk curl \
+         -H "Expect:" \
          --silent --fail --show-error \
          --output sendmessage.json \
          --basic --user harry:potter \
@@ -406,6 +407,7 @@ test_MeshmsSend() {
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    assertStdoutGrep --matches=1 ':>:Hello World'
    executeOk curl \
+         -H "Expect:" \
          --silent --fail --show-error \
          --output sendmessage.json \
          --basic --user ron:weasley \
@@ -423,6 +425,7 @@ setup_MeshmsSendMissingMessage() {
 }
 test_MeshmsSendMissingMessage() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -445,6 +448,7 @@ setup_MeshmsSendDuplicateMessage() {
 }
 test_MeshmsSendDuplicateMessage() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -468,6 +472,7 @@ setup_MeshmsSendMessageMissingContentType() {
 }
 test_MeshmsSendMessageMissingContentType() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -490,6 +495,7 @@ setup_MeshmsSendMessageUnsupportedContentType() {
 }
 test_MeshmsSendMessageUnsupportedContentType() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -512,6 +518,7 @@ setup_MeshmsSendMessageMissingCharset() {
 }
 test_MeshmsSendMessageMissingCharset() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -534,6 +541,7 @@ setup_MeshmsSendMessageUnsupportedCharset() {
 }
 test_MeshmsSendMessageUnsupportedCharset() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -556,6 +564,7 @@ setup_MeshmsSendNoIdentity() {
 }
 test_MeshmsSendNoIdentity() {
    execute curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http.body \
          --dump-header http.header \
@@ -587,6 +596,7 @@ setup_MeshmsReadAllConversations() {
 }
 test_MeshmsReadAllConversations() {
    executeOk curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http_body \
          --basic --user harry:potter \
@@ -615,6 +625,7 @@ setup_MeshmsPostSpuriousContent() {
 }
 test_MeshmsPostSpuriousContent() {
    executeOk curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http_body \
          --basic --user harry:potter \
@@ -646,6 +657,7 @@ setup_MeshmsReadAllMessages() {
 }
 test_MeshmsReadAllMessages() {
    executeOk curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http_body \
          --basic --user harry:potter \
@@ -674,6 +686,7 @@ setup_MeshmsReadMessage() {
 }
 test_MeshmsReadMessage() {
    executeOk curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output http_body \
          --basic --user harry:potter \
@@ -685,6 +698,7 @@ test_MeshmsReadMessage() {
    executeOk_servald meshms list conversations $SIDA2
    assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:45:22\$"
    executeOk curl \
+         -H "Expect:" \
          --silent --show-error --write-out '%{http_code}' \
          --output read.json \
          --basic --user harry:potter \

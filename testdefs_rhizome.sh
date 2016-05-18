@@ -579,6 +579,7 @@ rhizome_add_bundles() {
       fi
       if $RHIZOME_USE_RESTFUL; then
          executeOk curl \
+	       -H "Expect:" \
                --silent --fail --show-error \
                --output "file$n.manifest" \
                --dump-header http.header$n \
