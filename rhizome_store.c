@@ -232,8 +232,8 @@ static enum rhizome_payload_status store_make_space(uint64_t bytes, struct rhizo
     return RHIZOME_PAYLOAD_STATUS_TOO_BIG;
   }
   
-  // vacuum database pages if we're already using too much free space
-  if (external_bytes + db_page_size * db_page_count > limit)
+  // vacuum database pages if more than 1/4 of the db is free or we're already over the limit
+  if (db_free_page_count > (db_page_count>>2)+1 || external_bytes + db_page_size * db_page_count > limit)
     rhizome_vacuum_db(&retry);
   
   // If there is enough space, do nothing
