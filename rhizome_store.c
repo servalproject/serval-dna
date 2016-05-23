@@ -767,11 +767,28 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
   }
 
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  
-  if (rhizome_exists(&write->id)) {
+
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1)
+    goto dbfailure;
+
+  // attempt the insert first
+  time_ms_t now = gettime_ms();
+  int rowcount, changes;
+  int stepcode = sqlite_exec_changes_retry_loglevel(
+	  LOG_LEVEL_INFO,
+	  &retry, &rowcount, &changes,
+	  "INSERT INTO FILES(id,length,datavalid,inserttime,last_verified) VALUES(?,?,1,?,?);",
+	  RHIZOME_FILEHASH_T, &write->id,
+	  INT64, write->file_length,
+	  INT64, now,
+	  INT64, now,
+	  END
+	);
+
+  if (stepcode == SQLITE_CONSTRAINT){
     // we've already got that payload, delete the new copy
     if (write->blob_rowid){
-      sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILEBLOBS WHERE rowid = ?;", 
+      sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILEBLOBS WHERE rowid = ?;",
 	INT64, write->blob_rowid, END);
     }
     if (external){
@@ -780,23 +797,8 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
     }
     DEBUGF(rhizome_store, "Payload id=%s already present, removed id='%"PRIu64"'", alloca_tohex_rhizome_filehash_t(write->id), write->temp_id);
     status = RHIZOME_PAYLOAD_STATUS_STORED;
-  }else{
-    if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;", END) == -1)
-      goto dbfailure;
 
-    time_ms_t now = gettime_ms();
-    
-    if (sqlite_exec_void_retry(
-	    &retry,
-	    "INSERT OR REPLACE INTO FILES(id,length,datavalid,inserttime,last_verified) VALUES(?,?,1,?,?);",
-	    RHIZOME_FILEHASH_T, &write->id,
-	    INT64, write->file_length,
-	    INT64, now,
-	    INT64, now,
-	    END
-	  ) == -1
-      )
-      goto dbfailure;
+  }else if(sqlite_code_ok(stepcode)){
 
     if (external) {
       char dest_path[1024];
@@ -818,12 +820,17 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
 	)
 	  goto dbfailure;
     }
-    if (sqlite_exec_void_retry(&retry, "COMMIT;", END) == -1)
-      goto dbfailure;
-    // A test case in tests/rhizomeprotocol depends on this debug message:
-    DEBUGF(rhizome_store, "Stored file %s", alloca_tohex_rhizome_filehash_t(write->id));
-  }
+  }else
+    goto dbfailure;
+
+  if (sqlite_exec_void_retry(&retry, "COMMIT;", END) == -1)
+    goto dbfailure;
+
   write->blob_rowid = 0;
+  // A test case in tests/rhizomeprotocol depends on this debug message:
+  if (status == RHIZOME_PAYLOAD_STATUS_NEW)
+    DEBUGF(rhizome_store, "Stored file %s", alloca_tohex_rhizome_filehash_t(write->id));
+
   return status;
 
 dbfailure:

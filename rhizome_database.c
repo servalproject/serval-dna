@@ -869,14 +869,13 @@ int _sqlite_step(struct __sourceloc __whence, int log_level, sqlite_retry_state 
   int ret = -1;
   sqlite_trace_whence = &__whence;
   while (statement) {
-    int stepcode = sqlite3_step(statement);
-    switch (stepcode) {
+    ret = sqlite3_step(statement);
+    switch (ret) {
       case SQLITE_OK:
       case SQLITE_DONE:
       case SQLITE_ROW:
 	if (retry)
 	  _sqlite_retry_done(__whence, retry, sqlite3_sql(statement));
-	ret = stepcode;
 	statement = NULL;
 	break;
       case SQLITE_BUSY:
@@ -885,10 +884,9 @@ int _sqlite_step(struct __sourceloc __whence, int log_level, sqlite_retry_state 
 	  sqlite3_reset(statement);
 	  break; // back to sqlite3_step()
 	}
-	ret = stepcode;
 	// fall through...
       default:
-	LOGF(log_level, "query failed (%d), %s: %s", stepcode, sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
+	LOGF(log_level, "query failed (%d), %s: %s", ret, sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
 	statement = NULL;
 	break;
     }
@@ -896,6 +894,20 @@ int _sqlite_step(struct __sourceloc __whence, int log_level, sqlite_retry_state 
   sqlite_trace_whence = NULL;
   OUT();
   return ret;
+}
+
+int _sqlite_exec_code(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement, int *rowcount)
+{
+  *rowcount = 0;
+  if (!statement)
+    return SQLITE_ERROR;
+  int stepcode;
+  while ((stepcode = _sqlite_step(__whence, log_level, retry, statement)) == SQLITE_ROW)
+    ++(*rowcount);
+  sqlite3_finalize(statement);
+  if (sqlite_trace_func())
+    _DEBUGF("rowcount=%d changes=%d", *rowcount, sqlite3_changes(rhizome_db));
+  return stepcode;
 }
 
 /*
@@ -915,36 +927,25 @@ int _sqlite_step(struct __sourceloc __whence, int log_level, sqlite_retry_state 
  */
 int _sqlite_exec(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
 {
-  if (!statement)
-    return -1;
-  int rowcount = 0;
-  int stepcode;
-  while ((stepcode = _sqlite_step(__whence, log_level, retry, statement)) == SQLITE_ROW)
-    ++rowcount;
-  sqlite3_finalize(statement);
-  if (sqlite_trace_func())
-    _DEBUGF("rowcount=%d changes=%d", rowcount, sqlite3_changes(rhizome_db));
+  int rowcount;
+  int stepcode = _sqlite_exec_code(__whence, log_level, retry, statement, &rowcount);
   return sqlite_code_ok(stepcode) ? rowcount : -1;
 }
 
-/* Execute an SQL command that returns no value.  If an error occurs then logs it at ERROR level and
- * returns -1.  Otherwise returns the number of rows changed by the command.
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
-static int _sqlite_vexec_void(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqltext, va_list ap)
+static int _sqlite_vexec_void_code(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, int *rowcount, int *changes, const char *sqltext, va_list ap)
 {
+  *changes=0;
+  *rowcount=0;
   sqlite3_stmt *statement = _sqlite_prepare(__whence, log_level, retry, sqltext);
   if (!statement)
-    return -1;
+    return SQLITE_ERROR;
   if (_sqlite_vbind(__whence, log_level, retry, statement, ap) == -1)
-    return -1;
-  int rowcount = _sqlite_exec(__whence, log_level, retry, statement);
-  if (rowcount == -1)
-    return -1;
-  if (rowcount)
-    WARNF("void query unexpectedly returned %d row%s", rowcount, rowcount == 1 ? "" : "s");
-  return sqlite3_changes(rhizome_db);
+    return SQLITE_ERROR;
+  int stepcode = _sqlite_exec_code(__whence, log_level, retry, statement, rowcount);
+  if (sqlite_code_ok(stepcode)){
+    *changes = sqlite3_changes(rhizome_db);
+  }
+  return stepcode;
 }
 
 /* Convenience wrapper for executing an SQL command that returns no value.  If an error occurs then
@@ -955,12 +956,17 @@ static int _sqlite_vexec_void(struct __sourceloc __whence, int log_level, sqlite
  */
 int _sqlite_exec_void(struct __sourceloc __whence, int log_level, const char *sqltext, ...)
 {
+  int rowcount, changes;
   va_list ap;
   va_start(ap, sqltext);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  int ret = _sqlite_vexec_void(__whence, log_level, &retry, sqltext, ap);
+  int stepcode = _sqlite_vexec_void_code(__whence, log_level, &retry, &rowcount, &changes, sqltext, ap);
   va_end(ap);
-  return ret;
+  if (!sqlite_code_ok(stepcode))
+    return -1;
+  if (rowcount)
+    WARNF("void query unexpectedly returned %d row%s", rowcount, rowcount == 1 ? "" : "s");
+  return changes;
 }
 
 /* Same as sqlite_exec_void() but if the statement cannot be executed because the database is
@@ -972,11 +978,25 @@ int _sqlite_exec_void(struct __sourceloc __whence, int log_level, const char *sq
  */
 int _sqlite_exec_void_retry(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqltext, ...)
 {
+  int rowcount, changes;
   va_list ap;
   va_start(ap, sqltext);
-  int ret = _sqlite_vexec_void(__whence, log_level, retry, sqltext, ap);
+  int stepcode = _sqlite_vexec_void_code(__whence, log_level, retry, &rowcount, &changes, sqltext, ap);
   va_end(ap);
-  return ret;
+  if (!sqlite_code_ok(stepcode))
+    return -1;
+  if (rowcount)
+    WARNF("void query unexpectedly returned %d row%s", rowcount, rowcount == 1 ? "" : "s");
+  return changes;
+}
+
+int _sqlite_exec_changes_retry(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, int *rowcount, int *changes, const char *sqltext, ...)
+{
+  va_list ap;
+  va_start(ap, sqltext);
+  int stepcode = _sqlite_vexec_void_code(__whence, log_level, retry, rowcount, changes, sqltext, ap);
+  va_end(ap);
+  return stepcode;
 }
 
 static int _sqlite_vexec_uint64(struct __sourceloc __whence, sqlite_retry_state *retry, uint64_t *result, const char *sqltext, va_list ap)

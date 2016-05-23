@@ -557,6 +557,7 @@ int _sqlite_step(struct __sourceloc, int log_level, sqlite_retry_state *retry, s
 int _sqlite_exec(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement);
 int _sqlite_exec_void(struct __sourceloc, int log_level, const char *sqltext, ...);
 int _sqlite_exec_void_retry(struct __sourceloc, int log_level, sqlite_retry_state *retry, const char *sqltext, ...);
+int _sqlite_exec_changes_retry(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, int *rowcount, int *changes, const char *sqltext, ...);
 int _sqlite_exec_uint64(struct __sourceloc, uint64_t *result, const char *sqltext, ...);
 int _sqlite_exec_uint64_retry(struct __sourceloc, sqlite_retry_state *retry, uint64_t *result, const char *sqltext, ...);
 int _sqlite_exec_strbuf(struct __sourceloc, strbuf sb, const char *sqltext, ...);
@@ -604,6 +605,8 @@ int _sqlite_blob_close(struct __sourceloc, int log_level, sqlite3_blob *blob);
 #define sqlite_exec_void(sql,arg,...)                   _sqlite_exec_void(__WHENCE__, LOG_LEVEL_ERROR, (sql), arg, ##__VA_ARGS__)
 #define sqlite_exec_void_loglevel(ll,sql,arg,...)       _sqlite_exec_void(__WHENCE__, (ll), (sql), arg, ##__VA_ARGS__)
 #define sqlite_exec_void_retry(rs,sql,arg,...)          _sqlite_exec_void_retry(__WHENCE__, LOG_LEVEL_ERROR, (rs), (sql), arg, ##__VA_ARGS__)
+#define sqlite_exec_changes_retry(rs,ROWS,CHANGES,sql,arg,...) _sqlite_exec_changes_retry(__WHENCE__, LOG_LEVEL_ERROR, (rs), (ROWS), (CHANGES), (sql), arg, ##__VA_ARGS__)
+#define sqlite_exec_changes_retry_loglevel(ll,rs,ROWS,CHANGES,sql,arg,...) _sqlite_exec_changes_retry(__WHENCE__, (ll), (rs), (ROWS), (CHANGES), (sql), arg, ##__VA_ARGS__)
 #define sqlite_exec_void_retry_loglevel(ll,rs,sql,arg,...) _sqlite_exec_void_retry(__WHENCE__, (ll), (rs), (sql), arg, ##__VA_ARGS__)
 #define sqlite_exec_uint64(res,sql,arg,...)             _sqlite_exec_uint64(__WHENCE__, (res), (sql), arg, ##__VA_ARGS__)
 #define sqlite_exec_uint64_retry(rs,res,sql,arg,...)    _sqlite_exec_uint64_retry(__WHENCE__, (rs), (res), (sql), arg, ##__VA_ARGS__)
