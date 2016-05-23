@@ -281,15 +281,20 @@ static void sync_send_peer(struct rhizome_sync_keys *sync_state)
 	rhizome_manifest *m = rhizome_new_manifest();
 	if (!m){
 	  ob_rewind(payload);
-	  // TODO fragment manifests
 	  assert(ob_position(payload));
 	  msg_complete = 0;
 	}else{
-	  if (rhizome_retrieve_manifest_by_hash_prefix(msg->key.key, sizeof(msg->key), m)==RHIZOME_BUNDLE_STATUS_SAME){
-	    ob_append_bytes(payload, m->manifestdata, m->manifest_all_bytes);
-	    send_payload=1;
-	  }else{
-	    ob_rewind(payload);
+	  enum rhizome_bundle_status status = rhizome_retrieve_manifest_by_hash_prefix(msg->key.key, sizeof(msg->key), m);
+	  switch(status){
+	    case RHIZOME_BUNDLE_STATUS_SAME:
+	      // TODO fragment manifests
+	      ob_append_bytes(payload, m->manifestdata, m->manifest_all_bytes);
+	      send_payload=1;
+	      break;
+	    case RHIZOME_BUNDLE_STATUS_NEW:
+	      // TODO we don't have this bundle anymore!
+	    default:
+	      ob_rewind(payload);
 	  }
 	  rhizome_manifest_free(m);
 	}
@@ -431,8 +436,15 @@ static void sync_peer_does_not_have (void * UNUSED(context), void *peer_context,
   if (!m)
     return;
 
-  if (rhizome_retrieve_manifest_by_hash_prefix(key->key, sizeof(sync_key_t), m)!=RHIZOME_BUNDLE_STATUS_SAME)
-    goto end;
+  enum rhizome_bundle_status status = rhizome_retrieve_manifest_by_hash_prefix(key->key, sizeof(sync_key_t), m);
+  switch(status){
+    case RHIZOME_BUNDLE_STATUS_SAME:
+      break;
+    case RHIZOME_BUNDLE_STATUS_NEW:
+      // TODO We don't have this bundle anymore!
+    default:
+      goto end;
+  }
 
   uint8_t bias = REACHABLE_BIAS;
   int rank = log2ll(m->filesize);
@@ -704,11 +716,16 @@ static void process_transfer_message(struct subscriber *peer, struct rhizome_syn
 	  ob_rewind(payload);
 	  return;
 	}
-	if (rhizome_retrieve_manifest_by_hash_prefix(key.key, sizeof(sync_key_t), m)!=RHIZOME_BUNDLE_STATUS_SAME){
+
+	enum rhizome_bundle_status status = rhizome_retrieve_manifest_by_hash_prefix(key.key, sizeof(sync_key_t), m);
+	if (status == RHIZOME_BUNDLE_STATUS_NEW){
+	  // TODO We don't have this bundle anymore!
+	}
+	if (status != RHIZOME_BUNDLE_STATUS_SAME){
 	  rhizome_manifest_free(m);
 	  break;
 	}
-	
+
 	struct rhizome_read *read = emalloc_zero(sizeof (struct rhizome_read));
 	
 	if (rhizome_open_read(read, &m->filehash) != RHIZOME_PAYLOAD_STATUS_STORED){
