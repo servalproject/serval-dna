@@ -482,6 +482,7 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
 
   sigIntFlag = 0;
   signal(SIGINT, sigIntHandler);
+  time_ms_t timeout = gettime_ms() + 5000;
 
   uint8_t payload[MDP_MTU];
   struct overlay_buffer *buff = ob_static(payload, sizeof payload);
@@ -559,7 +560,7 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
       }
     }
 
-    if (!opt_monitor && (mdp_header.flags & MDP_FLAG_CLOSE))
+    if (!opt_monitor && ((mdp_header.flags & MDP_FLAG_CLOSE) || gettime_ms() > timeout))
       break;
   }
   ob_free(buff);
