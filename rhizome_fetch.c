@@ -479,11 +479,8 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
     case RHIZOME_BUNDLE_STATUS_DUPLICATE:
     case RHIZOME_BUNDLE_STATUS_OLD:
       return 1;
-    case RHIZOME_BUNDLE_STATUS_ERROR:
-    case RHIZOME_BUNDLE_STATUS_INVALID:
-      return -1;
     default:
-      FATALF("rhizome_add_manifest_to_store() returned %d", status);
+      return -1;
   }
 }
 
@@ -1389,9 +1386,9 @@ int rhizome_received_content(const unsigned char *bidprefix,
     
     if (m){
       if (rhizome_import_buffer(m, bytes, count) == RHIZOME_PAYLOAD_STATUS_NEW) {
-	INFOF("Completed MDP transfer in one hit for file %s",
-	    alloca_tohex_rhizome_filehash_t(m->filehash));
-	rhizome_import_received_bundle(m);
+	if (rhizome_import_received_bundle(m)!=-1)
+	  INFOF("Completed MDP transfer in one hit for file %s",
+	      alloca_tohex_rhizome_filehash_t(m->filehash));
 	if (c)
 	  candidate_unqueue(c);
       }
