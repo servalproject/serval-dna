@@ -85,8 +85,10 @@ static uint64_t rhizome_create_fileblob(sqlite_retry_state *retry, uint64_t id, 
 
 static int rhizome_delete_external(const char *id)
 {
-  // attempt to remove any external blob
+  // attempt to remove any external blob & partial hash file
   char blob_path[1024];
+  if (FORMF_RHIZOME_STORE_PATH(blob_path, "%s/%s", RHIZOME_HASH_SUBDIR, id))
+    unlink(blob_path);
   if (!FORMF_RHIZOME_STORE_PATH(blob_path, "%s/%s", RHIZOME_BLOB_SUBDIR, id))
     return -1;
   if (unlink(blob_path) == -1) {
@@ -673,6 +675,23 @@ void rhizome_fail_write(struct rhizome_write *write)
   }
 }
 
+static int keep_hash(struct rhizome_write *write_state, struct crypto_hash_sha512_state *hash_state)
+{
+  char dest_path[1024];
+  // capture the state of writing the file hash
+  if (!FORMF_RHIZOME_STORE_PATH(dest_path, "%s/%s", RHIZOME_HASH_SUBDIR, alloca_tohex_rhizome_filehash_t(write_state->id)))
+    return WHYF("Path too long?");
+  int fd = open(dest_path, O_WRONLY | O_CREAT | O_TRUNC, 0664);
+  if (fd < 0)
+    return WHYF_perror("Failed to create %s", dest_path);
+  ssize_t w = write(fd, hash_state, sizeof *hash_state);
+  close(fd);
+  if (w != sizeof *hash_state)
+    return WHYF("Failed to write hash state");
+  DEBUGF(rhizome, "Preserved partial hash to %s", dest_path);
+  return 1;
+}
+
 enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
 {
   DEBUGF(rhizome_store, "blob_fd=%d file_offset=%"PRIu64"", write->blob_fd, write->file_offset);
@@ -717,7 +736,11 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
     DEBUGF(rhizome_store, "Ignoring empty write");
     goto failure;
   }
-    
+
+  struct crypto_hash_sha512_state hash_state;
+  if (write->journal)
+    bcopy(&write->sha512_context, &hash_state, sizeof hash_state);
+
   rhizome_filehash_t hash_out;
   crypto_hash_sha512_final(&write->sha512_context, hash_out.binary);
 
@@ -809,6 +832,8 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
 	goto dbfailure;
       }
       DEBUGF(rhizome_store, "Renamed %s to %s", blob_path, dest_path);
+      if (write->journal)
+	keep_hash(write, &hash_state);
     }else{
       if (sqlite_exec_void_retry(
 	    &retry,
@@ -1554,6 +1579,54 @@ enum rhizome_payload_status rhizome_journal_pipe(struct rhizome_write *write, co
   return status;
 }
 
+static int append_existing_journal_file(struct rhizome_write *write, rhizome_manifest *m){
+  // Try to append directly into the previous journal file, linking them together
+  DEBUGF(rhizome, "Attempting to append into journal blob");
+  // First, we need to read a previous partial hash state
+  char *filehash = alloca_tohex_rhizome_filehash_t(m->filehash);
+  char existing_path[1024];
+  if (!FORMF_RHIZOME_STORE_PATH(existing_path, "%s/%s", RHIZOME_BLOB_SUBDIR, filehash))
+    return WHYF("existing path too long?");
+
+  char hash_path[1024];
+  if (!FORMF_RHIZOME_STORE_PATH(hash_path, "%s/%s", RHIZOME_HASH_SUBDIR, filehash))
+    return WHYF("hash path too long?");
+
+  int fd = open(hash_path, O_RDONLY);
+  if (fd < 0){
+    if (errno != ENOENT)
+      WHYF_perror("Failed to open partial hash state %s", hash_path);
+    return -1;
+  }
+
+  struct crypto_hash_sha512_state hash_state;
+  ssize_t r = read(fd, &hash_state, sizeof hash_state);
+  close(fd);
+
+  if (r != sizeof hash_state)
+    return WHYF("Expected %u bytes", (unsigned)sizeof hash_state);
+
+  char new_path[1024];
+  if (!FORMF_RHIZOME_STORE_PATH(new_path, "%s/%"PRIu64, RHIZOME_BLOB_SUBDIR, write->temp_id))
+    return WHYF("Temp path too long?");
+
+  if (link(existing_path, new_path)==-1)
+    return WHYF_perror("Failed to link journal payloads together");
+
+  fd = open(new_path, O_RDWR, 0664);
+  if (fd<0)
+    return WHYF_perror("Failed to open new journal file");
+
+  // (write_data always seeks so we don't have to)
+  write->written_offset = write->file_offset = m->filesize;
+  write->blob_fd = fd;
+  bcopy(&hash_state, &write->sha512_context, sizeof hash_state);
+
+  // Used by tests
+  DEBUGF(rhizome,"Reusing journal payload file, keeping %"PRIu64" existing bytes", m->filesize);
+  return 1;
+}
+
 // open an existing journal bundle, advance the head pointer, duplicate the existing content and get ready to add more.
 enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *write, rhizome_manifest *m, uint64_t advance_by, uint64_t append_size)
 {
@@ -1568,33 +1641,43 @@ enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *wri
   }
   if (advance_by > 0)
     rhizome_manifest_set_tail(m, m->tail + advance_by);
+
   enum rhizome_payload_status status = rhizome_open_write(write, NULL, new_filesize);
   DEBUGF(rhizome, "rhizome_open_write() returned %d %s", status, rhizome_payload_status_message(status));
-  if (status == RHIZOME_PAYLOAD_STATUS_NEW && copy_length > 0) {
-    // we don't need to bother decrypting the existing journal payload
-    enum rhizome_payload_status rstatus = rhizome_journal_pipe(write, &m->filehash, advance_by, copy_length);
-    DEBUGF(rhizome, "rhizome_journal_pipe() returned %d %s", rstatus, rhizome_payload_status_message(rstatus));
-    int rstatus_valid = 0;
-    switch (rstatus) {
-    case RHIZOME_PAYLOAD_STATUS_EMPTY:
-    case RHIZOME_PAYLOAD_STATUS_NEW:
-    case RHIZOME_PAYLOAD_STATUS_STORED:
-      rstatus_valid = 1;
-      break;
-    case RHIZOME_PAYLOAD_STATUS_ERROR:
-    case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
-      rstatus_valid = 1;
-      status = rstatus;
-      break;
-    case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
-    case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
-    case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
-    case RHIZOME_PAYLOAD_STATUS_EVICTED:
-      // rhizome_journal_pipe() should not return any of these codes
-      FATALF("rhizome_journal_pipe() returned %d %s", rstatus, rhizome_payload_status_message(rstatus));
+  if (status == RHIZOME_PAYLOAD_STATUS_NEW) {
+    write->journal=1;
+
+    if (copy_length > 0 && advance_by == 0){
+      if (append_existing_journal_file(write, m)!=-1)
+	copy_length = 0;
     }
-    if (!rstatus_valid)
-      FATALF("rstatus = %d", rstatus);
+
+    if (copy_length > 0){
+      // we don't need to bother decrypting the existing journal payload
+      enum rhizome_payload_status rstatus = rhizome_journal_pipe(write, &m->filehash, advance_by, copy_length);
+      DEBUGF(rhizome, "rhizome_journal_pipe() returned %d %s", rstatus, rhizome_payload_status_message(rstatus));
+      int rstatus_valid = 0;
+      switch (rstatus) {
+      case RHIZOME_PAYLOAD_STATUS_EMPTY:
+      case RHIZOME_PAYLOAD_STATUS_NEW:
+      case RHIZOME_PAYLOAD_STATUS_STORED:
+	rstatus_valid = 1;
+	break;
+      case RHIZOME_PAYLOAD_STATUS_ERROR:
+      case RHIZOME_PAYLOAD_STATUS_TOO_BIG:
+	rstatus_valid = 1;
+	status = rstatus;
+	break;
+      case RHIZOME_PAYLOAD_STATUS_WRONG_SIZE:
+      case RHIZOME_PAYLOAD_STATUS_WRONG_HASH:
+      case RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL:
+      case RHIZOME_PAYLOAD_STATUS_EVICTED:
+	// rhizome_journal_pipe() should not return any of these codes
+	FATALF("rhizome_journal_pipe() returned %d %s", rstatus, rhizome_payload_status_message(rstatus));
+      }
+      if (!rstatus_valid)
+	FATALF("rstatus = %d", rstatus);
+    }
   }
   if (status == RHIZOME_PAYLOAD_STATUS_NEW) {
     status = rhizome_write_derive_key(m, write);

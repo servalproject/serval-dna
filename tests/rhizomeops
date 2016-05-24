@@ -1050,6 +1050,32 @@ test_JournalAppend() {
    assert diff file filex
 }
 
+doc_JournalAppendNoHash="Appending to a journal should not rehash"
+setup_JournalAppendNoHash() {
+   setup_servald
+   setup_rhizome
+   executeOk_servald config \
+	set rhizome.max_blob_size 0 \
+	set debug.rhizome on
+   echo "Part One" > file1
+   echo "Part Two" > file2
+   cat file1 file2 > file
+}
+test_JournalAppendNoHash() {
+   executeOk_servald rhizome journal append $SIDA "" file1
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file1
+   extract_stdout_manifestid BID
+   assert [ $(ls "$SERVALINSTANCE_PATH/hash" | wc -l) -eq 1 ]
+   executeOk_servald rhizome journal append $SIDA $BID file2
+   tfw_cat --stdout --stderr
+   assert [ $(ls "$SERVALINSTANCE_PATH/hash" | wc -l) -eq 2 ]
+   assertStderrGrep 'Reusing journal'
+   executeOk_servald rhizome extract file $BID filex
+   tfw_cat --stdout --stderr
+   assert diff file filex
+}
+
 doc_JournalAppendSharedPayload="Journal append produces a shared payload"
 setup_JournalAppendSharedPayload() {
    setup_servald

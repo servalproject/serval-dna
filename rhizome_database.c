@@ -197,6 +197,10 @@ int rhizome_opendb()
     RETURN(-1);
   if (emkdirs_info(dbpath, 0700) == -1)
     RETURN(-1);
+  if (!FORMF_RHIZOME_STORE_PATH(dbpath, RHIZOME_HASH_SUBDIR))
+    RETURN(-1);
+  if (emkdirs_info(dbpath, 0700) == -1)
+    RETURN(-1);
   if (!sqlite3_temp_directory) {
     if (!FORMF_RHIZOME_STORE_PATH(dbpath, "sqlite3tmp"))
       RETURN(-1);

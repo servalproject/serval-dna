@@ -117,40 +117,40 @@ typedef struct rhizome_manifest
    * appended.  All fields below may not be valid until the manifest has been
    * finalised.
    */
-  bool_t finalised;
+  bool_t finalised:1;
 
   /* Whether the manifest contains a signature that corresponds to the manifest
    * id (ie public key).
    */
-  bool_t selfSigned;
+  bool_t selfSigned:1;
 
   /* Set if the ID field (cryptoSignPublic) contains a bundle ID.
    */
-  bool_t has_id;
+  bool_t has_id:1;
 
   /* Set if the filehash field contains a file hash.
    */
-  bool_t has_filehash;
+  bool_t has_filehash:1;
 
   /* Set if the tail field is valid, ie, the bundle is a journal.
    */
-  bool_t is_journal;
+  bool_t is_journal:1;
 
   /* Set if the date field is valid, ie, the manifest contains a valid "date"
    * field.
    */
-  bool_t has_date;
+  bool_t has_date:1;
 
   /* Set if the bundle_key field is valid, ie, the manifest contains a valid
    * "BK" field.
    */
-  bool_t has_bundle_key;
+  bool_t has_bundle_key:1;
 
   /* Set if the sender and recipient fields are valid, ie, the manifest
    * contains a valid "sender"/"recipient" field.
    */
-  bool_t has_sender;
-  bool_t has_recipient;
+  bool_t has_sender:1;
+  bool_t has_recipient:1;
 
   /* Local authorship.  Useful for dividing bundle lists between "sent" and
    * "inbox" views.
@@ -214,11 +214,6 @@ typedef struct rhizome_manifest
    * have an ANY author (all zeros).
    */
   sid_t author;
-
-  /* Unused.  SHOULD BE DELETED.
-   */
-  unsigned group_count;
-  char *groups[MAX_MANIFEST_VARS];
 
   size_t manifest_body_bytes;
   size_t manifest_all_bytes;
@@ -341,6 +336,7 @@ int rhizome_enabled();
 int rhizome_fetch_delay_ms();
 
 #define RHIZOME_BLOB_SUBDIR "blob"
+#define RHIZOME_HASH_SUBDIR "hash"
 
 extern __thread sqlite3 *rhizome_db;
 serval_uuid_t rhizome_db_uuid;
@@ -724,9 +720,10 @@ struct rhizome_write
   sqlite3_blob *sql_blob;
   
   rhizome_filehash_t id;
-  uint8_t id_known;
-  uint8_t crypt;
-  
+  uint8_t id_known:1;
+  uint8_t crypt:1;
+  uint8_t journal:1;
+
   unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
   unsigned char nonce[crypto_box_NONCEBYTES];
 };
