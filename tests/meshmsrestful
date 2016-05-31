@@ -25,11 +25,8 @@ source "${0%/*}/../testdefs_meshms.sh"
 
 shopt -s extglob
 
-setup() {
-   setup_curl 7
-   setup_json
-   setup_servald
-   set_instance +A
+setup_instance() {
+   set_instance $1
    set_meshms_config
    executeOk_servald config \
       set api.restful.users.harry.password potter \
@@ -41,7 +38,14 @@ setup() {
    else
       create_identities $IDENTITY_COUNT
    fi
+}
+
+setup() {
+   setup_curl 7
+   setup_json
+   setup_servald
    export SERVALD_RHIZOME_DB_RETRY_LIMIT_MS=60000
+   setup_instance +A
    start_servald_instances +A
    wait_until servald_restful_http_server_started +A
    get_servald_restful_http_server_port PORTA +A
@@ -709,6 +713,64 @@ test_MeshmsReadMessage() {
    assertStdoutIs 200
    executeOk_servald meshms list conversations $SIDA2
    assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:45:22\$"
+}
+
+doc_sendFlood="Send lots of messages over the network"
+setup_sendFlood() {
+   setup_curl 7
+   setup_json
+   setup_servald
+   export SERVALD_RHIZOME_DB_RETRY_LIMIT_MS=60000
+   set_extra_config() {
+      executeOk_servald config set debug.rhizome_sync_keys on
+   }
+   setup_instance +A
+   setup_instance +B
+   start_servald_instances +A +B
+   wait_until servald_restful_http_server_started +A
+   get_servald_restful_http_server_port PORTA +A
+   wait_until servald_restful_http_server_started +B
+   get_servald_restful_http_server_port PORTB +B
+   tfw_log "PORTA = $PORTA, PORTB = $PORTB"
+}
+test_sendFlood() {
+   set_instance +A
+   for (( j=0; j<5; j++ ))
+   do
+      for (( i=0; i<5; i++ ))
+      do
+         tfw_log "Sending message $i $j"
+         curl \
+            -H "Expect:" \
+            --silent --fail --show-error \
+            --output /dev/null \
+            --basic --user harry:potter \
+            --form "message=0123456789012345678901234567890123456789 $(date +%s%N) $j $i;type=text/plain;charset=utf-8" \
+            "http://$addr_localhost:$PORTA/restful/meshms/$SIDA/$SIDB/sendmessage"
+      done
+      # TODO wait for sync complete
+      sleep 2
+      set_instance +B
+      executeOk_servald rhizome list
+      tfw_cat --stdout
+      executeOk_servald route print
+      tfw_cat --stdout
+      executeOk curl \
+            --silent --fail --show-error \
+            --output conversationlist.json \
+            --dump-header http.headers \
+            --basic --user harry:potter \
+            "http://$addr_localhost:$PORTB/restful/meshms/$SIDB/conversationlist.json"
+      tfw_cat http.headers conversationlist.json
+   done
+   set_instance +B
+   executeOk curl \
+            --silent --fail --show-error \
+            --output conversationlist.json \
+            --dump-header http.headers \
+            --basic --user harry:potter \
+            "http://$addr_localhost:$PORTB/restful/meshms/$SIDB/conversationlist.json"
+   tfw_cat http.headers conversationlist.json
 }
 
 runTests "$@"
