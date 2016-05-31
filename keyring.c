@@ -1179,7 +1179,8 @@ static int keyring_identity_mac(const keyring_identity *id, unsigned char *pkrsa
     unsigned __len = (len); \
     if (__len > sizeof work - ofs) { \
       bzero(work, ofs); \
-      return WHY("Input too long"); \
+      DEBUG(keyring, "Input too long"); \
+      return -1; \
     } \
     bcopy((buf), &work[ofs], __len); \
     ofs += __len; \
@@ -1195,8 +1196,10 @@ static int keyring_identity_mac(const keyring_identity *id, unsigned char *pkrsa
     }
     kp = kp->next;
   }
-  if (!found)
-    return WHY("Identity does not have a primary key");
+  if (!found){
+    DEBUG(keyring,"Identity does not have a primary key");
+    return -1;
+  }
   APPEND(id->PKRPin, strlen(id->PKRPin));
 #undef APPEND
   crypto_hash_sha512(mac, work, ofs);
