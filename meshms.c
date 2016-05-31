@@ -218,6 +218,8 @@ static size_t append_footer(unsigned char *buffer, char type, size_t message_len
 // append a timestamp as a uint32_t with 1s precision
 static size_t append_timestamp(uint8_t *buffer)
 {
+  if (!config.rhizome.reliable_clock)
+    return 0;
   write_uint32(buffer, gettime());
   size_t ofs=4;
   return ofs+append_footer(buffer+ofs, MESHMS_BLOCK_TYPE_TIME, ofs);
