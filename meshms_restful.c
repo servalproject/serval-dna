@@ -209,7 +209,7 @@ static int restful_meshms_conversationlist_json(httpd_request *r, const char *re
   r->u.mclist.rowcount = 0;
   r->u.mclist.conv = NULL;
   enum meshms_status status;
-  if (meshms_failed(status = meshms_conversations_list(&r->sid1, NULL, &r->u.mclist.conv)))
+  if (meshms_failed(status = meshms_conversations_list(NULL, &r->sid1, NULL, &r->u.mclist.conv)))
     return http_request_meshms_response(r, 0, NULL, status);
   if (r->u.mclist.conv != NULL)
     meshms_conversation_iterator_start(&r->u.mclist.iter, r->u.mclist.conv);

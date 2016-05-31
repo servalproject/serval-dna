@@ -1020,7 +1020,7 @@ static int rhizome_fetch_mdp_touch_timeout(struct rhizome_fetch_slot *slot)
   // For now, we will just make the timeout 1 second from the time of the last
   // received block.
   unschedule(&slot->alarm);
-  slot->alarm.alarm=gettime_ms()+config.rhizome.mdp_stall_timeout; 
+  slot->alarm.alarm=gettime_ms()+config.rhizome.mdp.stall_timeout;
   slot->alarm.deadline=slot->alarm.alarm+500;
   schedule(&slot->alarm);
   return 0;
@@ -1186,7 +1186,7 @@ static enum rhizome_start_fetch_result rhizome_fetch_switch_to_mdp(struct rhizom
   if (q)
     slot->mdpIdleTimeout *= 1+(q - rhizome_fetch_queues);
   
-  slot->mdpRXBlockLength = config.rhizome.rhizome_mdp_block_size; // Rhizome over MDP block size
+  slot->mdpRXBlockLength = config.rhizome.mdp.block_size; // Rhizome over MDP block size
   rhizome_fetch_mdp_requestblocks(slot);
 
   RETURN(STARTED);

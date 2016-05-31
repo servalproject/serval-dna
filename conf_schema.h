@@ -405,6 +405,8 @@ END_STRUCT
 
 STRUCT(rhizome_mdp)
 ATOM(bool_t,                enable,     1, boolean,, "If true, Rhizome MDP server is started")
+ATOM(uint64_t,              stall_timeout,      1000, uint64_scaled,, "Timeout to request more data.")
+ATOM(uint64_t,              block_size, 512, uint64_scaled,, "Transfer block size.")
 END_STRUCT
 
 STRUCT(rhizome_advertise)
@@ -421,9 +423,7 @@ ATOM(uint64_t,              database_size,  UINT64_MAX, uint64_scaled,, "Maximum
 ATOM(uint64_t,              min_free_space, 100*1024*1024, uint64_scaled,, "Minimum free space to preserve on the disk")
 ATOM(uint32_t,              max_blob_size,  128 * 1024, uint32_scaled,, "Store payloads larger than this in files not SQLite blobs")
 
-ATOM(uint64_t,              rhizome_mdp_block_size, 512, uint64_scaled,, "Rhizome MDP block size.")
 ATOM(uint64_t,              idle_timeout,           RHIZOME_IDLE_TIMEOUT, uint64_scaled,, "Rhizome transfer timeout if no data received.")
-ATOM(uint64_t,              mdp_stall_timeout,      1000, uint64_scaled,, "Timeout to request more data via mdp.")
 ATOM(uint32_t,              fetch_delay_ms,         50, uint32_nonzero,, "Delay from receiving first bundle advert to initiating fetch")
 SUB_STRUCT(rhizome_direct,  direct,)
 SUB_STRUCT(rhizome_api,     api,)

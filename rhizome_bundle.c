@@ -385,16 +385,24 @@ void _rhizome_manifest_set_inserttime(struct __sourceloc __whence, rhizome_manif
   m->inserttime = time;
 }
 
-void _rhizome_manifest_set_author(struct __sourceloc __whence, rhizome_manifest *m, const sid_t *sidp)
+void _rhizome_manifest_set_author(struct __sourceloc __whence, rhizome_manifest *m, const keyring_identity *id, const sid_t *sidp)
 {
-  if (sidp) {
-    if (m->authorship == ANONYMOUS || cmp_sid_t(&m->author, sidp) != 0) {
-      DEBUGF(rhizome_manifest, "SET manifest %p author = %s", m, alloca_tohex_sid_t(*sidp));
-      m->author = *sidp;
-      m->authorship = AUTHOR_NOT_CHECKED;
-    }
-  } else
+  if (id) {
+    if (m->author_identity == id)
+      return;
+    sidp = id->box_pk;
+  } else if (sidp) {
+    if (m->authorship != ANONYMOUS && cmp_sid_t(&m->author, sidp) == 0)
+      return;
+  } else {
     _rhizome_manifest_del_author(__whence, m);
+    return;
+  }
+
+  DEBUGF(rhizome_manifest, "SET manifest %p author = %s", m, alloca_tohex_sid_t(*sidp));
+  m->author = *sidp;
+  m->author_identity = id;
+  m->authorship = AUTHOR_NOT_CHECKED;
 }
 
 void _rhizome_manifest_del_author(struct __sourceloc __whence, rhizome_manifest *m)
@@ -402,6 +410,7 @@ void _rhizome_manifest_del_author(struct __sourceloc __whence, rhizome_manifest 
   if (m->authorship != ANONYMOUS) {
     DEBUGF(rhizome_manifest, "DEL manifest %p author", m);
     m->author = SID_ANY;
+    m->author_identity = NULL;
     m->authorship = ANONYMOUS;
   }
 }
@@ -1420,25 +1429,16 @@ int rhizome_manifest_set_name_from_path(rhizome_manifest *m, const char *filepat
  * pointer to a "free" method (eg, free(3)) that must be called to release the string before the
  * pointer is discarded.
  */
-struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp)
+struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const char *filepath)
 {
   /* Set version of manifest from current time if not already set. */
   if (m->version == 0)
     rhizome_manifest_set_version(m, gettime_ms());
 
-  /* Set the manifest's author.  This must be done before binding to a new ID (below).  If the
-   * 'authorSidp' parameter was not set, then don't use the 'sender' field here, as we only want to
-   * authenticate an explicitly supplied author, not the sender.
-   */
-  if (authorSidp)
-    rhizome_manifest_set_author(m, authorSidp);
-
   /* Fill in the bundle secret and bundle ID.
    */
-  int valid_haveSecret = 0;
   switch (m->haveSecret) {
   case SECRET_UNKNOWN:
-    valid_haveSecret = 1;
     // If the Bundle Id is already known, then derive the bundle secret from BK if known.
     if (m->has_id) {
       DEBUGF(rhizome, "discover secret for bundle bid=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
@@ -1452,7 +1452,6 @@ struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const ch
     }
     // fall through to set the BK field...
   case NEW_BUNDLE_ID:
-    valid_haveSecret = 1;
     assert(m->has_id);
     // If no 'authorSidp' parameter was supplied but the manifest has a 'sender' field, then use the
     // sender as the author.
@@ -1465,42 +1464,35 @@ struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const ch
     }
     break;
   case EXISTING_BUNDLE_ID:
-    valid_haveSecret = 1;
     // If modifying an existing bundle, try to discover the bundle secret key and the author.
     assert(m->has_id);
     DEBUGF(rhizome, "modifying existing bundle bid=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
     rhizome_authenticate_author(m);
     // TODO assert that new version > old version?
-  }
-  if (!valid_haveSecret)
+    break;
+  default:
     FATALF("haveSecret = %d", m->haveSecret);
-  int valid_authorship = 0;
+  }
+
   switch (m->authorship) {
   case ANONYMOUS:
-    assert(!authorSidp);
-    valid_authorship = 1;
-    break;
   case AUTHOR_AUTHENTIC:
-    valid_authorship = 1;
-    break;
+    break; // all good
   case AUTHOR_UNKNOWN:
     return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_READONLY, "Author is not in keyring");
   case AUTHOR_IMPOSTOR:
     return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_READONLY, "Incorrect author");
-  case AUTHOR_NOT_CHECKED:
-  case AUTHOR_LOCAL:
-    FATALF("logic error (bug): m->authorship = %d", m->authorship);
   case AUTHENTICATION_ERROR:
     return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_ERROR, "Error authenticating author");
-  }
-  if (!valid_authorship)
+  default:
     FATALF("m->authorship = %d", (int)m->authorship);
+  }
 
   /* Service field must already be set.
    */
-  if (m->service == NULL) {
+  if (m->service == NULL)
     return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_INVALID, "Missing 'service' field");
-  }
+
   DEBUGF(rhizome, "manifest contains service=%s", m->service);
 
   /* Fill in 'date' field to current time unless already set.
@@ -1525,11 +1517,10 @@ struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const ch
    * and encrypted by default.
    */
   if (   m->payloadEncryption == PAYLOAD_CRYPT_UNKNOWN
-      && m->has_sender
       && m->has_recipient
       && !is_sid_t_broadcast(m->recipient)
   ) {
-    DEBUGF(rhizome, "Implicitly adding payload encryption due to presense of sender & recipient fields");
+    DEBUGF(rhizome, "Implicitly adding payload encryption due to presense of recipient field");
     rhizome_manifest_set_crypt(m, PAYLOAD_ENCRYPTED);
   }
 

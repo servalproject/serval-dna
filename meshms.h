@@ -55,6 +55,7 @@ struct meshms_ply {
   uint64_t version;
   uint64_t tail;
   uint64_t size;
+  uint8_t found;
 };
 
 struct meshms_conversations {
@@ -63,10 +64,7 @@ struct meshms_conversations {
   // who are we talking to?
   sid_t them;
   
-  char found_my_ply;
   struct meshms_ply my_ply;
-  
-  char found_their_ply;
   struct meshms_ply their_ply;
   
   // what is the offset of their last message
@@ -95,7 +93,7 @@ struct meshms_ply_read {
 /* Fetch the list of all MeshMS conversations into a binary tree whose nodes
  * are all allocated by malloc(3).
  */
-enum meshms_status meshms_conversations_list(const sid_t *my_sid, const sid_t *their_sid, struct meshms_conversations **conv);
+enum meshms_status meshms_conversations_list(const struct keyring_identity *id, const sid_t *my_sid, const sid_t *their_sid, struct meshms_conversations **conv);
 void meshms_free_conversations(struct meshms_conversations *conv);
 
 /* For iterating over a binary tree of all MeshMS conversations, as created by
@@ -134,6 +132,7 @@ void meshms_conversation_iterator_advance(struct meshms_conversation_iterator *)
  */
 struct meshms_message_iterator {
   // Public fields that remain fixed for the life of the iterator:
+  struct keyring_identity *identity;
   const sid_t *my_sid;
   const sid_t *their_sid;
   const rhizome_bid_t *my_ply_bid;

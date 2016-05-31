@@ -440,7 +440,9 @@ static struct overlay_buffer *overlay_mdp_decrypt(struct internal_mdp_header *he
       
   case 0:
     {
-      unsigned char *k=keyring_get_nm_bytes(&header->destination->sid, &header->source->sid);
+      unsigned char *k=keyring_get_nm_bytes(header->destination->identity->box_sk,
+	header->destination->identity->box_pk,
+	&header->source->sid);
       if (!k){
 	WHY("I don't have the private key required to decrypt that");
 	break;
@@ -764,7 +766,7 @@ static struct overlay_buffer * encrypt_payload(
   
   /* get pre-computed PKxSK bytes (the slow part of auth-cryption that can be
      retained and reused, and use that to do the encryption quickly. */
-  unsigned char *k=keyring_get_nm_bytes(&source->sid, &dest->sid);
+  unsigned char *k=keyring_get_nm_bytes(source->identity->box_sk, source->identity->box_pk, &dest->sid);
   if (!k) {
     ob_free(ret);
     WHY("could not compute Curve25519(NxM)");

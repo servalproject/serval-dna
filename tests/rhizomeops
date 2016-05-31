@@ -966,29 +966,47 @@ test_EncryptedPayload() {
    assert ! diff file1 file1y
 }
 
-doc_RecipientIsEncrypted="Sender & recipient triggers encryption by default"
+doc_RecipientIsEncrypted="Setting recipient triggers encryption by default"
 setup_RecipientIsEncrypted() {
    A_IDENTITY_COUNT=2
    setup_servald
    setup_rhizome
-   echo "Clear Text" >file1
+   echo "Clear Text1" >file1
    echo -e "service=file\nsender=$SIDA1\nrecipient=$SIDA2" >file1.manifest
+   echo "Clear Text2" >file2
+   echo -e "service=file\nrecipient=$SIDA2" >file2.manifest
 }
 test_RecipientIsEncrypted() {
+# add file with sender & recipient
    executeOk_servald rhizome add file $SIDA1 file1 file1.manifest
    tfw_cat --stdout --stderr
    assert_stdout_add_file file1
    assert_manifest_complete file1.manifest
-   executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=1 file1
-   extract_manifest_id BID file1.manifest
-   executeOk_servald rhizome extract file $BID file1x
+   assertGrep file1.manifest "crypt=1"
+# add file sith only recipient
+   executeOk_servald rhizome add file $SIDA1 file2 file2.manifest
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file2
+   assert_manifest_complete file2.manifest
+   assertGrep file2.manifest "crypt=1"
+# test that both files can be decrypted
+   extract_manifest_id BID1 file1.manifest
+   extract_manifest_filehash filehash1 file1.manifest
+   extract_manifest_id BID2 file2.manifest
+   extract_manifest_filehash filehash2 file2.manifest
+   executeOk_servald rhizome extract file $BID1 file1x
    tfw_cat --stdout --stderr
    assert diff file1 file1x
-   extract_manifest_filehash filehash file1.manifest
-   executeOk_servald rhizome export file $filehash file1y
+   executeOk_servald rhizome extract file $BID2 file2x
+   tfw_cat --stdout --stderr
+   assert diff file2 file2x
+# and that the stored files are obscured
+   executeOk_servald rhizome export file $filehash1 file1y
    tfw_cat file1 -v file1y
    assert ! diff file1 file1y
+   executeOk_servald rhizome export file $filehash2 file2y
+   tfw_cat file2 -v file2y
+   assert ! diff file2 file2y
 }
 
 doc_BroadcastNotEncrypted="Broadcast recipients are not encrypted by default"

@@ -214,6 +214,7 @@ typedef struct rhizome_manifest
    * have an ANY author (all zeros).
    */
   sid_t author;
+  const struct keyring_identity *author_identity;
 
   size_t manifest_body_bytes;
   size_t manifest_all_bytes;
@@ -254,7 +255,8 @@ typedef struct rhizome_manifest
 #define rhizome_manifest_set_crypt(m,v)         _rhizome_manifest_set_crypt(__WHENCE__,(m),(v))
 #define rhizome_manifest_set_rowid(m,v)         _rhizome_manifest_set_rowid(__WHENCE__,(m),(v))
 #define rhizome_manifest_set_inserttime(m,v)    _rhizome_manifest_set_inserttime(__WHENCE__,(m),(v))
-#define rhizome_manifest_set_author(m,v)        _rhizome_manifest_set_author(__WHENCE__,(m),(v))
+#define rhizome_manifest_set_author(m,v)        _rhizome_manifest_set_author(__WHENCE__,(m),NULL,(v))
+#define rhizome_manifest_set_author_identity(m,v) _rhizome_manifest_set_author(__WHENCE__,(m),(v),NULL)
 #define rhizome_manifest_del_author(m)          _rhizome_manifest_del_author(__WHENCE__,(m))
 
 void _rhizome_manifest_set_id(struct __sourceloc, rhizome_manifest *, const rhizome_bid_t *);
@@ -280,7 +282,7 @@ void _rhizome_manifest_del_recipient(struct __sourceloc, rhizome_manifest *);
 void _rhizome_manifest_set_crypt(struct __sourceloc, rhizome_manifest *, enum rhizome_manifest_crypt);
 void _rhizome_manifest_set_rowid(struct __sourceloc, rhizome_manifest *, uint64_t);
 void _rhizome_manifest_set_inserttime(struct __sourceloc, rhizome_manifest *, time_ms_t);
-void _rhizome_manifest_set_author(struct __sourceloc, rhizome_manifest *, const sid_t *);
+void _rhizome_manifest_set_author(struct __sourceloc, rhizome_manifest *, const struct keyring_identity *, const sid_t *);
 void _rhizome_manifest_del_author(struct __sourceloc, rhizome_manifest *);
 
 #define rhizome_manifest_overwrite(dstm,srcm)   _rhizome_manifest_overwrite(__WHENCE__,(dstm),(srcm))
@@ -486,12 +488,11 @@ struct rhizome_bundle_result rhizome_manifest_add_file(int appending,
 int rhizome_bundle_import_files(rhizome_manifest *m, rhizome_manifest **m_out, const char *manifest_path, const char *filepath, int zip_files);
 
 int rhizome_manifest_set_name_from_path(rhizome_manifest *m, const char *filepath);
-struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSidp);
+struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const char *filepath);
 
 int rhizome_apply_bundle_secret(rhizome_manifest *, const rhizome_bk_t *);
 int rhizome_manifest_add_bundle_key(rhizome_manifest *);
 
-void rhizome_find_bundle_author_and_secret(rhizome_manifest *m);
 int rhizome_lookup_author(rhizome_manifest *m);
 void rhizome_authenticate_author(rhizome_manifest *m);
 
@@ -635,12 +636,6 @@ int rhizome_delete_file(const rhizome_filehash_t *hashp);
 #define RHIZOME_VERIFY 1
 
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
-enum rhizome_secret_disposition {
-    FOUND_RHIZOME_SECRET = 0,
-    IDENTITY_NOT_FOUND,
-    IDENTITY_HAS_NO_RHIZOME_SECRET,
-};
-enum rhizome_secret_disposition find_rhizome_secret(const sid_t *authorSidp, size_t *rs_len, const unsigned char **rs);
 int rhizome_bk2secret(
   const rhizome_bid_t *bidp,
   const unsigned char *rs, const size_t rs_len,

@@ -248,8 +248,9 @@ static int rhizome_direct_addfile_end(struct http_request *hr)
     // If manifest template did not specify a service field, then by default it is "file".
     if (m->service == NULL)
       rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
-    const sid_t *author = is_sid_t_any(config.rhizome.api.addfile.default_author) ? NULL : &config.rhizome.api.addfile.default_author;
-    struct rhizome_bundle_result result = rhizome_fill_manifest(m, r->u.direct_import.data_file_name, author);
+    if (!is_sid_t_any(config.rhizome.api.addfile.default_author))
+      rhizome_manifest_set_author(m, &config.rhizome.api.addfile.default_author);
+    struct rhizome_bundle_result result = rhizome_fill_manifest(m, r->u.direct_import.data_file_name);
     rhizome_manifest *mout = NULL;
     if (result.status == RHIZOME_BUNDLE_STATUS_NEW) {
       rhizome_bundle_result_free(&result);

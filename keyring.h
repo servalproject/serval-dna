@@ -30,7 +30,6 @@ typedef struct keypair {
   size_t private_key_len;
   unsigned char *public_key;
   size_t public_key_len;
-  uint8_t verified;
   struct keypair *next;
 } keypair;
 
@@ -45,6 +44,10 @@ typedef struct keyring_identity {
   time_ms_t challenge_expires;
   unsigned char challenge[24];
   unsigned int slot;
+  const uint8_t *box_sk;
+  const sid_t *box_pk;
+  const uint8_t *sign_sk;
+  const uint8_t *sign_pk;
   struct keyring_identity *next;
   keypair *keypairs;
 } keyring_identity;
@@ -67,6 +70,7 @@ typedef struct keyring_file {
   keyring_identity *identities;
   FILE *file;
   size_t file_size;
+  uint8_t dirty;
 } keyring_file;
 
 typedef struct keyring_iterator{
@@ -79,10 +83,11 @@ void keyring_iterator_start(keyring_file *k, keyring_iterator *it);
 keyring_identity * keyring_next_identity(keyring_iterator *it);
 keypair * keyring_next_key(keyring_iterator *it);
 keypair * keyring_next_keytype(keyring_iterator *it, unsigned keytype);
-keypair *keyring_identity_keytype(keyring_identity *id, unsigned keytype);
+keypair *keyring_identity_keytype(const keyring_identity *id, unsigned keytype);
 keypair *keyring_find_did(keyring_iterator *it, const char *did);
-int keyring_find_sid(keyring_iterator *it, const sid_t *sidp);
-const sid_t *keyring_identity_sid(const keyring_identity *id);
+keyring_identity *keyring_find_identity(keyring_file *k, const sid_t *sidp);
+int keyring_find_box(keyring_iterator *it, const sid_t *sidp, const uint8_t **sk);
+#define keyring_find_sid(I, S) keyring_find_box(I, S, NULL)
 
 void keyring_free(keyring_file *k);
 int keyring_release_identity(keyring_iterator *it);
@@ -119,7 +124,7 @@ void keyring_identity_extract(const keyring_identity *id, const sid_t **sidp, co
 int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **entry_pinv, FILE *input);
 int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret);
 
-unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknown_sidp);
+unsigned char *keyring_get_nm_bytes(const uint8_t *box_sk, const sid_t *box_pk, const sid_t *unknown_sidp);
 
 struct internal_mdp_header;
 struct overlay_buffer;

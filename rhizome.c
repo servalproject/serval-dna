@@ -320,7 +320,11 @@ struct rhizome_bundle_result rhizome_manifest_add_file(int appending,
     WARNF("Manifest 'service' field not supplied - setting to '%s'", RHIZOME_SERVICE_FILE);
     rhizome_manifest_set_service(new_manifest, RHIZOME_SERVICE_FILE);
   }
-  result = rhizome_fill_manifest(new_manifest, file_path, author);
+
+  if (author)
+    rhizome_manifest_set_author(m, author);
+
+  result = rhizome_fill_manifest(new_manifest, file_path);
 error:
   switch (result.status) {
   case RHIZOME_BUNDLE_STATUS_NEW:
@@ -518,76 +522,6 @@ enum rhizome_bundle_status rhizome_bundle_import_files(rhizome_manifest *m, rhiz
 end:
   close(fd);
   return ret;
-}
-
-/* Sets the bundle key "BK" field of a manifest.  Returns 1 if the field was set, 0 if not.
- *
- * This function must not be called unless the bundle secret is known.
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
-int rhizome_manifest_add_bundle_key(rhizome_manifest *m)
-{
-  IN();
-  assert(m->haveSecret);
-  switch (m->authorship) {
-    case ANONYMOUS: // there can be no BK field without an author
-    case AUTHOR_UNKNOWN: // we already know the author is not in the keyring
-    case AUTHENTICATION_ERROR: // already tried and failed to get Rhizome Secret
-      break;
-    case AUTHOR_NOT_CHECKED:
-    case AUTHOR_LOCAL:
-    case AUTHOR_AUTHENTIC:
-    case AUTHOR_IMPOSTOR: {
-	/* Set the BK using the provided author.  Serval Security Framework defines BK as being:
-	*    BK = privateKey XOR sha512(RS##BID)
-	* where BID = cryptoSignPublic, 
-	*       RS is the rhizome secret for the specified author. 
-	* The nice thing about this specification is that:
-	*    privateKey = BK XOR sha512(RS##BID)
-	* so the same function can be used to encrypt and decrypt the BK field.
-	*/
-	const unsigned char *rs;
-	size_t rs_len = 0;
-	enum rhizome_secret_disposition d = find_rhizome_secret(&m->author, &rs_len, &rs);
-	switch (d) {
-	  case FOUND_RHIZOME_SECRET: {
-	      rhizome_bk_t bkey;
-	      if (rhizome_secret2bk(&m->cryptoSignPublic, rs, rs_len, bkey.binary, m->cryptoSignSecret) == 0) {
-		rhizome_manifest_set_bundle_key(m, &bkey);
-		m->authorship = AUTHOR_AUTHENTIC;
-		RETURN(1);
-	      } else
-		m->authorship = AUTHENTICATION_ERROR;
-	    }
-	    break;
-	  case IDENTITY_NOT_FOUND:
-	    m->authorship = AUTHOR_UNKNOWN;
-	    break;
-	  case IDENTITY_HAS_NO_RHIZOME_SECRET:
-	    m->authorship = AUTHENTICATION_ERROR;
-	    break;
-	  default:
-	    FATALF("find_rhizome_secret() returned unknown code %d", (int)d);
-	    break;
-	}
-      }
-      break;
-    default:
-      FATALF("m->authorship = %d", (int)m->authorship);
-  }
-  rhizome_manifest_del_bundle_key(m);
-  switch (m->authorship) {
-    case AUTHOR_UNKNOWN:
-      INFOF("Cannot set BK because author=%s is not in keyring", alloca_tohex_sid_t(m->author));
-      break;
-    case AUTHENTICATION_ERROR:
-      WHY("Cannot set BK due to error");
-      break;
-    default:
-      break;
-  }
-  RETURN(0);
 }
 
 /* Test the status of a given manifest 'm' (id, version) with respect to the Rhizome store, and

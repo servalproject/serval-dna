@@ -46,18 +46,12 @@ void meshms_free_conversations(struct meshms_conversations *conv)
   }
 }
 
-static enum meshms_status get_my_conversation_bundle(const sid_t *my_sidp, rhizome_manifest *m)
+static enum meshms_status get_my_conversation_bundle(const keyring_identity *id, rhizome_manifest *m)
 {
   /* Find our private key */
-  keyring_iterator it;
-  keyring_iterator_start(keyring, &it);
-  
-  if (!keyring_find_sid(&it, my_sidp))
-    return MESHMS_STATUS_SID_LOCKED;
-
   strbuf sb = strbuf_alloca(1024);
   strbuf_puts(sb, "incorrection");
-  strbuf_tohex(sb, crypto_box_SECRETKEYBYTES * 2, it.keypair->private_key);
+  strbuf_tohex(sb, crypto_box_SECRETKEYBYTES * 2, id->box_sk);
   strbuf_puts(sb, "concentrativeness");
   assert(!strbuf_overrun(sb));
   if (rhizome_get_bundle_from_seed(m, strbuf_str(sb)) == -1)
@@ -69,7 +63,8 @@ static enum meshms_status get_my_conversation_bundle(const sid_t *my_sidp, rhizo
   if (m->haveSecret == NEW_BUNDLE_ID) {
     rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
     rhizome_manifest_set_name(m, "");
-    struct rhizome_bundle_result result = rhizome_fill_manifest(m, NULL, my_sidp);
+    rhizome_manifest_set_author_identity(m, id);
+    struct rhizome_bundle_result result = rhizome_fill_manifest(m, NULL);
     switch (result.status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
     case RHIZOME_BUNDLE_STATUS_SAME:
@@ -130,7 +125,7 @@ static struct meshms_conversations *add_conv(struct meshms_conversations **conv,
 
 // find matching conversations
 // if their_sid == my_sid, return all conversations with any recipient
-static enum meshms_status get_database_conversations(const sid_t *my_sid, const sid_t *their_sid, struct meshms_conversations **conv)
+static enum meshms_status get_database_conversations(const keyring_identity *id, const sid_t *their_sid, struct meshms_conversations **conv)
 {
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
@@ -139,16 +134,16 @@ static enum meshms_status get_database_conversations(const sid_t *my_sid, const 
       " WHERE service = ?3"
       " AND (sender=?1 or recipient=?1)"
       " AND (sender=?2 or recipient=?2)",
-      SID_T, my_sid,
-      SID_T, their_sid ? their_sid : my_sid,
+      SID_T, id->box_pk,
+      SID_T, their_sid ? their_sid : id->box_pk,
       STATIC_TEXT, RHIZOME_SERVICE_MESHMS2,
       END
     );
   if (!statement)
     return MESHMS_STATUS_ERROR;
   DEBUGF(meshms, "Looking for conversations for %s, %s",
-	 alloca_tohex_sid_t(*my_sid),
-	 alloca_tohex_sid_t(*(their_sid ? their_sid : my_sid))
+	 alloca_tohex_sid_t(*id->box_pk),
+	 alloca_tohex_sid_t(*(their_sid ? their_sid : id->box_pk))
 	);
   int r;
   while ((r=sqlite_step_retry(&retry, statement)) == SQLITE_ROW) {
@@ -170,7 +165,7 @@ static enum meshms_status get_database_conversations(const sid_t *my_sid, const 
       WHYF("invalid SID hex: %s -- skipping", alloca_str_toprint(them));
       continue;
     }
-    if (cmp_sid_t(&their_sid, my_sid) == 0) {
+    if (cmp_sid_t(&their_sid, id->box_pk) == 0) {
       them = sender;
       if (str_to_sid_t(&their_sid, them) == -1) {
 	WHYF("invalid SID hex: %s -- skipping", alloca_str_toprint(them));
@@ -182,12 +177,11 @@ static enum meshms_status get_database_conversations(const sid_t *my_sid, const 
       break;
     struct meshms_ply *p;
     if (them==sender){
-      ptr->found_their_ply=1;
       p=&ptr->their_ply;
     }else{
-      ptr->found_my_ply=1;
       p=&ptr->my_ply;
     }
+    p->found = 1;
     p->bundle_id = bid;
     p->version = version;
     p->tail = tail;
@@ -199,10 +193,10 @@ static enum meshms_status get_database_conversations(const sid_t *my_sid, const 
   return MESHMS_STATUS_OK;
 }
 
-static enum meshms_status find_or_create_conv(const sid_t *my_sid, const sid_t *their_sid, struct meshms_conversations **conv)
+static enum meshms_status find_or_create_conv(keyring_identity *id, const sid_t *their_sid, struct meshms_conversations **conv)
 {
   enum meshms_status status;
-  if (meshms_failed(status = meshms_conversations_list(my_sid, their_sid, conv)))
+  if (meshms_failed(status = meshms_conversations_list(id, NULL, their_sid, conv)))
     return status;
   if (*conv == NULL) {
     if ((*conv = (struct meshms_conversations *) emalloc_zero(sizeof(struct meshms_conversations))) == NULL)
@@ -211,51 +205,6 @@ static enum meshms_status find_or_create_conv(const sid_t *my_sid, const sid_t *
     status = MESHMS_STATUS_UPDATED;
   }
   return status;
-}
-
-static enum meshms_status create_ply(const sid_t *my_sid, struct meshms_conversations *conv, rhizome_manifest *m)
-{
-  DEBUGF(meshms, "Creating ply for my_sid=%s them=%s",
-	 alloca_tohex_sid_t(conv->them),
-	 alloca_tohex_sid_t(*my_sid)
-	);
-  rhizome_manifest_set_service(m, RHIZOME_SERVICE_MESHMS2);
-  rhizome_manifest_set_sender(m, my_sid);
-  rhizome_manifest_set_recipient(m, &conv->them);
-  rhizome_manifest_set_filesize(m, 0);
-  rhizome_manifest_set_tail(m, 0);
-  struct rhizome_bundle_result result = rhizome_fill_manifest(m, NULL, my_sid);
-  switch (result.status) {
-  case RHIZOME_BUNDLE_STATUS_NEW:
-  case RHIZOME_BUNDLE_STATUS_SAME:
-  case RHIZOME_BUNDLE_STATUS_DUPLICATE:
-    break;
-  case RHIZOME_BUNDLE_STATUS_ERROR:
-  case RHIZOME_BUNDLE_STATUS_INVALID:
-  case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
-    WHYF("Error creating ply manifest: %s", alloca_rhizome_bundle_result(result));
-    rhizome_bundle_result_free(&result);
-    return MESHMS_STATUS_ERROR;
-  case RHIZOME_BUNDLE_STATUS_BUSY:
-    // TODO
-  case RHIZOME_BUNDLE_STATUS_OLD:
-  case RHIZOME_BUNDLE_STATUS_FAKE:
-  case RHIZOME_BUNDLE_STATUS_NO_ROOM:
-  case RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG:
-    WARNF("Cannot create ply manifest: %s", alloca_rhizome_bundle_result(result));
-    rhizome_bundle_result_free(&result);
-    return MESHMS_STATUS_PROTOCOL_FAULT;
-  case RHIZOME_BUNDLE_STATUS_READONLY:
-    INFOF("Cannot create ply manifest: %s", alloca_rhizome_bundle_result(result));
-    rhizome_bundle_result_free(&result);
-    return MESHMS_STATUS_SID_LOCKED;
-  }
-  rhizome_bundle_result_free(&result);
-  assert(m->haveSecret);
-  assert(m->payloadEncryption == PAYLOAD_ENCRYPTED);
-  conv->my_ply.bundle_id = m->cryptoSignPublic;
-  conv->found_my_ply = 1;
-  return 0;
 }
 
 static size_t append_footer(unsigned char *buffer, char type, size_t message_len)
@@ -375,15 +324,15 @@ static enum meshms_status ply_find_prev(struct meshms_ply_read *ply, char type)
   return status;
 }
 
-static enum meshms_status append_meshms_buffer(const sid_t *my_sid, struct meshms_conversations *conv, unsigned char *buffer, int len)
+static enum meshms_status append_meshms_buffer(const keyring_identity *id, const sid_t *recipient, struct meshms_ply *ply, unsigned char *buffer, int len)
 {
   enum meshms_status status = MESHMS_STATUS_ERROR;
   rhizome_manifest *mout = NULL;
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     goto end;
-  if (conv->found_my_ply){
-    switch (rhizome_retrieve_manifest(&conv->my_ply.bundle_id, m)) {
+  if (ply->found){
+    switch (rhizome_retrieve_manifest(&ply->bundle_id, m)) {
       case RHIZOME_BUNDLE_STATUS_SAME:
 	break;
       case RHIZOME_BUNDLE_STATUS_NEW: // bundle not found
@@ -400,17 +349,52 @@ static enum meshms_status append_meshms_buffer(const sid_t *my_sid, struct meshm
       status = MESHMS_STATUS_PROTOCOL_FAULT;
       goto end;
     }
+    assert(m->author_identity == id);
   } else {
-    status = create_ply(my_sid, conv, m);
-    switch (status) {
-    case MESHMS_STATUS_OK:
+    DEBUGF(meshms, "Creating ply for sender=%s recipient=%s",
+	   alloca_tohex_sid_t(*id->box_pk),
+	   alloca_tohex_sid_t(*recipient)
+	  );
+    rhizome_manifest_set_service(m, RHIZOME_SERVICE_MESHMS2);
+    rhizome_manifest_set_sender(m, id->box_pk);
+    rhizome_manifest_set_recipient(m, recipient);
+    rhizome_manifest_set_filesize(m, 0);
+    rhizome_manifest_set_tail(m, 0);
+    rhizome_manifest_set_author_identity(m, id);
+    struct rhizome_bundle_result result = rhizome_fill_manifest(m, NULL);
+    switch (result.status) {
+    case RHIZOME_BUNDLE_STATUS_NEW:
+    case RHIZOME_BUNDLE_STATUS_SAME:
+    case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+      status = MESHMS_STATUS_OK;
       break;
-    case MESHMS_STATUS_ERROR:
-    case MESHMS_STATUS_UPDATED:
-    case MESHMS_STATUS_SID_LOCKED:
-    case MESHMS_STATUS_PROTOCOL_FAULT:
-      goto end;
+    case RHIZOME_BUNDLE_STATUS_ERROR:
+    case RHIZOME_BUNDLE_STATUS_INVALID:
+    case RHIZOME_BUNDLE_STATUS_INCONSISTENT:
+      WHYF("Error creating ply manifest: %s", alloca_rhizome_bundle_result(result));
+      status = MESHMS_STATUS_ERROR;
+      break;
+    case RHIZOME_BUNDLE_STATUS_BUSY:
+      // TODO
+    case RHIZOME_BUNDLE_STATUS_OLD:
+    case RHIZOME_BUNDLE_STATUS_FAKE:
+    case RHIZOME_BUNDLE_STATUS_NO_ROOM:
+    case RHIZOME_BUNDLE_STATUS_MANIFEST_TOO_BIG:
+      WARNF("Cannot create ply manifest: %s", alloca_rhizome_bundle_result(result));
+      status = MESHMS_STATUS_PROTOCOL_FAULT;
+      break;
+    case RHIZOME_BUNDLE_STATUS_READONLY:
+      INFOF("Cannot create ply manifest: %s", alloca_rhizome_bundle_result(result));
+      status = MESHMS_STATUS_SID_LOCKED;
+      break;
     }
+    rhizome_bundle_result_free(&result);
+    if (status!=MESHMS_STATUS_OK)
+      goto end;
+    assert(m->haveSecret);
+    assert(m->payloadEncryption == PAYLOAD_ENCRYPTED);
+    ply->bundle_id = m->cryptoSignPublic;
+    ply->found = 1;
   }
   assert(m->haveSecret);
   assert(m->authorship == AUTHOR_AUTHENTIC);
@@ -469,12 +453,12 @@ end:
 
 // update if any conversations are unread or need to be acked.
 // return MESHMS_STATUS_UPDATED if the conversation index needs to be saved.
-static enum meshms_status update_conversation(const sid_t *my_sid, struct meshms_conversations *conv)
+static enum meshms_status update_conversation(const keyring_identity *id, struct meshms_conversations *conv)
 {
   DEBUG(meshms, "Checking if conversation needs to be acked");
     
   // Nothing to be done if they have never sent us anything
-  if (!conv->found_their_ply)
+  if (!conv->their_ply.found)
     return MESHMS_STATUS_OK;
   
   rhizome_manifest *m_ours = NULL;
@@ -503,7 +487,7 @@ static enum meshms_status update_conversation(const sid_t *my_sid, struct meshms
   // find our previous ack
   uint64_t previous_ack = 0;
   
-  if (conv->found_my_ply){
+  if (conv->my_ply.found){
     DEBUG(meshms, "Locating our previous ack");
       
     m_ours = rhizome_new_manifest();
@@ -541,7 +525,7 @@ static enum meshms_status update_conversation(const sid_t *my_sid, struct meshms
     ofs+=pack_uint(&buffer[ofs], conv->their_last_message - previous_ack);
   ofs+=append_footer(buffer+ofs, MESHMS_BLOCK_TYPE_ACK, ofs);
   ofs+=append_timestamp(buffer+ofs);
-  status = append_meshms_buffer(my_sid, conv, buffer, ofs);
+  status = append_meshms_buffer(id, &conv->them, &conv->my_ply, buffer, ofs);
   DEBUGF(meshms, "status=%d", status);
 end:
   ply_read_close(&ply);
@@ -556,7 +540,7 @@ end:
 }
 
 // update conversations, and return MESHMS_STATUS_UPDATED if the conversation index should be saved
-static enum meshms_status update_conversations(const sid_t *my_sid, struct meshms_conversations **conv)
+static enum meshms_status update_conversations(const keyring_identity *id, struct meshms_conversations **conv)
 {
   enum meshms_status rstatus = MESHMS_STATUS_OK;
   struct meshms_conversations **ptr = conv;
@@ -564,7 +548,7 @@ static enum meshms_status update_conversations(const sid_t *my_sid, struct meshm
     struct meshms_conversations *n = *ptr;
     if (n->their_size != n->their_ply.size) {
       enum meshms_status status;
-      if (meshms_failed(status = update_conversation(my_sid, n)))
+      if (meshms_failed(status = update_conversation(id, n)))
 	return status;
       if (status == MESHMS_STATUS_UPDATED){
 	rstatus = MESHMS_STATUS_UPDATED;
@@ -797,20 +781,32 @@ end:
 }
 
 // read information about existing conversations from a rhizome payload
-enum meshms_status meshms_conversations_list(const sid_t *my_sid, const sid_t *their_sid, struct meshms_conversations **conv)
+enum meshms_status meshms_conversations_list(const keyring_identity *id, const sid_t *my_sid, const sid_t *their_sid, struct meshms_conversations **conv)
 {
   enum meshms_status status = MESHMS_STATUS_ERROR;
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     goto end;
-  if (meshms_failed(status = get_my_conversation_bundle(my_sid, m)))
+
+  assert(id || my_sid);
+  if (!my_sid){
+    my_sid = id->box_pk;
+  }else if(!id){
+    id = keyring_find_identity(keyring, my_sid);
+    if (!id){
+      status = MESHMS_STATUS_SID_LOCKED;
+      goto end;
+    }
+  }
+
+  if (meshms_failed(status = get_my_conversation_bundle(id, m)))
     goto end;
   // read conversations payload
   if (meshms_failed(status = read_known_conversations(m, their_sid, conv)))
     goto end;
-  if (meshms_failed(status = get_database_conversations(my_sid, their_sid, conv)))
+  if (meshms_failed(status = get_database_conversations(id, their_sid, conv)))
     goto end;
-  if ((status = update_conversations(my_sid, conv)) == MESHMS_STATUS_UPDATED && their_sid == NULL)
+  if ((status = update_conversations(id, conv)) == MESHMS_STATUS_UPDATED && their_sid == NULL)
     status = write_known_conversations(m, *conv);
 end:
   rhizome_manifest_free(m);
@@ -843,11 +839,20 @@ enum meshms_status meshms_message_iterator_open(struct meshms_message_iterator *
 	 me ? alloca_tohex_sid_t(*me) : "NULL",
 	 them ? alloca_tohex_sid_t(*them) : "NULL"
 	);
-  enum meshms_status status;
+  enum meshms_status status = MESHMS_STATUS_ERROR;
   bzero(iter, sizeof *iter);
-  if (meshms_failed(status = find_or_create_conv(me, them, &iter->_conv)))
+
+  keyring_identity *id = keyring_find_identity(keyring, me);
+  if (!id){
+    status = MESHMS_STATUS_SID_LOCKED;
+    WHY("Identity not found");
+    goto fail;
+  }
+
+  if (meshms_failed(status = find_or_create_conv(id, them, &iter->_conv)))
     goto fail;
   assert(iter->_conv != NULL);
+  iter->identity = id;
   iter->_my_sid = *me;
   iter->my_sid = &iter->_my_sid;
   iter->their_sid = &iter->_conv->them;
@@ -856,12 +861,12 @@ enum meshms_status meshms_message_iterator_open(struct meshms_message_iterator *
   iter->read_offset = iter->_conv->read_offset;
   iter->timestamp = 0;
   // If I have never sent a message (or acked any of theirs), there are no messages in the thread.
-  if (iter->_conv->found_my_ply) {
+  if (iter->_conv->my_ply.found) {
     if ((iter->_my_manifest = rhizome_new_manifest()) == NULL)
       goto error;
     if (meshms_failed(status = ply_read_open(&iter->_my_reader, &iter->_conv->my_ply.bundle_id, iter->_my_manifest)))
       goto fail;
-    if (iter->_conv->found_their_ply) {
+    if (iter->_conv->their_ply.found) {
       if ((iter->_their_manifest = rhizome_new_manifest()) == NULL)
 	goto error;
       if (meshms_failed(status = ply_read_open(&iter->_their_reader, &iter->_conv->their_ply.bundle_id, iter->_their_manifest)))
@@ -916,9 +921,9 @@ void meshms_message_iterator_close(struct meshms_message_iterator *iter)
 enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *iter)
 {
   assert(iter->_conv != NULL);
-  if (iter->_conv->found_my_ply) {
+  if (iter->_conv->my_ply.found) {
     assert(iter->_my_manifest != NULL);
-    if (iter->_conv->found_their_ply)
+    if (iter->_conv->their_ply.found)
       assert(iter->_their_manifest != NULL);
   }
   enum meshms_status status = MESHMS_STATUS_UPDATED;
@@ -972,7 +977,7 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
 	  break;
 	case MESHMS_BLOCK_TYPE_ACK:
 	  // Read the received messages up to the ack'ed offset
-	  if (iter->_conv->found_their_ply) {
+	  if (iter->_conv->their_ply.found) {
 	    int ofs = unpack_uint(iter->_my_reader.record, iter->_my_reader.record_length, (uint64_t*)&iter->_their_reader.read.offset);
 	    if (ofs == -1) {
 	      WHYF("Malformed ACK");
@@ -1012,47 +1017,63 @@ enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipie
     return MESHMS_STATUS_ERROR;
   }
   struct meshms_conversations *conv = NULL;
-  enum meshms_status status;
-  if (!meshms_failed(status = find_or_create_conv(sender, recipient, &conv))) {
-    assert(conv != NULL);
-    // construct a message payload
-    // TODO, new format here.
-    unsigned char buffer[message_len + 4 + 6];
-    strncpy((char*)buffer, message, message_len);
-    // ensure message is NUL terminated
-    if (message[message_len - 1] != '\0')
-      buffer[message_len++] = '\0';
-    message_len += append_footer(buffer + message_len, MESHMS_BLOCK_TYPE_MESSAGE, message_len);
-    message_len+=append_timestamp(buffer + message_len);
-    status = append_meshms_buffer(sender, conv, buffer, message_len);
-  }
+  enum meshms_status status = MESHMS_STATUS_ERROR;
+  unsigned char buffer[message_len + 4 + 6];
+
+  keyring_identity *id = keyring_find_identity(keyring, sender);
+  if (!id)
+    return MESHMS_STATUS_SID_LOCKED;
+
+  if (meshms_failed(status = find_or_create_conv(id, recipient, &conv)))
+    goto end;
+
+  assert(conv != NULL);
+  // construct a message payload
+  // TODO, new format here for compressed text?
+  strncpy((char*)buffer, message, message_len);
+  // ensure message is NUL terminated
+  if (message[message_len - 1] != '\0')
+    buffer[message_len++] = '\0';
+  message_len += append_footer(buffer + message_len, MESHMS_BLOCK_TYPE_MESSAGE, message_len);
+  message_len += append_timestamp(buffer + message_len);
+  status = append_meshms_buffer(id, recipient, &conv->my_ply, buffer, message_len);
+
+end:
   meshms_free_conversations(conv);
   return status;
 }
 
 enum meshms_status meshms_mark_read(const sid_t *sender, const sid_t *recipient, uint64_t offset)
 {
+  rhizome_manifest *m=NULL;
+  enum meshms_status status = MESHMS_STATUS_ERROR;
+  struct meshms_conversations *conv = NULL;
+
+  keyring_identity *id = keyring_find_identity(keyring, sender);
+  if (!id){
+    status = MESHMS_STATUS_SID_LOCKED;
+    goto end;
+  }
+
   DEBUGF(meshms, "sender=%s recipient=%s offset=%"PRIu64,
 	 alloca_tohex_sid_t(*sender),
 	 recipient ? alloca_tohex_sid_t(*recipient) : "NULL",
 	 offset
 	);
-  enum meshms_status status = MESHMS_STATUS_ERROR;
-  struct meshms_conversations *conv = NULL;
-  rhizome_manifest *m = rhizome_new_manifest();
+  m = rhizome_new_manifest();
   if (!m)
     goto end;
-  if (meshms_failed(status = get_my_conversation_bundle(sender, m)))
+  if (meshms_failed(status = get_my_conversation_bundle(id, m)))
     goto end;
   // read all conversations, so we can write them again
   if (meshms_failed(status = read_known_conversations(m, NULL, &conv)))
     goto end;
   // read the full list of conversations from the database too
-  if (meshms_failed(status = get_database_conversations(sender, NULL, &conv)))
+  if (meshms_failed(status = get_database_conversations(id, NULL, &conv)))
     goto end;
   // check if any incoming conversations need to be acked or have new messages and update the read offset
   unsigned changed = 0;
-  if (meshms_failed(status = update_conversations(sender, &conv)))
+  if (meshms_failed(status = update_conversations(id, &conv)))
     goto end;
   if (status == MESHMS_STATUS_UPDATED)
     changed = 1;
@@ -1086,28 +1107,24 @@ static int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_
     return -1;
     
   sid_t sid;
+  struct meshms_conversations *conv = NULL;
+  enum meshms_status status = MESHMS_STATUS_ERROR;
+
   fromhex(sid.binary, sidhex, sizeof(sid.binary));
-  
   int offset=atoi(offset_str);
   int count=atoi(count_str);
 
   if (create_serval_instance_dir() == -1)
-    return -1;
+    goto end;
   if (!(keyring = keyring_open_instance_cli(parsed)))
-    return -1;
-  if (rhizome_opendb() == -1){
-    keyring_free(keyring);
-    keyring = NULL;
-    return -1;
-  }
-  
-  struct meshms_conversations *conv=NULL;
-  enum meshms_status status;
-  if (meshms_failed(status = meshms_conversations_list(&sid, NULL, &conv))) {
-    keyring_free(keyring);
-    keyring = NULL;
-    return status;
-  }
+    goto end;
+
+  if (rhizome_opendb() == -1)
+    goto end;
+
+  if (meshms_failed(status = meshms_conversations_list(NULL, &sid, NULL, &conv)))
+    goto end;
+
   const char *names[]={
     "_id","recipient","read", "last_message", "read_offset"
   };
@@ -1130,11 +1147,15 @@ static int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_
     }
   }
   cli_row_count(context, rows);
+  status=MESHMS_STATUS_OK;
 
-  meshms_free_conversations(conv);
-  keyring_free(keyring);
+end:
+  if (conv)
+    meshms_free_conversations(conv);
+  if (keyring)
+    keyring_free(keyring);
   keyring = NULL;
-  return 0;
+  return status;
 }
 
 DEFINE_CMD(app_meshms_send_message, 0,

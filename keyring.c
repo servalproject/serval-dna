@@ -209,7 +209,7 @@ keypair *keyring_next_keytype(keyring_iterator *it, unsigned keytype)
   return kp;
 }
 
-keypair *keyring_identity_keytype(keyring_identity *id, unsigned keytype)
+keypair *keyring_identity_keytype(const keyring_identity *id, unsigned keytype)
 {
   keypair *kp=id->keypairs;
   while(kp && kp->type!=keytype)
@@ -231,7 +231,22 @@ keypair *keyring_find_did(keyring_iterator *it, const char *did)
   return NULL;
 }
 
-static int keyring_find_box(keyring_iterator *it, const sid_t *sidp, const uint8_t **sk)
+const uint8_t * keyring_get_box(const keyring_identity *id)
+{
+  keypair *kp = id->keypairs;
+  while(kp){
+    if (kp->type == KEYTYPE_CRYPTOBOX)
+      return kp->private_key;
+    if (kp->type == KEYTYPE_CRYPTOCOMBINED){
+      struct combined_sk *secret = (struct combined_sk *)kp->private_key;
+      return secret->box_key;
+    }
+    kp = kp->next;
+  }
+  return NULL;
+}
+
+int keyring_find_box(keyring_iterator *it, const sid_t *sidp, const uint8_t **sk)
 {
   keypair *kp;
   while((kp=keyring_next_key(it))){
@@ -255,29 +270,26 @@ static int keyring_find_box(keyring_iterator *it, const sid_t *sidp, const uint8
   return 0;
 }
 
-int keyring_find_sid(keyring_iterator *it, const sid_t *sidp)
-{
-  return keyring_find_box(it, sidp, NULL);
-}
-
-const sid_t *keyring_identity_sid(const keyring_identity *id)
-{
-  keypair *kp=id->keypairs;
-  while(kp){
-    if (kp->type == KEYTYPE_CRYPTOBOX)
-      return (const sid_t *)kp->public_key;
-    if (kp->type == KEYTYPE_CRYPTOCOMBINED){
+keyring_identity *keyring_find_identity(keyring_file *k, const sid_t *sidp){
+  keypair *kp;
+  keyring_iterator it;
+  keyring_iterator_start(k, &it);
+  while((kp=keyring_next_key(&it))){
+    if (kp->type == KEYTYPE_CRYPTOBOX){
+      if (memcmp(sidp->binary, kp->public_key, SID_SIZE) == 0)
+	return it.identity;
+    }else if(kp->type == KEYTYPE_CRYPTOCOMBINED){
       struct combined_pk *pk = (struct combined_pk *)kp->public_key;
-      return &pk->box_key;
+      if (memcmp(sidp->binary, pk->box_key.binary, SID_SIZE) == 0)
+	return it.identity;
     }
-    kp=kp->next;
   }
   return NULL;
 }
 
-static void add_subscriber(keyring_identity *id, const sid_t *sid)
+static void add_subscriber(keyring_identity *id)
 {
-  id->subscriber = find_subscriber(sid->binary, SID_SIZE, 1);
+  id->subscriber = find_subscriber(id->box_pk->binary, SID_SIZE, 1);
   if (id->subscriber) {
     if (id->subscriber->reachable == REACHABLE_NONE){
       id->subscriber->reachable = REACHABLE_SELF;
@@ -1154,11 +1166,6 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
     keyring_free_identity(id);
     return NULL;
   }
-  if (!keyring_identity_sid(id)) {
-    DEBUGF(keyring, "identity does not have a SID");
-    keyring_free_identity(id);
-    return NULL;
-  }
   DEBUGF(keyring, "unpacked key pairs");
   return id;
 }
@@ -1196,6 +1203,41 @@ static int keyring_identity_mac(const keyring_identity *id, unsigned char *pkrsa
   return 0;
 }
 
+static int keyring_finalise_identity(keyring_file *k, keyring_identity *id)
+{
+  keypair *kp = id->keypairs;
+  while(kp){
+    switch(kp->type){
+      case KEYTYPE_CRYPTOBOX:
+	id->box_pk = (const sid_t *)kp->public_key;
+	id->box_sk = kp->private_key;
+	break;
+      case KEYTYPE_CRYPTOSIGN:
+	if (!rhizome_verify_bundle_privatekey(kp->private_key,kp->public_key)){
+	  /* SAS key is invalid (perhaps because it was a pre 0.90 format one),
+	     so replace it */
+	  WARN("SAS key is invalid -- regenerating.");
+	  crypto_sign_keypair(kp->public_key, kp->private_key);
+	  k->dirty = 1;
+	}
+	id->sign_pk = kp->public_key;
+	id->sign_sk = kp->private_key;
+	break;
+      case KEYTYPE_CRYPTOCOMBINED:{
+	struct combined_pk *pk = (struct combined_pk *)kp->public_key;
+	struct combined_sk *sk = (struct combined_sk *)kp->private_key;
+	id->box_pk = &pk->box_key;
+	id->box_sk = sk->box_key;
+	id->sign_pk = pk->sign_key;
+	id->sign_sk = sk->sign_key;
+	break;
+      }
+    }
+    kp = kp->next;
+  }
+  return 0;
+}
+
 
 /* Read the slot, and try to decrypt it.  Decryption is symmetric with encryption, so the same
  * function is used for munging the slot before making use of it, whichever way we are going.  Once
@@ -1220,7 +1262,7 @@ static int keyring_decrypt_pkr(keyring_file *k, const char *pin, int slot_number
   }
   /* 3. Unpack contents of slot into a new identity in the provided context. */
   DEBUGF(keyring, "unpack slot %u", slot_number);
-  if (((id = keyring_unpack_identity(slot, pin)) == NULL) || !id->keypairs)
+  if (((id = keyring_unpack_identity(slot, pin)) == NULL))
     goto kdp_safeexit; // Not a valid slot
   id->slot = slot_number;
   /* 4. Verify that slot is self-consistent (check MAC) */
@@ -1236,14 +1278,12 @@ static int keyring_decrypt_pkr(keyring_file *k, const char *pin, int slot_number
     }
     goto kdp_safeexit;
   }
-  
-  // Add any unlocked subscribers to our memory table, flagged as local SIDs.
-  {
-    const sid_t *sid = keyring_identity_sid(id);
-    if (sid)
-      add_subscriber(id, sid);
-  }
-  
+
+  if (keyring_finalise_identity(k, id)!=0)
+    goto kdp_safeexit;
+
+  add_subscriber(id);
+
   /* All fine, so add the id into the context and return. */
   keyring_identity **i=&k->identities;
   while(*i)
@@ -1305,6 +1345,9 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
       }
     }
   }
+
+  if (k->dirty)
+    keyring_commit(k);
   
   RETURN(identitiesFound);
   OUT();
@@ -1346,11 +1389,11 @@ static unsigned find_free_slot(const keyring_file *k)
 
 static int keyring_commit_identity(keyring_file *k, keyring_identity *id)
 {
-  const sid_t *sid=keyring_identity_sid(id);
+  keyring_finalise_identity(k, id);
   // Do nothing if an identity with this sid already exists
   keyring_iterator it;
   keyring_iterator_start(k, &it);
-  if (keyring_find_sid(&it, sid))
+  if (keyring_find_sid(&it, id->box_pk))
     return 0;
   set_slot(k, id->slot, 1);
 
@@ -1359,7 +1402,7 @@ static int keyring_commit_identity(keyring_file *k, keyring_identity *id)
     i=&(*i)->next;
 
   *i=id;
-  add_subscriber(id, sid);
+  add_subscriber(id);
   return 1;
 }
 
@@ -1405,9 +1448,11 @@ keyring_identity *keyring_create_identity(keyring_file *k, const char *pin)
   assert(id->keypairs);
 
   /* Mark slot as occupied and internalise new identity. */
-  keyring_commit_identity(k, id);
+  if (keyring_commit_identity(k, id)!=1)
+    goto kci_safeexit;
 
   /* Everything went fine */
+  k->dirty = 1;
   return id;
 
  kci_safeexit:
@@ -1472,6 +1517,8 @@ int keyring_commit(keyring_file *k)
     WHYF_perror("fflush(%d)", fileno(k->file));
     errorCount++;
   }
+  if (!errorCount)
+    k->dirty=0;
   return errorCount ? WHYF("%u errors commiting keyring to disk", errorCount) : 0;
 }
 
@@ -1611,62 +1658,16 @@ keypair * keyring_find_public_tag_value(keyring_iterator *it, const char *name, 
   return NULL;
 }
 
-static int keyring_find_sign_key(keyring_file *k, keyring_identity *identity, const uint8_t **sk, const uint8_t **pk)
-{
-  IN();
-  assert(identity);
-
-  keypair *kp=identity->keypairs;
-  while(kp){
-    if (kp->type == KEYTYPE_CRYPTOSIGN){
-      if (!kp->verified){
-	if (!rhizome_verify_bundle_privatekey(kp->private_key,kp->public_key)){
-	  /* SAS key is invalid (perhaps because it was a pre 0.90 format one),
-	     so replace it */
-	  WARN("SAS key is invalid -- regenerating.");
-	  crypto_sign_keypair(kp->public_key, kp->private_key);
-	  keyring_commit(k);
-	}
-	kp->verified=1;
-      }
-      DEBUGF(keyring, "Found SAS entry");
-      if (sk)
-	*sk = kp->private_key;
-      if (pk)
-	*pk = kp->public_key;
-      RETURN(0);
-    }else if (kp->type == KEYTYPE_CRYPTOCOMBINED){
-      DEBUGF(keyring, "Found combined key");
-      if (sk){
-	struct combined_sk *secret = (struct combined_sk *)kp->private_key;
-	*sk = secret->sign_key;
-      }
-      if (pk){
-	struct combined_pk *secret = (struct combined_pk *)kp->public_key;
-	*pk = secret->sign_key;
-      }
-      RETURN(0);
-    }
-    kp=kp->next;
-  }
-  RETURN(WHY("Identity lacks SAS"));
-  OUT();
-}
-
 // sign the hash of a message, adding the signature to the end of the message buffer.
 int keyring_sign_message(struct keyring_identity *identity, unsigned char *content, size_t buffer_len, size_t *content_len)
 {
   if (*content_len + SIGNATURE_BYTES > buffer_len)
     return WHYF("Insufficient space in message buffer to add signature. %zu, need %zu",buffer_len, *content_len + SIGNATURE_BYTES);
 
-  const uint8_t *sk = NULL;
-  if (keyring_find_sign_key(keyring, identity, &sk, NULL)==-1)
-    return -1;
-
   unsigned char hash[crypto_hash_sha512_BYTES];
   crypto_hash_sha512(hash, content, *content_len);
 
-  if (crypto_sign_detached(&content[*content_len], NULL, hash, crypto_hash_sha512_BYTES, sk))
+  if (crypto_sign_detached(&content[*content_len], NULL, hash, crypto_hash_sha512_BYTES, identity->sign_sk))
     return WHY("Signing failed");
 
   *content_len += SIGNATURE_BYTES;
@@ -1704,12 +1705,9 @@ static int keyring_store_sas(struct internal_mdp_header *header, struct overlay_
   return 0;
 }
 
-static int keyring_respond_sas(keyring_file *k, struct internal_mdp_header *header)
+static int keyring_respond_sas(struct internal_mdp_header *header)
 {
-  const uint8_t *sk = NULL;
-  const uint8_t *pk = NULL;
-  if (keyring_find_sign_key(k, header->destination->identity, &sk, &pk)==-1)
-    return -1;
+  keyring_identity *id = header->destination->identity;
 
   /* It's a request, so find the SAS for the SID the request was addressed to,
      use that to sign that SID, and then return it in an authcrypted frame. */
@@ -1722,10 +1720,10 @@ static int keyring_respond_sas(keyring_file *k, struct internal_mdp_header *head
   ob_limitsize(response_payload, sizeof buff);
   
   ob_append_byte(response_payload, KEYTYPE_CRYPTOSIGN);
-  ob_append_bytes(response_payload, pk, crypto_sign_PUBLICKEYBYTES);
+  ob_append_bytes(response_payload, id->sign_pk, crypto_sign_PUBLICKEYBYTES);
   uint8_t *sig = ob_append_space(response_payload, crypto_sign_BYTES);
 
-  if (crypto_sign_detached(sig, NULL, header->destination->sid.binary, SID_SIZE, sk))
+  if (crypto_sign_detached(sig, NULL, header->destination->sid.binary, SID_SIZE, id->sign_sk))
     return WHY("crypto_sign() failed");
     
   DEBUGF(keyring, "Sending SID:SAS mapping, %zd bytes, %s:%"PRImdp_port_t" -> %s:%"PRImdp_port_t,
@@ -1863,7 +1861,7 @@ static int keyring_mapping_request(struct internal_mdp_header *header, struct ov
   switch(ob_get(payload)){
     case KEYTYPE_CRYPTOSIGN:
       if (ob_remaining(payload)==0)
-	return keyring_respond_sas(keyring, header);
+	return keyring_respond_sas(header);
       return keyring_store_sas(header, payload);
       break;
     case UNLOCK_REQUEST:
@@ -2049,7 +2047,7 @@ unsigned nm_slots_used=0;
 #define NM_CACHE_SLOTS 512
 struct nm_record nm_cache[NM_CACHE_SLOTS];
 
-unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknown_sidp)
+unsigned char *keyring_get_nm_bytes(const uint8_t *box_sk, const sid_t *box_pk, const sid_t *unknown_sidp)
 {
   IN();
   assert(keyring != NULL);
@@ -2057,21 +2055,13 @@ unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknow
   /* See if we have it cached already */
   unsigned i;
   for(i=0;i<nm_slots_used;i++){
-    if (cmp_sid_t(&nm_cache[i].known_key, known_sidp) != 0) continue;
+    if (cmp_sid_t(&nm_cache[i].known_key, box_pk) != 0) continue;
     if (cmp_sid_t(&nm_cache[i].unknown_key, unknown_sidp) != 0) continue;
     RETURN(nm_cache[i].nm_bytes);
   }
 
   /* Not in the cache, so prepare to cache it (or return failure if known is not
      in fact a known key */
-  keyring_iterator it;
-  keyring_iterator_start(keyring, &it);
-  const uint8_t *sk;
-  if (!keyring_find_box(&it, known_sidp, &sk)) {
-    WHY("known key is not in fact known.");
-    RETURN(NULL);
-  }
-
   /* work out where to store it */
   if (nm_slots_used<NM_CACHE_SLOTS) {
     i=nm_slots_used; nm_slots_used++; 
@@ -2080,9 +2070,9 @@ unsigned char *keyring_get_nm_bytes(const sid_t *known_sidp, const sid_t *unknow
   }
 
   /* calculate and store */
-  nm_cache[i].known_key = *known_sidp;
+  nm_cache[i].known_key = *box_pk;
   nm_cache[i].unknown_key = *unknown_sidp;
-  if (crypto_box_beforenm(nm_cache[i].nm_bytes, unknown_sidp->binary, sk)){
+  if (crypto_box_beforenm(nm_cache[i].nm_bytes, unknown_sidp->binary, box_sk)){
     WHY("crypto_box_beforenm failed");
     RETURN(NULL);
   }
@@ -2196,8 +2186,12 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
     }
     if (id == NULL || idn != last_idn) {
       last_idn = idn;
-      if (id)
-	keyring_commit_identity(k, id);
+      if (id){
+	if (keyring_commit_identity(k, id)!=1)
+	  keyring_free_identity(id);
+	else
+	  k->dirty=1;
+      }
       if ((id = emalloc_zero(sizeof(keyring_identity))) == NULL) {
 	keyring_free_keypair(kp);
 	return -1;
@@ -2216,8 +2210,12 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
     if (!keyring_identity_add_keypair(id, kp))
       keyring_free_keypair(kp);
   }
-  if (id)
-    keyring_commit_identity(k, id);
+  if (id){
+    if (keyring_commit_identity(k, id)!=1)
+      keyring_free_identity(id);
+    else
+      k->dirty=1;
+  }
   if (ferror(input))
     return WHYF_perror("fscanf");
   return 0;
