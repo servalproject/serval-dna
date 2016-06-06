@@ -569,7 +569,7 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
   if(m->has_recipient){
     sid_t scratch;
     const sid_t *other_pk = &m->recipient;
-    const sid_t *box_pk;
+    const sid_t *box_pk = NULL;
     const uint8_t *box_sk = NULL;
 
     {
