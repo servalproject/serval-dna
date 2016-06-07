@@ -228,4 +228,31 @@ public class KeyringCommon
 		}
 	}
 
+	public static KeyringIdentity addIdentity(ServalDHttpConnectionFactory connector, String did, String name, String pin)
+		throws IOException, ServalDInterfaceException
+	{
+		Vector<ServalDHttpConnectionFactory.QueryParam> query_params = new Vector<ServalDHttpConnectionFactory.QueryParam>();
+		if (did != null)
+			query_params.add(new ServalDHttpConnectionFactory.QueryParam("did", did));
+		if (name != null)
+			query_params.add(new ServalDHttpConnectionFactory.QueryParam("name", name));
+		if (pin != null)
+			query_params.add(new ServalDHttpConnectionFactory.QueryParam("pin", pin));
+		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/keyring/add", query_params);
+		conn.connect();
+		Status status = receiveRestfulResponse(conn, HttpURLConnection.HTTP_OK);
+		try {
+			decodeRestfulStatus(status);
+			dumpStatus(status, System.err);
+			if (status.identity == null)
+				throw new ServalDInterfaceException("invalid JSON response; missing identity");
+
+			return status.identity;
+		}
+		finally {
+			if (status.input_stream != null)
+				status.input_stream.close();
+		}
+	}
+
 }

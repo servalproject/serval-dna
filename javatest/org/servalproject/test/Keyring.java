@@ -70,6 +70,17 @@ public class Keyring {
 		System.exit(0);
 	}
 
+	static void add(String did, String name, String pin) throws ServalDInterfaceException, IOException, InterruptedException
+	{
+		ServalDClient client = new ServerControl().getRestfulClient();
+		KeyringIdentity id = client.keyringAdd(did, name, pin);
+		System.out.println("sid=" + id.sid +
+						   ", did=" + id.did +
+						   ", name=" + id.name
+			);
+		System.exit(0);
+	}
+
 	public static void main(String... args)
 	{
 		if (args.length < 1)
@@ -80,6 +91,8 @@ public class Keyring {
 				keyring_list(args.length >= 2 ? args[1] : null);
 			else if (methodName.equals("set"))
 				set(new SubscriberId(args[1]), args[2], args[3], args.length >= 5 ? args[4] : null);
+			else if (methodName.equals("add"))
+				add(args[1], args[2], args.length >= 4 ? args[3] : null);
 		} catch (Exception e) {
 			e.printStackTrace();
 			System.exit(1);

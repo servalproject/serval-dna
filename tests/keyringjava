@@ -111,6 +111,20 @@ test_keyringListPin() {
    assertStdoutGrep --matches=1 "sid=$SIDA3"
 }
 
+doc_keyringAddDidName="Java API add new identity"
+setup_keyringAddDidName() {
+   IDENTITY_COUNT=1
+   setup
+}
+test_keyringAddDidName() {
+   executeJavaOk org.servalproject.test.Keyring add 987654321 'Joe Bloggs'
+   tfw_cat --stdout --stderr
+   assertStdoutGrep --matches=1 "sid=${rexp_sid}, did=987654321, name=Joe Bloggs$"
+   executeOk_servald keyring list
+   assert_keyring_list 2
+   assertStdoutGrep --stderr --matches=1 "^${rexp_sid}:987654321:Joe Bloggs\$"
+}
+
 doc_keyringSetDidName="Java API set DID and name"
 setup_keyringSetDidName() {
    IDENTITY_COUNT=2

@@ -211,9 +211,15 @@ static int restful_keyring_add(httpd_request *r, const char *remainder)
   if (*remainder)
     return 404;
   const char *pin = http_request_get_query_param(&r->http, "pin");
-  const keyring_identity *id = keyring_create_identity(keyring, pin ? pin : "");
+  const char *did = http_request_get_query_param(&r->http, "did");
+  const char *name = http_request_get_query_param(&r->http, "name");
+  keyring_identity *id = keyring_create_identity(keyring, pin ? pin : "");
   if (id == NULL)
     return http_request_keyring_response(r, 500, "Could not create identity");
+  if (did || name){
+    if (keyring_set_did(id, did ? did : "", name ? name : "") == -1)
+      return http_request_keyring_response(r, 500, "Could not set identity DID/Name");
+  }
   if (keyring_commit(keyring) == -1)
     return http_request_keyring_response(r, 500, "Could not store new identity");
   return http_request_keyring_response_identity(r, 200, CONTENT_TYPE_JSON, id);

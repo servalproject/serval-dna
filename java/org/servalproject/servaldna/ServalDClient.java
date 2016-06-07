@@ -91,6 +91,11 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 		return KeyringCommon.setDidName(this, sid, did, name, pin);
 	}
 
+	public KeyringIdentity keyringAdd(String did, String name, String pin) throws ServalDInterfaceException, IOException
+	{
+		return KeyringCommon.addIdentity(this, did, name, pin);
+	}
+
 	public RhizomeBundleList rhizomeListBundles() throws ServalDInterfaceException, IOException
 	{
 		RhizomeBundleList list = new RhizomeBundleList(this);
