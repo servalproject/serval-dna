@@ -47,14 +47,10 @@ public abstract class AbstractMdpProtocol<T>  extends ChannelSelector.Handler {
 	protected abstract void parse(MdpPacket response);
 
 	@Override
-	public void read() {
-		try {
-			MdpPacket response = new MdpPacket();
-			socket.receive(response);
-			parse(response);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
+	public void read() throws IOException  {
+		MdpPacket response = new MdpPacket();
+		socket.receive(response);
+		parse(response);
 	}
 
 	@Override

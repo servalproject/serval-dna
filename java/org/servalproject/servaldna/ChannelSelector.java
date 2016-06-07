@@ -1,6 +1,7 @@
 package org.servalproject.servaldna;
 
 import java.io.IOException;
+import java.nio.channels.CancelledKeyException;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
@@ -14,10 +15,10 @@ public class ChannelSelector {
 	public static abstract class Handler{
 		public abstract SelectableChannel getChannel() throws IOException;
 		public abstract int getInterest();
-		public void read(){};
-		public void write(){};
-		public void accept(){};
-		public void connect(){};
+		public void read() throws IOException {};
+		public void write() throws IOException {};
+		public void accept() throws IOException {};
+		public void finishConnect() throws IOException {};
 	}
 
 	private Runnable selectorThread = new Runnable(){
@@ -61,17 +62,32 @@ public class ChannelSelector {
 
 					Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
 					while(keys.hasNext()){
-						SelectionKey key = keys.next();
-						Handler h = (Handler)key.attachment();
-						if (key.isValid()){
-							if (key.isReadable())
-								h.read();
-							if (key.isWritable())
-								h.write();
-							if (key.isAcceptable())
-								h.accept();
-							if (key.isConnectable())
-								h.connect();
+						try {
+							SelectionKey key = keys.next();
+							Handler h = (Handler)key.attachment();
+							if (key.isValid()){
+								if (key.isReadable())
+									h.read();
+								if (key.isWritable())
+									h.write();
+								if (key.isAcceptable())
+									h.accept();
+								if (key.isConnectable())
+									h.finishConnect();
+
+								SelectableChannel channel = h.getChannel();
+								int i = h.getInterest() & channel.validOps();
+								if (i == 0) {
+									key.cancel();
+									channel.configureBlocking(true);
+								} else {
+									key.interestOps(i);
+								}
+							}
+						}catch (CancelledKeyException e){
+							// ignore
+						}catch(IOException e){
+							e.printStackTrace();
 						}
 						keys.remove();
 					}
