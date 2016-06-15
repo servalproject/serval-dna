@@ -178,7 +178,7 @@ int overlay_send_probe(struct subscriber *peer, struct network_destination *dest
   struct overlay_frame *frame=malloc(sizeof(struct overlay_frame));
   bzero(frame,sizeof(struct overlay_frame));
   frame->type=OF_TYPE_DATA;
-  frame->source = my_subscriber;
+  frame->source = get_my_subscriber();
   frame->destination = peer;
   frame->ttl=1;
   frame->queue=queue;
@@ -313,7 +313,7 @@ int overlay_send_stun_request(struct subscriber *server, struct subscriber *requ
   if (request->reachable&REACHABLE || (server && server->reachable & REACHABLE)){
     struct internal_mdp_header header;
     bzero(&header, sizeof header);
-    header.source = my_subscriber;
+    header.source = get_my_subscriber();
     header.destination = request;
     header.source_port = MDP_PORT_STUNREQ;
     header.destination_port = MDP_PORT_STUN;
@@ -327,7 +327,7 @@ int overlay_send_stun_request(struct subscriber *server, struct subscriber *requ
       if (overlay_interfaces[i].state == INTERFACE_STATE_UP 
 	&& overlay_interfaces[i].address.addr.sa_family == AF_INET){
 	
-	overlay_address_append(NULL, payload, my_subscriber);
+	overlay_address_append(NULL, payload, get_my_subscriber());
 	ob_append_ui32(payload, overlay_interfaces[i].address.inet.sin_addr.s_addr);
 	ob_append_ui16(payload, overlay_interfaces[i].address.inet.sin_port);
 	if (ob_overrun(payload)){
@@ -347,7 +347,7 @@ int overlay_send_stun_request(struct subscriber *server, struct subscriber *requ
   if (server && server->reachable & REACHABLE){
     struct internal_mdp_header header;
     bzero(&header, sizeof header);
-    header.source = my_subscriber;
+    header.source = get_my_subscriber();
     header.destination = server;
     
     header.source_port = MDP_PORT_STUN;

@@ -122,8 +122,9 @@ int keyring_sign_message(struct keyring_identity *identity, unsigned char *conte
 int keyring_send_sas_request(struct subscriber *subscriber);
 
 int keyring_commit(keyring_file *k);
+keyring_identity *keyring_inmemory_identity();
+void keyring_free_identity(keyring_identity *id);
 keyring_identity *keyring_create_identity(keyring_file *k, const char *pin);
-int keyring_seed(keyring_file *k);
 void keyring_identity_extract(const keyring_identity *id, const char **didp, const char **namep);
 int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **entry_pinv, FILE *input);
 int keyring_dump(keyring_file *k, XPRINTF xpf, int include_secret);

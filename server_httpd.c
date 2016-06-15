@@ -24,7 +24,7 @@ static int root_page(httpd_request *r, const char *remainder)
   strbuf b = strbuf_local_buf(temp);
   strbuf_sprintf(b, "<html><head><meta http-equiv=\"refresh\" content=\"5\" ></head><body>"
 	   "<h1>Hello, I'm %s*</h1>",
-	   alloca_tohex_sid_t_trunc(my_subscriber->sid, 16));
+	   alloca_tohex_sid_t_trunc(get_my_subscriber()->sid, 16));
   if (config.server.motd[0]) {
       strbuf_puts(b, "<p>");
       strbuf_html_escape(b, config.server.motd, strlen(config.server.motd));

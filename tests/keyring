@@ -172,16 +172,39 @@ test_KeyringPinIdentityPin() {
     assert_keyring_list 0
 }
 
-doc_KeyringAutoCreate="Starting a server with no keyring creates a valid identity"
+doc_KeyringAutoCreate="Starting a server with no interfaces does not create an identity"
 test_KeyringAutoCreate() {
+    configure_servald_server() {
+        :
+    }
     start_servald_server
     executeOk_servald keyring list
-    assert_keyring_list 1
+    assert_keyring_list 0
+    executeOk_servald id self
+    assertStdoutLineCount == 2
 }
 finally_KeyringAutoCreate() {
     stop_servald_server
 }
 teardown_KeyringAutoCreate() {
+   teardown_servald
+}
+
+doc_KeyringNoAutoCreate="Starting a server with interface creates in-memory identity"
+test_KeyringNoAutoCreate() {
+    configure_servald_server() {
+        add_servald_interface
+    }
+    start_servald_server
+    executeOk_servald keyring list
+    assert_keyring_list 0
+    executeOk_servald id self
+    assertStdoutLineCount == 3
+}
+finally_KeyringNoAutoCreate() {
+    stop_servald_server
+}
+teardown_KeyringNoAutoCreate() {
    teardown_servald
 }
 
@@ -242,8 +265,8 @@ teardown_KeyringKeyringPinServer() {
    teardown_servald
 }
 
-doc_KeyringEntryPinServer="Start daemon, unlock and lock identities"
-setup_KeyringEntryPinServer() {
+doc_ServerLockUnlock="Start daemon, unlock and lock identities"
+setup_ServerLockUnlock() {
    setup
    executeOk_servald config set debug.mdprequests on
    create_single_identity
@@ -255,36 +278,36 @@ setup_KeyringEntryPinServer() {
    extract_stdout_keyvalue TWOB sid "$rexp_sid"
    start_servald_server
 }
-test_KeyringEntryPinServer() {
+test_ServerLockUnlock() {
    executeOk_servald id self
-   assertStdoutLineCount == 3
    assertStdoutGrep --matches=1 --fixed-strings "$SIDA"
+   assertStdoutLineCount == 3
    executeOk_servald id enter pin 'one'
    executeOk_servald id list
-   assertStdoutLineCount == 4
    assertStdoutGrep --matches=1 --fixed-strings "$SIDA"
    assertStdoutGrep --matches=1 --fixed-strings "$ONE"
+   assertStdoutLineCount == 4
    executeOk_servald id enter pin 'two'
    executeOk_servald id list
-   assertStdoutLineCount == 6
    assertStdoutGrep --matches=1 --fixed-strings "$SIDA"
    assertStdoutGrep --matches=1 --fixed-strings "$ONE"
    assertStdoutGrep --matches=1 --fixed-strings "$TWOA"
    assertStdoutGrep --matches=1 --fixed-strings "$TWOB"
+   assertStdoutLineCount == 6
    executeOk_servald id relinquish pin 'one'
    executeOk_servald id list
-   assertStdoutLineCount == 5
    assertStdoutGrep --matches=1 --fixed-strings "$SIDA"
    assertStdoutGrep --matches=1 --fixed-strings "$TWOA"
    assertStdoutGrep --matches=1 --fixed-strings "$TWOB"
+   assertStdoutLineCount == 5
    executeOk_servald id relinquish sid "$TWOB"
    tfw_cat --stderr
    executeOk_servald id list
-   assertStdoutLineCount == 4
    assertStdoutGrep --matches=1 --fixed-strings "$SIDA"
    assertStdoutGrep --matches=1 --fixed-strings "$TWOA"
+   assertStdoutLineCount == 4
 }
-teardown_KeyringEntryPinServer() {
+teardown_ServerLockUnlock() {
    teardown_servald
 }
 

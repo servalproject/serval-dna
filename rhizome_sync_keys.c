@@ -111,7 +111,7 @@ static struct transfers **find_and_update_transfer(struct subscriber *peer, stru
     if (!keys_state->connection)
       keys_state->connection = msp_find_or_connect(&sync_connections,
 	  peer, MDP_PORT_RHIZOME_SYNC_KEYS,
-	  my_subscriber, MDP_PORT_RHIZOME_SYNC_KEYS,
+	  get_my_subscriber(), MDP_PORT_RHIZOME_SYNC_KEYS,
 	  OQ_OPPORTUNISTIC);
 
     if (msp_can_send(keys_state->connection)){
@@ -524,7 +524,7 @@ void sync_send_keys(struct sched_ent *alarm)
   bzero(&header, sizeof header);
   
   header.crypt_flags = MDP_FLAG_NO_CRYPT | MDP_FLAG_NO_SIGN;
-  header.source = my_subscriber;
+  header.source = get_my_subscriber();
   header.source_port = MDP_PORT_RHIZOME_SYNC_KEYS;
   header.destination_port = MDP_PORT_RHIZOME_SYNC_KEYS;
   header.qos = OQ_OPPORTUNISTIC;

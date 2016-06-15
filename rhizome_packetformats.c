@@ -147,7 +147,7 @@ int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m){
   struct overlay_frame *frame = malloc(sizeof(struct overlay_frame));
   bzero(frame,sizeof(struct overlay_frame));
   frame->type = OF_TYPE_RHIZOME_ADVERT;
-  frame->source = my_subscriber;
+  frame->source = get_my_subscriber();
   if (dest && dest->reachable&REACHABLE)
     frame->destination = dest;
   else
@@ -331,7 +331,7 @@ next:
     if (rhizome_is_bar_interesting(bars[index])==1){
       // add a request for the manifest
       if (!payload){
-	header.source = my_subscriber;
+	header.source = get_my_subscriber();
 	header.source_port = MDP_PORT_RHIZOME_RESPONSE;
 	header.destination = f->source;
 	header.destination_port = MDP_PORT_RHIZOME_MANIFEST_REQUEST;

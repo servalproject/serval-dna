@@ -527,7 +527,7 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f)
 
 void mdp_init_response(const struct internal_mdp_header *in, struct internal_mdp_header *out)
 {
-  out->source = in->destination ? in->destination : my_subscriber;
+  out->source = in->destination ? in->destination : get_my_subscriber();
   out->source_port = in->destination_port;
   out->destination = in->source;
   out->destination_port = in->source_port;
@@ -949,7 +949,7 @@ static int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *c
   
   if (is_sid_t_any(mdp->out.src.sid)){
     /* set source to ourselves */
-    header.source = my_subscriber;
+    header.source = get_my_subscriber();
     mdp->out.src.sid = header.source->sid;
   }else if (is_sid_t_broadcast(mdp->out.src.sid)){
     /* Nope, I'm sorry but we simply can't send packets from 
@@ -1183,7 +1183,7 @@ static int mdp_process_identity_request(struct socket_address *client, struct md
 	      keyring_iterator_start(keyring, &it);
 	      keyring_next_identity(&it);
 	      while(it.identity){
-		if (it.identity->subscriber != my_subscriber && strcmp(it.identity->PKRPin, pin) == 0)
+		if (it.identity->PKRPin && strcmp(it.identity->PKRPin, pin) == 0)
 		  keyring_release_identity(&it);
 		else
 		  keyring_next_identity(&it);
@@ -1416,8 +1416,8 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
   switch(sid_type=sid_get_special_type(&header->local.sid)){
     case SID_TYPE_ANY:
       // leaving the sid blank indicates that we should use our main identity
-      internal_header.source = my_subscriber;
-      header->local.sid = my_subscriber->sid;
+      internal_header.source = get_my_subscriber();
+      header->local.sid = internal_header.source->sid;
       break;
     case SID_TYPE_INTERNAL:
       internal_header.source = internal;

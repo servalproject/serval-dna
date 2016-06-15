@@ -447,7 +447,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       
 	  // send a packet to this destination
 	  if (frame->source_full)
-	    my_subscriber->send_full=1;
+	    get_my_subscriber()->send_full=1;
 	  if (overlay_init_packet(packet, frame->packet_version, dest) != -1) {
 	    if (debug){
 	      strbuf_sprintf(debug, "building packet %s %s %d [", 

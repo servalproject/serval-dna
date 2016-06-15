@@ -61,7 +61,7 @@ int rhizome_mdp_send_block(struct subscriber *dest, const rhizome_bid_t *bid, ui
   // beginning.
   
   header.crypt_flags = MDP_FLAG_NO_CRYPT | MDP_FLAG_NO_SIGN;
-  header.source = my_subscriber;
+  header.source = get_my_subscriber();
   header.source_port = MDP_PORT_RHIZOME_RESPONSE;
   
   if (dest && (dest->reachable==REACHABLE_UNICAST || dest->reachable==REACHABLE_INDIRECT)){
@@ -302,7 +302,7 @@ static int overlay_mdp_service_trace(struct internal_mdp_header *header, struct 
   INFOF("Trace from %s to %s", alloca_tohex_sid_t(src->sid), alloca_tohex_sid_t(dst->sid));
   struct internal_mdp_header next_header;
   next_header = *header;
-  next_header.source = my_subscriber;
+  next_header.source = get_my_subscriber();
   next_header.destination = NULL;
   
   while(ob_remaining(payload)>0){
@@ -347,8 +347,8 @@ static int overlay_mdp_service_trace(struct internal_mdp_header *header, struct 
   INFOF("Next node is %s", alloca_tohex_sid_t(next_header.destination->sid));
   
   // always write a full sid into the payload
-  my_subscriber->send_full=1;
-  overlay_address_append(&context, next_payload, my_subscriber);
+  next_header.source->send_full=1;
+  overlay_address_append(&context, next_payload, next_header.source);
   if (ob_overrun(next_payload)) {
     ret = WHYF("Unable to append my address to the trace");
     goto end;

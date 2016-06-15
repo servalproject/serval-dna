@@ -208,7 +208,7 @@ static void parse_frame(struct overlay_buffer *buff){
   
 end:
   // if we didn't understand one of the address abreviations, ask for explanation
-  send_please_explain(&context, my_subscriber, context.sender);
+  send_please_explain(&context, get_my_subscriber(), context.sender);
 }
 
 static void olsr_read(struct sched_ent *alarm){
@@ -292,7 +292,7 @@ int olsr_send(struct overlay_frame *frame){
   ob_append_byte(b, frame->ttl);
   
   // address the packet as transmitted by me
-  overlay_address_append(&context, b, my_subscriber);
+  overlay_address_append(&context, b, get_my_subscriber());
   overlay_address_append(&context, b, frame->source);
   overlay_broadcast_append(b, &frame->broadcast_id);
   ob_append_byte(b, frame->modifiers);

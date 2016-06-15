@@ -42,8 +42,8 @@ static int keyring_initialise(keyring_file *k);
 static int keyring_load(keyring_file *k, const char *pin);
 static keyring_file *keyring_open_create_instance(const char *pin, int force_create);
 static void keyring_free_keypair(keypair *kp);
-static void keyring_free_identity(keyring_identity *id);
 static int keyring_identity_mac(const keyring_identity *id, unsigned char *pkrsalt, unsigned char *mac);
+static int keyring_commit_identity(keyring_file *k, keyring_identity *id);
 
 struct combined_pk{
   uint8_t sign_key[crypto_sign_PUBLICKEYBYTES];
@@ -292,11 +292,8 @@ static void add_subscriber(keyring_identity *id)
   id->subscriber = find_subscriber(id->box_pk->binary, SID_SIZE, 1);
   if (id->subscriber) {
     // TODO flag for unroutable identities...?
-    if (id->subscriber->reachable == REACHABLE_NONE){
+    if (id->subscriber->reachable == REACHABLE_NONE)
       id->subscriber->reachable = REACHABLE_SELF;
-      if (!my_subscriber)
-	my_subscriber = id->subscriber;
-    }
     id->subscriber->identity = id;
 
     if (id->sign_pk){
@@ -398,8 +395,6 @@ int keyring_release_subscriber(keyring_file *k, const sid_t *sid)
   
   if (!keyring_find_sid(&it, sid))
     return WHYF("Keyring entry for %s not found", alloca_tohex_sid_t(*sid));
-  if (it.identity->subscriber == my_subscriber)
-    return WHYF("Cannot release my main subscriber");
   return keyring_release_identity(&it);
 }
 
@@ -473,7 +468,8 @@ static int keyring_munge_block(
      infeasible */
   ofs=0;
   APPEND(PKRSalt,PKRSaltLen);
-  APPEND(PKRPin,strlen(PKRPin));
+  if (PKRPin)
+    APPEND(PKRPin,strlen(PKRPin));
   APPEND(PKRSalt,PKRSaltLen);
   APPEND(KeyRingPin,strlen(KeyRingPin));
   crypto_hash_sha512(hashKey,work,ofs);
@@ -483,7 +479,8 @@ static int keyring_munge_block(
   APPEND(KeyRingPin,strlen(KeyRingPin));
   APPEND(KeyRingSalt,KeyRingSaltLen);
   APPEND(KeyRingPin,strlen(KeyRingPin));
-  APPEND(PKRPin,strlen(PKRPin));
+  if (PKRPin)
+    APPEND(PKRPin,strlen(PKRPin));
   crypto_hash_sha512(hashNonce,work,ofs);
 
   /* Now en/de-crypt the remainder of the block.
@@ -1107,7 +1104,8 @@ static keyring_identity *keyring_unpack_identity(unsigned char *slot, const char
   keyring_identity *id = emalloc_zero(sizeof(keyring_identity));
   if (!id)
     return NULL;
-  id->PKRPin = str_edup(pin);
+  if (pin && *pin)
+    id->PKRPin = str_edup(pin);
   // The two bytes immediately following the MAC describe the rotation offset.
   uint16_t rotation = (slot[PKR_SALT_BYTES + PKR_MAC_BYTES] << 8) | slot[PKR_SALT_BYTES + PKR_MAC_BYTES + 1];
   /* Pack the key pairs into the rest of the slot as a rotated buffer. */
@@ -1218,13 +1216,14 @@ static int keyring_identity_mac(const keyring_identity *id, unsigned char *pkrsa
     DEBUG(keyring,"Identity does not have a primary key");
     return -1;
   }
-  APPEND(id->PKRPin, strlen(id->PKRPin));
+  if (id->PKRPin)
+    APPEND(id->PKRPin, strlen(id->PKRPin));
 #undef APPEND
   crypto_hash_sha512(mac, work, ofs);
   return 0;
 }
 
-static int keyring_finalise_identity(keyring_file *k, keyring_identity *id)
+static int keyring_finalise_identity(uint8_t *dirty, keyring_identity *id)
 {
   keypair *kp = id->keypairs;
   while(kp){
@@ -1239,7 +1238,8 @@ static int keyring_finalise_identity(keyring_file *k, keyring_identity *id)
 	     so replace it */
 	  WARN("SAS key is invalid -- regenerating.");
 	  crypto_sign_keypair(kp->public_key, kp->private_key);
-	  k->dirty = 1;
+	  if (dirty)
+	    *dirty = 1;
 	}
 	id->sign_pk = kp->public_key;
 	id->sign_sk = kp->private_key;
@@ -1300,16 +1300,9 @@ static int keyring_decrypt_pkr(keyring_file *k, const char *pin, int slot_number
     goto kdp_safeexit;
   }
 
-  if (keyring_finalise_identity(k, id)!=0)
+  if (keyring_commit_identity(k, id)!=1)
     goto kdp_safeexit;
 
-  add_subscriber(id);
-
-  /* All fine, so add the id into the context and return. */
-  keyring_identity **i=&k->identities;
-  while(*i)
-    i=&(*i)->next;
-  *i=id;
   return 0;
 
  kdp_safeexit:
@@ -1333,7 +1326,10 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
   int identitiesFound=0;
   keyring_identity *id = k->identities;
   while(id){
-    if (strcmp(id->PKRPin, pin) == 0)
+    if (pin && *pin){
+      if (id->PKRPin && strcmp(id->PKRPin, pin) == 0)
+	identitiesFound++;
+    }else if(!id->PKRPin)
       identitiesFound++;
     id=id->next;
   }
@@ -1410,7 +1406,7 @@ static unsigned find_free_slot(const keyring_file *k)
 
 static int keyring_commit_identity(keyring_file *k, keyring_identity *id)
 {
-  keyring_finalise_identity(k, id);
+  keyring_finalise_identity(&k->dirty, id);
   // Do nothing if an identity with this sid already exists
   keyring_iterator it;
   keyring_iterator_start(k, &it);
@@ -1427,6 +1423,37 @@ static int keyring_commit_identity(keyring_file *k, keyring_identity *id)
   return 1;
 }
 
+static keyring_identity *keyring_new_identity()
+{
+  keyring_identity *id = emalloc_zero(sizeof(keyring_identity));
+  if (!id)
+    return NULL;
+
+  /* Allocate key pairs */
+  unsigned ktype;
+  for (ktype = 1; ktype < NELS(keytypes); ++ktype) {
+    if (keytypes[ktype].creator) {
+      keypair *kp = keyring_alloc_keypair(ktype, 0);
+      if (kp == NULL){
+	keyring_free_identity(id);
+	return NULL;
+      }
+      keytypes[ktype].creator(kp);
+      keyring_identity_add_keypair(id, kp);
+    }
+  }
+  assert(id->keypairs);
+  return id;
+}
+
+keyring_identity *keyring_inmemory_identity(){
+  keyring_identity *id = keyring_new_identity();
+  keyring_finalise_identity(NULL, id);
+  if (id)
+    add_subscriber(id);
+  return id;
+}
+
 /* Create a new identity in the specified context (which supplies the keyring pin) with the
  * specified PKR pin.  The crypto_box and crypto_sign key pairs are automatically created, and the
  * PKR is packed and written to a hithero unallocated slot which is then marked full.  Requires an
@@ -1440,12 +1467,12 @@ keyring_identity *keyring_create_identity(keyring_file *k, const char *pin)
 
   if (!pin) pin="";
 
-  keyring_identity *id = emalloc_zero(sizeof(keyring_identity));
+  keyring_identity *id = keyring_new_identity();
   if (!id)
-    return NULL;
+    goto kci_safeexit;
 
   /* Remember pin */
-  if (!(id->PKRPin = str_edup(pin)))
+  if (pin && *pin && !(id->PKRPin = str_edup(pin)))
     goto kci_safeexit;
 
   /* Find free slot in keyring. */
@@ -1454,19 +1481,6 @@ keyring_identity *keyring_create_identity(keyring_file *k, const char *pin)
     WHY("no free slots in first slab (no support for more than one slab)");
     goto kci_safeexit;
   }
-
-  /* Allocate key pairs */
-  unsigned ktype;
-  for (ktype = 1; ktype < NELS(keytypes); ++ktype) {
-    if (keytypes[ktype].creator) {
-      keypair *kp = keyring_alloc_keypair(ktype, 0);
-      if (kp == NULL)
-	goto kci_safeexit;
-      keytypes[ktype].creator(kp);
-      keyring_identity_add_keypair(id, kp);
-    }
-  }
-  assert(id->keypairs);
 
   /* Mark slot as occupied and internalise new identity. */
   if (keyring_commit_identity(k, id)!=1)
@@ -1777,7 +1791,7 @@ int keyring_send_unlock(struct subscriber *subscriber)
   struct internal_mdp_header header;
   bzero(&header, sizeof header);
   
-  header.source = my_subscriber;
+  header.source = get_my_subscriber();
   header.destination = subscriber;
   header.source_port = MDP_PORT_KEYMAPREQUEST;
   header.destination_port = MDP_PORT_KEYMAPREQUEST;
@@ -1803,9 +1817,6 @@ int keyring_send_unlock(struct subscriber *subscriber)
 
 static int keyring_send_challenge(struct subscriber *source, struct subscriber *dest)
 {
-  if (source == my_subscriber)
-    return WHY("Cannot release my main subscriber");
-
   struct internal_mdp_header header;
   bzero(&header, sizeof header);
   
@@ -1856,7 +1867,7 @@ static int keyring_respond_challenge(struct subscriber *subscriber, struct overl
   struct internal_mdp_header header;
   bzero(&header, sizeof header);
   
-  header.source = my_subscriber;
+  header.source = get_my_subscriber();
   header.destination = subscriber;
   header.source_port = MDP_PORT_KEYMAPREQUEST;
   header.destination_port = MDP_PORT_KEYMAPREQUEST;
@@ -1947,16 +1958,13 @@ int keyring_send_sas_request(struct subscriber *subscriber){
     return 0;
   }
   
-  if (!my_subscriber)
-    return WHY("couldn't request SAS (I don't know who I am)");
-  
   DEBUGF(keyring, "Requesting SAS mapping for SID=%s", alloca_tohex_sid_t(subscriber->sid));
   
   /* request mapping (send request auth-crypted). */
   struct internal_mdp_header header;
   bzero(&header, sizeof header);
   
-  header.source = my_subscriber;
+  header.source = get_my_subscriber();
   header.destination = subscriber;
   header.source_port = MDP_PORT_KEYMAPREQUEST;
   header.destination_port = MDP_PORT_KEYMAPREQUEST;
@@ -2047,21 +2055,6 @@ keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed)
       keyring_enter_pin(k, parsed->labelv[i].text);
   RETURN(k);
   OUT();
-}
-
-/* If no identities, create an initial identity with a phone number.
-   This identity will not be pin protected (initially). */
-int keyring_seed(keyring_file *k)
-{
-  /* nothing to do if there is already an identity */
-  if (k->identities)
-    return 0;
-  keyring_identity *id=keyring_create_identity(k,"");
-  if (!id)
-    return WHY("Could not create new identity");
-  if (keyring_commit(k))
-    return WHY("Could not commit new identity to keyring file");
-  return 0;
 }
 
 /*
@@ -2237,7 +2230,7 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
 	keyring_free_keypair(kp);
 	return -1;
       }
-      if ((id->PKRPin = str_edup(pini < entry_pinc ? entry_pinv[pini++] : "")) == NULL) {
+      if (pini < entry_pinc  && (id->PKRPin = str_edup(entry_pinv[pini++])) == NULL) {
 	keyring_free_keypair(kp);
 	keyring_free_identity(id);
 	return -1;

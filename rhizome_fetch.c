@@ -1038,7 +1038,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   struct internal_mdp_header header;
   bzero(&header, sizeof header);
   
-  header.source = my_subscriber;
+  header.source = get_my_subscriber();
   header.source_port = MDP_PORT_RHIZOME_RESPONSE;
   header.destination = (struct subscriber *)slot->peer;
   header.destination_port = MDP_PORT_RHIZOME_REQUEST;
@@ -1134,11 +1134,6 @@ static enum rhizome_start_fetch_result rhizome_fetch_switch_to_mdp(struct rhizom
   */
   IN();
   if (!is_rhizome_mdp_enabled()){
-    rhizome_fetch_close(slot);
-    RETURN(-1);
-  }
-  if (!my_subscriber) {
-    WARN("I don't have an identity, so we cannot fall back to MDP");
     rhizome_fetch_close(slot);
     RETURN(-1);
   }

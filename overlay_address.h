@@ -115,7 +115,8 @@ struct decode_context{
   struct subscriber *point_to_point_device;
 };
 
-extern __thread struct subscriber *my_subscriber;
+struct subscriber *get_my_subscriber();
+void release_my_subscriber();
 extern __thread struct subscriber *directory_service;
 
 struct subscriber *_find_subscriber(struct __sourceloc, const unsigned char *sid, int len, int create);
