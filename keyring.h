@@ -38,12 +38,16 @@ typedef struct keypair {
    (so that it can be replaced/rewritten as required). */
 #define PKR_SALT_BYTES 32
 #define PKR_MAC_BYTES 64
+struct keyring_challenge{
+  time_ms_t expires;
+  unsigned char challenge[24];
+};
+
 typedef struct keyring_identity {
   char *PKRPin;
   struct subscriber *subscriber;
-  time_ms_t challenge_expires;
-  unsigned char challenge[24];
   unsigned int slot;
+  struct keyring_challenge *challenge;
   const uint8_t *box_sk;
   const sid_t *box_pk;
   const uint8_t *sign_sk;

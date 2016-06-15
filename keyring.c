@@ -400,6 +400,8 @@ void keyring_free_identity(keyring_identity *id)
     id->keypairs=kp->next;
     keyring_free_keypair(kp);
   }
+  if (id->challenge)
+    free(id->challenge);
   if (id->subscriber)
     link_stop_routing(id->subscriber);
   bzero(id,sizeof(keyring_identity));
@@ -1779,6 +1781,9 @@ int keyring_send_unlock(struct subscriber *subscriber)
 
 static int keyring_send_challenge(struct subscriber *source, struct subscriber *dest)
 {
+  if (source == my_subscriber)
+    return WHY("Cannot release my main subscriber");
+
   struct internal_mdp_header header;
   bzero(&header, sizeof header);
   
@@ -1789,14 +1794,27 @@ static int keyring_send_challenge(struct subscriber *source, struct subscriber *
   header.qos = OQ_MESH_MANAGEMENT;
   
   time_ms_t now = gettime_ms();
-  if (source->identity->challenge_expires < now){
-    source->identity->challenge_expires = now + 5000;
-    randombytes_buf(source->identity->challenge, sizeof(source->identity->challenge));
+
+  struct keyring_challenge *challenge = source->identity->challenge;
+  if (challenge && challenge->expires < now){
+    free(challenge);
+    challenge = NULL;
   }
-  
+  if (!challenge){
+    challenge = emalloc_zero(sizeof(struct keyring_challenge));
+    if (challenge){
+      // give the remote party 15s to respond (should this could be based on measured link latency?)
+      challenge->expires = now + 15000;
+      randombytes_buf(challenge->challenge, sizeof(challenge->challenge));
+    }
+  }
+  source->identity->challenge = challenge;
+  if (!challenge)
+    return -1;
+
   struct overlay_buffer *payload = ob_new();
   ob_append_byte(payload, UNLOCK_CHALLENGE);
-  ob_append_bytes(payload, source->identity->challenge, sizeof source->identity->challenge);
+  ob_append_bytes(payload, challenge->challenge, sizeof challenge->challenge);
   
   DEBUGF(keyring, "Sending Unlock challenge for sid %s", alloca_tohex_sid_t(source->sid));
     
@@ -1841,15 +1859,29 @@ static int keyring_respond_challenge(struct subscriber *subscriber, struct overl
 
 static int keyring_process_challenge(keyring_file *k, struct subscriber *subscriber, struct overlay_buffer *payload)
 {
+  int ret=-1;
   time_ms_t now = gettime_ms();
-  if (subscriber->identity->challenge_expires < now)
-    return WHY("Identity challenge has already expired");
-  if (ob_remaining(payload) != sizeof(subscriber->identity->challenge))
-    return WHY("Challenge was not the right size");
-  if (memcmp(ob_current_ptr(payload), subscriber->identity->challenge, sizeof(subscriber->identity->challenge)))
-    return WHY("Challenge failed");
-  keyring_release_subscriber(k, &subscriber->sid);
-  return 0;
+
+  struct keyring_challenge *challenge = subscriber->identity->challenge;
+
+  if (challenge){
+    subscriber->identity->challenge = NULL;
+    size_t len = ob_remaining(payload)+1;
+    // verify that the payload was signed by our key and contains the same challenge bytes that we sent
+    // TODO allow for signing the challenge bytes without sending them twice?
+    if (challenge->expires >= now
+      && crypto_verify_message(subscriber, ob_current_ptr(payload) -1, &len) == 0
+      && len - 1 == sizeof(challenge->challenge)
+      && memcmp(ob_current_ptr(payload), challenge->challenge, sizeof(challenge->challenge)) == 0){
+
+      keyring_release_subscriber(k, &subscriber->sid);
+      ret=0;
+    }else{
+      WHY("Challenge failed");
+    }
+    free(challenge);
+  }
+  return ret;
 }
 
 DEFINE_BINDING(MDP_PORT_KEYMAPREQUEST, keyring_mapping_request);
@@ -1877,13 +1909,7 @@ static int keyring_mapping_request(struct internal_mdp_header *header, struct ov
     case UNLOCK_CHALLENGE:
       return keyring_respond_challenge(header->source, payload);
     case UNLOCK_RESPONSE:
-      {
-	size_t len = ob_remaining(payload)+1;
-	if (crypto_verify_message(header->destination, ob_current_ptr(payload) -1, &len))
-	  return WHY("Signature check failed");
-	ob_limitsize(payload, ob_position(payload)+len -1);
-	return keyring_process_challenge(keyring, header->destination, payload);
-      }
+      return keyring_process_challenge(keyring, header->destination, payload);
   }
   return WHY("Not implemented");
 }
