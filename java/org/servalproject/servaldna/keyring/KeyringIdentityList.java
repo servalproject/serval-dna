@@ -29,6 +29,8 @@ import org.servalproject.servaldna.SubscriberId;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Vector;
 import java.util.Map;
 
@@ -77,6 +79,25 @@ public class KeyringIdentityList {
 		}
 		catch (JSONInputException e) {
 			throw new ServalDInterfaceException(e);
+		}
+	}
+
+	public static List<KeyringIdentity> getTestIdentities() {
+		try {
+			List<KeyringIdentity> ret = new ArrayList<>();
+			byte[] sid = new byte[SubscriberId.BINARY_SIZE];
+
+			for (int i = 0; i < 10; i++) {
+				sid[0]=(byte)i;
+				ret.add(new KeyringIdentity(
+						i,
+						new SubscriberId(sid),
+						"555000" + i,
+						"Agent " + i));
+			}
+			return ret;
+		}catch (Exception e){
+			throw new IllegalStateException(e);
 		}
 	}
 
