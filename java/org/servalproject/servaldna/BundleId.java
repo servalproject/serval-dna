@@ -22,12 +22,7 @@ package org.servalproject.servaldna;
 
 import java.nio.ByteBuffer;
 
-public class BundleId extends AbstractId {
-
-	@Override
-	public int getBinarySize() {
-		return 32;
-	}
+public class BundleId extends SigningKey {
 
 	public BundleId(String hex) throws InvalidHexException {
 		super(hex);

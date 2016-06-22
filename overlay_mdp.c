@@ -1068,6 +1068,8 @@ static void send_route(struct subscriber *subscriber, struct socket_address *cli
   struct overlay_buffer *b = ob_static(payload, sizeof payload);
   ob_limitsize(b, sizeof payload);
   ob_append_bytes(b, subscriber->sid.binary, SID_SIZE);
+  ob_append_bytes(b, subscriber->sas_public, SAS_SIZE);
+  ob_append_byte(b, subscriber->sas_valid | (subscriber->sas_combined<<1));
   ob_append_byte(b, subscriber->reachable);
   if (subscriber->reachable & REACHABLE){
     ob_append_byte(b, subscriber->hop_count);

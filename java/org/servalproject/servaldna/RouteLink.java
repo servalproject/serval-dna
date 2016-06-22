@@ -13,7 +13,10 @@ public class RouteLink {
     private static final int REACHABLE_UNICAST = (1<<2);
     //private static final int REACHABLE_INDIRECT = (1<<3);
 
+    public final Subscriber subscriber;
+    @Deprecated
     public final SubscriberId sid;
+
     public final SubscriberId next_hop;
     public final SubscriberId prior_hop;
     public final int hop_count;
@@ -34,7 +37,8 @@ public class RouteLink {
     }
 
     RouteLink(ByteBuffer buff) throws AbstractId.InvalidBinaryException, BufferUnderflowException {
-        sid = new SubscriberId(buff);
+        this.subscriber = new Subscriber(buff);
+        this.sid = subscriber.sid;
         reachable = 0xFF & (int)buff.get();
         int hop_count=-1;
         SubscriberId next_hop = null;
@@ -70,7 +74,7 @@ public class RouteLink {
     @Override
     public String toString() {
         return "RouteLink{" +
-                "sid=" + sid +
+                "subscriber=" + subscriber +
                 ", next_hop=" + next_hop +
                 ", prior_hop=" + prior_hop +
                 ", hop_count=" + hop_count +

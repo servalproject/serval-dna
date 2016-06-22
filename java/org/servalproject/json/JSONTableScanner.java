@@ -30,6 +30,7 @@ import java.util.HashSet;
 public class JSONTableScanner {
 
 	private static class Column {
+		public boolean supported;
 		public String label;
 		public Class type;
 		public JSONTokeniser.Narrow opts;
@@ -55,6 +56,7 @@ public class JSONTableScanner {
 		col.label = label;
 		col.type = type;
 		col.opts = opts;
+		col.supported = JSONTokeniser.supportsNarrowTo(col.type);
 		columnMap.put(label, col);
 		return this;
 	}
@@ -91,7 +93,7 @@ public class JSONTableScanner {
 			Column col = columns[i];
 			if (col != null) {
 				Object value;
-				if (JSONTokeniser.supportsNarrowTo(col.type))
+				if (col.supported)
 					value = JSONTokeniser.narrow(row[i], col.type, col.opts);
 				else {
 					value = JSONTokeniser.narrow(row[i], col.opts);

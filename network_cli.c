@@ -497,6 +497,12 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
 	sid_t *sid = (sid_t *)ob_get_bytes_ptr(buff, SID_SIZE);
 	if (!sid)
 	  break;
+
+	// ignore signing key details for now
+	ob_skip(buff, SAS_SIZE+1);
+	if (ob_overrun(buff))
+	  break;
+
 	int reachable = ob_get(buff);
 	if (reachable<0)
 	  break;
