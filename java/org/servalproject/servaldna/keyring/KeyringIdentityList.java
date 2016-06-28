@@ -25,6 +25,8 @@ import org.servalproject.json.JSONTableScanner;
 import org.servalproject.json.JSONTokeniser;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
+import org.servalproject.servaldna.SigningKey;
+import org.servalproject.servaldna.Subscriber;
 import org.servalproject.servaldna.SubscriberId;
 
 import java.io.IOException;
@@ -47,6 +49,7 @@ public class KeyringIdentityList {
 		this.httpConnector = connector;
 		this.table = new JSONTableScanner()
 					.addColumn("sid", SubscriberId.class)
+					.addColumn("sign", SigningKey.class)
 					.addColumn("did", String.class, JSONTokeniser.Narrow.ALLOW_NULL)
 					.addColumn("name", String.class, JSONTokeniser.Narrow.ALLOW_NULL);
 	}
@@ -91,7 +94,7 @@ public class KeyringIdentityList {
 				sid[0]=(byte)i;
 				ret.add(new KeyringIdentity(
 						i,
-						new SubscriberId(sid),
+						new Subscriber(new SubscriberId(sid), new SigningKey(sid), true),
 						"555000" + i,
 						"Agent " + i));
 			}
@@ -117,7 +120,9 @@ public class KeyringIdentityList {
 			Map<String,Object> row = table.consumeRowArray(json);
 			return new KeyringIdentity(
 					rowCount++,
-					(SubscriberId)row.get("sid"),
+					new Subscriber((SubscriberId)row.get("sid"),
+							(SigningKey) row.get("sign"),
+							true),
 					(String)row.get("did"),
 					(String)row.get("name")
 				);

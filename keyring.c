@@ -1973,27 +1973,17 @@ int keyring_send_sas_request(struct subscriber *subscriber){
   return ret;
 }
 
-void keyring_identity_extract(const keyring_identity *id, const sid_t **sidp, const char **didp, const char **namep)
+void keyring_identity_extract(const keyring_identity *id, const char **didp, const char **namep)
 {
   keypair *kp=id->keypairs;
   while(kp){
     switch (kp->type) {
-    case KEYTYPE_CRYPTOBOX:
-      if (sidp)
-	*sidp = (const sid_t *)kp->public_key;
-      break;
     case KEYTYPE_DID:
       if (didp)
 	*didp = (const char *) kp->private_key;
       if (namep)
 	*namep = (const char *) kp->public_key;
-      break;
-    case KEYTYPE_CRYPTOCOMBINED:
-      if (sidp){
-	struct combined_pk *pk = (struct combined_pk *)kp->public_key;
-	*sidp = &pk->box_key;
-      }
-      break;
+      return;
     }
     kp=kp->next;
   }

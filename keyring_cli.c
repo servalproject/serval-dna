@@ -133,16 +133,13 @@ static int app_keyring_list(const struct cli_parsed *parsed, struct cli_context 
   keyring_iterator_start(k, &it);
   const keyring_identity *id;
   while((id = keyring_next_identity(&it))){
-    const sid_t *sidp = NULL;
     const char *did = NULL;
     const char *name = NULL;
-    keyring_identity_extract(id, &sidp, &did, &name);
-    if (sidp || did) {
-      cli_put_string(context, alloca_tohex_sid_t(*sidp), ":");
-      cli_put_string(context, did, ":");
-      cli_put_string(context, name, "\n");
-      rowcount++;
-    }
+    keyring_identity_extract(id, &did, &name);
+    cli_put_string(context, alloca_tohex_sid_t(*id->box_pk), ":");
+    cli_put_string(context, did, ":");
+    cli_put_string(context, name, "\n");
+    rowcount++;
   }
   keyring_free(k);
   cli_row_count(context, rowcount);
@@ -241,14 +238,6 @@ static int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *
   if (id == NULL) {
     keyring_free(k);
     return WHY("Could not create new identity");
-  }
-  const sid_t *sidp = NULL;
-  const char *did = "";
-  const char *name = "";
-  keyring_identity_extract(id, &sidp, &did, &name);
-  if (!sidp) {
-    keyring_free(k);
-    return WHY("New identity has no SID");
   }
   if (keyring_commit(k) == -1) {
     keyring_free(k);

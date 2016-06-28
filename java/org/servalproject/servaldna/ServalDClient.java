@@ -21,48 +21,37 @@
 package org.servalproject.servaldna;
 
 import org.servalproject.codec.Base64;
-import org.servalproject.servaldna.meshms.MeshMSConversationList;
-import org.servalproject.servaldna.meshms.MeshMSException;
-import org.servalproject.servaldna.meshms.MeshMSMessageList;
-
-import java.lang.Iterable;
-import java.util.Vector;
-import java.io.InputStream;
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
-import java.net.URL;
-import java.net.URLConnection;
-import java.net.HttpURLConnection;
-import org.servalproject.codec.Base64;
-import org.servalproject.servaldna.SubscriberId;
-import org.servalproject.servaldna.BundleId;
-import org.servalproject.servaldna.BundleSecret;
-import org.servalproject.servaldna.ServalDCommand;
-import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.keyring.KeyringCommon;
 import org.servalproject.servaldna.keyring.KeyringIdentity;
 import org.servalproject.servaldna.keyring.KeyringIdentityList;
-import org.servalproject.servaldna.rhizome.RhizomeCommon;
-import org.servalproject.servaldna.rhizome.RhizomeIncompleteManifest;
-import org.servalproject.servaldna.rhizome.RhizomeBundleList;
-import org.servalproject.servaldna.rhizome.RhizomeManifestBundle;
-import org.servalproject.servaldna.rhizome.RhizomePayloadRawBundle;
-import org.servalproject.servaldna.rhizome.RhizomePayloadBundle;
-import org.servalproject.servaldna.rhizome.RhizomeInsertBundle;
-import org.servalproject.servaldna.rhizome.RhizomeInvalidManifestException;
-import org.servalproject.servaldna.rhizome.RhizomeFakeManifestException;
-import org.servalproject.servaldna.rhizome.RhizomeInconsistencyException;
-import org.servalproject.servaldna.rhizome.RhizomeEncryptionException;
-import org.servalproject.servaldna.rhizome.RhizomeReadOnlyException;
-import org.servalproject.servaldna.rhizome.RhizomeDecryptionException;
 import org.servalproject.servaldna.meshms.MeshMSCommon;
 import org.servalproject.servaldna.meshms.MeshMSConversationList;
-import org.servalproject.servaldna.meshms.MeshMSMessageList;
 import org.servalproject.servaldna.meshms.MeshMSException;
+import org.servalproject.servaldna.meshms.MeshMSMessageList;
 import org.servalproject.servaldna.meshms.MeshMSStatus;
+import org.servalproject.servaldna.rhizome.RhizomeBundleList;
+import org.servalproject.servaldna.rhizome.RhizomeCommon;
+import org.servalproject.servaldna.rhizome.RhizomeDecryptionException;
+import org.servalproject.servaldna.rhizome.RhizomeEncryptionException;
+import org.servalproject.servaldna.rhizome.RhizomeFakeManifestException;
+import org.servalproject.servaldna.rhizome.RhizomeIncompleteManifest;
+import org.servalproject.servaldna.rhizome.RhizomeInconsistencyException;
+import org.servalproject.servaldna.rhizome.RhizomeInsertBundle;
+import org.servalproject.servaldna.rhizome.RhizomeInvalidManifestException;
+import org.servalproject.servaldna.rhizome.RhizomeManifestBundle;
+import org.servalproject.servaldna.rhizome.RhizomePayloadBundle;
+import org.servalproject.servaldna.rhizome.RhizomePayloadRawBundle;
+import org.servalproject.servaldna.rhizome.RhizomeReadOnlyException;
 
-public class ServalDClient implements ServalDHttpConnectionFactory
-{
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLConnection;
+import java.util.Vector;
+
+public class ServalDClient implements ServalDHttpConnectionFactory {
 	private final int httpPort;
 	private final String restfulUsername;
 	private final String restfulPassword;
@@ -79,11 +68,15 @@ public class ServalDClient implements ServalDHttpConnectionFactory
 		this.restfulPassword = restfulPassword;
 	}
 
-	public KeyringIdentityList keyringListIdentities(String pin) throws ServalDInterfaceException, IOException
-	{
+	public KeyringIdentityList keyringListIdentities(String pin) throws ServalDInterfaceException, IOException {
 		KeyringIdentityList list = new KeyringIdentityList(this);
 		list.connect(pin);
 		return list;
+	}
+
+	public KeyringIdentity keyringSetDidName(Subscriber subscriber, String did, String name, String pin) throws ServalDInterfaceException, IOException
+	{
+		return this.keyringSetDidName(subscriber.sid, did, name, pin);
 	}
 
 	public KeyringIdentity keyringSetDidName(SubscriberId sid, String did, String name, String pin) throws ServalDInterfaceException, IOException

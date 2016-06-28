@@ -81,24 +81,28 @@ static int http_request_keyring_response(struct httpd_request *r, uint16_t resul
 
 static int http_request_keyring_response_identity(struct httpd_request *r, uint16_t result, const char *message, const keyring_identity *id)
 {
-  const sid_t *sidp = NULL;
   const char *did = NULL;
   const char *name = NULL;
-  keyring_identity_extract(id, &sidp, &did, &name);
-  if (!sidp)
-    return http_request_keyring_response(r, 500, "Identity has no SID");
+  keyring_identity_extract(id, &did, &name);
   struct json_atom json_id;
-  struct json_key_value json_id_kv[3];
+  struct json_key_value json_id_kv[4];
   struct json_atom json_sid;
+  struct json_atom json_sas;
   struct json_atom json_did;
   struct json_atom json_name;
   json_id.type = JSON_OBJECT;
-  json_id.u.object.itemc = 1;
+  json_id.u.object.itemc = 2;
   json_id.u.object.itemv = json_id_kv;
   json_id_kv[0].key = "sid";
   json_id_kv[0].value = &json_sid;
   json_sid.type = JSON_STRING_NULTERM;
-  json_sid.u.string.content = alloca_tohex_sid_t(*sidp);
+  json_sid.u.string.content = alloca_tohex_sid_t(*id->box_pk);
+
+  json_id_kv[1].key = "sign";
+  json_id_kv[1].value = &json_sas;
+  json_sas.type = JSON_STRING_NULTERM;
+  json_sas.u.string.content = alloca_tohex_sas(id->sign_pk);
+
   if (did) {
     json_id_kv[json_id.u.object.itemc].key = "did";
     json_id_kv[json_id.u.object.itemc].value = &json_did;
@@ -148,6 +152,7 @@ static int restful_keyring_identitylist_json_content_chunk(struct http_request *
   // identities.
   const char *headers[] = {
     "sid",
+    "sign",
     "did",
     "name"
   };
@@ -172,19 +177,18 @@ static int restful_keyring_identitylist_json_content_chunk(struct http_request *
       strbuf_putc(b, ',');
     case LIST_FIRST:
       r->u.sidlist.phase = LIST_ROWS;
-      const sid_t *sidp = NULL;
       const char *did = NULL;
       const char *name = NULL;
-      keyring_identity_extract(r->u.sidlist.it.identity, &sidp, &did, &name);
-      if (sidp || did) {
-	strbuf_puts(b, "\n[");
-	strbuf_json_string(b, alloca_tohex_sid_t(*sidp));
-	strbuf_puts(b, ",");
-	strbuf_json_string(b, did);
-	strbuf_puts(b, ",");
-	strbuf_json_string(b, name);
-	strbuf_puts(b, "]");
-      }
+      keyring_identity_extract(r->u.sidlist.it.identity, &did, &name);
+      strbuf_puts(b, "\n[");
+      strbuf_json_string(b, alloca_tohex_sid_t(*r->u.sidlist.it.identity->box_pk));
+      strbuf_puts(b, ",");
+      strbuf_json_string(b, alloca_tohex_sas(r->u.sidlist.it.identity->sign_pk));
+      strbuf_puts(b, ",");
+      strbuf_json_string(b, did);
+      strbuf_puts(b, ",");
+      strbuf_json_string(b, name);
+      strbuf_puts(b, "]");
 
       if (!strbuf_overrun(b)) {
 	if (!keyring_next_identity(&r->u.sidlist.it))

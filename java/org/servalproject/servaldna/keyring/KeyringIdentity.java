@@ -20,22 +20,26 @@
 
 package org.servalproject.servaldna.keyring;
 
+import org.servalproject.servaldna.Subscriber;
 import org.servalproject.servaldna.SubscriberId;
 
 public class KeyringIdentity {
 
 	public final int rowNumber;
+	public final Subscriber subscriber;
+	@Deprecated
 	public final SubscriberId sid;
 	public final String did;
 	public final String name;
 
 	protected KeyringIdentity(int rowNumber,
-							  SubscriberId sid,
+							  Subscriber subscriber,
 							  String did,
 							  String name)
 	{
 		this.rowNumber = rowNumber;
-		this.sid = sid;
+		this.subscriber = subscriber;
+		this.sid = subscriber.sid;
 		this.did = did;
 		this.name = name;
 	}

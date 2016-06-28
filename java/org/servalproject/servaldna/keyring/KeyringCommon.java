@@ -20,28 +20,23 @@
 
 package org.servalproject.servaldna.keyring;
 
-import java.lang.StringBuilder;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.lang.reflect.InvocationTargetException;
-import java.util.Map;
-import java.util.List;
-import java.util.Vector;
-import java.io.IOException;
-import java.io.PrintStream;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.URL;
-import java.net.HttpURLConnection;
-import org.servalproject.json.JSONTokeniser;
 import org.servalproject.json.JSONInputException;
-import org.servalproject.servaldna.SubscriberId;
+import org.servalproject.json.JSONTokeniser;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
-import org.servalproject.servaldna.ServalDFailureException;
 import org.servalproject.servaldna.ServalDNotImplementedException;
+import org.servalproject.servaldna.SigningKey;
+import org.servalproject.servaldna.Subscriber;
+import org.servalproject.servaldna.SubscriberId;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.PrintStream;
+import java.net.HttpURLConnection;
+import java.util.List;
+import java.util.Map;
+import java.util.Vector;
 
 public class KeyringCommon
 {
@@ -62,7 +57,7 @@ public class KeyringCommon
 		if (status.identity == null) {
 			out.println("identity=null");
 		} else {
-			out.println("identity.sid=" + status.identity.sid);
+			out.println("identity.subscriber=" + status.identity.subscriber);
 			out.println("identity.did=" + status.identity.did);
 			out.println("identity.name=" + status.identity.name);
 		}
@@ -146,8 +141,11 @@ public class KeyringCommon
 				json.consume(JSONTokeniser.Token.START_OBJECT);
 				json.consume("sid");
 				json.consume(JSONTokeniser.Token.COLON);
-				String sid_hex = json.consume(String.class);
-				SubscriberId sid = new SubscriberId(sid_hex);
+				SubscriberId sid = new SubscriberId(json.consume(String.class));
+				json.consume(JSONTokeniser.Token.COMMA);
+				json.consume("sign");
+				json.consume(JSONTokeniser.Token.COLON);
+				SigningKey sas = new SigningKey(json.consume(String.class));
 				String did = null;
 				String name = null;
 				tok = json.nextToken();
@@ -165,7 +163,7 @@ public class KeyringCommon
 				}
 				json.match(tok, JSONTokeniser.Token.END_OBJECT);
 				tok = json.nextToken();
-				status.identity = new KeyringIdentity(0, sid, did, name);
+				status.identity = new KeyringIdentity(0, new Subscriber(sid, sas, true), did, name);
 			}
 			json.match(tok, JSONTokeniser.Token.END_OBJECT);
 			json.consume(JSONTokeniser.Token.EOF);
