@@ -75,7 +75,6 @@ test_MessageDelivery() {
    tfw_log "CONV_BID=$CONV_BID CONV_SECRET=$CONV_SECRET"
    # 5. mark the first message as read
    executeOk_servald meshms read messages $SIDA2 $SIDA1 5
-   tfw_cat --stderr
    check_meshms_bundles
    executeOk_servald meshms list messages $SIDA2 $SIDA1
    assertStdoutGrep --stdout --matches=1 "^0:25:$rexp_age:<:How are you\$"

@@ -13,6 +13,7 @@ HDRS=	fifo.h \
 	httpd.h \
 	instance.h \
 	meshms.h \
+	message_ply.h \
 	serval_types.h \
 	serval.h \
 	server.h \

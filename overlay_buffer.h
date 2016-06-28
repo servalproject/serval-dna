@@ -66,6 +66,7 @@ void _ob_append_ui64_rv(struct __sourceloc whence, struct overlay_buffer *b, uin
 void _ob_append_packed_ui32(struct __sourceloc whence, struct overlay_buffer *b, uint32_t v);
 void _ob_append_packed_ui64(struct __sourceloc whence, struct overlay_buffer *b, uint64_t v);
 void _ob_append_str(struct __sourceloc whence, struct overlay_buffer *b, const char *str);
+void _ob_append_strn(struct __sourceloc whence, struct overlay_buffer *b, const char *str, size_t max_len);
 
 #define ob_new() _ob_new(__WHENCE__)
 #define ob_static(bytes, size) _ob_static(__WHENCE__, bytes, size)
@@ -94,6 +95,7 @@ void _ob_append_str(struct __sourceloc whence, struct overlay_buffer *b, const c
 #define ob_append_packed_ui32(b, v) _ob_append_packed_ui32(__WHENCE__, b, v)
 #define ob_append_packed_ui64(b, v) _ob_append_packed_ui64(__WHENCE__, b, v)
 #define ob_append_str(b, s) _ob_append_str(__WHENCE__, b, s)
+#define ob_append_strn(b, s, count) _ob_append_strn(__WHENCE__, b, s, count)
 
 // get one byte, -ve number indicates failure
 int ob_peek(struct overlay_buffer *b);
@@ -118,6 +120,7 @@ uint64_t ob_get_packed_ui64(struct overlay_buffer *b);
 size_t ob_position(struct overlay_buffer *b);
 size_t ob_limit(struct overlay_buffer *b);
 size_t ob_remaining(struct overlay_buffer *b);
+size_t ob_mark(struct overlay_buffer *b);
 int _ob_overrun(struct __sourceloc, struct overlay_buffer *b);
 // get the raw pointer of the whole buffer
 unsigned char* ob_ptr(struct overlay_buffer *b);

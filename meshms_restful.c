@@ -617,7 +617,7 @@ static int send_mime_part_header(struct http_request *hr, const struct mime_part
     if (r->u.sendmsg.received_message)
       return http_response_form_part(r, 400, "Duplicate", PART_MESSAGE, NULL, 0);
     r->u.sendmsg.current_part = PART_MESSAGE;
-    form_buf_malloc_init(&r->u.sendmsg.message, MESHMS_MESSAGE_MAX_LEN);
+    form_buf_malloc_init(&r->u.sendmsg.message, MESSAGE_PLY_MAX_LEN);
   }
   else
     return http_response_form_part(r, 415, "Unsupported", h->content_disposition.name, NULL, 0);
@@ -648,7 +648,7 @@ static int restful_meshms_sendmessage_end(struct http_request *hr)
   if (!r->u.sendmsg.received_message)
     return http_response_form_part(r, 400, "Missing", PART_MESSAGE, NULL, 0);
   assert(r->u.sendmsg.message.length > 0);
-  assert(r->u.sendmsg.message.length <= MESHMS_MESSAGE_MAX_LEN);
+  assert(r->u.sendmsg.message.length <= MESSAGE_PLY_MAX_LEN);
   enum meshms_status status;
   if (meshms_failed(status = meshms_send_message(&r->sid1, &r->sid2, r->u.sendmsg.message.buffer, r->u.sendmsg.message.length)))
     return http_request_meshms_response(r, 0, NULL, status);

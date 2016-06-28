@@ -274,6 +274,12 @@ void _ob_append_str(struct __sourceloc whence, struct overlay_buffer *b, const c
   _ob_append_bytes(whence, b, (const uint8_t*)str, strlen(str)+1);
 }
 
+void _ob_append_strn(struct __sourceloc whence, struct overlay_buffer *b, const char *str, size_t max_len)
+{
+  _ob_append_bytes(whence, b, (const uint8_t*)str, strnlen(str, max_len));
+  _ob_append_byte(whence, b, 0);
+}
+
 void _ob_append_ui16(struct __sourceloc __whence, struct overlay_buffer *b, uint16_t v)
 {
   const int bytes = 2;
@@ -624,6 +630,11 @@ void _ob_set(struct __sourceloc __whence, struct overlay_buffer *b, size_t offse
 size_t ob_position(struct overlay_buffer *b)
 {
   return b->position;
+}
+
+size_t ob_mark(struct overlay_buffer *b)
+{
+  return b->checkpointLength;
 }
 
 size_t ob_limit(struct overlay_buffer *b)

@@ -1124,7 +1124,7 @@ int rhizome_manifest_remove_field(rhizome_manifest *m, const char *field_label, 
  */
 int rhizome_manifest_validate(rhizome_manifest *m)
 {
-  return rhizome_manifest_validate_reason(m) == NULL ? 1 : 0;
+  return (m->finalised || rhizome_manifest_validate_reason(m) == NULL) ? 1 : 0;
 }
 
 /* If all essential (transport) fields are present and well formed then sets the m->finalised field

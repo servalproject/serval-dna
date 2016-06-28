@@ -29,8 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 
 #include "rhizome.h"
-
-#define MESHMS_MESSAGE_MAX_LEN  4095
+#include "message_ply.h"
 
 /* The result of a MeshMS operation.  Negative indicates failure, zero or
  * positive success.
@@ -49,23 +48,14 @@ __MESHMS_INLINE int meshms_failed(enum meshms_status status) {
 
 const char *meshms_status_message(enum meshms_status);
 
-// the manifest details for one half of a conversation
-struct meshms_ply {
-  rhizome_bid_t bundle_id;
-  uint64_t version;
-  uint64_t tail;
-  uint64_t size;
-  uint8_t found;
-};
-
 struct meshms_conversations {
   struct meshms_conversations *_next;
   
   // who are we talking to?
   sid_t them;
   
-  struct meshms_ply my_ply;
-  struct meshms_ply their_ply;
+  struct message_ply my_ply;
+  struct message_ply their_ply;
   
   // what is the offset of their last message
   uint64_t their_last_message;
@@ -73,21 +63,6 @@ struct meshms_conversations {
   uint64_t read_offset;
   // our cached value for the last known size of their ply
   uint64_t their_size;
-};
-
-// cursor state for reading one half of a conversation
-struct meshms_ply_read {
-  // rhizome payload
-  struct rhizome_read read;
-  // block buffer
-  struct rhizome_read_buffer buff;
-  // details of the current record
-  uint64_t record_end_offset;
-  uint16_t record_length;
-  size_t record_size;
-  char type;
-  // raw record data
-  unsigned char *record;
 };
 
 /* Fetch the list of all MeshMS conversations into a binary tree whose nodes
@@ -158,10 +133,8 @@ struct meshms_message_iterator {
   // Private implementation -- could change, so don't use them.
   sid_t _my_sid;
   struct meshms_conversations *_conv;
-  rhizome_manifest *_my_manifest;
-  rhizome_manifest *_their_manifest;
-  struct meshms_ply_read _my_reader;
-  struct meshms_ply_read _their_reader;
+  struct message_ply_read _my_reader;
+  struct message_ply_read _their_reader;
   uint64_t _end_range;
   bool_t _in_ack;
 };

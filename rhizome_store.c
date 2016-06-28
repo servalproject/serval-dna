@@ -1044,7 +1044,8 @@ enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const r
   if (sqlite_exec_uint64(&read->length,"SELECT length FROM FILES WHERE id = ?", 
     RHIZOME_FILEHASH_T, &read->id, END) == -1)
     return RHIZOME_PAYLOAD_STATUS_ERROR;
-  
+  assert(read->length>0);
+
   if (sqlite_exec_uint64(&read->blob_rowid,
       "SELECT rowid "
       "FROM FILEBLOBS "
@@ -1240,6 +1241,10 @@ ssize_t rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buf
 
 void rhizome_read_close(struct rhizome_read *read)
 {
+  if (read->length == 0)
+    // bzero'd & never opened, or already closed
+    return;
+
   if (read->blob_fd != -1) {
     DEBUGF(rhizome_store, "Closing store fd %d", read->blob_fd);
     close(read->blob_fd);
@@ -1258,6 +1263,7 @@ void rhizome_read_close(struct rhizome_read *read)
       RHIZOME_FILEHASH_T, &read->id,
       END);
   }
+  read->length = 0;
 }
 
 struct cache_entry{
