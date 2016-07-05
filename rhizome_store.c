@@ -172,7 +172,17 @@ static uint64_t store_get_free_space()
     WARNF_perror("statvfs(%s)", store_path);
     return UINT64_MAX;
   }
-  return stats.f_bsize * stats.f_bfree;
+  uint64_t space = stats.f_frsize * stats.f_bavail;
+  if (IF_DEBUG(rhizome)){
+    double pretty = space;
+    const char *suffix = " KMGT";
+    while(pretty >= 1024 && suffix[1]){
+      pretty = pretty / 1024;
+      suffix++;
+    }
+    DEBUGF(rhizome, "Found %.2f%cB of free space", pretty, *suffix);
+  }
+  return space;
 #else
   return UINT64_MAX;
 #endif
