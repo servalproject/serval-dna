@@ -79,6 +79,8 @@ public class RhizomeBundleList {
 			rowCount = 0;
 			if (this.sinceToken == null)
 				httpConnection = httpConnector.newServalDHttpConnection("/restful/rhizome/bundlelist.json");
+			else if(this.sinceToken.equals(""))
+				httpConnection = httpConnector.newServalDHttpConnection("/restful/rhizome/newsince/bundlelist.json");
 			else
 				httpConnection = httpConnector.newServalDHttpConnection("/restful/rhizome/newsince/" + this.sinceToken + "/bundlelist.json");
 			httpConnection.connect();

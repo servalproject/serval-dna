@@ -1418,13 +1418,14 @@ DEFINE_TRIGGER(bundle_add, trigger_rhizome_bundle_added_debug);
  */
 int rhizome_list_open(struct rhizome_list_cursor *c)
 {
-  DEBUGF(rhizome, "c=%p c->service=%s c->name=%s c->sender=%s c->recipient=%s c->rowid_since=%"PRIu64" c->_rowid_last=%"PRIu64,
+  DEBUGF(rhizome, "c=%p c->service=%s c->name=%s c->sender=%s c->recipient=%s c->rowid_since=%"PRIu64" c->oldest_first=%d c->_rowid_last=%"PRIu64,
 	 c,
 	 alloca_str_toprint(c->service),
 	 alloca_str_toprint(c->name),
 	 c->is_sender_set ? alloca_tohex_sid_t(c->sender) : "UNSET",
 	 c->is_recipient_set ? alloca_tohex_sid_t(c->recipient) : "UNSET",
 	 c->rowid_since,
+	 c->oldest_first,
 	 c->_rowid_last
         );
   IN();
@@ -1438,14 +1439,16 @@ int rhizome_list_open(struct rhizome_list_cursor *c)
     strbuf_puts(b, " AND sender = @sender");
   if (c->is_recipient_set)
     strbuf_puts(b, " AND recipient = @recipient");
-  if (c->rowid_since) {
-    strbuf_puts(b, " AND rowid > @last ORDER BY rowid ASC"); // oldest first
-    if (c->_rowid_last < c->rowid_since)
-      c->_rowid_last = c->rowid_since;
-  } else {
+  if (c->rowid_since)
+    strbuf_puts(b, " AND rowid > @since");
+  if (c->oldest_first){
+    if (c->_rowid_last)
+      strbuf_puts(b, " AND rowid > @last");
+    strbuf_puts(b, " ORDER BY rowid ASC");
+  }else{
     if (c->_rowid_last)
       strbuf_puts(b, " AND rowid < @last");
-    strbuf_puts(b, " ORDER BY rowid DESC"); // most recent first
+    strbuf_puts(b, " ORDER BY rowid DESC");
   }
   if (strbuf_overrun(b))
     RETURN(WHYF("SQL command too long: %s", strbuf_str(b)));
@@ -1460,6 +1463,8 @@ int rhizome_list_open(struct rhizome_list_cursor *c)
   if (c->is_sender_set && sqlite_bind(&c->_retry, c->_statement, NAMED|SID_T, "@sender", &c->sender, END) == -1)
     goto failure;
   if (c->is_recipient_set && sqlite_bind(&c->_retry, c->_statement, NAMED|SID_T, "@recipient", &c->recipient, END) == -1)
+    goto failure;
+  if (c->rowid_since && sqlite_bind(&c->_retry, c->_statement, NAMED|INT64, "@since", c->rowid_since, END) == -1)
     goto failure;
   if (c->_rowid_last && sqlite_bind(&c->_retry, c->_statement, NAMED|INT64, "@last", c->_rowid_last, END) == -1)
     goto failure;
@@ -1512,16 +1517,8 @@ int rhizome_list_next(struct rhizome_list_cursor *c)
     assert(sqlite3_column_type(c->_statement, 3) == SQLITE_INTEGER);
     assert(sqlite3_column_type(c->_statement, 4) == SQLITE_TEXT || sqlite3_column_type(c->_statement, 4) == SQLITE_NULL);
     assert(sqlite3_column_type(c->_statement, 5) == SQLITE_INTEGER);
-    uint64_t q_rowid = sqlite3_column_int64(c->_statement, 5);
-    if (c->_rowid_current && (c->rowid_since ? q_rowid >= c->_rowid_current : q_rowid <= c->_rowid_current)) {
-      WHYF("Query returned rowid=%"PRIu64" out of order (last was %"PRIu64") -- skipped", q_rowid, c->_rowid_current);
-      continue;
-    }
-    c->_rowid_current = q_rowid;
-    if (q_rowid <= c->rowid_since) {
-      WHYF("Query returned rowid=%"PRIu64" <= rowid_since=%"PRIu64" -- skipped", q_rowid, c->rowid_since);
-      continue;
-    }
+
+    uint64_t q_rowid = c->_rowid_current = sqlite3_column_int64(c->_statement, 5);
     const char *q_manifestid = (const char *) sqlite3_column_text(c->_statement, 0);
     const char *manifestblob = (char *) sqlite3_column_blob(c->_statement, 1);
     size_t manifestblobsize = sqlite3_column_bytes(c->_statement, 1); // must call after sqlite3_column_blob()
@@ -1555,12 +1552,6 @@ int rhizome_list_next(struct rhizome_list_cursor *c)
       rhizome_manifest_set_author(m, &author);
     rhizome_manifest_set_rowid(m, q_rowid);
     rhizome_manifest_set_inserttime(m, q_inserttime);
-    if (c->service && !(m->service && strcasecmp(c->service, m->service) == 0))
-      continue;
-    if (c->is_sender_set && !(m->has_sender && cmp_sid_t(&c->sender, &m->sender) == 0))
-      continue;
-    if (c->is_recipient_set && !(m->has_recipient && cmp_sid_t(&c->recipient, &m->recipient) == 0))
-      continue;
     assert(c->_rowid_current != 0);
     // Don't do rhizome_verify_author(m); too CPU expensive for a listing.  Save that for when
     // the bundle is extracted or exported.
@@ -1573,10 +1564,10 @@ int rhizome_list_next(struct rhizome_list_cursor *c)
 
 void rhizome_list_commit(struct rhizome_list_cursor *c)
 {
-  DEBUGF(rhizome, "c=%p c->rowid_since=%"PRIu64" c->_rowid_current=%"PRIu64" c->_rowid_last=%"PRIu64,
-	 c, c->rowid_since, c->_rowid_current, c->_rowid_last);
+  DEBUGF(rhizome, "c=%p c->oldest_first=%d c->_rowid_current=%"PRIu64" c->_rowid_last=%"PRIu64,
+	 c, c->oldest_first, c->_rowid_current, c->_rowid_last);
   assert(c->_rowid_current != 0);
-  if (c->_rowid_last == 0 || (c->rowid_since ? c->_rowid_current > c->_rowid_last : c->_rowid_current < c->_rowid_last))
+  if (c->_rowid_last == 0 || (c->oldest_first ? c->_rowid_current > c->_rowid_last : c->_rowid_current < c->_rowid_last))
     c->_rowid_last = c->_rowid_current;
 }
 

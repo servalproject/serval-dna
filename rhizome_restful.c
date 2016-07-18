@@ -62,11 +62,16 @@ static char *list_token_to_str(char *buf, uint64_t rowid)
 static int strn_to_list_token(const char *str, uint64_t *rowidp, const char **afterp)
 {
   unsigned char token[sizeof rhizome_db_uuid.u.binary + sizeof *rowidp];
-  if (base64url_decode(token, sizeof token, str, 0, afterp, 0, NULL) != sizeof token)
-    return 0;
-  if (cmp_uuid_t(&rhizome_db_uuid, (serval_uuid_t *) &token) != 0)
-    return 0;
-  memcpy(rowidp, token + sizeof rhizome_db_uuid.u.binary, sizeof *rowidp);
+  if (base64url_decode(token, sizeof token, str, 0, afterp, 0, NULL) == sizeof token
+    && cmp_uuid_t(&rhizome_db_uuid, (serval_uuid_t *) &token) == 0
+    && **afterp=='/'){
+    memcpy(rowidp, token + sizeof rhizome_db_uuid.u.binary, sizeof *rowidp);
+    (*afterp)++;
+  }else{
+    // don't skip the token
+    *afterp=str;
+    *rowidp=1;
+  }
   return 1;
 }
 
@@ -210,7 +215,7 @@ static int restful_rhizome_newsince(httpd_request *r, const char *remainder)
     return ret;
   uint64_t rowid;
   const char *end = NULL;
-  if (!strn_to_list_token(remainder, &rowid, &end) || strcmp(end, "/bundlelist.json") != 0)
+  if (!strn_to_list_token(remainder, &rowid, &end) || strcmp(end, "bundlelist.json") != 0)
     return 404;
   if (r->http.verb != HTTP_VERB_GET)
     return 405;
@@ -218,6 +223,7 @@ static int restful_rhizome_newsince(httpd_request *r, const char *remainder)
   r->u.rhlist.rowcount = 0;
   bzero(&r->u.rhlist.cursor, sizeof r->u.rhlist.cursor);
   r->u.rhlist.cursor.rowid_since = rowid;
+  r->u.rhlist.cursor.oldest_first = 1;
   r->u.rhlist.end_time = gettime_ms() + config.api.restful.newsince_timeout * 1000;
   r->trigger_rhizome_bundle_added = on_rhizome_bundle_added;
   http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_rhizome_bundlelist_json_content);
@@ -269,7 +275,7 @@ static int restful_rhizome_bundlelist_json_content_chunk(struct http_request *hr
 	  return -1;
 	if (ret == 0) {
 	  time_ms_t now;
-	  if (r->u.rhlist.cursor.rowid_since == 0 || (now = gettime_ms()) >= r->u.rhlist.end_time) {
+	  if (r->u.rhlist.cursor.oldest_first == 0 || (now = gettime_ms()) >= r->u.rhlist.end_time) {
 	    r->u.rhlist.phase = LIST_END;
 	    return 1;
 	  }

@@ -20,31 +20,30 @@
 
 package org.servalproject.servaldna.rhizome;
 
-import java.lang.StringBuilder;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.lang.reflect.InvocationTargetException;
-import java.util.Map;
-import java.util.List;
+import org.servalproject.json.JSONInputException;
+import org.servalproject.json.JSONTokeniser;
+import org.servalproject.servaldna.BundleId;
+import org.servalproject.servaldna.BundleKey;
+import org.servalproject.servaldna.BundleSecret;
+import org.servalproject.servaldna.FileHash;
+import org.servalproject.servaldna.ServalDFailureException;
+import org.servalproject.servaldna.ServalDHttpConnectionFactory;
+import org.servalproject.servaldna.ServalDInterfaceException;
+import org.servalproject.servaldna.ServalDNotImplementedException;
+import org.servalproject.servaldna.SubscriberId;
+
 import java.io.IOException;
-import java.io.PrintStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.net.URL;
+import java.io.PrintStream;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.net.HttpURLConnection;
-import org.servalproject.json.JSONTokeniser;
-import org.servalproject.json.JSONInputException;
-import org.servalproject.servaldna.BundleId;
-import org.servalproject.servaldna.FileHash;
-import org.servalproject.servaldna.BundleKey;
-import org.servalproject.servaldna.SubscriberId;
-import org.servalproject.servaldna.BundleSecret;
-import org.servalproject.servaldna.ServalDHttpConnectionFactory;
-import org.servalproject.servaldna.ServalDInterfaceException;
-import org.servalproject.servaldna.ServalDFailureException;
-import org.servalproject.servaldna.ServalDNotImplementedException;
+import java.util.List;
+import java.util.Map;
 
 public class RhizomeCommon
 {
@@ -130,6 +129,8 @@ public class RhizomeCommon
 		Status status = receiveResponse(conn, expected_response_codes);
 		if (!conn.getContentType().equals("application/json"))
 			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
+		if (status.input_stream == null)
+			throw new ServalDInterfaceException("unexpected HTTP response: " + status.http_status_code + " " + status.http_status_message);
 		return new JSONTokeniser(new InputStreamReader(status.input_stream, "UTF-8"));
 	}
 

@@ -344,6 +344,7 @@ static int restful_meshms_newsince_messagelist_json(httpd_request *r, const char
   r->trigger_rhizome_bundle_added = on_rhizome_bundle_added;
   r->u.msglist.rowcount = 0;
   r->u.msglist.phase = LIST_HEADER;
+  r->u.msglist.dirty = 1;
   enum meshms_status status;
   if (meshms_failed(status = reopen_meshms_message_iterator(r)))
     return http_request_meshms_response(r, 0, NULL, status);

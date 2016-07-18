@@ -662,6 +662,7 @@ struct rhizome_list_cursor {
   const char *name;
   bool_t is_sender_set;
   bool_t is_recipient_set;
+  bool_t oldest_first;
   sid_t sender;
   sid_t recipient;
   // If set, then the cursor moves in ascending (chronological) order starting
