@@ -45,6 +45,11 @@ public abstract class AbstractId {
 
 	private final byte[] binary;
 
+	public byte[] getBinary(){
+		//TODO always copy bytes so they can't be tampered with?
+		return binary;
+	}
+
 	public AbstractId(String hex) throws InvalidHexException {
 		if (hex==null)
 			throw new InvalidHexException(this, "null is not a invalid hex value");
