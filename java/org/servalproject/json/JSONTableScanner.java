@@ -91,23 +91,25 @@ public class JSONTableScanner {
 		HashMap<String,Object> rowMap = new HashMap<String,Object>(row.length);
 		for (int i = 0; i < row.length; ++i) {
 			Column col = columns[i];
+			Object value = null;
 			if (col != null) {
-				Object value;
-				if (col.supported)
-					value = JSONTokeniser.narrow(row[i], col.type, col.opts);
-				else {
-					value = JSONTokeniser.narrow(row[i], col.opts);
-					try {
-						value = value == null ? null : col.type.getConstructor(value.getClass()).newInstance(value);
+				try {
+					if (col.supported)
+						value = JSONTokeniser.narrow(row[i], col.type, col.opts);
+					else {
+						value = JSONTokeniser.narrow(row[i], col.opts);
+						if (value != null)
+							value = col.type.getConstructor(value.getClass()).newInstance(value);
 					}
-					catch (InvocationTargetException e) {
-						throw new JSONInputException("invalid column value: " + col.label + "=\"" + value + "\"", e.getTargetException());
-					}
-					catch (Exception e) {
-						throw new JSONInputException("invalid column value: " + col.label + "=\"" + value + "\"", e);
-					}
+					rowMap.put(col.label, value);
+				} catch (JSONInputException e){
+					throw new JSONInputException("invalid column value: " + col.label + "; " + e.getMessage(), e);
+
+				} catch (InvocationTargetException e) {
+					throw new JSONInputException("invalid column value: " + col.label + "=\"" + value + "\"", e.getTargetException());
+				} catch (Exception e) {
+					throw new JSONInputException("invalid column value: " + col.label + "=\"" + value + "\"", e);
 				}
-				rowMap.put(col.label, value);
 			}
 		}
 		return rowMap;

@@ -169,8 +169,11 @@ public class JSONTokeniser {
 		assert !cls.isAssignableFrom(Token.class); // can only narrow to values
 		if (tok == Token.EOF)
 			throw new UnexpectedEOFException(cls);
-		if (opts == Narrow.ALLOW_NULL && (tok == null || tok == Token.NULL))
-			return null;
+		if (tok == null || tok == Token.NULL){
+			if (opts == Narrow.ALLOW_NULL)
+				return null;
+			throw new UnexpectedTokenException(tok, cls);
+		}
 		if (tok instanceof Token)
 			throw new UnexpectedTokenException(tok, cls);
 		// Convert:

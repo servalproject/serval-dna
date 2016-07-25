@@ -64,7 +64,7 @@ public class RhizomeBundleList {
 					.addColumn("filehash", FileHash.class, JSONTokeniser.Narrow.ALLOW_NULL)
 					.addColumn("sender", SubscriberId.class, JSONTokeniser.Narrow.ALLOW_NULL)
 					.addColumn("recipient", SubscriberId.class, JSONTokeniser.Narrow.ALLOW_NULL)
-					.addColumn("name", String.class);
+					.addColumn("name", String.class, JSONTokeniser.Narrow.ALLOW_NULL);
 		this.sinceToken = since_token;
 	}
 
