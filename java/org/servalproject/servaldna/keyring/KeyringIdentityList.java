@@ -87,7 +87,7 @@ public class KeyringIdentityList {
 
 	public static List<KeyringIdentity> getTestIdentities() {
 		try {
-			List<KeyringIdentity> ret = new ArrayList<>();
+			List<KeyringIdentity> ret = new ArrayList<KeyringIdentity>();
 			byte[] sid = new byte[SubscriberId.BINARY_SIZE];
 
 			for (int i = 0; i < 10; i++) {
