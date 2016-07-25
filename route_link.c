@@ -1327,6 +1327,8 @@ static int link_receive(struct internal_mdp_header *header, struct overlay_buffe
   struct decode_context context;
   bzero(&context, sizeof(context));
   context.interface = header->receive_interface;
+  context.sender = header->source;
+
   time_ms_t now = gettime_ms();
   char changed = 0;
 

@@ -56,9 +56,6 @@ struct subscriber{
   // minimum abbreviation length, in 4bit nibbles.
   int abbreviate_len;
   
-  // should we send the full address once?
-  int send_full;
-  
   int max_packet_version;
   
   // link state routing information
@@ -85,10 +82,14 @@ struct subscriber{
   time_ms_t last_explained;
   
   // public signing key details for remote peers
-  unsigned char sas_public[SAS_SIZE];
+  uint8_t sas_public[SAS_SIZE];
   time_ms_t sas_last_request;
-  unsigned char sas_valid;
-  
+  uint8_t sas_valid:1;
+  uint8_t sas_combined:1;
+
+  // should we send the full address once?
+  uint8_t send_full:1;
+
   // private keys for local identities
   struct keyring_identity *identity;
 };

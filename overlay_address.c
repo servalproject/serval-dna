@@ -46,6 +46,7 @@ static struct broadcast bpilist[MAX_BPIS];
 #define OA_CODE_PREVIOUS 0xfe
 #define OA_CODE_P2P_YOU 0xfd
 #define OA_CODE_P2P_ME 0xfc
+#define OA_CODE_SIGNKEY 0xfb // full sign key of an identity, from which a SID can be derived
 
 // each node has 16 slots based on the next 4 bits of a subscriber id
 // each slot either points to another tree node or a struct subscriber.
@@ -274,18 +275,20 @@ void overlay_address_append(struct decode_context *context, struct overlay_buffe
   else if (context && subscriber==context->previous)
     ob_append_byte(b, OA_CODE_PREVIOUS);
   else {
-    int len=SID_SIZE;
     if (subscriber->send_full){
+      // TODO work out when we can use OA_CODE_SIGNKEY
+      ob_append_byte(b, SID_SIZE);
+      ob_append_bytes(b, subscriber->sid.binary, SID_SIZE);
       subscriber->send_full=0;
     }else{
-      len=(subscriber->abbreviate_len+2)/2;
+      int len=(subscriber->abbreviate_len+2)/2;
       if (context && (context->flags & DECODE_FLAG_ENCODING_HEADER))
 	len++;
       if (len>SID_SIZE)
 	len=SID_SIZE;
+      ob_append_byte(b, len);
+      ob_append_bytes(b, subscriber->sid.binary, len);
     }
-    ob_append_byte(b, len);
-    ob_append_bytes(b, subscriber->sid.binary, len);
   }
   if (context)
     context->previous = subscriber;
@@ -310,25 +313,32 @@ static int add_explain_response(struct subscriber *subscriber, void *context)
     }
     ob_limitsize(response->please_explain->payload, 1024);
   }
-  
-  // if one of our identities is unknown, 
+
+  // if our primary routing identities is unknown,
   // the header of this packet must include our full sid.
-  if (subscriber->reachable==REACHABLE_SELF){
-    if (subscriber==my_subscriber){
-      DEBUGF(subscriber, "Explaining SELF sid=%s", alloca_tohex_sid_t(subscriber->sid));
-      response->please_explain->source_full=1;
-      return 0;
-    }
-    subscriber->send_full=1;
+  if (subscriber==my_subscriber){
+    DEBUGF(subscriber, "Explaining SELF sid=%s", alloca_tohex_sid_t(subscriber->sid));
+    response->please_explain->source_full=1;
+    return 0;
   }
   
+  struct overlay_buffer *b = response->please_explain->payload;
+
   // add the whole subscriber id to the payload, stop if we run out of space
   DEBUGF(subscriber, "Explaining sid=%s", alloca_tohex_sid_t(subscriber->sid));
-  ob_checkpoint(response->please_explain->payload);
-  ob_append_byte(response->please_explain->payload, SID_SIZE);
-  ob_append_bytes(response->please_explain->payload, subscriber->sid.binary, SID_SIZE);
-  if (ob_overrun(response->please_explain->payload)) {
-    ob_rewind(response->please_explain->payload);
+  ob_checkpoint(b);
+
+  if (subscriber->sas_combined && response->sender && response->sender->sas_combined){
+    // TODO better condition for when we should send this?
+    ob_append_byte(b, OA_CODE_SIGNKEY);
+    ob_append_bytes(b, subscriber->sas_public, crypto_sign_PUBLICKEYBYTES);
+  }else{
+    ob_append_byte(b, SID_SIZE);
+    ob_append_bytes(b, subscriber->sid.binary, SID_SIZE);
+  }
+
+  if (ob_overrun(b)) {
+    ob_rewind(b);
     return 1;
   }
   // let the routing engine know that we had to explain this sid, we probably need to re-send routing info
@@ -342,7 +352,7 @@ static int find_subscr_buffer(struct decode_context *context, struct overlay_buf
   if (len<=0 || len>SID_SIZE)
     return WHYF("Invalid abbreviation length %d", len);
   
-  unsigned char *id = ob_get_bytes_ptr(b, len);
+  uint8_t *id = ob_get_bytes_ptr(b, len);
   if (!id)
     return WHY("Not enough space in buffer to parse address");
   
@@ -385,6 +395,29 @@ static int find_subscr_buffer(struct decode_context *context, struct overlay_buf
 int overlay_broadcast_parse(struct overlay_buffer *b, struct broadcast *broadcast)
 {
   return ob_get_bytes(b, broadcast->id, BROADCAST_LEN);
+}
+
+static int decode_sid_from_signkey(struct overlay_buffer *b, struct subscriber **subscriber)
+{
+  const uint8_t *id = ob_get_bytes_ptr(b, crypto_sign_PUBLICKEYBYTES);
+  if (!id)
+    return WHY("Not enough space in buffer to parse address");
+  sid_t sid;
+  if (crypto_sign_ed25519_pk_to_curve25519(sid.binary, id))
+    return WHY("Failed to convert sign key to sid");
+  struct subscriber *s = find_subscriber(sid.binary, SID_SIZE, 1);
+  if (s && !s->sas_combined){
+    bcopy(id, s->sas_public, crypto_sign_PUBLICKEYBYTES);
+    s->sas_valid=1;
+    s->sas_combined=1;
+    DEBUGF(subscriber, "Stored combined SID:SAS mapping, SID=%s SAS=%s",
+       alloca_tohex_sid_t(s->sid),
+       alloca_tohex_sas(s->sas_public)
+    );
+  }
+  if (subscriber)
+    *subscriber=s;
+  return 0;
 }
 
 // returns 0 = success, -1 = fatal parsing error, 1 = unable to identify address
@@ -445,6 +478,9 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
 	*subscriber=context->previous;
       }
       return 0;
+
+    case OA_CODE_SIGNKEY:
+      return decode_sid_from_signkey(b, subscriber);
   }
   
   return find_subscr_buffer(context, b, len, subscriber);
@@ -507,31 +543,36 @@ int process_explain(struct overlay_frame *frame)
   
   while(ob_remaining(b)>0){
     int len = ob_get(b);
-    
-    if (len==OA_CODE_P2P_YOU){
-      add_explain_response(my_subscriber, &context);
-      continue;
-    }
-    
-    if (len<=0 || len>SID_SIZE)
-      return WHY("Badly formatted explain message");
-    unsigned char *sid = ob_get_bytes_ptr(b, len);
-    if (!sid)
-      return WHY("Ran past end of buffer");
-    
-    if (len==SID_SIZE){
-      // This message is also used to inform people of previously unknown subscribers
-      // make sure we know this one
-      DEBUGF(subscriber, "Storing explain response for %s", alloca_tohex(sid, len));
-      find_subscriber(sid,len,1);
-    }else{
-      // reply to the sender with all subscribers that match this abbreviation
-      DEBUGF(subscriber, "Sending explain responses for %s", alloca_tohex(sid, len));
-      prefix_matches(sid, len, add_explain_response, &context);
+    switch (len){
+      case OA_CODE_P2P_YOU:
+	add_explain_response(my_subscriber, &context);
+	break;
+      case OA_CODE_SIGNKEY:
+	decode_sid_from_signkey(b, NULL);
+	break;
+      case SID_SIZE:
+      {
+	// This message is also used to inform people of previously unknown subscribers
+	// make sure we know this one
+	uint8_t *sid = ob_get_bytes_ptr(b, SID_SIZE);
+	if (!sid)
+	  return WHY("Ran past end of buffer");
+	DEBUGF(subscriber, "Storing explain response for %s", alloca_tohex(sid, SID_SIZE));
+	find_subscriber(sid, SID_SIZE, 1);
+	break;
+      }
+      default:
+      {
+	if (len<=0 || len>SID_SIZE)
+	  return WHY("Badly formatted explain message");
+	uint8_t *sid = ob_get_bytes_ptr(b, len);
+	// reply to the sender with all subscribers that match this abbreviation
+	DEBUGF(subscriber, "Sending explain responses for %s", alloca_tohex(sid, len));
+	prefix_matches(sid, len, add_explain_response, &context);
+      }
     }
   }
   if (context.please_explain)
     send_please_explain(&context, frame->destination, frame->source);
-  DEBUG(subscriber, "No explain responses?");
   return 0;
 }
