@@ -43,4 +43,10 @@ public class MeshMSConversation {
 		this.readOffset = read_offset;
 	}
 
+	public int readHashCode() {
+		int result = me.hashCode();
+		result = 31 * result + them.hashCode();
+		result = 31 * result + (int) (lastMessageOffset ^ (lastMessageOffset >>> 32));
+		return result;
+	}
 }
