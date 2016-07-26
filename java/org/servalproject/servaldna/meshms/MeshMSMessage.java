@@ -20,6 +20,7 @@
 
 package org.servalproject.servaldna.meshms;
 
+import org.servalproject.servaldna.Subscriber;
 import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.ServalDInterfaceException;
 
@@ -33,7 +34,11 @@ public class MeshMSMessage {
 
 	public final int _rowNumber;
 	public final Type type;
+	public final Subscriber me;
+	@Deprecated
 	public final SubscriberId mySid;
+	public final Subscriber them;
+	@Deprecated
 	public final SubscriberId theirSid;
 	public final long offset;
 	public final String token;
@@ -45,8 +50,8 @@ public class MeshMSMessage {
 
 	protected MeshMSMessage(int rowNumber,
 							Type type,
-							SubscriberId my_sid,
-							SubscriberId their_sid,
+							Subscriber me,
+							Subscriber them,
 							long offset,
 							String token,
 							String text,
@@ -55,10 +60,10 @@ public class MeshMSMessage {
 							Long timestamp,
 							Long ack_offset) throws ServalDInterfaceException
 	{
-		if (my_sid == null)
-			throw new ServalDInterfaceException("my_sid is null");
-		if (their_sid == null)
-			throw new ServalDInterfaceException("their_sid is null");
+		if (me == null)
+			throw new ServalDInterfaceException("me is null");
+		if (them == null)
+			throw new ServalDInterfaceException("them is null");
 		if (type != Type.ACK_RECEIVED && text == null)
 			throw new ServalDInterfaceException("text is null");
 		if (token == null)
@@ -69,8 +74,10 @@ public class MeshMSMessage {
 			throw new ServalDInterfaceException("timestamp is null");
 		this._rowNumber = rowNumber;
 		this.type = type;
-		this.mySid = my_sid;
-		this.theirSid = their_sid;
+		this.me = me;
+		this.mySid = me.sid;
+		this.them = them;
+		this.theirSid = them.sid;
 		this.offset = offset;
 		this.token = token;
 		this.text = text;

@@ -20,24 +20,31 @@
 
 package org.servalproject.servaldna.meshms;
 
+import org.servalproject.servaldna.Subscriber;
 import org.servalproject.servaldna.SubscriberId;
 
 public class MeshMSConversation {
 
 	public final int _rowNumber;
 	public final int _id;
+	public final Subscriber me;
+	@Deprecated
 	public final SubscriberId mySid;
+	public final Subscriber them;
+	@Deprecated
 	public final SubscriberId theirSid;
 	public final boolean isRead;
 	public final long lastMessageOffset;
 	public final long readOffset;
 
-	protected MeshMSConversation(int rowNumber, int _id, SubscriberId my_sid, SubscriberId their_sid, boolean read, long last_message_offset, long read_offset)
+	protected MeshMSConversation(int rowNumber, int _id, Subscriber me, Subscriber them, boolean read, long last_message_offset, long read_offset)
 	{
 		this._rowNumber = rowNumber;
 		this._id = _id;
-		this.mySid = my_sid;
-		this.theirSid = their_sid;
+		this.me = me;
+		this.mySid = me.sid;
+		this.them = them;
+		this.theirSid = them.sid;
 		this.isRead = read;
 		this.lastMessageOffset = last_message_offset;
 		this.readOffset = read_offset;

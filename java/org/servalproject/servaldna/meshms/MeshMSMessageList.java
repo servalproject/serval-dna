@@ -25,6 +25,7 @@ import org.servalproject.json.JSONTableScanner;
 import org.servalproject.json.JSONTokeniser;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
+import org.servalproject.servaldna.Subscriber;
 import org.servalproject.servaldna.SubscriberId;
 
 import java.io.IOException;
@@ -150,8 +151,8 @@ public class MeshMSMessageList {
 			return new MeshMSMessage(
 							rowCount++,
 							type,
-							(SubscriberId)row.get("my_sid"),
-							(SubscriberId)row.get("their_sid"),
+							new Subscriber((SubscriberId)row.get("my_sid")),
+							new Subscriber((SubscriberId)row.get("their_sid")),
 							(Long)row.get("offset"),
 							(String)row.get("token"),
 							(String)row.get("text"),

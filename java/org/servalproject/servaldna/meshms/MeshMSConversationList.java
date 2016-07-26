@@ -21,16 +21,18 @@
 package org.servalproject.servaldna.meshms;
 
 import org.servalproject.json.JSONInputException;
+import org.servalproject.json.JSONTableScanner;
 import org.servalproject.json.JSONTokeniser;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
+import org.servalproject.servaldna.Subscriber;
 import org.servalproject.servaldna.SubscriberId;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Vector;
+import java.util.Map;
 
 public class MeshMSConversationList {
 
@@ -38,19 +40,21 @@ public class MeshMSConversationList {
 	private SubscriberId sid;
 	private HttpURLConnection httpConnection;
 	private JSONTokeniser json;
-	private Vector<String> headers;
-	int columnIndex__id;
-	int columnIndex_my_sid;
-	int columnIndex_their_sid;
-	int columnIndex_read;
-	int columnIndex_last_message;
-	int columnIndex_read_offset;
+	private JSONTableScanner table;
 	int rowCount;
 
 	public MeshMSConversationList(ServalDHttpConnectionFactory connector, SubscriberId sid)
 	{
 		this.httpConnector = connector;
 		this.sid = sid;
+		this.table = new JSONTableScanner()
+				.addColumn("_id", Integer.class)
+				.addColumn("my_sid", SubscriberId.class)
+				.addColumn("their_sid", SubscriberId.class)
+				.addColumn("read", Boolean.class)
+				.addColumn("last_message", Long.class)
+				.addColumn("read_offset", Long.class)
+		;
 	}
 
 	public boolean isConnected()
@@ -61,12 +65,6 @@ public class MeshMSConversationList {
 	public void connect() throws IOException, ServalDInterfaceException, MeshMSException
 	{
 		try {
-			columnIndex__id = -1;
-			columnIndex_my_sid = -1;
-			columnIndex_their_sid = -1;
-			columnIndex_read = -1;
-			columnIndex_last_message = -1;
-			columnIndex_read_offset = -1;
 			rowCount = 0;
 			httpConnection = httpConnector.newServalDHttpConnection("/restful/meshms/" + sid.toHex() + "/conversationlist.json");
 			httpConnection.connect();
@@ -74,37 +72,7 @@ public class MeshMSConversationList {
 			json.consume(JSONTokeniser.Token.START_OBJECT);
 			json.consume("header");
 			json.consume(JSONTokeniser.Token.COLON);
-			headers = new Vector<String>();
-			json.consumeArray(headers, String.class);
-			if (headers.size() < 1)
-				throw new ServalDInterfaceException("empty JSON headers array");
-			for (int i = 0; i < headers.size(); ++i) {
-				String header = headers.get(i);
-				if (header.equals("_id"))
-					columnIndex__id = i;
-				else if (header.equals("my_sid"))
-					columnIndex_my_sid = i;
-				else if (header.equals("their_sid"))
-					columnIndex_their_sid = i;
-				else if (header.equals("read"))
-					columnIndex_read = i;
-				else if (header.equals("last_message"))
-					columnIndex_last_message = i;
-				else if (header.equals("read_offset"))
-					columnIndex_read_offset = i;
-			}
-			if (columnIndex__id == -1)
-				throw new ServalDInterfaceException("missing JSON column: _id");
-			if (columnIndex_my_sid == -1)
-				throw new ServalDInterfaceException("missing JSON column: my_sid");
-			if (columnIndex_their_sid == -1)
-				throw new ServalDInterfaceException("missing JSON column: their_sid");
-			if (columnIndex_read == -1)
-				throw new ServalDInterfaceException("missing JSON column: read");
-			if (columnIndex_last_message == -1)
-				throw new ServalDInterfaceException("missing JSON column: last_message");
-			if (columnIndex_read_offset == -1)
-				throw new ServalDInterfaceException("missing JSON column: read_offset");
+			table.consumeHeaderArray(json);
 			json.consume(JSONTokeniser.Token.COMMA);
 			json.consume("rows");
 			json.consume(JSONTokeniser.Token.COLON);
@@ -128,27 +96,17 @@ public class MeshMSConversationList {
 				JSONTokeniser.match(tok, JSONTokeniser.Token.COMMA);
 			else
 				json.pushToken(tok);
-			Object[] row = new Object[headers.size()];
-			json.consumeArray(row);
-			int _id = JSONTokeniser.narrow(row[columnIndex__id], Integer.class);
-			SubscriberId my_sid;
-			try {
-				my_sid = new SubscriberId(JSONTokeniser.narrow(row[columnIndex_my_sid], String.class));
-			}
-			catch (SubscriberId.InvalidHexException e) {
-				throw new ServalDInterfaceException("invalid column value: my_sid", e);
-			}
-			SubscriberId their_sid;
-			try {
-				their_sid = new SubscriberId(JSONTokeniser.narrow(row[columnIndex_their_sid], String.class));
-			}
-			catch (SubscriberId.InvalidHexException e) {
-				throw new ServalDInterfaceException("invalid column value: their_sid", e);
-			}
-			boolean is_read = JSONTokeniser.narrow(row[columnIndex_read], Boolean.class);
-			long last_message = JSONTokeniser.narrow(row[columnIndex_last_message], Long.class);
-			long read_offset = JSONTokeniser.narrow(row[columnIndex_read_offset], Long.class);
-			return new MeshMSConversation(rowCount++, _id, my_sid, their_sid, is_read, last_message, read_offset);
+
+			Map<String,Object> row = table.consumeRowArray(json);
+
+			return new MeshMSConversation(
+					rowCount++,
+					(Integer)row.get("_id"),
+					new Subscriber((SubscriberId)row.get("my_sid")),
+					new Subscriber((SubscriberId)row.get("their_sid")),
+					(Boolean)row.get("read"),
+					(Long)row.get("last_message"),
+					(Long)row.get("read_offset"));
 		}
 		catch (JSONInputException e) {
 			throw new ServalDInterfaceException(e);
@@ -162,7 +120,6 @@ public class MeshMSConversationList {
 			json.close();
 			json = null;
 		}
-		headers = null;
 	}
 
 	public List<MeshMSConversation> toList() throws ServalDInterfaceException, IOException {
