@@ -80,4 +80,14 @@ public class MeshMSMessage {
 		this.ackOffset = ack_offset;
 	}
 
+	public long getId(){
+		switch (type){
+			default:
+				return offset;
+			case MESSAGE_RECEIVED:
+				return -offset;
+			case ACK_RECEIVED:
+				return 0;
+		}
+	}
 }
