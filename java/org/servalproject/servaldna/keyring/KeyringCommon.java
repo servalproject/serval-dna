@@ -83,7 +83,7 @@ public class KeyringCommon
 		if (!conn.getContentType().equals("application/json"))
 			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
 		if (status.http_status_code >= 300) {
-			status.json = new JSONTokeniser(new InputStreamReader(conn.getErrorStream(), "UTF-8"));
+			status.json = new JSONTokeniser(conn.getErrorStream());
 			decodeRestfulStatus(status);
 		}
 		if (status.http_status_code == HttpURLConnection.HTTP_FORBIDDEN)
@@ -112,7 +112,7 @@ public class KeyringCommon
 		Status status = receiveResponse(conn, expected_response_codes);
 		if (!conn.getContentType().equals("application/json"))
 			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
-		status.json = new JSONTokeniser(new InputStreamReader(status.input_stream, "UTF-8"));
+		status.json = new JSONTokeniser(status.input_stream);
 		return status;
 	}
 

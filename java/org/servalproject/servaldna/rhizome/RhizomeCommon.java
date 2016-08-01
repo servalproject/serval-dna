@@ -89,7 +89,7 @@ public class RhizomeCommon
 		if (!conn.getContentType().equals("application/json"))
 			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
 		if (status.http_status_code >= 300) {
-			JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getErrorStream(), "UTF-8"));
+			JSONTokeniser json = new JSONTokeniser(conn.getErrorStream());
 			decodeRestfulStatus(status, json);
 		}
 		switch (status.http_status_code) {
@@ -131,7 +131,7 @@ public class RhizomeCommon
 			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
 		if (status.input_stream == null)
 			throw new ServalDInterfaceException("unexpected HTTP response: " + status.http_status_code + " " + status.http_status_message);
-		return new JSONTokeniser(new InputStreamReader(status.input_stream, "UTF-8"));
+		return new JSONTokeniser(status.input_stream);
 	}
 
 	protected static void decodeHeaderBundleStatus(Status status, HttpURLConnection conn) throws ServalDInterfaceException

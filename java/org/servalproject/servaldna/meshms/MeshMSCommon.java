@@ -28,7 +28,6 @@ import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.SubscriberId;
 
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.HttpURLConnection;
@@ -49,14 +48,14 @@ public class MeshMSCommon
 		switch (conn.getResponseCode()) {
 		case HttpURLConnection.HTTP_NOT_FOUND:
 		case 419: // Authentication Timeout, for missing secret
-			JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getErrorStream(), "UTF-8"));
+			JSONTokeniser json = new JSONTokeniser(conn.getErrorStream());
 			Status status = decodeRestfulStatus(json);
 			throwRestfulResponseExceptions(status, conn.getURL());
 			throw new ServalDInterfaceException("unexpected MeshMS status = " + status.meshms_status_code + ", \"" + status.meshms_status_message + "\"");
 		}
 		for (int code: expected_response_codes) {
 			if (conn.getResponseCode() == code) {
-				JSONTokeniser json = new JSONTokeniser(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+				JSONTokeniser json = new JSONTokeniser(conn.getInputStream());
 				return json;
 			}
 		}
