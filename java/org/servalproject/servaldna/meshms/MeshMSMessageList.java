@@ -83,6 +83,8 @@ public class MeshMSMessageList {
 			rowCount = 0;
 			if (this.sinceToken == null)
 				httpConnection = httpConnector.newServalDHttpConnection("/restful/meshms/" + my_sid.toHex() + "/" + their_sid.toHex() + "/messagelist.json");
+			else if(this.sinceToken.equals(""))
+				httpConnection = httpConnector.newServalDHttpConnection("/restful/meshms/" + my_sid.toHex() + "/" + their_sid.toHex() + "/newsince/messagelist.json");
 			else
 				httpConnection = httpConnector.newServalDHttpConnection("/restful/meshms/" + my_sid.toHex() + "/" + their_sid.toHex() + "/newsince/" + sinceToken + "/messagelist.json");
 			httpConnection.connect();

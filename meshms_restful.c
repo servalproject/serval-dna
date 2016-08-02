@@ -61,10 +61,16 @@ static char *meshms_token_to_str(char *buf, const rhizome_bid_t *bid, uint64_t o
 static int strn_to_meshms_token(const char *str, rhizome_bid_t *bidp, uint64_t *offsetp, const char **afterp)
 {
   unsigned char token[sizeof bidp->binary + sizeof *offsetp];
-  if (base64url_decode(token, sizeof token, str, 0, afterp, 0, NULL) != sizeof token)
-    return 0;
-  memcpy(bidp->binary, token, sizeof bidp->binary);
-  memcpy(offsetp, token + sizeof bidp->binary, sizeof *offsetp);
+  if (base64url_decode(token, sizeof token, str, 0, afterp, 0, NULL) == sizeof token){
+    memcpy(bidp->binary, token, sizeof bidp->binary);
+    memcpy(offsetp, token + sizeof bidp->binary, sizeof *offsetp);
+    (*afterp)++;
+  }else{
+    // don't skip the token
+    *afterp=str;
+    bzero(bidp, sizeof *bidp);
+    *offsetp=0;
+  }
   return 1;
 }
 
@@ -154,7 +160,7 @@ static int restful_meshms_(httpd_request *r, const char *remainder)
       }
       else if (   str_startswith(remainder, "/newsince/", &end)
 	       && strn_to_meshms_token(end, &r->bid, &r->ui64, &end)
-	       && strcmp(end, "/messagelist.json") == 0
+	       && strcmp(end, "messagelist.json") == 0
       ) {
 	handler = restful_meshms_newsince_messagelist_json;
 	remainder = "";
@@ -348,7 +354,7 @@ static int restful_meshms_newsince_messagelist_json(httpd_request *r, const char
   enum meshms_status status;
   if (meshms_failed(status = reopen_meshms_message_iterator(r)))
     return http_request_meshms_response(r, 0, NULL, status);
-  if (cmp_rhizome_bid_t(&r->bid, r->u.msglist.iter.my_ply_bid) == 0)
+  if (rhizome_bid_t_is_zero(r->bid) || cmp_rhizome_bid_t(&r->bid, r->u.msglist.iter.my_ply_bid) == 0)
     r->u.msglist.token.which_ply = MY_PLY;
   else if (cmp_rhizome_bid_t(&r->bid, r->u.msglist.iter.their_ply_bid) == 0)
     r->u.msglist.token.which_ply = THEIR_PLY;
