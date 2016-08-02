@@ -323,11 +323,11 @@ static enum meshms_status read_known_conversations(rhizome_manifest *m, const si
   struct rhizome_read_buffer buff;
   bzero(&buff, sizeof(buff));
 
-  enum meshms_status status = MESHMS_STATUS_ERROR;
+  enum meshms_status status = MESHMS_STATUS_OK;
   enum rhizome_payload_status pstatus = rhizome_open_decrypt_read(m, &read);
   if (pstatus == RHIZOME_PAYLOAD_STATUS_NEW) {
     WARNF("Payload was not found for manifest %s, %"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
-    goto fault;
+    goto end;
   }
   if (pstatus != RHIZOME_PAYLOAD_STATUS_STORED && pstatus != RHIZOME_PAYLOAD_STATUS_EMPTY)
     goto end;
@@ -338,7 +338,7 @@ static enum meshms_status read_known_conversations(rhizome_manifest *m, const si
     goto end;
   if (version != 1) {
     WARNF("Expected version 1 (got 0x%02x)", version);
-    goto fault;
+    goto end;
   }
   
   while (1) {
@@ -394,8 +394,6 @@ static enum meshms_status read_known_conversations(rhizome_manifest *m, const si
     n->read_offset = read_offset;
     n->their_size = their_size;
   }
-fault:
-  status = MESHMS_STATUS_PROTOCOL_FAULT;
 end:
   rhizome_read_close(&read);
   return status;
