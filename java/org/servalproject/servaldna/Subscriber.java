@@ -20,6 +20,12 @@ public final class Subscriber {
         this.combined = combined;
     }
 
+    public Subscriber(byte[] sidBytes, byte[] signBytes, boolean combined) throws AbstractId.InvalidBinaryException {
+        sid = new SubscriberId(sidBytes);
+        signingKey = signBytes==null ? null : new SigningKey(signBytes);
+        this.combined = combined;
+    }
+
     public Subscriber(ByteBuffer buff) throws AbstractId.InvalidBinaryException {
         SubscriberId sid = new SubscriberId(buff);
         SigningKey signingKey = new SigningKey(buff);

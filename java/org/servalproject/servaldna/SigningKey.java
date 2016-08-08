@@ -18,8 +18,10 @@ public class SigningKey extends AbstractId {
         super(binary);
     }
 
+    public static final int BINARY_SIZE = 32;
+
     @Override
-    int getBinarySize() {
-        return 32;
+    public int getBinarySize() {
+        return BINARY_SIZE;
     }
 }
