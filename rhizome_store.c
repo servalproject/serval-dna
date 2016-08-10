@@ -1186,8 +1186,10 @@ ssize_t rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buf
   while (len>0){
     //DEBUGF(rhizome_store, "len=%zu read->length=%"PRIu64" read->offset=%"PRIu64" buffer->offset=%"PRIu64"", len, read->length, read->offset, buffer->offset);
     // make sure we only attempt to read data that actually exists
-    if (read->length != RHIZOME_SIZE_UNSET && read->offset + len > read->length)
+    if (read->length != RHIZOME_SIZE_UNSET && read->offset + len > read->length){
+      assert(read->offset <= read->length);
       len = read->length - read->offset;
+    }
 
     // if we can supply either the beginning or end of the data from cache, do that first.
     if (read->offset >= buffer->offset) {

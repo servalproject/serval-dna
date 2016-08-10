@@ -13,7 +13,7 @@
 // output the list of existing conversations for a given local identity
 DEFINE_CMD(app_meshms_conversations, 0,
   "List MeshMS threads that include <sid>",
-  "meshms","list","conversations" KEYRING_PIN_OPTIONS, "<sid>","[<offset>]","[<count>]");
+  "meshms","list","conversations" KEYRING_PIN_OPTIONS, "[--include-message]", "<sid>","[<offset>]","[<count>]");
 static int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_context *context)
 {
   const char *sidhex, *offset_str, *count_str;
@@ -22,6 +22,7 @@ static int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_
     || cli_arg(parsed, "count", &count_str, NULL, "-1")==-1)
     return -1;
 
+  int include_message = cli_arg(parsed, "--include-message", NULL, NULL, NULL) == 0;
   sid_t sid;
   struct meshms_conversations *conv = NULL;
   enum meshms_status status = MESHMS_STATUS_ERROR;
@@ -42,10 +43,10 @@ static int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_
     goto end;
 
   const char *names[]={
-    "_id","recipient","read", "last_message", "read_offset"
+    "_id","recipient","read", "last_message", "read_offset", "message"
   };
 
-  cli_columns(context, 5, names);
+  cli_columns(context, include_message? 6: 5, names);
   int rows = 0;
   if (conv) {
     struct meshms_conversation_iterator it;
@@ -58,7 +59,24 @@ static int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_
 	cli_put_hexvalue(context, it.current->them.binary, sizeof(it.current->them), ":");
 	cli_put_string(context, it.current->read_offset < it.current->their_last_message ? "unread":"", ":");
 	cli_put_long(context, it.current->their_last_message, ":");
-	cli_put_long(context, it.current->read_offset, "\n");
+	cli_put_long(context, it.current->read_offset, include_message?":":"\n");
+	if (include_message){
+	  int output = 0;
+	  if (it.current->their_last_message && it.current->their_ply.found){
+	    struct message_ply_read reader;
+	    bzero(&reader, sizeof reader);
+	    if (message_ply_read_open(&reader, &it.current->their_ply.bundle_id) == 0){
+	      reader.read.offset = it.current->their_last_message;
+	      if (message_ply_read_prev(&reader)==0){
+		cli_put_string(context, (const char *)reader.record, "\n");
+		output = 1;
+	      }
+	      message_ply_read_close(&reader);
+	    }
+	  }
+	  if (!output)
+	    cli_put_string(context, "", "\n");
+	}
       }
     }
   }

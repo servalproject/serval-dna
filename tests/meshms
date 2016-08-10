@@ -206,13 +206,13 @@ setup_listConversations() {
    executeOk_servald meshms send message $SIDA4 $SIDA1 "Message4"
 }
 test_listConversations() {
-   executeOk_servald meshms list conversations $SIDA1
+   executeOk_servald meshms list conversations --include-message $SIDA1
    tfw_cat --stdout
-   assertStdoutIs --stderr --line=1 -e '5\n'
-   assertStdoutIs --stderr --line=2 -e '_id:recipient:read:last_message:read_offset\n'
-   assertStdoutGrep --stderr --matches=1 ":$SIDA2::0:0\$"
-   assertStdoutGrep --stderr --matches=1 ":$SIDA3:unread:11:0\$"
-   assertStdoutGrep --stderr --matches=1 ":$SIDA4:unread:20:0\$"
+   assertStdoutIs --stderr --line=1 -e '6\n'
+   assertStdoutIs --stderr --line=2 -e '_id:recipient:read:last_message:read_offset:message\n'
+   assertStdoutGrep --stderr --matches=1 ":$SIDA2::0:0:\$"
+   assertStdoutGrep --stderr --matches=1 ":$SIDA3:unread:11:0:Message2\$"
+   assertStdoutGrep --stderr --matches=1 ":$SIDA4:unread:20:0:Message4\$"
    assertStdoutLineCount '==' 5
    executeOk_servald meshms list conversations $SIDA1 1
    tfw_cat --stderr
