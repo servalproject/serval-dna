@@ -136,29 +136,13 @@ int cmp_rhizome_filehash_t(const rhizome_filehash_t *a, const rhizome_filehash_t
 
 int str_to_rhizome_filehash_t(rhizome_filehash_t *hashp, const char *hex)
 {
-  return parse_rhizome_filehash_t(hashp, hex, -1, NULL); // checks for nul terminator
+  return parse_hex_t(hashp, hex);
 }
 
 int strn_to_rhizome_filehash_t(rhizome_filehash_t *hashp, const char *hex, size_t hexlen)
 {
-  return parse_rhizome_filehash_t(hashp, hex, hexlen, NULL); // does not check for nul terminator
-}
-
-int parse_rhizome_filehash_t(rhizome_filehash_t *hashp, const char *hex, ssize_t hexlen, const char **endp)
-{
-  if (hexlen != -1 && hexlen != RHIZOME_FILEHASH_STRLEN)
-    return -1;
-  rhizome_filehash_t tmp;
-  int n = fromhex(tmp.binary, hex, sizeof tmp.binary);
-  if (n != sizeof tmp.binary)
-    return -1;
-  if (endp)
-    *endp = hex + RHIZOME_FILEHASH_STRLEN;
-  else if (hexlen == -1 && hex[RHIZOME_FILEHASH_STRLEN] != '\0')
-    return -1;
-  if (hashp)
-    *hashp = tmp;
-  return 0;
+  const char *endp;
+  return parse_hexn_t(hashp, hex, hexlen, &endp);
 }
 
 int str_to_rhizome_bk_t(rhizome_bk_t *bkp, const char *hex)

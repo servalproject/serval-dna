@@ -466,8 +466,6 @@ const char *rhizome_manifest_validate_reason(rhizome_manifest *m);
 int rhizome_manifest_parse(rhizome_manifest *m);
 int rhizome_manifest_verify(rhizome_manifest *m);
 
-int rhizome_hash_file(rhizome_manifest *m, const char *path, rhizome_filehash_t *hash_out, uint64_t *size_out);
-
 void _rhizome_manifest_free(struct __sourceloc, rhizome_manifest *m);
 #define rhizome_manifest_free(m) _rhizome_manifest_free(__WHENCE__,m)
 rhizome_manifest *_rhizome_new_manifest(struct __sourceloc);

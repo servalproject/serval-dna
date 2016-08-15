@@ -84,24 +84,6 @@ static void cli_put_manifest(struct cli_context *context, const rhizome_manifest
   cli_put_long(context, m->inserttime, "\n");
 }
 
-DEFINE_CMD(app_rhizome_hash_file, 0,
-  "Compute the Rhizome hash of a file",
-  "rhizome","hash","file","<filepath>");
-static int app_rhizome_hash_file(const struct cli_parsed *parsed, struct cli_context *context)
-{
-  DEBUG_cli_parsed(verbose, parsed);
-  /* compute hash of file. We do this without a manifest, so it will necessarily
-     return the hash of the file unencrypted. */
-  const char *filepath;
-  cli_arg(parsed, "filepath", &filepath, NULL, "");
-  rhizome_filehash_t hash;
-  uint64_t size;
-  if (rhizome_hash_file(NULL, filepath, &hash, &size) == -1)
-    return -1;
-  cli_put_string(context, size ? alloca_tohex_rhizome_filehash_t(hash) : "", "\n");
-  return 0;
-}
-
 static int append_manifest_zip_comment(const char *filepath, rhizome_manifest *m)
 {
   int fd = open(filepath, O_RDWR);

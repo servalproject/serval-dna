@@ -108,7 +108,8 @@ size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
+int fromhexstr(unsigned char *dstBinary, size_t nbinary, const char *srcHex);
+int fromhexstrn(unsigned char *dstBinary, size_t nbinary, const char *srcHex, size_t nHex, const char **afterHex);
 
 /* Decode pairs of ASCII hex characters [0-9A-Fa-f] into binary data with an optional upper limit on
  * the number of binary bytes produced (destination buffer size).  Returns the number of binary

@@ -47,4 +47,7 @@ uint16_t read_uint16(const unsigned char *o);
 int compare_wrapped_uint8(uint8_t one, uint8_t two);
 int compare_wrapped_uint16(uint16_t one, uint16_t two);
 
+#define parse_hex_t(bin, hex) fromhexstr(bin->binary, sizeof bin->binary, hex)
+#define parse_hexn_t(bin, hex, hexlen, endp) fromhexstrn(bin->binary, sizeof bin->binary, hex, hexlen, endp)
+
 #endif //__SERVAL_DNA___DATA_FORMATS_H

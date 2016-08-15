@@ -1184,48 +1184,6 @@ int rhizome_read_manifest_from_file(rhizome_manifest *m, const char *filename)
   return rhizome_manifest_parse(m);
 }
 
-int rhizome_hash_file(rhizome_manifest *m, const char *path, rhizome_filehash_t *hash_out, uint64_t *size_out)
-{
-  /* Gnarf! NaCl's crypto_hash() function needs the whole file passed in in one
-     go.  Trouble is, we need to run Serval DNA on filesystems that lack mmap(),
-     and may be very resource constrained. Thus we need a streamable SHA-512
-     implementation.
-  */
-  // TODO encrypted payloads
-  if (m && m->payloadEncryption == PAYLOAD_ENCRYPTED)
-    return WHY("Encryption of payloads not implemented");
-  uint64_t filesize = 0;
-  crypto_hash_sha512_state context;
-  crypto_hash_sha512_init(&context);
-  if (path[0]) {
-    int fd = open(path, O_RDONLY);
-    if (fd == -1)
-      return WHYF_perror("open(%s,O_RDONLY)", alloca_str_toprint(path));
-    unsigned char buffer[8192];
-    ssize_t r;
-    while ((r = read(fd, buffer, sizeof buffer))) {
-      if (r == -1) {
-	WHYF_perror("read(%s,%zu)", alloca_str_toprint(path), sizeof buffer);
-	close(fd);
-	return -1;
-      }
-      crypto_hash_sha512_update(&context, buffer, (size_t) r);
-      filesize += (size_t) r;
-    }
-    close(fd);
-  }
-  // Empty files (including empty path) have no hash.
-  if (hash_out) {
-    if (filesize > 0)
-      crypto_hash_sha512_final(&context, hash_out->binary);
-    else
-      *hash_out = RHIZOME_FILEHASH_NONE;
-  }
-  if (size_out)
-    *size_out = filesize;
-  return 0;
-}
-
 rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence)
 {
   rhizome_manifest *m=emalloc_zero(sizeof(rhizome_manifest));

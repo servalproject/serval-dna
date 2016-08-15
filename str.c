@@ -52,10 +52,17 @@ size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
   return -1;
 }
 
-int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
+int fromhexstr(unsigned char *dstBinary, size_t nbinary, const char *srcHex)
 {
   const char *p;
   if (strn_fromhex(dstBinary, nbinary, srcHex, &p) == nbinary && *p == '\0')
+    return 0;
+  return -1;
+}
+
+int fromhexstrn(unsigned char *dstBinary, size_t nbinary, const char *srcHex, size_t nHex, const char **afterHex)
+{
+  if (nbinary *2 == nHex && strn_fromhex(dstBinary, nbinary, srcHex, afterHex) == nbinary)
     return 0;
   return -1;
 }

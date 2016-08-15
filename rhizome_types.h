@@ -98,7 +98,6 @@ typedef struct rhizome_filehash_binary {
 int cmp_rhizome_filehash_t(const rhizome_filehash_t *a, const rhizome_filehash_t *b);
 int str_to_rhizome_filehash_t(rhizome_filehash_t *fh, const char *hex);
 int strn_to_rhizome_filehash_t(rhizome_filehash_t *fh, const char *hex, size_t hexlen);
-int parse_rhizome_filehash_t(rhizome_filehash_t *fh, const char *hex, ssize_t hexlen, const char **endp);
 
 /* Fundamental data type: Rhizome Bundle Key (BK)
  *

@@ -128,7 +128,7 @@ assert_stdout_add_file() {
    local filename="$1"
    shift
    unpack_manifest_for_grep "$filename" "$manifestname"
-   compute_filehash actual_filehash "$filename" actual_filesize
+   actual_filesize=$(( $(cat "$filename" | wc -c) + 0 ))
    opt_service=
    opt_manifestid=
    opt_author=
@@ -138,10 +138,6 @@ assert_stdout_add_file() {
    opt_name=false
    if replayStdout | $GREP -q '^service:file$'; then
       opt_name=true
-   fi
-   opt_filehash=true
-   if [ "$re_crypt" = 1 ]; then
-      opt_filehash=false
    fi
    fieldnames='service|manifestid|.author|.secret|BK|filesize|filehash|name'
    for arg; do
@@ -169,8 +165,6 @@ assert_stdout_add_file() {
    ${opt_filesize:-true} && assertStdoutGrep --matches=1 "^filesize:$actual_filesize\$"
    if replayStdout | $GREP -q '^filesize:0$'; then
       assertStdoutGrep --matches=0 "^filehash:"
-   else
-      ${opt_filehash:-true} && assertStdoutGrep --matches=1 "^filehash:$actual_filehash\$"
    fi
    ${opt_name:-true} && assertStdoutGrep --matches=1 "^name:$re_name\$"
 }
@@ -376,22 +370,6 @@ extract_manifest_date() {
 
 extract_manifest_crypt() {
    extract_manifest "$1" "$2" crypt "$rexp_crypt"
-}
-
-compute_filehash() {
-   local _filehashvar="$1"
-   local _file="$2"
-   local _filesizevar="$3"
-   local _hash=
-   local _size=0
-   if [ -s "$_file" ]; then
-      local _hash=$($servald rhizome hash file "$_file") || error "$servald failed to compute file hash"
-      [ -z "${_hash//[0-9a-fA-F]/}" ] || error "file hash contains non-hex: $_hash"
-      [ "${#_hash}" -eq 128 ] || error "file hash incorrect length: $_hash"
-      local _size=$(( $(cat "$filename" | wc -c) + 0 ))
-   fi
-   [ -n "$_filehashvar" ] && eval $_filehashvar="\$_hash"
-   [ -n "$_filesizevar" ] && eval $_filesizevar="\$_size"
 }
 
 rhizome_http_server_started() {

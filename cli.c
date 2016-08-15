@@ -387,12 +387,12 @@ int cli_bid(const char *arg)
 
 int cli_optional_bid(const char *arg)
 {
-  return !arg[0] || str_to_rhizome_bid_t(NULL, arg) != -1;
+  return !arg[0] || is_xsubstring(arg, sizeof(rhizome_bid_t));
 }
 
 int cli_fileid(const char *arg)
 {
-  return str_to_rhizome_filehash_t(NULL, arg) != -1;
+  return is_xsubstring(arg, sizeof(rhizome_filehash_t));
 }
 
 int cli_optional_bundle_crypt_key(const char *arg)
