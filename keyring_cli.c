@@ -123,6 +123,7 @@ static int app_keyring_list(const struct cli_parsed *parsed, struct cli_context 
     
   const char *names[]={
     "sid",
+    "identity",
     "did",
     "name"
   };
@@ -137,6 +138,7 @@ static int app_keyring_list(const struct cli_parsed *parsed, struct cli_context 
     const char *name = NULL;
     keyring_identity_extract(id, &did, &name);
     cli_put_string(context, alloca_tohex_sid_t(*id->box_pk), ":");
+    cli_put_string(context, alloca_tohex_identity_t(id->sign_pk), ":");
     cli_put_string(context, did, ":");
     cli_put_string(context, name, "\n");
     rowcount++;
@@ -151,6 +153,10 @@ static void cli_output_identity(struct cli_context *context, const keyring_ident
   if (id->box_pk){
       cli_field_name(context, "sid", ":");
       cli_put_string(context, alloca_tohex_sid_t(*id->box_pk), "\n");
+  }
+  if (id->sign_pk){
+      cli_field_name(context, "identity", ":");
+      cli_put_string(context, alloca_tohex_identity_t(id->sign_pk), "\n");
   }
   keypair *kp=id->keypairs;
   while(kp){
@@ -201,9 +207,13 @@ static int app_keyring_list2(const struct cli_parsed *parsed, struct cli_context
   while((id = keyring_next_identity(&it))){
     unsigned fields=0;
     // count the number of fields that we will output
-    keypair *kp=it.identity->keypairs;
+    keypair *kp=id->keypairs;
+    if (id->box_pk)
+      fields++;
+    if (id->sign_pk)
+      fields++;
     while(kp){
-      if (kp->type==KEYTYPE_CRYPTOBOX || kp->type==KEYTYPE_PUBLIC_TAG)
+      if (kp->type==KEYTYPE_PUBLIC_TAG)
 	fields++;
       if (kp->type==KEYTYPE_DID){
 	if (strlen((char*)kp->private_key))
@@ -273,21 +283,20 @@ static int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_conte
 
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-  
-  keyring_iterator it;
-  keyring_iterator_start(keyring, &it);
-  
+
+  keyring_identity *id = keyring_find_identity_sid(keyring, &sid);
+
   int r=0;
-  if (!keyring_find_sid(&it, &sid))
+  if (!id)
     r=WHY("No matching SID");
   else{
-    if (keyring_set_did(it.identity, did, name))
+    if (keyring_set_did(id, did, name))
       r=WHY("Could not set DID");
     else{
       if (keyring_commit(keyring))
 	r=WHY("Could not write updated keyring record");
       else{
-	cli_output_identity(context, it.identity);
+	cli_output_identity(context, id);
       }
     }
   }
@@ -315,20 +324,19 @@ static int app_keyring_set_tag(const struct cli_parsed *parsed, struct cli_conte
   if (str_to_sid_t(&sid, sidhex) == -1)
     return WHY("str_to_sid_t() failed");
 
-  keyring_iterator it;
-  keyring_iterator_start(keyring, &it);
+  keyring_identity *id = keyring_find_identity_sid(keyring, &sid);
   int r=0;
-  if (!keyring_find_sid(&it, &sid))
+  if (!id)
     r=WHY("No matching SID");
   else{
     int length = strlen(value);
-    if (keyring_set_public_tag(it.identity, tag, (const unsigned char*)value, length))
+    if (keyring_set_public_tag(id, tag, (const unsigned char*)value, length))
       r=WHY("Could not set tag value");
     else{
       if (keyring_commit(keyring))
 	r=WHY("Could not write updated keyring record");
       else{
-	cli_output_identity(context, it.identity);
+	cli_output_identity(context, id);
       }
     }
   }

@@ -70,9 +70,9 @@ int set_reachable(struct subscriber *subscriber,
     }
   }
   
-  /* Pre-emptively send a sas request */
-  if (!subscriber->sas_valid && reachable&REACHABLE)
-    keyring_send_sas_request(subscriber);
+  /* Pre-emptively send a public signing key request */
+  if (!subscriber->id_valid && reachable&REACHABLE)
+    keyring_send_identity_request(subscriber);
 
   CALL_TRIGGER(link_change, subscriber, old_value);
   

@@ -61,15 +61,18 @@ doc_DidName="Create an identity & set the name and number"
 test_DidName() {
     executeOk_servald keyring add ''
     assertStdoutGrep --matches=1 "^sid:"
-    assertStdoutLineCount '==' 1
+    assertStdoutGrep --matches=1 "^identity:"
+    assertStdoutLineCount '==' 2
     extract_stdout_keyvalue SID sid "$rexp_sid"
+    extract_stdout_keyvalue ID identity "$rexp_id"
     executeOk_servald keyring set did "$SID" '123456' 'Display Name'
     assertStdoutGrep --matches=1 "^sid:$SID\$"
+    assertStdoutGrep --matches=1 "^identity:$ID\$"
     assertStdoutGrep --matches=1 "^did:123456\$"
     assertStdoutGrep --matches=1 "^name:Display Name\$"
-    assertStdoutLineCount '==' 3
+    assertStdoutLineCount '==' 4
     executeOk_servald keyring list
-    assertStdoutGrep --stderr --matches=1 "^$SID:123456:Display Name\$"
+    assertStdoutGrep --stderr --matches=1 "^$SID:$ID:123456:Display Name\$"
 }
 
 keyring_set_tag() {
@@ -82,17 +85,19 @@ doc_SetTag="Set a named tag against an identity"
 test_SetTag() {
     executeOk_servald keyring add ''
     assertStdoutGrep --matches=1 "^sid:"
-    assertStdoutLineCount '==' 1
-    extract_stdout_keyvalue SID sid "$rexp_sid"
-    keyring_set_tag "$SID" 'tag1' 'First Value'
+    assertStdoutGrep --matches=1 "^identity:"
     assertStdoutLineCount '==' 2
+    extract_stdout_keyvalue SID sid "$rexp_sid"
+    extract_stdout_keyvalue ID identity "$rexp_id"
+    keyring_set_tag "$SID" 'tag1' 'First Value'
+    assertStdoutLineCount '==' 3
     keyring_set_tag "$SID" 'tag2' 'Second Value'
     executeOk_servald keyring set tag "$SID" 'tag2' 'Second Value'
     assertStdoutGrep --matches=1 "^tag1:First Value\$"
-    assertStdoutLineCount '==' 3
+    assertStdoutLineCount '==' 4
     keyring_set_tag "$SID" 'tag1' 'Third Value'
     assertStdoutGrep --matches=1 "^tag2:Second Value\$"
-    assertStdoutLineCount '==' 3
+    assertStdoutLineCount '==' 4
     executeOk_servald keyring dump --secret
     tfw_cat --stdout
 }

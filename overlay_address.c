@@ -350,10 +350,10 @@ static int add_explain_response(struct subscriber *subscriber, void *context)
   DEBUGF(subscriber, "Explaining sid=%s", alloca_tohex_sid_t(subscriber->sid));
   ob_checkpoint(b);
 
-  if (subscriber->sas_combined && response->sender && response->sender->sas_combined){
+  if (subscriber->id_combined && response->sender && response->sender->id_combined){
     // TODO better condition for when we should send this?
     ob_append_byte(b, OA_CODE_SIGNKEY);
-    ob_append_bytes(b, subscriber->sas_public, crypto_sign_PUBLICKEYBYTES);
+    ob_append_bytes(b, subscriber->id_public.binary, crypto_sign_PUBLICKEYBYTES);
   }else{
     ob_append_byte(b, SID_SIZE);
     ob_append_bytes(b, subscriber->sid.binary, SID_SIZE);
@@ -428,13 +428,13 @@ static int decode_sid_from_signkey(struct overlay_buffer *b, struct subscriber *
   if (crypto_sign_ed25519_pk_to_curve25519(sid.binary, id))
     return WHY("Failed to convert sign key to sid");
   struct subscriber *s = find_subscriber(sid.binary, SID_SIZE, 1);
-  if (s && !s->sas_combined){
-    bcopy(id, s->sas_public, crypto_sign_PUBLICKEYBYTES);
-    s->sas_valid=1;
-    s->sas_combined=1;
+  if (s && !s->id_combined){
+    bcopy(id, s->id_public.binary, crypto_sign_PUBLICKEYBYTES);
+    s->id_valid=1;
+    s->id_combined=1;
     DEBUGF(subscriber, "Stored combined SID:SAS mapping, SID=%s SAS=%s",
        alloca_tohex_sid_t(s->sid),
-       alloca_tohex_sas(s->sas_public)
+       alloca_tohex_identity_t(&s->id_public)
     );
   }
   if (subscriber)

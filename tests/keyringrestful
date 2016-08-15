@@ -144,10 +144,12 @@ test_keyringAdd() {
    tfw_preserve add.json
    assertStdoutIs '200'
    SID="$(jq -r '.identity.sid' add.json)"
+   ID="$(jq -r '.identity.identity' add.json)"
    assert matches_rexp "^${rexp_sid}$" "$SID"
+   assert matches_rexp "^${rexp_id}$" "$ID"
    executeOk_servald keyring list
    assert_keyring_list 3
-   assertStdoutGrep --stderr --matches=1 "^$SID::\$"
+   assertStdoutGrep --stderr --matches=1 "^$SID:$ID::\$"
 }
 
 doc_keyringAddPin="HTTP RESTful add keyring identity with PIN"
@@ -166,12 +168,13 @@ test_keyringAddPin() {
    tfw_preserve add.json
    assertStdoutIs '200'
    SID="$(jq -r '.identity.sid' add.json)"
+   ID="$(jq -r '.identity.identity' add.json)"
    executeOk_servald keyring list
    assert_keyring_list 2
-   assertStdoutGrep --stderr --matches=0 "^$SID::\$"
+   assertStdoutGrep --stderr --matches=0 "^$SID:$ID::\$"
    executeOk_servald keyring list --entry-pin=1234
    assert_keyring_list 3
-   assertStdoutGrep --stderr --matches=1 "^$SID::\$"
+   assertStdoutGrep --stderr --matches=1 "^$SID:$ID::\$"
    # Now the server has internalised the PIN, so the new identity appears in the
    # list
    executeOk curl \
@@ -204,7 +207,7 @@ test_keyringSetDidName() {
    assertJq set.json 'contains({"identity": {"sid": "'$SIDA1'", "did": "987654321", "name": "Joe Bloggs"}})'
    executeOk_servald keyring list
    assert_keyring_list 2
-   assertStdoutGrep --stderr --matches=1 "^$SIDA1:987654321:Joe Bloggs\$"
+   assertStdoutGrep --stderr --matches=1 "^$SIDA1:$IDA1:987654321:Joe Bloggs\$"
 }
 
 doc_keyringSetDidNamePin="HTTP RESTful set DID and name with PIN"
@@ -247,7 +250,7 @@ test_keyringSetDidNamePin() {
    assertJq set3.json 'contains({"identity": {"sid": "'$SIDA1'", "did": "987654321", "name": "Joe Bloggs"}})'
    executeOk_servald keyring list --entry-pin=xyzabc
    assert_keyring_list 2
-   assertStdoutGrep --stderr --matches=1 "^$SIDA1:987654321:Joe Bloggs\$"
+   assertStdoutGrep --stderr --matches=1 "^$SIDA1:$IDA1:987654321:Joe Bloggs\$"
    # Finally, try again with no PIN, and make sure it succeeds (server has
    # internalised the PIN supplied in the last request)
    executeOk curl \
@@ -262,7 +265,7 @@ test_keyringSetDidNamePin() {
    assertJq set4.json 'contains({"identity": {"sid": "'$SIDA1'", "did": "321321321", "name": "Fred Nurks"}})'
    executeOk_servald keyring list --entry-pin=xyzabc
    assert_keyring_list 2
-   assertStdoutGrep --stderr --matches=1 "^$SIDA1:321321321:Fred Nurks\$"
+   assertStdoutGrep --stderr --matches=1 "^$SIDA1:$IDA1:321321321:Fred Nurks\$"
 }
 
 runTests "$@"

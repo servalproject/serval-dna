@@ -143,7 +143,7 @@ public class KeyringCommon
 				json.consume(JSONTokeniser.Token.COLON);
 				SubscriberId sid = new SubscriberId(json.consume(String.class));
 				json.consume(JSONTokeniser.Token.COMMA);
-				json.consume("sign");
+				json.consume("identity");
 				json.consume(JSONTokeniser.Token.COLON);
 				SigningKey sas = new SigningKey(json.consume(String.class));
 				String did = null;

@@ -26,8 +26,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 // verify the signature at the end of a message, on return message_len will be reduced by the length of the signature.
 int crypto_verify_message(struct subscriber *subscriber, unsigned char *message, size_t *message_len)
 {
-  if (!subscriber->sas_valid){
-    keyring_send_sas_request(subscriber);
+  if (!subscriber->id_valid){
+    keyring_send_identity_request(subscriber);
     return WHY("SAS key not currently on record, cannot verify");
   }
   
@@ -39,7 +39,7 @@ int crypto_verify_message(struct subscriber *subscriber, unsigned char *message,
   unsigned char hash[crypto_hash_sha512_BYTES];
   crypto_hash_sha512(hash,message,*message_len);
   
-  if (crypto_sign_verify_detached(&message[*message_len], hash, crypto_hash_sha512_BYTES, subscriber->sas_public))
+  if (crypto_sign_verify_detached(&message[*message_len], hash, crypto_hash_sha512_BYTES, subscriber->id_public.binary))
     return WHY("Signature verification failed");
 
   return 0;

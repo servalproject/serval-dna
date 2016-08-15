@@ -32,14 +32,19 @@ typedef char bool_t;
 /* Serval ID (aka Subscriber ID)
  */
 
-#define SID_SIZE 32 // == crypto_sign_PUBLICKEYBYTES
-#define SAS_SIZE 32 // == crypto_sign_PUBLICKEYBYTES
+#define SID_SIZE 32 // == crypto_box_PUBLICKEYBYTES
+#define IDENTITY_SIZE 32 // == crypto_sign_PUBLICKEYBYTES
 
 #define SID_STRLEN (SID_SIZE*2)
+#define IDENTITY_STRLEN (IDENTITY_SIZE*2)
 
 typedef struct sid_binary {
     unsigned char binary[SID_SIZE];
 } sid_t;
+
+typedef struct identity_binary {
+    unsigned char binary[IDENTITY_SIZE];
+} identity_t;
 
 #define SID_TYPE_ANY        (0)
 #define SID_TYPE_INTERNAL   (1)
@@ -55,7 +60,7 @@ typedef struct sid_binary {
 // is the SID entirely 0x00?
 #define is_sid_t_any(SID) is_all_matching((SID).binary, sizeof (*(sid_t*)0).binary, 0)
 
-#define alloca_tohex_sid_t(sid)         alloca_tohex((sid).binary, sizeof (*(sid_t*)0).binary)
+#define alloca_tohex_sid_t(sid)         alloca_tohex((sid).binary, SID_SIZE)
 #define alloca_tohex_sid_t_trunc(sid,strlen)  tohex((char *)alloca((strlen)+1), (strlen), (sid).binary)
 
 int cmp_sid_t(const sid_t *a, const sid_t *b);
@@ -64,7 +69,11 @@ int strn_to_sid_t(sid_t *sid, const char *hex, size_t hexlen);
 int parse_sid_t(sid_t *sid, const char *hex, ssize_t hexlen, const char **endp);
 int sid_get_special_type(const sid_t *sid);
 
-#define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
+#define alloca_tohex_identity_t(identity)           alloca_tohex((identity)->binary, IDENTITY_SIZE)
+
+int cmp_identity_t(const identity_t *a, const identity_t *b);
+int str_to_identity_t(identity_t *sid, const char *hex);
+int strn_to_identity_t(identity_t *sid, const char *hex, size_t hexlen);
 
 /* MDP port number
  */

@@ -82,10 +82,10 @@ struct subscriber{
   time_ms_t last_explained;
   
   // public signing key details for remote peers
-  uint8_t sas_public[SAS_SIZE];
-  time_ms_t sas_last_request;
-  uint8_t sas_valid:1;
-  uint8_t sas_combined:1;
+  identity_t id_public;
+  time_ms_t id_last_request;
+  uint8_t id_valid:1;
+  uint8_t id_combined:1;
 
   // should we send the full address once?
   uint8_t send_full:1;

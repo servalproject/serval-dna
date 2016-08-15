@@ -535,7 +535,7 @@ enum meshms_status meshms_conversations_list(const keyring_identity *id, const s
   if (!my_sid){
     my_sid = id->box_pk;
   }else if(!id){
-    id = keyring_find_identity(keyring, my_sid);
+    id = keyring_find_identity_sid(keyring, my_sid);
     if (!id){
       status = MESHMS_STATUS_SID_LOCKED;
       goto end;
@@ -585,7 +585,7 @@ enum meshms_status meshms_message_iterator_open(struct meshms_message_iterator *
   enum meshms_status status = MESHMS_STATUS_ERROR;
   bzero(iter, sizeof *iter);
 
-  keyring_identity *id = keyring_find_identity(keyring, me);
+  keyring_identity *id = keyring_find_identity_sid(keyring, me);
   if (!id){
     status = MESHMS_STATUS_SID_LOCKED;
     WHY("Identity not found");
@@ -748,7 +748,7 @@ enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipie
   struct meshms_conversations *conv = NULL;
   enum meshms_status status = MESHMS_STATUS_ERROR;
 
-  keyring_identity *id = keyring_find_identity(keyring, sender);
+  keyring_identity *id = keyring_find_identity_sid(keyring, sender);
   if (!id)
     return MESHMS_STATUS_SID_LOCKED;
 
@@ -780,7 +780,7 @@ enum meshms_status meshms_mark_read(const sid_t *sender, const sid_t *recipient,
   enum meshms_status status = MESHMS_STATUS_ERROR;
   struct meshms_conversations *conv = NULL;
 
-  keyring_identity *id = keyring_find_identity(keyring, sender);
+  keyring_identity *id = keyring_find_identity_sid(keyring, sender);
   if (!id){
     status = MESHMS_STATUS_SID_LOCKED;
     goto end;

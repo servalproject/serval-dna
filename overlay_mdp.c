@@ -1068,8 +1068,8 @@ static void send_route(struct subscriber *subscriber, struct socket_address *cli
   struct overlay_buffer *b = ob_static(payload, sizeof payload);
   ob_limitsize(b, sizeof payload);
   ob_append_bytes(b, subscriber->sid.binary, SID_SIZE);
-  ob_append_bytes(b, subscriber->sas_public, SAS_SIZE);
-  ob_append_byte(b, subscriber->sas_valid | (subscriber->sas_combined<<1));
+  ob_append_bytes(b, subscriber->id_public.binary, IDENTITY_SIZE);
+  ob_append_byte(b, subscriber->id_valid | (subscriber->id_combined<<1));
   ob_append_byte(b, subscriber->reachable);
   if (subscriber->reachable & REACHABLE){
     ob_append_byte(b, subscriber->hop_count);
@@ -1179,15 +1179,7 @@ static int mdp_process_identity_request(struct socket_address *client, struct md
 	      const char *pin = ob_get_str_ptr(payload);
 	      if (!pin)
 		break;
-	      keyring_iterator it;
-	      keyring_iterator_start(keyring, &it);
-	      keyring_next_identity(&it);
-	      while(it.identity){
-		if (it.identity->PKRPin && strcmp(it.identity->PKRPin, pin) == 0)
-		  keyring_release_identity(&it);
-		else
-		  keyring_next_identity(&it);
-	      }
+	      keyring_release_identities_by_pin(keyring, pin);
 	    }
 	  }
 	  break;

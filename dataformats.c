@@ -30,6 +30,11 @@ int cmp_sid_t(const sid_t *a, const sid_t *b)
   return memcmp(a, b, sizeof a->binary);
 }
 
+int cmp_identity_t(const identity_t *a, const identity_t *b)
+{
+  return memcmp(a, b, sizeof a->binary);
+}
+
 int str_to_sid_t(sid_t *sidp, const char *hex)
 {
   return parse_sid_t(sidp, hex, -1, NULL); // checks for nul terminator
@@ -96,6 +101,33 @@ int strn_is_subscriber_id(const char *sid, size_t *lenp)
   }
   return 0;
 }
+
+int str_is_identity(const char *id)
+{
+  return is_xstring(id, IDENTITY_STRLEN);
+}
+
+int strn_is_identity(const char *id, size_t *lenp)
+{
+  if (is_xsubstring(id, IDENTITY_STRLEN)){
+    if (lenp)
+      *lenp = SID_STRLEN;
+    return 1;
+  }
+  return 0;
+}
+
+int str_to_identity_t(identity_t *idp, const char *hex)
+{
+  return parse_hex_t(idp, hex);
+}
+
+int strn_to_identity_t(identity_t *idp, const char *hex, size_t hexlen)
+{
+  const char *endp;
+  return parse_hexn_t(idp, hex, hexlen, &endp);
+}
+
 
 int cmp_rhizome_bid_t(const rhizome_bid_t *a, const rhizome_bid_t *b)
 {

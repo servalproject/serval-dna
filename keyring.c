@@ -46,7 +46,7 @@ static int keyring_identity_mac(const keyring_identity *id, unsigned char *pkrsa
 static int keyring_commit_identity(keyring_file *k, keyring_identity *id);
 
 struct combined_pk{
-  uint8_t sign_key[crypto_sign_PUBLICKEYBYTES];
+  identity_t sign_key;
   sid_t box_key;
 };
 
@@ -231,60 +231,18 @@ keypair *keyring_find_did(keyring_iterator *it, const char *did)
   return NULL;
 }
 
-const uint8_t * keyring_get_box(const keyring_identity *id)
-{
-  keypair *kp = id->keypairs;
-  while(kp){
-    if (kp->type == KEYTYPE_CRYPTOBOX)
-      return kp->private_key;
-    if (kp->type == KEYTYPE_CRYPTOCOMBINED){
-      struct combined_sk *secret = (struct combined_sk *)kp->private_key;
-      return secret->box_key;
-    }
-    kp = kp->next;
-  }
-  return NULL;
+keyring_identity *keyring_find_identity_sid(keyring_file *k, const sid_t *sidp){
+  keyring_identity *id = k->identities;
+  while(id && (!id->box_pk || cmp_sid_t(id->box_pk,sidp)!=0))
+    id = id->next;
+  return id;
 }
 
-int keyring_find_box(keyring_iterator *it, const sid_t *sidp, const uint8_t **sk)
-{
-  keypair *kp;
-  while((kp=keyring_next_key(it))){
-    if (kp->type == KEYTYPE_CRYPTOBOX){
-      if (memcmp(sidp->binary, kp->public_key, SID_SIZE) == 0){
-	if (sk)
-	  *sk = kp->private_key;
-	return 1;
-      }
-    }else if(kp->type == KEYTYPE_CRYPTOCOMBINED){
-      struct combined_pk *pk = (struct combined_pk *)kp->public_key;
-      if (memcmp(sidp->binary, pk->box_key.binary, SID_SIZE) == 0){
-	if (sk){
-	  struct combined_sk *secret = (struct combined_sk *)kp->private_key;
-	  *sk = secret->box_key;
-	}
-	return 1;
-      }
-    }
-  }
-  return 0;
-}
-
-keyring_identity *keyring_find_identity(keyring_file *k, const sid_t *sidp){
-  keypair *kp;
-  keyring_iterator it;
-  keyring_iterator_start(k, &it);
-  while((kp=keyring_next_key(&it))){
-    if (kp->type == KEYTYPE_CRYPTOBOX){
-      if (memcmp(sidp->binary, kp->public_key, SID_SIZE) == 0)
-	return it.identity;
-    }else if(kp->type == KEYTYPE_CRYPTOCOMBINED){
-      struct combined_pk *pk = (struct combined_pk *)kp->public_key;
-      if (memcmp(sidp->binary, pk->box_key.binary, SID_SIZE) == 0)
-	return it.identity;
-    }
-  }
-  return NULL;
+keyring_identity *keyring_find_identity(keyring_file *k, const identity_t *sign){
+  keyring_identity *id = k->identities;
+  while(id && (!id->box_pk || cmp_identity_t(id->sign_pk, sign)!=0))
+    id = id->next;
+  return id;
 }
 
 static void add_subscriber(keyring_identity *id)
@@ -298,13 +256,13 @@ static void add_subscriber(keyring_identity *id)
 
     if (id->sign_pk){
       // copy our signing key, so we can pass it to peers
-      bcopy(id->sign_pk, id->subscriber->sas_public, sizeof id->subscriber->sas_public);
-      id->subscriber->sas_valid = 1;
+      bcopy(id->sign_pk, &id->subscriber->id_public, sizeof id->subscriber->id_public);
+      id->subscriber->id_valid = 1;
 
       keypair *kp = id->keypairs;
       while(kp){
 	if (kp->type == KEYTYPE_CRYPTOCOMBINED){
-	  id->subscriber->sas_combined = 1;
+	  id->subscriber->id_combined = 1;
 	  break;
 	}
 	kp = kp->next;
@@ -367,35 +325,34 @@ void keyring_free(keyring_file *k)
   return;
 }
 
-int keyring_release_identity(keyring_iterator *it)
+int keyring_release_identities_by_pin(keyring_file *f, const char *pin)
 {
-  assert(it->identity);
-  
-  keyring_identity **i=&it->file->identities;
+  keyring_identity **i=&f->identities;
   while(*i){
-    if ((*i)==it->identity){
-      (*i) = it->identity->next;
-      keyring_free_identity(it->identity);
-      it->identity=(*i);
-      if (it->identity)
-	it->keypair = it->identity->keypairs;
-      else
-	it->keypair = NULL;
-      return 0;
+    keyring_identity *id = (*i);
+    if (id->PKRPin && strcmp(id->PKRPin, pin) == 0){
+      (*i) = id->next;
+      keyring_free_identity(id);
+    }else{
+      i=&id->next;
     }
-    i=&(*i)->next;
   }
-  return WHY("Previous identity not found");
+  return 0;
 }
 
 int keyring_release_subscriber(keyring_file *k, const sid_t *sid)
 {
-  keyring_iterator it;
-  keyring_iterator_start(k, &it);
-  
-  if (!keyring_find_sid(&it, sid))
-    return WHYF("Keyring entry for %s not found", alloca_tohex_sid_t(*sid));
-  return keyring_release_identity(&it);
+  keyring_identity **i=&k->identities;
+  while(*i){
+    keyring_identity *id = (*i);
+    if (cmp_sid_t(id->box_pk,sid)==0){
+      (*i) = id->next;
+      keyring_free_identity(id);
+      return 0;
+    }
+    i=&id->next;
+  }
+  return WHYF("Keyring entry for %s not found", alloca_tohex_sid_t(*sid));
 }
 
 void keyring_free_identity(keyring_identity *id)
@@ -532,7 +489,7 @@ static void create_cryptocombined(keypair *kp)
 {
   struct combined_pk *pk = (struct combined_pk *)kp->public_key;
   struct combined_sk *sk = (struct combined_sk *)kp->private_key;
-  crypto_sign_ed25519_keypair(pk->sign_key, sk->sign_key);
+  crypto_sign_ed25519_keypair(pk->sign_key.binary, sk->sign_key);
   crypto_sign_ed25519_sk_to_curve25519(sk->box_key, sk->sign_key);
   crypto_scalarmult_base(pk->box_key.binary, sk->box_key);
 }
@@ -553,7 +510,7 @@ static int unpack_cryptocombined(keypair *kp, struct rotbuf *rb, size_t key_leng
   struct combined_sk *sk = (struct combined_sk *)kp->private_key;
   assert(key_length == sizeof seed);
   rotbuf_getbuf(rb, seed, sizeof seed);
-  crypto_sign_ed25519_seed_keypair(pk->sign_key, sk->sign_key, seed);
+  crypto_sign_ed25519_seed_keypair(pk->sign_key.binary, sk->sign_key, seed);
   crypto_sign_ed25519_sk_to_curve25519(sk->box_key, sk->sign_key);
   crypto_scalarmult_base(pk->box_key.binary, sk->box_key);
   return 0;
@@ -1241,7 +1198,7 @@ static int keyring_finalise_identity(uint8_t *dirty, keyring_identity *id)
 	  if (dirty)
 	    *dirty = 1;
 	}
-	id->sign_pk = kp->public_key;
+	id->sign_pk = (const identity_t *)kp->public_key;
 	id->sign_sk = kp->private_key;
 	break;
       case KEYTYPE_CRYPTOCOMBINED:{
@@ -1249,7 +1206,7 @@ static int keyring_finalise_identity(uint8_t *dirty, keyring_identity *id)
 	struct combined_sk *sk = (struct combined_sk *)kp->private_key;
 	id->box_pk = &pk->box_key;
 	id->box_sk = sk->box_key;
-	id->sign_pk = pk->sign_key;
+	id->sign_pk = &pk->sign_key;
 	id->sign_sk = sk->sign_key;
 	break;
       }
@@ -1408,9 +1365,7 @@ static int keyring_commit_identity(keyring_file *k, keyring_identity *id)
 {
   keyring_finalise_identity(&k->dirty, id);
   // Do nothing if an identity with this sid already exists
-  keyring_iterator it;
-  keyring_iterator_start(k, &it);
-  if (keyring_find_sid(&it, id->box_pk))
+  if (keyring_find_identity_sid(k, id->box_pk))
     return 0;
   set_slot(k, id->slot, 1);
 
@@ -1709,9 +1664,9 @@ int keyring_sign_message(struct keyring_identity *identity, unsigned char *conte
   return 0;
 }
 
-static int keyring_store_sas(struct internal_mdp_header *header, struct overlay_buffer *payload)
+static int keyring_store_id(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
-  if (header->source->sas_valid){
+  if (header->source->id_valid){
     DEBUGF(keyring, "Ignoring SID:SAS mapping for %s, already have one", alloca_tohex_sid_t(header->source->sid));
     return 0;
   }
@@ -1719,34 +1674,34 @@ static int keyring_store_sas(struct internal_mdp_header *header, struct overlay_
   
   DEBUGF(keyring, "Received SID:SAS mapping, %zd bytes", len);
   
-  if (ob_remaining(payload) < SAS_SIZE + crypto_sign_BYTES)
+  if (ob_remaining(payload) < IDENTITY_SIZE + crypto_sign_BYTES)
     return WHY("Truncated key mapping announcement?");
   
-  const uint8_t *sas_public = ob_get_bytes_ptr(payload, SAS_SIZE);
+  const uint8_t *id_public = ob_get_bytes_ptr(payload, IDENTITY_SIZE);
   const uint8_t *compactsignature = ob_get_bytes_ptr(payload, crypto_sign_BYTES);
 
-  if (crypto_sign_verify_detached(compactsignature, header->source->sid.binary, SID_SIZE, sas_public))
+  if (crypto_sign_verify_detached(compactsignature, header->source->sid.binary, SID_SIZE, id_public))
     return WHY("SID:SAS mapping verification signature does not verify");
 
-  // test if the sas key can be used to derive the sid
+  // test if the signing key can be used to derive the sid
   sid_t sid;
-  if (crypto_sign_ed25519_pk_to_curve25519(sid.binary, sas_public)==0
+  if (crypto_sign_ed25519_pk_to_curve25519(sid.binary, id_public)==0
     && memcmp(&sid, &header->source->sid, sizeof sid) == 0)
-    header->source->sas_combined=1;
+    header->source->id_combined=1;
 
   /* now store it */
-  bcopy(sas_public, header->source->sas_public, SAS_SIZE);
-  header->source->sas_valid=1;
-  header->source->sas_last_request=-1;
+  bcopy(id_public, &header->source->id_public, IDENTITY_SIZE);
+  header->source->id_valid=1;
+  header->source->id_last_request=-1;
   
   DEBUGF(keyring, "Stored SID:SAS mapping, SID=%s to SAS=%s",
 	 alloca_tohex_sid_t(header->source->sid),
-	 alloca_tohex_sas(header->source->sas_public)
+	 alloca_tohex_identity_t(&header->source->id_public)
 	);
   return 0;
 }
 
-static int keyring_respond_sas(struct internal_mdp_header *header)
+static int keyring_respond_id(struct internal_mdp_header *header)
 {
   keyring_identity *id = header->destination->identity;
 
@@ -1761,7 +1716,7 @@ static int keyring_respond_sas(struct internal_mdp_header *header)
   ob_limitsize(response_payload, sizeof buff);
   
   ob_append_byte(response_payload, KEYTYPE_CRYPTOSIGN);
-  ob_append_bytes(response_payload, id->sign_pk, crypto_sign_PUBLICKEYBYTES);
+  ob_append_bytes(response_payload, id->sign_pk->binary, crypto_sign_PUBLICKEYBYTES);
   uint8_t *sig = ob_append_space(response_payload, crypto_sign_BYTES);
 
   if (crypto_sign_detached(sig, NULL, header->destination->sid.binary, SID_SIZE, id->sign_sk))
@@ -1929,8 +1884,8 @@ static int keyring_mapping_request(struct internal_mdp_header *header, struct ov
   switch(ob_get(payload)){
     case KEYTYPE_CRYPTOSIGN:
       if (ob_remaining(payload)==0)
-	return keyring_respond_sas(header);
-      return keyring_store_sas(header, payload);
+	return keyring_respond_id(header);
+      return keyring_store_id(header, payload);
       break;
     case UNLOCK_REQUEST:
       {
@@ -1947,13 +1902,13 @@ static int keyring_mapping_request(struct internal_mdp_header *header, struct ov
   return WHY("Not implemented");
 }
 
-int keyring_send_sas_request(struct subscriber *subscriber){
-  if (subscriber->sas_valid)
+int keyring_send_identity_request(struct subscriber *subscriber){
+  if (subscriber->id_valid)
     return 0;
   
   time_ms_t now = gettime_ms();
   
-  if (now < subscriber->sas_last_request + 100){
+  if (now < subscriber->id_last_request + 100){
     DEBUG(keyring, "Too soon to ask for SAS mapping again");
     return 0;
   }
@@ -1974,7 +1929,7 @@ int keyring_send_sas_request(struct subscriber *subscriber){
   ob_append_byte(payload, KEYTYPE_CRYPTOSIGN);
   
   DEBUGF(keyring, "Sending SAS resolution request");
-  subscriber->sas_last_request=now;
+  subscriber->id_last_request=now;
   ob_flip(payload);
   int ret = overlay_send_frame(&header, payload);
   ob_free(payload);

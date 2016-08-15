@@ -21,6 +21,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 int str_is_subscriber_id(const char *sid);
 int strn_is_subscriber_id(const char *sid, size_t *lenp);
+int str_is_identity(const char *sid);
+int strn_is_identity(const char *sid, size_t *lenp);
 int str_is_did(const char *did);
 int strn_is_did(const char *did, size_t *lenp);
 

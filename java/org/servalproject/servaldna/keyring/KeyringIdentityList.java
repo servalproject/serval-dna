@@ -49,7 +49,7 @@ public class KeyringIdentityList {
 		this.httpConnector = connector;
 		this.table = new JSONTableScanner()
 					.addColumn("sid", SubscriberId.class)
-					.addColumn("sign", SigningKey.class)
+					.addColumn("identity", SigningKey.class)
 					.addColumn("did", String.class, JSONTokeniser.Narrow.ALLOW_NULL)
 					.addColumn("name", String.class, JSONTokeniser.Narrow.ALLOW_NULL);
 	}
@@ -121,7 +121,7 @@ public class KeyringIdentityList {
 			return new KeyringIdentity(
 					rowCount++,
 					new Subscriber((SubscriberId)row.get("sid"),
-							(SigningKey) row.get("sign"),
+							(SigningKey) row.get("identity"),
 							true),
 					(String)row.get("did"),
 					(String)row.get("name")

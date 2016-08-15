@@ -122,7 +122,7 @@ test_keyringAddDidName() {
    assertStdoutGrep --matches=1 "sid=${rexp_sid}, did=987654321, name=Joe Bloggs$"
    executeOk_servald keyring list
    assert_keyring_list 2
-   assertStdoutGrep --stderr --matches=1 "^${rexp_sid}:987654321:Joe Bloggs\$"
+   assertStdoutGrep --stderr --matches=1 "^${rexp_sid}:${rexp_id}:987654321:Joe Bloggs\$"
 }
 
 doc_keyringSetDidName="Java API set DID and name"
@@ -136,7 +136,7 @@ test_keyringSetDidName() {
    assertStdoutGrep --matches=1 "sid=$SIDA1, did=987654321, name=Joe Bloggs$"
    executeOk_servald keyring list
    assert_keyring_list 2
-   assertStdoutGrep --stderr --matches=1 "^$SIDA1:987654321:Joe Bloggs\$"
+   assertStdoutGrep --stderr --matches=1 "^$SIDA1:$IDA1:987654321:Joe Bloggs\$"
 }
 
 runTests "$@"

@@ -499,7 +499,7 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
 	  break;
 
 	// ignore signing key details for now
-	ob_skip(buff, SAS_SIZE+1);
+	ob_skip(buff, IDENTITY_SIZE+1);
 	if (ob_overrun(buff))
 	  break;
 

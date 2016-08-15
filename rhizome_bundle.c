@@ -38,19 +38,6 @@ static const char *rhizome_manifest_get(const rhizome_manifest *m, const char *v
   return NULL;
 }
 
-#if 0
-static uint64_t rhizome_manifest_get_ui64(rhizome_manifest *m, const char *var)
-{
-  unsigned i;
-  for (i = 0; i < m->var_count; ++i)
-    if (strcmp(m->vars[i], var) == 0) {
-      uint64_t val;
-      return str_to_uint64(m->values[i], 10, &val, NULL) ? val : -1;
-    }
-  return -1;
-}
-#endif
-
 /* Remove the field with the given label from the manifest
  *
  * @author Andrew Bettison <andrew@servalproject.com>
@@ -1493,15 +1480,13 @@ struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const ch
 int rhizome_lookup_author(rhizome_manifest *m)
 {
   IN();
-  keyring_iterator it;
   switch (m->authorship) {
     case AUTHOR_LOCAL:
     case AUTHOR_AUTHENTIC:
       RETURN(1);
     case AUTHOR_NOT_CHECKED:
       DEBUGF(rhizome, "manifest %p lookup author=%s", m, alloca_tohex_sid_t(m->author));
-      keyring_iterator_start(keyring, &it);
-      if (keyring_find_sid(&it, &m->author)) {
+      if (keyring_find_identity_sid(keyring, &m->author)) {
 	DEBUGF(rhizome, "found author");
 	m->authorship = AUTHOR_LOCAL;
 	RETURN(1);
@@ -1510,8 +1495,7 @@ int rhizome_lookup_author(rhizome_manifest *m)
     case ANONYMOUS:
       if (m->has_sender) {
 	DEBUGF(rhizome, "manifest %p lookup sender=%s", m, alloca_tohex_sid_t(m->sender));
-	keyring_iterator_start(keyring, &it);
-	if (keyring_find_sid(&it, &m->sender)) {
+	if (keyring_find_identity_sid(keyring, &m->sender)) {
 	  DEBUGF(rhizome, "found sender");
 	  rhizome_manifest_set_author(m, &m->sender);
 	  m->authorship = AUTHOR_LOCAL;

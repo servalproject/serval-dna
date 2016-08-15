@@ -197,7 +197,7 @@ static enum rhizome_bundle_authorship try_author(rhizome_manifest *m, const keyr
     return AUTHOR_UNKNOWN;
 
   if (!id){
-    id = keyring_find_identity(keyring, sid);
+    id = keyring_find_identity_sid(keyring, sid);
     if (!id)
       return AUTHOR_UNKNOWN;
   }
@@ -329,7 +329,7 @@ int rhizome_manifest_add_bundle_key(rhizome_manifest *m)
 	*/
 
 	if (!m->author_identity){
-	  m->author_identity = keyring_find_identity(keyring, &m->author);
+	  m->author_identity = keyring_find_identity_sid(keyring, &m->author);
 	  if (!m->author_identity){
 	    m->authorship = AUTHOR_UNKNOWN;
 	    break;
@@ -574,7 +574,7 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
 
     {
       const keyring_identity *id=NULL;
-      id = keyring_find_identity(keyring, &m->recipient);
+      id = keyring_find_identity_sid(keyring, &m->recipient);
       if (id){
 	if (m->has_sender){
 	  other_pk = &m->sender;
@@ -585,7 +585,7 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
 	    other_pk = NULL;
 	}
       } else if (m->has_sender){
-	id = keyring_find_identity(keyring, &m->sender);
+	id = keyring_find_identity_sid(keyring, &m->sender);
 	// TODO error if sender != author?
       } else if (m->haveSecret){
 	id = m->author_identity;
