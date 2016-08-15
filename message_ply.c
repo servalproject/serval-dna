@@ -11,9 +11,9 @@
 
 static int message_ply_load_manifest(const keyring_identity *id, struct message_ply *ply, rhizome_manifest *m)
 {
-  assert(ply->found);
+  assert(ply->known_bid);
   if (rhizome_retrieve_manifest(&ply->bundle_id, m) != RHIZOME_BUNDLE_STATUS_SAME)
-    return -1;
+    return 1;
   rhizome_authenticate_author(m);
   if (!m->haveSecret || m->authorship != AUTHOR_AUTHENTIC)
     return -1;
@@ -59,7 +59,7 @@ static int message_ply_fill_manifest(const keyring_identity *id, const sid_t *re
     assert(m->haveSecret);
     assert(!recipient || m->payloadEncryption == PAYLOAD_ENCRYPTED);
     ply->bundle_id = m->cryptoSignPublic;
-    ply->found = 1;
+    ply->found = ply->known_bid = 1;
   }
   return ret;
 }
@@ -72,11 +72,24 @@ int message_ply_append(const keyring_identity *id, const char *service, const si
     return -1;
 
   int ret=-1;
-  if (ply->found){
-    if (message_ply_load_manifest(id, ply, m)!=0)
-      goto end;
-  } else {
+
+  if (ply->known_bid){
+    switch(message_ply_load_manifest(id, ply, m)){
+      case 0:
+	ply->found = 1;
+	break;
+      case 1:
+	ply->found = 0;
+	break;
+      default:
+	goto end;
+    }
+  }
+
+  if (!ply->found){
     rhizome_manifest_set_service(m, service);
+    if (ply->known_bid)
+      rhizome_manifest_set_id(m, &ply->bundle_id);
     if (message_ply_fill_manifest(id, recipient, ply, m)!=0)
       goto end;
   }

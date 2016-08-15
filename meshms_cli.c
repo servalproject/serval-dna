@@ -103,6 +103,12 @@ static int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_c
     || cli_arg(parsed, "payload", &message, NULL, "") == -1)
     return -1;
 
+  sid_t my_sid, their_sid;
+  if (str_to_sid_t(&my_sid, my_sidhex) == -1)
+    return WHY("Invalid sender SID");
+  if (str_to_sid_t(&their_sid, their_sidhex) == -1)
+    return WHY("Invalid recipient SID");
+
   if (create_serval_instance_dir() == -1)
     return -1;
   if (!(keyring = keyring_open_instance_cli(parsed)))
@@ -113,11 +119,6 @@ static int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_c
     return -1;
   }
 
-  sid_t my_sid, their_sid;
-  if (str_to_sid_t(&my_sid, my_sidhex) == -1)
-    return WHY("invalid sender SID");
-  if (str_to_sid_t(&their_sid, their_sidhex) == -1)
-    return WHY("invalid recipient SID");
   // include terminating NUL
   enum meshms_status status = meshms_send_message(&my_sid, &their_sid, message, strlen(message) + 1);
   keyring_free(keyring);
@@ -175,7 +176,7 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
 	if (iter.delivered && !marked_delivered){
 	  cli_put_long(context, id++, ":");
 	  cli_put_long(context, iter.latest_ack_offset, ":");
-	  cli_put_long(context, iter.timestamp?(int)(now - iter.timestamp):-1, ":");
+	  cli_put_long(context, iter.timestamp ? (now - iter.timestamp):(long)-1, ":");
 	  cli_put_string(context, "ACK", ":");
 	  cli_put_string(context, "delivered", "\n");
 	  marked_delivered = 1;
@@ -183,7 +184,7 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
 	// TODO new message format here
 	cli_put_long(context, id++, ":");
 	cli_put_long(context, iter.offset, ":");
-	cli_put_long(context, iter.timestamp?(int)(now - iter.timestamp):-1, ":");
+	cli_put_long(context, iter.timestamp ? (now - iter.timestamp):(long)-1, ":");
 	cli_put_string(context, ">", ":");
 	cli_put_string(context, iter.text, "\n");
 	break;
@@ -193,7 +194,7 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
 	if (iter.read && !marked_read) {
 	  cli_put_long(context, id++, ":");
 	  cli_put_long(context, iter.read_offset, ":");
-	  cli_put_long(context, iter.timestamp?(int)(now - iter.timestamp):-1, ":");
+	  cli_put_long(context, iter.timestamp ? (now - iter.timestamp):(long)-1, ":");
 	  cli_put_string(context, "MARK", ":");
 	  cli_put_string(context, "read", "\n");
 	  marked_read = 1;
@@ -201,7 +202,7 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
 	// TODO new message format here
 	cli_put_long(context, id++, ":");
 	cli_put_long(context, iter.offset, ":");
-	cli_put_long(context, iter.timestamp?(int)(now - iter.timestamp):-1, ":");
+	cli_put_long(context, iter.timestamp ? (now - iter.timestamp):(long)-1, ":");
 	cli_put_string(context, "<", ":");
 	cli_put_string(context, iter.text, "\n");
 	break;

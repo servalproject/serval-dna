@@ -14,7 +14,8 @@ struct message_ply {
   uint64_t version;
   uint64_t tail;
   uint64_t size;
-  uint8_t found;
+  uint8_t found:1;
+  uint8_t known_bid:1;
 };
 
 // cursor state for reading one ply

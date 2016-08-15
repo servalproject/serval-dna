@@ -179,7 +179,7 @@ static enum meshms_status get_database_conversations(const keyring_identity *id,
     }else{
       p=&ptr->my_ply;
     }
-    p->found = 1;
+    p->found = p->known_bid = 1;
     p->bundle_id = bid;
     p->version = version;
     p->tail = tail;
