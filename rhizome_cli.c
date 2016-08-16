@@ -265,9 +265,8 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
   } else {
     pstatus = rhizome_stat_payload_file(m, filepath);
     DEBUGF(rhizome, "rhizome_stat_payload_file() returned %d %s", pstatus, rhizome_payload_status_message(pstatus));
-    assert(m->filesize != RHIZOME_SIZE_UNSET);
     if (pstatus == RHIZOME_PAYLOAD_STATUS_NEW) {
-      assert(m->filesize > 0);
+      assert(m->filesize > 0 && m->filesize != RHIZOME_SIZE_UNSET);
       pstatus = rhizome_store_payload_file(m, filepath);
       DEBUGF(rhizome, "rhizome_store_payload_file() returned %d %s", pstatus, rhizome_payload_status_message(pstatus));
     }
