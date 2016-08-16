@@ -1,0 +1,60 @@
+#!/bin/bash
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+source "${0%/*}/../testdefs_rhizome.sh"
+
+rexp_age='[0-9]*'
+
+setup_identities() {
+   setup_servald
+   executeOk_servald config \
+	set debug.meshms on \
+	set debug.rhizome on \
+        set debug.rhizome_manifest on \
+        set debug.rhizome_store on \
+        set log.console.level debug \
+        set log.console.show_time on
+   set_instance +A
+   create_identities $1
+}
+
+teardown() {
+   stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
+
+doc_meshmbSend="Send broadcast message"
+setup_meshmbSend() {
+   setup_identities 1
+}
+test_meshmbSend() {
+   executeOk_servald meshmb send $IDA1 "Message 1"
+   tfw_cat --stdout --stderr
+   executeOk_servald rhizome export bundle $IDA1 broadcast.manifest broadcast
+   tfw_cat -h broadcast.manifest
+   tfw_cat -h broadcast
+   executeOk_servald meshmb send $IDA1 "Message 2"
+   tfw_cat --stdout --stderr
+   executeOk_servald rhizome export bundle $IDA1 broadcast2.manifest broadcast2
+   tfw_cat -h broadcast2.manifest
+   tfw_cat -h broadcast2
+}
+
+
+doc_meshmbRead="Read messages"
+setup_meshmbRead() {
+   setup_identities 1
+   executeOk_servald meshmb send $IDA1 "Message 1"
+   executeOk_servald meshmb send $IDA1 "Message 2"
+}
+test_meshmbRead() {
+   executeOk_servald meshmb read $IDA1
+   assertStdoutGrep --matches=1 "^_id:offset:age:message$"
+   assertStdoutGrep --matches=1 "^0:30:${rexp_age}:Message 2$"
+   assertStdoutGrep --matches=1 "^1:12:${rexp_age}:Message 1$"
+   assertStdoutLineCount '==' 4
+}
+runTests "$@"

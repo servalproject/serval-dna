@@ -33,6 +33,7 @@ includeTests dnaprotocol
 includeTests rhizomeops
 includeTests rhizomeprotocol
 includeTests meshms
+includeTests meshmb
 includeTests directory_service
 includeTests vomp
 includeTests keyringrestful
