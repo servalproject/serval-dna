@@ -524,7 +524,6 @@ int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, uin
     // if existing data should be written, do so now
     if (should_write && *ptr && (*ptr)->offset == write_state->written_offset){
       struct rhizome_write_buffer *n=*ptr;
-      *ptr=n->_next;
 
       if ( write_get_lock(write_state)
 	|| write_data(write_state, n->offset, n->data, n->data_size)){
@@ -533,6 +532,7 @@ int rhizome_random_write(struct rhizome_write *write_state, uint64_t offset, uin
 	continue;
       }
 
+      *ptr=n->_next;
       write_state->buffer_size-=n->data_size;
       last_offset = n->offset + n->data_size;
       free(n);
@@ -723,13 +723,9 @@ enum rhizome_payload_status rhizome_finish_write(struct rhizome_write *write)
   
   // flush out any remaining buffered pieces to disk
   if (write->buffer_list){
-    if (rhizome_random_write(write, 0, NULL, 0)) {
-      status = RHIZOME_PAYLOAD_STATUS_ERROR;
-      goto failure;
-    }
-    if (write->buffer_list) {
-      WHYF("Buffer was not cleared");
-      // TODO return code to indicate db locking issues?
+    if (rhizome_random_write(write, 0, NULL, 0) || write->buffer_list) {
+      // TODO return busy?
+      WHYF("Failed to flush write buffer");
       status = RHIZOME_PAYLOAD_STATUS_ERROR;
       goto failure;
     }
