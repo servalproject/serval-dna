@@ -42,35 +42,50 @@ static void finalise_union_meshms_sendmessage(httpd_request *r)
   form_buf_malloc_release(&r->u.sendmsg.message);
 }
 
-#define MESHMS_TOKEN_STRLEN (BASE64_ENCODED_LEN(sizeof(rhizome_bid_t) + sizeof(uint64_t)))
-#define alloca_meshms_token(bid, offset) meshms_token_to_str(alloca(MESHMS_TOKEN_STRLEN + 1), (bid), (offset))
+#define MAX_TOKEN_LEN 21
+#define MESHMS_TOKEN_STRLEN (BASE64_ENCODED_LEN(MAX_TOKEN_LEN))
+#define alloca_meshms_token(pos) meshms_token_to_str(alloca(MESHMS_TOKEN_STRLEN + 1), (pos))
 
-static char *meshms_token_to_str(char *buf, const rhizome_bid_t *bid, uint64_t offset)
+static char *meshms_token_to_str(char *buf, struct newsince_position *pos)
 {
-  struct iovec iov[2];
-  iov[0].iov_base = (void *) bid->binary;
-  iov[0].iov_len = sizeof bid->binary;
-  iov[1].iov_base = &offset;
-  iov[1].iov_len = sizeof offset;
-  size_t n = base64url_encodev(buf, iov, 2);
-  assert(n == MESHMS_TOKEN_STRLEN);
+  uint8_t tmp[MAX_TOKEN_LEN];
+  int ofs = 0;
+  tmp[ofs++]=pos->which_ply;
+  ofs += pack_uint(tmp + ofs, pos->offset);
+  ofs += pack_uint(tmp + ofs, pos->their_ack);
+  assert(ofs <= MAX_TOKEN_LEN);
+  size_t n = base64url_encode(buf, tmp, ofs);
+  assert(n <= MESHMS_TOKEN_STRLEN);
   buf[n] = '\0';
   return buf;
 }
 
-static int strn_to_meshms_token(const char *str, rhizome_bid_t *bidp, uint64_t *offsetp, const char **afterp)
+static int strn_to_meshms_token(const char *str, struct newsince_position *pos, const char **afterp)
 {
-  unsigned char token[sizeof bidp->binary + sizeof *offsetp];
-  if (base64url_decode(token, sizeof token, str, 0, afterp, 0, NULL) == sizeof token){
-    memcpy(bidp->binary, token, sizeof bidp->binary);
-    memcpy(offsetp, token + sizeof bidp->binary, sizeof *offsetp);
-    (*afterp)++;
-  }else{
-    // don't skip the token
-    *afterp=str;
-    bzero(bidp, sizeof *bidp);
-    *offsetp=0;
-  }
+  uint8_t token[MAX_TOKEN_LEN];
+  size_t token_len = base64url_decode(token, sizeof token, str, 0, afterp, 0, NULL);
+  if (token_len < 3)
+    goto blank;
+
+  size_t ofs=0;
+  pos->which_ply = token[ofs++];
+  int unpacked;
+  if ((unpacked = unpack_uint(token + ofs, token_len - ofs, &pos->offset))==-1)
+    goto blank;
+
+  ofs += unpacked;
+  if ((unpacked = unpack_uint(token + ofs, token_len - ofs, &pos->their_ack))==-1)
+    goto blank;
+
+  (*afterp)++;
+  return 1;
+
+blank:
+  // don't skip the token
+  *afterp=str;
+  pos->which_ply = MY_PLY;
+  pos->offset = 0;
+  pos->their_ack = 0;
   return 1;
 }
 
@@ -159,7 +174,7 @@ static int restful_meshms_(httpd_request *r, const char *remainder)
 	remainder = "";
       }
       else if (   str_startswith(remainder, "/newsince/", &end)
-	       && strn_to_meshms_token(end, &r->bid, &r->ui64, &end)
+	       && strn_to_meshms_token(end, &r->u.msglist.token, &end)
 	       && strcmp(end, "messagelist.json") == 0
       ) {
 	handler = restful_meshms_newsince_messagelist_json;
@@ -215,7 +230,7 @@ static int restful_meshms_conversationlist_json(httpd_request *r, const char *re
   r->u.mclist.rowcount = 0;
   r->u.mclist.conv = NULL;
   enum meshms_status status;
-  if (meshms_failed(status = meshms_conversations_list(NULL, &r->sid1, NULL, &r->u.mclist.conv)))
+  if (meshms_failed(status = meshms_conversations_list(NULL, &r->sid1, &r->u.mclist.conv)))
     return http_request_meshms_response(r, 0, NULL, status);
   if (r->u.mclist.conv != NULL)
     meshms_conversation_iterator_start(&r->u.mclist.iter, r->u.mclist.conv);
@@ -275,11 +290,11 @@ static int restful_meshms_conversationlist_json_content_chunk(struct http_reques
 	strbuf_putc(b, ',');
 	strbuf_json_hex(b, r->u.mclist.iter.current->them.binary, sizeof r->u.mclist.iter.current->them.binary);
 	strbuf_putc(b, ',');
-	strbuf_json_boolean(b, r->u.mclist.iter.current->read_offset >= r->u.mclist.iter.current->their_last_message);
+	strbuf_json_boolean(b, r->u.mclist.iter.current->metadata.read_offset >= r->u.mclist.iter.current->metadata.their_last_message);
 	strbuf_putc(b, ',');
-	strbuf_sprintf(b, "%"PRIu64, r->u.mclist.iter.current->their_last_message);
+	strbuf_sprintf(b, "%"PRIu64, r->u.mclist.iter.current->metadata.their_last_message);
 	strbuf_putc(b, ',');
-	strbuf_sprintf(b, "%"PRIu64, r->u.mclist.iter.current->read_offset);
+	strbuf_sprintf(b, "%"PRIu64, r->u.mclist.iter.current->metadata.read_offset);
 	strbuf_puts(b, "]");
 	if (!strbuf_overrun(b)) {
 	  meshms_conversation_iterator_advance(&r->u.mclist.iter);
@@ -307,8 +322,6 @@ static enum meshms_status reopen_meshms_message_iterator(httpd_request *r)
   if (r->u.msglist.dirty) {
     meshms_message_iterator_close(&r->u.msglist.iter);
     r->u.msglist.dirty = 0;
-  }
-  if (!meshms_message_iterator_is_open(&r->u.msglist.iter)) {
     enum meshms_status status;
     if (   meshms_failed(status = meshms_message_iterator_open(&r->u.msglist.iter, &r->sid1, &r->sid2))
 	|| meshms_failed(status = meshms_message_iterator_prev(&r->u.msglist.iter))
@@ -318,6 +331,7 @@ static enum meshms_status reopen_meshms_message_iterator(httpd_request *r)
     if (!r->u.msglist.finished) {
       r->u.msglist.latest.which_ply = r->u.msglist.iter.which_ply;
       r->u.msglist.latest.offset = r->u.msglist.iter.offset;
+      r->u.msglist.current.their_ack = r->u.msglist.latest.their_ack = r->u.msglist.iter.metadata.their_last_ack;
     }
   }
   return MESHMS_STATUS_OK;
@@ -334,6 +348,7 @@ static int restful_meshms_messagelist_json(httpd_request *r, const char *remaind
   r->u.msglist.token.which_ply = NEITHER_PLY;
   r->u.msglist.token.offset = 0;
   r->u.msglist.end_time = 0;
+  r->u.msglist.dirty = 1;
   enum meshms_status status;
   if (meshms_failed(status = reopen_meshms_message_iterator(r)))
     return http_request_meshms_response(r, 0, NULL, status);
@@ -354,17 +369,7 @@ static int restful_meshms_newsince_messagelist_json(httpd_request *r, const char
   enum meshms_status status;
   if (meshms_failed(status = reopen_meshms_message_iterator(r)))
     return http_request_meshms_response(r, 0, NULL, status);
-  if (rhizome_bid_t_is_zero(r->bid) || cmp_rhizome_bid_t(&r->bid, r->u.msglist.iter.my_ply_bid) == 0)
-    r->u.msglist.token.which_ply = MY_PLY;
-  else if (cmp_rhizome_bid_t(&r->bid, r->u.msglist.iter.their_ply_bid) == 0)
-    r->u.msglist.token.which_ply = THEIR_PLY;
-  else {
-    http_request_simple_response(&r->http, 404, "Unmatched token");
-    return 404;
-  }
-  r->u.msglist.token.offset = r->ui64;
   r->u.msglist.end_time = gettime_ms() + config.api.restful.newsince_timeout * 1000;
-  r->u.msglist.current = r->u.msglist.token;
   http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_meshms_messagelist_json_content);
   return 1;
 }
@@ -391,7 +396,7 @@ static int restful_meshms_messagelist_json_content(struct http_request *hr, unsi
   return generate_http_content_from_strbuf_chunks(hr, (char *)buf, bufsz, result, restful_meshms_messagelist_json_content_chunk);
 }
 
-static int _messagelist_json_ack(struct httpd_request *r, strbuf b, struct newsince_position pos);
+static void _messagelist_json_ack(struct httpd_request *r, strbuf b);
 
 static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr, strbuf b)
 {
@@ -415,8 +420,8 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
       strbuf_puts(b, "{\n");
       if (!r->u.msglist.end_time) {
 	strbuf_sprintf(b, "\"read_offset\":%"PRIu64",\n\"latest_ack_offset\":%"PRIu64",\n",
-	    r->u.msglist.iter.read_offset,
-	    r->u.msglist.iter.latest_ack_my_offset
+	    r->u.msglist.iter.metadata.read_offset,
+	    r->u.msglist.iter.metadata.their_last_ack
 	  );
       }
       strbuf_puts(b, "\"header\":[");
@@ -433,39 +438,57 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
     case LIST_FIRST:
     case LIST_ROWS:
       {
+	r->u.msglist.current.which_ply = r->u.msglist.iter.which_ply;
+	r->u.msglist.current.offset = r->u.msglist.iter.offset;
 	if (   r->u.msglist.finished
 	    || (r->u.msglist.token.which_ply == r->u.msglist.iter.which_ply && r->u.msglist.iter.offset <= r->u.msglist.token.offset)
 	) {
 	  time_ms_t now;
 	  if (r->u.msglist.end_time && (now = gettime_ms()) < r->u.msglist.end_time) {
-	    int appended_row = _messagelist_json_ack(r, b, r->u.msglist.current);
-	    if (strbuf_overrun(b))
-	      return 1;
-	    if (appended_row)
+	    // If messages before the requested token have now been acked, add an extra ack record to the end
+	    if (r->u.msglist.token.their_ack != r->u.msglist.latest.their_ack){
+		r->u.msglist.current.their_ack = r->u.msglist.latest.their_ack;
+	      _messagelist_json_ack(r, b);
+	      if (strbuf_overrun(b))
+		return 1;
 	      ++r->u.msglist.rowcount;
+	    }
 	    r->u.msglist.token = r->u.msglist.latest;
 	    meshms_message_iterator_close(&r->u.msglist.iter);
+	    r->u.msglist.dirty = 1;
 	    http_request_pause_response(&r->http, r->u.msglist.end_time);
 	    return 0;
 	  }
 	  r->u.msglist.phase = LIST_END;
 	} else {
-	  r->u.msglist.current.which_ply = r->u.msglist.iter.which_ply;
-	  r->u.msglist.current.offset = r->u.msglist.iter.offset;
+	  int rows=0;
+
 	  switch (r->u.msglist.iter.type) {
 	    case MESSAGE_SENT:
+	      // if you haven't seen the current ack && this is the message that was acked.
+	      // output the ack now
+	      if (r->u.msglist.token.their_ack != r->u.msglist.latest.their_ack &&
+		r->u.msglist.iter.offset <= r->u.msglist.latest.their_ack){
+		_messagelist_json_ack(r, b);
+		if (!strbuf_overrun(b)){
+		  ++r->u.msglist.rowcount;
+		  r->u.msglist.token.their_ack = r->u.msglist.latest.their_ack;
+		  r->u.msglist.current.their_ack = 0;
+		}
+		return 1;
+	      }
 	      if (r->u.msglist.rowcount != 0)
 		strbuf_putc(b, ',');
 	      strbuf_puts(b, "\n[");
 	      strbuf_json_string(b, ">");
 	      strbuf_putc(b, ',');
-	      strbuf_json_hex(b, r->u.msglist.iter.my_sid->binary, sizeof r->u.msglist.iter.my_sid->binary);
+	      strbuf_json_hex(b, r->u.msglist.iter.my_sid.binary, sizeof r->u.msglist.iter.my_sid.binary);
 	      strbuf_putc(b, ',');
-	      strbuf_json_hex(b, r->u.msglist.iter.their_sid->binary, sizeof r->u.msglist.iter.their_sid->binary);
+	      strbuf_json_hex(b, r->u.msglist.iter.their_sid.binary, sizeof r->u.msglist.iter.their_sid.binary);
 	      strbuf_putc(b, ',');
 	      strbuf_sprintf(b, "%"PRIu64, r->u.msglist.iter.offset);
 	      strbuf_putc(b, ',');
-	      strbuf_json_string(b, alloca_meshms_token(&r->u.msglist.iter._conv->my_ply.bundle_id, r->u.msglist.iter.offset));
+	      strbuf_json_string(b, alloca_meshms_token(&r->u.msglist.current));
 	      strbuf_putc(b, ',');
 	      strbuf_json_string(b, r->u.msglist.iter.text);
 	      strbuf_putc(b, ',');
@@ -477,6 +500,7 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
 	      strbuf_putc(b, ',');
 	      strbuf_json_null(b);
 	      strbuf_puts(b, "]");
+	      rows++;
 	      break;
 	    case MESSAGE_RECEIVED:
 	      if (r->u.msglist.rowcount != 0)
@@ -484,13 +508,13 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
 	      strbuf_puts(b, "\n[");
 	      strbuf_json_string(b, "<");
 	      strbuf_putc(b, ',');
-	      strbuf_json_hex(b, r->u.msglist.iter.my_sid->binary, sizeof r->u.msglist.iter.my_sid->binary);
+	      strbuf_json_hex(b, r->u.msglist.iter.my_sid.binary, sizeof r->u.msglist.iter.my_sid.binary);
 	      strbuf_putc(b, ',');
-	      strbuf_json_hex(b, r->u.msglist.iter.their_sid->binary, sizeof r->u.msglist.iter.their_sid->binary);
+	      strbuf_json_hex(b, r->u.msglist.iter.their_sid.binary, sizeof r->u.msglist.iter.their_sid.binary);
 	      strbuf_putc(b, ',');
 	      strbuf_sprintf(b, "%"PRIu64, r->u.msglist.iter.offset);
 	      strbuf_putc(b, ',');
-	      strbuf_json_string(b, alloca_meshms_token(&r->u.msglist.iter._conv->their_ply.bundle_id, r->u.msglist.iter.offset));
+	      strbuf_json_string(b, alloca_meshms_token(&r->u.msglist.current));
 	      strbuf_putc(b, ',');
 	      strbuf_json_string(b, r->u.msglist.iter.text);
 	      strbuf_putc(b, ',');
@@ -502,13 +526,13 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
 	      strbuf_putc(b, ',');
 	      strbuf_json_null(b);
 	      strbuf_puts(b, "]");
+	      rows++;
 	      break;
 	    case ACK_RECEIVED:
-	      _messagelist_json_ack(r, b, r->u.msglist.current);
 	      break;
 	  }
 	  if (!strbuf_overrun(b)) {
-	    ++r->u.msglist.rowcount;
+	    r->u.msglist.rowcount+=rows;
 	    enum meshms_status status;
 	    if (meshms_failed(status = meshms_message_iterator_prev(&r->u.msglist.iter)))
 	      return http_request_meshms_response(r, 0, NULL, status);
@@ -531,26 +555,20 @@ static int restful_meshms_messagelist_json_content_chunk(struct http_request *hr
   return 0;
 }
 
-static int _messagelist_json_ack(struct httpd_request *r, strbuf b, struct newsince_position pos)
+static void _messagelist_json_ack(struct httpd_request *r, strbuf b)
 {
-  // Don't send old (irrelevant) ACKs.
-  if (r->u.msglist.iter.latest_ack_my_offset <= r->u.msglist.highest_ack_offset)
-    return 0;
   if (r->u.msglist.rowcount != 0)
     strbuf_putc(b, ',');
   strbuf_puts(b, "\n[");
   strbuf_json_string(b, "ACK");
   strbuf_putc(b, ',');
-  strbuf_json_hex(b, r->u.msglist.iter.my_sid->binary, sizeof r->u.msglist.iter.my_sid->binary);
+  strbuf_json_hex(b, r->u.msglist.iter.my_sid.binary, sizeof r->u.msglist.iter.my_sid.binary);
   strbuf_putc(b, ',');
-  strbuf_json_hex(b, r->u.msglist.iter.their_sid->binary, sizeof r->u.msglist.iter.their_sid->binary);
+  strbuf_json_hex(b, r->u.msglist.iter.their_sid.binary, sizeof r->u.msglist.iter.their_sid.binary);
   strbuf_putc(b, ',');
-  strbuf_sprintf(b, "%"PRIu64, r->u.msglist.iter.latest_ack_offset);
+  strbuf_sprintf(b, "%"PRIu64, r->u.msglist.iter.metadata.their_last_ack_offset);
   strbuf_putc(b, ',');
-  // Same token as the message row just sent.
-  strbuf_json_string(b, alloca_meshms_token(
-	pos.which_ply == MY_PLY ? r->u.msglist.iter.my_ply_bid : r->u.msglist.iter.their_ply_bid,
-	pos.offset));
+  strbuf_json_string(b, alloca_meshms_token(&r->u.msglist.current));
   strbuf_putc(b, ',');
   strbuf_json_null(b);
   strbuf_putc(b, ',');
@@ -560,10 +578,8 @@ static int _messagelist_json_ack(struct httpd_request *r, strbuf b, struct newsi
   strbuf_putc(b, ',');
   strbuf_json_null(b); // no timestamp on ACKs
   strbuf_putc(b, ',');
-  strbuf_sprintf(b, "%"PRIu64, r->u.msglist.iter.latest_ack_my_offset);
+  strbuf_sprintf(b, "%"PRIu64, r->u.msglist.iter.metadata.their_last_ack);
   strbuf_puts(b, "]");
-  r->u.msglist.highest_ack_offset = r->u.msglist.iter.latest_ack_my_offset;
-  return 1;
 }
 
 static HTTP_REQUEST_PARSER restful_meshms_sendmessage_end;

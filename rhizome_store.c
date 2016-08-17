@@ -1263,6 +1263,8 @@ void rhizome_read_close(struct rhizome_read *read)
       END);
   }
   read->length = 0;
+  read->offset = 0;
+  read->tail = 0;
 }
 
 struct cache_entry{
@@ -1476,6 +1478,8 @@ static enum rhizome_payload_status read_derive_key(rhizome_manifest *m, struct r
 
 enum rhizome_payload_status rhizome_open_decrypt_read(rhizome_manifest *m, struct rhizome_read *read_state)
 {
+  if (m->filesize == 0 && !m->has_filehash)
+    return RHIZOME_PAYLOAD_STATUS_EMPTY;
   enum rhizome_payload_status status = rhizome_open_read(read_state, &m->filehash);
   if (status == RHIZOME_PAYLOAD_STATUS_STORED)
     status = read_derive_key(m, read_state);

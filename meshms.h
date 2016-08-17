@@ -48,6 +48,24 @@ __MESHMS_INLINE int meshms_failed(enum meshms_status status) {
 
 const char *meshms_status_message(enum meshms_status);
 
+struct meshms_metadata{
+  // what is the offset of their last message
+  uint64_t their_last_message;
+  // what is the offset of their last ack
+  uint64_t their_last_ack_offset;
+  // where in our ply, does their ack point
+  uint64_t their_last_ack;
+  // what is the last message we marked as read
+  uint64_t read_offset;
+  // our cached value for the last known size of their ply
+  uint64_t their_size;
+
+  // where in their ply, does our last ack point
+  uint64_t my_last_ack;
+  // our cached value for the last known size of our ply
+  uint64_t my_size;
+};
+
 struct meshms_conversations {
   struct meshms_conversations *_next;
   
@@ -56,19 +74,14 @@ struct meshms_conversations {
   
   struct message_ply my_ply;
   struct message_ply their_ply;
-  
-  // what is the offset of their last message
-  uint64_t their_last_message;
-  // what is the last message we marked as read
-  uint64_t read_offset;
-  // our cached value for the last known size of their ply
-  uint64_t their_size;
+
+  struct meshms_metadata metadata;
 };
 
 /* Fetch the list of all MeshMS conversations into a binary tree whose nodes
  * are all allocated by malloc(3).
  */
-enum meshms_status meshms_conversations_list(const struct keyring_identity *id, const sid_t *my_sid, const sid_t *their_sid, struct meshms_conversations **conv);
+enum meshms_status meshms_conversations_list(const struct keyring_identity *id, const sid_t *my_sid, struct meshms_conversations **conv);
 void meshms_free_conversations(struct meshms_conversations *conv);
 
 /* For iterating over a binary tree of all MeshMS conversations, as created by
@@ -108,13 +121,14 @@ void meshms_conversation_iterator_advance(struct meshms_conversation_iterator *)
 struct meshms_message_iterator {
   // Public fields that remain fixed for the life of the iterator:
   struct keyring_identity *identity;
-  const sid_t *my_sid;
-  const sid_t *their_sid;
-  const rhizome_bid_t *my_ply_bid;
-  const rhizome_bid_t *their_ply_bid;
-  uint64_t latest_ack_offset; // offset in remote (their) ply of most recent ACK
-  uint64_t latest_ack_my_offset; // offset in my ply of most recent message ACKed by them
-  uint64_t read_offset; // offset in remote (their) ply of most recent message read by me
+  sid_t my_sid;
+  sid_t their_sid;
+
+  struct message_ply my_ply;
+  struct message_ply their_ply;
+
+  struct meshms_metadata metadata;
+
   // The following public fields change per message:
   enum meshms_which_ply { NEITHER_PLY, MY_PLY, THEIR_PLY } which_ply;
   enum { MESSAGE_SENT, MESSAGE_RECEIVED, ACK_RECEIVED } type;
@@ -131,15 +145,12 @@ struct meshms_message_iterator {
     uint64_t ack_offset; // for ACK_RECEIVED
   };
   // Private implementation -- could change, so don't use them.
-  sid_t _my_sid;
-  struct meshms_conversations *_conv;
   struct message_ply_read _my_reader;
   struct message_ply_read _their_reader;
   uint64_t _end_range;
-  bool_t _in_ack;
+  uint8_t _in_ack:1;
 };
 enum meshms_status meshms_message_iterator_open(struct meshms_message_iterator *, const sid_t *me, const sid_t *them);
-int meshms_message_iterator_is_open(const struct meshms_message_iterator *);
 void meshms_message_iterator_close(struct meshms_message_iterator *);
 enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *);
 
@@ -149,6 +160,7 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
  * MESHMS_STATUS_UPDATED on success, any other value indicates a failure or
  * error (which is already logged).
  */
+
 enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipient, const char *message, size_t message_len);
 
 /* Update the read offset for one or more conversations.  Returns

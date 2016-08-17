@@ -22,7 +22,7 @@ source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 source "${0%/*}/../testdefs_rhizome.sh"
 
-rexp_age="[0-9]\+"
+rexp_age="[-0-9]\+"
 
 teardown() {
    stop_all_servald_servers
@@ -34,66 +34,60 @@ teardown() {
 setup_logging() {
    executeOk_servald config \
       set debug.meshms on \
-      set debug.rhizome on \
-      set debug.rhizome_manifest on \
-      set debug.rhizome_store on \
       set log.console.level debug \
       set log.console.show_time on
 }
 
-doc_MessageDelivery="Send messages, ack and read them in a 2 party conversation"
-setup_MessageDelivery() {
+setup_common() {
    setup_servald
    set_instance +A
-   create_identities 2
+   create_identities $1
    setup_logging
 }
-test_MessageDelivery() {
-   # 1. empty list
+
+doc_InitiallyEmpty="Return an empty list before sending anything"
+setup_InitiallyEmpty() {
+   setup_common 2
+}
+test_InitiallyEmpty() {
    executeOk_servald meshms list messages $SIDA1 $SIDA2
+   tfw_cat --stdout
    assertStdoutIs --stdout --line=1 -e '5\n'
    assertStdoutIs --stdout --line=2 -e '_id:offset:age:type:message\n'
    assertStdoutLineCount '==' 2
-   # 2. create a manifest with a single message and list it back
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "Hi"
+}
+
+doc_SendAndList="Send outgoing messages and list them"
+setup_SendAndList() {
+   setup_common 3
+}
+test_SendAndList() {
+   # create a single message and list it back
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message 1"
+   tfw_cat --stderr
+   executeOk_servald meshms send message $SIDA1 $SIDA3 "Message 1"
+   tfw_cat --stderr
    executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutGrep --stdout --matches=1 ":>:Hi\$"
-   assertStdoutLineCount '==' 3
-   # 3. append a second message and list them both
-   executeOk_servald meshms send message $SIDA1 $SIDA2 "How are you"
+   tfw_cat --stderr
+   assertStdoutGrep --stdout --matches=1 "^0:12:$rexp_age:>:Message 1\$"
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message 2"
+   tfw_cat --stderr
    executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutGrep --stdout --matches=1 ":>:How are you\$"
-   assertStdoutGrep --stdout --matches=1 ":>:Hi\$"
-   assertStdoutLineCount '==' 4
-   # 4. list the messages from the receivers point of view (which ACKs them)
-   executeOk_servald meshms list messages $SIDA2 $SIDA1
-   assertStdoutGrep --stdout --matches=1 "^0:25:$rexp_age:<:How are you\$"
-   assertStdoutGrep --stdout --matches=1 "^1:5:$rexp_age:<:Hi\$"
-   assertStdoutLineCount '==' 4
-   CONV_BID=$(replayStderr | sed -n -e '/MESHMS CONVERSATION BUNDLE/s/.*bid=\([0-9A-F]*\).*/\1/p')
-   CONV_SECRET=$(replayStderr | sed -n -e '/MESHMS CONVERSATION BUNDLE/s/.*secret=\([0-9A-F]*\).*/\1/p')
-   tfw_log "CONV_BID=$CONV_BID CONV_SECRET=$CONV_SECRET"
-   # 5. mark the first message as read
-   executeOk_servald meshms read messages $SIDA2 $SIDA1 5
-   check_meshms_bundles
-   executeOk_servald meshms list messages $SIDA2 $SIDA1
-   assertStdoutGrep --stdout --matches=1 "^0:25:$rexp_age:<:How are you\$"
-   assertStdoutGrep --stdout --matches=1 "^1:5:$rexp_age:MARK:read\$"
-   assertStdoutGrep --stdout --matches=1 "^2:5:$rexp_age:<:Hi\$"
+   tfw_cat --stderr
+   assertStdoutGrep --stdout --matches=1 "^0:30:$rexp_age:>:Message 2\$"
+   assertStdoutGrep --stdout --matches=1 "^1:12:$rexp_age:>:Message 1\$"
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Message 3"
+   executeOk_servald meshms list messages $SIDA1 $SIDA2
+   tfw_cat --stdout
+   assertStdoutGrep --stdout --matches=1 "^0:48:$rexp_age:>:Message 3\$"
+   assertStdoutGrep --stdout --matches=1 "^1:30:$rexp_age:>:Message 2\$"
+   assertStdoutGrep --stdout --matches=1 "^2:12:$rexp_age:>:Message 1\$"
    assertStdoutLineCount '==' 5
-   # 6. mark all messages as read
-   executeOk_servald meshms read messages $SIDA2
-   check_meshms_bundles
    executeOk_servald meshms list messages $SIDA2 $SIDA1
-   assertStdoutGrep --stdout --matches=1 "^0:25:$rexp_age:MARK:read\$"
-   assertStdoutGrep --stdout --matches=1 "^1:25:$rexp_age:<:How are you\$"
-   assertStdoutGrep --stdout --matches=1 "^2:5:$rexp_age:<:Hi\$"
-   assertStdoutLineCount '==' 5
-   # 7. list messages from the senders point of view after they have been delivered
-   executeOk_servald meshms list messages $SIDA1 $SIDA2
-   assertStdoutGrep --stdout --matches=1 "^0:3:$rexp_age:ACK:delivered\$"
-   assertStdoutGrep --stdout --matches=1 "^1:25:$rexp_age:>:How are you\$"
-   assertStdoutGrep --stdout --matches=1 "^2:5:$rexp_age:>:Hi\$"
+   tfw_cat --stdout
+   assertStdoutGrep --stdout --matches=1 "^0:48:$rexp_age:<:Message 3\$"
+   assertStdoutGrep --stdout --matches=1 "^1:30:$rexp_age:<:Message 2\$"
+   assertStdoutGrep --stdout --matches=1 "^2:12:$rexp_age:<:Message 1\$"
    assertStdoutLineCount '==' 5
 }
 
@@ -171,6 +165,10 @@ setup_reorderList() {
    set_instance +A
    create_identities 5
    setup_logging
+   # ensure conversations are known
+   executeOk_servald meshms send message $SIDA1 $SIDA2 "Start"
+   executeOk_servald meshms send message $SIDA1 $SIDA3 "Start"
+   executeOk_servald meshms send message $SIDA1 $SIDA4 "Start"
 }
 test_reorderList() {
    # new incoming messages should bump to the top
@@ -212,21 +210,20 @@ test_listConversations() {
    assertStdoutIs --stderr --line=2 -e '_id:recipient:read:last_message:read_offset:message\n'
    assertStdoutGrep --stderr --matches=1 ":$SIDA2::0:0:\$"
    assertStdoutGrep --stderr --matches=1 ":$SIDA3:unread:11:0:Message2\$"
-   assertStdoutGrep --stderr --matches=1 ":$SIDA4:unread:20:0:Message4\$"
+   assertStdoutGrep --stderr --matches=1 ":$SIDA4:unread:14:0:Message4\$"
    assertStdoutLineCount '==' 5
    executeOk_servald meshms list conversations $SIDA1 1
-   tfw_cat --stderr
    assertStdoutLineCount '==' 4
    executeOk_servald meshms list conversations $SIDA1 1 1
-   tfw_cat --stderr
    assertStdoutLineCount '==' 3
    # mark all incoming messages as read
    executeOk_servald meshms read messages $SIDA1
-   tfw_cat --stderr
+   # explicitly mark sida3 as known
+   executeOk_servald meshms read messages $SIDA1 $SIDA3
    executeOk_servald meshms list conversations $SIDA1
    assertStdoutGrep --stderr --matches=1 ":$SIDA2::0:0\$"
    assertStdoutGrep --stderr --matches=1 ":$SIDA3::11:11\$"
-   assertStdoutGrep --stderr --matches=1 ":$SIDA4::20:20\$"
+   assertStdoutGrep --stderr --matches=1 ":$SIDA4::14:14\$"
    assertStdoutLineCount '==' 5
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    executeOk_servald meshms list messages $SIDA1 $SIDA4

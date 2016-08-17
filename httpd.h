@@ -179,12 +179,12 @@ typedef struct httpd_request
       struct newsince_position {
         enum meshms_which_ply which_ply;
         uint64_t offset;
+	uint64_t their_ack;
       }
         token,
         current,
         latest;
       time_ms_t end_time;
-      uint64_t highest_ack_offset;
       enum list_phase phase;
       size_t rowcount;
       struct meshms_message_iterator iter;

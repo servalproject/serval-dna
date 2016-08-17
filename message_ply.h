@@ -28,15 +28,17 @@ struct message_ply_read {
   uint64_t record_end_offset;
   uint16_t record_length;
   size_t record_size;
-  char type;
+  uint8_t type;
   // raw record data
-  unsigned char *record;
+  uint8_t *record;
 };
 
 int message_ply_read_open(struct message_ply_read *ply, const rhizome_bid_t *bid);
 void message_ply_read_close(struct message_ply_read *ply);
 int message_ply_read_prev(struct message_ply_read *ply);
 int message_ply_find_prev(struct message_ply_read *ply, char type);
+int message_ply_is_open(struct message_ply_read *ply);
+void message_ply_read_rewind(struct message_ply_read *ply);
 
 void message_ply_append_ack(struct overlay_buffer *b, uint64_t message_offset, uint64_t previous_ack_offset);
 void message_ply_append_timestamp(struct overlay_buffer *b);

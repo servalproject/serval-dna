@@ -39,7 +39,7 @@ static int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_
   if (rhizome_opendb() == -1)
     goto end;
 
-  if (meshms_failed(status = meshms_conversations_list(NULL, &sid, NULL, &conv)))
+  if (meshms_failed(status = meshms_conversations_list(NULL, &sid, &conv)))
     goto end;
 
   const char *names[]={
@@ -57,16 +57,16 @@ static int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_
       if (rows >= offset) {
 	cli_put_long(context, rows, ":");
 	cli_put_hexvalue(context, it.current->them.binary, sizeof(it.current->them), ":");
-	cli_put_string(context, it.current->read_offset < it.current->their_last_message ? "unread":"", ":");
-	cli_put_long(context, it.current->their_last_message, ":");
-	cli_put_long(context, it.current->read_offset, include_message?":":"\n");
+	cli_put_string(context, it.current->metadata.read_offset < it.current->metadata.their_last_message ? "unread":"", ":");
+	cli_put_long(context, it.current->metadata.their_last_message, ":");
+	cli_put_long(context, it.current->metadata.read_offset, include_message?":":"\n");
 	if (include_message){
 	  int output = 0;
-	  if (it.current->their_last_message && it.current->their_ply.found){
+	  if (it.current->metadata.their_last_message && it.current->their_ply.found){
 	    struct message_ply_read reader;
 	    bzero(&reader, sizeof reader);
 	    if (message_ply_read_open(&reader, &it.current->their_ply.bundle_id) == 0){
-	      reader.read.offset = it.current->their_last_message;
+	      reader.read.offset = it.current->metadata.their_last_message;
 	      if (message_ply_read_prev(&reader)==0){
 		cli_put_string(context, (const char *)reader.record, "\n");
 		output = 1;
@@ -175,7 +175,7 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
       case MESSAGE_SENT:
 	if (iter.delivered && !marked_delivered){
 	  cli_put_long(context, id++, ":");
-	  cli_put_long(context, iter.latest_ack_offset, ":");
+	  cli_put_long(context, iter.metadata.their_last_ack_offset, ":");
 	  cli_put_long(context, iter.timestamp ? (now - iter.timestamp):(long)-1, ":");
 	  cli_put_string(context, "ACK", ":");
 	  cli_put_string(context, "delivered", "\n");
@@ -193,7 +193,7 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
       case MESSAGE_RECEIVED:
 	if (iter.read && !marked_read) {
 	  cli_put_long(context, id++, ":");
-	  cli_put_long(context, iter.read_offset, ":");
+	  cli_put_long(context, iter.metadata.read_offset, ":");
 	  cli_put_long(context, iter.timestamp ? (now - iter.timestamp):(long)-1, ":");
 	  cli_put_string(context, "MARK", ":");
 	  cli_put_string(context, "read", "\n");

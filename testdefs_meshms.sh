@@ -97,12 +97,14 @@ meshms_add_messages() {
          MESSAGE[$n]="<"
          meshms_send_message $sid2 $sid1 "${TEXT[$n]}"
          let ++NRECV
+         let sent_since_ack=0
          ;;
       'A')
          MESSAGE[$n]=ACK
          [ $i -ne 0 -a $sent_since_ack -eq 0 ] && error "two ACKs in a row (at position $i)"
-         meshms_send_messages $sid2 $sid1
+         meshms_list_messages $sid2 $sid1
          let ++NACK
+         let sent_since_ack=0
          ;;
       *)
          error "invalid message symbol '$sym' (at position $i)"

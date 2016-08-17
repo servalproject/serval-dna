@@ -69,9 +69,6 @@ set_meshms_config() {
    executeOk_servald config \
       set debug.http_server on \
       set debug.httpd on \
-      set debug.rhizome_manifest on \
-      set debug.rhizome_store on \
-      set debug.rhizome on \
       set debug.meshms on \
       set debug.verbose on \
       set log.console.level debug
@@ -164,12 +161,13 @@ test_MeshmsListConversations() {
                {  my_sid: \"$SIDA1\",
                   their_sid: \"$SIDA4\",
                   read: false,
-                  last_message: 20,
+                  last_message: 14,
                   read_offset: 0
                }
             ])"
    # mark all incoming messages as read
    executeOk_servald meshms read messages $SIDA1
+   executeOk_servald meshms read messages $SIDA1 $SIDA3
    tfw_cat --stderr
    executeOk curl \
          --silent --fail --show-error \
@@ -205,8 +203,8 @@ test_MeshmsListConversations() {
                {  my_sid: \"$SIDA1\",
                   their_sid: \"$SIDA4\",
                   read: true,
-                  last_message: 20,
-                  read_offset: 20
+                  last_message: 14,
+                  read_offset: 14
                }
             ])"
 }
@@ -215,7 +213,7 @@ doc_MeshmsListMessages="HTTP RESTful list MeshMS messages in one conversation as
 setup_MeshmsListMessages() {
    IDENTITY_COUNT=2
    setup
-   meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<A<>><>>A<<>'
+   meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<<>><>>A<<>'
    let NROWS=NSENT+NRECV+(NACK?1:0)
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    delivered_offset=$(sed -n -e '/^[0-9]\+:[0-9]\+:[0-9]\+:ACK:delivered$/{n;s/^[0-9]\+:\([0-9]\+\):[0-9]\+:>:.*/\1/p;q}' "$TFWSTDOUT")
@@ -297,7 +295,7 @@ setup_MeshmsListMessagesNewSince() {
       executeOk_servald config set api.restful.newsince_timeout 1s
    }
    setup
-   meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<A<>><>>A<<>'
+   meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<<>><>>A<<>'
    let NROWS=NSENT+NRECV+(NACK?1:0)
    executeOk curl \
          --silent --fail --show-error \
@@ -327,11 +325,10 @@ test_MeshmsListMessagesNewSince() {
    for ((i = 0; i < NROWS; i += 3)); do
       transform_list_json messagelist$i.json messages$i.json
       tfw_preserve messages$i.json
-      { echo '{"a":'; jq '.[:'$i']' messages.json; echo ',"b":'; cat messages$i.json; echo '}'; } >tmp.json
-      # If an ACK is new since the token, then it will be in its correct place
-      # in messages$i.json, otherwise the ACK will appear in messages$i.json
-      # anyway.
-      assertJq tmp.json '.a == (if .a | contains([{type:"ACK"}]) then .b else .b | map(select(.type != "ACK")) end)'
+      jq '.[:'$i']' messages.json > messages_expected$i.json
+      tfw_preserve messages_expected$i.json
+      { echo '{"a":'; cat messages_expected$i.json; echo ',"b":'; cat messages$i.json; echo '}'; } >tmp.json
+      assertJq tmp.json '.a == .b'
    done
 }
 
@@ -385,7 +382,7 @@ test_MeshmsListMessagesNewSinceArrival() {
       'A') waitfor="ACK";;
       *) error "message=${message}";;
       esac
-      wait_until --timeout=120 grepall "$waitfor" newsince{1,2,3}.json
+      wait_until --timeout=10 grepall "$waitfor" newsince{1,2,3}.json
    done
    fork_terminate_all
    fork_wait_all
@@ -596,7 +593,7 @@ setup_MeshmsReadAllConversations() {
    executeOk_servald meshms list conversations $SIDA1
    assertStdoutGrep --stderr --matches=1 ":$SIDA2::0:0\$"
    assertStdoutGrep --stderr --matches=1 ":$SIDA3:unread:11:0\$"
-   assertStdoutGrep --stderr --matches=1 ":$SIDA4:unread:20:0\$"
+   assertStdoutGrep --stderr --matches=1 ":$SIDA4:unread:14:0\$"
 }
 test_MeshmsReadAllConversations() {
    executeOk curl \
@@ -612,7 +609,7 @@ test_MeshmsReadAllConversations() {
    executeOk_servald meshms list conversations $SIDA1
    assertStdoutGrep --stderr --matches=1 ":$SIDA2::0:0\$"
    assertStdoutGrep --stderr --matches=1 ":$SIDA3::11:11\$"
-   assertStdoutGrep --stderr --matches=1 ":$SIDA4::20:20\$"
+   assertStdoutGrep --stderr --matches=1 ":$SIDA4::14:14\$"
 }
 
 doc_MeshmsPostSpuriousContent="HTTP RESTful MeshMS rejects unwanted content in POST request"
@@ -625,7 +622,7 @@ setup_MeshmsPostSpuriousContent() {
    executeOk_servald meshms send message $SIDA1 $SIDA2 "Message3"
    executeOk_servald meshms send message $SIDA2 $SIDA1 "Message4"
    executeOk_servald meshms list conversations $SIDA1
-   assertStdoutGrep --stderr --matches=1 ":$SIDA2:unread:47:0\$"
+   assertStdoutGrep --stderr --matches=1 ":$SIDA2:unread:35:0\$"
 }
 test_MeshmsPostSpuriousContent() {
    executeOk curl \
@@ -642,7 +639,7 @@ test_MeshmsPostSpuriousContent() {
    assertJq http_body 'contains({"http_status_code": 400})'
    assertJqGrep --ignore-case http_body '.http_status_message' 'content length'
    executeOk_servald meshms list conversations $SIDA1
-   assertStdoutGrep --stderr --matches=1 ":$SIDA2:unread:47:0\$"
+   assertStdoutGrep --stderr --matches=1 ":$SIDA2:unread:35:0\$"
 }
 
 doc_MeshmsReadAllMessages="HTTP RESTful MeshMS mark all conversations read"
@@ -656,6 +653,8 @@ setup_MeshmsReadAllMessages() {
    executeOk_servald meshms send message $SIDA1 $SIDA4 "Message4"
    executeOk_servald meshms send message $SIDA4 $SIDA1 "Message5"
    executeOk_servald meshms send message $SIDA1 $SIDA2 "Message6"
+   executeOk_servald meshms list messages $SIDA2 $SIDA1
+   tfw_cat --stdout
    executeOk_servald meshms list conversations $SIDA2
    assertStdoutGrep --stderr --matches=1 ":$SIDA1:unread:45:0\$"
 }

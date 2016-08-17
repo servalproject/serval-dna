@@ -136,6 +136,16 @@ int message_ply_read_open(struct message_ply_read *ply, const rhizome_bid_t *bid
   return ret;
 }
 
+void message_ply_read_rewind(struct message_ply_read *ply)
+{
+  ply->read.offset = ply->read.length;
+}
+
+int message_ply_is_open(struct message_ply_read *ply)
+{
+  return ply->read.length>0;
+}
+
 void message_ply_read_close(struct message_ply_read *ply)
 {
   if (ply->record){
@@ -152,7 +162,7 @@ void message_ply_read_close(struct message_ply_read *ply)
 int message_ply_read_prev(struct message_ply_read *ply)
 {
   ply->record_end_offset = ply->read.offset;
-  unsigned char footer[2];
+  uint8_t footer[2];
   if (ply->read.offset <= sizeof footer) {
     DEBUG(meshms, "EOF");
     return -1;
@@ -223,6 +233,7 @@ void message_ply_append_ack(struct overlay_buffer *b, uint64_t message_offset, u
 {
   ob_checkpoint(b);
   ob_append_packed_ui64(b, message_offset);
+  // append the number of bytes acked (should be smaller than an absolute offset)
   if (previous_ack_offset)
     ob_append_packed_ui64(b, message_offset - previous_ack_offset);
   append_footer(b, MESSAGE_BLOCK_TYPE_ACK);
@@ -234,3 +245,4 @@ void message_ply_append_message(struct overlay_buffer *b, const char *message, s
   ob_append_strn(b, message, message_len);
   append_footer(b, MESSAGE_BLOCK_TYPE_MESSAGE);
 }
+
