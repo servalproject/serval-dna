@@ -673,7 +673,7 @@ static int restful_meshms_sendmessage_end(struct http_request *hr)
   assert(r->u.sendmsg.message.length > 0);
   assert(r->u.sendmsg.message.length <= MESSAGE_PLY_MAX_LEN);
   enum meshms_status status;
-  if (meshms_failed(status = meshms_send_message(&r->sid1, &r->sid2, r->u.sendmsg.message.buffer, r->u.sendmsg.message.length)))
+  if (meshms_failed(status = meshms_send_message(&r->sid1, &r->sid2, 1, r->u.sendmsg.message.buffer, r->u.sendmsg.message.length)))
     return http_request_meshms_response(r, 0, NULL, status);
   return http_request_meshms_response(r, 201, "Message sent", status);
 }

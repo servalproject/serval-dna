@@ -31,6 +31,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "dataformats.h"
 #include "overlay_buffer.h"
 
+#define FLAG_BLOCKED (1<<0)
+#define FLAG_KNOWN (1<<1)
+
 static unsigned mark_read(struct meshms_conversations *conv, const sid_t *their_sid, const uint64_t offset);
 
 void meshms_free_conversations(struct meshms_conversations *conv)
@@ -310,7 +313,7 @@ static enum meshms_status update_conversation(const keyring_identity *id, struct
   if (meshms_failed(status))
     return status;
 
-  if (conv->metadata.my_last_ack >= conv->metadata.their_last_message)
+  if (conv->metadata.my_last_ack >= conv->metadata.their_last_message || !conv->known)
     return status;
 
   // append an ack for their message
@@ -406,7 +409,7 @@ static enum meshms_status read_known_conversations(rhizome_manifest *m, struct m
 
     int ofs = SID_SIZE;
 
-    uint8_t flags = 0; // TODO flags
+    uint8_t flags = FLAG_KNOWN;
     struct meshms_metadata metadata;
     bzero(&metadata, sizeof metadata);
     int unpacked;
@@ -428,37 +431,39 @@ static enum meshms_status read_known_conversations(rhizome_manifest *m, struct m
 
       flags = buffer[ofs++];
 
-      if ((unpacked = unpack_uint(buffer+ofs, bytes-ofs, &metadata.their_size)) == -1)
-	break;
-      ofs += unpacked;
-      if ((unpacked = unpack_uint(buffer+ofs, bytes-ofs, &metadata.my_size)) == -1)
-	break;
-      ofs += unpacked;
+      if (!(flags & FLAG_BLOCKED)){
+	if ((unpacked = unpack_uint(buffer+ofs, bytes-ofs, &metadata.their_size)) == -1)
+	  break;
+	ofs += unpacked;
+	if ((unpacked = unpack_uint(buffer+ofs, bytes-ofs, &metadata.my_size)) == -1)
+	  break;
+	ofs += unpacked;
 
-      if ((unpacked = unpack_uint(buffer+ofs, bytes-ofs, &delta)) == -1)
-	break;
-      ofs += unpacked;
-      metadata.their_last_message = metadata.their_size - delta;
+	if ((unpacked = unpack_uint(buffer+ofs, bytes-ofs, &delta)) == -1)
+	  break;
+	ofs += unpacked;
+	metadata.their_last_message = metadata.their_size - delta;
 
-      if ((unpacked = unpack_uint(buffer+ofs, bytes-ofs, &delta)) == -1)
-	break;
-      ofs += unpacked;
-      metadata.read_offset = metadata.their_size - delta;
+	if ((unpacked = unpack_uint(buffer+ofs, bytes-ofs, &delta)) == -1)
+	  break;
+	ofs += unpacked;
+	metadata.read_offset = metadata.their_size - delta;
 
-      if ((unpacked = unpack_uint(buffer+ofs, bytes-ofs, &delta)) == -1)
-	break;
-      ofs += unpacked;
-      metadata.their_last_ack_offset = metadata.their_size - delta;
+	if ((unpacked = unpack_uint(buffer+ofs, bytes-ofs, &delta)) == -1)
+	  break;
+	ofs += unpacked;
+	metadata.their_last_ack_offset = metadata.their_size - delta;
 
-      if ((unpacked = unpack_uint(buffer+ofs, bytes-ofs, &delta)) == -1)
-	break;
-      ofs += unpacked;
-      metadata.my_last_ack = metadata.their_size - delta;
+	if ((unpacked = unpack_uint(buffer+ofs, bytes-ofs, &delta)) == -1)
+	  break;
+	ofs += unpacked;
+	metadata.my_last_ack = metadata.their_size - delta;
 
-      if ((unpacked = unpack_uint(buffer+ofs, bytes-ofs, &delta)) == -1)
-	break;
-      ofs += unpacked;
-      metadata.their_last_ack = metadata.my_size - delta;
+	if ((unpacked = unpack_uint(buffer+ofs, bytes-ofs, &delta)) == -1)
+	  break;
+	ofs += unpacked;
+	metadata.their_last_ack = metadata.my_size - delta;
+      }
     }
 
     read.offset += ofs - bytes;
@@ -471,10 +476,13 @@ static enum meshms_status read_known_conversations(rhizome_manifest *m, struct m
     ptr = &n->_next;
     
     n->them = *sid;
+    n->blocked = (flags & FLAG_BLOCKED) ? 1 : 0;
+    n->known = (flags & FLAG_KNOWN) ? 1 : 0;
     n->metadata = metadata;
 
-    DEBUGF(meshms, "Unpacked existing conversation for %s (their_size=%"PRIu64", my_size=%"PRIu64", last_message=%"PRIu64", read_offset=%"PRIu64", my_ack=%"PRIu64", their_ack=%"PRIu64")",
+    DEBUGF(meshms, "Unpacked existing conversation for %s (%stheir_size=%"PRIu64", my_size=%"PRIu64", last_message=%"PRIu64", read_offset=%"PRIu64", my_ack=%"PRIu64", their_ack=%"PRIu64")",
       alloca_tohex_sid_t(*sid),
+      (n->blocked ? "BLOCKED, " : ""),
       metadata.their_size,
       metadata.my_size,
       metadata.their_last_message,
@@ -490,28 +498,36 @@ end:
 
 static ssize_t write_conversation(struct rhizome_write *write, struct meshms_conversations *conv)
 {
+  if (!conv->known)
+    return 0;
+
   size_t len=0;
   unsigned char buffer[sizeof(conv->them) + (12*3) + 1];
 
   bcopy(conv->them.binary, buffer, sizeof(conv->them));
   len+=sizeof(conv->them);
-  buffer[len++] = 0; // TODO reserved for flags
+  buffer[len++] =
+    (conv->blocked ? FLAG_BLOCKED : 0) |
+    (conv->known ? FLAG_KNOWN : 0)
+  ;
 
-  assert(conv->metadata.their_size >= conv->metadata.their_last_message);
-  assert(conv->metadata.their_size >= conv->metadata.read_offset);
-  assert(conv->metadata.their_size >= conv->metadata.my_last_ack);
-  assert(conv->metadata.their_size >= conv->metadata.their_last_ack_offset);
-  assert(conv->metadata.my_size >= conv->metadata.their_last_ack);
+  if (!conv->blocked) {
+    assert(conv->metadata.their_size >= conv->metadata.their_last_message);
+    assert(conv->metadata.their_size >= conv->metadata.read_offset);
+    assert(conv->metadata.their_size >= conv->metadata.my_last_ack);
+    assert(conv->metadata.their_size >= conv->metadata.their_last_ack_offset);
+    assert(conv->metadata.my_size >= conv->metadata.their_last_ack);
 
-  // assume that most ack & read offsets are going to be near the ply length
-  // so store them as delta's.
-  len+=pack_uint(&buffer[len], conv->metadata.their_size);
-  len+=pack_uint(&buffer[len], conv->metadata.my_size);
-  len+=pack_uint(&buffer[len], conv->metadata.their_size - conv->metadata.their_last_message);
-  len+=pack_uint(&buffer[len], conv->metadata.their_size - conv->metadata.read_offset);
-  len+=pack_uint(&buffer[len], conv->metadata.their_size - conv->metadata.their_last_ack_offset);
-  len+=pack_uint(&buffer[len], conv->metadata.their_size - conv->metadata.my_last_ack);
-  len+=pack_uint(&buffer[len], conv->metadata.my_size - conv->metadata.their_last_ack);
+    // assume that most ack & read offsets are going to be near the ply length
+    // so store them as delta's.
+    len+=pack_uint(&buffer[len], conv->metadata.their_size);
+    len+=pack_uint(&buffer[len], conv->metadata.my_size);
+    len+=pack_uint(&buffer[len], conv->metadata.their_size - conv->metadata.their_last_message);
+    len+=pack_uint(&buffer[len], conv->metadata.their_size - conv->metadata.read_offset);
+    len+=pack_uint(&buffer[len], conv->metadata.their_size - conv->metadata.their_last_ack_offset);
+    len+=pack_uint(&buffer[len], conv->metadata.their_size - conv->metadata.my_last_ack);
+    len+=pack_uint(&buffer[len], conv->metadata.my_size - conv->metadata.their_last_ack);
+  }
 
   assert(len <= sizeof buffer);
 
@@ -876,7 +892,7 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
   }
 }
 
-enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipient, const char *message, size_t message_len)
+enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipient, uint8_t mark_known, const char *message, size_t message_len)
 {
   assert(message_len != 0);
   if (message_len > MESSAGE_PLY_MAX_LEN) {
@@ -911,6 +927,9 @@ enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipie
     conv = c;
     status = MESHMS_STATUS_UPDATED;
   }
+
+  if (mark_known)
+    c->known = 1;
 
   enum meshms_status tmp_status = update_stats(c);
   if (meshms_failed(tmp_status))
@@ -979,6 +998,19 @@ enum meshms_status meshms_mark_read(const sid_t *sender, const sid_t *recipient,
   if (meshms_failed(status = meshms_open_list(id, m, &conv)))
     goto end;
 
+  if (recipient){
+    // implicitly mark this conversation as "known"
+    struct meshms_conversations *c = conv;
+
+    while (c){
+      if (cmp_sid_t(&conv->them, recipient)==0){
+	c->known = 1;
+	break;
+      }
+      c = c->_next;
+    }
+  }
+
   unsigned changed = 0;
   // check if any incoming conversations need to be acked or have new messages
   if (meshms_failed(status = update_conversations(id, &conv)))
@@ -1002,7 +1034,7 @@ static unsigned mark_read(struct meshms_conversations *conv, const sid_t *their_
 {
   unsigned ret=0;
   while (conv){
-    if (!their_sid || cmp_sid_t(&conv->them, their_sid)==0){
+    if (conv->known && (!their_sid || cmp_sid_t(&conv->them, their_sid)==0)){
       // update read offset
       // - never past their last message
       // - never rewind, only advance

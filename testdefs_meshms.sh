@@ -57,7 +57,7 @@ meshms_send_message() {
             --form "message=$text;type=text/plain;charset=utf-8" \
             "http://$addr_localhost:$MESHMS_RESTFUL_PORT/restful/meshms/$sid_sender/$sid_recipient/sendmessage"
    else
-      executeOk_servald meshms send message $sid_sender $sid_recipient "$text"
+      executeOk_servald meshms send message --mark-known $sid_sender $sid_recipient "$text"
    fi
 }
 

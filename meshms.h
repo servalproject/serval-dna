@@ -76,6 +76,9 @@ struct meshms_conversations {
   struct message_ply their_ply;
 
   struct meshms_metadata metadata;
+
+  uint8_t blocked:1;
+  uint8_t known:1;
 };
 
 /* Fetch the list of all MeshMS conversations into a binary tree whose nodes
@@ -160,8 +163,7 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
  * MESHMS_STATUS_UPDATED on success, any other value indicates a failure or
  * error (which is already logged).
  */
-
-enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipient, const char *message, size_t message_len);
+enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipient, uint8_t mark_known, const char *message, size_t message_len);
 
 /* Update the read offset for one or more conversations.  Returns
  * MESHMS_STATUS_UPDATED on success, any other value indicates a failure or

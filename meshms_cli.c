@@ -94,7 +94,7 @@ end:
 
 DEFINE_CMD(app_meshms_send_message, 0,
   "Send a MeshMS message from <sender_sid> to <recipient_sid>",
-  "meshms","send","message" KEYRING_PIN_OPTIONS, "<sender_sid>", "<recipient_sid>", "<payload>");
+  "meshms","send","message" KEYRING_PIN_OPTIONS, "[--mark-known]", "<sender_sid>", "<recipient_sid>", "<payload>");
 static int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   const char *my_sidhex, *their_sidhex, *message;
@@ -102,6 +102,7 @@ static int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_c
     || cli_arg(parsed, "recipient_sid", &their_sidhex, str_is_subscriber_id, "") == -1
     || cli_arg(parsed, "payload", &message, NULL, "") == -1)
     return -1;
+  uint8_t mark_known = (cli_arg(parsed, "--mark-known", NULL, NULL, NULL) == 0);
 
   sid_t my_sid, their_sid;
   if (str_to_sid_t(&my_sid, my_sidhex) == -1)
@@ -120,7 +121,7 @@ static int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_c
   }
 
   // include terminating NUL
-  enum meshms_status status = meshms_send_message(&my_sid, &their_sid, message, strlen(message) + 1);
+  enum meshms_status status = meshms_send_message(&my_sid, &their_sid, mark_known, message, strlen(message) + 1);
   keyring_free(keyring);
   keyring = NULL;
   return meshms_failed(status) ? status : 0;
