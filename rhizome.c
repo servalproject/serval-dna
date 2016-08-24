@@ -97,6 +97,78 @@ int rhizome_fetch_delay_ms()
   return config.rhizome.fetch_delay_ms;
 }
 
+int rhizome_parse_field_assignments(struct rhizome_manifest_field_assignment *fields, unsigned argc, const char *const *args)
+{
+  unsigned i;
+  for (i = 0; i < argc; ++i) {
+    struct rhizome_manifest_field_assignment *field = &fields[i];
+    const char *arg = args[i];
+    size_t arglen = strlen(arg);
+    const char *eq;
+    if (arglen > 0 && arg[0] == '!') {
+      field->label = arg + 1;
+      field->labellen = arglen - 1;
+      field->value = NULL;
+    } else if ((eq = strchr(arg, '='))) {
+      field->label = arg;
+      field->labellen = eq - arg;
+      field->value = eq + 1;
+      field->valuelen = (arg + arglen) - field->value;
+    } else
+      return WHYF("invalid manifest field argument: %s", alloca_str_toprint(arg));
+    if (!rhizome_manifest_field_label_is_valid(field->label, field->labellen))
+      return WHYF("invalid manifest field label: %s", alloca_toprint(-1, field->label, field->labellen));
+    if (field->value && !rhizome_manifest_field_value_is_valid(field->value, field->valuelen))
+      return WHYF("invalid manifest field value: %s", alloca_toprint(-1, field->value, field->valuelen));
+  }
+  return argc;
+}
+
+struct rhizome_bundle_result rhizome_apply_assignments(rhizome_manifest *m,
+  unsigned nassignments, const struct rhizome_manifest_field_assignment *assignments)
+{
+  // Apply the field assignments, overriding the existing manifest fields.
+  unsigned i;
+  for (i = 0; i != nassignments; ++i) {
+    const struct rhizome_manifest_field_assignment *asg = &assignments[i];
+    rhizome_manifest_remove_field(m, asg->label, asg->labellen);
+    if (asg->value) {
+      const char *label = alloca_strndup(asg->label, asg->labellen);
+      enum rhizome_manifest_parse_status status = rhizome_manifest_parse_field(m, asg->label, asg->labellen, asg->value, asg->valuelen);
+      switch (status) {
+      case RHIZOME_MANIFEST_ERROR:
+	return rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_ERROR,
+						"Error updating manifest field: %s=%s",
+						label, alloca_toprint(-1, asg->value, asg->valuelen));
+      case RHIZOME_MANIFEST_OK:
+	break;
+      case RHIZOME_MANIFEST_SYNTAX_ERROR:
+	return rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_INVALID,
+						"Manifest syntax error: %s=%s",
+						label, alloca_toprint(-1, asg->value, asg->valuelen));
+      case RHIZOME_MANIFEST_DUPLICATE_FIELD:
+	// We already deleted the field, so if this happens, its a logic bug.
+	FATALF("Duplicate field should not occur: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
+      case RHIZOME_MANIFEST_INVALID:
+	return rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_INVALID,
+						"Manifest invalid field: %s=%s",
+						label, alloca_toprint(-1, asg->value, asg->valuelen));
+      case RHIZOME_MANIFEST_MALFORMED:
+	return rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_INVALID,
+						"Manifest malformed field: %s=%s",
+						label, alloca_toprint(-1, asg->value, asg->valuelen));
+      case RHIZOME_MANIFEST_OVERFLOW:
+	return rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_INVALID,
+						"Too many fields in manifest at: %s=%s",
+						label, alloca_toprint(-1, asg->value, asg->valuelen));
+      default:
+	FATALF("status = %d", status);
+      }
+    }
+  }
+  return rhizome_bundle_result(RHIZOME_BUNDLE_STATUS_NEW);
+}
+
 /* Create a manifest structure to accompany adding a file to Rhizome or appending to a journal.
  * This function is used by all application-facing APIs (eg, CLI, RESTful HTTP).  It differs from
  * the import operation in that if the caller does not supply a complete, signed manifest then this
@@ -247,51 +319,9 @@ struct rhizome_bundle_result rhizome_manifest_add_file(int appending,
   }
   // Apply the field assignments, overriding the existing manifest fields.
   if (nassignments) {
-    unsigned i;
-    for (i = 0; i != nassignments; ++i) {
-      const struct rhizome_manifest_field_assignment *asg = &assignments[i];
-      rhizome_manifest_remove_field(new_manifest, asg->label, asg->labellen);
-      if (asg->value) {
-        const char *label = alloca_strndup(asg->label, asg->labellen);
-        enum rhizome_manifest_parse_status status = rhizome_manifest_parse_field(new_manifest, asg->label, asg->labellen, asg->value, asg->valuelen);
-        int status_ok = 0;
-        switch (status) {
-	case RHIZOME_MANIFEST_ERROR:
-	  result = rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_ERROR,
-						  "Error updating manifest field: %s=%s",
-						  label, alloca_toprint(-1, asg->value, asg->valuelen));
-	  goto error;
-	case RHIZOME_MANIFEST_OK:
-	  status_ok = 1;
-	  break;
-	case RHIZOME_MANIFEST_SYNTAX_ERROR:
-	  result = rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_INVALID,
-						  "Manifest syntax error: %s=%s",
-						  label, alloca_toprint(-1, asg->value, asg->valuelen));
-	  goto error;
-	case RHIZOME_MANIFEST_DUPLICATE_FIELD:
-	  // We already deleted the field, so if this happens, its a logic bug.
-	  FATALF("Duplicate field should not occur: %s=%s", label, alloca_toprint(-1, asg->value, asg->valuelen));
-	case RHIZOME_MANIFEST_INVALID:
-	  result = rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_INVALID,
-						  "Manifest invalid field: %s=%s",
-						  label, alloca_toprint(-1, asg->value, asg->valuelen));
-	  goto error;
-	case RHIZOME_MANIFEST_MALFORMED:
-	  result = rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_INVALID,
-						  "Manifest malformed field: %s=%s",
-						  label, alloca_toprint(-1, asg->value, asg->valuelen));
-	  goto error;
-	case RHIZOME_MANIFEST_OVERFLOW:
-	  result = rhizome_bundle_result_sprintf(RHIZOME_BUNDLE_STATUS_INVALID,
-						  "Too many fields in manifest at: %s=%s",
-						  label, alloca_toprint(-1, asg->value, asg->valuelen));
-	  goto error;
-        }
-        if (!status_ok)
-          FATALF("status = %d", status);
-      }
-    }
+    result = rhizome_apply_assignments(new_manifest, nassignments, assignments);
+    if (result.status != RHIZOME_BUNDLE_STATUS_NEW)
+      goto error;
   }
   if (appending && !new_manifest->is_journal) {
     result = rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_INVALID,

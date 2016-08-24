@@ -8,17 +8,9 @@
 #include "commandline.h"
 #include "overlay_buffer.h"
 
-/*
-DEFINE_CMD(app_meshmb_news, 0,
-  "",
-  "meshmb", "news" KEYRING_PIN_OPTIONS, "<sid>");
-static int app_meshmb_news(const struct cli_parsed *parsed, struct cli_context *context)
-{
-  return 0;
-}
-*/
+static int meshmb_send(keyring_identity *id, const char *message, size_t message_len,
+  unsigned nassignments, const struct rhizome_manifest_field_assignment *assignments){
 
-static int meshmb_send(keyring_identity *id, const char *message, size_t message_len){
   struct message_ply ply;
   bzero(&ply, sizeof ply);
 
@@ -30,21 +22,30 @@ static int meshmb_send(keyring_identity *id, const char *message, size_t message
   message_ply_append_timestamp(b);
   assert(!ob_overrun(b));
 
-  int ret = message_ply_append(id, RHIZOME_SERVICE_MESHMB, NULL, &ply, b);
+  // TODO add id card details to manifest
+  int ret = message_ply_append(id, RHIZOME_SERVICE_MESHMB, NULL, &ply, b, nassignments, assignments);
   ob_free(b);
 
   return ret;
 }
 
 DEFINE_CMD(app_meshmb_send, 0,
-  "",
-  "meshmb", "send" KEYRING_PIN_OPTIONS, "<id>", "<message>");
+  "Append a public broadcast message to your feed",
+  "meshmb", "send" KEYRING_PIN_OPTIONS, "<id>", "<message>", "...");
 static int app_meshmb_send(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   const char *idhex, *message;
   if (cli_arg(parsed, "id", &idhex, str_is_identity, "") == -1
     || cli_arg(parsed, "message", &message, NULL, "") == -1)
     return -1;
+
+  unsigned nfields = (parsed->varargi == -1) ? 0 : parsed->argc - (unsigned)parsed->varargi;
+  struct rhizome_manifest_field_assignment fields[nfields];
+  if (nfields) {
+    assert(parsed->varargi >= 0);
+    if (rhizome_parse_field_assignments(fields, nfields, parsed->args + parsed->varargi)==-1)
+      return -1;
+  }
 
   identity_t identity;
   if (str_to_identity_t(&identity, idhex) == -1)
@@ -65,41 +66,15 @@ static int app_meshmb_send(const struct cli_parsed *parsed, struct cli_context *
     goto end;
   }
 
-  ret = meshmb_send(id, message, strlen(message)+1);
+  ret = meshmb_send(id, message, strlen(message)+1, nfields, fields);
 end:
   keyring_free(keyring);
   keyring = NULL;
   return ret;
 }
 
-/*
-DEFINE_CMD(app_meshmb_list, 0,
-  "",
-  "meshmb", "list", "following|blocked" KEYRING_PIN_OPTIONS, "--last-message", "<sid>");
-static int app_meshmb_list(const struct cli_parsed *parsed, struct cli_context *context)
-{
-  return 0;
-}
-
-DEFINE_CMD(app_meshmb_follow, 0,
-  "",
-  "meshmb", "follow|ignore|block" KEYRING_PIN_OPTIONS, "<sid>", "<id>");
-static int app_meshmb_follow(const struct cli_parsed *parsed, struct cli_context *context)
-{
-  return 0;
-}
-
-DEFINE_CMD(app_meshmb_find, 0,
-  "",
-  "meshmb", "find", "[<search>]");
-static int app_meshmb_find(const struct cli_parsed *parsed, struct cli_context *context)
-{
-  return 0;
-}
-*/
-
 DEFINE_CMD(app_meshmb_read, 0,
-  "",
+  "Read a broadcast message feed.",
   "meshmb", "read", "<id>");
 static int app_meshmb_read(const struct cli_parsed *parsed, struct cli_context *context)
 {
@@ -163,3 +138,51 @@ static int app_meshmb_read(const struct cli_parsed *parsed, struct cli_context *
   message_ply_read_close(&read);
   return ret;
 }
+
+/*
+DEFINE_CMD(app_meshmb_find, 0,
+  "Browse available broadcast message feeds",
+  "meshmb", "find", "[<search>]");
+static int app_meshmb_find(const struct cli_parsed *parsed, struct cli_context *context)
+{
+
+  // Ensure the Rhizome database exists and is open
+  if (create_serval_instance_dir() == -1)
+    return -1;
+  if (rhizome_opendb() == -1)
+    return -1;
+
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  sqlite3_stmt *statement = sqlite_prepare(&retry,
+    "SELECT ROWID, MANIFEST FROM MANIFESTS WHERE SERVICE = '"RHIZOME_SERVICE_MESHMB"' ORDER BY ROWID DESC;");
+  while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
+  }
+
+  //TODO hide feeds that have been blocked
+  return 0;
+}
+
+DEFINE_CMD(app_meshmb_follow, 0,
+  "",
+  "meshmb", "follow|ignore|block" KEYRING_PIN_OPTIONS, "<id>", "<peer>");
+static int app_meshmb_follow(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  return 0;
+}
+
+DEFINE_CMD(app_meshmb_list, 0,
+  "",
+  "meshmb", "list", "following|blocked" KEYRING_PIN_OPTIONS, "--last-message", "<id>");
+static int app_meshmb_list(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  return 0;
+}
+
+DEFINE_CMD(app_meshmb_news, 0,
+  "",
+  "meshmb", "news" KEYRING_PIN_OPTIONS, "<sid>");
+static int app_meshmb_news(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  return 0;
+}
+*/

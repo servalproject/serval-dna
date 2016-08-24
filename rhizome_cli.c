@@ -178,30 +178,8 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
   struct rhizome_manifest_field_assignment fields[nfields];
   if (nfields) {
     assert(parsed->varargi >= 0);
-    unsigned i;
-    for (i = 0; i < nfields; ++i) {
-      struct rhizome_manifest_field_assignment *field = &fields[i];
-      unsigned n = (unsigned)parsed->varargi + i;
-      assert(n < parsed->argc);
-      const char *arg = parsed->args[n];
-      size_t arglen = strlen(arg);
-      const char *eq;
-      if (arglen > 0 && arg[0] == '!') {
-	  field->label = arg + 1;
-	  field->labellen = arglen - 1;
-	  field->value = NULL;
-      } else if ((eq = strchr(arg, '='))) {
-	  field->label = arg;
-	  field->labellen = eq - arg;
-	  field->value = eq + 1;
-	  field->valuelen = (arg + arglen) - field->value;
-      } else
-	return WHYF("invalid manifest field argument: %s", alloca_str_toprint(arg));
-      if (!rhizome_manifest_field_label_is_valid(field->label, field->labellen))
-	return WHYF("invalid manifest field label: %s", alloca_toprint(-1, field->label, field->labellen));
-      if (field->value && !rhizome_manifest_field_value_is_valid(field->value, field->valuelen))
-	return WHYF("invalid manifest field value: %s", alloca_toprint(-1, field->value, field->valuelen));
-    }
+    if (rhizome_parse_field_assignments(fields, nfields, parsed->args + parsed->varargi)==-1)
+      return -1;
   }
 
   int appending = strcasecmp(parsed->args[1], "journal")==0;

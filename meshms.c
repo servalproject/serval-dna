@@ -322,7 +322,7 @@ static enum meshms_status update_conversation(const keyring_identity *id, struct
   message_ply_append_timestamp(b);
   assert(!ob_overrun(b));
 
-  if (message_ply_append(id, RHIZOME_SERVICE_MESHMS2, &conv->them, &conv->my_ply, b)!=0){
+  if (message_ply_append(id, RHIZOME_SERVICE_MESHMS2, &conv->them, &conv->my_ply, b, 0, NULL)!=0){
     status = MESHMS_STATUS_ERROR;
   }else{
     conv->metadata.my_last_ack = conv->metadata.their_last_message;
@@ -933,7 +933,7 @@ enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipie
 
   assert(!ob_overrun(b));
 
-  if (message_ply_append(id, RHIZOME_SERVICE_MESHMS2, recipient, &c->my_ply, b)==0){
+  if (message_ply_append(id, RHIZOME_SERVICE_MESHMS2, recipient, &c->my_ply, b, 0, NULL)==0){
     if (ack)
       c->metadata.my_last_ack = c->metadata.their_last_message;
     c->metadata.my_size += ob_position(b);

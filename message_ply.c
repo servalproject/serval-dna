@@ -64,7 +64,8 @@ static int message_ply_fill_manifest(const keyring_identity *id, const sid_t *re
   return ret;
 }
 
-int message_ply_append(const keyring_identity *id, const char *service, const sid_t *recipient, struct message_ply *ply, struct overlay_buffer *b)
+int message_ply_append(const keyring_identity *id, const char *service, const sid_t *recipient, struct message_ply *ply, struct overlay_buffer *b,
+  unsigned nassignments, const struct rhizome_manifest_field_assignment *assignments)
 {
   rhizome_manifest *mout = NULL;
   rhizome_manifest *m = rhizome_new_manifest();
@@ -86,6 +87,14 @@ int message_ply_append(const keyring_identity *id, const char *service, const si
     }
   }
 
+  struct rhizome_bundle_result result = rhizome_apply_assignments(m, nassignments, assignments);
+  if (result.status != RHIZOME_BUNDLE_STATUS_NEW){
+    WARNF("Cannot create message ply manifest: %s", alloca_rhizome_bundle_result(result));
+    rhizome_bundle_result_free(&result);
+    goto end;
+  }
+  rhizome_bundle_result_free(&result);
+
   if (!ply->found){
     rhizome_manifest_set_service(m, service);
     if (ply->known_bid)
@@ -98,7 +107,7 @@ int message_ply_append(const keyring_identity *id, const char *service, const si
   if (pstatus != RHIZOME_PAYLOAD_STATUS_NEW)
     goto end;
 
-  struct rhizome_bundle_result result = rhizome_manifest_finalise(m, &mout, 1);
+  result = rhizome_manifest_finalise(m, &mout, 1);
   if (result.status != RHIZOME_BUNDLE_STATUS_NEW){
     WARNF("Cannot create message ply manifest: %s", alloca_rhizome_bundle_result(result));
     rhizome_bundle_result_free(&result);

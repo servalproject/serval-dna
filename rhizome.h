@@ -475,6 +475,10 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc);
 int rhizome_store_manifest(rhizome_manifest *m);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);
 
+int rhizome_parse_field_assignments(struct rhizome_manifest_field_assignment *fields, unsigned argc, const char *const *args);
+struct rhizome_bundle_result rhizome_apply_assignments(rhizome_manifest *m,
+  unsigned nassignments, const struct rhizome_manifest_field_assignment *assignments);
+
 struct rhizome_bundle_result rhizome_manifest_add_file(int appending,
                                                        rhizome_manifest *m,
                                                        rhizome_manifest **mout,
