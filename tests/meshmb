@@ -8,6 +8,7 @@ rexp_age='[0-9]*'
 
 setup_identities() {
    setup_servald
+   set_instance +A
    executeOk_servald config \
 	set debug.meshms on \
 	set debug.rhizome on \
@@ -15,7 +16,6 @@ setup_identities() {
         set debug.rhizome_store on \
         set log.console.level debug \
         set log.console.show_time on
-   set_instance +A
    create_identities $1
 }
 
@@ -26,7 +26,7 @@ teardown() {
    report_all_servald_servers
 }
 
-doc_meshmbSend="Send broadcast message"
+doc_meshmbSend="Send broadcast meshmb message"
 setup_meshmbSend() {
    setup_identities 1
 }
@@ -44,7 +44,7 @@ test_meshmbSend() {
 }
 
 
-doc_meshmbRead="Read messages"
+doc_meshmbRead="Read meshmb messages"
 setup_meshmbRead() {
    setup_identities 1
    executeOk_servald meshmb send $IDA1 "Message 1"
@@ -57,4 +57,23 @@ test_meshmbRead() {
    assertStdoutGrep --matches=1 "^1:12:${rexp_age}:Message 1$"
    assertStdoutLineCount '==' 4
 }
+
+doc_meshmbListFeeds="List meshmb feeds"
+setup_meshmbListFeeds() {
+   setup_identities 3
+   executeOk_servald meshmb send $IDA1 "Message 1"
+   executeOk_servald meshmb send $IDA2 "Message 2"
+   executeOk_servald meshmb send $IDA3 "Message 3"
+}
+test_meshmbListFeeds() {
+   executeOk_servald meshmb find
+   tfw_cat --stdout
+   assertStdoutGrep --matches=1 "^_id:id:version:date:name$"
+   assertStdoutGrep --matches=1 ":${IDA1}:"
+   assertStdoutGrep --matches=1 ":${IDA2}:"
+   assertStdoutGrep --matches=1 ":${IDA3}:"
+   assertStdoutLineCount '==' 5
+}
+
+
 runTests "$@"

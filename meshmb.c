@@ -139,29 +139,56 @@ static int app_meshmb_read(const struct cli_parsed *parsed, struct cli_context *
   return ret;
 }
 
-/*
 DEFINE_CMD(app_meshmb_find, 0,
   "Browse available broadcast message feeds",
   "meshmb", "find", "[<search>]");
 static int app_meshmb_find(const struct cli_parsed *parsed, struct cli_context *context)
 {
-
+  const char *search=NULL;
+  cli_arg(parsed, "search", &search, NULL, "");
   // Ensure the Rhizome database exists and is open
   if (create_serval_instance_dir() == -1)
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
 
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry,
-    "SELECT ROWID, MANIFEST FROM MANIFESTS WHERE SERVICE = '"RHIZOME_SERVICE_MESHMB"' ORDER BY ROWID DESC;");
-  while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
-  }
+  struct rhizome_list_cursor cursor;
+  bzero(&cursor, sizeof cursor);
+  cursor.service = RHIZOME_SERVICE_MESHMB;
+  cursor.name = search && search[0] ? search : NULL;
 
   //TODO hide feeds that have been blocked
+
+  if (rhizome_list_open(&cursor) == -1)
+    return -1;
+
+  const char *names[]={
+    "_id",
+    "id",
+    "version",
+    "date",
+    "name"
+  };
+  cli_columns(context, 5, names);
+
+  unsigned rowcount=0;
+  int n;
+
+  while ((n = rhizome_list_next(&cursor)) == 1) {
+    rowcount++;
+    rhizome_manifest *m = cursor.manifest;
+    cli_put_long(context, m->rowid, ":");
+    cli_put_hexvalue(context, m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, ":");
+    cli_put_long(context, m->version, ":");
+    cli_put_long(context, m->has_date ? m->date : 0, ":");
+    cli_put_string(context, m->name, "\n");
+  }
+  rhizome_list_release(&cursor);
+  cli_row_count(context, rowcount);
   return 0;
 }
 
+/*
 DEFINE_CMD(app_meshmb_follow, 0,
   "",
   "meshmb", "follow|ignore|block" KEYRING_PIN_OPTIONS, "<id>", "<peer>");
