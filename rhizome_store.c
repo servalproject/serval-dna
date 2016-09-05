@@ -1037,10 +1037,13 @@ enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const r
   read->verified = 0;
   read->offset = 0;
   read->hash_offset = 0;
-  
-  if (sqlite_exec_uint64(&read->length,"SELECT length FROM FILES WHERE id = ?", 
-    RHIZOME_FILEHASH_T, &read->id, END) == -1)
+
+  int r = sqlite_exec_uint64(&read->length,"SELECT length FROM FILES WHERE id = ?",
+    RHIZOME_FILEHASH_T, &read->id, END);
+  if (r == -1)
     return RHIZOME_PAYLOAD_STATUS_ERROR;
+  if (r == 0)
+    return RHIZOME_PAYLOAD_STATUS_NEW;
   assert(read->length>0);
 
   if (sqlite_exec_uint64(&read->blob_rowid,
