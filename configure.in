@@ -79,6 +79,12 @@ fi
 dnl XXX Isn't this pointless? we are always linked against libc
 AC_CHECK_LIB(c,srandomdev)
 
+AC_CHECK_LIB(m,sqrtf,[LDFLAGS="$LDFLAGS -lm"])
+AC_CHECK_LIB(nsl,callrpc,[LDFLAGS="$LDFLAGS -lnsl"])
+AC_CHECK_LIB(dl,dlopen,[LDFLAGS="$LDFLAGS -ldl"])
+AC_CHECK_LIB(sodium,sodium_init,[LDFLAGS="$LDFLAGS -lsodium"],
+                                [AC_MSG_ERROR([Missing libsodium])])
+
 dnl Solaris hides nanosleep here
 AC_CHECK_LIB(rt,nanosleep)
 
@@ -134,12 +140,6 @@ AC_CHECK_HEADERS(
 
 dnl Lazy way of checking for Linux
 AS_IF([test "x$ac_cv_header_linux_if_h" = xyes], [AC_DEFINE([USE_ABSTRACT_NAMESPACE])])
-
-AC_CHECK_LIB(m,sqrtf,[LDFLAGS="$LDFLAGS -lm"])
-AC_CHECK_LIB(nsl,callrpc,[LDFLAGS="$LDFLAGS -lnsl"])
-AC_CHECK_LIB(socket,socket,[LDFLAGS="$LDFLAGS -lsocket"])
-AC_CHECK_LIB(dl,dlopen,[LDFLAGS="$LDFLAGS -ldl"])
-AC_CHECK_LIB(sodium,sodium_init,[LDFLAGS="$LDFLAGS -lsodium"])
 
 AC_CACHE_CHECK([linker -z relro option], libc_cv_z_relro, [dnl
   libc_cv_z_relro=no

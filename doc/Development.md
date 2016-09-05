@@ -59,6 +59,42 @@ suppress most of these messages from the output of [aclocal][] and
     aclocal: warning: autoconf input should be named 'configure.ac', not 'configure.in'
     $
 
+Debian/Ubuntu
+-------------
+
+To install all mandatory and testing dependencies before building on [Debian][]
+and [Ubuntu][] systems:
+
+    $ sudo apt-get --yes install libc6-dev libsodium-dev jq curl
+    Reading package lists... Done
+    Building dependency tree       
+    Reading state information... Done
+    libc6-dev is already the newest version (2.23-5).
+    The following NEW packages will be installed:
+      curl jq libsodium-dev
+    0 upgraded, 3 newly installed, 0 to remove and 0 not upgraded.
+    Need to get 544 kB of archives.
+    After this operation, 1,683 kB of additional disk space will be used.
+    Get:1 http://ftp.us.debian.org/debian testing/main amd64 curl amd64 7.50.1-1 [218 kB]
+    Get:2 http://ftp.us.debian.org/debian testing/main amd64 jq amd64 1.5+dfsg-1 [156 kB]
+    Get:3 http://ftp.us.debian.org/debian testing/main amd64 libsodium-dev amd64 1.0.11-1 [170 kB]
+    Fetched 544 kB in 1s (304 kB/s)         
+    Selecting previously unselected package curl.
+    (Reading database ... 205089 files and directories currently installed.)
+    Preparing to unpack .../0-curl_7.50.1-1_amd64.deb ...
+    Unpacking curl (7.50.1-1) ...
+    Selecting previously unselected package jq.
+    Preparing to unpack .../1-jq_1.5+dfsg-1_amd64.deb ...
+    Unpacking jq (1.5+dfsg-1) ...
+    Selecting previously unselected package libsodium-dev:amd64.
+    Preparing to unpack .../2-libsodium-dev_1.0.11-1_amd64.deb ...
+    Unpacking libsodium-dev:amd64 (1.0.11-1) ...
+    Setting up jq (1.5+dfsg-1) ...
+    Setting up curl (7.50.1-1) ...
+    Setting up libsodium-dev:amd64 (1.0.11-1) ...
+    Processing triggers for man-db (2.7.5-1) ...
+    $
+
 Apple OSX
 ---------
 
@@ -136,6 +172,8 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [build]: ../INSTALL.md
 [aclocal]: https://www.gnu.org/software/automake/manual/html_node/aclocal-Invocation.html
 [autoreconf]: https://www.gnu.org/savannah-checkouts/gnu/autoconf/manual/autoconf.html#autoreconf-Invocation
+[Debian]: http://www.debian.org/
+[Ubuntu]: http://www.ubuntu.com/
 [OSX grep(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/grep.1.html
 [OSX sed(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/sed.1.html
 [OSX awk(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/awk.1.html

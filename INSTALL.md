@@ -46,9 +46,10 @@ Mandatory dependencies:
  * standard C library `libc` and standard headers
  * standard math library `libm` and headers `<math.h>` `<float.h>`
  * network services library `libnsl` and headers
- * socket library `libsocket` and headers
  * dynamic link library `libdl` and header `<dlfcn.h>`
  * Native Posix Threads Library `libpthread` and header `<pthread.h>`
+ * elliptic curve encryption library `libsodium` and header <sodium.h>, 1.0.2
+   or greater
  * on Solaris, the realtime library `librt` (for the `nanosleep()` function)
  * Autoconf 2.67-2.69 (2.70 may work but has not been tested)
  * Automake 1.15
