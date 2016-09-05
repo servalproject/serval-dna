@@ -419,6 +419,28 @@ static void sync_peer_has (void * UNUSED(context), void *peer_context, const syn
   // noop, just wait for the BAR to arrive.
 }
 
+static int sync_manifest_rank(rhizome_manifest *m, struct subscriber *peer, uint8_t sending, uint64_t written_offset)
+{
+  uint8_t bias = REACHABLE_BIAS;
+  int rank = log2ll(m->filesize - written_offset);
+
+  if (m->has_recipient){
+    struct subscriber *recipient = find_subscriber(m->recipient.binary, sizeof m->recipient, 0);
+    // if the recipient is routable and this bundle is heading the right way;
+    // give the bundle's rank a boost
+    if (recipient
+      && (recipient->reachable & (REACHABLE | REACHABLE_SELF))
+      && (sending == (recipient->next_hop == peer ? 1 : 0))){
+      DEBUGF(rhizome_sync_keys, "Boosting rank for %s to deliver to recipient %s",
+	alloca_tohex(m->manifesthash.binary, sizeof(sync_key_t)),
+	alloca_tohex_sid_t(recipient->sid));
+      bias=0;
+    }
+  }
+
+  return rank + bias;
+}
+
 static void sync_peer_does_not_have (void * UNUSED(context), void *peer_context, void * UNUSED(key_context), const sync_key_t *key)
 {
   // pre-emptively announce the manifest?
@@ -446,20 +468,13 @@ static void sync_peer_does_not_have (void * UNUSED(context), void *peer_context,
       goto end;
   }
 
-  uint8_t bias = REACHABLE_BIAS;
-  int rank = log2ll(m->filesize);
-
-  if (m->has_recipient){
-    struct subscriber *recipient = find_subscriber(m->recipient.binary, sizeof m->recipient, 0);
-    if (recipient && (recipient->reachable & (REACHABLE | REACHABLE_SELF)))
-      bias=0;
-  }
+  int rank = sync_manifest_rank(m, peer, 1, 0);
 
   struct rhizome_sync_keys *sync_state = get_peer_sync_state(peer);
   if (!sync_state)
     goto end;
 
-  struct transfers *send_bar = *find_and_update_transfer(peer, sync_state, key, STATE_SEND_BAR, rank + bias);
+  struct transfers *send_bar = *find_and_update_transfer(peer, sync_state, key, STATE_SEND_BAR, rank);
   if (!send_bar)
     goto end;
 
@@ -691,16 +706,10 @@ static void process_transfer_message(struct subscriber *peer, struct rhizome_syn
 
 	// TODO improve rank algo here;
 	// Note that we still need to deal with this manifest, we don't want to run out of RAM
-	rank = log2ll(m->filesize - write->file_offset);
-	uint8_t bias = REACHABLE_BIAS;
 
-	if (m->has_recipient){
-	  struct subscriber *recipient = find_subscriber(m->recipient.binary, sizeof m->recipient, 0);
-	  if (recipient && (recipient->reachable & (REACHABLE | REACHABLE_SELF)))
-	    bias=0;
-	}
+	rank = sync_manifest_rank(m, peer, 0, write->file_offset);
 
-	struct transfers *transfer = *find_and_update_transfer(peer, sync_state, &key, STATE_REQ_PAYLOAD, rank + bias);
+	struct transfers *transfer = *find_and_update_transfer(peer, sync_state, &key, STATE_REQ_PAYLOAD, rank);
 	transfer->manifest = m;
 	transfer->req_len = m->filesize - write->file_offset;
 	transfer->write = write;
