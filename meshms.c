@@ -406,7 +406,7 @@ static enum meshms_status read_known_conversations(rhizome_manifest *m, struct m
 
     int ofs = SID_SIZE;
 
-    uint8_t flags = 0; // TODO flags
+    //TODO flags byte uint8_t flags = 0;
     struct meshms_metadata metadata;
     bzero(&metadata, sizeof metadata);
     int unpacked;
@@ -426,7 +426,7 @@ static enum meshms_status read_known_conversations(rhizome_manifest *m, struct m
     }else if(version>=2){
       uint64_t delta=0;
 
-      flags = buffer[ofs++];
+      ofs ++; // flags = buffer[ofs++];
 
       if ((unpacked = unpack_uint(buffer+ofs, bytes-ofs, &metadata.their_size)) == -1)
 	break;
