@@ -122,7 +122,7 @@ __SERVAL_LOG_INLINE int logErrorAndReturnNegativeOne(struct __sourceloc whence, 
 
 #define _DEBUGF_TAG(TAG,F,...)            _DEBUGF("{%s} " F, (TAG), ##__VA_ARGS__)
 #define _DEBUGF_TAG_perror(TAG,F,...)     _DEBUGF_perror("{%s} " F, (TAG), ##__VA_ARGS__)
-#define _DEBUGF_TAG_argv(TAG,X,ARGC,ARGV) _DEBUGF_argv("{" TAG "} " X, (ARGC), (ARGV))
+#define _DEBUG_TAG_argv(TAG,X,ARGC,ARGV)  _DEBUG_argv("{" TAG "} " X, (ARGC), (ARGV))
 
 #define dump(X,A,N)         logDump(LOG_LEVEL_DEBUG, __WHENCE__, (X), (const unsigned char *)(A), (size_t)(N))
 

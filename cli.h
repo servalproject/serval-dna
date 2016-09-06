@@ -74,7 +74,7 @@ struct cli_parsed {
 
 void _debug_cli_parsed(struct __sourceloc __whence, const char *tag, const struct cli_parsed *parsed);
 
-#define DEBUG_cli_parsed(FLAG,parsed) do { if (IF_DEBUG(FLAG)) _debug_cli_parsed(__WHENCE__, "{" #FLAG "}", parsed); } while (0)
+#define DEBUG_cli_parsed(FLAG,parsed) do { if (IF_DEBUG(FLAG)) _debug_cli_parsed(__WHENCE__, #FLAG, parsed); } while (0)
 
 int cli_usage(const struct cli_schema *commands, const struct cli_schema *end_commands, XPRINTF xpf);
 int cli_usage_args(const int argc, const char *const *args, const struct cli_schema *commands, const struct cli_schema *end_commands, XPRINTF xpf);

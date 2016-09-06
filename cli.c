@@ -312,7 +312,11 @@ int cli_parse(const int argc, const char *const *args, const struct cli_schema *
 
 void _debug_cli_parsed(struct __sourceloc __whence, const char *tag, const struct cli_parsed *parsed)
 {
-  _DEBUG_argv(tag, parsed->argc, parsed->args);
+  strbuf t = strbuf_alloca(strlen(tag) + 3);
+  strbuf_putc(t, '{');
+  strbuf_puts(t, tag);
+  strbuf_putc(t, '}');
+  _DEBUG_argv(strbuf_str(t), parsed->argc, parsed->args);
   strbuf b = strbuf_alloca(1024);
   unsigned i;
   for (i = 0; i < parsed->labelc; ++i) {
@@ -321,7 +325,7 @@ void _debug_cli_parsed(struct __sourceloc __whence, const char *tag, const struc
   }
   if (parsed->varargi >= 0)
     strbuf_sprintf(b, " varargi=%d", parsed->varargi); 
-  _DEBUGF(tag, "parsed%s", strbuf_str(b));
+  _DEBUGF_TAG(tag, "parsed%s", strbuf_str(b));
 }
 
 int cli_invoke(const struct cli_parsed *parsed, struct cli_context *context)

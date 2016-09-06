@@ -41,7 +41,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define DEBUG(FLAG,X)                DEBUGF(FLAG, "%s", (X))
 #define DEBUGF_perror(FLAG,F,...)    do { if (IF_DEBUG(FLAG)) _DEBUGF_TAG_perror(#FLAG, F, ##__VA_ARGS__); } while (0)
 #define DEBUG_perror(FLAG,X)         DEBUGF_perror(FLAG, "%s", (X))
-#define DEBUG_argv(FLAG,X,ARGC,ARGV) do { if (IF_DEBUG(FLAG)) _DEBUG_TAG_argv(#FLAG, X, (ARGC), (ARGV)); } while (0)
+#define DEBUG_argv(FLAG,X,ARGC,ARGV) do { if (IF_DEBUG(FLAG)) _DEBUGF_TAG_argv(#FLAG, X, (ARGC), (ARGV)); } while (0)
 
 #define D(FLAG)                   DEBUG(FLAG, "D")
 #define T                         DEBUG(trace, "T")
