@@ -417,6 +417,7 @@ static int monitor_announce_all_peers(struct subscriber *subscriber, void *UNUSE
 
 static int monitor_set(const struct cli_parsed *parsed, struct cli_context *context)
 {
+  DEBUG_cli_parsed(monitor, parsed);
   struct monitor_context *c=context->context;
   if (strcase_startswith(parsed->args[1],"vomp",NULL)){
     c->flags|=MONITOR_VOMP;
@@ -455,6 +456,7 @@ static int monitor_set(const struct cli_parsed *parsed, struct cli_context *cont
 
 static int monitor_clear(const struct cli_parsed *parsed, struct cli_context *context)
 {
+  DEBUG_cli_parsed(monitor, parsed);
   struct monitor_context *c=context->context;
   if (strcase_startswith(parsed->args[1],"vomp",NULL))
     c->flags&=~MONITOR_VOMP;
@@ -482,6 +484,7 @@ static int monitor_clear(const struct cli_parsed *parsed, struct cli_context *co
 
 static int monitor_lookup_match(const struct cli_parsed *parsed, struct cli_context *context)
 {
+  DEBUG_cli_parsed(monitor, parsed);
   struct monitor_context *c = context->context;
   const char *sid = parsed->args[2];
   const char *ext = parsed->args[4];
@@ -503,6 +506,7 @@ static int monitor_lookup_match(const struct cli_parsed *parsed, struct cli_cont
 
 static int monitor_call(const struct cli_parsed *parsed, struct cli_context *context)
 {
+  DEBUG_cli_parsed(monitor, parsed);
   struct monitor_context *c=context->context;
   sid_t sid;
   if (str_to_sid_t(&sid, parsed->args[1]) == -1)
@@ -514,6 +518,7 @@ static int monitor_call(const struct cli_parsed *parsed, struct cli_context *con
 
 static int monitor_call_ring(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
+  DEBUG_cli_parsed(monitor, parsed);
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
     monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", parsed->args[1]);
@@ -524,6 +529,7 @@ static int monitor_call_ring(const struct cli_parsed *parsed, struct cli_context
 
 static int monitor_call_pickup(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
+  DEBUG_cli_parsed(monitor, parsed);
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
     monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", parsed->args[1]);
@@ -534,6 +540,7 @@ static int monitor_call_pickup(const struct cli_parsed *parsed, struct cli_conte
 
 static int monitor_call_audio(const struct cli_parsed *parsed, struct cli_context *context)
 {
+  DEBUG_cli_parsed(monitor, parsed);
   struct monitor_context *c=context->context;
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   
@@ -552,6 +559,7 @@ static int monitor_call_audio(const struct cli_parsed *parsed, struct cli_contex
 
 static int monitor_call_hangup(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
+  DEBUG_cli_parsed(monitor, parsed);
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
     monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", parsed->args[1]);
@@ -562,6 +570,7 @@ static int monitor_call_hangup(const struct cli_parsed *parsed, struct cli_conte
 
 static int monitor_call_dtmf(const struct cli_parsed *parsed, struct cli_context *context)
 {
+  DEBUG_cli_parsed(monitor, parsed);
   struct monitor_context *c=context->context;
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
@@ -615,6 +624,7 @@ int monitor_process_command(struct monitor_context *c)
 
 static int monitor_help(const struct cli_parsed *parsed, struct cli_context *context)
 {
+  DEBUG_cli_parsed(monitor, parsed);
   struct monitor_context *c=context->context;
   strbuf b = strbuf_alloca(16384);
   strbuf_puts(b, "\nINFO:Usage\n");
