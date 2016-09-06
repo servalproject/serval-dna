@@ -143,22 +143,12 @@ int monitor_client_read(int fd, struct monitor_state *res, struct monitor_comman
   if (res->bufferBytes==0)
     res->cmd = (char *)res->buffer;
   
-  ssize_t bytesRead = read(fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset);
-  if (bytesRead == -1){
-    switch(errno) {
-      case ENOTRECOVERABLE:
-	/* transient errors */
-	break;
-      case EINTR:
-      case EAGAIN:
-#if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
-      case EWOULDBLOCK: 
-#endif
-	return 0;
-    }
-    WHYF_perror("read(%d, %p, %zd)", fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset);
+  ssize_t bytesRead = read_nonblock(fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset);
+  if (bytesRead == -2)
+    return 0;
+  if (bytesRead == -1)
     return -1;
-  } else if (bytesRead == 0) {
+  if (bytesRead == 0) {
     WARNF("read(%d, %p, %zd) returned %zd", fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset, (size_t)bytesRead);
     return -1;
   }

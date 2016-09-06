@@ -33,13 +33,19 @@ teardown() {
    report_all_servald_servers
 }
 
-# make sure servald config is blank
 configure_servald_server() {
-   :
+   executeOk_servald config \
+      set log.console.level debug \
+      set log.console.show_time true \
+      set log.console.show_pid true
 }
 
 doc_StartCreateInstanceDir="Starting server creates instance directory"
 setup_StartCreateInstanceDir() {
+   # Ensure there is initially no instance directory.
+   configure_servald_server() {
+      :
+   }
    setup
    assert [ ! -d "$SERVALINSTANCE_PATH" ]
 }
@@ -145,11 +151,18 @@ test_StartTwice() {
 
 doc_MonitorQuit="Server stops due to monitor client disconnection"
 setup_MonitorQuit() {
+   configure_servald_server() {
+      executeOk_servald config \
+         set log.console.level debug \
+         set log.console.show_time true \
+         set log.console.show_pid true \
+         set debug.monitor on
+   }
    setup
    start_servald_server
 }
 test_MonitorQuit() {
-   executeOk_servald console < <(sleep 1 && echo "monitor quit" && sleep 1)
+   executeOk_servald console < <(echo "monitor quit")
    tfw_cat --stdout --stderr
    wait_until ! kill -0 $servald_pid 2>/dev/null
 }
@@ -191,6 +204,7 @@ EOF
    setup
    executeOk_servald config \
       set log.console.level debug \
+      set log.console.show_time true \
       set log.console.show_pid true \
       set debug.watchdog on \
       set server.watchdog.executable "$PWD/watchdog" \

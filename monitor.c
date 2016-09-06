@@ -90,10 +90,11 @@ struct monitor_context {
   
   char line[MONITOR_LINE_LENGTH];
   int line_length;
-#define MONITOR_STATE_UNUSED 0
-#define MONITOR_STATE_COMMAND 1
-#define MONITOR_STATE_DATA 2
-  int state;
+  enum {
+    MONITOR_STATE_UNUSED,
+    MONITOR_STATE_COMMAND,
+    MONITOR_STATE_DATA
+  } state;
   unsigned char buffer[MONITOR_DATA_SIZE];
   int data_expected;
   int data_offset;
@@ -171,8 +172,8 @@ void monitor_poll(struct sched_ent *alarm)
 static void monitor_close(struct monitor_context *c){
   INFOF("Tearing down monitor client fd=%d", c->alarm.poll.fd);
   
-  if (serverMode && c->flags & MONITOR_QUIT){
-    INFOF("Quitting due to client disconnecting");
+  if (serverMode && (c->flags & MONITOR_QUIT_ON_DISCONNECT)){
+    INFOF("Stopping server due to client disconnecting");
     serverMode=SERVER_CLOSING;
   }
   unwatch(&c->alarm);
@@ -188,38 +189,30 @@ void monitor_client_poll(struct sched_ent *alarm)
   struct monitor_context *c=(struct monitor_context *)alarm;
   errno=0;
   int bytes;
-  
+
   if (alarm->poll.revents & POLLIN) {
     switch(c->state) {
+    case MONITOR_STATE_UNUSED:
+      FATAL("should not poll unused client");
+
     case MONITOR_STATE_COMMAND:
       bytes = 1;
       while(bytes == 1) {
 	if (c->line_length >= MONITOR_LINE_LENGTH) {
 	  c->line_length=0;
 	  monitor_write_error(c,"Command too long");
+	  DEBUG(monitor, "close monitor because command too long");
 	  monitor_close(c);
 	  return;
 	}
-	bytes = read(c->alarm.poll.fd, &c->line[c->line_length], 1);
-	if (bytes<0){
-	  switch(errno) {
-	  case EINTR:
-	  case ENOTRECOVERABLE:
-	    /* transient errors */
-	    WHY_perror("read");
-	    break;
-	  case EAGAIN:
-	    break;
-	  default:
-	    WHY_perror("read");
-	    /* all other errors; close socket */
-	    monitor_close(c);
-	  }
+	bytes = read_nonblock(c->alarm.poll.fd, &c->line[c->line_length], 1);
+	if (bytes == -1) {
+	  DEBUG(monitor, "close monitor due to read error");
+	  monitor_close(c);
 	  return;
 	}
-	
-	if (bytes<1)
-	  break;
+	if (bytes == -2 || bytes == 0)
+	  continue; // no bytes available to read
 	
 	// silently skip all \r characters
 	if (c->line[c->line_length] == '\r')
@@ -235,7 +228,7 @@ void monitor_client_poll(struct sched_ent *alarm)
 	}
 	
 	if (c->line[c->line_length] == '\n') {
-	  /* got whole command line, start reading data if required */
+	  // got whole command line, start reading data if required
 	  c->line[c->line_length]=0;
 	  c->state=MONITOR_STATE_DATA;
 	  c->data_offset=0;
@@ -245,53 +238,49 @@ void monitor_client_poll(struct sched_ent *alarm)
 	c->line_length += bytes;
       }
 	
-      if (c->state!=MONITOR_STATE_DATA)
+      // if run out of characters to read before reaching the end of a command, then check for HUP
+      // now in case the client terminated abnormally
+      if (c->state != MONITOR_STATE_DATA)
 	break;
-	
-      // else fall through
+      // else fall through...
+
     case MONITOR_STATE_DATA:
-	
       if (c->data_expected - c->data_offset >0){
-	bytes = read(c->alarm.poll.fd,
-		     &c->buffer[c->data_offset],
-		     c->data_expected - c->data_offset);
-	if (bytes < 1) {
-	  switch(errno) {
-	  case EAGAIN: case EINTR: 
-	    /* transient errors */
-	    break;
-	  default:
-	    /* all other errors; close socket */
-	      WHYF("Tearing down monitor client due to errno=%d",
-		   errno);
-	      monitor_close(c);
-	      return;
-	  }
+	bytes = read_nonblock(c->alarm.poll.fd, &c->buffer[c->data_offset], c->data_expected - c->data_offset);
+	if (bytes == -2 || bytes == 0)
+	  break; // no bytes available to read
+	if (bytes == -1) {
+	  DEBUG(monitor, "close monitor due to read error");
+	  monitor_close(c);
+	  return;
 	}
-	
+
 	c->data_offset += bytes;
       }
       
+      // if run out of characters to read before reaching the expected number, then check for HUP
+      // now in case the client terminated abnormally
       if (c->data_offset < c->data_expected)
 	break;
 	
-      /* we have the next command and all of the binary data we were expecting. Now we can process it */
+      // we have received all of the binary data we were expecting
       monitor_process_command(c);
 	
-      // fall through
-    default:
       // reset parsing state
       c->state = MONITOR_STATE_COMMAND;
       c->data_expected = 0;
       c->data_offset = 0;
       c->line_length = 0;
+
+      // poll again to finish processing all queued commands before checking for HUP, so that any
+      // queued "quit" command (quit on HUP) is processed before the HUP is handled
+      return;
     }
   }
-  
   if (alarm->poll.revents & (POLLHUP | POLLERR)) {
+    DEBUGF(monitor, "client disconnection (%s)", alloca_poll_events(alarm->poll.revents));
     monitor_close(c);
   }
-  return;
 }
  
 static void monitor_new_client(int s) {
@@ -369,7 +358,7 @@ static void monitor_new_client(int s) {
   client_stats.name = "monitor_client_poll";
   c->alarm.stats=&client_stats;
   c->alarm.poll.fd = s;
-  c->alarm.poll.events=POLLIN;
+  c->alarm.poll.events = POLLIN | POLLHUP;
   c->line_length = 0;
   c->state = MONITOR_STATE_COMMAND;
   write_str(s,"\nINFO:You are talking to servald\n");
@@ -440,7 +429,7 @@ static int monitor_set(const struct cli_parsed *parsed, struct cli_context *cont
     c->flags|=MONITOR_LINKS;
     enum_subscribers(NULL, monitor_announce_all_peers, NULL);
   }else if (strcase_startswith(parsed->args[1],"quit", NULL)){
-    c->flags|=MONITOR_QUIT;
+    c->flags|=MONITOR_QUIT_ON_DISCONNECT;
   }else if (strcase_startswith(parsed->args[1],"interface", NULL)){
     c->flags|=MONITOR_INTERFACE;
     overlay_interface_monitor_up();
@@ -469,7 +458,7 @@ static int monitor_clear(const struct cli_parsed *parsed, struct cli_context *co
   else if (strcase_startswith(parsed->args[1],"links", NULL))
     c->flags&=~MONITOR_LINKS;
   else if (strcase_startswith(parsed->args[1],"quit", NULL))
-    c->flags&=~MONITOR_QUIT;
+    c->flags&=~MONITOR_QUIT_ON_DISCONNECT;
   else if (strcase_startswith(parsed->args[1],"interface", NULL))
     c->flags&=~MONITOR_INTERFACE;
   else
@@ -664,7 +653,7 @@ int monitor_tell_clients(char *msg, int msglen, int mask)
     if (monitor_sockets[i].flags & mask) {
       // DEBUG("Writing AUDIOPACKET to client");
       if ( write_all_nonblock(monitor_sockets[i].alarm.poll.fd, msg, msglen) == -1) {
-	INFOF("Tearing down monitor client #%d", i);
+	INFOF("Tear down monitor client #%d due to write error", i);
 	monitor_close(&monitor_sockets[i]);
       }
     }
