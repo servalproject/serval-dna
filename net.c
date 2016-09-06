@@ -65,6 +65,7 @@ ssize_t _read_nonblock(int fd, void *buf, size_t len, struct __sourceloc __whenc
     switch (errno) {
       case EINTR:
       case EAGAIN:
+      case ENOTRECOVERABLE:
 #if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
       case EWOULDBLOCK:
 #endif
