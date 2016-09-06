@@ -3,6 +3,7 @@
 /win32/Release
 *.user
 *.ncb
+/libsodium
 /objs
 /objs_lib
 /objs_servald

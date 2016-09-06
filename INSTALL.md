@@ -9,7 +9,7 @@ These instructions will build [Serval DNA][] successfully for the following plat
 
  * Debian Linux, ix86 and x86\_64, kernels 2.6.x and 3.x, using [gcc 4.4][] to
    [gcc 4.8][]
- * Mac OS X x86\_64, releases 10.7 “Lion” to 10.11 “El Capitan”, using [gcc
+ * Mac OS-X x86\_64, releases 10.7 “Lion” to 10.11 “El Capitan”, using [gcc
    4.2][] available in [Xcode][] versions 3.2 to 7.2, and GNU tools available
    from [homebrew][]
  * Oracle SunOs 5.10 (Solaris), Sparc, using [gcc 4.4][] and GNU tools
@@ -43,16 +43,21 @@ environment.
 
 Mandatory dependencies:
 
- * standard C library `libc` and standard headers
- * standard math library `libm` and headers `<math.h>` `<float.h>`
- * network services library `libnsl` and headers
- * dynamic link library `libdl` and header `<dlfcn.h>`
- * Native Posix Threads Library `libpthread` and header `<pthread.h>`
- * elliptic curve encryption library `libsodium` and header <sodium.h>, 1.0.2
-   or greater
- * on Solaris, the realtime library `librt` (for the `nanosleep()` function)
- * Autoconf 2.67-2.69 (2.70 may work but has not been tested)
- * Automake 1.15
+ * standard C library **libc** and standard headers
+ * standard math library **libm** and headers `<math.h>` `<float.h>`
+ * network services library **libnsl** and headers
+ * dynamic link library **libdl** and header `<dlfcn.h>`
+ * Native Posix Threads Library **libpthread** and header `<pthread.h>`
+ * elliptic curve encryption library **libsodium** and header `<sodium.h>`,
+   version 1.0.2 or greater
+ * on Solaris, the realtime library **librt** (for the `nanosleep()` function)
+ * **autoconf** 2.67-2.69 (2.70 may work but has not been tested)
+ * **automake** 1.15
+
+The **libsodium** development files are available on Debian/Ubuntu systems in
+the `libsodium-dev` package.  On other systems, like Mac OS-X, it must be
+compiled from source.  The [Notes for Developers](./doc/Development.md) give
+more details.
 
 Optional:
 
@@ -62,11 +67,11 @@ Optional:
 Test dependencies:
 
  * bash 3.2.48 or later
- * GNU grep, sed and awk (on OSX and Solaris, as ggrep, gsed and gawk)
+ * GNU grep, sed and awk (on Mac OS-X and Solaris, as ggrep, gsed and gawk)
  * jq 1.3 or later
  * curl
 
-The GNU grep, sed and awk programs can be installed on OSX using the
+The GNU grep, sed and awk programs can be installed on Mac OS-X using the
 [homebrew][] package manager.  The [Notes for Developers](./doc/Development.md)
 give more details.
 
@@ -125,8 +130,11 @@ On Solaris, the system `make` command may not be GNU Make, and the system
     $ gmake
     $
 
-In the event of a build failure, first consult the [Notes for
-Developers](./doc/Development.md), then [contact the Serval Project][].
+In the event of a build failure:
+
+ * ensure that all the [dependencies](#dependencies) are present
+ * consult the [Notes for Developers](./doc/Development.md)
+ * as a last resort, [contact the Serval Project][]
 
 Built artifacts
 ---------------

@@ -62,12 +62,12 @@ suppress most of these messages from the output of [aclocal][] and
 Debian/Ubuntu
 -------------
 
-To install all mandatory and testing dependencies before building on [Debian][]
-and [Ubuntu][] systems:
+A single [apt-get][] command will install all mandatory and testing
+dependencies before building on [Debian][] and [Ubuntu][] systems:
 
     $ sudo apt-get --yes install libc6-dev libsodium-dev jq curl
     Reading package lists... Done
-    Building dependency tree       
+    Building dependency tree
     Reading state information... Done
     libc6-dev is already the newest version (2.23-5).
     The following NEW packages will be installed:
@@ -78,7 +78,7 @@ and [Ubuntu][] systems:
     Get:1 http://ftp.us.debian.org/debian testing/main amd64 curl amd64 7.50.1-1 [218 kB]
     Get:2 http://ftp.us.debian.org/debian testing/main amd64 jq amd64 1.5+dfsg-1 [156 kB]
     Get:3 http://ftp.us.debian.org/debian testing/main amd64 libsodium-dev amd64 1.0.11-1 [170 kB]
-    Fetched 544 kB in 1s (304 kB/s)         
+    Fetched 544 kB in 1s (304 kB/s)
     Selecting previously unselected package curl.
     (Reading database ... 205089 files and directories currently installed.)
     Preparing to unpack .../0-curl_7.50.1-1_amd64.deb ...
@@ -95,13 +95,51 @@ and [Ubuntu][] systems:
     Processing triggers for man-db (2.7.5-1) ...
     $
 
-Apple OSX
----------
+Apple Mac OS X
+--------------
 
-The [OSX grep(1)][] , [OSX sed(1)][] and [OSX awk(1)][] tools provided by Apple
-OSX are the BSD variants.  The test scripts require the GNU variants with the
-names *ggrep*, *gsed* and *gawk*, which can be installed on OSX using the
-[homebrew][] package manager:
+### libsodium
+
+Although the [libsodium][] package is available for Mac OS X using the
+[homebrew][] package manager, that package only provides the run-time library,
+not the development files; for example, it does not provide the `#include
+<sodium.h>` header.
+
+Before building Serval DNA on Mac OS X, the libsodium development files can be
+locally installed by downloading the [libsodium source code][] and building it.
+The [build-libsodium.sh](../build-libsodium.sh) script will do this:
+
+    $ ./build-libsodium.sh
+    ...
+    The libsodium run-time and development files have been installed in:
+    /absolute/path/name/serval-dna/libsodium
+    
+    To use this installation of libsodium, set up the environment using the
+    shell's "dot" command to source its settings.sh script, for example:
+    
+       . libsodium/settings.sh ; ./configure
+    
+    $
+
+In the event of failure, check that:
+
+* the [github.com][libsodium source code] web site can be reached
+* there is at least 60 MB of available disk space
+* there is no other libsodium development package already installed
+
+For more information, refer to the [libsodium installation documentation][]
+and the script's help message:
+
+    $ ./build-libsodium.sh --help
+    ...
+    $
+
+### Test utilities
+
+The [OS X grep(1)][] , [OS X sed(1)][] and [OS X awk(1)][] tools provided by
+Apple Mac OS X are the BSD variants.  The test scripts require the GNU variants
+with the names *ggrep*, *gsed* and *gawk*, which can be installed on Mac OS X
+using the [homebrew][] package manager:
 
     $ brew install grep
     ==> Installing grep from homebrew/dupes
@@ -174,8 +212,12 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [autoreconf]: https://www.gnu.org/savannah-checkouts/gnu/autoconf/manual/autoconf.html#autoreconf-Invocation
 [Debian]: http://www.debian.org/
 [Ubuntu]: http://www.ubuntu.com/
-[OSX grep(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/grep.1.html
-[OSX sed(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/sed.1.html
-[OSX awk(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/awk.1.html
+[libsodium]: https://download.libsodium.org/doc/
+[libsodium source code]: https://github.com/jedisct1/libsodium
+[libsodium installation documentation]: https://download.libsodium.org/libsodium/content/installation/
+[apt-get]: https://www.debian.org/doc/manuals/apt-guide/ch2.en.html
+[OS X grep(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/grep.1.html
+[OS X sed(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/sed.1.html
+[OS X awk(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/awk.1.html
 [homebrew]: http://brew.sh/
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell
