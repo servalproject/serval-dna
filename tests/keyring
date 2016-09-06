@@ -39,6 +39,7 @@ setup_instances() {
    for arg; do
       set_instance $arg
       executeOk_servald config \
+         set rhizome.enable off \
          set log.console.level debug \
          set debug.keyring on
       executeOk_servald keyring list
@@ -177,9 +178,11 @@ test_KeyringPinIdentityPin() {
     assert_keyring_list 0
 }
 
-doc_KeyringAutoCreate="Starting a server with no interfaces does not create an identity"
+doc_KeyringAutoCreate="Server with no interfaces does not create an identity"
 test_KeyringAutoCreate() {
-    executeOk_servald config set debug.mdprequests on
+    executeOk_servald config \
+       set debug.mdprequests on \
+       set debug.overlaytick on
     configure_servald_server() {
         :
     }
@@ -196,13 +199,21 @@ teardown_KeyringAutoCreate() {
    teardown_servald
 }
 
-doc_KeyringNoAutoCreate="Starting a server with interface creates an in-memory identity"
+has_sent_mdp_tick_to() {
+  $GREP "TICK name=$1 " $instance_servald_log || return 1
+  return 0
+}
+
+doc_KeyringNoAutoCreate="Server creates an in-memory identity on the first interface tick"
 test_KeyringNoAutoCreate() {
-    executeOk_servald config set debug.mdprequests on
+    executeOk_servald config \
+       set debug.mdprequests on \
+       set debug.overlaytick on
     configure_servald_server() {
         add_servald_interface
     }
     start_servald_server
+    wait_until has_sent_mdp_tick_to "dummy1/$instance_name"
     executeOk_servald keyring list
     assert_keyring_list 0
     executeOk_servald id self

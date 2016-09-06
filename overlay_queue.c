@@ -586,6 +586,11 @@ int overlay_send_tick_packet(struct network_destination *destination)
 	packet.seq);
     }
     overlay_fill_send_packet(&packet, gettime_ms(), debug);
+    // This debug statement is used for testing; do not remove or alter.
+    DEBUGF(overlaytick, "TICK name=%s destination=%s seq=%d",
+	packet.destination->interface->name,
+	alloca_socket_address(&packet.destination->address),
+	packet.seq);
   }
   return 0;
 }
