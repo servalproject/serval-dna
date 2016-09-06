@@ -179,6 +179,7 @@ test_KeyringPinIdentityPin() {
 
 doc_KeyringAutoCreate="Starting a server with no interfaces does not create an identity"
 test_KeyringAutoCreate() {
+    executeOk_servald config set debug.mdprequests on
     configure_servald_server() {
         :
     }
@@ -195,8 +196,9 @@ teardown_KeyringAutoCreate() {
    teardown_servald
 }
 
-doc_KeyringNoAutoCreate="Starting a server with interface creates in-memory identity"
+doc_KeyringNoAutoCreate="Starting a server with interface creates an in-memory identity"
 test_KeyringNoAutoCreate() {
+    executeOk_servald config set debug.mdprequests on
     configure_servald_server() {
         add_servald_interface
     }

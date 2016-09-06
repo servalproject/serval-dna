@@ -1034,7 +1034,7 @@ static int search_subscribers(struct subscriber *subscriber, void *context){
   return 0;
 }
 
-static int overlay_mdp_address_list(struct overlay_mdp_addrlist *request, struct overlay_mdp_addrlist *response)
+static void overlay_mdp_address_list(struct overlay_mdp_addrlist *request, struct overlay_mdp_addrlist *response)
 {
   DEBUGF(mdprequests, "MDP_GETADDRS first_sid=%u mode=%d", request->first_sid, request->mode);
   
@@ -1054,7 +1054,6 @@ static int overlay_mdp_address_list(struct overlay_mdp_addrlist *request, struct
 	 response->frame_sid_count,
 	 response->server_sid_count
 	);
-  return 0;
 }
 
 struct routing_state{
@@ -1713,12 +1712,8 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
 	    overlay_mdp_frame mdpreply;
 	    bzero(&mdpreply, sizeof(overlay_mdp_frame));
 	    mdpreply.packetTypeAndFlags = MDP_ADDRLIST;
-	    if (!overlay_mdp_address_list(&mdp->addrlist, &mdpreply.addrlist))
-	    /* Send back to caller */
-	      overlay_mdp_reply(alarm->poll.fd,
-				&client,
-				&mdpreply);
-	      
+	    overlay_mdp_address_list(&mdp->addrlist, &mdpreply.addrlist);
+	    overlay_mdp_reply(alarm->poll.fd, &client, &mdpreply);
 	    return;
 	  }
 	  break;

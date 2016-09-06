@@ -284,6 +284,7 @@ int overlay_mdp_client_close(int mdp_sockfd)
   /* Tell MDP server to release all our bindings */
   overlay_mdp_frame mdp;
   mdp.packetTypeAndFlags = MDP_GOODBYE;
+  DEBUGF(mdprequests, "Send MDP_GOODBYE");
   overlay_mdp_send(mdp_sockfd, &mdp, 0, 0);
   
   socket_unlink_close(mdp_sockfd);
@@ -361,6 +362,9 @@ int overlay_mdp_bind(int mdp_sockfd, const sid_t *localaddr, mdp_port_t port)
   mdp.packetTypeAndFlags=MDP_BIND|MDP_FORCE;
   mdp.bind.sid = *localaddr;
   mdp.bind.port=port;
+  DEBUGF(mdprequests, "Send MDP_BIND|MDP_FORCE sid=%s port=%" PRImdp_port_t,
+      alloca_tohex_sid_t(mdp.bind.sid),
+      mdp.bind.port);
   int result=overlay_mdp_send(mdp_sockfd, &mdp,MDP_AWAITREPLY,5000);
   if (result) {
     if (mdp.packetTypeAndFlags==MDP_ERROR)
@@ -383,6 +387,11 @@ int overlay_mdp_getmyaddr(int mdp_sockfd, unsigned index, sid_t *sidp)
   a.addrlist.first_sid=index;
   a.addrlist.last_sid=OVERLAY_MDP_ADDRLIST_MAX_SID_COUNT;
   a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
+  DEBUGF(mdprequests, "Send MDP_GETADDRS mode=MDP_ADDRLIST_MODE_SELF first_sid=%u last_sid=%u frame_sid_count=%u",
+    a.addrlist.first_sid,
+    a.addrlist.last_sid,
+    a.addrlist.frame_sid_count,
+    a.addrlist.server_sid_count);
   int result=overlay_mdp_send(mdp_sockfd,&a,MDP_AWAITREPLY,5000);
   if (result) {
     if (a.packetTypeAndFlags == MDP_ERROR)

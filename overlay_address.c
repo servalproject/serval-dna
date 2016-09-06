@@ -73,6 +73,8 @@ struct subscriber *get_my_subscriber(){
     keyring_identity *id = keyring->identities;
     while(id && id->subscriber->reachable != REACHABLE_SELF)
       id = id->next;
+    // If there is no reachable self-identity in the keyring, then roll one in-memory, which will
+    // persist until the server terminates.
     if (!id)
       id = keyring_inmemory_identity();
     my_subscriber = id->subscriber;

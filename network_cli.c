@@ -368,12 +368,19 @@ static int app_id_self(const struct cli_parsed *parsed, struct cli_context *cont
   
   a.packetTypeAndFlags=MDP_GETADDRS;
   const char *arg = parsed->labelc ? parsed->labelv[0].text : "";
-  if (!strcasecmp(arg,"self"))
+  const char *mode;
+  if (!strcasecmp(arg,"self")) {
     a.addrlist.mode = MDP_ADDRLIST_MODE_SELF; /* get own identities */
-  else if (!strcasecmp(arg,"allpeers"))
+    mode = "MDP_ADDRLIST_MODE_SELF";
+  }
+  else if (!strcasecmp(arg,"allpeers")) {
     a.addrlist.mode = MDP_ADDRLIST_MODE_ALL_PEERS; /* get all known peers */
-  else if (!strcasecmp(arg,"peers"))
+    mode = "MDP_ADDRLIST_MODE_ALL_PEERS";
+  }
+  else if (!strcasecmp(arg,"peers")) {
     a.addrlist.mode = MDP_ADDRLIST_MODE_ROUTABLE_PEERS; /* get routable (reachable) peers */
+    mode = "MDP_ADDRLIST_MODE_ROUTABLE_PEERS";
+  }
   else
     return WHYF("unsupported arg '%s'", arg);
   a.addrlist.first_sid=0;
@@ -388,6 +395,12 @@ static int app_id_self(const struct cli_parsed *parsed, struct cli_context *cont
   size_t rowcount=0;
 
   do{
+    DEBUGF(mdprequests, "Send MDP_GETADDRS mode=%s first_sid=%u last_sid=%u frame_sid_count=%u",
+	mode,
+	a.addrlist.first_sid,
+	a.addrlist.last_sid,
+	a.addrlist.frame_sid_count,
+	a.addrlist.server_sid_count);
     result=overlay_mdp_send(mdp_sockfd, &a, MDP_AWAITREPLY, 5000);
     if (result) {
       if (a.packetTypeAndFlags==MDP_ERROR){
@@ -432,6 +445,11 @@ static int app_count_peers(const struct cli_parsed *parsed, struct cli_context *
   a.packetTypeAndFlags=MDP_GETADDRS;
   a.addrlist.mode = MDP_ADDRLIST_MODE_ROUTABLE_PEERS;
   a.addrlist.first_sid = OVERLAY_MDP_ADDRLIST_MAX_SID_COUNT;
+  DEBUGF(mdprequests, "Send MDP_GETADDRS mode=MDP_ADDRLIST_MODE_ROUTABLE_PEERS first_sid=%u last_sid=%u frame_sid_count=%u",
+    a.addrlist.first_sid,
+    a.addrlist.last_sid,
+    a.addrlist.frame_sid_count,
+    a.addrlist.server_sid_count);
   int ret=overlay_mdp_send(mdp_sockfd, &a,MDP_AWAITREPLY,5000);
   overlay_mdp_client_close(mdp_sockfd);
   if (ret){
@@ -605,6 +623,7 @@ static int app_network_scan(const struct cli_parsed *parsed, struct cli_context 
   
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
     return WHY("Cannot create MDP socket");
+  DEBUGF(mdprequests, "Send MDP_SCAN");
   overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 5000);
   overlay_mdp_client_close(mdp_sockfd);
   
@@ -624,13 +643,16 @@ static void lookup_send_request(int mdp_sockfd, const sid_t *srcsid, int srcport
   mdp.out.src.sid = *srcsid;
 
   /* Send to destination address and DNA lookup port */
+  const char *desc;
   if (dstsid) {
     /* Send an encrypted unicast packet */
     mdp.packetTypeAndFlags=MDP_TX;
+    desc = "MDP_TX";
     mdp.out.dst.sid = *dstsid;
   }else{
     /* Send a broadcast packet, flooding across the local mesh network */
     mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT;
+    desc = "MDP_TX|MDP_NOCRYPT";
     mdp.out.dst.sid = SID_BROADCAST;
   }
   mdp.out.dst.port=MDP_PORT_DNALOOKUP;
@@ -639,6 +661,11 @@ static void lookup_send_request(int mdp_sockfd, const sid_t *srcsid, int srcport
   bcopy(did,&mdp.out.payload[0],strlen(did)+1);
   mdp.out.payload_length=strlen(did)+1;
 
+  DEBUGF(mdprequests, "Send %s dst.sid=%s dst.port="PRImdp_port_t" payload_length=%u",
+      desc,
+      alloca_tohex_sid_t(mdp.out.dst.sid),
+      mdp.out.dst.port,
+      mdp.out.payload_length);
   overlay_mdp_send(mdp_sockfd, &mdp, 0, 0);
 
   /* Also send an encrypted unicast request to a configured directory service */
@@ -646,6 +673,10 @@ static void lookup_send_request(int mdp_sockfd, const sid_t *srcsid, int srcport
     if (!is_sid_t_any(config.directory.service)) {
       mdp.out.dst.sid = config.directory.service;
       mdp.packetTypeAndFlags=MDP_TX;
+      DEBUGF(mdprequests, "Send MDP_TX dst.sid=%s dst.port="PRImdp_port_t" payload_length=%u",
+	  alloca_tohex_sid_t(mdp.out.dst.sid),
+	  mdp.out.dst.port,
+	  mdp.out.payload_length);
       overlay_mdp_send(mdp_sockfd, &mdp,0,0);
     }
   }

@@ -1406,6 +1406,7 @@ keyring_identity *keyring_inmemory_identity(){
   keyring_finalise_identity(NULL, id);
   if (id)
     add_subscriber(id);
+  INFOF("Created in-memory identity: %s", alloca_tohex_sid_t(id->subscriber->sid));
   return id;
 }
 
