@@ -71,9 +71,10 @@ Test dependencies:
  * jq 1.3 or later
  * curl
 
-The GNU grep, sed and awk programs can be installed on Mac OS-X using the
-[homebrew][] package manager.  The [Notes for Developers](./doc/Development.md)
-give more details.
+**Bash** and **curl** are both provided by the [XCode][] package for Mac OS X.
+**GNU grep**, **GNU sed**, **GNU awk** and **jq** can all be installed on Mac
+OS-X using the [homebrew][] package manager.  The [Notes for
+Developers](./doc/Development.md) give more details.
 
 Build
 -----
@@ -241,5 +242,6 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [Git]: http://git-scm.com/
 [Subversion]: http://subversion.apache.org/
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell
+[XCode]: https://developer.apple.com/xcode/
 [homebrew]: http://brew.sh/
 [CC BY 4.0]: ./LICENSE-DOCUMENTATION.md

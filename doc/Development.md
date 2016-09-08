@@ -141,6 +141,16 @@ Apple Mac OS X are the BSD variants.  The test scripts require the GNU variants
 with the names *ggrep*, *gsed* and *gawk*, which can be installed on Mac OS X
 using the [homebrew][] package manager:
 
+    $ brew tap homebrew/dupes
+    ==> Tapping homebrew/dupes
+    Cloning into '/usr/local/Library/Taps/homebrew/homebrew-dupes'...
+    remote: Counting objects: 42, done.
+    remote: Compressing objects: 100% (42/42), done.
+    remote: Total 42 (delta 0), reused 3 (delta 0), pack-reused 0
+    Unpacking objects: 100% (42/42), done.
+    Checking connectivity... done.
+    Tapped 38 formulae (103 files, 120.0K)
+    
     $ brew install grep
     ==> Installing grep from homebrew/dupes
     ==> Installing dependencies for homebrew/dupes/grep: pcre
@@ -178,6 +188,21 @@ using the [homebrew][] package manager:
     ==> Pouring gawk-4.1.3.el_capitan.bottle.tar.gz
     /usr/local/Cellar/gawk/4.1.3: 63 files, 3.2M
 
+    $
+
+The [jq(1)][] tool is not provided by Apple Mac OS X, so it must be installed
+using the [homebrew][] package manager:
+
+    $ brew install jq
+    ==> Installing dependencies for jq: oniguruma
+    ==> Installing jq dependency: oniguruma
+    ==> Downloading https://homebrew.bintray.com/bottles/oniguruma-6.1.1.el_capitan.bottle.tag.gz
+    ==> Pouring oniguruma-6.1.1.el_capitan.bottle.tag.gz
+    /usr/local/Cellar/oniguruma/6.1.1: 16 files, 1.3M
+    ==> Installing jq
+    ==> Downloading https://homebrew.bintray.com/bottles/jq-1.5_2.el_capitan.bottle.tag.gz
+    ==> Pouring jq-1.5_2.el_capitan.bottle.tag.gz
+    /usr/local/Cellar/jq/1.5_2: 18 files, 958K
     $
 
 About the examples
@@ -219,5 +244,6 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [OS X grep(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/grep.1.html
 [OS X sed(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/sed.1.html
 [OS X awk(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/awk.1.html
+[jq(1)]: https://stedolan.github.io/jq/
 [homebrew]: http://brew.sh/
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell
