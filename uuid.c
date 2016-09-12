@@ -21,7 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "uuid.h"
 #include "os.h"
 #include "str.h"
-#include "sodium.h"
+#include <sodium.h>
 
 #include <assert.h>
 #ifdef HAVE_ARPA_INET_H
