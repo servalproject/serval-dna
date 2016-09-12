@@ -539,7 +539,7 @@ setup_HttpFetchRange() {
    setup_common
    set_instance +A
    rhizome_add_file file1 100
-   tail --bytes +33 file1 >file1.tail
+   tail -c +33 file1 >file1.tail
    start_servald_instances +A
    wait_until rhizome_http_server_started +A
    get_rhizome_server_port PORTA +A
