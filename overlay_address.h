@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "constants.h"
 #include "os.h" // for time_ms_t
 #include "socket.h"
+#include "nibble_tree.h"
 
 // not reachable
 #define REACHABLE_NONE 0
@@ -52,10 +53,11 @@ struct overlay_buffer;
 // This structure supports both our own routing protocol which can store calculation details in *node 
 // or IP4 addresses reachable via any other kind of normal layer3 routing protocol, eg olsr
 struct subscriber{
+  // minimum abbreviation length, in bits.
+  // Note this must be here to match the memory layout of struct tree_record
+  unsigned tree_depth;
   sid_t sid;
-  // minimum abbreviation length, in 4bit nibbles.
-  int abbreviate_len;
-  
+
   int max_packet_version;
   
   // link state routing information
@@ -119,10 +121,9 @@ struct subscriber *get_my_subscriber();
 void release_my_subscriber();
 extern __thread struct subscriber *directory_service;
 
-struct subscriber *_find_subscriber(struct __sourceloc, const unsigned char *sid, int len, int create);
-#define find_subscriber(sid, len, create) _find_subscriber(__WHENCE__, sid, len, create)
+struct subscriber *find_subscriber(const uint8_t *sid, int len, int create);
 
-void enum_subscribers(struct subscriber *start, int(*callback)(struct subscriber *, void *), void *context);
+void enum_subscribers(struct subscriber *start, walk_callback callback, void *context);
 int set_reachable(struct subscriber *subscriber, struct network_destination *destination, struct subscriber *next_hop, int hop_count, struct subscriber *prior_hop);
 struct network_destination *load_subscriber_address(struct subscriber *subscriber);
 

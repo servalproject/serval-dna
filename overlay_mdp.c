@@ -1010,7 +1010,8 @@ static int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *c
   OUT();
 }
 
-static int search_subscribers(struct subscriber *subscriber, void *context){
+static int search_subscribers(void **record, void *context){
+  struct subscriber *subscriber=*record;
   struct overlay_mdp_addrlist *response = context;
   
   if (response->mode == MDP_ADDRLIST_MODE_SELF && subscriber->reachable != REACHABLE_SELF){
@@ -1087,8 +1088,9 @@ static void send_route(struct subscriber *subscriber, struct socket_address *cli
   ob_free(b);
 }
 
-static int routing_table(struct subscriber *subscriber, void *context)
+static int routing_table(void **record, void *context)
 {
+  struct subscriber *subscriber = *record;
   if (subscriber->reachable != REACHABLE_NONE){
     struct routing_state *state = (struct routing_state *)context;
     send_route(subscriber, state->client, state->header);

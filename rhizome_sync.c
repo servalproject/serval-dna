@@ -83,8 +83,9 @@ void rhizome_sync_status_html(struct strbuf *b, struct subscriber *subscriber)
     state->bars_skipped);
 }
 
-static int sync_status(struct subscriber *subscriber, void *UNUSED(context))
+static int sync_status(void **record, void *UNUSED(context))
 {
+  struct subscriber *subscriber = *record;
   if (!subscriber->sync_state)
     return 0;
   struct rhizome_sync *state=subscriber->sync_state;
@@ -219,8 +220,9 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
   }
 }
 
-static int sync_bundle_inserted(struct subscriber *subscriber, void *context)
+static int sync_bundle_inserted(void **record, void *context)
 {
+  struct subscriber *subscriber = *record;
   const rhizome_bar_t *bar = context;
   if (!subscriber->sync_state)
     return 0;

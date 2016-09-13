@@ -48,19 +48,7 @@ static struct broadcast bpilist[MAX_BPIS];
 #define OA_CODE_P2P_ME 0xfc
 #define OA_CODE_SIGNKEY 0xfb // full sign key of an identity, from which a SID can be derived
 
-// each node has 16 slots based on the next 4 bits of a subscriber id
-// each slot either points to another tree node or a struct subscriber.
-struct tree_node{
-  // bit flags for the type of object each element points to
-  uint16_t is_tree;
-  
-  union{
-    struct tree_node *tree_nodes[16];
-    struct subscriber *subscribers[16];
-  };
-};
-
-static __thread struct tree_node root;
+static __thread struct tree_root root={.binary_length=SID_SIZE};
 
 static __thread struct subscriber *my_subscriber=NULL;
 
@@ -88,16 +76,9 @@ void release_my_subscriber(){
   my_subscriber = NULL;
 }
 
-static unsigned char get_nibble(const unsigned char *sidp, int pos)
+static int free_node(void **record, void *UNUSED(context))
 {
-  unsigned char byte = sidp[pos>>1];
-  if (!(pos&1))
-    byte=byte>>4;
-  return byte&0xF;
-}
-
-static void free_subscriber(struct subscriber *subscriber)
-{
+  struct subscriber *subscriber = (struct subscriber *)*record;
   if (subscriber->link_state || subscriber->destination)
     FATAL("Can't free a subscriber that is being used in routing");
   if (subscriber->sync_state)
@@ -105,22 +86,8 @@ static void free_subscriber(struct subscriber *subscriber)
   if (subscriber->identity)
     FATAL("Can't free a subscriber that is unlocked in the keyring");
   free(subscriber);
-}
-
-static void free_children(struct tree_node *parent)
-{
-  int i;
-  for (i=0;i<16;i++){
-    if (parent->is_tree & (1<<i)){
-      free_children(parent->tree_nodes[i]);
-      free(parent->tree_nodes[i]);
-      parent->tree_nodes[i]=NULL;
-    }else if(parent->subscribers[i]){
-      free_subscriber(parent->subscribers[i]);
-      parent->subscribers[i]=NULL;
-    }
-  }
-  parent->is_tree=0;
+  *record=NULL;
+  return 0;
 }
 
 void free_subscribers()
@@ -129,117 +96,35 @@ void free_subscribers()
   // who knows where subscriber ptr's may have leaked to.
   if (serverMode)
     FATAL("Freeing subscribers from a running daemon is not supported");
-  free_children(&root);
+  tree_walk(&root, NULL, 0, free_node, NULL);
+}
+
+static void *create_subscriber(void *UNUSED(context), const uint8_t *binary, size_t bin_length)
+{
+  assert(bin_length == SID_SIZE);
+  struct subscriber *ret = (struct subscriber *) emalloc_zero(sizeof(struct subscriber));
+  if (ret){
+    ret->sid = *(const sid_t *)binary;
+    DEBUGF(subscriber, "Stored %s", alloca_tohex_sid_t(ret->sid));
+  }
+  return ret;
 }
 
 // find a subscriber struct from a whole or abbreviated subscriber id
-struct subscriber *_find_subscriber(struct __sourceloc __whence, const unsigned char *sidp, int len, int create)
+struct subscriber *find_subscriber(const uint8_t *sidp, int len, int create)
 {
-  IN();
-  struct tree_node *ptr = &root;
-  int pos=0;
-  if (len!=SID_SIZE)
-    create =0;
-  struct subscriber *ret = NULL;
-  do {
-    unsigned char nibble = get_nibble(sidp, pos++);
-    if (ptr->is_tree & (1<<nibble)){
-      ptr = ptr->tree_nodes[nibble];
-    }else if(!ptr->subscribers[nibble]){
-      // subscriber is not yet known
-      if (create && (ret = (struct subscriber *) emalloc_zero(sizeof(struct subscriber)))) {
-	ptr->subscribers[nibble] = ret;
-	ret->sid = *(const sid_t *)sidp;
-	ret->abbreviate_len = pos;
-	DEBUGF(subscriber, "Storing %s, abbrev_len=%d", alloca_tohex_sid_t(ret->sid), ret->abbreviate_len);
-      }
-      goto done;
-    }else{
-      // there's a subscriber in this slot, does it match the rest of the sid we've been given?
-      ret = ptr->subscribers[nibble];
-      if (memcmp(ret->sid.binary, sidp, len) == 0)
-	goto done;
-      // if we need to insert this subscriber, we have to make a new tree node first
-      if (!create) {
-	if (len != SID_SIZE)
-	  DEBUGF(subscriber, "Prefix %s is not unique", alloca_tohex(sidp, len));
-	ret = NULL;
-	goto done;
-      }
-      // create a new tree node and move the existing subscriber into it
-      struct tree_node *new = (struct tree_node *) emalloc_zero(sizeof(struct tree_node));
-      if (new == NULL) {
-	ret = NULL;
-	goto done;
-      }
-      ptr->tree_nodes[nibble] = new;
-      ptr->is_tree |= (1<<nibble);
-      ptr = new;
-      nibble = get_nibble(ret->sid.binary, pos);
-      ptr->subscribers[nibble] = ret;
-      ret->abbreviate_len = pos + 1;
-      DEBUGF(subscriber, "Bumped %s, abbrev_len=%d (+ %p)", alloca_tohex_sid_t(ret->sid), ret->abbreviate_len, ptr);
-      // then go around the loop again to compare the next nibble against the sid until we find an empty slot.
-    }
-  } while(pos < len*2);
-done:
-  RETURN(ret);
-}
-
-/* 
- Walk the subscriber tree, calling the callback function for each subscriber.
- if start is a valid pointer, the first entry returned will be after this subscriber
- if the callback returns non-zero, the process will stop.
- */
-static int walk_tree(struct tree_node *node, int pos, 
-	      const struct subscriber *start,
-	      int(*callback)(struct subscriber *, void *), void *context){
-  int i=0, e=16;
-  
-  if (start)
-    i=get_nibble(start->sid.binary, pos);
-  
-  for (;i<e;i++){
-    if (node->is_tree & (1<<i)){
-      if (walk_tree(node->tree_nodes[i], pos+1, start, callback, context))
-	return 1;
-    }else if(node->subscribers[i]){
-      if (callback(node->subscribers[i], context))
-	return 1;
-    }
-    // stop comparing the start sid after looking at the first branch of the tree
-    start=NULL;
-  }
-  return 0;
-}
-
-// walk the sub-tree for all subscribers that exactly match this id/len prefix.
-static void prefix_matches(uint8_t *id, unsigned len, 
-			   int(*callback)(struct subscriber *, void *), void *context)
-{
-  struct tree_node *node = &root;
-  unsigned pos=0;
-  DEBUGF(subscriber, "Looking for %s", alloca_tohex(id, len));
-  for (; node && pos<len*2; pos++){
-    int i=get_nibble(id, pos);
-    DEBUGF(subscriber, "Nibble %d = %d, node %p, is tree %d", pos, i, node, node->is_tree & (1<<i));
-    if ((node->is_tree & (1<<i))==0){
-      if (node->subscribers[i] && memcmp(node->subscribers[i]->sid.binary, id, len)==0)
-	callback(node->subscribers[i], context);
-      return;
-    }
-    node = node->tree_nodes[i];
-  }
-  DEBUGF(subscriber, "Walking from %p", node);
-  walk_tree(node, pos+1, NULL, callback, context);
+  struct subscriber *result;
+  tree_find(&root, (void**)&result, sidp, len, create && len == SID_SIZE ? create_subscriber : NULL, NULL);
+  // ignore return code, just return the result
+  return result;
 }
 
 /*
  walk the tree, starting at start inclusive, calling the supplied callback function
  */
-void enum_subscribers(struct subscriber *start, int(*callback)(struct subscriber *, void *), void *context)
+void enum_subscribers(struct subscriber *start, walk_callback callback, void *context)
 {
-  walk_tree(&root, 0, start, callback, context);
+  tree_walk(&root, start?start->sid.binary:NULL, SID_SIZE, callback, context);
 }
 
 // generate a new random broadcast address
@@ -305,7 +190,9 @@ void overlay_address_append(struct decode_context *context, struct overlay_buffe
       ob_append_bytes(b, subscriber->sid.binary, SID_SIZE);
       subscriber->send_full=0;
     }else{
-      int len=(subscriber->abbreviate_len+2)/2;
+      // always send 8-12 extra bits to disambiguate abbreviations
+      int len=(subscriber->tree_depth >> 3) + 1;
+      // add another 8 bits for our own packet headers
       if (context && (context->flags & DECODE_FLAG_ENCODING_HEADER))
 	len++;
       if (len>SID_SIZE)
@@ -318,8 +205,9 @@ void overlay_address_append(struct decode_context *context, struct overlay_buffe
     context->previous = subscriber;
 }
 
-static int add_explain_response(struct subscriber *subscriber, void *context)
+static int add_explain_response(void **record, void *context)
 {
+  struct subscriber *subscriber = *record;
   struct decode_context *response = context;
   // only explain a SID once every half second.
   time_ms_t now = gettime_ms();
@@ -389,7 +277,7 @@ static int find_subscr_buffer(struct decode_context *context, struct overlay_buf
     context->flags|=DECODE_FLAG_INVALID_ADDRESS;
     
     if (context->flags & DECODE_FLAG_DONT_EXPLAIN){
-      DEBUGF(subscriber, "Ignoring prefix %s", alloca_tohex(id, len));
+      DEBUGF(subscriber, "Ignoring unknown prefix %s", alloca_tohex(id, len));
     }else{
       // generate a please explain in the passed in context
       
@@ -403,7 +291,7 @@ static int find_subscr_buffer(struct decode_context *context, struct overlay_buf
       
       // And I'll tell you about any subscribers I know that match this abbreviation, 
       // so you don't try to use an abbreviation that's too short in future.
-      prefix_matches(id, len, add_explain_response, context);
+      tree_walk_prefix(&root, id, len, add_explain_response, context);
       
       DEBUGF(subscriber, "Asking for explanation of %s", alloca_tohex(id, len));
       ob_append_byte(context->please_explain->payload, len);
@@ -568,7 +456,10 @@ int process_explain(struct overlay_frame *frame)
     int len = ob_get(b);
     switch (len){
       case OA_CODE_P2P_YOU:
-	add_explain_response(get_my_subscriber(), &context);
+      {
+	void *sid = get_my_subscriber();
+	add_explain_response(&sid, &context);
+      }
 	break;
       case OA_CODE_SIGNKEY:
 	decode_sid_from_signkey(b, NULL);
@@ -591,7 +482,7 @@ int process_explain(struct overlay_frame *frame)
 	uint8_t *sid = ob_get_bytes_ptr(b, len);
 	// reply to the sender with all subscribers that match this abbreviation
 	DEBUGF(subscriber, "Sending explain responses for %s", alloca_tohex(sid, len));
-	prefix_matches(sid, len, add_explain_response, &context);
+	tree_walk_prefix(&root, sid, len, add_explain_response, &context);
       }
     }
   }

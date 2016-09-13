@@ -81,6 +81,7 @@ SERVAL_DAEMON_SOURCES = \
 	overlay_mdp_services.c \
 	mdp_filter.c \
 	msp_server.c \
+	nibble_tree.c \
 	overlay_olsr.c \
 	overlay_packetformats.c \
 	overlay_payload.c \

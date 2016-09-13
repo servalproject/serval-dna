@@ -397,8 +397,9 @@ static void monitor_announce_peer(struct subscriber *subscriber, int prior_reach
 }
 DEFINE_TRIGGER(link_change, monitor_announce_peer);
 
-static int monitor_announce_all_peers(struct subscriber *subscriber, void *UNUSED(context))
+static int monitor_announce_all_peers(void **record, void *UNUSED(context))
 {
+  struct subscriber *subscriber = *record;
   if (subscriber->reachable&REACHABLE)
     monitor_announce_peer(subscriber, REACHABLE_NONE);
   return 0;

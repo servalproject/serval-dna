@@ -167,7 +167,7 @@ struct link_state{
 };
 
 DEFINE_ALARM(link_send);
-static int append_link(struct subscriber *subscriber, void *context);
+static int append_link(void **record, void *context);
 static int neighbour_find_best_link(struct neighbour *n);
 
 struct neighbour *neighbours=NULL;
@@ -496,8 +496,9 @@ static int append_link_state(struct overlay_buffer *payload, char flags,
   return 0;
 }
 
-static int append_link(struct subscriber *subscriber, void *context)
+static int append_link(void **record, void *context)
 {
+  struct subscriber *subscriber = *record;
   if (subscriber == get_my_subscriber())
     return 0;
 

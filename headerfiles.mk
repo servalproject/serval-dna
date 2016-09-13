@@ -14,6 +14,7 @@ HDRS=	fifo.h \
 	instance.h \
 	meshms.h \
 	message_ply.h \
+	nibble_tree.h \
 	serval_types.h \
 	serval.h \
 	server.h \
