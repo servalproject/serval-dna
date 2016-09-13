@@ -1,6 +1,6 @@
 Serval DNA
 ==========
-[Serval Project][], March 2014
+[Serval Project][], September 2016
 
 [Serval DNA][] is the core component of the [Serval Mesh][] app for Android and
 the [Serval Mesh Extender][] long-range mesh networking device.  It is a daemon
@@ -15,41 +15,40 @@ Download, build and test
 ------------------------
 
  * [INSTALL.md](./INSTALL.md) contains instructions for downloading, building
-   and testing Serval DNA on most Linux and some Linux-like platforms.
+   and testing Serval DNA on Linux, Mac OS-X, and similar platforms
 
  * [Notes for Developers](./doc/Development.md) contains useful information for
-   developers of Serval DNA, which may also help resolve build issues.
+   developers of Serval DNA, which may also help resolve build issues
 
 Configuration
 -------------
 
  * [doc/Servald-Configuration.md](./doc/Servald-Configuration.md) describes how
-   to set up and run a Serval DNA daemon.
+   to set up and run a Serval DNA daemon
 
 Documentation
 -------------
 
- * [INSTALL.md](./INSTALL.md) give instructions to compile and install Serval DNA
+ * [INSTALL.md](./INSTALL.md) -- instructions to compile and install Serval DNA
 
- * [doc/](./doc/) contains technical documentation
+ * [doc/](./doc/) -- technical documentation
 
- * The Serval DNA `help` command will print a summary of all the operations
-   that servald offers:
+ * once Serval DNA is built, its "help" command will print a summary of all the
+   operations that servald offers:
 
         $ ./servald help
 
- * the [Serval Project Wiki][] contains several pages:
+ * the following pages in the [Serval Project Wiki][]:
    * [Serval DNA overview][Serval DNA]
    * [Serval DNA development][]
 
- * [CONTRIBUTORS.md](./CONTRIBUTORS.md) lists all individuals who have
-   contributed to the software
+ * [CONTRIBUTORS.md](./CONTRIBUTORS.md) -- individuals who have contributed to
+   the software
 
 Bugs and issues
 ---------------
 
- * Bugs can be reported and inspected using the [GitHub issue tracker][Serval
-   DNA issues].
+Bugs can be reported and inspected using the [GitHub issue tracker][Serval DNA issues].
 
 What is in this repository?
 ---------------------------
@@ -158,7 +157,7 @@ organisations by signing the [Serval Project Developer Agreement -
 Entity][entity].
 
 -----
-**Copyright 2014 Serval Project Inc.**  
+**Copyright 2016 Serval Project Inc.**  
 ![CC-BY-4.0](./cc-by-4.0.png)
 This document is available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
 
