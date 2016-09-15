@@ -216,9 +216,9 @@ setup_MeshmsListMessages() {
    meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<<>><>>A<<>'
    let NROWS=NSENT+NRECV+(NACK?1:0)
    executeOk_servald meshms list messages $SIDA1 $SIDA2
-   delivered_offset=$(sed -n -e '/^[0-9]\+:[0-9]\+:[0-9]\+:ACK:delivered$/{n;s/^[0-9]\+:\([0-9]\+\):[0-9]\+:>:.*/\1/p;q}' "$TFWSTDOUT")
+   delivered_offset=$($SED -n -e '/^[0-9]\+:[0-9]\+:[0-9]\+:ACK:delivered$/{n;s/^[0-9]\+:\([0-9]\+\):[0-9]\+:>:.*/\1/p;q}' "$TFWSTDOUT")
    [ -z "$delivered_offset" ] && delivered_offset=0
-   read_offset=$(sed -n -e 's/^[0-9]\+:\([0-9]\+\):[0-9]\+:MARK:read$/\1/p' "$TFWSTDOUT")
+   read_offset=$($SED -n -e 's/^[0-9]\+:\([0-9]\+\):[0-9]\+:MARK:read$/\1/p' "$TFWSTDOUT")
    [ -z "$read_offset" ] && read_offset=0
    tfw_log "delivered: $delivered_offset; read: $read_offset"
 }
