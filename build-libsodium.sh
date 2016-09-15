@@ -16,23 +16,42 @@
 # script.  This location can be overridden by giving an alternative directory
 # path on the command line, which the script will create if it does not exist.
 
-LIBSODIUM_URL_PATH="jedisct1/libsodium.git"
-LIBSODIUM_GIT_URL_HTTPS="https://github.com/$LIBSODIUM_URL_PATH"
-LIBSODIUM_GIT_URL_SSH="git@github.com:$LIBSODIUM_URL_PATH"
-LIBSODIUM_GIT_URL="$LIBSODIUM_GIT_URL_HTTPS"
-
-# Exit on error
-set -e
-
 usage() {
    echo "Usage: ${0##*/} [--directory PATH] [--ssh] [--make-arg ARG]"
-   echo "Options:  --directory PATH    download and build in PATH [$LIBSODIUM_DIR]"
+   echo "Options:  --src PATH          download and build in PATH [$LIBSODIUM_BUILD_DIR]"
+   echo "          --prefix PATH       install into PATH [$LIBSODIUM_INSTALL_DIR]"
    echo "          --no-update         do not update if already downloaded"
    echo "          --no-clean          do not clean if already built"
    echo "          --ssh               download from GitHub using SSH instead of HTTPS"
    echo "          --dist-build DIST   build using libsodium's 'dist-build/DIST.sh' script"
    echo "          --make-arg ARG      pass ARG to the 'make' command"
 }
+
+# Work out the path of the directory that contains this script.
+case "$0" in
+*/*) SCRIPT_DIR="${0%/*}";;
+*) SCRIPT_DIR=".";;
+esac
+case "$SCRIPT_DIR" in
+*/*) SCRIPT_PARENT_DIR="${SCRIPT_DIR%/*}";;
+.) SCRIPT_PARENT_DIR="..";;
+*) SCRIPT_PARENT_DIR="$SCRIPT_DIR/..";;
+esac
+
+# Download location.
+LIBSODIUM_URL_PATH="jedisct1/libsodium.git"
+LIBSODIUM_GIT_URL_HTTPS="https://github.com/$LIBSODIUM_URL_PATH"
+LIBSODIUM_GIT_URL_SSH="git@github.com:$LIBSODIUM_URL_PATH"
+LIBSODIUM_GIT_URL="$LIBSODIUM_GIT_URL_HTTPS"
+
+# The directory in which to install the built libsodium.
+LIBSODIUM_INSTALL_DIR="$SCRIPT_DIR/libsodium"
+
+# The directory in which to download and build libsodium.
+LIBSODIUM_BUILD_DIR="$SCRIPT_PARENT_DIR/libsodium"
+
+# Exit on error
+set -e
 
 usage_error() {
    echo "${0##*/}: $*" >&2
@@ -44,21 +63,6 @@ fatal() {
    echo "${0##*/}: $*" >&2
    exit 1
 }
-
-# Work out the absolute path of the directory that contains this script.
-case "$0" in
-/*) SCRIPT_DIR="${0%/*}";;
-./*) SCRIPT_DIR="$PWD";;
-*/*) SCRIPT_DIR="$PWD/${0%/*}";;
-*) SCRIPT_DIR="$PWD";;
-esac
-
-# The directory in which to install the built libsodium.
-LIBSODIUM_DIR_NAME="libsodium"
-LIBSODIUM_INSTALL_DIR="$SCRIPT_DIR/$LIBSODIUM_DIR_NAME"
-
-# The default directory in which to download and build libsodium.
-LIBSODIUM_DIR="$SCRIPT_DIR/../libsodium"
 
 # Parse the command-line, preserving all the arguments for later reference.
 PRESERVED_ARGS=()
@@ -74,14 +78,24 @@ while [ $# -ne 0 ]; do
       usage
       exit 0
       ;;
-   --directory=*)
+   --src=*)
       PRESERVED_ARGS+=("$opt")
-      LIBSODIUM_DIR="${opt#*=}"
+      LIBSODIUM_BUILD_DIR="${opt#*=}"
       ;;
-   --directory)
+   --src)
       [ $# -ge 1 ] || usage_error "missing argument after $opt"
       PRESERVED_ARGS+=("$opt" "$1")
-      LIBSODIUM_DIR="$1"
+      LIBSODIUM_BUILD_DIR="$1"
+      shift
+      ;;
+   --prefix=*)
+      PRESERVED_ARGS+=("$opt")
+      LIBSODIUM_INSTALL_DIR="${opt#*=}"
+      ;;
+   --prefix)
+      [ $# -ge 1 ] || usage_error "missing argument after $opt"
+      PRESERVED_ARGS+=("$opt" "$1")
+      LIBSODIUM_INSTALL_DIR="$1"
       shift
       ;;
    --ssh)
@@ -123,10 +137,20 @@ while [ $# -ne 0 ]; do
    esac
 done
 
-if [ ! -d "$LIBSODIUM_DIR" ]; then
-   echo "Create $LIBSODIUM_DIR"
-   mkdir -p "$LIBSODIUM_DIR"
+abspath() {
+   case "$1" in
+   /*) echo "$1";;
+   .) echo "$PWD";;
+   *) echo "$PWD/${1#./}";;
+   esac
+}
+
+if [ ! -d "$LIBSODIUM_BUILD_DIR" ]; then
+   echo "Create $LIBSODIUM_BUILD_DIR"
+   mkdir -p "$LIBSODIUM_BUILD_DIR"
 fi
+
+LIBSODIUM_INSTALL_ABSDIR="$(abspath "$LIBSODIUM_INSTALL_DIR")"
 
 is_libsodium_downloaded() {
    [ -r "$1/src/libsodium/include/sodium.h" -a \
@@ -134,23 +158,24 @@ is_libsodium_downloaded() {
    ]
 }
 
-if ! is_libsodium_downloaded "$LIBSODIUM_DIR"; then
+if ! is_libsodium_downloaded "$LIBSODIUM_BUILD_DIR"; then
    echo "Download libsodium from $LIBSODIUM_GIT_URL..."
-   git clone --branch stable "$LIBSODIUM_GIT_URL" "$LIBSODIUM_DIR"
-   cd "$LIBSODIUM_DIR" >/dev/null
+   git clone --branch stable "$LIBSODIUM_GIT_URL" "$LIBSODIUM_BUILD_DIR"
+   cd "$LIBSODIUM_BUILD_DIR" >/dev/null
    is_libsodium_downloaded . || fatal "Download did not produce expected source files"
 else
    echo "Libsodium appears to already be downloaded"
-   cd "$LIBSODIUM_DIR" >/dev/null
+   cd "$LIBSODIUM_BUILD_DIR" >/dev/null
+   git checkout stable
    if $OPT_UPDATE; then
       echo "Update from" $(git remote get-url origin)
-      git pull --ff-only
+      git pull --ff-only origin stable
    fi
 fi
 
-if [ -d "$LIBSODIUM_INSTALL_DIR" ]; then
+if [ -d "$LIBSODIUM_INSTALL_ABSDIR" ]; then
    echo "Delete the previous installation"
-   rm -rf "$LIBSODIUM_INSTALL_DIR"
+   rm -rf "$LIBSODIUM_INSTALL_ABSDIR"
 fi
 
 if $OPT_CLEAN && [ -r Makefile ]; then
@@ -160,7 +185,7 @@ fi
 
 if [ -z "$DIST" ]; then
    echo "Native build..."
-   [ -r Makefile ] || ./configure --prefix="$LIBSODIUM_INSTALL_DIR"
+   [ -r Makefile ] || ./configure --prefix="$LIBSODIUM_INSTALL_ABSDIR"
    make -j3 "${MAKE_ARGS[@]}" check
    make -j3 "${MAKE_ARGS[@]}" install
 elif [ -x "dist-build/$DIST.sh" ]; then
@@ -172,15 +197,15 @@ elif [ -x "dist-build/$DIST.sh" ]; then
    echo "Build using 'dist-build/$DIST.sh'..."
    "dist-build/$DIST.sh"
    [ -d "$installed" ] || fatal "build did not produce $installed"
-   echo "Copy built installation into $LIBSODIUM_INSTALL_DIR"
-   cp -R -p "$installed" "$LIBSODIUM_INSTALL_DIR"
+   echo "Copy built installation into $LIBSODIUM_INSTALL_ABSDIR"
+   cp -R -p "$installed" "$LIBSODIUM_INSTALL_ABSDIR"
 else
    fatal "script "dist-build/$DIST_BUILD.sh" does not exist."
 fi
 
 # Create a shell script that will set up the environment to use the built and
 # installed libsodium.
-cat >"$LIBSODIUM_INSTALL_DIR/settings.sh" <<EOF
+cat >"$LIBSODIUM_INSTALL_ABSDIR/settings.sh" <<EOF
 # libsodium development and run-time environment settings
 #
 # Source this file using the Bash "source" or Shell "." command to set up the
@@ -192,15 +217,15 @@ cat >"$LIBSODIUM_INSTALL_DIR/settings.sh" <<EOF
 # script is run.
 
 # Compiler settings:
-export CPPFLAGS="\$CPPFLAGS -isystem $LIBSODIUM_INSTALL_DIR/include"
-export LIBRARY_PATH="$LIBSODIUM_INSTALL_DIR/lib"
+export CPPFLAGS="\$CPPFLAGS -isystem $LIBSODIUM_INSTALL_ABSDIR/include"
+export LIBRARY_PATH="$LIBSODIUM_INSTALL_ABSDIR/lib"
 
 # Run-time settings:
-export LD_LIBRARY_PATH="\${LD_LIBRARY_PATH:+\$LD_LIBRARY_PATH:}$LIBSODIUM_INSTALL_DIR/lib"
+export LD_LIBRARY_PATH="\${LD_LIBRARY_PATH:+\$LD_LIBRARY_PATH:}$LIBSODIUM_INSTALL_ABSDIR/lib"
 EOF
 
 # Create a README.txt file.
-cat >"$LIBSODIUM_INSTALL_DIR/README.txt" <<EOF
+cat >"$LIBSODIUM_INSTALL_ABSDIR/README.txt" <<EOF
 This directory is a local installation of the libsodium cryptographic library
 downloaded from $LIBSODIUM_GIT_URL
 
@@ -210,10 +235,10 @@ EOF
 
 echo
 echo "The libsodium run-time and development files have been installed in:"
-echo "$LIBSODIUM_INSTALL_DIR"
+echo "$LIBSODIUM_INSTALL_ABSDIR"
 echo
 echo "To use this installation of libsodium, set up the environment using the"
 echo "shell's \"dot\" command to source its settings.sh script, for example:"
 echo
-echo "   . $LIBSODIUM_DIR_NAME/settings.sh ; ./configure"
+echo "   . $LIBSODIUM_INSTALL_DIR/settings.sh ; ./configure"
 echo
