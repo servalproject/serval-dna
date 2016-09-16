@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (C) 2016 Serval Project, Inc.
+# Copyright 2016 Flinders University
 #
 # This script downloads the libsodium source code from GitHub, then compiles it
 # and sets up the Serval DNA source code to build against the compiled
@@ -17,14 +17,16 @@
 # path on the command line, which the script will create if it does not exist.
 
 usage() {
-   echo "Usage: ${0##*/} [--directory PATH] [--ssh] [--make-arg ARG]"
+   echo "Usage: ${0##*/} [options]"
    echo "Options:  --src PATH          download and build in PATH [$LIBSODIUM_BUILD_DIR]"
-   echo "          --prefix PATH       install into PATH [$LIBSODIUM_INSTALL_DIR]"
+   echo "          --branch BRANCH     checkout BRANCH [$LIBSODIUM_BRANCH]"
+   echo "          --prefix PATH       install into PATH [$INSTALL_PREFIX-$DIST]"
    echo "          --no-update         do not update if already downloaded"
    echo "          --no-clean          do not clean if already built"
    echo "          --ssh               download from GitHub using SSH instead of HTTPS"
-   echo "          --dist-build DIST   build using libsodium's 'dist-build/DIST.sh' script"
+   echo "          --dist DIST         build using libsodium's 'dist-build/DIST.sh' script"
    echo "          --make-arg ARG      pass ARG to the 'make' command"
+   echo "          --help              display this message on standard output"
 }
 
 # Work out the path of the directory that contains this script.
@@ -44,8 +46,14 @@ LIBSODIUM_GIT_URL_HTTPS="https://github.com/$LIBSODIUM_URL_PATH"
 LIBSODIUM_GIT_URL_SSH="git@github.com:$LIBSODIUM_URL_PATH"
 LIBSODIUM_GIT_URL="$LIBSODIUM_GIT_URL_HTTPS"
 
+# The branch to check out.
+LIBSODIUM_BRANCH=stable
+
+# The distribution to build.
+DIST=native
+
 # The directory in which to install the built libsodium.
-LIBSODIUM_INSTALL_DIR="$SCRIPT_DIR/libsodium"
+INSTALL_PREFIX="$SCRIPT_DIR/libsodium"
 
 # The directory in which to download and build libsodium.
 LIBSODIUM_BUILD_DIR="$SCRIPT_PARENT_DIR/libsodium"
@@ -68,7 +76,6 @@ fatal() {
 PRESERVED_ARGS=()
 OPT_UPDATE=true
 OPT_CLEAN=true
-DIST=
 MAKE_ARGS=()
 while [ $# -ne 0 ]; do
    opt="$1"
@@ -88,14 +95,24 @@ while [ $# -ne 0 ]; do
       LIBSODIUM_BUILD_DIR="$1"
       shift
       ;;
+   --branch=*)
+      PRESERVED_ARGS+=("$opt")
+      LIBSODIUM_BRANCH="${opt#*=}"
+      ;;
+   --branch)
+      [ $# -ge 1 ] || usage_error "missing argument after $opt"
+      PRESERVED_ARGS+=("$opt" "$1")
+      LIBSODIUM_BRANCH="$1"
+      shift
+      ;;
    --prefix=*)
       PRESERVED_ARGS+=("$opt")
-      LIBSODIUM_INSTALL_DIR="${opt#*=}"
+      INSTALL_PREFIX="${opt#*=}"
       ;;
    --prefix)
       [ $# -ge 1 ] || usage_error "missing argument after $opt"
       PRESERVED_ARGS+=("$opt" "$1")
-      LIBSODIUM_INSTALL_DIR="$1"
+      INSTALL_PREFIX="$1"
       shift
       ;;
    --ssh)
@@ -108,11 +125,11 @@ while [ $# -ne 0 ]; do
    --no-clean)
       OPT_CLEAN=false
       ;;
-   --dist-build=*)
+   --dist=*)
       PRESERVED_ARGS+=("$opt")
       DIST="${opt#*=}"
       ;;
-   --dist-build)
+   --dist)
       [ $# -ge 1 ] || usage_error "missing argument after $opt"
       PRESERVED_ARGS+=("$opt" "$1")
       DIST="$1"
@@ -150,7 +167,7 @@ if [ ! -d "$LIBSODIUM_BUILD_DIR" ]; then
    mkdir -p "$LIBSODIUM_BUILD_DIR"
 fi
 
-LIBSODIUM_INSTALL_ABSDIR="$(abspath "$LIBSODIUM_INSTALL_DIR")"
+LIBSODIUM_INSTALL_ABSDIR="$(abspath "$INSTALL_PREFIX")-$DIST"
 
 is_libsodium_downloaded() {
    [ -r "$1/src/libsodium/include/sodium.h" -a \
@@ -160,16 +177,16 @@ is_libsodium_downloaded() {
 
 if ! is_libsodium_downloaded "$LIBSODIUM_BUILD_DIR"; then
    echo "Download libsodium from $LIBSODIUM_GIT_URL..."
-   git clone --branch stable "$LIBSODIUM_GIT_URL" "$LIBSODIUM_BUILD_DIR"
+   git clone --branch "$LIBSODIUM_BRANCH" "$LIBSODIUM_GIT_URL" "$LIBSODIUM_BUILD_DIR"
    cd "$LIBSODIUM_BUILD_DIR" >/dev/null
    is_libsodium_downloaded . || fatal "Download did not produce expected source files"
 else
    echo "Libsodium appears to already be downloaded"
    cd "$LIBSODIUM_BUILD_DIR" >/dev/null
-   git checkout stable
+   git checkout "$LIBSODIUM_BRANCH"
    if $OPT_UPDATE; then
       echo "Update from" $(git remote get-url origin)
-      git pull --ff-only origin stable
+      git pull --ff-only origin "$LIBSODIUM_BRANCH"
    fi
 fi
 
@@ -178,12 +195,17 @@ if [ -d "$LIBSODIUM_INSTALL_ABSDIR" ]; then
    rm -rf "$LIBSODIUM_INSTALL_ABSDIR"
 fi
 
-if $OPT_CLEAN && [ -r Makefile ]; then
+if $OPT_CLEAN; then
    echo "Clean the previous build"
-   make distclean >/dev/null
+   git clean -f -d -x
 fi
 
-if [ -z "$DIST" ]; then
+if [ ! -x configure ]; then
+   echo "No configure script present; run autogen.sh..."
+   ./autogen.sh
+fi
+
+if [ "$DIST" = native ]; then
    echo "Native build..."
    [ -r Makefile ] || ./configure --prefix="$LIBSODIUM_INSTALL_ABSDIR"
    make -j3 "${MAKE_ARGS[@]}" check
@@ -240,5 +262,5 @@ echo
 echo "To use this installation of libsodium, set up the environment using the"
 echo "shell's \"dot\" command to source its settings.sh script, for example:"
 echo
-echo "   . $LIBSODIUM_INSTALL_DIR/settings.sh ; ./configure"
+echo "   . $INSTALL_PREFIX-$DIST/settings.sh ; ./configure"
 echo
