@@ -7,6 +7,8 @@ sbindir=@sbindir@
 sysconfdir=@sysconfdir@
 localstatedir=@localstatedir@
 
+SQLITE3_AMALGAMATION = sqlite-amalgamation-3140200
+
 include sourcefiles.mk
 include headerfiles.mk
 
@@ -25,13 +27,15 @@ ALL_SOURCES = \
 	$(MONITOR_CLIENT_SRCS) \
 	$(SIMULATOR_SOURCES) \
 	$(SQLITE3_SOURCES)
-	
+
 SERVAL_DAEMON_OBJS = \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(MDP_CLIENT_SOURCES:.c=.o)) \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_DAEMON_SOURCES:.c=.o))
+SQLITE3_OBJS = \
+	$(addprefix $(OBJSDIR_SERVALD)/, $(notdir $(SQLITE3_SOURCES:.c=.o)))
 SERVALD_OBJS = \
-	$(addprefix $(OBJSDIR_SERVALD)/, $(notdir $(SQLITE3_SOURCES:.c=.o))) \
+	$(SQLITE3_OBJS) \
 	$(SERVAL_DAEMON_OBJS)
 TEST_OBJS = \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(TEST_SOURCES:.c=.o)) \
@@ -51,15 +55,22 @@ CC= @CC@
 
 LDFLAGS=@LDFLAGS@ @LIBS@
 
-CFLAGS= -Isqlite-amalgamation-3100200 @CPPFLAGS@ @CFLAGS@
+CFLAGS= -I$(SQLITE3_AMALGAMATION) @CPPFLAGS@ @CFLAGS@
 CFLAGS+=-DSYSCONFDIR="\"$(sysconfdir)\"" -DLOCALSTATEDIR="\"$(localstatedir)\""
-CFLAGS+=-DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_DATETIME_FUNCS -DSQLITE_OMIT_COMPILEOPTION_DIAGS -DSQLITE_OMIT_DEPRECATED -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_OMIT_VIRTUALTABLE -DSQLITE_OMIT_AUTHORIZATION
+CFLAGS+=-DSQLITE_THREADSAFE=0 \
+	-DSQLITE_OMIT_DATETIME_FUNCS \
+	-DSQLITE_OMIT_COMPILEOPTION_DIAGS \
+	-DSQLITE_OMIT_DEPRECATED \
+	-DSQLITE_OMIT_LOAD_EXTENSION \
+	-DSQLITE_OMIT_VIRTUALTABLE \
+	-DSQLITE_OMIT_AUTHORIZATION
 CFLAGS+=-fPIC
 CFLAGS+=-Wall -Werror
 # Solaris magic
 CFLAGS+=-DSHA2_USE_INTTYPES_H -D_XOPEN_SOURCE=600 -D_XOPEN_SOURCE_EXTENDED=1 -D__EXTENSIONS__=1
 # OSX magic to compensate for the Solaris magic
 CFLAGS+=-D_DARWIN_C_SOURCE
+CFLAGS_SQLITE= @CFLAGS_SQLITE@
 
 INSTALL=        install
 INSTALL_PROGRAM=$(INSTALL)
@@ -142,11 +153,11 @@ $(OBJSDIR_TOOLS)/version.o: $(ALL_SOURCES) $(HDRS) version_servald.c version_str
 # Instead of fixing warnings case-by-case in the sqlite.c source code, simply
 # suppress the classes of warnings that cause compilation errors with
 # -Werror.
-$(OBJSDIR_SERVALD)/sqlite3.o: sqlite-amalgamation-3100200/sqlite3.c Makefile
+$(SQLITE3_OBJS): $(OBJSDIR_SERVALD)/%.o: $(SQLITE3_AMALGAMATION)/%.c
 	@echo SERVALD CC $<
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
-	@$(CC) $(CFLAGS) -Wno-unused-value -Wno-empty-body $(DEFS) -c $< -o $@
+	@$(CC) $(CFLAGS) $(CFLAGS_SQLITE) $(DEFS) -c $< -o $@
 
 # No object files in source directory!
 %.o: %.c

@@ -1651,7 +1651,12 @@ doc_payloadUninteresting="Fail to insert a payload that is uninteresting"
 setup_payloadUninteresting() {
    setup_servald
    setup_rhizome
-   executeOk_servald config set rhizome.database_size 64K
+   executeOk_servald config set rhizome.clean_on_open yes
+   # Create Rhizome database, discover fixed space overhead.
+   executeOk_servald rhizome list
+   bytes_used=$($SED -n -e '/.*RHIZOME SPACE.*USED bytes=\([0-9]\+\).*/{s//\1/p;q}' "$TFWSTDERR")
+   assert [ -n "$bytes_used" ]
+   executeOk_servald config set rhizome.database_size $((bytes_used + 65535))
 }
 test_payloadUninteresting(){
    create_file file1 32K

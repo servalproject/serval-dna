@@ -42,8 +42,7 @@ SERVAL_LIB_SOURCES = \
 # They also take a long time to compile, so their dependencies should be as
 # narrow as possible to avoid unnecessary recompilations when developers modify
 # header files.
-SQLITE3_SOURCES = \
-	sqlite-amalgamation-3100200/sqlite3.c
+SQLITE3_SOURCES = $(SQLITE3_AMALGAMATION)/sqlite3.c
 
 # The source files for building the Serval DNA daemon.
 SERVAL_DAEMON_SOURCES = \

@@ -60,30 +60,44 @@ static int (*sqlite_trace_func)() = is_debug_rhizome;
 const struct __sourceloc *sqlite_trace_whence = NULL;
 static int sqlite_trace_done;
 
-/* This is called by SQLite when executing a statement using sqlite3_step().  Unfortunately, it is
- * not called on PRAGMA statements, and possibly others.  Hence the use of the profile callback (see
- * below).
+/* This callback conditionally logs all rendered SQL statements.  This function is registered with
+ * SQLite as the 'trace callback'.  SQLite invokes it with mask == SQLITE_TRACE_STMT when about to
+ * execute a statement using sqlite3_step(), and with mask == SQLITE_TRACE_PROFILE when the
+ * statement finishes executing.
+ *
+ * SQLite neglects to call its trace callback with mask==SQLITE_TRACE_STMT on some kinds of
+ * statements, eg, PRAGMA.  However, it does appear to call its trace callback with
+ * mask==SQLITE_TRACE_PROFILE after every kind of statement.  Hence this function uses both
+ * callbacks, and uses the 'sqlite_trace_done' flag, which gets reset to zero whenever Rhizome
+ * prepares a new SQLite statement, to avoid duplicate logging.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static void sqlite_trace_callback(void *UNUSED(context), const char *rendered_sql)
+static int sqlite_trace_callback(unsigned UNUSED(mask), void *UNUSED(context), void * p, void * x)
 {
-  if (sqlite_trace_func())
-    logMessage(LOG_LEVEL_DEBUG, sqlite_trace_whence ? *sqlite_trace_whence : __HERE__, "%s", rendered_sql);
-  ++sqlite_trace_done;
-}
-
-/* This is called by SQLite when an executed statement finishes.  We use it to log rendered SQL
- * statements when the trace callback (above) has not been called, eg, for PRAGMA statements.  This
- * requires that the 'sqlite_trace_done' static be reset to zero whenever a new prepared statement
- * is about to be stepped.
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
-static void sqlite_profile_callback(void *context, const char *rendered_sql, sqlite_uint64 UNUSED(nanosec))
-{
-  if (!sqlite_trace_done)
-    sqlite_trace_callback(context, rendered_sql);
+  if (sqlite_trace_func()) {
+    const char * rendered_sql = NULL;
+    switch (mask) {
+    case SQLITE_TRACE_STMT:
+      if (!sqlite_trace_done) {
+	sqlite3_stmt * stmt = p;
+	const char * unexpanded_sql = x;
+	rendered_sql = (unexpanded_sql[0] == '-' && unexpanded_sql[1] == '-') ? &unexpanded_sql[2] : sqlite3_expanded_sql(stmt);
+      }
+      break;
+    case SQLITE_TRACE_PROFILE:
+      if (!sqlite_trace_done) {
+	sqlite3_stmt * stmt = p;
+	rendered_sql = sqlite3_expanded_sql(stmt);
+      }
+      break;
+    }
+    if (rendered_sql) {
+      logMessage(LOG_LEVEL_DEBUG, sqlite_trace_whence ? *sqlite_trace_whence : __HERE__, "%s", rendered_sql);
+      ++sqlite_trace_done;
+    }
+  }
+  return 0; // ignored by SQLite
 }
 
 /* This function allows code like:
@@ -220,8 +234,7 @@ int rhizome_opendb()
   if (sqlite3_open(dbpath,&rhizome_db)){
     RETURN(WHYF("SQLite could not open database %s: %s", dbpath, sqlite3_errmsg(rhizome_db)));
   }
-  sqlite3_trace(rhizome_db, sqlite_trace_callback, NULL);
-  sqlite3_profile(rhizome_db, sqlite_profile_callback, NULL);
+  sqlite3_trace_v2(rhizome_db, SQLITE_TRACE_STMT, sqlite_trace_callback, NULL);
   int loglevel = IF_DEBUG(rhizome) ? LOG_LEVEL_DEBUG : LOG_LEVEL_SILENT;
 
   const char *env = getenv("SERVALD_RHIZOME_DB_RETRY_LIMIT_MS");

@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include "conf.h"
 #include "str.h"
+#include "numeric_str.h"
 
 #define RHIZOME_BUFFER_MAXIMUM_SIZE (1024*1024)
 
@@ -162,31 +163,32 @@ int rhizome_delete_file(const rhizome_filehash_t *hashp)
 static uint64_t store_get_free_space()
 {
   const char *fake_space = getenv("SERVALD_FREE_SPACE");
+  uint64_t space = UINT64_MAX;
   if (fake_space)
-    return atol(fake_space);
+    space = atol(fake_space);
 #if defined(HAVE_SYS_STATVFS_H) || (defined(HAVE_SYS_STAT_H) && defined(HAVE_SYS_VFS_H))
-  char store_path[1024];
-  if (!FORMF_RHIZOME_STORE_PATH(store_path, "rhizome.db"))
-    return UINT64_MAX;
-  struct statvfs stats;
-  if (statvfs(store_path, &stats)==-1){
-    WARNF_perror("statvfs(%s)", store_path);
-    return UINT64_MAX;
+  else {
+    char store_path[1024];
+    if (FORMF_RHIZOME_STORE_PATH(store_path, "rhizome.db")) {
+      struct statvfs stats;
+      if (statvfs(store_path, &stats)==-1)
+	WARNF_perror("statvfs(%s)", store_path);
+      else
+	space = stats.f_frsize * stats.f_bavail;
+    }
   }
-  uint64_t space = stats.f_frsize * stats.f_bavail;
-  if (IF_DEBUG(rhizome)){
+#endif
+  if (IF_DEBUG(rhizome)) {
     double pretty = space;
     const char *suffix = " KMGT";
     while(pretty >= 1024 && suffix[1]){
       pretty = pretty / 1024;
       suffix++;
     }
-    DEBUGF(rhizome, "Found %.2f%cB of free space", pretty, *suffix);
+    // Automated tests depend on this message; do not alter.
+    DEBUGF(rhizome, "RHIZOME SPACE FREE bytes=%"PRIu64" (%sB)", space, alloca_double_scaled_binary(space));
   }
   return space;
-#else
-  return UINT64_MAX;
-#endif
 }
 
 static uint64_t store_space_limit(uint64_t current_size)
@@ -202,7 +204,6 @@ static uint64_t store_space_limit(uint64_t current_size)
 	limit = current_size + free_space - config.rhizome.min_free_space;
     }
   }
-  
   return limit;
 }
 
@@ -238,6 +239,11 @@ static enum rhizome_payload_status store_make_space(uint64_t bytes, struct rhizo
   
   uint64_t db_used = external_bytes + db_page_size * (db_page_count - db_free_page_count);
   const uint64_t limit = store_space_limit(db_used);
+
+  // Automated tests depend on this message; do not alter.
+  DEBUGF(rhizome, "RHIZOME SPACE USED bytes=%"PRIu64" (%sB), LIMIT bytes=%"PRIu64" (%sB)",
+      db_used, alloca_double_scaled_binary(db_used),
+      limit, alloca_double_scaled_binary(limit));
   
   if (bytes && bytes >= limit){
     DEBUGF(rhizome, "Not enough space for %"PRIu64". Used; %"PRIu64" = %"PRIu64" + %"PRIu64" * (%"PRIu64" - %"PRIu64"), Limit; %"PRIu64, 
