@@ -869,6 +869,42 @@ test_RhizomeInsertEmpty() {
    assert diff xempty.manifest empty.manifest
 }
 
+doc_RhizomeUpdateToEmpty="HTTP RESTful update Rhizome bundle to empty"
+setup_RhizomeUpdateToEmpty() {
+   setup
+   >empty
+   assert [ ! -s empty ]
+   create_file nonempty 101
+   executeOk_servald rhizome add file $SIDA nonempty nonempty.manifest
+   executeOk_servald rhizome list
+   assert_rhizome_list nonempty
+   extract_manifest_id BID nonempty.manifest
+}
+test_RhizomeUpdateToEmpty() {
+   execute curl \
+         -H "Expect:" \
+         --silent --show-error --write-out '%{http_code}' \
+         --output empty.manifest \
+         --dump-header http.header \
+         --basic --user harry:potter \
+         --form "bundle-id=$BID" \
+         --form "manifest=;type=rhizome/manifest;format=\"text+binarysig\"" \
+         --form "payload=@empty;filename=\"lethargic\"" \
+         "http://$addr_localhost:$PORTA/restful/rhizome/insert"
+   tfw_cat http.header empty.manifest
+   assertExitStatus == 0
+   assertStdoutIs 201
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Code: 0$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Bundle-Status-Message: .*bundle new to store.*$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Code: 0$CR\$"
+   assertGrep --matches=1 --ignore-case http.header "^Serval-Rhizome-Result-Payload-Status-Message: .*payload empty.*$CR\$"
+   executeOk_servald rhizome list
+   assert_rhizome_list empty
+   executeOk_servald rhizome extract bundle $BID xempty.manifest xempty
+   assert [ ! -e xempty ]
+   assert diff xempty.manifest empty.manifest
+}
+
 doc_RhizomeInsertLarge="HTTP RESTful insert 50 MiB Rhizome bundle"
 setup_RhizomeInsertLarge() {
    setup
