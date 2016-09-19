@@ -1,17 +1,16 @@
 Serval DNA Build and Test
 =========================
-[Serval Project][], March 2013
+[Serval Project][], September 2016
 
 Supported Architectures
 -----------------------
 
 These instructions will build [Serval DNA][] successfully for the following platforms:
 
- * Debian Linux, ix86 and x86\_64, kernels 2.6.x and 3.x, using [gcc 4.4][] to
-   [gcc 4.8][]
- * Mac OS-X x86\_64, releases 10.7 “Lion” to 10.11 “El Capitan”, using [gcc
-   4.2][] available in [Xcode][] versions 3.2 to 7.2, and GNU tools available
-   from [homebrew][]
+ * Debian Linux, ix86 and x86\_64, kernel versions 2.6 to 4.6, using [gcc
+   4.4][] and later, [gcc 5][] and [gcc 6][]
+ * Mac OS-X x86\_64, releases 10.7 “Lion” to 10.11 “El Capitan”, using
+   [Xcode][] versions 3.2 to 8, and GNU tools available from [homebrew][]
  * Oracle SunOs 5.10 (Solaris), Sparc, using [gcc 4.4][] and GNU tools
    installed
 
@@ -215,7 +214,7 @@ The directory paths used in the examples are for illustrative purposes only,
 and may need to be changed for your particular circumstances.
 
 -----
-**Copyright 2013 Serval Project Inc.**  
+**Copyright 2013-2016 Serval Project Inc.**  
 ![CC-BY-4.0](./cc-by-4.0.png)
 This document is available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
 
@@ -226,10 +225,10 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [batphone]: https://github.com/servalproject/batphone
 [Android 2.2 “Froyo”]: http://developer.android.com/about/versions/android-2.2-highlights.html
 [Android NDK]: http://developer.android.com/tools/sdk/ndk/index.html
-[gcc 4.2]: http://gcc.gnu.org/gcc-4.2/
 [Xcode]: https://developer.apple.com/xcode/
 [gcc 4.4]: http://gcc.gnu.org/gcc-4.4/
-[gcc 4.7]: http://gcc.gnu.org/gcc-4.7/
+[gcc 5]: http://gcc.gnu.org/gcc-5/
+[gcc 6]: http://gcc.gnu.org/gcc-6/
 [OpenWRT]: ./doc/OpenWRT.md
 [Serval Mesh Extender]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:meshextender:
 [contact the Serval Project]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:contact
