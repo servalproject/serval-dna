@@ -29,8 +29,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "fdqueue.h"
 #include "os.h"
 #include "uuid.h"
-#include "str.h"
-#include "strbuf.h"
 #include "trigger.h"
 
 #ifndef __RHIZOME_INLINE
