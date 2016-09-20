@@ -24,6 +24,7 @@ HDRS=	fifo.h \
 	cli.h \
 	str.h \
 	numeric_str.h \
+	base64.h \
 	rotbuf.h \
 	mem.h \
 	os.h \

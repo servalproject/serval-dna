@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "conf.h"
 #include "httpd.h"
+#include "base64.h"
 #include "strbuf_helpers.h"
 
 DECLARE_HANDLER("/restful/rhizome/bundlelist.json", restful_rhizome_bundlelist_json);
