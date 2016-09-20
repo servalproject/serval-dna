@@ -260,17 +260,17 @@ static int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *
 
 DEFINE_CMD(app_keyring_set_did, 0,
   "Set the DID for the specified SID (must supply PIN to unlock the SID record in the keyring)",
-  "keyring", "set","did" KEYRING_PIN_OPTIONS,"<sid>","<did>","<name>");
+  "keyring", "set","did" KEYRING_PIN_OPTIONS,"<sid>","<did>","<name>", "[<new_pin>]");
 static int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_context *context)
 {
   DEBUG_cli_parsed(verbose, parsed);
-  const char *sidhex, *did, *name;
+  const char *sidhex, *did, *name, *new_pin;
   
   if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1 ||
       cli_arg(parsed, "did", &did, cli_optional_did, "") == -1 ||
       cli_arg(parsed, "name", &name, NULL, "") == -1)
     return -1;
-
+  int set_pin = cli_arg(parsed, "new_pin", &new_pin, NULL, "") == 0;
   if (strlen(name)>63)
     return WHY("Name too long (31 char max)");
 
@@ -289,17 +289,14 @@ static int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_conte
   int r=0;
   if (!id)
     r=WHY("No matching SID");
-  else{
-    if (keyring_set_did(id, did, name))
+  else if (keyring_set_did(id, did, name))
       r=WHY("Could not set DID");
-    else{
-      if (keyring_commit(keyring))
-	r=WHY("Could not write updated keyring record");
-      else{
-	cli_output_identity(context, id);
-      }
-    }
-  }
+  else if (set_pin && keyring_set_pin(id, new_pin))
+      r=WHY("Could not set new pin");
+  else if (keyring_commit(keyring))
+    r=WHY("Could not write updated keyring record");
+  else
+    cli_output_identity(context, id);
 
   keyring_free(keyring);
   keyring = NULL;

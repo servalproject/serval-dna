@@ -116,6 +116,20 @@ test_Pinless() {
     assert_keyring_list 3
 }
 
+doc_KeyringUpdatePin="Change the PIN on an identity"
+test_KeyringUpdatePin() {
+    executeOk_servald keyring add ''
+    extract_stdout_keyvalue SID sid "$rexp_sid"
+    executeOk_servald keyring list
+    assert_keyring_list 1
+    executeOk_servald keyring set did "$SID" '' '' 'pin'
+    executeOk_servald keyring list
+    assert_keyring_list 0
+    executeOk_servald keyring list --entry-pin 'pin'
+    assert_keyring_list 1
+}
+
+
 doc_IdentityPins="No keyring PIN with identity PINs"
 test_IdentityPins() {
     executeOk_servald keyring add 'one'

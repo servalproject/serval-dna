@@ -1552,6 +1552,17 @@ int keyring_set_did(keyring_identity *id, const char *did, const char *name)
   return 0;
 }
 
+int keyring_set_pin(keyring_identity *id, const char *pin)
+{
+  if (id->PKRPin){
+    free(id->PKRPin);
+    id->PKRPin = NULL;
+  }
+  if (pin && *pin)
+    id->PKRPin = str_edup(pin);
+  return 0;
+}
+
 int keyring_unpack_tag(const unsigned char *packed, size_t packed_len, const char **name, const unsigned char **value, size_t *length)
 {
   size_t i;
