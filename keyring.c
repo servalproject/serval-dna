@@ -1752,7 +1752,7 @@ int keyring_send_unlock(struct subscriber *subscriber)
 {
   if (!subscriber->identity)
     return WHY("Cannot unlock an identity we don't have in our keyring");
-  if (subscriber->reachable==REACHABLE_SELF)
+  if (subscriber->reachable & REACHABLE_SELF)
     return 0;
     
   struct internal_mdp_header header;

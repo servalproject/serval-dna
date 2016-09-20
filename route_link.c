@@ -376,7 +376,7 @@ static void update_path_score(struct neighbour *neighbour, struct link *link){
 static struct link * find_best_link(struct subscriber *subscriber)
 {
   IN();
-  if (subscriber->reachable==REACHABLE_SELF)
+  if (subscriber->reachable & REACHABLE_SELF)
     RETURN(NULL);
     
   struct link_state *state = get_link_state(subscriber);

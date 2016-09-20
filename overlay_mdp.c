@@ -1014,7 +1014,7 @@ static int search_subscribers(void **record, void *context){
   struct subscriber *subscriber=*record;
   struct overlay_mdp_addrlist *response = context;
   
-  if (response->mode == MDP_ADDRLIST_MODE_SELF && subscriber->reachable != REACHABLE_SELF){
+  if (response->mode == MDP_ADDRLIST_MODE_SELF && (subscriber->reachable & REACHABLE_SELF)==0){
     return 0;
   }
   
@@ -1024,7 +1024,7 @@ static int search_subscribers(void **record, void *context){
   }
     
   if (response->mode == MDP_ADDRLIST_MODE_ALL_PEERS &&
-      subscriber->reachable == REACHABLE_SELF){
+      (subscriber->reachable & REACHABLE_SELF)){
     return 0;
   }
   
