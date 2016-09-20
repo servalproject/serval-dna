@@ -20,6 +20,7 @@
 #ifndef __SERVAL_DNA__NUMERIC_STR_H__
 #define __SERVAL_DNA__NUMERIC_STR_H__
 
+#include "strbuf.h"
 #include <sys/types.h> // for size_t
 #include <stdint.h>
 
@@ -91,17 +92,20 @@ int str_to_int64_scaled(const char *str, unsigned base, int64_t *result, const c
 int str_to_uint64_scaled(const char *str, unsigned base, uint64_t *result, const char **afterp);
 uint64_t scale_factor(const char *str, const char **afterp);
 
-/* Format a string as a decimal integer in ASCII radix notation with a scale suffix character in the
- * set {kKmMgG}: 'k' = 1e3, 'K' = 1<<10, 'm' = 1e6, 'M' = 1<<20, 'g' = 1e9, 'G' = * 1<<30 if the
- * value is an exact multiple.
+/* Append an integer value to a strbuf in ASCII decimal format, optionally scaled with a scale
+ * suffix character in the set {kKmMgGtTpP}: 'k' = 1e3, 'K' = 1<<10, 'm' = 1e6, 'M' = 1<<20, 'g' =
+ * 1e9, 'G' = * 1<<30, etc.  This format is lossless because the value is only scaled if it is an
+ * exact multiple of the scaling factor.
  *
- * Return 1 if the supplied string buffer was large enough to hold the formatted result plus a
- * terminating nul character, 0 otherwise.
+ * Eg, 1000 -> "1k"
+ *     1001 -> "1001"
+ *     1024 -> "1K"
+ *     1025 -> "1025"
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int uint32_scaled_to_str(char *str, size_t len, uint32_t value);
-int uint64_scaled_to_str(char *str, size_t len, uint64_t value);
+strbuf strbuf_append_uint32_scaled(strbuf sb, uint32_t value);
+strbuf strbuf_append_uint64_scaled(strbuf sb, uint64_t value);
 
 /* Parse a string as a time interval (seconds) in millisecond resolution.  Return the number of
  * milliseconds.  Valid strings are all unsigned ASCII decimal numbers with up to three digits after

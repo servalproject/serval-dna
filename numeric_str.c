@@ -226,7 +226,7 @@ int str_to_uint32_scaled(const char *str, unsigned base, uint32_t *result, const
   return 1;
 }
 
-int uint32_scaled_to_str(char *str, size_t len, uint32_t value)
+strbuf strbuf_append_uint32_scaled(strbuf sb, uint32_t value)
 {
   char symbol = '\0';
   int i;
@@ -236,11 +236,10 @@ int uint32_scaled_to_str(char *str, size_t len, uint32_t value)
       symbol = scale_factors[i].symbol;
       break;
     }
-  strbuf b = strbuf_local(str, len);
-  strbuf_sprintf(b, "%lu", (unsigned long) value);
+  strbuf_sprintf(sb, "%lu", (unsigned long) value);
   if (symbol)
-    strbuf_putc(b, symbol);
-  return strbuf_overrun(b) ? 0 : 1;
+    strbuf_putc(sb, symbol);
+  return sb;
 }
 
 int str_to_uint64_scaled(const char *str, unsigned base, uint64_t *result, const char **afterp)
@@ -262,7 +261,7 @@ int str_to_uint64_scaled(const char *str, unsigned base, uint64_t *result, const
   return 1;
 }
 
-int uint64_scaled_to_str(char *str, size_t len, uint64_t value)
+strbuf strbuf_append_uint64_scaled(strbuf sb, uint64_t value)
 {
   char symbol = '\0';
   int i;
@@ -272,11 +271,10 @@ int uint64_scaled_to_str(char *str, size_t len, uint64_t value)
       symbol = scale_factors[i].symbol;
       break;
     }
-  strbuf b = strbuf_local(str, len);
-  strbuf_sprintf(b, "%llu", (unsigned long long) value);
+  strbuf_sprintf(sb, "%llu", (unsigned long long) value);
   if (symbol)
-    strbuf_putc(b, symbol);
-  return strbuf_overrun(b) ? 0 : 1;
+    strbuf_putc(sb, symbol);
+  return sb;
 }
 
 int str_to_uint64_interval_ms(const char *str, int64_t *result, const char **afterp)

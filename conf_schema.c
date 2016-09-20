@@ -443,10 +443,10 @@ int cf_opt_uint32_scaled(uint32_t *intp, const char *text)
 
 int cf_fmt_uint32_scaled(const char **textp, const uint32_t *uintp)
 {
-  char buf[25];
-  int n = uint32_scaled_to_str(buf, sizeof buf, *uintp);
-  assert(n != 0);
-  *textp = str_edup(buf);
+  strbuf sb = strbuf_alloca(25);
+  strbuf_append_uint32_scaled(sb, *uintp);
+  assert(!strbuf_overrun(sb));
+  *textp = str_edup(strbuf_str(sb));
   return CFOK;
 }
 
@@ -467,10 +467,10 @@ int cf_opt_uint64_scaled(uint64_t *intp, const char *text)
 
 int cf_fmt_uint64_scaled(const char **textp, const uint64_t *uintp)
 {
-  char buf[25];
-  int n = uint64_scaled_to_str(buf, sizeof buf, *uintp);
-  assert(n != 0);
-  *textp = str_edup(buf);
+  strbuf sb = strbuf_alloca(25);
+  strbuf_append_uint64_scaled(sb, *uintp);
+  assert(!strbuf_overrun(sb));
+  *textp = str_edup(strbuf_str(sb));
   return CFOK;
 }
 
