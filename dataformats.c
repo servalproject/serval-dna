@@ -177,6 +177,10 @@ int strn_to_rhizome_filehash_t(rhizome_filehash_t *hashp, const char *hex, size_
   return parse_hexn_t(hashp, hex, hexlen, &endp);
 }
 
+int rhizome_is_bk_none(const rhizome_bk_t *bk) {
+    return is_all_matching(bk->binary, sizeof bk->binary, 0);
+}
+
 int str_to_rhizome_bk_t(rhizome_bk_t *bkp, const char *hex)
 {
   return parse_rhizome_bk_t(bkp, hex, -1, NULL); // checks for nul terminator

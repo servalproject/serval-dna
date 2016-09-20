@@ -24,15 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdint.h>
 #include <limits.h>
 #include <sodium.h>
-#include "str.h"
-
-#ifndef __RHIZOME_TYPES_INLINE
-# if __GNUC__ && !__GNUC_STDC_INLINE__
-#  define __RHIZOME_TYPES_INLINE extern inline
-# else
-#  define __RHIZOME_TYPES_INLINE inline
-# endif
-#endif
+#include "str.h"        // for alloca_tohex(), is_all_matching(), etc.
 
 #define RHIZOME_BUNDLE_ID_BYTES         crypto_sign_PUBLICKEYBYTES
 #define RHIZOME_BUNDLE_ID_STRLEN        (RHIZOME_BUNDLE_ID_BYTES * 2)
@@ -110,9 +102,7 @@ typedef struct rhizome_bk_binary {
 
 #define RHIZOME_BK_NONE ((rhizome_bk_t){{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}})
 
-__RHIZOME_TYPES_INLINE int rhizome_is_bk_none(const rhizome_bk_t *bk) {
-    return is_all_matching(bk->binary, sizeof bk->binary, 0);
-}
+int rhizome_is_bk_none(const rhizome_bk_t *bk);
 
 #define alloca_tohex_rhizome_bk_t(bk) alloca_tohex((bk).binary, sizeof (*(rhizome_bk_t*)0).binary)
 int cmp_rhizome_bk_t(const rhizome_bk_t *a, const rhizome_bk_t *b);
