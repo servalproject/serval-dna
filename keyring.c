@@ -1350,14 +1350,19 @@ static void set_slot(keyring_file *k, unsigned slot, int bitvalue)
 
 /* Find free slot in keyring.  Slot 0 in any slab is the BAM and possible keyring salt, so only
  * search for space in slots 1 and above.  TODO: Extend to handle more than one slab!
- * TODO: random search to avoid predictability of used slots!
  */
 static unsigned find_free_slot(const keyring_file *k)
 {
+  unsigned i;
   unsigned slot;
-  for (slot = 1; slot < KEYRING_BAM_BITS; ++slot)
-    if (!test_slot(k, slot))
+  // walk the list of slots, randomising the low order bits of the index
+  unsigned mask = randombytes_uniform(KEYRING_ALLOC_CHUNK);
+  for (i = 0; i < KEYRING_BAM_BITS; ++i){
+    slot = 1+(i ^ mask);
+    DEBUGF(keyring, "Check %u, is slot %u free?", i, slot);
+    if (slot < KEYRING_BAM_BITS && !test_slot(k, slot))
       return slot;
+  }
   return 0;
 }
 
@@ -1437,6 +1442,7 @@ keyring_identity *keyring_create_identity(keyring_file *k, const char *pin)
     WHY("no free slots in first slab (no support for more than one slab)");
     goto kci_safeexit;
   }
+  DEBUGF(keyring, "Allocate identity into slot %u", id->slot);
 
   /* Mark slot as occupied and internalise new identity. */
   if (keyring_commit_identity(k, id)!=1)
@@ -1450,6 +1456,28 @@ keyring_identity *keyring_create_identity(keyring_file *k, const char *pin)
   if (id)
     keyring_free_identity(id);
   return NULL;
+}
+
+static int write_random_slot(keyring_file *k, unsigned slot)
+{
+  if (test_slot(k, slot)!=0)
+    return 0;
+
+  DEBUGF(keyring, "Fill slot %u with randomness", slot);
+  uint8_t random_data[KEYRING_PAGE_SIZE];
+  randombytes_buf(random_data, sizeof random_data);
+
+  off_t file_offset = KEYRING_PAGE_SIZE * slot;
+
+  if (fseeko(k->file, k->file_size, SEEK_SET) == -1)
+    return WHYF_perror("fseeko(%d, %ld, SEEK_SET)", fileno(k->file), (long)file_offset);
+  if (fwrite(random_data, sizeof random_data, 1, k->file) != 1)
+    return WHYF_perror("fwrite(%p, %ld, 1, %d)", random_data, sizeof random_data, fileno(k->file));
+
+  if (k->file_size < file_offset + KEYRING_PAGE_SIZE)
+      k->file_size = file_offset + KEYRING_PAGE_SIZE;
+
+  return 0;
 }
 
 int keyring_commit(keyring_file *k)
@@ -1478,32 +1506,66 @@ int keyring_commit(keyring_file *k)
   keyring_iterator it;
   keyring_iterator_start(k, &it);
   while(keyring_next_identity(&it)){
+    if (it.identity->slot == 0){
+      it.identity->slot = find_free_slot(k);
+      DEBUGF(keyring, "Allocate identity into slot %u", it.identity->slot);
+    }
     unsigned char pkr[KEYRING_PAGE_SIZE];
-    if (keyring_pack_identity(it.identity, pkr))
+
+    if (keyring_pack_identity(it.identity, pkr)){
       errorCount++;
-    else {
-      /* Now crypt and store block */
-      /* Crypt */
-      if (keyring_munge_block(pkr, KEYRING_PAGE_SIZE, 
-	it.file->KeyRingSalt, it.file->KeyRingSaltLen, 
-	it.file->KeyRingPin, it.identity->PKRPin)) {
-	WHY("keyring_munge_block() failed");
+      continue;
+    }
+    /* Now crypt and store block */
+    /* Crypt */
+    if (keyring_munge_block(pkr, KEYRING_PAGE_SIZE,
+      it.file->KeyRingSalt, it.file->KeyRingSaltLen,
+      it.file->KeyRingPin, it.identity->PKRPin)) {
+      WHY("keyring_munge_block() failed");
+      errorCount++;
+      continue;
+    }
+
+    /* Store */
+    off_t file_offset = KEYRING_PAGE_SIZE * it.identity->slot;
+
+    while ((off_t)k->file_size < file_offset){
+      // write randomness into any blank keyring entries
+      // ignoring any range we are about to write anyway
+      unsigned slot = k->file_size / KEYRING_PAGE_SIZE;
+      if (write_random_slot(k, slot)!=0){
 	errorCount++;
-      } else {
-	/* Store */
-	off_t file_offset = KEYRING_PAGE_SIZE * it.identity->slot;
-	if (file_offset == 0) {
-	  DEBUGF(keyring, "ID id=%p has slot=0", it.identity);
-	} else if (fseeko(k->file, file_offset, SEEK_SET) == -1) {
-	  WHYF_perror("fseeko(%d, %ld, SEEK_SET)", fileno(k->file), (long)file_offset);
-	  errorCount++;
-	} else if (fwrite(pkr, KEYRING_PAGE_SIZE, 1, k->file) != 1) {
-	  WHYF_perror("fwrite(%p, %ld, 1, %d)", pkr, (long)KEYRING_PAGE_SIZE, fileno(k->file));
-	  errorCount++;
-	}
+	break;
       }
     }
+
+    DEBUGF(keyring, "Write identity to slot %u", it.identity->slot);
+
+    if (fseeko(k->file, file_offset, SEEK_SET) == -1) {
+      WHYF_perror("fseeko(%d, %ld, SEEK_SET)", fileno(k->file), (long)file_offset);
+      errorCount++;
+      continue;
+    }
+
+    if (fwrite(pkr, KEYRING_PAGE_SIZE, 1, k->file) != 1) {
+      WHYF_perror("fwrite(%p, %ld, 1, %d)", pkr, (long)KEYRING_PAGE_SIZE, fileno(k->file));
+      errorCount++;
+      continue;
+    }
+
+    if (k->file_size < file_offset + KEYRING_PAGE_SIZE)
+      k->file_size = file_offset + KEYRING_PAGE_SIZE;
   }
+
+  // keep writing random bytes until the number of slots that might be used is an exact multiple of KEYRING_ALLOC_CHUNK
+  while(1){
+    unsigned slot_count = k->file_size / KEYRING_PAGE_SIZE;
+    if ((slot_count % KEYRING_ALLOC_CHUNK) == 0)
+      break;
+    if (write_random_slot(k, slot_count)!=0)
+      break;
+  }
+
   if (fflush(k->file) == -1) {
     WHYF_perror("fflush(%d)", fileno(k->file));
     errorCount++;
@@ -2207,6 +2269,7 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
 	keyring_free_identity(id);
 	return WHY("no free slot");
       }
+      DEBUGF(keyring, "Allocate identity into slot %u", id->slot);
     }
     if (!keyring_identity_add_keypair(id, kp))
       keyring_free_keypair(kp);

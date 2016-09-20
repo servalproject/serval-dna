@@ -49,10 +49,13 @@ setup_instances() {
 
 doc_KeyringCreate="Create keyring destroys existing keys"
 test_KeyringCreate() {
-    executeOk_servald keyring add ''
-    executeOk_servald keyring add ''
+    for i in {1..20}
+    do
+       executeOk_servald keyring add ''
+       tfw_cat --stderr
+    done
     executeOk_servald keyring list
-    assert_keyring_list 2
+    assert_keyring_list 20
     executeOk_servald keyring create
     executeOk_servald keyring list
     assert_keyring_list 0

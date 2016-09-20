@@ -60,6 +60,10 @@ typedef struct keyring_identity {
 #define KEYRING_BAM_BYTES ((size_t)2048)
 #define KEYRING_BAM_BITS (KEYRING_BAM_BYTES<<3)
 #define KEYRING_SLAB_SIZE (KEYRING_PAGE_SIZE*KEYRING_BAM_BITS)
+
+// should be a power of 2
+#define KEYRING_ALLOC_CHUNK (16)
+
 typedef struct keyring_bam {
   size_t file_offset;
   unsigned char bitmap[KEYRING_BAM_BYTES];
