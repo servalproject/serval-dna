@@ -107,6 +107,26 @@ uint64_t scale_factor(const char *str, const char **afterp);
 strbuf strbuf_append_uint32_scaled(strbuf sb, uint32_t value);
 strbuf strbuf_append_uint64_scaled(strbuf sb, uint64_t value);
 
+/* Append a double value to a strbuf in ASCII decimal fixed-point format with three significant
+ * digits, optionally scaled with either a binary scale suffix in the set {KMGTP}: 'K' = 1<<10, 'M'
+ * = 1<<20, 'G' = * 1<<30, etc., or an S.I.  scale suffix in the set {kmgtp}: 'k' = 1e3, 'm' = 1e6,
+ * etc.  This format is lossy because it always applies the scale, which may truncate insignificant
+ * digits.
+ *
+ * Eg, binary               S.I.
+ *     1000 -> "1000"       1000 -> "1.00k"
+ *     1001 -> "1001"       1001 -> "1.00k"
+ *     1024 -> "1.00K"      1024 -> "1.02k"
+ *     1025 -> "1.00K"      1025 -> "1.03k"
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_append_double_scaled_binary(strbuf sb, double value);
+strbuf strbuf_append_double_scaled_si(strbuf sb, double value);
+
+#define alloca_double_scaled_binary(v) strbuf_str(strbuf_append_double_scaled_binary(strbuf_alloca(10), (v)))
+#define alloca_double_scaled_si(v)     strbuf_str(strbuf_append_double_scaled_si(strbuf_alloca(10), (v)))
+
 /* Parse a string as a time interval (seconds) in millisecond resolution.  Return the number of
  * milliseconds.  Valid strings are all unsigned ASCII decimal numbers with up to three digits after
  * the decimal point.

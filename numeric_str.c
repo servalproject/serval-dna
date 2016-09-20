@@ -304,3 +304,32 @@ int str_to_uint64_interval_ms(const char *str, int64_t *result, const char **aft
   return 1;
 }
 
+strbuf strbuf_append_double_scaled_binary(strbuf sb, double value)
+{
+  const char *suffix = " KMGTP";
+  while (value >= 1024 && suffix[1]){
+    value = value / 1024;
+    suffix++;
+  }
+  int precision = value < 10 ? 2 : value < 100 ? 1 : 0;
+  strbuf_sprintf(sb, "%.*f", precision, value);
+  if (*suffix && *suffix != ' ') {
+    strbuf_putc(sb, *suffix);
+  }
+  return sb;
+}
+
+strbuf strbuf_append_double_scaled_si(strbuf sb, double value)
+{
+  const char *suffix = " kmgtp";
+  while (value >= 1000 && suffix[1]){
+    value = value / 1000;
+    suffix++;
+  }
+  int precision = value < 10 ? 2 : value < 100 ? 1 : 0;
+  strbuf_sprintf(sb, "%.*f", precision, value);
+  if (*suffix && *suffix != ' ') {
+    strbuf_putc(sb, *suffix);
+  }
+  return sb;
+}
