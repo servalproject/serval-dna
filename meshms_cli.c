@@ -8,8 +8,8 @@
 #include "instance.h"
 #include "conf.h"
 #include "commandline.h"
+#include "str.h"
 #include "numeric_str.h"
-
 
 // output the list of existing conversations for a given local identity
 DEFINE_CMD(app_meshms_conversations, 0,

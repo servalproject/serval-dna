@@ -33,7 +33,6 @@
 #include "uri.h"
 #include "overlay_buffer.h"
 
-
 DEFINE_CMD(app_mdp_ping, 0,
   "Attempts to ping specified node via Mesh Datagram Protocol (MDP).",
   "mdp","ping","[--interval=<ms>]","[--timeout=<seconds>]","[--wait-for-duplicates]",

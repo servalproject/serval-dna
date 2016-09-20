@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "cli.h"
 #include "conf.h"
 #include "commandline.h"
+#include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "instance.h"

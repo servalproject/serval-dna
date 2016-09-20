@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "dataformats.h"
 #include "commandline.h"
 #include "server.h"
+#include "str.h"
 
 DEFINE_CMD(commandline_usage,CLIFLAG_PERMISSIVE_CONFIG,
   "Display command usage.",

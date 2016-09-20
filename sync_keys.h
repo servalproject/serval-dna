@@ -1,6 +1,8 @@
 #ifndef __SYNC_H
 #define __SYNC_H
 
+#include "str.h" // for alloca_tohex()
+
 /*
 Synchronize two sets of keys, which are likely to contain many common values
 */

@@ -26,6 +26,7 @@
 #include "constants.h"
 #include "conf.h"
 #include "mem.h"
+#include "str.h"
 #include "numeric_str.h"
 #include "server.h"
 

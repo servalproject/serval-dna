@@ -32,6 +32,7 @@
 #include "conf.h"
 #include "commandline.h"
 #include "mem.h"
+#include "str.h"
 
 void cli_cleanup(){}
 void cf_on_config_change(){}

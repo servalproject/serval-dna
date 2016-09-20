@@ -8,7 +8,6 @@
 #include "conf.h"
 #include "overlay_buffer.h"
 
-
 static int message_ply_load_manifest(const keyring_identity *id, struct message_ply *ply, rhizome_manifest *m)
 {
   assert(ply->known_bid);

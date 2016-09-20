@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include "cli.h"
 #include "serval_types.h"
+#include "str.h"
 #include "dataformats.h"
 #include "os.h"
 #include "conf.h"

@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "crypto.h"
 #include "strbuf.h"
 #include "keyring.h"
+#include "str.h"
 #include "dataformats.h"
 #include "overlay_buffer.h"
 
