@@ -30,6 +30,7 @@
 #include "instance.h"
 #include "serval.h"
 #include "numeric_str.h"
+#include "uri.h"
 #include "overlay_buffer.h"
 
 

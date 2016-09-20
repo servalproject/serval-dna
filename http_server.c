@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "debug.h"
 #include "numeric_str.h"
 #include "base64.h"
+#include "uri.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "net.h"
