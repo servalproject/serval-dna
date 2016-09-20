@@ -26,7 +26,7 @@
 #include "constants.h"
 #include "conf.h"
 #include "mem.h"
-#include "str.h"
+#include "numeric_str.h"
 #include "server.h"
 
 //#define DEBUG_MDP_FILTER_PARSING 1

@@ -54,6 +54,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdarg.h>
 #include <assert.h>
 #include "str.h"
+#include "numeric_str.h"
 
 static const char *argv0 = "test_createfile";
 

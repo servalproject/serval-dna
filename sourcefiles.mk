@@ -23,6 +23,7 @@ SERVAL_CLIENT_SOURCES = \
 	strbuf.c \
 	strbuf_helpers.c \
 	str.c \
+	numeric_str.c \
 	strlcpy.c \
 	uuid.c \
 	whence.c \

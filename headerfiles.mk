@@ -23,6 +23,7 @@ HDRS=	fifo.h \
 	socket.h \
 	cli.h \
 	str.h \
+	numeric_str.h \
 	rotbuf.h \
 	mem.h \
 	os.h \
