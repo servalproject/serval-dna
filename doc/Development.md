@@ -1,6 +1,6 @@
 Notes for Serval DNA Developers
 ===============================
-[Serval Project][], January 2016
+[Serval Project][], September 2016
 
 Introduction
 ------------
@@ -59,6 +59,80 @@ suppress most of these messages from the output of [aclocal][] and
     aclocal: warning: autoconf input should be named 'configure.ac', not 'configure.in'
     $
 
+libsodium
+---------
+
+**Libsodium** is the cryptographic library that [Serval DNA][] uses for all its
+encryption, authentication and secure hashing.
+
+[libsodium][] is a portable, cross-compilable fork of [NaCl][], with a
+compatible API.  The design choices in NaCl-libsodium, particularly in regard
+to the [Curve25519][] Diffie-Hellman function, emphasise security, and the
+“magic constants" in NaCl-libsodium have clear rationales.  By contrast, the
+[NIST][] standard curves emphasise “performance" at the cost of security and do
+not describe the specific origins of certain constants.  Despite the emphasis
+on higher security, NaCl-libsodium primitives are faster across-the-board than
+most implementations of the NIST standards.
+
+  * In order to [build][] Serval DNA, the libsodium development files must be
+    available, such as the source header file `<sodium.h>` and the static
+    library `libsodium.a`.
+
+  * In order to **run** Serval DNA, the libsodium run-time files must be
+    available, such as the dynamic library `libsodium.so`.
+
+### libsodium-dev
+
+On systems that provide a libsodium development package, simply install that
+package.  For example, on [Debian][] and [Ubuntu][]:
+
+    $ sudo apt-get install libsodium-dev
+    Reading package lists... Done
+    Building dependency tree
+    Reading state information... Done
+    The following NEW packages will be installed:
+      libsodium-dev
+    0 upgraded, 1 newly installed, 0 to remove and 0 not upgraded.
+    Selecting previously unselected package libsodium-dev:amd64.
+    (Reading database ... 223406 files and directories currently installed.)
+    Preparing to unpack .../libsodium-dev_1.0.11-1_amd64.deb ...
+    Unpacking libsodium-dev:amd64 (1.0.11-1) ...
+    Setting up libsodium-dev:amd64 (1.0.11-1) ...
+    $
+
+### build-libsodium.sh
+
+On systems that do not provide a libsodium development package (even though
+they may provide a run-time package), such as [Mac OS X](#apple-mac-os-x), the
+libsodium development files can be locally installed by downloading the
+[libsodium source code][] and building it.  The
+[build-libsodium.sh](../build-libsodium.sh) script will do this:
+
+    $ ./build-libsodium.sh
+    ...
+    The libsodium run-time and development files have been installed in:
+    /absolute/path/name/serval-dna/libsodium
+    
+    To use this installation of libsodium, set up the environment using the
+    shell's "dot" command to source its settings.sh script, for example:
+    
+       . libsodium/settings.sh ; ./configure
+    
+    $
+
+In the event of failure, check that:
+
+* the [github.com][libsodium source code] web site can be reached
+* there is at least 60 MB of available disk space
+* there is no other libsodium development package already installed
+
+For more information, refer to the [libsodium installation documentation][]
+and the script's help message:
+
+    $ ./build-libsodium.sh --help
+    ...
+    $
+
 Debian/Ubuntu
 -------------
 
@@ -98,41 +172,15 @@ dependencies before building on [Debian][] and [Ubuntu][] systems:
 Apple Mac OS X
 --------------
 
-### libsodium
+### libsodium for OS X
 
 Although the [libsodium][] package is available for Mac OS X using the
 [homebrew][] package manager, that package only provides the run-time library,
 not the development files; for example, it does not provide the `#include
 <sodium.h>` header.
 
-Before building Serval DNA on Mac OS X, the libsodium development files can be
-locally installed by downloading the [libsodium source code][] and building it.
-The [build-libsodium.sh](../build-libsodium.sh) script will do this:
-
-    $ ./build-libsodium.sh
-    ...
-    The libsodium run-time and development files have been installed in:
-    /absolute/path/name/serval-dna/libsodium
-    
-    To use this installation of libsodium, set up the environment using the
-    shell's "dot" command to source its settings.sh script, for example:
-    
-       . libsodium/settings.sh ; ./configure
-    
-    $
-
-In the event of failure, check that:
-
-* the [github.com][libsodium source code] web site can be reached
-* there is at least 60 MB of available disk space
-* there is no other libsodium development package already installed
-
-For more information, refer to the [libsodium installation documentation][]
-and the script's help message:
-
-    $ ./build-libsodium.sh --help
-    ...
-    $
+The libsodium development files can be installed locally on Mac OS X using the
+[build-libsodium.sh](#build-libsodiumsh) script.
 
 ### Test utilities
 
@@ -227,11 +275,15 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [Serval Project]: http://www.servalproject.org/
 [CC BY 4.0]: ../LICENSE-DOCUMENTATION.md
 [Serval DNA]: ../README.md
+[build]: ../INSTALL.md
 [autoconf]: http://www.gnu.org/software/autoconf/autoconf.html
 [autoconf macro archive]: http://www.gnu.org/software/autoconf-archive/
 [GNU M4]: http://www.gnu.org/software/m4/m4.html
 [GCC]: https://gcc.gnu.org/
 [Clang]: http://clang.llvm.org/
+[NaCl]: https://nacl.cr.yp.to/
+[NIST]: https://en.wikipedia.org/wiki/National_Institute_of_Standards_and_Technology
+[Curve25519]: https://en.wikipedia.org/wiki/Curve25519
 [build]: ../INSTALL.md
 [aclocal]: https://www.gnu.org/software/automake/manual/html_node/aclocal-Invocation.html
 [autoreconf]: https://www.gnu.org/savannah-checkouts/gnu/autoconf/manual/autoconf.html#autoreconf-Invocation
