@@ -140,24 +140,18 @@ setup_multiple_ids() {
    foreach_instance +A +B start_servald_server
 }
 test_multiple_ids() {
-   wait_until path_exists +A +B
    set_instance +A
-   wait_until has_link --via $SIDB1 $SIDB2
-   wait_until path_exists +B +A
+   wait_until has_link --any $SIDB1
+   wait_until has_link --any $SIDB2
    set_instance +B
-   wait_until has_link --via $SIDA1 $SIDA2
+   wait_until has_link --any $SIDA1
+   wait_until has_link --any $SIDA2
    set_instance +A
+   executeOk_servald mdp ping --timeout=3 $SIDB1 1
    executeOk_servald mdp ping --timeout=3 $SIDB2 1
-   tfw_cat --stdout --stderr
-   executeOk_servald route print
-   link_matches $SIDB1
-   link_matches --via $SIDB1 $SIDB2
    set_instance +B
+   executeOk_servald mdp ping --timeout=3 $SIDA1 1
    executeOk_servald mdp ping --timeout=3 $SIDA2 1
-   tfw_cat --stdout --stderr
-   executeOk_servald route print
-   link_matches $SIDA1
-   link_matches --via $SIDA1 $SIDA2
 }
 
 doc_unlock_ids="Routes appear and disappear as identities are [un]locked"
