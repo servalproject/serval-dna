@@ -120,7 +120,7 @@ static int app_meshmb_read(const struct cli_parsed *parsed, struct cli_context *
       case MESSAGE_BLOCK_TYPE_MESSAGE:
 	cli_put_long(context, row_id++, ":");
 	cli_put_long(context, read.record_end_offset, ":");
-	cli_put_long(context, timestamp ? (now - timestamp) : (long)-1, ":");
+	cli_put_long(context, timestamp ? (long)(now - timestamp) : (long)-1, ":");
 	cli_put_string(context, (const char *)read.record, "\n");
 
 	break;
