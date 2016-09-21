@@ -2,7 +2,8 @@
 
 # Tests for Serval DNA HTTP RESTful interface
 #
-# Copyright 2013-2014 Serval Project, Inc.
+# Copyright 2013-2015 Serval Project, Inc.
+# Copyright 2016 Flinders Univerity
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -82,13 +83,10 @@ test_keyringList() {
    tfw_cat http.headers list.json
    tfw_preserve list.json
    assert [ "$(jq '.rows | length' list.json)" = $IDENTITY_COUNT ]
-   # TODO: these tests only work because the listed order of identities is the
-   # order of creation, which makes locked identities easy to attack.  When the
-   # random search TODO in keyring.c:find_free_slot() is done, then these tests
-   # should fail.
-   assert [ "$(jq -r '.rows[0][0]' list.json)" = $SIDA1 ]
-   assert [ "$(jq -r '.rows[4][0]' list.json)" = $SIDA5 ]
-   assert [ "$(jq -r '.rows[9][0]' list.json)" = $SIDA10 ]
+   # All SIDs are present in the list.
+   for SID in ${SIDA[*]}; do
+      assert [ "$(jq -r '.rows | contains([["'"$SID"'"]])' list.json)" = true ]
+   done
 }
 
 doc_keyringListPin="HTTP RESTful list keyring identities as JSON, with PIN"

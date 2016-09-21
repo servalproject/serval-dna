@@ -701,7 +701,7 @@ create_single_identity() {
 }
 
 # Utility function:
-# 
+#
 # create_identities [--option]... N
 #
 #  - create N identities in the current instance {I} using N consecutive
@@ -716,6 +716,9 @@ create_single_identity() {
 #  - set variables SID{I}{1..N} to SIDs of identities, eg, SIDA1, SIDA2...
 #  - set variables DID{I}{1..N} to DIDs of identities, eg, DIDA1, DIDA2...
 #  - set variables NAME{I}{1..N} to names of identities, eg, NAMEA1, NAMEA2...
+#  - set array variable SID{I} to SIDs of identities, eg, SIDA[0], SIDA[1]...
+#  - set array variable DID{I} to DIDs of identities, eg, DIDA[0], DIDA[1]...
+#  - set array variable NAME{I} to names of identities, eg, NAMEA[0], NAMEA[1]...
 create_identities() {
    local servald_options=()
    while [ $# -gt 0 ]; do
@@ -742,6 +745,9 @@ create_identities() {
       local idvar=ID$instance_name$i
       local didvar=DID$instance_name$i
       local namevar=NAME$instance_name$i
+      local sidarrayvar=SID$instance_name
+      local didarrayvar=DID$instance_name
+      local namearrayvar=NAME$instance_name
       local pin="${!pinvar}"
       [ -n "$pin" ] && tfw_log "$pinvar=$(shellarg "$pin")"
       executeOk_servald keyring add "${servald_options[@]}" "$pin"
@@ -762,6 +768,10 @@ create_identities() {
          extract_stdout_keyvalue_optional $didvar did "$rexp_did"
          extract_stdout_keyvalue_optional $namevar name ".*"
       fi
+      let a=i-1
+      eval "$sidarrayvar[$a]=\${!sidvar}"
+      eval "$didarrayvar[$a]=\${!didvar}"
+      eval "$namearrayvar[$a]=\${!namevar}"
    done
    for ((i = 1; i <= N; ++i)); do
       for ((j = 1; j <= N; ++j)); do
