@@ -265,7 +265,7 @@ Unfortunately, both of these operations are prohibitively slow, which makes the
 `--geninfo` option of limited use for the time being.
 
 -----
-**Copyright 2013 Serval Project Inc.**
+**Copyright 2013-2014 Serval Project Inc.**
 ![CC-BY-4.0](./cc-by-4.0.png)
 This document is available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
 

@@ -214,7 +214,8 @@ The directory paths used in the examples are for illustrative purposes only,
 and may need to be changed for your particular circumstances.
 
 -----
-**Copyright 2013-2016 Serval Project Inc.**  
+**Copyright 2013-2015 Serval Project Inc.**  
+**Copyright 2016 Flinders University**  
 ![CC-BY-4.0](./cc-by-4.0.png)
 This document is available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
 
