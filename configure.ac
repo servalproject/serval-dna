@@ -5,33 +5,17 @@ AC_CONFIG_MACRO_DIR([m4])
 CPPFLAGS=-D_GNU_SOURCE
 
 dnl Check if _FORTIFY_SOURCE flag is not already defined, and if so, add it.
-dnl (Following approach from https://github.com/jedisct1/libsodium/pull/287/files)
-dnl The following works with autoconf upto 2.62, but breaks with annoying errors
-dnl if using a newer version of autoconf, as reported at:
-dnl http://www.emaculation.com/forum/viewtopic.php?t=6220
-dnl AC_CHECK_DEFINE([_FORTIFY_SOURCE], [], [
-dnl  AX_CHECK_COMPILE_FLAG([-D_FORTIFY_SOURCE=2],
-dnl      [CPPFLAGS="$CPPFLAGS -D_FORTIFY_SOURCE=2"])
-dnl  ])
-dnl 
-dnl AX_CHECK_COMPILE_FLAG[-D_FORTIFY_SOURCE=1],[AC_DEFINE([FORTIFY_SOURCE_ENABLED], [1],
-dnl                                [Fortify source already defined.])])
-dnl AX_CHECK_COMPILE_FLAG[-D_FORTIFY_SOURCE=2],[AC_DEFINE([FORTIFY_SOURCE_ENABLED], [1],
-dnl                                [Fortify source already defined.])])
-AC_TRY_RUN([
-#ifdef __cplusplus
-extern "C"
-#endif
-#include <stdio.h>
-int main(int argc, char **argv)
-{
+dnl Checking with the C pre-processor DOES NOT detect this on OpenWRT, thus
+dnl we have to test this with an actual C program.
+dnl To add to the fun, for OpenWRT we are cross-compiling, so can't actually
+dnl run the program. Thus we construct a program that will only compile if
+dnl the macro is defined.
+AC_TRY_COMPILE([#include<stdio.h>],[
 #ifndef _FORTIFY_SOURCE
-return 0;
-#else
-return 1;
+#error _FORTIFY_SOURCE is not defined.
 #endif
-}
-], [
+printf("Has _FORTIFY_SOURCE\n")
+],[], [], [
 AC_MSG_CHECKING([if _FORTIFY_SOURCE automatically declared])
     AC_MSG_RESULT([Adding -D_FORTIFY_SOURCE=2 to CFLAGS])
     CFLAGS="$CFLAGS -D_FORTIFY_SOURCE=2"
