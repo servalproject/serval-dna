@@ -18,12 +18,19 @@ dnl AX_CHECK_COMPILE_FLAG[-D_FORTIFY_SOURCE=1],[AC_DEFINE([FORTIFY_SOURCE_ENABLE
 dnl                                [Fortify source already defined.])])
 dnl AX_CHECK_COMPILE_FLAG[-D_FORTIFY_SOURCE=2],[AC_DEFINE([FORTIFY_SOURCE_ENABLED], [1],
 dnl                                [Fortify source already defined.])])
-AC_EGREP_CPP(dont_have_fortify_source, [
-#ifdef _FORTIFY_SOURCE
-yes_have_fortify_source
-#else
-dont_have_fortify_source
+AC_TRY_RUN([
+#ifdef __cplusplus
+extern "C"
 #endif
+#include <stdio.h>
+int main(int argc, char **argv)
+{
+#ifndef _FORTIFY_SOURCE
+return 0;
+#else
+return 1;
+#endif
+}
 ], [
 AC_MSG_CHECKING([if _FORTIFY_SOURCE automatically declared])
     AC_MSG_RESULT([Adding -D_FORTIFY_SOURCE=2 to CFLAGS])
