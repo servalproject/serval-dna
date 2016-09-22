@@ -18,17 +18,19 @@ dnl AX_CHECK_COMPILE_FLAG[-D_FORTIFY_SOURCE=1],[AC_DEFINE([FORTIFY_SOURCE_ENABLE
 dnl                                [Fortify source already defined.])])
 dnl AX_CHECK_COMPILE_FLAG[-D_FORTIFY_SOURCE=2],[AC_DEFINE([FORTIFY_SOURCE_ENABLED], [1],
 dnl                                [Fortify source already defined.])])
-AC_EGREP_CPP(yes_have_fortify_source, [
+AC_EGREP_CPP(dont_have_fortify_source, [
 #ifdef _FORTIFY_SOURCE
 yes_have_fortify_source
+#else
+dont_have_fortify_source
 #endif
-], [
-AC_MSG_CHECKING([if _FORTIFY_SOURCE automatically declared])
-    AC_MSG_RESULT([_FORTIFY_SOURCE is automatically defined])
 ], [
 AC_MSG_CHECKING([if _FORTIFY_SOURCE automatically declared])
     AC_MSG_RESULT([Adding -D_FORTIFY_SOURCE=2 to CFLAGS])
     CFLAGS="$CFLAGS -D_FORTIFY_SOURCE=2"
+], [
+AC_MSG_CHECKING([if _FORTIFY_SOURCE automatically declared])
+    AC_MSG_RESULT([_FORTIFY_SOURCE is automatically defined])
 ])
 
 dnl Set $host_os, which is needed by javac detection.
