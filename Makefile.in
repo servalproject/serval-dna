@@ -75,7 +75,11 @@ INSTALL_DATA=   $(INSTALL) -m 644
 # More warnings, discover problems that only happen on some archs
 CFLAGS+=-Wextra
 # Security enhancements from Debian
-CFLAGS+=-Wformat -Werror=format-security -D_FORTIFY_SOURCE=2
+# (note that _FORTIFY_SOURCE is now defined by configure, to prevent duplicate definition
+#  on those platforms that enable it by default (eg OpenWRT Designated Driver), which
+#  would otherwise cause compilation failure on those platforms, since we escalate all
+#  compiler warnings to errors.)
+CFLAGS+=-Wformat -Werror=format-security
 
 DEFS=	@DEFS@
 
