@@ -2,6 +2,9 @@
 
 LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
+
+SQLITE3_AMALGAMATION = sqlite-amalgamation-3140200
+
 include $(LOCAL_PATH)/sourcefiles.mk
 SERVALD_SRC_FILES = \
     $(SQLITE3_SOURCES) \
@@ -9,11 +12,15 @@ SERVALD_SRC_FILES = \
     $(MDP_CLIENT_SOURCES) \
     $(SERVAL_DAEMON_SOURCES) \
     $(ANDROIDONLY_SOURCES)
-SQLITE3_INC := $(LOCAL_PATH)/sqlite-amalgamation-3100200
+SQLITE3_INC := $(LOCAL_PATH)/$(SQLITE3_AMALGAMATION)
 
 SERVALD_LOCAL_CFLAGS = \
 	-g \
-	-Wall -Wno-unused-variable -Wno-unused-value -Werror \
+	-Wall 	-Wno-unused-variable \
+		-Wno-unused-but-set-variable \
+		-Wno-unused-value \
+		-Wno-unused-function \
+	-Werror \
         -DSERVALD_VERSION="\"Android\"" -DSERVALD_COPYRIGHT="\"Android\"" \
 	-DINSTANCE_PATH="\"/data/data/org.servalproject/var/serval-node\"" \
         -DSHELL -DPACKAGE_NAME=\"\" -DPACKAGE_TARNAME=\"\" -DPACKAGE_VERSION=\"\" \
