@@ -136,7 +136,7 @@ Makefile: Makefile.in config.status
 config.status: configure
 	$(warning config.status may be out of date, please run ./configure)
 
-configure: configure.in
+configure: configure.ac
 	$(warning configure may be out of date, please run autoreconf -f -i -I m4)
 
 $(OBJSDIR_TOOLS)/version.o: $(ALL_SOURCES) $(HDRS) version_servald.c version_string.sh $(wildcard VERSION.txt) COPYRIGHT.txt

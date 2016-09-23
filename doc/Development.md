@@ -11,7 +11,7 @@ non-developers who are experiencing errors in the [build][] process.
 Autoconf
 --------
 
-The [configure.in](../configure.in) file is an [autoconf][] script that
+The [configure.ac](../configure.ac) file is an [autoconf][] script that
 contains instructions for adapting the build of Serval DNA to different
 platforms and CPU architectures.  This script makes use of many [GNU M4][]
 macros, each of which tests an aspect of the build environment, such as the
@@ -27,7 +27,7 @@ sub-directory.
 The [autoreconf][] command used in the [build][] instructions generates an
 `aclocal.m4` file that includes all the necessary files from the [m4](../m4)
 directory.  In turn, it then includes this `aclocal.m4` file when invoking [GNU
-M4][] to convert the [configure.in](../configure.in) file into the
+M4][] to convert the [configure.ac](../configure.ac) file into the
 `./configure` script.
 
 Internally, [autoconf][] generates the `aclocal.m4` file by invoking the
@@ -36,8 +36,7 @@ messages that look like this:
 
     $ cd serval-dna
     $ aclocal
-    aclocal: warning: autoconf input should be named 'configure.ac', not 'configure.in'
-    configure.in:18: warning: Unsupported attribute section, the test may fail
+    configure.ac:18: warning: Unsupported attribute section, the test may fail
     ../../lib/autoconf/lang.m4:224: AC_LANG_SOURCE is expanded from...
     ../../lib/autoconf/lang.m4:241: AC_LANG_PROGRAM is expanded from...
     ../../lib/autoconf/lang.m4:193: AC_LANG_CONFTEST is expanded from...
@@ -47,7 +46,7 @@ messages that look like this:
     ../../lib/autoconf/general.m4:2042: AC_CACHE_VAL is expanded from...
     ../../lib/autoconf/general.m4:2063: AC_CACHE_CHECK is expanded from...
     /usr/share/aclocal/ax_gcc_var_attribute.m4:57: AX_GCC_VAR_ATTRIBUTE is expanded from...
-    configure.in:18: the top level
+    configure.ac:18: the top level
     $
 
 These messages are harmless; the correct `aclocal.m4` is still generated.  To
@@ -56,7 +55,6 @@ suppress most of these messages from the output of [aclocal][] and
 
     $ cd serval-dna
     $ autoreconf -f -i -I m4
-    aclocal: warning: autoconf input should be named 'configure.ac', not 'configure.in'
     $
 
 libsodium

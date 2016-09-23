@@ -36,7 +36,7 @@ GitHub.  You can use [Git][] to download the latest version:
 Dependencies
 ------------
 
-The dependencies for build are expressed in [configure.in](./configure.in).
+The dependencies for build are expressed in [configure.ac](./configure.ac).
 Most mandatory dependencies are present in the standard Linux development
 environment.
 
@@ -91,7 +91,6 @@ A successful session should appear something like:
 
     $ cd $HOME/src/serval-dna
     $ autoreconf -f -i -I m4
-    aclocal: warning: autoconf input should be named 'configure.ac', not 'configure.in'
     $ ./configure
     checking build system type... i686-pc-linux-gnu
     checking host system type... i686-pc-linux-gnu
