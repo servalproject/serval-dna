@@ -206,8 +206,8 @@ static enum rhizome_bundle_authorship try_author(rhizome_manifest *m, const keyr
 
     m->keypair.private_key = test_key;
   }else{
-    if (memcmp(&m->keypair.public_key, id->sign_pk, crypto_sign_PUBLICKEYBYTES)==0){
-      bcopy(id->sign_sk, m->keypair.binary, sizeof m->keypair.binary);
+    if (memcmp(&m->keypair.public_key, &id->sign_keypair->public_key, sizeof(sign_public_t))==0){
+      m->keypair = *id->sign_keypair;
     }else{
       DEBUGF(rhizome, "   bundle has no BK field");
       // TODO if sign_key.public_key == id signing key...

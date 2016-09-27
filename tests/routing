@@ -411,12 +411,17 @@ test_scan() {
    set_instance +A
    executeOk_servald scan
    wait_until --timeout=10 scan_completed
+   wait_until --timeout=10 path_exists +B +A +C
+   wait_until --timeout=10 path_exists +C +A +B
+
+   set_instance +A
    wait_until --timeout=10 has_seen_instances +B +C
    executeOk_servald route print
    link_matches --unicast $SIDB
    link_matches --unicast $SIDC
    executeOk_servald mdp ping --timeout=3 $SIDB 1
    tfw_cat --stdout --stderr
+
    set_instance +B
    executeOk_servald route print
    link_matches --unicast $SIDA

@@ -14,7 +14,7 @@ static int meshmb_send(keyring_identity *id, const char *message, size_t message
   struct message_ply ply;
   bzero(&ply, sizeof ply);
 
-  bcopy(id->sign_pk, &ply.bundle_id, sizeof(ply.bundle_id));
+  ply.bundle_id = id->sign_keypair->public_key;
   ply.known_bid = 1;
 
   struct overlay_buffer *b = ob_new();

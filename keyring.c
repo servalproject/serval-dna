@@ -239,7 +239,7 @@ keyring_identity *keyring_find_identity_sid(keyring_file *k, const sid_t *sidp){
 
 keyring_identity *keyring_find_identity(keyring_file *k, const identity_t *sign){
   keyring_identity *id = k->identities;
-  while(id && (!id->box_pk || cmp_identity_t(id->sign_pk, sign)!=0))
+  while(id && (!id->box_pk || cmp_identity_t(&id->sign_keypair->public_key, sign)!=0))
     id = id->next;
   return id;
 }
@@ -253,19 +253,17 @@ static void add_subscriber(keyring_identity *id)
       id->subscriber->reachable = REACHABLE_SELF;
     id->subscriber->identity = id;
 
-    if (id->sign_pk){
-      // copy our signing key, so we can pass it to peers
-      bcopy(id->sign_pk, &id->subscriber->id_public, sizeof id->subscriber->id_public);
-      id->subscriber->id_valid = 1;
+    // copy our signing key, so we can pass it to peers
+    id->subscriber->id_public = id->sign_keypair->public_key;
+    id->subscriber->id_valid = 1;
 
-      keypair *kp = id->keypairs;
-      while(kp){
-	if (kp->type == KEYTYPE_CRYPTOCOMBINED){
-	  id->subscriber->id_combined = 1;
-	  break;
-	}
-	kp = kp->next;
+    keypair *kp = id->keypairs;
+    while(kp){
+      if (kp->type == KEYTYPE_CRYPTOCOMBINED){
+	id->subscriber->id_combined = 1;
+	break;
       }
+      kp = kp->next;
     }
   }
 }
@@ -1195,7 +1193,7 @@ static int keyring_finalise_identity(uint8_t *dirty, keyring_identity *id)
 	break;
       case KEYTYPE_CRYPTOSIGN:{
 	const sign_keypair_t *keypair = (const sign_keypair_t *)kp->private_key;
-	if (!crypto_isvalid_keypair(&keypair->private_key, (const sign_public_t *)kp->public_key)){
+	if (!crypto_isvalid_keypair(&keypair->private_key, &keypair->public_key)){
 	  /* SAS key is invalid (perhaps because it was a pre 0.90 format one),
 	     so replace it */
 	  WARN("SAS key is invalid -- regenerating.");
@@ -1203,8 +1201,7 @@ static int keyring_finalise_identity(uint8_t *dirty, keyring_identity *id)
 	  if (dirty)
 	    *dirty = 1;
 	}
-	id->sign_sk = keypair;
-	id->sign_pk = (const identity_t *)kp->public_key;
+	id->sign_keypair = (const sign_keypair_t *)kp->private_key;
       }
       break;
       case KEYTYPE_CRYPTOCOMBINED:{
@@ -1212,8 +1209,7 @@ static int keyring_finalise_identity(uint8_t *dirty, keyring_identity *id)
 	struct combined_sk *sk = (struct combined_sk *)kp->private_key;
 	id->box_pk = &pk->box_key;
 	id->box_sk = sk->box_key;
-	id->sign_pk = &pk->sign_key;
-	id->sign_sk = &sk->sign_key;
+	id->sign_keypair = &sk->sign_key;
 	break;
       }
     }
@@ -1737,7 +1733,7 @@ int keyring_sign_message(struct keyring_identity *identity, unsigned char *conte
   unsigned char hash[crypto_hash_sha512_BYTES];
   crypto_hash_sha512(hash, content, *content_len);
 
-  if (crypto_sign_detached(&content[*content_len], NULL, hash, crypto_hash_sha512_BYTES, identity->sign_sk->binary))
+  if (crypto_sign_detached(&content[*content_len], NULL, hash, crypto_hash_sha512_BYTES, identity->sign_keypair->binary))
     return WHY("Signing failed");
 
   *content_len += SIGNATURE_BYTES;
@@ -1796,10 +1792,10 @@ static int keyring_respond_id(struct internal_mdp_header *header)
   ob_limitsize(response_payload, sizeof buff);
   
   ob_append_byte(response_payload, KEYTYPE_CRYPTOSIGN);
-  ob_append_bytes(response_payload, id->sign_pk->binary, crypto_sign_PUBLICKEYBYTES);
+  ob_append_bytes(response_payload, id->sign_keypair->public_key.binary, crypto_sign_PUBLICKEYBYTES);
   uint8_t *sig = ob_append_space(response_payload, crypto_sign_BYTES);
 
-  if (crypto_sign_detached(sig, NULL, header->destination->sid.binary, SID_SIZE, id->sign_sk->binary))
+  if (crypto_sign_detached(sig, NULL, header->destination->sid.binary, SID_SIZE, id->sign_keypair->binary))
     return WHY("crypto_sign() failed");
     
   DEBUGF(keyring, "Sending SID:SAS mapping, %zd bytes, %s:%"PRImdp_port_t" -> %s:%"PRImdp_port_t,

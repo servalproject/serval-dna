@@ -101,7 +101,7 @@ static int http_request_keyring_response_identity(struct httpd_request *r, uint1
   json_id_kv[1].key = "identity";
   json_id_kv[1].value = &json_sas;
   json_sas.type = JSON_STRING_NULTERM;
-  json_sas.u.string.content = alloca_tohex_identity_t(id->sign_pk);
+  json_sas.u.string.content = alloca_tohex_identity_t(&id->sign_keypair->public_key);
 
   if (did) {
     json_id_kv[json_id.u.object.itemc].key = "did";
@@ -183,7 +183,7 @@ static int restful_keyring_identitylist_json_content_chunk(struct http_request *
       strbuf_puts(b, "\n[");
       strbuf_json_string(b, alloca_tohex_sid_t(*r->u.sidlist.it.identity->box_pk));
       strbuf_puts(b, ",");
-      strbuf_json_string(b, alloca_tohex_identity_t(r->u.sidlist.it.identity->sign_pk));
+      strbuf_json_string(b, alloca_tohex_identity_t(&r->u.sidlist.it.identity->sign_keypair->public_key));
       strbuf_puts(b, ",");
       strbuf_json_string(b, did);
       strbuf_puts(b, ",");

@@ -139,7 +139,7 @@ static int app_keyring_list(const struct cli_parsed *parsed, struct cli_context 
     const char *name = NULL;
     keyring_identity_extract(id, &did, &name);
     cli_put_string(context, alloca_tohex_sid_t(*id->box_pk), ":");
-    cli_put_string(context, alloca_tohex_identity_t(id->sign_pk), ":");
+    cli_put_string(context, alloca_tohex_identity_t(&id->sign_keypair->public_key), ":");
     cli_put_string(context, did, ":");
     cli_put_string(context, name, "\n");
     rowcount++;
@@ -151,14 +151,10 @@ static int app_keyring_list(const struct cli_parsed *parsed, struct cli_context 
 
 static void cli_output_identity(struct cli_context *context, const keyring_identity *id)
 {
-  if (id->box_pk){
-      cli_field_name(context, "sid", ":");
-      cli_put_string(context, alloca_tohex_sid_t(*id->box_pk), "\n");
-  }
-  if (id->sign_pk){
-      cli_field_name(context, "identity", ":");
-      cli_put_string(context, alloca_tohex_identity_t(id->sign_pk), "\n");
-  }
+  cli_field_name(context, "sid", ":");
+  cli_put_string(context, alloca_tohex_sid_t(*id->box_pk), "\n");
+  cli_field_name(context, "identity", ":");
+  cli_put_string(context, alloca_tohex_identity_t(&id->sign_keypair->public_key), "\n");
   keypair *kp=id->keypairs;
   while(kp){
     switch(kp->type){
@@ -209,10 +205,7 @@ static int app_keyring_list2(const struct cli_parsed *parsed, struct cli_context
     unsigned fields=0;
     // count the number of fields that we will output
     keypair *kp=id->keypairs;
-    if (id->box_pk)
-      fields++;
-    if (id->sign_pk)
-      fields++;
+    fields+=2;
     while(kp){
       if (kp->type==KEYTYPE_PUBLIC_TAG)
 	fields++;
