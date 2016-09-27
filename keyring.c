@@ -506,9 +506,10 @@ static int pack_cryptocombined(const keypair *kp, struct rotbuf *rb)
 static int unpack_cryptocombined(keypair *kp, struct rotbuf *rb, size_t key_length)
 {
   sign_private_t seed;
+  if (key_length != sizeof seed)
+    return -1;
   struct combined_pk *pk = (struct combined_pk *)kp->public_key;
   struct combined_sk *sk = (struct combined_sk *)kp->private_key;
-  assert(key_length == sizeof seed);
   rotbuf_getbuf(rb, seed.binary, sizeof seed);
   crypto_sign_ed25519_seed_keypair(pk->sign_key.binary, sk->sign_key.binary, seed.binary);
   crypto_sign_ed25519_sk_to_curve25519(sk->box_key, sk->sign_key.binary);
@@ -664,7 +665,8 @@ static int load_unknown(keypair *kp, const char *text)
 
 static int unpack_private_public(keypair *kp, struct rotbuf *rb, size_t key_length)
 {
-  assert(key_length == kp->private_key_len + kp->public_key_len);
+  if(key_length != kp->private_key_len + kp->public_key_len)
+    return -1;
   rotbuf_getbuf(rb, kp->private_key, kp->private_key_len);
   rotbuf_getbuf(rb, kp->public_key, kp->public_key_len);
   return 0;
@@ -677,7 +679,8 @@ static int unpack_private_only(keypair *kp, struct rotbuf *rb, size_t key_length
     if ((kp->private_key = emalloc(kp->private_key_len))==NULL)
       return -1;
   }else{
-    assert(kp->private_key_len == key_length);
+    if (kp->private_key_len != key_length)
+      return -1;
   }
   rotbuf_getbuf(rb, kp->private_key, kp->private_key_len);
   return 0;
@@ -690,7 +693,8 @@ static int unpack_public_only(keypair *kp, struct rotbuf *rb, size_t key_length)
     if ((kp->public_key = emalloc(kp->public_key_len))==NULL)
       return -1;
   }else{
-    assert(kp->public_key_len == key_length);
+    if(kp->public_key_len != key_length)
+      return -1;
   }
   rotbuf_getbuf(rb, kp->public_key, kp->public_key_len);
   return 0;
@@ -698,7 +702,8 @@ static int unpack_public_only(keypair *kp, struct rotbuf *rb, size_t key_length)
 
 static int unpack_cryptobox(keypair *kp, struct rotbuf *rb, size_t key_length)
 {
-  assert(key_length == kp->private_key_len);
+  if (key_length != kp->private_key_len)
+    return -1;
   rotbuf_getbuf(rb, kp->private_key, kp->private_key_len);
   if (!rb->wrap)
     crypto_scalarmult_base(kp->public_key, kp->private_key);
