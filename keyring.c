@@ -21,7 +21,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdio.h>
 #include <assert.h>
 #include "serval.h"
-#include "rhizome.h"
 #include "conf.h"
 #include "constants.h"
 #include "overlay_address.h"
@@ -1194,8 +1193,9 @@ static int keyring_finalise_identity(uint8_t *dirty, keyring_identity *id)
 	id->box_pk = (const sid_t *)kp->public_key;
 	id->box_sk = kp->private_key;
 	break;
-      case KEYTYPE_CRYPTOSIGN:
-	if (!rhizome_verify_bundle_privatekey(kp->private_key,kp->public_key)){
+      case KEYTYPE_CRYPTOSIGN:{
+	const sign_keypair_t *keypair = (const sign_keypair_t *)kp->private_key;
+	if (!crypto_isvalid_keypair(&keypair->private_key, (const sign_public_t *)kp->public_key)){
 	  /* SAS key is invalid (perhaps because it was a pre 0.90 format one),
 	     so replace it */
 	  WARN("SAS key is invalid -- regenerating.");
@@ -1203,9 +1203,10 @@ static int keyring_finalise_identity(uint8_t *dirty, keyring_identity *id)
 	  if (dirty)
 	    *dirty = 1;
 	}
+	id->sign_sk = keypair;
 	id->sign_pk = (const identity_t *)kp->public_key;
-	id->sign_sk = (const sign_keypair_t *)kp->private_key;
-	break;
+      }
+      break;
       case KEYTYPE_CRYPTOCOMBINED:{
 	struct combined_pk *pk = (struct combined_pk *)kp->public_key;
 	struct combined_sk *sk = (struct combined_sk *)kp->private_key;

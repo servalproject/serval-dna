@@ -43,12 +43,17 @@ int rhizome_manifest_createid(rhizome_manifest *m)
  * Then either fetch it from the database or initialise a new empty manifest */
 struct rhizome_bundle_result rhizome_private_bundle(rhizome_manifest *m, const char *fmt, ...)
 {
-  char seed[1024];
   va_list ap;
-  va_start(ap, fmt);
 
-  int n = vsnprintf(seed, sizeof seed, fmt, ap);
-  assert(n < (int)sizeof seed);
+  va_start(ap, fmt);
+  int n = vsnprintf(NULL, 0, fmt, ap);
+  va_end(ap);
+
+  char seed[n+1];
+  va_start(ap, fmt);
+  vsnprintf(seed, sizeof seed, fmt, ap);
+  va_end(ap);
+
   union {
     unsigned char hash[crypto_hash_sha512_BYTES];
     sign_private_t bsk;
@@ -94,12 +99,11 @@ struct rhizome_bundle_result rhizome_private_bundle(rhizome_manifest *m, const c
  */
 void rhizome_new_bundle_from_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
 {
-  uint8_t sk[crypto_sign_SECRETKEYBYTES];
-  rhizome_bid_t bid;
-  crypto_sign_seed_keypair(bid.binary, sk, bsk->binary);
-  rhizome_manifest_set_id(m, &bid); // zerofills m->keypair.binary
+  sign_keypair_t keypair;
+  crypto_sign_seed_keypair(keypair.public_key.binary, keypair.binary, bsk->binary);
+  rhizome_manifest_set_id(m, &keypair.public_key); // zerofills m->keypair.binary
   m->haveSecret = NEW_BUNDLE_ID;
-  bcopy(sk, m->keypair.binary, sizeof m->keypair.binary);
+  m->keypair.private_key = keypair.private_key;
 }
 
 /* Given a Rhizome Secret (RS) and bundle ID (BID), XOR a bundle key 'bkin' (private or public) with
@@ -113,7 +117,8 @@ static int rhizome_bk_xor_stream(
   const rhizome_bid_t *bidp,
   const unsigned char *rs,
   const size_t rs_len,
-  unsigned char *xor_stream,
+  const uint8_t *xor_in,
+  uint8_t *xor_out,
   size_t xor_stream_byte_count)
 {
   IN();
@@ -121,69 +126,28 @@ static int rhizome_bk_xor_stream(
   if (xor_stream_byte_count<1||xor_stream_byte_count>crypto_hash_sha512_BYTES)
     RETURN(WHY("xor_stream_byte_count invalid"));
 
-  int combined_len = rs_len + crypto_sign_PUBLICKEYBYTES;
-  unsigned char buffer[combined_len];
-  bcopy(&rs[0], &buffer[0], rs_len);
-  bcopy(&bidp->binary[0], &buffer[rs_len], crypto_sign_PUBLICKEYBYTES);
+  crypto_hash_sha512_state state;
   unsigned char hash[crypto_hash_sha512_BYTES];
-  crypto_hash_sha512(hash,buffer,combined_len);
-  bcopy(hash,xor_stream,xor_stream_byte_count);
+
+  crypto_hash_sha512_init(&state);
+  crypto_hash_sha512_update(&state, rs, rs_len);
+  crypto_hash_sha512_update(&state, bidp->binary, sizeof bidp->binary);
+  crypto_hash_sha512_final(&state, hash);
+
+  unsigned i;
+  for (i = 0; i != xor_stream_byte_count; ++i)
+    xor_out[i] = xor_in[i] ^ hash[i];
+
+  DEBUGF(rhizome, "   BK XOR %s with %s = %s",
+    alloca_tohex(xor_in, xor_stream_byte_count),
+    alloca_tohex(hash, xor_stream_byte_count),
+    alloca_tohex(xor_out, xor_stream_byte_count));
+
+  bzero(hash, sizeof hash);
+  bzero(&state, sizeof state);
 
   OUT();
   return 0;
-}
-
-/* CryptoSign Secret Keys in cupercop-20120525 onwards have the public key as the second half of the
- * secret key.  The public key is the BID, so this simplifies the BK<-->SECRET conversion processes.
- *
- * Returns 0 if the BK decodes correctly to the bundle secret, 1 if not.  Returns -1 if there is an
- * error.
- */
-int rhizome_bk2secret(
-  const rhizome_bid_t *bidp,
-  const unsigned char *rs, const size_t rs_len,
-  /* The BK need only be the length of the secret half of the secret key */
-  const unsigned char bkin[RHIZOME_BUNDLE_KEY_BYTES],
-  unsigned char secret[crypto_sign_SECRETKEYBYTES]
-)
-{
-  IN();
-  unsigned char xor_stream[RHIZOME_BUNDLE_KEY_BYTES];
-  if (rhizome_bk_xor_stream(bidp, rs, rs_len, xor_stream, RHIZOME_BUNDLE_KEY_BYTES))
-    RETURN(WHY("rhizome_bk_xor_stream() failed"));
-  /* XOR and store secret part of secret key */
-  unsigned i;
-  for (i = 0; i != RHIZOME_BUNDLE_KEY_BYTES; ++i)
-    secret[i] = bkin[i] ^ xor_stream[i];
-  bzero(xor_stream, sizeof xor_stream);
-  /* Copy BID as public-key part of secret key */
-  bcopy(bidp->binary, secret + RHIZOME_BUNDLE_KEY_BYTES, sizeof bidp->binary);
-  RETURN(rhizome_verify_bundle_privatekey(secret, bidp->binary) ? 0 : 1);
-  OUT();
-}
-
-int rhizome_secret2bk(
-  const rhizome_bid_t *bidp,
-  const unsigned char *rs, const size_t rs_len,
-  /* The BK need only be the length of the secret half of the secret key */
-  unsigned char bkout[RHIZOME_BUNDLE_KEY_BYTES],
-  const unsigned char secret[crypto_sign_SECRETKEYBYTES]
-)
-{
-  IN();
-  unsigned char xor_stream[RHIZOME_BUNDLE_KEY_BYTES];
-  if (rhizome_bk_xor_stream(bidp,rs,rs_len,xor_stream,RHIZOME_BUNDLE_KEY_BYTES))
-    RETURN(WHY("rhizome_bk_xor_stream() failed"));
-
-  int i;
-
-  /* XOR and store secret part of secret key */
-  for(i = 0; i != RHIZOME_BUNDLE_KEY_BYTES; i++)
-    bkout[i] = secret[i] ^ xor_stream[i];
-
-  bzero(xor_stream, sizeof xor_stream);
-  RETURN(0);
-  OUT();
 }
 
 static keypair *get_secret(const keyring_identity *id)
@@ -220,18 +184,27 @@ static enum rhizome_bundle_authorship try_author(rhizome_manifest *m, const keyr
     keypair *kp = get_secret(id);
     if (!kp)
       return AUTHENTICATION_ERROR;
-    uint8_t secret[crypto_sign_SECRETKEYBYTES];
-    uint8_t *s = m->haveSecret ? secret : m->keypair.binary;
-    switch (rhizome_bk2secret(&m->keypair.public_key, kp->private_key, kp->private_key_len, m->bundle_key.binary, s)) {
-      case 0:
-	if (m->haveSecret && memcmp(secret, m->keypair.binary, sizeof m->keypair.binary) != 0)
-	  FATALF("Bundle secret does not match derived secret");
-	break;
-      case -1:
-	return AUTHENTICATION_ERROR;
-      default:
+
+    sign_private_t test_key;
+    if (rhizome_bk_xor_stream(
+	&m->keypair.public_key,
+	kp->private_key, kp->private_key_len,
+	m->bundle_key.binary,
+	test_key.binary,
+	sizeof m->bundle_key))
+      return AUTHENTICATION_ERROR;
+
+    if (m->haveSecret){
+      // test that the secrets match
+      if (bcmp(test_key.binary, m->keypair.private_key.binary, sizeof test_key))
 	return AUTHOR_IMPOSTOR;
     }
+
+    // check that the generated keypair is valid
+    if (!crypto_isvalid_keypair(&test_key, &m->keypair.public_key))
+      return AUTHOR_IMPOSTOR;
+
+    m->keypair.private_key = test_key;
   }else{
     if (memcmp(&m->keypair.public_key, id->sign_pk, crypto_sign_PUBLICKEYBYTES)==0){
       bcopy(id->sign_sk, m->keypair.binary, sizeof m->keypair.binary);
@@ -357,7 +330,12 @@ int rhizome_manifest_add_bundle_key(rhizome_manifest *m)
 	}
 
 	rhizome_bk_t bkey;
-	if (rhizome_secret2bk(&m->keypair.public_key, kp->private_key, kp->private_key_len, bkey.binary, m->keypair.binary) != 0) {
+	if (rhizome_bk_xor_stream(
+	    &m->keypair.public_key,
+	    kp->private_key, kp->private_key_len,
+	    m->keypair.private_key.binary,
+	    bkey.binary,
+	    sizeof bkey)){
 	  m->authorship = AUTHENTICATION_ERROR;
 	  break;
 	}
@@ -416,21 +394,6 @@ int rhizome_apply_bundle_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
   }
   RETURN(0);
   OUT();
-}
-
-/* Verify the validity of a given secret manifest key.  Return 1 if valid, 0 if not.
- */
-int rhizome_verify_bundle_privatekey(const unsigned char *sk, const unsigned char *pkin)
-{
-  // first check that the public key half matches
-  if (bcmp(pkin, &sk[crypto_sign_SECRETKEYBYTES - crypto_sign_PUBLICKEYBYTES], crypto_sign_PUBLICKEYBYTES)!=0)
-    return 0;
-  // generate a new key from the private key bytes
-  uint8_t tsk[crypto_sign_SECRETKEYBYTES];
-  uint8_t tpk[crypto_sign_PUBLICKEYBYTES];
-  crypto_sign_seed_keypair(tpk, tsk, sk);
-  // and verify the generated public key again
-  return bcmp(pkin, tpk, sizeof tpk) == 0;
 }
 
 typedef struct manifest_signature_block_cache {

@@ -635,21 +635,7 @@ int rhizome_delete_file(const rhizome_filehash_t *hashp);
 #define RHIZOME_VERIFY 1
 
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
-int rhizome_bk2secret(
-  const rhizome_bid_t *bidp,
-  const unsigned char *rs, const size_t rs_len,
-  /* The BK need only be the length of the secret half of the secret key */
-  const unsigned char bkin[RHIZOME_BUNDLE_KEY_BYTES],
-  unsigned char secret[crypto_sign_SECRETKEYBYTES]
-		      );
-int rhizome_secret2bk(
-  const rhizome_bid_t *bidp,
-  const unsigned char *rs, const size_t rs_len,
-  /* The BK need only be the length of the secret half of the secret key */
-  unsigned char bkout[RHIZOME_BUNDLE_KEY_BYTES],
-  const unsigned char secret[crypto_sign_SECRETKEYBYTES]
-);
-int rhizome_verify_bundle_privatekey(const unsigned char *sk, const unsigned char *pk);
+
 int rhizome_queue_ignore_manifest(const unsigned char *bid_prefix, int prefix_len, int timeout);
 int rhizome_ignore_manifest_check(const unsigned char *bid_prefix, int prefix_len);
 

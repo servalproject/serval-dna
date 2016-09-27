@@ -22,6 +22,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "crypto.h"
 #include "keyring.h"
 
+// verify that the supplied keypair is valid (by rebuilding it)
+int crypto_isvalid_keypair(const sign_private_t *private_key, const sign_public_t *public_key)
+{
+  sign_keypair_t test_key;
+  crypto_sign_seed_keypair(test_key.public_key.binary, test_key.binary, private_key->binary);
+  return bcmp(test_key.public_key.binary, public_key->binary, sizeof (sign_public_t)) == 0 ? 1 : 0;
+}
 
 // verify the signature at the end of a message, on return message_len will be reduced by the length of the signature.
 int crypto_verify_message(struct subscriber *subscriber, unsigned char *message, size_t *message_len)

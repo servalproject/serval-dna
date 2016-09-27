@@ -303,7 +303,6 @@ setup_ExtractManifestAfterAdd() {
 test_ExtractManifestAfterAdd() {
    executeOk_servald rhizome export manifest $manifestid file1x.manifest
    tfw_cat --stdout --stderr
-   assertStdoutLineCount '==' 13
    local size=$(( $(cat file1 | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
    assertStdoutGrep --matches=1 "^version:$version\$"
@@ -318,6 +317,7 @@ test_ExtractManifestAfterAdd() {
    assertStdoutGrep --matches=1 "^\.author:$SIDA\$"
    assertStdoutGrep --matches=1 "^\.rowid:$rowid\$"
    assertStdoutGrep --matches=1 "^\.inserttime:$rexp_date\$"
+   assertStdoutLineCount '==' 13
    assert [ -e file1x.manifest ]
    assert diff file1.manifest file1x.manifest
 }
