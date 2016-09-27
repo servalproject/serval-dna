@@ -628,7 +628,7 @@ static void monitor_announce_bundle(rhizome_manifest *m)
   char msg[1024];
   int len = snprintf(msg,1024,"\n*%zd:BUNDLE:%s\n",
            m->manifest_all_bytes,
-	   alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+	   alloca_tohex_rhizome_bid_t(m->keypair.public_key));
   bcopy(m->manifestdata, &msg[len], m->manifest_all_bytes);
   len+=m->manifest_all_bytes;
   msg[len++]='\n';

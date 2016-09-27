@@ -29,7 +29,7 @@ static void cli_put_manifest(struct cli_context *context, const rhizome_manifest
 {
   assert(m->filesize != RHIZOME_SIZE_UNSET);
   cli_field_name(context, "manifestid", ":"); // TODO rename to "bundleid" or "bid"
-  cli_put_string(context, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), "\n");
+  cli_put_string(context, alloca_tohex_rhizome_bid_t(m->keypair.public_key), "\n");
   cli_field_name(context, "version", ":");
   cli_put_long(context, m->version, "\n");
   cli_field_name(context, "filesize", ":");
@@ -70,7 +70,7 @@ static void cli_put_manifest(struct cli_context *context, const rhizome_manifest
   cli_put_long(context, m->haveSecret ? 0 : 1, "\n");
   if (m->haveSecret) {
     char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-    rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
+    rhizome_bytes_to_hex_upper(m->keypair.binary, secret, RHIZOME_BUNDLE_KEY_BYTES);
     cli_field_name(context, ".secret", ":");
     cli_put_string(context, secret, "\n");
   }
@@ -287,7 +287,7 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
       rhizome_bundle_result_free(&result);
       result = rhizome_manifest_finalise(m, &mout, !force_new);
       if (mout && mout != m && !rhizome_manifest_validate(mout)) {
-	  WHYF("Stored manifest id=%s is invalid -- overwriting", alloca_tohex_rhizome_bid_t(mout->cryptoSignPublic));
+	  WHYF("Stored manifest id=%s is invalid -- overwriting", alloca_tohex_rhizome_bid_t(mout->keypair.public_key));
 	  rhizome_bundle_result_free(&result);
 	  result = rhizome_bundle_result(RHIZOME_BUNDLE_STATUS_NEW);
       }
@@ -759,7 +759,7 @@ static int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context 
       rhizome_lookup_author(m);
       cli_put_long(context, m->rowid, ":");
       cli_put_string(context, m->service, ":");
-      cli_put_hexvalue(context, m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, ":");
+      cli_put_hexvalue(context, m->keypair.public_key.binary, sizeof m->keypair.public_key.binary, ":");
       cli_put_long(context, m->version, ":");
       cli_put_long(context, m->has_date ? m->date : 0, ":");
       cli_put_long(context, m->inserttime, ":");

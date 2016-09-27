@@ -262,7 +262,7 @@ static struct rhizome_fetch_slot *fetch_search_slot(const unsigned char *id, int
     struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
     
     if (q->active.state != RHIZOME_FETCH_FREE && 
-	memcmp(id, q->active.manifest->cryptoSignPublic.binary, prefix_length) == 0)
+	memcmp(id, q->active.manifest->keypair.public_key.binary, prefix_length) == 0)
       return &q->active;
   }
   return NULL;
@@ -279,7 +279,7 @@ static struct rhizome_fetch_candidate *fetch_search_candidate(const unsigned cha
       struct rhizome_fetch_candidate *c = &q->candidate_queue[j];
       if (!c->manifest)
 	continue;
-      if (memcmp(c->manifest->cryptoSignPublic.binary, id, prefix_length))
+      if (memcmp(c->manifest->keypair.public_key.binary, id, prefix_length))
 	continue;
       return c;
     }
@@ -500,7 +500,7 @@ schedule_fetch(struct rhizome_fetch_slot *slot)
   slot->write_state.blob_rowid = 0;
 
   if (slot->manifest) {
-    slot->bid = slot->manifest->cryptoSignPublic;
+    slot->bid = slot->manifest->keypair.public_key;
     slot->prefix_length = sizeof slot->bid.binary;
     slot->bidVersion = slot->manifest->version;
     
@@ -511,7 +511,7 @@ schedule_fetch(struct rhizome_fetch_slot *slot)
       // if we're fetching a journal bundle, work out how many bytes we have of a previous version
       // and therefore what range of bytes we should ask for
       slot->previous = rhizome_new_manifest();
-      if (rhizome_retrieve_manifest(&slot->manifest->cryptoSignPublic, slot->previous)!=RHIZOME_BUNDLE_STATUS_SAME){
+      if (rhizome_retrieve_manifest(&slot->manifest->keypair.public_key, slot->previous)!=RHIZOME_BUNDLE_STATUS_SAME){
 	rhizome_manifest_free(slot->previous);
 	slot->previous=NULL;
       // check that the new journal is valid and has some overlapping bytes
@@ -682,7 +682,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m,
 
   DEBUGF(rhizome_rx, "Fetching bundle slot=%d bid=%s version=%"PRIu64" size=%"PRIu64" addr=%s",
 	 slotno(slot),
-	 alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
+	 alloca_tohex_rhizome_bid_t(m->keypair.public_key),
 	 m->version,
 	 m->filesize,
 	 alloca_socket_address(addr)
@@ -702,7 +702,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m,
    * being published faster than we can fetch them.
    */
   {
-    struct rhizome_fetch_slot *as = fetch_search_slot(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary);
+    struct rhizome_fetch_slot *as = fetch_search_slot(m->keypair.public_key.binary, sizeof m->keypair.public_key.binary);
     if (as){
       const rhizome_manifest *am = as->manifest;
       if (am->version < m->version) {
@@ -875,7 +875,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   }
   
   DEBUGF(rhizome_rx, "Considering import bid=%s version=%"PRIu64" size=%"PRIu64,
-	 alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, m->filesize);
+	 alloca_tohex_rhizome_bid_t(m->keypair.public_key), m->version, m->filesize);
 
   if (!rhizome_is_manifest_interesting(m)) {
     DEBUG(rhizome_rx, "   already stored that version or newer");
@@ -889,7 +889,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   if (!m->selfSigned && !rhizome_manifest_verify(m)) {
     WHY("Error verifying manifest when considering queuing for import");
     /* Don't waste time looking at this manifest again for a while */
-    rhizome_queue_ignore_manifest(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, 60000);
+    rhizome_queue_ignore_manifest(m->keypair.public_key.binary, sizeof m->keypair.public_key.binary, 60000);
     rhizome_manifest_free(m);
     RETURN(-1);
   }
@@ -924,7 +924,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 	break;
       }
       
-      if (cmp_rhizome_bid_t(&m->cryptoSignPublic, &c->manifest->cryptoSignPublic) == 0) {
+      if (cmp_rhizome_bid_t(&m->keypair.public_key, &c->manifest->keypair.public_key) == 0) {
 	if (c->manifest->version >= m->version) {
 	  rhizome_manifest_free(m);
 	  RETURN(0);
@@ -1266,7 +1266,7 @@ static int rhizome_write_complete(struct rhizome_fetch_slot *slot)
 	rhizome_manifest_free(m);
       } else {
 	DEBUGF(rhizome_rx, "All looks good for importing manifest id=%s, addr=%s, sid=%s", 
-	       alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
+	       alloca_tohex_rhizome_bid_t(m->keypair.public_key),
 	       alloca_socket_address(&slot->addr),
 	       slot->peer?alloca_tohex_sid_t(slot->peer->sid):"unknown"
 	      );

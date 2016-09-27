@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/types.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <sodium.h>
 
 /* Conveniences to assist readability
  */
@@ -32,19 +33,38 @@ typedef char bool_t;
 /* Serval ID (aka Subscriber ID)
  */
 
-#define SID_SIZE 32 // == crypto_box_PUBLICKEYBYTES
-#define IDENTITY_SIZE 32 // == crypto_sign_PUBLICKEYBYTES
+#define SID_SIZE crypto_box_PUBLICKEYBYTES
+#define IDENTITY_SIZE crypto_sign_PUBLICKEYBYTES
 
 #define SID_STRLEN (SID_SIZE*2)
 #define IDENTITY_STRLEN (IDENTITY_SIZE*2)
 
 typedef struct sid_binary {
-    unsigned char binary[SID_SIZE];
+    uint8_t binary[SID_SIZE];
 } sid_t;
 
-typedef struct identity_binary {
-    unsigned char binary[IDENTITY_SIZE];
-} identity_t;
+// lib sodium crypto_sign key types;
+typedef struct sign_binary {
+    uint8_t binary[IDENTITY_SIZE];
+} sign_public_t;
+
+typedef struct sign_private_binary{
+  uint8_t binary[crypto_sign_SEEDBYTES];
+}sign_private_t;
+
+typedef struct sign_keypair_binary{
+  union{
+    struct{
+      sign_private_t private_key;
+      sign_public_t public_key;
+    };
+    uint8_t binary[crypto_sign_SECRETKEYBYTES];
+  };
+}sign_keypair_t;
+
+
+typedef struct sign_binary identity_t;
+
 
 #define SID_TYPE_ANY        (0)
 #define SID_TYPE_INTERNAL   (1)

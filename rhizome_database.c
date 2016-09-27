@@ -1368,7 +1368,7 @@ int rhizome_store_manifest(rhizome_manifest *m)
 	") VALUES("
 	  "?,?,?,?,?,?,?,?,?,?,?,?,?,?"
 	");",
-	RHIZOME_BID_T, &m->cryptoSignPublic,
+	RHIZOME_BID_T, &m->keypair.public_key,
 	STATIC_BLOB, m->manifestdata, m->manifest_all_bytes,
 	INT64, m->version,
 	INT64, (int64_t) now,
@@ -1398,7 +1398,7 @@ int rhizome_store_manifest(rhizome_manifest *m)
     // This message used in tests; do not modify or remove.
     INFOF("RHIZOME ADD MANIFEST service=%s bid=%s version=%"PRIu64,
 	  m->service ? m->service : "NULL",
-	  alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
+	  alloca_tohex_rhizome_bid_t(m->keypair.public_key),
 	  m->version
 	);
     if (serverMode)
@@ -1408,7 +1408,7 @@ int rhizome_store_manifest(rhizome_manifest *m)
 rollback:
   if (stmt)
     sqlite3_finalize(stmt);
-  WHYF("Failed to store bundle bid=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+  WHYF("Failed to store bundle bid=%s", alloca_tohex_rhizome_bid_t(m->keypair.public_key));
   sqlite_exec_void_retry(&retry, "ROLLBACK;", END);
   return -1;
 }
@@ -1417,7 +1417,7 @@ static void trigger_rhizome_bundle_added_debug(rhizome_manifest *m)
 {
   DEBUGF(rhizome, "TRIGGER rhizome_bundle_added service=%s bid=%s version=%"PRIu64,
 	 m->service ? m->service : "NULL",
-	 alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
+	 alloca_tohex_rhizome_bid_t(m->keypair.public_key),
 	 m->version
 	);
 }
@@ -1941,5 +1941,5 @@ int rhizome_is_bar_interesting(const rhizome_bar_t *bar)
 
 int rhizome_is_manifest_interesting(rhizome_manifest *m)
 {
-  return is_interesting(alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
+  return is_interesting(alloca_tohex_rhizome_bid_t(m->keypair.public_key), m->version);
 }

@@ -374,7 +374,7 @@ static int overlay_mdp_service_manifest_requests(struct internal_mdp_header *hea
       rhizome_advertise_manifest(header->source, m);
       // pre-emptively send the payload if it will fit in a single packet
       if (m->filesize > 0 && m->filesize <= 1024)
-	rhizome_mdp_send_block(header->source, &m->cryptoSignPublic, m->version, 0, 0, m->filesize);
+	rhizome_mdp_send_block(header->source, &m->keypair.public_key, m->version, 0, 0, m->filesize);
     }
     rhizome_manifest_free(m);
   }

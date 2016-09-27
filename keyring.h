@@ -50,7 +50,7 @@ typedef struct keyring_identity {
   struct keyring_challenge *challenge;
   const uint8_t *box_sk;
   const sid_t *box_pk;
-  const uint8_t *sign_sk;
+  const sign_keypair_t *sign_sk;
   const identity_t *sign_pk;
   struct keyring_identity *next;
   keypair *keypairs;

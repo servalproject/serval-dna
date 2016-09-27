@@ -106,14 +106,14 @@ static const char *_rhizome_manifest_set_ui64(struct __sourceloc __whence, rhizo
 void _rhizome_manifest_set_id(struct __sourceloc __whence, rhizome_manifest *m, const rhizome_bid_t *bidp)
 {
   if (bidp) {
-    if (m->has_id && (bidp == &m->cryptoSignPublic || cmp_rhizome_bid_t(&m->cryptoSignPublic, bidp) == 0))
+    if (m->has_id && (bidp == &m->keypair.public_key || cmp_rhizome_bid_t(&m->keypair.public_key, bidp) == 0))
       return; // unchanged
     const char *v = rhizome_manifest_set(m, "id", alloca_tohex_rhizome_bid_t(*bidp));
     assert(v); // TODO: remove known manifest fields from vars[]
-    m->cryptoSignPublic = *bidp;
+    m->keypair.public_key = *bidp;
     m->has_id = 1;
   } else if (m->has_id) {
-    bzero(&m->cryptoSignPublic, sizeof m->cryptoSignPublic); // not strictly necessary but aids debugging
+    bzero(&m->keypair.public_key, sizeof m->keypair.public_key); // not strictly necessary but aids debugging
     m->has_id = 0;
   } else
     return; // unchanged
@@ -122,7 +122,7 @@ void _rhizome_manifest_set_id(struct __sourceloc __whence, rhizome_manifest *m, 
   // Any existing secret key and bundle key are no longer valid.
   if (m->haveSecret) {
     m->haveSecret = SECRET_UNKNOWN;
-    bzero(m->cryptoSignSecret, sizeof m->cryptoSignSecret); // not strictly necessary but aids debugging
+    bzero(m->keypair.private_key.binary, sizeof m->keypair.private_key.binary); // not strictly necessary but aids debugging
   }
   if (m->has_bundle_key) {
     m->has_bundle_key = 0;
@@ -440,7 +440,7 @@ int rhizome_manifest_verify(rhizome_manifest *m)
     m->selfSigned = 0;
     return 0;
   }
-  if (memcmp(m->signatories[0], m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary) != 0) {
+  if (memcmp(m->signatories[0], m->keypair.public_key.binary, sizeof m->keypair.public_key.binary) != 0) {
     DEBUGF(rhizome_manifest, "Manifest id does not match first signature block (signature key is %s)",
 	   alloca_tohex(m->signatories[0], crypto_sign_PUBLICKEYBYTES)
 	  );
@@ -685,7 +685,7 @@ static void _rhizome_manifest_unset_id(struct __sourceloc __whence, rhizome_mani
 }
 static void _rhizome_manifest_copy_id(struct __sourceloc __whence, rhizome_manifest *m, const rhizome_manifest *srcm)
 {
-  rhizome_manifest_set_id(m, srcm->has_id ? &srcm->cryptoSignPublic : NULL);
+  rhizome_manifest_set_id(m, srcm->has_id ? &srcm->keypair.public_key : NULL);
 }
 static int _rhizome_manifest_parse_id(rhizome_manifest *m, const char *text)
 {
@@ -1245,10 +1245,10 @@ static struct rhizome_bundle_result rhizome_manifest_selfsign(rhizome_manifest *
   crypto_hash_sha512(m->manifesthash.binary, m->manifestdata, m->manifest_body_bytes);
   uint8_t *p = &m->manifestdata[m->manifest_body_bytes];
   *p++ = 0x17; // CryptoSign
-  if (crypto_sign_detached(p, NULL, m->manifesthash.binary, sizeof m->manifesthash.binary, m->cryptoSignSecret))
+  if (crypto_sign_detached(p, NULL, m->manifesthash.binary, sizeof m->manifesthash.binary, m->keypair.binary))
     return rhizome_bundle_result_static(RHIZOME_BUNDLE_STATUS_ERROR, "crypto_sign_detached() failed");
   p+=crypto_sign_BYTES;
-  bcopy(m->cryptoSignPublic.binary, p, crypto_sign_BYTES);
+  bcopy(m->keypair.public_key.binary, p, crypto_sign_BYTES);
   m->manifest_all_bytes = m->manifest_body_bytes + sigLen;
   m->selfSigned = 1;
   return rhizome_bundle_result(RHIZOME_BUNDLE_STATUS_NEW);
@@ -1387,7 +1387,7 @@ struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const ch
   case SECRET_UNKNOWN:
     // If the Bundle Id is already known, then derive the bundle secret from BK if known.
     if (m->has_id) {
-      DEBUGF(rhizome, "discover secret for bundle bid=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+      DEBUGF(rhizome, "discover secret for bundle bid=%s", alloca_tohex_rhizome_bid_t(m->keypair.public_key));
       rhizome_authenticate_author(m);
       break;
     }
@@ -1405,14 +1405,14 @@ struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const ch
       rhizome_manifest_set_author(m, &m->sender);
     // If we know the author then set the BK field.
     if (m->authorship != ANONYMOUS) {
-      DEBUGF(rhizome, "set BK field for bid=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+      DEBUGF(rhizome, "set BK field for bid=%s", alloca_tohex_rhizome_bid_t(m->keypair.public_key));
       rhizome_manifest_add_bundle_key(m);
     }
     break;
   case EXISTING_BUNDLE_ID:
     // If modifying an existing bundle, try to discover the bundle secret key and the author.
     assert(m->has_id);
-    DEBUGF(rhizome, "modifying existing bundle bid=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+    DEBUGF(rhizome, "modifying existing bundle bid=%s", alloca_tohex_rhizome_bid_t(m->keypair.public_key));
     rhizome_authenticate_author(m);
     // TODO assert that new version > old version?
     break;

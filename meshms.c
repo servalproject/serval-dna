@@ -46,33 +46,19 @@ void meshms_free_conversations(struct meshms_conversations *conv)
 static enum meshms_status get_my_conversation_bundle(const keyring_identity *id, rhizome_manifest *m)
 {
   /* Find our private key */
-  strbuf sb = strbuf_alloca(1024);
-  strbuf_puts(sb, "incorrection");
-  strbuf_tohex(sb, crypto_box_SECRETKEYBYTES * 2, id->box_sk);
-  strbuf_puts(sb, "concentrativeness");
-  assert(!strbuf_overrun(sb));
-  if (rhizome_get_bundle_from_seed(m, strbuf_str(sb)) == -1)
-    return MESHMS_STATUS_ERROR;
-  
-  // always consider the content encrypted, we don't need to rely on the manifest itself.
-  rhizome_manifest_set_crypt(m, PAYLOAD_ENCRYPTED);
-  assert(m->haveSecret);
+  struct rhizome_bundle_result result = rhizome_private_bundle(m,
+    "incorrection%sconcentrativeness",
+    alloca_tohex(id->box_sk, crypto_box_SECRETKEYBYTES));
 
-  // The 'meshms' automated test depends on this message; do not alter.
-  DEBUGF(meshms, "MESHMS CONVERSATION BUNDLE bid=%s secret=%s",
-	 alloca_tohex_rhizome_bid_t(m->cryptoSignPublic),
-	 alloca_tohex(m->cryptoSignSecret, RHIZOME_BUNDLE_KEY_BYTES)
-	);
-
-  if (m->haveSecret == NEW_BUNDLE_ID) {
-    rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
-    rhizome_manifest_set_name(m, "");
-    // setting the author would imply needing a BK, which we don't need since the private key is seeded above.
-    struct rhizome_bundle_result result = rhizome_fill_manifest(m, NULL);
-    switch (result.status) {
+  switch (result.status) {
     case RHIZOME_BUNDLE_STATUS_NEW:
     case RHIZOME_BUNDLE_STATUS_SAME:
     case RHIZOME_BUNDLE_STATUS_DUPLICATE:
+      // The 'meshms' automated test depends on this message; do not alter.
+      DEBUGF(meshms, "MESHMS CONVERSATION BUNDLE bid=%s secret=%s",
+	     alloca_tohex_rhizome_bid_t(m->keypair.public_key),
+	     alloca_tohex(m->keypair.private_key.binary, RHIZOME_BUNDLE_KEY_BYTES)
+	    );
       break;
     case RHIZOME_BUNDLE_STATUS_ERROR:
     case RHIZOME_BUNDLE_STATUS_INVALID:
@@ -93,14 +79,8 @@ static enum meshms_status get_my_conversation_bundle(const keyring_identity *id,
       INFOF("Cannot create conversation manifest: %s", alloca_rhizome_bundle_result(result));
       rhizome_bundle_result_free(&result);
       return MESHMS_STATUS_SID_LOCKED;
-    }
-    rhizome_bundle_result_free(&result);
-  } else {
-    if (strcmp(m->service, RHIZOME_SERVICE_FILE) != 0) {
-      WARNF("Invalid conversations manifest, service=%s but should be %s", m->service, RHIZOME_SERVICE_FILE);
-      return MESHMS_STATUS_PROTOCOL_FAULT;
-    }
   }
+  rhizome_bundle_result_free(&result);
   return MESHMS_STATUS_OK;
 }
 
@@ -212,6 +192,7 @@ static enum meshms_status update_their_stats(struct meshms_metadata *metadata, s
 
     uint8_t found_their_msg=0;
     uint8_t found_their_ack=0;
+    reader->read.offset = reader->read.length;
 
     while((!found_their_msg || !found_their_ack) && message_ply_read_prev(reader) == 0){
       // stop if we've seen these records before
@@ -258,6 +239,7 @@ static enum meshms_status update_my_stats(struct meshms_metadata *metadata, stru
     if (meshms_failed(status = open_ply(ply, reader)))
       return status;
 
+    reader->read.offset = reader->read.length;
     if (message_ply_find_prev(reader, MESSAGE_BLOCK_TYPE_ACK)==0){
       uint64_t my_ack = 0;
       if (unpack_uint(reader->record, reader->record_length, &my_ack) != -1){
@@ -377,7 +359,7 @@ static enum meshms_status read_known_conversations(rhizome_manifest *m, struct m
   enum meshms_status status = MESHMS_STATUS_OK;
   enum rhizome_payload_status pstatus = rhizome_open_decrypt_read(m, &read);
   if (pstatus == RHIZOME_PAYLOAD_STATUS_NEW) {
-    WARNF("Payload was not found for manifest %s, %"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
+    WARNF("Payload was not found for manifest %s, %"PRIu64, alloca_tohex_rhizome_bid_t(m->keypair.public_key), m->version);
     goto end;
   }
   if (pstatus != RHIZOME_PAYLOAD_STATUS_STORED && pstatus != RHIZOME_PAYLOAD_STATUS_EMPTY)

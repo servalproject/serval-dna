@@ -32,48 +32,62 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 int rhizome_manifest_createid(rhizome_manifest *m)
 {
-  if (crypto_sign_keypair(m->cryptoSignPublic.binary, m->cryptoSignSecret))
+  if (crypto_sign_keypair(m->keypair.public_key.binary, m->keypair.binary))
     return WHY("Failed to create keypair for manifest ID.");
-  rhizome_manifest_set_id(m, &m->cryptoSignPublic); // will remove any existing BK field
+  rhizome_manifest_set_id(m, &m->keypair.public_key); // will remove any existing BK field
   m->haveSecret = NEW_BUNDLE_ID;
   return 0;
 }
 
 /* Generate a bundle id deterministically from the given seed.
  * Then either fetch it from the database or initialise a new empty manifest */
-int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed)
+struct rhizome_bundle_result rhizome_private_bundle(rhizome_manifest *m, const char *fmt, ...)
 {
+  char seed[1024];
+  va_list ap;
+  va_start(ap, fmt);
+
+  int n = vsnprintf(seed, sizeof seed, fmt, ap);
+  assert(n < (int)sizeof seed);
   union {
     unsigned char hash[crypto_hash_sha512_BYTES];
-    rhizome_bk_t bsk;
+    sign_private_t bsk;
   } u;
-  crypto_hash_sha512(u.hash, (unsigned char *)seed, strlen(seed));
-  // The first 256 bits (32 bytes) of the hash will be used as the private key of the BID.
-  return rhizome_get_bundle_from_secret(m, &u.bsk);
-}
 
-/* Generate a bundle id deterministically from the given bundle secret key.
- * Then either fetch it from the database or initialise a new empty manifest
- */
-int rhizome_get_bundle_from_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
-{
-  uint8_t sk[crypto_sign_SECRETKEYBYTES];
+  crypto_hash_sha512(u.hash, (uint8_t *)seed, n);
+
+  // The first 256 bits (32 bytes) of the hash will be used as the private key of the BID.
+
+  sign_keypair_t sk;
   rhizome_bid_t bid;
-  crypto_sign_seed_keypair(bid.binary, sk, bsk->binary);
-  switch (rhizome_retrieve_manifest(&bid, m)) {
-    case RHIZOME_BUNDLE_STATUS_NEW: 
-      rhizome_manifest_set_id(m, &bid); // zerofills m->cryptoSignSecret
+  crypto_sign_seed_keypair(bid.binary, sk.binary, u.bsk.binary);
+
+  enum rhizome_bundle_status ret = rhizome_retrieve_manifest(&bid, m);
+  switch(ret){
+    case RHIZOME_BUNDLE_STATUS_NEW:
+      rhizome_manifest_set_id(m, &bid); // zerofills m->keypair.binary
+      m->keypair = sk;
       m->haveSecret = NEW_BUNDLE_ID;
-      break;
+      rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
+      rhizome_manifest_set_name(m, "");
+      // always consider the content encrypted, we don't need to rely on the manifest itself.
+      rhizome_manifest_set_crypt(m, PAYLOAD_ENCRYPTED);
+      // setting the author would imply needing a BK, which we don't need since the private key is seeded above.
+      return rhizome_fill_manifest(m, NULL);
     case RHIZOME_BUNDLE_STATUS_SAME:
       m->haveSecret = EXISTING_BUNDLE_ID;
-      break;
+      m->keypair = sk;
+      // always consider the content encrypted, we don't need to rely on the manifest itself.
+      rhizome_manifest_set_crypt(m, PAYLOAD_ENCRYPTED);
+      if (strcmp(m->service, RHIZOME_SERVICE_FILE) != 0)
+	return rhizome_bundle_result(RHIZOME_BUNDLE_STATUS_ERROR);
+      // fallthrough
     default:
-      return -1;
+      return rhizome_bundle_result(ret);
   }
-  bcopy(sk, m->cryptoSignSecret, sizeof m->cryptoSignSecret);
-  return 0;
 }
+
+
 
 /* Generate a bundle id deterministically from the given bundle secret key.
  * Then initialise a new empty manifest.
@@ -83,9 +97,9 @@ void rhizome_new_bundle_from_secret(rhizome_manifest *m, const rhizome_bk_t *bsk
   uint8_t sk[crypto_sign_SECRETKEYBYTES];
   rhizome_bid_t bid;
   crypto_sign_seed_keypair(bid.binary, sk, bsk->binary);
-  rhizome_manifest_set_id(m, &bid); // zerofills m->cryptoSignSecret
+  rhizome_manifest_set_id(m, &bid); // zerofills m->keypair.binary
   m->haveSecret = NEW_BUNDLE_ID;
-  bcopy(sk, m->cryptoSignSecret, sizeof m->cryptoSignSecret);
+  bcopy(sk, m->keypair.binary, sizeof m->keypair.binary);
 }
 
 /* Given a Rhizome Secret (RS) and bundle ID (BID), XOR a bundle key 'bkin' (private or public) with
@@ -188,7 +202,7 @@ static keypair *get_secret(const keyring_identity *id)
  * If this identity has permission to alter the bundle, then set;
  *  - the manifest 'authorship' field to AUTHOR_AUTHENTIC
  *  - the 'author' field to the SID of the identity
- *  - the manifest 'cryptoSignSecret' field to the bundle secret key
+ *  - the manifest 'sign_key.binary' field to the bundle secret key
  *  - the 'haveSecret' field to EXISTING_BUNDLE_ID.
  * and finally update the database with the result.
 */
@@ -207,10 +221,10 @@ static enum rhizome_bundle_authorship try_author(rhizome_manifest *m, const keyr
     if (!kp)
       return AUTHENTICATION_ERROR;
     uint8_t secret[crypto_sign_SECRETKEYBYTES];
-    uint8_t *s = m->haveSecret ? secret : m->cryptoSignSecret;
-    switch (rhizome_bk2secret(&m->cryptoSignPublic, kp->private_key, kp->private_key_len, m->bundle_key.binary, s)) {
+    uint8_t *s = m->haveSecret ? secret : m->keypair.binary;
+    switch (rhizome_bk2secret(&m->keypair.public_key, kp->private_key, kp->private_key_len, m->bundle_key.binary, s)) {
       case 0:
-	if (m->haveSecret && memcmp(secret, m->cryptoSignSecret, sizeof m->cryptoSignSecret) != 0)
+	if (m->haveSecret && memcmp(secret, m->keypair.binary, sizeof m->keypair.binary) != 0)
 	  FATALF("Bundle secret does not match derived secret");
 	break;
       case -1:
@@ -219,11 +233,11 @@ static enum rhizome_bundle_authorship try_author(rhizome_manifest *m, const keyr
 	return AUTHOR_IMPOSTOR;
     }
   }else{
-    if (memcmp(&m->cryptoSignPublic, id->sign_pk, crypto_sign_PUBLICKEYBYTES)==0){
-      bcopy(id->sign_sk, m->cryptoSignSecret, sizeof m->cryptoSignSecret);
+    if (memcmp(&m->keypair.public_key, id->sign_pk, crypto_sign_PUBLICKEYBYTES)==0){
+      bcopy(id->sign_sk, m->keypair.binary, sizeof m->keypair.binary);
     }else{
       DEBUGF(rhizome, "   bundle has no BK field");
-      // TODO if cryptoSignPublic == id signing key...
+      // TODO if sign_key.public_key == id signing key...
       return ANONYMOUS;
     }
   }
@@ -263,7 +277,7 @@ static enum rhizome_bundle_authorship try_author(rhizome_manifest *m, const keyr
 void rhizome_authenticate_author(rhizome_manifest *m)
 {
   IN();
-  DEBUGF(rhizome, "authenticate author for bid=%s", m->has_id ? alloca_tohex_rhizome_bid_t(m->cryptoSignPublic) : "(none)");
+  DEBUGF(rhizome, "authenticate author for bid=%s", m->has_id ? alloca_tohex_rhizome_bid_t(m->keypair.public_key) : "(none)");
   switch (m->authorship) {
     case ANONYMOUS:
 
@@ -321,7 +335,7 @@ int rhizome_manifest_add_bundle_key(rhizome_manifest *m)
     case AUTHOR_IMPOSTOR: {
 	/* Set the BK using the provided author.  Serval Security Framework defines BK as being:
 	*    BK = privateKey XOR sha512(RS##BID)
-	* where BID = cryptoSignPublic,
+	* where BID = sign_key.public_key,
 	*       RS is the rhizome secret for the specified author.
 	* The nice thing about this specification is that:
 	*    privateKey = BK XOR sha512(RS##BID)
@@ -343,7 +357,7 @@ int rhizome_manifest_add_bundle_key(rhizome_manifest *m)
 	}
 
 	rhizome_bk_t bkey;
-	if (rhizome_secret2bk(&m->cryptoSignPublic, kp->private_key, kp->private_key_len, bkey.binary, m->cryptoSignSecret) != 0) {
+	if (rhizome_secret2bk(&m->keypair.public_key, kp->private_key, kp->private_key_len, bkey.binary, m->keypair.binary) != 0) {
 	  m->authorship = AUTHENTICATION_ERROR;
 	  break;
 	}
@@ -384,7 +398,7 @@ int rhizome_apply_bundle_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
   IN();
   DEBUGF(rhizome, "manifest %p bsk=%s", m, bsk ? alloca_tohex_rhizome_bk_t(*bsk) : "NULL");
   assert(m->haveSecret == SECRET_UNKNOWN);
-  assert(is_all_matching(m->cryptoSignSecret, sizeof m->cryptoSignSecret, 0));
+  assert(is_all_matching(m->keypair.private_key.binary, sizeof m->keypair.private_key.binary, 0));
   assert(m->has_id);
   assert(bsk != NULL);
   assert(!rhizome_is_bk_none(bsk));
@@ -394,9 +408,9 @@ int rhizome_apply_bundle_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
   uint8_t pk[crypto_sign_PUBLICKEYBYTES];
   crypto_sign_seed_keypair(pk, sk, bsk->binary);
 
-  if (bcmp(pk, m->cryptoSignPublic.binary, crypto_sign_PUBLICKEYBYTES) == 0){
+  if (bcmp(pk, m->keypair.public_key.binary, crypto_sign_PUBLICKEYBYTES) == 0){
     DEBUG(rhizome, "bundle secret verifies ok");
-    bcopy(sk, m->cryptoSignSecret, crypto_sign_SECRETKEYBYTES);
+    bcopy(sk, m->keypair.binary, crypto_sign_SECRETKEYBYTES);
     m->haveSecret = EXISTING_BUNDLE_ID;
     RETURN(1);
   }
@@ -581,7 +595,7 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
 	}else{
 	  // derive other_pk from BID
 	  other_pk = &scratch;
-	  if (crypto_sign_ed25519_pk_to_curve25519(scratch.binary, m->cryptoSignPublic.binary))
+	  if (crypto_sign_ed25519_pk_to_curve25519(scratch.binary, m->keypair.public_key.binary))
 	    other_pk = NULL;
 	}
       } else if (m->has_sender){
@@ -615,9 +629,9 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
       WHY("Cannot derive payload key because bundle secret is unknown");
       return 0;
     }
-    DEBUGF(rhizome, "derived payload key from bundle secret bsk=%s", alloca_tohex(m->cryptoSignSecret, sizeof m->cryptoSignSecret));
+    DEBUGF(rhizome, "derived payload key from bundle secret bsk=%s", alloca_tohex(m->keypair.binary, sizeof m->keypair.binary));
     unsigned char raw_key[9+crypto_sign_SECRETKEYBYTES]="sasquatch";
-    bcopy(m->cryptoSignSecret, &raw_key[9], crypto_sign_SECRETKEYBYTES);
+    bcopy(m->keypair.binary, &raw_key[9], crypto_sign_SECRETKEYBYTES);
     crypto_hash_sha512(hash, raw_key, sizeof(raw_key));
   }
   bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
@@ -625,12 +639,12 @@ int rhizome_derive_payload_key(rhizome_manifest *m)
 
   // journal bundles must always have the same nonce, regardless of version.
   // otherwise, generate nonce from version#bundle id#version;
-  unsigned char raw_nonce[8 + 8 + sizeof m->cryptoSignPublic.binary];
+  unsigned char raw_nonce[8 + 8 + sizeof m->keypair.public_key.binary];
   uint64_t nonce_version = m->is_journal ? 0 : m->version;
   write_uint64(&raw_nonce[0], nonce_version);
-  bcopy(m->cryptoSignPublic.binary, &raw_nonce[8], sizeof m->cryptoSignPublic.binary);
-  write_uint64(&raw_nonce[8 + sizeof m->cryptoSignPublic.binary], nonce_version);
-  DEBUGF(rhizome, "derived payload nonce from bid=%s version=%"PRIu64, alloca_tohex_sid_t(m->cryptoSignPublic), nonce_version);
+  bcopy(m->keypair.public_key.binary, &raw_nonce[8], sizeof m->keypair.public_key.binary);
+  write_uint64(&raw_nonce[8 + sizeof m->keypair.public_key.binary], nonce_version);
+  DEBUGF(rhizome, "derived payload nonce from bid=%s version=%"PRIu64, alloca_tohex_sid_t(m->keypair.public_key), nonce_version);
   crypto_hash_sha512(hash, raw_nonce, sizeof(raw_nonce));
   bcopy(hash, m->payloadNonce, sizeof(m->payloadNonce));
   DEBUGF(rhizome_manifest, "SET manifest %p payloadNonce = %s", m, alloca_tohex(m->payloadNonce, sizeof m->payloadNonce));

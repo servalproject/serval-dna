@@ -641,7 +641,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	}
 
 	/* Get filehash and size from manifest if present */
-	DEBUGF(rhizome_tx, "bundle id = %s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+	DEBUGF(rhizome_tx, "bundle id = %s", alloca_tohex_rhizome_bid_t(m->keypair.public_key));
 	DEBUGF(rhizome_tx, "bundle filehash = %s", alloca_tohex_rhizome_filehash_t(m->filehash));
 	DEBUGF(rhizome_tx, "file size = %"PRId64, m->filesize);
 	DEBUGF(rhizome_tx, "version = %"PRIu64, m->version);
@@ -700,7 +700,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	/* send file contents */
 	{
 	  rhizome_filehash_t filehash;
-	  if (rhizome_database_filehash_from_id(&m->cryptoSignPublic, m->version, &filehash) == -1)
+	  if (rhizome_database_filehash_from_id(&m->keypair.public_key, m->version, &filehash) == -1)
 	    goto closeit;
 
 	  struct rhizome_read read;

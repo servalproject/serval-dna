@@ -51,7 +51,7 @@ struct combined_pk{
 };
 
 struct combined_sk{
-  uint8_t sign_key[crypto_sign_SECRETKEYBYTES];
+  sign_keypair_t sign_key;
   uint8_t box_key[crypto_box_SECRETKEYBYTES];
 };
 
@@ -489,29 +489,29 @@ static void create_cryptocombined(keypair *kp)
 {
   struct combined_pk *pk = (struct combined_pk *)kp->public_key;
   struct combined_sk *sk = (struct combined_sk *)kp->private_key;
-  crypto_sign_ed25519_keypair(pk->sign_key.binary, sk->sign_key);
-  crypto_sign_ed25519_sk_to_curve25519(sk->box_key, sk->sign_key);
+  crypto_sign_ed25519_keypair(pk->sign_key.binary, sk->sign_key.binary);
+  crypto_sign_ed25519_sk_to_curve25519(sk->box_key, sk->sign_key.binary);
   crypto_scalarmult_base(pk->box_key.binary, sk->box_key);
 }
 
 static int pack_cryptocombined(const keypair *kp, struct rotbuf *rb)
 {
-  uint8_t seed[crypto_sign_SEEDBYTES];
+  sign_private_t seed;
   struct combined_sk *sk = (struct combined_sk *)kp->private_key;
-  crypto_sign_ed25519_sk_to_seed(seed, sk->sign_key);
-  rotbuf_putbuf(rb, seed, sizeof seed);
+  crypto_sign_ed25519_sk_to_seed(seed.binary, sk->sign_key.binary);
+  rotbuf_putbuf(rb, seed.binary, sizeof seed);
   return 0;
 }
 
 static int unpack_cryptocombined(keypair *kp, struct rotbuf *rb, size_t key_length)
 {
-  uint8_t seed[crypto_sign_SEEDBYTES];
+  sign_private_t seed;
   struct combined_pk *pk = (struct combined_pk *)kp->public_key;
   struct combined_sk *sk = (struct combined_sk *)kp->private_key;
   assert(key_length == sizeof seed);
-  rotbuf_getbuf(rb, seed, sizeof seed);
-  crypto_sign_ed25519_seed_keypair(pk->sign_key.binary, sk->sign_key, seed);
-  crypto_sign_ed25519_sk_to_curve25519(sk->box_key, sk->sign_key);
+  rotbuf_getbuf(rb, seed.binary, sizeof seed);
+  crypto_sign_ed25519_seed_keypair(pk->sign_key.binary, sk->sign_key.binary, seed.binary);
+  crypto_sign_ed25519_sk_to_curve25519(sk->box_key, sk->sign_key.binary);
   crypto_scalarmult_base(pk->box_key.binary, sk->box_key);
   return 0;
 }
@@ -1199,7 +1199,7 @@ static int keyring_finalise_identity(uint8_t *dirty, keyring_identity *id)
 	    *dirty = 1;
 	}
 	id->sign_pk = (const identity_t *)kp->public_key;
-	id->sign_sk = kp->private_key;
+	id->sign_sk = (const sign_keypair_t *)kp->private_key;
 	break;
       case KEYTYPE_CRYPTOCOMBINED:{
 	struct combined_pk *pk = (struct combined_pk *)kp->public_key;
@@ -1207,7 +1207,7 @@ static int keyring_finalise_identity(uint8_t *dirty, keyring_identity *id)
 	id->box_pk = &pk->box_key;
 	id->box_sk = sk->box_key;
 	id->sign_pk = &pk->sign_key;
-	id->sign_sk = sk->sign_key;
+	id->sign_sk = &sk->sign_key;
 	break;
       }
     }
@@ -1731,7 +1731,7 @@ int keyring_sign_message(struct keyring_identity *identity, unsigned char *conte
   unsigned char hash[crypto_hash_sha512_BYTES];
   crypto_hash_sha512(hash, content, *content_len);
 
-  if (crypto_sign_detached(&content[*content_len], NULL, hash, crypto_hash_sha512_BYTES, identity->sign_sk))
+  if (crypto_sign_detached(&content[*content_len], NULL, hash, crypto_hash_sha512_BYTES, identity->sign_sk->binary))
     return WHY("Signing failed");
 
   *content_len += SIGNATURE_BYTES;
@@ -1793,7 +1793,7 @@ static int keyring_respond_id(struct internal_mdp_header *header)
   ob_append_bytes(response_payload, id->sign_pk->binary, crypto_sign_PUBLICKEYBYTES);
   uint8_t *sig = ob_append_space(response_payload, crypto_sign_BYTES);
 
-  if (crypto_sign_detached(sig, NULL, header->destination->sid.binary, SID_SIZE, id->sign_sk))
+  if (crypto_sign_detached(sig, NULL, header->destination->sid.binary, SID_SIZE, id->sign_sk->binary))
     return WHY("crypto_sign() failed");
     
   DEBUGF(keyring, "Sending SID:SAS mapping, %zd bytes, %s:%"PRImdp_port_t" -> %s:%"PRImdp_port_t,

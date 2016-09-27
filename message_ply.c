@@ -57,7 +57,7 @@ static int message_ply_fill_manifest(const keyring_identity *id, const sid_t *re
   if (ret==0){
     assert(m->haveSecret);
     assert(!recipient || m->payloadEncryption == PAYLOAD_ENCRYPTED);
-    ply->bundle_id = m->cryptoSignPublic;
+    ply->bundle_id = m->keypair.public_key;
     ply->found = ply->known_bid = 1;
   }
   return ret;

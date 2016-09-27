@@ -977,7 +977,7 @@ static enum rhizome_payload_status rhizome_write_derive_key(rhizome_manifest *m,
     return RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL;
 
   DEBUGF(rhizome_store, "Encrypting payload contents for bid=%s, version=%"PRIu64,
-	 alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
+	 alloca_tohex_rhizome_bid_t(m->keypair.public_key), m->version);
 
   write->crypt=1;
   if (m->is_journal && m->tail > 0)
@@ -1477,7 +1477,7 @@ static enum rhizome_payload_status read_derive_key(rhizome_manifest *m, struct r
       WHY("Unable to decrypt bundle, valid key not found");
       return RHIZOME_PAYLOAD_STATUS_CRYPTO_FAIL;
     }
-    DEBUGF(rhizome_store, "Decrypting payload contents for bid=%s version=%"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version);
+    DEBUGF(rhizome_store, "Decrypting payload contents for bid=%s version=%"PRIu64, alloca_tohex_rhizome_bid_t(m->keypair.public_key), m->version);
     if (m->is_journal && m->tail > 0)
       read_state->tail = m->tail;
     bcopy(m->payloadKey, read_state->key, sizeof(read_state->key));

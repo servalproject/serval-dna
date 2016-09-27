@@ -191,7 +191,7 @@ void overlay_address_append(struct decode_context *context, struct overlay_buffe
       subscriber->send_full=0;
     }else{
       // always send 8-12 extra bits to disambiguate abbreviations
-      int len=(subscriber->tree_depth >> 3) + 1;
+      unsigned len=(subscriber->tree_depth >> 3) + 1;
       // add another 8 bits for our own packet headers
       if (context && (context->flags & DECODE_FLAG_ENCODING_HEADER))
 	len++;
@@ -258,10 +258,10 @@ static int add_explain_response(void **record, void *context)
   return 0;
 }
 
-static int find_subscr_buffer(struct decode_context *context, struct overlay_buffer *b, int len, struct subscriber **subscriber)
+static int find_subscr_buffer(struct decode_context *context, struct overlay_buffer *b, unsigned len, struct subscriber **subscriber)
 {
   assert(subscriber);
-  if (len<=0 || len>SID_SIZE)
+  if (len>SID_SIZE)
     return WHYF("Invalid abbreviation length %d", len);
   
   uint8_t *id = ob_get_bytes_ptr(b, len);
@@ -454,6 +454,8 @@ int process_explain(struct overlay_frame *frame)
   
   while(ob_remaining(b)>0){
     int len = ob_get(b);
+    if (len<0)
+      return WHY("Badly formatted explain message");
     switch (len){
       case OA_CODE_P2P_YOU:
       {
@@ -477,7 +479,7 @@ int process_explain(struct overlay_frame *frame)
       }
       default:
       {
-	if (len<=0 || len>SID_SIZE)
+	if ((unsigned)len>SID_SIZE)
 	  return WHY("Badly formatted explain message");
 	uint8_t *sid = ob_get_bytes_ptr(b, len);
 	// reply to the sender with all subscribers that match this abbreviation

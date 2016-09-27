@@ -586,7 +586,7 @@ enum rhizome_bundle_status rhizome_manifest_check_stored(rhizome_manifest *m, rh
   rhizome_manifest *stored_m = rhizome_new_manifest();
   if (stored_m == NULL)
     return -1;
-  enum rhizome_bundle_status result = rhizome_retrieve_manifest(&m->cryptoSignPublic, stored_m);
+  enum rhizome_bundle_status result = rhizome_retrieve_manifest(&m->keypair.public_key, stored_m);
   if (result==RHIZOME_BUNDLE_STATUS_SAME){
     const char *what = "same as";
     if (m->version < stored_m->version) {
@@ -597,14 +597,14 @@ enum rhizome_bundle_status rhizome_manifest_check_stored(rhizome_manifest *m, rh
       what = "newer than";
       result = RHIZOME_BUNDLE_STATUS_NEW;
     }
-    DEBUGF(rhizome, "Bundle %s:%"PRIu64" is %s stored version %"PRIu64, alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, what, stored_m->version);
+    DEBUGF(rhizome, "Bundle %s:%"PRIu64" is %s stored version %"PRIu64, alloca_tohex_rhizome_bid_t(m->keypair.public_key), m->version, what, stored_m->version);
     if (mout)
       *mout = stored_m;
     else
       rhizome_manifest_free(stored_m);
   }else{
     rhizome_manifest_free(stored_m);
-    DEBUGF(rhizome, "No stored manifest with id=%s", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+    DEBUGF(rhizome, "No stored manifest with id=%s", alloca_tohex_rhizome_bid_t(m->keypair.public_key));
     if (mout)
       *mout = m;
   }

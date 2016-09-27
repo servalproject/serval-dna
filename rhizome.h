@@ -59,10 +59,9 @@ typedef struct rhizome_manifest
   /* CryptoSign key pair for this manifest.  The public key is the Bundle ID
    * (aka Manifest ID).
    */
-  rhizome_bid_t cryptoSignPublic;
-  unsigned char cryptoSignSecret[crypto_sign_SECRETKEYBYTES];
+  sign_keypair_t keypair;
 
-  /* Whether cryptoSignSecret is correct (ie, bundle secret is known)
+  /* What do we know about keypair.private_key? (ie, bundle secret is known)
    */
   enum { SECRET_UNKNOWN = 0, EXISTING_BUNDLE_ID, NEW_BUNDLE_ID } haveSecret;
 
@@ -122,7 +121,7 @@ typedef struct rhizome_manifest
    */
   bool_t selfSigned:1;
 
-  /* Set if the ID field (cryptoSignPublic) contains a bundle ID.
+  /* Set if the ID field (sign_key.public_key) contains a bundle ID.
    */
   bool_t has_id:1;
 
@@ -371,8 +370,7 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report);
 int rhizome_store_cleanup(struct rhizome_cleanup_report *report);
 void rhizome_vacuum_db(sqlite_retry_state *retry);
 int rhizome_manifest_createid(rhizome_manifest *m);
-int rhizome_get_bundle_from_seed(rhizome_manifest *m, const char *seed);
-int rhizome_get_bundle_from_secret(rhizome_manifest *m, const rhizome_bk_t *bsk);
+struct rhizome_bundle_result rhizome_private_bundle(rhizome_manifest *m, const char *fmt, ...);
 void rhizome_new_bundle_from_secret(rhizome_manifest *m, const rhizome_bk_t *bsk);
 
 struct rhizome_manifest_summary {

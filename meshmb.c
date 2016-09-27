@@ -178,7 +178,7 @@ static int app_meshmb_find(const struct cli_parsed *parsed, struct cli_context *
     rowcount++;
     rhizome_manifest *m = cursor.manifest;
     cli_put_long(context, m->rowid, ":");
-    cli_put_hexvalue(context, m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, ":");
+    cli_put_hexvalue(context, m->keypair.public_key.binary, sizeof m->keypair.public_key.binary, ":");
     cli_put_long(context, m->version, ":");
     cli_put_long(context, m->has_date ? m->date : 0, ":");
     cli_put_string(context, m->name, "\n");

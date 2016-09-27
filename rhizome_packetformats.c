@@ -82,7 +82,7 @@ int rhizome_manifest_to_bar(rhizome_manifest *m, rhizome_bar_t *bar)
   /* Manifest prefix */
   unsigned i;
   for(i=0;i<RHIZOME_BAR_PREFIX_BYTES;i++)
-    bar->binary[RHIZOME_BAR_PREFIX_OFFSET+i]=m->cryptoSignPublic.binary[i];
+    bar->binary[RHIZOME_BAR_PREFIX_OFFSET+i]=m->keypair.public_key.binary[i];
   /* file length */
   assert(m->filesize != RHIZOME_SIZE_UNSET);
   bar->binary[RHIZOME_BAR_FILESIZE_OFFSET]=log2ll(m->filesize);
@@ -164,7 +164,7 @@ int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m){
   if (overlay_payload_enqueue(frame) == -1)
     goto error;
   DEBUGF(rhizome_ads, "Advertising manifest %s %"PRIu64" to %s", 
-         alloca_tohex_rhizome_bid_t(m->cryptoSignPublic), m->version, dest?alloca_tohex_sid_t(dest->sid):"broadcast");
+         alloca_tohex_rhizome_bid_t(m->keypair.public_key), m->version, dest?alloca_tohex_sid_t(dest->sid):"broadcast");
   return 0;
 error:
   op_free(frame);
@@ -255,12 +255,12 @@ int overlay_rhizome_saw_advertisements(struct decode_context *context, struct ov
       ) {
 	WARN("Malformed manifest");
 	// Don't attend to this manifest for at least a minute
-	rhizome_queue_ignore_manifest(m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary, 60000);
+	rhizome_queue_ignore_manifest(m->keypair.public_key.binary, sizeof m->keypair.public_key.binary, 60000);
 	goto next;
       }
       assert(m->has_id);
       assert(m->version != 0);
-      assert(cmp_rhizome_bid_t(&m->cryptoSignPublic, &summ.bid) == 0);
+      assert(cmp_rhizome_bid_t(&m->keypair.public_key, &summ.bid) == 0);
       assert(m->version == summ.version);
       assert(m->manifest_body_bytes == summ.body_len);
       

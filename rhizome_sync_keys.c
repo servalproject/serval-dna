@@ -676,7 +676,7 @@ static void process_transfer_message(struct subscriber *peer, struct rhizome_syn
 	  // if we're fetching a journal bundle, copy any bytes we have of a previous version
 	  // and therefore work out what range of bytes we still need
 	  rhizome_manifest *previous = rhizome_new_manifest();
-	  if (rhizome_retrieve_manifest(&m->cryptoSignPublic, previous)==RHIZOME_BUNDLE_STATUS_SAME &&
+	  if (rhizome_retrieve_manifest(&m->keypair.public_key, previous)==RHIZOME_BUNDLE_STATUS_SAME &&
 	    previous->is_journal &&
 	    previous->tail <= m->tail &&
 	    previous->filesize + previous->tail > m->tail

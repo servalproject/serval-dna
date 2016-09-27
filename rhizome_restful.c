@@ -300,7 +300,7 @@ static int restful_rhizome_bundlelist_json_content_chunk(struct http_request *hr
 	strbuf_putc(b, ',');
 	strbuf_json_string(b, m->service);
 	strbuf_putc(b, ',');
-	strbuf_json_hex(b, m->cryptoSignPublic.binary, sizeof m->cryptoSignPublic.binary);
+	strbuf_json_hex(b, m->keypair.public_key.binary, sizeof m->keypair.public_key.binary);
 	strbuf_putc(b, ',');
 	strbuf_sprintf(b, "%"PRIu64, m->version);
 	strbuf_putc(b, ',');
@@ -1006,7 +1006,7 @@ static void render_manifest_headers(struct http_request *hr, strbuf sb)
   rhizome_manifest *m = r->manifest;
   if (m) {
     if (m->has_id)
-      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Id: %s\r\n", alloca_tohex_rhizome_bid_t(m->cryptoSignPublic));
+      strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Id: %s\r\n", alloca_tohex_rhizome_bid_t(m->keypair.public_key));
     if (m->version)
       strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Version: %"PRIu64"\r\n", m->version);
     if (m->filesize != RHIZOME_SIZE_UNSET)
@@ -1045,7 +1045,7 @@ static void render_manifest_headers(struct http_request *hr, strbuf sb)
       strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Author: %s\r\n", alloca_tohex_sid_t(m->author));
     if (m->haveSecret) {
       char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-      rhizome_bytes_to_hex_upper(m->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
+      rhizome_bytes_to_hex_upper(m->keypair.binary, secret, RHIZOME_BUNDLE_KEY_BYTES);
       strbuf_sprintf(sb, "Serval-Rhizome-Bundle-Secret: %s\r\n", secret);
     }
     if (m->rowid)
