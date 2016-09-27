@@ -1,8 +1,6 @@
-Portions Copyright (C) 2010-2013 Serval Project Inc.
+Portions Copyright (C) 2016 Flinders University
+Portions Copyright (C) 2010-2015 Serval Project Inc.
 Portions Copyright (C) 2010-2013 Paul Gardner-Stephen
 Portions Copyright (C) 2013 Petter Reinholdtsen
-Portions Copyright (C) 2000-2001 Aaron D. Gifford
 Portions Copyright (C) 2010-2012 Serval Project Pty Limited
-Portions Copyright (C) 2006-2008 Linpro AS
 Portions Copyright (C) 2012 Andrew Tridgell, All Rights Reserved
-Portions Copyright (C) 2006 Verdens Gang AS

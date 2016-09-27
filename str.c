@@ -1,6 +1,7 @@
 /*
  Serval string primitives
- Copyright (C) 2012-2016 Serval Project Inc.
+ Copyright (C) 2012-2015 Serval Project Inc.
+ Copyright (C) 2016 Flinders University
  
  This program is free software; you can redistribute it and/or
  modify it under the terms of the GNU General Public License
