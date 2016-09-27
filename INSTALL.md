@@ -60,8 +60,8 @@ more details.
 
 Optional:
 
- * Java compiler and SDK (mandatory for Android's **libservald.so**)
- * ALSA sound library and headers (only present on Linux not Android)
+ * Java compiler and SDK
+ * ALSA sound library and headers (present on Linux, not on Android)
 
 Test dependencies:
 
@@ -140,11 +140,12 @@ Built artifacts
 
 The build process produces the following artifacts:
 
-* **servald** is the main Serval DNA executable.
+* **servald** is the main Serval DNA executable, which includes the daemon and
+  many client and utility commands.
 
-* **libservald.so** is a shared library built only for Android, which is linked
-  into the [batphone][] Java executable at run time to provide the [JNI][]
-  entry points to servald.
+* **libservald.a** is a library containing the complete executable code of
+  *servald*, which can be linked and invoked by calling an entry point such
+  as *parseCommandLine()*,  or various [JNI][] entry points.
 
 * **directory_service** is the executable for the Serval Infrastructure daemon.
 

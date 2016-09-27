@@ -22,6 +22,7 @@ config.status
 /nacl/naclinc.txt
 /nacl/nacllib.txt
 /servald
+/servaldwrap
 /serval-tests
 /directory_service
 /tfw_createfile

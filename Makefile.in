@@ -51,11 +51,13 @@ MONITOR_CLIENT_OBJS = \
 SIMULATOR_OBJS = \
 	$(addprefix $(OBJSDIR_TOOLS)/, $(SIMULATOR_SOURCES:.c=.o))
 
+PREFIXED_HEADERS = $(addprefix $(SOURCE_PREFIX), $(HDRS))
+
 CC= @CC@
 
 LDFLAGS=@LDFLAGS@ @LIBS@
 
-CFLAGS= -I$(SQLITE3_AMALGAMATION) @CPPFLAGS@ @CFLAGS@
+CFLAGS= -I$(SOURCE_PREFIX)$(SQLITE3_AMALGAMATION) @CPPFLAGS@ @CFLAGS@
 CFLAGS+=-DSYSCONFDIR="\"$(sysconfdir)\"" -DLOCALSTATEDIR="\"$(localstatedir)\""
 CFLAGS+=-DSQLITE_THREADSAFE=0 \
 	-DSQLITE_OMIT_DATETIME_FUNCS \
@@ -76,7 +78,7 @@ INSTALL=        install
 INSTALL_PROGRAM=$(INSTALL)
 INSTALL_DATA=   $(INSTALL) -m 644
 
--include Makefile.dbg
+-include $(SOURCE_PREFIX)Makefile.dbg
 
 # More warnings, discover problems that only happen on some archs
 CFLAGS+=-Wextra
@@ -85,11 +87,33 @@ CFLAGS+=-Wformat -Werror=format-security -D_FORTIFY_SOURCE=2
 
 DEFS=	@DEFS@
 
-.PHONY: all test clean
+.PHONY: all libs test install uninstall clean
 
-all:	servald libserval.so libmonitorclient.so libmonitorclient.a test
+all:	libs servald servaldwrap test
+
+libs:	libservald.so libservald.a \
+	libservalclient.so libservalclient.a \
+	libmonitorclient.so libmonitorclient.a
 
 test:   tfw_createfile directory_service fakeradio simulator serval-tests
+
+install: servald
+	$(INSTALL_PROGRAM) -D servald $(DESTDIR)$(sbindir)/servald
+
+uninstall:
+	$(RM) $(DESTDIR)$(sbindir)/servald
+
+clean:
+	@$(RM) -r $(OBJSDIRS:%=%/*) \
+		  servald \
+		  libservald.so libservald.a \
+		  libservalclient.so libservalclient.a \
+		  libmonitorclient.so libmonitorclient.a \
+		  tfw_createfile directory_service fakeradio simulator serval-tests
+
+# Source code test coverage support -- see doc/Testing.md
+
+.PHONY: covzero covinit covhtml is_built_with_coverage has_coverage_data
 
 covzero: | is_built_with_coverage
 	@echo REMOVE all .gcda files
@@ -118,34 +142,44 @@ has_coverage_data: | is_built_with_coverage
 	    exit 1 ;\
 	fi
 
-servald-initial.info: Makefile servald | is_built_with_coverage
+servald-initial.info: $(SOURCE_PREFIX)Makefile servald | is_built_with_coverage
 	geninfo --quiet --initial --checksum --base-directory=$(abspath .) --no-external $(OBJSDIR_SERVALD) -o $@
 
-servald-coverage.info: Makefile servald $(shell find $(OBJSDIR_SERVALD) -type f -name '*.gcda') | has_coverage_data
+servald-coverage.info: $(SOURCE_PREFIX)Makefile servald $(shell find $(OBJSDIR_SERVALD) -type f -name '*.gcda' 2>/dev/null) | has_coverage_data
 	geninfo --quiet --checksum --base-directory=$(abspath .) --no-external $(OBJSDIR_SERVALD) -o $@ 2>&1 | { grep -v 'WARNING: no data found for .*\.h$$' || true; }
 	@[ -s $@ ]
 
-coverage_html/index.html: Makefile servald-initial.info servald-coverage.info
+coverage_html/index.html: $(SOURCE_PREFIX)Makefile servald-initial.info servald-coverage.info
 	$(RM) -r coverage_html
 	genhtml --quiet servald-initial.info servald-coverage.info -o coverage_html
 
-.PRECIOUS: Makefile
-Makefile: Makefile.in config.status
+# Autconf support -- helpful messages to help avoid some common build mistakes.
+
+.PRECIOUS: $(SOURCE_PREFIX)Makefile $(SOURCE_PREFIX)config.status $(SOURCE_PREFIX)configure
+
+$(SOURCE_PREFIX)Makefile: $(SOURCE_PREFIX)Makefile.in $(SOURCE_PREFIX)config.status
 	$(warning Makefile may be out of date, please run ./config.status)
 
-config.status: configure
+$(SOURCE_PREFIX)config.status: $(SOURCE_PREFIX)configure
 	$(warning config.status may be out of date, please run ./configure)
 
-configure: configure.ac
+$(SOURCE_PREFIX)configure: $(SOURCE_PREFIX)configure.ac
 	$(warning configure may be out of date, please run autoreconf -f -i -I m4)
 
-$(OBJSDIR_TOOLS)/version.o: $(ALL_SOURCES) $(HDRS) version_servald.c version_string.sh $(wildcard VERSION.txt) COPYRIGHT.txt
+# Embed Serval DNA's version into libraries and executables.
+
+$(OBJSDIR_TOOLS)/version.o: $(addprefix $(SOURCE_PREFIX), $(ALL_SOURCES)) \
+    			    $(PREFIXED_HEADERS) \
+			    $(SOURCE_PREFIX)version_servald.c \
+			    $(SOURCE_PREFIX)version_string.sh \
+			    $(wildcard VERSION.txt) \
+			    $(SOURCE_PREFIX)COPYRIGHT.txt
 	@echo CC version_servald.c
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
-	@V=`./version_string.sh --ignore-untracked` \
-	 && C="`sed -e :a -e N -e '$$!ba' -e 's/[\\\\"]/\\\\&/g' -e 's/\\n/\\\\n/g' COPYRIGHT.txt`" \
-	 && $(CC) $(CFLAGS) $(DEFS) -c version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\"" -DSERVALD_COPYRIGHT="\"$$C\""
+	@V=`$(SOURCE_PREFIX)./version_string.sh --repository=$(SOURCE_PREFIX) --ignore-untracked` \
+	 && C="`sed -e :a -e N -e '$$!ba' -e 's/[\\\\"]/\\\\&/g' -e 's/\\n/\\\\n/g' $(SOURCE_PREFIX)COPYRIGHT.txt`" \
+	 && $(CC) $(CFLAGS) $(DEFS) -c $(SOURCE_PREFIX)version_servald.c -o $@ -DSERVALD_VERSION="\"$$V\"" -DSERVALD_COPYRIGHT="\"$$C\""
 
 #' <-- fixes vim syntax highlighting
 
@@ -153,84 +187,91 @@ $(OBJSDIR_TOOLS)/version.o: $(ALL_SOURCES) $(HDRS) version_servald.c version_str
 # Instead of fixing warnings case-by-case in the sqlite.c source code, simply
 # suppress the classes of warnings that cause compilation errors with
 # -Werror.
-$(SQLITE3_OBJS): $(OBJSDIR_SERVALD)/%.o: $(SQLITE3_AMALGAMATION)/%.c
+$(SQLITE3_OBJS): $(OBJSDIR_SERVALD)/%.o: $(SOURCE_PREFIX)$(SQLITE3_AMALGAMATION)/%.c
 	@echo SERVALD CC $<
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
 	@$(CC) $(CFLAGS) $(CFLAGS_SQLITE) $(DEFS) -c $< -o $@
 
 # No object files in source directory!
-%.o: %.c
+%.o: $(SOURCE_PREFIX)%.c
 
-$(OBJSDIR_TOOLS)/%.o: %.c
+$(OBJSDIR_TOOLS)/%.o: $(SOURCE_PREFIX)%.c
 	@echo CC $<
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
 
-$(OBJSDIR_SERVALD)/%.o: %.c
+$(OBJSDIR_SERVALD)/%.o: $(SOURCE_PREFIX)%.c
 	@echo SERVALD CC $<
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
 
-$(OBJSDIR_LIB)/%.o: %.c
+$(OBJSDIR_LIB)/%.o: $(SOURCE_PREFIX)%.c
 	@echo LIB CC $<
 	@mkdir -p $(dir $@)
 	@$(RM) $(@:.o=.gcno) $(@:.o=.gcda)
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
 
-$(SERVAL_DAEMON_OBJS): $(HDRS)
-$(SERVALD_OBJS): Makefile
-$(LIB_SERVAL_OBJS): $(HDRS) Makefile
-$(TEST_OBJS): $(HDRS) Makefile
-$(OBJSDIR_TOOLS)/tfw_createfile.o: str.h Makefile
-$(OBJSDIR_TOOLS)/directory_service.o: $(HDRS) Makefile
-$(MONITOR_CLIENT_OBJS): $(HDRS) Makefile
-$(SIMULATOR_OBJS): $(HDRS) Makefile
+# Dependencies on header files.  The following list of dependencies is too
+# broad so it sometimes results in unnecessary re-compilation, but that is
+# better than too narrow, which can result in missed re-compilation.
+
+$(SERVAL_DAEMON_OBJS): 			$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
+$(SERVALD_OBJS):       			$(SOURCE_PREFIX)Makefile
+$(LIB_SERVAL_OBJS): 			$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
+$(TEST_OBJS): 				$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
+$(OBJSDIR_TOOLS)/tfw_createfile.o:	$(SOURCE_PREFIX)Makefile $(SOURCE_PREFIX)str.h
+$(OBJSDIR_TOOLS)/directory_service.o:	$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
+$(MONITOR_CLIENT_OBJS):			$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
+$(SIMULATOR_OBJS):			$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
+
+# Rules for main targets.
 
 servald: $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
 	@$(CC) -Wall -o $@ $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
 
+servaldwrap: $(OBJSDIR_SERVALD)/servalwrap.o $(OBJSDIR_TOOLS)/version.o
+	@echo LINK $@
+	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
+
 serval-tests: $(TEST_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
 	@$(CC) -Wall -o $@ $(TEST_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
 
-libserval.a: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
+directory_service: $(OBJSDIR_TOOLS)/directory_service.o libservalclient.a
+	@echo LINK $@
+	@$(CC) -Wall -o $@ $(OBJSDIR_TOOLS)/directory_service.o libservalclient.a $(LDFLAGS)
+
+tfw_createfile: $(OBJSDIR_TOOLS)/tfw_createfile.o libservalclient.a
+	@echo LINK $@
+	@$(CC) -Wall -o $@ $(OBJSDIR_TOOLS)/tfw_createfile.o libservalclient.a $(LDFLAGS)
+
+fakeradio: $(OBJSDIR_TOOLS)/fakeradio.o libservalclient.a
+	@echo LINK $@
+	@$(CC) -Wall -o $@ $(OBJSDIR_TOOLS)/fakeradio.o libservalclient.a $(LDFLAGS)
+
+simulator: $(SIMULATOR_OBJS) libservalclient.a
+	@echo LINK $@
+	@$(CC) -Wall -o $@ $(SIMULATOR_OBJS) libservalclient.a $(LDFLAGS)
+
+libservalclient.so: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
+	@echo AR $@
+	@$(CC) -Wall -shared -o $@ $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
+
+libservalclient.a: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo AR $@
 	@$(AR) -cr $@ $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
 
-directory_service: $(OBJSDIR_TOOLS)/directory_service.o libserval.a
-	@echo LINK $@
-	@$(CC) -Wall -o $@ $(OBJSDIR_TOOLS)/directory_service.o libserval.a $(LDFLAGS)
-
-tfw_createfile: $(OBJSDIR_TOOLS)/tfw_createfile.o libserval.a
-	@echo LINK $@
-	@$(CC) -Wall -o $@ $(OBJSDIR_TOOLS)/tfw_createfile.o libserval.a $(LDFLAGS)
-
-fakeradio: $(OBJSDIR_TOOLS)/fakeradio.o libserval.a
-	@echo LINK $@
-	@$(CC) -Wall -o $@ $(OBJSDIR_TOOLS)/fakeradio.o libserval.a $(LDFLAGS)
-
-simulator: $(SIMULATOR_OBJS) libserval.a
-	@echo LINK $@
-	@$(CC) -Wall -o $@ $(SIMULATOR_OBJS) libserval.a $(LDFLAGS)
-
-copyright:
-	@if [ -x "$(COPYRIGHT_TOOL)" ]; then \
-	    echo GENERATE COPYRIGHT.txt; \
-	    $(COPYRIGHT_TOOL) -o COPYRIGHT.txt condense *.c *.h; \
-	else \
-	    echo 'sp-copyright-tool is not in $$PATH; COPYRIGHT.txt not updated'; \
-	fi
-
-findPATH = $(firstword $(wildcard $(addsuffix /$(1),$(subst :, ,$(PATH)))))
-COPYRIGHT_TOOL := $(call findPATH,sp-copyright-tool)
-
-libserval.so: $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
+libservald.so: $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
 	@$(CC) -Wall -shared -o $@ $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
+
+libservald.a: $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
+	@echo AR $@
+	@$(AR) -cr $@ $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
 
 libmonitorclient.so: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
@@ -240,15 +281,18 @@ libmonitorclient.a: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo AR $@
 	@$(AR) -cr $@ $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
 
-install: servald
-	$(INSTALL_PROGRAM) -D servald $(DESTDIR)$(sbindir)/servald
+# Helpful target to update the COPYRIGHT.txt file by harvesting copyright
+# information from the contents of all the source and header files.  This
+# should be run periodically and the results reviewed, manually adjusted and
+# committed to the repository.
 
-uninstall:
-	$(RM) $(DESTDIR)$(sbindir)/servald
+findPATH = $(firstword $(wildcard $(addsuffix /$(1),$(subst :, ,$(PATH)))))
+COPYRIGHT_TOOL := $(call findPATH,sp-copyright-tool)
 
-clean:
-	@$(RM) -r $(OBJSDIRS:%=%/*) \
-	  servald libservald.so \
-	  libserval.a libmonitorclient.so libmonitorclient.a \
-	  fakeradio \
-	  tfw_createfile
+copyright:
+	@if [ -x "$(COPYRIGHT_TOOL)" ]; then \
+	    echo GENERATE COPYRIGHT.txt; \
+	    $(COPYRIGHT_TOOL) -o COPYRIGHT.txt condense *.c *.h; \
+	else \
+	    echo 'sp-copyright-tool is not in $$PATH; COPYRIGHT.txt not updated'; \
+	fi

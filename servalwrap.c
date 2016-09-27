@@ -1,6 +1,8 @@
 /*
-Serval Distributed Numbering Architecture (DNA)
-Copyright (C) 2010 Paul Gardner-Stephen
+Serval DNA - executable wrapper around shared library
+Copyright 2010-2012 Paul Gardner-Stephen
+Copyright 2012-2013 Serval Project Inc.
+Copyright 2016 Flinders University
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -20,17 +22,28 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <dlfcn.h>
 #include <stdio.h>
 
-struct context;
-
 int main(int argc,char **argv)
 {
- void *h = dlopen("/data/data/org.servalproject/lib/libserval.so",RTLD_LAZY);
- if (!h)
-   return fprintf(stderr, "Failed to load libserval.so");
+  const char *libservald_path =
+#ifdef ANDROID
+    "/data/data/org.servalproject/lib/libservald.so"
+#else
+    "libservald.so"
+#endif
+  ;
+  const char *entry_point ="servald_main";
 
- int (*servalmain)(struct context *,const char *, int, const char *const *) = dlsym(h,"parseCommandLine");
- if (!servalmain) 
-   return fprintf(stderr,"Could not load libserval.so\n");
+  void *h = dlopen(libservald_path, RTLD_LAZY);
+  if (!h) {
+    fprintf(stderr, "%s\n", dlerror());
+    return 1;
+  }
 
- return (*servalmain)(NULL, argv[0], argc - 1, (const char*const*)&argv[1]);
+  int (*servald_main)(int, char **) = dlsym(h, entry_point);
+  if (!servald_main) {
+    fprintf(stderr, "Could not resolve %s in %s\n", entry_point, libservald_path);
+    return 1;
+  }
+ 
+  return (*servald_main)(argc, argv);
 }

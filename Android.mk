@@ -47,18 +47,17 @@ SERVALD_LOCAL_CFLAGS = \
 SERVALD_LOCAL_LDLIBS = -L$(SYSROOT)/usr/lib -llog
 SERVALD_LOCAL_STATIC_LIBRARIES += sodium
 
-# Build libserval.so
+# Build libservald.so
 include $(CLEAR_VARS)
-
 LOCAL_STATIC_LIBRARIES := $(SERVALD_LOCAL_STATIC_LIBRARIES)
 LOCAL_SRC_FILES := $(SERVALD_SRC_FILES) version_servald.c android.c
 LOCAL_CFLAGS += $(SERVALD_LOCAL_CFLAGS)
 LOCAL_C_INCLUDES += $(SODIUM_INCLUDE)
 LOCAL_LDLIBS := $(SERVALD_LOCAL_LDLIBS)
-LOCAL_MODULE := serval
-
+LOCAL_MODULE := servald
 include $(BUILD_SHARED_LIBRARY)
 
+# Build servald executable, a wrapper around libservald.so
 ifdef SERVALD_WRAP
   include $(CLEAR_VARS)
   LOCAL_SRC_FILES:= servalwrap.c
@@ -68,7 +67,7 @@ ifdef SERVALD_WRAP
   include $(BUILD_EXECUTABLE)
 endif
 
-# Build servald for use with gdb
+# Build servald executable for use with gdb
 ifdef SERVALD_SIMPLE
   include $(CLEAR_VARS)
   LOCAL_SRC_FILES:= $(SERVALD_SRC_FILES) version_servald.c
