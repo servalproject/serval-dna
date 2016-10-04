@@ -541,17 +541,15 @@ static void _open_log_file(_log_iterator *it)
 	    memset(&oldest, 0, sizeof oldest);
 	    unsigned count = 0;
 	    while (1) {
-	      struct dirent ent;
-	      struct dirent *ep;
-	      int err = readdir_r(d, &ent, &ep);
-	      if (err) {
-		_logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot expire log files: r_readdir(%s) - %s [errno=%d]", dir, strerror(err), err);
+	      errno = 0;
+	      struct dirent *ent = readdir(d);
+	      if (ent == NULL) {
+		if (errno)
+		  _logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot expire log files: readdir(%s) - %s [errno=%d]", dir, strerror(errno), errno);
 		break;
 	      }
-	      if (!ep)
-		break;
 	      const char *e;
-	      if (   str_startswith(ent.d_name, "serval-", &e)
+	      if (   str_startswith(ent->d_name, "serval-", &e)
 		  && isdigit(e[0]) && isdigit(e[1]) && isdigit(e[2]) && isdigit(e[3]) // YYYY
 		  && isdigit(e[4]) && isdigit(e[5]) // MM
 		  && isdigit(e[6]) && isdigit(e[7]) // DD
@@ -561,10 +559,10 @@ static void _open_log_file(_log_iterator *it)
 		  && strcmp(&e[14], ".log") == 0
 	      ) {
 		++count;
-		if ( strcmp(ent.d_name, base) != 0
-		  && (!oldest.d_name[0] || strcmp(ent.d_name, oldest.d_name) < 0)
+		if ( strcmp(ent->d_name, base) != 0
+		  && (!oldest.d_name[0] || strcmp(ent->d_name, oldest.d_name) < 0)
 		)
-		  oldest = ent;
+		  oldest = *ent;
 	      }
 	    }
 	    closedir(d);
