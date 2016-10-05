@@ -92,8 +92,8 @@ int sid_get_special_type(const sid_t *sid);
 #define alloca_tohex_identity_t(identity)           alloca_tohex((identity)->binary, IDENTITY_SIZE)
 
 int cmp_identity_t(const identity_t *a, const identity_t *b);
-int str_to_identity_t(identity_t *sid, const char *hex);
-int strn_to_identity_t(identity_t *sid, const char *hex, size_t hexlen);
+int str_to_identity_t(identity_t *id, const char *hex);
+int strn_to_identity_t(identity_t *idp, const char *hex, const char **endp);
 
 /* MDP port number
  */

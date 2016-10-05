@@ -176,7 +176,7 @@ typedef struct httpd_request
     /* For responses that list MeshMS messages in a single conversation.
     */
     struct {
-      struct newsince_position {
+      struct meshms_position {
         enum meshms_which_ply which_ply;
         uint64_t offset;
 	uint64_t their_ack;

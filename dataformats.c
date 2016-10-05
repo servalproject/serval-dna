@@ -122,10 +122,11 @@ int str_to_identity_t(identity_t *idp, const char *hex)
   return parse_hex_t(idp, hex);
 }
 
-int strn_to_identity_t(identity_t *idp, const char *hex, size_t hexlen)
+int strn_to_identity_t(identity_t *idp, const char *hex, const char **endp)
 {
-  const char *endp;
-  return parse_hexn_t(idp, hex, hexlen, &endp);
+  if (strn_fromhex(idp->binary, sizeof *idp, hex, endp)==sizeof *idp)
+    return 0;
+  return -1;
 }
 
 

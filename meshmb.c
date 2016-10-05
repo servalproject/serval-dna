@@ -1,3 +1,4 @@
+#include "serval.h"
 #include "serval_types.h"
 #include "dataformats.h"
 #include "cli.h"
@@ -8,7 +9,7 @@
 #include "commandline.h"
 #include "overlay_buffer.h"
 
-static int meshmb_send(keyring_identity *id, const char *message, size_t message_len,
+int meshmb_send(keyring_identity *id, const char *message, size_t message_len,
   unsigned nassignments, const struct rhizome_manifest_field_assignment *assignments){
 
   struct message_ply ply;
@@ -43,8 +44,8 @@ static int app_meshmb_send(const struct cli_parsed *parsed, struct cli_context *
 
   unsigned nfields = (parsed->varargi == -1) ? 0 : parsed->argc - (unsigned)parsed->varargi;
   struct rhizome_manifest_field_assignment fields[nfields];
-  if (nfields) {
-    assert(parsed->varargi >= 0);
+
+  if (nfields){
     if (rhizome_parse_field_assignments(fields, nfields, parsed->args + parsed->varargi)==-1)
       return -1;
   }
@@ -55,13 +56,12 @@ static int app_meshmb_send(const struct cli_parsed *parsed, struct cli_context *
 
   if (create_serval_instance_dir() == -1)
     return -1;
+  if (rhizome_opendb() == -1)
+    return -1;
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
 
   int ret = -1;
-  if (rhizome_opendb() == -1)
-    goto end;
-
   keyring_identity *id = keyring_find_identity(keyring, &identity);
   if (!id){
     WHY("Invalid identity");

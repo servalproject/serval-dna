@@ -1,0 +1,66 @@
+#!/bin/bash
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+source "${0%/*}/../testdefs_json.sh"
+
+setup_instance() {
+   set_instance $1
+   executeOk_servald config \
+      set api.restful.users.harry.password potter \
+      set api.restful.users.ron.password weasley \
+      set api.restful.users.hermione.password grainger \
+      set debug.http_server on \
+      set debug.httpd on \
+      set debug.meshmb on \
+      set debug.verbose on \
+      set log.console.level debug
+   set_extra_config
+   if [ -z "$IDENTITY_COUNT" ]; then
+      create_single_identity
+   else
+      create_identities $IDENTITY_COUNT
+   fi
+}
+
+set_extra_config() {
+   :
+}
+
+setup() {
+   setup_curl 7
+   setup_json
+   setup_servald
+   export SERVALD_RHIZOME_DB_RETRY_LIMIT_MS=60000
+   setup_instance +A
+   start_servald_instances +A
+   wait_until servald_restful_http_server_started +A
+   get_servald_restful_http_server_port PORTA +A
+}
+
+finally() {
+   stop_all_servald_servers
+}
+
+teardown() {
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
+
+doc_MeshmbSend="Send a broadcast message"
+test_MeshmbSend() {
+   executeOk curl \
+         -H "Expect:" \
+         --silent --fail --show-error \
+         --output sendmessage.json \
+         --basic --user harry:potter \
+         --form "message=Hello World;type=text/plain;charset=utf-8" \
+         "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/sendmessage"
+   executeOk_servald rhizome export bundle $IDA1 broadcast.manifest broadcast
+   tfw_cat -h broadcast.manifest
+   tfw_cat -h broadcast
+}
+
+runTests "$@"
+

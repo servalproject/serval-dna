@@ -67,6 +67,7 @@ SERVAL_DAEMON_SOURCES = \
 	message_ply.c \
 	meshms_cli.c \
 	meshms_restful.c \
+	meshmb_restful.c \
 	msp_client.c \
 	msp_proxy.c \
 	monitor.c \

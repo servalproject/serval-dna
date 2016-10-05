@@ -51,7 +51,7 @@ static void finalise_union_meshms_sendmessage(httpd_request *r)
 #define MESHMS_TOKEN_STRLEN (BASE64_ENCODED_LEN(MAX_TOKEN_LEN))
 #define alloca_meshms_token(pos) meshms_token_to_str(alloca(MESHMS_TOKEN_STRLEN + 1), (pos))
 
-static char *meshms_token_to_str(char *buf, struct newsince_position *pos)
+static char *meshms_token_to_str(char *buf, struct meshms_position *pos)
 {
   uint8_t tmp[MAX_TOKEN_LEN];
   int ofs = 0;
@@ -65,7 +65,7 @@ static char *meshms_token_to_str(char *buf, struct newsince_position *pos)
   return buf;
 }
 
-static int strn_to_meshms_token(const char *str, struct newsince_position *pos, const char **afterp)
+static int strn_to_meshms_token(const char *str, struct meshms_position *pos, const char **afterp)
 {
   uint8_t token[MAX_TOKEN_LEN];
   size_t token_len = base64url_decode(token, sizeof token, str, 0, afterp, 0, NULL);

@@ -57,6 +57,7 @@ void servald_features()
   USE_FEATURE(http_rest_keyring);
   USE_FEATURE(http_rest_rhizome);
   USE_FEATURE(http_rest_meshms);
+  USE_FEATURE(http_rest_meshmb);
 }
 
 #include <assert.h>
