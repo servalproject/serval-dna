@@ -29,6 +29,11 @@ public class BundleKey extends AbstractId {
 		return 32;
 	}
 
+	@Override
+	public String getMimeType() {
+		return null; //TODO?
+	}
+
 	public BundleKey(String hex) throws InvalidHexException {
 		super(hex);
 	}

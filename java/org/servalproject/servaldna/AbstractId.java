@@ -50,6 +50,8 @@ public abstract class AbstractId {
 		return binary;
 	}
 
+	public abstract String getMimeType();
+
 	public AbstractId(String hex) throws InvalidHexException {
 		if (hex==null)
 			throw new InvalidHexException(this, "null is not a invalid hex value");

@@ -20,22 +20,21 @@
 
 package org.servalproject.servaldna.rhizome;
 
-import java.util.Map;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.io.UnsupportedEncodingException;
+import org.servalproject.servaldna.AbstractId;
+import org.servalproject.servaldna.BundleId;
+import org.servalproject.servaldna.BundleKey;
+import org.servalproject.servaldna.FileHash;
+import org.servalproject.servaldna.SubscriberId;
+
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import org.servalproject.servaldna.AbstractId;
-import org.servalproject.servaldna.SubscriberId;
-import org.servalproject.servaldna.BundleId;
-import org.servalproject.servaldna.FileHash;
-import org.servalproject.servaldna.BundleKey;
+import java.io.PrintStream;
+import java.io.UnsupportedEncodingException;
+import java.util.HashMap;
+import java.util.Map;
 
 public class RhizomeIncompleteManifest {
 
@@ -80,36 +79,40 @@ public class RhizomeIncompleteManifest {
 	 *
 	 * @author Andrew Bettison <andrew@servalproject.com>
 	 */
+	public void toTextFormat(PrintStream writer){
+		if (id != null)
+			writer.print("id=" + id.toHex() + "\n");
+		if (version != null)
+			writer.print("version=" + version + "\n");
+		if (filesize != null)
+			writer.print("filesize=" + filesize + "\n");
+		if (filehash != null)
+			writer.print("filehash=" + filehash.toHex() + "\n");
+		if (sender != null)
+			writer.print("sender=" + sender.toHex() + "\n");
+		if (recipient != null)
+			writer.print("recipient=" + recipient.toHex() + "\n");
+		if (BK != null)
+			writer.print("BK=" + BK.toHex() + "\n");
+		if (crypt != null)
+			writer.print("crypt=" + crypt + "\n");
+		if (tail != null)
+			writer.print("tail=" + tail + "\n");
+		if (date != null)
+			writer.print("date=" + date + "\n");
+		if (service != null)
+			writer.print("service=" + service + "\n");
+		if (name != null)
+			writer.print("name=" + name + "\n");
+		for (Map.Entry<String,String> e: extraFields.entrySet())
+			writer.print(e.getKey() + "=" + e.getValue() + "\n");
+	}
+
 	public void toTextFormat(OutputStream os) throws IOException
 	{
-		OutputStreamWriter osw = new OutputStreamWriter(os, "UTF-8");
-		if (id != null)
-			osw.write("id=" + id.toHex() + "\n");
-		if (version != null)
-			osw.write("version=" + version + "\n");
-		if (filesize != null)
-			osw.write("filesize=" + filesize + "\n");
-		if (filehash != null)
-			osw.write("filehash=" + filehash.toHex() + "\n");
-		if (sender != null)
-			osw.write("sender=" + sender.toHex() + "\n");
-		if (recipient != null)
-			osw.write("recipient=" + recipient.toHex() + "\n");
-		if (BK != null)
-			osw.write("BK=" + BK.toHex() + "\n");
-		if (crypt != null)
-			osw.write("crypt=" + crypt + "\n");
-		if (tail != null)
-			osw.write("tail=" + tail + "\n");
-		if (date != null)
-			osw.write("date=" + date + "\n");
-		if (service != null)
-			osw.write("service=" + service + "\n");
-		if (name != null)
-			osw.write("name=" + name + "\n");
-		for (Map.Entry<String,String> e: extraFields.entrySet())
-			osw.write(e.getKey() + "=" + e.getValue() + "\n");
-		osw.flush();
+		PrintStream wr = new PrintStream(os, false, "UTF-8");
+		toTextFormat(wr);
+		wr.flush();
 	}
 
 	/** Construct a Rhizome manifest from its text format representation.

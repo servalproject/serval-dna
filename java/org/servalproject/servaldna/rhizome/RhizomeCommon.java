@@ -26,6 +26,7 @@ import org.servalproject.servaldna.BundleId;
 import org.servalproject.servaldna.BundleKey;
 import org.servalproject.servaldna.BundleSecret;
 import org.servalproject.servaldna.FileHash;
+import org.servalproject.servaldna.PostHelper;
 import org.servalproject.servaldna.ServalDFailureException;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
@@ -34,7 +35,6 @@ import org.servalproject.servaldna.SubscriberId;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.lang.reflect.Constructor;
@@ -384,56 +384,17 @@ public class RhizomeCommon
 				RhizomeEncryptionException
 	{
 		HttpURLConnection conn = connector.newServalDHttpConnection("/restful/rhizome/insert");
-		String boundary = Long.toHexString(System.currentTimeMillis());
-		conn.setRequestMethod("POST");
-		conn.setDoOutput(true);
-		conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
-		conn.connect();
-		OutputStream ost = conn.getOutputStream();
-		PrintStream wr = new PrintStream(ost, false, "UTF-8");
-		wr.print(new Object(){}.getClass().getEnclosingClass().getName());
-		if (author != null) {
-			wr.print("\r\n--" + boundary + "\r\n");
-			wr.print("Content-Disposition: form-data; name=\"bundle-author\"\r\n");
-			wr.print("Content-Type: serval-mesh/sid\r\n");
-			wr.print("Content-Transfer-Encoding: hex\r\n");
-			wr.print("\r\n");
-			wr.print(author.toHex());
-		}
-		if (secret != null) {
-			wr.print("\r\n--" + boundary + "\r\n");
-			wr.print("Content-Disposition: form-data; name=\"bundle-secret\"\r\n");
-			wr.print("Content-Type: rhizome/bundle-secret\r\n");
-			wr.print("Content-Transfer-Encoding: hex\r\n");
-			wr.print("\r\n");
-			wr.print(secret.toHex());
-		}
-		wr.print("\r\n--" + boundary + "\r\n");
-        wr.print("Content-Disposition: form-data; name=\"manifest\"\r\n");
-        wr.print("Content-Type: rhizome/manifest; format=\"text+binarysig\"\r\n");
-		wr.print("Content-Transfer-Encoding: binary\r\n");
-        wr.print("\r\n");
-		wr.flush();
-		manifest.toTextFormat(ost);
-		if (payloadStream != null) {
-			wr.print("\r\n--" + boundary + "\r\n");
-			wr.print("Content-Disposition: form-data; name=\"payload\"");
-			if (fileName != null) {
-				wr.print("; filename=");
-				wr.print(quoteString(fileName));
-			}
-			wr.print("\r\n");
-			wr.print("Content-Type: application/octet-stream\r\n");
-			wr.print("Content-Transfer-Encoding: binary\r\n");
-			wr.print("\r\n");
-			wr.flush();
-			byte[] buffer = new byte[4096];
-			int n;
-			while ((n = payloadStream.read(buffer)) > 0)
-				ost.write(buffer, 0, n);
-		}
-        wr.print("\r\n--" + boundary + "--\r\n");
-		wr.close();
+		PostHelper helper = new PostHelper(conn);
+		helper.connect();
+		if (author != null)
+			helper.writeField("bundle-author", author);
+		if (secret != null)
+			helper.writeField("bundle-secret", secret);
+		helper.writeField("manifest", manifest);
+		if (payloadStream != null)
+			helper.writeField("payload", fileName, payloadStream);
+		helper.close();
+
 		int[] expected_response_codes = { HttpURLConnection.HTTP_OK, HttpURLConnection.HTTP_CREATED };
 		Status status = RhizomeCommon.receiveResponse(conn, expected_response_codes);
 		try {

@@ -36,4 +36,8 @@ public class BundleId extends SigningKey {
 		super(binary);
 	}
 
+	@Override
+	public String getMimeType() {
+		return null;
+	}
 }

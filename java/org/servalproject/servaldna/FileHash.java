@@ -31,6 +31,11 @@ public class FileHash extends AbstractId {
 		return BINARY_SIZE;
 	}
 
+	@Override
+	public String getMimeType() {
+		return null;
+	}
+
 	public FileHash(String hex) throws InvalidHexException {
 		super(hex);
 	}

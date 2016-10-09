@@ -24,4 +24,9 @@ public class SigningKey extends AbstractId {
     public int getBinarySize() {
         return BINARY_SIZE;
     }
+
+    @Override
+    public String getMimeType() {
+        return "serval-mesh/id";
+    }
 }
