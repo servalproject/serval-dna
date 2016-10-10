@@ -24,6 +24,8 @@ import org.servalproject.codec.Base64;
 import org.servalproject.servaldna.keyring.KeyringCommon;
 import org.servalproject.servaldna.keyring.KeyringIdentity;
 import org.servalproject.servaldna.keyring.KeyringIdentityList;
+import org.servalproject.servaldna.meshmb.MeshMBCommon;
+import org.servalproject.servaldna.meshmb.MessagePlyList;
 import org.servalproject.servaldna.meshms.MeshMSCommon;
 import org.servalproject.servaldna.meshms.MeshMSConversationList;
 import org.servalproject.servaldna.meshms.MeshMSException;
@@ -181,6 +183,20 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 	public MeshMSStatus meshmsAdvanceReadOffset(SubscriberId sid1, SubscriberId sid2, long offset) throws IOException, ServalDInterfaceException, MeshMSException
 	{
 		return MeshMSCommon.advanceReadOffset(this, sid1, sid2, offset);
+	}
+
+	public int meshmbSendMessage(SigningKey id, String text) throws IOException, ServalDInterfaceException {
+		return MeshMBCommon.sendMessage(this, id, text);
+	}
+
+	public MessagePlyList meshmbListMessages(SigningKey id) throws IOException, ServalDInterfaceException {
+		return meshmbListMessagesSince(id, null);
+	}
+
+	public MessagePlyList meshmbListMessagesSince(SigningKey id, String token) throws IOException, ServalDInterfaceException {
+		MessagePlyList list = new MessagePlyList(this, id, token);
+		list.connect();
+		return list;
 	}
 
 	// interface ServalDHttpConnectionFactory

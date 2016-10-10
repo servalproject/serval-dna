@@ -130,11 +130,13 @@ static int strn_to_position_token(const char *str, uint64_t *position, const cha
   size_t token_len = base64url_decode(token, sizeof token, str, 0, afterp, 0, NULL);
 
   int unpacked;
-  if ((unpacked = unpack_uint(token, token_len, position))==-1){
+  if ((unpacked = unpack_uint(token, token_len, position))!=-1
+    && **afterp=='/'){
+    (*afterp)++;
+  } else {
     *position = 0;
     *afterp=str;
-  }else
-    (*afterp)++;
+  }
   return 1;
 }
 
