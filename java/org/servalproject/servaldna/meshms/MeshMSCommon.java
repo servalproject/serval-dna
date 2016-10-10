@@ -44,6 +44,12 @@ public class MeshMSCommon
 	{
 		if (!"application/json".equals(conn.getContentType()))
 			throw new ServalDInterfaceException("unexpected HTTP Content-Type: " + conn.getContentType());
+		for (int code: expected_response_codes) {
+			if (conn.getResponseCode() == code) {
+				JSONTokeniser json = new JSONTokeniser(conn.getInputStream());
+				return json;
+			}
+		}
 		switch (conn.getResponseCode()) {
 		case HttpURLConnection.HTTP_NOT_FOUND:
 		case 419: // Authentication Timeout, for missing secret
@@ -51,12 +57,6 @@ public class MeshMSCommon
 			Status status = decodeRestfulStatus(json);
 			throwRestfulResponseExceptions(status, conn.getURL());
 			throw new ServalDInterfaceException("unexpected MeshMS status = " + status.meshms_status_code + ", \"" + status.meshms_status_message + "\"");
-		}
-		for (int code: expected_response_codes) {
-			if (conn.getResponseCode() == code) {
-				JSONTokeniser json = new JSONTokeniser(conn.getInputStream());
-				return json;
-			}
 		}
 		throw new ServalDInterfaceException("unexpected HTTP response code: " + conn.getResponseCode());
 	}
@@ -116,6 +116,18 @@ public class MeshMSCommon
 		case ERROR:
 			throw new ServalDFailureException("received meshms_status_code=ERROR(-1) from " + url);
 		}
+	}
+
+	public static void processRestfulError(HttpURLConnection conn, JSONTokeniser json) throws IOException, ServalDInterfaceException, MeshMSException {
+		switch (conn.getResponseCode()) {
+			case HttpURLConnection.HTTP_NOT_FOUND:
+			case 419: // Authentication Timeout, for missing secret
+				Status status = decodeRestfulStatus(json);
+				throwRestfulResponseExceptions(status, conn.getURL());
+				throw new ServalDInterfaceException("unexpected MeshMS status = " + status.meshms_status_code + ", \"" + status.meshms_status_message + "\"");
+		}
+		throw new ServalDInterfaceException("unexpected HTTP response code: " + conn.getResponseCode());
+
 	}
 
 	public static MeshMSStatus sendMessage(ServalDHttpConnectionFactory connector, SubscriberId sid1, SubscriberId sid2, String text) throws IOException, ServalDInterfaceException, MeshMSException
