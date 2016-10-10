@@ -193,7 +193,7 @@ typedef struct httpd_request
     }
       msglist;
 
-    /* For responses that send a MeshMS message.
+    /* For responses that send a MeshMS / MeshMB message.
     */
     struct {
       // Which part is currently being received
@@ -204,7 +204,17 @@ typedef struct httpd_request
       struct form_buf_malloc message;
     }
       sendmsg;
-      
+
+    struct{
+      struct message_ply_read ply_reader;
+      enum list_phase phase;
+      uint64_t start_offset;
+      uint64_t current_offset;
+      uint64_t end_offset;
+      size_t rowcount;
+      time_ms_t end_time;
+      time_s_t timestamp;
+    } plylist;
     
     struct {
       int fd;

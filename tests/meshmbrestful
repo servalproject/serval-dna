@@ -13,6 +13,7 @@ setup_instance() {
       set debug.http_server on \
       set debug.httpd on \
       set debug.meshmb on \
+      set debug.meshms on \
       set debug.verbose on \
       set log.console.level debug
    set_extra_config
@@ -48,8 +49,8 @@ teardown() {
    report_all_servald_servers
 }
 
-doc_MeshmbSend="Send a broadcast message"
-test_MeshmbSend() {
+doc_MeshMBRestSend="Restful send of a broadcast message"
+test_MeshMBRestSend() {
    executeOk curl \
          -H "Expect:" \
          --silent --fail --show-error \
@@ -62,5 +63,37 @@ test_MeshmbSend() {
    tfw_cat -h broadcast
 }
 
+doc_MeshMBRestList="Restful list of meshmb messages"
+setup_MeshMBRestList() {
+   setup
+   executeOk_servald meshmb send $IDA1 "Message 1"
+   executeOk_servald meshmb send $IDA1 "Message 2"
+}
+test_MeshMBRestList() {
+   executeOk curl \
+         -H "Expect:" \
+         --silent --fail --show-error \
+         --output listmessages.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/messagelist.json"
+   tfw_cat http.headers listmessages.json
+   tfw_preserve listmessages.json
+   assert [ "$(jq '.rows | length' listmessages.json)" = 2 ]
+   transform_list_json listmessages.json list.json
+   tfw_preserve list.json
+   assertJq list.json \
+            "contains([
+               {  offset: 12,
+                  text: \"Message 1\"
+               }
+            ])"
+   assertJq list.json \
+            "contains([
+               {  offset: 30,
+                  text: \"Message 2\"
+               }
+            ])"
+}
 runTests "$@"
 

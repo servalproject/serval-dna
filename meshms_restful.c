@@ -291,10 +291,8 @@ static int restful_meshms_conversationlist_json_content_chunk(struct http_reques
 	r->u.mclist.phase = LIST_END;
 	// fall through...
       } else {
-	if (r->u.mclist.phase==LIST_ROWS)
+	if (r->u.mclist.rowcount!=0)
 	  strbuf_putc(b, ',');
-	else
-	  r->u.mclist.phase=LIST_ROWS;
 	strbuf_puts(b, "\n[");
 	strbuf_sprintf(b, "%zu", r->u.mclist.rowcount);
 	strbuf_putc(b, ',');
@@ -309,6 +307,7 @@ static int restful_meshms_conversationlist_json_content_chunk(struct http_reques
 	strbuf_sprintf(b, "%"PRIu64, r->u.mclist.iter.current->metadata.read_offset);
 	strbuf_puts(b, "]");
 	if (!strbuf_overrun(b)) {
+	  r->u.mclist.phase=LIST_ROWS;
 	  meshms_conversation_iterator_advance(&r->u.mclist.iter);
 	  ++r->u.mclist.rowcount;
 	}
