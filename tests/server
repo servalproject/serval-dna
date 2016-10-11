@@ -50,9 +50,9 @@ setup_StartCreateInstanceDir() {
    assert [ ! -d "$SERVALINSTANCE_PATH" ]
 }
 test_StartCreateInstanceDir() {
-   executeOk $servald start
+   executeOk_servald start
    assert [ -d "$SERVALINSTANCE_PATH" ]
-   executeOk $servald stop
+   executeOk_servald stop
    tfw_cat --stdout --stderr
 }
 
@@ -64,6 +64,28 @@ setup_StartLogfile() {
 test_StartLogfile() {
    start_servald_server
    assert_servald_server_no_errors
+}
+
+doc_Status="Server status"
+test_Status() {
+   execute_servald --exit-status=1 status
+   extract_stdout_keyvalue instance_path 'instancepath' '.*'
+   extract_stdout_keyvalue status 'status' '.*'
+   assert [ "$instance_path" = "$SERVALINSTANCE_PATH" ]
+   assert [ "$status" = "stopped" ]
+   executeOk_servald start
+   extract_stdout_keyvalue start_pid 'pid' '[0-9]\+'
+   executeOk_servald status
+   extract_stdout_keyvalue instance_path 'instancepath' '.*'
+   extract_stdout_keyvalue status 'status' '.*'
+   extract_stdout_keyvalue pid 'pid' '[0-9]\+'
+   assert [ "$instance_path" = "$SERVALINSTANCE_PATH" ]
+   assert [ "$status" = "running" ]
+   assert [ "$pid" -eq "$start_pid" ]
+   executeOk_servald stop
+   execute_servald --exit-status=1 status
+   extract_stdout_keyvalue status 'status' '.*'
+   assert [ "$status" = "stopped" ]
 }
 
 doc_StartNoInterfaces="Starting server with no configured interfaces gives warning"
@@ -121,7 +143,7 @@ setup_StartStart() {
    start_servald_server
 }
 test_StartStart() {
-   execute --exit-status=10 $servald start
+   execute_servald --exit-status=10 start
    extract_stdout_keyvalue start_instance_path 'instancepath' '.*'
    extract_stdout_keyvalue start_pid 'pid' '[0-9]\+'
    assert [ "$start_instance_path" = "$SERVALINSTANCE_PATH" ]
