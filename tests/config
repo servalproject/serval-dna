@@ -37,17 +37,17 @@ assert_stderr_log() {
    done
    assertStderrGrep \
       --matches=${#error_patterns[*]} \
-      --message="stderr of ($executed) contains exactly ${#error_patterns[*]} error message(s)" \
+      --message="stderr of ($TFWEXECUTED) contains exactly ${#error_patterns[*]} error message(s)" \
       '^ERROR:'
    local pattern
    for pattern in "${warn_patterns[@]}"; do
       assertStderrGrep \
-         --message="stderr of ($executed) contains a warning message matching \"$pattern\"" \
+         --message="stderr of ($TFWEXECUTED) contains a warning message matching \"$pattern\"" \
          "^WARN:.*$pattern"
    done
    for pattern in "${error_patterns[@]}"; do
       assertStderrGrep \
-         --message="stderr of ($executed) contains an error message matching \"$pattern\"" \
+         --message="stderr of ($TFWEXECUTED) contains an error message matching \"$pattern\"" \
          "^ERROR:.*$pattern"
    done
 }

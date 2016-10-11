@@ -823,16 +823,28 @@ _tfw_exit() {
 
 # Executes $_tfw_executable with the given arguments.
 _tfw_execute() {
-   executed=$(shellarg "${_tfw_executable##*/}" "$@")
+   local _tfw_stdout_file_default="$_tfw_process_tmp/stdout"
+   local _tfw_stderr_file_default="$_tfw_process_tmp/stderr"
+   export TFWSTDOUT="${_tfw_stdout_file:-$_tfw_stdout_file_default}"
+   export TFWSTDERR="${_tfw_stderr_file:-$_tfw_stderr_file_default}"
+   >|"$TFWSTDOUT"
+   >|"$TFWSTDERR"
+   if ! [ "$TFWSTDOUT" -ef "$_tfw_stdout_file_default" ]; then
+      rm -f "$_tfw_stdout_file_default"
+      ln "$TFWSTDOUT" "$_tfw_stdout_file_default"
+   fi
+   if ! [ "$TFWSTDERR" -ef "$_tfw_stderr_file_default" ]; then
+      rm -f "$_tfw_stderr_file_default"
+      ln "$TFWSTDERR" "$_tfw_stderr_file_default"
+   fi
+   export TFWEXECUTED=$(shellarg "${_tfw_executable##*/}" "$@")
+   echo "$TFWEXECUTED" >"$_tfw_process_tmp/executing"
    if $_tfw_opt_core_backtrace; then
       ulimit -S -c unlimited
       rm -f core
    fi
-   export TFWSTDOUT="${_tfw_stdout_file:-$_tfw_process_tmp/stdout}"
-   export TFWSTDERR="${_tfw_stderr_file:-$_tfw_process_tmp/stderr}"
-   echo "$executed" >"$_tfw_process_tmp/executing"
    {
-      time -p "$_tfw_executable" "$@" >"$TFWSTDOUT" 2>"$TFWSTDERR"
+      time -p "$_tfw_executable" "$@" >>"$TFWSTDOUT" 2>>"$TFWSTDERR"
    } 2>"$_tfw_process_tmp/times" &
    local subshell_pid=$!
    local timer_pid=
@@ -851,15 +863,15 @@ _tfw_execute() {
                sleep $timeout || exit $?
             fi
             kill -0 $executable_pid || exit $?
-            tfw_log "# timeout after $timeout seconds, sending SIGABRT to pid $executable_pid ($executed)" || exit $?
+            tfw_log "# timeout after $timeout seconds, sending SIGABRT to pid $executable_pid ($TFWEXECUTED)" || exit $?
             kill -ABRT $executable_pid || exit $?
             sleep 2 || exit $?
             kill -0 $executable_pid || exit $?
-            tfw_log "# sending second SIGABRT to pid $executable_pid ($executed)" || exit $?
+            tfw_log "# sending second SIGABRT to pid $executable_pid ($TFWEXECUTED)" || exit $?
             kill -ABRT $executable_pid || exit $?
             sleep 2 || exit $?
             kill -0 $executable_pid || exit $?
-            tfw_log "# sending SIGKILL to pid $executable_pid ($executed)" || exit $?
+            tfw_log "# sending SIGKILL to pid $executable_pid ($TFWEXECUTED)" || exit $?
             kill -KILL $executable_pid || exit $?
             exit 0
          ) 2>/dev/null &
@@ -883,11 +895,11 @@ _tfw_execute() {
    fi
    # Deal with exit status.
    if [ -n "$_tfw_opt_exit_status" ]; then
-      _tfw_message="exit status ($_tfw_exitStatus) of ($executed) is $_tfw_opt_exit_status"
+      _tfw_message="exit status ($_tfw_exitStatus) of ($TFWEXECUTED) is $_tfw_opt_exit_status"
       _tfw_assert [ "$_tfw_exitStatus" -eq "$_tfw_opt_exit_status" ] || _tfw_failexit || return $?
       $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
    else
-      $_tfw_assert_noise && tfw_log "# exit status of ($executed) = $_tfw_exitStatus"
+      $_tfw_assert_noise && tfw_log "# exit status of ($TFWEXECUTED) = $_tfw_exitStatus"
    fi
    # Parse execution time report.
    if true || [ -s "$_tfw_process_tmp/times" ]; then
@@ -1119,7 +1131,7 @@ _tfw_assert_stdxxx_is() {
    fi
    [ -r "$_tfw_process_tmp/$qual" ] || fail "no $qual" || return $?
    _tfw_get_content "$_tfw_process_tmp/$qual" || return $?
-   local message="${_tfw_message:-${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$qual of ($executed) is $(shellarg "$@")}"
+   local message="${_tfw_message:-${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$qual of ($TFWEXECUTED) is $(shellarg "$@")}"
    echo -n "$@" >"$_tfw_process_tmp/stdxxx_is.tmp"
    if ! cmp -s "$_tfw_process_tmp/stdxxx_is.tmp" "$_tfw_process_tmp/content"; then
       _tfw_failmsg "assertion failed: $message"
@@ -1158,7 +1170,7 @@ _tfw_assert_stdxxx_grep() {
    fi
    [ -r "$_tfw_process_tmp/$qual" ] || fail "no $qual" || return $?
    _tfw_get_content "$_tfw_process_tmp/$qual" || return $?
-   _tfw_assert_grep "${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$qual of ($executed)" "$_tfw_process_tmp/content" "$@"
+   _tfw_assert_grep "${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$qual of ($TFWEXECUTED)" "$_tfw_process_tmp/content" "$@"
 }
 
 _tfw_assert_grep() {
@@ -1672,11 +1684,11 @@ tfw_cat() {
          ;;
       --stdout)
          file="${TFWSTDOUT?}"
-         header="${header:-stdout of ($executed)}"
+         header="${header:-stdout of ($TFWEXECUTED)}"
          ;;
       --stderr)
          file="${TFWSTDERR?}"
-         header="${header:-stderr of ($executed)}"
+         header="${header:-stderr of ($TFWEXECUTED)}"
          ;;
       *)
          header="${header:-${file#$_tfw_tmp/}}"
@@ -1744,7 +1756,7 @@ tfw_quietly() {
 #  - captures the standard output and error in temporary files for later
 #    examination
 #  - captures the exit status for later assertions
-#  - sets the $executed variable to a description of the command that was
+#  - sets the $TFWEXECUTED variable to a description of the command that was
 #    executed
 execute() {
    $_tfw_assert_noise && tfw_log "# execute" $(shellarg "$@")
@@ -1775,7 +1787,7 @@ tfw_core_backtrace() {
 assertExitStatus() {
    _tfw_getopts assertexitstatus "$@"
    shift $_tfw_getopts_shift
-   [ -z "$_tfw_message" ] && _tfw_message="exit status ($_tfw_exitStatus) of ($executed) $*"
+   [ -z "$_tfw_message" ] && _tfw_message="exit status ($_tfw_exitStatus) of ($TFWEXECUTED) $*"
    _tfw_assertExpr "$_tfw_exitStatus" "$@" || _tfw_failexit || return $?
    $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
    return 0
@@ -1784,7 +1796,7 @@ assertExitStatus() {
 assertRealTime() {
    _tfw_getopts assertrealtime "$@"
    shift $_tfw_getopts_shift
-   [ -z "$_tfw_message" ] && _tfw_message="real execution time ($realtime) of ($executed) $*"
+   [ -z "$_tfw_message" ] && _tfw_message="real execution time ($realtime) of ($TFWEXECUTED) $*"
    _tfw_assertExpr "$realtime" "$@" || _tfw_failexit || return $?
    $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
    return 0
@@ -1886,13 +1898,22 @@ fork() {
    fi
    local desc="fork[$forkid]${_tfw_forklabel:+ %$_tfw_forklabel}"
    local _tfw_process_tmp="$_tfw_tmp/fork-$forkid"
+   local _tfw_fork_stdout_var="TFWFORKSTDOUT_$_tfw_forklabel"
+   local _tfw_fork_stderr_var="TFWFORKSTDERR_$_tfw_forklabel"
+   local _tfw_fork_pid_var="TFWFORKPID_$_tfw_forklabel"
+   local _tfw_fork_stdout_path="$_tfw_process_tmp/log.stdout"
+   local _tfw_fork_stderr_path="$_tfw_process_tmp/log.stderr"
+   local _tfw_fork_xtrace_path="$_tfw_process_tmp/log.xtrace"
+   eval export $_tfw_fork_stdout_var='"$_tfw_fork_stdout_path"'
+   eval export $_tfw_fork_stderr_var='"$_tfw_fork_stderr_path"'
    mkdir "$_tfw_process_tmp" || _tfw_fatalexit
    $_tfw_assert_noise && tfw_log "# $desc START" $(shellarg "$@")
-   "$@" 6>"$_tfw_process_tmp/log.stdout" 1>&6 2>"$_tfw_process_tmp/log.stderr" 7>"$_tfw_process_tmp/log.xtrace" &
+   "$@" 6>"$_tfw_fork_stdout_path" 1>&6 2>"$_tfw_fork_stderr_path" 7>"$_tfw_fork_xtrace_path" &
    _tfw_forked_pids[$forkid]=$!
    _tfw_forked_labels[$forkid]="$_tfw_forklabel"
    [ -n "$_tfw_forklabel" ] && eval _tfw_fork_label_$_tfw_forklabel=$forkid
    $_tfw_assert_noise && tfw_log "# $desc pid=$! STARTED"
+   eval export $_tfw_fork_pid_var='$!'
 }
 
 fork_is_running() {
