@@ -25,8 +25,9 @@ source "${0%/*}/../testdefs_java.sh"
 setup() {
    setup_servald
    executeOk_servald config \
-	set debug.verbose 1 \
-	set log.console.level debug
+      set debug.jni 1 \
+      set debug.verbose 1 \
+      set log.console.level debug
    assert_echo_works
    compile_java_classes
    setup_servald_so
@@ -40,8 +41,9 @@ assert_echo_works() {
 
 doc_Echo="Serval JNI echo Hello world"
 test_Echo() {
-   executeJavaOk org.servalproject.test.ServalDTests 'echo' '-e' 'Hello,\ttab' 'world\0!'
-   assertStdoutIs -e 'Hello,\ttab world\0! \n'
+   executeJavaOk org.servalproject.test.CommandLine 'echo' '-e' 'Hello,\ttab' 'world\0!'
+   tfw_cat --stdout --stderr
+   assertStdoutIs -e 'Hello,\ttab\nworld\0!\n'
 }
 
 doc_Delim="Serval non-JNI output delimiter environment variable"
@@ -57,20 +59,21 @@ test_Delim() {
 
 doc_Repeat="Serval JNI repeated calls in same process"
 test_Repeat() {
-   executeJavaOk org.servalproject.test.ServalDTests repeat 50 'echo' 'Hello,' 'world!'
-   assertStdoutLineCount '==' 50
-   assertStdoutGrep --matches=50 '^Hello, world! $'
+   executeJavaOk org.servalproject.test.CommandLine --repeat 50 'echo' 'Hello,' 'world!'
+   assertStdoutLineCount '==' 100
+   assertStdoutGrep --matches=50 '^Hello,$'
+   assertStdoutGrep --matches=50 '^world!$'
 }
 
 doc_NullArg="Serval JNI null arguments dont throw exception"
 test_NullArg() {
-   executeJavaOk org.servalproject.test.ServalDTests 'echo' '(null)'
+   executeJavaOk org.servalproject.test.CommandLine 'echo' '(null)'
    tfw_cat --stdout --stderr
 }
 
-doc_help="Serval JNI returns help text"
-test_help() {
-   executeJavaOk org.servalproject.test.ServalDTests 'help'
+doc_version="Serval JNI returns version text"
+test_version() {
+   executeJavaOk org.servalproject.test.CommandLine 'version'
    assertStdoutGrep 'Serval DNA version '
 }
 
@@ -83,11 +86,13 @@ setup_PeerList() {
    foreach_instance +A +B create_single_identity
    start_servald_instances +A +B
    set_instance +A
+   executeOk_servald 'id' 'peers'
+   tfw_cat --stdout --stderr
 }
 test_PeerList() {
-   executeJavaOk org.servalproject.test.CommandLine 'peers'
+   executeJavaOk org.servalproject.test.CommandLine 'id' 'peers'
+   tfw_cat --stdout --stderr
    assertStdoutGrep "$SIDB"
-   tfw_cat --stdout
 }
 teardown_PeerList() {
    stop_all_servald_servers
@@ -108,10 +113,11 @@ setup_DnaLookup() {
    foreach_instance +A +B create_single_identity
    start_servald_instances +A +B
    set_instance +A
+   executeOk_servald dna lookup "$DIDB" 10000
+   tfw_cat --stdout --stderr
 }
 test_DnaLookup() {
-   executeJavaOk --timeout=10 org.servalproject.test.CommandLine 'lookup'
-   tfw_cat --stdout --stderr
+   executeJavaOk --timeout=10 org.servalproject.test.ServalDTests 'lookup'
    assertStdoutGrep "$SIDB"
 }
 teardown_DnaLookup() {
@@ -145,7 +151,7 @@ setup_serviceDiscovery() {
    set_instance +A
 }
 test_serviceDiscovery() {
-   executeJavaOk --timeout=10 org.servalproject.test.CommandLine 'service' 'test_name.*'
+   executeJavaOk --timeout=10 org.servalproject.test.ServalDTests 'service' 'test_name.*'
    assertStdoutGrep "$SIDB"
    assertStdoutGrep "\<test_name\.msp\.port=512\>"
    tfw_cat --stdout --stderr
@@ -166,10 +172,28 @@ setup_servaldThread() {
    setup
    set_instance +A
    create_single_identity
+   executeOk_servald config \
+      set debug.jni 1 \
+      set debug.verbose 1 \
+      set log.console.level debug
 }
 test_servaldThread() {
-   executeJavaOk --timeout=10 org.servalproject.test.CommandLine 'server'
-   tfw_cat --stdout --stderr
+   fork %server executeJavaOk --stdout-file=server_stdout --stderr-file=server_stderr org.servalproject.test.ServalDTests 'server'
+   wait_until --timeout=10 grep '^Started server' server_stdout
+   PID=$($SED -n -e '/^Started server/s/.* pid=\([0-9]\+\).*/\1/p' server_stdout)
+   assert [ -n "$PID" ]
+   assert kill -0 $PID 2>/dev/null
+   executeOk_servald status
+   extract_stdout_keyvalue status 'status' '.*'
+   extract_stdout_keyvalue pid 'pid' '[0-9]\+'
+   extract_stdout_keyvalue tid 'tid' '[0-9]\+'
+   assert [ "$status" = running ]
+   assert [ "$pid" -eq "$PID" ]
+   assert [ "$tid" -ne "$PID" ]
+   sleep 1
+   executeOk_servald stop
+   fork_wait %server
+   tfw_cat server_stdout server_stderr
 }
 
 runTests "$@"

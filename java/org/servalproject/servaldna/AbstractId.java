@@ -1,5 +1,6 @@
 /**
- * Copyright (C) 2011 The Serval Project
+ * Copyright (C) 2016 Flinders University
+ * Copyright (C) 2014 Serval Project Inc.
  *
  * This file is part of Serval Software (http://www.servalproject.org)
  *
@@ -113,7 +114,11 @@ public abstract class AbstractId {
 		buff.put(this.binary);
 	}
 
-	public String toHex(int offset, int len) {
+	public static String toHex(byte[] binary) {
+		return toHex(binary, 0, binary.length);
+	}
+
+	public static String toHex(byte[] binary, int offset, int len) {
 		StringBuilder sb = new StringBuilder();
 		for (int i = offset; i < offset + len && i < binary.length; i++) {
 			sb.append(Character.forDigit(((binary[i]) & 0xf0) >> 4, 16));
@@ -123,15 +128,15 @@ public abstract class AbstractId {
 	}
 
 	public String toHex(int len) {
-		return toHex(0, len);
+		return toHex(binary, 0, len);
 	}
 
 	public String toHex() {
-		return toHex(0, binary.length);
+		return toHex(binary, 0, binary.length);
 	}
 
 	public String abbreviation() {
-		return toHex(0, 4);
+		return toHex(binary, 0, 4);
 	}
 
 

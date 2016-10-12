@@ -1,5 +1,5 @@
 /*
-Serval DNA main command-line entry point
+Serval DNA command-line output primitives
 Copyright (C) 2016 Flinders University
 
 This program is free software; you can redistribute it and/or
@@ -17,9 +17,20 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-extern int servald_main(int, char**);
+/* CLI output primitive implementation that writes to a standard i/o stream
+ * like stdout.
+ */
 
-int main(int argc, char **argv)
-{
-  return servald_main(argc, argv);
-}
+#ifndef __SERVAL_DNA__CLI_STDIO_H
+#define __SERVAL_DNA__CLI_STDIO_H
+
+#include <stdio.h>
+#include "cli.h"
+
+struct cli_context_stdio {
+    FILE *fp;
+};
+
+extern struct cli_vtable cli_vtable_stdio;
+
+#endif // __SERVAL_DNA__CLI_STDIO_H

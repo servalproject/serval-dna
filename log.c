@@ -1,6 +1,7 @@
 /*
 Serval DNA logging
-Copyright 2013 Serval Project Inc.
+Copyright (C) 2013-2015 Serval Project Inc.
+Copyright (C) 2016 Flinders University
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -582,8 +583,7 @@ static void _open_log_file(_log_iterator *it)
 
 static void _rotate_log_file(_log_iterator *it)
 {
-  if (_log_file != NO_FILE && _log_file_path == _log_file_path_buf) {
-    assert(!cf_limbo);
+  if (!cf_limbo && _log_file != NO_FILE && _log_file_path == _log_file_path_buf) {
     if (!config.log.file.path[0] && config.log.file.duration) {
       _compute_file_start_time(it);
       if (it->file_start_time != _log_file_start_time) {
@@ -677,4 +677,3 @@ void logConfigChanged()
     it.state->config_logged = 0;
   logFlush();
 }
-

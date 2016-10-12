@@ -32,10 +32,10 @@ static int httpd_dispatch(struct http_request *hr)
   INFOF("HTTP SERVER, %s %s", r->http.verb, r->http.path);
   r->http.response.content_generator = NULL;
   
-  struct http_handler *handler, *parser=NULL;
+  struct http_handler *parser=NULL;
   const char *remainder=NULL;
+  struct http_handler *handler;
   size_t match_len=0;
-  
   for (handler = SECTION_START(httpd); handler < SECTION_END(httpd); ++handler) {
     size_t path_len = strlen(handler->path);
     if (parser && path_len < match_len)

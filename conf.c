@@ -35,7 +35,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 struct cf_om_node *cf_om_root = NULL;
 static __thread struct file_meta conffile_meta = FILE_META_UNKNOWN;
 
-int cf_limbo = 1;
+__thread int cf_initialised = 0;
+__thread int cf_limbo = 1;
 __thread struct config_main config;
 static __thread struct file_meta config_meta = FILE_META_UNKNOWN;
 
@@ -160,11 +161,14 @@ int cf_om_save()
 
 int cf_init()
 {
-  cf_limbo = 1;
-  conffile_meta = config_meta = FILE_META_UNKNOWN;
-  memset(&config, 0, sizeof config);
-  if (cf_dfl_config_main(&config) == CFERROR)
-    return -1;
+  if (!cf_initialised) {
+    memset(&config, 0, sizeof config);
+    if (cf_dfl_config_main(&config) == CFERROR)
+      return -1;
+    conffile_meta = config_meta = FILE_META_UNKNOWN;
+    cf_limbo = 1;
+    cf_initialised = 1;
+  }
   return 0;
 }
 
@@ -184,6 +188,7 @@ static int reload_and_parse(int permissive, int strict)
 {
   int result = CFOK;
   int changed = 0;
+  assert(cf_initialised);
   if (cf_limbo)
     result = cf_dfl_config_main(&config);
   if (result == CFOK || result == CFEMPTY) {

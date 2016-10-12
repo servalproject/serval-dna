@@ -99,11 +99,11 @@ static int app_meshmb_read(const struct cli_parsed *parsed, struct cli_context *
     return -1;
 
   int ret=0;
-  int row_id=0;
+  size_t row_id = 0;
   const char *names[]={
     "_id","offset","age","message"
   };
-  cli_columns(context, 4, names);
+  cli_start_table(context, NELS(names), names);
   time_s_t timestamp = 0;
   time_s_t now = gettime();
 
@@ -134,6 +134,7 @@ static int app_meshmb_read(const struct cli_parsed *parsed, struct cli_context *
 	break;
     }
   }
+  cli_end_table(context, row_id);
 
   message_ply_read_close(&read);
   return ret;
@@ -169,7 +170,7 @@ static int app_meshmb_find(const struct cli_parsed *parsed, struct cli_context *
     "date",
     "name"
   };
-  cli_columns(context, 5, names);
+  cli_start_table(context, NELS(names), names);
 
   unsigned rowcount=0;
   int n;
@@ -184,7 +185,7 @@ static int app_meshmb_find(const struct cli_parsed *parsed, struct cli_context *
     cli_put_string(context, m->name, "\n");
   }
   rhizome_list_release(&cursor);
-  cli_row_count(context, rowcount);
+  cli_end_table(context, rowcount);
   return 0;
 }
 

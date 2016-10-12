@@ -47,7 +47,7 @@ static int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_
     "_id","recipient","read", "last_message", "read_offset", "message"
   };
 
-  cli_columns(context, include_message? 6: 5, names);
+  cli_start_table(context, include_message? NELS(names) : NELS(names) - 1, names);
   int rows = 0;
   if (conv) {
     struct meshms_conversation_iterator it;
@@ -81,7 +81,7 @@ static int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_
       }
     }
   }
-  cli_row_count(context, rows);
+  cli_end_table(context, rows);
   status=MESHMS_STATUS_OK;
 
 end:
@@ -166,7 +166,7 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
   const char *names[]={
     "_id","offset","age","type","message"
   };
-  cli_columns(context, 5, names);
+  cli_start_table(context, NELS(names), names);
   bool_t marked_delivered = 0;
   bool_t marked_read = 0;
   time_s_t now = gettime();
@@ -210,7 +210,7 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
     }
   }
   if (!meshms_failed(status))
-    cli_row_count(context, id);
+    cli_end_table(context, id);
   meshms_message_iterator_close(&iter);
   keyring_free(keyring);
   keyring = NULL;

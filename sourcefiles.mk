@@ -2,6 +2,8 @@
 # they can be linked into executables other than servald.
 SERVAL_CLIENT_SOURCES = \
 	cli.c \
+	cli_stdio.c \
+	commandline.c \
         conf.c \
         conf_om.c \
         conf_parse.c \
@@ -46,7 +48,8 @@ SQLITE3_SOURCES = $(SQLITE3_AMALGAMATION)/sqlite3.c
 
 # The source files for building the Serval DNA daemon.
 SERVAL_DAEMON_SOURCES = \
-	commandline.c \
+	main.c \
+	servald_main.c \
         conf_cli.c \
 	rhizome_cli.c \
 	keyring_cli.c \
@@ -60,7 +63,6 @@ SERVAL_DAEMON_SOURCES = \
 	keyring.c \
 	log.c \
 	lsif.c \
-	main.c \
 	radio_link.c \
 	meshms.c \
 	meshmb.c \
@@ -112,9 +114,14 @@ SERVAL_DAEMON_SOURCES = \
 	fec-3.0.1/encode_rs_8.c \
 	fec-3.0.1/init_rs_char.c
 
+SERVAL_DAEMON_JNI_SOURCES = \
+	jni_common.c \
+	jni_commandline.c \
+	jni_server.c
+
 TEST_SOURCES = \
-	commandline.c \
 	main.c \
+	servald_main.c \
 	test_cli.c \
 	log_context.c \
 	log_stderr.c \

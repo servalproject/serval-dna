@@ -1,5 +1,5 @@
 /*
-Serval DNA main command-line entry point
+Serval DNA JNI common definitions
 Copyright (C) 2016 Flinders University
 
 This program is free software; you can redistribute it and/or
@@ -17,9 +17,18 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-extern int servald_main(int, char**);
+#ifndef HAVE_JNI_H
+#error <jni.h> is not available
+#endif
 
-int main(int argc, char **argv)
-{
-  return servald_main(argc, argv);
-}
+#include <jni.h>
+
+// Stop OpenJDK 7 from foisting their UNUSED() macro on us in <jni_md.h>
+// N.B. This means that "feature.h" can only be included _after_ this header
+// file, because it defines UNUSED().
+#ifdef UNUSED
+# undef UNUSED
+#endif
+
+// Throw a Java exception and return -1.
+int jni_throw(JNIEnv *env, const char *class_name, const char *msg);

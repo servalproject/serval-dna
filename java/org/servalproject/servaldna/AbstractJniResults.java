@@ -3,22 +3,9 @@ package org.servalproject.servaldna;
 public abstract class AbstractJniResults implements IJniResults {
 
 	@Override
-	public void startResultSet(int columns) {
-		putBlob(Integer.toString(columns).getBytes());
-	}
-
-	@Override
-	public void setColumnName(int i, String name) {
-		putBlob(name.getBytes());
-	}
-
-	@Override
 	public void putString(String value) {
 		putBlob((value != null) ? value.getBytes() : null);
 	}
-
-	@Override
-	public abstract void putBlob(byte[] value);
 
 	@Override
 	public void putLong(long value) {
@@ -31,7 +18,24 @@ public abstract class AbstractJniResults implements IJniResults {
 	}
 
 	@Override
-	public void totalRowCount(int rows) {
+	public void putHexValue(byte[] value) {
+		putBlob(value);
+	}
 
+	@Override
+	public abstract void putBlob(byte[] blob);
+
+	@Override
+	public void startTable(int column_count) {
+		putBlob(Integer.toString(column_count).getBytes());
+	}
+
+	@Override
+	public void setColumnName(int i, String name) {
+		putBlob(name.getBytes());
+	}
+
+	@Override
+	public void endTable(int row_count) {
 	}
 }

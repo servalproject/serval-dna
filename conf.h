@@ -699,7 +699,8 @@ int cf_fmt_socket_type(const char **, const short *typep);
 int cf_opt_encapsulation(short *encapp, const char *text);
 int cf_fmt_encapsulation(const char **, const short *encapp);
 
-extern int cf_limbo;
+extern __thread int cf_initialised;
+extern __thread int cf_limbo;
 extern __thread struct config_main config;
 
 #define IF_DEBUG(flagname) (config.debug.flagname)

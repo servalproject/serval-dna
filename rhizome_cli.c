@@ -610,8 +610,7 @@ static int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_conte
     if (strcmp(manifestpath, "-") == 0) {
       // always extract a manifest to stdout, even if writing the file itself failed.
       cli_field_name(context, "manifest", ":");
-      cli_write(context, m->manifestdata, m->manifest_all_bytes);
-      cli_delim(context, "\n");
+      cli_put_blob(context, m->manifestdata, m->manifest_all_bytes, "\n");
     } else if (!zip_comment) {
       int append = (strcmp(manifestpath, filepath)==0)?1:0;
       // don't write out the manifest if we were asked to append it and writing the file failed.
@@ -746,7 +745,7 @@ static int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context 
     "recipient",
     "name"
   };
-  cli_columns(context, NELS(headers), headers);
+  cli_start_table(context, NELS(headers), headers);
   size_t rowcount = 0;
   int n;
   while ((n = rhizome_list_next(&cursor)) == 1) {
@@ -796,7 +795,7 @@ static int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context 
   keyring = NULL;
   if (n == -1)
     return -1;
-  cli_row_count(context, rowcount);
+  cli_end_table(context, rowcount);
   return 0;
 }
 

@@ -1,6 +1,7 @@
 /*
-Serval DNA command-line functions
+Serval DNA command-line interface
 Copyright (C) 2010-2013 Serval Project Inc.
+Copyright (C) 2016 Flinders University
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -17,20 +18,13 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include <stdio.h>
 #include <assert.h>
 #include "cli.h"
-#include "constants.h"
-#include "serval_types.h"
-#include "rhizome_types.h"
 #include "fdqueue.h"
-#include "os.h"
+#include "str.h"
+#include "strbuf_helpers.h"
 #include "log.h"
 #include "debug.h"
-#include "str.h"
-#include "numeric_str.h"
-#include "strbuf_helpers.h"
-#include "dataformats.h"
 
 int cli_usage(const struct cli_schema *commands, const struct cli_schema *end_commands, XPRINTF xpf)
 {
@@ -359,6 +353,80 @@ int _cli_arg(struct __sourceloc __whence, const struct cli_parsed *parsed, char 
    single function handle both in a fairly simple manner. */
   return 1;
 }
+
+/* Output primitive dispatch.
+ */
+
+void cli_delim(struct cli_context *context, const char *opt)
+{
+  (context->vtable->delim)(context, opt);
+}
+
+void cli_write(struct cli_context *context, const char *buf, size_t len)
+{
+  (context->vtable->write)(context, buf, len);
+}
+
+void cli_puts(struct cli_context *context, const char *str)
+{
+  (context->vtable->puts)(context, str);
+}
+
+void cli_printf(struct cli_context *context, const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  (context->vtable->vprintf)(context, fmt, ap);
+  va_end(ap);
+}
+
+void cli_put_long(struct cli_context *context, int64_t value, const char *delim_opt)
+{
+  (context->vtable->put_long)(context, value, delim_opt);
+}
+
+void cli_put_string(struct cli_context *context, const char *value, const char *delim_opt)
+{
+  (context->vtable->put_string)(context, value, delim_opt);
+}
+
+void cli_put_hexvalue(struct cli_context *context, const unsigned char *value, int length, const char *delim_opt)
+{
+  (context->vtable->put_hexvalue)(context, value, length, delim_opt);
+}
+
+void cli_put_blob(struct cli_context *context, const unsigned char *blob, int length, const char *delim_opt)
+{
+  (context->vtable->put_blob)(context, blob, length, delim_opt);
+}
+
+void cli_start_table(struct cli_context *context, size_t column_count, const char *column_names[])
+{
+  (context->vtable->start_table)(context, column_count, column_names);
+}
+
+void cli_end_table(struct cli_context *context, size_t row_count)
+{
+  (context->vtable->end_table)(context, row_count);
+}
+
+void cli_field_name(struct cli_context *context, const char *name, const char *delim_opt)
+{
+  (context->vtable->field_name)(context, name, delim_opt);
+}
+
+void cli_flush(struct cli_context *UNUSED(context))
+{
+  (context->vtable->flush)(context);
+}
+
+/* Parsing validator functions.
+ */
+
+#include "numeric_str.h"
+#include "serval_types.h"
+#include "dataformats.h"
+#include "rhizome_types.h"
 
 int cli_lookup_did(const char *text)
 {

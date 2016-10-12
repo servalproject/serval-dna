@@ -1,11 +1,33 @@
+/**
+ * Copyright (C) 2014-2015 Serval Project Inc.
+ * Copyright (C) 2016 Flinders University
+ *
+ * This file is part of Serval Software (http://www.servalproject.org)
+ *
+ * Serval Software is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This source code is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this source code; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+
 package org.servalproject.servaldna;
 
 public interface IJniResults {
-	public void startResultSet(int columns);
-	public void setColumnName(int column, String name);
 	public void putString(String value);
-	public void putBlob(byte[] value);
 	public void putLong(long value);
 	public void putDouble(double value);
-	public void totalRowCount(int rows);
+	public void putHexValue(byte[] value); // short binary blob like SID, BID, crypto keys
+	public void putBlob(byte[] blob); 	   // large binary blob like a manifest or payload
+	public void startTable(int column_count);
+	public void setColumnName(int column, String name);
+	public void endTable(int row_count);
 }

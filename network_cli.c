@@ -1,21 +1,22 @@
 /*
- Serval network command line functions
- Copyright (C) 2014 Serval Project Inc.
- 
- This program is free software; you can redistribute it and/or
- modify it under the terms of the GNU General Public License
- as published by the Free Software Foundation; either version 2
- of the License, or (at your option) any later version.
- 
- This program is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU General Public License for more details.
- 
- You should have received a copy of the GNU General Public License
- along with this program; if not, write to the Free Software
- Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- */
+Serval network command line
+Copyright (C) 2014 Serval Project Inc.
+Copyright (C) 2016 Flinders University
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
 
 #include <unistd.h>
 #include <stdint.h>
@@ -336,7 +337,7 @@ static int app_trace(const struct cli_parsed *parsed, struct cli_context *contex
 	len = ob_get(b);
 	cli_put_long(context, i, ":");
 	uint8_t *sid = ob_get_bytes_ptr(b, len);
-	cli_put_string(context, alloca_tohex(sid, len), "\n");
+	cli_put_hexvalue(context, sid, len, "\n");
 	i++;
       }
       ret = 0;
@@ -392,7 +393,7 @@ static int app_id_self(const struct cli_parsed *parsed, struct cli_context *cont
   const char *names[]={
     "sid"
   };
-  cli_columns(context, 1, names);
+  cli_start_table(context, NELS(names), names);
   size_t rowcount=0;
 
   do{
@@ -419,13 +420,13 @@ static int app_id_self(const struct cli_parsed *parsed, struct cli_context *cont
     unsigned i;
     for(i=0;i<a.addrlist.frame_sid_count;i++) {
       rowcount++;
-      cli_put_string(context, alloca_tohex_sid_t(a.addrlist.sids[i]), "\n");
+      cli_put_hexvalue(context, a.addrlist.sids[i].binary, sizeof(a.addrlist.sids[i].binary), "\n");
     }
     /* get ready to ask for next block of SIDs */
     a.packetTypeAndFlags=MDP_GETADDRS;
     a.addrlist.first_sid=a.addrlist.last_sid+1;
   }while(a.addrlist.frame_sid_count==MDP_MAX_SID_REQUEST);
-  cli_row_count(context, rowcount);
+  cli_end_table(context, rowcount);
   overlay_mdp_client_close(mdp_sockfd);
   return 0;
 }
@@ -496,7 +497,7 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
     "Next hop",
     "Prior hop"
   };
-  cli_columns(context, 5, names);
+  cli_start_table(context, NELS(names), names);
   size_t rowcount=0;
 
   sigIntFlag = 0;
@@ -554,7 +555,7 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
 	  }
 	}
 
-	cli_put_string(context, alloca_tohex_sid_t(*sid), ":");
+	cli_put_hexvalue(context, sid->binary, sizeof(sid->binary), ":");
 	char flags[32];
 	strbuf b = strbuf_local_buf(flags);
 
@@ -579,8 +580,8 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
 	}
 	cli_put_string(context, strbuf_str(b), ":");
 	cli_put_string(context, interface_name, ":");
-	cli_put_string(context, next_hop?alloca_tohex_sid_t(*next_hop):"", ":");
-	cli_put_string(context, prior_hop?alloca_tohex_sid_t(*prior_hop):"", "\n");
+	cli_put_hexvalue(context, next_hop ? next_hop->binary : NULL, next_hop ? sizeof(next_hop->binary) : 0, ":");
+	cli_put_hexvalue(context, prior_hop ? prior_hop->binary : NULL, prior_hop ? sizeof(prior_hop->binary) : 0, "\n");
 	rowcount++;
       }
     }
@@ -592,7 +593,7 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
   signal(SIGINT, SIG_DFL);
   sigIntFlag = 0;
   ret = 0;
-  cli_row_count(context, rowcount);
+  cli_end_table(context, rowcount);
 
 end:
   mdp_close(mdp_sockfd);
@@ -750,7 +751,7 @@ static int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *c
     "did",
     "name"
   };
-  cli_columns(context, 3, names);
+  cli_start_table(context, NELS(names), names);
   size_t rowcount = 0;
 
   while (timeout > (now = gettime_ms())){
@@ -813,7 +814,7 @@ static int app_dna_lookup(const struct cli_parsed *parsed, struct cli_context *c
   }
 
   overlay_mdp_client_close(mdp_sockfd);
-  cli_row_count(context, rowcount);
+  cli_end_table(context, rowcount);
   return 0;
 }
 
@@ -904,8 +905,9 @@ static int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_contex
       char did[DID_MAXSIZE + 1];
       char name[64];
       char uri[512];
+      sid_t sid;
       if ( !parseDnaReply((char *)mdp_reply.out.payload, mdp_reply.out.payload_length, sidhex, did, name, uri, NULL)
-	  || !str_is_subscriber_id(sidhex)
+	  || str_to_sid_t(&sid, sidhex) == -1
 	  || !str_is_did(did)
 	  || !str_is_uri(uri)
 	  ) {
@@ -915,8 +917,9 @@ static int app_reverse_lookup(const struct cli_parsed *parsed, struct cli_contex
       }
 
       /* Got a good DNA reply, copy it into place and stop polling */
+      
       cli_field_name(context, "sid", ":");
-      cli_put_string(context, sidhex, "\n");
+      cli_put_hexvalue(context, sid.binary, sizeof(sid.binary), "\n");
       cli_field_name(context, "did", ":");
       cli_put_string(context, did, "\n");
       cli_field_name(context, "name", ":");

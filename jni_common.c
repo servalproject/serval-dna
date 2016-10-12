@@ -1,5 +1,5 @@
 /*
-Serval DNA main command-line entry point
+Serval DNA JNI common definitions
 Copyright (C) 2016 Flinders University
 
 This program is free software; you can redistribute it and/or
@@ -17,9 +17,15 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-extern int servald_main(int, char**);
+#include "jni_common.h"
+#include "log.h"
 
-int main(int argc, char **argv)
+int jni_throw(JNIEnv *env, const char *class_name, const char *msg)
 {
-  return servald_main(argc, argv);
+  jclass exceptionClass = NULL;
+  if ((exceptionClass = (*env)->FindClass(env, class_name)) == NULL) {
+    return WHYF("Java exception class not found: %s", class_name);
+  }
+  (*env)->ThrowNew(env, exceptionClass, msg);
+  return -1;
 }

@@ -152,9 +152,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 extern const char version_servald[];
 extern const char copyright_servald[];
-
-struct cli_parsed;
-
 int rhizome_enabled();
 int rhizome_http_server_running();
 
@@ -215,8 +212,6 @@ void logServalPacket(int level, struct __sourceloc __whence, const char *message
 #define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __WHENCE__, (M), (P), (N))
 
 int rhizome_opendb();
-
-int parseCommandLine(struct cli_context *context, const char *argv0, int argc, const char *const *argv);
 
 int allow_inbound_packet(const struct internal_mdp_header *header);
 int allow_outbound_packet(const struct internal_mdp_header *header);

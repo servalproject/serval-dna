@@ -105,6 +105,7 @@ strbuf strbuf_append_shell_quotemeta(strbuf sb, const char *word);
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 strbuf strbuf_append_argv(strbuf sb, int argc, const char *const *argv);
+#define alloca_argv(argc, argv)    strbuf_str(strbuf_append_argv(strbuf_alloca(strbuf_count(strbuf_append_argv(strbuf_alloca(0), (argc), (argv)))), (argc), (argv)))
 
 /* Append a textual description of a process exit status as produced by wait(2)
  * and waitpid(2).

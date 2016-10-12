@@ -1,6 +1,8 @@
-/* 
-Serval Distributed Numbering Architecture (DNA)
-Copyright (C) 2010 Paul Gardner-Stephen 
+/*
+Serval DNA server main loop
+Copyright (C) 2010 Paul Gardner-Stephen
+Copyright (C) 2011-2015 Serval Project Inc.
+Copyright (C) 2016 Flinders University
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -17,7 +19,6 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-
 #include <assert.h>
 #include <dirent.h>
 #include <signal.h>
@@ -27,15 +28,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/types.h>
+#ifdef HAVE_LINUX_THREADS
+#include <sys/syscall.h>
+#endif
 
+#include "server.h"
 #include "serval.h"
 #include "conf.h"
 #include "str.h"
+#include "numeric_str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "overlay_interface.h"
 #include "overlay_packet.h"
-#include "server.h"
 #include "keyring.h"
 #include "commandline.h"
 #include "mdp_client.h"
@@ -45,14 +51,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define PIDFILE_NAME	  "servald.pid"
 #define STOPFILE_NAME	  "servald.stop"
 
-__thread int serverMode = 0;
+__thread enum server_mode serverMode = SERVER_NOT_RUNNING;
 __thread keyring_file *keyring=NULL;
 
+struct pid_tid {
+  pid_t pid;
+  pid_t tid;
+};
+
 static char pidfile_path[256];
-static int server_getpid = 0;
+static struct pid_tid server_pid_tid = { .pid = 0, .tid = 0 };
 static int server_pidfd = -1;
-static int server_bind();
-static void server_loop();
 static int server();
 static int server_write_pid();
 static void signal_handler(int signal);
@@ -60,44 +69,68 @@ static void serverCleanUp();
 static const char *_server_pidfile_path(struct __sourceloc __whence);
 #define server_pidfile_path() (_server_pidfile_path(__WHENCE__))
 
-void cli_cleanup(){
+static int server_write_proc_state(const char *path, const char *fmt, ...);
+static int server_get_proc_state(const char *path, char *buff, size_t buff_len);
+
+void cli_cleanup()
+{
   /* clean up after ourselves */
   rhizome_close_db();
   free_subscribers();
   assert(keyring==NULL);
 }
 
-/** Return the PID of the currently running server process, return 0 if there is none.
- */
-int server_pid()
+static pid_t gettid()
 {
-  // Note that if we close another handle on the same file, our lock will disappear.
-  if (server_getpid == getpid())
-    return server_getpid;
+#ifdef HAVE_LINUX_THREADS
+  return syscall(SYS_gettid);
+#else
+  return getpid();
+#endif
+}
+
+static struct pid_tid get_server_pid_tid()
+{
+  // If the server process closes another handle on the same file, its lock will disappear, so this
+  // guards against that happening.
+  if (server_pid_tid.pid == getpid())
+    return server_pid_tid;
+  // Attempt to read the pid, and optionally the tid (Linux thread ID) from the pid file.
   char dirname[1024];
   if (!FORMF_SERVAL_RUN_PATH(dirname, NULL))
-    return -1;
+    goto error;
   struct stat st;
-  if (stat(dirname, &st) == -1)
-    return WHYF_perror("stat(%s)", alloca_str_toprint(dirname));
-  if ((st.st_mode & S_IFMT) != S_IFDIR)
-    return WHYF("Not a directory: %s", dirname);
+  if (stat(dirname, &st) == -1) {
+    WHYF_perror("stat(%s)", alloca_str_toprint(dirname));
+    goto error;
+  }
+  if ((st.st_mode & S_IFMT) != S_IFDIR) {
+    WHYF("Not a directory: %s", dirname);
+    goto error;
+  }
   const char *ppath = server_pidfile_path();
   if (ppath == NULL)
-    return -1;
+    goto error;
   const char *p = strrchr(ppath, '/');
   assert(p != NULL);
-  int pid = -1;
+  int32_t pid = -1;
+  int32_t tid = -1;
   int fd = open(ppath, O_RDONLY);
   if (fd == -1) {
-    if (errno != ENOENT)
-      return WHYF_perror("open(%s, O_RDONLY)", alloca_str_toprint(ppath));
+    if (errno != ENOENT) {
+      WHYF_perror("open(%s, O_RDONLY)", alloca_str_toprint(ppath));
+      goto error;
+    }
   } else {
-    char buf[20];
+    char buf[30];
     ssize_t len = read(fd, buf, sizeof buf);
-    if (len>0){
-      buf[len]=0;
-      pid = atoi(buf);
+    if (len > 0 && (size_t)len < sizeof buf) {
+      buf[len] = '\0';
+      const char *e = NULL;
+      if (str_to_int32(buf, 10, &pid, &e) && *e == ' ')
+	str_to_int32(e + 1, 10, &tid, NULL);
+      else
+	tid = pid;
     }
     if (pid > 0){
       // check that the server process still holds a lock
@@ -109,18 +142,43 @@ int server_pid()
       lock.l_len = len;
       fcntl(fd, F_GETLK, &lock);
       if (lock.l_type == F_UNLCK || lock.l_pid != pid)
-	pid = -1;
+	pid = tid = -1;
     }
     close(fd);
     if (pid > 0)
-      return pid;
+      return (struct pid_tid){ .pid = pid, .tid = tid };
     INFOF("Unlinking stale pidfile %s", ppath);
     unlink(ppath);
+  }
+  return (struct pid_tid){ .pid = 0, .tid = 0 };
+error:
+  return (struct pid_tid){ .pid = -1, .tid = -1 };
+}
+
+// Send a signal to a given process.  Returns 0 if sent, 1 if not sent because the process is non
+// existent (ESRCH), or -1 if not sent due to another error (eg, EPERM).
+static int send_signal(const struct pid_tid *id, int signum)
+{
+#ifdef HAVE_LINUX_THREADS
+  if (id->tid > 0) {
+    if (syscall(SYS_tgkill, id->pid, id->tid, signum) == -1) {
+      if (errno == ESRCH)
+	return 1;
+      WHYF_perror("Cannot send %s to Servald pid=%d tid=%d (pidfile %s)", alloca_signal_name(signum), id->pid, id->tid, server_pidfile_path());
+      return -1;
+    }
+    return 0;
+  }
+#endif // !HAVE_LINUX_THREADS
+  if (kill(id->pid, signum) == -1) {
+    if (errno == ESRCH)
+      return 1;
+    WHYF_perror("Cannot send %s to Servald pid=%d (pidfile %s)", alloca_signal_name(signum), id->pid, server_pidfile_path());
+    return -1;
   }
   return 0;
 }
 
-#define server_pidfile_path() (_server_pidfile_path(__WHENCE__))
 static const char *_server_pidfile_path(struct __sourceloc __whence)
 {
   if (!pidfile_path[0]) {
@@ -130,145 +188,12 @@ static const char *_server_pidfile_path(struct __sourceloc __whence)
   return pidfile_path;
 }
 
-#ifdef HAVE_JNI_H
-
-JNIEnv *server_env=NULL;
-jclass IJniServer= NULL;
-jmethodID aboutToWait, wokeUp, started;
-jobject JniCallback;
-
-JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_server(
-  JNIEnv *env, jobject UNUSED(this), jobject callback, jobject keyring_pin, jobjectArray entry_pins)
+int server_pid()
 {
-  if (!IJniServer){
-    IJniServer = (*env)->FindClass(env, "org/servalproject/servaldna/IJniServer");
-    if (IJniServer==NULL)
-      return Throw(env, "java/lang/IllegalStateException", "Unable to locate class org.servalproject.servaldna.IJniServer");
-    // make sure the interface class cannot be garbage collected between invocations
-    IJniServer = (jclass)(*env)->NewGlobalRef(env, IJniServer);
-    if (IJniServer==NULL)
-      return Throw(env, "java/lang/IllegalStateException", "Unable to create global ref to class org.servalproject.servaldna.IJniServer");
-    aboutToWait = (*env)->GetMethodID(env, IJniServer, "aboutToWait", "(JJJ)J");
-    if (aboutToWait==NULL)
-      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method aboutToWait");
-    wokeUp = (*env)->GetMethodID(env, IJniServer, "wokeUp", "()V");
-    if (wokeUp==NULL)
-      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method wokeUp");
-    started = (*env)->GetMethodID(env, IJniServer, "started", "(Ljava/lang/String;III)V");
-    if (started==NULL)
-      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method started");
-  }
-  
-  int pid = server_pid();
-  if (pid < 0)
-    return Throw(env, "java/lang/IllegalStateException", "Failed to read server pid ");
-  if (pid>0)
-    return Throw(env, "java/lang/IllegalStateException", "Server already running on pid ");
-  
-  cf_reload_strict();
-  
-  int ret = -1;
-  
-  {
-    const char *cpin = keyring_pin?(*env)->GetStringUTFChars(env, keyring_pin, NULL):NULL;
-    if (cpin != NULL){
-      keyring = keyring_open_instance(cpin);
-      (*env)->ReleaseStringUTFChars(env, keyring_pin, cpin);
-    }else{
-      keyring = keyring_open_instance("");
-    }
-  }
-  
-  // Always open all PIN-less entries.
-  keyring_enter_pin(keyring, "");
-  if (entry_pins){
-    jsize len = (*env)->GetArrayLength(env, entry_pins);
-    jsize i;
-    for (i = 0; i < len; ++i) {
-      const jstring pin = (jstring)(*env)->GetObjectArrayElement(env, entry_pins, i);
-      if ((*env)->ExceptionCheck(env))
-	goto end;
-      const char *cpin = (*env)->GetStringUTFChars(env, pin, NULL);
-      if (cpin != NULL){
-	keyring_enter_pin(keyring, cpin);
-	(*env)->ReleaseStringUTFChars(env, pin, cpin);
-      }
-    }
-  }
-  
-  if (server_env){
-    Throw(env, "java/lang/IllegalStateException", "Server java env variable already set");
-    goto end;
-  }
-  
-  server_env = env;
-  JniCallback = (*env)->NewGlobalRef(env, callback);
-  
-  ret = server_bind();
-  
-  if (ret==-1){
-    Throw(env, "java/lang/IllegalStateException", "Failed to bind sockets");
-    goto end;
-  }
-
-  {
-    jstring str = (jstring)(*env)->NewStringUTF(env, instance_path());
-    (*env)->CallVoidMethod(env, callback, started, str, getpid(), mdp_loopback_port, httpd_server_port);
-    (*env)->DeleteLocalRef(env, str);
-  }
-  
-  server_loop();
-  
-end:
-  
-  server_env=NULL;
-  if (JniCallback){
-    (*env)->DeleteGlobalRef(env, JniCallback);
-    JniCallback = NULL;
-  }
-  
-  if (keyring)
-    keyring_free(keyring);
-  keyring = NULL;
-  
-  return ret;
+  return get_server_pid_tid().pid;
 }
 
-static time_ms_t waiting(time_ms_t now, time_ms_t next_run, time_ms_t next_wakeup)
-{
-  if (server_env && JniCallback){
-    jlong r = (*server_env)->CallLongMethod(server_env, JniCallback, aboutToWait, (jlong)now, (jlong)next_run, (jlong)next_wakeup);
-    // stop the server if there are any issues
-    if ((*server_env)->ExceptionCheck(server_env)){
-      serverMode=SERVER_CLOSING;
-      INFO("Stopping server due to exception");
-      return now;
-    }
-    return r;
-  }
-  return next_wakeup;
-}
-
-static void wokeup()
-{
-  if (server_env && JniCallback){
-    (*server_env)->CallVoidMethod(server_env, JniCallback, wokeUp);
-    // stop the server if there are any issues
-    if ((*server_env)->ExceptionCheck(server_env)){
-      INFO("Stopping server due to exception");
-      serverMode=SERVER_CLOSING;
-    }
-  }
-}
-
-#else
-
-#define waiting NULL
-#define wokeup NULL
-
-#endif
-
-static int server_bind()
+int server_bind()
 {
   serverMode = SERVER_RUNNING;
 
@@ -346,16 +271,18 @@ static int server_bind()
   return 0;
 }
 
-static void server_loop()
+void server_loop(time_ms_t (*waiting)(time_ms_t, time_ms_t, time_ms_t), void (*wokeup)())
 {
   cf_on_config_change();
   
-  // log message used by tests to wait for the server to start
+  // This log message is used by tests to wait for the server to start.
   INFOF("Server initialised, entering main loop");
   
   /* Check for activitiy and respond to it */
-  while((serverMode==SERVER_RUNNING) && fd_poll2(waiting, wokeup))
+  while ((serverMode == SERVER_RUNNING) && fd_poll2(waiting, wokeup))
     ;
+
+  INFOF("Server finished, exiting main loop");
   serverCleanUp();
 
   if (server_pidfd!=-1){
@@ -371,13 +298,10 @@ static int server()
   IN();
   if (server_bind()==-1)
     RETURN(-1);
-  
-  server_loop();
-  
-  // note that we haven't tried to free all types of allocated memory used by the server.
-  // so it's safer to force this process to close, instead of trying to release everything.
-  exit(0);
-  OUT();
+
+  server_loop(NULL, NULL);
+
+  RETURN(0);
 }
 
 static int server_write_pid()
@@ -394,16 +318,21 @@ static int server_write_pid()
   if (fd==-1)
     return WHYF_perror("open(%s, O_RDWR | O_CREAT)", alloca_str_toprint(ppath));
 
-  int pid = server_getpid = getpid();
-  char buf[20];
-  int len = snprintf(buf, sizeof buf, "%d", pid);
+  int32_t pid = server_pid_tid.pid = getpid();
+  int32_t tid = server_pid_tid.tid = gettid();
+
+  strbuf sb = strbuf_alloca(30);
+  strbuf_sprintf(sb, "%" PRId32, pid);
+  if (tid != pid)
+    strbuf_sprintf(sb, " %" PRId32, tid);
+  assert(!strbuf_overrun(sb));
 
   struct flock lock;
   bzero(&lock, sizeof lock);
   lock.l_type = F_WRLCK;
   lock.l_start = 0;
   lock.l_whence = SEEK_SET;
-  lock.l_len = len;
+  lock.l_len = strbuf_len(sb);
   if (fcntl(fd, F_SETLK, &lock)==-1){
     close(fd);
     return WHYF_perror("fcntl(%d, F_SETLK, &lock)", fd);
@@ -414,9 +343,9 @@ static int server_write_pid()
     return WHYF_perror("ftruncate(%d, 0)", fd);
   }
 
-  if (write(fd, buf, len)!=len){
+  if (write(fd, strbuf_str(sb), strbuf_len(sb)) != (ssize_t)strbuf_len(sb)){
     close(fd);
-    return WHYF_perror("write(%d, %p, %d)", fd, buf, len);
+    return WHYF_perror("write(%d, %s, %d)", fd, alloca_str_toprint(strbuf_str(sb)), strbuf_len(sb));
   }
 
   // leave the pid file open!
@@ -431,7 +360,7 @@ static int get_proc_path(const char *path, char *buf, size_t bufsiz)
   return 0;
 }
 
-int server_write_proc_state(const char *path, const char *fmt, ...)
+static int server_write_proc_state(const char *path, const char *fmt, ...)
 {
   char path_buf[400];
   if (get_proc_path(path, path_buf, sizeof path_buf)==-1)
@@ -457,7 +386,7 @@ int server_write_proc_state(const char *path, const char *fmt, ...)
   return 0;
 }
 
-int server_get_proc_state(const char *path, char *buff, size_t buff_len)
+static int server_get_proc_state(const char *path, char *buff, size_t buff_len)
 {
   char path_buf[400];
   if (get_proc_path(path, path_buf, sizeof path_buf)==-1)
@@ -649,40 +578,96 @@ static void clean_proc()
 
 static void serverCleanUp()
 {
-  assert(serverMode);
+  assert(serverMode != SERVER_NOT_RUNNING);
+  INFOF("Server cleaning up");
   rhizome_close_db();
   dna_helper_shutdown();
   overlay_interface_close_all();
   overlay_mdp_clean_socket_files();
   release_my_subscriber();
-  serverMode = 0;
+  serverMode = SERVER_NOT_RUNNING;
   clean_proc();
 }
 
-static void signal_handler(int signal)
+static void signal_handler(int signum)
 {
-  switch (signal) {
+  switch (signum) {
     case SIGIO:
       // noop to break out of poll
       return;
     case SIGHUP:
     case SIGINT:
-      /* Trigger the server to close gracefully after any current alarm has completed. 
-         If we get a second signal, exit now.
-      */
-      if (serverMode==SERVER_RUNNING){
-	INFO("Attempting clean shutdown");
-	serverMode=SERVER_CLOSING;
-	return;
+      switch (serverMode) {
+	case SERVER_RUNNING:
+	  // Trigger the server to close gracefully after any current alarm has completed.
+	  INFOF("Caught signal %s -- attempting clean shutdown", alloca_signal_name(signum));
+	  serverMode = SERVER_CLOSING;
+	  return;
+	case SERVER_CLOSING:
+	  // If a second signal is received before the server has gracefully shut down, then forcibly
+	  // terminate it immediately.  If the server is running in a thread, then this will only call
+	  // serverCleanUp() if the signal was received by the same thread that is running the server,
+	  // because serverMode is thread-local.  The zero exit status indicates a clean shutdown.  So
+	  // the "stop" command must send SIGHUP to the correct thread.
+	  WARNF("Caught signal %s -- forced shutdown", alloca_signal_name(signum));
+	  serverCleanUp();
+	  exit(0);
+	case SERVER_NOT_RUNNING:
+	  // If this thread is not running a server, then treat the signal as immediately fatal.
+	  break;
       }
+      // fall through...
     default:
-      LOGF(LOG_LEVEL_FATAL, "Caught signal %s", alloca_signal_name(signal));
+      LOGF(LOG_LEVEL_FATAL, "Caught signal %s", alloca_signal_name(signum));
       LOGF(LOG_LEVEL_FATAL, "The following clue may help: %s", crash_handler_clue); 
       dump_stack(LOG_LEVEL_FATAL);
+      break;
   }
-  
-  serverCleanUp();
-  exit(0);
+
+  // Exit with a status code indicating the caught signal.  This involves removing the signal
+  // handler for the caught signal then re-sending the same signal to ourself.
+  struct sigaction sig;
+  bzero(&sig, sizeof sig);
+  sig.sa_flags = 0;
+  sig.sa_handler = SIG_DFL;
+  sigemptyset(&sig.sa_mask);
+  sigaction(signum, &sig, NULL);
+  kill(getpid(), signum);
+
+  // Just in case...
+  FATALF("Sending %s to self (pid=%d) did not cause exit", alloca_signal_name(signum));
+}
+
+static void cli_server_details(struct cli_context *context, const struct pid_tid *id)
+{
+  const char *ipath = instance_path();
+  if (ipath) {
+    cli_field_name(context, "instancepath", ":");
+    cli_put_string(context, ipath, "\n");
+  }
+
+  cli_field_name(context, "pidfile", ":");
+  cli_put_string(context, server_pidfile_path(), "\n");
+  cli_field_name(context, "status", ":");
+  cli_put_string(context, id->pid > 0 ? "running" : "stopped", "\n");
+
+  if (id->pid > 0) {
+    cli_field_name(context, "pid", ":");
+    cli_put_long(context, id->pid, "\n");
+    if (id->tid > 0 && id->tid != id->pid) {
+      cli_field_name(context, "tid", ":");
+      cli_put_long(context, id->tid, "\n");
+    }
+    char buff[256];
+    if (server_get_proc_state("http_port", buff, sizeof buff)!=-1){
+      cli_field_name(context, "http_port", ":");
+      cli_put_string(context, buff, "\n");
+    }
+    if (server_get_proc_state("mdp_inet_port", buff, sizeof buff)!=-1){
+      cli_field_name(context, "mdp_inet_port", ":");
+      cli_put_string(context, buff, "\n");
+    }
+  }
 }
 
 DEFINE_CMD(app_server_start, 0, 
@@ -706,14 +691,14 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
      network interfaces that we will take interest in. */
   if (config.interfaces.ac == 0)
     NOWHENCE(WARN("No network interfaces configured (empty 'interfaces' config option)"));
-  int pid = server_pid();
-  if (pid < 0)
+  struct pid_tid id = get_server_pid_tid();
+  if (id.pid < 0)
     RETURN(-1);
   int ret = -1;
   // If the pidfile identifies this process, it probably means we are re-spawning after a SEGV, so
   // go ahead and do the fork/exec.
-  if (pid > 0 && pid != getpid()) {
-    WARNF("Server already running (pid=%d)", pid);
+  if (id.pid > 0 && id.pid != getpid()) {
+    WARNF("Server already running (pid=%d)", id.pid);
     ret = 10;
   } else {
     if (foregroundP)
@@ -735,6 +720,8 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
     }
     if (foregroundP) {
       ret = server();
+      // Warning: The server is not rigorous about freeing all memory it allocates, so to avoid
+      // memory leaks, the caller should exit() immediately.
       goto exit;
     }
     const char *dir = getenv("SERVALD_SERVER_CHDIR");
@@ -812,33 +799,16 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
     time_ms_t timeout = gettime_ms() + 5000;
     do {
       sleep_ms(200); // 5 Hz
-    } while ((pid = server_pid()) == 0 && gettime_ms() < timeout);
-    if (pid == -1)
+    } while ((id = get_server_pid_tid()).pid == 0 && gettime_ms() < timeout);
+    if (id.pid == -1)
       goto exit;
-    if (pid == 0) {
+    if (id.pid == 0) {
       WHY("Server process did not start");
       goto exit;
     }
     ret = 0;
   }
-  const char *ipath = instance_path();
-  if (ipath) {
-    cli_field_name(context, "instancepath", ":");
-    cli_put_string(context, ipath, "\n");
-  }
-  cli_field_name(context, "pidfile", ":");
-  cli_put_string(context, server_pidfile_path(), "\n");
-  cli_field_name(context, "pid", ":");
-  cli_put_long(context, pid, "\n");
-  char buff[256];
-  if (server_get_proc_state("http_port", buff, sizeof buff)!=-1){
-    cli_field_name(context, "http_port", ":");
-    cli_put_string(context, buff, "\n");
-  }
-  if (server_get_proc_state("mdp_inet_port", buff, sizeof buff)!=-1){
-    cli_field_name(context, "mdp_inet_port", ":");
-    cli_put_string(context, buff, "\n");
-  }
+  cli_server_details(context, &id);
   cli_flush(context);
   /* Sleep before returning if env var is set.  This is used in testing, to simulate the situation
      on Android phones where the "start" command is invoked via the JNI interface and the calling
@@ -863,47 +833,39 @@ DEFINE_CMD(app_server_stop,CLIFLAG_PERMISSIVE_CONFIG,
 static int app_server_stop(const struct cli_parsed *parsed, struct cli_context *context)
 {
   DEBUG_cli_parsed(verbose, parsed);
-  int			pid, tries, running;
-  time_ms_t		timeout;
-  const char *ipath = instance_path();
-  if (ipath) {
-    cli_field_name(context, "instancepath", ":");
-    cli_put_string(context, ipath, "\n");
-  }
-  cli_field_name(context, "pidfile", ":");
-  cli_put_string(context, server_pidfile_path(), "\n");
-  pid = server_pid();
+  const struct pid_tid id = get_server_pid_tid();
+  cli_server_details(context, &id);
   /* Not running, nothing to stop */
-  if (pid <= 0)
+  if (id.pid <= 0)
     return 1;
-  INFOF("Stopping server (pid=%d)", pid);
+  INFOF("Stopping server (pid=%d)", id.pid);
   /* Set the stop file and signal the process */
-  cli_field_name(context, "pid", ":");
-  cli_put_long(context, pid, "\n");
-  tries = 0;
-  running = pid;
-  while (running == pid) {
+  unsigned tries = 0;
+  pid_t running = id.pid;
+  while (running == id.pid) {
     if (tries >= 5) {
       WHYF("Servald pid=%d (pidfile=%s) did not stop after %d SIGHUP signals",
-	   pid, server_pidfile_path(), tries);
+	   id.pid, server_pidfile_path(), tries);
       return 253;
     }
     ++tries;
-    if (kill(pid, SIGHUP) == -1) {
-      // ESRCH means process is gone, possibly we are racing with another stop, or servald just died
-      // voluntarily.  We DO NOT call serverCleanUp() in this case (once used to!) because that
-      // would race with a starting server process.
-      if (errno == ESRCH)
-	break;
-      WHY_perror("kill");
-      WHYF("Error sending SIGHUP to Servald pid=%d (pidfile %s)", pid, server_pidfile_path());
+    switch (send_signal(&id, SIGHUP)) {
+    case -1:
       return 252;
+    case 0: {
+      // Allow a few seconds for the process to die.
+	time_ms_t timeout = gettime_ms() + 2000;
+	do
+	  sleep_ms(200); // 5 Hz
+	while ((running = get_server_pid_tid().pid) == id.pid && gettime_ms() < timeout);
+      }
+      break;
+    default:
+      // Process no longer exists.  DO NOT call serverCleanUp() (once used to!) because that would
+      // race with a starting server process.
+      running = 0;
+      break;
     }
-    /* Allow a few seconds for the process to die. */
-    timeout = gettime_ms() + 2000;
-    do
-      sleep_ms(200); // 5 Hz
-    while ((running = server_pid()) == pid && gettime_ms() < timeout);
   }
   cli_field_name(context, "tries", ":");
   cli_put_long(context, tries, "\n");
@@ -916,28 +878,7 @@ DEFINE_CMD(app_server_status,CLIFLAG_PERMISSIVE_CONFIG,
 static int app_server_status(const struct cli_parsed *parsed, struct cli_context *context)
 {
   DEBUG_cli_parsed(verbose, parsed);
-  int pid = server_pid();
-  const char *ipath = instance_path();
-  if (ipath) {
-    cli_field_name(context, "instancepath", ":");
-    cli_put_string(context, ipath, "\n");
-  }
-  cli_field_name(context, "pidfile", ":");
-  cli_put_string(context, server_pidfile_path(), "\n");
-  cli_field_name(context, "status", ":");
-  cli_put_string(context, pid > 0 ? "running" : "stopped", "\n");
-  if (pid > 0) {
-    cli_field_name(context, "pid", ":");
-    cli_put_long(context, pid, "\n");
-    char buff[256];
-    if (server_get_proc_state("http_port", buff, sizeof buff)!=-1){
-      cli_field_name(context, "http_port", ":");
-      cli_put_string(context, buff, "\n");
-    }
-    if (server_get_proc_state("mdp_inet_port", buff, sizeof buff)!=-1){
-      cli_field_name(context, "mdp_inet_port", ":");
-      cli_put_string(context, buff, "\n");
-    }
-  }
-  return pid > 0 ? 0 : 1;
+  const struct pid_tid id = get_server_pid_tid();
+  cli_server_details(context, &id);
+  return id.pid > 0 ? 0 : 1;
 }

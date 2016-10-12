@@ -18,6 +18,7 @@
  */
 
 #include <stdio.h>
+#include "features.h"
 #include "cli.h"
 #include "serval_types.h"
 #include "str.h"
@@ -128,7 +129,7 @@ static int app_keyring_list(const struct cli_parsed *parsed, struct cli_context 
     "did",
     "name"
   };
-  cli_columns(context, 3, names);
+  cli_start_table(context, NELS(names), names);
   size_t rowcount = 0;
   
   keyring_iterator it;
@@ -145,7 +146,7 @@ static int app_keyring_list(const struct cli_parsed *parsed, struct cli_context 
     rowcount++;
   }
   keyring_free(k);
-  cli_row_count(context, rowcount);
+  cli_end_table(context, rowcount);
   return 0;
 }
 
@@ -454,7 +455,7 @@ static int app_id_list(const struct cli_parsed *parsed, struct cli_context *cont
   const char *names[]={
     "sid"
   };
-  cli_columns(context, 1, names);
+  cli_start_table(context, NELS(names), names);
   size_t rowcount=0;
   
   time_ms_t timeout=gettime_ms()+5000;
@@ -481,7 +482,7 @@ static int app_id_list(const struct cli_parsed *parsed, struct cli_context *cont
       break;
     }
   }
-  cli_row_count(context, rowcount);
+  cli_end_table(context, rowcount);
 end:
   mdp_close(mdp_sock);
   return ret;

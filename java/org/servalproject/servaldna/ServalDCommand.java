@@ -1,5 +1,6 @@
 /**
- * Copyright (C) 2011 The Serval Project
+ * Copyright (C) 2014-2015 Serval Project Inc.
+ * Copyright (C) 2016 Flinders University
  *
  * This file is part of Serval Software (http://www.servalproject.org)
  *
@@ -34,7 +35,7 @@ public class ServalDCommand
 
 	static
 	{
-		System.loadLibrary("serval");
+		System.loadLibrary("servald");
 	}
 
 	public static final int STATUS_ERROR = 255;
@@ -297,9 +298,9 @@ public class ServalDCommand
 		public void putString(String value) {
 			if (this.columnName.equals("did"))
 				this.did = value;
-			if (this.columnName.equals("name"))
+			else if (this.columnName.equals("name"))
 				this.name = value;
-			if (this.columnName.equals("uri"))
+			else if (this.columnName.equals("uri"))
 				this.uri = value;
 		}
 
