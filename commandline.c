@@ -276,7 +276,7 @@ int parseCommandLine(struct cli_context *context, const char *argv0, int argc, c
    current output field, including any embedded nul characters.  Returns a non-negative integer on
    success, EOF on error.
  */
-int cli_write(struct cli_context *UNUSED(context), const unsigned char *buf, size_t len)
+void cli_write(struct cli_context *UNUSED(context), const unsigned char *buf, size_t len)
 {
 #ifdef HAVE_JNI_H
   if (context && context->jni_env) {
@@ -285,30 +285,30 @@ int cli_write(struct cli_context *UNUSED(context), const unsigned char *buf, siz
       memcpy(context->outv_current, buf, avail);
       context->outv_current = context->outv_limit;
       if (outv_growbuf(context, len) == -1)
-	return EOF;
+	return;
       len -= avail;
       buf += avail;
     }
     memcpy(context->outv_current, buf, len);
     context->outv_current += len;
-    return 0;
+    return;
   }
 #endif
-  return fwrite(buf, len, 1, stdout);
+  fwrite(buf, len, 1, stdout);
 }
 
 /* Write a null-terminated string to output.  If in a JNI call, then this appends the string to the
    current output field.  The terminating null is not included.  Returns a non-negative integer on
    success, EOF on error.
  */
-int cli_puts(struct cli_context *UNUSED(context), const char *str)
+void cli_puts(struct cli_context *UNUSED(context), const char *str)
 {
 #ifdef HAVE_JNI_H
   if (context && context->jni_env)
-    return cli_write(context, (const unsigned char *) str, strlen(str));
+    cli_write(context, (const unsigned char *) str, strlen(str));
   else
 #endif
-    return fputs(str, stdout);
+    fputs(str, stdout);
 }
 
 /* Write a formatted string to output.  If in a JNI call, then this appends the string to the
@@ -500,17 +500,18 @@ void cli_row_count(struct cli_context *UNUSED(context), int UNUSED(rows)){
    JNI call, then this simply writes a newline to standard output (or the value of the
    SERVALD_OUTPUT_DELIMITER env var if set).
  */
-int cli_delim(struct cli_context *UNUSED(context), const char *opt)
+void cli_delim(struct cli_context *UNUSED(context), const char *opt)
 {
 #ifdef HAVE_JNI_H
-  if (context && context->jni_env)
-    return outv_end_field(context);
+  if (context && context->jni_env) {
+    outv_end_field(context);
+    return;
+  }
 #endif
   const char *delim = getenv("SERVALD_OUTPUT_DELIMITER");
   if (delim == NULL)
     delim = opt ? opt : "\n";
   fputs(delim, stdout);
-  return 0;
 }
 
 /* Flush the output fields if they are being written to standard output.

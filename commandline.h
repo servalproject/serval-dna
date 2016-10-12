@@ -47,8 +47,8 @@ DECLARE_SECTION(struct cli_schema, commands);
 #define CMD_COUNT (SECTION_START(commands) - SECTION_END(commands))
 
 void cli_flush(struct cli_context *context);
-int cli_delim(struct cli_context *context, const char *opt);
-int cli_puts(struct cli_context *context, const char *str);
+void cli_delim(struct cli_context *context, const char *opt);
+void cli_puts(struct cli_context *context, const char *str);
 void cli_printf(struct cli_context *context, const char *fmt, ...) __attribute__ (( __ATTRIBUTE_format(printf,2,3) ));
 void cli_columns(struct cli_context *context, int columns, const char *names[]);
 void cli_row_count(struct cli_context *context, int rows);
@@ -56,7 +56,7 @@ void cli_field_name(struct cli_context *context, const char *name, const char *d
 void cli_put_long(struct cli_context *context, int64_t value, const char *delim);
 void cli_put_string(struct cli_context *context, const char *value, const char *delim);
 void cli_put_hexvalue(struct cli_context *context, const unsigned char *value, int length, const char *delim);
-int cli_write(struct cli_context *context, const unsigned char *buf, size_t len);
+void cli_write(struct cli_context *context, const unsigned char *buf, size_t len);
 
 void cli_cleanup();
 
