@@ -138,6 +138,8 @@ int message_ply_read_open(struct message_ply_read *ply, const rhizome_bid_t *bid
 
     assert(m->filesize != RHIZOME_SIZE_UNSET);
     ply->read.offset = ply->read.length = m->filesize;
+    if (m->name && *m->name)
+      ply->name = str_edup(m->name);
     ret = 0;
   }
   rhizome_manifest_free(m);
@@ -159,6 +161,10 @@ void message_ply_read_close(struct message_ply_read *ply)
   if (ply->record){
     free(ply->record);
     ply->record=NULL;
+  }
+  if (ply->name){
+    free((void*)ply->name);
+    ply->name = NULL;
   }
   ply->record_size=0;
   ply->buff.len=0;

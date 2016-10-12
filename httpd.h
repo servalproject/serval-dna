@@ -214,6 +214,7 @@ typedef struct httpd_request
       size_t rowcount;
       time_ms_t end_time;
       time_s_t timestamp;
+      bool_t eof;
     } plylist;
     
     struct {

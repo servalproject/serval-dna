@@ -142,8 +142,10 @@ static int strn_to_position_token(const char *str, uint64_t *position, const cha
 
 static int next_ply_message(httpd_request *r){
   if (!message_ply_is_open(&r->u.plylist.ply_reader)){
-    if (message_ply_read_open(&r->u.plylist.ply_reader, &r->bid)==-1)
+    if (message_ply_read_open(&r->u.plylist.ply_reader, &r->bid)==-1){
+      r->u.plylist.eof = 1;
       return -1;
+    }
 
     // skip back to where we were
     if (r->u.plylist.current_offset)
@@ -179,6 +181,7 @@ static int next_ply_message(httpd_request *r){
 	break;
 
       case MESSAGE_BLOCK_TYPE_MESSAGE:
+	r->u.plylist.eof = 0;
 	return 1;
 
       case MESSAGE_BLOCK_TYPE_ACK:
@@ -190,6 +193,7 @@ static int next_ply_message(httpd_request *r){
 	break;
     }
   }
+  r->u.plylist.eof = 1;
   return 0;
 }
 
@@ -210,7 +214,17 @@ static int restful_meshmb_list_json_content_chunk(struct http_request *hr, strbu
 
   switch (r->u.plylist.phase) {
     case LIST_HEADER:
-      strbuf_puts(b, "{\n\"header\":[");
+
+      strbuf_puts(b, "{\n");
+
+      // open the ply now in order to read the manifest name
+      if (!message_ply_is_open(&r->u.plylist.ply_reader))
+	next_ply_message(r);
+
+      if (r->u.plylist.ply_reader.name)
+	strbuf_sprintf(b, "\"name\":\"%s\",\n", r->u.plylist.ply_reader.name);
+
+      strbuf_puts(b, "\"header\":[");
       unsigned i;
       for (i = 0; i != NELS(headers); ++i) {
 	if (i)
@@ -230,7 +244,8 @@ ROWS:
 	// re-load the current message text
 	if (next_ply_message(r)!=1)
 	  goto END;
-      }
+      } else if (r->u.plylist.eof)
+	  goto END;
 
       if (r->u.plylist.rowcount!=0)
 	strbuf_putc(b, ',');

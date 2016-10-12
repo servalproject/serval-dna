@@ -17,6 +17,7 @@ import java.util.Map;
 public class MessagePlyList extends AbstractJsonList<PlyMessage, IOException> {
     private final SigningKey bundleId;
     private final String sinceToken;
+    private String name;
 
     public MessagePlyList(ServalDHttpConnectionFactory httpConnector, SigningKey bundleId, String sinceToken){
         super(httpConnector, new JSONTableScanner()
@@ -26,6 +27,20 @@ public class MessagePlyList extends AbstractJsonList<PlyMessage, IOException> {
                 .addColumn("timestamp", Long.class, JSONTokeniser.Narrow.ALLOW_NULL));
         this.bundleId = bundleId;
         this.sinceToken = sinceToken;
+    }
+
+    public String getName(){
+        return name;
+    }
+
+    @Override
+    protected void consumeHeader() throws JSONInputException, IOException {
+        Object tok = json.nextToken();
+        if (tok.equals("name")) {
+            json.consume(JSONTokeniser.Token.COLON);
+            name = json.consume(String.class);
+            json.consume(JSONTokeniser.Token.COMMA);
+        }
     }
 
     @Override

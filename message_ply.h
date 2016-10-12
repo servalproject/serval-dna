@@ -24,6 +24,8 @@ struct message_ply_read {
   struct rhizome_read read;
   // block buffer
   struct rhizome_read_buffer buff;
+  // copy of the manifest name field
+  const char *name;
   // details of the current record
   uint64_t record_end_offset;
   uint16_t record_length;
