@@ -1,5 +1,6 @@
 package org.servalproject.servaldna.meshmb;
 
+import org.servalproject.json.JSONInputException;
 import org.servalproject.json.JSONTableScanner;
 import org.servalproject.json.JSONTokeniser;
 import org.servalproject.servaldna.AbstractJsonList;

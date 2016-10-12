@@ -13,8 +13,9 @@ import java.net.HttpURLConnection;
  */
 public class MeshMBCommon {
 
-    public static int sendMessage(ServalDHttpConnectionFactory connector, SigningKey id, String text) throws IOException, ServalDInterfaceException
-    {
+    public static final String SERVICE = "MeshMB1";
+
+    public static int sendMessage(ServalDHttpConnectionFactory connector, SigningKey id, String text) throws IOException, ServalDInterfaceException {
         HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshmb/" + id.toHex() + "/sendmessage");
         PostHelper helper = new PostHelper(conn);
         helper.connect();

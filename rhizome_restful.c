@@ -47,6 +47,16 @@ static void finalise_union_rhizome_insert(httpd_request *r)
     rhizome_fail_write(&r->u.insert.write);
 }
 
+static void finalise_union_rhizome_list(httpd_request *r)
+{
+  if (r->u.rhlist.cursor.service)
+    free((void*)r->u.rhlist.cursor.service);
+  r->u.rhlist.cursor.service=NULL;
+  if (r->u.rhlist.cursor.name)
+    free((void*)r->u.rhlist.cursor.name);
+  r->u.rhlist.cursor.name=NULL;
+}
+
 #define LIST_TOKEN_STRLEN (BASE64_ENCODED_LEN(sizeof(serval_uuid_t) + 8))
 #define alloca_list_token(rowid) list_token_to_str(alloca(LIST_TOKEN_STRLEN + 1), (rowid))
 
@@ -176,6 +186,33 @@ static int http_request_rhizome_response(struct httpd_request *r, uint16_t http_
 
 static HTTP_CONTENT_GENERATOR restful_rhizome_bundlelist_json_content;
 
+static int restful_open_cursor(httpd_request *r)
+{
+  assert(r->finalise_union == NULL);
+  r->finalise_union = finalise_union_rhizome_list;
+  r->u.rhlist.phase = LIST_HEADER;
+  r->u.rhlist.rowcount = 0;
+
+  const char *service = http_request_get_query_param(&r->http, "service");
+  if (service && *service){
+    r->u.rhlist.cursor.service = str_edup(service);
+    // TODO fail?
+  }
+
+  const char *name = http_request_get_query_param(&r->http, "name");
+  if (name && *name){
+    r->u.rhlist.cursor.name = str_edup(name);
+    // TODO fail?
+  }
+
+  int ret = rhizome_list_open(&r->u.rhlist.cursor);
+  if (ret == -1)
+    return http_request_rhizome_response(r, 500, "Failed to open list");
+
+  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_rhizome_bundlelist_json_content);
+  return 1;
+}
+
 static int restful_rhizome_bundlelist_json(httpd_request *r, const char *remainder)
 {
   r->http.response.header.content_type = CONTENT_TYPE_JSON;
@@ -189,11 +226,8 @@ static int restful_rhizome_bundlelist_json(httpd_request *r, const char *remaind
     return 404;
   if (r->http.verb != HTTP_VERB_GET)
     return 405;
-  r->u.rhlist.phase = LIST_HEADER;
-  r->u.rhlist.rowcount = 0;
   bzero(&r->u.rhlist.cursor, sizeof r->u.rhlist.cursor);
-  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_rhizome_bundlelist_json_content);
-  return 1;
+  return restful_open_cursor(r);
 }
 
 static HTTP_CONTENT_GENERATOR_STRBUF_CHUNKER restful_rhizome_bundlelist_json_content_chunk;
@@ -201,10 +235,7 @@ static HTTP_CONTENT_GENERATOR_STRBUF_CHUNKER restful_rhizome_bundlelist_json_con
 static int restful_rhizome_bundlelist_json_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
 {
   httpd_request *r = (httpd_request *) hr;
-  int ret = rhizome_list_open(&r->u.rhlist.cursor);
-  if (ret == -1)
-    return -1;
-  ret = generate_http_content_from_strbuf_chunks(hr, (char *)buf, bufsz, result, restful_rhizome_bundlelist_json_content_chunk);
+  int ret = generate_http_content_from_strbuf_chunks(hr, (char *)buf, bufsz, result, restful_rhizome_bundlelist_json_content_chunk);
   rhizome_list_release(&r->u.rhlist.cursor);
   return ret;
 }
@@ -223,15 +254,12 @@ static int restful_rhizome_newsince(httpd_request *r, const char *remainder)
     return 404;
   if (r->http.verb != HTTP_VERB_GET)
     return 405;
-  r->u.rhlist.phase = LIST_HEADER;
-  r->u.rhlist.rowcount = 0;
   bzero(&r->u.rhlist.cursor, sizeof r->u.rhlist.cursor);
   r->u.rhlist.cursor.rowid_since = rowid;
   r->u.rhlist.cursor.oldest_first = 1;
   r->u.rhlist.end_time = gettime_ms() + config.api.restful.newsince_timeout * 1000;
   r->trigger_rhizome_bundle_added = on_rhizome_bundle_added;
-  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_rhizome_bundlelist_json_content);
-  return 1;
+  return restful_open_cursor(r);
 }
 
 static void on_rhizome_bundle_added(httpd_request *r, rhizome_manifest *UNUSED(m))

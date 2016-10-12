@@ -34,6 +34,7 @@ import java.net.URL;
 
 public class MeshMSCommon
 {
+	public static final String SERVICE = "MeshMS2";
 	protected static JSONTokeniser receiveRestfulResponse(HttpURLConnection conn, int expected_response_code) throws IOException, ServalDInterfaceException, MeshMSException
 	{
 		int[] expected_response_codes = { expected_response_code };
