@@ -97,6 +97,27 @@ int rhizome_fetch_delay_ms()
   return config.rhizome.fetch_delay_ms;
 }
 
+int rhizome_add_field_assignment(struct rhizome_manifest_field_assignment *field, const char *arg, size_t arglen)
+{
+  const char *eq;
+  if (arglen > 0 && arg[0] == '!') {
+    field->label = arg + 1;
+    field->labellen = arglen - 1;
+    field->value = NULL;
+  } else if ((eq = strnchr(arg, arglen, '='))) {
+    field->label = arg;
+    field->labellen = eq - arg;
+    field->value = eq + 1;
+    field->valuelen = (arg + arglen) - field->value;
+  } else
+    return WHYF("invalid manifest field argument: %s", alloca_str_toprint(arg));
+  if (!rhizome_manifest_field_label_is_valid(field->label, field->labellen))
+    return WHYF("invalid manifest field label: %s", alloca_toprint(-1, field->label, field->labellen));
+  if (field->value && !rhizome_manifest_field_value_is_valid(field->value, field->valuelen))
+    return WHYF("invalid manifest field value: %s", alloca_toprint(-1, field->value, field->valuelen));
+  return 0;
+}
+
 int rhizome_parse_field_assignments(struct rhizome_manifest_field_assignment *fields, unsigned argc, const char *const *args)
 {
   unsigned i;
@@ -104,22 +125,8 @@ int rhizome_parse_field_assignments(struct rhizome_manifest_field_assignment *fi
     struct rhizome_manifest_field_assignment *field = &fields[i];
     const char *arg = args[i];
     size_t arglen = strlen(arg);
-    const char *eq;
-    if (arglen > 0 && arg[0] == '!') {
-      field->label = arg + 1;
-      field->labellen = arglen - 1;
-      field->value = NULL;
-    } else if ((eq = strchr(arg, '='))) {
-      field->label = arg;
-      field->labellen = eq - arg;
-      field->value = eq + 1;
-      field->valuelen = (arg + arglen) - field->value;
-    } else
-      return WHYF("invalid manifest field argument: %s", alloca_str_toprint(arg));
-    if (!rhizome_manifest_field_label_is_valid(field->label, field->labellen))
-      return WHYF("invalid manifest field label: %s", alloca_toprint(-1, field->label, field->labellen));
-    if (field->value && !rhizome_manifest_field_value_is_valid(field->value, field->valuelen))
-      return WHYF("invalid manifest field value: %s", alloca_toprint(-1, field->value, field->valuelen));
+    if (rhizome_add_field_assignment(field, arg, arglen)==-1)
+      return -1;
   }
   return argc;
 }

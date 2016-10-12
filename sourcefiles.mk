@@ -64,6 +64,7 @@ SERVAL_DAEMON_SOURCES = \
 	radio_link.c \
 	meshms.c \
 	meshmb.c \
+	meshmb_cli.c \
 	message_ply.c \
 	meshms_cli.c \
 	meshms_restful.c \

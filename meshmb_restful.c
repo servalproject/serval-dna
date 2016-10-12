@@ -6,6 +6,7 @@
 #include "numeric_str.h"
 #include "base64.h"
 #include "strbuf_helpers.h"
+#include "keyring.h"
 #include "meshmb.h"
 
 DEFINE_FEATURE(http_rest_meshmb);
@@ -344,6 +345,47 @@ static int restful_meshmb_newsince_list(httpd_request *r, const char *remainder)
   return ret;
 }
 
+/*
+static char *find_token_to_str(char *buf, uint64_t rowid)
+{
+  struct iovec iov[2];
+  iov[0].iov_base = rhizome_db_uuid.u.binary;
+  iov[0].iov_len = sizeof rhizome_db_uuid.u.binary;
+  iov[1].iov_base = &rowid;
+  iov[1].iov_len = sizeof rowid;
+  size_t n = base64url_encodev(buf, iov, 2);
+  assert(n == LIST_TOKEN_STRLEN);
+  buf[n] = '\0';
+  return buf;
+}
+
+static int strn_to_find_token(const char *str, uint64_t *rowidp, const char **afterp)
+{
+  unsigned char token[sizeof rhizome_db_uuid.u.binary + sizeof *rowidp];
+  if (base64url_decode(token, sizeof token, str, 0, afterp, 0, NULL) == sizeof token
+    && cmp_uuid_t(&rhizome_db_uuid, (serval_uuid_t *) &token) == 0
+    && **afterp=='/'){
+    memcpy(rowidp, token + sizeof rhizome_db_uuid.u.binary, sizeof *rowidp);
+    (*afterp)++;
+  }else{
+    // don't skip the token
+    *afterp=str;
+    *rowidp=1;
+  }
+  return 1;
+}
+
+static int restful_meshmb_find(httpd_request *r, const char *remainder)
+{
+  return -1;
+}
+
+static int restful_meshmb_newsince_find(httpd_request *r, const char *remainder)
+{
+  return -1;
+}
+*/
+
 DECLARE_HANDLER("/restful/meshmb/", restful_meshmb_);
 static int restful_meshmb_(httpd_request *r, const char *remainder)
 {
@@ -374,6 +416,16 @@ static int restful_meshmb_(httpd_request *r, const char *remainder)
       handler = restful_meshmb_newsince_list;
       remainder = "";
     }
+/*
+  } else if(strcmp(remainder, "/find.json") == 0) {
+    handler = restful_meshmb_find;
+    remainder = "";
+  } else if (   str_startswith(remainder, "/newsince/", &end) {
+	     && strn_to_find_token(end, &r->ui64, &end)
+	     && strcmp(end, "find.json") == 0) {
+    handler = restful_meshmb_newsince_find;
+    remainder = "";
+    */
   }
 
   if (handler == NULL)

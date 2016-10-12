@@ -56,7 +56,7 @@ struct overlay_buffer;
 struct subscriber{
   // minimum abbreviation length, in bits.
   // Note this must be here to match the memory layout of struct tree_record
-  unsigned tree_depth;
+  size_t tree_depth;
   sid_t sid;
 
   int max_packet_version;

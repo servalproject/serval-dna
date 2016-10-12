@@ -366,7 +366,7 @@ __STRBUF_INLINE strbuf __strbuf_init_chk(strbuf sb, char *buffer, ssize_t size, 
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 __STRBUF_INLINE strbuf strbuf_make(char *buffer, size_t size) {
-  return size < SIZEOF_STRBUF ? NULL : strbuf_init((strbuf) buffer, buffer + SIZEOF_STRBUF, size - SIZEOF_STRBUF);
+  return size < SIZEOF_STRBUF ? NULL : strbuf_init((strbuf) buffer, buffer + SIZEOF_STRBUF, (ssize_t)(size - SIZEOF_STRBUF));
 }
 
 /** Reset a strbuf.  The current position is set to the start of the buffer, so

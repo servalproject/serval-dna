@@ -25,6 +25,50 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <inttypes.h>
 #include <sodium.h>
 
+// all of the response codes we might want to return
+// with well defined semantics
+enum status_codes{
+  // non-specific conditions
+  // - error
+  CODE_ERROR = -1,
+  // - success
+  CODE_OK = 0,
+
+  // For the requested item;
+  // - we (already) have it
+  CODE_FOUND = 1,
+  // - we don't have it
+  CODE_NOT_FOUND = 2,
+  // - we have a newer version
+  CODE_SUPERSEDED = 3,
+  // - we have too many other things we need to keep
+  CODE_EVICTED = 4,
+
+  // - will never fit
+  CODE_TOO_BIG = 5,
+
+  // Something about the supplied data is incorrect.
+  // Anything from syntax errors, to semantic errors or missing required values
+  // Should always be acompanied by a formatted result string
+  CODE_INVALID_ARGUMENT = 6,
+
+  // Environmental issues;
+  // - our back end was locked
+  CODE_BUSY = 7,
+  // - we ran out of ram
+  CODE_OUT_OF_MEMORY = 8,
+
+  // Server state
+  CODE_NOT_RUNNING = 9,
+  CODE_NOT_RESPONDING = 10,
+
+  // ?? or Id not found?
+  //CODE_READONLY = 11,
+  //CODE_CRYPTO_ERROR = 12,
+};
+
+
+
 /* Conveniences to assist readability
  */
 

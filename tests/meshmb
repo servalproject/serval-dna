@@ -10,10 +10,7 @@ setup_identities() {
    setup_servald
    set_instance +A
    executeOk_servald config \
-	set debug.meshms on \
-	set debug.rhizome on \
-        set debug.rhizome_manifest on \
-        set debug.rhizome_store on \
+	set debug.meshmb on \
         set log.console.level debug \
         set log.console.show_time on
    create_identities $1
@@ -75,5 +72,30 @@ test_meshmbListFeeds() {
    assertStdoutLineCount '==' 5
 }
 
+doc_meshmbFollow="Follow another feed"
+setup_meshmbFollow() {
+   setup_identities 3
+   executeOk_servald keyring set did $SIDA1 "" "Feed A"
+   executeOk_servald keyring set did $SIDA2 "" "Feed B"
+   executeOk_servald keyring set did $SIDA3 "" "Feed C"
+   executeOk_servald meshmb send $IDA1 "Message 1"
+   executeOk_servald meshmb send $IDA2 "Message 2"
+   executeOk_servald meshmb send $IDA3 "Message 3"
+}
+test_meshmbFollow() {
+   executeOk_servald meshmb follow $IDA1 $IDA2
+   tfw_cat --stderr
+   executeOk_servald meshmb list following $IDA1
+   tfw_cat --stdout --stderr
+   executeOk_servald meshmb follow $IDA1 $IDA3
+   tfw_cat --stderr
+   executeOk_servald meshmb list following $IDA1
+   tfw_cat --stdout --stderr
+   executeOk_servald meshmb ignore $IDA1 $IDA2
+   tfw_cat --stderr
+   executeOk_servald meshmb list following $IDA1
+   tfw_cat --stdout --stderr
+#TODO list....
+}
 
 runTests "$@"

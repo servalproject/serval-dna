@@ -23,7 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 struct tree_record{
   // number of bits of the binary value, to uniquely identify this record within the tree's current contents
-  unsigned tree_depth;
+  size_t tree_depth;
   uint8_t binary[0];
 };
 

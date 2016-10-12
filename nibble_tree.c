@@ -61,7 +61,7 @@ enum tree_error_reason tree_find(struct tree_root *root, void **result, const ui
 	if (!node_ptr)
 	  return TREE_ERROR;
 	struct tree_record *tree_record = (struct tree_record *)node_ptr;
-	// TODO assert(memcmp(tree_record->binary, binary, bin_length) == 0))?
+	assert(memcmp(tree_record->binary, binary, bin_length) == 0);
 	tree_record ->tree_depth = pos*4;
 	if (result)
 	  *result = node_ptr;
@@ -134,13 +134,15 @@ static int walk(struct tree_node *node, unsigned pos,
       return ret;
     if (node->tree_nodes[i])
       *empty=0;
-    // stop comparing the start sid after looking at the first branch of the tree
+    // stop comparing the start binary after looking at the first branch of the tree
     binary=NULL;
   }
 
   return ret;
 }
 
+// start enumerating the tree from binary, and continue until the end
+// callback is allowed to free any nodes while the walk is in progress
 int tree_walk(struct tree_root *root, const uint8_t *binary, size_t bin_length, walk_callback callback, void *context)
 {
   assert(!binary || bin_length <= root->binary_length);
@@ -151,12 +153,15 @@ int tree_walk(struct tree_root *root, const uint8_t *binary, size_t bin_length, 
 int tree_walk_prefix(struct tree_root *root, const uint8_t *binary, size_t bin_length, walk_callback callback, void *context)
 {
   assert(bin_length <= root->binary_length);
+  //TODO if callback free's nodes, collapse parent tree nodes too without needing to walk again?
   struct tree_node *node = &root->_root_node;
   unsigned pos=0;
+  // look for a branch of the tree with a partial match
   for (; node && pos<bin_length*2; pos++){
     uint8_t i=get_nibble(binary, pos);
     if ((node->is_tree & (1<<i))==0){
       struct tree_record *tree_record = (struct tree_record *)node->tree_nodes[i];
+      // only one match?
       if (tree_record && memcmp(tree_record->binary, binary, bin_length)==0){
 	return callback(&node->tree_nodes[i], context);
       }
@@ -164,6 +169,7 @@ int tree_walk_prefix(struct tree_root *root, const uint8_t *binary, size_t bin_l
     }
     node = node->tree_nodes[i];
   }
+  // walk the whole branch
   uint8_t ignore;
   return walk(node, pos+1, &ignore, NULL, 0, callback, context);
 }
