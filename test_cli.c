@@ -34,8 +34,7 @@
 #include "mem.h"
 #include "str.h"
 
-void cli_cleanup(){}
-void cf_on_config_change(){}
+DEFINE_FEATURE(cli_tests);
 
 DEFINE_CMD(app_byteorder_test, 0,
   "Run byte order handling test",
@@ -323,4 +322,3 @@ static int app_config_test(const struct cli_parsed *UNUSED(parsed), struct cli_c
   }
   return 0;
 }
-

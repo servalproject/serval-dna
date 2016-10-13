@@ -1,6 +1,6 @@
-/* 
+/*
 Serval DNA header file
-Copyright (C) 2010-2012 Paul Gardner-Stephen 
+Copyright (C) 2010-2012 Paul Gardner-Stephen
 Copyright (C) 2012-2013 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
@@ -149,9 +149,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 /* Limit packet payloads to minimise packet loss of big packets in mesh networks */
 #define MAX_DATA_BYTES 256
 
-
-extern const char version_servald[];
-extern const char copyright_servald[];
 int rhizome_enabled();
 int rhizome_http_server_running();
 

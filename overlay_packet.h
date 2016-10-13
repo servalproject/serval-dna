@@ -21,6 +21,7 @@
 #define __SERVAL_DNA__OVERLAY_PACKET_H
 
 #include "serval_types.h"
+#include "feature.h"
 #include "overlay_address.h"
 #include "section.h"
 
@@ -143,6 +144,7 @@ struct internal_binding{
 DECLARE_SECTION(struct internal_binding, bindings);
 
 #define DEFINE_BINDING(PORT, FUNC) \
+  DEFINE_FEATURE(mdp_binding_ ## PORT); \
   static int FUNC(struct internal_mdp_header *, struct overlay_buffer *);\
   static struct internal_binding BIND ## FUNC IN_SECTION(bindings) = { \
     .port = PORT, \

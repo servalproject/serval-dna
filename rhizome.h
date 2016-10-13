@@ -624,7 +624,6 @@ enum rhizome_bundle_status rhizome_retrieve_manifest_by_prefix(const unsigned ch
 enum rhizome_bundle_status rhizome_retrieve_manifest_by_hash_prefix(const uint8_t *prefix, unsigned prefix_len, rhizome_manifest *m);
 enum rhizome_bundle_status rhizome_retrieve_bar_by_hash_prefix(const uint8_t *prefix, unsigned prefix_len, rhizome_bar_t *bar);
 int rhizome_advertise_manifest(struct subscriber *dest, rhizome_manifest *m);
-int rhizome_mdp_send_block(struct subscriber *dest, const rhizome_bid_t *bid, uint64_t version, uint64_t fileOffset, uint32_t bitmap, uint16_t blockLength);
 int rhizome_delete_bundle(const rhizome_bid_t *bidp);
 int rhizome_delete_manifest(const rhizome_bid_t *bidp);
 int rhizome_delete_payload(const rhizome_bid_t *bidp);
@@ -767,7 +766,6 @@ void rhizome_direct_bundle_iterator_unlimit(rhizome_direct_bundle_cursor *r);
 int rhizome_direct_bundle_iterator_pickle_range(rhizome_direct_bundle_cursor *r,
 						unsigned char *pickled,
 						int pickle_buffer_size);
-rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix, size_t prefix_length);
 int rhizome_direct_bundle_iterator_unpickle_range(rhizome_direct_bundle_cursor *r,
 						  const unsigned char *pickled,
 						  int pickle_buffer_size);
@@ -821,15 +819,14 @@ extern rhizome_direct_sync_request *rd_sync_handles[RHIZOME_DIRECT_MAX_SYNC_HAND
 extern int rd_sync_handle_count;
 
 rhizome_direct_sync_request
-*rhizome_direct_new_sync_request(
-				 void (*transport_specific_dispatch_function)
-				 (struct rhizome_direct_sync_request *),
-				 size_t buffer_size, int interval, int mode, 
+*rhizome_direct_new_sync_request(void (*transport_specific_dispatch_function)(struct rhizome_direct_sync_request *),
+				 size_t buffer_size,
+                                 int interval,
+                                 int mode, 
 				 void *transport_specific_state);
 int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r);
 int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r);
-rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
-(unsigned char *buffer,int size,int max_response_bytes);
+rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *buffer,int size,int max_response_bytes);
 
 typedef struct rhizome_direct_transport_state_http {
   int port;

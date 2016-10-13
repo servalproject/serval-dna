@@ -1,5 +1,5 @@
 /* 
-Serval DNA header file
+Serval DNA link-state routing
 Copyright (C) 2015 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
@@ -46,4 +46,4 @@ int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now);
 DECLARE_TRIGGER(nbr_change, struct subscriber *neighbour, uint8_t found, unsigned count);
 DECLARE_TRIGGER(link_change, struct subscriber *subscriber, int prior_reachable);
 
-#endif
+#endif // __SERVAL_DNA__ROUTE_LINK_H

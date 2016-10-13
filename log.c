@@ -34,7 +34,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <dirent.h>
 #include <assert.h>
 
-#include "serval.h"
+#include "version_servald.h"
+#include "instance.h"
 #include "log.h"
 #include "net.h"
 #include "os.h"
@@ -101,11 +102,6 @@ static unsigned mkdir_count;
 static time_t _log_file_start_time;
 static char _log_file_buf[8192];
 static struct strbuf _log_file_strbuf = STRUCT_STRBUF_EMPTY;
-
-/* The log context is a string that can be set as a prefix to all subsequent log messages.
- */
-static char _log_context[16];
-struct strbuf log_context = STRUCT_STRBUF_INIT_STATIC(_log_context);
 
 #ifdef ANDROID
 /* Static variables for sending log output to the Android log.
@@ -227,9 +223,9 @@ static void _log_prefix_context(_log_iterator *it)
 	xprintf(it->xpf, "%s.%03u ", buf, (unsigned int)it->tv.tv_usec / 1000);
     }
   }
-  if (_log_context[0]) {
+  if (strbuf_len(&log_context)) {
     xputs("[", it->xpf);
-    xputs(_log_context, it->xpf);
+    xputs(strbuf_str(&log_context), it->xpf);
     xputs("] ", it->xpf);
   }
 }

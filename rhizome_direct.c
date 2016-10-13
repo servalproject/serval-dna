@@ -1,6 +1,7 @@
 /*
-Serval Mesh Software
-Copyright (C) 2010-2012 Paul Gardner-Stephen
+Serval DNA Rhizome Direct
+Copyright (C) 2012-2015 Serval Project Inc.
+Copyright (C) 2012 Paul Gardner-Stephen
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -107,12 +108,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
   
 */
 
-#include "serval.h"
-#include "conf.h"
-#include "rhizome.h"
-#include "str.h"
-#include "commandline.h"
 #include <assert.h>
+#include "serval.h"
+#include "rhizome.h"
+#include "conf.h"
+#include "str.h"
 
 rhizome_direct_sync_request *rd_sync_handles[RHIZOME_DIRECT_MAX_SYNC_HANDLES];
 int rd_sync_handle_count=0;
@@ -160,20 +160,6 @@ rhizome_direct_sync_request
   rd_sync_handles[rd_sync_handle_count++]=r;
   return r;
 }
-
-/*
-  Initiate a synchronisation episode.
-*/
-int rhizome_direct_start_sync_request(rhizome_direct_sync_request *r)
-{
-  assert(r);
-  assert(r->syncs_started==r->syncs_completed);
-
-  r->syncs_started++;
-
-  return rhizome_direct_continue_sync_request(r);  
-}
-
 int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r)
 {
   assert(r);
@@ -388,156 +374,6 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *bu
     }
 
   return c;
-}
-
-rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix, size_t prefix_length)
-{
-  /* Give a BID prefix, e.g., from a BAR, find the matching manifest and return it.
-     Of course, it is possible that more than one manifest matches.  This should
-     occur only very rarely (with the possible exception of intentional attack, and
-     even then a 64-bit prefix creates a reasonable barrier.  If we move to a new
-     BAR format with 120 or 128 bits of BID prefix, then we should be safe for some
-     time, thus this function taking the BID prefix as an input in preparation for
-     that change).
-
-     Of course, we need to be able to find the manifest.
-     Easiest way is to select with a BID range.  We could instead have an extra
-     database column with the prefix.
-  */
-  rhizome_bid_t low = RHIZOME_BID_ZERO;
-  rhizome_bid_t high = RHIZOME_BID_MAX;
-  assert(prefix_length <= sizeof(rhizome_bid_t));
-  bcopy(bid_prefix, low.binary, prefix_length);
-  bcopy(bid_prefix, high.binary, prefix_length);
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
-      "SELECT manifest, rowid FROM MANIFESTS WHERE id >= ? AND id <= ?",
-      RHIZOME_BID_T, &low,
-      RHIZOME_BID_T, &high,
-      END);
-  sqlite3_blob *blob=NULL;
-  if (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
-    {
-      int ret;
-      int64_t rowid = sqlite3_column_int64(statement, 1);
-      do ret = sqlite3_blob_open(rhizome_db, "main", "manifests", "bar",
-				 rowid, 0 /* read only */, &blob);
-      while (sqlite_code_busy(ret) && sqlite_retry(&retry, "sqlite3_blob_open"));
-      if (!sqlite_code_ok(ret)) {
-	WHYF("sqlite3_blob_open() failed, %s", sqlite3_errmsg(rhizome_db));
-	sqlite3_finalize(statement);
-	return NULL;
-	
-      }
-      sqlite_retry_done(&retry, "sqlite3_blob_open");
-
-      /* Read manifest data from blob */
-
-      size_t manifestblobsize = sqlite3_column_bytes(statement, 0);
-      if (manifestblobsize<1||manifestblobsize>1024) goto error;
-
-      const char *manifestblob = (char *) sqlite3_column_blob(statement, 0);
-      if (!manifestblob)
-	goto error;
-
-      rhizome_manifest *m = rhizome_new_manifest();
-      if (!m)
-	goto error;
-      memcpy(m->manifestdata, manifestblob, manifestblobsize);
-      m->manifest_all_bytes = manifestblobsize;
-      if (   rhizome_manifest_parse(m) == -1
-	  || !rhizome_manifest_validate(m)
-      ) {
-	rhizome_manifest_free(m);
-	goto error;
-      }
-      
-      DEBUGF(rhizome_direct, "Read manifest");
-      sqlite3_blob_close(blob);
-      sqlite3_finalize(statement);
-      return m;
-
- error:
-      sqlite3_blob_close(blob);
-      sqlite3_finalize(statement);
-      return NULL;
-    }
-  else 
-    {
-      DEBUGF(rhizome_direct, "no matching manifests");
-      sqlite3_finalize(statement);
-      return NULL;
-    }
-
-}
-
-static int rhizome_sync_with_peers(int mode, int peer_count, const struct config_rhizome_peer *const *peers)
-{
-
-  /* Get iterator capable of 64KB buffering.
-     In future we should parse the sync URL and base the buffer size on the
-     transport and allowable traffic volumes. */
-  rhizome_direct_transport_state_http *state = emalloc_zero(sizeof(rhizome_direct_transport_state_http));
-  /* XXX This code runs each sync in series, when we can probably do them in
-     parallel.  But we can't really do them in parallel until we make the
-     synchronisation process fully asynchronous, which probably won't happen
-     for a while yet.
-     Also, we don't currently parse the URI protocol field fully. */
-  int peer_number;
-  for (peer_number = 0; peer_number < peer_count; ++peer_number) {
-    const struct config_rhizome_peer *peer = peers[peer_number];
-    if (strcasecmp(peer->protocol, "http") != 0)
-      return WHYF("Unsupported Rhizome Direct protocol %s", alloca_str_toprint(peer->protocol));
-    strbuf h = strbuf_local_buf(state->host);
-    strbuf_puts(h, peer->host);
-    if (strbuf_overrun(h))
-      return WHYF("Rhizome Direct host name too long: %s", alloca_str_toprint(peer->host));
-    state->port = peer->port;
-    DEBUGF(rhizome_direct, "Rhizome direct peer is %s://%s:%d", peer->protocol, state->host, state->port);
-    rhizome_direct_sync_request *s = rhizome_direct_new_sync_request(rhizome_direct_http_dispatch, 65536, 0, mode, state);
-    rhizome_direct_start_sync_request(s);
-    if (rd_sync_handle_count > 0)
-      while (fd_poll() && rd_sync_handle_count > 0)
-	;
-  }
-  return 0;
-}
-
-DEFINE_CMD(app_rhizome_direct_sync, 0,
-  "Synchronise with the specified Rhizome Direct server.",
-  "rhizome","direct","push|pull|sync","[<url>]");
-static int app_rhizome_direct_sync(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
-{
-  DEBUG_cli_parsed(verbose, parsed);
-  /* Attempt to connect with a remote Rhizome Direct instance,
-     and negotiate which BARs to synchronise. */
-  const char *modeName = (parsed->argc >= 3 ? parsed->args[2] : "sync");
-  int mode=3; /* two-way sync */
-  if (!strcasecmp(modeName,"push")) mode=1; /* push only */
-  if (!strcasecmp(modeName,"pull")) mode=2; /* pull only */
-  DEBUGF(rhizome_direct, "sync direction = %d",mode);
-  rhizome_opendb();
-  if (parsed->args[3]) {
-    struct config_rhizome_peer peer;
-    const struct config_rhizome_peer *peers[1] = { &peer };
-    int result = cf_opt_rhizome_peer_from_uri(&peer, parsed->args[3]);
-    if (result == CFOK)
-      return rhizome_sync_with_peers(mode, 1, peers);
-    else {
-      strbuf b = strbuf_alloca(128);
-      strbuf_cf_flag_reason(b, result);
-      return WHYF("Invalid peer URI %s -- %s", alloca_str_toprint(parsed->args[3]), strbuf_str(b));
-    }
-  } else if (config.rhizome.direct.peer.ac == 0) {
-    DEBUG(rhizome_direct, "No rhizome direct peers were configured or supplied");
-    return -1;
-  } else {
-    const struct config_rhizome_peer *peers[config.rhizome.direct.peer.ac];
-    unsigned i;
-    for (i = 0; i < config.rhizome.direct.peer.ac; ++i)
-      peers[i] = &config.rhizome.direct.peer.av[i].value;
-    return rhizome_sync_with_peers(mode, config.rhizome.direct.peer.ac, peers);
-  }
 }
 
 rhizome_direct_bundle_cursor *rhizome_direct_bundle_iterator(size_t buffer_size)

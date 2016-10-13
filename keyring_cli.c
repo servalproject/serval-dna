@@ -29,6 +29,8 @@
 #include "commandline.h"
 #include "keyring.h"
 
+DEFINE_FEATURE(cli_keyring);
+
 DEFINE_CMD(app_keyring_create, 0,
   "Create a new keyring file.",
   "keyring","create");

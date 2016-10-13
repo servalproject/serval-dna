@@ -27,6 +27,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "mdp_client.h"
 #include "server.h"
 
+DEFINE_FEATURE(cli_config);
+
 DEFINE_CMD(app_config_schema, CLIFLAG_PERMISSIVE_CONFIG,
    "Display configuration schema.",
    "config", "schema");

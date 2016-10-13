@@ -1,7 +1,6 @@
 /*
-Serval DNA signal handlers
-Copyright (C) 2014 Serval Project Inc.
-Copyright (C) 2012 Paul Gardner-Stephen
+Serval DNA test features
+Copyright (C) 2016 Flinders University
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -18,26 +17,14 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "lang.h"
-#include "sighandlers.h"
+#include "feature.h"
 
-int sigPipeFlag=0;
-int sigIoFlag=0;
-int sigIntFlag=0;
-
-void sigPipeHandler(int UNUSED(signal))
+void test_features()
 {
-  sigPipeFlag++;
-  return;
+  USE_FEATURE(cli_version);
+  USE_FEATURE(cli_echo);
+  USE_FEATURE(cli_log);
+  USE_FEATURE(cli_tests);
 }
 
-void sigIoHandler(int UNUSED(signal))
-{
-  sigIoFlag++;
-  return;
-}
-
-void sigIntHandler(int UNUSED(signal))
-{
-  sigIntFlag++;
-}
+void cli_cleanup() {}

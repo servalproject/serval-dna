@@ -35,6 +35,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "server.h"
 #include "serval.h"
+#include "rhizome.h"
 #include "conf.h"
 #include "log.h"
 #include "str.h"
@@ -48,19 +49,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "mdp_client.h"
 #include "route_link.h"
 
+DEFINE_FEATURE(cli_server);
+
 #define PROC_SUBDIR	  "proc"
 #define PIDFILE_NAME	  "servald.pid"
 #define STOPFILE_NAME	  "servald.stop"
 
 __thread enum server_mode serverMode = SERVER_NOT_RUNNING;
-__thread keyring_file *keyring=NULL;
 
 struct pid_tid {
   pid_t pid;
   pid_t tid;
 };
 
-static char pidfile_path[256];
 static struct pid_tid server_pid_tid = { .pid = 0, .tid = 0 };
 static int server_pidfd = -1;
 static int server();
@@ -72,14 +73,6 @@ static const char *_server_pidfile_path(struct __sourceloc __whence);
 
 static int server_write_proc_state(const char *path, const char *fmt, ...);
 static int server_get_proc_state(const char *path, char *buff, size_t buff_len);
-
-void cli_cleanup()
-{
-  /* clean up after ourselves */
-  rhizome_close_db();
-  free_subscribers();
-  assert(keyring==NULL);
-}
 
 static pid_t gettid()
 {
@@ -182,6 +175,7 @@ static int send_signal(const struct pid_tid *id, int signum)
 
 static const char *_server_pidfile_path(struct __sourceloc __whence)
 {
+  static char pidfile_path[256];
   if (!pidfile_path[0]) {
     if (!FORMF_SERVAL_RUN_PATH(pidfile_path, PIDFILE_NAME))
       return NULL;
@@ -689,13 +683,11 @@ static int app_server_start(const struct cli_parsed *parsed, struct cli_context 
     RETURN(-1);
   int seed = cli_arg(parsed, "--seed", NULL, NULL, NULL) == 0;
   int foregroundP = cli_arg(parsed, "foreground", NULL, NULL, NULL) == 0;
+  if (config.interfaces.ac == 0)
+    NOWHENCE(WARN("No network interfaces configured (empty 'interfaces' config option)"));
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     RETURN(-1);
-  /* Now that we know our instance path, we can ask for the default set of
-     network interfaces that we will take interest in. */
-  if (config.interfaces.ac == 0)
-    NOWHENCE(WARN("No network interfaces configured (empty 'interfaces' config option)"));
   struct pid_tid id = get_server_pid_tid();
   if (id.pid < 0)
     RETURN(-1);

@@ -19,7 +19,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "commandline.h"
-#include "serval.h"
 #include "conf.h"
 #include "str.h"
 #include "cli_stdio.h"
@@ -30,20 +29,6 @@ DEFINE_CMD(app_usage, CLIFLAG_PERMISSIVE_CONFIG,
 static int app_usage(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
 {
   return cli_usage_parsed(parsed, XPRINTF_STDIO(stdout));
-}
-
-DEFINE_CMD(version_message,CLIFLAG_PERMISSIVE_CONFIG,
-  "Display copyright information.",
-  "version|copyright");
-static int version_message(const struct cli_parsed *UNUSED(parsed), struct cli_context *UNUSED(context))
-{
-  printf("Serval DNA version %s\n%s\n", version_servald, copyright_servald);
-  printf("\
-License GPLv2+: GNU GPL version 2 or later <http://gnu.org/licenses/gpl.html>.\n\
-This is free software: you are free to change and redistribute it.\n\
-There is NO WARRANTY, to the extent permitted by law.\n\
-");
-  return 0;
 }
 
 /* Parse the command line and load the configuration.  If a command was found then execute the
@@ -60,6 +45,8 @@ int commandline_main(struct cli_context *context, const char *argv0, int argc, c
 {
   fd_clearstats();
   IN();
+
+  cf_init();
   
   struct cli_parsed parsed;
   int result = cli_parse(argc, args, SECTION_START(commands), SECTION_END(commands), &parsed);
@@ -107,42 +94,4 @@ int commandline_main_stdio(FILE *output, const char *argv0, int argc, const char
   };
 
   return commandline_main(&cli_context, argv0, argc, args);
-}
-
-DEFINE_CMD(app_echo,CLIFLAG_PERMISSIVE_CONFIG,
-  "Output the supplied string.",
-  "echo","[-e]","[--]","...");
-static int app_echo(const struct cli_parsed *parsed, struct cli_context *context)
-{
-  DEBUG_cli_parsed(verbose, parsed);
-  int escapes = !cli_arg(parsed, "-e", NULL, NULL, NULL);
-  unsigned i;
-  for (i = parsed->varargi; i < parsed->argc; ++i) {
-    const char *arg = parsed->args[i];
-    DEBUGF(verbose, "echo:argv[%d]=\"%s\"", i, arg);
-    if (escapes) {
-      char buf[strlen(arg)];
-      size_t len = strn_fromprint(buf, sizeof buf, arg, 0, '\0', NULL);
-      cli_write(context, buf, len);
-    } else
-      cli_puts(context, arg);
-    cli_delim(context, NULL);
-  }
-  return 0;
-}
-
-DEFINE_CMD(app_log,CLIFLAG_PERMISSIVE_CONFIG,
-  "Log the supplied message at given level.",
-  "log","error|warn|hint|info|debug","<message>");
-static int app_log(const struct cli_parsed *parsed, struct cli_context *UNUSED(context))
-{
-  DEBUG_cli_parsed(verbose, parsed);
-  assert(parsed->argc == 3);
-  const char *lvl = parsed->args[1];
-  const char *msg = parsed->args[2];
-  int level = string_to_log_level(lvl);
-  if (level == LOG_LEVEL_INVALID)
-    return WHYF("invalid log level: %s", lvl);
-  logMessage(level, __NOWHERE__, "%s", msg);
-  return 0;
 }

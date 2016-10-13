@@ -31,6 +31,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "socket.h"
 
+DEFINE_FEATURE(http_rhizome_direct);
+
 DECLARE_HANDLER("/rhizome/import", rhizome_direct_import);
 DECLARE_HANDLER("/rhizome/enquiry", rhizome_direct_enquiry);
 DECLARE_HANDLER("/rhizome/", rhizome_direct_dispatch);
@@ -461,6 +463,8 @@ static int fill_buffer(int sock, unsigned char *buffer, int len, int buffer_size
   return 0;
 }
 
+static rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix, size_t prefix_length);
+
 void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 {
   DEBUGF(rhizome_tx, "Dispatch size_high=%"PRId64,r->cursor->size_high);
@@ -806,3 +810,85 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
      But this will do for now. */
   rhizome_direct_continue_sync_request(r);
 }
+
+static rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix, size_t prefix_length)
+{
+  /* Give a BID prefix, e.g., from a BAR, find the matching manifest and return it.
+     Of course, it is possible that more than one manifest matches.  This should
+     occur only very rarely (with the possible exception of intentional attack, and
+     even then a 64-bit prefix creates a reasonable barrier.  If we move to a new
+     BAR format with 120 or 128 bits of BID prefix, then we should be safe for some
+     time, thus this function taking the BID prefix as an input in preparation for
+     that change).
+
+     Of course, we need to be able to find the manifest.
+     Easiest way is to select with a BID range.  We could instead have an extra
+     database column with the prefix.
+  */
+  rhizome_bid_t low = RHIZOME_BID_ZERO;
+  rhizome_bid_t high = RHIZOME_BID_MAX;
+  assert(prefix_length <= sizeof(rhizome_bid_t));
+  bcopy(bid_prefix, low.binary, prefix_length);
+  bcopy(bid_prefix, high.binary, prefix_length);
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  sqlite3_stmt *statement = sqlite_prepare_bind(&retry,
+      "SELECT manifest, rowid FROM MANIFESTS WHERE id >= ? AND id <= ?",
+      RHIZOME_BID_T, &low,
+      RHIZOME_BID_T, &high,
+      END);
+  sqlite3_blob *blob=NULL;
+  if (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
+    {
+      int ret;
+      int64_t rowid = sqlite3_column_int64(statement, 1);
+      do ret = sqlite3_blob_open(rhizome_db, "main", "manifests", "bar",
+				 rowid, 0 /* read only */, &blob);
+      while (sqlite_code_busy(ret) && sqlite_retry(&retry, "sqlite3_blob_open"));
+      if (!sqlite_code_ok(ret)) {
+	WHYF("sqlite3_blob_open() failed, %s", sqlite3_errmsg(rhizome_db));
+	sqlite3_finalize(statement);
+	return NULL;
+	
+      }
+      sqlite_retry_done(&retry, "sqlite3_blob_open");
+
+      /* Read manifest data from blob */
+
+      size_t manifestblobsize = sqlite3_column_bytes(statement, 0);
+      if (manifestblobsize<1||manifestblobsize>1024) goto error;
+
+      const char *manifestblob = (char *) sqlite3_column_blob(statement, 0);
+      if (!manifestblob)
+	goto error;
+
+      rhizome_manifest *m = rhizome_new_manifest();
+      if (!m)
+	goto error;
+      memcpy(m->manifestdata, manifestblob, manifestblobsize);
+      m->manifest_all_bytes = manifestblobsize;
+      if (   rhizome_manifest_parse(m) == -1
+	  || !rhizome_manifest_validate(m)
+      ) {
+	rhizome_manifest_free(m);
+	goto error;
+      }
+      
+      DEBUGF(rhizome_direct, "Read manifest");
+      sqlite3_blob_close(blob);
+      sqlite3_finalize(statement);
+      return m;
+
+ error:
+      sqlite3_blob_close(blob);
+      sqlite3_finalize(statement);
+      return NULL;
+    }
+  else 
+    {
+      DEBUGF(rhizome_direct, "no matching manifests");
+      sqlite3_finalize(statement);
+      return NULL;
+    }
+
+}
+

@@ -21,6 +21,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__KEYRING_H
 #define __SERVAL_DNA__KEYRING_H
 
+#include "serval_types.h" // for sid_t
+#include "os.h" // for time_ms_t
+
 struct cli_parsed;
 #include "xprintf.h"
 

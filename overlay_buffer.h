@@ -20,6 +20,10 @@
 #ifndef __SERVAL_DNA___OVERLAY_BUFFER_H
 #define __SERVAL_DNA___OVERLAY_BUFFER_H
 
+#include <sys/types.h> // for size_t
+#include <stdint.h>
+#include "whence.h"
+
 struct overlay_buffer {
   unsigned char *bytes;
   

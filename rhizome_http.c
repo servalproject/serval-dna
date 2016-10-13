@@ -23,6 +23,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "strbuf.h"
 
+DEFINE_FEATURE(http_rhizome);
+
 DECLARE_HANDLER("/rhizome/status", rhizome_status_page);
 DECLARE_HANDLER("/rhizome/file/", rhizome_file_page);
 DECLARE_HANDLER("/rhizome/manifestbyprefix/", manifest_by_prefix_page);

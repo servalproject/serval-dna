@@ -26,12 +26,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "os.h"
 #include "route_link.h"
 
+DEFINE_FEATURE(http_server);
+
+DECLARE_HANDLER("/", root_page);
 DECLARE_HANDLER("/static/", static_page);
 DECLARE_HANDLER("/interface/", interface_page);
 DECLARE_HANDLER("/neighbour/", neighbour_page);
 DECLARE_HANDLER("/favicon.ico", fav_icon_header);
-DECLARE_HANDLER("/", root_page);
-
 
 static int root_page(httpd_request *r, const char *remainder)
 {

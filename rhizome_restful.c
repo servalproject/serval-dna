@@ -24,6 +24,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "base64.h"
 #include "strbuf_helpers.h"
 
+DEFINE_FEATURE(http_rest_rhizome);
+
 DECLARE_HANDLER("/restful/rhizome/bundlelist.json", restful_rhizome_bundlelist_json);
 DECLARE_HANDLER("/restful/rhizome/newsince/", restful_rhizome_newsince);
 DECLARE_HANDLER("/restful/rhizome/insert", restful_rhizome_insert);

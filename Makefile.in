@@ -23,8 +23,6 @@ ALL_SOURCES = \
 	$(MDP_CLIENT_SOURCES) \
 	$(SERVAL_DAEMON_SOURCES) \
 	$(SERVAL_DAEMON_JNI_SOURCES) \
-	$(TEST_SOURCES) \
-	$(SERVAL_LIB_SOURCES) \
 	$(MONITOR_CLIENT_SRCS) \
 	$(SIMULATOR_SOURCES) \
 	$(SQLITE3_SOURCES)
@@ -32,23 +30,21 @@ ALL_SOURCES = \
 SERVAL_DAEMON_OBJS = \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(MDP_CLIENT_SOURCES:.c=.o)) \
-	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_DAEMON_SOURCES:.c=.o)) \
+	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_DAEMON_SOURCES:.c=.o))
+ifeq (@HAVE_JNI_H@,yes)
+SERVAL_DAEMON_OBJS += \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_DAEMON_JNI_SOURCES:.c=.o))
+endif
 SQLITE3_OBJS = \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(notdir $(SQLITE3_SOURCES:.c=.o)))
 SERVALD_OBJS = \
 	$(SQLITE3_OBJS) \
 	$(SERVAL_DAEMON_OBJS)
-TEST_OBJS = \
-	$(addprefix $(OBJSDIR_SERVALD)/, $(TEST_SOURCES:.c=.o)) \
-	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_CLIENT_SOURCES:.c=.o))
 LIB_SERVAL_OBJS = \
 	$(addprefix $(OBJSDIR_LIB)/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
-	$(addprefix $(OBJSDIR_LIB)/, $(SERVAL_LIB_SOURCES:.c=.o)) \
 	$(addprefix $(OBJSDIR_LIB)/, $(MDP_CLIENT_SOURCES:.c=.o))
 MONITOR_CLIENT_OBJS = \
 	$(addprefix $(OBJSDIR_LIB)/, $(SERVAL_CLIENT_SOURCES:.c=.o)) \
-	$(addprefix $(OBJSDIR_LIB)/, $(SERVAL_LIB_SOURCES:.c=.o)) \
 	$(addprefix $(OBJSDIR_LIB)/, $(MONITOR_CLIENT_SRCS:.c=.o))
 SIMULATOR_OBJS = \
 	$(addprefix $(OBJSDIR_TOOLS)/, $(SIMULATOR_SOURCES:.c=.o))
@@ -93,7 +89,7 @@ DEFS=	@DEFS@
 
 all:	libs servald servaldwrap test
 
-libs:	libservald.so libservald.a \
+libs:	libservald.so \
 	libservalclient.so libservalclient.a \
 	libmonitorclient.so libmonitorclient.a
 
@@ -108,7 +104,7 @@ uninstall:
 clean:
 	@$(RM) -r $(OBJSDIRS:%=%/*) \
 		  servald \
-		  libservald.so libservald.a \
+		  libservald.a \
 		  libservalclient.so libservalclient.a \
 		  libmonitorclient.so libmonitorclient.a \
 		  tfw_createfile directory_service fakeradio simulator serval-tests
@@ -223,7 +219,6 @@ $(OBJSDIR_LIB)/%.o: $(SOURCE_PREFIX)%.c
 $(SERVAL_DAEMON_OBJS): 			$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
 $(SERVALD_OBJS):       			$(SOURCE_PREFIX)Makefile
 $(LIB_SERVAL_OBJS): 			$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
-$(TEST_OBJS): 				$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
 $(OBJSDIR_TOOLS)/tfw_createfile.o:	$(SOURCE_PREFIX)Makefile $(SOURCE_PREFIX)str.h
 $(OBJSDIR_TOOLS)/directory_service.o:	$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
 $(MONITOR_CLIENT_OBJS):			$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
@@ -231,57 +226,62 @@ $(SIMULATOR_OBJS):			$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
 
 # Rules for main targets.
 
-servald: $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
+libservald.a: 	$(SERVALD_OBJS) \
+		$(OBJSDIR_TOOLS)/version.o
+	@echo AR $@
+	@$(AR) -cr $@ $^
+
+libservald.so: \
+		$(OBJSDIR_SERVALD)/servald_features.o \
+		$(OBJSDIR_SERVALD)/jni_commandline.o \
+		$(OBJSDIR_SERVALD)/jni_server.o \
+		libservald.a
 	@echo LINK $@
-	@$(CC) -Wall -o $@ $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
+	@$(CC) -Wall -shared -o $@ $^ $(LDFLAGS)
+
+servald: $(OBJSDIR_SERVALD)/servald_features.o libservald.a
+	@echo LINK $@
+	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 
 servaldwrap: $(OBJSDIR_SERVALD)/servalwrap.o $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
 	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 
-serval-tests: $(TEST_OBJS) $(OBJSDIR_TOOLS)/version.o
+serval-tests: $(OBJSDIR_SERVALD)/test_features.o libservald.a
 	@echo LINK $@
-	@$(CC) -Wall -o $@ $(TEST_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
+	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 
 directory_service: $(OBJSDIR_TOOLS)/directory_service.o libservalclient.a
 	@echo LINK $@
-	@$(CC) -Wall -o $@ $(OBJSDIR_TOOLS)/directory_service.o libservalclient.a $(LDFLAGS)
+	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 
 tfw_createfile: $(OBJSDIR_TOOLS)/tfw_createfile.o libservalclient.a
 	@echo LINK $@
-	@$(CC) -Wall -o $@ $(OBJSDIR_TOOLS)/tfw_createfile.o libservalclient.a $(LDFLAGS)
+	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 
 fakeradio: $(OBJSDIR_TOOLS)/fakeradio.o libservalclient.a
 	@echo LINK $@
-	@$(CC) -Wall -o $@ $(OBJSDIR_TOOLS)/fakeradio.o libservalclient.a $(LDFLAGS)
+	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 
 simulator: $(SIMULATOR_OBJS) libservalclient.a
 	@echo LINK $@
-	@$(CC) -Wall -o $@ $(SIMULATOR_OBJS) libservalclient.a $(LDFLAGS)
-
-libservalclient.so: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
-	@echo AR $@
-	@$(CC) -Wall -shared -o $@ $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
+	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 
 libservalclient.a: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo AR $@
-	@$(AR) -cr $@ $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
+	@$(AR) -cr $@ $^
 
-libservald.so: $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
-	@echo LINK $@
-	@$(CC) -Wall -shared -o $@ $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
-
-libservald.a: $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
+libservalclient.so: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo AR $@
-	@$(AR) -cr $@ $(SERVALD_OBJS) $(OBJSDIR_TOOLS)/version.o
-
-libmonitorclient.so: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
-	@echo LINK $@
-	@$(CC) -Wall -shared -o $@ $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o $(LDFLAGS)
+	@$(CC) -Wall -shared -o $@ $^
 
 libmonitorclient.a: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo AR $@
-	@$(AR) -cr $@ $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
+	@$(AR) -cr $@ $^
+
+libmonitorclient.so: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
+	@echo LINK $@
+	@$(CC) -Wall -shared -o $@ $^ $(LDFLAGS)
 
 # Helpful target to update the COPYRIGHT.txt file by harvesting copyright
 # information from the contents of all the source and header files.  This

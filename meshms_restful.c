@@ -25,6 +25,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "base64.h"
 #include "strbuf_helpers.h"
 
+DEFINE_FEATURE(http_rest_meshms);
+
 DECLARE_HANDLER("/restful/meshms/", restful_meshms_);
 
 static void on_rhizome_bundle_added(httpd_request *r, rhizome_manifest *m);

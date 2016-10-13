@@ -149,6 +149,8 @@ AC_CHECK_HEADERS(
 #endif
 ])
 
+AC_SUBST([HAVE_JNI_H], [$ac_cv_header_jni_h])
+
 dnl libsodium
 
 m4_define([LIBSODIUM_MESSAGE], [
@@ -166,6 +168,22 @@ AC_CHECK_HEADERS(
 )
 
 AC_CHECK_LIB(sodium, sodium_init,, [AC_MSG_ERROR([missing libsodium LIBSODIUM_MESSAGE([LIBRARY_PATH])])])
+
+dnl Check if the Linux gettid() and tgkill() system calls are supported.
+AC_CACHE_CHECK([Linux gettid() and tgkill()], ac_cv_have_linux_gettid_tgkill, [
+    ac_cv_have_linux_gettid_tgkill=no
+    AC_COMPILE_IFELSE(
+        [AC_LANG_PROGRAM([
+                #include <unistd.h>
+                #include <sys/syscall.h>
+                #include <signal.h>
+            ],
+            [syscall(SYS_tgkill, getpid(), syscall(SYS_gettid), SIGHUP)]
+        )],
+        [ac_cv_have_linux_gettid_tgkill=yes]
+    )
+])
+AS_IF([test "x$ac_cv_have_linux_gettid_tgkill" = xyes], [AC_DEFINE([HAVE_LINUX_THREADS])])
 
 dnl Lazy way of checking for Linux
 AS_IF([test "x$ac_cv_header_linux_if_h" = xyes], [AC_DEFINE([USE_ABSTRACT_NAMESPACE])])

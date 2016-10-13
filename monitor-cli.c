@@ -32,7 +32,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "monitor-client.h"
 #include "commandline.h"
 
-int remote_print(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *UNUSED(context))
+DEFINE_FEATURE(cli_monitor);
+
+static int remote_print(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *UNUSED(context))
 {
   int i;
   printf("%s",cmd);

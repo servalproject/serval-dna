@@ -382,6 +382,8 @@ static void monitor_read(struct sched_ent *alarm){
   }
 }
 
+DEFINE_FEATURE(cli_vomp_console);
+
 DEFINE_CMD(app_vomp_console, 0,
   "Test phone call life-cycle from the console",
   "console");

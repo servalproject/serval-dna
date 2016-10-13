@@ -25,6 +25,8 @@
 #include "rhizome.h"
 #include "instance.h"
 
+DEFINE_FEATURE(cli_rhizome);
+
 static void cli_put_manifest(struct cli_context *context, const rhizome_manifest *m)
 {
   assert(m->filesize != RHIZOME_SIZE_UNSET);

@@ -1,5 +1,6 @@
 /*
 Serval DNA MDP overlay network link tracking
+Copyright (C) 2016 Flinders University
 Copyright (C) 2012-2013 Serval Project Inc.
 Copyright (C) 2010-2012 Paul Gardner-Stephen
  
@@ -79,7 +80,7 @@ int set_reachable(struct subscriber *subscriber,
   return 1;
 }
 
-int resolve_name(const char *name, struct in_addr *addr){
+static int resolve_name(const char *name, struct in_addr *addr){
   // TODO this can block, move to worker thread.
   IN();
   int ret=0;
@@ -139,32 +140,6 @@ struct network_destination *load_subscriber_address(struct subscriber *subscribe
   return create_unicast_destination(&addr, interface);
 }
 
-/* Collection of unicast echo responses to detect working links */
-DEFINE_BINDING(MDP_PORT_PROBE, overlay_mdp_service_probe);
-static int overlay_mdp_service_probe(struct internal_mdp_header *header, struct overlay_buffer *payload)
-{
-  IN();
-  if (header->source_port!=MDP_PORT_ECHO){
-    WARN("Probe packets should be returned from remote echo port");
-    RETURN(-1);
-  }
-  DEBUGF(overlayrouting, "Received probe response from %s", alloca_tohex_sid_t(header->source->sid));
-  
-  if (header->source->reachable == REACHABLE_SELF)
-    RETURN(0);
-  
-  uint8_t interface = ob_get(payload);
-  struct socket_address addr;
-  addr.addrlen = ob_remaining(payload);
-  
-  if (addr.addrlen > sizeof(addr.store))
-    RETURN(WHY("Badly formatted probe packet"));
-  
-  ob_get_bytes(payload, (unsigned char*)&addr.addr, addr.addrlen);
-  
-  RETURN(link_unicast_ack(header->source, &overlay_interfaces[interface], &addr));
-  OUT();
-}
 
 int overlay_send_probe(struct subscriber *peer, struct network_destination *destination, int queue){
   time_ms_t now = gettime_ms();
@@ -204,95 +179,6 @@ int overlay_send_probe(struct subscriber *peer, struct network_destination *dest
 	 alloca_socket_address(&destination->address), 
 	 peer?alloca_tohex_sid_t(peer->sid):"ANY"
 	);
-  return 0;
-}
-
-// append the address of a unicast link into a packet buffer
-static void overlay_append_unicast_address(struct subscriber *subscriber, struct overlay_buffer *buff)
-{
-  if (   subscriber->destination 
-      && subscriber->destination->unicast
-      && subscriber->destination->address.addr.sa_family==AF_INET
-  ) {
-    overlay_address_append(NULL, buff, subscriber);
-    ob_append_ui32(buff, subscriber->destination->address.inet.sin_addr.s_addr);
-    ob_append_ui16(buff, subscriber->destination->address.inet.sin_port);
-    DEBUGF(overlayrouting, "Added STUN info for %s", alloca_tohex_sid_t(subscriber->sid));
-  }else{
-    DEBUGF(overlayrouting, "Unable to give address of %s, %d", alloca_tohex_sid_t(subscriber->sid),subscriber->reachable);
-  }
-}
-
-DEFINE_BINDING(MDP_PORT_STUNREQ, overlay_mdp_service_stun_req);
-static int overlay_mdp_service_stun_req(struct internal_mdp_header *header, struct overlay_buffer *payload)
-{
-  DEBUGF(overlayrouting, "Processing STUN request from %s", alloca_tohex_sid_t(header->source->sid));
-
-  struct internal_mdp_header reply;
-  bzero(&reply, sizeof reply);
-  
-  mdp_init_response(header, &reply);
-  reply.qos = OQ_MESH_MANAGEMENT;
-  
-  struct overlay_buffer *replypayload = ob_new();
-  ob_limitsize(replypayload, MDP_MTU);
-  
-  ob_checkpoint(replypayload);
-  while (ob_remaining(payload) > 0) {
-    struct subscriber *subscriber=NULL;
-    if (overlay_address_parse(NULL, payload, &subscriber))
-      break;
-    if (!subscriber){
-      DEBUGF(overlayrouting, "Unknown subscriber");
-      continue;
-    }
-    overlay_append_unicast_address(subscriber, replypayload);
-    if (ob_overrun(payload))
-      break;
-    ob_checkpoint(replypayload);
-  }
-  ob_rewind(replypayload);
-  
-  if (ob_position(replypayload)){
-    DEBUGF(overlayrouting, "Sending reply");
-    ob_flip(replypayload);
-    overlay_send_frame(&reply, replypayload);
-  }
-  ob_free(replypayload);
-  return 0;
-}
-
-DEFINE_BINDING(MDP_PORT_STUN, overlay_mdp_service_stun);
-static int overlay_mdp_service_stun(struct internal_mdp_header *header, struct overlay_buffer *payload)
-{
-  DEBUGF(overlayrouting, "Processing STUN info from %s", alloca_tohex_sid_t(header->source->sid));
-
-  while(ob_remaining(payload)>0){
-    struct subscriber *subscriber=NULL;
-    
-    // TODO explain addresses, link expiry time, resolve differences between addresses...
-    
-    if (overlay_address_parse(NULL, payload, &subscriber)){
-      break;
-    }
-    struct socket_address addr;
-    addr.addrlen = sizeof(addr.inet);
-    addr.inet.sin_family = AF_INET;
-    addr.inet.sin_addr.s_addr = ob_get_ui32(payload);
-    addr.inet.sin_port = ob_get_ui16(payload);
-    
-    if (!subscriber || (subscriber->reachable&REACHABLE_DIRECT))
-      continue;
-    
-    // only trust stun responses from our directory service or about the packet sender.
-    if (directory_service == header->source || subscriber == header->source){
-      struct network_destination *destination = create_unicast_destination(&addr, NULL);
-      if (destination){
-	overlay_send_probe(subscriber, destination, OQ_MESH_MANAGEMENT);
-	release_destination_ref(destination);
-      }
-    }
-  }
   return 0;
 }
 

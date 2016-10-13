@@ -21,7 +21,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <assert.h>
 #include "jni_common.h"
 #include "server.h"
-#include "serval.h"
+#include "serval.h" // for mdp_loopback_port
+#include "keyring.h"
 #include "conf.h"
 #include "instance.h"
 

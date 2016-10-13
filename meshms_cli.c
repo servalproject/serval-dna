@@ -11,6 +11,8 @@
 #include "str.h"
 #include "numeric_str.h"
 
+DEFINE_FEATURE(cli_meshms);
+
 // output the list of existing conversations for a given local identity
 DEFINE_CMD(app_meshms_conversations, 0,
   "List MeshMS threads that include <sid>",

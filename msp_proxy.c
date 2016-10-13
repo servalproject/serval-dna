@@ -561,6 +561,8 @@ void sigQuit(int UNUSED(signal))
   proxy_state->quit=1;
 }
 
+DEFINE_FEATURE(cli_msp_proxy);
+
 DEFINE_CMD(app_msp_connection, 0,
   "Listen for incoming connections",
   "msp", "listen", "[--once]", "[--forward=<local_port>]", "[--service=<service_name>]", "<port>");

@@ -43,10 +43,8 @@ int servald_main(int argc, char **argv)
   sigaction(SIGABRT, &sig, NULL);
 
   /* Setup i/o signal handlers */
-  signal(SIGPIPE,sigPipeHandler);
-  signal(SIGIO,sigIoHandler);
-
-  cf_init();
+  signal(SIGPIPE, sigPipeHandler);
+  signal(SIGIO, sigIoHandler);
 
   int status = commandline_main_stdio(stdout, argv[0], argc - 1, (const char*const*)&argv[1]);
 
@@ -58,16 +56,22 @@ int servald_main(int argc, char **argv)
 
 char crash_handler_clue[1024] = "no clue";
 
-static void crash_handler(int signal)
+static void crash_handler(int signum)
 {
-  LOGF(LOG_LEVEL_FATAL, "Caught signal %s", alloca_signal_name(signal));
+  LOGF(LOG_LEVEL_FATAL, "Caught signal %s", alloca_signal_name(signum));
   LOGF(LOG_LEVEL_FATAL, "The following clue may help: %s", crash_handler_clue);
   dump_stack(LOG_LEVEL_FATAL);
   BACKTRACE;
-  // Now die of the same signal, so that our exit status reflects the cause.
-  INFOF("Re-sending signal %d to self", signal);
-  kill(getpid(), signal);
-  // If that didn't work, then die normally.
-  INFOF("exit(%d)", -signal);
-  exit(-signal);
+  // Exit with a status code indicating the caught signal.  This involves removing the signal
+  // handler for the caught signal then re-sending the same signal to ourself.  If that doesn't
+  // work, then exit with an error code.
+  struct sigaction sig;
+  bzero(&sig, sizeof sig);
+  sig.sa_flags = 0;
+  sig.sa_handler = SIG_DFL;
+  sigemptyset(&sig.sa_mask);
+  sigaction(signum, &sig, NULL);
+  INFOF("Re-sending signal %d to self", signum);
+  kill(getpid(), signum); // should terminate self
+  exit(-1);
 }
