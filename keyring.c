@@ -744,7 +744,7 @@ static int load_did_name(keypair *kp, const char *text)
 	return WHY("duplicate DID");
       const char *e = NULL;
       bzero(kp->private_key, kp->private_key_len);
-      strn_fromprint(kp->private_key, kp->private_key_len, t, 0, '"', &e);
+      strn_fromprint((char *)kp->private_key, kp->private_key_len, t, 0, '"', &e);
       if (*e != '"')
 	return WHY("malformed DID quoted string");
       t = e + 1;
@@ -754,7 +754,7 @@ static int load_did_name(keypair *kp, const char *text)
 	return WHY("duplicate Name");
       const char *e = NULL;
       bzero(kp->public_key, kp->public_key_len);
-      strn_fromprint(kp->public_key, kp->public_key_len, t, 0, '"', &e);
+      strn_fromprint((char *)kp->public_key, kp->public_key_len, t, 0, '"', &e);
       if (*e != '"')
 	return WHY("malformed Name quoted string");
       t = e + 1;

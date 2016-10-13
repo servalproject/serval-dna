@@ -521,10 +521,10 @@ size_t toprint_str_len(const char *srcStr, const char quotes[2])
   return srcStr ? strbuf_count(strbuf_toprint_quoted(strbuf_local(NULL, 0), quotes, srcStr)) : 4;
 }
 
-size_t strn_fromprint(unsigned char *dst, size_t dstsiz, const char *src, size_t srclen, char endquote, const char **afterp)
+size_t strn_fromprint(char *dst, size_t dstsiz, const char *src, size_t srclen, char endquote, const char **afterp)
 {
-  unsigned char *const odst = dst;
-  unsigned char *const edst = dst + dstsiz;
+  char *const odst = dst;
+  char *const edst = dst + dstsiz;
   const char *const esrc = srclen ? src + srclen : NULL;
   while ((src < esrc || !esrc) && *src && *src != endquote && dst < edst) {
     switch (*src) {
