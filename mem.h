@@ -21,7 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __SERVAL_DNA__MEM_H
 
 #include <sys/types.h>
-#include "features.h"
+#include "lang.h"
 #include "log.h"
 
 // #define MALLOC_PARANOIA

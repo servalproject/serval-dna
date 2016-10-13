@@ -18,7 +18,7 @@
  */
 
 #include <stdio.h>
-#include "features.h"
+#include "lang.h"
 #include "cli.h"
 #include "serval_types.h"
 #include "str.h"

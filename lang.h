@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2015 Serval Project Inc.
+Copyright (C) 2016 Flinders University
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -16,10 +17,11 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#ifndef __SERVAL_DNA__FEATURES_H
-#define __SERVAL_DNA__FEATURES_H
+#ifndef __SERVAL_DNA__LANG_H
+#define __SERVAL_DNA__LANG_H
 
-/* Useful macros not specific to Serval DNA
+/* Useful macros not specific to Serval DNA that assist with using the C
+ * language.
  */
 
 // Number of elements in an array (Warning: does not work if A is a pointer!).
@@ -60,4 +62,4 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #   define UNUSED(x) x
 #endif
 
-#endif // __SERVAL_DNA__FEATURES_H
+#endif // __SERVAL_DNA__LANG_H

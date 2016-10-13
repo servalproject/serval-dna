@@ -19,7 +19,7 @@
 #ifndef __SERVAL_DNA__SECTION_H
 #define __SERVAL_DNA__SECTION_H
 
-#include "features.h"
+#include "lang.h"
 
 /* Macros for creating named linkage sections.
  */

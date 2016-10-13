@@ -18,8 +18,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "features.h"
-#include "constants.h"
+#include "lang.h"
 #include "sighandlers.h"
 
 int sigPipeFlag=0;
@@ -33,7 +32,7 @@ void sigPipeHandler(int UNUSED(signal))
 }
 
 void sigIoHandler(int UNUSED(signal))
-{  
+{
   sigIoFlag++;
   return;
 }

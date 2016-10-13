@@ -64,7 +64,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdarg.h>
 #include <unistd.h>
 
-#include "features.h"
+#include "lang.h"
 
 typedef void CONTEXT_VPRINTF(void *context, const char *fmt, va_list);
 
