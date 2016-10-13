@@ -1,6 +1,6 @@
 Serval DNA Technical Documentation
 ----------------------------------
-[Serval Project][], May 2014
+[Serval Project][], October 2016
 
 This directory contains [technical documents][] that accompany the [Serval
 DNA][] component of the [Serval mesh network][].
@@ -46,6 +46,9 @@ DNA][] component of the [Serval mesh network][].
     * [Rhizome REST API](./REST-API-Rhizome.md) -- decentralised content distribution
     * [MeshMS REST API](./REST-API-MeshMS.md) -- secure, one-to-one messaging
 
+ * [CLI API](./CLI-API.md) describes the command-line interface used for
+   controlling the Serval DNA daemon and accessing its services.
+
  * [Cooee](./Cooee.md) describes the protocol used for discovering services
    available on nearby (reachable) mesh network nodes.
 
@@ -55,6 +58,7 @@ DNA][] component of the [Serval mesh network][].
 
 -----
 **Copyright 2014 Serval Project Inc.**  
+**Copyright 2016 Flinders University**  
 ![CC-BY-4.0](./cc-by-4.0.png)
 This document is available under the [Creative Commons Attribution 4.0 International licence][CC BY 4.0].
 

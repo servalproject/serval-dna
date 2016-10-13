@@ -139,22 +139,22 @@ can be configured to use its own *instance directory*, as follows:
 
   * If the instance directory is not set at run time, then if **servald** was
     built with the `./configure INSTANCE_PATH=DIR` option, then the **servald**
-    executable will use the instance directory in `DIR` by default.  The FHS
-    paths will never be used.
+    executable will use the instance directory in `DIR` by default.  The [FHS
+    paths](#fhs-paths) will never be used.
 
   * On an Android system, if none of the above are used, then **servald** will
     use the instance directory `/data/data/org.servalproject/var/serval-node`
-    by default.  The FHS paths will never be used.
+    by default.  The [FHS paths](#fhs-paths) will never be used.
 
   * If none of the above apply, then there is no *instance directory*.
-    Instead, [FHS][] paths are used (see below).  Only one daemon can run in
-    this situation on the same host, since the single, common PID file will
-    prevent more than one being started.
+    Instead, [FHS paths](#fhs-paths) are used.  Only one daemon can run in this
+    situation on the same host, since the single, common PID file will prevent
+    more than one being started.
 
 The main use for multiple instances on a single host is for testing, and this
 is used extensively in the automated test suite.  Deployments other than
-Android are unlikely to use an instance path, so the FHS paths are most likely
-to be used in practice.
+Android are unlikely to use an instance path, so the [FHS paths](#fhs-paths)
+are most likely to be used in practice.
 
 FHS paths
 ---------
@@ -660,10 +660,10 @@ The `dummy_netmask` option sets the interface's unicast (receive) IP network
 mask, which together with `dummy_address` determines the interface's IP
 broadcast address.
 
-The `drop_unicasts`, option, if true, will drop overlay frames addressed to the
+The `drop_unicasts` option, if true, will drop overlay frames addressed to the
 interface's unicast IP address, so that only broadcast packets will be read.
 
-The `drop_broadcasts`, option, if true, will drop overlay frames addressed to
+The `drop_broadcasts` option, if true, will drop overlay frames addressed to
 the interface's broadcast IP address, so that only unicast packets will be
 read.  This can simulate the effects of the Fi-Fi drivers on some Android
 devices that filter out broadcast packets (to prevent the device from waking up
@@ -694,3 +694,4 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [SLIP]: http://en.wikipedia.org/wiki/Serial_Line_Internet_Protocol
 [packet radio]: http://en.wikipedia.org/wiki/Packet_radio
 [character special device]: http://en.wikipedia.org/wiki/Device_file#Character_devices
+[FHS]: https://en.wikipedia.org/wiki/Filesystem_Hierarchy_Standard

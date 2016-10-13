@@ -1,6 +1,6 @@
 Serval DNA Build and Test
 =========================
-[Serval Project][], September 2016
+[Serval Project][], October 2016
 
 Supported Architectures
 -----------------------
@@ -55,8 +55,7 @@ Mandatory dependencies:
 
 The **libsodium** development files are available on Debian/Ubuntu systems in
 the `libsodium-dev` package.  On other systems, like Mac OS-X, it must be
-compiled from source.  The [Notes for Developers](./doc/Development.md) give
-more details.
+compiled from source.  The [Notes for Developers][] give more details.
 
 Optional:
 
@@ -72,8 +71,8 @@ Test dependencies:
 
 **Bash** and **curl** are both provided by the [XCode][] package for Mac OS X.
 **GNU grep**, **GNU sed**, **GNU awk** and **jq** can all be installed on Mac
-OS-X using the [homebrew][] package manager.  The [Notes for
-Developers](./doc/Development.md) give more details.
+OS-X using the [homebrew][] package manager.  The [Notes for Developers][] give
+more details.
 
 Build
 -----
@@ -110,12 +109,12 @@ A successful session should appear something like:
     CC cli.c
     CC commandline.c
     ...
-    CC xprintf.c
-    LINK servald
-    LINK libmonitorclient.so
-    AR libmonitorclient.a
-    CC tfw_createfile.c
-    LINK tfw_createfile
+    LINK simulator
+    SERVALD CC test_cli.c
+    SERVALD CC log_context.c
+    SERVALD CC log_stderr.c
+    SERVALD CC context1.c
+    LINK serval-tests
     $
 
 On Solaris, the system `make` command may not be GNU Make, and the system
@@ -132,7 +131,7 @@ On Solaris, the system `make` command may not be GNU Make, and the system
 In the event of a build failure:
 
  * ensure that all the [dependencies](#dependencies) are present
- * consult the [Notes for Developers](./doc/Development.md)
+ * consult the [Notes for Developers][]
  * as a last resort, [contact the Serval Project][]
 
 Built artifacts
@@ -140,32 +139,60 @@ Built artifacts
 
 The build process produces the following artifacts:
 
-* **servald** is the main Serval DNA executable, which includes the daemon and
-  many client and utility commands.
+* **servald** is the main Serval DNA daemon executable.  All the Serval DNA
+  daemon code is statically linked into this executable, so it does not depend
+  on any built Serval libraries.  However, it is dynamically linked with the
+  system libraries and with `libsodium.so`.
 
-* **libservald.a** is a library containing the complete executable code of
-  *servald*, which can be linked and invoked by calling an entry point such
-  as *parseCommandLine()*,  or various [JNI][] entry points.
+* **servaldwrap** is a Serval DNA executable identical to *servald*, but
+  dynamically linked with `libservald.so` instead of statically linked.  This
+  executable mainly exists to ensure that the shared library is always
+  linkable.
 
-* **directory_service** is the executable for the Serval Infrastructure daemon.
+* **serval-tests** is an executable utility that performs various system tests
+  such as memory speed, cryptographic speed, byte ordering, and configuration
+  parsing.  These tests are not normally required in a deployed system, so are
+  provided in a separate executable in order to keep the size of the *servald*
+  executable to a minimum.
 
-* **libmonitorclient.a** and **libmonitorclient.so** are libraries implementing
-  the client end of the monitor interface with the servald daemon.  They are
-  linked into the [batphone][] Java executable at run time and contain [JNI][]
-  entry points to functions for managing the client end of a monitor connection
-  with the servald daemon.
+* **libservald.a** is a static library containing the complete executable code
+  of the Serval DNA daemon.  An executable (such as *servald*) can be built
+  with any desired subset of Serval functions by linking in only the required
+  parts of this library using the *features* mechanism described in
+  [feature.h](./feature.h).
 
-* **fakeradio** is a utility used by test scripts to simulate the serial
-  interface to the [RFD900][] packet radio used in the [Serval Mesh Extender][]
+* **libservald.so** is a dynamic library containing the complete executable
+  code of the Serval DNA daemon, including [JNI][] entry points.  The Serval
+  DNA Java API, which is used by [batphone][], and the *servaldwrap* executable
+  both use this dynamic library.
 
-* **simulator** is a utility used by test scripts for simulating wireless
-  packet transmission under different conditions.
+* **directory_service** is the executable for the [Serval Infrastructure][]
+  daemon.
 
-* **tfw_createfile** is a utility needed by test scripts for creating large
-  data files with unique, non-repeating content.
+* **libservalclient.a** and **libservalclient.so** are static and dynamic
+  libraries implementing the client end of the interface with the servald
+  daemon, which includes the [MDP API][], a subset of the [CLI API][], and
+  functions for starting and stopping the daemon.  The dynamic library is
+  linked into the [batphone][] Java executable at run time and contains [JNI][]
+  entry points to these APIs.
 
-* **config_test** is a utility that will fail to link if any external
-  dependencies creep into the configuration subsystem.
+* **libmonitorclient.a** and **libmonitorclient.so** are static and dynamic
+  libraries implementing the client end of the monitor interface with the
+  servald daemon.  The dynamic library is linked into the [batphone][] Java
+  executable at run time and contains [JNI][] entry points to functions for
+  managing the client end of a monitor connection with the servald daemon.
+  *The monitor interface is deprecated and will eventually be replaced by a set
+  of equivalent [MDP][] services that can be accessed using libservalclient.*
+
+* **fakeradio** is an executable utility used by test scripts to simulate the
+  serial interface to the [RFD900][] packet radio used in the [Serval Mesh
+  Extender][]
+
+* **simulator** is an executable utility used by test scripts for simulating
+  wireless packet transmission under different conditions.
+
+* **tfw_createfile** is an executable utility needed by test scripts for
+  creating large data files with unique, non-repeating content.
 
 Test scripts
 ------------
@@ -179,11 +206,11 @@ following command:
     3 [PASS.] (logging) Configure no messages logged to stderr
     4 [PASS.] (logging) By Default, all messages are appended to a configured file
     ...
-    158 [PASS.] (rhizomeprotocol) One way direct pull bundle from configured peer
-    159 [PASS.] (rhizomeprotocol) Two-way direct sync bundles with configured peer
-    160 [PASS.] (directory_service) Publish and retrieve a directory entry
-    161 [PASS.] (directory_service) Ping via relay node
-    161 tests, 161 pass, 0 fail, 0 error
+    375 [PASS.] (meshmsjava) Java API send MeshMS message from unknown identity
+    376 [PASS.] (meshmsjava) Java API MeshMS mark all conversations read
+    377 [PASS.] (meshmsjava) Java API MeshMS mark all conversations read
+    378 [PASS.] (meshmsjava) Java API MeshMS mark a message as read
+    378 tests, 378 pass, 0 fail, 0 error
     $
 
 Every test run writes log files into the [testlog/all](./testlog/all/)
@@ -230,12 +257,17 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [gcc 4.4]: http://gcc.gnu.org/gcc-4.4/
 [gcc 5]: http://gcc.gnu.org/gcc-5/
 [gcc 6]: http://gcc.gnu.org/gcc-6/
+[Notes for Developers]: ./doc/Development.md
 [OpenWRT]: ./doc/OpenWRT.md
+[Serval Infrastructure]: ./doc/Serval-Infrastructure.md
 [Serval Mesh Extender]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:meshextender:
 [contact the Serval Project]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:contact
 [RFD900]: http://rfdesign.com.au/index.php/rfd900
 [Mesh Potato]: http://villagetelco.org/mesh-potato/
 [Commotion Wireless]: http://commotionwireless.net/
+[MDP]: ./doc/Mesh-Datagram-Protocol.md
+[MDP API]: ./doc/Mesh-Datagram-Protocol.md#mdp-api
+[CLI API]: ./doc/CLI-API.md
 [JNI]: http://en.wikipedia.org/wiki/Java_Native_Interface
 [Bash]: http://en.wikipedia.org/wiki/Bash_(Unix_shell)
 [GNU make]: http://www.gnu.org/software/make/
