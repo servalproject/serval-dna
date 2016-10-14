@@ -60,8 +60,6 @@ struct radio_state {
 #define STATE_PLUSPLUSPLUS 3
 #define STATE_COMMAND 4
 
-void cf_on_config_change(){}
-
 void log_time(){
   struct timeval tv;
   struct tm tm;

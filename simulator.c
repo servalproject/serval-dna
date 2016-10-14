@@ -109,10 +109,6 @@ struct command_state *stdin_state;
 struct network *networks=NULL;
 static void unicast_alarm(struct sched_ent *alarm);
 
-void cf_on_config_change()
-{
-}
-
 static void recv_packet(int fd, struct network *network, struct peer *destination)
 {
   struct socket_address addr;

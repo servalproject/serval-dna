@@ -88,7 +88,3 @@ void logFlush()
 {
   fflush(stderr);
 }
-
-void logConfigChanged()
-{
-}

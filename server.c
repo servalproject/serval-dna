@@ -36,6 +36,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "server.h"
 #include "serval.h"
 #include "conf.h"
+#include "log.h"
 #include "str.h"
 #include "numeric_str.h"
 #include "strbuf.h"
@@ -273,7 +274,7 @@ int server_bind()
 
 void server_loop(time_ms_t (*waiting)(time_ms_t, time_ms_t, time_ms_t), void (*wokeup)())
 {
-  cf_on_config_change();
+  CALL_TRIGGER(config_change);
   
   // This log message is used by tests to wait for the server to start.
   INFOF("Server initialised, entering main loop");
@@ -512,7 +513,11 @@ void rhizome_clean_db(struct sched_ent *alarm)
   RESCHEDULE(alarm, now + 30*60*1000, TIME_MS_NEVER_WILL, TIME_MS_NEVER_WILL);
 }
 
-void cf_on_config_change()
+static void server_on_config_change();
+
+DEFINE_TRIGGER(config_change, server_on_config_change);
+
+static void server_on_config_change()
 {
   if (!serverMode)
     return;

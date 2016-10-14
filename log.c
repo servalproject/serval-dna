@@ -669,7 +669,9 @@ void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list 
   }
 }
 
-void logConfigChanged()
+static void logConfigChanged();
+DEFINE_TRIGGER(config_change_log, logConfigChanged);
+static void logConfigChanged()
 {
   _log_iterator it;
   _log_iterator_start(&it);

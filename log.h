@@ -1,4 +1,6 @@
 /*
+Serval DNA logging
+Copyright (C) 2016 Flinders University
 Copyright (C) 2012-2015 Serval Project Inc.
  
 This program is free software; you can redistribute it and/or
@@ -52,7 +54,6 @@ extern int logLevel_NoLogFileConfigured;
 void close_log_file();
 void redirect_stderr_to_log();
 void logFlush();
-void logConfigChanged();
 
 // Logging context string.
 struct strbuf;

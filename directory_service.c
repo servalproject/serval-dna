@@ -191,10 +191,6 @@ static void resolve_request(){
   }
 }
 
-void cf_on_config_change()
-{
-}
-
 int main(void){
   struct pollfd fds[2];
   int mdp_sockfd;

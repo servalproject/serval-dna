@@ -233,6 +233,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome_types.h"
 #include "strbuf.h"
 #include "httpd.h"
+#include "trigger.h"
 
 #define CONFIG_FILE_MAX_SIZE        (32 * 1024)
 #define INTERFACE_NAME_STRLEN       40
@@ -713,6 +714,7 @@ int cf_reload(void);
 int cf_reload_strict(void);
 int cf_reload_permissive(void);
 
-void cf_on_config_change(void);
+DECLARE_TRIGGER(config_change_log);
+DECLARE_TRIGGER(config_change);
 
 #endif //__SERVAL_DNA__CONF_H

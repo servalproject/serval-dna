@@ -236,11 +236,26 @@ static int reload_and_parse(int permissive, int strict)
   cf_limbo = 0; // let log messages out
   logFlush();
   if (changed) {
-    logConfigChanged();
-    cf_on_config_change();
+    CALL_TRIGGER(config_change_log);
+    CALL_TRIGGER(config_change);
   }
   return ret;
 }
+
+// Put a dummy no-op trigger callback into the "config_change" and "config_change_log" trigger
+// sections, otherwise if no other object provides one, the link will fail with errors like:
+// undefined reference to `__start_tr_config_change'
+// undefined reference to `__stop_tr_config_change'
+
+static void __dummy_on_config_change_log();
+DEFINE_TRIGGER(config_change_log, __dummy_on_config_change_log);
+static void __dummy_on_config_change_log() {}
+
+static void __dummy_on_config_change();
+DEFINE_TRIGGER(config_change, __dummy_on_config_change);
+static void __dummy_on_config_change() {}
+
+// The configuration API entry points.
 
 int cf_load()
 {
