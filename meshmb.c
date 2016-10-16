@@ -9,9 +9,10 @@
 #include "commandline.h"
 #include "overlay_buffer.h"
 
-int meshmb_send(keyring_identity *id, const char *message, size_t message_len,
+int meshmb_send(const keyring_identity *id, const char *message, size_t message_len,
   unsigned nassignments, const struct rhizome_manifest_field_assignment *assignments){
 
+  const char *did=NULL, *name=NULL;
   struct message_ply ply;
   bzero(&ply, sizeof ply);
 
@@ -23,8 +24,8 @@ int meshmb_send(keyring_identity *id, const char *message, size_t message_len,
   message_ply_append_timestamp(b);
   assert(!ob_overrun(b));
 
-  // TODO add id card details to manifest
-  int ret = message_ply_append(id, RHIZOME_SERVICE_MESHMB, NULL, &ply, b, nassignments, assignments);
+  keyring_identity_extract(id, &did, &name);
+  int ret = message_ply_append(id, RHIZOME_SERVICE_MESHMB, NULL, &ply, b, name, nassignments, assignments);
   ob_free(b);
 
   return ret;

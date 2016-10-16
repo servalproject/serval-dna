@@ -46,6 +46,6 @@ void message_ply_append_ack(struct overlay_buffer *b, uint64_t message_offset, u
 void message_ply_append_timestamp(struct overlay_buffer *b);
 void message_ply_append_message(struct overlay_buffer *b, const char *message, size_t message_len);
 int message_ply_append(const struct keyring_identity *id, const char *service, const sid_t *recipient, struct message_ply *ply, struct overlay_buffer *b,
-  unsigned nassignments, const struct rhizome_manifest_field_assignment *assignments);
+  const char *name, unsigned nassignments, const struct rhizome_manifest_field_assignment *assignments);
 
 #endif

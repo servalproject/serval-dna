@@ -64,7 +64,7 @@ static int message_ply_fill_manifest(const keyring_identity *id, const sid_t *re
 }
 
 int message_ply_append(const keyring_identity *id, const char *service, const sid_t *recipient, struct message_ply *ply, struct overlay_buffer *b,
-  unsigned nassignments, const struct rhizome_manifest_field_assignment *assignments)
+  const char *name, unsigned nassignments, const struct rhizome_manifest_field_assignment *assignments)
 {
   rhizome_manifest *mout = NULL;
   rhizome_manifest *m = rhizome_new_manifest();
@@ -85,6 +85,11 @@ int message_ply_append(const keyring_identity *id, const char *service, const si
 	goto end;
     }
   }
+
+  // TODO add sender name?
+  // if recipient, actual sender & name should be encrypted...
+  if (name)
+	  rhizome_manifest_set_name(m, name);
 
   struct rhizome_bundle_result result = rhizome_apply_assignments(m, nassignments, assignments);
   if (result.status != RHIZOME_BUNDLE_STATUS_NEW){
