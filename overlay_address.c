@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <arpa/inet.h>
 #include "serval.h"
 #include "conf.h"
+#include "crypto.h"
 #include "str.h"
 #include "overlay_address.h"
 #include "overlay_buffer.h"
@@ -317,12 +318,12 @@ int overlay_broadcast_parse(struct overlay_buffer *b, struct broadcast *broadcas
 
 static int decode_sid_from_signkey(struct overlay_buffer *b, struct subscriber **subscriber)
 {
-  const uint8_t *id = ob_get_bytes_ptr(b, crypto_sign_PUBLICKEYBYTES);
+  const sign_public_t *id = (const sign_public_t *)ob_get_bytes_ptr(b, crypto_sign_PUBLICKEYBYTES);
   if (!id)
     return WHY("Not enough space in buffer to parse address");
   sid_t sid;
-  if (crypto_sign_ed25519_pk_to_curve25519(sid.binary, id))
-    return WHY("Failed to convert sign key to sid");
+  if (crypto_sign_to_sid(id, &sid))
+    return -1;
   struct subscriber *s = find_subscriber(sid.binary, SID_SIZE, 1);
   if (s && !s->id_combined){
     bcopy(id, s->id_public.binary, crypto_sign_PUBLICKEYBYTES);

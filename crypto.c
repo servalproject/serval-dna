@@ -30,6 +30,22 @@ int crypto_isvalid_keypair(const sign_private_t *private_key, const sign_public_
   return bcmp(test_key.public_key.binary, public_key->binary, sizeof (sign_public_t)) == 0 ? 1 : 0;
 }
 
+int crypto_sign_to_sid(const sign_public_t *public_key, sid_t *sid)
+{
+  if (crypto_sign_ed25519_pk_to_curve25519(sid->binary, public_key->binary))
+    return WHY("Failed to convert sign key to sid");
+  return 0;
+}
+
+int crypto_ismatching_sign_sid(const sign_public_t *public_key, const sid_t *sid)
+{
+  sid_t test_sid;
+  if (crypto_sign_to_sid(public_key, &test_sid)==0
+    && cmp_sid_t(&test_sid, sid)==0)
+    return 1;
+  return 0;
+}
+
 // verify the signature at the end of a message, on return message_len will be reduced by the length of the signature.
 int crypto_verify_message(struct subscriber *subscriber, unsigned char *message, size_t *message_len)
 {

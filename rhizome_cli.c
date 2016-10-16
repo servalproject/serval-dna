@@ -780,6 +780,9 @@ static int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context 
 	  fromhere = 1;
 	  cli_put_hexvalue(context, m->author.binary, sizeof m->author.binary, ":");
 	  break;
+	case AUTHOR_REMOTE:
+	  cli_put_hexvalue(context, m->author.binary, sizeof m->author.binary, ":");
+	  break;
 	default:
 	  cli_put_string(context, NULL, ":");
 	  break;

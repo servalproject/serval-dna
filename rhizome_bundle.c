@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/uio.h>
 #include "serval.h"
 #include "conf.h"
+#include "crypto.h"
 #include "rhizome.h"
 #include "str.h"
 #include "numeric_str.h"
@@ -1473,7 +1474,7 @@ struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const ch
   return rhizome_bundle_result(RHIZOME_BUNDLE_STATUS_NEW);
 }
 
-/* Work out the authorship status of the bundle without performing any cryptographic checks.
+/* Work out the authorship status of the bundle without performing expensive cryptographic checks.
  * Sets the 'authorship' element and returns 1 if an author was found, 0 if not.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
@@ -1484,6 +1485,7 @@ int rhizome_lookup_author(rhizome_manifest *m)
   switch (m->authorship) {
     case AUTHOR_LOCAL:
     case AUTHOR_AUTHENTIC:
+    case AUTHOR_REMOTE:
       RETURN(1);
     case AUTHOR_NOT_CHECKED:
       DEBUGF(rhizome, "manifest %p lookup author=%s", m, alloca_tohex_sid_t(m->author));
@@ -1500,6 +1502,12 @@ int rhizome_lookup_author(rhizome_manifest *m)
 	  DEBUGF(rhizome, "found sender");
 	  rhizome_manifest_set_author(m, &m->sender);
 	  m->authorship = AUTHOR_LOCAL;
+	  RETURN(1);
+	} else if(crypto_ismatching_sign_sid(&m->keypair.public_key, &m->sender)) {
+	  // if the author matches the bundle id...
+	  DEBUGF(rhizome, "sender matches manifest signature");
+	  m->author = m->sender;
+	  m->authorship = AUTHOR_REMOTE;
 	  RETURN(1);
 	}
       }

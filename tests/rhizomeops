@@ -1446,6 +1446,26 @@ test_ImportOwnBundle() {
    assert_rhizome_list --fromhere=1 --author=$SIDB2 fileB
 }
 
+doc_ImportSelfSigned="Import a bundle with id matching identity"
+setup_ImportSelfSigned(){
+   B_IDENTITY_COUNT=1
+   setup_servald
+   setup_rhizome
+   echo "Self signed" > file
+}
+test_ImportSelfSigned(){
+   set_instance +A
+   executeOk_servald rhizome add file $SIDA file file.manifest '' id=$IDA sender=$SIDA
+   extract_stdout_manifestid BID
+   assert [ "$BID" = "$IDA" ]
+   executeOk_servald rhizome list
+   set_instance +B
+   executeOk_servald rhizome import bundle file file.manifest
+   executeOk_servald rhizome list
+   tfw_cat --stdout --stderr
+   #TODO assert that .author == $SIDA
+}
+
 doc_ImportCombinedBundle="Create and import combined bundle"
 setup_ImportCombinedBundle() {
    # A "combined bundle" is a single file consisting of a payload with its

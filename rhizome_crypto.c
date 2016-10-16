@@ -162,6 +162,16 @@ static keypair *get_secret(const keyring_identity *id)
   return kp;
 }
 
+static enum rhizome_bundle_authorship set_authentic(rhizome_manifest *m, const keyring_identity *id, const sid_t *sid)
+{
+  m->authorship = AUTHOR_AUTHENTIC;
+  m->author = *sid;
+  m->author_identity = id;
+  if (!m->haveSecret)
+    m->haveSecret = EXISTING_BUNDLE_ID;
+  return m->authorship;
+}
+
 /*
  * If this identity has permission to alter the bundle, then set;
  *  - the manifest 'authorship' field to AUTHOR_AUTHENTIC
@@ -223,13 +233,7 @@ static enum rhizome_bundle_authorship try_author(rhizome_manifest *m, const keyr
 	INT64, m->rowid,
 	END);
   }
-
-  m->authorship = AUTHOR_AUTHENTIC;
-  m->author = *sid;
-  m->author_identity = id;
-  if (!m->haveSecret)
-    m->haveSecret = EXISTING_BUNDLE_ID;
-  return m->authorship;
+  return set_authentic(m, id, sid);
 }
 
 /* Attempt to authenticate the authorship of the given bundle, and set the 'authorship' element
@@ -256,6 +260,24 @@ void rhizome_authenticate_author(rhizome_manifest *m)
 
       assert(is_sid_t_any(m->author));
 
+      if (m->has_sender){
+	sid_t test_sid;
+	if (crypto_sign_to_sid(&m->keypair.public_key, &test_sid)==0){
+	  if (cmp_sid_t(&test_sid, &m->sender)==0){
+	    // self signed bundle, is it ours?
+	    keyring_identity *id = keyring_find_identity(keyring, &m->keypair.public_key);
+	    if (id){
+	      set_authentic(m, id, &m->sender);
+	      RETURNVOID;
+	    }else{
+	      m->authorship = AUTHOR_REMOTE;
+	      m->author = m->sender;
+	      RETURNVOID;
+	    }
+	  }
+	}
+      }
+      
       // Optimisation: try 'sender' SID first, if present.
       if (m->has_sender && try_author(m, NULL, &m->sender) == AUTHOR_AUTHENTIC)
 	RETURNVOID;
@@ -277,11 +299,13 @@ void rhizome_authenticate_author(rhizome_manifest *m)
     case AUTHOR_LOCAL:
       m->authorship = try_author(m, m->author_identity, &m->author);
       RETURNVOID;
+    case AUTHOR_REMOTE:
     case AUTHENTICATION_ERROR:
     case AUTHOR_UNKNOWN:
     case AUTHOR_IMPOSTOR:
     case AUTHOR_AUTHENTIC:
       // work has already been done, don't repeat it
+      // TODO rescan keyring if more identities are unlocked??
       RETURNVOID;
   }
   FATALF("m->authorship = %d", (int)m->authorship);

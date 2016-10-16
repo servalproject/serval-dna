@@ -159,7 +159,8 @@ typedef struct rhizome_manifest
     AUTHOR_UNKNOWN, // author is not a local identity
     AUTHOR_LOCAL, // author is in keyring (unlocked) but not verified
     AUTHOR_IMPOSTOR, // author is a local identity but fails verification
-    AUTHOR_AUTHENTIC // a local identity is the verified author
+    AUTHOR_AUTHENTIC, // a local identity is the verified author
+    AUTHOR_REMOTE // the author of this bundle has signed it, but isn't in our keyring
   } authorship;
 
   /* Whether the paylaod is encrypted or not */

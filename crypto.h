@@ -25,5 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 int crypto_isvalid_keypair(const sign_private_t *private_key, const sign_public_t *public_key);
 int crypto_verify_message(struct subscriber *subscriber, unsigned char *message, size_t *message_len);
+int crypto_sign_to_sid(const sign_public_t *public_key, sid_t *sid);
+int crypto_ismatching_sign_sid(const sign_public_t *public_key, const sid_t *sid);
 
 #endif

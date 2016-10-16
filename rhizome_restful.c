@@ -328,6 +328,9 @@ static int restful_rhizome_bundlelist_json_content_chunk(struct http_request *hr
 	    fromhere = 1;
 	    strbuf_json_hex(b, m->author.binary, sizeof m->author.binary);
 	    break;
+	  case AUTHOR_REMOTE:
+	    strbuf_json_hex(b, m->author.binary, sizeof m->author.binary);
+	    break;
 	  default:
 	    strbuf_json_null(b);
 	    break;

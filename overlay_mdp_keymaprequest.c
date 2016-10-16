@@ -71,17 +71,15 @@ static int keyring_store_id(struct internal_mdp_header *header, struct overlay_b
   
   if (ob_remaining(payload) < IDENTITY_SIZE + crypto_sign_BYTES)
     return WHY("Truncated key mapping announcement?");
-  
-  const uint8_t *id_public = ob_get_bytes_ptr(payload, IDENTITY_SIZE);
+
+  const sign_public_t *id_public = (const sign_public_t *)ob_get_bytes_ptr(payload, IDENTITY_SIZE);
   const uint8_t *compactsignature = ob_get_bytes_ptr(payload, crypto_sign_BYTES);
 
-  if (crypto_sign_verify_detached(compactsignature, header->source->sid.binary, SID_SIZE, id_public))
+  if (crypto_sign_verify_detached(compactsignature, header->source->sid.binary, SID_SIZE, id_public->binary))
     return WHY("SID:SAS mapping verification signature does not verify");
 
   // test if the signing key can be used to derive the sid
-  sid_t sid;
-  if (crypto_sign_ed25519_pk_to_curve25519(sid.binary, id_public)==0
-    && memcmp(&sid, &header->source->sid, sizeof sid) == 0)
+  if (crypto_ismatching_sign_sid(id_public, &header->source->sid))
     header->source->id_combined=1;
 
   /* now store it */
