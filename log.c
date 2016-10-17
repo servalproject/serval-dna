@@ -519,9 +519,14 @@ static void _open_log_file(_log_iterator *it)
 	      ++s;
 	    if (strchr(s, '/'))
 	      relpath = _log_file_path;
+	    // If racing with another process at this exact same point, then the symlink(2) call may
+	    // fail with EEXIST, in which case log a warning, not an error.
 	    unlink(strbuf_str(sbsymlink));
 	    if (symlink(relpath, strbuf_str(sbsymlink)) == -1)
-	      _logs_printf_nl(LOG_LEVEL_ERROR, __HERE__, "Cannot symlink %s to %s - %s [errno=%d]", strbuf_str(sbsymlink), relpath, strerror(errno), errno);
+	      _logs_printf_nl(errno == EEXIST ? LOG_LEVEL_WARN : LOG_LEVEL_ERROR,
+			      __HERE__,
+			      "Cannot symlink %s -> %s - %s [errno=%d]",
+			      strbuf_str(sbsymlink), relpath, strerror(errno), errno);
 	  }
 	  // Expire old log files.
 	  size_t pathsiz = strlen(_log_file_path) + 1;
