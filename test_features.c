@@ -27,4 +27,4 @@ void test_features()
   USE_FEATURE(cli_tests);
 }
 
-void cli_cleanup() {}
+void command_cleanup() {}

@@ -170,8 +170,9 @@ AC_CHECK_HEADERS(
 AC_CHECK_LIB(sodium, sodium_init,, [AC_MSG_ERROR([missing libsodium LIBSODIUM_MESSAGE([LIBRARY_PATH])])])
 
 dnl Check if the Linux gettid() and tgkill() system calls are supported.
-AC_CACHE_CHECK([Linux gettid() and tgkill()], ac_cv_have_linux_gettid_tgkill, [
-    ac_cv_have_linux_gettid_tgkill=no
+AC_CHECK_FUNCS([gettid tgkill])
+AC_CACHE_CHECK([Linux thread system calls], ac_cv_have_linux_threads, [
+    ac_cv_have_linux_threads=no
     AC_COMPILE_IFELSE(
         [AC_LANG_PROGRAM([
                 #include <unistd.h>
@@ -180,10 +181,10 @@ AC_CACHE_CHECK([Linux gettid() and tgkill()], ac_cv_have_linux_gettid_tgkill, [
             ],
             [syscall(SYS_tgkill, getpid(), syscall(SYS_gettid), SIGHUP)]
         )],
-        [ac_cv_have_linux_gettid_tgkill=yes]
+        [ac_cv_have_linux_threads=yes]
     )
 ])
-AS_IF([test "x$ac_cv_have_linux_gettid_tgkill" = xyes], [AC_DEFINE([HAVE_LINUX_THREADS])])
+AS_IF([test "x$ac_cv_have_linux_threads" = xyes], [AC_DEFINE([HAVE_LINUX_THREADS])])
 
 dnl Lazy way of checking for Linux
 AS_IF([test "x$ac_cv_header_linux_if_h" = xyes], [AC_DEFINE([USE_ABSTRACT_NAMESPACE])])

@@ -165,13 +165,10 @@ void cli_field_name(struct cli_context *context, const char *name, const char *d
  */
 void cli_flush(struct cli_context *context);
 
-void cli_cleanup();
-
 /* CLI encapulation.  Every interface that can encapsulate the CLI must provide
  * a vtable of operations that realise the above output primitives in terms of
  * its own data channel.
  */
-
 struct cli_vtable {
     void (*delim)(struct cli_context *context, const char *opt);
     void (*write)(struct cli_context *context, const char *buf, size_t len);

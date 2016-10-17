@@ -26,7 +26,7 @@ int main(int argc,char **argv)
 {
   const char *libservald_path =
 #ifdef ANDROID
-    "/data/data/org.servalproject/lib/libservald.so"
+    "/data/data/org.servalproject/lib/libserval.so"
 #else
     "libservald.so"
 #endif

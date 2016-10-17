@@ -47,7 +47,7 @@ int commandline_main(struct cli_context *context, const char *argv0, int argc, c
   IN();
 
   cf_init();
-  
+
   struct cli_parsed parsed;
   int result = cli_parse(argc, args, SECTION_START(commands), SECTION_END(commands), &parsed);
   switch (result) {
@@ -74,10 +74,10 @@ int commandline_main(struct cli_context *context, const char *argv0, int argc, c
     break;
   }
 
-  cli_cleanup();
-  
+  command_cleanup();
+
   OUT();
-  
+
   if (IF_DEBUG(timing))
     fd_showstats();
   return result;

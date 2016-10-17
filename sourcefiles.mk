@@ -19,7 +19,6 @@ SERVAL_CLIENT_SOURCES = \
 	logMessage.c \
 	log_cli.c \
 	log_context.c \
-	log_stderr.c \
 	log_util.c \
 	mem.c \
 	net.c \
@@ -135,3 +134,13 @@ SIMULATOR_SOURCES = \
 
 MONITOR_CLIENT_SRCS = \
 	monitor-client.c
+
+# These source files must excluded from the Android.mk build, otherwise
+# the libserval.so link fails.
+# TODO: get rid of the need for this separate list by unifying the daemon
+# and client logging.
+CLIENT_ONLY_SOURCES = \
+	log_stderr.c
+
+ANDROID_SOURCES = \
+	android.c

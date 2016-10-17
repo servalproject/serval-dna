@@ -74,6 +74,9 @@ static const char *_server_pidfile_path(struct __sourceloc __whence);
 static int server_write_proc_state(const char *path, const char *fmt, ...);
 static int server_get_proc_state(const char *path, char *buff, size_t buff_len);
 
+// Define our own gettid() and tgkill() if <unistd.h> doesn't provide them (eg, it does on Android).
+
+#ifndef HAVE_GETTID
 static pid_t gettid()
 {
 #ifdef HAVE_LINUX_THREADS
@@ -82,6 +85,16 @@ static pid_t gettid()
   return getpid();
 #endif
 }
+#endif // !HAVE_GETTID
+
+#ifdef HAVE_LINUX_THREADS
+#ifndef HAVE_TGKILL
+static int tgkill(int tgid, int tid, int signum)
+{
+  return syscall(SYS_tgkill, tgid, tid, signum);
+}
+#endif // !HAVE_TGKILL
+#endif // HAVE_LINUX_THREADS
 
 // Read the PID and TID from the given pidfile, returning a PID of 0 if the file does not exist, or
 // a PID of -1 if the file exists but contains invalid content or is not locked by process PID,

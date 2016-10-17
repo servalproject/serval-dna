@@ -66,9 +66,9 @@ void servald_features()
 
 __thread keyring_file *keyring = NULL;
 
-void cli_cleanup()
+void command_cleanup()
 {
-  /* clean up after ourselves */
+  // This function is called after every CLI command has finished.
   rhizome_close_db();
   free_subscribers();
   assert(keyring==NULL);

@@ -49,4 +49,9 @@ DECLARE_SECTION(struct cli_schema, commands);
 int commandline_main(struct cli_context *context, const char *argv0, int argc, const char *const *args);
 int commandline_main_stdio(FILE *output, const char *argv0, int argc, const char *const *args);
 
+/* Called after every command has finished.  Is not supplied by the
+ * command-line object; the caller must define this function.
+ */
+void command_cleanup();
+
 #endif // __SERVAL_DNA__COMMANDLINE_H
