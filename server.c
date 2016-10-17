@@ -83,6 +83,47 @@ static pid_t gettid()
 #endif
 }
 
+// Read the PID and TID from the given pidfile, returning a PID of 0 if the file does not exist, or
+// a PID of -1 if the file exists but contains invalid content or is not locked by process PID,
+// otherwise the PID/TID of the process that has the lock on the file.
+static struct pid_tid read_pidfile(const char *path)
+{
+  int fd = open(path, O_RDONLY);
+  if (fd == -1 && errno == ENOENT)
+    return (struct pid_tid){ .pid = 0, .tid = 0 };
+  if (fd == -1) {
+    WHYF_perror("open(%s, O_RDONLY)", alloca_str_toprint(path));
+    return (struct pid_tid){ .pid = -1, .tid = -1 };
+  }
+  int32_t pid = -1;
+  int32_t tid = -1;
+  char buf[30];
+  ssize_t len = read(fd, buf, sizeof buf);
+  if (len > 0 && (size_t)len < sizeof buf) {
+    buf[len] = '\0';
+    const char *e = NULL;
+    if (str_to_int32(buf, 10, &pid, &e) && *e == ' ')
+      str_to_int32(e + 1, 10, &tid, NULL);
+    else
+      tid = pid;
+  }
+  if (pid > 0) {
+    // Only return a valid pid/tid if the file is currently locked by the same process that it
+    // identifies.
+    struct flock lock;
+    bzero(&lock, sizeof lock);
+    lock.l_type = F_RDLCK;
+    lock.l_start = 0;
+    lock.l_whence = SEEK_SET;
+    lock.l_len = len;
+    fcntl(fd, F_GETLK, &lock);
+    if (lock.l_type == F_UNLCK || lock.l_pid != pid)
+      pid = tid = -1;
+  }
+  close(fd);
+  return (struct pid_tid){ .pid = pid, .tid = tid };
+}
+
 static struct pid_tid get_server_pid_tid()
 {
   // If the server process closes another handle on the same file, its lock will disappear, so this
@@ -102,49 +143,16 @@ static struct pid_tid get_server_pid_tid()
     WHYF("Not a directory: %s", dirname);
     goto error;
   }
-  const char *ppath = server_pidfile_path();
-  if (ppath == NULL)
+  const char *pidfile_path = server_pidfile_path();
+  if (pidfile_path == NULL)
     goto error;
-  const char *p = strrchr(ppath, '/');
-  assert(p != NULL);
-  int32_t pid = -1;
-  int32_t tid = -1;
-  int fd = open(ppath, O_RDONLY);
-  if (fd == -1) {
-    if (errno != ENOENT) {
-      WHYF_perror("open(%s, O_RDONLY)", alloca_str_toprint(ppath));
-      goto error;
-    }
-  } else {
-    char buf[30];
-    ssize_t len = read(fd, buf, sizeof buf);
-    if (len > 0 && (size_t)len < sizeof buf) {
-      buf[len] = '\0';
-      const char *e = NULL;
-      if (str_to_int32(buf, 10, &pid, &e) && *e == ' ')
-	str_to_int32(e + 1, 10, &tid, NULL);
-      else
-	tid = pid;
-    }
-    if (pid > 0){
-      // check that the server process still holds a lock
-      struct flock lock;
-      bzero(&lock, sizeof lock);
-      lock.l_type = F_RDLCK;
-      lock.l_start = 0;
-      lock.l_whence = SEEK_SET;
-      lock.l_len = len;
-      fcntl(fd, F_GETLK, &lock);
-      if (lock.l_type == F_UNLCK || lock.l_pid != pid)
-	pid = tid = -1;
-    }
-    close(fd);
-    if (pid > 0)
-      return (struct pid_tid){ .pid = pid, .tid = tid };
-    INFOF("Unlinking stale pidfile %s", ppath);
-    unlink(ppath);
+  assert(strrchr(pidfile_path, '/') != NULL);
+  struct pid_tid id = read_pidfile(pidfile_path);
+  if (id.pid == -1) {
+    INFOF("Unlinking stale pidfile %s", pidfile_path);
+    unlink(pidfile_path);
   }
-  return (struct pid_tid){ .pid = 0, .tid = 0 };
+  return id;
 error:
   return (struct pid_tid){ .pid = -1, .tid = -1 };
 }
@@ -155,7 +163,7 @@ static int send_signal(const struct pid_tid *id, int signum)
 {
 #ifdef HAVE_LINUX_THREADS
   if (id->tid > 0) {
-    if (syscall(SYS_tgkill, id->pid, id->tid, signum) == -1) {
+    if (tgkill(id->pid, id->tid, signum) == -1) {
       if (errno == ESRCH)
 	return 1;
       WHYF_perror("Cannot send %s to Servald pid=%d tid=%d (pidfile %s)", alloca_signal_name(signum), id->pid, id->tid, server_pidfile_path());
@@ -247,17 +255,17 @@ int server_bind()
     INFOF("Sleeping for %"PRId64" milliseconds", (int64_t) milliseconds);
     sleep_ms(milliseconds);
   }
-  
+
   /* record PID file so that servald start can return */
-  if (server_write_pid()){
+  if (server_write_pid()) {
     serverMode = 0;
     return -1;
   }
-    
+
   overlay_queue_init();
-  
+
   time_ms_t now = gettime_ms();
-  
+
   olsr_init_socket();
 
   /* Calculate (and possibly show) CPU usage stats periodically */
@@ -283,8 +291,7 @@ void server_loop(time_ms_t (*waiting)(time_ms_t, time_ms_t, time_ms_t), void (*w
   if (server_pidfd!=-1){
     close(server_pidfd);
     server_pidfd = -1;
-    const char *ppath = server_pidfile_path();
-    unlink(ppath);
+    unlink(server_pidfile_path());
   }
 }
 
@@ -303,47 +310,93 @@ static int server_write_pid()
 {
   server_write_proc_state("http_port", "%d", httpd_server_port);
   server_write_proc_state("mdp_inet_port", "%d", mdp_loopback_port);
-  
-  /* Record PID to advertise that the server is now running */
-  const char *ppath = server_pidfile_path();
-  if (ppath == NULL)
+
+  // Create a locked pidfile to advertise that the server is now running.
+  const char *pidfile_path = server_pidfile_path();
+  if (pidfile_path == NULL)
     return -1;
 
-  int fd = open(ppath, O_RDWR | O_CREAT | O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-  if (fd==-1)
-    return WHYF_perror("open(%s, O_RDWR | O_CREAT)", alloca_str_toprint(ppath));
-
+  // The pidfile content is simply the ASCII decimal PID, optionally followed by a single space and
+  // the ASCII decimal Thread ID (tid) if the server is running as a Linux thread that is not the
+  // process's main thread.
   int32_t pid = server_pid_tid.pid = getpid();
   int32_t tid = server_pid_tid.tid = gettid();
+  char content[30];
+  size_t content_size = 0;
+  {
+    strbuf sb = strbuf_local_buf(content);
+    strbuf_sprintf(sb, "%" PRId32, pid);
+    if (tid != pid)
+      strbuf_sprintf(sb, " %" PRId32, tid);
+    assert(!strbuf_overrun(sb));
+    content_size = strbuf_len(sb);
+  }
 
-  strbuf sb = strbuf_alloca(30);
-  strbuf_sprintf(sb, "%" PRId32, pid);
-  if (tid != pid)
-    strbuf_sprintf(sb, " %" PRId32, tid);
-  assert(!strbuf_overrun(sb));
-
+  // The pidfile lock covers its whole content.
   struct flock lock;
   bzero(&lock, sizeof lock);
   lock.l_type = F_WRLCK;
   lock.l_start = 0;
   lock.l_whence = SEEK_SET;
-  lock.l_len = strbuf_len(sb);
-  if (fcntl(fd, F_SETLK, &lock)==-1){
-    close(fd);
-    return WHYF_perror("fcntl(%d, F_SETLK, &lock)", fd);
-  }
+  lock.l_len = content_size;
 
-  if (ftruncate(fd, 0)==-1){
+  // Form the name of the temporary pidfile.
+  strbuf tmpfile_path_sb = strbuf_alloca(strlen(pidfile_path) + 25);
+  strbuf_puts(tmpfile_path_sb, pidfile_path);
+  strbuf_sprintf(tmpfile_path_sb, ".%d-%d", pid, tid);
+  assert(!strbuf_overrun(tmpfile_path_sb));
+  const char *tmpfile_path = strbuf_str(tmpfile_path_sb);
+
+  // Create the temporary pidfile and lock it, deleting any stale temporaries if necessary.  Leave
+  // the temporary pidfile open to retain the lock -- if successful it will eventually be the real
+  // pidfile.
+  unlink(tmpfile_path);
+  int fd = open(tmpfile_path, O_RDWR | O_CREAT | O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+  if (fd==-1)
+    return WHYF_perror("Cannot create temporary pidfile: open(%s, O_RDWR|O_CREAT|O_CLOEXEC)", alloca_str_toprint(tmpfile_path));
+  if (fcntl(fd, F_SETLK, &lock) == -1) {
+    WHYF_perror("Cannot lock temporary pidfile %s: fcntl(%d, F_SETLK, &lock)", tmpfile_path, fd);
+    close(fd);
+    return -1;
+  }
+  if (ftruncate(fd, 0) == -1){
     close(fd);
     return WHYF_perror("ftruncate(%d, 0)", fd);
   }
-
-  if (write(fd, strbuf_str(sb), strbuf_len(sb)) != (ssize_t)strbuf_len(sb)){
+  if (write(fd, content, content_size) != (ssize_t)content_size){
     close(fd);
-    return WHYF_perror("write(%d, %s, %d)", fd, alloca_str_toprint(strbuf_str(sb)), strbuf_len(sb));
+    return WHYF_perror("write(%d, %s, %zu)", fd, alloca_str_toprint(content), content_size);
   }
 
-  // leave the pid file open!
+  // Now the locked temporary has been created, link(2) it to the pidfile's proper name, to ensure
+  // that the pidfile is locked from the instant of its existence.  Note that link(2) fails if the
+  // destination path already exists.  This logic prevents racing with other processes deleting
+  // stale (unlocked) pidfiles.  If the link(2) fails the first time because the pidfile already
+  // exists, then if the existent pidfile is locked, there is another daemon running, so bail out.
+  // If the existent pidfile is not locked, then it is stale, so delete it and re-try the link.
+  unsigned int tries = 0;
+  while (link(tmpfile_path, pidfile_path) == -1) {
+    if (errno == EEXIST && ++tries < 2) {
+      struct pid_tid id = read_pidfile(pidfile_path);
+      if (id.pid == -1) {
+	INFOF("Unlinking stale pidfile %s", pidfile_path);
+	unlink(pidfile_path);
+      } else if (id.pid > 0) {
+	INFOF("Another daemon is running, pid=%d tid=%d", id.pid, id.tid);
+	return 1;
+      }
+    }
+    else {
+      WHYF_perror("Cannot link temporary pidfile %s to pidfile %s", tmpfile_path, pidfile_path);
+      close(fd);
+      unlink(tmpfile_path);
+      return -1;
+    }
+  }
+
+  // The link was successful, so delete the temporary pidfile but leave the pid file open so that
+  // the lock remains held!
+  unlink(tmpfile_path);
   server_pidfd = fd;
   return 0;
 }
