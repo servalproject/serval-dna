@@ -178,6 +178,13 @@ static int restful_meshms_(httpd_request *r, const char *remainder)
 	handler = restful_meshms_messagelist_json;
 	remainder = "";
       }
+      else if (strcmp(remainder, "/newsince/messagelist.json") == 0){
+	handler = restful_meshms_newsince_messagelist_json;
+	remainder = "";
+	r->u.msglist.token.which_ply = MY_PLY;
+	r->u.msglist.token.offset = 0;
+	r->u.msglist.token.their_ack = 0;
+      }
       else if (   str_startswith(remainder, "/newsince/", &end)
 	       && strn_to_meshms_token(end, &r->u.msglist.token, &end)
 	       && strcmp(end, "messagelist.json") == 0

@@ -288,6 +288,24 @@ test_MeshmsListMessagesNoIdentity() {
    assertJqGrep --ignore-case http.body '.meshms_status_message' 'identity.*unknown'
 }
 
+doc_MeshmsEmptyNewSince="HTTP RESTful list MeshMS since token with no messages"
+setup_MeshmsEmptyNewSince() {
+   IDENTITY_COUNT=2
+   set_extra_config() {
+      executeOk_servald config set api.restful.newsince_timeout 1s
+   }
+   setup
+}
+test_MeshmsEmptyNewSince() {
+   executeOk curl \
+            --silent --fail --show-error \
+            --output messagelist.json \
+            --dump-header http.headers \
+            --basic --user harry:potter \
+            "http://$addr_localhost:$PORTA/restful/meshms/$SIDA1/$SIDA2/newsince/messagelist.json"
+   tfw_preserve messagelist.json
+}
+
 doc_MeshmsListMessagesNewSince="HTTP RESTful list MeshMS messages in one conversation since token as JSON"
 setup_MeshmsListMessagesNewSince() {
    IDENTITY_COUNT=2
