@@ -199,7 +199,7 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 			param.uri_encode(str);
 			sep = '&';
 		}
-		URL url = new URL("http://localhost:" + httpPort + path + str.toString());
+		URL url = new URL("http://127.0.0.1:" + httpPort + path + str.toString());
 		URLConnection uconn = url.openConnection();
 		HttpURLConnection conn;
 		try {
