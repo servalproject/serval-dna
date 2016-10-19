@@ -107,7 +107,7 @@ uninstall:
 clean:
 	@$(RM) -r $(OBJSDIRS:%=%/*) \
 		  servald \
-		  libservald.a \
+		  libservald.so libservald.a \
 		  libservalclient.so libservalclient.a \
 		  libmonitorclient.so libmonitorclient.a \
 		  tfw_createfile directory_service fakeradio simulator serval-tests
@@ -275,8 +275,8 @@ libservalclient.a: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@$(AR) -cr $@ $^
 
 libservalclient.so: $(LIB_SERVAL_OBJS) $(OBJSDIR_TOOLS)/version.o
-	@echo AR $@
-	@$(CC) -Wall -shared -o $@ $^
+	@echo LINK $@
+	@$(CC) -Wall -shared -o $@ $^ $(LDFLAGS)
 
 libmonitorclient.a: $(MONITOR_CLIENT_OBJS) $(OBJSDIR_TOOLS)/version.o
 	@echo AR $@
