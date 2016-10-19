@@ -52,20 +52,26 @@ static __thread struct tree_root root={.binary_length=SID_SIZE};
 
 static __thread struct subscriber *my_subscriber=NULL;
 
-struct subscriber *get_my_subscriber(){
+struct subscriber *get_my_subscriber(bool_t create){
   if (!serverMode)
     return NULL;
   if (my_subscriber && my_subscriber->reachable != REACHABLE_SELF)
     my_subscriber = NULL;
   if (!my_subscriber){
     keyring_identity *id = keyring->identities;
-    while(id && id->subscriber->reachable != REACHABLE_SELF)
+    while(id){
+      if (id->subscriber->reachable == REACHABLE_SELF){
+	my_subscriber = id->subscriber;
+	return my_subscriber;
+      }
       id = id->next;
+    }
     // If there is no reachable self-identity in the keyring, then roll one in-memory, which will
     // persist until the server terminates.
-    if (!id)
+    if (create){
       id = keyring_inmemory_identity();
-    my_subscriber = id->subscriber;
+      my_subscriber = id->subscriber;
+    }
   }
   return my_subscriber;
 }
@@ -175,7 +181,7 @@ void overlay_address_append(struct decode_context *context, struct overlay_buffe
     ob_append_byte(b, OA_CODE_P2P_YOU);
   else if(context
       && !subscriber->send_full
-      && subscriber == get_my_subscriber()
+      && subscriber == get_my_subscriber(1)
       && context->point_to_point_device
       && ((context->flags & DECODE_FLAG_ENCODING_HEADER)==0 || !context->interface->local_echo))
     ob_append_byte(b, OA_CODE_P2P_ME);
@@ -228,7 +234,7 @@ static int add_explain_response(void **record, void *context)
 
   // if our primary routing identities is unknown,
   // the header of this packet must include our full sid.
-  if (subscriber==get_my_subscriber()){
+  if (subscriber==get_my_subscriber(1)){
     DEBUGF(subscriber, "Explaining SELF sid=%s", alloca_tohex_sid_t(subscriber->sid));
     response->please_explain->source_full=1;
     return 0;
@@ -343,7 +349,7 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
     case OA_CODE_P2P_YOU:
       // if we don't know who they are, we can't assume they mean us.
       if (context->point_to_point_device){
-        context->previous = *subscriber = get_my_subscriber();
+        context->previous = *subscriber = get_my_subscriber(1);
       }else{
 	WHYF("Could not resolve address on %s, this isn't a configured point to point link", context->interface->name);
 	context->flags|=DECODE_FLAG_INVALID_ADDRESS;
@@ -410,7 +416,7 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   if (source)
     frame->source = source;
   else
-    frame->source = get_my_subscriber();
+    frame->source = get_my_subscriber(1);
   
   if (!context->sender)
     frame->source_full=1;
@@ -459,7 +465,7 @@ int process_explain(struct overlay_frame *frame)
     switch (len){
       case OA_CODE_P2P_YOU:
       {
-	void *sid = get_my_subscriber();
+	void *sid = get_my_subscriber(1);
 	add_explain_response(&sid, &context);
       }
 	break;

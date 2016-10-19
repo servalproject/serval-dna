@@ -1749,7 +1749,7 @@ int keyring_send_unlock(struct subscriber *subscriber)
   struct internal_mdp_header header;
   bzero(&header, sizeof header);
   
-  header.source = get_my_subscriber();
+  header.source = get_my_subscriber(1);
   header.destination = subscriber;
   header.source_port = MDP_PORT_KEYMAPREQUEST;
   header.destination_port = MDP_PORT_KEYMAPREQUEST;
@@ -1790,7 +1790,7 @@ int keyring_send_identity_request(struct subscriber *subscriber){
   struct internal_mdp_header header;
   bzero(&header, sizeof header);
   
-  header.source = get_my_subscriber();
+  header.source = get_my_subscriber(1);
   header.destination = subscriber;
   header.source_port = MDP_PORT_KEYMAPREQUEST;
   header.destination_port = MDP_PORT_KEYMAPREQUEST;

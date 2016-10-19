@@ -52,7 +52,7 @@ static int rhizome_mdp_send_block(struct subscriber *dest, const rhizome_bid_t *
   // beginning.
   
   header.crypt_flags = MDP_FLAG_NO_CRYPT | MDP_FLAG_NO_SIGN;
-  header.source = get_my_subscriber();
+  header.source = get_my_subscriber(1);
   header.source_port = MDP_PORT_RHIZOME_RESPONSE;
   
   if (dest && (dest->reachable==REACHABLE_UNICAST || dest->reachable==REACHABLE_INDIRECT)){

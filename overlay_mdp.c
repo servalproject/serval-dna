@@ -527,7 +527,7 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f)
 
 void mdp_init_response(const struct internal_mdp_header *in, struct internal_mdp_header *out)
 {
-  out->source = in->destination ? in->destination : get_my_subscriber();
+  out->source = in->destination ? in->destination : get_my_subscriber(1);
   out->source_port = in->destination_port;
   out->destination = in->source;
   out->destination_port = in->source_port;
@@ -949,7 +949,7 @@ static int overlay_mdp_dispatch(overlay_mdp_frame *mdp, struct socket_address *c
   
   if (is_sid_t_any(mdp->out.src.sid)){
     /* set source to ourselves */
-    header.source = get_my_subscriber();
+    header.source = get_my_subscriber(1);
     mdp->out.src.sid = header.source->sid;
   }else if (is_sid_t_broadcast(mdp->out.src.sid)){
     /* Nope, I'm sorry but we simply can't send packets from 
@@ -1062,16 +1062,22 @@ struct routing_state{
   struct socket_address *client;
 };
 
-static void send_route(struct subscriber *subscriber, struct socket_address *client, struct mdp_header *header)
+static void send_route(
+  const struct subscriber *subscriber, 
+  const struct overlay_interface *interface, 
+  struct socket_address *client, 
+  struct mdp_header *header)
 {
   uint8_t payload[MDP_MTU];
   struct overlay_buffer *b = ob_static(payload, sizeof payload);
   ob_limitsize(b, sizeof payload);
   ob_append_bytes(b, subscriber->sid.binary, SID_SIZE);
-  ob_append_bytes(b, subscriber->id_public.binary, IDENTITY_SIZE);
   ob_append_byte(b, subscriber->id_valid | (subscriber->id_combined<<1));
+  if (subscriber->id_valid)
+    ob_append_bytes(b, subscriber->id_public.binary, IDENTITY_SIZE);
   ob_append_byte(b, subscriber->reachable);
-  if (subscriber->reachable & REACHABLE){
+  
+  if ((subscriber->reachable & REACHABLE) || interface){
     ob_append_byte(b, subscriber->hop_count);
     if (subscriber->hop_count>1){
       ob_append_bytes(b, subscriber->next_hop->sid.binary, SID_SIZE);
@@ -1079,10 +1085,14 @@ static void send_route(struct subscriber *subscriber, struct socket_address *cli
 	ob_append_bytes(b, subscriber->prior_hop->sid.binary, SID_SIZE);
       }
     }else{
-      ob_append_byte(b, subscriber->destination->interface - overlay_interfaces);
-      ob_append_str(b, subscriber->destination->interface->name);
+      if (!interface)
+	interface = subscriber->destination->interface;
+      ob_append_byte(b, interface - overlay_interfaces);
+      ob_append_byte(b, interface->state);
+      ob_append_str(b, interface->name);
     }
   }
+  
   assert(!ob_overrun(b));
   mdp_reply2(__WHENCE__, client, header, 0, payload, ob_position(b));
   ob_free(b);
@@ -1093,7 +1103,9 @@ static int routing_table(void **record, void *context)
   struct subscriber *subscriber = *record;
   if (subscriber->reachable != REACHABLE_NONE){
     struct routing_state *state = (struct routing_state *)context;
-    send_route(subscriber, state->client, state->header);
+    if ((subscriber->reachable & REACHABLE_SELF) == 0 || subscriber != get_my_subscriber(0)){
+      send_route(subscriber, NULL, state->client, state->header);
+    }
   }
   return 0;
 }
@@ -1108,12 +1120,33 @@ static void send_route_changed(struct subscriber *subscriber, int UNUSED(prior_r
   struct mdp_binding *b = mdp_bindings;
   while(b){
     if (b->port == MDP_ROUTE_TABLE && b->subscriber == internal){
-      send_route(subscriber, &b->client, &header);
+      send_route(subscriber, NULL, &b->client, &header);
     }
     b=b->_next;
   }
 }
 DEFINE_TRIGGER(link_change, send_route_changed);
+
+static void send_interface_change(struct overlay_interface *interface)
+{
+  struct mdp_header header;
+  bzero(&header, sizeof(header));
+  header.local.sid = SID_INTERNAL;
+  header.local.port = MDP_ROUTE_TABLE;
+  header.remote.port = MDP_ROUTE_TABLE;
+
+  struct mdp_binding *b = mdp_bindings;
+  struct subscriber *subscriber = NULL; 
+  while(b){
+    if (b->port == MDP_ROUTE_TABLE && b->subscriber == internal){
+      if (!subscriber)
+	subscriber = get_my_subscriber(1);
+      send_route(subscriber, interface, &b->client, &header);
+    }
+    b=b->_next;
+  }
+}
+DEFINE_TRIGGER(iupdown, send_interface_change);
 
 struct scan_state{
   struct sched_ent alarm;
@@ -1409,7 +1442,7 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
   switch(sid_type=sid_get_special_type(&header->local.sid)){
     case SID_TYPE_ANY:
       // leaving the sid blank indicates that we should use our main identity
-      internal_header.source = get_my_subscriber();
+      internal_header.source = get_my_subscriber(1);
       header->local.sid = internal_header.source->sid;
       break;
     case SID_TYPE_INTERNAL:
@@ -1537,6 +1570,15 @@ static void mdp_process_packet(struct socket_address *client, struct mdp_header 
 	    .client = client,
 	    .header = header
 	  };
+	  unsigned i;
+	  struct subscriber *subscriber = NULL;
+	  for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
+	    if (overlay_interfaces[i].state == INTERFACE_STATE_UP){
+	      if (!subscriber)
+		subscriber = get_my_subscriber(1);
+	      send_route(subscriber, &overlay_interfaces[i], client, header);
+	    }
+	  }
 	  enum_subscribers(NULL, routing_table, &state);
 	  mdp_reply_ok(client, header);
 	}

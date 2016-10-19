@@ -21,6 +21,7 @@ public class RouteLink {
     public final SubscriberId prior_hop;
     public final int hop_count;
     public final int interface_id;
+    public final boolean interface_up;
     public final String interface_name;
     private final int reachable;
 
@@ -45,8 +46,9 @@ public class RouteLink {
         SubscriberId prior_hop = null;
         int interface_id=-1;
         String interface_name = null;
+        boolean up = false;
 
-        if (reachable != 0 && reachable!= REACHABLE_SELF) {
+        if (buff.hasRemaining()) {
             hop_count = 0xFF & (int)buff.get();
             if (hop_count>1) {
                 next_hop = new SubscriberId(buff);
@@ -54,6 +56,7 @@ public class RouteLink {
                     prior_hop = new SubscriberId(buff);
             }else{
                 interface_id = 0xFF & (int)buff.get();
+                up = buff.get() != 0;
                 StringBuilder builder = new StringBuilder();
                 while(true){
                     byte b = buff.get();
@@ -68,6 +71,7 @@ public class RouteLink {
         this.prior_hop = prior_hop;
         this.hop_count = hop_count;
         this.interface_id = interface_id;
+        this.interface_up = up;
         this.interface_name = interface_name;
     }
 

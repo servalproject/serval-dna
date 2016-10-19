@@ -28,12 +28,12 @@ public final class Subscriber {
 
     public Subscriber(ByteBuffer buff) throws AbstractId.InvalidBinaryException {
         SubscriberId sid = new SubscriberId(buff);
-        SigningKey signingKey = new SigningKey(buff);
         int signKeyFlags = 0xFF & (int)buff.get();
         if ((signKeyFlags&0x01)==0x00)
             signingKey = null;
+        else
+            signingKey = new SigningKey(buff);
         this.sid = sid;
-        this.signingKey = signingKey;
         this.combined = (signKeyFlags&0x02)==0x02;
     }
 

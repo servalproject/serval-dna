@@ -55,10 +55,10 @@ int overlay_packet_init_header(int packet_version, int encapsulation,
   )
     context->point_to_point_device = context->interface->other_device;
   context->flags = DECODE_FLAG_ENCODING_HEADER;
-  overlay_address_append(context, buff, get_my_subscriber());
+  overlay_address_append(context, buff, get_my_subscriber(1));
   
   context->flags = 0;
-  context->sender = get_my_subscriber();
+  context->sender = get_my_subscriber(1);
   
   int flags=0;
   
@@ -464,7 +464,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 
       // We may need to schedule an ACK / NACK soon when we receive a payload addressed to us, or broadcast
       if (f.modifiers & PAYLOAD_FLAG_ACK_SOON && 
-	(f.next_hop == get_my_subscriber() || f.destination == get_my_subscriber() || !f.destination))
+	(f.next_hop == get_my_subscriber(1) || f.destination == get_my_subscriber(1) || !f.destination))
         link_state_ack_soon(context.sender);
     }
     
@@ -476,7 +476,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   }
   
 end:
-  send_please_explain(&context, get_my_subscriber(), context.sender);
+  send_please_explain(&context, get_my_subscriber(1), context.sender);
   
   ob_free(b);
   

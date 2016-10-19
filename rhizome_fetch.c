@@ -1038,7 +1038,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   struct internal_mdp_header header;
   bzero(&header, sizeof header);
   
-  header.source = get_my_subscriber();
+  header.source = get_my_subscriber(1);
   header.source_port = MDP_PORT_RHIZOME_RESPONSE;
   header.destination = (struct subscriber *)slot->peer;
   header.destination_port = MDP_PORT_RHIZOME_REQUEST;

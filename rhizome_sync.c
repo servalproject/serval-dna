@@ -110,7 +110,7 @@ static void rhizome_sync_request(struct subscriber *subscriber, uint64_t token, 
   struct internal_mdp_header header;
   bzero(&header, sizeof header);
   
-  header.source = get_my_subscriber();
+  header.source = get_my_subscriber(1);
   header.source_port = MDP_PORT_RHIZOME_SYNC;
   header.destination = subscriber;
   header.destination_port = MDP_PORT_RHIZOME_SYNC;
@@ -158,7 +158,7 @@ static void rhizome_sync_send_requests(struct subscriber *subscriber, struct rhi
     }
 
     if (!payload){
-      header.source = get_my_subscriber();
+      header.source = get_my_subscriber(1);
       header.source_port = MDP_PORT_RHIZOME_RESPONSE;
       header.destination = subscriber;
       header.destination_port = MDP_PORT_RHIZOME_MANIFEST_REQUEST;
@@ -457,7 +457,7 @@ static void sync_send_response(struct subscriber *dest, int forwards, uint64_t t
   struct internal_mdp_header header;
   bzero(&header, sizeof header);
   
-  header.source = get_my_subscriber();
+  header.source = get_my_subscriber(1);
   header.source_port = MDP_PORT_RHIZOME_SYNC;
   header.destination = dest;
   header.destination_port = MDP_PORT_RHIZOME_SYNC;

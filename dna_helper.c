@@ -184,7 +184,7 @@ dna_helper_start()
     return 0;
   }
   
-  const char *mysid = alloca_tohex_sid_t(get_my_subscriber()->sid);
+  const char *mysid = alloca_tohex_sid_t(get_my_subscriber(1)->sid);
   
   int stdin_fds[2], stdout_fds[2], stderr_fds[2];
   if (pipe(stdin_fds) == -1)
@@ -450,7 +450,7 @@ void handle_reply_line(const char *bufp, size_t len)
 	WHYF("DNAHELPER reply %s contains spurious trailing chars -- ignored", alloca_toprint(-1, bufp, len));
       else {
 	DEBUGF(dnahelper, "DNAHELPER reply %s", alloca_toprint(-1, bufp, len));
-	overlay_mdp_dnalookup_reply(request_source, request_port, get_my_subscriber(), uri, did, name);
+	overlay_mdp_dnalookup_reply(request_source, request_port, get_my_subscriber(1), uri, did, name);
       }
     }
   } else {

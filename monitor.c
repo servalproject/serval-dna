@@ -492,9 +492,9 @@ static int monitor_lookup_match(const struct cli_parsed *parsed, struct cli_cont
   struct subscriber *destination = find_subscriber(dest.binary, sizeof(dest), 1);
   
   char uri[256];
-  snprintf(uri, sizeof(uri), "sid://%s/external/%s", alloca_tohex_sid_t(get_my_subscriber()->sid), ext);
+  snprintf(uri, sizeof(uri), "sid://%s/external/%s", alloca_tohex_sid_t(get_my_subscriber(1)->sid), ext);
   DEBUGF(monitor, "Sending response to %s for %s", sid, uri);
-  overlay_mdp_dnalookup_reply(destination, dest_port, get_my_subscriber(), uri, ext, name);
+  overlay_mdp_dnalookup_reply(destination, dest_port, get_my_subscriber(1), uri, ext, name);
   return 0;
 }
 
@@ -506,7 +506,7 @@ static int monitor_call(const struct cli_parsed *parsed, struct cli_context *con
   if (str_to_sid_t(&sid, parsed->args[1]) == -1)
     return monitor_write_error(c,"invalid SID, so cannot place call");
   struct subscriber *remote = find_subscriber(sid.binary, SID_SIZE, 1);
-  vomp_dial(get_my_subscriber(), remote, parsed->args[2], parsed->args[3]);
+  vomp_dial(get_my_subscriber(1), remote, parsed->args[2], parsed->args[3]);
   return 0;
 }
 

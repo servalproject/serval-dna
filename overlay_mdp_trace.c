@@ -77,7 +77,7 @@ static int overlay_mdp_service_trace(struct internal_mdp_header *header, struct 
   INFOF("Trace from %s to %s", alloca_tohex_sid_t(src->sid), alloca_tohex_sid_t(dst->sid));
   struct internal_mdp_header next_header;
   next_header = *header;
-  next_header.source = get_my_subscriber();
+  next_header.source = get_my_subscriber(1);
   next_header.destination = NULL;
   
   while(ob_remaining(payload)>0){

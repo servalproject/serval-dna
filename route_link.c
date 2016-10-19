@@ -339,7 +339,7 @@ static void update_path_score(struct neighbour *neighbour, struct link *link){
   int hop_count = -1;
   int drop_rate = 0;
 
-  if (link->transmitter == get_my_subscriber()){
+  if (link->transmitter == get_my_subscriber(1)){
     if (link->receiver==neighbour->subscriber){
       hop_count = 1;
     }
@@ -403,7 +403,7 @@ static struct link * find_best_link(struct subscriber *subscriber)
     if (!(link && link->transmitter))
       goto next;
 
-    if (link->transmitter != get_my_subscriber()){
+    if (link->transmitter != get_my_subscriber(1)){
       struct link_state *parent_state = get_link_state(link->transmitter);
       find_best_link(link->transmitter);
       if (parent_state->next_hop != neighbour->subscriber)
@@ -499,7 +499,7 @@ static int append_link_state(struct overlay_buffer *payload, char flags,
 static int append_link(void **record, void *context)
 {
   struct subscriber *subscriber = *record;
-  if (subscriber == get_my_subscriber())
+  if (subscriber == get_my_subscriber(1))
     return 0;
 
   struct link_state *state = get_link_state(subscriber);
@@ -514,7 +514,7 @@ static int append_link(void **record, void *context)
   if (subscriber->reachable==REACHABLE_SELF){
     if (state->next_update - 20 <= now){
       // Other entries in our keyring are always one hop away from us.
-      if (append_link_state(payload, 0, get_my_subscriber(), subscriber, -1, 1, -1, 0, 0)){
+      if (append_link_state(payload, 0, get_my_subscriber(1), subscriber, -1, 1, -1, 0, 0)){
         ALARM_STRUCT(link_send).alarm = now+5;
         return 1;
       }
@@ -744,7 +744,7 @@ static int send_legacy_self_announce_ack(struct neighbour *neighbour, struct lin
   frame->type = OF_TYPE_SELFANNOUNCE_ACK;
   frame->ttl = 6;
   frame->destination = neighbour->subscriber;
-  frame->source = get_my_subscriber();
+  frame->source = get_my_subscriber(1);
   if ((frame->payload = ob_new()) == NULL) {
     op_free(frame);
     return -1;
@@ -830,7 +830,7 @@ static int send_neighbour_link(struct neighbour *n)
   } else {
     struct overlay_frame *frame = emalloc_zero(sizeof(struct overlay_frame));
     frame->type=OF_TYPE_DATA;
-    frame->source=get_my_subscriber();
+    frame->source=get_my_subscriber(1);
     frame->ttl=1;
     frame->queue=OQ_MESH_MANAGEMENT;
     if ((frame->payload = ob_new()) == NULL) {
@@ -868,7 +868,7 @@ static int send_neighbour_link(struct neighbour *n)
 
     DEBUGF(ack, "LINK STATE; Sending ack to %s for seq %d", alloca_tohex_sid_t(n->subscriber->sid), n->best_link->ack_sequence);
     
-    append_link_state(frame->payload, flags, n->subscriber, get_my_subscriber(), n->best_link->neighbour_interface, 1,
+    append_link_state(frame->payload, flags, n->subscriber, get_my_subscriber(1), n->best_link->neighbour_interface, 1,
 	              n->best_link->ack_sequence, n->best_link->ack_mask, -1);
     if (overlay_payload_enqueue(frame) == -1)
       op_free(frame);
@@ -942,7 +942,7 @@ void link_send(struct sched_ent *alarm)
   }else{
     struct internal_mdp_header header;
     bzero(&header, sizeof(header));
-    header.source = get_my_subscriber();
+    header.source = get_my_subscriber(1);
     header.source_port = MDP_PORT_LINKSTATE;
     header.destination_port = MDP_PORT_LINKSTATE;
     header.ttl = 1;
@@ -1321,7 +1321,7 @@ static int link_receive(struct internal_mdp_header *header, struct overlay_buffe
   if (header->source->reachable == REACHABLE_SELF)
     RETURN(0);
 
-  struct subscriber *myself = get_my_subscriber();
+  struct subscriber *myself = get_my_subscriber(1);
 
   struct neighbour *neighbour = get_neighbour(header->source, 1);
 
@@ -1591,10 +1591,10 @@ int link_state_legacy_ack(struct overlay_frame *frame, time_ms_t now)
   }
   if (neighbour->link_in_timeout < now)
     changed = 1;
-  if (link->transmitter != get_my_subscriber())
+  if (link->transmitter != get_my_subscriber(1))
     changed = 1;
 
-  link->transmitter = get_my_subscriber();
+  link->transmitter = get_my_subscriber(1);
   link->link_version = 1;
   link->destination = interface->destination;
 

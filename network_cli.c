@@ -521,7 +521,11 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
 	  break;
 
 	// ignore signing key details for now
-	ob_skip(buff, IDENTITY_SIZE+1);
+	int id_flags = ob_get(buff);
+	if (id_flags < 0)
+	  break;
+	if (id_flags & 1)
+	  ob_skip(buff, IDENTITY_SIZE);
 	if (ob_overrun(buff))
 	  break;
 
@@ -532,9 +536,10 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
 	sid_t *next_hop = NULL;
 	sid_t *prior_hop = NULL;
 	int interface_id =-1;
+	int interface_state = -1;
 	const char *interface_name = NULL;
 
-	if (reachable & REACHABLE){
+	if (ob_remaining(buff)>0){
 	  hop_count = ob_get(buff);
 	  if (hop_count<0)
 	    break;
@@ -547,9 +552,12 @@ static int app_route_print(const struct cli_parsed *parsed, struct cli_context *
 	      if (!prior_hop)
 		break;
 	    }
-	  }else{
+	  } else {
 	    interface_id = ob_get(buff);
 	    if (interface_id<0)
+	      break;
+	    interface_state = ob_get(buff);
+	    if (interface_state<0)
 	      break;
 	    interface_name = ob_get_str_ptr(buff);
 	    if (!interface_name)
