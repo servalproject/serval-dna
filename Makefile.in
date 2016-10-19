@@ -227,13 +227,13 @@ $(OBJSDIR_LIB)/%.o: $(SOURCE_PREFIX)%.c
 # broad so it sometimes results in unnecessary re-compilation, but that is
 # better than too narrow, which can result in missed re-compilation.
 
-$(SERVAL_DAEMON_OBJS): 			$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
-$(SERVALD_OBJS):       			$(SOURCE_PREFIX)Makefile
-$(LIB_SERVAL_OBJS): 			$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
-$(OBJSDIR_TOOLS)/tfw_createfile.o:	$(SOURCE_PREFIX)Makefile $(SOURCE_PREFIX)str.h
-$(OBJSDIR_TOOLS)/directory_service.o:	$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
-$(MONITOR_CLIENT_OBJS):			$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
-$(SIMULATOR_OBJS):			$(SOURCE_PREFIX)Makefile $(PREFIXED_HEADERS)
+$(SERVAL_DAEMON_OBJS): 			$(SOURCE_PREFIX)Makefile.in $(SOURCE_PREFIX)config.h $(PREFIXED_HEADERS)
+$(SERVALD_OBJS):       			$(SOURCE_PREFIX)Makefile.in
+$(LIB_SERVAL_OBJS): 			$(SOURCE_PREFIX)Makefile.in $(SOURCE_PREFIX)config.h $(PREFIXED_HEADERS)
+$(OBJSDIR_TOOLS)/tfw_createfile.o:	$(SOURCE_PREFIX)Makefile.in $(SOURCE_PREFIX)str.h
+$(OBJSDIR_TOOLS)/directory_service.o:	$(SOURCE_PREFIX)Makefile.in $(SOURCE_PREFIX)config.h $(PREFIXED_HEADERS)
+$(MONITOR_CLIENT_OBJS):			$(SOURCE_PREFIX)Makefile.in $(SOURCE_PREFIX)config.h $(PREFIXED_HEADERS)
+$(SIMULATOR_OBJS):			$(SOURCE_PREFIX)Makefile.in $(SOURCE_PREFIX)config.h $(PREFIXED_HEADERS)
 
 # Rules for main targets.
 

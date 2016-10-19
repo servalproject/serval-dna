@@ -184,10 +184,12 @@ AC_CACHE_CHECK([Linux thread system calls], ac_cv_have_linux_threads, [
         [ac_cv_have_linux_threads=yes]
     )
 ])
-AS_IF([test "x$ac_cv_have_linux_threads" = xyes], [AC_DEFINE([HAVE_LINUX_THREADS])])
+AS_IF([test "x$ac_cv_have_linux_threads" = xyes],
+      [AC_DEFINE([HAVE_LINUX_THREADS], 1, [Linux threads are supported - gettid(2) and tgkill(2).])])
 
 dnl Lazy way of checking for Linux
-AS_IF([test "x$ac_cv_header_linux_if_h" = xyes], [AC_DEFINE([USE_ABSTRACT_NAMESPACE])])
+AS_IF([test "x$ac_cv_header_linux_if_h" = xyes],
+      [AC_DEFINE([USE_ABSTRACT_NAMESPACE], 1, [Use abstract namespace sockets for local communication.])])
 
 AC_CACHE_CHECK([linker -z relro option], libc_cv_z_relro, [dnl
   libc_cv_z_relro=no
@@ -219,22 +221,26 @@ AS_IF([test x"$have_ssp" = "x1"], [
 ])
 
 dnl Some platforms still seem to lack the basic single precision trig and power related function.
-AC_SEARCH_LIBS([sinf], [m], AC_DEFINE([HAVE_SINF], [1], [Define to 1 if you have the sinf() function.]))
-AC_SEARCH_LIBS([cosf], [m], AC_DEFINE([HAVE_COSF], [1], [Define to 1 if you have the cosf() function.]))
-AC_SEARCH_LIBS([tanf], [m], AC_DEFINE([HAVE_TANF], [1], [Define to 1 if you have the tanf() function.]))
-AC_SEARCH_LIBS([asinf], [m], AC_DEFINE([HAVE_ASINF], [1], [Define to 1 if you have the asinf() function.]))
-AC_SEARCH_LIBS([acosf], [m], AC_DEFINE([HAVE_ACOSF], [1], [Define to 1 if you have the acosf() function.]))
-AC_SEARCH_LIBS([atanf], [m], AC_DEFINE([HAVE_ATANF], [1], [Define to 1 if you have the atanf() function.]))
-AC_SEARCH_LIBS([atan2f], [m], AC_DEFINE([HAVE_ATAN2F], [1], [Define to 1 if you have the atan2f() function.]))
-AC_SEARCH_LIBS([ceilf], [m], AC_DEFINE([HAVE_CEILF], [1], [Define to 1 if you have the ceilf() function.]))
-AC_SEARCH_LIBS([floorf], [m], AC_DEFINE([HAVE_FLOORF], [1], [Define to 1 if you have the floorf() function.]))
-AC_SEARCH_LIBS([powf], [m], AC_DEFINE([HAVE_POWF], [1], [Define to 1 if you have the powf() function.]))
-AC_SEARCH_LIBS([expf], [m], AC_DEFINE([HAVE_EXPF], [1], [Define to 1 if you have the expf() function.]))
-AC_SEARCH_LIBS([logf], [m], AC_DEFINE([HAVE_LOGF], [1], [Define to 1 if you have the logf() function.]))
-AC_SEARCH_LIBS([log10f], [m], AC_DEFINE([HAVE_LOG10F], [1], [Define to 1 if you have the log10f() function.]))
+AC_SEARCH_LIBS([sinf], [m], AC_DEFINE([HAVE_SINF], [1], [Define to 1 if the sinf() function is available.]))
+AC_SEARCH_LIBS([cosf], [m], AC_DEFINE([HAVE_COSF], [1], [Define to 1 if the cosf() function is available.]))
+AC_SEARCH_LIBS([tanf], [m], AC_DEFINE([HAVE_TANF], [1], [Define to 1 if the tanf() function is available.]))
+AC_SEARCH_LIBS([asinf], [m], AC_DEFINE([HAVE_ASINF], [1], [Define to 1 if the asinf() function is available.]))
+AC_SEARCH_LIBS([acosf], [m], AC_DEFINE([HAVE_ACOSF], [1], [Define to 1 if the acosf() function is available.]))
+AC_SEARCH_LIBS([atanf], [m], AC_DEFINE([HAVE_ATANF], [1], [Define to 1 if the atanf() function is available.]))
+AC_SEARCH_LIBS([atan2f], [m], AC_DEFINE([HAVE_ATAN2F], [1], [Define to 1 if the atan2f() function is available.]))
+AC_SEARCH_LIBS([ceilf], [m], AC_DEFINE([HAVE_CEILF], [1], [Define to 1 if the ceilf() function is available.]))
+AC_SEARCH_LIBS([floorf], [m], AC_DEFINE([HAVE_FLOORF], [1], [Define to 1 if the floorf() function is available.]))
+AC_SEARCH_LIBS([powf], [m], AC_DEFINE([HAVE_POWF], [1], [Define to 1 if the powf() function is available.]))
+AC_SEARCH_LIBS([expf], [m], AC_DEFINE([HAVE_EXPF], [1], [Define to 1 if the expf() function is available.]))
+AC_SEARCH_LIBS([logf], [m], AC_DEFINE([HAVE_LOGF], [1], [Define to 1 if the logf() function is available.]))
+AC_SEARCH_LIBS([log10f], [m], AC_DEFINE([HAVE_LOG10F], [1], [Define to 1 if the log10f() function is available.]))
 
 dnl Check for strlcpy (eg Ubuntu)
-AC_SEARCH_LIBS([strlcpy], [], AC_DEFINE([HAVE_STRLCPY], [1], [Define to 1 if you have the strlcpy() function.]))
+AC_SEARCH_LIBS([strlcpy], [], AC_DEFINE([HAVE_STRLCPY], [1], [Define to 1 if the strlcpy() function is available.]))
+
+dnl Put all the -DHAVE_BLAH=1 definitions into config.h instead of expanding
+dnl them in @DEFS@ on the command-line of every compilation invoked by make.
+AC_CONFIG_HEADERS([config.h])
 
 AC_OUTPUT([
     Makefile

@@ -26,6 +26,10 @@
  *
  */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -212,7 +216,7 @@ lsif(void) {
   return 0;
 }
 
-#endif
+#endif // SIOCGIFCONF
 
 #ifdef HAVE_IFADDRS_H
 int
@@ -258,4 +262,4 @@ doifaddrs(void) {
 
   return 0;
 }
-#endif
+#endif // HAVE_IFADDRS_H

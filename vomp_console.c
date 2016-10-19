@@ -45,6 +45,10 @@
   POSSIBILITY OF SUCH DAMAGE.
 */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <stdio.h>

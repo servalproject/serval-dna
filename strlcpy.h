@@ -20,6 +20,10 @@
 #ifndef __STRLCPY_H__
 #define __STRLCPY_H__
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 // Do not use strlcpy() in Serval DNA source code, use strncpy_nul() or
 // buf_strncpy_nul() from "str.h" instead.  This strlcpy() is provided only
 // because it is needed by sqlite3.c.

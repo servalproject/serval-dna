@@ -20,6 +20,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __STRBUF_HELPERS_H__
 #define __STRBUF_HELPERS_H__
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 // For socklen_t
 #ifdef WIN32
 #  include "win32/win32.h"

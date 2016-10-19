@@ -20,6 +20,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__LANG_H
 #define __SERVAL_DNA__LANG_H
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 /* Useful macros not specific to Serval DNA that assist with using the C
  * language.
  */

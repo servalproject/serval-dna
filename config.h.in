@@ -1,0 +1,268 @@
+/* config.h.in.  Generated from configure.ac by autoheader.  */
+
+/* Define to 1 if the acosf() function is available. */
+#undef HAVE_ACOSF
+
+/* Define to 1 if you have the <arpa/inet.h> header file. */
+#undef HAVE_ARPA_INET_H
+
+/* Define to 1 if the asinf() function is available. */
+#undef HAVE_ASINF
+
+/* Define to 1 if the atan2f() function is available. */
+#undef HAVE_ATAN2F
+
+/* Define to 1 if the atanf() function is available. */
+#undef HAVE_ATANF
+
+/* Define to 1 if you have the `bcmp' function. */
+#undef HAVE_BCMP
+
+/* Define to 1 if you have the `bcopy' function. */
+#undef HAVE_BCOPY
+
+/* Define to 1 if you have the `bzero' function. */
+#undef HAVE_BZERO
+
+/* Define to 1 if the ceilf() function is available. */
+#undef HAVE_CEILF
+
+/* Define to 1 if the cosf() function is available. */
+#undef HAVE_COSF
+
+/* Define to 1 if you have the <errno.h> header file. */
+#undef HAVE_ERRNO_H
+
+/* Define to 1 if the expf() function is available. */
+#undef HAVE_EXPF
+
+/* Define to 1 if you have the <float.h> header file. */
+#undef HAVE_FLOAT_H
+
+/* Define to 1 if the floorf() function is available. */
+#undef HAVE_FLOORF
+
+/* Define to 1 if the system has the `aligned' function attribute */
+#undef HAVE_FUNC_ATTRIBUTE_ALIGNED
+
+/* Define to 1 if the system has the `alloc_size' function attribute */
+#undef HAVE_FUNC_ATTRIBUTE_ALLOC_SIZE
+
+/* Define to 1 if the system has the `error' function attribute */
+#undef HAVE_FUNC_ATTRIBUTE_ERROR
+
+/* Define to 1 if the system has the `format' function attribute */
+#undef HAVE_FUNC_ATTRIBUTE_FORMAT
+
+/* Define to 1 if the system has the `malloc' function attribute */
+#undef HAVE_FUNC_ATTRIBUTE_MALLOC
+
+/* Define to 1 if the system has the `unused' function attribute */
+#undef HAVE_FUNC_ATTRIBUTE_UNUSED
+
+/* Define to 1 if the system has the `used' function attribute */
+#undef HAVE_FUNC_ATTRIBUTE_USED
+
+/* Define to 1 if you have the `getpeereid' function. */
+#undef HAVE_GETPEEREID
+
+/* Define to 1 if you have the `gettid' function. */
+#undef HAVE_GETTID
+
+/* Define to 1 if you have the <ifaddrs.h> header file. */
+#undef HAVE_IFADDRS_H
+
+/* Define to 1 if you have the <inttypes.h> header file. */
+#undef HAVE_INTTYPES_H
+
+/* Define to 1 if you have the <jni.h> header file. */
+#undef HAVE_JNI_H
+
+/* Define to 1 if you have the `c' library (-lc). */
+#undef HAVE_LIBC
+
+/* Define to 1 if you have the `rt' library (-lrt). */
+#undef HAVE_LIBRT
+
+/* Define to 1 if you have the `sodium' library (-lsodium). */
+#undef HAVE_LIBSODIUM
+
+/* Define to 1 if you have the <linux/if.h> header file. */
+#undef HAVE_LINUX_IF_H
+
+/* Define to 1 if you have the <linux/ioctl.h> header file. */
+#undef HAVE_LINUX_IOCTL_H
+
+/* Define to 1 if you have the <linux/netlink.h> header file. */
+#undef HAVE_LINUX_NETLINK_H
+
+/* Define to 1 if you have the <linux/rtnetlink.h> header file. */
+#undef HAVE_LINUX_RTNETLINK_H
+
+/* Linux threads are supported - gettid(2) and tgkill(2). */
+#undef HAVE_LINUX_THREADS
+
+/* Define to 1 if the log10f() function is available. */
+#undef HAVE_LOG10F
+
+/* Define to 1 if the logf() function is available. */
+#undef HAVE_LOGF
+
+/* Define to 1 if you have the `lseek64' function. */
+#undef HAVE_LSEEK64
+
+/* Define to 1 if you have the <math.h> header file. */
+#undef HAVE_MATH_H
+
+/* Define to 1 if you have the <memory.h> header file. */
+#undef HAVE_MEMORY_H
+
+/* Define to 1 if you have the <netdb.h> header file. */
+#undef HAVE_NETDB_H
+
+/* Define to 1 if you have the <netinet/in.h> header file. */
+#undef HAVE_NETINET_IN_H
+
+/* Define to 1 if you have the <net/if.h> header file. */
+#undef HAVE_NET_IF_H
+
+/* Define to 1 if you have the <net/route.h> header file. */
+#undef HAVE_NET_ROUTE_H
+
+/* Define to 1 if the system has the type `off64_t'. */
+#undef HAVE_OFF64_T
+
+/* Define to 1 if you have the <poll.h> header file. */
+#undef HAVE_POLL_H
+
+/* Define to 1 if the powf() function is available. */
+#undef HAVE_POWF
+
+/* Define to 1 if you have the <signal.h> header file. */
+#undef HAVE_SIGNAL_H
+
+/* Define to 1 if the sinf() function is available. */
+#undef HAVE_SINF
+
+/* Define to 1 if you have the <sodium.h> header file. */
+#undef HAVE_SODIUM_H
+
+/* Define to 1 if you have the <stdint.h> header file. */
+#undef HAVE_STDINT_H
+
+/* Define to 1 if you have the <stdio.h> header file. */
+#undef HAVE_STDIO_H
+
+/* Define to 1 if you have the <stdlib.h> header file. */
+#undef HAVE_STDLIB_H
+
+/* Define to 1 if you have the <strings.h> header file. */
+#undef HAVE_STRINGS_H
+
+/* Define to 1 if you have the <string.h> header file. */
+#undef HAVE_STRING_H
+
+/* Define to 1 if the strlcpy() function is available. */
+#undef HAVE_STRLCPY
+
+/* Define to 1 if you have the <sys/byteorder.h> header file. */
+#undef HAVE_SYS_BYTEORDER_H
+
+/* Define to 1 if you have the <sys/endian.h> header file. */
+#undef HAVE_SYS_ENDIAN_H
+
+/* Define to 1 if you have the <sys/filio.h> header file. */
+#undef HAVE_SYS_FILIO_H
+
+/* Define to 1 if you have the <sys/mman.h> header file. */
+#undef HAVE_SYS_MMAN_H
+
+/* Define to 1 if you have the <sys/socket.h> header file. */
+#undef HAVE_SYS_SOCKET_H
+
+/* Define to 1 if you have the <sys/sockio.h> header file. */
+#undef HAVE_SYS_SOCKIO_H
+
+/* Define to 1 if you have the <sys/statvfs.h> header file. */
+#undef HAVE_SYS_STATVFS_H
+
+/* Define to 1 if you have the <sys/stat.h> header file. */
+#undef HAVE_SYS_STAT_H
+
+/* Define to 1 if you have the <sys/time.h> header file. */
+#undef HAVE_SYS_TIME_H
+
+/* Define to 1 if you have the <sys/types.h> header file. */
+#undef HAVE_SYS_TYPES_H
+
+/* Define to 1 if you have the <sys/ucred.h> header file. */
+#undef HAVE_SYS_UCRED_H
+
+/* Define to 1 if you have the <sys/vfs.h> header file. */
+#undef HAVE_SYS_VFS_H
+
+/* Define to 1 if the tanf() function is available. */
+#undef HAVE_TANF
+
+/* Define to 1 if you have the `tgkill' function. */
+#undef HAVE_TGKILL
+
+/* Define to 1 if you have the <ucred.h> header file. */
+#undef HAVE_UCRED_H
+
+/* Define to 1 if you have the <unistd.h> header file. */
+#undef HAVE_UNISTD_H
+
+/* Define to 1 if the system has the `section' variable attribute */
+#undef HAVE_VAR_ATTRIBUTE_SECTION
+
+/* Define to 1 if the system has the `section_seg' variable attribute */
+#undef HAVE_VAR_ATTRIBUTE_SECTION_SEG
+
+/* default instance path */
+#undef INSTANCE_PATH
+
+/* Define to the address where bug reports for this package should be sent. */
+#undef PACKAGE_BUGREPORT
+
+/* Define to the full name of this package. */
+#undef PACKAGE_NAME
+
+/* Define to the full name and version of this package. */
+#undef PACKAGE_STRING
+
+/* Define to the one symbol short name of this package. */
+#undef PACKAGE_TARNAME
+
+/* Define to the home page for this package. */
+#undef PACKAGE_URL
+
+/* Define to the version of this package. */
+#undef PACKAGE_VERSION
+
+/* default Rhizome store directory */
+#undef RHIZOME_STORE_PATH
+
+/* default config directory */
+#undef SERVAL_ETC_PATH
+
+/* default log directory */
+#undef SERVAL_LOG_PATH
+
+/* default run directory */
+#undef SERVAL_RUN_PATH
+
+/* default Serval tmp directory */
+#undef SERVAL_TMP_PATH
+
+/* The size of `off_t', as computed by sizeof. */
+#undef SIZEOF_OFF_T
+
+/* Define to 1 if you have the ANSI C header files. */
+#undef STDC_HEADERS
+
+/* default system log directory */
+#undef SYSTEM_LOG_PATH
+
+/* Use abstract namespace sockets for local communication. */
+#undef USE_ABSTRACT_NAMESPACE

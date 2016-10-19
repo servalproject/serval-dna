@@ -19,6 +19,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__NET_H
 #define __SERVAL_DNA__NET_H
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include <sys/types.h> // for size_t, ssize_t
 #include <sys/socket.h> // for struct sockaddr, socklen_t
 #ifdef HAVE_NETINET_IN_H

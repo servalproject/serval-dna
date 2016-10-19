@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #ifndef __STRBUF_H__
 #define __STRBUF_H__
+
 #include <stddef.h>
 #include "lang.h"
 

@@ -49,6 +49,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVAL_DNA__FDQUEUE_H
 #define __SERVAL_DNA__FDQUEUE_H
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #ifdef HAVE_POLL_H
 #include <poll.h>
 #endif
