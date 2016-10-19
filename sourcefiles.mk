@@ -124,6 +124,7 @@ SERVAL_DAEMON_SOURCES = \
 SERVAL_DAEMON_JNI_SOURCES = \
 	jni_common.c \
 	jni_commandline.c \
+	jni_instance.c \
 	jni_server.c
 
 MDP_CLIENT_SOURCES = \

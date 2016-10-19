@@ -1,6 +1,7 @@
-/* 
-Serval DNA header file - system paths
-Copyright (C) 2014 Serval Project Inc.
+/*
+Serval DNA instance paths
+Copyright (C) 2014-2015 Serval Project Inc.
+Copyright (C) 2016 Flinders University
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -25,6 +26,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 
 const char *instance_path(); // returns NULL if not using an instance path
+
+void set_instance_path(const char *path);
+
 int create_serval_instance_dir();
 
 int _formf_serval_etc_path(struct __sourceloc, char *buf, size_t bufsiz, const char *fmt, ...) __attribute__((__ATTRIBUTE_format(printf,4,5)));

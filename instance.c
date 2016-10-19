@@ -1,6 +1,6 @@
 /*
-Serval DNA instance directory path
-Copyright (C) 2012 Serval Project Inc.
+Serval DNA instance paths
+Copyright (C) 2012-2015 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -18,20 +18,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <stdlib.h>
-#ifdef HAVE_JNI_H
-#include <jni.h>
-
-// Stop OpenJDK 7 from foisting their UNUSED() macro on us in <jni_md.h>
-#ifdef UNUSED
-# undef UNUSED
-#endif
-#endif
 #include "instance.h"
 #include "str.h"
 #include "os.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
-
 
 /*
  * A default INSTANCE_PATH can be set on the ./configure command line, eg:
@@ -104,18 +95,11 @@ const char *instance_path()
   return instancepath;
 }
 
-#ifdef HAVE_JNI_H
-JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_setInstancePath(
-  JNIEnv *env, jobject UNUSED(this), jobject path)
+void set_instance_path(const char *path)
 {
-  const char *cpath = (*env)->GetStringUTFChars(env, path, NULL);
-  instancepath = strdup(cpath);
+  instancepath = strdup(path);
   know_instancepath = 1;
-  (*env)->ReleaseStringUTFChars(env, path, cpath);
-  return (jint)0;
 }
-
-#endif
 
 static int vformf_path(struct __sourceloc __whence, strbuf b, const char *syspath, const char *fmt, va_list ap)
 {
