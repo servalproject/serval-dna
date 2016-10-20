@@ -106,9 +106,9 @@ static int tgkill(int tgid, int tid, int signum)
 static struct pid_tid read_pidfile(const char *path)
 {
   int fd = open(path, O_RDONLY);
-  if (fd == -1 && errno == ENOENT)
-    return (struct pid_tid){ .pid = 0, .tid = 0 };
   if (fd == -1) {
+    if (errno == ENOENT)
+      return (struct pid_tid){ .pid = 0, .tid = 0 };
     WHYF_perror("open(%s, O_RDONLY)", alloca_str_toprint(path));
     return (struct pid_tid){ .pid = -1, .tid = -1 };
   }
@@ -116,13 +116,20 @@ static struct pid_tid read_pidfile(const char *path)
   int32_t tid = -1;
   char buf[30];
   ssize_t len = read(fd, buf, sizeof buf);
-  if (len > 0 && (size_t)len < sizeof buf) {
+  if (len == -1) {
+    WHYF_perror("read(%s, %p, %zu)", alloca_str_toprint(path), buf, sizeof buf);
+  } else if (len > 0 && (size_t)len < sizeof buf) {
+    DEBUGF(server, "Read from pidfile %s: %s", path, alloca_toprint(-1, buf, len));
     buf[len] = '\0';
     const char *e = NULL;
-    if (str_to_int32(buf, 10, &pid, &e) && *e == ' ')
+    if (!str_to_int32(buf, 10, &pid, &e))
+      pid = -1;
+    else if (*e == ' ')
       str_to_int32(e + 1, 10, &tid, NULL);
     else
       tid = pid;
+  } else {
+    WARNF("Pidfile %s has invalid content: %s", path, alloca_toprint(-1, buf, len));
   }
   if (pid > 0) {
     // Only return a valid pid/tid if the file is currently locked by the same process that it
@@ -134,8 +141,10 @@ static struct pid_tid read_pidfile(const char *path)
     lock.l_whence = SEEK_SET;
     lock.l_len = len;
     fcntl(fd, F_GETLK, &lock);
-    if (lock.l_type == F_UNLCK || lock.l_pid != pid)
+    if (lock.l_type == F_UNLCK || lock.l_pid != pid) {
+      DEBUGF(server, "Pidfile %s is not locked by pid %d", path, pid);
       pid = tid = -1;
+    }
   }
   close(fd);
   return (struct pid_tid){ .pid = pid, .tid = tid };
@@ -168,6 +177,7 @@ static struct pid_tid get_server_pid_tid()
   if (id.pid == -1) {
     INFOF("Unlinking stale pidfile %s", pidfile_path);
     unlink(pidfile_path);
+    id.pid = 0;
   }
   return id;
 error:
@@ -367,10 +377,13 @@ static int server_write_pid()
   // Create the temporary pidfile and lock it, deleting any stale temporaries if necessary.  Leave
   // the temporary pidfile open to retain the lock -- if successful it will eventually be the real
   // pidfile.
+  DEBUGF(server, "unlink(%s)", alloca_str_toprint(tmpfile_path));
   unlink(tmpfile_path);
+  DEBUGF(server, "open(%s, O_RDWR|O_CREAT|O_CLOEXEC)", alloca_str_toprint(tmpfile_path));
   int fd = open(tmpfile_path, O_RDWR | O_CREAT | O_CLOEXEC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
   if (fd==-1)
     return WHYF_perror("Cannot create temporary pidfile: open(%s, O_RDWR|O_CREAT|O_CLOEXEC)", alloca_str_toprint(tmpfile_path));
+  DEBUG(server, "lock");
   if (fcntl(fd, F_SETLK, &lock) == -1) {
     WHYF_perror("Cannot lock temporary pidfile %s: fcntl(%d, F_SETLK, &lock)", tmpfile_path, fd);
     close(fd);
@@ -380,6 +393,7 @@ static int server_write_pid()
     close(fd);
     return WHYF_perror("ftruncate(%d, 0)", fd);
   }
+  DEBUGF(server, "write %s", alloca_toprint(-1, content, content_size));
   if (write(fd, content, content_size) != (ssize_t)content_size){
     close(fd);
     return WHYF_perror("write(%d, %s, %zu)", fd, alloca_str_toprint(content), content_size);
@@ -392,7 +406,10 @@ static int server_write_pid()
   // exists, then if the existent pidfile is locked, there is another daemon running, so bail out.
   // If the existent pidfile is not locked, then it is stale, so delete it and re-try the link.
   unsigned int tries = 0;
-  while (link(tmpfile_path, pidfile_path) == -1) {
+  while (1) {
+    INFOF("link(%s, %s)", alloca_str_toprint(tmpfile_path), alloca_str_toprint(pidfile_path));
+    if (link(tmpfile_path, pidfile_path) != -1)
+      break;
     if (errno == EEXIST && ++tries < 2) {
       struct pid_tid id = read_pidfile(pidfile_path);
       if (id.pid == -1) {
@@ -402,14 +419,14 @@ static int server_write_pid()
 	INFOF("Another daemon is running, pid=%d tid=%d", id.pid, id.tid);
 	return 1;
       }
-    }
-    else {
-      WHYF_perror("Cannot link temporary pidfile %s to pidfile %s", tmpfile_path, pidfile_path);
+    } else {
+      WHYF_perror("Cannot link temporary pidfile %s to %s", tmpfile_path, pidfile_path);
       close(fd);
       unlink(tmpfile_path);
       return -1;
     }
   }
+  DEBUGF(server, "Created pidfile %s", pidfile_path);
 
   // The link was successful, so delete the temporary pidfile but leave the pid file open so that
   // the lock remains held!
