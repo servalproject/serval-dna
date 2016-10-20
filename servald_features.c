@@ -30,6 +30,7 @@ void servald_features()
   USE_FEATURE(cli_network);
   USE_FEATURE(cli_rhizome);
   USE_FEATURE(cli_meshms);
+  USE_FEATURE(cli_meshmb);
   USE_FEATURE(cli_monitor);
   USE_FEATURE(cli_msp_proxy);
   USE_FEATURE(cli_vomp_console);

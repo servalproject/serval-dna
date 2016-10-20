@@ -29,6 +29,8 @@ static int meshmb_send(keyring_identity *id, const char *message, size_t message
   return ret;
 }
 
+DEFINE_FEATURE(cli_meshmb);
+
 DEFINE_CMD(app_meshmb_send, 0,
   "Append a public broadcast message to your feed",
   "meshmb", "send" KEYRING_PIN_OPTIONS, "<id>", "<message>", "...");
