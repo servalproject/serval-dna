@@ -203,19 +203,22 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_rawComman
   // find jni results methods
   if ((r=initJniTypes(env))!=0)
     return r;
-    
+
   unsigned char status = 0; // to match what the shell gets: 0..255
 
   // Construct argv, argc from this method's arguments.
   jsize len = (*env)->GetArrayLength(env, args);
-  
-  const char *argv[len+1];
+
+  jstring jsv[len];
+  bzero(jsv, sizeof(jsv));
+
+  const char *argv[len + 1];
   bzero(argv, sizeof(argv));
-  
+
   // From now on, in case of an exception we have to free some resources before
   // returning.
   static const char *EMPTY="";
-  
+
   struct jni_context context;
   bzero(&context, sizeof(context));
 
@@ -226,10 +229,10 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_rawComman
 
   jsize i;
   for (i = 0; !context.jni_exception && i < len; ++i) {
-    const jstring arg = (jstring)(*env)->GetObjectArrayElement(env, args, i);
+    const jstring arg = jsv[i] = (jstring)(*env)->GetObjectArrayElement(env, args, i);
     if ((*env)->ExceptionCheck(env)){
       context.jni_exception = 1;
-    }else if (arg == NULL) {
+    } else if (arg == NULL) {
       argv[i] = EMPTY;
     } else {
       argv[i] = (*env)->GetStringUTFChars(env, arg, NULL);
@@ -252,10 +255,9 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_rawComman
 
   // Release argv Java string buffers.
   for (i = 0; i < len; ++i) {
-    if (argv[i] && argv[i]!=EMPTY) {
-      const jstring arg = (jstring)(*env)->GetObjectArrayElement(env, args, i);
-      if (arg)
-	(*env)->ReleaseStringUTFChars(env, arg, argv[i]);
+    if (jsv[i]) {
+      assert(argv[i] != EMPTY);
+      (*env)->ReleaseStringUTFChars(env, jsv[i], argv[i]);
     }
   }
 
