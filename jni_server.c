@@ -61,9 +61,10 @@ static void wokeup()
 JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_server(
   JNIEnv *env, jobject UNUSED(this), jobject callback, jobject keyring_pin, jobjectArray entry_pins)
 {
-  if (!IJniServer){
-    cf_init();
+  cf_init();
+  cf_reload_strict();
 
+  if (!IJniServer) {
     IJniServer = (*env)->FindClass(env, "org/servalproject/servaldna/IJniServer");
     if (IJniServer==NULL)
       return jni_throw(env, "java/lang/IllegalStateException", "Unable to locate class org.servalproject.servaldna.IJniServer");
@@ -85,10 +86,8 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_server(
   int pid = server_pid();
   if (pid < 0)
     return jni_throw(env, "java/lang/IllegalStateException", "Failed to read server pid");
-  if (pid>0)
+  if (pid > 0)
     return jni_throw(env, "java/lang/IllegalStateException", "Server already running");
-  
-  cf_reload_strict();
   
   int ret = -1;
   
