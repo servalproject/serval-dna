@@ -35,7 +35,7 @@ public class ServalDCommand
 
 	static
 	{
-		System.loadLibrary("servald");
+		System.loadLibrary("servaldaemon");
 	}
 
 	public static final int STATUS_ERROR = 255;

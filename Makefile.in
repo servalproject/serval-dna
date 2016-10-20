@@ -100,7 +100,7 @@ DEFS=	@DEFS@
 
 all:	libs servald servaldwrap test
 
-libs:	libservald.so \
+libs:	libservaldaemon.so \
 	libservalclient.so libservalclient.a \
 	libmonitorclient.so libmonitorclient.a
 
@@ -115,7 +115,7 @@ uninstall:
 clean:
 	@$(RM) -r $(OBJSDIRS:%=%/*) \
 		  servald \
-		  libservald.so libservald.a \
+		  libservaldaemon.so libservaldaemon.a \
 		  libservalclient.so libservalclient.a \
 		  libmonitorclient.so libmonitorclient.a \
 		  tfw_createfile directory_service fakeradio simulator serval-tests
@@ -237,19 +237,20 @@ $(SIMULATOR_OBJS):			$(SOURCE_PREFIX)Makefile.in $(SOURCE_PREFIX)config.h $(PREF
 
 # Rules for main targets.
 
-libservald.a: 	$(SERVALD_OBJS) \
+libservaldaemon.a: \
+		$(SERVALD_OBJS) \
 		$(OBJSDIR_TOOLS)/version.o
 	@echo AR $@
 	@$(AR) -cr $@ $^
 
-libservald.so: \
+libservaldaemon.so: \
 		$(OBJSDIR_SERVALD)/servald_features.o \
 		$(SERVAL_DAEMON_JNI_OBJS) \
-		libservald.a
+		libservaldaemon.a
 	@echo LINK $@
 	@$(CC) -Wall -shared -o $@ $^ $(LDFLAGS)
 
-servald: $(OBJSDIR_SERVALD)/servald_features.o libservald.a
+servald: $(OBJSDIR_SERVALD)/servald_features.o libservaldaemon.a
 	@echo LINK $@
 	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 
@@ -257,7 +258,7 @@ servaldwrap: $(OBJSDIR_SERVALD)/servalwrap.o $(OBJSDIR_TOOLS)/version.o
 	@echo LINK $@
 	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 
-serval-tests: $(OBJSDIR_SERVALD)/test_features.o libservald.a
+serval-tests: $(OBJSDIR_SERVALD)/test_features.o libservaldaemon.a
 	@echo LINK $@
 	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 

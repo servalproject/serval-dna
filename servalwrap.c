@@ -26,9 +26,9 @@ int main(int argc,char **argv)
 {
   const char *libservald_path =
 #ifdef ANDROID
-    "/data/data/org.servalproject/lib/libserval.so"
+    "/data/data/org.servalproject/lib/libservaldaemon.so"
 #else
-    "libservald.so"
+    "libservaldaemon.so"
 #endif
   ;
   const char *entry_point ="servald_main";
