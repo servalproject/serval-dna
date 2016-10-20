@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <signal.h>
+#include "servald_main.h"
 #include "commandline.h"
 #include "sighandlers.h"
 #include "conf.h"

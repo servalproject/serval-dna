@@ -4,25 +4,12 @@ AC_INIT(servald, 0.9)
 AC_CONFIG_SRCDIR([serval_types.h])
 AC_CONFIG_MACRO_DIR([m4])
 
+AC_ARG_VAR([AR], [Library archiver])
+AC_ARG_VAR([RANLIB], [Archive indexer])
+AC_ARG_VAR([SWIFTC], [Swift compiler])
+AC_ARG_VAR([SWIFTCFLAGS], [Swift compiler flags])
+
 CPPFLAGS="$CPPFLAGS -D_GNU_SOURCE"
-
-dnl Set $host_os, which is needed by javac detection.
-AC_CANONICAL_SYSTEM
-
-dnl Various GCC function and variable attributes
-AX_GCC_FUNC_ATTRIBUTE(aligned)
-AX_GCC_FUNC_ATTRIBUTE(alloc_size)
-AX_GCC_FUNC_ATTRIBUTE(error)
-AX_GCC_FUNC_ATTRIBUTE(format)
-AX_GCC_FUNC_ATTRIBUTE(malloc)
-AX_GCC_FUNC_ATTRIBUTE(unused)
-AX_GCC_FUNC_ATTRIBUTE(used)
-AX_GCC_VAR_ATTRIBUTE(section)
-AX_GCC_VAR_ATTRIBUTE(section_seg)
-AX_GCC_STMT_ATTRIBUTE(fallthrough)
-
-dnl Init pkg-config
-PKG_PROG_PKG_CONFIG()
 
 dnl Specify default instance path
 AC_ARG_VAR([INSTANCE_PATH], [default instance path for servald])
@@ -52,10 +39,58 @@ dnl Specify default Rhizome store directory
 AC_ARG_VAR([RHIZOME_STORE_PATH], [default Rhizome store directory])
 AS_IF([test "x$RHIZOME_STORE_PATH" != x], [AC_DEFINE_UNQUOTED([RHIZOME_STORE_PATH], ["$RHIZOME_STORE_PATH"], [default Rhizome store directory])])
 
-dnl Check for programs.
-AC_PROG_CC
+dnl Set $host_os, which is needed by javac detection.
+AC_CANONICAL_SYSTEM
 
-dnl Check for compiler options
+dnl Check for C99 compiler and other tools.
+AC_PROG_CC_C99
+AC_PROG_CPP
+
+AC_CHECK_TOOL([AR], [ar], [:])
+AS_IF([test "x$AR" = x:], [AC_MSG_ERROR([Library archiver not found: ar])])
+
+AC_CHECK_TOOL([RANLIB], [ranlib], [:])
+AS_IF([test "x$RANLIB" = x:], [AC_MSG_ERROR([Archive indexer not found: ranlib])])
+
+dnl Check for a Swift 3 or 4 compiler; set SWIFTC if found.
+AC_PROG_SWIFTC
+
+AS_IF([test "x$SWIFTC" != x], [ dnl
+    dnl Check whether the Swift compiler will compile a simple Swift 4 program with the supplied flags.
+    dnl If not, report failure but keep going.
+    AC_PROG_SWIFTC_IS_SWIFT4
+    AS_IF([test "x$ac_cv_prog_swiftc_is_swift4" = xyes], [SWIFT_VERSION=4], [ dnl
+        AC_PROG_SWIFTC_IS_SWIFT3
+        AS_IF([test "x$ac_cv_prog_swiftc_is_swift3" = xyes], [SWIFT_VERSION=3], [ dnl
+            AC_MSG_WARN([$SWIFTC version is too old; omitting Swift API])
+            SWIFT_VERSION=
+            SWIFTC=
+        ])
+    ])
+])
+
+AC_SUBST([SWIFTC])
+AC_SUBST([SWIFTCFLAGS])
+AC_SUBST([SWIFT_VERSION])
+
+dnl Various GCC function and variable attributes
+AX_GCC_FUNC_ATTRIBUTE(aligned)
+AX_GCC_FUNC_ATTRIBUTE(alloc_size)
+AX_GCC_FUNC_ATTRIBUTE(error)
+AX_GCC_FUNC_ATTRIBUTE(format)
+AX_GCC_FUNC_ATTRIBUTE(malloc)
+AX_GCC_FUNC_ATTRIBUTE(unused)
+AX_GCC_FUNC_ATTRIBUTE(used)
+AX_GCC_VAR_ATTRIBUTE(section)
+AX_GCC_VAR_ATTRIBUTE(section_seg)
+AX_GCC_STMT_ATTRIBUTE(fallthrough)
+
+dnl The default GNU linker (BFD) cannot relocate some symbols produced by the
+dnl Swift compiler, so the gold linker is used to create dynamic libraries.
+dnl See doc/Development.md for details.
+AX_APPEND_LINK_FLAGS(-fuse-ld=gold)
+
+dnl Check compiler options for compiling SQLite.
 AX_APPEND_COMPILE_FLAGS(
     -Wno-empty-body \
     -Wno-unused-value \
@@ -81,7 +116,7 @@ popdef([AC_MSG_ERROR])
 AC_SUBST([JAVAC])
 
 dnl Check Java version, ditch Java if not adequate
-if test -n "$JAVAC"; then
+AS_IF([test -n "$JAVAC"], [ dnl
     dnl Discover the version of the Java compiler
     AC_PROG_JAVAC_VERSION
     dnl Check that the Java compiler is modern enough
@@ -94,9 +129,9 @@ if test -n "$JAVAC"; then
                 AC_MSG_WARN([Java version $ax_cv_prog_javac_version is too old; omitting Java API])
                 JAVAC=""
             ])
-fi
+])
 
-if test -n "$JAVAC"; then
+AS_IF([test -n "$JAVAC"], [ dnl
     dnl Discover the locations of JNI header files
     dnl *** Kludge: override AC_MSG_ERROR because AC_JNI_INCLUDE_DIR does not have
     dnl *** [if-found] and [if-not-found] action parameters.
@@ -106,7 +141,7 @@ if test -n "$JAVAC"; then
         CPPFLAGS="$CPPFLAGS -I$JNI_INCLUDE_DIR"
     done
     popdef([AC_MSG_ERROR])
-fi
+])
 
 dnl XXX Isn't this pointless? we are always linked against libc
 AC_CHECK_LIB(c,srandomdev)

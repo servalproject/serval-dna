@@ -21,6 +21,7 @@
 /config.h
 /servald
 /servaldwrap
+/servaldswift
 /serval-tests
 /directory_service
 /tfw_createfile

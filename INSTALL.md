@@ -1,6 +1,6 @@
 Serval DNA Build and Test
 =========================
-[Serval Project][], September 2017
+[Serval Project][], December 2017
 
 Supported Architectures
 -----------------------
@@ -54,6 +54,7 @@ Mandatory dependencies:
 Optional:
 
  * Java compiler and SDK 1.6.0 or later
+ * [Swift][] 3 or 4 compiler
  * ALSA sound library and headers (present on Linux, not on Android)
 
 Test dependencies:
@@ -68,11 +69,15 @@ Test dependencies:
 OS-X using the [homebrew][] package manager.  The [Notes for Developers][] give
 more details.
 
-Build
------
+Native Build
+------------
 
-To compile a native (ie, not cross-compiled) Serval DNA from source, run the
-following commands:
+A *native build* of Serval DNA will produce libraries and executable programs
+that can be run on the same platform on which the build is performed.  This is
+useful for development and testing.
+
+The following commands will compile a native (ie, not cross-compiled) Serval
+DNA from source:
 
     $ cd $HOME/src/serval-dna
     $ autoreconf -f -i -I m4
@@ -125,9 +130,20 @@ A successful session should appear something like:
     LIB CC cli.c
     LIB CC cli_stdio.c
     ...
-    LINK simulator
+    LINK servald
+    CC directory_service.c
+    LINK directory_service
+    SERVALD CC servalwrap.c
+    LINK servaldwrap
     SERVALD CC test_features.c
     LINK serval-tests
+    CC fakeradio.c
+    LINK fakeradio
+    CC simulator.c
+    LINK simulator
+    CC tfw_createfile.c
+    LINK tfw_createfile
+    SWIFT servaldswift
     make[1]: Entering directory '/home/username/src/serval-dna/java-api'
     JAVAC classes
     JAVAC testclasses
@@ -152,16 +168,27 @@ In the event of a build failure:
  * consult the [Notes for Developers][]
  * as a last resort, [contact the Serval Project][]
 
+Android build
+-------------
+
+The [batphone][] app for Android builds Serval DNA from source by including
+[Android.mk](./Android.mk) in its own build process; see the [batphone build
+instructions][] for more information.
+
+It is not necessary to perform a [native build](#native-build) before or after
+an Android build; the two produce completely unrelated artifacts.
+
 Built artifacts
 ---------------
 
-The build process produces the following artifacts:
+The [native build](#native-build) process produces the following artifacts:
 
 * **servald** is the main Serval DNA daemon executable.  All the Serval DNA
   daemon, SQLite and libsodium code is statically linked into this executable,
-  so it does not need to load any Serval or libsodium shared libraries at
-  run-time.  Its unstripped size is about 9.5 MB on a typical 64-bit system, of
-  which about 7 MB is SQLite.  Its stripped size is about 3 MB.
+  and only common system libraries are dynamically linked, which keeps its
+  run-time dependencies to a minimum.  Its unstripped size is about 9.5 MB on a
+  typical 64-bit system, of which about 7 MB is SQLite.  Its stripped size is
+  about 3 MB.
 
 * **servaldwrap** is a Serval DNA executable identical to *servald*, but
   it loads `libservaldaemon.so` at run-time using [dlopen(3)][] instead of
@@ -182,8 +209,9 @@ The build process produces the following artifacts:
 
 * **libservaldaemon.so** is a dynamic library containing the complete executable
   code of the Serval DNA daemon, including [JNI][] entry points, SQLite and
-  libsodium cryptographic functions.  The Serval DNA Java API, which is used by
-  [batphone][], and the *servaldwrap* executable both use this dynamic library.
+  libsodium cryptographic functions.  The *servaldwrap* executable and the
+  Serval DNA Java API, which is used by [batphone][], both use this dynamic
+  library.
 
 * **directory_service** is the executable for the [Serval Infrastructure][]
   daemon.
@@ -212,6 +240,16 @@ The build process produces the following artifacts:
 
 * **tfw_createfile** is an executable utility needed by test scripts for
   creating large data files with unique, non-repeating content.
+
+In addition, the following artifacts are produced [if a Swift compiler is
+present][Swift development]:
+
+* **servaldswift** is a statically linked Serval DNA executable identical to
+  *servald*, but its *main* entry point is compiled from a [Swift][] program to
+  prove that Swift code can invoke internal Serval DNA daemon APIs.  It
+  dynamically links to many more system libraries than *servald* because of the
+  Swift language's run-time support and resultant library dependencies, so is
+  not suitable for deployment.
 
 Test scripts
 ------------
@@ -270,6 +308,7 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [Serval DNA]: ./README.md
 [serval-dna]: https://github.com/servalproject/serval-dna
 [batphone]: https://github.com/servalproject/batphone
+[batphone build instructions]: https://github.com/servalproject/batphone/blob/development/INSTALL.md
 [Android 2.2 “Froyo”]: http://developer.android.com/about/versions/android-2.2-highlights.html
 [Android NDK]: http://developer.android.com/tools/sdk/ndk/index.html
 [Xcode]: https://developer.apple.com/xcode/
@@ -277,6 +316,7 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [gcc 5]: http://gcc.gnu.org/gcc-5/
 [gcc 6]: http://gcc.gnu.org/gcc-6/
 [Notes for Developers]: ./doc/Development.md
+[Swift development]: ./doc/Development.md#swift
 [OpenWRT]: ./doc/OpenWRT.md
 [Serval Infrastructure]: ./doc/Serval-Infrastructure.md
 [Serval Mesh Extender]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:meshextender:
@@ -288,6 +328,7 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [MDP API]: ./doc/Mesh-Datagram-Protocol.md#mdp-api
 [CLI API]: ./doc/CLI-API.md
 [JNI]: http://en.wikipedia.org/wiki/Java_Native_Interface
+[Swift]: https://en.wikipedia.org/wiki/Swift_(programming_language)
 [Bash]: http://en.wikipedia.org/wiki/Bash_(Unix_shell)
 [GNU make]: http://www.gnu.org/software/make/
 [Git]: http://git-scm.com/

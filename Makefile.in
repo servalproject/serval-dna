@@ -8,7 +8,21 @@ sysconfdir=@sysconfdir@
 localstatedir=@localstatedir@
 srcdir=@srcdir@
 
-SQLITE3_AMALGAMATION = sqlite-amalgamation-3140200
+CC = 			@CC@
+AR =			@AR@
+RANLIB =		@RANLIB@
+JAVAC= 			@JAVAC@
+SWIFTC= 		@SWIFTC@
+
+SWIFTCFLAGS= 		@SWIFTCFLAGS@ -I. -I $(srcdir)
+SWIFTLIBS=		@LIBS@
+SWIFT_MODULE_NAME=	ServalDNA
+
+INSTALL=        	install
+INSTALL_PROGRAM=	$(INSTALL)
+INSTALL_DATA=   	$(INSTALL) -m 644
+
+SQLITE3_AMALGAMATION = 	sqlite-amalgamation-3140200
 
 include $(srcdir)/sourcefiles.mk
 include $(srcdir)/headerfiles.mk
@@ -62,8 +76,6 @@ SIMULATOR_OBJS = \
 PREFIXED_HEADERS = $(addprefix $(srcdir)/, $(HDRS))
 PREFIXED_SOURCES = $(addprefix $(srcdir)/, $(ALL_SOURCES))
 
-CC= @CC@
-
 LDFLAGS=@LDFLAGS@ @LIBS@
 
 CFLAGS= -I. -I$(srcdir)/$(SQLITE3_AMALGAMATION) @CPPFLAGS@ @CFLAGS@
@@ -83,35 +95,38 @@ CFLAGS+=-DSHA2_USE_INTTYPES_H -D_XOPEN_SOURCE=600 -D_XOPEN_SOURCE_EXTENDED=1 -D_
 CFLAGS+=-D_DARWIN_C_SOURCE
 CFLAGS_SQLITE= @CFLAGS_SQLITE@
 
-JAVAC= 		@JAVAC@
-
-INSTALL=        install
-INSTALL_PROGRAM=$(INSTALL)
-INSTALL_DATA=   $(INSTALL) -m 644
-
 -include $(srcdir)/Makefile.dbg
 
-DEFS= @DEFS@
+# More warnings, discover problems that only happen on some archs
+CFLAGS+=-Wextra
+# Security enhancements from Debian
+CFLAGS+=-Wformat -Werror=format-security -D_FORTIFY_SOURCE=2
 
-CONFIG_H = @CONFIG_H@
+CONFIG_H =	@CONFIG_H@
+
+DEFS=		@DEFS@
+SWIFTDEFS=	$(addprefix -Xcc , $(DEFS))
 
 # Usage: $(call MERGE_STATIC_LIBS, libdest.a, libsrcfoo.a libsrcbar.a)
 MERGE_STATIC_LIBS =	echo MERGE $(1) = $(2); \
 			tmp="$$(mktemp -d)" && \
 			( cd "$$tmp" $(foreach LIB, $(2), && $(AR) -x $(abspath $(LIB))) ) && \
-			$(RM) $@ && \
-			$(AR) -cr $(1) "$$tmp"/* && \
+			$(RM) $(1) && \
+			$(AR) -cr $(1) "$$tmp"/*.o && \
+			$(RANLIB) $(1) && \
 			$(RM) -r "$$tmp"
 
 .PHONY: all libs test install uninstall clean
 
-all:	libs servald servaldwrap test
+all:	libs servald directory_service test
 
-libs:	libservaldaemon.so \
+libs:	libservaldaemon.so libservaldaemon.a \
 	libservalclient.so libservalclient.a \
 	libmonitorclient.so libmonitorclient.a
 
-test:   tfw_createfile directory_service fakeradio simulator serval-tests
+test:   servaldwrap serval-tests \
+	fakeradio simulator \
+	tfw_createfile
 
 install: servald
 	$(INSTALL_PROGRAM) -D servald $(DESTDIR)$(sbindir)/servald
@@ -320,6 +335,26 @@ servald:	$(OBJSDIR_SERVALD)/servald_features.o \
 		libservaldaemon.a
 	@echo LINK $@
 	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
+
+ifneq ($(SWIFTC),) # Only provide Swift targets if the Swift compiler is available.
+
+test:	servaldswift
+
+# A servald equivalent whose main entry point and logging output is implemented
+# in the Swift language, rather than the C entry point in main.c.  This exists
+# mainly to ensure that the Serval daemon library can be linked into a Swift
+# program and executed.  This linkage support is needed by the iOS framework
+# package.
+servaldswift: $(srcdir)/servaldswift.swift \
+	      $(OBJSDIR_SERVALD)/servald_features.o \
+	      $(OBJSDIR_SERVALD)/log_output_console.o \
+	      $(OBJSDIR_SERVALD)/log_output_file.o \
+	      libservaldaemon.a \
+	      $(srcdir)/module.modulemap
+	@echo SWIFT $@
+	@$(SWIFTC) -emit-executable $(SWIFTCFLAGS) $(SWIFTDEFS) -o $@ $(filter %.swift, $^) $(filter %.o, $^) $(filter %.a, $^) $(SWIFTLIBS)
+
+endif # $(SWIFTC)
 
 servaldwrap: $(OBJSDIR_SERVALD)/servalwrap.o
 	@echo LINK $@

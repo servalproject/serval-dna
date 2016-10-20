@@ -1,6 +1,6 @@
 Notes for Serval DNA Developers
 ===============================
-[Serval Project][], September 2017
+[Serval Project][], December 2017
 
 Introduction
 ------------
@@ -11,12 +11,12 @@ non-developers who are experiencing errors in the [build][] process.
 Autotools
 ---------
 
-The [configure.ac](../configure.ac) file is an [autoconf][] script that
-contains instructions for adapting the build of Serval DNA to different
-platforms and CPU architectures.  This script makes use of many [GNU M4][]
-macros, each of which tests an aspect of the build environment, such as the
-make and version of the C compiler (eg, [GCC][], [Clang][]), the availability
-of headers, functions and system calls in the standard library, and so forth.
+The [configure.ac][] file is an [autoconf][] script that contains instructions
+for adapting the build of Serval DNA to different platforms and CPU
+architectures.  This script makes use of many [GNU M4][] macros, each of which
+tests an aspect of the build environment, such as the make and version of the C
+compiler (eg, [GCC][], [Clang][]), the availability of headers, functions and
+system calls in the standard library, and so forth.
 
 Most of these M4 macros are standard, either supplied with [autoconf][] or from
 the [autoconf macro archive][].  Some macros are specific to Serval DNA, either
@@ -27,8 +27,7 @@ sub-directory.
 The [autoreconf][] command used in the [build][] instructions generates an
 `aclocal.m4` file that includes all the necessary files from the [m4](../m4)
 directory.  In turn, it then includes this `aclocal.m4` file when invoking [GNU
-M4][] to convert the [configure.ac](../configure.ac) file into the
-`./configure` script.
+M4][] to convert the [configure.ac][] file into the `./configure` script.
 
 When invoked without arguments, all [autoreconf][] versions up to 2.69 will
 emit warning messages like this:
@@ -63,7 +62,18 @@ the `-I m4` option, which will eliminate the warnings:
 
 The `-I m4` option should be unnecessary in [autoreconf][] versions 2.70 and
 later, because they will deduce it from the `AC_CONFIG_MACRO_DIR([m4])`
-directive near the top of `configure.ac`.
+directive near the top of [configure.ac][].
+
+Linker
+------
+
+The default GNU linker (based on the BFD library) does not support relocation
+of some symbols produced by the Swift compiler:
+
+    relocation R_X86_64_PC32 against protected symbol `...' can not be used when making a shared object
+
+The Serval DNA dynamic library is linked using the GNU [gold][] linker
+(available in GNU binutils since 2008), which does not have this problem.
 
 libsodium
 ---------
@@ -217,6 +227,34 @@ using the [homebrew][] package manager:
     /usr/local/Cellar/jq/1.5_2: 18 files, 958K
     $
 
+Java
+----
+
+The Serval DNA *libservaldeamon* static and dynamic libraries provide a [JNI][]
+API so that the Serval [command line][CLI] can be called from Java programs,
+and the daemon server can be run in a Java thread.
+
+Swift
+-----
+
+Serval DNA supports [Swift][], the language that Apple recommend for developing
+iOS apps for their mobile devices such as phones and tablets.  The
+`./configure` script [generated from configure.ac](#autotools) detects whether
+a [Swift 4][] compiler is present, or failing that, a [Swift 3][] compiler, and
+if so, then produces a Makefile that will compile
+[servaldswift.swift](../servaldswift.swift) into the *servaldswift* executable,
+to prove that the Swift [module map](../module.modulemap) allows Swift source
+code to invoke internal Serval DNA functions.
+
+The `./configure` script can be passed the following variables, either as
+environment variables or using the `VARNAME=value` syntax on its command line:
+
+* `SWIFTC` the path name of the Swift compiler to use; by default the configure
+  script searches `$PATH` for `swiftc`
+
+* `SWIFTCFLAGS` extra command-line arguments to pass to the Swift compiler;
+  analogous to `CFLAGS` for the C compiler
+
 About the examples
 ------------------
 
@@ -241,6 +279,7 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [CC BY 4.0]: ../LICENSE-DOCUMENTATION.md
 [Serval DNA]: ../README.md
 [build]: ../INSTALL.md
+[configure.ac]: ../configure.ac
 [autoconf]: http://www.gnu.org/software/autoconf/autoconf.html
 [autoconf macro archive]: http://www.gnu.org/software/autoconf-archive/
 [GNU M4]: http://www.gnu.org/software/m4/m4.html
@@ -262,4 +301,11 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [OS X awk(1)]: https://developer.apple.com/library/mac/documentation/Darwin/Reference/ManPages/man1/awk.1.html
 [jq(1)]: https://stedolan.github.io/jq/
 [homebrew]: http://brew.sh/
+[CLI]: ./CLI-API.md
+[JNI]: http://en.wikipedia.org/wiki/Java_Native_Interface
+[Swift]: https://en.wikipedia.org/wiki/Swift_(programming_language)
+[Swift module]: https://swift.org/package-manager/#modules
+[Swift 3]: https://swift.org/blog/swift-3-0-released/
+[Swift 4]: https://swift.org/blog/swift-4-0-released/
+[gold]: https://en.wikipedia.org/wiki/Gold_(linker)
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell
