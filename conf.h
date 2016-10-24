@@ -714,7 +714,7 @@ int cf_reload(void);
 int cf_reload_strict(void);
 int cf_reload_permissive(void);
 
-DECLARE_TRIGGER(config_change_log);
-DECLARE_TRIGGER(config_change);
+DECLARE_TRIGGER(conf_log);
+DECLARE_TRIGGER(conf_change);
 
 #endif //__SERVAL_DNA__CONF_H

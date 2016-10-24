@@ -303,7 +303,7 @@ int server_bind()
 
 void server_loop(time_ms_t (*waiting)(time_ms_t, time_ms_t, time_ms_t), void (*wokeup)())
 {
-  CALL_TRIGGER(config_change);
+  CALL_TRIGGER(conf_change);
   
   // This log message is used by tests to wait for the server to start.
   INFOF("Server initialised, entering main loop");
@@ -596,7 +596,7 @@ void rhizome_clean_db(struct sched_ent *alarm)
 
 static void server_on_config_change();
 
-DEFINE_TRIGGER(config_change, server_on_config_change);
+DEFINE_TRIGGER(conf_change, server_on_config_change);
 
 static void server_on_config_change()
 {
