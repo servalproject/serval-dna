@@ -33,11 +33,13 @@ SERVAL_DAEMON_OBJS = \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(MDP_CLIENT_SOURCES:.c=.o)) \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_DAEMON_SOURCES:.c=.o))
 
+ifeq (@HAVE_JNI_H@,yes)
+
 SERVAL_DAEMON_JNI_OBJS = \
 	$(addprefix $(OBJSDIR_SERVALD)/, $(SERVAL_DAEMON_JNI_SOURCES:.c=.o))
 
-ifeq (@HAVE_JNI_H@,yes)
 SERVAL_DAEMON_OBJS += $(SERVAL_DAEMON_JNI_OBJS)
+
 endif
 
 SQLITE3_OBJS = \
