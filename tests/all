@@ -3,6 +3,7 @@
 # Aggregation of all tests except high-load stress tests.
 #
 # Copyright 2012-2014 Serval Project Inc.
+# Copyright 2017 Flinders University
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -42,6 +43,9 @@ includeTests meshmsrestful
 includeTests meshmbrestful
 if type -p "$JAVAC" >/dev/null; then
    includeTests alljava
+fi
+if type -p "$SWIFTC" >/dev/null; then
+   includeTests keyringswift
 fi
 
 runTests "$@"

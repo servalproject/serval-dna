@@ -6,10 +6,10 @@ AC_CONFIG_MACRO_DIR([m4])
 
 AC_ARG_VAR([AR], [Library archiver])
 AC_ARG_VAR([RANLIB], [Archive indexer])
+
+dnl Specify Swift compiler
 AC_ARG_VAR([SWIFTC], [Swift compiler])
 AC_ARG_VAR([SWIFTCFLAGS], [Swift compiler flags])
-
-CPPFLAGS="$CPPFLAGS -D_GNU_SOURCE"
 
 dnl Specify default instance path
 AC_ARG_VAR([INSTANCE_PATH], [default instance path for servald])
@@ -39,23 +39,61 @@ dnl Specify default Rhizome store directory
 AC_ARG_VAR([RHIZOME_STORE_PATH], [default Rhizome store directory])
 AS_IF([test "x$RHIZOME_STORE_PATH" != x], [AC_DEFINE_UNQUOTED([RHIZOME_STORE_PATH], ["$RHIZOME_STORE_PATH"], [default Rhizome store directory])])
 
-dnl Set $host_os, which is needed by javac detection.
-AC_CANONICAL_SYSTEM
+dnl Set $build, $build_cpu, $build_vendor, $build_os to reflect the native
+dnl platform (the one on which the build is being performed), either from the
+dnl --build option, or by running config.guess.
+AC_CANONICAL_BUILD
 
-dnl Check for C99 compiler and other tools.
+dnl Set $host, $host_cpu, $host_vendor, $host_os, either from --host option
+dnl (cross compilation), or falling back to $build (native compilation).
+AC_CANONICAL_HOST
+
+dnl $CFLAGS_TARGET is used in the Serval DNA Makefile and also passed in CFLAGS to all
+dnl sub-Makefiles, such as libsodium.
+CFLAGS_TARGET=''
+
+dnl Check for C99 compiler, preprocessor and assembler.
 AC_PROG_CC_C99
 AC_PROG_CPP
+AM_PROG_AS
 
+dnl Check for library creation tools.
 AC_CHECK_TOOL([AR], [ar], [:])
 AS_IF([test "x$AR" = x:], [AC_MSG_ERROR([Library archiver not found: ar])])
-
 AC_CHECK_TOOL([RANLIB], [ranlib], [:])
 AS_IF([test "x$RANLIB" = x:], [AC_MSG_ERROR([Archive indexer not found: ranlib])])
+
+dnl C preprocessor option to support cross-compiling.
+AX_APPEND_COMPILE_FLAGS(["-arch $host_cpu"], [CPPFLAGS])
 
 dnl Check for a Swift 3 or 4 compiler; set SWIFTC if found.
 AC_PROG_SWIFTC
 
 AS_IF([test "x$SWIFTC" != x], [ dnl
+    dnl Discover the Swift compiler's target, which is determined by the --host option
+    dnl in an Xcode cross build, and is its default target for a native build (which
+    dnl may be affected by $SWIFTCFLAGS).
+    AC_MSG_CHECKING([Swift target])
+
+    dnl Swift SDK names differ a little from Xcode names: iPhoneOS and iPhoneSimulator
+    dnl are both represented as ios.
+    swiftc_target=`$SWIFTC $SWIFTCFLAGS -version 2>&1 | sed -n -e 's/^Target:  *//p'`
+    AS_IF([test "x$swiftc_target" = x], [AC_MSG_ERROR([Swift compiler does not report its target: $SWIFTC $SWIFTCFLAGS -version])])
+
+    dnl In a build for Mac OSX (native or cross), ensure that the Swift target is high
+    dnl enough to create a Swift package, which were not supported before Mac OSX 10.10.
+    macosx_min_version=10.10
+    AS_CASE([$swiftc_target],
+        [[*-apple-macosx*]], [ dnl
+            swiftc_target_version=[`echo "$swiftc_target" | sed -n -e 's/^.*-macosx//p'`]
+            AS_VERSION_COMPARE([$swiftc_target_version], [$macosx_min_version], [ dnl
+                CFLAGS_TARGET="-mmacosx-version-min=$macosx_min_version"
+                swiftc_target=[`echo "$swiftc_target" | sed -n -e 's/-macosx.*$//p'`-macosx$macosx_min_version]
+            ])
+        ]
+    )
+    AC_MSG_RESULT([$swiftc_target])
+
     dnl Check whether the Swift compiler will compile a simple Swift 4 program with the supplied flags.
     dnl If not, report failure but keep going.
     AC_PROG_SWIFTC_IS_SWIFT4
@@ -67,11 +105,31 @@ AS_IF([test "x$SWIFTC" != x], [ dnl
             SWIFTC=
         ])
     ])
+
+    dnl Add the -target option to SWIFTCFLAGS (if the user has already supplied a -target option in
+    dnl SWIFTCFLAGS, then this prepended one will take precedence).
+    SWIFTCFLAGS="-target $swiftc_target $SWIFTCFLAGS"
 ])
 
+dnl Check for a working Swift package manager, keep going if unsuccessful.
+AS_IF([test "x$SWIFTC" != x && test "x$SWIFT_BUILD" = x], [
+    AC_PROG_SWIFT_PACKAGE_MANAGER
+])
+
+dnl The C compilation flags used in all Serval-DNA Makefiles.
+CPPFLAGS="$CPPFLAGS -D_GNU_SOURCE"
+CFLAGS_TARGET="$CFLAGS_TARGET"
+CFLAGS="$CFLAGS_TARGET $CFLAGS"
+
+export CPPFLAGS
+export CFLAGS
+
+AC_SUBST([WRAPPER])
+AC_SUBST([CFLAGS_TARGET])
 AC_SUBST([SWIFTC])
 AC_SUBST([SWIFTCFLAGS])
 AC_SUBST([SWIFT_VERSION])
+AC_SUBST([SWIFT_BUILD])
 
 dnl Various GCC function and variable attributes
 AX_GCC_FUNC_ATTRIBUTE(aligned)
@@ -90,8 +148,16 @@ dnl Swift compiler, so the gold linker is used to create dynamic libraries.
 dnl See doc/Development.md for details.
 AX_APPEND_LINK_FLAGS(-fuse-ld=gold)
 
-dnl Check compiler options for compiling SQLite.
-AX_APPEND_COMPILE_FLAGS(
+dnl Early versions of GCC on Mac OS-X would fail without this flag, which soon
+dnl became deprecated and eventually removed some time around 2015.
+AX_APPEND_COMPILE_FLAGS([-no-cpp-precomp], [CFLAGS])
+
+dnl Cause GCC to use pipes to connect the compilation stages using pipes instead
+dnl of temporary files.
+AX_APPEND_COMPILE_FLAGS([-pipe], [CFLAGS])
+
+dnl Suppress certain compiler warnings when compiling SQLite.
+AX_APPEND_COMPILE_FLAGS([ \
     -Wno-empty-body \
     -Wno-unused-value \
     -Wno-unused-function \
@@ -99,8 +165,12 @@ AX_APPEND_COMPILE_FLAGS(
     -Wno-unused-variable \
     -Wno-unused-but-set-variable \
     -Wno-missing-field-initializers \
-    -Wno-deprecated-declarations,
-[CFLAGS_SQLITE], [-Werror])
+    -Wno-deprecated-declarations \
+    '-Wno-#warnings' \
+    ],
+    [CFLAGS_SQLITE], [-Werror])
+dnl Put a backslash before any '#' characters so it expands correctly in Makefile.in.
+CFLAGS_SQLITE="`echo "$CFLAGS_SQLITE" | sed 's/#/\\\\#/g'`"
 AC_SUBST([CFLAGS_SQLITE])
 
 dnl Math library functions for spandsp
@@ -158,7 +228,7 @@ AC_CHECK_TYPES([off64_t], [have_off64_t=1], [have_off64_t=0])
 AC_CHECK_SIZEOF([off_t])
 
 dnl There must be a 64-bit seek(2) system call of some kind
-AS_IF([test "x$have_lseek64_t" = "xno" -a "x$ac_cv_sizeof_off_t" != x8 ], [
+AS_IF([test "x$have_lseek64_t" = "xno" && test "x$ac_cv_sizeof_off_t" != x8 ], [
     AC_MSG_ERROR([Missing lseek64(2) system call])
 ])
 
@@ -204,11 +274,6 @@ AC_CHECK_HEADERS(
 ])
 
 AC_SUBST([HAVE_JNI_H], [$ac_cv_header_jni_h])
-
-dnl The entire libsodium source is in a subdirectory, and has its own configure
-dnl script.
-
-AC_CONFIG_SUBDIRS([libsodium])
 
 dnl Check if the Linux gettid() and tgkill() system calls are supported.
 AC_CHECK_FUNCS([gettid tgkill])
@@ -284,8 +349,16 @@ dnl them in @DEFS@ on the command-line of every compilation invoked by make.
 AC_CONFIG_HEADERS([config.h])
 AC_SUBST([CONFIG_H], [config.h])
 
+dnl The entire libsodium source is in a subdirectory, and has its own configure
+dnl script.
+
+AC_CONFIG_SUBDIRS([libsodium])
+
+ac_configure_args="$ac_configure_args CC='$CC' CCAS='$CCAS' LD='$LD'"
+
 AC_OUTPUT([
     Makefile
     testconfig.sh
     java-api/Makefile
+    swift-client-api/Makefile
 ])

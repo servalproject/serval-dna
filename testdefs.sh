@@ -83,7 +83,7 @@ extract_stdout_keyvalue_optional() {
    esac
    local _label_re=$(escape_grep_basic "$_label")
    local _delim_re=$(escape_grep_basic "$_delim")
-   local _line=$($GREP "^$_label_re$_delim_re" "$TFWSTDOUT")
+   local _line=$($GREP "^$_label_re$_delim_re$_rexp" "$TFWSTDOUT")
    local _value=
    local _return=1
    if [ -n "$_line" ]; then
@@ -102,6 +102,16 @@ extract_stdout_keyvalue_optional() {
 extract_stdout_keyvalue() {
    local _label="$2"
    assert --message="stdout of ($TFWEXECUTED) contains valid '$_label:' line" --stdout extract_stdout_keyvalue_optional "$@"
+}
+
+# Assert function for the output of servald commands that return "key:value\n"
+# pairs.
+assert_stdout_keyvalue() {
+   local _label="$1"
+   local _value="$2"
+   local _extracted
+   extract_stdout_keyvalue _extracted "$_label" '.*'
+   assert --message="stdout of ($executed) '$_label:' line does not equal '$_value'" --stdout test "$_extracted" = "$_value"
 }
 
 # Parse the standard result set output produced by the immediately preceding command

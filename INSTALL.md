@@ -150,6 +150,14 @@ A successful session should appear something like:
     Note: Some input files use or override a deprecated API.
     Note: Recompile with -Xlint:deprecation for details.
     make[1]: Leaving directory '/home/username/src/serval-dna/java-api'
+    SWIFT MODULE servald.swiftmodule
+    cd swift-api && make SOURCE_PREFIX= all
+    make[1]: Entering directory '/home/username/src/serval-dna/swift-api'
+    swift build --package-path package
+    Compile Swift Module 'ServalClient' (5 sources)
+    Archiving /home/username/src/serval-dna/swift-api/package/.build/x86_64-unknown-linux/debug/libServalClient.a
+    SWIFT test-swift
+    make[1]: Leaving directory '/home/username/src/serval-dna/swift-api'
     rm _servalclient.a _monitorclient.a _servald.a
     $
 
@@ -251,6 +259,11 @@ present][Swift development]:
   Swift language's run-time support and resultant library dependencies, so is
   not suitable for deployment.
 
+* **swift-client-api/build/debug/ServalClient.swiftmodule**  
+  **swift-client-api/build/debug/ServalClient.swiftdoc**  
+  **swift-client-api/build/debug/libServalClient.a**  
+  are the [Swift Client API module][].
+
 Test scripts
 ------------
 
@@ -317,6 +330,7 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [gcc 6]: http://gcc.gnu.org/gcc-6/
 [Notes for Developers]: ./doc/Development.md
 [Swift development]: ./doc/Development.md#swift
+[Swift Client API module]: ./doc/Development.md#swift-client-api
 [OpenWRT]: ./doc/OpenWRT.md
 [Serval Infrastructure]: ./doc/Serval-Infrastructure.md
 [Serval Mesh Extender]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:meshextender:
@@ -329,6 +343,7 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [CLI API]: ./doc/CLI-API.md
 [JNI]: http://en.wikipedia.org/wiki/Java_Native_Interface
 [Swift]: https://en.wikipedia.org/wiki/Swift_(programming_language)
+[dlopen(3)]: http://man7.org/linux/man-pages/man3/dlopen.3.html
 [Bash]: http://en.wikipedia.org/wiki/Bash_(Unix_shell)
 [GNU make]: http://www.gnu.org/software/make/
 [Git]: http://git-scm.com/

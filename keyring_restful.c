@@ -272,7 +272,7 @@ static int restful_keyring_set(httpd_request *r, const char *remainder)
   keyring_identity *id = keyring_find_identity_sid(keyring, &r->sid1);
   if (!id)
     return http_request_keyring_response(r, 404, "Identity not found");
-  if (keyring_set_did_name(id, did ? did : "", name ? name : "") == -1)
+  if (keyring_set_did_name(id, did, name) == -1)
     return http_request_keyring_response(r, 500, "Could not set identity DID/Name");
   if (keyring_commit(keyring) == -1)
     return http_request_keyring_response(r, 500, "Could not store new identity");

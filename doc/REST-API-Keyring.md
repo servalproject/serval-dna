@@ -210,6 +210,10 @@ recognised:
 *   **name**: the name; empty to clear the name, otherwise must conform to the
     rules for [Name](#name)
 
+If a parameter is missing, then the corresponding field of the identity is left
+unchanged.  If a parameter is set to an empty string, then the corresponding
+field of the identity is erased.
+
 If any parameter contains an invalid value then the request returns [400 Bad
 Request][400].  If there is no unlocked identity with the given SID, this
 request returns [404 Not Found][404].

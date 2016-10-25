@@ -1,0 +1,155 @@
+#!/bin/bash
+
+# Tests for Keyring Swift API.
+#
+# Copyright 2015 Serval Project Inc.
+# Copyright 2017 Flinders University
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+source "${0%/*}/../testdefs_swift.sh"
+
+setup() {
+   setup_servald
+   set_instance +A
+   set_keyring_config
+   set_extra_config
+   executeOk_servald config \
+      set "api.restful.users.$SWIFT_TEST_USER.password" "$SWIFT_TEST_PASSWORD"
+   if [ -z "$IDENTITY_COUNT" ]; then
+      create_single_identity
+   else
+      create_identities $IDENTITY_COUNT
+   fi
+   export SERVALD_RHIZOME_DB_RETRY_LIMIT_MS=60000
+   start_servald_server
+   wait_until servald_restful_http_server_started +A
+   get_servald_restful_http_server_port SWIFT_TEST_PORT +A
+}
+
+teardown() {
+   stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
+
+set_keyring_config() {
+   executeOk_servald config \
+      set log.console.level debug \
+      set debug.httpd on \
+      set debug.keyring on \
+      set debug.verbose on
+}
+
+set_extra_config() {
+   :
+}
+
+doc_keyringList="Swift API list keyring identities"
+setup_keyringList() {
+   IDENTITY_COUNT=10
+   DIDA1=123123123
+   NAMEA1='Joe Bloggs'
+   DIDA5=567567567
+   setup
+}
+test_keyringList() {
+   executeSwiftOk keyring list
+   tfw_cat --stdout --stderr
+   assert_keyring_list $IDENTITY_COUNT
+}
+
+doc_keyringListPin="Swift API list keyring identities, with PIN"
+setup_keyringListPin() {
+   IDENTITY_COUNT=3
+   PINA1='wif waf'
+   setup
+}
+test_keyringListPin() {
+   # First, list without supplying the PIN
+   executeSwiftOk keyring list
+   tfw_cat --stdout --stderr
+   assert_keyring_list $((IDENTITY_COUNT - 1))
+   # Then, list supplying the PIN
+   executeSwiftOk keyring list --pin "$PINA1"
+   tfw_cat --stdout --stderr
+   assert_keyring_list $IDENTITY_COUNT
+}
+
+doc_keyringAddDidName="Swift API add new keyring identity"
+setup_keyringAddDidName() {
+   IDENTITY_COUNT=1
+   DIDA2=123123123
+   NAMEA2='Joe Bloggs'
+   setup
+}
+test_keyringAddDidName() {
+   executeSwiftOk keyring add did "$DIDA2" name "$NAMEA2"
+   tfw_cat --stdout --stderr
+   assert_stdout_keyvalue did "$DIDA2"
+   assert_stdout_keyvalue name "$NAMEA2"
+   extract_stdout_keyvalue SID sid "$rexp_sid"
+   extract_stdout_keyvalue ID identity "$rexp_id"
+   executeOk_servald keyring list
+   assert_keyring_list 2
+   assertStdoutGrep --stderr --matches=1 "^$SID:$ID:$DIDA2:$NAMEA2\$"
+}
+
+doc_keyringRemove="Swift API remove keyring identity"
+setup_keyringRemove() {
+   IDENTITY_COUNT=2
+   setup
+}
+test_keyringRemove() {
+   executeSwiftOk keyring remove "$SIDA1"
+   assert_stdout_keyvalue sid "$SIDA1"
+   executeOk_servald keyring list
+   assert_keyring_list 1
+   assertStdoutGrep --matches=0 "^$SIDA1:"
+   assertStdoutGrep --matches=1 "^$SIDA2:"
+   executeSwiftOk keyring remove "$SIDA2"
+   assert_stdout_keyvalue sid "$SIDA2"
+   executeOk_servald keyring list
+   assert_keyring_list 0
+}
+
+doc_keyringSetDidName="Swift API set DID and Name of keyring identity"
+setup_keyringSetDidName() {
+   IDENTITY_COUNT=1
+   setup
+}
+test_keyringSetDidName() {
+   executeSwiftOk keyring set "$SIDA1" did '123456'
+   assert_stdout_keyvalue sid "$SIDA1"
+   assert_stdout_keyvalue identity "$IDA1"
+   assert_stdout_keyvalue did "123456"
+   assert_stdout_keyvalue name ""
+   executeOk_servald keyring list
+   assert_keyring_list 1
+   assertStdoutGrep --stderr --matches=1 "^$SIDA1:$IDA1:123456:\$"
+   executeSwiftOk keyring set "$SIDA1" name 'Display Name'
+   assert_stdout_keyvalue sid "$SIDA1"
+   assert_stdout_keyvalue identity "$IDA1"
+   assert_stdout_keyvalue did "123456"
+   assert_stdout_keyvalue name "Display Name"
+   executeOk_servald keyring list
+   assert_keyring_list 1
+   assertStdoutGrep --stderr --matches=1 "^$SIDA1:$IDA1:123456:Display Name\$"
+}
+
+runTests "$@"

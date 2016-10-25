@@ -1,4 +1,4 @@
-# Makefile.in for Serval DNA
+# Makefile.in for Serval DNA daemon and libraries
 # vim: noet ts=8 sts=0 sw=8
 prefix=@prefix@
 exec_prefix=@exec_prefix@
@@ -88,6 +88,7 @@ CFLAGS+=-DSQLITE_THREADSAFE=0 \
 	-DSQLITE_OMIT_VIRTUALTABLE \
 	-DSQLITE_OMIT_AUTHORIZATION
 CFLAGS+=-fPIC -DSERVAL_ENABLE_DEBUG=1 -Wall -Werror -Wextra -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2
+CFLAGS+=@CFLAGS_TARGET@
 
 # Solaris magic
 CFLAGS+=-DSHA2_USE_INTTYPES_H -D_XOPEN_SOURCE=600 -D_XOPEN_SOURCE_EXTENDED=1 -D__EXTENSIONS__=1
@@ -163,6 +164,25 @@ java-api-clean:
 
 endif # $(JAVAC)
 
+ifneq ($(SWIFTC),) # Only provide Swift targets if the Swift compiler is available.
+
+all:	swift-client-api
+
+test:	servaldswift
+
+clean:	swift-client-api-clean
+
+.PHONY: swift-client-api swift-client-api-clean
+
+swift-client-api:
+	@mkdir -p swift-client-api
+	cd swift-client-api && $(MAKE) all
+
+swift-client-api-clean:
+	cd swift-client-api 2>/dev/null && $(MAKE) clean
+
+endif # $(SWIFTC)
+
 # Build the Sodium elliptic curve encryption library within its 'libsodium'
 # subtree, and install its development files (headers and libraries) into our
 # $(LIBSODIUM_DEV) subdirectory.  Then use the contents of this subdirectory to
@@ -186,7 +206,11 @@ $(LIBSODIUM_DEV)/.installed:
 	@mkdir -p $(LIBSODIUM_DEV)
 	@$(RM) $@
 	@touch $@.in-progress
-	@cd $(LIBSODIUM_SUBDIR) && $(MAKE) CFLAGS+=-prefer-pic prefix=$(abspath $(LIBSODIUM_DEV)) install
+	@cd $(LIBSODIUM_SUBDIR) && $(MAKE) \
+	    CFLAGS+="-prefer-pic @CFLAGS_TARGET@" \
+	    CCASFLAGS+="@CFLAGS_TARGET@" \
+	    prefix=$(abspath $(LIBSODIUM_DEV)) \
+	    install
 	@mv -f $@.in-progress $@
 
 # Source code test coverage support -- see doc/Testing.md
@@ -337,8 +361,6 @@ servald:	$(OBJSDIR_SERVALD)/servald_features.o \
 	@$(CC) -Wall -o $@ $^ $(LDFLAGS)
 
 ifneq ($(SWIFTC),) # Only provide Swift targets if the Swift compiler is available.
-
-test:	servaldswift
 
 # A servald equivalent whose main entry point and logging output is implemented
 # in the Swift language, rather than the C entry point in main.c.  This exists

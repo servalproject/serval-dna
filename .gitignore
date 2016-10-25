@@ -7,6 +7,7 @@
 /objs
 /objs_lib
 /objs_servald
+*.o
 *.a
 *.suo
 .*.sw?
@@ -36,3 +37,6 @@ test.*.log
 /java-api/Makefile
 /java-api/classes/
 /java-api/testclasses/
+/swift-client-api/Makefile
+/swift-client-api/build/
+/swift-client-api/swift-client-util

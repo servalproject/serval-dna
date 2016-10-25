@@ -159,9 +159,9 @@ Apple Mac OS X
 ### Test utilities
 
 The [OS X grep(1)][] , [OS X sed(1)][] and [OS X awk(1)][] tools provided by
-Apple Mac OS X are the BSD variants.  The test scripts require the GNU variants
-with the names *ggrep*, *gsed* and *gawk*, which can be installed on Mac OS X
-using the [homebrew][] package manager:
+Apple Mac OS X are the BSD variants.  The [test scripts][] require the GNU
+variants with the names *ggrep*, *gsed* and *gawk*, which can be installed on
+Mac OS X using the [homebrew][] package manager:
 
     $ brew tap homebrew/dupes
     ==> Tapping homebrew/dupes
@@ -255,6 +255,34 @@ environment variables or using the `VARNAME=value` syntax on its command line:
 * `SWIFTCFLAGS` extra command-line arguments to pass to the Swift compiler;
   analogous to `CFLAGS` for the C compiler
 
+Swift Client API
+----------------
+
+Serval DNA provides a *Swift Client API* as a [Swift module][] called
+**ServalClient**, which provides access to the services of the Serval DNA
+daemon through its [REST API][].
+
+The Swift client API is written entirely in [Swift][] using the [URLSession][]
+Foundation class and related classes as the HTTP client.  The API is covered
+by its own [test scripts][].  To date only the following parts of the [REST
+API][] are supported:
+
+* [Keyring REST API][], test script is [keyringswift](../tests/keyringswift)
+
+Using Swift modules
+-------------------
+
+To use a [Swift module][] in your Swift program:
+
+* add the directory containing the *ModuleName.swiftmodule* and
+  *ModuleName.swiftdoc* files to your Swift import path, so the Swift source
+  code can use `import ModuleName` to access the API definition;
+
+* include the `libModuleName.a` static library in the link command line, either
+  by giving its path explicitly as an argument, or by adding its containing
+  directory to the link search path with the `-L` option and giving the
+  `-lModuleName` option on the link command line.
+
 About the examples
 ------------------
 
@@ -279,6 +307,9 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [CC BY 4.0]: ../LICENSE-DOCUMENTATION.md
 [Serval DNA]: ../README.md
 [build]: ../INSTALL.md
+[REST API]: ./REST-API.md
+[Keyring REST API]: ./REST-API-Keyring.md
+[test scripts]: ./Testing.md
 [configure.ac]: ../configure.ac
 [autoconf]: http://www.gnu.org/software/autoconf/autoconf.html
 [autoconf macro archive]: http://www.gnu.org/software/autoconf-archive/
@@ -307,5 +338,6 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [Swift module]: https://swift.org/package-manager/#modules
 [Swift 3]: https://swift.org/blog/swift-3-0-released/
 [Swift 4]: https://swift.org/blog/swift-4-0-released/
+[URLSession]: https://developer.apple.com/documentation/foundation/urlsession
 [gold]: https://en.wikipedia.org/wiki/Gold_(linker)
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell
