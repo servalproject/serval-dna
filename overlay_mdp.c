@@ -1302,8 +1302,6 @@ static int mdp_search_identities(struct socket_address *client, struct mdp_heade
   return 0;
 }
 
-const char *external_name="ext"; // TODO?
-
 int mdp_send_external_packet(struct overlay_interface *interface, struct socket_address *address, const uint8_t *payload, size_t len)
 {
   struct mdp_header header;
@@ -1362,37 +1360,43 @@ static void mdp_interface_packet(struct socket_address *client, struct mdp_heade
     case MDP_INTERFACE_UP:{
       struct config_network_interface ifconfig;
       cf_dfl_config_network_interface(&ifconfig);
-      
+
       struct cf_om_node *conf_node = NULL;
-      int result = cf_om_parse(external_name, (char*)ob_current_ptr(payload), ob_remaining(payload), &conf_node);
+      int result = cf_om_parse("ext", (char*)ob_current_ptr(payload), ob_remaining(payload), &conf_node);
       if (result == CFOK || result == CFEMPTY){
 	result = conf_node ? cf_opt_config_network_interface(&ifconfig, conf_node) : CFEMPTY;
       }
       
-      if (result == CFOK || result == CFEMPTY){
-	if (ifconfig.socket_type != SOCK_EXT){
-	  // TODO log nice warning, pick right result code
-	  result |= CFSUB(CFUNSUPPORTED);
-	}
+      if ((result == CFOK || result == CFEMPTY)
+	&& ifconfig.socket_type != SOCK_EXT){
+	// TODO log nice warning, pick right result code
+	result |= CFSUB(CFUNSUPPORTED);
+      }
+
+      if ((result == CFOK || result == CFEMPTY)
+	&& ifconfig.match.patc == 0){
+	ifconfig.match.patc=1;
+	strncpy_nul(ifconfig.match.patv[0], "ext", INTERFACE_NAME_STRLEN);
       }
       
       if (result == CFOK || result == CFEMPTY){
-	struct overlay_interface *interface=overlay_interface_find_name_addr(external_name, client);
+	struct overlay_interface *interface=overlay_interface_find_name_addr(NULL, client);
 	if (!interface){
-	  overlay_interface_init(external_name, client, NULL, NULL, &ifconfig);
+	  overlay_interface_init(ifconfig.match.patv[0], client, NULL, NULL, &ifconfig);
 	}else{
+	  // reconfigure the interface with new / current settings
 	  if (overlay_interface_configure(interface, &ifconfig)==-1)
 	    overlay_interface_close(interface);
 	}
       }
     }break;
     case MDP_INTERFACE_DOWN:{
-      struct overlay_interface *interface=overlay_interface_find_name_addr(external_name, client);
+      struct overlay_interface *interface=overlay_interface_find_name_addr(NULL, client);
       if (interface)
 	overlay_interface_close(interface);
     }break;
     case MDP_INTERFACE_RECV:{
-      struct overlay_interface *interface=overlay_interface_find_name_addr(external_name, client);
+      struct overlay_interface *interface=overlay_interface_find_name_addr(NULL, client);
       if (interface){
 	struct socket_address addr;
 	addr.addrlen = ob_get(payload);
