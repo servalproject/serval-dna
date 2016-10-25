@@ -9,8 +9,8 @@ localstatedir=@localstatedir@
 
 SQLITE3_AMALGAMATION = sqlite-amalgamation-3140200
 
-include sourcefiles.mk
-include headerfiles.mk
+include $(SOURCE_PREFIX)sourcefiles.mk
+include $(SOURCE_PREFIX)headerfiles.mk
 
 OBJSDIR_SERVALD =	objs_servald
 OBJSDIR_LIB =		objs_lib
@@ -96,7 +96,9 @@ CFLAGS+=-Wextra
 # Security enhancements from Debian
 CFLAGS+=-Wformat -Werror=format-security -D_FORTIFY_SOURCE=2
 
-DEFS=	@DEFS@
+DEFS= @DEFS@
+
+CONFIG_H = @CONFIG_H@
 
 .PHONY: all libs test install uninstall clean
 
@@ -153,29 +155,29 @@ has_coverage_data: | is_built_with_coverage
 	    exit 1 ;\
 	fi
 
-servald-initial.info: $(SOURCE_PREFIX)Makefile servald | is_built_with_coverage
+servald-initial.info: Makefile servald | is_built_with_coverage
 	geninfo --quiet --initial --checksum --base-directory=$(abspath .) --no-external $(OBJSDIR_SERVALD) -o $@
 
-servald-coverage.info: $(SOURCE_PREFIX)Makefile servald $(shell find $(OBJSDIR_SERVALD) -type f -name '*.gcda' 2>/dev/null) | has_coverage_data
+servald-coverage.info: Makefile servald $(shell find $(OBJSDIR_SERVALD) -type f -name '*.gcda' 2>/dev/null) | has_coverage_data
 	geninfo --quiet --checksum --base-directory=$(abspath .) --no-external $(OBJSDIR_SERVALD) -o $@ 2>&1 | { grep -v 'WARNING: no data found for .*\.h$$' || true; }
 	@[ -s $@ ]
 
-coverage_html/index.html: $(SOURCE_PREFIX)Makefile servald-initial.info servald-coverage.info
+coverage_html/index.html: Makefile servald-initial.info servald-coverage.info
 	$(RM) -r coverage_html
 	genhtml --quiet servald-initial.info servald-coverage.info -o coverage_html
 
 # Autconf support -- helpful messages to help avoid some common build mistakes.
 
-.PRECIOUS: $(SOURCE_PREFIX)Makefile $(SOURCE_PREFIX)config.status $(SOURCE_PREFIX)configure
+.PRECIOUS: Makefile config.status $(SOURCE_PREFIX)configure
 
-$(SOURCE_PREFIX)Makefile: $(SOURCE_PREFIX)Makefile.in $(SOURCE_PREFIX)config.status
+Makefile: $(SOURCE_PREFIX)Makefile.in config.status
 	$(warning Makefile may be out of date, please run ./config.status)
 
-$(SOURCE_PREFIX)config.status: $(SOURCE_PREFIX)configure
-	$(warning config.status may be out of date, please run ./configure)
+config.status: $(SOURCE_PREFIX)configure
+	$(warning config.status may be out of date, please run $(if $(SOURCE_PREFIX),$(SOURCE_PREFIX),./)configure)
 
 $(SOURCE_PREFIX)configure: $(SOURCE_PREFIX)configure.ac
-	$(warning configure may be out of date, please run autoreconf -f -i -I m4)
+	$(warning $(SOURCE_PREFIX)configure may be out of date, please run $(if $(SOURCE_PREFIX),cd $(SOURCE_PREFIX) && ,)autoreconf -f -i -I m4)
 
 # Embed Serval DNA's version into libraries and executables.
 
@@ -229,13 +231,13 @@ $(OBJSDIR_LIB)/%.o: $(SOURCE_PREFIX)%.c
 # broad so it sometimes results in unnecessary re-compilation, but that is
 # better than too narrow, which can result in missed re-compilation.
 
-$(SERVAL_DAEMON_OBJS): 			$(SOURCE_PREFIX)Makefile.in $(SOURCE_PREFIX)config.h $(PREFIXED_HEADERS)
-$(SERVALD_OBJS):       			$(SOURCE_PREFIX)Makefile.in
-$(LIB_SERVAL_OBJS): 			$(SOURCE_PREFIX)Makefile.in $(SOURCE_PREFIX)config.h $(PREFIXED_HEADERS)
-$(OBJSDIR_TOOLS)/tfw_createfile.o:	$(SOURCE_PREFIX)Makefile.in $(SOURCE_PREFIX)str.h
-$(OBJSDIR_TOOLS)/directory_service.o:	$(SOURCE_PREFIX)Makefile.in $(SOURCE_PREFIX)config.h $(PREFIXED_HEADERS)
-$(MONITOR_CLIENT_OBJS):			$(SOURCE_PREFIX)Makefile.in $(SOURCE_PREFIX)config.h $(PREFIXED_HEADERS)
-$(SIMULATOR_OBJS):			$(SOURCE_PREFIX)Makefile.in $(SOURCE_PREFIX)config.h $(PREFIXED_HEADERS)
+$(SERVAL_DAEMON_OBJS): 			Makefile $(CONFIG_H) $(PREFIXED_HEADERS)
+$(SERVALD_OBJS):       			Makefile
+$(LIB_SERVAL_OBJS): 			Makefile $(CONFIG_H) $(PREFIXED_HEADERS)
+$(OBJSDIR_TOOLS)/tfw_createfile.o:	Makefile str.h
+$(OBJSDIR_TOOLS)/directory_service.o:	Makefile $(CONFIG_H) $(PREFIXED_HEADERS)
+$(MONITOR_CLIENT_OBJS):			Makefile $(CONFIG_H) $(PREFIXED_HEADERS)
+$(SIMULATOR_OBJS):			Makefile $(CONFIG_H) $(PREFIXED_HEADERS)
 
 # Rules for main targets.
 

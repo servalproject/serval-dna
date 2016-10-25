@@ -242,6 +242,7 @@ AC_SEARCH_LIBS([strlcpy], [], AC_DEFINE([HAVE_STRLCPY], [1], [Define to 1 if the
 dnl Put all the -DHAVE_BLAH=1 definitions into config.h instead of expanding
 dnl them in @DEFS@ on the command-line of every compilation invoked by make.
 AC_CONFIG_HEADERS([config.h])
+AC_SUBST([CONFIG_H], [config.h])
 
 AC_OUTPUT([
     Makefile
