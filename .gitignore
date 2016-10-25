@@ -43,3 +43,6 @@ test.*.log
 /swift-client-api/Makefile
 /swift-client-api/build/
 /swift-client-api/swift-client-util
+/ios/Makefile
+/ios/build/
+/ios/frameworks/

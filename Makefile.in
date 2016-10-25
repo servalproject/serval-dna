@@ -31,10 +31,8 @@ INSTALL=        	install
 INSTALL_PROGRAM=	$(INSTALL)
 INSTALL_DATA=   	$(INSTALL) -m 644
 
-SQLITE3_AMALGAMATION = 	sqlite-amalgamation-3140200
-
-include $(srcdir)/sourcefiles.mk
-include $(srcdir)/headerfiles.mk
+include $(srcdir)/headerfiles.mk # sets SQLITE3_AMALGAMATION
+include $(srcdir)/sourcefiles.mk # depends on SQLITE3_AMALGAMATION
 
 LIBSODIUM_SUBDIR =	libsodium/
 LIBSODIUM_DEV =		libsodium-dev
@@ -82,7 +80,7 @@ MONITOR_CLIENT_OBJS = \
 SIMULATOR_OBJS = \
 	$(addprefix $(OBJSDIR_TOOLS)/, $(SIMULATOR_SOURCES:.c=.o))
 
-PREFIXED_HEADERS = $(addprefix $(srcdir)/, $(HDRS))
+PREFIXED_HEADERS = $(addprefix $(srcdir)/, $(ALL_HDRS))
 PREFIXED_SOURCES = $(addprefix $(srcdir)/, $(ALL_SOURCES))
 
 LDFLAGS=@LDFLAGS@ @LIBS@
@@ -97,13 +95,12 @@ CFLAGS+=-DSQLITE_THREADSAFE=0 \
 	-DSQLITE_OMIT_VIRTUALTABLE \
 	-DSQLITE_OMIT_AUTHORIZATION
 CFLAGS+=-fPIC -DSERVAL_ENABLE_DEBUG=1 -Wall -Werror -Wextra -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2
-CFLAGS+=@CFLAGS_TARGET@
 
 # Solaris magic
 CFLAGS+=-DSHA2_USE_INTTYPES_H -D_XOPEN_SOURCE=600 -D_XOPEN_SOURCE_EXTENDED=1 -D__EXTENSIONS__=1
 # OSX magic to compensate for the Solaris magic
 CFLAGS+=-D_DARWIN_C_SOURCE
-CFLAGS_SQLITE= @CFLAGS_SQLITE@
+CFLAGS_SQLITE=@CFLAGS_SQLITE@
 
 -include $(srcdir)/Makefile.dbg
 
@@ -145,7 +142,6 @@ uninstall:
 	$(RM) $(DESTDIR)$(sbindir)/servald
 
 clean:
-	cd $(LIBSODIUM_SUBDIR) && $(MAKE) clean
 	$(RM) -r $(LIBSODIUM_DEV) \
 		 $(OBJSDIRS:%=%/*) \
 		 servald \
@@ -154,6 +150,11 @@ clean:
 		 libmonitorclient.so libmonitorclient.a \
 		 tfw_createfile directory_service fakeradio simulator serval-tests \
 		 tags
+	cd $(LIBSODIUM_SUBDIR) && $(MAKE) clean
+
+distclean: clean
+	$(RM) config.h config.status config.log testconfig.sh
+	cd $(LIBSODIUM_SUBDIR) && $(MAKE) distclean
 
 # Only provide Java targets if the Java compiler is available.
 ifneq ($(JAVAC),)
@@ -214,7 +215,9 @@ endif # $(SWIFTC)
 
 CFLAGS+= -isystem $(LIBSODIUM_DEV)/include
 
-$(LIBSODIUM_HEADERS) $(LIBSODIUM_A): $(LIBSODIUM_DEV)/.installed
+.PHONY: libsodium-dev
+
+libsodium-dev $(LIBSODIUM_HEADERS) $(LIBSODIUM_A): $(LIBSODIUM_DEV)/.installed
 
 # The libsodium package uses libtool, so by default its static libraries get
 # compiled without the -fPIC option.  This prevents the libsodium static
@@ -229,8 +232,7 @@ $(LIBSODIUM_DEV)/.installed:
 	@$(RM) $@
 	@touch $@.in-progress
 	@cd $(LIBSODIUM_SUBDIR) && $(MAKE) \
-	    CFLAGS+="-prefer-pic @CFLAGS_TARGET@" \
-	    CCASFLAGS+="@CFLAGS_TARGET@" \
+	    CFLAGS+="-prefer-pic" \
 	    prefix=$(abspath $(LIBSODIUM_DEV)) \
 	    install
 	@mv -f $@.in-progress $@

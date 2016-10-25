@@ -55,18 +55,20 @@ What is in this repository?
 
 This repository contains:
 
-* the [GNU C][] source code for the **servald** executable,
-* the [Java][] source code for the Serval API,
-* some [technical documentation](./doc/),
+* the [GNU C][] source code for the **servald** executable
+* the [Java][] source code for the Serval API
+* the [Swift][] source code for the Serval API
+* [technical documentation](./doc/)
 * a [test framework](./testframework.sh) and [test scripts](./tests/) written
-  in [Bash][],
+  in [Bash][]
 * various support files for installation and configuration on various
-  platforms.
+  platforms
 
 The **servald** executable is a multi-purpose program that can be invoked
 directly from the command line, run as a daemon process, or invoked via [JNI][]
-from within a Java program.  The **servald** executable is really many commands
-built into one; the command-line arguments select which *command* to run.  Some
+from within a [Java][] program or via the [Swift module][] from within a
+[Swift][] program.  The **servald** executable is really many commands built
+into one; the command-line arguments select which *command* to run.  Some
 commands are stand-alone utilities, some start and stop the servald daemon
 process, some communicate with the servald daemon as an MDP client, and others
 via a two-way [pipe][] called the *monitor interface*.
@@ -182,6 +184,7 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [issue #28]: https://github.com/servalproject/serval-dna/issues/28
 [GNU C]: http://gcc.gnu.org/
 [Java]: https://en.wikipedia.org/wiki/Java_(programming_language)
+[Swift]: https://en.wikipedia.org/wiki/Swift_(programming_language)
 [daemon]: http://en.wikipedia.org/wiki/Daemon_(computing)
 [free software]: http://www.gnu.org/philosophy/free-sw.html
 [contributors]: /servalproject/serval-dna/blob/development/CONTRIBUTORS.md

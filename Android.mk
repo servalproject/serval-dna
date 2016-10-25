@@ -3,9 +3,10 @@
 LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
-SQLITE3_AMALGAMATION = sqlite-amalgamation-3140200
+include $(LOCAL_PATH)/headerfiles.mk # for SQLITE3_AMALGAMATION
 
 include $(LOCAL_PATH)/sourcefiles.mk
+
 SERVALD_SRC_FILES = \
     $(SQLITE3_SOURCES) \
     $(SERVAL_CLIENT_SOURCES) \

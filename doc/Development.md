@@ -2,27 +2,40 @@ Notes for Serval DNA Developers
 ===============================
 [Serval Project][], December 2017
 
+This document is intended for all developers of [Serval DNA][], and also for
+non-developers who are experiencing errors in the [build][] process.
+
 Introduction
 ------------
 
-This document is intended for all developers of [Serval DNA][], and also for
-non-developers who are experiencing errors in the [build][] process.
+The [Serval DNA][] development and [build][] toolchain is completely oriented
+around the [Bash shell][] command-line on [Unix][] platforms such as
+[GNU][]/[Linux][] and [Darwin][], and uses [GNU autoconf][] achieve portability
+between different platforms.
+
+To date, the [Serval Project][] has not dedicated effort to integrating with
+GUI development environments such as [Android Studio][] or supporting non-Unix
+platforms such as [Microsoft Windows][], because the ongoing effort of
+maintaining compatibility with so many platforms would detract from the
+development of core features.  Anybody is welcome to contribute support for
+more platforms, but at this stage, the Serval Project cannot commit to
+maintaining any contributed integrations.
 
 Autotools
 ---------
 
-The [configure.ac][] file is an [autoconf][] script that contains instructions
-for adapting the build of Serval DNA to different platforms and CPU
-architectures.  This script makes use of many [GNU M4][] macros, each of which
-tests an aspect of the build environment, such as the make and version of the C
-compiler (eg, [GCC][], [Clang][]), the availability of headers, functions and
-system calls in the standard library, and so forth.
+The [configure.ac][] file is a [GNU autoconf][] script that contains
+instructions for adapting the build of Serval DNA to different platforms and
+CPU architectures.  This script makes use of many [GNU M4][] macros, each of
+which tests an aspect of the build environment, such as the make and version of
+the C compiler (eg, [GCC][], [Clang][]), the availability of headers, functions
+and system calls in the standard library, and so forth.
 
-Most of these M4 macros are standard, either supplied with [autoconf][] or from
-the [autoconf macro archive][].  Some macros are specific to Serval DNA, either
-to improve on a standard macro or perform a test for which no standard macro
-exists.  These extra macros are locally defined in files within the [m4](../m4)
-sub-directory.
+Most of these M4 macros are standard, either supplied with [GNU autoconf][] or
+from the [autoconf macro archive][].  Some macros are specific to Serval DNA,
+either to improve on a standard macro or perform a test for which no standard
+macro exists.  These extra macros are locally defined in files within the
+[m4](../m4) sub-directory.
 
 The [autoreconf][] command used in the [build][] instructions generates an
 `aclocal.m4` file that includes all the necessary files from the [m4](../m4)
@@ -153,7 +166,7 @@ dependencies before building on [Debian][] and [Ubuntu][] systems:
     Processing triggers for man-db (2.7.5-1) ...
     $
 
-Apple Mac OS X
+Apple Mac OS-X
 --------------
 
 ### Test utilities
@@ -350,7 +363,12 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [CliContext]: ../swift-daemon-api/Sources/CliContext.swift
 [CliContextFile]: ../swift-daemon-api/Sources/CliContextFile.swift
 [serval\_commandline\_main]: ../swift-daemon-api/Sources/commandline.swift
-[autoconf]: http://www.gnu.org/software/autoconf/autoconf.html
+[GNU autoconf]: http://www.gnu.org/software/autoconf/autoconf.html
+[Bash shell]: http://en.wikipedia.org/wiki/Bash_(Unix_shell)
+[Unix]: https://en.wikipedia.org/wiki/Unix
+[GNU]: https://en.wikipedia.org/wiki/GNU
+[Linux]: https://en.wikipedia.org/wiki/Linux
+[Darwin]: https://en.wikipedia.org/wiki/Darwin_(operating_system)
 [autoconf macro archive]: http://www.gnu.org/software/autoconf-archive/
 [GNU M4]: http://www.gnu.org/software/m4/m4.html
 [GCC]: https://gcc.gnu.org/

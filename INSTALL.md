@@ -10,17 +10,24 @@ These instructions will build [Serval DNA][] successfully for the following plat
  * Debian Linux, ix86 and x86\_64, kernel versions 2.6 to 4.12, using [gcc
    4.4][] and later, [gcc 5][] and [gcc 6][]
  * Mac OS-X x86\_64, releases 10.7 “Lion” to 10.11 “El Capitan”, using
-   [Xcode][] versions 3.2 to 8, and GNU tools available from [homebrew][]
+   [Xcode][] versions 3.2 to 8, supplemented by [homebrew][]
  * Oracle SunOs 5.10 (Solaris), Sparc, using [gcc 4.4][] and GNU tools
    installed
 
-[Serval DNA][] also runs on the following platforms, to which these build
-instructions do not apply:
+[Serval DNA][] also builds and runs on the following platforms, for which there
+are separate build instructions:
 
- * [Android 2.2 “Froyo”][], Arm, Linux kernels 2.6.x and 3.x, using [gcc 4.4][]
-   supplied as part of [Android NDK][] Revision 7b
- * [OpenWRT][] (as used by the [Serval Mesh Extender][], the [Mesh Potato][],
-   and the [Commotion Wireless][] project)
+ * [Serval Mesh app for Android][batphone] includes instructions for building
+   Serval DNA as part of an app for [Android 2.2 “Froyo”][] and later versions;
+   Linux kernels 2.6.x and 3.x, Arm architecture, using [gcc 4.4][] supplied as
+   part of [Android NDK][] Revision 7b
+
+ * [Serval DNA on iOS][iOS] gives instructions for [Apple iOS][] using
+   [Xcode][] versions 8, supplemented by [homebrew][]
+
+ * [Serval DNA on OpenWRT][OpenWRT] gives instructions for the embedded router
+   Linux distribution, as used by the [Serval Mesh Extender][], the [Mesh
+   Potato][], and the [Commotion Wireless][] project
 
 Download
 --------
@@ -53,7 +60,7 @@ Mandatory dependencies:
 
 Optional:
 
- * Java compiler and SDK 1.6.0 or later
+ * [Java][] compiler and SDK 1.6.0 or later
  * [Swift][] 3 or 4 compiler
  * ALSA sound library and headers (present on Linux, not on Android)
 
@@ -64,7 +71,7 @@ Test dependencies:
  * jq 1.3 or later
  * curl
 
-**Bash** and **curl** are both provided by the [XCode][] package for Mac OS X.
+**Bash** and **curl** are both provided by the [Xcode][] package for Mac OS X.
 **GNU grep**, **GNU sed**, **GNU awk** and **jq** can all be installed on Mac
 OS-X using the [homebrew][] package manager.  The [Notes for Developers][] give
 more details.
@@ -214,11 +221,13 @@ The [native build](#native-build) process produces the following artifacts:
   functions.  An executable (such as *servald*) can be built with any desired
   subset of Serval functions by linking in only the required parts of this
   library using the *features* mechanism described in [feature.h](./feature.h).
+  The Serval DNA [Swift][] API, which is used by the Serval Chat app for iOS,
+  uses this static library.
 
 * **libservaldaemon.so** is a dynamic library containing the complete executable
   code of the Serval DNA daemon, including [JNI][] entry points, SQLite and
   libsodium cryptographic functions.  The *servaldwrap* executable and the
-  Serval DNA Java API, which is used by [batphone][], both use this dynamic
+  Serval DNA [Java][] API, which is used by [batphone][], both use this dynamic
   library.
 
 * **directory_service** is the executable for the [Serval Infrastructure][]
@@ -339,6 +348,8 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [Swift Client API module]: ./doc/Development.md#swift-client-api
 [OpenWRT]: ./doc/OpenWRT.md
 [Serval Infrastructure]: ./doc/Serval-Infrastructure.md
+[iOS]: ./doc/Apple-iOS.md
+[Apple iOS]: https://en.wikipedia.org/wiki/IOS
 [Serval Mesh Extender]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:meshextender:
 [contact the Serval Project]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:contact
 [RFD900]: http://rfdesign.com.au/index.php/rfd900
@@ -348,6 +359,7 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [MDP API]: ./doc/Mesh-Datagram-Protocol.md#mdp-api
 [CLI API]: ./doc/CLI-API.md
 [JNI]: http://en.wikipedia.org/wiki/Java_Native_Interface
+[Java]: https://en.wikipedia.org/wiki/Java_(programming_language)
 [Swift]: https://en.wikipedia.org/wiki/Swift_(programming_language)
 [dlopen(3)]: http://man7.org/linux/man-pages/man3/dlopen.3.html
 [Bash]: http://en.wikipedia.org/wiki/Bash_(Unix_shell)
@@ -355,6 +367,6 @@ This document is available under the [Creative Commons Attribution 4.0 Internati
 [Git]: http://git-scm.com/
 [Subversion]: http://subversion.apache.org/
 [Bourne shell]: http://en.wikipedia.org/wiki/Bourne_shell
-[XCode]: https://developer.apple.com/xcode/
+[Xcode]: https://developer.apple.com/xcode/
 [homebrew]: http://brew.sh/
 [CC BY 4.0]: ./LICENSE-DOCUMENTATION.md
