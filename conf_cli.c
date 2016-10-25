@@ -171,9 +171,9 @@ static int app_config_set(const struct cli_parsed *parsed, struct cli_context *U
       if (cf_om_set(&cf_om_root, var[i], val[i]) == -1)
 	return -1;
       if (val[i])
-	INFOF("config set %s %s", var[i], alloca_str_toprint(val[i]));
+	DEBUGF(config, "config set %s %s", var[i], alloca_str_toprint(val[i]));
       else
-	INFOF("config del %s", var[i]);
+	DEBUGF(config, "config del %s", var[i]);
       changed = 1;
     } else {
       if (changed) {
@@ -185,12 +185,12 @@ static int app_config_set(const struct cli_parsed *parsed, struct cli_context *U
       }
       int pid = server_pid();
       if (pid) {
-	INFO("config sync");
+	DEBUG(config, "config sync");
 	// TODO make timeout configurable with --timeout option.
 	if (mdp_client_sync_config(10000) == -1)
 	  return 3;
       } else
-	INFO("config sync -- skipped, server not running");
+	DEBUGF(config, "config sync -- skipped, server not running");
     }
   }
   if (changed) {

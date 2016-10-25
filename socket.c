@@ -186,6 +186,19 @@ int cmp_sockaddr(const struct socket_address *addrA, const struct socket_address
   return c;
 }
 
+int is_sockaddr_local(const struct socket_address *addr)
+{
+  if (addr->addrlen < sizeof addr->addr.sa_family)
+    return 0;
+  switch (addr->addr.sa_family) {
+    case AF_INET:
+      return ((unsigned char*)&addr->inet.sin_addr.s_addr)[0] == IN_LOOPBACKNET ? 1 : 0;
+    case AF_UNIX:
+      return 1;
+  }
+  return 0;
+}
+
 int _esocket(struct __sourceloc __whence, int domain, int type, int protocol)
 {
   int fd;

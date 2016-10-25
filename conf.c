@@ -148,11 +148,11 @@ int cf_om_save()
     if (r == -1)
       return -1;
     if (r)
-      INFOF("wrote %s; set mtime=%s", path, alloca_time_t(newmeta.mtime.tv_sec));
+      DEBUGF(config, "wrote %s; set mtime=%s", path, alloca_time_t(newmeta.mtime.tv_sec));
     else if (cmp_file_meta(&meta, &newmeta) == 0)
       WARNF("wrote %s; mtime not altered", path);
     else
-      INFOF("wrote %s", path);
+      DEBUGF(config, "wrote %s", path);
     conffile_meta = newmeta;
     DEBUGF(config, "set conffile_meta=%s", alloca_file_meta(&conffile_meta));
   }

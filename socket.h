@@ -72,6 +72,7 @@ int socket_unlink_close(int sock);
 
 int real_sockaddr(const struct socket_address *src_addr, struct socket_address *dst_addr);
 int cmp_sockaddr(const struct socket_address *addrA, const struct socket_address *addrB);
+int is_sockaddr_local(const struct socket_address *addr);
 
 // helper functions for manipulating fragmented packet data
 #define MAX_FRAGMENTS 8

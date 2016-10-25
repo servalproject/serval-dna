@@ -237,31 +237,18 @@ static void httpd_server_finalise_http_request(struct http_request *hr)
 void httpd_server_poll(struct sched_ent *alarm)
 {
   if (alarm->poll.revents & (POLLIN | POLLOUT)) {
-    struct sockaddr addr;
-    socklen_t addr_len = sizeof addr;
+    struct socket_address addr;
+    bzero(&addr, sizeof addr);
+    addr.addrlen = sizeof addr.raw;
     int sock;
-    if ((sock = accept(httpd_server_socket, &addr, &addr_len)) == -1) {
+    if ((sock = accept(httpd_server_socket, &addr.addr, &addr.addrlen)) == -1) {
       if (errno && errno != EAGAIN)
 	WARN_perror("accept");
     } else {
       set_nonblock(sock);
       ++http_request_uuid_counter;
       strbuf_sprintf(&log_context, "httpd/%u", http_request_uuid_counter);
-      struct sockaddr_in *peerip=NULL;
-      if (addr.sa_family == AF_INET) {
-	peerip = (struct sockaddr_in *)&addr; // network order
-	INFOF("RHIZOME HTTP SERVER, ACCEPT addrlen=%u family=%u port=%u addr=%u.%u.%u.%u",
-	    addr_len, peerip->sin_family, peerip->sin_port,
-	    ((unsigned char*)&peerip->sin_addr.s_addr)[0],
-	    ((unsigned char*)&peerip->sin_addr.s_addr)[1],
-	    ((unsigned char*)&peerip->sin_addr.s_addr)[2],
-	    ((unsigned char*)&peerip->sin_addr.s_addr)[3]
-	  );
-      } else {
-	INFOF("RHIZOME HTTP SERVER, ACCEPT addrlen=%u family=%u data=%s",
-	    addr_len, addr.sa_family, alloca_tohex((unsigned char *)addr.sa_data, sizeof addr.sa_data)
-	  );
-      }
+      INFOF("HTTP SERVER, ACCEPT %s", alloca_socket_address(&addr));
       httpd_request *request = emalloc_zero(sizeof(httpd_request));
       if (request == NULL) {
 	WHY("Cannot respond to HTTP request, out of memory");
@@ -277,8 +264,7 @@ void httpd_server_poll(struct sched_ent *alarm)
 	++current_httpd_request_count;
 	request->payload_status = INVALID_RHIZOME_PAYLOAD_STATUS; // will cause FATAL unless set
 	request->bundle_result = INVALID_RHIZOME_BUNDLE_RESULT; // will cause FATAL unless set
-	if (peerip)
-	  request->http.client_sockaddr_in = *peerip;
+	request->http.client_addr = addr;
 	request->http.uuid = http_request_uuid_counter;
 	request->http.handle_headers = httpd_dispatch;
 	request->http.debug = INDIRECT_CONFIG_DEBUG(httpd);
@@ -333,12 +319,6 @@ int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_
   OUT();
 }
 
-static int is_from_loopback(const struct http_request *r)
-{
-  return   r->client_sockaddr_in.sin_family == AF_INET
-	&& ((unsigned char*)&r->client_sockaddr_in.sin_addr.s_addr)[0] == IN_LOOPBACKNET;
-}
-
 /* Return 1 if the given authorization credentials are acceptable.
  * Return 0 if not.
  */
@@ -358,7 +338,7 @@ static int is_authorized_restful(const struct http_client_authorization *auth)
 
 int authorize_restful(struct http_request *r)
 {
-  if (!is_from_loopback(r))
+  if (!is_sockaddr_local(&r->client_addr))
     return 403;
   // If a CORS Origin: header was supplied, then if it specifies a local site, then respond with
   // Access-Control-Allow-Origin and Access-Control-Allow-Methods headers that permit other pages in

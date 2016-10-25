@@ -175,7 +175,7 @@ static struct pid_tid get_server_pid_tid()
   assert(strrchr(pidfile_path, '/') != NULL);
   struct pid_tid id = read_pidfile(pidfile_path);
   if (id.pid == -1) {
-    INFOF("Unlinking stale pidfile %s", pidfile_path);
+    DEBUGF(server, "Unlinking stale pidfile %s", pidfile_path);
     unlink(pidfile_path);
     id.pid = 0;
   }
@@ -279,7 +279,7 @@ int server_bind()
   const char *delay = getenv("SERVALD_SERVER_START_DELAY");
   if (delay){
     time_ms_t milliseconds = atoi(delay);
-    INFOF("Sleeping for %"PRId64" milliseconds", (int64_t) milliseconds);
+    DEBUGF(server, "Sleeping for %"PRId64" milliseconds", (int64_t) milliseconds);
     sleep_ms(milliseconds);
   }
 
@@ -407,13 +407,13 @@ static int server_write_pid()
   // If the existent pidfile is not locked, then it is stale, so delete it and re-try the link.
   unsigned int tries = 0;
   while (1) {
-    INFOF("link(%s, %s)", alloca_str_toprint(tmpfile_path), alloca_str_toprint(pidfile_path));
+    DEBUGF(server, "link(%s, %s)", alloca_str_toprint(tmpfile_path), alloca_str_toprint(pidfile_path));
     if (link(tmpfile_path, pidfile_path) != -1)
       break;
     if (errno == EEXIST && ++tries < 2) {
       struct pid_tid id = read_pidfile(pidfile_path);
       if (id.pid == -1) {
-	INFOF("Unlinking stale pidfile %s", pidfile_path);
+	DEBUGF(server, "Unlinking stale pidfile %s", pidfile_path);
 	unlink(pidfile_path);
       } else if (id.pid > 0) {
 	INFOF("Another daemon is running, pid=%d tid=%d", id.pid, id.tid);

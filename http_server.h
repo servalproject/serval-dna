@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "fdqueue.h"
+#include "socket.h"
 
 /* Generic HTTP request handling.
  *
@@ -200,7 +201,7 @@ struct http_request {
   // The following are used for parsing the HTTP request.
   time_ms_t initiate_time; // time connection was initiated
   time_ms_t idle_timeout; // disconnect if no bytes received for this long
-  struct sockaddr_in client_sockaddr_in; // caller may supply this
+  struct socket_address client_addr; // caller may supply this
   // The parsed HTTP request is accumulated into the following fields.
   const char *verb; // points to nul terminated static string, "GET", "PUT", etc.
   const char *path; // points into buffer; nul terminated
