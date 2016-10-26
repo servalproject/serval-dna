@@ -92,9 +92,9 @@ setup_MeshmsListMessages() {
    meshms_add_messages $SIDA1 $SIDA2 '><>>A>A<>><><><>>>A>A><<<<<>><>>A<<>'
    let NROWS=NSENT+NRECV+(NACK?1:0)
    executeOk_servald meshms list messages $SIDA1 $SIDA2
-   delivered_offset=$(sed -n -e '/^[0-9]\+:[0-9]\+:[0-9]\+:ACK:delivered$/{n;s/^[0-9]\+:\([0-9]\+\):[0-9]\+:>:.*/\1/p;q}' "$TFWSTDOUT")
+   delivered_offset=$(sed -n -e '/^[0-9]\+:[0-9]\+:[0-9]\+:[0-9]\+:ACK:delivered$/{n;s/^[0-9]\+:\([0-9]\+\):[0-9]\+:[0-9]\+:>:.*/\1/p;q}' "$TFWSTDOUT")
    [ -z "$delivered_offset" ] && delivered_offset=0
-   read_offset=$(sed -n -e 's/^[0-9]\+:\([0-9]\+\):[0-9]\+MARK:read$/\1/p' "$TFWSTDOUT")
+   read_offset=$(sed -n -e 's/^[0-9]\+:[0-9]\+:\([0-9]\+\):[0-9]\+:MARK:read$/\1/p' "$TFWSTDOUT")
    [ -z "$read_offset" ] && read_offset=0
    tfw_log delivered_offset="$delivered_offset" read_offset="$read_offset"
 }
@@ -113,11 +113,12 @@ test_MeshmsListMessages() {
       assertStdoutGrep --line=$lnum "my_sid=$SIDA1,"
       assertStdoutGrep --line=$lnum "their_sid=$SIDA2,"
       text="$(sed -n -e $lnum's/.*\<text=\([^ ]*\), .*/\1/p' "$TFWSTDOUT")"
-      offset="$(sed -n -e $lnum's/.*\<offset=\([0-9]\+\).*/\1/p' "$TFWSTDOUT")"
+      my_offset="$(sed -n -e $lnum's/.*\<my_offset=\([0-9]\+\).*/\1/p' "$TFWSTDOUT")"
+      their_offset="$(sed -n -e $lnum's/.*\<their_offset=\([0-9]\+\).*/\1/p' "$TFWSTDOUT")"
       is_delivered="$(sed -n -e $lnum's/.*\<delivered=\(true\|false\).*/\1/p' "$TFWSTDOUT")"
       is_read="$(sed -n -e $lnum's/.*\<read=\(true\|false\).*/\1/p' "$TFWSTDOUT")"
       ack_offset="$(sed -n -e $lnum's/.*\<ack_offset=\(null\|[0-9]\+\).*/\1/p' "$TFWSTDOUT")"
-      tfw_log text="$text" offset="$offset" is_delivered="$is_delivered" is_read="$is_read" ack_offset="$ack_offset"
+      tfw_log text="$text" my_offset="$my_offset" their_offset="$their_offset" is_delivered="$is_delivered" is_read="$is_read" ack_offset="$ack_offset"
       case ${MESSAGE[$j]} in
       '>'|'<')
          echo -n "${TEXT[$j]}" | tr ' \n' . >text_fixture
@@ -129,7 +130,7 @@ test_MeshmsListMessages() {
       case ${MESSAGE[$j]} in
       '>')
          assertStdoutGrep --line=$lnum 'type=MESSAGE_SENT,'
-         if [ "$offset" -le "$delivered_offset" ]; then
+         if [ "$my_offset" -le "$delivered_offset" ]; then
             assert [ "$is_delivered" = true ]
          else
             assert [ "$is_delivered" = false ]
@@ -138,7 +139,7 @@ test_MeshmsListMessages() {
          ;;
       '<')
          assertStdoutGrep --line=$lnum 'type=MESSAGE_RECEIVED,'
-         if [ "$offset" -le "$read_offset" ]; then
+         if [ "$their_offset" -le "$read_offset" ]; then
             assert [ "$is_read" = true ]
          else
             assert [ "$is_read" = false ]

@@ -786,7 +786,7 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
 	  switch (iter->_their_reader.type) {
 	    case MESSAGE_BLOCK_TYPE_ACK:
 	      iter->type = ACK_RECEIVED;
-	      iter->offset = iter->_their_reader.record_end_offset;
+	      iter->their_offset = iter->_their_reader.record_end_offset;
 	      iter->text = NULL;
 	      iter->text_length = 0;
 	      if (unpack_uint(iter->_their_reader.record, iter->_their_reader.record_length, &iter->ack_offset) == -1)
@@ -795,7 +795,7 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
 	      return MESHMS_STATUS_UPDATED;
 	    case MESSAGE_BLOCK_TYPE_MESSAGE:
 	      iter->type = MESSAGE_RECEIVED;
-	      iter->offset = iter->_their_reader.record_end_offset;
+	      iter->their_offset = iter->_their_reader.record_end_offset;
 	      iter->text = (const char *)iter->_their_reader.record;
 	      iter->text_length = iter->_their_reader.record_length;
 	      if (   iter->_their_reader.record_length != 0
@@ -830,6 +830,7 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
 	case MESSAGE_BLOCK_TYPE_ACK:
 	  // Read the received messages up to the ack'ed offset
 	  if (iter->their_ply.found) {
+	    iter->my_offset = iter->_my_reader.record_end_offset;
 	    int ofs = unpack_uint(iter->_my_reader.record, iter->_my_reader.record_length, (uint64_t*)&iter->_their_reader.read.offset);
 	    if (ofs == -1) {
 	      WHYF("Malformed ACK");
@@ -847,7 +848,8 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
 	  break;
 	case MESSAGE_BLOCK_TYPE_MESSAGE:
 	  iter->type = MESSAGE_SENT;
-	  iter->offset = iter->_my_reader.record_end_offset;
+	  iter->my_offset = iter->_my_reader.record_end_offset;
+	  iter->their_offset = 0;
 	  iter->text = (const char *)iter->_my_reader.record;
 	  iter->text_length = iter->_my_reader.record_length;
 	  iter->delivered = iter->_my_reader.record_end_offset <= iter->metadata.their_last_ack;

@@ -51,7 +51,8 @@ public class MeshMSMessageList extends AbstractJsonList<MeshMSMessage, MeshMSExc
 				.addColumn("type", String.class)
 				.addColumn("my_sid", SubscriberId.class)
 				.addColumn("their_sid", SubscriberId.class)
-				.addColumn("offset", Long.class)
+				.addColumn("my_offset", Long.class)
+				.addColumn("their_offset", Long.class)
 				.addColumn("token", String.class)
 				.addColumn("text", String.class, JSONTokeniser.Narrow.ALLOW_NULL)
 				.addColumn("delivered", Boolean.class)
@@ -113,7 +114,8 @@ public class MeshMSMessageList extends AbstractJsonList<MeshMSMessage, MeshMSExc
 				type,
 				new Subscriber((SubscriberId)row.get("my_sid")),
 				new Subscriber((SubscriberId)row.get("their_sid")),
-				(Long)row.get("offset"),
+				(Long)row.get("my_offset"),
+				(Long)row.get("their_offset"),
 				(String)row.get("token"),
 				(String)row.get("text"),
 				(Boolean)row.get("delivered"),

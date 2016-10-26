@@ -76,7 +76,8 @@ public class Meshms {
 				System.out.println("type=" + msg.type
 							   + ", my_sid=" + msg.mySid
 							   + ", their_sid=" + msg.theirSid
-							   + ", offset=" + msg.offset
+							   + ", my_offset=" + msg.myOffset
+							   + ", their_offset=" + msg.theirOffset
 							   + ", token=" + msg.token
 							   + ", text=" + (msg.text == null ? null : msg.text.replace('\n', '.').replace(' ', '.'))
 							   + ", delivered=" + msg.isDelivered
@@ -107,7 +108,8 @@ public class Meshms {
 				System.out.println("type=" + msg.type
 							   + ", my_sid=" + msg.mySid
 							   + ", their_sid=" + msg.theirSid
-							   + ", offset=" + msg.offset
+							   + ", my_offset=" + msg.myOffset
+							   + ", their_offset=" + msg.theirOffset
 							   + ", token=" + msg.token
 							   + ", text=" + (msg.text == null ? null : msg.text.replace('\n', '.').replace(' ', '.'))
 							   + ", delivered=" + msg.isDelivered

@@ -22,7 +22,7 @@ package org.servalproject.servaldna.rhizome;
 
 import org.servalproject.servaldna.SubscriberId;
 
-public class RhizomeListBundle {
+public class RhizomeListBundle implements Comparable<RhizomeListBundle>{
 
 	public final int rowNumber;
 	public final int rowId;
@@ -49,4 +49,8 @@ public class RhizomeListBundle {
 		this.fromHere = fromHere;
 	}
 
+	@Override
+	public int compareTo(RhizomeListBundle rhizomeListBundle) {
+		return (this.rowId < rhizomeListBundle.rowId) ? -1 : 1;
+	}
 }

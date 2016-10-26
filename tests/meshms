@@ -52,8 +52,8 @@ setup_InitiallyEmpty() {
 test_InitiallyEmpty() {
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    tfw_cat --stdout
-   assertStdoutIs --stdout --line=1 -e '5\n'
-   assertStdoutIs --stdout --line=2 -e '_id:offset:age:type:message\n'
+   assertStdoutIs --stdout --line=1 -e '6\n'
+   assertStdoutIs --stdout --line=2 -e '_id:my_offset:their_offset:age:type:message\n'
    assertStdoutLineCount '==' 2
 }
 
@@ -69,25 +69,25 @@ test_SendAndList() {
    tfw_cat --stderr
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    tfw_cat --stderr
-   assertStdoutGrep --stdout --matches=1 "^0:12:$rexp_age:>:Message 1\$"
+   assertStdoutGrep --stdout --matches=1 "^0:12:0:$rexp_age:>:Message 1\$"
    executeOk_servald meshms send message $SIDA1 $SIDA2 "Message 2"
    tfw_cat --stderr
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    tfw_cat --stderr
-   assertStdoutGrep --stdout --matches=1 "^0:30:$rexp_age:>:Message 2\$"
-   assertStdoutGrep --stdout --matches=1 "^1:12:$rexp_age:>:Message 1\$"
+   assertStdoutGrep --stdout --matches=1 "^0:30:0:$rexp_age:>:Message 2\$"
+   assertStdoutGrep --stdout --matches=1 "^1:12:0:$rexp_age:>:Message 1\$"
    executeOk_servald meshms send message $SIDA1 $SIDA2 "Message 3"
    executeOk_servald meshms list messages $SIDA1 $SIDA2
    tfw_cat --stdout
-   assertStdoutGrep --stdout --matches=1 "^0:48:$rexp_age:>:Message 3\$"
-   assertStdoutGrep --stdout --matches=1 "^1:30:$rexp_age:>:Message 2\$"
-   assertStdoutGrep --stdout --matches=1 "^2:12:$rexp_age:>:Message 1\$"
+   assertStdoutGrep --stdout --matches=1 "^0:48:0:$rexp_age:>:Message 3\$"
+   assertStdoutGrep --stdout --matches=1 "^1:30:0:$rexp_age:>:Message 2\$"
+   assertStdoutGrep --stdout --matches=1 "^2:12:0:$rexp_age:>:Message 1\$"
    assertStdoutLineCount '==' 5
    executeOk_servald meshms list messages $SIDA2 $SIDA1
    tfw_cat --stdout
-   assertStdoutGrep --stdout --matches=1 "^0:48:$rexp_age:<:Message 3\$"
-   assertStdoutGrep --stdout --matches=1 "^1:30:$rexp_age:<:Message 2\$"
-   assertStdoutGrep --stdout --matches=1 "^2:12:$rexp_age:<:Message 1\$"
+   assertStdoutGrep --stdout --matches=1 "^0:3:48:$rexp_age:<:Message 3\$"
+   assertStdoutGrep --stdout --matches=1 "^1:3:30:$rexp_age:<:Message 2\$"
+   assertStdoutGrep --stdout --matches=1 "^2:3:12:$rexp_age:<:Message 1\$"
    assertStdoutLineCount '==' 5
 }
 
@@ -142,20 +142,20 @@ test_MessageThreading() {
    set_instance +B
    wait_until has_unread_messages $SIDB
    executeOk_servald meshms list messages $SIDB $SIDA
-   assertStdoutGrep --stdout --matches=1 "^0:46:$rexp_age:<:Still waiting\$"
-   assertStdoutGrep --stdout --matches=1 "^1:24:$rexp_age:<:Hello can you hear me\$"
-   assertStdoutGrep --stdout --matches=1 "^2:60:$rexp_age:>:Never mind\$"
-   assertStdoutGrep --stdout --matches=1 "^3:41:$rexp_age:>:Help Im trapped in a test case factory\$"
+   assertStdoutGrep --stdout --matches=1 "^0:69:46:$rexp_age:<:Still waiting\$"
+   assertStdoutGrep --stdout --matches=1 "^1:69:24:$rexp_age:<:Hello can you hear me\$"
+   assertStdoutGrep --stdout --matches=1 "^2:60:0:$rexp_age:>:Never mind\$"
+   assertStdoutGrep --stdout --matches=1 "^3:41:0:$rexp_age:>:Help Im trapped in a test case factory\$"
    assertStdoutLineCount '==' 6
    set_instance +A
    wait_until has_unread_messages $SIDA
    wait_until messages_delivered $SIDA $SIDB
    executeOk_servald meshms list messages $SIDA $SIDB
-   assertStdoutGrep --stdout --matches=1 "^0:60:$rexp_age:<:Never mind\$"
-   assertStdoutGrep --stdout --matches=1 "^1:41:$rexp_age:<:Help Im trapped in a test case factory\$"
-   assertStdoutGrep --stdout --matches=1 "^2:69:$rexp_age:ACK:delivered\$"
-   assertStdoutGrep --stdout --matches=1 "^3:46:$rexp_age:>:Still waiting\$"
-   assertStdoutGrep --stdout --matches=1 "^4:24:$rexp_age:>:Hello can you hear me\$"
+   assertStdoutGrep --stdout --matches=1 "^0:55:60:$rexp_age:<:Never mind\$"
+   assertStdoutGrep --stdout --matches=1 "^1:55:41:$rexp_age:<:Help Im trapped in a test case factory\$"
+   assertStdoutGrep --stdout --matches=1 "^2:46:69:$rexp_age:ACK:delivered\$"
+   assertStdoutGrep --stdout --matches=1 "^3:46:0:$rexp_age:>:Still waiting\$"
+   assertStdoutGrep --stdout --matches=1 "^4:24:0:$rexp_age:>:Hello can you hear me\$"
    assertStdoutLineCount '==' 7
 }
 

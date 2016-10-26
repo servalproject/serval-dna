@@ -166,7 +166,7 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
     return status;
   }
   const char *names[]={
-    "_id","offset","age","type","message"
+    "_id","my_offset","their_offset","age","type","message"
   };
   cli_start_table(context, NELS(names), names);
   bool_t marked_delivered = 0;
@@ -178,6 +178,7 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
       case MESSAGE_SENT:
 	if (iter.delivered && !marked_delivered){
 	  cli_put_long(context, id++, ":");
+	  cli_put_long(context, iter.my_offset, ":");
 	  cli_put_long(context, iter.metadata.their_last_ack_offset, ":");
 	  cli_put_long(context, iter.timestamp ? (now - iter.timestamp):(long)-1, ":");
 	  cli_put_string(context, "ACK", ":");
@@ -186,7 +187,8 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
 	}
 	// TODO new message format here
 	cli_put_long(context, id++, ":");
-	cli_put_long(context, iter.offset, ":");
+	cli_put_long(context, iter.my_offset, ":");
+	cli_put_long(context, iter.their_offset, ":");
 	cli_put_long(context, iter.timestamp ? (now - iter.timestamp):(long)-1, ":");
 	cli_put_string(context, ">", ":");
 	cli_put_string(context, iter.text, "\n");
@@ -197,6 +199,7 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
 	if (iter.read && !marked_read) {
 	  cli_put_long(context, id++, ":");
 	  cli_put_long(context, iter.metadata.read_offset, ":");
+	  cli_put_long(context, 0, ":");
 	  cli_put_long(context, iter.timestamp ? (now - iter.timestamp):(long)-1, ":");
 	  cli_put_string(context, "MARK", ":");
 	  cli_put_string(context, "read", "\n");
@@ -204,7 +207,8 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
 	}
 	// TODO new message format here
 	cli_put_long(context, id++, ":");
-	cli_put_long(context, iter.offset, ":");
+	cli_put_long(context, iter.my_offset, ":");
+	cli_put_long(context, iter.their_offset, ":");
 	cli_put_long(context, iter.timestamp ? (now - iter.timestamp):(long)-1, ":");
 	cli_put_string(context, "<", ":");
 	cli_put_string(context, iter.text, "\n");

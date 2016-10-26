@@ -24,7 +24,7 @@ import org.servalproject.servaldna.Subscriber;
 import org.servalproject.servaldna.SubscriberId;
 import org.servalproject.servaldna.ServalDInterfaceException;
 
-public class MeshMSMessage {
+public class MeshMSMessage implements Comparable<MeshMSMessage>{
 
 	public enum Type {
 		MESSAGE_SENT,
@@ -40,7 +40,8 @@ public class MeshMSMessage {
 	public final Subscriber them;
 	@Deprecated
 	public final SubscriberId theirSid;
-	public final long offset;
+	public final long myOffset;
+	public final long theirOffset;
 	public final String token;
 	public final String text;
 	public final boolean isDelivered;
@@ -52,7 +53,8 @@ public class MeshMSMessage {
 							Type type,
 							Subscriber me,
 							Subscriber them,
-							long offset,
+							long myOffset,
+							long theirOffset,
 							String token,
 							String text,
 							boolean delivered,
@@ -78,7 +80,8 @@ public class MeshMSMessage {
 		this.mySid = me.sid;
 		this.them = them;
 		this.theirSid = them.sid;
-		this.offset = offset;
+		this.myOffset = myOffset;
+		this.theirOffset = theirOffset;
 		this.token = token;
 		this.text = text;
 		this.isDelivered = delivered;
@@ -90,11 +93,24 @@ public class MeshMSMessage {
 	public long getId(){
 		switch (type){
 			default:
-				return offset;
+				return myOffset;
 			case MESSAGE_RECEIVED:
-				return -offset;
+				return -theirOffset;
 			case ACK_RECEIVED:
 				return 0;
 		}
+	}
+
+	@Override
+	public int compareTo(MeshMSMessage meshMSMessage) {
+		if (this.myOffset < meshMSMessage.myOffset)
+			return -1;
+		if (this.myOffset > meshMSMessage.myOffset)
+			return 1;
+		if (this.theirOffset < meshMSMessage.theirOffset)
+			return -1;
+		if (this.theirOffset > meshMSMessage.theirOffset)
+			return 1;
+		return 0;
 	}
 }
