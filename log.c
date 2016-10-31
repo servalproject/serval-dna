@@ -329,6 +329,8 @@ static void _log_software_version(_log_iterator *it, int level)
 static int _log_current_config(_log_iterator *it, int level)
 {
   if (!cf_limbo) {
+    // if formatting config causes anything else to be logged, ignore it.
+    cf_limbo=1;
     struct cf_om_node *root = NULL;
     int ret = cf_fmt_config_main(&root, &config);
     if (ret == CFERROR) {
@@ -348,6 +350,7 @@ static int _log_current_config(_log_iterator *it, int level)
     }
     cf_om_free_node(&root);
     it->state->config_logged = 1;
+    cf_limbo=0;
   }
   return 1;
 }

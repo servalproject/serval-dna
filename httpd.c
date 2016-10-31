@@ -270,7 +270,7 @@ void httpd_server_poll(struct sched_ent *alarm)
 	request->http.debug = INDIRECT_CONFIG_DEBUG(httpd);
 	request->http.disable_tx = INDIRECT_CONFIG_DEBUG(nohttptx);
 	request->http.finalise = httpd_server_finalise_http_request;
-	request->http.free = free;
+	request->http.release = free;
 	request->http.idle_timeout = RHIZOME_IDLE_TIMEOUT;
 	http_request_init(&request->http, sock);
       }

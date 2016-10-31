@@ -410,10 +410,10 @@ const char *rhizome_bundle_status_message_nonnull(enum rhizome_bundle_status);
 struct rhizome_bundle_result {
     enum rhizome_bundle_status status;
     const char *message;
-    void (*free)(void *); // call r.free(r.message) before destroying r
+    void (*release)(void *); // call r.release(r.message) before destroying r
 };
 
-#define INVALID_RHIZOME_BUNDLE_RESULT ((struct rhizome_bundle_result){ .status = INVALID_RHIZOME_BUNDLE_STATUS, .message = NULL, .free = NULL })
+#define INVALID_RHIZOME_BUNDLE_RESULT ((struct rhizome_bundle_result){ .status = INVALID_RHIZOME_BUNDLE_STATUS, .message = NULL, .release = NULL })
 
 // Call this before discarding a struct rhizome_bundle_result.
 void rhizome_bundle_result_free(struct rhizome_bundle_result *);

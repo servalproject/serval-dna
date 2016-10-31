@@ -1909,8 +1909,8 @@ static void http_server_poll(struct sched_ent *alarm)
   else
     abort(); // should not be any other POLL bits set
   // Any of the above calls could change the phase to DONE.
-  if (r->phase == DONE && r->free)
-    r->free(r); // after this, *r is no longer valid
+  if (r->phase == DONE && r->release)
+    r->release(r); // after this, *r is no longer valid
 }
 
 /* Copy the array of byte ranges, closing it (converting all ranges to CLOSED) using the supplied

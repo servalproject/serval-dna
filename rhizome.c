@@ -714,8 +714,8 @@ const char *rhizome_payload_status_message_nonnull(enum rhizome_payload_status s
 
 void rhizome_bundle_result_free(struct rhizome_bundle_result *resultp)
 {
-  if (resultp->free) {
-    resultp->free((void *)resultp->message);
+  if (resultp->release) {
+    resultp->release((void *)resultp->message);
   }
   *resultp = INVALID_RHIZOME_BUNDLE_RESULT;
 }
@@ -788,7 +788,7 @@ struct rhizome_bundle_result _rhizome_bundle_result_strdup(struct __sourceloc __
   struct rhizome_bundle_result result = INVALID_RHIZOME_BUNDLE_RESULT;
   result.status = status;
   result.message = str_edup(message);
-  result.free = free;
+  result.release = free;
   log_rhizome_bundle_result(__whence, result);
   return result;
 }
@@ -800,7 +800,7 @@ struct rhizome_bundle_result _rhizome_bundle_result_sprintf(struct __sourceloc _
   strbuf sb;
   STRBUF_ALLOCA_FIT(sb, 200, strbuf_va_printf(sb, fmt));
   result.message = str_edup(strbuf_str(sb));
-  result.free = free;
+  result.release = free;
   log_rhizome_bundle_result(__whence, result);
   return result;
 }

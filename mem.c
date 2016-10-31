@@ -84,6 +84,6 @@ void *_serval_debug_calloc(unsigned int bytes, unsigned int count, struct __sour
 
 void _serval_debug_free(void *p, struct __sourceloc __whence)
 {
+  _DEBUGF("free(%p)", p);
   free(p);
-  _DEBUGF("free(%p)", p); 
 }

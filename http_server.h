@@ -189,7 +189,7 @@ struct http_request {
   // The following control the lifetime of this struct.
   enum http_request_phase { RECEIVE, TRANSMIT, PAUSE, DONE } phase;
   void (*finalise)(struct http_request *);
-  void (*free)(void*);
+  void (*release)(void*);
   // Identify request from others being run.  Monotonic counter feeds it.  Only
   // used for debugging when we write post-<uuid>.log files for multi-part form
   // requests.
