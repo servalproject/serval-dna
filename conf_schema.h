@@ -489,8 +489,9 @@ VALUE_SUB_STRUCT(user)
 END_ARRAY(10)
 
 STRUCT(api_restful)
-SUB_STRUCT(userlist,        users,)
-ATOM(uint32_t,              newsince_timeout,       60, uint32_time_interval,, "Time to block while reporting new bundles")
+ATOM(enum http_authorization_scheme, authorization, BASIC, http_authorization_scheme,, "The kind of authorization that REST clients must supply")
+SUB_STRUCT(userlist,                 users,)
+ATOM(uint32_t,                       newsince_timeout, 60, uint32_time_interval,, "Time to block while reporting new bundles")
 END_STRUCT
 
 STRUCT(api)

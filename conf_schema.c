@@ -741,8 +741,6 @@ int cf_cmp_radio_type(const short *a, const short *b)
   return *a < *b ? -1 : *a > *b ? 1 : 0;
 }
 
-
-
 int cf_cmp_interface_type(const short *a, const short *b)
 {
   return *a < *b ? -1 : *a > *b ? 1 : 0;
@@ -1140,4 +1138,40 @@ int cf_fmt_log_level(const char **textp, const int *levelp)
 int cf_cmp_log_level(const int *a, const int *b)
 {
   return cf_cmp_int(a, b);
+}
+
+/* Config type: http_authorization_schema
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+
+int cf_opt_http_authorization_scheme(enum http_authorization_scheme *schemap, const char *text)
+{
+  if (strcasecmp(text, "noauth") == 0) {
+    *schemap = NOAUTH;
+    return CFOK;
+  }
+  if (strcasecmp(text, "basic") == 0) {
+    *schemap = BASIC;
+    return CFOK;
+  }
+  return CFINVALID;
+}
+
+int cf_fmt_http_authorization_scheme(const char **textp, const enum http_authorization_scheme *schemap)
+{
+  const char *t = NULL;
+  switch (*schemap) {
+    case NOAUTH: t = "noauth"; break;
+    case BASIC:	 t = "basic"; break;
+  }
+  if (!t)
+    return CFINVALID;
+  *textp = str_edup(t);
+  return CFOK;
+}
+
+int cf_cmp_http_authorization_scheme(const enum http_authorization_scheme *a, const enum http_authorization_scheme *b)
+{
+  return *a < *b ? -1 : *a > *b ? 1 : 0;
 }

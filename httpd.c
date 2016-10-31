@@ -324,14 +324,20 @@ int is_http_header_complete(const char *buf, size_t len, size_t read_since_last_
  */
 static int is_authorized_restful(const struct http_client_authorization *auth)
 {
-  if (auth->scheme != BASIC)
-    return 0;
-  unsigned i;
-  for (i = 0; i != config.api.restful.users.ac; ++i) {
-    if (   strcmp(config.api.restful.users.av[i].key, auth->credentials.basic.user) == 0
-	&& strcmp(config.api.restful.users.av[i].value.password, auth->credentials.basic.password) == 0
-    )
+  switch (config.api.restful.authorization) {
+    case NOAUTH:
       return 1;
+    case BASIC:
+      if (auth->scheme == BASIC) {
+	unsigned i;
+	for (i = 0; i != config.api.restful.users.ac; ++i) {
+	  if (   strcmp(config.api.restful.users.av[i].key, auth->credentials.basic.user) == 0
+	      && strcmp(config.api.restful.users.av[i].value.password, auth->credentials.basic.password) == 0
+	  )
+	    return 1;
+	}
+      }
+      break;
   }
   return 0;
 }
