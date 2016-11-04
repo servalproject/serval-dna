@@ -81,7 +81,7 @@ static int http_request_keyring_response(struct httpd_request *r, uint16_t resul
   return result;
 }
 
-static int http_request_keyring_response_identity(struct httpd_request *r, uint16_t result, const char *message, const keyring_identity *id)
+static int http_request_keyring_response_identity(struct httpd_request *r, uint16_t result, const keyring_identity *id)
 {
   const char *did = NULL;
   const char *name = NULL;
@@ -121,7 +121,7 @@ static int http_request_keyring_response_identity(struct httpd_request *r, uint1
   }
   r->http.response.result_extra[0].label = "identity";
   r->http.response.result_extra[0].value = json_id;
-  return http_request_keyring_response(r, result, message);
+  return http_request_keyring_response(r, result, NULL);
 }
 
 static HTTP_CONTENT_GENERATOR restful_keyring_identitylist_json_content;
@@ -228,7 +228,7 @@ static int restful_keyring_add(httpd_request *r, const char *remainder)
   }
   if (keyring_commit(keyring) == -1)
     return http_request_keyring_response(r, 500, "Could not store new identity");
-  return http_request_keyring_response_identity(r, 200, CONTENT_TYPE_JSON, id);
+  return http_request_keyring_response_identity(r, 200, id);
 }
 
 static int restful_keyring_set(httpd_request *r, const char *remainder)
@@ -247,5 +247,5 @@ static int restful_keyring_set(httpd_request *r, const char *remainder)
     return http_request_keyring_response(r, 500, "Could not set identity DID/Name");
   if (keyring_commit(keyring) == -1)
     return http_request_keyring_response(r, 500, "Could not store new identity");
-  return http_request_keyring_response_identity(r, 200, CONTENT_TYPE_JSON, id);
+  return http_request_keyring_response_identity(r, 200, id);
 }
