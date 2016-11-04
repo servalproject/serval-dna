@@ -255,6 +255,39 @@ static int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *
   return 0;
 }
 
+DEFINE_CMD(app_keyring_remove, 0,
+  "Remove an identity from the keyring",
+  "keyring","remove" KEYRING_PIN_OPTIONS,"<sid>");
+static int app_keyring_remove(const struct cli_parsed *parsed, struct cli_context *context)
+{
+  DEBUG_cli_parsed(verbose, parsed);
+  const char *sidhex;
+  if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1)
+    return -1;
+  sid_t sid;
+  if (str_to_sid_t(&sid, sidhex) == -1){
+    keyring_free(keyring);
+    keyring = NULL;
+    return WHY("str_to_sid_t() failed");
+  }
+  if (!(keyring = keyring_open_instance_cli(parsed)))
+    return -1;
+  keyring_identity *id = keyring_find_identity_sid(keyring, &sid);
+  int r=0;
+  if (!id)
+    r=WHY("No matching SID");
+  keyring_destroy_identity(keyring, id);
+  if (keyring_commit(keyring) == -1) {
+    keyring_free(keyring);
+    return WHY("Could not destroy identity");
+  }
+  cli_output_identity(context, id);
+  keyring_free_identity(id);
+  keyring_free(keyring);
+  keyring = NULL;
+  return r;
+}
+
 DEFINE_CMD(app_keyring_set_did, 0,
   "Set the DID for the specified SID (must supply PIN to unlock the SID record in the keyring)",
   "keyring", "set","did" KEYRING_PIN_OPTIONS,"<sid>","<did>","<name>", "[<new_pin>]");
@@ -305,6 +338,7 @@ DEFINE_CMD(app_keyring_set_tag, 0,
   "keyring", "set","tag" KEYRING_PIN_OPTIONS,"<sid>","<tag>","<value>");
 static int app_keyring_set_tag(const struct cli_parsed *parsed, struct cli_context *context)
 {
+  DEBUG_cli_parsed(verbose, parsed);
   const char *sidhex, *tag, *value;
   if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1 ||
       cli_arg(parsed, "tag", &tag, NULL, "") == -1 ||

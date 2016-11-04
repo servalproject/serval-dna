@@ -116,6 +116,25 @@ test_keyringAddDidName() {
    assertStdoutGrep --stderr --matches=1 "^${rexp_sid}:${rexp_id}:987654321:Joe Bloggs\$"
 }
 
+doc_keyringRemove="Java API remove existing identity"
+setup_keyringRemove() {
+   IDENTITY_COUNT=2
+   setup
+}
+test_keyringRemove() {
+   executeJavaOk org.servalproject.test.Keyring remove "$SIDA1"
+   tfw_cat --stdout --stderr
+   assertStdoutGrep --matches=1 "sid=$SIDA1, did=${DIDA1:-null}, name=${NAMEA1:-null}$"
+   executeOk_servald keyring list
+   assert_keyring_list 1
+   assertStdoutGrep --stderr --matches=0 "$SIDA1"
+   assertStdoutGrep --stderr --matches=1 "^$SIDA2:${rexp_id}:$DIDA2:$NAMEA2\$"
+   executeJavaOk org.servalproject.test.Keyring remove "$SIDA2"
+   tfw_cat --stdout --stderr
+   executeOk_servald keyring list
+   assert_keyring_list 0
+}
+
 doc_keyringSetDidName="Java API set DID and name"
 setup_keyringSetDidName() {
    IDENTITY_COUNT=2

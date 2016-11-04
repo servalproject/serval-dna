@@ -368,7 +368,6 @@ void keyring_free_identity(keyring_identity *id)
     link_stop_routing(id->subscriber);
   bzero(id,sizeof(keyring_identity));
   free(id);
-  return;
 }
 
 /*
@@ -1423,7 +1422,7 @@ keyring_identity *keyring_create_identity(keyring_file *k, const char *pin)
 {
   DEBUGF(keyring, "k=%p", k);
   /* Check obvious abort conditions early */
-  if (!k->bam) { WHY("keyring lacks BAM (not to be confused with KAPOW)"); return NULL; }
+  if (!k->bam) { WHY("keyring lacks BAM"); return NULL; }
 
   if (!pin) pin="";
 
@@ -1477,6 +1476,35 @@ static int write_random_slot(keyring_file *k, unsigned slot)
       k->file_size = file_offset + KEYRING_PAGE_SIZE;
 
   return 0;
+}
+
+/* Remove the given identity from the keyring by overwriting it's slot in the keyring file with
+ * random data, and unlinking it from the in-memory cache list.  Does NOT call
+ * keyring_free_identity(id), so the identity's contents remain intact; the caller must free the
+ * identity if desired.
+ */
+void keyring_destroy_identity(keyring_file *k, keyring_identity *id)
+{
+  DEBUGF(keyring, "k=%p, id=%p", k, id);
+  if (!k->bam) {
+    WHY("keyring lacks BAM");
+    return;
+  }
+  assert(id->slot != 0);
+  DEBUGF(keyring, "Destroy identity in slot %u", id->slot);
+
+  // Mark the slot as unused in the BAM.
+  set_slot(k, id->slot, 0);
+
+  // Fill the slot in the file with random bytes.
+  write_random_slot(k, id->slot);
+
+  // Unlink the identity from the in-memory cache.
+  keyring_identity **i = &k->identities;
+  while (*i && *i != id)
+    i = &(*i)->next;
+  if (*i == id)
+    *i = id->next;
 }
 
 int keyring_commit(keyring_file *k)

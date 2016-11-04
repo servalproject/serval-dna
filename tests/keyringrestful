@@ -140,7 +140,7 @@ test_keyringAdd() {
          "http://$addr_localhost:$PORTA/restful/keyring/add"
    tfw_cat http.headers add.json
    tfw_preserve add.json
-   assertStdoutIs '200'
+   assertStdoutIs '201'
    SID="$(jq -r '.identity.sid' add.json)"
    ID="$(jq -r '.identity.identity' add.json)"
    assert matches_rexp "^${rexp_sid}$" "$SID"
@@ -164,7 +164,7 @@ test_keyringAddPin() {
          "http://$addr_localhost:$PORTA/restful/keyring/add?pin=1234"
    tfw_cat http.headers add.json
    tfw_preserve add.json
-   assertStdoutIs '200'
+   assertStdoutIs '201'
    SID="$(jq -r '.identity.sid' add.json)"
    ID="$(jq -r '.identity.identity' add.json)"
    executeOk_servald keyring list
@@ -185,6 +185,28 @@ test_keyringAddPin() {
    tfw_preserve list.json
    transform_list_json list.json ids.json
    assertJq ids.json 'contains([{"sid": "'$SIDA1'"}])'
+}
+
+doc_keyringRemove="HTTP RESTful remove keyring identity"
+setup_keyringRemove() {
+   IDENTITY_COUNT=2
+   setup
+}
+test_keyringRemove() {
+   executeOk curl \
+         --silent --show-error --write-out '%{http_code}' \
+         --output add.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/keyring/$SIDA1/remove"
+   tfw_cat http.headers add.json
+   tfw_preserve add.json
+   assertStdoutIs '200'
+   SID="$(jq -r '.identity.sid' add.json)"
+   assert [ "$SID" = "$SIDA1" ]
+   executeOk_servald keyring list
+   assert_keyring_list 1
+   assertStdoutGrep --stderr --matches=0 "^$SID:"
 }
 
 doc_keyringSetDidName="HTTP RESTful set DID and name"

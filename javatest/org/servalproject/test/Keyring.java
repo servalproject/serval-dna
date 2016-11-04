@@ -81,6 +81,17 @@ public class Keyring {
 		System.exit(0);
 	}
 
+	static void remove(SubscriberId sid, String pin) throws ServalDInterfaceException, IOException, InterruptedException
+	{
+		ServalDClient client = new ServerControl().getRestfulClient();
+		KeyringIdentity id = client.keyringRemove(sid, pin);
+		System.out.println("sid=" + id.sid +
+						   ", did=" + id.did +
+						   ", name=" + id.name
+			);
+		System.exit(0);
+	}
+
 	public static void main(String... args)
 	{
 		if (args.length < 1)
@@ -93,6 +104,8 @@ public class Keyring {
 				set(new SubscriberId(args[1]), args[2], args[3], args.length >= 5 ? args[4] : null);
 			else if (methodName.equals("add"))
 				add(args[1], args[2], args.length >= 4 ? args[3] : null);
+			else if (methodName.equals("remove"))
+				remove(new SubscriberId(args[1]), args.length >= 3 ? args[2] : null);
 		} catch (Exception e) {
 			e.printStackTrace();
 			System.exit(1);

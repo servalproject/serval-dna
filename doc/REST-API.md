@@ -442,7 +442,7 @@ for example, some *404* responses from Rhizome have phrases like, “Bundle not
 found”, “Payload not found”, etc.
 
 Some responses augment the *JSON result* object with extra fields; for example,
-[Rhizome JSON result](#rhizome-json-result).
+[Rhizome JSON result][] and [Keyring JSON result][].
 
 ### JSON table
 
@@ -521,6 +521,8 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [Internet Media Type]: https://www.iana.org/assignments/media-types/media-types.xhtml
 [Rhizome bundle]: ./REST-API-Rhizome.md#bundle
 [Rhizome manifest]: ./REST-API-Rhizome.md#manifest
+[Rhizome JSON result]: ./REST-API-Rhizome.md#rhizome-json-result
+[Keyring JSON result]: ./REST-API-Keyring.md#keyring-json-result
 [bundle secret]: ./REST-API-Rhizome.md#bundle-secret
 [text+binarysig format]: ./REST-API-Rhizome.md#textbinarysig-manifest-format
 [JSON]: https://en.wikipedia.org/wiki/JSON

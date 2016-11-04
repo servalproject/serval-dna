@@ -33,6 +33,7 @@ DECLARE_HANDLER("/restful/keyring/", restful_keyring_);
 
 static HTTP_HANDLER restful_keyring_identitylist_json;
 static HTTP_HANDLER restful_keyring_add;
+static HTTP_HANDLER restful_keyring_remove;
 static HTTP_HANDLER restful_keyring_set;
 
 static int restful_keyring_(httpd_request *r, const char *remainder)
@@ -57,7 +58,11 @@ static int restful_keyring_(httpd_request *r, const char *remainder)
   }
   else if (parse_sid_t(&r->sid1, remainder, -1, &end) != -1) {
     remainder = end;
-    if (strcmp(remainder, "/set") == 0) {
+    if (strcmp(remainder, "/remove") == 0) {
+      handler = restful_keyring_remove;
+      remainder = "";
+    }
+    else if (strcmp(remainder, "/set") == 0) {
       handler = restful_keyring_set;
       remainder = "";
     }
@@ -228,7 +233,25 @@ static int restful_keyring_add(httpd_request *r, const char *remainder)
   }
   if (keyring_commit(keyring) == -1)
     return http_request_keyring_response(r, 500, "Could not store new identity");
-  return http_request_keyring_response_identity(r, 200, id);
+  return http_request_keyring_response_identity(r, 201, id);
+}
+
+static int restful_keyring_remove(httpd_request *r, const char *remainder)
+{
+  if (*remainder)
+    return 404;
+  const char *pin = http_request_get_query_param(&r->http, "pin");
+  if (pin)
+    keyring_enter_pin(keyring, pin);
+  keyring_identity *id = keyring_find_identity_sid(keyring, &r->sid1);
+  if (!id)
+    return http_request_keyring_response(r, 404, "Identity not found");
+  keyring_destroy_identity(keyring, id);
+  if (keyring_commit(keyring) == -1)
+    return http_request_keyring_response(r, 500, "Could not erase removed identity");
+  int ret = http_request_keyring_response_identity(r, 200, id);
+  keyring_free_identity(id);
+  return ret;
 }
 
 static int restful_keyring_set(httpd_request *r, const char *remainder)

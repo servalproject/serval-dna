@@ -399,15 +399,15 @@ remove them.  They reveal internal details of the storage of the bundle:
 
 All Rhizome requests to fetch or insert a single bundle that do not produce a
 special response content for the outcome, return the following augmented [JSON
-result](#json-result) object as the HTTP response content:
+result][] object as the HTTP response content:
 
     {
-     "http_status_code": ...,
-     "http_status_message": "...",
-     "rhizome_bundle_status_code": ...,
-     "rhizome_bundle_status_message": "...",
-     "rhizome_payload_status_code": ...,
-     "rhizome_payload_status_message": "..."
+        "http_status_code": ...,
+        "http_status_message": "...",
+        "rhizome_bundle_status_code": ...,
+        "rhizome_bundle_status_message": "...",
+        "rhizome_payload_status_code": ...,
+        "rhizome_payload_status_message": "..."
     }
 
 *  the `rhizome_bundle_status_code` field is the integer [bundle status code](#bundle-status-code)
@@ -946,6 +946,7 @@ Available under the [Creative Commons Attribution 4.0 International licence][CC 
 [Serval Mesh network]: http://developer.servalproject.org/dokuwiki/doku.php?id=content:tech:mesh_network
 [Serval DNA]: ../README.md
 [REST-API]: ./REST-API.md
+[JSON result]: ./REST-API.md#json-result
 [store and forward]: https://en.wikipedia.org/wiki/Store_and_forward
 [SID]: ./REST-API-Keyring.md#serval-id
 [Keyring]: ./REST-API-Keyring.md

@@ -2,7 +2,8 @@
 
 # Tests for Serval keyring
 #
-# Copyright 2012-2013 Serval Project, Inc.
+# Copyright 2012-2015 Serval Project, Inc.
+# Copyright 2016 Flinders University
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -45,6 +46,40 @@ setup_instances() {
       executeOk_servald keyring list
       assert_keyring_list 0
    done
+}
+
+doc_KeyringAdd="Add new identity to keyring"
+test_KeyringAdd() {
+    executeOk_servald keyring add ''
+    tfw_cat --stderr
+    executeOk_servald keyring list
+    assert_keyring_list 1
+    executeOk_servald keyring add ''
+    tfw_cat --stderr
+    executeOk_servald keyring list
+    assert_keyring_list 2
+}
+
+doc_KeyringRemove="Remove identity from keyring"
+setup_KeyringRemove() {
+    setup
+    executeOk_servald keyring add ''
+    extract_stdout_keyvalue SID1 sid "$rexp_sid"
+    executeOk_servald keyring add ''
+    extract_stdout_keyvalue SID2 sid "$rexp_sid"
+    executeOk_servald keyring list
+    assert_keyring_list 2
+    assert [ "$SID1" != "$SID2" ]
+}
+test_KeyringRemove() {
+    executeOk_servald keyring remove "$SID1"
+    executeOk_servald keyring list
+    assert_keyring_list 1
+    assertStdoutGrep --matches=0 "^$SID1:"
+    assertStdoutGrep --matches=1 "^$SID2:"
+    executeOk_servald keyring remove "$SID2"
+    executeOk_servald keyring list
+    assert_keyring_list 0
 }
 
 doc_KeyringCreate="Create keyring destroys existing keys"
