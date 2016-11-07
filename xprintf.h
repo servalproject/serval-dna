@@ -76,7 +76,6 @@ typedef struct _xprintf {
 #define _XPRINTF(F,C)       ((XPRINTF){(F),(C)})
 
 void xprintf(XPRINTF xpf, const char *fmt, ...) __attribute__ ((__ATTRIBUTE_format(printf,2,3)));
-;
 void vxprintf(XPRINTF xpf, const char *fmt, va_list);
 void xputs(const char *str, XPRINTF xpf);
 void xputc(char c, XPRINTF xpf);

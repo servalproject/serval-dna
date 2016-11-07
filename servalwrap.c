@@ -39,7 +39,7 @@ int main(int argc,char **argv)
     return 1;
   }
 
-  int (*servald_main)(int, char **) = dlsym(h, entry_point);
+  int (*servald_main)(int, char **) = (int (*)(int, char **))dlsym(h, entry_point);
   if (!servald_main) {
     fprintf(stderr, "Could not resolve %s in %s\n", entry_point, libservald_path);
     return 1;

@@ -343,9 +343,9 @@ typedef const struct strbuf *const_strbuf;
 strbuf strbuf_init(strbuf sb, char *buffer, ssize_t size);
 
 #ifdef __GNUC__
-__STRBUF_INLINE strbuf __strbuf_init_chk(strbuf sb, char *buffer, ssize_t size, size_t chk) {
-    if (chk != (size_t)-1 && size != (ssize_t)-1)
-        assert((size_t)size <= chk); // buffer overflow
+__STRBUF_INLINE strbuf __strbuf_init_chk(strbuf sb, char *buffer, ssize_t size, ssize_t chk) {
+    if (chk != -1 && size != -1)
+        assert(size <= chk); // buffer overflow
     return strbuf_init(sb, buffer, size);
 }
 #endif
@@ -562,7 +562,7 @@ __STRBUF_INLINE ssize_t strbuf_size(const_strbuf sb) {
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 __STRBUF_INLINE size_t strbuf_len(const_strbuf sb) {
-  return strbuf_end(sb) - sb->start;
+  return (size_t)(strbuf_end(sb) - sb->start);
 }
 
 /** Return remaining space in the strbuf, not counting the terminating nul.
@@ -584,7 +584,7 @@ __STRBUF_INLINE size_t strbuf_remaining(const_strbuf sb) {
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 __STRBUF_INLINE size_t strbuf_count(const_strbuf sb) {
-  return sb->current - sb->start;
+  return (size_t)(sb->current - sb->start);
 }
 
 /** Return true iff the strbuf has been overrun, ie, any appended string has

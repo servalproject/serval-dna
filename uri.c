@@ -29,12 +29,13 @@ static size_t _uri_encodev(int www_form, char *const dstUrienc, ssize_t dstsiz, 
 {
   char * dst = dstUrienc;
   char * const dstend = dstUrienc + dstsiz;
+  uint8_t *ptr = (uint8_t *)(*iovp)->iov_base;
   while (*iovcntp && (dstsiz == -1 || dst < dstend)) {
     if ((*iovp)->iov_len == 0) {
       --*iovcntp;
       ++*iovp;
     } else {
-      unsigned char c = *(unsigned char *)(*iovp)->iov_base;
+      uint8_t c = *ptr;
       if (www_form && c == ' ') {
 	if (dstUrienc)
 	  *dst = '+';
@@ -53,10 +54,10 @@ static size_t _uri_encodev(int www_form, char *const dstUrienc, ssize_t dstsiz, 
       } else {
 	break;
       }
-      ++(*iovp)->iov_base;
       --(*iovp)->iov_len;
     }
   }
+  (*iovp)->iov_base = ptr;
   return dst - dstUrienc;
 }
 

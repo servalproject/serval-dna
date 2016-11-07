@@ -563,7 +563,7 @@ size_t strn_fromprint(char *dst, size_t dstsiz, const char *src, size_t srclen, 
 
 void str_digest_passphrase(unsigned char *dstBinary, size_t dstsiz, const char *passphrase)
 {
-  return strn_digest_passphrase(dstBinary, dstsiz, passphrase, strlen(passphrase));
+  strn_digest_passphrase(dstBinary, dstsiz, passphrase, strlen(passphrase));
 }
 
 void strn_digest_passphrase(unsigned char *dstBinary, size_t dstsiz, const char *passphrase, size_t passlen)

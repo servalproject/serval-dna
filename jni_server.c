@@ -26,10 +26,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "instance.h"
 
-JNIEnv *server_env=NULL;
-jclass IJniServer= NULL;
-jmethodID aboutToWait, wokeUp, started;
-jobject JniCallback;
+static JNIEnv *server_env=NULL;
+static jclass IJniServer= NULL;
+static jmethodID aboutToWait, wokeUp, started;
+static jobject JniCallback;
 
 static time_ms_t waiting(time_ms_t now, time_ms_t next_run, time_ms_t next_wakeup)
 {

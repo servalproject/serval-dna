@@ -74,27 +74,21 @@ time_ms_t sleep_ms(time_ms_t milliseconds);
 struct timeval time_ms_to_timeval(time_ms_t);
 
 #ifndef HAVE_BZERO
-__SERVAL_DNA__OS_INLINE void bzero(void *buf, size_t len) {
-    memset(buf, 0, len);
-}
+#define bzero(B,L) memset((B),0,(L))
 #endif
 
 #ifndef HAVE_BCOPY
-__SERVAL_DNA__OS_INLINE void bcopy(const void *src, void *dst, size_t len) {
-    memcpy(dst, src, len);
-}
+#define bcopy(S,D,L) memcpy((D),(S),(L))
 #endif
 
 #ifndef HAVE_BCMP
-__SERVAL_DNA__OS_INLINE int bcmp(const void *s1, const void *s2, size_t n) {
-    // bcmp() is only an equality test, not an order test, so its return value
-    // is not specified as negative or positive, only non-zero.  Hoewver
-    // memcmp() is an order test.  We deliberately discard negative return
-    // values from memcmp(), to avoid misleading developers into assuming that
-    // bcmp() is an ordering operator and writing code that depends on that,
-    // which of course would fail on platforms with a native bcmp() function.
-    return memcmp(s1, s2, n) != 0;
-}
+// bcmp() is only an equality test, not an order test, so its return value
+// is not specified as negative or positive, only non-zero.  Hoewver
+// memcmp() is an order test.  We deliberately discard negative return
+// values from memcmp(), to avoid misleading developers into assuming that
+// bcmp() is an ordering operator and writing code that depends on that,
+// which of course would fail on platforms with a native bcmp() function.
+#define bcmp(S1,S2,N) (memcmp((S1),(S2),(N))!=0)
 #endif
 
 /* If there is no lseek64(2) system call but off_t is 64 bits, then we can use

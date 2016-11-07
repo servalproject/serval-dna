@@ -28,7 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "debug.h"
 
-struct cli_vtable cli_vtable_jni;
+static struct cli_vtable cli_vtable_jni;
 
 struct jni_context {
   JNIEnv *jni_env;
@@ -44,22 +44,22 @@ struct jni_context {
 
 #define OUTV_BUFFER_ALLOCSIZE	(8192)
 
-jclass IJniResults = NULL;
-jmethodID putString;
-jmethodID putLong;
-jmethodID putDouble;
-jmethodID putHexValue;
-jmethodID putBlob;
-jmethodID startTable;
-jmethodID setColumnName;
-jmethodID endTable;
+static jclass IJniResults = NULL;
+static jmethodID putString;
+static jmethodID putLong;
+static jmethodID putDouble;
+static jmethodID putHexValue;
+static jmethodID putBlob;
+static jmethodID startTable;
+static jmethodID setColumnName;
+static jmethodID endTable;
 
 static int outv_growbuf(struct jni_context *context, size_t needed)
 {
   assert(context->outv_current <= context->outv_limit);
   size_t remaining = (size_t)(context->outv_limit - context->outv_current);
   if (remaining < needed) {
-    size_t cursize = context->outv_current - context->outv_buffer;
+    size_t cursize = (size_t)(context->outv_current - context->outv_buffer);
     size_t newsize = cursize + needed;
     // Round up to nearest multiple of OUTV_BUFFER_ALLOCSIZE.
     newsize = newsize + OUTV_BUFFER_ALLOCSIZE - ((newsize - 1) % OUTV_BUFFER_ALLOCSIZE + 1);
@@ -115,7 +115,7 @@ static int put_string(struct jni_context *context, const char *str)
   return 0;
 }
 
-static int put_byte_array(struct jni_context *context, jbyte *blob, jsize length, jmethodID method, const char *method_name)
+static int put_byte_array(struct jni_context *context, const jbyte *blob, jsize length, jmethodID method, const char *method_name)
 {
   jbyteArray arr = NULL;
   if (context->jni_exception)
@@ -204,7 +204,7 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_rawComman
   if ((r=initJniTypes(env))!=0)
     return r;
 
-  unsigned char status = 0; // to match what the shell gets: 0..255
+  uint8_t status = 0; // to match what the shell gets: 0..255
 
   // Construct argv, argc from this method's arguments.
   jsize len = (*env)->GetArrayLength(env, args);
@@ -246,7 +246,7 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_rawComman
     context.outv_current = context.outv_buffer;
     // Execute the command.
     context.jni_env = env;
-    status = commandline_main(&cli_context, NULL, (int)len, argv);
+    status = (uint8_t)commandline_main(&cli_context, NULL, (int)len, argv);
   }
 
   // free any temporary output buffer
@@ -299,7 +299,7 @@ static void jni_vprintf(struct cli_context *cli_context, const char *fmt, va_lis
   DEBUGF(jni, "%s, ...", alloca_str_toprint(fmt));
   struct jni_context *context = jni_context(cli_context);
   assert(context->outv_current <= context->outv_limit);
-  size_t avail = context->outv_limit - context->outv_current;
+  size_t avail = (size_t)(context->outv_limit - context->outv_current);
   va_list aq;
   va_copy(aq, ap);
   int count = vsnprintf(context->outv_current, avail, fmt, aq);
@@ -311,9 +311,9 @@ static void jni_vprintf(struct cli_context *cli_context, const char *fmt, va_lis
     context->outv_current += count;
     return;
   }
-  if (outv_growbuf(context, count) == -1)
+  if (outv_growbuf(context, (size_t)count) == -1)
     return;
-  avail = context->outv_limit - context->outv_current;
+  avail = (size_t)(context->outv_limit - context->outv_current);
   va_copy(aq, ap);
   count = vsprintf(context->outv_current, fmt, aq);
   va_end(aq);
@@ -365,19 +365,19 @@ static void jni_put_hexvalue(struct cli_context *cli_context, const unsigned cha
 {
   DEBUGF(jni, "%s", alloca_tohex(value, length));
   struct jni_context *context = jni_context(cli_context);
-  put_byte_array(context, (jbyte*)value, length, putHexValue, "putHexValue");
+  put_byte_array(context, (const jbyte*)value, (jsize)length, putHexValue, "putHexValue");
 }
 
 static void jni_put_blob(struct cli_context *cli_context, const unsigned char *blob, size_t length, const char *UNUSED(delim_opt))
 {
   DEBUGF(jni, "%s", alloca_tohex(blob, length));
   struct jni_context *context = jni_context(cli_context);
-  put_byte_array(context, (jbyte*)blob, length, putBlob, "putBlob");
+  put_byte_array(context, (const jbyte*)blob, (jsize)length, putBlob, "putBlob");
 }
 
 static void jni_start_table(struct cli_context *cli_context, size_t column_count, const char *column_names[])
 {
-  DEBUGF(jni, "%s", alloca_argv(column_count, column_names));
+  DEBUGF(jni, "%s", alloca_argv((int)column_count, column_names));
   struct jni_context *context = jni_context(cli_context);
   if (context->jni_exception)
     return;
@@ -445,7 +445,7 @@ static void jni_flush(struct cli_context *UNUSED(cli_context))
   // nop
 }
 
-struct cli_vtable cli_vtable_jni = {
+static struct cli_vtable cli_vtable_jni = {
   .delim = jni_delim,
   .write = jni_write,
   .puts = jni_puts,

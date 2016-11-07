@@ -302,14 +302,14 @@ ssize_t _send_message(struct __sourceloc __whence, int fd, const struct socket_a
 
 ssize_t _recv_message_frag(struct __sourceloc __whence, int fd, struct socket_address *address, int *ttl, struct fragmented_data *data)
 {
-  struct cmsghdr cmsgs[16];
+  uint8_t cmsg_buff[1024];
   struct msghdr msg = {
     .msg_name       = (void *)&address->addr,
     .msg_namelen    = sizeof(address->raw),
     .msg_iov        = data->iov,
     .msg_iovlen     = data->fragment_count,
-    .msg_control    = cmsgs,
-    .msg_controllen = sizeof cmsgs,
+    .msg_control    = cmsg_buff,
+    .msg_controllen = sizeof cmsg_buff,
     .msg_flags      = 0
   };
   bzero(address, sizeof(struct socket_address));
@@ -318,7 +318,7 @@ ssize_t _recv_message_frag(struct __sourceloc __whence, int fd, struct socket_ad
     WHYF_perror("recvmsg(%d,{name=%p,namelen=%u,iov=%s,control=%p,controllen=%u},0)",
 	  fd, &address->addr, (unsigned) address->addrlen,
           alloca_iovec(data->iov, data->fragment_count),
-          cmsgs, (unsigned) sizeof cmsgs);
+          cmsg_buff, (unsigned) sizeof cmsg_buff);
   address->addrlen = msg.msg_namelen;
   if (ttl && ret > 0) {
     struct cmsghdr *cmsg;

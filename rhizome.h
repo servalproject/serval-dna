@@ -340,7 +340,7 @@ int rhizome_fetch_delay_ms();
 #define RHIZOME_HASH_SUBDIR "hash"
 
 extern __thread sqlite3 *rhizome_db;
-serval_uuid_t rhizome_db_uuid;
+extern serval_uuid_t rhizome_db_uuid;
 
 int rhizome_opendb();
 int rhizome_close_db();
@@ -518,7 +518,6 @@ int is_debug_rhizome();
 int is_debug_rhizome_ads();
 
 enum sqlbind_type {
-  END = 0xbabecafe,
   INT = 1,	      // int value
   INT_TOSTR,	      // int value
   UINT_TOSTR,	      // unsigned value
@@ -539,9 +538,10 @@ enum sqlbind_type {
   TEXT_TOUPPER,       // const char *text,
   TEXT_LEN_TOUPPER,   // const char *text, unsigned bytes
   SERVAL_UUID_T,      // const serval_uuid_t *uuidp
-  NUL = 1 << 15,      // NUL (no arg) ; NUL|INT, ...
-  INDEX = 0xfade0000, // INDEX|INT, int index, ...
-  NAMED = 0xdead0000  // NAMED|INT, const char *label, ...
+  NUL = 1 << 8,      // NUL (no arg) ; NUL|INT, ...
+  INDEX = 1 << 9, // INDEX|INT, int index, ...
+  NAMED = 1 << 10,  // NAMED|INT, const char *label, ...
+  END = 1 << 11,
 };
 
 sqlite3_stmt *_sqlite_prepare(struct __sourceloc, int log_level, sqlite_retry_state *retry, const char *sqltext);

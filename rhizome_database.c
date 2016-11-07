@@ -564,8 +564,8 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
     int index;
     const char *name = NULL;
     strbuf ext = NULL;
-    if ((typ & 0xffff0000) == INDEX) {
-      typ &= 0xffff;
+    if (typ & INDEX) {
+      typ &= ~INDEX;
       index = va_arg(ap, int);
       ++argnum;
       if (index < 1 || index > index_limit) {
@@ -574,8 +574,8 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
       }
       if (IF_DEBUG(rhizome))
 	strbuf_sprintf((ext = strbuf_alloca(35)), "|INDEX(%d)", index);
-    } else if ((typ & 0xffff0000) == NAMED) {
-      typ &= 0xffff;
+    } else if (typ & NAMED) {
+      typ &= ~NAMED;
       name = va_arg(ap, const char *);
       ++argnum;
       index = sqlite3_bind_parameter_index(statement, name);
@@ -589,13 +589,10 @@ int _sqlite_vbind(struct __sourceloc __whence, int log_level, sqlite_retry_state
 	strbuf_toprint_quoted(ext, "\"\"", name);
 	strbuf_puts(ext, ")");
       }
-    } else if ((typ & 0xffff0000) == 0) {
+    } else {
       index = ++index_counter;
       if (IF_DEBUG(rhizome))
 	ext = strbuf_alloca(10);
-    } else {
-      FATALF("at bind arg %u, unsupported bind code typ=0x%08x: %s", argnum, typ, sqlite3_sql(statement));
-      return -1;
     }
 #define BIND_DEBUG(TYP,FUNC,ARGFMT,...) \
 	DEBUGF(rhizome_sql_bind, "%s%s %s(%d," ARGFMT ") %s", #TYP, strbuf_str(ext), #FUNC, index, ##__VA_ARGS__, sqlite3_sql(statement))
