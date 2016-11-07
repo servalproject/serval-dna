@@ -326,7 +326,7 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, mdp_port_t port, in
 
   // If the received address overflowed the buffer, then it cannot have come from the server, whose
   // address must always fit within a struct sockaddr_un.
-  if (recvaddr.addrlen > sizeof recvaddr.store)
+  if ((size_t)recvaddr.addrlen > sizeof recvaddr.store)
     return WHYF("reply did not come from server %s: address overrun", alloca_socket_address(&mdp_addr));
 
   // Compare the address of the sender with the address of our server, to ensure they are the same.

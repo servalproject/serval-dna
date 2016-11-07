@@ -44,7 +44,7 @@ static int overlay_mdp_service_probe(struct internal_mdp_header *header, struct 
   struct socket_address addr;
   addr.addrlen = ob_remaining(payload);
   
-  if (addr.addrlen > sizeof(addr.store))
+  if ((size_t)addr.addrlen > sizeof(addr.store))
     RETURN(WHY("Badly formatted probe packet"));
   
   ob_get_bytes(payload, (unsigned char*)&addr.addr, addr.addrlen);

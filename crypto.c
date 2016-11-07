@@ -27,7 +27,7 @@ int crypto_isvalid_keypair(const sign_private_t *private_key, const sign_public_
 {
   sign_keypair_t test_key;
   crypto_sign_seed_keypair(test_key.public_key.binary, test_key.binary, private_key->binary);
-  return bcmp(test_key.public_key.binary, public_key->binary, sizeof (sign_public_t)) == 0 ? 1 : 0;
+  return memcmp(test_key.public_key.binary, public_key->binary, sizeof (sign_public_t)) == 0 ? 1 : 0;
 }
 
 int crypto_sign_to_sid(const sign_public_t *public_key, sid_t *sid)

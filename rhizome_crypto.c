@@ -206,7 +206,7 @@ static enum rhizome_bundle_authorship try_author(rhizome_manifest *m, const keyr
 
     if (m->haveSecret){
       // test that the secrets match
-      if (bcmp(test_key.binary, m->keypair.private_key.binary, sizeof test_key))
+      if (memcmp(test_key.binary, m->keypair.private_key.binary, sizeof test_key))
 	return AUTHOR_IMPOSTOR;
     }
 
@@ -410,7 +410,7 @@ int rhizome_apply_bundle_secret(rhizome_manifest *m, const rhizome_bk_t *bsk)
   uint8_t pk[crypto_sign_PUBLICKEYBYTES];
   crypto_sign_seed_keypair(pk, sk, bsk->binary);
 
-  if (bcmp(pk, m->keypair.public_key.binary, crypto_sign_PUBLICKEYBYTES) == 0){
+  if (memcmp(pk, m->keypair.public_key.binary, crypto_sign_PUBLICKEYBYTES) == 0){
     DEBUG(rhizome, "bundle secret verifies ok");
     bcopy(sk, m->keypair.binary, crypto_sign_SECRETKEYBYTES);
     m->haveSecret = EXISTING_BUNDLE_ID;

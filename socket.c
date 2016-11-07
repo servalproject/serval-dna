@@ -87,7 +87,7 @@ int real_sockaddr(const struct socket_address *src_addr, struct socket_address *
   DEBUGF2(io, verbose_io, "real_sockaddr(src_addr=%p %s, dst_addr=%p)", src_addr, alloca_socket_address(src_addr), dst_addr);
   assert(src_addr->addrlen > sizeof src_addr->local.sun_family);
   size_t src_path_len = src_addr->addrlen - sizeof src_addr->local.sun_family;
-  if (	 src_addr->addrlen >= sizeof src_addr->local.sun_family + 1
+  if (	 (size_t)src_addr->addrlen >= sizeof src_addr->local.sun_family + 1
       && src_addr->local.sun_family == AF_UNIX
       && src_addr->local.sun_path[0] != '\0'
       && src_addr->local.sun_path[src_path_len - 1] == '\0'
@@ -127,7 +127,7 @@ int cmp_sockaddr(const struct socket_address *addrA, const struct socket_address
   if (addrA->addrlen == 0 && addrB->addrlen == 0)
     return 0;
   // If either sockaddr is truncated, then we compare the bytes we have.
-  if (addrA->addrlen < sizeof addrA->addr.sa_family || addrB->addrlen < sizeof addrB->addr.sa_family) {
+  if ((size_t)addrA->addrlen < sizeof addrA->addr.sa_family || (size_t)addrB->addrlen < sizeof addrB->addr.sa_family) {
     int c = memcmp(addrA, addrB, addrA->addrlen < addrB->addrlen ? addrA->addrlen : addrB->addrlen);
     if (c == 0)
       c = addrA->addrlen < addrB->addrlen ? -1 : addrA->addrlen > addrB->addrlen ? 1 : 0;
@@ -188,7 +188,7 @@ int cmp_sockaddr(const struct socket_address *addrA, const struct socket_address
 
 int is_sockaddr_local(const struct socket_address *addr)
 {
-  if (addr->addrlen < sizeof addr->addr.sa_family)
+  if ((size_t)addr->addrlen < sizeof addr->addr.sa_family)
     return 0;
   switch (addr->addr.sa_family) {
     case AF_INET:
@@ -275,8 +275,8 @@ int socket_unlink_close(int sock)
   if (getsockname(sock, &addr.addr, &addr.addrlen))
     WHYF_perror("getsockname(%d)", sock);
   else if (addr.addr.sa_family==AF_UNIX 
-    && addr.addrlen > sizeof addr.local.sun_family 
-    && addr.addrlen <= sizeof addr.local 
+    && (size_t)addr.addrlen > sizeof addr.local.sun_family
+    && (size_t)addr.addrlen <= sizeof addr.local
     && addr.local.sun_path[0] != '\0') {
     if (unlink(addr.local.sun_path) == -1)
       WARNF_perror("unlink(%s)", alloca_str_toprint(addr.local.sun_path));

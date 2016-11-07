@@ -472,7 +472,7 @@ static int app_id_list(const struct cli_parsed *parsed, struct cli_context *cont
       break;
     }
     
-    if (len>=SID_SIZE){
+    if ((size_t)len>=SID_SIZE){
       rowcount++;
       sid_t *id = (sid_t*)response_payload;
       cli_put_hexvalue(context, id->binary, sizeof(sid_t), "\n");

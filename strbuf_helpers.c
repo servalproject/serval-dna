@@ -476,7 +476,7 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
   case AF_UNIX: {
       struct sockaddr_un *addr_un = (struct sockaddr_un *)addr;
       strbuf_puts(sb, "AF_UNIX:");
-      size_t len = addrlen > sizeof addr->sa_family ? addrlen - sizeof addr->sa_family : 0;
+      size_t len = (size_t)addrlen > sizeof addr->sa_family ? addrlen - sizeof addr->sa_family : 0;
       if (addr_un->sun_path[0]) {
 	strbuf_toprint_quoted_len(sb, "\"\"", addr_un->sun_path, len);
 	if (len < 2)
@@ -507,7 +507,7 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr, socklen_t 
   }
   default: {
       strbuf_append_socket_domain(sb, addr->sa_family);
-      size_t len = addrlen > sizeof addr->sa_family ? addrlen - sizeof addr->sa_family : 0;
+      size_t len = (size_t)addrlen > sizeof addr->sa_family ? addrlen - sizeof addr->sa_family : 0;
       unsigned i;
       for (i = 0; i < len; ++i) {
 	strbuf_putc(sb, i ? ',' : ':');

@@ -1400,7 +1400,7 @@ static void mdp_interface_packet(struct socket_address *client, struct mdp_heade
       if (interface){
 	struct socket_address addr;
 	addr.addrlen = ob_get(payload);
-	if (addr.addrlen > sizeof(addr))
+	if ((size_t)addr.addrlen > sizeof(addr))
 	  break; // TODO errors
 	bcopy(ob_get_bytes_ptr(payload, addr.addrlen), addr.raw, addr.addrlen);
 	packetOkOverlay(interface, ob_current_ptr(payload), ob_remaining(payload), &addr);
@@ -1740,8 +1740,8 @@ static void overlay_mdp_poll(struct sched_ent *alarm)
     client.addrlen = sizeof client.store;
     ssize_t len = recv_message(alarm->poll.fd, &client, &ttl, buffer, sizeof(buffer));
 
-    if ((size_t)len > 0) {
-      if (client.addrlen <= sizeof(sa_family_t))
+    if (len > 0) {
+      if ((size_t)client.addrlen <= sizeof(sa_family_t))
 	WHYF("got client.addrlen=%d too short -- ignoring frame len=%zu", (int)client.addrlen, (size_t)len);
       else {
 	/* Look at overlay_mdp_frame we have received */

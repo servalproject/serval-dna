@@ -17,11 +17,15 @@ SQLITE3_INC := $(LOCAL_PATH)/$(SQLITE3_AMALGAMATION)
 
 SERVALD_LOCAL_CFLAGS = \
 	-g \
-	-Wall 	-Wno-unused-variable \
-		-Wno-unused-but-set-variable \
-		-Wno-unused-value \
-		-Wno-unused-function \
-	-Werror \
+	-Wall -Werror -Wextra -Wformat \
+	-Wno-empty-body \
+	-Wno-unused-value \
+	-Wno-unused-function \
+	-Wno-unused-parameter \
+	-Wno-unused-variable \
+	-Wno-missing-field-initializers \
+	-Wno-deprecated-declarations \
+	-Wno-unknown-attributes \
         -DSERVALD_VERSION="\"Android\"" -DSERVALD_COPYRIGHT="\"Android\"" \
 	-DINSTANCE_PATH="\"/data/data/org.servalproject/var/serval-node\"" \
         -DSHELL -DPACKAGE_NAME=\"\" -DPACKAGE_TARNAME=\"\" -DPACKAGE_VERSION=\"\" \
@@ -39,7 +43,7 @@ SERVALD_LOCAL_CFLAGS = \
         -DHAVE_SYS_MMAN_H=1 -DHAVE_SYS_TIME_H=1 -DHAVE_POLL_H=1 -DHAVE_NETDB_H=1 \
 	-DHAVE_JNI_H=1 -DHAVE_STRUCT_UCRED=1 -DHAVE_CRYPTO_SIGN_NACL_GE25519_H=1 \
         -DBYTE_ORDER=_BYTE_ORDER -DHAVE_LINUX_STRUCT_UCRED -DUSE_ABSTRACT_NAMESPACE \
-        -DHAVE_BCOPY -DHAVE_BZERO -DHAVE_NETINET_IN_H -DHAVE_LSEEK64 -DSIZEOF_OFF_T=4 \
+        -DHAVE_BCOPY -DHAVE_BZERO -DHAVE_BCMP -DHAVE_NETINET_IN_H -DHAVE_LSEEK64 -DSIZEOF_OFF_T=4 \
         -DHAVE_GETTID=1 \
         -DHAVE_LINUX_IF_H -DHAVE_SYS_STAT_H -DHAVE_SYS_VFS_H -DHAVE_LINUX_NETLINK_H -DHAVE_LINUX_RTNETLINK_H \
 	-DSQLITE_OMIT_DATETIME_FUNCS -DSQLITE_OMIT_COMPILEOPTION_DIAGS -DSQLITE_OMIT_DEPRECATED \

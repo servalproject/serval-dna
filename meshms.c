@@ -382,7 +382,7 @@ static enum meshms_status read_known_conversations(rhizome_manifest *m, struct m
       status = MESHMS_STATUS_OK;
       goto end;
     }
-    if (bytes < SID_SIZE+1)
+    if (bytes < (ssize_t)SID_SIZE+1)
       break;
 
     const sid_t *sid = (sid_t *)&buffer[0];

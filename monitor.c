@@ -311,7 +311,7 @@ static void monitor_new_client(int s) {
     WHY_perror("getsockopt(SO_PEERCRED)");
     goto error;
   }
-  if (len < sizeof(ucred)) {
+  if ((size_t)len < sizeof(ucred)) {
     WHYF("getsockopt(SO_PEERCRED) returned the wrong size (Got %d expected %d)", len, (int)sizeof(ucred));
     goto error;
   }
