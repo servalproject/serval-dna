@@ -18,10 +18,10 @@
 source "${0%/*}/../testconfig.sh"
 
 # Utility function for setting up servald JNI fixtures:
-#  - check that libservald.so is present
-#  - set LD_LIBRARY_PATH so that libservald.so can be found
+#  - check that libservaldaemon.so is present
+#  - set LD_LIBRARY_PATH so that libservaldaemon.so can be found
 setup_servald_so() {
-   assert [ -r "$servald_build_root/libservald.so" ]
+   assert [ -r "$servald_build_root/libservaldaemon.so" ]
    export LD_LIBRARY_PATH="$servald_build_root"
 }
 
