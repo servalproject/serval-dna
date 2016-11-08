@@ -35,3 +35,6 @@ test.*.log
 /testlog/
 /coverage_html/
 *.info
+/java-api/Makefile
+/java-api/classes/
+/java-api/testclasses/

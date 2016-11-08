@@ -85,6 +85,8 @@ CFLAGS+=-DSHA2_USE_INTTYPES_H -D_XOPEN_SOURCE=600 -D_XOPEN_SOURCE_EXTENDED=1 -D_
 CFLAGS+=-D_DARWIN_C_SOURCE
 CFLAGS_SQLITE= @CFLAGS_SQLITE@
 
+JAVAC= 		@JAVAC@
+
 INSTALL=        install
 INSTALL_PROGRAM=$(INSTALL)
 INSTALL_DATA=   $(INSTALL) -m 644
@@ -123,6 +125,30 @@ clean:
 		  libservalclient.so libservalclient.a \
 		  libmonitorclient.so libmonitorclient.a \
 		  tfw_createfile directory_service fakeradio simulator serval-tests
+
+# Only provide Java targets if the Java compiler is available.
+ifneq ($(JAVAC),)
+
+all:	java-api
+
+clean:	java-api-clean
+
+.PHONY: java-api java-api-clean
+
+ifneq ($(SOURCE_PREFIX:/%=),)
+SOURCE_PREFIX_JAVA_API=	$(SOURCE_PREFIX)../java-api/
+else
+SOURCE_PREFIX_JAVA_API=	$(SOURCE_PREFIX)
+endif
+
+java-api:
+	@mkdir -p java-api
+	cd java-api && $(MAKE) SOURCE_PREFIX=$(SOURCE_PREFIX_JAVA_API) all
+
+java-api-clean:
+	cd java-api 2>/dev/null && $(MAKE) SOURCE_PREFIX=$(SOURCE_PREFIX_JAVA_API) clean
+
+endif # $(JAVAC)
 
 # Source code test coverage support -- see doc/Testing.md
 

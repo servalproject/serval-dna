@@ -247,4 +247,5 @@ AC_SUBST([CONFIG_H], [config.h])
 AC_OUTPUT([
     Makefile
     testconfig.sh
+    java-api/Makefile
 ])

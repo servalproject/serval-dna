@@ -1,5 +1,6 @@
 # Definitions for test suites using Java.
-# Copyright 2014 Serval Project Inc.
+# Copyright 2014-2015 Serval Project Inc.
+# Copyright 2016 Flinders University
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -15,7 +16,13 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
-source "${0%/*}/../testconfig.sh"
+testdefs_java_sh=$(abspath "${BASH_SOURCE[0]}")
+java_source_root="${testdefs_java_sh%/*}"
+java_build_root="$java_source_root"
+java_classdir="$java_build_root/java-api/classes"
+java_testclassdir="$java_build_root/java-api/testclasses"
+
+source "$java_build_root/testconfig.sh"
 
 # Utility function for setting up servald JNI fixtures:
 #  - check that libservaldaemon.so is present
@@ -25,13 +32,10 @@ setup_servald_so() {
    export LD_LIBRARY_PATH="$servald_build_root"
 }
 
-compile_java_classes() {
-   assert --message='Java compiler was detected by ./configure' type -p "$JAVAC" >/dev/null
-   mkdir classes
-   assert find "$servald_source_root"/java* -name *.java | xargs $JAVAC -Xlint:unchecked -d classes
-   assert [ -r classes/org/servalproject/servaldna/ServalDCommand.class ]
-   assert [ -r classes/org/servalproject/servaldna/IJniResults.class ]
-   assert [ -r classes/org/servalproject/test/ServalDTests.class ]
+assert_java_classes_exist() {
+   assert [ -r "$java_classdir/org/servalproject/servaldna/ServalDCommand.class" ]
+   assert [ -r "$java_classdir/org/servalproject/servaldna/IJniResults.class" ]
+   assert [ -r "$java_testclassdir/org/servalproject/test/ServalDTests.class" ]
 }
 
 _executeJava() {
@@ -45,7 +49,7 @@ _executeJava() {
       *) break;;
       esac
    done
-   "$func" "${opts[@]}" java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" "$@"
+   "$func" "${opts[@]}" java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$java_classdir:$java_testclassdir" "$@"
 }
 
 _run() {
@@ -79,7 +83,7 @@ unset_vars_with_prefix() {
 }
 
 # Utility function:
-# 
+#
 #     unpack_vars PREFIX TEXT
 #
 # parses the given TEXT which must have the form:

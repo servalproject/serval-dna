@@ -29,7 +29,7 @@ setup() {
       set debug.verbose 1 \
       set log.console.level debug
    assert_echo_works
-   compile_java_classes
+   assert_java_classes_exist
    setup_servald_so
 }
 

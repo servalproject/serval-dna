@@ -25,7 +25,7 @@ source "${0%/*}/../testdefs_java.sh"
 setup() {
    setup_servald
    setup_servald_so
-   compile_java_classes
+   assert_java_classes_exist
    set_instance +A
    set_keyring_config
    set_extra_config

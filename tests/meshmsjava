@@ -26,7 +26,7 @@ source "${0%/*}/../testdefs_meshms.sh"
 setup() {
    setup_servald
    setup_servald_so
-   compile_java_classes
+   assert_java_classes_exist
    set_instance +A
    executeOk_servald config \
 	set log.console.level debug \

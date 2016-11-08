@@ -1,0 +1,31 @@
+# Makefile.in for Serval DNA Java API
+# vim: noet ts=8 sts=0 sw=8
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+bindir=@bindir@
+sbindir=@sbindir@
+sysconfdir=@sysconfdir@
+localstatedir=@localstatedir@
+
+JAVAC =		@JAVAC@
+CLASSDIR =	classes
+TESTCLASSDIR =	testclasses
+
+.PHONY: all check clean classes testclasses
+
+all:	check classes testclasses
+
+check:
+	@if [ -z "$(JAVAC)" ]; then echo "No java compiler configured" >&2; exit 1; fi
+	@if ! $(JAVAC) -version >/dev/null; then echo "Java compiler not executable" >&2; exit 1; fi
+
+classes:
+	@mkdir -p $(CLASSDIR)
+	find $(SOURCE_PREFIX)src -name '*.java' | xargs $(JAVAC) -Xlint:unchecked -d $(CLASSDIR)
+
+testclasses: classes
+	@mkdir -p $(TESTCLASSDIR)
+	find $(SOURCE_PREFIX)test -name '*.java' | xargs $(JAVAC) -Xlint:unchecked -d $(TESTCLASSDIR) -classpath $(CLASSDIR)
+
+clean:
+	@$(RM) -r $(CLASSDIR) $(TESTCLASSDIR)
