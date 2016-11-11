@@ -1,6 +1,6 @@
 /*
-Serval DNA keyring
-Copyright (C) 2013 Serval Project Inc.
+Copyright (C) 2016 Flinders University
+Copyright (C) 2013-2015 Serval Project Inc.
 Copyright (C) 2010-2012 Paul Gardner-Stephen
  
 This program is free software; you can redistribute it and/or
@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "mem.h"
 #include "rotbuf.h"
 #include "route_link.h"
+#include "commandline.h"
 
 static keyring_file *keyring_open_or_create(const char *path, int writeable);
 static int keyring_initialise(keyring_file *k);
@@ -1938,7 +1939,6 @@ struct nm_record nm_cache[NM_CACHE_SLOTS];
 unsigned char *keyring_get_nm_bytes(const uint8_t *box_sk, const sid_t *box_pk, const sid_t *unknown_sidp)
 {
   IN();
-  assert(keyring != NULL);
 
   /* See if we have it cached already */
   unsigned i;
@@ -2108,4 +2108,17 @@ int keyring_load_from_dump(keyring_file *k, unsigned entry_pinc, const char **en
   if (ferror(input))
     return WHYF_perror("fscanf");
   return 0;
+}
+
+/* Free the global keyring after every CLI command.
+ */
+
+__thread keyring_file *keyring = NULL;
+
+static void keyring_on_cmd_cleanup();
+DEFINE_TRIGGER(cmd_cleanup, keyring_on_cmd_cleanup);
+static void keyring_on_cmd_cleanup()
+{
+  keyring_free(keyring);
+  keyring = NULL;
 }

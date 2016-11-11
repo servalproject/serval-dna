@@ -74,7 +74,7 @@ int commandline_main(struct cli_context *context, const char *argv0, int argc, c
     break;
   }
 
-  command_cleanup();
+  CALL_TRIGGER(cmd_cleanup, context);
 
   OUT();
 
@@ -82,6 +82,15 @@ int commandline_main(struct cli_context *context, const char *argv0, int argc, c
     fd_showstats();
   return result;
 }
+
+// Put a dummy no-op trigger callback into the "cmd_cleanup" trigger section,
+// otherwise if no other object provides one, the link will fail with errors like:
+// undefined reference to `__start_tr_cmd_cleanup'
+// undefined reference to `__stop_tr_cmd_cleanup'
+
+static void __dummy_on_cmd_cleanup();
+DEFINE_TRIGGER(cmd_cleanup, __dummy_on_cmd_cleanup);
+static void __dummy_on_cmd_cleanup() {}
 
 int commandline_main_stdio(FILE *output, const char *argv0, int argc, const char *const *args)
 {

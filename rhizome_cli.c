@@ -189,6 +189,7 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
   if (create_serval_instance_dir() == -1)
     return -1;
   
+  assert(keyring == NULL);
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
   
@@ -339,8 +340,6 @@ static int app_rhizome_add_file(const struct cli_parsed *parsed, struct cli_cont
 finish:
   rhizome_bundle_result_free(&result);
   rhizome_manifest_free(m);
-  keyring_free(keyring);
-  keyring = NULL;
   return ret;
 }
 
@@ -435,48 +434,32 @@ static int app_rhizome_delete(const struct cli_parsed *parsed, struct cli_contex
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
+  assert(keyring == NULL);
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
   int ret=0;
   if (cli_arg(parsed, "file", NULL, NULL, NULL) == 0) {
-    if (!fileid){
-      keyring_free(keyring);
-      keyring = NULL;
+    if (!fileid)
       return WHY("missing <fileid> argument");
-    }
     rhizome_filehash_t hash;
-    if (str_to_rhizome_filehash_t(&hash, fileid) == -1){
-      keyring_free(keyring);
-      keyring = NULL;
+    if (str_to_rhizome_filehash_t(&hash, fileid) == -1)
       return WHYF("invalid <fileid> argument: %s", alloca_str_toprint(fileid));
-    }
     ret = rhizome_delete_file(&hash);
   } else {
-    if (!manifestid){
-      keyring_free(keyring);
-      keyring = NULL;
+    if (!manifestid)
       return WHY("missing <manifestid> argument");
-    }
     rhizome_bid_t bid;
-    if (str_to_rhizome_bid_t(&bid, manifestid) == -1){
-      keyring_free(keyring);
-      keyring = NULL;
+    if (str_to_rhizome_bid_t(&bid, manifestid) == -1)
       return WHY("Invalid manifest ID");
-    }
     if (cli_arg(parsed, "bundle", NULL, NULL, NULL) == 0)
       ret = rhizome_delete_bundle(&bid);
     else if (cli_arg(parsed, "manifest", NULL, NULL, NULL) == 0)
       ret = rhizome_delete_manifest(&bid);
     else if (cli_arg(parsed, "payload", NULL, NULL, NULL) == 0)
       ret = rhizome_delete_payload(&bid);
-    else{
-      keyring_free(keyring);
-      keyring = NULL;
+    else
       return WHY("unrecognised command");
-    }
   }
-  keyring_free(keyring);
-  keyring = NULL;
   return ret;
 }
 
@@ -545,6 +528,7 @@ static int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_conte
   if (rhizome_opendb() == -1)
     return -1;
   
+  assert(keyring == NULL);
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
   
@@ -640,8 +624,6 @@ static int app_rhizome_extract(const struct cli_parsed *parsed, struct cli_conte
   }
 finish:
   rhizome_manifest_free(m);
-  keyring_free(keyring);
-  keyring = NULL;
   return ret;
 }
 
@@ -704,13 +686,11 @@ static int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context 
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
+  assert(keyring == NULL);
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-  if (rhizome_opendb() == -1) {
-    keyring_free(keyring);
-    keyring = NULL;
+  if (rhizome_opendb() == -1)
     return -1;
-  }
   size_t rowlimit = atoi(limit_ascii);
   size_t rowoffset = atoi(offset_ascii);
   struct rhizome_list_cursor cursor;
@@ -727,11 +707,8 @@ static int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context 
       return WHYF("Invalid <recipient: %s", recipient_hex);
     cursor.is_recipient_set = 1;
   }
-  if (rhizome_list_open(&cursor) == -1) {
-    keyring_free(keyring);
-    keyring = NULL;
+  if (rhizome_list_open(&cursor) == -1)
     return -1;
-  }
   const char *headers[]={
     "_id",
     "service",
@@ -796,8 +773,6 @@ static int app_rhizome_list(const struct cli_parsed *parsed, struct cli_context 
     }
   }
   rhizome_list_release(&cursor);
-  keyring_free(keyring);
-  keyring = NULL;
   if (n == -1)
     return -1;
   cli_end_table(context, rowcount);

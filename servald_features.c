@@ -59,19 +59,3 @@ void servald_features()
   USE_FEATURE(http_rest_meshms);
   USE_FEATURE(http_rest_meshmb);
 }
-
-#include <assert.h>
-#include "overlay_address.h"
-#include "rhizome.h"
-#include "cli.h"
-#include "keyring.h"
-
-__thread keyring_file *keyring = NULL;
-
-void command_cleanup()
-{
-  // This function is called after every CLI command has finished.
-  rhizome_close_db();
-  free_subscribers();
-  assert(keyring==NULL);
-}

@@ -59,21 +59,15 @@ static int app_meshmb_send(const struct cli_parsed *parsed, struct cli_context *
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
+  assert(keyring == NULL);
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
 
-  int ret = -1;
   keyring_identity *id = keyring_find_identity(keyring, &identity);
-  if (!id){
-    WHY("Invalid identity");
-    goto end;
-  }
+  if (!id)
+    return WHY("Invalid identity");
 
-  ret = meshmb_send(id, message, strlen(message)+1, nfields, fields);
-end:
-  keyring_free(keyring);
-  keyring = NULL;
-  return ret;
+  return meshmb_send(id, message, strlen(message)+1, nfields, fields);
 }
 
 DEFINE_CMD(app_meshmb_read, 0,

@@ -38,6 +38,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_packet.h"
 #include "server.h"
 #include "route_link.h"
+#include "commandline.h"
 
 #define MAX_BPIS 1024
 #define BPI_MASK 0x3ff
@@ -104,6 +105,16 @@ void free_subscribers()
   if (serverMode)
     FATAL("Freeing subscribers from a running daemon is not supported");
   tree_walk(&root, NULL, 0, free_node, NULL);
+}
+
+/* Free the subscribers tree after every CLI command.
+ */
+
+static void subscriber_on_cmd_cleanup();
+DEFINE_TRIGGER(cmd_cleanup, subscriber_on_cmd_cleanup);
+static void subscriber_on_cmd_cleanup()
+{
+  free_subscribers();
 }
 
 static void *create_subscriber(void *UNUSED(context), const uint8_t *binary, size_t bin_length)

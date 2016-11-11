@@ -54,22 +54,15 @@ static int app_keyring_dump(const struct cli_parsed *parsed, struct cli_context 
   if (cli_arg(parsed, "file", &path, cli_path_regular, NULL) == -1)
     return -1;
   int include_secret = 0 == cli_arg(parsed, "--secret", NULL, NULL, NULL);
-  keyring_file *k = keyring_open_instance_cli(parsed);
-  if (!k)
+  assert(keyring == NULL);
+  if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
   FILE *fp = path ? fopen(path, "w") : stdout;
-  if (fp == NULL) {
-    WHYF_perror("fopen(%s, \"w\")", alloca_str_toprint(path));
-    keyring_free(k);
-    return -1;
-  }
-  int ret = keyring_dump(k, XPRINTF_STDIO(fp), include_secret);
-  if (fp != stdout && fclose(fp) == EOF) {
-    WHYF_perror("fclose(%s)", alloca_str_toprint(path));
-    keyring_free(k);
-    return -1;
-  }
-  keyring_free(k);
+  if (fp == NULL)
+    return WHYF_perror("fopen(%s, \"w\")", alloca_str_toprint(path));
+  int ret = keyring_dump(keyring, XPRINTF_STDIO(fp), include_secret);
+  if (fp != stdout && fclose(fp) == EOF)
+    return WHYF_perror("fclose(%s)", alloca_str_toprint(path));
   return ret;
 }
 
@@ -94,24 +87,16 @@ static int app_keyring_load(const struct cli_parsed *parsed, struct cli_context 
       assert(pc < pinc);
       pinv[pc++] = parsed->labelv[i].text;
     }
-  keyring_file *k = keyring_open_instance_cli(parsed);
-  if (!k)
+  assert(keyring == NULL);
+  if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
   FILE *fp = path && strcmp(path, "-") != 0 ? fopen(path, "r") : stdin;
-  if (fp == NULL) {
-    WHYF_perror("fopen(%s, \"r\")", alloca_str_toprint(path));
-    keyring_free(k);
+  if (fp == NULL)
+    return WHYF_perror("fopen(%s, \"r\")", alloca_str_toprint(path));
+  if (keyring_load_from_dump(keyring, pinc, pinv, fp) == -1)
     return -1;
-  }
-  if (keyring_load_from_dump(k, pinc, pinv, fp) == -1) {
-    keyring_free(k);
-    return -1;
-  }
-  if (keyring_commit(k) == -1) {
-    keyring_free(k);
+  if (keyring_commit(keyring) == -1)
     return WHY("Could not write new identity");
-  }
-  keyring_free(k);
   return 0;
 }
 
@@ -121,8 +106,8 @@ DEFINE_CMD(app_keyring_list, 0,
 static int app_keyring_list(const struct cli_parsed *parsed, struct cli_context *context)
 {
   DEBUG_cli_parsed(verbose, parsed);
-  keyring_file *k = keyring_open_instance_cli(parsed);
-  if (!k)
+  assert(keyring == NULL);
+  if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
     
   const char *names[]={
@@ -135,7 +120,7 @@ static int app_keyring_list(const struct cli_parsed *parsed, struct cli_context 
   size_t rowcount = 0;
   
   keyring_iterator it;
-  keyring_iterator_start(k, &it);
+  keyring_iterator_start(keyring, &it);
   const keyring_identity *id;
   while((id = keyring_next_identity(&it))){
     const char *did = NULL;
@@ -147,7 +132,6 @@ static int app_keyring_list(const struct cli_parsed *parsed, struct cli_context 
     cli_put_string(context, name, "\n");
     rowcount++;
   }
-  keyring_free(k);
   cli_end_table(context, rowcount);
   return 0;
 }
@@ -197,12 +181,12 @@ DEFINE_CMD(app_keyring_list2, 0, "List the full details of identities that can b
   "keyring", "list", "--full" KEYRING_PIN_OPTIONS);
 static int app_keyring_list2(const struct cli_parsed *parsed, struct cli_context *context)
 {
-  keyring_file *k = keyring_open_instance_cli(parsed);
-  if (!k)
+  assert(keyring == NULL);
+  if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
     
   keyring_iterator it;
-  keyring_iterator_start(k, &it);
+  keyring_iterator_start(keyring, &it);
   const keyring_identity *id;
   while((id = keyring_next_identity(&it))){
     unsigned fields=0;
@@ -224,7 +208,6 @@ static int app_keyring_list2(const struct cli_parsed *parsed, struct cli_context
     cli_put_long(context, fields, "\n");
     cli_output_identity(context, id);
   }
-  keyring_free(k);
   return 0;
 }
 
@@ -236,22 +219,16 @@ static int app_keyring_add(const struct cli_parsed *parsed, struct cli_context *
   DEBUG_cli_parsed(verbose, parsed);
   const char *pin;
   cli_arg(parsed, "pin", &pin, NULL, "");
-  keyring_file *k = keyring_open_instance_cli(parsed);
-  if (!k)
+  assert(keyring == NULL);
+  if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-  keyring_enter_pin(k, pin);
-  
-  const keyring_identity *id = keyring_create_identity(k, pin);
-  if (id == NULL) {
-    keyring_free(k);
+  keyring_enter_pin(keyring, pin);
+  const keyring_identity *id = keyring_create_identity(keyring, pin);
+  if (id == NULL)
     return WHY("Could not create new identity");
-  }
-  if (keyring_commit(k) == -1) {
-    keyring_free(k);
+  if (keyring_commit(keyring) == -1)
     return WHY("Could not write new identity");
-  }
   cli_output_identity(context, id);
-  keyring_free(k);
   return 0;
 }
 
@@ -265,27 +242,20 @@ static int app_keyring_remove(const struct cli_parsed *parsed, struct cli_contex
   if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1)
     return -1;
   sid_t sid;
-  if (str_to_sid_t(&sid, sidhex) == -1){
-    keyring_free(keyring);
-    keyring = NULL;
+  if (str_to_sid_t(&sid, sidhex) == -1)
     return WHY("str_to_sid_t() failed");
-  }
+  assert(keyring == NULL);
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
   keyring_identity *id = keyring_find_identity_sid(keyring, &sid);
-  int r=0;
   if (!id)
-    r=WHY("No matching SID");
+    return WHY("No matching SID");
   keyring_destroy_identity(keyring, id);
-  if (keyring_commit(keyring) == -1) {
-    keyring_free(keyring);
+  if (keyring_commit(keyring) == -1)
     return WHY("Could not destroy identity");
-  }
   cli_output_identity(context, id);
   keyring_free_identity(id);
-  keyring_free(keyring);
-  keyring = NULL;
-  return r;
+  return 0;
 }
 
 DEFINE_CMD(app_keyring_set_did, 0,
@@ -306,31 +276,24 @@ static int app_keyring_set_did(const struct cli_parsed *parsed, struct cli_conte
 
   sid_t sid;
   if (str_to_sid_t(&sid, sidhex) == -1){
-    keyring_free(keyring);
-    keyring = NULL;
     return WHY("str_to_sid_t() failed");
   }
 
+  assert(keyring == NULL);
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
 
   keyring_identity *id = keyring_find_identity_sid(keyring, &sid);
-
-  int r=0;
   if (!id)
-    r=WHY("No matching SID");
-  else if (keyring_set_did(id, did, name))
-      r=WHY("Could not set DID");
-  else if (set_pin && keyring_set_pin(id, new_pin))
-      r=WHY("Could not set new pin");
-  else if (keyring_commit(keyring))
-    r=WHY("Could not write updated keyring record");
-  else
-    cli_output_identity(context, id);
-
-  keyring_free(keyring);
-  keyring = NULL;
-  return r;
+    return WHY("No matching SID");
+  if (keyring_set_did(id, did, name))
+    return WHY("Could not set DID");
+  if (set_pin && keyring_set_pin(id, new_pin))
+    return WHY("Could not set new pin");
+  if (keyring_commit(keyring))
+    return WHY("Could not write updated keyring record");
+  cli_output_identity(context, id);
+  return 0;
 }
 
 DEFINE_CMD(app_keyring_set_tag, 0,
@@ -345,6 +308,7 @@ static int app_keyring_set_tag(const struct cli_parsed *parsed, struct cli_conte
       cli_arg(parsed, "value", &value, NULL, "") == -1 )
     return -1;
   
+  assert(keyring == NULL);
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
 
@@ -353,25 +317,15 @@ static int app_keyring_set_tag(const struct cli_parsed *parsed, struct cli_conte
     return WHY("str_to_sid_t() failed");
 
   keyring_identity *id = keyring_find_identity_sid(keyring, &sid);
-  int r=0;
   if (!id)
-    r=WHY("No matching SID");
-  else{
-    int length = strlen(value);
-    if (keyring_set_public_tag(id, tag, (const unsigned char*)value, length))
-      r=WHY("Could not set tag value");
-    else{
-      if (keyring_commit(keyring))
-	r=WHY("Could not write updated keyring record");
-      else{
-	cli_output_identity(context, id);
-      }
-    }
-  }
-  
-  keyring_free(keyring);
-  keyring = NULL;
-  return r;
+    return WHY("No matching SID");
+  int length = strlen(value);
+  if (keyring_set_public_tag(id, tag, (const unsigned char*)value, length))
+    return WHY("Could not set tag value");
+  if (keyring_commit(keyring))
+    return WHY("Could not write updated keyring record");
+  cli_output_identity(context, id);
+  return 0;
 }
 
 static int handle_pins(const struct cli_parsed *parsed, struct cli_context *UNUSED(context), int revoke)

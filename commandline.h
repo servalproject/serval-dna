@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdio.h> // for FILE
 #include "section.h"
+#include "trigger.h"
 #include "cli.h"
 
 #define KEYRING_PIN_OPTION	  ,"[--keyring-pin=<pin>]"
@@ -49,9 +50,9 @@ DECLARE_SECTION(struct cli_schema, commands);
 int commandline_main(struct cli_context *context, const char *argv0, int argc, const char *const *args);
 int commandline_main_stdio(FILE *output, const char *argv0, int argc, const char *const *args);
 
-/* Called after every command has finished.  Is not supplied by the
- * command-line object; the caller must define this function.
- */
-void command_cleanup();
+// Trigger that is called after every command has finished.  Different
+// sub-systems (eg, keyring, Rhizome) use this to reset their global state
+// ready for the next command.
+DECLARE_TRIGGER(cmd_cleanup, struct cli_context *context);
 
 #endif // __SERVAL_DNA__COMMANDLINE_H

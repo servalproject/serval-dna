@@ -19,11 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdio.h>
 #include "debug.h"
-#include "conf.h"
-#include "keyring.h"
-#include "commandline.h"
-
-__thread keyring_file *keyring = NULL;
+#include "conf.h" // for IF_DEBUG() macro
 
 // We don't want to call any at_exit functions from the dalvik VM
 void _exit(int status);
@@ -32,12 +28,4 @@ void exit(int status)
   DEBUGF(verbose, "Calling _exit(%d)", status);
   fflush(stdout);
   _exit(status);
-}
-
-void command_cleanup()
-{
-  // This function is called after every CLI command has finished.
-  rhizome_close_db();
-  free_subscribers();
-  assert(keyring==NULL);
 }

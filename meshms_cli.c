@@ -36,6 +36,7 @@ static int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_
 
   if (create_serval_instance_dir() == -1)
     goto end;
+  assert(keyring == NULL);
   if (!(keyring = keyring_open_instance_cli(parsed)))
     goto end;
 
@@ -89,9 +90,6 @@ static int app_meshms_conversations(const struct cli_parsed *parsed, struct cli_
 end:
   if (conv)
     meshms_free_conversations(conv);
-  if (keyring)
-    keyring_free(keyring);
-  keyring = NULL;
   return status;
 }
 
@@ -114,18 +112,14 @@ static int app_meshms_send_message(const struct cli_parsed *parsed, struct cli_c
 
   if (create_serval_instance_dir() == -1)
     return -1;
+  assert(keyring == NULL);
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-  if (rhizome_opendb() == -1){
-    keyring_free(keyring);
-    keyring = NULL;
+  if (rhizome_opendb() == -1)
     return -1;
-  }
 
   // include terminating NUL
   enum meshms_status status = meshms_send_message(&my_sid, &their_sid, message, strlen(message) + 1);
-  keyring_free(keyring);
-  keyring = NULL;
   return meshms_failed(status) ? status : 0;
 }
 
@@ -140,31 +134,20 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
     return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
+  assert(keyring == NULL);
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-  if (rhizome_opendb() == -1){
-    keyring_free(keyring);
-    keyring = NULL;
+  if (rhizome_opendb() == -1)
     return -1;
-  }
   sid_t my_sid, their_sid;
-  if (str_to_sid_t(&my_sid, my_sidhex) == -1){
-    keyring_free(keyring);
-    keyring = NULL;
+  if (str_to_sid_t(&my_sid, my_sidhex) == -1)
     return WHY("invalid sender SID");
-  }
-  if (str_to_sid_t(&their_sid, their_sidhex) == -1){
-    keyring_free(keyring);
-    keyring = NULL;
+  if (str_to_sid_t(&their_sid, their_sidhex) == -1)
     return WHY("invalid recipient SID");
-  }
   struct meshms_message_iterator iter;
   enum meshms_status status;
-  if (meshms_failed(status = meshms_message_iterator_open(&iter, &my_sid, &their_sid))) {
-    keyring_free(keyring);
-    keyring = NULL;
+  if (meshms_failed(status = meshms_message_iterator_open(&iter, &my_sid, &their_sid)))
     return status;
-  }
   const char *names[]={
     "_id","my_offset","their_offset","age","type","message"
   };
@@ -218,8 +201,6 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
   if (!meshms_failed(status))
     cli_end_table(context, id);
   meshms_message_iterator_close(&iter);
-  keyring_free(keyring);
-  keyring = NULL;
   return status;
 }
 
@@ -236,35 +217,23 @@ static int app_meshms_mark_read(const struct cli_parsed *parsed, struct cli_cont
 
   if (create_serval_instance_dir() == -1)
     return -1;
+  assert(keyring == NULL);
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
-  int ret = -1;
   if (rhizome_opendb() == -1)
-    goto done;
+    return -1;
   sid_t my_sid, their_sid;
-  if (str_to_sid_t(&my_sid, my_sidhex) == -1) {
-    ret = WHYF("my_sidhex=%s", my_sidhex);
-    goto done;
-  }
-  if (their_sidhex && str_to_sid_t(&their_sid, their_sidhex) == -1) {
-    ret = WHYF("their_sidhex=%s", their_sidhex);
-    goto done;
-  }
+  if (str_to_sid_t(&my_sid, my_sidhex) == -1)
+    return WHYF("my_sidhex=%s", my_sidhex);
+  if (their_sidhex && str_to_sid_t(&their_sid, their_sidhex) == -1)
+    return WHYF("their_sidhex=%s", their_sidhex);
   uint64_t offset = UINT64_MAX;
   if (offset_str) {
-    if (!their_sidhex) {
-      ret = WHY("missing recipient_sid");
-      goto done;
-    }
-    if (!str_to_uint64(offset_str, 10, &offset, NULL)) {
-      ret = WHYF("offset_str=%s", offset_str);
-      goto done;
-    }
+    if (!their_sidhex)
+      return WHY("missing recipient_sid");
+    if (!str_to_uint64(offset_str, 10, &offset, NULL))
+      return WHYF("offset_str=%s", offset_str);
   }
   enum meshms_status status = meshms_mark_read(&my_sid, their_sidhex ? &their_sid : NULL, offset);
-  ret = (status == MESHMS_STATUS_UPDATED) ? MESHMS_STATUS_OK : status;
-done:
-  keyring_free(keyring);
-  keyring = NULL;
-  return ret;
+  return (status == MESHMS_STATUS_UPDATED) ? MESHMS_STATUS_OK : status;
 }

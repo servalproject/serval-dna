@@ -1,6 +1,6 @@
 /* 
 Serval DNA keyring
-Copyright (C) 2013 Serval Project Inc.
+Copyright (C) 2013-2015 Serval Project Inc.
 Copyright (C) 2010-2012 Paul Gardner-Stephen
 
 This program is free software; you can redistribute it and/or
@@ -115,7 +115,7 @@ int keyring_release_subscriber(keyring_file *k, const sid_t *sid);
 // Combined signing / encryption key data
 #define KEYTYPE_CRYPTOCOMBINED 0x06
 
-/* handle to keyring file for use in running instance */
+/* per-thread global handle to keyring file for use in running commands and server */
 extern __thread keyring_file *keyring;
 
 /* Public calls to keyring management */

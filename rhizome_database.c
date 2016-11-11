@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "keyring.h"
 #include "server.h"
+#include "commandline.h"
 
 static int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const rhizome_bid_t *bidp);
 
@@ -396,6 +397,16 @@ int rhizome_close_db()
   rhizome_db=NULL;
   RETURN(0);
   OUT();
+}
+
+/* Close the Rhizome database after every CLI command.
+ */
+
+static void rhizome_on_cmd_cleanup();
+DEFINE_TRIGGER(cmd_cleanup, rhizome_on_cmd_cleanup);
+static void rhizome_on_cmd_cleanup()
+{
+  rhizome_close_db();
 }
 
 /* SQL query retry logic.
