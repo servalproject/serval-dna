@@ -75,7 +75,7 @@ static int send_content_end(struct http_request *hr)
     return http_response_form_part(r, 400, "Missing", PART_MESSAGE, NULL, 0);
   assert(r->u.sendmsg.message.length > 0);
   assert(r->u.sendmsg.message.length <= MESSAGE_PLY_MAX_LEN);
-
+  assert(keyring != NULL);
   keyring_identity *id = keyring_find_identity(keyring, &r->bid);
   if (!id){
     http_request_simple_response(&r->http, 500, "TODO, detailed errors");

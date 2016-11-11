@@ -1197,13 +1197,14 @@ static void overlay_mdp_scan(struct sched_ent *alarm)
 static int mdp_process_identity_request(struct socket_address *client, struct mdp_header *header, 
   struct overlay_buffer *payload)
 {
+  assert(keyring != NULL);
   if (ob_remaining(payload)<sizeof(struct mdp_identity_request)){
     mdp_reply_error(client, header);
     return WHY("Request too small");
   }
   struct mdp_identity_request request;
   ob_get_bytes(payload, (uint8_t *)&request, sizeof(request));
-  
+
   switch(request.action){
     case ACTION_LOCK:
       switch (request.type){
@@ -1259,6 +1260,7 @@ static int mdp_process_identity_request(struct socket_address *client, struct md
 static int mdp_search_identities(struct socket_address *client, struct mdp_header *header, 
   struct overlay_buffer *payload)
 {
+  assert(keyring != NULL);
   keyring_iterator it;
   keyring_iterator_start(keyring, &it);
   

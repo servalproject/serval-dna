@@ -640,6 +640,7 @@ enum meshms_status meshms_conversations_list(const keyring_identity *id, const s
   enum meshms_status status = MESHMS_STATUS_ERROR;
   rhizome_manifest *m=NULL;
 
+  assert(keyring != NULL);
   assert(id || my_sid);
   if (!my_sid){
     my_sid = id->box_pk;
@@ -688,6 +689,7 @@ void meshms_conversation_iterator_advance(struct meshms_conversation_iterator *i
 
 enum meshms_status meshms_message_iterator_open(struct meshms_message_iterator *iter, const sid_t *me, const sid_t *them)
 {
+  assert(keyring != NULL);
   bzero(iter, sizeof *iter);
   DEBUGF(meshms, "iter=%p me=%s them=%s", iter,
 	 me ? alloca_tohex_sid_t(*me) : "NULL",
@@ -863,6 +865,7 @@ enum meshms_status meshms_message_iterator_prev(struct meshms_message_iterator *
 
 enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipient, const char *message, size_t message_len)
 {
+  assert(keyring != NULL);
   assert(message_len != 0);
   if (message_len > MESSAGE_PLY_MAX_LEN) {
     WHY("message too long");
@@ -942,6 +945,7 @@ end:
 
 enum meshms_status meshms_mark_read(const sid_t *sender, const sid_t *recipient, uint64_t offset)
 {
+  assert(keyring != NULL);
   rhizome_manifest *m=NULL;
   enum meshms_status status = MESHMS_STATUS_ERROR;
   struct meshms_conversations *conv = NULL;

@@ -181,6 +181,7 @@ static enum rhizome_bundle_authorship set_authentic(rhizome_manifest *m, const k
  * and finally update the database with the result.
 */
 static enum rhizome_bundle_authorship try_author(rhizome_manifest *m, const keyring_identity *id, const sid_t *sid){
+  assert(keyring != NULL);
   if (!sid)
     return AUTHOR_UNKNOWN;
 
@@ -254,6 +255,7 @@ static enum rhizome_bundle_authorship try_author(rhizome_manifest *m, const keyr
 void rhizome_authenticate_author(rhizome_manifest *m)
 {
   IN();
+  assert(keyring != NULL);
   DEBUGF(rhizome, "authenticate author for bid=%s", m->has_id ? alloca_tohex_rhizome_bid_t(m->keypair.public_key) : "(none)");
   switch (m->authorship) {
     case ANONYMOUS:
@@ -320,6 +322,7 @@ void rhizome_authenticate_author(rhizome_manifest *m)
 int rhizome_manifest_add_bundle_key(rhizome_manifest *m)
 {
   IN();
+  assert(keyring != NULL);
   assert(m->haveSecret);
   switch (m->authorship) {
     case ANONYMOUS: // there can be no BK field without an author
@@ -564,6 +567,7 @@ int rhizome_crypt_xor_block(unsigned char *buffer, size_t buffer_size, uint64_t 
  */
 int rhizome_derive_payload_key(rhizome_manifest *m)
 {
+  assert(keyring != NULL);
   assert(m->payloadEncryption == PAYLOAD_ENCRYPTED);
   unsigned char hash[crypto_hash_sha512_BYTES];
 

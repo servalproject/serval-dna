@@ -57,6 +57,7 @@ static __thread struct subscriber *my_subscriber=NULL;
 struct subscriber *get_my_subscriber(bool_t create){
   if (!serverMode)
     return NULL;
+  assert(keyring != NULL);
   if (my_subscriber && my_subscriber->reachable != REACHABLE_SELF)
     my_subscriber = NULL;
   if (!my_subscriber){

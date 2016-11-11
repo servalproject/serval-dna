@@ -92,6 +92,7 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servaldna_ServalDCommand_server(
   int ret = -1;
   
   {
+    assert(keyring == NULL);
     const char *cpin = keyring_pin?(*env)->GetStringUTFChars(env, keyring_pin, NULL):NULL;
     if (cpin != NULL){
       keyring = keyring_open_instance(cpin);

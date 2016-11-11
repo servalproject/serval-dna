@@ -28,6 +28,7 @@ DEFINE_BINDING(MDP_PORT_DNALOOKUP, overlay_mdp_service_dnalookup);
 static int overlay_mdp_service_dnalookup(struct internal_mdp_header *header, struct overlay_buffer *payload)
 {
   IN();
+  assert(keyring != NULL);
   keyring_iterator it;
   keyring_iterator_start(keyring, &it);
   char did[64+1];

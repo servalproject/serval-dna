@@ -80,6 +80,7 @@ static void directory_send(struct subscriber *directory_service, struct subscrib
 
 // send a registration packet for each unlocked identity
 static void directory_send_keyring(struct subscriber *directory_service){
+  assert(keyring != NULL);
   keyring_iterator it;
   keyring_iterator_start(keyring, &it);
   while(keyring_next_keytype(&it, KEYTYPE_DID)){

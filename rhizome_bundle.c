@@ -1482,6 +1482,7 @@ struct rhizome_bundle_result rhizome_fill_manifest(rhizome_manifest *m, const ch
 int rhizome_lookup_author(rhizome_manifest *m)
 {
   IN();
+  assert(keyring != NULL);
   switch (m->authorship) {
     case AUTHOR_LOCAL:
     case AUTHOR_AUTHENTIC:
