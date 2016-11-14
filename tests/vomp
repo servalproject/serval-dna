@@ -51,7 +51,7 @@ vomp_console() {
    local C="$instance_name"
    mkfifo "${C}_IN"
    exec 8<>"${C}_IN" # prevent fifo from blocking
-   executeOk_servald --stdout-file="${C}_OUT" console <"${C}_IN"
+   executeOk --executable="$servald_build_root/serval-tests" --stdout-file="${C}_OUT" console <"${C}_IN"
    tfw_cat --stdout --stderr
 }
 

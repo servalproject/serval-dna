@@ -33,7 +33,6 @@ void servald_features()
   USE_FEATURE(cli_meshmb);
   USE_FEATURE(cli_monitor);
   USE_FEATURE(cli_msp_proxy);
-  USE_FEATURE(cli_vomp_console);
   USE_FEATURE(cli_rhizome_direct);
 
   USE_FEATURE(mdp_binding_MDP_PORT_ECHO);

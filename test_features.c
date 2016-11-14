@@ -24,6 +24,7 @@ void test_features()
   USE_FEATURE(cli_version);
   USE_FEATURE(cli_echo);
   USE_FEATURE(cli_log);
+  USE_FEATURE(cli_vomp_console);
   USE_FEATURE(cli_tests);
 }
 

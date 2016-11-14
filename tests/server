@@ -186,7 +186,7 @@ setup_MonitorQuit() {
    start_servald_server
 }
 test_MonitorQuit() {
-   executeOk_servald console < <(echo "monitor quit")
+   executeOk --executable="$servald_build_root/serval-tests" console < <(echo "monitor quit")
    tfw_cat --stdout --stderr
    wait_until ! kill -0 $servald_pid 2>/dev/null
 }
