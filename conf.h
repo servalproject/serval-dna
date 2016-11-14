@@ -704,7 +704,15 @@ extern __thread int cf_initialised;
 extern __thread int cf_limbo;
 extern __thread struct config_main config;
 
+// This macro is used in an if (IF_DEBUG(flagname)) { } statement around all
+// debugging log statements.  If macro SERVAL_ENABLE_DEBUG can be pre-defined as 0
+// (eg, using the -D command-line option) to build without any debug
+// statements.
+#if SERVAL_ENABLE_DEBUG+0
 #define IF_DEBUG(flagname) (config.debug.flagname)
+#else
+#define IF_DEBUG(flagname) (0)
+#endif
 
 int cf_init(void);
 int cf_load(void);
