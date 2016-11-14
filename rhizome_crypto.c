@@ -41,37 +41,13 @@ int rhizome_manifest_createid(rhizome_manifest *m)
 
 /* Generate a bundle id deterministically from the given seed.
  * Then either fetch it from the database or initialise a new empty manifest */
-struct rhizome_bundle_result rhizome_private_bundle(rhizome_manifest *m, const char *fmt, ...)
+struct rhizome_bundle_result rhizome_private_bundle(rhizome_manifest *m, const sign_keypair_t *keypair)
 {
-  va_list ap;
-
-  va_start(ap, fmt);
-  int n = vsnprintf(NULL, 0, fmt, ap);
-  va_end(ap);
-
-  char seed[n+1];
-  va_start(ap, fmt);
-  vsnprintf(seed, sizeof seed, fmt, ap);
-  va_end(ap);
-
-  union {
-    unsigned char hash[crypto_hash_sha512_BYTES];
-    sign_private_t bsk;
-  } u;
-
-  crypto_hash_sha512(u.hash, (uint8_t *)seed, n);
-
-  // The first 256 bits (32 bytes) of the hash will be used as the private key of the BID.
-
-  sign_keypair_t sk;
-  rhizome_bid_t bid;
-  crypto_sign_seed_keypair(bid.binary, sk.binary, u.bsk.binary);
-
-  enum rhizome_bundle_status ret = rhizome_retrieve_manifest(&bid, m);
+  enum rhizome_bundle_status ret = rhizome_retrieve_manifest(&keypair->public_key, m);
   switch(ret){
     case RHIZOME_BUNDLE_STATUS_NEW:
-      rhizome_manifest_set_id(m, &bid); // zerofills m->keypair.binary
-      m->keypair = sk;
+      rhizome_manifest_set_id(m, &keypair->public_key); // zerofills m->keypair.binary
+      m->keypair = *keypair;
       m->haveSecret = NEW_BUNDLE_ID;
       rhizome_manifest_set_service(m, RHIZOME_SERVICE_FILE);
       rhizome_manifest_set_name(m, "");
@@ -81,7 +57,7 @@ struct rhizome_bundle_result rhizome_private_bundle(rhizome_manifest *m, const c
       return rhizome_fill_manifest(m, NULL);
     case RHIZOME_BUNDLE_STATUS_SAME:
       m->haveSecret = EXISTING_BUNDLE_ID;
-      m->keypair = sk;
+      m->keypair = *keypair;
       // always consider the content encrypted, we don't need to rely on the manifest itself.
       rhizome_manifest_set_crypt(m, PAYLOAD_ENCRYPTED);
       if (strcmp(m->service, RHIZOME_SERVICE_FILE) != 0)

@@ -371,7 +371,7 @@ int rhizome_cleanup(struct rhizome_cleanup_report *report);
 int rhizome_store_cleanup(struct rhizome_cleanup_report *report);
 void rhizome_vacuum_db(sqlite_retry_state *retry);
 int rhizome_manifest_createid(rhizome_manifest *m);
-struct rhizome_bundle_result rhizome_private_bundle(rhizome_manifest *m, const char *fmt, ...);
+struct rhizome_bundle_result rhizome_private_bundle(rhizome_manifest *m, const sign_keypair_t *keypair);
 void rhizome_new_bundle_from_secret(rhizome_manifest *m, const rhizome_bk_t *bsk);
 
 struct rhizome_manifest_summary {

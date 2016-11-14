@@ -46,9 +46,12 @@ void meshms_free_conversations(struct meshms_conversations *conv)
 static enum meshms_status get_my_conversation_bundle(const keyring_identity *id, rhizome_manifest *m)
 {
   /* Find our private key */
-  struct rhizome_bundle_result result = rhizome_private_bundle(m,
+  sign_keypair_t key;
+  crypto_seed_keypair(&key,
     "incorrection%sconcentrativeness",
     alloca_tohex(id->box_sk, crypto_box_SECRETKEYBYTES));
+
+  struct rhizome_bundle_result result = rhizome_private_bundle(m, &key);
 
   switch (result.status) {
     case RHIZOME_BUNDLE_STATUS_NEW:

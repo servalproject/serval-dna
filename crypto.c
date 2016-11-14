@@ -68,4 +68,29 @@ int crypto_verify_message(struct subscriber *subscriber, unsigned char *message,
   return 0;
 }
 
+int crypto_seed_keypair(sign_keypair_t *keypair, const char *fmt, ...)
+{
+  va_list ap;
 
+  va_start(ap, fmt);
+  int n = vsnprintf(NULL, 0, fmt, ap);
+  if (n<0)
+    return WHYF_perror("vsnprintf(%s, ...)", fmt);
+  va_end(ap);
+
+  char str_seed[n+1];
+  va_start(ap, fmt);
+  if (vsnprintf(str_seed, sizeof str_seed, fmt, ap)<0)
+    return WHYF_perror("vsnprintf(%s, ...)", fmt);
+  va_end(ap);
+
+  union {
+    unsigned char hash[crypto_hash_sha512_BYTES];
+    sign_private_t seed;
+  } u;
+
+  // The first 256 bits (32 bytes) of the hash will be used as the seed bytes
+  crypto_hash_sha512(u.hash, (uint8_t *)str_seed, n);
+  crypto_sign_seed_keypair(keypair->public_key.binary, keypair->binary, u.seed.binary);
+  return 0;
+}
