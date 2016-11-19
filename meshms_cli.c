@@ -163,7 +163,7 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
 	  cli_put_long(context, id++, ":");
 	  cli_put_long(context, iter.my_offset, ":");
 	  cli_put_long(context, iter.metadata.their_last_ack_offset, ":");
-	  cli_put_long(context, iter.timestamp ? (now - iter.timestamp):(long)-1, ":");
+	  cli_put_long(context, iter.timestamp ? (long)(now - iter.timestamp):(long)-1, ":");
 	  cli_put_string(context, "ACK", ":");
 	  cli_put_string(context, "delivered", "\n");
 	  marked_delivered = 1;
@@ -172,7 +172,7 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
 	cli_put_long(context, id++, ":");
 	cli_put_long(context, iter.my_offset, ":");
 	cli_put_long(context, iter.their_offset, ":");
-	cli_put_long(context, iter.timestamp ? (now - iter.timestamp):(long)-1, ":");
+	cli_put_long(context, iter.timestamp ? (long)(now - iter.timestamp):(long)-1, ":");
 	cli_put_string(context, ">", ":");
 	cli_put_string(context, iter.text, "\n");
 	break;
@@ -183,7 +183,7 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
 	  cli_put_long(context, id++, ":");
 	  cli_put_long(context, iter.metadata.read_offset, ":");
 	  cli_put_long(context, 0, ":");
-	  cli_put_long(context, iter.timestamp ? (now - iter.timestamp):(long)-1, ":");
+	  cli_put_long(context, iter.timestamp ? (long)(now - iter.timestamp):(long)-1, ":");
 	  cli_put_string(context, "MARK", ":");
 	  cli_put_string(context, "read", "\n");
 	  marked_read = 1;
@@ -192,7 +192,7 @@ static int app_meshms_list_messages(const struct cli_parsed *parsed, struct cli_
 	cli_put_long(context, id++, ":");
 	cli_put_long(context, iter.my_offset, ":");
 	cli_put_long(context, iter.their_offset, ":");
-	cli_put_long(context, iter.timestamp ? (now - iter.timestamp):(long)-1, ":");
+	cli_put_long(context, iter.timestamp ? (long)(now - iter.timestamp):(long)-1, ":");
 	cli_put_string(context, "<", ":");
 	cli_put_string(context, iter.text, "\n");
 	break;
