@@ -386,6 +386,114 @@ static int restful_meshmb_newsince_find(httpd_request *r, const char *remainder)
 }
 */
 
+
+// allow multiple requests to re-use the same struct meshmb_feeds *, keeping it up to date as bundles arrive
+struct meshmb_session{
+  struct meshmb_session *next;
+  struct meshmb_session *prev;
+  unsigned ref_count;
+  keyring_identity *id;
+  struct meshmb_feeds *feeds;
+};
+
+static struct meshmb_session *sessions = NULL;
+
+static struct meshmb_session *open_session(const identity_t *identity){
+  keyring_identity *id = keyring_find_identity(keyring, identity);
+  if (!id)
+    return NULL;
+
+  struct meshmb_session *session = sessions;
+  while(session){
+    if (session->id == id){
+      session->ref_count++;
+      return session;
+    }
+    session = session->next;
+  }
+
+  struct meshmb_feeds *feeds = NULL;
+  if (meshmb_open(id, &feeds)==-1)
+    return NULL;
+
+  session = emalloc(sizeof (struct meshmb_session));
+  if (!session){
+    meshmb_close(feeds);
+    return NULL;
+  }
+  session->next = sessions;
+  session->prev = NULL;
+  if (sessions)
+    sessions->prev = session;
+  sessions = session;
+
+  session->ref_count = 1;
+  session->id = id;
+  session->feeds = feeds;
+
+  return session;
+}
+
+static void close_session(struct meshmb_session *session){
+  if (--session->ref_count == 0){
+    if (session->next)
+      session->next->prev = session->prev;
+    if (session->prev)
+      session->prev->next = session->next;
+    else
+      sessions = session->next;
+
+    meshmb_close(session->feeds);
+    free(session);
+  }
+}
+
+static int restful_meshmb_follow(httpd_request *r, const char *remainder)
+{
+  if (*remainder)
+    return 404;
+  assert(r->finalise_union == NULL);
+
+  struct meshmb_session *session = open_session(&r->bid);
+  int ret;
+
+  if (session
+    && meshmb_follow(session->feeds, &r->u.meshmb_feeds.bundle_id)!=-1
+    && meshmb_flush(session->feeds)!=-1){
+    http_request_simple_response(&r->http, 201, "TODO, detailed response");
+    ret = 201;
+  }else{
+    http_request_simple_response(&r->http, 500, "TODO, detailed response");
+    ret = 500;
+  }
+  if (session)
+    close_session(session);
+  return ret;
+}
+
+static int restful_meshmb_ignore(httpd_request *r, const char *remainder)
+{
+  if (*remainder)
+    return 404;
+  assert(r->finalise_union == NULL);
+
+  struct meshmb_session *session = open_session(&r->bid);
+  int ret;
+
+  if (session
+    && meshmb_ignore(session->feeds, &r->u.meshmb_feeds.bundle_id)!=-1
+    && meshmb_flush(session->feeds)!=-1){
+    http_request_simple_response(&r->http, 201, "TODO, detailed response");
+    ret = 201;
+  }else{
+    http_request_simple_response(&r->http, 500, "TODO, detailed response");
+    ret = 500;
+  }
+  if (session)
+    close_session(session);
+  return ret;
+}
+
 DECLARE_HANDLER("/restful/meshmb/", restful_meshmb_);
 static int restful_meshmb_(httpd_request *r, const char *remainder)
 {
@@ -414,6 +522,16 @@ static int restful_meshmb_(httpd_request *r, const char *remainder)
 	       && strn_to_position_token(end, &r->ui64, &end)
 	       && strcmp(end, "messagelist.json") == 0) {
       handler = restful_meshmb_newsince_list;
+      remainder = "";
+    } else if(str_startswith(remainder, "/follow/", &end)
+	&& strn_to_identity_t(&r->u.meshmb_feeds.bundle_id, end, &end) != -1) {
+      handler = restful_meshmb_follow;
+      verb = HTTP_VERB_POST;
+      remainder = "";
+    } else if(str_startswith(remainder, "/ignore/", &end)
+	&& strn_to_identity_t(&r->u.meshmb_feeds.bundle_id, end, &end) != -1) {
+      handler = restful_meshmb_ignore;
+      verb = HTTP_VERB_POST;
       remainder = "";
     }
 /*

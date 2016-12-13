@@ -24,17 +24,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "lang.h"
 #include "log.h"
 
-// #define MALLOC_PARANOIA
-
-#ifdef MALLOC_PARANOIA
-#define malloc(X) _serval_debug_malloc(X,__WHENCE__)
-#define calloc(X,Y) _serval_debug_calloc(X,Y,__WHENCE__)
-#define free(X) _serval_debug_free(X,__WHENCE__)
-void *_serval_debug_malloc(unsigned int bytes, struct __sourceloc whence) __attribute__ ((__ATTRIBUTE_malloc, __ATTRIBUTE_alloc_size(1)));
-void *_serval_debug_calloc(unsigned int bytes, unsigned int count, struct __sourceloc whence) __attribute__ ((__ATTRIBUTE_malloc, __ATTRIBUTE_alloc_size(1)));
-void _serval_debug_free(void *p, struct __sourceloc whence);
-#endif
-
 /* Equivalent to malloc(3), but logs an error before returning NULL.
  *
  * @author Andrew Bettison <andrew@servalproject.com>

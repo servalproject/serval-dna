@@ -204,6 +204,14 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 		return list;
 	}
 
+	public int meshmbFollow(SigningKey id, SigningKey peer) throws ServalDInterfaceException, IOException {
+		return MeshMBCommon.follow(this, id, peer);
+	}
+
+	public int meshmbIgnore(SigningKey id, SigningKey peer) throws ServalDInterfaceException, IOException {
+		return MeshMBCommon.ignore(this, id, peer);
+	}
+
 	// interface ServalDHttpConnectionFactory
 	public HttpURLConnection newServalDHttpConnection(String path) throws ServalDInterfaceException, IOException
 	{

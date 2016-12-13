@@ -216,6 +216,12 @@ typedef struct httpd_request
       time_s_t timestamp;
       bool_t eof;
     } plylist;
+
+    struct {
+      rhizome_bid_t bundle_id;
+      enum list_phase phase;
+      size_t rowcount;
+    } meshmb_feeds;
     
     struct {
       int fd;

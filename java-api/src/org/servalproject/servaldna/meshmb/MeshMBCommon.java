@@ -1,6 +1,7 @@
 package org.servalproject.servaldna.meshmb;
 
 import org.servalproject.servaldna.PostHelper;
+import org.servalproject.servaldna.ServalDClient;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.SigningKey;
@@ -26,5 +27,17 @@ public class MeshMBCommon {
         return conn.getResponseCode();
     }
 
+    public static int ignore(ServalDHttpConnectionFactory connector, SigningKey id, SigningKey peer) throws ServalDInterfaceException, IOException {
+        HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshmb/" + id.toHex() + "/follow/" + peer.toHex());
+        conn.setRequestMethod("POST");
+        conn.connect();
+        return conn.getResponseCode();
+    }
 
+    public static int follow(ServalDHttpConnectionFactory connector, SigningKey id, SigningKey peer) throws ServalDInterfaceException, IOException {
+        HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshmb/" + id.toHex() + "/ignore/" + peer.toHex());
+        conn.setRequestMethod("POST");
+        conn.connect();
+        return conn.getResponseCode();
+    }
 }
