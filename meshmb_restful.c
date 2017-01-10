@@ -494,6 +494,131 @@ static int restful_meshmb_ignore(httpd_request *r, const char *remainder)
   return ret;
 }
 
+struct enum_state{
+  httpd_request *request;
+  strbuf buffer;
+};
+
+static int restful_feedlist_enum(struct meshmb_feed_details *details, void *context){
+  struct enum_state *state = context;
+  size_t checkpoint = strbuf_len(state->buffer);
+
+  if (state->request->u.meshmb_feeds.rowcount!=0)
+    strbuf_putc(state->buffer, ',');
+  strbuf_puts(state->buffer, "\n[");
+  strbuf_json_hex(state->buffer, details->bundle_id.binary, sizeof details->bundle_id.binary);
+  strbuf_puts(state->buffer, ",");
+  strbuf_json_string(state->buffer, details->name);
+  strbuf_puts(state->buffer, ",");
+  strbuf_sprintf(state->buffer, "%d", details->timestamp);
+  strbuf_puts(state->buffer, ",");
+  strbuf_json_string(state->buffer, details->last_message);
+  strbuf_puts(state->buffer, "]");
+
+  if (strbuf_overrun(state->buffer)){
+    strbuf_trunc(state->buffer, checkpoint);
+    return 1;
+  }else{
+    ++state->request->u.meshmb_feeds.rowcount;
+    state->request->u.meshmb_feeds.bundle_id = details->bundle_id;
+    return 0;
+  }
+}
+
+static int restful_meshmb_feedlist_json_content_chunk(struct http_request *hr, strbuf b)
+{
+  httpd_request *r = (httpd_request *) hr;
+  const char *headers[] = {
+    "id",
+    "name",
+    "timestamp",
+    "last_message"
+  };
+
+  DEBUGF(httpd, "Phase %d", r->u.meshmb_feeds.phase);
+
+  switch (r->u.meshmb_feeds.phase) {
+    case LIST_HEADER:
+      strbuf_puts(b, "{\n\"header\":[");
+      unsigned i;
+      for (i = 0; i != NELS(headers); ++i) {
+	if (i)
+	  strbuf_putc(b, ',');
+	strbuf_json_string(b, headers[i]);
+      }
+      strbuf_puts(b, "],\n\"rows\":[");
+      if (!strbuf_overrun(b))
+	r->u.meshmb_feeds.phase = LIST_ROWS;
+      return 1;
+
+    case LIST_ROWS:
+    case LIST_FIRST:
+      {
+	struct enum_state state={
+	  .request = r,
+	  .buffer = b
+	};
+	if (meshmb_enum(r->u.meshmb_feeds.session->feeds, &r->u.meshmb_feeds.bundle_id, restful_feedlist_enum, &state)!=0)
+	  return 0;
+      }
+      // fallthrough
+      r->u.meshmb_feeds.phase = LIST_END;
+    case LIST_END:
+      strbuf_puts(b, "\n]\n}\n");
+      if (!strbuf_overrun(b))
+	r->u.plylist.phase = LIST_DONE;
+
+      // fall through...
+    case LIST_DONE:
+      return 0;
+  }
+}
+
+static int restful_meshmb_feedlist_json_content(struct http_request *hr, unsigned char *buf, size_t bufsz, struct http_content_generator_result *result)
+{
+  return generate_http_content_from_strbuf_chunks(hr, (char *)buf, bufsz, result, restful_meshmb_feedlist_json_content_chunk);
+}
+
+static void feedlist_on_rhizome_add(httpd_request *r, rhizome_manifest *m)
+{
+  struct message_ply_read reader;
+  bzero(&reader, sizeof(reader));
+  meshmb_bundle_update(r->u.meshmb_feeds.session->feeds, m, &reader);
+  message_ply_read_close(&reader);
+
+  int gen = meshmb_flush(r->u.meshmb_feeds.session->feeds);
+  if (gen>=0 && gen != r->u.meshmb_feeds.generation)
+    http_request_resume_response(&r->http);
+}
+
+static void feedlist_finalise(httpd_request *r)
+{
+  close_session(r->u.meshmb_feeds.session);
+}
+
+static int restful_meshmb_feedlist(httpd_request *r, const char *remainder)
+{
+  if (*remainder)
+    return 404;
+
+  struct meshmb_session *session = open_session(&r->bid);
+  if (!session){
+    http_request_simple_response(&r->http, 500, "TODO, detailed response");
+    return 500;
+  }
+
+  assert(r->finalise_union == NULL);
+  r->finalise_union = feedlist_finalise;
+  r->trigger_rhizome_bundle_added = feedlist_on_rhizome_add;
+  r->u.meshmb_feeds.phase = LIST_HEADER;
+  r->u.meshmb_feeds.session = session;
+  r->u.meshmb_feeds.generation = meshmb_flush(session->feeds);
+  bzero(&r->u.meshmb_feeds.bundle_id, sizeof r->u.meshmb_feeds.bundle_id);
+
+  http_request_response_generated(&r->http, 200, CONTENT_TYPE_JSON, restful_meshmb_feedlist_json_content);
+  return 1;
+}
+
 DECLARE_HANDLER("/restful/meshmb/", restful_meshmb_);
 static int restful_meshmb_(httpd_request *r, const char *remainder)
 {
@@ -516,6 +641,10 @@ static int restful_meshmb_(httpd_request *r, const char *remainder)
       remainder = "";
     } else if (strcmp(remainder, "/messagelist.json") == 0) {
       handler = restful_meshmb_list;
+      remainder = "";
+      r->ui64 = 0;
+    } else if (strcmp(remainder, "/feedlist.json") == 0) {
+      handler = restful_meshmb_feedlist;
       remainder = "";
       r->ui64 = 0;
     } else if (   str_startswith(remainder, "/newsince/", &end)

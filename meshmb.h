@@ -25,6 +25,7 @@ int meshmb_open(keyring_identity *id, struct meshmb_feeds **feeds);
 void meshmb_close(struct meshmb_feeds *feeds);
 
 // re-write metadata if required
+// returns -1 on failure, or a generation number that is incremented only if something has changed.
 int meshmb_flush(struct meshmb_feeds *feeds);
 
 // set / clear follow flag for this feed

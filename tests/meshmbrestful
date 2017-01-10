@@ -137,5 +137,42 @@ test_MeshMBRestFollow() {
    assertStdoutGrep --matches=1 ":$IDA3::[0-9]\+:Message 3\$"
 }
 
+doc_MeshMBRestFeeds="Restful list subscribed feeds"
+setup_MeshMBRestFeeds() {
+   IDENTITY_COUNT=3
+   setup
+   executeOk_servald meshmb send $IDA1 "Message 1"
+   executeOk_servald meshmb send $IDA2 "Message 2"
+   executeOk_servald meshmb send $IDA3 "Message 3"
+   executeOk_servald meshmb follow $IDA1 $IDA2
+   executeOk_servald meshmb follow $IDA1 $IDA3
+}
+test_MeshMBRestFeeds() {
+   executeOk curl \
+         -H "Expect:" \
+         --silent --fail --show-error \
+         --output feedlist.json \
+         --dump-header http.headers \
+         --basic --user harry:potter \
+         "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/feedlist.json"
+   tfw_cat http.headers feedlist.json
+   tfw_preserve feedlist.json
+   assert [ "$(jq '.rows | length' feedlist.json)" = 2 ]
+   transform_list_json feedlist.json list.json
+   tfw_preserve list.json
+   assertJq list.json \
+            "contains([
+               {  id: \"$IDA2\",
+                  last_message: \"Message 2\"
+               }
+            ])"
+   assertJq list.json \
+            "contains([
+               {  id: \"$IDA3\",
+                  last_message: \"Message 3\"
+               }
+            ])"
+}
+
 runTests "$@"
 

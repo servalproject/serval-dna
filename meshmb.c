@@ -27,6 +27,7 @@ struct meshmb_feeds{
   keyring_identity *id;
   sign_keypair_t bundle_keypair;
   bool_t dirty;
+  uint8_t generation;
 };
 
 // only remember this many bytes of ply names & last messages
@@ -175,7 +176,7 @@ int meshmb_flush(struct meshmb_feeds *feeds)
 {
   if (!feeds->dirty){
     DEBUGF(meshmb, "Ignoring flush, not dirty");
-    return 0;
+    return feeds->generation;
   }
 
   rhizome_manifest *mout = NULL;
@@ -210,14 +211,14 @@ int meshmb_flush(struct meshmb_feeds *feeds)
 	    rhizome_manifest_set_filesize(m, write.file_length);
 	    struct rhizome_bundle_result result = rhizome_manifest_finalise(m, &mout, 1);
 	    if (result.status == RHIZOME_BUNDLE_STATUS_NEW){
-	      ret = 0;
+	      ret = ++feeds->generation;
 	      feeds->dirty = 0;
 	    }
 	    rhizome_bundle_result_free(&result);
 	  }
 	}
       }
-      if (ret!=0)
+      if (ret==-1)
 	rhizome_fail_write(&write);
       break;
     }

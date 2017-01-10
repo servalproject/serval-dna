@@ -43,6 +43,7 @@ struct form_buf_malloc {
 };
 
 struct httpd_request;
+struct meshmb_session;
 
 int form_buf_malloc_init(struct form_buf_malloc *, size_t size_limit);
 int form_buf_malloc_accumulate(struct httpd_request *, const char *partname, struct form_buf_malloc *, const char *, size_t);
@@ -219,6 +220,8 @@ typedef struct httpd_request
 
     struct {
       rhizome_bid_t bundle_id;
+      struct meshmb_session *session;
+      uint8_t generation;
       enum list_phase phase;
       size_t rowcount;
     } meshmb_feeds;
