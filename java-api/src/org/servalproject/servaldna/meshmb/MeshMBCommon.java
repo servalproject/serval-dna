@@ -5,6 +5,7 @@ import org.servalproject.servaldna.ServalDClient;
 import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.SigningKey;
+import org.servalproject.servaldna.Subscriber;
 
 import java.io.IOException;
 import java.net.HttpURLConnection;
@@ -27,15 +28,15 @@ public class MeshMBCommon {
         return conn.getResponseCode();
     }
 
-    public static int ignore(ServalDHttpConnectionFactory connector, SigningKey id, SigningKey peer) throws ServalDInterfaceException, IOException {
-        HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshmb/" + id.toHex() + "/follow/" + peer.toHex());
+    public static int ignore(ServalDHttpConnectionFactory connector, Subscriber id, SigningKey peer) throws ServalDInterfaceException, IOException {
+        HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshmb/" + id.signingKey.toHex() + "/follow/" + peer.toHex());
         conn.setRequestMethod("POST");
         conn.connect();
         return conn.getResponseCode();
     }
 
-    public static int follow(ServalDHttpConnectionFactory connector, SigningKey id, SigningKey peer) throws ServalDInterfaceException, IOException {
-        HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshmb/" + id.toHex() + "/ignore/" + peer.toHex());
+    public static int follow(ServalDHttpConnectionFactory connector, Subscriber id, SigningKey peer) throws ServalDInterfaceException, IOException {
+        HttpURLConnection conn = connector.newServalDHttpConnection("/restful/meshmb/" + id.signingKey.toHex() + "/ignore/" + peer.toHex());
         conn.setRequestMethod("POST");
         conn.connect();
         return conn.getResponseCode();

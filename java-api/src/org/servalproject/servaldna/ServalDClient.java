@@ -25,6 +25,7 @@ import org.servalproject.servaldna.keyring.KeyringCommon;
 import org.servalproject.servaldna.keyring.KeyringIdentity;
 import org.servalproject.servaldna.keyring.KeyringIdentityList;
 import org.servalproject.servaldna.meshmb.MeshMBCommon;
+import org.servalproject.servaldna.meshmb.MeshMBSubscriptionList;
 import org.servalproject.servaldna.meshmb.MessagePlyList;
 import org.servalproject.servaldna.meshms.MeshMSCommon;
 import org.servalproject.servaldna.meshms.MeshMSConversationList;
@@ -204,12 +205,18 @@ public class ServalDClient implements ServalDHttpConnectionFactory {
 		return list;
 	}
 
-	public int meshmbFollow(SigningKey id, SigningKey peer) throws ServalDInterfaceException, IOException {
+	public int meshmbFollow(Subscriber id, SigningKey peer) throws ServalDInterfaceException, IOException {
 		return MeshMBCommon.follow(this, id, peer);
 	}
 
-	public int meshmbIgnore(SigningKey id, SigningKey peer) throws ServalDInterfaceException, IOException {
+	public int meshmbIgnore(Subscriber id, SigningKey peer) throws ServalDInterfaceException, IOException {
 		return MeshMBCommon.ignore(this, id, peer);
+	}
+
+	public MeshMBSubscriptionList meshmbSubscriptions(Subscriber identity) throws IOException, ServalDInterfaceException {
+		MeshMBSubscriptionList list = new MeshMBSubscriptionList(this, identity);
+		list.connect();
+		return list;
 	}
 
 	// interface ServalDHttpConnectionFactory
