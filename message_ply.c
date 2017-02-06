@@ -17,6 +17,7 @@ static int message_ply_load_manifest(const keyring_identity *id, struct message_
   if (!m->haveSecret || m->authorship != AUTHOR_AUTHENTIC)
     return -1;
   assert(m->author_identity == id);
+  ply->author=m->author;
   return 0;
 }
 
@@ -58,6 +59,7 @@ static int message_ply_fill_manifest(const keyring_identity *id, const sid_t *re
     assert(m->haveSecret);
     assert(!recipient || m->payloadEncryption == PAYLOAD_ENCRYPTED);
     ply->bundle_id = m->keypair.public_key;
+    ply->author = m->author;
     ply->found = ply->known_bid = 1;
   }
   return ret;
@@ -142,6 +144,7 @@ int message_ply_read_open(struct message_ply_read *ply, const rhizome_bid_t *bid
     && rhizome_open_decrypt_read(m, &ply->read) == RHIZOME_PAYLOAD_STATUS_STORED){
 
     assert(m->filesize != RHIZOME_SIZE_UNSET);
+    ply->author = m->author;
     ply->read.offset = ply->read.length = m->filesize;
     if (m->name && *m->name)
       ply->name = str_edup(m->name);

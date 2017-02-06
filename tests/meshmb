@@ -65,10 +65,10 @@ setup_meshmbListFeeds() {
 test_meshmbListFeeds() {
    executeOk_servald meshmb find
    tfw_cat --stdout
-   assertStdoutGrep --matches=1 "^_id:id:version:date:name$"
-   assertStdoutGrep --matches=1 ":${IDA1}:"
-   assertStdoutGrep --matches=1 ":${IDA2}:"
-   assertStdoutGrep --matches=1 ":${IDA3}:"
+   assertStdoutGrep --matches=1 "^_id:id:author:version:date:name$"
+   assertStdoutGrep --matches=1 ":${IDA1}:${SIDA1}:"
+   assertStdoutGrep --matches=1 ":${IDA2}:${SIDA2}:"
+   assertStdoutGrep --matches=1 ":${IDA3}:${SIDA3}:"
    assertStdoutLineCount '==' 5
 }
 
@@ -85,16 +85,16 @@ setup_meshmbFollow() {
 test_meshmbFollow() {
    executeOk_servald meshmb follow $IDA1 $IDA2
    executeOk_servald meshmb list following $IDA1
-   assertStdoutGrep --matches=1 ":$IDA2:Feed B:[0-9]\+:Message 2\$"
-   assertStdoutGrep --matches=0 ":$IDA3:Feed C:[0-9]\+:Message 3\$"
+   assertStdoutGrep --matches=1 ":$IDA2:$SIDA2:Feed B:[0-9]\+:Message 2\$"
+   assertStdoutGrep --matches=0 ":$IDA3:$SIDA3:Feed C:[0-9]\+:Message 3\$"
    executeOk_servald meshmb follow $IDA1 $IDA3
    executeOk_servald meshmb list following $IDA1
-   assertStdoutGrep --matches=1 ":$IDA2:Feed B:[0-9]\+:Message 2\$"
-   assertStdoutGrep --matches=1 ":$IDA3:Feed C:[0-9]\+:Message 3\$"
+   assertStdoutGrep --matches=1 ":$IDA2:$SIDA2:Feed B:[0-9]\+:Message 2\$"
+   assertStdoutGrep --matches=1 ":$IDA3:$SIDA3:Feed C:[0-9]\+:Message 3\$"
    executeOk_servald meshmb ignore $IDA1 $IDA2
    executeOk_servald meshmb list following $IDA1
-   assertStdoutGrep --matches=0 ":$IDA2:Feed B:[0-9]\+:Message 2\$"
-   assertStdoutGrep --matches=1 ":$IDA3:Feed C:[0-9]\+:Message 3\$"
+   assertStdoutGrep --matches=0 ":$IDA2:$SIDA2:Feed B:[0-9]\+:Message 2\$"
+   assertStdoutGrep --matches=1 ":$IDA3:$SIDA3:Feed C:[0-9]\+:Message 3\$"
 }
 
 runTests "$@"

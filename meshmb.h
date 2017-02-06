@@ -11,6 +11,7 @@ enum meshmb_send_status{
 // details of a feed that you are following
 struct meshmb_feed_details{
   rhizome_bid_t bundle_id;
+  sid_t author;
   const char *name;
   const char *last_message;
   time_s_t timestamp;

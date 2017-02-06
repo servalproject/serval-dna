@@ -113,8 +113,8 @@ test_MeshMBRestFollow() {
          --request POST \
          "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/follow/$IDA2"
    executeOk_servald meshmb list following $IDA1
-   assertStdoutGrep --matches=1 ":$IDA2::[0-9]\+:Message 2\$"
-   assertStdoutGrep --matches=0 ":$IDA3::[0-9]\+:Message 3\$"
+   assertStdoutGrep --matches=1 ":$IDA2:$SIDA2::[0-9]\+:Message 2\$"
+   assertStdoutGrep --matches=0 ":$IDA3:$SIDA3::[0-9]\+:Message 3\$"
    executeOk curl \
          -H "Expect:" \
          --silent --fail --show-error \
@@ -123,8 +123,8 @@ test_MeshMBRestFollow() {
          --request POST \
          "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/follow/$IDA3"
    executeOk_servald meshmb list following $IDA1
-   assertStdoutGrep --matches=1 ":$IDA2::[0-9]\+:Message 2\$"
-   assertStdoutGrep --matches=1 ":$IDA3::[0-9]\+:Message 3\$"
+   assertStdoutGrep --matches=1 ":$IDA2:$SIDA2::[0-9]\+:Message 2\$"
+   assertStdoutGrep --matches=1 ":$IDA3:$SIDA3::[0-9]\+:Message 3\$"
    executeOk curl \
          -H "Expect:" \
          --silent --fail --show-error \
@@ -133,8 +133,8 @@ test_MeshMBRestFollow() {
          --request POST \
          "http://$addr_localhost:$PORTA/restful/meshmb/$IDA1/ignore/$IDA2"
    executeOk_servald meshmb list following $IDA1
-   assertStdoutGrep --matches=0 ":$IDA2::[0-9]\+:Message 2\$"
-   assertStdoutGrep --matches=1 ":$IDA3::[0-9]\+:Message 3\$"
+   assertStdoutGrep --matches=0 ":$IDA2:$SIDA2::[0-9]\+:Message 2\$"
+   assertStdoutGrep --matches=1 ":$IDA3:$SIDA3::[0-9]\+:Message 3\$"
 }
 
 doc_MeshMBRestFeeds="Restful list subscribed feeds"

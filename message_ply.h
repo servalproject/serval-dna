@@ -11,6 +11,7 @@
 // the manifest details for one ply
 struct message_ply {
   rhizome_bid_t bundle_id;
+  sid_t author;
   uint64_t version;
   uint64_t tail;
   uint64_t size;
@@ -26,6 +27,8 @@ struct message_ply_read {
   struct rhizome_read_buffer buff;
   // copy of the manifest name field
   const char *name;
+  // copy of the manifest author
+  sid_t author;
   // details of the current record
   uint64_t record_end_offset;
   uint16_t record_length;

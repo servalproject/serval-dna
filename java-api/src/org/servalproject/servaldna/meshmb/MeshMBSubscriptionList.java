@@ -6,6 +6,7 @@ import org.servalproject.servaldna.ServalDHttpConnectionFactory;
 import org.servalproject.servaldna.ServalDInterfaceException;
 import org.servalproject.servaldna.SigningKey;
 import org.servalproject.servaldna.Subscriber;
+import org.servalproject.servaldna.SubscriberId;
 
 import java.io.IOException;
 import java.util.Map;
@@ -21,6 +22,7 @@ public class MeshMBSubscriptionList extends AbstractJsonList<MeshMBSubscription,
 	public MeshMBSubscriptionList(ServalDHttpConnectionFactory httpConnector, Subscriber identity){
 		super(httpConnector, new JSONTableScanner()
 				.addColumn("id", SigningKey.class)
+				.addColumn("author", SubscriberId.class)
 				.addColumn("name", String.class)
 				.addColumn("timestamp", Long.class)
 				.addColumn("last_message", String.class)
@@ -35,7 +37,9 @@ public class MeshMBSubscriptionList extends AbstractJsonList<MeshMBSubscription,
 	@Override
 	protected MeshMBSubscription factory(Map<String, Object> row, long rowCount) throws ServalDInterfaceException {
 		return new MeshMBSubscription(
-				(SigningKey) row.get("id"),
+				new Subscriber((SubscriberId)row.get("author"),
+						(SigningKey) row.get("id"),
+						true),
 				(String) row.get("name"),
 				(Long) row.get("timestamp"),
 				(String) row.get("last_message")

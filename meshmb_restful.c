@@ -508,6 +508,8 @@ static int restful_feedlist_enum(struct meshmb_feed_details *details, void *cont
   strbuf_puts(state->buffer, "\n[");
   strbuf_json_hex(state->buffer, details->bundle_id.binary, sizeof details->bundle_id.binary);
   strbuf_puts(state->buffer, ",");
+  strbuf_json_hex(state->buffer, details->author.binary, sizeof details->author.binary);
+  strbuf_puts(state->buffer, ",");
   strbuf_json_string(state->buffer, details->name);
   strbuf_puts(state->buffer, ",");
   strbuf_sprintf(state->buffer, "%d", details->timestamp);
@@ -530,6 +532,7 @@ static int restful_meshmb_feedlist_json_content_chunk(struct http_request *hr, s
   httpd_request *r = (httpd_request *) hr;
   const char *headers[] = {
     "id",
+    "author",
     "name",
     "timestamp",
     "last_message"

@@ -60,6 +60,7 @@ static void update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metad
     free((void*)metadata->details.name);
     metadata->details.name = NULL;
   }
+  metadata->details.author = reader->author;
 
   if (reader->name){
     size_t len = strlen(reader->name);
@@ -147,9 +148,12 @@ static int write_metadata(void **record, void *context)
   unsigned msg_len = (metadata->details.last_message ? strlen(metadata->details.last_message) : 0) + 1;
   assert(msg_len <= MAX_MSG_LEN);
 
-  uint8_t buffer[sizeof (rhizome_bid_t) + 1 + 12*4 + name_len + msg_len];
-  bcopy(metadata->ply.bundle_id.binary, buffer, sizeof (rhizome_bid_t));
-  size_t len = sizeof (rhizome_bid_t);
+  uint8_t buffer[sizeof (rhizome_bid_t) + sizeof (sid_t) + 1 + 12*4 + name_len + msg_len];
+  size_t len = 0;
+  bcopy(metadata->ply.bundle_id.binary, &buffer[len], sizeof (rhizome_bid_t));
+  len += sizeof (rhizome_bid_t);
+  bcopy(metadata->details.author.binary, &buffer[len], sizeof (sid_t));
+  len += sizeof (sid_t);
   buffer[len++]=0;// flags?
   len+=pack_uint(&buffer[len], metadata->size);
   len+=pack_uint(&buffer[len], metadata->size - metadata->last_message_offset);
@@ -166,7 +170,11 @@ static int write_metadata(void **record, void *context)
     buffer[len]=0;
   len+=msg_len;
   assert(len < sizeof buffer);
-  DEBUGF(meshmb, "Write %u bytes of metadata for %s", len, alloca_tohex_rhizome_bid_t(metadata->ply.bundle_id));
+  DEBUGF(meshmb, "Write %u bytes of metadata for %s/%s",
+    len,
+    alloca_tohex_rhizome_bid_t(metadata->ply.bundle_id),
+    alloca_tohex_sid_t(metadata->details.author)
+  );
   return rhizome_write_buffer(write, buffer, len);
 }
 
@@ -267,7 +275,7 @@ static int read_metadata(struct meshmb_feeds *feeds, struct rhizome_read *read)
 {
   struct rhizome_read_buffer buff;
   bzero(&buff, sizeof(buff));
-  uint8_t buffer[sizeof (rhizome_bid_t) + 12*3 + MAX_NAME_LEN + MAX_MSG_LEN];
+  uint8_t buffer[sizeof (rhizome_bid_t) + sizeof (sid_t) + 12*3 + MAX_NAME_LEN + MAX_MSG_LEN];
 
   uint8_t version=0xFF;
   if (rhizome_read_buffered(read, &buff, &version, 1)==-1)
@@ -291,40 +299,46 @@ static int read_metadata(struct meshmb_feeds *feeds, struct rhizome_read *read)
     const rhizome_bid_t *bid = (const rhizome_bid_t *)&buffer[0];
     unsigned offset = sizeof(rhizome_bid_t);
     if (offset >= (unsigned)bytes)
-      return WHY("Buffer overflow while parsing metadata");
+      goto error;
+
+    const sid_t *author = (const sid_t *)&buffer[offset];
+    offset+= sizeof(sid_t);
+    if (offset >= (unsigned)bytes)
+      goto error;
+
     //uint8_t flags = buffer[offset++];
     offset++;
     if (offset >= (unsigned)bytes)
-      return WHY("Buffer overflow while parsing metadata");
+      goto error;
 
     if ((unpacked = unpack_uint(buffer+offset, bytes-offset, &size)) == -1)
-      return WHY("Buffer overflow while parsing metadata");
+      goto error;
     offset += unpacked;
 
     if ((unpacked = unpack_uint(buffer+offset, bytes-offset, &delta)) == -1)
-      return WHY("Buffer overflow while parsing metadata");
+      goto error;
     offset += unpacked;
     last_message_offset = size - delta;
 
     if ((unpacked = unpack_uint(buffer+offset, bytes-offset, &delta)) == -1)
-      return WHY("Buffer overflow while parsing metadata");
+      goto error;
     offset += unpacked;
     last_seen = size - delta;
 
     if ((unpacked = unpack_uint(buffer+offset, bytes-offset, &timestamp)) == -1)
-      return WHY("Buffer overflow while parsing metadata");
+      goto error;
     offset += unpacked;
 
     const char *name = (const char *)&buffer[offset];
     while(buffer[offset++]){
       if (offset >= (unsigned)bytes)
-	return WHY("Buffer overflow while parsing metadata");
+	goto error;
     }
 
     const char *msg = (const char *)&buffer[offset];
     while(buffer[offset++]){
       if (offset >= (unsigned)bytes)
-	return WHY("Buffer overflow while parsing metadata");
+	goto error;
     }
 
     read->offset += offset - bytes;
@@ -336,14 +350,22 @@ static int read_metadata(struct meshmb_feeds *feeds, struct rhizome_read *read)
     result->last_seen = last_seen;
     result->size = size;
     result->details.bundle_id = *bid;
+    result->details.author = *author;
     result->details.name = (name && *name) ? str_edup(name) : NULL;
     result->details.last_message = (msg && *msg) ? str_edup(msg) : NULL;
     result->details.timestamp = timestamp;
 
-    DEBUGF(meshmb, "Processed %u bytes of metadata for %s", offset, alloca_tohex_rhizome_bid_t(result->ply.bundle_id));
+    DEBUGF(meshmb, "Processed %u bytes of metadata for %s",
+      offset,
+      alloca_tohex_rhizome_bid_t(result->ply.bundle_id),
+      alloca_tohex_sid_t(result->details.author)
+    );
   }
   feeds->dirty = 0;
   return 0;
+
+error:
+  return WHY("Buffer overflow while parsing metadata");
 }
 
 int meshmb_open(keyring_identity *id, struct meshmb_feeds **feeds)

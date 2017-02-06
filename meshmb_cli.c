@@ -140,6 +140,7 @@ static int app_meshmb_find(const struct cli_parsed *parsed, struct cli_context *
   const char *names[]={
     "_id",
     "id",
+    "author",
     "version",
     "date",
     "name"
@@ -154,6 +155,20 @@ static int app_meshmb_find(const struct cli_parsed *parsed, struct cli_context *
     rhizome_manifest *m = cursor.manifest;
     cli_put_long(context, m->rowid, ":");
     cli_put_hexvalue(context, m->keypair.public_key.binary, sizeof m->keypair.public_key.binary, ":");
+
+    switch (m->authorship) {
+      case AUTHOR_NOT_CHECKED:
+      case AUTHOR_AUTHENTIC:
+      case AUTHOR_LOCAL:
+      case AUTHOR_REMOTE:
+	cli_put_hexvalue(context, m->author.binary, sizeof m->author.binary, ":");
+	break;
+
+      default:
+	cli_put_string(context, NULL, ":");
+	break;
+    }
+
     cli_put_long(context, m->version, ":");
     cli_put_long(context, m->has_date ? m->date : 0, ":");
     cli_put_string(context, m->name, "\n");
@@ -232,6 +247,7 @@ static int list_callback(struct meshmb_feed_details *details, void *context)
   enum_context->rowcount++;
   cli_put_long(enum_context->context, enum_context->rowcount, ":");
   cli_put_string(enum_context->context, alloca_tohex_rhizome_bid_t(details->bundle_id), ":");
+  cli_put_string(enum_context->context, alloca_tohex_sid_t(details->author), ":");
   cli_put_string(enum_context->context, details->name, ":");
   cli_put_long(enum_context->context, details->timestamp ? (long)(gettime() - details->timestamp) : (long)-1, ":");
   cli_put_string(enum_context->context, details->last_message, "\n");
@@ -271,6 +287,7 @@ static int app_meshmb_list(const struct cli_parsed *parsed, struct cli_context *
   const char *names[]={
     "_id",
     "id",
+    "author",
     "name",
     "age",
     "last_message"

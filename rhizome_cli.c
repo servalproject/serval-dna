@@ -76,7 +76,7 @@ static void cli_put_manifest(struct cli_context *context, const rhizome_manifest
     cli_field_name(context, ".secret", ":");
     cli_put_string(context, secret, "\n");
   }
-  if (m->authorship == AUTHOR_AUTHENTIC) {
+  if (m->authorship == AUTHOR_AUTHENTIC || m->authorship == AUTHOR_REMOTE) {
     cli_field_name(context, ".author", ":");
     cli_put_string(context, alloca_tohex_sid_t(m->author), "\n");
   }
