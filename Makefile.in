@@ -138,10 +138,10 @@ endif
 
 java-api:
 	@mkdir -p java-api
-	cd java-api && $(MAKE) SOURCE_PREFIX=$(SOURCE_PREFIX_JAVA_API) all
+	@cd java-api && $(MAKE) SOURCE_PREFIX=$(SOURCE_PREFIX_JAVA_API) all
 
 java-api-clean:
-	cd java-api 2>/dev/null && $(MAKE) SOURCE_PREFIX=$(SOURCE_PREFIX_JAVA_API) clean
+	@cd java-api 2>/dev/null && $(MAKE) SOURCE_PREFIX=$(SOURCE_PREFIX_JAVA_API) clean
 
 endif # $(JAVAC)
 

@@ -11,21 +11,32 @@ JAVAC =		@JAVAC@
 CLASSDIR =	classes
 TESTCLASSDIR =	testclasses
 
+SOURCES := $(shell find $(SOURCE_PREFIX)src -name '*.java')
+TEST_SOURCES := $(shell find $(SOURCE_PREFIX)test -name '*.java')
+
 .PHONY: all check clean classes testclasses
 
 all:	check classes testclasses
 
 check:
 	@if [ -z "$(JAVAC)" ]; then echo "No java compiler configured" >&2; exit 1; fi
-	@if ! $(JAVAC) -version >/dev/null; then echo "Java compiler not executable" >&2; exit 1; fi
+	@if ! $(JAVAC) -version >/dev/null 2>&1; then echo "Java compiler not executable" >&2; exit 1; fi
 
-classes:
+$(CLASSDIR)/dummy: $(SOURCES)
 	@mkdir -p $(CLASSDIR)
-	find $(SOURCE_PREFIX)src -name '*.java' | xargs $(JAVAC) -Xlint:unchecked -d $(CLASSDIR)
+	@echo "JAVAC $(CLASSDIR)"
+	@$(JAVAC) -Xlint:unchecked -d $(CLASSDIR) $(SOURCES)
+	@touch $@
 
-testclasses: classes
+classes: $(CLASSDIR)/dummy
+
+$(TESTCLASSDIR)/dummy: $(TEST_SOURCES) $(CLASSDIR)/dummy
 	@mkdir -p $(TESTCLASSDIR)
-	find $(SOURCE_PREFIX)test -name '*.java' | xargs $(JAVAC) -Xlint:unchecked -d $(TESTCLASSDIR) -classpath $(CLASSDIR)
+	@echo "JAVAC $(TESTCLASSDIR)"
+	@$(JAVAC) -Xlint:unchecked -d $(TESTCLASSDIR) -classpath $(CLASSDIR) $(SOURCES)
+	@touch $@
+
+testclasses: $(TESTCLASSDIR)/dummy
 
 clean:
 	@$(RM) -r $(CLASSDIR) $(TESTCLASSDIR)
