@@ -38,12 +38,32 @@ struct message_ply_read {
   uint8_t *record;
 };
 
+struct message_ply_write{
+  rhizome_manifest *m;
+  struct rhizome_write write;
+
+};
+
 int message_ply_read_open(struct message_ply_read *ply, const rhizome_bid_t *bid);
 void message_ply_read_close(struct message_ply_read *ply);
 int message_ply_read_prev(struct message_ply_read *ply);
 int message_ply_find_prev(struct message_ply_read *ply, char type);
 int message_ply_is_open(struct message_ply_read *ply);
 void message_ply_read_rewind(struct message_ply_read *ply);
+
+int message_ply_write_open(
+  struct message_ply_write *ply_write,
+  const struct keyring_identity *id,
+  const char *service,
+  const sid_t *recipient,
+  struct message_ply *ply,
+  const char *name,
+  unsigned nassignments,
+  const struct rhizome_manifest_field_assignment *assignments,
+  uint64_t advance_by);
+
+int message_ply_write_finish(struct message_ply_write *write);
+void message_ply_write_close(struct message_ply_write *write);
 
 void message_ply_append_ack(struct overlay_buffer *b, uint64_t message_offset, uint64_t previous_ack_offset);
 void message_ply_append_timestamp(struct overlay_buffer *b);
