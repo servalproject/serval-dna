@@ -304,7 +304,7 @@ static enum meshms_status update_conversation(const keyring_identity *id, struct
   unsigned char buffer[30];
   struct overlay_buffer *b = ob_static(buffer, sizeof buffer);
 
-  message_ply_append_ack(b, conv->metadata.their_last_message, conv->metadata.my_last_ack);
+  message_ply_append_ack(b, conv->metadata.their_last_message, conv->metadata.my_last_ack, NULL);
   message_ply_append_timestamp(b);
   assert(!ob_overrun(b));
 
@@ -566,7 +566,7 @@ static enum meshms_status write_known_conversations(rhizome_manifest *m, struct 
   rhizome_manifest_set_filehash(m, &write.id);
   rhizome_manifest_set_filesize(m, write.file_length);
 
-  struct rhizome_bundle_result result = rhizome_manifest_finalise(m, &mout, 1);
+  struct rhizome_bundle_result result = rhizome_manifest_finalise(m, &mout, 0);
   switch (result.status) {
     case RHIZOME_BUNDLE_STATUS_ERROR:
       // error is already logged
@@ -917,7 +917,7 @@ enum meshms_status meshms_send_message(const sid_t *sender, const sid_t *recipie
   uint8_t ack = (c->metadata.my_last_ack < c->metadata.their_last_message) ? 1:0;
   DEBUGF(meshms,"Our ack %"PRIu64", their message %"PRIu64, c->metadata.my_last_ack, c->metadata.their_last_message);
   if (ack)
-    message_ply_append_ack(b, c->metadata.their_last_message, c->metadata.my_last_ack);
+    message_ply_append_ack(b, c->metadata.their_last_message, c->metadata.my_last_ack, NULL);
 
   message_ply_append_message(b, message, message_len);
   message_ply_append_timestamp(b);

@@ -26,6 +26,9 @@ struct meshmb_feeds{
   struct tree_root root;
   keyring_identity *id;
   sign_keypair_t bundle_keypair;
+  sign_keypair_t ack_bundle_keypair;
+  rhizome_manifest *ack_manifest;
+  struct rhizome_write ack_writer;
   bool_t dirty;
   uint8_t generation;
 };
@@ -34,7 +37,34 @@ struct meshmb_feeds{
 #define MAX_NAME_LEN (256)  // ??
 #define MAX_MSG_LEN (256)  // ??
 
-static void update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metadata, struct message_ply_read *reader)
+static int finish_ack_writing(struct meshmb_feeds *feeds){
+  if (!feeds->ack_manifest)
+    return 0;
+
+  int ret=-1;
+
+  DEBUGF(meshmb, "Completing private ply for ack thread");
+  enum rhizome_payload_status status = rhizome_finish_write(&feeds->ack_writer);
+  status = rhizome_finish_store(&feeds->ack_writer, feeds->ack_manifest, status);
+  if (status == RHIZOME_PAYLOAD_STATUS_NEW){
+    rhizome_manifest *mout=NULL;
+    struct rhizome_bundle_result result = rhizome_manifest_finalise(feeds->ack_manifest, &mout, 0);
+    if (mout && mout!=feeds->ack_manifest)
+      rhizome_manifest_free(mout);
+
+    if (result.status == RHIZOME_BUNDLE_STATUS_NEW)
+      ret = 0;
+    rhizome_bundle_result_free(&result);
+  }
+  bzero(&feeds->ack_writer, sizeof feeds->ack_writer);
+
+  rhizome_manifest_free(feeds->ack_manifest);
+  feeds->ack_manifest = NULL;
+
+  return ret;
+}
+
+static int update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metadata, struct message_ply_read *reader)
 {
   if (!metadata->ply.found){
     // get the current size from the db
@@ -45,17 +75,18 @@ static void update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metad
       END) == SQLITE_ROW)
 	metadata->ply.found = 1;
     else
-      return;
+      return -1;
   }
 
+  DEBUGF(meshmb, "Size from %u to %u", metadata->size, metadata->ply.size);
   if (metadata->size == metadata->ply.size)
-    return;
+    return 0;
 
   if (!message_ply_is_open(reader)
     && message_ply_read_open(reader, &metadata->ply.bundle_id)!=0)
-    return;
+    return -1;
 
-  // TODO remember if user has overridden the name?
+  // TODO allow the user to specify an overridden name?
   if (metadata->details.name){
     free((void*)metadata->details.name);
     metadata->details.name = NULL;
@@ -71,7 +102,11 @@ static void update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metad
 
   reader->read.offset = reader->read.length;
   time_s_t timestamp = 0;
+  uint64_t last_offset = metadata->last_message_offset;
+
   while (message_ply_read_prev(reader) == 0){
+    if (reader->record_end_offset <= metadata->size)
+      break;
     if (reader->type == MESSAGE_BLOCK_TYPE_TIME){
       if (reader->record_length<4){
 	WARN("Malformed ply, expected 4 byte timestamp");
@@ -83,7 +118,7 @@ static void update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metad
       if (metadata->last_message_offset == reader->record_end_offset)
 	break;
 
-      metadata->last_message_offset = reader->record_end_offset;
+      last_offset = reader->record_end_offset;
 
       if (metadata->details.last_message)
 	free((void*)metadata->details.last_message);
@@ -96,13 +131,57 @@ static void update_stats(struct meshmb_feeds *feeds, struct feed_metadata *metad
     }
   }
 
+  DEBUGF(meshmb, "Last message from %u to %u", metadata->last_message_offset, last_offset);
+  if (last_offset > metadata->last_message_offset){
+    // add an ack to our journal to thread new messages
+    if (!feeds->ack_manifest){
+      rhizome_manifest *m = rhizome_new_manifest();
+
+      DEBUGF(meshmb, "Opening private ply for ack thread");
+
+      struct rhizome_bundle_result result = rhizome_private_bundle(m, &feeds->ack_bundle_keypair);
+      switch(result.status){
+	case RHIZOME_BUNDLE_STATUS_NEW:
+	  rhizome_manifest_set_tail(m, 0);
+	  rhizome_manifest_set_filesize(m, 0);
+	case RHIZOME_BUNDLE_STATUS_SAME:
+	{
+	  enum rhizome_payload_status pstatus = rhizome_write_open_journal(&feeds->ack_writer, m, 0, RHIZOME_SIZE_UNSET);
+	  if (pstatus==RHIZOME_PAYLOAD_STATUS_NEW)
+	    break;
+	}
+	  // fallthrough
+	case RHIZOME_BUNDLE_STATUS_BUSY:
+	  rhizome_bundle_result_free(&result);
+	  rhizome_manifest_free(m);
+	  return -1;
+
+	default:
+	  // everything else should be impossible.
+	  FATALF("Cannot create manifest: %s", alloca_rhizome_bundle_result(result));
+      }
+
+      rhizome_bundle_result_free(&result);
+      feeds->ack_manifest = m;
+    }
+
+    {
+      struct overlay_buffer *b = ob_new();
+
+      message_ply_append_ack(b, last_offset, metadata->last_message_offset, &metadata->ply.bundle_id);
+      int r = rhizome_write_buffer(&feeds->ack_writer, ob_ptr(b), ob_position(b));
+      DEBUGF(meshmb, "Acked incoming messages");
+      ob_free(b);
+      if (r == -1)
+	return -1;
+    }
+  }
+
+  metadata->last_message_offset = last_offset;
   metadata->size = metadata->ply.size;
 
-  // TODO assemble ACK list for unified reading....?
-
   feeds->dirty=1;
-
-  return;
+  return 1;
 }
 
 // TODO, might be quicker to fetch all meshmb bundles and test if they are in the feed list
@@ -182,6 +261,8 @@ static int write_metadata(void **record, void *context)
 
 int meshmb_flush(struct meshmb_feeds *feeds)
 {
+  finish_ack_writing(feeds);
+
   if (!feeds->dirty){
     DEBUGF(meshmb, "Ignoring flush, not dirty");
     return feeds->generation;
@@ -378,9 +459,16 @@ int meshmb_open(keyring_identity *id, struct meshmb_feeds **feeds)
     (*feeds)->id = id;
     rhizome_manifest *m = rhizome_new_manifest();
     if (m){
+      // deterministic bundle id's for storing active follow / ignore state;
       crypto_seed_keypair(&(*feeds)->bundle_keypair,
 	"91656c3d62e9fe2678a1a81fabe3f413%s5a37120ca55d911634560e4d4dc1283f",
 	alloca_tohex(id->sign_keypair->private_key.binary, sizeof id->sign_keypair->private_key));
+
+      // and for threading incoming feed messages;
+      crypto_seed_keypair(&(*feeds)->ack_bundle_keypair,
+	"de3f2e21d9735d41b1fd7ddf03a58f2b%s937a440c12f9478d026bbf579ab115c0",
+	alloca_tohex(id->sign_keypair->private_key.binary, sizeof id->sign_keypair->private_key));
+
       struct rhizome_bundle_result result = rhizome_private_bundle(m, &(*feeds)->bundle_keypair);
       DEBUGF(meshmb, "Private bundle %s, %s",
 	alloca_tohex_identity_t(&(*feeds)->bundle_keypair.public_key),

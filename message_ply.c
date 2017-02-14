@@ -287,13 +287,15 @@ void message_ply_append_timestamp(struct overlay_buffer *b)
   append_footer(b, MESSAGE_BLOCK_TYPE_TIME);
 }
 
-void message_ply_append_ack(struct overlay_buffer *b, uint64_t message_offset, uint64_t previous_ack_offset)
+void message_ply_append_ack(struct overlay_buffer *b, uint64_t message_offset, uint64_t previous_ack_offset, rhizome_bid_t *bid)
 {
   ob_checkpoint(b);
   ob_append_packed_ui64(b, message_offset);
   // append the number of bytes acked (should be smaller than an absolute offset)
-  if (previous_ack_offset)
+  if (previous_ack_offset || bid)
     ob_append_packed_ui64(b, message_offset - previous_ack_offset);
+  if (bid)
+    ob_append_bytes(b, bid->binary, sizeof *bid);
   append_footer(b, MESSAGE_BLOCK_TYPE_ACK);
 }
 

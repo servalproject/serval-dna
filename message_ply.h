@@ -41,7 +41,6 @@ struct message_ply_read {
 struct message_ply_write{
   rhizome_manifest *m;
   struct rhizome_write write;
-
 };
 
 int message_ply_read_open(struct message_ply_read *ply, const rhizome_bid_t *bid);
@@ -65,7 +64,7 @@ int message_ply_write_open(
 int message_ply_write_finish(struct message_ply_write *write);
 void message_ply_write_close(struct message_ply_write *write);
 
-void message_ply_append_ack(struct overlay_buffer *b, uint64_t message_offset, uint64_t previous_ack_offset);
+void message_ply_append_ack(struct overlay_buffer *b, uint64_t message_offset, uint64_t previous_ack_offset, rhizome_bid_t *bid);
 void message_ply_append_timestamp(struct overlay_buffer *b);
 void message_ply_append_message(struct overlay_buffer *b, const char *message, size_t message_len);
 int message_ply_append(const struct keyring_identity *id, const char *service, const sid_t *recipient, struct message_ply *ply, struct overlay_buffer *b,

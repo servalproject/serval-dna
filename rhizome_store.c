@@ -690,6 +690,11 @@ int rhizome_write_file(struct rhizome_write *write, const char *filename, off_t 
   return ret;
 }
 
+int is_rhizome_write_open(const struct rhizome_write *write)
+{
+  return write->temp_id ? 1:0;
+}
+
 void rhizome_fail_write(struct rhizome_write *write)
 {
   if (write->blob_fd != -1){
@@ -711,6 +716,7 @@ void rhizome_fail_write(struct rhizome_write *write)
     write->buffer_list=n->_next;
     free(n);
   }
+  write->temp_id=0;
 }
 
 static int keep_hash(struct rhizome_write *write_state, struct crypto_hash_sha512_state *hash_state)
@@ -1827,12 +1833,6 @@ enum rhizome_payload_status rhizome_write_open_journal(struct rhizome_write *wri
 enum rhizome_payload_status rhizome_finish_store(struct rhizome_write *write, rhizome_manifest *m, enum rhizome_payload_status status)
 {
   DEBUGF(rhizome, "write=%p m=manifest %p, status=%d %s", write, m, status, rhizome_payload_status_message_nonnull(status));
-  switch (status) {
-  case RHIZOME_PAYLOAD_STATUS_NEW:
-    break;
-  default:
-    break;
-  }
   int status_valid = 0;
   switch (status) {
   case RHIZOME_PAYLOAD_STATUS_EMPTY:
@@ -1890,6 +1890,7 @@ enum rhizome_payload_status rhizome_append_journal_buffer(rhizome_manifest *m, u
 {
   struct rhizome_write write;
   bzero(&write, sizeof write);
+  assert(advance_by || (buffer && len));
   enum rhizome_payload_status status = rhizome_write_open_journal(&write, m, advance_by, (uint64_t) len);
   if (status != RHIZOME_PAYLOAD_STATUS_NEW)
     return status;
