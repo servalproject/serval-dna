@@ -1237,13 +1237,25 @@ ssize_t rhizome_read_buffered(struct rhizome_read *read, struct rhizome_read_buf
       }
     }
     
-    // ok, so we need to read a new buffer to fulfill the request.
+    // ok, so we need to read at least one buffer to fulfill the request.
+
     // remember the requested read offset so we can put it back
-    uint64_t ofs = read->offset;
-    buffer->offset = read->offset = ofs & ~(RHIZOME_CRYPT_PAGE_SIZE -1);
-    ssize_t r = rhizome_read(read, buffer->data, sizeof buffer->data);
-    read->offset = ofs;
+    uint64_t original_ofs = read->offset;
+    // round down to the previous block boundary
+    uint64_t read_offset = original_ofs & ~(RHIZOME_CRYPT_PAGE_SIZE -1);
+
+    if (read->length != RHIZOME_SIZE_UNSET && original_ofs + len == read->length){
+      // if more than one PAGE is being requested, and the end of the requested range lines up with the end of the file
+      // we should probably read the last block first.
+      // That way, if the reader is scanning a payload backwards,
+      // we will end up caching part of the previous block for the next buffered read
+      read_offset = (read->length -1) & ~(RHIZOME_CRYPT_PAGE_SIZE -1);
+    }
+
     buffer->len = 0;
+    buffer->offset = read->offset = read_offset;
+    ssize_t r = rhizome_read(read, buffer->data, sizeof buffer->data);
+    read->offset = original_ofs;
     if (r == -1)
       return -1;
     buffer->len = (size_t) r;
