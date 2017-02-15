@@ -39,6 +39,7 @@ default_config() {
       set log.console.level debug \
       set log.console.show_pid on \
       set log.console.show_time on \
+      set rhizome.mdp.protocol 1 \
       set debug.rhizome on \
       set debug.http_server on \
       set debug.httpd on \
@@ -46,6 +47,8 @@ default_config() {
       set debug.rhizome_ads on \
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
+      set debug.rhizome_sync on \
+      set debug.rhizome_sync_bars on \
       set debug.rhizome_sync_keys on \
       set debug.msp on
 }
@@ -88,6 +91,22 @@ setup_FileTransfer() {
    foreach_instance +B assert_peers_are_instances +A
 }
 test_FileTransfer() {
+   receive_and_update_bundle
+}
+
+doc_FileTransferRunningDaemon="Add bundle to running daemon and update transfer to one node"
+setup_FileTransferRunningDaemon() {
+   setup_common
+   start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
+   set_instance +A
+   rhizome_add_file file1 250000
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 file1
+   set_instance +B
+}
+test_FileTransferRunningDaemon() {
    receive_and_update_bundle
 }
 
@@ -455,8 +474,8 @@ test_FileTransferDelete() {
    assert_rhizome_received file1_2
 }
 
-doc_CorruptPayload="A corrupted payload should be re-fetched"
-setup_CorruptPayload() {
+doc_CorruptPayloadOnRestart="A corrupted payload should be re-fetched on restart"
+setup_CorruptPayloadOnRestart() {
    setup_common
    set_instance +A
    executeOk_servald config \
@@ -477,13 +496,35 @@ setup_CorruptPayload() {
    # shoud be automatic and immediate without restarting the daemon.
    start_servald_server
 }
-test_CorruptPayload() {
+test_CorruptPayloadOnRestart() {
    wait_until grep -i "Stored file $FILEHASH" $LOGA
    executeOk $servald rhizome extract file $BID file1a
 }
 
-doc_MissingPayload="A missing payload should be re-fetched"
-setup_MissingPayload() {
+doc_CorruptPayloadWithoutRestart="A corrupted payload should be re-fetched without restart"
+setup_CorruptPayloadWithoutRestart() {
+   setup_common
+   set_instance +A
+   executeOk_servald config \
+      set rhizome.max_blob_size 0 \
+      set debug.rhizome_store 1
+   rhizome_add_file file1 1024
+   start_servald_instances +A +B
+   wait_until bundle_received_by $BID:$VERSION +B
+   set_instance +A
+   assert cmp file1 "$SERVALINSTANCE_PATH/blob/$FILEHASH"
+   create_file file2 1024
+   assert --error-on-fail ! cmp file1 file2
+   cp file2 "$SERVALINSTANCE_PATH/blob/$FILEHASH"
+   execute --exit-status=255 $servald rhizome extract file $BID file1a
+}
+test_CorruptPayloadWithoutRestart() {
+   wait_until grep -i "Stored file $FILEHASH" $LOGA
+   executeOk $servald rhizome extract file $BID file1a
+}
+
+doc_MissingPayloadOnRestart="A missing payload should be re-fetched on restart"
+setup_MissingPayloadOnRestart() {
    setup_common
    set_instance +A
    executeOk_servald config \
@@ -502,7 +543,27 @@ setup_MissingPayload() {
    # shoud be automatic and immediate without restarting the daemon.
    start_servald_server
 }
-test_MissingPayload() {
+test_MissingPayloadOnRestart() {
+   wait_until grep -i "Stored file $FILEHASH" $LOGA
+   executeOk $servald rhizome extract file $BID file1a
+}
+
+doc_MissingPayloadWithoutRestart="A missing payload should be re-fetched without restart"
+setup_MissingPayloadWithoutRestart() {
+   setup_common
+   set_instance +A
+   executeOk_servald config \
+      set rhizome.max_blob_size 0 \
+      set debug.rhizome_store 1
+   rhizome_add_file file1 1024
+   assert cmp file1 "$SERVALINSTANCE_PATH/blob/$FILEHASH"
+   start_servald_instances +A +B
+   wait_until bundle_received_by $BID:$VERSION +B
+   set_instance +A
+   rm -f "$SERVALINSTANCE_PATH/blob/$FILEHASH"
+   execute --exit-status=1 --stderr $servald rhizome extract file $BID file1a
+}
+test_MissingPayloadWithoutRestart() {
    wait_until grep -i "Stored file $FILEHASH" $LOGA
    executeOk $servald rhizome extract file $BID file1a
 }
@@ -553,8 +614,10 @@ test_HttpFetchRange() {
 	 --continue-at 32 \
          "http://$addr_localhost:$PORTA/rhizome/file/$FILEHASH"
    tfw_cat -v http.headers http.output
-   assertGrep http.headers "^Content-Range: bytes 32-99/100$"
-   assertGrep http.headers "^Content-Length: 68$"
+   assertGrep http.headers "^Content-Range: bytes 32-99/100
+$"
+   assertGrep http.headers "^Content-Length: 68
+$"
    tfw_cat -v file1.tail http.output
    assert cmp file1.tail http.output
 }
@@ -890,7 +953,7 @@ setup_ManyFiles() {
 }
 
 test_ManyFiles() {
-   wait_until --timeout=30 bundle_received_by \
+   wait_until --timeout=60 bundle_received_by \
 	${bundlesB[*]} ${bundlesC[*]} ${bundlesD[*]} +A \
 	${bundlesA[*]} ${bundlesC[*]} ${bundlesD[*]} +B \
 	${bundlesA[*]} ${bundlesB[*]} ${bundlesD[*]} +C \
