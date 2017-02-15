@@ -50,7 +50,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define OF_TYPE_SELFANNOUNCE_ACK 0x20
 #define OF_TYPE_DATA 0x30 /* Ordinary data frame.
 		        Upto MTU bytes of payload.
-			32 bit channel/port indicator for each end. 
+			32 bit channel/port indicator for each end.
 		        */
 #define OF_TYPE_RHIZOME_ADVERT 0x50 /* Advertisment of file availability via Rhizome */
 #define OF_TYPE_PLEASEEXPLAIN 0x60 /* Request for resolution of an abbreviated address */
@@ -82,7 +82,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 /* Keep track of last 32 observations of a node.
    Hopefully this is enough, if not, we will increase.
    To keep the requirement down we will collate contigious neighbour observations on each interface.
-   For node observations we can just replace old observations with new ones. 
+   For node observations we can just replace old observations with new ones.
 */
 #define OVERLAY_MAX_OBSERVATIONS 32
 
@@ -111,7 +111,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MDP_PORT_RHIZOME_RESPONSE 14
 #define MDP_PORT_DIRECTORY 15
 #define MDP_PORT_RHIZOME_MANIFEST_REQUEST 16
-#define MDP_PORT_RHIZOME_SYNC 17
+#define MDP_PORT_RHIZOME_SYNC_BARS 17
 #define MDP_PORT_RHIZOME_SYNC_KEYS 18
 #define MDP_PORT_NOREPLY 0x3f
 

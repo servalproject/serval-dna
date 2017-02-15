@@ -2,17 +2,17 @@
 Serval DNA Rhizome file distribution
 Copyright (C) 2010-2014 Serval Project Inc.
 Copyright (C) 2010 Paul Gardner-Stephen
- 
+
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
 as published by the Free Software Foundation; either version 2
 of the License, or (at your option) any later version.
- 
+
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
- 
+
 You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
@@ -152,7 +152,7 @@ typedef struct rhizome_manifest
   /* Local authorship.  Useful for dividing bundle lists between "sent" and
    * "inbox" views.
    */
-  enum rhizome_bundle_authorship { 
+  enum rhizome_bundle_authorship {
     ANONYMOUS = 0, // 'author' element is not valid
     AUTHOR_NOT_CHECKED, // 'author' element is valid but not checked
     AUTHENTICATION_ERROR, // author check failed, don't try again
@@ -694,12 +694,12 @@ struct rhizome_write
   uint64_t file_length;
   struct rhizome_write_buffer *buffer_list;
   size_t buffer_size;
-  
+
   struct crypto_hash_sha512_state sha512_context;
   uint64_t blob_rowid;
   int blob_fd;
   sqlite3_blob *sql_blob;
-  
+
   rhizome_filehash_t id;
   uint8_t id_known:1;
   uint8_t crypt:1;
@@ -719,14 +719,14 @@ struct rhizome_read
 {
   uint64_t hash_offset;
   struct crypto_hash_sha512_state sha512_context;
-  
+
   uint64_t blob_rowid;
   int blob_fd;
-  
+
   uint64_t tail;
   uint64_t offset;
   uint64_t length;
-  
+
   int8_t verified;
   uint8_t crypt;
   rhizome_filehash_t id;
@@ -734,7 +734,7 @@ struct rhizome_read
   unsigned char nonce[crypto_box_NONCEBYTES];
 };
 
-int rhizome_received_content(const unsigned char *bidprefix,uint64_t version, 
+int rhizome_received_content(const unsigned char *bidprefix,uint64_t version,
 			     uint64_t offset, size_t count,unsigned char *bytes);
 
 int is_rhizome_enabled();
@@ -792,7 +792,7 @@ typedef struct rhizome_direct_sync_request {
 
   /* The dispatch function will be called each time a sync request can
      be sent off, i.e., one cursor->buffer full of data.
-     Will differ based on underlying transport. HTTP is the initial 
+     Will differ based on underlying transport. HTTP is the initial
      supported transport, but deLorme inReach will likely follow soon after.
   */
   void (*dispatch_function)(struct rhizome_direct_sync_request *);
@@ -801,9 +801,9 @@ typedef struct rhizome_direct_sync_request {
   void *transport_specific_state;
 
   /* Statistics.
-     Each sync will consist of one or more "fills" of the cursor buffer, which 
+     Each sync will consist of one or more "fills" of the cursor buffer, which
      will then be dispatched by the transport-specific dispatch function.
-     Each of those dispatches may then result in zero or 
+     Each of those dispatches may then result in zero or
    */
   int syncs_started;
   int syncs_completed;
@@ -823,7 +823,7 @@ rhizome_direct_sync_request
 *rhizome_direct_new_sync_request(void (*transport_specific_dispatch_function)(struct rhizome_direct_sync_request *),
 				 size_t buffer_size,
                                  int interval,
-                                 int mode, 
+                                 int mode,
 				 void *transport_specific_state);
 int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r);
 int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r);
@@ -831,7 +831,7 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response(unsigned char *bu
 
 typedef struct rhizome_direct_transport_state_http {
   int port;
-  char host[1024];  
+  char host[1024];
 } rhizome_direct_transport_state_http;
 
 void rhizome_direct_http_dispatch(rhizome_direct_sync_request *);
@@ -854,7 +854,7 @@ enum rhizome_start_fetch_result {
 };
 
 enum rhizome_start_fetch_result
-rhizome_fetch_request_manifest_by_prefix(const struct socket_address *addr, 
+rhizome_fetch_request_manifest_by_prefix(const struct socket_address *addr,
 					 const struct subscriber *peer,
 					 const unsigned char *prefix, size_t prefix_length);
 int rhizome_any_fetch_active();
@@ -884,7 +884,7 @@ enum rhizome_payload_status rhizome_append_journal_buffer(rhizome_manifest *m, u
 enum rhizome_payload_status rhizome_append_journal_file(rhizome_manifest *m, uint64_t advance_by, const char *filename);
 enum rhizome_payload_status rhizome_journal_pipe(struct rhizome_write *write, const rhizome_filehash_t *hashp, uint64_t start_offset, uint64_t length);
 
-int rhizome_crypt_xor_block(unsigned char *buffer, size_t buffer_size, uint64_t stream_offset, 
+int rhizome_crypt_xor_block(unsigned char *buffer, size_t buffer_size, uint64_t stream_offset,
 			    const unsigned char *key, const unsigned char *nonce);
 enum rhizome_payload_status rhizome_open_read(struct rhizome_read *read, const rhizome_filehash_t *hashp);
 ssize_t rhizome_read(struct rhizome_read *read, unsigned char *buffer, size_t buffer_length);
@@ -893,18 +893,39 @@ void rhizome_read_close(struct rhizome_read *read);
 enum rhizome_payload_status rhizome_open_decrypt_read(rhizome_manifest *m, struct rhizome_read *read_state);
 enum rhizome_payload_status rhizome_extract_file(rhizome_manifest *m, const char *filepath);
 enum rhizome_payload_status rhizome_dump_file(const rhizome_filehash_t *hashp, const char *filepath, uint64_t *lengthp);
-ssize_t rhizome_read_cached(const rhizome_bid_t *bid, uint64_t version, time_ms_t timeout, 
+ssize_t rhizome_read_cached(const rhizome_bid_t *bid, uint64_t version, time_ms_t timeout,
                             uint64_t fileOffset, unsigned char *buffer, size_t length);
 int rhizome_cache_close();
 
 int rhizome_database_filehash_from_id(const rhizome_bid_t *bidp, uint64_t version, rhizome_filehash_t *hashp);
-
-void rhizome_sync_status();
 
 DECLARE_ALARM(rhizome_fetch_status);
 
 /* Rhizome triggers */
 
 DECLARE_TRIGGER(bundle_add, rhizome_manifest*);
+
+/* Rhizome synchronisation */
+
+#define RHIZOME_SYNC_PROTOCOL_VERSION_BARS 0
+#define RHIZOME_SYNC_PROTOCOL_VERSION_KEYS 1
+#define RHIZOME_SYNC_PROTOCOL_NUMBER 2
+
+/// An invalid token.
+/// Tokens are the rowids in the rhizome bundle store. Rowid 0 is not used.
+#define INVALID_TOKEN 0
+
+void rhizome_sync_status();
+
+int rhizome_sync_bars_fit_for_realign(int broken_count);
+void rhizome_sync_bars_align_to_bundle_manifest(rhizome_manifest *m, int broken);
+void rhizome_sync_bars_announce(int protocol_count, int other_count);;
+void rhizome_sync_bars_status();
+void rhizome_sync_bars_subscriber_status_html(struct strbuf *b, struct subscriber *subscriber);
+
+int rhizome_sync_keys_fit_for_realign(int broken_count);
+void rhizome_sync_keys_align_to_bundle_manifest(rhizome_manifest *m, int broken);
+void rhizome_sync_keys_on_neighbour_change(struct subscriber *neighbour, uint8_t found, unsigned count);
+void rhizome_sync_keys_announce(int protocol_count, int other_count);
 
 #endif //__SERVAL_DNA__RHIZOME_H

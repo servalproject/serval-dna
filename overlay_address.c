@@ -2,17 +2,17 @@
 Serval DNA MDP addressing
 Copyright (C) 2012-2015 Serval Project Inc.
 Copyright (C) 2012 Paul Gardner-Stephen
- 
+
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
 as published by the Free Software Foundation; either version 2
 of the License, or (at your option) any later version.
- 
+
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
- 
+
 You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
@@ -20,7 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 /*
   Smart-flooding of broadcast information is also a requirement.  The long addresses help here, as we can make any address that begins
-  with the first 192 bits all ones be broadcast, and use the remaining 64 bits as a "broadcast packet identifier" (BPI).  
+  with the first 192 bits all ones be broadcast, and use the remaining 64 bits as a "broadcast packet identifier" (BPI).
   Nodes can remember recently seen BPIs and not forward broadcast frames that have been seen recently.  This should get us smart flooding
   of the majority of a mesh (with some node mobility issues being a factor).  We could refine this later, but it will do for now, especially
   since for things like number resolution we are happy to send repeat requests.
@@ -90,7 +90,7 @@ static int free_node(void **record, void *UNUSED(context))
   struct subscriber *subscriber = (struct subscriber *)*record;
   if (subscriber->link_state || subscriber->destination)
     FATAL("Can't free a subscriber that is being used in routing");
-  if (subscriber->sync_state)
+  if (subscriber->sync_bars_state || subscriber->sync_keys_state)
     FATAL("Can't free a subscriber that is being used by rhizome");
   if (subscriber->identity)
     FATAL("Can't free a subscriber that is unlocked in the keyring");
@@ -170,7 +170,7 @@ int overlay_broadcast_drop_check(struct broadcast *addr)
       bpi_index^=addr->id[i];
     }
   bpi_index&=BPI_MASK;
-  
+
   if (memcmp(bpilist[bpi_index].id, addr->id, BROADCAST_LEN)){
     DEBUGF(broadcasts, "BPI %s is new", alloca_tohex(addr->id, BROADCAST_LEN));
     bcopy(addr->id, bpilist[bpi_index].id, BROADCAST_LEN);
@@ -252,7 +252,7 @@ static int add_explain_response(void **record, void *context)
     response->please_explain->source_full=1;
     return 0;
   }
-  
+
   struct overlay_buffer *b = response->please_explain->payload;
 
   // add the whole subscriber id to the payload, stop if we run out of space
@@ -282,24 +282,24 @@ static int find_subscr_buffer(struct decode_context *context, struct overlay_buf
   assert(subscriber);
   if (len>SID_SIZE)
     return WHYF("Invalid abbreviation length %d", len);
-  
+
   uint8_t *id = ob_get_bytes_ptr(b, len);
   if (!id)
     return WHY("Not enough space in buffer to parse address");
-  
+
   *subscriber=find_subscriber(id, len, 1);
-  
+
   if (!*subscriber){
     if (!context)
       return WHYF("Unable to decode %s, with no context", alloca_tohex(id, len));
 
     context->flags|=DECODE_FLAG_INVALID_ADDRESS;
-    
+
     if (context->flags & DECODE_FLAG_DONT_EXPLAIN){
       DEBUGF(subscriber, "Ignoring unknown prefix %s", alloca_tohex(id, len));
     }else{
       // generate a please explain in the passed in context
-      
+
       // add the abbreviation you told me about
       if (!context->please_explain){
 	context->please_explain = calloc(sizeof(struct overlay_frame),1);
@@ -307,11 +307,11 @@ static int find_subscr_buffer(struct decode_context *context, struct overlay_buf
 	  return -1;
 	ob_limitsize(context->please_explain->payload, MDP_MTU);
       }
-      
-      // And I'll tell you about any subscribers I know that match this abbreviation, 
+
+      // And I'll tell you about any subscribers I know that match this abbreviation,
       // so you don't try to use an abbreviation that's too short in future.
       tree_walk_prefix(&root, id, len, add_explain_response, context);
-      
+
       DEBUGF(subscriber, "Asking for explanation of %s", alloca_tohex(id, len));
       ob_append_byte(context->please_explain->payload, len);
       ob_append_bytes(context->please_explain->payload, id, len);
@@ -357,7 +357,7 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
   int len = ob_get(b);
   if (len<0)
     return WHY("Buffer too small");
-  
+
   switch(len){
     case OA_CODE_P2P_YOU:
       // if we don't know who they are, we can't assume they mean us.
@@ -382,7 +382,7 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
 	      return -1;
 	    ob_limitsize(context->please_explain->payload, MDP_MTU);
 	  }
-	  
+
 	  DEBUGF(subscriber, "Asking for explanation of YOU");
 	  ob_append_byte(context->please_explain->payload, OA_CODE_P2P_YOU);
 	}
@@ -399,7 +399,7 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
 	context->previous=context->sender;
       }
       return 0;
-      
+
     case OA_CODE_PREVIOUS:
       if (!context->previous){
 	DEBUGF(subscriber, "Unable to decode previous address");
@@ -412,7 +412,7 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
     case OA_CODE_SIGNKEY:
       return decode_sid_from_signkey(b, subscriber);
   }
-  
+
   return find_subscr_buffer(context, b, len, subscriber);
 }
 
@@ -425,15 +425,15 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
     RETURN(0);
   assert(frame->payload != NULL);
   frame->type = OF_TYPE_PLEASEEXPLAIN;
-  
+
   if (source)
     frame->source = source;
   else
     frame->source = get_my_subscriber(1);
-  
+
   if (!context->sender)
     frame->source_full=1;
-  
+
   frame->destination = destination;
   if (destination){
     frame->ttl = PAYLOAD_TTL_DEFAULT; // MAX?
@@ -443,16 +443,16 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
     frame->ttl=1;// how will this work with olsr??
     if (context->interface){
       frame_add_destination(frame, NULL, context->interface->destination);
-      
+
       struct network_destination *dest = create_unicast_destination(&context->addr, context->interface);
       if (dest)
 	frame_add_destination(frame, NULL, dest);
-    
+
     }else{
       FATAL("This context doesn't have an interface?");
     }
   }
-  
+
   frame->queue=OQ_MESH_MANAGEMENT;
   if (overlay_payload_enqueue(frame) != -1)
     RETURN(0);
@@ -465,12 +465,12 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
 int process_explain(struct overlay_frame *frame)
 {
   struct overlay_buffer *b=frame->payload;
-  
+
   struct decode_context context;
   bzero(&context, sizeof context);
   context.sender = frame->source;
   context.interface = frame->interface;
-  
+
   while(ob_remaining(b)>0){
     int len = ob_get(b);
     if (len<0)

@@ -108,6 +108,7 @@ SERVAL_DAEMON_SOURCES = \
 	rhizome_packetformats.c \
 	rhizome_store.c \
 	rhizome_sync.c \
+	rhizome_sync_bars.c \
 	rhizome_sync_keys.c \
 	rhizome_restful.c \
 	rhizome_cli.c \

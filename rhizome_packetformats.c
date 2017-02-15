@@ -278,7 +278,7 @@ next:
   }
 
   // if we're using the new sync protocol, ignore the rest of the packet
-  if (f->source->sync_state)
+  if (f->source->sync_bars_state)
     goto end;
 
   struct internal_mdp_header header;
